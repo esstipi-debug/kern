@@ -1,0 +1,32 @@
+# OS Files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Office Files (Temp)
+~$*.xlsx
+~$*.xlsm
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+
+# Node (if adding web components)
+node_modules/
+.env
+.env.local
+
+# Python
+*.egg-info/
+dist/
+build/
+venv/
+
+# Misc
+.claude/
+.secrets/
+*.log
