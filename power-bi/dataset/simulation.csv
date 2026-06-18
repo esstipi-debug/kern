@@ -1,0 +1,7 @@
+product_id,policy,simulated_cycle_sl,simulated_period_sl,mean_on_hand,stockout_periods,fill_rate,mean_backorders
+SKU-A,sQ,1.0,0.9984,252.70611709957876,16,,
+SKU-A,RS,1.0,1.0,443.14146241017096,0,,
+SKU-A,GSM,,,,0,1.0,0.0
+SKU-B,sQ,0.9936305732484076,0.998,409.32602409953523,20,,
+SKU-B,RS,1.0,1.0,767.5686921531747,0,,
+SKU-B,GSM,,,,0,1.0,0.0

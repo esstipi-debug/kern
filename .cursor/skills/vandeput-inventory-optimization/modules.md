@@ -22,9 +22,9 @@
 - `lost_sales=True` on RS for §5.3.2
 - Backorders on net inventory; returns cycle SL and period SL
 
-### `src/export.py`
-- `write_summary_csv`, `write_policy_comparison`
-- Used by `examples/run_complete.py --export`
+### `src/export.py` / `src/excel_export.py` / `src/powerbi_export.py`
+- CSV summary, Excel `.xlsx`, Power BI dataset folder
+- `build_powerbi_dataset()` → `power-bi/dataset/*.csv`
 
 ### `src/data_loader.py`
 - `load_demand_csv`, `demand_stats`, `annualize_demand`
@@ -76,7 +76,8 @@
 | `examples/run_part1_part2.py` | 2–5 |
 | `examples/run_part3.py` | 7–8 |
 | `examples/run_part4.py` | 9–13 |
-| `examples/run_complete.py` | 1–13 + CSV export |
+| `examples/run_complete.py` | 1–13 + CSV/Excel/Power BI export |
+| `examples/build_powerbi_dataset.py` | Power BI CSV dataset |
 
 ## Tests
 

@@ -31,6 +31,10 @@ python examples/run_complete.py --simulate --export output/summary.csv --excel e
 
 # Pre-built workbook template
 python examples/build_excel_workbook.py
+
+# Power BI dataset (CSV star schema)
+python examples/build_powerbi_dataset.py --simulate
+# See power-bi/SETUP.md for Desktop import
 ```
 
 Expected output includes `Q*`, reorder point `s`, order-up-to level `S`, safety stock, and simulated service levels.
@@ -54,7 +58,7 @@ Expected output includes `Q*`, reorder point `s`, order-up-to level `S`, safety 
 | Ch. 11 — Newsvendor | `src/newsvendor.py` | ✅ |
 | Ch. 12 — Histograms / KDE | `src/discrete_demand.py` | ✅ |
 | Ch. 13 — Simulation optimization | `src/simulation_opt.py` | ✅ |
-| Excel / Power BI templates | `excel-templates/`, `src/excel_export.py` | ✅ `.xlsx` export |
+| Excel / Power BI | `excel-templates/`, `power-bi/` | ✅ `.xlsx` + CSV dataset |
 
 ---
 
@@ -136,7 +140,7 @@ Ss = z_alpha * sigma_d * sqrt(tau)
 
 ## Roadmap
 
-1. **Power BI** — Connect to CSV/Excel export from `run_complete.py`
+1. **Power BI `.pbix` template** — build report locally; dataset CSVs provided
 2. **GSM simulation** — `simulate_serial_gsm` with echelon backorders (§10.5) ✅
 3. **Lost sales** — `(R,S)` and `(s,Q)` with `lost_sales=True` (§5.3.2) ✅
 

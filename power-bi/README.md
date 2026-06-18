@@ -1,26 +1,38 @@
 # Power BI Dashboards
 
-> **Status:** Planned. Connect to Python outputs or `data/sample_demand.csv`.
+Reporting layer on Python outputs — **Vandeput (2020), Ch. 5 visualization**.
 
-Vandeput (2020) uses Python for computation; dashboards are a **reporting layer** on top of model outputs.
-
-## Planned visuals
-
-| Page | Metrics | Book reference |
-|------|---------|----------------|
-| Inventory health | On-hand vs Ss / Cs zones | Table 5.2, §5.2 |
-| Policy parameters | Q, s, S, R, L | Ch. 5 |
-| Simulation | Cycle SL vs target α | §5.3, Table 5.3 |
-| EOQ costs | Holding vs transaction | §2.2 |
-
-## Current workaround
-
-Export results from:
+## Quick start
 
 ```bash
-python examples/run_part1_part2.py --simulate > results.txt
+python examples/build_powerbi_dataset.py --simulate
 ```
 
-Or load `data/sample_demand.csv` directly in Power BI for demand history charts.
+Then follow **[SETUP.md](SETUP.md)** to import CSVs into Power BI Desktop.
 
-Fill rate and forecast accuracy belong to **Ch. 7** and the companion forecasting book — not yet in this repo.
+## Dataset tables
+
+| CSV | Content | Book ref |
+|-----|---------|----------|
+| `demand_history` | Weekly demand by SKU | — |
+| `product_summary` | μ, σ, distribution | Ch. 4, 9 |
+| `policies` | EOQ, (s,Q), (R,S) | Ch. 2, 5 |
+| `simulation` | Cycle SL, on-hand | §5.3 |
+| `cost_optimization` | Optimal R, costs | Ch. 8 |
+| `fill_rate` | β target vs α | Ch. 7 |
+| `gsm_nodes` | Serial GSM allocation | Ch. 10 |
+| `newsvendor` | Muffins example | Ch. 11 |
+| `parameters` | Global inputs | — |
+
+## Report pages (recommended)
+
+See [SETUP.md](SETUP.md) §5 — demand, policies, simulation, cost/fill rate, GSM.
+
+## Assets
+
+- `queries/` — Power Query M (update `RootFolder` path)
+- `measures.dax` — DAX measure library
+
+## Note on `.pbix`
+
+Report files are not committed (binary, local paths). Generate data with Python, build visuals once in Desktop, save your `.pbix` locally.

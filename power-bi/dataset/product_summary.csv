@@ -1,0 +1,3 @@
+product_id,mean_demand_per_period,demand_std_per_period,annual_demand,periods_observed,distribution,observed_skewness,gamma_ss_tau5
+SKU-A,100.875,22.191438697306463,5245.5,104,normal,-0.0954093350819246,84.29999893806337
+SKU-B,256.5,38.248294587274756,13338.0,104,normal,-0.005027587323874868,143.84450099986066

@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.3.0] - 2026-06-18
+
+### Added
+- Power BI CSV dataset export `src/powerbi_export.py`
+- `examples/build_powerbi_dataset.py`
+- Power Query templates `power-bi/queries/*.pq`
+- DAX measures `power-bi/measures.dax`
+- Setup guide `power-bi/SETUP.md`
+- `--powerbi` flag on `run_complete.py`
+- Test for Power BI export (42 total)
+
 ## [1.2.0] - 2026-06-18
 
 ### Added

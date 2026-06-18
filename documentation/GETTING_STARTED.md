@@ -43,7 +43,10 @@ Part III and IV:
 ```bash
 python examples/run_part3.py    # fill rate + cost optimization (Ch. 7-8)
 python examples/run_part4.py    # gamma, GSM, newsvendor, KDE, sim-opt (Ch. 9-13)
+python examples/build_powerbi_dataset.py --simulate   # Power BI CSVs
 ```
+
+See [power-bi/SETUP.md](../power-bi/SETUP.md) for Power BI Desktop import.
 
 ---
 

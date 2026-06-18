@@ -1,0 +1,63 @@
+// DAX measures — paste into Power BI Desktop after loading tables
+// Relationships: product_summary[product_id] -> policies, simulation, cost_optimization, fill_rate, gsm_nodes, demand_history
+
+// --- Demand ---
+Total Demand = SUM ( demand_history[quantity] )
+
+Avg Weekly Demand =
+    AVERAGEX (
+        VALUES ( demand_history[date] ),
+        CALCULATE ( SUM ( demand_history[quantity] ) )
+    )
+
+// --- Policies ---
+EOQ Q =
+    CALCULATE (
+        MAX ( policies[Q] ),
+        policies[policy] = "EOQ"
+    )
+
+Safety Stock RS =
+    CALCULATE (
+        MAX ( policies[safety_stock] ),
+        policies[policy] = "RS"
+    )
+
+Order Up To S =
+    CALCULATE (
+        MAX ( policies[S] ),
+        policies[policy] = "RS"
+    )
+
+// --- Simulation vs target ---
+Cycle SL Gap =
+    MAX ( simulation[simulated_cycle_sl] ) - MAX ( parameters[service_level] )
+
+Simulated Cycle SL % =
+    FORMAT ( MAX ( simulation[simulated_cycle_sl] ), "0.0%" )
+
+Target Service Level % =
+    FORMAT ( MAX ( parameters[service_level] ), "0.0%" )
+
+// --- Cost optimization ---
+Optimal Cost Per Period =
+    MIN ( cost_optimization[total_cost_per_period] )
+
+Fill Rate at Optimum =
+    MAX ( cost_optimization[fill_rate] )
+
+// --- Fill rate (Ch. 7) ---
+Target Fill Rate % =
+    FORMAT ( MAX ( fill_rate[target_fill_rate] ), "0.0%" )
+
+Cycle SL at Fill Target % =
+    FORMAT ( MAX ( fill_rate[cycle_service_level] ), "0.0%" )
+
+// --- Inventory zones (Table 5.2 style) ---
+// Compare mean on-hand to safety stock and cycle stock from product_summary + policies
+On Hand vs Safety Stock Ratio =
+    DIVIDE (
+        MAX ( simulation[mean_on_hand] ),
+        MAX ( policies[safety_stock] ),
+        BLANK ()
+    )

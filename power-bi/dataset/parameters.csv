@@ -1,0 +1,2 @@
+holding_cost_per_period,order_cost,backorder_cost,lead_time,service_level,fill_rate_target,periods_per_year
+1.25,1000.0,50.0,2.0,0.95,0.98,52.0
