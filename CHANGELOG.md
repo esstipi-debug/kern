@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.2.0] - 2026-06-19
+
+### Added
+- **Demand forecasting front-end** (`src/forecasting.py`): moving average, simple
+  exponential smoothing, and Croston (intermittent demand), with auto method
+  selection by ADI classification
+- Forecast-error σ_e — the theoretically correct dispersion for safety stock
+  (Vandeput 2021, §4.2.5) — exposed via `ForecastResult.to_engine_inputs`
+- `examples/run_forecast_to_policy.py`: end-to-end history → forecast → (s,Q) policy
+- 13 forecasting tests (83 total, ~90% coverage)
+
+### Changed
+- README: forecasting documented; "Future extensions" reframed as the
+  engine → product ("AUTO") roadmap
+
 ## [2.1.0] - 2026-06-19
 
 ### Added

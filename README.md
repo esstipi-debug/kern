@@ -42,6 +42,9 @@ python examples/build_excel_workbook.py
 # Power BI dataset (CSV star schema)
 python examples/build_powerbi_dataset.py --simulate
 # See power-bi/SETUP.md for Desktop import
+
+# Forecast demand from history, then derive the policy (uses sigma_e)
+python examples/run_forecast_to_policy.py
 ```
 
 Expected output includes `Q*`, reorder point `s`, order-up-to level `S`, safety stock, and simulated service levels.
@@ -66,6 +69,7 @@ Expected output includes `Q*`, reorder point `s`, order-up-to level `S`, safety 
 | Ch. 12 — Histograms / KDE | `src/discrete_demand.py` | ✅ |
 | Ch. 13 — Simulation optimization | `src/simulation_opt.py` | ✅ grid R + Ss |
 | Batch multi-SKU | `src/batch.py` | ✅ |
+| Demand forecasting (front-end) | `src/forecasting.py` | ✅ MA / SES / Croston + σ_e |
 | Export | `excel_export`, `powerbi_export` | ✅ |
 
 ---
@@ -150,11 +154,17 @@ Ss = z_alpha * sigma_d * sqrt(tau)
 
 ---
 
-## Future extensions
+## From engine to product ("the AUTO")
 
+This repo is the analytical **engine**. `src/forecasting.py` adds the demand
+front-end (history → forecast → σ_e → policy; see `examples/run_forecast_to_policy.py`).
+What still separates it from a turnkey planning system:
+
+- Live data integration (ERP/WMS connector instead of CSV loads)
+- Business constraints (budget, warehouse capacity, MOQ, shelf-life)
 - General supply networks (beyond serial GSM)
 - Policies driven end-to-end from KDE/discrete PMF (Ch. 12 → 5)
-- σ_e integration from forecast error (companion forecasting book)
+- Advanced forecasting (seasonality, trend/Holt-Winters, ML models)
 
 ## Agent skills (Cursor + Claude Code)
 
