@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 from src.data_loader import load_demand_csv, product_metadata
 from src.eoq import compute_eoq, round_review_period_power_of_two
-from src.policies import continuous_review_sq, periodic_review_rs
+from src.policies import periodic_review_rs
 
 
 def main() -> None:

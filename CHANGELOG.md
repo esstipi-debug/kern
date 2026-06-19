@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.1.0] - 2026-06-19
+
+### Added
+- `pyproject.toml`: PEP 621 packaging + Ruff, pytest and coverage config (pip-installable, no more `PYTHONPATH` hack)
+- `requirements-dev.txt` for test/lint tooling (`pytest`, `pytest-cov`, `ruff`)
+- Direct unit tests for previously-untested modules: `policies`, `risk_period`, `demand_variability`, `discrete_demand`, `export` (23 new tests, 70 total)
+- CI now lints with Ruff and enforces a 80% coverage gate (measured coverage ~90%)
+
+### Fixed
+- `tests/test_multi_echelon.py`: `test_gsm_case1_higher_cost_than_optimal` asserted nothing — added the intended cost comparison
+- Removed dead code / unused locals and imports flagged by Ruff (`eoq`, `fill_rate`, `policies`, `distributions`, `powerbi_export`, several tests/examples)
+
+### Changed
+- `pytest` moved out of runtime `requirements.txt` into dev deps
+- Test config moved from `pytest.ini` into `pyproject.toml`
+
 ## [2.0.0] - 2026-06-18
 
 ### Added

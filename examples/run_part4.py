@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import argparse
 
-import numpy as np
-
 from src.data_loader import demand_stats, load_demand_csv
 from src.discrete_demand import histogram_pmf, kde_pmf
 from src.distributions import safety_stock_gamma, select_distribution

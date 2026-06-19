@@ -9,7 +9,6 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-
 HEADER_FILL = PatternFill("solid", fgColor="1F4E79")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
 TITLE_FONT = Font(bold=True, size=12)

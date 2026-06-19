@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "supply-chain-optimization"
+version = "2.1.0"
+description = "Python implementation of Vandeput (2020) inventory optimization models: EOQ, safety stock, (s,Q)/(R,S) policies, simulation."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "esstipi" }]
+keywords = ["inventory", "supply-chain", "eoq", "safety-stock", "operations-research"]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/esstipi-debug/supply-chain-optimization"
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = "."
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["src/__init__.py"]
+
+[tool.coverage.report]
+show_missing = true
+# Raise over time; current measured coverage is ~90%.
+fail_under = 80
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+# pyflakes (F), pycodestyle errors (E), isort (I)
+select = ["E", "F", "I"]
+ignore = ["E501"]  # line length handled by line-length above

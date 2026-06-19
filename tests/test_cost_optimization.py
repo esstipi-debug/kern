@@ -21,8 +21,8 @@ def test_optimal_cycle_service_level_book_example():
 
 def test_rs_cost_book_example():
     """Section 8.2: optimal cost ~1165.82 at z=1.960."""
-    h, d_mu, d_std, r, l, k, b = 1.25, 100, 25, 1, 1, 1000, 50
-    risk = demand_over_risk_period(d_mu, d_std, l, 0, r)
+    h, d_mu, d_std, r, lead, k, b = 1.25, 100, 25, 1, 1, 1000, 50
+    risk = demand_over_risk_period(d_mu, d_std, lead, 0, r)
     z = 1.960
     cost = rs_cost_per_period(h, d_mu, r, z, risk.demand_std, k, b)
     assert cost.total == pytest.approx(1165.82, abs=2.0)

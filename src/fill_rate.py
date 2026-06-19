@@ -129,8 +129,7 @@ def safety_stock_for_fill_rate(
 
     target = cycle_demand * (1.0 - target_fill_rate) / demand_std_risk
     z_beta = inverse_standard_loss(target)
-    ss = z_beta * demand_std_risk
-    inventory = ss  # relative to mu_x=0 for Ss-only; caller adds mu_x
+    ss = z_beta * demand_std_risk  # relative to mu_x=0 for Ss-only; caller adds mu_x
 
     return FillRateResult(
         fill_rate=target_fill_rate,

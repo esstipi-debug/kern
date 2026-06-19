@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import pytest
 from openpyxl import load_workbook
 
 from src.excel_export import write_analysis_workbook

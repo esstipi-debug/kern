@@ -7,7 +7,7 @@ from enum import Enum
 
 import numpy as np
 from scipy import optimize
-from scipy.stats import gamma, norm, skew
+from scipy.stats import gamma, skew
 
 
 class DemandDistribution(str, Enum):

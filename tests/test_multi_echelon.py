@@ -73,6 +73,9 @@ def test_gsm_case1_higher_cost_than_optimal():
         1.0,
         case_id=3,
     )
+    assert case1.total_holding_cost > optimal.total_holding_cost
+
+
 def test_gsm_simulation_runs():
     from src.multi_echelon import optimize_serial_gsm, simulate_serial_gsm
 

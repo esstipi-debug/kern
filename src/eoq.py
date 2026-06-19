@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -133,7 +133,6 @@ def compute_eoq_volume_discount(
     if best_q <= 0:
         raise ValueError("no feasible quantity across price breaks")
 
-    h_best = holding_cost_rate * best_unit
     return EOQVolumeDiscountResult(
         order_quantity=best_q,
         optimal_total_cost=best_cost,

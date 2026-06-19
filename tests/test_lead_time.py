@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.policies import continuous_review_sq, periodic_review_rs
+from src.policies import periodic_review_rs
 from src.risk_period import demand_over_risk_period
 
 

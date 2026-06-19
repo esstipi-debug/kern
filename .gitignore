@@ -26,6 +26,13 @@ dist/
 build/
 venv/
 .pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# graphify knowledge-graph output (generated)
+graphify-out/
 
 # Misc
 .claude/

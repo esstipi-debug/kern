@@ -11,7 +11,6 @@ import pandas as pd
 from src.cost_optimization import optimize_rs_policy, optimize_sq_policy
 from src.data_loader import (
     annualize_demand,
-    list_products,
     load_demand_csv,
     product_metadata,
 )

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from src.demand_variability import DistributionKind, safety_stock_risk_period
 from src.eoq import EOQResult, compute_eoq
 from src.risk_period import demand_over_risk_period
-from src.safety_stock import SafetyStockResult, service_level_factor
+from src.safety_stock import SafetyStockResult
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,6 @@ def continuous_review_sq(
         lead_time_std,
         review_period=0.0,
     )
-    z = service_level_factor(cycle_service_level)
     ss = safety_stock_risk_period(
         risk.mean_demand,
         risk.demand_std,
@@ -107,7 +106,6 @@ def periodic_review_rs(
         lead_time_std,
         review_period=review_period,
     )
-    z = service_level_factor(cycle_service_level)
     ss = safety_stock_risk_period(
         risk.mean_demand,
         risk.demand_std,
