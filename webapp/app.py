@@ -12,7 +12,11 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import re
+import shutil
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,10 +25,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from fastapi import FastAPI, HTTPException, Query  # noqa: E402
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
 from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+from scm_agent import Orchestrator  # noqa: E402
 from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
 from src.policies import continuous_review_sq, periodic_review_rs  # noqa: E402
@@ -32,8 +37,21 @@ from src.sources import CsvDemandSource  # noqa: E402
 
 DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+JOBS_OUTPUT_DIR = _REPO_ROOT / "webapp" / "_jobs_output"
+JOBS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # cap /api/jobs uploads at 25 MB
+JOBS_TTL_SECONDS = 3600  # per-job output dirs older than this are swept on the next request
 PERIODS_PER_YEAR = 52.0
 MAX_LEAD_PERIODS = 52.0
+
+_ORCHESTRATOR: Orchestrator | None = None
+
+
+def _get_orchestrator() -> Orchestrator:
+    global _ORCHESTRATOR
+    if _ORCHESTRATOR is None:
+        _ORCHESTRATOR = Orchestrator()
+    return _ORCHESTRATOR
 
 
 class SafeJSONResponse(JSONResponse):
@@ -272,9 +290,94 @@ def api_health() -> dict:
     return {"ok": True, "skus": len(_load_forecasts())}
 
 
+def _prune_old_jobs(now: float | None = None) -> None:
+    """Best-effort sweep: drop per-job output dirs older than JOBS_TTL_SECONDS.
+
+    Called at the start of each /api/jobs request so generated deliverables and
+    uploads do not accumulate forever. Failures are swallowed (cleanup is opportunistic).
+    """
+    cutoff = (now if now is not None else time.time()) - JOBS_TTL_SECONDS
+    try:
+        entries = list(JOBS_OUTPUT_DIR.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            if entry.is_dir() and entry.stat().st_mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
+        except OSError:
+            continue
+
+
+@app.post("/api/jobs")
+async def api_jobs(
+    brief: str = Form(...),
+    client: str = Form("Client"),
+    job_type: str | None = Form(None),
+    params: str = Form("{}"),
+    file: UploadFile | None = File(None),
+) -> dict:
+    try:
+        parsed_params = json.loads(params) if params else {}
+        if not isinstance(parsed_params, dict):
+            raise ValueError("params must be a JSON object")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=f"invalid params JSON: {exc}") from exc
+
+    # Sanitize the client-supplied label before it lands in report copy/headings.
+    client = re.sub(r"[^\w\s.,\-]", "", client)[:100].strip() or "Client"
+
+    _prune_old_jobs()
+
+    import tempfile
+
+    job_dir = Path(tempfile.mkdtemp(dir=JOBS_OUTPUT_DIR))
+    data_path: str | None = None
+    if file is not None and file.filename:
+        # Never trust the client-supplied filename: reduce to a bare basename and
+        # pin the write inside the per-job dir (blocks path traversal / absolute writes).
+        raw_name = (file.filename or "upload").replace("\\", "/")
+        safe_name = os.path.basename(raw_name)
+        if not safe_name or safe_name in (".", ".."):
+            raise HTTPException(status_code=400, detail="invalid upload filename")
+        upload = job_dir / safe_name
+        if upload.resolve().parent != job_dir.resolve():
+            raise HTTPException(status_code=400, detail="invalid upload filename")
+        data = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
+        upload.write_bytes(data)
+        data_path = str(upload)
+
+    result = _get_orchestrator().run(
+        brief, data_path=data_path, overrides=parsed_params,
+        job_type=job_type or None, client=client, out_dir=job_dir,
+    )
+
+    download_urls: dict[str, str] = {}
+    for name, path in result.deliverables.items():
+        try:
+            rel = Path(path).resolve().relative_to(JOBS_OUTPUT_DIR.resolve())
+            download_urls[name] = "/jobs-output/" + rel.as_posix()
+        except ValueError:
+            pass  # path outside JOBS_OUTPUT_DIR — skip download link, keep deliverable entry
+
+    return {
+        "status": result.status,
+        "tool": result.tool,
+        "confidence": result.confidence,
+        "summary": result.summary,
+        "deliverables": result.deliverables,
+        "download_urls": download_urls,
+        "qa_issues": result.qa_issues,
+        "clarifications": result.clarifications,
+    }
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount("/jobs-output", StaticFiles(directory=str(JOBS_OUTPUT_DIR)), name="jobs-output")

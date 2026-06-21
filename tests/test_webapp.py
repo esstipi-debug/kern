@@ -5,7 +5,7 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from webapp.app import app  # noqa: E402
+from webapp.app import JOBS_OUTPUT_DIR, app  # noqa: E402
 
 client = TestClient(app)
 
@@ -110,3 +110,120 @@ def test_static_assets_served():
 def test_health():
     d = client.get("/api/health").json()
     assert d["ok"] is True and d["skus"] == 8
+
+
+# ---------------------------------------------------------------------------
+# python-multipart guard — do NOT use pytest.importorskip at module level;
+# that would skip the existing 13 webapp tests when multipart is absent.
+# Try the canonical name first (python-multipart >= 0.0.26) to avoid the
+# PendingDeprecationWarning emitted by the legacy `import multipart` alias.
+# ---------------------------------------------------------------------------
+try:
+    import python_multipart  # noqa: F401  (canonical name in python-multipart >= 0.0.26)
+    _HAS_MULTIPART = True
+except ImportError:
+    try:
+        import multipart  # noqa: F401  (legacy alias, kept for older releases)
+        _HAS_MULTIPART = True
+    except ImportError:
+        _HAS_MULTIPART = False
+
+requires_multipart = pytest.mark.skipif(not _HAS_MULTIPART, reason="python-multipart not installed")
+
+
+@requires_multipart
+def test_jobs_leadership_via_params_no_file():
+    r = client.post("/api/jobs", data={
+        "brief": "evaluate our SC leadership",
+        "job_type": "leadership_chain",
+        "params": '{"scores": "3 2 3 1 1", "name": "Equipo X"}',
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "ok"
+    assert body["tool"] == "leadership_chain"
+    assert "chart" in body["deliverables"]
+    assert body["download_urls"]["chart"].startswith("/jobs-output/")
+
+
+@requires_multipart
+def test_jobs_inventory_with_file_upload():
+    with open("data/sample_demand_portfolio.csv", "rb") as fh:
+        r = client.post(
+            "/api/jobs",
+            data={"brief": "set up reorder points and safety stock"},
+            files={"file": ("demand.csv", fh, "text/csv")},
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "ok" and body["tool"] == "inventory_optimization"
+    assert "excel" in body["download_urls"]
+
+
+@requires_multipart
+def test_jobs_needs_data_status():
+    r = client.post("/api/jobs", data={"brief": "set up reorder points"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "needs_data"
+
+
+@requires_multipart
+def test_jobs_downloaded_file_is_served():
+    r = client.post("/api/jobs", data={
+        "brief": "evaluate leadership", "job_type": "leadership_chain",
+        "params": '{"scores": "3 3 3 3 3"}',
+    }).json()
+    url = r["download_urls"]["report"]
+    got = client.get(url)
+    assert got.status_code == 200
+    assert "CHAIN" in got.text
+
+
+@requires_multipart
+def test_jobs_upload_filename_traversal_is_contained():
+    # A path-traversal filename must be reduced to a basename and written ONLY
+    # inside the per-job mkdtemp subdir — never escaping JOBS_OUTPUT_DIR.
+    csv = b"date,sku,qty\n2024-01-01,A,5\n"
+    r = client.post(
+        "/api/jobs",
+        data={"brief": "set up reorder points and safety stock"},
+        files={"file": ("../../evil_traversal.csv", csv, "text/csv")},
+    )
+    assert r.status_code == 200  # handled gracefully, not a 5xx
+    assert not (JOBS_OUTPUT_DIR / "evil_traversal.csv").exists()
+    assert not (JOBS_OUTPUT_DIR.parent / "evil_traversal.csv").exists()
+
+
+@requires_multipart
+def test_jobs_upload_too_large_rejected(monkeypatch):
+    monkeypatch.setattr("webapp.app.MAX_UPLOAD_BYTES", 100)
+    big = b"x" * 200
+    r = client.post(
+        "/api/jobs",
+        data={"brief": "set up reorder points"},
+        files={"file": ("big.csv", big, "text/csv")},
+    )
+    assert r.status_code == 413
+
+
+def test_prune_old_jobs_removes_stale_dirs():
+    import os
+    import shutil
+    import time
+
+    from webapp.app import JOBS_TTL_SECONDS, _prune_old_jobs
+
+    old = JOBS_OUTPUT_DIR / "old_job_test_dir"
+    fresh = JOBS_OUTPUT_DIR / "fresh_job_test_dir"
+    old.mkdir(exist_ok=True)
+    fresh.mkdir(exist_ok=True)
+    (old / "f.txt").write_text("x", encoding="utf-8")
+    past = time.time() - JOBS_TTL_SECONDS - 100
+    os.utime(old, (past, past))
+    try:
+        _prune_old_jobs()
+        assert not old.exists()   # stale dir swept
+        assert fresh.exists()     # fresh dir kept
+    finally:
+        shutil.rmtree(old, ignore_errors=True)
+        shutil.rmtree(fresh, ignore_errors=True)

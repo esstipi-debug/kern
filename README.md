@@ -207,6 +207,19 @@ Still open for a fully turnkey system:
 - General supply networks (beyond serial GSM)
 - Advanced forecasting (seasonality, Holt-Winters, ML models)
 
+## Agent (scm_agent)
+
+A single orchestrator that turns a free-form brief (+ optional data) into a finished
+deliverable. See [`scm_agent/README.md`](scm_agent/README.md) for the full reference.
+
+```bash
+py examples/run_agent.py --brief "set up reorder points" --data data/sample_demand_portfolio.csv
+py examples/run_agent.py --brief "what price maximizes profit" --data data/sample_pricing.csv
+py examples/run_agent.py --brief "evaluate our SC leadership" --scores "3 2 3 1 1" --name "Team"
+```
+
+---
+
 ## Agent skills (Cursor + Claude Code)
 
 Four skills in `.cursor/skills/` — synced to `~/.claude/skills/`:

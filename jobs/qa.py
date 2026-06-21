@@ -8,6 +8,7 @@ out-of-range allocation) so the human only reviews sound output.
 from __future__ import annotations
 
 from .inventory_optimization import JobReport
+from .leadership import DIMS, ChainProfile
 from .pricing import PricingReport
 
 TOL = 1e-6
@@ -85,3 +86,34 @@ def verify_pricing(report: PricingReport) -> list[str]:
 
 def pricing_passed(report: PricingReport) -> bool:
     return not verify_pricing(report)
+
+
+def verify_leadership(profile: ChainProfile) -> list[str]:
+    """Return a list of QA issues for a CHAIN profile. Empty list = passed."""
+    issues: list[str] = []
+    codes = {code for code, _ in DIMS}
+
+    if set(profile.scores) != codes:
+        issues.append("profile is missing CHAIN dimensions")
+    for code, val in profile.scores.items():
+        if not 0 <= val <= 4:
+            issues.append(f"{code}: score out of 0..4")
+
+    expected_avg = sum(profile.scores.values()) / len(profile.scores) if profile.scores else 0.0
+    if abs(profile.average - expected_avg) > 1e-9:
+        issues.append("average does not match scores")
+
+    if profile.scores:
+        expected_gap = max(profile.scores.values()) - min(profile.scores.values())
+        if profile.gap != expected_gap:
+            issues.append("gap does not match scores")
+        if profile.lever_level != min(profile.scores.values()):
+            issues.append("priority lever is not the lowest-scoring dimension")
+
+    if not profile.archetype:
+        issues.append("missing archetype")
+    return issues
+
+
+def leadership_passed(profile: ChainProfile) -> bool:
+    return not verify_leadership(profile)
