@@ -1,6 +1,23 @@
 # Changelog
 
-## [2.5.0] - 2026-06-19
+## [2.6.0] - 2026-06-19
+
+### Added
+- **Job-fulfillment layer** (`jobs/`) — package the engine for real supply-chain
+  freelance work:
+  - `jobs/intake.py`: detect/normalize any client schema (CSV/Excel, ERP or
+    Kaggle-style) to the canonical demand schema, aggregated per period
+  - `jobs/inventory_optimization.py`: playbook — forecast → (s,Q)/(R,S) policy →
+    budget allocation → structured `JobReport`
+  - `jobs/qa.py`: automated verification of the report's numbers (nothing ships
+    until it passes)
+  - `jobs/deliverables.py`: client-ready Excel workbook + Markdown report + CSV
+  - `examples/run_inventory_job.py`: end-to-end CLI; `jobs/SAMPLE_REPORT.md`
+- 8 job-layer tests (120 total)
+
+### Notes
+- Human-in-the-loop by design — automates the analysis/deliverable, not Upwork
+  bidding or client comms (ToS).
 
 ### Added
 - **Inventory Planner web UI** (`webapp/`): a 4-tab dashboard (Portfolio, SKU

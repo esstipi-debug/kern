@@ -34,6 +34,9 @@ htmlcov/
 # graphify knowledge-graph output (generated)
 graphify-out/
 
+# generated client deliverables
+deliverables/
+
 # Misc
 .claude/
 .secrets/

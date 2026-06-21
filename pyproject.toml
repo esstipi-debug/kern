@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "supply-chain-optimization"
-version = "2.5.0"
+version = "2.6.0"
 description = "Python implementation of Vandeput (2020) inventory optimization models: EOQ, safety stock, (s,Q)/(R,S) policies, simulation."
 readme = "README.md"
 license = { file = "LICENSE" }

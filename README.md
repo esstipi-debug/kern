@@ -56,6 +56,9 @@ python examples/run_sql_source.py
 pip install -r webapp/requirements.txt
 python scripts/generate_portfolio.py
 python -m uvicorn webapp.app:app --reload   # http://localhost:8000
+
+# Fulfill a client job from any CSV/Excel -> Excel + report deliverables
+python examples/run_inventory_job.py --data client_demand.csv --budget 50000 --client "Acme Co"
 ```
 
 Expected output includes `Q*`, reorder point `s`, order-up-to level `S`, safety stock, and simulated service levels.
@@ -187,6 +190,10 @@ src/sources.py   src/forecasting.py   src/policies.py   src/constraints.py
 - **Web UI** (`webapp/`): a 4-tab planner dashboard (Portfolio · SKU Detail ·
   Budget Planner · Forecast Quality) served by FastAPI over the engine — every
   number is real, no Node/build step. See [webapp/README.md](webapp/README.md).
+- **Job-fulfillment layer** (`jobs/`): turn a client's demand file (any schema)
+  into client-ready deliverables — Excel + a written report with policy
+  recommendations, findings, methodology — with automated QA. Built for real
+  supply-chain freelance work. See [jobs/README.md](jobs/README.md).
 
 Live data already works via `SqlDemandSource` (see `examples/run_sql_source.py`).
 Still open for a fully turnkey system:
