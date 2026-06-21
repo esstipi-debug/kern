@@ -115,13 +115,15 @@ def test_health():
 # ---------------------------------------------------------------------------
 # python-multipart guard — do NOT use pytest.importorskip at module level;
 # that would skip the existing 13 webapp tests when multipart is absent.
+# Try the canonical name first (python-multipart >= 0.0.26) to avoid the
+# PendingDeprecationWarning emitted by the legacy `import multipart` alias.
 # ---------------------------------------------------------------------------
 try:
-    import multipart  # noqa: F401  (python-multipart, classic import name)
+    import python_multipart  # noqa: F401  (canonical name in python-multipart >= 0.0.26)
     _HAS_MULTIPART = True
 except ImportError:
     try:
-        import python_multipart  # noqa: F401  (renamed in newer releases)
+        import multipart  # noqa: F401  (legacy alias, kept for older releases)
         _HAS_MULTIPART = True
     except ImportError:
         _HAS_MULTIPART = False

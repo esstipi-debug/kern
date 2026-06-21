@@ -315,8 +315,11 @@ async def api_jobs(
 
     download_urls: dict[str, str] = {}
     for name, path in result.deliverables.items():
-        rel = Path(path).resolve().relative_to(JOBS_OUTPUT_DIR.resolve())
-        download_urls[name] = "/jobs-output/" + rel.as_posix()
+        try:
+            rel = Path(path).resolve().relative_to(JOBS_OUTPUT_DIR.resolve())
+            download_urls[name] = "/jobs-output/" + rel.as_posix()
+        except ValueError:
+            pass  # path outside JOBS_OUTPUT_DIR — skip download link, keep deliverable entry
 
     return {
         "status": result.status,
