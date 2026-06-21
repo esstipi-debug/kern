@@ -242,7 +242,12 @@ def diagnostic_questions() -> list[str]:
 def radar_chart(profile: ChainProfile, path: str | Path) -> Path:
     """Write a 5-axis radar PNG of the CHAIN profile (matplotlib, headless Agg)."""
     import matplotlib
-    matplotlib.use("Agg")
+
+    # Only force the headless backend if none is locked in yet; calling use()
+    # after matplotlib is already initialized elsewhere is silently ignored and
+    # can yield a blank PNG. Guarding avoids that race.
+    if "matplotlib.pyplot" not in __import__("sys").modules:
+        matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import numpy as np
 

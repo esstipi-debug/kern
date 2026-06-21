@@ -42,10 +42,10 @@ class Orchestrator:
                              params=dict(overrides), client=client)
         try:
             return self._run(request, Path(out_dir))
-        except Exception as exc:  # never crash the caller — surface as error status
-            logger.debug("orchestrator.run failed: %s", exc, exc_info=True)
+        except Exception:  # never crash the caller — surface as error status
+            logger.error("orchestrator.run failed", exc_info=True)
             return JobResult(status=STATUS_ERROR, tool=None, confidence=0.0,
-                             deliverables={}, summary=f"{type(exc).__name__}: {exc}")
+                             deliverables={}, summary="An internal error occurred.")
 
     def _run(self, request: JobRequest, out_dir: Path) -> JobResult:
         intent = classify(request.brief, self.registry, self.provider, job_type_override=request.job_type)

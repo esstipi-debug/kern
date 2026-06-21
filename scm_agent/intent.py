@@ -42,7 +42,11 @@ def classify(
     job_type_override: str | None = None,
 ) -> IntentResult:
     if job_type_override:
-        return IntentResult(job_type=job_type_override, confidence=1.0)
+        keys = [t.key for t in registry.list()]
+        if job_type_override in keys:
+            return IntentResult(job_type=job_type_override, confidence=1.0)
+        # Unknown override -> ask for clarification instead of crashing on registry.get
+        return IntentResult(job_type=None, confidence=0.0, candidates=keys)
 
     ranked = registry.match(brief)
     top_tool, top_score = ranked[0] if ranked else (None, 0.0)

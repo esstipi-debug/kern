@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import shutil
 import sys
 import time
@@ -322,6 +323,9 @@ async def api_jobs(
             raise ValueError("params must be a JSON object")
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=f"invalid params JSON: {exc}") from exc
+
+    # Sanitize the client-supplied label before it lands in report copy/headings.
+    client = re.sub(r"[^\w\s.,\-]", "", client)[:100].strip() or "Client"
 
     _prune_old_jobs()
 
