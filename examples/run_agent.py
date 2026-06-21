@@ -12,8 +12,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
-from scm_agent import Orchestrator
+# Make `scm_agent` importable no matter where this script is launched from.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scm_agent import Orchestrator  # noqa: E402
 
 # CLI flag -> overrides key, with the type to coerce to.
 _PARAM_FLAGS: dict[str, type] = {

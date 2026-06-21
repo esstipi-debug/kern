@@ -13,7 +13,9 @@ from __future__ import annotations
 import json
 import math
 import os
+import shutil
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,9 +38,8 @@ DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 JOBS_OUTPUT_DIR = _REPO_ROOT / "webapp" / "_jobs_output"
 JOBS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-# NOTE: per-job output dirs under JOBS_OUTPUT_DIR are NOT auto-cleaned (demo scope).
-# A deployment should add a TTL sweep / cleanup job.
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # cap /api/jobs uploads at 25 MB
+JOBS_TTL_SECONDS = 3600  # per-job output dirs older than this are swept on the next request
 PERIODS_PER_YEAR = 52.0
 MAX_LEAD_PERIODS = 52.0
 
@@ -288,6 +289,25 @@ def api_health() -> dict:
     return {"ok": True, "skus": len(_load_forecasts())}
 
 
+def _prune_old_jobs(now: float | None = None) -> None:
+    """Best-effort sweep: drop per-job output dirs older than JOBS_TTL_SECONDS.
+
+    Called at the start of each /api/jobs request so generated deliverables and
+    uploads do not accumulate forever. Failures are swallowed (cleanup is opportunistic).
+    """
+    cutoff = (now if now is not None else time.time()) - JOBS_TTL_SECONDS
+    try:
+        entries = list(JOBS_OUTPUT_DIR.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            if entry.is_dir() and entry.stat().st_mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
+        except OSError:
+            continue
+
+
 @app.post("/api/jobs")
 async def api_jobs(
     brief: str = Form(...),
@@ -302,6 +322,8 @@ async def api_jobs(
             raise ValueError("params must be a JSON object")
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=f"invalid params JSON: {exc}") from exc
+
+    _prune_old_jobs()
 
     import tempfile
 

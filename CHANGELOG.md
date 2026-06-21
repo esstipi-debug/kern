@@ -9,6 +9,14 @@
 - CLI `examples/run_agent.py` and `POST /api/jobs` HTTP endpoint with downloadable deliverables.
 - Optional `llm` and `web` dependency extras.
 
+### Security
+- `POST /api/jobs`: sanitize the uploaded filename to a basename pinned inside the per-job directory (blocks path traversal / arbitrary file write) and cap uploads at 25 MB (413 on exceed).
+
+### Hardening
+- `POST /api/jobs`: sweep per-job output directories older than `JOBS_TTL_SECONDS` (1 h) on each request so deliverables/uploads don't accumulate.
+- `examples/run_agent.py` self-inserts the repo root on `sys.path`, so the documented commands run from any working directory.
+- Orchestrator logs swallowed exceptions at `DEBUG` (`exc_info=True`) without breaking the never-crash contract.
+
 ## [2.7.0] - 2026-06-19
 
 ### Added

@@ -353,3 +353,39 @@ def test_cli_inventory_happy_path(tmp_path):
                            "--data", PORTFOLIO, "--out", str(tmp_path)])
     assert code == 0
     assert (tmp_path / "inventory_optimization" / "inventory_plan.xlsx").exists()
+
+
+def test_claude_provider_complete_and_extract_with_fake_client():
+    # Lock the Anthropic SDK call shape without the SDK installed or any network:
+    # inject a fake client so _ensure_client never imports anthropic.
+    from scm_agent import llm
+
+    class _FakeBlock:
+        def __init__(self, text):
+            self.type = "text"
+            self.text = text
+
+    class _FakeMessage:
+        def __init__(self, text):
+            self.content = [_FakeBlock(text)]
+
+    captured: dict = {}
+
+    class _FakeMessages:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _FakeMessage('{"job_type": "pricing"}')
+
+    class _FakeClient:
+        def __init__(self):
+            self.messages = _FakeMessages()
+
+    provider = llm.ClaudeProvider(api_key="sk-test", model="claude-opus-4-8")
+    provider._client = _FakeClient()  # bypass the lazy SDK import
+
+    assert provider.complete("hello") == '{"job_type": "pricing"}'
+    assert captured["model"] == "claude-opus-4-8"
+    assert captured["max_tokens"] == 1024
+    assert captured["messages"] == [{"role": "user", "content": "hello"}]
+
+    assert provider.extract("hello", {"type": "object"}) == {"job_type": "pricing"}

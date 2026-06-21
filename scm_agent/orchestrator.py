@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from .intent import classify
@@ -17,6 +18,8 @@ from .types import (
     JobRequest,
     JobResult,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class Orchestrator:
@@ -40,6 +43,7 @@ class Orchestrator:
         try:
             return self._run(request, Path(out_dir))
         except Exception as exc:  # never crash the caller — surface as error status
+            logger.debug("orchestrator.run failed: %s", exc, exc_info=True)
             return JobResult(status=STATUS_ERROR, tool=None, confidence=0.0,
                              deliverables={}, summary=f"{type(exc).__name__}: {exc}")
 
@@ -87,7 +91,11 @@ class Orchestrator:
         )
 
     def _narrative(self, base_summary: str, tool_title: str) -> str:
-        """Optional LLM polish. Falls back silently to the deterministic summary."""
+        """Optional LLM polish. Falls back silently to the deterministic summary.
+
+        The returned summary is untrusted display text (it echoes the brief and any
+        LLM output); escape it at the render site if it is ever shown as HTML.
+        """
         if not self.provider.available():
             return base_summary
         try:
@@ -96,5 +104,6 @@ class Orchestrator:
                 f"Keep every number. Return only the sentence.\n\n{base_summary}"
             )
         except Exception:
+            logger.debug("narrative upgrade failed", exc_info=True)
             return base_summary
         return text.strip() or base_summary

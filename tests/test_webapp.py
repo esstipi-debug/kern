@@ -204,3 +204,26 @@ def test_jobs_upload_too_large_rejected(monkeypatch):
         files={"file": ("big.csv", big, "text/csv")},
     )
     assert r.status_code == 413
+
+
+def test_prune_old_jobs_removes_stale_dirs():
+    import os
+    import shutil
+    import time
+
+    from webapp.app import JOBS_TTL_SECONDS, _prune_old_jobs
+
+    old = JOBS_OUTPUT_DIR / "old_job_test_dir"
+    fresh = JOBS_OUTPUT_DIR / "fresh_job_test_dir"
+    old.mkdir(exist_ok=True)
+    fresh.mkdir(exist_ok=True)
+    (old / "f.txt").write_text("x", encoding="utf-8")
+    past = time.time() - JOBS_TTL_SECONDS - 100
+    os.utime(old, (past, past))
+    try:
+        _prune_old_jobs()
+        assert not old.exists()   # stale dir swept
+        assert fresh.exists()     # fresh dir kept
+    finally:
+        shutil.rmtree(old, ignore_errors=True)
+        shutil.rmtree(fresh, ignore_errors=True)
