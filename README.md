@@ -1,23 +1,77 @@
-# Supply Chain Optimization
+<div align="center">
 
-Python implementation of inventory models from **Nicolas Vandeput**, *Inventory Optimization: Models and Simulations* (De Gruyter, 2020).
+# 🔗 Supply Chain Optimization
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://github.com/esstipi-debug/supply-chain-optimization/actions/workflows/tests.yml/badge.svg)](https://github.com/esstipi-debug/supply-chain-optimization/actions/workflows/tests.yml)
+### From textbook inventory models to an agentic supply-chain brain.
 
-This repository turns the book’s models into runnable code: EOQ, safety stock, inventory policies `(s,Q)` and `(R,S)`, and discrete-period simulations to validate cycle service levels.
+A Python **engine** implementing Nicolas Vandeput's *Inventory Optimization: Models and Simulations* (2020) — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, forecasting and pricing — wrapped in an **orchestrator agent** that turns a plain-language brief into finished, QA-gated deliverables.
 
-> **Source of truth:** Vandeput (2020). Official book code: [supchains.com/resources-invopt](https://supchains.com/resources-invopt) (password: `SupChains-IO`).
+[![version](https://img.shields.io/badge/version-2.8.0-5eead4)](CHANGELOG.md)
+[![python](https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![tests](https://github.com/esstipi-debug/supply-chain-optimization/actions/workflows/tests.yml/badge.svg)](https://github.com/esstipi-debug/supply-chain-optimization/actions/workflows/tests.yml)
+[![coverage](https://img.shields.io/badge/coverage-91%25-3fb950)](#)
+[![License: MIT](https://img.shields.io/badge/License-MIT-3fb950.svg)](LICENSE)
+
+</div>
+
+![SCM Agent console — a brief routed to the leadership_chain capability, returning a CHAIN profile with downloadable chart and report](docs/assets/scm-agent-console.png)
+
+<div align="center"><sub>The live agent console (<code>webapp/static/prototype/</code>) talking to the real <code>POST /api/jobs</code>.</sub></div>
 
 ---
 
-## Quick start
+## ⚡ What it does
+
+Give it a brief; it **classifies → runs → validates (QA) → delivers**. If QA fails, nothing ships.
+
+```mermaid
+flowchart LR
+  A["Brief (+ optional data)"] --> C{"Classify intent"}
+  C --> I["inventory_optimization"]
+  C --> P["pricing"]
+  C --> L["leadership_chain"]
+  I --> Q{"QA gate"}
+  P --> Q
+  L --> Q
+  Q -->|pass| D["Deliverables — Excel · report · chart"]
+  Q -->|fail| N["no deliverable"]
+```
+
+| Capability | Input | Deliverable |
+|---|---|---|
+| 📦 `inventory_optimization` | demand CSV/Excel | Excel + report + CSV — forecast → `(s,Q)`/`(R,S)` → budget fit |
+| 💲 `pricing` | price/qty CSV/Excel | Excel + report — elasticity → margin-maximizing price |
+| 🧭 `leadership_chain` | a brief / scores | radar chart + report — CHAIN leadership profile + directives |
+
+Runs **with or without an LLM**: an optional `LLMProvider` (Claude) sharpens routing and the narrative; the deterministic core works on its own. The whole thing is **187 tests, ~91 % coverage**.
+
+---
+
+## 🚀 Quick start
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/esstipi-debug/supply-chain-optimization
 cd supply-chain-optimization
 pip install -r requirements.txt
 
+# ── The agent: brief in, deliverable out ───────────────────────────────
+python examples/run_agent.py --brief "set up reorder points" --data data/sample_demand_portfolio.csv
+python examples/run_agent.py --brief "what price maximizes profit" --data data/sample_pricing.csv
+python examples/run_agent.py --brief "evaluate our SC leadership" --scores "3 2 3 1 1" --name "Team"
+
+# ── Web UI + live agent console ────────────────────────────────────────
+pip install -r webapp/requirements.txt
+python -m uvicorn webapp.app:app --reload
+#   dashboard       → http://localhost:8000
+#   agent console   → http://localhost:8000/static/prototype/
+```
+
+> Set `ANTHROPIC_API_KEY` (and `pip install -e ".[llm]"`) to enable Claude-assisted parsing and narrative — optional.
+
+<details>
+<summary><b>📐 Engine CLIs — the book, chapter by chapter</b></summary>
+
+```bash
 # EOQ + policies + simulation on sample data
 python examples/run_part1_part2.py --simulate
 
@@ -36,12 +90,8 @@ python examples/plot_inventory.py --product SKU-A
 # Full pipeline + exports
 python examples/run_complete.py --simulate --export output/summary.csv --excel excel-templates/analysis.xlsx
 
-# Pre-built workbook template
-python examples/build_excel_workbook.py
-
-# Power BI dataset (CSV star schema)
+# Power BI dataset (CSV star schema) — see power-bi/SETUP.md
 python examples/build_powerbi_dataset.py --simulate
-# See power-bi/SETUP.md for Desktop import
 
 # Forecast demand from history, then derive the policy (uses sigma_e)
 python examples/run_forecast_to_policy.py
@@ -52,23 +102,36 @@ python examples/run_constrained_plan.py --budget 20000
 # Live data: read demand from a SQL database instead of a CSV
 python examples/run_sql_source.py
 
-# Web UI — interactive dashboard over the engine (FastAPI, no Node)
-pip install -r webapp/requirements.txt
-python scripts/generate_portfolio.py
-python -m uvicorn webapp.app:app --reload   # http://localhost:8000
-
-# Fulfill a client job from any CSV/Excel -> Excel + report deliverables
+# Client deliverables from any CSV/Excel -> Excel + written report
 python examples/run_inventory_job.py --data client_demand.csv --budget 50000 --client "Acme Co"
-
-# Price-optimization job (needs price + quantity history)
-python examples/run_pricing_job.py --data sales.csv --client "Acme Co"
+python examples/run_pricing_job.py   --data sales.csv --client "Acme Co"
 ```
-
-Expected output includes `Q*`, reorder point `s`, order-up-to level `S`, safety stock, and simulated service levels.
+</details>
 
 ---
 
-## What is implemented
+## 🧠 The agent (`scm_agent/`)
+
+A **registry-based orchestrator**: every capability is a `Tool` with four stages — `prepare → run → qa → deliver` — that the orchestrator drives, enforcing **"QA fails ⇒ no deliverable"** in one place. Adding a capability is one `register()` call; no routing edits.
+
+```
+brief ─▶ intent.classify ─▶ registry.get(tool) ─▶ prepare ─▶ run ─▶ QA ─▶ deliver ─▶ JobResult
+              (rules + optional LLM)                inventory · pricing · leadership_chain
+```
+
+- **`scm_agent/`** — `types` · `llm` (Claude / rules fallback) · `registry` · `tools` · `intent` · `orchestrator`
+- **Entry points** — CLI `examples/run_agent.py`, HTTP `POST /api/jobs` (multipart, with downloadable deliverables), and the live console under `webapp/static/prototype/`
+- **Statuses** — `ok` · `needs_clarification` · `needs_data` · `qa_failed` · `error`
+
+Full reference: [`scm_agent/README.md`](scm_agent/README.md). The `leadership_chain` capability wraps the **CHAIN** model — *síntesis original inspirada en* From Source to Sold *(Palamariu & Alicke, 2022); no reproduce el texto del libro.*
+
+---
+
+## 📐 The engine (Vandeput 2020)
+
+The analytical core the agent stands on — every number is real, no Node/build step.
+
+> **Source of truth:** Vandeput (2020). Official book code: [supchains.com/resources-invopt](https://supchains.com/resources-invopt) (password: `SupChains-IO`).
 
 | Book section | Module | Status |
 |--------------|--------|--------|
@@ -92,25 +155,19 @@ Expected output includes `Q*`, reorder point `s`, order-up-to level `S`, safety 
 | Business constraints | `src/constraints.py` | ✅ MOQ / case packs / shelf-life / budget |
 | Export | `excel_export`, `powerbi_export` | ✅ |
 
----
+<details>
+<summary><b>Key formulas (Part I–II)</b></summary>
 
-## Project layout
+**EOQ** (eq. 2.2–2.3) — `Q* = sqrt(2 k D / h)`, `C* = sqrt(2 k D h)`
 
-```
-src/                  Core models (EOQ → simulation optimization)
-examples/             CLI workflows (part1-4, batch, complete, plots)
-tests/                45+ tests with book numeric examples
-data/                 Sample demand (SKU-A, SKU-B)
-documentation/        Guides, FAQ, methodology
-excel-templates/      Generated .xlsx workbooks
-power-bi/             CSV dataset + M queries + DAX + SETUP.md
-.cursor/skills/       Agent skills (Cursor / Claude Code)
-.github/workflows/    CI (pytest on 3.11–3.13)
-```
+**Safety stock** (eq. 4.3) — `Ss = z_alpha · sigma_d · sqrt(tau)`  ·  `(s,Q)`: τ = L  ·  `(R,S)`: τ = R + L
 
----
+**Policies** (Ch. 5) — `(s,Q): s = dL + Ss, Q = Q*`  ·  `(R,S): S = dL + dR + Ss`
 
-## Data format
+</details>
+
+<details>
+<summary><b>Data format & parameters</b></summary>
 
 `data/sample_demand.csv`:
 
@@ -119,13 +176,9 @@ date,product_id,quantity,unit_cost,lead_time_days
 2024-01-01,SKU-A,100,50,7
 ```
 
-Run for a specific SKU:
-
 ```bash
 python examples/run_part1_part2.py --product SKU-B --lead-time 2 --service-level 0.90 --simulate
 ```
-
-Parameters:
 
 | Flag | Meaning | Book ref |
 |------|---------|----------|
@@ -135,110 +188,60 @@ Parameters:
 | `--service-level` | Cycle service level α | §4.1 |
 | `--periods-per-year` | Converts weekly data to D | §2.2 |
 
----
-
-## Key formulas (Part I–II)
-
-**EOQ** (eq. 2.2–2.3):
-
-```
-Q* = sqrt(2 k D / h)
-C* = sqrt(2 k D h)
-```
-
-**Safety stock** (eq. 4.3):
-
-```
-Ss = z_alpha * sigma_d * sqrt(tau)
-```
-
-- `(s,Q)`: tau = L  
-- `(R,S)`: tau = R + L  
-
-**Policies** (Ch. 5):
-
-```
-(s,Q):  s = dL + Ss,   Q = Q*
-(R,S):  S = dL + dR + Ss
-```
+</details>
 
 ---
 
-## Documentation
+## 🏗️ From engine to product
 
-| Document | Content |
-|----------|---------|
-| [Getting Started](documentation/GETTING_STARTED.md) | Setup and first run |
-| [Methodology](documentation/METHODOLOGY.md) | Models, assumptions, glossary |
-| [FAQ](documentation/FAQ.md) | Common questions |
-
----
-
-## From engine to product ("the AUTO")
-
-The analytical **engine** (Ch. 1–13) now has the chassis around it. The full
-chain runs end to end — `examples/run_constrained_plan.py`:
+The full chain runs end to end (`examples/run_constrained_plan.py`):
 
 ```
 data source → forecast (σ_e) → (s,Q)/(R,S) policy → MOQ/case packs → budget fit
 src/sources.py   src/forecasting.py   src/policies.py   src/constraints.py
 ```
 
-- **Pluggable data** (`src/sources.py`): CSV, in-memory DataFrame, or any SQL
-  database via `SqlDemandSource` (any DB-API connection — SQLite, Postgres,
-  MySQL). New backends just satisfy the `DemandSource` protocol.
-- **Forecasting** (`src/forecasting.py`): MA / SES / Croston, exposing σ_e — the
-  correct safety-stock dispersion (Vandeput 2021, §4.2.5).
-- **Constraints** (`src/constraints.py`): MOQ, case packs, shelf-life caps, and a
-  budget allocator that trims safety stock across the portfolio to fit.
-- **Web UI** (`webapp/`): a 4-tab planner dashboard (Portfolio · SKU Detail ·
-  Budget Planner · Forecast Quality) served by FastAPI over the engine — every
-  number is real, no Node/build step. See [webapp/README.md](webapp/README.md).
-- **Job-fulfillment layer** (`jobs/`): turn a client's demand file (any schema)
-  into client-ready deliverables — Excel + a written report with policy
-  recommendations, findings, methodology — with automated QA. Built for real
-  supply-chain freelance work. See [jobs/README.md](jobs/README.md).
+- **Pluggable data** (`src/sources.py`) — CSV, in-memory DataFrame, or any SQL database via `SqlDemandSource` (SQLite, Postgres, MySQL). New backends just satisfy the `DemandSource` protocol.
+- **Forecasting** (`src/forecasting.py`) — MA / SES / Croston, exposing σ_e, the correct safety-stock dispersion (Vandeput 2021, §4.2.5).
+- **Constraints** (`src/constraints.py`) — MOQ, case packs, shelf-life caps, and a budget allocator that trims safety stock across the portfolio to fit.
+- **Web UI** (`webapp/`) — a 4-tab planner (Portfolio · SKU Detail · Budget Planner · Forecast Quality) + the live agent console, served by FastAPI over the engine. See [webapp/README.md](webapp/README.md).
+- **Job-fulfillment layer** (`jobs/`) — turn a client's demand file (any schema) into client-ready Excel + a written report with automated QA. See [jobs/README.md](jobs/README.md).
 
-Live data already works via `SqlDemandSource` (see `examples/run_sql_source.py`).
-Still open for a fully turnkey system:
+<details>
+<summary><b>Project layout</b></summary>
 
-- A vendor-specific ERP/WMS adapter (auth + their schema) on top of `DemandSource`
-- Capacity/volume constraints and supplier lead-time variability from live data
-- General supply networks (beyond serial GSM)
-- Advanced forecasting (seasonality, Holt-Winters, ML models)
-
-## Agent (scm_agent)
-
-A single orchestrator that turns a free-form brief (+ optional data) into a finished
-deliverable. See [`scm_agent/README.md`](scm_agent/README.md) for the full reference.
-
-```bash
-py examples/run_agent.py --brief "set up reorder points" --data data/sample_demand_portfolio.csv
-py examples/run_agent.py --brief "what price maximizes profit" --data data/sample_pricing.csv
-py examples/run_agent.py --brief "evaluate our SC leadership" --scores "3 2 3 1 1" --name "Team"
+```
+scm_agent/            Orchestrator: brief → classify → tool → QA → deliver
+jobs/                 Playbooks (inventory · pricing · leadership) + intake/QA/deliverables
+src/                  Core engine (EOQ → simulation optimization → forecasting → pricing)
+webapp/               FastAPI dashboard + POST /api/jobs + live agent console (static/prototype/)
+examples/             CLI workflows (run_agent, parts 1-4, batch, jobs, plots)
+tests/                187 tests with book numeric examples
+data/                 Sample demand + pricing
+documentation/        Guides, FAQ, methodology
+power-bi/             CSV dataset + M queries + DAX + SETUP.md
+.cursor/skills/       Agent skills (Cursor / Claude Code)
+.github/workflows/    CI (pytest on 3.11–3.13)
 ```
 
----
-
-## Agent skills (Cursor + Claude Code)
-
-Four skills in `.cursor/skills/` — synced to `~/.claude/skills/`:
-
-| Skill | Chapters |
-|-------|----------|
-| `vandeput-inventory-optimization` | Overview + decision tree |
-| `vandeput-inventory-eoq-policies` | 2–5 |
-| `vandeput-inventory-service-cost` | 6–8 |
-| `vandeput-inventory-advanced` | 9–13 |
-
-See [.cursor/skills/README.md](.cursor/skills/README.md). Invoke in Claude Code with `/vandeput-inventory-optimization`.
+</details>
 
 ---
 
-## References
+## 📚 Docs, skills & references
 
+| Document | Content |
+|----------|---------|
+| [Getting Started](documentation/GETTING_STARTED.md) | Setup and first run |
+| [Methodology](documentation/METHODOLOGY.md) | Models, assumptions, glossary |
+| [FAQ](documentation/FAQ.md) | Common questions |
+| [`scm_agent/README.md`](scm_agent/README.md) | The agent reference |
+
+**Agent skills** (`.cursor/skills/`, synced to `~/.claude/skills/`): `vandeput-inventory-optimization` (overview + decision tree), `…-eoq-policies` (Ch. 2–5), `…-service-cost` (Ch. 6–8), `…-advanced` (Ch. 9–13). Invoke in Claude Code with `/vandeput-inventory-optimization`.
+
+**References**
 - Vandeput, N. (2020). *Inventory Optimization: Models and Simulations*. De Gruyter. ISBN 978-3-11-067391-3
-- Vandeput, N. (2021). *Data Science for Supply Chain Forecasting* — for forecast error σ_e (§4.2.5)
+- Vandeput, N. (2021). *Data Science for Supply Chain Forecasting* — forecast error σ_e (§4.2.5)
 - Community notebooks: [fedinb/Inventory-Optimization](https://github.com/fedinb/Inventory-Optimization)
 
 ---
