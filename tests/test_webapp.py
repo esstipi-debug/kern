@@ -234,3 +234,19 @@ def test_prune_old_jobs_removes_stale_dirs():
     finally:
         shutil.rmtree(old, ignore_errors=True)
         shutil.rmtree(fresh, ignore_errors=True)
+
+
+def test_console_route_serves_the_prototype():
+    r = client.get("/console")
+    assert r.status_code == 200
+    assert "SCM Agent" in r.text  # the live console brand
+
+
+@requires_multipart
+def test_jobs_response_includes_citations_key():
+    r = client.post("/api/jobs", data={
+        "brief": "evaluate leadership", "job_type": "leadership_chain",
+        "params": '{"scores": "3 3 3 3 3"}',
+    })
+    assert r.status_code == 200
+    assert "citations" in r.json()  # L3 grounding key is always present

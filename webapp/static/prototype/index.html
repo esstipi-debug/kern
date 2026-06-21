@@ -48,6 +48,10 @@
     border:1px solid var(--accent-dim); background:rgba(79,209,197,.06);
     padding:7px 13px; border-radius:var(--r-chip); white-space:nowrap;
   }
+  .scm-head-right{display:flex; align-items:center; gap:12px;}
+  .scm-navlink{font-family:var(--mono); font-size:12px; color:var(--muted); text-decoration:none; border:1px solid var(--line-2); padding:7px 12px; border-radius:var(--r-chip); transition:all .16s var(--ease); white-space:nowrap;}
+  .scm-navlink:hover{color:var(--accent-bright); border-color:var(--accent-dim); background:rgba(79,209,197,.05);}
+  @media (max-width:560px){ .scm-navlink{display:none;} }
 
   .scm-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); gap:22px; align-items:start;}
   @media (max-width:880px){ .scm-grid{grid-template-columns:1fr;} }
@@ -127,6 +131,8 @@
   .scm-list li{position:relative; padding-left:20px; font-size:14px; color:var(--muted); line-height:1.5;}
   .scm-list li::before{content:'\203a'; position:absolute; left:2px; top:0; color:var(--accent); font-weight:700;}
   .scm-list-bad li::before{content:'\00d7'; color:var(--bad);}
+  .scm-list-cite li{color:var(--muted); font-family:var(--mono); font-size:12.5px;}
+  .scm-list-cite li::before{content:'\00a7'; color:var(--faint); font-weight:600;}
 
   .scm-spin{width:15px; height:15px; border-radius:50%; border:2px solid rgba(8,11,17,.35); border-top-color:var(--ink); animation:scm-rot .7s linear infinite; display:inline-block;}
   .scm-spin-lg{width:30px; height:30px; border:3px solid var(--line-2); border-top-color:var(--accent);}
@@ -137,7 +143,7 @@
 <!-- React must be available before support.js boots -->
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="./support.js"></script>
+<script src="/static/prototype/support.js"></script>
 </head>
 <body>
 <x-dc>
@@ -150,7 +156,10 @@
         <p class="scm-sub">consola del orquestrador · brief → entregable</p>
       </div>
     </div>
-    <span class="scm-live">● live · POST /api/jobs</span>
+    <div class="scm-head-right">
+      <a class="scm-navlink" href="/">← Dashboard</a>
+      <span class="scm-live">● live · POST /api/jobs</span>
+    </div>
   </header>
 
   <div class="scm-grid">
@@ -220,6 +229,13 @@
           </ul>
         </sc-if>
 
+        <sc-if value="{{ result.hasCitations }}">
+          <h3 class="scm-h3">Fuentes <span class="scm-hint">· grounding L3</span></h3>
+          <ul class="scm-list scm-list-cite">
+            <sc-for list="{{ result.citations }}" as="c"><li>{{ c }}</li></sc-for>
+          </ul>
+        </sc-if>
+
         <sc-if value="{{ result.hasClar }}">
           <h3 class="scm-h3">Hace falta detalle</h3>
           <ul class="scm-list">
@@ -267,6 +283,7 @@ class Component extends DCLogic {
     }[status] || "warn";
     const clar = data.clarifications || [];
     const qa = data.qa_issues || [];
+    const cites = data.citations || [];
     return {
       status,
       statusClass,
@@ -276,7 +293,8 @@ class Component extends DCLogic {
       summary: data.summary || "",
       downloads, hasDownloads: downloads.length > 0,
       clarifications: clar, hasClar: clar.length > 0,
-      qaIssues: qa, hasQa: qa.length > 0
+      qaIssues: qa, hasQa: qa.length > 0,
+      citations: cites, hasCitations: cites.length > 0
     };
   }
 

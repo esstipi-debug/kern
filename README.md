@@ -63,7 +63,7 @@ python examples/run_agent.py --brief "evaluate our SC leadership" --scores "3 2 
 pip install -r webapp/requirements.txt
 python -m uvicorn webapp.app:app --reload
 #   dashboard       → http://localhost:8000
-#   agent console   → http://localhost:8000/static/prototype/
+#   agent console   → http://localhost:8000/console
 ```
 
 > Set `ANTHROPIC_API_KEY` (and `pip install -e ".[llm]"`) to enable Claude-assisted parsing and narrative — optional.

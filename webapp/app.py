@@ -371,12 +371,19 @@ async def api_jobs(
         "download_urls": download_urls,
         "qa_issues": result.qa_issues,
         "clarifications": result.clarifications,
+        "citations": result.citations,
     }
 
 
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/console")
+def console() -> FileResponse:
+    """The live agent console — a thin UI over POST /api/jobs."""
+    return FileResponse(STATIC_DIR / "prototype" / "index.html")
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
