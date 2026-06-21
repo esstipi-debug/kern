@@ -322,6 +322,46 @@ def test_package_exports():
     assert hasattr(scm_agent, "JobResult")
     assert hasattr(scm_agent, "build_default_registry")
     assert hasattr(scm_agent, "get_provider")
+    assert hasattr(scm_agent, "KnowledgeBase")
+
+
+# ---------------------------------------------------------------------------
+# L3 grounding — orchestrator cites domain knowledge per job
+# ---------------------------------------------------------------------------
+
+
+def test_job_result_citations_default_empty():
+    res = JobResult(status="ok", tool="x", confidence=1.0, deliverables={}, summary="s")
+    assert res.citations == []
+
+
+def test_orchestrator_grounds_inventory_job_with_citations(tmp_path):
+    # Real books graph is committed -> an inventory job should cite SCM concepts.
+    res = _rules_orch().run("set up reorder points and safety stock", data_path=PORTFOLIO,
+                            client="Acme", out_dir=tmp_path)
+    assert res.status == "ok"
+    assert res.citations  # non-empty
+    assert all(" — " in c for c in res.citations)  # "Concept — source loc" shape
+
+
+def test_orchestrator_degrades_without_knowledge_graph(tmp_path):
+    from scm_agent import llm
+    from scm_agent.knowledge import KnowledgeBase
+    empty_kb = KnowledgeBase(books_path=tmp_path / "no.json", code_path=tmp_path / "no2.json")
+    orch = Orchestrator(registry=tools.build_default_registry(),
+                        provider=llm.RulesFallback(), knowledge=empty_kb)
+    res = orch.run("set up reorder points", data_path=PORTFOLIO, out_dir=tmp_path)
+    assert res.status == "ok"
+    assert res.citations == []  # no graph -> no citations, job still succeeds
+
+
+def test_orchestrator_narrative_weaves_citations_when_llm_present(tmp_path):
+    prov = _FakeProvider(complete_text="Grounded narrative.", available=True)
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=prov)
+    res = orch.run("reorder points and safety stock", data_path=PORTFOLIO, out_dir=tmp_path)
+    assert res.status == "ok"
+    assert res.summary == "Grounded narrative."
+    assert res.citations  # citations still attached alongside the LLM summary
 
 
 # ---------------------------------------------------------------------------

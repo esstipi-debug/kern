@@ -6,8 +6,9 @@ import logging
 from pathlib import Path
 
 from .intent import classify
+from .knowledge import KnowledgeBase
 from .llm import LLMProvider, get_provider
-from .registry import ToolRegistry
+from .registry import Tool, ToolRegistry
 from .tools import build_default_registry
 from .types import (
     STATUS_ERROR,
@@ -23,9 +24,17 @@ logger = logging.getLogger(__name__)
 
 
 class Orchestrator:
-    def __init__(self, registry: ToolRegistry | None = None, provider: LLMProvider | None = None) -> None:
+    def __init__(
+        self,
+        registry: ToolRegistry | None = None,
+        provider: LLMProvider | None = None,
+        knowledge: KnowledgeBase | None = None,
+    ) -> None:
         self.registry = registry if registry is not None else build_default_registry()
         self.provider = provider if provider is not None else get_provider()
+        # L3 domain knowledge. Loads the books graph (committed) + code graph
+        # (gitignored). Absent graphs degrade gracefully to no citations.
+        self.knowledge = knowledge if knowledge is not None else KnowledgeBase()
 
     def run(
         self,
@@ -84,24 +93,44 @@ class Orchestrator:
             )
 
         written = tool.deliver(produced.report, out_dir / tool.key, request.client)
-        summary = self._narrative(produced.summary, tool.title)
+        citations = self._ground(tool)
+        summary = self._narrative(produced.summary, tool.title, citations)
         return JobResult(
             status=STATUS_OK, tool=tool.key, confidence=intent.confidence,
             deliverables={name: str(path) for name, path in written.items()}, summary=summary,
+            citations=citations,
         )
 
-    def _narrative(self, base_summary: str, tool_title: str) -> str:
-        """Optional LLM polish. Falls back silently to the deterministic summary.
+    def _ground(self, tool: Tool) -> list[str]:
+        """Cite domain knowledge for the tool's topic from the books graph.
+
+        Reuses the tool's own intent_keywords as the query — no extra metadata.
+        Returns [] if the knowledge graph is absent (fresh clone / no books).
+        """
+        terms = " ".join(tool.intent_keywords)
+        if not terms.strip():
+            return []
+        cites: list[str] = []
+        for hit in self.knowledge.search(terms, graph="books", limit=3):
+            loc = f" {hit.location}" if hit.location else ""
+            cites.append(f"{hit.label} — {hit.source}{loc}".strip())
+        return cites
+
+    def _narrative(self, base_summary: str, tool_title: str, citations: list[str] | None = None) -> str:
+        """Optional LLM polish, grounded in the L3 citations when present.
 
         The returned summary is untrusted display text (it echoes the brief and any
         LLM output); escape it at the render site if it is ever shown as HTML.
         """
         if not self.provider.available():
             return base_summary
+        ground = ""
+        if citations:
+            ground = "\nGround it in these sources where relevant: " + "; ".join(citations)
         try:
             text = self.provider.complete(
                 f"Rewrite this {tool_title} result summary in one clear, client-ready sentence. "
-                f"Keep every number. Return only the sentence.\n\n{base_summary}"
+                f"Keep every number. Return only the sentence.\n\n{base_summary}{ground}"
             )
         except Exception:
             logger.debug("narrative upgrade failed", exc_info=True)

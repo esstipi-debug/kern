@@ -33,3 +33,4 @@ class JobResult:
     summary: str
     qa_issues: list[str] = field(default_factory=list)
     clarifications: list[str] = field(default_factory=list)
+    citations: list[str] = field(default_factory=list)  # L3 domain grounding (book/chapter)
