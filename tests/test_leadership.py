@@ -62,3 +62,44 @@ def test_qa_verify_leadership_catches_tampered_profile():
     p = ld.score_profile({"C": 3, "H": 2, "A": 3, "I": 1, "N": 1})
     object.__setattr__(p, "average", 9.9)  # corrupt
     assert any("average" in i for i in qa.verify_leadership(p))
+
+
+def test_practices_and_questions_filled_for_every_dimension():
+    for code, _ in ld.DIMS:
+        assert len(ld.PRACTICES[code]) >= 2
+        assert len(ld.QUESTIONS[code]) >= 2
+
+
+def test_score_profile_attaches_lever_directives():
+    p = ld.score_profile({"C": 3, "H": 2, "A": 3, "I": 1, "N": 1})  # lever = I
+    assert p.directives == ld.PRACTICES["I"]
+    assert len(p.directives) >= 2
+
+
+def test_diagnostic_questions_cover_all_dimensions():
+    qs = ld.diagnostic_questions()
+    assert len(qs) >= 10
+    assert any(q.startswith("C ") or q.startswith("[C]") or "Colaborativo" in q for q in qs)
+
+
+def test_radar_chart_writes_png(tmp_path):
+    p = ld.score_profile({"C": 3, "H": 2, "A": 3, "I": 1, "N": 1}, name="Equipo X")
+    out = ld.radar_chart(p, tmp_path / "chain.png")
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_write_all_writes_report_and_chart(tmp_path):
+    p = ld.score_profile({"C": 3, "H": 2, "A": 3, "I": 1, "N": 1}, name="Equipo X")
+    written = ld.write_all(p, tmp_path, client="Acme")
+    assert written["chart"].exists()
+    assert written["report"].exists()
+    md = written["report"].read_text(encoding="utf-8")
+    # English scaffolding
+    assert "## Score by dimension" in md
+    assert "## Archetype" in md
+    assert "## Priority lever" in md
+    # Spanish CHAIN substance kept verbatim
+    assert "Operador invisible" in md          # archetype (Spanish)
+    assert "Influyente" in md                   # dimension / lever name (Spanish)
+    assert "Palamariu" in md                    # attribution present (Spanish)
+    assert p.directives[0].split(".")[0][:8] in md  # at least one directive rendered
