@@ -1,5 +1,6 @@
 """Tests for the scm_agent orchestrator package."""
 
+import importlib
 from pathlib import Path
 
 import pytest
@@ -321,3 +322,34 @@ def test_package_exports():
     assert hasattr(scm_agent, "JobResult")
     assert hasattr(scm_agent, "build_default_registry")
     assert hasattr(scm_agent, "get_provider")
+
+
+# ---------------------------------------------------------------------------
+# Task 10 — run_agent.py CLI
+# ---------------------------------------------------------------------------
+
+
+def test_cli_leadership_happy_path(tmp_path, capsys):
+    run_agent = importlib.import_module("examples.run_agent")
+    code = run_agent.main([
+        "--brief", "evaluate our SC leadership", "--job", "leadership_chain",
+        "--scores", "3 2 3 1 1", "--name", "Equipo X", "--out", str(tmp_path),
+    ])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "leadership_chain" in out
+    assert (tmp_path / "leadership_chain" / "chain_profile.png").exists()
+
+
+def test_cli_needs_data_returns_nonzero(tmp_path):
+    run_agent = importlib.import_module("examples.run_agent")
+    code = run_agent.main(["--brief", "set up reorder points", "--out", str(tmp_path)])
+    assert code == 1
+
+
+def test_cli_inventory_happy_path(tmp_path):
+    run_agent = importlib.import_module("examples.run_agent")
+    code = run_agent.main(["--brief", "reorder points and safety stock",
+                           "--data", PORTFOLIO, "--out", str(tmp_path)])
+    assert code == 0
+    assert (tmp_path / "inventory_optimization" / "inventory_plan.xlsx").exists()
