@@ -147,9 +147,63 @@ Query it directly: `python examples/query_knowledge.py --bridge "newsvendor"` ·
 
 ---
 
-## 📐 The engine (Vandeput 2020)
+## ⚙️ The engine — one question, one lens
 
-The analytical core the agent stands on — every number is real, no Node/build step.
+The analytical core the agent stands on: a chain of small **pure functions**, each answering one question with one point of view. Every number is simulation-real — no Node, no build step.
+
+<div align="center">
+
+![The engine pipeline: PREDICT (forecasting, distributions) → DECIDE (eoq, policies, safety_stock) → OPTIMIZE (fill_rate, cost_optimization, simulation_opt) → REALITY (multi_echelon, newsvendor, constraints) → a QA-gated plan, every number cross-checked against Monte-Carlo simulation](docs/assets/engine-lenses.svg)
+
+</div>
+
+| The question | Engine | The lens it brings |
+|---|---|---|
+| *How much do I order?* | `eoq.py` | **Cost balance** — the lot size where ordering cost meets holding cost (+ volume discounts). |
+| *When do I reorder?* | `policies.py` | **Trigger & risk** — forecast + costs → `(s,Q)`/`(R,S)`: the reorder point *and* the quantity. |
+| *How big a buffer?* | `safety_stock.py` | **Uncertainty** — `z·σ·√τ`, keyed off **forecast error σ_e**, not raw demand spread (the classic mistake). |
+| *What service do I actually get?* | `fill_rate.py` | **Realized service** — fill rate β (units served), which stays high even when cycle service α drops. |
+| *Is more service worth it?* | `cost_optimization.py` | **Economics** — the service level / review period that minimizes holding + shortage cost, not a rule of thumb. |
+| *Spiky or skewed demand?* | `forecasting.py` · `distributions.py` | **Shape-aware** — Croston for intermittent, gamma for skew, exactly where the normal model under-stocks. |
+| *Where to hold stock across the network?* | `multi_echelon.py` | **System view** — guaranteed-service placement across stages, not greedy per node. |
+| *One perishable shot?* | `newsvendor.py` | **Single period** — the critical ratio `cu/(cu+co)`. |
+| *Can't trust the assumptions?* | `simulation_opt.py` | **Empirical** — simulate thousands of demand paths, search `(s,Q,S)` for the real optimum. |
+| *Is the plan feasible?* | `constraints.py` | **Operational reality** — MOQ, case packs, shelf-life, and a budget allocator that trims safety stock to fit. |
+| *What price maximizes margin?* | `pricing.py` | **Elasticity** — per-SKU price sensitivity → the margin-maximizing markup. |
+
+**Why this beats a spreadsheet**
+
+![simulation validated](https://img.shields.io/badge/policies-simulation--validated-4fd1c5?style=flat-square&labelColor=0d1219)
+![forecast error](https://img.shields.io/badge/safety_stock-forecast_error_σ-5eead4?style=flat-square&labelColor=0d1219)
+![shape aware](https://img.shields.io/badge/demand-Croston_and_gamma-3fb950?style=flat-square&labelColor=0d1219)
+![feasible](https://img.shields.io/badge/plan-MOQ_and_budget_feasible-d4a017?style=flat-square&labelColor=0d1219)
+![tests](https://img.shields.io/badge/211_tests-book_numbers-4fd1c5?style=flat-square&labelColor=0d1219)
+
+- **Validated, not assumed** — closed-form policies are cross-checked against Monte-Carlo simulation (`simulation.py`, backorders + lost sales).
+- **σ_e, not σ_demand** — safety stock keys off *forecast error*, the only correct dispersion (the #1 inventory mistake in the wild).
+- **Shape-aware** — intermittent (Croston) and skewed (gamma) demand are first-class, where a normal-curve sheet silently stocks out.
+- **Feasible by construction** — MOQ / budget are constraints, so what ships is buildable, not just mathematically optimal.
+- **Pure & composable** — each module is a pure function → 211 tests against the book's own numbers; the orchestrator chains them without surprises.
+
+### 🖥️ How you see it
+
+The same engine output, read through four lenses in the live dashboard (`/`):
+
+<table>
+<tr>
+<td width="50%"><img src="docs/assets/dashboard-portfolio.png" alt="Portfolio tab — plan investment, budget gauge and per-SKU table"><br><sub><b>Portfolio</b> — the whole plan + budget gauge, over/under cap at a glance.</sub></td>
+<td width="50%"><img src="docs/assets/dashboard-detail.png" alt="SKU Detail tab — demand history, forecast, reorder line and live what-if sliders"><br><sub><b>SKU Detail</b> — history · forecast · ±σ_e · reorder line, with live what-if sliders.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/assets/dashboard-budget.png" alt="Budget Planner tab — per-SKU cycle vs safety stock allocation"><br><sub><b>Budget Planner</b> — cycle vs. safety allocation as you move the cap.</sub></td>
+<td width="50%"><img src="docs/assets/dashboard-forecast.png" alt="Forecast Quality tab — bias spread per SKU"><br><sub><b>Forecast Quality</b> — bias spread per SKU; which forecasts to trust.</sub></td>
+</tr>
+</table>
+
+Sliders **recompute the policy live**; the **agent console** (`/console`) adds the L3 **Fuentes** — the book chapter *and* the `src/` function behind each number.
+
+<details>
+<summary><b>📖 Chapter map (Vandeput 2020) — module by module</b></summary>
 
 > **Source of truth:** Vandeput (2020). Official book code: [supchains.com/resources-invopt](https://supchains.com/resources-invopt) (password: `SupChains-IO`).
 
@@ -174,6 +228,8 @@ The analytical core the agent stands on — every number is real, no Node/build 
 | Pluggable data sources | `src/sources.py` | ✅ CSV / DataFrame / SQL (DB-API) |
 | Business constraints | `src/constraints.py` | ✅ MOQ / case packs / shelf-life / budget |
 | Export | `excel_export`, `powerbi_export` | ✅ |
+
+</details>
 
 <details>
 <summary><b>Key formulas (Part I–II)</b></summary>
