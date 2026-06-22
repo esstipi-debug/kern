@@ -4,12 +4,12 @@
 
 ### The agentic brain for supply-chain decisions — grounded in the field's best models and sources.
 
-**Linchpin** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established inventory-optimization models — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, forecasting and pricing — and an **orchestrator agent** drives them end to end, each result **grounded** in a knowledge graph of **17 SCM books and the codebase itself**.
+**Linchpin** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, forecasting and pricing, plus **ABC-XYZ classification, DDMRP buffers, financial KPIs, reconciliation, slotting and procurement** — and an **orchestrator agent** drives them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **17 SCM books and the codebase itself**.
 
 [![version](https://img.shields.io/badge/version-2.8.0-5eead4)](CHANGELOG.md)
 [![python](https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![tests](https://github.com/esstipi-debug/linchpin/actions/workflows/tests.yml/badge.svg)](https://github.com/esstipi-debug/linchpin/actions/workflows/tests.yml)
-[![coverage](https://img.shields.io/badge/coverage-91%25-3fb950)](#)
+[![coverage](https://img.shields.io/badge/coverage-93%25-3fb950)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-3fb950.svg)](LICENSE)
 
 </div>
@@ -44,7 +44,27 @@ flowchart LR
 | 💲 `pricing` | price/qty CSV/Excel | Excel + report — elasticity → margin-maximizing price |
 | 🧭 `leadership_chain` | a brief / scores | radar chart + report — CHAIN leadership profile + directives |
 
-Runs **with or without an LLM**: an optional `LLMProvider` (Claude) sharpens routing and the narrative; the deterministic core works on its own. The whole thing is **211 tests, ~91 % coverage**.
+Runs **with or without an LLM**: an optional `LLMProvider` (Claude) sharpens routing and the narrative; the deterministic core works on its own. The whole thing is **350 tests, ~93 % coverage**.
+
+---
+
+## 🧰 Capability toolkit
+
+Beyond the three routed capabilities above, the engine ships a growing set of decision modules — see the [Capability Expansion Plan](documentation/CAPABILITY_EXPANSION_PLAN.md):
+
+| Area | Modules |
+|---|---|
+| **Planning** | ABC-XYZ classification · DDMRP buffers + net-flow · forecast-accuracy metrics (MAPE/WAPE/RMSSE/MASE) |
+| **Control** | reconciliation / IRA + cycle-count plan · stockout / excess / reorder alerting |
+| **Procurement** | landed cost (Incoterm-aware) · supplier scorecards (OTIF/PPM) · purchase-order state machine |
+| **Warehouse** | cube / m³ sizing + COI slotting |
+| **Finance** | inventory turns · DIO · GMROI · cash-to-cash · sell-through |
+| **Data quality** | GTIN/UPC check-digit · SKU dedup · canonical column mapping |
+
+Two cross-cutting guarantees keep the agent safe in production:
+
+- **Never-unprotected** — every result is `EXECUTED` or carries an executable path: ranked options, a prepared handoff (pre-filled PO / email / count sheet), or an escalation. No dead ends.
+- **Safe-staging writeback** — changes are computed as a dry-run changeset, gated by risk tier + time-boxed approval, applied idempotently, and fully auditable / `rollback()`-able. The agent never mutates a system of record blindly.
 
 ---
 
@@ -120,7 +140,7 @@ brief ─▶ intent.classify ─▶ registry.get(tool) ─▶ prepare ─▶ run
               (rules + optional LLM)                inventory · pricing · leadership_chain
 ```
 
-- **`scm_agent/`** — `types` · `llm` (Claude / rules fallback) · `registry` · `tools` · `intent` · `orchestrator` · `knowledge` (L3 grounding)
+- **`scm_agent/`** — `types` · `llm` (Claude / rules fallback) · `registry` · `tools` · `intent` · `orchestrator` · `knowledge` (L3 grounding) · `guided_bridge` (never-unprotected contract via `src/guided.py`)
 - **Entry points** — CLI `examples/run_agent.py`, HTTP `POST /api/jobs` (multipart, with downloadable deliverables), and the live console under `webapp/static/prototype/`
 - **Statuses** — `ok` · `needs_clarification` · `needs_data` · `qa_failed` · `error`
 
