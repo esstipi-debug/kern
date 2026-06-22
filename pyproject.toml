@@ -33,6 +33,18 @@ web = [
     "uvicorn>=0.29",
     "python-multipart>=0.0.9",
 ]
+# Capability-expansion extras (modules degrade gracefully when absent).
+dataquality = [
+    "rapidfuzz>=3.0",
+    "python-stdnum>=1.19",
+]
+mcdm = [
+    "pymcdm>=1.3",
+]
+forecast = [
+    "statsforecast>=2.0,<3",
+    "utilsforecast>=0.2",
+]
 
 [project.urls]
 Homepage = "https://github.com/esstipi-debug/linchpin"
