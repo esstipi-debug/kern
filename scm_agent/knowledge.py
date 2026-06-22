@@ -1,7 +1,7 @@
 """L3 knowledge layer — queries the SCM knowledge graphs for the agent.
 
 Two graphs, one query surface:
-  - books graph (knowledge/scm-books/graph.json) — domain theory from 16 SCM
+  - books graph (knowledge/scm-books/graph.json) — domain theory from 17 SCM
     books, with chapter citations. Committed to the repo.
   - code graph (graphify-out/graph.json) — the codebase structure. Gitignored
     (regenerable), so it may be absent on a fresh clone — handled gracefully.

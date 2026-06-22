@@ -753,8 +753,8 @@
     {
       "label": "Safety Stock",
       "file_type": "concept",
-      "source_file": "boylan-syntetos-intermittent-demand-forecasting.pdf",
-      "source_location": "Ch.8",
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.4",
       "source_url": null,
       "captured_at": null,
       "author": null,
@@ -1661,21 +1661,21 @@
       "norm_label": "stl decomposition"
     },
     {
-      "label": "Nagle & M\u00fcller \u2014 The Strategy and Tactics of Pricing",
+      "label": "Nagle & Müller — The Strategy and Tactics of Pricing",
       "file_type": "paper",
       "source_file": "nagle-strategy-tactics-pricing.pdf",
       "source_location": null,
       "source_url": null,
       "captured_at": null,
-      "author": "Thomas T. Nagle; Georg M\u00fcller",
+      "author": "Thomas T. Nagle; Georg Müller",
       "contributor": null,
       "rationale": null,
       "id": "book_nagle",
       "community": 5,
-      "norm_label": "nagle & muller \u2014 the strategy and tactics of pricing"
+      "norm_label": "nagle & muller — the strategy and tactics of pricing"
     },
     {
-      "label": "Simon & Fassnacht \u2014 Price Management",
+      "label": "Simon & Fassnacht — Price Management",
       "file_type": "paper",
       "source_file": "simon-price-management.pdf",
       "source_location": null,
@@ -1686,10 +1686,10 @@
       "rationale": null,
       "id": "book_simon",
       "community": 2,
-      "norm_label": "simon & fassnacht \u2014 price management"
+      "norm_label": "simon & fassnacht — price management"
     },
     {
-      "label": "Robert Phillips \u2014 Pricing and Revenue Optimization",
+      "label": "Robert Phillips — Pricing and Revenue Optimization",
       "file_type": "paper",
       "source_file": "phillips-pricing-revenue-optimization.pdf",
       "source_location": null,
@@ -1700,7 +1700,7 @@
       "rationale": null,
       "id": "book_phillips",
       "community": 10,
-      "norm_label": "robert phillips \u2014 pricing and revenue optimization"
+      "norm_label": "robert phillips — pricing and revenue optimization"
     },
     {
       "label": "Strategic Pricing",
@@ -4771,8 +4771,8 @@
     {
       "label": "Economic Order Quantity (EOQ)",
       "file_type": "concept",
-      "source_file": "chopra-meindl-supply-chain-management.pdf",
-      "source_location": null,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.2",
       "source_url": null,
       "captured_at": null,
       "author": null,
@@ -4799,8 +4799,8 @@
     {
       "label": "Fill Rate",
       "file_type": "concept",
-      "source_file": "chopra-meindl-supply-chain-management.pdf",
-      "source_location": null,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.7",
       "source_url": null,
       "captured_at": null,
       "author": null,
@@ -4813,8 +4813,8 @@
     {
       "label": "Reorder Point",
       "file_type": "concept",
-      "source_file": "chopra-meindl-supply-chain-management.pdf",
-      "source_location": null,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.3",
       "source_url": null,
       "captured_at": null,
       "author": null,
@@ -4827,8 +4827,8 @@
     {
       "label": "Continuous Review Policy",
       "file_type": "concept",
-      "source_file": "chopra-meindl-supply-chain-management.pdf",
-      "source_location": null,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.5",
       "source_url": null,
       "captured_at": null,
       "author": null,
@@ -4841,8 +4841,8 @@
     {
       "label": "Periodic Review Policy",
       "file_type": "concept",
-      "source_file": "chopra-meindl-supply-chain-management.pdf",
-      "source_location": null,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.5",
       "source_url": null,
       "captured_at": null,
       "author": null,
@@ -4897,8 +4897,8 @@
     {
       "label": "Newsvendor Model",
       "file_type": "concept",
-      "source_file": "chopra-meindl-supply-chain-management.pdf",
-      "source_location": null,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.11",
       "source_url": null,
       "captured_at": null,
       "author": null,
@@ -6195,6 +6195,104 @@
       "id": "rationale_upper_bound_approximation",
       "community": 8,
       "norm_label": "why use an upper-bounding approximation"
+    },
+    {
+      "label": "Vandeput: Inventory Optimization (Models and Simulations)",
+      "file_type": "paper",
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": "Nicolas Vandeput",
+      "contributor": null,
+      "rationale": "2020 De Gruyter book on inventory models and simulation; the source this repo's src/ engine implements (EOQ, safety stock, (s,Q)/(R,S), fill rate, multi-echelon GSM, newsvendor, simulation optimization).",
+      "id": "book_vandeput",
+      "community": 0,
+      "norm_label": "vandeput: inventory optimization (models and simulations)"
+    },
+    {
+      "label": "Risk Period (Stochastic Lead Time)",
+      "file_type": "concept",
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.6",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Demand-and-lead-time exposure window a policy must cover: lead time L for (s,Q), R+L for (R,S).",
+      "id": "risk_period",
+      "community": 0,
+      "norm_label": "risk period (stochastic lead time)"
+    },
+    {
+      "label": "Cost & Service-Level Optimization",
+      "file_type": "concept",
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.8",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Choosing the service level / review period that minimizes total expected holding plus shortage cost instead of fixing it by rule of thumb.",
+      "id": "service_level_optimization",
+      "community": 0,
+      "norm_label": "cost & service-level optimization"
+    },
+    {
+      "label": "Gamma-Distributed Demand (Beyond Normality)",
+      "file_type": "concept",
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.9",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Modeling skewed non-negative demand with a gamma distribution when the normal approximation understates safety stock for high-variability items.",
+      "id": "gamma_demand",
+      "community": 0,
+      "norm_label": "gamma-distributed demand (beyond normality)"
+    },
+    {
+      "label": "Guaranteed Service Model (Multi-Echelon)",
+      "file_type": "concept",
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.10",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Serial multi-stage safety-stock placement under guaranteed service times: which stages hold stock to cover the network at least cost.",
+      "id": "guaranteed_service_model",
+      "community": 0,
+      "norm_label": "guaranteed service model (multi-echelon)"
+    },
+    {
+      "label": "Discrete Probabilistic Demand",
+      "file_type": "concept",
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.12",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Building an empirical discrete demand distribution from history (KDE / discrete PMF) and optimizing policies directly over it.",
+      "id": "discrete_probabilistic_demand",
+      "community": 0,
+      "norm_label": "discrete probabilistic demand"
+    },
+    {
+      "label": "Simulation Optimization",
+      "file_type": "concept",
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.13",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Tuning policy parameters (s, Q, S) by simulating many demand scenarios and searching for the cost/service-optimal setting.",
+      "id": "simulation_optimization",
+      "community": 0,
+      "norm_label": "simulation optimization"
     }
   ],
   "links": [
@@ -13697,6 +13795,136 @@
       "weight": 1.0,
       "source": "stackelberg_regret",
       "target": "no_regret_learning"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.2",
+      "weight": 1.0,
+      "source": "economic_order_quantity",
+      "target": "book_vandeput"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.3",
+      "weight": 1.0,
+      "source": "reorder_point",
+      "target": "book_vandeput"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.4",
+      "weight": 1.0,
+      "source": "safety_stock",
+      "target": "book_vandeput"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.5",
+      "weight": 1.0,
+      "source": "continuous_review_policy",
+      "target": "book_vandeput"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.5",
+      "weight": 1.0,
+      "source": "periodic_review_policy",
+      "target": "book_vandeput"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.7",
+      "weight": 1.0,
+      "source": "fill_rate",
+      "target": "book_vandeput"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.11",
+      "weight": 1.0,
+      "source": "newsvendor_model",
+      "target": "book_vandeput"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.6",
+      "weight": 1.0,
+      "source": "risk_period",
+      "target": "book_vandeput"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.8",
+      "weight": 1.0,
+      "source": "service_level_optimization",
+      "target": "book_vandeput"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.9",
+      "weight": 1.0,
+      "source": "gamma_demand",
+      "target": "book_vandeput"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.10",
+      "weight": 1.0,
+      "source": "guaranteed_service_model",
+      "target": "book_vandeput"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.12",
+      "weight": 1.0,
+      "source": "discrete_probabilistic_demand",
+      "target": "book_vandeput"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vandeput-inventory-optimization-models-simulations.pdf",
+      "source_location": "Ch.13",
+      "weight": 1.0,
+      "source": "simulation_optimization",
+      "target": "book_vandeput"
     }
   ],
   "hyperedges": [
