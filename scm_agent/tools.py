@@ -10,6 +10,8 @@ from jobs import (
     inventory_deliverable,
     leadership,
     qa,
+    sop_deliverable,
+    sop_job,
 )
 from jobs.inventory_optimization import run as run_inventory
 from jobs.pricing import prepare_pricing
@@ -20,6 +22,7 @@ from .registry import Prepared, Produced, Tool, ToolRegistry
 from .types import JobRequest
 
 from src.cost_to_serve import ServiceCostRates  # isort: skip  (local package)
+from src.sop import CostModel  # isort: skip  (local package)
 
 LEADERSHIP_SCHEMA = {
     "type": "object",
@@ -235,10 +238,63 @@ def cost_to_serve_tool() -> Tool:
     )
 
 
+# ---- sop (Sales & Operations Planning) ---------------------------------------
+
+def _sop_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a demand/order history CSV (date + quantity) is required"])
+    try:
+        payload = sop_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _sop_run(payload: object, params: dict) -> Produced:
+    cost = None
+    if any(k in params for k in ("holding_cost", "shortage_cost", "capacity_change_cost")):
+        cost = CostModel(
+            holding_per_unit_per_period=params.get("holding_cost", 1.0),
+            shortage_per_unit_per_period=params.get("shortage_cost", 5.0),
+            capacity_change_per_unit=params.get("capacity_change_cost", 2.0),
+        )
+    review = sop_job.run(
+        payload,
+        opening_inventory=params.get("opening_inventory", 0.0),
+        target=params.get("target", 0.0),
+        cost=cost,
+    )
+    return Produced(report=review, summary=review.summary)
+
+
+def sop_tool() -> Tool:
+    return Tool(
+        key="sop",
+        title="Sales & Operations Planning (S&OP / IBP)",
+        description="Run the monthly demand->supply->reconciliation cadence: compare chase / "
+                    "level / hybrid supply strategies and recommend a ranked, exec-ready plan.",
+        intent_keywords=(
+            "s&op", "sales and operations", "sales & operations", "ibp",
+            "integrated business planning", "aggregate plan", "aggregate planning",
+            "demand and supply plan", "demand-supply", "supply plan", "production plan",
+            "monthly demand plan",
+        ),
+        requires_data=True,
+        prepare=_sop_prepare,
+        run=_sop_run,
+        qa=lambda review: sop_job.verify(review),
+        deliver=lambda review, out_dir, client: sop_job.write_operational(review, out_dir, client),
+        deck=lambda review, out_dir, client, citations, confidence: sop_deliverable.build(
+            review, client=client, citations=tuple(citations),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
     reg.register(pricing_tool())
     reg.register(leadership_tool())
     reg.register(cost_to_serve_tool())
+    reg.register(sop_tool())
     return reg
