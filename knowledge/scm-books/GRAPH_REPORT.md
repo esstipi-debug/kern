@@ -1,28 +1,28 @@
 # Graph Report - .  (2026-06-23)
 
 ## Corpus Check
-- 22 files · ~0 words
+- 23 files · ~0 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1383 nodes · 2539 edges · 100 communities (79 shown, 21 thin omitted)
-- Extraction: 64% EXTRACTED · 36% INFERRED · 0% AMBIGUOUS · INFERRED: 906 edges (avg confidence: 0.82)
+- 1824 nodes · 3640 edges · 122 communities (101 shown, 21 thin omitted)
+- Extraction: 60% EXTRACTED · 40% INFERRED · 0% AMBIGUOUS · INFERRED: 1455 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_Supply Chain Drivers|Supply Chain Drivers]]
+- [[_COMMUNITY_Operations Management|Operations Management]]
 - [[_COMMUNITY_Croston's Method|Croston's Method]]
 - [[_COMMUNITY_Behavioral Pricing  Behavioral Economics|Behavioral Pricing / Behavioral Economics]]
 - [[_COMMUNITY_Time Series Decomposition|Time Series Decomposition]]
 - [[_COMMUNITY_Dynamic Pricing on E-commerce Platform with De|Dynamic Pricing on E-commerce Platform with De]]
 - [[_COMMUNITY_Measurement of Price Sensitivity|Measurement of Price Sensitivity]]
-- [[_COMMUNITY_Revenue Management|Revenue Management]]
+- [[_COMMUNITY_Assortment Optimization|Assortment Optimization]]
 - [[_COMMUNITY_Order Penetration Point (OPP)|Order Penetration Point (OPP)]]
 - [[_COMMUNITY_Dynamic Pricing|Dynamic Pricing]]
 - [[_COMMUNITY_A Practical Price Optimization Approach for Om|A Practical Price Optimization Approach for Om]]
 - [[_COMMUNITY_Profit-Based Pricing|Profit-Based Pricing]]
-- [[_COMMUNITY_Business Ethics|Business Ethics]]
-- [[_COMMUNITY_Distribution Network Design|Distribution Network Design]]
+- [[_COMMUNITY_Freight Transport Modes|Freight Transport Modes]]
+- [[_COMMUNITY_Lead Time Reduction|Lead Time Reduction]]
 - [[_COMMUNITY_Supply Chain Agility|Supply Chain Agility]]
 - [[_COMMUNITY_Economic Value|Economic Value]]
 - [[_COMMUNITY_Just-in-Time (JIT)|Just-in-Time (JIT)]]
@@ -32,49 +32,49 @@
 - [[_COMMUNITY_Enterprise Resource Planning (ERP)|Enterprise Resource Planning (ERP)]]
 - [[_COMMUNITY_Box & Jenkins Time Series Analysis Forecasti|Box & Jenkins: Time Series Analysis: Forecasti]]
 - [[_COMMUNITY_Reward Function|Reward Function]]
-- [[_COMMUNITY_Supply Chain Strategy|Supply Chain Strategy]]
+- [[_COMMUNITY_Supply Chain Strategy or Design|Supply Chain Strategy or Design]]
 - [[_COMMUNITY_Talent and Leadership Development|Talent and Leadership Development]]
 - [[_COMMUNITY_Supply Chain Resilience|Supply Chain Resilience]]
 - [[_COMMUNITY_End-to-End Visibility|End-to-End Visibility]]
 - [[_COMMUNITY_Price Elasticity of Demand|Price Elasticity of Demand]]
 - [[_COMMUNITY_Technology and Digital Transformation|Technology and Digital Transformation]]
 - [[_COMMUNITY_Network  Supply Chain Competition|Network / Supply Chain Competition]]
-- [[_COMMUNITY_Demand Forecasting|Demand Forecasting]]
-- [[_COMMUNITY_Building Trust Through Transparency|Building Trust Through Transparency]]
+- [[_COMMUNITY_Overbooking|Overbooking]]
+- [[_COMMUNITY_Collaborative Leadership|Collaborative Leadership]]
 - [[_COMMUNITY_Sustainability|Sustainability]]
 - [[_COMMUNITY_Learning from Mistakes|Learning from Mistakes]]
 - [[_COMMUNITY_Material Requirements Planning|Material Requirements Planning]]
-- [[_COMMUNITY_Psychological Safety and Environment|Psychological Safety and Environment]]
+- [[_COMMUNITY_Employee Empowerment|Employee Empowerment]]
 - [[_COMMUNITY_Challenging the Status Quo and Innovating|Challenging the Status Quo and Innovating]]
 - [[_COMMUNITY_Demand Management|Demand Management]]
-- [[_COMMUNITY_Supply Chain Network Design|Supply Chain Network Design]]
+- [[_COMMUNITY_Total Cost of Ownership|Total Cost of Ownership]]
 - [[_COMMUNITY_Forecasting|Forecasting]]
-- [[_COMMUNITY_Supply Chain Risk|Supply Chain Risk]]
+- [[_COMMUNITY_Corporate Social Responsibility (CSR)|Corporate Social Responsibility (CSR)]]
 - [[_COMMUNITY_Change Management (Desire-Vision-Process)|Change Management (Desire-Vision-Process)]]
 - [[_COMMUNITY_Carbon Footprint|Carbon Footprint]]
-- [[_COMMUNITY_Collaboration Over Firefighting|Collaboration Over Firefighting]]
+- [[_COMMUNITY_Quantity Discounts|Quantity Discounts]]
 - [[_COMMUNITY_Managing Supply Chain Complexity|Managing Supply Chain Complexity]]
 - [[_COMMUNITY_Sales and Operations Planning|Sales and Operations Planning]]
 - [[_COMMUNITY_Agile Supply Chain|Agile Supply Chain]]
-- [[_COMMUNITY_Strategic Lead-Time Management|Strategic Lead-Time Management]]
+- [[_COMMUNITY_Non-Value-Adding Time|Non-Value-Adding Time]]
 - [[_COMMUNITY_Master Production Schedule (MPS)|Master Production Schedule (MPS)]]
-- [[_COMMUNITY_Mass Customisation|Mass Customisation]]
+- [[_COMMUNITY_Economies of Scale|Economies of Scale]]
 - [[_COMMUNITY_Bullwhip Effect|Bullwhip Effect]]
 - [[_COMMUNITY_Product Recovery Management (PRM)|Product Recovery Management (PRM)]]
 - [[_COMMUNITY_Cleaner Production|Cleaner Production]]
-- [[_COMMUNITY_Reorder Point|Reorder Point]]
+- [[_COMMUNITY_Centralised Inventory|Centralised Inventory]]
 - [[_COMMUNITY_Safety Stock|Safety Stock]]
 - [[_COMMUNITY_Demand-Driven vs Forecast-Driven|Demand-Driven vs Forecast-Driven]]
 - [[_COMMUNITY_Customer Order Decoupling Point|Customer Order Decoupling Point]]
 - [[_COMMUNITY_CHAIN Leadership Model|CHAIN Leadership Model]]
-- [[_COMMUNITY_Freight Transport Modes|Freight Transport Modes]]
-- [[_COMMUNITY_Producer Responsibility (EPR)|Producer Responsibility (EPR)]]
+- [[_COMMUNITY_Global Operations Strategy Options|Global Operations Strategy Options]]
+- [[_COMMUNITY_Reverse Logistics|Reverse Logistics]]
 - [[_COMMUNITY_Warehouse Location Problem (WLP)|Warehouse Location Problem (WLP)]]
 - [[_COMMUNITY_Sustainable Procurement|Sustainable Procurement]]
 - [[_COMMUNITY_Willingness-to-Pay|Willingness-to-Pay]]
 - [[_COMMUNITY_Waste Hierarchy|Waste Hierarchy]]
-- [[_COMMUNITY_Bid-Price Control|Bid-Price Control]]
-- [[_COMMUNITY_Just-in-Time (JIT)|Just-in-Time (JIT)]]
+- [[_COMMUNITY_Aggregate Planning|Aggregate Planning]]
+- [[_COMMUNITY_Quick Response|Quick Response]]
 - [[_COMMUNITY_Lifecycle Assessment|Lifecycle Assessment]]
 - [[_COMMUNITY_InputOutput Control|Input/Output Control]]
 - [[_COMMUNITY_Chase Strategy|Chase Strategy]]
@@ -84,10 +84,10 @@
 - [[_COMMUNITY_Assemble-to-Order (ATO) Master Production Sche|Assemble-to-Order (ATO) Master Production Sche]]
 - [[_COMMUNITY_Transfer Batch|Transfer Batch]]
 - [[_COMMUNITY_Steiner-Weber Model|Steiner-Weber Model]]
-- [[_COMMUNITY_Quick Response|Quick Response]]
+- [[_COMMUNITY_Design of Goods and Services|Design of Goods and Services]]
 - [[_COMMUNITY_Transfer Pricing|Transfer Pricing]]
 - [[_COMMUNITY_Lead Time|Lead Time]]
-- [[_COMMUNITY_Freight Transport|Freight Transport]]
+- [[_COMMUNITY_Network Design|Network Design]]
 - [[_COMMUNITY_Supply Chain Integration|Supply Chain Integration]]
 - [[_COMMUNITY_ABC Analysis|ABC Analysis]]
 - [[_COMMUNITY_Anticipation Stock|Anticipation Stock]]
@@ -103,37 +103,59 @@
 - [[_COMMUNITY_Deichmann|Deichmann]]
 - [[_COMMUNITY_Factor-Rating Method|Factor-Rating Method]]
 - [[_COMMUNITY_Günther and Tempelmeier (2009)|Günther and Tempelmeier (2009)]]
-- [[_COMMUNITY_Safety Stock|Safety Stock]]
+- [[_COMMUNITY_Safety Inventory|Safety Inventory]]
 - [[_COMMUNITY_Industry 4.0|Industry 4.0]]
 - [[_COMMUNITY_Lean Production|Lean Production]]
 - [[_COMMUNITY_Tesla|Tesla]]
-- [[_COMMUNITY_Bow-Tie Risk Analysis|Bow-Tie Risk Analysis]]
+- [[_COMMUNITY_Postponement|Postponement]]
 - [[_COMMUNITY_Relationship  Customer-Lifetime Pricing|Relationship / Customer-Lifetime Pricing]]
 - [[_COMMUNITY_Prestige (SnobVeblen) Effect|Prestige (Snob/Veblen) Effect]]
+- [[_COMMUNITY_Decision Analysis|Decision Analysis]]
+- [[_COMMUNITY_Outsourcing vs In-House|Outsourcing vs In-House]]
+- [[_COMMUNITY_Sourcing|Sourcing]]
+- [[_COMMUNITY_Supply Chain Risk|Supply Chain Risk]]
+- [[_COMMUNITY_Capacity Planning|Capacity Planning]]
+- [[_COMMUNITY_Project Management|Project Management]]
+- [[_COMMUNITY_Product Availability|Product Availability]]
+- [[_COMMUNITY_Network Design Under Uncertainty|Network Design Under Uncertainty]]
+- [[_COMMUNITY_Continuous Improvement and a Fresh Eye|Continuous Improvement and a Fresh Eye]]
+- [[_COMMUNITY_Building Trust Through Transparency|Building Trust Through Transparency]]
+- [[_COMMUNITY_Competitive Advantage|Competitive Advantage]]
+- [[_COMMUNITY_Supply Chain Macro Processes|Supply Chain Macro Processes]]
+- [[_COMMUNITY_Single-Resource Revenue Management|Single-Resource Revenue Management]]
+- [[_COMMUNITY_Third-Party Aggregation|Third-Party Aggregation]]
+- [[_COMMUNITY_Critical Path|Critical Path]]
+- [[_COMMUNITY_Forward Buying|Forward Buying]]
+- [[_COMMUNITY_Sustainability in the Supply Chain|Sustainability in the Supply Chain]]
+- [[_COMMUNITY_Fixed Ordering Cost|Fixed Ordering Cost]]
+- [[_COMMUNITY_Revenue Management|Revenue Management]]
+- [[_COMMUNITY_Process Analysis and Design|Process Analysis and Design]]
+- [[_COMMUNITY_Bill of Material (BOM)|Bill of Material (BOM)]]
+- [[_COMMUNITY_SCOR Model (Plan, Source, Make, Deliver, Retur|SCOR Model (Plan, Source, Make, Deliver, Retur]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `Palamariu & Alicke: From Source to Sold (Stories of Leadership in Supply Chain)` - 291 edges
-2. `Christopher: Logistics and Supply Chain Management (4th ed.)` - 265 edges
-3. `Grant, Trautrims & Wong: Sustainable Logistics and Supply Chain Management` - 192 edges
-4. `Gallego & Topaloglu: Revenue Management and Pricing Analytics` - 70 edges
-5. `Nagle & Müller — The Strategy and Tactics of Pricing` - 54 edges
-6. `Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications)` - 42 edges
-7. `Simon & Fassnacht — Price Management` - 41 edges
-8. `Chopra & Meindl: Supply Chain Management` - 41 edges
-9. `Forecasting: Principles and Practice (3rd ed)` - 38 edges
-10. `Supply Chain Resilience` - 38 edges
+1. `Chopra & Meindl: Supply Chain Management` - 356 edges
+2. `Palamariu & Alicke: From Source to Sold (Stories of Leadership in Supply Chain)` - 291 edges
+3. `Christopher: Logistics and Supply Chain Management (4th ed.)` - 265 edges
+4. `Heizer, Render & Munson: Operations Management (12th ed.)` - 194 edges
+5. `Grant, Trautrims & Wong: Sustainable Logistics and Supply Chain Management` - 192 edges
+6. `Gallego & Topaloglu: Revenue Management and Pricing Analytics` - 70 edges
+7. `Supply Chain Strategy or Design` - 56 edges
+8. `Nagle & Müller — The Strategy and Tactics of Pricing` - 54 edges
+9. `Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications)` - 42 edges
+10. `Simon & Fassnacht — Price Management` - 41 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Out-of-Stock Impact` --conceptually_related_to--> `Safety Stock`  [INFERRED]
-  christopher-logistics-supply-chain-management.txt → vandeput-inventory-optimization-models-simulations.pdf
-- `Forecast Error` --conceptually_related_to--> `Strategic Lead-Time Management`  [INFERRED]
-  boylan-syntetos-intermittent-demand-forecasting.pdf → christopher-logistics-supply-chain-management.txt
-- `Demand Management` --conceptually_related_to--> `Demand Planning`  [INFERRED]
-  christopher-logistics-supply-chain-management.txt → gilliland-business-forecasting.pdf
-- `Value-Based Pricing` --semantically_similar_to--> `Profit-Based Pricing`  [INFERRED] [semantically similar]
-  nagle-strategy-tactics-pricing.pdf → phillips-pricing-revenue-optimization.pdf
-- `Yield Management` --semantically_similar_to--> `Dynamic Pricing`  [INFERRED] [semantically similar]
-  nagle-strategy-tactics-pricing.pdf → simon-price-management.pdf
+- `Product Fill Rate` --semantically_similar_to--> `Order Fill Rate`  [INFERRED] [semantically similar]
+  chopra-meindl-supply-chain-management.pdf → christopher-logistics-supply-chain-management.txt
+- `Quick Response` --conceptually_related_to--> `Multiple Replenishment Orders`  [INFERRED]
+  christopher-logistics-supply-chain-management.txt → chopra-meindl-supply-chain-management.pdf
+- `Zara Quick-Response Strategy` --conceptually_related_to--> `Quick Response`  [INFERRED]
+  chopra-meindl-supply-chain-management.pdf → christopher-logistics-supply-chain-management.txt
+- `Spatial Postponement` --conceptually_related_to--> `Postponement`  [INFERRED]
+  christopher-logistics-supply-chain-management.txt → chopra-meindl-supply-chain-management.pdf
+- `Postponement` --conceptually_related_to--> `Design for Localisation`  [INFERRED]
+  chopra-meindl-supply-chain-management.pdf → christopher-logistics-supply-chain-management.txt
 
 ## Import Cycles
 - None detected.
@@ -172,15 +194,15 @@
 - **Closed-Form Logit Revenue Maximization** — logit_demand_function, lambert_w_function, exact_pricing_algorithm [INFERRED 0.85]
 - **Stackelberg Newsvendor Bandit Learning** — stackelberg_game, price_setting_newsvendor, contextual_linear_bandit [INFERRED 0.85]
 
-## Communities (100 total, 21 thin omitted)
+## Communities (122 total, 21 thin omitted)
 
-### Community 0 - "Supply Chain Drivers"
-Cohesion: 0.06
-Nodes (51): Aggregate Planning, Chopra & Meindl: Supply Chain Management, Operations and Supply Chain Management, Vandeput: Inventory Optimization (Models and Simulations), Bottleneck, Bottleneck Management, Capacity Management, Continuous Review Policy (+43 more)
+### Community 0 - "Operations Management"
+Cohesion: 0.13
+Nodes (21): Operations and Supply Chain Management, Bottleneck, Bottleneck Management, Capacity Management, DMAIC Improvement Model, Drum-Buffer-Rope, Facility Layout, Inventory Management (+13 more)
 
 ### Community 1 - "Croston's Method"
 Cohesion: 0.07
-Nodes (55): Aggregate-Disaggregate Intermittent Demand Approach (ADIDA), Average Inter-Demand Interval (ADI), Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications), Gilliland et al.: Business Forecasting: Practical Problems and Solutions, Brier Score, Compound Demand Distribution, Continuous Review Inventory Control, Bias Correction Factor Framework (+47 more)
+Nodes (54): Aggregate-Disaggregate Intermittent Demand Approach (ADIDA), Average Inter-Demand Interval (ADI), Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications), Gilliland et al.: Business Forecasting: Practical Problems and Solutions, Brier Score, Compound Demand Distribution, Continuous Review Inventory Control, Bias Correction Factor Framework (+46 more)
 
 ### Community 2 - "Behavioral Pricing / Behavioral Economics"
 Cohesion: 0.07
@@ -191,24 +213,24 @@ Cohesion: 0.10
 Nodes (39): Additive Decomposition, Autocorrelation, Autocorrelation Function (ACF), Forecasting: Principles and Practice (3rd ed), Box-Cox Transformation, Calendar Adjustment, Classical Decomposition, Consumer Price Index (CPI) (+31 more)
 
 ### Community 4 - "Dynamic Pricing on E-commerce Platform with De"
-Cohesion: 0.07
-Nodes (46): Actor-Critic Method, Best Response Function, Centralized Training Decentralized Execution (CTDE), Cold Start Problem, Contextual Linear Bandit, Continuous Action Space, Critical Fractile, Deep Deterministic Policy Gradient (DDPG) (+38 more)
+Cohesion: 0.06
+Nodes (47): Actor-Critic Method, Best Response Function, Centralized Training Decentralized Execution (CTDE), Cold Start Problem, Contextual Linear Bandit, Continuous Action Space, Critical Fractile, Deep Deterministic Policy Gradient (DDPG) (+39 more)
 
 ### Community 5 - "Measurement of Price Sensitivity"
 Cohesion: 0.07
 Nodes (36): Nagle & Müller — The Strategy and Tactics of Pricing, Breakeven Sales Analysis, Buy-Response Survey, Conjoint (Trade-Off) Analysis, Contribution Margin, Cost-Plus Pricing, Customer-Driven Pricing, Difficult-Comparison Effect (+28 more)
 
-### Community 6 - "Revenue Management"
-Cohesion: 0.08
-Nodes (36): Airline Deregulation Origin of RM, Assortment Optimization, Asymptotic Optimality, Bid-Price Heuristic for Dynamic Pricing, Gallego & Topaloglu: Revenue Management and Pricing Analytics, Booking Limit, Callable Products, Choice-Based Revenue Management (+28 more)
+### Community 6 - "Assortment Optimization"
+Cohesion: 0.09
+Nodes (33): Assortment Optimization, Asymptotic Optimality, Basic Pricing Theory, Bid-Price Heuristic for Dynamic Pricing, Gallego & Topaloglu: Revenue Management and Pricing Analytics, Callable Products, Choice-Based Revenue Management, Column Generation (+25 more)
 
 ### Community 7 - "Order Penetration Point (OPP)"
 Cohesion: 0.04
 Nodes (46): Airbus, AirSupply, ALDI, Alp and Tan (2008), Assemble-to-Order (ATO), Bavarian Wood, Bensaou (1996), BoostAeroSpace (+38 more)
 
 ### Community 8 - "Dynamic Pricing"
-Cohesion: 0.29
-Nodes (8): Demand Learning / Estimation, Dynamic Pricing, Demand-Intensity / Price Control, Learning-and-Earning (Explore-Exploit) Trade-off, Monotone / Non-Reopening Fare Policy, Online Learning in Pricing, Regret, Strategic Customers
+Cohesion: 0.22
+Nodes (10): Demand Learning / Estimation, Dynamic Pricing, Demand-Intensity / Price Control, Learning-and-Earning (Explore-Exploit) Trade-off, Monotone / Non-Reopening Fare Policy, Online Learning in Pricing, Perishable Assets, Regret (+2 more)
 
 ### Community 9 - "A Practical Price Optimization Approach for Om"
 Cohesion: 0.13
@@ -218,17 +240,17 @@ Nodes (25): Attraction Function, Buy-Online-Pickup-In-Store (BOPIS), Censored De
 Cohesion: 0.20
 Nodes (15): Adverse Selection, Robert Phillips — Pricing and Revenue Optimization, Customer Price Sensitivity, Loan / Consumer-Credit Pricing, Lost-Quote / Win-Loss Data, Negotiated Pricing, Policy-Based Price Negotiation, Price Fixing (+7 more)
 
-### Community 11 - "Business Ethics"
-Cohesion: 0.07
-Nodes (53): Alternative Fuels, Anaerobic Digestion, Asset Specificity, Biofuel, Grant, Trautrims & Wong: Sustainable Logistics and Supply Chain Management, Bounded Rationality, Business Ethics, Child Labour (+45 more)
+### Community 11 - "Freight Transport Modes"
+Cohesion: 0.06
+Nodes (57): Air Freight, Alternative Fuels, Anaerobic Digestion, Autonomous Vehicles, Biofuel, Grant, Trautrims & Wong: Sustainable Logistics and Supply Chain Management, Bow-Tie Risk Analysis, Child Labour (+49 more)
 
-### Community 12 - "Distribution Network Design"
+### Community 12 - "Lead Time Reduction"
 Cohesion: 0.03
-Nodes (91): Preserving Culture in Acquisitions, Sound Listening Skills, Adaptability Quotient (AQ), Adaptability & Nimbleness, Adaptive Communication, Availability, Speed, and Reliability, Boldness & Confidence in Taking Opportunities, Palamariu & Alicke: From Source to Sold (Stories of Leadership in Supply Chain) (+83 more)
+Nodes (94): Preserving Culture in Acquisitions, Sound Listening Skills, Adaptability Quotient (AQ), Adaptability & Nimbleness, Adaptive Communication, Availability, Speed, and Reliability, Boldness & Confidence in Taking Opportunities, Palamariu & Alicke: From Source to Sold (Stories of Leadership in Supply Chain) (+86 more)
 
 ### Community 13 - "Supply Chain Agility"
-Cohesion: 0.12
-Nodes (18): Supply Chain Agility, Cause and Effect / Root Cause Analysis, Critical Paths (Nodes and Links), Customer-Centric / Outside-In Supply Chain, Failure Mode and Effect Analysis (FMEA), From Functions to Processes, Leagile (Lean/Agile Hybrid), Lean Thinking (+10 more)
+Cohesion: 0.20
+Nodes (12): Supply Chain Agility, Customer-Centric / Outside-In Supply Chain, From Functions to Processes, Leagile (Lean/Agile Hybrid), Lean Thinking, From Push to Pull (Demand-Driven), Reliability (4Rs), Responsiveness (4Rs) (+4 more)
 
 ### Community 14 - "Economic Value"
 Cohesion: 0.20
@@ -239,8 +261,8 @@ Cohesion: 0.08
 Nodes (25): Applicon, Backflushing, Bandwidth, Base Stock System, Cellular Manufacturing, Deduct Point, Electronic Kanban, Hidden Factory (+17 more)
 
 ### Community 16 - "Connecting Supply Chain to Business Value"
-Cohesion: 0.12
-Nodes (18): Authentic Leadership, Business Acumen, Cash and Capital Management, Connecting Supply Chain to Business Value, Cross-Functional and Vertical Exposure, Culture Eats Strategy, Developing Future Leaders, Execution Over Strategy (+10 more)
+Cohesion: 0.15
+Nodes (15): Authentic Leadership, Business Acumen, Cash and Capital Management, Connecting Supply Chain to Business Value, Culture Eats Strategy, Execution Over Strategy, Focus on One Big Thing, Frontline Leadership (+7 more)
 
 ### Community 17 - "Finite Scheduling"
 Cohesion: 0.19
@@ -254,25 +276,25 @@ Nodes (12): Abbott Laboratories, Distribution Requirements Planning (DRP), Error
 Cohesion: 0.17
 Nodes (12): APICS - Association for Operations Management, Cash-to-Cash Cycle Time, Dynamic Due Dates, Eli Lilly and Company, Enterprise Resource Planning (ERP), Explosion, Manufacturing Planning and Control for Supply Chain Management, Material Requirements Planning (MRP) (+4 more)
 
-### Community 22 - "Supply Chain Strategy"
+### Community 22 - "Supply Chain Strategy or Design"
 Cohesion: 0.09
-Nodes (24): Dismantling Siloed Thinking, Business Strategy Drives Operations Strategy, Customer Centricity, Balancing Demand and Supply Equations, End-to-End Integrated Supply Chain Thinking, 360-Degree Business Acumen, Lean Manufacturing, No One-Size-Fits-All Strategy (+16 more)
+Nodes (26): Dismantling Siloed Thinking, Business Strategy Drives Operations Strategy, Customer Centricity, Demand-Driven Forecasting, Balancing Demand and Supply Equations, End-to-End Integrated Supply Chain Thinking, 360-Degree Business Acumen, Lean Manufacturing (+18 more)
 
 ### Community 23 - "Talent and Leadership Development"
-Cohesion: 0.07
-Nodes (31): Adding Maximum Value in Every Role, Alumni Networks and Talent Retention, Analytical, Data-Driven Mindset, Bridging Theory and Practice, Can-Do Attitude in Hiring, Commitment Over Raw Talent, Curiosity and Continuous Learning Mindset, Acting on Data, Not Gut Feeling (+23 more)
+Cohesion: 0.06
+Nodes (34): Adding Maximum Value in Every Role, Alumni Networks and Talent Retention, Analytical, Data-Driven Mindset, Bridging Theory and Practice, Can-Do Attitude in Hiring, Commitment Over Raw Talent, Cross-Functional and Vertical Exposure, Curiosity and Continuous Learning Mindset (+26 more)
 
 ### Community 24 - "Supply Chain Resilience"
-Cohesion: 0.09
-Nodes (27): Agility and Ability to Pivot, Anticipate Volatility Rather Than React, Beyond Cost Optimization, Navigating Black Swan Events, Business Continuity Management, COVID-19 and Pandemic-Era Disruption, Converting Crises into Opportunities, Crisis Leadership (+19 more)
+Cohesion: 0.10
+Nodes (26): Agility and Ability to Pivot, Anticipate Volatility Rather Than React, Beyond Cost Optimization, Navigating Black Swan Events, COVID-19 and Pandemic-Era Disruption, Converting Crises into Opportunities, Crisis Leadership, Forecasting & Anticipating Disruption (+18 more)
 
 ### Community 25 - "End-to-End Visibility"
 Cohesion: 0.10
 Nodes (22): Avoiding Silo Thinking, Believing in Executive Potential, Breaking Information Silos, Communicating Supply Chain Vision, Pipeline Cost Transparency, CSCO-to-CEO Pathway, End-to-End Visibility, Entrepreneurial Mindset (+14 more)
 
 ### Community 26 - "Price Elasticity of Demand"
-Cohesion: 0.26
-Nodes (13): Basic Pricing Theory, Closed-Form Solution, Demand Function, Exact Pricing Algorithm (EPA), Inflection Point Price, Lambert W Function, Logit Demand Function, An Exact Pricing Algorithm for Revenue Maximization under the Logit Demand Function (+5 more)
+Cohesion: 0.33
+Nodes (11): Closed-Form Solution, Demand Function, Exact Pricing Algorithm (EPA), Inflection Point Price, Lambert W Function, Logit Demand Function, An Exact Pricing Algorithm for Revenue Maximization under the Logit Demand Function, Price Elasticity of Demand (+3 more)
 
 ### Community 27 - "Technology and Digital Transformation"
 Cohesion: 0.09
@@ -280,19 +302,19 @@ Nodes (23): AI and Machine Learning for Forecasting, Authentic Engagement and Fo
 
 ### Community 28 - "Network / Supply Chain Competition"
 Cohesion: 0.12
-Nodes (20): Co-makership / Partnership Sourcing, Supply Chain Collaboration, Core Competencies and Outsourcing, Dynamic Flexibility, Extended Enterprise, Fourth-Party Logistics (4PL), Visibility and Information Sharing, Inter-Operability of Processes and Systems (+12 more)
+Nodes (19): Co-makership / Partnership Sourcing, Supply Chain Collaboration, Dynamic Flexibility, Extended Enterprise, Fourth-Party Logistics (4PL), Inter-Operability of Processes and Systems, Loosely Coupled Network, Network / Supply Chain Competition (+11 more)
 
-### Community 29 - "Demand Forecasting"
-Cohesion: 0.15
-Nodes (22): Book-and-Bump Strategy, Talluri & van Ryzin: The Theory and Practice of Revenue Management, Buy-Up / Sell-Up Behavior, Cancellation, Capacity Allocation / Capacity Control, Demand Forecasting, Denied Boarding / Overbooking Penalty, Dynamic Programming (+14 more)
+### Community 29 - "Overbooking"
+Cohesion: 0.14
+Nodes (22): Approximate Dynamic Programming, Bid-Price Control, Book-and-Bump Strategy, Talluri & van Ryzin: The Theory and Practice of Revenue Management, Buy-Up / Sell-Up Behavior, Cancellation, Denied Boarding / Overbooking Penalty, Deterministic Linear Program (DLP) (+14 more)
 
-### Community 30 - "Building Trust Through Transparency"
-Cohesion: 0.08
-Nodes (25): Avoiding Micromanagement, Building Trust Through Transparency, Coaching and Guiding (Not Directing), Collaborative Business Planning (CBP), Collaborative Leadership, Collaborative Risk Mitigation, Creating Followership, Empowerment and Ownership (+17 more)
+### Community 30 - "Collaborative Leadership"
+Cohesion: 0.13
+Nodes (15): Collaborative Business Planning (CBP), Collaborative Leadership, Collaborative Risk Mitigation, Enterprise Risk Management, Industry-Level Collaboration, Leading by Influence, Balanced Regional-Local-Global Network Mix, Relationship Building as Human Value (+7 more)
 
 ### Community 31 - "Sustainability"
-Cohesion: 0.11
-Nodes (22): Biological Nutrient Cycle, Circular Economy, Closed-Loop Supply Chain, Eco-design Directive, Design for Environment (Eco-design), Energy Efficiency Standards and Labels, Industrial Symbiosis, Linear Economy (+14 more)
+Cohesion: 0.13
+Nodes (19): Biological Nutrient Cycle, Circular Economy, Closed-Loop Supply Chain, Cradle-to-Cradle Design, Industrial Symbiosis, Landfill Inventory, Life Cycle Assessment (LCA), Linear Economy (+11 more)
 
 ### Community 32 - "Learning from Mistakes"
 Cohesion: 0.14
@@ -302,89 +324,89 @@ Nodes (14): Agile Mindset, Asking the Right Questions, Calculated Risk-Taking, C
 Cohesion: 0.31
 Nodes (9): Capacity Planning and Management, Capacity Planning Using Overall Factors (CPOF), Capacity Requirements Planning (CRP), Distribution Requirements Planning, Just-in-Time, Material Requirements Planning, Production Activity Control, Sales and Operations Planning (S&OP) (+1 more)
 
-### Community 34 - "Psychological Safety and Environment"
+### Community 34 - "Employee Empowerment"
 Cohesion: 0.20
 Nodes (10): Agile Teams and Flat Organization, Authenticity and Vulnerability, Employee Empowerment, Governance Plus Relationships, How You Deliver, Not Just What You Deliver, People Leadership and Developing People, Psychological Safety and Environment, Self-Awareness and Self-Esteem (+2 more)
 
 ### Community 35 - "Challenging the Status Quo and Innovating"
-Cohesion: 0.20
-Nodes (10): CEO-Level Skill Set for Supply Chain Leaders, Challenging the Status Quo and Innovating, Continuous Improvement and a Fresh Eye, Continuous Learning and Curiosity, Creative Problem-Solving and Analytical Mindset, Exposure and Broad Cross-Functional Experience, Industry Networking and Staying Current, Risk-Taking and Perseverance (+2 more)
+Cohesion: 0.22
+Nodes (9): CEO-Level Skill Set for Supply Chain Leaders, Challenging the Status Quo and Innovating, Continuous Learning and Curiosity, Creative Problem-Solving and Analytical Mindset, Exposure and Broad Cross-Functional Experience, Industry Networking and Staying Current, Risk-Taking and Perseverance, Supply Chain as the Linchpin of the Business (+1 more)
 
 ### Community 36 - "Demand Management"
 Cohesion: 0.28
 Nodes (9): Collaborative Planning, Forecasting, and Replenishment, Demand Management, Electronic Data Interchange (EDI), Master Production Scheduling, Motorola CPFR Implementation, Ross Products Division, Sears-Michelin CPFR Implementation, Uphill Skier Mode (+1 more)
 
-### Community 37 - "Supply Chain Network Design"
-Cohesion: 0.13
-Nodes (17): Competitive Benchmarking, City Logistics / Mega-Cities, Managing the Global Pipeline, Globalisation of the Supply Chain, Gravity Location Model, Lean Practices / JIT, Emerging Mega-Trends, Network Complexity (+9 more)
+### Community 37 - "Total Cost of Ownership"
+Cohesion: 0.10
+Nodes (20): Customer Service, Customer Value, Direct Product Profitability (DPP), Drivers of Shareholder Value, Economic Value Added (EVA), Managing the Global Pipeline, Globalisation of the Supply Chain, Market Value Added (MVA) (+12 more)
 
 ### Community 38 - "Forecasting"
 Cohesion: 0.25
 Nodes (9): Exponential Smoothing, Exponential Smoothing Forecast (ESF), Forecasting, Linear Regression Analysis, Moving-Average Forecasting, Order Point Inventory Control Methods, Seasonal Decomposition, Smoothing Constant (α) (+1 more)
 
-### Community 39 - "Supply Chain Risk"
-Cohesion: 0.12
-Nodes (18): Atomic vs Holistic Risk, Corporate Social Responsibility (CSR), Cyber Breach and Attack Risk, Global Reporting Initiative (GRI), Multi-Tier Sustainable SCM, Normal Accident Theory, Reputational Risk, Resource (Sustainability) Risk (+10 more)
+### Community 39 - "Corporate Social Responsibility (CSR)"
+Cohesion: 0.13
+Nodes (17): Business Ethics, Consequential Ethical Theories, Corporate Social Responsibility (CSR), Economic Responsibility, Ethical Responsibility, Global Reporting Initiative (GRI), Legal Responsibility, Moral, Amoral and Immoral Managers (+9 more)
 
 ### Community 40 - "Change Management (Desire-Vision-Process)"
 Cohesion: 0.50
 Nodes (5): Change Management (Desire-Vision-Process), Cultural Integration in M&A, Influencing Hearts and Minds, Leading Through Change, Vision for the Future
 
 ### Community 41 - "Carbon Footprint"
-Cohesion: 0.12
-Nodes (17): Carbon Footprint, Component Commonality, Demand Penetration Point (Decoupling Point), Design for Localisation, Emission Trading Scheme / Cap and Trade, Greenhouse Gases, Network Optimisation, Peak Oil (+9 more)
+Cohesion: 0.22
+Nodes (9): Carbon Footprint, Emission Trading Scheme / Cap and Trade, Greenhouse Gases, Network Optimisation, Peak Oil, Resource Footprint, Shared Distribution / Empty Miles, Sustainable Sourcing (+1 more)
 
-### Community 42 - "Collaboration Over Firefighting"
-Cohesion: 0.50
-Nodes (4): Collaboration Over Firefighting, Cross-Functional Collaboration, Lead Time Reduction, Systemic Solutions Over Quick Fixes
+### Community 42 - "Quantity Discounts"
+Cohesion: 0.04
+Nodes (93): Accounting for Taxes in Network Design, All-Unit Quantity Discount, Backlog, Chopra & Meindl: Supply Chain Management, Buyback Contract, Capacitated Plant Location Model, Capacity Allocation Under Uncertainty, Product Availability Under Capacity Constraints (+85 more)
 
 ### Community 43 - "Managing Supply Chain Complexity"
-Cohesion: 0.16
-Nodes (14): ABC Classification, Cost Drivers and Activity-Based Costing, Cost Drivers, Cost to Serve, Customer Complexity, Customer Profitability Matrix, Customer Service Prioritization, Long Tail (+6 more)
+Cohesion: 0.10
+Nodes (22): ABC Classification, Cost Drivers and Activity-Based Costing, Attributable Cost, Cost Drivers, Cost to Serve, Customer Complexity, Customer Profitability Matrix, Customer Service Prioritization (+14 more)
 
 ### Community 44 - "Sales and Operations Planning"
 Cohesion: 0.29
 Nodes (8): Delta Manufacturing Company, Lawn King Inc., Linear Programming, Mixed Integer Programming, Pyramid Forecasting, Resource Planning, Sales and Operations Planning, Strategic Business Units (SBUs)
 
 ### Community 45 - "Agile Supply Chain"
-Cohesion: 0.15
-Nodes (14): Agile Supply Chain, Collaborative Working, Core Competence / Core Business, Customer Responsiveness, Market Sensitivity, Network-Based Competition, Outsourcing, Process Alignment (+6 more)
+Cohesion: 0.22
+Nodes (10): Agile Supply Chain, Collaborative Working, Customer Responsiveness, Market Sensitivity, Network-Based Competition, Point-of-Sale Data, Process Alignment, Shared Information (+2 more)
 
-### Community 46 - "Strategic Lead-Time Management"
-Cohesion: 0.14
-Nodes (14): Business Process Re-engineering (BPR), Cash-to-Cash Cycle, Cash-to-Cash Cycle Time, Customer Order Management System, Lead-Time Gap, Strategic Lead-Time Management, Logistics Pipeline Management, Non-Value-Adding Time (+6 more)
+### Community 46 - "Non-Value-Adding Time"
+Cohesion: 0.29
+Nodes (7): Business Process Re-engineering (BPR), Cash-to-Cash Cycle Time, Non-Value-Adding Time, Supply Chain Mapping, Throughput Efficiency, Time Compression, Value-Adding Time
 
 ### Community 47 - "Master Production Schedule (MPS)"
 Cohesion: 0.29
 Nodes (7): Available-to-Promise (ATP), Final Assembly Schedule (FAS), Montell USA Inc., Master Production Schedule (MPS), Picaso System, Rough-Cut Capacity Planning, SAP ERP System
 
-### Community 48 - "Mass Customisation"
-Cohesion: 0.14
-Nodes (14): Shift to a Buyer's Market, Commoditisation, Competitive Advantage, Cost Advantage, Economies of Scale, Experience Curve, Flexible Manufacturing Systems (FMS), Last-Mile / Home Delivery (+6 more)
+### Community 48 - "Economies of Scale"
+Cohesion: 0.12
+Nodes (18): Break-Even Analysis, Break-Even Point, Build-to-Order, Continuous Process, Process Crossover Point, Economies of Scale, Fixed and Variable Costs, Focused Factory (+10 more)
 
 ### Community 49 - "Bullwhip Effect"
-Cohesion: 0.17
-Nodes (13): Acceleration Effect, Bullwhip Effect, Control Risk, Demand Risk, Visibility of Demand, Feed-Forward of Demand Information, Five Sources of Supply Chain Risk, Industrial Dynamics (+5 more)
+Cohesion: 0.15
+Nodes (14): Acceleration Effect, Bullwhip Effect, Control Risk, Demand Risk, Visibility of Demand, Dependent vs Independent Demand, Feed-Forward of Demand Information, Five Sources of Supply Chain Risk (+6 more)
 
 ### Community 50 - "Product Recovery Management (PRM)"
 Cohesion: 0.17
 Nodes (13): Cannibalization, Design for Disassembly, Eco-labels and Certifications, Eco-Management and Audit Scheme (EMAS), Environmental Management System (EMS), Environmental Performance Indicators, ISO 14001, Product Recovery Management (PRM) (+5 more)
 
 ### Community 51 - "Cleaner Production"
-Cohesion: 0.17
-Nodes (13): Clean Technology, Cleaner Production, Eco-Efficiency, End-of-Pipe Solution, Factor 4 and Factor 10, Green Productivity, Lean Production and 5S, Natural Resource-Based View (+5 more)
+Cohesion: 0.12
+Nodes (18): Bounded Rationality, Clean Technology, Cleaner Production, Core Competence / Core Business, Eco-Efficiency, End-of-Pipe Solution, Factor 4 and Factor 10, Green Productivity (+10 more)
 
-### Community 52 - "Reorder Point"
+### Community 52 - "Centralised Inventory"
 Cohesion: 0.05
-Nodes (57): Asset Turn (Capital Turnover), Attributable Cost, Balanced Scorecard, Christopher: Logistics and Supply Chain Management (4th ed.), Composite Service Index, Consensus Forecast, Logistics Cost Trade-offs, Critical Value Analysis (+49 more)
+Nodes (56): Asset Turn (Capital Turnover), Balanced Scorecard, Christopher: Logistics and Supply Chain Management (4th ed.), Business Continuity Management, Shift to a Buyer's Market, Cause and Effect / Root Cause Analysis, Centralised Inventory, City Logistics / Mega-Cities (+48 more)
 
 ### Community 53 - "Safety Stock"
 Cohesion: 0.33
 Nodes (6): Dependent Demand, Economic Order Quantity (EOQ) Model, Independent Demand, Reorder Point (R), Safety Stock, Economic Time Between Orders (TBO)
 
 ### Community 54 - "Demand-Driven vs Forecast-Driven"
-Cohesion: 0.17
-Nodes (12): Aggregate-Level Forecasting, Collaborative Planning, Forecasting and Replenishment (CPFR), Continuous Replenishment, Demand Chain Management, Demand-Driven vs Forecast-Driven, Fare Class, Forecast for Capacity, Execute Against Demand, Market-Driven Supply Chain (+4 more)
+Cohesion: 0.20
+Nodes (10): Aggregate-Level Forecasting, Collaborative Planning, Forecasting and Replenishment (CPFR), Continuous Replenishment, Demand Chain Management, Demand-Driven vs Forecast-Driven, Demand Penetration Point (Decoupling Point), Forecast for Capacity, Execute Against Demand, Single-Point Control of Replenishment (+2 more)
 
 ### Community 55 - "Customer Order Decoupling Point"
 Cohesion: 0.70
@@ -394,13 +416,13 @@ Nodes (5): Assemble-to-Order Environment, Customer Order Decoupling Point, Engin
 Cohesion: 0.22
 Nodes (10): Adaptable / Actionable (CHAIN: A), Collaborative (CHAIN: C), Team Diversity (Future Supply Chain Leaders), Holistic (CHAIN: H), Influential (CHAIN: I), Lifelong Learning (Future Supply Chain Leaders), CHAIN Model (Supply Chain Leadership), Narrative / Vision (CHAIN: N) (+2 more)
 
-### Community 57 - "Freight Transport Modes"
-Cohesion: 0.17
-Nodes (12): Air Freight, Autonomous Vehicles, Containerization, Freight Transport Modes, Intermodal Transport, Modal Shift, Multi-modal Transport, Rail Freight (+4 more)
+### Community 57 - "Global Operations Strategy Options"
+Cohesion: 0.06
+Nodes (49): Acceptance Sampling, Activity-on-Arrow (AOA), Activity-on-Node (AON), Assembly Chart, Assembly Drawing, Heizer, Render & Munson: Operations Management (12th ed.), Central Limit Theorem, Checklist (+41 more)
 
-### Community 58 - "Producer Responsibility (EPR)"
-Cohesion: 0.18
-Nodes (12): Biodegradable/Compostable Packaging, Collection Schemes, Deposit Fee Scheme, Producer Responsibility (EPR), Hazardous Materials in Recovery, Hazardous Substances, REACH Regulation, Restricted/Banned Materials List (+4 more)
+### Community 58 - "Reverse Logistics"
+Cohesion: 0.12
+Nodes (20): Biodegradable/Compostable Packaging, Collection Schemes, Deposit Fee Scheme, Eco-design Directive, Design for Environment (Eco-design), Energy Efficiency Standards and Labels, Producer Responsibility (EPR), Hazardous Materials in Recovery (+12 more)
 
 ### Community 59 - "Warehouse Location Problem (WLP)"
 Cohesion: 0.25
@@ -418,17 +440,17 @@ Nodes (4): Mathematical Price Optimization, Price-Response Function, Value Commu
 Cohesion: 0.20
 Nodes (11): Energy Recovery (Waste-to-Energy), Kerbside Collection Schemes, Landfill / Disposal, Material Recovery Facility (MRF), Metal Recycling, Plastics Recycling, Recycling, Reuse (+3 more)
 
-### Community 63 - "Bid-Price Control"
-Cohesion: 0.22
-Nodes (10): Approximate Dynamic Programming, Bid-Price Control, Deterministic Linear Program (DLP), Displacement Cost / Opportunity Cost, Dynamic Programming Decomposition, Lagrangian Relaxation, Markov Chain Choice Model, Network Revenue Management (+2 more)
+### Community 63 - "Aggregate Planning"
+Cohesion: 0.07
+Nodes (32): Aggregate Planning, Aggregate Unit of Production, Capacity Allocation / Capacity Control, Capacity-Inventory-Backlog Trade-off, Chase Strategy, Collaborative Forecasting, Complementary Demand Portfolio, Component Commonality (+24 more)
 
-### Community 64 - "Just-in-Time (JIT)"
-Cohesion: 0.20
-Nodes (10): Traffic Congestion and Infrastructure, Cross-Docking, In-Bound Consolidation, Just-in-Time (JIT), Kanban, Logistics Impact on the Balance Sheet, Push versus Pull, Smart Logistics / Intelligent Transport (+2 more)
+### Community 64 - "Quick Response"
+Cohesion: 0.09
+Nodes (23): Cash-to-Cash Cycle, Traffic Congestion and Infrastructure, Cross-Docking, Customer Order Management System, Electronic Data Interchange / Extranets, Generic Supply Chain Strategies, In-Bound Consolidation, Just-in-Time (JIT) (+15 more)
 
 ### Community 65 - "Lifecycle Assessment"
-Cohesion: 0.20
-Nodes (10): Cost-Benefit and Cost-Effectiveness Analysis, Cradle-to-Cradle Design, Embodied Energy and Carbon, Green Building Certification (LEED/BREEAM), Lifecycle Assessment, Multi-Criteria Supplier Analysis, Product/Organizational Environmental Footprint (PEF/OEF), Waste Minimization (+2 more)
+Cohesion: 0.13
+Nodes (15): Cost-Benefit and Cost-Effectiveness Analysis, Cradle-to-Cradle Design, Data Centre Sustainability, Embodied Energy and Carbon, Green Building Certification (LEED/BREEAM), Lifecycle Assessment, Materials Handling Equipment, Multi-Criteria Supplier Analysis (+7 more)
 
 ### Community 66 - "Input/Output Control"
 Cohesion: 0.67
@@ -462,25 +484,25 @@ Nodes (3): Process Batch, Repetitive Lots Concept, Transfer Batch
 Cohesion: 0.40
 Nodes (5): Center-of-Gravity Method, Domschke and Drexl (1985), Miehle (1958), Miehle Algorithm, Steiner-Weber Model
 
-### Community 74 - "Quick Response"
-Cohesion: 0.22
-Nodes (9): Build-to-Order, Electronic Data Interchange / Extranets, Generic Supply Chain Strategies, Logistics Information System, Make-to-Order, Shortening Product Life Cycles, Quick Response, Shortening Life Cycles (+1 more)
+### Community 74 - "Design of Goods and Services"
+Cohesion: 0.13
+Nodes (16): Computer-Aided Design (CAD), Computer-Aided Manufacturing (CAM), Decision Trees in Product Design, Design for Manufacture and Assembly (DFMA), Product-by-Value Analysis, Product Decision, Design of Goods and Services, Shortening Product Life Cycles (+8 more)
 
-### Community 77 - "Freight Transport"
-Cohesion: 0.22
-Nodes (9): CO2 Equivalent (CO2e), Freight Transport, Fulfilment Centre, Green Logistics, Logistics Outsourcing, Sustainable Warehousing, Transport Emissions, Transport Externalities (+1 more)
+### Community 77 - "Network Design"
+Cohesion: 0.08
+Nodes (32): Clicks-and-Mortar Strategy, Competitive Strategy, Product Digitization, Distribution Network Design, Distribution Network Ownership Structure, Distribution Network Service Factors, Distributor Storage with Carrier Delivery, Facilities (+24 more)
 
 ### Community 78 - "Supply Chain Integration"
 Cohesion: 0.22
 Nodes (9): Cross-Functional Teams, Functional (Vertical) Organisation, Functional Silos, Horizontal (Market-Facing) Organisation, Logistics as the Vehicle for Change, Logistics Management, Process Management, Supply Chain Integration (+1 more)
 
-### Community 93 - "Safety Stock"
-Cohesion: 0.29
-Nodes (8): Centralised Inventory, Focused Factory, Forecast Error, Substituting Information for Inventory, Risk Pooling / Aggregation, Safety Stock, Square Root Rule (Inventory), Virtual / Electronic Inventory
+### Community 93 - "Safety Inventory"
+Cohesion: 0.09
+Nodes (33): Vandeput: Inventory Optimization (Models and Simulations), Continuous Review Policy, Cycle Inventory, Demand During Lead Time, Demand Seasonality, Demand Uncertainty, Discrete Probabilistic Demand, Economic Order Quantity (EOQ) (+25 more)
 
-### Community 97 - "Bow-Tie Risk Analysis"
-Cohesion: 0.40
-Nodes (5): Bow-Tie Risk Analysis, DAPSI(W)R(M) Framework, Event Tree Analysis (ETA), Fault Tree Analysis (FTA), Ten Tenets of Environmental Management
+### Community 97 - "Postponement"
+Cohesion: 0.11
+Nodes (23): Demand Aggregation, Coefficient of Variation of Demand, Continuous Replenishment Program (CRP), Cycle View of Supply Chain, Demand Correlation Across Regions, E-Commerce / Online Channel Supply Chain, Information Centralization, Inventory Aggregation (+15 more)
 
 ### Community 98 - "Relationship / Customer-Lifetime Pricing"
 Cohesion: 0.67
@@ -490,25 +512,113 @@ Nodes (3): Relationship / Customer-Lifetime Pricing, Long-Term Price Optimizatio
 Cohesion: 0.67
 Nodes (3): Luxury Price Position, Prestige (Snob/Veblen) Effect, Price-Quality Effect
 
+### Community 100 - "Decision Analysis"
+Cohesion: 0.09
+Nodes (22): Backward Induction, Bellman's Principle of Optimality, Portfolio of Dedicated and Flexible Capacity, Decision Analysis, Dedicated Capacity, Discounted Cash Flow (DCF), Exchange-Rate Risk, Expected Monetary Value (EMV) (+14 more)
+
+### Community 101 - "Outsourcing vs In-House"
+Cohesion: 0.12
+Nodes (17): Activity Map, Contract Manufacturing, Core Competencies and Outsourcing, Factor-Rating Method, Porter's Five Forces Model, Key Success Factors, Make-or-Buy Decision, Mission (+9 more)
+
+### Community 102 - "Sourcing"
+Cohesion: 0.12
+Nodes (17): Base Load and Variation, Cost of Goods Sold (COGS), Design Collaboration, Design for Logistics, Efficient Supply Source, Procurement, Product-Based Tailored Sourcing, Responsive Supply Source (+9 more)
+
+### Community 103 - "Supply Chain Risk"
+Cohesion: 0.13
+Nodes (16): Atomic vs Holistic Risk, Cyber Breach and Attack Risk, Food Miles, Globalization of Supply Chains, Lean Practices / JIT, Local Sourcing, Nearshoring, Normal Accident Theory (+8 more)
+
+### Community 104 - "Capacity Planning"
+Cohesion: 0.13
+Nodes (16): Bottleneck Time, Capacity, Capacity Efficiency, Capacity Planning, Capacity Utilization, Design Capacity, Economic Forecast, Effective Capacity (+8 more)
+
+### Community 105 - "Project Management"
+Cohesion: 0.22
+Nodes (13): Variability in Activity Times, Critical Path Method (CPM), Gantt Chart, Project Network Diagram, Program Evaluation and Review Technique (PERT), PERT Three Time Estimates, Project Controlling, Project Management (+5 more)
+
+### Community 106 - "Product Availability"
+Cohesion: 0.18
+Nodes (13): Cost of Overstocking (Co), Cost of Understocking (Cu), Cycle Service Level (CSL), Expected Shortage per Replenishment Cycle (ESC), Level of Product Availability, Managerial Levers for Product Availability, Normal Distribution Modeling of Demand, Optimal Level of Product Availability (+5 more)
+
+### Community 107 - "Network Design Under Uncertainty"
+Cohesion: 0.18
+Nodes (13): Exchange Rate Uncertainty, Flexible Contract, Total Landed Cost, Long-Term Contract, Network Design Under Uncertainty, Onshoring vs Offshoring Decision, Price Uncertainty, Sensitivity Analysis (+5 more)
+
+### Community 108 - "Continuous Improvement and a Fresh Eye"
+Cohesion: 0.17
+Nodes (12): Assignable (Special-Cause) Variation, Cause-and-Effect Diagram (Ishikawa/Fish-Bone), Continuous Improvement and a Fresh Eye, Control Chart, Kaizen, Natural (Common-Cause) Variation, Pareto Chart, PDCA Cycle (Plan-Do-Check-Act) (+4 more)
+
+### Community 109 - "Building Trust Through Transparency"
+Cohesion: 0.18
+Nodes (12): Avoiding Micromanagement, Building Trust Through Transparency, Coaching and Guiding (Not Directing), Creating Followership, Empowerment and Ownership, High-Performance Trust Culture, Kindness and People-First Leadership, Lazy Leadership (Make Yourself Replaceable) (+4 more)
+
+### Community 110 - "Competitive Advantage"
+Cohesion: 0.18
+Nodes (11): Competing on Cost, Competing on Differentiation, Competing on Response, Competitive Advantage, Differentiation Strategy, Experience Differentiation, Flexible Response, Low-Cost Leadership (+3 more)
+
+### Community 111 - "Supply Chain Macro Processes"
+Cohesion: 0.18
+Nodes (11): Customer Relationship Management (CRM), Information Enabling Technologies, Enterprise Resource Planning (ERP), Information Technology in a Supply Chain, Internal Supply Chain Management (ISCM), Software as a Service (SaaS), Supplier Relationship Management (SRM), Information Technology in the Supply Chain (+3 more)
+
+### Community 112 - "Single-Resource Revenue Management"
+Cohesion: 0.24
+Nodes (10): Booking Limit, Dynamic Programming, Expected Marginal Seat Revenue (EMSR), Fare Ratio, Generalized Newsvendor Problem, Littlewood's Rule, Low-Before-High Arrival Pattern, Protection Level (+2 more)
+
+### Community 113 - "Third-Party Aggregation"
+Cohesion: 0.22
+Nodes (9): Asset Specificity, Capacity Aggregation, Information Aggregation, Relationship Aggregation, Supply Chain Profitability, Supply Chain Surplus, Third-Party Aggregation, Transportation Aggregation (+1 more)
+
+### Community 114 - "Critical Path"
+Cohesion: 0.36
+Nodes (8): Backward Pass, Cost-Time Trade-Off, Critical Path, Critical Paths (Nodes and Links), Failure Mode and Effect Analysis (FMEA), Forward Pass, Project Crashing, Slack Time
+
+### Community 115 - "Forward Buying"
+Cohesion: 0.25
+Nodes (8): Every Day Low Pricing (EDLP), Forward Buying, Managing Demand, Market Growth, Promotion Timing, Short-Term Price Promotion, Stealing Share, Trade Promotions
+
+### Community 116 - "Sustainability in the Supply Chain"
+Cohesion: 0.38
+Nodes (7): Absolute vs Relative Sustainability Measures, Emission Tax and Cap-and-Trade, Greenhouse Gas Protocol (Scope 1/2/3), Sustainability in the Supply Chain, Sustainability Metrics, Sustainability Across Supply Chain Drivers, Tragedy of the Commons
+
+### Community 117 - "Fixed Ordering Cost"
+Cohesion: 0.29
+Nodes (7): Advanced Shipping Notice (ASN), Lot Sizing with Multiple Products, Fixed Ordering Cost, Managerial Levers to Reduce Cycle Inventory, Order Aggregation, RFID Technology, Setup/Order Cost Reduction
+
+### Community 118 - "Revenue Management"
+Cohesion: 0.33
+Nodes (7): Airline Deregulation Origin of RM, Bulk and Spot Contracts, Differential / Menu Pricing, Everyday Low Pricing vs High-Low Pricing, Perishable Asset / Capacity, Pricing, Revenue Management
+
+### Community 119 - "Process Analysis and Design"
+Cohesion: 0.40
+Nodes (6): Flowchart, Process Analysis and Design, Process Redesign, Service Blueprinting, Time-Function Mapping, Value-Stream Mapping
+
+### Community 120 - "Bill of Material (BOM)"
+Cohesion: 0.50
+Nodes (4): Bill of Material (BOM), Engineering Drawing, Group Technology, Route Sheet
+
+### Community 121 - "SCOR Model (Plan, Source, Make, Deliver, Retur"
+Cohesion: 0.67
+Nodes (3): Competitive Benchmarking, No Single Best-Practice Org Structure, SCOR Model (Plan, Source, Make, Deliver, Return)
+
 ## Knowledge Gaps
-- **275 isolated node(s):** `Box & Jenkins: Time Series Analysis: Forecasting and Control`, `Erratic Demand`, `Hyperbolic Exponential Smoothing (HES)`, `Cross-Sectional Aggregation`, `Mean Square Error (MSE / RMSE)` (+270 more)
+- **296 isolated node(s):** `Box & Jenkins: Time Series Analysis: Forecasting and Control`, `Erratic Demand`, `Hyperbolic Exponential Smoothing (HES)`, `Cross-Sectional Aggregation`, `Service Level (Cycle Service Level / Fill Rate)` (+291 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **21 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Palamariu & Alicke: From Source to Sold (Stories of Leadership in Supply Chain)` connect `Distribution Network Design` to `Learning from Mistakes`, `Psychological Safety and Environment`, `Challenging the Status Quo and Innovating`, `Supply Chain Network Design`, `Change Management (Desire-Vision-Process)`, `Collaboration Over Firefighting`, `Managing Supply Chain Complexity`, `Connecting Supply Chain to Business Value`, `Supply Chain Strategy`, `Talent and Leadership Development`, `Supply Chain Resilience`, `End-to-End Visibility`, `CHAIN Leadership Model`, `Technology and Digital Transformation`, `Network / Supply Chain Competition`, `Building Trust Through Transparency`, `Sustainability`?**
-  _High betweenness centrality (0.299) - this node is a cross-community bridge._
-- **Why does `Christopher: Logistics and Supply Chain Management (4th ed.)` connect `Reorder Point` to `Supply Chain Drivers`, `Croston's Method`, `Business Ethics`, `Supply Chain Agility`, `Supply Chain Strategy`, `Supply Chain Resilience`, `End-to-End Visibility`, `Network / Supply Chain Competition`, `Sustainability`, `Supply Chain Network Design`, `Supply Chain Risk`, `Carbon Footprint`, `Managing Supply Chain Complexity`, `Agile Supply Chain`, `Strategic Lead-Time Management`, `Mass Customisation`, `Bullwhip Effect`, `Cleaner Production`, `Demand-Driven vs Forecast-Driven`, `Just-in-Time (JIT)`, `Quick Response`, `Supply Chain Integration`, `Safety Stock`?**
-  _High betweenness centrality (0.290) - this node is a cross-community bridge._
-- **Why does `Grant, Trautrims & Wong: Sustainable Logistics and Supply Chain Management` connect `Business Ethics` to `Just-in-Time (JIT)`, `Bow-Tie Risk Analysis`, `Lifecycle Assessment`, `Supply Chain Network Design`, `Supply Chain Risk`, `Carbon Footprint`, `Freight Transport`, `Agile Supply Chain`, `Product Recovery Management (PRM)`, `Cleaner Production`, `Supply Chain Resilience`, `Freight Transport Modes`, `Producer Responsibility (EPR)`, `Sustainable Procurement`, `Waste Hierarchy`, `Sustainability`?**
-  _High betweenness centrality (0.182) - this node is a cross-community bridge._
+- **Why does `Chopra & Meindl: Supply Chain Management` connect `Quantity Discounts` to `Operations Management`, `Dynamic Pricing on E-commerce Platform with De`, `Assortment Optimization`, `Dynamic Pricing`, `Freight Transport Modes`, `Lead Time Reduction`, `Supply Chain Strategy or Design`, `End-to-End Visibility`, `Network / Supply Chain Competition`, `Overbooking`, `Sustainability`, `Total Cost of Ownership`, `Corporate Social Responsibility (CSR)`, `Economies of Scale`, `Bullwhip Effect`, `Cleaner Production`, `Demand-Driven vs Forecast-Driven`, `Reverse Logistics`, `Aggregate Planning`, `Quick Response`, `Network Design`, `Safety Inventory`, `Postponement`, `Decision Analysis`, `Outsourcing vs In-House`, `Sourcing`, `Supply Chain Risk`, `Capacity Planning`, `Product Availability`, `Network Design Under Uncertainty`, `Competitive Advantage`, `Supply Chain Macro Processes`, `Third-Party Aggregation`, `Forward Buying`, `Sustainability in the Supply Chain`, `Fixed Ordering Cost`, `Revenue Management`?**
+  _High betweenness centrality (0.385) - this node is a cross-community bridge._
+- **Why does `Palamariu & Alicke: From Source to Sold (Stories of Leadership in Supply Chain)` connect `Lead Time Reduction` to `Learning from Mistakes`, `SCOR Model (Plan, Source, Make, Deliver, Retur`, `Employee Empowerment`, `Challenging the Status Quo and Innovating`, `Change Management (Desire-Vision-Process)`, `Managing Supply Chain Complexity`, `Continuous Improvement and a Fresh Eye`, `Building Trust Through Transparency`, `Connecting Supply Chain to Business Value`, `Supply Chain Strategy or Design`, `Talent and Leadership Development`, `Supply Chain Resilience`, `End-to-End Visibility`, `CHAIN Leadership Model`, `Technology and Digital Transformation`, `Network / Supply Chain Competition`, `Collaborative Leadership`, `Sustainability`?**
+  _High betweenness centrality (0.230) - this node is a cross-community bridge._
+- **Why does `Christopher: Logistics and Supply Chain Management (4th ed.)` connect `Centralised Inventory` to `Operations Management`, `Supply Chain Agility`, `Supply Chain Strategy or Design`, `Supply Chain Resilience`, `End-to-End Visibility`, `Network / Supply Chain Competition`, `Sustainability`, `Total Cost of Ownership`, `Carbon Footprint`, `Quantity Discounts`, `Managing Supply Chain Complexity`, `Agile Supply Chain`, `Non-Value-Adding Time`, `Economies of Scale`, `Bullwhip Effect`, `Cleaner Production`, `Demand-Driven vs Forecast-Driven`, `Reverse Logistics`, `Aggregate Planning`, `Quick Response`, `Design of Goods and Services`, `Supply Chain Integration`, `Safety Inventory`, `Postponement`, `Outsourcing vs In-House`, `Supply Chain Risk`, `Product Availability`, `Competitive Advantage`, `Critical Path`, `SCOR Model (Plan, Source, Make, Deliver, Retur`?**
+  _High betweenness centrality (0.172) - this node is a cross-community bridge._
 - **What connects `Box & Jenkins: Time Series Analysis: Forecasting and Control`, `Erratic Demand`, `Hyperbolic Exponential Smoothing (HES)` to the rest of the system?**
-  _279 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `Supply Chain Drivers` be split into smaller, more focused modules?**
-  _Cohesion score 0.058823529411764705 - nodes in this community are weakly interconnected._
+  _300 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `Operations Management` be split into smaller, more focused modules?**
+  _Cohesion score 0.13333333333333333 - nodes in this community are weakly interconnected._
 - **Should `Croston's Method` be split into smaller, more focused modules?**
-  _Cohesion score 0.06531986531986532 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06638714185883997 - nodes in this community are weakly interconnected._
 - **Should `Behavioral Pricing / Behavioral Economics` be split into smaller, more focused modules?**
   _Cohesion score 0.0677361853832442 - nodes in this community are weakly interconnected._

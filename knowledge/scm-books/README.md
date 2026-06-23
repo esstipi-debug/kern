@@ -1,12 +1,13 @@
 # SCM Books Knowledge Graph (L3 domain knowledge)
 
-A graphify knowledge graph built from **22 supply-chain books** (forecasting,
+A graphify knowledge graph built from **23 supply-chain books** (forecasting,
 pricing, revenue management, supply chain management, inventory optimization,
-manufacturing planning & control, logistics & operations strategy, sustainable
-logistics, **and supply-chain leadership**). This is the **domain knowledge**
-layer for the agent — distinct from the repo's `graphify-out/`, which graphs the *code*.
+manufacturing planning & control, operations management, logistics & operations
+strategy, sustainable logistics, **and supply-chain leadership**). This is the
+**domain knowledge** layer for the agent — distinct from the repo's
+`graphify-out/`, which graphs the *code*.
 
-- `graph.json` — 1383 nodes · 2539 edges · 100 communities (GraphRAG-ready)
+- `graph.json` — 1824 nodes · 3640 edges · 122 communities (GraphRAG-ready)
 - `graph.html` — interactive visual (open in a browser)
 - `GRAPH_REPORT.md` — communities, god nodes, surprising cross-book connections
 
@@ -17,8 +18,9 @@ pricing (Nagle, Simon, Phillips), revenue management (Gallego & Topaloglu,
 Talluri & van Ryzin), supply chain (Chopra & Meindl, Operations & SCM),
 inventory optimization (Vandeput), manufacturing planning & control (Vollmann),
 global supply chain & operations (Ivanov), logistics strategy (Christopher),
-sustainable logistics (Grant, Trautrims & Wong), supply-chain leadership
-(Palamariu & Alicke, *From Source to Sold*), plus 4 arXiv papers on dynamic/RL pricing.
+sustainable logistics (Grant, Trautrims & Wong), operations management (Heizer,
+Render & Munson), supply-chain leadership (Palamariu & Alicke, *From Source to
+Sold*), plus arXiv papers on dynamic/RL pricing.
 
 The inventory concepts this repo's `src/` engine implements (EOQ, reorder
 point, safety stock, (s,Q)/(R,S) policies, fill rate, cost/service-level
@@ -45,6 +47,13 @@ network design, risk & resilience, digital SC / Industry 4.0), **Christopher**
 **Grant, Trautrims & Wong** *Sustainable Logistics & SCM* (green logistics,
 reverse logistics, circular economy, sustainable procurement). Shared concepts
 merge by canonical label into cross-book bridges.
+
+**Chopra & Meindl** was then deepened from 32 to ~312 nodes (strategy, network
+design, sourcing, transportation, coordination, revenue management), and
+**Heizer, Render & Munson** *Operations Management* added ~161 nodes of the
+operations layer the graph lacked — quality/SPC & Six Sigma, process & layout
+design, facility location, project management (PERT/CPM), QFD, capacity/TOC, and
+decision analysis.
 
 Concept node IDs are canonical
 (`bullwhip_effect`, `crostons_method`, `dynamic_pricing`), so the same concept
