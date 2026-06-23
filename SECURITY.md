@@ -21,46 +21,55 @@ The engine itself (`src/`) is pure computation over numpy/pandas — no shell, n
 
 | Risk | Control | Where |
 |------|---------|-------|
-| Out-of-range / adversarial numeric params | Bounded `Query(...)` on every param (`service_level∈(0,1)`, `holding_rate∈(0,2]`, `budget≥0`, …) | [`app.py:252`](webapp/app.py#L252) |
-| `Infinity`/`NaN` injected via JSON | Incoming JSON parsed with `parse_constant=_reject_nonfinite`; `lead_overrides` must be finite numbers in `(0, 52]` or `400` | [`app.py:260`](webapp/app.py#L260) |
-| Invalid JSON emitted to clients | `SafeJSONResponse` serializes with `allow_nan=False` — non-finite floats raise instead of producing invalid JSON | [`app.py:57`](webapp/app.py#L57) |
-| Malformed `params` body | Must parse to a JSON **object** or `400` | [`app.py:320`](webapp/app.py#L320) |
-| Injection via the `client` label (lands in report headings) | Whitelist `re.sub(r"[^\w\s.,\-]", "", client)[:100]` | [`app.py:328`](webapp/app.py#L328) |
-| **Path traversal / absolute-path write** in upload filename | Filename reduced to `os.path.basename`, `.`/`..` rejected, resolved parent pinned to the per-job dir | [`app.py:336`](webapp/app.py#L336) |
-| **Upload size exhaustion** | Read capped at `MAX_UPLOAD_BYTES` (25 MB); over-limit → `413` | [`app.py:42`](webapp/app.py#L42), [`app.py:346`](webapp/app.py#L346) |
-| Per-job output leaking across requests | Each job writes to an isolated `tempfile.mkdtemp` dir | [`app.py:334`](webapp/app.py#L334) |
-| Unbounded disk growth | `_prune_old_jobs` sweeps job dirs older than `JOBS_TTL_SECONDS` (1 h) on each request | [`app.py:293`](webapp/app.py#L293) |
-| Arbitrary file download | Download URLs are accepted only if `relative_to(JOBS_OUTPUT_DIR)`; anything outside is dropped | [`app.py:357`](webapp/app.py#L357) |
+| Out-of-range / adversarial numeric params | Bounded `Query(...)` on every param (`service_level∈(0,1)`, `holding_rate∈(0,2]`, `budget≥0`, …) | [`app.py:264`](webapp/app.py#L264) |
+| `Infinity`/`NaN` injected via JSON | Incoming JSON parsed with `parse_constant=_reject_nonfinite`; `lead_overrides` must be finite numbers in `(0, 52]` or `400` | [`app.py:275`](webapp/app.py#L275) |
+| Invalid JSON emitted to clients | `SafeJSONResponse` serializes with `allow_nan=False` — non-finite floats raise instead of producing invalid JSON | [`app.py:59`](webapp/app.py#L59) |
+| Malformed `params` body | Must parse to a JSON **object** or `400` | [`app.py:333`](webapp/app.py#L333) |
+| Injection via the `client` label (lands in report headings) | Whitelist `re.sub(r"[^\w\s.,\-]", "", client)[:100]` | [`app.py:340`](webapp/app.py#L340) |
+| **Path traversal / absolute-path write** in upload filename | Filename reduced to `os.path.basename`, `.`/`..` rejected, resolved parent pinned to the per-job dir | [`app.py:351`](webapp/app.py#L351) |
+| **Upload size exhaustion** | Read capped at `MAX_UPLOAD_BYTES` (25 MB); over-limit → `413` | [`app.py:44`](webapp/app.py#L44), [`app.py:359`](webapp/app.py#L359) |
+| Per-job output leaking across requests | Each job writes to an isolated `tempfile.mkdtemp` dir | [`app.py:346`](webapp/app.py#L346) |
+| Unbounded disk growth | `_prune_old_jobs` sweeps job dirs older than `JOBS_TTL_SECONDS` (1 h) on each request | [`app.py:305`](webapp/app.py#L305) |
+| Arbitrary file download | Download URLs are accepted only if `relative_to(JOBS_OUTPUT_DIR)`; anything outside is dropped | [`app.py:372`](webapp/app.py#L372) |
+| Clickjacking · MIME-sniffing · referrer leak | Always-on headers — `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy` — plus a **path-aware CSP** (strict on the dashboard; relaxed only for the `/console` React/Babel prototype) | [`security.py`](webapp/security.py) |
+| Brute force / abuse of `POST /api/jobs` | Opt-in sliding-window **rate limit** per client IP → `429` + `Retry-After` | [`security.py`](webapp/security.py) |
+| Unauthorized access | Opt-in **API-key gate** (constant-time compare) → `401` | [`security.py`](webapp/security.py) |
 
-These paths are regression-tested: see `test_input_validation`,
-`test_lead_overrides_rejects_nonfinite_and_out_of_range`,
-`test_jobs_upload_filename_traversal_is_contained`, and
-`test_jobs_upload_too_large_rejected` in [`tests/test_webapp.py`](tests/test_webapp.py).
+These paths are regression-tested in [`tests/test_webapp.py`](tests/test_webapp.py)
+(`test_input_validation`, `test_lead_overrides_rejects_nonfinite_and_out_of_range`,
+`test_jobs_upload_filename_traversal_is_contained`, `test_jobs_upload_too_large_rejected`)
+and [`tests/test_webapp_security.py`](tests/test_webapp_security.py) (headers, path-aware
+CSP, rate-limit and API-key behaviour).
 
 ## Secret management
 
-- No secrets are committed. The only environment variables read by application
-  code are `ANTHROPIC_API_KEY` (optional — enables Claude-assisted parsing and
-  narrative) and `MOONSHOT_API_KEY` (optional — only for the external `graphify`
-  code-graph build). See [`.env.example`](.env.example).
+- No secrets are committed. Application code reads `ANTHROPIC_API_KEY` (optional —
+  Claude-assisted parsing/narrative) and `MOONSHOT_API_KEY` (optional — only the
+  external `graphify` build). The web app's hardening knobs (`LINCHPIN_API_KEY`,
+  `LINCHPIN_RATE_LIMIT`, `LINCHPIN_RATE_WINDOW`, `LINCHPIN_CORS_ORIGINS`) are also
+  env-driven; of those only `LINCHPIN_API_KEY` is a secret. See [`.env.example`](.env.example).
 - `.env` and `.env.local` are git-ignored. The engine, web app, and tests all run
   with **zero** secrets configured; missing keys degrade gracefully to the
   rules-based path, they do not crash.
 
-## Known limitations — read before a public deploy
+## Hardening for a public deploy
 
-The web app is built for **trusted / internal use or to run behind a gateway**.
-It deliberately ships *without*:
+The app is safe for local/internal analyst use **out of the box**: the headers and
+CSP are always on and the input/upload controls above are unconditional. The access
+controls ship **built-in but opt-in**, so dev use is unchanged — set these
+environment variables before exposing the app publicly:
 
-- **Authentication / authorization** — add an API key or your IdP at the proxy.
-- **Rate limiting** — front it with a reverse proxy (nginx/Caddy) or add
-  `slowapi` before exposing `POST /api/jobs` publicly.
-- **TLS and security headers** (`HSTS`, `X-Content-Type-Options`, CSP) — terminate
-  TLS and set headers at the proxy.
-- **A CORS allowlist** — restrict origins if you serve the API cross-site.
+| Variable | Effect | Default |
+|----------|--------|---------|
+| `LINCHPIN_API_KEY` | Require a matching `X-API-Key` header on `POST /api/jobs` | unset → open |
+| `LINCHPIN_RATE_LIMIT` | Max requests per window per client IP (`0` disables) | `0` → off |
+| `LINCHPIN_RATE_WINDOW` | Rate-limit window, seconds | `60` |
+| `LINCHPIN_CORS_ORIGINS` | Comma-separated CORS allowlist | unset → same-origin only |
 
-None of these are required for the intended local/internal analyst workflow; they
-are the checklist for hardening Linchpin into a public SaaS.
+Still terminate **TLS and set `HSTS`** at your reverse proxy (nginx/Caddy) — the app
+speaks plain HTTP and does not manage certificates. The `/console` prototype relaxes
+its CSP to load React/Babel from unpkg; if you expose it publicly, prefer
+self-hosting those assets.
 
 ## Reporting a vulnerability
 
