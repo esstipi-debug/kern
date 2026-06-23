@@ -13,6 +13,7 @@ from jobs import (
     qa,
     sop_deliverable,
     sop_job,
+    sourcing_job,
 )
 from jobs.inventory_optimization import run as run_inventory
 from jobs.pricing import prepare_pricing
@@ -338,6 +339,49 @@ def abc_xyz_tool() -> Tool:
     )
 
 
+# ---- sourcing (supplier selection / MCDM award) ------------------------------
+
+def _sourcing_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a supplier delivery CSV (supplier, on-time, in-full, lead, defects) is required"])
+    try:
+        payload = sourcing_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["scorecards"]:
+        return Prepared(status="needs_data", messages=["no suppliers found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _sourcing_run(payload: object, params: dict) -> Produced:
+    report = sourcing_job.run(
+        payload["scorecards"], payload["prices"], weights=params.get("weights"),
+    )
+    return Produced(report=report, summary=report.summary)
+
+
+def sourcing_tool() -> Tool:
+    return Tool(
+        key="sourcing",
+        title="Supplier Sourcing & Selection",
+        description="Score competing suppliers on OTIF / lead time / quality / price and rank them "
+                    "(TOPSIS) into a recommended, exec-ready award.",
+        intent_keywords=(
+            "supplier selection", "supplier scorecard", "sourcing", "supplier performance",
+            "supplier award", "vendor selection", "procurement", "supplier comparison",
+            "otif", "difot", "best supplier",
+        ),
+        requires_data=True,
+        prepare=_sourcing_prepare,
+        run=_sourcing_run,
+        qa=lambda report: sourcing_job.verify(report),
+        deliver=lambda report, out_dir, client: sourcing_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence: sourcing_job.build_deck(
+            report, client=client, citations=tuple(citations), confidence=confidence,
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -346,4 +390,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(cost_to_serve_tool())
     reg.register(sop_tool())
     reg.register(abc_xyz_tool())
+    reg.register(sourcing_tool())
     return reg
