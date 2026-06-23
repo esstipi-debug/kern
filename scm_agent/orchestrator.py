@@ -31,12 +31,16 @@ class Orchestrator:
         registry: ToolRegistry | None = None,
         provider: LLMProvider | None = None,
         knowledge: KnowledgeBase | None = None,
+        persona: str = "",
     ) -> None:
         self.registry = registry if registry is not None else build_default_registry()
         self.provider = provider if provider is not None else get_provider()
         # L3 domain knowledge. Loads the books graph (committed) + code graph
         # (gitignored). Absent graphs degrade gracefully to no citations.
         self.knowledge = knowledge if knowledge is not None else KnowledgeBase()
+        # The operating mode's voice for client-facing narration. Empty => the
+        # narrative prompt is unchanged (the deterministic output never depends on it).
+        self.persona = persona
 
     def run(
         self,
@@ -96,8 +100,15 @@ class Orchestrator:
                 qa_issues=issues,
             )
 
-        written = tool.deliver(produced.report, out_dir / tool.key, request.client)
+        # Ground first: the premium deck weaves the L3 citations in, so they must
+        # be resolved before the deliver path runs.
         citations = self._ground(tool)
+        written = tool.deliver(produced.report, out_dir / tool.key, request.client)
+        if tool.deck is not None:
+            deck_files = tool.deck(
+                produced.report, out_dir / tool.key, request.client, citations, intent.confidence
+            )
+            written.update({f"deck_{name}": path for name, path in deck_files.items()})
         summary = self._narrative(produced.summary, tool.title, citations)
         return JobResult(
             status=STATUS_OK, tool=tool.key, confidence=intent.confidence,
@@ -142,11 +153,18 @@ class Orchestrator:
         ground = ""
         if citations:
             ground = "\nGround it in these sources where relevant: " + "; ".join(citations)
-        try:
-            text = self.provider.complete(
-                f"Rewrite this {tool_title} result summary in one clear, client-ready sentence. "
-                f"Keep every number. Return only the sentence.\n\n{base_summary}{ground}"
+        if self.persona:
+            instruction = (
+                f"You are {self.persona}. Rewrite this {tool_title} result summary in one clear, "
+                "client-ready sentence in your voice. Keep every number. Return only the sentence."
             )
+        else:
+            instruction = (
+                f"Rewrite this {tool_title} result summary in one clear, client-ready sentence. "
+                "Keep every number. Return only the sentence."
+            )
+        try:
+            text = self.provider.complete(f"{instruction}\n\n{base_summary}{ground}")
         except Exception:
             logger.debug("narrative upgrade failed", exc_info=True)
             return base_summary

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from jobs import deliverables, intake, leadership, qa
+from jobs import deliverables, intake, inventory_deliverable, leadership, qa
 from jobs.inventory_optimization import run as run_inventory
 from jobs.pricing import prepare_pricing
 from jobs.pricing import run as run_pricing
@@ -67,6 +67,9 @@ def inventory_tool() -> Tool:
         run=_inventory_run,
         qa=lambda report: qa.verify(report),
         deliver=lambda report, out_dir, client: deliverables.write_all(report, out_dir, client=client),
+        deck=lambda report, out_dir, client, citations, confidence: inventory_deliverable.build(
+            report, client=client, citations=tuple(citations), confidence=confidence
+        ).write_all(out_dir),
     )
 
 

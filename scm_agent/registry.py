@@ -41,6 +41,10 @@ class Tool:
     run: Callable[[object, dict], Produced]
     qa: Callable[[object], list[str]]
     deliver: Callable[[object, Path, str], dict[str, Path]]
+    # Optional premium deck (the "artifacts that sell" Deliverable), emitted alongside
+    # the operational files. Receives the L3 citations + confidence the orchestrator
+    # computed. None => this tool ships operational files only.
+    deck: Callable[[object, Path, str, list, float], dict[str, Path]] | None = None
 
 
 class ToolRegistry:

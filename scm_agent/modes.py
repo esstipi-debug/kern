@@ -141,5 +141,7 @@ def build_registry(mode: Mode, full: ToolRegistry | None = None) -> ToolRegistry
 
 
 def orchestrator_for(mode: Mode, **kwargs) -> Orchestrator:
-    """An Orchestrator scoped to a mode's tool surface (provider/knowledge via kwargs)."""
+    """An Orchestrator scoped to a mode's tool surface and narrating in its persona
+    (provider/knowledge/persona overridable via kwargs)."""
+    kwargs.setdefault("persona", mode.persona)
     return Orchestrator(registry=build_registry(mode), **kwargs)
