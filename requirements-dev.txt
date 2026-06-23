@@ -1,5 +1,6 @@
-# Development dependencies (tests, coverage, linting).
-# Runtime deps live in requirements.txt.
+# Development dependencies (tests, coverage, linting, web UI test client).
+# Canonical source is pyproject.toml — equivalent to: pip install -e ".[dev,web]"
+# Kept for `pip install -r requirements-dev.txt` workflows.
 -r requirements.txt
 pytest>=7.0
 pytest-cov>=4.0

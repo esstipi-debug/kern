@@ -73,15 +73,14 @@ Two cross-cutting guarantees keep the agent safe in production:
 ```bash
 git clone https://github.com/esstipi-debug/linchpin
 cd linchpin
-pip install -r requirements.txt
+pip install -e ".[web]"          # canonical install (engine + web UI). For the engine only, `pip install -r requirements.txt` also works.
 
 # ── The agent: brief in, deliverable out ───────────────────────────────
 python examples/run_agent.py --brief "set up reorder points" --data data/sample_demand_portfolio.csv
 python examples/run_agent.py --brief "what price maximizes profit" --data data/sample_pricing.csv
 python examples/run_agent.py --brief "evaluate our SC leadership" --scores "3 2 3 1 1" --name "Team"
 
-# ── Web UI + live agent console ────────────────────────────────────────
-pip install -r webapp/requirements.txt
+# ── Web UI + live agent console (deps already installed above) ──────────
 python -m uvicorn webapp.app:app --reload
 #   dashboard       → http://localhost:8000
 #   agent console   → http://localhost:8000/console
@@ -145,6 +144,62 @@ brief ─▶ intent.classify ─▶ registry.get(tool) ─▶ prepare ─▶ run
 - **Statuses** — `ok` · `needs_clarification` · `needs_data` · `qa_failed` · `error`
 
 Full reference: [`scm_agent/README.md`](scm_agent/README.md). The `leadership_chain` capability wraps the **CHAIN** model — *síntesis original inspirada en* From Source to Sold *(Palamariu & Alicke, 2022); no reproduce el texto del libro.*
+
+<details>
+<summary><b>🔄 Request lifecycle — <code>POST /api/jobs</code></b></summary>
+
+```mermaid
+sequenceDiagram
+    participant C as Client (console / curl)
+    participant API as FastAPI (webapp/app.py)
+    participant O as Orchestrator (scm_agent)
+    participant T as Tool (prepare→run→qa→deliver)
+    participant KB as L3 knowledge graph
+
+    C->>API: multipart: brief, client, params, file
+    API->>API: validate params JSON · sanitize client · cap upload 25 MB · pin filename
+    API->>O: run(brief, data_path, overrides, out_dir)
+    O->>O: intent.classify (rules + optional LLM)
+    O->>T: registry.get(tool).prepare → run → qa
+    T->>KB: query citations (chapter ↔ src/ function)
+    alt QA passes
+        T-->>O: deliver() writes Excel + report to job dir
+        O-->>API: JobResult(status=ok, deliverables, citations)
+    else QA fails
+        O-->>API: JobResult(status=qa_failed, no deliverable)
+    end
+    API-->>C: JSON + /jobs-output/ download URLs
+```
+
+Example response (`status: ok`):
+
+```json
+{
+  "status": "ok",
+  "tool": "inventory_optimization",
+  "confidence": 0.87,
+  "summary": "12 SKUs · $44k budget · 3 flagged high-bias · (s,Q) for 9, (R,S) for 3.",
+  "deliverables": {
+    "report": "/abs/job/inventory_optimization/report.md",
+    "excel": "/abs/job/inventory_optimization/inventory_plan.xlsx"
+  },
+  "download_urls": {
+    "report": "/jobs-output/tmp09dw516z/inventory_optimization/report.md",
+    "excel": "/jobs-output/tmp09dw516z/inventory_optimization/inventory_plan.xlsx"
+  },
+  "qa_issues": [],
+  "clarifications": [],
+  "citations": [
+    {"concept": "Safety Stock", "source": "Vandeput Ch.4", "module": "src/safety_stock.py"}
+  ]
+}
+```
+
+Other statuses return the same envelope with `status` one of
+`needs_clarification` · `needs_data` · `qa_failed` · `error` and an empty
+`deliverables` map.
+
+</details>
 
 ---
 
@@ -312,9 +367,10 @@ jobs/                 Playbooks (inventory · pricing · leadership) + intake/QA
 src/                  Core engine (EOQ → simulation optimization → forecasting → pricing)
 webapp/               FastAPI dashboard + POST /api/jobs + live agent console (static/prototype/)
 examples/             CLI workflows (run_agent, parts 1-4, batch, jobs, plots)
-tests/                211 tests with book numeric examples
+tests/                600+ tests: engine (book numeric examples) + agent + HTTP layer (traversal/upload guards)
 data/                 Sample demand + pricing
-documentation/        Guides, FAQ, methodology
+documentation/        Guides: Getting Started, FAQ, methodology, capability-expansion plan
+docs/                 Design briefs, handoff notes, assets
 power-bi/             CSV dataset + M queries + DAX + SETUP.md
 .cursor/skills/       Agent skills (Cursor / Claude Code)
 .github/workflows/    CI (pytest on 3.11–3.13)
@@ -332,6 +388,7 @@ power-bi/             CSV dataset + M queries + DAX + SETUP.md
 | [Methodology](documentation/METHODOLOGY.md) | Models, assumptions, glossary |
 | [FAQ](documentation/FAQ.md) | Common questions |
 | [`scm_agent/README.md`](scm_agent/README.md) | The agent reference |
+| [Security](SECURITY.md) | Threat model, enforced controls, hardening checklist |
 
 **Agent skills** (`.cursor/skills/`, synced to `~/.claude/skills/`): `vandeput-inventory-optimization` (overview + decision tree), `…-eoq-policies` (Ch. 2–5), `…-service-cost` (Ch. 6–8), `…-advanced` (Ch. 9–13). Invoke in Claude Code with `/vandeput-inventory-optimization`.
 
