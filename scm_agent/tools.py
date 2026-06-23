@@ -10,6 +10,7 @@ from jobs import (
     deliverables,
     intake,
     inventory_deliverable,
+    landed_cost_job,
     leadership,
     qa,
     sop_deliverable,
@@ -426,6 +427,49 @@ def ddmrp_tool() -> Tool:
     )
 
 
+# ---- landed_cost (Incoterm-aware total landed cost) --------------------------
+
+def _landed_cost_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a shipment CSV (sku, unit cost, qty, freight, duty rate, incoterm) is required"])
+    try:
+        records = landed_cost_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not records:
+        return Prepared(status="needs_data", messages=["no shipment lines found in the data"])
+    return Prepared(status="ok", payload=records)
+
+
+def _landed_cost_run(payload: object, params: dict) -> Produced:
+    report = landed_cost_job.run(payload)
+    return Produced(report=report, summary=(
+        f"Landed cost for {report.n_lines} SKU(s): {report.total_landed:,.0f} total, "
+        f"{report.landed_uplift_pct * 100:.0f}% over goods value."
+    ))
+
+
+def landed_cost_tool() -> Tool:
+    return Tool(
+        key="landed_cost",
+        title="Landed-Cost Study",
+        description="Compute the Incoterm-aware fully-landed cost per SKU (goods + freight + "
+                    "insurance + duty + handling + broker) so suppliers are compared on true cost.",
+        intent_keywords=(
+            "landed cost", "total cost of ownership", "incoterm", "duty", "customs",
+            "tariff", "freight cost", "import cost", "total landed",
+        ),
+        requires_data=True,
+        prepare=_landed_cost_prepare,
+        run=_landed_cost_run,
+        qa=lambda report: landed_cost_job.verify(report),
+        deliver=lambda report, out_dir, client: landed_cost_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence: landed_cost_job.build_deck(
+            report, client=client, citations=tuple(citations), confidence=confidence,
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -436,4 +480,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(abc_xyz_tool())
     reg.register(sourcing_tool())
     reg.register(ddmrp_tool())
+    reg.register(landed_cost_tool())
     return reg
