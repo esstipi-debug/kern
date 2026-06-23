@@ -17,7 +17,7 @@ the prepared date is passed in, never read from the clock, so output is testable
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 

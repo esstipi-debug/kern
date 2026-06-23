@@ -149,7 +149,6 @@ def main():
     kb = KnowledgeBase()
     cites = [f"{h.label} - {h.source}{(' ' + h.location) if h.location else ''}"
              for h in kb.search("supplier selection sourcing OTIF freight cost", graph="books", limit=3)]
-    best_card, worst_card = cards[top_ids[0]], cards[top_ids[-1]]
     deliverable = Deliverable(
         title="Supplier & Logistics Review (Olist)",
         client="Olist Marketplace",
