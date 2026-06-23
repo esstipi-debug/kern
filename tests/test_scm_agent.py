@@ -116,12 +116,13 @@ PRICING_CSV = "data/sample_pricing.csv"
 _CODE_GRAPH = Path(__file__).resolve().parent.parent / "graphify-out" / "graph.json"
 
 
-def test_build_default_registry_has_three_tools():
+def test_build_default_registry_tools():
     reg = tools.build_default_registry()
     keys = {t.key for t in reg.list()}
-    assert keys == {"inventory_optimization", "pricing", "leadership_chain"}
+    assert keys == {"inventory_optimization", "pricing", "leadership_chain", "cost_to_serve"}
     assert reg.get("leadership_chain").requires_data is False
     assert reg.get("inventory_optimization").requires_data is True
+    assert reg.get("cost_to_serve").requires_data is True
 
 
 def test_inventory_tool_pipeline_on_sample(tmp_path):

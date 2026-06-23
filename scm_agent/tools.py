@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from jobs import deliverables, intake, inventory_deliverable, leadership, qa
+from jobs import (
+    cost_to_serve_deliverable,
+    cost_to_serve_job,
+    deliverables,
+    intake,
+    inventory_deliverable,
+    leadership,
+    qa,
+)
 from jobs.inventory_optimization import run as run_inventory
 from jobs.pricing import prepare_pricing
 from jobs.pricing import run as run_pricing
@@ -10,6 +18,8 @@ from jobs.pricing import run as run_pricing
 from .llm import LLMProvider
 from .registry import Prepared, Produced, Tool, ToolRegistry
 from .types import JobRequest
+
+from src.cost_to_serve import ServiceCostRates  # isort: skip  (local package)
 
 LEADERSHIP_SCHEMA = {
     "type": "object",
@@ -172,9 +182,63 @@ def leadership_tool() -> Tool:
     )
 
 
+# ---- cost_to_serve -----------------------------------------------------------
+
+def _cost_to_serve_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["an order/sales CSV (with a segment column) is required"])
+    try:
+        activities = cost_to_serve_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not activities:
+        return Prepared(status="needs_data", messages=["no segments found in the data"])
+    return Prepared(status="ok", payload=activities)
+
+
+def _cost_to_serve_run(payload: object, params: dict) -> Produced:
+    rates = ServiceCostRates(
+        cost_per_order=params.get("cost_per_order", 0.0),
+        cost_per_unit_shipped=params.get("cost_per_unit_shipped", 0.0),
+        return_handling_per_unit=params.get("return_handling_per_unit", 0.0),
+    )
+    report = cost_to_serve_job.run(
+        payload, rates=rates,
+        dio=params.get("dio"), dso=params.get("dso"), dpo=params.get("dpo"),
+        dio_days=params.get("dio_days", 0.0), dso_days=params.get("dso_days", 0.0),
+        dpo_days=params.get("dpo_days", 0.0),
+    )
+    return Produced(report=report, summary=report.summary)
+
+
+def cost_to_serve_tool() -> Tool:
+    return Tool(
+        key="cost_to_serve",
+        title="Cost-to-Serve & Working Capital",
+        description="Allocate the true cost of serving each customer/channel/SKU segment "
+                    "(product/fulfillment/returns/overhead), flag loss-makers, and size the "
+                    "working-capital / cash-release opportunity.",
+        intent_keywords=(
+            "cost to serve", "cost-to-serve", "working capital", "cash to cash",
+            "cash conversion", "segment profitability", "channel profitability",
+            "net to serve", "loss-making", "whale curve", "profitability by",
+        ),
+        requires_data=True,
+        prepare=_cost_to_serve_prepare,
+        run=_cost_to_serve_run,
+        qa=lambda report: cost_to_serve_job.verify(report),
+        deliver=lambda report, out_dir, client: cost_to_serve_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence: cost_to_serve_deliverable.build(
+            report.portfolio, working_cap=report.working_cap, cash_release=report.cash_release,
+            client=client, citations=tuple(citations), confidence=confidence,
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
     reg.register(pricing_tool())
     reg.register(leadership_tool())
+    reg.register(cost_to_serve_tool())
     return reg
