@@ -7,6 +7,8 @@ out-of-range allocation) so the human only reviews sound output.
 
 from __future__ import annotations
 
+from src.guided import GuidedOutcome, verify_guided
+
 from .inventory_optimization import JobReport
 from .leadership import DIMS, ChainProfile
 from .pricing import PricingReport
@@ -117,3 +119,33 @@ def verify_leadership(profile: ChainProfile) -> list[str]:
 
 def leadership_passed(profile: ChainProfile) -> bool:
     return not verify_leadership(profile)
+
+
+def coverage_gate(outcome: GuidedOutcome) -> list[str]:
+    """Deliverable coverage gate (plan §2.14). Empty list = the deliverable is covered.
+
+    Extends the never-unprotected contract (``verify_guided``) with the residual-block
+    requirements: a non-executed result must spell out the human residual - every
+    handoff states the risk if skipped, and every escalation routes to a named human
+    with an SLA. This is the QA-layer guard against a silent dead end.
+    """
+    issues = list(verify_guided(outcome))
+
+    for h in outcome.handoffs:
+        if not h.risk_if_skipped.strip():
+            issues.append(f"handoff '{h.title}' does not state the risk if skipped")
+
+    e = outcome.escalation
+    if e is not None:
+        if not e.route_to.strip():
+            issues.append("escalation has no route_to (named human/role)")
+        if not e.sla.strip():
+            issues.append("escalation has no SLA")
+        if not e.reason.strip():
+            issues.append("escalation has no reason")
+
+    return issues
+
+
+def covered(outcome: GuidedOutcome) -> bool:
+    return not coverage_gate(outcome)
