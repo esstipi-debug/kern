@@ -226,3 +226,40 @@ def warehouse_options(layout: object) -> GuidedOutcome:
         f"{n_docks} docks: choose how to refine.",
         items,
     )
+
+
+def queuing_options(report: object) -> GuidedOutcome:
+    busiest = report.busiest_station
+    items: list[_Item] = [
+        ("Cost-optimal staffing",
+         f"Staff each of the {report.n_stations} station(s) to its min-cost server count (total {report.total_cost:,.0f}).",
+         "apply the recommended per-station staffing", "best balance of wait vs labour"),
+        (f"Service-first at {busiest}",
+         f"Add a server at the busiest point ('{busiest}') to cut the {report.max_wait:.2f} wait.",
+         "add a server where the wait is worst", "shorter wait, higher labour"),
+        ("Lean staffing",
+         "Run each station at the minimum stable server count.",
+         "minimize servers across the network", "lowest labour, longer waits"),
+    ]
+    return _ranked(f"Staffing for {report.n_stations} service point(s): choose the policy.", items)
+
+
+def scheduling_options(report: object) -> GuidedOutcome:
+    spt = report.rule_metrics["SPT"]
+    edd = report.rule_metrics["EDD"]
+    fcfs = report.rule_metrics["FCFS"]
+    by_rule = {
+        "SPT": ("Sequence by SPT (fastest throughput)",
+                f"Minimizes mean flow time ({spt.mean_flow_time:.2f}).",
+                "run shortest-processing-first", "clears work fastest; may miss due dates"),
+        "EDD": ("Sequence by EDD (protect due dates)",
+                f"Minimizes maximum lateness ({edd.max_lateness:.2f}).",
+                "run earliest-due-date-first", "best on-time; slower mean flow"),
+        "FCFS": ("Sequence by FCFS (fairness)",
+                 f"Process in arrival order (flow {fcfs.mean_flow_time:.2f}).",
+                 "run first-come-first-served", "simple and fair; not optimal"),
+    }
+    rec = report.recommended_rule
+    order = [rec] + [r for r in ("SPT", "EDD", "FCFS") if r != rec]
+    items: list[_Item] = [by_rule[r] for r in order]
+    return _ranked(f"Sequencing {report.n_jobs} job(s): choose the dispatching rule.", items)

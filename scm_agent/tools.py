@@ -17,8 +17,10 @@ from jobs import (
     landed_cost_job,
     leadership,
     qa,
+    queuing_job,
     reconciliation_job,
     returns_job,
+    scheduling_job,
     sop_deliverable,
     sop_job,
     sourcing_job,
@@ -761,6 +763,105 @@ def returns_tool() -> Tool:
     )
 
 
+# ---- queuing (waiting-line / staffing) ---------------------------------------
+
+def _queuing_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a stations CSV (station, arrival rate, service rate) is required"])
+    try:
+        records = queuing_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not records:
+        return Prepared(status="needs_data", messages=["no service stations found in the data"])
+    return Prepared(status="ok", payload=records)
+
+
+def _queuing_run(payload: object, params: dict) -> Produced:
+    report = queuing_job.run(
+        payload,
+        wait_cost=params.get("wait_cost", 10.0),
+        server_cost=params.get("server_cost", 5.0),
+        max_servers=params.get("max_servers", 30),
+    )
+    return Produced(report=report, summary=(
+        f"Sized {report.n_stations} service point(s); staffing cost {report.total_cost:,.0f}, "
+        f"busiest '{report.busiest_station}', worst wait {report.max_wait:.2f}."
+    ))
+
+
+def queuing_tool() -> Tool:
+    return Tool(
+        key="queuing",
+        title="Queuing / Staffing",
+        description="Size each service point (pick station, returns desk, support queue) to the "
+                    "cost-optimal number of servers from its arrival/service rates, and report the "
+                    "utilization, wait and the wait-vs-labour trade-off.",
+        intent_keywords=(
+            "waiting line", "queuing", "queue", "wait time", "how many servers",
+            "staffing level", "service capacity", "congestion", "server count",
+            "checkout lanes", "call center staffing", "service desk",
+        ),
+        requires_data=True,
+        options=tool_options.queuing_options,
+        prepare=_queuing_prepare,
+        run=_queuing_run,
+        qa=lambda report: queuing_job.verify(report),
+        deliver=lambda report, out_dir, client: queuing_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            queuing_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
+# ---- scheduling (job sequencing) ---------------------------------------------
+
+def _scheduling_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a jobs CSV (job, processing time, optional due date) is required"])
+    try:
+        jobs = scheduling_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not jobs:
+        return Prepared(status="needs_data", messages=["no jobs found in the data"])
+    return Prepared(status="ok", payload=jobs)
+
+
+def _scheduling_run(payload: object, params: dict) -> Produced:
+    report = scheduling_job.run(payload, objective=params.get("objective", "auto"))
+    return Produced(report=report, summary=(
+        f"Sequenced {report.n_jobs} job(s) by '{report.recommended_rule}'; mean flow time "
+        f"{report.mean_flow_time:.2f}, max lateness {report.max_lateness:.2f}."
+    ))
+
+
+def scheduling_tool() -> Tool:
+    return Tool(
+        key="scheduling",
+        title="Job Sequencing",
+        description="Recommend the run order for a set of jobs on a resource (SPT to minimize flow "
+                    "time, EDD to minimize lateness) and report the throughput/on-time trade-off.",
+        intent_keywords=(
+            "job sequencing", "sequence the jobs", "dispatching rule", "dispatch",
+            "shortest processing", "earliest due date", "minimize lateness",
+            "minimize flow time", "run order", "job scheduling", "what order to run",
+            "shop floor schedule",
+        ),
+        requires_data=True,
+        options=tool_options.scheduling_options,
+        prepare=_scheduling_prepare,
+        run=_scheduling_run,
+        qa=lambda report: scheduling_job.verify(report),
+        deliver=lambda report, out_dir, client: scheduling_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            scheduling_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -777,4 +878,6 @@ def build_default_registry() -> ToolRegistry:
     reg.register(reconciliation_tool())
     reg.register(returns_tool())
     reg.register(warehouse_layout_tool())
+    reg.register(queuing_tool())
+    reg.register(scheduling_tool())
     return reg
