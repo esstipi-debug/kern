@@ -38,4 +38,5 @@ class JobResult:
     qa_issues: list[str] = field(default_factory=list)
     clarifications: list[str] = field(default_factory=list)
     citations: list[str] = field(default_factory=list)  # L3 domain grounding (book/chapter)
+    kb_warnings: list[str] = field(default_factory=list)  # surfaced when a knowledge graph is degraded
     guided: GuidedOutcome | None = None  # never-unprotected contract (Guided Execution Layer)

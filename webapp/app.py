@@ -398,6 +398,7 @@ async def api_jobs(
         "qa_issues": result.qa_issues,
         "clarifications": result.clarifications,
         "citations": result.citations,
+        "kb_warnings": result.kb_warnings,
     }
 
 

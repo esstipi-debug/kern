@@ -113,7 +113,7 @@ class Orchestrator:
         return JobResult(
             status=STATUS_OK, tool=tool.key, confidence=intent.confidence,
             deliverables={name: str(path) for name, path in written.items()}, summary=summary,
-            citations=citations,
+            citations=citations, kb_warnings=self.knowledge.warnings(),
         )
 
     def _ground(self, tool: Tool) -> list[str]:
