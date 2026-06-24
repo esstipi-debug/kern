@@ -36,6 +36,26 @@ RATE_LIMIT = _int_env("LINCHPIN_RATE_LIMIT", 0)  # max requests per window; 0 di
 RATE_WINDOW = _int_env("LINCHPIN_RATE_WINDOW", 60)  # window length, seconds
 API_KEY = os.environ.get("LINCHPIN_API_KEY", "").strip()  # empty disables the gate
 CORS_ORIGINS = [o.strip() for o in os.environ.get("LINCHPIN_CORS_ORIGINS", "").split(",") if o.strip()]
+ENV = os.environ.get("LINCHPIN_ENV", "development").strip().lower()  # "production" tightens checks
+REQUIRE_SECURE = os.environ.get("LINCHPIN_REQUIRE_SECURE", "").strip().lower() in ("1", "true", "yes")
+
+
+def production_warnings() -> list[str]:
+    """Misconfiguration warnings for a production deploy.
+
+    Empty in development (or when production is fully secured). The app logs these
+    loudly at startup and, when ``LINCHPIN_REQUIRE_SECURE`` is set, refuses to
+    boot - so an unauthenticated public deploy fails *loud*, not silent.
+    """
+    if ENV != "production":
+        return []
+    out: list[str] = []
+    if not API_KEY:
+        out.append("LINCHPIN_API_KEY is not set - POST /api/jobs is unauthenticated")
+    if RATE_LIMIT <= 0:
+        out.append("LINCHPIN_RATE_LIMIT is 0 - POST /api/jobs is not rate limited")
+    return out
+
 
 # ---- rate-limiter state -------------------------------------------------------
 _BUCKETS: dict[str, deque[float]] = defaultdict(deque)

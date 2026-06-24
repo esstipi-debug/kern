@@ -389,6 +389,7 @@ power-bi/             CSV dataset + M queries + DAX + SETUP.md
 | [FAQ](documentation/FAQ.md) | Common questions |
 | [`scm_agent/README.md`](scm_agent/README.md) | The agent reference |
 | [Security](SECURITY.md) | Threat model, enforced controls, hardening checklist |
+| [Deployment](docs/DEPLOYMENT.md) | Production hardening: env controls, reverse proxy, load notes |
 
 **Agent skills** (`.cursor/skills/`, synced to `~/.claude/skills/`): `vandeput-inventory-optimization` (overview + decision tree), `…-eoq-policies` (Ch. 2–5), `…-service-cost` (Ch. 6–8), `…-advanced` (Ch. 9–13). Invoke in Claude Code with `/vandeput-inventory-optimization`.
 

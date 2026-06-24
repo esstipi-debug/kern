@@ -11,6 +11,7 @@ Run:
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import re
@@ -35,7 +36,7 @@ from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
 from src.policies import continuous_review_sq, periodic_review_rs  # noqa: E402
 from src.sources import CsvDemandSource  # noqa: E402
-from webapp import security  # noqa: E402
+from webapp import observability, security  # noqa: E402
 
 DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -74,6 +75,19 @@ if security.CORS_ORIGINS:
         allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
+
+# Structured per-request access log (+ X-Request-ID). Registered last so it wraps
+# the others and records the final status/duration.
+app.middleware("http")(observability.request_log_middleware)
+if observability.should_configure_logging():
+    observability.configure_logging()
+
+# Fail loud on an unsecured production boot; refuse outright if REQUIRE_SECURE.
+_PROD_WARNINGS = security.production_warnings()
+for _w in _PROD_WARNINGS:
+    logging.getLogger("linchpin.security").warning("production hardening: %s", _w)
+if _PROD_WARNINGS and security.REQUIRE_SECURE:
+    raise RuntimeError("LINCHPIN_REQUIRE_SECURE is set but: " + "; ".join(_PROD_WARNINGS))
 
 
 def _reject_nonfinite(token: str) -> float:
