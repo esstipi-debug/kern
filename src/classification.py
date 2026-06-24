@@ -134,3 +134,13 @@ def portfolio_summary(classifications: list[SkuClassification]) -> dict:
     for bucket in summary.values():
         bucket["value_share"] = bucket["value"] / total_value
     return summary
+
+
+def service_levels(classifications: list[SkuClassification]) -> dict[str, float]:
+    """Per-SKU cycle-service-level target from the ABC class (A highest, C lowest).
+
+    The bridge that lets inventory size a *differentiated* safety stock: feed this map to
+    ``jobs.inventory_optimization.run(service_levels=...)`` so each SKU's buffer reflects
+    its importance instead of one global target.
+    """
+    return {c.product_id: c.service_level for c in classifications}

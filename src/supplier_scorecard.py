@@ -44,3 +44,22 @@ def score_supplier(supplier: str, deliveries: list[dict]) -> SupplierScore:
         avg_lead_time=lead_total / n,
         ppm=ppm,
     )
+
+
+def lead_times_by_supplier(scorecards: list[SupplierScore]) -> dict[str, float]:
+    """Observed average lead time per supplier - the real number to feed the risk period."""
+    return {s.supplier: s.avg_lead_time for s in scorecards}
+
+
+def lead_times_for_skus(
+    scorecards: list[SupplierScore], sku_supplier: dict[str, str]
+) -> dict[str, float]:
+    """Join observed supplier lead times onto SKUs via a SKU->supplier map.
+
+    Feeds ``jobs.inventory_optimization.run(lead_times=...)`` so the policy uses the lead
+    time actually observed in deliveries, not a static assumption. SKUs whose supplier has
+    no scorecard are dropped (the caller keeps the default for those). Units follow the
+    scorecard (days); convert to the inventory model's period if they differ.
+    """
+    by_supplier = lead_times_by_supplier(scorecards)
+    return {sku: by_supplier[sup] for sku, sup in sku_supplier.items() if sup in by_supplier}

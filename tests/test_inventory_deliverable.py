@@ -10,7 +10,7 @@ def _rec(pid: str, investment: float, *, status: str = "ok", intermittent: bool 
         product_id=pid, method="ses", intermittent=intermittent, forecast=10.0, error_std=2.0,
         bias=3.0 if status == "high_bias" else 0.0, mae=1.5, policy_kind="(s, Q)",
         order_quantity=50.0, order_up_to=None, reorder_point=30.0, safety_stock=12.0,
-        z_factor=1.64, unit_cost=8.0, lead_periods=2.0, cycle_investment=investment * 0.6,
+        z_factor=1.64, service_level=0.95, unit_cost=8.0, lead_periods=2.0, cycle_investment=investment * 0.6,
         ss_investment=investment * 0.4, investment=investment, status=status,
     )
 
