@@ -12,6 +12,7 @@ from jobs import (
     ddmrp_job,
     deliverables,
     financial_kpis_job,
+    forecast_job,
     intake,
     inventory_deliverable,
     landed_cost_job,
@@ -913,6 +914,57 @@ def risk_tool() -> Tool:
     )
 
 
+# ---- forecast (demand forecasting & forecastability) -------------------------
+
+def _forecast_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a demand-history CSV (sku, period, quantity) is required"])
+    try:
+        series = forecast_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not series:
+        return Prepared(status="needs_data", messages=["no demand series found in the data"])
+    return Prepared(status="ok", payload=series)
+
+
+def _forecast_run(payload: object, params: dict) -> Produced:
+    report = forecast_job.run(
+        payload,
+        holdout_fraction=params.get("holdout_fraction", 0.25),
+        min_backtest_periods=params.get("min_backtest_periods", 4),
+    )
+    return Produced(report=report, summary=report.summary)
+
+
+def forecast_tool() -> Tool:
+    return Tool(
+        key="forecast",
+        title="Demand Forecasting & Forecastability",
+        description="Segment each SKU by forecastability (Syntetos-Boylan ADI x CV^2: smooth / "
+                    "erratic / intermittent / lumpy), auto-select and backtest the matching method "
+                    "(SES vs Croston), quantify forecast value-add vs naive, and rank forecasting "
+                    "policies into an exec-ready, executable plan.",
+        intent_keywords=(
+            "forecast", "forecasting", "forecast demand", "demand forecast", "forecastability",
+            "intermittent demand", "croston", "forecast accuracy", "forecast value add",
+            "which forecast method", "lumpy demand", "demand pattern", "predict demand",
+        ),
+        requires_data=True,
+        prepare=_forecast_prepare,
+        run=_forecast_run,
+        qa=lambda report: forecast_job.verify(report),
+        deliver=lambda report, out_dir, client: forecast_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            forecast_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        # The forecasting-policy decision IS a set of ranked, executable choices -> surface them
+        # as the guided OPTIONS outcome on success (recommended default flagged).
+        options=lambda report: report.outcome,
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -932,4 +984,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(queuing_tool())
     reg.register(scheduling_tool())
     reg.register(risk_tool())
+    reg.register(forecast_tool())
     return reg

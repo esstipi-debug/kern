@@ -191,9 +191,9 @@ def test_orchestrator_risk_end_to_end_emits_deck_and_options(tmp_path):
 
 
 def test_registry_includes_risk_tool():
-    # risk is the newest analytical capability; it joins the existing surface (now 17 tools).
+    # The exact tool inventory is enforced by test_scm_agent.test_build_default_registry_tools;
+    # here we only assert risk is present (robust to later tool additions).
     reg = tools.build_default_registry()
     keys = {t.key for t in reg.list()}
     assert "risk" in keys
-    assert len(keys) == 17
     assert reg.get("risk").requires_data is True
