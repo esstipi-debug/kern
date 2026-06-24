@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 from jobs import (
     abc_xyz_job,
@@ -500,6 +501,60 @@ def landed_cost_tool() -> Tool:
     )
 
 
+def _warehouse_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    return Prepared(status="ok", payload=dict(request.params or {}))
+
+
+def _warehouse_run(payload: object, params: dict) -> Produced:
+    from jobs.warehouse_job import run as run_warehouse
+
+    layout, report_md = run_warehouse(payload if isinstance(payload, dict) else {})
+    summary = (
+        f"Generated a {layout.building.width_m:.0f}x{layout.building.depth_m:.0f} m warehouse: "
+        f"{len(layout.racks)} racks, {len(layout.slots)} slots, "
+        f"{len(layout.docks)} docks, {len(layout.gates)} gates."
+    )
+    return Produced(report=(layout, report_md), summary=summary)
+
+
+def _warehouse_deliver(report: object, out_dir: object, client: str) -> dict[str, Path]:
+    import json as _json
+
+    from warehouse.html_export import to_html
+
+    layout, report_md = report
+    target = Path(str(out_dir)) / "warehouse_layout"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "layout.json").write_text(_json.dumps(layout.to_dict(), indent=2), encoding="utf-8")
+    (target / "report.md").write_text(report_md, encoding="utf-8")
+    (target / "warehouse.html").write_text(to_html(layout, title=f"Warehouse - {client}"), encoding="utf-8")
+    return {
+        "layout": target / "layout.json",
+        "report": target / "report.md",
+        "viewer": target / "warehouse.html",
+    }
+
+
+def warehouse_layout_tool() -> Tool:
+    from warehouse.qa import validate as validate_layout
+
+    return Tool(
+        key="warehouse_layout",
+        title="Warehouse Layout (3D)",
+        description="Generate a parametric, navigable 3D warehouse: building, yard, docks, gates, racks and slots.",
+        intent_keywords=(
+            "warehouse", "layout", "bodega", "almacen", "almacen 3d", "3d",
+            "rack", "racks", "estanteria", "dock", "anden", "patio", "yard", "floor plan",
+        ),
+        requires_data=False,
+        prepare=_warehouse_prepare,
+        run=_warehouse_run,
+        qa=lambda report: validate_layout(report[0]),
+        deliver=_warehouse_deliver,
+        options=lambda report: tool_options.warehouse_options(report[0]),
+    )
+
+
 # ---- whatif (sensitivity / what-if over the inventory policy cost) -----------
 
 def _whatif_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
@@ -721,4 +776,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(financial_kpis_tool())
     reg.register(reconciliation_tool())
     reg.register(returns_tool())
+    reg.register(warehouse_layout_tool())
     return reg

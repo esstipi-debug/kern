@@ -203,3 +203,26 @@ def whatif_options(report: object) -> GuidedOutcome:
          "budget contingency to the pessimistic corner", "robust, more cost"),
     ]
     return _ranked(f"Sensitivity: '{report.top_driver}' dominates - choose how to de-risk.", items)
+
+
+def warehouse_options(layout: object) -> GuidedOutcome:
+    b = layout.building
+    n_racks = len(layout.racks)
+    n_slots = len(layout.slots)
+    n_docks = len(layout.docks)
+    items: list[_Item] = [
+        ("Adopt this layout",
+         f"Use the generated {n_racks}-rack / {n_slots}-slot layout as the baseline.",
+         "adopt the generated layout as the baseline", "balanced storage vs access"),
+        ("Densify storage",
+         "Narrow the aisles and add rack modules to raise slot capacity.",
+         "narrow aisles and add rack modules", "more capacity, tighter forklift access"),
+        ("Boost throughput",
+         f"Add dock doors and widen the main aisle for faster flow (now {n_docks} docks).",
+         "add docks and widen the main aisle", "more throughput, less storage"),
+    ]
+    return _ranked(
+        f"Warehouse {b.width_m:.0f}x{b.depth_m:.0f} m, {n_racks} racks / {n_slots} slots, "
+        f"{n_docks} docks: choose how to refine.",
+        items,
+    )

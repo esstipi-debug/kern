@@ -110,3 +110,9 @@ def test_whatif_options():
     out = to.whatif_options(r)
     _assert_ranked(out, min_options=3)
     assert "holding_cost" in recommend(out.options).label
+
+
+def test_warehouse_options():
+    from warehouse.generator import generate_layout
+
+    _assert_ranked(to.warehouse_options(generate_layout({})), min_options=3)

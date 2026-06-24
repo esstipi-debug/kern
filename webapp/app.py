@@ -28,7 +28,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from scm_agent import Orchestrator  # noqa: E402
@@ -36,6 +36,9 @@ from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
 from src.policies import continuous_review_sq, periodic_review_rs  # noqa: E402
 from src.sources import CsvDemandSource  # noqa: E402
+from warehouse.generator import generate_layout  # noqa: E402
+from warehouse.html_export import to_html  # noqa: E402
+from warehouse.qa import validate as validate_layout  # noqa: E402
 from webapp import observability, security  # noqa: E402
 
 DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
@@ -400,6 +403,55 @@ async def api_jobs(
         "citations": result.citations,
         "kb_warnings": result.kb_warnings,
     }
+
+
+def _warehouse_params(
+    building_w: float, building_d: float, height: float, levels: int,
+    modules: int, aisle_width: float, docks: int, gates: int, yard_depth: float,
+) -> dict:
+    return {
+        "building": {"width_m": building_w, "depth_m": building_d, "height_m": height, "levels": levels},
+        "racks": {"modules": modules, "aisle_width_m": aisle_width},
+        "docks": {"count": docks, "face": "south"},
+        "gates": {"count": gates},
+        "yard_depth_m": yard_depth,
+    }
+
+
+@app.get("/api/warehouse")
+def api_warehouse(
+    building_w: float = Query(80.0, gt=0, le=1000),
+    building_d: float = Query(80.0, gt=0, le=1000),
+    height: float = Query(12.0, gt=0, le=100),
+    levels: int = Query(4, ge=1, le=20),
+    modules: int = Query(6, ge=1, le=500),
+    aisle_width: float = Query(3.5, gt=0, le=20),
+    docks: int = Query(8, ge=1, le=500),
+    gates: int = Query(2, ge=1, le=100),
+    yard_depth: float = Query(40.0, ge=0, le=500),
+) -> dict:
+    params = _warehouse_params(building_w, building_d, height, levels, modules, aisle_width, docks, gates, yard_depth)
+    layout = generate_layout(params)
+    issues = validate_layout(layout)
+    if issues:
+        raise HTTPException(status_code=400, detail={"qa_issues": issues})
+    return layout.to_dict()
+
+
+@app.get("/warehouse")
+def warehouse_page(
+    building_w: float = Query(80.0, gt=0, le=1000),
+    building_d: float = Query(80.0, gt=0, le=1000),
+    height: float = Query(12.0, gt=0, le=100),
+    levels: int = Query(4, ge=1, le=20),
+    modules: int = Query(6, ge=1, le=500),
+    aisle_width: float = Query(3.5, gt=0, le=20),
+    docks: int = Query(8, ge=1, le=500),
+    gates: int = Query(2, ge=1, le=100),
+    yard_depth: float = Query(40.0, ge=0, le=500),
+) -> HTMLResponse:
+    params = _warehouse_params(building_w, building_d, height, levels, modules, aisle_width, docks, gates, yard_depth)
+    return HTMLResponse(to_html(generate_layout(params)))
 
 
 @app.get("/")
