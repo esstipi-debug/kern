@@ -20,6 +20,7 @@ from jobs import (
     queuing_job,
     reconciliation_job,
     returns_job,
+    risk_job,
     scheduling_job,
     sop_deliverable,
     sop_job,
@@ -862,6 +863,56 @@ def scheduling_tool() -> Tool:
     )
 
 
+# ---- risk (supply-chain risk assessment / mitigation) ------------------------
+
+def _risk_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a risk register CSV (name, likelihood, impact_value) is required"])
+    try:
+        records = risk_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not records:
+        return Prepared(status="needs_data", messages=["no risk factors found in the data"])
+    return Prepared(status="ok", payload=records)
+
+
+def _risk_run(payload: object, params: dict) -> Produced:
+    thresholds = params.get("severity_thresholds")
+    report = (
+        risk_job.run(payload, severity_thresholds=tuple(thresholds))
+        if thresholds else risk_job.run(payload)
+    )
+    return Produced(report=report, summary=report.summary)
+
+
+def risk_tool() -> Tool:
+    return Tool(
+        key="risk",
+        title="Supply-Chain Risk Assessment",
+        description="Score a risk register (likelihood x impact), rank by expected loss (EMV) and "
+                    "FMEA RPN, bucket into a 5x5 heatmap, flag TTR>TTS resilience gaps, and rank "
+                    "mitigation options by net benefit into an exec-ready, executable plan.",
+        intent_keywords=(
+            "risk assessment", "risk register", "risk management", "supply chain risk",
+            "risk heatmap", "likelihood impact", "mitigation plan", "disruption risk",
+            "risk exposure", "value at risk", "resilience",
+        ),
+        requires_data=True,
+        prepare=_risk_prepare,
+        run=_risk_run,
+        qa=lambda report: risk_job.verify(report),
+        deliver=lambda report, out_dir, client: risk_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            risk_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        # The mitigation decision IS a set of ranked, executable choices -> surface them as
+        # the guided OPTIONS outcome on success (recommended default flagged).
+        options=lambda report: report.outcome,
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -880,4 +931,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(warehouse_layout_tool())
     reg.register(queuing_tool())
     reg.register(scheduling_tool())
+    reg.register(risk_tool())
     return reg
