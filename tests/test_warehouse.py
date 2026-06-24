@@ -246,3 +246,16 @@ def test_warehouse_page_renders_html() -> None:
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
     assert "<html" in resp.text
+
+
+# --- Task 8: Blender export ---
+
+from warehouse.blender_export import to_bpy_script  # noqa: E402
+
+
+def test_bpy_script_mentions_layout_and_export():
+    layout = generate_layout({"racks": {"modules": 2}})
+    script = to_bpy_script(layout, gltf_path="wh.glb")
+    assert "import bpy" in script
+    assert "wh.glb" in script
+    assert script.count("primitive_cube_add") >= len(layout.racks)
