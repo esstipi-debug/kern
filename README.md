@@ -44,7 +44,7 @@ flowchart LR
 | 💲 `pricing` | price/qty CSV/Excel | Excel + report — elasticity → margin-maximizing price |
 | 🧭 `leadership_chain` | a brief / scores | radar chart + report — CHAIN leadership profile + directives |
 
-Runs **with or without an LLM**: an optional `LLMProvider` (Claude) sharpens routing and the narrative; the deterministic core works on its own. The whole thing is **350 tests, ~93 % coverage**.
+Runs **with or without an LLM**: an optional `LLMProvider` (Claude) sharpens routing and the narrative; the deterministic core works on its own. The whole thing is **600+ tests, ~90 % coverage**.
 
 ---
 
@@ -252,13 +252,13 @@ The analytical core the agent stands on: a chain of small **pure functions**, ea
 ![forecast error](https://img.shields.io/badge/safety_stock-forecast_error_σ-5eead4?style=flat-square&labelColor=0d1219)
 ![shape aware](https://img.shields.io/badge/demand-Croston_and_gamma-3fb950?style=flat-square&labelColor=0d1219)
 ![feasible](https://img.shields.io/badge/plan-MOQ_and_budget_feasible-d4a017?style=flat-square&labelColor=0d1219)
-![tests](https://img.shields.io/badge/211_tests-book_numbers-4fd1c5?style=flat-square&labelColor=0d1219)
+![tests](https://img.shields.io/badge/600%2B_tests-passing-4fd1c5?style=flat-square&labelColor=0d1219)
 
 - **Validated, not assumed** — closed-form policies are cross-checked against Monte-Carlo simulation (`simulation.py`, backorders + lost sales).
 - **σ_e, not σ_demand** — safety stock keys off *forecast error*, the only correct dispersion (the #1 inventory mistake in the wild).
 - **Shape-aware** — intermittent (Croston) and skewed (gamma) demand are first-class, where a normal-curve sheet silently stocks out.
 - **Feasible by construction** — MOQ / budget are constraints, so what ships is buildable, not just mathematically optimal.
-- **Pure & composable** — each module is a pure function → 211 tests against the book's own numbers; the orchestrator chains them without surprises.
+- **Pure & composable** — each module is a pure function, the engine validated against the book's own numbers in a 600+ test suite; the orchestrator chains them without surprises.
 
 ### 🖥️ How you see it
 
