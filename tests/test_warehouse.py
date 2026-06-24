@@ -1,5 +1,6 @@
 import json
 
+from warehouse.generator import generate_layout
 from warehouse.model import Aisle, Building, Dock, Gate, Layout, Rack, Site, Slot, TruckPath, Yard
 
 
@@ -28,3 +29,29 @@ def test_layout_dict_is_json_serializable_and_round_trips():
     restored = Layout.from_dict(json.loads(json.dumps(layout.to_dict())))
     assert restored == layout
     assert restored.yard.polygon == layout.yard.polygon  # tuples preserved, not lists
+
+
+def test_generate_is_deterministic():
+    a = generate_layout({})
+    b = generate_layout({})
+    assert a == b
+
+
+def test_generated_default_layout_is_well_formed():
+    layout = generate_layout({})
+    assert layout.building.width_m > 0 and layout.building.depth_m > 0
+    assert len(layout.racks) == 6  # default modules
+    assert len(layout.slots) == 6 * 20 * 4  # modules * bays * levels
+    assert len(layout.docks) == 8 and len(layout.gates) == 2
+    # racks lie inside the building footprint
+    b = layout.building
+    for r in layout.racks:
+        assert r.x >= b.x and r.y >= b.y
+        assert r.x + r.width_m <= b.x + b.width_m
+        assert r.y + r.depth_m <= b.y + b.depth_m
+
+
+def test_params_override_defaults():
+    layout = generate_layout({"racks": {"modules": 3}, "building": {"levels": 2}})
+    assert len(layout.racks) == 3
+    assert layout.building.levels == 2
