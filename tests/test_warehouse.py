@@ -1,7 +1,9 @@
 import json
+from dataclasses import replace
 
 from warehouse.generator import generate_layout
 from warehouse.model import Aisle, Building, Dock, Gate, Layout, Rack, Site, Slot, TruckPath, Yard
+from warehouse.qa import MIN_AISLE_WIDTH_M, validate
 
 
 def _sample_layout() -> Layout:
@@ -59,10 +61,6 @@ def test_params_override_defaults():
 
 # --- Task 3: Geometry QA ---
 
-from dataclasses import replace  # noqa: E402
-
-from warehouse.qa import MIN_AISLE_WIDTH_M, validate  # noqa: E402
-
 
 def test_default_layout_passes_qa():
     assert validate(generate_layout({})) == []
@@ -90,3 +88,69 @@ def test_qa_flags_missing_gates_and_bad_capacity():
     bad_slot = replace(layout.slots[0], capacity_units=0.0)
     bad = replace(layout, slots=(bad_slot,) + layout.slots[1:])
     assert any("capacity" in i for i in validate(bad))
+
+
+def test_qa_flags_yard_building_overlap() -> None:
+    layout = generate_layout({})
+    b = layout.building
+    # Shift yard polygon so it overlaps the building interior
+    overlapping_poly = (
+        (b.x, b.y + 1.0),
+        (b.x + b.width_m, b.y + 1.0),
+        (b.x + b.width_m, b.y + b.depth_m / 2),
+        (b.x, b.y + b.depth_m / 2),
+    )
+    bad_yard = replace(layout.yard, polygon=overlapping_poly)
+    layout = replace(layout, yard=bad_yard)
+    issues = validate(layout)
+    assert any("yard overlaps" in i for i in issues)
+
+
+def test_qa_flags_yard_past_boundary() -> None:
+    layout = generate_layout({})
+    site = layout.site
+    # Push one polygon point past site.width_m
+    orig = layout.yard.polygon
+    shifted_poly = orig[:-1] + ((site.width_m + 1.0, orig[-1][1]),)
+    bad_yard = replace(layout.yard, polygon=shifted_poly)
+    layout = replace(layout, yard=bad_yard)
+    issues = validate(layout)
+    assert any("yard extends past" in i for i in issues)
+
+
+def test_qa_flags_rack_rack_overlap() -> None:
+    layout = generate_layout({})
+    r0 = layout.racks[0]
+    # Place rack 1 at the exact same position as rack 0 -> guaranteed overlap
+    duplicate = replace(layout.racks[1], x=r0.x, y=r0.y)
+    layout = replace(layout, racks=(r0, duplicate) + layout.racks[2:])
+    issues = validate(layout)
+    assert any("overlap" in i for i in issues)
+
+
+def test_qa_flags_building_outside_site() -> None:
+    layout = generate_layout({})
+    site = layout.site
+    # Move building so its right edge exceeds site width
+    bad_building = replace(layout.building, x=site.width_m - 1.0)
+    layout = replace(layout, building=bad_building)
+    issues = validate(layout)
+    assert any("building extends outside" in i for i in issues)
+
+
+def test_qa_flags_docks_on_two_faces() -> None:
+    layout = generate_layout({})
+    extra = replace(layout.docks[0], id="D_extra", face="north")
+    layout = replace(layout, docks=layout.docks + (extra,))
+    issues = validate(layout)
+    assert any("multiple" in i or "faces" in i for i in issues)
+
+
+def test_qa_flags_rack_with_no_slots() -> None:
+    layout = generate_layout({})
+    # Remove all slots for rack 0
+    r0_id = layout.racks[0].id
+    remaining_slots = tuple(s for s in layout.slots if s.rack_id != r0_id)
+    layout = replace(layout, slots=remaining_slots)
+    issues = validate(layout)
+    assert any("no slots" in i for i in issues)

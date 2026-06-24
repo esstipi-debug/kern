@@ -56,7 +56,17 @@ def validate(layout: Layout) -> list[str]:
     if any(s.capacity_units <= 0 for s in layout.slots):
         issues.append("a slot has non-positive capacity")
 
-    if layout.yard.polygon and min(p[1] for p in layout.yard.polygon) < 0:
-        issues.append("yard extends past the site boundary")
+    if layout.yard.polygon:
+        ys = layout.yard.polygon
+        if any(p[0] < 0 or p[1] < 0 or p[0] > site.width_m or p[1] > site.depth_m for p in ys):
+            issues.append("yard extends past the site boundary")
+
+        y_xmin = min(p[0] for p in ys)
+        y_ymin = min(p[1] for p in ys)
+        y_xmax = max(p[0] for p in ys)
+        y_ymax = max(p[1] for p in ys)
+        yard_box: Box = (y_xmin, y_ymin, y_xmax, y_ymax)
+        if _overlap(yard_box, bbox):
+            issues.append("yard overlaps the building footprint")
 
     return issues
