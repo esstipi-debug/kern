@@ -17,6 +17,7 @@ Pure read-only. Frozen dataclasses for results. Stdlib only.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,8 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 BOOKS_GRAPH = _REPO_ROOT / "knowledge" / "scm-books" / "graph.json"
 CODE_GRAPH = _REPO_ROOT / "graphify-out" / "graph.json"
+
+_LOG = logging.getLogger("linchpin.knowledge")
 
 _TOKEN = re.compile(r"[a-z0-9]{3,}")
 
@@ -61,16 +64,25 @@ def _tokens(text: str) -> set[str]:
     return set(_TOKEN.findall(text.lower()))
 
 
-def _load(path: Path) -> dict:
-    """Load a node-link graph JSON; return an empty graph if missing/invalid."""
+def _load(path: Path) -> tuple[dict, str | None]:
+    """Load a node-link graph JSON.
+
+    Returns ``(graph, problem)``. ``problem`` is ``None`` on success, otherwise a
+    short human-readable reason ("missing", "unreadable (...)", "malformed ..."):
+    a degraded graph yields an empty node set *plus* a surfaced reason, so callers
+    can fail loud (a visible warning) instead of silently dropping citations.
+    """
+    p = Path(path)
+    if not p.exists():
+        return {"nodes": [], "links": []}, "missing"
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {"nodes": [], "links": []}
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {"nodes": [], "links": []}, f"unreadable ({type(exc).__name__})"
     if not isinstance(data, dict) or "nodes" not in data:
-        return {"nodes": [], "links": []}
+        return {"nodes": [], "links": []}, "malformed (no 'nodes' key)"
     data.setdefault("links", data.get("edges", []))
-    return data
+    return data, None
 
 
 class KnowledgeBase:
@@ -81,7 +93,18 @@ class KnowledgeBase:
         books_path: str | Path = BOOKS_GRAPH,
         code_path: str | Path = CODE_GRAPH,
     ) -> None:
-        self._graphs = {"books": _load(Path(books_path)), "code": _load(Path(code_path))}
+        self._graphs: dict[str, dict] = {}
+        self._problems: dict[str, str] = {}
+        for name, path in (("books", Path(books_path)), ("code", Path(code_path))):
+            graph, problem = _load(path)
+            self._graphs[name] = graph
+            if problem:
+                self._problems[name] = problem
+                # The books graph is committed, so a problem there is an error; the
+                # code graph is regenerable (gitignored), so a problem is a warning.
+                level = logging.ERROR if name == "books" else logging.WARNING
+                _LOG.log(level, "%s knowledge graph %s (%s) - %s citations degraded",
+                         name, problem, path, name)
         # id -> node index, per graph, for O(1) explain()
         self._index = {
             name: {n["id"]: n for n in g["nodes"] if "id" in n}
@@ -91,6 +114,23 @@ class KnowledgeBase:
     def available(self) -> dict[str, int]:
         """Node count per graph (0 means the graph file was missing/empty)."""
         return {name: len(g["nodes"]) for name, g in self._graphs.items()}
+
+    def warnings(self) -> list[str]:
+        """Actionable warnings for any graph that did not load cleanly.
+
+        Empty when both graphs are healthy. Callers (orchestrator, deliverable)
+        surface these so a missing or corrupt code graph shows up as an explicit
+        note instead of citations silently going theory-only.
+        """
+        fix = {
+            "books": "restore knowledge/scm-books/graph.json",
+            "code": "regenerate graphify-out/ with /graphify",
+        }
+        return [
+            f"{name}: graph {self._problems[name]} - {name} citations unavailable ({fix[name]})"
+            for name in ("books", "code")
+            if name in self._problems
+        ]
 
     def search(self, query: str, graph: str = "both", limit: int = 8) -> list[Concept]:
         """Rank concept nodes by token overlap with the query.

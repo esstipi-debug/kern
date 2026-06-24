@@ -117,10 +117,19 @@ def find_best_safety_stock(
     search_radius: float = 50.0,
     periods: int = 5_000,
     seed: int = 42,
+    max_evaluations: int = 200,
 ) -> SimulationCostResult:
     """
-    Grid search for safety stock minimizing simulated cost (Ch. 13.1–13.2).
+    Grid search for safety stock minimizing simulated cost (Ch. 13.1-13.2).
+
+    Each grid point runs a full ``periods``-step simulation, so the grid is
+    bounded: a non-positive ``step_size`` is rejected, and a grid wider than
+    ``max_evaluations`` points fails fast instead of silently grinding. To search
+    a bigger space, widen ``step_size``, narrow ``search_radius``, or raise
+    ``max_evaluations``.
     """
+    if step_size <= 0:
+        raise ValueError(f"step_size must be positive, got {step_size}")
     mu_cycle = mean_demand * (review_period + lead_time_periods)
     if start_ss is None:
         start_ss = 0.5 * std_demand * (review_period + lead_time_periods) ** 0.5
@@ -128,6 +137,12 @@ def find_best_safety_stock(
     low = max(0.0, start_ss - search_radius)
     high = start_ss + search_radius
     candidates = np.arange(low, high + step_size, step_size)
+    if len(candidates) > max_evaluations:
+        raise ValueError(
+            f"grid search would evaluate {len(candidates)} points, above the "
+            f"max_evaluations cap of {max_evaluations}; increase step_size, reduce "
+            f"search_radius, or raise max_evaluations"
+        )
 
     best: SimulationCostResult | None = None
     for ss in candidates:
@@ -165,6 +180,7 @@ def find_best_safety_stock_smart_start(
     search_radius: float = 50.0,
     periods: int = 5_000,
     seed: int = 42,
+    max_evaluations: int = 200,
 ) -> tuple[SimulationCostResult, float]:
     """
     Smart start from analytical (R,S) optimum, then local grid search (Ch. 13.2).
@@ -192,6 +208,7 @@ def find_best_safety_stock_smart_start(
         search_radius=search_radius,
         periods=periods,
         seed=seed,
+        max_evaluations=max_evaluations,
     )
     return sim_best, start_ss
 
