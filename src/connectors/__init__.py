@@ -9,8 +9,10 @@ The write side reuses the safe-staging plane in ``src.writeback`` (dry-run -> ap
 idempotent apply -> audit/rollback): connectors never mutate a system of record directly.
 
 This package ships an offline ``simulator.SimulatedStore`` so the whole pipeline can run
-end-to-end without any live API keys; real adapters (``shopify.py``, ``amazon.py`` ...)
-implement the same protocol against their SDKs.
+end-to-end without any live API keys; real adapters (``odoo.py``, ``shopify.py`` ...)
+implement the same protocol against their SDKs. ``odoo.py`` is the first live adapter: it
+reads Odoo's standard models over XML-RPC and stages restocks back as reorder rules, with
+an ``InMemoryOdoo`` stand-in so it too runs and tests fully offline.
 """
 
 from __future__ import annotations
