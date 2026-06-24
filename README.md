@@ -6,7 +6,7 @@
 
 **Linchpin** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, forecasting and pricing, plus **ABC-XYZ classification, DDMRP buffers, financial KPIs, reconciliation, slotting and procurement** — and an **orchestrator agent** drives them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **17 SCM books and the codebase itself**.
 
-[![version](https://img.shields.io/badge/version-2.8.0-5eead4)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-2.9.0-5eead4)](CHANGELOG.md)
 [![python](https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![tests](https://github.com/esstipi-debug/linchpin/actions/workflows/tests.yml/badge.svg)](https://github.com/esstipi-debug/linchpin/actions/workflows/tests.yml)
 [![coverage](https://img.shields.io/badge/coverage-93%25-3fb950)](#)
@@ -43,6 +43,7 @@ flowchart LR
 | 📦 `inventory_optimization` | demand CSV/Excel | Excel + report + CSV — forecast → `(s,Q)`/`(R,S)` → budget fit |
 | 💲 `pricing` | price/qty CSV/Excel | Excel + report — elasticity → margin-maximizing price |
 | 🧭 `leadership_chain` | a brief / scores | radar chart + report — CHAIN leadership profile + directives |
+| 🏗️ `warehouse_layout` | params / brief | 3D HTML + layout.json + report — navigable warehouse (building, yard, docks, gates, racks) |
 
 Runs **with or without an LLM**: an optional `LLMProvider` (Claude) sharpens routing and the narrative; the deterministic core works on its own. The whole thing is **350 tests, ~93 % coverage**.
 

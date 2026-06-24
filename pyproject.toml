@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linchpin"
-version = "2.8.0"
+version = "2.9.0"
 description = "Linchpin — an agentic supply-chain engine: inventory optimization, pricing and leadership analysis from a plain-language brief, grounded in a 17-book SCM knowledge graph."
 readme = "README.md"
 license = { file = "LICENSE" }
