@@ -16,6 +16,7 @@ from jobs import (
     sop_deliverable,
     sop_job,
     sourcing_job,
+    whatif_job,
 )
 from jobs.inventory_optimization import run as run_inventory
 from jobs.pricing import prepare_pricing
@@ -470,6 +471,55 @@ def landed_cost_tool() -> Tool:
     )
 
 
+# ---- whatif (sensitivity / what-if over the inventory policy cost) -----------
+
+def _whatif_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a drivers CSV (driver, base, low, high) is required"])
+    try:
+        payload = whatif_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _whatif_run(payload: object, params: dict) -> Produced:
+    report = whatif_job.run(
+        payload,
+        metric=params.get("metric", "annual_cost"),
+        budget_pct=params.get("budget_pct", 0.10),
+        maximize=params.get("maximize", False),
+    )
+    be = f"; budget break-even at {report.breakeven_value:,.2f}" if report.breakeven_found else ""
+    return Produced(report=report, summary=(
+        f"Swept {report.n_drivers} assumption(s); '{report.top_driver}' moves {report.metric} most "
+        f"(range {report.optimistic_value:,.0f}-{report.pessimistic_value:,.0f}){be}."
+    ))
+
+
+def whatif_tool() -> Tool:
+    return Tool(
+        key="whatif",
+        title="What-If / Sensitivity Study",
+        description="Sweep the planning assumptions (demand, holding, lead time, ...) over their "
+                    "bands against the inventory policy cost: rank them by impact (tornado), bound "
+                    "the optimistic/pessimistic corners, and find the budget break-even.",
+        intent_keywords=(
+            "what-if", "what if", "sensitivity", "sensitivity analysis", "tornado",
+            "break-even", "break even", "scenario analysis", "stress test",
+            "how sensitive", "downside", "best case", "worst case",
+        ),
+        requires_data=True,
+        prepare=_whatif_prepare,
+        run=_whatif_run,
+        qa=lambda report: whatif_job.verify(report),
+        deliver=lambda report, out_dir, client: whatif_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence: whatif_job.build_deck(
+            report, client=client, citations=tuple(citations), confidence=confidence,
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -481,4 +531,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(sourcing_tool())
     reg.register(ddmrp_tool())
     reg.register(landed_cost_tool())
+    reg.register(whatif_tool())
     return reg
