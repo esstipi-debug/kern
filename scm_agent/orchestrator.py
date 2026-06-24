@@ -61,8 +61,10 @@ class Orchestrator:
             logger.error("orchestrator.run failed", exc_info=True)
             result = JobResult(status=STATUS_ERROR, tool=None, confidence=0.0,
                                deliverables={}, summary="An internal error occurred.")
-        # Single boundary: every result leaves with a protected, executable path.
-        return replace(result, guided=to_guided_outcome(result))
+        # Single boundary: every result leaves with a protected, executable path. A tool may
+        # supply its own ranked-options outcome on success (set in _run); otherwise derive the
+        # protected fallback. Either way, no result is a dead end.
+        return replace(result, guided=result.guided or to_guided_outcome(result))
 
     def _run(self, request: JobRequest, out_dir: Path) -> JobResult:
         intent = classify(request.brief, self.registry, self.provider, job_type_override=request.job_type)
@@ -114,6 +116,7 @@ class Orchestrator:
             status=STATUS_OK, tool=tool.key, confidence=intent.confidence,
             deliverables={name: str(path) for name, path in written.items()}, summary=summary,
             citations=citations, kb_warnings=self.knowledge.warnings(),
+            guided=tool.options(produced.report) if tool.options else None,
         )
 
     def _ground(self, tool: Tool) -> list[str]:

@@ -15,6 +15,7 @@ from jobs import (
     leadership,
     qa,
     reconciliation_job,
+    returns_job,
     sop_deliverable,
     sop_job,
     sourcing_job,
@@ -617,6 +618,61 @@ def reconciliation_tool() -> Tool:
     )
 
 
+# ---- returns (reverse logistics / disposition) -------------------------------
+
+def _returns_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a returns CSV (product, returned units, unit cost, reason) is required"])
+    try:
+        lines = returns_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not lines:
+        return Prepared(status="needs_data", messages=["no return lines found in the data"])
+    return Prepared(status="ok", payload=lines)
+
+
+def _returns_run(payload: object, params: dict) -> Produced:
+    report = returns_job.run(
+        payload,
+        restock_handling_per_unit=params.get("restock_handling_per_unit", 0.0),
+        refurbish_cost_per_unit=params.get("refurbish_cost_per_unit", 0.0),
+        refurbish_resale_factor=params.get("refurbish_resale_factor", 0.6),
+        liquidation_recovery_pct=params.get("liquidation_recovery_pct", 0.2),
+        scrap_cost_per_unit=params.get("scrap_cost_per_unit", 0.0),
+    )
+    return Produced(report=report, summary=(
+        f"{report.n_lines} return line(s); recommended strategy '{report.recommended_strategy}', "
+        f"{report.recovered_value:,.0f} recovered ({report.recovery_rate * 100:.0f}%)."
+    ))
+
+
+def returns_tool() -> Tool:
+    return Tool(
+        key="returns",
+        title="Returns & Reverse Logistics",
+        description="Rank each returned lot's disposition (restock / refurbish / liquidate / scrap) "
+                    "by net recovery, roll up recovery rate + value at risk + the reason Pareto, and "
+                    "offer ranked, executable recovery strategies to choose from.",
+        intent_keywords=(
+            "reverse logistics", "reverse-logistics", "product returns", "returns analysis",
+            "returns disposition", "disposition", "return rate", "handle returns",
+            "refurbish", "salvage value", "returns recovery", "returned goods",
+        ),
+        requires_data=True,
+        prepare=_returns_prepare,
+        run=_returns_run,
+        qa=lambda report: returns_job.verify(report),
+        deliver=lambda report, out_dir, client: returns_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence: returns_job.build_deck(
+            report, client=client, citations=tuple(citations), confidence=confidence,
+        ).write_all(out_dir),
+        # The disposition decision IS a set of ranked, executable choices -> surface them as
+        # the guided OPTIONS outcome on success (not just an "executed" deck).
+        options=lambda report: report.outcome,
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -631,4 +687,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(whatif_tool())
     reg.register(financial_kpis_tool())
     reg.register(reconciliation_tool())
+    reg.register(returns_tool())
     return reg
