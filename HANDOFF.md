@@ -1,7 +1,8 @@
 # Linchpin — Session Handoff
 
-**Date:** 2026-06-23 · **Repo:** `esstipi-debug/linchpin` · **Branch:** `main` (HEAD `d296775`)
+**Date:** 2026-06-23 · **Repo:** `esstipi-debug/linchpin` · **Branch:** `main` (this session shipped PRs #21–#34; a parallel loop merged #32/#35/#37/#38 — run `git log --oneline` for the live HEAD)
 **Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
+**Resume here:** the agent-tool backlog (3→9 tools) and the offline connector subsystem are **done**; the only open work is externally blocked — see "Status for the next session" at the bottom (live SDK adapters need client API keys; Ivanov L3 needs Kimi tokens).
 
 > A new Claude Code session in this repo also auto-loads memory: `MEMORY.md` →
 > [[linchpin-project]], [[linchpin-verified-audit]], [[scm-test-datasets]],
