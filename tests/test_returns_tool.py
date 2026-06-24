@@ -132,8 +132,8 @@ def test_orchestrator_returns_ranked_options_on_success(tmp_path):
     assert sum(1 for o in res.guided.options if o.recommended) == 1
 
 
-def test_other_tools_still_report_executed_on_success(tmp_path):
-    # backward-compat: a tool without an options hook stays EXECUTED, never a dead end.
+def test_a_non_returns_tool_also_surfaces_ranked_options_on_success(tmp_path):
+    # the directive, end-to-end: every tool (not just returns) now hands back ranked options.
     csv = tmp_path / "counts.csv"
     pd.DataFrame({
         "product_id": ["A", "B"], "system_qty": [100.0, 50.0],
@@ -145,4 +145,14 @@ def test_other_tools_still_report_executed_on_success(tmp_path):
                    data_path=str(csv), client="Acme", out_dir=tmp_path)
 
     assert res.tool == "reconciliation"
-    assert res.guided is not None and res.guided.status == "executed"
+    assert res.guided is not None and res.guided.status == OPTIONS
+    assert len(res.guided.options) >= 2
+    assert sum(1 for o in res.guided.options if o.recommended) == 1
+
+
+def test_executed_fallback_when_a_tool_has_no_options_hook():
+    # backward-compat: a result with no tool-supplied options still leaves protected (EXECUTED).
+    from scm_agent.guided_bridge import to_guided_outcome
+    from scm_agent.types import JobResult
+    res = JobResult(status="ok", tool="x", confidence=1.0, deliverables={}, summary="done")
+    assert to_guided_outcome(res).status == "executed"

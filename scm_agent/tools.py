@@ -25,6 +25,7 @@ from jobs.inventory_optimization import run as run_inventory
 from jobs.pricing import prepare_pricing
 from jobs.pricing import run as run_pricing
 
+from . import tool_options
 from .llm import LLMProvider
 from .registry import Prepared, Produced, Tool, ToolRegistry
 from .types import JobRequest
@@ -84,6 +85,7 @@ def inventory_tool() -> Tool:
             "eoq", "service level", "reorder point", "order quantity",
         ),
         requires_data=True,
+        options=tool_options.inventory_options,
         prepare=_inventory_prepare,
         run=_inventory_run,
         qa=lambda report: qa.verify(report),
@@ -125,6 +127,7 @@ def pricing_tool() -> Tool:
             "optimal price", "what price", "profit",
         ),
         requires_data=True,
+        options=tool_options.pricing_options,
         prepare=_pricing_prepare,
         run=_pricing_run,
         qa=lambda report: qa.verify_pricing(report),
@@ -186,6 +189,7 @@ def leadership_tool() -> Tool:
             "chain model", "manager", "team",
         ),
         requires_data=False,
+        options=tool_options.leadership_options,
         prepare=_leadership_prepare,
         run=_leadership_run,
         qa=lambda profile: qa.verify_leadership(profile),
@@ -235,6 +239,7 @@ def cost_to_serve_tool() -> Tool:
             "net to serve", "loss-making", "whale curve", "profitability by",
         ),
         requires_data=True,
+        options=tool_options.cost_to_serve_options,
         prepare=_cost_to_serve_prepare,
         run=_cost_to_serve_run,
         qa=lambda report: cost_to_serve_job.verify(report),
@@ -288,6 +293,7 @@ def sop_tool() -> Tool:
             "monthly demand plan",
         ),
         requires_data=True,
+        options=lambda report: report.outcome,
         prepare=_sop_prepare,
         run=_sop_run,
         qa=lambda review: sop_job.verify(review),
@@ -335,6 +341,7 @@ def abc_xyz_tool() -> Tool:
             "xyz analysis", "pareto", "sku classification", "classify", "classification",
         ),
         requires_data=True,
+        options=tool_options.abc_xyz_options,
         prepare=_abc_xyz_prepare,
         run=_abc_xyz_run,
         qa=lambda report: abc_xyz_job.verify(report),
@@ -378,6 +385,7 @@ def sourcing_tool() -> Tool:
             "otif", "difot", "best supplier",
         ),
         requires_data=True,
+        options=lambda report: report.outcome,
         prepare=_sourcing_prepare,
         run=_sourcing_run,
         qa=lambda report: sourcing_job.verify(report),
@@ -421,6 +429,7 @@ def ddmrp_tool() -> Tool:
             "buffer profile", "net flow", "decoupling point", "red yellow green",
         ),
         requires_data=True,
+        options=tool_options.ddmrp_options,
         prepare=_ddmrp_prepare,
         run=_ddmrp_run,
         qa=lambda report: ddmrp_job.verify(report),
@@ -464,6 +473,7 @@ def landed_cost_tool() -> Tool:
             "tariff", "freight cost", "import cost", "total landed",
         ),
         requires_data=True,
+        options=tool_options.landed_cost_options,
         prepare=_landed_cost_prepare,
         run=_landed_cost_run,
         qa=lambda report: landed_cost_job.verify(report),
@@ -513,6 +523,7 @@ def whatif_tool() -> Tool:
             "how sensitive", "downside", "best case", "worst case",
         ),
         requires_data=True,
+        options=tool_options.whatif_options,
         prepare=_whatif_prepare,
         run=_whatif_run,
         qa=lambda report: whatif_job.verify(report),
@@ -559,6 +570,7 @@ def financial_kpis_tool() -> Tool:
             "financial kpi", "inventory health", "financial dashboard",
         ),
         requires_data=True,
+        options=tool_options.financial_kpis_options,
         prepare=_financial_kpis_prepare,
         run=_financial_kpis_run,
         qa=lambda report: financial_kpis_job.verify(report),
@@ -608,6 +620,7 @@ def reconciliation_tool() -> Tool:
             "book vs physical", "system vs physical", "shrinkage", "stock discrepancy",
         ),
         requires_data=True,
+        options=tool_options.reconciliation_options,
         prepare=_reconciliation_prepare,
         run=_reconciliation_run,
         qa=lambda report: reconciliation_job.verify(report),
