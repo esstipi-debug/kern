@@ -2,6 +2,7 @@ import json
 from dataclasses import replace
 
 from warehouse.generator import generate_layout
+from warehouse.html_export import to_html
 from warehouse.model import Aisle, Building, Dock, Gate, Layout, Rack, Site, Slot, TruckPath, Yard
 from warehouse.qa import MIN_AISLE_WIDTH_M, validate
 
@@ -154,3 +155,16 @@ def test_qa_flags_rack_with_no_slots() -> None:
     layout = replace(layout, slots=remaining_slots)
     issues = validate(layout)
     assert any("no slots" in i for i in issues)
+
+
+# --- Task 4: Self-contained 3D viewer ---
+
+
+def test_to_html_is_self_contained_and_embeds_layout():
+    layout = generate_layout({})
+    html = to_html(layout, title="Demo WH")
+    assert "<html" in html and "Demo WH" in html
+    assert "importmap" in html and "three" in html
+    # the exact serialized layout is embedded for the in-page renderer
+    assert json.dumps(layout.to_dict()) in html
+    assert "__LAYOUT__" in html
