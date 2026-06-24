@@ -1,0 +1,87 @@
+# 05 · Catálogo de Entregables — Qué Produces y Vendes
+
+> Lo que puedes ofrecer a un cliente, con la **herramienta de Linchpin** que lo
+> genera y tu **valor agregado humano** en cada uno. Linchpin produce el artefacto;
+> tú lo enmarcas, lo defiendes y cierras el paso humano.
+
+Catálogo basado en `scm_agent/modes.py` (entregables por modo) y las **9
+herramientas de agente** ya cableadas en `scm_agent/tools.py`.
+
+---
+
+## 📦 Modo Inventory — Especialista en Inventario E-commerce
+
+| Entregable | Herramienta / motor | Tu valor agregado |
+|---|---|---|
+| **Documento de política de inventario** (targets, reorder points, safety stock, niveles de servicio) | `inventory_optimization` | Aterrizar los targets al apetito de riesgo del cliente |
+| **Modelo de reorder-point & safety-stock** | `inventory_optimization` (`policies`, `safety_stock`) | Validar σ_e y *lead times* contra la realidad |
+| **Clasificación ABC-XYZ + política por segmento** | `abc_xyz` | Traducir la matriz 9-celdas a acciones de compra |
+| **Plan de reconciliación / conteo cíclico (IRA)** | motor `reconciliation` / `cycle_count` | Firmar y coordinar el conteo físico (HANDOFF) |
+| **Reporte de excedente y obsoletos (E&O) / dead-stock** | motor `alerting` | Negociar liquidación/devolución con proveedor |
+| **Paquete de pronóstico de demanda** | motor `forecasting` (MA/SES/Croston, σ_e) | Juzgar sesgo y eventos que el modelo no ve |
+| **Dashboard de KPIs de inventario** | webapp (Portfolio/Detail/Budget/Forecast) | Contar la historia frente al cliente |
+| **Plan de compra / reabastecimiento (PO)** | `landed_cost` + writeback | **Aprobar y emitir la PO** (writeback irreversible) |
+
+**KPIs del cliente que reportas en este modo:** IRA, tasa de stockout, fill rate,
+inventory turns, DIO, costo de mantener, sell-through, valor de excedente/obsoletos.
+
+---
+
+## 🌐 Modo SCM — Supply Chain Manager / Consultor
+
+| Entregable | Herramienta / motor | Tu valor agregado |
+|---|---|---|
+| **Diagnóstico / health assessment de cadena** | orquestador (multi-tool) | Priorizar hallazgos por impacto al negocio |
+| **Roadmap 30/60/90 días ligado a KPIs** | deck del modo SCM | Comprometer dueños y fechas reales |
+| **S&OP / IBP deck + cadencia mensual** | `sop` (`run_sop_cycle`) | **Facilitar la junta y forzar la decisión** (RB-7) |
+| **Paquete de plan de demanda** (forecast value-add, sesgo) | motor `forecasting` / `forecastability` | Juzgar sesgo y aporte de valor del pronóstico |
+| **Supplier scorecard + QBR trimestral** | `sourcing` (OTIF/PPM, TOPSIS) | Conducir la revisión de negocio con el proveedor |
+| **Análisis de cost-to-serve** (por cliente/canal/SKU) | `cost_to_serve` | Decidir a qué clientes/canales servir distinto |
+| **Estudio de sourcing & landed-cost / selección de proveedor** | `landed_cost` + `sourcing` (MCDM) | **Adjudicar** y negociar el contrato |
+| **Estudio de red / fulfillment (3PL)** | motor `multi_echelon` / `space` | Validar contra contratos y geografía reales |
+| **Plan de capital de trabajo / cash-release** (cash-to-cash) | motor `working_capital` | Alinear con finanzas y tesorería |
+| **Mapa de riesgo y resiliencia** (single-source, TTR/TTS) | motor `risk` | Priorizar mitigaciones y dueños |
+| **Evaluación de sostenibilidad / logística inversa** | motor `reverse_logistics` | Traducir a cumplimiento y costo |
+| **Diagnóstico de liderazgo (modelo CHAIN)** | `leadership_chain` | Coaching y plan de desarrollo del equipo |
+| **Política + dashboard de inventario** (heredado de Inventory) | (ver tabla anterior) | (ídem) |
+
+**KPIs del cliente que reportas en este modo:** OTIF/DIFOT, perfect order rate,
+forecast accuracy (WAPE/MAPE) + sesgo, ciclo cash-to-cash (CCC), cost-to-serve /
+costo de SC como % de ingreso, SCOR Nivel-1 (confiabilidad, capacidad de
+respuesta, agilidad, costo, activos).
+
+---
+
+## 🧰 Toolkit transversal (módulos del motor disponibles)
+
+Más allá de las herramientas ruteadas, el motor incluye módulos que enriquecen un
+entregable:
+
+| Área | Módulos |
+|---|---|
+| **Planeación** | ABC-XYZ · buffers DDMRP + net-flow · métricas de exactitud (MAPE/WAPE/RMSSE/MASE) |
+| **Control** | reconciliación / IRA + plan de conteo cíclico · alertas de stockout/excedente/reorden |
+| **Procurement** | *landed cost* (consciente de Incoterm) · supplier scorecards (OTIF/PPM) · máquina de estados de PO |
+| **Almacén** | dimensionamiento cube/m³ + slotting COI · *twin* espacial 3D del almacén |
+| **Finanzas** | inventory turns · DIO · GMROI · cash-to-cash · sell-through |
+| **Calidad de dato** | dígito verificador GTIN/UPC · dedup de SKU · mapeo canónico de columnas |
+
+---
+
+## 💲 Cómo se traduce en honorarios
+
+| Formato | Entregable típico | Cadencia |
+|---|---|---|
+| **Proyecto único** | Diagnóstico, estudio de sourcing, política de inventario | Una vez |
+| **Retainer recurrente** | Cadencia S&OP mensual, QBR de proveedores, dashboard de KPIs | Mensual / trimestral |
+| **Por evento** | E&O cleanup, selección de proveedor, plan de cash-release | Según gatillo |
+
+> Cada entregable recurrente (S&OP, QBR, dashboard) es **ingreso recurrente**.
+> Linchpin re-produce el artefacto cada ciclo en segundos; tú vendes la **relación
+> y el juicio** que lo acompaña.
+
+---
+
+> El último documento, [06 · Mapa de Competencias](06_competency_map.md), te dice
+> qué necesitas saber para entregar este catálogo con credibilidad, y cómo cerrar
+> brechas usando la biblioteca L3.

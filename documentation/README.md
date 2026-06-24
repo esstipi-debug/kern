@@ -11,5 +11,6 @@ roadmap. For design briefs, contributor notes, and image assets, see
 | [FAQ.md](FAQ.md) | Common questions |
 | [CAPABILITY_EXPANSION_PLAN.md](CAPABILITY_EXPANSION_PLAN.md) | The capability roadmap (Fases 0–5) |
 | [UI_DESIGN_BRIEF.md](UI_DESIGN_BRIEF.md) | Brief for the web UI |
+| [operator/](operator/README.md) | **Operator Portfolio** — onboarding for the human who operates Linchpin: role, division of labor, methodologies, runbooks, deliverable catalog, competency map |
 
 See also the top-level [README](../README.md) and [SECURITY.md](../SECURITY.md).
