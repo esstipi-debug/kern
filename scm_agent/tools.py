@@ -8,11 +8,13 @@ from jobs import (
     cost_to_serve_job,
     ddmrp_job,
     deliverables,
+    financial_kpis_job,
     intake,
     inventory_deliverable,
     landed_cost_job,
     leadership,
     qa,
+    reconciliation_job,
     sop_deliverable,
     sop_job,
     sourcing_job,
@@ -520,6 +522,101 @@ def whatif_tool() -> Tool:
     )
 
 
+# ---- financial_kpis (inventory finance dashboard) ----------------------------
+
+def _financial_kpis_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a per-SKU financials CSV (cogs, avg inventory value, margin) is required"])
+    try:
+        records = financial_kpis_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not records:
+        return Prepared(status="needs_data", messages=["no SKUs found in the data"])
+    return Prepared(status="ok", payload=records)
+
+
+def _financial_kpis_run(payload: object, params: dict) -> Produced:
+    report = financial_kpis_job.run(
+        payload, dso=params.get("dso", 0.0), dpo=params.get("dpo", 0.0),
+    )
+    return Produced(report=report, summary=(
+        f"Inventory finance for {report.n_skus} SKU(s): {report.turns:.1f} turns, "
+        f"GMROI {report.gmroi:.2f}, {report.dio:.0f}-day DIO."
+    ))
+
+
+def financial_kpis_tool() -> Tool:
+    return Tool(
+        key="financial_kpis",
+        title="Inventory Financial KPIs",
+        description="Roll up the per-SKU finance pack: inventory turns, DIO, GMROI, sell-through, "
+                    "inventory-to-sales and cash-to-cash, and flag the weakest-GMROI SKUs.",
+        intent_keywords=(
+            "gmroi", "inventory turns", "turnover", "days inventory", "sell-through",
+            "sell through", "inventory to sales", "weeks of supply", "inventory kpi",
+            "financial kpi", "inventory health", "financial dashboard",
+        ),
+        requires_data=True,
+        prepare=_financial_kpis_prepare,
+        run=_financial_kpis_run,
+        qa=lambda report: financial_kpis_job.verify(report),
+        deliver=lambda report, out_dir, client: financial_kpis_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence: financial_kpis_job.build_deck(
+            report, client=client, citations=tuple(citations), confidence=confidence,
+        ).write_all(out_dir),
+    )
+
+
+# ---- reconciliation (inventory record accuracy / IRA) ------------------------
+
+def _reconciliation_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a count CSV (product, system qty, physical qty) is required"])
+    try:
+        records = reconciliation_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not records:
+        return Prepared(status="needs_data", messages=["no count lines found in the data"])
+    return Prepared(status="ok", payload=records)
+
+
+def _reconciliation_run(payload: object, params: dict) -> Produced:
+    report = reconciliation_job.run(
+        payload,
+        tolerance_pct=params.get("tolerance_pct", 0.0),
+        tolerance_units=params.get("tolerance_units", 0.0),
+    )
+    return Produced(report=report, summary=(
+        f"IRA {report.ira * 100:.0f}% across {report.n_counted} line(s); "
+        f"{report.n_counted - report.n_within} out of tolerance, "
+        f"{report.total_variance_value:,.0f} in variance value."
+    ))
+
+
+def reconciliation_tool() -> Tool:
+    return Tool(
+        key="reconciliation",
+        title="Inventory Record Accuracy (IRA)",
+        description="Reconcile system vs physical counts against a tolerance band, report inventory "
+                    "record accuracy (IRA) and the dollar impact of variances, and rank the worst lines.",
+        intent_keywords=(
+            "inventory accuracy", "record accuracy", "reconcile", "reconciliation",
+            "physical count", "stock count", "cycle count", "count variance",
+            "book vs physical", "system vs physical", "shrinkage", "stock discrepancy",
+        ),
+        requires_data=True,
+        prepare=_reconciliation_prepare,
+        run=_reconciliation_run,
+        qa=lambda report: reconciliation_job.verify(report),
+        deliver=lambda report, out_dir, client: reconciliation_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence: reconciliation_job.build_deck(
+            report, client=client, citations=tuple(citations), confidence=confidence,
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -532,4 +629,6 @@ def build_default_registry() -> ToolRegistry:
     reg.register(ddmrp_tool())
     reg.register(landed_cost_tool())
     reg.register(whatif_tool())
+    reg.register(financial_kpis_tool())
+    reg.register(reconciliation_tool())
     return reg
