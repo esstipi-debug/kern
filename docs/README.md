@@ -6,6 +6,7 @@ Design briefs, working notes, and the image/asset library. For user-facing guide
 
 | Path | What it is |
 |------|------------|
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Production hardening: env controls, reverse proxy (TLS/HSTS/body limits), load notes |
 | [AGENT_UI_DESIGN_PROMPT.md](AGENT_UI_DESIGN_PROMPT.md) | Design prompt for the agent console UI |
 | [HANDOFF.md](HANDOFF.md) | Pointer to the canonical handoff at the repo root |
 | [assets/](assets/) | Screenshots and diagrams used by the README |

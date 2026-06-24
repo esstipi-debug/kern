@@ -65,11 +65,21 @@ environment variables before exposing the app publicly:
 | `LINCHPIN_RATE_LIMIT` | Max requests per window per client IP (`0` disables) | `0` → off |
 | `LINCHPIN_RATE_WINDOW` | Rate-limit window, seconds | `60` |
 | `LINCHPIN_CORS_ORIGINS` | Comma-separated CORS allowlist | unset → same-origin only |
+| `LINCHPIN_ENV` | `production` enables the boot-time hardening check | `development` |
+| `LINCHPIN_REQUIRE_SECURE` | Refuse to boot if production is missing API key / rate limit | unset → warn only |
+| `LINCHPIN_LOG_JSON` / `LINCHPIN_LOG_LEVEL` | Structured (JSON) access logs / level | plain / `INFO` |
+
+**Fail-loud, not fail-silent.** With `LINCHPIN_ENV=production` the app logs a loud
+warning at startup for any missing control; with `LINCHPIN_REQUIRE_SECURE=1` it
+refuses to boot — so an unsecured public deploy can't slip through unnoticed. Every
+request is logged on the `linchpin.access` logger with an `X-Request-ID`, status and
+duration for centralized observability.
 
 Still terminate **TLS and set `HSTS`** at your reverse proxy (nginx/Caddy) — the app
 speaks plain HTTP and does not manage certificates. The `/console` prototype relaxes
 its CSP to load React/Babel from unpkg; if you expose it publicly, prefer
-self-hosting those assets.
+self-hosting those assets. See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for proxy
+configs (TLS, HSTS, `client_max_body_size`), worker scaling and load notes.
 
 ## Reporting a vulnerability
 
