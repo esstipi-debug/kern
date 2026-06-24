@@ -67,6 +67,11 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         order_cost=params.get("order_cost", 75.0),
         budget=params.get("budget"),
         periods_per_year=params.get("periods_per_year", 52.0),
+        service_levels=params.get("service_levels"),
+        differentiate_by_class=params.get("differentiate_by_class", False),
+        lead_times=params.get("lead_times"),
+        observed_fill_rates=params.get("observed_fill_rates"),
+        target_fill_rate=params.get("target_fill_rate", 0.95),
     )
     summary = (
         f"Analyzed {report.n_skus} SKUs; recommended inventory investment "

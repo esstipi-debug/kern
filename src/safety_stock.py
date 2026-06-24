@@ -70,3 +70,22 @@ def cycle_service_level_from_inventory(
     if demand_std_per_period == 0:
         return 1.0 if inventory_level >= mean_demand_per_period else 0.0
     return float(norm.cdf(inventory_level, loc=mean_demand_per_period, scale=demand_std_per_period))
+
+
+def tune_service_level(
+    current_service_level: float,
+    observed_fill_rate: float,
+    target_fill_rate: float,
+    *,
+    step: float = 0.5,
+    lo: float = 0.50,
+    hi: float = 0.999,
+) -> float:
+    """Nudge the cycle service level toward the target fill rate (closed-loop correction).
+
+    Below target -> raise the service level (more safety stock); above -> relax it (free
+    capital). The adjustment is proportional to the gap and bounded to [lo, hi]. Pure, so the
+    inventory loop can feed back observed performance without an external controller.
+    """
+    adjusted = current_service_level + step * (target_fill_rate - observed_fill_rate)
+    return max(lo, min(hi, adjusted))
