@@ -18,6 +18,7 @@ Methods:
   - simple_exponential_smoothing (SES) : stationary demand, recency-weighted
   - croston                   : intermittent / lumpy demand (spare parts)
   - forecast_demand(method="auto") : picks SES or Croston by ADI classification
+  - forecast_demand(method="auto_modern") : StatsForecast AutoETS/TSB when installed
 """
 
 from __future__ import annotations
@@ -210,6 +211,11 @@ def forecast_demand(history: object, method: str = "auto", **kwargs: float) -> F
     arr = _as_array(history)
     if method == "auto":
         method = "croston" if is_intermittent(arr) else "ses"
+
+    if method in ("auto_modern", "auto_ets", "tsb"):
+        from src.forecasting_auto import forecast_modern
+
+        return forecast_modern(arr, method=method, **kwargs)
 
     dispatch = {
         "moving_average": moving_average,

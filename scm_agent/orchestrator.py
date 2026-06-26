@@ -104,7 +104,7 @@ class Orchestrator:
 
         # Ground first: the premium deck weaves the L3 citations in, so they must
         # be resolved before the deliver path runs.
-        citations = self._ground(tool)
+        citations = self._ground(tool, request.brief)
         # Compute the ranked options once: they become JobResult.guided AND the deck's
         # action menu, so the sellable artifact carries the same choices the agent returns.
         guided = tool.options(produced.report) if tool.options else None
@@ -124,31 +124,14 @@ class Orchestrator:
             guided=guided,
         )
 
-    def _ground(self, tool: Tool) -> list[str]:
+    def _ground(self, tool: Tool, brief: str = "") -> list[str]:
         """Cite domain knowledge for the tool's topic, bridged to the implementing code.
 
-        Reuses the tool's own intent_keywords as the books query. For each cited
-        concept the L3 bridge also resolves the source that implements it (theory
-        -> code), appended as "  -> src/file.py:Lnn". Returns [] when the books graph
-        is absent (fresh clone); the code link is simply dropped when the code graph
-        is absent or has no match, so grounding degrades one field at a time.
-
-        The separator is ASCII "->" on purpose: citations are printed by the CLI on
-        Windows (cp1252), where a "→" glyph would raise UnicodeEncodeError.
+        Uses tool keywords, the client brief, and method-advice hits from the L3
+        graph. For each cited concept the bridge also resolves the implementing
+        source when the code graph is present.
         """
-        terms = " ".join(tool.intent_keywords)
-        if not terms.strip():
-            return []
-        cites: list[str] = []
-        for hit in self.knowledge.search(terms, graph="books", limit=3):
-            loc = f" {hit.location}" if hit.location else ""
-            cite = f"{hit.label} — {hit.source}{loc}".strip()
-            impl = self.knowledge.implements(hit)
-            if impl and impl.source:
-                impl_loc = f":{impl.location}" if impl.location else ""
-                cite += f"  -> {impl.source}{impl_loc}"
-            cites.append(cite)
-        return cites
+        return self.knowledge.ground_citations(tool.intent_keywords, brief, limit=5)
 
     def _narrative(self, base_summary: str, tool_title: str, citations: list[str] | None = None) -> str:
         """Optional LLM polish, grounded in the L3 citations when present.

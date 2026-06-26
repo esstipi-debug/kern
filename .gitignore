@@ -33,6 +33,8 @@ htmlcov/
 
 # graphify knowledge-graph output (generated)
 graphify-out/
+knowledge/scm-books-rebuild/
+knowledge/scm-books/graph.json.bak
 
 # generated client deliverables
 deliverables/

@@ -16,6 +16,7 @@ from scm_agent.knowledge import (
     Concept,
     ConceptDetail,
     KnowledgeBase,
+    MethodAdvice,
 )
 
 REPO = Path(__file__).resolve().parent.parent
@@ -174,3 +175,20 @@ def test_search_idf_favors_rarer_term(tmp_path: Path) -> None:
     kb = KnowledgeBase(books_path=g, code_path=tmp_path / "none.json")
     hits = kb.search("demand newsvendor", graph="books")
     assert hits[0].id == "nv"
+
+
+def test_advise_maps_intermittent_brief(kb: KnowledgeBase) -> None:
+    tips = kb.advise("we have intermittent lumpy demand on spare parts")
+    assert tips
+    assert all(isinstance(t, MethodAdvice) for t in tips)
+    assert any("croston" in t.concept.id.lower() for t in tips)
+
+
+def test_ground_citations_uses_brief_and_keywords(kb: KnowledgeBase) -> None:
+    cites = kb.ground_citations(
+        ("reorder", "safety stock", "inventory"),
+        "intermittent spare-parts demand needs a better forecast method",
+        limit=5,
+    )
+    assert 1 <= len(cites) <= 5
+    assert all(isinstance(c, str) for c in cites)

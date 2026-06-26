@@ -1,7 +1,7 @@
 """L3 knowledge layer — queries the SCM knowledge graphs for the agent.
 
 Two graphs, one query surface:
-  - books graph (knowledge/scm-books/graph.json) — domain theory from 18 SCM
+  - books graph (knowledge/scm-books/graph.json) — domain theory from SCM
     books (incl. supply-chain leadership / the CHAIN model), with chapter
     citations. Committed to the repo.
   - code graph (graphify-out/graph.json) — the codebase structure. Gitignored
@@ -59,6 +59,34 @@ class Bridge:
     term: str
     theory: tuple[Concept, ...]
     implementation: tuple[Concept, ...]
+
+
+@dataclass(frozen=True)
+class MethodAdvice:
+    """A demand/situation pattern mapped to a citable graph concept."""
+
+    pattern: str
+    concept: Concept
+    rationale: str | None
+
+
+# Brief-token triggers -> graph concept id (method advisor for routing / grounding).
+_METHOD_RULES: tuple[tuple[tuple[str, ...], str, str], ...] = (
+    (("intermittent", "lumpy", "sporadic", "adi"), "crostons_method", "intermittent demand"),
+    (("seasonal", "seasonality", "mstl", "holt", "winters"), "time_series_decomposition", "seasonal demand"),
+    (("elasticity", "markdown", "price", "pricing"), "price_elasticity_of_demand", "pricing / elasticity"),
+    (("safety", "stockout", "service", "level"), "safety_stock", "buffer / service level"),
+    (("reorder", "rop", "review"), "reorder_point", "reorder policy"),
+    (("ddmrp", "buffer", "decoupling"), "demand_driven_material_requirements_planning", "DDMRP buffers"),
+    (("abc", "xyz", "pareto", "classification"), "abc_analysis", "ABC / XYZ classification"),
+    (("sop", "aggregate", "planning"), "sales_and_operations_planning", "S&OP / IBP"),
+    (("landed", "incoterm", "duty", "freight"), "landed_cost", "landed cost / TCO"),
+    (("leadership", "chain", "collaborative"), "chain_model", "CHAIN leadership"),
+    (("resilience", "risk", "disruption"), "supply_chain_resilience", "risk / resilience"),
+    (("sustainab", "carbon", "circular"), "sustainable_procurement", "sustainable logistics"),
+)
+
+_MIN_INFERRED_CONFIDENCE = 0.75
 
 
 def _tokens(text: str) -> set[str]:
@@ -166,6 +194,74 @@ class KnowledgeBase:
     # exact match still outranks a node that only mentions the term in passing.
     _W_TITLE = 2.0
     _W_BODY = 1.0
+
+    def advise(self, brief: str, *, limit: int = 3) -> list[MethodAdvice]:
+        """Map brief language to citable methods/concepts in the books graph."""
+        terms = _tokens(brief)
+        if not terms:
+            return []
+        out: list[MethodAdvice] = []
+        seen: set[str] = set()
+        for triggers, concept_id, pattern in _METHOD_RULES:
+            if not (set(triggers) & terms):
+                continue
+            node = self._index["books"].get(concept_id)
+            if node is None:
+                hits = self.search(concept_id.replace("_", " "), graph="books", limit=1)
+                if not hits:
+                    continue
+                node = self._index["books"].get(hits[0].id)
+            if node is None or node["id"] in seen:
+                continue
+            seen.add(node["id"])
+            out.append(MethodAdvice(
+                pattern=pattern,
+                concept=self._to_concept(node, "books"),
+                rationale=node.get("rationale"),
+            ))
+            if len(out) >= limit:
+                break
+        return out
+
+    def ground_citations(
+        self,
+        tool_keywords: tuple[str, ...] | list[str],
+        brief: str = "",
+        *,
+        limit: int = 5,
+    ) -> list[str]:
+        """Ranked L3 citations from tool keywords, the client brief, and method advice."""
+        queries = [" ".join(tool_keywords)]
+        if brief.strip():
+            queries.append(brief)
+        scored: dict[str, tuple[int, int, Concept]] = {}
+        for qi, query in enumerate(queries):
+            weight = 2 if qi == 0 else 3  # brief matches weigh more
+            for hit in self.search(query, graph="books", limit=limit + 2):
+                loc_bonus = 1 if hit.location else 0
+                key = hit.id
+                rank = (len(_tokens(query) & _tokens(f"{hit.label} {hit.id}")) * weight + loc_bonus,
+                        loc_bonus, hit)
+                prev = scored.get(key)
+                if prev is None or rank[:2] > prev[:2]:
+                    scored[key] = rank
+        for advice in self.advise(brief, limit=2):
+            key = advice.concept.id
+            rank = (4, 1 if advice.concept.location else 0, advice.concept)
+            prev = scored.get(key)
+            if prev is None or rank[:2] > prev[:2]:
+                scored[key] = rank
+        ordered = sorted(scored.values(), key=lambda r: (-r[0], -r[1], r[2].label))
+        cites: list[str] = []
+        for _, _, hit in ordered[:limit]:
+            loc = f" {hit.location}" if hit.location else ""
+            cite = f"{hit.label} — {hit.source}{loc}".strip()
+            impl = self.implements(hit)
+            if impl and impl.source:
+                impl_loc = f":{impl.location}" if impl.location else ""
+                cite += f"  -> {impl.source}{impl_loc}"
+            cites.append(cite)
+        return cites
 
     def search(self, query: str, graph: str = "both", limit: int = 8) -> list[Concept]:
         """Rank concept nodes by IDF-weighted token overlap with the query.
@@ -279,6 +375,11 @@ class KnowledgeBase:
         neighbors: list[tuple[str, str]] = []
         for e in self._graphs[graph]["links"]:
             rel = e.get("relation", "related")
+            conf = e.get("confidence")
+            if conf == "INFERRED":
+                score = e.get("confidence_score")
+                if score is not None and score < _MIN_INFERRED_CONFIDENCE:
+                    continue
             if e.get("source") == nid and e.get("target") in index:
                 neighbors.append((rel, index[e["target"]].get("label", e["target"])))
             elif e.get("target") == nid and e.get("source") in index:
