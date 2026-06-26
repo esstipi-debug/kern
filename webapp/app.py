@@ -40,6 +40,7 @@ from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
 from webapp import observability, security  # noqa: E402
+from webapp.decisions import router as decisions_router  # noqa: E402
 
 DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -92,6 +93,9 @@ for _w in _PROD_WARNINGS:
     logging.getLogger("linchpin.security").warning("production hardening: %s", _w)
 if _PROD_WARNINGS and security.REQUIRE_SECURE:
     raise RuntimeError("LINCHPIN_REQUIRE_SECURE is set but: " + "; ".join(_PROD_WARNINGS))
+
+# Decision-support guardrail calculators (the human-facing Guided Execution Layer).
+app.include_router(decisions_router)
 
 
 def _reject_nonfinite(token: str) -> float:
@@ -485,6 +489,12 @@ def console() -> FileResponse:
 def operator_portfolio() -> FileResponse:
     """The Operator Portfolio — renders documentation/operator/*.md as a web page."""
     return FileResponse(STATIC_DIR / "operator" / "index.html")
+
+
+@app.get("/decisiones")
+def decisiones_page() -> FileResponse:
+    """The decision-support page — friendly guardrail calculators for the operator."""
+    return FileResponse(STATIC_DIR / "decisiones" / "index.html")
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

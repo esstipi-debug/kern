@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Linchpin · Decisiones con red de seguridad</title>
+<style>
+  :root {
+    --bg: oklch(98% 0.01 250);
+    --surface: oklch(100% 0 0);
+    --ink: oklch(22% 0.03 260);
+    --muted: oklch(52% 0.02 260);
+    --line: oklch(90% 0.01 260);
+    --accent: oklch(55% 0.17 265);
+    --accent-soft: oklch(96% 0.04 265);
+    --verde: oklch(64% 0.16 150);
+    --verde-soft: oklch(95% 0.05 150);
+    --amarillo: oklch(78% 0.14 85);
+    --amarillo-soft: oklch(96% 0.06 85);
+    --rojo: oklch(60% 0.2 25);
+    --rojo-soft: oklch(95% 0.05 25);
+    --radius: 14px;
+    --shadow: 0 1px 2px oklch(20% 0.03 260 / 0.06), 0 8px 24px oklch(20% 0.03 260 / 0.07);
+    --space: clamp(1rem, 0.6rem + 1.6vw, 2rem);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header.hero {
+    padding: var(--space) var(--space) 0;
+    max-width: 1080px; margin: 0 auto;
+  }
+  .eyebrow {
+    font-size: .72rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+  }
+  h1 {
+    font-size: clamp(1.7rem, 1.1rem + 2.4vw, 2.6rem); line-height: 1.05;
+    margin: .35rem 0 .4rem; letter-spacing: -0.02em;
+  }
+  .lede { color: var(--muted); max-width: 60ch; margin: 0 0 1.4rem; }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  nav.tabs {
+    position: sticky; top: 0; z-index: 5; background: oklch(98% 0.01 250 / 0.85);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+    padding: .55rem var(--space); margin-top: .6rem;
+  }
+  .tabs-inner {
+    max-width: 1080px; margin: 0 auto; display: flex; gap: .4rem; flex-wrap: wrap;
+  }
+  .tab {
+    border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+    padding: .5rem .85rem; border-radius: 999px; cursor: pointer; font-size: .9rem;
+    font-weight: 600; transition: all .15s ease; white-space: nowrap;
+  }
+  .tab:hover { border-color: var(--accent); color: var(--accent); }
+  .tab[aria-selected="true"] {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+    box-shadow: 0 4px 12px oklch(55% 0.17 265 / 0.3);
+  }
+
+  main { max-width: 1080px; margin: 0 auto; padding: var(--space); }
+  .layout { display: grid; gap: var(--space); grid-template-columns: 1fr; }
+  @media (min-width: 880px) { .layout { grid-template-columns: 360px 1fr; align-items: start; } }
+
+  .panel {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+  }
+  .panel-head { padding: 1.1rem 1.2rem .4rem; }
+  .panel-head h2 { margin: 0; font-size: 1.15rem; letter-spacing: -0.01em; }
+  .panel-head p { margin: .3rem 0 0; color: var(--muted); font-size: .88rem; }
+  form { padding: .6rem 1.2rem 1.2rem; display: grid; gap: .85rem; }
+  .field { display: grid; gap: .25rem; }
+  .field.two { grid-template-columns: 1fr 1fr; gap: .6rem; }
+  .field.two > div { display: grid; gap: .25rem; }
+  label { font-size: .82rem; font-weight: 600; color: var(--ink); }
+  .hint { font-size: .73rem; color: var(--muted); font-weight: 400; }
+  input {
+    width: 100%; padding: .55rem .65rem; border: 1px solid var(--line);
+    border-radius: 9px; font: inherit; background: oklch(99% 0.005 260);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  button.go {
+    margin-top: .3rem; background: var(--accent); color: #fff; border: 0;
+    padding: .7rem 1rem; border-radius: 10px; font: inherit; font-weight: 700;
+    cursor: pointer; transition: transform .1s, filter .15s;
+  }
+  button.go:hover { filter: brightness(1.07); }
+  button.go:active { transform: translateY(1px); }
+  .group-label {
+    font-size: .7rem; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--muted); font-weight: 700; margin-top: .2rem;
+  }
+
+  /* ---- result card ---- */
+  .result { min-height: 200px; }
+  .placeholder {
+    display: grid; place-content: center; text-align: center; gap: .5rem;
+    color: var(--muted); padding: 3rem 1.5rem; height: 100%;
+  }
+  .placeholder .big { font-size: 2.2rem; }
+  .verdict {
+    padding: 1.2rem 1.3rem; display: flex; gap: .9rem; align-items: center;
+    border-bottom: 1px solid var(--line);
+  }
+  .dot { width: 16px; height: 16px; border-radius: 50%; flex: none; box-shadow: 0 0 0 5px var(--soft); }
+  .verdict .frase { font-size: 1.12rem; font-weight: 650; letter-spacing: -0.01em; }
+  .verdict .titulo { font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 700; }
+  .lvl-verde { --c: var(--verde); --soft: var(--verde-soft); }
+  .lvl-amarillo { --c: var(--amarillo); --soft: var(--amarillo-soft); }
+  .lvl-rojo { --c: var(--rojo); --soft: var(--rojo-soft); }
+  .dot { background: var(--c); }
+  .verdict.lvl-verde, .verdict.lvl-amarillo, .verdict.lvl-rojo { background: var(--soft); }
+
+  section.block { padding: 1.1rem 1.3rem; border-bottom: 1px solid var(--line); }
+  section.block h3 {
+    margin: 0 0 .7rem; font-size: .78rem; text-transform: uppercase;
+    letter-spacing: .1em; color: var(--muted);
+  }
+  .guard { display: flex; justify-content: space-between; gap: 1rem; padding: .55rem 0; border-bottom: 1px dashed var(--line); }
+  .guard:last-child { border-bottom: 0; }
+  .guard .g-left { min-width: 0; }
+  .guard .g-label { font-weight: 600; font-size: .92rem; }
+  .guard .g-exp { font-size: .78rem; color: var(--muted); margin-top: .1rem; }
+  .guard .g-val { font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--accent); }
+
+  .option {
+    border: 1px solid var(--line); border-radius: 11px; padding: .75rem .85rem;
+    margin-bottom: .55rem; position: relative; transition: border-color .15s;
+  }
+  .option:hover { border-color: var(--accent); }
+  .option.rec { border-color: var(--verde); background: var(--verde-soft); }
+  .option .o-top { display: flex; align-items: center; gap: .5rem; }
+  .option .o-label { font-weight: 700; }
+  .badge-rec {
+    font-size: .65rem; text-transform: uppercase; letter-spacing: .08em;
+    background: var(--verde); color: #fff; padding: .12rem .45rem; border-radius: 999px; font-weight: 700;
+  }
+  .option .o-sum { font-size: .85rem; color: var(--muted); margin-top: .25rem; }
+  details.why { padding: 1rem 1.3rem; }
+  details.why summary { cursor: pointer; font-weight: 600; color: var(--accent); font-size: .9rem; }
+  details.why p { color: var(--muted); font-size: .88rem; }
+  .cita { font-size: .75rem; color: var(--muted); font-style: italic; margin-top: .5rem; }
+  .err { color: var(--rojo); background: var(--rojo-soft); padding: 1rem 1.3rem; font-weight: 600; }
+  footer { max-width: 1080px; margin: 0 auto; padding: 0 var(--space) 3rem; color: var(--muted); font-size: .8rem; }
+</style>
+</head>
+<body>
+  <header class="hero">
+    <div class="eyebrow">Linchpin · Capa de ejecución guiada</div>
+    <h1>Decide con red de seguridad</h1>
+    <p class="lede">Para lo que el agente no ejecuta solo &mdash; negociar, cambiar de proveedor,
+      aprobar gasto, dimensionar el turno &mdash; estas calculadoras te dan los <b>parámetros
+      sanos</b>: mínimos, pisos, plazos y rangos, con un veredicto y opciones para actuar.</p>
+  </header>
+
+  <nav class="tabs"><div class="tabs-inner" id="tabs"></div></nav>
+
+  <main>
+    <div class="layout">
+      <div class="panel" id="form-panel">
+        <div class="panel-head"><h2 id="calc-title"></h2><p id="calc-desc"></p></div>
+        <form id="calc-form" autocomplete="off"></form>
+      </div>
+      <div class="panel result" id="result">
+        <div class="placeholder">
+          <div class="big">🧭</div>
+          <div>Completá los datos y obtené tu veredicto + guardrails.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>Cada cálculo corre sobre el motor auditable de Linchpin (colas, EOQ, safety stock,
+    TOPSIS, capital de trabajo). Los números son guía; la decisión y la firma son tuyas.</footer>
+
+<script>
+const CALCS = {
+  capacidad: {
+    titulo: "Viabilidad operativa", endpoint: "capacidad",
+    desc: "¿El personal cubre el volumen que entra y sale? ¿En cuánto tiempo? ¿Genera atraso?",
+    fields: [
+      { name: "entrada_unidades_dia", label: "Unidades que entran por día", def: 400 },
+      { name: "salida_unidades_dia", label: "Unidades que salen por día", def: 400 },
+      { name: "num_operarios", label: "Número de operarios", def: 5, step: 1 },
+      { name: "unidades_hora_operario", label: "Unidades por hora por operario", def: 25 },
+      { name: "horas_turno", label: "Horas de turno por día", def: 8 },
+    ],
+  },
+  negociacion: {
+    titulo: "Negociación con proveedor", endpoint: "negociacion",
+    desc: "Tus límites antes de sentarte a negociar: costo máximo, plazo y pago objetivo.",
+    fields: [
+      { name: "costo_unitario", label: "Costo unitario actual", def: 60 },
+      { name: "precio_venta", label: "Precio de venta", def: 100 },
+      { name: "margen_minimo_pct", label: "Margen mínimo sano (0–1)", def: 0.3, step: 0.01, hint: "0.3 = 30%" },
+      { name: "lead_time_actual_dias", label: "Lead time actual (días)", def: 7 },
+      { name: "demanda_std_dia", label: "Variabilidad diaria (opcional)", def: 5, opt: true },
+      { name: "nivel_servicio", label: "Nivel de servicio", def: 0.95, step: 0.01 },
+    ],
+  },
+  proveedor: {
+    titulo: "Cambiar de proveedor", endpoint: "proveedor",
+    desc: "Compara actual vs alternativo (TOPSIS) y muestra el breakeven de precio.",
+    groups: [
+      { label: "Proveedor actual", fields: [
+        { name: "actual_precio", label: "Precio", def: 10 },
+        { name: "actual_otif", label: "OTIF (0–1)", def: 0.95, step: 0.01 },
+        { name: "actual_lead", label: "Lead time (días)", def: 5 },
+        { name: "actual_defectos", label: "Defectos (0–1)", def: 0.01, step: 0.01 },
+      ]},
+      { label: "Proveedor alternativo", fields: [
+        { name: "alt_precio", label: "Precio", def: 12 },
+        { name: "alt_otif", label: "OTIF (0–1)", def: 0.85, step: 0.01 },
+        { name: "alt_lead", label: "Lead time (días)", def: 8 },
+        { name: "alt_defectos", label: "Defectos (0–1)", def: 0.03, step: 0.01 },
+      ]},
+    ],
+  },
+  inventario: {
+    titulo: "Niveles de inventario sanos", endpoint: "inventario",
+    desc: "Safety stock, punto de reorden, EOQ y el rango sano; semáforo de tu stock actual.",
+    fields: [
+      { name: "demanda_media_periodo", label: "Demanda media por período", def: 100 },
+      { name: "demanda_std_periodo", label: "Variabilidad (desv. std.)", def: 20 },
+      { name: "lead_time_periodos", label: "Lead time (períodos)", def: 2 },
+      { name: "nivel_servicio", label: "Nivel de servicio", def: 0.95, step: 0.01 },
+      { name: "costo_unitario", label: "Costo unitario", def: 10 },
+      { name: "costo_ordenar", label: "Costo de ordenar", def: 50 },
+      { name: "holding_rate_anual", label: "Tasa de mantener anual (0–1)", def: 0.25, step: 0.01 },
+      { name: "stock_actual", label: "Stock actual (opcional)", def: "", opt: true },
+    ],
+  },
+  compra: {
+    titulo: "Aprobar compra", endpoint: "compra",
+    desc: "¿Cuánto es sano gastar sin reventar el ciclo de caja (DIO)?",
+    fields: [
+      { name: "monto_compra", label: "Monto de compra propuesto", def: 50000 },
+      { name: "inventario_actual_valor", label: "Valor del inventario actual", def: 100000 },
+      { name: "cogs_anual", label: "COGS anual", def: 400000 },
+      { name: "ventas_anual", label: "Ventas anuales", def: 600000 },
+      { name: "dio_objetivo_max", label: "DIO objetivo máx. (días)", def: 90, opt: true },
+    ],
+  },
+  liquidar: {
+    titulo: "Liquidar stock", endpoint: "liquidar",
+    desc: "Precio de liquidación recomendado y cash liberado para excedente / dead stock.",
+    fields: [
+      { name: "unidades_excedente", label: "Unidades excedentes", def: 100 },
+      { name: "costo_unitario", label: "Costo unitario", def: 20 },
+      { name: "precio_actual", label: "Precio actual", def: 50 },
+      { name: "valor_recuperacion_pct", label: "Valor de recuperación (0–1)", def: 0.4, step: 0.01 },
+    ],
+  },
+};
+const ORDER = ["capacidad","negociacion","proveedor","inventario","compra","liquidar"];
+let active = "capacidad";
+
+const $ = (s, r=document) => r.querySelector(s);
+
+function fieldHTML(f) {
+  const step = f.step ? ` step="${f.step}"` : ' step="any"';
+  const req = f.opt ? "" : " required";
+  const val = f.def === "" ? "" : ` value="${f.def}"`;
+  const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
+  return `<div class="field"><label for="${f.name}">${f.label} ${hint}</label>
+    <input type="number" id="${f.name}" name="${f.name}"${step}${val}${req}></div>`;
+}
+
+function renderTabs() {
+  $("#tabs").innerHTML = ORDER.map(k =>
+    `<button class="tab" data-k="${k}" role="tab" aria-selected="${k===active}">${CALCS[k].titulo}</button>`
+  ).join("");
+  $("#tabs").querySelectorAll(".tab").forEach(b =>
+    b.onclick = () => { active = b.dataset.k; renderTabs(); renderForm(); resetResult(); });
+}
+
+function renderForm() {
+  const c = CALCS[active];
+  $("#calc-title").textContent = c.titulo;
+  $("#calc-desc").textContent = c.desc;
+  let body = "";
+  if (c.groups) {
+    for (const g of c.groups)
+      body += `<div class="group-label">${g.label}</div>` + g.fields.map(fieldHTML).join("");
+  } else {
+    body = c.fields.map(fieldHTML).join("");
+  }
+  body += `<button class="go" type="submit">Calcular guardrails →</button>`;
+  $("#calc-form").innerHTML = body;
+  $("#calc-form").onsubmit = onSubmit;
+}
+
+function resetResult() {
+  $("#result").innerHTML = `<div class="placeholder"><div class="big">🧭</div>
+    <div>Completá los datos y obtené tu veredicto + guardrails.</div></div>`;
+}
+
+function collect() {
+  const data = {};
+  $("#calc-form").querySelectorAll("input").forEach(i => {
+    if (i.value === "") return;            // skip blank optionals
+    data[i.name] = parseFloat(i.value);
+  });
+  return data;
+}
+
+async function onSubmit(e) {
+  e.preventDefault();
+  const c = CALCS[active];
+  $("#result").innerHTML = `<div class="placeholder"><div class="big">⏳</div><div>Calculando…</div></div>`;
+  try {
+    const r = await fetch(`/api/decide/${c.endpoint}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(collect()),
+    });
+    const j = await r.json();
+    if (!r.ok) { renderError(j); return; }
+    renderCard(j);
+  } catch (err) {
+    renderError({ detail: "No se pudo conectar con el motor." });
+  }
+}
+
+function renderError(j) {
+  let msg = "Revisá los datos ingresados.";
+  if (typeof j.detail === "string") msg = j.detail;
+  else if (Array.isArray(j.detail) && j.detail[0]) msg = "Dato inválido: " + (j.detail[0].loc?.slice(-1)[0] ?? "");
+  $("#result").innerHTML = `<div class="err">⚠️ ${msg}</div>`;
+}
+
+function renderCard(d) {
+  const lvl = d.veredicto.nivel;
+  const guards = d.guardrails.map(g => `
+    <div class="guard"><div class="g-left">
+      <div class="g-label">${g.etiqueta}</div><div class="g-exp">${g.explicacion}</div>
+    </div><div class="g-val">${g.valor}</div></div>`).join("");
+  const opts = d.opciones.map(o => `
+    <div class="option ${o.recommended ? "rec" : ""}">
+      <div class="o-top"><span class="o-label">${o.label}</span>
+        ${o.recommended ? '<span class="badge-rec">Recomendada</span>' : ""}</div>
+      <div class="o-sum">${o.summary}</div></div>`).join("");
+  const cita = d.cita ? `<div class="cita">Fuente: ${d.cita}</div>` : "";
+  $("#result").innerHTML = `
+    <div class="verdict lvl-${lvl}"><span class="dot"></span>
+      <div><div class="titulo">${d.titulo}</div><div class="frase">${d.veredicto.frase}</div></div></div>
+    <section class="block"><h3>Guardrails — parámetros sanos</h3>${guards}</section>
+    <section class="block"><h3>Opciones para actuar</h3>${opts}</section>
+    <details class="why"><summary>¿Por qué?</summary><p>${d.por_que}</p>${cita}</details>`;
+}
+
+renderTabs(); renderForm();
+</script>
+</body>
+</html>
