@@ -7,17 +7,21 @@ from pathlib import Path
 
 from jobs import (
     abc_xyz_job,
+    acceptance_sampling_job,
     cost_to_serve_deliverable,
     cost_to_serve_job,
     data_quality_job,
     ddmrp_job,
+    dea_job,
     deliverables,
+    earned_value_job,
     financial_kpis_job,
     forecast_job,
     intake,
     inventory_deliverable,
     landed_cost_job,
     leadership,
+    learning_curve_job,
     qa,
     queuing_job,
     reconciliation_job,
@@ -1014,6 +1018,190 @@ def data_quality_tool() -> Tool:
     )
 
 
+# ---- dea (efficiency benchmarking) -------------------------------------------
+
+def _dea_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a units CSV (name + input_* and output_* columns) is required"])
+    try:
+        payload = dea_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _dea_run(payload: object, params: dict) -> Produced:
+    report = dea_job.run(payload)
+    return Produced(report=report, summary=(
+        f"Benchmarked {report.n_units} unit(s); {report.n_efficient} on the frontier, mean "
+        f"efficiency {report.mean_efficiency * 100:.0f}%, weakest '{report.worst_unit}'."
+    ))
+
+
+def dea_tool() -> Tool:
+    return Tool(
+        key="dea",
+        title="Efficiency Benchmarking (DEA)",
+        description="Rate comparable units (suppliers, warehouses, DCs, stores) on a data-driven "
+                    "efficiency frontier from their inputs and outputs, with no preset weights, and "
+                    "rank the laggards.",
+        intent_keywords=(
+            "data envelopment", "dea", "efficiency frontier", "relative efficiency",
+            "benchmark efficiency", "efficiency benchmarking", "peer efficiency", "best in class",
+        ),
+        requires_data=True,
+        options=tool_options.dea_options,
+        prepare=_dea_prepare,
+        run=_dea_run,
+        qa=lambda report: dea_job.verify(report),
+        deliver=lambda report, out_dir, client: dea_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            dea_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
+# ---- acceptance_sampling (receiving quality) ---------------------------------
+
+def _acceptance_sampling_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a parts CSV (part, aql, ltpd) is required"])
+    try:
+        records = acceptance_sampling_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not records:
+        return Prepared(status="needs_data", messages=["no parts found in the data"])
+    return Prepared(status="ok", payload=records)
+
+
+def _acceptance_sampling_run(payload: object, params: dict) -> Produced:
+    report = acceptance_sampling_job.run(
+        payload,
+        producer_risk=params.get("producer_risk", 0.05),
+        consumer_risk=params.get("consumer_risk", 0.10),
+    )
+    return Produced(report=report, summary=(
+        f"Designed sampling plans for {report.n_parts} part(s); {report.total_sample} units to "
+        f"inspect, strictest '{report.strictest_part}'."
+    ))
+
+
+def acceptance_sampling_tool() -> Tool:
+    return Tool(
+        key="acceptance_sampling",
+        title="Acceptance Sampling (Receiving Quality)",
+        description="Design the smallest receiving inspection plan (inspect n, accept on <= c) per "
+                    "part from its AQL/LTPD quality targets, protecting both producer and consumer risk.",
+        intent_keywords=(
+            "acceptance sampling", "sampling plan", "incoming inspection", "receiving inspection",
+            "aql", "ltpd", "inspect how many", "lot acceptance", "quality sampling",
+        ),
+        requires_data=True,
+        options=tool_options.acceptance_sampling_options,
+        prepare=_acceptance_sampling_prepare,
+        run=_acceptance_sampling_run,
+        qa=lambda report: acceptance_sampling_job.verify(report),
+        deliver=lambda report, out_dir, client: acceptance_sampling_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            acceptance_sampling_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
+# ---- earned_value (project control) ------------------------------------------
+
+def _earned_value_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a tasks CSV (task, planned, earned, actual) is required"])
+    try:
+        records = earned_value_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not records:
+        return Prepared(status="needs_data", messages=["no tasks found in the data"])
+    return Prepared(status="ok", payload=records)
+
+
+def _earned_value_run(payload: object, params: dict) -> Produced:
+    report = earned_value_job.run(payload)
+    p = report.portfolio
+    return Produced(report=report, summary=(
+        f"Project across {report.n_tasks} task(s): SPI {p.spi:.2f}, CPI {p.cpi:.2f}; "
+        f"{report.n_behind} behind, {report.n_over} over budget."
+    ))
+
+
+def earned_value_tool() -> Tool:
+    return Tool(
+        key="earned_value",
+        title="Earned Value (Project Control)",
+        description="Roll up project cost/schedule control from work-package planned/earned/actual "
+                    "cost: SV, CV, SPI, CPI, and the worst-performing tasks.",
+        intent_keywords=(
+            "earned value", "project control", "spi", "cpi", "schedule variance",
+            "cost variance", "cost performance index", "project performance", "bcwp",
+        ),
+        requires_data=True,
+        options=tool_options.earned_value_options,
+        prepare=_earned_value_prepare,
+        run=_earned_value_run,
+        qa=lambda report: earned_value_job.verify(report),
+        deliver=lambda report, out_dir, client: earned_value_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            earned_value_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
+# ---- learning_curve (cost-down) ----------------------------------------------
+
+def _learning_curve_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a products CSV (product, first unit cost, learning rate, planned volume) is required"])
+    try:
+        records = learning_curve_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not records:
+        return Prepared(status="needs_data", messages=["no products found in the data"])
+    return Prepared(status="ok", payload=records)
+
+
+def _learning_curve_run(payload: object, params: dict) -> Produced:
+    report = learning_curve_job.run(payload)
+    return Produced(report=report, summary=(
+        f"Projected cost-down for {report.n_products} product(s): {report.total_cost:,.0f} total, "
+        f"{report.total_savings:,.0f} saved vs. no learning."
+    ))
+
+
+def learning_curve_tool() -> Tool:
+    return Tool(
+        key="learning_curve",
+        title="Learning-Curve Cost-Down",
+        description="Project unit and total cost at volume from a first-unit cost and learning rate "
+                    "(Yx = K*x^n), and the saving vs. no learning - for quoting and cost-down planning.",
+        intent_keywords=(
+            "learning curve", "experience curve", "cost-down", "cost down", "unit cost at volume",
+            "cost reduction with volume", "quote at volume", "learning rate",
+        ),
+        requires_data=True,
+        options=tool_options.learning_curve_options,
+        prepare=_learning_curve_prepare,
+        run=_learning_curve_run,
+        qa=lambda report: learning_curve_job.verify(report),
+        deliver=lambda report, out_dir, client: learning_curve_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            learning_curve_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -1035,4 +1223,8 @@ def build_default_registry() -> ToolRegistry:
     reg.register(risk_tool())
     reg.register(forecast_tool())
     reg.register(data_quality_tool())
+    reg.register(dea_tool())
+    reg.register(acceptance_sampling_tool())
+    reg.register(earned_value_tool())
+    reg.register(learning_curve_tool())
     return reg

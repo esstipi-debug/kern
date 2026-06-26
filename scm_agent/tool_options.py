@@ -263,3 +263,72 @@ def scheduling_options(report: object) -> GuidedOutcome:
     order = [rec] + [r for r in ("SPT", "EDD", "FCFS") if r != rec]
     items: list[_Item] = [by_rule[r] for r in order]
     return _ranked(f"Sequencing {report.n_jobs} job(s): choose the dispatching rule.", items)
+
+
+def dea_options(report: object) -> GuidedOutcome:
+    worst = report.worst_unit
+    laggards = report.n_units - report.n_efficient
+    items: list[_Item] = [
+        (f"Improve the laggards (start with {worst})",
+         f"Bring the {laggards} below-frontier unit(s) toward the best peers, starting with '{worst}'.",
+         "run improvement plans on the lowest-efficiency units", "biggest efficiency gain"),
+        ("Replicate the frontier units",
+         f"Standardize the {report.n_efficient} efficient unit(s)' practices across the network.",
+         "roll out the frontier playbook", "lifts the whole network"),
+        ("Reallocate volume to the efficient units",
+         "Shift work toward the units already on the frontier.",
+         "reallocate volume to the efficient units", "fast win; capacity-limited"),
+    ]
+    return _ranked(f"DEA over {report.n_units} unit(s): choose how to close the gap.", items)
+
+
+def acceptance_sampling_options(report: object) -> GuidedOutcome:
+    items: list[_Item] = [
+        ("Adopt the per-part sampling plans",
+         f"Inspect {report.total_sample} units across {report.n_parts} part(s) at the recommended (n, c).",
+         "apply the receiving inspection plans", "balances risk vs inspection cost"),
+        ("Reduce inspection on reliable suppliers",
+         "Move parts whose suppliers consistently hold AQL to skip-lot / reduced inspection.",
+         "switch proven suppliers to skip-lot", "less inspection; needs supplier history"),
+        (f"Tighten on critical parts (e.g. {report.strictest_part})",
+         "Lower AQL on safety-critical parts to raise the inspection bar.",
+         "tighten AQL on critical parts", "more inspection; lower escape risk"),
+    ]
+    return _ranked(f"Receiving inspection for {report.n_parts} part(s): choose the posture.", items)
+
+
+def earned_value_options(report: object) -> GuidedOutcome:
+    p = report.portfolio
+    worst = report.tasks[0].task if report.tasks else "n/a"
+    recover_cost = (f"Recover cost (start with {worst})",
+                    f"CPI {p.cpi:.2f}; act on the over-budget tasks first.",
+                    "re-scope / re-resource the worst-CPI tasks", "protects budget")
+    recover_sched = ("Recover schedule",
+                     f"SPI {p.spi:.2f}; fast-track or add resource to the late tasks.",
+                     "fast-track the behind-schedule tasks", "protects the date; may cost more")
+    hold = ("Hold - on track",
+            "SPI and CPI are at/above 1.0; keep executing and monitor.",
+            "monitor; no corrective action", "no cost")
+    if p.behind_schedule and not p.over_budget:
+        items = [recover_sched, recover_cost, hold]
+    elif p.over_budget or p.behind_schedule:
+        items = [recover_cost, recover_sched, hold]
+    else:
+        items = [hold, recover_sched, recover_cost]
+    return _ranked(f"Project SPI {p.spi:.2f} / CPI {p.cpi:.2f}: choose the recovery move.", items)
+
+
+def learning_curve_options(report: object) -> GuidedOutcome:
+    top = report.products[0].product if report.products else "n/a"
+    items: list[_Item] = [
+        (f"Commit volume to capture the cost-down (top: {top})",
+         f"Lock in the volumes that realize the {report.total_savings:,.0f} learning savings.",
+         "commit the high-savings volume", "captures cost-down; volume risk"),
+        ("Quote at the projected unit cost",
+         "Price using the at-volume unit cost, not the first-unit cost.",
+         "quote on the projected unit cost", "wins on price; thinner early margin"),
+        ("Negotiate a steeper learning rate",
+         "Push process improvement to lower the curve on the high-savings products.",
+         "invest in process improvement on the top products", "more cost-down; needs investment"),
+    ]
+    return _ranked(f"Cost-down across {report.n_products} product(s): choose the lever.", items)
