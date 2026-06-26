@@ -65,7 +65,7 @@ def _resolve_route(method: str, intermittent: bool) -> str:
 
 
 def _model_for_route(route: str, season_length: int):
-    from statsforecast.models import AutoETS, TSB
+    from statsforecast.models import TSB, AutoETS
 
     if route == "auto_ets":
         return "AutoETS", [AutoETS(season_length=season_length)]
