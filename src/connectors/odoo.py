@@ -31,6 +31,7 @@ stock.warehouse.      product_min_qty (reorder point) <- restock target write
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 import pandas as pd
@@ -46,6 +47,7 @@ _M_SALE = "sale.order"
 _M_SALE_LINE = "sale.order.line"
 _M_SUPPLIERINFO = "product.supplierinfo"
 _M_ORDERPOINT = "stock.warehouse.orderpoint"
+_M_PO = "purchase.order"
 
 _SALE_STATES = ("sale", "done")  # confirmed/locked sales count as realized demand
 _WB_TARGET = "odoo"
@@ -119,6 +121,18 @@ def _m2o_id(value: Any) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool):
         return value
     return None
+
+
+@dataclass(frozen=True)
+class DraftPOResult:
+    """Outcome of staging draft purchase orders: what was created and what couldn't be sourced."""
+
+    purchase_orders: dict[int, tuple[str, ...]]   # new PO id -> the SKUs on it
+    unsourced: tuple[str, ...]                     # SKUs with no supplier in Odoo (skipped, not dropped)
+
+    @property
+    def n_orders(self) -> int:
+        return len(self.purchase_orders)
 
 
 class OdooConnector:
@@ -267,6 +281,66 @@ class OdooConnector:
     def rollback(self, idempotency_key: str) -> None:
         """Undo an applied reorder-point change, restoring the prior min quantity."""
         self._rules.rollback(idempotency_key)
+
+    # -- write side (draft purchase orders) -----------------------------------
+
+    def primary_supplier_by_sku(self, skus: list[str]) -> dict[str, int]:
+        """Map each SKU to its primary supplier's partner id (lowest-sequence product.supplierinfo)."""
+        self._ensure_catalog()
+        out: dict[str, int] = {}
+        for sku in skus:
+            pid = self._id_by_sku.get(sku)
+            if pid is None:
+                continue
+            rows = self._rpc.execute_kw(
+                _M_SUPPLIERINFO, "search_read", [[["product_id", "=", pid]]],
+                {"fields": ["partner_id", "sequence"]},
+            )
+            if not rows:
+                continue
+            best = min(rows, key=lambda r: r.get("sequence") or 0)
+            partner = _m2o_id(best.get("partner_id"))
+            if partner is not None:
+                out[sku] = partner
+        return out
+
+    def create_draft_purchase_orders(
+        self, restock: dict[str, float], *, prices: dict[str, float] | None = None
+    ) -> DraftPOResult:
+        """Create DRAFT (RFQ) purchase orders for the restock, grouped by each SKU's primary supplier.
+
+        Each PO is left in Odoo's 'draft' state - the unconfirmed draft IS the safety boundary; a
+        buyer reviews and confirms it in Odoo. SKUs with no supplier are skipped and reported in
+        ``unsourced`` rather than silently dropped.
+        """
+        self._ensure_catalog()
+        prices = prices or {}
+        suppliers = self.primary_supplier_by_sku(list(restock))
+        by_supplier: dict[int, list[str]] = {}
+        unsourced: list[str] = []
+        for sku in restock:
+            partner = suppliers.get(sku)
+            if partner is None:
+                unsourced.append(sku)
+            else:
+                by_supplier.setdefault(partner, []).append(sku)
+
+        created: dict[int, tuple[str, ...]] = {}
+        for partner, skus in by_supplier.items():
+            order_lines = [
+                (0, 0, {
+                    "product_id": self._id_by_sku[sku],
+                    "product_qty": float(restock[sku]),
+                    "price_unit": float(prices.get(sku, 0.0)),
+                    "name": sku,
+                })
+                for sku in skus
+            ]
+            po_id = self._rpc.execute_kw(
+                _M_PO, "create", [{"partner_id": partner, "order_line": order_lines}]
+            )
+            created[int(po_id)] = tuple(skus)
+        return DraftPOResult(purchase_orders=created, unsourced=tuple(unsourced))
 
     # -- internals ------------------------------------------------------------
 
@@ -476,9 +550,9 @@ def demo_odoo() -> InMemoryOdoo:
                 304: {"product_id": [3, "Gizmo"], "product_uom_qty": 5.0, "price_unit": 8.0},
             },
             _M_SUPPLIERINFO: {
-                400: {"product_id": [1, "Widget"], "delay": 7.0},
-                401: {"product_id": [2, "Gadget"], "delay": 14.0},
-                402: {"product_id": [3, "Gizmo"], "delay": 21.0},
+                400: {"product_id": [1, "Widget"], "partner_id": [70, "Acme Supply"], "sequence": 1, "delay": 7.0},
+                401: {"product_id": [2, "Gadget"], "partner_id": [71, "Globex"], "sequence": 1, "delay": 14.0},
+                402: {"product_id": [3, "Gizmo"], "partner_id": [70, "Acme Supply"], "sequence": 1, "delay": 21.0},
             },
             _M_ORDERPOINT: {},
         }

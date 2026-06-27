@@ -45,6 +45,8 @@ def _rpc() -> OdooRPC:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Odoo connector replenishment loop.")
     parser.add_argument("--cover", type=float, default=8.0, help="target periods of demand to cover")
+    parser.add_argument("--draft-po", action="store_true",
+                        help="raise draft purchase orders instead of applying reorder points")
     args = parser.parse_args()
 
     print("\n=== Odoo connector (read -> forecast -> safe restock) ===")
@@ -65,11 +67,23 @@ def main() -> None:
         print(f"  {line.sku:<8} {on_hand.get(line.sku, 0.0):>7.0f}  {lead.get(line.sku, 0.0):>7.0f}  {gap:>17.1f}")
 
     print(f"\n  Outcome: {plan.outcome.status} - {plan.outcome.summary}")
-    if plan.changeset is None:
-        print("  Nothing to stage (all SKUs above target cover).")
+    if not restock:
+        print("  Nothing to do (all SKUs above target cover).")
         return
 
-    # Stage is a dry-run; apply writes the reorder point(s) back to Odoo.
+    if args.draft_po:
+        # Option 2: raise draft purchase orders (RFQs), grouped by each SKU's primary supplier.
+        po = connector.create_draft_purchase_orders(restock)
+        print(f"\n  Created {po.n_orders} draft PO(s) in Odoo (left unconfirmed for a buyer to review):")
+        for po_id, skus in po.purchase_orders.items():
+            print(f"    PO {po_id}: {', '.join(skus)}")
+        if po.unsourced:
+            print(f"  Unsourced (no supplier in Odoo): {', '.join(po.unsourced)}")
+        return
+
+    # Option 1 (default): apply reorder points. Stage is a dry-run; apply writes them back.
+    if plan.changeset is None:
+        return
     print(f"  Staged (dry-run): {plan.changeset.summary()}")
     result = connector.apply_restock(plan.changeset)
     print(f"  Applied reorder point(s): {result.applied} (audit key {result.audit_id})")

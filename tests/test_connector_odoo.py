@@ -53,8 +53,8 @@ def _odoo() -> InMemoryOdoo:
                 304: {"product_id": [1, "Widget"], "product_uom_qty": 99.0, "price_unit": 20.0},
             },
             "product.supplierinfo": {
-                400: {"product_id": [1, "Widget"], "delay": 7.0},
-                401: {"product_id": [2, "Gadget"], "delay": 14.0},
+                400: {"product_id": [1, "Widget"], "partner_id": [70, "Acme Supply"], "sequence": 1, "delay": 7.0},
+                401: {"product_id": [2, "Gadget"], "partner_id": [71, "Globex"], "sequence": 1, "delay": 14.0},
             },
             "stock.warehouse.orderpoint": {},
         }
@@ -258,3 +258,65 @@ def test_odoo_client_passes_empty_kwargs_when_omitted():
 def test_odoo_client_raises_on_auth_failure():
     with pytest.raises(OdooError):
         OdooClient("https://x", "db", "u", "bad", common=_FakeProxy(uid=False), models=_FakeProxy())
+
+
+# -- write side: draft purchase orders (RFQs) ---------------------------------
+
+
+def test_primary_supplier_by_sku_maps_to_partner_ids():
+    mapping = _connector().primary_supplier_by_sku(["SKU-1", "SKU-2"])
+
+    assert mapping == {"SKU-1": 70, "SKU-2": 71}
+
+
+def test_create_draft_purchase_orders_groups_by_supplier():
+    odoo = _odoo()
+    connector = OdooConnector(odoo)
+
+    result = connector.create_draft_purchase_orders({"SKU-1": 50.0, "SKU-2": 30.0}, prices={"SKU-1": 12.0})
+
+    assert result.n_orders == 2 and result.unsourced == ()  # one PO per distinct supplier
+    pos = odoo.records("purchase.order")
+    assert {po["partner_id"] for po in pos.values()} == {70, 71}
+    # the SKU-1 PO carries one Odoo one2many line command (0, 0, {vals}) with the right fields
+    sku1_po = next(po for po in pos.values() if po["partner_id"] == 70)
+    cmd = sku1_po["order_line"][0]
+    assert cmd[0] == 0 and cmd[2]["product_id"] == 1
+    assert cmd[2]["product_qty"] == 50.0 and cmd[2]["price_unit"] == 12.0 and cmd[2]["name"] == "SKU-1"
+
+
+def test_draft_po_groups_multiple_skus_under_one_supplier():
+    odoo = InMemoryOdoo({
+        "product.product": {
+            1: {"default_code": "SKU-1", "name": "A", "list_price": 10.0, "standard_price": 6.0},
+            2: {"default_code": "SKU-2", "name": "B", "list_price": 20.0, "standard_price": 12.0},
+        },
+        "product.supplierinfo": {
+            400: {"product_id": [1, "A"], "partner_id": [70, "OneVendor"], "sequence": 1},
+            401: {"product_id": [2, "B"], "partner_id": [70, "OneVendor"], "sequence": 1},
+        },
+        "purchase.order": {},
+    })
+
+    result = OdooConnector(odoo).create_draft_purchase_orders({"SKU-1": 5.0, "SKU-2": 7.0})
+
+    assert result.n_orders == 1  # both SKUs share a supplier -> a single PO
+    po = next(iter(odoo.records("purchase.order").values()))
+    assert po["partner_id"] == 70 and len(po["order_line"]) == 2
+
+
+def test_draft_po_reports_unsourced_skus_instead_of_dropping_them():
+    odoo = InMemoryOdoo({
+        "product.product": {
+            1: {"default_code": "SKU-1", "name": "A", "list_price": 10.0, "standard_price": 6.0},
+            2: {"default_code": "SKU-2", "name": "B", "list_price": 20.0, "standard_price": 12.0},
+        },
+        "product.supplierinfo": {400: {"product_id": [1, "A"], "partner_id": [70, "V"], "sequence": 1}},
+        "purchase.order": {},
+    })
+
+    result = OdooConnector(odoo).create_draft_purchase_orders({"SKU-1": 5.0, "SKU-2": 7.0})
+
+    assert result.n_orders == 1 and result.unsourced == ("SKU-2",)
+    po = next(iter(odoo.records("purchase.order").values()))
+    assert po["partner_id"] == 70 and len(po["order_line"]) == 1
