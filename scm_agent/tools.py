@@ -22,6 +22,7 @@ from jobs import (
     landed_cost_job,
     leadership,
     learning_curve_job,
+    odoo_job,
     qa,
     queuing_job,
     reconciliation_job,
@@ -42,6 +43,7 @@ from .llm import LLMProvider
 from .registry import Prepared, Produced, Tool, ToolRegistry
 from .types import JobRequest
 
+from src.connectors.odoo import OdooError  # isort: skip  (local package)
 from src.cost_to_serve import ServiceCostRates  # isort: skip  (local package)
 from src.sop import CostModel  # isort: skip  (local package)
 
@@ -1202,6 +1204,48 @@ def learning_curve_tool() -> Tool:
     )
 
 
+# ---- odoo_replenishment (live ERP connector) ---------------------------------
+
+def _odoo_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    try:
+        payload = odoo_job.prepare(request.data_path, request.params)
+    except (ValueError, OdooError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if payload["n_products"] == 0:
+        return Prepared(status="needs_data",
+                        messages=["no products with an internal reference (default_code) found in Odoo"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _odoo_run(payload: object, params: dict) -> Produced:
+    report = odoo_job.run(payload, cover_periods=params.get("cover_periods", 8.0))
+    return Produced(report=report, summary=report.summary)
+
+
+def odoo_replenishment_tool() -> Tool:
+    return Tool(
+        key="odoo_replenishment",
+        title="Odoo Replenishment (live ERP)",
+        description="Connect to a live Odoo ERP (or an offline stand-in), read products / stock / "
+                    "sales, forecast each SKU and recommend replenishment - staged back to Odoo as "
+                    "reversible reorder rules through the safe-staging plane.",
+        intent_keywords=(
+            "odoo", "odoo inventory", "odoo erp", "odoo replenishment", "connect odoo",
+            "connect to odoo", "sync odoo", "from odoo", "pull from odoo", "erp connector",
+        ),
+        requires_data=False,
+        options=lambda report: report.outcome,
+        prepare=_odoo_prepare,
+        run=_odoo_run,
+        qa=lambda report: odoo_job.verify(report),
+        deliver=lambda report, out_dir, client: odoo_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            odoo_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -1227,4 +1271,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(acceptance_sampling_tool())
     reg.register(earned_value_tool())
     reg.register(learning_curve_tool())
+    reg.register(odoo_replenishment_tool())
     return reg
