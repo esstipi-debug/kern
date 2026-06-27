@@ -7,133 +7,206 @@
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  /* Design tokens borrowed from the dashboard (webapp/static/index.html) so the
-     portfolio shares Linchpin's visual language. */
   :root{
-    --ink:#080b11; --ink-2:#0d1219; --head:#0f1620;
-    --panel:#111722; --panel-2:#0f141d;
-    --line:#1e2733; --line-2:#283341;
-    --txt:#e7eef6; --txt-2:#c4cfdb; --muted:#9aa7b6; --faint:#5e6b7a;
-    --accent:#4fd1c5; --accent-bright:#5eead4; --accent-dim:#1c3b39;
-    --accent-soft:rgba(79,209,197,.14); --accent-bd:rgba(79,209,197,.45);
-    --ok:#3fb950; --warn:#d4a017; --bad:#f0564a;
+    --bg:#06080d; --bg-2:#080b12; --panel:#0e131d; --panel-2:#0b0f18;
+    --line:#1b2330; --line-2:#28323f; --line-soft:rgba(94,234,212,.10);
+    --txt:#eef3f9; --txt-2:#c0ccda; --muted:#8a98a8; --faint:#5a6675;
+    --accent:#5eead4; --accent-2:#34d3bd; --accent-deep:#0fb39b;
+    --accent-soft:rgba(94,234,212,.12); --accent-bd:rgba(94,234,212,.40);
+    --glow:rgba(94,234,212,.22);
+    --ok:#3fb950; --warn:#e3b341; --bad:#f0564a; --info:#6ea8fe;
+    --disp:'Space Grotesk',ui-sans-serif,system-ui,sans-serif;
     --sans:'Inter',ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
     --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
-    --r:14px; --shadow:0 18px 50px -22px rgba(0,0,0,.7),0 2px 8px -2px rgba(0,0,0,.5);
-    --sidebar-w:312px;
+    --r:16px; --r-lg:22px;
+    --shadow:0 24px 60px -28px rgba(0,0,0,.85),0 4px 14px -6px rgba(0,0,0,.6);
+    --shadow-glow:0 0 0 1px var(--accent-bd),0 22px 60px -26px var(--glow);
+    --sidebar-w:300px;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
   body{
-    margin:0; background:var(--ink); color:var(--txt);
-    font-family:var(--sans); font-size:15.5px; line-height:1.65;
-    background-image:radial-gradient(900px 600px at 12% -8%,rgba(79,209,197,.06),transparent 60%);
+    margin:0; color:var(--txt); font-family:var(--sans); font-size:15.5px; line-height:1.68;
+    background:var(--bg);
+    background-image:
+      radial-gradient(1100px 680px at 78% -12%, rgba(94,234,212,.10), transparent 58%),
+      radial-gradient(900px 560px at 8% 4%, rgba(52,211,189,.07), transparent 55%),
+      radial-gradient(700px 700px at 100% 100%, rgba(110,168,254,.05), transparent 60%);
     background-attachment:fixed;
+    -webkit-font-smoothing:antialiased;
   }
-  a{color:var(--accent-bright); text-decoration:none}
-  a:hover{text-decoration:underline}
+  a{color:var(--accent); text-decoration:none}
+  ::selection{background:var(--accent-soft); color:#fff}
 
   .layout{display:grid; grid-template-columns:var(--sidebar-w) minmax(0,1fr); min-height:100vh}
 
-  /* ---- Sidebar ---- */
+  /* ---------- Sidebar ---------- */
   .sidebar{
     position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto;
-    background:linear-gradient(180deg,var(--head),var(--panel-2));
-    border-right:1px solid var(--line); padding:26px 18px 32px;
+    background:linear-gradient(180deg, rgba(14,19,29,.92), rgba(8,11,18,.92));
+    backdrop-filter:blur(10px);
+    border-right:1px solid var(--line); padding:24px 16px 30px;
   }
-  .brand{display:flex; align-items:center; gap:10px; padding:0 8px 4px}
-  .brand .mark{font-size:20px}
-  .brand h1{font-size:15px; margin:0; letter-spacing:.2px; font-weight:800}
-  .brand .sub{display:block; font-size:11.5px; color:var(--muted); font-weight:500; letter-spacing:.3px; text-transform:uppercase}
-  .nav{margin-top:22px; display:flex; flex-direction:column; gap:3px}
+  .brand{display:flex; align-items:center; gap:11px; padding:4px 10px 2px; cursor:pointer}
+  .brand .mark{
+    width:34px;height:34px;display:grid;place-items:center;border-radius:10px;font-size:18px;
+    background:linear-gradient(140deg, var(--accent), var(--accent-deep));
+    box-shadow:0 6px 18px -6px var(--glow); color:#04221d;
+  }
+  .brand h1{font-family:var(--disp); font-size:15.5px; margin:0; font-weight:700; letter-spacing:.2px}
+  .brand .sub{display:block; font-size:10.5px; color:var(--accent); font-weight:600; letter-spacing:1.4px; text-transform:uppercase}
+  .nav{margin-top:24px; display:flex; flex-direction:column; gap:2px}
+  .nav .lbl{font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--faint); padding:6px 12px 8px; font-weight:600}
   .nav a{
-    display:flex; gap:11px; align-items:baseline; padding:9px 12px; border-radius:10px;
-    color:var(--txt-2); font-size:13.7px; font-weight:500; border:1px solid transparent;
+    display:flex; gap:12px; align-items:center; padding:9px 12px; border-radius:11px;
+    color:var(--txt-2); font-size:14px; font-weight:500; border:1px solid transparent; transition:.15s;
   }
-  .nav a:hover{background:var(--panel); color:var(--txt); text-decoration:none}
-  .nav a.active{background:var(--accent-soft); border-color:var(--accent-bd); color:var(--accent-bright); font-weight:600}
-  .nav a .n{font-family:var(--mono); font-size:11.5px; color:var(--faint); min-width:18px}
+  .nav a:hover{background:var(--panel); color:var(--txt)}
+  .nav a.active{
+    background:linear-gradient(100deg, var(--accent-soft), transparent);
+    border-color:var(--accent-bd); color:var(--txt); font-weight:600;
+  }
+  .nav a .n{font-family:var(--mono); font-size:11px; color:var(--faint); min-width:20px; font-weight:600}
   .nav a.active .n{color:var(--accent)}
-  .side-foot{margin-top:26px; padding:14px 12px 0; border-top:1px solid var(--line); font-size:12px; color:var(--faint)}
-  .side-foot a{color:var(--muted)}
+  .side-foot{margin-top:24px; padding:16px 12px 0; border-top:1px solid var(--line); font-size:12px; color:var(--faint); line-height:1.6}
+  .side-foot a{color:var(--muted)} .side-foot a:hover{color:var(--accent)}
 
-  /* ---- Content ---- */
-  main{padding:0; min-width:0}
+  /* ---------- Topbar ---------- */
+  main{min-width:0}
   .topbar{
-    position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between;
-    gap:14px; padding:14px 30px; background:rgba(8,11,17,.82); backdrop-filter:blur(8px);
-    border-bottom:1px solid var(--line);
+    position:sticky; top:0; z-index:6; display:flex; align-items:center; justify-content:space-between; gap:14px;
+    padding:13px 32px; background:rgba(6,8,13,.72); backdrop-filter:blur(12px); border-bottom:1px solid var(--line);
   }
-  .topbar .crumbs{font-size:12.5px; color:var(--muted)}
-  .topbar .crumbs b{color:var(--txt-2); font-weight:600}
-  .topbar .gh{font-size:12.5px}
-  .menu-btn{display:none; background:var(--panel); border:1px solid var(--line-2); color:var(--txt);
-    border-radius:9px; padding:7px 11px; font-size:14px; cursor:pointer}
+  .crumbs{font-size:12.5px; color:var(--muted)} .crumbs b{color:var(--txt-2); font-weight:600}
+  .gh{font-size:12.5px; color:var(--muted); display:inline-flex; gap:6px; align-items:center} .gh:hover{color:var(--accent)}
+  .menu-btn{display:none; background:var(--panel); border:1px solid var(--line-2); color:var(--txt); border-radius:10px; padding:7px 12px; cursor:pointer}
 
-  article{max-width:880px; margin:0 auto; padding:34px 30px 90px}
-  .doc{animation:fade .25s ease}
-  @keyframes fade{from{opacity:0; transform:translateY(4px)}to{opacity:1; transform:none}}
+  article{max-width:900px; margin:0 auto; padding:0 30px 100px}
+  .fade{animation:fade .28s ease}
+  @keyframes fade{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:none}}
 
-  /* ---- Markdown typography ---- */
-  .doc h1{font-size:30px; line-height:1.2; font-weight:800; margin:.2em 0 .5em; letter-spacing:-.4px}
-  .doc h2{font-size:21px; font-weight:700; margin:1.7em 0 .6em; padding-bottom:.3em; border-bottom:1px solid var(--line)}
-  .doc h3{font-size:16.5px; font-weight:700; margin:1.4em 0 .5em; color:var(--txt)}
-  .doc h4{font-size:14px; font-weight:700; margin:1.2em 0 .4em; color:var(--txt-2); text-transform:uppercase; letter-spacing:.4px}
+  /* ---------- HERO (cover) ---------- */
+  .hero{position:relative; padding:62px 0 30px; text-align:left}
+  .kicker{
+    display:inline-flex; align-items:center; gap:8px; font-family:var(--mono); font-size:11px; font-weight:600;
+    letter-spacing:1.5px; text-transform:uppercase; color:var(--accent);
+    background:var(--accent-soft); border:1px solid var(--accent-bd); padding:6px 13px; border-radius:999px;
+  }
+  .kicker .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+  .hero h1{
+    font-family:var(--disp); font-weight:700; font-size:clamp(34px,5.4vw,58px); line-height:1.04;
+    letter-spacing:-1.4px; margin:22px 0 0;
+    background:linear-gradient(180deg,#ffffff 30%, #b8f5ea 130%);
+    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  .hero .lede{font-size:clamp(16px,2vw,19.5px); color:var(--txt-2); max-width:620px; margin:20px 0 0; line-height:1.6}
+  .hero .lede b{color:var(--accent); font-weight:600}
+  .cta{display:flex; gap:13px; flex-wrap:wrap; margin-top:30px}
+  .btn{
+    display:inline-flex; align-items:center; gap:9px; font-weight:600; font-size:14.5px; padding:12px 22px;
+    border-radius:12px; border:1px solid transparent; cursor:pointer; transition:.18s;
+  }
+  .btn-primary{
+    color:#04221d; background:linear-gradient(135deg, var(--accent), var(--accent-deep));
+    box-shadow:0 14px 34px -14px var(--glow), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .btn-primary:hover{transform:translateY(-2px); box-shadow:0 20px 44px -14px var(--glow)}
+  .btn-ghost{color:var(--txt-2); border-color:var(--line-2); background:rgba(255,255,255,.02)}
+  .btn-ghost:hover{border-color:var(--accent-bd); color:var(--txt)}
+
+  /* outcome chips */
+  .outcomes{margin-top:42px; padding-top:26px; border-top:1px solid var(--line)}
+  .outcomes .h{font-size:12.5px; color:var(--muted); margin-bottom:13px}
+  .outcomes .h b{color:var(--accent); font-weight:600}
+  .chips{display:flex; gap:10px; flex-wrap:wrap}
+  .chip{
+    font-family:var(--mono); font-size:12px; font-weight:600; padding:7px 13px; border-radius:999px;
+    border:1px solid var(--line-2); color:var(--txt-2); background:var(--panel-2); display:inline-flex; gap:8px; align-items:center;
+  }
+  .chip i{width:7px;height:7px;border-radius:50%;font-style:normal}
+  .chip.x i{background:var(--ok)} .chip.o i{background:var(--accent)}
+  .chip.h i{background:var(--warn)} .chip.e i{background:var(--bad)}
+  .chip small{color:var(--faint); font-family:var(--sans); font-weight:500; letter-spacing:.2px}
+
+  /* ---------- Cards grid ---------- */
+  .grid-h{font-family:var(--disp); font-size:13px; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted); margin:52px 0 18px; font-weight:600}
+  .cards{display:grid; grid-template-columns:repeat(2,1fr); gap:16px}
+  .card{
+    position:relative; display:flex; flex-direction:column; gap:9px; padding:22px 22px 20px; cursor:pointer;
+    background:linear-gradient(180deg, var(--panel), var(--panel-2)); border:1px solid var(--line);
+    border-radius:var(--r); box-shadow:var(--shadow); transition:.2s; overflow:hidden;
+  }
+  .card::before{content:""; position:absolute; inset:0; border-radius:var(--r); padding:1px; opacity:0; transition:.2s;
+    background:linear-gradient(130deg, var(--accent-bd), transparent 60%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude;}
+  .card:hover{transform:translateY(-4px); box-shadow:var(--shadow), 0 0 40px -16px var(--glow); border-color:transparent}
+  .card:hover::before{opacity:1}
+  .card .num{font-family:var(--disp); font-size:30px; font-weight:700; color:var(--line-2); line-height:1; transition:.2s; letter-spacing:-1px}
+  .card:hover .num{color:var(--accent)}
+  .card h3{font-family:var(--disp); font-size:17px; font-weight:600; margin:2px 0 0; color:var(--txt); letter-spacing:-.2px}
+  .card p{font-size:13.4px; color:var(--muted); margin:0; line-height:1.55}
+  .card .go{margin-top:6px; font-size:12.5px; font-weight:600; color:var(--accent); display:inline-flex; gap:6px; align-items:center; opacity:.0; transform:translateX(-4px); transition:.2s}
+  .card:hover .go{opacity:1; transform:none}
+
+  /* ---------- Doc (markdown) view ---------- */
+  .doc{padding-top:30px}
+  .doc h1{font-family:var(--disp); font-size:32px; line-height:1.12; font-weight:700; letter-spacing:-.8px; margin:.1em 0 .55em;
+    background:linear-gradient(180deg,#fff 40%, #bdf5ea 140%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent}
+  .doc h2{font-family:var(--disp); font-size:22px; font-weight:600; margin:1.8em 0 .6em; padding-bottom:.35em; border-bottom:1px solid var(--line); letter-spacing:-.3px}
+  .doc h3{font-family:var(--disp); font-size:17px; font-weight:600; margin:1.5em 0 .5em; color:var(--txt)}
+  .doc h4{font-size:13px; font-weight:700; margin:1.3em 0 .4em; color:var(--accent); text-transform:uppercase; letter-spacing:.6px}
   .doc h1:first-child,.doc h2:first-child{margin-top:0}
-  .doc p{margin:.7em 0; color:var(--txt-2)}
+  .doc p{margin:.75em 0; color:var(--txt-2)}
   .doc strong{color:var(--txt); font-weight:700}
-  .doc ul,.doc ol{margin:.6em 0; padding-left:1.4em; color:var(--txt-2)}
-  .doc li{margin:.32em 0}
-  .doc li::marker{color:var(--accent)}
-  .doc hr{border:none; border-top:1px solid var(--line); margin:2em 0}
-  .doc code{font-family:var(--mono); font-size:.87em; background:var(--panel); border:1px solid var(--line);
-    padding:.12em .42em; border-radius:6px; color:var(--accent-bright)}
-  .doc pre{background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:15px 17px;
-    overflow:auto; margin:1em 0}
-  .doc pre code{background:none; border:none; padding:0; color:var(--txt-2); font-size:13px; line-height:1.6}
-  .doc blockquote{margin:1.1em 0; padding:.4em 1.1em; border-left:3px solid var(--accent);
-    background:var(--accent-soft); border-radius:0 10px 10px 0; color:var(--txt-2)}
-  .doc blockquote p{margin:.35em 0}
-  .doc a{border-bottom:1px solid transparent}
-  .doc a:hover{border-bottom-color:var(--accent-bd); text-decoration:none}
-
-  /* tables */
-  .doc .tw{overflow-x:auto; margin:1.2em 0; border:1px solid var(--line); border-radius:12px}
-  .doc table{border-collapse:collapse; width:100%; font-size:13.6px}
-  .doc thead th{background:var(--head); color:var(--txt); font-weight:700; text-align:left;
-    padding:10px 14px; border-bottom:1px solid var(--line-2); white-space:nowrap}
-  .doc tbody td{padding:9px 14px; border-bottom:1px solid var(--line); color:var(--txt-2); vertical-align:top}
+  .doc ul,.doc ol{margin:.6em 0; padding-left:1.35em; color:var(--txt-2)}
+  .doc li{margin:.35em 0} .doc li::marker{color:var(--accent)}
+  .doc hr{border:none; border-top:1px solid var(--line); margin:2.2em 0}
+  .doc code{font-family:var(--mono); font-size:.86em; background:var(--panel); border:1px solid var(--line); padding:.12em .44em; border-radius:6px; color:var(--accent)}
+  .doc pre{background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line); border-radius:14px; padding:16px 18px; overflow:auto; margin:1.1em 0; box-shadow:var(--shadow)}
+  .doc pre code{background:none; border:none; padding:0; color:var(--txt-2); font-size:13px; line-height:1.65}
+  .doc blockquote{margin:1.2em 0; padding:.5em 1.2em; border-left:3px solid var(--accent); background:linear-gradient(100deg,var(--accent-soft),transparent); border-radius:0 12px 12px 0; color:var(--txt-2)}
+  .doc blockquote p{margin:.4em 0}
+  .doc a{border-bottom:1px solid transparent} .doc a:hover{border-bottom-color:var(--accent-bd)}
+  .doc .tw{overflow-x:auto; margin:1.3em 0; border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow)}
+  .doc table{border-collapse:collapse; width:100%; font-size:13.4px}
+  .doc thead th{background:linear-gradient(180deg,#0f1722,#0c121b); color:var(--txt); font-weight:600; text-align:left; padding:11px 15px; border-bottom:1px solid var(--line-2); white-space:nowrap; font-family:var(--disp)}
+  .doc tbody td{padding:10px 15px; border-bottom:1px solid var(--line); color:var(--txt-2); vertical-align:top}
   .doc tbody tr:last-child td{border-bottom:none}
-  .doc tbody tr:hover td{background:var(--panel-2)}
+  .doc tbody tr:hover td{background:rgba(94,234,212,.035)}
 
-  .loading{color:var(--muted); font-size:14px; padding:40px 0}
+  .doc-foot{display:flex; justify-content:space-between; gap:14px; margin-top:48px; padding-top:24px; border-top:1px solid var(--line)}
+  .doc-foot a{display:flex; flex-direction:column; gap:3px; padding:14px 18px; border:1px solid var(--line); border-radius:12px; background:var(--panel-2); min-width:0; transition:.18s; flex:1}
+  .doc-foot a:hover{border-color:var(--accent-bd); transform:translateY(-2px)}
+  .doc-foot .dir{font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:1px}
+  .doc-foot .tt{color:var(--txt); font-weight:600; font-family:var(--disp)}
+  .doc-foot .next{text-align:right; align-items:flex-end}
+
+  .loading{color:var(--muted); padding:50px 0}
   .err{color:var(--bad); background:var(--panel); border:1px solid var(--line-2); border-radius:12px; padding:18px}
 
-  /* ---- Responsive ---- */
-  @media (max-width:860px){
+  @media (max-width:880px){
     .layout{grid-template-columns:1fr}
-    .sidebar{position:fixed; z-index:20; width:86%; max-width:330px; transform:translateX(-100%);
-      transition:transform .22s ease; box-shadow:var(--shadow)}
+    .sidebar{position:fixed; z-index:30; width:84%; max-width:320px; transform:translateX(-100%); transition:transform .22s ease; box-shadow:var(--shadow)}
     body.nav-open .sidebar{transform:none}
-    .menu-btn{display:inline-block}
-    .scrim{display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:15}
+    .menu-btn{display:inline-flex}
+    .scrim{display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:25}
     body.nav-open .scrim{display:block}
+    .cards{grid-template-columns:1fr}
+    article{padding:0 20px 80px}
   }
 </style>
 </head>
 <body>
 <div class="layout">
   <aside class="sidebar" id="sidebar">
-    <div class="brand">
+    <div class="brand" onclick="location.hash='#inicio'">
       <span class="mark">🔗</span>
-      <div>
-        <h1>Linchpin</h1>
-        <span class="sub">Portafolio del Operador</span>
-      </div>
+      <div><h1>Linchpin</h1><span class="sub">Operador</span></div>
     </div>
-    <nav class="nav" id="nav"><!-- populated by JS --></nav>
+    <nav class="nav" id="nav"></nav>
     <div class="side-foot">
       El paquete de incorporación para la persona que opera Linchpin.<br><br>
       <a href="/">← Dashboard</a> · <a href="/console">Consola</a>
@@ -143,10 +216,10 @@
   <main>
     <div class="topbar">
       <button class="menu-btn" id="menuBtn" aria-label="Menú">☰</button>
-      <div class="crumbs">Portafolio del Operador · <b id="crumb">…</b></div>
-      <a class="gh" id="ghLink" href="https://github.com/esstipi-debug/linchpin/tree/main/documentation/operator" target="_blank" rel="noopener">Ver en GitHub ↗</a>
+      <div class="crumbs">Portafolio del Operador · <b id="crumb">Inicio</b></div>
+      <a class="gh" id="ghLink" href="https://github.com/esstipi-debug/linchpin/tree/main/documentation/operator" target="_blank" rel="noopener">GitHub ↗</a>
     </div>
-    <article><div id="content" class="doc"><div class="loading">Cargando…</div></div></article>
+    <article><div id="content"><div class="loading">Cargando…</div></div></article>
     <div class="scrim" id="scrim"></div>
   </main>
 </div>
@@ -156,141 +229,140 @@
 (function () {
   "use strict";
 
-  // The 7 portfolio docs, in reading order. `file` is fetched from /operator-docs/.
+  // The 6 chapters. `file` is fetched from /operator-docs/ (single source of truth).
   var DOCS = [
-    { id: "inicio",        file: "README.md",                 n: "·",  label: "Inicio / Índice" },
-    { id: "rol",           file: "01_role_charter.md",        n: "01", label: "Carta del Rol" },
-    { id: "division",      file: "02_division_of_labor.md",   n: "02", label: "División del Trabajo" },
-    { id: "metodologias",  file: "03_methodologies.md",       n: "03", label: "Metodologías" },
-    { id: "runbooks",      file: "04_runbooks.md",            n: "04", label: "Runbooks" },
-    { id: "catalogo",      file: "05_deliverable_catalog.md", n: "05", label: "Catálogo de Entregables" },
-    { id: "competencias",  file: "06_competency_map.md",      n: "06", label: "Mapa de Competencias" }
+    { id:"rol",          file:"01_role_charter.md",        n:"01", label:"Carta del Rol",            desc:"Misión, responsabilidades, los KPIs que tú posees y cómo se mide tu éxito." },
+    { id:"division",     file:"02_division_of_labor.md",   n:"02", label:"División del Trabajo",     desc:"La línea exacta entre lo que hace Linchpin y lo que solo puedes hacer tú." },
+    { id:"metodologias", file:"03_methodologies.md",       n:"03", label:"Metodologías",             desc:"Los métodos a dominar: modos, cadencia S&OP, QA y aprobaciones." },
+    { id:"runbooks",     file:"04_runbooks.md",            n:"04", label:"Runbooks",                 desc:"Playbooks paso a paso para cada tarea que solo un humano puede cerrar." },
+    { id:"catalogo",     file:"05_deliverable_catalog.md", n:"05", label:"Catálogo de Entregables",  desc:"Qué puedes producir y vender, con tu valor agregado en cada uno." },
+    { id:"competencias", file:"06_competency_map.md",      n:"06", label:"Mapa de Competencias",     desc:"Matriz de habilidades, la biblioteca L3 y tu ruta de incorporación." }
   ];
   var DOCS_BASE = "/operator-docs/";
-  var byFile = {}, byId = {};
-  DOCS.forEach(function (d) { byFile[d.file] = d; byId[d.id] = d; });
+  var byFile={}, byId={}, idx={};
+  DOCS.forEach(function(d,i){ byFile[d.file]=d; byId[d.id]=d; idx[d.id]=i; });
 
-  var cache = {};
-  var elContent = document.getElementById("content");
-  var elNav = document.getElementById("nav");
-  var elCrumb = document.getElementById("crumb");
-  var elGh = document.getElementById("ghLink");
+  var cache={};
+  var elContent=document.getElementById("content");
+  var elNav=document.getElementById("nav");
+  var elCrumb=document.getElementById("crumb");
+  var elGh=document.getElementById("ghLink");
 
-  // GitHub-compatible heading slug, so in-doc anchor links resolve.
-  function slug(text) {
-    return text.toLowerCase().trim()
-      .replace(/[^\p{L}\p{N}\s-]/gu, "")
-      .replace(/\s/g, "-");
-  }
+  function slug(t){ return t.toLowerCase().trim().replace(/[^\p{L}\p{N}\s-]/gu,"").replace(/\s/g,"-"); }
+  marked.setOptions({ gfm:true, breaks:false });
 
-  marked.setOptions({ gfm: true, breaks: false });
-
-  // Build the sidebar.
-  DOCS.forEach(function (d) {
-    var a = document.createElement("a");
-    a.href = "#" + d.id;
-    a.dataset.id = d.id;
-    a.innerHTML = '<span class="n">' + d.n + '</span><span>' + d.label + '</span>';
-    elNav.appendChild(a);
+  // ---- sidebar ----
+  var home=document.createElement("a"); home.href="#inicio"; home.dataset.id="inicio";
+  home.innerHTML='<span class="n">◆</span><span>Inicio</span>'; elNav.appendChild(home);
+  var lbl=document.createElement("div"); lbl.className="lbl"; lbl.textContent="Secciones"; elNav.appendChild(lbl);
+  DOCS.forEach(function(d){
+    var a=document.createElement("a"); a.href="#"+d.id; a.dataset.id=d.id;
+    a.innerHTML='<span class="n">'+d.n+'</span><span>'+d.label+'</span>'; elNav.appendChild(a);
   });
 
-  function setActive(id) {
-    Array.prototype.forEach.call(elNav.children, function (a) {
-      a.classList.toggle("active", a.dataset.id === id);
-    });
-    var d = byId[id];
-    elCrumb.textContent = d ? d.label : "…";
-    elGh.href = d
-      ? "https://github.com/esstipi-debug/linchpin/blob/main/documentation/operator/" + d.file
-      : "https://github.com/esstipi-debug/linchpin/tree/main/documentation/operator";
+  function setActive(id){
+    Array.prototype.forEach.call(elNav.querySelectorAll("a"),function(a){ a.classList.toggle("active", a.dataset.id===id); });
+    var d=byId[id];
+    elCrumb.textContent = id==="inicio" ? "Inicio" : (d?d.label:"…");
+    elGh.href = d ? "https://github.com/esstipi-debug/linchpin/blob/main/documentation/operator/"+d.file
+                  : "https://github.com/esstipi-debug/linchpin/tree/main/documentation/operator";
   }
 
-  function enhance(container) {
-    // Wrap tables for horizontal scroll on narrow screens.
-    Array.prototype.forEach.call(container.querySelectorAll("table"), function (t) {
-      if (t.parentElement && t.parentElement.classList.contains("tw")) return;
-      var w = document.createElement("div"); w.className = "tw";
-      t.parentNode.insertBefore(w, t); w.appendChild(t);
-    });
-    // Give headings ids for in-page anchors.
-    Array.prototype.forEach.call(container.querySelectorAll("h1,h2,h3,h4"), function (h) {
-      if (!h.id) h.id = slug(h.textContent);
-    });
-    // Rewrite links: internal .md -> SPA route; anchors stay; external -> new tab.
-    Array.prototype.forEach.call(container.querySelectorAll("a[href]"), function (a) {
-      var href = a.getAttribute("href");
-      if (!href) return;
-      if (/^https?:\/\//i.test(href)) { a.target = "_blank"; a.rel = "noopener"; return; }
-      if (href.charAt(0) === "#") return; // in-page anchor, handled below
-      // strip any directory + take basename + optional #anchor
-      var hash = "", base = href;
-      var hi = href.indexOf("#");
-      if (hi >= 0) { hash = href.slice(hi); base = href.slice(0, hi); }
-      var name = base.split("/").pop();
-      if (byFile[name]) {
-        a.setAttribute("href", "#" + byFile[name].id + (hash ? "~" + hash.slice(1) : ""));
-      } else if (/\.md$/i.test(name)) {
-        // a repo doc outside the portfolio -> open it on GitHub
-        a.setAttribute("href", "https://github.com/esstipi-debug/linchpin/blob/main/" + base.replace(/^(\.\.\/)+/, ""));
-        a.target = "_blank"; a.rel = "noopener";
-      }
-    });
+  // ---- home (cover) ----
+  function renderHome(){
+    setActive("inicio");
+    var cards = DOCS.map(function(d){
+      return '<div class="card" onclick="location.hash=\'#'+d.id+'\'">'+
+        '<div class="num">'+d.n+'</div>'+
+        '<h3>'+d.label+'</h3><p>'+d.desc+'</p>'+
+        '<span class="go">Leer →</span></div>';
+    }).join("");
+    elContent.className="fade";
+    elContent.innerHTML =
+      '<section class="hero">'+
+        '<span class="kicker"><span class="dot"></span>Manual de incorporación</span>'+
+        '<h1>Portafolio del Operador</h1>'+
+        '<p class="lede">Linchpin calcula, fundamenta y prepara el siguiente paso seguro. '+
+          'Tú cierras el lazo: decides, ejecutas lo irreversible y vendes el resultado. '+
+          '<b>El humano produce 10×.</b></p>'+
+        '<div class="cta">'+
+          '<a class="btn btn-primary" href="#rol">Empezar →</a>'+
+          '<a class="btn btn-ghost" href="https://github.com/esstipi-debug/linchpin/tree/main/documentation/operator" target="_blank" rel="noopener">Ver en GitHub</a>'+
+        '</div>'+
+        '<div class="outcomes">'+
+          '<div class="h">Todo resultado termina en uno de cuatro desenlaces — <b>tres te necesitan a ti</b>:</div>'+
+          '<div class="chips">'+
+            '<span class="chip x"><i></i>EXECUTED <small>agente</small></span>'+
+            '<span class="chip o"><i></i>OPTIONS <small>eliges</small></span>'+
+            '<span class="chip h"><i></i>HANDOFF <small>ejecutas</small></span>'+
+            '<span class="chip e"><i></i>ESCALATED <small>enrutas</small></span>'+
+          '</div>'+
+        '</div>'+
+      '</section>'+
+      '<div class="grid-h">Las 6 secciones</div>'+
+      '<div class="cards">'+cards+'</div>';
+    window.scrollTo(0,0);
   }
 
-  function render(id, anchor) {
-    var d = byId[id] || DOCS[0];
-    setActive(d.id);
-    function paint(md) {
-      elContent.innerHTML = marked.parse(md);
+  // ---- doc view ----
+  function enhance(c){
+    Array.prototype.forEach.call(c.querySelectorAll("table"),function(t){
+      if(t.parentElement&&t.parentElement.classList.contains("tw"))return;
+      var w=document.createElement("div"); w.className="tw"; t.parentNode.insertBefore(w,t); w.appendChild(t);
+    });
+    Array.prototype.forEach.call(c.querySelectorAll("h1,h2,h3,h4"),function(h){ if(!h.id)h.id=slug(h.textContent); });
+    Array.prototype.forEach.call(c.querySelectorAll("a[href]"),function(a){
+      var href=a.getAttribute("href"); if(!href)return;
+      if(/^https?:\/\//i.test(href)){ a.target="_blank"; a.rel="noopener"; return; }
+      if(href.charAt(0)==="#")return;
+      var hash="", base=href, hi=href.indexOf("#");
+      if(hi>=0){ hash=href.slice(hi); base=href.slice(0,hi); }
+      var name=base.split("/").pop();
+      if(byFile[name]) a.setAttribute("href","#"+byFile[name].id+(hash?"~"+hash.slice(1):""));
+      else if(/\.md$/i.test(name)){ a.setAttribute("href","https://github.com/esstipi-debug/linchpin/blob/main/"+base.replace(/^(\.\.\/)+/,"")); a.target="_blank"; a.rel="noopener"; }
+    });
+  }
+  function footer(id){
+    var i=idx[id], prev=DOCS[i-1], next=DOCS[i+1], h='<div class="doc-foot">';
+    h += prev ? '<a href="#'+prev.id+'"><span class="dir">← Anterior</span><span class="tt">'+prev.label+'</span></a>'
+              : '<a href="#inicio"><span class="dir">←</span><span class="tt">Inicio</span></a>';
+    h += next ? '<a class="next" href="#'+next.id+'"><span class="dir">Siguiente →</span><span class="tt">'+next.label+'</span></a>'
+              : '<a class="next" href="#inicio"><span class="dir">→</span><span class="tt">Volver al inicio</span></a>';
+    return h+'</div>';
+  }
+  function renderDoc(id,anchor){
+    var d=byId[id]; setActive(d.id);
+    function paint(md){
+      elContent.className="doc fade";
+      elContent.innerHTML=marked.parse(md)+footer(d.id);
       enhance(elContent);
-      document.querySelector("main").scrollTop = 0;
-      if (anchor) {
-        var t = document.getElementById(anchor);
-        if (t) t.scrollIntoView();
-      } else {
-        window.scrollTo(0, 0);
-      }
+      if(anchor){ var t=document.getElementById(anchor); if(t){t.scrollIntoView(); return;} }
+      window.scrollTo(0,0);
     }
-    if (cache[d.id]) { paint(cache[d.id]); return; }
-    elContent.innerHTML = '<div class="loading">Cargando…</div>';
-    fetch(DOCS_BASE + d.file)
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
-      .then(function (md) { cache[d.id] = md; paint(md); })
-      .catch(function (e) {
-        elContent.innerHTML = '<div class="err">No se pudo cargar <code>' + d.file +
-          '</code> (' + e.message + ').<br>Sirve el sitio con <code>uvicorn webapp.app:app</code> y abre <code>/operator</code>.</div>';
-      });
+    if(cache[d.id]){ paint(cache[d.id]); return; }
+    elContent.className=""; elContent.innerHTML='<div class="loading">Cargando…</div>';
+    fetch(DOCS_BASE+d.file).then(function(r){ if(!r.ok)throw new Error(r.status); return r.text(); })
+      .then(function(md){ cache[d.id]=md; paint(md); })
+      .catch(function(e){ elContent.className=""; elContent.innerHTML='<div class="err">No se pudo cargar <code>'+d.file+'</code> ('+e.message+'). Levanta el servidor con <code>uvicorn webapp.app:app</code> y abre <code>/operator</code>.</div>'; });
   }
 
-  function route() {
-    var raw = (location.hash || "#inicio").slice(1);
-    // format: id  or  id~anchor
-    var parts = raw.split("~");
-    var id = parts[0] || "inicio";
-    if (!byId[id]) id = "inicio";
-    render(id, parts[1]);
-    closeNav();
+  function route(){
+    var raw=(location.hash||"#inicio").slice(1), parts=raw.split("~"), id=parts[0]||"inicio";
+    if(id==="inicio"||!byId[id]) renderHome();
+    else renderDoc(id, parts[1]);
+    document.body.classList.remove("nav-open");
   }
 
-  // Intercept in-page anchor clicks (delegated) so they don't change the route.
-  elContent.addEventListener("click", function (e) {
-    var a = e.target.closest && e.target.closest('a[href^="#"]');
-    if (!a) return;
-    var href = a.getAttribute("href");
-    if (href.indexOf("~") >= 0 || !document.getElementById(href.slice(1))) return; // let router handle cross-doc
-    e.preventDefault();
-    var t = document.getElementById(href.slice(1));
-    if (t) t.scrollIntoView();
+  // in-page anchor clicks
+  elContent.addEventListener("click",function(e){
+    var a=e.target.closest&&e.target.closest('a[href^="#"]'); if(!a)return;
+    var href=a.getAttribute("href");
+    if(href.indexOf("~")>=0||!document.getElementById(href.slice(1)))return;
+    e.preventDefault(); var t=document.getElementById(href.slice(1)); if(t)t.scrollIntoView();
   });
-
-  // Mobile nav
-  function closeNav() { document.body.classList.remove("nav-open"); }
-  document.getElementById("menuBtn").addEventListener("click", function () {
-    document.body.classList.toggle("nav-open");
-  });
-  document.getElementById("scrim").addEventListener("click", closeNav);
-
-  window.addEventListener("hashchange", route);
+  document.getElementById("menuBtn").addEventListener("click",function(){ document.body.classList.toggle("nav-open"); });
+  document.getElementById("scrim").addEventListener("click",function(){ document.body.classList.remove("nav-open"); });
+  window.addEventListener("hashchange",route);
   route();
 })();
 </script>
