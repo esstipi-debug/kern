@@ -485,3 +485,23 @@ def excess_obsolete_options(report: object) -> GuidedOutcome:
         f"E&O over {report.n_skus} SKU(s): {report.eo_value:,.0f} at risk - choose how to release it.",
         items,
     )
+
+
+def facility_location_options(report: object) -> GuidedOutcome:
+    save_txt = (f" (saves {report.saving_vs_current:,.0f} vs current)"
+                if report.saving_vs_current is not None else "")
+    optimum = (f"Site at the optimum near '{report.nearest_point}'",
+               f"Locate at ({report.optimum.x:,.2f}, {report.optimum.y:,.2f}) - minimum total "
+               f"weighted travel{save_txt}.",
+               "site the facility at the Weiszfeld optimum", "lowest load x distance")
+    cog = ("Use the center of gravity",
+           f"Locate at the load centroid ({report.cog.x:,.2f}, {report.cog.y:,.2f}) - simpler to justify.",
+           "site at the center of gravity", "near-optimal, easy to explain")
+    keep = ("Keep the current site",
+            "Stay put if the relocation saving doesn't beat the move and lease cost.",
+            "keep the current site", "no move cost; forgoes the travel saving")
+    items: list[_Item] = [optimum, cog, keep] if report.current is not None else [optimum, cog]
+    return _ranked(
+        f"Facility location over {report.n_points} demand point(s): choose the site.",
+        items,
+    )

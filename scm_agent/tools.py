@@ -17,6 +17,7 @@ from jobs import (
     deliverables,
     earned_value_job,
     excess_obsolete_job,
+    facility_location_job,
     fefo_job,
     financial_kpis_job,
     forecast_job,
@@ -1614,6 +1615,51 @@ def excess_obsolete_tool() -> Tool:
     )
 
 
+# ---- facility_location (network design / center of gravity) ------------------
+
+def _facility_location_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["a demand-points CSV (x, y + optional name/weight) is required"])
+    try:
+        payload = facility_location_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["points"]:
+        return Prepared(status="needs_data", messages=["no demand points found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _facility_location_run(payload: object, params: dict) -> Produced:
+    report = facility_location_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def facility_location_tool() -> Tool:
+    return Tool(
+        key="facility_location",
+        title="Facility Location (Network Design)",
+        description="Place a single facility (DC / hub / plant) to minimize weighted travel to a set "
+                    "of demand points: the center of gravity and the Weiszfeld 1-median optimum, vs "
+                    "the current site. Offline, straight-line distance.",
+        intent_keywords=(
+            "facility location", "network design", "center of gravity", "centre of gravity",
+            "center-of-gravity", "dc location", "distribution center location", "hub location",
+            "site selection", "where to locate", "optimal location", "greenfield site",
+        ),
+        requires_data=True,
+        options=tool_options.facility_location_options,
+        prepare=_facility_location_prepare,
+        run=_facility_location_run,
+        qa=lambda report: facility_location_job.verify(report),
+        deliver=lambda report, out_dir, client: facility_location_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            facility_location_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -1648,4 +1694,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(slotting_tool())
     reg.register(simulation_tool())
     reg.register(excess_obsolete_tool())
+    reg.register(facility_location_tool())
     return reg
