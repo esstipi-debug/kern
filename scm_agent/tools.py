@@ -15,6 +15,7 @@ from jobs import (
     ddmrp_job,
     dea_job,
     deliverables,
+    drp_job,
     earned_value_job,
     excess_obsolete_job,
     facility_location_job,
@@ -1660,6 +1661,51 @@ def facility_location_tool() -> Tool:
     )
 
 
+# ---- drp (distribution requirements planning) --------------------------------
+
+def _drp_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["a long-format demand CSV (branch, period, demand) is required"])
+    try:
+        payload = drp_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["branches"]:
+        return Prepared(status="needs_data", messages=["no branches found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _drp_run(payload: object, params: dict) -> Produced:
+    report = drp_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def drp_tool() -> Tool:
+    return Tool(
+        key="drp",
+        title="Distribution Requirements Planning (DRP)",
+        description="Run the time-phased DRP grid per branch (gross -> net -> planned order releases, "
+                    "offset by lead time), then roll the branches' releases up as the central DC's "
+                    "gross requirements and plan it - a network-wide replenishment schedule.",
+        intent_keywords=(
+            "drp", "distribution requirements planning", "distribution requirement planning",
+            "time-phased", "time phased", "planned order release", "central dc replenishment",
+            "branch replenishment", "network replenishment", "drp grid", "push distribution",
+        ),
+        requires_data=True,
+        options=tool_options.drp_options,
+        prepare=_drp_prepare,
+        run=_drp_run,
+        qa=lambda report: drp_job.verify(report),
+        deliver=lambda report, out_dir, client: drp_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            drp_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -1695,4 +1741,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(simulation_tool())
     reg.register(excess_obsolete_tool())
     reg.register(facility_location_tool())
+    reg.register(drp_tool())
     return reg

@@ -505,3 +505,22 @@ def facility_location_options(report: object) -> GuidedOutcome:
         f"Facility location over {report.n_points} demand point(s): choose the site.",
         items,
     )
+
+
+def drp_options(report: object) -> GuidedOutcome:
+    items: list[_Item] = [
+        ("Release the planned orders",
+         f"Launch the time-phased branch releases ({report.total_branch_releases:,.0f} unit(s)) and "
+         f"the DC releases ({report.dc_release_total:,.0f}) on their offset periods.",
+         "release the planned branch + DC orders on schedule", "keeps every branch ahead of demand"),
+        (f"Pre-position the DC for the peak (period {report.peak_period})",
+         f"Stage DC inbound for the {report.peak_qty:,.0f}-unit peak so branch releases are covered.",
+         "size DC inbound + capacity to the peak period", "protects service at the bottleneck period"),
+        ("Smooth the lumpy releases",
+         "Add safety stock or lot sizing where releases spike to level the load.",
+         "apply lot sizing / safety stock to smooth releases", "steadier flow, a little more stock"),
+    ]
+    return _ranked(
+        f"DRP over {report.n_branches} branch(es) x {report.n_periods} period(s): choose how to execute.",
+        items,
+    )
