@@ -461,3 +461,27 @@ def simulation_options(report: object) -> GuidedOutcome:
         f"Simulation-optimized policy over {report.n_skus} SKU(s): choose how to roll it out.",
         items,
     )
+
+
+def excess_obsolete_options(report: object) -> GuidedOutcome:
+    clear_dead = ("Clear the dead stock",
+                  f"Liquidate / return / write off the {report.n_dead} dead SKU(s) holding "
+                  f"{report.dead_value:,.0f}.",
+                  "dispose of the dead stock to release cash and space", "recovers cash now; some loss on value")
+    draw_down = ("Draw down the excess",
+                 f"Stop buying and redistribute / promote the {report.n_excess} excess SKU(s) "
+                 f"({report.excess_value:,.0f}).",
+                 "stop replenishing and draw down the excess", "frees cash before it ages to dead")
+    caps = ("Set days-of-cover caps",
+            "Govern with a max days-of-cover per ABC class so excess does not rebuild.",
+            "apply per-class cover ceilings", "structural prevention, slower payoff")
+    if report.dead_value > 0:
+        items: list[_Item] = [clear_dead, draw_down, caps]
+    elif report.excess_value > 0:
+        items = [draw_down, caps, clear_dead]
+    else:
+        items = [caps, draw_down, clear_dead]
+    return _ranked(
+        f"E&O over {report.n_skus} SKU(s): {report.eo_value:,.0f} at risk - choose how to release it.",
+        items,
+    )

@@ -16,6 +16,7 @@ from jobs import (
     dea_job,
     deliverables,
     earned_value_job,
+    excess_obsolete_job,
     fefo_job,
     financial_kpis_job,
     forecast_job,
@@ -1568,6 +1569,51 @@ def simulation_tool() -> Tool:
     )
 
 
+# ---- excess_obsolete (E&O / dead-stock) --------------------------------------
+
+def _excess_obsolete_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["a stock CSV (product, on_hand, daily_demand + optional unit_cost / days_since_last_sale) is required"])
+    try:
+        payload = excess_obsolete_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["stocks"]:
+        return Prepared(status="needs_data", messages=["no stock lines found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _excess_obsolete_run(payload: object, params: dict) -> Produced:
+    report = excess_obsolete_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def excess_obsolete_tool() -> Tool:
+    return Tool(
+        key="excess_obsolete",
+        title="Excess & Obsolete (E&O) Stock",
+        description="Classify on-hand stock into healthy / excess / dead from days-of-cover and "
+                    "time-since-last-sale, size the cash tied up in slow and non-moving inventory, "
+                    "and recommend a disposition (liquidate / return / draw down) per SKU.",
+        intent_keywords=(
+            "excess and obsolete", "excess inventory", "obsolete inventory", "dead stock",
+            "deadstock", "slow moving", "slow-moving", "e&o", "overstock", "excess stock",
+            "stranded inventory", "write off inventory", "non-moving stock", "months of cover",
+        ),
+        requires_data=True,
+        options=tool_options.excess_obsolete_options,
+        prepare=_excess_obsolete_prepare,
+        run=_excess_obsolete_run,
+        qa=lambda report: excess_obsolete_job.verify(report),
+        deliver=lambda report, out_dir, client: excess_obsolete_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            excess_obsolete_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -1601,4 +1647,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(fefo_tool())
     reg.register(slotting_tool())
     reg.register(simulation_tool())
+    reg.register(excess_obsolete_tool())
     return reg
