@@ -23,6 +23,7 @@ from jobs import (
     landed_cost_job,
     leadership,
     learning_curve_job,
+    multi_echelon_job,
     newsvendor_job,
     odoo_job,
     qa,
@@ -1338,6 +1339,51 @@ def cycle_count_tool() -> Tool:
     )
 
 
+# ---- multi_echelon (serial-chain safety-stock placement) ---------------------
+
+def _multi_echelon_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["a serial-chain CSV (stage, lead_time, holding_cost + demand mean/std) is required"])
+    try:
+        payload = multi_echelon_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["stages"]:
+        return Prepared(status="needs_data", messages=["no stages found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _multi_echelon_run(payload: object, params: dict) -> Produced:
+    report = multi_echelon_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def multi_echelon_tool() -> Tool:
+    return Tool(
+        key="multi_echelon",
+        title="Multi-Echelon Safety-Stock Placement",
+        description="Optimize where to hold safety stock across a serial supply chain "
+                    "(supplier -> DC -> store) via the Guaranteed-Service Model: the cost-minimizing "
+                    "placement, per-stage and echelon order-up-to levels, and total network holding cost.",
+        intent_keywords=(
+            "multi-echelon", "multi echelon", "multiechelon", "echelon", "two-echelon",
+            "network inventory", "inventory positioning", "stock positioning",
+            "safety stock placement", "multi-tier inventory", "risk pooling",
+        ),
+        requires_data=True,
+        options=tool_options.multi_echelon_options,
+        prepare=_multi_echelon_prepare,
+        run=_multi_echelon_run,
+        qa=lambda report: multi_echelon_job.verify(report),
+        deliver=lambda report, out_dir, client: multi_echelon_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            multi_echelon_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -1366,4 +1412,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(odoo_replenishment_tool())
     reg.register(newsvendor_tool())
     reg.register(cycle_count_tool())
+    reg.register(multi_echelon_tool())
     return reg

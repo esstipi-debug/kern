@@ -365,3 +365,23 @@ def cycle_count_options(report: object) -> GuidedOutcome:
          "rebalance the schedule to cut the daily peak", "easier to staff, slower full coverage"),
     ]
     return _ranked(f"Cycle-count program for {report.n_items} SKU(s): choose how to run it.", items)
+
+
+def multi_echelon_options(report: object) -> GuidedOutcome:
+    placement = ", ".join(report.stocking_stage_names) if report.stocking_stage_names else "none"
+    items: list[_Item] = [
+        ("Adopt the cost-optimal placement",
+         f"Hold safety stock where the model places it ({placement}) for "
+         f"{report.total_holding_cost:,.0f} holding cost.",
+         "set each stage to its recommended base-stock level", "minimum network holding cost"),
+        ("Centralize safety stock upstream",
+         "Pool stock at a central / upstream echelon (risk pooling) rather than at every stage.",
+         "consolidate safety stock at the upstream echelon", "less stock, more downstream lead-time risk"),
+        ("Push stock to the customer-facing stage",
+         "Hold more at the demand node to protect responsiveness and availability.",
+         "raise base stock at the customer-facing stage", "better service, higher holding cost"),
+    ]
+    return _ranked(
+        f"Multi-echelon placement over {report.n_stages} stage(s): choose the stocking strategy.",
+        items,
+    )
