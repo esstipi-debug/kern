@@ -332,3 +332,36 @@ def learning_curve_options(report: object) -> GuidedOutcome:
          "invest in process improvement on the top products", "more cost-down; needs investment"),
     ]
     return _ranked(f"Cost-down across {report.n_products} product(s): choose the lever.", items)
+
+
+def newsvendor_options(report: object) -> GuidedOutcome:
+    items: list[_Item] = [
+        ("Order the recommended quantities",
+         f"Commit {report.total_order_qty:,.0f} unit(s) across {report.n_skus} SKU(s) at the "
+         f"critical-ratio optimum.",
+         "place the single-period order at the recommended quantities",
+         "maximizes expected profit for one-shot demand"),
+        (f"Protect availability on the scarce SKUs (e.g. {report.scarcest_product})",
+         "Round up where a stock-out costs more than overstock (highest critical ratio).",
+         "raise the order on the high-critical-ratio SKUs", "fewer stock-outs, more overage risk"),
+        (f"Cut overstock risk on thin-margin SKUs (e.g. {report.thinnest_product})",
+         "Order below the optimum where overage dominates or salvage is low.",
+         "trim the order on the low-critical-ratio SKUs", "less write-off, some stock-out risk"),
+    ]
+    return _ranked(f"Single-period order across {report.n_skus} SKU(s): choose the stocking posture.", items)
+
+
+def cycle_count_options(report: object) -> GuidedOutcome:
+    items: list[_Item] = [
+        ("Adopt the cycle-count program",
+         f"Run the balanced A/B/C schedule: {report.total_counts} counts/year, "
+         f"peak {report.peak_daily_load}/day.",
+         "stand up the recommended cycle-count schedule", "steady accuracy without an annual shutdown"),
+        ("Front-load A-item accuracy",
+         f"Count the {report.by_class.get('A', 0)} A-SKU(s) first / more often until IRA holds.",
+         "raise the count frequency on the A class", "protects the highest-value stock first"),
+        ("Lighten the daily load",
+         f"Spread counts over more working days (peak now {report.peak_daily_load}/day) or trim C cadence.",
+         "rebalance the schedule to cut the daily peak", "easier to staff, slower full coverage"),
+    ]
+    return _ranked(f"Cycle-count program for {report.n_items} SKU(s): choose how to run it.", items)
