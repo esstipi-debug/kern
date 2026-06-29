@@ -426,3 +426,38 @@ def fefo_options(report: object) -> GuidedOutcome:
         f"Lot expiry over {report.n_lots} lot(s): {report.at_risk_units:,.0f} unit(s) at risk - choose the move.",
         items,
     )
+
+
+def slotting_options(report: object) -> GuidedOutcome:
+    items: list[_Item] = [
+        ("Adopt the COI slot map",
+         f"Place the {report.n_a} fast/dense SKU(s) in zone A (closest), {report.n_b} in B, "
+         f"{report.n_c} in C, by cube-per-order index.",
+         "re-slot SKUs to their recommended zones", "cuts the most pick travel for the effort"),
+        (f"Co-locate the affinity clusters ({len(report.co_location_groups)})",
+         "Keep SKUs frequently ordered together adjacent to shorten multi-line picks.",
+         "co-locate the affinity groups", "fewer steps per order; needs adjacent space"),
+        ("Re-slot the A zone only",
+         "Move just the highest-impact zone-A SKUs first to limit disruption.",
+         "re-slot the zone-A SKUs first", "fast partial win, less churn"),
+    ]
+    return _ranked(f"Slotting over {report.n_skus} SKU(s): choose how to re-slot.", items)
+
+
+def simulation_options(report: object) -> GuidedOutcome:
+    items: list[_Item] = [
+        ("Adopt the simulation-optimized policy",
+         f"Set each SKU's (R,S) to the simulated optimum - saves {report.total_saving:,.0f} "
+         f"vs the analytical policy across {report.n_skus} SKU(s).",
+         "apply the simulation-optimized order-up-to levels", "lowest simulated total cost"),
+        ("Validate with a longer run first",
+         "Re-simulate the high-value SKUs with more periods / new seeds before committing.",
+         "re-run the simulation with more periods", "more confidence, more compute"),
+        ("Apply only the material gains",
+         "Adopt the new policy where the cost saving is significant; keep the analytical one elsewhere.",
+         "adopt only where the saving is material", "less churn, captures most of the gain"),
+    ]
+    return _ranked(
+        f"Simulation-optimized policy over {report.n_skus} SKU(s): choose how to roll it out.",
+        items,
+    )

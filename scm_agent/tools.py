@@ -33,6 +33,8 @@ from jobs import (
     returns_job,
     risk_job,
     scheduling_job,
+    simulation_job,
+    slotting_job,
     sop_deliverable,
     sop_job,
     sourcing_job,
@@ -1476,6 +1478,96 @@ def fefo_tool() -> Tool:
     )
 
 
+# ---- slotting (COI zone slotting + affinity co-location) ---------------------
+
+def _slotting_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["an order-lines CSV (order_id, product_id + optional unit_volume) is required"])
+    try:
+        payload = slotting_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["skus"]:
+        return Prepared(status="needs_data", messages=["no SKUs found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _slotting_run(payload: object, params: dict) -> Produced:
+    report = slotting_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def slotting_tool() -> Tool:
+    return Tool(
+        key="slotting",
+        title="Warehouse Slotting (COI + Affinity)",
+        description="Assign SKUs to pick zones A/B/C by the cube-per-order index (fast / dense movers "
+                    "to the closest zone) and co-locate SKUs frequently ordered together, from order "
+                    "history - to cut pick travel.",
+        intent_keywords=(
+            "slotting", "slot assignment", "warehouse slotting", "pick slot", "pick face",
+            "golden zone", "cube per order", "cube-per-order", "coi slotting", "zone assignment",
+            "co-location", "re-slot", "slot the skus",
+        ),
+        requires_data=True,
+        options=tool_options.slotting_options,
+        prepare=_slotting_prepare,
+        run=_slotting_run,
+        qa=lambda report: slotting_job.verify(report),
+        deliver=lambda report, out_dir, client: slotting_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            slotting_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
+# ---- simulation (Monte-Carlo (R,S) policy optimization) ----------------------
+
+def _simulation_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["a per-SKU CSV (product, mean_demand, std_demand, lead_time + costs) is required"])
+    try:
+        payload = simulation_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["records"]:
+        return Prepared(status="needs_data", messages=["no SKUs found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _simulation_run(payload: object, params: dict) -> Produced:
+    report = simulation_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def simulation_tool() -> Tool:
+    return Tool(
+        key="simulation",
+        title="Simulation-Optimized (R,S) Policy",
+        description="Find the safety stock / order-up-to level that minimizes simulated total cost "
+                    "(holding + ordering + backorder) per SKU via Monte-Carlo search, and quantify "
+                    "the edge over the analytical optimum.",
+        intent_keywords=(
+            "simulation", "simulate", "monte carlo", "monte-carlo", "simulation optimization",
+            "simulated policy", "stochastic simulation", "policy simulation", "simulate the policy",
+            "simulation-based",
+        ),
+        requires_data=True,
+        options=tool_options.simulation_options,
+        prepare=_simulation_prepare,
+        run=_simulation_run,
+        qa=lambda report: simulation_job.verify(report),
+        deliver=lambda report, out_dir, client: simulation_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            simulation_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -1507,4 +1599,6 @@ def build_default_registry() -> ToolRegistry:
     reg.register(multi_echelon_tool())
     reg.register(transportation_tool())
     reg.register(fefo_tool())
+    reg.register(slotting_tool())
+    reg.register(simulation_tool())
     return reg
