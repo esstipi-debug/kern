@@ -35,6 +35,7 @@ from jobs import (
     sop_deliverable,
     sop_job,
     sourcing_job,
+    transportation_job,
     whatif_job,
 )
 from jobs.inventory_optimization import run as run_inventory
@@ -1384,6 +1385,51 @@ def multi_echelon_tool() -> Tool:
     )
 
 
+# ---- transportation (freight mode selection + lane freight) ------------------
+
+def _transportation_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["a shipments CSV (weight_kg, distance_km + optional lane/units/value) is required"])
+    try:
+        payload = transportation_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["shipments"]:
+        return Prepared(status="needs_data", messages=["no shipments found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _transportation_run(payload: object, params: dict) -> Produced:
+    report = transportation_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def transportation_tool() -> Tool:
+    return Tool(
+        key="transportation",
+        title="Transport-Mode Selection & Lane Freight",
+        description="Pick the cheapest feasible transport mode (parcel / LTL / FTL / intermodal) per "
+                    "shipment from a configurable rate card, quantify the saving vs defaulting to LTL, "
+                    "and rank lanes by freight cost-to-serve. Offline - no carrier API needed.",
+        intent_keywords=(
+            "transportation", "transport mode", "freight mode", "mode selection", "shipping mode",
+            "ltl", "ftl", "full truckload", "less-than-truckload", "intermodal", "truckload",
+            "how to ship", "cheapest way to ship", "freight optimization", "carrier mode",
+        ),
+        requires_data=True,
+        options=tool_options.transportation_options,
+        prepare=_transportation_prepare,
+        run=_transportation_run,
+        qa=lambda report: transportation_job.verify(report),
+        deliver=lambda report, out_dir, client: transportation_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            transportation_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -1413,4 +1459,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(newsvendor_tool())
     reg.register(cycle_count_tool())
     reg.register(multi_echelon_tool())
+    reg.register(transportation_tool())
     return reg

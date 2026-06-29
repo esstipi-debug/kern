@@ -385,3 +385,20 @@ def multi_echelon_options(report: object) -> GuidedOutcome:
         f"Multi-echelon placement over {report.n_stages} stage(s): choose the stocking strategy.",
         items,
     )
+
+
+def transportation_options(report: object) -> GuidedOutcome:
+    worst = report.worst_lane.lane if report.worst_lane is not None else "the densest lane"
+    items: list[_Item] = [
+        ("Adopt the recommended mode per shipment",
+         f"Route each shipment to its cheapest feasible mode - saves {report.total_savings:,.0f} "
+         f"vs all-LTL across {report.n_shipments} shipment(s).",
+         "book each shipment on its recommended mode", "lowest freight at the current service"),
+        (f"Consolidate small shipments to FTL (e.g. {worst})",
+         f"Pool LTL volume on dense lanes past the ~{report.breakeven_kg:,.0f} kg FTL breakeven.",
+         "consolidate LTL shipments into full truckloads", "cheaper per kg, needs volume + scheduling"),
+        ("Set service-mode rules",
+         "Cap transit time so only time-sensitive lanes pay for the faster (pricier) modes.",
+         "apply transit-time rules per lane", "protects service where it matters, trims it elsewhere"),
+    ]
+    return _ranked(f"Transport plan over {report.n_shipments} shipment(s): choose the freight strategy.", items)
