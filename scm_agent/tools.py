@@ -16,6 +16,7 @@ from jobs import (
     dea_job,
     deliverables,
     earned_value_job,
+    fefo_job,
     financial_kpis_job,
     forecast_job,
     intake,
@@ -1430,6 +1431,51 @@ def transportation_tool() -> Tool:
     )
 
 
+# ---- fefo (lot expiry / FEFO disposition) ------------------------------------
+
+def _fefo_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["a lots CSV (product, lot, quantity, days_to_expiry + optional cost/price/demand) is required"])
+    try:
+        payload = fefo_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["lots"]:
+        return Prepared(status="needs_data", messages=["no lots found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _fefo_run(payload: object, params: dict) -> Produced:
+    report = fefo_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def fefo_tool() -> Tool:
+    return Tool(
+        key="fefo",
+        title="Lot Expiry & FEFO Disposition",
+        description="For perishable / dated stock: the shelf-life aging report, the First-Expired-"
+                    "First-Out issue order, the quantity demand cannot sell before expiry, and a "
+                    "markdown-vs-scrap recommendation to recover value before write-off.",
+        intent_keywords=(
+            "fefo", "first expired first out", "first-expired", "expiry", "expiration date",
+            "expiring stock", "shelf life", "shelf-life", "lot expiry", "batch expiry",
+            "best before", "use by date", "expiry risk", "markdown before expiry", "aging stock",
+        ),
+        requires_data=True,
+        options=tool_options.fefo_options,
+        prepare=_fefo_prepare,
+        run=_fefo_run,
+        qa=lambda report: fefo_job.verify(report),
+        deliver=lambda report, out_dir, client: fefo_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            fefo_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -1460,4 +1506,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(cycle_count_tool())
     reg.register(multi_echelon_tool())
     reg.register(transportation_tool())
+    reg.register(fefo_tool())
     return reg

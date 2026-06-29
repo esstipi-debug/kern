@@ -402,3 +402,27 @@ def transportation_options(report: object) -> GuidedOutcome:
          "apply transit-time rules per lane", "protects service where it matters, trims it elsewhere"),
     ]
     return _ranked(f"Transport plan over {report.n_shipments} shipment(s): choose the freight strategy.", items)
+
+
+def fefo_options(report: object) -> GuidedOutcome:
+    disp = report.disposition
+    fefo = ("Issue stock FEFO",
+            "Ship the soonest-to-expire lots first so nothing ages out behind fresher stock.",
+            "pick lots First-Expired-First-Out", "no cost; prevents avoidable waste")
+    markdown = ("Mark down the at-risk lots",
+                f"Clear the {report.at_risk_units:,.0f} at-risk unit(s) at a discount - "
+                f"recovers {disp.markdown_recovery:,.0f} vs {disp.scrap_recovery:,.0f} scrap.",
+                "stage a markdown on the at-risk lots", "recovers cash, dilutes margin")
+    scrap = ("Scrap / write off the unsellable",
+             f"Write off the at-risk units where markdown can't beat the {disp.scrap_recovery:,.0f} scrap value.",
+             "scrap the unsellable at-risk lots", "stops further holding cost; lost value")
+    if report.at_risk_units > 0 and disp.recommended == "markdown":
+        items: list[_Item] = [markdown, fefo, scrap]
+    elif report.at_risk_units > 0:
+        items = [scrap, fefo, markdown]
+    else:
+        items = [fefo, markdown, scrap]
+    return _ranked(
+        f"Lot expiry over {report.n_lots} lot(s): {report.at_risk_units:,.0f} unit(s) at risk - choose the move.",
+        items,
+    )
