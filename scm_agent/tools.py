@@ -10,6 +10,7 @@ from jobs import (
     acceptance_sampling_job,
     cost_to_serve_deliverable,
     cost_to_serve_job,
+    cycle_count_job,
     data_quality_job,
     ddmrp_job,
     dea_job,
@@ -22,6 +23,7 @@ from jobs import (
     landed_cost_job,
     leadership,
     learning_curve_job,
+    newsvendor_job,
     odoo_job,
     qa,
     queuing_job,
@@ -1246,6 +1248,96 @@ def odoo_replenishment_tool() -> Tool:
     )
 
 
+# ---- newsvendor (single-period / perishable order) ---------------------------
+
+def _newsvendor_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["a single-period CSV (product, mean_demand, std_demand, price, unit_cost) is required"])
+    try:
+        records = newsvendor_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not records:
+        return Prepared(status="needs_data", messages=["no SKUs found in the data"])
+    return Prepared(status="ok", payload=records)
+
+
+def _newsvendor_run(payload: object, params: dict) -> Produced:
+    report = newsvendor_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def newsvendor_tool() -> Tool:
+    return Tool(
+        key="newsvendor",
+        title="Single-Period (Newsvendor) Order",
+        description="Set the profit-maximizing one-shot order quantity per SKU for perishable / "
+                    "seasonal / fashion / spare-part demand: the critical-ratio optimum, expected "
+                    "profit, and the in-stock service level it implies.",
+        intent_keywords=(
+            "newsvendor", "single period", "single-period", "perishable", "perishables",
+            "one-time order", "one-shot order", "seasonal buy", "fashion buy", "spoilage",
+            "critical ratio",
+        ),
+        requires_data=True,
+        options=tool_options.newsvendor_options,
+        prepare=_newsvendor_prepare,
+        run=_newsvendor_run,
+        qa=lambda report: newsvendor_job.verify(report),
+        deliver=lambda report, out_dir, client: newsvendor_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            newsvendor_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
+# ---- cycle_count (cycle-count program / schedule) ----------------------------
+
+def _cycle_count_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["a SKU CSV (product + abc class, or product + value to classify) is required"])
+    try:
+        items = cycle_count_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not items:
+        return Prepared(status="needs_data", messages=["no SKUs found in the data"])
+    return Prepared(status="ok", payload=items)
+
+
+def _cycle_count_run(payload: object, params: dict) -> Produced:
+    report = cycle_count_job.run(payload, working_days=params.get("working_days", 250))
+    return Produced(report=report, summary=report.summary)
+
+
+def cycle_count_tool() -> Tool:
+    return Tool(
+        key="cycle_count",
+        title="Cycle-Count Program",
+        description="Build the cycle-count schedule that replaces the annual wall-to-wall count: "
+                    "count frequency per ABC class, each SKU's counts spread evenly across the "
+                    "working year, and a balanced daily counting workload.",
+        intent_keywords=(
+            "cycle count program", "cycle-count program", "cycle count schedule", "count schedule",
+            "count cadence", "counting program", "count frequency", "cycle counting plan",
+            "how often to count", "count program",
+        ),
+        requires_data=True,
+        options=tool_options.cycle_count_options,
+        prepare=_cycle_count_prepare,
+        run=_cycle_count_run,
+        qa=lambda report: cycle_count_job.verify(report),
+        deliver=lambda report, out_dir, client: cycle_count_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            cycle_count_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -1272,4 +1364,6 @@ def build_default_registry() -> ToolRegistry:
     reg.register(earned_value_tool())
     reg.register(learning_curve_tool())
     reg.register(odoo_replenishment_tool())
+    reg.register(newsvendor_tool())
+    reg.register(cycle_count_tool())
     return reg
