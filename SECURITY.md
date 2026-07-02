@@ -46,8 +46,9 @@ CSP, rate-limit and API-key behaviour).
 - No secrets are committed. Application code reads `ANTHROPIC_API_KEY` (optional —
   Claude-assisted parsing/narrative) and `MOONSHOT_API_KEY` (optional — only the
   external `graphify` build). The web app's hardening knobs (`LINCHPIN_API_KEY`,
-  `LINCHPIN_RATE_LIMIT`, `LINCHPIN_RATE_WINDOW`, `LINCHPIN_CORS_ORIGINS`) are also
-  env-driven; of those only `LINCHPIN_API_KEY` is a secret. See [`.env.example`](.env.example).
+  `LINCHPIN_RATE_LIMIT`, `LINCHPIN_RATE_WINDOW`, `LINCHPIN_CORS_ORIGINS`,
+  `LINCHPIN_APPROVAL_SECRET`) are also env-driven; of those `LINCHPIN_API_KEY` and
+  `LINCHPIN_APPROVAL_SECRET` are secrets. See [`.env.example`](.env.example).
 - `.env` and `.env.local` are git-ignored. The engine, web app, and tests all run
   with **zero** secrets configured; missing keys degrade gracefully to the
   rules-based path, they do not crash.
@@ -65,8 +66,9 @@ environment variables before exposing the app publicly:
 | `LINCHPIN_RATE_LIMIT` | Max requests per window per client IP (`0` disables) | `0` → off |
 | `LINCHPIN_RATE_WINDOW` | Rate-limit window, seconds | `60` |
 | `LINCHPIN_CORS_ORIGINS` | Comma-separated CORS allowlist | unset → same-origin only |
+| `LINCHPIN_APPROVAL_SECRET` | Signs writeback `Approval`s (`src/writeback.py`) so one can't be forged by constructing it directly | unset → unsigned |
 | `LINCHPIN_ENV` | `production` enables the boot-time hardening check | `development` |
-| `LINCHPIN_REQUIRE_SECURE` | Refuse to boot if production is missing API key / rate limit | unset → warn only |
+| `LINCHPIN_REQUIRE_SECURE` | Refuse to boot if production is missing API key / rate limit / approval secret | unset → warn only |
 | `LINCHPIN_LOG_JSON` / `LINCHPIN_LOG_LEVEL` | Structured (JSON) access logs / level | plain / `INFO` |
 
 **Fail-loud, not fail-silent.** With `LINCHPIN_ENV=production` the app logs a loud

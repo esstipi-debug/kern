@@ -16,6 +16,8 @@ same read/commit/rollback surface; the safety logic here is connector-agnostic.
 from __future__ import annotations
 
 import hashlib
+import hmac
+import os
 import time
 from dataclasses import dataclass
 
@@ -86,21 +88,51 @@ class Changeset:
         return f"{n} change(s) to {self.target} [{self.risk_tier}] key={self.idempotency_key}"
 
 
+def _approval_secret() -> str:
+    """Server-side secret used to sign approvals. Empty disables signing (local/dev/tests),
+    matching the ``LINCHPIN_API_KEY``/``LINCHPIN_RATE_LIMIT`` "empty disables the gate"
+    convention already used in ``webapp/security.py``. Set for any deployment where
+    ``approve()`` and ``apply()`` may not be the only code with access to this module.
+    """
+    return os.environ.get("LINCHPIN_APPROVAL_SECRET", "").strip()
+
+
+def _sign_approval(changeset_key: str, content_hash: str, approved_by: str, expires_at: float) -> str:
+    """HMAC-SHA256 over the approval's fields, keyed by a secret only ``approve()``
+    (and whatever holds ``LINCHPIN_APPROVAL_SECRET``) can produce.
+
+    Without this, ``Approval`` was a plain public dataclass: since ``content_hash`` is
+    a deterministic hash of fields the caller already has, ANY code with access to this
+    module could construct ``Approval(key, hash, "nobody", far_future_expiry)`` directly
+    and satisfy ``matches()`` - no call to ``approve()``, no human, ever required. Signing
+    means matching content and an unexpired timestamp are necessary but no longer
+    sufficient; the signature can only be reproduced by whoever holds the secret.
+    """
+    secret = _approval_secret()
+    payload = f"{changeset_key}:{content_hash}:{approved_by}:{expires_at!r}".encode()
+    return hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+
+
 @dataclass(frozen=True)
 class Approval:
-    """A time-boxed authorization bound to one changeset's key AND its exact content."""
+    """A time-boxed, signed authorization bound to one changeset's key AND its exact content."""
 
     changeset_key: str
     content_hash: str
     approved_by: str
     expires_at: float
+    signature: str
 
     def is_valid_at(self, now: float) -> bool:
         return now < self.expires_at
 
     def matches(self, changeset: Changeset) -> bool:
-        """Whether this approval was granted for exactly this changeset's content."""
-        return self.changeset_key == changeset.idempotency_key and self.content_hash == changeset.content_hash
+        """Whether this approval was genuinely minted (by ``approve()``, i.e. signed with
+        the server secret) for exactly this changeset's key and content."""
+        if self.changeset_key != changeset.idempotency_key or self.content_hash != changeset.content_hash:
+            return False
+        expected = _sign_approval(self.changeset_key, self.content_hash, self.approved_by, self.expires_at)
+        return hmac.compare_digest(self.signature, expected)
 
 
 @dataclass(frozen=True)
@@ -123,15 +155,19 @@ class ApplyResult:
 def approve(
     changeset: Changeset, approved_by: str, *, now: float | None = None, ttl_seconds: float = 900.0
 ) -> Approval:
-    """Mint an approval valid for ``ttl_seconds`` from ``now``.
+    """Mint a signed approval valid for ``ttl_seconds`` from ``now``.
 
     ``now`` defaults to the real wall clock (``time.time()``); pass an explicit value
     only for deterministic tests. Bound to both the changeset's key and its content
-    hash, so it cannot later validate a different changeset that reuses the same key.
+    hash, so it cannot later validate a different changeset that reuses the same key -
+    and signed (see ``_sign_approval``) so it cannot be forged by constructing
+    ``Approval`` directly instead of calling this function.
     """
     if now is None:
         now = time.time()
-    return Approval(changeset.idempotency_key, changeset.content_hash, approved_by, now + ttl_seconds)
+    expires_at = now + ttl_seconds
+    signature = _sign_approval(changeset.idempotency_key, changeset.content_hash, approved_by, expires_at)
+    return Approval(changeset.idempotency_key, changeset.content_hash, approved_by, expires_at, signature)
 
 
 class AuditBookkeeping:
