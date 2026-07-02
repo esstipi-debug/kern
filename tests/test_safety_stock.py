@@ -27,6 +27,21 @@ def test_safety_stock_sqrt_tau():
     assert ss4 == pytest.approx(ss1 * 2, rel=1e-9)
 
 
+def test_safety_stock_exact_signed_value_table_4_1():
+    """Table 4.1: mu=100, sigma=25, alpha=0.95 -> Ss = inv - mu = 141 - 100 = 41.
+
+    Anchored to the book's own worked example and checked through safety_stock()
+    itself (not re-derived by hand like test_safety_stock_table_4_1 above), so a
+    sign error in the core formula fails here. test_safety_stock_sqrt_tau does NOT
+    catch a sign flip on z_alpha: it only checks proportionality, and a
+    flipped-sign result is still exactly 2x itself at risk_periods=4. This test
+    pins the actual signed value.
+    """
+    result = safety_stock(25, 0.95, risk_periods=1)
+    assert result.safety_stock == pytest.approx(41, abs=1)
+    assert result.safety_stock > 0
+
+
 def test_cycle_service_level_inverse():
     mu, sigma = 100, 25
     alpha = 0.9
