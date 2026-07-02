@@ -260,6 +260,69 @@ def test_odoo_client_raises_on_auth_failure():
         OdooClient("https://x", "db", "u", "bad", common=_FakeProxy(uid=False), models=_FakeProxy())
 
 
+class _FlakyProxy:
+    """Raises a transient transport error the first ``fail_times`` calls, then succeeds."""
+
+    def __init__(self, *, uid: int = 1, fail_times: int = 0, error: Exception | None = None, result=None) -> None:
+        self._uid = uid
+        self._fail_times = fail_times
+        self._error = error or ConnectionError("connection reset")
+        self._result = result if result is not None else [{"id": 1}]
+        self.calls = 0
+
+    def authenticate(self, db, username, api_key, ctx):
+        return self._uid
+
+    def execute_kw(self, db, uid, api_key, model, method, args, kwargs):
+        self.calls += 1
+        if self.calls <= self._fail_times:
+            raise self._error
+        return self._result
+
+
+def test_odoo_client_retries_a_read_method_on_transient_error_then_succeeds():
+    proxy = _FlakyProxy(fail_times=2, result=[{"id": 9}])
+    client = OdooClient("https://x", "db", "u", "k", common=proxy, models=proxy, backoff_seconds=0.0)
+
+    out = client.execute_kw("product.product", "search_read", [[]])
+
+    assert out == [{"id": 9}]
+    assert proxy.calls == 3  # two failures + the succeeding attempt
+
+
+def test_odoo_client_gives_up_after_max_attempts_on_a_read_method():
+    proxy = _FlakyProxy(fail_times=99)  # never succeeds
+    client = OdooClient("https://x", "db", "u", "k", common=proxy, models=proxy, max_attempts=3, backoff_seconds=0.0)
+
+    with pytest.raises(OdooError):
+        client.execute_kw("product.product", "search", [[]])
+    assert proxy.calls == 3  # exactly max_attempts, no more
+
+
+def test_odoo_client_never_retries_a_write_method():
+    """A create/write/unlink must fail immediately on a transient error, not retry -
+    retrying a write whose response was lost could duplicate it server-side."""
+    proxy = _FlakyProxy(fail_times=1)
+    client = OdooClient("https://x", "db", "u", "k", common=proxy, models=proxy, max_attempts=5, backoff_seconds=0.0)
+
+    with pytest.raises(OdooError):
+        client.execute_kw("purchase.order", "create", [{}])
+    assert proxy.calls == 1  # no retry attempted
+
+
+def test_odoo_client_never_retries_an_application_fault_even_on_a_read_method():
+    """xmlrpc.client.Fault means Odoo processed the request and rejected it (bad data,
+    permission denied, ...) - retrying cannot help and must not be attempted."""
+    import xmlrpc.client
+
+    proxy = _FlakyProxy(fail_times=5, error=xmlrpc.client.Fault(1, "access denied"))
+    client = OdooClient("https://x", "db", "u", "k", common=proxy, models=proxy, max_attempts=5, backoff_seconds=0.0)
+
+    with pytest.raises(OdooError):
+        client.execute_kw("product.product", "search_read", [[]])
+    assert proxy.calls == 1  # no retry on an application-level fault
+
+
 # -- write side: draft purchase orders (RFQs) ---------------------------------
 
 
@@ -320,3 +383,92 @@ def test_draft_po_reports_unsourced_skus_instead_of_dropping_them():
     assert result.n_orders == 1 and result.unsourced == ("SKU-2",)
     po = next(iter(odoo.records("purchase.order").values()))
     assert po["partner_id"] == 70 and len(po["order_line"]) == 1
+
+
+# -- write side: draft POs now route through the writeback safety plane ------
+
+
+def test_draft_po_creation_is_idempotent_on_content_not_just_a_caller_key():
+    """Repro of the audit finding: draft-PO creation used to bypass the writeback
+    plane entirely, so a retry raised a duplicate RFQ. Retrying the SAME restock
+    (same content) must now idempotent-skip instead of creating a second PO."""
+    odoo = _odoo()
+    connector = OdooConnector(odoo)
+
+    first = connector.create_draft_purchase_orders({"SKU-1": 50.0})
+    second = connector.create_draft_purchase_orders({"SKU-1": 50.0})  # a client retry
+
+    assert first.n_orders == 1
+    assert second.purchase_orders == first.purchase_orders  # same PO, not a new one
+    assert len(odoo.records("purchase.order")) == 1  # exactly one PO exists in Odoo
+
+
+def test_draft_po_with_different_content_creates_a_different_po():
+    odoo = _odoo()
+    connector = OdooConnector(odoo)
+
+    first = connector.create_draft_purchase_orders({"SKU-1": 50.0})
+    second = connector.create_draft_purchase_orders({"SKU-1": 999.0})  # different quantity
+
+    assert set(first.purchase_orders) != set(second.purchase_orders)
+    assert len(odoo.records("purchase.order")) == 2
+
+
+def test_draft_po_is_recorded_in_the_writeback_audit_and_can_be_rolled_back():
+    odoo = _odoo()
+    connector = OdooConnector(odoo)
+
+    result = connector.create_draft_purchase_orders({"SKU-1": 50.0})
+    po_id = next(iter(result.purchase_orders))
+
+    connector.rollback(next(iter(connector._po_store.applied_keys())))
+
+    assert po_id not in odoo.records("purchase.order")  # the draft PO was deleted
+
+
+def test_stage_draft_purchase_orders_is_a_dry_run_until_applied():
+    odoo = _odoo()
+    connector = OdooConnector(odoo)
+
+    changeset, unsourced = connector.stage_draft_purchase_orders({"SKU-1": 50.0})
+
+    assert unsourced == ()
+    assert not odoo.records("purchase.order")  # nothing written yet
+    connector.apply_draft_purchase_orders(changeset)
+    assert len(odoo.records("purchase.order")) == 1
+
+
+def test_apply_draft_purchase_orders_without_approval_can_be_required():
+    """auto_apply_reversible=False makes draft-PO creation require a human approval,
+    exactly like reorder-point writes already do."""
+    from src.writeback import WritebackRefused
+
+    odoo = _odoo()
+    connector = OdooConnector(odoo)
+    changeset, _ = connector.stage_draft_purchase_orders({"SKU-1": 50.0})
+
+    with pytest.raises(WritebackRefused):
+        connector.apply_draft_purchase_orders(changeset, auto_apply_reversible=False)
+    assert not odoo.records("purchase.order")
+
+
+# -- write side: persistent ledger shared by both write paths -----------------
+
+
+def test_connector_with_a_sqlite_ledger_persists_both_write_paths(tmp_path):
+    from src.writeback_store import SqliteAuditLedger
+
+    ledger_path = tmp_path / "odoo_writeback.sqlite3"
+    odoo = _odoo()
+    connector = OdooConnector(odoo, ledger=SqliteAuditLedger(ledger_path))
+
+    connector.apply_restock(connector.stage_restock({"SKU-2": 60.0}, idempotency_key="r1"))
+    connector.create_draft_purchase_orders({"SKU-1": 50.0})
+
+    # A brand-new connector + ledger pointed at the same file "sees" both prior applies.
+    reopened = OdooConnector(odoo, ledger=SqliteAuditLedger(ledger_path))
+    retried_restock = reopened.apply_restock(reopened.stage_restock({"SKU-2": 60.0}, idempotency_key="r1"))
+    assert retried_restock.idempotent_skip
+
+    reopened.create_draft_purchase_orders({"SKU-1": 50.0})
+    assert len(odoo.records("purchase.order")) == 1  # not duplicated after the "restart"

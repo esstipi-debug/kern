@@ -144,3 +144,54 @@ def test_changeset_summary_reports_tier_and_key():
                risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs9")
     s = cs.summary()
     assert "irreversible" in s and "cs9" in s
+
+
+# -- content-hash binding: "approve X, apply Y" must be refused ---------------
+
+
+def test_approval_is_refused_when_content_changes_under_the_same_key():
+    """A changeset re-staged with the same idempotency_key but DIFFERENT edits must
+    not be applicable under an approval granted for the original content."""
+    store = _store()
+    original = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+                      risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+    appr = approve(original, "stipi", now=0.0)
+
+    swapped = stage(store, "erp", {"SKU-A": {"reorder_point": 999999}},
+                     risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")  # same key, different edit
+    with pytest.raises(WritebackRefused):
+        apply(store, swapped, approval=appr, now=1.0)
+    assert store.read("SKU-A")["reorder_point"] == 100  # untouched
+
+
+def test_approval_content_hash_matches_the_approved_changeset():
+    cs = stage(_store(), "erp", {"SKU-A": {"reorder_point": 120}},
+               risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+    appr = approve(cs, "stipi", now=0.0)
+    assert appr.content_hash == cs.content_hash
+    assert appr.matches(cs)
+
+
+# -- real clock by default: an omitted `now` must not freeze approvals open ---
+
+
+def test_apply_defaults_to_the_real_clock_not_a_frozen_zero():
+    """Regression: apply()'s `now` used to default to 0.0, so an approval's 900s TTL
+    was never actually checked against a real clock by any caller that omitted it."""
+    store = _store()
+    cs = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+               risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+    already_expired = approve(cs, "stipi", now=0.0, ttl_seconds=900.0)  # expired since 1970
+
+    with pytest.raises(WritebackRefused):
+        apply(store, cs, approval=already_expired)  # no `now` passed -> must use the real clock
+    assert store.read("SKU-A")["reorder_point"] == 100
+
+
+def test_approve_defaults_to_the_real_clock_not_a_frozen_zero():
+    store = _store()
+    cs = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+               risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+    appr = approve(cs, "stipi", ttl_seconds=900.0)  # no `now` passed
+    result = apply(store, cs, approval=appr)  # no `now` passed either
+    assert result.applied  # both defaulted to "now" and a 900s-out approval is still valid

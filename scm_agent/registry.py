@@ -4,6 +4,7 @@ a Tool; no routing edits."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -70,11 +71,34 @@ class ToolRegistry:
         return list(self._tools.values())
 
     def match(self, brief: str) -> list[tuple[Tool, float]]:
-        """Rank tools by keyword-hit count against the lowercased brief."""
+        """Rank tools by keyword-hit count against the lowercased brief.
+
+        Matches on whole-word/phrase boundaries, not raw substring containment:
+        a plain ``in`` check let "upc" match inside "upcoming" and "ean" match
+        inside "ocean", misrouting briefs that never mentioned the keyword's
+        actual word at all.
+        """
         text = brief.lower()
         scored = [
-            (tool, float(sum(1 for kw in tool.intent_keywords if kw.lower() in text)))
+            (tool, float(sum(1 for kw in tool.intent_keywords if _keyword_matches(kw, text))))
             for tool in self._tools.values()
         ]
         scored.sort(key=lambda pair: pair[1], reverse=True)
         return scored
+
+
+_PLURAL_SUFFIX = r"(?:e?s)?"  # tolerate a trailing simple English plural ("kpi"/"kpis")
+
+
+def _keyword_matches(keyword: str, lowered_text: str) -> bool:
+    """Whether ``keyword`` appears in ``lowered_text`` as a whole word/phrase.
+
+    Word-bounded on both sides (so "upc" cannot match inside "upcoming" and "ean"
+    cannot match inside "ocean"), but tolerant of a trailing simple plural, since
+    keywords are written in a base form ("waiting line", "financial kpi") while a
+    brief just as naturally pluralizes ("waiting lines", "financial KPIs") - a raw
+    ``\\b...\\b`` would silently stop matching those without every keyword needing
+    a hand-duplicated plural entry.
+    """
+    pattern = r"\b" + re.escape(keyword.lower()) + _PLURAL_SUFFIX + r"\b"
+    return re.search(pattern, lowered_text) is not None

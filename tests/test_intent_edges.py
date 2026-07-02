@@ -70,3 +70,28 @@ def test_rogue_llm_guess_outside_registry_is_rejected():
     res = intent.classify("help me with my supply chain", reg, prov)
     assert res.job_type is None
     assert res.candidates
+
+
+class _FlakyProvider:
+    """An LLMProvider that IS available but whose call raises (a network blip,
+    an expired key mid-session, a rate limit, ...)."""
+
+    def available(self) -> bool:
+        return True
+
+    def extract(self, prompt, schema):
+        raise ConnectionError("upstream LLM call failed")
+
+    def complete(self, prompt):
+        raise ConnectionError("upstream LLM call failed")
+
+
+def test_llm_failure_degrades_to_clarification_not_a_crash():
+    """Regression: an LLM call that raises used to propagate all the way out of
+    classify(), through the orchestrator's generic handler, surfacing as an opaque
+    'An internal error occurred.' with zero candidates - worse than having no LLM
+    key at all. It must degrade to the same candidate-based clarification."""
+    reg = tools.build_default_registry()
+    res = intent.classify("help me with my supply chain", reg, _FlakyProvider())
+    assert res.job_type is None
+    assert res.candidates  # still offers real options, exactly like the no-key path

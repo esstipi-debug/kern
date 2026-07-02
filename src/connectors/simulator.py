@@ -94,11 +94,12 @@ class SimulatedStore:
         changeset: writeback.Changeset,
         *,
         approval: writeback.Approval | None = None,
-        now: float = 0.0,
+        now: float | None = None,
         auto_apply_reversible: bool = True,
     ) -> writeback.ApplyResult:
         """Apply a staged restock. Reversible restocks auto-apply by default; pass an
-        ``approval`` (and ``auto_apply_reversible=False``) to require a human in the loop."""
+        ``approval`` (and ``auto_apply_reversible=False``) to require a human in the loop.
+        ``now`` defaults to the real clock; pass an explicit value only in tests."""
         return writeback.apply(
             self._wb, changeset, approval=approval, now=now,
             auto_apply_reversible=auto_apply_reversible,

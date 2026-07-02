@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 from .llm import LLMProvider
 from .registry import ToolRegistry
+
+logger = logging.getLogger(__name__)
 
 _INTENT_SCHEMA = {
     "type": "object",
@@ -58,7 +61,16 @@ def classify(
         return IntentResult(job_type=top_tool.key, confidence=confidence)
 
     if provider.available():
-        guess = _llm_classify(provider, brief, registry)
+        try:
+            guess = _llm_classify(provider, brief, registry)
+        except Exception:
+            # A flaky LLM call must degrade to the same candidate-based
+            # clarification path as "no key at all" - never worse. Left
+            # uncaught, this exception used to escape all the way to the
+            # orchestrator's generic handler and surface as an opaque
+            # "An internal error occurred." with no candidates at all.
+            logger.warning("LLM intent classification failed; falling back to keyword ranking", exc_info=True)
+            guess = None
         if guess:
             return IntentResult(job_type=guess, confidence=0.6)
 
