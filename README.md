@@ -4,13 +4,12 @@
 
 ### The agentic brain for supply-chain decisions — grounded in the field's best models and sources.
 
-**Linchpin** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models across **34 agent-routable capabilities** — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, forecasting, pricing, DDMRP, ABC-XYZ, sourcing, landed cost, cost-to-serve, S&OP, facility location, DRP, transportation, FEFO, reconciliation, slotting, warehouse layout and more — and an **orchestrator agent** drives every one of them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **24 SCM books and the codebase itself**.
+**Linchpin** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models across **34 agent-routable capabilities** — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, forecasting, pricing, DDMRP, ABC-XYZ, sourcing, landed cost, cost-to-serve, S&OP, facility location, DRP, transportation, FEFO, reconciliation, slotting, warehouse layout and more — and an **orchestrator agent** drives every one of them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **24 curated SCM sources and the codebase itself**.
 
 [![version](https://img.shields.io/badge/version-2.9.0-5eead4)](CHANGELOG.md)
 [![python](https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![tests](https://github.com/esstipi-debug/linchpin/actions/workflows/tests.yml/badge.svg)](https://github.com/esstipi-debug/linchpin/actions/workflows/tests.yml)
 [![coverage](https://img.shields.io/badge/coverage-93%25-3fb950)](#)
-[![License: MIT](https://img.shields.io/badge/License-MIT-3fb950.svg)](LICENSE)
 
 </div>
 
@@ -156,7 +155,7 @@ brief ─▶ intent.classify ─▶ registry.get(tool) ─▶ prepare ─▶ run
 - **Entry points** — CLI `examples/run_agent.py`, HTTP `POST /api/jobs` (multipart, with downloadable deliverables), and the live console under `webapp/static/prototype/`
 - **Statuses** — `ok` · `needs_clarification` · `needs_data` · `qa_failed` · `error`
 
-Full reference: [`scm_agent/README.md`](scm_agent/README.md). The `leadership_chain` capability wraps the **CHAIN** model — *síntesis original inspirada en* From Source to Sold *(Palamariu & Alicke, 2022); no reproduce el texto del libro.*
+Full reference: [`scm_agent/README.md`](scm_agent/README.md). The `leadership_chain` capability scores a brief against the **CHAIN** model (Collaborative / Holistic / Adaptable / Influential / Narrative) — an original synthesis, not a reproduction of any single external text.
 
 <details>
 <summary><b>🔄 Request lifecycle — <code>POST /api/jobs</code></b></summary>
@@ -203,7 +202,7 @@ Example response (`status: ok`):
   "qa_issues": [],
   "clarifications": [],
   "citations": [
-    {"concept": "Safety Stock", "source": "Vandeput Ch.4", "module": "src/safety_stock.py"}
+    {"concept": "Safety Stock", "source": "SCM knowledge base", "module": "src/safety_stock.py"}
   ]
 }
 ```
@@ -220,15 +219,15 @@ Other statuses return the same envelope with `status` one of
 
 Every job is **grounded**: the orchestrator queries a knowledge graph and attaches citations to each result (the **Fuentes** shown in the console). Two graphs, one read-only query surface — [`scm_agent/knowledge.py`](scm_agent/knowledge.py):
 
-- **Books graph** ([`knowledge/scm-books/`](knowledge/scm-books/README.md)) — **24 SCM books & papers** (forecasting, pricing, revenue management, inventory, operations, logistics, sustainability, leadership — incl. **Vandeput**): ~1,850 concept nodes with chapter citations. Committed.
+- **Domain knowledge graph** ([`knowledge/scm-books/`](knowledge/scm-books/README.md)) — **24 curated SCM sources** (forecasting, pricing, revenue management, inventory, operations, logistics, sustainability, leadership): ~1,850 concept nodes with source citations. Committed.
 - **Code graph** (`graphify-out/`) — the codebase itself, built with `/graphify`. Gitignored (regenerable).
 
-The **bridge** ties them together: for each cited concept it resolves the `src/` module that implements it, so a deliverable cites the chapter **and** the function behind it.
+The **bridge** ties them together: for each cited concept it resolves the `src/` module that implements it, so a deliverable cites the concept **and** the function behind it.
 
 ```text
-Economic Order Quantity           — Vandeput Ch.2  ->  src/eoq.py
-Safety Stock                      — Vandeput Ch.4  ->  src/safety_stock.py
-Cost & Service-Level Optimization — Vandeput Ch.8  ->  src/cost_optimization.py
+Economic Order Quantity           ->  src/eoq.py
+Safety Stock                      ->  src/safety_stock.py
+Cost & Service-Level Optimization ->  src/cost_optimization.py
 ```
 
 Query it directly: `python examples/query_knowledge.py --bridge "newsvendor"` · `--search "fill rate"` · `--explain crostons_method`.
@@ -271,7 +270,7 @@ The analytical core the agent stands on: a chain of small **pure functions**, ea
 - **σ_e, not σ_demand** — safety stock keys off *forecast error*, the only correct dispersion (the #1 inventory mistake in the wild).
 - **Shape-aware** — intermittent (Croston) and skewed (gamma) demand are first-class, where a normal-curve sheet silently stocks out.
 - **Feasible by construction** — MOQ / budget are constraints, so what ships is buildable, not just mathematically optimal.
-- **Pure & composable** — each module is a pure function, the engine validated against the book's own numbers in a 1100+ test suite; the orchestrator chains them without surprises.
+- **Pure & composable** — each module is a pure function, the engine validated against reference numeric examples in a 1100+ test suite; the orchestrator chains them without surprises.
 
 ### 🖥️ How you see it
 
@@ -288,29 +287,29 @@ The same engine output, read through four lenses in the live dashboard (`/`):
 </tr>
 </table>
 
-Sliders **recompute the policy live**; the **agent console** (`/console`) adds the L3 **Fuentes** — the book chapter *and* the `src/` function behind each number.
+Sliders **recompute the policy live**; the **agent console** (`/console`) adds the L3 **Fuentes** — the source concept *and* the `src/` function behind each number.
 
 <details>
-<summary><b>📖 Chapter map (Vandeput 2020) — module by module</b></summary>
+<summary><b>📖 Module reference — coverage by topic</b></summary>
 
-> **Primary reference for the inventory engine:** Vandeput (2020) — the modules below map to its chapters. Deliverables are grounded across all **24 books & papers** in the knowledge graph, not a single source. Official companion code: [supchains.com/resources-invopt](https://supchains.com/resources-invopt) (password: `SupChains-IO`).
+> Deliverables are grounded across all **24 curated sources** in the knowledge graph, not a single reference.
 
-| Book section | Module | Status |
+| Topic | Module | Status |
 |--------------|--------|--------|
-| Ch. 1 — Inventory policies | `src/policies.py` | `(s,Q)`, `(R,S)` |
-| Ch. 2 — EOQ + volume discounts | `src/eoq.py` | ✅ §2.5.3 |
-| Ch. 3 — Lead time & review period | `src/data_loader.py`, `src/eoq.py` | ✅ CSV + power-of-2 |
-| Ch. 4 — Safety stock | `src/safety_stock.py`, `src/demand_variability.py` | ✅ normal + gamma |
-| Ch. 5 — Simulation | `src/simulation.py` | ✅ backorders + lost sales |
-| Ch. 6 — Stochastic lead time | `src/risk_period.py`, `src/policies.py` | ✅ |
-| Ch. 7 — Fill rate | `src/fill_rate.py` | ✅ |
-| Ch. 8 — Cost optimization | `src/cost_optimization.py` | ✅ |
-| Ch. 9 — Gamma demand | `src/distributions.py` | ✅ |
-| Ch. 10 — Multi-echelon GSM | `src/multi_echelon.py` | ✅ allocation + simulation |
-| Ch. 11 — Newsvendor | `src/newsvendor.py` | ✅ |
+| Inventory policies | `src/policies.py` | `(s,Q)`, `(R,S)` |
+| EOQ + volume discounts | `src/eoq.py` | ✅ |
+| Lead time & review period | `src/data_loader.py`, `src/eoq.py` | ✅ CSV + power-of-2 |
+| Safety stock | `src/safety_stock.py`, `src/demand_variability.py` | ✅ normal + gamma |
+| Simulation | `src/simulation.py` | ✅ backorders + lost sales |
+| Stochastic lead time | `src/risk_period.py`, `src/policies.py` | ✅ |
+| Fill rate | `src/fill_rate.py` | ✅ |
+| Cost optimization | `src/cost_optimization.py` | ✅ |
+| Gamma demand | `src/distributions.py` | ✅ |
+| Multi-echelon GSM | `src/multi_echelon.py` | ✅ allocation + simulation |
+| Newsvendor | `src/newsvendor.py` | ✅ |
 | Price optimization | `src/pricing.py` | ✅ elasticity / optimal price / markdown |
-| Ch. 12 — Histograms / KDE | `src/discrete_demand.py` | ✅ |
-| Ch. 13 — Simulation optimization | `src/simulation_opt.py` | ✅ grid R + Ss |
+| Histograms / KDE | `src/discrete_demand.py` | ✅ |
+| Simulation optimization | `src/simulation_opt.py` | ✅ grid R + Ss |
 | Batch multi-SKU | `src/batch.py` | ✅ |
 | Demand forecasting (front-end) | `src/forecasting.py` | ✅ MA / SES / Croston + σ_e |
 | Pluggable data sources | `src/sources.py` | ✅ CSV / DataFrame / SQL (DB-API) |
@@ -320,13 +319,13 @@ Sliders **recompute the policy live**; the **agent console** (`/console`) adds t
 </details>
 
 <details>
-<summary><b>Key formulas (Part I–II)</b></summary>
+<summary><b>Key formulas</b></summary>
 
-**EOQ** (eq. 2.2–2.3) — `Q* = sqrt(2 k D / h)`, `C* = sqrt(2 k D h)`
+**EOQ** — `Q* = sqrt(2 k D / h)`, `C* = sqrt(2 k D h)`
 
-**Safety stock** (eq. 4.3) — `Ss = z_alpha · sigma_d · sqrt(tau)`  ·  `(s,Q)`: τ = L  ·  `(R,S)`: τ = R + L
+**Safety stock** — `Ss = z_alpha · sigma_d · sqrt(tau)`  ·  `(s,Q)`: τ = L  ·  `(R,S)`: τ = R + L
 
-**Policies** (Ch. 5) — `(s,Q): s = dL + Ss, Q = Q*`  ·  `(R,S): S = dL + dR + Ss`
+**Policies** — `(s,Q): s = dL + Ss, Q = Q*`  ·  `(R,S): S = dL + dR + Ss`
 
 </details>
 
@@ -344,13 +343,13 @@ date,product_id,quantity,unit_cost,lead_time_days
 python examples/run_part1_part2.py --product SKU-B --lead-time 2 --service-level 0.90 --simulate
 ```
 
-| Flag | Meaning | Book ref |
-|------|---------|----------|
-| `--holding-cost` | h (per unit/year) | §2.1 |
-| `--order-cost` | k (fixed order cost) | §2.1 |
-| `--lead-time` | L (periods) | §3.1, §5.1 |
-| `--service-level` | Cycle service level α | §4.1 |
-| `--periods-per-year` | Converts weekly data to D | §2.2 |
+| Flag | Meaning |
+|------|---------|
+| `--holding-cost` | h (per unit/year) |
+| `--order-cost` | k (fixed order cost) |
+| `--lead-time` | L (periods) |
+| `--service-level` | Cycle service level α |
+| `--periods-per-year` | Converts weekly data to D |
 
 </details>
 
@@ -366,7 +365,7 @@ src/sources.py   src/forecasting.py   src/policies.py   src/constraints.py
 ```
 
 - **Pluggable data** (`src/sources.py`) — CSV, in-memory DataFrame, or any SQL database via `SqlDemandSource` (SQLite, Postgres, MySQL). New backends just satisfy the `DemandSource` protocol.
-- **Forecasting** (`src/forecasting.py`) — MA / SES / Croston, exposing σ_e, the correct safety-stock dispersion (Vandeput 2021, §4.2.5).
+- **Forecasting** (`src/forecasting.py`) — MA / SES / Croston, exposing σ_e, the correct safety-stock dispersion.
 - **Constraints** (`src/constraints.py`) — MOQ, case packs, shelf-life caps, and a budget allocator that trims safety stock across the portfolio to fit.
 - **Web UI** (`webapp/`) — a 4-tab planner (Portfolio · SKU Detail · Budget Planner · Forecast Quality) + the live agent console, served by FastAPI over the engine. See [webapp/README.md](webapp/README.md).
 - **Job-fulfillment layer** (`jobs/`) — turn a client's demand file (any schema) into client-ready Excel + a written report with automated QA. See [jobs/README.md](jobs/README.md).
@@ -380,7 +379,7 @@ jobs/                 Playbooks (one per tool) + intake/QA/deliverables
 src/                  Core engine (EOQ → simulation optimization → forecasting → pricing → ...)
 webapp/               FastAPI dashboard + POST /api/jobs + live agent console (static/prototype/)
 examples/             CLI workflows (run_agent, parts 1-4, batch, jobs, plots)
-tests/                1100+ tests: engine (book numeric examples) + agent + HTTP layer (traversal/upload guards)
+tests/                1100+ tests: engine (reference numeric examples) + agent + HTTP layer (traversal/upload guards)
 data/                 Sample demand + pricing
 documentation/        Guides: Getting Started, FAQ, methodology, capability-expansion plan
 docs/                 Design briefs, handoff notes, assets
@@ -393,7 +392,7 @@ power-bi/             CSV dataset + M queries + DAX + SETUP.md
 
 ---
 
-## 📚 Docs, skills & references
+## 📚 Docs
 
 | Document | Content |
 |----------|---------|
@@ -403,16 +402,3 @@ power-bi/             CSV dataset + M queries + DAX + SETUP.md
 | [`scm_agent/README.md`](scm_agent/README.md) | The agent reference |
 | [Security](SECURITY.md) | Threat model, enforced controls, hardening checklist |
 | [Deployment](docs/DEPLOYMENT.md) | Production hardening: env controls, reverse proxy, load notes |
-
-**Agent skills** (`.cursor/skills/`, synced to `~/.claude/skills/`): `vandeput-inventory-optimization` (overview + decision tree), `…-eoq-policies` (Ch. 2–5), `…-service-cost` (Ch. 6–8), `…-advanced` (Ch. 9–13). Invoke in Claude Code with `/vandeput-inventory-optimization`.
-
-**References**
-- Vandeput, N. (2020). *Inventory Optimization: Models and Simulations*. De Gruyter. ISBN 978-3-11-067391-3
-- Vandeput, N. (2021). *Data Science for Supply Chain Forecasting* — forecast error σ_e (§4.2.5)
-- Community notebooks: [fedinb/Inventory-Optimization](https://github.com/fedinb/Inventory-Optimization)
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE). Book content and formulas © Nicolas Vandeput / De Gruyter; this repo implements those models independently for learning and practice.
