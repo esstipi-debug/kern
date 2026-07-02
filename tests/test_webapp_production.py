@@ -48,15 +48,18 @@ def test_production_without_controls_warns(monkeypatch):
     monkeypatch.setattr(security, "ENV", "production")
     monkeypatch.setattr(security, "API_KEY", "")
     monkeypatch.setattr(security, "RATE_LIMIT", 0)
+    monkeypatch.setattr(security, "APPROVAL_SECRET", "")
     warns = security.production_warnings()
     assert any("API_KEY" in w for w in warns)
     assert any("RATE_LIMIT" in w for w in warns)
+    assert any("APPROVAL_SECRET" in w for w in warns)
 
 
 def test_development_has_no_production_warnings(monkeypatch):
     monkeypatch.setattr(security, "ENV", "development")
     monkeypatch.setattr(security, "API_KEY", "")
     monkeypatch.setattr(security, "RATE_LIMIT", 0)
+    monkeypatch.setattr(security, "APPROVAL_SECRET", "")
     assert security.production_warnings() == []
 
 
@@ -64,4 +67,5 @@ def test_secured_production_has_no_warnings(monkeypatch):
     monkeypatch.setattr(security, "ENV", "production")
     monkeypatch.setattr(security, "API_KEY", "a-real-key")
     monkeypatch.setattr(security, "RATE_LIMIT", 120)
+    monkeypatch.setattr(security, "APPROVAL_SECRET", "a-real-secret")
     assert security.production_warnings() == []

@@ -195,15 +195,27 @@ class KnowledgeBase:
     _W_TITLE = 2.0
     _W_BODY = 1.0
 
-    def advise(self, brief: str, *, limit: int = 3) -> list[MethodAdvice]:
-        """Map brief language to citable methods/concepts in the books graph."""
+    def advise(
+        self, brief: str, *, limit: int = 3, domain_terms: frozenset[str] | None = None
+    ) -> list[MethodAdvice]:
+        """Map brief language to citable methods/concepts in the books graph.
+
+        When ``domain_terms`` is given (the active tool's own keyword vocabulary), a
+        rule only fires if at least one of its trigger tokens is ALSO a domain term.
+        Without this gate, a bare "chain" mention - present in nearly every SCM brief
+        via "supply chain" - fired the leadership CHAIN-model rule regardless of the
+        tool's actual subject, surfacing leadership citations on e.g. an EOQ brief.
+        """
         terms = _tokens(brief)
         if not terms:
             return []
         out: list[MethodAdvice] = []
         seen: set[str] = set()
         for triggers, concept_id, pattern in _METHOD_RULES:
-            if not (set(triggers) & terms):
+            trigger_set = set(triggers)
+            if not (trigger_set & terms):
+                continue
+            if domain_terms is not None and not (trigger_set & domain_terms):
                 continue
             node = self._index["books"].get(concept_id)
             if node is None:
@@ -230,24 +242,40 @@ class KnowledgeBase:
         *,
         limit: int = 5,
     ) -> list[str]:
-        """Ranked L3 citations from tool keywords, the client brief, and method advice."""
+        """Ranked L3 citations from tool keywords, the client brief, and method advice.
+
+        Re-ranks candidates by IDF-weighted token overlap, not a raw count: a common,
+        low-information word shared by nearly every SCM brief ("supply", "chain",
+        "across") must not outrank a rarer, precisely on-topic term ("eoq", "reorder
+        point"). A raw count previously let an unrelated chapter that merely mentioned
+        "supply chain" outrank the tool's own subject matter. Method-advice hits are
+        also gated to the tool's own domain vocabulary (see ``advise``) and scored by
+        their trigger's own specificity instead of a flat constant.
+        """
+        domain_terms = frozenset(_tokens(" ".join(tool_keywords)))
+        idf = self._idf.get("books", {})
         queries = [" ".join(tool_keywords)]
         if brief.strip():
             queries.append(brief)
-        scored: dict[str, tuple[int, int, Concept]] = {}
+        scored: dict[str, tuple[float, int, Concept]] = {}
         for qi, query in enumerate(queries):
-            weight = 2 if qi == 0 else 3  # brief matches weigh more
+            weight = 2.0 if qi == 0 else 3.0  # brief matches weigh more
             for hit in self.search(query, graph="books", limit=limit + 2):
                 loc_bonus = 1 if hit.location else 0
+                shared = _tokens(query) & _tokens(f"{hit.label} {hit.id}")
+                weighted = sum(idf.get(t, 0.0) for t in shared) * weight
                 key = hit.id
-                rank = (len(_tokens(query) & _tokens(f"{hit.label} {hit.id}")) * weight + loc_bonus,
-                        loc_bonus, hit)
+                rank = (weighted + loc_bonus, loc_bonus, hit)
                 prev = scored.get(key)
                 if prev is None or rank[:2] > prev[:2]:
                     scored[key] = rank
-        for advice in self.advise(brief, limit=2):
+        for advice in self.advise(brief, limit=2, domain_terms=domain_terms):
             key = advice.concept.id
-            rank = (4, 1 if advice.concept.location else 0, advice.concept)
+            # Score by the trigger's own specificity (highest IDF among its trigger
+            # tokens) rather than a flat constant, so a rare, precise trigger (e.g.
+            # "ddmrp") ranks higher than a broad one and can't win by merely existing.
+            base = max((idf.get(t, 0.0) for t in _tokens(advice.pattern)), default=1.0)
+            rank = (base + (1 if advice.concept.location else 0), 1 if advice.concept.location else 0, advice.concept)
             prev = scored.get(key)
             if prev is None or rank[:2] > prev[:2]:
                 scored[key] = rank

@@ -144,3 +144,122 @@ def test_changeset_summary_reports_tier_and_key():
                risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs9")
     s = cs.summary()
     assert "irreversible" in s and "cs9" in s
+
+
+# -- content-hash binding: "approve X, apply Y" must be refused ---------------
+
+
+def test_approval_is_refused_when_content_changes_under_the_same_key():
+    """A changeset re-staged with the same idempotency_key but DIFFERENT edits must
+    not be applicable under an approval granted for the original content."""
+    store = _store()
+    original = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+                      risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+    appr = approve(original, "stipi", now=0.0)
+
+    swapped = stage(store, "erp", {"SKU-A": {"reorder_point": 999999}},
+                     risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")  # same key, different edit
+    with pytest.raises(WritebackRefused):
+        apply(store, swapped, approval=appr, now=1.0)
+    assert store.read("SKU-A")["reorder_point"] == 100  # untouched
+
+
+def test_approval_content_hash_matches_the_approved_changeset():
+    cs = stage(_store(), "erp", {"SKU-A": {"reorder_point": 120}},
+               risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+    appr = approve(cs, "stipi", now=0.0)
+    assert appr.content_hash == cs.content_hash
+    assert appr.matches(cs)
+
+
+# -- real clock by default: an omitted `now` must not freeze approvals open ---
+
+
+def test_apply_defaults_to_the_real_clock_not_a_frozen_zero():
+    """Regression: apply()'s `now` used to default to 0.0, so an approval's 900s TTL
+    was never actually checked against a real clock by any caller that omitted it."""
+    store = _store()
+    cs = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+               risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+    already_expired = approve(cs, "stipi", now=0.0, ttl_seconds=900.0)  # expired since 1970
+
+    with pytest.raises(WritebackRefused):
+        apply(store, cs, approval=already_expired)  # no `now` passed -> must use the real clock
+    assert store.read("SKU-A")["reorder_point"] == 100
+
+
+def test_approve_defaults_to_the_real_clock_not_a_frozen_zero():
+    store = _store()
+    cs = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+               risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+    appr = approve(cs, "stipi", ttl_seconds=900.0)  # no `now` passed
+    result = apply(store, cs, approval=appr)  # no `now` passed either
+    assert result.applied  # both defaulted to "now" and a 900s-out approval is still valid
+
+
+# -- an Approval cannot be forged by constructing it directly -----------------
+
+
+def test_directly_constructed_approval_with_wrong_signature_is_refused():
+    """Regression: Approval used to be a plain dataclass - since content_hash is a
+    deterministic hash of fields the caller already has, code could construct
+    Approval(key, hash, "nobody", far_future_expiry) directly and satisfy the old
+    matches() check with no call to approve() and no human ever involved."""
+    from src.writeback import Approval
+
+    store = _store()
+    cs = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+               risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+
+    forged = Approval(cs.idempotency_key, cs.content_hash, "nobody", 10_000_000_000.0, signature="not-a-real-signature")
+
+    with pytest.raises(WritebackRefused):
+        apply(store, cs, approval=forged, now=1.0)
+    assert store.read("SKU-A")["reorder_point"] == 100
+
+
+def test_approval_cannot_be_forged_even_by_recomputing_the_correct_content_hash():
+    """Even computing the REAL content_hash (fully public: SHA-256 of fields the
+    caller already has) and picking an arbitrary signature must not validate -
+    only approve() (which holds the secret) can produce a signature matches()
+    accepts."""
+    from src.writeback import Approval
+
+    store = _store()
+    cs = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+               risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+
+    forged = Approval(cs.idempotency_key, cs.content_hash, "nobody", 10_000_000_000.0, signature="")
+
+    with pytest.raises(WritebackRefused):
+        apply(store, cs, approval=forged, now=1.0)
+
+
+def test_approval_is_unforgeable_once_a_server_secret_is_configured(monkeypatch):
+    """With LINCHPIN_APPROVAL_SECRET set (the recommended production config), a
+    caller who does not know the secret cannot mint a valid signature even
+    knowing every other field, including the real content_hash."""
+    import hashlib
+    import hmac as hmac_module
+
+    from src.writeback import Approval
+
+    monkeypatch.setenv("LINCHPIN_APPROVAL_SECRET", "top-secret-value")
+    store = _store()
+    cs = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+               risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+
+    # A genuine approve() call works end to end with the secret configured.
+    real = approve(cs, "stipi", now=0.0)
+    assert apply(store, cs, approval=real, now=1.0).applied
+
+    # An attacker who knows every public field but not the secret guesses wrong.
+    payload = f"{cs.idempotency_key}:{cs.content_hash}:nobody:20.0".encode()
+    wrong_secret_signature = hmac_module.new(b"attacker-guess", payload, hashlib.sha256).hexdigest()
+    forged = Approval(cs.idempotency_key, cs.content_hash, "nobody", 20.0, signature=wrong_secret_signature)
+
+    store2 = _store()
+    cs2 = stage(store2, "erp", {"SKU-A": {"reorder_point": 120}},
+                risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
+    with pytest.raises(WritebackRefused):
+        apply(store2, cs2, approval=forged, now=1.0)

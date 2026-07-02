@@ -15,6 +15,10 @@ same read/commit/rollback surface; the safety logic here is connector-agnostic.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import os
+import time
 from dataclasses import dataclass
 
 # Risk tiers, by reversibility/impact.
@@ -50,6 +54,17 @@ class Change:
         return self.before == self.after
 
 
+def _content_hash(target: str, risk_tier: str, changes: tuple[Change, ...]) -> str:
+    """Stable hash of what a changeset actually does (not its idempotency_key).
+
+    Binding an ``Approval`` to this - not just to ``idempotency_key`` - closes the
+    "approve X, apply Y" gap: a caller can no longer approve one set of edits and
+    then apply a different changeset that happens to reuse the same key.
+    """
+    payload = repr((target, risk_tier, tuple((c.entity_id, c.field, c.before, c.after) for c in changes)))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True)
 class Changeset:
     """A staged, not-yet-applied set of changes against one target system."""
@@ -64,21 +79,60 @@ class Changeset:
     def is_noop(self) -> bool:
         return all(c.is_noop for c in self.changes)
 
+    @property
+    def content_hash(self) -> str:
+        return _content_hash(self.target, self.risk_tier, self.changes)
+
     def summary(self) -> str:
         n = sum(1 for c in self.changes if not c.is_noop)
         return f"{n} change(s) to {self.target} [{self.risk_tier}] key={self.idempotency_key}"
 
 
+def _approval_secret() -> str:
+    """Server-side secret used to sign approvals. Empty disables signing (local/dev/tests),
+    matching the ``LINCHPIN_API_KEY``/``LINCHPIN_RATE_LIMIT`` "empty disables the gate"
+    convention already used in ``webapp/security.py``. Set for any deployment where
+    ``approve()`` and ``apply()`` may not be the only code with access to this module.
+    """
+    return os.environ.get("LINCHPIN_APPROVAL_SECRET", "").strip()
+
+
+def _sign_approval(changeset_key: str, content_hash: str, approved_by: str, expires_at: float) -> str:
+    """HMAC-SHA256 over the approval's fields, keyed by a secret only ``approve()``
+    (and whatever holds ``LINCHPIN_APPROVAL_SECRET``) can produce.
+
+    Without this, ``Approval`` was a plain public dataclass: since ``content_hash`` is
+    a deterministic hash of fields the caller already has, ANY code with access to this
+    module could construct ``Approval(key, hash, "nobody", far_future_expiry)`` directly
+    and satisfy ``matches()`` - no call to ``approve()``, no human, ever required. Signing
+    means matching content and an unexpired timestamp are necessary but no longer
+    sufficient; the signature can only be reproduced by whoever holds the secret.
+    """
+    secret = _approval_secret()
+    payload = f"{changeset_key}:{content_hash}:{approved_by}:{expires_at!r}".encode()
+    return hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+
+
 @dataclass(frozen=True)
 class Approval:
-    """A time-boxed authorization bound to one changeset key."""
+    """A time-boxed, signed authorization bound to one changeset's key AND its exact content."""
 
     changeset_key: str
+    content_hash: str
     approved_by: str
     expires_at: float
+    signature: str
 
     def is_valid_at(self, now: float) -> bool:
         return now < self.expires_at
+
+    def matches(self, changeset: Changeset) -> bool:
+        """Whether this approval was genuinely minted (by ``approve()``, i.e. signed with
+        the server secret) for exactly this changeset's key and content."""
+        if self.changeset_key != changeset.idempotency_key or self.content_hash != changeset.content_hash:
+            return False
+        expected = _sign_approval(self.changeset_key, self.content_hash, self.approved_by, self.expires_at)
+        return hmac.compare_digest(self.signature, expected)
 
 
 @dataclass(frozen=True)
@@ -98,49 +152,107 @@ class ApplyResult:
     audit_id: str | None = None
 
 
-def approve(changeset: Changeset, approved_by: str, *, now: float, ttl_seconds: float = 900.0) -> Approval:
-    """Mint an approval valid for ``ttl_seconds`` from ``now`` (caller supplies the clock)."""
-    return Approval(changeset.idempotency_key, approved_by, now + ttl_seconds)
+def approve(
+    changeset: Changeset, approved_by: str, *, now: float | None = None, ttl_seconds: float = 900.0
+) -> Approval:
+    """Mint a signed approval valid for ``ttl_seconds`` from ``now``.
+
+    ``now`` defaults to the real wall clock (``time.time()``); pass an explicit value
+    only for deterministic tests. Bound to both the changeset's key and its content
+    hash, so it cannot later validate a different changeset that reuses the same key -
+    and signed (see ``_sign_approval``) so it cannot be forged by constructing
+    ``Approval`` directly instead of calling this function.
+    """
+    if now is None:
+        now = time.time()
+    expires_at = now + ttl_seconds
+    signature = _sign_approval(changeset.idempotency_key, changeset.content_hash, approved_by, expires_at)
+    return Approval(changeset.idempotency_key, changeset.content_hash, approved_by, expires_at, signature)
+
+
+class AuditBookkeeping:
+    """Shared applied/audit bookkeeping for a writeback store.
+
+    Backed by an in-memory dict, or - when ``ledger`` is given (e.g. a
+    ``src.writeback_store.SqliteAuditLedger``) - a persistent ledger that survives a
+    process restart. Any store implementing read/commit/rollback (``InMemoryStore``
+    below, or a real connector's system-of-record wrapper) composes this instead of
+    re-deriving the same ledger-or-dict branching.
+    """
+
+    def __init__(self, ledger: object | None = None) -> None:
+        self._ledger = ledger
+        self._applied: dict[str, AuditEntry] = {}
+
+    def applied_keys(self) -> set[str]:
+        return self._ledger.applied_keys() if self._ledger is not None else set(self._applied)
+
+    def record(self, entry: AuditEntry) -> None:
+        if self._ledger is not None:
+            self._ledger.record(entry)
+        else:
+            self._applied[entry.idempotency_key] = entry
+
+    def get(self, idempotency_key: str) -> AuditEntry | None:
+        if self._ledger is not None:
+            return self._ledger.get(idempotency_key)
+        return self._applied.get(idempotency_key)
+
+    def forget(self, idempotency_key: str) -> None:
+        if self._ledger is not None:
+            self._ledger.forget(idempotency_key)
+        else:
+            del self._applied[idempotency_key]
 
 
 class InMemoryStore:
-    """Reference system-of-record. Real connectors mirror read/_commit/rollback."""
+    """Reference system-of-record. Real connectors mirror read/_commit/rollback.
 
-    def __init__(self, records: dict | None = None) -> None:
+    ``ledger``, when given, persists the applied/audit bookkeeping (e.g. a
+    ``src.writeback_store.SqliteAuditLedger``) so idempotency and rollback survive
+    a process restart. Without one, bookkeeping lives in process memory exactly as
+    before - fully backward compatible.
+    """
+
+    def __init__(self, records: dict | None = None, *, ledger: object | None = None) -> None:
         self._records: dict[str, dict] = {k: dict(v) for k, v in (records or {}).items()}
-        self._applied: dict[str, AuditEntry] = {}
+        self._audit = AuditBookkeeping(ledger)
 
     def read(self, entity_id: str) -> dict:
         return dict(self._records.get(entity_id, {}))
 
     def applied_keys(self) -> set[str]:
-        return set(self._applied)
+        return self._audit.applied_keys()
 
     def commit(self, changeset: Changeset, approved_by: str) -> AuditEntry:
         # Capture originals BEFORE writing, so rollback is exact.
         restore = tuple(
-            (c.entity_id, c.field, self._records.get(c.entity_id, {}).get(c.field, _ABSENT))
+            (c.entity_id, c.field, self._records.get(c.entity_id, {}).get(c.field, ABSENT))
             for c in changeset.changes
         )
         for c in changeset.changes:
             self._records.setdefault(c.entity_id, {})[c.field] = c.after
         entry = AuditEntry(changeset.idempotency_key, changeset.target, approved_by, restore)
-        self._applied[changeset.idempotency_key] = entry
+        self._audit.record(entry)
         return entry
 
     def rollback(self, idempotency_key: str) -> None:
-        entry = self._applied.get(idempotency_key)
+        entry = self._audit.get(idempotency_key)
         if entry is None:
             raise KeyError(idempotency_key)
         for entity_id, fld, original in entry.restore:
-            if original is _ABSENT:
+            if original is ABSENT:
                 self._records.get(entity_id, {}).pop(fld, None)
             else:
                 self._records.setdefault(entity_id, {})[fld] = original
-        del self._applied[idempotency_key]
+        self._audit.forget(idempotency_key)
 
 
-_ABSENT = object()  # sentinel: the field did not exist before the change
+# Shared "this field did not exist before the change" sentinel. Public (not
+# module-private) so any real connector's system-of-record wrapper - and any
+# persistent ledger serializing a `restore` tuple - can recognize it by
+# identity instead of every store inventing its own equivalent sentinel.
+ABSENT = object()
 
 
 def stage(
@@ -166,20 +278,24 @@ def apply(
     changeset: Changeset,
     *,
     approval: Approval | None = None,
-    now: float = 0.0,
+    now: float | None = None,
     auto_apply_reversible: bool = False,
 ) -> ApplyResult:
     """Apply a staged changeset under the safety policy.
 
-    Refuses (``WritebackRefused``) when approval is required but missing, bound to a
-    different changeset, or expired. Idempotent on ``idempotency_key``.
+    ``now`` defaults to the real wall clock (``time.time()``) - pass an explicit
+    value only for deterministic tests. Without this default, every production
+    caller that omitted ``now`` was implicitly evaluating approvals at ``t=0``,
+    so a 900s TTL never actually expired.
+
+    Refuses (``WritebackRefused``) when approval is required but missing, does not
+    match this exact changeset (key AND content), or is expired. Idempotent on
+    ``idempotency_key``.
     """
+    if now is None:
+        now = time.time()
     if requires_approval(changeset.risk_tier, auto_apply_reversible=auto_apply_reversible):
-        if (
-            approval is None
-            or approval.changeset_key != changeset.idempotency_key
-            or not approval.is_valid_at(now)
-        ):
+        if approval is None or not approval.matches(changeset) or not approval.is_valid_at(now):
             raise WritebackRefused(
                 f"approval required for tier '{changeset.risk_tier}' and is missing/mismatched/expired"
             )

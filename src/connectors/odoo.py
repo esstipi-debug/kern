@@ -31,13 +31,25 @@ stock.warehouse.      product_min_qty (reorder point) <- restock target write
 
 from __future__ import annotations
 
+import time
+import xmlrpc.client
 from dataclasses import dataclass
+from dataclasses import replace as _dc_replace
 from typing import Any, Protocol, runtime_checkable
 
 import pandas as pd
 
 from src import writeback
 from src.connectors import InventoryLevel, Order, OrderLine, Product
+
+# Odoo ORM methods that only read: safe to retry on a transient transport error,
+# since retrying can never duplicate a write. `create`/`write`/`unlink` are never
+# retried automatically here - a lost response after the request reached the
+# server would otherwise risk a duplicate PO/record on retry.
+_READ_ONLY_METHODS = frozenset({"search", "search_read", "read", "search_count", "fields_get"})
+_DEFAULT_TIMEOUT_SECONDS = 30.0
+_DEFAULT_MAX_ATTEMPTS = 3
+_DEFAULT_BACKOFF_SECONDS = 0.5
 
 # Odoo standard model names.
 _M_PRODUCT = "product.product"
@@ -67,11 +79,45 @@ class OdooRPC(Protocol):
 # -- real transport -----------------------------------------------------------
 
 
+class _TimeoutTransport(xmlrpc.client.Transport):
+    """xmlrpc Transport that bounds the socket timeout on every connection."""
+
+    def __init__(self, timeout: float, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._timeout = timeout
+
+    def make_connection(self, host: Any) -> Any:
+        conn = super().make_connection(host)
+        conn.timeout = self._timeout
+        return conn
+
+
+class _TimeoutSafeTransport(xmlrpc.client.SafeTransport):
+    """HTTPS variant of ``_TimeoutTransport`` (Odoo Online is always https)."""
+
+    def __init__(self, timeout: float, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._timeout = timeout
+
+    def make_connection(self, host: Any) -> Any:
+        conn = super().make_connection(host)
+        conn.timeout = self._timeout
+        return conn
+
+
 class OdooClient:
     """Real XML-RPC transport to an Odoo server (stdlib ``xmlrpc.client``).
 
     Pass ``common``/``models`` proxies to inject a transport in tests; otherwise they are
-    built lazily from ``url`` so importing this module never needs the network.
+    built from ``url`` with a bounded socket ``timeout`` (a hung Odoo instance must never
+    hang a job indefinitely).
+
+    Read-only ORM methods (``search`` / ``search_read`` / ``read`` / ...) are retried up
+    to ``max_attempts`` times with exponential backoff on a transient transport error
+    (a dropped connection, DNS hiccup, timeout). Writes (``create`` / ``write`` /
+    ``unlink``) are never auto-retried: if the response is lost after the request
+    reached the server, blindly retrying a ``create`` could duplicate a record (e.g. a
+    purchase order) - that ambiguity has to surface as an error, not a silent retry.
     """
 
     def __init__(
@@ -83,13 +129,15 @@ class OdooClient:
         *,
         common: Any = None,
         models: Any = None,
+        timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+        max_attempts: int = _DEFAULT_MAX_ATTEMPTS,
+        backoff_seconds: float = _DEFAULT_BACKOFF_SECONDS,
     ) -> None:
         if common is None or models is None:
-            import xmlrpc.client  # stdlib; lazy so offline use needs no network
-
             base = url.rstrip("/")
-            common = common or xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/common")
-            models = models or xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/object")
+            transport_cls = _TimeoutSafeTransport if base.startswith("https") else _TimeoutTransport
+            common = common or xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/common", transport=transport_cls(timeout))
+            models = models or xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/object", transport=transport_cls(timeout))
         uid = common.authenticate(db, username, api_key, {})
         if not uid:
             raise OdooError(f"Odoo authentication failed for user {username!r} on db {db!r}")
@@ -97,13 +145,31 @@ class OdooClient:
         self._uid = int(uid)
         self._api_key = api_key
         self._models = models
+        self._max_attempts = max(1, int(max_attempts))
+        self._backoff_seconds = backoff_seconds
 
     @property
     def uid(self) -> int:
         return self._uid
 
     def execute_kw(self, model: str, method: str, args: list, kwargs: dict | None = None) -> Any:
-        return self._models.execute_kw(self._db, self._uid, self._api_key, model, method, args, kwargs or {})
+        attempts = self._max_attempts if method in _READ_ONLY_METHODS else 1
+        last_exc: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                return self._models.execute_kw(self._db, self._uid, self._api_key, model, method, args, kwargs or {})
+            except xmlrpc.client.Fault as exc:
+                # An application-level error response from Odoo (bad data, permission
+                # denied, ...): the request was processed. Retrying will not help.
+                raise OdooError(f"Odoo rejected {model}.{method}: {exc.faultString}") from exc
+            except (OSError, TimeoutError) as exc:  # transport-level: connection never confirmed
+                last_exc = exc
+                if attempt + 1 >= attempts:
+                    break
+                time.sleep(self._backoff_seconds * (2**attempt))
+        raise OdooError(
+            f"Odoo transport failed for {model}.{method} after {attempts} attempt(s): {last_exc}"
+        ) from last_exc
 
 
 # -- connector ----------------------------------------------------------------
@@ -136,13 +202,20 @@ class DraftPOResult:
 
 
 class OdooConnector:
-    """``InventorySource`` over Odoo, with safe-staging restock as reorder-point writes."""
+    """``InventorySource`` over Odoo, with safe-staging restock as reorder-point writes.
 
-    def __init__(self, rpc: OdooRPC) -> None:
+    ``ledger``, when given (a ``src.writeback_store.SqliteAuditLedger``), persists the
+    audit/idempotency bookkeeping for BOTH write paths (reorder points and draft POs)
+    so a process restart cannot re-apply an idempotency key or lose rollback data.
+    Without one, bookkeeping lives in process memory - unchanged from before.
+    """
+
+    def __init__(self, rpc: OdooRPC, *, ledger: object | None = None) -> None:
         self._rpc = rpc
         self._sku_by_id: dict[int, str] = {}
         self._id_by_sku: dict[str, int] = {}
-        self._rules = _ReorderRuleStore(rpc, self._id_by_sku)
+        self._rules = _ReorderRuleStore(rpc, self._id_by_sku, ledger=ledger)
+        self._po_store = _DraftPoStore(rpc, self._id_by_sku, ledger=ledger)
 
     # -- read side (InventorySource) ------------------------------------------
 
@@ -269,18 +342,24 @@ class OdooConnector:
         changeset: writeback.Changeset,
         *,
         approval: writeback.Approval | None = None,
-        now: float = 0.0,
+        now: float | None = None,
         auto_apply_reversible: bool = True,
     ) -> writeback.ApplyResult:
         """Apply a staged reorder-point change. Reversible edits auto-apply by default; pass an
-        ``approval`` (and ``auto_apply_reversible=False``) to require a human in the loop."""
+        ``approval`` (and ``auto_apply_reversible=False``) to require a human in the loop.
+        ``now`` defaults to the real clock; pass an explicit value only in tests."""
         return writeback.apply(
             self._rules, changeset, approval=approval, now=now, auto_apply_reversible=auto_apply_reversible
         )
 
     def rollback(self, idempotency_key: str) -> None:
-        """Undo an applied reorder-point change, restoring the prior min quantity."""
-        self._rules.rollback(idempotency_key)
+        """Undo an applied reorder-point OR draft-PO change (whichever holds the key)."""
+        if idempotency_key in self._rules.applied_keys():
+            self._rules.rollback(idempotency_key)
+        elif idempotency_key in self._po_store.applied_keys():
+            self._po_store.rollback(idempotency_key)
+        else:
+            raise KeyError(idempotency_key)
 
     # -- write side (draft purchase orders) -----------------------------------
 
@@ -304,14 +383,15 @@ class OdooConnector:
                 out[sku] = partner
         return out
 
-    def create_draft_purchase_orders(
-        self, restock: dict[str, float], *, prices: dict[str, float] | None = None
-    ) -> DraftPOResult:
-        """Create DRAFT (RFQ) purchase orders for the restock, grouped by each SKU's primary supplier.
+    def stage_draft_purchase_orders(
+        self, restock: dict[str, float], *, prices: dict[str, float] | None = None, reason: str = ""
+    ) -> tuple[writeback.Changeset, tuple[str, ...]]:
+        """Stage (dry-run) draft POs for the restock, grouped by each SKU's primary supplier.
+        Does NOT write. Returns the changeset plus SKUs with no supplier (unsourced, not dropped).
 
-        Each PO is left in Odoo's 'draft' state - the unconfirmed draft IS the safety boundary; a
-        buyer reviews and confirms it in Odoo. SKUs with no supplier are skipped and reported in
-        ``unsourced`` rather than silently dropped.
+        The idempotency key is derived from the changeset's own content hash, so staging
+        the SAME restock+prices twice (e.g. a client retry) always resolves to the same
+        key - a retry can idempotent-skip instead of raising a duplicate RFQ.
         """
         self._ensure_catalog()
         prices = prices or {}
@@ -325,22 +405,57 @@ class OdooConnector:
             else:
                 by_supplier.setdefault(partner, []).append(sku)
 
-        created: dict[int, tuple[str, ...]] = {}
-        for partner, skus in by_supplier.items():
-            order_lines = [
-                (0, 0, {
-                    "product_id": self._id_by_sku[sku],
-                    "product_qty": float(restock[sku]),
-                    "price_unit": float(prices.get(sku, 0.0)),
-                    "name": sku,
-                })
-                for sku in skus
-            ]
-            po_id = self._rpc.execute_kw(
-                _M_PO, "create", [{"partner_id": partner, "order_line": order_lines}]
+        changes = tuple(
+            writeback.Change(
+                f"supplier:{partner}",
+                "draft_po_lines",
+                None,  # nothing existed before (a create, not an edit) - matches stage()'s convention
+                tuple(sorted((sku, float(restock[sku]), float(prices.get(sku, 0.0))) for sku in skus)),
             )
-            created[int(po_id)] = tuple(skus)
-        return DraftPOResult(purchase_orders=created, unsourced=tuple(unsourced))
+            for partner, skus in sorted(by_supplier.items())
+        )
+        cs = writeback.Changeset(_WB_TARGET, changes, writeback.TIER_REVERSIBLE, idempotency_key="pending", reason=reason)
+        cs = _dc_replace(cs, idempotency_key=cs.content_hash[:32])
+        return cs, tuple(unsourced)
+
+    def apply_draft_purchase_orders(
+        self,
+        changeset: writeback.Changeset,
+        *,
+        approval: writeback.Approval | None = None,
+        now: float | None = None,
+        auto_apply_reversible: bool = True,
+    ) -> writeback.ApplyResult:
+        """Apply staged draft POs. Reversible (a draft PO can be deleted) so this auto-applies
+        by default; pass an ``approval`` (and ``auto_apply_reversible=False``) to require a
+        human in the loop. ``now`` defaults to the real clock; pass an explicit value only in tests."""
+        return writeback.apply(
+            self._po_store, changeset, approval=approval, now=now, auto_apply_reversible=auto_apply_reversible
+        )
+
+    def create_draft_purchase_orders(
+        self, restock: dict[str, float], *, prices: dict[str, float] | None = None
+    ) -> DraftPOResult:
+        """Create DRAFT (RFQ) purchase orders for the restock, grouped by each SKU's primary supplier.
+
+        Convenience one-shot: stage + auto-apply through the safe-staging plane (idempotent
+        on content, audited, rollback-able via ``rollback()``). Each PO is left in Odoo's
+        'draft' state - the unconfirmed draft IS the safety boundary; a buyer reviews and
+        confirms it in Odoo. SKUs with no supplier are skipped and reported in ``unsourced``
+        rather than silently dropped. For explicit approval-gated control, or to inspect the
+        changeset before it is applied, use ``stage_draft_purchase_orders`` +
+        ``apply_draft_purchase_orders`` directly.
+        """
+        changeset, unsourced = self.stage_draft_purchase_orders(restock, prices=prices)
+        if changeset.changes:
+            self.apply_draft_purchase_orders(changeset)
+        created_by_entity = self._po_store.created_pos(changeset.idempotency_key)
+        purchase_orders: dict[int, tuple[str, ...]] = {}
+        for c in changeset.changes:
+            po_id = created_by_entity.get(c.entity_id)
+            if po_id is not None:
+                purchase_orders[po_id] = tuple(sku for sku, _qty, _price in c.after)
+        return DraftPOResult(purchase_orders=purchase_orders, unsourced=unsourced)
 
     # -- internals ------------------------------------------------------------
 
@@ -375,18 +490,15 @@ class OdooConnector:
         return out
 
 
-_ABSENT = object()  # sentinel: the reorder rule's field did not exist before the change
-
-
 class _ReorderRuleStore:
     """writeback system-of-record surface (read/applied_keys/commit/rollback) over Odoo
     reorder rules (``stock.warehouse.orderpoint``). Lets the connector reuse the entire
     safe-staging policy (tiers, approval, idempotency, audit) unchanged, against Odoo."""
 
-    def __init__(self, rpc: OdooRPC, id_by_sku: dict[str, int]) -> None:
+    def __init__(self, rpc: OdooRPC, id_by_sku: dict[str, int], *, ledger: object | None = None) -> None:
         self._rpc = rpc
         self._id_by_sku = id_by_sku  # shared with the connector; filled by list_products()
-        self._applied: dict[str, writeback.AuditEntry] = {}
+        self._audit = writeback.AuditBookkeeping(ledger)
 
     def read(self, entity_id: str) -> dict:
         pid = self._id_by_sku.get(entity_id)
@@ -406,26 +518,26 @@ class _ReorderRuleStore:
         }
 
     def applied_keys(self) -> set[str]:
-        return set(self._applied)
+        return self._audit.applied_keys()
 
     def commit(self, changeset: writeback.Changeset, approved_by: str) -> writeback.AuditEntry:
         restore: list[tuple[str, str, object]] = []
         for c in changeset.changes:
             current = self.read(c.entity_id)
-            restore.append((c.entity_id, c.field, current.get(c.field, _ABSENT)))
+            restore.append((c.entity_id, c.field, current.get(c.field, writeback.ABSENT)))
             self._write_field(c.entity_id, c.field, c.after)
         entry = writeback.AuditEntry(changeset.idempotency_key, changeset.target, approved_by, tuple(restore))
-        self._applied[changeset.idempotency_key] = entry
+        self._audit.record(entry)
         return entry
 
     def rollback(self, idempotency_key: str) -> None:
-        entry = self._applied.get(idempotency_key)
+        entry = self._audit.get(idempotency_key)
         if entry is None:
             raise KeyError(idempotency_key)
         for entity_id, fld, original in entry.restore:
-            if original is not _ABSENT:  # a freshly-created rule is left in place (still reversible to edit)
+            if original is not writeback.ABSENT:  # a freshly-created rule is left in place (still reversible)
                 self._write_field(entity_id, fld, original)
-        del self._applied[idempotency_key]
+        self._audit.forget(idempotency_key)
 
     def _write_field(self, sku: str, field: str, value: object) -> None:
         pid = self._id_by_sku.get(sku)
@@ -436,6 +548,67 @@ class _ReorderRuleStore:
             self._rpc.execute_kw(_M_ORDERPOINT, "write", [existing, {field: value}])
         else:
             self._rpc.execute_kw(_M_ORDERPOINT, "create", [{"product_id": pid, field: value}])
+
+
+class _DraftPoStore:
+    """writeback system-of-record surface over Odoo draft purchase orders.
+
+    Lets draft-PO creation reuse the same safe-staging policy (idempotency, audit,
+    rollback) as reorder-point writes, instead of calling ``execute_kw(... "create")``
+    directly: previously a retry after a lost response could raise a duplicate RFQ,
+    with no record of what was created and no way to undo it.
+
+    One ``Change`` per supplier group: ``entity_id`` is a synthetic
+    ``"supplier:<partner_id>"`` key (there is no pre-existing entity to diff against -
+    a PO is created, not edited), ``before`` is always ``writeback.ABSENT``, and
+    ``after`` is the sorted tuple of ``(sku, qty, price)`` lines for that supplier.
+    """
+
+    def __init__(self, rpc: OdooRPC, id_by_sku: dict[str, int], *, ledger: object | None = None) -> None:
+        self._rpc = rpc
+        self._id_by_sku = id_by_sku
+        self._audit = writeback.AuditBookkeeping(ledger)
+        # idempotency_key -> {entity_id: created po_id}, for the caller to map lines
+        # back to the PO id and for rollback to know what to unlink.
+        self._created: dict[str, dict[str, int]] = {}
+
+    def read(self, entity_id: str) -> dict:
+        return {}  # nothing to diff against: a draft PO is created, never edited here
+
+    def applied_keys(self) -> set[str]:
+        return self._audit.applied_keys()
+
+    def created_pos(self, idempotency_key: str) -> dict[str, int]:
+        """``{entity_id: po_id}`` created under ``idempotency_key`` (empty if unknown/rolled back)."""
+        return dict(self._created.get(idempotency_key, {}))
+
+    def commit(self, changeset: writeback.Changeset, approved_by: str) -> writeback.AuditEntry:
+        restore: list[tuple[str, str, object]] = []
+        created: dict[str, int] = {}
+        for c in changeset.changes:
+            if c.is_noop:
+                continue
+            partner = int(c.entity_id.split(":", 1)[1])
+            order_lines = [
+                (0, 0, {"product_id": self._id_by_sku[sku], "product_qty": qty, "price_unit": price, "name": sku})
+                for sku, qty, price in c.after
+            ]
+            po_id = self._rpc.execute_kw(_M_PO, "create", [{"partner_id": partner, "order_line": order_lines}])
+            created[c.entity_id] = int(po_id)
+            restore.append((c.entity_id, c.field, writeback.ABSENT))  # nothing existed before
+        entry = writeback.AuditEntry(changeset.idempotency_key, changeset.target, approved_by, tuple(restore))
+        self._audit.record(entry)
+        self._created[changeset.idempotency_key] = created
+        return entry
+
+    def rollback(self, idempotency_key: str) -> None:
+        entry = self._audit.get(idempotency_key)
+        if entry is None:
+            raise KeyError(idempotency_key)
+        for po_id in self._created.get(idempotency_key, {}).values():
+            self._rpc.execute_kw(_M_PO, "unlink", [[po_id]])  # a draft PO can be deleted outright
+        self._audit.forget(idempotency_key)
+        self._created.pop(idempotency_key, None)
 
 
 # -- offline stand-in (the Odoo analogue of SimulatedStore / emulator) --------
@@ -520,6 +693,13 @@ class InMemoryOdoo:
         self._next += 1
         self.records(model)[new_id] = dict(vals)
         return new_id
+
+    def _op_unlink(self, model: str, args: list, kwargs: dict) -> bool:
+        ids = args[0] if args else []
+        recs = self.records(model)
+        for i in ids:
+            recs.pop(i, None)
+        return True
 
 
 def demo_odoo() -> InMemoryOdoo:

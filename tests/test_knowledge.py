@@ -192,3 +192,31 @@ def test_ground_citations_uses_brief_and_keywords(kb: KnowledgeBase) -> None:
     )
     assert 1 <= len(cites) <= 5
     assert all(isinstance(c, str) for c in cites)
+
+
+def test_advise_gates_a_trigger_outside_the_tool_domain(kb: KnowledgeBase) -> None:
+    """A bare 'chain' token (from 'supply chain') must not fire the leadership CHAIN
+    rule for a tool whose domain has nothing to do with leadership."""
+    inventory_domain = frozenset({"reorder", "safety", "stock", "inventory", "eoq"})
+    tips = kb.advise("optimize reorder points across our supply chain", domain_terms=inventory_domain)
+    assert not any(t.concept.id == "chain_model" for t in tips)
+
+
+def test_advise_still_fires_when_trigger_is_in_domain(kb: KnowledgeBase) -> None:
+    leadership_domain = frozenset({"leadership", "chain", "director", "ceo"})
+    tips = kb.advise("evaluate our supply chain leadership", domain_terms=leadership_domain)
+    assert any(t.concept.id == "chain_model" for t in tips)
+
+
+def test_ground_citations_does_not_surface_leadership_for_an_eoq_brief(kb: KnowledgeBase) -> None:
+    """Repro of the spurious-#1-citation bug: an EOQ/inventory brief that happens to
+    say 'supply chain' must not surface leadership or off-topic sustainability
+    citations ahead of the actually relevant EOQ / safety-stock concepts."""
+    inventory_keywords = (
+        "reorder", "safety stock", "stock level", "inventory", "replenish",
+        "eoq", "service level", "reorder point", "order quantity",
+    )
+    brief = "Optimize reorder points across our supply chain inventory using EOQ and safety stock."
+    cites = kb.ground_citations(inventory_keywords, brief, limit=5)
+    assert not any("leadership" in c.lower() for c in cites)
+    assert any("economic order quantity" in c.lower() or "eoq" in c.lower() for c in cites[:2])
