@@ -16,9 +16,15 @@ from dataclasses import dataclass
 
 import numpy as np
 
-# Beyond this price-multiple vs the current price, treat the recommendation as
-# low-confidence (constant-elasticity blows up as ε → −1).
-_EXTREME_MULTIPLE = 5.0
+# How far the recommended price may fall outside the OBSERVED price range (the
+# min/max the elasticity curve was actually fit on) and still be called
+# "confident". The curve is only validated where there is data; beyond this
+# margin it is extrapolation, not interpolation, no matter how good the R^2
+# looked over the observed range. Replaces a looser check against only the
+# current/median price (up to 5x), which said nothing about what data the fit
+# had actually seen and let a recommendation double the observed max price -
+# well outside the fitted range - still be reported as confident.
+_MAX_EXTRAPOLATION = 1.3
 
 
 @dataclass(frozen=True)
@@ -132,6 +138,8 @@ def recommend_price(prices: object, quantities: object, unit_cost: float) -> Pri
     p = np.asarray(list(prices), dtype=float)
     positive = p[p > 0]
     current = float(np.median(positive)) if len(positive) else 0.0
+    price_low = float(positive.min()) if len(positive) else 0.0
+    price_high = float(positive.max()) if len(positive) else 0.0
 
     fit = estimate_elasticity(prices, quantities)
     base = PriceRecommendation(
@@ -161,12 +169,12 @@ def recommend_price(prices: object, quantities: object, unit_cost: float) -> Pri
     else:
         action = "hold"
 
+    within_observed_range = price_low > 0 and (price_low / _MAX_EXTRAPOLATION) <= p_star <= (price_high * _MAX_EXTRAPOLATION)
     confident = (
         fit.r_squared >= 0.5
         and fit.n_points >= 4
         and current > 0
-        and (p_star / current) <= _EXTREME_MULTIPLE
-        and (current / p_star) <= _EXTREME_MULTIPLE
+        and within_observed_range
     )
 
     return PriceRecommendation(

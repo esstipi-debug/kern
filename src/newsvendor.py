@@ -8,6 +8,7 @@ import numpy as np
 from scipy.stats import norm
 
 from src.discrete_demand import DiscretePMF
+from src.fill_rate import normal_loss
 
 
 @dataclass(frozen=True)
@@ -71,8 +72,12 @@ def optimal_newsvendor_discrete(
     cu = price - unit_cost + goodwill
     cr = critical_ratio(cu, co)
 
-    # Critical-ratio rule: smallest Q with F(Q) >= cr (Section 11.3.4)
-    cdf_q = sorted(set(int(v) for v in pmf.values) | {0})
+    # Critical-ratio rule: smallest Q with F(Q) >= cr (Section 11.3.4).
+    # Candidates are the PMF's own support values, unmodified: truncating them
+    # through int() previously collapsed any non-integer support (e.g. {0, 2.5,
+    # 5}) onto the wrong candidate ({0, 2, 5}), so the optimizer could never
+    # even consider ordering the true support value.
+    cdf_q = sorted(set(float(v) for v in pmf.values) | {0.0})
     cr_q = cdf_q[-1]
     for q in cdf_q:
         if pmf.cdf(q) >= cr:
@@ -108,17 +113,34 @@ def optimal_newsvendor_continuous_normal(
     unit_cost: float,
     salvage_value: float = 0.0,
 ) -> NewsvendorResult:
-    """Q* = F^{-1}(cu/(cu+co)) for normal demand (Section 11.3.5)."""
+    """Q* = F^{-1}(cu/(cu+co)) for normal demand (Section 11.3.5).
+
+    Demand with zero (or negative, treated as zero) variability is deterministic:
+    the optimal quantity is exactly ``mean_demand`` regardless of the critical
+    ratio, since there is no uncertainty to hedge against. ``norm.ppf`` with
+    ``scale=0`` is undefined (NaN); that NaN previously flowed through
+    ``max(0, q_star)`` into a silent ``Q*=0`` - understocking by the full mean
+    demand - paired with a hardcoded, never-computed ``expected_profit=0.0``.
+    """
     co = unit_cost - salvage_value
     cu = price - unit_cost
     cr = critical_ratio(cu, co)
-    q_star = float(norm.ppf(cr, loc=mean_demand, scale=std_demand))
-    q_star = max(0, q_star)
+    if std_demand <= 0:
+        q_star = max(0.0, float(mean_demand))
+    else:
+        q_star = max(0.0, float(norm.ppf(cr, loc=mean_demand, scale=std_demand)))
+
+    expected_shortage = normal_loss(q_star, mean_demand, std_demand)  # E[max(D-Q,0)]
+    expected_excess = expected_shortage + (q_star - mean_demand)  # E[max(Q-D,0)]
+    expected_sales = mean_demand - expected_shortage  # E[min(Q,D)]
+    expected_profit = price * expected_sales - unit_cost * q_star + salvage_value * expected_excess
+    expected_cost = co * expected_excess + cu * expected_shortage
+
     return NewsvendorResult(
         optimal_quantity=q_star,
         critical_ratio=cr,
-        expected_profit=0.0,
-        expected_cost=0.0,
+        expected_profit=expected_profit,
+        expected_cost=expected_cost,
     )
 
 

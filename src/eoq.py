@@ -103,6 +103,14 @@ def compute_eoq_volume_discount(
     EOQ with all-units quantity discounts (Section 2.5.3).
 
     holding_cost_rate: h as fraction of unit cost (e.g. 0.25 = 25%/year).
+
+    The decision cost compared ACROSS tiers must include the annual purchase cost
+    (``annual_demand * unit_cost``): it is the whole reason a cheaper-per-unit tier
+    can win despite its natural EOQ being infeasible (below the tier's minimum) and
+    forcing a larger, holding-cost-heavier order. Omitting it (comparing only
+    ordering + holding cost) is valid *within* one tier - where the unit cost is
+    fixed and the purchase-cost term is a constant - but meaningless *across*
+    tiers, and systematically under-favors taking a discount.
     """
     if not price_breaks:
         raise ValueError("price_breaks required")
@@ -123,7 +131,7 @@ def compute_eoq_volume_discount(
         for q in {eoq.order_quantity, br.min_quantity}:
             if q <= 0 or q < br.min_quantity:
                 continue
-            cost = fixed_order_cost * annual_demand / q + h * q / 2
+            cost = fixed_order_cost * annual_demand / q + h * q / 2 + annual_demand * br.unit_cost
             if cost < best_cost:
                 best_cost = cost
                 best_q = q

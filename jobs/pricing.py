@@ -76,6 +76,7 @@ class PricingRec:
     current_price: float
     optimal_price: float | None
     unit_cost: float
+    cost_is_imputed: bool  # True when unit_cost is a guess (cost_ratio), not a real cost column
     elasticity: float
     r_squared: float
     n_points: int
@@ -108,16 +109,25 @@ def run(demand: pd.DataFrame, *, cost_ratio: float = 0.6) -> PricingReport:
         current = float(pd.Series(prices[prices > 0]).median()) if (prices > 0).any() else 0.0
         if has_cost and grp["cost"].notna().any() and float(grp["cost"].mean()) > 0:
             unit_cost = float(grp["cost"].mean())
+            cost_is_imputed = False
         else:
             unit_cost = max(current * cost_ratio, 1e-6)
+            cost_is_imputed = True
 
         r = recommend_price(prices, quantities, unit_cost)
         recs.append(
             PricingRec(
                 product_id=str(pid), current_price=r.current_price, optimal_price=r.optimal_price,
-                unit_cost=unit_cost, elasticity=r.elasticity, r_squared=r.r_squared, n_points=r.n_points,
+                unit_cost=unit_cost, cost_is_imputed=cost_is_imputed,
+                elasticity=r.elasticity, r_squared=r.r_squared, n_points=r.n_points,
                 demand_change_pct=r.demand_change_pct, profit_uplift_pct=r.profit_uplift_pct,
-                action=r.action, confident=r.confident,
+                action=r.action,
+                # A recommendation cannot be "confident" when the cost it was
+                # optimized against is itself a guess (cost_ratio * price, not a
+                # real cost column): previously an imputed cost could still be
+                # reported at full confidence, e.g. "raise the price 18%, +22%
+                # profit" built on a fabricated cost.
+                confident=r.confident and not cost_is_imputed,
             )
         )
 

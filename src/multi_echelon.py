@@ -252,8 +252,27 @@ def simulate_serial_gsm(
                 on_hand, transit, allocation.echelon_order_up_to, customer_backorders
             )
             for i in range(n):
-                if orders[i] > 0:
-                    pipeline[i].append((t + lead_times[i], orders[i]))
+                if orders[i] <= 0:
+                    continue
+                if i == 0:
+                    # The root node draws from an infinite exogenous supplier (the
+                    # standard serial-GSM boundary condition): it always ships in full.
+                    shipped = orders[i]
+                else:
+                    # Every other node orders FROM the node upstream of it and can only
+                    # receive what that node actually has on hand right now. Previously
+                    # every stage materialized its full order from nowhere regardless of
+                    # what stage i-1 held, so on_hand[i-1] was only ever incremented and
+                    # an upstream shortage could never delay (or even touch) downstream
+                    # stages - the chain wasn't coupled by material flow at all. Any
+                    # unshipped remainder is simply not fulfilled this period; it is not
+                    # lost, because echelon_orders() recomputes next period from the
+                    # still-low net inventory, so the shortfall carries forward as a
+                    # larger order once stage i-1 restocks.
+                    shipped = min(orders[i], on_hand[i - 1])
+                    on_hand[i - 1] -= shipped
+                if shipped > 0:
+                    pipeline[i].append((t + lead_times[i], shipped))
 
     fill_rate = units_served / total_demand if total_demand > 0 else 1.0
     mean_echelon = tuple(s / periods for s in echelon_sums)

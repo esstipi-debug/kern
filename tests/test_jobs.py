@@ -1,5 +1,6 @@
 """Tests for the job-fulfillment layer (intake, playbook, QA, deliverables)."""
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -126,6 +127,50 @@ def test_pricing_qa_catches_tampered_rec():
     actionable = next(r for r in report.recommendations if r.action in {"raise", "lower"})
     object.__setattr__(actionable, "optimal_price", actionable.unit_cost * 0.5)  # below cost
     assert any("cost" in i for i in qa.verify_pricing(report))
+
+
+def test_pricing_with_no_cost_column_is_never_reported_confident():
+    """Regression: a recommendation built on an IMPUTED cost (no real cost column,
+    so unit_cost = cost_ratio * price - a guess) could previously still be
+    reported at full confidence, e.g. "raise 18%, +22% profit" built on a
+    fabricated cost. Elastic, otherwise clearly-actionable data must still come
+    back not-confident once the cost itself is not real."""
+    rng = np.random.default_rng(9)
+    prices = np.linspace(8, 24, 30)
+    quantities = 8000 * prices ** (-2.0) * rng.normal(1.0, 0.02, size=prices.size)
+    demand = pd.DataFrame({
+        "product_id": ["SKU-X"] * len(prices),
+        "price": prices,
+        "quantity": quantities,
+        # deliberately no "cost" column
+    })
+
+    report = run_pricing(demand)
+
+    rec = report.recommendations[0]
+    assert rec.cost_is_imputed is True
+    assert rec.action in {"raise", "lower"}  # the underlying signal is real...
+    assert rec.confident is False  # ...but must not be reported as trustworthy
+
+
+def test_pricing_with_a_real_cost_column_can_be_confident():
+    """Same elastic signal, but with a genuine cost column - confidence is
+    governed by fit quality/extrapolation only, not suppressed by imputation."""
+    rng = np.random.default_rng(9)
+    prices = np.linspace(8, 24, 30)
+    quantities = 8000 * prices ** (-2.0) * rng.normal(1.0, 0.02, size=prices.size)
+    demand = pd.DataFrame({
+        "product_id": ["SKU-X"] * len(prices),
+        "price": prices,
+        "quantity": quantities,
+        "cost": [5.0] * len(prices),
+    })
+
+    report = run_pricing(demand)
+
+    rec = report.recommendations[0]
+    assert rec.cost_is_imputed is False
+    assert rec.confident is True
 
 
 def test_pricing_deliverables_written(tmp_path):

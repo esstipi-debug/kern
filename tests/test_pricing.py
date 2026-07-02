@@ -78,3 +78,35 @@ def test_recommend_price_inelastic_and_insufficient():
     inelastic_q = 500 * prices ** (-0.4) * rng.normal(1.0, 0.02, size=prices.size)
     assert recommend_price(prices, inelastic_q, 5.0).action == "inelastic"
     assert recommend_price([10, 10, 10], [100, 100, 100], 5.0).action == "insufficient_data"
+
+
+# -- confidence must not survive extrapolation far outside the observed data --
+
+
+def test_recommend_price_is_not_confident_when_it_extrapolates_past_observed_prices():
+    """Regression: confidence used to be checked only against the current/median
+    price (up to 5x), not against what the curve was actually fit on. A price
+    history observed only between $18-$22 combined with a low unit cost pushes
+    the theoretical optimum to ~$6 - a 3x move from the median, well inside the
+    old 5x guard, but nowhere near data the elasticity curve ever saw."""
+    rng = np.random.default_rng(4)
+    prices = np.linspace(18, 22, 12)
+    quantities = 20000 * prices ** (-2.0) * rng.normal(1.0, 0.01, size=prices.size)
+
+    rec = recommend_price(prices, quantities, unit_cost=3.0)
+
+    assert rec.optimal_price < 18.0 / 1.3  # meaningfully below the observed range
+    assert rec.confident is False
+
+
+def test_recommend_price_stays_confident_within_the_observed_range():
+    """Same fitted curve, same cost regime - just a unit_cost consistent with the
+    prices actually observed - must NOT be penalized by the tightened check."""
+    rng = np.random.default_rng(4)
+    prices = np.linspace(18, 22, 12)
+    quantities = 20000 * prices ** (-2.0) * rng.normal(1.0, 0.01, size=prices.size)
+
+    rec = recommend_price(prices, quantities, unit_cost=9.0)
+
+    assert 18.0 <= rec.optimal_price <= 22.0
+    assert rec.confident is True

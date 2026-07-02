@@ -244,7 +244,11 @@ def write_pricing_report_md(report: PricingReport, path: str | Path, *, client: 
     lines.append("- **Elasticity:** per-SKU log-log regression of quantity on price (ε = slope of ln q vs ln p), with R² as a fit-quality signal.")
     lines.append("- **Optimal price:** constant-elasticity profit maximum `p* = c · ε/(ε+1)`, valid when demand is elastic (ε < −1). Inelastic SKUs (ε ≥ −1) have no interior optimum — test a higher price.")
     lines.append("- **Profit uplift / demand change:** modeled against the fitted curve relative to the current (median) price.")
-    lines.append("- **Confidence:** flagged only when R² ≥ 0.5, ≥ 4 price observations, and the move is within a sane range of the current price.\n")
+    lines.append(
+        "- **Confidence:** flagged only when R² ≥ 0.5, ≥ 4 price observations, the recommended "
+        "price stays within the observed price range (no more than 30% beyond the min/max prices "
+        "actually seen), and the unit cost came from the data rather than being estimated.\n"
+    )
     lines.append("## Assumptions & caveats\n")
     cr = report.params["cost_ratio"]
     lines.append(f"- Unit cost {'taken from the data' if report.params['has_cost_column'] else f'assumed at {cr * 100:.0f}% of current price'} (no cost column → margin is an estimate).")
