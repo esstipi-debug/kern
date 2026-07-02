@@ -522,10 +522,24 @@ class _ReorderRuleStore:
 
     def commit(self, changeset: writeback.Changeset, approved_by: str) -> writeback.AuditEntry:
         restore: list[tuple[str, str, object]] = []
-        for c in changeset.changes:
-            current = self.read(c.entity_id)
-            restore.append((c.entity_id, c.field, current.get(c.field, writeback.ABSENT)))
-            self._write_field(c.entity_id, c.field, c.after)
+        try:
+            for c in changeset.changes:
+                current = self.read(c.entity_id)
+                restore.append((c.entity_id, c.field, current.get(c.field, writeback.ABSENT)))
+                self._write_field(c.entity_id, c.field, c.after)
+        except Exception:
+            # A write partway through raised: everything written so far in THIS call is
+            # already live in Odoo but not yet audited. Undo it with the same restore
+            # values `rollback()` would use, before letting the failure propagate - a
+            # local compensating transaction, since Odoo has no cross-call transaction
+            # to lean on here. If a compensating write itself raises (e.g. Odoo drops
+            # mid-undo), that's a compounding failure outside what a local compensation
+            # can recover from - it surfaces (chained via __context__, nothing swallowed)
+            # but leaves no audit entry, since record() below is unreached either way;
+            # that residual needs manual reconciliation, same as a bare `rollback()`
+            # failing partway today.
+            self._apply_restore(restore)
+            raise
         entry = writeback.AuditEntry(changeset.idempotency_key, changeset.target, approved_by, tuple(restore))
         self._audit.record(entry)
         return entry
@@ -534,10 +548,13 @@ class _ReorderRuleStore:
         entry = self._audit.get(idempotency_key)
         if entry is None:
             raise KeyError(idempotency_key)
-        for entity_id, fld, original in entry.restore:
+        self._apply_restore(entry.restore)
+        self._audit.forget(idempotency_key)
+
+    def _apply_restore(self, restore: list[tuple[str, str, object]] | tuple[tuple[str, str, object], ...]) -> None:
+        for entity_id, fld, original in restore:
             if original is not writeback.ABSENT:  # a freshly-created rule is left in place (still reversible)
                 self._write_field(entity_id, fld, original)
-        self._audit.forget(idempotency_key)
 
     def _write_field(self, sku: str, field: str, value: object) -> None:
         pid = self._id_by_sku.get(sku)
@@ -585,17 +602,30 @@ class _DraftPoStore:
     def commit(self, changeset: writeback.Changeset, approved_by: str) -> writeback.AuditEntry:
         restore: list[tuple[str, str, object]] = []
         created: dict[str, int] = {}
-        for c in changeset.changes:
-            if c.is_noop:
-                continue
-            partner = int(c.entity_id.split(":", 1)[1])
-            order_lines = [
-                (0, 0, {"product_id": self._id_by_sku[sku], "product_qty": qty, "price_unit": price, "name": sku})
-                for sku, qty, price in c.after
-            ]
-            po_id = self._rpc.execute_kw(_M_PO, "create", [{"partner_id": partner, "order_line": order_lines}])
-            created[c.entity_id] = int(po_id)
-            restore.append((c.entity_id, c.field, writeback.ABSENT))  # nothing existed before
+        try:
+            for c in changeset.changes:
+                if c.is_noop:
+                    continue
+                partner = int(c.entity_id.split(":", 1)[1])
+                order_lines = [
+                    (0, 0, {"product_id": self._id_by_sku[sku], "product_qty": qty, "price_unit": price, "name": sku})
+                    for sku, qty, price in c.after
+                ]
+                po_id = self._rpc.execute_kw(_M_PO, "create", [{"partner_id": partner, "order_line": order_lines}])
+                created[c.entity_id] = int(po_id)
+                restore.append((c.entity_id, c.field, writeback.ABSENT))  # nothing existed before
+        except Exception:
+            # A create partway through raised: POs created so far in THIS call are
+            # already live in Odoo but not yet audited, and `self._created` (the only
+            # record of their ids) is still a local variable that would be discarded on
+            # re-raise. Delete them before propagating - a local compensating
+            # transaction, since Odoo has no cross-call transaction to lean on here. If
+            # an unlink itself raises (compounding failure), that surfaces too (chained
+            # via __context__, nothing swallowed) but leaves no audit entry describing
+            # which POs are still orphaned - that residual needs manual reconciliation,
+            # same as a bare `rollback()` failing partway today.
+            self._unlink_all(created.values())
+            raise
         entry = writeback.AuditEntry(changeset.idempotency_key, changeset.target, approved_by, tuple(restore))
         self._audit.record(entry)
         self._created[changeset.idempotency_key] = created
@@ -605,10 +635,13 @@ class _DraftPoStore:
         entry = self._audit.get(idempotency_key)
         if entry is None:
             raise KeyError(idempotency_key)
-        for po_id in self._created.get(idempotency_key, {}).values():
-            self._rpc.execute_kw(_M_PO, "unlink", [[po_id]])  # a draft PO can be deleted outright
+        self._unlink_all(self._created.get(idempotency_key, {}).values())
         self._audit.forget(idempotency_key)
         self._created.pop(idempotency_key, None)
+
+    def _unlink_all(self, po_ids) -> None:
+        for po_id in po_ids:
+            self._rpc.execute_kw(_M_PO, "unlink", [[po_id]])  # a draft PO can be deleted outright
 
 
 # -- offline stand-in (the Odoo analogue of SimulatedStore / emulator) --------

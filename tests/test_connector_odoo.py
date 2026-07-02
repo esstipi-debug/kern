@@ -174,6 +174,92 @@ def test_restock_against_an_existing_rule_can_be_rolled_back():
     assert _orderpoint_min(odoo, 2) == 5.0  # prior min qty restored
 
 
+# -- write side: commit-loop atomicity (partial-failure rollback) ------------
+
+
+class _FailingRpc:
+    """Wraps a real RPC, raising ``OdooError`` on the Nth call to a given (model, method)
+    pair. Everything else passes straight through - lets a test fail exactly one write
+    partway through a multi-change commit() loop, deterministically."""
+
+    def __init__(self, inner, *, fail_model: str, fail_methods: set, fail_after: int) -> None:
+        self._inner = inner
+        self._fail_model = fail_model
+        self._fail_methods = fail_methods
+        self._fail_after = fail_after
+        self._count = 0
+
+    def execute_kw(self, model: str, method: str, args: list, kwargs: dict | None = None):
+        if model == self._fail_model and method in self._fail_methods:
+            self._count += 1
+            if self._count == self._fail_after:
+                raise OdooError("simulated transient failure mid-commit")
+        return self._inner.execute_kw(model, method, args, kwargs)
+
+
+def test_reorder_rule_commit_rolls_back_writes_already_applied_when_a_later_one_fails():
+    """Repro of the audit finding: commit() writes each change to Odoo as it loops and
+    only builds the AuditEntry after the loop finishes. If change 3 of 3 raises, changes
+    1-2 must not be left live with no audit trail and no way to know what succeeded."""
+    odoo = _odoo()
+    # SKU-2 already has a rule: its restore path is an edit (not a bare-ABSENT create).
+    odoo.records("stock.warehouse.orderpoint")[500] = {"product_id": 2, "product_min_qty": 5.0, "product_max_qty": 5.0}
+    odoo.records("product.product")[3] = {
+        "default_code": "SKU-3", "name": "Widget", "list_price": 5.0, "standard_price": 3.0
+    }
+    failing = _FailingRpc(odoo, fail_model="stock.warehouse.orderpoint", fail_methods={"write", "create"}, fail_after=3)
+    connector = OdooConnector(failing)
+    connector.list_products()  # populate id_by_sku, including the newly-added SKU-3
+    changeset = connector.stage_restock({"SKU-1": 10.0, "SKU-2": 20.0, "SKU-3": 30.0}, idempotency_key="r1")
+
+    with pytest.raises(OdooError):
+        connector.apply_restock(changeset)
+
+    # SKU-2's pre-existing rule is restored to its original value, not left at the
+    # half-applied target.
+    assert _orderpoint_min(odoo, 2) == 5.0
+    # SKU-1's rule didn't exist before this commit, so compensation leaves it in place
+    # rather than deleting it - same "freshly-created rows stay, still reversible" rule
+    # rollback() already applies. It's unaudited, but harmless (an unused orderpoint row).
+    assert _orderpoint_min(odoo, 1) == 110.0  # on-hand (100) + restock (10), never undone
+    # Nothing was audited for the failed commit: no idempotency record, no rollback path.
+    assert connector._rules.applied_keys() == set()
+    # A retry of the exact same changeset is free to proceed (not falsely idempotent-skipped).
+    assert connector.apply_restock(changeset).applied is True
+
+
+def test_draft_po_commit_deletes_pos_already_created_when_a_later_one_fails():
+    """Same class of bug as the reorder-rule case, for draft-PO creation: a PO created
+    for supplier 1 of 3 must not be left orphaned in Odoo with no audit trail if
+    creating the PO for supplier 3 fails."""
+    odoo = InMemoryOdoo({
+        "product.product": {
+            1: {"default_code": "SKU-1", "name": "A", "list_price": 10.0, "standard_price": 6.0},
+            2: {"default_code": "SKU-2", "name": "B", "list_price": 20.0, "standard_price": 12.0},
+            3: {"default_code": "SKU-3", "name": "C", "list_price": 30.0, "standard_price": 18.0},
+        },
+        "product.supplierinfo": {
+            400: {"product_id": [1, "A"], "partner_id": [70, "V1"], "sequence": 1},
+            401: {"product_id": [2, "B"], "partner_id": [71, "V2"], "sequence": 1},
+            402: {"product_id": [3, "C"], "partner_id": [72, "V3"], "sequence": 1},
+        },
+        "purchase.order": {},
+    })
+    failing = _FailingRpc(odoo, fail_model="purchase.order", fail_methods={"create"}, fail_after=3)
+    connector = OdooConnector(failing)
+    changeset, _unsourced = connector.stage_draft_purchase_orders({"SKU-1": 5.0, "SKU-2": 7.0, "SKU-3": 9.0})
+
+    with pytest.raises(OdooError):
+        connector.apply_draft_purchase_orders(changeset)
+
+    # Both POs created before the failure were rolled back - none left orphaned in Odoo.
+    assert not odoo.records("purchase.order")
+    assert connector._po_store.applied_keys() == set()
+    # A retry of the exact same changeset is free to proceed.
+    assert connector.apply_draft_purchase_orders(changeset).applied is True
+    assert len(odoo.records("purchase.order")) == 3
+
+
 # -- end-to-end through the shared replenishment flow -------------------------
 
 
