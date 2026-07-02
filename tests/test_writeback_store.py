@@ -15,6 +15,7 @@ from src.writeback import (
     ABSENT,
     TIER_IRREVERSIBLE,
     TIER_REVERSIBLE,
+    AuditEntry,
     InMemoryStore,
     apply,
     approve,
@@ -96,8 +97,6 @@ def test_ledger_get_returns_none_for_unknown_key():
 
 
 def test_ledger_record_round_trips_the_absent_sentinel_through_json(tmp_path):
-    from src.writeback import AuditEntry
-
     ledger = SqliteAuditLedger(tmp_path / "l.sqlite3")
     entry = AuditEntry("k1", "erp", "stipi", (("SKU-A", "max_stock", ABSENT),))
 
@@ -119,3 +118,46 @@ def test_apply_still_refuses_an_expired_approval_with_a_persistent_ledger(tmp_pa
     with pytest.raises(WritebackRefused):
         apply(store, cs, approval=appr, now=1000.0)  # past expiry
     assert store.read("SKU-A")["reorder_point"] == 100
+
+
+# -- concurrency: the ledger's claim is the cross-process atomicity primitive -
+
+
+def test_ledger_claim_succeeds_once_and_refuses_a_second_claim(tmp_path):
+    """Two SqliteAuditLedger instances pointed at the same file stand in for two
+    worker PROCESSES sharing the ledger - the scenario the audit finding describes
+    ("two web workers both processing a retried HTTP request"). Only one may claim
+    a given idempotency_key; the PRIMARY KEY on the underlying table is what makes
+    this safe across processes, not just threads sharing one connection."""
+    path = tmp_path / "ledger.sqlite3"
+    ledger_a = SqliteAuditLedger(path)
+    ledger_b = SqliteAuditLedger(path)
+
+    assert ledger_a.claim("cs1") is True
+    assert ledger_b.claim("cs1") is False
+
+
+def test_ledger_claim_refuses_an_already_recorded_key(tmp_path):
+    """A key fully recorded by a PRIOR apply() (e.g. before a restart) must still
+    refuse a claim - idempotency for a sequential retry, not just a concurrent one."""
+    ledger = SqliteAuditLedger(tmp_path / "l.sqlite3")
+    ledger.record(AuditEntry("cs1", "erp", "stipi", ()))
+
+    assert ledger.claim("cs1") is False
+
+
+def test_ledger_release_allows_a_later_claim_to_succeed(tmp_path):
+    ledger = SqliteAuditLedger(tmp_path / "l.sqlite3")
+    assert ledger.claim("cs1") is True
+    ledger.release("cs1")
+    assert ledger.claim("cs1") is True
+
+
+def test_ledger_record_clears_the_claim(tmp_path):
+    """record() must clean up its own claims-table row - the key is now blocked by
+    `applied` itself, so a leftover claims row would just be dead weight."""
+    ledger = SqliteAuditLedger(tmp_path / "l.sqlite3")
+    assert ledger.claim("cs1") is True
+    ledger.record(AuditEntry("cs1", "erp", "stipi", ()))
+
+    assert ledger.claim("cs1") is False  # still refused, now via `applied`

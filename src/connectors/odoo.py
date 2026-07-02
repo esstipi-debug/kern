@@ -491,9 +491,10 @@ class OdooConnector:
 
 
 class _ReorderRuleStore:
-    """writeback system-of-record surface (read/applied_keys/commit/rollback) over Odoo
-    reorder rules (``stock.warehouse.orderpoint``). Lets the connector reuse the entire
-    safe-staging policy (tiers, approval, idempotency, audit) unchanged, against Odoo."""
+    """writeback system-of-record surface (read/applied_keys/claim/release/commit/
+    rollback) over Odoo reorder rules (``stock.warehouse.orderpoint``). Lets the
+    connector reuse the entire safe-staging policy (tiers, approval, idempotency,
+    audit) unchanged, against Odoo."""
 
     def __init__(self, rpc: OdooRPC, id_by_sku: dict[str, int], *, ledger: object | None = None) -> None:
         self._rpc = rpc
@@ -519,6 +520,12 @@ class _ReorderRuleStore:
 
     def applied_keys(self) -> set[str]:
         return self._audit.applied_keys()
+
+    def claim(self, idempotency_key: str) -> bool:
+        return self._audit.claim(idempotency_key)
+
+    def release(self, idempotency_key: str) -> None:
+        self._audit.release(idempotency_key)
 
     def commit(self, changeset: writeback.Changeset, approved_by: str) -> writeback.AuditEntry:
         restore: list[tuple[str, str, object]] = []
@@ -594,6 +601,12 @@ class _DraftPoStore:
 
     def applied_keys(self) -> set[str]:
         return self._audit.applied_keys()
+
+    def claim(self, idempotency_key: str) -> bool:
+        return self._audit.claim(idempotency_key)
+
+    def release(self, idempotency_key: str) -> None:
+        self._audit.release(idempotency_key)
 
     def created_pos(self, idempotency_key: str) -> dict[str, int]:
         """``{entity_id: po_id}`` created under ``idempotency_key`` (empty if unknown/rolled back)."""

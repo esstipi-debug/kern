@@ -8,6 +8,8 @@ writes through the battle-tested safe-staging plane. ``OdooClient`` (the real XM
 transport) is exercised with injected proxies, so its auth + dispatch are covered too.
 """
 
+import threading
+
 import pytest
 
 from src.connectors import InventorySource, OrderLine, Product
@@ -558,3 +560,101 @@ def test_connector_with_a_sqlite_ledger_persists_both_write_paths(tmp_path):
 
     reopened.create_draft_purchase_orders({"SKU-1": 50.0})
     assert len(odoo.records("purchase.order")) == 1  # not duplicated after the "restart"
+
+
+# -- write side: concurrency must not create duplicate Odoo records -----------
+
+
+def _gate_execute_kw(odoo: InMemoryOdoo, model: str, methods: tuple[str, ...]):
+    """Wrap odoo.execute_kw so the FIRST call matching (model, one of methods) pauses
+    until the test releases it, and every matching call is counted. Lets a test force
+    two concurrent connector calls to both be "in flight" past their idempotency check
+    at the same time, reproducing a check-then-act race against a REAL (offline) Odoo
+    write path instead of relying on thread-scheduling luck."""
+    entered = threading.Event()
+    proceed = threading.Event()
+    calls = {"n": 0}
+    calls_lock = threading.Lock()
+    original = odoo.execute_kw
+
+    def gated(model_, method, args, kwargs=None):
+        if model_ == model and method in methods:
+            with calls_lock:
+                calls["n"] += 1
+                first = calls["n"] == 1
+            if first:
+                entered.set()
+            proceed.wait(timeout=5)
+        return original(model_, method, args, kwargs)
+
+    odoo.execute_kw = gated
+    return entered, proceed, calls
+
+
+def _run_two_concurrently(fn):
+    """Run ``fn()`` on two threads, returning their results in call order."""
+    results: list = []
+    results_lock = threading.Lock()
+
+    def caller():
+        r = fn()
+        with results_lock:
+            results.append(r)
+
+    t1 = threading.Thread(target=caller)
+    t2 = threading.Thread(target=caller)
+    return t1, t2, results, results_lock
+
+
+def test_concurrent_apply_draft_purchase_orders_creates_only_one_po():
+    """Regression: two concurrent callers applying the SAME draft-PO changeset (e.g.
+    two web workers both processing a retried HTTP request before either finishes)
+    must not both reach Odoo's execute_kw("create", ...) - that would create two
+    duplicate purchase orders, defeating draft-PO idempotency (the exact scenario the
+    audit finding described)."""
+    odoo = _odoo()
+    connector = OdooConnector(odoo)
+    changeset, unsourced = connector.stage_draft_purchase_orders({"SKU-1": 50.0})
+    assert unsourced == ()
+
+    entered, proceed, calls = _gate_execute_kw(odoo, "purchase.order", ("create",))
+    t1, t2, results, _lock = _run_two_concurrently(lambda: connector.apply_draft_purchase_orders(changeset))
+
+    t1.start()
+    assert entered.wait(timeout=5), "first caller never reached purchase.order create"
+    t2.start()
+    t2.join(timeout=0.5)  # give a buggy implementation time to also enter create()
+    proceed.set()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+
+    assert not t1.is_alive() and not t2.is_alive()
+    assert calls["n"] == 1, "purchase.order create must run at most once per idempotency key"
+    assert len(odoo.records("purchase.order")) == 1
+    assert sum(1 for r in results if r.applied) == 1
+
+
+def test_concurrent_apply_restock_writes_the_reorder_point_only_once():
+    """Same race, on the OTHER Odoo write path (reorder-point edits via
+    _ReorderRuleStore), which shares the same AuditBookkeeping-based apply()."""
+    odoo = _odoo()
+    connector = OdooConnector(odoo)
+    changeset = connector.stage_restock({"SKU-2": 60.0}, idempotency_key="r1")
+
+    entered, proceed, calls = _gate_execute_kw(
+        odoo, "stock.warehouse.orderpoint", ("create", "write")
+    )
+    t1, t2, results, _lock = _run_two_concurrently(lambda: connector.apply_restock(changeset))
+
+    t1.start()
+    assert entered.wait(timeout=5), "first caller never reached the orderpoint write"
+    t2.start()
+    t2.join(timeout=0.5)
+    proceed.set()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+
+    assert not t1.is_alive() and not t2.is_alive()
+    assert calls["n"] == 1, "the orderpoint create/write must run at most once per idempotency key"
+    assert len(odoo.records("stock.warehouse.orderpoint")) == 1
+    assert sum(1 for r in results if r.applied) == 1

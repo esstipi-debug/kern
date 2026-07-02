@@ -8,6 +8,8 @@ Guarantees under test:
 - every applied changeset is auditable and can be rolled back.
 """
 
+import threading
+
 import pytest
 
 from src.writeback import (
@@ -263,3 +265,116 @@ def test_approval_is_unforgeable_once_a_server_secret_is_configured(monkeypatch)
                 risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
     with pytest.raises(WritebackRefused):
         apply(store2, cs2, approval=forged, now=1.0)
+
+
+# -- concurrency: check-then-act must not allow a double-commit ---------------
+
+
+class _GatedCommitStore(InMemoryStore):
+    """InMemoryStore whose commit() pauses just after being entered (before doing any
+    work) until the test calls ``proceed.set()``. Lets a test force two concurrent
+    apply() calls to both be "in flight" at the same time - the first caller is known
+    to be inside commit() (entered, not yet recorded) while a second concurrent apply()
+    call runs its own idempotency check against that exact state - reproducing the
+    check-then-act race deterministically instead of relying on thread-scheduling luck.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.commit_entries = 0
+        self._entries_lock = threading.Lock()
+        self.first_entry = threading.Event()
+        self.proceed = threading.Event()
+
+    def commit(self, changeset, approved_by):
+        with self._entries_lock:
+            self.commit_entries += 1
+            entered_first = self.commit_entries == 1
+        if entered_first:
+            self.first_entry.set()
+        self.proceed.wait(timeout=5)
+        return super().commit(changeset, approved_by)
+
+
+def test_concurrent_apply_never_commits_the_same_key_twice():
+    """Regression: apply() used to check ``idempotency_key in store.applied_keys()``
+    and only THEN call store.commit() - two concurrent callers applying the same
+    changeset (e.g. two web workers both processing a retried HTTP request before
+    either finishes committing) could both pass that check and both reach
+    store.commit(), which for a real connector means duplicating the side-effecting
+    write (e.g. creating two purchase orders in Odoo).
+    """
+    store = _GatedCommitStore({"SKU-A": {"reorder_point": 100}})
+    cs = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+               risk_tier=TIER_REVERSIBLE, idempotency_key="cs1")
+    results: list = []
+    results_lock = threading.Lock()
+
+    def caller():
+        r = apply(store, cs, now=0.0, auto_apply_reversible=True)
+        with results_lock:
+            results.append(r)
+
+    t1 = threading.Thread(target=caller)
+    t2 = threading.Thread(target=caller)
+    t1.start()
+    assert store.first_entry.wait(timeout=5), "first caller never reached commit()"
+    t2.start()
+    t2.join(timeout=0.5)  # give a buggy implementation time to also enter commit()
+    store.proceed.set()   # release whoever is paused inside commit()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+
+    assert not t1.is_alive() and not t2.is_alive()
+    assert store.commit_entries == 1, "commit() must run at most once per idempotency_key"
+    assert sum(1 for r in results if r.applied) == 1
+    assert sum(1 for r in results if r.idempotent_skip) == 1
+    assert store.read("SKU-A")["reorder_point"] == 120
+
+
+def test_apply_releases_the_claim_when_commit_raises_so_a_retry_can_proceed():
+    """A failed commit (e.g. a transient connector error) must not permanently strand
+    the idempotency key - it must be released so a legitimate retry can still apply."""
+
+    class _BoomOnce(InMemoryStore):
+        def __init__(self, *a, **kw) -> None:
+            super().__init__(*a, **kw)
+            self.attempts = 0
+
+        def commit(self, changeset, approved_by):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise RuntimeError("simulated transient failure")
+            return super().commit(changeset, approved_by)
+
+    store = _BoomOnce({"SKU-A": {"reorder_point": 100}})
+    cs = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+               risk_tier=TIER_REVERSIBLE, idempotency_key="cs1")
+
+    with pytest.raises(RuntimeError):
+        apply(store, cs, now=0.0, auto_apply_reversible=True)
+
+    retry = apply(store, cs, now=0.0, auto_apply_reversible=True)
+    assert retry.applied
+    assert store.read("SKU-A")["reorder_point"] == 120
+
+
+def test_claim_then_release_allows_a_fresh_claim():
+    store = _store()
+    assert store.claim("cs1") is True
+    store.release("cs1")
+    assert store.claim("cs1") is True
+
+
+def test_claim_refuses_a_second_concurrent_claim_for_the_same_key():
+    store = _store()
+    assert store.claim("cs1") is True
+    assert store.claim("cs1") is False
+
+
+def test_claim_refuses_a_key_that_is_already_recorded():
+    store = _store()
+    cs = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
+               risk_tier=TIER_REVERSIBLE, idempotency_key="cs1")
+    apply(store, cs, now=0.0, auto_apply_reversible=True)
+    assert store.claim("cs1") is False

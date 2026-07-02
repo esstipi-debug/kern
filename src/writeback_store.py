@@ -57,11 +57,48 @@ class SqliteAuditLedger:
             " applied_at REAL NOT NULL"
             ")"
         )
+        # In-flight (claimed but not yet recorded) keys. Kept in its own table -
+        # never queried by applied_keys()/get() - so a claim in progress is invisible
+        # to every existing reader, exactly as an unfinished commit() was before
+        # claim() existed (e.g. rollback() on a key that hasn't finished applying
+        # still cleanly raises KeyError instead of seeing a half-written row).
+        self._conn.execute("CREATE TABLE IF NOT EXISTS claims (idempotency_key TEXT PRIMARY KEY)")
         self._conn.commit()
 
     def applied_keys(self) -> set[str]:
         rows = self._conn.execute("SELECT idempotency_key FROM applied").fetchall()
         return {r[0] for r in rows}
+
+    def claim(self, idempotency_key: str) -> bool:
+        """Atomically reserve ``idempotency_key`` using the PRIMARY KEY constraints on
+        ``claims``/``applied`` as the concurrency primitive: two connections racing to
+        insert the same key can only have one INSERT succeed - SQLite serializes
+        writers at the file level, so this is safe across THREADS sharing a connection
+        AND across separate worker PROCESSES sharing this file (the scenario a
+        multi-worker webapp deployment actually has). One statement atomically checks
+        both "already fully applied" and "already claimed by another in-flight
+        apply()", so there is no separate check-then-insert gap of its own.
+
+        Returns True if the caller now owns the key (must follow up with ``record()``
+        or ``release()``); False if it is already claimed or already applied.
+        """
+        try:
+            cur = self._conn.execute(
+                "INSERT INTO claims (idempotency_key)"
+                " SELECT ? WHERE NOT EXISTS (SELECT 1 FROM applied WHERE idempotency_key = ?)",
+                (idempotency_key, idempotency_key),
+            )
+        except sqlite3.IntegrityError:
+            return False  # another caller's claim is already in flight
+        self._conn.commit()
+        return cur.rowcount == 1  # 0 rows inserted -> idempotency_key was already applied
+
+    def release(self, idempotency_key: str) -> None:
+        """Release a claim that will NOT be followed by ``record()`` (the
+        side-effecting write raised or was aborted) - lets a legitimate retry proceed
+        instead of leaving the key permanently claimed."""
+        self._conn.execute("DELETE FROM claims WHERE idempotency_key = ?", (idempotency_key,))
+        self._conn.commit()
 
     def record(self, entry: AuditEntry, *, applied_at: float | None = None) -> None:
         """Persist ``entry``. ``applied_at`` defaults to the real clock."""
@@ -74,6 +111,7 @@ class SqliteAuditLedger:
             " VALUES (?, ?, ?, ?, ?)",
             (entry.idempotency_key, entry.target, entry.approved_by, json.dumps(safe_restore), applied_at),
         )
+        self._conn.execute("DELETE FROM claims WHERE idempotency_key = ?", (entry.idempotency_key,))
         self._conn.commit()
 
     def get(self, idempotency_key: str) -> AuditEntry | None:
