@@ -18,6 +18,7 @@ import re
 import shutil
 import sys
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -89,7 +90,30 @@ class SafeJSONResponse(JSONResponse):
         return json.dumps(content, allow_nan=False, separators=(",", ":")).encode("utf-8")
 
 
-app = FastAPI(title="Inventory Planner", version="1.0.0", default_response_class=SafeJSONResponse)
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """Runs the mounted MCP sub-app's own lifespan (its session manager's task
+    group) inside this app's lifespan.
+
+    Mounting a sub-app with `app.mount()` does NOT propagate ASGI lifespan
+    events into it - only the top-level app receives `lifespan.startup` from
+    the server (uvicorn). Without this, FastMCP's `streamable_http_app()` never
+    runs `session_manager.run()`, and every real tool call 500s with "Task
+    group is not initialized" the moment a client gets past auth - the auth
+    gate itself (`webapp/mcp_auth.py`, tested in `tests/test_mcp_mount.py`)
+    still returns clean 401s, so this gap doesn't show up there. `_mcp_asgi_app`
+    is looked up by name (module global) rather than a closure over a value,
+    since it doesn't exist yet at this point in the module - it's built after
+    `app` below - but this function only runs at server startup, long after
+    module load finishes.
+    """
+    async with _mcp_asgi_app.router.lifespan_context(_mcp_asgi_app):
+        yield
+
+
+app = FastAPI(
+    title="Inventory Planner", version="1.0.0", default_response_class=SafeJSONResponse, lifespan=_lifespan
+)
 
 # Gate deliverable downloads behind LINCHPIN_API_KEY when configured (no-op otherwise).
 # Registered BEFORE security_headers_middleware so the latter stays the outermost

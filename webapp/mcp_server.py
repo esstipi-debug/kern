@@ -22,17 +22,32 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from scm_agent import Orchestrator
 
 SERVER_NAME = "linchpin_mcp"
+
+# FastMCP auto-enables DNS-rebinding Host-header checking whenever it's built
+# with `host="127.0.0.1"` (the default), but its own auto-allowlist only
+# covers localhost/127.0.0.1/::1 - so a deployed instance would 421 every
+# single real request regardless of a valid API key, since the client's Host
+# header is the deploy's real hostname, not "127.0.0.1". The per-client
+# X-API-Key gate (webapp/mcp_auth.py) already authenticates every request to
+# this mount, so Host-based DNS-rebinding protection is redundant defense in
+# depth here, not the primary control - but it still needs to actually allow
+# the real deploy host rather than silently blocking everyone. Comma-separated,
+# e.g. "linchpin.fly.dev,linchpin.example.com"; unset -> localhost-only (safe
+# local-dev default, matches FastMCP's own auto-enable behavior).
+_EXTRA_ALLOWED_HOSTS = [h.strip() for h in os.environ.get("LINCHPIN_MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
 
 _READ_ONLY_ANALYSIS_ANNOTATIONS = {
     "readOnlyHint": True,
@@ -123,7 +138,17 @@ def build_mcp_server(orchestrator: Orchestrator | None = None) -> FastMCP:
     when this is mounted into the same process; a fresh one is built otherwise
     (used by tests and standalone runs)."""
     orch = orchestrator if orchestrator is not None else Orchestrator()
-    mcp = FastMCP(SERVER_NAME)
+    # streamable_http_path="/": FastMCP's own default ("/mcp") is meant for
+    # standalone use. Mounted under "/mcp" in webapp/app.py, that default would
+    # make the real route "/mcp/mcp" - one path segment more than the documented
+    # client URL (docs/MCP_SERVER.md: POST .../mcp/) and every existing test.
+    # Rooting the sub-app at "/" makes the mount's own path the whole story.
+    transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", *_EXTRA_ALLOWED_HOSTS],
+        allowed_origins=["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"],
+    )
+    mcp = FastMCP(SERVER_NAME, streamable_http_path="/", transport_security=transport_security)
 
     async def _run(job_type: str, params: LinchpinAnalysisInput) -> str:
         return await asyncio.to_thread(_run_analysis_tool_sync, orch, job_type, params)

@@ -14,9 +14,19 @@ export LINCHPIN_RATE_LIMIT=60          # requests/window/IP (0 = off)
 export LINCHPIN_RATE_WINDOW=60         # seconds
 export LINCHPIN_CORS_ORIGINS=https://app.example.com   # omit for same-origin only
 export LINCHPIN_LOG_JSON=1             # structured access logs to stdout
+export LINCHPIN_MCP_ALLOWED_HOSTS=linchpin.fly.dev   # your real deploy host(s), comma-separated
 # Optional: refuse to boot if the above leave the API unauthenticated/unthrottled
 export LINCHPIN_REQUIRE_SECURE=1
 ```
+
+`LINCHPIN_MCP_ALLOWED_HOSTS` matters specifically for `/mcp` (see
+[MCP_SERVER.md](MCP_SERVER.md)): FastMCP's own DNS-rebinding protection only
+auto-allows `127.0.0.1`/`localhost`/`::1` by Host header, so **every real
+client request to a public deploy 421s without this set** — the per-client
+`X-API-Key` gate still runs first and looks fine on its own, which is exactly
+how this shipped broken once already (caught 2026-07-03, see
+`linchpin-odoo-store-module` project notes). Bare hostname, no port, no
+scheme — e.g. `linchpin.fly.dev`, not `https://linchpin.fly.dev:443`.
 
 With `LINCHPIN_ENV=production`, the app logs a loud warning at startup for any
 missing control (no API key, no rate limit). With `LINCHPIN_REQUIRE_SECURE=1` it
@@ -55,7 +65,8 @@ fly apps create <your-app-name> --org personal   # app names are globally unique
 fly volumes create linchpin_data --size 1 --region iad
 fly secrets set LINCHPIN_API_KEY=$(openssl rand -hex 24) \
                 LINCHPIN_APPROVAL_SECRET=$(openssl rand -hex 24) \
-                LINCHPIN_RATE_LIMIT=60
+                LINCHPIN_RATE_LIMIT=60 \
+                LINCHPIN_MCP_ALLOWED_HOSTS=<your-app-name>.fly.dev
 fly deploy --app <your-app-name>
 ```
 
