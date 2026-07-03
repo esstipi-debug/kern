@@ -91,6 +91,13 @@ class SafeJSONResponse(JSONResponse):
 
 app = FastAPI(title="Inventory Planner", version="1.0.0", default_response_class=SafeJSONResponse)
 
+# Gate deliverable downloads behind LINCHPIN_API_KEY when configured (no-op otherwise).
+# Registered BEFORE security_headers_middleware so the latter stays the outermost
+# layer and still runs (via its post-call_next setdefault calls) even when this
+# short-circuits with an early 401 - Starlette's innermost-added-middleware-first
+# dispatch order means the reverse registration would strip hardening headers off
+# every 401 this middleware returns (caught by code review, verified live).
+app.middleware("http")(security.jobs_output_auth_middleware)
 # Always-on hardening headers (+ path-aware CSP). CORS is opt-in via env allowlist.
 app.middleware("http")(security.security_headers_middleware)
 if security.CORS_ORIGINS:

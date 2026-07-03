@@ -22,6 +22,7 @@ import time
 from collections import defaultdict, deque
 
 from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
 
 
 def _int_env(name: str, default: int) -> int:
@@ -119,6 +120,24 @@ def require_api_key(request: Request) -> None:
     provided = request.headers.get("x-api-key", "")
     if not hmac.compare_digest(provided, expected):
         raise HTTPException(status_code=401, detail="invalid or missing API key")
+
+
+async def jobs_output_auth_middleware(request: Request, call_next):
+    """Gate ``GET /jobs-output/*`` behind the same shared ``LINCHPIN_API_KEY`` as
+    ``POST /api/jobs``. Today's "access control" on a deliverable download is pure
+    obscurity - an unguessable ``tempfile.mkdtemp()`` directory name, no expiry, no
+    revocation - so once an operator opts into API-key auth for submitting jobs,
+    fetching their output should require the same key, not just the URL.
+
+    No-op when ``API_KEY`` is unset (the shipped default), same convention as
+    ``require_api_key`` - this only tightens behavior for operators who already
+    enabled the gate.
+    """
+    if request.url.path.startswith("/jobs-output/") and API_KEY:
+        provided = request.headers.get("x-api-key", "")
+        if not hmac.compare_digest(provided, API_KEY):
+            return JSONResponse({"detail": "invalid or missing API key"}, status_code=401)
+    return await call_next(request)
 
 
 # ---- security headers + path-aware CSP ----------------------------------------
