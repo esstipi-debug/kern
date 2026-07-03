@@ -1,11 +1,14 @@
 """A minimal, hand-rolled MCP (Model Context Protocol) Streamable HTTP client.
 
-Deliberately NOT built on the official `mcp` Python SDK: a self-hosted Odoo
-instance installing this module shouldn't need a new heavy dependency just to
-call one HTTPS endpoint, and `requests` is already a hard dependency of Odoo
-itself (used throughout Odoo core), so it introduces nothing new. This module
-has zero Odoo imports - it's plain Python, unit-testable with pytest outside
-any Odoo runtime (see tests/test_odoo_addon_mcp_client.py at the repo root).
+Deliberately NOT built on the official `mcp` Python SDK, and deliberately
+stdlib-only (`urllib.request`, not `requests`): a self-hosted Odoo instance
+installing this module shouldn't need to assume ANY third-party package is
+present just to call one HTTPS endpoint - not even `requests`, despite Odoo
+core itself depending on it, since this addon's own tests (see
+tests/test_odoo_addon_mcp_client.py at the repo root) import this module
+directly into Linchpin's own pytest suite, which has no reason to carry a
+dependency it doesn't otherwise need. This module has zero Odoo imports -
+it's plain Python, unit-testable outside any Odoo runtime.
 
 Wire format (verified against a real Linchpin deployment, not guessed):
 POST {base_url}/mcp/ with header X-API-Key, Accept: "application/json,
@@ -24,10 +27,10 @@ import ipaddress
 import json
 import logging
 import socket
+import urllib.error
+import urllib.request
 import uuid
 from urllib.parse import urlparse
-
-import requests
 
 _logger = logging.getLogger(__name__)
 
@@ -134,34 +137,45 @@ class LinchpinMcpClient:
         if self._session_id:
             headers["Mcp-Session-Id"] = self._session_id
 
+        request = urllib.request.Request(
+            self._url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST"
+        )
         try:
-            response = requests.post(self._url, json=body, headers=headers, timeout=self._timeout)
-        except requests.RequestException as exc:
+            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+                status_code = response.status
+                response_headers = response.headers
+                text = response.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            status_code = exc.code
+            response_headers = exc.headers
+            text = exc.read().decode("utf-8", errors="replace")
+        except urllib.error.URLError as exc:
+            raise LinchpinMcpError(f"could not reach Linchpin ({self._url}): {exc.reason}") from exc
+        except OSError as exc:  # timeouts and other low-level socket failures
             raise LinchpinMcpError(f"could not reach Linchpin ({self._url}): {exc}") from exc
 
-        if response.status_code == 401:
+        if status_code == 401:
             raise LinchpinMcpError("Linchpin rejected the API key - check the key in Settings")
-        if response.status_code == 429:
+        if status_code == 429:
             raise LinchpinMcpError("Linchpin rate limit reached - try again shortly")
-        if response.status_code >= 400:
+        if status_code >= 400:
             # The response body is untrusted content from whatever host base_url
             # points at - never surface it verbatim in the user-facing error
             # (it would otherwise land inside a trusted-looking Odoo dialog).
             # Full detail goes to the server log only, where an admin can see it.
-            _logger.warning("Linchpin MCP call failed: HTTP %s - %s", response.status_code, response.text[:500])
+            _logger.warning("Linchpin MCP call failed: HTTP %s - %s", status_code, text[:500])
             raise LinchpinMcpError(
-                f"Linchpin returned an unexpected error (HTTP {response.status_code}). "
-                "Check the Odoo server log for details."
+                f"Linchpin returned an unexpected error (HTTP {status_code}). Check the Odoo server log for details."
             )
 
-        session_id = response.headers.get("Mcp-Session-Id")
+        session_id = response_headers.get("Mcp-Session-Id")
         if session_id:
             self._session_id = session_id
 
-        if is_notification or not response.text.strip():
+        if is_notification or not text.strip():
             return None
 
-        payload = _parse_sse_json_rpc(response.text)
+        payload = _parse_sse_json_rpc(text)
         _raise_for_rpc_error(payload)
         return payload
 

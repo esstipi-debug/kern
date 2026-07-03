@@ -9,10 +9,12 @@ an invalid-key 401 all behaved as these mocks assume) before writing these.
 
 from __future__ import annotations
 
+import email.message
 import socket
 import sys
+import urllib.error
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
@@ -37,12 +39,31 @@ def _tool_call_sse(inner: dict, *, is_error: bool = False) -> str:
     return f"event: message\ndata: {json.dumps(payload)}\n\n"
 
 
-def _mock_response(status_code=200, text="", headers=None):
-    resp = Mock()
-    resp.status_code = status_code
-    resp.text = text
-    resp.headers = headers or {}
-    return resp
+def _headers(mapping: dict) -> email.message.Message:
+    msg = email.message.Message()
+    for key, value in mapping.items():
+        msg[key] = value
+    return msg
+
+
+def _mock_success(status_code=200, text="", headers=None):
+    """A mock of what `with urllib.request.urlopen(...) as response:` yields."""
+    response = MagicMock()
+    response.status = status_code
+    response.headers = _headers(headers or {})
+    response.read.return_value = text.encode("utf-8")
+    response.__enter__.return_value = response
+    return response
+
+
+def _http_error(status_code, text="", headers=None):
+    return urllib.error.HTTPError(
+        url="https://linchpin.example/mcp/",
+        code=status_code,
+        msg="error",
+        hdrs=_headers(headers or {}),
+        fp=__import__("io").BytesIO(text.encode("utf-8")),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -99,25 +120,27 @@ def test_unresolvable_base_url_is_rejected(monkeypatch):
 
 def test_call_tool_happy_path_returns_parsed_inner_json(monkeypatch):
     responses = [
-        _mock_response(200, _INITIALIZE_SSE, headers={"Mcp-Session-Id": "sess-123"}),
-        _mock_response(200, ""),  # notifications/initialized: no body
-        _mock_response(200, _tool_call_sse({"status": "ok", "summary": "2 SKUs classified"})),
+        _mock_success(200, _INITIALIZE_SSE, headers={"Mcp-Session-Id": "sess-123"}),
+        _mock_success(200, ""),  # notifications/initialized: no body
+        _mock_success(200, _tool_call_sse({"status": "ok", "summary": "2 SKUs classified"})),
     ]
-    post = Mock(side_effect=responses)
-    monkeypatch.setattr("mcp_client.requests.post", post)
+    urlopen = Mock(side_effect=responses)
+    monkeypatch.setattr("mcp_client.urllib.request.urlopen", urlopen)
 
     client = LinchpinMcpClient("https://linchpin.example/", "lpk_test")
     result = client.call_tool("linchpin_classify_abc_xyz", [{"product_id": "A", "quantity": 1, "unit_cost": 1}])
 
     assert result == {"status": "ok", "summary": "2 SKUs classified"}
     assert client._session_id == "sess-123"
-    # Every call after initialize must echo the session id back.
-    assert post.call_args_list[1].kwargs["headers"]["Mcp-Session-Id"] == "sess-123"
-    assert post.call_args_list[2].kwargs["headers"]["Mcp-Session-Id"] == "sess-123"
+    # Every call after initialize must echo the session id back. urllib.request.Request
+    # normalizes header keys via str.capitalize() on storage (first char upper, rest
+    # lower) but NOT on get_header() lookups - "Mcp-session-id" is the real stored form.
+    assert urlopen.call_args_list[1].args[0].get_header("Mcp-session-id") == "sess-123"
+    assert urlopen.call_args_list[2].args[0].get_header("Mcp-session-id") == "sess-123"
 
 
 def test_invalid_api_key_raises_a_clear_error(monkeypatch):
-    monkeypatch.setattr("mcp_client.requests.post", Mock(return_value=_mock_response(401, '{"error":"nope"}')))
+    monkeypatch.setattr("mcp_client.urllib.request.urlopen", Mock(side_effect=_http_error(401, '{"error":"nope"}')))
 
     client = LinchpinMcpClient("https://linchpin.example", "wrong-key")
 
@@ -126,7 +149,7 @@ def test_invalid_api_key_raises_a_clear_error(monkeypatch):
 
 
 def test_rate_limit_raises_a_clear_error(monkeypatch):
-    monkeypatch.setattr("mcp_client.requests.post", Mock(return_value=_mock_response(429, "")))
+    monkeypatch.setattr("mcp_client.urllib.request.urlopen", Mock(side_effect=_http_error(429, "")))
 
     client = LinchpinMcpClient("https://linchpin.example", "lpk_test")
 
@@ -135,9 +158,9 @@ def test_rate_limit_raises_a_clear_error(monkeypatch):
 
 
 def test_network_failure_is_wrapped_not_leaked(monkeypatch):
-    import requests
-
-    monkeypatch.setattr("mcp_client.requests.post", Mock(side_effect=requests.ConnectionError("boom")))
+    monkeypatch.setattr(
+        "mcp_client.urllib.request.urlopen", Mock(side_effect=urllib.error.URLError("connection refused"))
+    )
 
     client = LinchpinMcpClient("https://linchpin.example", "lpk_test")
 
@@ -147,11 +170,11 @@ def test_network_failure_is_wrapped_not_leaked(monkeypatch):
 
 def test_tool_level_error_result_raises(monkeypatch):
     responses = [
-        _mock_response(200, _INITIALIZE_SSE, headers={"Mcp-Session-Id": "sess-123"}),
-        _mock_response(200, ""),
-        _mock_response(200, _tool_call_sse({"status": "error", "summary": "bad input"}, is_error=True)),
+        _mock_success(200, _INITIALIZE_SSE, headers={"Mcp-Session-Id": "sess-123"}),
+        _mock_success(200, ""),
+        _mock_success(200, _tool_call_sse({"status": "error", "summary": "bad input"}, is_error=True)),
     ]
-    monkeypatch.setattr("mcp_client.requests.post", Mock(side_effect=responses))
+    monkeypatch.setattr("mcp_client.urllib.request.urlopen", Mock(side_effect=responses))
 
     client = LinchpinMcpClient("https://linchpin.example", "lpk_test")
 
@@ -161,11 +184,11 @@ def test_tool_level_error_result_raises(monkeypatch):
 
 def test_malformed_sse_body_raises_instead_of_crashing(monkeypatch):
     responses = [
-        _mock_response(200, _INITIALIZE_SSE, headers={"Mcp-Session-Id": "sess-123"}),
-        _mock_response(200, ""),
-        _mock_response(200, "not an sse body at all"),
+        _mock_success(200, _INITIALIZE_SSE, headers={"Mcp-Session-Id": "sess-123"}),
+        _mock_success(200, ""),
+        _mock_success(200, "not an sse body at all"),
     ]
-    monkeypatch.setattr("mcp_client.requests.post", Mock(side_effect=responses))
+    monkeypatch.setattr("mcp_client.urllib.request.urlopen", Mock(side_effect=responses))
 
     client = LinchpinMcpClient("https://linchpin.example", "lpk_test")
 
@@ -173,12 +196,12 @@ def test_malformed_sse_body_raises_instead_of_crashing(monkeypatch):
         client.call_tool("linchpin_classify_abc_xyz", [{"product_id": "A"}])
 
 
-def test_http_error_does_not_leak_raw_response_body_to_the_user(monkeypatch, caplog):
+def test_http_error_does_not_leak_raw_response_body_to_the_user(monkeypatch):
     """Regression test for a confirmed finding: untrusted server response text
     used to be embedded verbatim in the user-facing error message."""
     monkeypatch.setattr(
-        "mcp_client.requests.post",
-        Mock(return_value=_mock_response(500, "<script>alert('internal stack trace, secret path')</script>")),
+        "mcp_client.urllib.request.urlopen",
+        Mock(side_effect=_http_error(500, "<script>alert('internal stack trace, secret path')</script>")),
     )
 
     client = LinchpinMcpClient("https://linchpin.example", "lpk_test")
