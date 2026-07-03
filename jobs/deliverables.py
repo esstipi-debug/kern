@@ -13,6 +13,7 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from src.export import write_summary_csv
+from src.sanitize import defuse_formula
 
 from .inventory_optimization import JobReport, SkuRecommendation
 from .pricing import PricingRec, PricingReport
@@ -68,7 +69,7 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
         cell.fill = header_fill
     for ri, row in enumerate(rows, 2):
         for ci, h in enumerate(headers, 1):
-            ws.cell(row=ri, column=ci, value=row[h])
+            ws.cell(row=ri, column=ci, value=defuse_formula(row[h]))
     for ci, h in enumerate(headers, 1):
         width = max(len(h), *(len(str(row[h])) for row in rows)) if rows else len(h)
         ws.column_dimensions[get_column_letter(ci)].width = min(max(width + 2, 10), 32)
@@ -95,10 +96,10 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
         ("Periods per year", p["periods_per_year"]),
     ]
     for ri, (k, v) in enumerate(summary, 1):
-        kc = s.cell(row=ri, column=1, value=k)
+        kc = s.cell(row=ri, column=1, value=defuse_formula(k))
         if v == "" and k:
             kc.font = Font(bold=True)
-        s.cell(row=ri, column=2, value=v)
+        s.cell(row=ri, column=2, value=defuse_formula(v))
     s.column_dimensions["A"].width = 40
     s.column_dimensions["B"].width = 22
 
@@ -275,7 +276,7 @@ def write_pricing_excel(report: PricingReport, path: str | Path) -> Path:
         cell.fill = fill
     for ri, row in enumerate(rows, 2):
         for ci, h in enumerate(headers, 1):
-            ws.cell(row=ri, column=ci, value=row[h])
+            ws.cell(row=ri, column=ci, value=defuse_formula(row[h]))
     for ci, h in enumerate(headers, 1):
         width = max(len(h), *(len(str(row[h])) for row in rows)) if rows else len(h)
         ws.column_dimensions[get_column_letter(ci)].width = min(max(width + 2, 10), 28)

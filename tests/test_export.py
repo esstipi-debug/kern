@@ -52,3 +52,15 @@ def test_write_summary_csv_roundtrip(tmp_path):
     df = pd.read_csv(out)
     assert list(df["product_id"]) == ["SKU-A", "SKU-B"]
     assert list(df["q"]) == [100, 200]
+
+
+def test_write_summary_csv_defuses_formula_injection(tmp_path):
+    """A product_id starting with '=' must not survive as a live formula trigger
+    when the CSV is later opened in Excel (OWASP CSV injection)."""
+    payload = '=cmd|" /C calc"!A0'
+    rows = [{"product_id": payload, "q": 100}]
+    out = write_summary_csv(rows, tmp_path / "summary.csv")
+    df = pd.read_csv(out)
+    stored = df["product_id"].iloc[0]
+    assert stored != payload
+    assert stored == "'" + payload

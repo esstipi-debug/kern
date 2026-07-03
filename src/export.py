@@ -8,6 +8,8 @@ from typing import Any
 
 import pandas as pd
 
+from src.sanitize import defuse_formula
+
 
 def _flatten(value: Any, prefix: str = "") -> dict[str, Any]:
     if is_dataclass(value):
@@ -30,7 +32,8 @@ def write_summary_csv(
     """Write one row per SKU/scenario to CSV."""
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows).to_csv(out, index=False)
+    safe_rows = [{k: defuse_formula(v) for k, v in row.items()} for row in rows]
+    pd.DataFrame(safe_rows).to_csv(out, index=False)
     return out
 
 
