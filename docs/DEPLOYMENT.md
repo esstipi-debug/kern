@@ -34,7 +34,45 @@ The orchestrator and forecast cache are per-process, so scale with `--workers`
 `webapp/_jobs_output/` and swept after `JOBS_TTL_SECONDS` (1 h); mount it on a
 disk with room for transient deliverables, or front it with object storage.
 
-## 3. Reverse proxy (TLS, HSTS, body limits)
+## 2a. Quick path: Railway (recommended for the first public deploy)
+
+TLS, the public URL, and the reverse proxy are all handled by Railway's edge —
+step 3 (nginx/Caddy) is not needed on this path. A `railway.json` at the repo
+root already declares the build/start commands and a health check; this is the
+remaining setup, and it needs YOUR Railway account (the CLI can't authenticate
+non-interactively):
+
+```bash
+railway login                 # opens a browser — do this yourself
+railway init                  # or `railway link` if a project already exists
+railway up                    # first deploy; re-run after any push, or connect
+                               # the GitHub repo in the dashboard for auto-deploys
+```
+
+Then, in the Railway dashboard (no CLI equivalent for volumes yet):
+
+1. **Add a Volume** mounted at `/app/data` — this is where
+   `data/mcp_keys.sqlite3` (`src/mcp_keys.py`) and `data/writeback_ledger.sqlite3`
+   (`src/writeback_store.py`) live. Without it, both reset on every redeploy
+   (Railway's default filesystem is ephemeral) and every issued MCP key /
+   writeback audit record is lost.
+2. **Set environment variables** (Settings → Variables): everything in section 1
+   above, plus generate a real `LINCHPIN_API_KEY` and `LINCHPIN_APPROVAL_SECRET`
+   (`openssl rand -hex 24` for each — never reuse the examples from this doc).
+3. **Generate a public domain** (Settings → Networking → "Generate Domain") —
+   Railway issues a free `*.up.railway.app` subdomain with TLS already on; add a
+   custom domain later if you want one.
+4. Once live, the MCP server is reachable at `https://<your-app>.up.railway.app/mcp`
+   — issue client keys with `python examples/issue_mcp_key.py issue "<client name>"`
+   run **against the deployed instance's** key store (either run that script with
+   `LINCHPIN_MCP_KEYS_PATH` pointed at a synced copy, or `railway run python
+   examples/issue_mcp_key.py issue "..."` to execute it inside the deployed
+   environment directly, against the mounted Volume).
+
+`--workers` maps to Railway's `WEB_CONCURRENCY` env var (read by `railway.json`'s
+start command, defaults to 2 if unset) — bump it on a paid plan with more vCPU.
+
+## 3. Reverse proxy (TLS, HSTS, body limits) — non-Railway deploys only
 
 The app speaks plain HTTP and caps uploads at **25 MB** (`MAX_UPLOAD_BYTES`).
 Terminate TLS and mirror the body limit at the proxy so oversized requests are
