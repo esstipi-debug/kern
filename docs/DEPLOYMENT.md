@@ -25,22 +25,67 @@ missing control (no API key, no rate limit). With `LINCHPIN_REQUIRE_SECURE=1` it
 ## 2. Run it
 
 ```bash
-pip install -e ".[web]"
+pip install -e ".[web,mcp]"
 uvicorn webapp.app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
+
+`[mcp]` is required, not optional, despite the name: `webapp/app.py` unconditionally
+mounts the MCP server (`/mcp`) at import time, so `webapp.mcp_server`'s `from
+mcp.server.fastmcp import FastMCP` hard-fails without it — `pip install -e ".[web]"`
+alone raises `ModuleNotFoundError: No module named 'mcp'`. Verified locally by
+building a fresh venv with only `.[web]` and confirming the exact failure before
+this line was corrected (2026-07-03).
 
 The orchestrator and forecast cache are per-process, so scale with `--workers`
 (or multiple replicas) behind the proxy. Job output is written under
 `webapp/_jobs_output/` and swept after `JOBS_TTL_SECONDS` (1 h); mount it on a
 disk with room for transient deliverables, or front it with object storage.
 
-## 2a. Quick path: Railway (recommended for the first public deploy)
+## 2a. Quick path: Fly.io (recommended for the first public deploy)
 
-TLS, the public URL, and the reverse proxy are all handled by Railway's edge —
-step 3 (nginx/Caddy) is not needed on this path. A `railway.json` at the repo
-root already declares the build/start commands and a health check; this is the
-remaining setup, and it needs YOUR Railway account (the CLI can't authenticate
-non-interactively):
+TLS, the public URL, and the reverse proxy are all handled by Fly's edge —
+step 3 (nginx/Caddy) is not needed on this path. A `Dockerfile` + `fly.toml` at
+the repo root already declare the build, start command, health check, and a
+persistent Volume mount; this is the remaining setup, and it needs YOUR Fly.io
+account (the CLI can't authenticate non-interactively):
+
+```bash
+fly auth login                 # opens a browser — do this yourself
+fly launch --no-deploy         # detects the Dockerfile + fly.toml; either reuses
+                                # the app name/region placeholders below or prompts
+                                # for real ones (rename `app`/`primary_region` in
+                                # fly.toml first if you'd rather set them yourself)
+fly volumes create linchpin_data --size 1 --region <primary_region>
+fly secrets set LINCHPIN_API_KEY=$(openssl rand -hex 24) \
+                LINCHPIN_APPROVAL_SECRET=$(openssl rand -hex 24) \
+                LINCHPIN_RATE_LIMIT=60
+fly deploy
+```
+
+**Not independently verified step-by-step against a live Fly account this
+session** (no Fly CLI/account access here — only local `docker build`/`docker
+run` were used to confirm the image itself boots and serves `/api/health`,
+`/`, and `/mcp` correctly). Sanity-check `fly launch`'s actual current prompts
+against the comments in `fly.toml` before trusting it blindly — Fly's CLI/config
+format does evolve.
+
+Once live, the MCP server is reachable at `https://<your-app>.fly.dev/mcp` —
+issue client keys with `fly ssh console -C "python examples/issue_mcp_key.py
+issue '<client name>'"` (runs inside the deployed environment, against the
+mounted Volume at `/app/data`).
+
+`--workers` maps to the app's `WEB_CONCURRENCY` env var (read by the
+`Dockerfile`'s `CMD`, defaults to 2 if unset) — bump it on a paid plan with more
+vCPU, or scale `min_machines_running`/add regions in `fly.toml`.
+
+## 2b. Alternative: Railway
+
+Kept for reference in case Railway becomes viable again later (e.g. a new
+account/trial) — the same Fly-vs-Railway tradeoffs from `docs/DEPLOYMENT.md`'s
+history still apply (both handle TLS/the public URL at their edge; Railway's
+CLI setup is marginally simpler, Fly's free allowance doesn't expire the way a
+time-limited trial does). A `railway.json` at the repo root still declares the
+build/start commands and a health check:
 
 ```bash
 railway login                 # opens a browser — do this yourself
@@ -72,7 +117,7 @@ Then, in the Railway dashboard (no CLI equivalent for volumes yet):
 `--workers` maps to Railway's `WEB_CONCURRENCY` env var (read by `railway.json`'s
 start command, defaults to 2 if unset) — bump it on a paid plan with more vCPU.
 
-## 3. Reverse proxy (TLS, HSTS, body limits) — non-Railway deploys only
+## 3. Reverse proxy (TLS, HSTS, body limits) — non-Fly/Railway deploys only
 
 The app speaks plain HTTP and caps uploads at **25 MB** (`MAX_UPLOAD_BYTES`).
 Terminate TLS and mirror the body limit at the proxy so oversized requests are

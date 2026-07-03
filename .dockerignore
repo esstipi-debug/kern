@@ -1,0 +1,37 @@
+# Dev/build tooling not needed to run the webapp.
+.venv/
+.git/
+.github/
+.claude/
+.cursor/
+.gstack/
+.superpowers/
+.pytest_cache/
+.ruff_cache/
+.coverage
+*.egg-info/
+uv.lock
+
+# Never bake local secrets or dev-only state into the image.
+.env
+data/*.sqlite3
+
+# Large, gitignored, or dev-only data - not needed to serve requests.
+data/kaggle/
+data/dataset_info.json
+data/linchpin_sft_dataset.json
+graphify-out/
+knowledge/scm-books-rebuild/
+knowledge/graph-memory/
+deliverables/
+webapp/_jobs_output/
+webapp/_leads/
+output/
+
+# Not read by the running app.
+tests/
+docs/
+case-studies/
+power-bi/
+excel-templates/
+scripts/

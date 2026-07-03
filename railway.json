@@ -2,7 +2,7 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "pip install -e \".[web]\""
+    "buildCommand": "pip install -e \".[web,mcp]\""
   },
   "deploy": {
     "startCommand": "uvicorn webapp.app:app --host 0.0.0.0 --port $PORT --workers ${WEB_CONCURRENCY:-2}",
