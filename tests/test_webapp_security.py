@@ -87,3 +87,59 @@ def test_rate_limit_disabled_by_default():
 def test_no_cors_header_by_default():
     r = client.get("/api/portfolio", headers={"Origin": "https://evil.example"})
     assert "access-control-allow-origin" not in {k.lower() for k in r.headers}
+
+
+def _make_job_output(name: str) -> tuple:
+    from webapp.app import JOBS_OUTPUT_DIR
+
+    job_dir = JOBS_OUTPUT_DIR / name
+    job_dir.mkdir(parents=True, exist_ok=True)
+    deliverable = job_dir / "report.csv"
+    deliverable.write_text("a,b\n1,2\n", encoding="utf-8")
+    return job_dir, deliverable
+
+
+def test_jobs_output_requires_api_key_when_configured(monkeypatch):
+    """A deliverable's download URL is only as safe as an unguessable tempfile
+    dir name today - when an operator DOES configure LINCHPIN_API_KEY, that same
+    key (required to run POST /api/jobs) must also gate fetching the result."""
+    job_dir, deliverable = _make_job_output("auth_test_job_gated")
+    try:
+        monkeypatch.setattr(security, "API_KEY", "s3cret")
+        url = "/jobs-output/auth_test_job_gated/report.csv"
+        assert client.get(url).status_code == 401
+        assert client.get(url, headers={"X-API-Key": "nope"}).status_code == 401
+        assert client.get(url, headers={"X-API-Key": "s3cret"}).status_code == 200
+    finally:
+        deliverable.unlink(missing_ok=True)
+        job_dir.rmdir()
+
+
+def test_jobs_output_401_still_carries_security_headers(monkeypatch):
+    """Regression guard: jobs_output_auth_middleware must be registered so that
+    security_headers_middleware stays the outermost layer - otherwise its early
+    401 short-circuit bypasses the headers middleware entirely (caught in review:
+    a reversed registration order let a 401 through with zero hardening headers)."""
+    job_dir, deliverable = _make_job_output("auth_test_job_headers")
+    try:
+        monkeypatch.setattr(security, "API_KEY", "s3cret")
+        r = client.get("/jobs-output/auth_test_job_headers/report.csv")
+        assert r.status_code == 401
+        assert r.headers["X-Content-Type-Options"] == "nosniff"
+        assert r.headers["X-Frame-Options"] == "DENY"
+        assert "Content-Security-Policy" in r.headers
+    finally:
+        deliverable.unlink(missing_ok=True)
+        job_dir.rmdir()
+
+
+def test_jobs_output_open_when_no_key_set():
+    """Shipped default (no LINCHPIN_API_KEY): unchanged, unauthenticated access -
+    this only tightens behavior once an operator opts into API-key auth."""
+    job_dir, deliverable = _make_job_output("auth_test_job_open")
+    try:
+        url = "/jobs-output/auth_test_job_open/report.csv"
+        assert client.get(url).status_code == 200
+    finally:
+        deliverable.unlink(missing_ok=True)
+        job_dir.rmdir()
