@@ -1,15 +1,14 @@
 # Linchpin — Session Handoff
 
-**Date:** 2026-07-03 · **Repo:** `esstipi-debug/linchpin` (now **private**) · **Branch:** `main` @ `334e954` (PRs up to **#100**)
+**Date:** 2026-07-03 · **Repo:** `esstipi-debug/linchpin` (now **private**) · **Branch:** `main` @ `9e33e67` (PRs up to **#101**)
 **Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
-**Resume here — THE APP IS LIVE, BUT THE PRODUCTION DEPLOY IS ONE FIX BEHIND `main`.**
-`https://linchpin.fly.dev` is up (`/api/health`, `/` both fine), but PR #100
-(merged, `334e954`) fixes 3 bugs that mean **no real MCP client has ever
-successfully completed a tool call against the deployed server** — this was
-found by actually driving a real MCP client round trip through the mounted
-app, something no prior session had done (earlier "verified" checks only
-covered `/api/health`, `/`, and that `/mcp` 307-redirected — never an
-authenticated `initialize`+`tools/call`). The 3 bugs, all fixed on `main` now:
+**Resume here — THE MCP SERVER ACTUALLY WORKS NOW, GENUINELY VERIFIED (not just "deploy succeeded").**
+PR #100 (merged, `334e954`) fixed 3 compounding bugs that meant **no real MCP
+client had ever successfully completed a tool call against the deployed
+server**, found by actually driving a real MCP client round trip through the
+mounted app — something no prior session had done (earlier "verified" checks
+only covered `/api/health`, `/`, and that `/mcp` 307-redirected, never an
+authenticated `initialize`+`tools/call`):
 1. `app.mount()` doesn't propagate ASGI lifespan into the sub-app -> the
    FastMCP session manager's task group never started -> every real call past
    auth 500'd ("Task group is not initialized").
@@ -21,14 +20,17 @@ authenticated `initialize`+`tools/call`). The 3 bugs, all fixed on `main` now:
    regardless of a valid key. Fixed with `LINCHPIN_MCP_ALLOWED_HOSTS` (new env
    var, see `docs/DEPLOYMENT.md`).
 
-**Production has NOT been redeployed with this fix yet** — that needs the
-operator's Fly credentials (not available in the session that found/fixed
-this). **The actual next action, before anything else in §3.1 below:**
-`fly deploy --app linchpin` from a fresh `main` checkout, AND
-`fly secrets set LINCHPIN_MCP_ALLOWED_HOSTS=linchpin.fly.dev`, then re-verify
-with a freshly issued key (`examples/issue_mcp_key.py`) before trusting the
-live server or listing it anywhere public. Listing a still-broken server on
-Glama/Smithery/PulseMCP would burn the first impression with real visitors.
+**Production HAS been redeployed with this fix (same day, 2026-07-03)** —
+user supplied a fresh Fly API token in chat (handled per
+[[secret-pasted-in-chat-handling]]: saved locally, never echoed, deleted after
+use), staged `LINCHPIN_MCP_ALLOWED_HOSTS=linchpin.fly.dev`, ran `fly deploy
+--app linchpin`, then **issued a real production MCP key
+(`fly ssh console -C "python examples/issue_mcp_key.py issue ..."`) and ran an
+actual `initialize`+`tools/call` round trip against
+`https://linchpin.fly.dev/mcp/`** with the official `mcp` SDK client — got a
+real `abc_xyz` classification result back, then revoked the throwaway test
+key. **Nothing blocks §3.1's MCP-directory listings anymore** — genuinely
+confirmed, not assumed.
 
 Earlier in the same overall effort (PR #99, `9101c7a`, already on `main`
 before this): `WEB_CONCURRENCY=1` (2 uvicorn workers OOM-killed the 512mb VM)
@@ -97,36 +99,22 @@ split, AI-agent directories, GEO, a portfolio site vs. Upwork/Fiverr commission)
 
 ### 3.1 [explicitly requested by the user] Publish the MCP server on free directories
 
-**Do this only AFTER redeploying with PR #100's fix (see the top of this file)
-and re-verifying a real authenticated tool call against production** — the
-"verified end-to-end" claim below was wrong: it checked `/api/health`, `/`,
-and that `/mcp` 307-redirected, but never a real client round trip, and a real
-round trip 500s/404s/421s on the deployed code today. How the deploy itself
-got there (this part is still accurate): the user pasted a Fly API token directly in chat (flagged as
-now-exposed, worth rotating); that token was used to install `flyctl`
-non-interactively, create the `linchpin` app + a 1GB Volume in the `personal`
-org (region `iad`), stage fresh secrets, and run `fly deploy`. Two real
-production bugs surfaced and were fixed live (see top of file + `fly.toml`
-comments): `WEB_CONCURRENCY=1` (2 workers OOM'd a 512mb VM) and the Volume
-mount moved from `/app/data` to `/data` (it was shadowing baked-in sample
-CSVs). **`flyctl` itself is now installed at `C:\Users\<user>\.fly\bin\flyctl.exe`**
-on this machine (wasn't before) — a fresh session doesn't need to reinstall it.
+**Nothing blocks this anymore — production is genuinely verified working
+end-to-end as of 2026-07-03 (see the top of this file).** `flyctl` itself is
+installed at `C:\Users\<user>\.fly\bin\flyctl.exe` on this machine (not on
+PATH by default — invoke it by that full path, or the equivalent on whatever
+machine a future session runs on) — a fresh session doesn't need to reinstall
+it, only a fresh `FLY_API_TOKEN` when the operator provides one (tokens are
+never persisted between sessions, by design).
 
 **Remaining steps, in order:**
 
-1. **Merge the pending bugfix branch first** (see `git branch`/`gh pr list` for
-   its current name/PR number — it fixes `fly.toml`'s `WEB_CONCURRENCY` and
-   Volume mount path to match what's actually live) **before running `fly
-   deploy` again from `main`** — deploying a stale `main` would silently
-   reintroduce the OOM crash-loop and the shadowed-sample-CSVs bug, since
-   those fixes currently exist only as live Fly config + an uncommitted/PR'd
-   `fly.toml` change, not yet on `main`.
-2. **Issue an MCP key for a real client** once one exists —
+1. **Issue an MCP key for a real client** once one exists —
    `fly ssh console -C "python examples/issue_mcp_key.py issue '<client
    name>'" --app linchpin` (runs inside the deployed environment, against the
    mounted Volume at `/data`). Not done yet — no real paying/trial client to
    issue one for as of this write-up.
-3. **Register with the official MCP registry**, then list/claim on the
+2. **Register with the official MCP registry**, then list/claim on the
    directories researched previously (see [[linchpin-monetization-plan]] §5
    for the real 2026 numbers): **Glama** (~37-51k servers indexed), **Smithery**
    (~7k+, app-store UI, hosted remote servers), **PulseMCP** (~12-18k+,
