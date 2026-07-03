@@ -9,6 +9,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from src.sanitize import defuse_formula
+
 HEADER_FILL = PatternFill("solid", fgColor="1F4E79")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
 TITLE_FONT = Font(bold=True, size=12)
@@ -28,7 +30,7 @@ def _write_table(ws, start_row: int, headers: list[str], rows: list[list[Any]]) 
         cell.font = HEADER_FONT
     for r_idx, row in enumerate(rows, start_row + 1):
         for c_idx, val in enumerate(row, 1):
-            ws.cell(row=r_idx, column=c_idx, value=val)
+            ws.cell(row=r_idx, column=c_idx, value=defuse_formula(val))
     return start_row + len(rows) + 2
 
 
@@ -102,9 +104,9 @@ def write_analysis_workbook(
             node_rows,
         )
         ws_gsm.cell(row=next_row, column=1, value="Total holding cost")
-        ws_gsm.cell(row=next_row, column=2, value=gsm.get("total_holding_cost"))
+        ws_gsm.cell(row=next_row, column=2, value=defuse_formula(gsm.get("total_holding_cost")))
         ws_gsm.cell(row=next_row + 1, column=1, value="Echelon S levels")
-        ws_gsm.cell(row=next_row + 1, column=2, value=str(gsm.get("echelon_order_up_to")))
+        ws_gsm.cell(row=next_row + 1, column=2, value=defuse_formula(str(gsm.get("echelon_order_up_to"))))
         _autosize(ws_gsm)
 
     if simulation:

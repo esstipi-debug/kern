@@ -24,3 +24,38 @@ def test_write_analysis_workbook_sheets(tmp_path: Path):
     assert "Formulas" in wb.sheetnames
     assert "GSM" in wb.sheetnames
     assert wb["Summary"]["B5"].value == 239
+
+
+def test_write_analysis_workbook_defuses_formula_injection(tmp_path: Path):
+    """A result value starting with '=' must not be written as a live formula
+    (OWASP CSV/Excel injection) - it must land as inert text when opened."""
+    payload = '=cmd|" /C calc"!A0'
+    path = tmp_path / "inj.xlsx"
+    write_analysis_workbook(
+        path,
+        product_id="SKU-A",
+        parameters={"D": 1000, "h": 1.75},
+        results={"Q*": payload},
+    )
+    wb = load_workbook(path)
+    cell = wb["Summary"]["B5"]
+    assert cell.value != payload
+    assert cell.data_type != "f"
+
+
+def test_write_analysis_workbook_defuses_formula_injection_in_gsm_summary(tmp_path: Path):
+    """The GSM sheet's total-holding-cost/echelon-levels rows are written via
+    direct ws_gsm.cell() calls, bypassing _write_table() - same guard needed."""
+    payload = '=cmd|" /C calc"!A0'
+    path = tmp_path / "inj_gsm.xlsx"
+    write_analysis_workbook(
+        path,
+        product_id="SKU-A",
+        parameters={},
+        results={},
+        gsm={"nodes": [], "total_holding_cost": payload, "echelon_order_up_to": (1, 2, 3)},
+    )
+    wb = load_workbook(path)
+    cell = wb["GSM"].cell(row=5, column=2)
+    assert cell.value != payload
+    assert cell.data_type != "f"

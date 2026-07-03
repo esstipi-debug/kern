@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from openpyxl import load_workbook
 
 from jobs import deliverables, qa
 from jobs.intake import detect_columns, normalize, prepare
@@ -101,6 +102,27 @@ def test_deliverables_written(tmp_path):
     assert "Methodology" in md
 
 
+def test_deliverables_defuse_formula_injection_in_product_id(tmp_path):
+    """A CSV-uploaded product_id like '=cmd|...' must not survive into the
+    client's .xlsx as a live formula (OWASP CSV/Excel injection)."""
+    payload = '=cmd|" /C calc"!A0'
+    demand = prepare(PORTFOLIO)
+    demand.loc[demand["product_id"] == "SKU-A", "product_id"] = payload
+    report = run(demand, budget=40000)
+    written = deliverables.write_all(report, tmp_path, client="Acme")
+
+    wb = load_workbook(written["excel"])
+    ws = wb["Recommendations"]
+    col = [c.value for c in ws[1]].index("product id") + 1
+    values = [ws.cell(row=r, column=col).value for r in range(2, ws.max_row + 1)]
+    assert payload not in values
+    assert any(v == "'" + payload for v in values)
+
+    df = pd.read_csv(written["csv"])
+    assert payload not in set(df["product_id"])
+    assert "'" + payload in set(df["product_id"])
+
+
 # ---- pricing playbook --------------------------------------------------------
 
 def test_pricing_playbook_runs_and_passes_qa():
@@ -180,3 +202,30 @@ def test_pricing_deliverables_written(tmp_path):
     md = written["report"].read_text(encoding="utf-8")
     assert "Price Optimization — Acme" in md
     assert "Elasticity" in md
+
+
+def test_pricing_deliverables_defuse_formula_injection_in_product_id(tmp_path):
+    """Same OWASP CSV/Excel injection guard, for the pricing deliverable path."""
+    payload = '=cmd|" /C calc"!A0'
+    rng = np.random.default_rng(9)
+    prices = np.linspace(8, 24, 30)
+    quantities = 8000 * prices ** (-2.0) * rng.normal(1.0, 0.02, size=prices.size)
+    demand = pd.DataFrame({
+        "product_id": [payload] * len(prices),
+        "price": prices,
+        "quantity": quantities,
+        "cost": [5.0] * len(prices),
+    })
+    report = run_pricing(demand)
+    written = deliverables.write_pricing_all(report, tmp_path, client="Acme")
+
+    wb = load_workbook(written["excel"])
+    ws = wb["Price recommendations"]
+    col = [c.value for c in ws[1]].index("product id") + 1
+    values = [ws.cell(row=r, column=col).value for r in range(2, ws.max_row + 1)]
+    assert payload not in values
+    assert any(v == "'" + payload for v in values)
+
+    df = pd.read_csv(written["csv"])
+    assert payload not in set(df["product_id"])
+    assert "'" + payload in set(df["product_id"])
