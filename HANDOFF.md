@@ -19,7 +19,40 @@ behalf. Prepared `server.json` (PR #104) for the **official MCP registry**
 instead, which all three read from - the operator still needs to run
 `mcp-publisher login github` + `mcp-publisher publish` themselves (~2 min,
 real GitHub OAuth, can't be done by an agent). See [[linchpin-monetization-plan]]
-§5 for the full finding.
+§5 for the full finding. Also created `case-studies/UPWORK_FIVERR_PROFILE.md`
+on an unmerged branch (`content/upwork-fiverr-positioning`, pushed, no PR yet -
+draft for the user to review) - Upwork/Fiverr gig-landing positioning, service
+packages mapped to the real tool registry, pricing anchored to the researched
+comparables.
+
+**Same-day, also: the code graph (`graphify-out/`) was refreshed** via
+`/graphify --update` after 336 of 457 files had changed since the last build
+(2026-07-02). Caught and fixed a real bug in the process, worth knowing before
+running `--update` again on a large batch of changed files: `build_merge()`'s
+`prune_sources` param already auto-replaces re-extracted files' stale nodes
+internally (matching by `source_file`) in the installed graphify version
+(0.9.5) - passing `changed` files into `prune_sources` too (as the skill's own
+`references/update.md` instructs, written for an older version) double-prunes
+and strips the freshly-inserted nodes as well, silently collapsing the graph.
+Caught by graphify's own shrink-safety check before anything was written to
+disk; re-ran with `prune_sources` limited to genuinely deleted files only.
+Final graph: 5143 nodes, 10991 edges, 300 communities (all labeled). Also
+reinstalled the `graphifyy` uv tool from scratch (`uv tool install --reinstall
+--force graphifyy`) to fix a broken `tree_sitter._binding` import that blocked
+AST extraction entirely - a Windows reparse-point deletion error required
+PowerShell's `Remove-Item -Recurse -Force` on the tool venv dir first, plain
+`rm`/`uv pip install --reinstall` couldn't clear it.
+
+**Pending exploration, left for a future session/window to pick up**: the
+single most interesting question this refreshed graph can answer -
+`src/guided.py` has the highest betweenness centrality in the whole graph
+(0.112) and bridges 47 distinct communities (from Odoo connector tests to
+voice doc-reader to risk-assessment deliverables) - i.e. it's the de facto
+connective tissue of the entire system, not just one module among many. Trace
+it with `graphify query "Why does src/guided.py connect so many different
+communities - what is the never-unprotected guided-execution contract and
+which subsystems actually depend on it?"` (or open `/graphify` and ask
+interactively) - not run yet this session, the user asked to defer it.
 
 **Resume here — THE MCP SERVER ACTUALLY WORKS NOW, GENUINELY VERIFIED (not just "deploy succeeded").**
 PR #100 (merged, `334e954`) fixed 3 compounding bugs that meant **no real MCP
