@@ -1,29 +1,39 @@
 # Fly.io app config for the Inventory Planner webapp + read-only MCP server.
 #
-# `app`/`primary_region` below are placeholders - `fly launch` (run from this
-# repo, picks up the Dockerfile + this file automatically) will either offer to
-# reuse them or prompt you for real ones; alternatively run `fly apps create
-# <your-app-name>` first and edit `app` below to match before `fly deploy`.
-# Not independently verified step-by-step against a live Fly account this
-# session (no Fly CLI/account access here) - sanity-check this file against
-# `fly launch`'s actual current prompts before trusting it blindly.
+# This config is now LIVE and verified end-to-end (2026-07-03) against the
+# real app below (https://linchpin.fly.dev) - `app` is not a placeholder
+# anymore. If you're forking this for your own deploy, app names are globally
+# unique on Fly.io, so change it first: `fly apps create <your-app-name>`,
+# then edit `app` below to match before `fly deploy`.
 
-app = "linchpin"                # CHANGE ME: must be globally unique on Fly.io
-primary_region = "iad"          # CHANGE ME: pick the region closest to your users
+app = "linchpin"
+primary_region = "iad"          # CHANGE ME if deploying your own copy elsewhere
 
 [build]
 
 [env]
   LINCHPIN_ENV = "production"
   LINCHPIN_LOG_JSON = "1"
-  LINCHPIN_MCP_KEYS_PATH = "/app/data/mcp_keys.sqlite3"
+  LINCHPIN_MCP_KEYS_PATH = "/data/mcp_keys.sqlite3"
+  # 2 workers OOM-killed a 512mb VM within ~10-25s of boot (each uvicorn worker
+  # loads its own copy of pandas/numpy/scipy + the orchestrator + the L3
+  # knowledge graph - not shared across worker processes). Confirmed live: 1
+  # worker is stable indefinitely at 512mb. Bump [[vm]] memory below (real,
+  # small recurring cost) before raising this back above 1.
+  WEB_CONCURRENCY = "1"
 
-# Persists the two SQLite stores (MCP key store + writeback audit ledger)
-# across redeploys - Fly Machines' root filesystem is otherwise ephemeral.
-# Create once: `fly volumes create linchpin_data --size 1 --region <primary_region>`
+# Mounted at /data, NOT /app/data - the app's own `data/` directory (baked into
+# the image at build time) ships small static sample CSVs the webapp reads at
+# startup (data/sample_demand_portfolio.csv etc.). A Fly Volume mount shadows
+# whatever's already on disk at its destination, so mounting it at /app/data
+# would hide those files entirely and crash the app (confirmed live: first
+# attempt did exactly this, FileNotFoundError on sample_demand_portfolio.csv).
+# Persists the MCP key store across redeploys - Fly Machines' root filesystem
+# is otherwise ephemeral. Create once:
+# `fly volumes create linchpin_data --size 1 --region <primary_region>`
 [[mounts]]
   source = "linchpin_data"
-  destination = "/app/data"
+  destination = "/data"
 
 [http_service]
   internal_port = 8000

@@ -51,28 +51,42 @@ account (the CLI can't authenticate non-interactively):
 
 ```bash
 fly auth login                 # opens a browser — do this yourself
-fly launch --no-deploy         # detects the Dockerfile + fly.toml; either reuses
-                                # the app name/region placeholders below or prompts
-                                # for real ones (rename `app`/`primary_region` in
-                                # fly.toml first if you'd rather set them yourself)
-fly volumes create linchpin_data --size 1 --region <primary_region>
+fly apps create <your-app-name> --org personal   # app names are globally unique
+fly volumes create linchpin_data --size 1 --region iad
 fly secrets set LINCHPIN_API_KEY=$(openssl rand -hex 24) \
                 LINCHPIN_APPROVAL_SECRET=$(openssl rand -hex 24) \
                 LINCHPIN_RATE_LIMIT=60
-fly deploy
+fly deploy --app <your-app-name>
 ```
 
-**Not independently verified step-by-step against a live Fly account this
-session** (no Fly CLI/account access here — only local `docker build`/`docker
-run` were used to confirm the image itself boots and serves `/api/health`,
-`/`, and `/mcp` correctly). Sanity-check `fly launch`'s actual current prompts
-against the comments in `fly.toml` before trusting it blindly — Fly's CLI/config
-format does evolve.
+**Verified end-to-end against a live Fly account (2026-07-03)** — this
+whole path was actually run, not just written down, and two real bugs only
+showed up at that point (fixed in `fly.toml`, described here so a future
+redeploy doesn't reintroduce them):
+
+1. **2 workers OOM-killed a 512mb VM** within ~10-25s of boot, in a crash-restart
+   loop (`fly logs` showed `Out of memory: Killed process ... (uvicorn)`).
+   Each uvicorn worker loads its own copy of pandas/numpy/scipy plus the
+   orchestrator and the L3 knowledge graph — nothing is shared across worker
+   processes, so memory cost scales linearly with `--workers`. Fixed:
+   `WEB_CONCURRENCY=1` in `fly.toml`'s `[env]` (confirmed stable indefinitely
+   at 512mb with 1 worker). To run more than 1 worker, bump `[[vm]] memory` in
+   `fly.toml` first (a real, small recurring cost beyond the free allowance) —
+   don't just raise `WEB_CONCURRENCY` without also doing that.
+2. **Mounting the Volume at `/app/data` shadowed the small static sample CSVs
+   baked into the image at that same path** (`data/sample_demand_portfolio.csv`
+   etc., read by the webapp at startup) — a Fly Volume mount, like any bind
+   mount, hides whatever was already on disk at its destination. The app
+   crashed with `FileNotFoundError`. Fixed: the Volume mounts at `/data`
+   instead (a path with nothing else on it), and `LINCHPIN_MCP_KEYS_PATH`
+   points there (`/data/mcp_keys.sqlite3`). If you add other paths that need
+   to persist AND already ship data in the image, give them their own
+   Volume-only path too — don't reuse a path the image also writes to.
 
 Once live, the MCP server is reachable at `https://<your-app>.fly.dev/mcp` —
 issue client keys with `fly ssh console -C "python examples/issue_mcp_key.py
-issue '<client name>'"` (runs inside the deployed environment, against the
-mounted Volume at `/app/data`).
+issue '<client name>'" --app <your-app-name>` (runs inside the deployed
+environment, against the mounted Volume at `/data`).
 
 `--workers` maps to the app's `WEB_CONCURRENCY` env var (read by the
 `Dockerfile`'s `CMD`, defaults to 2 if unset) — bump it on a paid plan with more
