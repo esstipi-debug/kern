@@ -1,0 +1,61 @@
+<section style="max-width: 760px; margin: 0 auto; font-family: -apple-system, Helvetica, Arial, sans-serif; color: #333;">
+
+  <h1 style="font-size: 28px; margin-bottom: 4px;">Linchpin Inventory AI</h1>
+  <p style="font-size: 16px; color: #666; margin-top: 0;">
+    AI-generated reorder policy recommendations from your own confirmed sales history &mdash; a free, read-only dry run, right inside Odoo.
+  </p>
+
+  <hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;"/>
+
+  <h2 style="font-size: 20px;">What it does</h2>
+  <p>
+    One click, under Inventory &gt; Products &gt; <strong>Linchpin Inventory Analysis</strong>, sends your
+    confirmed sale order history to Linchpin's cloud analysis service and shows back, per SKU:
+  </p>
+  <ul>
+    <li>A demand forecast fit to your actual sales pattern</li>
+    <li>A recommended reorder point and reorder quantity ((s,Q) / (R,S) policy)</li>
+    <li>A safety-stock target at your chosen service level</li>
+    <li>A budget-fit inventory investment estimate</li>
+  </ul>
+  <p>
+    Nothing is written back to Odoo. This module only <em>displays</em> a recommendation for a human to review
+    and act on &mdash; it never touches your stock levels, reorder points, or purchase orders.
+  </p>
+
+  <h2 style="font-size: 20px;">What data is sent, and where</h2>
+  <p>
+    <strong>This module requires an external service to run.</strong> For each confirmed sale order line in the
+    history window you choose, it sends: the product's SKU (or internal ID if no SKU is set), order date, quantity
+    sold, unit cost, your primary supplier's lead time in days, and your company name &mdash; over HTTPS to
+    Linchpin's cloud service, using the API key you enter in Settings &gt; Inventory &gt; Linchpin. No stock or
+    on-hand quantities are ever read or sent. The exact same disclosure is shown again inside the wizard itself
+    before you run an analysis, not just here.
+  </p>
+
+  <h2 style="font-size: 20px;">Requirements</h2>
+  <p>
+    Because this module includes Python code that calls an external service, it runs on <strong>Odoo.sh (private
+    repository) or an on-premise installation</strong>. It is not compatible with Odoo Online. Depends on the
+    standard Inventory (<code>stock</code>) and Sales (<code>sale</code>) apps.
+  </p>
+  <p>
+    You'll also need a Linchpin API key, issued per client. A dry run like this one is free to try &mdash; enter
+    your key in Settings &gt; Inventory &gt; Linchpin to get started.
+  </p>
+
+  <h2 style="font-size: 20px;">Access control</h2>
+  <p>
+    This module adds its own <strong>Linchpin User</strong> permission group, separate from the standard Inventory
+    Administrator role. Nobody has it by default &mdash; grant it explicitly, per user, from Settings &gt; Users,
+    since running an analysis means sharing product, cost, and sales data with an external service.
+  </p>
+
+  <h2 style="font-size: 20px;">This is a dry run</h2>
+  <p>
+    This module is a free, read-only lead-in to Linchpin's full inventory optimization service &mdash;
+    multi-echelon planning, DDMRP, safe-staged writeback straight into Odoo's own reorder points and draft
+    purchase orders, and more &mdash; available directly, outside the Odoo Apps Store.
+  </p>
+
+</section>
