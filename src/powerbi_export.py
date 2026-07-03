@@ -22,6 +22,7 @@ from src.multi_echelon import optimize_serial_gsm, simulate_serial_gsm
 from src.newsvendor import muffin_pmf, optimal_newsvendor_discrete
 from src.policies import continuous_review_sq, periodic_review_rs
 from src.risk_period import demand_over_risk_period
+from src.sanitize import defuse_formula
 from src.simulation import simulate_rs_policy, simulate_sq_policy
 
 
@@ -40,8 +41,11 @@ class PowerBIDatasetPaths:
 
 
 def _write(df: pd.DataFrame, path: Path) -> None:
+    """Single CSV sink for this module - every export funnels through here, so
+    defusing formula-injection payloads (e.g. a malicious product_id) once here
+    covers all of them (mirrors src/export.py::write_summary_csv())."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(path, index=False)
+    df.apply(lambda col: col.map(defuse_formula)).to_csv(path, index=False)
 
 
 def analyze_product(
