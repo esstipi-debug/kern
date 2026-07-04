@@ -50,7 +50,11 @@ human — that contract is what `documentation/operator/` documents.
 Never mutate a system of record blindly: stage a dry-run `Changeset`, classify by
 risk tier (`read`/`reversible`/`irreversible`), gate on a time-boxed `Approval`
 (900 s TTL), apply idempotently, `rollback()`-able. Irreversible always needs
-explicit approval.
+explicit approval. Real connectors implementing the store surface: Odoo
+(`src/connectors/odoo.py`) and client Excel workbooks (`src/connectors/excel.py`
+— drift check vs the live file, atomic temp+replace write, per-commit file
+backup, cell-exact rollback; `.xlsm` macros preserved via `keep_vba`, never
+executed).
 
 ### Client parameter profiles (`src/client_profile.py`)
 Per-client durable cost/capacity parameters (holding rate, order cost, service
