@@ -221,3 +221,21 @@ def test_commit_unknown_sheet_fails_closed(planilla):
                          risk_tier=writeback.TIER_REVERSIBLE, idempotency_key="ghost")
     with pytest.raises(ExcelWritebackError, match="Hoja Fantasma"):
         writeback.apply(store, cs, approval=writeback.approve(cs, "operator"))
+
+
+def test_resolve_row_edits_duplicate_row_key_fails_closed(planilla):
+    wb = load_workbook(planilla)
+    wb[SHEET]["A6"] = "SKU-001"  # duplicate of row 4's key
+    wb.save(planilla)
+    store = ExcelWorkbookStore(planilla)
+    with pytest.raises(ExcelWritebackError, match="duplicate row key"):
+        store.resolve_row_edits(SHEET, "Codigo", {"SKU-001": {"Stock": 1}})
+
+
+def test_colliding_sanitized_keys_get_distinct_backups(planilla):
+    # "rop 1" and "rop-1" sanitize to the same safe key; the content-hash suffix
+    # must keep their backups separate.
+    store = ExcelWorkbookStore(planilla)
+    _approved_apply(store, _stage(store, {"D5": 90}, key="rop 1"))
+    _approved_apply(store, _stage(store, {"D4": 60}, key="rop-1"))
+    assert len(list(planilla.parent.glob("*.linchpin-backup*"))) == 2

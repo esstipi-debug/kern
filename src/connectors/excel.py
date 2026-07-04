@@ -157,9 +157,12 @@ class ExcelWorkbookStore:
             for c in changeset.changes
         )
 
+        # content_hash suffix disambiguates two changesets whose keys sanitize to
+        # the same _safe_key (e.g. "rop 1" vs "rop-1") — neither overwrites the
+        # other's backup.
         backup = self._backup_dir / (
             f"{self._path.stem}.{_safe_key(changeset.idempotency_key)}"
-            f".linchpin-backup{self._path.suffix}"
+            f"-{changeset.content_hash[:8]}.linchpin-backup{self._path.suffix}"
         )
         self._backup_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(self._path, backup)
@@ -222,11 +225,20 @@ class ExcelWorkbookStore:
             )
 
         key_letter = headers[key_column]
-        row_by_key = {
-            str(ws[f"{key_letter}{r}"].value).strip(): r
-            for r in range(header_row + 1, ws.max_row + 1)
-            if ws[f"{key_letter}{r}"].value is not None
-        }
+        row_by_key: dict[str, int] = {}
+        for r in range(header_row + 1, ws.max_row + 1):
+            raw = ws[f"{key_letter}{r}"].value
+            if raw is None:
+                continue
+            key = str(raw).strip()
+            if key in row_by_key:
+                # Ambiguous target: writing "the" row for this key could hit either.
+                # Fail closed — the operator dedupes (or uses cell addressing) first.
+                raise ExcelWritebackError(
+                    f"duplicate row key {key!r} under column {key_column!r} in {sheet!r} "
+                    f"(rows {row_by_key[key]} and {r}) — resolve the duplicate before writing"
+                )
+            row_by_key[key] = r
 
         cells: dict[str, object] = {}
         for row_key, fields in updates.items():
