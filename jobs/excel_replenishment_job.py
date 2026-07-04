@@ -257,8 +257,14 @@ def prepare(data_path: str | None, params: dict | None = None) -> dict:
 
     order_exists = "order" in cols
     order_letter = cols["order"] if order_exists else get_column_letter(ws.max_column + 1)
+    # An optional persistent ledger makes idempotency + rollback survive across
+    # processes - what the operator apply CLI needs (in-memory audit dies with it).
+    ledger = None
+    if params.get("ledger_path"):
+        from src.writeback_store import SqliteAuditLedger
+        ledger = SqliteAuditLedger(params["ledger_path"])
     return {
-        "store": ExcelWorkbookStore(path),
+        "store": ExcelWorkbookStore(path, ledger=ledger),
         "filename": path.name,
         "sheet": sheet,
         "header_row": header_row,
@@ -439,7 +445,18 @@ def verify(report: ExcelReplenishmentReport) -> list[str]:
 _HOWTO_TEMPLATE = """# How to apply the staged replenishment
 
 The plan below was STAGED as a dry-run - nothing has been written to
-`{filename}`. To apply it (atomic write, byte-exact backup, rollback-able):
+`{filename}`. To apply it (atomic write, byte-exact backup, rollback-able),
+run the operator CLI from the repo root:
+
+```
+python examples/apply_replenishment.py --file "<path to {filename}>"
+```
+
+It re-plans from the CURRENT file, shows the exact before/after of every cell,
+asks for your confirmation, applies, and prints the rollback command. Undo any
+time with `--rollback <key>`.
+
+Programmatic alternative (same safety plane):
 
 ```python
 from jobs import excel_replenishment_job as job
@@ -447,20 +464,12 @@ from src import writeback
 
 payload = job.prepare(r"<path to {filename}>", {{}})   # same params as the original run
 report = job.run(payload)                              # re-stages; same content => same key
-cs = report.changeset
-print(cs.summary())
-for c in cs.changes:                                   # review the exact before/after
-    print(f"  {{c.entity_id}}!{{c.field}}: {{c.before!r}} -> {{c.after!r}}")
-
-approval = writeback.approve(cs, "your-name")          # 900s TTL
-result = writeback.apply(payload["store"], cs, approval=approval)
-print(result)                                          # applied=True
-
-# Undo later if needed:
-#   payload["store"].rollback(cs.idempotency_key)
+approval = writeback.approve(report.changeset, "your-name")   # 900s TTL
+writeback.apply(payload["store"], report.changeset, approval=approval)
+# Undo later: payload["store"].rollback(report.changeset.idempotency_key)
 ```
 
-If the planilla changed since this plan was made, `run` will produce a NEW plan
+If the planilla changed since this plan was made, the re-run produces a NEW plan
 (different key) from the current file - that is the drift protection working:
 you always approve exactly what will be written, computed from current data.
 
