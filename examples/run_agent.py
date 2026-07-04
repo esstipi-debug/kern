@@ -49,6 +49,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cost-ratio", type=float, default=None)
     p.add_argument("--scores", default=None, help="leadership scores 'C H A I N', e.g. '3 2 3 1 1'")
     p.add_argument("--name", default=None, help="who/what is evaluated (leadership)")
+    p.add_argument("--strict-params", action="store_true",
+                   help="ask (needs_clarification) for missing client parameters the tool "
+                        "cares about, instead of silently using generic defaults")
     return p
 
 
@@ -59,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     result = Orchestrator().run(
         args.brief, data_path=args.data, overrides=overrides,
         job_type=args.job, client=args.client, out_dir=args.out,
+        strict_params=args.strict_params,
     )
 
     print(f"[{result.status}] tool={result.tool} confidence={result.confidence:.2f}")

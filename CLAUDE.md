@@ -52,6 +52,25 @@ risk tier (`read`/`reversible`/`irreversible`), gate on a time-boxed `Approval`
 (900 s TTL), apply idempotently, `rollback()`-able. Irreversible always needs
 explicit approval.
 
+### Client parameter profiles (`src/client_profile.py`)
+Per-client durable cost/capacity parameters (holding rate, order cost, service
+level, lead time, warehouse capacity), keyed by a slugified client name under
+`clients/<slug>/profile.json`. The orchestrator merges the profile into the
+request's `params` before `tool.prepare` AND `tool.run` (both see the same
+merged dict) — profile values only fill gaps, an explicit `overrides`/`params`
+value always wins, and profile `lead_time_days` is intake's default lead time
+only where the CSV carries none. Pass `Orchestrator.run(..., strict_params=True)`
+(CLI: `--strict-params`) to make a tool's `required_client_params` (see
+`scm_agent/registry.py`) block with `needs_clarification` instead of silently
+taking the engine's generic default (0.95 / 0.25 / $75) — the answer, once
+supplied, is persisted via `client_profile.upsert_profile(...)` so it is asked
+only once per client. Trust boundary: generic labels ("Client", "MCP client")
+never resolve a profile; `Orchestrator(clients_root=None)` disables profiles
+entirely and is what the webapp/MCP surface uses by default (the `client` field
+there is a caller-typed label, not an authenticated identity — opt in locally
+via `LINCHPIN_CLIENTS_ROOT`). Not a connector to the client's own system of
+record (that's `src/writeback.py`).
+
 ## Understand the code fast (don't just grep — query the graphs)
 
 The SessionStart hook keeps the **code graph** fresh. Use it before re-reading files:
@@ -108,6 +127,10 @@ See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
 - **Gitignored & regenerable:** `graphify-out/`, `data/`, `deliverables/`, `.env`.
   Don't commit them. `.claude/settings.json` + `.claude/hooks/` **are** versioned;
   `.claude/settings.local.json` is personal.
+- **`clients/` is gitignored but NOT regenerable** — it holds real per-client cost/
+  capacity parameters (`src/client_profile.py`), hand-answered by an operator, not
+  derived from anything else in the repo. Back it up separately; losing it just
+  means every client's numbers silently fall back to the generic defaults again.
 - **Never read or surface PII** — some datasets (e.g. DataCo) carry customer PII;
   analysis is aggregate-only.
 - **Don't paste secrets** (API keys) into chat or commits.

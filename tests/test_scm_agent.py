@@ -9,6 +9,7 @@ from scm_agent import intent, llm, tools
 from scm_agent.orchestrator import Orchestrator
 from scm_agent.registry import Prepared, Produced, Tool, ToolRegistry
 from scm_agent.types import JobRequest, JobResult
+from src import client_profile
 
 
 def test_job_request_defaults():
@@ -297,6 +298,172 @@ def test_orchestrator_leadership_needs_clarification_without_scores(tmp_path):
     res = _rules_orch().run("how strong is our leadership?", out_dir=tmp_path)
     assert res.status == "needs_clarification"
     assert len(res.clarifications) >= 10
+
+
+# ---------------------------------------------------------------------------
+# Client profile — durable per-client parameters (fills gaps, never overrides)
+# ---------------------------------------------------------------------------
+
+
+def test_orchestrator_never_applies_a_profile_to_the_generic_client_label(tmp_path):
+    # Regression guard: "Client" is JobRequest's own default AND what the webapp
+    # substitutes for a blank/anonymous submission — it must never resolve to a
+    # shared profile, even if one exists on disk (e.g. hand-created by an operator).
+    clients_root = tmp_path / "clients"
+    stray = clients_root / "client"
+    stray.mkdir(parents=True)
+    (stray / "profile.json").write_text(
+        '{"client_id": "client", "display_name": "Client", "service_level": 0.5}',
+        encoding="utf-8",
+    )
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback(),
+                        clients_root=clients_root)
+    res = orch.run("set up reorder points and safety stock", data_path=PORTFOLIO,
+                   out_dir=tmp_path / "out")  # client left at its default ("Client")
+    assert res.status == "ok"
+    assert "95%" in res.summary  # generic engine default, not the stray profile's 50%
+
+
+def test_orchestrator_uses_client_profile_to_fill_param_gaps(tmp_path):
+    clients_root = tmp_path / "clients"
+    client_profile.upsert_profile("acme", "Acme", root=clients_root, service_level=0.99, holding_rate=0.40)
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback(),
+                        clients_root=clients_root)
+    res = orch.run("set up reorder points and safety stock", data_path=PORTFOLIO,
+                   client="Acme", out_dir=tmp_path / "out")
+    assert res.status == "ok"
+    assert "99%" in res.summary  # from the client profile, not the 95% hardcoded default
+
+
+def test_orchestrator_explicit_override_still_wins_over_profile(tmp_path):
+    clients_root = tmp_path / "clients"
+    client_profile.upsert_profile("acme", "Acme", root=clients_root, service_level=0.99)
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback(),
+                        clients_root=clients_root)
+    res = orch.run("set up reorder points and safety stock", data_path=PORTFOLIO, client="Acme",
+                   overrides={"service_level": 0.80}, out_dir=tmp_path / "out")
+    assert res.status == "ok"
+    assert "80%" in res.summary
+
+
+def test_orchestrator_without_profile_behaves_as_before(tmp_path):
+    # No profile recorded for this client -> silently falls back to the engine's
+    # hardcoded default, exactly like before client profiles existed.
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback(),
+                        clients_root=tmp_path / "clients")
+    res = orch.run("set up reorder points and safety stock", data_path=PORTFOLIO,
+                   client="Brand New Co", out_dir=tmp_path / "out")
+    assert res.status == "ok"
+    assert "95%" in res.summary
+
+
+def test_orchestrator_strict_params_asks_once_for_a_new_client(tmp_path):
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback(),
+                        clients_root=tmp_path / "clients")
+    res = orch.run("set up reorder points and safety stock", data_path=PORTFOLIO,
+                   client="Nuevo Cliente", strict_params=True, out_dir=tmp_path / "out")
+    assert res.status == "needs_clarification"
+    assert res.tool == "inventory_optimization"
+    assert any("holding_rate" in c for c in res.clarifications)
+    assert any("service_level" in c for c in res.clarifications)
+    assert res.deliverables == {}
+
+
+def test_orchestrator_strict_params_passes_once_profile_has_the_fields(tmp_path):
+    clients_root = tmp_path / "clients"
+    client_profile.upsert_profile("nuevo-cliente", "Nuevo Cliente", root=clients_root,
+                                  holding_rate=0.3, service_level=0.9)
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback(),
+                        clients_root=clients_root)
+    res = orch.run("set up reorder points and safety stock", data_path=PORTFOLIO,
+                   client="Nuevo Cliente", strict_params=True, out_dir=tmp_path / "out")
+    assert res.status == "ok"
+
+
+def test_orchestrator_strict_params_ignored_by_tools_with_no_required_params(tmp_path):
+    # pricing declares no required_client_params -> strict_params is a no-op for it
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback(),
+                        clients_root=tmp_path / "clients")
+    res = orch.run("what price maximizes profit", data_path=PRICING_CSV,
+                   client="Nuevo Cliente", strict_params=True, out_dir=tmp_path / "out")
+    assert res.status == "ok"
+
+
+def test_orchestrator_unslugifiable_client_label_still_runs(tmp_path):
+    # Regression guard: labels with nothing slugifiable ('...') were always legal
+    # display copy — the profile lookup must degrade to "no profile", not kill the run.
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback(),
+                        clients_root=tmp_path / "clients")
+    res = orch.run("set up reorder points and safety stock", data_path=PORTFOLIO,
+                   client="...", out_dir=tmp_path / "out")
+    assert res.status == "ok"
+    assert "95%" in res.summary
+
+
+def test_orchestrator_surfaces_corrupt_profile_clearly(tmp_path):
+    clients_root = tmp_path / "clients"
+    stray = clients_root / "acme"
+    stray.mkdir(parents=True)
+    (stray / "profile.json").write_text("{not valid json", encoding="utf-8")
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback(),
+                        clients_root=clients_root)
+    res = orch.run("set up reorder points and safety stock", data_path=PORTFOLIO,
+                   client="Acme", out_dir=tmp_path / "out")
+    assert res.status == "error"
+    assert "corrupt client profile" in res.summary  # not the generic "internal error"
+    assert res.clarifications  # actionable: fix/delete/rewrite the file
+
+
+def test_orchestrator_clients_root_none_disables_profiles(tmp_path):
+    # Multi-tenant surfaces (webapp/MCP) construct the orchestrator with
+    # clients_root=None so a caller-typed label can never pull a stored profile.
+    clients_root = tmp_path / "clients"
+    client_profile.upsert_profile("acme", "Acme", root=clients_root, service_level=0.99)
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback(),
+                        clients_root=None)
+    res = orch.run("set up reorder points and safety stock", data_path=PORTFOLIO,
+                   client="Acme", out_dir=tmp_path / "out")
+    assert res.status == "ok"
+    assert "95%" in res.summary  # generic default; the on-disk profile is ignored
+
+
+def test_orchestrator_prepare_sees_profile_merged_params(tmp_path):
+    # Several tools bake params into their payload at prepare time (multi_echelon
+    # service_level, simulation order_cost) — the merged params must reach prepare.
+    clients_root = tmp_path / "clients"
+    client_profile.upsert_profile("acme", "Acme", root=clients_root, order_cost=42.0)
+    seen: dict = {}
+
+    def probe_prepare(req, prov):
+        seen.update(req.params)
+        return Prepared(status="ok", payload=None)
+
+    reg = ToolRegistry()
+    reg.register(Tool(
+        key="probe", title="Probe", description="probe tool",
+        intent_keywords=("probe",), requires_data=False,
+        prepare=probe_prepare,
+        run=lambda payload, params: Produced(report=None, summary="ok"),
+        qa=lambda report: [],
+        deliver=lambda report, out_dir, client: {},
+    ))
+    orch = Orchestrator(registry=reg, provider=llm.RulesFallback(), clients_root=clients_root)
+    res = orch.run("probe", client="Acme", out_dir=tmp_path / "out")
+    assert res.status == "ok"
+    assert seen.get("order_cost") == 42.0
+
+
+def test_inventory_prepare_uses_profile_lead_time_when_csv_has_none(tmp_path):
+    csv = tmp_path / "demand.csv"
+    rows = ["date,product_id,quantity,unit_cost"]
+    for week in range(1, 9):
+        rows.append(f"2026-0{(week - 1) // 4 + 1}-{(week - 1) % 4 * 7 + 1:02d},SKU-1,10,5.0")
+    csv.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    t = tools.inventory_tool()
+    req = JobRequest(brief="reorder points", data_path=str(csv), params={"lead_time_days": 30.0})
+    prep = t.prepare(req, llm.RulesFallback())
+    assert prep.status == "ok"
+    assert (prep.payload["lead_time_days"] == 30.0).all()
 
 
 def test_orchestrator_qa_failed_writes_no_deliverables(tmp_path):

@@ -77,8 +77,14 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
     if not request.data_path:
         return Prepared(status="needs_data", messages=["a demand CSV/Excel file is required"])
     try:
-        demand = intake.prepare(request.data_path, period=request.params.get("period", "W"))
-    except (ValueError, FileNotFoundError) as exc:
+        demand = intake.prepare(
+            request.data_path,
+            period=request.params.get("period", "W"),
+            # Client-wide lead time (typically from the client profile) fills in only
+            # where the CSV carries none; per-SKU CSV values always win.
+            default_lead_days=float(request.params.get("lead_time_days", 14.0)),
+        )
+    except (ValueError, FileNotFoundError, TypeError) as exc:
         return Prepared(status="needs_data", messages=[str(exc)])
     return Prepared(status="ok", payload=demand)
 
@@ -123,6 +129,7 @@ def inventory_tool() -> Tool:
             inventory_deliverable.build(report, client=client, citations=tuple(citations), confidence=confidence),
             options=tuple(options),
         ).write_all(out_dir),
+        required_client_params=("holding_rate", "service_level"),
     )
 
 

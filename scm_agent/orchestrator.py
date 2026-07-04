@@ -6,6 +6,8 @@ import logging
 from dataclasses import replace
 from pathlib import Path
 
+from src import client_profile
+
 from .guided_bridge import to_guided_outcome
 from .intent import classify
 from .knowledge import KnowledgeBase
@@ -32,6 +34,7 @@ class Orchestrator:
         provider: LLMProvider | None = None,
         knowledge: KnowledgeBase | None = None,
         persona: str = "",
+        clients_root: Path | str | None = client_profile.DEFAULT_CLIENTS_ROOT,
     ) -> None:
         self.registry = registry if registry is not None else build_default_registry()
         self.provider = provider if provider is not None else get_provider()
@@ -41,6 +44,12 @@ class Orchestrator:
         # The operating mode's voice for client-facing narration. Empty => the
         # narrative prompt is unchanged (the deterministic output never depends on it).
         self.persona = persona
+        # Where durable per-client parameter profiles live (see src/client_profile.py).
+        # None disables profile lookup entirely — the right setting for multi-tenant
+        # surfaces (webapp/MCP) where `client` is a caller-supplied display label, not
+        # an authenticated identity: honoring it would let one tenant pull another's
+        # real cost parameters just by naming them.
+        self.clients_root = None if clients_root is None else Path(clients_root)
 
     def run(
         self,
@@ -50,11 +59,12 @@ class Orchestrator:
         overrides: dict | None = None,
         job_type: str | None = None,
         client: str = "Client",
+        strict_params: bool = False,
         out_dir: str | Path = "deliverables/agent",
     ) -> JobResult:
         overrides = overrides or {}
         request = JobRequest(brief=brief, data_path=data_path, job_type=job_type,
-                             params=dict(overrides), client=client)
+                             params=dict(overrides), client=client, strict_params=strict_params)
         try:
             result = self._run(request, Path(out_dir))
         except Exception:  # never crash the caller — surface as error status
@@ -77,6 +87,35 @@ class Orchestrator:
 
         tool = self.registry.get(intent.job_type)
         params = {**intent.params, **request.params}
+        # Client profile fills param gaps only — it never overrides an explicit
+        # params/override value (merge_params puts the profile first, params last).
+        profile = None
+        if self.clients_root is not None:
+            try:
+                slug = client_profile.slugify_client_id(request.client)
+            except ValueError:
+                slug = None  # unslugifiable label (punctuation-only, non-Latin) => no profile;
+                # the label stays what it always was — display copy on the deliverable.
+            if slug is not None:
+                try:
+                    profile = client_profile.load_profile(slug, root=self.clients_root)
+                except ValueError as exc:
+                    # A corrupt profile.json must fail loudly and actionably: it is
+                    # hand-answered, non-regenerable data, and silently falling back to
+                    # generic defaults would give this client wrong numbers.
+                    return JobResult(
+                        status=STATUS_ERROR, tool=tool.key, confidence=intent.confidence,
+                        deliverables={}, summary=str(exc),
+                        clarifications=[
+                            f"fix or delete clients/{slug}/profile.json, or rewrite it with "
+                            "client_profile.upsert_profile(...)",
+                        ],
+                    )
+        params = client_profile.merge_params(params, profile)
+        # prepare() must see the same merged params run() will: several tools bake
+        # params into their payload at prepare time (multi_echelon service_level,
+        # simulation order_cost, inventory lead_time_days).
+        request = replace(request, params=params)
 
         if tool.requires_data and not request.data_path:
             return JobResult(
@@ -84,6 +123,18 @@ class Orchestrator:
                 deliverables={}, summary=f"{tool.title} needs a data file.",
                 clarifications=[f"provide a data file for {tool.title}"],
             )
+
+        if request.strict_params and tool.required_client_params:
+            missing = [key for key in tool.required_client_params if key not in params]
+            if missing:
+                return JobResult(
+                    status=STATUS_NEEDS_CLARIFICATION, tool=tool.key, confidence=intent.confidence,
+                    deliverables={}, summary=f"{tool.title} needs client-specific parameters before it can run.",
+                    clarifications=[
+                        f"missing '{key}' for client '{request.client}' — provide it once; "
+                        "it will be remembered for every future run" for key in missing
+                    ],
+                )
 
         prepared = tool.prepare(request, self.provider)
         if prepared.status != STATUS_OK:

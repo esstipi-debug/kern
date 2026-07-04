@@ -24,6 +24,10 @@ class JobRequest:
     job_type: str | None = None
     params: dict = field(default_factory=dict)
     client: str = "Client"
+    # Opt-in gate: when True, a tool whose required_client_params (see
+    # scm_agent/registry.py) aren't resolvable from params+client profile returns
+    # needs_clarification instead of silently taking the engine's generic default.
+    strict_params: bool = False
 
 
 @dataclass(frozen=True)

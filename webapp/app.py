@@ -69,7 +69,13 @@ MCP_KEYS_PATH = os.environ.get("LINCHPIN_MCP_KEYS_PATH", "").strip() or MCP_KEYS
 def _get_orchestrator() -> Orchestrator:
     global _ORCHESTRATOR
     if _ORCHESTRATOR is None:
-        _ORCHESTRATOR = Orchestrator()
+        # Client profiles are DISABLED on this surface by default: /api/jobs and the
+        # MCP mount are multi-tenant, and `client` here is a caller-typed display
+        # label, not an authenticated identity — honoring it for profile lookup would
+        # let any caller pull another client's real cost parameters by naming them.
+        # A local single-operator deployment can opt in via LINCHPIN_CLIENTS_ROOT.
+        clients_root = os.environ.get("LINCHPIN_CLIENTS_ROOT", "").strip() or None
+        _ORCHESTRATOR = Orchestrator(clients_root=clients_root)
     return _ORCHESTRATOR
 
 

@@ -53,6 +53,10 @@ class Tool:
     # instead of the generic "executed" — so the tool offers >=2 ranked choices to act with
     # a recommended default. None => the result is reported as executed (deliverables only).
     options: Callable[[object], GuidedOutcome] | None = None
+    # Client-profile param keys (see src/client_profile.py) this tool cares enough about to
+    # ask for once, rather than silently take the engine's generic default — only enforced
+    # when the caller opts in via JobRequest.strict_params. Empty => never blocks (default).
+    required_client_params: tuple[str, ...] = ()
 
 
 class ToolRegistry:

@@ -122,8 +122,18 @@ def normalize(
     return grouped[["date", "product_id", "quantity", "unit_cost", "lead_time_days"]]
 
 
-def prepare(path: str | Path, *, overrides: dict[str, str] | None = None, period: str = "W") -> pd.DataFrame:
-    """Load a client file and return canonical, period-aggregated demand."""
+def prepare(
+    path: str | Path,
+    *,
+    overrides: dict[str, str] | None = None,
+    period: str = "W",
+    default_lead_days: float = 14.0,
+) -> pd.DataFrame:
+    """Load a client file and return canonical, period-aggregated demand.
+
+    ``default_lead_days`` fills lead time only where the file carries none
+    (missing column or blank cells) — per-SKU CSV values always win.
+    """
     raw = load_table(path)
     mapping = detect_columns(raw, overrides)
-    return normalize(raw, mapping, period=period)
+    return normalize(raw, mapping, period=period, default_lead_days=default_lead_days)

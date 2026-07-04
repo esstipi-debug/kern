@@ -26,13 +26,33 @@
    `date, product_id, quantity, unit_cost, lead_time_days`
    (ver `data/sample_demand.csv`). Para pricing: precio/cantidad. Para sourcing:
    registros de entrega. Cada job sabe pedir lo suyo.
-3. **Maneja datos sensibles con cuidado.** Si el dato trae PII (email, nombre,
+3. **Levanta los parámetros del cliente, no solo el CSV.** El dato transaccional
+   (columna 2) no trae costo de mantener inventario, costo de ordenar, nivel de
+   servicio objetivo ni capacidad de bodega — sin esto el agente usa defaults
+   genéricos (95% / 25% / $75) iguales para todos los clientes. Pregúntaselos una
+   vez y guárdalos con `client_profile.upsert_profile("<nombre del cliente>",
+   "<nombre>", holding_rate=..., service_level=..., lead_time_days=...,
+   warehouse_capacity=WarehouseCapacity(value=..., unit="m3"))`
+   (`src/client_profile.py`) — el nombre se normaliza solo (acentos incluidos:
+   "Café Cliente" -> `clients/cafe-cliente/profile.json`) y el orquestador los
+   reusa automáticamente en cada corrida futura para ese cliente (nunca
+   sobrescriben un override explícito de esa llamada; el `lead_time_days` del
+   perfil solo rellena donde el CSV no trae lead time propio). Corre la primera
+   vez con `--strict-params` (`examples/run_agent.py`) para que el agente te
+   devuelva `needs_clarification` con exactamente lo que falta, en vez de asumir
+   un default silenciosamente. *Notas:* (a) `warehouse_capacity` queda guardado
+   en el perfil pero el motor **todavía no la aplica** como restricción física —
+   es dato de referencia para ti, no un límite que el cálculo respete; (b) en el
+   webapp/MCP desplegado los perfiles vienen **desactivados** (el campo "client"
+   ahí es solo una etiqueta que escribe el visitante); actívalos en una
+   instalación local propia con la variable de entorno `LINCHPIN_CLIENTS_ROOT`.
+4. **Maneja datos sensibles con cuidado.** Si el dato trae PII (email, nombre,
    dirección), el análisis es **solo agregado** — nunca leas ni expongas PII en un
    entregable.
-4. **Corre una pasada de prueba** con `examples/run_agent.py --brief "..." --data <csv>`.
+5. **Corre una pasada de prueba** con `examples/run_agent.py --brief "..." --data <csv>`.
    Si vuelve `needs_data` o `needs_clarification`, ajusta el dato/brief antes de
    prometer nada al cliente.
-5. **Registra** el alcance acordado, el modo, el entregable y la cadencia (única
+6. **Registra** el alcance acordado, el modo, el entregable y la cadencia (única
    vs. recurrente).
 
 ---
