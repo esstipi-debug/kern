@@ -17,6 +17,7 @@ from jobs import (
     deliverables,
     drp_job,
     earned_value_job,
+    excel_replenishment_job,
     excess_obsolete_job,
     facility_location_job,
     fefo_job,
@@ -1263,6 +1264,60 @@ def odoo_replenishment_tool() -> Tool:
     )
 
 
+# ---- excel_replenishment (client planilla as system of record) ----------------
+
+def _excel_replenishment_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["the client's inventory Excel file (.xlsx/.xlsm) is required"])
+    try:
+        payload = excel_replenishment_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _excel_replenishment_run(payload: object, params: dict) -> Produced:
+    report = excel_replenishment_job.run(
+        payload,
+        cover_periods=params.get("cover_periods", 8.0),
+        order_up_to_factor=params.get("order_up_to_factor", 2.0),
+        idempotency_key=params.get("idempotency_key", "excel-replenish-1"),
+    )
+    return Produced(report=report, summary=report.summary)
+
+
+def excel_replenishment_tool() -> Tool:
+    return Tool(
+        key="excel_replenishment",
+        title="Excel Replenishment (client planilla)",
+        description="Read the client's own inventory spreadsheet (auto-detecting the sheet and the "
+                    "SKU/stock/reorder-point/demand columns, Spanish or English), plan the restock, "
+                    "and stage the recommended order quantities back INTO the planilla as a "
+                    "reversible dry-run through the Excel safe-staging connector - approved by a "
+                    "human before anything is written.",
+        intent_keywords=(
+            # Multi-word on purpose: bare "excel" would collide with every tool that
+            # accepts an Excel upload. "planilla" is the distinctive Spanish anchor.
+            "excel replenishment", "replenish my excel", "update my excel",
+            "write back to excel", "excel writeback", "planilla", "mi planilla",
+            "reponer planilla", "actualizar planilla", "spreadsheet replenishment",
+            "update the spreadsheet", "replenish spreadsheet", "hoja de calculo",
+        ),
+        requires_data=True,
+        options=lambda report: report.outcome,
+        prepare=_excel_replenishment_prepare,
+        run=_excel_replenishment_run,
+        qa=lambda report: excel_replenishment_job.verify(report),
+        deliver=lambda report, out_dir, client: excel_replenishment_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            excel_replenishment_job.build_deck(report, client=client, citations=tuple(citations),
+                                               confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 # ---- newsvendor (single-period / perishable order) ---------------------------
 
 def _newsvendor_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
@@ -1739,6 +1794,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(earned_value_tool())
     reg.register(learning_curve_tool())
     reg.register(odoo_replenishment_tool())
+    reg.register(excel_replenishment_tool())
     reg.register(newsvendor_tool())
     reg.register(cycle_count_tool())
     reg.register(multi_echelon_tool())

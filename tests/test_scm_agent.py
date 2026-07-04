@@ -120,7 +120,7 @@ _CODE_GRAPH = Path(__file__).resolve().parent.parent / "graphify-out" / "graph.j
 def test_build_default_registry_tools():
     reg = tools.build_default_registry()
     keys = {t.key for t in reg.list()}
-    assert keys == {"inventory_optimization", "pricing", "leadership_chain", "cost_to_serve", "sop", "abc_xyz", "sourcing", "ddmrp", "landed_cost", "whatif", "financial_kpis", "reconciliation", "returns", "warehouse_layout", "queuing", "scheduling", "risk", "forecast", "data_quality", "dea", "acceptance_sampling", "earned_value", "learning_curve", "odoo_replenishment", "newsvendor", "cycle_count", "multi_echelon", "transportation", "fefo", "slotting", "simulation", "excess_obsolete", "facility_location", "drp"}
+    assert keys == {"inventory_optimization", "pricing", "leadership_chain", "cost_to_serve", "sop", "abc_xyz", "sourcing", "ddmrp", "landed_cost", "whatif", "financial_kpis", "reconciliation", "returns", "warehouse_layout", "queuing", "scheduling", "risk", "forecast", "data_quality", "dea", "acceptance_sampling", "earned_value", "learning_curve", "odoo_replenishment", "excel_replenishment", "newsvendor", "cycle_count", "multi_echelon", "transportation", "fefo", "slotting", "simulation", "excess_obsolete", "facility_location", "drp"}
     assert reg.get("leadership_chain").requires_data is False
     assert reg.get("odoo_replenishment").requires_data is False
     assert reg.get("inventory_optimization").requires_data is True
@@ -464,6 +464,33 @@ def test_inventory_prepare_uses_profile_lead_time_when_csv_has_none(tmp_path):
     prep = t.prepare(req, llm.RulesFallback())
     assert prep.status == "ok"
     assert (prep.payload["lead_time_days"] == 30.0).all()
+
+
+def test_orchestrator_excel_replenishment_end_to_end(tmp_path):
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Stock"
+    ws.append(["Codigo", "Stock", "Punto Reorden"])
+    ws.append(["SKU-001", 42, 50])
+    ws.append(["SKU-002", 130, 80])
+    planilla = tmp_path / "planilla.xlsx"
+    wb.save(planilla)
+    res = _rules_orch().run("actualiza la reposicion de mi planilla", data_path=str(planilla),
+                            client="Acme", out_dir=tmp_path / "out")
+    assert res.status == "ok"
+    assert res.tool == "excel_replenishment"
+    assert res.guided is not None and res.guided.options  # ranked, executable options
+    assert Path(res.deliverables["csv"]).exists()
+
+
+def test_orchestrator_excel_replenishment_needs_data_on_csv(tmp_path):
+    csv = tmp_path / "demand.csv"
+    csv.write_text("a,b\n1,2\n", encoding="utf-8")
+    res = _rules_orch().run("excel replenishment", data_path=str(csv),
+                            job_type="excel_replenishment", out_dir=tmp_path / "out")
+    assert res.status == "needs_data"
+    assert any(".xlsx" in c for c in res.clarifications)
 
 
 def test_orchestrator_qa_failed_writes_no_deliverables(tmp_path):
