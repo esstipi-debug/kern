@@ -1,9 +1,52 @@
 # Linchpin — Session Handoff
 
-**Date:** 2026-07-06 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `main` @ `4eaa018` (PRs up to **#114**)
+**Date:** 2026-07-06 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `main` @ `1cef336` (PRs up to **#116**)
 **Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
 
-**2026-07-06 — the monetization brief landed AND its first 3 commercial packages are now executable (PR #113 + PR #114).**
+**Same-day update — all 7 commercial packages are now executable (PR #116).**
+PR #116 (`1cef336`) built the 4 sections deferred by #114: **Scale** ($7.5k/mo,
+the full 35-tool catalog) → **Retainer Ejecutivo Fraccional** ($9-12k/mo, the
+SAME 35 tools as Scale — the brief is explicit the difference is governance/
+cadence, not capability, so `RETAINER_EJECUTIVO` reuses `SCALE`'s step list
+verbatim) → 2 one-off projects, **Proyecto de Red/Almacen/Operacion** ($8-18k,
+6 tools) and **Proyecto de Sourcing** ($5-10k, 3 tools, reuses Growth's intake
+slots). 9 previously-unused tools got mapped into the package runner: sourcing/
+landed_cost/acceptance_sampling were already known from Growth; facility_location,
+transportation, warehouse_layout, slotting, queuing, scheduling, sop,
+earned_value, leadership_chain were new research. Two needed a new mechanism:
+`leadership_chain` doesn't take a CSV at all — it reads `params["scores"]` — so
+`PackageStep` gained a `params_from_input` hook that converts a one-row
+`liderazgo.csv` (C/H/A/I/N, each 0-4) into that override, with its own
+validation (missing column / out-of-range value) so a malformed file surfaces
+an operator-actionable message instead of a raw `KeyError`. `warehouse_layout`
+is purely generative/parametric (no CSV at all, `generate_layout(dict)`) — it
+gets `input_slot=None` like `odoo_replenishment`, with site/building/rack
+dimensions living directly in `PackageStep.params`.
+
+**Adversarial review caught 2 real demo-data bugs, both fixed before merging**:
+a workflow-based review (4 dimensions, 8 raw findings) hit a session rate limit
+during its verify phase — every skeptic call failed, so the workflow returned
+`confirmed: []`, which is NOT a "clean bill of health," it's an infra outage.
+Manually re-verified all 8 findings directly. Two were real: the slotting demo
+generator (`_demo_lineas_pedido`) re-rolled its target basket size on *every*
+iteration of a while-loop instead of once, and iterated a Python `set` to build
+CSV rows — a set's iteration order for strings depends on `PYTHONHASHSEED`,
+randomized per process by default, so `--demo` produced the same *content* but
+non-reproducible *row order* across separate runs. Fixed (target size rolled
+once; `list` instead of `set`) and verified by running `--demo` in two separate
+Python processes and diffing the resulting CSV byte-for-byte. Lesson: when a
+workflow's verify phase fails outright (not "refuted", actually errors), don't
+trust an empty `confirmed` list — check the raw finding count and manually
+adjudicate. 10 new tests (37 total for packages), full suite green (1369
+passed), ruff clean. Demo verified end-to-end: Scale 35/35, Retainer 35/35,
+Proyecto Red/Almacen 6/6, Proyecto Sourcing 3/3, all QA-approved.
+
+All 7 sections of the "Estructura de empaquetado comercial" are now sellable
+one-pagers (`documentation/paquetes/`) backed by a real, QA-gated runner — this
+was the user's explicit ask this session ("seguir construyendo: las 4 secciones
+restantes de la escalera con el mismo runner"), not a speculative extension.
+
+**Earlier the same day — the monetization brief landed and its first 3 commercial packages went executable (PR #113 + PR #114).**
 PR #113 (`4eaa018`) merged `documentation/MONETIZATION_BRIEF.md`: a deep-research
 report (~50 search agents + 3-vote adversarial verification) concluding the
 fastest defensible path to >= USD 8,000/month for a solo operator is the
@@ -40,10 +83,10 @@ del catalogo completo" but the registry (and this doc's own tool count) has
 **35** — the brief's own arithmetic (26 Growth + 9 Scale-only) already implied
 35; corrected on the PR #113 branch before merging.
 
-**Not done, on purpose:** the other 4 sections (Scale, Retainer Ejecutivo, the
-2 one-off projects) have no runner/one-pager yet — explicitly deferred by the
-user to a later session. The 5 GTM directory/store listings from
-`GTM_SUBMISSIONS.md` are still pure operator-login actions, unchanged.
+**Still not done:** the 5 GTM directory/store listings from `GTM_SUBMISSIONS.md`
+are still pure operator-login actions (account creation/OAuth an agent
+shouldn't do on the user's behalf), unchanged — that and actually landing the
+first paying client are the real next steps, not more package engineering.
 
 **Same-day update (2026-07-03), after the MCP fix below:** the Odoo Store module
 (`odoo_addon/linchpin_dry_run/`) shipped (PR #103) - built, adversarially
