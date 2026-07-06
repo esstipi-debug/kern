@@ -13,6 +13,7 @@
 - [RB-6 · Enrutar una ESCALACIÓN](#rb-6--enrutar-una-escalación)
 - [RB-7 · Facilitar un ciclo S&OP](#rb-7--facilitar-un-ciclo-sop)
 - [RB-8 · Cubrir un residuo](#rb-8--cubrir-un-residuo)
+- [RB-9 · Correr un paquete comercial](#rb-9--correr-un-paquete-comercial)
 
 ---
 
@@ -184,6 +185,44 @@ de registro.
 3. **Si lo asumes** (no lo haces), **documenta la decisión y el riesgo aceptado**.
    Un residuo ignorado en silencio es la única forma en que este sistema falla.
 4. **Si lo cubres**, ejecútalo y márcalo cerrado.
+
+---
+
+## RB-9 · Correr un paquete comercial
+
+**Disparador:** un cliente contrató un paquete ([Diagnóstico / Starter /
+Growth](../paquetes/README.md)) y toca producir el ciclo.
+
+1. **Pide el intake con el checklist del paquete**:
+   `python examples/run_package.py --package <clave> --checklist` imprime
+   exactamente qué archivos (y columnas) pedirle al cliente. Junta todo en una
+   carpeta (p. ej. `intake/<cliente>/`) con los nombres esperados
+   (`ventas.csv`, `maestro.csv`, `planilla.xlsx`, ...).
+2. **Releva los parámetros una sola vez** (RB-1 paso 3) — `holding_rate`,
+   `service_level`, `lead_time_days` — y guárdalos en el perfil del cliente. La
+   primera corrida hazla con `--strict-params` para que falte nada en silencio.
+3. **Corre el paquete**:
+   `python examples/run_package.py --package <clave> --intake intake/<cliente> --client "<Cliente>"`.
+   Estados posibles:
+   - `needs_data` → la salida lista exactamente qué archivo requerido falta
+     (con sus columnas). Nada se escribió; pídelo y re-corre.
+   - `qa_failed` → **un análisis ejecutado no pasó su QA y NO se escribió ningún
+     entregable** (la garantía por-tool, elevada al paquete). Investiga el dato,
+     no fuerces el envío.
+   - `error` en un paso opcional → también bloquea; el escape es quitar ese
+     archivo opcional del intake (el paso queda "omitido") y re-correr.
+   - `ok` → se escribió `deliverables/paquetes/<clave>/`: el deck consolidado
+     (`deliverable.md` + `.xlsx`) en la raíz y una subcarpeta por herramienta.
+4. **Revisa el deck consolidado primero** (resumen ejecutivo, tabla de cobertura,
+   recomendaciones) y aplica tu compuerta de QA (RB-2). La tabla de cobertura
+   dice qué se ejecutó, qué se omitió y por qué — los pasos omitidos son
+   conversación de upsell ("mándame los conteos y el próximo ciclo incluye
+   exactitud de inventario").
+5. **Atiende los desenlaces por herramienta** como siempre: OPTIONS → RB-4,
+   planilla/Odoo staged → RB-5, residuos → RB-8.
+6. **Presenta y factura la cadencia.** Los pasos con cadencia "QBR trimestral"
+   (proveedores, riesgos, DEA) se corren igual que el ciclo mensual, agregando
+   sus archivos al intake ese trimestre.
 
 ---
 

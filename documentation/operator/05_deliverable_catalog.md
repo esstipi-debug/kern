@@ -4,8 +4,9 @@
 > genera y tu **valor agregado humano** en cada uno. Linchpin produce el artefacto;
 > tú lo enmarcas, lo defiendes y cierras el paso humano.
 
-Catálogo basado en `scm_agent/modes.py` (entregables por modo) y las **9
-herramientas de agente** ya cableadas en `scm_agent/tools.py`.
+Catálogo basado en `scm_agent/modes.py` (entregables por modo) y las **35
+herramientas de agente** ya cableadas en `scm_agent/tools.py` (la fuente de
+verdad es el registry: `build_default_registry()`).
 
 ---
 
@@ -68,12 +69,32 @@ entregable:
 
 ---
 
+## 📦 Paquetes comerciales (multi-tool, ejecutables de punta a punta)
+
+Los entregables de arriba se venden **empaquetados**, no sueltos. Cada paquete
+corre todas sus herramientas en un solo flujo (`examples/run_package.py`) y emite
+un **deck consolidado** + el entregable completo de cada herramienta, con la
+garantía "QA falla ⇒ no hay entregable" elevada a nivel de paquete. One-pagers
+listos para enviar a un prospecto: [documentation/paquetes/](../paquetes/README.md).
+
+| Paquete | Precio (brief) | Herramientas | Tu valor agregado |
+|---|---|---|---|
+| **Diagnóstico de Arranque** (sprint 2 semanas) | USD 1.500–2.500 único | 4: calidad de datos, ABC-XYZ, E&O, KPIs financieros | Convertir el hallazgo cuantificado en la propuesta del retainer |
+| **Starter — Fundamentos de Inventario** | USD 2.000/mes | 8: + pronóstico, política de inventario, what-if, planilla staged, conteo cíclico, newsvendor | Revisar y aprobar el plan de compra staged (RB-5); la revisión mensual |
+| **Growth — Operación Completa de SC** | USD 4.000/mes + QBR | 26: + pricing, cost-to-serve, Odoo, red (multi-echelon/DDMRP/DRP/simulación), IRA, FEFO, proveedores, riesgo, DEA | Facilitar la revisión mensual y el QBR; adjudicar y negociar |
+
+El procedimiento paso a paso está en [RB-9](04_runbooks.md#rb-9--correr-un-paquete-comercial).
+Las 4 secciones superiores de la escalera (Scale, Retainer Ejecutivo, 2 proyectos
+puntuales) están definidas en el brief pero aún no empaquetadas como runner.
+
+---
+
 ## 💲 Cómo se traduce en honorarios
 
 | Formato | Entregable típico | Cadencia |
 |---|---|---|
-| **Proyecto único** | Diagnóstico, estudio de sourcing, política de inventario | Una vez |
-| **Retainer recurrente** | Cadencia S&OP mensual, QBR de proveedores, dashboard de KPIs | Mensual / trimestral |
+| **Proyecto único** | **Diagnóstico de Arranque**, estudio de sourcing, política de inventario | Una vez |
+| **Retainer recurrente** | **Paquetes Starter/Growth**, cadencia S&OP mensual, QBR de proveedores | Mensual / trimestral |
 | **Por evento** | E&O cleanup, selección de proveedor, plan de cash-release | Según gatillo |
 
 > Cada entregable recurrente (S&OP, QBR, dashboard) es **ingreso recurrente**.
