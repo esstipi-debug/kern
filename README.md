@@ -73,10 +73,11 @@ Every capability below is agent-routable — a brief in, a QA-gated deliverable 
 
 </details>
 
-Two cross-cutting guarantees keep the agent safe in production:
+Three cross-cutting guarantees keep the agent safe in production:
 
 - **Never-unprotected** — every result is `EXECUTED` or carries an executable path: ranked options, a prepared handoff (pre-filled PO / email / count sheet), or an escalation. No dead ends.
 - **Safe-staging writeback** — changes are computed as a dry-run changeset, gated by risk tier + time-boxed approval, applied idempotently, and fully auditable / `rollback()`-able. The agent never mutates a system of record blindly.
+- **Data protection by default** — every upload is validated (size, type, path) and processed in an isolated, auto-purged per-job directory; no secrets are ever committed. Full threat model and controls in [SECURITY.md](SECURITY.md).
 
 ---
 

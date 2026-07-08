@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- **Data-protection trust note (README + `/demo`)** — surfaced the existing safe-staging/isolation controls (per-job sandboxed directory, validated uploads, auto-purge, [SECURITY.md](SECURITY.md)) as a visible third "cross-cutting guarantee" in the README and a short note next to the file upload on the public `/demo` page, where a prospect actually hands over their data. No behavior change — documentation/copy only.
 - **`vehicle_routing` agent tool + `src/logistics/routing.py`** — new capability (36th tool),
   grounded in Ballou *Logistica/Administracion de la cadena de suministro* Cap. 7 ("Diseno de
   rutas para los vehiculos"): groups delivery stops into capacity-feasible vehicle routes with
