@@ -524,3 +524,24 @@ def drp_options(report: object) -> GuidedOutcome:
         f"DRP over {report.n_branches} branch(es) x {report.n_periods} period(s): choose how to execute.",
         items,
     )
+
+
+def vehicle_routing_options(report: object) -> GuidedOutcome:
+    other = report.sweep_plan if report.recommended_method == "savings" else report.savings_plan
+    adopt = (f"Adopt the {report.recommended_method} plan",
+             f"{len(report.recommended_routes)} route(s), {report.recommended_distance:,.1f} total "
+             f"distance - {report.savings_vs_naive:,.1f} less than one truck per stop.",
+             f"dispatch the {report.recommended_method} route plan", "lowest distance found")
+    alt = (f"Use the {other.method} plan instead",
+           f"{other.n_vehicles} route(s), {other.total_distance:,.1f} total distance - "
+           "simpler angular sequencing, easier to explain to drivers.",
+           f"dispatch the {other.method} route plan", "may be easier to communicate; usually a bit longer")
+    fix_windows = ("Resolve the late stops first",
+                   f"{len(report.late_stops)} stop(s) miss their time window on the recommended plan.",
+                   "re-sequence, add a vehicle, or renegotiate the window for the late stops",
+                   "protects service commitments before dispatch")
+    items: list[_Item] = [adopt, alt, fix_windows] if report.late_stops else [adopt, alt]
+    return _ranked(
+        f"Vehicle routing over {report.n_stops} stop(s): choose the route plan.",
+        items,
+    )

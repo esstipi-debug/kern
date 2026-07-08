@@ -9,10 +9,11 @@
 An **agentic supply-chain engine**: a plain-language brief becomes a finished,
 QA-gated deliverable (Excel + report + chart), grounded in a knowledge graph of
 24 SCM books and the codebase itself. A deterministic Python **engine** across
-**35 agent-routable tools** (EOQ, safety stock, `(s,Q)`/`(R,S)`, forecasting,
+**36 agent-routable tools** (EOQ, safety stock, `(s,Q)`/`(R,S)`, forecasting,
 pricing, DDMRP, ABC-XYZ, sourcing, landed cost, cost-to-serve, S&OP, facility
-location, DRP, transportation, FEFO…) sits under an **orchestrator agent** that
-classifies → runs → validates → delivers. Runs with or without an LLM.
+location, DRP, transportation, FEFO, vehicle routing…) sits under an
+**orchestrator agent** that classifies → runs → validates → delivers. Runs
+with or without an LLM.
 
 Positioning: **the human sells & decides, Linchpin produces 10×.** Every
 consequential result ends in one of four outcomes — and three need a human
