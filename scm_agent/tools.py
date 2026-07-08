@@ -43,6 +43,7 @@ from jobs import (
     sop_job,
     sourcing_job,
     transportation_job,
+    vehicle_routing_job,
     whatif_job,
 )
 from jobs.inventory_optimization import run as run_inventory
@@ -1774,6 +1775,54 @@ def drp_tool() -> Tool:
     )
 
 
+# ---- vehicle_routing (route design & scheduling) -----------------------------
+
+def _vehicle_routing_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["a stops CSV (x, y, demand + optional service time/time window) "
+                                  "and a vehicle capacity (params.capacity) are required"])
+    try:
+        payload = vehicle_routing_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["stops"]:
+        return Prepared(status="needs_data", messages=["no stops found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _vehicle_routing_run(payload: object, params: dict) -> Produced:
+    report = vehicle_routing_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def vehicle_routing_tool() -> Tool:
+    return Tool(
+        key="vehicle_routing",
+        title="Vehicle Routing & Scheduling",
+        description="Group delivery stops into capacity-feasible vehicle routes and sequence each "
+                    "one, comparing the Clarke-Wright savings method against the sweep method, "
+                    "against a one-truck-per-stop baseline. Optional time windows are flagged as a "
+                    "lightweight feasibility check. Offline, straight-line distance from one depot.",
+        intent_keywords=(
+            "vehicle routing", "vehicle routing problem", "route optimization", "delivery routes",
+            "delivery route planning", "truck routing", "route sequencing", "route design",
+            "savings algorithm", "sweep algorithm", "clarke-wright", "vrp",
+            "ruteo de vehiculos", "diseno de rutas", "programacion de rutas",
+        ),
+        requires_data=True,
+        options=tool_options.vehicle_routing_options,
+        prepare=_vehicle_routing_prepare,
+        run=_vehicle_routing_run,
+        qa=lambda report: vehicle_routing_job.verify(report),
+        deliver=lambda report, out_dir, client: vehicle_routing_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            vehicle_routing_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -1811,4 +1860,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(excess_obsolete_tool())
     reg.register(facility_location_tool())
     reg.register(drp_tool())
+    reg.register(vehicle_routing_tool())
     return reg
