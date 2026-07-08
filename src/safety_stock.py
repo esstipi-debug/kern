@@ -72,6 +72,17 @@ def cycle_service_level_from_inventory(
     return float(norm.cdf(inventory_level, loc=mean_demand_per_period, scale=demand_std_per_period))
 
 
+def achieved_service_level(
+    safety_stock_qty: float,
+    demand_std_per_period: float,
+    risk_periods: float = 1.0,
+) -> float:
+    """alpha = Phi(Ss / (sigma_d * sqrt(tau))) -- analytic inverse of safety_stock()."""
+    if demand_std_per_period == 0:
+        return 1.0 if safety_stock_qty >= 0 else 0.0
+    return float(norm.cdf(safety_stock_qty / (demand_std_per_period * (risk_periods**0.5))))
+
+
 def tune_service_level(
     current_service_level: float,
     observed_fill_rate: float,
