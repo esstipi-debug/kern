@@ -188,18 +188,31 @@ Demand-weighted WAPE improvement: 19.4 percent
 ```
 
 Linchpin's classification-routed forecast (99/100 sampled SKUs were
-intermittent, routed to Croston's method) is ~19.4% more accurate in absolute
-terms (MAE) than naive last-value persistence, and ~19.4% more accurate on a
-demand-weighted WAPE -- the same conclusion, from two different angles.
+intermittent, routed to Croston's method) is ~19.4% more accurate than naive
+last-value persistence in absolute terms (MAE). The demand-weighted WAPE
+improvement (19.4%) reflects the same underlying error reduction -- with
+every SKU scored over an identical 28-day window, pooled MAE equals the
+per-SKU average, and demand-weighted WAPE improvement reduces to the same
+ratio, so these two figures aren't independent corroboration, just two
+equivalent views of one result.
 
-Note the per-SKU-average WAPE (unweighted mean of each SKU's own WAPE) shows
-the opposite direction (-3.2%): this is a known artifact of that specific
-metric on intermittent demand, not a real weakness. A handful of near-zero-
-actual SKUs get an inflated relative error from Croston's correctly-nonzero
-forecast, while naive's "predict zero" hits a WAPE ceiling of 1.0 on those
-same SKUs -- exactly why the real M5 competition itself does not score
-entries on plain per-series WAPE, and why the demand-weighted number above is
-the correct one to trust.
+The genuinely independent contrast is against the per-SKU-average WAPE
+(unweighted mean of each SKU's own WAPE), which shows the opposite direction
+(-3.2%): a known artifact of that specific metric on intermittent demand,
+not a real weakness. A handful of near-zero-actual SKUs get an inflated
+relative error from Croston's correctly-nonzero forecast, while naive's
+"predict zero" hits a WAPE ceiling of 1.0 on those same SKUs -- exactly why
+the real M5 competition itself does not score entries on plain per-series
+WAPE, and why the demand-weighted number is the one to trust.
+
+Note on reproducibility: the exact figures above depend on the environment.
+They were captured on pandas 3.0.x with the base install (no `statsforecast`
+extra) -- `df.sample()`'s RNG can select a different 100-SKU sample on a
+different pandas major version, and `forecast_demand(method="auto")` would
+route through AutoETS/TSB instead of Croston/SES if the `statsforecast`
+extra is installed. Re-running this exact command in a different environment
+may shift the precise numbers; the ~19% Linchpin margin (MAE, demand-weighted
+WAPE) is the stable takeaway, not the last decimal place.
 
 ---
 
