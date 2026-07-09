@@ -83,13 +83,60 @@ spammear): r/ecommerce, r/shopify, r/smallbusiness · **eCommerceFuel**
 directorio thehiveindex.com/topics/ecommerce (84 comunidades). Narrativa
 prestada: el "cash flow trap" de DTC (Portless).
 
+**Limite honesto (verificado jul 2026):** Upwork bloquea el fetch de posts
+individuales a herramientas automatizadas y Reddit/IndieHackers/Slack no
+son navegables por busqueda web (devuelve articulos de blog, no hilos de
+comunidad) — este tramo requiere sesion logueada humana, no se puede
+armar la lista de 20 en automatico como el segmento ES-Odoo. Lo que SI
+quedo verificado y listo para usar hoy:
+
+- **Volumen confirmado en vivo:** ~306 jobs abiertos en
+  [upwork.com/freelance-jobs/inventory-management](https://www.upwork.com/freelance-jobs/inventory-management/)
+  y ~320 en
+  [upwork.com/freelance-jobs/demand-planning](https://www.upwork.com/freelance-jobs/demand-planning/)
+  (tambien relevante:
+  [/freelance-jobs/supply-chain-management](https://www.upwork.com/freelance-jobs/supply-chain-management/)).
+  Entra logueado, ordena por nuevo + fixed-price, puja con el Guion A.
+- **Gancho narrativo verificado** (para la copy, NO como objetivo de
+  outreach - son marcas cotizadas, demasiado grandes para un freelance
+  solo): el ciclo de destock 2022-2024 dejo casos publicos y cuantificados
+  - Allbirds escribio $30,3M (2023) + $9,1M (2024) en stock descontinuado
+    ($419M perdidos en 5 anos sobre $1,24B de ingresos)
+  - Solo Stove/Solo Brands: 309 dias de inventario, "el caso ejemplar" de
+    sobre-stockeo post-2022
+  - FIGS (200 dias), Olaplex (212 dias), BarkBox ($17,4M write-down FY24)
+  - Usar como apertura: *"Hasta Allbirds escribio $30M en perdidas por
+    overstock en 2023 - no hace falta ser una marca publica para que esto
+    te este pasando a menor escala ahora mismo."* (fuente: analisis DIO
+    2022-2024, eightx.co)
+
 **ES — Odoo partners (el canal de mayor apalancamiento).** En vez de buscar
 clientes finales en frío, subcontratarse a implementadores Odoo que YA tienen
 pymes distribuidoras ahogadas en Excel; ofrecer el diagnóstico como su
-add-on. Directorio `odoo.com/partners` filtrado por país.
-- España: QUBIQ, Cravit, Octupus
-- LatAm: Doodes (CO/AR), Sinova (Bogotá), Xmarts (GDL)
-- Comunidad: odoo-community.org (OCA)
+add-on. Contacto real verificado (jul 2026):
+
+| Partner | Sitio / contacto | Nota de encaje |
+|---|---|---|
+| **QUBIQ** | qubiq.es · info@qubiq.es · +34 931 797 762 (Barcelona/Madrid/Sevilla/Bilbao/Lisboa) | Gold Partner, foco BI+AI sobre Odoo — 100+ consultores, "Best Odoo Partner Europe 2022" |
+| **Cravit Spain** | cravitgroup.es/odoo-espana · formulario en el sitio (contacto: Jaime Jiménez Titos) | Gold Partner, oficina España desde 2022 |
+| **Octupus** | octupus.es/contacto | Gold Partner, Pinto (Madrid) + Cuba + India — **especialistas en ecommerce/retail multicanal** (conector propio Amazon/eBay/Shopify/Temu, 250+ integraciones); el mejor encaje temático: sus clientes YA tienen el dolor de SKUs repartidos entre canales |
+| **Doodes** (TICSTRATEGY SAS) | doodes.co/contactus · info@doodes.co · +57 315 5324278 (Colombia/Argentina/USA) | Gold Partner, 15+ años, clientes manufactura/retail/logística |
+| **Sinova SAS** | sinova.co/contactus · contacto@sinova.co · +57 312 577 0982 (Bogotá) | Silver Partner, 10+ años, foco en facturación electrónica/contabilidad además de ERP |
+| **Xmarts** (Grupo Xmarts) | xmarts.com/en/contact · +52 3341647700 (Guadalajara/CDMX/Monterrey) | 100+ personas, presencia en 13 países |
+
+Comunidad adicional: odoo-community.org (OCA).
+
+**Guion D — acercamiento a un partner (no es el cliente final, es tu canal):**
+
+> Hola [nombre] — soy consultor de inventario especializado en motores de
+> optimización de supply chain (reorden, EOQ, excedente y obsoletos) que
+> corren sobre datos de Odoo. Seguro varios de tus clientes distribuidores/
+> retailers todavía manejan el inventario "a ojo" en Excel aparte de Odoo.
+> Tengo un diagnóstico de 2 semanas (cuánto cash tienen atrapado en stock
+> muerto + plan de reposición priorizado) que puedo correr como partner
+> tuyo — white-label o co-branded — sumando valor a tus implementaciones
+> sin que tengas que construirlo vos. ¿Vale la pena verlo con algún cliente
+> tuyo como piloto?
 
 **ES — marketplaces:** malt.es (tag supply-chain, ~60 perfiles,
 €250-550/día) + Malt Strategy; verificar volumen en Workana y SoyFreelancer
