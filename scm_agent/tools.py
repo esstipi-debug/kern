@@ -28,6 +28,7 @@ from jobs import (
     landed_cost_job,
     leadership,
     learning_curve_job,
+    markdown_liquidation_job,
     multi_echelon_job,
     newsvendor_job,
     odoo_job,
@@ -1685,6 +1686,54 @@ def excess_obsolete_tool() -> Tool:
     )
 
 
+# ---- markdown_liquidation (E&O x clearance pricing) --------------------------
+
+def _markdown_liquidation_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data",
+                        messages=["a stock CSV (product, on_hand, daily_demand + optional unit_cost / "
+                                  "days_since_last_sale) is required; pass a price/quantity history via "
+                                  "params['price_history_path'] to price clearances off elasticity"])
+    try:
+        payload = markdown_liquidation_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["stocks"]:
+        return Prepared(status="needs_data", messages=["no stock lines found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _markdown_liquidation_run(payload: object, params: dict) -> Produced:
+    report = markdown_liquidation_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def markdown_liquidation_tool() -> Tool:
+    return Tool(
+        key="markdown_liquidation",
+        title="Markdown Liquidation Plan",
+        description="Cross the excess & obsolete classification with clearance pricing to produce a "
+                    "per-SKU disposition plan: a clearance price, weeks-to-clear, and cash recovered "
+                    "vs. writing the stock to zero - elasticity-priced where price history exists, a "
+                    "documented default markdown or salvage recovery otherwise.",
+        intent_keywords=(
+            "markdown liquidation", "liquidation", "liquidation plan", "clearance", "clearance plan",
+            "clearance pricing", "markdown plan", "markdown schedule", "sell through", "sell-through plan",
+            "liquidate excess stock", "liquidate dead stock", "disposition plan", "clear excess inventory",
+        ),
+        requires_data=True,
+        options=tool_options.markdown_liquidation_options,
+        prepare=_markdown_liquidation_prepare,
+        run=_markdown_liquidation_run,
+        qa=lambda report: markdown_liquidation_job.verify(report),
+        deliver=lambda report, out_dir, client: markdown_liquidation_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            markdown_liquidation_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 # ---- facility_location (network design / center of gravity) ------------------
 
 def _facility_location_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
@@ -1858,6 +1907,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(slotting_tool())
     reg.register(simulation_tool())
     reg.register(excess_obsolete_tool())
+    reg.register(markdown_liquidation_tool())
     reg.register(facility_location_tool())
     reg.register(drp_tool())
     reg.register(vehicle_routing_tool())

@@ -61,6 +61,19 @@ def test_markdown_price_lowers_to_clear_stock():
     assert p > 0
 
 
+def test_markdown_price_returns_current_price_unchanged_for_a_non_negative_slope():
+    """A flat or upward-sloping fitted demand curve (elasticity >= 0) is not a usable
+    clearance curve: cutting price would model FEWER units sold, the opposite of a
+    markdown's purpose. Regression for a bug where only `elasticity == 0` was guarded,
+    letting a positive slope solve an economically inverted 'markdown' that recommends
+    cutting price to sell less and recover less cash."""
+    prices = [8.0, 10.0, 12.0, 14.0, 16.0, 18.0]
+    quantities = [20.0, 26.0, 33.0, 41.0, 50.0, 60.0]  # co-moving with price -> elasticity > 0
+    fit = estimate_elasticity(prices, quantities)
+    assert fit.identified and fit.elasticity > 0  # sanity: this is the failure-mode shape
+    assert markdown_price(remaining_units=200, periods_left=13, fit=fit, current_price=12.0) == 12.0
+
+
 def test_recommend_price_elastic_data():
     rng = np.random.default_rng(1)
     prices = np.linspace(8, 24, 30)
