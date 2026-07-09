@@ -79,6 +79,22 @@ def test_explain_fuzzy_falls_back_to_search(kb: KnowledgeBase) -> None:
     assert detail is None or isinstance(detail, ConceptDetail)
 
 
+def test_explain_resolves_bare_id_across_source_namespacing(kb: KnowledgeBase) -> None:
+    """A bare concept id must resolve even though the books graph namespaces node
+    ids by source (e.g. ``knowledge::chain_model``). Regression for the 25th-source
+    merge, which re-prefixed every original node id and silently broke the exact-id
+    lookup in both advise() and explain() - the fuzzy fallback masked most rules but
+    not all. The bare slug is the documented interface (CLAUDE.md's --explain, the
+    _METHOD_RULES), so it must survive any re-prefixing merge."""
+    detail = kb.explain("chain_model")  # documented bare id, real committed node
+    assert detail is not None, "bare 'chain_model' must resolve regardless of source prefix"
+    assert detail.concept.id == "chain_model", "Concept.id is normalized back to the bare slug"
+    # the prefixed form resolves to the very same node
+    prefixed = kb.explain("knowledge::chain_model")
+    assert prefixed is not None
+    assert prefixed.concept.id == detail.concept.id
+
+
 def test_bridge_returns_theory_side(kb: KnowledgeBase) -> None:
     b = kb.bridge("newsvendor")
     assert isinstance(b, Bridge)

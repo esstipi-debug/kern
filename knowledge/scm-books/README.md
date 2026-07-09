@@ -3,11 +3,12 @@
 A graphify knowledge graph built from **24 supply-chain books** (forecasting,
 pricing, revenue management, supply chain management, inventory optimization,
 manufacturing planning & control, operations management, logistics & operations
-strategy, sustainable logistics, **and supply-chain leadership**). This is the
+strategy, sustainable logistics, **and supply-chain leadership**) plus a
+**25th source, AI applied to supply chains** (see below). This is the
 **domain knowledge** layer for the agent — distinct from the repo's
 `graphify-out/`, which graphs the *code*.
 
-- `graph.json` — 1847 nodes · 3670 edges · 123 communities (GraphRAG-ready)
+- `graph.json` — 1953 nodes · 3810 edges · 123 communities (GraphRAG-ready)
 - `graph.html` — interactive visual (open in a browser)
 - `GRAPH_REPORT.md` — communities, god nodes, surprising cross-book connections
 
@@ -71,6 +72,28 @@ Concept node IDs are canonical
 (`bullwhip_effect`, `crostons_method`, `dynamic_pricing`), so the same concept
 across books merges into one node — that's what forms the cross-book bridges.
 
+**Cohen & Dai** (eds.), *AI in Supply Chains: Perspectives from Global Thought
+Leaders* (Springer Series in Supply Chain Management vol. 27, 2026) was added
+as the **25th source** — 106 nodes / 140 edges across 7 communities (AI Supply
+Chain Research, Enterprise Supply Chain Tech, AI Hardware & Infrastructure,
+Digital Supply Chain Innovation, Reinforcement Learning Tools, LLM Operations &
+Planning, AI-Enabled Operations Management). This is the modern AI/LLM
+application layer the graph previously lacked — the other 24 sources are
+almost entirely classical OR/inventory theory, forecasting, and pricing, with
+only scattered arXiv RL-pricing papers touching AI methods directly. The
+Springer edition is **not Open Access** (paywalled per-chapter, ~$30/chapter),
+so only the **10 of 20 chapters with a legitimate free preprint** were
+ingested (author self-archive on SSRN/arXiv or an institutional repository —
+no shadow-library sources): Cachon's "modest impact so far" framing essay,
+Tang's AI-risk-management survey, Fransoo/Peels/Udenio and Netessine/Shunko on
+the semiconductor/data-center supply chain *behind* AI, Simchi-Levi et al. on
+LLMs for SC decisions, Hu & Liu on coupling AI with OM theory, Gijsbrechts/
+Boute/Van Mieghem/Zhang on DRL for inventory (including a real Alibaba Tmall
+deployment), Raman & Kwon on AI in retail labor scheduling, Lee/Shen/Qi/Chen's
+JD.com AI-transformation case study, and Tayur's skeptical closing essay. Cost
+to extract: $0.11 (Kimi backend, 35k in / 18k out tokens) — cheap enough that
+buying the other 8 chapters was not worth it relative to what they'd add.
+
 ## Intended use (L3)
 
 `scm_agent` should query this graph for domain grounding: definitions, which
@@ -95,5 +118,17 @@ graph's `source_location` carries chapter references for citations.
   split into many per-theme communities (each labeled by its dominant concept,
   e.g. *CHAIN Leadership Model*, *Talent and Leadership Development*, *Supply
   Chain Resilience*) rather than one block. Citations/grounding are unaffected.
+- **Cohen & Dai (AI in Supply Chains) is half-covered on purpose**: 10 of 20
+  chapters (Allon; Miller; Perakis/Harsha/Cristian's decision-focused-AI
+  chapter; de Véricourt; Swaminathan/Xu; Smalley/Keskinocak on humanitarian
+  SC; Olsen on agricultural SC; Robinson on AI readiness) have **no free
+  legitimate version anywhere** — verified against SSRN, ResearchGate, Google
+  Scholar, and every author's faculty page. Springer sells each for ~$30.
+  Two more (Cohen/Agrawal/Deshpande's ML-planning chapter, Song's automation
+  chapter) have an adjacent-but-not-verbatim free version (an HBR reprint and
+  a Duke Fuqua plain-language adaptation, respectively) that was deliberately
+  **not** ingested to avoid attributing paraphrased content to the wrong
+  register/venue. If the missing 8 are ever purchased, re-run the extraction
+  over the full 20-chapter corpus and re-merge.
 
 Regenerate / extend with `/graphify` over the book PDFs, then refresh these files.

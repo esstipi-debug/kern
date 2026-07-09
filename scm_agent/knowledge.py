@@ -217,12 +217,12 @@ class KnowledgeBase:
                 continue
             if domain_terms is not None and not (trigger_set & domain_terms):
                 continue
-            node = self._index["books"].get(concept_id)
+            node = self._resolve_node(concept_id, "books")
             if node is None:
                 hits = self.search(concept_id.replace("_", " "), graph="books", limit=1)
                 if not hits:
                     continue
-                node = self._index["books"].get(hits[0].id)
+                node = self._resolve_node(hits[0].id, "books")
             if node is None or node["id"] in seen:
                 continue
             seen.add(node["id"])
@@ -329,7 +329,7 @@ class KnowledgeBase:
         pass either `crostons_method` or `Croston's Method`.
         """
         for name in ("books", "code"):
-            node = self._index[name].get(concept_id)
+            node = self._resolve_node(concept_id, name)
             if node is not None:
                 return self._detail(node, name)
 
@@ -340,7 +340,7 @@ class KnowledgeBase:
         hits = self.search(concept_id, graph="both", limit=1)
         if not hits:
             return None
-        node = self._index[hits[0].graph].get(hits[0].id)
+        node = self._resolve_node(hits[0].id, hits[0].graph)
         return self._detail(node, hits[0].graph) if node else None
 
     def bridge(self, term: str) -> Bridge:
@@ -388,9 +388,39 @@ class KnowledgeBase:
 
     # -- internals ------------------------------------------------------
 
+    @staticmethod
+    def _bare_id(node_id: str) -> str:
+        """Strip a leading ``<source>::`` namespace from a node id.
+
+        The committed books graph namespaces ids by source (``knowledge::x``,
+        ``cohen-dai-...::y``); the method rules, the ``--explain`` CLI, and every
+        test use the bare slug (``x``). Normalizing here keeps ``Concept.id``
+        stable across graph re-merges that change the source prefix.
+        """
+        return node_id.split("::", 1)[1] if "::" in node_id else node_id
+
+    def _resolve_node(self, concept_id: str, graph: str) -> dict | None:
+        """Resolve a (possibly bare) concept id to a node, tolerant of namespacing.
+
+        Tries an exact match, then the curated ``knowledge::`` namespace, then any
+        source-prefixed ``<ns>::<id>`` - so a bare id like ``chain_model`` keeps
+        resolving after a merge re-prefixes it to ``knowledge::chain_model``. The
+        exact-then-``knowledge::`` order means the original curated source always
+        wins over a same-slug node from a newer source.
+        """
+        index = self._index.get(graph, {})
+        node = index.get(concept_id) or index.get(f"knowledge::{concept_id}")
+        if node is not None:
+            return node
+        suffix = f"::{concept_id}"
+        for nid, candidate in index.items():
+            if nid.endswith(suffix):
+                return candidate
+        return None
+
     def _to_concept(self, node: dict, graph: str) -> Concept:
         return Concept(
-            id=node.get("id", ""),
+            id=self._bare_id(node.get("id", "")),
             label=node.get("label", node.get("id", "")),
             source=node.get("source_file"),
             location=node.get("source_location"),

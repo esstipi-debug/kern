@@ -1,7 +1,176 @@
 # Linchpin — Session Handoff
 
-**Date:** 2026-07-06 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `main` @ `1cef336` (PRs up to **#116**)
+**Date:** 2026-07-08 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/l3-cohen-dai-ai-in-supply-chains` (not yet merged, commit `2f5574f`, based off `main` @ `b34f1d5`, PRs up to **#119**)
 **Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
+
+## 2026-07-08 — L3 graph gets a 25th source (AI-in-SC, 10/20 chapters, $0.11) + a researched next-level roadmap
+
+**What actually shipped, committed on `feat/l3-cohen-dai-ai-in-supply-chains` (2f5574f), not yet merged:**
+`knowledge/scm-books/` grew from 24 to **25 sources** — Cohen & Dai (eds.), *AI in Supply
+Chains: Perspectives from Global Thought Leaders* (Springer, 2026). This is the first source
+that's about *AI applied to SCM* rather than classical OR/inventory/forecasting/pricing theory
+— all 24 prior sources predate the LLM-agent era. Springer's edition is paywalled per-chapter
+(~$30 each, not Open Access), so only the 10/20 chapters with a legitimate free preprint
+(author self-archive on SSRN/arXiv or an institutional repo — verified against SSRN,
+ResearchGate, Google Scholar, and every author's faculty page; no shadow-library sources) got
+extracted: Cachon's "AI's impact so far has been modest" framing essay, Tang's AI-risk-mgmt
+survey, Fransoo/Peels/Udenio + Netessine/Shunko on the semiconductor/data-center supply chain
+*behind* AI, Simchi-Levi et al. on LLMs for SC decisions, Hu & Liu on coupling AI with OM
+theory, Gijsbrechts/Boute/Van Mieghem/Zhang on DRL for inventory (real Alibaba Tmall
+deployment), Raman & Kwon on AI in retail labor scheduling, Lee/Shen/Qi/Chen's JD.com case
+study, and Tayur's skeptical closer. Graph: 1847→1953 nodes, 3670→3810 edges (clean additive
+merge, verified no loss), 123 communities incl. 7 new (AI Supply Chain Research, LLM
+Operations & Planning, Reinforcement Learning Tools, AI Hardware & Infrastructure, ...).
+Extraction cost: **$0.11** (Kimi backend, 35k in / 18k out tokens). Full provenance + the 8
+skipped chapters (no free version exists anywhere — verified) + 2 deliberately-not-ingested
+adjacent sources (an HBR reprint, a Duke Fuqua plain-language adaptation — different
+register/venue, not the verbatim chapter) are documented in `knowledge/scm-books/README.md`.
+
+**Gotcha worth knowing before the next `graphify extract` on this repo:** `.gitignore` has
+`knowledge/scm-books-rebuild/` (the staging dir for new-book raw PDFs + their intermediate
+`graphify-out/`), and `graphify`'s own file scanner **respects `.gitignore`** (falls back to it
+when no `.graphifyignore` exists, per `graphify/detect.py::_load_graphifyignore`) — pointing
+`graphify extract` at anything under that path silently finds "0 papers", no error. The
+established convention (matching `scripts/rebuild_l3_graph.ps1`) is source PDFs live **outside
+the repo** at `C:\Users\Gamer\Documents\scm-books-corpus\` (now includes a
+`cohen-dai-ai-in-supply-chains/` subfolder with the 9 chapter PDFs) — extract from there, write
+`--out` into the gitignored rebuild staging dir, then `merge-graphs` + `cluster-only` into the
+committed flat `knowledge/scm-books/{graph.json,graph.html,GRAPH_REPORT.md}`. Also:
+`graphify cluster-only <path> --graph <custom-path>/graph.json` writes its output to
+`<path>/graphify-out/` (its own default), **not** back to wherever `--graph` pointed — copy the
+3 files over manually and delete the stray `graphify-out/` afterward if your committed layout
+is flat (no `graphify-out/` subfolder) like `knowledge/scm-books/` is. Also needed
+`export MOONSHOT_API_KEY=$(...)` manually in every Bash call — the CLI does not auto-load the
+repo's `.env`, only the PowerShell rebuild scripts do that.
+
+**Then: a 6-thread parallel research pass (~502k tokens, all findings below are cited)** to
+answer three questions — how to level up the L3 graph, what's stale in the planned
+integrations, and what cross-functional (non-SCM-department) tooling is actually worth
+building next. Findings, ranked by actionability:
+
+1. **Best next graph source, and it's free:** SSRN #5792542, *"Supply Chain Management in the
+   AI Era: A Vision Statement from the Operations Management Community"* (Cohen, Dai, Perakis,
+   Agrawal, Allon, Boute, Cachon, Cristian, de Véricourt, Harsha, Keskinocak, Miller, Olsen,
+   A. Robinson + ~28 more) — https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5792542. It's
+   co-authored by literally all 8 authors of the chapters skipped this session (Allon, Miller,
+   Perakis/Harsha/Cristian, de Véricourt, Olsen, Robinson), condensing their arguments into one
+   freely-downloadable synthesis paper — ingesting this substantially closes the gap left by
+   the 8 paywalled chapters without paying Springer. Also flagged as strong candidates:
+   Gartner "AI is Not Driving Supply Chain Operating Model Transformation" (May 2026, 140
+   leaders surveyed, only 17% pursuing transformational AI redesign) + Gartner "Top Supply
+   Chain Technology Trends for 2026" (June 2026); GEP "Supply Chain AI Readiness Report" (2026,
+   180 execs, only 4% at scale in procurement despite 90% piloting — directly substitutes for
+   the paywalled Robinson "AI readiness" chapter's territory); McKinsey's 2026 procurement/
+   agentic-AI and gen-AI-supply-chain pieces (concrete case data, e.g. $30-35M savings on $2M
+   spend); 4 new 2026 arXiv papers on agentic AI for inventory (AIM-Bench, "Reliability and
+   Effectiveness of Autonomous AI Agents in SCM", "AI Agents for Inventory Control:
+   Human-LLM-OR Complementarity"). Full citations in the research log; not yet ingested.
+
+2. **GraphRAG technique that's directly applicable — citation grounding as a pre-publish
+   gate.** 2025-2026 work (arXiv 2606.00898, legal domain) treats a knowledge graph as a
+   *verification oracle*, not just a retrieval source: every generated citation gets checked
+   against the graph on existence/relevance/temporality before publishing (13-21% raw
+   hallucination rate found in that domain without it). For Linchpin specifically — a
+   deliverable-producing agent, not a chatbot — the actionable version is a QA-gate step that
+   resolves every L3 citation in a generated deliverable to an actual `path()`/`affected()`
+   result in `graph.json` before it ships, same shape as the existing traversal API, run as a
+   post-hoc verifier. Two more findings, lower priority: (a) a thin embedding layer *only* at
+   the query-entry step (map a fuzzy user question to the nearest concept node before BFS/DFS)
+   — not a parallel vector-retrieval path, since the graph's INFERRED semantic-similarity edges
+   already approximate what embeddings buy; (b) structural staleness (`valid_from`/`valid_to` +
+   `superseded_by` on EXTRACTED edges, keyed on subject+relation) beats recency-heuristic
+   freshness scoring for incremental updates without full re-extraction.
+
+3. **A genuinely new, well-sourced capability idea: `labor_demand_bridge`.** Prompted directly
+   by the Raman & Kwon chapter just ingested. Retail/warehouse labor scheduling is structurally
+   a **newsvendor problem** (same over/under-staffing cost tradeoff as safety stock), not a
+   queueing problem the way call centers are — the real gap is converting a demand forecast
+   into an hourly headcount requirement via a labor-standard buffer (extending
+   `safety_stock.py`'s z-score machinery, not `scheduling.py`'s fixed-job combinatorics —
+   Johnson's rule / Hungarian assignment / dispatching rules have no demand-uncertainty
+   dimension). Two open-source libraries are direct wrap targets, not build-from-scratch:
+   **`pyworkforce`** (ErlangC/A/B + `MinRequiredResources`/`MinHoursRoster`, built on Google
+   OR-Tools CP-SAT) and OR-Tools' own reference `shift_scheduling_sat.py`. Neither is in
+   `requirements*.txt` today. Canonical methodology: Buffa, Cosgrove & Luce (1976, *Decision
+   Sciences* 7(4)) for the 4-stage forecast→requirement→coverage→assignment pipeline (still
+   what Kronos/UKG/Reflexis run); Borst, Mandelbaum & Reiman (2004, *Operations Research* 52(1))
+   for the continuous-arrival staffing analogue. This is the first concrete "SCM ↔ HR" bridge
+   idea for the project — nothing HR-adjacent exists in the repo today.
+
+4. **Competitive check — the SMB cross-functional bridge is still a real gap, not
+   commoditized.** At enterprise tier, "SCM↔finance↔HR bridge" is now standard vendor
+   messaging, not a differentiator (Oracle shipped agentic apps spanning finance/SC/HR/CRM in
+   Apr/Jun 2026; SAP IBP, Kinaxis Maestro, o9 all claim it). But at SMB/DTC tier the market is
+   still fragmented point-solutions nobody has unified: Cogsy/Prediko do inventory-forecast-
+   tied-to-cash-flow; Float/Fathom/Pulse do accounting-synced cash forecasting but aren't
+   inventory-native; Settle/Wayflyer handle the financing gap; no inventory-optimization vendor
+   markets native labor scheduling and vice versa. **This directly validates going ahead with
+   the already-fully-researched, still-unbuilt finance/marketing bridge** — see
+   `documentation/FINANCE_MARKETING_BRIDGE.md` (dated, still accurate): §1 `rolling_cash_forecast()`
+   (13-week direct-method TWCF, needs a date field added to `PurchaseOrder`/`POLine` first —
+   real gap, not yet a blocker), §2 markdown+E&O crossover (`markdown_price()` in
+   `src/pricing.py` already exists, tested, but **nothing calls it** — not even `pricing.py`'s
+   own job; `classify_excess_obsolete()` also already exists; the gap is purely a
+   `jobs/markdown_liquidation_job.py` that crosses them), §3 `sop.py` gets an optional
+   promo-calendar demand-adjustment param. **Priority order per that doc: markdown+E&O first
+   (~1 day, both engines already tested), cash forecast second, S&OP promo-input third.** None
+   of the 3 have been built — confirmed this session (`ls src/cash_forecast.py
+   jobs/markdown_liquidation_job.py` etc. all 404).
+
+5. **API/library currency corrections for `CAPABILITY_EXPANSION_PLAN.md` §2.7/§2.8** (Shopify +
+   Amazon SP-API + ERP/accounting connectors, still 0% built — no Shopify/Amazon/QuickBooks/
+   Xero/NetSuite client code exists, only `src/connectors/odoo.py` + `excel.py`) before anyone
+   starts building against the June-22 pinned versions:
+   - Shopify: plan pins `2026-04`, current stable is `2026-07` — one cycle behind, not yet
+     deprecated (Shopify supports each version ~12mo), but re-pin before building.
+   - Amazon SP-API: `python-amazon-sp-api==2.1.8` still current. **If any FBA-inventory code
+     references `GET_FBA_FULFILLMENT_CURRENT_INVENTORY_DATA`-style report types, those were
+     deprecated 2022/removed 2023** — use `GET_LEDGER_SUMMARY_VIEW_DATA`/
+     `GET_LEDGER_DETAIL_VIEW_DATA` instead. Amazon's threatened $1,400/yr SP-API subscription
+     fee was announced Nov 2025, delayed, paused, then **cancelled outright May 12 2026** — no
+     fee currently, but don't treat "free" as permanent in pricing models.
+   - QuickBooks (`python-quickbooks==0.9.12`, `intuit-oauth==1.2.6`): both stale (no 2026
+     release) but functional; ensure `minorversion=69+` on requests (Intuit deprecated
+     minor versions 1-74 as of Aug 2025).
+   - Xero (`xero-python==14.0.0`, current): **breaking auth change** — apps created after
+     Mar 2 2026 must request 10 granular OAuth2 scopes instead of the old 2 broad ones; existing
+     apps got granular scopes auto-assigned by end of Apr 2026 but need updated authorization
+     URLs + user re-consent (old broad scopes still work until Sep 2027). Missing scope → 401
+     `insufficient_scope`.
+   - NetSuite: SOAP is being sunset (2025.2 was the last SOAP release); bigger deadline —
+     **Token-Based Auth can no longer create new SuiteTalk integrations starting NetSuite
+     2027.1** — plan OAuth2 from the start, don't build new TBA integrations.
+
+6. **Writeback safety design validated against 2025-2026 best practice, not behind it.** The
+   existing dry-run/staged-changeset + risk-tier + idempotency-key + TTL-approval +
+   audit/rollback design (`src/writeback.py`) maps closely onto the emerging consensus (OWASP
+   Agentic AI Top 10 Dec 2025, the OpenPort Protocol's idempotency-key pattern, LangGraph's
+   `interrupt_before` gold-standard pattern, a widely-cited four-tier read/reversible/
+   external-facing/irreversible risk model). No architectural change indicated. Tangential but
+   worth knowing: **Claude Agent SDK flipped its default permission mode from Auto to Manual as
+   of v2.1.200 (2026-07-03)** after telemetry showed ~93% of Auto-mode approvals were reflexive
+   — if anything in `scm_agent/` assumes SDK auto-approval behavior, re-check against current
+   SDK docs.
+
+**The honest tension to flag for whoever picks this up:** all of the above is capability R&D.
+`documentation/MONETIZATION_BRIEF.md`'s own "Qué hacer primero" section is explicit that the
+30/90-day priority is landing the first 1-2 paying clients via the 7 already-executable
+commercial packages, **not** more engine work — "No invertir en SaaS self-serve ni esperar
+ingresos del MCP todavía" applies just as much to more capability-building. Treat this handoff
+as the answer to "what's the highest-leverage engine work if/when there's a session dedicated
+to capability instead of GTM," not as a redirection away from selling. If picking this up,
+sanity-check `GTM_SUBMISSIONS.md` and whether a client has landed since 2026-07-06 first — if
+one has, prioritize concrete client-requested capability over this roadmap.
+
+**Also noticed, not investigated:** a `linchpin-llamafactory-sft` skill surfaced in
+`.claude/skills/` this session (LlamaFactory SFT fine-tuning workflow). [[linchpin-finetuning-verdict]]
+(prior-session memory) already concluded LlamaFactory SFT is the wrong tool for "better at
+SCM" — it breaks the auditability moat that's the actual product differentiator, and the
+`LlamaFactory/` directory at the repo's parent level has no CUDA-capable GPU to run on (AMD
+780M). If a fresh session is asked to use that skill, re-read the prior verdict first rather
+than assuming the skill's existence means it's been re-validated.
+
+---
 
 **Same-day update — all 7 commercial packages are now executable (PR #116).**
 PR #116 (`1cef336`) built the 4 sections deferred by #114: **Scale** ($7.5k/mo,
