@@ -139,8 +139,22 @@ Comunidad adicional: odoo-community.org (OCA).
 > tuyo como piloto?
 
 **ES — marketplaces:** malt.es (tag supply-chain, ~60 perfiles,
-€250-550/día) + Malt Strategy; verificar volumen en Workana y SoyFreelancer
-(LatAm).
+€250-550/día) + Malt Strategy.
+
+**LatAm — Workana (verificado jul 2026, priorizar esta):** categoria
+dedicada "Inventory Management" bajo Finance and Business, **14 proyectos
+activos hoy** -
+[workana.com/jobs?skills=inventory-management](https://www.workana.com/en/jobs?skills=inventory-management)
+(tambien revisar
+[/hire/operations-management](https://www.workana.com/en/hire/operations-management)).
+Plataforma real y establecida: fundada en Argentina 2012, 1M+ freelancers,
+la marketplace lider de LatAm. Volumen mas chico que Upwork pero con
+categoria propia y sesion en espanol - buen complemento al canal Odoo.
+
+**SoyFreelancer (verificado jul 2026, despriorizar):** sin evidencia de
+categoria de inventario/supply chain - el catalogo visible es
+diseno/redaccion/marketing/desarrollo web, no encaja con el ICP. No vale
+la pena invertir tiempo aqui salvo que surja lo contrario.
 
 **Boards fraccionales (alertas permanentes, no la fuente principal):**
 gofractional.com/hire/inventory-manager · fractionaljobs.io (Operations).
