@@ -6,6 +6,10 @@ Exercise 10 for how to obtain it):
     data/kaggle/m5/m5/datasets/sales_train_evaluation.csv
     data/kaggle/m5/m5/datasets/calendar.csv
 
+Reports both a per-SKU-average comparison and a demand-weighted (pooled)
+comparison, since unweighted per-SKU WAPE averaging is skewed by intermittent
+low-volume SKUs.
+
 Usage:
     python scripts/benchmark_forecast_m5.py [--sample-size 100] [--seed 42]
 """
@@ -48,6 +52,9 @@ def run_benchmark(sample_size: int = 100, seed: int = 42) -> None:
     naive_wapes: list[float] = []
     smart_maes: list[float] = []
     smart_wapes: list[float] = []
+    all_actuals: list[float] = []
+    all_naive_forecasts: list[float] = []
+    all_smart_forecasts: list[float] = []
     skipped = 0
 
     for _, row in df.iterrows():
@@ -73,6 +80,9 @@ def run_benchmark(sample_size: int = 100, seed: int = 42) -> None:
         naive_wapes.append(comparison.naive_wape)
         smart_maes.append(comparison.smart_mae)
         smart_wapes.append(comparison.smart_wape)
+        all_actuals.extend(actuals.tolist())
+        all_naive_forecasts.extend(naive_forecast)
+        all_smart_forecasts.extend(smart_forecast)
 
     n = len(naive_maes)
     if n == 0:
@@ -87,10 +97,15 @@ def run_benchmark(sample_size: int = 100, seed: int = 42) -> None:
     if avg_naive_wape > 0:
         improvement = (avg_naive_wape - avg_smart_wape) / avg_naive_wape * 100
 
-    print(f"SKUs scored: {n} (skipped {skipped} all-zero-history SKUs)")
-    print(f"Naive (last-value persistence):  MAE={avg_naive_mae:.3f}  WAPE={avg_naive_wape:.3f}")
-    print(f"Linchpin (classification+auto):  MAE={avg_smart_mae:.3f}  WAPE={avg_smart_wape:.3f}")
-    print(f"WAPE improvement: {improvement:.1f} percent")
+    pooled = compare_forecast_methods(all_actuals, all_naive_forecasts, all_smart_forecasts)
+
+    print(f"SKUs scored: {n} (skipped {skipped} all-zero-history/actuals SKUs)")
+    print(f"Per-SKU average -- Naive:     MAE={avg_naive_mae:.3f}  WAPE={avg_naive_wape:.3f}")
+    print(f"Per-SKU average -- Linchpin:  MAE={avg_smart_mae:.3f}  WAPE={avg_smart_wape:.3f}")
+    print(f"Per-SKU average WAPE improvement: {improvement:.1f} percent")
+    print(f"Demand-weighted (pooled) -- Naive:     MAE={pooled.naive_mae:.3f}  WAPE={pooled.naive_wape:.3f}")
+    print(f"Demand-weighted (pooled) -- Linchpin:  MAE={pooled.smart_mae:.3f}  WAPE={pooled.smart_wape:.3f}")
+    print(f"Demand-weighted WAPE improvement: {pooled.improvement_pct:.1f} percent")
 
 
 if __name__ == "__main__":
