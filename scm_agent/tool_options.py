@@ -487,6 +487,32 @@ def excess_obsolete_options(report: object) -> GuidedOutcome:
     )
 
 
+def markdown_liquidation_options(report: object) -> GuidedOutcome:
+    priced = report.n_elasticity + report.n_default_discount
+    execute = ("Execute the clearance plan",
+               f"Clear the {priced} priced SKU(s) at the recommended markdowns over "
+               f"{report.horizon_weeks:.0f} weeks, recovering ~{report.total_recovered:,.0f}.",
+               "apply the per-SKU clearance prices and horizon", "recovers cash now; margin hit on markdowns")
+    salvage = ("Salvage the non-moving lines",
+               f"Route the {report.n_salvage} salvage SKU(s) (dead / no price) to return-to-vendor, "
+               f"jobbers, or a write-down.",
+               "dispose of the salvage lines off-price", "recovers a fraction of cost; clears space fast")
+    reprice = ("Refine prices before committing",
+               "Gather more price/quantity history so more lines can be elasticity-priced, not defaulted.",
+               "hold and collect price-response data", "better prices later; cash stays locked meanwhile")
+    if priced > 0:
+        items: list[_Item] = [execute, salvage, reprice]
+    elif report.n_salvage > 0:
+        items = [salvage, reprice, execute]
+    else:
+        items = [reprice, execute, salvage]
+    return _ranked(
+        f"Liquidation plan for {report.n_assessed} at-risk SKU(s): recover ~{report.total_recovered:,.0f} "
+        f"of {report.total_at_risk:,.0f} - choose how to act.",
+        items,
+    )
+
+
 def facility_location_options(report: object) -> GuidedOutcome:
     save_txt = (f" (saves {report.saving_vs_current:,.0f} vs current)"
                 if report.saving_vs_current is not None else "")

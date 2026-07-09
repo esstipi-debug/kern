@@ -60,6 +60,10 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
         cols = list(df.columns)[:10]
         raise ValueError(f"could not find {', '.join(missing)}; pass them in params (columns seen: {cols})")
 
+    if df[on_hand].isna().any():
+        bad = df.loc[df[on_hand].isna(), product].astype(str).tolist()
+        raise ValueError(f"missing/non-numeric on_hand for: {', '.join(bad[:10])}")
+
     cost = _pick_column(df, params.get("cost_col"), _COST_COLS)
     last_sale = _pick_column(df, params.get("last_sale_col"), _LASTSALE_COLS)
     stocks = [

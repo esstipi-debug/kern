@@ -106,7 +106,13 @@ def markdown_price(
     """
     if remaining_units <= 0 or periods_left <= 0:
         raise ValueError("remaining_units and periods_left must be > 0")
-    if not fit.identified or fit.elasticity == 0 or fit.scale <= 0:
+    # A non-negative fitted elasticity (flat or upward-sloping demand) means cutting
+    # price would not increase - or would even decrease - modeled demand; there is no
+    # markdown that clears stock faster under this curve, so return the current price
+    # unchanged rather than solve an economically inverted "markdown". Mirrors how
+    # optimal_price_constant_elasticity/recommend_price already reject elasticity >= -1
+    # as not optimizable.
+    if not fit.identified or fit.elasticity >= 0 or fit.scale <= 0:
         return current_price
     target_rate = remaining_units / periods_left
     price = (target_rate / fit.scale) ** (1.0 / fit.elasticity)

@@ -120,7 +120,7 @@ _CODE_GRAPH = Path(__file__).resolve().parent.parent / "graphify-out" / "graph.j
 def test_build_default_registry_tools():
     reg = tools.build_default_registry()
     keys = {t.key for t in reg.list()}
-    assert keys == {"inventory_optimization", "pricing", "leadership_chain", "cost_to_serve", "sop", "abc_xyz", "sourcing", "ddmrp", "landed_cost", "whatif", "financial_kpis", "reconciliation", "returns", "warehouse_layout", "queuing", "scheduling", "risk", "forecast", "data_quality", "dea", "acceptance_sampling", "earned_value", "learning_curve", "odoo_replenishment", "excel_replenishment", "newsvendor", "cycle_count", "multi_echelon", "transportation", "fefo", "slotting", "simulation", "excess_obsolete", "facility_location", "drp", "vehicle_routing"}
+    assert keys == {"inventory_optimization", "pricing", "leadership_chain", "cost_to_serve", "sop", "abc_xyz", "sourcing", "ddmrp", "landed_cost", "whatif", "financial_kpis", "reconciliation", "returns", "warehouse_layout", "queuing", "scheduling", "risk", "forecast", "data_quality", "dea", "acceptance_sampling", "earned_value", "learning_curve", "odoo_replenishment", "excel_replenishment", "newsvendor", "cycle_count", "multi_echelon", "transportation", "fefo", "slotting", "simulation", "excess_obsolete", "markdown_liquidation", "facility_location", "drp", "vehicle_routing"}
     assert reg.get("leadership_chain").requires_data is False
     assert reg.get("odoo_replenishment").requires_data is False
     assert reg.get("inventory_optimization").requires_data is True
@@ -215,6 +215,19 @@ def test_classify_routes_pricing_and_leadership():
     p = _FakeProvider(available=False)
     assert intent.classify("what price maximizes profit", reg, p).job_type == "pricing"
     assert intent.classify("evaluate our supply chain leadership (CHAIN)", reg, p).job_type == "leadership_chain"
+
+
+def test_classify_routes_markdown_liquidation_without_stealing_pricing():
+    reg = tools.build_default_registry()
+    p = _FakeProvider(available=False)
+    # a clearance/liquidation brief routes to the new tool...
+    assert intent.classify(
+        "build a markdown liquidation plan to clear my excess stock", reg, p
+    ).job_type == "markdown_liquidation"
+    # ...while a plain price-optimization brief still routes to pricing (no regression).
+    assert intent.classify("what price maximizes profit and margin", reg, p).job_type == "pricing"
+    # ...and a pure diagnosis brief still routes to E&O.
+    assert intent.classify("how much excess and obsolete dead stock do i have", reg, p).job_type == "excess_obsolete"
 
 
 def test_classify_override_wins():
