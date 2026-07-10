@@ -3,6 +3,18 @@
 ## [Unreleased]
 
 ### Added
+- **MCP surface expanded 8 → 33 tools (`webapp/mcp_tool_specs.py`)** — every read-only
+  analysis tool is now exposed to remote MCP clients, not just the original Phase A eight:
+  cost-to-serve, landed cost, earned value, learning curve, E&O, markdown liquidation, FEFO,
+  IRA reconciliation, cycle count, returns disposition, S&OP, DDMRP, multi-echelon, DRP,
+  simulation-optimized policy, sourcing, acceptance sampling, risk, DEA, queuing, job
+  sequencing, transport-mode selection, facility location, slotting, and vehicle routing.
+  The tool surface moved out of `webapp/mcp_server.py` into a spec table
+  (`webapp/mcp_tool_specs.py` — name, job_type, title, column contract per tool; the server
+  registers each spec in a loop), so adding a tool = adding one spec. Still excluded, by
+  design: the writeback pair (`odoo_replenishment`, `excel_replenishment`) and the two
+  non-tabular tools (`leadership_chain`, `warehouse_layout`). +5 tests (spec-registered
+  bridge e2e, required-param degradation, description contract).
 - **Data-protection trust note (README + `/demo`)** — surfaced the existing safe-staging/isolation controls (per-job sandboxed directory, validated uploads, auto-purge, [SECURITY.md](SECURITY.md)) as a visible third "cross-cutting guarantee" in the README and a short note next to the file upload on the public `/demo` page, where a prospect actually hands over their data. No behavior change — documentation/copy only.
 - **`vehicle_routing` agent tool + `src/logistics/routing.py`** — new capability (36th tool),
   grounded in Ballou *Logistica/Administracion de la cadena de suministro* Cap. 7 ("Diseno de

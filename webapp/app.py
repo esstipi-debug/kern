@@ -162,7 +162,7 @@ app.include_router(decisions_router)
 # AI agents). Shares this process's orchestrator (avoids loading the knowledge
 # graph twice) but is gated by its OWN per-client key store, not LINCHPIN_API_KEY -
 # see webapp/mcp_auth.py. No writeback tool (e.g. odoo_replenishment) is ever
-# exposed here; see webapp/mcp_server.py for the exact 8-tool surface.
+# exposed here; see webapp/mcp_tool_specs.py for the exact exposed surface.
 _mcp_asgi_app = build_mcp_server(_get_orchestrator()).streamable_http_app()
 # A lambda, not the bare function: `_get_mcp_key_store` must be looked up by NAME
 # in this module's globals on every call (late binding), not captured by value
