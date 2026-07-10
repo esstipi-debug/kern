@@ -1,5 +1,133 @@
 # Linchpin — Session Handoff
 
+**Date:** 2026-07-10 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e3-liquidacion`, merging to `main` now as E3's PR **#129** (E1 **#125**, E2 **#128**, E4 **#131** all already merged + E1/E2 deployed live; **#122** audit-evidence, **#123** benchmarks, and a `docs/refresh-stale-counts`-style worktree still open concurrently)
+**Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
+
+## 2026-07-10 — E3 merged into main alongside E4 (real conflicts, resolved by hand)
+
+E3 (`feat/e3-liquidacion`, branched off `origin/main` before E4 existed) and
+E4 (`feat/e4-bilingual`, branched off `origin/main` independently, merged
+first as **#131**) both touched `examples/run_package.py`,
+`src/client_profile.py`, and `tests/test_client_profile.py` — GitHub flagged
+E3's PR as `CONFLICTING` once E4 landed. Resolved by hand (both features'
+code kept, nothing dropped): `ClientProfile` carries both
+`contingent_fee_pct` (E3) and `lang` (E4) fields; `examples/run_package.py`
+has both `--fee-pct`/`--fee-floor`/`--measure` (E3) and `--lang` (E4) CLI
+flags plus both `_resolve_fee_params()` and `_resolve_lang()` helpers.
+**While resolving, applied E4's own adversarial-review fix to
+`_resolve_fee_params()` too** — it had the exact same
+silently-swallows-a-corrupt-profile.json bug that review caught in
+`_resolve_lang()` (see the E4 section below), just not yet fixed since it
+predates that finding. Same split-try/except fix applied here for
+consistency; add a regression test for it if picking this thread back up
+(the E4-side one is `test_corrupt_profile_fails_loudly_instead_of_silently_defaulting`
+in `tests/test_run_package_lang_cli.py` — mirror it for `_resolve_fee_params`
+in `tests/test_run_package_cli.py`, not yet written as of this merge). Full
+suite + ruff re-verified green AFTER the merge, not just before it — see
+below.
+
+## 2026-07-10 — E3 "Sprint de Liquidacion" (Oferta #8, precio contingente) shipped
+
+**E1 and E2 closed out first this session:** PR #125 (E1, `/paquetes`) and PR
+#128 (E2, `/demo` funnel) both squash-merged and deployed live to
+`https://linchpin.fly.dev` — verified end-to-end in the browser/curl, not
+just "deploy succeeded" (see the prior entries below for the exact checks).
+A concurrent session's PR #126 (MCP tools 8->33) and PR #127 (doc count
+refresh) landed on `main` in between — both merged in cleanly with no
+conflicts.
+
+**E3 shipped on `feat/e3-liquidacion`:** the 8th commercial package,
+**Sprint de Liquidacion** — the only section with **contingent pricing**
+(10-20% of cash recovered, floor USD 1,500, never more than what was
+actually recovered) instead of a fixed price. New `src/contingent_fee.py`:
+`calculate_contingent_fee()` (zero recovery -> zero fee, no floor charged on
+nothing recovered; the floor raises a small recovery to a minimum worth
+invoicing, but is itself capped at `recovered_cash` so the fee can never
+exceed what came back) + `measure_recovery()` for the post-sprint closing
+annex (estimated vs. actual recovery per SKU, real fee computed on the real
+number). New `LIQUIDACION` `PackageSpec` in `scm_agent/package_specs.py`
+(`data_quality`, `excess_obsolete`, `markdown_liquidation` required + `pricing`
+optional — reuses the Diagnostico's exact intake, so a client who ran that
+first sends nothing new). `ClientProfile.contingent_fee_pct` (new field,
+0.10-0.20, deliberately excluded from `as_params()` since no engine `Tool`
+reads it — the package CLI reads it directly off the loaded profile).
+`examples/run_package.py` gained `--fee-pct`/`--fee-floor`/`--measure`: a
+successful `liquidacion` run always writes `estimacion_honorarios.md`
+("ESTA ES UNA ESTIMACION, NO UNA FACTURA"); `--measure <post_liquidacion.csv>`
+additionally writes `anexo_cierre.md` with the real recovered cash vs. the
+estimate and the real fee owed. New one-pager
+`documentation/paquetes/sprint-liquidacion.md` + price-table updates across
+`MONETIZATION_BRIEF.md`, `documentation/paquetes/README.md`,
+`webapp/offers.py` (new 8th `Offer`, appears on `/paquetes` automatically)
+and 4 operator docs whose "7 paquetes"/"7 secciones" counts were now stale
+(bumped to 8) — `webapp/paquetes_page.py`'s landing copy also updated since
+Sprint de Liquidacion breaks the "7 paquetes de alcance fijo" generalization
+(it's the one contingent-price section).
+
+**Adversarial review before merge — this one ran clean (15/15 agents, no
+session-limit outage this time) and caught one real, consequential bug plus
+8 smaller ones, all fixed:**
+1. **(HIGH, the important one) price-history intake never reached
+   `markdown_liquidation`.** The package spec ran `markdown_liquidation` on
+   just the stock CSV; the client's `ventas.csv` (price history) only fed the
+   *separate* `pricing` step, never `params['price_history_path']`. On the
+   demo intake this meant `n_elasticity=0` (silent fallback to
+   salvage/default-markdown heuristics) and `total_recovered=~9,566` instead
+   of `n_elasticity=3` and `~50,577` with real elasticity pricing — a >5x
+   difference in the exact number the contingent fee is computed from, while
+   the one-pager unconditionally promised elasticity pricing "cuando tenés
+   historial de precios." Fixed with a new generic
+   `PackageStep.extra_input_params: dict[str, str]` hook in
+   `scm_agent/packages.py` (`{param_key: slot_name}`, resolved against the
+   same intake dir, silently omitted if that slot's file is absent — same
+   optional-degrade shape as every other package mechanism) and wired
+   `{"price_history_path": "ventas"}` onto the `markdown_liquidation` step.
+   Two new regression tests pin both directions (present -> elasticity used;
+   absent -> heuristic fallback, unchanged).
+2. `measure_recovery()` had no input validation (unlike
+   `calculate_contingent_fee`) — a NaN/negative value from a garbled
+   `--measure` CSV crashed deep inside an unrelated function with a
+   misleading `recovered_cash`-named error. Fixed: validates every value in
+   both dicts up front, naming the actual dict + SKU.
+3. `_actual_recovery_by_sku` silently coerced unparseable quantity/price
+   cells (e.g. Excel's `"1,200"` thousands separator) to `$0` via
+   `pd.to_numeric(errors="coerce")` + `sum(skipna=True)` — indistinguishable
+   from "the client genuinely sold nothing." Fixed: raises listing the
+   affected SKUs instead.
+4. `--fee-pct`/`--fee-floor`/`--measure` had no error handling at the CLI
+   boundary — an out-of-range `--fee-pct` or malformed `--measure` CSV
+   crashed with a raw traceback *after* the full package run (14 files) had
+   already succeeded and printed "status: ok." Fixed: `main()` wraps the
+   annex-writing call in `try/except (ValueError, OSError)` and prints an
+   actionable message — the core deliverables were already safe either way.
+5. `ContingentFee.effective_pct`'s docstring claimed it "never exceeds
+   fee_pct" — false; the floor is capped at `recovered_cash`, not at
+   `fee_pct`, so a small recovery can push the effective rate to 75%+ on a
+   10% contract. Fixed the docstring and added a callout in
+   `render_fee_estimate`'s floor-applied branch so the client-facing text
+   says so too.
+6. `examples/run_package.py`'s own module docstring still listed 7 packages,
+   the one place in the diff's own touched file that missed the 8th. Fixed.
+
+3 other raised findings were investigated and REFUTED with evidence (not
+just dismissed) — see the workflow journal if picking this up: a
+`_resolve_fee_params` exception-swallowing claim whose cited scenario never
+actually reaches that code path (`load_profile` aborts earlier), an
+"empty-lines" `measure_recovery` claim that's the function's documented,
+tested contract rather than a bug, and a pandas-version-specific
+`groupby(NaN)` claim that didn't reproduce on the installed pandas 3.0.3.
+
+68 new/changed tests total (calculator edge cases: recupero cero, el piso,
+límites 10-20%, cap por lo recuperado, NaN/negative rejection; the
+price-history wiring regression pair; CLI helpers; package end-to-end +
+optional-pricing-skip), full suite green (1559 passed), ruff clean. Verified
+live: `--demo --measure <csv>` runs end-to-end with real elasticity pricing
+and both annexes read correctly; `/paquetes/sprint-liquidacion` renders.
+
+**E4 (entregables bilingües) already shipped independently** — see the
+section directly below; it merged first (**#131**) while this PR was still
+open, hence the merge-conflict entry at the top of this file.
+
 **Date:** 2026-07-10 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e4-bilingual` (E1 **#125** merged + deployed live; E2 **#128** merged + deployed live; E3 open as PR **#129** on `feat/e3-liquidacion`, not yet merged; **#122** audit-evidence, **#123** benchmarks, and a `docs/refresh-stale-counts`-style worktree still open concurrently)
 **Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
 

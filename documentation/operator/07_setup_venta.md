@@ -25,8 +25,16 @@ Sin esta variable, el botón "Agendar una llamada" en cada paquete abre un
 
 ## 2 · Stripe Payment Links (uno por paquete)
 
-Cada uno de los 7 paquetes tiene su propia variable — **no compartas un solo
+Cada uno de los 8 paquetes tiene su propia variable — **no compartas un solo
 link entre paquetes**, porque entonces no sabés cuál se vendió.
+
+**El Sprint de Liquidación (precio contingente) es la excepción:** no tiene un
+monto fijo para poner en un Payment Link (se cobra 10-20% de lo que se
+recupera, medido al cierre — ver `documentation/paquetes/sprint-liquidacion.md`).
+Dos opciones: (a) no configurar `STRIPE_LINK_SPRINT_LIQUIDACION` — el botón
+"Pagar / Empezar" degrada a `mailto:` y coordinás el pago por factura al
+cierre, la vía recomendada; o (b) configurar un Payment Link de "seña" a
+cuenta del honorario final si preferís cobrar un adelanto simbólico.
 
 1. Entrá a tu cuenta de Stripe → **Payment Links** → **New**.
 2. Creá un link por paquete, con el precio/cadencia exactos de
@@ -49,9 +57,10 @@ link entre paquetes**, porque entonces no sabés cuál se vendió.
    | Retainer Ejecutivo Fraccional | `STRIPE_LINK_RETAINER_EJECUTIVO` |
    | Proyecto de Red, Almacén y Operación | `STRIPE_LINK_PROYECTO_RED_ALMACEN` |
    | Proyecto de Sourcing y Costo de Importación | `STRIPE_LINK_PROYECTO_SOURCING` |
+   | Sprint de Liquidación (precio contingente, ver nota arriba) | `STRIPE_LINK_SPRINT_LIQUIDACION` |
 
 5. Configurá las que ya tengas listas (podés hacerlo de a una, no hace falta
-   completar las 7 el mismo día):
+   completar las 8 el mismo día):
    ```bash
    fly secrets set \
      STRIPE_LINK_DIAGNOSTICO_ARRANQUE="https://buy.stripe.com/xxxxx" \

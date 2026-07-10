@@ -1,6 +1,6 @@
 """Commercial packages: spec integrity, the package-level QA gate, and end-to-end
-demo runs for all seven packages (diagnostico / starter / growth / scale /
-retainer_ejecutivo / proyecto_red_almacen / proyecto_sourcing)."""
+demo runs for all eight packages (diagnostico / starter / growth / scale /
+retainer_ejecutivo / proyecto_red_almacen / proyecto_sourcing / liquidacion)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from examples.run_package import DEMO_PARAMS, build_demo_intake
 from scm_agent.package_specs import (
     DIAGNOSTICO,
     GROWTH,
+    LIQUIDACION,
     PACKAGES,
     PROYECTO_RED_ALMACEN,
     PROYECTO_SOURCING,
@@ -388,6 +389,52 @@ def test_proyecto_sourcing_end_to_end(demo_intake, tmp_path):
     out = tmp_path / "out"
     result = _run(PROYECTO_SOURCING, demo_intake, out)
     _assert_delivered(result, out, "proyecto_sourcing", 3)
+
+
+def test_liquidacion_end_to_end(demo_intake, tmp_path):
+    out = tmp_path / "out"
+    result = _run(LIQUIDACION, demo_intake, out)
+    # pricing is optional; the demo intake has ventas.csv (with price), so it runs too.
+    _assert_delivered(result, out, "liquidacion", 4)
+    liq = next(s for s in result.steps if s.tool_key == "markdown_liquidation")
+    assert liq.report.total_recovered >= 0
+
+
+def test_liquidacion_markdown_liquidation_uses_real_price_history_when_present(demo_intake, tmp_path):
+    """Regression test: markdown_liquidation's price_history_path must come from
+    the SAME ventas.csv the (separate) pricing step reads, wired via
+    PackageStep.extra_input_params. Without that wiring the step silently falls
+    back to default-markdown/salvage heuristics even when real price history is
+    right there in the intake -- a >5x difference in recovered cash on this demo
+    intake (caught by adversarial review before this test existed)."""
+    out = tmp_path / "out"
+    result = _run(LIQUIDACION, demo_intake, out)
+    liq = next(s for s in result.steps if s.tool_key == "markdown_liquidation")
+    assert liq.report.n_elasticity > 0
+    assert liq.report.total_recovered > 40_000  # elasticity-priced, not the ~9.5k salvage-only figure
+
+
+def test_liquidacion_markdown_liquidation_degrades_without_ventas_csv(demo_intake, tmp_path):
+    partial = tmp_path / "partial"
+    partial.mkdir()
+    for name in ("maestro.csv", "stock.csv"):
+        (partial / name).write_bytes((demo_intake / name).read_bytes())
+    out = tmp_path / "out"
+    result = _run(LIQUIDACION, partial, out)
+    liq = next(s for s in result.steps if s.tool_key == "markdown_liquidation")
+    assert liq.report.n_elasticity == 0  # no ventas.csv -> the documented heuristic fallback
+
+
+def test_liquidacion_pricing_step_is_optional(demo_intake, tmp_path):
+    partial = tmp_path / "partial"
+    partial.mkdir()
+    for name in ("maestro.csv", "stock.csv"):
+        (partial / name).write_bytes((demo_intake / name).read_bytes())
+    out = tmp_path / "out"
+    result = _run(LIQUIDACION, partial, out)
+    _assert_delivered(result, out, "liquidacion", 3)
+    pricing_step = next(s for s in result.steps if s.tool_key == "pricing")
+    assert pricing_step.status == "skipped"
 
 
 def test_leadership_chain_scores_come_from_liderazgo_csv(demo_intake, tmp_path):

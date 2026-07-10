@@ -111,6 +111,12 @@ class ClientProfile:
     order_cost: float | None = None
     lead_time_days: float | None = None
     warehouse_capacity: WarehouseCapacity | None = None
+    # The Sprint de Liquidacion's negotiated contingent-fee rate (see
+    # src/contingent_fee.py) — 10-20%, the range the commercial brief
+    # authorizes. Deliberately NOT an engine param (no Tool reads it), so it
+    # is excluded from as_params(); the package CLI reads it directly off the
+    # loaded profile.
+    contingent_fee_pct: float | None = None
     # Deck language (see src/i18n.py) — a per-client default, e.g. an
     # English-speaking client's decks default to "en" without the operator
     # having to pass --lang on every run. Deliberately NOT an engine param
@@ -126,6 +132,8 @@ class ClientProfile:
         _require_positive_finite(self.holding_rate, "holding_rate")
         _require_positive_finite(self.order_cost, "order_cost")
         _require_positive_finite(self.lead_time_days, "lead_time_days")
+        if self.contingent_fee_pct is not None and not 0.10 <= self.contingent_fee_pct <= 0.20:
+            raise ValueError("contingent_fee_pct must be in [0.10, 0.20]")
         if self.lang not in ("es", "en"):
             raise ValueError(f"lang must be 'es' or 'en', got {self.lang!r}")
         if self.source not in VALID_SOURCES:
@@ -180,6 +188,7 @@ def load_profile(client_id: str, *, root: Path | str = DEFAULT_CLIENTS_ROOT) -> 
             order_cost=raw.get("order_cost"),
             lead_time_days=raw.get("lead_time_days"),
             warehouse_capacity=WarehouseCapacity(**capacity_raw) if capacity_raw else None,
+            contingent_fee_pct=raw.get("contingent_fee_pct"),
             lang=raw.get("lang", "es"),
             source=raw.get("source", "manual"),
             updated_at=raw.get("updated_at"),

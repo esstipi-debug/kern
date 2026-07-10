@@ -83,6 +83,14 @@ class PackageStep:
     # calling tool.prepare. None => the file is passed through as data_path,
     # unchanged, the normal way.
     params_from_input: Callable[[Path], dict] | None = None
+    # For a tool that optionally reads a SECOND file from a DIFFERENT intake
+    # slot as a params path (e.g. markdown_liquidation's own data_path is the
+    # "stock" slot, but it also optionally reads params["price_history_path"]
+    # from the "ventas" slot): {param_key: slot_name}. Resolved against the
+    # SAME intake dir as the step's own input, before tool.prepare runs; the
+    # param is simply omitted (never a hard error) when that slot's file is
+    # absent, matching every other optional-input degrade in this runner.
+    extra_input_params: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -327,6 +335,12 @@ def _run_step(
         return StepOutcome(**base, status=STATUS_ERROR, source="derivado",
                            messages=(str(exc),))
     base["source"] = source
+
+    for param_key, slot_name in step.extra_input_params.items():
+        slot = spec.input_for(slot_name)
+        candidate = (intake / slot.filename) if intake is not None else None
+        if candidate is not None and candidate.exists():
+            params = {**params, param_key: str(candidate)}
 
     if step.params_from_input is not None and data_path is not None:
         try:

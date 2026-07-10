@@ -80,6 +80,24 @@ def test_valid_profile_constructs_cleanly():
     assert profile.client_id == "acme"
 
 
+@pytest.mark.parametrize("bad", [0.0, 0.09, 0.21, 1.0, -0.15])
+def test_contingent_fee_pct_out_of_range_raises(bad):
+    with pytest.raises(ValueError, match="contingent_fee_pct"):
+        ClientProfile(client_id="x", display_name="X", contingent_fee_pct=bad)
+
+
+@pytest.mark.parametrize("ok", [0.10, 0.15, 0.20])
+def test_contingent_fee_pct_within_range_is_accepted(ok):
+    profile = ClientProfile(client_id="x", display_name="X", contingent_fee_pct=ok)
+    assert profile.contingent_fee_pct == ok
+
+
+def test_contingent_fee_pct_is_not_an_engine_param():
+    # No Tool reads it — it must never leak into merge_params()'s output.
+    profile = ClientProfile(client_id="x", display_name="X", contingent_fee_pct=0.15)
+    assert "contingent_fee_pct" not in profile.as_params()
+
+
 def test_default_lang_is_spanish():
     assert ClientProfile(client_id="x", display_name="X").lang == "es"
 
@@ -120,6 +138,13 @@ def test_save_and_load_round_trip(tmp_path):
     save_profile(profile, root=tmp_path)
     loaded = load_profile("acme", root=tmp_path)
     assert loaded == profile
+
+
+def test_save_and_load_round_trip_with_contingent_fee_pct(tmp_path):
+    profile = ClientProfile(client_id="acme", display_name="Acme", contingent_fee_pct=0.18)
+    save_profile(profile, root=tmp_path)
+    loaded = load_profile("acme", root=tmp_path)
+    assert loaded.contingent_fee_pct == 0.18
 
 
 def test_save_and_load_round_trip_without_capacity(tmp_path):

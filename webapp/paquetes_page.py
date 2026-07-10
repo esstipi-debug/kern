@@ -165,8 +165,9 @@ def render_index_html(offers: tuple[Offer, ...], profile: OperatorProfile) -> st
         + '<section style="padding-bottom:6px">'
         + '<span class="eyebrow">Paquetes comerciales</span>'
         + '<h1 style="margin-top:12px">Linchpin produce, vos vendes y firmas</h1>'
-        + '<p class="sub" style="max-width:70ch;margin-top:10px">7 paquetes de alcance fijo, '
-        + "cada uno un conjunto de herramientas del motor -- nunca una sola tool suelta. "
+        + '<p class="sub" style="max-width:70ch;margin-top:10px">8 paquetes '
+        + "(7 de alcance fijo, 1 de precio contingente), cada uno un conjunto de "
+        + "herramientas del motor -- nunca una sola tool suelta. "
         + "Cada resultado sale citado contra la base de conocimiento y pasa un gate de QA "
         + "antes de entregarse.</p>"
         + f'<div class="grid">{"".join(cards)}</div>'

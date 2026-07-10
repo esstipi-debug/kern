@@ -105,6 +105,19 @@ OFFERS: tuple[Offer, ...] = (
         para_quien="Importadores / manufactura offshore",
         md_file="proyecto-sourcing.md",
     ),
+    Offer(
+        slug="sprint-liquidacion",
+        name="Sprint de Liquidacion",
+        price="10-20% del cash recuperado (piso USD 1.500)",
+        cadence="Unico, sprint de 2-3 semanas",
+        recibe=(
+            "3-4 tools: data_quality, excess_obsolete, markdown_liquidation "
+            "(+ pricing opcional, si hay historial de precios)"
+        ),
+        para_quien="Stock muerto/excedente ya diagnosticado, decidido a liquidar -- "
+                   "no quiere pagar un fee fijo por algo que todavia no se recupero",
+        md_file="sprint-liquidacion.md",
+    ),
 )
 
 _OFFERS_BY_SLUG: dict[str, Offer] = {offer.slug: offer for offer in OFFERS}

@@ -88,7 +88,7 @@ listos para enviar a un prospecto: [documentation/paquetes/](../paquetes/README.
 | **Proyecto de Sourcing y Costo de Importación** | USD 5.000–10.000 único, recurrible | 3: sourcing, landed cost, muestreo de aceptación | Llevar la adjudicación recomendada a la mesa de negociación |
 
 El procedimiento paso a paso está en [RB-9](04_runbooks.md#rb-9--correr-un-paquete-comercial).
-Las 7 secciones de la escalera están todas empaquetadas como runner ejecutable
+Las 8 secciones de la escalera están todas empaquetadas como runner ejecutable
 (`scm_agent/package_specs.py`).
 
 ---

@@ -17,7 +17,7 @@
 - [ ] Subir una foto a `webapp/static/operator/` (PR) y configurar
       `OPERATOR_PHOTO_URL=/static/operator/<archivo>`
 - [ ] Visitar `https://linchpin.fly.dev/paquetes` en producción y revisar que
-      los 7 paquetes, precios y CTAs se vean bien
+      los 8 paquetes, precios y CTAs se vean bien
 
 ## Distribución (ya preparado, pendiente de tu login — ver
 [GTM_SUBMISSIONS.md](../GTM_SUBMISSIONS.md))
@@ -46,10 +46,18 @@
       mini-reporte y el **borrador** de email de seguimiento; enviarlo a mano
       (Linchpin nunca manda correo automáticamente)
 
+## Sprint de Liquidación (E3, ya en código)
+
+- [ ] Nada obligatorio — el paquete `liquidacion` corre con los mismos CSVs
+      del Diagnóstico. Opcional: configurar `STRIPE_LINK_SPRINT_LIQUIDACION`
+      si querés cobrar una seña por adelantado (ver la nota de precio
+      contingente en [07 · Setup de Venta](07_setup_venta.md#2--stripe-payment-links-uno-por-paquete))
+- [ ] Rutina operativa: al cerrar cada sprint, correr
+      `--measure <ventas_post_liquidacion.csv>` y revisar el anexo de cierre
+      antes de facturar (el honorario real, nunca la estimación inicial)
+
 ## Pendiente segun épicas futuras (se completa cuando esa épica aterrice)
 
-- [ ] E3 — nada de login humano identificado aún (Sprint de Liquidación corre
-      con los mismos CSVs del Diagnóstico)
 - [ ] E4/E5 — sin acciones humanas esperadas (i18n y citation-gate son
       puramente de código)
 - [ ] E6 — si se firma un partner Odoo real: acordar rev-share/tarifa fija y

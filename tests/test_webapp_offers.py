@@ -16,9 +16,9 @@ from webapp.offers import (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_seven_official_packages_present() -> None:
-    assert len(OFFERS) == 7
-    assert len({offer.slug for offer in OFFERS}) == 7  # slugs unique
+def test_eight_official_packages_present() -> None:
+    assert len(OFFERS) == 8
+    assert len({offer.slug for offer in OFFERS}) == 8  # slugs unique
 
 
 def test_every_offer_has_a_real_one_pager_file() -> None:
