@@ -7,11 +7,18 @@ limitations, and how to report a vulnerability. Line references point at
 
 ## Threat model
 
-The HTTP surface (`webapp/app.py`) accepts three kinds of untrusted input:
+The HTTP surface (`webapp/app.py`) accepts four kinds of untrusted input:
 
 1. **Query parameters** on `GET /api/portfolio` (numbers + a JSON override string).
 2. **Form fields** on `POST /api/jobs` (`brief`, `client`, `job_type`, `params` JSON).
 3. **A multipart file upload** on `POST /api/jobs` (the client's demand CSV/Excel).
+4. **The demo funnel** on `POST /api/demo-scan` (an email form field + a stock CSV
+   upload). The upload reuses the exact controls of (3): 25 MB cap → `413`,
+   basename-only filename pinned to an isolated per-request tempdir under the
+   TTL-purged jobs area. The email is regex-validated and additionally reduced to
+   a traversal-proof single path segment (`webapp/demo_scan.py::safe_lead_dirname`,
+   pinned under the lead-reports root) before any lead artifact is written; the
+   raw upload is never copied into the lead's folder.
 
 The engine itself (`src/`) is pure computation over numpy/pandas — no shell, no
 `eval`/`exec`, no SQL string-building, no network calls. The free-text `brief` is

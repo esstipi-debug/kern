@@ -30,10 +30,18 @@
 - [ ] Publicar el módulo Odoo en el Apps Store (ver
       `odoo_addon/linchpin_dry_run/`)
 
+## Funnel demo (E2 — mini-reporte, ya en código)
+
+- [ ] En Fly: `fly secrets set LINCHPIN_LEAD_REPORTS_DIR=/data/leads` para que
+      los mini-reportes de leads sobrevivan a los redeploys (sin esto viven en
+      el filesystem efímero del contenedor)
+- [ ] Rutina operativa: tras cada demo corrido, revisar
+      `deliverables/leads/<email>/` (o `/data/leads/` en Fly) — ahí queda el
+      mini-reporte y el **borrador** de email de seguimiento; enviarlo a mano
+      (Linchpin nunca manda correo automáticamente)
+
 ## Pendiente segun épicas futuras (se completa cuando esa épica aterrice)
 
-- [ ] E2 — nada de login humano identificado aún (el funnel demo->mini-reporte
-      es autocontenible)
 - [ ] E3 — nada de login humano identificado aún (Sprint de Liquidación corre
       con los mismos CSVs del Diagnóstico)
 - [ ] E4/E5 — sin acciones humanas esperadas (i18n y citation-gate son

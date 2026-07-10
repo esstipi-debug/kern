@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Linchpin — Demo</title>
+<title>Linchpin — Escaneo gratis de inventario</title>
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,9 +38,8 @@
   section{padding:38px 0}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:24px}
   label{display:block;font:600 12.5px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
-  input[type=email],input[type=text],textarea,input[type=file]{width:100%;background:var(--panel-2);border:1px solid var(--line-2);border-radius:10px;color:var(--txt);font-family:var(--sans);font-size:15px;padding:12px 13px;outline:none;transition:border-color .15s}
-  input:focus,textarea:focus{border-color:var(--accent-bd)}
-  textarea{min-height:74px;resize:vertical;line-height:1.45}
+  input[type=email],input[type=file]{width:100%;background:var(--panel-2);border:1px solid var(--line-2);border-radius:10px;color:var(--txt);font-family:var(--sans);font-size:15px;padding:12px 13px;outline:none;transition:border-color .15s}
+  input:focus{border-color:var(--accent-bd)}
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:600 14.5px/1 var(--sans);padding:12px 20px;border-radius:999px;border:1px solid transparent;cursor:pointer;transition:transform .15s,box-shadow .15s,background .15s,border-color .15s}
   .btn-primary{background:linear-gradient(150deg,var(--accent-bright),var(--accent));color:#06201d;box-shadow:0 10px 26px -12px rgba(79,209,197,.6)}
   .btn-primary:hover{transform:translateY(-1px);box-shadow:0 16px 32px -12px rgba(79,209,197,.85)}
@@ -55,15 +54,15 @@
   .chip.ok{background:var(--ok-soft);border-color:var(--ok-bd);color:#79e08c}
   .chip.warn{background:var(--warn-soft);border-color:var(--warn-bd);color:#e8c45a}
   .chip.bad{background:var(--bad-soft);border-color:var(--bad-bd);color:#ff8b81}
-  .result-head{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-bottom:14px}
-  .tool{font:600 13px/1 var(--mono);color:var(--txt-2)}
-  .summary{font-size:15px;color:var(--txt);line-height:1.55;white-space:pre-wrap}
+  .stat-big{font:800 clamp(1.6rem,1.1rem+2vw,2.3rem)/1.15 var(--sans);letter-spacing:-.02em;color:var(--accent-bright);margin:4px 0 2px}
+  .stat-sub{font-size:13.5px;color:var(--muted)}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}
   .h3{font:700 13px/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--accent-bright);margin:22px 0 10px}
   ul.list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
   ul.list li{font-size:14px;color:var(--txt-2);padding-left:16px;position:relative}
   ul.list li::before{content:"›";position:absolute;left:0;color:var(--accent)}
-  .dl{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:11px 14px;font-size:14px}
-  .dl:hover{border-color:var(--accent-bd)}
+  .cta-box{margin-top:22px;padding:16px;border:1px solid var(--accent-bd);border-radius:11px;background:var(--accent-soft)}
+  .cta-box p{margin:0 0 12px;font-size:14px;color:var(--txt-2)}
   .spin{width:15px;height:15px;border:2px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:sp .7s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
   .empty{color:var(--faint);font-size:14px;text-align:center;padding:30px 10px}
@@ -77,27 +76,27 @@
 <header>
   <div class="wrap">
     <span class="brand"><span class="d">&#9672;</span> Linchpin</span>
-    <a class="back" href="/">Dashboard &rarr;</a>
+    <a class="back" href="/paquetes">Paquetes &rarr;</a>
   </div>
 </header>
 
 <main class="wrap">
 
   <section>
-    <span class="eyebrow">Demo en vivo</span>
-    <h1 style="margin-top:12px">Probá el motor con tus datos</h1>
-    <p class="sub" style="max-width:62ch;margin-top:10px">Subí un CSV de productos y ventas, o usá el dataset de ejemplo. Linchpin clasifica, calcula la política óptima (EOQ, stock de seguridad, punto de reorden) y te devuelve un plan con parámetros recomendados — citado y auditable.</p>
+    <span class="eyebrow">Escaneo gratis &middot; resultado en segundos</span>
+    <h1 style="margin-top:12px">&iquest;Cu&aacute;nto dinero tienes atrapado en stock muerto?</h1>
+    <p class="sub" style="max-width:62ch;margin-top:10px">Sube un CSV con tu stock actual y Linchpin te devuelve la cifra: cu&aacute;nto capital est&aacute; inmovilizado en inventario muerto o excedente, qu&eacute; productos concentran el valor y cu&aacute;ntos d&iacute;as tarda tu inventario en volverse caja. El mismo an&aacute;lisis con el que abre el <a href="/paquetes/diagnostico-arranque">Diagn&oacute;stico de Arranque</a>.</p>
   </section>
 
   <!-- EMAIL GATE -->
   <section id="gate">
     <div class="panel" style="max-width:520px">
-      <h2>Ingresá tu email para abrir el demo</h2>
-      <p class="muted" style="font-size:13.5px;margin:0 0 16px">Lo usamos solo para contactarte sobre el demo. Nada de spam.</p>
+      <h2>Ingresa tu email para abrir el escaneo</h2>
+      <p class="muted" style="font-size:13.5px;margin:0 0 16px">Lo usamos solo para enviarte tu mini-reporte y contactarte sobre el resultado. Nada de spam.</p>
       <label for="email">Email</label>
       <input id="email" type="email" placeholder="nombre@empresa.com" autocomplete="email">
       <div class="row" style="margin-top:14px">
-        <button id="gateBtn" class="btn btn-primary">Abrir el demo &rarr;</button>
+        <button id="gateBtn" class="btn btn-primary">Abrir el escaneo &rarr;</button>
       </div>
       <p id="gateErr" class="err"></p>
     </div>
@@ -107,30 +106,25 @@
   <section id="demo" class="hidden">
     <div class="grid">
       <div class="panel">
-        <h2>1 · Tus datos</h2>
-        <p class="muted" style="font-size:13px;margin:0 0 16px">Subí un archivo o probá con el dataset de ejemplo.</p>
+        <h2>1 &middot; Tu stock</h2>
+        <p class="muted" style="font-size:13px;margin:0 0 16px">Un CSV con una fila por producto. Columnas: <span style="font-family:var(--mono);font-size:12px">product_id, on_hand, daily_demand</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">unit_cost, days_since_last_sale</span>). <a href="/static/demo/plantilla_stock.csv" download>Descargar plantilla &darr;</a></p>
 
-        <label for="brief">Qué querés resolver</label>
-        <textarea id="brief">Configurar puntos de reorden y stock de seguridad</textarea>
-
-        <div style="margin-top:16px">
-          <label for="file">Archivo (CSV / Excel)</label>
-          <input id="file" type="file" accept=".csv,.xlsx,.xls">
-        </div>
+        <label for="file">Archivo (CSV)</label>
+        <input id="file" type="file" accept=".csv">
 
         <div class="row" style="margin-top:18px">
-          <button id="runUpload" class="btn btn-primary">Ejecutar &rarr;</button>
-          <button id="runSample" class="btn btn-ghost">Usar dataset de demo</button>
+          <button id="runUpload" class="btn btn-primary">Escanear mi stock &rarr;</button>
+          <button id="runSample" class="btn btn-ghost">Ver con datos de ejemplo</button>
         </div>
         <p id="runErr" class="err"></p>
-        <p class="privacy">El dataset de demo es <span class="muted">sample_demand_portfolio.csv</span> (8 SKU, 52 semanas).</p>
-        <p class="privacy">Tu archivo se procesa en un directorio aislado por sesión (tamaño y ruta validados) y se descarta automáticamente — no se ejecuta código ni consultas externas sobre tus datos. <a href="https://github.com/esstipi-debug/linchpin/blob/main/SECURITY.md" target="_blank" rel="noopener">Detalle de seguridad &#8599;</a></p>
+        <p class="privacy">El dataset de ejemplo es <span class="muted">sample_stock_snapshot.csv</span> (8 SKU).</p>
+        <p class="privacy">Tu archivo se procesa en un directorio aislado por sesi&oacute;n (tama&ntilde;o y ruta validados) y se descarta autom&aacute;ticamente — no se ejecuta c&oacute;digo ni consultas externas sobre tus datos, y el archivo crudo nunca se copia al reporte. <a href="https://github.com/esstipi-debug/linchpin/blob/main/SECURITY.md" target="_blank" rel="noopener">Detalle de seguridad &#8599;</a></p>
       </div>
 
       <div class="panel">
-        <h2>2 · Lo que arroja el motor</h2>
+        <h2>2 &middot; Tu mini-reporte</h2>
         <div id="out">
-          <div class="empty" id="outEmpty">Ejecutá para ver el plan recomendado.</div>
+          <div class="empty" id="outEmpty">Ejecuta el escaneo para ver cu&aacute;nto capital puedes liberar.</div>
         </div>
       </div>
     </div>
@@ -155,84 +149,76 @@
   if (localStorage.getItem(LS_KEY)) unlock();
 
   function validEmail(v){ return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v); }
+  function leadEmail(){ return localStorage.getItem(LS_KEY) || ""; }
 
   gateBtn.addEventListener("click", function(){
     var email = (emailEl.value || "").trim();
     gateErr.textContent = "";
-    if (!validEmail(email)) { gateErr.textContent = "Ingresá un email válido."; return; }
+    if (!validEmail(email)) { gateErr.textContent = "Ingresa un email válido."; return; }
     gateBtn.disabled = true; gateBtn.innerHTML = '<span class="spin"></span> Guardando…';
     var fd = new FormData(); fd.append("email", email); fd.append("source", "demo");
     fetch("/api/leads", { method:"POST", body:fd })
       .then(function(r){ if(!r.ok) throw new Error("no se pudo guardar"); return r.json(); })
       .then(function(){ localStorage.setItem(LS_KEY, email); unlock(); })
-      .catch(function(){ gateErr.textContent = "No se pudo guardar el email. Probá de nuevo."; })
-      .finally(function(){ gateBtn.disabled = false; gateBtn.innerHTML = "Abrir el demo &rarr;"; });
+      .catch(function(){ gateErr.textContent = "No se pudo guardar el email. Intenta de nuevo."; })
+      .finally(function(){ gateBtn.disabled = false; gateBtn.innerHTML = "Abrir el escaneo &rarr;"; });
   });
   emailEl.addEventListener("keydown", function(e){ if(e.key==="Enter") gateBtn.click(); });
 
-  function statusInfo(s){
-    var map = {
-      ok:["ok","listo"], needs_data:["warn","faltan datos"],
-      needs_clarification:["warn","falta detalle"], qa_failed:["bad","QA fallo"], error:["bad","error"]
-    };
-    return map[s] || ["warn", (s||"").replace(/_/g," ")];
-  }
   function esc(t){ var d=document.createElement("div"); d.textContent = t==null?"":String(t); return d.innerHTML; }
+  function money(x){ return "$" + Math.round(x).toLocaleString("en-US"); }
+  function pct(x){ return Math.round(x*100) + "%"; }
 
   function render(d){
-    var si = statusInfo(d.status);
-    var html = '<div class="result-head">'
-      + '<span class="chip '+si[0]+'">'+esc(si[1])+'</span>'
-      + '<span class="tool">'+esc(d.tool||"—")+'</span>'
-      + '<span class="muted" style="font-size:12.5px">conf '+Math.round((d.confidence||0)*100)+'%</span>'
+    if (d.status === "qa_failed"){
+      var qh = '<div class="result-head"><span class="chip bad">QA fall&oacute; &mdash; sin reporte</span></div>'
+        + '<p class="stat-sub" style="margin-top:10px">El escaneo no super&oacute; la compuerta de calidad, as&iacute; que no se emite ninguna cifra (misma garant&iacute;a que en los paquetes pagos: QA falla &rArr; no hay entregable).</p>'
+        + '<ul class="list" style="margin-top:12px">';
+      (d.qa_issues||[]).forEach(function(q){ qh += '<li>'+esc(q)+'</li>'; });
+      qh += '</ul>';
+      out.innerHTML = qh;
+      return;
+    }
+    var h = d.headline || {};
+    var html = '<div class="chips"><span class="chip ok">escaneo completo</span>'
+      + '<span class="chip">'+esc(h.n_skus)+' SKUs</span></div>'
+      + '<div class="stat-big">&asymp; '+money(h.eo_value)+' atrapados</div>'
+      + '<div class="stat-sub">en stock muerto/excedente &mdash; '+pct(h.eo_pct_of_value)+' del valor de tu inventario ('+esc(h.n_dead)+' SKU muertos + '+esc(h.n_excess)+' excedidos)</div>'
+      + '<div class="chips">'
+      + '<span class="chip warn">A-items concentran '+pct(h.a_value_share)+'</span>'
+      + '<span class="chip">DIO '+Math.round(h.dio)+' d&iacute;as</span>'
+      + '<span class="chip">rotaci&oacute;n '+esc(h.turns)+'x</span>'
       + '</div>';
-    if (d.summary) html += '<p class="summary">'+esc(d.summary)+'</p>';
-
-    var dl = d.download_urls || {}; var keys = Object.keys(dl);
-    if (keys.length){
-      html += '<div class="h3">Plan y parametros recomendados</div>';
-      keys.forEach(function(k){
-        html += '<a class="dl" href="'+esc(dl[k])+'" target="_blank" rel="noopener"><span>'+esc(k)+'</span><span class="muted">abrir &#8599;</span></a>';
-      });
-    }
-    var cites = d.citations || [];
-    if (cites.length){
-      html += '<div class="h3">Fuentes &middot; grounding L3</div><ul class="list">';
-      cites.forEach(function(c){ html += '<li>'+esc(c)+'</li>'; });
+    var fs = d.findings || [];
+    if (fs.length){
+      html += '<div class="h3">Hallazgos ejecutivos</div><ul class="list">';
+      fs.forEach(function(f){ html += '<li>'+esc(f)+'</li>'; });
       html += '</ul>';
     }
-    var clar = d.clarifications || [];
-    if (clar.length){
-      html += '<div class="h3">Hace falta detalle</div><ul class="list">';
-      clar.forEach(function(c){ html += '<li>'+esc(c)+'</li>'; });
-      html += '</ul>';
-    }
-    var qa = d.qa_issues || [];
-    if (qa.length){
-      html += '<div class="h3" style="color:#ff8b81">QA</div><ul class="list">';
-      qa.forEach(function(q){ html += '<li>'+esc(q)+'</li>'; });
-      html += '</ul>';
-    }
+    html += '<div class="cta-box">'
+      + '<p>El Diagn&oacute;stico de Arranque (sprint de 2 semanas) convierte esta cifra en un plan de recuperaci&oacute;n priorizado, con cada n&uacute;mero trazable y compuerta de QA.</p>'
+      + '<div class="row"><a class="btn btn-primary" href="'+esc(d.cta_url||"/paquetes/diagnostico-arranque")+'">Ver el Diagn&oacute;stico &rarr;</a>'
+      + '<a class="btn btn-ghost" href="/paquetes">Todos los paquetes</a></div>'
+      + '</div>';
     out.innerHTML = html;
   }
 
   function run(useSample){
     runErr.textContent = "";
-    var brief = (document.getElementById("brief").value || "").trim();
-    if (!brief){ runErr.textContent = "Escribí qué querés resolver."; return; }
     var fileEl = document.getElementById("file");
     var file = fileEl && fileEl.files && fileEl.files[0];
-    if (!useSample && !file){ runErr.textContent = "Subí un archivo o usá el dataset de demo."; return; }
+    if (!useSample && !file){ runErr.textContent = "Sube un CSV o usa los datos de ejemplo."; return; }
+    var email = leadEmail();
+    if (!validEmail(email)){ localStorage.removeItem(LS_KEY); gate.classList.remove("hidden"); demo.classList.add("hidden"); return; }
 
     var fd = new FormData();
-    fd.append("brief", brief);
-    fd.append("params", "{}");
+    fd.append("email", email);
     if (useSample) fd.append("use_sample", "true");
-    if (file) fd.append("file", file);
+    if (!useSample && file) fd.append("file", file);
 
     runUpload.disabled = true; runSample.disabled = true;
-    out.innerHTML = '<div class="empty"><span class="spin"></span> Ruteando y ejecutando…</div>';
-    fetch("/api/jobs", { method:"POST", body:fd })
+    out.innerHTML = '<div class="empty"><span class="spin"></span> Escaneando tu inventario…</div>';
+    fetch("/api/demo-scan", { method:"POST", body:fd })
       .then(function(r){ return r.json().then(function(j){ return { ok:r.ok, j:j }; }); })
       .then(function(res){
         if (!res.ok){ out.innerHTML = '<div class="empty">'+esc((res.j && res.j.detail) || "El servidor rechazó la solicitud.")+'</div>'; return; }

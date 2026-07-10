@@ -1,7 +1,57 @@
 # Linchpin — Session Handoff
 
-**Date:** 2026-07-09 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e1-sales-surface` (not yet merged, based off `main` @ `1f20101`, PRs up to **#124** merged; **#122** audit-evidence and **#123** benchmarks open concurrently in sibling worktrees)
+**Date:** 2026-07-10 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e2-demo-funnel` (E1 merged as **#125** and **deployed live**; **#122** audit-evidence and **#123** benchmarks still open concurrently in sibling worktrees)
 **Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
+
+## 2026-07-10 — E2 "funnel demo -> mini-reporte" shipped (same session as E1's merge + deploy)
+
+**E1 closed out first:** PR #125 squash-merged to `main` (`00e6ba6`) and
+deployed to Fly the same day — `https://linchpin.fly.dev/paquetes` verified
+live (all 7 one-pager slugs 200, landing CTAs present, 14 CTAs degrading to
+`mailto:` until the operator sets `CALENDLY_URL`/`STRIPE_LINK_*`, see
+`documentation/operator/07_setup_venta.md`).
+
+**E2 shipped on `feat/e2-demo-funnel`:** `/demo` no longer returns reorder
+points — it now sells what the Diagnostico opens with. New
+`webapp/demo_scan.py`: ONE stock CSV (`product_id, on_hand, daily_demand`
+[+ `unit_cost`, `days_since_last_sale`] — same shape as the acquisition
+playbook's free-scan template on the unmerged
+`feat/client-acquisition-playbook` branch, deliberately compatible) →
+reuses the three existing jobs' `prepare/run/verify` AS-IS (no delivery
+phase): `excess_obsolete` directly, `abc_xyz` via one annualized demand
+point per SKU (XYZ is degenerate on a snapshot — documented in the module;
+only the ABC axis is quoted), `financial_kpis` via run-rate COGS + on-hand
+inventory value (DIO/turns follow). New `POST /api/demo-scan` (public like
+`/api/leads`, rate-limited, upload controls copied from `/api/jobs` —
+25 MB/413, basename pinning, isolated tempdir, TTL purge — SECURITY.md
+threat model now lists it as the 4th untrusted input). Headline: "$X
+atrapados en stock muerto/excedente · A-items concentran Y% · DIO Z dias" +
+3 hallazgos ejecutivos + CTA a `/paquetes/diagnostico-arranque`. The QA
+gate holds at scan level: any of the three `verify()`s failing (or a
+non-finite headline number, e.g. all-zero demand → DIO=inf, or missing
+`unit_cost` → zero inventory value) ⇒ `qa_failed`, NO artifact written,
+honest message in the UI. On QA pass it persists per lead:
+`deliverables/leads/<safe-email>/mini_report.md` + `followup_email_draft.md`
+(a DRAFT — mail is NEVER sent automatically) — email → dirname via
+`safe_lead_dirname()` (traversal-proof, `_at_` for `@`), root overridable
+via `LINCHPIN_LEAD_REPORTS_DIR` (on Fly set it to a path on the `/data`
+volume or artifacts die with each deploy). A telemetry line is ALWAYS
+appended to `leads.jsonl` (`source: "demo-scan"`, dataset, status,
+headline-or-null) — deliberately including `qa_failed` runs, so E8's
+`/api/metrics` can count demos-run vs demos-converted later. New tracked
+sample `data/sample_stock_snapshot.csv` (8 SKUs, same rows as the free-scan
+demo) + downloadable `webapp/static/demo/plantilla_stock.csv`; the demo UI
+was rewritten in neutral Spanish (no voseo, per the 2.0 protocol's copy
+rule) around the money headline + CTA. The raw upload is never copied into
+the lead folder (privacy: derived teaser persists, raw data purges).
+
+**Next: E3 (Oferta #8 "Sprint de Liquidación").** `markdown_liquidation`
+exists as a registered tool (PR #124) but belongs to no package. E3 = new
+`LIQUIDACION` PackageSpec (data_quality, excess_obsolete,
+markdown_liquidation, pricing opcional) + `src/contingent_fee.py` (10-20%
+of recovered cash, floor default $1,500) + `--measure` mode + one-pager
+`documentation/paquetes/sprint-liquidacion.md`. Full acceptance criteria in
+the Linchpin 2.0 protocol.
 
 ## 2026-07-09 — Linchpin 2.0 kicks off: E1 "superficie de venta" shipped (`/paquetes`)
 

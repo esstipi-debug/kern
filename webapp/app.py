@@ -27,6 +27,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import pandas as pd  # noqa: E402
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
@@ -42,7 +43,7 @@ from src.sources import CsvDemandSource  # noqa: E402
 from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
-from webapp import observability, security  # noqa: E402
+from webapp import demo_scan, observability, security  # noqa: E402
 from webapp.decisions import router as decisions_router  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
 from webapp.mcp_server import build_mcp_server  # noqa: E402
@@ -51,6 +52,13 @@ from webapp.operator_profile import get_operator_profile  # noqa: E402
 from webapp.paquetes_page import render_index_html, render_offer_html  # noqa: E402
 
 DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
+SAMPLE_STOCK_FILE = _REPO_ROOT / "data" / "sample_stock_snapshot.csv"
+# Lead mini-reports + follow-up drafts (operator-facing; gitignored). On a cloud
+# deploy point this at the persistent volume (e.g. /data/leads) or it is ephemeral.
+LEAD_REPORTS_DIR = Path(
+    os.environ.get("LINCHPIN_LEAD_REPORTS_DIR", "").strip()
+    or (_REPO_ROOT / "deliverables" / "leads")
+)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 OPERATOR_DOCS_DIR = _REPO_ROOT / "documentation" / "operator"
 PAQUETES_DOCS_DIR = _REPO_ROOT / "documentation" / "paquetes"
@@ -522,6 +530,99 @@ async def api_jobs(
         "clarifications": result.clarifications,
         "citations": result.citations,
         "kb_warnings": result.kb_warnings,
+    }
+
+
+@app.post("/api/demo-scan", dependencies=[Depends(security.rate_limit)])
+async def api_demo_scan(
+    email: str = Form(...),
+    use_sample: bool = Form(False),
+    file: UploadFile | None = File(None),
+) -> dict:
+    """The /demo funnel: one stock CSV -> the Diagnostico's teaser numbers.
+
+    Public like /api/leads (the demo IS the lead magnet), rate-limited, and the
+    upload path enforces the same SECURITY.md controls as /api/jobs: 25 MB cap,
+    basename-only filenames pinned to an isolated per-request tempdir under
+    JOBS_OUTPUT_DIR, TTL-purged. Lead artifacts (mini-report + follow-up DRAFT,
+    never auto-sent) are written under LEAD_REPORTS_DIR only when QA passes --
+    the raw upload itself is never copied there.
+    """
+    addr = email.strip().lower()
+    if len(addr) > 254 or not EMAIL_RE.match(addr):
+        raise HTTPException(status_code=400, detail="invalid email")
+
+    _prune_old_jobs()
+
+    import tempfile
+
+    if file is not None and file.filename:
+        raw_name = (file.filename or "upload").replace("\\", "/")
+        safe_name = os.path.basename(raw_name)
+        if not safe_name or safe_name in (".", ".."):
+            raise HTTPException(status_code=400, detail="invalid upload filename")
+        scan_dir = Path(tempfile.mkdtemp(dir=JOBS_OUTPUT_DIR))
+        upload = scan_dir / safe_name
+        if upload.resolve().parent != scan_dir.resolve():
+            raise HTTPException(status_code=400, detail="invalid upload filename")
+        data = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
+        upload.write_bytes(data)
+        data_path, dataset_label = upload, safe_name
+    elif use_sample:
+        data_path, dataset_label = SAMPLE_STOCK_FILE, "sample_stock_snapshot.csv"
+    else:
+        raise HTTPException(status_code=400, detail="sube un CSV de stock o marca use_sample")
+
+    try:
+        df = pd.read_csv(data_path)
+    except Exception as exc:  # pandas raises several parse/encoding error types
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
+    try:
+        result = demo_scan.run_demo_scan(df)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"columnas requeridas: {demo_scan.REQUIRED_COLUMNS_HINT} ({exc})",
+        ) from exc
+
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if result.ok:
+        # QA passed -> persist the operator's follow-up artifacts for this lead.
+        lead_dir = LEAD_REPORTS_DIR / demo_scan.safe_lead_dirname(addr)
+        if lead_dir.resolve().parent != LEAD_REPORTS_DIR.resolve():
+            raise HTTPException(status_code=400, detail="invalid email")
+        lead_dir.mkdir(parents=True, exist_ok=True)
+        (lead_dir / "mini_report.md").write_text(
+            demo_scan.render_mini_report(result, email=addr, dataset_label=dataset_label, ts=ts),
+            encoding="utf-8",
+        )
+        (lead_dir / "followup_email_draft.md").write_text(
+            demo_scan.render_followup_email(result, email=addr, dataset_label=dataset_label),
+            encoding="utf-8",
+        )
+
+    # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
+    record = {
+        "email": addr,
+        "source": "demo-scan",
+        "ts": ts,
+        "dataset": dataset_label,
+        "status": "ok" if result.ok else "qa_failed",
+        "result": result.headline if result.ok else None,
+    }
+    with LEADS_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    if not result.ok:
+        return {"status": "qa_failed", "qa_issues": list(result.qa_issues), "dataset": dataset_label}
+    return {
+        "status": "ok",
+        "headline": result.headline,
+        "findings": list(result.findings),
+        "cta_url": demo_scan.CTA_PATH,
+        "dataset": dataset_label,
     }
 
 
