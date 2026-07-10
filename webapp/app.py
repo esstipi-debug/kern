@@ -46,10 +46,14 @@ from webapp import observability, security  # noqa: E402
 from webapp.decisions import router as decisions_router  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
 from webapp.mcp_server import build_mcp_server  # noqa: E402
+from webapp.offers import OFFERS, get_offer  # noqa: E402
+from webapp.operator_profile import get_operator_profile  # noqa: E402
+from webapp.paquetes_page import render_index_html, render_offer_html  # noqa: E402
 
 DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 OPERATOR_DOCS_DIR = _REPO_ROOT / "documentation" / "operator"
+PAQUETES_DOCS_DIR = _REPO_ROOT / "documentation" / "paquetes"
 JOBS_OUTPUT_DIR = _REPO_ROOT / "webapp" / "_jobs_output"
 JOBS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 LEADS_DIR = _REPO_ROOT / "webapp" / "_leads"
@@ -600,7 +604,27 @@ def decisiones_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "decisiones" / "index.html")
 
 
+@app.get("/paquetes")
+def paquetes_index() -> HTMLResponse:
+    """The 7-package sales grid — structured data from webapp/offers.py, CTAs
+    degrade to mailto when Stripe/Calendly env vars are not configured."""
+    return HTMLResponse(render_index_html(OFFERS, get_operator_profile()))
+
+
+@app.get("/paquetes/{slug}")
+def paquetes_offer(slug: str) -> HTMLResponse:
+    """One-pager for a single package: fetches its real documentation/paquetes/*.md
+    client-side (mounted at /paquetes-docs) and renders it with marked.js — same
+    proven pattern as /operator, no server-side markdown dependency needed."""
+    offer = get_offer(slug)
+    if offer is None:
+        raise HTTPException(status_code=404, detail="unknown package")
+    return HTMLResponse(render_offer_html(offer, get_operator_profile()))
+
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # Read-only markdown source for the Operator Portfolio page (single source of truth).
 app.mount("/operator-docs", StaticFiles(directory=str(OPERATOR_DOCS_DIR)), name="operator-docs")
+# Read-only markdown source for the sales one-pagers (single source of truth).
+app.mount("/paquetes-docs", StaticFiles(directory=str(PAQUETES_DOCS_DIR)), name="paquetes-docs")
 app.mount("/jobs-output", StaticFiles(directory=str(JOBS_OUTPUT_DIR)), name="jobs-output")

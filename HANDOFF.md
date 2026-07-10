@@ -1,7 +1,86 @@
 # Linchpin — Session Handoff
 
-**Date:** 2026-07-08 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/l3-cohen-dai-ai-in-supply-chains` (not yet merged, commit `2f5574f`, based off `main` @ `b34f1d5`, PRs up to **#119**)
+**Date:** 2026-07-09 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e1-sales-surface` (not yet merged, based off `main` @ `1f20101`, PRs up to **#124** merged; **#122** audit-evidence and **#123** benchmarks open concurrently in sibling worktrees)
 **Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
+
+## 2026-07-09 — Linchpin 2.0 kicks off: E1 "superficie de venta" shipped (`/paquetes`)
+
+Started the "Linchpin 2.0" build protocol (documented in the operator's own
+prompt, not committed to the repo) — its governing principle: 1.x already
+solved the *offer* (35 tools, 7 QA-gated commercial packages, a live MCP
+server); 2.0 is explicitly **not** more engine capability, it's "the version
+that can charge". Its own Paso 0 says detect state from the code, not notes,
+and do exactly one épica per session, in order E1->E8. Verified in code (not
+assumed): none of E1-E8 existed yet (`webapp/app.py` had no `/paquetes` route,
+`scm_agent/package_specs.py` had no `LIQUIDACION`, no `src/i18n.py`, no
+`scm_agent/citation_gate.py`, `client_profile` had no `branding`, no
+`documentation/legal/`, no `PIPELINE.md`/`GET /api/metrics`) — so E1 was next.
+
+**E1 shipped, branch `feat/e1-sales-surface` (this session, not yet merged/PR'd
+at the point of this handoff edit — see the PR link once opened).** New:
+`webapp/offers.py` (the 7 official packages' price/cadence/scope, extracted
+once from `documentation/MONETIZATION_BRIEF.md`'s pricing table — never
+duplicated as prose; per-offer `STRIPE_LINK_<SLUG>` env var naming +
+`CALENDLY_URL` CTA resolution, both degrading cleanly to a `mailto:` with a
+prefilled subject when unset), `webapp/operator_profile.py` (the "Quien firma"
+block, `OPERATOR_*` env vars, `TODO-OPERADOR` placeholders), `webapp/
+paquetes_page.py` (server-rendered `/paquetes` grid + `/paquetes/{slug}`
+one-pager shell that fetches the real `documentation/paquetes/*.md` client-side
+via the already-vendored `marked.min.js` — same proven pattern as the existing
+`/operator` page, no new Python markdown dependency). Landing `/` got a compact
+marketing hero (1-line value prop, 3 guarantee chips: QA-gate / L3 citations /
+safe writeback, CTAs to `/demo` and `/paquetes`) prepended above the existing
+interactive dashboard — the dashboard itself was NOT removed or relocated.
+New doc `documentation/operator/07_setup_venta.md` (exact Stripe Payment Link
++ Calendly + `fly secrets set` steps, wired into the `/operator` portfolio
+nav) and `documentation/operator/09_checklist_lanzamiento.md` (the running
+human-action checklist the closing protocol asks for).
+
+**A real bug caught by actually running the page in a browser, not just
+tests:** the first version of `paquetes_page.py`'s inline `<script>` had a
+stray extra `}` from an f-string brace-escaping slip (`}}).then(...)` where
+only one line of that block was genuinely an f-string needing `{{`/`}}`
+escaping — every other line was a plain string where doubled braces stay
+literal). This produced syntactically invalid JS that silently broke the
+`fetch().then()` chain; the one-pager page loaded fine but stayed stuck on
+"Cargando..." forever, with no console error surfaced by the substring-only
+tests that existed at that point. Caught by loading `/paquetes/starter-
+fundamentos` in the browser preview and inspecting `#content.innerHTML`
+directly. Fixed, and a regression test now asserts brace-balance in the
+generated script (`test_offer_page_inline_script_has_balanced_braces`).
+Independent `code-reviewer` agent pass on the full diff (not just this bug)
+also caught two real, if low-severity, gaps: a test-isolation leak
+(`OPERATOR_NAME`/`OPERATOR_BIO` weren't cleared in one route-level "degrades
+without env vars" test, making it order-dependent on ambient shell state) and
+a missing URL-scheme allowlist (`CALENDLY_URL`/`STRIPE_LINK_*`/
+`OPERATOR_LINKEDIN`/`OPERATOR_PHOTO_URL` were escaped against HTML injection
+but not against a `javascript:` URI landing in a rendered `href`/`src`) — both
+fixed (`webapp/offers.py::is_safe_external_url` /
+`is_safe_same_origin_or_external_url`), both re-reviewed clean. Full suite
+1457 passed (16 skipped), `ruff check src tests examples webapp` clean.
+Verified live in the browser preview at both desktop and mobile (375px)
+widths, `/`, `/paquetes`, `/paquetes/starter-fundamentos`, and the new `/
+operator#venta` doc — no console errors.
+
+**Concurrent-session note (verified before starting, not assumed):** this
+session found the working tree already on an unrelated, unpushed branch
+(`feat/client-acquisition-playbook`, 3 commits ahead of main, a lead-magnet +
+acquisition-playbook effort — not part of Linchpin 2.0) plus two other
+in-progress worktrees for open PRs **#122** (audit-evidence engine core) and
+**#123** (old-method-vs-Linchpin benchmarks). E1 was deliberately branched
+fresh off `origin/main` into a new sibling worktree (`.wt-e1-sales`) rather
+than building on top of that dirty branch, per the standing rule in §5 below
+about concurrent sessions — none of that other work was touched.
+
+**Next: E2 (funnel demo -> mini-reporte).** The current `/demo` already
+captures an email lead (`POST /api/leads` -> `leads.jsonl`) but returns
+reorder points, not a sales-oriented result. E2 asks for it to run
+`excess_obsolete` + `abc_xyz` + `financial_kpis` instead and show a dollar
+figure of trapped/excess stock + 3 executive findings + a CTA straight to
+`/paquetes/diagnostico-arranque`, persisting a mini-report + a draft
+follow-up email per lead under `deliverables/leads/<email>/` (never send mail
+automatically). See the full acceptance criteria in the Linchpin 2.0 protocol
+if picking this up fresh.
 
 ## 2026-07-08 — L3 graph gets a 25th source (AI-in-SC, 10/20 chapters, $0.11) + a researched next-level roadmap
 
