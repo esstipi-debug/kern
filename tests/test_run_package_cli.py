@@ -127,6 +127,9 @@ class _NoKnowledge:
     def ground_citations(self, keywords, brief, limit=5):
         return []
 
+    def ground_citations_detailed(self, keywords, brief, limit=5):
+        return []
+
 
 def test_write_liquidation_annexes_writes_estimate_only_without_measure(demo_intake, tmp_path):
     out = tmp_path / "out"
