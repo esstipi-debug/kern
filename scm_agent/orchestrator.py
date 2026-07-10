@@ -11,7 +11,7 @@ from src import client_profile
 from .guided_bridge import to_guided_outcome
 from .intent import classify
 from .knowledge import KnowledgeBase
-from .llm import LLMProvider, get_provider
+from .llm import LLMProvider, get_provider, narrative_rewrite
 from .registry import Tool, ToolRegistry
 from .tools import build_default_registry
 from .types import (
@@ -35,6 +35,7 @@ class Orchestrator:
         knowledge: KnowledgeBase | None = None,
         persona: str = "",
         clients_root: Path | str | None = client_profile.DEFAULT_CLIENTS_ROOT,
+        lang: str | None = None,
     ) -> None:
         self.registry = registry if registry is not None else build_default_registry()
         self.provider = provider if provider is not None else get_provider()
@@ -50,6 +51,13 @@ class Orchestrator:
         # an authenticated identity: honoring it would let one tenant pull another's
         # real cost parameters just by naming them.
         self.clients_root = None if clients_root is None else Path(clients_root)
+        # Target language for the LLM narrative rewrite below (src/i18n.py's
+        # static labels cover the deterministic path; this is the LLM path).
+        # None (default) omits the language clause entirely - preserves this
+        # class's exact pre-E4 prompt wording for its existing production
+        # callers (webapp/app.py, webapp/mcp_server.py, examples/run_agent.py),
+        # none of which have a way to opt into a language yet.
+        self.lang = lang
 
     def run(
         self,
@@ -185,29 +193,13 @@ class Orchestrator:
         return self.knowledge.ground_citations(tool.intent_keywords, brief, limit=5)
 
     def _narrative(self, base_summary: str, tool_title: str, citations: list[str] | None = None) -> str:
-        """Optional LLM polish, grounded in the L3 citations when present.
+        """Optional LLM polish, grounded in the L3 citations when present, in
+        ``self.lang``.
 
         The returned summary is untrusted display text (it echoes the brief and any
         LLM output); escape it at the render site if it is ever shown as HTML.
         """
-        if not self.provider.available():
-            return base_summary
-        ground = ""
-        if citations:
-            ground = "\nGround it in these sources where relevant: " + "; ".join(citations)
-        if self.persona:
-            instruction = (
-                f"You are {self.persona}. Rewrite this {tool_title} result summary in one clear, "
-                "client-ready sentence in your voice. Keep every number. Return only the sentence."
-            )
-        else:
-            instruction = (
-                f"Rewrite this {tool_title} result summary in one clear, client-ready sentence. "
-                "Keep every number. Return only the sentence."
-            )
-        try:
-            text = self.provider.complete(f"{instruction}\n\n{base_summary}{ground}")
-        except Exception:
-            logger.debug("narrative upgrade failed", exc_info=True)
-            return base_summary
-        return text.strip() or base_summary
+        return narrative_rewrite(
+            self.provider, base_summary, tool_title,
+            lang=self.lang, citations=citations, persona=self.persona,
+        )

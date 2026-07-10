@@ -11,6 +11,9 @@ one consolidated deck + every tool's own deliverable.
     # full demo on synthetic data (no client files needed)
     python examples/run_package.py --package growth --demo
 
+    # bilingual deck (see src/i18n.py) -- default is the client's profile, else "es"
+    python examples/run_package.py --package diagnostico --demo --lang en
+
 Packages (scope/price: documentation/MONETIZATION_BRIEF.md + documentation/paquetes/):
 diagnostico (4 tools, sprint) | starter (8 tools, mensual) | growth (26 tools, mensual+QBR) |
 scale (35 tools, quincenal+S&OP mensual) | retainer_ejecutivo (same 35, distinta cadencia) |
@@ -21,6 +24,7 @@ liquidacion (3-4 tools, sprint contingente -- ver --fee-pct/--fee-floor/--measur
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 from datetime import date, timedelta
 from pathlib import Path
@@ -470,15 +474,22 @@ def _resolve_fee_params(
     client: str, cli_pct: float | None, cli_floor: float | None,
     root: Path | str = client_profile.DEFAULT_CLIENTS_ROOT,
 ) -> tuple[float, float]:
-    """CLI override > the client's negotiated contingent_fee_pct > the package default."""
+    """CLI override > the client's negotiated contingent_fee_pct > the package default.
+
+    Mirrors _resolve_lang's error-handling split (an adversarial review of E4
+    caught the same anti-pattern there): an unslugifiable client label means
+    "no profile", but a CORRUPT profile.json must fail loudly, not silently
+    default the fee percentage and mask a real data-integrity problem.
+    """
     pct = cli_pct
     if pct is None:
         try:
             slug = client_profile.slugify_client_id(client)
+        except ValueError:
+            slug = None
+        if slug is not None:
             profile = client_profile.load_profile(slug, root=root)
             pct = profile.contingent_fee_pct if profile is not None else None
-        except ValueError:
-            pct = None
     if pct is None:
         pct = contingent_fee.DEFAULT_FEE_PCT
     floor = cli_floor if cli_floor is not None else contingent_fee.DEFAULT_FLOOR
@@ -548,6 +559,26 @@ def _write_liquidation_annexes(spec: PackageSpec, result, args) -> None:
               f"(real {measured.total_actual:,.0f} vs. estimado {measured.total_estimated:,.0f})")
 
 
+def _resolve_lang(
+    client: str, cli_lang: str | None, root: Path | str = client_profile.DEFAULT_CLIENTS_ROOT,
+) -> str:
+    """CLI override > the client's stored profile.lang > the package default ("es").
+
+    Mirrors scm_agent/packages.py::_load_profile's error-handling split: an
+    unslugifiable client label legitimately means "no profile" (degrade to
+    the default), but a CORRUPT profile.json is a real data-integrity problem
+    and must fail loudly, not silently default the language and mask it.
+    """
+    if cli_lang is not None:
+        return cli_lang
+    try:
+        slug = client_profile.slugify_client_id(client)
+    except ValueError:
+        return "es"
+    profile = client_profile.load_profile(slug, root=root)
+    return profile.lang if profile is not None else "es"
+
+
 def _print_result(result) -> None:
     print(f"status: {result.status}")
     print(result.summary)
@@ -590,12 +621,16 @@ def main() -> None:
     parser.add_argument("--measure", default=None,
                         help="Sprint de Liquidacion: CSV de ventas post-liquidacion "
                              "(product_id, quantity, price) -> anexo de cierre real-vs-estimado")
+    parser.add_argument("--lang", choices=("es", "en"), default=None,
+                        help="deck language (default: the client's profile, or 'es')")
     args = parser.parse_args()
 
     spec = get_package(args.package)
     if args.checklist:
         print_checklist(spec)
         return
+
+    spec = dataclasses.replace(spec, lang=_resolve_lang(args.client, args.lang))
 
     params: dict = {}
     if args.params:

@@ -1,7 +1,30 @@
 # Linchpin — Session Handoff
 
-**Date:** 2026-07-10 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e3-liquidacion` (E1 merged **#125** + deployed live, E2 merged **#126**-adjacent as **#128** + deployed live; **#122** audit-evidence and **#123** benchmarks still open concurrently in sibling worktrees)
+**Date:** 2026-07-10 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e3-liquidacion`, merging to `main` now as E3's PR **#129** (E1 **#125**, E2 **#128**, E4 **#131** all already merged + E1/E2 deployed live; **#122** audit-evidence, **#123** benchmarks, and a `docs/refresh-stale-counts`-style worktree still open concurrently)
 **Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
+
+## 2026-07-10 — E3 merged into main alongside E4 (real conflicts, resolved by hand)
+
+E3 (`feat/e3-liquidacion`, branched off `origin/main` before E4 existed) and
+E4 (`feat/e4-bilingual`, branched off `origin/main` independently, merged
+first as **#131**) both touched `examples/run_package.py`,
+`src/client_profile.py`, and `tests/test_client_profile.py` — GitHub flagged
+E3's PR as `CONFLICTING` once E4 landed. Resolved by hand (both features'
+code kept, nothing dropped): `ClientProfile` carries both
+`contingent_fee_pct` (E3) and `lang` (E4) fields; `examples/run_package.py`
+has both `--fee-pct`/`--fee-floor`/`--measure` (E3) and `--lang` (E4) CLI
+flags plus both `_resolve_fee_params()` and `_resolve_lang()` helpers.
+**While resolving, applied E4's own adversarial-review fix to
+`_resolve_fee_params()` too** — it had the exact same
+silently-swallows-a-corrupt-profile.json bug that review caught in
+`_resolve_lang()` (see the E4 section below), just not yet fixed since it
+predates that finding. Same split-try/except fix applied here for
+consistency; add a regression test for it if picking this thread back up
+(the E4-side one is `test_corrupt_profile_fails_loudly_instead_of_silently_defaulting`
+in `tests/test_run_package_lang_cli.py` — mirror it for `_resolve_fee_params`
+in `tests/test_run_package_cli.py`, not yet written as of this merge). Full
+suite + ruff re-verified green AFTER the merge, not just before it — see
+below.
 
 ## 2026-07-10 — E3 "Sprint de Liquidacion" (Oferta #8, precio contingente) shipped
 
@@ -101,9 +124,110 @@ optional-pricing-skip), full suite green (1559 passed), ruff clean. Verified
 live: `--demo --measure <csv>` runs end-to-end with real elasticity pricing
 and both annexes read correctly; `/paquetes/sprint-liquidacion` renders.
 
-**Next: E4 (entregables bilingües).** Add `lang: "es" | "en"` to
-`PackageSpec`/`client_profile`, new `src/i18n.py` (two flat dicts, no new
-deps) covering the consolidated deck's headers/KPI labels/tool titles.
+**E4 (entregables bilingües) already shipped independently** — see the
+section directly below; it merged first (**#131**) while this PR was still
+open, hence the merge-conflict entry at the top of this file.
+
+**Date:** 2026-07-10 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e4-bilingual` (E1 **#125** merged + deployed live; E2 **#128** merged + deployed live; E3 open as PR **#129** on `feat/e3-liquidacion`, not yet merged; **#122** audit-evidence, **#123** benchmarks, and a `docs/refresh-stale-counts`-style worktree still open concurrently)
+**Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
+
+## 2026-07-10 — E4 "entregables bilingues" (lang es/en) shipped
+
+**Branched off `origin/main` (not off E3),** since E4's core plumbing
+(`lang` on `PackageSpec`/`ClientProfile`, `src/i18n.py`) is orthogonal to
+E3's `LIQUIDACION` package — no conflict expected when both merge; E3's PR
+#129 is still open and unmerged, review it/merge it independently.
+
+**What shipped:** `PackageSpec.lang: str = "es"` (frozen singletons per
+package — select a client's language via `dataclasses.replace(spec,
+lang="en")`, never by mutating the shared constant) and
+`ClientProfile.lang: str = "es"` (validated `"es"`/`"en"`, excluded from
+`as_params()` — no engine `Tool` reads it). New `src/i18n.py`: `LABELS`
+(the consolidated package deck's own headers/KPI-names/coverage-handoff
+text, PLUS `src.deliverable.Deliverable`'s structural scaffolding — section
+headers, table columns, Excel sheet names) and `TOOL_TITLES` (all 37
+registered `Tool.title` values, translated). `examples/run_package.py`
+gained `--lang {es,en}` + `_resolve_lang()` (CLI override > client profile
+> "es" default).
+
+**Deliverable.lang defaults to `"en"`**, deliberately — it's the SAME class
+every individual tool's own deck uses (`jobs/<x>_job.py::build_deck()`,
+~37 files, always English), so defaulting to `"en"` there means NONE of
+those ~37 decks changed at all; only `jobs/package_deliverable.py::build()`
+(the consolidated package-level deck) passes `lang=spec.lang` explicitly.
+
+**Honest, documented scope boundary** (see `src/i18n.py`'s module
+docstring — read it before touching this again): a package deck's
+Recommendations/Coverage&handoff sections and each tool's own Finding/
+summary prose stay in engine-native English regardless of `lang` — full
+per-tool translation is a much larger effort than "two flat dictionaries."
+When an `LLMProvider` IS configured, `scm_agent.llm.narrative_rewrite`
+rewrites a step's main summary (not its `GuidedOutcome` options text) into
+the target language on the fly.
+
+**Adversarial review (2 rounds, 13-15 agents each, both ran clean) caught
+real issues both times — the second round specifically caught a production
+regression the first round's fixes hadn't introduced yet:**
+
+1. **(HIGH, live-product regression, would NOT have been caught by tests
+   alone)** `Orchestrator`'s LLM narrative rewrite — refactored into the new
+   shared `scm_agent.llm.narrative_rewrite()` — initially defaulted `lang`
+   to `"es"`, which would have silently added an explicit "answer in
+   Spanish" instruction to `webapp/app.py`'s `POST /api/jobs`, the live MCP
+   server (`webapp/mcp_server.py`), and `examples/run_agent.py` — none of
+   which pass `lang` and none of which asked for translation — for any of
+   them with a real `ANTHROPIC_API_KEY` configured (the fly.dev deploy has
+   one). Fixed: `narrative_rewrite(..., lang: str | None = None)` — `None`
+   omits the language clause entirely, reproducing the EXACT pre-E4 prompt
+   wording byte-for-byte (pinned in tests). Only the commercial-package
+   runner passes a real language (`spec.lang`, defaulting to `"es"`) — that
+   path is brand-new behavior with no prior callers to protect.
+2. **(HIGH)** `i18n.py`'s own docstring claimed "headers" were covered, but
+   `src/deliverable.py`'s `to_markdown()`/`to_excel()` hardcoded every
+   section header in English with no `lang` anywhere — verified empirically,
+   an "es" deck had Spanish content under literal `## Executive summary`.
+   Fixed properly (not just re-documented): `Deliverable` gained `lang`
+   (default `"en"`, see above) and ~35 new `i18n.LABELS` entries for every
+   header/column/sheet name; `package_deliverable.py` passes it through.
+3. **(HIGH, documented not fixed)** Recommendations and Coverage&handoff
+   lines unconditionally glue a translated tool title to raw-English
+   `GuidedOutcome` text (`scm_agent/tool_options.py`) — same scale problem
+   as the per-tool Finding prose, now explicitly named in `i18n.py`'s
+   docstring instead of being an undisclosed third leak.
+4. **(LOW)** `TOOL_TITLES["whatif"]["es"]` was an awkward calque
+   ("Que-Pasa-Si") — fixed to keep "What-If" as a loanword, matching
+   `sourcing`/`ddmrp`/`slotting` etc. already doing the same in this dict.
+5. **(MEDIUM)** `_resolve_lang()` silently swallowed a corrupt
+   `profile.json` (defaulting to `"es"` with zero diagnostic) instead of
+   failing loudly like every other profile reader in this codebase
+   (`orchestrator.py`, `packages.py::_load_profile`). Fixed: only an
+   unslugifiable client label degrades to the default now; a genuinely
+   corrupt file raises.
+
+44 new/changed tests (bilingual snapshot test for the consolidated
+`.md` AND `.xlsx`, exact-prompt-wording pins for the Orchestrator
+regression fix, i18n dict-completeness checks, corrupt-profile handling),
+full suite green (1660 passed), ruff clean. Verified live: ran
+`DIAGNOSTICO` end-to-end in both languages and read the full consolidated
+deck — headers/KPIs/data-sources/coverage all correctly bilingual, the
+documented English carve-outs (findings prose, recommendations, guided-
+outcome text) present exactly where expected and nowhere else.
+
+**Still pending from E4's own spec, deliberately NOT done in this PR ("PR
+aparte" per the 2.0 protocol):** migrate the 7 existing one-pagers
+(`documentation/paquetes/*.md`) off informal "tu"-conjugated verbs (not
+literal Rioplatense "vos" — verified none of the 7 files actually use
+`tenés`/`querés`/`podés` forms, they use `tú`-conjugated `tienes`/`quieres`/
+`puedes`, ~36 instances across 7 files) toward the impersonal/imperative
+phrasing this session's own new copy (E1-E3) already established, without
+touching any price or scope. This is a subjective brand-voice call on
+already-shipped, client-facing sales copy — flag it for the next session
+rather than guessing unilaterally.
+
+**Next: E5 (compuerta de citation-grounding).** `scm_agent/citation_gate.py`
+resolving each candidate L3 citation against `knowledge/scm-books/graph.json`
+(≤2 hops from the tool's static concept map), degrading a section to
+"sin citas" below 2 resolved citations rather than inventing a replacement.
 Full acceptance criteria in the Linchpin 2.0 protocol.
 
 ---

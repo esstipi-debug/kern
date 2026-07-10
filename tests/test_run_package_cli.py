@@ -61,6 +61,19 @@ def test_resolve_fee_params_ignores_generic_client_label():
     assert pct == DEFAULT_FEE_PCT
 
 
+def test_resolve_fee_params_corrupt_profile_fails_loudly_instead_of_silently_defaulting(tmp_path):
+    # Mirrors _resolve_lang's equivalent test (tests/test_run_package_lang_cli.py)
+    # -- a corrupt profile.json is a data-integrity problem, not "no profile",
+    # and must never silently degrade to the default fee percentage.
+    slug = client_profile.slugify_client_id("Acme Corrupto")
+    profile_dir = tmp_path / slug
+    profile_dir.mkdir(parents=True)
+    (profile_dir / "profile.json").write_text("{not valid json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="corrupt"):
+        _resolve_fee_params("Acme Corrupto", cli_pct=None, cli_floor=None, root=tmp_path)
+
+
 # ---- _actual_recovery_by_sku: post-liquidation sales CSV -> {sku: cash} ------
 
 

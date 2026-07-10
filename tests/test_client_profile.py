@@ -98,7 +98,35 @@ def test_contingent_fee_pct_is_not_an_engine_param():
     assert "contingent_fee_pct" not in profile.as_params()
 
 
+def test_default_lang_is_spanish():
+    assert ClientProfile(client_id="x", display_name="X").lang == "es"
+
+
+@pytest.mark.parametrize("bad", ["fr", "pt", "ES", "", "spanish"])
+def test_lang_outside_es_en_raises(bad):
+    with pytest.raises(ValueError, match="lang"):
+        ClientProfile(client_id="x", display_name="X", lang=bad)
+
+
+@pytest.mark.parametrize("ok", ["es", "en"])
+def test_lang_es_or_en_is_accepted(ok):
+    assert ClientProfile(client_id="x", display_name="X", lang=ok).lang == ok
+
+
+def test_lang_is_not_an_engine_param():
+    # No Tool reads it directly - it must never leak into merge_params()'s output.
+    profile = ClientProfile(client_id="x", display_name="X", lang="en")
+    assert "lang" not in profile.as_params()
+
+
 # ---- save/load round trip ------------------------------------------------------
+
+def test_save_and_load_round_trip_with_lang(tmp_path):
+    profile = ClientProfile(client_id="acme", display_name="Acme", lang="en")
+    save_profile(profile, root=tmp_path)
+    loaded = load_profile("acme", root=tmp_path)
+    assert loaded.lang == "en"
+
 
 def test_save_and_load_round_trip(tmp_path):
     profile = ClientProfile(

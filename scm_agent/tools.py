@@ -1238,7 +1238,11 @@ def _odoo_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
 
 
 def _odoo_run(payload: object, params: dict) -> Produced:
-    report = odoo_job.run(payload, cover_periods=params.get("cover_periods", 8.0))
+    report = odoo_job.run(
+        payload,
+        cover_periods=params.get("cover_periods", 8.0),
+        financial_threshold=params.get("financial_threshold", 50_000.0),
+    )
     return Produced(report=report, summary=report.summary)
 
 
@@ -1285,6 +1289,7 @@ def _excel_replenishment_run(payload: object, params: dict) -> Produced:
         cover_periods=params.get("cover_periods", 8.0),
         order_up_to_factor=params.get("order_up_to_factor", 2.0),
         idempotency_key=params.get("idempotency_key", "excel-replenish-1"),
+        financial_threshold=params.get("financial_threshold", 50_000.0),
     )
     return Produced(report=report, summary=report.summary)
 

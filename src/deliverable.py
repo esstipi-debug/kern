@@ -20,6 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from src import i18n
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -65,19 +67,28 @@ class Deliverable:
     confidence: float | None = None
     residual: str = ""
     prepared: str = ""
+    # Structural-scaffolding language (section headers, table columns, sheet
+    # names) - see src/i18n.py. Defaults to "en" so the ~37 individual tool
+    # decks (built by jobs/<x>_job.py, which never pass this) render exactly
+    # as before; only jobs/package_deliverable.py's CONSOLIDATED deck passes
+    # its package's lang explicitly. This does NOT translate the content
+    # (summary/findings/KPI values etc.) - only the scaffolding around it;
+    # see i18n.py's module docstring for the full scope boundary.
+    lang: str = "en"
 
     def to_markdown(self) -> str:
         """Render a professional, sectioned Markdown document (ASCII-only for cp1252 safety)."""
+        L = lambda key: i18n.label(key, self.lang)  # noqa: E731
         out: list[str] = [f"# {self.title} - {self.client}"]
         if self.prepared:
-            out.append(f"*Prepared {self.prepared}*")
+            out.append(f"*{L('hdr_prepared_field')} {self.prepared}*")
         out.append("")
 
         if self.summary:
-            out += ["## Executive summary", "", self.summary, ""]
+            out += [f"## {L('hdr_executive_summary')}", "", self.summary, ""]
 
         if self.findings:
-            out += ["## Key findings", ""]
+            out += [f"## {L('hdr_key_findings')}", ""]
             for f in self.findings:
                 line = f"- **{f.title}** - {f.detail}"
                 if f.impact:
@@ -86,49 +97,47 @@ class Deliverable:
             out.append("")
 
         if self.recommendations:
-            out += ["## Recommendations", ""]
+            out += [f"## {L('hdr_recommendations')}", ""]
             out += [f"{i}. {r}" for i, r in enumerate(self.recommendations, 1)]
             out.append("")
 
         if self.options:
-            out += ["## Options to act", "",
-                    "Ranked, executable options - the recommended default is marked:", ""]
+            out += [f"## {L('hdr_options')}", "", L("options_intro"), ""]
             for i, o in enumerate(self.options, 1):
-                flag = " _(recommended)_" if getattr(o, "recommended", False) else ""
+                flag = L("recommended_flag") if getattr(o, "recommended", False) else ""
                 out.append(f"{i}. **{o.label}**{flag} - {o.summary}")
                 if getattr(o, "action", ""):
-                    out.append(f"   - Action: {o.action}")
+                    out.append(f"   - {L('action_label')}: {o.action}")
                 if getattr(o, "tradeoffs", ""):
-                    out.append(f"   - Trade-off: {o.tradeoffs}")
+                    out.append(f"   - {L('tradeoff_label')}: {o.tradeoffs}")
             out.append("")
 
         if self.kpis:
-            out += ["## KPIs", "", "| KPI | Value | Target | Why it matters |",
+            out += [f"## {L('hdr_kpis')}", "",
+                    f"| {L('col_kpi')} | {L('col_value')} | {L('col_target')} | {L('col_why_it_matters')} |",
                     "|---|---|---|---|"]
             for k in self.kpis:
                 out.append(f"| {k.name} | {k.value} | {k.target or '-'} | {k.rationale or '-'} |")
             out.append("")
 
         if self.data_sources:
-            out += ["## Data sources", "",
-                    "Every figure above is traceable to its origin:", "",
-                    "| Metric | Source | Refresh |", "|---|---|---|"]
+            out += [f"## {L('hdr_data_sources')}", "", L("data_sources_intro"), "",
+                    f"| {L('col_metric')} | {L('col_source')} | {L('col_refresh')} |", "|---|---|---|"]
             for d in self.data_sources:
                 out.append(f"| {d.field} | {d.source} | {d.cadence or '-'} |")
             out.append("")
 
         if self.citations:
-            out += ["## Methodology & grounding", "",
-                    "Grounded in the L3 supply-chain knowledge base:", ""]
+            out += [f"## {L('hdr_methodology')}", "", L("methodology_intro"), ""]
             out += [f"- {c}" for c in self.citations]
             out.append("")
 
         # Coverage & handoff is always shown: it states confidence and the residual
         # human action, so no deliverable ever reads as "fully autonomous" when it isn't.
-        out += ["## Coverage & handoff", ""]
+        out += [f"## {L('hdr_coverage_handoff')}", ""]
         if self.confidence is not None:
-            out.append(f"Confidence: **{self.confidence * 100:.0f}%**.")
-        out.append(self.residual or "No residual actions: the analysis above is ready to use.")
+            out.append(f"{L('hdr_confidence_field')}: **{self.confidence * 100:.0f}%**.")
+        out.append(self.residual or L("no_residual"))
         out.append("")
 
         return "\n".join(out).rstrip() + "\n"
@@ -137,54 +146,56 @@ class Deliverable:
         """Write the deliverable as a multi-sheet workbook (Summary/KPIs/Findings/Data Sources)."""
         from openpyxl import Workbook
 
+        L = lambda key: i18n.label(key, self.lang)  # noqa: E731
         out = Path(path)
         out.parent.mkdir(parents=True, exist_ok=True)
         wb = Workbook()
 
         ws = wb.active
-        ws.title = "Summary"
-        ws.append(["Title", self.title])
-        ws.append(["Client", self.client])
+        ws.title = L("sheet_summary")
+        ws.append([L("hdr_title_field"), self.title])
+        ws.append([L("hdr_client_field"), self.client])
         if self.prepared:
-            ws.append(["Prepared", self.prepared])
+            ws.append([L("hdr_prepared_field"), self.prepared])
         if self.confidence is not None:
-            ws.append(["Confidence", f"{self.confidence * 100:.0f}%"])
+            ws.append([L("hdr_confidence_field"), f"{self.confidence * 100:.0f}%"])
         ws.append([])
-        ws.append(["Executive summary"])
+        ws.append([L("hdr_executive_summary")])
         ws.append([self.summary])
         if self.residual:
             ws.append([])
-            ws.append(["Coverage & handoff"])
+            ws.append([L("hdr_coverage_handoff")])
             ws.append([self.residual])
 
         if self.kpis:
-            k = wb.create_sheet("KPIs")
-            k.append(["KPI", "Value", "Target", "Why it matters"])
+            k = wb.create_sheet(L("sheet_kpis"))
+            k.append([L("col_kpi"), L("col_value"), L("col_target"), L("col_why_it_matters")])
             for kpi in self.kpis:
                 k.append([kpi.name, kpi.value, kpi.target, kpi.rationale])
 
         if self.findings:
-            fnd = wb.create_sheet("Findings")
-            fnd.append(["Finding", "Detail", "Impact"])
+            fnd = wb.create_sheet(L("sheet_findings"))
+            fnd.append([L("col_finding"), L("col_detail"), L("col_impact")])
             for f in self.findings:
                 fnd.append([f.title, f.detail, f.impact])
 
         if self.data_sources:
-            d = wb.create_sheet("Data Sources")
-            d.append(["Metric", "Source", "Refresh"])
+            d = wb.create_sheet(L("sheet_data_sources"))
+            d.append([L("col_metric"), L("col_source"), L("col_refresh")])
             for ds in self.data_sources:
                 d.append([ds.field, ds.source, ds.cadence])
 
         if self.options:
-            o = wb.create_sheet("Options")
-            o.append(["Option", "Recommended", "Summary", "Action", "Trade-off"])
+            o = wb.create_sheet(L("sheet_options"))
+            o.append([L("col_option"), L("col_recommended"), L("col_summary"),
+                      L("action_label"), L("tradeoff_label")])
             for opt in self.options:
-                o.append([opt.label, "yes" if getattr(opt, "recommended", False) else "",
+                o.append([opt.label, L("yes_flag") if getattr(opt, "recommended", False) else "",
                           opt.summary, getattr(opt, "action", ""), getattr(opt, "tradeoffs", "")])
 
         if self.citations:
-            c = wb.create_sheet("Citations")
-            c.append(["Source"])
+            c = wb.create_sheet(L("sheet_citations"))
+            c.append([L("col_source")])
             for cite in self.citations:
                 c.append([cite])
 

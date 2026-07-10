@@ -7,6 +7,7 @@ options** (auto-per-segment / global / review-lumpy). The tool wires it so a "fo
 demand" brief produces both the study deck AND >=2 ranked options to act.
 """
 
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -99,6 +100,45 @@ def test_run_emits_ranked_policy_options_with_one_recommended():
     assert sum(1 for o in report.outcome.options if o.recommended) == 1
     assert passed_guided(report.outcome)
     assert fj.verify(report) == []
+
+
+# -- unvalidated forecasts (too little history to backtest) must not ship silent --
+
+
+def test_sku_with_too_little_history_to_backtest_is_flagged_not_silent():
+    """A SKU too short to backtest gets MASE=inf internally - that must surface as
+    a stated residual (never just silently ship the same confident label)."""
+    series = {"SHORT": [5.0, 6.0, 4.0]}  # below min_backtest_periods=4 -> mase=inf
+
+    report = fj.run(series)
+
+    by = {s.name: s for s in report.skus}
+    assert not math.isfinite(by["SHORT"].mase)
+    assert len(report.outcome.residuals) >= 1
+    unvalidated = [r for r in report.outcome.residuals if "backtest" in r.description.lower()]
+    assert unvalidated, report.outcome.residuals
+    assert unvalidated[0].risk_if_skipped.strip()          # never a bare/empty risk statement
+    assert fj.verify(report) == []                          # still QA-passes (a residual, not a blocker)
+
+
+def test_all_skus_unvalidated_dampens_confidence_below_baseline():
+    """When NOTHING could be backtested, confidence must drop below the normal 0.8
+    baseline - not ship the identical confident label as a well-backed forecast."""
+    series = {"SHORT1": [5.0, 6.0], "SHORT2": [1.0, 2.0]}
+
+    report = fj.run(series)
+
+    assert report.outcome.confidence < 0.8
+
+
+def test_fully_backtestable_portfolio_carries_no_unvalidated_residual():
+    """The happy path (this file's existing smooth/erratic/intermittent/lumpy fixture,
+    each with 12 periods) must NOT get a spurious 'could not validate' residual."""
+    report = fj.run(fj.prepare_records(_demand_df()))
+
+    unvalidated = [r for r in report.outcome.residuals if "backtest" in r.description.lower()]
+    assert unvalidated == []
+    assert report.outcome.confidence == 0.8
 
 
 # -- deck ---------------------------------------------------------------------

@@ -34,7 +34,7 @@ import pandas as pd
 from src import client_profile
 
 from .knowledge import KnowledgeBase
-from .llm import LLMProvider, get_provider
+from .llm import LLMProvider, get_provider, narrative_rewrite
 from .registry import ToolRegistry
 from .tools import build_default_registry
 from .types import (
@@ -108,6 +108,14 @@ class PackageSpec:
     audience: str
     inputs: tuple[PackageInput, ...]
     steps: tuple[PackageStep, ...]
+    # Deck language (see src/i18n.py) - "title"/"price"/"cadence"/"audience"
+    # above are brand/commercial copy and stay as-is regardless; this controls
+    # the deck's own generated labels/headers and each step's tool title.
+    # PackageSpec instances are shared module-level singletons (one per
+    # package, reused for every client) - select a client's language with
+    # ``dataclasses.replace(spec, lang="en")`` before calling run_package,
+    # never by mutating the shared constant.
+    lang: str = "es"
 
     def input_for(self, slot: str) -> PackageInput:
         match = next((i for i in self.inputs if i.slot == slot), None)
@@ -363,7 +371,15 @@ def _run_step(
 
     guided = tool.options(produced.report) if tool.options else None
     citations = tuple(knowledge.ground_citations(tool.intent_keywords, request.brief, limit=3))
-    summary = produced.summary + (f" [{note}]" if note else "")
+    # Optional LLM polish in the package's target language (src/i18n.py's
+    # static labels cover the deterministic path around this; this is the
+    # only place a package step's own narrative gets translated - see
+    # scm_agent.llm.narrative_rewrite). Skipped without a provider, matching
+    # the Orchestrator's equivalent single-tool behavior exactly.
+    rewritten = narrative_rewrite(
+        provider, produced.summary, tool.title, lang=spec.lang, citations=list(citations),
+    )
+    summary = rewritten + (f" [{note}]" if note else "")
     return StepOutcome(**base, status=STATUS_OK, summary=summary,
                        report=produced.report, guided=guided, citations=citations)
 

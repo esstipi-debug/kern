@@ -43,6 +43,7 @@ from openpyxl.utils import get_column_letter
 from src import writeback
 from src.connectors.excel import ExcelWorkbookStore
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
+from src.escalation import escalation_banner, maybe_escalate_financial
 from src.export import write_summary_csv
 from src.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 
@@ -70,6 +71,13 @@ _DEMAND_CANDIDATES = (
     "venta promedio", "ventas promedio", "average sales", "avg sales",
     "pronostico", "forecast", "consumo promedio", "consumo",
 )
+# Optional - when present, sizes the restock plan's $ value for the financial-
+# threshold escalation check (src.escalation.maybe_escalate_financial). Absent
+# from a planilla is fine: the value stays unknown and the check never guesses.
+_COST_CANDIDATES = (
+    "costo unitario", "costo", "precio unitario", "precio costo", "precio compra",
+    "valor unitario", "unit cost", "cost", "unitcost", "purchase price", "unit price",
+)
 
 
 def _fold(label: object) -> str:
@@ -93,6 +101,7 @@ class PlanillaRow:
     on_hand: float
     reorder_point: float | None
     demand_per_period: float | None
+    cost: float | None = None
 
 
 @dataclass(frozen=True)
@@ -181,6 +190,7 @@ def prepare(data_path: str | None, params: dict | None = None) -> dict:
         "stock": (_fold(params["stock_column"]),) if params.get("stock_column") else _STOCK_CANDIDATES,
         "rop": (_fold(params["rop_column"]),) if params.get("rop_column") else _ROP_CANDIDATES,
         "demand": (_fold(params["demand_column"]),) if params.get("demand_column") else _DEMAND_CANDIDATES,
+        "cost": (_fold(params["cost_column"]),) if params.get("cost_column") else _COST_CANDIDATES,
         "order": (_fold(order_column),),
     }
 
@@ -246,6 +256,7 @@ def prepare(data_path: str | None, params: dict | None = None) -> dict:
             on_hand=on_hand,
             reorder_point=_num(ws[f"{cols['rop']}{r}"].value) if "rop" in cols else None,
             demand_per_period=_num(ws[f"{cols['demand']}{r}"].value) if "demand" in cols else None,
+            cost=_num(ws[f"{cols['cost']}{r}"].value) if "cost" in cols else None,
         ))
     if not rows:
         raise ValueError(
@@ -278,9 +289,16 @@ def prepare(data_path: str | None, params: dict | None = None) -> dict:
     }
 
 
-def _build_outcome(n_restock: int, total: float, filename: str,
-                   changeset: writeback.Changeset | None) -> GuidedOutcome:
-    """The plan as >=2 ranked, executable options (first = recommended default)."""
+def _build_outcome(
+    n_restock: int, total: float, filename: str, changeset: writeback.Changeset | None,
+    *, restock_value: float = 0.0, financial_threshold: float = 50_000.0,
+) -> GuidedOutcome:
+    """The plan as >=2 ranked, executable options (first = recommended default).
+
+    Above ``financial_threshold`` (estimated from the planilla's own cost column,
+    when it has one), the options are gated behind a required finance sign-off
+    instead of being freely actionable - see ``src.escalation.maybe_escalate_financial``.
+    """
     if n_restock > 0:
         key = changeset.idempotency_key if changeset is not None else "n/a"
         options = [
@@ -302,6 +320,7 @@ def _build_outcome(n_restock: int, total: float, filename: str,
             ),
         ]
         summary = f"{n_restock} SKU(s) below target ({total:,.0f} units short): choose how to act."
+        return maybe_escalate_financial(as_options(summary, options), restock_value, financial_threshold)
     else:
         options = [
             ExecutionOption(
@@ -328,16 +347,22 @@ def run(
     cover_periods: float = 8.0,
     order_up_to_factor: float = 2.0,
     idempotency_key: str | None = None,
+    financial_threshold: float = 50_000.0,
 ) -> ExcelReplenishmentReport:
     """Plan the restock and stage the write-back as a dry-run changeset.
 
     ``idempotency_key`` defaults to a hash of the staged content, so a NEW plan
     (different quantities / different file state) never collides with a previous
     apply, while re-staging the identical plan stays idempotent.
+
+    ``financial_threshold`` gates the options outcome on the restock's estimated
+    $ value, when the planilla carries a cost column (see ``_build_outcome``) -
+    without one, the value stays unknown and the check never guesses.
     """
     if cover_periods <= 0 or order_up_to_factor <= 0:
         raise ValueError("cover_periods and order_up_to_factor must be > 0")
     mode: str = payload["mode"]
+    cost_by_sku: dict[str, float] = {r.sku: r.cost for r in payload["rows"] if r.cost is not None}
     lines: list[ReplenishmentLine] = []
     restock: dict[str, tuple[int, float]] = {}  # sku -> (sheet row, qty)
     n_unplanned = 0
@@ -391,6 +416,7 @@ def run(
 
     flat_restock = {sku: qty for sku, (_r, qty) in restock.items()}
     total = sum(flat_restock.values())
+    restock_value = sum(qty * cost_by_sku.get(sku, 0.0) for sku, qty in flat_restock.items())
     excluded = ""
     if n_unplanned or payload["n_skipped_rows"]:
         parts = []
@@ -420,7 +446,10 @@ def run(
         cover_periods=cover_periods,
         order_up_to_factor=order_up_to_factor,
         changeset=changeset,
-        outcome=_build_outcome(len(flat_restock), total, payload["filename"], changeset),
+        outcome=_build_outcome(
+            len(flat_restock), total, payload["filename"], changeset,
+            restock_value=restock_value, financial_threshold=financial_threshold,
+        ),
         summary=summary,
     )
 
@@ -494,13 +523,17 @@ def write_operational(report: ExcelReplenishmentReport, out_dir: str | Path,
     written = {"csv": write_summary_csv(rows, d / "excel_replenishment.csv")}
     if report.changeset is not None:
         howto = d / "apply_howto.md"
-        howto.write_text(
-            _HOWTO_TEMPLATE.format(
-                filename=report.filename, key=report.changeset.idempotency_key,
-                n=report.n_restock, total=report.total_restock,
-            ),
-            encoding="utf-8",
+        text = _HOWTO_TEMPLATE.format(
+            filename=report.filename, key=report.changeset.idempotency_key,
+            n=report.n_restock, total=report.total_restock,
         )
+        banner = escalation_banner(report.outcome)
+        if banner:
+            # The one document an operator opens right before running the apply
+            # command - it must say STOP first, not just hand over a one-shot
+            # recipe as if this were a routine, unescalated plan.
+            text = f"# STOP - {banner}\n\nDo not run the apply command below until that sign-off is in hand.\n\n---\n\n" + text
+        howto.write_text(text, encoding="utf-8")
         written["apply_howto"] = howto
     return written
 
@@ -515,14 +548,22 @@ def build_deck(
 ) -> Deliverable:
     """Compose the study: what is short, by how much, and how to act on the planilla."""
     short = [ln for ln in report.lines if ln.restock_qty > 0]
-    findings = [
+    findings: list[Finding] = []
+    banner = escalation_banner(report.outcome)
+    if banner:
+        # Leads the deck - the data being correct (outcome.status == ESCALATED) is
+        # not the same guarantee as a human ever reading it; state it in words,
+        # first, not buried under the routine findings.
+        findings.append(Finding("Requires finance sign-off before acting", banner,
+                                impact="do not apply until the named approver signs off"))
+    findings.append(
         Finding(
             f"{report.n_restock} SKU(s) below target",
             f"{report.total_restock:,.0f} units short across {report.n_skus} plannable SKU(s) read "
             f"from {report.filename} ({report.sheet}, {report.mode} mode).",
             impact="replenish to avoid stockouts on the thin SKUs",
         )
-    ]
+    )
     if short:
         worst = max(short, key=lambda ln: ln.restock_qty)
         findings.append(
@@ -572,9 +613,10 @@ def build_deck(
         recommendations=tuple(recommendations),
         citations=tuple(citations),
         confidence=confidence,
-        residual="Applying the staged order quantities writes to the client's file through the "
-                 "Excel connector's safe-staging plane (drift check - covering the plan's inputs "
-                 "via guard cells - backup, atomic write, rollback); a human approves before "
-                 "anything is committed.",
+        residual=(f"{banner} " if banner else "")
+                 + "Applying the staged order quantities writes to the client's file through the "
+                   "Excel connector's safe-staging plane (drift check - covering the plan's inputs "
+                   "via guard cells - backup, atomic write, rollback); a human approves before "
+                   "anything is committed.",
         prepared=prepared,
     )
