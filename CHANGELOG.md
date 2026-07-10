@@ -3,6 +3,34 @@
 ## [Unreleased]
 
 ### Added
+- **Financial-threshold escalation + unvalidated-forecast disclosure** — the two writeback
+  tools (`odoo_replenishment`, `excel_replenishment`) no longer present a restock plan as
+  freely-actionable "options" regardless of size: `src/escalation.py` gains
+  `maybe_escalate_financial()`, a pure helper that re-routes an options outcome to
+  `ESCALATED` (financial-threshold trigger, routed to a finance approver with an SLA) when
+  the restock's estimated $ value exceeds a threshold (`params.financial_threshold`,
+  default $50k) - the same ranked options survive, both inside the escalation packet AND at
+  the outcome's top level, so nothing is silently dropped from the rendered deck - they're
+  just gated behind a required sign-off. Odoo prices the restock from its own product cost
+  (already read in `prepare()`); the Excel planilla gains an optional cost column
+  (`_COST_CANDIDATES`, mirroring the existing stock/ROP/demand detection pattern) - absent,
+  the $ value stays unknown and the check never guesses. A new `escalation_banner()` helper
+  makes the escalation unmissable in every document a human actually reads, not just correct
+  in the data model: it leads the deck's findings and Coverage & handoff section (both
+  `odoo_job.py` and `excel_replenishment_job.py` build_deck), and prepends a "# STOP" warning
+  to `apply_howto.md` before the one-shot apply recipe - closing a real adversarial-review
+  finding where the escalation was structurally correct but invisible to `Orchestrator.run()`
+  callers, the rendered deck, and the exact document an operator opens before applying.
+  Separately, `jobs/forecast_job.py` no longer silently ships a SKU whose forecast accuracy
+  (MASE) couldn't be backtested (too little history) with the same confident label as a
+  well-validated one: the portfolio's unvalidated share is now stated as an explicit residual
+  (with a non-empty `risk_if_skipped`, enforced by `verify_guided`) and dampens the outcome's
+  confidence. +26 tests across `test_escalation.py`, `test_forecast_tool.py`,
+  `test_connector_odoo_tool.py`, `test_excel_replenishment.py`. Known follow-ups (not fixed
+  here - separate, pre-existing gaps, not introduced by this change): `webapp/app.py`'s
+  `POST /api/jobs` JSON response doesn't surface `guided`/escalation at all for ANY tool
+  (not just these two); `examples/apply_replenishment.py` doesn't hard-block on
+  `outcome.status == ESCALATED`, only warns in the howto document.
 - **MCP surface expanded 8 → 33 tools (`webapp/mcp_tool_specs.py`)** — every read-only
   analysis tool is now exposed to remote MCP clients, not just the original Phase A eight:
   cost-to-serve, landed cost, earned value, learning curve, E&O, markdown liquidation, FEFO,

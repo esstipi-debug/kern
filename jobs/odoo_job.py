@@ -21,6 +21,7 @@ from pathlib import Path
 from src.connectors.odoo import OdooClient, OdooConnector, OdooRPC, demo_odoo
 from src.connectors.replenish import ReplenishmentLine, plan_replenishment
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
+from src.escalation import escalation_banner, maybe_escalate_financial
 from src.export import write_summary_csv
 from src.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 
@@ -59,11 +60,21 @@ def prepare(data_path: str | None = None, params: dict | None = None) -> dict:
     rpc, source = _make_rpc(params)
     connector = OdooConnector(rpc)
     products = connector.list_products()
-    return {"connector": connector, "source": source, "n_products": len(products)}
+    return {
+        "connector": connector, "source": source, "n_products": len(products),
+        "costs": {p.sku: p.cost for p in products},
+    }
 
 
-def _build_outcome(n_restock: int, total_restock: float) -> GuidedOutcome:
-    """Replenishment as >=2 ranked, executable options (first = recommended default)."""
+def _build_outcome(
+    n_restock: int, total_restock: float, *, restock_value: float = 0.0, financial_threshold: float = 50_000.0
+) -> GuidedOutcome:
+    """Replenishment as >=2 ranked, executable options (first = recommended default).
+
+    Above ``financial_threshold`` (estimated from Odoo's own product cost), the
+    options are gated behind a required finance sign-off instead of being freely
+    actionable - see ``src.escalation.maybe_escalate_financial``.
+    """
     if n_restock > 0:
         options = [
             ExecutionOption(
@@ -90,6 +101,7 @@ def _build_outcome(n_restock: int, total_restock: float) -> GuidedOutcome:
             ),
         ]
         summary = f"{n_restock} SKU(s) below target cover ({total_restock:,.0f} units short): choose how to replenish."
+        return maybe_escalate_financial(as_options(summary, options), restock_value, financial_threshold)
     else:
         options = [
             ExecutionOption(
@@ -115,13 +127,21 @@ def _build_outcome(n_restock: int, total_restock: float) -> GuidedOutcome:
     return as_options(summary, options)
 
 
-def run(payload: dict, *, cover_periods: float = 8.0) -> OdooReplenishmentReport:
-    """Forecast each SKU from Odoo sales and plan the restock to ``cover_periods`` of demand."""
+def run(
+    payload: dict, *, cover_periods: float = 8.0, financial_threshold: float = 50_000.0
+) -> OdooReplenishmentReport:
+    """Forecast each SKU from Odoo sales and plan the restock to ``cover_periods`` of demand.
+
+    ``financial_threshold`` gates the options outcome on the restock's estimated $
+    value (from Odoo's own product cost) - see ``_build_outcome``.
+    """
     connector: OdooConnector = payload["connector"]
     plan = plan_replenishment(connector, cover_periods=cover_periods, store=connector)
     restock = dict(plan.restock)
     total = sum(restock.values())
     n_skus = len(plan.lines)
+    costs: dict[str, float] = payload.get("costs", {})
+    restock_value = sum(qty * costs.get(sku, 0.0) for sku, qty in restock.items())
     summary = (
         f"Read {n_skus} product(s) from {payload['source']}; {len(restock)} below a "
         f"{cover_periods:.0f}-period cover ({total:,.0f} units short)."
@@ -135,7 +155,9 @@ def run(payload: dict, *, cover_periods: float = 8.0) -> OdooReplenishmentReport
         n_restock=len(restock),
         total_restock=total,
         cover_periods=cover_periods,
-        outcome=_build_outcome(len(restock), total),
+        outcome=_build_outcome(
+            len(restock), total, restock_value=restock_value, financial_threshold=financial_threshold
+        ),
         summary=summary,
     )
 
@@ -176,14 +198,22 @@ def build_deck(
 ) -> Deliverable:
     """Compose the replenishment study: what is short, by how much, and how to act in Odoo."""
     short = [ln for ln in report.lines if ln.restock_qty > 0]
-    findings = [
+    findings: list[Finding] = []
+    banner = escalation_banner(report.outcome)
+    if banner:
+        # Leads the deck - the data being correct (outcome.status == ESCALATED)
+        # is not the same guarantee as a human ever reading it; state it in words,
+        # first, not buried under the routine findings.
+        findings.append(Finding("Requires finance sign-off before acting", banner,
+                                impact="do not apply until the named approver signs off"))
+    findings.append(
         Finding(
             f"{report.n_restock} SKU(s) below target cover",
             f"{report.total_restock:,.0f} units short of a {report.cover_periods:.0f}-period cover "
             f"across {report.n_skus} product(s) read from {report.source}.",
             impact="replenish to avoid stockouts on the thin SKUs",
         )
-    ]
+    )
     if short:
         worst = max(short, key=lambda ln: ln.restock_qty)
         findings.append(
@@ -217,7 +247,8 @@ def build_deck(
         recommendations=tuple(recommendations),
         citations=tuple(citations),
         confidence=confidence,
-        residual="Applying reorder points or POs writes to Odoo through the connector's safe-staging "
-                 "plane (dry-run, reversible); a human approves before anything is committed.",
+        residual=(f"{banner} " if banner else "")
+                 + "Applying reorder points or POs writes to Odoo through the connector's safe-staging "
+                   "plane (dry-run, reversible); a human approves before anything is committed.",
         prepared=prepared,
     )

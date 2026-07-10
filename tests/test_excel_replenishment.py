@@ -8,12 +8,16 @@ executable options. Nothing is ever written without an approval + apply.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from openpyxl import Workbook, load_workbook
 
 from jobs import excel_replenishment_job as job
+from scm_agent import llm, tools
+from scm_agent.orchestrator import Orchestrator
 from src import writeback
-from src.guided import OPTIONS, passed_guided
+from src.guided import ESCALATED, OPTIONS, passed_guided
 
 SHEET = "Stock Bodega"
 
@@ -52,6 +56,27 @@ def planilla(tmp_path):
     return _make_planilla(tmp_path / "planilla.xlsx")
 
 
+def _make_planilla_with_cost(path, unit_costs):
+    """Client-style planilla WITH an optional unit-cost column - for
+    financial-threshold escalation tests. Same SKU/stock/ROP as ``_make_planilla``."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = SHEET
+    ws["A1"] = "INVENTARIO BODEGA CENTRAL"
+    headers = ["Codigo", "Descripcion", "Stock", "Punto Reorden", "Costo Unitario"]
+    for col, h in enumerate(headers, 1):
+        ws.cell(row=3, column=col, value=h)
+    rows = [("SKU-001", "Tornillo 3mm", 42, 50), ("SKU-002", "Tuerca 3mm", 130, 80), ("SKU-003", "Arandela", 8, 25)]
+    for r, (code, desc, stock, rop) in enumerate(rows, 4):
+        ws.cell(row=r, column=1, value=code)
+        ws.cell(row=r, column=2, value=desc)
+        ws.cell(row=r, column=3, value=stock)
+        ws.cell(row=r, column=4, value=rop)
+        ws.cell(row=r, column=5, value=unit_costs[code])
+    wb.save(path)
+    return path
+
+
 # ---- prepare: sheet + column auto-detection ---------------------------------------
 
 def test_prepare_autodetects_sheet_and_spanish_columns(planilla):
@@ -87,6 +112,19 @@ def test_prepare_fails_clearly_without_sku_column(tmp_path):
     wb.save(f)
     with pytest.raises(ValueError, match="SKU"):
         job.prepare(str(f), {})
+
+
+def test_prepare_detects_an_optional_cost_column(tmp_path):
+    p = _make_planilla_with_cost(tmp_path / "cost.xlsx", {"SKU-001": 5.0, "SKU-002": 3.0, "SKU-003": 2.0})
+    payload = job.prepare(str(p), {})
+    by_sku = {row.sku: row for row in payload["rows"]}
+    assert by_sku["SKU-001"].cost == 5.0
+    assert by_sku["SKU-003"].cost == 2.0
+
+
+def test_prepare_cost_is_none_when_no_cost_column_present(planilla):
+    payload = job.prepare(str(planilla), {})
+    assert all(row.cost is None for row in payload["rows"])
 
 
 def test_prepare_fails_clearly_without_rop_or_demand(tmp_path):
@@ -146,6 +184,127 @@ def test_run_reuses_existing_order_column(tmp_path):
     edits = {c.field: c.after for c in report.changeset.changes}
     assert "E3" not in edits  # header already exists -> not re-written
     assert edits["E4"] == 58.0
+
+
+# -- financial-threshold escalation: a big-$ restock needs finance sign-off ---
+
+
+def test_no_cost_column_never_escalates_regardless_of_threshold(planilla):
+    """The base fixture has no cost column - the $ value can't be known, so this
+    must degrade to plain options (never guess), not silently gate on 0."""
+    payload = job.prepare(str(planilla), {})
+
+    report = job.run(payload, financial_threshold=0.01)
+
+    assert report.outcome.status == OPTIONS
+
+
+def test_default_threshold_leaves_a_modest_priced_plan_as_plain_options(tmp_path):
+    p = _make_planilla_with_cost(tmp_path / "c.xlsx", {"SKU-001": 5.0, "SKU-002": 3.0, "SKU-003": 2.0})
+    payload = job.prepare(str(p), {})
+
+    report = job.run(payload)  # restock value: 58*5 + 42*2 = 374 - well under the 50k default
+
+    assert report.outcome.status == OPTIONS
+
+
+def test_restock_value_above_threshold_escalates_to_finance(tmp_path):
+    p = _make_planilla_with_cost(tmp_path / "c.xlsx", {"SKU-001": 5.0, "SKU-002": 3.0, "SKU-003": 2.0})
+    payload = job.prepare(str(p), {})
+
+    report = job.run(payload, financial_threshold=100.0)  # 374 > 100
+
+    assert report.outcome.status == ESCALATED
+    assert report.outcome.escalation.route_to
+    assert report.outcome.escalation.sla
+    assert len(report.outcome.escalation.options) >= 2      # the ranked options are NOT lost
+    assert job.verify(report) == []
+
+
+def test_escalated_deck_states_the_requirement_in_words(tmp_path):
+    """The data model being correct (outcome.status == ESCALATED) is not the same
+    guarantee as a human reading the ACTUAL rendered document ever seeing it."""
+    p = _make_planilla_with_cost(tmp_path / "c.xlsx", {"SKU-001": 5.0, "SKU-002": 3.0, "SKU-003": 2.0})
+    payload = job.prepare(str(p), {})
+    report = job.run(payload, financial_threshold=100.0)
+    assert report.outcome.status == ESCALATED  # sanity
+
+    md = job.build_deck(report, client="Acme", confidence=0.85).to_markdown()
+
+    assert "ESCALATED" in md
+    assert "finance" in md.lower()
+    assert report.outcome.escalation.sla in md
+
+
+def test_escalated_apply_howto_leads_with_a_stop_warning(tmp_path):
+    """apply_howto.md is the exact document an operator opens right before
+    running the one-shot apply command - it must not silently hand over that
+    recipe with zero mention that finance sign-off is required first."""
+    p = _make_planilla_with_cost(tmp_path / "c.xlsx", {"SKU-001": 5.0, "SKU-002": 3.0, "SKU-003": 2.0})
+    payload = job.prepare(str(p), {})
+    report = job.run(payload, financial_threshold=100.0)
+
+    written = job.write_operational(report, tmp_path / "out", "Acme")
+
+    text = written["apply_howto"].read_text(encoding="utf-8")
+    assert text.startswith("# STOP")
+    assert "finance" in text.lower()
+    assert "apply_replenishment.py" in text  # the recipe is still there, just gated
+
+
+def test_non_escalated_apply_howto_has_no_stop_warning(planilla):
+    """The routine (non-escalated) case must NOT regress: no spurious warning
+    on an ordinary small plan."""
+    payload = job.prepare(str(planilla), {})
+    report = job.run(payload)
+
+    written = job.write_operational(report, planilla.parent / "out", "Acme")
+
+    text = written["apply_howto"].read_text(encoding="utf-8")
+    assert not text.startswith("# STOP")
+
+
+def test_escalated_run_still_reaches_the_orchestrator_deck_with_visible_options(tmp_path):
+    """End-to-end through Orchestrator.run(): the ranked options must reach the
+    written deck's 'Options to act' section even when the outcome is escalated -
+    not just live in report.outcome.escalation.options, unread by anything."""
+    p = _make_planilla_with_cost(tmp_path / "c.xlsx", {"SKU-001": 5.0, "SKU-002": 3.0, "SKU-003": 2.0})
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback())
+
+    res = orch.run(
+        "excel replenishment: update my excel planilla",
+        data_path=str(p), client="Acme", out_dir=tmp_path / "out",
+        overrides={"financial_threshold": 100.0},
+    )
+
+    assert res.status == "ok" and res.tool == "excel_replenishment"
+    assert res.guided is not None and res.guided.status == ESCALATED
+    assert len(res.guided.options) >= 2          # visible at the top level, not just inside escalation
+    deck_path = Path(res.deliverables["deck_report"])
+    md = deck_path.read_text(encoding="utf-8")
+    assert "ESCALATED" in md
+    assert "## Options to act" in md             # the options actually rendered, not just returned
+
+
+def test_all_above_target_never_escalates_even_with_a_tiny_threshold(tmp_path):
+    """Every SKU deeply above its reorder point -> nothing to restock -> no dollar
+    value at risk -> must never gate the 'hold' outcome behind finance."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = SHEET
+    headers = ["Codigo", "Stock", "Punto Reorden", "Costo Unitario"]
+    for col, h in enumerate(headers, 1):
+        ws.cell(row=1, column=col, value=h)
+    ws.append(["SKU-001", 9999, 10, 500.0])
+    p = tmp_path / "deep.xlsx"
+    wb.save(p)
+    payload = job.prepare(str(p), {})
+
+    report = job.run(payload, financial_threshold=0.01)
+
+    assert report.restock == {}
+    assert report.outcome.status == OPTIONS
+    assert report.outcome.options[0].label.startswith("Hold")
 
 
 def test_run_no_restock_needed_stages_nothing(tmp_path):
