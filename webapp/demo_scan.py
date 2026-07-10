@@ -208,7 +208,7 @@ def safe_lead_dirname(email: str) -> str:
     name = normalized.replace("@", "_at_")
     name = re.sub(r"[^a-z0-9._-]", "_", name).strip(".")[:60]
     digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:10]
-    prefix = name if name and set(name) > {".", "_", "-"} else "lead"
+    prefix = name if name and (set(name) - {".", "_", "-"}) else "lead"
     return f"{prefix}-{digest}"
 
 

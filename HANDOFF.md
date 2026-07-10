@@ -33,8 +33,12 @@ non-finite headline number, e.g. all-zero demand → DIO=inf, or missing
 honest message in the UI. On QA pass it persists per lead:
 `deliverables/leads/<safe-email>/mini_report.md` + `followup_email_draft.md`
 (a DRAFT — mail is NEVER sent automatically) — email → dirname via
-`safe_lead_dirname()` (traversal-proof, `_at_` for `@`), root overridable
-via `LINCHPIN_LEAD_REPORTS_DIR` (on Fly set it to a path on the `/data`
+`safe_lead_dirname()` (traversal-proof, `_at_` for `@`, plus a short hash
+of the full normalized email so two distinct addresses can never collide
+into the same directory — an earlier version without the hash suffix DID
+collide, e.g. `user+test@gmail.com` vs `user_test@gmail.com`; caught by an
+adversarial review before merge), root overridable via
+`LINCHPIN_LEAD_REPORTS_DIR` (on Fly set it to a path on the `/data`
 volume or artifacts die with each deploy). A telemetry line is ALWAYS
 appended to `leads.jsonl` (`source: "demo-scan"`, dataset, status,
 headline-or-null) — deliberately including `qa_failed` runs, so E8's
@@ -44,6 +48,33 @@ demo) + downloadable `webapp/static/demo/plantilla_stock.csv`; the demo UI
 was rewritten in neutral Spanish (no voseo, per the 2.0 protocol's copy
 rule) around the money headline + CTA. The raw upload is never copied into
 the lead folder (privacy: derived teaser persists, raw data purges).
+
+**Adversarial review before merge, worth reading if the pattern repeats:**
+the review workflow's verify phase hit the session's usage-limit reset
+mid-run — 11 of 13 agents errored (`session limit · resets 1:50pm`), so the
+tool's own `confirmed: []` output was NOT a clean pass, it was an infra
+outage (same failure shape as [[workflow-verify-phase-failure-not-clean]]
+from a prior session). Manually adjudicated all 9 raw findings instead of
+trusting the empty list. 2 were real code bugs, fixed: (1) `safe_lead_dirname`
+collisions (above); (2) attacker-controlled `product_id` landing unescaped
+in the persisted `.md` artifacts (`webapp/demo_scan.py::_md_safe` now
+collapses it to a conservative charset before embedding — the repo's
+existing `defuse_formula()` only covers CSV/Excel formula injection, not
+markdown/HTML). 1 was a real HIGH-severity gap addressed with a bounded
+mitigation, not a full fix: `/api/demo-scan` is unauthenticated with
+`LINCHPIN_RATE_LIMIT` off by default, so an unbounded lead store is a
+scriptable disk-exhaustion vector on the small Fly volume — added
+`_prune_excess_lead_dirs()` (oldest-evicted count cap, `MAX_LEAD_DIRS=5000`)
+as defense-in-depth and flagged setting the real rate limit in the launch
+checklist; a full fix (auth, CAPTCHA, per-IP quota) was judged
+disproportionate for a deliberately-public lead magnet. The remaining 6
+were test-coverage gaps, not code bugs — closed by adding tests, not by
+changing behavior (rate-limit regression test, re-scan-same-email overwrite
+semantics, non-CSV upload stays a 400 not a 500, duplicate-`product_id`
+row-summing pinned to match every other job's existing behavior, the
+`LINCHPIN_LEAD_REPORTS_DIR` env var exercised via a real subprocess import
+instead of only via monkeypatch, and an explicit assertion that the raw
+upload is never copied into the lead folder).
 
 **Next: E3 (Oferta #8 "Sprint de Liquidación").** `markdown_liquidation`
 exists as a registered tool (PR #124) but belongs to no package. E3 = new

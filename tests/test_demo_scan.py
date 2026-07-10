@@ -102,7 +102,7 @@ def test_missing_required_columns_raise_value_error():
 
 
 @pytest.mark.parametrize(
-    ("email", "expected"),
+    ("email", "expected_prefix"),
     [
         ("Foo.Bar@Empresa.COM", "foo.bar_at_empresa.com"),
         ("a b@c.com", "a_b_at_c.com"),
@@ -111,11 +111,40 @@ def test_missing_required_columns_raise_value_error():
         ("", "lead"),
     ],
 )
-def test_safe_lead_dirname_is_single_safe_segment(email, expected):
+def test_safe_lead_dirname_is_single_safe_segment(email, expected_prefix):
     name = safe_lead_dirname(email)
-    assert name == expected
+    assert name.startswith(expected_prefix + "-")
     assert "/" not in name and "\\" not in name
     assert name not in (".", "..")
+
+
+def test_safe_lead_dirname_is_deterministic():
+    assert safe_lead_dirname("Same@Email.com") == safe_lead_dirname("same@email.com  ")
+
+
+@pytest.mark.parametrize(
+    ("a", "b"),
+    [
+        ("user+test@gmail.com", "user_test@gmail.com"),  # '+' and '_' both -> '_'
+        ("a" * 90 + "@x.com", "a" * 90 + "b@x.com"),  # both truncate past 60 chars
+    ],
+)
+def test_safe_lead_dirname_distinct_emails_never_collide(a, b):
+    # Prior to the hash suffix, both pairs above mapped to the identical
+    # directory name -- a second lead's scan would silently overwrite the
+    # first lead's mini-report/follow-up draft with no signal to the operator.
+    assert safe_lead_dirname(a) != safe_lead_dirname(b)
+
+
+def test_findings_escape_attacker_controlled_product_id():
+    df = _stock_df().copy()
+    df.loc[df["product_id"] == "SKU-002", "product_id"] = "<img src=x onerror=alert(1)>"
+    result = run_demo_scan(df)
+    assert result.ok
+    blob = " ".join(result.findings)
+    assert "<img" not in blob and "onerror=" not in blob
+    md = render_mini_report(result, email="a@b.com", dataset_label="d.csv", ts="t")
+    assert "<img" not in md and "onerror=" not in md
 
 
 def test_mini_report_contains_headline_and_cta():

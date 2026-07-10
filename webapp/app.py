@@ -533,6 +533,31 @@ async def api_jobs(
     }
 
 
+MAX_LEAD_DIRS = 5000  # bounds LEAD_REPORTS_DIR when LINCHPIN_RATE_LIMIT is left at its off-by-default 0
+
+
+def _prune_excess_lead_dirs(limit: int = MAX_LEAD_DIRS) -> None:
+    """Cap LEAD_REPORTS_DIR at `limit` lead directories, evicting the oldest.
+
+    Unlike JOBS_OUTPUT_DIR, lead directories are the funnel's durable artifact
+    (an operator reviews them later) so they are deliberately NOT TTL-purged --
+    but /api/demo-scan is unauthenticated and rate limiting is OFF by default
+    (LINCHPIN_RATE_LIMIT=0), so an unbounded lead store is a trivial scripted
+    disk-exhaustion vector (a fresh email per request, forever). This is a
+    best-effort count cap, not a substitute for setting LINCHPIN_RATE_LIMIT in
+    production -- see SECURITY.md.
+    """
+    try:
+        entries = [e for e in LEAD_REPORTS_DIR.iterdir() if e.is_dir()]
+    except OSError:
+        return
+    if len(entries) <= limit:
+        return
+    entries.sort(key=lambda e: e.stat().st_mtime)
+    for stale in entries[: len(entries) - limit]:
+        shutil.rmtree(stale, ignore_errors=True)
+
+
 @app.post("/api/demo-scan", dependencies=[Depends(security.rate_limit)])
 async def api_demo_scan(
     email: str = Form(...),
@@ -590,6 +615,7 @@ async def api_demo_scan(
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     if result.ok:
         # QA passed -> persist the operator's follow-up artifacts for this lead.
+        _prune_excess_lead_dirs()
         lead_dir = LEAD_REPORTS_DIR / demo_scan.safe_lead_dirname(addr)
         if lead_dir.resolve().parent != LEAD_REPORTS_DIR.resolve():
             raise HTTPException(status_code=400, detail="invalid email")

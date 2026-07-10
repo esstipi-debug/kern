@@ -35,6 +35,12 @@
 - [ ] En Fly: `fly secrets set LINCHPIN_LEAD_REPORTS_DIR=/data/leads` para que
       los mini-reportes de leads sobrevivan a los redeploys (sin esto viven en
       el filesystem efímero del contenedor)
+- [ ] En Fly: `fly secrets set LINCHPIN_RATE_LIMIT=<N>` — `/api/demo-scan` es
+      público sin autenticación (como `/api/leads`, es el propio imán de
+      leads) y el rate limit viene **apagado por defecto**; sin esto, cualquiera
+      puede scriptear un email nuevo por request. Hay un tope duro adicional
+      (`MAX_LEAD_DIRS` en `webapp/app.py`) como defensa en profundidad, pero no
+      reemplaza configurar el rate limit real
 - [ ] Rutina operativa: tras cada demo corrido, revisar
       `deliverables/leads/<email>/` (o `/data/leads/` en Fly) — ahí queda el
       mini-reporte y el **borrador** de email de seguimiento; enviarlo a mano

@@ -16,9 +16,22 @@ The HTTP surface (`webapp/app.py`) accepts four kinds of untrusted input:
    upload). The upload reuses the exact controls of (3): 25 MB cap → `413`,
    basename-only filename pinned to an isolated per-request tempdir under the
    TTL-purged jobs area. The email is regex-validated and additionally reduced to
-   a traversal-proof single path segment (`webapp/demo_scan.py::safe_lead_dirname`,
-   pinned under the lead-reports root) before any lead artifact is written; the
-   raw upload is never copied into the lead's folder.
+   a traversal-proof, **collision-free** single path segment
+   (`webapp/demo_scan.py::safe_lead_dirname` — a sanitized prefix plus a short
+   hash of the full normalized email, so two distinct addresses can never map to
+   the same lead directory and silently overwrite each other's report) before
+   any lead artifact is written; the raw upload is never copied into the lead's
+   folder. CSV-supplied text (e.g. `product_id`) is collapsed to a conservative
+   charset (`webapp/demo_scan.py::_md_safe`) before landing in the persisted
+   `.md` artifacts, since those are read by the operator through a
+   markdown/HTML-capable tool and are otherwise a stored-injection sink this
+   repo's existing CSV/Excel formula-injection guard (`src/sanitize.py`) does
+   not cover. This endpoint is unauthenticated by design (same as `/api/leads`
+   — it *is* the lead magnet) and **relies on `LINCHPIN_RATE_LIMIT` being set in
+   production**, same as every other public endpoint below; `LEAD_REPORTS_DIR`
+   additionally self-caps at `MAX_LEAD_DIRS` (`app.py::_prune_excess_lead_dirs`,
+   oldest-evicted) as defense in depth against a scripted fresh-email-per-request
+   disk-exhaustion attempt while rate limiting is off by default.
 
 The engine itself (`src/`) is pure computation over numpy/pandas — no shell, no
 `eval`/`exec`, no SQL string-building, no network calls. The free-text `brief` is
