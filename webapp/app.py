@@ -10,6 +10,7 @@ Run:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -17,6 +18,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -461,45 +463,50 @@ def _prune_old_jobs(now: float | None = None) -> None:
             continue
 
 
-@app.post("/api/jobs", dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)])
-async def api_jobs(
-    brief: str = Form(...),
-    client: str = Form("Client"),
-    job_type: str | None = Form(None),
-    params: str = Form("{}"),
-    use_sample: bool = Form(False),
-    file: UploadFile | None = File(None),
+def _safe_upload_basename(filename: str) -> str:
+    """Reduce a client-supplied filename to a bare basename, raising 400 if it
+    doesn't survive the reduction (empty, '.', '..') — never trust the
+    client-supplied filename for anything beyond this. Called from the async
+    handler BEFORE the upload-size check, so an invalid filename is rejected
+    with the same precedence as before this endpoint's asyncio.to_thread split
+    (filename validity is a 400 regardless of how large the accompanying body is).
+    """
+    raw_name = filename.replace("\\", "/")
+    safe_name = os.path.basename(raw_name)
+    if not safe_name or safe_name in (".", ".."):
+        raise HTTPException(status_code=400, detail="invalid upload filename")
+    return safe_name
+
+
+def _run_job_sync(
+    brief: str,
+    client: str,
+    job_type: str | None,
+    parsed_params: dict,
+    use_sample: bool,
+    safe_filename: str | None,
+    file_bytes: bytes | None,
 ) -> dict:
-    try:
-        parsed_params = json.loads(params) if params else {}
-        if not isinstance(parsed_params, dict):
-            raise ValueError("params must be a JSON object")
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail=f"invalid params JSON: {exc}") from exc
+    """The blocking half of /api/jobs: temp-dir staging, Orchestrator.run(), and
+    building the download-URL map. Offloaded via asyncio.to_thread (see api_jobs
+    below) so a real analysis (pandas/Excel work, CPU-bound) never blocks the
+    event loop - with WEB_CONCURRENCY=1 in production, running this inline used
+    to stall every other request, including /api/health, for the run's duration.
 
-    # Sanitize the client-supplied label before it lands in report copy/headings.
-    client = re.sub(r"[^\w\s.,\-]", "", client)[:100].strip() or "Client"
-
+    ``safe_filename`` is already basename-validated by _safe_upload_basename
+    (called from the async handler) — the containment check below is
+    defense-in-depth against a future caller that skips that step, not the
+    primary guard.
+    """
     _prune_old_jobs()
-
-    import tempfile
 
     job_dir = Path(tempfile.mkdtemp(dir=JOBS_OUTPUT_DIR))
     data_path: str | None = None
-    if file is not None and file.filename:
-        # Never trust the client-supplied filename: reduce to a bare basename and
-        # pin the write inside the per-job dir (blocks path traversal / absolute writes).
-        raw_name = (file.filename or "upload").replace("\\", "/")
-        safe_name = os.path.basename(raw_name)
-        if not safe_name or safe_name in (".", ".."):
-            raise HTTPException(status_code=400, detail="invalid upload filename")
-        upload = job_dir / safe_name
+    if safe_filename and file_bytes is not None:
+        upload = job_dir / safe_filename
         if upload.resolve().parent != job_dir.resolve():
             raise HTTPException(status_code=400, detail="invalid upload filename")
-        data = await file.read(MAX_UPLOAD_BYTES + 1)
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
-        upload.write_bytes(data)
+        upload.write_bytes(file_bytes)
         data_path = str(upload)
 
     # Demo path: no upload, but the visitor asked to try the bundled sample dataset.
@@ -531,6 +538,40 @@ async def api_jobs(
         "citations": result.citations,
         "kb_warnings": result.kb_warnings,
     }
+
+
+@app.post("/api/jobs", dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)])
+async def api_jobs(
+    brief: str = Form(...),
+    client: str = Form("Client"),
+    job_type: str | None = Form(None),
+    params: str = Form("{}"),
+    use_sample: bool = Form(False),
+    file: UploadFile | None = File(None),
+) -> dict:
+    try:
+        parsed_params = json.loads(params) if params else {}
+        if not isinstance(parsed_params, dict):
+            raise ValueError("params must be a JSON object")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=f"invalid params JSON: {exc}") from exc
+
+    # Sanitize the client-supplied label before it lands in report copy/headings.
+    client = re.sub(r"[^\w\s.,\-]", "", client)[:100].strip() or "Client"
+
+    # Genuine async I/O stays on the event loop; only the CPU-bound orchestrator
+    # run (+ its filesystem staging) moves to a thread below.
+    safe_filename: str | None = None
+    file_bytes: bytes | None = None
+    if file is not None and file.filename:
+        safe_filename = _safe_upload_basename(file.filename)  # 400 before the size check below
+        file_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(file_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
+
+    return await asyncio.to_thread(
+        _run_job_sync, brief, client, job_type, parsed_params, use_sample, safe_filename, file_bytes,
+    )
 
 
 MAX_LEAD_DIRS = 5000  # bounds LEAD_REPORTS_DIR when LINCHPIN_RATE_LIMIT is left at its off-by-default 0

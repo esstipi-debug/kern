@@ -1,5 +1,7 @@
 """Tests for the Inventory Planner FastAPI backend."""
 
+import asyncio
+
 import pytest
 
 pytest.importorskip("fastapi")
@@ -10,8 +12,10 @@ try:
     import python_multipart  # noqa: F401  (canonical name, python-multipart >= 0.0.26)
 except ImportError:
     pytest.importorskip("multipart")  # legacy name; skips the module if also absent
+import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+import webapp.app as webapp_app_module  # noqa: E402
 from webapp.app import JOBS_OUTPUT_DIR, app  # noqa: E402
 
 client = TestClient(app)
@@ -213,6 +217,25 @@ def test_jobs_upload_too_large_rejected(monkeypatch):
     assert r.status_code == 413
 
 
+@requires_multipart
+def test_jobs_invalid_filename_takes_precedence_over_oversized_upload(monkeypatch):
+    """Filename validity (_safe_upload_basename) runs in the async handler
+    BEFORE the size check, matching the precedence the original single-function
+    implementation had - when BOTH are wrong, the caller learns about the
+    filename (400), not the size (413). The asyncio.to_thread split (which
+    moved filename *containment* validation into the thread-offloaded
+    _run_job_sync) must not silently reorder this."""
+    monkeypatch.setattr("webapp.app.MAX_UPLOAD_BYTES", 5)
+    big = b"x" * 50
+    r = client.post(
+        "/api/jobs",
+        data={"brief": "set up reorder points"},
+        files={"file": ("..", big, "text/csv")},
+    )
+    assert r.status_code == 400
+    assert "filename" in r.json()["detail"]
+
+
 def test_prune_old_jobs_removes_stale_dirs():
     import os
     import shutil
@@ -236,10 +259,85 @@ def test_prune_old_jobs_removes_stale_dirs():
         shutil.rmtree(fresh, ignore_errors=True)
 
 
+async def test_http_exception_raised_inside_a_thread_offloaded_call_propagates_correctly():
+    """Direct proof of the mechanism /api/jobs now relies on: FastAPI's
+    HTTPException, when raised inside a function dispatched via
+    asyncio.to_thread (as _run_job_sync is), reaches the awaiting caller
+    unchanged - not swallowed, not turned into a generic error, not lost.
+    Independent of any specific upload scenario, since _run_job_sync's own
+    exception path (the filename-containment check) is largely unreachable
+    through the public API now that _safe_upload_basename pre-validates the
+    filename in the async handler before dispatch.
+    """
+    from fastapi import HTTPException as _HTTPException
+
+    def _raises() -> None:
+        raise _HTTPException(status_code=400, detail="boom")
+
+    with pytest.raises(_HTTPException) as exc_info:
+        await asyncio.to_thread(_raises)
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "boom"
+
+
 def test_console_route_serves_the_prototype():
     r = client.get("/console")
     assert r.status_code == 200
     assert "Linchpin" in r.text  # the live console brand
+
+
+@requires_multipart
+async def test_jobs_does_not_block_a_concurrent_health_check(monkeypatch):
+    """The regression this endpoint's asyncio.to_thread offload fixes: /api/jobs
+    used to run the orchestrator SYNCHRONOUSLY inside its `async def` handler, so
+    with a single event loop (WEB_CONCURRENCY=1 in production) a real analysis
+    blocked every other request - including /api/health - until it finished.
+
+    Proves the fix with genuine concurrency (httpx.AsyncClient over an in-process
+    ASGITransport, both requests in flight on the SAME event loop via
+    asyncio.gather - not TestClient, which serializes requests) rather than a
+    wall-clock timing assertion: a (deterministically slow) job request and a
+    health check are fired together, and the health check must complete WHILE
+    the job is still sleeping. If /api/jobs regressed to blocking the loop
+    directly, the health check could not complete until the job did, and the
+    order below would flip.
+    """
+    order: list[str] = []
+    real_run_job_sync = webapp_app_module._run_job_sync
+
+    def _slow_run_job_sync(*args, **kwargs):
+        import time as _time
+        _time.sleep(0.3)  # simulate a real, CPU-bound orchestrator run
+        result = real_run_job_sync(*args, **kwargs)
+        order.append("job")
+        return result
+
+    monkeypatch.setattr(webapp_app_module, "_run_job_sync", _slow_run_job_sync)
+
+    transport = httpx.ASGITransport(app=app)
+
+    async def _slow_job():
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+            return await ac.post("/api/jobs", data={
+                "brief": "evaluate leadership", "job_type": "leadership_chain",
+                "params": '{"scores": "3 3 3 3 3"}',
+            })
+
+    async def _health_check_shortly_after():
+        await asyncio.sleep(0.05)  # let the job request start first
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+            r = await ac.get("/api/health")
+        order.append("health")
+        return r
+
+    job_resp, health_resp = await asyncio.gather(_slow_job(), _health_check_shortly_after())
+
+    assert job_resp.status_code == 200
+    assert health_resp.status_code == 200 and health_resp.json()["ok"] is True
+    # The health check (issued 50ms after the job started, itself near-instant)
+    # finished FIRST - proving the event loop stayed free during the job's
+    # 300ms of "orchestrator work" instead of being blocked by it.
+    assert order == ["health", "job"]
 
 
 @requires_multipart

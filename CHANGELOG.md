@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Fixed
+- **`POST /api/jobs` no longer blocks the event loop** — the orchestrator run (CPU-bound
+  pandas/Excel/report generation, up to several seconds) used to execute synchronously
+  inside the `async def` route handler. With `WEB_CONCURRENCY=1` in production (a single
+  event loop), this stalled every other request — including `GET /api/health` — for the
+  run's duration. The blocking work (temp-dir staging + `Orchestrator.run()` + building the
+  download-URL map) is now extracted into `_run_job_sync()` and dispatched via
+  `asyncio.to_thread`, mirroring the pattern `webapp/mcp_server.py` already used. Genuine
+  async I/O (`await file.read(...)`, the upload-size check) stays on the event loop before
+  the thread dispatch. Proven with a real regression test
+  (`test_jobs_does_not_block_a_concurrent_health_check`) that fires a slow job and a health
+  check concurrently via `httpx.AsyncClient`/`ASGITransport`/`asyncio.gather` (not the
+  serializing `TestClient`) and asserts the health check completes first — manually verified
+  this test fails against the pre-fix code. An adversarial review of the refactor caught a
+  real precedence regression (an invalid filename + an oversized body now returned 413
+  instead of the original 400) — fixed by validating the filename in the async handler,
+  before the size check, via a new `_safe_upload_basename()` helper, with a dedicated
+  regression test. +3 tests total.
+
 ### Added
 - **`/console` API key field (fixes a live production bug)** — `LINCHPIN_API_KEY` is set on
   the production deploy, but the agent console (`webapp/static/prototype/index.html`) had no
