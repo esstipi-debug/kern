@@ -18,7 +18,7 @@ import) so this module stays a pure deliverable builder like its siblings.
 from __future__ import annotations
 
 from src import i18n
-from src.deliverable import DataSource, Deliverable, Finding, Kpi
+from src.deliverable import DEFAULT_BRANDING, Branding, DataSource, Deliverable, Finding, Kpi
 
 
 def _title(o, lang: str) -> str:
@@ -43,12 +43,18 @@ def _summary(spec, outcomes, client: str, lang: str) -> str:
     return lines
 
 
-def build(spec, outcomes, *, client: str = "Client", prepared: str = "", lang: str | None = None) -> Deliverable:
+def build(
+    spec, outcomes, *, client: str = "Client", prepared: str = "",
+    lang: str | None = None, branding: Branding | None = None,
+) -> Deliverable:
     """Compose the package-level deck from the runner's step outcomes.
 
     ``lang`` defaults to ``spec.lang`` when unset (the normal case - the
     runner passes ``spec`` through unchanged); an explicit ``lang`` here
     always wins, for callers building a deck outside ``run_package``.
+    ``branding`` defaults to Linchpin's own (``DEFAULT_BRANDING``) when unset -
+    ``run_package`` resolves a partner's white-label identity and passes it
+    through explicitly (see ``scm_agent/packages.py``).
     """
     lang = lang if lang is not None else getattr(spec, "lang", i18n.DEFAULT_LANG)
     L = lambda key, **kw: i18n.label(key, lang, **kw)  # noqa: E731
@@ -111,4 +117,5 @@ def build(spec, outcomes, *, client: str = "Client", prepared: str = "", lang: s
         residual=residual,
         prepared=prepared,
         lang=lang,
+        branding=branding if branding is not None else DEFAULT_BRANDING,
     )

@@ -32,6 +32,7 @@ from pathlib import Path
 import pandas as pd
 
 from src import client_profile
+from src.deliverable import DEFAULT_BRANDING, Branding
 
 from . import citation_gate
 from .knowledge import KnowledgeBase
@@ -216,10 +217,18 @@ def run_package(
     clients_root: Path | str | None = client_profile.DEFAULT_CLIENTS_ROOT,
     strict_params: bool = False,
     prepared: str = "",
+    branding: Branding | None = None,
 ) -> PackageResult:
     """Run every step of ``spec`` and, only if all executed steps pass QA, write
     the per-tool deliverables plus the consolidated package deck under
-    ``out_dir/<spec.key>``."""
+    ``out_dir/<spec.key>``.
+
+    ``branding`` (see ``src/deliverable.py``) resolves explicit call-site
+    override > the loaded client's ``profile.branding`` > Linchpin's own
+    default - only the CONSOLIDATED package deck carries it (mirrors how
+    ``lang`` is scoped; each individual tool's own deck under this package
+    keeps rendering Linchpin's default, unchanged - a deliberate, narrow
+    integration point, not every deck in the bundle)."""
     registry = registry if registry is not None else build_default_registry()
     provider = provider if provider is not None else get_provider()
     knowledge = knowledge if knowledge is not None else KnowledgeBase()
@@ -299,7 +308,10 @@ def run_package(
             files.update({f"deck_{name}": path for name, path in deck_files.items()})
         written.update({f"{outcome.tool_key}_{name}": str(path) for name, path in files.items()})
 
-    deck = package_deliverable.build(spec, outcomes, client=client, prepared=prepared)
+    resolved_branding = branding
+    if resolved_branding is None:
+        resolved_branding = profile.branding if profile is not None and profile.branding is not None else DEFAULT_BRANDING
+    deck = package_deliverable.build(spec, outcomes, client=client, prepared=prepared, branding=resolved_branding)
     package_files = deck.write_all(out_root)
     written.update({f"paquete_{name}": str(path) for name, path in package_files.items()})
 

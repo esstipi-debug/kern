@@ -25,6 +25,8 @@ from scm_agent.package_specs import (
 from scm_agent.packages import missing_required_inputs, run_package
 from scm_agent.registry import ToolRegistry
 from scm_agent.tools import build_default_registry
+from src import client_profile
+from src.deliverable import Branding
 
 
 class _NoKnowledge:
@@ -242,6 +244,49 @@ def test_diagnostico_end_to_end(demo_intake, tmp_path):
     out = tmp_path / "out"
     result = _run(DIAGNOSTICO, demo_intake, out)
     _assert_delivered(result, out, "diagnostico", 4)
+
+
+# ---- E6: partner/white-label branding on the consolidated package deck -------
+
+def test_package_deck_defaults_to_linchpin_branding(demo_intake, tmp_path):
+    # DIAGNOSTICO defaults to lang="es" (see test_every_package_defaults_to_spanish)
+    # so the footer label renders as "Preparado por", not "Prepared by".
+    out = tmp_path / "out"
+    result = _run(DIAGNOSTICO, demo_intake, out)
+    assert result.status == "ok"
+    deck = (out / "diagnostico" / "deliverable.md").read_text(encoding="utf-8")
+    assert "Preparado por Linchpin" in deck
+
+
+def test_package_deck_uses_the_clients_profile_branding_when_configured(demo_intake, tmp_path):
+    root = tmp_path / "clients"
+    client_profile.upsert_profile(
+        "Acme Consulting", "Acme Consulting", root=root,
+        branding=Branding(name="Acme Consulting", primary_color="#1F4E79"),
+    )
+    out = tmp_path / "out"
+    result = _run(DIAGNOSTICO, demo_intake, out, client="Acme Consulting", clients_root=root)
+    assert result.status == "ok"
+    deck = (out / "diagnostico" / "deliverable.md").read_text(encoding="utf-8")
+    assert "Preparado por Acme Consulting" in deck
+    assert "Preparado por Linchpin" not in deck
+
+
+def test_package_deck_explicit_branding_wins_over_the_clients_profile(demo_intake, tmp_path):
+    root = tmp_path / "clients"
+    client_profile.upsert_profile(
+        "Acme Consulting", "Acme Consulting", root=root,
+        branding=Branding(name="Acme Consulting"),
+    )
+    out = tmp_path / "out"
+    result = _run(
+        DIAGNOSTICO, demo_intake, out, client="Acme Consulting", clients_root=root,
+        branding=Branding(name="Explicit Override Co"),
+    )
+    assert result.status == "ok"
+    deck = (out / "diagnostico" / "deliverable.md").read_text(encoding="utf-8")
+    assert "Preparado por Explicit Override Co" in deck
+    assert "Prepared by Acme Consulting" not in deck
 
 
 def test_diagnostico_deck_is_100pct_one_language_no_mixing(demo_intake, tmp_path):

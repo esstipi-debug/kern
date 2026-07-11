@@ -1,9 +1,86 @@
 # Linchpin — Session Handoff
 
-**Date:** 2026-07-10 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e5-citation-gate`, **PR #134 open as draft** (adversarially reviewed and fixed — waiting on the operator's explicit go-ahead to merge, per this repo's standing rule of never merging proactively). E1 **#125**, E2 **#128**, E3 **#129**, E4 **#131** all merged to `main`; E1-E4 deployed live and verified on `https://linchpin.fly.dev`. **#122** audit-evidence, **#123** benchmarks, and a `docs/refresh-stale-counts`-style worktree still open concurrently; **#132**/**#133** (unrelated fixes from concurrent sessions) already merged into `main` and picked up by `feat/e5-citation-gate` via a clean merge.
+**Date:** 2026-07-11 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e6-partner-whitelabel`, **PR #136 open as draft** (adversarially reviewed and fixed — waiting on the operator's explicit go-ahead to merge). **PR #134 (E5) merged** since the last entry below — E1 **#125**, E2 **#128**, E3 **#129**, E4 **#131**, E5 **#134** all merged to `main` and deployed live on `https://linchpin.fly.dev`. **#122** audit-evidence, **#123** benchmarks, and a `docs/refresh-stale-counts`-style worktree still open concurrently. Note: PR numbering jumped from #134 to #136 — #135 belongs to a concurrent session on this repo (see `linchpin-concurrent-sessions` memory), not a mistake in this one.
+
 **Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
 
+## 2026-07-11 — E6 "modo partner / white-label" — reviewed, fixed, PR #136 open (draft) — needs merge go-ahead
+
+**Read this section first if you're picking up cold.** E6 is code-complete,
+adversarially reviewed, all 9 confirmed findings fixed or consciously
+documented, full suite green (1804 passed, 3 skipped, ruff clean), and
+**PR #136 is open as a draft**. Nothing is blocking except the operator's
+explicit "mergea el PR #136" — do not merge it proactively. If the operator
+gives that instruction: merge, then deploy to Fly
+(`~/.fly/bin/flyctl.exe deploy --app linchpin` from a detached worktree at
+`origin/main`) and verify live (check the Odoo addon page's new "For
+partners" link resolves at `https://linchpin.fly.dev/paquetes-docs/partner-odoo.md`),
+then clean up this worktree/branch, then start E7 (legal templates -
+`service-agreement-template.md`/`dpa-lite.md`, per `09_checklist_lanzamiento.md`).
+
+### What's built
+
+A `Branding` block (name/logo/color) that a client's deck can be presented
+under instead of Linchpin's own identity — `src/deliverable.py`'s new
+`Branding` dataclass + `DEFAULT_BRANDING`, a `ClientProfile.branding` field
+(`src/client_profile.py`) that round-trips through save/load like
+`warehouse_capacity`, and `run_package(branding=...)` resolution (explicit
+arg > `profile.branding` > `DEFAULT_BRANDING`) threaded into
+`jobs/package_deliverable.py`'s **consolidated package deck only** —
+deliberately scoped the same way E4 scoped `lang`, not into every deck in a
+package run. Plus `documentation/paquetes/partner-odoo.md` (the partner
+pitch: rev-share 20% vs. white-label flat fee), a new "For partners"
+section on the Odoo addon's App Store listing page, and an E6 section in
+`09_checklist_lanzamiento.md`.
+
+### The most important thing to understand before extending this: the scope gap
+
+**Only the consolidated package deck gets a partner's branding today.**
+Each individual tool's own deck within the same package run (e.g.
+`diagnostico/data_quality/deliverable.md`, `diagnostico/abc_xyz/deliverable.md`,
+...) still renders Linchpin's `DEFAULT_BRANDING`, unchanged. This was a
+deliberate scope decision (mirrors E4's `lang` precedent exactly), but the
+adversarial review caught that the FIRST draft of
+`documentation/paquetes/partner-odoo.md` overpromised this to a real
+paying partner ("el cliente nunca ve 'Linchpin' en ningun documento" — false,
+4 of 5 files in a real branded package run still say "Prepared by
+Linchpin"). **This is now corrected in the docs** (both `partner-odoo.md`
+and the operator checklist explicitly say only the consolidated deck is
+branded, and instruct the operator to check every file before handing a
+folder to a partner's client) — but the underlying PRODUCT gap is still
+open. If a real partner ever pushes back on this ("I'm paying for
+white-label and my client is seeing your name"), the fix is threading
+`branding` through `run_package()`'s per-step `tool.deliver`/`tool.deck`
+calls (`scm_agent/packages.py` lines ~304-308) — touching every one of the
+~34 `deck=` lambdas in `scm_agent/tools.py` plus their `jobs/<x>_deliverable.py`
+builders. That's real scope, not a quick fix; don't attempt it reactively
+mid-partner-onboarding, plan it as its own pass.
+
+Also still open, `primary_color` is stored on `Branding` but **not visually
+applied anywhere** — Markdown/XLSX don't render arbitrary text/cell colors
+easily, and this was explicitly deferred to "a future richer (HTML/PDF)
+renderer" (see `Branding`'s own docstring). The docs now say this
+explicitly rather than promising it works.
+
+### Review findings, adjudicated (10 raw, 9 confirmed, 1 refuted)
+
+Full detail is in the fix commit's own message
+(`git log --oneline feat/e6-partner-whitelabel` → the "fix: close review
+findings..." commit) — read that before touching `Branding.__post_init__`
+or the partner docs again, it explains *why*, not just *what changed*.
+Short version: fixed a raw-`AttributeError`-instead-of-`ValueError` crash
+on a `None` branding name, a regex bug that let a trailing newline slip
+past `#RRGGBB` validation, invisible-Unicode-only names bypassing the
+required-name check, and an Excel label collision — plus the two doc
+overclaims described above. Refuted: a claimed Markdown "image-tag hijack"
+via `branding.name` didn't reproduce against 3 real CommonMark parsers (the
+narrower "unescaped interpolation can garble formatting" observation is
+real but pre-existing across `title`/`client`/finding text too, not unique
+to this diff — left as a known limitation, not silently ignored).
+
 ## 2026-07-10 — E5 "citation-grounding gate" — reviewed, fixed, PR #134 open (draft) — needs merge go-ahead
+
+**MERGED as PR #134, deployed live, verified — this section is now historical.**
 
 **Read this section first if you're picking up cold.** E5 is code-complete,
 adversarially reviewed, all confirmed findings fixed, full suite green
@@ -137,14 +214,11 @@ assertion back to its real test. Lesson: when appending near the end of a
 file, verify the actual tail with `wc -l` + an untruncated `Read`, not a
 `Read` with a `limit` that might cut off content you need to preserve.
 
-**Next after E5 lands: E6 (modo partner / white-label, canal Odoo).** Add a
-`branding` block (name/logo/colors) to `client_profile`, applied in
-deck header/footer (default: Linchpin branding). Write
-`documentation/paquetes/partner-odoo.md` for Odoo integrators (rev-share
-20% or white-label flat fee). Add a "Para partners" section to
-`odoo_addon/linchpin_dry_run/static/description/index.html`. Partner
-onboarding checklist in `documentation/operator/`. Full acceptance criteria
-in the Linchpin 2.0 protocol.
+E6 (modo partner / white-label, canal Odoo) landed next after this — see
+its own section near the top of this file. Next after E6: **E7** (legal
+templates — `service-agreement-template.md`/`dpa-lite.md`, both need a real
+lawyer's review before use with a paying client, per
+`09_checklist_lanzamiento.md`).
 
 ## 2026-07-10 — E3 merged into main alongside E4 (real conflicts, resolved by hand)
 

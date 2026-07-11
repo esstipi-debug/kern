@@ -137,6 +137,12 @@ LABELS: dict[str, dict[Lang, str]] = {
         "es": "Sin acciones residuales: el analisis de arriba esta listo para usar.",
         "en": "No residual actions: the analysis above is ready to use.",
     },
+    "footer_prepared_by": {"es": "Preparado por", "en": "Prepared by"},
+    # Excel-only: a distinct row label from hdr_prepared_field ("Prepared" -
+    # the date row) so two rows both starting with "Prepared" don't sit next
+    # to each other holding unrelated values (a date vs. a company name).
+    "branding_name_field": {"es": "Marca", "en": "Brand"},
+    "branding_logo_field": {"es": "Logo", "en": "Logo"},
     # Excel-only: sheet names + the few column headers not already covered above.
     "sheet_summary": {"es": "Resumen", "en": "Summary"},
     "sheet_kpis": {"es": "KPIs", "en": "KPIs"},
