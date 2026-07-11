@@ -67,9 +67,14 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "reconciliation": ("inventory_record_accuracy",),
     "returns": ("reverse_logistics", "returnability", "refurbishing"),
     "queuing": ("mm1_queue", "md1_queue", "queuing_analysis", "queue_server_optimization"),
-    "scheduling": ("scheduling", "vollmann_finite_scheduling", "vollmann_back_scheduling", "project_scheduling"),
-    "risk": ("aggregation_risk_pooling", "atomic_holistic_risk", "collaborative_risk_mitigation"),
-    "forecast": ("aggregate_forecasting", "ai_ml_forecasting", "forecastability", "bullwhip_effect"),
+    "scheduling": ("dispatching_rules", "vollmann_spt", "vollmann_edd", "johnsons_rule"),
+    "risk": ("atomic_holistic_risk", "collaborative_risk_mitigation"),
+    "forecast": ("forecastability", "crostons_method", "sbc_classification", "syntetos_boylan_approximation", "tsb_method"),
+    # No topically-better node exists in the committed graph for SKU-master/
+    # GTIN data quality (verified during the 2026-07 adversarial review) - this
+    # tool degrades to zero citations on every real run, which is the correct,
+    # safe outcome (see the module docstring), not a bug to "fix" with a
+    # closer-sounding but wrong anchor.
     "data_quality": ("step_product_data_standard",),
     "dea": ("data_envelopment_analysis",),
     "acceptance_sampling": ("acceptance_sampling", "single_sampling_plan"),
@@ -78,17 +83,37 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "odoo_replenishment": ("continuous_replenishment", "multiple_replenishment_orders"),
     "excel_replenishment": ("continuous_replenishment_program",),
     "newsvendor": ("newsvendor_model", "generalized_newsvendor_problem", "price_setting_newsvendor"),
-    "cycle_count": ("inventory_record_accuracy",),
+    "cycle_count": ("abc_classification", "vollmann_abc_analysis"),
     "multi_echelon": ("multiechelon_inventory", "echelon_inventory", "safety_stock"),
     "transportation": ("freight_transport_modes", "intermodal_transport"),
     "fefo": ("perishable_asset", "perishable_assets", "lot_size"),
     "slotting": ("load_distance_layout", "facility_layout"),
     "simulation": ("simulation_optimization", "inventory_simulation", "simulation_inventory_analysis"),
-    "excess_obsolete": ("obsolescence_cost", "excess_capacity_and_inventory"),
+    # "excess_capacity_and_inventory" (Chopra Ch.6) was dropped: it describes
+    # deliberately CARRYING buffer stock as a hedge, nearly the opposite of
+    # this tool's liquidate/write-off intent, and its lexical overlap
+    # ("excess", "inventory") with the tool's own keywords meant it could
+    # rank itself as a top candidate and then self-validate (hop 0) - a
+    # citation-gate loophole (any anchor validates itself), confirmed
+    # shipping in every real excess_obsolete run during the 2026-07 review.
+    "excess_obsolete": ("obsolescence_cost",),
     "markdown_liquidation": ("markdown_pricing", "obsolescence_cost"),
     "facility_location": ("facility_location", "network_design", "distribution_network_design"),
     "drp": ("vollmann_drp", "distribution_network_design"),
     "vehicle_routing": ("route_sheet", "last_mile_delivery"),
+}
+
+# tool_key -> concept ids that must NEVER be cited for this tool, even when
+# they resolve within MAX_HOPS of a genuine anchor. Reserved for cases where
+# a graph node sits in the same book-chapter neighborhood as the anchor (so
+# hop-distance alone can't discriminate - the shared book hub bridges them in
+# exactly 2 hops) but is topically contradictory for the tool. Confirmed
+# during the 2026-07 adversarial review, not a hypothetical: dropping the
+# anchor alone (excess_capacity_and_inventory used to be a second anchor
+# here) did not stop the citation, because it is still 2 hops from
+# obsolescence_cost via their shared Chopra & Meindl book hub.
+EXCLUDED_CONCEPTS: dict[str, tuple[str, ...]] = {
+    "excess_obsolete": ("excess_capacity_and_inventory",),
 }
 
 
@@ -112,6 +137,7 @@ def filter_citations(
 ) -> GateResult:
     """Resolve each candidate against the graph; degrade to empty below MIN_CITATIONS."""
     anchors = TOOL_CONCEPTS.get(tool_key, ())
+    excluded = EXCLUDED_CONCEPTS.get(tool_key, ())
     omitted: list[str] = []
     survivors: list[str] = []
 
@@ -125,6 +151,11 @@ def filter_citations(
     for c in candidates:
         if not kb.node_exists(c.node_id):
             reason = f"{tool_key}: citation node '{c.node_id}' does not exist in the graph - omitted: {c.text}"
+            omitted.append(reason)
+            _LOG.info(reason)
+            continue
+        if any(kb.concept_distance(c.node_id, ex, max_hops=0) == 0 for ex in excluded):
+            reason = f"{tool_key}: citation node '{c.node_id}' is explicitly excluded for this tool - omitted: {c.text}"
             omitted.append(reason)
             _LOG.info(reason)
             continue

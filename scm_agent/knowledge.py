@@ -41,6 +41,7 @@ class Concept:
     source: str | None
     location: str | None
     graph: str  # "books" | "code"
+    qualified_id: str = ""  # raw graph node id, e.g. "knowledge::x" - see _bare_id
 
 
 @dataclass(frozen=True)
@@ -75,9 +76,17 @@ class GroundedCitation:
     """A ranked citation plus the graph node it actually resolved to.
 
     ``text`` is the display string ``ground_citations`` has always returned;
-    ``node_id`` (bare, namespace-stripped - see ``_bare_id``) is what
-    ``scm_agent.citation_gate`` verifies against the graph before a citation
-    is allowed to reach a client deliverable.
+    ``node_id`` is the *qualified* graph node id (e.g. ``"knowledge::x"``, not
+    the bare ``"x"``) that ``scm_agent.citation_gate`` verifies against the
+    graph before a citation is allowed to reach a client deliverable.
+    Deliberately qualified rather than bare: if two source graphs are ever
+    merged such that the same bare slug names two different nodes (this has
+    happened before - see PR #121), a bare id re-resolved later via
+    ``_resolve_node``'s namespace-tolerant fallback could silently land on
+    the WRONG node - grounding a citation against a graph node it was never
+    actually ranked against. A qualified id always hits ``_resolve_node``'s
+    exact-match branch, so this class of bug can't occur regardless of future
+    bare-id collisions.
     """
 
     text: str
@@ -310,6 +319,11 @@ class KnowledgeBase:
         queries = [" ".join(tool_keywords)]
         if brief.strip():
             queries.append(brief)
+        # Keyed by qualified_id, not the bare Concept.id: two distinct graph
+        # nodes can share a bare slug across source namespaces (see
+        # GroundedCitation's docstring), and keying by the bare form would
+        # silently collapse them into one ranking slot - dropping whichever
+        # scored lower, unrelated to which one is actually topical.
         scored: dict[str, tuple[float, int, Concept]] = {}
         for qi, query in enumerate(queries):
             weight = 2.0 if qi == 0 else 3.0  # brief matches weigh more
@@ -317,13 +331,13 @@ class KnowledgeBase:
                 loc_bonus = 1 if hit.location else 0
                 shared = _tokens(query) & _tokens(f"{hit.label} {hit.id}")
                 weighted = sum(idf.get(t, 0.0) for t in shared) * weight
-                key = hit.id
+                key = hit.qualified_id
                 rank = (weighted + loc_bonus, loc_bonus, hit)
                 prev = scored.get(key)
                 if prev is None or rank[:2] > prev[:2]:
                     scored[key] = rank
         for advice in self.advise(brief, limit=2, domain_terms=domain_terms):
-            key = advice.concept.id
+            key = advice.concept.qualified_id
             # Score by the trigger's own specificity (highest IDF among its trigger
             # tokens) rather than a flat constant, so a rare, precise trigger (e.g.
             # "ddmrp") ranks higher than a broad one and can't win by merely existing.
@@ -341,7 +355,7 @@ class KnowledgeBase:
             if impl and impl.source:
                 impl_loc = f":{impl.location}" if impl.location else ""
                 cite += f"  -> {impl.source}{impl_loc}"
-            cites.append(GroundedCitation(text=cite, node_id=hit.id, graph="books"))
+            cites.append(GroundedCitation(text=cite, node_id=hit.qualified_id, graph="books"))
         return cites
 
     def search(self, query: str, graph: str = "both", limit: int = 8) -> list[Concept]:
@@ -517,12 +531,14 @@ class KnowledgeBase:
         return None
 
     def _to_concept(self, node: dict, graph: str) -> Concept:
+        raw_id = node.get("id", "")
         return Concept(
-            id=self._bare_id(node.get("id", "")),
-            label=node.get("label", node.get("id", "")),
+            id=self._bare_id(raw_id),
+            label=node.get("label", raw_id),
             source=node.get("source_file"),
             location=node.get("source_location"),
             graph=graph,
+            qualified_id=raw_id,
         )
 
     def _detail(self, node: dict, graph: str) -> ConceptDetail:

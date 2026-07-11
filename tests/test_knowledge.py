@@ -305,6 +305,57 @@ def test_concept_distance_resolves_bare_ids_across_namespacing(kb: KnowledgeBase
     assert kb.concept_distance("chain_model", "chain_model") == 0
 
 
+def test_ground_citations_detailed_node_id_is_qualified_not_bare(kb: KnowledgeBase) -> None:
+    """node_id must be the raw graph id (e.g. "knowledge::x"), not the bare
+    slug - see GroundedCitation's docstring for why (bare-id collisions
+    across a future graph-merge could otherwise re-resolve to the wrong
+    node). The committed graph namespaces every node, so every real hit
+    should come back with a "::" - qualified prefix."""
+    detailed = kb.ground_citations_detailed(
+        ("reorder", "safety stock", "inventory"),
+        "intermittent spare-parts demand needs a better forecast method",
+        limit=5,
+    )
+    assert detailed
+    assert all("::" in c.node_id for c in detailed)
+
+
+def test_ground_citations_detailed_disambiguates_a_bare_id_collision(tmp_path: Path) -> None:
+    """Regression for the HIGH-severity finding in the 2026-07 adversarial
+    review: two nodes can share a bare id across source namespaces (this has
+    happened before - see PR #121's graph-merge collision). Ranking must not
+    silently collapse them into one scoring slot, and the emitted
+    GroundedCitation.node_id must identify the EXACT node that was ranked -
+    not a bare slug that citation_gate's re-resolution could later map to a
+    different node than the one actually scored."""
+    g = _write_graph(tmp_path / "b.json", [
+        {"id": "anchor", "label": "Anchor Widget Topic", "norm_label": "anchor widget topic"},
+        {"id": "vendorx::widget", "label": "On-Topic Widget", "norm_label": "widget topic",
+         "rationale": "genuinely connected to the anchor"},
+        {"id": "knowledge::widget", "label": "Isolated Widget", "norm_label": "widget",
+         "rationale": "an unrelated decoy sharing the same bare id, no edge to anything"},
+    ])
+    data = json.loads(g.read_text(encoding="utf-8"))
+    data["links"] = [{"source": "anchor", "target": "vendorx::widget", "relation": "related"}]
+    g.write_text(json.dumps(data), encoding="utf-8")
+
+    kb = KnowledgeBase(books_path=g, code_path=tmp_path / "none.json")
+    detailed = kb.ground_citations_detailed(("widget", "topic"), "widget topic", limit=5)
+
+    on_topic = next(c for c in detailed if c.text.startswith("On-Topic Widget"))
+    assert on_topic.node_id == "vendorx::widget"
+    # Resolving citation_gate's exact check: the on-topic node is 1 hop from
+    # the anchor; if node_id had been the bare "widget", _resolve_node's
+    # "knowledge::<id> always wins" tie-break would have silently graded the
+    # ISOLATED decoy's connectivity instead (None, wrongly omitting a real hit).
+    assert kb.concept_distance(on_topic.node_id, "anchor", max_hops=2) == 1
+
+    isolated = next((c for c in detailed if c.text.startswith("Isolated Widget")), None)
+    if isolated is not None:
+        assert isolated.node_id == "knowledge::widget"
+        assert kb.concept_distance(isolated.node_id, "anchor", max_hops=2) is None
+
+
 def test_concept_distance_on_a_synthetic_disconnected_graph(tmp_path: Path) -> None:
     path = tmp_path / "graph.json"
     path.write_text(json.dumps({
