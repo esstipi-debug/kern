@@ -33,6 +33,7 @@ import pandas as pd
 
 from src import client_profile
 
+from . import citation_gate
 from .knowledge import KnowledgeBase
 from .llm import LLMProvider, get_provider, narrative_rewrite
 from .registry import ToolRegistry
@@ -370,7 +371,15 @@ def _run_step(
         return StepOutcome(**base, status=STATUS_QA_FAILED, qa_issues=tuple(qa_issues))
 
     guided = tool.options(produced.report) if tool.options else None
-    citations = tuple(knowledge.ground_citations(tool.intent_keywords, request.brief, limit=3))
+    # Citation-grounding gate (E5): a ranked candidate must resolve to a real
+    # graph node within citation_gate.MAX_HOPS of this tool's own anchor
+    # concepts before it reaches the deck - see scm_agent/citation_gate.py.
+    # This is a content filter, not a QA veto: a step with zero surviving
+    # citations still ships (its methodology section just has none), the
+    # package's only hard veto stays the data QA gate above.
+    candidates = knowledge.ground_citations_detailed(tool.intent_keywords, request.brief, limit=3)
+    gate_result = citation_gate.filter_citations(knowledge, step.tool_key, candidates)
+    citations = gate_result.kept
     # Optional LLM polish in the package's target language (src/i18n.py's
     # static labels cover the deterministic path around this; this is the
     # only place a package step's own narrative gets translated - see

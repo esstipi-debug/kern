@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import logging
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -623,7 +624,12 @@ def main() -> None:
                              "(product_id, quantity, price) -> anexo de cierre real-vs-estimado")
     parser.add_argument("--lang", choices=("es", "en"), default=None,
                         help="deck language (default: the client's profile, or 'es')")
+    parser.add_argument("--verbose", action="store_true",
+                        help="show INFO-level logs, incl. omitted-citation reasons "
+                             "from scm_agent.citation_gate")
     args = parser.parse_args()
+    if args.verbose:
+        logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
 
     spec = get_package(args.package)
     if args.checklist:

@@ -1,7 +1,150 @@
 # Linchpin — Session Handoff
 
-**Date:** 2026-07-10 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e3-liquidacion`, merging to `main` now as E3's PR **#129** (E1 **#125**, E2 **#128**, E4 **#131** all already merged + E1/E2 deployed live; **#122** audit-evidence, **#123** benchmarks, and a `docs/refresh-stale-counts`-style worktree still open concurrently)
+**Date:** 2026-07-10 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e5-citation-gate`, **PR #134 open as draft** (adversarially reviewed and fixed — waiting on the operator's explicit go-ahead to merge, per this repo's standing rule of never merging proactively). E1 **#125**, E2 **#128**, E3 **#129**, E4 **#131** all merged to `main`; E1-E4 deployed live and verified on `https://linchpin.fly.dev`. **#122** audit-evidence, **#123** benchmarks, and a `docs/refresh-stale-counts`-style worktree still open concurrently; **#132**/**#133** (unrelated fixes from concurrent sessions) already merged into `main` and picked up by `feat/e5-citation-gate` via a clean merge.
 **Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
+
+## 2026-07-10 — E5 "citation-grounding gate" — reviewed, fixed, PR #134 open (draft) — needs merge go-ahead
+
+**Read this section first if you're picking up cold.** E5 is code-complete,
+adversarially reviewed, all confirmed findings fixed, full suite green
+(1780 passed, 3 skipped, ruff clean), and **PR #134 is open as a draft**.
+Nothing is blocking except the operator's explicit "mergea el PR #134" —
+do not merge it proactively. If the operator gives that instruction: merge,
+then deploy to Fly (`~/.fly/bin/flyctl.exe deploy --app linchpin` from a
+detached worktree at `origin/main`) and verify live via curl, then clean up
+this worktree/branch (`git worktree remove`, PowerShell force-delete
+fallback if Windows-locked, `git worktree prune`), then start E6.
+
+An earlier checkpoint of this session (mid-context-handoff) noted the
+adversarial review workflow (`wf_cb14d33f-f49` / task `w347mgmu0`) hadn't
+finished and couldn't be resumed cross-session. **It turned out to still be
+running in the background and completed on its own** — a task-completion
+notification arrived carrying the full result in a *later* session/turn, so
+it never needed re-running from scratch. Lesson for next time: a workflow
+launched via the `Workflow` tool keeps running server-side even if the
+session that launched it ends before it finishes; check for a pending
+notification before assuming a fresh review is required.
+
+### What the review found and how it was adjudicated
+
+3 dimensions (graph-algorithm correctness in `knowledge.py`; `TOOL_CONCEPTS`
+curation quality across a sample of tools; integration/degrade-semantics in
+`packages.py`), each finding independently re-verified by a second agent
+against the real code and real committed graph (not the diff description).
+12 raw findings, 7 confirmed, 5 refuted as having no live behavioral impact
+(don't "fix" these if you see them flagged again — they were already
+investigated and are working as intended):
+- `vehicle_routing`'s anchor imprecision (`route_sheet` is a manufacturing
+  routing doc, not vehicle routing) — real, but `vehicle_routing` isn't
+  wired into any `PackageSpec` yet, so `citation_gate` never runs for it in
+  production today. Worth fixing *before* it's ever added to a package.
+- `fefo`'s third anchor (`lot_size`, an EOQ/batch-sizing concept) — its
+  entire 2-hop reach is a strict subset of the other two (correct) anchors',
+  so it changes zero outcomes; redundant but harmless.
+- `sourcing`'s three anchors are about sourcing *location* (make-vs-buy),
+  not the supplier-scorecard/TOPSIS ranking the tool implements — but the
+  procurement sub-graph is tightly clustered enough that a corrected anchor
+  set produces identical keep/omit outcomes on every candidate tested.
+- `leadership_chain`'s anchors and the module's "every id verified to
+  exist" docstring claim — both independently reconfirmed correct, not
+  disputed.
+- `filter_citations` hardcodes `graph="books"` instead of reading
+  `GroundedCitation.graph` — mechanically true, but `graph="code"` citations
+  are structurally unproducible by the current `ground_citations_detailed`
+  (it never queries the code graph), so there's no reachable input that
+  diverges. A one-line forward-compat nit if `ground_citations_detailed` is
+  ever extended to surface code-graph hits — not a defect today.
+
+The 7 confirmed findings (bare-id collision risk in `knowledge.py`;
+mismatched `scheduling`/`forecast`/`cycle_count`/`risk` anchors;
+`excess_obsolete`'s citation-gate self-validation loophole; `data_quality`'s
+accepted coverage gap) are described in the fix commit's own message
+(`git log -1 feat/e5-citation-gate` or the PR description) — read that
+before touching `citation_gate.py`'s `TOOL_CONCEPTS`/`EXCLUDED_CONCEPTS`
+again, it explains *why* each anchor is what it is, not just what changed.
+
+### What's actually built
+
+The gap this closes, straight from the 2.0 protocol: "el grounding actual
+es decorativo (el deck demo cita 'Clean Technology'/MPS en data quality)."
+Confirmed this was real and is now fixed — see below.
+
+- `scm_agent/knowledge.py`: new `GroundedCitation` dataclass (`text`,
+  `node_id`, `graph`); new `ground_citations_detailed()` (same IDF-weighted
+  ranking `ground_citations()` always had, but also returns each hit's
+  resolved node id — `ground_citations()` is now a thin
+  `[c.text for c in ground_citations_detailed(...)]` wrapper, 100%
+  backward-compatible, confirmed via `plain == [c.text for c in detailed]`
+  in tests). New `node_exists(concept_id, graph="books") -> bool` and
+  `concept_distance(from_id, to_id, *, graph="books", max_hops=2) -> int |
+  None` (undirected BFS; 0 = same node; both wrap the existing
+  `_resolve_node`'s bare-id/namespace tolerance). A precomputed undirected
+  adjacency dict is built once in `__init__` from `graph["links"]`
+  (skipping low-confidence `INFERRED` edges below `_MIN_INFERRED_CONFIDENCE`,
+  mirroring `_detail()`'s existing filter) so repeated per-citation BFS
+  calls during a package run don't re-scan all ~3810 edges each time.
+- `scm_agent/citation_gate.py` (new): `TOOL_CONCEPTS` — all 37 registered
+  tool keys mapped to 1-4 hand-curated, individually-`node_exists()`-verified
+  anchor concept ids from `knowledge/scm-books/graph.json` (1953 nodes,
+  1847 of them the curated `knowledge::`-namespace taxonomy this map draws
+  from). `MIN_CITATIONS=2`, `MAX_HOPS=2`. `filter_citations(kb, tool_key,
+  candidates)` keeps a candidate only if its node exists AND is within
+  `MAX_HOPS` of at least one of the tool's anchors; if fewer than
+  `MIN_CITATIONS` survive, the WHOLE batch degrades to empty (never ships a
+  single, weakly-grounded citation). Every omission is both logged
+  (`linchpin.citation_gate`, INFO) and returned structurally in
+  `GateResult.omitted` — inspectable both ways, per the acceptance
+  criterion. A tool absent from `TOOL_CONCEPTS` (shouldn't happen — all 37
+  are covered, pinned by `test_every_registered_tool_has_a_concept_map`)
+  omits every candidate rather than skipping the check.
+- `scm_agent/packages.py::_run_step()`: the ONLY integration point,
+  deliberately — the Orchestrator's single-tool path (`webapp/app.py`'s
+  `POST /api/jobs`, the MCP server, `examples/run_agent.py`) is untouched
+  and still calls the ungated `ground_citations()`. This mirrors E4's own
+  hard-learned lesson (don't gate a live production surface nobody asked to
+  gate) and matches the protocol's explicit scope: "Intégralo en la fase QA
+  del package runner."
+- `examples/run_package.py`: new `--verbose` flag (`logging.basicConfig`)
+  so an operator running the CLI directly can actually see the omission
+  log — tested via **subprocess**, not in-process, specifically because
+  `basicConfig()` mutates the root logger process-wide and would leak into
+  every other test in the same pytest session otherwise.
+- **Verified live** (both via a direct Python run and via `--verbose`
+  through the actual CLI): on the Diagnostico demo intake, `data_quality`'s
+  ranked candidates (Master Production Schedule, **Clean Technology**,
+  ATO-MPS — the exact citations named in the protocol as the bug) are all
+  correctly omitted as >2 hops from `step_product_data_standard`, degrading
+  that step to zero citations; `abc_xyz`/`excess_obsolete`/`financial_kpis`
+  keep their genuinely on-topic citations (post-review-fix content).
+- 70+ new/changed tests across `tests/test_citation_gate.py` (unit tests
+  against a fake KnowledgeBase, per-anchor connectivity regression tests
+  from the review's confirmed findings, plus the protocol's own named
+  regression test that "Clean Technology"/MPS never cite again on the
+  Diagnostico demo), `tests/test_knowledge.py` (the new public methods +
+  the bare-id-collision disambiguation regression), and two `_NoKnowledge`
+  test stubs (`test_packages.py`, `test_run_package_cli.py`) that needed a
+  `ground_citations_detailed` stub method added or every package test broke.
+
+### A mistake worth knowing about if you touch tests/test_knowledge.py again
+
+An `Edit` call's `old_string` matched only the FIRST of two assertions at
+the tail of `test_ground_citations_does_not_surface_leadership_for_an_eoq_brief`
+(a `Read` with a truncated `limit` hid the second one), so the insertion
+landed the second assertion orphaned inside an unrelated new test function
+below it, referencing an undefined `cites` variable. Caught immediately by
+running the test file (not by review) — fixed by moving the orphaned
+assertion back to its real test. Lesson: when appending near the end of a
+file, verify the actual tail with `wc -l` + an untruncated `Read`, not a
+`Read` with a `limit` that might cut off content you need to preserve.
+
+**Next after E5 lands: E6 (modo partner / white-label, canal Odoo).** Add a
+`branding` block (name/logo/colors) to `client_profile`, applied in
+deck header/footer (default: Linchpin branding). Write
+`documentation/paquetes/partner-odoo.md` for Odoo integrators (rev-share
+20% or white-label flat fee). Add a "Para partners" section to
+`odoo_addon/linchpin_dry_run/static/description/index.html`. Partner
+onboarding checklist in `documentation/operator/`. Full acceptance criteria
+in the Linchpin 2.0 protocol.
 
 ## 2026-07-10 — E3 merged into main alongside E4 (real conflicts, resolved by hand)
 

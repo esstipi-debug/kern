@@ -33,6 +33,9 @@ class _NoKnowledge:
     def ground_citations(self, keywords, brief, limit=5):
         return []
 
+    def ground_citations_detailed(self, keywords, brief, limit=5):
+        return []
+
     def warnings(self):
         return []
 

@@ -41,6 +41,7 @@ class Concept:
     source: str | None
     location: str | None
     graph: str  # "books" | "code"
+    qualified_id: str = ""  # raw graph node id, e.g. "knowledge::x" - see _bare_id
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,29 @@ class MethodAdvice:
     pattern: str
     concept: Concept
     rationale: str | None
+
+
+@dataclass(frozen=True)
+class GroundedCitation:
+    """A ranked citation plus the graph node it actually resolved to.
+
+    ``text`` is the display string ``ground_citations`` has always returned;
+    ``node_id`` is the *qualified* graph node id (e.g. ``"knowledge::x"``, not
+    the bare ``"x"``) that ``scm_agent.citation_gate`` verifies against the
+    graph before a citation is allowed to reach a client deliverable.
+    Deliberately qualified rather than bare: if two source graphs are ever
+    merged such that the same bare slug names two different nodes (this has
+    happened before - see PR #121), a bare id re-resolved later via
+    ``_resolve_node``'s namespace-tolerant fallback could silently land on
+    the WRONG node - grounding a citation against a graph node it was never
+    actually ranked against. A qualified id always hits ``_resolve_node``'s
+    exact-match branch, so this class of bug can't occur regardless of future
+    bare-id collisions.
+    """
+
+    text: str
+    node_id: str
+    graph: str = "books"
 
 
 # Brief-token triggers -> graph concept id (method advisor for routing / grounding).
@@ -167,6 +191,25 @@ class KnowledgeBase:
             self._title_tokens[name] = titles
             self._body_tokens[name] = bodies
             self._idf[name] = {tok: math.log(1 + n_docs / df) for tok, df in doc_freq.items()}
+        # Undirected adjacency per graph, precomputed once - concept_distance()
+        # does a bounded BFS per citation check (scm_agent.citation_gate calls
+        # it per candidate citation per package step), so this avoids an O(E)
+        # linear scan of `links` on every single call.
+        self._adjacency: dict[str, dict[str, set[str]]] = {}
+        for name, g in self._graphs.items():
+            index = self._index[name]
+            adj: dict[str, set[str]] = {}
+            for e in g["links"]:
+                conf = e.get("confidence")
+                if conf == "INFERRED":
+                    score = e.get("confidence_score")
+                    if score is not None and score < _MIN_INFERRED_CONFIDENCE:
+                        continue
+                src, tgt = e.get("source"), e.get("target")
+                if src in index and tgt in index:
+                    adj.setdefault(src, set()).add(tgt)
+                    adj.setdefault(tgt, set()).add(src)
+            self._adjacency[name] = adj
 
     def available(self) -> dict[str, int]:
         """Node count per graph (0 means the graph file was missing/empty)."""
@@ -251,12 +294,36 @@ class KnowledgeBase:
         "supply chain" outrank the tool's own subject matter. Method-advice hits are
         also gated to the tool's own domain vocabulary (see ``advise``) and scored by
         their trigger's own specificity instead of a flat constant.
+
+        Thin wrapper over :meth:`ground_citations_detailed` for callers that only
+        want display text (most of them) - see there for the underlying node id,
+        which ``scm_agent.citation_gate`` needs to actually verify a citation
+        resolves to something real and topically connected, not merely formatted.
         """
+        return [c.text for c in self.ground_citations_detailed(tool_keywords, brief, limit=limit)]
+
+    def ground_citations_detailed(
+        self,
+        tool_keywords: tuple[str, ...] | list[str],
+        brief: str = "",
+        *,
+        limit: int = 5,
+    ) -> list[GroundedCitation]:
+        """Same ranking as :meth:`ground_citations`, but keeps each citation's
+        resolved node id alongside its display text - see ``scm_agent.citation_gate``,
+        the only current consumer that needs the id (to verify the citation
+        actually resolves to a real, topically-connected graph node before it
+        reaches a client deliverable)."""
         domain_terms = frozenset(_tokens(" ".join(tool_keywords)))
         idf = self._idf.get("books", {})
         queries = [" ".join(tool_keywords)]
         if brief.strip():
             queries.append(brief)
+        # Keyed by qualified_id, not the bare Concept.id: two distinct graph
+        # nodes can share a bare slug across source namespaces (see
+        # GroundedCitation's docstring), and keying by the bare form would
+        # silently collapse them into one ranking slot - dropping whichever
+        # scored lower, unrelated to which one is actually topical.
         scored: dict[str, tuple[float, int, Concept]] = {}
         for qi, query in enumerate(queries):
             weight = 2.0 if qi == 0 else 3.0  # brief matches weigh more
@@ -264,13 +331,13 @@ class KnowledgeBase:
                 loc_bonus = 1 if hit.location else 0
                 shared = _tokens(query) & _tokens(f"{hit.label} {hit.id}")
                 weighted = sum(idf.get(t, 0.0) for t in shared) * weight
-                key = hit.id
+                key = hit.qualified_id
                 rank = (weighted + loc_bonus, loc_bonus, hit)
                 prev = scored.get(key)
                 if prev is None or rank[:2] > prev[:2]:
                     scored[key] = rank
         for advice in self.advise(brief, limit=2, domain_terms=domain_terms):
-            key = advice.concept.id
+            key = advice.concept.qualified_id
             # Score by the trigger's own specificity (highest IDF among its trigger
             # tokens) rather than a flat constant, so a rare, precise trigger (e.g.
             # "ddmrp") ranks higher than a broad one and can't win by merely existing.
@@ -280,7 +347,7 @@ class KnowledgeBase:
             if prev is None or rank[:2] > prev[:2]:
                 scored[key] = rank
         ordered = sorted(scored.values(), key=lambda r: (-r[0], -r[1], r[2].label))
-        cites: list[str] = []
+        cites: list[GroundedCitation] = []
         for _, _, hit in ordered[:limit]:
             loc = f" {hit.location}" if hit.location else ""
             cite = f"{hit.label} — {hit.source}{loc}".strip()
@@ -288,7 +355,7 @@ class KnowledgeBase:
             if impl and impl.source:
                 impl_loc = f":{impl.location}" if impl.location else ""
                 cite += f"  -> {impl.source}{impl_loc}"
-            cites.append(cite)
+            cites.append(GroundedCitation(text=cite, node_id=hit.qualified_id, graph="books"))
         return cites
 
     def search(self, query: str, graph: str = "both", limit: int = 8) -> list[Concept]:
@@ -342,6 +409,51 @@ class KnowledgeBase:
             return None
         node = self._resolve_node(hits[0].id, hits[0].graph)
         return self._detail(node, hits[0].graph) if node else None
+
+    def node_exists(self, concept_id: str, graph: str = "books") -> bool:
+        """Whether a (possibly bare) concept id resolves to a real graph node.
+
+        Used by ``scm_agent.citation_gate`` to reject a citation whose id came
+        back from ranking but doesn't actually exist as a node - shouldn't
+        happen in practice (ids come straight from the graph), but a citation
+        that can't be re-resolved must never be silently trusted.
+        """
+        return self._resolve_node(concept_id, graph) is not None
+
+    def concept_distance(
+        self, from_id: str, to_id: str, *, graph: str = "books", max_hops: int = 2,
+    ) -> int | None:
+        """BFS hop count between two (possibly bare) concept ids, or ``None``
+        if either doesn't resolve or they aren't connected within ``max_hops``.
+
+        0 means ``from_id`` and ``to_id`` resolve to the SAME node (the
+        strongest possible match - the citation IS one of the anchor
+        concepts). Undirected: a citation's relevance to a tool's subject
+        doesn't depend on which end of an edge the graph happened to record.
+        """
+        a = self._resolve_node(from_id, graph)
+        b = self._resolve_node(to_id, graph)
+        if a is None or b is None:
+            return None
+        a_id, b_id = a["id"], b["id"]
+        if a_id == b_id:
+            return 0
+        adjacency = self._adjacency.get(graph, {})
+        frontier = {a_id}
+        visited = {a_id}
+        for hop in range(1, max_hops + 1):
+            next_frontier: set[str] = set()
+            for node in frontier:
+                for neighbor in adjacency.get(node, ()):
+                    if neighbor == b_id:
+                        return hop
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        next_frontier.add(neighbor)
+            frontier = next_frontier
+            if not frontier:
+                break
+        return None
 
     def bridge(self, term: str) -> Bridge:
         """Resolve a term on both sides: theory (books) and code (implementation).
@@ -419,12 +531,14 @@ class KnowledgeBase:
         return None
 
     def _to_concept(self, node: dict, graph: str) -> Concept:
+        raw_id = node.get("id", "")
         return Concept(
-            id=self._bare_id(node.get("id", "")),
-            label=node.get("label", node.get("id", "")),
+            id=self._bare_id(raw_id),
+            label=node.get("label", raw_id),
             source=node.get("source_file"),
             location=node.get("source_location"),
             graph=graph,
+            qualified_id=raw_id,
         )
 
     def _detail(self, node: dict, graph: str) -> ConceptDetail:
