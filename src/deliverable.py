@@ -17,10 +17,44 @@ the prepared date is passed in, never read from the clock, so output is testable
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from src import i18n
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+@dataclass(frozen=True)
+class Branding:
+    """The identity a deck is presented under - who a client sees as having
+    prepared their deliverable. Defaults to Linchpin's own (``DEFAULT_BRANDING``
+    below); a partner reselling under the white-label/rev-share model (E6)
+    supplies their own via ``ClientProfile.branding`` (``src/client_profile.py``)
+    so every deck built for THAT client carries their identity instead.
+
+    ``logo_url``/``primary_color`` are referenced, never fetched: ``to_markdown``
+    emits a Markdown image tag a viewer resolves client-side, and ``to_excel``
+    writes the URL as plain text - this module never makes a network call
+    rendering a deck, keeping it pure/deterministic (see the module docstring)
+    and avoiding a server-side fetch of a partner-supplied URL. ``primary_color``
+    is stored for a future richer (HTML/PDF) renderer; the current Markdown/XLSX
+    decks don't apply it visually yet.
+    """
+
+    name: str
+    logo_url: str | None = None
+    primary_color: str | None = None  # "#RRGGBB"
+
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError("branding.name is required")
+        if self.primary_color is not None and not _HEX_COLOR_RE.match(self.primary_color):
+            raise ValueError(f"branding.primary_color must be '#RRGGBB', got {self.primary_color!r}")
+
+
+DEFAULT_BRANDING = Branding(name="Linchpin")
 
 
 @dataclass(frozen=True)
@@ -75,11 +109,22 @@ class Deliverable:
     # (summary/findings/KPI values etc.) - only the scaffolding around it;
     # see i18n.py's module docstring for the full scope boundary.
     lang: str = "en"
+    # Who this deck is presented as prepared by - see Branding's own docstring.
+    # Defaults to Linchpin's own identity, so every deck (all ~37 individual
+    # tool decks AND the package deck) is branded out of the box with zero
+    # caller changes. A partner's white-label identity is threaded in ONLY by
+    # jobs/package_deliverable.py (via ClientProfile.branding), mirroring
+    # exactly how ``lang`` above is scoped - the individual tool decks never
+    # pass this, by design (same E4 precedent/reasoning as ``lang``).
+    branding: Branding = DEFAULT_BRANDING
 
     def to_markdown(self) -> str:
         """Render a professional, sectioned Markdown document (ASCII-only for cp1252 safety)."""
         L = lambda key: i18n.label(key, self.lang)  # noqa: E731
-        out: list[str] = [f"# {self.title} - {self.client}"]
+        out: list[str] = []
+        if self.branding.logo_url:
+            out += [f"![{self.branding.name}]({self.branding.logo_url})", ""]
+        out.append(f"# {self.title} - {self.client}")
         if self.prepared:
             out.append(f"*{L('hdr_prepared_field')} {self.prepared}*")
         out.append("")
@@ -140,6 +185,9 @@ class Deliverable:
         out.append(self.residual or L("no_residual"))
         out.append("")
 
+        out.append("---")
+        out.append(f"_{L('footer_prepared_by')} {self.branding.name}_")
+
         return "\n".join(out).rstrip() + "\n"
 
     def to_excel(self, path: str | Path) -> Path:
@@ -159,6 +207,9 @@ class Deliverable:
             ws.append([L("hdr_prepared_field"), self.prepared])
         if self.confidence is not None:
             ws.append([L("hdr_confidence_field"), f"{self.confidence * 100:.0f}%"])
+        ws.append([L("footer_prepared_by"), self.branding.name])
+        if self.branding.logo_url:
+            ws.append([L("branding_logo_field"), self.branding.logo_url])
         ws.append([])
         ws.append([L("hdr_executive_summary")])
         ws.append([self.summary])

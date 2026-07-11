@@ -14,6 +14,7 @@ from src.client_profile import (
     slugify_client_id,
     upsert_profile,
 )
+from src.deliverable import Branding
 
 # ---- slugify_client_id -------------------------------------------------------
 
@@ -119,6 +120,24 @@ def test_lang_is_not_an_engine_param():
     assert "lang" not in profile.as_params()
 
 
+def test_default_branding_is_none():
+    assert ClientProfile(client_id="x", display_name="X").branding is None
+
+
+def test_branding_is_not_an_engine_param():
+    # No Tool reads it directly - it must never leak into merge_params()'s output.
+    profile = ClientProfile(client_id="x", display_name="X", branding=Branding(name="Acme"))
+    assert "branding" not in profile.as_params()
+
+
+def test_a_malformed_branding_still_raises_at_profile_construction():
+    # Branding's own __post_init__ runs regardless of how it's constructed -
+    # a client profile can never carry an invalid branding value.
+    with pytest.raises(ValueError, match="primary_color"):
+        ClientProfile(client_id="x", display_name="X",
+                      branding=Branding(name="Acme", primary_color="not-a-color"))
+
+
 # ---- save/load round trip ------------------------------------------------------
 
 def test_save_and_load_round_trip_with_lang(tmp_path):
@@ -157,6 +176,26 @@ def test_save_and_load_round_trip_without_capacity(tmp_path):
 
 def test_load_profile_missing_file_returns_none(tmp_path):
     assert load_profile("ghost", root=tmp_path) is None
+
+
+def test_save_and_load_round_trip_with_branding(tmp_path):
+    profile = ClientProfile(
+        client_id="acme", display_name="Acme",
+        branding=Branding(name="Acme Consulting", logo_url="https://acme.example/logo.png",
+                          primary_color="#1F4E79"),
+    )
+    save_profile(profile, root=tmp_path)
+    loaded = load_profile("acme", root=tmp_path)
+    assert loaded == profile
+    assert loaded.branding == Branding(name="Acme Consulting", logo_url="https://acme.example/logo.png",
+                                       primary_color="#1F4E79")
+
+
+def test_save_and_load_round_trip_without_branding(tmp_path):
+    profile = ClientProfile(client_id="acme", display_name="Acme")
+    save_profile(profile, root=tmp_path)
+    loaded = load_profile("acme", root=tmp_path)
+    assert loaded.branding is None
 
 
 # ---- merge_params (resolution priority) ----------------------------------------

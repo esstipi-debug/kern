@@ -26,6 +26,8 @@ import unicodedata
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
+from src.deliverable import Branding
+
 DEFAULT_CLIENTS_ROOT = Path("clients")
 
 SCHEMA_VERSION = 1
@@ -111,6 +113,13 @@ class ClientProfile:
     order_cost: float | None = None
     lead_time_days: float | None = None
     warehouse_capacity: WarehouseCapacity | None = None
+    # A partner reselling under the white-label/rev-share model (E6) - see
+    # src/deliverable.py's Branding docstring. Deliberately NOT an engine
+    # param (no Tool reads it), so excluded from as_params(); only
+    # scm_agent/packages.py::run_package reads it directly off the loaded
+    # profile, threading it into the package's consolidated deck (mirrors
+    # lang/contingent_fee_pct below).
+    branding: Branding | None = None
     # The Sprint de Liquidacion's negotiated contingent-fee rate (see
     # src/contingent_fee.py) — 10-20%, the range the commercial brief
     # authorizes. Deliberately NOT an engine param (no Tool reads it), so it
@@ -178,6 +187,7 @@ def load_profile(client_id: str, *, root: Path | str = DEFAULT_CLIENTS_ROOT) -> 
                 f"(v{SCHEMA_VERSION}) — refusing to reinterpret or silently downgrade it"
             )
         capacity_raw = raw.get("warehouse_capacity")
+        branding_raw = raw.get("branding")
         return ClientProfile(
             client_id=raw["client_id"],
             display_name=raw.get("display_name", raw["client_id"]),
@@ -188,6 +198,7 @@ def load_profile(client_id: str, *, root: Path | str = DEFAULT_CLIENTS_ROOT) -> 
             order_cost=raw.get("order_cost"),
             lead_time_days=raw.get("lead_time_days"),
             warehouse_capacity=WarehouseCapacity(**capacity_raw) if capacity_raw else None,
+            branding=Branding(**branding_raw) if branding_raw else None,
             contingent_fee_pct=raw.get("contingent_fee_pct"),
             lang=raw.get("lang", "es"),
             source=raw.get("source", "manual"),

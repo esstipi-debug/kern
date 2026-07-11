@@ -56,12 +56,31 @@
       `--measure <ventas_post_liquidacion.csv>` y revisar el anexo de cierre
       antes de facturar (el honorario real, nunca la estimación inicial)
 
+## Modo Partner / White-Label (E6, ya en código)
+
+- [ ] Nada obligatorio hasta que se firme un partner real (integrador Odoo o
+      consultora — ver [partner-odoo.md](../paquetes/partner-odoo.md) para el
+      pitch y los dos modelos). El módulo Odoo (`odoo_addon/linchpin_dry_run/`)
+      ya tiene su sección "For partners" enlazando al one-pager.
+- [ ] Al firmar un partner: acordar por escrito el modelo (rev-share 20% o
+      white-label a tarifa fija mensual, con su monto) y quién factura a quién
+      — no hay plantilla de contrato de partner todavía (a diferencia del
+      `service-agreement-template.md` de cliente final en E7); redactarlo a
+      mano la primera vez.
+- [ ] Cargar su `branding` en `client_profile` (nombre, `logo_url`, y
+      `primary_color` en formato `#RRGGBB` — ver el snippet de ejemplo en
+      [partner-odoo.md](../paquetes/partner-odoo.md#cómo-se-aplica-tu-marca-branding)).
+      Sin esto, sus decks salen con la marca Linchpin por defecto — no rompe
+      nada, pero no es lo pactado.
+- [ ] Rutina operativa: la primera corrida de un partner nuevo, revisar el
+      deck generado (`.md` y `.xlsx` del paquete consolidado) antes de que se
+      lo pase a su cliente — confirmar que el logo (si configuró uno) resuelve
+      bien y que el pie dice su marca, no "Linchpin".
+
 ## Pendiente segun épicas futuras (se completa cuando esa épica aterrice)
 
 - [ ] E4/E5 — sin acciones humanas esperadas (i18n y citation-gate son
       puramente de código)
-- [ ] E6 — si se firma un partner Odoo real: acordar rev-share/tarifa fija y
-      cargar su `branding` en `client_profile`
 - [ ] E7 — hacer revisar el `service-agreement-template.md` y `dpa-lite.md`
       por un abogado real antes de usarlos con un cliente pagando (marcados
       `[REVISAR CON ABOGADO]` en el propio documento)
