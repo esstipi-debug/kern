@@ -14,10 +14,39 @@
 # PR-5's monitors.py (generalizing src/alerting.py's other event kinds --
 # excess, dead_stock, reorder_due) adds more routes here; no code changes
 # required to add one, only a new entry under `routes`.
+#
+# PR-5 note: scm_agent/monitors.py emits 5 event types. Three are routed
+# below (rop_breach, stockout_projected, excess_growing) -- each carries
+# event.payload["rows"] (state DataFrame rows), NOT stock_below_rop's
+# event.payload["data_path"], so they use their own param builders
+# (inventory_from_state_stock_event / excess_obsolete_from_state_stock_event
+# in scm_agent/event_intent.py) rather than inventory_from_stock_event.
+# The other two monitor-emitted types -- forecast_error_out_of_band and
+# lead_time_drift -- are deliberately NOT routed here yet: neither the
+# 'forecast'/'outcomes' state snapshot carries a real historical time series,
+# and fabricating one from 1-2 aggregate numbers just to drive a tool run
+# would violate the plan's own rule 7 ("procedencia total") and rule 14
+# ("ningun cap silencioso"). They still emit real, dedup'd events onto the
+# ledger; a later PR (A4's src/verify/backtest.py) is the natural consumer.
 version: 1
 
 routes:
   stock_below_rop:
     tool: inventory_optimization
     param_builder: inventory_from_stock_event
+    autonomy_tier: T2
+
+  rop_breach:
+    tool: inventory_optimization
+    param_builder: inventory_from_state_stock_event
+    autonomy_tier: T2
+
+  stockout_projected:
+    tool: inventory_optimization
+    param_builder: inventory_from_state_stock_event
+    autonomy_tier: T2
+
+  excess_growing:
+    tool: excess_obsolete
+    param_builder: excess_obsolete_from_state_stock_event
     autonomy_tier: T2

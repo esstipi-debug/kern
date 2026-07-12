@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from scm_agent import event_intent as event_intent_module
@@ -36,7 +37,9 @@ from scm_agent.event_intent import (
     EventRoutingError,
     Route,
     build_params,
+    excess_obsolete_from_state_stock_event,
     handle_event,
+    inventory_from_state_stock_event,
     inventory_from_stock_event,
     load_routing,
     resolve_route,
@@ -87,6 +90,23 @@ def test_load_routing_routes_to_a_tool_that_actually_exists_in_the_registry():
 
     for route in routes.values():
         assert route.tool in registry_keys
+
+
+def test_load_routing_includes_the_pr5_monitor_routes():
+    """PR-5 (scm_agent/monitors.py) adds 3 new routes alongside stock_below_rop
+    -- rop_breach/stockout_projected -> inventory_optimization,
+    excess_growing -> excess_obsolete -- each with its own state-rows param
+    builder, WITHOUT touching the protected stock_below_rop route."""
+    routes = load_routing(DEFAULT_ROUTING_PATH)
+
+    assert routes["stock_below_rop"].param_builder == "inventory_from_stock_event"  # unchanged
+
+    assert routes["rop_breach"].tool == "inventory_optimization"
+    assert routes["rop_breach"].param_builder == "inventory_from_state_stock_event"
+    assert routes["stockout_projected"].tool == "inventory_optimization"
+    assert routes["stockout_projected"].param_builder == "inventory_from_state_stock_event"
+    assert routes["excess_growing"].tool == "excess_obsolete"
+    assert routes["excess_growing"].param_builder == "excess_obsolete_from_state_stock_event"
 
 
 def test_default_routing_path_falls_back_to_a_repo_relative_config_path():
@@ -218,6 +238,70 @@ def test_inventory_from_stock_event_labels_the_brief_generically_without_a_sku()
     assert "flagged SKU" in params["brief"]
 
 
+# -- inventory_from_state_stock_event() param builder (PR-5) -------------------
+
+
+def _stock_row_event(*, event_type="rop_breach", sku="SKU-A", extra_payload: dict | None = None) -> Event:
+    row = {"product_id": sku, "on_hand": 15.0, "reorder_point": 20.0, "avg_daily_demand": 1.0}
+    payload = {"rows": [row]}
+    if extra_payload:
+        payload.update(extra_payload)
+    return Event(type=event_type, severity="medium", source="monitors",
+                 dedup_key=f"{sku}:{event_type}", sku=sku, payload=payload)
+
+
+def test_inventory_from_state_stock_event_writes_a_synthetic_demand_csv():
+    params = inventory_from_state_stock_event(_stock_row_event())
+
+    assert params["client"] == "Tower"
+    assert "SKU-A" in params["brief"]
+    data_path = Path(params["data_path"])
+    assert data_path.exists()
+    written = pd.read_csv(data_path)
+    assert set(written.columns) >= {"date", "product_id", "quantity"}
+    assert (written["product_id"] == "SKU-A").all()
+    assert (written["quantity"] == 1.0).all()  # avg_daily_demand replayed flat
+    assert len(written) == 28  # _SYNTHETIC_HISTORY_DAYS
+
+
+def test_inventory_from_state_stock_event_only_forwards_known_override_keys():
+    event = _stock_row_event(extra_payload={"service_level": 0.9, "junk_key": "nope"})
+    params = inventory_from_state_stock_event(event)
+    assert params["overrides"] == {"service_level": 0.9}
+
+
+def test_inventory_from_state_stock_event_raises_without_rows():
+    event = Event(type="rop_breach", severity="medium", source="monitors", dedup_key="k", payload={})
+    with pytest.raises(EventRoutingError, match="rows"):
+        inventory_from_state_stock_event(event)
+
+
+# -- excess_obsolete_from_state_stock_event() param builder (PR-5) -------------
+
+
+def test_excess_obsolete_from_state_stock_event_writes_the_stock_rows_directly():
+    row = {"product_id": "SKU-A", "on_hand": 260.0, "reorder_point": 10.0, "avg_daily_demand": 2.0}
+    event = Event(type="excess_growing", severity="medium", source="monitors",
+                  dedup_key="SKU-A:excess_growing", sku="SKU-A", payload={"rows": [row]})
+
+    params = excess_obsolete_from_state_stock_event(event)
+
+    assert params["client"] == "Tower"
+    data_path = Path(params["data_path"])
+    assert data_path.exists()
+    written = pd.read_csv(data_path)
+    assert written.loc[0, "product_id"] == "SKU-A"
+    assert written.loc[0, "on_hand"] == 260.0
+    assert written.loc[0, "daily_demand"] == 2.0  # renamed from avg_daily_demand
+    assert "avg_daily_demand" not in written.columns
+
+
+def test_excess_obsolete_from_state_stock_event_raises_without_rows():
+    event = Event(type="excess_growing", severity="medium", source="monitors", dedup_key="k", payload={})
+    with pytest.raises(EventRoutingError, match="rows"):
+        excess_obsolete_from_state_stock_event(event)
+
+
 # -- build_params(): unknown param_builder -------------------------------------
 
 
@@ -314,3 +398,36 @@ def test_handle_event_uses_default_routing_path_when_routes_not_supplied(tmp_pat
     routed = handle_event(_rop_event(), orchestrator=_test_orchestrator(), out_dir=tmp_path)
 
     assert routed.result.status == STATUS_OK
+
+
+# -- handle_event(): PR-5's new state-rows-driven routes, end to end ----------
+
+
+def test_handle_event_routes_a_synthetic_rop_breach_event_end_to_end(tmp_path, monkeypatch):
+    """A rop_breach event carrying event.payload["rows"] (no data_path at all)
+    -> routed via inventory_from_state_stock_event's synthesized demand CSV
+    -> the real inventory_optimization tool -> a QA-gated JobResult."""
+    monkeypatch.setattr(event_intent_module, "notify", lambda message, **kwargs: True)
+    event = _stock_row_event()
+
+    routed = handle_event(event, routing_path=DEFAULT_ROUTING_PATH, orchestrator=_test_orchestrator(), out_dir=tmp_path)
+
+    assert routed.route.tool == "inventory_optimization"
+    assert routed.result.status == STATUS_OK
+    assert routed.result.qa_issues == []
+
+
+def test_handle_event_routes_a_synthetic_excess_growing_event_end_to_end(tmp_path, monkeypatch):
+    """An excess_growing event carrying event.payload["rows"] -> routed via
+    excess_obsolete_from_state_stock_event -> the real excess_obsolete tool
+    -> a QA-gated JobResult."""
+    monkeypatch.setattr(event_intent_module, "notify", lambda message, **kwargs: True)
+    row = {"product_id": "SKU-A", "on_hand": 260.0, "reorder_point": 10.0, "avg_daily_demand": 2.0}
+    event = Event(type="excess_growing", severity="medium", source="monitors",
+                  dedup_key="SKU-A:excess_growing", sku="SKU-A", payload={"rows": [row]})
+
+    routed = handle_event(event, routing_path=DEFAULT_ROUTING_PATH, orchestrator=_test_orchestrator(), out_dir=tmp_path)
+
+    assert routed.route.tool == "excess_obsolete"
+    assert routed.result.status == STATUS_OK
+    assert routed.result.qa_issues == []
