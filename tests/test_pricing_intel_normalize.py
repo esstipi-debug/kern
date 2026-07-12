@@ -25,6 +25,7 @@ import pytest
 
 from src.pricing_intel.normalize import (
     PriceNormalizationError,
+    convert_to_base_currency,
     detect_promo,
     extract_pack_size,
     normalize_price_string,
@@ -101,6 +102,23 @@ def test_unparseable_text_raises_rather_than_fabricating_a_price() -> None:
 def test_empty_or_blank_raw_text_raises() -> None:
     with pytest.raises(PriceNormalizationError):
         normalize_price_string("   ", currency="USD")
+
+
+# -- FX conversion (PR-13) -----------------------------------------------
+
+
+def test_convert_to_base_currency_usd_is_identity() -> None:
+    assert convert_to_base_currency(Decimal("19.99"), "USD") == Decimal("19.99")
+
+
+def test_convert_to_base_currency_mxn_hand_verified() -> None:
+    # models.py's own worked example: 1234.56 * 0.058 = 71.60448
+    assert convert_to_base_currency(Decimal("1234.56"), "MXN") == Decimal("71.60448")
+
+
+def test_convert_to_base_currency_unsupported_currency_raises() -> None:
+    with pytest.raises(PriceNormalizationError, match="no static FX rate"):
+        convert_to_base_currency(Decimal("10"), "VND")
 
 
 # -- promo detection ----------------------------------------------------

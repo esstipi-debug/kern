@@ -22,7 +22,12 @@ if TYPE_CHECKING:  # avoid a real circular import: jobs.digest_job -> scm_agent.
     # module load time.
     from .digest_job import DigestResult
 
+    # Same hazard, same fix: jobs.price_intelligence -> src.pricing_intel.sanity ->
+    # scm_agent.events -> scm_agent (package __init__) -> scm_agent.tools -> here.
+    from .price_intelligence import PriceIntelReport
+
 TOL = 1e-6
+PRICE_INTEL_COVERAGE_MIN = 0.60  # plan section 6.9 item 2: ">=60% SKUs con >=1 competidor confirmado"
 
 
 def verify(report: JobReport) -> list[str]:
@@ -159,6 +164,55 @@ def verify_digest(result: DigestResult) -> list[str]:
 
 def digest_passed(result: DigestResult) -> bool:
     return not verify_digest(result)
+
+
+def verify_price_intel(report: PriceIntelReport) -> list[str]:
+    """QA invariants for the price-intelligence one-shot deliverable (plan
+    section 6.9 item 2). Empty list = passed:
+
+    - coverage: >=60% of products must have >=1 accepted competitor
+      observation to ship at all (below that, the position matrix is too
+      sparse to be a defensible deliverable).
+    - zero quarantined/discarded rows leak into the accepted offers --
+      they are reported in their own section (golden rule 14), never
+      shipped as if trustworthy.
+    - average freshness of the accepted observations stays within the
+      report's own stated SLA.
+    """
+    issues: list[str] = []
+
+    if report.n_products <= 0:
+        issues.append("price_intel: no products in scope")
+    if not (0.0 - TOL <= report.coverage_pct <= 1.0 + TOL):
+        issues.append(f"price_intel: coverage_pct out of [0,1]: {report.coverage_pct}")
+    elif report.coverage_pct < PRICE_INTEL_COVERAGE_MIN - TOL:
+        issues.append(
+            f"price_intel: coverage {report.coverage_pct * 100:.0f}% is below the "
+            f"{PRICE_INTEL_COVERAGE_MIN * 100:.0f}% minimum required to ship"
+        )
+
+    accepted_refs = {(o.site, o.competitor_sku_ref) for o in report.offers}
+    tainted_refs = {(r.site, r.competitor_url) for r in report.rows if r.status in ("quarantined", "discarded")}
+    leaked = tainted_refs & accepted_refs
+    if leaked:
+        issues.append(f"price_intel: {len(leaked)} quarantined/discarded row(s) leaked into the accepted offers")
+
+    if not (0.0 - TOL <= report.quarantine_rate <= 1.0 + TOL):
+        issues.append(f"price_intel: quarantine_rate out of [0,1]: {report.quarantine_rate}")
+
+    if report.avg_freshness_hours < -TOL:
+        issues.append(f"price_intel: negative avg_freshness_hours: {report.avg_freshness_hours}")
+    elif report.avg_freshness_hours > report.sla_hours + TOL:
+        issues.append(
+            f"price_intel: average freshness {report.avg_freshness_hours:.1f}h exceeds the "
+            f"{report.sla_hours:.1f}h SLA"
+        )
+
+    return issues
+
+
+def price_intel_passed(report: PriceIntelReport) -> bool:
+    return not verify_price_intel(report)
 
 
 def coverage_gate(outcome: GuidedOutcome) -> list[str]:

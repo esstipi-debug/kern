@@ -157,6 +157,29 @@ LABELS: dict[str, dict[Lang, str]] = {
     "col_recommended": {"es": "Recomendada", "en": "Recommended"},
     "col_summary": {"es": "Resumen", "en": "Summary"},
     "yes_flag": {"es": "si", "en": "yes"},
+
+    # ---- price_intelligence's own Fuentes section (Linchpin 3.0 PR-13, ------
+    # golden rule 7: acquisition tier per datum) -- distinct from the L3
+    # book-citations "Methodology & grounding" section every deck already has.
+    "hdr_fuentes": {"es": "Fuentes", "en": "Sources"},
+    "fuentes_intro": {
+        "es": "Cada precio de competencia de este reporte con su procedencia "
+              "(tier de adquisicion, extractor y version, confianza, fecha):",
+        "en": "Every competitor price in this report with its provenance "
+              "(acquisition tier, extractor and version, confidence, date):",
+    },
+    "fuentes_col_product": {"es": "Producto", "en": "Product"},
+    "fuentes_col_site": {"es": "Sitio", "en": "Site"},
+    "fuentes_col_tier": {"es": "Tier", "en": "Tier"},
+    "fuentes_col_extractor": {"es": "Extractor", "en": "Extractor"},
+    "fuentes_col_confidence": {"es": "Confianza", "en": "Confidence"},
+    "fuentes_col_observed_at": {"es": "Observado", "en": "Observed"},
+    "fuentes_quarantine_hdr": {"es": "Cuarentena y descartes", "en": "Quarantine & discards"},
+    "fuentes_quarantine_intro": {
+        "es": "Nunca se incluyen como si fueran confiables -- reportados aparte:",
+        "en": "Never included as if trustworthy -- reported separately:",
+    },
+    "fuentes_skipped_hdr": {"es": "Referencias omitidas", "en": "Skipped references"},
 }
 
 
@@ -223,6 +246,7 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
     "drp": {"es": "Planificacion de Requerimientos de Distribucion (DRP)",
             "en": "Distribution Requirements Planning (DRP)"},
     "vehicle_routing": {"es": "Ruteo y Programacion de Vehiculos", "en": "Vehicle Routing & Scheduling"},
+    "price_intelligence": {"es": "Diagnostico de Posicion de Precios", "en": "Price Position Diagnostic"},
 }
 
 

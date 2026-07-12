@@ -116,6 +116,7 @@ _HEAD = """<!DOCTYPE html>
     <span class="brand"><span class="d">&#9672;</span> Kern</span>
     <nav>
       <a href="/tower">Tower</a>
+      <a href="/pricing">Pricing</a>
       <a href="/paquetes">Paquetes</a>
       <a href="/console">Consola</a>
       <a href="/">Dashboard</a>

@@ -1,0 +1,29 @@
+<!--
+Frozen fixture (Linchpin 3.0 PR-13): valid JSON-LD, valid amount, but an
+unrecognized currency code ("ZZZ" is not in sanity.KNOWN_CURRENCY_CODES).
+extract.py's cascade succeeds fine (normalize_price_string only checks the
+code is syntactically ISO-4217-shaped, 3 letters) -- the point of this
+fixture is to exercise sanity.check_basic_validity's "unknown_currency"
+DISCARD path downstream, in jobs/price_intelligence.py's own acquire step.
+-->
+<html>
+<head>
+<title>Widget With A Fictitious Currency</title>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "name": "Widget With A Fictitious Currency",
+  "offers": {
+    "@type": "Offer",
+    "price": "42.00",
+    "priceCurrency": "ZZZ",
+    "availability": "https://schema.org/InStock"
+  }
+}
+</script>
+</head>
+<body>
+  <h1>Widget With A Fictitious Currency</h1>
+</body>
+</html>

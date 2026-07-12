@@ -39,8 +39,10 @@ from .models import (
     validate_offer_frame,
 )
 from .normalize import (
+    STATIC_FX_TO_USD,
     NormalizedPrice,
     PriceNormalizationError,
+    convert_to_base_currency,
     detect_promo,
     extract_pack_size,
     normalize_price_string,
@@ -55,6 +57,7 @@ __all__ = [
     "MATCH_METHODS",
     "MATCH_STATUSES",
     "OFFER_COLUMNS",
+    "STATIC_FX_TO_USD",
     "TOS_DECISIONS",
     "AppendResult",
     "BatchRecord",
@@ -70,6 +73,7 @@ __all__ = [
     "PriceNormalizationError",
     "PricePoint",
     "SiteConfig",
+    "convert_to_base_currency",
     "dataframe_to_offers",
     "default_ledger",
     "detect_promo",

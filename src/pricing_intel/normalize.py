@@ -134,6 +134,51 @@ def _resolve_currency_from_symbol(detected: str | None, raw: str) -> str:
     )
 
 
+# Static FX-to-USD table (Linchpin 3.0 PR-13): a small, hand-verified,
+# illustrative set of rates covering the majors + the plan's ICP LatAm
+# markets (section 6.2) -- NOT a live feed. The plan's own models.py
+# docstring anticipated "PR-11's normalize.py is what actually computes
+# this at scale from live FX feeds"; no live source is wired up as of this
+# PR, so this constant is the documented placeholder until one is (a future
+# PR swapping this for a real feed only has to change this one lookup, the
+# same "isolate behind one funnel" idea as the rest of this module).
+# Never guessed per-call -- an unmapped currency raises rather than being
+# silently treated as 1:1 with USD.
+STATIC_FX_TO_USD: dict[str, Decimal] = {
+    "USD": Decimal("1"),
+    "EUR": Decimal("1.08"),
+    "GBP": Decimal("1.27"),
+    "MXN": Decimal("0.058"),
+    "BRL": Decimal("0.18"),
+    "ARS": Decimal("0.0011"),
+    "CLP": Decimal("0.0011"),
+    "COP": Decimal("0.00025"),
+    "PEN": Decimal("0.27"),
+}
+
+
+def convert_to_base_currency(amount: Decimal, currency: str) -> Decimal:
+    """Convert ``amount`` (in ``currency``) to ``models.BASE_CURRENCY`` (USD)
+    via :data:`STATIC_FX_TO_USD`.
+
+    Raises ``PriceNormalizationError`` for a currency this PR's static table
+    does not cover -- an unconverted price must never enter the ledger's
+    ``price_normalized`` field silently mislabeled as USD (plan rule 14).
+
+    Hand-verified reference: ``convert_to_base_currency(Decimal("1234.56"),
+    "MXN") == Decimal("1234.56") * Decimal("0.058") == Decimal("71.60448")``
+    -- the exact example worked by ``models.py``'s own module docstring.
+    """
+    code = currency.strip().upper()
+    rate = STATIC_FX_TO_USD.get(code)
+    if rate is None:
+        raise PriceNormalizationError(
+            f"no static FX rate available for currency {currency!r} -- "
+            f"supported: {sorted(STATIC_FX_TO_USD)}"
+        )
+    return amount * rate
+
+
 def detect_promo(price: Decimal, list_price: Decimal | None) -> bool:
     """True when ``list_price`` is present and strictly greater than
     ``price`` -- the plan's "list_price vs price divergence" promo signal

@@ -60,12 +60,22 @@ Correcciones surgidas en verificación: Cogsy **no** parte en $199 (parte en $49
 | 6 | **Proyecto de Red, Almacén y Operación** | $8.000–18.000 único | Único, 4–8 semanas | 6: `facility_location`, `transportation`, `warehouse_layout`, `slotting`, `queuing`, `scheduling` | Inflexión estructural: nueva bodega, rediseño de red/almacén |
 | 7 | **Proyecto de Sourcing y Costo de Importación** | $5.000–10.000 único | Único, recurrible trimestral/anual | 3: `sourcing`, `landed_cost`, `acceptance_sampling` | Importadores / manufactura offshore |
 | 8 | **Sprint de Liquidación** | 10–20% del cash recuperado, piso $1.500 (contingente, no fijo) | Único, sprint 2–3 semanas | 3-4: `data_quality`, `excess_obsolete`, `markdown_liquidation` (+ `pricing` opcional) | Stock muerto/excedente ya diagnosticado, decidido a liquidar, resiste pagar un fee fijo por algo no recuperado |
+| 9 | **Diagnóstico de Posición de Precios** | $2.000–3.500 único | Único, sprint 2 semanas (one-shot) | 1: `price_intelligence` (nueva, Linchpin 3.0 — "el titán del pricing") | Vende productos comparables online, quiere saber dónde está caro/barato frente a la competencia con evidencia trazable, sin monitoreo continuo todavía |
 
 Nota sobre la sección 8: es la única con **precio contingente** — el
 honorario se calcula sobre el cash efectivamente recuperado (nunca sobre una
 proyección), con `src/contingent_fee.py` como calculadora única. Abre la
 puerta a **Starter** para el cliente que no quiere que el stock muerto vuelva
 a acumularse.
+
+Nota sobre la sección 9: junto con los 2 proyectos puntuales (6, 7), es la
+única otra excepción a "ningún tool suelto se vende" — capacidad neta nueva
+que ninguna de las otras 8 secciones cubre (`documentation/paquetes/
+diagnostico-posicion-precios.md`, plan `LINCHPIN_3.0_PLAN.md` sección 10).
+Modo **one-shot**: el cliente entrega el mapeo SKU↔URL de competidor, que ya
+es el match confirmado — no depende del pipeline de matching automático
+(PR-14). Abre la puerta al **add-on de monitoreo continuo** (Growth/Scale)
+una vez que exista el Control Tower conectado (PR-15).
 
 **Camino a $8.000/mes:** 2 clientes Growth ($4.000 × 2) es la ruta más corta y el mix
 recomendado por defecto. Alternativas: 4 Starter, 1 Scale + 1 cliente pequeño, o 1 solo

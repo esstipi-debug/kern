@@ -62,13 +62,14 @@ from src.sources import CsvDemandSource  # noqa: E402
 from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
-from webapp import demo_scan, observability, security  # noqa: E402
+from webapp import demo_price_scan, demo_scan, observability, security  # noqa: E402
 from webapp.decisions import router as decisions_router  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
 from webapp.mcp_server import build_mcp_server  # noqa: E402
 from webapp.offers import OFFERS, get_offer  # noqa: E402
 from webapp.operator_profile import get_operator_profile  # noqa: E402
 from webapp.paquetes_page import render_index_html, render_offer_html  # noqa: E402
+from webapp.pricing_page import render_pricing_html  # noqa: E402
 from webapp.tower_page import T1_DISPLAY_LIMIT, render_tower_html  # noqa: E402
 
 DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
@@ -766,6 +767,77 @@ async def api_demo_scan(
     }
 
 
+@app.post("/api/demo-price-scan", dependencies=[Depends(security.rate_limit)])
+async def api_demo_price_scan(
+    email: str = Form(...),
+    urls: str = Form(...),
+    product_id: str = Form("Product"),
+    our_price: float | None = Form(None),
+) -> dict:
+    """The /demo Pricing funnel: N competitor URLs -> a teaser (non-
+    quarantined, partial) price-position matrix (plan section 9's lead
+    magnet). Public like /api/demo-scan (the demo IS the lead magnet),
+    rate-limited. SSRF-safe by construction: every URL routes through
+    jobs.price_intelligence's own require_approved_site allowlist gate
+    (see webapp/demo_price_scan.py's module docstring) -- an unapproved
+    domain is skipped, never fetched. A fresh, isolated ledger is used per
+    request (webapp/demo_price_scan.run_demo_price_scan's own contract),
+    never the production one."""
+    addr = email.strip().lower()
+    if len(addr) > 254 or not EMAIL_RE.match(addr):
+        raise HTTPException(status_code=400, detail="invalid email")
+
+    url_list = [u for u in re.split(r"[\s,]+", urls.strip()) if u]
+    if not url_list:
+        raise HTTPException(status_code=400, detail="submit at least one competitor URL")
+
+    _prune_old_jobs()
+    scan_ledger_dir = Path(tempfile.mkdtemp(dir=JOBS_OUTPUT_DIR))
+    try:
+        result = demo_price_scan.run_demo_price_scan(
+            url_list, product_id=product_id.strip() or "Product", our_price=our_price,
+            ledger_base_path=scan_ledger_dir,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        shutil.rmtree(scan_ledger_dir, ignore_errors=True)
+
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if result.ok:
+        _prune_excess_lead_dirs()
+        lead_dir = LEAD_REPORTS_DIR / demo_scan.safe_lead_dirname(addr)
+        if lead_dir.resolve().parent != LEAD_REPORTS_DIR.resolve():
+            raise HTTPException(status_code=400, detail="invalid email")
+        lead_dir.mkdir(parents=True, exist_ok=True)
+        (lead_dir / "price_scan_mini_report.md").write_text(
+            demo_price_scan.render_mini_report(result, email=addr, product_id=product_id, ts=ts),
+            encoding="utf-8",
+        )
+        (lead_dir / "price_scan_followup_email_draft.md").write_text(
+            demo_price_scan.render_followup_email(result, email=addr, product_id=product_id),
+            encoding="utf-8",
+        )
+
+    record = {
+        "email": addr, "source": "demo-price-scan", "ts": ts, "dataset": product_id,
+        "status": "ok" if result.ok else "qa_failed",
+        "result": result.headline,
+    }
+    with LEADS_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    if not result.ok:
+        return {"status": "qa_failed", "headline": result.headline}
+    return {
+        "status": "ok",
+        "headline": result.headline,
+        "teaser_rows": result.teaser_rows,
+        "cta_url": demo_price_scan.CTA_PATH,
+    }
+
+
+
 _METRICS_LABEL_RE = re.compile(r"[^\w.\- ]")
 _METRICS_LABEL_MAX_LEN = 60
 _METRICS_MAX_BUCKETS = 25  # beyond this many distinct labels, fold the rest into "other"
@@ -1039,6 +1111,18 @@ def tower_page() -> HTMLResponse:
         promotion_ledger.close()
 
     return HTMLResponse(render_tower_html(t1_records=t1, t2_records=t2, promotion_records=promotions))
+
+
+@app.get("/pricing")
+def pricing_page() -> HTMLResponse:
+    """The Pricing dashboard tab (Linchpin 3.0 PR-13, plan sections 6.11/9):
+    position matrix summary, freshness and quarantine rate. No persisted
+    "last run" store exists yet (a PriceIntelReport lives only for one
+    jobs.price_intelligence.run() call, via the CLI or the registered agent
+    tool) -- this route renders the honest empty state, the exact precedent
+    /tower already sets for its own not-yet-wired A4 section (webapp/
+    pricing_page.py's own docstring). No number is ever fabricated here."""
+    return HTMLResponse(render_pricing_html())
 
 
 def _warehouse_params(

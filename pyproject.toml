@@ -82,6 +82,12 @@ pricing-intel = [
     "lxml>=5.0",
     "price-parser>=0.5.1",
     "chompjs>=1.2",
+    # jobs/price_intelligence.py's one-shot acquire step (PR-13):
+    # src/pricing_intel/acquire/pdp_fetcher.py's live PDP GET. Already pinned
+    # in the "tower" extra for notify()'s webhook client -- same version floor,
+    # declared here too so `pip install .[pricing-intel]` alone is enough to
+    # run the CLI against a live URL without also pulling in APScheduler.
+    "httpx>=0.28",
 ]
 
 [project.urls]

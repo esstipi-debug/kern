@@ -1883,6 +1883,87 @@ def vehicle_routing_tool() -> Tool:
     )
 
 
+# ---- price_intelligence (the pricing titan, one-shot mode) -------------------
+#
+# `jobs.price_intelligence` is deliberately NOT imported in this file's top-of-
+# module `from jobs import (...)` block above: it (transitively, via
+# src.pricing_intel.sanity) imports `scm_agent.events`, and importing that
+# submodule for the first time forces `scm_agent/__init__.py` to finish
+# running -- which itself does `from .tools import build_default_registry`,
+# i.e. THIS module. Importing `jobs.price_intelligence` eagerly here would
+# recreate the exact circular-import hazard `jobs/qa.py` already documents and
+# avoids (via TYPE_CHECKING) for `jobs.digest_job`. Each function below does
+# its own local import instead -- cheap (Python caches the module) and it
+# defers the import until `scm_agent`'s own package init has already
+# completed.
+
+
+def _price_intelligence_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    from jobs import price_intelligence as price_intelligence_job
+
+    if not request.data_path:
+        return Prepared(
+            status="needs_data",
+            messages=["a refs CSV (product_id, competitor_url [+ our_price, currency, html_path]) is required"],
+        )
+    try:
+        payload = price_intelligence_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["refs"]:
+        return Prepared(status="needs_data", messages=["no refs found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _price_intelligence_run(payload: object, params: dict) -> Produced:
+    from jobs import price_intelligence as price_intelligence_job
+
+    report = price_intelligence_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def price_intelligence_tool() -> Tool:
+    from jobs import price_intelligence as price_intelligence_job
+
+    def _deck(report, out_dir, client, citations, confidence, options):
+        # citations here are the orchestrator's ungated `ground_citations` (the
+        # same convention every other tool's deck uses) -- but golden rule 7 +
+        # the E5 gate are explicit requirements for THIS deliverable, so the deck
+        # recomputes its own E5-gated citations via
+        # `price_intelligence_job.gated_citations` (filter_citations, not a
+        # parallel mechanism) instead of trusting the ungated list passed in.
+        deliverable = replace(
+            price_intelligence_job.build_deck(
+                report, client=client, citations=price_intelligence_job.gated_citations(""),
+                confidence=confidence,
+            ),
+            options=tuple(options),
+        )
+        report_path = price_intelligence_job.write_report_md(deliverable, report, out_dir, deliverable.lang)
+        return {"report_md": report_path}
+
+    return Tool(
+        key="price_intelligence",
+        title="Price Position Diagnostic",
+        description="Compare your own price against confirmed competitor observations (a client-supplied "
+                    "SKU-to-URL refs file), flag suspect/quarantined reads separately, and produce a "
+                    "price-position matrix with full acquisition-tier provenance per datum.",
+        intent_keywords=(
+            "price position", "price intelligence", "competitor pricing", "competitor prices",
+            "competitive pricing", "price competitiveness", "price monitoring",
+            "monitorea precios de la competencia", "donde estoy caro", "posicion de precios",
+            "precio de la competencia", "inteligencia de precios",
+        ),
+        requires_data=True,
+        options=tool_options.price_intelligence_options,
+        prepare=_price_intelligence_prepare,
+        run=_price_intelligence_run,
+        qa=lambda report: qa.verify_price_intel(report),
+        deliver=lambda report, out_dir, client: price_intelligence_job.write_operational(report, out_dir, client),
+        deck=_deck,
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -1922,4 +2003,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(facility_location_tool())
     reg.register(drp_tool())
     reg.register(vehicle_routing_tool())
+    reg.register(price_intelligence_tool())
     return reg
