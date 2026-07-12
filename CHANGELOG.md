@@ -3,6 +3,27 @@
 ## [Unreleased]
 
 ### Added
+- **`src/escalation.py` wired into `jobs/intake.py`'s plausibility checks** — `intake.py::normalize()`
+  used to silently drop unusable rows (bad dates, missing/negative quantities) with zero
+  visibility into how many or why; a report could be built on a shrunken, unrepresentative
+  slice of a client's real demand history and still ship with the same confident label as a
+  well-backed one. `IntakeQuality` (new frozen dataclass: per-reason drop counts +
+  `dropped_fraction`) is now tracked via `normalize_tracked()`/`prepare_tracked()`
+  (`normalize()`/`prepare()` stay byte-for-byte unchanged for existing callers — a shared
+  `_normalize_core()` backs both, each row attributed to the FIRST filter that would drop it
+  so nothing double-counts). `inventory_optimization` (the one real consumer of
+  `jobs/intake.py` among the 37 tools) now states a residual whenever ANY rows were dropped,
+  and escalates via the new `src/escalation.py::maybe_escalate_data_quality()` (OPERATIONAL
+  trigger, configurable `intake_quality_threshold`, default 20%) when the drop is severe
+  enough to doubt the result — the same failure class `jobs/forecast_job.py`'s MASE=inf
+  handling addresses for unvalidated SKUs, applied to the intake step. `maybe_escalate_financial`
+  was refactored (behavior-preserving) to share a `_maybe_escalate()` engine with the new
+  function. +19 tests (intake tracking, escalation gate, tool_options wiring, 2 full
+  orchestrator end-to-end runs proving a messy CSV genuinely escalates and a clean one
+  doesn't). Verified empirically post-review: multi-reason-bad rows (bad date AND negative
+  quantity in the same row) attribute correctly with no double-count, and a custom
+  `intake_quality_threshold` override shifts the escalation boundary end-to-end through a
+  real `Orchestrator.run()` call. 1831 tests green, ruff clean.
 - **`POST /api/jobs` exposes the `guided` outcome** — the orchestrator's never-unprotected
   contract (`GuidedOutcome` from `src/guided.py`: ranked OPTIONS, a HANDOFF packet, or an
   ESCALATED route/SLA/reason) was computed on every run but never left `webapp/app.py` — an

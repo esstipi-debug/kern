@@ -413,6 +413,63 @@ def test_orchestrator_unslugifiable_client_label_still_runs(tmp_path):
     assert "95%" in res.summary
 
 
+# -- intake plausibility, end to end: src/escalation.py wired through the real
+# prepare -> run -> options pipeline, not just unit-tested in isolation --
+
+
+def _demand_csv_with_bad_rows(tmp_path, *, n_good: int = 16, n_bad: int = 8) -> str:
+    """A demand CSV for one SKU: n_good clean weekly rows + n_bad rows carrying
+    an invalid (negative) quantity — intake.py drops the bad ones silently;
+    the escalation wiring is what's supposed to make that visible. Dates step by
+    a real week (datetime + timedelta) so an arbitrarily large n_good/n_bad never
+    overflows into an invalid month/day and silently inflates the drop count."""
+    import datetime as _dt
+
+    import pandas as pd
+
+    good_start = _dt.date(2020, 1, 1)
+    bad_start = _dt.date(2024, 1, 1)  # a disjoint range so good/bad weeks never collide for the same SKU
+    rows = [
+        {"date": (good_start + _dt.timedelta(weeks=i)).isoformat(), "product_id": "SKU-A", "quantity": 10}
+        for i in range(n_good)
+    ]
+    rows += [
+        {"date": (bad_start + _dt.timedelta(weeks=i)).isoformat(), "product_id": "SKU-A", "quantity": -5}
+        for i in range(n_bad)
+    ]
+    path = tmp_path / "messy_demand.csv"
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return str(path)
+
+
+def test_orchestrator_escalates_when_intake_drops_too_many_rows(tmp_path):
+    data_path = _demand_csv_with_bad_rows(tmp_path, n_good=16, n_bad=8)  # 8/24 = 33% > the 20% default
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback())
+
+    res = orch.run("set up reorder points and safety stock", data_path=data_path,
+                   client="Acme", out_dir=tmp_path / "out")
+
+    assert res.status == "ok"  # the report itself is internally consistent...
+    assert res.guided is not None
+    assert res.guided.status == "escalated"  # ...but the guided contract says otherwise
+    assert res.guided.escalation.route_to and res.guided.escalation.sla
+    assert "intake" in res.guided.escalation.reason.lower()
+    assert len(res.guided.escalation.options) >= 3  # the ranked policy options are not lost
+
+
+def test_orchestrator_stays_plain_options_when_intake_drop_is_minor(tmp_path):
+    data_path = _demand_csv_with_bad_rows(tmp_path, n_good=95, n_bad=5)  # 5/100 = 5% < the 20% default
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback())
+
+    res = orch.run("set up reorder points and safety stock", data_path=data_path,
+                   client="Acme", out_dir=tmp_path / "out")
+
+    assert res.status == "ok"
+    assert res.guided.status == "options"
+    assert len(res.guided.residuals) >= 1  # still transparent about the drop, just not escalated
+    assert any("intake" in r.description.lower() for r in res.guided.residuals)
+
+
 def test_orchestrator_surfaces_corrupt_profile_clearly(tmp_path):
     clients_root = tmp_path / "clients"
     stray = clients_root / "acme"
@@ -476,7 +533,8 @@ def test_inventory_prepare_uses_profile_lead_time_when_csv_has_none(tmp_path):
     req = JobRequest(brief="reorder points", data_path=str(csv), params={"lead_time_days": 30.0})
     prep = t.prepare(req, llm.RulesFallback())
     assert prep.status == "ok"
-    assert (prep.payload["lead_time_days"] == 30.0).all()
+    assert (prep.payload["demand"]["lead_time_days"] == 30.0).all()
+    assert prep.payload["intake_quality"].dropped_fraction == 0.0  # clean fixture, nothing dropped
 
 
 def test_orchestrator_excel_replenishment_end_to_end(tmp_path):
