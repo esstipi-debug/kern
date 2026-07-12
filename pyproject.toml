@@ -115,6 +115,22 @@ matching = [
 elasticity = [
     "statsmodels>=0.14",
 ]
+# src/connectors/{shopify,meli}_prices.py's real transport (PR-18, P3
+# repricing_multichannel). httpx already pinned by tower/pricing-intel --
+# declared here too so `pip install .[repricing]` alone is enough for the
+# live path. Deliberately NOT the plan's originally-listed ShopifyAPI/
+# python-amazon-sp-api SDKs: both connectors are a thin, transport-agnostic
+# httpx-style adapter (the same convention as src/connectors/http_client.py
+# -- "hand it any httpx-style transport"), which avoids a heavy per-SDK
+# dependency for two REST/GraphQL calls per channel. Odoo's price connector
+# needs no new dep at all (stdlib xmlrpc.client, reused verbatim from
+# src/connectors/odoo.py). [CRED] -- exercised only when real credentials
+# (a live httpx.Client with the shop/seller's own token) are supplied; the
+# test suite runs entirely against the InMemory stand-ins below, zero
+# network, zero extra install.
+repricing = [
+    "httpx>=0.28",
+]
 
 [project.urls]
 Homepage = "https://github.com/esstipi-debug/linchpin"
