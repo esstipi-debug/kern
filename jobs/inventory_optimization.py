@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from jobs.intake import IntakeQuality
 from src.classification import classify_portfolio
 from src.classification import service_levels as class_service_levels
 from src.constraints import InventoryItem, allocate_under_budget
@@ -59,6 +60,12 @@ class JobReport:
     n_skus: int
     n_at_risk: int
     n_intermittent: int
+    # How much of the source file survived intake, and why the rest didn't
+    # (jobs/intake.py) — None when the caller used the untracked intake.prepare()
+    # path (e.g. examples/run_inventory_job.py). scm_agent/tool_options.py's
+    # inventory_options() reads this to decide whether to escalate.
+    intake_quality: IntakeQuality | None = None
+    intake_quality_threshold: float = 0.20
 
 
 def _status(intermittent: bool, bias: float) -> str:
@@ -82,6 +89,8 @@ def run(
     lead_times: dict[str, float] | None = None,
     observed_fill_rates: dict[str, float] | None = None,
     target_fill_rate: float = 0.95,
+    intake_quality: IntakeQuality | None = None,
+    intake_quality_threshold: float = 0.20,
 ) -> JobReport:
     """Run the inventory-optimization analysis over canonical demand.
 
@@ -178,4 +187,5 @@ def run(
         safety_stock_scale=scale, feasible=feasible, budget=budget,
         n_skus=len(recs), n_at_risk=sum(1 for r in recs if r.status == "high_bias"),
         n_intermittent=sum(1 for r in recs if r.intermittent),
+        intake_quality=intake_quality, intake_quality_threshold=intake_quality_threshold,
     )

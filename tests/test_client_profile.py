@@ -14,6 +14,7 @@ from src.client_profile import (
     slugify_client_id,
     upsert_profile,
 )
+from src.deliverable import Branding
 
 # ---- slugify_client_id -------------------------------------------------------
 
@@ -80,7 +81,71 @@ def test_valid_profile_constructs_cleanly():
     assert profile.client_id == "acme"
 
 
+@pytest.mark.parametrize("bad", [0.0, 0.09, 0.21, 1.0, -0.15])
+def test_contingent_fee_pct_out_of_range_raises(bad):
+    with pytest.raises(ValueError, match="contingent_fee_pct"):
+        ClientProfile(client_id="x", display_name="X", contingent_fee_pct=bad)
+
+
+@pytest.mark.parametrize("ok", [0.10, 0.15, 0.20])
+def test_contingent_fee_pct_within_range_is_accepted(ok):
+    profile = ClientProfile(client_id="x", display_name="X", contingent_fee_pct=ok)
+    assert profile.contingent_fee_pct == ok
+
+
+def test_contingent_fee_pct_is_not_an_engine_param():
+    # No Tool reads it — it must never leak into merge_params()'s output.
+    profile = ClientProfile(client_id="x", display_name="X", contingent_fee_pct=0.15)
+    assert "contingent_fee_pct" not in profile.as_params()
+
+
+def test_default_lang_is_spanish():
+    assert ClientProfile(client_id="x", display_name="X").lang == "es"
+
+
+@pytest.mark.parametrize("bad", ["fr", "pt", "ES", "", "spanish"])
+def test_lang_outside_es_en_raises(bad):
+    with pytest.raises(ValueError, match="lang"):
+        ClientProfile(client_id="x", display_name="X", lang=bad)
+
+
+@pytest.mark.parametrize("ok", ["es", "en"])
+def test_lang_es_or_en_is_accepted(ok):
+    assert ClientProfile(client_id="x", display_name="X", lang=ok).lang == ok
+
+
+def test_lang_is_not_an_engine_param():
+    # No Tool reads it directly - it must never leak into merge_params()'s output.
+    profile = ClientProfile(client_id="x", display_name="X", lang="en")
+    assert "lang" not in profile.as_params()
+
+
+def test_default_branding_is_none():
+    assert ClientProfile(client_id="x", display_name="X").branding is None
+
+
+def test_branding_is_not_an_engine_param():
+    # No Tool reads it directly - it must never leak into merge_params()'s output.
+    profile = ClientProfile(client_id="x", display_name="X", branding=Branding(name="Acme"))
+    assert "branding" not in profile.as_params()
+
+
+def test_a_malformed_branding_still_raises_at_profile_construction():
+    # Branding's own __post_init__ runs regardless of how it's constructed -
+    # a client profile can never carry an invalid branding value.
+    with pytest.raises(ValueError, match="primary_color"):
+        ClientProfile(client_id="x", display_name="X",
+                      branding=Branding(name="Acme", primary_color="not-a-color"))
+
+
 # ---- save/load round trip ------------------------------------------------------
+
+def test_save_and_load_round_trip_with_lang(tmp_path):
+    profile = ClientProfile(client_id="acme", display_name="Acme", lang="en")
+    save_profile(profile, root=tmp_path)
+    loaded = load_profile("acme", root=tmp_path)
+    assert loaded.lang == "en"
+
 
 def test_save_and_load_round_trip(tmp_path):
     profile = ClientProfile(
@@ -94,6 +159,13 @@ def test_save_and_load_round_trip(tmp_path):
     assert loaded == profile
 
 
+def test_save_and_load_round_trip_with_contingent_fee_pct(tmp_path):
+    profile = ClientProfile(client_id="acme", display_name="Acme", contingent_fee_pct=0.18)
+    save_profile(profile, root=tmp_path)
+    loaded = load_profile("acme", root=tmp_path)
+    assert loaded.contingent_fee_pct == 0.18
+
+
 def test_save_and_load_round_trip_without_capacity(tmp_path):
     profile = ClientProfile(client_id="acme", display_name="Acme", holding_rate=0.25)
     save_profile(profile, root=tmp_path)
@@ -104,6 +176,26 @@ def test_save_and_load_round_trip_without_capacity(tmp_path):
 
 def test_load_profile_missing_file_returns_none(tmp_path):
     assert load_profile("ghost", root=tmp_path) is None
+
+
+def test_save_and_load_round_trip_with_branding(tmp_path):
+    profile = ClientProfile(
+        client_id="acme", display_name="Acme",
+        branding=Branding(name="Acme Consulting", logo_url="https://acme.example/logo.png",
+                          primary_color="#1F4E79"),
+    )
+    save_profile(profile, root=tmp_path)
+    loaded = load_profile("acme", root=tmp_path)
+    assert loaded == profile
+    assert loaded.branding == Branding(name="Acme Consulting", logo_url="https://acme.example/logo.png",
+                                       primary_color="#1F4E79")
+
+
+def test_save_and_load_round_trip_without_branding(tmp_path):
+    profile = ClientProfile(client_id="acme", display_name="Acme")
+    save_profile(profile, root=tmp_path)
+    loaded = load_profile("acme", root=tmp_path)
+    assert loaded.branding is None
 
 
 # ---- merge_params (resolution priority) ----------------------------------------
@@ -193,6 +285,21 @@ def test_load_profile_raises_clear_error_on_missing_required_key(tmp_path):
     bad = tmp_path / "acme"
     bad.mkdir(parents=True)
     (bad / "profile.json").write_text('{"display_name": "Acme"}', encoding="utf-8")
+    with pytest.raises(ValueError, match="corrupt client profile"):
+        load_profile("acme", root=tmp_path)
+
+
+def test_load_profile_raises_clear_error_on_null_branding_name(tmp_path):
+    # Branding's own __post_init__ used to raise a raw AttributeError for a
+    # None name, which load_profile's except clause couldn't catch - it must
+    # surface as the same clean, wrapped "corrupt client profile" error as
+    # every other malformed field.
+    bad = tmp_path / "acme"
+    bad.mkdir(parents=True)
+    (bad / "profile.json").write_text(
+        '{"client_id": "acme", "display_name": "Acme", "branding": {"name": null}}',
+        encoding="utf-8",
+    )
     with pytest.raises(ValueError, match="corrupt client profile"):
         load_profile("acme", root=tmp_path)
 

@@ -1,6 +1,6 @@
 """Commercial packages: spec integrity, the package-level QA gate, and end-to-end
-demo runs for all seven packages (diagnostico / starter / growth / scale /
-retainer_ejecutivo / proyecto_red_almacen / proyecto_sourcing)."""
+demo runs for all eight packages (diagnostico / starter / growth / scale /
+retainer_ejecutivo / proyecto_red_almacen / proyecto_sourcing / liquidacion)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from examples.run_package import DEMO_PARAMS, build_demo_intake
 from scm_agent.package_specs import (
     DIAGNOSTICO,
     GROWTH,
+    LIQUIDACION,
     PACKAGES,
     PROYECTO_RED_ALMACEN,
     PROYECTO_SOURCING,
@@ -24,12 +25,17 @@ from scm_agent.package_specs import (
 from scm_agent.packages import missing_required_inputs, run_package
 from scm_agent.registry import ToolRegistry
 from scm_agent.tools import build_default_registry
+from src import client_profile
+from src.deliverable import Branding
 
 
 class _NoKnowledge:
     """Citation-free stand-in so tests never load the books graph."""
 
     def ground_citations(self, keywords, brief, limit=5):
+        return []
+
+    def ground_citations_detailed(self, keywords, brief, limit=5):
         return []
 
     def warnings(self):
@@ -69,6 +75,11 @@ def test_no_duplicate_steps():
     for spec in PACKAGES.values():
         keys = spec.tool_keys()
         assert len(keys) == len(set(keys)), spec.key
+
+
+def test_every_package_defaults_to_spanish():
+    for spec in PACKAGES.values():
+        assert spec.lang == "es", spec.key
 
 
 def test_scope_matches_monetization_brief():
@@ -235,13 +246,135 @@ def test_diagnostico_end_to_end(demo_intake, tmp_path):
     _assert_delivered(result, out, "diagnostico", 4)
 
 
+# ---- E6: partner/white-label branding on the consolidated package deck -------
+
+def test_package_deck_defaults_to_linchpin_branding(demo_intake, tmp_path):
+    # DIAGNOSTICO defaults to lang="es" (see test_every_package_defaults_to_spanish)
+    # so the footer label renders as "Preparado por", not "Prepared by".
+    out = tmp_path / "out"
+    result = _run(DIAGNOSTICO, demo_intake, out)
+    assert result.status == "ok"
+    deck = (out / "diagnostico" / "deliverable.md").read_text(encoding="utf-8")
+    assert "Preparado por Linchpin" in deck
+
+
+def test_package_deck_uses_the_clients_profile_branding_when_configured(demo_intake, tmp_path):
+    root = tmp_path / "clients"
+    client_profile.upsert_profile(
+        "Acme Consulting", "Acme Consulting", root=root,
+        branding=Branding(name="Acme Consulting", primary_color="#1F4E79"),
+    )
+    out = tmp_path / "out"
+    result = _run(DIAGNOSTICO, demo_intake, out, client="Acme Consulting", clients_root=root)
+    assert result.status == "ok"
+    deck = (out / "diagnostico" / "deliverable.md").read_text(encoding="utf-8")
+    assert "Preparado por Acme Consulting" in deck
+    assert "Preparado por Linchpin" not in deck
+
+
+def test_package_deck_explicit_branding_wins_over_the_clients_profile(demo_intake, tmp_path):
+    root = tmp_path / "clients"
+    client_profile.upsert_profile(
+        "Acme Consulting", "Acme Consulting", root=root,
+        branding=Branding(name="Acme Consulting"),
+    )
+    out = tmp_path / "out"
+    result = _run(
+        DIAGNOSTICO, demo_intake, out, client="Acme Consulting", clients_root=root,
+        branding=Branding(name="Explicit Override Co"),
+    )
+    assert result.status == "ok"
+    deck = (out / "diagnostico" / "deliverable.md").read_text(encoding="utf-8")
+    assert "Preparado por Explicit Override Co" in deck
+    assert "Prepared by Acme Consulting" not in deck
+
+
+def test_diagnostico_deck_is_100pct_one_language_no_mixing(demo_intake, tmp_path):
+    """E4 acceptance criterion: 'deck demo 100% en un solo idioma segun lang;
+    cero mezcla' -- for the scope src/i18n.py actually covers (the consolidated
+    deck's own labels + tool titles; see that module's docstring for what
+    stays engine-native English regardless of lang by design)."""
+    from src import i18n
+
+    # Only fixed-text labels can be membership-checked directly (templated
+    # ones like "{executed} of {total}..." render with numbers substituted).
+    non_templated = [k for k, v in i18n.LABELS.items() if "{" not in v["es"] and "{" not in v["en"]]
+    # Words short/common enough to collide with legitimate, out-of-scope
+    # English tool-finding prose (e.g. the bare word "for") can't be used as
+    # a reliable "other language leaked in" discriminator.
+    too_common_to_discriminate = {
+        "for_client", "cadence_word",
+        "col_metric",  # "Metrica" (es) contains "Metric" (en) as a substring
+    }
+    # Excel-only labels (src.deliverable.Deliverable.to_excel) never render
+    # into deliverable.md at all -- and some (hdr_client_field's "Client")
+    # can coincidentally collide with unrelated deck content (here, the demo
+    # run's client display name is literally "Client"). Covered separately
+    # by test_diagnostico_deck_xlsx_headers_are_bilingual below.
+    xlsx_only = {
+        "hdr_title_field", "hdr_client_field", "sheet_summary", "sheet_kpis",
+        "sheet_findings", "sheet_data_sources", "sheet_options", "sheet_citations",
+        "col_finding", "col_detail", "col_impact", "col_option", "col_recommended",
+        "col_summary", "yes_flag",
+    }
+    non_templated = [k for k in non_templated if k not in xlsx_only]
+
+    decks = {}
+    for lang in ("es", "en"):
+        out = tmp_path / f"out_{lang}"
+        spec = replace(DIAGNOSTICO, lang=lang)
+        result = _run(spec, demo_intake, out)
+        assert result.status == "ok"
+        decks[lang] = (out / "diagnostico" / "deliverable.md").read_text(encoding="utf-8")
+
+    for lang, other in (("es", "en"), ("en", "es")):
+        deck = decks[lang]
+        for key in non_templated:
+            expected, unexpected = i18n.label(key, lang), i18n.label(key, other)
+            if expected == unexpected:
+                continue  # reads identically in both langs -- nothing to discriminate
+            if expected not in deck and unexpected not in deck:
+                continue  # this scenario never renders the label either way (e.g. nothing skipped)
+            assert expected in deck, (lang, key, "expected label missing")
+            if key not in too_common_to_discriminate:
+                assert unexpected not in deck, (lang, key, "other-language label leaked in")
+
+        for step in DIAGNOSTICO.steps:
+            expected = i18n.tool_title(step.tool_key, lang)
+            unexpected = i18n.tool_title(step.tool_key, other)
+            assert expected in deck, (lang, step.tool_key)
+            if expected != unexpected:
+                assert unexpected not in deck, (lang, step.tool_key, "other-language title leaked in")
+
+
+def test_diagnostico_deck_xlsx_headers_are_bilingual(demo_intake, tmp_path):
+    """Complements test_diagnostico_deck_is_100pct_one_language_no_mixing for
+    the Excel-only labels (sheet names, a few column headers) that never
+    render into deliverable.md."""
+    from openpyxl import load_workbook
+
+    for lang, expect_sheet, unexpect_sheet in (("es", "Resumen", "Summary"), ("en", "Summary", "Resumen")):
+        out = tmp_path / f"xlsx_{lang}"
+        spec = replace(DIAGNOSTICO, lang=lang)
+        result = _run(spec, demo_intake, out)
+        assert result.status == "ok"
+        wb = load_workbook(out / "diagnostico" / "deliverable.xlsx")
+        assert expect_sheet in wb.sheetnames
+        assert unexpect_sheet not in wb.sheetnames
+        summary_sheet = wb[expect_sheet]
+        first_col = [cell.value for cell in summary_sheet["A"] if cell.value is not None]
+        expected_client_label = "Cliente" if lang == "es" else "Client"
+        assert expected_client_label in first_col
+
+
 def test_starter_end_to_end(demo_intake, tmp_path):
     out = tmp_path / "out"
     result = _run(STARTER, demo_intake, out)
     _assert_delivered(result, out, "starter", 8)
-    # the consolidated deck names every executed tool in its coverage table
+    # the consolidated deck names every executed tool in its coverage table --
+    # translated (E4), since STARTER.lang defaults to "es"
     deck = (out / "starter" / "deliverable.md").read_text(encoding="utf-8")
-    assert "Cycle-Count Program" in deck and "planilla.xlsx" in deck
+    assert "Programa de Conteo Ciclico" in deck and "planilla.xlsx" in deck
 
 
 def test_growth_end_to_end(demo_intake, tmp_path):
@@ -304,6 +437,52 @@ def test_proyecto_sourcing_end_to_end(demo_intake, tmp_path):
     out = tmp_path / "out"
     result = _run(PROYECTO_SOURCING, demo_intake, out)
     _assert_delivered(result, out, "proyecto_sourcing", 3)
+
+
+def test_liquidacion_end_to_end(demo_intake, tmp_path):
+    out = tmp_path / "out"
+    result = _run(LIQUIDACION, demo_intake, out)
+    # pricing is optional; the demo intake has ventas.csv (with price), so it runs too.
+    _assert_delivered(result, out, "liquidacion", 4)
+    liq = next(s for s in result.steps if s.tool_key == "markdown_liquidation")
+    assert liq.report.total_recovered >= 0
+
+
+def test_liquidacion_markdown_liquidation_uses_real_price_history_when_present(demo_intake, tmp_path):
+    """Regression test: markdown_liquidation's price_history_path must come from
+    the SAME ventas.csv the (separate) pricing step reads, wired via
+    PackageStep.extra_input_params. Without that wiring the step silently falls
+    back to default-markdown/salvage heuristics even when real price history is
+    right there in the intake -- a >5x difference in recovered cash on this demo
+    intake (caught by adversarial review before this test existed)."""
+    out = tmp_path / "out"
+    result = _run(LIQUIDACION, demo_intake, out)
+    liq = next(s for s in result.steps if s.tool_key == "markdown_liquidation")
+    assert liq.report.n_elasticity > 0
+    assert liq.report.total_recovered > 40_000  # elasticity-priced, not the ~9.5k salvage-only figure
+
+
+def test_liquidacion_markdown_liquidation_degrades_without_ventas_csv(demo_intake, tmp_path):
+    partial = tmp_path / "partial"
+    partial.mkdir()
+    for name in ("maestro.csv", "stock.csv"):
+        (partial / name).write_bytes((demo_intake / name).read_bytes())
+    out = tmp_path / "out"
+    result = _run(LIQUIDACION, partial, out)
+    liq = next(s for s in result.steps if s.tool_key == "markdown_liquidation")
+    assert liq.report.n_elasticity == 0  # no ventas.csv -> the documented heuristic fallback
+
+
+def test_liquidacion_pricing_step_is_optional(demo_intake, tmp_path):
+    partial = tmp_path / "partial"
+    partial.mkdir()
+    for name in ("maestro.csv", "stock.csv"):
+        (partial / name).write_bytes((demo_intake / name).read_bytes())
+    out = tmp_path / "out"
+    result = _run(LIQUIDACION, partial, out)
+    _assert_delivered(result, out, "liquidacion", 3)
+    pricing_step = next(s for s in result.steps if s.tool_key == "pricing")
+    assert pricing_step.status == "skipped"
 
 
 def test_leadership_chain_scores_come_from_liderazgo_csv(demo_intake, tmp_path):
@@ -403,3 +582,33 @@ def test_malformed_liderazgo_csv_blocks_with_an_actionable_message(demo_intake, 
     assert result.deliverables == {}
     step = next(s for s in result.steps if s.tool_key == "leadership_chain")
     assert "no tiene columna" in step.messages[0]
+
+
+# ---- E4: lang threads into the LLM narrative rewrite --------------------------
+
+class _RecordingProvider:
+    """Available provider that records every prompt and returns a fixed reply."""
+
+    def __init__(self):
+        self.prompts: list[str] = []
+
+    def available(self) -> bool:
+        return True
+
+    def complete(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return "rewritten summary"
+
+    def extract(self, prompt: str, schema: dict) -> dict:
+        return {}
+
+
+def test_package_step_narrative_uses_spec_lang(demo_intake, tmp_path):
+    rec = _RecordingProvider()
+    spec = replace(DIAGNOSTICO, lang="en")
+    result = _run(spec, demo_intake, tmp_path / "out", provider=rec)
+    assert result.status == "ok"
+    assert any("English" in p for p in rec.prompts)
+    assert not any("Spanish" in p for p in rec.prompts)
+    executed = [s for s in result.steps if s.status == "ok"]
+    assert all(s.summary == "rewritten summary" for s in executed)

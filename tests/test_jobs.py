@@ -6,7 +6,7 @@ import pytest
 from openpyxl import load_workbook
 
 from jobs import deliverables, qa
-from jobs.intake import detect_columns, normalize, prepare
+from jobs.intake import detect_columns, normalize, normalize_tracked, prepare, prepare_tracked
 from jobs.inventory_optimization import run
 from jobs.pricing import prepare_pricing
 from jobs.pricing import run as run_pricing
@@ -54,6 +54,69 @@ def test_normalize_rejects_undetectable_data():
     raw = pd.DataFrame({"foo": [1], "bar": [2]})
     with pytest.raises(ValueError):
         normalize(raw, detect_columns(raw))
+
+
+# -- normalize_tracked / IntakeQuality: plausibility signal, not just a silent drop ---
+
+
+def test_normalize_tracked_returns_same_frame_as_normalize():
+    """The tracked variant must not change the actual cleaned data - only add
+    visibility into what got dropped and why."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2024-01-01", "2024-01-03", "2024-01-08"],
+            "StockCode": ["A", "A", "A"],
+            "Quantity": [10, 5, 20],
+            "UnitPrice": [2.0, 2.0, 2.5],
+        }
+    )
+    mapping = detect_columns(raw)
+    plain = normalize(raw, mapping, period="W")
+    tracked, quality = normalize_tracked(raw, mapping, period="W")
+    pd.testing.assert_frame_equal(plain, tracked)
+    assert quality.n_raw == 3
+    assert quality.n_dropped == 0
+    assert quality.dropped_fraction == 0.0
+
+
+def test_normalize_tracked_counts_bad_dates_separately_from_bad_quantities():
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2024-01-01", "not-a-date", "2024-01-08", "2024-01-09"],
+            "StockCode": ["A", "A", "A", "A"],
+            "Quantity": [10, 5, None, -3],
+        }
+    )
+    mapping = detect_columns(raw)
+    _, quality = normalize_tracked(raw, mapping, period="W")
+    assert quality.n_raw == 4
+    assert quality.n_dropped_bad_date == 1
+    assert quality.n_dropped_bad_quantity == 1
+    assert quality.n_dropped_negative_quantity == 1
+    assert quality.n_dropped == 3
+    assert quality.dropped_fraction == pytest.approx(0.75)
+
+
+def test_normalize_tracked_clean_data_has_zero_dropped_fraction():
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2024-01-01", "2024-01-08"],
+            "StockCode": ["A", "A"],
+            "Quantity": [10, 5],
+        }
+    )
+    mapping = detect_columns(raw)
+    _, quality = normalize_tracked(raw, mapping, period="W")
+    assert quality.n_dropped == 0
+    assert quality.dropped_fraction == 0.0
+
+
+def test_prepare_tracked_matches_prepare_and_reports_clean_sample_data():
+    demand = prepare(PORTFOLIO)
+    tracked, quality = prepare_tracked(PORTFOLIO)
+    pd.testing.assert_frame_equal(demand, tracked)
+    assert quality.n_raw > 0
+    assert quality.dropped_fraction == 0.0  # the bundled sample data is clean
 
 
 def test_playbook_runs_and_passes_qa():

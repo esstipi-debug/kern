@@ -190,7 +190,7 @@ de registro.
 
 ## RB-9 · Correr un paquete comercial
 
-**Disparador:** un cliente contrató alguna de las [7 secciones de la escalera
+**Disparador:** un cliente contrató alguna de las [8 secciones de la escalera
 comercial](../paquetes/README.md) y toca producir el ciclo.
 
 1. **Pide el intake con el checklist del paquete**:

@@ -10,6 +10,7 @@ Run:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -17,9 +18,10 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 # Make `src` importable no matter where uvicorn is launched from.
@@ -27,6 +29,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import pandas as pd  # noqa: E402
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
@@ -42,14 +45,25 @@ from src.sources import CsvDemandSource  # noqa: E402
 from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
-from webapp import observability, security  # noqa: E402
+from webapp import demo_scan, observability, security  # noqa: E402
 from webapp.decisions import router as decisions_router  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
 from webapp.mcp_server import build_mcp_server  # noqa: E402
+from webapp.offers import OFFERS, get_offer  # noqa: E402
+from webapp.operator_profile import get_operator_profile  # noqa: E402
+from webapp.paquetes_page import render_index_html, render_offer_html  # noqa: E402
 
 DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
+SAMPLE_STOCK_FILE = _REPO_ROOT / "data" / "sample_stock_snapshot.csv"
+# Lead mini-reports + follow-up drafts (operator-facing; gitignored). On a cloud
+# deploy point this at the persistent volume (e.g. /data/leads) or it is ephemeral.
+LEAD_REPORTS_DIR = Path(
+    os.environ.get("LINCHPIN_LEAD_REPORTS_DIR", "").strip()
+    or (_REPO_ROOT / "deliverables" / "leads")
+)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 OPERATOR_DOCS_DIR = _REPO_ROOT / "documentation" / "operator"
+PAQUETES_DOCS_DIR = _REPO_ROOT / "documentation" / "paquetes"
 JOBS_OUTPUT_DIR = _REPO_ROOT / "webapp" / "_jobs_output"
 JOBS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 LEADS_DIR = _REPO_ROOT / "webapp" / "_leads"
@@ -158,7 +172,7 @@ app.include_router(decisions_router)
 # AI agents). Shares this process's orchestrator (avoids loading the knowledge
 # graph twice) but is gated by its OWN per-client key store, not LINCHPIN_API_KEY -
 # see webapp/mcp_auth.py. No writeback tool (e.g. odoo_replenishment) is ever
-# exposed here; see webapp/mcp_server.py for the exact 8-tool surface.
+# exposed here; see webapp/mcp_tool_specs.py for the exact exposed surface.
 _mcp_asgi_app = build_mcp_server(_get_orchestrator()).streamable_http_app()
 # A lambda, not the bare function: `_get_mcp_key_store` must be looked up by NAME
 # in this module's globals on every call (late binding), not captured by value
@@ -449,45 +463,51 @@ def _prune_old_jobs(now: float | None = None) -> None:
             continue
 
 
-@app.post("/api/jobs", dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)])
-async def api_jobs(
-    brief: str = Form(...),
-    client: str = Form("Client"),
-    job_type: str | None = Form(None),
-    params: str = Form("{}"),
-    use_sample: bool = Form(False),
-    file: UploadFile | None = File(None),
+def _safe_upload_basename(filename: str) -> str:
+    """Reduce a client-supplied filename to a bare basename, raising 400 if it
+    doesn't survive the reduction (empty, '.', '..') — never trust the
+    client-supplied filename for anything beyond this. Called from the async
+    handler BEFORE the upload-size check, so an invalid filename is rejected
+    with the same precedence as before this endpoint's asyncio.to_thread split
+    (filename validity is a 400 regardless of how large the accompanying body is).
+    """
+    raw_name = filename.replace("\\", "/")
+    safe_name = os.path.basename(raw_name)
+    if not safe_name or safe_name in (".", ".."):
+        raise HTTPException(status_code=400, detail="invalid upload filename")
+    return safe_name
+
+
+def _run_job_sync(
+    brief: str,
+    client: str,
+    job_type: str | None,
+    parsed_params: dict,
+    use_sample: bool,
+    safe_filename: str | None,
+    file_bytes: bytes | None,
 ) -> dict:
-    try:
-        parsed_params = json.loads(params) if params else {}
-        if not isinstance(parsed_params, dict):
-            raise ValueError("params must be a JSON object")
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail=f"invalid params JSON: {exc}") from exc
+    """The blocking half of /api/jobs: temp-dir staging, Orchestrator.run(), and
+    building the response dict (download-URL map + the serialized `guided`
+    outcome). Offloaded via asyncio.to_thread (see api_jobs below) so a real
+    analysis (pandas/Excel work, CPU-bound) never blocks the event loop - with
+    WEB_CONCURRENCY=1 in production, running this inline used to stall every
+    other request, including /api/health, for the run's duration.
 
-    # Sanitize the client-supplied label before it lands in report copy/headings.
-    client = re.sub(r"[^\w\s.,\-]", "", client)[:100].strip() or "Client"
-
+    ``safe_filename`` is already basename-validated by _safe_upload_basename
+    (called from the async handler) — the containment check below is
+    defense-in-depth against a future caller that skips that step, not the
+    primary guard.
+    """
     _prune_old_jobs()
-
-    import tempfile
 
     job_dir = Path(tempfile.mkdtemp(dir=JOBS_OUTPUT_DIR))
     data_path: str | None = None
-    if file is not None and file.filename:
-        # Never trust the client-supplied filename: reduce to a bare basename and
-        # pin the write inside the per-job dir (blocks path traversal / absolute writes).
-        raw_name = (file.filename or "upload").replace("\\", "/")
-        safe_name = os.path.basename(raw_name)
-        if not safe_name or safe_name in (".", ".."):
-            raise HTTPException(status_code=400, detail="invalid upload filename")
-        upload = job_dir / safe_name
+    if safe_filename and file_bytes is not None:
+        upload = job_dir / safe_filename
         if upload.resolve().parent != job_dir.resolve():
             raise HTTPException(status_code=400, detail="invalid upload filename")
-        data = await file.read(MAX_UPLOAD_BYTES + 1)
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
-        upload.write_bytes(data)
+        upload.write_bytes(file_bytes)
         data_path = str(upload)
 
     # Demo path: no upload, but the visitor asked to try the bundled sample dataset.
@@ -518,6 +538,254 @@ async def api_jobs(
         "clarifications": result.clarifications,
         "citations": result.citations,
         "kb_warnings": result.kb_warnings,
+        # The never-unprotected contract, machine-readable: ranked options, a
+        # prepared handoff, or an escalation (route_to/sla/reason) - whichever
+        # the tool produced. Orchestrator.run() always attaches one (falling
+        # back to a generic one derived from `status` when a tool supplies
+        # none), so this is never null for a real orchestrator result. Frozen
+        # dataclasses all the way down (src/guided.py) -> plain, JSON-safe dicts.
+        "guided": asdict(result.guided) if result.guided is not None else None,
+    }
+
+
+@app.post("/api/jobs", dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)])
+async def api_jobs(
+    brief: str = Form(...),
+    client: str = Form("Client"),
+    job_type: str | None = Form(None),
+    params: str = Form("{}"),
+    use_sample: bool = Form(False),
+    file: UploadFile | None = File(None),
+) -> dict:
+    try:
+        parsed_params = json.loads(params) if params else {}
+        if not isinstance(parsed_params, dict):
+            raise ValueError("params must be a JSON object")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=f"invalid params JSON: {exc}") from exc
+
+    # Sanitize the client-supplied label before it lands in report copy/headings.
+    client = re.sub(r"[^\w\s.,\-]", "", client)[:100].strip() or "Client"
+
+    # Genuine async I/O stays on the event loop; only the CPU-bound orchestrator
+    # run (+ its filesystem staging) moves to a thread below.
+    safe_filename: str | None = None
+    file_bytes: bytes | None = None
+    if file is not None and file.filename:
+        safe_filename = _safe_upload_basename(file.filename)  # 400 before the size check below
+        file_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(file_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
+
+    return await asyncio.to_thread(
+        _run_job_sync, brief, client, job_type, parsed_params, use_sample, safe_filename, file_bytes,
+    )
+
+
+MAX_LEAD_DIRS = 5000  # bounds LEAD_REPORTS_DIR when LINCHPIN_RATE_LIMIT is left at its off-by-default 0
+
+
+def _prune_excess_lead_dirs(limit: int = MAX_LEAD_DIRS) -> None:
+    """Cap LEAD_REPORTS_DIR at `limit` lead directories, evicting the oldest.
+
+    Unlike JOBS_OUTPUT_DIR, lead directories are the funnel's durable artifact
+    (an operator reviews them later) so they are deliberately NOT TTL-purged --
+    but /api/demo-scan is unauthenticated and rate limiting is OFF by default
+    (LINCHPIN_RATE_LIMIT=0), so an unbounded lead store is a trivial scripted
+    disk-exhaustion vector (a fresh email per request, forever). This is a
+    best-effort count cap, not a substitute for setting LINCHPIN_RATE_LIMIT in
+    production -- see SECURITY.md.
+    """
+    try:
+        entries = [e for e in LEAD_REPORTS_DIR.iterdir() if e.is_dir()]
+    except OSError:
+        return
+    if len(entries) <= limit:
+        return
+    entries.sort(key=lambda e: e.stat().st_mtime)
+    for stale in entries[: len(entries) - limit]:
+        shutil.rmtree(stale, ignore_errors=True)
+
+
+@app.post("/api/demo-scan", dependencies=[Depends(security.rate_limit)])
+async def api_demo_scan(
+    email: str = Form(...),
+    use_sample: bool = Form(False),
+    file: UploadFile | None = File(None),
+) -> dict:
+    """The /demo funnel: one stock CSV -> the Diagnostico's teaser numbers.
+
+    Public like /api/leads (the demo IS the lead magnet), rate-limited, and the
+    upload path enforces the same SECURITY.md controls as /api/jobs: 25 MB cap,
+    basename-only filenames pinned to an isolated per-request tempdir under
+    JOBS_OUTPUT_DIR, TTL-purged. Lead artifacts (mini-report + follow-up DRAFT,
+    never auto-sent) are written under LEAD_REPORTS_DIR only when QA passes --
+    the raw upload itself is never copied there.
+    """
+    addr = email.strip().lower()
+    if len(addr) > 254 or not EMAIL_RE.match(addr):
+        raise HTTPException(status_code=400, detail="invalid email")
+
+    _prune_old_jobs()
+
+    import tempfile
+
+    if file is not None and file.filename:
+        raw_name = (file.filename or "upload").replace("\\", "/")
+        safe_name = os.path.basename(raw_name)
+        if not safe_name or safe_name in (".", ".."):
+            raise HTTPException(status_code=400, detail="invalid upload filename")
+        scan_dir = Path(tempfile.mkdtemp(dir=JOBS_OUTPUT_DIR))
+        upload = scan_dir / safe_name
+        if upload.resolve().parent != scan_dir.resolve():
+            raise HTTPException(status_code=400, detail="invalid upload filename")
+        data = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
+        try:
+            upload.write_bytes(data)
+        except OSError as exc:
+            # A filename that's syntactically fine for os.path.basename() can
+            # still be rejected by the underlying filesystem (Windows: <>:"|?*,
+            # reserved names; any OS: an overlong path) - a 400, not a crash.
+            raise HTTPException(status_code=400, detail="invalid upload filename") from exc
+        data_path, dataset_label = upload, safe_name
+    elif use_sample:
+        data_path, dataset_label = SAMPLE_STOCK_FILE, "sample_stock_snapshot.csv"
+    else:
+        raise HTTPException(status_code=400, detail="sube un CSV de stock o marca use_sample")
+
+    try:
+        df = pd.read_csv(data_path)
+    except Exception as exc:  # pandas raises several parse/encoding error types
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
+    try:
+        result = demo_scan.run_demo_scan(df)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"columnas requeridas: {demo_scan.REQUIRED_COLUMNS_HINT} ({exc})",
+        ) from exc
+
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if result.ok:
+        # QA passed -> persist the operator's follow-up artifacts for this lead.
+        _prune_excess_lead_dirs()
+        lead_dir = LEAD_REPORTS_DIR / demo_scan.safe_lead_dirname(addr)
+        if lead_dir.resolve().parent != LEAD_REPORTS_DIR.resolve():
+            raise HTTPException(status_code=400, detail="invalid email")
+        lead_dir.mkdir(parents=True, exist_ok=True)
+        (lead_dir / "mini_report.md").write_text(
+            demo_scan.render_mini_report(result, email=addr, dataset_label=dataset_label, ts=ts),
+            encoding="utf-8",
+        )
+        (lead_dir / "followup_email_draft.md").write_text(
+            demo_scan.render_followup_email(result, email=addr, dataset_label=dataset_label),
+            encoding="utf-8",
+        )
+
+    # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
+    record = {
+        "email": addr,
+        "source": "demo-scan",
+        "ts": ts,
+        "dataset": dataset_label,
+        "status": "ok" if result.ok else "qa_failed",
+        "result": result.headline if result.ok else None,
+    }
+    with LEADS_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    if not result.ok:
+        return {"status": "qa_failed", "qa_issues": list(result.qa_issues), "dataset": dataset_label}
+    return {
+        "status": "ok",
+        "headline": result.headline,
+        "findings": list(result.findings),
+        "cta_url": demo_scan.CTA_PATH,
+        "dataset": dataset_label,
+    }
+
+
+_METRICS_LABEL_RE = re.compile(r"[^\w.\- ]")
+_METRICS_LABEL_MAX_LEN = 60
+_METRICS_MAX_BUCKETS = 25  # beyond this many distinct labels, fold the rest into "other"
+
+
+def _metrics_label(value: object) -> str:
+    """A caller-controlled field (source/status/dataset) reduced to a safe,
+    length-capped bucket label - never a non-string/unhashable value (which
+    would crash a dict-keying aggregation), and never PII-shaped text
+    surviving verbatim (an uploaded filename that happens to be an email
+    address, e.g., loses its '@' and most punctuation here), unlike a plain
+    `.get(...) or "unknown"` on unvalidated JSONL content."""
+    if not isinstance(value, str) or not value.strip():
+        return "unknown"
+    cleaned = _METRICS_LABEL_RE.sub("", value).strip()
+    return (cleaned or "unknown")[:_METRICS_LABEL_MAX_LEN]
+
+
+def _metrics_bump(bucket: dict[str, int], label: str) -> None:
+    """Increment ``bucket[label]``, folding a label beyond ``_METRICS_MAX_BUCKETS``
+    distinct keys into "other" - caller-controlled labels (an arbitrary
+    upload filename or a scripted /api/leads "source" value) must not let an
+    attacker inflate the response with unbounded, ever-growing keys."""
+    if label not in bucket and len(bucket) >= _METRICS_MAX_BUCKETS:
+        label = "other"
+    bucket[label] = bucket.get(label, 0) + 1
+
+
+@app.get("/api/metrics", dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)])
+def api_metrics() -> dict:
+    """Aggregate, PII-free counts from the lead-capture telemetry (leads.jsonl) -
+    internal tooling for the operator (E8), not for public consumption: gated
+    behind LINCHPIN_API_KEY, same as POST /api/jobs (a no-op when unset, so this
+    doesn't force auth in local/dev use). Never returns a raw email or any other
+    per-lead identifying value - only counts and small, sanitized, count-capped
+    labeled buckets (see _metrics_label/_metrics_bump) - leads.jsonl's "source"
+    and "dataset" fields are caller-controlled (a scripted /api/leads POST, or
+    an uploaded file's own name on /api/demo-scan) and must never be trusted to
+    already be safe, short, or non-PII-shaped by the time they reach this
+    endpoint. leads.jsonl is the only operational telemetry stream in the
+    codebase; there is nothing (yet) to report about commercial-package runs,
+    which aren't logged anywhere. A line that is malformed JSON, or valid JSON
+    that isn't an object, is skipped rather than crashing the request."""
+    total = 0
+    emails: set[str] = set()
+    by_source: dict[str, int] = {}
+    demo_scan_status: dict[str, int] = {}
+    demo_scan_dataset: dict[str, int] = {}
+    if LEADS_FILE.exists():
+        for line in LEADS_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            total += 1
+            email = rec.get("email")
+            if isinstance(email, str) and email.strip():
+                emails.add(email.strip().lower())
+            source = _metrics_label(rec.get("source"))
+            _metrics_bump(by_source, source)
+            if source == "demo-scan":
+                _metrics_bump(demo_scan_status, _metrics_label(rec.get("status")))
+                _metrics_bump(demo_scan_dataset, _metrics_label(rec.get("dataset")))
+    return {
+        "leads": {
+            "total_captures": total,
+            "unique_emails": len(emails),
+            "by_source": by_source,
+        },
+        "demo_scan": {
+            "total_runs": by_source.get("demo-scan", 0),
+            "by_status": demo_scan_status,
+            "by_dataset": demo_scan_dataset,
+        },
     }
 
 
@@ -600,7 +868,27 @@ def decisiones_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "decisiones" / "index.html")
 
 
+@app.get("/paquetes")
+def paquetes_index() -> HTMLResponse:
+    """The 7-package sales grid — structured data from webapp/offers.py, CTAs
+    degrade to mailto when Stripe/Calendly env vars are not configured."""
+    return HTMLResponse(render_index_html(OFFERS, get_operator_profile()))
+
+
+@app.get("/paquetes/{slug}")
+def paquetes_offer(slug: str) -> HTMLResponse:
+    """One-pager for a single package: fetches its real documentation/paquetes/*.md
+    client-side (mounted at /paquetes-docs) and renders it with marked.js — same
+    proven pattern as /operator, no server-side markdown dependency needed."""
+    offer = get_offer(slug)
+    if offer is None:
+        raise HTTPException(status_code=404, detail="unknown package")
+    return HTMLResponse(render_offer_html(offer, get_operator_profile()))
+
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # Read-only markdown source for the Operator Portfolio page (single source of truth).
 app.mount("/operator-docs", StaticFiles(directory=str(OPERATOR_DOCS_DIR)), name="operator-docs")
+# Read-only markdown source for the sales one-pagers (single source of truth).
+app.mount("/paquetes-docs", StaticFiles(directory=str(PAQUETES_DOCS_DIR)), name="paquetes-docs")
 app.mount("/jobs-output", StaticFiles(directory=str(JOBS_OUTPUT_DIR)), name="jobs-output")

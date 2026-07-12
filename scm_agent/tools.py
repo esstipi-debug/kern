@@ -80,7 +80,11 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
     if not request.data_path:
         return Prepared(status="needs_data", messages=["a demand CSV/Excel file is required"])
     try:
-        demand = intake.prepare(
+        # _tracked: also returns IntakeQuality (how much of the file survived
+        # cleaning, and why) so a heavily-filtered source file can be escalated
+        # instead of silently delivered with unqualified confidence — see
+        # scm_agent/tool_options.py's _apply_intake_quality.
+        demand, quality = intake.prepare_tracked(
             request.data_path,
             period=request.params.get("period", "W"),
             # Client-wide lead time (typically from the client profile) fills in only
@@ -89,12 +93,12 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
         )
     except (ValueError, FileNotFoundError, TypeError) as exc:
         return Prepared(status="needs_data", messages=[str(exc)])
-    return Prepared(status="ok", payload=demand)
+    return Prepared(status="ok", payload={"demand": demand, "intake_quality": quality})
 
 
 def _inventory_run(payload: object, params: dict) -> Produced:
     report = run_inventory(
-        payload,
+        payload["demand"],
         service_level=params.get("service_level", 0.95),
         holding_rate=params.get("holding_rate", 0.25),
         order_cost=params.get("order_cost", 75.0),
@@ -105,6 +109,8 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         lead_times=params.get("lead_times"),
         observed_fill_rates=params.get("observed_fill_rates"),
         target_fill_rate=params.get("target_fill_rate", 0.95),
+        intake_quality=payload["intake_quality"],
+        intake_quality_threshold=params.get("intake_quality_threshold", 0.20),
     )
     summary = (
         f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
@@ -1238,7 +1244,11 @@ def _odoo_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
 
 
 def _odoo_run(payload: object, params: dict) -> Produced:
-    report = odoo_job.run(payload, cover_periods=params.get("cover_periods", 8.0))
+    report = odoo_job.run(
+        payload,
+        cover_periods=params.get("cover_periods", 8.0),
+        financial_threshold=params.get("financial_threshold", 50_000.0),
+    )
     return Produced(report=report, summary=report.summary)
 
 
@@ -1285,6 +1295,7 @@ def _excel_replenishment_run(payload: object, params: dict) -> Produced:
         cover_periods=params.get("cover_periods", 8.0),
         order_up_to_factor=params.get("order_up_to_factor", 2.0),
         idempotency_key=params.get("idempotency_key", "excel-replenish-1"),
+        financial_threshold=params.get("financial_threshold", 50_000.0),
     )
     return Produced(report=report, summary=report.summary)
 

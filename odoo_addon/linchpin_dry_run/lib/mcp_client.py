@@ -192,7 +192,7 @@ class LinchpinMcpClient:
     def call_tool(self, tool_name: str, rows: list[dict], params: dict | None = None, client_label: str = "Odoo") -> dict:
         """Runs one MCP tool call end to end (session init + the call itself)
         and returns the tool's own parsed JSON result (status/summary/
-        report_markdown/... - see webapp/mcp_server.py's tool docstrings for
+        report_markdown/... - see webapp/mcp_tool_specs.py's descriptions for
         the exact shape each tool returns).
         """
         self._initialize()

@@ -31,6 +31,32 @@ def _norm(value: object) -> str:
 
 
 @dataclass(frozen=True)
+class IntakeQuality:
+    """How much of the raw file survived cleaning, and why the rest didn't.
+
+    ``normalize()`` silently drops unusable rows (bad date, missing quantity,
+    negative quantity) so the engine never chokes on them — but "silently" means
+    a client-facing deliverable could be built on a shrunken, unrepresentative
+    slice of the real data with no signal anywhere that it happened. This is
+    that signal, tracked alongside (not instead of) the plain cleaned frame —
+    see ``normalize_tracked``/``prepare_tracked``.
+    """
+
+    n_raw: int
+    n_dropped_bad_date: int
+    n_dropped_bad_quantity: int
+    n_dropped_negative_quantity: int
+
+    @property
+    def n_dropped(self) -> int:
+        return self.n_dropped_bad_date + self.n_dropped_bad_quantity + self.n_dropped_negative_quantity
+
+    @property
+    def dropped_fraction(self) -> float:
+        return self.n_dropped / self.n_raw if self.n_raw else 0.0
+
+
+@dataclass(frozen=True)
 class ColumnMapping:
     """Canonical-field -> source-column, plus any required fields not found."""
 
@@ -68,20 +94,19 @@ def load_table(path: str | Path) -> pd.DataFrame:
     return pd.read_csv(p)
 
 
-def normalize(
+def _normalize_core(
     df: pd.DataFrame,
     mapping: ColumnMapping,
     *,
-    period: str = "W",
-    default_lead_days: float = 14.0,
-    default_unit_cost: float = 1.0,
-) -> pd.DataFrame:
-    """
-    Normalize raw client data to the canonical schema, aggregated per period.
-
-    Returns columns: date, product_id, quantity, unit_cost, lead_time_days —
-    one row per (product_id, period). ``period`` is a pandas offset alias
-    ('W' weekly, 'D' daily, 'MS' month-start).
+    period: str,
+    default_lead_days: float,
+    default_unit_cost: float,
+) -> tuple[pd.DataFrame, IntakeQuality]:
+    """Shared engine behind ``normalize``/``normalize_tracked`` — identical
+    cleaning + aggregation, plus a per-reason count of every row dropped along
+    the way. Each row is attributed to the FIRST filter that removes it (bad
+    date -> bad quantity -> negative quantity), matching the actual left-to-right
+    elimination order below, so counts never double-count a single bad row.
     """
     if not mapping.ok:
         raise ValueError(f"could not detect required columns: {mapping.unmatched_required}")
@@ -96,8 +121,19 @@ def normalize(
     if "lead_time_days" in m:
         out["lead_time_days"] = pd.to_numeric(df[m["lead_time_days"]], errors="coerce")
 
-    out = out.dropna(subset=["date", "quantity"])
-    out = out[out["quantity"] >= 0]
+    n_raw = len(out)
+    after_date = out.dropna(subset=["date"])
+    n_dropped_bad_date = n_raw - len(after_date)
+    after_quantity = after_date.dropna(subset=["quantity"])
+    n_dropped_bad_quantity = len(after_date) - len(after_quantity)
+    out = after_quantity[after_quantity["quantity"] >= 0]
+    n_dropped_negative_quantity = len(after_quantity) - len(out)
+    quality = IntakeQuality(
+        n_raw=n_raw,
+        n_dropped_bad_date=n_dropped_bad_date,
+        n_dropped_bad_quantity=n_dropped_bad_quantity,
+        n_dropped_negative_quantity=n_dropped_negative_quantity,
+    )
     if out.empty:
         raise ValueError("no usable rows after cleaning (check date/quantity columns)")
 
@@ -119,7 +155,46 @@ def normalize(
         grouped["lead_time_days"] = grouped["lead_time_days"].fillna(default_lead_days)
 
     grouped = grouped.sort_values(["product_id", "date"]).reset_index(drop=True)
-    return grouped[["date", "product_id", "quantity", "unit_cost", "lead_time_days"]]
+    return grouped[["date", "product_id", "quantity", "unit_cost", "lead_time_days"]], quality
+
+
+def normalize(
+    df: pd.DataFrame,
+    mapping: ColumnMapping,
+    *,
+    period: str = "W",
+    default_lead_days: float = 14.0,
+    default_unit_cost: float = 1.0,
+) -> pd.DataFrame:
+    """
+    Normalize raw client data to the canonical schema, aggregated per period.
+
+    Returns columns: date, product_id, quantity, unit_cost, lead_time_days —
+    one row per (product_id, period). ``period`` is a pandas offset alias
+    ('W' weekly, 'D' daily, 'MS' month-start). Drops unusable rows (bad date,
+    missing/negative quantity) silently — use ``normalize_tracked`` for a
+    caller that needs to know how much was dropped and why.
+    """
+    frame, _quality = _normalize_core(
+        df, mapping, period=period, default_lead_days=default_lead_days, default_unit_cost=default_unit_cost
+    )
+    return frame
+
+
+def normalize_tracked(
+    df: pd.DataFrame,
+    mapping: ColumnMapping,
+    *,
+    period: str = "W",
+    default_lead_days: float = 14.0,
+    default_unit_cost: float = 1.0,
+) -> tuple[pd.DataFrame, IntakeQuality]:
+    """Same cleaning + aggregation as ``normalize``, plus the ``IntakeQuality``
+    signal (rows dropped, and why) a caller needs to decide whether the result
+    is trustworthy enough to hand back with unqualified confidence."""
+    return _normalize_core(
+        df, mapping, period=period, default_lead_days=default_lead_days, default_unit_cost=default_unit_cost
+    )
 
 
 def prepare(
@@ -137,3 +212,18 @@ def prepare(
     raw = load_table(path)
     mapping = detect_columns(raw, overrides)
     return normalize(raw, mapping, period=period, default_lead_days=default_lead_days)
+
+
+def prepare_tracked(
+    path: str | Path,
+    *,
+    overrides: dict[str, str] | None = None,
+    period: str = "W",
+    default_lead_days: float = 14.0,
+) -> tuple[pd.DataFrame, IntakeQuality]:
+    """Same as ``prepare``, plus the ``IntakeQuality`` signal for a caller that
+    needs to decide whether the result is trustworthy enough to hand back with
+    unqualified confidence — see ``normalize_tracked``."""
+    raw = load_table(path)
+    mapping = detect_columns(raw, overrides)
+    return normalize_tracked(raw, mapping, period=period, default_lead_days=default_lead_days)

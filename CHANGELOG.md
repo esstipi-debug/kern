@@ -3,6 +3,128 @@
 ## [Unreleased]
 
 ### Added
+- **`src/escalation.py` wired into `jobs/intake.py`'s plausibility checks** — `intake.py::normalize()`
+  used to silently drop unusable rows (bad dates, missing/negative quantities) with zero
+  visibility into how many or why; a report could be built on a shrunken, unrepresentative
+  slice of a client's real demand history and still ship with the same confident label as a
+  well-backed one. `IntakeQuality` (new frozen dataclass: per-reason drop counts +
+  `dropped_fraction`) is now tracked via `normalize_tracked()`/`prepare_tracked()`
+  (`normalize()`/`prepare()` stay byte-for-byte unchanged for existing callers — a shared
+  `_normalize_core()` backs both, each row attributed to the FIRST filter that would drop it
+  so nothing double-counts). `inventory_optimization` (the one real consumer of
+  `jobs/intake.py` among the 37 tools) now states a residual whenever ANY rows were dropped,
+  and escalates via the new `src/escalation.py::maybe_escalate_data_quality()` (OPERATIONAL
+  trigger, configurable `intake_quality_threshold`, default 20%) when the drop is severe
+  enough to doubt the result — the same failure class `jobs/forecast_job.py`'s MASE=inf
+  handling addresses for unvalidated SKUs, applied to the intake step. `maybe_escalate_financial`
+  was refactored (behavior-preserving) to share a `_maybe_escalate()` engine with the new
+  function. +19 tests (intake tracking, escalation gate, tool_options wiring, 2 full
+  orchestrator end-to-end runs proving a messy CSV genuinely escalates and a clean one
+  doesn't). Verified empirically post-review: multi-reason-bad rows (bad date AND negative
+  quantity in the same row) attribute correctly with no double-count, and a custom
+  `intake_quality_threshold` override shifts the escalation boundary end-to-end through a
+  real `Orchestrator.run()` call. 1831 tests green, ruff clean.
+- **`POST /api/jobs` exposes the `guided` outcome** — the orchestrator's never-unprotected
+  contract (`GuidedOutcome` from `src/guided.py`: ranked OPTIONS, a HANDOFF packet, or an
+  ESCALATED route/SLA/reason) was computed on every run but never left `webapp/app.py` — an
+  API/UI caller had no structured way to know "this needs a choice," "this needs a data
+  file," or "this is gated behind a finance approver," short of parsing free-text
+  `summary`/`clarifications` strings. Now serialized under `"guided"` via
+  `dataclasses.asdict()` (the whole `GuidedOutcome`/`ExecutionOption`/`HandoffPacket`/
+  `EscalationPacket`/`Residual` chain is frozen dataclasses with only JSON-primitive
+  fields, so this is a lossless, zero-custom-code mapping). +3 tests covering the OPTIONS,
+  HANDOFF, and ESCALATED shapes end-to-end through the real endpoint (the ESCALATED case
+  reuses the financial-threshold-escalation feature, proving the two features compose
+  correctly). An adversarial review caught a real, if narrow, gap this exposure newly makes
+  reachable: `src/guided.py::verify_guided()` — the ONE shared QA gate every tool's
+  `verify()` calls — never checked `ExecutionOption.score` for finiteness, so a non-finite
+  score (`NaN`/`Infinity`, possible from an unguarded CSV `float()` conversion) could reach
+  `webapp/app.py`'s `SafeJSONResponse` (`allow_nan=False`) and turn a would-be `200` into an
+  unhandled `500`. Verified empirically that the one cited scenario (`jobs/risk_job.py`) was
+  already caught incidentally by its own `total_emv` finiteness check — but the general gap
+  was real, since nothing guaranteed every tool's aggregate check would catch it. Fixed at
+  the shared gate (checks both `outcome.options` and the nested `outcome.escalation.options`)
+  so all 37 tools are protected uniformly, with +4 dedicated tests. 1733 tests green (full
+  suite, confirming the shared-gate change breaks no existing tool), ruff clean. Known,
+  deliberately out-of-scope follow-ups from the review: `webapp/mcp_server.py`'s parallel
+  `/mcp` response does not yet expose the same `guided` signal for MCP-only callers; and an
+  anonymous caller on a deploy with `LINCHPIN_API_KEY` unset (the shipped default) now sees
+  `guided.handoffs[].artifact`/`.data` and `guided.escalation.recommendation` verbatim —
+  confirmed harmless today (no currently-wired tool populates real content there) but worth
+  remembering if a future tool starts putting sensitive drafts in those fields.
+
+### Fixed
+- **`POST /api/jobs` no longer blocks the event loop** — the orchestrator run (CPU-bound
+  pandas/Excel/report generation, up to several seconds) used to execute synchronously
+  inside the `async def` route handler. With `WEB_CONCURRENCY=1` in production (a single
+  event loop), this stalled every other request — including `GET /api/health` — for the
+  run's duration. The blocking work (temp-dir staging + `Orchestrator.run()` + building the
+  download-URL map) is now extracted into `_run_job_sync()` and dispatched via
+  `asyncio.to_thread`, mirroring the pattern `webapp/mcp_server.py` already used. Genuine
+  async I/O (`await file.read(...)`, the upload-size check) stays on the event loop before
+  the thread dispatch. Proven with a real regression test
+  (`test_jobs_does_not_block_a_concurrent_health_check`) that fires a slow job and a health
+  check concurrently via `httpx.AsyncClient`/`ASGITransport`/`asyncio.gather` (not the
+  serializing `TestClient`) and asserts the health check completes first — manually verified
+  this test fails against the pre-fix code. An adversarial review of the refactor caught a
+  real precedence regression (an invalid filename + an oversized body now returned 413
+  instead of the original 400) — fixed by validating the filename in the async handler,
+  before the size check, via a new `_safe_upload_basename()` helper, with a dedicated
+  regression test. +3 tests total.
+
+### Added
+- **`/console` API key field (fixes a live production bug)** — `LINCHPIN_API_KEY` is set on
+  the production deploy, but the agent console (`webapp/static/prototype/index.html`) had no
+  UI field to supply `X-API-Key`, so every visitor hit a bare 401 with no explanation. Added
+  a masked API-key input (remembered in `localStorage` so an operator doesn't retype it every
+  visit), wired into the `POST /api/jobs` request header, and a clear error message
+  ("API key invalida o faltante...") instead of the empty, confusing result panel a 401
+  previously produced (FastAPI's `{"detail": "..."}` body has no `status`/`summary` field, so
+  it silently rendered a "bad" chip with a blank summary). Non-401 error responses now also
+  surface `data.detail` instead of the same blank panel. Verified live end-to-end (gate off
+  and gate on, missing/wrong/correct key, reload persistence) — caught and fixed a real bug
+  along the way where the new `oninput` handler wasn't wired into `renderVals()`, so it
+  silently never fired despite being correctly attached as a React prop.
+- **Financial-threshold escalation + unvalidated-forecast disclosure** — the two writeback
+  tools (`odoo_replenishment`, `excel_replenishment`) no longer present a restock plan as
+  freely-actionable "options" regardless of size: `src/escalation.py` gains
+  `maybe_escalate_financial()`, a pure helper that re-routes an options outcome to
+  `ESCALATED` (financial-threshold trigger, routed to a finance approver with an SLA) when
+  the restock's estimated $ value exceeds a threshold (`params.financial_threshold`,
+  default $50k) - the same ranked options survive, both inside the escalation packet AND at
+  the outcome's top level, so nothing is silently dropped from the rendered deck - they're
+  just gated behind a required sign-off. Odoo prices the restock from its own product cost
+  (already read in `prepare()`); the Excel planilla gains an optional cost column
+  (`_COST_CANDIDATES`, mirroring the existing stock/ROP/demand detection pattern) - absent,
+  the $ value stays unknown and the check never guesses. A new `escalation_banner()` helper
+  makes the escalation unmissable in every document a human actually reads, not just correct
+  in the data model: it leads the deck's findings and Coverage & handoff section (both
+  `odoo_job.py` and `excel_replenishment_job.py` build_deck), and prepends a "# STOP" warning
+  to `apply_howto.md` before the one-shot apply recipe - closing a real adversarial-review
+  finding where the escalation was structurally correct but invisible to `Orchestrator.run()`
+  callers, the rendered deck, and the exact document an operator opens before applying.
+  Separately, `jobs/forecast_job.py` no longer silently ships a SKU whose forecast accuracy
+  (MASE) couldn't be backtested (too little history) with the same confident label as a
+  well-validated one: the portfolio's unvalidated share is now stated as an explicit residual
+  (with a non-empty `risk_if_skipped`, enforced by `verify_guided`) and dampens the outcome's
+  confidence. +26 tests across `test_escalation.py`, `test_forecast_tool.py`,
+  `test_connector_odoo_tool.py`, `test_excel_replenishment.py`. Known follow-ups (not fixed
+  here - separate, pre-existing gaps, not introduced by this change): `webapp/app.py`'s
+  `POST /api/jobs` JSON response doesn't surface `guided`/escalation at all for ANY tool
+  (not just these two); `examples/apply_replenishment.py` doesn't hard-block on
+  `outcome.status == ESCALATED`, only warns in the howto document.
+- **MCP surface expanded 8 → 33 tools (`webapp/mcp_tool_specs.py`)** — every read-only
+  analysis tool is now exposed to remote MCP clients, not just the original Phase A eight:
+  cost-to-serve, landed cost, earned value, learning curve, E&O, markdown liquidation, FEFO,
+  IRA reconciliation, cycle count, returns disposition, S&OP, DDMRP, multi-echelon, DRP,
+  simulation-optimized policy, sourcing, acceptance sampling, risk, DEA, queuing, job
+  sequencing, transport-mode selection, facility location, slotting, and vehicle routing.
+  The tool surface moved out of `webapp/mcp_server.py` into a spec table
+  (`webapp/mcp_tool_specs.py` — name, job_type, title, column contract per tool; the server
+  registers each spec in a loop), so adding a tool = adding one spec. Still excluded, by
+  design: the writeback pair (`odoo_replenishment`, `excel_replenishment`) and the two
+  non-tabular tools (`leadership_chain`, `warehouse_layout`). +5 tests (spec-registered
+  bridge e2e, required-param degradation, description contract).
 - **Data-protection trust note (README + `/demo`)** — surfaced the existing safe-staging/isolation controls (per-job sandboxed directory, validated uploads, auto-purge, [SECURITY.md](SECURITY.md)) as a visible third "cross-cutting guarantee" in the README and a short note next to the file upload on the public `/demo` page, where a prospect actually hands over their data. No behavior change — documentation/copy only.
 - **`vehicle_routing` agent tool + `src/logistics/routing.py`** — new capability (36th tool),
   grounded in Ballou *Logistica/Administracion de la cadena de suministro* Cap. 7 ("Diseno de

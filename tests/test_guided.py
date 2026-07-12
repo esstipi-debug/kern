@@ -143,6 +143,54 @@ def test_confidence_out_of_range_is_flagged():
     assert any("confidence" in i.lower() for i in verify_guided(outcome))
 
 
+# ── option score finiteness — options are ExecutionOption.score-ranked, and every
+# GuidedOutcome using this contract is now serialized to JSON as an API response
+# (webapp/app.py's SafeJSONResponse uses allow_nan=False) — a non-finite score must
+# never silently reach that boundary; catch it here, at the ONE shared QA gate every
+# tool's verify() already calls, instead of relying on each tool's own bespoke check
+# to happen to catch it (e.g. jobs/risk_job.py's total-EMV check does, coincidentally
+# — but nothing guarantees every tool's aggregate check would).
+
+def test_nan_option_score_is_flagged():
+    outcome = GuidedOutcome(
+        status=OPTIONS, summary="pick one",
+        options=[ExecutionOption(label="a", summary="bad", score=float("nan"), recommended=True)],
+    )
+    issues = verify_guided(outcome)
+    assert any("score" in i.lower() and "a" in i for i in issues)
+
+
+def test_infinite_option_score_is_flagged():
+    outcome = GuidedOutcome(
+        status=OPTIONS, summary="pick one",
+        options=[ExecutionOption(label="a", summary="bad", score=float("inf"), recommended=True)],
+    )
+    assert any("score" in i.lower() for i in verify_guided(outcome))
+
+
+def test_non_finite_score_inside_an_escalation_packets_options_is_also_flagged():
+    """maybe_escalate_financial (src/escalation.py) copies the same ranked options
+    into EscalationPacket.options - that nested copy must be checked too, not just
+    the top-level GuidedOutcome.options."""
+    bad_option = ExecutionOption(label="a", summary="bad", score=float("nan"))
+    outcome = GuidedOutcome(
+        status=ESCALATED, summary="needs finance sign-off",
+        escalation=EscalationPacket(reason="over threshold", route_to="finance", options=[bad_option]),
+    )
+    assert any("score" in i.lower() for i in verify_guided(outcome))
+
+
+def test_finite_option_scores_pass_clean():
+    outcome = GuidedOutcome(
+        status=OPTIONS, summary="pick one",
+        options=[
+            ExecutionOption(label="a", summary="fine", score=3.0, recommended=True),
+            ExecutionOption(label="b", summary="fine too", score=-1.5),
+        ],
+    )
+    assert verify_guided(outcome) == []
+
+
 # ── passed_guided mirrors jobs/qa.py passed() ────────────────────────────────────
 
 def test_passed_guided_true_when_clean():

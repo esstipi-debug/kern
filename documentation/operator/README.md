@@ -38,6 +38,7 @@ Linchpin produce 10x; **el humano vende, decide y ejecuta lo irreversible**.
 | 04 | **[Runbooks](04_runbooks.md)** | Playbooks paso a paso: atender un HANDOFF, una ESCALACIÓN, aprobar un *changeset*, correr un ciclo S&OP, onboarding de un cliente |
 | 05 | **[Catálogo de Entregables](05_deliverable_catalog.md)** | Qué puedes producir y **vender**, con tu valor agregado humano en cada uno |
 | 06 | **[Mapa de Competencias](06_competency_map.md)** | Matriz de habilidades, ruta de crecimiento y la biblioteca L3 (23 libros) como base de conocimiento |
+| 07 | **[Setup de Venta](07_setup_venta.md)** | Stripe Payment Links por paquete, Calendly, y el bloque "Quién firma" en `/paquetes` |
 
 ---
 

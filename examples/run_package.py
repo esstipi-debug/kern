@@ -11,16 +11,22 @@ one consolidated deck + every tool's own deliverable.
     # full demo on synthetic data (no client files needed)
     python examples/run_package.py --package growth --demo
 
+    # bilingual deck (see src/i18n.py) -- default is the client's profile, else "es"
+    python examples/run_package.py --package diagnostico --demo --lang en
+
 Packages (scope/price: documentation/MONETIZATION_BRIEF.md + documentation/paquetes/):
 diagnostico (4 tools, sprint) | starter (8 tools, mensual) | growth (26 tools, mensual+QBR) |
 scale (35 tools, quincenal+S&OP mensual) | retainer_ejecutivo (same 35, distinta cadencia) |
-proyecto_red_almacen (6 tools, proyecto unico) | proyecto_sourcing (3 tools, proyecto unico).
+proyecto_red_almacen (6 tools, proyecto unico) | proyecto_sourcing (3 tools, proyecto unico) |
+liquidacion (3-4 tools, sprint contingente -- ver --fee-pct/--fee-floor/--measure abajo).
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
+import logging
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -29,6 +35,8 @@ import pandas as pd
 
 from scm_agent.package_specs import PACKAGES, get_package
 from scm_agent.packages import PackageSpec, missing_required_inputs, run_package
+from scm_agent.types import STATUS_OK
+from src import client_profile, contingent_fee
 
 # ---------------------------------------------------------------------------
 # Demo intake: deterministic synthetic files exercising every input slot.
@@ -458,6 +466,120 @@ def print_checklist(spec: PackageSpec) -> None:
         print(f"  - {step.tool_key} ({req}; {step.cadence})")
 
 
+_ACTUAL_SALES_PRODUCT_COLS = ("product_id", "sku", "SKU", "item", "Product", "product")
+_ACTUAL_SALES_QTY_COLS = ("quantity", "qty", "units", "units_sold", "Quantity")
+_ACTUAL_SALES_PRICE_COLS = ("price", "unit_price", "sell_price", "Price")
+
+
+def _resolve_fee_params(
+    client: str, cli_pct: float | None, cli_floor: float | None,
+    root: Path | str = client_profile.DEFAULT_CLIENTS_ROOT,
+) -> tuple[float, float]:
+    """CLI override > the client's negotiated contingent_fee_pct > the package default.
+
+    Mirrors _resolve_lang's error-handling split (an adversarial review of E4
+    caught the same anti-pattern there): an unslugifiable client label means
+    "no profile", but a CORRUPT profile.json must fail loudly, not silently
+    default the fee percentage and mask a real data-integrity problem.
+    """
+    pct = cli_pct
+    if pct is None:
+        try:
+            slug = client_profile.slugify_client_id(client)
+        except ValueError:
+            slug = None
+        if slug is not None:
+            profile = client_profile.load_profile(slug, root=root)
+            pct = profile.contingent_fee_pct if profile is not None else None
+    if pct is None:
+        pct = contingent_fee.DEFAULT_FEE_PCT
+    floor = cli_floor if cli_floor is not None else contingent_fee.DEFAULT_FLOOR
+    return pct, floor
+
+
+def _pick(df: pd.DataFrame, candidates: tuple[str, ...]) -> str | None:
+    return next((c for c in candidates if c in df.columns), None)
+
+
+def _actual_recovery_by_sku(path: str | Path) -> dict[str, float]:
+    """Post-liquidation sales CSV -> {product_id: quantity * price summed}."""
+    df = pd.read_csv(path)
+    product = _pick(df, _ACTUAL_SALES_PRODUCT_COLS)
+    qty = _pick(df, _ACTUAL_SALES_QTY_COLS)
+    price = _pick(df, _ACTUAL_SALES_PRICE_COLS)
+    missing = [n for n, c in (("product_id", product), ("quantity", qty), ("price", price)) if c is None]
+    if missing:
+        raise ValueError(
+            f"--measure CSV: no se encontraron columnas {missing} (columnas vistas: {list(df.columns)[:10]})"
+        )
+    numeric_qty = pd.to_numeric(df[qty], errors="coerce")
+    numeric_price = pd.to_numeric(df[price], errors="coerce")
+    bad_rows = df.index[numeric_qty.isna() | numeric_price.isna()]
+    if len(bad_rows):
+        # A silently-dropped row would read as "sold for $0", indistinguishable
+        # from a real zero-recovery outcome -- a garbled cell must be a loud
+        # error, not a quiet zero baked into the client's real fee.
+        bad_skus = sorted(df.loc[bad_rows, product].astype(str).unique())[:10]
+        raise ValueError(
+            f"--measure CSV: {len(bad_rows)} fila(s) con quantity/price no numerico "
+            f"(SKUs afectados: {bad_skus}); corregi el archivo antes de medir el recupero"
+        )
+    df = df.assign(_cash=numeric_qty * numeric_price)
+    return df.groupby(df[product].astype(str))["_cash"].sum().to_dict()
+
+
+def _write_liquidation_annexes(spec: PackageSpec, result, args) -> None:
+    """After a successful run that included markdown_liquidation: write the
+    pre-engagement fee estimate, and (with --measure) the real closing annex."""
+    liq_outcome = next(
+        (s for s in result.steps if s.tool_key == "markdown_liquidation" and s.status == STATUS_OK), None,
+    )
+    if liq_outcome is None:
+        if args.measure:
+            print("\n[honorarios] --measure se omite: este paquete no corrio markdown_liquidation.")
+        return
+
+    fee_pct, floor = _resolve_fee_params(args.client, args.fee_pct, args.fee_floor)
+    out_root = Path(args.out) / spec.key
+    estimate = contingent_fee.calculate_contingent_fee(
+        liq_outcome.report.total_recovered, fee_pct, floor,
+    )
+    estimate_path = out_root / "estimacion_honorarios.md"
+    estimate_path.write_text(contingent_fee.render_fee_estimate(estimate, client=args.client), encoding="utf-8")
+    print(f"\n[honorarios] estimacion escrita en {estimate_path}")
+
+    if args.measure:
+        estimated_by_sku = {line.product_id: line.recovered_value for line in liq_outcome.report.lines}
+        actual_by_sku = _actual_recovery_by_sku(args.measure)
+        measured = contingent_fee.measure_recovery(estimated_by_sku, actual_by_sku, fee_pct=fee_pct, floor=floor)
+        closing_path = out_root / "anexo_cierre.md"
+        closing_path.write_text(
+            contingent_fee.render_measurement_annex(measured, client=args.client), encoding="utf-8",
+        )
+        print(f"[medicion] anexo de cierre escrito en {closing_path} "
+              f"(real {measured.total_actual:,.0f} vs. estimado {measured.total_estimated:,.0f})")
+
+
+def _resolve_lang(
+    client: str, cli_lang: str | None, root: Path | str = client_profile.DEFAULT_CLIENTS_ROOT,
+) -> str:
+    """CLI override > the client's stored profile.lang > the package default ("es").
+
+    Mirrors scm_agent/packages.py::_load_profile's error-handling split: an
+    unslugifiable client label legitimately means "no profile" (degrade to
+    the default), but a CORRUPT profile.json is a real data-integrity problem
+    and must fail loudly, not silently default the language and mask it.
+    """
+    if cli_lang is not None:
+        return cli_lang
+    try:
+        slug = client_profile.slugify_client_id(client)
+    except ValueError:
+        return "es"
+    profile = client_profile.load_profile(slug, root=root)
+    return profile.lang if profile is not None else "es"
+
+
 def _print_result(result) -> None:
     print(f"status: {result.status}")
     print(result.summary)
@@ -492,12 +614,29 @@ def main() -> None:
     parser.add_argument("--checklist", action="store_true",
                         help="print the client intake checklist and exit")
     parser.add_argument("--strict-params", action="store_true")
+    parser.add_argument("--fee-pct", type=float, default=None,
+                        help="Sprint de Liquidacion: honorario contingente 0.10-0.20 "
+                             "(default: el perfil del cliente, o 0.15)")
+    parser.add_argument("--fee-floor", type=float, default=None,
+                        help="Sprint de Liquidacion: piso del honorario (default 1500)")
+    parser.add_argument("--measure", default=None,
+                        help="Sprint de Liquidacion: CSV de ventas post-liquidacion "
+                             "(product_id, quantity, price) -> anexo de cierre real-vs-estimado")
+    parser.add_argument("--lang", choices=("es", "en"), default=None,
+                        help="deck language (default: the client's profile, or 'es')")
+    parser.add_argument("--verbose", action="store_true",
+                        help="show INFO-level logs, incl. omitted-citation reasons "
+                             "from scm_agent.citation_gate")
     args = parser.parse_args()
+    if args.verbose:
+        logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
 
     spec = get_package(args.package)
     if args.checklist:
         print_checklist(spec)
         return
+
+    spec = dataclasses.replace(spec, lang=_resolve_lang(args.client, args.lang))
 
     params: dict = {}
     if args.params:
@@ -520,6 +659,16 @@ def main() -> None:
         strict_params=args.strict_params, prepared=date.today().isoformat(),
     )
     _print_result(result)
+    if result.status == STATUS_OK:
+        try:
+            _write_liquidation_annexes(spec, result, args)
+        except (ValueError, OSError) as exc:
+            # The package's own deliverables (per-tool decks, consolidated
+            # report) are already written by this point -- a bad --fee-pct,
+            # an out-of-range --fee-floor, or a malformed --measure CSV must
+            # not read as the whole run having failed, and must never surface
+            # as a raw traceback after "status: ok" already printed.
+            print(f"\n[honorarios] no se pudo escribir el anexo: {exc}")
 
 
 if __name__ == "__main__":

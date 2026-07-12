@@ -17,8 +17,58 @@ the prepared date is passed in, never read from the clock, so output is testable
 """
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+
+from src import i18n
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+def _visible(text: str) -> str:
+    """``text`` with Unicode format characters (category "Cf" - zero-width
+    space/joiner/word-joiner, the BOM, etc.) stripped, so a name made only of
+    invisible characters doesn't pass a truthiness/``.strip()`` check."""
+    return "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+
+
+@dataclass(frozen=True)
+class Branding:
+    """The identity a deck is presented under - who a client sees as having
+    prepared their deliverable. Defaults to Linchpin's own (``DEFAULT_BRANDING``
+    below); a partner reselling under the white-label/rev-share model (E6)
+    supplies their own via ``ClientProfile.branding`` (``src/client_profile.py``).
+    Scope: only the CONSOLIDATED package deck (``jobs/package_deliverable.py``)
+    resolves and threads a client's custom branding in today - each individual
+    tool's own deck in a package run, and the single-tool Orchestrator path,
+    keep rendering this default (see ``scm_agent/packages.py``'s own docstring).
+
+    ``logo_url``/``primary_color`` are referenced, never fetched: ``to_markdown``
+    emits a Markdown image tag a viewer resolves client-side, and ``to_excel``
+    writes the URL as plain text - this module never makes a network call
+    rendering a deck, keeping it pure/deterministic (see the module docstring)
+    and avoiding a server-side fetch of a partner-supplied URL. ``primary_color``
+    is stored for a future richer (HTML/PDF) renderer; the current Markdown/XLSX
+    decks don't apply it visually yet. A non-ASCII ``name`` renders fine in the
+    UTF-8 files ``write_all`` produces, but breaks ``to_markdown``'s own
+    ASCII/cp1252 console-print guarantee if a caller prints its return value
+    directly (no current call site does - decks are always written to file).
+    """
+
+    name: str
+    logo_url: str | None = None
+    primary_color: str | None = None  # "#RRGGBB"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not _visible(self.name).strip():
+            raise ValueError("branding.name is required")
+        if self.primary_color is not None and not _HEX_COLOR_RE.fullmatch(self.primary_color):
+            raise ValueError(f"branding.primary_color must be '#RRGGBB', got {self.primary_color!r}")
+
+
+DEFAULT_BRANDING = Branding(name="Linchpin")
 
 
 @dataclass(frozen=True)
@@ -65,19 +115,39 @@ class Deliverable:
     confidence: float | None = None
     residual: str = ""
     prepared: str = ""
+    # Structural-scaffolding language (section headers, table columns, sheet
+    # names) - see src/i18n.py. Defaults to "en" so the ~37 individual tool
+    # decks (built by jobs/<x>_job.py, which never pass this) render exactly
+    # as before; only jobs/package_deliverable.py's CONSOLIDATED deck passes
+    # its package's lang explicitly. This does NOT translate the content
+    # (summary/findings/KPI values etc.) - only the scaffolding around it;
+    # see i18n.py's module docstring for the full scope boundary.
+    lang: str = "en"
+    # Who this deck is presented as prepared by - see Branding's own docstring.
+    # Defaults to Linchpin's own identity, so every deck (all ~37 individual
+    # tool decks AND the package deck) is branded out of the box with zero
+    # caller changes. A partner's white-label identity is threaded in ONLY by
+    # jobs/package_deliverable.py (via ClientProfile.branding), mirroring
+    # exactly how ``lang`` above is scoped - the individual tool decks never
+    # pass this, by design (same E4 precedent/reasoning as ``lang``).
+    branding: Branding = DEFAULT_BRANDING
 
     def to_markdown(self) -> str:
         """Render a professional, sectioned Markdown document (ASCII-only for cp1252 safety)."""
-        out: list[str] = [f"# {self.title} - {self.client}"]
+        L = lambda key: i18n.label(key, self.lang)  # noqa: E731
+        out: list[str] = []
+        if self.branding.logo_url:
+            out += [f"![{self.branding.name}]({self.branding.logo_url})", ""]
+        out.append(f"# {self.title} - {self.client}")
         if self.prepared:
-            out.append(f"*Prepared {self.prepared}*")
+            out.append(f"*{L('hdr_prepared_field')} {self.prepared}*")
         out.append("")
 
         if self.summary:
-            out += ["## Executive summary", "", self.summary, ""]
+            out += [f"## {L('hdr_executive_summary')}", "", self.summary, ""]
 
         if self.findings:
-            out += ["## Key findings", ""]
+            out += [f"## {L('hdr_key_findings')}", ""]
             for f in self.findings:
                 line = f"- **{f.title}** - {f.detail}"
                 if f.impact:
@@ -86,50 +156,51 @@ class Deliverable:
             out.append("")
 
         if self.recommendations:
-            out += ["## Recommendations", ""]
+            out += [f"## {L('hdr_recommendations')}", ""]
             out += [f"{i}. {r}" for i, r in enumerate(self.recommendations, 1)]
             out.append("")
 
         if self.options:
-            out += ["## Options to act", "",
-                    "Ranked, executable options - the recommended default is marked:", ""]
+            out += [f"## {L('hdr_options')}", "", L("options_intro"), ""]
             for i, o in enumerate(self.options, 1):
-                flag = " _(recommended)_" if getattr(o, "recommended", False) else ""
+                flag = L("recommended_flag") if getattr(o, "recommended", False) else ""
                 out.append(f"{i}. **{o.label}**{flag} - {o.summary}")
                 if getattr(o, "action", ""):
-                    out.append(f"   - Action: {o.action}")
+                    out.append(f"   - {L('action_label')}: {o.action}")
                 if getattr(o, "tradeoffs", ""):
-                    out.append(f"   - Trade-off: {o.tradeoffs}")
+                    out.append(f"   - {L('tradeoff_label')}: {o.tradeoffs}")
             out.append("")
 
         if self.kpis:
-            out += ["## KPIs", "", "| KPI | Value | Target | Why it matters |",
+            out += [f"## {L('hdr_kpis')}", "",
+                    f"| {L('col_kpi')} | {L('col_value')} | {L('col_target')} | {L('col_why_it_matters')} |",
                     "|---|---|---|---|"]
             for k in self.kpis:
                 out.append(f"| {k.name} | {k.value} | {k.target or '-'} | {k.rationale or '-'} |")
             out.append("")
 
         if self.data_sources:
-            out += ["## Data sources", "",
-                    "Every figure above is traceable to its origin:", "",
-                    "| Metric | Source | Refresh |", "|---|---|---|"]
+            out += [f"## {L('hdr_data_sources')}", "", L("data_sources_intro"), "",
+                    f"| {L('col_metric')} | {L('col_source')} | {L('col_refresh')} |", "|---|---|---|"]
             for d in self.data_sources:
                 out.append(f"| {d.field} | {d.source} | {d.cadence or '-'} |")
             out.append("")
 
         if self.citations:
-            out += ["## Methodology & grounding", "",
-                    "Grounded in the L3 supply-chain knowledge base:", ""]
+            out += [f"## {L('hdr_methodology')}", "", L("methodology_intro"), ""]
             out += [f"- {c}" for c in self.citations]
             out.append("")
 
         # Coverage & handoff is always shown: it states confidence and the residual
         # human action, so no deliverable ever reads as "fully autonomous" when it isn't.
-        out += ["## Coverage & handoff", ""]
+        out += [f"## {L('hdr_coverage_handoff')}", ""]
         if self.confidence is not None:
-            out.append(f"Confidence: **{self.confidence * 100:.0f}%**.")
-        out.append(self.residual or "No residual actions: the analysis above is ready to use.")
+            out.append(f"{L('hdr_confidence_field')}: **{self.confidence * 100:.0f}%**.")
+        out.append(self.residual or L("no_residual"))
         out.append("")
+
+        out.append("---")
+        out.append(f"_{L('footer_prepared_by')} {self.branding.name}_")
 
         return "\n".join(out).rstrip() + "\n"
 
@@ -137,54 +208,59 @@ class Deliverable:
         """Write the deliverable as a multi-sheet workbook (Summary/KPIs/Findings/Data Sources)."""
         from openpyxl import Workbook
 
+        L = lambda key: i18n.label(key, self.lang)  # noqa: E731
         out = Path(path)
         out.parent.mkdir(parents=True, exist_ok=True)
         wb = Workbook()
 
         ws = wb.active
-        ws.title = "Summary"
-        ws.append(["Title", self.title])
-        ws.append(["Client", self.client])
+        ws.title = L("sheet_summary")
+        ws.append([L("hdr_title_field"), self.title])
+        ws.append([L("hdr_client_field"), self.client])
         if self.prepared:
-            ws.append(["Prepared", self.prepared])
+            ws.append([L("hdr_prepared_field"), self.prepared])
         if self.confidence is not None:
-            ws.append(["Confidence", f"{self.confidence * 100:.0f}%"])
+            ws.append([L("hdr_confidence_field"), f"{self.confidence * 100:.0f}%"])
+        ws.append([L("branding_name_field"), self.branding.name])
+        if self.branding.logo_url:
+            ws.append([L("branding_logo_field"), self.branding.logo_url])
         ws.append([])
-        ws.append(["Executive summary"])
+        ws.append([L("hdr_executive_summary")])
         ws.append([self.summary])
         if self.residual:
             ws.append([])
-            ws.append(["Coverage & handoff"])
+            ws.append([L("hdr_coverage_handoff")])
             ws.append([self.residual])
 
         if self.kpis:
-            k = wb.create_sheet("KPIs")
-            k.append(["KPI", "Value", "Target", "Why it matters"])
+            k = wb.create_sheet(L("sheet_kpis"))
+            k.append([L("col_kpi"), L("col_value"), L("col_target"), L("col_why_it_matters")])
             for kpi in self.kpis:
                 k.append([kpi.name, kpi.value, kpi.target, kpi.rationale])
 
         if self.findings:
-            fnd = wb.create_sheet("Findings")
-            fnd.append(["Finding", "Detail", "Impact"])
+            fnd = wb.create_sheet(L("sheet_findings"))
+            fnd.append([L("col_finding"), L("col_detail"), L("col_impact")])
             for f in self.findings:
                 fnd.append([f.title, f.detail, f.impact])
 
         if self.data_sources:
-            d = wb.create_sheet("Data Sources")
-            d.append(["Metric", "Source", "Refresh"])
+            d = wb.create_sheet(L("sheet_data_sources"))
+            d.append([L("col_metric"), L("col_source"), L("col_refresh")])
             for ds in self.data_sources:
                 d.append([ds.field, ds.source, ds.cadence])
 
         if self.options:
-            o = wb.create_sheet("Options")
-            o.append(["Option", "Recommended", "Summary", "Action", "Trade-off"])
+            o = wb.create_sheet(L("sheet_options"))
+            o.append([L("col_option"), L("col_recommended"), L("col_summary"),
+                      L("action_label"), L("tradeoff_label")])
             for opt in self.options:
-                o.append([opt.label, "yes" if getattr(opt, "recommended", False) else "",
+                o.append([opt.label, L("yes_flag") if getattr(opt, "recommended", False) else "",
                           opt.summary, getattr(opt, "action", ""), getattr(opt, "tradeoffs", "")])
 
         if self.citations:
-            c = wb.create_sheet("Citations")
-            c.append(["Source"])
+            c = wb.create_sheet(L("sheet_citations"))
+            c.append([L("col_source")])
             for cite in self.citations:
                 c.append([cite])
 

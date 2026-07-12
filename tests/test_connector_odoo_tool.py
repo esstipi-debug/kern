@@ -12,7 +12,7 @@ from jobs import odoo_job
 from scm_agent import intent, llm, tools
 from scm_agent.orchestrator import Orchestrator
 from src.connectors.odoo import InMemoryOdoo, demo_odoo
-from src.guided import OPTIONS, passed_guided
+from src.guided import ESCALATED, OPTIONS, passed_guided
 
 
 def _deep_odoo() -> InMemoryOdoo:
@@ -76,6 +76,75 @@ def test_well_stocked_odoo_holds_but_stays_protected():
     assert report.n_restock == 0
     assert report.outcome.status == OPTIONS
     assert passed_guided(report.outcome)
+    assert report.outcome.options[0].label.startswith("Hold")
+
+
+# -- financial-threshold escalation: a big-$ restock needs finance sign-off ---
+
+
+def test_default_threshold_leaves_the_small_demo_restock_as_plain_options():
+    """Demo restock is ~$916 - well under the $50k default, so the default
+    behavior (freely-actionable options) is unchanged."""
+    report = odoo_job.run(odoo_job.prepare(None, {}), cover_periods=8.0)
+
+    assert report.outcome.status == OPTIONS
+
+
+def test_restock_value_above_threshold_escalates_to_finance():
+    payload = odoo_job.prepare(None, {})
+
+    report = odoo_job.run(payload, cover_periods=8.0, financial_threshold=500.0)
+
+    assert report.outcome.status == ESCALATED
+    assert report.outcome.escalation.route_to
+    assert report.outcome.escalation.sla
+    # the ranked options are NOT lost - they travel inside the escalation packet
+    assert len(report.outcome.escalation.options) >= 2
+    assert odoo_job.verify(report) == []
+
+
+def test_escalated_deck_states_the_requirement_in_words():
+    """The data model being correct (outcome.status == ESCALATED) is not the same
+    guarantee as a human reading the ACTUAL rendered document ever seeing it -
+    the deck must say so, not just carry it silently in a field nobody reads."""
+    report = odoo_job.run(odoo_job.prepare(None, {}), cover_periods=8.0, financial_threshold=500.0)
+    assert report.outcome.status == ESCALATED  # sanity: this run is really escalated
+
+    md = odoo_job.build_deck(report, client="Acme", confidence=0.85).to_markdown()
+
+    assert "ESCALATED" in md
+    assert "finance" in md.lower()
+    assert report.outcome.escalation.sla in md
+
+
+def test_escalated_run_still_reaches_the_orchestrator_deck_with_visible_options(tmp_path):
+    """End-to-end through Orchestrator.run(): the ranked options must reach the
+    written deck's 'Options to act' section even when the outcome is escalated -
+    not just live in report.outcome.escalation.options, unread by anything."""
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback())
+
+    res = orch.run(
+        "connect odoo and plan replenishment from odoo",
+        client="Acme", out_dir=tmp_path,
+        overrides={"financial_threshold": 500.0},
+    )
+
+    assert res.status == "ok"
+    assert res.guided is not None and res.guided.status == ESCALATED
+    assert len(res.guided.options) >= 2          # visible at the top level, not just inside escalation
+    deck_path = Path(res.deliverables["deck_report"])
+    md = deck_path.read_text(encoding="utf-8")
+    assert "ESCALATED" in md
+    assert "## Options to act" in md             # the options actually rendered, not just returned
+
+
+def test_well_stocked_odoo_never_escalates_even_with_a_tiny_threshold():
+    """Nothing to restock -> no dollar value at risk -> the 'hold' outcome must
+    never be gated behind finance, no matter how low the threshold is."""
+    report = odoo_job.run(odoo_job.prepare(None, {"odoo_rpc": _deep_odoo()}), cover_periods=8.0,
+                           financial_threshold=0.01)
+
+    assert report.outcome.status == OPTIONS
     assert report.outcome.options[0].label.startswith("Hold")
 
 

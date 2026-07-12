@@ -38,7 +38,7 @@ Correcciones surgidas en verificación: Cogsy **no** parte en $199 (parte en $49
 | **B. Mixto Odoo** (hispano + anglo) | 2 retainers $2.500 + 1 proyecto Odoo/mes $3.000 (implementación módulo + política de inventario) | $8.000 |
 | **C. Escalera** (arranque) | Mes 1–3: 2 contratos Upwork (~$2–3k) + 1 retainer $2.500 → mes 4–6: convertir a 3 retainers y subir precio | $8k en mes ~6 |
 
-## Estructura de empaquetado comercial (7 secciones vendibles por separado)
+## Estructura de empaquetado comercial (8 secciones vendibles por separado)
 
 > Diseñada con un panel de 3 jueces independientes que evaluó 3 estructuras (escalera de
 > consultoría, **tiers fijos**, modular à la carte) en 5 criterios: claridad para el
@@ -59,6 +59,13 @@ Correcciones surgidas en verificación: Cogsy **no** parte en $199 (parte en $49
 | 5 | **Retainer Ejecutivo Fraccional** | $9.000–12.000/mes | Mensual + cadencia semanal + escalamiento con SLA | Mismas 35 tools de Scale — la diferencia es gobierno, no capacidad | Cliente maduro (6–18 meses en Scale), mandato de VP/COO fraccional |
 | 6 | **Proyecto de Red, Almacén y Operación** | $8.000–18.000 único | Único, 4–8 semanas | 6: `facility_location`, `transportation`, `warehouse_layout`, `slotting`, `queuing`, `scheduling` | Inflexión estructural: nueva bodega, rediseño de red/almacén |
 | 7 | **Proyecto de Sourcing y Costo de Importación** | $5.000–10.000 único | Único, recurrible trimestral/anual | 3: `sourcing`, `landed_cost`, `acceptance_sampling` | Importadores / manufactura offshore |
+| 8 | **Sprint de Liquidación** | 10–20% del cash recuperado, piso $1.500 (contingente, no fijo) | Único, sprint 2–3 semanas | 3-4: `data_quality`, `excess_obsolete`, `markdown_liquidation` (+ `pricing` opcional) | Stock muerto/excedente ya diagnosticado, decidido a liquidar, resiste pagar un fee fijo por algo no recuperado |
+
+Nota sobre la sección 8: es la única con **precio contingente** — el
+honorario se calcula sobre el cash efectivamente recuperado (nunca sobre una
+proyección), con `src/contingent_fee.py` como calculadora única. Abre la
+puerta a **Starter** para el cliente que no quiere que el stock muerto vuelva
+a acumularse.
 
 **Camino a $8.000/mes:** 2 clientes Growth ($4.000 × 2) es la ruta más corta y el mix
 recomendado por defecto. Alternativas: 4 Starter, 1 Scale + 1 cliente pequeño, o 1 solo

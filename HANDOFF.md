@@ -1,7 +1,728 @@
 # Linchpin — Session Handoff
 
-**Date:** 2026-07-08 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/l3-cohen-dai-ai-in-supply-chains` (not yet merged, commit `2f5574f`, based off `main` @ `b34f1d5`, PRs up to **#119**)
+**Date:** 2026-07-11 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e8-internal-tooling`, **PR #138 open as draft**. E1 **#125**, E2 **#128**, E3 **#129**, E4 **#131**, E5 **#134**, E6 **#136** all merged to `main` and deployed live on `https://linchpin.fly.dev`. E7 **#137** open as a draft, reviewed, awaiting merge go-ahead (legal templates — see that branch/PR; this worktree branched from E6's merge commit and does not contain E7's files, which is expected — E7 and E8 don't touch any of the same files). **#122** audit-evidence, **#123** benchmarks, and a `docs/refresh-stale-counts`-style worktree still open concurrently. Note: PR numbering has jumped before (concurrent sessions on this repo also open PRs — see `linchpin-concurrent-sessions` memory) — a gap in the sequence is not a mistake in this session.
+
 **Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
+
+> **Permanent priority rule:** if a `PIPELINE.md` file exists at the repo
+> root describing an active deal, that work takes priority over **everything
+> else in this file** — any checklist item, any Linchpin 2.0 épica, any
+> "next step" noted below. Check for it before picking up anything else.
+> No `PIPELINE.md` exists as of this entry (no active deal) — don't create
+> one speculatively; it should only exist when there's a real deal to track.
+> Suggested format when one is actually needed (keep it this loose — this
+> is a scratch file for one person's own tracking, not a deliverable):
+> ```markdown
+> # Pipeline — <cliente>
+> **Estado:** <ej. "esperando datos de intake" | "propuesta enviada" | "negociando alcance">
+> **Paquete:** <ej. Diagnostico de Arranque>
+> **Próximo paso:** <la acción concreta siguiente, con fecha si la hay>
+> **Última actualización:** <fecha>
+> ```
+> `PIPELINE.md` is real per-deal working data (like `clients/`), not a
+> template or sample to commit — gitignore it if you create one.
+
+## 2026-07-11 — E8 "tooling interno" — reviewed, fixed, PR #138 open (draft) — needs merge go-ahead
+
+**Read this section first if you're picking up cold.** E8 is code-complete,
+adversarially reviewed, and **PR #138 is open as a draft** — the last
+épica in the Linchpin 2.0 build protocol. Nothing is blocking except the
+operator's explicit "mergea el PR #138" — do not merge it proactively. If
+the operator gives that instruction: merge, deploy to Fly (this DOES touch
+`webapp/app.py`, unlike E7), verify `GET /api/metrics` responds live, clean
+up this worktree/branch — and that's the end of the Linchpin 2.0 protocol
+as originally scoped (E1 through E8). What comes after is either a real
+deal working through `PIPELINE.md` (see the rule above) or a fresh
+protocol/priority the operator defines from here.
+
+### What E8 actually was — reconstructed from breadcrumbs, not the original spec
+
+The original Linchpin 2.0 protocol text (pasted directly into an early
+chat, never committed to the repo) was lost across a context-window
+compaction partway through this multi-session build. By the time this
+session reached E8, all that remained was three breadcrumbs, found by
+grepping this file and the checklist:
+`documentation/operator/09_checklist_lanzamiento.md`'s own placeholder
+line ("E8 — ninguna, es solo tooling interno" + the "Regla permanente ...
+cuando E8 aterrice" section describing the `PIPELINE.md` rule above), and
+an old E2-era note in this file's own history mentioning
+`leads.jsonl`'s `status` field exists "so E8's `/api/metrics` can count
+demos-run vs demos-converted later." From those three fragments, this
+session reconstructed E8 as: **(1)** a `GET /api/metrics` endpoint
+aggregating the demo/lead funnel telemetry, and **(2)** formally writing
+the `PIPELINE.md`-priority rule into this file (not just the checklist),
+since this file — not the checklist — is what a fresh session actually
+reads first. If the original protocol specified something more/different
+for E8, it's lost; this is a defensible reconstruction, not a rediscovery
+of the real thing. Flagging this loudly in case a future session finds
+the original notes somewhere and E8 needs revisiting.
+
+### What was built
+
+- **`GET /api/metrics`** (`webapp/app.py`): reads `leads.jsonl` (the only
+  operational telemetry stream in the codebase — confirmed nothing else
+  logs `run_package`/commercial-package activity anywhere) and returns
+  aggregate counts only — total captures, unique emails (never the emails
+  themselves), a by-source breakdown, and for `demo-scan` specifically,
+  counts by status and by dataset. `source`/`status`/`dataset` are all
+  **caller-controlled** (a scripted `POST /api/leads`, or the filename a
+  lead's own upload happens to be named on `/api/demo-scan`) — an early
+  version of this endpoint echoed them as response keys unsanitized and
+  uncapped, which the adversarial review below caught as both a real PII
+  leak (an email-named upload landed verbatim in the response) and an
+  unbounded-growth vector. Fixed via `_metrics_label` (strips to a safe
+  character set, caps length) and `_metrics_bump` (caps distinct buckets,
+  folds overflow into `"other"`) — every bucket key in the response is now
+  provably sanitized and bounded, not just assumed safe because the two
+  current writers happen to behave. Gated behind
+  `Depends(security.require_api_key)` + `Depends(security.rate_limit)`,
+  the same pattern as `POST /api/jobs` — a no-op when `LINCHPIN_API_KEY`
+  is unset (the shipped default), so this doesn't force auth in local/dev
+  use, only once an operator deploying publicly opts in. A malformed
+  line, or a syntactically-valid-JSON line that isn't an object (e.g. a
+  hand-edited `leads.jsonl` with a bare string/number/list on one line),
+  is skipped, not a crash — an earlier version only guarded
+  `json.JSONDecodeError` and crashed (permanently, since `leads.jsonl` is
+  append-only with no rotation) on the second case. `SECURITY.md` updated
+  (the `LINCHPIN_API_KEY` table row, the "Controls enforced in code" row,
+  and the regression-tested-in paragraph) to match.
+- **The `PIPELINE.md` priority rule**, moved into this file's own
+  standing header (see above) rather than living only in the checklist,
+  which a fresh session might not read at all. The checklist's own
+  section was shortened to point back here as the source of truth, so the
+  rule text doesn't drift out of sync between two copies.
+- Test suite for `tests/test_webapp_metrics.py`, matching the house style
+  from `tests/test_webapp_security.py`/`tests/test_webapp_demo_scan.py`
+  (isolated `LEADS_FILE` fixture, API-key/rate-limit dependency tests, an
+  explicit "never a raw email in the response body" assertion, malformed-
+  AND wrong-shaped-JSON-line tolerance, label-sanitization/bucket-cap
+  coverage, and the `"unknown"` fallback branches).
+
+### Known limitation, deferred rather than fixed
+
+`GET /api/metrics` reads and parses the ENTIRE `leads.jsonl` file on every
+single call (`LEADS_FILE.read_text().splitlines()`, no caching, no
+pagination) — benchmarked at ~0.9s for 500K lines (~60 MB). Organic growth
+alone would take decades to reach that scale at a realistic demo-funnel
+capture rate, so this is low-urgency — but since `POST /api/leads` and
+`POST /api/demo-scan` are both public and unrate-limited by default
+(`LINCHPIN_RATE_LIMIT=0` ships off), a scripted flood of either endpoint
+could inflate `leads.jsonl` to that size in hours, not years, making every
+subsequent `/api/metrics` call slow (one thread-pool worker tied up per
+call, though it doesn't block the event loop directly since the handler
+is sync). Not fixed in this PR — a real fix (rotation, a cached/periodic
+aggregate instead of read-on-every-call, or enforcing
+`LINCHPIN_RATE_LIMIT` at the infra layer) is a reasonable follow-up if
+this endpoint ever sees real adversarial traffic, but is disproportionate
+scope for "internal tooling" nobody has abused yet. Setting
+`LINCHPIN_RATE_LIMIT` in production (already in the launch checklist for
+unrelated reasons) mitigates this the same way it mitigates the other
+public, unauthenticated endpoints.
+
+## 2026-07-11 — E6 "modo partner / white-label" — MERGED as PR #136, deployed live, verified — this section is now historical
+
+**Read this section first if you're picking up cold.** E6 is code-complete,
+adversarially reviewed, all 9 confirmed findings fixed or consciously
+documented, full suite green (1804 passed, 3 skipped, ruff clean), and
+**PR #136 is open as a draft**. Nothing is blocking except the operator's
+explicit "mergea el PR #136" — do not merge it proactively. If the operator
+gives that instruction: merge, then deploy to Fly
+(`~/.fly/bin/flyctl.exe deploy --app linchpin` from a detached worktree at
+`origin/main`) and verify live (check the Odoo addon page's new "For
+partners" link resolves at `https://linchpin.fly.dev/paquetes-docs/partner-odoo.md`),
+then clean up this worktree/branch, then start E7 (legal templates -
+`service-agreement-template.md`/`dpa-lite.md`, per `09_checklist_lanzamiento.md`).
+
+### What's built
+
+A `Branding` block (name/logo/color) that a client's deck can be presented
+under instead of Linchpin's own identity — `src/deliverable.py`'s new
+`Branding` dataclass + `DEFAULT_BRANDING`, a `ClientProfile.branding` field
+(`src/client_profile.py`) that round-trips through save/load like
+`warehouse_capacity`, and `run_package(branding=...)` resolution (explicit
+arg > `profile.branding` > `DEFAULT_BRANDING`) threaded into
+`jobs/package_deliverable.py`'s **consolidated package deck only** —
+deliberately scoped the same way E4 scoped `lang`, not into every deck in a
+package run. Plus `documentation/paquetes/partner-odoo.md` (the partner
+pitch: rev-share 20% vs. white-label flat fee), a new "For partners"
+section on the Odoo addon's App Store listing page, and an E6 section in
+`09_checklist_lanzamiento.md`.
+
+### The most important thing to understand before extending this: the scope gap
+
+**Only the consolidated package deck gets a partner's branding today.**
+Each individual tool's own deck within the same package run (e.g.
+`diagnostico/data_quality/deliverable.md`, `diagnostico/abc_xyz/deliverable.md`,
+...) still renders Linchpin's `DEFAULT_BRANDING`, unchanged. This was a
+deliberate scope decision (mirrors E4's `lang` precedent exactly), but the
+adversarial review caught that the FIRST draft of
+`documentation/paquetes/partner-odoo.md` overpromised this to a real
+paying partner ("el cliente nunca ve 'Linchpin' en ningun documento" — false,
+4 of 5 files in a real branded package run still say "Prepared by
+Linchpin"). **This is now corrected in the docs** (both `partner-odoo.md`
+and the operator checklist explicitly say only the consolidated deck is
+branded, and instruct the operator to check every file before handing a
+folder to a partner's client) — but the underlying PRODUCT gap is still
+open. If a real partner ever pushes back on this ("I'm paying for
+white-label and my client is seeing your name"), the fix is threading
+`branding` through `run_package()`'s per-step `tool.deliver`/`tool.deck`
+calls (`scm_agent/packages.py` lines ~304-308) — touching every one of the
+~34 `deck=` lambdas in `scm_agent/tools.py` plus their `jobs/<x>_deliverable.py`
+builders. That's real scope, not a quick fix; don't attempt it reactively
+mid-partner-onboarding, plan it as its own pass.
+
+Also still open, `primary_color` is stored on `Branding` but **not visually
+applied anywhere** — Markdown/XLSX don't render arbitrary text/cell colors
+easily, and this was explicitly deferred to "a future richer (HTML/PDF)
+renderer" (see `Branding`'s own docstring). The docs now say this
+explicitly rather than promising it works.
+
+### Review findings, adjudicated (10 raw, 9 confirmed, 1 refuted)
+
+Full detail is in the fix commit's own message
+(`git log --oneline feat/e6-partner-whitelabel` → the "fix: close review
+findings..." commit) — read that before touching `Branding.__post_init__`
+or the partner docs again, it explains *why*, not just *what changed*.
+Short version: fixed a raw-`AttributeError`-instead-of-`ValueError` crash
+on a `None` branding name, a regex bug that let a trailing newline slip
+past `#RRGGBB` validation, invisible-Unicode-only names bypassing the
+required-name check, and an Excel label collision — plus the two doc
+overclaims described above. Refuted: a claimed Markdown "image-tag hijack"
+via `branding.name` didn't reproduce against 3 real CommonMark parsers (the
+narrower "unescaped interpolation can garble formatting" observation is
+real but pre-existing across `title`/`client`/finding text too, not unique
+to this diff — left as a known limitation, not silently ignored).
+
+## 2026-07-10 — E5 "citation-grounding gate" — reviewed, fixed, PR #134 open (draft) — needs merge go-ahead
+
+**MERGED as PR #134, deployed live, verified — this section is now historical.**
+
+**Read this section first if you're picking up cold.** E5 is code-complete,
+adversarially reviewed, all confirmed findings fixed, full suite green
+(1780 passed, 3 skipped, ruff clean), and **PR #134 is open as a draft**.
+Nothing is blocking except the operator's explicit "mergea el PR #134" —
+do not merge it proactively. If the operator gives that instruction: merge,
+then deploy to Fly (`~/.fly/bin/flyctl.exe deploy --app linchpin` from a
+detached worktree at `origin/main`) and verify live via curl, then clean up
+this worktree/branch (`git worktree remove`, PowerShell force-delete
+fallback if Windows-locked, `git worktree prune`), then start E6.
+
+An earlier checkpoint of this session (mid-context-handoff) noted the
+adversarial review workflow (`wf_cb14d33f-f49` / task `w347mgmu0`) hadn't
+finished and couldn't be resumed cross-session. **It turned out to still be
+running in the background and completed on its own** — a task-completion
+notification arrived carrying the full result in a *later* session/turn, so
+it never needed re-running from scratch. Lesson for next time: a workflow
+launched via the `Workflow` tool keeps running server-side even if the
+session that launched it ends before it finishes; check for a pending
+notification before assuming a fresh review is required.
+
+### What the review found and how it was adjudicated
+
+3 dimensions (graph-algorithm correctness in `knowledge.py`; `TOOL_CONCEPTS`
+curation quality across a sample of tools; integration/degrade-semantics in
+`packages.py`), each finding independently re-verified by a second agent
+against the real code and real committed graph (not the diff description).
+12 raw findings, 7 confirmed, 5 refuted as having no live behavioral impact
+(don't "fix" these if you see them flagged again — they were already
+investigated and are working as intended):
+- `vehicle_routing`'s anchor imprecision (`route_sheet` is a manufacturing
+  routing doc, not vehicle routing) — real, but `vehicle_routing` isn't
+  wired into any `PackageSpec` yet, so `citation_gate` never runs for it in
+  production today. Worth fixing *before* it's ever added to a package.
+- `fefo`'s third anchor (`lot_size`, an EOQ/batch-sizing concept) — its
+  entire 2-hop reach is a strict subset of the other two (correct) anchors',
+  so it changes zero outcomes; redundant but harmless.
+- `sourcing`'s three anchors are about sourcing *location* (make-vs-buy),
+  not the supplier-scorecard/TOPSIS ranking the tool implements — but the
+  procurement sub-graph is tightly clustered enough that a corrected anchor
+  set produces identical keep/omit outcomes on every candidate tested.
+- `leadership_chain`'s anchors and the module's "every id verified to
+  exist" docstring claim — both independently reconfirmed correct, not
+  disputed.
+- `filter_citations` hardcodes `graph="books"` instead of reading
+  `GroundedCitation.graph` — mechanically true, but `graph="code"` citations
+  are structurally unproducible by the current `ground_citations_detailed`
+  (it never queries the code graph), so there's no reachable input that
+  diverges. A one-line forward-compat nit if `ground_citations_detailed` is
+  ever extended to surface code-graph hits — not a defect today.
+
+The 7 confirmed findings (bare-id collision risk in `knowledge.py`;
+mismatched `scheduling`/`forecast`/`cycle_count`/`risk` anchors;
+`excess_obsolete`'s citation-gate self-validation loophole; `data_quality`'s
+accepted coverage gap) are described in the fix commit's own message
+(`git log -1 feat/e5-citation-gate` or the PR description) — read that
+before touching `citation_gate.py`'s `TOOL_CONCEPTS`/`EXCLUDED_CONCEPTS`
+again, it explains *why* each anchor is what it is, not just what changed.
+
+### What's actually built
+
+The gap this closes, straight from the 2.0 protocol: "el grounding actual
+es decorativo (el deck demo cita 'Clean Technology'/MPS en data quality)."
+Confirmed this was real and is now fixed — see below.
+
+- `scm_agent/knowledge.py`: new `GroundedCitation` dataclass (`text`,
+  `node_id`, `graph`); new `ground_citations_detailed()` (same IDF-weighted
+  ranking `ground_citations()` always had, but also returns each hit's
+  resolved node id — `ground_citations()` is now a thin
+  `[c.text for c in ground_citations_detailed(...)]` wrapper, 100%
+  backward-compatible, confirmed via `plain == [c.text for c in detailed]`
+  in tests). New `node_exists(concept_id, graph="books") -> bool` and
+  `concept_distance(from_id, to_id, *, graph="books", max_hops=2) -> int |
+  None` (undirected BFS; 0 = same node; both wrap the existing
+  `_resolve_node`'s bare-id/namespace tolerance). A precomputed undirected
+  adjacency dict is built once in `__init__` from `graph["links"]`
+  (skipping low-confidence `INFERRED` edges below `_MIN_INFERRED_CONFIDENCE`,
+  mirroring `_detail()`'s existing filter) so repeated per-citation BFS
+  calls during a package run don't re-scan all ~3810 edges each time.
+- `scm_agent/citation_gate.py` (new): `TOOL_CONCEPTS` — all 37 registered
+  tool keys mapped to 1-4 hand-curated, individually-`node_exists()`-verified
+  anchor concept ids from `knowledge/scm-books/graph.json` (1953 nodes,
+  1847 of them the curated `knowledge::`-namespace taxonomy this map draws
+  from). `MIN_CITATIONS=2`, `MAX_HOPS=2`. `filter_citations(kb, tool_key,
+  candidates)` keeps a candidate only if its node exists AND is within
+  `MAX_HOPS` of at least one of the tool's anchors; if fewer than
+  `MIN_CITATIONS` survive, the WHOLE batch degrades to empty (never ships a
+  single, weakly-grounded citation). Every omission is both logged
+  (`linchpin.citation_gate`, INFO) and returned structurally in
+  `GateResult.omitted` — inspectable both ways, per the acceptance
+  criterion. A tool absent from `TOOL_CONCEPTS` (shouldn't happen — all 37
+  are covered, pinned by `test_every_registered_tool_has_a_concept_map`)
+  omits every candidate rather than skipping the check.
+- `scm_agent/packages.py::_run_step()`: the ONLY integration point,
+  deliberately — the Orchestrator's single-tool path (`webapp/app.py`'s
+  `POST /api/jobs`, the MCP server, `examples/run_agent.py`) is untouched
+  and still calls the ungated `ground_citations()`. This mirrors E4's own
+  hard-learned lesson (don't gate a live production surface nobody asked to
+  gate) and matches the protocol's explicit scope: "Intégralo en la fase QA
+  del package runner."
+- `examples/run_package.py`: new `--verbose` flag (`logging.basicConfig`)
+  so an operator running the CLI directly can actually see the omission
+  log — tested via **subprocess**, not in-process, specifically because
+  `basicConfig()` mutates the root logger process-wide and would leak into
+  every other test in the same pytest session otherwise.
+- **Verified live** (both via a direct Python run and via `--verbose`
+  through the actual CLI): on the Diagnostico demo intake, `data_quality`'s
+  ranked candidates (Master Production Schedule, **Clean Technology**,
+  ATO-MPS — the exact citations named in the protocol as the bug) are all
+  correctly omitted as >2 hops from `step_product_data_standard`, degrading
+  that step to zero citations; `abc_xyz`/`excess_obsolete`/`financial_kpis`
+  keep their genuinely on-topic citations (post-review-fix content).
+- 70+ new/changed tests across `tests/test_citation_gate.py` (unit tests
+  against a fake KnowledgeBase, per-anchor connectivity regression tests
+  from the review's confirmed findings, plus the protocol's own named
+  regression test that "Clean Technology"/MPS never cite again on the
+  Diagnostico demo), `tests/test_knowledge.py` (the new public methods +
+  the bare-id-collision disambiguation regression), and two `_NoKnowledge`
+  test stubs (`test_packages.py`, `test_run_package_cli.py`) that needed a
+  `ground_citations_detailed` stub method added or every package test broke.
+
+### A mistake worth knowing about if you touch tests/test_knowledge.py again
+
+An `Edit` call's `old_string` matched only the FIRST of two assertions at
+the tail of `test_ground_citations_does_not_surface_leadership_for_an_eoq_brief`
+(a `Read` with a truncated `limit` hid the second one), so the insertion
+landed the second assertion orphaned inside an unrelated new test function
+below it, referencing an undefined `cites` variable. Caught immediately by
+running the test file (not by review) — fixed by moving the orphaned
+assertion back to its real test. Lesson: when appending near the end of a
+file, verify the actual tail with `wc -l` + an untruncated `Read`, not a
+`Read` with a `limit` that might cut off content you need to preserve.
+
+E6 (modo partner / white-label, canal Odoo) landed next after this — see
+its own section near the top of this file. Next after E6: **E7** (legal
+templates — `service-agreement-template.md`/`dpa-lite.md`, both need a real
+lawyer's review before use with a paying client, per
+`09_checklist_lanzamiento.md`).
+
+## 2026-07-10 — E3 merged into main alongside E4 (real conflicts, resolved by hand)
+
+E3 (`feat/e3-liquidacion`, branched off `origin/main` before E4 existed) and
+E4 (`feat/e4-bilingual`, branched off `origin/main` independently, merged
+first as **#131**) both touched `examples/run_package.py`,
+`src/client_profile.py`, and `tests/test_client_profile.py` — GitHub flagged
+E3's PR as `CONFLICTING` once E4 landed. Resolved by hand (both features'
+code kept, nothing dropped): `ClientProfile` carries both
+`contingent_fee_pct` (E3) and `lang` (E4) fields; `examples/run_package.py`
+has both `--fee-pct`/`--fee-floor`/`--measure` (E3) and `--lang` (E4) CLI
+flags plus both `_resolve_fee_params()` and `_resolve_lang()` helpers.
+**While resolving, applied E4's own adversarial-review fix to
+`_resolve_fee_params()` too** — it had the exact same
+silently-swallows-a-corrupt-profile.json bug that review caught in
+`_resolve_lang()` (see the E4 section below), just not yet fixed since it
+predates that finding. Same split-try/except fix applied here for
+consistency; add a regression test for it if picking this thread back up
+(the E4-side one is `test_corrupt_profile_fails_loudly_instead_of_silently_defaulting`
+in `tests/test_run_package_lang_cli.py` — mirror it for `_resolve_fee_params`
+in `tests/test_run_package_cli.py`, not yet written as of this merge). Full
+suite + ruff re-verified green AFTER the merge, not just before it — see
+below.
+
+## 2026-07-10 — E3 "Sprint de Liquidacion" (Oferta #8, precio contingente) shipped
+
+**E1 and E2 closed out first this session:** PR #125 (E1, `/paquetes`) and PR
+#128 (E2, `/demo` funnel) both squash-merged and deployed live to
+`https://linchpin.fly.dev` — verified end-to-end in the browser/curl, not
+just "deploy succeeded" (see the prior entries below for the exact checks).
+A concurrent session's PR #126 (MCP tools 8->33) and PR #127 (doc count
+refresh) landed on `main` in between — both merged in cleanly with no
+conflicts.
+
+**E3 shipped on `feat/e3-liquidacion`:** the 8th commercial package,
+**Sprint de Liquidacion** — the only section with **contingent pricing**
+(10-20% of cash recovered, floor USD 1,500, never more than what was
+actually recovered) instead of a fixed price. New `src/contingent_fee.py`:
+`calculate_contingent_fee()` (zero recovery -> zero fee, no floor charged on
+nothing recovered; the floor raises a small recovery to a minimum worth
+invoicing, but is itself capped at `recovered_cash` so the fee can never
+exceed what came back) + `measure_recovery()` for the post-sprint closing
+annex (estimated vs. actual recovery per SKU, real fee computed on the real
+number). New `LIQUIDACION` `PackageSpec` in `scm_agent/package_specs.py`
+(`data_quality`, `excess_obsolete`, `markdown_liquidation` required + `pricing`
+optional — reuses the Diagnostico's exact intake, so a client who ran that
+first sends nothing new). `ClientProfile.contingent_fee_pct` (new field,
+0.10-0.20, deliberately excluded from `as_params()` since no engine `Tool`
+reads it — the package CLI reads it directly off the loaded profile).
+`examples/run_package.py` gained `--fee-pct`/`--fee-floor`/`--measure`: a
+successful `liquidacion` run always writes `estimacion_honorarios.md`
+("ESTA ES UNA ESTIMACION, NO UNA FACTURA"); `--measure <post_liquidacion.csv>`
+additionally writes `anexo_cierre.md` with the real recovered cash vs. the
+estimate and the real fee owed. New one-pager
+`documentation/paquetes/sprint-liquidacion.md` + price-table updates across
+`MONETIZATION_BRIEF.md`, `documentation/paquetes/README.md`,
+`webapp/offers.py` (new 8th `Offer`, appears on `/paquetes` automatically)
+and 4 operator docs whose "7 paquetes"/"7 secciones" counts were now stale
+(bumped to 8) — `webapp/paquetes_page.py`'s landing copy also updated since
+Sprint de Liquidacion breaks the "7 paquetes de alcance fijo" generalization
+(it's the one contingent-price section).
+
+**Adversarial review before merge — this one ran clean (15/15 agents, no
+session-limit outage this time) and caught one real, consequential bug plus
+8 smaller ones, all fixed:**
+1. **(HIGH, the important one) price-history intake never reached
+   `markdown_liquidation`.** The package spec ran `markdown_liquidation` on
+   just the stock CSV; the client's `ventas.csv` (price history) only fed the
+   *separate* `pricing` step, never `params['price_history_path']`. On the
+   demo intake this meant `n_elasticity=0` (silent fallback to
+   salvage/default-markdown heuristics) and `total_recovered=~9,566` instead
+   of `n_elasticity=3` and `~50,577` with real elasticity pricing — a >5x
+   difference in the exact number the contingent fee is computed from, while
+   the one-pager unconditionally promised elasticity pricing "cuando tenés
+   historial de precios." Fixed with a new generic
+   `PackageStep.extra_input_params: dict[str, str]` hook in
+   `scm_agent/packages.py` (`{param_key: slot_name}`, resolved against the
+   same intake dir, silently omitted if that slot's file is absent — same
+   optional-degrade shape as every other package mechanism) and wired
+   `{"price_history_path": "ventas"}` onto the `markdown_liquidation` step.
+   Two new regression tests pin both directions (present -> elasticity used;
+   absent -> heuristic fallback, unchanged).
+2. `measure_recovery()` had no input validation (unlike
+   `calculate_contingent_fee`) — a NaN/negative value from a garbled
+   `--measure` CSV crashed deep inside an unrelated function with a
+   misleading `recovered_cash`-named error. Fixed: validates every value in
+   both dicts up front, naming the actual dict + SKU.
+3. `_actual_recovery_by_sku` silently coerced unparseable quantity/price
+   cells (e.g. Excel's `"1,200"` thousands separator) to `$0` via
+   `pd.to_numeric(errors="coerce")` + `sum(skipna=True)` — indistinguishable
+   from "the client genuinely sold nothing." Fixed: raises listing the
+   affected SKUs instead.
+4. `--fee-pct`/`--fee-floor`/`--measure` had no error handling at the CLI
+   boundary — an out-of-range `--fee-pct` or malformed `--measure` CSV
+   crashed with a raw traceback *after* the full package run (14 files) had
+   already succeeded and printed "status: ok." Fixed: `main()` wraps the
+   annex-writing call in `try/except (ValueError, OSError)` and prints an
+   actionable message — the core deliverables were already safe either way.
+5. `ContingentFee.effective_pct`'s docstring claimed it "never exceeds
+   fee_pct" — false; the floor is capped at `recovered_cash`, not at
+   `fee_pct`, so a small recovery can push the effective rate to 75%+ on a
+   10% contract. Fixed the docstring and added a callout in
+   `render_fee_estimate`'s floor-applied branch so the client-facing text
+   says so too.
+6. `examples/run_package.py`'s own module docstring still listed 7 packages,
+   the one place in the diff's own touched file that missed the 8th. Fixed.
+
+3 other raised findings were investigated and REFUTED with evidence (not
+just dismissed) — see the workflow journal if picking this up: a
+`_resolve_fee_params` exception-swallowing claim whose cited scenario never
+actually reaches that code path (`load_profile` aborts earlier), an
+"empty-lines" `measure_recovery` claim that's the function's documented,
+tested contract rather than a bug, and a pandas-version-specific
+`groupby(NaN)` claim that didn't reproduce on the installed pandas 3.0.3.
+
+68 new/changed tests total (calculator edge cases: recupero cero, el piso,
+límites 10-20%, cap por lo recuperado, NaN/negative rejection; the
+price-history wiring regression pair; CLI helpers; package end-to-end +
+optional-pricing-skip), full suite green (1559 passed), ruff clean. Verified
+live: `--demo --measure <csv>` runs end-to-end with real elasticity pricing
+and both annexes read correctly; `/paquetes/sprint-liquidacion` renders.
+
+**E4 (entregables bilingües) already shipped independently** — see the
+section directly below; it merged first (**#131**) while this PR was still
+open, hence the merge-conflict entry at the top of this file.
+
+**Date:** 2026-07-10 · **Repo:** `esstipi-debug/linchpin` (private) · **Branch:** `feat/e4-bilingual` (E1 **#125** merged + deployed live; E2 **#128** merged + deployed live; E3 open as PR **#129** on `feat/e3-liquidacion`, not yet merged; **#122** audit-evidence, **#123** benchmarks, and a `docs/refresh-stale-counts`-style worktree still open concurrently)
+**Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
+
+## 2026-07-10 — E4 "entregables bilingues" (lang es/en) shipped
+
+**Branched off `origin/main` (not off E3),** since E4's core plumbing
+(`lang` on `PackageSpec`/`ClientProfile`, `src/i18n.py`) is orthogonal to
+E3's `LIQUIDACION` package — no conflict expected when both merge; E3's PR
+#129 is still open and unmerged, review it/merge it independently.
+
+**What shipped:** `PackageSpec.lang: str = "es"` (frozen singletons per
+package — select a client's language via `dataclasses.replace(spec,
+lang="en")`, never by mutating the shared constant) and
+`ClientProfile.lang: str = "es"` (validated `"es"`/`"en"`, excluded from
+`as_params()` — no engine `Tool` reads it). New `src/i18n.py`: `LABELS`
+(the consolidated package deck's own headers/KPI-names/coverage-handoff
+text, PLUS `src.deliverable.Deliverable`'s structural scaffolding — section
+headers, table columns, Excel sheet names) and `TOOL_TITLES` (all 37
+registered `Tool.title` values, translated). `examples/run_package.py`
+gained `--lang {es,en}` + `_resolve_lang()` (CLI override > client profile
+> "es" default).
+
+**Deliverable.lang defaults to `"en"`**, deliberately — it's the SAME class
+every individual tool's own deck uses (`jobs/<x>_job.py::build_deck()`,
+~37 files, always English), so defaulting to `"en"` there means NONE of
+those ~37 decks changed at all; only `jobs/package_deliverable.py::build()`
+(the consolidated package-level deck) passes `lang=spec.lang` explicitly.
+
+**Honest, documented scope boundary** (see `src/i18n.py`'s module
+docstring — read it before touching this again): a package deck's
+Recommendations/Coverage&handoff sections and each tool's own Finding/
+summary prose stay in engine-native English regardless of `lang` — full
+per-tool translation is a much larger effort than "two flat dictionaries."
+When an `LLMProvider` IS configured, `scm_agent.llm.narrative_rewrite`
+rewrites a step's main summary (not its `GuidedOutcome` options text) into
+the target language on the fly.
+
+**Adversarial review (2 rounds, 13-15 agents each, both ran clean) caught
+real issues both times — the second round specifically caught a production
+regression the first round's fixes hadn't introduced yet:**
+
+1. **(HIGH, live-product regression, would NOT have been caught by tests
+   alone)** `Orchestrator`'s LLM narrative rewrite — refactored into the new
+   shared `scm_agent.llm.narrative_rewrite()` — initially defaulted `lang`
+   to `"es"`, which would have silently added an explicit "answer in
+   Spanish" instruction to `webapp/app.py`'s `POST /api/jobs`, the live MCP
+   server (`webapp/mcp_server.py`), and `examples/run_agent.py` — none of
+   which pass `lang` and none of which asked for translation — for any of
+   them with a real `ANTHROPIC_API_KEY` configured (the fly.dev deploy has
+   one). Fixed: `narrative_rewrite(..., lang: str | None = None)` — `None`
+   omits the language clause entirely, reproducing the EXACT pre-E4 prompt
+   wording byte-for-byte (pinned in tests). Only the commercial-package
+   runner passes a real language (`spec.lang`, defaulting to `"es"`) — that
+   path is brand-new behavior with no prior callers to protect.
+2. **(HIGH)** `i18n.py`'s own docstring claimed "headers" were covered, but
+   `src/deliverable.py`'s `to_markdown()`/`to_excel()` hardcoded every
+   section header in English with no `lang` anywhere — verified empirically,
+   an "es" deck had Spanish content under literal `## Executive summary`.
+   Fixed properly (not just re-documented): `Deliverable` gained `lang`
+   (default `"en"`, see above) and ~35 new `i18n.LABELS` entries for every
+   header/column/sheet name; `package_deliverable.py` passes it through.
+3. **(HIGH, documented not fixed)** Recommendations and Coverage&handoff
+   lines unconditionally glue a translated tool title to raw-English
+   `GuidedOutcome` text (`scm_agent/tool_options.py`) — same scale problem
+   as the per-tool Finding prose, now explicitly named in `i18n.py`'s
+   docstring instead of being an undisclosed third leak.
+4. **(LOW)** `TOOL_TITLES["whatif"]["es"]` was an awkward calque
+   ("Que-Pasa-Si") — fixed to keep "What-If" as a loanword, matching
+   `sourcing`/`ddmrp`/`slotting` etc. already doing the same in this dict.
+5. **(MEDIUM)** `_resolve_lang()` silently swallowed a corrupt
+   `profile.json` (defaulting to `"es"` with zero diagnostic) instead of
+   failing loudly like every other profile reader in this codebase
+   (`orchestrator.py`, `packages.py::_load_profile`). Fixed: only an
+   unslugifiable client label degrades to the default now; a genuinely
+   corrupt file raises.
+
+44 new/changed tests (bilingual snapshot test for the consolidated
+`.md` AND `.xlsx`, exact-prompt-wording pins for the Orchestrator
+regression fix, i18n dict-completeness checks, corrupt-profile handling),
+full suite green (1660 passed), ruff clean. Verified live: ran
+`DIAGNOSTICO` end-to-end in both languages and read the full consolidated
+deck — headers/KPIs/data-sources/coverage all correctly bilingual, the
+documented English carve-outs (findings prose, recommendations, guided-
+outcome text) present exactly where expected and nowhere else.
+
+**Still pending from E4's own spec, deliberately NOT done in this PR ("PR
+aparte" per the 2.0 protocol):** migrate the 7 existing one-pagers
+(`documentation/paquetes/*.md`) off informal "tu"-conjugated verbs (not
+literal Rioplatense "vos" — verified none of the 7 files actually use
+`tenés`/`querés`/`podés` forms, they use `tú`-conjugated `tienes`/`quieres`/
+`puedes`, ~36 instances across 7 files) toward the impersonal/imperative
+phrasing this session's own new copy (E1-E3) already established, without
+touching any price or scope. This is a subjective brand-voice call on
+already-shipped, client-facing sales copy — flag it for the next session
+rather than guessing unilaterally.
+
+**Next: E5 (compuerta de citation-grounding).** `scm_agent/citation_gate.py`
+resolving each candidate L3 citation against `knowledge/scm-books/graph.json`
+(≤2 hops from the tool's static concept map), degrading a section to
+"sin citas" below 2 resolved citations rather than inventing a replacement.
+Full acceptance criteria in the Linchpin 2.0 protocol.
+
+---
+
+## 2026-07-10 — E2 "funnel demo -> mini-reporte" shipped (same session as E1's merge + deploy)
+
+**E1 closed out first:** PR #125 squash-merged to `main` (`00e6ba6`) and
+deployed to Fly the same day — `https://linchpin.fly.dev/paquetes` verified
+live (all 7 one-pager slugs 200, landing CTAs present, 14 CTAs degrading to
+`mailto:` until the operator sets `CALENDLY_URL`/`STRIPE_LINK_*`, see
+`documentation/operator/07_setup_venta.md`).
+
+**E2 shipped on `feat/e2-demo-funnel`:** `/demo` no longer returns reorder
+points — it now sells what the Diagnostico opens with. New
+`webapp/demo_scan.py`: ONE stock CSV (`product_id, on_hand, daily_demand`
+[+ `unit_cost`, `days_since_last_sale`] — same shape as the acquisition
+playbook's free-scan template on the unmerged
+`feat/client-acquisition-playbook` branch, deliberately compatible) →
+reuses the three existing jobs' `prepare/run/verify` AS-IS (no delivery
+phase): `excess_obsolete` directly, `abc_xyz` via one annualized demand
+point per SKU (XYZ is degenerate on a snapshot — documented in the module;
+only the ABC axis is quoted), `financial_kpis` via run-rate COGS + on-hand
+inventory value (DIO/turns follow). New `POST /api/demo-scan` (public like
+`/api/leads`, rate-limited, upload controls copied from `/api/jobs` —
+25 MB/413, basename pinning, isolated tempdir, TTL purge — SECURITY.md
+threat model now lists it as the 4th untrusted input). Headline: "$X
+atrapados en stock muerto/excedente · A-items concentran Y% · DIO Z dias" +
+3 hallazgos ejecutivos + CTA a `/paquetes/diagnostico-arranque`. The QA
+gate holds at scan level: any of the three `verify()`s failing (or a
+non-finite headline number, e.g. all-zero demand → DIO=inf, or missing
+`unit_cost` → zero inventory value) ⇒ `qa_failed`, NO artifact written,
+honest message in the UI. On QA pass it persists per lead:
+`deliverables/leads/<safe-email>/mini_report.md` + `followup_email_draft.md`
+(a DRAFT — mail is NEVER sent automatically) — email → dirname via
+`safe_lead_dirname()` (traversal-proof, `_at_` for `@`, plus a short hash
+of the full normalized email so two distinct addresses can never collide
+into the same directory — an earlier version without the hash suffix DID
+collide, e.g. `user+test@gmail.com` vs `user_test@gmail.com`; caught by an
+adversarial review before merge), root overridable via
+`LINCHPIN_LEAD_REPORTS_DIR` (on Fly set it to a path on the `/data`
+volume or artifacts die with each deploy). A telemetry line is ALWAYS
+appended to `leads.jsonl` (`source: "demo-scan"`, dataset, status,
+headline-or-null) — deliberately including `qa_failed` runs, so E8's
+`/api/metrics` can count demos-run vs demos-converted later. New tracked
+sample `data/sample_stock_snapshot.csv` (8 SKUs, same rows as the free-scan
+demo) + downloadable `webapp/static/demo/plantilla_stock.csv`; the demo UI
+was rewritten in neutral Spanish (no voseo, per the 2.0 protocol's copy
+rule) around the money headline + CTA. The raw upload is never copied into
+the lead folder (privacy: derived teaser persists, raw data purges).
+
+**Adversarial review before merge, worth reading if the pattern repeats:**
+the review workflow's verify phase hit the session's usage-limit reset
+mid-run — 11 of 13 agents errored (`session limit · resets 1:50pm`), so the
+tool's own `confirmed: []` output was NOT a clean pass, it was an infra
+outage (same failure shape as [[workflow-verify-phase-failure-not-clean]]
+from a prior session). Manually adjudicated all 9 raw findings instead of
+trusting the empty list. 2 were real code bugs, fixed: (1) `safe_lead_dirname`
+collisions (above); (2) attacker-controlled `product_id` landing unescaped
+in the persisted `.md` artifacts (`webapp/demo_scan.py::_md_safe` now
+collapses it to a conservative charset before embedding — the repo's
+existing `defuse_formula()` only covers CSV/Excel formula injection, not
+markdown/HTML). 1 was a real HIGH-severity gap addressed with a bounded
+mitigation, not a full fix: `/api/demo-scan` is unauthenticated with
+`LINCHPIN_RATE_LIMIT` off by default, so an unbounded lead store is a
+scriptable disk-exhaustion vector on the small Fly volume — added
+`_prune_excess_lead_dirs()` (oldest-evicted count cap, `MAX_LEAD_DIRS=5000`)
+as defense-in-depth and flagged setting the real rate limit in the launch
+checklist; a full fix (auth, CAPTCHA, per-IP quota) was judged
+disproportionate for a deliberately-public lead magnet. The remaining 6
+were test-coverage gaps, not code bugs — closed by adding tests, not by
+changing behavior (rate-limit regression test, re-scan-same-email overwrite
+semantics, non-CSV upload stays a 400 not a 500, duplicate-`product_id`
+row-summing pinned to match every other job's existing behavior, the
+`LINCHPIN_LEAD_REPORTS_DIR` env var exercised via a real subprocess import
+instead of only via monkeypatch, and an explicit assertion that the raw
+upload is never copied into the lead folder).
+
+**Next: E3 (Oferta #8 "Sprint de Liquidación").** `markdown_liquidation`
+exists as a registered tool (PR #124) but belongs to no package. E3 = new
+`LIQUIDACION` PackageSpec (data_quality, excess_obsolete,
+markdown_liquidation, pricing opcional) + `src/contingent_fee.py` (10-20%
+of recovered cash, floor default $1,500) + `--measure` mode + one-pager
+`documentation/paquetes/sprint-liquidacion.md`. Full acceptance criteria in
+the Linchpin 2.0 protocol.
+
+## 2026-07-09 — Linchpin 2.0 kicks off: E1 "superficie de venta" shipped (`/paquetes`)
+
+Started the "Linchpin 2.0" build protocol (documented in the operator's own
+prompt, not committed to the repo) — its governing principle: 1.x already
+solved the *offer* (35 tools, 7 QA-gated commercial packages, a live MCP
+server); 2.0 is explicitly **not** more engine capability, it's "the version
+that can charge". Its own Paso 0 says detect state from the code, not notes,
+and do exactly one épica per session, in order E1->E8. Verified in code (not
+assumed): none of E1-E8 existed yet (`webapp/app.py` had no `/paquetes` route,
+`scm_agent/package_specs.py` had no `LIQUIDACION`, no `src/i18n.py`, no
+`scm_agent/citation_gate.py`, `client_profile` had no `branding`, no
+`documentation/legal/`, no `PIPELINE.md`/`GET /api/metrics`) — so E1 was next.
+
+**E1 shipped, branch `feat/e1-sales-surface` (this session, not yet merged/PR'd
+at the point of this handoff edit — see the PR link once opened).** New:
+`webapp/offers.py` (the 7 official packages' price/cadence/scope, extracted
+once from `documentation/MONETIZATION_BRIEF.md`'s pricing table — never
+duplicated as prose; per-offer `STRIPE_LINK_<SLUG>` env var naming +
+`CALENDLY_URL` CTA resolution, both degrading cleanly to a `mailto:` with a
+prefilled subject when unset), `webapp/operator_profile.py` (the "Quien firma"
+block, `OPERATOR_*` env vars, `TODO-OPERADOR` placeholders), `webapp/
+paquetes_page.py` (server-rendered `/paquetes` grid + `/paquetes/{slug}`
+one-pager shell that fetches the real `documentation/paquetes/*.md` client-side
+via the already-vendored `marked.min.js` — same proven pattern as the existing
+`/operator` page, no new Python markdown dependency). Landing `/` got a compact
+marketing hero (1-line value prop, 3 guarantee chips: QA-gate / L3 citations /
+safe writeback, CTAs to `/demo` and `/paquetes`) prepended above the existing
+interactive dashboard — the dashboard itself was NOT removed or relocated.
+New doc `documentation/operator/07_setup_venta.md` (exact Stripe Payment Link
++ Calendly + `fly secrets set` steps, wired into the `/operator` portfolio
+nav) and `documentation/operator/09_checklist_lanzamiento.md` (the running
+human-action checklist the closing protocol asks for).
+
+**A real bug caught by actually running the page in a browser, not just
+tests:** the first version of `paquetes_page.py`'s inline `<script>` had a
+stray extra `}` from an f-string brace-escaping slip (`}}).then(...)` where
+only one line of that block was genuinely an f-string needing `{{`/`}}`
+escaping — every other line was a plain string where doubled braces stay
+literal). This produced syntactically invalid JS that silently broke the
+`fetch().then()` chain; the one-pager page loaded fine but stayed stuck on
+"Cargando..." forever, with no console error surfaced by the substring-only
+tests that existed at that point. Caught by loading `/paquetes/starter-
+fundamentos` in the browser preview and inspecting `#content.innerHTML`
+directly. Fixed, and a regression test now asserts brace-balance in the
+generated script (`test_offer_page_inline_script_has_balanced_braces`).
+Independent `code-reviewer` agent pass on the full diff (not just this bug)
+also caught two real, if low-severity, gaps: a test-isolation leak
+(`OPERATOR_NAME`/`OPERATOR_BIO` weren't cleared in one route-level "degrades
+without env vars" test, making it order-dependent on ambient shell state) and
+a missing URL-scheme allowlist (`CALENDLY_URL`/`STRIPE_LINK_*`/
+`OPERATOR_LINKEDIN`/`OPERATOR_PHOTO_URL` were escaped against HTML injection
+but not against a `javascript:` URI landing in a rendered `href`/`src`) — both
+fixed (`webapp/offers.py::is_safe_external_url` /
+`is_safe_same_origin_or_external_url`), both re-reviewed clean. Full suite
+1457 passed (16 skipped), `ruff check src tests examples webapp` clean.
+Verified live in the browser preview at both desktop and mobile (375px)
+widths, `/`, `/paquetes`, `/paquetes/starter-fundamentos`, and the new `/
+operator#venta` doc — no console errors.
+
+**Concurrent-session note (verified before starting, not assumed):** this
+session found the working tree already on an unrelated, unpushed branch
+(`feat/client-acquisition-playbook`, 3 commits ahead of main, a lead-magnet +
+acquisition-playbook effort — not part of Linchpin 2.0) plus two other
+in-progress worktrees for open PRs **#122** (audit-evidence engine core) and
+**#123** (old-method-vs-Linchpin benchmarks). E1 was deliberately branched
+fresh off `origin/main` into a new sibling worktree (`.wt-e1-sales`) rather
+than building on top of that dirty branch, per the standing rule in §5 below
+about concurrent sessions — none of that other work was touched.
+
+**Next: E2 (funnel demo -> mini-reporte).** The current `/demo` already
+captures an email lead (`POST /api/leads` -> `leads.jsonl`) but returns
+reorder points, not a sales-oriented result. E2 asks for it to run
+`excess_obsolete` + `abc_xyz` + `financial_kpis` instead and show a dollar
+figure of trapped/excess stock + 3 executive findings + a CTA straight to
+`/paquetes/diagnostico-arranque`, persisting a mini-report + a draft
+follow-up email per lead under `deliverables/leads/<email>/` (never send mail
+automatically). See the full acceptance criteria in the Linchpin 2.0 protocol
+if picking this up fresh.
 
 ## 2026-07-08 — L3 graph gets a 25th source (AI-in-SC, 10/20 chapters, $0.11) + a researched next-level roadmap
 

@@ -32,9 +32,11 @@ from pathlib import Path
 import pandas as pd
 
 from src import client_profile
+from src.deliverable import DEFAULT_BRANDING, Branding
 
+from . import citation_gate
 from .knowledge import KnowledgeBase
-from .llm import LLMProvider, get_provider
+from .llm import LLMProvider, get_provider, narrative_rewrite
 from .registry import ToolRegistry
 from .tools import build_default_registry
 from .types import (
@@ -83,6 +85,14 @@ class PackageStep:
     # calling tool.prepare. None => the file is passed through as data_path,
     # unchanged, the normal way.
     params_from_input: Callable[[Path], dict] | None = None
+    # For a tool that optionally reads a SECOND file from a DIFFERENT intake
+    # slot as a params path (e.g. markdown_liquidation's own data_path is the
+    # "stock" slot, but it also optionally reads params["price_history_path"]
+    # from the "ventas" slot): {param_key: slot_name}. Resolved against the
+    # SAME intake dir as the step's own input, before tool.prepare runs; the
+    # param is simply omitted (never a hard error) when that slot's file is
+    # absent, matching every other optional-input degrade in this runner.
+    extra_input_params: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -100,6 +110,14 @@ class PackageSpec:
     audience: str
     inputs: tuple[PackageInput, ...]
     steps: tuple[PackageStep, ...]
+    # Deck language (see src/i18n.py) - "title"/"price"/"cadence"/"audience"
+    # above are brand/commercial copy and stay as-is regardless; this controls
+    # the deck's own generated labels/headers and each step's tool title.
+    # PackageSpec instances are shared module-level singletons (one per
+    # package, reused for every client) - select a client's language with
+    # ``dataclasses.replace(spec, lang="en")`` before calling run_package,
+    # never by mutating the shared constant.
+    lang: str = "es"
 
     def input_for(self, slot: str) -> PackageInput:
         match = next((i for i in self.inputs if i.slot == slot), None)
@@ -199,10 +217,18 @@ def run_package(
     clients_root: Path | str | None = client_profile.DEFAULT_CLIENTS_ROOT,
     strict_params: bool = False,
     prepared: str = "",
+    branding: Branding | None = None,
 ) -> PackageResult:
     """Run every step of ``spec`` and, only if all executed steps pass QA, write
     the per-tool deliverables plus the consolidated package deck under
-    ``out_dir/<spec.key>``."""
+    ``out_dir/<spec.key>``.
+
+    ``branding`` (see ``src/deliverable.py``) resolves explicit call-site
+    override > the loaded client's ``profile.branding`` > Linchpin's own
+    default - only the CONSOLIDATED package deck carries it (mirrors how
+    ``lang`` is scoped; each individual tool's own deck under this package
+    keeps rendering Linchpin's default, unchanged - a deliberate, narrow
+    integration point, not every deck in the bundle)."""
     registry = registry if registry is not None else build_default_registry()
     provider = provider if provider is not None else get_provider()
     knowledge = knowledge if knowledge is not None else KnowledgeBase()
@@ -282,7 +308,10 @@ def run_package(
             files.update({f"deck_{name}": path for name, path in deck_files.items()})
         written.update({f"{outcome.tool_key}_{name}": str(path) for name, path in files.items()})
 
-    deck = package_deliverable.build(spec, outcomes, client=client, prepared=prepared)
+    resolved_branding = branding
+    if resolved_branding is None:
+        resolved_branding = profile.branding if profile is not None and profile.branding is not None else DEFAULT_BRANDING
+    deck = package_deliverable.build(spec, outcomes, client=client, prepared=prepared, branding=resolved_branding)
     package_files = deck.write_all(out_root)
     written.update({f"paquete_{name}": str(path) for name, path in package_files.items()})
 
@@ -320,6 +349,12 @@ def _run_step(
                            messages=(str(exc),))
     base["source"] = source
 
+    for param_key, slot_name in step.extra_input_params.items():
+        slot = spec.input_for(slot_name)
+        candidate = (intake / slot.filename) if intake is not None else None
+        if candidate is not None and candidate.exists():
+            params = {**params, param_key: str(candidate)}
+
     if step.params_from_input is not None and data_path is not None:
         try:
             params = {**params, **step.params_from_input(Path(data_path))}
@@ -348,8 +383,24 @@ def _run_step(
         return StepOutcome(**base, status=STATUS_QA_FAILED, qa_issues=tuple(qa_issues))
 
     guided = tool.options(produced.report) if tool.options else None
-    citations = tuple(knowledge.ground_citations(tool.intent_keywords, request.brief, limit=3))
-    summary = produced.summary + (f" [{note}]" if note else "")
+    # Citation-grounding gate (E5): a ranked candidate must resolve to a real
+    # graph node within citation_gate.MAX_HOPS of this tool's own anchor
+    # concepts before it reaches the deck - see scm_agent/citation_gate.py.
+    # This is a content filter, not a QA veto: a step with zero surviving
+    # citations still ships (its methodology section just has none), the
+    # package's only hard veto stays the data QA gate above.
+    candidates = knowledge.ground_citations_detailed(tool.intent_keywords, request.brief, limit=3)
+    gate_result = citation_gate.filter_citations(knowledge, step.tool_key, candidates)
+    citations = gate_result.kept
+    # Optional LLM polish in the package's target language (src/i18n.py's
+    # static labels cover the deterministic path around this; this is the
+    # only place a package step's own narrative gets translated - see
+    # scm_agent.llm.narrative_rewrite). Skipped without a provider, matching
+    # the Orchestrator's equivalent single-tool behavior exactly.
+    rewritten = narrative_rewrite(
+        provider, produced.summary, tool.title, lang=spec.lang, citations=list(citations),
+    )
+    summary = rewritten + (f" [{note}]" if note else "")
     return StepOutcome(**base, status=STATUS_OK, summary=summary,
                        report=produced.report, guided=guided, citations=citations)
 

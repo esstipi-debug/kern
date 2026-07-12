@@ -60,10 +60,42 @@
   tr[data-row]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   tr[data-row]:hover{background:rgba(79,209,197,.045)}
   [role="tab"][aria-selected="false"]:hover{color:var(--txt-2)}
+
+  /* ---- marketing hero (E1: sales surface) ---- */
+  .hero-bar{border-bottom:1px solid var(--line);background:rgba(8,11,17,.55)}
+  .hero-bar .in{max-width:1180px;margin:0 auto;padding:22px 24px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+  .hero-bar h1{font-size:15.5px;font-weight:700;color:var(--txt);margin:0;letter-spacing:-.01em}
+  .hero-bar h1 span{color:var(--accent-bright)}
+  .hero-guarantees{display:flex;gap:8px;flex-wrap:wrap}
+  .hero-chip{display:inline-flex;align-items:center;gap:6px;font:600 11.5px/1 var(--mono);letter-spacing:.02em;color:var(--txt-2);background:var(--panel);border:1px solid var(--line-2);border-radius:999px;padding:6px 11px}
+  .hero-chip i{width:6px;height:6px;border-radius:50%;background:var(--accent-bright);flex:none}
+  .hero-cta{display:flex;gap:9px;flex-wrap:wrap}
+  .hero-cta a{display:inline-flex;align-items:center;gap:7px;font:600 13px/1 var(--sans);padding:9px 16px;border-radius:999px;text-decoration:none;transition:transform .15s,box-shadow .15s}
+  .hero-cta .primary{color:var(--ink);background:linear-gradient(150deg,var(--accent-bright),var(--accent));box-shadow:0 10px 24px -12px rgba(79,209,197,.6)}
+  .hero-cta .primary:hover{transform:translateY(-1px)}
+  .hero-cta .ghost{color:var(--txt);border:1px solid var(--line-2)}
+  .hero-cta .ghost:hover{border-color:var(--accent-bd);background:var(--accent-soft)}
+  @media (max-width:760px){.hero-bar .in{flex-direction:column;align-items:flex-start}}
 </style>
 </head>
 <body>
 <div id="sr-status" aria-live="polite" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0"></div>
+
+<div class="hero-bar">
+  <div class="in">
+    <h1>Linchpin produce en segundos lo que tomaba horas de analisis <span>&mdash; vos vendes y decides.</span></h1>
+    <div class="hero-guarantees">
+      <span class="hero-chip"><i></i>QA-gate: falla &rArr; no hay entregable</span>
+      <span class="hero-chip"><i></i>Citado contra 25 fuentes SCM</span>
+      <span class="hero-chip"><i></i>Writeback seguro: dry-run + rollback</span>
+    </div>
+    <div class="hero-cta">
+      <a class="primary" href="/demo">Probar el demo &rarr;</a>
+      <a class="ghost" href="/paquetes">Ver paquetes</a>
+    </div>
+  </div>
+</div>
+
 <a href="/console" aria-label="Open the agent console"
    style="position:fixed;bottom:18px;right:18px;z-index:50;display:flex;align-items:center;gap:7px;font:600 12.5px/1 'JetBrains Mono',ui-monospace,monospace;color:var(--ink);text-decoration:none;background:linear-gradient(150deg,var(--accent-bright),var(--accent));padding:11px 16px;border-radius:999px;box-shadow:0 10px 26px -10px rgba(79,209,197,.6);transition:transform .15s,box-shadow .15s"
    onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 16px 34px -10px rgba(79,209,197,.85)'"

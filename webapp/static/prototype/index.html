@@ -186,6 +186,9 @@
       <label class="scm-label" for="file">Datos <span class="scm-hint">(CSV/Excel — inventory / pricing)</span></label>
       <input id="file" type="file" class="scm-file" accept=".csv,.xlsx,.xls">
 
+      <label class="scm-label" for="apikey">API key <span class="scm-hint">(solo si este deploy la requiere)</span></label>
+      <input id="apikey" type="password" class="scm-input" placeholder="X-API-Key" autocomplete="off" spellcheck="false" oninput="{{ saveApiKey }}">
+
       <div class="scm-examples">
         <span class="scm-hint">Ejemplos:</span>
         <button class="scm-chip" data-brief="set up reorder points and safety stock" onclick="{{ fillExample }}">Reorder points</button>
@@ -256,12 +259,31 @@
 </x-dc>
 
 <script data-dc-script>
+const API_KEY_STORAGE_KEY = "linchpin_console_api_key";
+
 class Component extends DCLogic {
   constructor(props) {
     super(props);
     this.state = { phase: "idle", result: null, error: null };
     this.run = this.run.bind(this);
     this.fillExample = this.fillExample.bind(this);
+    this.saveApiKey = this.saveApiKey.bind(this);
+  }
+
+  componentDidMount() {
+    // Remembered locally so an operator doesn't retype the key every visit -
+    // this console is a single-user admin tool, not a shared/multi-tenant surface.
+    let saved = "";
+    try { saved = localStorage.getItem(API_KEY_STORAGE_KEY) || ""; } catch {}
+    if (saved) {
+      const el = document.getElementById("apikey");
+      if (el) el.value = saved;
+    }
+  }
+
+  saveApiKey(e) {
+    const v = (e && e.currentTarget && e.currentTarget.value) || "";
+    try { localStorage.setItem(API_KEY_STORAGE_KEY, v); } catch {}
   }
 
   fillExample(e) {
@@ -313,10 +335,25 @@ class Component extends DCLogic {
     const file = fileEl && fileEl.files && fileEl.files[0];
     if (file) fd.append("file", file);
 
+    const apiKey = (val("apikey") || "").trim();
+    const headers = apiKey ? { "X-API-Key": apiKey } : undefined;
+
     this.setState({ phase: "running", result: null, error: null });
     try {
-      const r = await fetch("/api/jobs", { method: "POST", body: fd });
-      const data = await r.json();
+      const r = await fetch("/api/jobs", { method: "POST", body: fd, headers });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        // FastAPI's HTTPException body is {"detail": "..."} - no `status`/`summary`
+        // field, so letting this fall into process()/the result panel used to
+        // render a "bad" chip with an EMPTY summary. A missing/invalid API key is
+        // the common case in production (LINCHPIN_API_KEY set, this field blank
+        // or wrong) - say so plainly instead.
+        const msg = r.status === 401
+          ? "API key invalida o faltante. Ingresala arriba y volve a intentar."
+          : (data && data.detail) || ("Error " + r.status + " del servidor.");
+        this.setState({ phase: "idle", result: null, error: msg });
+        return;
+      }
       this.setState({ phase: "done", result: this.process(data), error: null });
     } catch (err) {
       this.setState({ phase: "idle", result: null, error: "Fallo de red: " + ((err && err.message) || err) });
@@ -329,7 +366,8 @@ class Component extends DCLogic {
       isIdle: this.state.phase === "idle",
       isRunning: this.state.phase === "running",
       run: this.run,
-      fillExample: this.fillExample
+      fillExample: this.fillExample,
+      saveApiKey: this.saveApiKey
     };
   }
 }

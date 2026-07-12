@@ -9,7 +9,10 @@ Each builder reads only its report's public fields and returns a protected optio
 """
 from __future__ import annotations
 
-from src.guided import ExecutionOption, GuidedOutcome, as_options
+from dataclasses import replace
+
+from src.escalation import maybe_escalate_data_quality
+from src.guided import ExecutionOption, GuidedOutcome, Residual, as_options
 
 # Each item is (label, summary, action, tradeoffs); the first item is the recommended default.
 _Item = tuple[str, str, str, str]
@@ -27,6 +30,44 @@ def _ranked(summary: str, items: list[_Item], *, confidence: float = 0.85) -> Gu
     return as_options(summary, options, confidence=confidence)
 
 
+def _intake_quality_detail(quality: object) -> str:
+    """'X bad date, Y missing quantity, Z negative quantity' - only the reasons
+    that actually dropped a row, in the order intake.py's IntakeQuality tracks them."""
+    parts = []
+    if quality.n_dropped_bad_date:
+        parts.append(f"{quality.n_dropped_bad_date} bad date")
+    if quality.n_dropped_bad_quantity:
+        parts.append(f"{quality.n_dropped_bad_quantity} missing quantity")
+    if quality.n_dropped_negative_quantity:
+        parts.append(f"{quality.n_dropped_negative_quantity} negative quantity")
+    return ", ".join(parts)
+
+
+def _apply_intake_quality(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
+    """Shared by every intake-fed tool's options builder: state a residual
+    whenever ANY source rows were dropped during intake (transparency first,
+    regardless of severity), and escalate (src.escalation.maybe_escalate_data_quality)
+    when the dropped share exceeds the report's own intake_quality_threshold - the
+    never-unprotected contract applied to the intake step, the same failure class
+    jobs/forecast_job.py's MASE=inf handling addresses for unvalidated SKUs.
+
+    A no-op when the report carries no ``intake_quality`` (untracked intake path,
+    e.g. examples/run_inventory_job.py) or intake dropped nothing.
+    """
+    quality = getattr(report, "intake_quality", None)
+    if quality is None or quality.n_dropped == 0:
+        return outcome
+    detail = _intake_quality_detail(quality)
+    residual = Residual(
+        description=f"{quality.n_dropped} of {quality.n_raw} source row(s) were dropped during intake ({detail}).",
+        risk_if_skipped="the analysis is built on a smaller, possibly unrepresentative slice of the real "
+                        "demand history - verify the source file's date/quantity columns.",
+    )
+    outcome = replace(outcome, residuals=[*outcome.residuals, residual])
+    threshold = getattr(report, "intake_quality_threshold", 0.20)
+    return maybe_escalate_data_quality(outcome, quality.dropped_fraction, threshold, detail=detail)
+
+
 def inventory_options(report: object) -> GuidedOutcome:
     sl = report.params.get("service_level", 0.95)
     n_review = sum(1 for r in report.recommendations if getattr(r, "status", "ok") != "ok")
@@ -41,7 +82,8 @@ def inventory_options(report: object) -> GuidedOutcome:
          f"Trim or defer the {n_review} flagged SKU(s) to release budget.",
          "defer / review the flagged low-value SKUs", "less capital, some service risk"),
     ]
-    return _ranked(f"Inventory policy for {len(report.recommendations)} SKU(s): choose how to act.", items)
+    outcome = _ranked(f"Inventory policy for {len(report.recommendations)} SKU(s): choose how to act.", items)
+    return _apply_intake_quality(outcome, report)
 
 
 def pricing_options(report: object) -> GuidedOutcome:

@@ -6,9 +6,10 @@ system-wide invariant that every registered tool wires a Tool.options hook.
 
 from types import SimpleNamespace as NS
 
+from jobs.intake import IntakeQuality
 from scm_agent import tool_options as to
 from scm_agent import tools
-from src.guided import OPTIONS, passed_guided, recommend
+from src.guided import ESCALATED, OPTIONS, passed_guided, recommend
 
 
 def _assert_ranked(outcome, *, min_options=2):
@@ -31,10 +32,61 @@ def test_every_registered_tool_delivers_ranked_options():
 # -- per-tool builders --------------------------------------------------------
 
 
+def _quality(n_raw: int, *, bad_date: int = 0, bad_qty: int = 0, negative_qty: int = 0) -> IntakeQuality:
+    return IntakeQuality(
+        n_raw=n_raw, n_dropped_bad_date=bad_date, n_dropped_bad_quantity=bad_qty,
+        n_dropped_negative_quantity=negative_qty,
+    )
+
+
+def _inventory_report(*, intake_quality=None, intake_quality_threshold=0.20):
+    return NS(
+        params={"service_level": 0.95},
+        recommendations=[NS(status="ok"), NS(status="review")], final_investment=120_000.0,
+        intake_quality=intake_quality, intake_quality_threshold=intake_quality_threshold,
+    )
+
+
 def test_inventory_options():
-    r = NS(params={"service_level": 0.95},
-           recommendations=[NS(status="ok"), NS(status="review")], final_investment=120_000.0)
-    _assert_ranked(to.inventory_options(r), min_options=3)
+    _assert_ranked(to.inventory_options(_inventory_report()), min_options=3)
+
+
+# -- intake plausibility: a residual (always, once anything was dropped) or an
+# escalation (dropped_fraction over threshold) - src/escalation.py wired in --
+
+
+def test_inventory_options_clean_intake_has_no_residual():
+    out = to.inventory_options(_inventory_report(intake_quality=_quality(100)))
+    assert out.status == OPTIONS
+    assert out.residuals == []
+
+
+def test_inventory_options_moderate_drop_attaches_residual_but_does_not_escalate():
+    out = to.inventory_options(_inventory_report(intake_quality=_quality(100, bad_date=5)))
+    assert out.status == OPTIONS
+    assert len(out.residuals) == 1
+    assert "intake" in out.residuals[0].description.lower()
+    assert out.residuals[0].risk_if_skipped.strip()  # never a bare/empty risk statement
+
+
+def test_inventory_options_severe_drop_escalates_and_keeps_options_ranked():
+    out = to.inventory_options(_inventory_report(intake_quality=_quality(100, bad_date=30, negative_qty=20)))
+    assert out.status == ESCALATED
+    assert out.escalation.route_to and out.escalation.sla
+    assert len(out.escalation.options) >= 3
+    assert out.options == out.escalation.options  # visible at the top level too
+
+
+def test_inventory_options_respects_a_custom_threshold():
+    # 10% dropped: escalates under a tight 5% threshold, stays plain options at 20%.
+    tight = to.inventory_options(
+        _inventory_report(intake_quality=_quality(100, bad_date=10), intake_quality_threshold=0.05)
+    )
+    loose = to.inventory_options(
+        _inventory_report(intake_quality=_quality(100, bad_date=10), intake_quality_threshold=0.20)
+    )
+    assert tight.status == ESCALATED
+    assert loose.status == OPTIONS
 
 
 def test_pricing_options_recommends_apply_when_actionable():

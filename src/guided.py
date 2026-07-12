@@ -13,6 +13,7 @@ dataclasses + pure functions, with a `verify_guided` QA gate shaped exactly like
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field, replace
 
 # Who must perform a residual step.
@@ -131,6 +132,19 @@ def verify_guided(outcome: GuidedOutcome) -> list[str]:
     for r in outcome.residuals:
         if not r.risk_if_skipped.strip():
             issues.append(f"residual '{r.description}' lacks a stated risk_if_skipped")
+
+    # Every GuidedOutcome is now serialized to JSON as an API response
+    # (webapp/app.py's SafeJSONResponse rejects NaN/Infinity per allow_nan=False) - a
+    # non-finite score must never silently reach that boundary. Checked at this ONE
+    # shared gate (every tool's verify() calls this) rather than relying on each
+    # tool's own bespoke aggregate check to happen to catch it. Escalation packets
+    # carry their own (possibly identical) options list - checked too.
+    all_options = list(outcome.options)
+    if outcome.escalation is not None:
+        all_options += outcome.escalation.options
+    for o in all_options:
+        if not math.isfinite(o.score):
+            issues.append(f"option '{o.label}' has a non-finite score: {o.score}")
 
     return issues
 

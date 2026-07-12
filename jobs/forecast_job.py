@@ -30,7 +30,7 @@ from src.export import write_summary_csv
 from src.forecast_metrics import compute_metrics
 from src.forecastability import segment
 from src.forecasting import forecast_demand
-from src.guided import GuidedOutcome, recommend, verify_guided
+from src.guided import GuidedOutcome, Residual, recommend, verify_guided
 
 _PRODUCT_COLS = ("sku", "product_id", "product", "item", "SKU", "Product", "material")
 _QTY_COLS = ("demand", "quantity", "qty", "units", "sales", "Demand", "Quantity", "value")
@@ -126,9 +126,17 @@ def _backtest(series: list[float], method: str, *, holdout_fraction: float, min_
 
 
 def _policy_outcome(
-    *, base_summary: str, beating_share: float, regular_share: float, lumpy_share: float
+    *, base_summary: str, beating_share: float, regular_share: float, lumpy_share: float,
+    n_unvalidated: int = 0, n_skus: int = 0,
 ) -> GuidedOutcome:
-    """Rank three forecasting policies (accuracy vs ops simplicity vs manual effort)."""
+    """Rank three forecasting policies (accuracy vs ops simplicity vs manual effort).
+
+    ``n_unvalidated`` is the count of SKUs too short to backtest (MASE=inf) - too
+    little history to know whether the chosen method actually beats naive. Instead
+    of silently shipping the same confident label as a well-backed forecast, this
+    states the gap as a residual (never a bare/empty risk) and dampens confidence
+    proportionally to how much of the portfolio could not be validated.
+    """
     scenarios = [
         Scenario(
             "auto_per_segment",
@@ -157,7 +165,18 @@ def _policy_outcome(
         Objective("ops_simplicity", weight=1.0, maximize=True),
         Objective("manual_effort", weight=0.5),  # cost-like -> minimized
     ]
-    return decide(base_summary, scenarios, objectives, confidence=0.8)
+    confidence = 0.8
+    residuals: list[Residual] | None = None
+    if n_unvalidated > 0:
+        unvalidated_share = n_unvalidated / n_skus if n_skus else 0.0
+        confidence = round(confidence * (1.0 - 0.5 * unvalidated_share), 2)
+        residuals = [Residual(
+            description=f"{n_unvalidated} of {n_skus} SKU(s) had too little demand history to "
+                        "backtest - their forecast accuracy (MASE) could not be validated.",
+            risk_if_skipped="the chosen method for these SKUs is unverified; a poor fit could go "
+                            "unnoticed until a stockout or an excess-stock event exposes it.",
+        )]
+    return decide(base_summary, scenarios, objectives, confidence=confidence, residuals=residuals)
 
 
 def run(
@@ -205,6 +224,8 @@ def run(
         beating_share=(n_beating / n if n else 0.0),
         regular_share=regular_share,
         lumpy_share=lumpy_share,
+        n_unvalidated=n - len(finite_mases),
+        n_skus=n,
     )
     recommended = recommend(outcome.options).label
     summary = f"{base_summary} Recommended policy: {recommended}."

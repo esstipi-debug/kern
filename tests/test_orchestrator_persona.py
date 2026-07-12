@@ -67,3 +67,43 @@ def test_orchestrator_for_carries_each_mode_persona():
 
 def test_default_orchestrator_has_no_persona():
     assert Orchestrator(registry=build_default_registry()).persona == ""
+
+
+def test_default_orchestrator_lang_omits_the_language_clause(tmp_path):
+    # None (unset) is the safe default: it must reproduce this class's exact
+    # pre-E4 prompt wording for its existing production callers (webapp,
+    # MCP server, examples/run_agent.py), none of which pass a language --
+    # adding one unconditionally would silently change their live output
+    # language whenever a real LLM provider is configured.
+    assert Orchestrator(registry=build_default_registry()).lang is None
+
+    rec = _RecordingProvider()
+    orch = Orchestrator(registry=build_default_registry(), provider=rec)
+    orch.run("evaluate leadership", overrides={"scores": "3 2 3 1 1"},
+             job_type="leadership_chain", out_dir=tmp_path)
+    instruction = _narrative_prompt(rec).split("\n\n")[0]
+    assert "Spanish" not in instruction and "English" not in instruction
+    assert instruction == (
+        "Rewrite this Leadership (CHAIN) result summary in one clear, "
+        "client-ready sentence. Keep every number. Return only the sentence."
+    )
+
+
+def test_lang_en_is_injected_into_the_narrative_prompt(tmp_path):
+    rec = _RecordingProvider()
+    orch = Orchestrator(registry=build_default_registry(), provider=rec, lang="en")
+
+    orch.run("evaluate leadership", overrides={"scores": "3 2 3 1 1"},
+             job_type="leadership_chain", out_dir=tmp_path)
+
+    assert "English" in _narrative_prompt(rec)
+
+
+def test_lang_es_is_injected_into_the_narrative_prompt(tmp_path):
+    rec = _RecordingProvider()
+    orch = Orchestrator(registry=build_default_registry(), provider=rec, lang="es")
+
+    orch.run("evaluate leadership", overrides={"scores": "3 2 3 1 1"},
+             job_type="leadership_chain", out_dir=tmp_path)
+
+    assert "Spanish" in _narrative_prompt(rec)

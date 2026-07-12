@@ -19,6 +19,10 @@ three diverge, fix them together in the same PR.
 - **proyecto_red_almacen** - one-off network/warehouse/ops project, 6 tools.
 - **proyecto_sourcing** - one-off sourcing/landed-cost project, 3 tools
   (reuses growth's supplier/import/quality intake slots).
+- **liquidacion** - Sprint de Liquidacion: one-off, contingent-fee pricing
+  (10-20% of cash recovered, see ``src/contingent_fee.py``) instead of a
+  fixed price, 3-4 tools (data_quality, excess_obsolete, markdown_liquidation,
+  optional pricing).
 
 Steps whose input file is a real burden to produce every month are optional:
 they run when the file is present and are recorded as skipped (never blocking)
@@ -424,10 +428,36 @@ PROYECTO_SOURCING = PackageSpec(
     ),
 )
 
+LIQUIDACION = PackageSpec(
+    key="liquidacion",
+    title="Sprint de Liquidacion",
+    price="10-20% del cash recuperado (piso USD 1,500) - ver src/contingent_fee.py",
+    cadence="sprint unico, 2-3 semanas",
+    audience="stock muerto/excedente ya diagnosticado, decidido a liquidar - no quiere pagar "
+             "un fee fijo por algo que todavia no se recupero",
+    # Same intake as the Diagnostico (maestro + stock) plus the optional price
+    # history the Growth package's pricing step already knows how to read -
+    # a client who ran the Diagnostico first sends nothing new.
+    inputs=(_MAESTRO, _STOCK, _VENTAS_GROWTH),
+    steps=(
+        PackageStep("data_quality", "maestro", cadence="sprint"),
+        PackageStep("excess_obsolete", "stock", cadence="sprint"),
+        # price_history_path comes from the SAME ventas.csv the (separate,
+        # optional) pricing step below reads - when present, markdown_liquidation
+        # fits a real elasticity curve instead of falling back to the default-
+        # markdown/salvage heuristics (a >5x difference in recovered cash on the
+        # demo intake - this is not cosmetic, the contingent fee is computed
+        # directly off total_recovered).
+        PackageStep("markdown_liquidation", "stock", cadence="sprint",
+                    extra_input_params={"price_history_path": "ventas"}),
+        PackageStep("pricing", "ventas", required=False, cadence="sprint (si hay historial de precios)"),
+    ),
+)
+
 PACKAGES: dict[str, PackageSpec] = {
     spec.key: spec for spec in (
         DIAGNOSTICO, STARTER, GROWTH, SCALE, RETAINER_EJECUTIVO,
-        PROYECTO_RED_ALMACEN, PROYECTO_SOURCING,
+        PROYECTO_RED_ALMACEN, PROYECTO_SOURCING, LIQUIDACION,
     )
 }
 
