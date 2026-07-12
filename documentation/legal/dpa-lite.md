@@ -40,9 +40,15 @@ Si el archivo que el Cliente suministra contiene datos personales
 identificables (por ejemplo, nombre de cliente final en una línea de venta
 minorista), es responsabilidad del Cliente anonimizarlos o excluirlos antes
 de compartirlos — Linchpin no está diseñado para procesar datos personales
-como parte de su flujo normal, y su propio código interno se abstiene
-deliberadamente de leer o mostrar PII cuando aparece en un dataset (ver la
-nota correspondiente en `CLAUDE.md`).
+como parte de su flujo normal. Esto es una convención de diseño y una
+instrucción interna para quien mantiene el código (ver la nota
+correspondiente en `CLAUDE.md`, bajo "Gotchas"), **no un filtro técnico
+automático que detecte y bloquee PII** — el motor no tiene lógica de
+detección/redacción de datos personales; simplemente lee columnas
+específicas por nombre (SKU, fecha, cantidad, costo, etc.), lo que de
+hecho reduce el riesgo de leer una columna inesperada, pero no es una
+garantía de que un dataset con PII mezclada en esas mismas columnas quede
+protegido.
 
 `[REVISAR CON ABOGADO: si el Cliente opera en una jurisdicción con
 regulación de datos personales (GDPR, LGPD, leyes locales de protección de
@@ -63,7 +69,7 @@ usan para entrenar modelos de terceros.
 
 | Subencargado | Qué recibe | Cuándo |
 |---|---|---|
-| **Anthropic (API de Claude)** | Un resumen ya calculado de los resultados del análisis (texto narrativo + títulos de herramienta + citas bibliográficas) — **no las filas crudas del CSV del Cliente** — para pulir la redacción o traducir al idioma del paquete. | Solo si el operador configuró `ANTHROPIC_API_KEY`. Sin esa clave, el paquete se genera igual con plantillas de texto determinísticas, sin ningún llamado externo (ver `scm_agent/llm.py`). |
+| **Anthropic (API de Claude)** | Tres usos distintos, ninguno recibe jamás las filas crudas del CSV del Cliente: **(1)** un resumen ya calculado de los resultados del análisis (texto narrativo + título de herramienta + citas bibliográficas), para pulir la redacción o traducir al idioma del paquete (`scm_agent/llm.py::narrative_rewrite`); **(2)** si el enrutamiento automático por palabras clave no encuentra una única herramienta clara para el pedido, el **texto libre del brief que escribió el Cliente/operador** (no datos del CSV), para elegir qué herramienta correr (`scm_agent/intent.py`) — esto es parte del flujo normal, no un caso de error; **(3)** para la herramienta de diagnóstico de liderazgo (`leadership_chain`) específicamente, el **texto libre del brief**, para puntuar las dimensiones del modelo CHAIN (`scm_agent/tools.py`). | Solo si el operador configuró `ANTHROPIC_API_KEY`. Sin esa clave, ninguno de los tres usos se activa — el paquete se genera igual con plantillas de texto determinísticas, sin ningún llamado externo. |
 | **Fly.io (hosting)** | La infraestructura donde corre la aplicación web y donde se almacenan temporalmente los entregables generados, si el operador la usa para alojar Linchpin. | Siempre que el despliegue use `linchpin.fly.dev` u otra infraestructura de Fly.io — no aplica a una instalación autoalojada por el Cliente/operador. |
 
 `[REVISAR CON ABOGADO: verificar los términos de tratamiento de datos de
@@ -82,28 +88,50 @@ particular de Linchpin]`
 - **No hay ninguna afirmación de cifrado en reposo** en este documento
   porque no está implementado ni verificado en el código — no prometer lo
   que no se puede confirmar.
-- El acceso a la API (`POST /api/jobs`, etc.) puede protegerse con una
+- El acceso al panel web (`POST /api/jobs`, etc.) puede protegerse con una
   clave (`LINCHPIN_API_KEY`) y con límite de tasa
   (`LINCHPIN_RATE_LIMIT`) — **ambos son opcionales y están apagados por
   defecto** salvo que el operador los configure explícitamente (ver
   `SECURITY.md`). `[REVISAR CON ABOGADO: si el Cliente exige estos
   controles activos como condición del contrato, dejarlo explícito acá y
   verificar que estén configurados antes de firmar, no asumirlo]`.
+- El canal de *writeback* Odoo descrito en la Sección 1 **no** usa
+  `LINCHPIN_API_KEY` — usa un mecanismo separado, con clave propia por
+  cliente (`webapp/mcp_auth.py` + `src/mcp_keys.py`), que **está siempre
+  activo, sin opción de apagarlo**: cualquier pedido sin una clave válida
+  recibe un rechazo automático. No confundir un control (opcional) con el
+  otro (obligatorio) si el Cliente pregunta específicamente por la
+  seguridad de la integración Odoo.
 
 ## 5 · Retención y borrado
 
-Los entregables generados (reportes, planillas) y, si el funnel de demo
-está en uso, los mini-reportes de leads, se almacenan en el filesystem del
-despliegue (`deliverables/`, o el directorio configurado vía
-`LINCHPIN_LEAD_REPORTS_DIR` en producción) hasta que el operador los borre
-manualmente o el proceso de limpieza por antigüedad los purgue, según cómo
-esté configurado ese despliegue en particular.
+La retención real depende de por qué canal entró el dato — no hay un único
+mecanismo, y ninguno de los tres es un borrado automático por antigüedad
+salvo el primero:
 
-`[REVISAR CON ABOGADO: definir un plazo de retención concreto y comprometer
-un proceso de borrado a pedido del Cliente — hoy es una capacidad operativa
-manual, no un compromiso contractual con un plazo definido. Si el Cliente
-pide que se borren sus datos, el operador debe poder hacerlo y confirmarlo
-por escrito]`
+- **Entregables de un job vía el panel web** (`POST /api/jobs`): se
+  purgan automáticamente a la hora de generados (TTL fijo de 3600
+  segundos, no configurable — ver `webapp/app.py`).
+- **Entregables de una corrida por línea de comandos**
+  (`examples/run_agent.py`, `examples/run_package.py`, carpeta
+  `deliverables/` por defecto): **no tienen ningún borrado automático** —
+  quedan en disco hasta que el operador los borre a mano.
+- **Mini-reportes del funnel de demo** (si está en uso, dirección
+  configurable vía `LINCHPIN_LEAD_REPORTS_DIR` en producción): contienen
+  el email real del lead que completó la demo — **es un dato personal**.
+  Este directorio está **deliberadamente excluido** de cualquier borrado
+  por antigüedad (es el artefacto durable que el operador revisa después);
+  el único límite es un tope duro de cantidad total de directorios
+  (`MAX_LEAD_DIRS`), que solo empieza a purgar los más viejos una vez
+  superado ese tope — no es un mecanismo de retención por tiempo.
+
+`[REVISAR CON ABOGADO: definir un plazo de retención concreto para cada uno
+de los tres casos de arriba y comprometer un proceso de borrado a pedido
+del Cliente — hoy es una capacidad operativa manual en los tres casos, no
+un compromiso contractual con un plazo definido, y el caso de los leads en
+particular retiene PII (el email) sin ningún borrado automático por tiempo.
+Si el Cliente pide que se borren sus datos, el operador debe poder hacerlo
+a mano y confirmarlo por escrito]`
 
 ## 6 · Derechos del Cliente sobre sus datos
 

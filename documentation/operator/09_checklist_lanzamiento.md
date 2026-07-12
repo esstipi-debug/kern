@@ -19,8 +19,7 @@
 - [ ] Visitar `https://linchpin.fly.dev/paquetes` en producción y revisar que
       los 8 paquetes, precios y CTAs se vean bien
 
-## Distribución (ya preparado, pendiente de tu login — ver
-[GTM_SUBMISSIONS.md](../GTM_SUBMISSIONS.md))
+## Distribución (ya preparado, pendiente de tu login — ver [GTM_SUBMISSIONS.md](../GTM_SUBMISSIONS.md))
 
 - [ ] Registrar en el MCP registry oficial (`mcp-publisher login github` +
       `publish`)

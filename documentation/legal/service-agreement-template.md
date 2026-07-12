@@ -32,6 +32,18 @@ Este Acuerdo de Servicios ("**Acuerdo**") se celebra entre:
 Fecha de inicio: **[FECHA]**. Paquete contratado: **[NOMBRE DEL PAQUETE —
 ver documentation/paquetes/]**.
 
+> **Este documento es solo para venta directa** (Linchpin factura
+> directamente al Cliente). **No uses este documento tal cual para un
+> cliente que llegó referido por un partner, ni para un cliente de un
+> partner white-label** (ver
+> [partner-odoo.md](../paquetes/partner-odoo.md)) — en ambos modelos de
+> partner, el Cliente le paga al partner, no a Linchpin, y en el modelo
+> white-label el Cliente ni siquiera debería ver el nombre "Linchpin" en
+> ningún documento. Ese escenario necesita su propio acuerdo (partner ↔
+> Linchpin, y partner ↔ su cliente final) — hoy no existe una plantilla
+> para eso (ver la nota en
+> [09 · Checklist de Lanzamiento](../operator/09_checklist_lanzamiento.md)).
+
 ## 2 · Objeto y alcance del servicio
 
 El Proveedor entrega al Cliente los análisis y entregables correspondientes
@@ -79,11 +91,17 @@ antes de empezar el sprint]`.
 recibe una **estimación** de honorarios al arrancar el sprint — es una
 proyección, no una factura. El honorario final se factura sobre el
 **recupero real** de cash, nunca sobre la proyección inicial, a una tasa de
-**[10–20]%** acordada por adelantado (piso de USD 1.500). Si el sprint no
-recupera cash, no se cobra honorario sobre el resultado (el piso, si
-aplica, se acuerda aparte). `[REVISAR CON ABOGADO: el piso de USD 1.500 —
-¿aplica siempre o solo si el Cliente decide no ejecutar ninguna
-recomendación? Definir el escenario exacto antes de firmar]`.
+**[10–20]%** acordada por adelantado (piso de USD 1.500, aplicado solo
+cuando efectivamente se recupera cash — nunca por debajo de la tasa
+calculada). **Si el sprint no recupera nada de cash, el honorario es cero
+— sin excepción, sin piso.** Esto no es negociable por contrato individual:
+es una regla dura de la calculadora del motor (`src/contingent_fee.py`) y
+coincide exactamente con la promesa pública del one-pager de venta
+(`documentation/paquetes/sprint-liquidacion.md`: "si no se recupera nada,
+no se cobra nada") — este Acuerdo nunca debe redactarse de forma que la
+contradiga. Si se acuerda un anticipo opcional antes de empezar el sprint,
+ese anticipo se acredita contra el honorario final calculado, no es un
+cargo aparte (ver [07 · Setup de Venta](../operator/07_setup_venta.md)).
 
 `[REVISAR CON ABOGADO: cláusula de mora, moneda de facturación si el
 Cliente opera en un país distinto, y tratamiento impositivo (IVA/retenciones
@@ -153,25 +171,34 @@ usarlos de forma anonimizada como caso de estudio]`
 ## 9 · Escritura sobre sistemas del Cliente (*writeback*)
 
 Si el paquete contratado incluye *writeback* hacia el sistema del Cliente
-(por ejemplo, reposición Odoo — ver `src/connectors/odoo.py`), aplica lo
-siguiente, sin excepción:
+(por ejemplo, reposición Odoo — ver `src/connectors/odoo.py`), el motor
+soporta este mecanismo de seguridad:
 
 - Ningún cambio se aplica directamente. Todo cambio propuesto se prepara
-  primero como un *changeset* de solo lectura (dry-run) que el Cliente
-  puede revisar antes de que exista cualquier efecto real.
+  primero como un *changeset* de solo lectura (dry-run).
 - Los cambios se clasifican por nivel de riesgo: **de solo lectura**,
   **reversibles** (se pueden deshacer, p. ej. modificar un punto de
-  reorden) e **irreversibles** (no se pueden deshacer de forma segura, p.
-  ej. enviar una orden de compra).
-- **Todo cambio irreversible requiere aprobación explícita y expresa del
-  Cliente antes de aplicarse — sin excepción, sin importar el paquete o
-  la cadencia contratada.**
+  reorden) e **irreversibles** (no se pueden deshacer de forma segura).
+- Un cambio clasificado como **irreversible** siempre requiere aprobación
+  explícita del Cliente antes de aplicarse — es una regla dura del motor
+  (`src/writeback.py`), no una opción que se pueda desactivar.
 - Todo cambio aplicado queda auditado y es reversible cuando es
-  técnicamente posible (ver la Sección 5 de `src/writeback.py`).
+  técnicamente posible (ver `src/writeback.py`).
 
-`[REVISAR CON ABOGADO: definir quién es responsable si un cambio aprobado
-por el Cliente resulta perjudicial una vez aplicado — el Proveedor aplicó
-exactamente lo que el Cliente aprobó, pero conviene dejarlo explícito]`
+`[REVISAR CON ABOGADO / OPERADOR — LEER ANTES DE PROMETERLE ESTO A UN
+CLIENTE: el conector de Odoo (`src/connectors/odoo.py`), tal como está
+hoy, clasifica TODOS sus cambios como "reversibles" — incluida la creación
+de una orden de compra — y **por defecto los aplica automáticamente sin
+pedir aprobación** (`auto_apply_reversible=True` es el valor por defecto
+de `apply_restock` y `apply_draft_purchase_orders`). Es decir: la garantía
+de "el Cliente revisa antes de que exista cualquier efecto real" NO es el
+comportamiento por defecto de la integración Odoo tal como está desplegada
+hoy — para que lo sea, el operador tiene que pasar
+`auto_apply_reversible=False` explícitamente y confirmar en una corrida de
+prueba que efectivamente pide aprobación antes de aplicar. No prometas
+esta garantía en una firma sin haber verificado esa configuración primero.
+Definir además quién es responsable si un cambio aprobado por el Cliente
+resulta perjudicial una vez aplicado.]`
 
 ## 10 · Vigencia y terminación
 
