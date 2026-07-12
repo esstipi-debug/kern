@@ -491,6 +491,83 @@ scope for "internal tooling" nobody has abused yet. Setting
 unrelated reasons) mitigates this the same way it mitigates the other
 public, unauthenticated endpoints.
 
+## 2026-07-11 — E7 "plantillas legales" — reviewed, fixed, PR #137 open (draft) — needs merge go-ahead
+
+**Read this section first if you're picking up cold.** E7 is code-complete
+(docs-only épica — no `.py` touched), adversarially reviewed for factual
+accuracy, all 9 confirmed findings fixed, and **PR #137 is open as a
+draft**. Nothing is blocking except the operator's explicit "mergea el PR
+#137" — do not merge it proactively. If the operator gives that
+instruction: merge (no Fly deploy needed — these two files aren't wired
+into any live route, verified during review), then clean up this
+worktree/branch, then start **E8** (per `09_checklist_lanzamiento.md`:
+"ninguna [acción humana], es solo tooling interno" — read the original
+2.0 protocol notes, if still available anywhere, for what E8 actually is;
+this session didn't have them).
+
+### What was built and why it needed a whole review pass
+
+Neither `documentation/legal/service-agreement-template.md` nor
+`dpa-lite.md` existed before this PR — the checklist has referenced those
+two filenames since E3 landed, but E7's actual job was writing them for
+the first time, not reviewing pre-existing drafts. Both are explicit
+`[REVISAR CON ABOGADO: ...]`-marked drafts, not ready to sign.
+
+This is the first docs-only épica in the Linchpin 2.0 series, and it
+still got the full 3-dimension adversarial-review treatment — for a good
+reason that showed up immediately: **a legal document that cites code
+inaccurately is worse than an ordinary doc bug**, because a real client or
+partner could rely on the (wrong) claim. The review caught real,
+substantive problems, not typos:
+
+- The DPA's subprocessor table under-disclosed what data reaches
+  Anthropic (missed that intent-classification and leadership-scoring
+  both send the client's raw brief text, not just a post-analysis
+  summary).
+- The DPA's retention clause implied an age-based purge that the code
+  explicitly does NOT do for lead mini-reports (which hold a real email
+  address — PII, count-capped only, never age-purged).
+- **The service agreement's writeback "irreversible changes always need
+  approval, no exceptions" guarantee is true of the code's `TIER_IRREVERSIBLE`
+  rule, but no real connector (Odoo, Excel) ever uses that tier — the
+  Odoo connector's own purchase-order creation (the document's own
+  named example of "irreversible") defaults to auto-applying with NO
+  review step (`auto_apply_reversible=True`).** This is arguably a real
+  product-safety gap worth its own look someday (should `apply_draft_purchase_orders`
+  default to requiring approval?), not just a docs wording issue — flagging
+  it here in case a future session wants to pick it up as its own item.
+- The contingent-fee floor clause left open a "floor charged on zero
+  recovery" scenario that contradicts `src/contingent_fee.py`'s own
+  hardcoded invariant, its test, AND the sales one-pager's public promise.
+
+All of these are now fixed in the documents themselves (see the fix
+commit's own message for the full before/after). The pattern worth
+remembering: **when a legal/compliance document cites code, adversarially
+verify every citation against the real code before trusting it** — this
+class of document is exactly where "sounds right, cites the right file"
+isn't good enough; the specific claim has to be checked.
+
+### Scope decisions worth knowing
+
+- **Not wired into any webapp route, on purpose.** Draft legal text with
+  unfilled `[BRACKETS]` shouldn't be publicly network-reachable the way
+  `documentation/operator/` and `documentation/paquetes/` are (both are
+  intentionally public via `/operator-docs` and `/paquetes-docs`). If a
+  future épica wants an operator to read these from the deployed site
+  instead of the repo, that's a deliberate follow-up decision, not an
+  oversight to "fix."
+- **The service agreement is explicitly scoped to direct-sale engagements
+  only** (added during the review-fix pass) — it does NOT fit a
+  partner-referred or white-label client (E6's `partner-odoo.md`), where
+  the Client pays the partner, not Linchpin, and in white-label mode
+  shouldn't see "Linchpin" in any document at all. No partner-contract
+  template exists yet (noted in the checklist, not blocking E7).
+- Fixed some pre-existing staleness while in the area (not part of E7's
+  own scope, just cheap to fix while touching the files): `documentation/README.md`'s
+  index never listed `documentation/paquetes/`; `09_checklist_lanzamiento.md`
+  had a malformed Markdown heading (link text had wrapped onto the
+  heading's second source line, truncating it in most renderers).
+
 ## 2026-07-11 — E6 "modo partner / white-label" — MERGED as PR #136, deployed live, verified — this section is now historical
 
 **Read this section first if you're picking up cold.** E6 is code-complete,
