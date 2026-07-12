@@ -249,6 +249,56 @@ class SkuMap:
         ).fetchall()
         return [self._row_to_entry(r) for r in rows]
 
+    def list_all_confirmed(self) -> list[SkuMapEntry]:
+        """The current-latest, ``status == "confirmed"`` entry per
+        ``(our_product_id, competitor_sku_ref, site)`` key across the WHOLE
+        store (Linchpin 3.0 PR-15) -- the read path continuous monitoring
+        (``jobs/price_monitor.py``) needs to enumerate every confirmed pair
+        to re-acquire, generalizing :meth:`latest_confirmed_for_product`
+        (which scopes to one ``our_product_id``) to every product at once.
+        Same one-SQL-pass shape (group by key, keep the max-version row per
+        key, then filter to confirmed) as that method -- see its own
+        docstring for why this is one pass instead of N+1 round trips.
+        """
+        rows = self._conn.execute(
+            "SELECT s.* FROM sku_map s"
+            " INNER JOIN ("
+            "   SELECT our_product_id, competitor_sku_ref, site, MAX(version) AS max_version"
+            "   FROM sku_map GROUP BY our_product_id, competitor_sku_ref, site"
+            " ) latest_keys"
+            " ON s.our_product_id = latest_keys.our_product_id"
+            " AND s.competitor_sku_ref = latest_keys.competitor_sku_ref"
+            " AND s.site = latest_keys.site AND s.version = latest_keys.max_version"
+            " WHERE s.status = 'confirmed'"
+            " ORDER BY s.our_product_id, s.site",
+        ).fetchall()
+        return [self._row_to_entry(r) for r in rows]
+
+    def latest_confirmed_for_competitor_ref(self, competitor_sku_ref: str, site: str) -> SkuMapEntry | None:
+        """The current-latest, ``status == "confirmed"`` entry for one
+        competitor reference, regardless of which ``our_product_id`` it is
+        matched to (Linchpin 3.0 PR-15) -- the REVERSE lookup
+        ``jobs/price_monitor.py``'s L2 webhook receiver needs ("which of OUR
+        skus does this incoming competitor URL belong to?", the mirror image
+        of :meth:`latest_confirmed_for_product`'s "which competitor refs
+        match THIS our_product_id?"). ``None`` when no CONFIRMED match
+        exists for this ref at all -- an honestly-unmatched observation, the
+        caller's own concern (e.g. a ``new_competitor_listing`` candidate),
+        not an error here.
+        """
+        row = self._conn.execute(
+            "SELECT s.* FROM sku_map s"
+            " INNER JOIN ("
+            "   SELECT our_product_id, MAX(version) AS max_version FROM sku_map"
+            "   WHERE competitor_sku_ref = ? AND site = ? GROUP BY our_product_id"
+            " ) latest_keys"
+            " ON s.our_product_id = latest_keys.our_product_id AND s.version = latest_keys.max_version"
+            " WHERE s.competitor_sku_ref = ? AND s.site = ? AND s.status = 'confirmed'"
+            " ORDER BY s.recorded_at DESC LIMIT 1",
+            (competitor_sku_ref, site, competitor_sku_ref, site),
+        ).fetchone()
+        return self._row_to_entry(row) if row is not None else None
+
     def close(self) -> None:
         self._conn.close()
 

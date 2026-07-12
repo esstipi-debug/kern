@@ -198,3 +198,75 @@ def test_latest_confirmed_for_product_only_returns_confirmed_latest_rows(sku_map
 
 def test_latest_confirmed_for_product_returns_empty_for_unknown_product(sku_map: SkuMap) -> None:
     assert sku_map.latest_confirmed_for_product("SKU-NONE") == []
+
+
+# -- list_all_confirmed (Linchpin 3.0 PR-15 -- continuous monitoring's read path) --
+
+
+def test_list_all_confirmed_spans_every_product_reflects_current_state(sku_map: SkuMap) -> None:
+    sku_map.record(
+        _confirmed_candidate(our_product_id="SKU-1", competitor_sku_ref="MLA111", site="api.mercadolibre.com"),
+        now=NOW,
+    )
+    sku_map.record(
+        _confirmed_candidate(our_product_id="SKU-2", competitor_sku_ref="MLA222", site="api.mercadolibre.com"),
+        now=NOW,
+    )
+    sku_map.record(
+        _suspect_candidate(our_product_id="SKU-3", competitor_sku_ref="MLA333", site="api.mercadolibre.com"),
+        now=NOW,
+    )
+    # SKU-4 was confirmed, then demoted by a later review -- list_all_confirmed
+    # must reflect the CURRENT (rejected) state, not the earlier confirmed one.
+    sku_map.record(
+        _confirmed_candidate(our_product_id="SKU-4", competitor_sku_ref="MLA444", site="api.mercadolibre.com"),
+        now=NOW,
+    )
+    sku_map.record(
+        MatchCandidate(
+            our_product_id="SKU-4", competitor_sku_ref="MLA444", site="api.mercadolibre.com",
+            method="human", score=0.1, status="rejected",
+            reason="reviewer determined this was a different product after all", confirmed_by=None,
+        ),
+        now=NOW,
+    )
+
+    confirmed = sku_map.list_all_confirmed()
+    product_ids = {e.our_product_id for e in confirmed}
+    assert product_ids == {"SKU-1", "SKU-2"}
+
+
+def test_list_all_confirmed_empty_store_returns_empty_list(sku_map: SkuMap) -> None:
+    assert sku_map.list_all_confirmed() == []
+
+
+# -- latest_confirmed_for_competitor_ref (the REVERSE lookup, PR-15's L2 receiver) --
+
+
+def test_latest_confirmed_for_competitor_ref_finds_the_matching_product(sku_map: SkuMap) -> None:
+    sku_map.record(_confirmed_candidate(), now=NOW)  # OUR_PRODUCT_ID / COMPETITOR_REF / SITE
+    entry = sku_map.latest_confirmed_for_competitor_ref(COMPETITOR_REF, SITE)
+    assert entry is not None
+    assert entry.our_product_id == OUR_PRODUCT_ID
+    assert entry.status == "confirmed"
+
+
+def test_latest_confirmed_for_competitor_ref_returns_none_for_unknown_ref(sku_map: SkuMap) -> None:
+    assert sku_map.latest_confirmed_for_competitor_ref("https://unseen.test/p/1", "unseen.test") is None
+
+
+def test_latest_confirmed_for_competitor_ref_returns_none_when_only_suspect(sku_map: SkuMap) -> None:
+    sku_map.record(_suspect_candidate(), now=NOW)
+    assert sku_map.latest_confirmed_for_competitor_ref(COMPETITOR_REF, SITE) is None
+
+
+def test_latest_confirmed_for_competitor_ref_reflects_current_state_after_demotion(sku_map: SkuMap) -> None:
+    sku_map.record(_confirmed_candidate(), now=NOW)
+    sku_map.record(
+        MatchCandidate(
+            our_product_id=OUR_PRODUCT_ID, competitor_sku_ref=COMPETITOR_REF, site=SITE,
+            method="human", score=0.1, status="rejected", reason="demoted on review", confirmed_by=None,
+        ),
+        now=NOW,
+    )
+    assert sku_map.latest_confirmed_for_competitor_ref(COMPETITOR_REF, SITE) is None

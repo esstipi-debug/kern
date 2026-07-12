@@ -28,6 +28,21 @@
 # would violate the plan's own rule 7 ("procedencia total") and rule 14
 # ("ningun cap silencioso"). They still emit real, dedup'd events onto the
 # ledger; a later PR (A4's src/verify/backtest.py) is the natural consumer.
+#
+# PR-15 (the pricing titan's continuous monitoring, jobs/price_monitor.py +
+# webapp POST /api/watch): price_move/competitor_oos both carry
+# event.payload["site"]/["competitor_sku_ref"] (+ optional
+# "matched_product_id"/"html_path"/"our_price") -- routed to
+# price_intelligence for a refreshed position report via
+# price_intel_refresh_from_event, T2 (informational/needs-review by
+# default, matching PR-5's own convention of starting new event types
+# conservatively). promo_detected/new_competitor_listing are emitted (see
+# src/pricing_intel/events.py) but deliberately NOT routed yet -- no
+# registered tool consumes a "a promo was detected" or "a new listing
+# appeared" signal on its own today; they still land on the Tower's event
+# feed. site_degraded/extraction_failed/stale_feed (the titan's own health
+# events, PR-12) are likewise not tool-routed -- they are Tower health
+# signals, not brief-shaped work items.
 version: 1
 
 routes:
@@ -49,4 +64,14 @@ routes:
   excess_growing:
     tool: excess_obsolete
     param_builder: excess_obsolete_from_state_stock_event
+    autonomy_tier: T2
+
+  price_move:
+    tool: price_intelligence
+    param_builder: price_intel_refresh_from_event
+    autonomy_tier: T2
+
+  competitor_oos:
+    tool: price_intelligence
+    param_builder: price_intel_refresh_from_event
     autonomy_tier: T2

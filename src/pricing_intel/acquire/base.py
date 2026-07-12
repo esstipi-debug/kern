@@ -40,6 +40,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Protocol, runtime_checkable
+from urllib.parse import urlparse
 
 import yaml
 
@@ -92,6 +93,37 @@ class Fetcher(Protocol):
     tier: str  # one of models.ACQUISITION_TIERS -- this fetcher's OWN tier
 
     def fetch(self, sku_ref: str) -> RawObservation: ...
+
+
+def normalize_domain(url: str) -> str | None:
+    """The bare, normalized domain for ``url`` (no scheme, no ``www.``,
+    lowercased) -- ``None`` when ``url`` is not actually a fetchable
+    ``http``/``https`` URL (a bare marketplace id, a malformed string, ...).
+    Matches ``models.CompetitorOffer.site``'s "no scheme, no spaces"
+    contract by construction, so a caller can pass this straight through
+    without a second validation pass.
+
+    Shared by every acquisition-tier caller that needs to turn a
+    caller-supplied reference into a ``config/sites/<domain>.yaml`` lookup
+    key (PR-15's ``watcher.py`` -- a changedetection.io ``watch_url`` -- and
+    any future L1/L3 fetcher); this PR extracts it here (rather than each
+    caller re-deriving its own copy) since ``acquire/base.py`` is already
+    where ``domain``/``SiteConfig`` concepts live. ``jobs/price_intelligence.py``'s
+    own PR-13 ``_derive_site`` predates this and is left as-is (an
+    already-shipped, already-tested private helper with the identical
+    logic) rather than churned to call this in the same PR.
+
+    Reference examples: ``"https://www.shop.example.com/p/1"`` -> ``"shop.example.com"``.
+    ``"MLA123456"`` (no scheme) -> ``None``. ``"ftp://old.example.com"`` -> ``None``
+    (not http/https).
+    """
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return None
+    host = parsed.netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host
 
 
 # -- per-domain compliance gate (plan S6.7) -----------------------------------

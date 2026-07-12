@@ -33,6 +33,7 @@ from src.pricing_intel.acquire.base import (
     SiteNotConfiguredError,
     classify_blocking_signal,
     load_site_config,
+    normalize_domain,
     require_approved_site,
 )
 
@@ -251,3 +252,56 @@ def test_gated_caller_never_touches_network_once_breaker_is_open() -> None:
         result = attempt("sku-1", NOW + timedelta(seconds=i + 1))
         assert result is None
     assert fetcher.calls == 1  # still just the one real call that tripped it
+
+
+# -- normalize_domain (Linchpin 3.0 PR-15) ---------------------------------------
+
+
+def test_normalize_domain_strips_scheme_and_www() -> None:
+    assert normalize_domain("https://www.shop.example.com/p/1") == "shop.example.com"
+
+
+def test_normalize_domain_lowercases() -> None:
+    assert normalize_domain("https://Shop.Example.COM/p/1") == "shop.example.com"
+
+
+def test_normalize_domain_no_www_prefix_left_untouched() -> None:
+    assert normalize_domain("http://shop.example.com") == "shop.example.com"
+
+
+def test_normalize_domain_returns_none_for_a_bare_id() -> None:
+    assert normalize_domain("MLA123456") is None
+
+
+def test_normalize_domain_returns_none_for_non_http_scheme() -> None:
+    assert normalize_domain("ftp://old.example.com") is None
+
+
+def test_normalize_domain_returns_none_for_empty_string() -> None:
+    assert normalize_domain("") is None
+
+
+# -- the REAL MercadoLibre domain compliance record (Linchpin 3.0 PR-15) --------
+#
+# Proves the compliance gate actually holds for a real, currently-live
+# domain -- not just synthetic .test fixtures. See
+# config/sites/api.mercadolibre.com.yaml for the live robots.txt/403
+# verification this record documents.
+
+
+def test_real_meli_domain_is_recorded_as_not_approved() -> None:
+    config = load_site_config("api.mercadolibre.com", config_dir=SITES_DIR)
+    assert config.is_approved is False
+    assert config.tos_decision == "prohibited"
+    assert config.robots_txt_respected is False
+
+
+def test_real_meli_domain_gate_refuses_to_run() -> None:
+    with pytest.raises(SiteNotApprovedError):
+        require_approved_site("api.mercadolibre.com", config_dir=SITES_DIR)
+
+
+def test_synthetic_meli_test_fixture_is_approved_for_l0() -> None:
+    config = require_approved_site("meli-api.test", config_dir=SITES_DIR)
+    assert config.is_approved is True
+    assert config.max_tier_allowed == "L0"

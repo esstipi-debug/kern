@@ -109,6 +109,21 @@ def test_load_routing_includes_the_pr5_monitor_routes():
     assert routes["excess_growing"].param_builder == "excess_obsolete_from_state_stock_event"
 
 
+def test_load_routing_includes_the_pr15_price_monitor_routes():
+    """PR-15 (jobs/price_monitor.py + webapp POST /api/watch) adds
+    price_move/competitor_oos routes -> price_intelligence, T2
+    (informational/needs-review by default, matching PR-5's own convention
+    of starting new event types conservatively)."""
+    routes = load_routing(DEFAULT_ROUTING_PATH)
+
+    assert routes["price_move"].tool == "price_intelligence"
+    assert routes["price_move"].param_builder == "price_intel_refresh_from_event"
+    assert routes["price_move"].autonomy_tier == "T2"
+    assert routes["competitor_oos"].tool == "price_intelligence"
+    assert routes["competitor_oos"].param_builder == "price_intel_refresh_from_event"
+    assert routes["competitor_oos"].autonomy_tier == "T2"
+
+
 def test_default_routing_path_falls_back_to_a_repo_relative_config_path():
     # Same convention as jobs/scheduler.py's DEFAULT_JOBSTORE_PATH: an unset
     # env var falls back to a repo-relative default.
@@ -300,6 +315,61 @@ def test_excess_obsolete_from_state_stock_event_raises_without_rows():
     event = Event(type="excess_growing", severity="medium", source="monitors", dedup_key="k", payload={})
     with pytest.raises(EventRoutingError, match="rows"):
         excess_obsolete_from_state_stock_event(event)
+
+
+# -- price_intel_refresh_from_event() param builder (PR-15) --------------------
+
+
+def test_price_intel_refresh_from_event_writes_a_one_row_refs_csv():
+    from scm_agent.event_intent import price_intel_refresh_from_event
+
+    event = Event(
+        type="price_move", severity="medium", source="jobs.price_monitor",
+        dedup_key="price_move:shop.example.com:MLA123", sku="SKU-100",
+        payload={
+            "site": "shop.example.com", "competitor_sku_ref": "https://shop.example.com/p/1",
+            "matched_product_id": "SKU-100", "old_price_normalized": "100.00", "new_price_normalized": "85.00",
+        },
+    )
+
+    params = price_intel_refresh_from_event(event)
+
+    assert params["client"] == "Tower"
+    assert "SKU-100" in params["brief"]
+    assert "shop.example.com" in params["brief"]
+    data_path = Path(params["data_path"])
+    assert data_path.exists()
+    written = pd.read_csv(data_path)
+    assert written.loc[0, "product_id"] == "SKU-100"
+    assert written.loc[0, "competitor_url"] == "https://shop.example.com/p/1"
+    assert written.loc[0, "competitor_site"] == "shop.example.com"
+
+
+def test_price_intel_refresh_from_event_carries_optional_html_path_and_our_price():
+    from scm_agent.event_intent import price_intel_refresh_from_event
+
+    event = Event(
+        type="competitor_oos", severity="medium", source="jobs.price_monitor",
+        dedup_key="competitor_oos:shop.example.com:MLA123", sku="SKU-100",
+        payload={
+            "site": "shop.example.com", "competitor_sku_ref": "https://shop.example.com/p/1",
+            "matched_product_id": "SKU-100", "html_path": "/tmp/fixture.html", "our_price": 42.5,
+        },
+    )
+
+    params = price_intel_refresh_from_event(event)
+    written = pd.read_csv(params["data_path"])
+    assert written.loc[0, "html_path"] == "/tmp/fixture.html"
+    assert written.loc[0, "our_price"] == 42.5
+
+
+def test_price_intel_refresh_from_event_raises_without_site_or_ref():
+    from scm_agent.event_intent import price_intel_refresh_from_event
+
+    event = Event(type="price_move", severity="medium", source="jobs.price_monitor", dedup_key="k",
+                  sku="SKU-100", payload={})
+    with pytest.raises(EventRoutingError, match="site"):
+        price_intel_refresh_from_event(event)
 
 
 # -- build_params(): unknown param_builder -------------------------------------

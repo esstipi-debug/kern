@@ -21,7 +21,7 @@ import sys
 import tempfile
 import time
 from contextlib import asynccontextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 # Make `src` importable no matter where uvicorn is launched from.
@@ -30,11 +30,12 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import pandas as pd  # noqa: E402
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+from jobs.price_monitor import accept_observation  # noqa: E402
 from scm_agent import Orchestrator  # noqa: E402
 from scm_agent.autonomy import DEFAULT_PATH as AUTONOMY_DEFAULT_PATH  # noqa: E402
 from scm_agent.autonomy import (  # noqa: E402
@@ -58,6 +59,11 @@ from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
 from src.mcp_keys import DEFAULT_PATH as MCP_KEYS_DEFAULT_PATH  # noqa: E402
 from src.mcp_keys import McpKeyStore  # noqa: E402
 from src.policies import continuous_review_sq, periodic_review_rs  # noqa: E402
+from src.pricing_intel.acquire.watcher import ChangeDetectionWebhookError, parse_changedetection_webhook  # noqa: E402
+from src.pricing_intel.ledger import DEFAULT_BASE_PATH as PRICE_LEDGER_DEFAULT_PATH  # noqa: E402
+from src.pricing_intel.ledger import PriceLedger  # noqa: E402
+from src.pricing_intel.match.sku_map import DEFAULT_BASE_PATH as SKU_MAP_DEFAULT_PATH  # noqa: E402
+from src.pricing_intel.match.sku_map import SkuMap  # noqa: E402
 from src.sources import CsvDemandSource  # noqa: E402
 from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
@@ -110,6 +116,12 @@ AUTONOMY_LEDGER_PATH = AUTONOMY_DEFAULT_PATH
 # Same monkeypatch-friendly convention, for the one real file
 # api_approve_promotion() mutates (Linchpin 3.0 PR-9) -- config/event_routing.yaml.
 EVENT_ROUTING_PATH = EVENT_ROUTING_DEFAULT_PATH
+# Same monkeypatch-friendly convention, for POST /api/watch (Linchpin 3.0
+# PR-15) -- the PRODUCTION price ledger + sku_map, not demo_price_scan.py's
+# own per-request isolated ledger (a real watcher webhook's observations are
+# real continuous-monitoring data, meant to persist).
+PRICE_LEDGER_PATH = PRICE_LEDGER_DEFAULT_PATH
+SKU_MAP_PATH = SKU_MAP_DEFAULT_PATH
 
 
 def _get_orchestrator() -> Orchestrator:
@@ -152,6 +164,18 @@ def _get_autonomy_ledger() -> AutonomyLedger:
     """See _get_event_ledger()'s docstring -- same fresh-connection-per-call
     reasoning applies here."""
     return AutonomyLedger(AUTONOMY_LEDGER_PATH)
+
+
+def _get_price_ledger() -> PriceLedger:
+    """A FRESH connection per call -- see ``_get_event_ledger()``'s docstring
+    for why (sqlite3's ``check_same_thread=True`` default)."""
+    return PriceLedger(PRICE_LEDGER_PATH)
+
+
+def _get_sku_map() -> SkuMap:
+    """See ``_get_event_ledger()``'s docstring -- same fresh-connection-per-call
+    reasoning applies here."""
+    return SkuMap(SKU_MAP_PATH)
 
 
 def _get_promotion_ledger() -> PromotionLedger:
@@ -836,6 +860,69 @@ async def api_demo_price_scan(
         "cta_url": demo_price_scan.CTA_PATH,
     }
 
+
+@app.post("/api/watch", dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)])
+async def api_watch(payload: dict = Body(...)) -> dict:
+    """L2 acquisition receiver: a changedetection.io webhook POST (Linchpin
+    3.0 PR-15, plan S6.1/S8) -- see
+    ``src.pricing_intel.acquire.watcher``'s module docstring for the exact
+    JSON body contract an operator configures on their own,
+    separately-deployed changedetection.io instance's notification
+    settings.
+
+    Gated behind ``LINCHPIN_API_KEY`` (a no-op when unset, matching every
+    other mutating endpoint -- POST /api/jobs, POST /api/approvals/{id}):
+    an operator adds an ``X-API-Key: <value>`` custom header to
+    changedetection.io's notification URL so only their own instance can
+    post here. Also rate-limited.
+
+    Resolves ``matched_product_id`` via a ``sku_map`` reverse lookup
+    (``SkuMap.latest_confirmed_for_competitor_ref``) BEFORE the sanity gate
+    -- an observation for a competitor URL Kern has never confirmed a match
+    for still gets sanity-gated and ledgered (``matched_product_id=None`` is
+    a legitimate state, see ``watcher.py``'s docstring), just with no sku
+    attached to the resulting Event(s).
+
+    Runs the SAME sanity gate (``src.pricing_intel.sanity``) every other
+    acquisition tier goes through before landing in the SAME production
+    ``PriceLedger``, and emits price_move/competitor_oos/promo_detected/
+    new_competitor_listing through the SAME ``scm_agent.events.EventLedger``
+    the scheduled L0 cycle (``jobs.price_monitor.run_price_monitor_cycle``)
+    uses -- one ledger, one event stream, regardless of acquisition tier.
+
+    A malformed/incomplete payload is a 400 (``ChangeDetectionWebhookError``)
+    -- loud and actionable for whoever is debugging their changedetection.io
+    notification template, never a silent 200 that drops the observation.
+    """
+    try:
+        candidate = parse_changedetection_webhook(payload)
+    except ChangeDetectionWebhookError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    sku_map = _get_sku_map()
+    try:
+        match = sku_map.latest_confirmed_for_competitor_ref(candidate.competitor_sku_ref, candidate.site)
+    finally:
+        sku_map.close()
+    if match is not None:
+        candidate = replace(candidate, matched_product_id=match.our_product_id)
+
+    ledger = _get_price_ledger()
+    event_ledger = _get_event_ledger()
+    try:
+        outcome = accept_observation(candidate, ledger=ledger, event_ledger=event_ledger, detect_new_listing=True)
+    finally:
+        ledger.close()
+        event_ledger.close()
+
+    return {
+        "status": outcome.status,
+        "reason": outcome.reason,
+        "site": candidate.site,
+        "competitor_sku_ref": candidate.competitor_sku_ref,
+        "matched_product_id": candidate.matched_product_id,
+        "events": [e.type for e in outcome.events],
+    }
 
 
 _METRICS_LABEL_RE = re.compile(r"[^\w.\- ]")

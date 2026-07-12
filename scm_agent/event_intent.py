@@ -277,10 +277,72 @@ def excess_obsolete_from_state_stock_event(event: Event) -> dict:
     }
 
 
+# price_intelligence's own refs-CSV shape (jobs/price_intelligence.py's
+# prepare_records()) it makes sense for a price_move/competitor_oos event
+# payload to carry straight through as extra ref columns.
+_PRICE_INTEL_OPTIONAL_REF_KEYS = ("html_path", "our_price")
+
+
+def price_intel_refresh_from_event(event: Event) -> dict:
+    """Build ``price_intelligence`` params from a ``price_move`` /
+    ``competitor_oos`` event (Linchpin 3.0 PR-15: ``jobs.price_monitor``'s
+    scheduled L0 MercadoLibre cycle and ``webapp.app``'s L2 watcher receiver
+    both emit these carrying ``event.payload["site"]``/
+    ``["competitor_sku_ref"]`` -- see ``src.pricing_intel.events``) -- a
+    ONE-ROW refs CSV so ``price_intelligence`` re-runs its own acquire ->
+    sanity -> deliver pipeline for exactly the flagged pair. Same
+    "rows -> temp CSV -> data_path" idiom PR-5's
+    ``inventory_from_state_stock_event`` established for a state-domain row;
+    here it is one ``price_intelligence`` ref row instead.
+
+    A MELI (L0)-sourced pair has no fetchable HTML (its
+    ``competitor_sku_ref`` is a MercadoLibre item id, not a URL) --
+    ``price_intelligence``'s own one-shot acquire step is L1-only (PR-13
+    scope), so that ref legitimately comes back "skipped:
+    id_ref_requires_l0_api_not_yet_available" in the refreshed report
+    (never silently dropped -- see that job's own Fuentes section). The
+    ``price_move``/``competitor_oos`` Event's OWN payload (old/new price,
+    delta) -- not this refresh -- is the actual market signal already
+    delivered to the Tower; this route exists to produce a fuller,
+    E5-cited deliverable for a human who clicks through the T2 approval,
+    not to re-derive the signal itself. Wiring an L0-aware acquire step
+    into the one-shot playbook is a natural follow-on PR, not this one.
+
+    Raises :class:`EventRoutingError` if ``site``/``competitor_sku_ref``
+    (and ``sku``/``matched_product_id``) are missing.
+    """
+    site = event.payload.get("site")
+    competitor_sku_ref = event.payload.get("competitor_sku_ref")
+    product_id = event.payload.get("matched_product_id") or event.sku
+    if not site or not competitor_sku_ref or not product_id:
+        raise EventRoutingError(
+            f"event {event.id} ({event.type}) payload is missing 'site'/'competitor_sku_ref' "
+            "(and sku/matched_product_id) -- price_intel_refresh_from_event needs all three"
+        )
+
+    row: dict = {"product_id": product_id, "competitor_url": competitor_sku_ref, "competitor_site": site}
+    for key in _PRICE_INTEL_OPTIONAL_REF_KEYS:
+        if event.payload.get(key) is not None:
+            row[key] = event.payload[key]
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix=_TEMP_DIR_PREFIX))
+    data_path = tmp_dir / "price_move_refs.csv"
+    pd.DataFrame([row]).to_csv(data_path, index=False)
+
+    label = event.type.replace("_", " ")
+    return {
+        "brief": f"{label.capitalize()} detected for {product_id} at {site} -- refresh the position report.",
+        "data_path": str(data_path),
+        "overrides": {},
+        "client": event.payload.get("client", DEFAULT_EVENT_CLIENT),
+    }
+
+
 PARAM_BUILDERS: dict[str, Callable[[Event], dict]] = {
     "inventory_from_stock_event": inventory_from_stock_event,
     "inventory_from_state_stock_event": inventory_from_state_stock_event,
     "excess_obsolete_from_state_stock_event": excess_obsolete_from_state_stock_event,
+    "price_intel_refresh_from_event": price_intel_refresh_from_event,
 }
 
 

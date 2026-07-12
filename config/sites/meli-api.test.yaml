@@ -1,0 +1,27 @@
+# Per-domain compliance record (Linchpin 3.0 plan S6.7, PR-12).
+#
+# SYNTHETIC TEST FIXTURE ("meli-api.test", reserved .test TLD, RFC 2606) --
+# stands in for a HYPOTHETICAL future state where MercadoLibre's real
+# api.mercadolibre.com has been reviewed and cleared for meli_api.py's
+# connector. See config/sites/api.mercadolibre.com.yaml for why that REAL
+# domain is currently PROHIBITED, not approved -- this fixture exists so
+# tests/test_pricing_intel_meli_api.py and tests/test_price_monitor_job.py
+# can exercise MeliApiFetcher's happy path (fetch -> parse -> sanity ->
+# ledger -> market-signal event) end to end without ever touching a real,
+# currently-disallowed domain.
+
+domain: meli-api.test
+
+robots_txt_respected: true
+robots_checked_at: "2026-07-01"
+
+tos_summary: >
+  Synthetic fixture ToS: stands in for a resolved MercadoLibre Developers
+  Program relationship. Not a real review of any real domain.
+tos_decision: allowed
+
+rate_limit_seconds: 1.0
+
+max_tier_allowed: L0
+
+pii_policy: none
