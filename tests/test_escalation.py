@@ -11,9 +11,11 @@ from src.escalation import (
     DISPUTE,
     FINANCIAL,
     LEGAL,
+    OPERATIONAL,
     build_escalation,
     escalate,
     escalation_banner,
+    maybe_escalate_data_quality,
     maybe_escalate_financial,
 )
 from src.guided import (
@@ -158,6 +160,63 @@ def test_maybe_escalate_financial_keeps_options_visible_at_the_top_level():
 
     assert result.options == outcome.options
     assert result.options == result.escalation.options
+
+
+# -- maybe_escalate_data_quality: gate a tool's confidence on how much of the
+# source file survived intake (jobs/intake.py's IntakeQuality.dropped_fraction) --
+
+
+def test_maybe_escalate_data_quality_passes_through_under_threshold():
+    outcome = as_options("plan ready", _apply_options())
+
+    result = maybe_escalate_data_quality(outcome, dropped_fraction=0.05, threshold=0.20, detail="5/100 rows")
+
+    assert result is outcome
+
+
+def test_maybe_escalate_data_quality_passes_through_at_exactly_the_threshold():
+    outcome = as_options("plan ready", _apply_options())
+
+    result = maybe_escalate_data_quality(outcome, dropped_fraction=0.20, threshold=0.20, detail="20/100 rows")
+
+    assert result is outcome
+
+
+def test_maybe_escalate_data_quality_escalates_over_threshold_preserving_options():
+    outcome = as_options("plan ready", _apply_options(), confidence=0.85)
+
+    result = maybe_escalate_data_quality(
+        outcome, dropped_fraction=0.62, threshold=0.20, detail="62/100 rows (48 bad date, 14 negative qty)"
+    )
+
+    assert result.status == ESCALATED
+    assert result.confidence == 0.85
+    assert result.escalation.route_to  # routed to a named human/role
+    assert result.escalation.sla
+    assert result.escalation.options == outcome.options
+    assert result.options == outcome.options  # visible at the top level too
+    assert "62%" in result.escalation.reason
+    assert "48 bad date" in result.escalation.reason
+    assert passed_guided(result)
+
+
+def test_maybe_escalate_data_quality_only_intercepts_options_outcomes():
+    outcome = as_executed("nothing to do")
+
+    result = maybe_escalate_data_quality(outcome, dropped_fraction=0.99, threshold=0.20, detail="99/100 rows")
+
+    assert result is outcome
+    assert result.status != OPTIONS
+
+
+def test_maybe_escalate_data_quality_uses_the_operational_trigger():
+    outcome = as_options("plan ready", _apply_options())
+
+    result = maybe_escalate_data_quality(outcome, dropped_fraction=0.5, threshold=0.20, detail="50/100 rows")
+
+    expected = build_escalation(OPERATIONAL, "x")
+    assert result.escalation.route_to == expected.route_to
+    assert result.escalation.sla == expected.sla
 
 
 # -- escalation_banner: makes an ESCALATED outcome unmissable in a rendered deck --

@@ -79,6 +79,32 @@ def escalate(
     return as_escalation(summary, packet, confidence=confidence)
 
 
+def _maybe_escalate(outcome: GuidedOutcome, should_escalate: bool, trigger: str, reason: str) -> GuidedOutcome:
+    """Shared engine behind ``maybe_escalate_financial``/``maybe_escalate_data_quality``:
+    re-route an 'options' outcome to ESCALATED when ``should_escalate`` is True,
+    preserving the same ranked options — both inside the escalation packet AND at
+    the outcome's top level (``GuidedOutcome.options``, the field every existing
+    deck-builder already reads: ``scm_agent/orchestrator.py``'s
+    ``deck_options = list(guided.options)`` and ``scm_agent/packages.py``'s
+    equivalent) so nothing silently vanishes from the rendered deliverable — but a
+    named human must sign off within the trigger's SLA before anything is acted
+    on. Pair with ``escalation_banner()`` so the deck states that requirement in
+    words, not just data.
+
+    Passes ``outcome`` through unchanged when ``should_escalate`` is False, and
+    for any outcome that isn't currently 'options' (already escalated, a handoff,
+    or executed) — this only ever *adds* a gate, never removes a stronger one
+    already in place.
+    """
+    if outcome.status != OPTIONS or not should_escalate:
+        return outcome
+    packet = build_escalation(trigger, reason, recommendation=outcome.summary, options=list(outcome.options))
+    escalated = as_escalation(
+        outcome.summary, packet, confidence=outcome.confidence, residuals=list(outcome.residuals)
+    )
+    return replace(escalated, options=list(outcome.options))
+
+
 def maybe_escalate_financial(outcome: GuidedOutcome, value: float, threshold: float) -> GuidedOutcome:
     """Re-route an 'options' outcome to ESCALATED (financial-threshold trigger) when
     ``value`` exceeds ``threshold`` — the auto-approve limit for acting without a
@@ -86,34 +112,38 @@ def maybe_escalate_financial(outcome: GuidedOutcome, value: float, threshold: fl
 
     A writeback tool's ranked options (e.g. "apply the staged restock" / "export
     only") are otherwise presented as freely actionable regardless of size — a
-    $340k purchase order gets the exact same treatment as a $500 one. This closes
-    that gap: above the threshold, the SAME options survive — both inside the
-    escalation packet AND at the outcome's top level (``GuidedOutcome.options``,
-    the field every existing deck-builder already reads:
-    ``scm_agent/orchestrator.py``'s ``deck_options = list(guided.options)`` and
-    ``scm_agent/packages.py``'s equivalent) so nothing silently vanishes from the
-    rendered deliverable — but a named finance approver must sign off within the
-    trigger's SLA before anything is committed. Pair with ``escalation_banner()``
-    so the deck states that requirement in words, not just data.
-
-    Passes ``outcome`` through unchanged at or below the threshold, and for any
-    outcome that isn't currently 'options' (already escalated, a handoff, or
-    executed) — this only ever *adds* a gate, never removes a stronger one already
-    in place.
+    $340k purchase order gets the exact same treatment as a $500 one. See
+    ``_maybe_escalate`` for how the gate itself works.
     """
-    if outcome.status != OPTIONS or value <= threshold:
-        return outcome
-    packet = build_escalation(
-        FINANCIAL,
+    return _maybe_escalate(
+        outcome, value > threshold, FINANCIAL,
         f"{value:,.0f} exceeds the {threshold:,.0f} auto-approve threshold - "
         "requires finance sign-off before committing.",
-        recommendation=outcome.summary,
-        options=list(outcome.options),
     )
-    escalated = as_escalation(
-        outcome.summary, packet, confidence=outcome.confidence, residuals=list(outcome.residuals)
+
+
+def maybe_escalate_data_quality(
+    outcome: GuidedOutcome, dropped_fraction: float, threshold: float, *, detail: str
+) -> GuidedOutcome:
+    """Re-route an 'options' outcome to ESCALATED (operational trigger) when the
+    share of source rows dropped during intake (``jobs/intake.py``'s
+    ``IntakeQuality.dropped_fraction`` — bad dates, missing quantities, negative
+    quantities) exceeds ``threshold``.
+
+    The report itself can be perfectly internally consistent (``jobs/qa.py``'s
+    math checks all pass) while still being built on a shrunken, unrepresentative
+    slice of the client's real data — the same failure class
+    ``jobs/forecast_job.py``'s MASE=inf handling addresses for unvalidated SKUs,
+    applied here to the intake step every tool's demand history passes through.
+    ``detail`` names which reasons drove the drop (e.g. "48 bad date, 14 negative
+    qty") so the escalation reason is actionable, not just a percentage. See
+    ``_maybe_escalate`` for how the gate itself works.
+    """
+    return _maybe_escalate(
+        outcome, dropped_fraction > threshold, OPERATIONAL,
+        f"{dropped_fraction:.0%} of source rows were dropped during intake ({detail}) - "
+        f"exceeds the {threshold:.0%} auto-proceed threshold; verify the source file before trusting this result.",
     )
-    return replace(escalated, options=list(outcome.options))
 
 
 def escalation_banner(outcome: GuidedOutcome) -> str | None:
