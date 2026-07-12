@@ -1,0 +1,19 @@
+<!--
+Frozen fixture (PR-11): schema.org microdata only, no JSON-LD anywhere on
+the page -- the tier-2 extraction cascade case (confidence 0.90).
+Hand-verified expected result:
+  price = 349.50, currency = USD, availability = InStock, tier = microdata
+-->
+<html>
+<head><title>Acme Rocket Skates</title></head>
+<body>
+  <div itemscope itemtype="https://schema.org/Product">
+    <span itemprop="name">Acme Rocket Skates</span>
+    <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+      <span itemprop="price">349.50</span>
+      <meta itemprop="priceCurrency" content="USD" />
+      <link itemprop="availability" href="https://schema.org/InStock" />
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,18 @@
+<!--
+Frozen fixture (PR-11): no structured data of any kind -- the price only
+lives in a specific, site-hand-mapped CSS location. Tier-3 case
+(confidence 0.80); requires the caller to pass selector=".price-now".
+Hand-verified expected result (with selector=".price-now", currency_hint=
+"USD"): price = 12.00, currency = USD, tier = selector.
+Also carries an unrelated dollar amount elsewhere on the page ("was $18.00")
+to prove tier 3 reads only the selected node, not the first dollar sign on
+the page.
+-->
+<html>
+<head><title>Acme Pocket Wrench</title></head>
+<body>
+  <h1>Acme Pocket Wrench</h1>
+  <p class="was-price">was $18.00</p>
+  <span class="price-now">$12.00</span>
+</body>
+</html>

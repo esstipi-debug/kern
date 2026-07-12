@@ -1,0 +1,16 @@
+<!--
+Frozen fixture (PR-11): no structured data, no known selector -- the last
+resort before the cascade gives up: a plain currency-marked text node near
+the title. Tier-4 case (confidence 0.60); requires currency_hint="USD"
+since a bare "$" is ambiguous by design (see normalize.py).
+Hand-verified expected result: price = 24.50, currency = USD, tier =
+price_parser.
+-->
+<html>
+<head><title>Acme Travel Mug</title></head>
+<body>
+  <h1>Acme Travel Mug</h1>
+  <p class="blurb">Keeps drinks hot for 12 hours.</p>
+  <p class="price-text">Only $24.50 today</p>
+</body>
+</html>

@@ -69,6 +69,20 @@ tower = [
     "APScheduler[sqlalchemy]>=3.11.3,<4",
     "httpx>=0.28",
 ]
+# src/pricing_intel/acquire/structured.py + extract.py + normalize.py (PR-11).
+# extruct is "semi-dormant" per the plan's own risk note -- structured.py
+# isolates it behind an adapter with a hand-rolled ld+json fallback (lxml +
+# chompjs for malformed JSON) so a broken extruct never blocks extraction.
+# lxml is pinned explicitly even though extruct already pulls it in
+# transitively, because the fallback imports it directly. rapidfuzz and
+# python-stdnum (match/, a later PR) already live in the dataquality extra --
+# not duplicated here.
+pricing-intel = [
+    "extruct==0.18.0",
+    "lxml>=5.0",
+    "price-parser>=0.5.1",
+    "chompjs>=1.2",
+]
 
 [project.urls]
 Homepage = "https://github.com/esstipi-debug/linchpin"
