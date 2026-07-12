@@ -320,6 +320,7 @@ def handle_event(
     orchestrator: Orchestrator | None = None,
     out_dir: str | Path = "deliverables/agent",
     webhook_url: str | None = None,
+    notify_on_ok: bool = True,
 ) -> RoutedResult:
     """Route ``event`` to its tool and run it through the real orchestrator.
 
@@ -338,6 +339,13 @@ def handle_event(
     ``error``, ...) is returned without notifying -- the plan's QA veto
     (rule 2) applies here exactly as it does to a brief-driven run: no
     notification for a result nothing was actually delivered for.
+
+    ``notify_on_ok`` (default ``True``, so every existing caller keeps its
+    exact prior behavior) lets ``scm_agent.autonomy``'s tier enforcement
+    (PR-6) suppress this automatic notify for T2/T3 routes -- those tiers
+    must never be announced as done before a human has acknowledged or
+    escalated them; only T1 (and any caller not using tiers at all) gets the
+    old unconditional "ran ok -> notify" behavior.
     """
     routes = routes if routes is not None else load_routing(routing_path)
     route = resolve_route(event, routes)
@@ -361,7 +369,7 @@ def handle_event(
     )
 
     notified = False
-    if result.status == STATUS_OK:
+    if result.status == STATUS_OK and notify_on_ok:
         sku_part = f" ({event.sku})" if event.sku else ""
         summary = f"[{route.autonomy_tier}] {event.type}{sku_part}: {tool.title} -- {result.summary}"
         notified = notify(summary, webhook_url=webhook_url)
