@@ -104,6 +104,17 @@ pricing-intel = [
 matching = [
     "splink>=4",
 ]
+# src/elasticity_batch.py's per-SKU log-log OLS confidence interval (PR-16).
+# Pure Python + numpy/scipy -- no C-toolchain risk (unlike pymc/pytensor,
+# which the plan explicitly rejected for this PR -- see elasticity_batch.py's
+# module docstring). Verified installs cleanly on this Windows py3.11 venv
+# 2026-07 (statsmodels==0.14.6, one transitive dep: patsy==1.0.2). Degrades
+# gracefully when absent: fit_sku_elasticity_ci() falls back to an equivalent
+# closed-form OLS confidence interval via numpy + the already-core
+# scipy.stats.t -- same normal-equations math, same numbers either way.
+elasticity = [
+    "statsmodels>=0.14",
+]
 
 [project.urls]
 Homepage = "https://github.com/esstipi-debug/linchpin"
