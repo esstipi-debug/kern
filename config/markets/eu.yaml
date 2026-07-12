@@ -1,0 +1,46 @@
+# Per-jurisdiction pricing-guardrail profile (Linchpin 3.0 plan section 7 P5,
+# Golden Rule 12 -- "jurisdiccion es configuracion declarativa": guardrails
+# live in versioned market profiles, never as `if market == "eu"` branches in
+# src/pricing_guardrails.py. Fields match
+# src.pricing_guardrails.MarketRules verbatim -- see that dataclass's
+# __post_init__ for the validation this file must satisfy.
+
+market: eu
+
+# Discount-reference-window gate severity. "hard" means
+# validate_discount_reference() BLOCKS (raises DiscountComplianceError) any
+# proposed discount whose stated percentage does not match the percentage
+# computed against src.pricing_guardrails.prior_price_30d_lowest() within
+# discount_tolerance_pct.
+#
+# Legal basis: Article 6a of Directive 98/6/EC (as amended by the "Omnibus"
+# Directive (EU) 2019/2161) requires that any price-reduction announcement
+# state the prior price -- the lowest price applied by the trader in the 30
+# days before the reduction. CJEU C-330/23 (Aldi Sud, 2025) confirmed the
+# percentage/amount claimed in the announcement must be CALCULATED against
+# that 30-day-lowest reference price, not merely displayed alongside a
+# different (e.g. higher, longer-window, or "was" list) reference price.
+discount_reference_gate: hard
+
+# Tolerance, in percentage POINTS, between the stated discount % and the %
+# computed against the 30-day-lowest price before a mismatch is flagged.
+# 0.5 absorbs ordinary display rounding (e.g. a computed 19.6% rendered as
+# "20% off") without opening a loophole for a materially different
+# reference price (see prior_price_30d_lowest's Aldi Sud test).
+discount_tolerance_pct: 0.5
+
+# MAP-alert output-text variant (Golden Rule 12: a jurisdiction-keyed label
+# lookup, never a single hardcoded string). MAP-style resale-price policing
+# is a hardcore restriction (RPM) under EU competition law when framed as a
+# retailer obligation -- the identical below-floor-price signal Linchpin
+# detects must therefore never be rendered with "violation"/enforcement
+# language here. Re-labeled as market intelligence only.
+map_alert_label: "dispersion de precios / inteligencia de canal"
+
+legal_basis: >
+  Directive 98/6/EC Art. 6a (Omnibus, Directive (EU) 2019/2161); CJEU
+  C-330/23 Aldi Sud (2025) on the 30-day reference-price calculation.
+
+notes: >
+  Hard gate: a mismatched discount percentage blocks the changeset outright
+  (src.pricing_guardrails.DiscountComplianceError), it does not merely warn.

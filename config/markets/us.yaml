@@ -1,0 +1,36 @@
+# Per-jurisdiction pricing-guardrail profile (Linchpin 3.0 plan section 7 P5,
+# Golden Rule 12). See eu.yaml's header comment for the field-by-field
+# contract (src.pricing_guardrails.MarketRules).
+
+market: us
+
+# No statutory reference-price window is enforced by this profile for the
+# US market (the FTC's general "was" price guidance is not a codified fixed
+# window the way EU Omnibus is, and is out of scope for this PR) --
+# validate_discount_reference() never blocks nor warns here; it still
+# computes and records prior_price_30d_lowest() in the evidence trail for
+# total provenance (Golden Rule 7), it simply does not gate on it.
+discount_reference_gate: none
+discount_tolerance_pct: 0.5
+
+# MAP (Minimum Advertised Price) enforcement is lawful in the US ONLY as a
+# unilateral policy the manufacturer sets and monitors itself (the Colgate
+# doctrine, Colgate v. United States 250 U.S. 300 (1919)) -- observe-and-
+# alert only. This module NEVER builds a retailer-facing communication
+# (a "violation letter", an acknowledgment workflow, or any negotiation):
+# doing so risks turning a unilateral policy into an unlawful vertical
+# price-fixing agreement. "MAP violation" language is safe INTERNALLY (this
+# label), never sent externally by this codebase.
+map_alert_label: "MAP violation"
+
+legal_basis: >
+  Colgate doctrine (Colgate v. United States, 250 U.S. 300 (1919)) -- MAP is
+  lawful as a unilateral policy the manufacturer sets and monitors alone;
+  observe-and-alert only, never an agreement/acknowledgment workflow with a
+  retailer.
+
+notes: >
+  discount_reference_gate is "none" -- the EU Omnibus / Aldi Sud hard-gate
+  logic and the CL/MX/CO soft-gate logic both live in this same module's
+  code (src.pricing_guardrails), driven entirely by this file's
+  discount_reference_gate value, never by an `if market == "us"` branch.
