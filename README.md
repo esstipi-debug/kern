@@ -1,10 +1,10 @@
 <div align="center">
 
-# 🔗 Linchpin
+# 🔗 Kern
 
 ### The agentic brain for supply-chain decisions — grounded in the field's best models and sources.
 
-**Linchpin** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models across **37 agent-routable capabilities** — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, forecasting, pricing, DDMRP, ABC-XYZ, sourcing, landed cost, cost-to-serve, S&OP, facility location, DRP, transportation, FEFO, reconciliation, slotting, warehouse layout, vehicle routing and more — and an **orchestrator agent** drives every one of them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **25 curated SCM sources and the codebase itself**.
+**Kern** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models across **37 agent-routable capabilities** — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, forecasting, pricing, DDMRP, ABC-XYZ, sourcing, landed cost, cost-to-serve, S&OP, facility location, DRP, transportation, FEFO, reconciliation, slotting, warehouse layout, vehicle routing and more — and an **orchestrator agent** drives every one of them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **25 curated SCM sources and the codebase itself**.
 
 [![version](https://img.shields.io/badge/version-2.9.0-5eead4)](CHANGELOG.md)
 [![python](https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
@@ -13,7 +13,7 @@
 
 </div>
 
-![Linchpin console — a brief routed to the leadership_chain capability, returning a CHAIN profile with downloadable chart and report](docs/assets/scm-agent-console.png)
+![Kern console — a brief routed to the leadership_chain capability, returning a CHAIN profile with downloadable chart and report](docs/assets/scm-agent-console.png)
 
 <div align="center"><sub>The live agent console (<code>webapp/static/prototype/</code>) talking to the real <code>POST /api/jobs</code>.</sub></div>
 

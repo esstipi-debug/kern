@@ -62,7 +62,7 @@ def test_cli_yes_applies_and_reports_key(planilla, ledger, capsys):
     assert "applied" in out.lower()
     assert re.search(r"excel-replenish-[0-9a-f]{12}", out)  # the rollback key is shown
     ws = load_workbook(planilla)[SHEET]
-    assert ws["D1"].value == "Pedir (Linchpin)"
+    assert ws["D1"].value == "Pedir (Kern)"
     assert ws["D2"].value == 58.0
 
 

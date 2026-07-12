@@ -1,4 +1,4 @@
-# Monetización de Linchpin — reporte breve (meta: ≥USD 8.000/mes)
+# Monetización de Kern — reporte breve (meta: ≥USD 8.000/mes)
 
 > Investigación web profunda (jul 2026): ~50 agentes de búsqueda/extracción + verificación
 > adversarial de afirmaciones (3 votos por afirmación). Solo se citan datos que
@@ -34,7 +34,7 @@ Correcciones surgidas en verificación: Cogsy **no** parte en $199 (parte en $49
 
 | Escenario | Mix | Total |
 |---|---|---|
-| **A. Fraccional puro** | 3 retainers de inventario e-commerce/pyme a $2.700/mes (~8–10 h/sem c/u, Linchpin hace el análisis) | $8.100 |
+| **A. Fraccional puro** | 3 retainers de inventario e-commerce/pyme a $2.700/mes (~8–10 h/sem c/u, Kern hace el análisis) | $8.100 |
 | **B. Mixto Odoo** (hispano + anglo) | 2 retainers $2.500 + 1 proyecto Odoo/mes $3.000 (implementación módulo + política de inventario) | $8.000 |
 | **C. Escalera** (arranque) | Mes 1–3: 2 contratos Upwork (~$2–3k) + 1 retainer $2.500 → mes 4–6: convertir a 3 retainers y subir precio | $8k en mes ~6 |
 
@@ -87,7 +87,7 @@ en $ que convierte a Starter o directo a Growth.
 
 **90 días:** (4) Con 1–2 casos con ahorro cuantificado, vender en inglés a marcas Shopify/DTC de $1–10M (el segmento que ya paga $3k–7k/mes por roles fraccionales) posicionándote como *fractional inventory/supply-chain operator*, no como freelancer. (5) En español, atacar pymes con Odoo en LatAm/España vía el módulo + partners. (6) Ofrecer pricing por valor (10–20% del ahorro año 1) en cuentas con inventario grande. **No** invertir en SaaS self-serve ni esperar ingresos del MCP todavía.
 
-**Riesgo principal:** la competencia no es otro software, es "ChatGPT + Excel" y el status quo. La defensa es la que Linchpin ya tiene: entregables con QA, fundamentados en literatura, con writeback seguro a Odoo/Excel — y un humano que firma. Vender el resultado (ahorro, servicio, stockouts evitados), nunca las horas.
+**Riesgo principal:** la competencia no es otro software, es "ChatGPT + Excel" y el status quo. La defensa es la que Kern ya tiene: entregables con QA, fundamentados en literatura, con writeback seguro a Odoo/Excel — y un humano que firma. Vender el resultado (ahorro, servicio, stockouts evitados), nunca las horas.
 
 ---
 

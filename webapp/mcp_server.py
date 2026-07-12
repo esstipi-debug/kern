@@ -1,4 +1,4 @@
-"""Linchpin's read-only MCP server (Phase A go-to-market — see linchpin-monetization-plan).
+"""Kern's read-only MCP server (Phase A go-to-market — see linchpin-monetization-plan).
 
 Exposes 33 of the 37 registered agent tools to remote MCP clients (other AI
 agents, via Streamable HTTP): analysis only, no writeback. `odoo_replenishment`

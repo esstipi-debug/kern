@@ -7,7 +7,7 @@
 
 ## Qué recibes
 
-**El catálogo completo de Linchpin** — todo lo del plan Growth (pronóstico, ABC-XYZ,
+**El catálogo completo de Kern** — todo lo del plan Growth (pronóstico, ABC-XYZ,
 política de inventario, reposición conectada a tu ERP, pricing, costo de servir,
 exactitud de inventario, red de distribución, proveedores, riesgo) **más 9
 capacidades de mando ejecutivo**:

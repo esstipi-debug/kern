@@ -160,7 +160,7 @@ def _mailto(offer: Offer, intent: str) -> str:
     visitor's mail client with the subject/body ready, which is a clean degrade,
     not a broken link."""
     operator_email = os.environ.get("OPERATOR_EMAIL", "").strip()
-    subject = f"{intent}: {offer.name} - Linchpin"
+    subject = f"{intent}: {offer.name} - Kern"
     return "mailto:" + operator_email + "?subject=" + urllib.parse.quote(subject)
 
 

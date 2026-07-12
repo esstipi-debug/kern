@@ -283,7 +283,7 @@ async def test_http_exception_raised_inside_a_thread_offloaded_call_propagates_c
 def test_console_route_serves_the_prototype():
     r = client.get("/console")
     assert r.status_code == 200
-    assert "Linchpin" in r.text  # the live console brand
+    assert "Kern" in r.text  # the live console brand
 
 
 @requires_multipart

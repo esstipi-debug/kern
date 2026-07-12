@@ -255,7 +255,7 @@ def test_package_deck_defaults_to_linchpin_branding(demo_intake, tmp_path):
     result = _run(DIAGNOSTICO, demo_intake, out)
     assert result.status == "ok"
     deck = (out / "diagnostico" / "deliverable.md").read_text(encoding="utf-8")
-    assert "Preparado por Linchpin" in deck
+    assert "Preparado por Kern" in deck
 
 
 def test_package_deck_uses_the_clients_profile_branding_when_configured(demo_intake, tmp_path):
@@ -269,7 +269,7 @@ def test_package_deck_uses_the_clients_profile_branding_when_configured(demo_int
     assert result.status == "ok"
     deck = (out / "diagnostico" / "deliverable.md").read_text(encoding="utf-8")
     assert "Preparado por Acme Consulting" in deck
-    assert "Preparado por Linchpin" not in deck
+    assert "Preparado por Kern" not in deck
 
 
 def test_package_deck_explicit_branding_wins_over_the_clients_profile(demo_intake, tmp_path):

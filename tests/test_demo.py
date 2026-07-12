@@ -22,7 +22,7 @@ def test_demo_page_is_served():
     r = client.get("/demo")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
-    assert "Linchpin" in r.text
+    assert "Kern" in r.text
 
 
 def test_lead_capture_appends_normalized_record(tmp_path, monkeypatch):

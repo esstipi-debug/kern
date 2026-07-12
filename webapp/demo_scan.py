@@ -15,7 +15,7 @@ mini-report only quotes the ABC axis). Finance derives COGS from the demand run
 rate and inventory value from on_hand x unit_cost; DIO/turns follow. The full
 multi-file, time-series treatment is exactly what the paid package sells.
 
-QA gate: same contract as everywhere else in Linchpin -- if any of the three
+QA gate: same contract as everywhere else in Kern -- if any of the three
 jobs' verify() flags an issue (or a headline number is non-finite), the scan is
 qa_failed and NO artifact is written. Pure module: no I/O beyond the callers'.
 """
@@ -262,7 +262,7 @@ def render_followup_email(
             "",
             "Hola,",
             "",
-            f"Corriste el escaneo gratuito de Linchpin sobre {dataset_label} "
+            f"Corriste el escaneo gratuito de Kern sobre {dataset_label} "
             f"({h['n_skus']} SKUs). El resultado en una linea:",
             "",
             f"- ${h['eo_value']:,.0f} atrapados en stock muerto o excedente "
@@ -285,6 +285,6 @@ def render_followup_email(
             "",
             "--",
             "BORRADOR generado por el escaneo del demo. Revisar y enviar a mano; "
-            "Linchpin nunca envia correo automaticamente.",
+            "Kern nunca envia correo automaticamente.",
         ]
     ) + "\n"

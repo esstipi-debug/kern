@@ -99,7 +99,7 @@ _HEAD = """<!DOCTYPE html>
 <body>
 <header>
   <div class="wrap">
-    <span class="brand"><span class="d">&#9672;</span> Linchpin</span>
+    <span class="brand"><span class="d">&#9672;</span> Kern</span>
     <nav><a href="/paquetes">Paquetes</a><a href="/demo">Demo</a><a href="/">Dashboard</a></nav>
   </div>
 </header>
@@ -161,10 +161,10 @@ def render_index_html(offers: tuple[Offer, ...], profile: OperatorProfile) -> st
             "</div>"
         )
     body = (
-        _HEAD.format(title="Paquetes - Linchpin")
+        _HEAD.format(title="Paquetes - Kern")
         + '<section style="padding-bottom:6px">'
         + '<span class="eyebrow">Paquetes comerciales</span>'
-        + '<h1 style="margin-top:12px">Linchpin produce, vos vendes y firmas</h1>'
+        + '<h1 style="margin-top:12px">Kern produce, vos vendes y firmas</h1>'
         + '<p class="sub" style="max-width:70ch;margin-top:10px">8 paquetes '
         + "(7 de alcance fijo, 1 de precio contingente), cada uno un conjunto de "
         + "herramientas del motor -- nunca una sola tool suelta. "
@@ -181,7 +181,7 @@ def render_index_html(offers: tuple[Offer, ...], profile: OperatorProfile) -> st
 def render_offer_html(offer: Offer, profile: OperatorProfile) -> str:
     cta_html = _cta_buttons(offer)
     body = (
-        _HEAD.format(title=f"{offer.name} - Linchpin")
+        _HEAD.format(title=f"{offer.name} - Kern")
         + '<section style="padding-bottom:10px">'
         + '<span class="eyebrow">Paquete comercial</span>'
         + f'<h1 style="margin-top:12px">{escape(offer.name)}</h1>'

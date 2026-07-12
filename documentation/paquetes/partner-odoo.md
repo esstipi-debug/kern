@@ -18,7 +18,7 @@ firma siguen siendo tuyas.
 ## Modelo 1 — Rev-share (20%)
 
 Referís al cliente, coordinás el intake (los mismos CSVs de cualquier
-paquete Linchpin — ver [README.md](README.md)), y nosotros ejecutamos el
+paquete Kern — ver [README.md](README.md)), y nosotros ejecutamos el
 análisis y entregamos el deck. Vos facturás al cliente el precio de lista
 del paquete elegido; nosotros te liquidamos el 20% de cada ciclo mientras el
 cliente siga activo, sin límite de tiempo. Cero trabajo de entrega de tu
@@ -31,7 +31,7 @@ de su portafolio sin invertir tiempo de entrega propio.
 
 Corrés el catálogo completo bajo tu propia identidad: tu nombre y tu logo en
 el **documento ejecutivo consolidado** que le entregás a tu cliente, en vez
-de "Linchpin". Pagás una tarifa fija mensual (se acuerda según volumen
+de "Kern". Pagás una tarifa fija mensual (se acuerda según volumen
 esperado, no es de lista pública) y facturás a tus clientes tus propios
 precios.
 
@@ -47,14 +47,14 @@ versión futura con reporte HTML/PDF; hoy no se aplica visualmente) tu color
 primario en formato `#RRGGBB`. Una vez cargado, el **documento ejecutivo
 consolidado** de cada paquete para ese cliente lleva tu identidad en el
 encabezado (logo, si lo configuraste) y en el pie ("Preparado por
-&lt;tu marca&gt;") en lugar de "Linchpin" — tanto en el reporte Markdown
+&lt;tu marca&gt;") en lugar de "Kern" — tanto en el reporte Markdown
 como en el Excel. Se resuelve automáticamente perfil por cliente, sin tocar
 nada más.
 
 **Alcance actual, léelo antes de prometerle esto a un cliente:** solo el
 documento consolidado lleva tu marca hoy — el reporte propio de cada
 herramienta individual dentro de la carpeta del paquete (data_quality,
-abc_xyz, etc.) todavía sale con la marca Linchpin por defecto. Si vas a
+abc_xyz, etc.) todavía sale con la marca Kern por defecto. Si vas a
 entregarle la carpeta completa a tu cliente, aclaraselo o entregale
 solamente el documento consolidado hasta que el whitelabeling cubra todos
 los archivos (mejora pendiente, no todavía construida).
@@ -70,7 +70,7 @@ upsert_profile(
 )
 ```
 
-Un cliente sin `branding` configurado recibe el deck con la marca Linchpin
+Un cliente sin `branding` configurado recibe el deck con la marca Kern
 por defecto — no hace falta optar explícitamente por "sin marca".
 
 ## Cómo arrancamos
