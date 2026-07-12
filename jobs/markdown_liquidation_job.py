@@ -12,6 +12,11 @@ Inputs (reusing the existing prep so the client sends familiar files):
     (``jobs.pricing.prepare_pricing``), passed as ``params['price_history_path']`` —
     SKUs with enough price variation get an elasticity-priced clearance; the rest
     fall back to the documented default-markdown / salvage heuristics.
+
+``resolve_competitor_contexts`` (Linchpin 3.0 PR-19, plan section 7 P4 v2) is this
+job's I/O side of the liquidation CALENDAR built on top of this module's
+``LiquidationReport`` output — see ``src.liquidation_calendar`` for the pure
+calendar/Omnibus/competitive-floor logic itself.
 """
 
 from __future__ import annotations
@@ -26,6 +31,9 @@ from jobs.pricing import prepare_pricing
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 from src.liquidation import LiquidationReport, PriceHistory, plan_liquidation
+from src.price_optimizer import CompetitorPriceContext
+from src.pricing_intel.ledger import PriceLedger
+from src.pricing_intel.match.sku_map import SkuMap
 
 _DEFAULT_HORIZON_WEEKS = 13.0
 _DEFAULT_MARKDOWN_PCT = 0.40
@@ -115,6 +123,50 @@ def verify(report: LiquidationReport) -> list[str]:
         if not math.isfinite(line.recovered_value) or line.recovered_value < 0:
             issues.append(f"{line.product_id}: invalid recovered value")
     return issues
+
+
+def resolve_competitor_contexts(
+    report: LiquidationReport,
+    sku_map: SkuMap,
+    ledger: PriceLedger,
+) -> dict[str, CompetitorPriceContext]:
+    """Resolve a ``{product_id: CompetitorPriceContext}`` map for
+    ``src.liquidation_calendar.build_liquidation_calendar``'s competitive
+    floor check (Linchpin 3.0 PR-19, plan section 7 P4 v2) -- the I/O side
+    of that check, kept out of ``src/liquidation_calendar.py`` on purpose
+    (matching ``src.price_optimizer.CompetitorPriceContext``'s own
+    established discipline: pure modules never read the ledger themselves).
+
+    For each SKU in ``report.lines``: only a CONFIRMED pricing_intel match
+    (``sku_map.latest_confirmed_for_product`` -- the plan S6.5 QA invariant,
+    "solo confirmed alimenta P2/A5") is eligible at all; a SKU with only
+    ``suspect``/``rejected`` matches, or none, is silently skipped here --
+    NOT flagged as an error, since "no confirmed competitor match" is the
+    documented v1-compatible fallback the calendar itself falls back to
+    (plan QA row). Among a SKU's confirmed matches, the CHEAPEST latest
+    observed price across sites (``ledger.latest_for_product``) is used as
+    the competitive floor signal -- the binding constraint: if any one
+    confirmed competitor is cheaper, undercutting that one still needs a
+    documented reason, so picking the cheapest is the conservative choice
+    (never the one a caller could cherry-pick to avoid the check).
+
+    Duplicate ``product_id``s in ``report.lines`` are resolved once (the
+    lookup is per-product, not per-line -- matching a duplicate SKU's own
+    identical competitor signal for every line that shares it).
+    """
+    contexts: dict[str, CompetitorPriceContext] = {}
+    for line in report.lines:
+        if line.product_id in contexts:
+            continue
+        confirmed = sku_map.latest_confirmed_for_product(line.product_id)
+        if not confirmed:
+            continue
+        records = ledger.latest_for_product(line.product_id)
+        if not records:
+            continue
+        cheapest = min(records, key=lambda r: r.offer.price_normalized)
+        contexts[line.product_id] = CompetitorPriceContext.from_ledger_record(cheapest)
+    return contexts
 
 
 def write_operational(report: LiquidationReport, out_dir: str | Path, client: str = "Client") -> dict[str, Path]:
