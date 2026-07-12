@@ -1,0 +1,23 @@
+# Event -> tool routing table (Linchpin 3.0 plan S4.2, F0 -- PR-4).
+#
+# "Ruteo como dato": which registered tool (scm_agent/tools.py's
+# build_default_registry()) handles an scm_agent.events.Event of a given
+# type, how to turn that event's payload into the tool's run params
+# (scm_agent/event_intent.py's PARAM_BUILDERS, keyed by `param_builder`),
+# and its autonomy tier (T1 auto-execute / T2 one-click approval / T3
+# escalation package -- tiers are enforced starting PR-6's autonomy.py;
+# here the tier is carried as data only and surfaced in the notification).
+#
+# Kept deliberately small: this is the FIRST routing entry, wired end-to-end
+# for the F0 acceptance criterion (a synthetic stock_below_rop event routes
+# to inventory_optimization through the real orchestrator and QA gate).
+# PR-5's monitors.py (generalizing src/alerting.py's other event kinds --
+# excess, dead_stock, reorder_due) adds more routes here; no code changes
+# required to add one, only a new entry under `routes`.
+version: 1
+
+routes:
+  stock_below_rop:
+    tool: inventory_optimization
+    param_builder: inventory_from_stock_event
+    autonomy_tier: T2

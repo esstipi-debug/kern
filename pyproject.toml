@@ -17,6 +17,11 @@ dependencies = [
     "scipy>=1.10",
     "matplotlib>=3.7",
     "openpyxl>=3.1",
+    # config/event_routing.yaml (F0, PR-4) -- "ruteo como dato": a small,
+    # foundational config-parsing dependency the Tower's event routing cannot
+    # degrade without (unlike the optional-extra heavy deps below, there is no
+    # meaningful fallback for "the routing table failed to parse").
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
