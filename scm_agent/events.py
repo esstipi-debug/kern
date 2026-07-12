@@ -22,6 +22,7 @@ and ``src/state/store.StateStore``: stdlib ``sqlite3``, an injectable path
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
@@ -29,8 +30,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # Env-override convention matching src/state/store.py's LINCHPIN_STATE_PATH /
-# webapp/security.py's LINCHPIN_* variables.
-DEFAULT_PATH = "data/events.sqlite3"
+# webapp/security.py's LINCHPIN_* variables (and scm_agent/autonomy.py's own
+# LINCHPIN_AUTONOMY_PATH, added alongside it) -- this module's own DEFAULT_PATH
+# previously named the convention in this comment without implementing it.
+DEFAULT_PATH = os.environ.get("LINCHPIN_EVENTS_PATH", "").strip() or "data/events.sqlite3"
 
 # A repeat of the same dedup_key inside this many seconds is treated as the
 # same occurrence, not a new one -- e.g. an hourly monitor cycle re-detecting
@@ -191,6 +194,33 @@ class EventLedger:
             "SELECT id, type, severity, sku, source, payload_json, dedup_key, ts FROM events ORDER BY seq ASC"
         ).fetchall()
         return [_row_to_event(r) for r in rows]
+
+    def list_recent(self, *, event_type: str | None = None, limit: int = 200) -> list[Event]:
+        """The most recent ``limit`` events (optionally filtered to one
+        ``event_type``), oldest-first -- what ``GET /api/events`` (Linchpin
+        3.0 PR-7) windows the Tower's "today's events" feed over so the
+        response is never an unbounded dump of an ever-growing table.
+
+        Deliberately NOT the same as ``list_by_type(..., limit=...)``: that
+        method's ``LIMIT`` applies to an ``ORDER BY seq ASC`` query, so it
+        returns the OLDEST rows of that type -- fine for its existing
+        callers, wrong for a live "recent activity" feed, which must keep
+        shrinking toward the newest rows as the table grows. This method
+        queries ``ORDER BY seq DESC LIMIT ?`` (the newest rows) and reverses
+        the page in Python before returning, so callers still see the usual
+        oldest-first ordering within that most-recent window.
+        """
+        if limit < 1:
+            raise ValueError(f"limit must be >= 1, got {limit}")
+        query = "SELECT id, type, severity, sku, source, payload_json, dedup_key, ts FROM events"
+        params: tuple = ()
+        if event_type is not None:
+            query += " WHERE type = ?"
+            params = (event_type,)
+        query += " ORDER BY seq DESC LIMIT ?"
+        params = params + (limit,)
+        rows = self._conn.execute(query, params).fetchall()
+        return [_row_to_event(r) for r in reversed(rows)]
 
     def close(self) -> None:
         self._conn.close()

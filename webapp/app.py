@@ -36,6 +36,16 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: 
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from scm_agent import Orchestrator  # noqa: E402
+from scm_agent.autonomy import DEFAULT_PATH as AUTONOMY_DEFAULT_PATH  # noqa: E402
+from scm_agent.autonomy import (  # noqa: E402
+    STATUS_AUTO_EXECUTED,
+    STATUS_PENDING,
+    AutonomyLedger,
+    AutonomyRecord,
+    acknowledge_pending,
+)
+from scm_agent.events import DEFAULT_PATH as EVENTS_DEFAULT_PATH  # noqa: E402
+from scm_agent.events import Event, EventLedger  # noqa: E402
 from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
 from src.mcp_keys import DEFAULT_PATH as MCP_KEYS_DEFAULT_PATH  # noqa: E402
@@ -52,6 +62,7 @@ from webapp.mcp_server import build_mcp_server  # noqa: E402
 from webapp.offers import OFFERS, get_offer  # noqa: E402
 from webapp.operator_profile import get_operator_profile  # noqa: E402
 from webapp.paquetes_page import render_index_html, render_offer_html  # noqa: E402
+from webapp.tower_page import T1_DISPLAY_LIMIT, render_tower_html  # noqa: E402
 
 DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
 SAMPLE_STOCK_FILE = _REPO_ROOT / "data" / "sample_stock_snapshot.csv"
@@ -78,6 +89,16 @@ MAX_LEAD_PERIODS = 52.0
 _ORCHESTRATOR: Orchestrator | None = None
 _MCP_KEY_STORE: McpKeyStore | None = None
 MCP_KEYS_PATH = os.environ.get("LINCHPIN_MCP_KEYS_PATH", "").strip() or MCP_KEYS_DEFAULT_PATH
+# Both already honor their own LINCHPIN_EVENTS_PATH/LINCHPIN_AUTONOMY_PATH env
+# vars via scm_agent.events.DEFAULT_PATH / scm_agent.autonomy.DEFAULT_PATH -
+# referenced here (not re-read from os.environ) so there is one source of
+# truth. Named as module attributes (not inlined at each ledger-constructing
+# call site) so tests can monkeypatch them the same way MCP_KEYS_PATH already
+# is - a bare EventLedger()/AutonomyLedger() call binds its default `path`
+# argument once at import time, which a test's monkeypatch.setenv(...) run
+# AFTER that import can never retroactively change.
+EVENTS_LEDGER_PATH = EVENTS_DEFAULT_PATH
+AUTONOMY_LEDGER_PATH = AUTONOMY_DEFAULT_PATH
 
 
 def _get_orchestrator() -> Orchestrator:
@@ -101,6 +122,25 @@ def _get_mcp_key_store() -> McpKeyStore:
     if _MCP_KEY_STORE is None:
         _MCP_KEY_STORE = McpKeyStore(MCP_KEYS_PATH)
     return _MCP_KEY_STORE
+
+
+def _get_event_ledger() -> EventLedger:
+    """A FRESH connection per call, unlike _get_mcp_key_store()'s cached
+    singleton: sqlite3 connections default to check_same_thread=True and
+    EventLedger/AutonomyLedger were not built with McpKeyStore's
+    check_same_thread=False + Lock pairing, so a request-scoped open/close
+    (matching jobs/digest_job.py's own_ledger convention) is the safe
+    lifecycle here, not a persisted cross-request object. Still indirected
+    through this function (reading EVENTS_LEDGER_PATH, not a bare
+    EventLedger()) so tests can monkeypatch either the path or this function
+    itself, matching _get_mcp_key_store()'s "swap via monkeypatch" precedent."""
+    return EventLedger(EVENTS_LEDGER_PATH)
+
+
+def _get_autonomy_ledger() -> AutonomyLedger:
+    """See _get_event_ledger()'s docstring -- same fresh-connection-per-call
+    reasoning applies here."""
+    return AutonomyLedger(AUTONOMY_LEDGER_PATH)
 
 
 class SafeJSONResponse(JSONResponse):
@@ -787,6 +827,115 @@ def api_metrics() -> dict:
             "by_dataset": demo_scan_dataset,
         },
     }
+
+
+# ---- Control Tower (Linchpin 3.0 PR-7, plan S5): GET /api/events + ----------
+# ---- POST /api/approvals/{id} + GET /tower ----------------------------------
+
+_EVENTS_DEFAULT_LIMIT = 100
+_EVENTS_MAX_LIMIT = 500
+_APPROVED_BY_RE = re.compile(r"[^\w\s.,@\-]")
+_APPROVED_BY_MAX_LEN = 80
+
+
+def _event_to_dict(event: Event) -> dict:
+    d = asdict(event)
+    d["ts"] = event.ts.isoformat()
+    return d
+
+
+def _autonomy_record_to_dict(record: AutonomyRecord) -> dict:
+    d = asdict(record)
+    d["created_at"] = record.created_at.isoformat()
+    d["acknowledged_at"] = record.acknowledged_at.isoformat() if record.acknowledged_at else None
+    return d
+
+
+@app.get("/api/events", dependencies=[Depends(security.rate_limit)])
+def api_events(
+    limit: int = Query(_EVENTS_DEFAULT_LIMIT, ge=1, le=_EVENTS_MAX_LIMIT),
+    event_type: str | None = Query(None, description="Filter to one Event.type, e.g. stock_below_rop"),
+) -> dict:
+    """Recent Control Tower events (scm_agent.events.EventLedger) -- the most
+    recent `limit` rows (optionally filtered to one type), oldest-first.
+    Windowed (EventLedger.list_recent), never an unbounded dump of an
+    ever-growing table. Powers the /tower page's "eventos de hoy" feed
+    (client-side fetch) and is read-only, same auth level as /api/portfolio."""
+    ledger = _get_event_ledger()
+    try:
+        recent = ledger.list_recent(event_type=event_type, limit=limit)
+    finally:
+        ledger.close()
+    return {"events": [_event_to_dict(e) for e in recent], "count": len(recent)}
+
+
+@app.post(
+    "/api/approvals/{approval_id}",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+def api_approve_pending(
+    approval_id: str,
+    approved_by: str = Query("operator", description="Who is completing this approval (audit trail)"),
+) -> dict:
+    """The one-click T2 approval endpoint: complete a pending
+    scm_agent.autonomy.AutonomyRecord via acknowledge_pending() -- the SAME
+    accept/approve function PR-6's autonomy.py built specifically for this
+    endpoint (see its own docstring), not a second, parallel approval
+    mechanism.
+
+    Gated by require_api_key (this mutates state, same auth level as
+    POST /api/jobs) AND rate_limit. An unknown id (never issued, or from a
+    different LINCHPIN_AUTONOMY_PATH) is a 404; an id that is not currently
+    pending (already acknowledged, or was never a T2 row) is a 409 -- both
+    loud, actionable failures, never a silent no-op.
+
+    Note: today this only completes an ANALYSIS-tier T2 item (the path
+    enforce_analysis_tier()/handle_event_tiered() actually wire into
+    AutonomyLedger). enforce_writeback_tier()'s T2 HANDOFF -- staging a real
+    src.writeback.Changeset for the few writeback-capable tools -- is not
+    yet persisted anywhere id-addressable (AutonomyRecord carries no
+    changeset reference, and no caller threads one through the ledger), so
+    there is nothing yet for this endpoint to approve()+apply() against for
+    that path. Wiring that up (giving AutonomyRecord an optional serialized
+    Changeset, and calling src.writeback.approve()+apply() here with a real
+    900s TTL Approval when one is present) is left to a future PR rather
+    than inventing a second, ad hoc changeset store here.
+    """
+    clean_by = _APPROVED_BY_RE.sub("", approved_by)[:_APPROVED_BY_MAX_LEN].strip() or "operator"
+    ledger = _get_autonomy_ledger()
+    try:
+        try:
+            outcome = acknowledge_pending(ledger, approval_id, clean_by)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"unknown approval id: {approval_id}") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        record = ledger.get(approval_id)
+    finally:
+        ledger.close()
+    return {
+        "status": outcome.status,
+        "summary": outcome.summary,
+        "record": _autonomy_record_to_dict(record) if record is not None else None,
+    }
+
+
+@app.get("/tower")
+def tower_page() -> HTMLResponse:
+    """The Control Tower dashboard tab (Linchpin 3.0 PR-7, plan S5): T1
+    auto-executed actions and T2 pending approvals are rendered server-side
+    from the real AutonomyLedger at request time; "eventos de hoy" is
+    populated client-side via GET /api/events; the A4 per-tool reliability
+    section is a clearly-labeled placeholder until PR-8 lands
+    (src/verify/backtest.py + src/verify/reliability.py)."""
+    ledger = _get_autonomy_ledger()
+    try:
+        records = ledger.list_all()
+    finally:
+        ledger.close()
+    t1 = [r for r in records if r.status == STATUS_AUTO_EXECUTED][-T1_DISPLAY_LIMIT:]
+    t2 = [r for r in records if r.status == STATUS_PENDING]
+    return HTMLResponse(render_tower_html(t1_records=t1, t2_records=t2))
 
 
 def _warehouse_params(

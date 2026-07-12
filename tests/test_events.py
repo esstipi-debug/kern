@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from scm_agent.events import DEFAULT_DEDUP_WINDOW_SECONDS, Event, EventLedger
 
 _T0 = datetime(2026, 7, 12, 12, 0, 0, tzinfo=timezone.utc)
@@ -148,6 +150,56 @@ def test_list_all_returns_every_event_across_types_oldest_first():
     ledger.emit(Event(type="excess", severity="low", source="monitors", dedup_key="k2", ts=_T0 + timedelta(hours=1)))
 
     assert [e.dedup_key for e in ledger.list_all()] == ["k1", "k2"]
+
+
+# -- list_recent(): the GET /api/events windowing query (PR-7) ----------------
+
+
+def test_list_recent_keeps_the_newest_rows_when_limit_is_below_the_table_size():
+    """The must-have behavior a live 'recent events' feed needs -- unlike
+    list_by_type(limit=...), which keeps the OLDEST rows (see that method's
+    own test above), list_recent() must keep the NEWEST ones as the table
+    grows past `limit`."""
+    ledger = _ledger(dedup_window_seconds=0.0)
+    for i in range(5):
+        ledger.emit(_rop_event(ts=_T0 + timedelta(hours=i), dedup_key=f"k{i}"))
+
+    got = ledger.list_recent(limit=2)
+
+    assert [e.dedup_key for e in got] == ["k3", "k4"]  # the 2 newest, oldest-first
+
+
+def test_list_recent_returns_oldest_first_within_the_window():
+    ledger = _ledger(dedup_window_seconds=0.0)
+    ledger.emit(_rop_event(ts=_T0, dedup_key="k1"))
+    ledger.emit(_rop_event(ts=_T0 + timedelta(hours=1), dedup_key="k2"))
+    ledger.emit(_rop_event(ts=_T0 + timedelta(hours=2), dedup_key="k3"))
+
+    assert [e.dedup_key for e in ledger.list_recent(limit=10)] == ["k1", "k2", "k3"]
+
+
+def test_list_recent_filters_by_event_type():
+    ledger = _ledger()
+    ledger.emit(_rop_event(ts=_T0, dedup_key="k1"))
+    ledger.emit(Event(type="excess", severity="low", source="monitors", dedup_key="k2", ts=_T0 + timedelta(hours=1)))
+
+    assert [e.type for e in ledger.list_recent(event_type="stock_below_rop", limit=10)] == ["stock_below_rop"]
+    assert [e.type for e in ledger.list_recent(event_type="excess", limit=10)] == ["excess"]
+    assert ledger.list_recent(event_type="does_not_exist", limit=10) == []
+
+
+def test_list_recent_default_limit_covers_a_small_table():
+    ledger = _ledger()
+    for i in range(3):
+        ledger.emit(_rop_event(ts=_T0 + timedelta(hours=i), dedup_key=f"k{i}"))
+
+    assert len(ledger.list_recent()) == 3
+
+
+def test_list_recent_rejects_a_non_positive_limit():
+    ledger = _ledger()
+    with pytest.raises(ValueError, match="limit"):
+        ledger.list_recent(limit=0)
 
 
 def test_event_without_a_sku_is_allowed_for_non_sku_scoped_events():
