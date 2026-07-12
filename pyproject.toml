@@ -49,6 +49,12 @@ forecast = [
 mcp = [
     "mcp>=1.0",
 ]
+# src/state -- pandera schema contracts + a parquet engine for snapshot history.
+# Degrades gracefully when absent (see src/state/system_state.py and store.py).
+state = [
+    "pandera>=0.32",
+    "pyarrow>=15",
+]
 
 [project.urls]
 Homepage = "https://github.com/esstipi-debug/linchpin"
