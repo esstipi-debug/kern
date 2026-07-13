@@ -1,10 +1,10 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.esstipi-debug/linchpin",
+  "name": "io.github.esstipi-debug/kern",
   "description": "AI-powered supply-chain and inventory optimization: forecasting, ABC-XYZ classification, reorder policies, pricing, financial KPIs, and data-quality audits for autonomous agents. Read-only analysis, per-client API key.",
   "version": "2.9.0",
   "repository": {
-    "url": "https://github.com/esstipi-debug/linchpin",
+    "url": "https://github.com/esstipi-debug/kern",
     "source": "github"
   },
   "websiteUrl": "https://linchpin.fly.dev",
@@ -15,7 +15,7 @@
       "headers": [
         {
           "name": "X-API-Key",
-          "description": "Per-client key issued by the Linchpin operator (contact via https://linchpin.fly.dev) - not a self-serve signup yet.",
+          "description": "Per-client key issued by the Kern operator (contact via https://linchpin.fly.dev) - not a self-serve signup yet.",
           "isRequired": true,
           "isSecret": true
         }

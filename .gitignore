@@ -46,6 +46,14 @@ data/kaggle/
 # the latter would otherwise leak paying-client names into git history.
 data/*.sqlite3
 
+# src/state system-state snapshot store (SQLite index + parquet/CSV history) -
+# regenerable from live system data, never versioned.
+data/state/
+
+# src/pricing_intel PriceLedger (SQLite index + parquet/CSV competitor-price
+# history) - regenerable from live acquisition data, never versioned.
+data/pricing_intel/
+
 # per-client parameter profiles (src/client_profile.py) - real client cost/capacity
 # numbers, never versioned. UNLIKE the rest of this file, this is NOT regenerable —
 # back it up separately (see CLAUDE.md gotchas).
@@ -71,3 +79,6 @@ webapp/_jobs_output/
 
 # captured demo leads (PII — never versioned)
 webapp/_leads/
+# local code-intelligence indexes (codegraph / serena MCP servers)
+.codegraph/
+.serena/

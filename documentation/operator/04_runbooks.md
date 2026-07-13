@@ -128,7 +128,7 @@ de registro.
 4. **Verifica la lista de cambios** — ¿exactamente lo esperado? ¿ningún campo de más?
 5. **Aprueba** (`approve`) — queda ligada a la `idempotency_key` y **expira en 15
    min**. Si expira, re-revisa y re-aprueba.
-6. **Deja que Linchpin aplique** (`apply`, idempotente) y **archiva el `AuditEntry`**.
+6. **Deja que Kern aplique** (`apply`, idempotente) y **archiva el `AuditEntry`**.
 7. **Si algo salió mal**, usa `rollback(idempotency_key)` y documenta.
 
 > 🚫 Nunca apruebes sin leer el changeset. Si falta o expira la aprobación, el
@@ -162,10 +162,10 @@ de registro.
 
 **Disparador:** cadencia mensual (modo SCM).
 
-1. **Corre el ciclo**: `examples/run_sop_cycle.py` (o el tool `sop`). Linchpin
+1. **Corre el ciclo**: `examples/run_sop_cycle.py` (o el tool `sop`). Kern
    proyecta el balance bajo *chase/level/hybrid* y emite `OPTIONS`.
 2. **Convoca** a dueños de demanda, oferta y finanzas a la revisión ejecutiva.
-3. **Presenta los gaps** que Linchpin cuantificó (costo / servicio / capital de
+3. **Presenta los gaps** que Kern cuantificó (costo / servicio / capital de
    trabajo).
 4. **Fuerza la decisión** sobre las opciones rankeadas (RB-4). Nadie sale sin elegir.
 5. **Registra** la decisión y **dispara los handoffs** derivados (RB-3) y las
@@ -226,6 +226,6 @@ comercial](../paquetes/README.md) y toca producir el ciclo.
 
 ---
 
-> Con estos runbooks cubres el 100% de las situaciones humano-únicas que Linchpin
+> Con estos runbooks cubres el 100% de las situaciones humano-únicas que Kern
 > puede producir. El siguiente documento, [05 · Catálogo de Entregables](05_deliverable_catalog.md),
 > lista qué puedes **producir y vender**, con tu valor agregado en cada uno.

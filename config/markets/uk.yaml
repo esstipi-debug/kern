@@ -1,0 +1,33 @@
+# Per-jurisdiction pricing-guardrail profile (Linchpin 3.0 plan section 7 P5,
+# Golden Rule 12). See eu.yaml's header comment for the field-by-field
+# contract (src.pricing_guardrails.MarketRules).
+
+market: uk
+
+# The UK left the EU but the Digital Markets, Competition and Consumers Act
+# 2024's pricing-information reforms track the same "was" price / reference
+# period discipline Omnibus introduced in the EU (the UK's post-Brexit
+# domestic reform mirrors the same discipline, not a copy of the EU text) --
+# treated as a hard gate here for the same reason as eu.yaml: a discount %
+# must be defensible against a real recent-lowest-price reference, not just
+# displayed next to one.
+discount_reference_gate: hard
+discount_tolerance_pct: 0.5
+
+# Same Golden-Rule-12 relabeling as the EU: UK competition law treats
+# supplier-imposed resale price floors as a hardcore restriction (Chapter I
+# prohibition, Competition Act 1998, mirroring EU Article 101(1)(a) case
+# law) -- the plan groups UK with the EU explicitly for this reason (see
+# LINCHPIN_3.0_PLAN.md section 7, P5 row: "en UE/UK el MAP es RPM").
+map_alert_label: "dispersion de precios / inteligencia de canal"
+
+legal_basis: >
+  Digital Markets, Competition and Consumers Act 2024 (pricing information
+  reforms); Competition Act 1998 Chapter I prohibition (RPM as a hardcore
+  restriction, paralleling EU Art. 101(1)(a)).
+
+notes: >
+  Hard gate, same enforcement as eu.yaml. Kept as a SEPARATE profile (not an
+  alias of eu.yaml) because UK pricing law is its own post-Brexit statute,
+  not the EU directive verbatim -- a future divergence in tolerance or gate
+  severity should not require touching the EU file.

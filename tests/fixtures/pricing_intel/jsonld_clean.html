@@ -1,0 +1,31 @@
+<!--
+Frozen fixture (Linchpin 3.0 PR-11, plan section 6.10): a clean, valid
+JSON-LD Product/Offer block -- the tier-1 extraction cascade case
+(confidence 0.98). Hand-verified expected result:
+  price = 199.99, currency = USD, availability = InStock,
+  extractor = "structured:extruct", tier = "json_ld"
+-->
+<html>
+<head>
+<title>Acme Widget 3000</title>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "name": "Acme Widget 3000",
+  "sku": "AW-3000",
+  "offers": {
+    "@type": "Offer",
+    "price": "199.99",
+    "priceCurrency": "USD",
+    "availability": "https://schema.org/InStock",
+    "url": "https://example.com/p/aw-3000"
+  }
+}
+</script>
+</head>
+<body>
+  <h1>Acme Widget 3000</h1>
+  <span class="price-display">$199.99</span>
+</body>
+</html>

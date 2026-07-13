@@ -638,3 +638,40 @@ def vehicle_routing_options(report: object) -> GuidedOutcome:
         f"Vehicle routing over {report.n_stops} stop(s): choose the route plan.",
         items,
     )
+
+
+def price_intelligence_options(report: object) -> GuidedOutcome:
+    n_flagged = len(report.quarantined) + len(report.discarded)
+    act_now = (
+        "Act on the confirmed rows",
+        f"{report.n_products_covered} of {report.n_products} product(s) have a confirmed competitor "
+        f"read ({report.coverage_pct * 100:.0f}% coverage) - review the price-position matrix and "
+        "decide where to move.",
+        "review price_position_matrix.xlsx and act on the non-quarantined rows",
+        "the fastest path to a decision; skipped/quarantined refs stay unresolved",
+    )
+    expand_coverage = (
+        "Expand coverage first",
+        f"{len(report.skipped)} ref(s) produced no observation this run (site not approved, blocked, "
+        "or extraction failed) - resolving those raises coverage before acting.",
+        "get the skipped domains approved (config/sites/*.yaml) or fix the refs, then re-run",
+        "better-grounded decision; delays action by one more cycle",
+    )
+    investigate_flags = (
+        "Investigate the flagged rows",
+        f"{n_flagged} observation(s) were quarantined or discarded by the sanity gate - a confirmatory "
+        "re-read (or a manual check) resolves whether the jump is real.",
+        "re-run once the confirmation window passes, or check the flagged URLs by hand",
+        "protects against acting on a bad read; costs a second cycle",
+    )
+    if n_flagged > 0:
+        items: list[_Item] = [act_now, investigate_flags, expand_coverage]
+    elif report.skipped:
+        items = [act_now, expand_coverage, investigate_flags]
+    else:
+        items = [act_now, expand_coverage, investigate_flags]
+    return _ranked(
+        f"Price position across {report.n_products} product(s): {report.coverage_pct * 100:.0f}% "
+        "coverage - choose how to proceed.",
+        items,
+    )

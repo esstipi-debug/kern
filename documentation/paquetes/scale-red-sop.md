@@ -7,7 +7,7 @@
 
 ## Qué recibes
 
-**El catálogo completo de Linchpin** — todo lo del plan Growth (pronóstico, ABC-XYZ,
+**El catálogo completo de Kern** — todo lo del plan Growth (pronóstico, ABC-XYZ,
 política de inventario, reposición conectada a tu ERP, pricing, costo de servir,
 exactitud de inventario, red de distribución, proveedores, riesgo) **más 9
 capacidades de mando ejecutivo**:
@@ -76,3 +76,7 @@ gobernar una red real, no solo un almacén. El salto natural desde acá, cuando
 la relación madura (6–18 meses), es el **Retainer Ejecutivo Fraccional**
 (USD 9.000–12.000/mes) — mismo alcance analítico, cadencia semanal y
 escalamiento con SLA para un mandato de VP/COO fraccional.
+
+---
+
+*Este paquete corre sobre **Kern** (antes Linchpin) - el nucleo de decisiones de la agencia: cada resultado pasa un QA-gate que veta entregables debiles, cita las fuentes del campo en que se apoya (25 obras curadas), y toda escritura a tu sistema es staged, aprobada y reversible. La evolucion completa del nombre: [KERN_IDENTIDAD_Y_FILOSOFIA.md](../KERN_IDENTIDAD_Y_FILOSOFIA.md).*

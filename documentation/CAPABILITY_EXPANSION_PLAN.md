@@ -1,11 +1,11 @@
-# Linchpin — Plan Maestro de Expansión de Capacidades
+# Kern — Plan Maestro de Expansión de Capacidades
 
 **Versión:** 1.0 · **Fecha:** 22 jun 2026
-**Objetivo:** convertir a Linchpin de un *vertical profundo de planificación de inventario* en el **agente SCM agéntico end-to-end** capaz de ejecutar los 6 perfiles, los 16 módulos y los 8 playbooks de la `Base de Conocimiento`, en todos los stacks reales (Excel/Sheets, Shopify, Amazon FBA, ERPs, contabilidad, carriers).
+**Objetivo:** convertir a Kern de un *vertical profundo de planificación de inventario* en el **agente SCM agéntico end-to-end** capaz de ejecutar los 6 perfiles, los 16 módulos y los 8 playbooks de la `Base de Conocimiento`, en todos los stacks reales (Excel/Sheets, Shopify, Amazon FBA, ERPs, contabilidad, carriers).
 
 > **Nota (2026-07-02):** la columna **Hoy** de la tabla en §4 es un snapshot congelado al 22 jun 2026 y ya está desactualizada — no se ha vuelto a certificar desde entonces. Desde esa fecha se enviaron 10 tools más al registry del agente (PRs #73-#80): `abc_xyz`, `ddmrp`, `cycle_count`, `multi_echelon`, `newsvendor`, `simulation`, `slotting`, `transportation`, `fefo`, `excess_obsolete`, `facility_location`, `drp` — todas ya wireadas como capacidades ruteables por brief (ver `build_default_registry()` en `scm_agent/tools.py`, 34 tools hoy). Los porcentajes de M4/M5/M6/M7/M9/M10 etc. en la tabla de abajo por lo tanto subestiman el estado real; no los re-certifiqué con precisión (requeriría re-derivar la metodología de scoring del audit original) — tómalos como referencia histórica del gap analysis, no como el estado actual. Fuente de verdad para "qué está wireado hoy": el registry, no esta tabla.
 
-> Fundamento: auditoría de código real (Linchpin hoy ≈ 27% de amplitud, ~85% del núcleo analítico) + investigación profunda de 14 líneas en paralelo (metodología SOTA, libros/papers, librerías y APIs con versiones verificadas a jun 2026). Las citas están en §6.
+> Fundamento: auditoría de código real (Kern hoy ≈ 27% de amplitud, ~85% del núcleo analítico) + investigación profunda de 14 líneas en paralelo (metodología SOTA, libros/papers, librerías y APIs con versiones verificadas a jun 2026). Las citas están en §6.
 
 ---
 
@@ -183,7 +183,7 @@ Más un **plano de control de escritura segura** separado (el M15 que faltaba):
 
 ### 2.11 KPIs financieros de inventario  (M13/§4.5 — hoy ~30%)
 
-**Metodología:** capa de KPIs anclada a estándares — **SCOR DS** (cash-to-cash AM.1.1), **retail-math GMROI**, **DIO (GAAP)** — calculados de forma determinista desde el COGS/inventario promedio/margen que Linchpin ya produce. Se **construye** (no hay librería autoritativa; las cifras deben ser exactas/auditables).
+**Metodología:** capa de KPIs anclada a estándares — **SCOR DS** (cash-to-cash AM.1.1), **retail-math GMROI**, **DIO (GAAP)** — calculados de forma determinista desde el COGS/inventario promedio/margen que Kern ya produce. Se **construye** (no hay librería autoritativa; las cifras deben ser exactas/auditables).
 
 **Tech:** pandas/numpy/scipy/openpyxl (ya presentes); `great_tables==0.22.0` opcional (scorecards).
 
@@ -264,7 +264,7 @@ Más un **plano de control de escritura segura** separado (el M15 que faltaba):
 
 **Orden de build:** doc-schemas → doc-reader + edi-parser → kb-builder + call-playbooks → live-lookup + shipment-context-brief → voice-logistics-agent → compliance-guard + osd-intake + voice-followup.
 
-**Preguntas abiertas (bloquean parte del diseño):** (1) ¿qué TMS/tracking integra Linchpin hoy y exponen status-API los carriers, o solo EDI 214/IFTSTA? (2) ¿requisito on-prem/ZDR? → si los docs no salen de la red, liderar con Docling+PaddleOCR local y Claude solo bajo ZDR. (3) clasificación legal por tipo de llamada (transaccional vs telemarketing). (4) idiomas en alcance. (5) esquema del L3 para mapear campos de documentos/EDI a sus nodos/aristas.
+**Preguntas abiertas (bloquean parte del diseño):** (1) ¿qué TMS/tracking integra Kern hoy y exponen status-API los carriers, o solo EDI 214/IFTSTA? (2) ¿requisito on-prem/ZDR? → si los docs no salen de la red, liderar con Docling+PaddleOCR local y Claude solo bajo ZDR. (3) clasificación legal por tipo de llamada (transaccional vs telemarketing). (4) idiomas en alcance. (5) esquema del L3 para mapear campos de documentos/EDI a sus nodos/aristas.
 
 ### 2.14 Capa de Ejecución Guiada — *nunca dejar al usuario desprotegido* (transversal)
 

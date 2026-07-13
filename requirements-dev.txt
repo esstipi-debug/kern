@@ -1,6 +1,6 @@
 # Development dependencies (tests, coverage, linting, web UI test client).
-# Canonical source is pyproject.toml — equivalent to: pip install -e ".[dev,web,mcp]"
-# Kept for `pip install -r requirements-dev.txt` workflows.
+# Canonical source is pyproject.toml — equivalent to: pip install -e ".[dev,web,mcp,dataquality,state,tower,pricing-intel,matching,elasticity,repricing,seo]"
+# Kept for `pip install -r requirements-dev.txt` workflows (incl. CI's tests.yml).
 -r requirements.txt
 pytest>=7.0
 pytest-cov>=4.0
@@ -9,10 +9,29 @@ ruff>=0.4
 # web UI (webapp/) + its test client
 fastapi>=0.110
 uvicorn>=0.29
-httpx>=0.27
+httpx>=0.28  # floor raised by tower/pricing-intel/repricing extras (notify(), pdp_fetcher.py, repricing connectors)
 python-multipart>=0.0.9  # required by POST /api/jobs (Form/File); app import fails without it
 # modern forecasting wrapper (src/forecasting_auto.py) — mirrors pyproject [forecast]
 statsforecast>=2.0,<3
 utilsforecast>=0.2
 # MCP server (webapp/mcp_server.py) — mirrors pyproject [mcp]
 mcp>=1.0
+# data-quality dedup + matching primitives (src/sku_dedup.py, pricing_intel/match/) — mirrors pyproject [dataquality]
+rapidfuzz>=3.0
+python-stdnum>=1.19
+# src/state snapshot store (F0, PR-1) — mirrors pyproject [state]
+pandera>=0.32
+pyarrow>=15
+# jobs/scheduler.py + jobs/notify.py (F0, PR-3) — mirrors pyproject [tower]
+APScheduler[sqlalchemy]>=3.11.3,<4
+# src/pricing_intel/acquire/structured.py + extract.py + normalize.py (PR-11) — mirrors pyproject [pricing-intel]
+extruct==0.18.0
+lxml>=5.0
+price-parser>=0.5.1
+chompjs>=1.2
+# src/pricing_intel/match/probabilistic.py's optional upgrade path (PR-14) — mirrors pyproject [matching]
+splink>=4
+# src/elasticity_batch.py's per-SKU log-log OLS confidence interval (PR-16) — mirrors pyproject [elasticity]
+statsmodels>=0.14
+# jobs/seo_audit.py's real site crawl (S1, PR-22) — mirrors pyproject [seo]
+advertools>=0.14

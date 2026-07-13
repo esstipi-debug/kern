@@ -1,0 +1,26 @@
+# Per-jurisdiction pricing-guardrail profile (Linchpin 3.0 plan section 7 P5,
+# Golden Rule 12). See eu.yaml's header comment for the field-by-field
+# contract (src.pricing_guardrails.MarketRules).
+
+market: mx
+
+# No codified fixed reference-price window (unlike EU Omnibus) -- soft gate:
+# warn + attach the prior_price_30d_lowest() evidence trail, never block.
+discount_reference_gate: soft
+discount_tolerance_pct: 0.5
+
+map_alert_label: "posible incumplimiento de MAP"
+
+legal_basis: >
+  Ley Federal de Proteccion al Consumidor (LFPC) -- PROFECO has
+  specifically pursued "precios inflados antes del Buen Fin" (prices
+  artificially raised in the days before a promotional event, then
+  "discounted" back toward or above the original price) as a deceptive
+  reference-price practice; a real prior-price evidence trail is the
+  standard defense.
+
+notes: >
+  Soft gate: an "inflate-then-discount" pattern (see
+  src.pricing_guardrails.detect_inflate_then_discount) is the exact PROFECO
+  Buen-Fin scenario this profile is written for -- flagged as a warning
+  attached to the changeset, never blocked outright.

@@ -1,0 +1,45 @@
+<!--
+Frozen fixture (PR-11): a JSON-LD @graph with TWO Offer nodes -- the first
+is malformed (price is the literal string "call for price", unparseable),
+the second is a valid promo offer (listPrice > price). Proves the cascade
+tries every JSON-LD Offer candidate before falling through to tier 2, and
+that normalize.detect_promo's list_price/price divergence signal is
+reachable from a real extraction result.
+Hand-verified expected result (skipping the first, bad node):
+  price = 89.00, currency = USD, list_price = 120.00, tier = json_ld
+-->
+<html>
+<head>
+<title>Acme Blaster Pro</title>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Product",
+      "name": "Acme Blaster Mini",
+      "offers": {
+        "@type": "Offer",
+        "price": "call for price",
+        "priceCurrency": "USD"
+      }
+    },
+    {
+      "@type": "Product",
+      "name": "Acme Blaster Pro",
+      "offers": {
+        "@type": "Offer",
+        "price": "89.00",
+        "priceCurrency": "USD",
+        "listPrice": "120.00",
+        "availability": "https://schema.org/InStock"
+      }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+  <h1>Acme Blaster Pro</h1>
+</body>
+</html>

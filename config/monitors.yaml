@@ -1,0 +1,57 @@
+# Monitor cadence + thresholds (Linchpin 3.0 plan S5, A1 "sense" -- PR-5,
+# scm_agent/monitors.py's load_monitor_config()/run_all_monitors()).
+#
+# "Ruteo es dato" (config/event_routing.yaml) extended to monitor tuning:
+# thresholds and cadence live here, not as hardcoded constants in
+# scm_agent/monitors.py, so changing how sensitive a monitor is -- or how
+# often it should run in production -- never requires a code change.
+#
+# cadence_minutes documents the production interval a jobs.scheduler
+# ScheduledJob is expected to use once one is registered (a later PR --
+# run_all_monitors() itself always runs one-shot today: plan rule 9, "todo
+# componente continuo degrada a batch"). It is data only in this PR.
+version: 1
+
+monitors:
+  # (a) ROP cruzado -- at/below reorder point, cover still above the critical
+  # floor. See scm_agent/monitors.py's rop_breach_monitor().
+  rop_breach:
+    enabled: true
+    cadence_minutes: 60
+    critical_cover_days: 7.0
+
+  # (d) Stockout proyectado -- at/below reorder point, cover below the
+  # critical floor (the urgent variant of rop_breach). See
+  # scm_agent/monitors.py's stockout_projected_monitor().
+  stockout_projected:
+    enabled: true
+    cadence_minutes: 60
+    critical_cover_days: 7.0
+
+  # (e) Exceso creciente -- days-of-cover above the excess ceiling AND
+  # growing since the previous snapshot (a real 2-snapshot trend, not a
+  # single-point threshold). See scm_agent/monitors.py's
+  # excess_growing_monitor().
+  excess_growing:
+    enabled: true
+    cadence_minutes: 1440
+    excess_cover_days: 90.0
+    min_growth_days: 1.0
+
+  # (b) sigma_e fuera de banda -- relative forecast error outside the
+  # expected band. See scm_agent/monitors.py's
+  # forecast_error_out_of_band_monitor(). Not yet routed in
+  # config/event_routing.yaml -- see that file's header comment.
+  forecast_error_out_of_band:
+    enabled: true
+    cadence_minutes: 1440
+    band_width: 0.30
+
+  # (c) Drift de lead time -- observed lead time drifting away from its
+  # baseline. See scm_agent/monitors.py's lead_time_drift_monitor(). Not yet
+  # routed in config/event_routing.yaml -- see that file's header comment.
+  lead_time_drift:
+    enabled: true
+    cadence_minutes: 1440
+    drift_threshold: 0.25
+    min_baseline_days: 1.0

@@ -1,0 +1,46 @@
+# Per-domain compliance record (Linchpin 3.0 plan S6.7, PR-12).
+#
+# SYNTHETIC TEST FIXTURE -- "example-retailer.test" uses the IANA-reserved
+# ".test" TLD (RFC 2606) specifically so it can never collide with a real
+# domain. This is NOT a real retailer and was never reviewed against any
+# actual site's robots.txt/ToS. A config for a real, live competitor domain
+# requires an operator to have actually performed the robots.txt check and
+# ToS review below -- the plan gates fetchers on exactly that ("sin YAML
+# aprobado, el fetcher se niega a correr"); a fabricated real-domain config
+# would defeat the whole point of the gate.
+#
+# Fields match src.pricing_intel.models.SiteConfig verbatim -- see that
+# dataclass's __post_init__ for the validation this file must satisfy
+# (tos_decision in allowed/limited/prohibited, max_tier_allowed in
+# L0..L3, pii_policy must be "none").
+
+domain: example-retailer.test
+
+# robots.txt respected: yes, and the date this was last verified.
+robots_txt_respected: true
+robots_checked_at: "2026-07-01"
+
+# ToS summary + decision (plan S6.7: "resumen ToS y decision").
+tos_summary: >
+  Synthetic fixture ToS: public product listing/price pages, no login wall,
+  no explicit anti-automation clause found for PDP endpoints as of the
+  2026-07-01 review. Treated as LIMITED (not full "allowed") pending a
+  real legal review, since a synthetic fixture cannot substitute for one.
+tos_decision: limited
+
+# Agreed crawl rate: minimum seconds between requests to this domain.
+rate_limit_seconds: 5.0
+
+# Max acquisition tier this domain's approval covers (plan S6.2's 4 tiers).
+# L2 here means: structured-data reads (L1) and a changedetection.io-style
+# watcher (L2) are covered; L3 dedicated spiders are NOT approved for this
+# domain under this record.
+max_tier_allowed: L2
+
+# Zero PII, always (plan S6.0 principle 2 -- no exceptions).
+pii_policy: none
+
+# Versioned CSS selector set this domain's SiteConfig-backed tier-3
+# extraction would use (extract.py's cascade, PR-11) -- "v1" here is a
+# placeholder version tag, not a real selector registry entry.
+selectors_version: "1"

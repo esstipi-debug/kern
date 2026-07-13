@@ -1,6 +1,6 @@
 # documentation/ — user & project guides
 
-Narrative documentation for **using** Linchpin and understanding its method and
+Narrative documentation for **using** Kern and understanding its method and
 roadmap. For design briefs, contributor notes, and image assets, see
 [`../docs/`](../docs/).
 
@@ -13,7 +13,8 @@ roadmap. For design briefs, contributor notes, and image assets, see
 | [MONETIZATION_BRIEF.md](MONETIZATION_BRIEF.md) | Monetization paths, verified pricing benchmarks, and the 7-tier commercial packaging structure (path to $8k/month) |
 | [FINANCE_MARKETING_BRIDGE.md](FINANCE_MARKETING_BRIDGE.md) | Technical roadmap for the finance/marketing bridge: cash forecasting, markdown liquidation, marketing-aware S&OP — what's built vs. a real gap, with cited canonical models |
 | [GTM_SUBMISSIONS.md](GTM_SUBMISSIONS.md) | Ready-to-execute go-to-market submissions packet (MCP registries, Odoo Apps Store) |
+| [ACQUISITION_PLAYBOOK.md](ACQUISITION_PLAYBOOK.md) | Client-acquisition playbook for the Diagnostico de Arranque: ICP, free-scan lead magnet, outreach scripts (ES/EN), sourcing pack, compliance notes |
 | [UI_DESIGN_BRIEF.md](UI_DESIGN_BRIEF.md) | Brief for the web UI |
-| [operator/](operator/README.md) | **Operator Portfolio** — onboarding for the human who operates Linchpin: role, division of labor, methodologies, runbooks, deliverable catalog, competency map |
+| [operator/](operator/README.md) | **Operator Portfolio** — onboarding for the human who operates Kern: role, division of labor, methodologies, runbooks, deliverable catalog, competency map |
 
 See also the top-level [README](../README.md) and [SECURITY.md](../SECURITY.md).

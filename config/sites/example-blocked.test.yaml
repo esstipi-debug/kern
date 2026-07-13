@@ -1,0 +1,30 @@
+# Per-domain compliance record (Linchpin 3.0 plan S6.7, PR-12).
+#
+# SYNTHETIC TEST FIXTURE -- "example-blocked.test" (reserved ".test" TLD,
+# RFC 2606). Deliberately configured as PROHIBITED so tests can prove the
+# distinction between "no config exists at all" (SiteNotConfiguredError)
+# and "a config exists but explicitly refuses approval"
+# (SiteNotApprovedError) -- both are hard refusals, but they are different
+# failure modes a caller may want to handle differently (the former means
+# "go get this reviewed"; the latter means "this domain was reviewed and
+# rejected, do not ask again without a new review").
+
+domain: example-blocked.test
+
+robots_txt_respected: true
+robots_checked_at: "2026-07-01"
+
+tos_summary: >
+  Synthetic fixture ToS: explicit "no bots, no automated access, no
+  scraping" clause found in the ToS for this domain as of the 2026-07-01
+  review. No fetcher may run against this domain under this record.
+tos_decision: prohibited
+
+rate_limit_seconds: 10.0
+
+# Irrelevant once tos_decision is "prohibited" (SiteConfig.is_approved is
+# False regardless), but SiteConfig still requires a value -- L0 documents
+# "nothing above official-API-only would ever have been considered".
+max_tier_allowed: L0
+
+pii_policy: none

@@ -1,0 +1,77 @@
+# Event -> tool routing table (Linchpin 3.0 plan S4.2, F0 -- PR-4).
+#
+# "Ruteo como dato": which registered tool (scm_agent/tools.py's
+# build_default_registry()) handles an scm_agent.events.Event of a given
+# type, how to turn that event's payload into the tool's run params
+# (scm_agent/event_intent.py's PARAM_BUILDERS, keyed by `param_builder`),
+# and its autonomy tier (T1 auto-execute / T2 one-click approval / T3
+# escalation package -- tiers are enforced starting PR-6's autonomy.py;
+# here the tier is carried as data only and surfaced in the notification).
+#
+# Kept deliberately small: this is the FIRST routing entry, wired end-to-end
+# for the F0 acceptance criterion (a synthetic stock_below_rop event routes
+# to inventory_optimization through the real orchestrator and QA gate).
+# PR-5's monitors.py (generalizing src/alerting.py's other event kinds --
+# excess, dead_stock, reorder_due) adds more routes here; no code changes
+# required to add one, only a new entry under `routes`.
+#
+# PR-5 note: scm_agent/monitors.py emits 5 event types. Three are routed
+# below (rop_breach, stockout_projected, excess_growing) -- each carries
+# event.payload["rows"] (state DataFrame rows), NOT stock_below_rop's
+# event.payload["data_path"], so they use their own param builders
+# (inventory_from_state_stock_event / excess_obsolete_from_state_stock_event
+# in scm_agent/event_intent.py) rather than inventory_from_stock_event.
+# The other two monitor-emitted types -- forecast_error_out_of_band and
+# lead_time_drift -- are deliberately NOT routed here yet: neither the
+# 'forecast'/'outcomes' state snapshot carries a real historical time series,
+# and fabricating one from 1-2 aggregate numbers just to drive a tool run
+# would violate the plan's own rule 7 ("procedencia total") and rule 14
+# ("ningun cap silencioso"). They still emit real, dedup'd events onto the
+# ledger; a later PR (A4's src/verify/backtest.py) is the natural consumer.
+#
+# PR-15 (the pricing titan's continuous monitoring, jobs/price_monitor.py +
+# webapp POST /api/watch): price_move/competitor_oos both carry
+# event.payload["site"]/["competitor_sku_ref"] (+ optional
+# "matched_product_id"/"html_path"/"our_price") -- routed to
+# price_intelligence for a refreshed position report via
+# price_intel_refresh_from_event, T2 (informational/needs-review by
+# default, matching PR-5's own convention of starting new event types
+# conservatively). promo_detected/new_competitor_listing are emitted (see
+# src/pricing_intel/events.py) but deliberately NOT routed yet -- no
+# registered tool consumes a "a promo was detected" or "a new listing
+# appeared" signal on its own today; they still land on the Tower's event
+# feed. site_degraded/extraction_failed/stale_feed (the titan's own health
+# events, PR-12) are likewise not tool-routed -- they are Tower health
+# signals, not brief-shaped work items.
+version: 1
+
+routes:
+  stock_below_rop:
+    tool: inventory_optimization
+    param_builder: inventory_from_stock_event
+    autonomy_tier: T2
+
+  rop_breach:
+    tool: inventory_optimization
+    param_builder: inventory_from_state_stock_event
+    autonomy_tier: T2
+
+  stockout_projected:
+    tool: inventory_optimization
+    param_builder: inventory_from_state_stock_event
+    autonomy_tier: T2
+
+  excess_growing:
+    tool: excess_obsolete
+    param_builder: excess_obsolete_from_state_stock_event
+    autonomy_tier: T2
+
+  price_move:
+    tool: price_intelligence
+    param_builder: price_intel_refresh_from_event
+    autonomy_tier: T2
+
+  competitor_oos:
+    tool: price_intelligence
+    param_builder: price_intel_refresh_from_event
+    autonomy_tier: T2

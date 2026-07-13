@@ -1,6 +1,6 @@
 # 06 · Mapa de Competencias — Qué Debes Saber y Cómo Aprenderlo
 
-> No necesitas derivar los modelos: Linchpin los implementa y los valida contra
+> No necesitas derivar los modelos: Kern los implementa y los valida contra
 > simulación. Pero sí necesitas **entenderlos lo suficiente para defenderlos** y
 > **juzgar cuándo aplican**. Este es tu mapa de competencias y tu ruta de estudio.
 
@@ -11,7 +11,7 @@
 Tres niveles: **Fundamento** (sin esto no operas), **Competente** (entregas con
 credibilidad), **Avanzado** (consultoría de cadena completa).
 
-| Competencia | Nivel | Por qué la necesitas | Dónde se ve en Linchpin |
+| Competencia | Nivel | Por qué la necesitas | Dónde se ve en Kern |
 |---|---|---|---|
 | Leer un *report.md* + xlsx y sus *Fuentes* | Fundamento | Defender cada número ante el cliente | Salida de cualquier job |
 | Los 4 desenlaces y cerrar cada uno | Fundamento | Es el núcleo de tu rol | `src/guided.py`, [doc 02](02_division_of_labor.md) |
@@ -34,7 +34,7 @@ credibilidad), **Avanzado** (consultoría de cadena completa).
 
 ## 📚 La biblioteca L3 como tu currículo
 
-Linchpin está fundamentado en un **grafo de conocimiento de 23 libros SCM** (1824
+Kern está fundamentado en un **grafo de conocimiento de 23 libros SCM** (1824
 nodos / 3640 aristas), consultable y citado por capítulo. **Es tu material de
 estudio dirigido**: cuando un entregable cite un concepto que no dominas, ve
 directo a su fuente.
@@ -97,7 +97,7 @@ Puedes, sin ayuda:
 5. **Cubrir o asumir documentadamente** cada residuo.
 6. Dejar una **bitácora auditable** de qué se decidió, quién aprobó y por qué.
 
-Cuando eso es rutina, eres un operador de Linchpin pleno: el humano confiable al
+Cuando eso es rutina, eres un operador de Kern pleno: el humano confiable al
 final del lazo que el agente, por diseño, nunca cierra solo.
 
 ---

@@ -1,6 +1,6 @@
 # Paquetes comerciales — one-pagers de venta
 
-Las 8 secciones de la escalera comercial (fuente de verdad de precio/alcance:
+Las 9 secciones de la escalera comercial (fuente de verdad de precio/alcance:
 [MONETIZATION_BRIEF.md](../MONETIZATION_BRIEF.md), sección "Estructura de
 empaquetado comercial"), todas ya ejecutables de punta a punta. Cada one-pager
 está escrito para **enviarse tal cual a un prospecto**:
@@ -15,6 +15,7 @@ está escrito para **enviarse tal cual a un prospecto**:
 | 6 | **Proyecto de Red, Almacén y Operación** | USD 8.000–18.000 único | Proyecto, 4–8 semanas | [proyecto-red-almacen.md](proyecto-red-almacen.md) |
 | 7 | **Proyecto de Sourcing y Costo de Importación** | USD 5.000–10.000 único | Proyecto, recurrible trimestral/anual | [proyecto-sourcing.md](proyecto-sourcing.md) |
 | 8 | **Sprint de Liquidación** | 10–20% del cash recuperado (piso USD 1.500) | Sprint de 2–3 semanas | [sprint-liquidacion.md](sprint-liquidacion.md) |
+| 9 | **Diagnóstico de Posición de Precios** | USD 2.000–3.500 único | Sprint de 2 semanas (one-shot) | [diagnostico-posicion-precios.md](diagnostico-posicion-precios.md) |
 
 Nota: Scale (4) y Retainer Ejecutivo (5) corren el **mismo** catálogo completo
 de 35 herramientas — el brief es explícito en que la diferencia es gobierno
@@ -25,11 +26,21 @@ contingente** — cobra un % del cash efectivamente recuperado, nunca un monto
 fijo por adelantado (calculadora en `src/contingent_fee.py`); ver `--measure`
 más abajo para el anexo de cierre real-vs-estimado.
 
+Nota sobre la sección 9: es, junto con los proyectos puntuales (6, 7), la
+única sección que vende **una sola capacidad** en vez de un paquete de varias
+— justificado igual que ellos (Linchpin 3.0, `documentation/LINCHPIN_3.0_PLAN.md`
+sección 10): es una capacidad neta nueva (`price_intelligence`, "el titán del
+pricing") que hoy ninguna de las otras 8 secciones cubre. No corre por
+`scm_agent/packages.py` — es un tool único con su propio playbook
+(`jobs/price_intelligence.py`) y CLI (`examples/run_price_intel.py --refs
+competitors.csv --client "Acme"`), no una selección de varias herramientas del
+catálogo.
+
 Nota: [partner-odoo.md](partner-odoo.md) no es un 9no paquete de la escalera
 — es el programa de partners (integradores Odoo / consultoras), con dos
 modelos (rev-share 20% o white-label a tarifa fija) y su propio
 `ClientProfile.branding` para que el deck salga bajo la marca del partner en
-vez de la de Linchpin (ver `src/deliverable.py`'s `Branding`).
+vez de la de Kern (ver `src/deliverable.py`'s `Branding`).
 
 ## Para el operador
 
@@ -65,3 +76,14 @@ parametrico, se define en una sesión con el cliente (dimensiones de sitio,
 edificio, racks, andenes) — y `leadership_chain` (diagnóstico de liderazgo) se
 releva **vos** con el cliente vía una autoevaluación breve, nunca se le manda
 un CSV en blanco.
+
+## Conceptos en desarrollo (no registrados aún)
+
+No forman parte de las 7 secciones oficiales de arriba — son borradores de
+venta pensados como discovery/abre-puertas hacia una sección existente. Si
+se deciden productizar, precio y alcance se fijan primero en
+[MONETIZATION_BRIEF.md](../MONETIZATION_BRIEF.md).
+
+| Concepto | Abre la puerta a | One-pager |
+|---|---|---|
+| **Auditoría de Fricción Operacional** — cuantifica pérdidas de desplazamiento/equipo/ánimo rara vez medidas en el CD | Proyecto de Red, Almacén y Operación (6) | [auditoria-friccion-operacional.md](auditoria-friccion-operacional.md) |

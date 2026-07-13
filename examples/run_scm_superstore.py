@@ -1,4 +1,4 @@
-"""Put the SCM side of Linchpin to the test on the Superstore dataset.
+"""Put the SCM side of Kern to the test on the Superstore dataset.
 
 Exercises the supply-chain-distinct modules (vs the inventory/demand side) on the
 raw Superstore orders: a carrier OTIF scorecard, cost-to-serve / profitability,

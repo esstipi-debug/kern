@@ -1,7 +1,7 @@
 # 05 · Catálogo de Entregables — Qué Produces y Vendes
 
-> Lo que puedes ofrecer a un cliente, con la **herramienta de Linchpin** que lo
-> genera y tu **valor agregado humano** en cada uno. Linchpin produce el artefacto;
+> Lo que puedes ofrecer a un cliente, con la **herramienta de Kern** que lo
+> genera y tu **valor agregado humano** en cada uno. Kern produce el artefacto;
 > tú lo enmarcas, lo defiendes y cierras el paso humano.
 
 Catálogo basado en `scm_agent/modes.py` (entregables por modo) y las **35
@@ -102,7 +102,7 @@ Las 8 secciones de la escalera están todas empaquetadas como runner ejecutable
 | **Por evento** | E&O cleanup, selección de proveedor, plan de cash-release | Según gatillo |
 
 > Cada entregable recurrente (S&OP, QBR, dashboard) es **ingreso recurrente**.
-> Linchpin re-produce el artefacto cada ciclo en segundos; tú vendes la **relación
+> Kern re-produce el artefacto cada ciclo en segundos; tú vendes la **relación
 > y el juicio** que lo acompaña.
 
 ---

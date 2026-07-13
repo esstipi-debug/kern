@@ -6,7 +6,7 @@ an analyst records a client's real numbers once via :func:`upsert_profile`, and
 every later run for that client reuses them through :func:`merge_params`.
 
 Not a connector to a client's own system of record — see ``src/writeback.py``
-for that. This is Linchpin's own local operating data about a client, so it
+for that. This is Kern's own local operating data about a client, so it
 carries none of the risk-tier/approval ceremony writeback does.
 
 Resolution priority (highest first), enforced by the caller via

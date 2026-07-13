@@ -21,7 +21,7 @@ import sys
 import tempfile
 import time
 from contextlib import asynccontextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 # Make `src` importable no matter where uvicorn is launched from.
@@ -30,28 +30,53 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import pandas as pd  # noqa: E402
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+from jobs.price_monitor import accept_observation  # noqa: E402
 from scm_agent import Orchestrator  # noqa: E402
+from scm_agent.autonomy import DEFAULT_PATH as AUTONOMY_DEFAULT_PATH  # noqa: E402
+from scm_agent.autonomy import (  # noqa: E402
+    STATUS_AUTO_EXECUTED,
+    STATUS_PENDING,
+    AutonomyLedger,
+    AutonomyRecord,
+    acknowledge_pending,
+)
+from scm_agent.autonomy_promotion import (  # noqa: E402
+    PromotionLedger,
+    PromotionRecord,
+    approve_promotion,
+    reject_promotion,
+)
+from scm_agent.event_intent import DEFAULT_ROUTING_PATH as EVENT_ROUTING_DEFAULT_PATH  # noqa: E402
+from scm_agent.events import DEFAULT_PATH as EVENTS_DEFAULT_PATH  # noqa: E402
+from scm_agent.events import Event, EventLedger  # noqa: E402
 from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
 from src.mcp_keys import DEFAULT_PATH as MCP_KEYS_DEFAULT_PATH  # noqa: E402
 from src.mcp_keys import McpKeyStore  # noqa: E402
 from src.policies import continuous_review_sq, periodic_review_rs  # noqa: E402
+from src.pricing_intel.acquire.watcher import ChangeDetectionWebhookError, parse_changedetection_webhook  # noqa: E402
+from src.pricing_intel.ledger import DEFAULT_BASE_PATH as PRICE_LEDGER_DEFAULT_PATH  # noqa: E402
+from src.pricing_intel.ledger import PriceLedger  # noqa: E402
+from src.pricing_intel.match.sku_map import DEFAULT_BASE_PATH as SKU_MAP_DEFAULT_PATH  # noqa: E402
+from src.pricing_intel.match.sku_map import SkuMap  # noqa: E402
 from src.sources import CsvDemandSource  # noqa: E402
 from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
-from webapp import demo_scan, observability, security  # noqa: E402
+from webapp import demo_price_scan, demo_scan, observability, security  # noqa: E402
 from webapp.decisions import router as decisions_router  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
 from webapp.mcp_server import build_mcp_server  # noqa: E402
 from webapp.offers import OFFERS, get_offer  # noqa: E402
 from webapp.operator_profile import get_operator_profile  # noqa: E402
 from webapp.paquetes_page import render_index_html, render_offer_html  # noqa: E402
+from webapp.pricing_page import render_pricing_html  # noqa: E402
+from webapp.tower_page import T1_DISPLAY_LIMIT, render_tower_html  # noqa: E402
 
 DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
 SAMPLE_STOCK_FILE = _REPO_ROOT / "data" / "sample_stock_snapshot.csv"
@@ -78,6 +103,25 @@ MAX_LEAD_PERIODS = 52.0
 _ORCHESTRATOR: Orchestrator | None = None
 _MCP_KEY_STORE: McpKeyStore | None = None
 MCP_KEYS_PATH = os.environ.get("LINCHPIN_MCP_KEYS_PATH", "").strip() or MCP_KEYS_DEFAULT_PATH
+# Both already honor their own LINCHPIN_EVENTS_PATH/LINCHPIN_AUTONOMY_PATH env
+# vars via scm_agent.events.DEFAULT_PATH / scm_agent.autonomy.DEFAULT_PATH -
+# referenced here (not re-read from os.environ) so there is one source of
+# truth. Named as module attributes (not inlined at each ledger-constructing
+# call site) so tests can monkeypatch them the same way MCP_KEYS_PATH already
+# is - a bare EventLedger()/AutonomyLedger() call binds its default `path`
+# argument once at import time, which a test's monkeypatch.setenv(...) run
+# AFTER that import can never retroactively change.
+EVENTS_LEDGER_PATH = EVENTS_DEFAULT_PATH
+AUTONOMY_LEDGER_PATH = AUTONOMY_DEFAULT_PATH
+# Same monkeypatch-friendly convention, for the one real file
+# api_approve_promotion() mutates (Linchpin 3.0 PR-9) -- config/event_routing.yaml.
+EVENT_ROUTING_PATH = EVENT_ROUTING_DEFAULT_PATH
+# Same monkeypatch-friendly convention, for POST /api/watch (Linchpin 3.0
+# PR-15) -- the PRODUCTION price ledger + sku_map, not demo_price_scan.py's
+# own per-request isolated ledger (a real watcher webhook's observations are
+# real continuous-monitoring data, meant to persist).
+PRICE_LEDGER_PATH = PRICE_LEDGER_DEFAULT_PATH
+SKU_MAP_PATH = SKU_MAP_DEFAULT_PATH
 
 
 def _get_orchestrator() -> Orchestrator:
@@ -101,6 +145,46 @@ def _get_mcp_key_store() -> McpKeyStore:
     if _MCP_KEY_STORE is None:
         _MCP_KEY_STORE = McpKeyStore(MCP_KEYS_PATH)
     return _MCP_KEY_STORE
+
+
+def _get_event_ledger() -> EventLedger:
+    """A FRESH connection per call, unlike _get_mcp_key_store()'s cached
+    singleton: sqlite3 connections default to check_same_thread=True and
+    EventLedger/AutonomyLedger were not built with McpKeyStore's
+    check_same_thread=False + Lock pairing, so a request-scoped open/close
+    (matching jobs/digest_job.py's own_ledger convention) is the safe
+    lifecycle here, not a persisted cross-request object. Still indirected
+    through this function (reading EVENTS_LEDGER_PATH, not a bare
+    EventLedger()) so tests can monkeypatch either the path or this function
+    itself, matching _get_mcp_key_store()'s "swap via monkeypatch" precedent."""
+    return EventLedger(EVENTS_LEDGER_PATH)
+
+
+def _get_autonomy_ledger() -> AutonomyLedger:
+    """See _get_event_ledger()'s docstring -- same fresh-connection-per-call
+    reasoning applies here."""
+    return AutonomyLedger(AUTONOMY_LEDGER_PATH)
+
+
+def _get_price_ledger() -> PriceLedger:
+    """A FRESH connection per call -- see ``_get_event_ledger()``'s docstring
+    for why (sqlite3's ``check_same_thread=True`` default)."""
+    return PriceLedger(PRICE_LEDGER_PATH)
+
+
+def _get_sku_map() -> SkuMap:
+    """See ``_get_event_ledger()``'s docstring -- same fresh-connection-per-call
+    reasoning applies here."""
+    return SkuMap(SKU_MAP_PATH)
+
+
+def _get_promotion_ledger() -> PromotionLedger:
+    """See _get_event_ledger()'s docstring -- same fresh-connection-per-call
+    reasoning applies here. Shares AUTONOMY_LEDGER_PATH with
+    _get_autonomy_ledger() -- scm_agent.autonomy_promotion.PromotionLedger's
+    own default path is the SAME scm_agent.autonomy.DEFAULT_PATH (see that
+    module's docstring: one autonomy.sqlite3, two tables)."""
+    return PromotionLedger(AUTONOMY_LEDGER_PATH)
 
 
 class SafeJSONResponse(JSONResponse):
@@ -707,6 +791,140 @@ async def api_demo_scan(
     }
 
 
+@app.post("/api/demo-price-scan", dependencies=[Depends(security.rate_limit)])
+async def api_demo_price_scan(
+    email: str = Form(...),
+    urls: str = Form(...),
+    product_id: str = Form("Product"),
+    our_price: float | None = Form(None),
+) -> dict:
+    """The /demo Pricing funnel: N competitor URLs -> a teaser (non-
+    quarantined, partial) price-position matrix (plan section 9's lead
+    magnet). Public like /api/demo-scan (the demo IS the lead magnet),
+    rate-limited. SSRF-safe by construction: every URL routes through
+    jobs.price_intelligence's own require_approved_site allowlist gate
+    (see webapp/demo_price_scan.py's module docstring) -- an unapproved
+    domain is skipped, never fetched. A fresh, isolated ledger is used per
+    request (webapp/demo_price_scan.run_demo_price_scan's own contract),
+    never the production one."""
+    addr = email.strip().lower()
+    if len(addr) > 254 or not EMAIL_RE.match(addr):
+        raise HTTPException(status_code=400, detail="invalid email")
+
+    url_list = [u for u in re.split(r"[\s,]+", urls.strip()) if u]
+    if not url_list:
+        raise HTTPException(status_code=400, detail="submit at least one competitor URL")
+
+    _prune_old_jobs()
+    scan_ledger_dir = Path(tempfile.mkdtemp(dir=JOBS_OUTPUT_DIR))
+    try:
+        result = demo_price_scan.run_demo_price_scan(
+            url_list, product_id=product_id.strip() or "Product", our_price=our_price,
+            ledger_base_path=scan_ledger_dir,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        shutil.rmtree(scan_ledger_dir, ignore_errors=True)
+
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if result.ok:
+        _prune_excess_lead_dirs()
+        lead_dir = LEAD_REPORTS_DIR / demo_scan.safe_lead_dirname(addr)
+        if lead_dir.resolve().parent != LEAD_REPORTS_DIR.resolve():
+            raise HTTPException(status_code=400, detail="invalid email")
+        lead_dir.mkdir(parents=True, exist_ok=True)
+        (lead_dir / "price_scan_mini_report.md").write_text(
+            demo_price_scan.render_mini_report(result, email=addr, product_id=product_id, ts=ts),
+            encoding="utf-8",
+        )
+        (lead_dir / "price_scan_followup_email_draft.md").write_text(
+            demo_price_scan.render_followup_email(result, email=addr, product_id=product_id),
+            encoding="utf-8",
+        )
+
+    record = {
+        "email": addr, "source": "demo-price-scan", "ts": ts, "dataset": product_id,
+        "status": "ok" if result.ok else "qa_failed",
+        "result": result.headline,
+    }
+    with LEADS_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    if not result.ok:
+        return {"status": "qa_failed", "headline": result.headline}
+    return {
+        "status": "ok",
+        "headline": result.headline,
+        "teaser_rows": result.teaser_rows,
+        "cta_url": demo_price_scan.CTA_PATH,
+    }
+
+
+@app.post("/api/watch", dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)])
+async def api_watch(payload: dict = Body(...)) -> dict:
+    """L2 acquisition receiver: a changedetection.io webhook POST (Linchpin
+    3.0 PR-15, plan S6.1/S8) -- see
+    ``src.pricing_intel.acquire.watcher``'s module docstring for the exact
+    JSON body contract an operator configures on their own,
+    separately-deployed changedetection.io instance's notification
+    settings.
+
+    Gated behind ``LINCHPIN_API_KEY`` (a no-op when unset, matching every
+    other mutating endpoint -- POST /api/jobs, POST /api/approvals/{id}):
+    an operator adds an ``X-API-Key: <value>`` custom header to
+    changedetection.io's notification URL so only their own instance can
+    post here. Also rate-limited.
+
+    Resolves ``matched_product_id`` via a ``sku_map`` reverse lookup
+    (``SkuMap.latest_confirmed_for_competitor_ref``) BEFORE the sanity gate
+    -- an observation for a competitor URL Kern has never confirmed a match
+    for still gets sanity-gated and ledgered (``matched_product_id=None`` is
+    a legitimate state, see ``watcher.py``'s docstring), just with no sku
+    attached to the resulting Event(s).
+
+    Runs the SAME sanity gate (``src.pricing_intel.sanity``) every other
+    acquisition tier goes through before landing in the SAME production
+    ``PriceLedger``, and emits price_move/competitor_oos/promo_detected/
+    new_competitor_listing through the SAME ``scm_agent.events.EventLedger``
+    the scheduled L0 cycle (``jobs.price_monitor.run_price_monitor_cycle``)
+    uses -- one ledger, one event stream, regardless of acquisition tier.
+
+    A malformed/incomplete payload is a 400 (``ChangeDetectionWebhookError``)
+    -- loud and actionable for whoever is debugging their changedetection.io
+    notification template, never a silent 200 that drops the observation.
+    """
+    try:
+        candidate = parse_changedetection_webhook(payload)
+    except ChangeDetectionWebhookError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    sku_map = _get_sku_map()
+    try:
+        match = sku_map.latest_confirmed_for_competitor_ref(candidate.competitor_sku_ref, candidate.site)
+    finally:
+        sku_map.close()
+    if match is not None:
+        candidate = replace(candidate, matched_product_id=match.our_product_id)
+
+    ledger = _get_price_ledger()
+    event_ledger = _get_event_ledger()
+    try:
+        outcome = accept_observation(candidate, ledger=ledger, event_ledger=event_ledger, detect_new_listing=True)
+    finally:
+        ledger.close()
+        event_ledger.close()
+
+    return {
+        "status": outcome.status,
+        "reason": outcome.reason,
+        "site": candidate.site,
+        "competitor_sku_ref": candidate.competitor_sku_ref,
+        "matched_product_id": candidate.matched_product_id,
+        "events": [e.type for e in outcome.events],
+    }
+
+
 _METRICS_LABEL_RE = re.compile(r"[^\w.\- ]")
 _METRICS_LABEL_MAX_LEN = 60
 _METRICS_MAX_BUCKETS = 25  # beyond this many distinct labels, fold the rest into "other"
@@ -787,6 +1005,211 @@ def api_metrics() -> dict:
             "by_dataset": demo_scan_dataset,
         },
     }
+
+
+# ---- Control Tower (Linchpin 3.0 PR-7, plan S5): GET /api/events + ----------
+# ---- POST /api/approvals/{id} + GET /tower ----------------------------------
+
+_EVENTS_DEFAULT_LIMIT = 100
+_EVENTS_MAX_LIMIT = 500
+_APPROVED_BY_RE = re.compile(r"[^\w\s.,@\-]")
+_APPROVED_BY_MAX_LEN = 80
+
+
+def _event_to_dict(event: Event) -> dict:
+    d = asdict(event)
+    d["ts"] = event.ts.isoformat()
+    return d
+
+
+def _autonomy_record_to_dict(record: AutonomyRecord) -> dict:
+    d = asdict(record)
+    d["created_at"] = record.created_at.isoformat()
+    d["acknowledged_at"] = record.acknowledged_at.isoformat() if record.acknowledged_at else None
+    return d
+
+
+def _promotion_record_to_dict(record: PromotionRecord) -> dict:
+    d = asdict(record)
+    d["created_at"] = record.created_at.isoformat()
+    d["resolved_at"] = record.resolved_at.isoformat() if record.resolved_at else None
+    return d
+
+
+@app.get("/api/events", dependencies=[Depends(security.rate_limit)])
+def api_events(
+    limit: int = Query(_EVENTS_DEFAULT_LIMIT, ge=1, le=_EVENTS_MAX_LIMIT),
+    event_type: str | None = Query(None, description="Filter to one Event.type, e.g. stock_below_rop"),
+) -> dict:
+    """Recent Control Tower events (scm_agent.events.EventLedger) -- the most
+    recent `limit` rows (optionally filtered to one type), oldest-first.
+    Windowed (EventLedger.list_recent), never an unbounded dump of an
+    ever-growing table. Powers the /tower page's "eventos de hoy" feed
+    (client-side fetch) and is read-only, same auth level as /api/portfolio."""
+    ledger = _get_event_ledger()
+    try:
+        recent = ledger.list_recent(event_type=event_type, limit=limit)
+    finally:
+        ledger.close()
+    return {"events": [_event_to_dict(e) for e in recent], "count": len(recent)}
+
+
+@app.post(
+    "/api/approvals/{approval_id}",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+def api_approve_pending(
+    approval_id: str,
+    approved_by: str = Query("operator", description="Who is completing this approval (audit trail)"),
+) -> dict:
+    """The one-click T2 approval endpoint: complete a pending
+    scm_agent.autonomy.AutonomyRecord via acknowledge_pending() -- the SAME
+    accept/approve function PR-6's autonomy.py built specifically for this
+    endpoint (see its own docstring), not a second, parallel approval
+    mechanism.
+
+    Gated by require_api_key (this mutates state, same auth level as
+    POST /api/jobs) AND rate_limit. An unknown id (never issued, or from a
+    different LINCHPIN_AUTONOMY_PATH) is a 404; an id that is not currently
+    pending (already acknowledged, or was never a T2 row) is a 409 -- both
+    loud, actionable failures, never a silent no-op.
+
+    Note: today this only completes an ANALYSIS-tier T2 item (the path
+    enforce_analysis_tier()/handle_event_tiered() actually wire into
+    AutonomyLedger). enforce_writeback_tier()'s T2 HANDOFF -- staging a real
+    src.writeback.Changeset for the few writeback-capable tools -- is not
+    yet persisted anywhere id-addressable (AutonomyRecord carries no
+    changeset reference, and no caller threads one through the ledger), so
+    there is nothing yet for this endpoint to approve()+apply() against for
+    that path. Wiring that up (giving AutonomyRecord an optional serialized
+    Changeset, and calling src.writeback.approve()+apply() here with a real
+    900s TTL Approval when one is present) is left to a future PR rather
+    than inventing a second, ad hoc changeset store here.
+    """
+    clean_by = _APPROVED_BY_RE.sub("", approved_by)[:_APPROVED_BY_MAX_LEN].strip() or "operator"
+    ledger = _get_autonomy_ledger()
+    try:
+        try:
+            outcome = acknowledge_pending(ledger, approval_id, clean_by)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"unknown approval id: {approval_id}") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        record = ledger.get(approval_id)
+    finally:
+        ledger.close()
+    return {
+        "status": outcome.status,
+        "summary": outcome.summary,
+        "record": _autonomy_record_to_dict(record) if record is not None else None,
+    }
+
+
+@app.post(
+    "/api/promotions/{promotion_id}/approve",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+def api_approve_promotion(
+    promotion_id: str,
+    approved_by: str = Query("operator", description="Who is approving this promotion (audit trail)"),
+) -> dict:
+    """The human sign-off Golden Rule 11 requires for a T2->T1 autonomy
+    promotion (Linchpin 3.0 PR-9): complete a PENDING
+    scm_agent.autonomy_promotion.PromotionRecord via approve_promotion() --
+    the SAME function PR-9 built specifically for this endpoint, not a
+    second, parallel approval mechanism. This is what actually mutates
+    config/event_routing.yaml's autonomy_tier for subsequent events of that
+    type.
+
+    Gated the same as POST /api/approvals/{id} (require_api_key + rate_limit
+    -- this mutates a config file on disk, not just an in-memory ledger row).
+    An unknown id is a 404; an id that is not currently pending, OR whose
+    proposal's expected from_tier no longer matches the file's current tier
+    (config moved since the proposal was created), is a 409 -- all loud,
+    actionable failures, never a silent no-op.
+    """
+    clean_by = _APPROVED_BY_RE.sub("", approved_by)[:_APPROVED_BY_MAX_LEN].strip() or "operator"
+    ledger = _get_promotion_ledger()
+    try:
+        try:
+            outcome = approve_promotion(ledger, promotion_id, clean_by, routing_path=EVENT_ROUTING_PATH)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"unknown promotion id: {promotion_id}") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        record = ledger.get(promotion_id)
+    finally:
+        ledger.close()
+    return {
+        "status": outcome.status,
+        "summary": outcome.summary,
+        "record": _promotion_record_to_dict(record) if record is not None else None,
+    }
+
+
+@app.post(
+    "/api/promotions/{promotion_id}/reject",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+def api_reject_promotion(
+    promotion_id: str,
+    rejected_by: str = Query("operator", description="Who is rejecting this promotion (audit trail)"),
+) -> dict:
+    """Reject a PENDING T2->T1 autonomy promotion (Linchpin 3.0 PR-9) --
+    config/event_routing.yaml is never touched. Same auth level and 404/409
+    error-code conventions as the approve endpoint above."""
+    clean_by = _APPROVED_BY_RE.sub("", rejected_by)[:_APPROVED_BY_MAX_LEN].strip() or "operator"
+    ledger = _get_promotion_ledger()
+    try:
+        try:
+            record = reject_promotion(ledger, promotion_id, clean_by)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"unknown promotion id: {promotion_id}") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    finally:
+        ledger.close()
+    return {"status": "rejected", "record": _promotion_record_to_dict(record)}
+
+
+@app.get("/tower")
+def tower_page() -> HTMLResponse:
+    """The Control Tower dashboard tab (Linchpin 3.0 PR-7, plan S5): T1
+    auto-executed actions and T2 pending approvals are rendered server-side
+    from the real AutonomyLedger at request time; "eventos de hoy" is
+    populated client-side via GET /api/events; pending T2->T1 autonomy
+    promotions (Linchpin 3.0 PR-9) are rendered server-side from the real
+    PromotionLedger; the A4 per-tool reliability section is a clearly-labeled
+    placeholder until a future PR wires it into this page
+    (src/verify/backtest.py + src/verify/reliability.py already exist as of
+    PR-8, but nothing here reads them yet)."""
+    autonomy_ledger = _get_autonomy_ledger()
+    try:
+        records = autonomy_ledger.list_all()
+    finally:
+        autonomy_ledger.close()
+    t1 = [r for r in records if r.status == STATUS_AUTO_EXECUTED][-T1_DISPLAY_LIMIT:]
+    t2 = [r for r in records if r.status == STATUS_PENDING]
+
+    promotion_ledger = _get_promotion_ledger()
+    try:
+        promotions = promotion_ledger.list_pending()
+    finally:
+        promotion_ledger.close()
+
+    return HTMLResponse(render_tower_html(t1_records=t1, t2_records=t2, promotion_records=promotions))
+
+
+@app.get("/pricing")
+def pricing_page() -> HTMLResponse:
+    """The Pricing dashboard tab (Linchpin 3.0 PR-13, plan sections 6.11/9):
+    position matrix summary, freshness and quarantine rate. No persisted
+    "last run" store exists yet (a PriceIntelReport lives only for one
+    jobs.price_intelligence.run() call, via the CLI or the registered agent
+    tool) -- this route renders the honest empty state, the exact precedent
+    /tower already sets for its own not-yet-wired A4 section (webapp/
+    pricing_page.py's own docstring). No number is ever fabricated here."""
+    return HTMLResponse(render_pricing_html())
 
 
 def _warehouse_params(

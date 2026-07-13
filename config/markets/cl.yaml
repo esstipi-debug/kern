@@ -1,0 +1,32 @@
+# Per-jurisdiction pricing-guardrail profile (Linchpin 3.0 plan section 7 P5,
+# Golden Rule 12). See eu.yaml's header comment for the field-by-field
+# contract (src.pricing_guardrails.MarketRules).
+
+market: cl
+
+# Chile has no codified fixed reference-price WINDOW the way the EU Omnibus
+# directive does -- so this is a SOFT gate: validate_discount_reference()
+# never raises, it returns a not-passed DiscountValidation (a warning) with
+# the same prior_price_30d_lowest() evidence trail attached to the
+# changeset. That evidence trail is the audit-defense file SERNAC would ask
+# for if a claimed discount were challenged.
+discount_reference_gate: soft
+discount_tolerance_pct: 0.5
+
+# MAP-style below-floor pricing is not the RPM/hardcore-restriction concern
+# it is in the EU/UK -- keep the plain "violation"-style label (Colgate-
+# doctrine unilateral-policy framing is a US legal concept; this label is
+# simply the LatAm-market default distinct from the EU/UK relabel).
+map_alert_label: "posible incumplimiento de MAP"
+
+legal_basis: >
+  Ley 19.496 (Ley de Proteccion de los Derechos de los Consumidores) arts.
+  28 y 35 -- exige un precio de referencia real y no enganoso al anunciar un
+  descuento; SERNAC ha sancionado descuentos calculados contra un precio
+  inflado artificialmente ("inflar para despues descontar").
+
+notes: >
+  Soft gate: an "inflate-then-discount" pattern (a price raised shortly
+  before the discount announcement -- see
+  src.pricing_guardrails.detect_inflate_then_discount) is flagged as a
+  warning attached to the changeset, never blocked outright.

@@ -1,0 +1,19 @@
+<!--
+Frozen fixture (PR-11): OpenGraph product:price:* meta tags only -- no
+JSON-LD, no microdata. Also exercises tier 2 (confidence 0.90), via the
+opengraph_price path rather than microdata_offers.
+Hand-verified expected result:
+  price = 74.25, currency = EUR, tier = microdata (opengraph sub-path)
+-->
+<html>
+<head>
+<title>Acme Portable Grill</title>
+<meta property="og:type" content="product" />
+<meta property="og:title" content="Acme Portable Grill" />
+<meta property="product:price:amount" content="74.25" />
+<meta property="product:price:currency" content="EUR" />
+</head>
+<body>
+  <h1>Acme Portable Grill</h1>
+</body>
+</html>

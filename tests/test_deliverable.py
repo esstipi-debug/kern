@@ -120,7 +120,7 @@ def test_branding_accepts_a_well_formed_hex_color():
 def test_deliverable_defaults_to_linchpin_branding():
     d = Deliverable(title="T", client="C", summary="s")
     assert d.branding == DEFAULT_BRANDING
-    assert "Prepared by Linchpin" in d.to_markdown()
+    assert "Prepared by Kern" in d.to_markdown()
 
 
 def test_deliverable_markdown_shows_custom_branding_footer_not_linchpin():
@@ -128,7 +128,7 @@ def test_deliverable_markdown_shows_custom_branding_footer_not_linchpin():
                     branding=Branding(name="Acme Consulting"))
     md = d.to_markdown()
     assert "Prepared by Acme Consulting" in md
-    assert "Prepared by Linchpin" not in md
+    assert "Prepared by Kern" not in md
 
 
 def test_deliverable_markdown_renders_a_logo_image_tag_when_configured():

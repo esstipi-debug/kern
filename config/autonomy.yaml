@@ -1,0 +1,36 @@
+# Autonomy promotion/degradation thresholds (Linchpin 3.0 plan Golden Rule
+# 11 -- "la autonomia se gana con evidencia... nunca por edicion manual de
+# config"; plan section 5, A3/A4 rows; PR-9,
+# scm_agent/autonomy_promotion.py).
+#
+# "Ruteo es dato" (config/event_routing.yaml) extended to autonomy tuning:
+# HOW MUCH evidence a T2->T1 promotion needs, and HOW STRICT the T1->T2
+# degradation floor is, live here as data -- never as constants baked into
+# scm_agent/autonomy_promotion.py. Changing a number here only changes when
+# evaluate_promotion()/evaluate_degradation() FIRE; it never by itself
+# promotes or demotes a route -- promotion still needs a human to
+# approve_promotion(), and even degradation (immediate, no human gate) still
+# only runs when a real src/verify/reliability.py report says so.
+version: 1
+
+promotion:
+  # N consecutive src/verify/reliability.py cycles/periods (each one
+  # ToolReliabilityReport, e.g. one per calendar month or per backtest
+  # window) with headline_precision >= min_precision, before
+  # evaluate_promotion() proposes a T2->T1 change for that route. Matches
+  # the plan's own worked example (section 2.3): "Mes 3: inventory_
+  # optimization tiene 94% de precision" is a promising SINGLE month --
+  # min_consecutive_cycles requires that kind of result sustained, not a
+  # one-off.
+  min_consecutive_cycles: 4
+  min_precision: 0.92
+
+degradation:
+  # A T1 tool's MOST RECENT reliability report alone (no consecutive-cycle
+  # requirement -- see evaluate_degradation()) at or below this floor
+  # immediately flags T1->T2 degradation. Deliberately looser than
+  # src/verify/reliability.py's own default meets_threshold bar
+  # (build_reliability_report(threshold=0.85)) so a T1 tool degrades on a
+  # REAL drop below "acceptable at all", not on ordinary noise around the
+  # much higher promotion bar above.
+  min_precision_floor: 0.80

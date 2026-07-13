@@ -49,7 +49,7 @@ from src.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 
 _EXCEL_SUFFIXES = (".xlsx", ".xlsm", ".xltx", ".xltm")
 _HEADER_SCAN_ROWS = 20
-DEFAULT_ORDER_COLUMN = "Pedir (Linchpin)"
+DEFAULT_ORDER_COLUMN = "Pedir (Kern)"
 
 # Priority-ORDERED candidates (tuples, not sets): when a header row carries two
 # plausible labels for the same role ("Stock" AND "Existencias"), the earlier

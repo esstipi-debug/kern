@@ -239,7 +239,7 @@ def test_qa_failure_writes_no_artifacts_but_logs_telemetry(isolated_stores):
 def test_demo_page_still_serves_and_sells_the_diagnostico():
     r = client.get("/demo")
     assert r.status_code == 200
-    assert "Linchpin" in r.text
+    assert "Kern" in r.text
     assert "diagnostico-arranque" in r.text
     assert "plantilla_stock.csv" in r.text
 

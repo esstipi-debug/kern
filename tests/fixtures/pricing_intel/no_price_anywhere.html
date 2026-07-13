@@ -1,0 +1,13 @@
+<!--
+Frozen fixture (PR-11): no structured data, no selector match, no
+currency-marked text anywhere on the page -- every cascade tier must fail
+and extract_price must raise ExtractionFailed rather than fabricate a
+price. "Un precio dudoso es peor que ningun precio" (plan section 6.4).
+-->
+<html>
+<head><title>Acme Coming Soon</title></head>
+<body>
+  <h1>Acme Coming Soon</h1>
+  <p>This product page has no price information yet. Check back later.</p>
+</body>
+</html>

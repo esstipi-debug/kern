@@ -1,0 +1,55 @@
+# Per-domain compliance record (Linchpin 3.0 plan S6.7, PR-12) -- REAL
+# domain, not a synthetic .test fixture.
+#
+# LIVE VERIFICATION, 2026-07-12 (this PR, PR-15's meli_api.py connector):
+#   - GET https://api.mercadolibre.com/robots.txt returned:
+#       User-agent: *
+#       Disallow: /
+#     i.e. robots.txt disallows automated access to the ENTIRE host --
+#     including the public /sites/{site_id}/search and /items/{id}
+#     endpoints meli_api.py targets. There is no user-agent-specific
+#     carve-out for a polite, identifiable bot.
+#   - One single, polite, unauthenticated GET against
+#     /sites/MLA/search?q=notebook&limit=1 (identifiable User-Agent, no
+#     retries) returned HTTP 403 on the same date.
+#
+# Per this repo's hard rule ("Fetchers respect robots.txt ... NO anti-bot
+# evasion, ever -- fetchers DEGRADE (circuit-break, drop tier) rather than
+# disguise themselves when blocked"), this domain is NOT approved for
+# automated access under this record. tos_decision=prohibited AND
+# robots_txt_respected=false are both set below (either alone already
+# fails SiteConfig.is_approved -- both are independently true findings,
+# recorded for completeness).
+#
+# Resolving this requires an actual MercadoLibre Developers Program
+# relationship (OAuth app registration under developers.mercadolibre.com)
+# confirming a documented, sanctioned access path that supersedes the
+# default robots.txt posture -- that is a business/legal step for an
+# operator to take, not something a PR can complete non-interactively.
+# Until a NEW, dated record replaces this one (reviewed, and reflecting
+# that resolution), src.pricing_intel.acquire.meli_api.MeliApiFetcher
+# correctly refuses to run against this domain by construction --
+# require_approved_site("api.mercadolibre.com") raises
+# SiteNotApprovedError before any network call happens. See
+# config/sites/meli-api.test.yaml for the synthetic fixture this PR's own
+# tests exercise the happy path against instead.
+
+domain: api.mercadolibre.com
+
+robots_txt_respected: false
+robots_checked_at: "2026-07-12"
+
+tos_summary: >
+  robots.txt (verified 2026-07-12) disallows ALL automated access
+  ("User-agent: *\nDisallow: /") to api.mercadolibre.com, including the
+  public Items/Search API endpoints. A single polite, unauthenticated
+  request also returned HTTP 403 the same day. Not approved pending a real
+  MercadoLibre Developers Program relationship confirming a sanctioned
+  access path.
+tos_decision: prohibited
+
+rate_limit_seconds: 2.0
+
+max_tier_allowed: L0
+
+pii_policy: none

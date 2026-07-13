@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Portafolio del Operador · Linchpin</title>
+<title>Portafolio del Operador · Kern</title>
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -217,12 +217,12 @@
   <aside class="sidebar" id="sidebar">
     <div class="brand" onclick="location.hash='#inicio'">
       <span class="mark">🔗</span>
-      <div><h1>Linchpin</h1><span class="sub">Operador</span></div>
+      <div><h1>Kern</h1><span class="sub">Operador</span></div>
     </div>
     <nav class="nav" id="nav"></nav>
     <div class="side-foot">
-      El paquete de incorporación para la persona que opera Linchpin.<br><br>
-      <a href="/">← Dashboard</a> · <a href="/console">Consola</a>
+      El paquete de incorporación para la persona que opera Kern.<br><br>
+      <a href="/">← Dashboard</a> · <a href="/console">Consola</a> · <a href="/tower">Tower</a> · <a href="/pricing">Pricing</a>
     </div>
   </aside>
 
@@ -230,7 +230,7 @@
     <div class="topbar">
       <button class="menu-btn" id="menuBtn" aria-label="Menú">☰</button>
       <div class="crumbs">Portafolio del Operador · <b id="crumb">Inicio</b></div>
-      <a class="gh" id="ghLink" href="https://github.com/esstipi-debug/linchpin/tree/main/documentation/operator" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="gh" id="ghLink" href="https://github.com/esstipi-debug/kern/tree/main/documentation/operator" target="_blank" rel="noopener">GitHub ↗</a>
     </div>
     <article><div id="content"><div class="loading">Cargando…</div></div></article>
     <div class="scrim" id="scrim"></div>
@@ -249,7 +249,7 @@
     { id:"rol",          file:"01_role_charter.md",        n:"01", label:"Carta del Rol",
       desc:"6 KPIs propios del operador — p.ej. tiempo de cierre de desenlace, tasa de aprobación informada — y cómo se ve el éxito." },
     { id:"division",     file:"02_division_of_labor.md",   n:"02", label:"División del Trabajo",
-      desc:"La tabla maestra Linchpin-vs-tú, línea por línea, anclada en el código real (guided.py, writeback.py, escalation.py)." },
+      desc:"La tabla maestra Kern-vs-tú, línea por línea, anclada en el código real (guided.py, writeback.py, escalation.py)." },
     { id:"metodologias", file:"03_methodologies.md",       n:"03", label:"Metodologías",
       desc:"6 métodos a dominar: modos/persona, cadencia S&OP mensual, lectura de Fuentes L3, ciclo de venta, decisión y aprobación de writeback." },
     { id:"runbooks",     file:"04_runbooks.md",            n:"04", label:"Runbooks",
@@ -287,8 +287,8 @@
     Array.prototype.forEach.call(elNav.querySelectorAll("a"),function(a){ a.classList.toggle("active", a.dataset.id===id); });
     var d=byId[id];
     elCrumb.textContent = id==="inicio" ? "Inicio" : (d?d.label:"…");
-    elGh.href = d ? "https://github.com/esstipi-debug/linchpin/blob/main/documentation/operator/"+d.file
-                  : "https://github.com/esstipi-debug/linchpin/tree/main/documentation/operator";
+    elGh.href = d ? "https://github.com/esstipi-debug/kern/blob/main/documentation/operator/"+d.file
+                  : "https://github.com/esstipi-debug/kern/tree/main/documentation/operator";
   }
 
   // ---- home (cover) ----
@@ -305,13 +305,13 @@
       '<section class="hero">'+
         '<span class="kicker"><span class="dot"></span>Manual de incorporación</span>'+
         '<h1>Portafolio del Operador</h1>'+
-        '<p class="lede">Linchpin calcula en segundos lo que antes tomaba horas de análisis manual '+
+        '<p class="lede">Kern calcula en segundos lo que antes tomaba horas de análisis manual '+
           '— pronóstico, política de inventario, ABC-XYZ, S&OP — y prepara el siguiente paso seguro. '+
           '<b>Tú decides lo que el modelo no ve, ejecutas lo irreversible y vendes el resultado: '+
           'el humano produce 10×.</b></p>'+
         '<div class="cta">'+
           '<a class="btn btn-primary" href="#rol">Empezar →</a>'+
-          '<a class="btn btn-ghost" href="https://github.com/esstipi-debug/linchpin/tree/main/documentation/operator" target="_blank" rel="noopener">Ver en GitHub</a>'+
+          '<a class="btn btn-ghost" href="https://github.com/esstipi-debug/kern/tree/main/documentation/operator" target="_blank" rel="noopener">Ver en GitHub</a>'+
         '</div>'+
         '<div class="outcomes">'+
           '<div class="h">Todo resultado termina en uno de cuatro desenlaces — <b>tres te necesitan a ti</b>:</div>'+
@@ -353,7 +353,7 @@
       if(hi>=0){ hash=href.slice(hi); base=href.slice(0,hi); }
       var name=base.split("/").pop();
       if(byFile[name]) a.setAttribute("href","#"+byFile[name].id+(hash?"~"+hash.slice(1):""));
-      else if(/\.md$/i.test(name)){ a.setAttribute("href","https://github.com/esstipi-debug/linchpin/blob/main/"+base.replace(/^(\.\.\/)+/,"")); a.target="_blank"; a.rel="noopener"; }
+      else if(/\.md$/i.test(name)){ a.setAttribute("href","https://github.com/esstipi-debug/kern/blob/main/"+base.replace(/^(\.\.\/)+/,"")); a.target="_blank"; a.rel="noopener"; }
     });
   }
   function footer(id){

@@ -1,0 +1,46 @@
+pair_id,category,label,our_product_id,our_title,our_brand,our_attrs,our_gtin,competitor_sku_ref,competitor_site,competitor_title,competitor_brand,competitor_attrs,competitor_gtin
+A01,gtin_exact,same,SKU-A01,Sony WH-1000XM5 Headphones,Sony,,4006381330015,https://shop-a.test/p/1001,shop-a.test,Sony WH-1000XM5 Wireless Headphones,Sony,,4006381330015
+A02,gtin_exact,same,SKU-A02,Logitech MX Master 3S Mouse,Logitech,,4006381330022,https://shop-b.test/p/1002,shop-b.test,MX Master 3S Wireless Mouse - Logitech,Logitech,,4006381330022
+A03,gtin_exact,same,SKU-A03,Dell XPS 13 Laptop,Dell,,4006381330039,https://shop-c.test/p/1003,shop-c.test,Dell XPS 13 Laptop 16GB/512GB,Dell,,4006381330039
+A04,gtin_exact,same,SKU-A04,Nike Air Max 270,Nike,,4006381330046,https://shop-d.test/p/1004,shop-d.test,Nike Air Max 270 Running Shoes,Nike,,4006381330046
+A05,gtin_exact,same,SKU-A05,Samsung Galaxy S23,Samsung,,4006381330053,https://shop-e.test/p/1005,shop-e.test,Samsung Galaxy S23 Smartphone,Samsung,,4006381330053
+A06,gtin_exact,same,SKU-A06,Coca-Cola Bottle 2L,Coca-Cola,,4006381330060,https://shop-f.test/p/1006,shop-f.test,Coca-Cola 2L Bottle,Coca-Cola,,4006381330060
+A07,gtin_exact,same,SKU-A07,Apple iPhone 15 Pro,Apple,,4006381330077,https://shop-g.test/p/1007,shop-g.test,iPhone 15 Pro 128GB - Apple,Apple,,4006381330077
+A08,gtin_exact,same,SKU-A08,Kraft Mac and Cheese,Kraft,,4006381330084,https://shop-h.test/p/1008,shop-h.test,Kraft Mac & Cheese Original,Kraft,,4006381330084
+A09,gtin_exact,same,SKU-A09,Bose QuietComfort 45,Bose,,4006381330091,https://shop-i.test/p/1009,shop-i.test,Bose QC45 Headphones,Bose,,4006381330091
+A10,gtin_exact,same,SKU-A10,Adidas Ultraboost 22,Adidas,,4006381330107,https://shop-j.test/p/1010,shop-j.test,Adidas Ultraboost 22 Running Shoe,Adidas,,4006381330107
+B01,same_reworded,same,SKU-B01,Sony WH-1000XM5 Wireless Noise Cancelling Headphones,Sony,model=xm5,,https://shop-k.test/p/2001,shop-k.test,WH-1000XM5 Wireless Noise Cancelling Headphones - Sony,Sony,model=xm5,
+B02,same_reworded,same,SKU-B02,Logitech MX Master 3S Wireless Mouse Graphite,Logitech,color=graphite,,https://shop-l.test/p/2002,shop-l.test,Logitech MX Master 3S Wireless Mouse - Graphite,Logitech,color=graphite,
+B03,same_reworded,same,SKU-B03,Dell XPS 13 Laptop 16GB RAM 512GB SSD,Dell,capacity=512gb,,https://shop-m.test/p/2003,shop-m.test,Dell XPS 13 Laptop 16GB RAM / 512GB SSD,Dell,capacity=512gb,
+B04,same_reworded,same,SKU-B04,Samsung Galaxy S23 8/128GB Phantom Black,Samsung,capacity=128gb,,https://shop-n.test/p/2004,shop-n.test,Samsung Galaxy S23 128GB Phantom Black,Samsung,capacity=128gb,
+B05,same_reworded,same,SKU-B05,Coca-Cola Bottle 2L,Coca-Cola,pack_size=2l,,https://shop-o.test/p/2005,shop-o.test,Coca-Cola 2L Bottle,Coca-Cola,pack_size=2l,
+B06,same_reworded,same,SKU-B06,Apple iPhone 15 Pro 128GB Black Titanium,Apple,capacity=128gb,,https://shop-p.test/p/2006,shop-p.test,iPhone 15 Pro 128GB Black Titanium - Apple,Apple,capacity=128gb,
+B07,same_reworded,same,SKU-B07,Kraft Mac and Cheese Original 206g,Kraft,pack_size=206g,,https://shop-q.test/p/2007,shop-q.test,Kraft Mac & Cheese Original 206g,Kraft,pack_size=206g,
+B08,same_reworded,same,SKU-B08,Bose QuietComfort 45 Headphones White Smoke,Bose,color=white smoke,,https://shop-r.test/p/2008,shop-r.test,QuietComfort 45 Headphones White Smoke - Bose,Bose,color=white smoke,
+B09,same_reworded,same,SKU-B09,Adidas Ultraboost 22 Running Shoes Size 9,Adidas,size=9,,https://shop-s.test/p/2009,shop-s.test,Adidas Ultraboost 22 Running Shoes - Size 9,Adidas,size=9,
+B10,same_reworded,same,SKU-B10,Nike Air Max 270 Mens Black Sneakers,Nike,color=black,,https://shop-t.test/p/2010,shop-t.test,Nike Air Max 270 Black Sneakers - Men's,Nike,color=black,
+C01,attribute_conflict,different,SKU-C01,Sony WH-1000XM5 Wireless Noise Cancelling Headphones,Sony,model=xm5,,https://shop-u.test/p/3001,shop-u.test,Sony WH-1000XM4 Wireless Noise Cancelling Headphones,Sony,model=xm4,
+C02,attribute_conflict,different,SKU-C02,Coca-Cola Bottle 2L,Coca-Cola,pack_size=2l,,https://shop-v.test/p/3002,shop-v.test,Coca-Cola Bottle 500ml,Coca-Cola,pack_size=500ml,
+C03,attribute_conflict,different,SKU-C03,Nike Air Max 270 Mens Size 10 Black,Nike,size=10,,https://shop-w.test/p/3003,shop-w.test,Nike Air Max 270 Mens Size 11 Black,Nike,size=11,
+C04,attribute_conflict,different,SKU-C04,Samsung Galaxy S23 8/128GB Phantom Black,Samsung,capacity=128gb,,https://shop-x.test/p/3004,shop-x.test,Samsung Galaxy S23 8/256GB Phantom Black,Samsung,capacity=256gb,
+C05,attribute_conflict,different,SKU-C05,Apple iPhone 15 Pro 128GB Black Titanium,Apple,capacity=128gb,,https://shop-y.test/p/3005,shop-y.test,Apple iPhone 15 Pro 256GB Black Titanium,Apple,capacity=256gb,
+C06,attribute_conflict,different,SKU-C06,Kraft Mac and Cheese Original 206g,Kraft,pack_size=206g,,https://shop-z.test/p/3006,shop-z.test,Kraft Mac and Cheese Original 700g Family Size,Kraft,pack_size=700g,
+C07,attribute_conflict,different,SKU-C07,Adidas Ultraboost 22 Running Shoes Size 9,Adidas,size=9,,https://shop-aa.test/p/3007,shop-aa.test,Adidas Ultraboost 22 Running Shoes Size 10,Adidas,size=10,
+C08,attribute_conflict,different,SKU-C08,Dell XPS 13 Laptop 16GB RAM 512GB SSD,Dell,capacity=512gb,,https://shop-bb.test/p/3008,shop-bb.test,Dell XPS 13 Laptop 16GB RAM 1TB SSD,Dell,capacity=1tb,
+C09,attribute_conflict,different,SKU-C09,Bose QuietComfort 45 Headphones White Smoke,Bose,color=white smoke,,https://shop-cc.test/p/3009,shop-cc.test,Bose QuietComfort 45 Headphones Black,Bose,color=black,
+C10,attribute_conflict,different,SKU-C10,Logitech MX Master 3S Wireless Mouse Graphite,Logitech,color=graphite,,https://shop-dd.test/p/3010,shop-dd.test,Logitech MX Master 3S Wireless Mouse Pale Grey,Logitech,color=pale grey,
+D01,clearly_different,different,SKU-D01,Dell XPS 13 Laptop 16GB RAM,Dell,,,https://shop-ee.test/p/4001,shop-ee.test,HP Spectre x360 Laptop 16GB RAM,HP,,
+D02,clearly_different,different,SKU-D02,Samsung Galaxy S23 8/128GB,Samsung,,,https://shop-ff.test/p/4002,shop-ff.test,Apple iPhone 15 128GB,Apple,,
+D03,clearly_different,different,SKU-D03,Nike Air Max 270 Running Shoes,Nike,,,https://shop-gg.test/p/4003,shop-gg.test,Adidas Ultraboost 22 Running Shoes,Adidas,,
+D04,clearly_different,different,SKU-D04,Sony WH-1000XM5 Headphones,Sony,,,https://shop-hh.test/p/4004,shop-hh.test,Logitech MX Master 3S Mouse,Logitech,,
+D05,clearly_different,different,SKU-D05,Coca-Cola Bottle 2L,Coca-Cola,,,https://shop-ii.test/p/4005,shop-ii.test,Pepsi Bottle 2L,Pepsi,,
+D06,clearly_different,different,SKU-D06,Kraft Mac and Cheese Original,Kraft,,,https://shop-jj.test/p/4006,shop-jj.test,Nestle KitKat Chocolate Bar,Nestle,,
+D07,clearly_different,different,SKU-D07,Bose QuietComfort 45 Headphones,Bose,,,https://shop-kk.test/p/4007,shop-kk.test,JBL Tune 760NC Headphones,JBL,,
+D08,clearly_different,different,SKU-D08,Adidas Ultraboost 22 Running Shoes,Adidas,,,https://shop-ll.test/p/4008,shop-ll.test,Puma Velocity Nitro Running Shoes,Puma,,
+D09,clearly_different,different,SKU-D09,Apple iPhone 15 Pro,Apple,,,https://shop-mm.test/p/4009,shop-mm.test,Samsung Galaxy S23 Ultra,Samsung,,
+D10,clearly_different,different,SKU-D10,Logitech MX Master 3S Mouse,Logitech,,,https://shop-nn.test/p/4010,shop-nn.test,Razer DeathAdder V3 Mouse,Razer,,
+E01,ambiguous_no_attrs,different,SKU-E01,Samsung Galaxy S23 Smartphone,Samsung,,,https://shop-oo.test/p/5001,shop-oo.test,Samsung Galaxy S23 Ultra Smartphone,Samsung,,
+E02,ambiguous_no_attrs,different,SKU-E02,Bose QuietComfort Headphones,Bose,,,https://shop-pp.test/p/5002,shop-pp.test,Bose QuietComfort Earbuds,Bose,,
+E03,ambiguous_no_attrs,different,SKU-E03,Nike Air Max Running Shoes,Nike,,,https://shop-qq.test/p/5003,shop-qq.test,Nike Air Max Plus Running Shoes,Nike,,
+E04,ambiguous_no_attrs,different,SKU-E04,Logitech MX Keys Keyboard,Logitech,,,https://shop-rr.test/p/5004,shop-rr.test,Logitech MX Keys Mini Keyboard,Logitech,,
+E05,ambiguous_no_attrs,same,SKU-E05,Adidas Ultraboost Running Shoes Core Black,Adidas,,,https://shop-ss.test/p/5005,shop-ss.test,Adidas Ultraboost Running Shoe - Core Black Colorway,Adidas,,

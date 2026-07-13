@@ -1,0 +1,29 @@
+<!--
+Frozen fixture (PR-11): a broken JSON-LD <script> block (not valid JSON, no
+chompjs-recoverable shape either) sitting alongside perfectly good
+microdata for the SAME product. Proves the verified extruct 0.18.0 failure
+mode documented in acquire/structured.py (a malformed json-ld script
+crashes extruct.extract()'s whole call) does not blind extract_product_metadata
+to the microdata on the same page -- the adapter retries extruct without
+json-ld.
+Hand-verified expected result: json_ld_offers is empty (bad block
+unrecoverable), microdata_offers has one Offer with price=15.75/USD, and
+extract_price falls through json_ld -> microdata and returns tier=microdata.
+-->
+<html>
+<head>
+<title>Acme Desk Lamp</title>
+<script type="application/ld+json">
+  this is not { valid json at ~~ all
+</script>
+</head>
+<body>
+  <div itemscope itemtype="https://schema.org/Product">
+    <span itemprop="name">Acme Desk Lamp</span>
+    <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+      <span itemprop="price">15.75</span>
+      <meta itemprop="priceCurrency" content="USD" />
+    </div>
+  </div>
+</body>
+</html>
