@@ -305,6 +305,24 @@ fuente externa:
 
 ### 2.6 Dimensionamiento bottom-up — 4 geografías (VERIFICADO base, ESTIMADO el embudo)
 
+> **Actualizado 2026-07-13 (segunda ronda):** el filtro original (censo por
+> tamaño × sector) era demasiado grueso — captaba poder adquisitivo y sector,
+> pero no si la empresa puede operar Kern en la práctica. Esta versión agrega
+> la cadena completa de calificación pedida: registro formal (ya implícito),
+> digitalización mínima (el filtro que más recorta y el que faltaba),
+> competencia enterprise instalada, y complejidad de inventario. Cada paso
+> nuevo dice explícitamente si encontró fuente o no — no se inventa un
+> número donde no lo hay, mismo criterio que ya se aplicó con el desglose de
+> Chile en la primera ronda.
+
+**Paso 0 — registro formal (YA APLICADO, no requiere investigación nueva):**
+los 4 censos usados en el Paso 1 (RUES/Confecámaras Colombia, INEGI México,
+UCEMA/Observatorio PyME sobre datos oficiales Argentina, SII Chile) cuentan
+**solo empresas formalmente registradas** — ya excluyen por construcción el
+peor caso (un negocio que no lleva ningún registro contable/tributario). Esto
+no cambia ningún número de los pasos siguientes; se deja explícito porque
+antes solo estaba implícito.
+
 **Paso 1 — universo de empresas Pequeña+Mediana (VERIFICADO, fuentes
 primarias):**
 
@@ -348,15 +366,92 @@ claro, el mercado individual más grande (~41% del total de 4 países);
 Colombia y Chile son similares entre sí (~82.700 y ~85.000) y juntos casi
 igualan a México solo.
 
-**Paso 3 — el embudo hacia metas de ingreso (ESTIMADO desde aquí en
-adelante — cada eslabón es una cadena de supuestos, no un dato medido):**
+**Paso 3 — digitalización mínima (el filtro que faltaba: ¿la empresa puede
+siquiera producir un CSV de ventas/stock?).** Una empresa formal, del tamaño
+correcto y del sector correcto puede seguir llevando el inventario en papel
+o de memoria. Metodología: búsqueda por país de encuestas oficiales/
+institucionales de TIC-en-empresas o transformación digital PyME,
+priorizando fuentes con desglose por tamaño de empresa sobre agregados
+"MiPyme":
 
-1. **Población ICP (4 países):** ~367.000 empresas, punto medio (Paso 2).
+| País | % con digitalización mínima (Pequeña+Mediana) | Fuente | Confianza |
+|---|---|---|---|
+| México | **~85-86%** (Pequeña ~85%: 84,6-86,2% con computadora+internet en dos fuentes; Mediana ~92-96%: 91,9-95,6% — promedio ponderado por el peso real de cada subgrupo dentro de Pequeña+Mediana) | INEGI, ENAPROCE y Censos Económicos 2024 (vía cobertura secundaria de Pymempresario) | **Alta** — fuente oficial, desglosada por tamaño |
+| Colombia | **~70%** (ACOPI 2024: 74% de las pymes ya usa herramientas digitales para ventas/gestión contable/comunicación interna, muestra general; Innpulsa/Centro Nacional de Consultoría 2024, 4.107 empresas formales: 63% de medianas en niveles avanzados de transformación digital, 42% de micro — consistente en orden de magnitud con ACOPI) | ACOPI + estudio Innpulsa/Ministerio de Comercio (cifra propia del gobierno colombiano) | **Media** — dos fuentes institucionales convergentes, ninguna es el desglose exacto Pequeña vs. Mediana que se buscaba |
+| Chile | **~55%** (adopción de e-commerce en MiPyme subió de 39% a 55% entre 2020 y 2021) | CORFO, Índice de Transformación Digital 2021 (~750 casos, cobertura vía CCS/prensa especializada) | **Media-baja** — es un índice agregado "MiPyme" sin desglose Pequeña/Mediana, y la muestra probablemente no es aleatoria |
+| Argentina | **NO RELIABLE SOURCE FOUND específica de Argentina.** El único dato tamaño-segmentado encontrado fue un claim de un vendor de ERP (Acumatica: "5,9% usa ERP en la nube") — descartado por ser contenido comercial y por medir solo "ERP en la nube", una categoría mucho más angosta que "tiene algún sistema de gestión". El agregado regional del BID (Chequeo Digital, ~70% de empresas en etapa inicial de madurez digital en toda LATAM) tampoco es Argentina-específico ni mide la misma cosa (madurez vs. digitalización mínima). | — | **Sin fuente propia** — se usa el rango 55-85% observado en los otros 3 países como cota (punto medio 70%), marcado explícitamente como una extrapolación, no una medición |
+
+**Resultado del Paso 3 (ESTIMADO en Colombia/Chile/Argentina, VERIFICADO en
+México):**
+
+| País | ICP tras Paso 2 | × Digitalización mínima | ICP tras Paso 3 |
+|---|---|---|---|
+| Argentina | 49.300 | ~70% (ESTIMADO, sin fuente propia — ver nota arriba) | ~34.500 |
+| México | 149.800 | ~86% (VERIFICADO) | ~128.800 |
+| Colombia | 82.700 | ~70% (ESTIMADO, dos fuentes convergentes) | ~57.900 |
+| Chile | ~85.000 (punto medio) | ~55% (ESTIMADO, baja confianza) | ~46.750 |
+| **Total AR+MX+CO+CL** | **~366.800** | | **~268.000** |
+
+**Antes vs. después de este filtro:** ~367.000 → **~268.000** (retiene
+~73%, recorta ~27%). Es un recorte real pero **más moderado de lo que se
+podría temer** — y ese es en sí un hallazgo que vale la pena remarcar: dentro
+de la banda Pequeña+Mediana específicamente (ya sin Micro, que es donde la
+digitalización realmente se desploma — en México, por ejemplo, Micro tiene
+solo ~20-23% de digitalización contra ~85% de Pequeña), la mayoría de las
+empresas YA tiene la base tecnológica mínima. El filtro de tamaño del Paso 1
+ya estaba haciendo buena parte de este trabajo indirectamente, sin que el
+documento original lo dijera explícitamente.
+
+**Paso 4 — competencia enterprise ya instalada (SAP IBP, Blue Yonder, o9):
+impacto ~0%, confirmado indirectamente, no por censo.** No existe (ni se
+esperaba que existiera) un dato censal de "% de empresas Pequeña+Mediana
+que usa SAP IBP" — es una pregunta demasiado rara para que alguien la mida.
+Confirmación indirecta encontrada: SAP IBP arranca en **~USD 100.000/año**
+(precio de lista, orientado a "medianas-grandes y grandes empresas" según
+el propio posicionamiento de SAP/Gartner), muy por encima de cualquier
+paquete de Kern (techo USD 12.000/mes = USD 144.000/año en el Retainer
+Ejecutivo, el más caro de los 8) y a años luz del presupuesto de una empresa
+de USD 1-15M de facturación. SAP ofrece un producto totalmente distinto
+para PyMEs (SAP Business One, un ERP general, no un motor de planificación
+de SC) — lo que de hecho refuerza el punto: incluso la PyME con **algún**
+ERP (Odoo, SAP Business One, un ERP local) generalmente no tiene la capa de
+planificación/optimización avanzada que Kern ofrece. **No se aplica ningún
+recorte numérico por este filtro** — el supuesto de impacto ~0% se sostiene
+por evidencia de precio, no se refuta ni se inventa un %.
+
+**Paso 5 — complejidad de inventario (# SKUs) — advertencia cualitativa, sin
+cifra forzada.** Se buscó explícitamente una correlación censal entre banda
+de facturación y # de SKUs típico en retail/distribución/manufactura
+liviana — **no se encontró ningún dato de este tipo** (ni específico de
+LATAM ni general). Es razonable: nadie levanta un censo de "SKUs por rango
+de facturación," y la relación varía enormemente por categoría (un
+distribuidor de repuestos con USD 3M puede tener 5.000 SKUs; una manufactura
+liviana con USD 3M puede tener 50). **Advertencia explícita para lectura del
+número final:** dentro del ~268.000 de empresas ICP-relevantes, hay
+variación real e inobservable en complejidad de inventario — una fracción de
+esa población probablemente tiene tan pocos SKUs que ni el Diagnóstico de
+Arranque agrega valor real (ej. un solo producto, inventario trivial de
+gestionar a ojo), y otra fracción tiene tanta complejidad (multi-SKU,
+multi-variante) que encaja mejor en Growth/Scale directamente. No se
+resta ni se suma nada al ~268.000 por este motivo — se señala como el
+límite honesto de lo que un filtro estadístico puede capturar; la
+calificación fina de complejidad de inventario solo puede hacerse en la
+conversación de intake real con cada lead, no en un modelo de mercado.
+
+**Paso 6 — el embudo hacia metas de ingreso (ESTIMADO desde aquí en
+adelante — cada eslabón es una cadena de supuestos, no un dato medido).**
+Arranca ahora del número post-Paso 3 (~268.000), no del pre-digitalización
+(~367.000) — es la base correcta porque una empresa sin digitalización
+mínima no puede completar el intake de ningún paquete sin trabajo previo
+de puesta a punto que hoy no está cotizado:
+
+1. **Población ICP calificada (4 países, post-digitalización):** ~268.000
+   empresas (Paso 3).
 2. **Alcanzable por pauta digital (LinkedIn/Google, filtros de tamaño +
    industria + geo):** sin benchmark LATAM de "% de una población B2B nicho
    que es efectivamente targeteable" — **supuesto conservador propio: 5-10%**
    tiene presencia digital suficiente para ser identificado y targeteado con
-   precisión razonable → **~18.000-37.000 empresas alcanzables** en las 4
+   precisión razonable → **~13.400-26.800 empresas alcanzables** en las 4
    geografías combinadas. Este es el eslabón más débil de la cadena — no
    está sostenido por una fuente externa.
 3. **Leads generados:** depende del presupuesto de pauta (no modelado aquí —
@@ -375,16 +470,17 @@ adelante — cada eslabón es una cadena de supuestos, no un dato medido):**
 Con el cierre de 2-5% (§2.5) y precios de USD 1.500-4.000 por primer contrato,
 alcanzar los primeros USD 10k requiere del orden de **80-250 leads
 calificados** — que, a su vez, requieren una fracción no modelada del
-"alcanzable" de 18.000-37.000 empresas del Paso 2. **Esta cadena completa
+"alcanzable" de 13.400-26.800 empresas del Paso 6. **Esta cadena completa
 tiene la confianza más baja del documento** — es la primera cosa a
 recalibrar con datos reales de una campaña piloto, no a tratar como
 pronóstico firme.
 
 ### 2.7 Alcance recomendado — qué geografías targetear y en qué orden
 
-Pregunta explícita: dado que el mercado combinado (~367.000 empresas ICP en
-4 países) es grande, **¿tiene sentido lanzar pauta en las 4 geografías a la
-vez?** Recomendación: **no.** Razones:
+Pregunta explícita: dado que el mercado combinado (~268.000 empresas ICP
+calificadas — post-digitalización, §2.6 Paso 3-5 — en 4 países) es grande,
+**¿tiene sentido lanzar pauta en las 4 geografías a la vez?** Recomendación:
+**no.** Razones:
 
 1. **Es una operación de un solo operador** (`MONETIZATION_BRIEF.md`,
    "operador solo" — VERIFICADO). Correr y optimizar campañas en 4 mercados
@@ -411,25 +507,33 @@ vez?** Recomendación: **no.** Razones:
    momento de invertir en pauta paga, esta es la secuencia recomendada.
 
 **Fase 1 — piloto (0-3 meses): México, solo o + Argentina.**
-México concentra el pool ICP individual más grande (~150.000, ~41% del
-total de 4 países) y es la única geografía con una señal cualitativa de
-tracción en el ecosistema Odoo. Sumar Argentina al piloto (en vez de ir solo
-con México) tiene sentido si el operador ya tiene red/confianza local ahí
-(consistente con el patrón "Upwork/red directa" que ya recomienda el brief
-de monetización) — permite calibrar el canal pago en México mientras se
+México concentra el pool ICP calificado individual más grande (~128.800,
+**~48% del total de 4 países tras el filtro de digitalización** — su peso
+relativo subió frente al 41% pre-filtro, porque México es también la
+geografía con MEJOR digitalización verificada dentro de Pequeña+Mediana,
+~86%) y es la única geografía con una señal cualitativa de tracción en el
+ecosistema Odoo. Sumar Argentina al piloto (en vez de ir solo con México)
+tiene sentido si el operador ya tiene red/confianza local ahí (consistente
+con el patrón "Upwork/red directa" que ya recomienda el brief de
+monetización) — permite calibrar el canal pago en México mientras se
 cierran los primeros contratos por canales cálidos en Argentina, sin
-depender 100% de pauta fría para el primer caso de estudio.
+depender 100% de pauta fría para el primer caso de estudio. Nota: el ~70%
+de digitalización usado para Argentina es una extrapolación sin fuente
+propia (§2.6, Paso 3) — otra razón para apoyarse en redes cálidas ahí en
+vez de pauta fría hasta tener una lectura local real.
 
 **Fase 2 — expansión (una vez calibrado CPL + tasa de cierre real, ~3-9
 meses): sumar Colombia y Chile.**
-Ambos tienen poblaciones ICP similares entre sí (~82.700 y ~85.000) y juntos
-casi igualan a México solo — no conviene ignorarlos a mediano plazo, pero
-tampoco se justifica entrar ahí sin primero validar mensaje/creatividad/
-conversión en al menos un mercado. Nota Chile: usar el matiz de §2.2 (su
-techo de "Mediana" es más bajo — parte del ICP real cae en lo que el SII
-llama "Grande") al armar los filtros de segmentación en la plataforma de
-ads, para no sub-targetear por copiar literalmente la etiqueta "mediana
-empresa" de otro país.
+Ambos tienen poblaciones ICP calificadas similares entre sí (~57.900 y
+~46.750) y juntos siguen sumando un bloque relevante (~39% del total) — no
+conviene ignorarlos a mediano plazo, pero tampoco se justifica entrar ahí
+sin primero validar mensaje/creatividad/conversión en al menos un mercado.
+Nota Chile: además del matiz de §2.2 (su techo de "Mediana" es más bajo —
+parte del ICP real cae en lo que el SII llama "Grande"), es también la
+geografía con la digitalización estimada más baja de las 4 (~55%, y la de
+menor confianza) — vale la pena una lectura local antes de escalar
+presupuesto ahí, no solo por el tamaño del mercado sino por la calidad del
+dato que lo sostiene.
 
 **Fase 3 — evaluar, no ejecutar todavía: Perú.**
 Mismo idioma, economía y formalización PyME en crecimiento — **no
@@ -484,25 +588,34 @@ más alto, ciclo de venta más largo (consistente con el benchmark de §2.3).
 
 ### 3.2 Tamaño de la oportunidad
 
-~367.000 empresas ICP-relevantes en Argentina + México + Colombia + Chile
-combinados (VERIFICADO la base censal en 3 de los 4 países, ESTIMADO el
-filtro sectorial y el desglose Pequeña/Mediana de Chile — §2.6). De esa
-población, el tramo realmente alcanzable por pauta digital hoy es una
-fracción **no verificada con datos propios** (supuesto de 5-10% →
-18.000-37.000 empresas). Los primeros USD 10k/50k/100k son alcanzables con
-**1 a ~10 clientes** dependiendo del mix de paquete (Diagnóstico de entrada
-vs. retainer sostenido) — el cuello de botella no es el tamaño del mercado
-(sobra en las 4 geografías combinadas), es la conversión de alcance → lead
-→ cierre, que hoy no tiene dato propio en ninguna de las 4.
+~268.000 empresas ICP-**calificadas** en Argentina + México + Colombia +
+Chile combinadas — es decir, no solo del tamaño y sector correctos
+(~367.000, §2.6 Paso 1-2), sino con **digitalización mínima real**
+verificada/estimada por país (§2.6 Paso 3): el filtro que más recortó, de
+~367.000 a ~268.000 (retiene ~73%). Confirmado además que el filtro de
+"competencia enterprise instalada" (SAP IBP/Blue Yonder) no recorta nada
+(~0%, por precio — Paso 4) y que "complejidad de inventario/SKUs" no tiene
+dato censal y queda como advertencia cualitativa, no como recorte numérico
+(Paso 5). De esa población calificada, el tramo realmente alcanzable por
+pauta digital hoy sigue siendo una fracción **no verificada con datos
+propios** (supuesto de 5-10% → 13.400-26.800 empresas). Los primeros USD
+10k/50k/100k son alcanzables con **1 a ~10 clientes** dependiendo del mix
+de paquete (Diagnóstico de entrada vs. retainer sostenido) — el cuello de
+botella no es el tamaño del mercado (sobra en las 4 geografías combinadas,
+incluso después de calificarlo en serio), es la conversión de alcance →
+lead → cierre, que hoy no tiene dato propio en ninguna de las 4.
 **Recomendación operativa (alcance geográfico, §2.7): no lanzar en las 4 a
-la vez.** Empezar el piloto en México (el mercado individual más grande,
-~150.000 empresas, ~41% del total, y la única señal cualitativa de
-tracción en el ecosistema Odoo), opcionalmente sumando Argentina vía
-canales cálidos para el primer caso de estudio; sumar Colombia y Chile en
-una Fase 2 una vez calibrado el CPL y la tasa de cierre real. Perú queda
-como candidato a evaluar sin cifras propias todavía; Brasil queda fuera de
-alcance hasta que exista soporte de portugués en el producto (bloqueo de
-producto, no de mercado — ver §2.7).
+la vez.** Empezar el piloto en México (el mercado individual calificado
+más grande, ~128.800 empresas, ~48% del total tras el filtro de
+digitalización — su peso relativo SUBE porque además es la geografía mejor
+digitalizada de las 4 — y la única señal cualitativa de tracción en el
+ecosistema Odoo), opcionalmente sumando Argentina vía canales cálidos para
+el primer caso de estudio (su cifra de digitalización es una extrapolación
+sin fuente propia, otro motivo para no apostarle a pauta fría ahí todavía);
+sumar Colombia y Chile en una Fase 2 una vez calibrado el CPL y la tasa de
+cierre real. Perú queda como candidato a evaluar sin cifras propias
+todavía; Brasil queda fuera de alcance hasta que exista soporte de
+portugués en el producto (bloqueo de producto, no de mercado — ver §2.7).
 
 ### 3.3 ¿Es una herramienta para CEO?
 
@@ -611,3 +724,19 @@ secundario.** Justificación:
   nota en §2.6.
 - Perú, Brasil — no investigados cuantitativamente esta sesión (ver §2.7
   para la evaluación cualitativa de ambos).
+- Digitalización mínima (§2.6, Paso 3) — México: INEGI ENAPROCE + Censos
+  Económicos 2024, por tamaño de empresa (vía cobertura secundaria de
+  Pymempresario, dos cifras consistentes: 84,6-86,2% Pequeña, 91,9-95,6%
+  Mediana). Colombia: ACOPI (2024, 74% pymes con herramientas digitales) +
+  estudio "Caracterización de las mipymes y su apropiación digital"
+  (Centro Nacional de Consultoría, 4.107 empresas, para Innpulsa/Ministerio
+  de Comercio, Industria y Turismo, 2024). Chile: CORFO, Índice de
+  Transformación Digital 2021 (~750 casos, cobertura vía Cámara de Comercio
+  de Santiago). Argentina: sin fuente propia size-segmentada encontrada
+  esta sesión (se descartó un claim de Acumatica por ser contenido de
+  vendor y medir solo "ERP en la nube", categoría más angosta que la
+  buscada).
+- Competencia enterprise instalada (§2.6, Paso 4) — precio de lista de SAP
+  IBP (~USD 100.000/año de entrada, orientado a medianas-grandes/grandes
+  empresas), contrastado contra el techo de precio de Kern (USD 12.000/mes
+  = USD 144.000/año en su paquete más caro).

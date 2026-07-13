@@ -101,12 +101,52 @@ candidato sin investigar; **Brasil queda fuera de alcance** hasta que el
 producto tenga soporte de portugues (`src/i18n.py` verificado: solo
 `es`/`en`) — es un bloqueo de producto, no de mercado.
 
+**Actualizacion 2026-07-13 (tercera ronda, mismo PR #142): filtro de
+calificacion real (el pedido explicito era "este filtro es demasiado
+grueso").** El calculo original (censo por tamano x sector, ~367.000) solo
+captaba poder adquisitivo y sector — no si la empresa REALMENTE puede
+operar Kern. `ICP_Y_DIMENSIONAMIENTO.md` §2.6 ahora tiene la cadena
+completa: Paso 0 (registro formal, ya implicito en los censos, sin cambio
+numerico) -> Paso 1-2 (tamano+sector, sin cambio, ~367.000) -> **Paso 3
+(digitalizacion minima, el filtro que mas recorta): ~367.000 -> ~268.000**
+(retiene ~73%) -> Paso 4 (competencia enterprise SAP IBP/Blue Yonder,
+impacto ~0% confirmado por precio de lista ~USD 100k/año, no por censo) ->
+Paso 5 (complejidad de SKUs, sin dato censal, advertencia cualitativa
+explicita, no un recorte numerico) -> Paso 6 (el embudo hacia metas de
+ingreso, ahora arranca de ~268.000 no de ~367.000).
+
+**Digitalizacion por pais** (Pequena+Mediana especificamente, no Micro):
+Mexico ~86% (VERIFICADO, INEGI ENAPROCE/Censo 2024, fuerte — desglosado por
+tamano); Colombia ~70% (ESTIMADO, ACOPI 2024 + estudio Innpulsa/Centro
+Nacional de Consultoria 2024, dos fuentes institucionales convergentes);
+Chile ~55% (ESTIMADO, CORFO Indice de Transformacion Digital 2021, baja
+confianza — agregado "MiPyme" sin desglose de tamano); **Argentina: NO
+RELIABLE SOURCE FOUND especifica** (se descarto un claim de vendor —
+Acumatica, "5,9% ERP en la nube" — por ser contenido comercial y medir algo
+mas angosto de lo buscado; se uso el rango 55-85% de los otros 3 paises
+como cota explicita, no como medicion).
+
+**Hallazgo no obvio que vale la pena recordar:** el recorte de
+digitalizacion es mas moderado de lo que se podria temer (~27%, no un
+desplome) porque la banda Pequena+Mediana YA excluye Micro, que es donde la
+digitalizacion realmente se desploma (en Mexico, Micro es ~20-23%
+digitalizada contra ~85% de Pequena) — el filtro de tamano del Paso 1 ya
+estaba haciendo buena parte de este trabajo sin que el documento original lo
+dijera explicitamente.
+
+**Efecto sobre la recomendacion de alcance (§2.7):** Mexico sube de ~41% a
+**~48% del total de 4 paises** tras el filtro, porque ademas es la
+geografia mejor digitalizada — refuerza (no cambia) la recomendacion de
+Fase 1 = piloto en Mexico.
+
 **Que sigue (no arrancado esta sesion):** publicar el modulo Odoo (checklist
 ya lista en `GTM_SUBMISSIONS.md`) para tener el primer canal LATAM medible;
 correr una campana piloto chica en Mexico (+ Argentina) para calibrar el
 embudo real antes de expandir a Colombia/Chile; buscar el desglose exacto
-Pequena/Mediana de Chile directo en sii.cl si esa geografia se prioriza
-antes de lo esperado; investigar Peru si se confirma como 5to mercado.
+Pequena/Mediana de Chile directo en sii.cl y una encuesta TIC Argentina-
+especifica con desglose por tamano (INDEC/SEPYME) si esas geografias se
+priorizan antes de lo esperado; investigar Peru si se confirma como 5to
+mercado.
 
 ## 2026-07-12 — Rename: Linchpin -> Kern (interno COMPLETO; checklist EXTERNA abajo)
 
