@@ -22,6 +22,75 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-07-13 — ICP LATAM + kit de publicidad (docs only, PR draft, worktree `.wt-kern-icp`)
+
+**Read this section first if you're picking up the "quien es el cliente
+final" thread.** Two new docs, both PR-ready as pure documentation (no code
+touched, so no ruff/pytest gate applies): `documentation/ICP_Y_DIMENSIONAMIENTO.md`
+(the full research — product truth VERIFICADO against code, LATAM market
+research VERIFICADO/ESTIMADO, the 6 questions from the brief answered
+explicitly) and `documentation/KIT_PUBLICIDAD.md` (ready-to-use ad assets:
+ICP one-pager, value prop, 5 message angles, buyer×package table, prohibited
+claims list).
+
+**Headline findings, so a fresh session doesn't have to re-derive them:**
+- **ICP primario:** retailer/distribuidor/manufactura liviana LATAM, USD
+  1-15M facturación anual, sin equipo propio de data science, comprador es
+  dueño/CEO (PyME chica) o director de Ops/SC/Compras + COO/CFO (mid-market).
+  Ver `ICP_Y_DIMENSIONAMIENTO.md` §3.1 para el ICP secundario y los
+  disqualifiers.
+- **Correccion importante al propio brief que origino esta tarea:** el
+  supuesto "conectores Mercado Libre + Odoo" es **falso** — grep completo del
+  repo confirma que Mercado Libre no existe en ningun lado del codigo. Los
+  unicos conectores reales son Odoo (`src/connectors/odoo.py`) y Excel
+  (`src/connectors/excel.py`); Shopify/Amazon son placeholders de diseno
+  futuro (`emulator.py`/`simulator.py`), no productos. **No repetir el claim
+  de Mercado Libre en material de venta.**
+- **Case studies reales: no existen todavia.** `case-studies/CASE_STUDIES.md`
+  son ejercicios de libro de texto (dice literalmente que los case studies de
+  marketing anteriores eran placeholders) — cualquier cifra de "$ ahorrados"
+  en pauta hoy tiene que venir de un rango de mercado citado, nunca
+  presentarse como resultado propio de un cliente real.
+- **Autonomia end-to-end (82%/75-80%/40-50%): sigue STALE.** No se encontro
+  un re-calculo posterior al cierre de los 5 gaps (#130/#132/#133/#135/#139)
+  en `main` — un numero real requiere re-correr el workflow de auditoria, no
+  solo leer el codigo. No usar esos porcentajes en material publico hasta
+  re-auditar; el claim de venta seguro es el contrato estructural
+  (`src/guided.py`: 4 desenlaces, 3 de 4 necesitan humano — eso si es
+  100% verificable y estable).
+- **Tool count confirmado sin cambios:** 37 tools registradas
+  (`scm_agent/tools.py`), 33 expuestas via MCP (gap sigue siendo
+  `excel_replenishment`/`leadership_chain`/`odoo_replenishment`/
+  `warehouse_layout`, sin cambio desde la auditoria previa).
+- **Dimensionamiento bottom-up (Argentina + Mexico, con fuentes oficiales
+  reales — SICYPYME/Boletin Oficial AR, INEGI Censos Economicos 2024 MX):**
+  ~199.000 empresas Pequena+Mediana en sectores con inventario fisico entre
+  los dos paises. Colombia/Chile NO investigados esta sesion — no
+  extrapolar. El eslabon mas debil del embudo es "alcanzable por pauta
+  digital -> lead -> cierre", que no tiene benchmark LATAM propio (se uso un
+  supuesto conservador marcado ESTIMADO) — recomendacion: correr una
+  campana piloto chica para calibrar antes de comprometer presupuesto.
+- **Tension no resuelta con `MONETIZATION_BRIEF.md`:** ese doc ya concluyo
+  que la via principal de monetizacion de corto plazo es marcas Shopify/DTC
+  US/UK (fractional supply chain operator, en ingles), con LATAM/Odoo como
+  canal SECUNDARIO. Esta tarea profundizo el angulo LATAM porque eso es lo
+  que se pidio, sin sobreescribir esa conclusion previa — ver
+  `ICP_Y_DIMENSIONAMIENTO.md` §2.1 antes de tratar LATAM como el plan
+  principal en una decision de presupuesto real.
+- **Nota metodologica:** 5 agentes en paralelo (extraccion de one-pagers,
+  verificacion de codigo, 3 angulos de market research) fallaron al arrancar
+  por limite de sesion de la API ("session limit, resets 9:30pm
+  America/Santiago") — el trabajo se rehizo en el hilo principal con
+  Grep/Read directos + WebSearch/WebFetch secuencial en vez de reintentar
+  con mas agentes paralelos. Si esto se repite, preferir llamadas directas
+  secuenciales sobre relanzar varios agentes a la vez.
+
+**Que sigue (no arrancado esta sesion):** publicar el modulo Odoo (checklist
+ya lista en `GTM_SUBMISSIONS.md`) para tener el primer canal LATAM medible;
+correr una campana piloto chica para calibrar el embudo real; extender el
+dimensionamiento a Colombia/Chile si LATAM se confirma como prioridad y no
+solo como canal secundario.
+
 ## 2026-07-12 — Rename: Linchpin -> Kern (interno COMPLETO; checklist EXTERNA abajo)
 
 **Que paso:** el proyecto se llama **Kern** (aleman: nucleo). No es cosmetico —
