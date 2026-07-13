@@ -32,7 +32,7 @@ def _make_planilla(path, *, demand_column=False, order_column=False):
     if demand_column:
         headers.append("Demanda Semanal")
     if order_column:
-        headers.append("Pedir (Linchpin)")
+        headers.append("Pedir (Kern)")
     for col, h in enumerate(headers, 1):
         ws.cell(row=3, column=col, value=h)
     rows = [
@@ -166,7 +166,7 @@ def test_run_stages_changeset_with_new_order_column(planilla):
     assert cs is not None and cs.risk_tier == writeback.TIER_REVERSIBLE
     edits = {c.field: c.after for c in cs.changes}
     # New column E: header at the header row + one qty per restocked SKU.
-    assert edits["E3"] == "Pedir (Linchpin)"
+    assert edits["E3"] == "Pedir (Kern)"
     assert edits["E4"] == 58.0 and edits["E6"] == 42.0
     # Order-column cells are fresh writes (before None); the plan's INPUT cells
     # travel as no-op GUARDS (before == after) so input drift is caught at apply.
@@ -342,7 +342,7 @@ def test_staged_changeset_applies_to_the_real_file_with_approval(planilla):
     result = writeback.apply(store, report.changeset, approval=approval)
     assert result.applied
     ws = load_workbook(planilla)[SHEET]
-    assert ws["E3"].value == "Pedir (Linchpin)"
+    assert ws["E3"].value == "Pedir (Kern)"
     assert ws["E4"].value == 58.0
     assert ws["A1"].value == "INVENTARIO BODEGA CENTRAL"  # client content intact
     # And it is rollback-able, honoring the writeback contract end to end.

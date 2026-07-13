@@ -29,7 +29,7 @@ Nota: [partner-odoo.md](partner-odoo.md) no es un 9no paquete de la escalera
 — es el programa de partners (integradores Odoo / consultoras), con dos
 modelos (rev-share 20% o white-label a tarifa fija) y su propio
 `ClientProfile.branding` para que el deck salga bajo la marca del partner en
-vez de la de Linchpin (ver `src/deliverable.py`'s `Branding`).
+vez de la de Kern (ver `src/deliverable.py`'s `Branding`).
 
 ## Para el operador
 

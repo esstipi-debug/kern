@@ -71,3 +71,6 @@ webapp/_jobs_output/
 
 # captured demo leads (PII — never versioned)
 webapp/_leads/
+# local code-intelligence indexes (codegraph / serena MCP servers)
+.codegraph/
+.serena/

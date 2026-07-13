@@ -37,7 +37,7 @@ def _visible(text: str) -> str:
 @dataclass(frozen=True)
 class Branding:
     """The identity a deck is presented under - who a client sees as having
-    prepared their deliverable. Defaults to Linchpin's own (``DEFAULT_BRANDING``
+    prepared their deliverable. Defaults to Kern's own (``DEFAULT_BRANDING``
     below); a partner reselling under the white-label/rev-share model (E6)
     supplies their own via ``ClientProfile.branding`` (``src/client_profile.py``).
     Scope: only the CONSOLIDATED package deck (``jobs/package_deliverable.py``)
@@ -68,7 +68,7 @@ class Branding:
             raise ValueError(f"branding.primary_color must be '#RRGGBB', got {self.primary_color!r}")
 
 
-DEFAULT_BRANDING = Branding(name="Linchpin")
+DEFAULT_BRANDING = Branding(name="Kern")
 
 
 @dataclass(frozen=True)
@@ -124,7 +124,7 @@ class Deliverable:
     # see i18n.py's module docstring for the full scope boundary.
     lang: str = "en"
     # Who this deck is presented as prepared by - see Branding's own docstring.
-    # Defaults to Linchpin's own identity, so every deck (all ~37 individual
+    # Defaults to Kern's own identity, so every deck (all ~37 individual
     # tool decks AND the package deck) is branded out of the box with zero
     # caller changes. A partner's white-label identity is threaded in ONLY by
     # jobs/package_deliverable.py (via ClientProfile.branding), mirroring

@@ -1,9 +1,9 @@
-# 09 · Checklist de Lanzamiento — Linchpin 2.0
+# 09 · Checklist de Lanzamiento — Kern 2.0
 
 > Todo lo que queda para que la superficie de venta cobre de verdad. Cada ítem
 > es una acción de **login humano** que ningún agente puede hacer por vos
 > (crear cuenta, generar un link de pago, publicar en un directorio). Se va
-> completando a medida que cada épica de Linchpin 2.0 (E1-E8) aterriza — este
+> completando a medida que cada épica de Kern 2.0 (E1-E8) aterriza — este
 > archivo se actualiza en el mismo PR que agrega los ítems, no después.
 
 ## Venta (E1 — superficie de venta, ver [07 · Setup de Venta](07_setup_venta.md))
@@ -44,7 +44,7 @@
 - [ ] Rutina operativa: tras cada demo corrido, revisar
       `deliverables/leads/<email>/` (o `/data/leads/` en Fly) — ahí queda el
       mini-reporte y el **borrador** de email de seguimiento; enviarlo a mano
-      (Linchpin nunca manda correo automáticamente)
+      (Kern nunca manda correo automáticamente)
 
 ## Sprint de Liquidación (E3, ya en código)
 
@@ -70,13 +70,13 @@
 - [ ] Cargar su `branding` en `client_profile` (nombre, `logo_url`, y
       `primary_color` en formato `#RRGGBB` — ver el snippet de ejemplo en
       [partner-odoo.md](../paquetes/partner-odoo.md#cómo-se-aplica-tu-marca-branding)).
-      Sin esto, sus decks salen con la marca Linchpin por defecto — no rompe
+      Sin esto, sus decks salen con la marca Kern por defecto — no rompe
       nada, pero no es lo pactado.
 - [ ] **Alcance actual — leelo antes de entregar nada:** solo el documento
       ejecutivo consolidado del paquete lleva la marca del partner hoy. El
       reporte propio de cada herramienta individual dentro de la misma
       carpeta (`data_quality/`, `abc_xyz/`, etc.) todavía sale con la marca
-      Linchpin por defecto — whitelabelearlos también es una mejora
+      Kern por defecto — whitelabelearlos también es una mejora
       pendiente, no construida todavía. Si el partner va a entregarle la
       carpeta completa a su cliente, aclaraselo de antemano o entregale
       solamente el documento consolidado.
@@ -84,7 +84,7 @@
       **todos** los archivos que le vas a entregar (no solo el paquete
       consolidado) antes de que el partner se los pase a su cliente —
       confirmar que el consolidado dice su marca y decidir con el partner
-      qué hacer con los reportes individuales que todavía dicen "Linchpin"
+      qué hacer con los reportes individuales que todavía dicen "Kern"
       (ver el punto de arriba).
 
 ## Modo Interno / Métricas (E8, ya en código)
@@ -114,4 +114,4 @@ Ver la nota "Permanent priority rule" al principio de
 acá, editala ahí para que no queden dos versiones desincronizadas): cuando
 exista `PIPELINE.md` en la raíz del repo con un deal activo, ese trabajo
 tiene prioridad sobre cualquier ítem de este checklist o cualquier épica de
-Linchpin 2.0.
+Kern 2.0.

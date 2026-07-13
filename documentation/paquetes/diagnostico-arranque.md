@@ -53,3 +53,7 @@ ejecute y se mantenga mes a mes, ese es exactamente el alcance de los planes
 **Starter** (fundamentos de inventario, USD 2.000/mes) y **Growth** (operación
 completa de supply chain, USD 4.000/mes) — y el diagnóstico ya deja tus datos
 listos para arrancar cualquiera de los dos.
+
+---
+
+*Este paquete corre sobre **Kern** (antes Linchpin) - el nucleo de decisiones de la agencia: cada resultado pasa un QA-gate que veta entregables debiles, cita las fuentes del campo en que se apoya (25 obras curadas), y toda escritura a tu sistema es staged, aprobada y reversible. La evolucion completa del nombre: [KERN_IDENTIDAD_Y_FILOSOFIA.md](../KERN_IDENTIDAD_Y_FILOSOFIA.md).*

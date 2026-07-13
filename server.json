@@ -15,7 +15,7 @@
       "headers": [
         {
           "name": "X-API-Key",
-          "description": "Per-client key issued by the Linchpin operator (contact via https://linchpin.fly.dev) - not a self-serve signup yet.",
+          "description": "Per-client key issued by the Kern operator (contact via https://linchpin.fly.dev) - not a self-serve signup yet.",
           "isRequired": true,
           "isSecret": true
         }

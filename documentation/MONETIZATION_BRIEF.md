@@ -1,4 +1,4 @@
-# Monetización de Linchpin — reporte breve (meta: ≥USD 8.000/mes)
+# Monetización de Kern — reporte breve (meta: ≥USD 8.000/mes)
 
 > Investigación web profunda (jul 2026): ~50 agentes de búsqueda/extracción + verificación
 > adversarial de afirmaciones (3 votos por afirmación). Solo se citan datos que
@@ -8,7 +8,7 @@
 
 | Vía | Precio realista | Clientes para $8k/mes | Tiempo a $8k | Riesgo / evidencia | Veredicto |
 |---|---|---|---|---|---|
-| **1. Servicio productizado / operador fraccional de inventario** (Linchpin produce, tú vendes y firmas) | Retainer **$2.000–5.000/mes** por cliente (mercado fraccional US: $100–300/h ejecutivo, $70–120/h nivel ops; 69,5% de los fraccionales cobra $5k–10k/mes por cliente — Fractionus 2025; consultoría SC: retainers $3k–15k/mes — ShipSigma) | **2–4** | **3–6 meses** | Bajo-medio. Categoría "fractional supply chain" existe y se recluta activamente (SCM Talent, Cast USA, GoFractional). El riesgo es adquisición, no disposición a pagar | ✅ **Vía principal** |
+| **1. Servicio productizado / operador fraccional de inventario** (Kern produce, tú vendes y firmas) | Retainer **$2.000–5.000/mes** por cliente (mercado fraccional US: $100–300/h ejecutivo, $70–120/h nivel ops; 69,5% de los fraccionales cobra $5k–10k/mes por cliente — Fractionus 2025; consultoría SC: retainers $3k–15k/mes — ShipSigma) | **2–4** | **3–6 meses** | Bajo-medio. Categoría "fractional supply chain" existe y se recluta activamente (SCM Talent, Cast USA, GoFractional). El riesgo es adquisición, no disposición a pagar | ✅ **Vía principal** |
 | **2. SaaS del dashboard** (self-serve) | El mercado ancla **$49–349/mes**: Cogsy desde $49, Prediko desde $119 (repricing 2026), Inventory Planner ~$245–299 por cotización (Essentials $119,99 en Shopify) | **~50–80** | 12–24 meses | Alto: competir en self-serve contra 10+ tools maduras con marketing pago; inviable en solitario a corto plazo | ⚠️ Después, como piso de ingreso recurrente |
 | **3. MCP server pago** (linchpin.fly.dev) | Casi nadie factura hoy: **~95% de los devs MCP no gana nada**; rails de cobro (x402 Cloudflare/Stripe, Apify ~80% rev-share) recién lanzados 2025-26; casos públicos $500–3k/mes long-tail | n/a | No llega solo | Canal inmaduro como ingreso | 🔁 Usar como **demo/distribución y lead-gen**, no como facturación |
 | **4. Ecosistema Odoo** | Módulos de inventario en Apps Store se venden a **$50–200 one-time** (dev retiene 70%) → no sostiene $8k/mes. Pero los **servicios** Odoo facturan 1–2 órdenes más: implementaciones $800–7.200, proyectos custom $4.800–32.000 | Módulo: cientos de ventas. Servicios: 2–3 proyectos/mes | Servicios: 3–6 meses | Ecosistema grande y creciente (~3.800 partners, 13M usuarios, miles de clientes nuevos/mes, fuerte en LatAm/España); Apps Store saturada (40.000+ apps) | ✅ **Módulo gratis/barato como anzuelo → servicio de inventario sobre Odoo** |
@@ -34,7 +34,7 @@ Correcciones surgidas en verificación: Cogsy **no** parte en $199 (parte en $49
 
 | Escenario | Mix | Total |
 |---|---|---|
-| **A. Fraccional puro** | 3 retainers de inventario e-commerce/pyme a $2.700/mes (~8–10 h/sem c/u, Linchpin hace el análisis) | $8.100 |
+| **A. Fraccional puro** | 3 retainers de inventario e-commerce/pyme a $2.700/mes (~8–10 h/sem c/u, Kern hace el análisis) | $8.100 |
 | **B. Mixto Odoo** (hispano + anglo) | 2 retainers $2.500 + 1 proyecto Odoo/mes $3.000 (implementación módulo + política de inventario) | $8.000 |
 | **C. Escalera** (arranque) | Mes 1–3: 2 contratos Upwork (~$2–3k) + 1 retainer $2.500 → mes 4–6: convertir a 3 retainers y subir precio | $8k en mes ~6 |
 
@@ -87,7 +87,7 @@ en $ que convierte a Starter o directo a Growth.
 
 **90 días:** (4) Con 1–2 casos con ahorro cuantificado, vender en inglés a marcas Shopify/DTC de $1–10M (el segmento que ya paga $3k–7k/mes por roles fraccionales) posicionándote como *fractional inventory/supply-chain operator*, no como freelancer. (5) En español, atacar pymes con Odoo en LatAm/España vía el módulo + partners. (6) Ofrecer pricing por valor (10–20% del ahorro año 1) en cuentas con inventario grande. **No** invertir en SaaS self-serve ni esperar ingresos del MCP todavía.
 
-**Riesgo principal:** la competencia no es otro software, es "ChatGPT + Excel" y el status quo. La defensa es la que Linchpin ya tiene: entregables con QA, fundamentados en literatura, con writeback seguro a Odoo/Excel — y un humano que firma. Vender el resultado (ahorro, servicio, stockouts evitados), nunca las horas.
+**Riesgo principal:** la competencia no es otro software, es "ChatGPT + Excel" y el status quo. La defensa es la que Kern ya tiene: entregables con QA, fundamentados en literatura, con writeback seguro a Odoo/Excel — y un humano que firma. Vender el resultado (ahorro, servicio, stockouts evitados), nunca las horas.
 
 ---
 

@@ -1,6 +1,6 @@
 # Security
 
-Linchpin is an analytical engine plus a thin HTTP layer over it. This document
+Kern is an analytical engine plus a thin HTTP layer over it. This document
 states the threat model, the controls already enforced in code, the known
 limitations, and how to report a vulnerability. Line references point at
 [`webapp/app.py`](webapp/app.py) so every claim here is verifiable.

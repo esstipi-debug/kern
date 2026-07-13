@@ -1,4 +1,4 @@
-# Linchpin Voice Agent — Logistics Knowledge Base (RAG corpus)
+# Kern Voice Agent — Logistics Knowledge Base (RAG corpus)
 
 Curated, authoritative reference the voice agent retrieves from during a call. Keep it
 tight — RAG returns only the relevant chunks per turn. General, slow-changing knowledge

@@ -67,3 +67,7 @@ se vuelva a acumular. Si querés que la clasificación de excedente, el
 pronóstico y la política de reposición corran todos los meses para que este
 problema no vuelva a aparecer, ese es el alcance de **Starter — Fundamentos
 de Inventario** (USD 2.000/mes).
+
+---
+
+*Este paquete corre sobre **Kern** (antes Linchpin) - el nucleo de decisiones de la agencia: cada resultado pasa un QA-gate que veta entregables debiles, cita las fuentes del campo en que se apoya (25 obras curadas), y toda escritura a tu sistema es staged, aprobada y reversible. La evolucion completa del nombre: [KERN_IDENTIDAD_Y_FILOSOFIA.md](../KERN_IDENTIDAD_Y_FILOSOFIA.md).*

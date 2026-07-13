@@ -17,7 +17,7 @@ from src.connectors.simulator import SimulatedStore
 
 def create_app(store: SimulatedStore) -> FastAPI:
     """Build a FastAPI app serving ``store`` over the emulated admin endpoints."""
-    app = FastAPI(title="Linchpin Store Emulator")
+    app = FastAPI(title="Kern Store Emulator")
 
     @app.get("/admin/products")
     def products() -> dict:

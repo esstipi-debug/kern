@@ -1,10 +1,16 @@
-# CLAUDE.md — Linchpin
+# CLAUDE.md — Kern
 
 > Auto-loaded every session. High-signal map so an agent starts **understanding**
 > the project instead of re-deriving it. When something here is stale, fix it in
 > the same PR that changed the underlying fact.
 
-## What Linchpin is
+## What Kern is
+
+> Renamed from **Linchpin** on 2026-07-12 — narrative in
+> [documentation/KERN_IDENTIDAD_Y_FILOSOFIA.md](documentation/KERN_IDENTIDAD_Y_FILOSOFIA.md).
+> Infra identifiers (repo name, linchpin.fly.dev, LINCHPIN_* env vars, linchpin_*
+> MCP tool names, odoo_addon/linchpin_dry_run) intentionally still say "linchpin"
+> until the external checklist in HANDOFF.md is executed.
 
 An **agentic supply-chain engine**: a plain-language brief becomes a finished,
 QA-gated deliverable (Excel + report + chart), grounded in a knowledge graph of
@@ -15,7 +21,7 @@ location, DRP, transportation, FEFO, vehicle routing…) sits under an
 **orchestrator agent** that classifies → runs → validates → delivers. Runs
 with or without an LLM.
 
-Positioning: **the human sells & decides, Linchpin produces 10×.** Every
+Positioning: **the human sells & decides, Kern produces 10×.** Every
 consequential result ends in one of four outcomes — and three need a human
 (see *Never-unprotected* below).
 
@@ -95,6 +101,16 @@ python examples/query_knowledge.py --explain crostons_method
 
 A `graphify` MCP server is also wired in `.mcp.json` (serves
 `graphify-out/graph.json`) — its query tools appear when the binary is present.
+
+Two complementary code-intel MCP servers are wired alongside it (adopted
+2026-07-12 after an alternatives review — see `graphify-alternatives-verdict`
+in project memory; graphify stays canonical for the books graph / citations):
+- **codegraph** — continuous zero-LLM code index (`codegraph init` once per
+  clone builds `.codegraph/`, gitignored; auto-syncs on file changes).
+- **serena** — LSP-over-MCP (pyright) for symbol-exact find-references /
+  rename; runs via `uvx`, writes `.serena/` (gitignored).
+LightRAG was evaluated and deliberately NOT adopted (only as a future shadow
+lane if books-graph retrieval ever bottlenecks).
 
 ### Cross-session memory (the graphify loop)
 The code graph is rebuilt each session, but **what you learn persists** in

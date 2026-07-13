@@ -1,7 +1,7 @@
 """Inventory financial KPIs (capability M13 / methods §4.5).
 
 Closed-form, standards-anchored metrics computed from the COGS / average-inventory /
-margin signals Linchpin already produces. Each is exact and deterministic (finance
+margin signals Kern already produces. Each is exact and deterministic (finance
 numbers must be auditable). No external library emits a defensible inventory-finance
 pack, so these are built in-repo.
 

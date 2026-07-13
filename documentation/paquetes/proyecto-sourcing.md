@@ -56,3 +56,7 @@ Si además quieres que el costo de importación y la selección de proveedor se
 integren al ciclo mensual de tu operación completa de inventario, ese es el
 alcance del plan **Growth** (USD 4.000/mes) o **Scale** (USD 7.500/mes), que ya
 incluyen sourcing y landed cost como análisis situacionales del ciclo regular.
+
+---
+
+*Este paquete corre sobre **Kern** (antes Linchpin) - el nucleo de decisiones de la agencia: cada resultado pasa un QA-gate que veta entregables debiles, cita las fuentes del campo en que se apoya (25 obras curadas), y toda escritura a tu sistema es staged, aprobada y reversible. La evolucion completa del nombre: [KERN_IDENTIDAD_Y_FILOSOFIA.md](../KERN_IDENTIDAD_Y_FILOSOFIA.md).*

@@ -1,6 +1,6 @@
 # 03 · Metodologías — Los Métodos que Debes Dominar
 
-> El *cómo*. No necesitas derivar los modelos (Linchpin lo hace y los valida),
+> El *cómo*. No necesitas derivar los modelos (Kern lo hace y los valida),
 > pero sí necesitas **operar las metodologías** que enmarcan, validan y entregan
 > ese trabajo. Esto es lo que un cliente espera que sepas.
 
@@ -8,7 +8,7 @@
 
 ## 1. 🎭 Trabajar en modo y persona
 
-Linchpin opera en uno de dos **modos** (`scm_agent/modes.py`), cada uno con una
+Kern opera en uno de dos **modos** (`scm_agent/modes.py`), cada uno con una
 persona, un catálogo de entregables y un set de KPIs. **Eliges el modo según el
 encargo** y adoptas su persona frente al cliente.
 
@@ -46,12 +46,12 @@ demanda  →  oferta  →  reconciliación  →  revisión ejecutiva
 (plan)     (capacidad)  (balance/gaps)     (decisión + opciones rankeadas)
 ```
 
-- Linchpin proyecta el balance de inventario bajo estrategias agregadas
+- Kern proyecta el balance de inventario bajo estrategias agregadas
   **chase / level / hybrid**, evalúa costo / servicio / capital de trabajo, y
   emite un desenlace `OPTIONS` protegido.
 - **Tu rol humano en la cadencia:**
   1. **Convocar** a los dueños de demanda, oferta y finanzas.
-  2. **Facilitar** la conversación sobre los *gaps* que Linchpin cuantificó.
+  2. **Facilitar** la conversación sobre los *gaps* que Kern cuantificó.
   3. **Forzar la decisión ejecutiva** sobre las opciones rankeadas (nadie sale de
      la junta sin elegir).
   4. **Registrar** la decisión y disparar los *handoffs* que de ella deriven.
@@ -62,7 +62,7 @@ S&OP sin un humano que fuerce la decisión es solo un reporte. Ese humano eres t
 
 ## 3. 🧮 Leer y defender un entregable (las "Fuentes" / L3)
 
-Cada entregable de Linchpin viene **fundamentado**: cita el capítulo del libro **y**
+Cada entregable de Kern viene **fundamentado**: cita el capítulo del libro **y**
 la función `src/` detrás de cada número (la sección *Fuentes* en la consola). Esto
 es tu **munición para defender la recomendación** ante el cliente.
 
@@ -71,12 +71,12 @@ es tu **munición para defender la recomendación** ante el cliente.
 1. **Supuestos** — ¿los supuestos declarados aplican a *este* cliente? (p. ej.
    *lead time* fijo vs. estocástico, demanda normal vs. intermitente).
 2. **Dato de entrada** — ¿el CSV venía limpio? ¿unidades, fechas, SKUs canónicos?
-   Linchpin marca calidad de dato, pero el contexto es tuyo.
+   Kern marca calidad de dato, pero el contexto es tuyo.
 3. **σ_e, no σ_demanda** — el stock de seguridad se calcula sobre el **error de
    pronóstico**, no sobre la dispersión cruda de la demanda (el error #1 del
    gremio). Si un cliente cuestiona tus buffers, esta es la respuesta.
 4. **Factibilidad** — ¿el plan respeta MOQ, *case packs*, *shelf-life* y
-   presupuesto? Linchpin lo construye factible; confírmalo contra la realidad
+   presupuesto? Kern lo construye factible; confírmalo contra la realidad
    operativa del cliente.
 5. **Narrativa** — ¿suena a la persona del modo? ¿el resumen ejecutivo dice algo
    que el cliente pueda accionar?
@@ -89,9 +89,9 @@ es tu **munición para defender la recomendación** ante el cliente.
 
 ## 4. 🤝 Metodología de compromiso con el cliente (el ciclo de venta)
 
-"El humano vende, Linchpin produce 10x." Tu método de *gig*:
+"El humano vende, Kern produce 10x." Tu método de *gig*:
 
-| Fase | Tú | Linchpin |
+| Fase | Tú | Kern |
 |---|---|---|
 | **Calificar** | Entiendes el problema real, el dato disponible y el presupuesto | — |
 | **Enmarcar** | Eliges modo + entregable del catálogo (doc 05) | Te dice qué necesita de entrada (`needs_data`/`needs_clarification`) |
@@ -110,7 +110,7 @@ es tu **munición para defender la recomendación** ante el cliente.
 
 ## 5. ⚖️ Metodología de decisión sobre opciones (`OPTIONS`)
 
-Cuando Linchpin te da opciones rankeadas:
+Cuando Kern te da opciones rankeadas:
 
 1. Hay una `recommended` con el mejor `score` — es tu **default informado**, no tu
    obligación.

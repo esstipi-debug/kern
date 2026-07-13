@@ -1,4 +1,4 @@
-# 01 · Carta del Rol — El Operador de Linchpin
+# 01 · Carta del Rol — El Operador de Kern
 
 > Lo que **eres**, lo que se **espera de ti**, y cómo se mide tu éxito.
 
@@ -6,13 +6,13 @@
 
 ## 🎯 Misión
 
-**Convertir la producción de Linchpin en decisiones ejecutadas y entregables
-cobrados.** Linchpin calcula la decisión, la fundamenta en la literatura (L3) y
+**Convertir la producción de Kern en decisiones ejecutadas y entregables
+cobrados.** Kern calcula la decisión, la fundamenta en la literatura (L3) y
 prepara el siguiente paso seguro. Tu misión es **cerrar el lazo**: validar,
 decidir lo que solo un humano puede decidir, ejecutar lo irreversible, y poner el
 entregable frente al cliente con tu nombre y tu juicio detrás.
 
-No eres un analista que produce números desde cero — Linchpin hace eso en
+No eres un analista que produce números desde cero — Kern hace eso en
 segundos y con 600+ tests detrás. Eres el **dueño del juicio, la relación y la
 responsabilidad**: las tres cosas que no se pueden automatizar.
 
@@ -33,7 +33,7 @@ responsabilidad**: las tres cosas que no se pueden automatizar.
                  decide · ejecuta · enruta · vende      └───────────────────────────────┘
 ```
 
-Operas Linchpin en uno de dos **modos** (ver [03 · Metodologías](03_methodologies.md)),
+Operas Kern en uno de dos **modos** (ver [03 · Metodologías](03_methodologies.md)),
 y adoptas la **persona** correspondiente frente al cliente:
 
 - **Modo Inventory** — *Especialista en Inventario / Inventario E-commerce.*
@@ -49,13 +49,13 @@ y adoptas la **persona** correspondiente frente al cliente:
 ## 📋 Responsabilidades (lo que se espera de ti)
 
 ### 1. Custodia del lazo "nunca desprotegido"
-Toda salida de Linchpin con desenlace `OPTIONS`, `HANDOFF` o `ESCALATED` es una
+Toda salida de Kern con desenlace `OPTIONS`, `HANDOFF` o `ESCALATED` es una
 tarea **abierta a tu nombre**. Se espera que la cierres dentro de su plazo
 (`deadline` / `sla`) o la reasignes explícitamente. Ningún desenlace consecuente
 debe quedar sin dueño.
 
 ### 2. Aprobación de cambios irreversibles (*writeback*)
-Linchpin **nunca** muta un sistema de registro a ciegas. Calcula el cambio como
+Kern **nunca** muta un sistema de registro a ciegas. Calcula el cambio como
 un *changeset* en seco (*dry-run*) y lo clasifica por **risk tier**. Los cambios
 **irreversibles** (p. ej. emitir una PO, enviar a un proveedor) **siempre**
 requieren tu aprobación explícita, con un *time-box* de 15 minutos. Tú eres el
@@ -63,35 +63,35 @@ punto humano de control sobre el dinero y los compromisos.
 
 ### 3. Ejecución de pasos humano-únicos (*handoffs*)
 Llamar a un proveedor, firmar un conteo físico, negociar una disputa, enviar el
-email que Linchpin ya redactó. El agente te entrega el artefacto **prellenado**;
+email que Kern ya redactó. El agente te entrega el artefacto **prellenado**;
 tú lo ejecutas en el mundo real y registras el resultado.
 
 ### 4. Enrutamiento de escalaciones
-Disputas, exposición legal, gastos sobre el umbral. Linchpin arma el paquete con
+Disputas, exposición legal, gastos sobre el umbral. Kern arma el paquete con
 contexto, opciones, recomendación, citas y SLA, y propone la ruta. Tú confirmas
 que llegue a la persona correcta y das seguimiento hasta su cierre.
 
 ### 5. Revisión de QA antes de enviar
-Linchpin aplica "**si falla QA, no se entrega**". Pero **tú** eres la última
+Kern aplica "**si falla QA, no se entrega**". Pero **tú** eres la última
 compuerta de sentido común y contexto: ¿los supuestos aplican a *este* cliente?
 ¿el dato de entrada estaba limpio? ¿la narrativa suena al cliente? Nunca envías
 algo que no entiendes o no defenderías.
 
 ### 6. Relación y venta
 El humano vende. Calificar el *gig*, enmarcar el problema, presentar el
-entregable, defender la recomendación y cobrar. Linchpin es tu fábrica; el
+entregable, defender la recomendación y cobrar. Kern es tu fábrica; el
 cliente te contrata **a ti**.
 
 ---
 
 ## 📊 KPIs que **tú** posees
 
-Linchpin calcula los KPIs *del cliente* (IRA, fill rate, OTIF, CCC, …). Estos
+Kern calcula los KPIs *del cliente* (IRA, fill rate, OTIF, CCC, …). Estos
 otros miden **tu desempeño como operador**:
 
 | KPI del operador | Qué mide | Meta saludable |
 |---|---|---|
-| **Tiempo de cierre de desenlace** | Horas entre que Linchpin emite un `HANDOFF`/`ESCALATED` y tú lo cierras | Dentro del `deadline`/`sla` del paquete |
+| **Tiempo de cierre de desenlace** | Horas entre que Kern emite un `HANDOFF`/`ESCALATED` y tú lo cierras | Dentro del `deadline`/`sla` del paquete |
 | **Cobertura de residuos** | % de `Residual` con dueño y acción registrada (vs. ignorados) | 100% |
 | **Tasa de aprobación informada** | % de *writebacks* irreversibles aprobados con revisión documentada (no a ciegas) | 100% |
 | **Rechazo en QA propio** | % de entregables que **tú** devuelves antes de enviar al cliente | >0% (si es 0%, no estás revisando) |
@@ -103,7 +103,7 @@ otros miden **tu desempeño como operador**:
 ## ✅ Cómo se ve el éxito
 
 - **Ningún callejón sin salida humano.** Cada opción, *handoff* y escalación que
-  Linchpin produce queda cerrada, enrutada o convertida en una decisión
+  Kern produce queda cerrada, enrutada o convertida en una decisión
   registrada — a tiempo.
 - **Cero cambios irreversibles a ciegas.** Toda PO, todo compromiso de gasto pasa
   por tu revisión documentada dentro de su ventana de aprobación.
@@ -122,5 +122,5 @@ otros miden **tu desempeño como operador**:
 - Dejar una escalación esperando sin ruta ni dueño.
 
 > El siguiente documento, [02 · División del Trabajo](02_division_of_labor.md),
-> traza la línea exacta entre lo que hace Linchpin y lo que te toca a ti, con los
+> traza la línea exacta entre lo que hace Kern y lo que te toca a ti, con los
 > mecanismos de código (desenlaces, residuos, *risk tiers*) que la sostienen.

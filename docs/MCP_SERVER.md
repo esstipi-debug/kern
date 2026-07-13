@@ -1,6 +1,6 @@
 # MCP server (Phase A go-to-market)
 
-Linchpin exposes 33 of its 37 registered tools to other AI agents over MCP
+Kern exposes 33 of its 37 registered tools to other AI agents over MCP
 (Model Context Protocol), mounted at `/mcp` on the same FastAPI app as the
 dashboard. This is **read-only analysis only** — no tool that mutates a
 client's system of record (e.g. `odoo_replenishment`, or any writeback path
