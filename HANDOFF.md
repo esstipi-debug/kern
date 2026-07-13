@@ -22,6 +22,73 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-07-13 — Two big PRs merged to `main` same day: Linchpin 3.0 (#143) and Kern ICP/publicidad (#142)
+
+**Read this section first — both are now historical, on `main`, this is the
+closing note.**
+
+**PR #143 — "Linchpin 3.0 (Kern): Control Tower + pricing titan + advanced
+pricing/S&OP + SEO" — 25 PRs, squash-merged as `5ca4ad4`.** Built on
+`feat/state-snapshot-module` across a separate, long-running session (branch
+kept, not deleted — other concurrent sessions may still reference it). Adds,
+among other things: `src/state` snapshot store, `jobs/scheduler.py`/
+`jobs/notify.py` (Control Tower, needs the new `tower` extra —
+APScheduler), `pricing_intel/` (acquisition + matching + elasticity +
+repricing, incl. **a real MercadoLibre connector** — see the note below,
+this matters for PR #142), pricing guardrails (EU Omnibus/LatAm), S1-S5 SEO/
+GEO tools (technical audit, schema/feed generation, PDP content, inventory-
+aware SEO priority, GEO visibility probes), A5 integrated planning. Before
+merging: found and independently verified an interrupted piece of WIP on
+that branch (`requirements-dev.txt`/`requirements.txt` out of sync with
+pyproject's 7 new extras, plus a fragile test asserting on ambient
+APScheduler absence) — installed the deps fresh, ran the **full suite
+myself** rather than trusting the branch's own "suite green" claim (2817
+passed, 0 failures; ruff clean), and by the time the fix was ready to
+commit a concurrent session had already landed it (`68019e6`) — no new
+commit was needed from this session, just independent verification before
+merge. CI on the PR itself was green on all 3 Python versions +
+GitGuardian before the squash-merge.
+
+**MercadoLibre correction, important for anyone reading older sections of
+this file or `linchpin-coverage-roadmap`/`linchpin-3-0-plan` memory that say
+"no MELI connector":** that was true before PR #143. As of this merge there
+are two distinct MELI-related modules — `src/pricing_intel/acquire/meli_api.py`
+(PR-15, reads a COMPETITOR's public listings for price intelligence, gated
+by `require_approved_site`) and `src/connectors/meli_prices.py` (PR-18, a
+real `[CRED]`-gated seller PRICE writeback connector — a client authenticates
+with their own MELI OAuth app to update their own listing prices, same
+staged/reversible two-layer pattern as `odoo.py`). **Still not** an
+inventory/replenishment connector like Odoo — scoped to repricing only. Don't
+let this get read as "Kern now has full MercadoLibre inventory integration,"
+it doesn't.
+
+**Also landed same day, same rename thread as 2026-07-12 below: PR #144**
+("repo rename follow-through") points repo URLs at `esstipi-debug/kern` —
+the external rename checklist from the 2026-07-12 section is (at least
+partially) executed now; re-check that section's checklist items against
+current reality before assuming any specific item is still pending
+(`linchpin.fly.dev`, `LINCHPIN_*` env vars, MCP tool names, `lpk_` prefix,
+the Odoo module dir — check each individually, don't assume the whole
+checklist moved just because the repo URL did).
+
+**PR #142 — "docs: define Kern's LATAM ICP + ad-ready commercial material"
+— squash-merged as `dd92807`.** The full "quién es el cliente final" thread
+(see the section right below this one for the complete research — it's now
+on `main`, not just a draft). `documentation/ICP_Y_DIMENSIONAMIENTO.md` and
+`documentation/KIT_PUBLICIDAD.md` are live. One correction already folded
+into both docs before merging: the Mercado Libre "doesn't exist" claim was
+accurate when written (branch predated #143) and got updated once #143
+landed the connector described above — don't re-flag that as stale, it's
+already fixed.
+
+**What's next, not started:** decide the first paid-ad market (§4.4 of
+`ICP_Y_DIMENSIONAMIENTO.md` — data favors US over Mexico, but the operator's
+own network/language advantage isn't resolvable from the repo); publish the
+Odoo module (`GTM_SUBMISSIONS.md`); if picking up Linchpin 3.0 follow-on
+work, `CLAUDE.md`'s "38 agent-routable tools" line is almost certainly stale
+now given 25 more PRs of new capability landed — verify the current count
+before quoting it anywhere.
+
 ## 2026-07-13 — ICP LATAM + kit de publicidad (docs only, PR draft, worktree `.wt-kern-icp`)
 
 **Read this section first if you're picking up the "quien es el cliente
