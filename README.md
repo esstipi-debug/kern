@@ -10,7 +10,7 @@
 
 [![version](https://img.shields.io/badge/version-2.9.0-5eead4)](CHANGELOG.md)
 [![python](https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
-[![tests](https://github.com/esstipi-debug/linchpin/actions/workflows/tests.yml/badge.svg)](https://github.com/esstipi-debug/linchpin/actions/workflows/tests.yml)
+[![tests](https://github.com/esstipi-debug/kern/actions/workflows/tests.yml/badge.svg)](https://github.com/esstipi-debug/kern/actions/workflows/tests.yml)
 [![coverage](https://img.shields.io/badge/coverage-93%25-3fb950)](#)
 
 </div>
@@ -86,8 +86,8 @@ Three cross-cutting guarantees keep the agent safe in production:
 ## 🚀 Quick start
 
 ```bash
-git clone https://github.com/esstipi-debug/linchpin
-cd linchpin
+git clone https://github.com/esstipi-debug/kern
+cd kern
 pip install -e ".[web]"          # canonical install (engine + web UI). For the engine only, `pip install -r requirements.txt` also works.
 
 # ── The agent: brief in, deliverable out ───────────────────────────────

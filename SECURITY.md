@@ -110,6 +110,6 @@ configs (TLS, HSTS, `client_max_body_size`), worker scaling and load notes.
 ## Reporting a vulnerability
 
 Please open a private report via GitHub Security Advisories on
-[esstipi-debug/linchpin](https://github.com/esstipi-debug/linchpin/security/advisories/new),
+[esstipi-debug/kern](https://github.com/esstipi-debug/kern/security/advisories/new),
 or email the maintainer. Do not file public issues for security reports. We aim to
 acknowledge within 72 hours.

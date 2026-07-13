@@ -230,7 +230,7 @@
     <div class="topbar">
       <button class="menu-btn" id="menuBtn" aria-label="Menú">☰</button>
       <div class="crumbs">Portafolio del Operador · <b id="crumb">Inicio</b></div>
-      <a class="gh" id="ghLink" href="https://github.com/esstipi-debug/linchpin/tree/main/documentation/operator" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="gh" id="ghLink" href="https://github.com/esstipi-debug/kern/tree/main/documentation/operator" target="_blank" rel="noopener">GitHub ↗</a>
     </div>
     <article><div id="content"><div class="loading">Cargando…</div></div></article>
     <div class="scrim" id="scrim"></div>
@@ -287,8 +287,8 @@
     Array.prototype.forEach.call(elNav.querySelectorAll("a"),function(a){ a.classList.toggle("active", a.dataset.id===id); });
     var d=byId[id];
     elCrumb.textContent = id==="inicio" ? "Inicio" : (d?d.label:"…");
-    elGh.href = d ? "https://github.com/esstipi-debug/linchpin/blob/main/documentation/operator/"+d.file
-                  : "https://github.com/esstipi-debug/linchpin/tree/main/documentation/operator";
+    elGh.href = d ? "https://github.com/esstipi-debug/kern/blob/main/documentation/operator/"+d.file
+                  : "https://github.com/esstipi-debug/kern/tree/main/documentation/operator";
   }
 
   // ---- home (cover) ----
@@ -311,7 +311,7 @@
           'el humano produce 10×.</b></p>'+
         '<div class="cta">'+
           '<a class="btn btn-primary" href="#rol">Empezar →</a>'+
-          '<a class="btn btn-ghost" href="https://github.com/esstipi-debug/linchpin/tree/main/documentation/operator" target="_blank" rel="noopener">Ver en GitHub</a>'+
+          '<a class="btn btn-ghost" href="https://github.com/esstipi-debug/kern/tree/main/documentation/operator" target="_blank" rel="noopener">Ver en GitHub</a>'+
         '</div>'+
         '<div class="outcomes">'+
           '<div class="h">Todo resultado termina en uno de cuatro desenlaces — <b>tres te necesitan a ti</b>:</div>'+
@@ -353,7 +353,7 @@
       if(hi>=0){ hash=href.slice(hi); base=href.slice(0,hi); }
       var name=base.split("/").pop();
       if(byFile[name]) a.setAttribute("href","#"+byFile[name].id+(hash?"~"+hash.slice(1):""));
-      else if(/\.md$/i.test(name)){ a.setAttribute("href","https://github.com/esstipi-debug/linchpin/blob/main/"+base.replace(/^(\.\.\/)+/,"")); a.target="_blank"; a.rel="noopener"; }
+      else if(/\.md$/i.test(name)){ a.setAttribute("href","https://github.com/esstipi-debug/kern/blob/main/"+base.replace(/^(\.\.\/)+/,"")); a.target="_blank"; a.rel="noopener"; }
     });
   }
   function footer(id){

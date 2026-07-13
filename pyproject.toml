@@ -153,7 +153,7 @@ seo = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/esstipi-debug/linchpin"
+Homepage = "https://github.com/esstipi-debug/kern"
 
 [tool.setuptools]
 packages = ["src"]

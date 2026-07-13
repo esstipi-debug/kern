@@ -49,17 +49,18 @@ docs/superpowers, CHANGELOG viejo, books graph generado) · `server.json`
 `name`/URLs (atados al repo name para validacion del registry MCP — se
 actualizan JUNTO con el repo rename, ver checklist).
 
-### CHECKLIST EXTERNA (operador — comandos exactos, NO ejecutados)
+### CHECKLIST EXTERNA (operador)
 
-1. **GitHub repo rename** (redirige URLs viejas automaticamente):
-   ```bash
-   gh repo rename kern --repo esstipi-debug/linchpin --yes
-   # despues, en el checkout principal y CADA worktree (.wt-*):
-   git remote set-url origin https://github.com/esstipi-debug/kern.git
-   # y actualizar: server.json (name -> io.github.esstipi-debug/kern,
-   # repository.url), README/CONTRIBUTING (`cd linchpin` -> `cd kern`),
-   # badges/links con /linchpin en README y docs.
-   ```
+1. **GitHub repo rename** — **HECHO 2026-07-13.** `esstipi-debug/linchpin` ->
+   `esstipi-debug/kern` (el nombre viejo redirige). Remotes actualizados en el
+   checkout principal + los 6 worktrees (comparten `.git/config`, un
+   `git remote set-url` alcanza). server.json (`name` ->
+   `io.github.esstipi-debug/kern`, `repository.url`), pyproject Homepage,
+   README badges + `git clone`/`cd kern`, CONTRIBUTING, SECURITY advisories,
+   GETTING_STARTED, GTM_SUBMISSIONS y los links GitHub de la webapp
+   (demo/operator) actualizados en el PR de repo-urls. **Sin tocar** (repo
+   distinto): `esstipi-debug/linchpin-odoo-apps` en GTM_SUBMISSIONS. `websiteUrl`/
+   remotes de server.json siguen en `linchpin.fly.dev` (decision Fly, abajo).
 2. **Fly.io** — recomendacion: **mantener `linchpin.fly.dev` hasta tener
    dominio propio** (kern.fly.dev como app nueva = migrar secrets/volumen/
    keys de clientes MCP que apuntan a la URL vieja, y `fly.dev` no redirige —
@@ -81,16 +82,17 @@ actualizan JUNTO con el repo rename, ver checklist).
    ejecute el plan de listings de [linchpin-monetization-plan]): usar nombre
    Kern + descripcion nueva de `server.json`; requiere logins del operador.
 
-### Integraciones code-intel (mismo PR) — 2 comandos pendientes del operador
+### Integraciones code-intel
 
-`.mcp.json` ahora wirea **codegraph** (indice de codigo continuo, zero-LLM) y
-**serena** (LSP sobre MCP via uvx). El CLI de codegraph quedo instalado (npm,
-v1.4.1) pero su PRIMERA ejecucion quedo gateada por permisos de la sesion
-(politica supply-chain sobre binarios nuevos — razonable). Para activar:
-```bash
-cd <repo> && codegraph init        # construye .codegraph/ (gitignored), luego auto-sync
-# serena no necesita init: el primer arranque via .mcp.json descarga y corre (trust prompt de Claude Code)
-```
+`.mcp.json` wirea **codegraph** (indice de codigo continuo, zero-LLM) y
+**serena** (LSP sobre MCP via uvx). CLI codegraph instalado (npm, v1.4.1).
+**`codegraph init` HECHO 2026-07-13** en el checkout principal: 523 archivos
+-> `.codegraph/codegraph.db` (~27 MB, con su propio `.gitignore`, no se
+commitea), auto-sync activo. Para los OTROS worktrees o clones nuevos, correr
+`codegraph init` una vez en cada uno (el indice es per-clone). serena no
+necesita init: el primer arranque via `.mcp.json` descarga y corre (trust
+prompt de Claude Code — pendiente al reiniciar la sesion para que carguen los
+MCP servers nuevos).
 **LightRAG NO se integro a proposito** — queda como carril sombra futuro solo
 si la recuperacion del books graph se queda corta (ver memoria
 `graphify-alternatives-verdict`). graphify sigue canonico (books graph =

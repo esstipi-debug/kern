@@ -5,8 +5,8 @@ Thank you for improving **Kern** — an agentic supply-chain engine grounded in 
 ## Setup
 
 ```bash
-git clone https://github.com/esstipi-debug/linchpin.git
-cd linchpin
+git clone https://github.com/esstipi-debug/kern.git
+cd kern
 python -m venv venv
 # Windows: venv\Scripts\activate
 pip install -r requirements.txt

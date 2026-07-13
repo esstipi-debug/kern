@@ -18,8 +18,8 @@ Optional: Excel or Power BI for viewing exported results (not required for Part 
 ## 1. Install
 
 ```bash
-git clone https://github.com/esstipi-debug/linchpin.git
-cd linchpin
+git clone https://github.com/esstipi-debug/kern.git
+cd kern
 pip install -r requirements.txt
 ```
 
