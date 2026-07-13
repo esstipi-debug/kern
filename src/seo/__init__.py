@@ -1,7 +1,7 @@
 """Track B -- SEO (Linchpin 3.0 plan section 8). ``crawl_audit`` (S1 technical
 SEO audit checks, PR-22). ``schema_gen``/``feeds``/``llms_txt`` (S2 schema and
-feed generation from a client's own catalog, PR-23). Later PRs add
-``pdp_writer`` (S3) and ``geo_probe`` (S5) alongside them.
+feed generation from a client's own catalog, PR-23). ``pdp_writer`` (S3 PDP
+content generation, PR-24). A later PR adds ``geo_probe`` (S5) alongside them.
 """
 
 from __future__ import annotations
@@ -66,6 +66,30 @@ from .llms_txt import (
     missing_required_llms_fields,
     validate_llms_txt,
     write_llms_txt,
+)
+from .pdp_writer import (
+    AVAILABILITY_COPY,
+    CONDITION_COPY,
+    META_DESCRIPTION_MAX_CHARS,
+    PROTECTED_CLAIM_FIELDS,
+    TITLE_TAG_MAX_CHARS,
+    Claim,
+    LlmPdpEnhancement,
+    PdpCatalogReport,
+    PdpContent,
+    PdpEnhancementRequest,
+    PdpEnrichment,
+    PdpLlmEnhancer,
+    build_claims,
+    build_meta_description,
+    build_pdp_content,
+    build_title_tag,
+    catalog_to_pdp_content,
+    claims_traceable_passed,
+    enhance_with_llm,
+    missing_required_pdp_fields,
+    verify_claims_traceable,
+    write_pdp_content,
 )
 from .schema_gen import (
     SCHEMA_ORG_CONTEXT,
@@ -137,6 +161,29 @@ __all__ = [
     "normalize_condition_token",
     "validate_product_jsonld",
     "write_catalog_jsonld",
+    # pdp_writer (S3)
+    "AVAILABILITY_COPY",
+    "CONDITION_COPY",
+    "META_DESCRIPTION_MAX_CHARS",
+    "PROTECTED_CLAIM_FIELDS",
+    "TITLE_TAG_MAX_CHARS",
+    "Claim",
+    "LlmPdpEnhancement",
+    "PdpCatalogReport",
+    "PdpContent",
+    "PdpEnhancementRequest",
+    "PdpEnrichment",
+    "PdpLlmEnhancer",
+    "build_claims",
+    "build_meta_description",
+    "build_pdp_content",
+    "build_title_tag",
+    "catalog_to_pdp_content",
+    "claims_traceable_passed",
+    "enhance_with_llm",
+    "missing_required_pdp_fields",
+    "verify_claims_traceable",
+    "write_pdp_content",
     # feeds (S2)
     "FEED_GENERATOR",
     "FeedItemResult",
