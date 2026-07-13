@@ -261,6 +261,38 @@ se encontro esta sesion, se uso un supuesto propio) y para Argentina
 (mismo gap); buscar el desglose exacto Pequena/Mediana de Chile directo en
 sii.cl; investigar Peru si se confirma como 5to mercado LATAM.
 
+## 2026-07-12 — Digital twin (network scenario factory) — tool #38
+
+**What:** `digital_twin` tool — a supplier -> DC -> store multi-echelon
+simulator (`src/digital_twin.py`, ~430 lines, numpy-only like the rest of
+`src/`) that GENERATES complex scenarios to feed the suite: configurable
+demand (trend / seasonality / promos / intermittency / noise), per-node (R,S)
+policies with capacity caps, and disruptions (`supplier_outage`,
+`lead_time_spike`, `demand_surge`) that ripple through echelons. Stores are
+lost-sales (a disruption permanently costs service); inter-node orders queue
+FIFO (post-outage surge = deliberate bullwhip). `jobs/digital_twin_job.py`
+emits `twin_demand_history.csv` / `twin_inventory.csv` / `twin_orders.csv` /
+`twin_node_kpis.csv` shaped like a client export — the integration test
+proves `forecast_job.prepare()` ingests the twin's demand CSV unchanged.
+`requires_data=False` (params-only, like `warehouse_layout`), so it stays OFF
+the MCP surface by design (rows-bridge has nothing to feed it) — MCP count
+stays 33, registry goes 37 -> 38. L3 anchors: `ch16lee_digital_twins`,
+`bullwhip_effect`, `multiechelon_inventory`. 35 new tests (22 engine + 13
+tool/integration); suite 1867 passed, ruff clean.
+
+**Why (operator ask):** a place to build and test complex simulated real-world
+cases with tunable variables — both a testbed for the 37 analysis tools
+(known ground truth) and a sellable scenario/resilience study on its own.
+
+**Also this session:** graphify code graph refreshed (9,472 nodes / 23,736
+edges / 440 communities). Research verdict on "something better than
+graphify": KEEP graphify as canonical store (books graph = product
+infrastructure, citation stability is the moat); complement candidates worth
+evaluating later: CodeGraph (MIT, zero-LLM continuous code index + MCP,
+~0.5-1 day), LightRAG (books-side shadow lane ONLY if retrieval ever feels
+weak, needs an id-mapping shim for citations, ~2-4 days), Serena (LSP-over-
+MCP dev-loop complement, ~0.5 day). Kuzu is dead (Apple acqui-hire) — avoid
+anything built on it. LazyGraphRAG still unreleased in OSS.
 ## 2026-07-12 — Rename: Linchpin -> Kern (interno COMPLETO; checklist EXTERNA abajo)
 
 **Que paso:** el proyecto se llama **Kern** (aleman: nucleo). No es cosmetico —

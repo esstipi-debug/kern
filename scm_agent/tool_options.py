@@ -505,6 +505,31 @@ def simulation_options(report: object) -> GuidedOutcome:
     )
 
 
+def digital_twin_options(report: object) -> GuidedOutcome:
+    items: list[_Item] = [
+        ("Feed the generated datasets to the analysis suite",
+         f"Run forecasting / safety stock / policy tools on the twin's demand history "
+         f"({report.n_products} product(s), {report.periods} periods) to benchmark them "
+         f"against known ground truth.",
+         "run the analysis tools on the generated CSVs",
+         "turns the scenario into validated recommendations"),
+        ("Harden the weakest node first",
+         f"{report.weakest_store} fills only {report.weakest_store_fill * 100:.1f}% - raise its "
+         f"order-up-to level or shorten its lead time and re-simulate.",
+         "re-run the twin with a stronger policy at the weakest store",
+         "targets the service floor directly"),
+        ("Stress the network harder",
+         "Re-run with a longer outage / bigger surge to find the breaking point before reality does.",
+         "re-run the twin with a harsher disruption",
+         "maps resilience limits; costs another run"),
+    ]
+    return _ranked(
+        f"Digital twin scenario complete (network fill {report.network_fill_rate * 100:.1f}%): "
+        f"choose what to do with it.",
+        items,
+    )
+
+
 def excess_obsolete_options(report: object) -> GuidedOutcome:
     clear_dead = ("Clear the dead stock",
                   f"Liquidate / return / write off the {report.n_dead} dead SKU(s) holding "

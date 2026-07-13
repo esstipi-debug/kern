@@ -239,6 +239,8 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
     "slotting": {"es": "Slotting de Bodega (COI + Afinidad)", "en": "Warehouse Slotting (COI + Affinity)"},
     "simulation": {"es": "Politica (R,S) Optimizada por Simulacion",
                    "en": "Simulation-Optimized (R,S) Policy"},
+    "digital_twin": {"es": "Gemelo Digital - Fabrica de Escenarios de Red",
+                     "en": "Digital Twin - Network Scenario Factory"},
     "excess_obsolete": {"es": "Stock Excedente y Obsoleto (E&O)", "en": "Excess & Obsolete (E&O) Stock"},
     "markdown_liquidation": {"es": "Plan de Liquidacion por Descuento", "en": "Markdown Liquidation Plan"},
     "facility_location": {"es": "Ubicacion de Instalaciones (Diseno de Red)",

@@ -31,7 +31,7 @@ def test_every_tool_title_has_both_languages(key):
     assert set(TOOL_TITLES[key]) == set(SUPPORTED_LANGS), key
 
 
-def test_all_37_registered_tool_keys_are_covered():
+def test_all_38_registered_tool_keys_are_covered():
     # Cross-check against the actual registry so a newly registered tool
     # without an i18n entry is caught here, not discovered in a client deck.
     tools_src = (__import__("pathlib").Path(__file__).resolve().parents[1]
@@ -68,6 +68,6 @@ def test_tool_title_unknown_key_without_fallback_uses_the_key():
 
 def test_no_translation_is_identical_to_its_english_source_by_accident():
     # A sanity net: catches copy-paste entries where the "es" value was left
-    # as the English string (an easy mistake across 37 hand-written rows).
+    # as the English string (an easy mistake across 38 hand-written rows).
     identical = [k for k, v in TOOL_TITLES.items() if v["es"] == v["en"]]
     assert identical == []

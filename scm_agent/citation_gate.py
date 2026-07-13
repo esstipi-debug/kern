@@ -89,6 +89,7 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "fefo": ("perishable_asset", "perishable_assets", "lot_size"),
     "slotting": ("load_distance_layout", "facility_layout"),
     "simulation": ("simulation_optimization", "inventory_simulation", "simulation_inventory_analysis"),
+    "digital_twin": ("ch16lee_digital_twins", "bullwhip_effect", "multiechelon_inventory"),
     # "excess_capacity_and_inventory" (Chopra Ch.6) was dropped: it describes
     # deliberately CARRYING buffer stock as a hedge, nearly the opposite of
     # this tool's liquidate/write-off intent, and its lexical overlap

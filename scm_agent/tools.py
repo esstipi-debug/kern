@@ -15,6 +15,7 @@ from jobs import (
     ddmrp_job,
     dea_job,
     deliverables,
+    digital_twin_job,
     drp_job,
     earned_value_job,
     excel_replenishment_job,
@@ -1652,6 +1653,49 @@ def simulation_tool() -> Tool:
     )
 
 
+# ---- digital_twin (network scenario factory) ----------------------------------
+
+def _digital_twin_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    try:
+        payload = digital_twin_job.prepare(request.params)
+    except ValueError as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _digital_twin_run(payload: object, params: dict) -> Produced:
+    report = digital_twin_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def digital_twin_tool() -> Tool:
+    return Tool(
+        key="digital_twin",
+        title="Digital Twin - Network Scenario Factory",
+        description="Simulate a configurable supplier -> DC -> store network (demand patterns, "
+                    "policies, disruptions) and emit the resulting demand / inventory / order "
+                    "datasets, shaped like a client export so the rest of the suite can be "
+                    "exercised on complex scenarios with known ground truth.",
+        intent_keywords=(
+            "digital twin", "digital-twin", "gemelo digital", "network simulation",
+            "simulacion de red", "simular la red", "red de suministro simulada",
+            "synthetic data", "datos sinteticos", "scenario generator",
+            "generador de escenarios", "stress test", "prueba de estres",
+            "disruption scenario", "escenario de disrupcion", "twin",
+        ),
+        requires_data=False,
+        options=tool_options.digital_twin_options,
+        prepare=_digital_twin_prepare,
+        run=_digital_twin_run,
+        qa=lambda report: digital_twin_job.verify(report),
+        deliver=lambda report, out_dir, client: digital_twin_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            digital_twin_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 # ---- excess_obsolete (E&O / dead-stock) --------------------------------------
 
 def _excess_obsolete_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
@@ -1998,6 +2042,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(fefo_tool())
     reg.register(slotting_tool())
     reg.register(simulation_tool())
+    reg.register(digital_twin_tool())
     reg.register(excess_obsolete_tool())
     reg.register(markdown_liquidation_tool())
     reg.register(facility_location_tool())
