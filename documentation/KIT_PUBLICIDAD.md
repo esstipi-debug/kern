@@ -21,7 +21,7 @@
 | **Dolor central** | Compra "a ojo", sospecha de stock muerto, sin política de reposición gobernada |
 | **Lo que NO tiene** | Equipo propio de data science, ni presupuesto para SAP IBP/Blue Yonder |
 | **Quién decide la compra** | Dueño/CEO (empresa chica) · Director de Operaciones/SC/Compras + COO/CFO (mid-market) |
-| **Geografía** | Argentina y México (datos propios); Colombia/Chile como extensión no validada aún |
+| **Geografía** | **Fase 1 (piloto):** México, solo o + Argentina · **Fase 2 (tras calibrar CPL/cierre):** sumar Colombia y Chile · **A evaluar:** Perú · **Fuera de alcance:** Brasil, hasta que el producto tenga soporte de portugués (`src/i18n.py` solo tiene `es`/`en`) — ver `ICP_Y_DIMENSIONAMIENTO.md` §2.7 |
 | **Trigger típico** | Segundo almacén, canal mayorista nuevo, migración a Odoo, o sospecha de plata atrapada en inventario |
 
 **Disqualifiers — no targetear:**

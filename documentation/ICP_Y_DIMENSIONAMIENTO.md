@@ -11,11 +11,13 @@
 >
 > Metodología de la parte de mercado: búsqueda web dirigida (jul 2026),
 > priorizando fuentes primarias (boletines oficiales, censos económicos,
-> bancos centrales) sobre contenido de vendors/blogs. Cobertura geográfica
-> real de esta sesión: **Argentina y México** (los dos países con estadística
-> pública más accesible y reciente). Colombia y Chile **no se investigaron
-> de forma independiente esta sesión** — no extrapolar los números de
-> AR/MX a esas geografías sin repetir el ejercicio.
+> agencias tributarias, bancos centrales) sobre contenido de vendors/blogs.
+> Cobertura geográfica: **Argentina, México, Colombia y Chile** (actualizado
+> 2026-07-13 — la primera versión de este documento solo cubría AR+MX;
+> ver §2.6 para el detalle de las 4 geografías y §2.7 para la recomendación
+> de alcance). Brasil y Perú se evalúan cualitativamente en §2.7 pero **no**
+> se investigaron cuantitativamente — no inventar cifras de esas dos
+> geografías a partir de este documento.
 
 ---
 
@@ -192,11 +194,47 @@ estándar — score combinado 90% ventas / 10% personal; conversión a USD
 | Pequeña | 4,01M – 100M | ~229k – 5,7M | 11–50 |
 | Mediana | 100,01M – 250M | ~5,7M – 14,3M | 31–100 (Comercio/Servicios), 51–250 (Industria) |
 
-**Lectura cruzada:** el ICP de Kern por firmografía (excluye Micro — sin
-presupuesto real; incluye Pequeña alta + Mediana) cae en, aproximadamente,
-**USD 1M–15M de venta anual** en ambos países — consistente con lo que el
-propio Starter/Growth one-pager ya vende, y más conservador que el techo de
-Scale/Retainer (empresas con red real, normalmente ya sobre USD 15-20M).
+**Lectura cruzada AR+MX:** el ICP de Kern por firmografía (excluye Micro —
+sin presupuesto real; incluye Pequeña alta + Mediana) cae en,
+aproximadamente, **USD 1M–15M de venta anual** en ambos países — consistente
+con lo que el propio Starter/Growth one-pager ya vende, y más conservador
+que el techo de Scale/Retainer (empresas con red real, normalmente ya sobre
+USD 15-20M).
+
+**Colombia — VERIFICADO** (Decreto 957 de 2019, vigente; UVT 2026 = COP
+52.374, Resolución DIAN 000238; conversión a USD ~COP 3.250 = USD 1,
+TRM Banrep, jul-2026):
+
+| Categoría | Comercio (UVT) | ≈USD | Manufactura (UVT) | ≈USD |
+|---|---|---|---|---|
+| Micro | ≤44.769 | ~0,72M | ≤23.563 | ~0,38M |
+| Pequeña | ≤431.196 | ~6,9M | ≤204.995 | ~3,3M |
+| Mediana | ≤2.160.692 | ~34,8M | ≤1.736.565 | ~28,0M |
+
+**Chile — VERIFICADO** (Ley 20.416, tramos SII 2025 en UF; UF jul-2026 ≈
+CLP 40.845, Banco Central; conversión a USD ~CLP 927 = USD 1, dólar
+observado jul-2026):
+
+| Categoría | Ventas (UF) | ≈USD |
+|---|---|---|
+| Micro | ≤2.400 | ~0,11M |
+| Pequeña | ≤25.000 | ~1,10M |
+| Mediana | ≤100.000 | ~4,4M |
+
+**Nota sobre Chile:** su techo de "Mediana" (~USD 4,4M) es notablemente más
+bajo que el de AR/MX/CO (~USD 14-40M) — la Ley 20.416 (Estatuto PYME) traza
+la frontera "PYME vs. gran empresa" en un punto más bajo que las
+definiciones estadísticas de los otros tres países. Esto no necesariamente
+implica un mercado más chico en cantidad de empresas (ver §2.6) — implica
+que, en Chile, parte de lo que Kern targetea como "mid-market" (Growth/
+Scale, USD 4-15M) cae formalmente en la categoría "Grande" chilena, no en
+"Mediana." Útil para no perder tiempo buscando "medianas empresas
+chilenas" como categoría de búsqueda — el ICP real de Kern en Chile abarca
+Pequeña + Mediana + una porción de lo que el SII clasifica como Grande.
+
+**Lectura cruzada de las 4 geografías:** el ancla "USD 1-15M" del Starter/
+Growth one-pager sigue siendo razonable como filtro amplio en las 4
+geografías, con la salvedad de Chile arriba.
 
 ### 2.3 Persona compradora — benchmark general (no LATAM-específico)
 
@@ -265,7 +303,7 @@ fuente externa:
   9.000-12.000 Retainer Ejecutivo) igualando el punto medio de fractional
   CFO/COO US.
 
-### 2.6 Dimensionamiento bottom-up (VERIFICADO base, ESTIMADO el embudo)
+### 2.6 Dimensionamiento bottom-up — 4 geografías (VERIFICADO base, ESTIMADO el embudo)
 
 **Paso 1 — universo de empresas Pequeña+Mediana (VERIFICADO, fuentes
 primarias):**
@@ -274,32 +312,53 @@ primarias):**
 |---|---|---|---|---|
 | Argentina | 549.100 PyMEs empleadoras (2023) | 12% Pequeña + 2,5% Mediana = 14,5% | **~79.600** | Dato citado en dossier BCN sep-2025 / Observatorio PyME, sobre datos oficiales 2023 |
 | México | 5.468.180 unidades económicas (2023, Censo 2024) | ~3,7% Pequeña (por sustracción) + ~0,72% Mediana = ~4,4% | **~241.600** | INEGI, Censos Económicos 2024, comunicado 79/25 |
+| Colombia | 1.734.636 empresas (2023, RUES) | 6,1% Pequeña + 1,6% Mediana = 7,7% | **~133.400** | Confecámaras/RUES, citado en La República (2025) — cifra exacta: 106.120 pequeñas + 27.238 medianas |
+| Chile | 1.503.813-1.582.805 empresas (2024, Operación Renta) | MiPyme (micro+pequeña+mediana) = 76,3-77,4% del total; **Pequeña+Mediana aislada NO se encontró desglosada en fuentes públicas esta sesión** | **~100.000-175.000 (ESTIMADO, rango amplio)** | SII, Operación Renta 2025 (dato agregado MiPyme VERIFICADO); el rango de Pequeña+Mediana es una extrapolación propia usando la proporción interna Pequeña:Mediana:Micro observada en AR/CO (baja confianza — ver nota abajo) |
+
+> **Nota sobre Chile:** el SII publica el total de empresas y el bloque
+> agregado "MiPyme" (micro+pequeña+mediana = 1.194.430 en 2024), pero los
+> resúmenes públicos encontrados esta sesión no desglosan pequeña y mediana
+> por separado en conteo de empresas (sí lo hacen por participación en
+> ventas/empleo, que es una métrica distinta). El rango 100.000-175.000 sale
+> de aplicarle a ese bloque agregado la proporción interna que sí se
+> verificó en Argentina (85% micro / 12% pequeña / 2,5% mediana dentro del
+> universo PyME) — es una extrapolación cruzada de un país a otro, marcada
+> **ESTIMADO de baja confianza**. Antes de comprometer presupuesto real en
+> Chile, vale la pena buscar el desglose exacto directo en
+> `sii.cl/estadisticas/empresas_tamano_ventas.htm` (la tabla existe, esta
+> sesión no logró extraerla en detalle).
 
 **Paso 2 — filtro a sectores con inventario físico (ESTIMADO — aplica el mix
 sectorial NACIONAL de México, comercio 51,3% + industria 11,0% = 62,3%, como
-proxy también para Argentina a falta de un dato equivalente por tamaño de
-empresa; esto es una extrapolación cruzada, no un dato propio de cada país):**
+proxy también para Argentina, Colombia y Chile a falta de un dato
+equivalente por tamaño de empresa en cada país; esto es una extrapolación
+cruzada, no un dato propio de cada país):**
 
 | País | Pequeña+Mediana | × Sectores relevantes (~62%, ESTIMADO) | ICP-relevante |
 |---|---|---|---|
 | Argentina | 79.600 | 62% | ~49.300 |
 | México | 241.600 | 62% | ~149.800 |
-| **Total AR+MX** | **321.200** | | **~199.100** |
+| Colombia | 133.400 | 62% | ~82.700 |
+| Chile | ~100.000-175.000 | 62% | ~62.000-108.500 (punto medio ~85.000) |
+| **Total AR+MX+CO+CL** | **~554.600-629.600** | | **~343.800-389.800 (punto medio ~366.800)** |
 
-**Colombia y Chile: sin dato propio esta sesión — no incluidos en el total.**
-Extender el ejercicio a esos dos países es el primer paso lógico de
-seguimiento antes de correr pauta ahí.
+Es decir: sumar Colombia y Chile **casi duplica** la población ICP-relevante
+frente a solo AR+MX (~199.100 → ~366.800). México sigue siendo, con margen
+claro, el mercado individual más grande (~41% del total de 4 países);
+Colombia y Chile son similares entre sí (~82.700 y ~85.000) y juntos casi
+igualan a México solo.
 
 **Paso 3 — el embudo hacia metas de ingreso (ESTIMADO desde aquí en
 adelante — cada eslabón es una cadena de supuestos, no un dato medido):**
 
-1. **Población ICP (AR+MX):** ~199.000 empresas (Paso 2).
+1. **Población ICP (4 países):** ~367.000 empresas, punto medio (Paso 2).
 2. **Alcanzable por pauta digital (LinkedIn/Google, filtros de tamaño +
    industria + geo):** sin benchmark LATAM de "% de una población B2B nicho
    que es efectivamente targeteable" — **supuesto conservador propio: 5-10%**
    tiene presencia digital suficiente para ser identificado y targeteado con
-   precisión razonable → **~10.000-20.000 empresas alcanzables.** Este es el
-   eslabón más débil de la cadena — no está sostenido por una fuente externa.
+   precisión razonable → **~18.000-37.000 empresas alcanzables** en las 4
+   geografías combinadas. Este es el eslabón más débil de la cadena — no
+   está sostenido por una fuente externa.
 3. **Leads generados:** depende del presupuesto de pauta (no modelado aquí —
    requiere una campaña real para calibrar CPL).
 4. **Cierre sobre leads (benchmark general no-LATAM, §2.5): 2-5%.**
@@ -316,10 +375,78 @@ adelante — cada eslabón es una cadena de supuestos, no un dato medido):**
 Con el cierre de 2-5% (§2.5) y precios de USD 1.500-4.000 por primer contrato,
 alcanzar los primeros USD 10k requiere del orden de **80-250 leads
 calificados** — que, a su vez, requieren una fracción no modelada del
-"alcanzable" de 10.000-20.000 empresas del Paso 2. **Esta cadena completa
+"alcanzable" de 18.000-37.000 empresas del Paso 2. **Esta cadena completa
 tiene la confianza más baja del documento** — es la primera cosa a
 recalibrar con datos reales de una campaña piloto, no a tratar como
 pronóstico firme.
+
+### 2.7 Alcance recomendado — qué geografías targetear y en qué orden
+
+Pregunta explícita: dado que el mercado combinado (~367.000 empresas ICP en
+4 países) es grande, **¿tiene sentido lanzar pauta en las 4 geografías a la
+vez?** Recomendación: **no.** Razones:
+
+1. **Es una operación de un solo operador** (`MONETIZATION_BRIEF.md`,
+   "operador solo" — VERIFICADO). Correr y optimizar campañas en 4 mercados
+   con matices culturales/regulatorios distintos, sin datos de conversión
+   propios todavía, diluye presupuesto y atención sin ganar aprendizaje más
+   rápido — el cuello de botella no es cuántas geografías cubrís, es cuántos
+   leads podés atender y cerrar vos mismo con calidad.
+2. **El eslabón más débil de todo el documento** (§2.6, Paso 3: alcance
+   digital real y tasa de cierre) **no tiene dato propio en ninguna de las 4
+   geografías.** Diversificar el piloto en 4 países a la vez multiplica la
+   incertidumbre en vez de resolverla — mejor calibrar en una geografía y
+   replicar el aprendizaje.
+3. **No hay señal de canal diferenciada entre países** salvo una: Odoo
+   Community Days LATAM 2025 destacó públicamente a **México** como
+   "referente en crecimiento dentro de la comunidad Odoo" (fuente:
+   birtum.com, cobertura del evento — confianza media, es cobertura de
+   prensa/blog de un partner, no un dato oficial de Odoo, pero es la única
+   señal cualitativa encontrada que diferencia un país del resto en el
+   ecosistema que Kern usa como canal de entrada).
+4. El propio `MONETIZATION_BRIEF.md` ya recomienda, para los primeros 30-90
+   días, **no** pauta paga sino canales cálidos (Upwork, red directa) para
+   los primeros 1-2 clientes, y reserva el módulo Odoo como anzuelo de bajo
+   costo — esta sección no contradice eso, lo complementa: cuando llegue el
+   momento de invertir en pauta paga, esta es la secuencia recomendada.
+
+**Fase 1 — piloto (0-3 meses): México, solo o + Argentina.**
+México concentra el pool ICP individual más grande (~150.000, ~41% del
+total de 4 países) y es la única geografía con una señal cualitativa de
+tracción en el ecosistema Odoo. Sumar Argentina al piloto (en vez de ir solo
+con México) tiene sentido si el operador ya tiene red/confianza local ahí
+(consistente con el patrón "Upwork/red directa" que ya recomienda el brief
+de monetización) — permite calibrar el canal pago en México mientras se
+cierran los primeros contratos por canales cálidos en Argentina, sin
+depender 100% de pauta fría para el primer caso de estudio.
+
+**Fase 2 — expansión (una vez calibrado CPL + tasa de cierre real, ~3-9
+meses): sumar Colombia y Chile.**
+Ambos tienen poblaciones ICP similares entre sí (~82.700 y ~85.000) y juntos
+casi igualan a México solo — no conviene ignorarlos a mediano plazo, pero
+tampoco se justifica entrar ahí sin primero validar mensaje/creatividad/
+conversión en al menos un mercado. Nota Chile: usar el matiz de §2.2 (su
+techo de "Mediana" es más bajo — parte del ICP real cae en lo que el SII
+llama "Grande") al armar los filtros de segmentación en la plataforma de
+ads, para no sub-targetear por copiar literalmente la etiqueta "mediana
+empresa" de otro país.
+
+**Fase 3 — evaluar, no ejecutar todavía: Perú.**
+Mismo idioma, economía y formalización PyME en crecimiento — **no
+investigado esta sesión, sin cifras propias.** Candidato razonable para un
+5º mercado una vez que Fase 2 esté en marcha; requiere repetir el ejercicio
+de §2.2/§2.6 antes de comprometer presupuesto.
+
+**Brasil: fuera de alcance mientras no exista soporte de portugués.**
+Es, de lejos, el mercado LATAM más grande — pero es un **bloqueo de
+producto real, no de investigación de mercado**: `src/i18n.py` (VERIFICADO)
+solo tiene diccionarios `es`/`en`, sin `pt`. Los one-pagers, el deck
+consolidado y la conversación comercial completa de Kern son en español.
+Correr pauta en Brasil sin soporte de portugués generaría leads que no se
+pueden atender con el mismo nivel de calidad que el resto del catálogo — es
+la expansión de mayor potencial a largo plazo, pero condicionada a un
+proyecto de traducción real (alcance comparable al que ya tomó el soporte
+bilingüe es/en, según `HANDOFF.md`), no a más research de mercado.
 
 ---
 
@@ -357,17 +484,25 @@ más alto, ciclo de venta más largo (consistente con el benchmark de §2.3).
 
 ### 3.2 Tamaño de la oportunidad
 
-~199.000 empresas ICP-relevantes en Argentina + México combinados (VERIFICADO
-la base censal, ESTIMADO el filtro sectorial — §2.6). De esa población, el
-tramo realmente alcanzable por pauta digital hoy es una fracción **no
-verificada con datos propios** (supuesto de 5-10% → 10.000-20.000 empresas).
-Los primeros USD 10k/50k/100k son alcanzables con **1 a ~10 clientes**
-dependiendo del mix de paquete (Diagnóstico de entrada vs. retainer
-sostenido) — el cuello de botella no es el tamaño del mercado (sobra), es
-la conversión de alcance → lead → cierre, que hoy no tiene dato propio.
-**Recomendación operativa:** correr una campaña piloto pequeña y medir CPL +
-tasa de cierre real antes de comprometer presupuesto grande — el resto del
-embudo (§2.6, Paso 2-4) es la parte del documento con menos confianza.
+~367.000 empresas ICP-relevantes en Argentina + México + Colombia + Chile
+combinados (VERIFICADO la base censal en 3 de los 4 países, ESTIMADO el
+filtro sectorial y el desglose Pequeña/Mediana de Chile — §2.6). De esa
+población, el tramo realmente alcanzable por pauta digital hoy es una
+fracción **no verificada con datos propios** (supuesto de 5-10% →
+18.000-37.000 empresas). Los primeros USD 10k/50k/100k son alcanzables con
+**1 a ~10 clientes** dependiendo del mix de paquete (Diagnóstico de entrada
+vs. retainer sostenido) — el cuello de botella no es el tamaño del mercado
+(sobra en las 4 geografías combinadas), es la conversión de alcance → lead
+→ cierre, que hoy no tiene dato propio en ninguna de las 4.
+**Recomendación operativa (alcance geográfico, §2.7): no lanzar en las 4 a
+la vez.** Empezar el piloto en México (el mercado individual más grande,
+~150.000 empresas, ~41% del total, y la única señal cualitativa de
+tracción en el ecosistema Odoo), opcionalmente sumando Argentina vía
+canales cálidos para el primer caso de estudio; sumar Colombia y Chile en
+una Fase 2 una vez calibrado el CPL y la tasa de cierre real. Perú queda
+como candidato a evaluar sin cifras propias todavía; Brasil queda fuera de
+alcance hasta que exista soporte de portugués en el producto (bloqueo de
+producto, no de mercado — ver §2.7).
 
 ### 3.3 ¿Es una herramienta para CEO?
 
@@ -456,6 +591,23 @@ secundario.** Justificación:
 - Conversión lead→cierre profesional services en LinkedIn Ads (~2-5%) —
   compilado de benchmarks de agencias de performance B2B 2026 (confianza
   media, no LATAM-específico).
-- Odoo footprint LATAM — buscado, sin fuente pública confiable
-  (NO RELIABLE SOURCE FOUND).
-- Colombia, Chile — no investigados de forma independiente esta sesión.
+- Odoo footprint LATAM (partners/clientes por país) — buscado, sin fuente
+  pública confiable (NO RELIABLE SOURCE FOUND). Única señal cualitativa
+  encontrada: cobertura de Odoo Community Days LATAM 2025 (birtum.com)
+  destacando a México como referente en crecimiento dentro de la comunidad
+  Odoo — confianza media, no es un dato oficial de Odoo.
+- Colombia — Decreto 957 de 2019 (clasificación por ingresos/UVT, vía
+  funcionpublica.gov.co y resúmenes secundarios); UVT 2026 = COP 52.374
+  (DIAN, Resolución 000238); TRM ~COP 3.250/USD (Banrep, jul-2026);
+  1.734.636 empresas 2023, 91,8% micro / 6,1% pequeña / 1,6% mediana / 0,5%
+  grande — Confecámaras/RUES, citado en La República (2025).
+- Chile — Ley 20.416 (Estatuto PYME), tramos SII 2025 en UF (sii.cl); UF
+  jul-2026 ≈ CLP 40.845 (Banco Central de Chile); dólar observado ~CLP
+  927/USD (jul-2026); 1.503.813-1.582.805 empresas 2024, MiPyme (micro+
+  pequeña+mediana) = 76,3-77,4% del total, grandes = 1,2-1,3% — SII,
+  Operación Renta 2025 (cobertura vía asimet.cl/df.cl). Desglose exacto
+  Pequeña vs. Mediana por conteo de empresas: no encontrado esta sesión,
+  estimado por extrapolación de la proporción interna de Argentina — ver
+  nota en §2.6.
+- Perú, Brasil — no investigados cuantitativamente esta sesión (ver §2.7
+  para la evaluación cualitativa de ambos).
