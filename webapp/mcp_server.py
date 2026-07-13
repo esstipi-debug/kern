@@ -64,7 +64,7 @@ _READ_ONLY_ANALYSIS_ANNOTATIONS = {
 }
 
 
-class LinchpinAnalysisInput(BaseModel):
+class KernAnalysisInput(BaseModel):
     """Shared input shape for every read-only analysis tool on this server."""
 
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
@@ -94,7 +94,7 @@ class LinchpinAnalysisInput(BaseModel):
         return v or "MCP client"
 
 
-def _run_analysis_tool_sync(orchestrator: Orchestrator, job_type: str, params: LinchpinAnalysisInput) -> str:
+def _run_analysis_tool_sync(orchestrator: Orchestrator, job_type: str, params: KernAnalysisInput) -> str:
     """Blocking implementation: rows -> temp CSV -> orchestrator.run() -> JSON string.
 
     Runs off the event loop (see the `asyncio.to_thread` callers below) since both
@@ -157,14 +157,14 @@ def build_mcp_server(orchestrator: Orchestrator | None = None) -> FastMCP:
     )
     mcp = FastMCP(SERVER_NAME, streamable_http_path="/", transport_security=transport_security)
 
-    async def _run(job_type: str, params: LinchpinAnalysisInput) -> str:
+    async def _run(job_type: str, params: KernAnalysisInput) -> str:
         return await asyncio.to_thread(_run_analysis_tool_sync, orch, job_type, params)
 
     def _register(spec: MCPToolSpec) -> None:
         # A fresh closure per spec (late-binding-safe); FastMCP reads the tool's
         # description from __doc__ and its input schema from the signature, which
-        # is the same shared LinchpinAnalysisInput shape for every tool.
-        async def _tool(params: LinchpinAnalysisInput) -> str:
+        # is the same shared KernAnalysisInput shape for every tool.
+        async def _tool(params: KernAnalysisInput) -> str:
             return await _run(spec.job_type, params)
 
         _tool.__name__ = spec.name

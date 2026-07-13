@@ -38,13 +38,13 @@ Glama auto-indexes public GitHub MCP servers and lets authors claim them.
 1. Log in at `https://smithery.ai` with GitHub.
 2. "Add server" -> connect `esstipi-debug/linchpin`.
 3. Choose the **remote/hosted** server type with URL `https://linchpin.fly.dev/mcp/`
-   (Linchpin is a hosted service with per-client keys — do NOT configure a local
+   (Kern is a hosted service with per-client keys — do NOT configure a local
    stdio launch; there is none).
 
 ## 4. PulseMCP (pulsemcp.com)
 
 1. `https://www.pulsemcp.com/submit` — plain form, no account needed.
-2. Fields: name **Linchpin**, repo `https://github.com/esstipi-debug/linchpin`,
+2. Fields: name **Kern**, repo `https://github.com/esstipi-debug/linchpin`,
    website `https://linchpin.fly.dev`, remote URL `https://linchpin.fly.dev/mcp/`,
    blurb below.
 

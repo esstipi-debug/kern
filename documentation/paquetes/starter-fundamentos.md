@@ -61,3 +61,7 @@ Cuando tu operación crezca a multi-almacén, ERP o importaciones, el plan
 **Growth** (USD 4.000/mes) suma la operación completa: reposición conectada a
 Odoo, red de distribución, pricing, costo de servir, proveedores y riesgo, con
 una revisión ejecutiva trimestral (QBR).
+
+---
+
+*Este paquete corre sobre **Kern** (antes Linchpin) - el nucleo de decisiones de la agencia: cada resultado pasa un QA-gate que veta entregables debiles, cita las fuentes del campo en que se apoya (25 obras curadas), y toda escritura a tu sistema es staged, aprobada y reversible. La evolucion completa del nombre: [KERN_IDENTIDAD_Y_FILOSOFIA.md](../KERN_IDENTIDAD_Y_FILOSOFIA.md).*

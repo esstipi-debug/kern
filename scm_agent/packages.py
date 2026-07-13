@@ -224,10 +224,10 @@ def run_package(
     ``out_dir/<spec.key>``.
 
     ``branding`` (see ``src/deliverable.py``) resolves explicit call-site
-    override > the loaded client's ``profile.branding`` > Linchpin's own
+    override > the loaded client's ``profile.branding`` > Kern's own
     default - only the CONSOLIDATED package deck carries it (mirrors how
     ``lang`` is scoped; each individual tool's own deck under this package
-    keeps rendering Linchpin's default, unchanged - a deliberate, narrow
+    keeps rendering Kern's default, unchanged - a deliberate, narrow
     integration point, not every deck in the bundle)."""
     registry = registry if registry is not None else build_default_registry()
     provider = provider if provider is not None else get_provider()

@@ -21,7 +21,7 @@
    En local, para probarlo antes de desplegar: `export CALENDLY_URL=...`.
 
 Sin esta variable, el botón "Agendar una llamada" en cada paquete abre un
-`mailto:` con el asunto "Agendar: <nombre del paquete> - Linchpin".
+`mailto:` con el asunto "Agendar: <nombre del paquete> - Kern".
 
 ## 2 · Stripe Payment Links (uno por paquete)
 
@@ -69,7 +69,7 @@ cuenta del honorario final si preferís cobrar un adelanto simbólico.
    ```
 
 Un paquete sin su variable configurada degrada su botón "Pagar / Empezar" a un
-`mailto:` con el asunto "Pagar: <nombre del paquete> - Linchpin" — el
+`mailto:` con el asunto "Pagar: <nombre del paquete> - Kern" — el
 prospecto igual puede escribirte, solo no puede pagar solo todavía.
 
 ## 3 · Quién firma (bloque "Quien firma" en `/paquetes`)

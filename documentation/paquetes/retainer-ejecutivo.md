@@ -47,3 +47,7 @@ Un cliente maduro que ya validó el valor del plan Scale durante 6–18 meses y
 necesita que alguien **sea** su operador de supply chain fraccional, con
 presencia semanal y responsabilidad ejecutiva — no solo que le entregue un
 análisis mensual para que su propio equipo lo interprete.
+
+---
+
+*Este paquete corre sobre **Kern** (antes Linchpin) - el nucleo de decisiones de la agencia: cada resultado pasa un QA-gate que veta entregables debiles, cita las fuentes del campo en que se apoya (25 obras curadas), y toda escritura a tu sistema es staged, aprobada y reversible. La evolucion completa del nombre: [KERN_IDENTIDAD_Y_FILOSOFIA.md](../KERN_IDENTIDAD_Y_FILOSOFIA.md).*

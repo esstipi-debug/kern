@@ -1,4 +1,4 @@
-"""Supply-chain risk engine (Linchpin capability M-risk).
+"""Supply-chain risk engine (Kern capability M-risk).
 
 Scores a risk register on the standard SCM dimensions (likelihood x impact), ranks by
 expected loss (EMV) and FMEA RPN, buckets into a 5x5 heatmap, flags TTR>TTS exposure

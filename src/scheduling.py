@@ -1,7 +1,7 @@
 """Scheduling / sequencing engine (Jacobs & Chase, *Operations and Supply Chain
 Management* 15e, ch. 22).
 
-Operational, deterministic sequencing that Linchpin's aggregate S&OP layer did not reach:
+Operational, deterministic sequencing that Kern's aggregate S&OP layer did not reach:
 
 - **Johnson's rule** - the optimal two-machine flow-shop sequence (minimum makespan).
 - **Assignment / Hungarian** - optimal one-to-one allocation (job->machine, SKU->DC,

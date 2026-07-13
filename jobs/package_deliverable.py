@@ -2,7 +2,7 @@
 operator opens first (each tool's own full deliverable sits in its subfolder).
 
 Composes a ``src.deliverable.Deliverable`` so the package deck renders exactly
-like every other Linchpin deck (Markdown + XLSX via ``write_all``):
+like every other Kern deck (Markdown + XLSX via ``write_all``):
 
 - executive summary: what ran, what was skipped and why
 - one key finding per executed tool (its result summary)
@@ -52,7 +52,7 @@ def build(
     ``lang`` defaults to ``spec.lang`` when unset (the normal case - the
     runner passes ``spec`` through unchanged); an explicit ``lang`` here
     always wins, for callers building a deck outside ``run_package``.
-    ``branding`` defaults to Linchpin's own (``DEFAULT_BRANDING``) when unset -
+    ``branding`` defaults to Kern's own (``DEFAULT_BRANDING``) when unset -
     ``run_package`` resolves a partner's white-label identity and passes it
     through explicitly (see ``scm_agent/packages.py``).
     """

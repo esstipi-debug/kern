@@ -1,7 +1,7 @@
 """Edge-case tests for src/contingent_fee.py: the Sprint de Liquidacion's
 contingent-fee calculator and its real-vs-estimated measurement annex.
 
-Acceptance criteria (Linchpin 2.0, E3): recupero 0, el piso, y los limites de
+Acceptance criteria (Kern 2.0, E3): recupero 0, el piso, y los limites de
 % del contrato comercial (10-20%).
 """
 from __future__ import annotations

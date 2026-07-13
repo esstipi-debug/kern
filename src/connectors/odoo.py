@@ -3,7 +3,7 @@
 Implements the ``InventorySource`` read side (products, inventory levels, sales orders)
 straight from Odoo's standard models, plus a write side that routes restock decisions
 through the safe-staging ``src.writeback`` plane (dry-run -> approval -> idempotent apply
--> audit/rollback) as Odoo *reorder rules* -- Linchpin never mutates the system of record
+-> audit/rollback) as Odoo *reorder rules* -- Kern never mutates the system of record
 blindly.
 
 Two layers, mirroring ``http_client.StoreApiClient`` (which takes any httpx-style object):

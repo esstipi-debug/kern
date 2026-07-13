@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Changed
+- **Rename: Linchpin -> Kern** (brand only). All user-facing surfaces — README, sales
+  docs (`documentation/`, one-pagers), operator portfolio, webapp UI, deliverable
+  branding (`src/deliverable.py`), voice agent, MCP server prose, `pyproject.toml`
+  (`name = "kern"`) — now say **Kern** (`documentation/KERN_IDENTIDAD_Y_FILOSOFIA.md`
+  has the narrative). Deliberately unchanged (API/infra identifiers, not brand):
+  GitHub repo name + `linchpin.fly.dev`, `LINCHPIN_*` env vars, `linchpin_*` MCP tool
+  names + `linchpin_mcp` server name, `lpk_` key prefix, `linchpin.access` logger,
+  `odoo_addon/linchpin_dry_run/`, historical docs/graph-memory. External renames
+  (repo, Fly, Odoo Store, MCP listings) tracked as a checklist in `HANDOFF.md`.
+
 ### Added
 - **`src/escalation.py` wired into `jobs/intake.py`'s plausibility checks** — `intake.py::normalize()`
   used to silently drop unusable rows (bad dates, missing/negative quantities) with zero

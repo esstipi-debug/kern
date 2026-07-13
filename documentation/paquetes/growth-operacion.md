@@ -72,3 +72,7 @@ La mayoría de nuestros clientes arranca con el **Diagnóstico de Arranque**
 (USD 1.500–2.500, 2 semanas) para cuantificar el problema, opera 3–6 meses en
 **Starter** y sube a Growth cuando se activa el segundo almacén, el ERP o el
 canal mayorista. También puedes entrar directo si tu operación ya lo amerita.
+
+---
+
+*Este paquete corre sobre **Kern** (antes Linchpin) - el nucleo de decisiones de la agencia: cada resultado pasa un QA-gate que veta entregables debiles, cita las fuentes del campo en que se apoya (25 obras curadas), y toda escritura a tu sistema es staged, aprobada y reversible. La evolucion completa del nombre: [KERN_IDENTIDAD_Y_FILOSOFIA.md](../KERN_IDENTIDAD_Y_FILOSOFIA.md).*

@@ -1,7 +1,7 @@
 """Waiting-line / queuing engine (Jacobs & Chase, *Operations and Supply Chain
 Management* 15e, ch. 10).
 
-Closed-form congestion models Linchpin previously lacked entirely. They turn an arrival
+Closed-form congestion models Kern previously lacked entirely. They turn an arrival
 rate (lambda) and service rate (mu) - and, for the G/G/c case, the *variability* of each -
 into queue length, wait time, and the cost-optimal number of servers. The use cases are
 capacity/staffing decisions: dock doors, pick stations, packing lines, returns desks,
