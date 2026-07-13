@@ -1,4 +1,4 @@
-# 02 · División del Trabajo — Linchpin vs. Tú
+# 02 · División del Trabajo — Kern vs. Tú
 
 > La línea exacta entre lo que hace el agente y lo que **solo un humano puede
 > hacer**, con los mecanismos de código que la sostienen
@@ -8,7 +8,7 @@
 
 ## 🧱 El principio: "nunca desprotegido", pero nunca sin dueño
 
-Linchpin implementa la **Guided Execution Layer** (`src/guided.py`): *ninguna
+Kern implementa la **Guided Execution Layer** (`src/guided.py`): *ninguna
 tarea termina en un callejón sin salida.* Un resultado consecuente es **ejecutado
 con seguridad por el agente**, o lleva **al menos un camino ejecutable** que tú
 puedes accionar — opciones rankeadas, un paquete de *handoff* prellenado, o una
@@ -68,7 +68,7 @@ que siempre sabrás qué te juegas al omitirlo.
 
 ## 🔐 El plano de *writeback*: dónde el humano controla el dinero
 
-Linchpin **nunca muta un sistema de registro a ciegas** (`src/writeback.py`).
+Kern **nunca muta un sistema de registro a ciegas** (`src/writeback.py`).
 Todo cambio se calcula como un `Changeset` en seco y se clasifica por **risk
 tier** según su reversibilidad:
 
@@ -80,12 +80,12 @@ tier** según su reversibilidad:
 
 Mecánica de la aprobación humana (la que **tú** ejerces):
 
-1. Linchpin **prepara** (`stage`) el *changeset*: objetivo, lista de cambios,
+1. Kern **prepara** (`stage`) el *changeset*: objetivo, lista de cambios,
    `risk_tier`, `idempotency_key` (clave idempotente), y la **razón**.
 2. Tú lo revisas y, si procede, **apruebas** (`approve`) — la aprobación queda
    ligada a esa `idempotency_key` y **expira en 15 minutos** (`ttl_seconds=900`).
    No es un cheque en blanco: aprobaste *ese* cambio, *ahora*.
-3. Linchpin **aplica** (`apply`) de forma **idempotente** (re-aplicar la misma
+3. Kern **aplica** (`apply`) de forma **idempotente** (re-aplicar la misma
    clave no duplica) y deja un `AuditEntry`.
 4. Si algo sale mal, hay **`rollback()`** por `idempotency_key`.
 
@@ -97,7 +97,7 @@ ocurre.**
 
 ## 🧭 Las escalaciones, con ruta y SLA por defecto (`src/escalation.py`)
 
-Cuando un resultado debe ir a un humano, Linchpin lo enruta con un SLA. Conoce
+Cuando un resultado debe ir a un humano, Kern lo enruta con un SLA. Conoce
 estos disparadores y a quién van — son tu mapa de *quién decide qué*:
 
 | Disparador | Ejemplos | Ruta por defecto | SLA por defecto |
@@ -114,9 +114,9 @@ estos disparadores y a quién van — son tu mapa de *quién decide qué*:
 
 ---
 
-## 🗂️ Tabla maestra: ¿Linchpin o tú?
+## 🗂️ Tabla maestra: ¿Kern o tú?
 
-| Actividad | Linchpin | Tú |
+| Actividad | Kern | Tú |
 |---|---|---|
 | Pronosticar demanda, calcular `(s,Q)`/`(R,S)`, EOQ, safety stock | ✅ | — |
 | Clasificar ABC-XYZ, calcular buffers DDMRP, *landed cost*, *cost-to-serve* | ✅ | — |

@@ -8,7 +8,7 @@ the generated UI matches the backend that already exists.
 
 ## PROMPT (paste this)
 
-> Design a **single-page web app** for an **agentic supply-chain assistant** called **Linchpin** (an Inventory Planner dashboard + agent console). It's a professional B2B tool for supply-chain analysts and consultants. The product already has a working backend; you're designing the front end.
+> Design a **single-page web app** for an **agentic supply-chain assistant** called **Kern** (an Inventory Planner dashboard + agent console). It's a professional B2B tool for supply-chain analysts and consultants. The product already has a working backend; you're designing the front end.
 >
 > **The core interaction is a command console, not a form.** At the top, a single prominent input where the user types a plain-English brief like *"set up reorder points and safety stock for this warehouse"* or *"what price maximizes profit on this catalog"*, with an optional file drop (CSV/Excel) and an optional client name. The user hits run; the agent routes the request to the right capability, computes a result, and returns a **grounded answer with source citations**.
 >

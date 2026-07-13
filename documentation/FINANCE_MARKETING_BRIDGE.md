@@ -4,7 +4,7 @@
 > de capacidades) y [`MONETIZATION_BRIEF.md`](MONETIZATION_BRIEF.md) (empaquetado comercial).
 > Este documento responde una pregunta más estrecha: supply chain, finanzas y marketing chocan
 > constantemente en la práctica (marketing quiere vender lo que no hay; finanzas quiere el
-> capital que el stock atrapa) — ¿qué de ese puente **ya existe** en el código de Linchpin,
+> capital que el stock atrapa) — ¿qué de ese puente **ya existe** en el código de Kern,
 > qué es una **brecha real**, y qué dice la literatura canónica sobre cómo cerrarla?
 >
 > Metodología: grounding directo en el código (`src/`, `jobs/`, `scm_agent/tools.py`) +
@@ -79,7 +79,7 @@ determinista que `working_capital.py`:
 ### Cómo se vende
 
 Es el add-on de finanzas del tier **Growth** ($4.000/mes) en `MONETIZATION_BRIEF.md`
-(`cost_to_serve` ya está en su alcance). Con esto, Linchpin puede vender el "board pack" de 13
+(`cost_to_serve` ya está en su alcance). Con esto, Kern puede vender el "board pack" de 13
 semanas de caja que hoy solo vive en retainers fraccionales de finanzas puros.
 
 ---

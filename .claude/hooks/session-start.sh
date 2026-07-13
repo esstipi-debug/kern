@@ -1,5 +1,5 @@
 #!/bin/bash
-# Linchpin — SessionStart hook.
+# Kern — SessionStart hook.
 #
 # Keeps every session ready to work AND keeps the L3 *code graph* fresh, so the
 # agent's theory<->code grounding (scm_agent/knowledge.py, the "Fuentes" behind

@@ -1,4 +1,4 @@
-"""Linchpin operating modes — two role profiles over the same engine.
+"""Kern operating modes — two role profiles over the same engine.
 
 Research-grounded split (inventory management is a strict subset of supply-chain
 management; the inventory role is stock-centric / internal / short-horizon, the

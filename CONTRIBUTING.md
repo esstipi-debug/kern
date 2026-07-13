@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for improving **Linchpin** — an agentic supply-chain engine grounded in the SCM literature.
+Thank you for improving **Kern** — an agentic supply-chain engine grounded in the SCM literature.
 
 ## Setup
 

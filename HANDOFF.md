@@ -22,6 +22,80 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-07-12 — Rename: Linchpin -> Kern (interno COMPLETO; checklist EXTERNA abajo)
+
+**Que paso:** el proyecto se llama **Kern** (aleman: nucleo). No es cosmetico —
+marca la evolucion de "herramienta que analiza" a "el nucleo de decisiones
+sobre el que corre el servicio de la agencia" (angulo Tower-first del plan 3.0
++ los paquetes comerciales). La narrativa completa vive en
+`documentation/KERN_IDENTIDAD_Y_FILOSOFIA.md` (escrita por la sesion del
+branch `feat/state-snapshot-module`, commit `2bd712f`, cherry-picked aqui y
+extendida). La narrativa se afirma SOLO en lo verificable en main: QA-gate,
+citas a 25 fuentes, writeback staged con rollback, guided outcomes.
+
+**Rename interno (este PR):** todo lo user-facing dice Kern — README (con
+parrafo de evolucion), CLAUDE.md, sales docs + 9 one-pagers (pie narrativo),
+operator portfolio, webapp UI, deliverable branding, voice agent, prosa MCP,
+`pyproject.toml` (`name = "kern"`), LICENSE, CHANGELOG (entrada nueva).
+
+**Queda "linchpin" A PROPOSITO (identificadores API/infra, no marca):**
+repo GitHub + `linchpin.fly.dev` + `cd linchpin` en docs (hasta ejecutar la
+checklist externa) · env vars `LINCHPIN_*` · tool names MCP `linchpin_*` +
+server name `linchpin_mcp` (contrato con clientes MCP conectados) · prefijo de
+keys `lpk_` (keys emitidas siguen funcionando) · logger `linchpin.access` ·
+`odoo_addon/linchpin_dry_run/` (identidad del modulo en el Store) · slugs
+`linchpin-*` en CAPABILITY_EXPANSION_PLAN · historicos (graph-memory,
+docs/superpowers, CHANGELOG viejo, books graph generado) · `server.json`
+`name`/URLs (atados al repo name para validacion del registry MCP — se
+actualizan JUNTO con el repo rename, ver checklist).
+
+### CHECKLIST EXTERNA (operador — comandos exactos, NO ejecutados)
+
+1. **GitHub repo rename** (redirige URLs viejas automaticamente):
+   ```bash
+   gh repo rename kern --repo esstipi-debug/linchpin --yes
+   # despues, en el checkout principal y CADA worktree (.wt-*):
+   git remote set-url origin https://github.com/esstipi-debug/kern.git
+   # y actualizar: server.json (name -> io.github.esstipi-debug/kern,
+   # repository.url), README/CONTRIBUTING (`cd linchpin` -> `cd kern`),
+   # badges/links con /linchpin en README y docs.
+   ```
+2. **Fly.io** — recomendacion: **mantener `linchpin.fly.dev` hasta tener
+   dominio propio** (kern.fly.dev como app nueva = migrar secrets/volumen/
+   keys de clientes MCP que apuntan a la URL vieja, y `fly.dev` no redirige —
+   rompe integraciones por un subdominio que igual no es la marca final).
+   Cuando haya dominio (p.ej. `kern.agency` / `getkern.dev`), apuntarlo a la
+   app existente con `flyctl certs add <dominio>` y recien ahi decidir si
+   renombrar la app. Si igual queres kern.fly.dev ya:
+   ```bash
+   flyctl apps create kern && flyctl deploy -a kern && flyctl secrets set ... -a kern
+   # migrar keys MCP de clientes, avisar, y recien despues: flyctl apps destroy linchpin
+   ```
+3. **Modulo Odoo `linchpin_dry_run`** — recomendacion: **renombrar en la
+   PROXIMA version funcional, no ahora.** Un rename de modulo tecnico
+   (directorio + manifest + XML ids) es re-submission completa al Store y
+   rompe upgrades de instalaciones existentes; hacerlo sin cambios
+   funcionales es puro costo. Cuando toque: nuevo modulo `kern_dry_run` con
+   hook de migracion desde `linchpin_dry_run`.
+4. **Listings MCP** — donde figure Linchpin (directorios MCP, cuando se
+   ejecute el plan de listings de [linchpin-monetization-plan]): usar nombre
+   Kern + descripcion nueva de `server.json`; requiere logins del operador.
+
+### Integraciones code-intel (mismo PR) — 2 comandos pendientes del operador
+
+`.mcp.json` ahora wirea **codegraph** (indice de codigo continuo, zero-LLM) y
+**serena** (LSP sobre MCP via uvx). El CLI de codegraph quedo instalado (npm,
+v1.4.1) pero su PRIMERA ejecucion quedo gateada por permisos de la sesion
+(politica supply-chain sobre binarios nuevos — razonable). Para activar:
+```bash
+cd <repo> && codegraph init        # construye .codegraph/ (gitignored), luego auto-sync
+# serena no necesita init: el primer arranque via .mcp.json descarga y corre (trust prompt de Claude Code)
+```
+**LightRAG NO se integro a proposito** — queda como carril sombra futuro solo
+si la recuperacion del books graph se queda corta (ver memoria
+`graphify-alternatives-verdict`). graphify sigue canonico (books graph =
+infraestructura del producto; estabilidad de citas = moat).
+
 ## 2026-07-11 — E8 "tooling interno" — reviewed, fixed, PR #138 open (draft) — needs merge go-ahead
 
 **Read this section first if you're picking up cold.** E8 is code-complete,

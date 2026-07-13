@@ -67,3 +67,7 @@ implementación. Si además quieres que la operación resultante (inventario,
 reposición, red) se mantenga y optimice mes a mes, ese es el alcance de los
 planes **Growth** (USD 4.000/mes) o **Scale** (USD 7.500/mes) — y este proyecto
 ya deja el diseño de red y bodega listo para operar bajo cualquiera de los dos.
+
+---
+
+*Este paquete corre sobre **Kern** (antes Linchpin) - el nucleo de decisiones de la agencia: cada resultado pasa un QA-gate que veta entregables debiles, cita las fuentes del campo en que se apoya (25 obras curadas), y toda escritura a tu sistema es staged, aprobada y reversible. La evolucion completa del nombre: [KERN_IDENTIDAD_Y_FILOSOFIA.md](../KERN_IDENTIDAD_Y_FILOSOFIA.md).*

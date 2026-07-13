@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "linchpin"
+name = "kern"
 version = "2.9.0"
-description = "Linchpin — an agentic supply-chain engine: inventory optimization, pricing and leadership analysis from a plain-language brief, grounded in a 17-book SCM knowledge graph."
+description = "Kern — an agentic supply-chain engine: inventory optimization, pricing and leadership analysis from a plain-language brief, grounded in a knowledge graph of 25 SCM sources."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"

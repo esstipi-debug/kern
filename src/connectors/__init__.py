@@ -1,6 +1,6 @@
 """Commerce connectors — read a client's storefront/ERP, write back safely (Gap #5).
 
-The plumbing that lets Linchpin run against a real e-commerce / ERP backend. A thin
+The plumbing that lets Kern run against a real e-commerce / ERP backend. A thin
 ``InventorySource`` protocol (products, inventory levels, orders) sits in front of every
 backend, exactly as ``src.sources.DemandSource`` does for demand — so swapping CSV for a
 live Shopify/Amazon adapter later means writing one adapter, not touching the engines.

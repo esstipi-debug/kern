@@ -1,6 +1,6 @@
 """Tests for the waiting-line / queuing engine (from Jacobs & Chase ch. 10).
 
-A capability Linchpin lacked entirely: closed-form congestion models that turn arrival/
+A capability Kern lacked entirely: closed-form congestion models that turn arrival/
 service rates (and their variability) into queue length, wait time, and the cost-optimal
 number of servers - for sizing dock doors, pick stations, labour, MRO crews, returns desks.
 """

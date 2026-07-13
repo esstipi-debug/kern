@@ -1,6 +1,6 @@
 """Tests for the scheduling / sequencing engine (Jacobs & Chase ch. 22).
 
-Operational sequencing Linchpin lacked: Johnson's rule (2-machine makespan), the
+Operational sequencing Kern lacked: Johnson's rule (2-machine makespan), the
 assignment/Hungarian optimum (one-to-one allocation), single-machine dispatching rules
 (SPT/EDD/FCFS/LPT) with flow-time/lateness metrics, and the first-hour shift roster.
 """

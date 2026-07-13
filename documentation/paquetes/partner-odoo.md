@@ -85,3 +85,7 @@ por defecto — no hace falta optar explícitamente por "sin marca".
    que lo corramos nosotros) y revisás el deck antes de presentarlo.
 
 No hay contrato de exclusividad ni mínimo de clientes para arrancar.
+
+---
+
+*Este paquete corre sobre **Kern** (antes Linchpin) - el nucleo de decisiones de la agencia: cada resultado pasa un QA-gate que veta entregables debiles, cita las fuentes del campo en que se apoya (25 obras curadas), y toda escritura a tu sistema es staged, aprobada y reversible. La evolucion completa del nombre: [KERN_IDENTIDAD_Y_FILOSOFIA.md](../KERN_IDENTIDAD_Y_FILOSOFIA.md).*

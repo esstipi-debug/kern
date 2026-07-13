@@ -603,7 +603,7 @@ def _print_result(result) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run a Linchpin commercial package")
+    parser = argparse.ArgumentParser(description="Run a Kern commercial package")
     parser.add_argument("--package", required=True, choices=sorted(PACKAGES))
     parser.add_argument("--intake", default=None, help="folder with the client's intake files")
     parser.add_argument("--client", default="Demo Client")

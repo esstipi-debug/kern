@@ -1,6 +1,6 @@
 """Per-client API key store for the read-only MCP server (Phase A go-to-market).
 
-Linchpin's MCP server sells access to individual paying clients, each needing
+Kern's MCP server sells access to individual paying clients, each needing
 their own revocable credential - unlike ``webapp/security.py``'s single shared
 ``LINCHPIN_API_KEY`` (fine for gating one operator's own dashboard, wrong for
 multiple distinct customers). Phase A billing is manual (Stripe Payment Link,
@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 
 DEFAULT_PATH = "data/mcp_keys.sqlite3"
-KEY_PREFIX = "lpk_"  # "Linchpin key" - recognizable in logs/support tickets without being guessable
+KEY_PREFIX = "lpk_"  # legacy "Linchpin key" prefix, kept stable so issued keys keep working - recognizable in logs/support tickets without being guessable
 
 
 def _hash(key: str) -> str:
