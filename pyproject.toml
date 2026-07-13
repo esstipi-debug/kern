@@ -131,6 +131,26 @@ elasticity = [
 repricing = [
     "httpx>=0.28",
 ]
+# jobs/seo_audit.py's real site crawl (S1, PR-22, plan section 8 "Track B --
+# SEO"). advertools wraps Scrapy (robots.txt-respecting, rate-limited by
+# default) for the crawl itself; pyarrow is the plan's own declared pin for
+# this extra (state's parquet engine, already installed transitively via the
+# 'state' extra in this repo -- listed here too so `pip install .[seo]`
+# alone is enough). Verified installs cleanly on this Windows py3.11 venv
+# 2026-07 (advertools==0.18.0, scrapy==2.17.0, twisted==26.4.0 -- no
+# C-toolchain/wheel risk). Structured-data extraction reuses the
+# pricing-intel extra's extruct adapter (src/pricing_intel/acquire/
+# structured.py) rather than duplicating it here -- install both extras
+# together (`pip install .[seo,pricing-intel]`) for the full S1 audit;
+# jobs/seo_audit.py raises a clear AdvertoolsUnavailableError (not a bare
+# ImportError) when this extra is missing. Lighthouse (the plan's third
+# named dependency) is a Node CLI binary, not a pip package -- checked via
+# shutil.which at RUN time in jobs/seo_audit.py's run_lighthouse_audit,
+# never declared here.
+seo = [
+    "advertools>=0.14",
+    "pyarrow>=15",
+]
 
 [project.urls]
 Homepage = "https://github.com/esstipi-debug/linchpin"
