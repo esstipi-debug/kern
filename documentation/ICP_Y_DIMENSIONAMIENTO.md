@@ -683,6 +683,209 @@ secundario.** Justificación:
 
 ---
 
+## 4. Extensión: mercados de habla inglesa (EE.UU., Reino Unido, Australia)
+
+> **Agregado 2026-07-13 (cuarta ronda), a pedido explícito.** Todo lo de
+> arriba (§1-3) responde la pregunta que se hizo primero: LATAM. Pero
+> `MONETIZATION_BRIEF.md` (investigación previa, no de esta sesión) ya había
+> concluido que la **vía principal** de monetización de corto plazo es
+> justamente marcas Shopify/DTC de EE.UU./UK de USD 1-10M, posicionando a
+> Kern como "fractional supply chain operator" — LATAM/Odoo se documentó ahí
+> como canal **secundario**. Esta sección hace por EE.UU./UK/Australia lo
+> que §2 hizo por LATAM: un dimensionamiento bottom-up propio con fuentes
+> oficiales, no solo los benchmarks de precio que ya existían. Mismo
+> criterio VERIFICADO/ESTIMADO.
+
+### 4.1 Definición firmográfica oficial
+
+**EE.UU. — VERIFICADO** (SBA Table of Size Standards, por código NAICS):
+no hay un único corte — varía por sector. Comercio minorista/mayorista usa
+estándares de ingresos (USD 1M-47M según la subcategoría exacta);
+manufactura usa estándares de empleados (100-1.500 según la subcategoría).
+El ICP práctico de Kern (~USD 1-15M) cae cómodamente dentro de "small
+business" en prácticamente todos los sectores relevantes — el techo SBA es
+mucho más alto que el techo real de Kern (Retainer Ejecutivo, USD 12.000/
+mes = USD 144.000/año).
+
+**Reino Unido — VERIFICADO** (Companies Act 2006, actualizado abr-2025;
+conversión a USD ~GBP 1,34 = USD 1, jul-2026):
+
+| Categoría | Turnover (GBP) | ≈USD | Balance sheet (GBP) | Empleados |
+|---|---|---|---|---|
+| Micro | ≤£1M | ~$1,3M | ≤£500k | ≤10 |
+| Small | ≤£15M | ~$20,1M | ≤£7,5M | ≤50 |
+| Medium | ≤£50M | ~$67M | ≤£25M | ≤250 |
+
+(Calificación: 2 de 3 criterios). El ICP práctico de Kern (~USD 1-15M) cae
+en la mitad baja de "Small" y toca el piso de "Medium" para clientes
+Growth/Scale.
+
+**Australia — VERIFICADO** (ATO, definición de turnover; conversión a USD
+~AUD 0,696 = USD 1, jul-2026): Small business entity <AUD $10M (~USD 7M);
+Medium AUD $10M-50M (~USD 7M-35M). El ICP práctico de Kern cae casi
+completo dentro de "Small" y roza "Medium" en el extremo superior.
+
+### 4.2 Dimensionamiento bottom-up
+
+**Paso 1 — universo de empresas en la banda de tamaño (VERIFICADO, fuentes
+oficiales):**
+
+| País | Banda de empleados | # Empresas | Fuente |
+|---|---|---|---|
+| EE.UU. | 10-499 | **~1.493.953** (809.398 de 10-19 + 409.391 de 20-49 + 151.979 de 50-99 + 89.573 de 100-249 + 33.612 de 250-499) | Compilación de datos censales (NAICS Association, todos los sectores) |
+| Reino Unido | 10-249 | **~257.800** (220.000 de 10-49 + 37.800 de 50-249) | GOV.UK, Business Population Estimates 2024 |
+| Australia | 5-199 | **~299.538** (231.681 de 5-19 + 67.857 de 20-199) | ABS, Counts of Australian Businesses, jun-2024 |
+
+**Paso 2 — filtro a sectores con inventario físico (ESTIMADO — mismo método
+de cross-tab nacional que en LATAM, con la salvedad de que estas 3
+economías tienen una composición sectorial MUY distinta y mucho más
+services-heavy que México/Argentina/Colombia/Chile):**
+
+| País | % sector relevante (retail+wholesale+manufactura) | Fuente / cómo se armó |
+|---|---|---|
+| EE.UU. | **~24%** (retail ~12% + manufactura ~8% + mayorista ~4% estimado) | Retail/manufactura: cifras de participación de "small businesses" por sector (fuente secundaria agregando datos censales); mayorista estimado por analogía, sin cifra propia encontrada |
+| Reino Unido | **~16%** (Wholesale and Retail Trade and Repair = 10% VERIFICADO de todas las PyMEs + manufactura ~6% ESTIMADO) | GOV.UK Business Population Estimates 2024 (wholesale/retail) + estimación propia para manufactura (no se encontró el % exacto de conteo, solo de turnover: 9%) |
+| Australia | **~13%** (Retail Trade = 156.938 empresas de todos los tamaños = 5,9% del total VERIFICADO + mayorista/manufactura ~7% ESTIMADO, sin cifra propia) | ABS (retail) + estimación propia (mayorista/manufactura) |
+
+**Nota importante, distinta a LATAM:** en México el mismo tipo de filtro
+daba ~62% (retail+manufactura = 62,3% de TODAS las empresas) — acá da
+13-24%. La diferencia no es un error: EE.UU./UK/Australia tienen economías
+mucho más pesadas en servicios profesionales, salud, construcción y
+tecnología en su universo de PyMEs, mientras que en México/Argentina el
+comercio minorista/informal-adyacente pesa proporcionalmente mucho más.
+Aplicar el 62% mexicano a estos 3 países habría sobreestimado el mercado
+por 3-5x — otra razón para no reciclar un supuesto de una geografía a otra
+sin verificarlo.
+
+| País | Banda de tamaño | × Sector relevante | ICP pre-digitalización |
+|---|---|---|---|
+| EE.UU. | 1.493.953 | ~24% | **~358.600** |
+| Reino Unido | 257.800 | ~16% | **~41.250** |
+| Australia | 299.538 | ~13% | **~38.940** |
+| **Total EE.UU.+UK+AU** | | | **~438.800** |
+
+**Paso 3 — digitalización mínima (ESTIMADO, sin fuente country-específica
+size-segmentada encontrada esta sesión — a diferencia de México/Colombia en
+LATAM):** la única cifra dura encontrada es general y vieja (64,4% de PyMEs
+de EE.UU. usaba software contable en **2016**, todos los tamaños incluidos,
+sin desglose). Razonamiento propio: la banda 10+ empleados en estas 3
+economías desarrolladas casi con certeza tiene un piso de digitalización
+mucho más alto que en LATAM — QuickBooks/Xero/MYOB son casi universales a
+partir de ese tamaño. **Supuesto propio, marcado ESTIMADO: ~90-95%** (se
+usa 92% para el cálculo) — **más alto y con menos evidencia directa que la
+cifra mexicana (86%, VERIFICADA), pero direccionalmente razonable.**
+
+| País | ICP pre-digitalización | × ~92% (ESTIMADO) | ICP calificado |
+|---|---|---|---|
+| EE.UU. | 358.600 | 92% | **~329.900** |
+| Reino Unido | 41.250 | 92% | **~37.950** |
+| Australia | 38.940 | 92% | **~35.825** |
+| **Total EE.UU.+UK+AU** | | | **~403.700** |
+
+**Comparación directa con LATAM:** ~403.700 (3 países anglo) vs. ~268.000
+(4 países LATAM) — el bloque anglo, con **una geografía menos**, tiene un
+pool calificado **~50% más grande**. No es una sorpresa (son economías más
+grandes), pero cuantificarlo confirma que la conclusión previa de
+`MONETIZATION_BRIEF.md` (vía principal = EE.UU./UK) no dependía solo del
+ticket de precio más alto — el mercado de base también es mayor.
+
+### 4.3 La diferencia estructural: acá SÍ hay competencia real instalada
+
+En LATAM, el Paso 4 (competencia enterprise) daba ~0% porque SAP IBP/Blue
+Yonder son inalcanzables en precio para esta banda. **En EE.UU./UK/
+Australia esto es distinto — VERIFICADO:** existen herramientas SaaS de
+gestión de inventario dirigidas específicamente a esta banda de tamaño:
+**Cin7** (con Cin7 Core, ex-DEAR Systems), **Katana**, **Netstock**,
+**Unleashed**, **Fishbowl**. Cin7 por sí solo reporta 8.500+ clientes,
+concentrados desproporcionadamente en exactamente estas 3 geografías —
+36,6% de sus clientes en Australia, 32,9% en EE.UU., 14,5% en Nueva Zelanda
+(fuente: 6sense, perfil de mercado de Cin7) — y su segmento de cliente
+típico son empresas de **20-49 empleados**, el corazón mismo del ICP de
+Kern. Esto **no invalida el mercado** (8.500 clientes de Cin7 es una
+fracción minúscula de las ~400.000 empresas calificadas) pero cambia el
+mensaje de venta: en LATAM la competencia real es "Excel/ChatGPT" (status
+quo manual); acá la competencia real incluye **herramientas SaaS ya
+establecidas y con base de clientes real** — el argumento de venta no
+puede ser solo "somos la primera herramienta digital," tiene que ser
+**desplazamiento por profundidad analítica** (Cin7/Katana/Netstock hacen
+seguimiento y alertas de inventario; ninguno de los tres, por lo que se
+encontró en esta investigación, ofrece el paquete completo de Kern de
+forecasting econométrico + DDMRP + S&OP + pricing por elasticidad +
+citas a literatura + QA-gate — son herramientas de *tracking*, no el motor
+analítico de 37 tools que vende Kern). No se encontró (ni se esperaba
+encontrar) una cifra de "% de mercado ya cubierto por estas herramientas"
+— con 8.500 clientes de contra ~400.000 empresas calificadas, la
+penetración de categoría sigue siendo baja en términos absolutos.
+
+**Otra ventaja estructural, VERIFICADA directamente:** cero fricción de
+idioma. El motor de Kern es **nativamente en inglés** — `src/i18n.py`
+confirma que `Deliverable.lang` default es `"en"` porque es el mismo
+idioma que usan los ~37 decks individuales de cada tool (no hicieron falta
+traducir para servir a EE.UU./UK/Australia; al revés, fue LATAM el que
+necesitó el trabajo adicional de E4/bilingüismo para llegar a "es"). Esto
+es lo opuesto al bloqueo real que sí existe para Brasil (§2.7) — acá no
+hay ningún proyecto de producto pendiente para vender en estos 3 países,
+el producto ya habla su idioma por defecto.
+
+### 4.4 Síntesis: ¿EE.UU./UK/Australia o LATAM primero?
+
+Esta pregunta ya tenía una respuesta parcial antes de esta sesión —
+`MONETIZATION_BRIEF.md` señaló a EE.UU./UK como vía principal — pero sin el
+dimensionamiento propio de esta sección. Con datos bottom-up de los dos
+lados, la recomendación se puede afinar:
+
+**A favor de EE.UU. como Fase 1 (no LATAM):**
+1. Pool calificado ~50% más grande (~330.000 solo EE.UU. vs. ~268.000 las
+   4 geografías LATAM combinadas).
+2. **Cero fricción de idioma** (motor nativamente en inglés) vs. LATAM,
+   que sí necesitó trabajo de producto (E4) para llegar a español.
+3. Ancla de precio ya más alta y ya validada (`MONETIZATION_BRIEF.md`:
+   consultoría SC en EE.UU. USD 50-500/h, retainers USD 3.000-15.000/mes;
+   el mismo documento ya recomienda vender "en inglés a marcas Shopify/DTC
+   de USD 1-10M" en la ventana de 90 días).
+4. El plan de 30-90 días que YA existe (`MONETIZATION_BRIEF.md`) arranca
+   justamente con Upwork — un marketplace global/anglo por diseño — para
+   el primer caso de estudio, antes de mencionar el módulo Odoo LATAM.
+
+**A favor de mantener México como Fase 1 (no EE.UU.):**
+1. Competencia real instalada en EE.UU./UK/Australia (Cin7/Katana/
+   Netstock) exige un mensaje de desplazamiento más sofisticado — en
+   México, "ChatGPT + Excel" sigue siendo la competencia real, ciclo de
+   venta más simple de ganar para un operador que recién empieza.
+2. Canal Odoo ya identificado y con checklist lista para ejecutar
+   (`GTM_SUBMISSIONS.md`) — un activo concreto y ya preparado, mientras que
+   el canal anglo (Upwork → caso de estudio → posicionamiento fractional)
+   es más genérico y depende más de la habilidad comercial del operador en
+   inglés.
+3. Si el operador tiene más red/confianza en español que en inglés (no
+   verificable desde el código — es una pregunta sobre la persona, no
+   sobre el mercado), el costo de adquisición real puede ser más bajo en
+   LATAM aunque el mercado bruto sea más chico.
+
+**Recomendación:** los dos caminos no son mutuamente excluyentes y el plan
+de 30-90 días ya existente los combina — pero si hay que elegir **un solo**
+mercado para la primera pauta paga (no el primer cliente, que ya se
+recomienda cerrar vía Upwork/red antes de gastar en ads), los datos
+bottom-up de esta sesión inclinan la balanza hacia **EE.UU.**, no México:
+mercado más grande, cero fricción de producto, y precio ancla más alto ya
+validado. México sigue siendo la recomendación correcta **dentro del
+universo LATAM** (§2.7) si el criterio de decisión es otro (menor
+competencia, canal Odoo ya armado, o ventaja de red del operador en
+español) — este documento no puede resolver esa última variable por vos,
+solo dimensionar ambos lados con el mismo rigor.
+
+**Reino Unido y Australia:** de menor prioridad que EE.UU. dentro del
+propio bloque anglo (pools calificados ~8-9x más chicos: ~38.000 y ~36.000
+respectivamente vs. ~330.000 de EE.UU.), pero de alta calidad de dato (las
+3 cifras de tamaño son VERIFICADAS con fuente oficial). Candidatos
+naturales de Fase 2 anglo, en cualquier orden — UK si importa cercanía
+horaria/cultural a Europa, Australia porque es, literalmente, donde nació
+Cin7 (mercado ya educado en la categoría, con ventajas y desventajas: más
+fácil explicar qué es un "motor de inventario," más difícil desplazar a un
+jugador local).
+
+---
+
 ## Fuentes citadas (mercado, jul 2026)
 
 - Argentina — Resolución 1/2026 (SICYPYME), Boletín Oficial 31-mar-2026;
@@ -740,3 +943,25 @@ secundario.** Justificación:
   IBP (~USD 100.000/año de entrada, orientado a medianas-grandes/grandes
   empresas), contrastado contra el techo de precio de Kern (USD 12.000/mes
   = USD 144.000/año en su paquete más caro).
+
+**Mercados anglo (§4, jul 2026):**
+- EE.UU. — SBA, Table of Size Standards (por NAICS); conteo de empresas
+  10-499 empleados vía compilación de datos censales (NAICS Association,
+  "US Business Firmographics"); % sectorial retail/manufactura vía cifras
+  de participación de "small businesses" por sector (fuente secundaria);
+  mayorista estimado por analogía sin cifra propia.
+- Reino Unido — Companies Act 2006 (umbrales actualizados abr-2025, vía
+  ICAEW/RSM UK); GOV.UK, Business Population Estimates for the UK and
+  Regions 2024 (conteo por tamaño y % sectorial wholesale/retail);
+  GBP/USD ~1,34 (jul-2026).
+- Australia — ATO (definición de turnover small/medium business); ABS,
+  Counts of Australian Businesses including Entries and Exits, jul-2024;
+  AUD/USD ~0,696 (jul-2026).
+- Competencia SaaS de inventario (Cin7/Katana/Netstock/Unleashed/
+  Fishbowl) — perfil de mercado y conteo de clientes de Cin7 vía 6sense
+  ("Cin7 - Market Share, Competitor Insights").
+- Digitalización mínima EE.UU./UK/Australia — sin fuente country-específica
+  size-segmentada encontrada esta sesión; único dato duro es general y
+  desactualizado (64,4% de PyMEs de EE.UU. usaba software contable en 2016,
+  sin desglose por tamaño) — el ~90-95% usado en el cálculo es un supuesto
+  propio razonado, no una medición directa.

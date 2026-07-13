@@ -139,14 +139,60 @@ dijera explicitamente.
 geografia mejor digitalizada — refuerza (no cambia) la recomendacion de
 Fase 1 = piloto en Mexico.
 
-**Que sigue (no arrancado esta sesion):** publicar el modulo Odoo (checklist
-ya lista en `GTM_SUBMISSIONS.md`) para tener el primer canal LATAM medible;
-correr una campana piloto chica en Mexico (+ Argentina) para calibrar el
-embudo real antes de expandir a Colombia/Chile; buscar el desglose exacto
-Pequena/Mediana de Chile directo en sii.cl y una encuesta TIC Argentina-
-especifica con desglose por tamano (INDEC/SEPYME) si esas geografias se
-priorizan antes de lo esperado; investigar Peru si se confirma como 5to
-mercado.
+**Actualizacion 2026-07-13 (cuarta ronda, mismo PR #142): extension a
+EE.UU./UK/Australia — §4 nueva, "¿EE.UU. o LATAM primero?" respondida con
+numeros propios.** `MONETIZATION_BRIEF.md` (investigacion previa a esta
+sesion) ya habia concluido que EE.UU./UK es la via PRINCIPAL de
+monetizacion (marcas Shopify/DTC USD 1-10M, "fractional supply chain
+operator"), con LATAM como canal secundario — pero sin un dimensionamiento
+bottom-up propio. Esta ronda se lo puso:
+
+- **EE.UU. ~330.000 empresas calificadas** (VERIFICADO: SBA size standards
+  + compilacion censal 10-499 empleados ~1,49M; ESTIMADO: filtro sectorial
+  ~24% + digitalizacion ~92%, sin fuente country-especifica size-segmentada
+  para digitalizacion, a diferencia de Mexico en LATAM).
+- **UK ~38.000** (VERIFICADO: Companies Act 2006 + GOV.UK Business
+  Population Estimates 2024, 257.800 empresas 10-249 empleados).
+- **Australia ~36.000** (VERIFICADO: ATO + ABS Counts of Australian
+  Businesses jun-2024, 299.538 empresas 5-199 empleados).
+- **Total anglo ~404.000 (3 paises) > total LATAM ~268.000 (4 paises),
+  ~50% mas grande.**
+
+**Diferencia estructural clave, no solo de tamano:** en LATAM la
+competencia real es "Excel/ChatGPT" (~0% overlap con SAP IBP). En EE.UU./
+UK/Australia SI hay competencia SaaS real y establecida — Cin7 (ex-DEAR
+Systems)/Katana/Netstock/Unleashed/Fishbowl. Cin7 solo reporta 8.500+
+clientes, 36,6% en Australia + 32,9% en EE.UU., sweet spot 20-49 empleados
+(el corazon del ICP de Kern) — el mensaje de venta ahi tiene que ser
+desplazamiento por profundidad analitica (forecasting + DDMRP + S&OP +
+pricing + citas L3 + QA-gate, que ninguna de esas herramientas de
+*tracking* ofrece), no "primera herramienta digital." Contrapartida
+favorable VERIFICADA: cero friccion de idioma — el motor es nativamente en
+ingles (`src/i18n.py`: `Deliverable.lang` default `"en"`, es el idioma
+nativo de los ~37 decks individuales; fue LATAM el que necesito el trabajo
+bilingue E4, no al reves).
+
+**Recomendacion (§4.4): si hay que elegir UN SOLO mercado para la primera
+pauta paga, los datos inclinan a EE.UU. sobre Mexico** — mercado mas
+grande, cero friccion de producto, precio ancla ya mas alto y validado
+(consultoria SC US $50-500/h, retainers $3-15k/mes), y coincide con el plan
+de 30-90 dias que YA existe en `MONETIZATION_BRIEF.md` (arranca con Upwork,
+un marketplace anglo, para el primer caso de estudio antes de mencionar el
+modulo Odoo LATAM). Mexico sigue siendo la mejor opcion SI el criterio de
+decision es otro (menor competencia real, canal Odoo ya armado con
+checklist lista, o ventaja de red del operador en espanol) — esa ultima
+variable es sobre la persona, no sobre el mercado, y este documento no la
+puede resolver.
+
+**Que sigue (no arrancado esta sesion):** decidir el mercado de la primera
+pauta paga (EE.UU. vs. Mexico, ver arriba); publicar el modulo Odoo
+(checklist ya lista en `GTM_SUBMISSIONS.md`) para tener el primer canal
+LATAM medible en paralelo; correr una campana piloto chica para calibrar el
+embudo real en cualquiera de los dos antes de escalar presupuesto; buscar
+una encuesta de digitalizacion size-segmentada para EE.UU./UK/Australia (no
+se encontro esta sesion, se uso un supuesto propio) y para Argentina
+(mismo gap); buscar el desglose exacto Pequena/Mediana de Chile directo en
+sii.cl; investigar Peru si se confirma como 5to mercado LATAM.
 
 ## 2026-07-12 — Rename: Linchpin -> Kern (interno COMPLETO; checklist EXTERNA abajo)
 
