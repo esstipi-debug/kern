@@ -1,7 +1,9 @@
 """Track B -- SEO (Linchpin 3.0 plan section 8). ``crawl_audit`` (S1 technical
 SEO audit checks, PR-22). ``schema_gen``/``feeds``/``llms_txt`` (S2 schema and
 feed generation from a client's own catalog, PR-23). ``pdp_writer`` (S3 PDP
-content generation, PR-24). A later PR adds ``geo_probe`` (S5) alongside them.
+content generation, PR-24). ``geo_probe`` (S5 GEO visibility / share of
+voice, PR-25 -- the final module of the plan). S4 (``inventory_aware_seo``)
+lives in ``jobs/seo_priority.py`` (cero deps -- no ``src/seo`` module).
 """
 
 from __future__ import annotations
@@ -52,6 +54,20 @@ from .feeds import (
     write_excluded_csv,
     write_generic_json_feed,
     write_merchant_feed_xml,
+)
+from .geo_probe import (
+    BRAND_MENTION_FUZZY_THRESHOLD,
+    CLAUDE_ENGINE_LABEL,
+    SINGLE_SANCTIONED_ENGINE_CAVEAT,
+    GeoLlmModel,
+    ProbeError,
+    ProbeResult,
+    ShareOfVoiceSummary,
+    aggregate_share_of_voice,
+    build_claude_probe,
+    detect_brand_mention,
+    run_probe,
+    run_probe_set,
 )
 from .llms_txt import (
     DEFAULT_SECTION,
@@ -208,4 +224,17 @@ __all__ = [
     "missing_required_llms_fields",
     "validate_llms_txt",
     "write_llms_txt",
+    # geo_probe (S5)
+    "BRAND_MENTION_FUZZY_THRESHOLD",
+    "CLAUDE_ENGINE_LABEL",
+    "SINGLE_SANCTIONED_ENGINE_CAVEAT",
+    "GeoLlmModel",
+    "ProbeError",
+    "ProbeResult",
+    "ShareOfVoiceSummary",
+    "aggregate_share_of_voice",
+    "build_claude_probe",
+    "detect_brand_mention",
+    "run_probe",
+    "run_probe_set",
 ]
