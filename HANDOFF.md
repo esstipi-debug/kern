@@ -22,6 +22,178 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-07-13 — ICP LATAM + kit de publicidad (docs only, PR draft, worktree `.wt-kern-icp`)
+
+**Read this section first if you're picking up the "quien es el cliente
+final" thread.** Two new docs, both PR-ready as pure documentation (no code
+touched, so no ruff/pytest gate applies): `documentation/ICP_Y_DIMENSIONAMIENTO.md`
+(the full research — product truth VERIFICADO against code, LATAM market
+research VERIFICADO/ESTIMADO, the 6 questions from the brief answered
+explicitly) and `documentation/KIT_PUBLICIDAD.md` (ready-to-use ad assets:
+ICP one-pager, value prop, 5 message angles, buyer×package table, prohibited
+claims list).
+
+**Headline findings, so a fresh session doesn't have to re-derive them:**
+- **ICP primario:** retailer/distribuidor/manufactura liviana LATAM, USD
+  1-15M facturación anual, sin equipo propio de data science, comprador es
+  dueño/CEO (PyME chica) o director de Ops/SC/Compras + COO/CFO (mid-market).
+  Ver `ICP_Y_DIMENSIONAMIENTO.md` §3.1 para el ICP secundario y los
+  disqualifiers.
+- **Correccion importante al propio brief que origino esta tarea:** el
+  supuesto "conectores Mercado Libre + Odoo" es **falso** — grep completo del
+  repo confirma que Mercado Libre no existe en ningun lado del codigo. Los
+  unicos conectores reales son Odoo (`src/connectors/odoo.py`) y Excel
+  (`src/connectors/excel.py`); Shopify/Amazon son placeholders de diseno
+  futuro (`emulator.py`/`simulator.py`), no productos. **No repetir el claim
+  de Mercado Libre en material de venta.**
+- **Case studies reales: no existen todavia.** `case-studies/CASE_STUDIES.md`
+  son ejercicios de libro de texto (dice literalmente que los case studies de
+  marketing anteriores eran placeholders) — cualquier cifra de "$ ahorrados"
+  en pauta hoy tiene que venir de un rango de mercado citado, nunca
+  presentarse como resultado propio de un cliente real.
+- **Autonomia end-to-end (82%/75-80%/40-50%): sigue STALE.** No se encontro
+  un re-calculo posterior al cierre de los 5 gaps (#130/#132/#133/#135/#139)
+  en `main` — un numero real requiere re-correr el workflow de auditoria, no
+  solo leer el codigo. No usar esos porcentajes en material publico hasta
+  re-auditar; el claim de venta seguro es el contrato estructural
+  (`src/guided.py`: 4 desenlaces, 3 de 4 necesitan humano — eso si es
+  100% verificable y estable).
+- **Tool count confirmado sin cambios:** 37 tools registradas
+  (`scm_agent/tools.py`), 33 expuestas via MCP (gap sigue siendo
+  `excel_replenishment`/`leadership_chain`/`odoo_replenishment`/
+  `warehouse_layout`, sin cambio desde la auditoria previa).
+- **Dimensionamiento bottom-up (Argentina + Mexico, con fuentes oficiales
+  reales — SICYPYME/Boletin Oficial AR, INEGI Censos Economicos 2024 MX):**
+  ~199.000 empresas Pequena+Mediana en sectores con inventario fisico entre
+  los dos paises. Colombia/Chile NO investigados esta sesion — no
+  extrapolar. El eslabon mas debil del embudo es "alcanzable por pauta
+  digital -> lead -> cierre", que no tiene benchmark LATAM propio (se uso un
+  supuesto conservador marcado ESTIMADO) — recomendacion: correr una
+  campana piloto chica para calibrar antes de comprometer presupuesto.
+- **Tension no resuelta con `MONETIZATION_BRIEF.md`:** ese doc ya concluyo
+  que la via principal de monetizacion de corto plazo es marcas Shopify/DTC
+  US/UK (fractional supply chain operator, en ingles), con LATAM/Odoo como
+  canal SECUNDARIO. Esta tarea profundizo el angulo LATAM porque eso es lo
+  que se pidio, sin sobreescribir esa conclusion previa — ver
+  `ICP_Y_DIMENSIONAMIENTO.md` §2.1 antes de tratar LATAM como el plan
+  principal en una decision de presupuesto real.
+- **Nota metodologica:** 5 agentes en paralelo (extraccion de one-pagers,
+  verificacion de codigo, 3 angulos de market research) fallaron al arrancar
+  por limite de sesion de la API ("session limit, resets 9:30pm
+  America/Santiago") — el trabajo se rehizo en el hilo principal con
+  Grep/Read directos + WebSearch/WebFetch secuencial en vez de reintentar
+  con mas agentes paralelos. Si esto se repite, preferir llamadas directas
+  secuenciales sobre relanzar varios agentes a la vez.
+
+**Actualizacion 2026-07-13 (mismo dia, mismo PR #142): dimensionamiento
+extendido a Colombia y Chile + recomendacion de alcance geografico.**
+`documentation/ICP_Y_DIMENSIONAMIENTO.md` §2.6-2.7 ahora cubre las 4
+geografias con fuentes oficiales (Colombia: Decreto 957/Confecamaras;
+Chile: Ley 20.416/SII — el desglose exacto Pequena vs Mediana de Chile no
+se encontro publico esta sesion, quedo como estimado de rango amplio,
+marcado como tal). El pool ICP combinado sube de ~199.000 (solo AR+MX) a
+~367.000 empresas (AR+MX+CO+CL). **Recomendacion de alcance (no ejecutar
+las 4 geografias a la vez):** Fase 1 = piloto en Mexico (el mercado
+individual mas grande, unica senal cualitativa de traccion en el
+ecosistema Odoo) opcionalmente + Argentina via canales calidos; Fase 2 =
+sumar Colombia y Chile una vez calibrado CPL/cierre real; Peru queda como
+candidato sin investigar; **Brasil queda fuera de alcance** hasta que el
+producto tenga soporte de portugues (`src/i18n.py` verificado: solo
+`es`/`en`) — es un bloqueo de producto, no de mercado.
+
+**Actualizacion 2026-07-13 (tercera ronda, mismo PR #142): filtro de
+calificacion real (el pedido explicito era "este filtro es demasiado
+grueso").** El calculo original (censo por tamano x sector, ~367.000) solo
+captaba poder adquisitivo y sector — no si la empresa REALMENTE puede
+operar Kern. `ICP_Y_DIMENSIONAMIENTO.md` §2.6 ahora tiene la cadena
+completa: Paso 0 (registro formal, ya implicito en los censos, sin cambio
+numerico) -> Paso 1-2 (tamano+sector, sin cambio, ~367.000) -> **Paso 3
+(digitalizacion minima, el filtro que mas recorta): ~367.000 -> ~268.000**
+(retiene ~73%) -> Paso 4 (competencia enterprise SAP IBP/Blue Yonder,
+impacto ~0% confirmado por precio de lista ~USD 100k/año, no por censo) ->
+Paso 5 (complejidad de SKUs, sin dato censal, advertencia cualitativa
+explicita, no un recorte numerico) -> Paso 6 (el embudo hacia metas de
+ingreso, ahora arranca de ~268.000 no de ~367.000).
+
+**Digitalizacion por pais** (Pequena+Mediana especificamente, no Micro):
+Mexico ~86% (VERIFICADO, INEGI ENAPROCE/Censo 2024, fuerte — desglosado por
+tamano); Colombia ~70% (ESTIMADO, ACOPI 2024 + estudio Innpulsa/Centro
+Nacional de Consultoria 2024, dos fuentes institucionales convergentes);
+Chile ~55% (ESTIMADO, CORFO Indice de Transformacion Digital 2021, baja
+confianza — agregado "MiPyme" sin desglose de tamano); **Argentina: NO
+RELIABLE SOURCE FOUND especifica** (se descarto un claim de vendor —
+Acumatica, "5,9% ERP en la nube" — por ser contenido comercial y medir algo
+mas angosto de lo buscado; se uso el rango 55-85% de los otros 3 paises
+como cota explicita, no como medicion).
+
+**Hallazgo no obvio que vale la pena recordar:** el recorte de
+digitalizacion es mas moderado de lo que se podria temer (~27%, no un
+desplome) porque la banda Pequena+Mediana YA excluye Micro, que es donde la
+digitalizacion realmente se desploma (en Mexico, Micro es ~20-23%
+digitalizada contra ~85% de Pequena) — el filtro de tamano del Paso 1 ya
+estaba haciendo buena parte de este trabajo sin que el documento original lo
+dijera explicitamente.
+
+**Efecto sobre la recomendacion de alcance (§2.7):** Mexico sube de ~41% a
+**~48% del total de 4 paises** tras el filtro, porque ademas es la
+geografia mejor digitalizada — refuerza (no cambia) la recomendacion de
+Fase 1 = piloto en Mexico.
+
+**Actualizacion 2026-07-13 (cuarta ronda, mismo PR #142): extension a
+EE.UU./UK/Australia — §4 nueva, "¿EE.UU. o LATAM primero?" respondida con
+numeros propios.** `MONETIZATION_BRIEF.md` (investigacion previa a esta
+sesion) ya habia concluido que EE.UU./UK es la via PRINCIPAL de
+monetizacion (marcas Shopify/DTC USD 1-10M, "fractional supply chain
+operator"), con LATAM como canal secundario — pero sin un dimensionamiento
+bottom-up propio. Esta ronda se lo puso:
+
+- **EE.UU. ~330.000 empresas calificadas** (VERIFICADO: SBA size standards
+  + compilacion censal 10-499 empleados ~1,49M; ESTIMADO: filtro sectorial
+  ~24% + digitalizacion ~92%, sin fuente country-especifica size-segmentada
+  para digitalizacion, a diferencia de Mexico en LATAM).
+- **UK ~38.000** (VERIFICADO: Companies Act 2006 + GOV.UK Business
+  Population Estimates 2024, 257.800 empresas 10-249 empleados).
+- **Australia ~36.000** (VERIFICADO: ATO + ABS Counts of Australian
+  Businesses jun-2024, 299.538 empresas 5-199 empleados).
+- **Total anglo ~404.000 (3 paises) > total LATAM ~268.000 (4 paises),
+  ~50% mas grande.**
+
+**Diferencia estructural clave, no solo de tamano:** en LATAM la
+competencia real es "Excel/ChatGPT" (~0% overlap con SAP IBP). En EE.UU./
+UK/Australia SI hay competencia SaaS real y establecida — Cin7 (ex-DEAR
+Systems)/Katana/Netstock/Unleashed/Fishbowl. Cin7 solo reporta 8.500+
+clientes, 36,6% en Australia + 32,9% en EE.UU., sweet spot 20-49 empleados
+(el corazon del ICP de Kern) — el mensaje de venta ahi tiene que ser
+desplazamiento por profundidad analitica (forecasting + DDMRP + S&OP +
+pricing + citas L3 + QA-gate, que ninguna de esas herramientas de
+*tracking* ofrece), no "primera herramienta digital." Contrapartida
+favorable VERIFICADA: cero friccion de idioma — el motor es nativamente en
+ingles (`src/i18n.py`: `Deliverable.lang` default `"en"`, es el idioma
+nativo de los ~37 decks individuales; fue LATAM el que necesito el trabajo
+bilingue E4, no al reves).
+
+**Recomendacion (§4.4): si hay que elegir UN SOLO mercado para la primera
+pauta paga, los datos inclinan a EE.UU. sobre Mexico** — mercado mas
+grande, cero friccion de producto, precio ancla ya mas alto y validado
+(consultoria SC US $50-500/h, retainers $3-15k/mes), y coincide con el plan
+de 30-90 dias que YA existe en `MONETIZATION_BRIEF.md` (arranca con Upwork,
+un marketplace anglo, para el primer caso de estudio antes de mencionar el
+modulo Odoo LATAM). Mexico sigue siendo la mejor opcion SI el criterio de
+decision es otro (menor competencia real, canal Odoo ya armado con
+checklist lista, o ventaja de red del operador en espanol) — esa ultima
+variable es sobre la persona, no sobre el mercado, y este documento no la
+puede resolver.
+
+**Que sigue (no arrancado esta sesion):** decidir el mercado de la primera
+pauta paga (EE.UU. vs. Mexico, ver arriba); publicar el modulo Odoo
+(checklist ya lista en `GTM_SUBMISSIONS.md`) para tener el primer canal
+LATAM medible en paralelo; correr una campana piloto chica para calibrar el
+embudo real en cualquiera de los dos antes de escalar presupuesto; buscar
+una encuesta de digitalizacion size-segmentada para EE.UU./UK/Australia (no
+se encontro esta sesion, se uso un supuesto propio) y para Argentina
+(mismo gap); buscar el desglose exacto Pequena/Mediana de Chile directo en
+sii.cl; investigar Peru si se confirma como 5to mercado LATAM.
+
 ## 2026-07-12 — Rename: Linchpin -> Kern (interno COMPLETO; checklist EXTERNA abajo)
 
 **Que paso:** el proyecto se llama **Kern** (aleman: nucleo). No es cosmetico —
