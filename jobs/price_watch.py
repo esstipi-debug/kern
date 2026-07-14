@@ -60,24 +60,62 @@ persisting every ``confirmed``/``suspect`` row to the versioned
 docstring for the exact safety invariant), and :func:`write_homologation`
 publishes the resulting table as ``homologation_table.csv`` plus a separate
 ``homologation_unmatched.csv`` (golden rule 14 -- nothing dropped silently).
+
+Task 6 / PR-6 adds the recurring half of the playbook: :func:`run_price_watch_cycle`
+re-acquires the CURRENT price for every CONFIRMED ``sku_map`` pair via the
+L1 structured-data PDP path -- ``pdp_fetcher.fetch_pdp_html`` gated by
+``require_approved_site``/``CircuitBreaker``, EXACTLY
+``jobs.price_intelligence.py``'s own ``_acquire_one`` discipline (never
+reinvented) -- and converges on ``jobs.price_monitor.accept_observation``
+for every sanity-gate/ledger-append/market-signal-event decision (REUSED
+verbatim, never a second implementation -- see that module's own docstring
+for why one pipeline must serve every acquisition tier). Registered as
+:data:`PRICE_WATCH_JOB` with ``jobs.scheduler.JobRegistry`` -- same
+``run_once()``-in-tests, no-daemon-no-sleep discipline as
+``jobs.price_monitor.PRICE_MONITOR_JOB`` (golden rule 9).
+
+Scoping which confirmed pairs this cycle should touch needs no new tag:
+``SkuMap.list_all_confirmed()`` enumerates every confirmed pair across the
+WHOLE store (any site, any match method), and the per-pair
+``SiteConfig.max_tier_allowed`` ceiling check (identical to
+``price_intelligence._acquire_one``'s own) is what naturally separates a
+site this cycle should re-acquire at L1 from one it must not touch -- e.g.
+a MercadoLibre pair confirmed for ``jobs.price_monitor``'s own L0 poll is
+approved only to L0 (``config/sites/meli-api.test.yaml``), so this cycle's
+L1 attempt against it is honestly reported ``skipped: tier_not_approved``,
+never fetched and never silently escalated (raising a site's approved
+ceiling is explicitly a LATER PR's concern, not this cycle's -- it only
+ever skips honestly here).
 """
 
 from __future__ import annotations
 
+from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
 import pandas as pd
 
+from jobs.price_monitor import PairOutcome, accept_observation
 from jobs.seo_audit import AdvertoolsUnavailableError, _ensure_scripts_on_path, pages_from_crawl_dataframe
+from scm_agent.events import Event, EventLedger
 from src.export import write_summary_csv
 from src.pricing_intel.acquire import base
 from src.pricing_intel.acquire.auto_approve import OnboardingResult, auto_approve_site
 from src.pricing_intel.acquire.pdp_fetcher import USER_AGENT as DEFAULT_USER_AGENT
+from src.pricing_intel.acquire.pdp_fetcher import FetchError, fetch_pdp_html
 from src.pricing_intel.discover import DiscoveredProduct, filter_product_pages
+from src.pricing_intel.extract import ExtractionFailed, extract_price
 from src.pricing_intel.homologate import HomologationReport, HomologationRow, homologate
-from src.pricing_intel.match.sku_map import SkuMap, default_sku_map
-from src.pricing_intel.models import MatchCandidate
+from src.pricing_intel.ledger import PriceLedger, default_ledger
+from src.pricing_intel.match.sku_map import SkuMap, SkuMapEntry, default_sku_map
+from src.pricing_intel.models import ACQUISITION_TIERS, MatchCandidate
+from src.pricing_intel.normalize import detect_promo
+from src.pricing_intel.sanity import RawOfferCandidate
+
+from .scheduler import ScheduledJob
 
 # Same politeness posture as jobs/seo_audit.py::_crawl_domain -- a small,
 # fixed per-request delay and a low per-domain concurrency, never tuned up
@@ -403,3 +441,226 @@ def write_homologation(
     _ = client
 
     return written
+
+
+# -- Task 6 / PR-6: recurring re-acquisition of confirmed discovery pairs ----
+
+SOURCE = "jobs.price_watch"
+
+# Production trigger: same documented-midpoint config-knob spirit as
+# jobs.price_monitor.DEFAULT_CADENCE_HOURS -- this module's OWN knob (each
+# recurring job owns its own cadence, not a shared constant), independently
+# tunable without touching the L0 MELI poll's cadence.
+DEFAULT_CADENCE_HOURS = 4
+
+
+def _check_one_pair(
+    entry: SkuMapEntry,
+    *,
+    ledger: PriceLedger,
+    event_ledger: EventLedger | None,
+    site_configs: dict[str, object],
+    breakers: dict[str, base.CircuitBreaker],
+    client: httpx.Client,
+    sites_config_dir: str | Path | None,
+    now: datetime,
+) -> PairOutcome:
+    """Re-acquire one CONFIRMED ``sku_map`` pair via the L1 structured-data
+    PDP path -- the EXACT same require_approved_site -> tier-ceiling ->
+    CircuitBreaker -> fetch -> classify_blocking_signal -> extract discipline
+    as ``jobs.price_intelligence.py``'s own ``_acquire_one`` (never
+    reinvented; ``site_configs``/``breakers`` are per-cycle caches keyed by
+    domain, the identical shape that function uses so a domain with multiple
+    confirmed pairs shares ONE ``SiteConfig``/``CircuitBreaker`` for the
+    whole cycle rather than re-loading/re-constructing per pair).
+
+    The final sanity-gate -> ledger-append -> market-signal-event decision
+    is made ENTIRELY by :func:`jobs.price_monitor.accept_observation` --
+    this function only assembles the :class:`RawOfferCandidate` and hands it
+    off; it never itself decides accepted/quarantined/discarded (that
+    decision, and every ``Event`` reported back, always originates from
+    ``accept_observation``, converged exactly as the task brief requires).
+    """
+    base_fields = dict(site=entry.site, competitor_sku_ref=entry.competitor_sku_ref, matched_product_id=entry.our_product_id)
+
+    if entry.site not in site_configs:
+        try:
+            kwargs = {} if sites_config_dir is None else {"config_dir": sites_config_dir}
+            config = base.require_approved_site(entry.site, **kwargs)
+            site_configs[entry.site] = config
+            breakers[entry.site] = base.CircuitBreaker.for_site(config)
+        except (base.SiteNotConfiguredError, base.SiteNotApprovedError) as exc:
+            site_configs[entry.site] = exc
+    cached = site_configs[entry.site]
+    if isinstance(cached, Exception):
+        return PairOutcome(**base_fields, status="skipped", reason=f"site_not_approved:{type(cached).__name__}")
+    config = cached
+    # This cycle only ever re-acquires at L1 (structured-data PDP
+    # extraction) -- a domain approved only up to L0 (e.g. a MercadoLibre
+    # pair confirmed for jobs.price_monitor's own scheduled poll, see this
+    # module's docstring) must not be touched here even though its ToS/
+    # robots decision is otherwise "approved". Honestly skipped, NEVER
+    # silently escalated to try anyway -- raising a site's own ceiling is
+    # explicitly a later PR's concern, not this cycle's.
+    if ACQUISITION_TIERS.index("L1") > ACQUISITION_TIERS.index(config.max_tier_allowed):
+        return PairOutcome(**base_fields, status="skipped", reason="tier_not_approved")
+    breaker = breakers[entry.site]
+
+    if not breaker.allow_request(now):
+        return PairOutcome(**base_fields, status="skipped", reason="circuit_open")
+
+    result = fetch_pdp_html(entry.competitor_sku_ref, client=client, now=now)
+    if isinstance(result, FetchError):
+        # A transport-level failure is NOT a blocking signal
+        # (classify_blocking_signal's own docstring) -- an ordinary
+        # transient failure must not trip the breaker, and is never retried
+        # within this cycle (the next scheduled cycle is the only retry).
+        return PairOutcome(**base_fields, status="skipped", reason=f"fetch_error:{result.reason}")
+
+    blocking = base.classify_blocking_signal(status_code=result.status_code, html=result.html)
+    if blocking is not None:
+        # Degrade-only, NEVER a retry (NON-GOAL 1): one failed attempt is
+        # recorded against the breaker and this pair is honestly skipped --
+        # no second request against the same URL happens in this cycle.
+        breaker.record_failure(reason=blocking, now=now, ledger=event_ledger)
+        return PairOutcome(**base_fields, status="skipped", reason=f"blocked:{blocking}")
+    breaker.record_success()
+
+    if result.html is None or result.status_code != 200:
+        return PairOutcome(**base_fields, status="skipped", reason=f"fetch_failed:status_{result.status_code}")
+
+    try:
+        extraction = extract_price(result.html)
+    except ExtractionFailed as exc:
+        if event_ledger is not None:
+            event_ledger.emit(Event(
+                type="extraction_failed", severity="warning", source=SOURCE,
+                dedup_key=f"extraction_failed:{entry.site}:{entry.competitor_sku_ref}:{now.isoformat()}",
+                sku=entry.our_product_id,
+                payload={"site": entry.site, "competitor_sku_ref": entry.competitor_sku_ref, "attempts": list(exc.attempts)},
+                ts=now,
+            ))
+        return PairOutcome(**base_fields, status="skipped", reason="extraction_failed")
+
+    # A price successfully extracted from a live PDP but with no stated
+    # availability is assumed InStock -- same documented business assumption
+    # as jobs.price_intelligence._acquire_one (see that function's own
+    # comment); selector/price-parser cascade tiers never state availability
+    # at all.
+    availability = extraction.availability or "InStock"
+    candidate = RawOfferCandidate(
+        observed_at=now, site=entry.site, competitor_sku_ref=entry.competitor_sku_ref,
+        matched_product_id=entry.our_product_id, match_confidence=1.0,  # sku_map already CONFIRMED this pair
+        price=extraction.price, currency=extraction.currency, price_normalized=None,
+        shipping=None, availability=availability,
+        promo_flag=detect_promo(extraction.price, extraction.list_price),
+        list_price=extraction.list_price, acquisition_tier="L1",
+        extractor=extraction.extractor, extractor_version=extraction.extractor_version,
+        extraction_confidence=extraction.confidence,
+    )
+    # CONVERGE HERE (the task's one CRITICAL invariant): every sanity-gate ->
+    # ledger-append -> market-signal-event decision for this candidate is
+    # made by the SAME accept_observation() jobs.price_monitor's own L0 path
+    # calls -- this function never re-implements any part of that pipeline.
+    outcome = accept_observation(candidate, ledger=ledger, event_ledger=event_ledger)
+    return PairOutcome(**base_fields, status=outcome.status, reason=outcome.reason, events=outcome.events)
+
+
+@dataclass(frozen=True)
+class PriceWatchCycleReport:
+    """Mirrors ``jobs.price_monitor.PriceMonitorCycleReport``'s exact shape
+    and status vocabulary (accepted/quarantined/discarded/skipped) -- a
+    separate class (rather than reusing that one directly) only because it
+    is a distinct report FOR a distinct cycle, but never a second vocabulary
+    or a second way to compute ``events``/``summary``."""
+
+    now: datetime
+    pairs_checked: int
+    outcomes: tuple[PairOutcome, ...]
+
+    @property
+    def events(self) -> tuple[Event, ...]:
+        return tuple(ev for outcome in self.outcomes for ev in outcome.events)
+
+    @property
+    def summary(self) -> str:
+        if not self.pairs_checked:
+            return "Price watch cycle: no confirmed discovery pair(s) to check."
+        by_status = Counter(o.status for o in self.outcomes)
+        parts = ", ".join(f"{n} {status}" for status, n in sorted(by_status.items()))
+        return f"Price watch cycle: {self.pairs_checked} confirmed discovery pair(s) checked ({parts})."
+
+
+def run_price_watch_cycle(
+    *,
+    sku_map: SkuMap | None = None,
+    ledger: PriceLedger | None = None,
+    event_ledger: EventLedger | None = None,
+    http_client: httpx.Client | None = None,
+    sites_config_dir: str | Path | None = None,
+    now: datetime | None = None,
+) -> PriceWatchCycleReport:
+    """One full continuous-monitoring cycle: every ``sku_map`` pair with
+    ``status == "confirmed"`` (across the WHOLE store -- any site, any match
+    method, see this module's own docstring for why no separate "discovery
+    site" tag is needed) -> re-acquire via the L1 structured-data PDP path
+    -> the shared sanity/ledger/market-signal pipeline
+    (:func:`jobs.price_monitor.accept_observation`).
+
+    Golden rule 9 ("todo componente continuo degrada a batch"): a plain,
+    all-default-kwargs, synchronous function -- directly callable in a test,
+    and exactly the shape ``jobs.scheduler.ScheduledJob.func`` requires (see
+    :data:`PRICE_WATCH_JOB` below). No sleeping, no background thread.
+
+    ``ledger``/``sku_map`` default to ``PriceLedger.default_ledger()`` /
+    ``SkuMap.default_sku_map()`` -- process-wide CACHED singletons -- and
+    are deliberately NEVER closed by this function even when it constructed
+    them itself: closing a shared singleton's connection would break every
+    other caller of ``default_ledger()``/``default_sku_map()`` for the rest
+    of the process (mirrors ``jobs.price_monitor.run_price_monitor_cycle``'s
+    own singleton-lifecycle discipline verbatim -- see that function's
+    docstring). ``event_ledger``/``http_client`` are NOT cached singletons
+    -- those two ARE closed here when this function constructed them itself,
+    leaving a caller-supplied instance of either open (the caller's
+    lifecycle).
+    """
+    now = now or datetime.now(timezone.utc)
+    owns_event_ledger = event_ledger is None
+    owns_client = http_client is None
+    sku_map = sku_map if sku_map is not None else default_sku_map()
+    ledger = ledger if ledger is not None else default_ledger()
+    event_ledger = event_ledger if event_ledger is not None else EventLedger()
+    client = http_client if http_client is not None else httpx.Client()
+
+    try:
+        pairs = sku_map.list_all_confirmed()
+        site_configs: dict[str, object] = {}
+        breakers: dict[str, base.CircuitBreaker] = {}
+        outcomes = tuple(
+            _check_one_pair(
+                e, ledger=ledger, event_ledger=event_ledger, site_configs=site_configs,
+                breakers=breakers, client=client, sites_config_dir=sites_config_dir, now=now,
+            )
+            for e in pairs
+        )
+        return PriceWatchCycleReport(now=now, pairs_checked=len(pairs), outcomes=outcomes)
+    finally:
+        if owns_client:
+            client.close()
+        if owns_event_ledger:
+            event_ledger.close()
+
+
+# Registrable with jobs.scheduler.JobRegistry (F0, PR-3) -- same function,
+# either called directly/via run_once() (tests, CI, golden rule 9) or run
+# under this trigger by a real BackgroundScheduler in production. Same shape
+# as jobs.price_monitor.PRICE_MONITOR_JOB -- a second, independent
+# ScheduledJob entry (not a second detection/scheduling mechanism: both
+# jobs converge on accept_observation, they merely re-acquire via different
+# tiers on their own cadences).
+PRICE_WATCH_JOB = ScheduledJob(
+    id="price_watch_cycle",
+    func=run_price_watch_cycle,
+    trigger="interval",
+    trigger_args={"hours": DEFAULT_CADENCE_HOURS},
+)
