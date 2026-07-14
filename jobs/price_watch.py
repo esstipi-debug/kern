@@ -51,19 +51,33 @@ No silent caps (golden rule 14): a domain that fails either gate (auto-
 approval or the hard compliance re-check) is reported back with a
 machine-readable ``skipped_reason`` and an empty ``discovered`` list --
 never a bare ``[]`` with no explanation, and never an uncaught exception.
+
+Task 5 / PR-5 adds the other end of the playbook: :func:`run_homologation`
+wires :func:`~src.pricing_intel.homologate.homologate` (Task 4) onto
+``prepare()``'s ``discovered`` products against the client's own catalog,
+persisting every ``confirmed``/``suspect`` row to the versioned
+``sku_map`` (never ``rejected``/unmatched rows -- see that function's own
+docstring for the exact safety invariant), and :func:`write_homologation`
+publishes the resulting table as ``homologation_table.csv`` plus a separate
+``homologation_unmatched.csv`` (golden rule 14 -- nothing dropped silently).
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 
 from jobs.seo_audit import AdvertoolsUnavailableError, _ensure_scripts_on_path, pages_from_crawl_dataframe
+from src.export import write_summary_csv
 from src.pricing_intel.acquire import base
 from src.pricing_intel.acquire.auto_approve import OnboardingResult, auto_approve_site
 from src.pricing_intel.acquire.pdp_fetcher import USER_AGENT as DEFAULT_USER_AGENT
 from src.pricing_intel.discover import DiscoveredProduct, filter_product_pages
+from src.pricing_intel.homologate import HomologationReport, HomologationRow, homologate
+from src.pricing_intel.match.sku_map import SkuMap, default_sku_map
+from src.pricing_intel.models import MatchCandidate
 
 # Same politeness posture as jobs/seo_audit.py::_crawl_domain -- a small,
 # fixed per-request delay and a low per-domain concurrency, never tuned up
@@ -215,3 +229,158 @@ def prepare(seed_url: str, params: dict | None = None) -> dict:
         "site_config": site_config,
         "skipped_reason": None,
     }
+
+
+# -- Task 5 / PR-5: persist homologation + publish the table ----------------
+
+
+def _persist_row(sku_map: SkuMap, row: HomologationRow, *, now: datetime) -> None:
+    """Append one ``confirmed``/``suspect`` :class:`HomologationRow` to
+    ``sku_map`` as a new, versioned entry (golden rule 8 -- NEVER an
+    in-place update; see ``sku_map.py``'s own module docstring). Only ever
+    called by :func:`run_homologation` for ``row.status in ("confirmed",
+    "suspect")`` -- a ``rejected``/unmatched row is never passed here.
+
+    ``confirmed_at`` is set ONLY for a genuine ``confirmed`` row (``now``,
+    the SAME timestamp :func:`run_homologation` passed to
+    :func:`~src.pricing_intel.homologate.homologate`) -- a ``suspect`` row's
+    persisted entry always carries ``confirmed_at=None`` alongside
+    ``confirmed_by=None``, mirroring ``HomologationRow.__post_init__``'s own
+    structural guard against a suspect row silently carrying either.
+    """
+    if row.our_product_id is None:
+        # Structurally unreachable for confirmed/suspect rows -- homologate.py's
+        # cascade only ever sets our_product_id=None on a rejected/unmatched row
+        # (see that module's docstring) -- but guarded explicitly rather than
+        # trusting that invariant silently across a future change.
+        raise ValueError(f"cannot persist a {row.status!r} row with our_product_id=None")
+
+    confirmed_at = now if row.status == "confirmed" else None
+    candidate = MatchCandidate(
+        our_product_id=row.our_product_id,
+        competitor_sku_ref=row.competitor_sku_ref,
+        site=row.site,
+        method=row.method,
+        score=row.score,
+        status=row.status,
+        reason=row.reason,
+        confirmed_by=row.confirmed_by,
+        confirmed_at=confirmed_at,
+    )
+    sku_map.record(candidate, now=now)
+
+
+def run_homologation(
+    payload: dict,
+    *,
+    sku_map: SkuMap | None = None,
+    now: datetime | None = None,
+) -> HomologationReport:
+    """Run PR-4's :func:`~src.pricing_intel.homologate.homologate` cascade
+    on ``payload["discovered"]`` (``prepare()``'s own output key) against
+    ``payload["our_catalog"]`` -- the client's OWN catalog, which
+    ``prepare()`` never produces itself (it only crawls the competitor
+    site); a caller merges it into the payload before calling this
+    function. ``payload["our_gtins"]``/``payload["llm"]`` are optional,
+    passed straight through to ``homologate()`` unchanged.
+
+    Every ``confirmed``/``suspect`` row in the resulting
+    :class:`~src.pricing_intel.homologate.HomologationReport` is persisted
+    to ``sku_map`` as a new, versioned entry (golden rule 8); ``rejected``
+    rows (including every row in ``report.unmatched``) are reported back to
+    the caller but NEVER persisted -- NON-GOAL 4: this function only ever
+    calls ``sku_map.record`` (append-only match metadata), never a writeback
+    to the competitor or our own catalog (``src/writeback.py`` is never
+    imported here).
+
+    ``sku_map`` defaults to the process-wide :func:`default_sku_map`
+    singleton and is NEVER closed by this function, even when it
+    constructed it itself -- mirrors
+    ``jobs.price_monitor.run_price_monitor_cycle``'s own singleton-lifecycle
+    discipline (see that function's docstring): closing a shared
+    singleton's connection would break every other caller of
+    ``default_sku_map()`` for the rest of the process.
+    """
+    resolved_now = now if now is not None else datetime.now(timezone.utc)
+    discovered = payload.get("discovered") or []
+    our_catalog = payload.get("our_catalog") or []
+    our_gtins = payload.get("our_gtins")
+    llm = payload.get("llm")
+
+    report = homologate(discovered, our_catalog, our_gtins=our_gtins, llm=llm, now=resolved_now)
+
+    store = sku_map if sku_map is not None else default_sku_map()
+    for row in report.rows:
+        if row.status in ("confirmed", "suspect"):
+            _persist_row(store, row, now=resolved_now)
+
+    return report
+
+
+_HOMOLOGATION_TABLE_COLUMNS: tuple[str, ...] = (
+    "my_sku", "competitor_product", "method", "confidence", "status",
+)
+_HOMOLOGATION_UNMATCHED_COLUMNS: tuple[str, ...] = ("competitor_product", "site", "reason")
+
+
+def write_homologation(
+    report: HomologationReport, out_dir: str | Path, client: str = "Client"
+) -> dict[str, Path]:
+    """The homologation table deliverable: ``homologation_table.csv``
+    (columns ``my_sku, competitor_product, method, confidence, status`` --
+    every row that DID land on one of our SKUs, i.e. ``report.rows`` minus
+    ``report.unmatched``) plus ``homologation_unmatched.csv`` --
+    ``report.unmatched`` verbatim, its OWN file so an unmatched competitor
+    product is never silently absent from the output (golden rule 14). Both
+    files always exist, even when empty (a stable header, same "nothing to
+    report" idiom ``jobs.seo_priority.write_operational`` and
+    ``jobs.markdown_liquidation_job.write_operational`` already use) --
+    never a missing file with no explanation.
+
+    Every string cell is passed through ``src.sanitize.defuse_formula``
+    before it reaches disk -- ``write_summary_csv`` already applies it
+    per-value (the SAME calling convention
+    ``jobs.price_intelligence.write_operational`` uses for its own CSV
+    output), so a ``competitor_sku_ref``/``reason`` starting with
+    ``=``/``+``/``-``/``@`` (OWASP CSV-injection) is neutralized here too.
+    """
+    d = Path(out_dir)
+    d.mkdir(parents=True, exist_ok=True)
+
+    matched_rows = [row for row in report.rows if row.our_product_id is not None]
+
+    table_path = d / "homologation_table.csv"
+    if matched_rows:
+        table_data = [
+            {
+                "my_sku": row.our_product_id,
+                "competitor_product": row.competitor_sku_ref,
+                "method": row.method,
+                "confidence": row.score,
+                "status": row.status,
+            }
+            for row in matched_rows
+        ]
+        written = {"csv": write_summary_csv(table_data, table_path)}
+    else:
+        pd.DataFrame(columns=list(_HOMOLOGATION_TABLE_COLUMNS)).to_csv(table_path, index=False)
+        written = {"csv": table_path}
+
+    unmatched_path = d / "homologation_unmatched.csv"
+    if report.unmatched:
+        unmatched_data = [
+            {"competitor_product": row.competitor_sku_ref, "site": row.site, "reason": row.reason}
+            for row in report.unmatched
+        ]
+        written["unmatched_csv"] = write_summary_csv(unmatched_data, unmatched_path)
+    else:
+        pd.DataFrame(columns=list(_HOMOLOGATION_UNMATCHED_COLUMNS)).to_csv(unmatched_path, index=False)
+        written["unmatched_csv"] = unmatched_path
+
+    # ``client`` is accepted for interface symmetry with every other
+    # write_operational-style deliverable builder in this repo (e.g.
+    # jobs.price_intelligence.write_operational) -- this table has no
+    # per-client Summary sheet of its own to stamp it into.
+    _ = client
+
+    return written
