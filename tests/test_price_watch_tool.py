@@ -28,26 +28,38 @@ import subprocess
 import sys
 from dataclasses import replace
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
+import httpx
 import pandas as pd
 import pytest
 
 from jobs import price_watch_deliverable, qa
+from jobs.price_intelligence import PriceIntelReport
 from jobs.price_monitor import PairOutcome
+from jobs.price_priority import ExcludedSku, PricePriorityReport, SkuPriceAction
 from jobs.price_watch import PriceWatchCycleReport
+from jobs.price_watch_position import PriceWatchToolReport
 from scm_agent import intent, llm, tool_options, tools
+from scm_agent.events import EventLedger
 from scm_agent.orchestrator import Orchestrator
 from src.guided import EXECUTED, HANDOFF, OPTIONS, as_executed, passed_guided
+from src.pricing_intel.homologate import HomologationReport, HomologationRow
+from src.pricing_intel.ledger import PriceLedger
+from src.pricing_intel.match.fuzzy import ProductAttributes
+from src.pricing_intel.match.sku_map import SkuMap
 from src.pricing_intel.models import SiteConfig
 from src.pricing_intel.watch_policy import NEEDS_CEILING_RAISE, plan_watch_escalation
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "pricing_intel"
 
 NOW = datetime(2026, 7, 14, 12, 0, 0, tzinfo=timezone.utc)
 SITE = "discovered-retailer.test"
 REF = "https://discovered-retailer.test/p/1"
 PID = "SKU-100"
+VALID_EAN13 = "4006381333931"  # standard GS1/IFA demo EAN-13 (check-digit valid)
 
 
 # -- fixtures -------------------------------------------------------------
@@ -84,6 +96,34 @@ def _pending_ceiling_raise():
     )
     assert decision.kind == NEEDS_CEILING_RAISE  # sanity: this really is a ceiling-raise case
     return decision.guided
+
+
+def _homologation_report() -> HomologationReport:
+    row = HomologationRow(
+        our_product_id=PID, competitor_sku_ref=REF, site=SITE, method="gtin",
+        score=0.99, status="confirmed", reason="exact gtin match", confirmed_by="auto",
+    )
+    return HomologationReport(rows=(row,), n_confirmed=1, n_suspect=0, n_unmatched=0, unmatched=())
+
+
+def _price_report() -> PriceIntelReport:
+    return PriceIntelReport(
+        n_products=1, n_products_covered=0, coverage_pct=0.0, offers=(), our_prices={},
+        rows=(), quarantine_rate=0.0, avg_freshness_hours=0.0, sla_hours=48.0,
+        tier_mix={}, stale_events=(), now=NOW, summary="x",
+    )
+
+
+def _priority_report() -> PricePriorityReport:
+    action = SkuPriceAction(
+        product_id=PID, action="vigilar", abc="A", xyz="X", position_index=None,
+        competitor_read="insufficient_signal", reason="no confirmed read yet",
+    )
+    excluded = ExcludedSku(product_id="SKU-EXCLUDED", reason="missing from the price-position input")
+    return PricePriorityReport(
+        actions=(action,), excluded=(excluded,), n_igualar_precio=0, n_oportunidad_subir=0,
+        n_vigilar=1, n_ignorar_bajo_valor=0, n_excluded=1, band=0.05, summary="x",
+    )
 
 
 # -- registration + routing ------------------------------------------------
@@ -268,6 +308,61 @@ def test_write_operational_writes_header_only_csv_when_no_outcomes(tmp_path):
     assert list(df.columns) == ["site", "competitor_sku_ref", "matched_product_id", "status", "reason"]
 
 
+def test_write_operational_omits_extra_files_for_a_bare_cycle_report(tmp_path):
+    """A plain ``PriceWatchCycleReport`` (no ``homologation``/``price_report``/
+    ``priority`` attributes -- what every prior caller of this function
+    already passes) must keep writing ONLY the cycle CSV: fully backward
+    compatible with the pre-Finding-1 behavior."""
+    report = _report([_outcome()])
+
+    written = price_watch_deliverable.write_operational(report, tmp_path)
+
+    assert set(written) == {"csv"}
+
+
+def test_write_operational_writes_full_deliverable_set_when_bundle_has_extra_reports(tmp_path):
+    """Finding 1 (final whole-branch review): when the tool's Produced.report
+    is a ``PriceWatchToolReport`` bundle carrying homologation/price_report/
+    priority, deliver() must write the FULL deliverable set -- the same
+    files the CLI (examples/run_price_watch.py) produces -- not just the
+    watch-cycle CSV."""
+    bundle = PriceWatchToolReport(
+        cycle=_report([_outcome()]), homologation=_homologation_report(),
+        price_report=_price_report(), priority=_priority_report(),
+    )
+
+    written = price_watch_deliverable.write_operational(bundle, tmp_path, client="Acme")
+
+    assert set(written) == {
+        "csv", "homologation_table", "homologation_unmatched",
+        "price_position_matrix", "ledger_export", "price_priority", "price_priority_excluded",
+    }
+    for path in written.values():
+        assert path.exists()
+
+    table = pd.read_csv(written["homologation_table"])
+    assert PID in table["my_sku"].astype(str).tolist()
+    assert table.iloc[0]["status"] == "confirmed"
+
+    priority = pd.read_csv(written["price_priority"])
+    assert PID in priority["product_id"].astype(str).tolist()
+
+    excluded = pd.read_csv(written["price_priority_excluded"])
+    assert "SKU-EXCLUDED" in excluded["product_id"].astype(str).tolist()
+
+
+def test_write_operational_writes_partial_set_when_only_homologation_present(tmp_path):
+    """A call with confirmed pairs but no catalog_path (so no ABC-XYZ/priority
+    input) writes homologation + cycle, honestly omitting price_priority --
+    never a fabricated priority plan (golden rule 14 applied to deliverable
+    presence itself)."""
+    bundle = PriceWatchToolReport(cycle=_report([_outcome()]), homologation=_homologation_report())
+
+    written = price_watch_deliverable.write_operational(bundle, tmp_path)
+
+    assert set(written) == {"csv", "homologation_table", "homologation_unmatched"}
+
+
 # -- prepare(): needs seed_url, gated crawl -----------------------------------
 
 
@@ -324,3 +419,146 @@ def test_runs_end_to_end_through_the_orchestrator(tmp_path, monkeypatch: pytest.
     assert Path(res.deliverables["csv"]).exists()
     written_csv = pd.read_csv(res.deliverables["csv"])
     assert list(written_csv.columns) == ["site", "competitor_sku_ref", "matched_product_id", "status", "reason"]
+
+
+# -- Finding 1 (final whole-branch review): the registered tool must reach --
+# -- the SAME full deliverable set the CLI produces, not just the cycle CSV --
+
+
+_GTIN_DISCOVERY_HTML = (
+    '<html><head><title>Acme Widget Pro 3000</title>'
+    '<script type="application/ld+json">'
+    '{"@context":"https://schema.org","@type":"Product",'
+    '"name":"Acme Widget Pro 3000 Deluxe Edition","brand":"Acme",'
+    '"offers":{"@type":"Offer","price":"249.00","priceCurrency":"USD",'
+    f'"gtin13":"{VALID_EAN13}","availability":"https://schema.org/InStock"}}}}'
+    '</script></head><body><h1>Acme Widget Pro 3000</h1></body></html>'
+)
+
+
+def _pdp_html() -> str:
+    return (FIXTURES / "jsonld_clean.html").read_text(encoding="utf-8")
+
+
+def test_runs_end_to_end_through_the_orchestrator_produces_full_deliverable_set(
+    tmp_path, monkeypatch: pytest.MonkeyPatch,
+):
+    """The highest-value test for Finding 1: a request routed through the
+    REGISTERED AGENT TOOL (not the CLI's own run_pipeline) with a catalog
+    supplied must produce the SAME full deliverable set the CLI does --
+    homologation_table.csv, price_watch_cycle.csv, price_position_matrix.xlsx,
+    and price_priority.csv -- proving the tool no longer discards the
+    homologation report or silently drops the price-position/priority steps."""
+    from jobs import price_watch as pw
+
+    domain = "fulltool.example.test"
+    seed_url = f"https://{domain}/"
+    df = pd.DataFrame([{
+        "url": f"https://{domain}/p/aw-3000", "status": 200, "title": "Acme Widget Pro 3000",
+        "page_html": _GTIN_DISCOVERY_HTML,
+    }])
+    monkeypatch.setattr(pw, "_crawl_domain", lambda seed, **kwargs: df)
+
+    catalog_path = tmp_path / "our_catalog.csv"
+    pd.DataFrame([{
+        "product_id": "our-acme", "title": "Acme Widget Pro 3000 Deluxe Edition", "brand": "Acme",
+        "gtin": VALID_EAN13, "our_price": 260.00, "demand": 120, "unit_cost": 180.0,
+    }]).to_csv(catalog_path, index=False)
+
+    def pdp_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=_pdp_html())
+
+    http_client = httpx.Client(transport=httpx.MockTransport(pdp_handler))
+    sku_map = SkuMap(tmp_path / "sku_map")
+    ledger = PriceLedger(tmp_path / "ledger")
+    event_ledger = EventLedger(tmp_path / "events.sqlite3")
+
+    try:
+        orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback())
+
+        res = orch.run(
+            "watch competitor prices via a price watch cycle: descubre productos de la competencia",
+            client="Acme", out_dir=tmp_path,
+            overrides={
+                "seed_url": seed_url,
+                "config_dir": tmp_path / "sites",
+                "robots_reader": lambda robots_url, user_agent: True,
+                "now": NOW,
+                "our_catalog": [ProductAttributes("our-acme", "Acme Widget Pro 3000 Deluxe Edition", "Acme", {})],
+                "our_gtins": {"our-acme": VALID_EAN13},
+                "our_prices": {"our-acme": Decimal("260.00")},
+                "catalog_path": str(catalog_path),
+                "http_client": http_client,
+                "sku_map": sku_map,
+                "ledger": ledger,
+                "event_ledger": event_ledger,
+            },
+        )
+
+        assert res.status == "ok", res.summary
+        assert res.tool == "price_watch"
+        assert res.guided is not None
+
+        # the FULL deliverable set, not just the watch-cycle CSV.
+        for key in (
+            "csv", "homologation_table", "homologation_unmatched",
+            "price_position_matrix", "ledger_export", "price_priority", "price_priority_excluded",
+        ):
+            assert key in res.deliverables, f"missing deliverable {key!r}: {sorted(res.deliverables)}"
+            assert Path(res.deliverables[key]).exists()
+
+        # homologation_table.csv genuinely names our confirmed SKU/competitor pair.
+        table = pd.read_csv(res.deliverables["homologation_table"])
+        assert "our-acme" in table["my_sku"].astype(str).tolist()
+        assert table.iloc[0]["status"] == "confirmed"
+
+        # the watch cycle actually re-acquired the confirmed pair's current price.
+        cycle_csv = pd.read_csv(res.deliverables["csv"])
+        assert "accepted" in cycle_csv["status"].astype(str).tolist()
+
+        # per-SKU price_priority.csv carries our-acme with a genuine competitor
+        # read and one of the honest enumerated actions.
+        priority = pd.read_csv(res.deliverables["price_priority"])
+        acme_rows = priority[priority["product_id"] == "our-acme"]
+        assert len(acme_rows) == 1
+        assert acme_rows.iloc[0]["competitor_read"] == "confirmed"
+        valid_actions = {"igualar_precio", "oportunidad_subir", "vigilar", "ignorar_bajo_valor"}
+        assert acme_rows.iloc[0]["action"] in valid_actions
+    finally:
+        http_client.close()
+        sku_map.close()
+        ledger.close()
+        event_ledger.close()
+
+
+def test_runs_end_to_end_without_a_catalog_path_omits_priority_honestly(
+    tmp_path, monkeypatch: pytest.MonkeyPatch,
+):
+    """Without a catalog_path, the tool must NOT crash and must NOT fabricate
+    a price_priority.csv -- it degrades honestly, still delivering whatever
+    it legitimately can (the cycle CSV; homologation table stays empty since
+    no our_catalog was supplied either)."""
+    from jobs import price_watch as pw
+
+    domain = "shop.example.test"
+    seed_url = f"https://{domain}/"
+    df = pd.DataFrame([{"url": f"https://{domain}/p/1", "status": 200, "title": "Widget",
+                         "page_html": _PRODUCT_HTML}])
+    monkeypatch.setattr(pw, "_crawl_domain", lambda seed, **kwargs: df)
+
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback())
+
+    res = orch.run(
+        "watch competitor prices via a price watch cycle: descubre productos de la competencia",
+        client="Acme", out_dir=tmp_path,
+        overrides={
+            "seed_url": seed_url,
+            "config_dir": tmp_path / "sites",
+            "robots_reader": lambda robots_url, user_agent: True,
+            "now": NOW,
+        },
+    )
+
+    assert res.status == "ok", res.summary
+    assert "price_priority" not in res.deliverables
+    assert "csv" in res.deliverables

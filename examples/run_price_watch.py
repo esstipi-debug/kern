@@ -45,10 +45,8 @@ network and no client files.
 from __future__ import annotations
 
 import argparse
-import statistics
 import sys
 import tempfile
-from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -59,9 +57,10 @@ import httpx
 import pandas as pd
 
 from jobs import price_intelligence, price_priority, price_watch, price_watch_deliverable, qa
-from jobs.price_intelligence import PriceIntelReport, RowOutcome
+from jobs.price_intelligence import PriceIntelReport
 from jobs.price_priority import PricePriorityReport
 from jobs.price_watch import PriceWatchCycleReport
+from jobs.price_watch_position import price_report_from_confirmed_pairs
 from jobs.price_watch_scaling import SkuScalingRequest
 from scm_agent.events import EventLedger
 from src.pricing_intel.acquire.auto_approve import OnboardingResult
@@ -155,61 +154,6 @@ def _load_catalog(
     return catalog, our_gtins, our_prices
 
 
-def _price_report_from_confirmed(
-    confirmed_pairs: Sequence[SkuMapEntry],
-    our_prices: dict[str, Decimal],
-    ledger: PriceLedger,
-    *,
-    now: datetime,
-    sla_hours: float,
-) -> PriceIntelReport:
-    """Assemble a :class:`PriceIntelReport` from the watch cycle's OWN fresh
-    ledger observations (never a second acquisition run) -- the "minimal
-    price-position input" built from the homologation results crossed with our
-    own prices. Reuses the exact ``CompetitorOffer`` rows the cycle appended;
-    the only competitor-vs-our price math (``position_index``) lives in the
-    reused ``price_intelligence`` / ``price_priority`` consumers, never here --
-    this function only collects offers and rolls up honest bookkeeping counts.
-    A confirmed pair with no accepted observation this cycle is recorded as a
-    skipped row (golden rule 14), never silently absent."""
-    offers = []
-    rows: list[RowOutcome] = []
-    products = {e.our_product_id for e in confirmed_pairs}
-    for entry in confirmed_pairs:
-        record = ledger.latest_by_sku(entry.site, entry.competitor_sku_ref)
-        if record is not None and record.offer.matched_product_id:
-            offers.append(record.offer)
-            rows.append(RowOutcome(
-                product_id=entry.our_product_id, site=entry.site,
-                competitor_url=entry.competitor_sku_ref, status="accepted", reason="ok", offer=record.offer,
-            ))
-        else:
-            rows.append(RowOutcome(
-                product_id=entry.our_product_id, site=entry.site,
-                competitor_url=entry.competitor_sku_ref, status="skipped",
-                reason="no_accepted_observation_this_cycle",
-            ))
-
-    covered = {o.matched_product_id for o in offers if o.matched_product_id}
-    n_products = len(products)
-    coverage_pct = (len(covered) / n_products) if n_products else 0.0
-    if offers:
-        avg_freshness = statistics.fmean((now - o.observed_at).total_seconds() / 3600.0 for o in offers)
-    else:
-        avg_freshness = 0.0
-    tier_mix = dict(Counter(o.acquisition_tier for o in offers))
-    summary = (
-        f"Discovery price position across {n_products} confirmed pair(s): "
-        f"{len(covered)} product(s) have a current competitor read from this watch cycle."
-    )
-    return PriceIntelReport(
-        n_products=n_products, n_products_covered=len(covered), coverage_pct=coverage_pct,
-        offers=tuple(offers), our_prices=dict(our_prices), rows=tuple(rows),
-        quarantine_rate=0.0, avg_freshness_hours=avg_freshness, sla_hours=sla_hours,
-        tier_mix=tier_mix, stale_events=(), now=now, summary=summary,
-    )
-
-
 def run_pipeline(
     *,
     seed_url: str,
@@ -297,7 +241,7 @@ def run_pipeline(
             e.our_product_id: our_prices[e.our_product_id]
             for e in confirmed_pairs if e.our_product_id in our_prices
         }
-        price_report = _price_report_from_confirmed(
+        price_report = price_report_from_confirmed_pairs(
             confirmed_pairs, report_prices, ledger, now=now, sla_hours=sla_hours,
         )
         w_matrix = price_intelligence.write_operational(price_report, out_dir, client)

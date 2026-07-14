@@ -2019,6 +2019,25 @@ def price_intelligence_tool() -> Tool:
 # above. Every function below does its own local import instead. (`price_watch_
 # deliverable` is safe to import eagerly -- see that module's own docstring for
 # why it carries none of this hazard.)
+#
+# Finding 1 (final whole-branch review): `_price_watch_run` used to discard
+# the `HomologationReport` (only its counts landed in the summary string) and
+# never build the price-position/price-priority steps at all, so the
+# registered tool's `deliver` hook only ever wrote `price_watch_cycle.csv` --
+# materially less than `examples/run_price_watch.py`'s CLI, which chains
+# prepare -> homologate -> watch-cycle -> price-position -> price_priority
+# and writes the full deliverable set. `_price_watch_run` now ports that SAME
+# wiring (via `jobs.price_watch_position`, itself ported from the CLI's own
+# previously-private helper) so the tool reaches parity as closely as the
+# `Tool` interface's single-URL-input shape allows: `our_catalog`/
+# `our_gtins`/`our_prices` are pre-parsed params (mirroring the existing
+# `our_catalog`/`our_gtins` convention `run_homologation`'s payload already
+# used), while `catalog_path` -- a raw CSV, the one new param this adds,
+# following the SAME "takes a plain string, like `seed_url`" shape --
+# feeds `jobs.price_priority.prepare`'s own ABC-XYZ step, which genuinely
+# needs a file (no pre-parsed-object equivalent exists for it). Absent ->
+# the priority step is honestly skipped (no fabricated plan), never crashes
+# the whole call on a malformed catalog either.
 
 
 def _price_watch_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
@@ -2041,9 +2060,22 @@ def _price_watch_prepare(request: JobRequest, provider: LLMProvider) -> Prepared
 
 
 def _price_watch_run(payload: object, params: dict) -> Produced:
-    from jobs import price_watch
+    from jobs import price_priority, price_watch
+    from jobs.price_intelligence import DEFAULT_SLA_HOURS
+    from jobs.price_watch_position import PriceWatchToolReport, price_report_from_confirmed_pairs
+    from src.pricing_intel.ledger import default_ledger
+    from src.pricing_intel.match.sku_map import default_sku_map
 
     now = params.get("now")
+    # `_price_watch_prepare` threads params["config_dir"] into price_watch.
+    # prepare()'s own config_dir seam (auto-onboarding + the hard gate); the
+    # watch cycle's site lookup must resolve the SAME directory or a caller
+    # who only set config_dir would auto-onboard correctly but then have
+    # this step silently fall back to the real config/sites/ (mirrors
+    # examples/run_price_watch.py's run_pipeline, which threads one
+    # config_dir to both steps). sites_config_dir stays available as an
+    # explicit override for a caller who genuinely wants the two to differ.
+    sites_config_dir = params.get("sites_config_dir", params.get("config_dir"))
     homologation = price_watch.run_homologation(
         {
             **payload,
@@ -2059,15 +2091,52 @@ def _price_watch_run(payload: object, params: dict) -> Produced:
         ledger=params.get("ledger"),
         event_ledger=params.get("event_ledger"),
         http_client=params.get("http_client"),
-        sites_config_dir=params.get("sites_config_dir"),
+        sites_config_dir=sites_config_dir,
         scaling_request_for=params.get("scaling_request_for"),
         now=now,
+    )
+
+    # Price-position report from THIS cycle's own fresh ledger reads (Finding
+    # 1, ported logic -- never a second acquisition run). `sku_map`/`ledger`
+    # resolve to the SAME cached singleton the two calls above already used
+    # when the caller passed neither (mirrors run_homologation/
+    # run_price_watch_cycle's own default-resolution discipline; both are
+    # memoized module-level accessors, so this is the identical instance).
+    sku_map = params.get("sku_map") if params.get("sku_map") is not None else default_sku_map()
+    ledger = params.get("ledger") if params.get("ledger") is not None else default_ledger()
+    our_prices = params.get("our_prices") or {}
+    sla_hours = float(params.get("sla_hours", DEFAULT_SLA_HOURS))
+    confirmed_pairs = sku_map.list_all_confirmed()
+    report_prices = {
+        pid: our_prices[pid] for pid in {e.our_product_id for e in confirmed_pairs} if pid in our_prices
+    }
+    price_report = price_report_from_confirmed_pairs(
+        confirmed_pairs, report_prices, ledger, now=cycle.now, sla_hours=sla_hours,
+    )
+
+    # Per-SKU price priority plan -- only when a catalog_path was supplied
+    # (see the module-level comment above for why this one param stays a raw
+    # CSV path); a malformed/unreadable file degrades to "no priority plan
+    # this run" rather than failing the whole tool call.
+    catalog_path = params.get("catalog_path")
+    priority = None
+    if catalog_path:
+        try:
+            pp_payload = price_priority.prepare(str(catalog_path), {"price_report": price_report})
+            priority = price_priority.run(pp_payload)
+        except (ValueError, FileNotFoundError):
+            priority = None
+
+    report = PriceWatchToolReport(
+        cycle=cycle, homologation=homologation, price_report=price_report, priority=priority,
     )
     summary = (
         f"Discovery crawl at {payload['domain']}: {len(payload['discovered'])} product page(s) found, "
         f"{homologation.n_confirmed} confirmed / {homologation.n_suspect} suspect match(es). {cycle.summary}"
     )
-    return Produced(report=cycle, summary=summary)
+    if priority is not None:
+        summary += f" {priority.summary}"
+    return Produced(report=report, summary=summary)
 
 
 def price_watch_tool() -> Tool:
@@ -2076,8 +2145,9 @@ def price_watch_tool() -> Tool:
         title="Discovery-Assisted Price Watch",
         description="Auto-onboard a never-seen competitor site (robots.txt-only, limited tier), crawl "
                     "and homologate its product pages against your own catalog, then re-acquire and "
-                    "monitor the confirmed pairs on a recurring cadence - read-only observation; a tier "
-                    "raise beyond the approved ceiling is never applied automatically.",
+                    "monitor the confirmed pairs on a recurring cadence, producing a homologation table, "
+                    "a price-position matrix, and a per-SKU price-priority plan - read-only observation; "
+                    "a tier raise beyond the approved ceiling is never applied automatically.",
         intent_keywords=(
             "price watch cycle", "recurring competitor price watch", "competitor price discovery",
             "discovery-assisted competitor watch", "vigila los precios de la competencia",
