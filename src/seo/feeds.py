@@ -61,6 +61,7 @@ from xml.dom import minidom
 
 import pandas as pd
 
+from src.deliverable import DEFAULT_BRANDING, Branding
 from src.export import write_summary_csv
 from src.seo.schema_gen import (
     CatalogItem,
@@ -73,10 +74,12 @@ from src.seo.schema_gen import (
 GOOGLE_MERCHANT_NS = "http://base.google.com/ns/1.0"
 ET.register_namespace("g", GOOGLE_MERCHANT_NS)
 
-# Kern's attribution for these two generated ARTIFACTS (not for the client's
-# own product data -- see schema_gen.py's module docstring for why the
-# JSON-LD output itself carries no such watermark).
-FEED_GENERATOR = "Kern SEO Feed Generator"
+# Attribution for these two generated ARTIFACTS (not for the client's own
+# product data -- see schema_gen.py's module docstring for why the JSON-LD
+# output itself carries no such watermark). Configurable via the `branding`
+# parameter on build_merchant_feed_xml/build_generic_json_feed below
+# (src.deliverable.Branding); defaults to Kern's own identity.
+FEED_GENERATOR = f"{DEFAULT_BRANDING.name} SEO Feed Generator"
 
 # schema.org token (schema_gen's vocabulary) -> Google Merchant feed token.
 # Merchant's g:availability only has four officially documented values; the
@@ -209,6 +212,7 @@ def build_merchant_feed_xml(
     feed_title: str,
     feed_link: str,
     feed_description: str,
+    branding: Branding = DEFAULT_BRANDING,
 ) -> MerchantFeedReport:
     """Build a Google Merchant Center-style RSS 2.0 + ``g:`` feed. See module
     docstring for the format choice rationale and the availability/condition
@@ -220,7 +224,7 @@ def build_merchant_feed_xml(
     ET.SubElement(channel, "title").text = feed_title
     ET.SubElement(channel, "link").text = feed_link
     ET.SubElement(channel, "description").text = feed_description
-    ET.SubElement(channel, "generator").text = FEED_GENERATOR
+    ET.SubElement(channel, "generator").text = f"{branding.name} SEO Feed Generator"
 
     results: list[FeedItemResult] = []
     for item in included:
@@ -244,6 +248,7 @@ def build_generic_json_feed(
     feed_title: str,
     feed_link: str,
     feed_description: str,
+    branding: Branding = DEFAULT_BRANDING,
 ) -> GenericJsonFeedReport:
     """Build this repo's own simple, documented product-feed JSON shape (see
     module docstring for why neither Google's nor jsonfeed.org's shape was
@@ -282,7 +287,7 @@ def build_generic_json_feed(
             "title": feed_title,
             "link": feed_link,
             "description": feed_description,
-            "generated_by": "Kern",
+            "generated_by": branding.name,
             "format": "kern-generic-product-feed-v1",
         },
         "products": products,

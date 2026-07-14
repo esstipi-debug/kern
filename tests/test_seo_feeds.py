@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import xml.etree.ElementTree as ET
 
+from src.deliverable import Branding
 from src.seo import feeds
 from src.seo import schema_gen as sg
 
@@ -77,6 +78,17 @@ def test_build_merchant_feed_xml_has_generator_and_namespace() -> None:
     assert generator is not None and generator.text == "Kern SEO Feed Generator"
 
 
+def test_build_merchant_feed_xml_uses_custom_branding_in_generator() -> None:
+    report = feeds.build_merchant_feed_xml(
+        _catalog(), feed_title="Shop", feed_link="https://shop.example.com", feed_description="A shop",
+        branding=Branding(name="Partner Co"),
+    )
+    root = ET.fromstring(report.xml)
+    generator = root.find("./channel/generator")
+    assert generator is not None and generator.text == "Partner Co SEO Feed Generator"
+    assert "Kern" not in report.xml
+
+
 def test_build_merchant_feed_xml_round_trips_key_fields() -> None:
     report = feeds.build_merchant_feed_xml(
         _catalog(), feed_title="Shop", feed_link="https://shop.example.com", feed_description="A shop",
@@ -137,6 +149,14 @@ def test_build_generic_json_feed_round_trips_key_fields() -> None:
     assert products_by_id["SKU-001"]["availability"] == "in stock"
     assert products_by_id["SKU-001"]["condition"] == "new"
     assert "SKU-002" not in products_by_id  # excluded (missing url)
+
+
+def test_build_generic_json_feed_uses_custom_branding_in_generated_by() -> None:
+    report = feeds.build_generic_json_feed(
+        _catalog(), feed_title="Shop", feed_link="https://shop.example.com", feed_description="A shop",
+        branding=Branding(name="Partner Co"),
+    )
+    assert report.feed["feed_info"]["generated_by"] == "Partner Co"
 
 
 def test_generic_json_feed_field_result_matches_serialized_product() -> None:
