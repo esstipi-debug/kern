@@ -112,6 +112,7 @@ escalate rather than invent a new tagging mechanism unilaterally).
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -123,6 +124,7 @@ from jobs.price_monitor import PairOutcome, accept_observation
 from jobs.seo_audit import AdvertoolsUnavailableError, _ensure_scripts_on_path, pages_from_crawl_dataframe
 from scm_agent.events import Event, EventLedger
 from src.export import write_summary_csv
+from src.guided import GuidedOutcome
 from src.pricing_intel.acquire import base
 from src.pricing_intel.acquire.auto_approve import OnboardingResult, auto_approve_site
 from src.pricing_intel.acquire.pdp_fetcher import USER_AGENT as DEFAULT_USER_AGENT
@@ -136,6 +138,7 @@ from src.pricing_intel.models import ACQUISITION_TIERS, MatchCandidate
 from src.pricing_intel.normalize import detect_promo
 from src.pricing_intel.sanity import RawOfferCandidate
 
+from .price_watch_scaling import ScaledWatch, SkuScalingRequest, _scale_one
 from .scheduler import ScheduledJob
 
 # Same politeness posture as jobs/seo_audit.py::_crawl_domain -- a small,
@@ -475,6 +478,31 @@ SOURCE = "jobs.price_watch"
 DEFAULT_CADENCE_HOURS = 4
 
 
+def _resolve_site_config(
+    entry: SkuMapEntry,
+    *,
+    site_configs: dict[str, object],
+    breakers: dict[str, base.CircuitBreaker],
+    sites_config_dir: str | Path | None,
+) -> object:
+    """Resolve (and per-cycle cache) one pair's approved ``SiteConfig``, or the
+    ``SiteNotConfiguredError``/``SiteNotApprovedError`` that refused it -- the
+    SINGLE approval gate shared by this cycle's scaling (:func:`_scale_one`) and
+    acquisition (:func:`_check_one_pair`) steps, so an unapproved site can be
+    neither scaled nor fetched. ``site_configs`` caches the ``SiteConfig`` or the
+    caught exception per domain; ``breakers`` gets one ``CircuitBreaker`` per
+    resolved domain (same shape as ``jobs.price_intelligence._acquire_one``)."""
+    if entry.site not in site_configs:
+        try:
+            kwargs = {} if sites_config_dir is None else {"config_dir": sites_config_dir}
+            config = base.require_approved_site(entry.site, **kwargs)
+            site_configs[entry.site] = config
+            breakers[entry.site] = base.CircuitBreaker.for_site(config)
+        except (base.SiteNotConfiguredError, base.SiteNotApprovedError) as exc:
+            site_configs[entry.site] = exc
+    return site_configs[entry.site]
+
+
 def _check_one_pair(
     entry: SkuMapEntry,
     *,
@@ -504,15 +532,9 @@ def _check_one_pair(
     """
     base_fields = dict(site=entry.site, competitor_sku_ref=entry.competitor_sku_ref, matched_product_id=entry.our_product_id)
 
-    if entry.site not in site_configs:
-        try:
-            kwargs = {} if sites_config_dir is None else {"config_dir": sites_config_dir}
-            config = base.require_approved_site(entry.site, **kwargs)
-            site_configs[entry.site] = config
-            breakers[entry.site] = base.CircuitBreaker.for_site(config)
-        except (base.SiteNotConfiguredError, base.SiteNotApprovedError) as exc:
-            site_configs[entry.site] = exc
-    cached = site_configs[entry.site]
+    cached = _resolve_site_config(
+        entry, site_configs=site_configs, breakers=breakers, sites_config_dir=sites_config_dir
+    )
     if isinstance(cached, Exception):
         return PairOutcome(**base_fields, status="skipped", reason=f"site_not_approved:{type(cached).__name__}")
     config = cached
@@ -587,17 +609,36 @@ def _check_one_pair(
     return PairOutcome(**base_fields, status=outcome.status, reason=outcome.reason, events=outcome.events)
 
 
+# -- Task 9 / PR-9: wire the R5 bounded auto-scaling guard into the cycle -----
+#
+# The per-SKU scaling DECISION -- SkuScalingRequest/ScaledWatch and the SOLE
+# place a cadence/tier change is decided (_scale_one, delegating entirely to
+# watch_policy.plan_watch_escalation, PR-8) -- lives in the sibling
+# jobs.price_watch_scaling module (keeps this file under the 800-line cap). This
+# module only WIRES it: run_price_watch_cycle resolves each approved pair's
+# SiteConfig, then calls _scale_one BEFORE that pair is acquired. There is no
+# other code path in this file that changes a tier.
+
+
 @dataclass(frozen=True)
 class PriceWatchCycleReport:
     """Mirrors ``jobs.price_monitor.PriceMonitorCycleReport``'s exact shape
     and status vocabulary (accepted/quarantined/discarded/skipped) -- a
     separate class (rather than reusing that one directly) only because it
     is a distinct report FOR a distinct cycle, but never a second vocabulary
-    or a second way to compute ``events``/``summary``."""
+    or a second way to compute ``events``/``summary``.
+
+    Task 9 adds two scaling-step outputs (empty unless ``scaling_request_for`` is
+    supplied): ``pending_escalations`` -- the human-approval ``GuidedOutcome`` for
+    each SKU whose desired tier exceeds its site's ceiling (nothing applied; the
+    tool/PR-11 and any operator surface render these) -- and ``scaled_watches`` --
+    each SKU whose cadence tightened within the ceiling."""
 
     now: datetime
     pairs_checked: int
     outcomes: tuple[PairOutcome, ...]
+    pending_escalations: tuple[GuidedOutcome, ...] = ()
+    scaled_watches: tuple[ScaledWatch, ...] = ()
 
     @property
     def events(self) -> tuple[Event, ...]:
@@ -619,6 +660,7 @@ def run_price_watch_cycle(
     event_ledger: EventLedger | None = None,
     http_client: httpx.Client | None = None,
     sites_config_dir: str | Path | None = None,
+    scaling_request_for: Callable[[SkuMapEntry], SkuScalingRequest | None] | None = None,
     now: datetime | None = None,
 ) -> PriceWatchCycleReport:
     """One full continuous-monitoring cycle: every ``sku_map`` pair with
@@ -645,6 +687,16 @@ def run_price_watch_cycle(
     -- those two ARE closed here when this function constructed them itself,
     leaving a caller-supplied instance of either open (the caller's
     lifecycle).
+
+    ``scaling_request_for`` (Task 9, R5): an OPTIONAL callable mapping a
+    ``SkuMapEntry`` to a :class:`SkuScalingRequest` (or ``None``). Each approved
+    pair's desire is routed -- BEFORE that pair is acquired -- through
+    :func:`_scale_one`: within the approved tier it tightens the SKU's cadence
+    (``report.scaled_watches``); above the ceiling it is surfaced for human
+    approval (``report.pending_escalations``) and applies nothing. Default
+    ``None`` == exact PR-6 behavior (the guard is never consulted). This job
+    never decides WHICH SKUs deserve escalation -- that value model is the
+    caller's.
     """
     now = now or datetime.now(timezone.utc)
     owns_event_ledger = event_ledger is None
@@ -658,14 +710,37 @@ def run_price_watch_cycle(
         pairs = sku_map.list_all_confirmed()
         site_configs: dict[str, object] = {}
         breakers: dict[str, base.CircuitBreaker] = {}
-        outcomes = tuple(
-            _check_one_pair(
+        outcomes: list[PairOutcome] = []
+        pending_escalations: list[GuidedOutcome] = []
+        scaled_watches: list[ScaledWatch] = []
+        for e in pairs:
+            # R5 scaling step -- decided BEFORE this pair is acquired, and only
+            # for a site that is actually approved (an unapproved site can be
+            # neither scaled nor fetched; _check_one_pair reports it skipped).
+            if scaling_request_for is not None:
+                config = _resolve_site_config(
+                    e, site_configs=site_configs, breakers=breakers, sites_config_dir=sites_config_dir,
+                )
+                if not isinstance(config, Exception):
+                    applied_cadence, guided = _scale_one(
+                        e, config, scaling_request_for(e),
+                        current_cadence_hours=DEFAULT_CADENCE_HOURS, now=now,
+                    )
+                    if guided is not None:
+                        pending_escalations.append(guided)
+                    if applied_cadence is not None:
+                        scaled_watches.append(ScaledWatch(
+                            site=e.site, competitor_sku_ref=e.competitor_sku_ref,
+                            matched_product_id=e.our_product_id, applied_cadence_hours=applied_cadence,
+                        ))
+            outcomes.append(_check_one_pair(
                 e, ledger=ledger, event_ledger=event_ledger, site_configs=site_configs,
                 breakers=breakers, client=client, sites_config_dir=sites_config_dir, now=now,
-            )
-            for e in pairs
+            ))
+        return PriceWatchCycleReport(
+            now=now, pairs_checked=len(pairs), outcomes=tuple(outcomes),
+            pending_escalations=tuple(pending_escalations), scaled_watches=tuple(scaled_watches),
         )
-        return PriceWatchCycleReport(now=now, pairs_checked=len(pairs), outcomes=outcomes)
     finally:
         if owns_client:
             client.close()
