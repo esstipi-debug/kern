@@ -528,32 +528,37 @@ def competitor_price_move_monitor(
     else -- is silently passed through unpromoted, exactly like an
     unrelated row this module's other monitors would simply not match.
 
-    This monitor's own ``dedup_key`` (``"{identifier}:competitor_price_move"``,
+    This monitor's own ``dedup_key`` (``"{identifier}:competitor_price_move:{signal_type}"``,
     see :func:`_price_signal_identifier` -- the SAME ``_dedup_key`` helper
-    every monitor above uses) is DELIBERATELY DIFFERENT from the source
+    every monitor above uses, with the source event's own ``type`` folded
+    into the second argument) is DELIBERATELY DIFFERENT from the source
     event's own ``dedup_key`` (``"{event_type}:{site}:{competitor_sku_ref}"``,
     ``src/pricing_intel/events.py``'s own convention): this is a second,
     Tower-feed-scoped recording of the same occurrence, not a re-emission of
-    the original. A consequence worth knowing: two DIFFERENT signal kinds
-    for the same identifier inside one dedup window (e.g. a ``price_move``
-    followed by a ``promo_detected`` for the same SKU) collapse to a single
-    Tower notification -- intentional, since the Tower cares that
-    "something changed with this competitor's pricing", not how many
-    distinct signal kinds fired.
+    the original. Folding ``signal_type`` into the key means each DISTINCT
+    signal kind for a given identifier dedups independently: a ``price_move``
+    and a ``promo_detected`` firing for the SAME SKU in the SAME batch (e.g.
+    a competitor closeout that cuts price while also flagging a promo) are
+    BOTH promoted as separate Tower events -- the Tower must not silently
+    drop one just because another kind already fired for that SKU. Only a
+    genuine REPEAT of the SAME signal kind for the same identifier, inside
+    one dedup window, collapses to a single Tower notification (see
+    :func:`_dedup_key`'s general repeat-suppression contract in the module
+    docstring).
 
     Reference example: a ``price_move`` event with ``sku="SKU-X"``,
     ``severity="high"`` -> one ``competitor_price_move`` event, same
-    severity, ``dedup_key="SKU-X:competitor_price_move"``, payload =
-    the original event's payload plus ``"signal_type": "price_move"`` and
-    ``"signal_event_id": <original event.id>`` for traceability back to the
-    source signal (plan rule 7, "procedencia total").
+    severity, ``dedup_key="SKU-X:competitor_price_move:price_move"``,
+    payload = the original event's payload plus ``"signal_type": "price_move"``
+    and ``"signal_event_id": <original event.id>`` for traceability back to
+    the source signal (plan rule 7, "procedencia total").
     """
     candidates = [
         Event(
             type=EVENT_COMPETITOR_PRICE_MOVE,
             severity=e.severity,
             source=source,
-            dedup_key=_dedup_key(_price_signal_identifier(e), EVENT_COMPETITOR_PRICE_MOVE),
+            dedup_key=_dedup_key(_price_signal_identifier(e), f"{EVENT_COMPETITOR_PRICE_MOVE}:{e.type}"),
             sku=e.sku,
             payload={**e.payload, "signal_type": e.type, "signal_event_id": e.id},
         )

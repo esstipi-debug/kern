@@ -106,7 +106,7 @@ def test_promotes_price_move_event_to_control_tower():
     assert e.severity == "high"
     assert e.sku == "SKU-X"
     assert e.source == SOURCE
-    assert e.dedup_key == "SKU-X:competitor_price_move"
+    assert e.dedup_key == "SKU-X:competitor_price_move:price_move"
     assert e.payload["site"] == "competitor.test"
     assert e.payload["competitor_sku_ref"] == "ABC-123"
 
@@ -184,7 +184,38 @@ def test_unmatched_product_falls_back_to_competitor_sku_ref_for_dedup():
 
     assert len(events) == 1
     assert events[0].sku is None
-    assert events[0].dedup_key == "UNMATCHED-1:competitor_price_move"
+    assert events[0].dedup_key == "UNMATCHED-1:competitor_price_move:price_move"
+
+
+def test_distinct_signal_kinds_for_same_sku_in_same_batch_are_all_promoted():
+    """Regression test (task-7 review finding): THREE distinct signal kinds
+    for the SAME SKU in the SAME observation batch -- e.g. a competitor
+    closeout that is simultaneously a price_move AND a promo_detected -- must
+    each surface as their OWN Control Tower event, not collapse into one.
+    Prior to the fix, the dedup key ignored the source event's own ``type``
+    and always deduped against the single constant EVENT_COMPETITOR_PRICE_MOVE,
+    so the second and third signal kinds for the same SKU were silently
+    dropped by the (real) EventLedger with no trace. Uses a REAL EventLedger
+    (not ledger=None), since that's what let the collision slip through
+    undetected before."""
+    ledger = _ledger()
+    price_move = _price_signal_event(event_type="price_move", severity="high")
+    oos = _price_signal_event(event_type="competitor_oos", severity="medium")
+    promo = _price_signal_event(event_type="promo_detected", severity="low")
+
+    events = competitor_price_move_monitor([price_move, oos, promo], ledger=ledger)
+
+    assert len(events) == 3
+    assert {e.payload["signal_type"] for e in events} == {
+        "price_move",
+        "competitor_oos",
+        "promo_detected",
+    }
+    assert all(e.sku == "SKU-X" for e in events)
+    assert all(e.type == EVENT_COMPETITOR_PRICE_MOVE for e in events)
+    # distinct dedup keys per signal kind -- but a REPEAT of the SAME kind
+    # for the same SKU still collapses, per test_dedup_collapses_repeat_move.
+    assert len({e.dedup_key for e in events}) == 3
 
 
 # -- run_all_monitors() wiring --------------------------------------------------
