@@ -19,6 +19,17 @@ Control Tower's 5 base monitors, per plan S5's A1 row):
   - :func:`forecast_error_out_of_band_monitor` -- sigma_e fuera de banda
   - :func:`lead_time_drift_monitor`          -- drift de lead time
 
+**Discovery-Assisted Price Intel plan (2026-07-13), Task 7 / PR-7, R4 "sense"
+half** adds a SIXTH monitor that is deliberately a different SHAPE from the
+five above: :func:`competitor_price_move_monitor` never touches ``src.state``
+either, but its input is not a state snapshot at all -- it is a list of
+:class:`Event` objects ``src.pricing_intel.events.detect_market_signal_events``
+already emitted (``price_move``/``competitor_oos``/``promo_detected``, inside
+``jobs.price_monitor.accept_observation``). This monitor is a pure ADAPTER,
+never a second detector: all price/availability/promo comparison already
+happened upstream; here an event is promoted or dropped by its ``type``
+alone. See that function's own docstring for the full contract.
+
 Dedup (plan S4.2): every monitor accepts an optional ``ledger:
 scm_agent.events.EventLedger``. When given, each candidate event is recorded
 via ``ledger.emit()`` and only the ones actually recorded (i.e. not a repeat
@@ -87,6 +98,18 @@ EVENT_STOCKOUT_PROJECTED = "stockout_projected"
 EVENT_EXCESS_GROWING = "excess_growing"
 EVENT_FORECAST_ERROR_OUT_OF_BAND = "forecast_error_out_of_band"
 EVENT_LEAD_TIME_DRIFT = "lead_time_drift"
+
+# Distinct from every inventory event type above -- competitor_price_move_monitor's
+# own Control-Tower-routable type (Discovery-Assisted Price Intel plan, Task 7).
+EVENT_COMPETITOR_PRICE_MOVE = "competitor_price_move"
+
+# The pricing-titan market-signal event TYPES this monitor promotes -- exactly
+# what src.pricing_intel.events.detect_market_signal_events emits (see that
+# module's docstring). Any OTHER event type reaching this monitor (a titan
+# health event like site_degraded/extraction_failed/stale_feed, one of this
+# module's own inventory events, or anything else) is passed through
+# unpromoted -- membership in this set is the ENTIRE detection logic here.
+PRICE_SIGNAL_EVENT_TYPES = frozenset({"price_move", "competitor_oos", "promo_detected"})
 
 
 class MonitorConfigError(RuntimeError):
@@ -460,6 +483,91 @@ def lead_time_drift_monitor(
     return _emit(candidates, ledger)
 
 
+# ---- (f) Competitor price move (Discovery-Assisted Price Intel, R4 sense half) --
+
+
+def _price_signal_identifier(event: Event) -> str:
+    """The identifier this monitor's OWN ``dedup_key`` is keyed on --
+    ``event.sku`` (``CompetitorOffer.matched_product_id``, per
+    ``src/pricing_intel/events.py``) when present, else the payload's
+    ``competitor_sku_ref``. ``matched_product_id=None`` is a documented,
+    valid ``CompetitorOffer`` state (``src/pricing_intel/models.py`` -- an
+    offer that never matched one of our own SKUs still gets acquired and
+    still deserves a Tower signal); falling back to ``competitor_sku_ref``
+    keeps two different unmatched pairs from colliding under one shared
+    identifier instead of just going to a constant "unknown"."""
+    return event.sku or str(event.payload.get("competitor_sku_ref", "unknown"))
+
+
+def competitor_price_move_monitor(
+    price_signal_events: list[Event],
+    *,
+    source: str = SOURCE,
+    ledger: EventLedger | None = None,
+) -> list[Event]:
+    """Promote already-emitted pricing market-signal events -- ``price_move``
+    / ``competitor_oos`` / ``promo_detected``, produced by
+    ``src.pricing_intel.events.detect_market_signal_events`` inside
+    ``jobs.price_monitor.accept_observation`` (both the L0 MercadoLibre poll
+    and the discovery-assisted L1 watch cycle,
+    ``jobs.price_watch.run_price_watch_cycle``, converge on that one
+    function -- see its own docstring) -- into a single Control-Tower
+    ``competitor_price_move`` :class:`Event` per signal.
+
+    PURE adapter, NOT a second detector: every candidate here is selected
+    from ``price_signal_events`` by ``event.type in PRICE_SIGNAL_EVENT_TYPES``
+    alone -- no price/availability/promo comparison happens in this
+    function, matching the module's own "a monitor never touches src.state
+    itself; its caller passes the data in" convention -- here the caller
+    passes in whichever recent pricing-signal events it already has (e.g.
+    ``PriceWatchCycleReport.events``, or a page read off the shared
+    ``EventLedger``), never a ``PriceLedger``/``CompetitorOffer`` this
+    function would need to re-derive a move from. An event of any OTHER
+    type -- a titan health event (``site_degraded``/``extraction_failed``/
+    ``stale_feed``), one of this module's own inventory events, or anything
+    else -- is silently passed through unpromoted, exactly like an
+    unrelated row this module's other monitors would simply not match.
+
+    This monitor's own ``dedup_key`` (``"{identifier}:competitor_price_move:{signal_type}"``,
+    see :func:`_price_signal_identifier` -- the SAME ``_dedup_key`` helper
+    every monitor above uses, with the source event's own ``type`` folded
+    into the second argument) is DELIBERATELY DIFFERENT from the source
+    event's own ``dedup_key`` (``"{event_type}:{site}:{competitor_sku_ref}"``,
+    ``src/pricing_intel/events.py``'s own convention): this is a second,
+    Tower-feed-scoped recording of the same occurrence, not a re-emission of
+    the original. Folding ``signal_type`` into the key means each DISTINCT
+    signal kind for a given identifier dedups independently: a ``price_move``
+    and a ``promo_detected`` firing for the SAME SKU in the SAME batch (e.g.
+    a competitor closeout that cuts price while also flagging a promo) are
+    BOTH promoted as separate Tower events -- the Tower must not silently
+    drop one just because another kind already fired for that SKU. Only a
+    genuine REPEAT of the SAME signal kind for the same identifier, inside
+    one dedup window, collapses to a single Tower notification (see
+    :func:`_dedup_key`'s general repeat-suppression contract in the module
+    docstring).
+
+    Reference example: a ``price_move`` event with ``sku="SKU-X"``,
+    ``severity="high"`` -> one ``competitor_price_move`` event, same
+    severity, ``dedup_key="SKU-X:competitor_price_move:price_move"``,
+    payload = the original event's payload plus ``"signal_type": "price_move"``
+    and ``"signal_event_id": <original event.id>`` for traceability back to
+    the source signal (plan rule 7, "procedencia total").
+    """
+    candidates = [
+        Event(
+            type=EVENT_COMPETITOR_PRICE_MOVE,
+            severity=e.severity,
+            source=source,
+            dedup_key=_dedup_key(_price_signal_identifier(e), f"{EVENT_COMPETITOR_PRICE_MOVE}:{e.type}"),
+            sku=e.sku,
+            payload={**e.payload, "signal_type": e.type, "signal_event_id": e.id},
+        )
+        for e in price_signal_events
+        if e.type in PRICE_SIGNAL_EVENT_TYPES
+    ]
+    return _emit(candidates, ledger)
+
+
 # ---- one full A1 "sense" cycle ---------------------------------------------
 
 
@@ -470,6 +578,7 @@ def run_all_monitors(
     store: StateStore | None = None,
     stock_history_window: int = 2,
     outcomes_history_window: int = 2,
+    price_signal_events: list[Event] | None = None,
 ) -> list[Event]:
     """One full A1 'sense' cycle: read the current state domains and run every
     ``enabled`` monitor from ``config`` (default: ``load_monitor_config()``)
@@ -483,6 +592,18 @@ def run_all_monitors(
     snapshot yet (nothing written by any job) makes its monitor(s) silently
     contribute zero events rather than raising -- an empty Tower on day one
     is expected, not an error.
+
+    ``price_signal_events`` (Discovery-Assisted Price Intel plan, Task 7) is
+    this function's ONLY concession to a domain outside ``src.state``: an
+    optional list of already-emitted pricing market-signal events the
+    CALLER read from wherever it keeps them (e.g.
+    ``jobs.price_watch.PriceWatchCycleReport.events``, or a page off the
+    shared ``EventLedger``) -- this function never constructs a
+    ``PriceLedger`` or imports anything from ``src.pricing_intel`` itself,
+    keeping :func:`competitor_price_move_monitor` (and this function) pure
+    exactly like every other monitor here. Defaults to ``None``, in which
+    case the competitor-price-move step is skipped entirely -- a pure
+    inventory-only Tower cycle is still a complete, valid cycle.
     """
     config = config if config is not None else load_monitor_config()
     events: list[Event] = []
@@ -540,4 +661,6 @@ def run_all_monitors(
             ),
             ledger=ledger,
         )
+    if price_signal_events and _monitor_enabled(config, "competitor_price_move"):
+        events += competitor_price_move_monitor(price_signal_events, ledger=ledger)
     return events

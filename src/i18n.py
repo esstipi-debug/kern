@@ -196,7 +196,7 @@ def label(key: str, lang: Lang = DEFAULT_LANG, **kwargs: object) -> str:
     return text.format(**kwargs) if kwargs else text
 
 
-# ---- tool titles (scm_agent/tools.py -- the 37 registered Tool.title values) --
+# ---- tool titles (scm_agent/tools.py -- every registered Tool.title value) --
 
 TOOL_TITLES: dict[str, dict[Lang, str]] = {
     "inventory_optimization": {"es": "Optimizacion de Inventario", "en": "Inventory Optimization"},
@@ -249,6 +249,8 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
             "en": "Distribution Requirements Planning (DRP)"},
     "vehicle_routing": {"es": "Ruteo y Programacion de Vehiculos", "en": "Vehicle Routing & Scheduling"},
     "price_intelligence": {"es": "Diagnostico de Posicion de Precios", "en": "Price Position Diagnostic"},
+    "price_watch": {"es": "Vigilancia de Precios Asistida por Descubrimiento",
+                     "en": "Discovery-Assisted Price Watch"},
 }
 
 

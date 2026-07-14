@@ -55,3 +55,17 @@ monitors:
     cadence_minutes: 1440
     drift_threshold: 0.25
     min_baseline_days: 1.0
+
+  # (f) Competitor price move (Discovery-Assisted Price Intel plan, Task 7 /
+  # PR-7, R4 "sense" half) -- promotes already-emitted pricing market-signal
+  # events (price_move/competitor_oos/promo_detected, see
+  # src/pricing_intel/events.py) into a single Control Tower event. No
+  # thresholds of its own: detection already happened upstream in
+  # src.pricing_intel.events.detect_market_signal_events -- this monitor is
+  # a pure adapter. cadence_minutes matches jobs/price_watch.py's own
+  # DEFAULT_CADENCE_HOURS (4h) -- documents the expected pace of the
+  # recurring watch cycle this monitor's input flows from, not a re-poll of
+  # its own.
+  competitor_price_move:
+    enabled: true
+    cadence_minutes: 240

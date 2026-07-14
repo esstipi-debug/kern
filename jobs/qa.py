@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from src.guided import GuidedOutcome, verify_guided
+from src.guided import EXECUTED, GuidedOutcome, verify_guided
 from src.sop_engine.coherence import CHECK_BUDGET_FEASIBILITY, CHECK_PROMO_COVERAGE, CHECK_SERVICE_LEVEL
 
 from . import forecast_job
@@ -32,6 +32,10 @@ if TYPE_CHECKING:  # avoid a real circular import: jobs.digest_job -> scm_agent.
     # Same hazard, same fix: jobs.price_intelligence -> src.pricing_intel.sanity ->
     # scm_agent.events -> scm_agent (package __init__) -> scm_agent.tools -> here.
     from .price_intelligence import PriceIntelReport
+
+    # Same hazard, same fix: jobs.price_watch -> scm_agent.events ->
+    # scm_agent (package __init__) -> scm_agent.tools -> `from jobs import qa` -> here.
+    from .price_watch import PriceWatchCycleReport
 
 TOL = 1e-6
 PRICE_INTEL_COVERAGE_MIN = 0.60  # plan section 6.9 item 2: ">=60% SKUs con >=1 competidor confirmado"
@@ -285,3 +289,48 @@ def verify_integrated_plan(bundle: IntegratedPlanBundle) -> list[str]:
 
 def integrated_plan_passed(bundle: IntegratedPlanBundle) -> bool:
     return not verify_integrated_plan(bundle)
+
+
+def verify_price_watch(report: PriceWatchCycleReport) -> list[str]:
+    """QA gate for the discovery-assisted watch cycle (Task 11 / PR-11's agent-
+    tool wiring). Empty list = passed. STRUCTURAL checks only -- no new
+    judgment threshold is invented here (unlike ``verify_price_intel``'s own
+    60% coverage bar, a DIFFERENT, already-approved deliverable with its own
+    bar): pairs_checked matches the outcome count (golden rule 14), every
+    outcome's status is one of the honest, enumerated values
+    ``jobs.price_monitor.accept_observation`` actually returns, and every
+    outcome carries a non-empty, citable reason.
+
+    R5, checked AGAIN at this gate (not just ``scm_agent.tool_options.
+    price_watch_options``): every ``pending_escalations`` entry (Task 9's
+    ceiling-raise request) must honor the never-unprotected contract
+    (``coverage_gate``, which extends ``verify_guided`` with the residual/
+    handoff/escalation completeness checks) and must NEVER be status
+    ``EXECUTED`` -- a tier raise is never silently applied.
+    """
+    issues: list[str] = []
+
+    if report.pairs_checked != len(report.outcomes):
+        issues.append(
+            f"price_watch: pairs_checked ({report.pairs_checked}) != len(outcomes) ({len(report.outcomes)})"
+        )
+
+    valid_statuses = {"accepted", "quarantined", "discarded", "skipped"}
+    for o in report.outcomes:
+        if o.status not in valid_statuses:
+            issues.append(f"price_watch: {o.site}/{o.competitor_sku_ref}: invalid status {o.status!r}")
+        if not o.reason:
+            issues.append(f"price_watch: {o.site}/{o.competitor_sku_ref}: outcome has no reason")
+
+    for guided in report.pending_escalations:
+        if guided.status == EXECUTED:
+            issues.append(
+                "price_watch: a pending ceiling-raise escalation reports status EXECUTED -- R5 violation"
+            )
+        issues.extend(f"price_watch: pending escalation: {msg}" for msg in coverage_gate(guided))
+
+    return issues
+
+
+def price_watch_passed(report: PriceWatchCycleReport) -> bool:
+    return not verify_price_watch(report)

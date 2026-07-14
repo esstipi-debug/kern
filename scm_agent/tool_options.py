@@ -9,10 +9,11 @@ Each builder reads only its report's public fields and returns a protected optio
 """
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import replace
 
 from src.escalation import maybe_escalate_data_quality
-from src.guided import ExecutionOption, GuidedOutcome, Residual, as_options
+from src.guided import ExecutionOption, GuidedOutcome, Residual, as_handoff, as_options
 
 # Each item is (label, summary, action, tradeoffs); the first item is the recommended default.
 _Item = tuple[str, str, str, str]
@@ -675,3 +676,81 @@ def price_intelligence_options(report: object) -> GuidedOutcome:
         "coverage - choose how to proceed.",
         items,
     )
+
+
+def price_watch_options(report: object) -> GuidedOutcome:
+    """The discovery-assisted watch cycle's options hook (Task 11 / PR-11).
+
+    Happy path: ranked next steps over this cycle's outcomes (accepted /
+    quarantined+discarded / skipped), same ``_ranked`` shape every other
+    tool's options hook uses.
+
+    R5 (SAFETY-CRITICAL): when the cycle's scaling step (Task 9) produced one
+    or more ``pending_escalations`` -- a SKU wanting a higher acquisition tier
+    than its site's approved ceiling -- this hook NEVER reports the happy-path
+    ranked options alone and NEVER reports EXECUTED. It surfaces a HANDOFF
+    outcome instead, carrying every pending escalation's own prepared
+    ``HandoffPacket``(s)/residual(s) verbatim (``watch_policy._ceiling_raise_
+    outcome`` already built them -- never rebuilt here), so the ceiling-raise
+    request is genuinely visible to the operator, not flattened into the
+    ranked-options list or silently dropped. The happy-path's own ranked
+    options travel along at the outcome's top level too (mirrors
+    ``src.escalation._maybe_escalate``'s "nothing silently vanishes from the
+    rendered deliverable" contract) so the routine next steps stay visible
+    alongside the pending approval.
+    """
+    outcomes = list(report.outcomes)
+    by_status = Counter(o.status for o in outcomes)
+    n_accepted = by_status.get("accepted", 0)
+    n_flagged = by_status.get("quarantined", 0) + by_status.get("discarded", 0)
+    n_skipped = by_status.get("skipped", 0)
+
+    review_accepted = (
+        "Review the accepted price reads",
+        f"{n_accepted} of {len(outcomes)} confirmed pair(s) produced a fresh accepted observation "
+        "this cycle - review the price-position matrix and decide where to move.",
+        "review the accepted observations and act on the non-flagged pairs",
+        "the fastest path to a decision; flagged/skipped pairs stay unresolved",
+    )
+    investigate_flags = (
+        "Investigate the flagged reads",
+        f"{n_flagged} observation(s) were quarantined or discarded by the sanity gate this cycle - "
+        "a confirmatory re-read (or a manual check) resolves whether the jump is real.",
+        "re-run once the confirmation window passes, or check the flagged pairs by hand",
+        "protects against acting on a bad read; costs a second cycle",
+    )
+    resolve_skipped = (
+        "Resolve the skipped pairs",
+        f"{n_skipped} confirmed pair(s) were skipped this cycle (blocked, circuit open, tier not "
+        "approved, or a fetch/extraction failure) - resolving those raises next-cycle coverage.",
+        "check the skip reasons and fix the underlying site/tier issue, or wait for the breaker to reopen",
+        "better-grounded next cycle; delays action by one more cycle",
+    )
+    if n_flagged > 0:
+        items: list[_Item] = [review_accepted, investigate_flags, resolve_skipped]
+    elif n_skipped > 0:
+        items = [review_accepted, resolve_skipped, investigate_flags]
+    else:
+        items = [review_accepted, investigate_flags, resolve_skipped]
+    happy_path = _ranked(
+        f"Price watch cycle over {report.pairs_checked} confirmed pair(s): {n_accepted} accepted, "
+        f"{n_flagged} flagged, {n_skipped} skipped - choose how to proceed.",
+        items,
+    )
+
+    pending = list(report.pending_escalations)
+    if not pending:
+        return happy_path
+
+    handoffs = [packet for guided in pending for packet in guided.handoffs]
+    residuals = [residual for guided in pending for residual in guided.residuals]
+    summary = (
+        f"{happy_path.summary} {len(pending)} SKU(s) also want a higher acquisition tier than their "
+        "site's approved ceiling - a human must review and raise the ceiling before that tier is ever "
+        "used; nothing was applied automatically."
+    )
+    outcome = as_handoff(
+        summary, handoffs, confidence=min([happy_path.confidence, *(g.confidence for g in pending)]),
+        residuals=residuals,
+    )
+    return replace(outcome, options=list(happy_path.options))

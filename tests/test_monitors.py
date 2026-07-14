@@ -388,7 +388,7 @@ def test_load_monitor_config_parses_the_real_config_file():
 
     assert set(config) == {
         "rop_breach", "stockout_projected", "excess_growing",
-        "forecast_error_out_of_band", "lead_time_drift",
+        "forecast_error_out_of_band", "lead_time_drift", "competitor_price_move",
     }
     assert config["rop_breach"]["critical_cover_days"] == 7.0
     assert config["excess_growing"]["excess_cover_days"] == 90.0

@@ -52,24 +52,12 @@ from scm_agent.knowledge import KnowledgeBase
 from src import i18n
 from src.deliverable import DEFAULT_BRANDING, Branding, DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
-from src.pricing_intel.acquire.base import (
-    CircuitBreaker,
-    SiteNotApprovedError,
-    SiteNotConfiguredError,
-    classify_blocking_signal,
-    require_approved_site,
-)
-from src.pricing_intel.acquire.pdp_fetcher import FetchError, fetch_pdp_html
-from src.pricing_intel.extract import ExtractionFailed, extract_price
+from src.pricing_intel.acquire.base import CircuitBreaker
+from src.pricing_intel.acquire.l1 import AcquisitionSkipped, acquire_l1_offer
 from src.pricing_intel.ledger import PriceLedger, default_ledger
-from src.pricing_intel.models import ACQUISITION_TIERS, CompetitorOffer
-from src.pricing_intel.normalize import (
-    PriceNormalizationError,
-    convert_to_base_currency,
-    detect_promo,
-)
+from src.pricing_intel.models import CompetitorOffer
+from src.pricing_intel.normalize import PriceNormalizationError, convert_to_base_currency
 from src.pricing_intel.sanity import (
-    RawOfferCandidate,
     SanityStatus,
     check_basic_validity,
     check_intraday_delta,
@@ -230,83 +218,43 @@ def _acquire_one(
     sites_config_dir: str | Path | None,
     now: datetime,
 ) -> RowOutcome:
+    """Acquire one ref's current L1 price via the shared
+    ``src.pricing_intel.acquire.l1.acquire_l1_offer`` prefix (final whole-
+    branch review, Finding 2 -- this function used to carry the gate/tier/
+    breaker/fetch/classify/extract sequence inline, near-verbatim with
+    ``jobs.price_watch._check_one_pair``'s own copy; both now call the same
+    shared helper). Everything from here down is this function's OWN
+    divergent tail: the multi-check sanity gate (basic validity / intraday
+    delta / MAD outlier) plus FX normalization -- ``jobs.price_watch``
+    converges on ``accept_observation`` instead, a deliberately different
+    tail (see that module's own docstring)."""
     base = dict(product_id=ref.product_id, site=ref.site, competitor_url=ref.competitor_url)
 
-    if ref.site is None:
-        return RowOutcome(**base, status="skipped", reason="id_ref_requires_l0_api_not_yet_available")
-
-    if ref.site not in site_configs:
-        try:
-            kwargs = {} if sites_config_dir is None else {"config_dir": sites_config_dir}
-            config = require_approved_site(ref.site, **kwargs)
-            site_configs[ref.site] = config
-            breakers[ref.site] = CircuitBreaker.for_site(config, **DEFAULT_BREAKER_KWARGS)
-        except (SiteNotConfiguredError, SiteNotApprovedError) as exc:
-            site_configs[ref.site] = exc
-    cached = site_configs[ref.site]
-    if isinstance(cached, Exception):
-        return RowOutcome(**base, status="skipped", reason=f"site_not_approved:{type(cached).__name__}")
-    config = cached
-    # This PR only ever acquires at L1 (structured-data extraction) -- a
-    # domain approved only up to L0 (official API, no scraping at all) must
-    # not be touched here even though its ToS/robots decision is otherwise
-    # "approved" (plan S6.7's "tier maximo permitido" is a ceiling, not just
-    # a yes/no).
-    if ACQUISITION_TIERS.index("L1") > ACQUISITION_TIERS.index(config.max_tier_allowed):
-        return RowOutcome(**base, status="skipped", reason="tier_not_approved")
-    breaker: CircuitBreaker = breakers[ref.site]
-
-    if ref.html_path is not None:
-        try:
-            html = Path(ref.html_path).read_text(encoding="utf-8")
-        except OSError as exc:
-            return RowOutcome(**base, status="skipped", reason=f"html_path_unreadable:{exc}")
-    else:
-        if not breaker.allow_request(now):
-            return RowOutcome(**base, status="skipped", reason="circuit_open")
-        result = fetch_pdp_html(ref.competitor_url, client=client, now=now)
-        if isinstance(result, FetchError):
-            # A transport-level failure is NOT a blocking signal (classify_blocking_signal's
-            # own docstring) -- an ordinary transient failure must not trip the breaker.
-            return RowOutcome(**base, status="skipped", reason=f"fetch_error:{result.reason}")
-        blocking = classify_blocking_signal(status_code=result.status_code, html=result.html)
-        if blocking is not None:
-            breaker.record_failure(reason=blocking, now=now, ledger=event_ledger)
-            return RowOutcome(**base, status="skipped", reason=f"blocked:{blocking}")
-        breaker.record_success()
-        if result.html is None or result.status_code != 200:
-            return RowOutcome(**base, status="skipped", reason=f"fetch_failed:status_{result.status_code}")
-        html = result.html
-
-    try:
-        extraction = extract_price(html, currency_hint=ref.currency_hint)
-    except ExtractionFailed as exc:
-        if event_ledger is not None:
-            event_ledger.emit(Event(
-                type="extraction_failed", severity="warning", source="jobs.price_intelligence",
-                dedup_key=f"extraction_failed:{ref.site}:{ref.competitor_url}:{now.isoformat()}",
-                sku=ref.product_id,
-                payload={"site": ref.site, "competitor_url": ref.competitor_url, "attempts": list(exc.attempts)},
-                ts=now,
-            ))
-        return RowOutcome(**base, status="skipped", reason="extraction_failed")
-
-    # A price successfully extracted from a live PDP but with no stated
-    # availability is assumed InStock (documented business assumption -- the
-    # plan's "never fabricate a price" bar does not extend to a secondary,
-    # commonly-defaulted field; selector/price-parser tiers never state
-    # availability at all, see extract.py).
-    availability = extraction.availability or "InStock"
-    candidate = RawOfferCandidate(
-        observed_at=now, site=ref.site, competitor_sku_ref=ref.competitor_url,
-        matched_product_id=ref.product_id, match_confidence=1.0,
-        price=extraction.price, currency=extraction.currency, price_normalized=None,
-        shipping=None, availability=availability,
-        promo_flag=detect_promo(extraction.price, extraction.list_price),
-        list_price=extraction.list_price, acquisition_tier="L1",
-        extractor=extraction.extractor, extractor_version=extraction.extractor_version,
-        extraction_confidence=extraction.confidence,
+    acquired = acquire_l1_offer(
+        site=ref.site, competitor_ref=ref.competitor_url, matched_product_id=ref.product_id,
+        match_confidence=1.0, client=client, now=now, site_configs=site_configs, breakers=breakers,
+        sites_config_dir=sites_config_dir, event_ledger=event_ledger, html_path=ref.html_path,
+        currency_hint=ref.currency_hint, breaker_kwargs=DEFAULT_BREAKER_KWARGS,
     )
+    if isinstance(acquired, AcquisitionSkipped):
+        if acquired.reason == "extraction_failed":
+            # This module's OWN extraction_failed event shape (source/payload
+            # keys) -- the shared prefix deliberately never emits this event
+            # itself (see acquire_l1_offer's own docstring).
+            if event_ledger is not None:
+                event_ledger.emit(Event(
+                    type="extraction_failed", severity="warning", source="jobs.price_intelligence",
+                    dedup_key=f"extraction_failed:{ref.site}:{ref.competitor_url}:{now.isoformat()}",
+                    sku=ref.product_id,
+                    payload={
+                        "site": ref.site, "competitor_url": ref.competitor_url,
+                        "attempts": list(acquired.extraction_attempts or ()),
+                    },
+                    ts=now,
+                ))
+        return RowOutcome(**base, status="skipped", reason=acquired.reason)
+
+    candidate = acquired.candidate
     verdict = check_basic_validity(candidate, ledger=event_ledger)
     if verdict.status == SanityStatus.DISCARD:
         return RowOutcome(**base, status="discarded", reason=verdict.reason)

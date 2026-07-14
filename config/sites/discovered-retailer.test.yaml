@@ -1,0 +1,44 @@
+# Per-domain compliance record (discovery-assisted price intel plan, Task 1
+# / PR-1, requirement R1).
+#
+# SYNTHETIC TEST FIXTURE -- "discovered-retailer.test" uses the IANA-reserved
+# ".test" TLD (RFC 2606) specifically so it can never collide with a real
+# domain. Unlike its siblings `example-retailer.test.yaml` (human-reviewed
+# "limited") and `example-blocked.test.yaml` (human-reviewed "prohibited"),
+# this file is the committed demonstration of what
+# `auto_approve.auto_approve_site()` writes AUTOMATICALLY the moment a
+# domain's robots.txt permits the fetch -- it was NEVER hand-approved by a
+# human. That is exactly why `tos_decision` is "limited" (never "allowed")
+# and `max_tier_allowed` is capped at "L1": robots.txt says nothing about a
+# site's Terms of Service, so an automated process has no basis to claim a
+# human legal review happened, and auto-onboarding never self-grants a
+# higher acquisition tier than the minimal one discovery needs. These field
+# values mirror auto_approve.py's AUTO_TOS_DECISION / AUTO_MAX_TIER /
+# AUTO_TOS_SUMMARY / DEFAULT_RATE_LIMIT_SECONDS module constants verbatim.
+#
+# Fields match src.pricing_intel.models.SiteConfig verbatim -- see that
+# dataclass's __post_init__ for the validation this file must satisfy
+# (tos_decision in allowed/limited/prohibited, max_tier_allowed in
+# L0..L3, pii_policy must be "none").
+
+domain: discovered-retailer.test
+
+# robots.txt respected: yes, and the date this was auto-checked.
+robots_txt_respected: true
+robots_checked_at: "2026-07-13"
+
+# ToS summary + decision -- the fixed auto-onboarding disclosure written by
+# auto_approve_site() (AUTO_TOS_SUMMARY), never a human ToS review.
+tos_summary: "Auto-onboarded via robots.txt only; Terms of Service not reviewed by a human."
+tos_decision: limited
+
+# Safe default crawl rate used when robots.txt declares no Crawl-delay for
+# our UA (auto_approve.DEFAULT_RATE_LIMIT_SECONDS).
+rate_limit_seconds: 5.0
+
+# Auto-onboarding never self-grants above L1 -- a move to L2/L3 always
+# requires a human (auto_approve.AUTO_MAX_TIER).
+max_tier_allowed: L1
+
+# Zero PII, always (plan S6.0 principle 2 -- no exceptions).
+pii_policy: none

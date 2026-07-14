@@ -22,6 +22,31 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-07-14 — Discovery-assisted competitor price intelligence: 12-PR plan COMPLETE (branch `worktree-discovery-price-intel`)
+
+The full "discovery-assisted competitor price intelligence" plan (R1-R6) is
+landed on this feature branch — 12 PRs, `price_watch` is the **40th** registered
+agent tool. Pieces: robots-only auto-onboarding (`src/pricing_intel/acquire/
+auto_approve.py`), discovery page filter (`src/pricing_intel/discover.py`),
+crawl wiring + homologation + recurring watch cycle (`jobs/price_watch.py`),
+the match cascade (`src/pricing_intel/homologate.py`), the R5 bounded
+auto-scaling guard (`src/pricing_intel/watch_policy.py` + `jobs/
+price_watch_scaling.py`), the value-based priority plan (`jobs/
+price_priority.py`), the agent-tool wiring (`scm_agent/tools.py::
+price_watch_tool`), and the **end-to-end CLI + acceptance suite** (Task 12):
+`examples/run_price_watch.py` + `tests/test_price_watch_e2e.py`.
+
+**Three headline acceptance criteria proven end-to-end** (offline-deterministic,
+`tests/test_price_watch_e2e.py`): (1) one never-seen `.test` URL -> approved
+`limited` + `homologation_table.csv` + `price_position_matrix.xlsx` + per-SKU
+`price_priority.csv`, zero human intervention; (2) robots.txt disallow -> NO
+config written, crawl/fetch never invoked, honest reason; (3) a tier raise
+beyond the approved L1 ceiling -> pending-approval `GuidedOutcome`, never
+`EXECUTED`. Two hard invariants stated in `CLAUDE.md`: **read-only observation**
+(no writeback anywhere) and **auto-onboarding is robots-only + always `limited`**
+(never `allowed`, never above L1). Try it: `python examples/run_price_watch.py
+--demo`. NOT yet squash-merged to `main` — feature branch pending PR/merge.
+
 ## 2026-07-13 — Two big PRs merged to `main` same day: Linchpin 3.0 (#143) and Kern ICP/publicidad (#142)
 
 **Read this section first — both are now historical, on `main`, this is the

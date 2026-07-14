@@ -103,6 +103,7 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "drp": ("vollmann_drp", "distribution_network_design"),
     "vehicle_routing": ("route_sheet", "last_mile_delivery"),
     "price_intelligence": ("price_competition", "competition_oriented_pricing", "price_positioning"),
+    "price_watch": ("price_competition", "competition_oriented_pricing", "price_positioning"),
 }
 
 # tool_key -> concept ids that must NEVER be cited for this tool, even when
