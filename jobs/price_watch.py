@@ -247,6 +247,19 @@ def _persist_row(sku_map: SkuMap, row: HomologationRow, *, now: datetime) -> Non
     persisted entry always carries ``confirmed_at=None`` alongside
     ``confirmed_by=None``, mirroring ``HomologationRow.__post_init__``'s own
     structural guard against a suspect row silently carrying either.
+
+    Safety-critical invariant, enforced HERE independently of
+    ``HomologationRow.__post_init__`` (review fix, round 1): a non-
+    ``confirmed`` row must never carry a non-``None`` ``confirmed_by``.
+    ``HomologationRow``'s own constructor already refuses this combination,
+    and neither :class:`~src.pricing_intel.models.MatchCandidate`'s
+    ``__post_init__`` nor :meth:`SkuMap.record` independently re-checks it
+    (``SkuMap.record`` only checks the forward direction -- a ``confirmed``
+    candidate requires a truthy ``confirmed_by``). Without this local guard,
+    a future refactor of ``homologate.py``/``adjudicate.py``, or any new
+    caller constructing a row/candidate some other way, could let a non-
+    ``None`` ``confirmed_by`` slip onto a ``suspect``/``rejected`` row and
+    sail straight through into durable ``sku_map`` storage unnoticed.
     """
     if row.our_product_id is None:
         # Structurally unreachable for confirmed/suspect rows -- homologate.py's
@@ -254,6 +267,12 @@ def _persist_row(sku_map: SkuMap, row: HomologationRow, *, now: datetime) -> Non
         # (see that module's docstring) -- but guarded explicitly rather than
         # trusting that invariant silently across a future change.
         raise ValueError(f"cannot persist a {row.status!r} row with our_product_id=None")
+
+    if row.status != "confirmed" and row.confirmed_by is not None:
+        raise ValueError(
+            f"cannot persist a {row.status!r} row with confirmed_by={row.confirmed_by!r} -- "
+            "only a 'confirmed' row may carry confirmed_by"
+        )
 
     confirmed_at = now if row.status == "confirmed" else None
     candidate = MatchCandidate(

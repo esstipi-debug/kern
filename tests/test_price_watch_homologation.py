@@ -199,6 +199,49 @@ def test_shared_sku_map_singleton_not_closed(tmp_path: Path, monkeypatch: pytest
     assert len(store.list_all_confirmed()) == 1
 
 
+# -- _persist_row's own independent guard (review-fix, Task 5 round 1) -------
+
+
+def test_persist_row_rejects_non_confirmed_row_with_confirmed_by(sku_map: SkuMap) -> None:
+    """The safety-critical invariant -- a non-``confirmed`` row must never
+    carry a non-``None`` ``confirmed_by`` -- is already enforced by
+    ``HomologationRow.__post_init__`` for any row built through the normal
+    constructor (see ``test_suspect_rows_recorded_but_not_confirmed`` above).
+    This test proves ``_persist_row`` ALSO independently enforces it, rather
+    than relying solely on that upstream guard: it builds a violating
+    ``HomologationRow`` by bypassing ``__init__``/``__post_init__`` entirely
+    (``object.__new__`` + ``object.__setattr__`` on the frozen dataclass --
+    the only way to construct one, since the normal constructor structurally
+    refuses this combination), then calls ``_persist_row`` directly and
+    asserts it raises ``ValueError`` *before* anything reaches ``sku_map``.
+    This is the scenario the review flagged: a future refactor of
+    ``homologate.py``/``adjudicate.py``, or a new caller building a row some
+    other way, that lets a non-``None`` ``confirmed_by`` slip onto a
+    ``suspect``/``rejected`` row would sail straight through this function
+    into durable storage with no local guard catching it.
+    """
+    violating_row = object.__new__(pw.HomologationRow)
+    object.__setattr__(violating_row, "our_product_id", "our-samsung-s23")
+    object.__setattr__(violating_row, "competitor_sku_ref", "https://competitor.test/p/violating")
+    object.__setattr__(violating_row, "site", "competitor.test")
+    object.__setattr__(violating_row, "method", "probabilistic")
+    object.__setattr__(violating_row, "score", 0.6)
+    object.__setattr__(violating_row, "status", "suspect")
+    object.__setattr__(violating_row, "reason", "bypassed-post-init-validation")
+    object.__setattr__(violating_row, "confirmed_by", "auto")  # the violation under test
+
+    with pytest.raises(ValueError, match="confirmed_by"):
+        pw._persist_row(sku_map, violating_row, now=NOW)
+
+    # nothing reached the store -- the guard fired before sku_map.record().
+    assert (
+        sku_map.history(
+            "our-samsung-s23", "https://competitor.test/p/violating", "competitor.test"
+        )
+        == []
+    )
+
+
 # -- publishing: the homologation table + unmatched CSV ----------------------
 
 
