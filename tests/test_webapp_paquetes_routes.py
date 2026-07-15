@@ -35,6 +35,14 @@ def test_paquetes_offer_page_404_for_unknown_slug() -> None:
     assert resp.status_code == 404
 
 
+def test_paquetes_offer_page_ok_for_diagnostico_posicion_precios() -> None:
+    # regression: this slug 404'd -- never registered in OFFERS despite
+    # demo_price_scan.py and pricing_page.py already linking to it.
+    resp = client.get("/paquetes/diagnostico-posicion-precios")
+    assert resp.status_code == 200
+    assert "/paquetes-docs/diagnostico-posicion-precios.md" in resp.text
+
+
 def test_paquetes_docs_mount_serves_real_one_pager() -> None:
     resp = client.get("/paquetes-docs/growth-operacion.md")
     assert resp.status_code == 200
