@@ -19,8 +19,7 @@
 - [ ] Visitar `https://linchpin.fly.dev/paquetes` en producción y revisar que
       los 8 paquetes, precios y CTAs se vean bien
 
-## Distribución (ya preparado, pendiente de tu login — ver
-[GTM_SUBMISSIONS.md](../GTM_SUBMISSIONS.md))
+## Distribución (ya preparado, pendiente de tu login — ver [GTM_SUBMISSIONS.md](../GTM_SUBMISSIONS.md))
 
 - [ ] Registrar en el MCP registry oficial (`mcp-publisher login github` +
       `publish`)
@@ -87,6 +86,23 @@
       qué hacer con los reportes individuales que todavía dicen "Kern"
       (ver el punto de arriba).
 
+## Plantillas Legales (E7, ya en código)
+
+- [ ] **Obligatorio antes de usar cualquiera de los dos documentos con un
+      cliente pagando:** hacer revisar
+      [`service-agreement-template.md`](../legal/service-agreement-template.md)
+      y [`dpa-lite.md`](../legal/dpa-lite.md) por un abogado real,
+      familiarizado con tu jurisdicción — cada cláusula de riesgo real está
+      marcada `[REVISAR CON ABOGADO: ...]` directamente en el documento, no
+      es una revisión genérica de todo el texto.
+- [ ] Completar los campos entre corchetes (nombre/razón social del
+      operador, jurisdicción, plazos de preaviso y de retención, tope de
+      responsabilidad) antes de la primera firma — no quedan como
+      "plantilla" una vez que hay un cliente real.
+- [ ] Si el paquete contratado usa *writeback* (Odoo u otro), confirmar que
+      la Sección 9 del acuerdo de servicios describe correctamente el
+      conector real en uso.
+
 ## Modo Interno / Métricas (E8, ya en código)
 
 - [ ] Nada obligatorio — `GET /api/metrics` funciona sin configuración
@@ -103,9 +119,6 @@
 
 - [ ] E4/E5 — sin acciones humanas esperadas (i18n y citation-gate son
       puramente de código)
-- [ ] E7 — hacer revisar el `service-agreement-template.md` y `dpa-lite.md`
-      por un abogado real antes de usarlos con un cliente pagando (marcados
-      `[REVISAR CON ABOGADO]` en el propio documento)
 
 ## Regla permanente
 

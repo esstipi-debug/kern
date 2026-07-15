@@ -118,6 +118,16 @@ OFFERS: tuple[Offer, ...] = (
                    "no quiere pagar un fee fijo por algo que todavia no se recupero",
         md_file="sprint-liquidacion.md",
     ),
+    Offer(
+        slug="diagnostico-posicion-precios",
+        name="Diagnostico de Posicion de Precios",
+        price="USD 2.000-3.500 unico",
+        cadence="Unico, sprint de 2 semanas (one-shot)",
+        recibe="1 tool: price_intelligence",
+        para_quien="Vende productos comparables online, quiere saber donde esta caro/barato "
+                   "frente a la competencia con evidencia trazable, sin monitoreo continuo todavia",
+        md_file="diagnostico-posicion-precios.md",
+    ),
 )
 
 _OFFERS_BY_SLUG: dict[str, Offer] = {offer.slug: offer for offer in OFFERS}

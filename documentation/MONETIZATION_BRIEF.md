@@ -38,7 +38,7 @@ Correcciones surgidas en verificación: Cogsy **no** parte en $199 (parte en $49
 | **B. Mixto Odoo** (hispano + anglo) | 2 retainers $2.500 + 1 proyecto Odoo/mes $3.000 (implementación módulo + política de inventario) | $8.000 |
 | **C. Escalera** (arranque) | Mes 1–3: 2 contratos Upwork (~$2–3k) + 1 retainer $2.500 → mes 4–6: convertir a 3 retainers y subir precio | $8k en mes ~6 |
 
-## Estructura de empaquetado comercial (8 secciones vendibles por separado)
+## Estructura de empaquetado comercial (10 secciones vendibles por separado)
 
 > Diseñada con un panel de 3 jueces independientes que evaluó 3 estructuras (escalera de
 > consultoría, **tiers fijos**, modular à la carte) en 5 criterios: claridad para el
@@ -61,6 +61,7 @@ Correcciones surgidas en verificación: Cogsy **no** parte en $199 (parte en $49
 | 7 | **Proyecto de Sourcing y Costo de Importación** | $5.000–10.000 único | Único, recurrible trimestral/anual | 3: `sourcing`, `landed_cost`, `acceptance_sampling` | Importadores / manufactura offshore |
 | 8 | **Sprint de Liquidación** | 10–20% del cash recuperado, piso $1.500 (contingente, no fijo) | Único, sprint 2–3 semanas | 3-4: `data_quality`, `excess_obsolete`, `markdown_liquidation` (+ `pricing` opcional) | Stock muerto/excedente ya diagnosticado, decidido a liquidar, resiste pagar un fee fijo por algo no recuperado |
 | 9 | **Diagnóstico de Posición de Precios** | $2.000–3.500 único | Único, sprint 2 semanas (one-shot) | 1: `price_intelligence` (nueva, Linchpin 3.0 — "el titán del pricing") | Vende productos comparables online, quiere saber dónde está caro/barato frente a la competencia con evidencia trazable, sin monitoreo continuo todavía |
+| 10 | **Evidencia de Auditoría de Inventario** *(vertical nueva, requiere build — ver nota)* | $6.000–15.000 por ciclo de auditoría | Único, recurrente cada auditoría (anual) | 4: `audit_evidence` (nueva) + `abc_xyz`, `reconciliation`, `acceptance_sampling` (existentes) | Controller/CFO de empresa privada en su 1ª auditoría o pre-IPO; o firma mid-tier que subcontrata la preparación de papeles de inventario/COGS |
 
 Nota sobre la sección 8: es la única con **precio contingente** — el
 honorario se calcula sobre el cash efectivamente recuperado (nunca sobre una
@@ -84,6 +85,55 @@ suelto") también cruzan el piso por sí solos en el mes que se cierran, aunque 
 puntual, no como MRR. Techo por cuenta a lo largo de su ciclo de vida (Diagnóstico → tier
 → Scale → Retainer Ejecutivo + proyectos anuales): **$150.000–250.000+/año** en la cuenta
 más grande y madura de la cartera.
+
+### Nota — Sección 10: vertical de auditoría (comprador distinto, mayor poder de precio)
+
+Por qué se añade y por qué mueve el techo: las secciones 1–7 le venden al **comprador de
+operaciones** (ahorro discrecional; si no compra, sigue igual). La Sección 10 le vende al
+**comprador de cumplimiento**, cuyo gasto es **obligatorio y con fecha límite** — nadie pasa
+una auditoría sin preparar la evidencia, y el cambio de PCAOB AS 1215 reduce la ventana de
+ensamblaje de papeles de trabajo de 45 a 14 días desde dic-2026. Es la única sección del
+catálogo con demanda **no discrecional**, y su comprador (controller/CFO, o una firma de
+auditoría) paga por hora 2–4× lo que el gerente de inventario de las secciones 1–7.
+
+**Benchmarks verificados (jul-2026) que anclan el precio:**
+
+| Referencia | Cifra verificada |
+|---|---|
+| Auditoría de EEFF de empresa privada | **$7.000–50.000** (pyme <$5M: $7–15k; mediana $5–50M: $15–35k). El **inventario complejo añade horas facturables** — es exactamente el costo que la Sección 10 reduce |
+| Readiness SOX 404 | Mid-market **$15.000–75.000**; pre-IPO completo **$75.000–250.000** sobre el periodo (12–24 meses) |
+| Que las firmas **sí** pagan por tooling de auditoría | DataSnipper $64–175/usuario/mes (mín. 5 asientos → **$3.840–10.500/año**); AuditBoard **$40.000–150.000/año** por contrato |
+
+**Precio propuesto (hipótesis a validar — ver condiciones abajo):** **$6.000–15.000 por ciclo
+de auditoría**, recurrente cada año, vendido a la gerencia como *"preparamos el papel de trabajo
+de inventario/COGS — muestreo estadístico defendible, tie-out al libro mayor y linaje con hash
+por número; tu auditor factura menos horas y tú pasas la revisión sin sobresaltos"*. Es una
+fracción del honorario total de auditoría, lo que lo hace fácil de aprobar. **No viola la regla
+de oro:** es un paquete de 4 tools, no un tool suelto.
+
+- **Add-on SOX** (fase 2 del diseño: matriz de riesgo-control + test de controles):
+  **$2.000–4.000/mes** sobre Growth/Scale, solo empresas públicas/pre-IPO — MRR de nicho pero
+  ticket alto.
+- **Efecto en el portafolio:** el techo por cuenta madura sube **$6k–15k/año por cada cuenta que
+  se audita**; una sola temporada de auditoría con 2 clientes cruza el piso de $8.000/mes de ese
+  mes. La variante de más techo —vender capacidad *white-label* a firmas mid-tier (rango
+  AuditBoard $40k–150k/año)— existe pero es venta enterprise lenta, no la ruta fraccional corta
+  del resto del brief.
+
+**Dos condiciones antes de facturar esto (por eso es hipótesis, no oferta activa):**
+
+1. **No existe el código todavía.** Hoy es memo + diseño
+   ([`AUDIT_EVIDENCE_MEMO.md`](AUDIT_EVIDENCE_MEMO.md),
+   [`AUDIT_EVIDENCE_DESIGN.md`](AUDIT_EVIDENCE_DESIGN.md)). Falta implementar
+   `src/audit_evidence.py` + `jobs/audit_evidence_job.py` — esfuerzo acotado que reutiliza los
+   patrones de `reconciliation_job` (tie-out) y `acceptance_sampling_job` (muestreo). Es
+   probablemente la mejor relación esfuerzo/precio del backlog: matemática que ya casi existe,
+   vendida a la tarifa más alta que soporta el catálogo.
+2. **Linchpin no firma la auditoría.** El contrato guiado lo encierra por diseño
+   (HANDOFF/ESCALATED, nunca EXECUTED): se vende *preparación de evidencia* del lado de la
+   gerencia, o capacidad white-label, **no** la opinión del auditor. Antes de escribir código hay
+   que resolver con un auditor practicante las tablas AICPA exactas y a quién se le vende dentro
+   del engagement (memo §7, preguntas Q1–Q2).
 
 ## Qué hacer primero
 
@@ -112,3 +162,4 @@ en $ que convierte a Starter o directo a Growth.
 - apps.odoo.com (vendor guidelines 70/30), cloudpepper.io (estadísticas Odoo 2026), itransition.com (costos implementación)
 - blog.cloudflare.com (x402), apify.com, dev.to — estado real de monetización MCP 2026
 - malt.es (barómetro España), upwork.com, ziprecruiter.com — tarifas por región
+- **Sección 10 (vertical auditoría):** guzmangray.com / citrusauditgroup.com — honorarios de auditoría de empresa privada ($7k–50k); consultfees.com / assurancedimensions.com / ridgewayfs.com — readiness SOX 404 ($15k–75k mid-market; $75k–250k pre-IPO); softwarefinder.com / pricingnow.com (DataSnipper $64–175/usuario/mes) y vendr.com (AuditBoard $40k–150k/año) — prueba de disposición a pagar por tooling de auditoría

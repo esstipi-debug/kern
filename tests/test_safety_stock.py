@@ -4,6 +4,7 @@ import pytest
 from scipy.stats import norm
 
 from src.safety_stock import (
+    achieved_service_level,
     cycle_service_level_from_inventory,
     safety_stock,
     service_level_factor,
@@ -47,3 +48,52 @@ def test_cycle_service_level_inverse():
     alpha = 0.9
     inv = float(norm.ppf(alpha, mu, sigma))
     assert cycle_service_level_from_inventory(inv, mu, sigma) == pytest.approx(alpha, rel=1e-3)
+
+
+def test_achieved_service_level_independent_formula():
+    """Cross-check via a direct norm.cdf call, avoiding tautology with the
+    function under test — same pattern as test_cycle_service_level_inverse."""
+    expected = float(norm.cdf(20 / 25))
+    assert achieved_service_level(20, 25, 1) == pytest.approx(expected)
+
+
+def test_achieved_service_level_naive_20pct_rule():
+    """The common 'hold 20% of average demand as safety stock' heuristic,
+    mu=100 sigma=25 (the Table 4.1 scenario) -- only ~79% service level
+    against a 95% target, despite looking like a reasonable buffer."""
+    result = achieved_service_level(20, 25, 1)
+    assert result == pytest.approx(0.7881, abs=0.001)
+
+
+def test_achieved_service_level_round_trips_with_safety_stock():
+    """Round-trips with safety_stock()/service_level_factor() the same way
+    test_cycle_service_level_inverse round-trips cycle_service_level_from_inventory()."""
+    target_sl = 0.95
+    ss = safety_stock(25, target_sl, 1).safety_stock
+    assert achieved_service_level(ss, 25, 1) == pytest.approx(target_sl, abs=0.001)
+
+
+def test_achieved_service_level_zero_std():
+    assert achieved_service_level(5, 0, 1) == 1.0
+    assert achieved_service_level(-5, 0, 1) == 0.0
+
+
+def test_achieved_service_level_scales_with_risk_periods():
+    """The sqrt(tau) term must actually do something -- a bug here (e.g. dropping
+    the sqrt, or inverting risk_periods) would not be caught by any test that
+    only exercises risk_periods=1."""
+    # Same safety stock quantity covers a SHORTER risk period better than a longer one.
+    short = achieved_service_level(50, 25, risk_periods=1)
+    long = achieved_service_level(50, 25, risk_periods=4)
+    assert short > long
+    # Cross-check against the independent norm.cdf formula for risk_periods=4.
+    expected = float(norm.cdf(50 / (25 * (4**0.5))))
+    assert long == pytest.approx(expected)
+
+
+def test_achieved_service_level_rejects_nonpositive_risk_periods():
+    """Matches safety_stock()'s own validation for the same parameter."""
+    with pytest.raises(ValueError, match="risk_periods must be > 0"):
+        achieved_service_level(20, 25, risk_periods=-1)
+    with pytest.raises(ValueError, match="risk_periods must be > 0"):
+        achieved_service_level(20, 25, risk_periods=0)
