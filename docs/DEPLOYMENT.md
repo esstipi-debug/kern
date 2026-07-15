@@ -206,3 +206,47 @@ and regenerated with `/graphify`. If it's absent or stale, `KnowledgeBase.warnin
 surfaces it and the access/app logs flag it — code-side citations degrade to
 theory-only rather than failing silently. Regenerate it as part of your build if
 you rely on theory↔code citations in deliverables.
+
+## 6. External cron: scheduled price-watch jobs
+
+`POST /api/jobs/run-scheduled` (`webapp/app.py`) runs `PRICE_MONITOR_JOB` and
+`PRICE_WATCH_JOB` (`jobs/scheduler.py`'s `JobRegistry`) synchronously, once, per
+call — there is deliberately **no** in-process scheduler loop or background
+thread (a persistent scraping thread inside the same 512mb/`WEB_CONCURRENCY=1`
+process serving all web/API/MCP traffic was rejected as too risky; see the
+endpoint's own docstring in `webapp/app.py`). Instead,
+[`.github/workflows/price-watch-cron.yml`](../.github/workflows/price-watch-cron.yml)
+is the external scheduler: a GitHub Actions workflow that POSTs to this
+endpoint every 4 hours (`cron: "0 */4 * * *"`, matching
+`jobs/price_monitor.py`'s `DEFAULT_CADENCE_HOURS`), plus `workflow_dispatch:`
+for an on-demand manual run from the Actions tab.
+
+**Setup required — a human must do this, it cannot be automated:**
+
+1. Generate a key: the same value you set for `LINCHPIN_API_KEY` in production
+   (see section 1 above; `openssl rand -hex 24` if you don't already have one).
+2. In the GitHub repo, go to **Settings → Secrets and variables → Actions →
+   New repository secret**, name it `KERN_JOBS_API_KEY`, and paste that value.
+   This requires repo admin access — an agent cannot create repository secrets
+   through the GitHub UI/API on your behalf.
+3. Without step 2, every scheduled run fails fast with a clear
+   `KERN_JOBS_API_KEY repository secret is not set` error in the Actions log
+   (the workflow checks for this before making any request) — it does not
+   silently no-op.
+
+**Verifying it's working:**
+
+- **Actions tab** (`github.com/<org>/<repo>/actions/workflows/price-watch-cron.yml`)
+  — each run logs the HTTP status and the endpoint's full JSON response body.
+  A run goes red (fails) on any non-2xx response (401 bad key, 409 an
+  overlapping run was already in progress, 429 throttled below
+  `LINCHPIN_SCHEDULED_MIN_INTERVAL_SECONDS`, 504 timed out) or on a 200 whose
+  body carries `"status": "error"` (one of the two jobs failed without
+  aborting the other — see the logged body for which one and why).
+- **`GET /api/events`** on the deployed app after a scheduled run — a
+  successful cycle promotes Control Tower events (e.g.
+  `competitor_price_move`) that should show up in the recent-events list if
+  the monitored competitor set actually moved.
+- Trigger a manual run any time via **Actions → price-watch-cron → Run
+  workflow** (`workflow_dispatch`) instead of waiting for the next scheduled
+  tick, useful right after adding the secret to confirm the wiring end-to-end.

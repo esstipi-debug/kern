@@ -1,0 +1,81 @@
+name: price-watch-cron
+
+# External cron for POST /api/jobs/run-scheduled (webapp/app.py) -- see that
+# endpoint's own module docstring ("---- POST /api/jobs/run-scheduled:
+# cron-triggered scheduler wiring ----") for the full rationale: a persistent
+# in-process BackgroundScheduler was explicitly rejected for this deploy
+# (fly.toml's WEB_CONCURRENCY=1 on a 512mb VM), so an EXTERNAL scheduler
+# (this workflow) POSTs to the endpoint on a cadence instead, and the
+# endpoint runs PRICE_MONITOR_JOB + PRICE_WATCH_JOB synchronously, once, per
+# call -- no scheduler loop, no background thread, ever started by the app
+# itself.
+#
+# Setup required before this cron actually works: a repository secret named
+# KERN_JOBS_API_KEY must be added under Settings -> Secrets and variables ->
+# Actions, set to the same value as the deployed app's LINCHPIN_API_KEY (see
+# docs/DEPLOYMENT.md). This workflow cannot create that secret itself --
+# only a repo admin can, via GitHub's UI/API.
+
+on:
+  schedule:
+    # Matches jobs/price_monitor.py's DEFAULT_CADENCE_HOURS = 4 (PRICE_WATCH_JOB
+    # documents the same 4h cadence) -- every 4 hours, on the hour, UTC.
+    # GitHub Actions schedules run on a best-effort basis and can be delayed
+    # under load; the endpoint's own SCHEDULED_JOBS_MIN_INTERVAL_SECONDS
+    # (default 300s) floor makes an early/late/duplicate tick harmless.
+    - cron: "0 */4 * * *"
+  # Manual trigger from the Actions tab, for on-demand runs / verifying the
+  # secret and endpoint wiring without waiting for the next scheduled tick.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trigger-scheduled-jobs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/jobs/run-scheduled
+        env:
+          DEPLOY_URL: https://linchpin.fly.dev
+          API_KEY: ${{ secrets.KERN_JOBS_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${API_KEY:-}" ]; then
+            echo "::error::KERN_JOBS_API_KEY repository secret is not set -- add it under Settings > Secrets and variables > Actions (see docs/DEPLOYMENT.md)."
+            exit 1
+          fi
+
+          response_file="$(mktemp)"
+          http_code="$(curl -sS -o "$response_file" -w '%{http_code}' \
+            -X POST "${DEPLOY_URL}/api/jobs/run-scheduled" \
+            -H "X-API-Key: ${API_KEY}" \
+            -H 'Content-Type: application/json' \
+            --max-time 930)"
+
+          echo "HTTP status: $http_code"
+          echo "Response body:"
+          cat "$response_file"
+          echo
+
+          # Non-2xx (401 bad key, 409 overlapping run, 429 throttled, 504
+          # timed out, ...) -- fail the run so a broken cron shows red in
+          # the Actions tab instead of silently succeeding.
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "::error::POST /api/jobs/run-scheduled failed with HTTP $http_code"
+            exit 1
+          fi
+
+          # A 200 can still carry {"status": "error", ...} in the body --
+          # _run_scheduled_jobs_sync() reports a per-job failure (e.g. one
+          # site's scrape errored) without raising, by design (golden rule
+          # 14, "ningun cap silencioso" -- see that function's docstring).
+          # Surface that as a failed workflow run too, not just a green
+          # checkmark hiding a job-level error in the log.
+          job_status="$(python3 -c "import json; print(json.load(open('$response_file')).get('status', 'unknown'))" 2>/dev/null || echo unknown)"
+          echo "Body 'status' field: $job_status"
+          if [ "$job_status" = "error" ]; then
+            echo "::error::run-scheduled reported status=error in its response body -- see the logged body above for per-job detail"
+            exit 1
+          fi
