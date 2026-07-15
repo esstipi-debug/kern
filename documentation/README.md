@@ -16,5 +16,7 @@ roadmap. For design briefs, contributor notes, and image assets, see
 | [ACQUISITION_PLAYBOOK.md](ACQUISITION_PLAYBOOK.md) | Client-acquisition playbook for the Diagnostico de Arranque: ICP, free-scan lead magnet, outreach scripts (ES/EN), sourcing pack, compliance notes |
 | [UI_DESIGN_BRIEF.md](UI_DESIGN_BRIEF.md) | Brief for the web UI |
 | [operator/](operator/README.md) | **Operator Portfolio** — onboarding for the human who operates Kern: role, division of labor, methodologies, runbooks, deliverable catalog, competency map |
+| [paquetes/](paquetes/README.md) | **Paquetes comerciales** — sales one-pagers for all 8 commercial packages plus the Odoo partner program |
+| [legal/](legal/README.md) | **Plantillas legales (E7)** — service agreement + data-processing addendum templates, drafts pending lawyer review, not yet ready to sign |
 
 See also the top-level [README](../README.md) and [SECURITY.md](../SECURITY.md).
