@@ -141,7 +141,7 @@ def test_build_generic_json_feed_round_trips_key_fields() -> None:
     parsed = json.loads(serialized)
 
     assert parsed["feed_info"]["generated_by"] == "Kern"
-    assert parsed["feed_info"]["format"] == "kern-generic-product-feed-v1"
+    assert parsed["feed_info"]["format"] == "generic-product-feed-v1"
 
     products_by_id = {p["id"]: p for p in parsed["products"]}
     assert products_by_id["SKU-001"]["price"] == 29.99

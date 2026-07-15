@@ -16,10 +16,15 @@ why):**
   - JSON: a plain ``{"feed_info": {...}, "products": [...]}`` object.
     NEITHER Google's Content-API product resource shape NOR jsonfeed.org's
     blogging-oriented spec fits a product catalog cleanly, so this is the
-    repo's own small, documented shape (``format: "kern-generic-product-
-    feed-v1"``) for any downstream consumer (a client's own site search, a
+    repo's own small, documented shape (``format: "generic-product-feed-
+    v1"``) for any downstream consumer (a client's own site search, a
     partner integration, a quick diff) that wants the same data without an
-    XML parser.
+    XML parser. Unlike ``generated_by`` (which carries the caller's
+    ``branding.name``, see :data:`FEED_GENERATOR`), this identifier names
+    the wire format/schema version itself, not who generated it -- so it
+    stays a fixed, brand-neutral string rather than being derived from
+    ``branding`` (Golden Rule 13: a white-label reseller's own downstream
+    consumers should never see "kern" appear in an artifact they ship).
 
 Reuses ``schema_gen.CatalogItem``/``missing_required_fields``/
 ``derive_availability`` rather than a second product-row type or a second
@@ -288,7 +293,7 @@ def build_generic_json_feed(
             "link": feed_link,
             "description": feed_description,
             "generated_by": branding.name,
-            "format": "kern-generic-product-feed-v1",
+            "format": "generic-product-feed-v1",
         },
         "products": products,
     }
