@@ -210,6 +210,44 @@ async def test_tool_specific_params_reach_the_underlying_engine(mcp):
     assert default_result["report_markdown"] != narrowed["report_markdown"]
 
 
+# -- never-unprotected contract, exposed over MCP (parity with POST /api/jobs) ---
+
+# The four legitimate GuidedOutcome statuses (src/guided.py). Three of them
+# (options/handoff/escalated) require a human - that contract is the product.
+_GUIDED_STATUSES = {"executed", "options", "handoff", "escalated"}
+
+
+async def test_response_carries_the_guided_outcome_with_an_executable_path(mcp):
+    """The never-unprotected contract (src/guided.py) must be machine-readable on
+    the MCP surface, exactly as POST /api/jobs already serializes it - an MCP
+    client (another agent) needs the ranked options / prepared handoff /
+    escalation, not just the human-readable report. abc_xyz on this input
+    resolves to `options` with ranked policy moves."""
+    result = await _call(mcp, "linchpin_classify_abc_xyz", rows=_ABC_XYZ_ROWS)
+
+    assert result["status"] == "ok"
+    guided = result["guided"]
+    assert isinstance(guided, dict), "guided must be a serialized GuidedOutcome, not absent"
+    assert guided["status"] in _GUIDED_STATUSES
+    # A non-EXECUTED outcome must carry an executable path for the human - the
+    # whole point of surfacing it (mirrors src/guided.py's own verify gate).
+    if guided["status"] != "executed":
+        assert guided["options"] or guided["handoffs"] or guided["escalation"] is not None
+    # abc_xyz specifically offers ranked options with a recommended one.
+    assert guided["status"] == "options"
+    assert any(opt["recommended"] for opt in guided["options"])
+
+
+async def test_guided_key_is_always_present_even_when_degraded(mcp):
+    """Even a needs_data/error degrade must include the `guided` key (mirroring
+    app.py's `asdict(...) if result.guided is not None else None`), so an MCP
+    client never has to guess whether the field was omitted or genuinely null."""
+    result = await _call(mcp, "linchpin_inventory_optimize", rows=[{"totally": "unrelated", "columns": 1}])
+
+    assert result["status"] in ("needs_data", "needs_clarification", "error")
+    assert "guided" in result  # key present regardless of status; value may be null
+
+
 # -- graceful degradation, not crashes -------------------------------------------
 
 

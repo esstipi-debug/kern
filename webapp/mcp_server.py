@@ -30,6 +30,7 @@ import asyncio
 import json
 import os
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -135,6 +136,16 @@ def _run_analysis_tool_sync(orchestrator: Orchestrator, job_type: str, params: K
             "clarifications": result.clarifications,
             "citations": result.citations,
             "report_markdown": report_markdown,
+            # The never-unprotected contract, machine-readable - parity with
+            # POST /api/jobs (webapp/app.py). An MCP client is itself an agent:
+            # it needs the ranked options / prepared handoff / escalation
+            # (route_to/sla/reason), not just the human-readable report, to know
+            # what a human still has to decide. Orchestrator.run() always
+            # attaches a GuidedOutcome (falling back to a generic one derived
+            # from `status`), so this is only null for a non-orchestrator result.
+            # Frozen dataclasses all the way down (src/guided.py) -> plain,
+            # JSON-safe dicts.
+            "guided": asdict(result.guided) if result.guided is not None else None,
         }
         return json.dumps(response, indent=2, default=str)
 

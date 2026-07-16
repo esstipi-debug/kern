@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Added
+- **`guided` outcome now exposed on the MCP surface** (`webapp/mcp_server.py`), closing the
+  parity gap flagged as a deliberate follow-up in PR #135. Every read-only MCP analysis tool
+  response now carries the machine-readable "never-unprotected" contract (`src/guided.py`:
+  status EXECUTED/OPTIONS/HANDOFF/ESCALATED plus the ranked options / prepared handoff /
+  escalation), serialized identically to `POST /api/jobs`
+  (`asdict(result.guided) if result.guided is not None else None`). An MCP client is itself an
+  agent — it needs to know what a human still has to decide, not just the human-readable report.
+  No new information disclosure: the same content was already rendered into the returned
+  `report_markdown`; this only makes it structured. 2 tests.
 - **`examples/run_repricing.py` — operator entry point for the multichannel repricing playbook**
   (`jobs/repricing.py`, 3.0-audit finding #6). The playbook (stage -> guardrail-gate ->
   approve -> apply -> verify against Shopify / MercadoLibre / Odoo) was fully engineered and
