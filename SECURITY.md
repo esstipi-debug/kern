@@ -91,6 +91,8 @@ environment variables before exposing the app publicly:
 | `LINCHPIN_RATE_WINDOW` | Rate-limit window, seconds | `60` |
 | `LINCHPIN_CORS_ORIGINS` | Comma-separated CORS allowlist | unset → same-origin only |
 | `LINCHPIN_APPROVAL_SECRET` | Signs writeback `Approval`s (`src/writeback.py`) so one can't be forged by constructing it directly | unset → unsigned |
+| `LINCHPIN_SCHEDULED_MIN_INTERVAL_SECONDS` | Minimum interval `POST /api/jobs/run-scheduled` enforces between the start of two real runs (429 + `Retry-After` below it) — in-process, independent of the external cron's own cadence | `300` |
+| `LINCHPIN_SCHEDULED_JOB_TIMEOUT_SECONDS` | Wall-clock bound the caller waits for a `POST /api/jobs/run-scheduled` run before getting a `504` (the run itself keeps going in the background — see that endpoint's own docstring) | `900` |
 | `LINCHPIN_ENV` | `production` enables the boot-time hardening check | `development` |
 | `LINCHPIN_REQUIRE_SECURE` | Refuse to boot if production is missing API key / rate limit / approval secret | unset → warn only |
 | `LINCHPIN_LOG_JSON` / `LINCHPIN_LOG_LEVEL` | Structured (JSON) access logs / level | plain / `INFO` |

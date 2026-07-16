@@ -19,7 +19,9 @@ import re
 import shutil
 import sys
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -36,6 +38,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: 
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from jobs.price_monitor import accept_observation  # noqa: E402
+from jobs.scheduled_jobs import PRODUCTION_JOB_IDS, production_registry  # noqa: E402
 from scm_agent import Orchestrator  # noqa: E402
 from scm_agent.autonomy import DEFAULT_PATH as AUTONOMY_DEFAULT_PATH  # noqa: E402
 from scm_agent.autonomy import (  # noqa: E402
@@ -54,6 +57,7 @@ from scm_agent.autonomy_promotion import (  # noqa: E402
 from scm_agent.event_intent import DEFAULT_ROUTING_PATH as EVENT_ROUTING_DEFAULT_PATH  # noqa: E402
 from scm_agent.events import DEFAULT_PATH as EVENTS_DEFAULT_PATH  # noqa: E402
 from scm_agent.events import Event, EventLedger  # noqa: E402
+from scm_agent.monitors import EVENT_COMPETITOR_PRICE_MOVE, run_all_monitors  # noqa: E402
 from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
 from src.mcp_keys import DEFAULT_PATH as MCP_KEYS_DEFAULT_PATH  # noqa: E402
@@ -65,6 +69,8 @@ from src.pricing_intel.ledger import PriceLedger  # noqa: E402
 from src.pricing_intel.match.sku_map import DEFAULT_BASE_PATH as SKU_MAP_DEFAULT_PATH  # noqa: E402
 from src.pricing_intel.match.sku_map import SkuMap  # noqa: E402
 from src.sources import CsvDemandSource  # noqa: E402
+from src.state.store import DEFAULT_BASE_PATH as STATE_STORE_DEFAULT_PATH  # noqa: E402
+from src.state.store import StateStore  # noqa: E402
 from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
@@ -122,6 +128,12 @@ EVENT_ROUTING_PATH = EVENT_ROUTING_DEFAULT_PATH
 # real continuous-monitoring data, meant to persist).
 PRICE_LEDGER_PATH = PRICE_LEDGER_DEFAULT_PATH
 SKU_MAP_PATH = SKU_MAP_DEFAULT_PATH
+# Same monkeypatch-friendly convention, for POST /api/jobs/run-scheduled's
+# run_all_monitors() call -- the PRODUCTION src.state store (src/state/store.py's
+# own default_store() singleton would work too, but a fresh-per-call instance
+# here matches this file's own EventLedger/PriceLedger/SkuMap convention, and
+# is what makes this path monkeypatchable in tests).
+STATE_STORE_PATH = STATE_STORE_DEFAULT_PATH
 
 
 def _get_orchestrator() -> Orchestrator:
@@ -176,6 +188,18 @@ def _get_sku_map() -> SkuMap:
     """See ``_get_event_ledger()``'s docstring -- same fresh-connection-per-call
     reasoning applies here."""
     return SkuMap(SKU_MAP_PATH)
+
+
+def _get_state_store() -> StateStore:
+    """See ``_get_event_ledger()``'s docstring -- same fresh-connection-per-call
+    reasoning applies here. Used only by POST /api/jobs/run-scheduled's
+    ``run_all_monitors()`` call: the Control Tower's inventory monitors
+    (rop_breach, stockout_projected, ...) read whatever ``src.state`` domains
+    happen to be populated -- an empty store (nothing written yet) makes them
+    silently contribute zero events, same as everywhere else in this
+    codebase (``run_all_monitors``'s own documented "empty Tower on day one
+    is expected" contract)."""
+    return StateStore(STATE_STORE_PATH)
 
 
 def _get_promotion_ledger() -> PromotionLedger:
@@ -923,6 +947,257 @@ async def api_watch(payload: dict = Body(...)) -> dict:
         "matched_product_id": candidate.matched_product_id,
         "events": [e.type for e in outcome.events],
     }
+
+
+# ---- POST /api/jobs/run-scheduled: cron-triggered scheduler wiring ----------
+#
+# jobs.scheduler.JobRegistry.run_once() is Golden Rule 9's ("todo componente
+# continuo degrada a batch") batch-degradation entry point: PRICE_MONITOR_JOB
+# and PRICE_WATCH_JOB were fully built and tested (jobs/price_monitor.py,
+# jobs/price_watch.py) but nothing in production ever called them --
+# jobs.scheduler.default_registry() ships empty, and a real
+# BackgroundScheduler (the "tower" extra) was explicitly rejected for this
+# deploy (fly.toml's WEB_CONCURRENCY=1 on a 512MB VM already OOM-killed once
+# at 2 workers; a persistent background thread doing periodic network
+# scraping inside the same process serving all web/API/MCP traffic is too
+# risky). This endpoint is the other half of Golden Rule 9: an EXTERNAL cron
+# (a GitHub Actions scheduled workflow, added separately) POSTs here, and
+# each call runs both jobs synchronously, once, then returns -- no scheduler
+# loop, no background thread, no sleeping, ever started by this process.
+
+
+def _cycle_report_summary(report: object) -> dict:
+    """Duck-typed summary shared by ``jobs.price_monitor.PriceMonitorCycleReport``
+    and ``jobs.price_watch.PriceWatchCycleReport`` -- both expose the
+    identical ``outcomes``/``pairs_checked``/``summary`` contract (see
+    ``PriceWatchCycleReport``'s own docstring: "Mirrors
+    jobs.price_monitor.PriceMonitorCycleReport's exact shape"), so one small
+    helper serves both instead of two near-identical copies."""
+    by_status: dict[str, int] = {}
+    for outcome in report.outcomes:
+        by_status[outcome.status] = by_status.get(outcome.status, 0) + 1
+    return {"pairs_checked": report.pairs_checked, "by_status": by_status, "summary": report.summary}
+
+
+def _run_scheduled_jobs_sync() -> dict:
+    """The blocking half of POST /api/jobs/run-scheduled -- offloaded via
+    asyncio.to_thread by the async handler below (same reasoning as
+    _run_job_sync: this makes REAL outbound HTTP calls, MercadoLibre's API
+    plus competitor PDP fetches, which must never block the single
+    WEB_CONCURRENCY=1 event loop for the run's duration).
+
+    Runs PRICE_MONITOR_JOB and PRICE_WATCH_JOB via
+    ``production_registry().run_once(job_id)`` -- ONE call per job id (not a
+    single ``run_once()`` covering both), so one job's own failure (a
+    network error, a site compliance refusal raised as an exception) is
+    caught and reported back without ever hiding or aborting the other
+    job's result -- golden rule 14, "ningun cap silencioso", applied to
+    endpoint-level failures too.
+
+    Every price_move/competitor_oos/promo_detected Event either cycle
+    emitted (``report.events`` -- see ``PriceMonitorCycleReport``/
+    ``PriceWatchCycleReport``'s own ``events`` property) is collected and
+    fed into ``scm_agent.monitors.run_all_monitors(price_signal_events=...)``
+    -- previously this parameter was never populated by any production
+    caller, so ``competitor_price_move_monitor`` never actually ran outside
+    a test. ``ledger=_get_event_ledger()`` is the SAME production
+    EventLedger POST /api/watch and GET /api/events already read/write (see
+    that getter's docstring) -- a promoted ``competitor_price_move`` Tower
+    event lands there immediately, never a second, invented event store.
+
+    A job's own exception is reported back only as ``type(exc).__name__``
+    (fix round 1) -- never ``str(exc)``. Unlike ``/api/watch``'s
+    ``ChangeDetectionWebhookError`` (a controlled, caller-facing validation
+    message), an exception raised here can be a raw network/infra/library
+    error whose message may embed a local filesystem path
+    (``data/*.sqlite3``), a competitor URL, or other internal detail --
+    reflecting it verbatim into a 200 body would leak that to any caller
+    (in the shipped default config, ANY unauthenticated caller; even when
+    gated, it lands in the external cron's own logs). The full exception
+    (message + traceback) is still logged server-side via ``logging`` for
+    whoever operates the deploy to actually debug it -- this only stops it
+    from being echoed back over HTTP, matching this file's own
+    ``/api/jobs``-generic-500 / ``/api/watch``-controlled-400-only
+    convention for what is safe to reflect.
+    """
+    registry = production_registry()
+    jobs_summary: dict[str, dict] = {}
+    price_signal_events: list[Event] = []
+
+    for job_id in PRODUCTION_JOB_IDS:
+        try:
+            report = registry.run_once(job_id)[job_id]
+        except Exception as exc:  # a job's own failure must never hide the other job's result
+            logging.getLogger("linchpin.jobs").exception("scheduled job %r failed", job_id)
+            jobs_summary[job_id] = {"status": "error", "error": type(exc).__name__}
+            continue
+        jobs_summary[job_id] = {"status": "ok", **_cycle_report_summary(report)}
+        price_signal_events.extend(report.events)
+
+    event_ledger = _get_event_ledger()
+    state_store = _get_state_store()
+    try:
+        promoted = run_all_monitors(ledger=event_ledger, store=state_store, price_signal_events=price_signal_events)
+    finally:
+        event_ledger.close()
+        state_store.close()
+
+    competitor_price_move_count = sum(1 for e in promoted if e.type == EVENT_COMPETITOR_PRICE_MOVE)
+    any_job_error = any(v["status"] == "error" for v in jobs_summary.values())
+    return {
+        "status": "error" if any_job_error else "ok",
+        "jobs": jobs_summary,
+        "tower_events_promoted": len(promoted),
+        "competitor_price_move_events_promoted": competitor_price_move_count,
+    }
+
+
+# ---- run-scheduled throttle / concurrency guard / dedicated executor --------
+#
+# Fix round 1 (adversarial + spec review). Before this, the endpoint offloaded
+# straight onto asyncio.to_thread's SHARED default executor with NO guard at
+# all: in the shipped default config (LINCHPIN_API_KEY and LINCHPIN_RATE_LIMIT
+# both unset) ANY unauthenticated caller could loop POST /api/jobs/run-scheduled
+# to drive unbounded REAL outbound crawling of MercadoLibre + approved
+# competitor sites -- server-IP/UA bans, thread-pool + CPU exhaustion on the
+# single WEB_CONCURRENCY=1 512MB worker. Two overlapping calls (a retried cron
+# tick, a monitoring probe double-firing) could also land on two DIFFERENT
+# shared-pool worker threads and hit default_ledger()/default_sku_map()'s
+# cached sqlite3 connections (opened WITHOUT check_same_thread=False -- see
+# src/pricing_intel/ledger.py / src/pricing_intel/match/sku_map.py) from a
+# thread that never opened them, raising sqlite3.ProgrammingError that this
+# file's own per-job try/except then silently turned into a job "error" (the
+# cycle looked like it ran, actually did nothing).
+#
+# Three cooperating, entirely in-process guards close this -- none of them
+# depend on the external cron's own cadence being correctly configured:
+#
+# 1. SCHEDULED_JOBS_MIN_INTERVAL_SECONDS -- a hard floor between the START of
+#    one real run and the next. A caller (or attacker) looping this endpoint
+#    gets a cheap 429 with Retry-After, checked on the event loop BEFORE the
+#    lock/executor/any network I/O are ever touched.
+# 2. _SCHEDULED_JOBS_LOCK -- a plain, non-reentrant threading.Lock, acquired
+#    non-blocking. A second call that arrives while a run is still in flight
+#    (an overlapping retry, a double-firing probe) gets an immediate 409,
+#    never queued -- there is NEVER more than one real cycle running at a
+#    time, so production_registry()'s lazy-singleton init (independently
+#    hardened with its own lock too, see jobs/scheduled_jobs.py) can't race
+#    either. The lock is released by the WORKER thread itself once
+#    _run_scheduled_jobs_sync actually returns (success OR exception) -- NOT
+#    by the async handler on a timeout -- so a genuinely wedged run (e.g. a
+#    hung socket read with no library-level timeout) keeps rejecting new
+#    calls with 409 instead of ever dispatching a second, overlapping real
+#    run. Honest trade-off: Python cannot forcibly cancel a running thread,
+#    so a truly stuck job stays stuck until the process restarts, but it can
+#    never double the outbound traffic while stuck.
+# 3. _SCHEDULED_JOBS_EXECUTOR -- a DEDICATED ThreadPoolExecutor with exactly
+#    one worker (NOT asyncio.to_thread's shared default pool, which also
+#    backs /api/jobs and /api/demo-scan). Every real run of this endpoint
+#    therefore always executes on the SAME OS thread for the life of the
+#    process -- default_ledger()/default_sku_map()'s cached sqlite3
+#    connections get bound once, by this endpoint, to that one thread, and
+#    are never touched from a second thread by a LATER call to this same
+#    endpoint. It also means a slow run-scheduled call can never starve
+#    /api/jobs or /api/demo-scan's shared pool of workers.
+#    SCHEDULED_JOBS_TIMEOUT_SECONDS bounds how long the CALLER waits (via
+#    asyncio.wait_for) -- the caller always gets an answer within that
+#    window, even when the underlying thread does not.
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    """Same convention as ``webapp.security._int_env``, duplicated locally so
+    this module doesn't reach into that module's private helper. Falls back
+    to ``default`` on anything unparsable or <= 0 -- a zero/negative interval
+    or timeout would silently defeat the guard it configures."""
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+SCHEDULED_JOBS_MIN_INTERVAL_SECONDS = _positive_int_env("LINCHPIN_SCHEDULED_MIN_INTERVAL_SECONDS", 300)
+SCHEDULED_JOBS_TIMEOUT_SECONDS = _positive_int_env("LINCHPIN_SCHEDULED_JOB_TIMEOUT_SECONDS", 900)
+
+_SCHEDULED_JOBS_LOCK = threading.Lock()
+_SCHEDULED_JOBS_LAST_STARTED_AT: float | None = None  # time.monotonic() of the last ACCEPTED run's start
+_SCHEDULED_JOBS_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="scheduled-jobs")
+
+
+@app.post(
+    "/api/jobs/run-scheduled",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+async def api_run_scheduled_jobs() -> dict:
+    """The cron-triggered entry point for ``jobs.scheduler.JobRegistry`` (F0,
+    PR-3) -- see ``jobs/scheduled_jobs.py``'s module docstring for the full
+    "why an HTTP endpoint, not a BackgroundScheduler" rationale. An external
+    scheduler (a GitHub Actions cron workflow, added separately) is expected
+    to POST here on a cadence -- see ``jobs.price_monitor.DEFAULT_CADENCE_HOURS``
+    / ``jobs.price_watch.DEFAULT_CADENCE_HOURS`` (4h each) for the intended
+    pace.
+
+    Gated the same as every other mutating endpoint in this file
+    (require_api_key + rate_limit, as FastAPI ``dependencies=`` -- both run
+    BEFORE this handler's body, so an unauthenticated caller who
+    guesses/brute-forces this path never triggers any network activity or
+    cost). On top of that, this endpoint is ALSO self-throttling in-process
+    (fix round 1, see the comment block above): a minimum-interval floor
+    (429 + Retry-After) and a non-blocking concurrency lock (409) reject a
+    looping/overlapping caller before any outbound HTTP or job work happens
+    -- safety no longer depends entirely on the external cron's own cadence
+    being correctly configured.
+
+    See :func:`_run_scheduled_jobs_sync` for the actual work; this handler
+    offloads it to a DEDICATED single-worker executor (never the shared
+    ``asyncio.to_thread`` pool /api/jobs and /api/demo-scan use) so a real
+    run's outbound HTTP calls never block the single WEB_CONCURRENCY=1 event
+    loop, never starve those other endpoints' shared pool, and always land
+    on the same OS thread run after run.
+    """
+    global _SCHEDULED_JOBS_LAST_STARTED_AT
+
+    now = time.monotonic()
+    last_started_at = _SCHEDULED_JOBS_LAST_STARTED_AT
+    if last_started_at is not None:
+        elapsed = now - last_started_at
+        if elapsed < SCHEDULED_JOBS_MIN_INTERVAL_SECONDS:
+            retry_after = max(1, int(SCHEDULED_JOBS_MIN_INTERVAL_SECONDS - elapsed))
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"run-scheduled called too soon; minimum interval is "
+                    f"{SCHEDULED_JOBS_MIN_INTERVAL_SECONDS}s between runs"
+                ),
+                headers={"Retry-After": str(retry_after)},
+            )
+
+    if not _SCHEDULED_JOBS_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="a scheduled job run is already in progress")
+
+    _SCHEDULED_JOBS_LAST_STARTED_AT = now  # only accepted (lock-held) runs count toward the interval floor
+
+    def _run_and_release() -> dict:
+        try:
+            return _run_scheduled_jobs_sync()
+        finally:
+            _SCHEDULED_JOBS_LOCK.release()
+
+    loop = asyncio.get_running_loop()
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(_SCHEDULED_JOBS_EXECUTOR, _run_and_release),
+            timeout=SCHEDULED_JOBS_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        # The lock is intentionally NOT released here -- see guard #2 above.
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                f"scheduled job run exceeded the {SCHEDULED_JOBS_TIMEOUT_SECONDS}s timeout; "
+                "it continues running in the background and will release its lock when it finishes"
+            ),
+        ) from None
 
 
 _METRICS_LABEL_RE = re.compile(r"[^\w.\- ]")
