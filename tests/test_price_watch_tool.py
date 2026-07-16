@@ -531,6 +531,134 @@ def test_runs_end_to_end_through_the_orchestrator_produces_full_deliverable_set(
         event_ledger.close()
 
 
+def test_run_without_overrides_never_touches_the_shared_default_singletons(
+    tmp_path, monkeypatch: pytest.MonkeyPatch,
+):
+    """Regression: _price_watch_run must not fall back to
+    src.pricing_intel.ledger.default_ledger()/match.sku_map.default_sku_map()
+    -- the process-wide CACHED sqlite3-connection singletons -- when the
+    caller (here: no overrides at all) supplies neither. Those singletons
+    default check_same_thread=True; POST /api/jobs dispatches tool.run() via
+    asyncio.to_thread's pool, which does not pin a call to one OS thread, so
+    a second call landing on a different pool thread than whichever thread
+    first bound the singleton raises sqlite3.ProgrammingError (see
+    test_run_survives_a_default_singleton_bound_to_a_different_thread below
+    for the real reproduction). Asserting the accessor functions are simply
+    never called is the fast, deterministic half of that regression."""
+    import functools
+
+    import src.pricing_intel.ledger as ledger_module
+    import src.pricing_intel.match.sku_map as sku_map_module
+
+    def _boom(*_a, **_kw):
+        raise AssertionError("_price_watch_run must never touch the shared default singleton")
+
+    monkeypatch.setattr(ledger_module, "default_ledger", _boom)
+    monkeypatch.setattr(sku_map_module, "default_sku_map", _boom)
+    # PriceLedger()/SkuMap()'s own base_path default is a def-time-bound
+    # positional default (not re-read per call), so a plain DEFAULT_BASE_PATH
+    # monkeypatch would not redirect them -- patch the class name itself
+    # (re-imported fresh on every _price_watch_run call via its own local
+    # `from ... import PriceLedger` statement) so this test's fresh, owned
+    # instances land in tmp_path instead of the real data/ directory.
+    monkeypatch.setattr(ledger_module, "PriceLedger", functools.partial(ledger_module.PriceLedger, tmp_path / "owned_ledger"))
+    monkeypatch.setattr(sku_map_module, "SkuMap", functools.partial(sku_map_module.SkuMap, tmp_path / "owned_sku_map"))
+
+    from jobs import price_watch as pw
+
+    domain = "no-singleton.example.test"
+    seed_url = f"https://{domain}/"
+    df = pd.DataFrame([{"url": f"https://{domain}/p/1", "status": 200, "title": "Widget",
+                         "page_html": _PRODUCT_HTML}])
+    monkeypatch.setattr(pw, "_crawl_domain", lambda seed, **kwargs: df)
+
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback())
+
+    res = orch.run(
+        "watch competitor prices via a price watch cycle: descubre productos de la competencia",
+        client="Acme", out_dir=tmp_path,
+        overrides={
+            "seed_url": seed_url,
+            "config_dir": tmp_path / "sites",
+            "robots_reader": lambda robots_url, user_agent: True,
+            "now": NOW,
+        },
+    )
+
+    assert res.status == "ok", res.summary
+
+
+def test_run_survives_a_default_singleton_bound_to_a_different_thread(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    """The real reproduction: bind src.pricing_intel.ledger's/match.sku_map's
+    default singletons to a DIFFERENT OS thread first (exactly what happens
+    in production once any other POST /api/jobs call, or a scheduled cron
+    cycle, has already touched them on some other asyncio.to_thread pool
+    thread), then drive a full price_watch cycle from THIS thread without
+    supplying sku_map/ledger overrides. Before the fix, _price_watch_run fell
+    through to the now-cross-thread-bound singleton and this raised
+    sqlite3.ProgrammingError; after the fix, this call path never touches
+    the singleton at all, so it must succeed regardless of which thread
+    bound it."""
+    import threading
+
+    import src.pricing_intel.ledger as ledger_module
+    import src.pricing_intel.match.sku_map as sku_map_module
+
+    monkeypatch.setattr(ledger_module, "DEFAULT_BASE_PATH", tmp_path / "ledger")
+    monkeypatch.setattr(sku_map_module, "DEFAULT_BASE_PATH", tmp_path / "sku_map")
+    monkeypatch.setattr(ledger_module, "_default_ledger", None)
+    monkeypatch.setattr(sku_map_module, "_default_sku_map", None)
+    # Same def-time-bound-default note as the test above: isolate this test's
+    # OWN fresh, owned instances (the post-fix code path) into tmp_path too,
+    # separate from the singleton bound on the other thread below. A plain
+    # functools.partial would collide with default_ledger()/default_sku_map()'s
+    # own explicit-argument call (PriceLedger(DEFAULT_BASE_PATH)) below, so this
+    # wrapper only substitutes tmp_path when called with NO argument, exactly
+    # replicating what a def-time default would have done if it could be
+    # monkeypatched directly.
+    _real_price_ledger = ledger_module.PriceLedger
+    _real_sku_map = sku_map_module.SkuMap
+    monkeypatch.setattr(
+        ledger_module, "PriceLedger",
+        lambda base_path=tmp_path / "owned_ledger": _real_price_ledger(base_path),
+    )
+    monkeypatch.setattr(
+        sku_map_module, "SkuMap",
+        lambda base_path=tmp_path / "owned_sku_map": _real_sku_map(base_path),
+    )
+
+    def _bind_singletons_on_another_thread():
+        ledger_module.default_ledger()
+        sku_map_module.default_sku_map()
+
+    binder = threading.Thread(target=_bind_singletons_on_another_thread)
+    binder.start()
+    binder.join()
+
+    from jobs import price_watch as pw
+
+    domain = "cross-thread.example.test"
+    seed_url = f"https://{domain}/"
+    df = pd.DataFrame([{"url": f"https://{domain}/p/1", "status": 200, "title": "Widget",
+                         "page_html": _PRODUCT_HTML}])
+    monkeypatch.setattr(pw, "_crawl_domain", lambda seed, **kwargs: df)
+
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback())
+
+    res = orch.run(
+        "watch competitor prices via a price watch cycle: descubre productos de la competencia",
+        client="Acme", out_dir=tmp_path,
+        overrides={
+            "seed_url": seed_url,
+            "config_dir": tmp_path / "sites",
+            "robots_reader": lambda robots_url, user_agent: True,
+            "now": NOW,
+        },
+    )
+
+    assert res.status == "ok", res.summary
+
+
 def test_runs_end_to_end_without_a_catalog_path_omits_priority_honestly(
     tmp_path, monkeypatch: pytest.MonkeyPatch,
 ):

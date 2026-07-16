@@ -145,6 +145,83 @@ def test_discarded_rows_never_leak_into_accepted_offers(tmp_path) -> None:
     ledger.close()
 
 
+# -- tool wiring: cross-thread sqlite3 hazard (scm_agent.tools._price_intelligence_run) ---
+#
+# POST /api/jobs dispatches tool.run() via asyncio.to_thread's default pool,
+# which does not pin a given call to the same OS thread every time.
+# jobs.price_intelligence.run() defaults its own `ledger` argument to
+# src.pricing_intel.ledger.default_ledger() -- a process-wide CACHED sqlite3
+# connection whose check_same_thread=True default binds it to whichever
+# thread first touches it. Before the fix, scm_agent.tools._price_intelligence_run
+# called run(payload) with no ledger at all, always falling through to that
+# singleton -- a second call landing on a different pool thread than the one
+# that first bound it raised sqlite3.ProgrammingError. The fix: own a fresh,
+# call-scoped PriceLedger unless the caller supplied one via params.
+
+
+def test_price_intelligence_run_never_touches_the_shared_default_singleton(tmp_path, monkeypatch) -> None:
+    import functools
+
+    import src.pricing_intel.ledger as ledger_module
+
+    def _boom(*_a, **_kw):
+        raise AssertionError("_price_intelligence_run must never touch the shared default singleton")
+
+    monkeypatch.setattr(ledger_module, "default_ledger", _boom)
+    # PriceLedger()'s own base_path default is def-time-bound (not re-read
+    # per call), so isolate this test's fresh, owned instance into tmp_path
+    # by patching the class name itself -- re-imported fresh on every
+    # _price_intelligence_run call via its own local import statement.
+    monkeypatch.setattr(
+        ledger_module, "PriceLedger", functools.partial(ledger_module.PriceLedger, tmp_path / "owned_ledger"),
+    )
+
+    from scm_agent.tools import _price_intelligence_run
+
+    produced = _price_intelligence_run(_payload(), {})
+
+    assert produced.report.n_products == 3
+
+
+def test_price_intelligence_run_survives_a_default_singleton_bound_to_a_different_thread(
+    tmp_path, monkeypatch,
+) -> None:
+    """The real reproduction, mirroring test_price_watch_tool.py's equivalent
+    test for _price_watch_run: bind default_ledger()'s singleton to a
+    DIFFERENT OS thread first, then call _price_intelligence_run from THIS
+    thread without a ledger override. Pre-fix this raised
+    sqlite3.ProgrammingError every time (deterministic, not a race); post-fix
+    it must succeed, because this call path no longer touches the singleton."""
+    import threading
+
+    import src.pricing_intel.ledger as ledger_module
+
+    monkeypatch.setattr(ledger_module, "DEFAULT_BASE_PATH", tmp_path / "singleton_ledger")
+    monkeypatch.setattr(ledger_module, "_default_ledger", None)
+    # A plain functools.partial would collide with default_ledger()'s own
+    # explicit-argument call (PriceLedger(DEFAULT_BASE_PATH)) below, so this
+    # wrapper only substitutes tmp_path when called with NO argument -- see
+    # test_price_watch_tool.py's equivalent test for the same note.
+    _real_price_ledger = ledger_module.PriceLedger
+    monkeypatch.setattr(
+        ledger_module, "PriceLedger",
+        lambda base_path=tmp_path / "owned_ledger": _real_price_ledger(base_path),
+    )
+
+    def _bind_singleton_on_another_thread():
+        ledger_module.default_ledger()
+
+    binder = threading.Thread(target=_bind_singleton_on_another_thread)
+    binder.start()
+    binder.join()
+
+    from scm_agent.tools import _price_intelligence_run
+
+    produced = _price_intelligence_run(_payload(), {})
+
+    assert produced.report.n_products == 3
+
+
 def test_site_not_approved_ref_is_skipped_and_visible_not_dropped(tmp_path) -> None:
     df = pd.concat([_refs_df(), pd.DataFrame([{
         "product_id": "SKU-400", "competitor_url": "https://example-blocked.test/p/whatever",

@@ -1962,9 +1962,24 @@ def _price_intelligence_prepare(request: JobRequest, provider: LLMProvider) -> P
 
 def _price_intelligence_run(payload: object, params: dict) -> Produced:
     from jobs import price_intelligence as price_intelligence_job
+    from src.pricing_intel.ledger import PriceLedger
 
-    report = price_intelligence_job.run(payload)
-    return Produced(report=report, summary=report.summary)
+    # Same cross-thread sqlite3 hazard as _price_watch_run above (see that
+    # function's docstring comment) -- price_intelligence_job.run() defaults
+    # its own `ledger` to the SAME process-wide default_ledger() singleton
+    # when called with none, and this tool is reachable via POST /api/jobs's
+    # asyncio.to_thread pool exactly like price_watch is. Own a fresh,
+    # call-scoped PriceLedger here unless the caller supplied one.
+    ledger = params.get("ledger")
+    owns_ledger = ledger is None
+    if owns_ledger:
+        ledger = PriceLedger()
+    try:
+        report = price_intelligence_job.run(payload, ledger=ledger)
+        return Produced(report=report, summary=report.summary)
+    finally:
+        if owns_ledger:
+            ledger.close()
 
 
 def price_intelligence_tool() -> Tool:
@@ -2063,80 +2078,105 @@ def _price_watch_run(payload: object, params: dict) -> Produced:
     from jobs import price_priority, price_watch
     from jobs.price_intelligence import DEFAULT_SLA_HOURS
     from jobs.price_watch_position import PriceWatchToolReport, price_report_from_confirmed_pairs
-    from src.pricing_intel.ledger import default_ledger
-    from src.pricing_intel.match.sku_map import default_sku_map
+    from src.pricing_intel.ledger import PriceLedger
+    from src.pricing_intel.match.sku_map import SkuMap
 
     now = params.get("now")
-    # `_price_watch_prepare` threads params["config_dir"] into price_watch.
-    # prepare()'s own config_dir seam (auto-onboarding + the hard gate); the
-    # watch cycle's site lookup must resolve the SAME directory or a caller
-    # who only set config_dir would auto-onboard correctly but then have
-    # this step silently fall back to the real config/sites/ (mirrors
-    # examples/run_price_watch.py's run_pipeline, which threads one
-    # config_dir to both steps). sites_config_dir stays available as an
-    # explicit override for a caller who genuinely wants the two to differ.
-    sites_config_dir = params.get("sites_config_dir", params.get("config_dir"))
-    homologation = price_watch.run_homologation(
-        {
-            **payload,
-            "our_catalog": params.get("our_catalog") or [],
-            "our_gtins": params.get("our_gtins"),
-            "llm": params.get("llm"),
-        },
-        sku_map=params.get("sku_map"),
-        now=now,
-    )
-    cycle = price_watch.run_price_watch_cycle(
-        sku_map=params.get("sku_map"),
-        ledger=params.get("ledger"),
-        event_ledger=params.get("event_ledger"),
-        http_client=params.get("http_client"),
-        sites_config_dir=sites_config_dir,
-        scaling_request_for=params.get("scaling_request_for"),
-        now=now,
-    )
+    # Thread-safety: POST /api/jobs dispatches tool.run() via
+    # asyncio.to_thread(...), whose default executor draws from a POOL of
+    # worker threads -- it does NOT pin this call to the same OS thread every
+    # time. `src.pricing_intel.ledger.default_ledger()`/
+    # `match.sku_map.default_sku_map()` are deliberately process-wide CACHED
+    # sqlite3 connections (see their own docstrings) -- correct for a
+    # single-threaded caller (the CLI, or PR-151's run-scheduled cron
+    # endpoint, which uses a dedicated single-thread executor specifically to
+    # stay safe with them), but sqlite3 connections default to
+    # check_same_thread=True: whichever pool thread first touches the
+    # singleton binds it, and any OTHER pool thread that later reaches this
+    # same singleton raises sqlite3.ProgrammingError. A caller-supplied
+    # sku_map/ledger (params) is honored as-is and its lifecycle stays the
+    # caller's; otherwise this owns a FRESH, call-scoped connection to the
+    # SAME on-disk path for the life of this call only -- never the shared
+    # singleton -- matching webapp/app.py's own _get_price_ledger()/
+    # _get_sku_map() "fresh connection per call" convention (same reasoning,
+    # same fix shape PR-151 already shipped and reviewed for this exact
+    # hazard class).
+    owns_sku_map = params.get("sku_map") is None
+    owns_ledger = params.get("ledger") is None
+    sku_map = params.get("sku_map") if not owns_sku_map else SkuMap()
+    ledger = params.get("ledger") if not owns_ledger else PriceLedger()
+    try:
+        # `_price_watch_prepare` threads params["config_dir"] into price_watch.
+        # prepare()'s own config_dir seam (auto-onboarding + the hard gate); the
+        # watch cycle's site lookup must resolve the SAME directory or a caller
+        # who only set config_dir would auto-onboard correctly but then have
+        # this step silently fall back to the real config/sites/ (mirrors
+        # examples/run_price_watch.py's run_pipeline, which threads one
+        # config_dir to both steps). sites_config_dir stays available as an
+        # explicit override for a caller who genuinely wants the two to differ.
+        sites_config_dir = params.get("sites_config_dir", params.get("config_dir"))
+        homologation = price_watch.run_homologation(
+            {
+                **payload,
+                "our_catalog": params.get("our_catalog") or [],
+                "our_gtins": params.get("our_gtins"),
+                "llm": params.get("llm"),
+            },
+            sku_map=sku_map,
+            now=now,
+        )
+        cycle = price_watch.run_price_watch_cycle(
+            sku_map=sku_map,
+            ledger=ledger,
+            event_ledger=params.get("event_ledger"),
+            http_client=params.get("http_client"),
+            sites_config_dir=sites_config_dir,
+            scaling_request_for=params.get("scaling_request_for"),
+            now=now,
+        )
 
-    # Price-position report from THIS cycle's own fresh ledger reads (Finding
-    # 1, ported logic -- never a second acquisition run). `sku_map`/`ledger`
-    # resolve to the SAME cached singleton the two calls above already used
-    # when the caller passed neither (mirrors run_homologation/
-    # run_price_watch_cycle's own default-resolution discipline; both are
-    # memoized module-level accessors, so this is the identical instance).
-    sku_map = params.get("sku_map") if params.get("sku_map") is not None else default_sku_map()
-    ledger = params.get("ledger") if params.get("ledger") is not None else default_ledger()
-    our_prices = params.get("our_prices") or {}
-    sla_hours = float(params.get("sla_hours", DEFAULT_SLA_HOURS))
-    confirmed_pairs = sku_map.list_all_confirmed()
-    report_prices = {
-        pid: our_prices[pid] for pid in {e.our_product_id for e in confirmed_pairs} if pid in our_prices
-    }
-    price_report = price_report_from_confirmed_pairs(
-        confirmed_pairs, report_prices, ledger, now=cycle.now, sla_hours=sla_hours,
-    )
+        # Price-position report from THIS cycle's own fresh ledger reads
+        # (Finding 1, ported logic -- never a second acquisition run) --
+        # `sku_map`/`ledger` are the SAME instance the two calls above already
+        # used (either the caller's own, or this call's owned fresh one).
+        our_prices = params.get("our_prices") or {}
+        sla_hours = float(params.get("sla_hours", DEFAULT_SLA_HOURS))
+        confirmed_pairs = sku_map.list_all_confirmed()
+        report_prices = {
+            pid: our_prices[pid] for pid in {e.our_product_id for e in confirmed_pairs} if pid in our_prices
+        }
+        price_report = price_report_from_confirmed_pairs(
+            confirmed_pairs, report_prices, ledger, now=cycle.now, sla_hours=sla_hours,
+        )
 
-    # Per-SKU price priority plan -- only when a catalog_path was supplied
-    # (see the module-level comment above for why this one param stays a raw
-    # CSV path); a malformed/unreadable file degrades to "no priority plan
-    # this run" rather than failing the whole tool call.
-    catalog_path = params.get("catalog_path")
-    priority = None
-    if catalog_path:
-        try:
-            pp_payload = price_priority.prepare(str(catalog_path), {"price_report": price_report})
-            priority = price_priority.run(pp_payload)
-        except (ValueError, FileNotFoundError):
-            priority = None
+        # Per-SKU price priority plan -- only when a catalog_path was supplied
+        # (see the module-level comment above for why this one param stays a raw
+        # CSV path); a malformed/unreadable file degrades to "no priority plan
+        # this run" rather than failing the whole tool call.
+        catalog_path = params.get("catalog_path")
+        priority = None
+        if catalog_path:
+            try:
+                pp_payload = price_priority.prepare(str(catalog_path), {"price_report": price_report})
+                priority = price_priority.run(pp_payload)
+            except (ValueError, FileNotFoundError):
+                priority = None
 
-    report = PriceWatchToolReport(
-        cycle=cycle, homologation=homologation, price_report=price_report, priority=priority,
-    )
-    summary = (
-        f"Discovery crawl at {payload['domain']}: {len(payload['discovered'])} product page(s) found, "
-        f"{homologation.n_confirmed} confirmed / {homologation.n_suspect} suspect match(es). {cycle.summary}"
-    )
-    if priority is not None:
-        summary += f" {priority.summary}"
-    return Produced(report=report, summary=summary)
+        report = PriceWatchToolReport(
+            cycle=cycle, homologation=homologation, price_report=price_report, priority=priority,
+        )
+        summary = (
+            f"Discovery crawl at {payload['domain']}: {len(payload['discovered'])} product page(s) found, "
+            f"{homologation.n_confirmed} confirmed / {homologation.n_suspect} suspect match(es). {cycle.summary}"
+        )
+        if priority is not None:
+            summary += f" {priority.summary}"
+        return Produced(report=report, summary=summary)
+    finally:
+        if owns_sku_map:
+            sku_map.close()
+        if owns_ledger:
+            ledger.close()
 
 
 def price_watch_tool() -> Tool:
