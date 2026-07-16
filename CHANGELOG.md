@@ -35,6 +35,20 @@
   caught by hand). To activate live: `flyctl secrets set SENTRY_DSN=... -a linchpin`.
 
 ### Fixed
+- **Price-intelligence deliverables shipped with ZERO or off-topic L3 citations** on realistic
+  briefs (3.0-audit finding #7, blast radius of the integrated-plan fix below). Confirmed by
+  adversarial review: `jobs/price_intelligence.py::gated_citations` had the identical `limit=3`
+  shallow-pool + brief-in-grounding defect -- a realistic "benchmark our prices against Amazon
+  and MercadoLibre" brief grounded islanded case/forecast nodes (`Amazon` -> a Cachon/Tang case
+  node, `benchmark` -> forecast nodes) that displaced the real price-position anchors past the
+  top-3 pool, degrading to **zero** citations; other briefs dragged off-topic nodes in. Fixed
+  the same way as `integrated_plan`: ground on the fixed pricing keyword set only (not the
+  brief -- these citations ground the *method*, so they are deterministic and on-topic
+  regardless of wording), over a wider pool (`_CANDIDATE_POOL=6`), shown as a tight capped set
+  (`_MAX_CITATIONS=3`). The citation gate is unchanged. 8 tests. This is the offer #9
+  ("Diagnostico de Posicion de Precios") engine, so the fix is monetization-relevant. The same
+  pattern still latently affects `scm_agent/packages.py::_run_step` (22/121 package steps) --
+  a larger follow-up (per-tool pool sizing), not fixed here.
 - **S&OP integrated-plan deliverables shipped with ZERO or off-topic L3 citations**
   (3.0-audit finding #7). `jobs/integrated_plan.py::gated_citations` had two defects, both
   reproduced against the committed graph: (1) **recall** -- it grounded only the top-3

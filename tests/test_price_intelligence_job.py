@@ -39,7 +39,9 @@ from openpyxl import load_workbook
 from jobs import price_intelligence as pi
 from jobs.qa import price_intel_passed, verify_price_intel
 from scm_agent import llm
+from scm_agent.citation_gate import MIN_CITATIONS
 from scm_agent.intent import classify
+from scm_agent.knowledge import KnowledgeBase
 from scm_agent.tools import build_default_registry
 from src.deliverable import Branding
 from src.pricing_intel.ledger import PriceLedger
@@ -346,3 +348,67 @@ def test_price_intelligence_registered_with_options_and_deck() -> None:
     assert tool.requires_data is True
     assert tool.options is not None
     assert tool.deck is not None
+
+
+# -- L3 citation grounding: same limit=3 shallow-pool defect as integrated_plan --
+# -- (3.0-audit finding #7 blast radius). Ground the fixed pricing keyword set, --
+# -- not the client brief, over a wider pool. ------------------------------------
+
+# Realistic price-position briefs an operator would type. "Benchmark ... Amazon
+# and MercadoLibre ..." degraded to ZERO citations before the fix: the brief's
+# incidental tokens (Amazon/benchmark) grounded islanded case/forecast nodes that
+# displaced the real pricing anchors past the top-3 candidate pool.
+_REALISTIC_PI_BRIEFS = (
+    "Benchmark our prices against Amazon and MercadoLibre competitors for consumer electronics.",
+    "Where do we sit vs competitors on price for our top SKUs?",
+    "Analyze our price positioning against the market.",
+    "donde estoy caro respecto a la competencia, analisis de posicion de precios",
+)
+
+# Briefs whose incidental tokens used to drag off-topic citations in (or crowd
+# the real ones out): inventory/forecast/sustainability wording must not change
+# the pricing citations once grounding runs on the keyword set only.
+_NOISY_PI_BRIEFS = (
+    "Benchmark prices vs competitors given our carbon emissions cap-and-trade budget and EOQ.",
+    "Competitor price benchmark for our Amazon and forecast-driven demand SKUs.",
+)
+
+_STRONG_PRICING_TERMS = ("price position", "pricing", "price competition", "competition")
+_OFF_TOPIC_TERMS = ("cap-and-trade", "emission", "economic order quantity", "reorder point", "forecast")
+
+
+@pytest.fixture(scope="module")
+def _pi_kb() -> KnowledgeBase:
+    return KnowledgeBase()
+
+
+@pytest.mark.parametrize("brief", _REALISTIC_PI_BRIEFS)
+def test_pi_realistic_brief_keeps_its_l3_citations(_pi_kb, brief):
+    """Recall regression: a realistic price-position brief must ground at least
+    MIN_CITATIONS citations, never silently degrade to zero."""
+    cites = pi.gated_citations(brief, kb=_pi_kb)
+    assert len(cites) >= MIN_CITATIONS, f"{brief!r} degraded to {len(cites)} citation(s)"
+
+
+@pytest.mark.parametrize("brief", _NOISY_PI_BRIEFS)
+def test_pi_brief_lexical_noise_never_surfaces_off_topic(_pi_kb, brief):
+    """Precision: incidental brief tokens must not drag off-topic (inventory /
+    forecast / sustainability) citations into the pricing deck."""
+    cites = pi.gated_citations(brief, kb=_pi_kb)
+    assert len(cites) >= MIN_CITATIONS
+    for cite in cites:
+        low = cite.lower()
+        assert any(t in low for t in _STRONG_PRICING_TERMS), f"off-topic citation kept: {cite!r}"
+        assert not any(t in low for t in _OFF_TOPIC_TERMS), f"off-topic citation kept: {cite!r}"
+
+
+def test_pi_citations_are_brief_independent(_pi_kb):
+    """These citations ground the price-intelligence *method*, so they must be
+    identical across every brief -- deterministic, never a function of wording."""
+    results = {pi.gated_citations(b, kb=_pi_kb) for b in (*_REALISTIC_PI_BRIEFS, *_NOISY_PI_BRIEFS)}
+    assert len(results) == 1, f"citations varied by brief: {results}"
+
+
+def test_pi_citations_are_capped_to_a_tight_set(_pi_kb):
+    for brief in _REALISTIC_PI_BRIEFS:
+        assert len(pi.gated_citations(brief, kb=_pi_kb)) <= pi._MAX_CITATIONS

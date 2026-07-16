@@ -576,18 +576,48 @@ def build_deck(
     )
 
 
-def gated_citations(brief: str = "", *, kb: KnowledgeBase | None = None, limit: int = 3) -> tuple[str, ...]:
+# L3 citations that ground the price-intelligence *method* (which books back
+# competitive price positioning), not the client's numbers -- so grounding runs
+# on this fixed keyword set, NOT the free-text brief, and is deterministic across
+# every deliverable. Same defect + fix as jobs/integrated_plan.py (3.0-audit
+# finding #7), reproduced against the committed graph: at the old limit=3 with the
+# brief fed into grounding, a realistic "benchmark vs Amazon/MercadoLibre" brief
+# grounded islanded case/forecast nodes ("Amazon" -> a Cachon/Tang case node,
+# "benchmark" -> forecast nodes) that displaced the real price-position anchors
+# past the top-3 pool -> ZERO citations; other briefs dragged in off-topic nodes.
+# Grounding the keyword set only, over a wider pool with a tight cap, keeps the
+# citations on-topic and present regardless of wording. The gate (anchors,
+# MAX_HOPS, MIN_CITATIONS) is untouched.
+_CITATION_KEYWORDS = (
+    "price competition", "competitor pricing", "price position", "price positioning",
+    "market pricing", "price intelligence",
+)
+_CANDIDATE_POOL = 6   # candidates grounded and offered to the strict gate
+_MAX_CITATIONS = 3    # kept, on-topic survivors ultimately shown (tight display)
+
+
+def gated_citations(
+    brief: str = "",
+    *,
+    kb: KnowledgeBase | None = None,
+    limit: int = _CANDIDATE_POOL,
+    max_shown: int = _MAX_CITATIONS,
+) -> tuple[str, ...]:
     """The E5-gated L3 citations for this tool (golden rule 7 + the citation
     gate) -- ``scm_agent.citation_gate.filter_citations``, reused verbatim
     (no parallel citation mechanism), the exact pattern
-    ``scm_agent/packages.py::_run_step`` already established."""
+    ``scm_agent/packages.py::_run_step`` already established.
+
+    Grounds on the fixed ``_CITATION_KEYWORDS`` set only -- ``brief`` is
+    deliberately NOT fed into the query (see the module comment): these citations
+    ground the *method*, and the client's wording carries more grounding weight
+    than the keyword set, so incidental tokens surfaced off-topic citations past
+    the gate. ``limit`` grounds a wider pool than we display so the strict gate
+    can reach past graph fragmentation; ``[:max_shown]`` shows a tight set.
+    ``brief`` is retained in the signature for call-site stability."""
     kb = kb or KnowledgeBase()
-    keywords = (
-        "price competition", "competitor pricing", "price position", "price positioning",
-        "market pricing", "price intelligence",
-    )
-    candidates = kb.ground_citations_detailed(keywords, brief, limit=limit)
-    return filter_citations(kb, TOOL_KEY, candidates).kept
+    candidates = kb.ground_citations_detailed(_CITATION_KEYWORDS, "", limit=limit)
+    return filter_citations(kb, TOOL_KEY, candidates).kept[:max_shown]
 
 
 def write_report_md(deliverable: Deliverable, report: PriceIntelReport, out_dir: str | Path, lang: str) -> Path:
