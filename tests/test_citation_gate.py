@@ -296,12 +296,18 @@ def test_excess_obsolete_never_cites_the_excess_capacity_hedge_concept(diagnosti
 def test_every_surviving_citation_is_re_derivable_and_within_hop_budget(diagnostico_result):
     """Structural version of the same regression: independently re-running
     ground_citations_detailed + filter_citations with each step's own tool
-    keywords and brief must reproduce EXACTLY the citations that step shipped
-    with - proving every survivor is genuinely hop-verified grounding, not a
-    testing artifact (the gate's unit tests above already prove
+    keywords and grounding query must reproduce EXACTLY the citations that step
+    shipped with - proving every survivor is genuinely hop-verified grounding,
+    not a testing artifact (the gate's unit tests above already prove
     filter_citations only ever keeps hop-verified nodes; this proves a real
-    run's output matches what the gate would independently produce)."""
-    from scm_agent.package_specs import DIAGNOSTICO
+    run's output matches what the gate would independently produce).
+
+    Re-implements ``scm_agent.packages._step_citations``'s grounding inline
+    (tool.title query, ``_CANDIDATE_POOL`` candidates, ``_MAX_CITATIONS`` cap)
+    rather than calling it, to keep this an INDEPENDENT reproduction of the
+    grounding math -- see that function for why the query is the method's
+    tool.title, not the package/client brief."""
+    from scm_agent.packages import _CANDIDATE_POOL, _MAX_CITATIONS
     from scm_agent.tools import build_default_registry
 
     kb = KnowledgeBase()
@@ -310,7 +316,6 @@ def test_every_surviving_citation_is_re_derivable_and_within_hop_budget(diagnost
         if step.status != "ok":
             continue
         tool = registry.get(step.tool_key)
-        brief = f"{DIAGNOSTICO.title}: {tool.title}"
-        candidates = kb.ground_citations_detailed(tool.intent_keywords, brief, limit=3)
+        candidates = kb.ground_citations_detailed(tool.intent_keywords, tool.title, limit=_CANDIDATE_POOL)
         rerun = filter_citations(kb, step.tool_key, candidates)
-        assert rerun.kept == step.citations, step.tool_key
+        assert rerun.kept[:_MAX_CITATIONS] == step.citations, step.tool_key

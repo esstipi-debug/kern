@@ -50,6 +50,38 @@ from .types import (
 
 STEP_SKIPPED = "skipped"
 
+# E5 citation grounding for a package step (see _step_citations). The same
+# limit=3 shallow-pool recall bug fixed in jobs/integrated_plan.py and
+# jobs/price_intelligence.py (3.0-audit finding #7) affected _run_step too:
+# with a top-3 candidate pool, on-topic citations ranked below #3 never reached
+# the strict 2-hop gate, so 6 tools (inventory_optimization, pricing,
+# excel/odoo_replenishment, risk, reconciliation) shipped ZERO citations in
+# every package that runs them, incl. inventory_optimization in every inventory
+# package. Widening the pool to 8 recovers all six with on-topic citations.
+# 8 is the empirical CEILING, not an arbitrary value: widen further and the gate
+# starts admitting hub-noise for tools whose zero is CORRECT -- data_quality
+# (its zero is intentional, see citation_gate.TOOL_CONCEPTS) re-admits
+# manufacturing TQM/QFD citations at pool 11, and cycle_count re-admits cash-cycle
+# citations at pool 12. Pool 8 leaves those correctly at zero with margin.
+# (dea/learning_curve/slotting stay zero at any pool -- an anchor-islanding
+# problem pool sizing can't fix, a separate anchor-tightening item.)
+_CANDIDATE_POOL = 8   # candidates grounded and offered to the strict gate
+_MAX_CITATIONS = 3    # kept, on-topic survivors ultimately shown (tight display)
+
+
+def _step_citations(knowledge: KnowledgeBase, tool, tool_key: str) -> tuple[str, ...]:
+    """The E5-gated L3 citations for one package step (golden rule 7 + the
+    citation gate). Grounds on the fixed ``tool.title`` -- the method
+    identifier -- NOT the ``f"{spec.title}: {tool.title}"`` request brief: the
+    package-name prefix injected cross-domain noise (e.g. "Market Growth" into
+    reconciliation) and made a tool's citations differ between packages. Keeping
+    ``tool.title`` (rather than dropping the query entirely, as the two sibling
+    fixes do) preserves tools like ``fefo`` whose on-topic tokens live in the
+    title. Wider pool, tight capped display; the gate (anchors/MAX_HOPS/
+    MIN_CITATIONS) is untouched."""
+    candidates = knowledge.ground_citations_detailed(tool.intent_keywords, tool.title, limit=_CANDIDATE_POOL)
+    return citation_gate.filter_citations(knowledge, tool_key, candidates).kept[:_MAX_CITATIONS]
+
 
 @dataclass(frozen=True)
 class PackageInput:
@@ -385,13 +417,11 @@ def _run_step(
     guided = tool.options(produced.report) if tool.options else None
     # Citation-grounding gate (E5): a ranked candidate must resolve to a real
     # graph node within citation_gate.MAX_HOPS of this tool's own anchor
-    # concepts before it reaches the deck - see scm_agent/citation_gate.py.
-    # This is a content filter, not a QA veto: a step with zero surviving
-    # citations still ships (its methodology section just has none), the
-    # package's only hard veto stays the data QA gate above.
-    candidates = knowledge.ground_citations_detailed(tool.intent_keywords, request.brief, limit=3)
-    gate_result = citation_gate.filter_citations(knowledge, step.tool_key, candidates)
-    citations = gate_result.kept
+    # concepts before it reaches the deck - see scm_agent/citation_gate.py and
+    # _step_citations above. This is a content filter, not a QA veto: a step with
+    # zero surviving citations still ships (its methodology section just has
+    # none), the package's only hard veto stays the data QA gate above.
+    citations = _step_citations(knowledge, tool, step.tool_key)
     # Optional LLM polish in the package's target language (src/i18n.py's
     # static labels cover the deterministic path around this; this is the
     # only place a package step's own narrative gets translated - see
