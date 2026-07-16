@@ -83,3 +83,76 @@ def configure_logging() -> None:
 def should_configure_logging() -> bool:
     """True when the operator asked for explicit log config via env."""
     return bool(os.environ.get("LINCHPIN_LOG_JSON") or os.environ.get("LINCHPIN_LOG_LEVEL"))
+
+
+# -- Error tracking (Sentry), gated entirely by SENTRY_DSN ---------------------
+#
+# Shipped OFF by default: with SENTRY_DSN unset (dev, CI, tests) init_observability()
+# is a no-op and makes no network call. An operator turns it on by setting the
+# SENTRY_DSN secret on the deployment -- the same "no-op until the operator opts
+# in" pattern as LINCHPIN_API_KEY. This is what turns "prod went down and I found
+# out by hand" into an alert.
+
+_OBS_LOG = logging.getLogger("linchpin.observability")
+_DEFAULT_SENTRY_ENVIRONMENT = "production"
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_sample_rate(name: str, default: float) -> float:
+    """Parse a [0.0, 1.0] sample-rate env var; anything unparseable or
+    out-of-range falls back to ``default`` (never raises). ``traces_sample_rate``
+    only governs performance-tracing volume -- it never affects error capture."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if 0.0 <= value <= 1.0 else default
+
+
+def init_observability() -> bool:
+    """Initialize Sentry error tracking iff ``SENTRY_DSN`` is set.
+
+    Returns ``True`` when Sentry was actually initialized, ``False`` on every
+    no-op / degraded path (DSN unset, or ``sentry-sdk`` not installed). **Never
+    raises** -- observability must not be able to take down the app it observes.
+
+    ``sentry-sdk`` is imported lazily and its absence tolerated (a warning, not a
+    crash), so this boot-chain module never breaks the app's import even if the
+    package is stripped (see the ``prod-boot`` CI gate). With ``fastapi``
+    installed, ``sentry_sdk.init()`` auto-enables the FastAPI/Starlette
+    integration -- unhandled exceptions that become 500s are captured with no
+    per-route wiring. Performance tracing is OFF by default
+    (``traces_sample_rate=0.0``); opt in via ``SENTRY_TRACES_SAMPLE_RATE``.
+
+    PII: ``send_default_pii`` is ``False`` unless the operator explicitly opts in
+    with ``SENTRY_SEND_DEFAULT_PII=1`` -- Sentry must never attach request
+    bodies/headers/user ids to events (the repo's "never surface PII" rule).
+    """
+    dsn = os.environ.get("SENTRY_DSN", "").strip()
+    if not dsn:
+        return False  # shipped default: observability off, zero side effects
+    try:
+        import sentry_sdk
+    except ImportError:
+        _OBS_LOG.warning(
+            "SENTRY_DSN is set but sentry-sdk is not installed; error tracking is OFF. "
+            "Install the web extra (pip install '.[web]') to enable it."
+        )
+        return False
+
+    environment = os.environ.get("SENTRY_ENVIRONMENT", "").strip() or _DEFAULT_SENTRY_ENVIRONMENT
+    sentry_sdk.init(
+        dsn=dsn,
+        environment=environment,
+        release=os.environ.get("SENTRY_RELEASE", "").strip() or None,
+        traces_sample_rate=_env_sample_rate("SENTRY_TRACES_SAMPLE_RATE", 0.0),
+        send_default_pii=_env_flag("SENTRY_SEND_DEFAULT_PII"),
+    )
+    _OBS_LOG.info("Sentry error tracking initialized (environment=%s).", environment)
+    return True

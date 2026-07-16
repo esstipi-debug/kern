@@ -239,6 +239,11 @@ async def _lifespan(_app: FastAPI):
         yield
 
 
+# Initialize error tracking (Sentry) as early as possible -- a no-op unless the
+# operator has set SENTRY_DSN (webapp/observability.py). Called before the app is
+# built so its FastAPI integration instruments every route from the first request.
+observability.init_observability()
+
 app = FastAPI(
     title="Inventory Planner", version="1.0.0", default_response_class=SafeJSONResponse, lifespan=_lifespan
 )

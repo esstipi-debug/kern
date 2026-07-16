@@ -38,6 +38,10 @@ web = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
     "python-multipart>=0.0.9",
+    # Optional error tracking; a no-op unless SENTRY_DSN is set at runtime
+    # (webapp/observability.py). In the base web install so production has it
+    # available to switch on via the secret, without a Dockerfile change.
+    "sentry-sdk>=2.0",
 ]
 # Capability-expansion extras (modules degrade gracefully when absent).
 dataquality = [

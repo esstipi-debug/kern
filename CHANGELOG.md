@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+- **Optional Sentry error tracking** (`webapp/observability.py::init_observability`), gated
+  entirely by `SENTRY_DSN`. Shipped OFF: unset DSN (dev/CI/tests, the default) is a no-op with
+  zero side effects; an operator turns it on by setting the `SENTRY_DSN` secret — the same
+  "no-op until you opt in" pattern as `LINCHPIN_API_KEY`. With `fastapi` installed, unhandled
+  500-causing exceptions are captured automatically (auto-enabled FastAPI integration).
+  `sentry-sdk` is imported lazily (boot-safe — passes the `prod-boot` gate) and lives in the
+  `web` extra so production has it without a Dockerfile change. Safe defaults: `send_default_pii`
+  is **off** (the repo's "never surface PII" rule) unless `SENTRY_SEND_DEFAULT_PII=1`, and
+  performance tracing is off (`traces_sample_rate=0.0`) unless `SENTRY_TRACES_SAMPLE_RATE` is set.
+  Closes the gap where a production outage had no automated alerting (2026-07-16 incident was
+  caught by hand). To activate live: `flyctl secrets set SENTRY_DSN=... -a linchpin`.
+
 ### Fixed
 - **Production boot crash: `ModuleNotFoundError` for the optional pricing extras.** The
   price-watch tools put `src.pricing_intel` on the app's import chain (`webapp.app` ->
