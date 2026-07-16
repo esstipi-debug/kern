@@ -14,6 +14,19 @@
   (repo, Fly, Odoo Store, MCP listings) tracked as a checklist in `HANDOFF.md`.
 
 ### Added
+- **Approval TTL on T2 pending autonomy records** (`scm_agent/autonomy.py`) — the Linchpin 3.0
+  plan repeatedly promised "T2 con Approval TTL" but `AutonomyRecord` had no expiry, so a stale
+  one-click approval could be rubber-stamped hours later and `list_pending()` never aged anything
+  out (independent audit finding #2). A T2 pending record is now stamped with an `expires_at`
+  deadline (`created_at` + TTL; default `900s`, matching `src/writeback.py`'s `Approval` window,
+  overridable via `LINCHPIN_AUTONOMY_TTL_SECONDS`); T1/T3 and legacy rows keep `NULL` and never
+  expire. `acknowledge()` refuses a lapsed record (surfaced as `409` by `POST /api/approvals/{id}`)
+  — the safe direction on timeout is lapse-and-re-trigger, never auto-approve. New `expire_stale()`
+  sweep transitions lapsed `PENDING` → `STATUS_EXPIRED` (idempotent); `list_pending(now=...)` hides
+  lapsed rows even before a sweep, which the `/tower` page uses so it never renders an "Aprobar"
+  button that could only `409`, and it shows the deadline in a new "Vence" column. Legacy ledger
+  files are migrated in place (`ALTER TABLE ADD COLUMN`, guarded against a concurrent-request
+  duplicate-column race).
 - **`src/escalation.py` wired into `jobs/intake.py`'s plausibility checks** — `intake.py::normalize()`
   used to silently drop unusable rows (bad dates, missing/negative quantities) with zero
   visibility into how many or why; a report could be built on a shrunken, unrepresentative
