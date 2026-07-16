@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Added
+- **`GET /stocky-alternative` — English-language SEO/conversion landing page**
+  (`webapp/stocky_alternative_page.py`) for the "stocky alternative" search wave: Shopify
+  delisted its native Stocky forecasting/PO app from the App Store in Feb 2026 and shuts it
+  down entirely on 2026-08-31, a dated wave of merchants actively searching for a replacement
+  right now (GTM research, 2026-07-16). Names the three jobs Stocky did (forecasting, reorder/PO
+  suggestions, low-stock alerts), a comparison table vs. typical recurring alternatives, an
+  FAQPage JSON-LD block for search-result rich snippets, and CTAs into the two packages that
+  actually replace Stocky (`diagnostico-arranque`, `starter-fundamentos` — no new pricing
+  invented, structured data from `webapp/offers.py`). English + its own minimal shell
+  (deliberately not the rest of the site's Spanish nav/copy), same dark/teal visual system.
+  6 tests.
 - **`guided` outcome now exposed on the MCP surface** (`webapp/mcp_server.py`), closing the
   parity gap flagged as a deliberate follow-up in PR #135. Every read-only MCP analysis tool
   response now carries the machine-readable "never-unprotected" contract (`src/guided.py`:
