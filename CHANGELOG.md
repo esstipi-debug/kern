@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Added
+- **`examples/run_repricing.py` — operator entry point for the multichannel repricing playbook**
+  (`jobs/repricing.py`, 3.0-audit finding #6). The playbook (stage -> guardrail-gate ->
+  approve -> apply -> verify against Shopify / MercadoLibre / Odoo) was fully engineered and
+  tested but reachable only from tests — no CLI, route, or tool registration. This CLI runs it
+  end to end against the offline in-memory stand-in for the chosen channel (no credentials
+  needed): `--channel {shopify,meli,odoo}`, optional `--prices "SKU=price,..."` / `--reason`,
+  and a safe posture — staging is a **dry run** by default (nothing written), and even
+  `--apply` requires a named `--approved-by` (the playbook never auto-applies). Live channels
+  still need the client's own credentials + a real per-channel RPC (the operator's integration
+  step). 13 tests.
 - **Optional Sentry error tracking** (`webapp/observability.py::init_observability`), gated
   entirely by `SENTRY_DSN`. Shipped OFF: unset DSN (dev/CI/tests, the default) is a no-op with
   zero side effects; an operator turns it on by setting the `SENTRY_DSN` secret — the same
