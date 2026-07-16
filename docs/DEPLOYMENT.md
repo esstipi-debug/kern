@@ -209,20 +209,38 @@ you rely on theory↔code citations in deliverables.
 
 ## 6. Automated deployment (CI/CD)
 
-`.github/workflows/fly-deploy.yml` deploys to production automatically on
-every push to `main` (`flyctl deploy --remote-only`), followed by a
-post-deploy health check against `GET /api/health` (retries 5x, fails the
-workflow run if the new release doesn't come up healthy — check
-`flyctl logs -a linchpin` and consider `flyctl releases rollback` if this
-happens).
+`.github/workflows/fly-deploy.yml` deploys to production on every push to
+`main` (flyctl's default rolling strategy, health-gated against `fly.toml`'s
+existing `/api/health` check), followed by a post-deploy curl retry loop as
+a second signal. If the release comes up unhealthy, the workflow fails red
+— check `flyctl logs -a linchpin` and consider `flyctl releases rollback`.
 
-**Requires a one-time manual step: a human with repo-admin access must add
-the `FLY_API_TOKEN` repository secret** (Settings > Secrets and variables >
-Actions). Generate a deploy-scoped token with
-`flyctl tokens create deploy -a linchpin`, or from the Fly.io dashboard. An
-agent cannot create this secret. Until it's set, the workflow runs and fails
-fast with a clear `::error::` message rather than silently no-op'ing.
+**Requires two one-time manual steps — an agent cannot do either:**
 
-This means merging a PR to `main` now deploys it to the live app — there is
-no staging environment and no manual approval gate between merge and
-production traffic. Treat `main` accordingly.
+1. **Add the `FLY_API_TOKEN` repository secret** (Settings > Secrets and
+   variables > Actions). Generate a deploy-scoped token with
+   `flyctl tokens create deploy -a linchpin`, or from the Fly.io dashboard.
+   Until it's set, the workflow fails fast with a clear `::error::` message
+   rather than silently no-op'ing.
+2. **Create the `production` GitHub Environment with a required reviewer**
+   (repo Settings > Environments > New environment > name it exactly
+   `production` > check "Required reviewers" > add yourself). The `deploy`
+   job targets this environment; without the protection rule configured, it
+   just runs unprotected the moment step 1's secret exists.
+
+**Why the approval gate matters here specifically:** this repo pairs
+automated deployment with an autonomous PR-review-and-merge scheduled task
+(see project memory — "kern-pr-review-loop") that can merge a PR to `main`
+without a human clicking anything. The single Fly.io machine backing this
+app is a memory-constrained 512MB shared-CPU VM with a **documented OOM
+crash history** (see `fly.toml`'s own comment) and **no automated
+rollback** — a bad autonomous merge reaching production unattended could
+take the app down with nobody aware until someone happens to check. The
+`production` environment's required-reviewer gate means PRs can still merge
+automatically, but the actual deploy — the step that can break live traffic
+— always waits for a human to click "approve" on the pending deployment in
+GitHub's UI before it runs. This was an explicit design decision (not a
+leftover TODO) after an adversarial review flagged the unattended-deploy
+risk on this specific infrastructure; do not remove the `environment:` line
+without addressing that risk another way (e.g. staging + auto-rollback)
+first.

@@ -17,6 +17,16 @@ name: Fly Deploy
 # that check and exit non-zero on an unhealthy release -- an earlier, more
 # reliable red signal than the best-effort curl loop below, on a
 # single-machine 512MB VM with a documented OOM history (see fly.toml).
+#
+# The `deploy` job targets the `production` GitHub Environment, which a
+# human must configure with a required reviewer (Settings > Environments >
+# production > Required reviewers) -- an agent cannot create this
+# protection rule. Until it's configured, `environment: production` with no
+# matching environment just runs unprotected; configuring it is what turns
+# this into a real approval gate. This exists specifically so an autonomous
+# PR-merge loop can merge PRs unattended while the actual production deploy
+# still waits for a human click, given the single fragile VM has no
+# automated rollback (see docs/DEPLOYMENT.md section 6).
 
 on:
   push:
@@ -51,6 +61,7 @@ jobs:
     needs: check-secret
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
