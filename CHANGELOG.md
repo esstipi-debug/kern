@@ -35,6 +35,30 @@
   caught by hand). To activate live: `flyctl secrets set SENTRY_DSN=... -a linchpin`.
 
 ### Fixed
+- **Package deliverables shipped with ZERO L3 citations for 6 tools in every package that runs
+  them** (3.0-audit finding #7, the widest blast radius of the citation fixes below).
+  `scm_agent/packages.py::_run_step` grounded each step's citations with the same `limit=3`
+  shallow candidate pool, so on-topic citations ranked below #3 never reached the strict 2-hop
+  gate -- `inventory_optimization` (citation-less in **every** inventory package),
+  `pricing`, `excel_replenishment`, `odoo_replenishment`, `risk`, and `reconciliation` all
+  degraded to zero. Fixed by grounding on the fixed `tool.title` (the method identifier -- not
+  the `f"{spec.title}: {tool.title}"` request brief, whose package-name prefix injected
+  cross-domain noise and made a tool's citations differ between packages) over a wider pool
+  (`_CANDIDATE_POOL=8`), shown as a tight capped set (`_MAX_CITATIONS=3`), via a new testable
+  `_step_citations` helper. **`8` is the empirical ceiling, not arbitrary**: widening further
+  re-admits hub-noise for tools whose zero is correct -- `data_quality` (its zero is intentional)
+  re-admits manufacturing TQM/QFD citations at pool 11, `cycle_count` re-admits cash-cycle
+  citations at pool 12 -- so 8 recovers the six fixable tools with margin while leaving
+  `data_quality`/`cycle_count`/`whatif`/`earned_value` correctly at zero. Adversarial review also
+  caught one false-friend the wider pool surfaced -- `returns` shipped an off-topic "Reverse
+  Auction" (procurement) citation, 2 hops from its `reverse_logistics` anchor via a shared book
+  hub -- now blocked via `EXCLUDED_CONCEPTS["returns"]` (restoring the on-topic "Value Recovery"
+  citation), the same mechanism already used for `excess_obsolete`. The gate's anchor/hop
+  semantics (`MAX_HOPS`, `MIN_CITATIONS`) are otherwise unchanged. 18 tests (incl. a full
+  off-topic sweep over every package tool) + an updated re-derivation regression test.
+  `dea`/`learning_curve`/`slotting` stay zero at any pool (anchor islanding), and
+  `markdown_liquidation`'s pre-existing borderline "Excess Capacity" citation is untouched --
+  both separate anchor-tightening items, out of scope.
 - **Price-intelligence deliverables shipped with ZERO or off-topic L3 citations** on realistic
   briefs (3.0-audit finding #7, blast radius of the integrated-plan fix below). Confirmed by
   adversarial review: `jobs/price_intelligence.py::gated_citations` had the identical `limit=3`

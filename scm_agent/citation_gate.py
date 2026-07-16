@@ -117,6 +117,15 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
 # obsolescence_cost via their shared Chopra & Meindl book hub.
 EXCLUDED_CONCEPTS: dict[str, tuple[str, ...]] = {
     "excess_obsolete": ("excess_capacity_and_inventory",),
+    # "reverse_auction" (a competitive supplier-bidding procurement mechanism)
+    # sits exactly 2 hops from the "returns" tool's "reverse_logistics" anchor
+    # via a shared Chopra & Meindl book-chapter hub, and rides in on the "reverse"
+    # lexical overlap with the tool's own keywords - the same false-friend pattern
+    # as excess_obsolete above. It is topically unrelated to product-returns
+    # disposition. Surfaced once the candidate pool widened past 3 (see
+    # scm_agent/packages.py::_step_citations); excluding it restores the on-topic
+    # "Value Recovery" citation in its place.
+    "returns": ("reverse_auction",),
 }
 
 
