@@ -1,0 +1,91 @@
+name: Fly Deploy
+
+# Auto-deploys to production (https://linchpin.fly.dev) on every push to
+# main. Requires the FLY_API_TOKEN repository secret (Settings > Secrets
+# and variables > Actions) -- an agent cannot create this secret; a human
+# with repo-admin access must add it (generate with `flyctl tokens create
+# deploy -a linchpin` or from the Fly.io dashboard). Until that secret
+# exists, this workflow runs and fails fast with a clear error rather than
+# silently no-op'ing.
+#
+# concurrency prevents two overlapping deploys if multiple PRs merge close
+# together (relevant now that an automated review loop can merge PRs).
+#
+# Deliberately uses flyctl's default ROLLING strategy (not --strategy
+# immediate): fly.toml already declares an http_service health check on
+# /api/health, and the rolling strategy makes `flyctl deploy` itself wait on
+# that check and exit non-zero on an unhealthy release -- an earlier, more
+# reliable red signal than the best-effort curl loop below, on a
+# single-machine 512MB VM with a documented OOM history (see fly.toml).
+#
+# The `deploy` job targets the `production` GitHub Environment, which a
+# human must configure with a required reviewer (Settings > Environments >
+# production > Required reviewers) -- an agent cannot create this
+# protection rule. Until it's configured, `environment: production` with no
+# matching environment just runs unprotected; configuring it is what turns
+# this into a real approval gate. This exists specifically so an autonomous
+# PR-merge loop can merge PRs unattended while the actual production deploy
+# still waits for a human click, given the single fragile VM has no
+# automated rollback (see docs/DEPLOYMENT.md section 6).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fly-deploy-production
+  cancel-in-progress: false
+
+jobs:
+  check-secret:
+    name: Check FLY_API_TOKEN is set
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify secret presence
+        env:
+          HAS_TOKEN: ${{ secrets.FLY_API_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "::error::FLY_API_TOKEN repository secret is not set. A human with repo-admin access must add it (Settings > Secrets and variables > Actions) before this workflow can deploy. See docs/DEPLOYMENT.md."
+            exit 1
+          fi
+          echo "FLY_API_TOKEN is set."
+
+  deploy:
+    name: Deploy to Fly.io
+    needs: check-secret
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup flyctl
+        # Pinned to the tag-1.6 / v1 commit (verified via `git ls-remote`) --
+        # not @master, which is a mutable ref this token-holding workflow
+        # should not silently follow.
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+
+      - name: Deploy (rolling, health-gated by flyctl itself)
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Post-deploy health check
+        run: |
+          sleep 20
+          for i in 1 2 3 4 5 6; do
+            if curl -sf --max-time 10 https://linchpin.fly.dev/api/health > /dev/null; then
+              echo "Health check passed."
+              exit 0
+            fi
+            echo "Health check attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "::error::Post-deploy health check failed after 6 attempts. flyctl's own rolling-deploy health gate should have caught most failures before this point, but check Fly logs (flyctl logs -a linchpin) and consider flyctl releases rollback."
+          exit 1
