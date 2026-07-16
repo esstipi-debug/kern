@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Production boot crash: `ModuleNotFoundError` for the optional pricing extras.** The
+  price-watch tools put `src.pricing_intel` on the app's import chain (`webapp.app` ->
+  `scm_agent` -> `tools` -> `pricing_intel`), but several of its modules hard-imported
+  packages that only the optional `pricing-intel`/`dataquality` extras install
+  (`bs4`, `price-parser`, `rapidfuzz`, `python-stdnum`). Those deps are present in dev/CI
+  *transitively* (e.g. `extruct` -> `mf2py` -> `beautifulsoup4`), so the full suite and CI
+  passed while the real Fly image (`pip install -e ".[web,mcp]"`) crashed on boot with the
+  app never binding `0.0.0.0:8000`. All five hard imports are now **lazy** (moved inside the
+  functions that use them, matching the repo's existing "degrade gracefully when the extra is
+  absent" convention — `extract.py`/`normalize.py` raise a clear "install the pricing-intel
+  extra" error, `match/fuzzy.py`/`match/probabilistic.py`/`match/gtin.py` import on demand). A
+  new subprocess regression test (`tests/test_pricing_intel_boot_safety.py`) blocks those four
+  packages and asserts `webapp.app` still imports, so this class of "green in CI, dead in prod"
+  bug can never reach the deployment silently again. Note: the price-intelligence *tools* still
+  need the `pricing-intel`/`dataquality` extras to run — they now degrade with an actionable
+  error instead of taking down the whole app; installing those extras in the prod image (to make
+  the tools functional live, vs. CLI-only) is a separate deployment decision.
+
 ### Changed
 - **Rename: Linchpin -> Kern** (brand only). All user-facing surfaces — README, sales
   docs (`documentation/`, one-pagers), operator portfolio, webapp UI, deliverable

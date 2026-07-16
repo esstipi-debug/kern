@@ -42,8 +42,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from bs4 import BeautifulSoup
-
 from .acquire.structured import extract_product_metadata
 from .normalize import PRICE_PARSER_VERSION, PriceNormalizationError, normalize_price_string
 
@@ -88,6 +86,33 @@ class ExtractionFailed(Exception):
     def __init__(self, attempts: tuple[str, ...]) -> None:
         self.attempts = attempts
         super().__init__(f"all extraction tiers failed: {', '.join(attempts) if attempts else 'none attempted'}")
+
+
+class ExtractionDependencyMissing(RuntimeError):
+    """The selector/price-parser tiers need BeautifulSoup (the ``bs4`` package),
+    which only the optional ``pricing-intel`` extra installs -- the base
+    ``.[web,mcp]`` production install does not. Distinct from
+    ``ExtractionFailed`` ("the page had no recoverable price") and deliberately
+    NOT a subclass of it, so the cascade's per-candidate
+    ``except PriceNormalizationError`` never silently swallows a missing-
+    dependency environment error: it propagates loudly with an actionable
+    "install the extra" message instead of masquerading as "no price found"."""
+
+
+def _load_beautifulsoup():
+    """Import ``BeautifulSoup`` on demand so this module stays import-safe on
+    the app's boot chain (``pricing_intel/__init__`` -> ``extract``) even when
+    the optional ``pricing-intel`` extra is absent. Behavior is unchanged when
+    ``bs4`` is installed (dev/CI/tests); only a runtime call into the HTML-
+    parsing tiers without it raises."""
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError as exc:  # pragma: no cover - exercised only in a prod-like env without the extra
+        raise ExtractionDependencyMissing(
+            "the selector / price-parser extraction tiers require BeautifulSoup; "
+            "install the pricing-intel extra: pip install '.[pricing-intel]'"
+        ) from exc
+    return BeautifulSoup
 
 
 @dataclass(frozen=True)
@@ -250,7 +275,7 @@ def _offer_dict_to_result(
 def _try_selector(
     html: str, selector: str, selector_version: str | None, *, currency_hint: str | None
 ) -> ExtractionResult | None:
-    soup = BeautifulSoup(html, "html.parser")
+    soup = _load_beautifulsoup()(html, "html.parser")
     node = soup.select_one(selector)
     if node is None:
         return None
@@ -286,7 +311,7 @@ def _looks_like_price_text(text: str) -> bool:
 
 
 def _try_price_parser_candidate(html: str, *, currency_hint: str | None) -> ExtractionResult | None:
-    soup = BeautifulSoup(html, "html.parser")
+    soup = _load_beautifulsoup()(html, "html.parser")
     for text in soup.stripped_strings:
         if not _looks_like_price_text(text):
             continue

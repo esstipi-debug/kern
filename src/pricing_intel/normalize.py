@@ -41,8 +41,6 @@ from decimal import Decimal
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 
-from price_parser import Price
-
 # importlib.metadata lookup with a pinned-version fallback -- same idea as
 # src/state/store.py's _HAS_PARQUET_ENGINE degrade flag, except here the
 # package is always present (pricing-intel extra) and we only need its
@@ -60,6 +58,31 @@ class PriceNormalizationError(ValueError):
     the currency is ambiguous and no explicit ISO hint was supplied. Never
     guessed (plan section 6.4: "un precio dudoso es peor que ningun
     precio")."""
+
+
+class PriceParserUnavailable(RuntimeError):
+    """``normalize_price_string`` needs the ``price-parser`` package, which only
+    the optional ``pricing-intel`` extra installs -- the base ``.[web,mcp]``
+    production install does not. Deliberately NOT a subclass of
+    ``PriceNormalizationError`` (a ValueError callers routinely catch and treat
+    as "this candidate had no valid price"), so a missing-dependency
+    environment error propagates loudly with an actionable "install the extra"
+    message instead of being silently swallowed as "no price found"."""
+
+
+def _load_price_class():
+    """Import price-parser's ``Price`` on demand, keeping this module (on the
+    app's boot chain via ``pricing_intel/__init__`` -> ``extract`` ->
+    ``normalize``) import-safe when the ``pricing-intel`` extra is absent.
+    Behavior is unchanged when the package is installed (dev/CI/tests)."""
+    try:
+        from price_parser import Price
+    except ImportError as exc:  # pragma: no cover - exercised only in a prod-like env without the extra
+        raise PriceParserUnavailable(
+            "price normalization requires price-parser; install the pricing-intel "
+            "extra: pip install '.[pricing-intel]'"
+        ) from exc
+    return Price
 
 
 # Symbols that map unambiguously to exactly one ISO 4217 code. Deliberately
@@ -105,7 +128,7 @@ def normalize_price_string(raw: str, *, currency: str | None = None) -> Normaliz
         raise PriceNormalizationError(f"raw price text must be a non-empty string, got {raw!r}")
 
     explicit_currency = _validate_iso_currency(currency) if currency is not None else None
-    parsed = Price.fromstring(raw, currency_hint=explicit_currency)
+    parsed = _load_price_class().fromstring(raw, currency_hint=explicit_currency)
     if parsed.amount is None:
         raise PriceNormalizationError(f"could not parse a price amount out of {raw!r}")
 

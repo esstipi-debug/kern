@@ -92,8 +92,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from rapidfuzz import fuzz
-
 from ..models import MatchCandidate
 from .fuzzy import ProductAttributes
 
@@ -170,6 +168,10 @@ def score_pair(our: ProductAttributes, competitor: ProductAttributes) -> Probabi
     Pure function -- no I/O, no randomness, fully deterministic for a given
     pair of :class:`~src.pricing_intel.match.fuzzy.ProductAttributes`.
     """
+    # Lazy: rapidfuzz ships in the optional dataquality extra, absent in prod's .[web,mcp]
+    # install -- import here so this module stays import-safe on the app's boot chain.
+    from rapidfuzz import fuzz
+
     title_sim = fuzz.token_sort_ratio(_normalize_text(our.title), _normalize_text(competitor.title)) / 100.0
     brand_sim = fuzz.token_sort_ratio(_normalize_text(our.brand), _normalize_text(competitor.brand)) / 100.0
     attr_sim, conflict, conflicting_keys = _attribute_similarity(our.attributes, competitor.attributes)

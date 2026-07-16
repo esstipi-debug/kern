@@ -33,9 +33,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from stdnum import ean
-from stdnum.exceptions import ValidationError
-
 from ..models import MatchCandidate
 
 # plan S6.5 step 1: "-> confirmed (0.99)". The exact-GTIN path is the one
@@ -56,6 +53,11 @@ def normalize_gtin(raw: str) -> str | None:
     """
     if not raw or not raw.strip():
         return None
+    # Lazy: python-stdnum ships in the optional dataquality extra, absent in prod's
+    # .[web,mcp] install -- import here so this module stays import-safe at boot.
+    from stdnum import ean
+    from stdnum.exceptions import ValidationError
+
     try:
         return ean.validate(raw)
     except ValidationError:

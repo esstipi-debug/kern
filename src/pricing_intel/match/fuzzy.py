@@ -27,8 +27,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from rapidfuzz import fuzz
-
 # Title carries far more discriminating signal than brand: two products from
 # the SAME brand with wildly different titles are almost never the same SKU,
 # but an identical title under a slightly different brand string is often a
@@ -110,6 +108,10 @@ def blocking_score(our: ProductAttributes, competitor: ProductAttributes) -> Blo
         brand_score=0.0 -> blocking_score = 0.7*100 + 0.3*0 = 70.0
       both title and brand totally different    -> low blocking_score
     """
+    # Lazy: rapidfuzz ships in the optional dataquality extra, absent in prod's .[web,mcp]
+    # install -- import here so this module stays import-safe on the app's boot chain.
+    from rapidfuzz import fuzz
+
     title_score = fuzz.token_sort_ratio(_normalize_text(our.title), _normalize_text(competitor.title))
     brand_score = fuzz.token_sort_ratio(_normalize_text(our.brand), _normalize_text(competitor.brand))
     combined = TITLE_WEIGHT * title_score + BRAND_WEIGHT * brand_score
