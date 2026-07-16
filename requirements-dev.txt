@@ -11,6 +11,7 @@ fastapi>=0.110
 uvicorn>=0.29
 httpx>=0.28  # floor raised by tower/pricing-intel/repricing extras (notify(), pdp_fetcher.py, repricing connectors)
 python-multipart>=0.0.9  # required by POST /api/jobs (Form/File); app import fails without it
+sentry-sdk>=2.0  # optional error tracking (webapp/observability.py), no-op unless SENTRY_DSN set — mirrors pyproject [web]
 # modern forecasting wrapper (src/forecasting_auto.py) — mirrors pyproject [forecast]
 statsforecast>=2.0,<3
 utilsforecast>=0.2
