@@ -82,6 +82,7 @@ from webapp.offers import OFFERS, get_offer  # noqa: E402
 from webapp.operator_profile import get_operator_profile  # noqa: E402
 from webapp.paquetes_page import render_index_html, render_offer_html  # noqa: E402
 from webapp.pricing_page import render_pricing_html  # noqa: E402
+from webapp.stocky_alternative_page import render_stocky_alternative_html  # noqa: E402
 from webapp.tower_page import T1_DISPLAY_LIMIT, render_tower_html  # noqa: E402
 
 DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
@@ -1592,6 +1593,21 @@ def paquetes_offer(slug: str) -> HTMLResponse:
     if offer is None:
         raise HTTPException(status_code=404, detail="unknown package")
     return HTMLResponse(render_offer_html(offer, get_operator_profile()))
+
+
+@app.get("/stocky-alternative")
+def stocky_alternative_page() -> HTMLResponse:
+    """SEO/conversion landing page for the "stocky alternative" search wave --
+    Shopify delisted Stocky from the App Store Feb 2026 and shuts it down
+    2026-08-31. Points at the two packages that actually replace Stocky's
+    forecasting/reorder-point/PO-suggestion job (see
+    webapp/stocky_alternative_page.py's module docstring)."""
+    offer_starter = get_offer("starter-fundamentos")
+    offer_diagnostico = get_offer("diagnostico-arranque")
+    assert offer_starter is not None and offer_diagnostico is not None, (
+        "starter-fundamentos/diagnostico-arranque must exist in webapp.offers.OFFERS"
+    )
+    return HTMLResponse(render_stocky_alternative_html(offer_starter, offer_diagnostico))
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
