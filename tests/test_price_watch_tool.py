@@ -659,6 +659,79 @@ def test_run_survives_a_default_singleton_bound_to_a_different_thread(tmp_path, 
     assert res.status == "ok", res.summary
 
 
+def test_owned_sku_map_is_closed_when_owned_ledger_construction_fails(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Construction-order safety (PR #153 flagged Minor follow-up):
+    _price_watch_run builds its owned SkuMap before its owned PriceLedger. If
+    PriceLedger() raises (e.g. sqlite cannot open the db file) AFTER SkuMap()
+    already opened a connection, the sku_map handle must still be closed -- not
+    leaked to GC -- even though the main try/finally never began, because the
+    owned resources were constructed before the `try:`."""
+    import src.pricing_intel.ledger as ledger_module
+    import src.pricing_intel.match.sku_map as sku_map_module
+
+    created: dict[str, object] = {}
+
+    class _SpySkuMap:
+        def __init__(self) -> None:
+            self.closed = False
+            created["sku_map"] = self
+
+        def close(self) -> None:
+            self.closed = True
+
+    class _BoomLedger:
+        def __init__(self) -> None:
+            raise RuntimeError("cannot open ledger db")
+
+    # Local `from ... import SkuMap/PriceLedger` inside _price_watch_run
+    # re-reads the source-module attribute on every call, so patching the
+    # source modules substitutes the constructors this call will use.
+    monkeypatch.setattr(sku_map_module, "SkuMap", _SpySkuMap)
+    monkeypatch.setattr(ledger_module, "PriceLedger", _BoomLedger)
+
+    with pytest.raises(RuntimeError, match="cannot open ledger db"):
+        tools._price_watch_run({"domain": "x.example.test", "discovered": []}, {})
+
+    assert created["sku_map"].closed is True, (
+        "owned SkuMap leaked: it was constructed but never closed when owned "
+        "PriceLedger construction raised before the main try/finally"
+    )
+
+
+def test_caller_supplied_sku_map_is_not_closed_when_owned_ledger_construction_fails(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The construction-order fix must not over-close: when the CALLER supplies
+    the sku_map (owns_sku_map is False) and only the owned PriceLedger fails to
+    construct, the caller's sku_map lifecycle stays the caller's -- it must not
+    be closed by _price_watch_run."""
+    import src.pricing_intel.ledger as ledger_module
+
+    class _SpySkuMap:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class _BoomLedger:
+        def __init__(self) -> None:
+            raise RuntimeError("cannot open ledger db")
+
+    monkeypatch.setattr(ledger_module, "PriceLedger", _BoomLedger)
+
+    caller_sku_map = _SpySkuMap()
+    with pytest.raises(RuntimeError, match="cannot open ledger db"):
+        tools._price_watch_run(
+            {"domain": "x.example.test", "discovered": []},
+            {"sku_map": caller_sku_map},
+        )
+
+    assert caller_sku_map.closed is False
+
+
 def test_runs_end_to_end_without_a_catalog_path_omits_priority_honestly(
     tmp_path, monkeypatch: pytest.MonkeyPatch,
 ):

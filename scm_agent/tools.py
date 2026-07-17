@@ -2103,8 +2103,22 @@ def _price_watch_run(payload: object, params: dict) -> Produced:
     # hazard class).
     owns_sku_map = params.get("sku_map") is None
     owns_ledger = params.get("ledger") is None
-    sku_map = params.get("sku_map") if not owns_sku_map else SkuMap()
-    ledger = params.get("ledger") if not owns_ledger else PriceLedger()
+    # Construct the owned resources one at a time: the owned SkuMap opens a
+    # sqlite connection first, so if constructing the owned PriceLedger then
+    # raises we must close that already-open sku_map before re-raising --
+    # otherwise the main try/finally below (which never begins) leaks it to GC.
+    # A caller-supplied handle is never touched here; its lifecycle stays the
+    # caller's.
+    sku_map = SkuMap() if owns_sku_map else params.get("sku_map")
+    if owns_ledger:
+        try:
+            ledger = PriceLedger()
+        except BaseException:
+            if owns_sku_map:
+                sku_map.close()
+            raise
+    else:
+        ledger = params.get("ledger")
     try:
         # `_price_watch_prepare` threads params["config_dir"] into price_watch.
         # prepare()'s own config_dir seam (auto-onboarding + the hard gate); the
