@@ -42,6 +42,20 @@ from src.pricing_guardrails import GATE_MAX_MOVE_PCT_DEFAULT, GuardrailGateResul
 # price_sensitivity_measurement / markdown_pricing -- no new anchor mapping
 # needed). Verified to resolve >=2 real citations against the committed
 # books graph with an empty brief (tests/test_repricing_job.py).
+#
+# _CANDIDATE_POOL was 3 (the same shallow-pool recall defect fixed in
+# jobs/integrated_plan.py, jobs/price_intelligence.py and
+# scm_agent/packages.py::_run_step, 3.0-audit finding #7 -- this module was
+# the one instance that defect fix never reached): with only the top 3
+# candidates offered to the strict MAX_HOPS gate, a new unrelated source
+# added to the books graph can rank its own on-topic-sounding labels above
+# the real "pricing" anchors and starve the gate down to zero surviving
+# citations, blocking every repricing changeset regardless of how good the
+# reason text is. Widened to 8 to match packages.py's empirically-verified
+# ceiling for this exact tool_key's anchor set -- grounding stays on the
+# fixed keyword set above, not the caller's free-text reason, so this is
+# deterministic across every call.
+_CANDIDATE_POOL = 8
 _CITATION_KEYWORDS = (
     "price optimization", "price change", "repricing", "markdown pricing",
     "price elasticity", "multichannel pricing",
@@ -93,7 +107,9 @@ def prices_from_optimizer(results: dict[str, PriceOptimizationResult]) -> dict[s
     }
 
 
-def gated_citations(brief: str = "", *, kb: KnowledgeBase | None = None, limit: int = 3) -> list[GroundedCitation]:
+def gated_citations(
+    brief: str = "", *, kb: KnowledgeBase | None = None, limit: int = _CANDIDATE_POOL,
+) -> list[GroundedCitation]:
     """Candidate L3 citations for the central gate -- the RAW ranked
     candidates (:meth:`KnowledgeBase.ground_citations_detailed`), not
     pre-filtered: :func:`~src.pricing_guardrails.gate_price_changeset`

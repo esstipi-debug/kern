@@ -4,11 +4,12 @@ A graphify knowledge graph built from **24 supply-chain books** (forecasting,
 pricing, revenue management, supply chain management, inventory optimization,
 manufacturing planning & control, operations management, logistics & operations
 strategy, sustainable logistics, **and supply-chain leadership**) plus a
-**25th source, AI applied to supply chains** (see below). This is the
-**domain knowledge** layer for the agent — distinct from the repo's
-`graphify-out/`, which graphs the *code*.
+**25th source, AI applied to supply chains**, and a **26th source, Kern's own
+capability↔role atlas** (see below). This is the **domain knowledge** layer
+for the agent — distinct from the repo's `graphify-out/`, which graphs the
+*code*.
 
-- `graph.json` — 1953 nodes · 3810 edges · 123 communities (GraphRAG-ready)
+- `graph.json` — 2053 nodes · 3995 edges · 132 communities (GraphRAG-ready)
 - `graph.html` — interactive visual (open in a browser)
 - `GRAPH_REPORT.md` — communities, god nodes, surprising cross-book connections
 
@@ -93,6 +94,39 @@ deployment), Raman & Kwon on AI in retail labor scheduling, Lee/Shen/Qi/Chen's
 JD.com AI-transformation case study, and Tayur's skeptical closing essay. Cost
 to extract: $0.11 (Kimi backend, 35k in / 18k out tokens) — cheap enough that
 buying the other 8 chapters was not worth it relative to what they'd add.
+
+**Kern's own capability↔role atlas** (`documentation/KERN_ATLAS_SOMBREROS_SCM.md`)
+was added as the **26th source** — 100 nodes / 185 edges (9 nodes were exact
+canonical-concept duplicates of existing graph nodes, e.g. `cost_to_serve`,
+`landed_cost`, `facility_location`; their edges were redirected to the
+existing canonical node instead of creating a shadow copy) across 9
+communities. Unlike the first 25 sources (external published works), this one
+documents Kern's *own* 29-role↔certification↔capability mapping — every one
+of the 29 SCM "hats" (Demand Planner through Sustainability/ESG Lead), the 27
+distinct certifications they cite, and the bridge edges from each role to the
+Kern capabilities the atlas says align with it. Also captured as concept/
+rationale nodes: the atlas's structural finding (Kern is a decision/design
+layer, never a transactional execution system, across all 8 SCOR+transversal
+zones with zero exceptions) and its proposal for a "hat lens" mode in
+`scm_agent/modes.py` (not yet built — a code feature, tracked separately).
+
+**Merging a 26th source into an already-citable graph is not a copy-paste
+operation** — it surfaced (and this ingestion fixed) a real latent bug:
+`jobs/repricing.py::gated_citations` was still grounding its central pricing
+guardrail on a **3-candidate pool**, the exact shallow-pool recall defect
+already fixed at pool 6-8 in `jobs/integrated_plan.py`,
+`jobs/price_intelligence.py`, and `scm_agent/packages.py::_run_step` (3.0-audit
+finding #7) — this module was the one instance that fix never reached. Adding
+this source's on-topic-sounding role/certification labels was enough to crowd
+the real pricing-theory anchors out of the top 3 candidates, silently zeroing
+every repricing guardrail's citations (17 test failures caught this before it
+shipped). Widened to match the other three call sites' pool size; see
+`jobs/repricing.py`'s `_CANDIDATE_POOL` comment for the full mechanism.
+**Lesson for the next source added here:** a clean "0 id collisions" merge is
+not sufficient proof of safety — run the *full* test suite (not just the
+citation/knowledge-focused subset) before trusting a graph merge, since a new
+source's node *labels* can silently move a shallow-pool grounding call's
+top-N ranking anywhere in the codebase, not just at the merge site.
 
 ## Intended use (L3)
 
