@@ -52,6 +52,15 @@ CONTACT_COLUMNS = ["Website", "Contact path", "Directory_profile_url"]
 
 EMAIL_LIKE = re.compile(r"[^\s,;]+@[^\s,;]+")
 
+# Phone-number guardrail: a run of digits (optionally with a leading '+')
+# spanning 8+ characters once spaces/dashes/parens typical of phone
+# formatting are allowed for. Deliberately scoped to the 42 NEW
+# channel-partner rows only - the 66 PRESERVED SEED rows legitimately carry
+# pre-existing general business phone numbers (office/toll-free lines) in
+# their free-text Contact path field, which predates this merge and is out
+# of scope for this guardrail (see task review finding).
+PHONE_LIKE = re.compile(r"\+?\d[\d\s\-\(\)]{6,}\d")
+
 
 def _read_rows() -> list[dict[str, str]]:
     with CSV_PATH.open("r", encoding="utf-8", newline="") as f:
@@ -146,3 +155,27 @@ def test_seed_rows_have_blank_extended_columns(row_index):
     row = seed_rows[row_index]
     for col in ("Ecosystem", "ICP_Fit", "Contact_path_type", "Directory_source", "Outreach_stage"):
         assert row[col] == "", f"seed row {row['Name']!r} unexpectedly has {col}={row[col]!r}"
+
+
+def test_no_phone_numbers_in_new_channel_partner_rows():
+    """None of the 42 NEW channel-partner rows may contain a phone-number-
+    shaped string in any field - the schema deliberately has no
+    contact_name/email/phone column, and channel-partner contact doors must
+    stay limited to company websites or directory profile URLs.
+
+    Scoped to new channel-partner rows only: the 66 PRESERVED SEED rows
+    legitimately carry pre-existing general business phone numbers (e.g.
+    toll-free/office lines) in their free-text Contact path field, which
+    predates this merge and is intentionally out of scope here.
+    """
+    rows = _read_rows()
+    channel_rows = [r for r in rows if r["Segment"] == CHANNEL_SEGMENT]
+    assert channel_rows, "expected at least one channel-partner row"
+    offenders = []
+    for i, row in enumerate(channel_rows):
+        for col, value in row.items():
+            if value and PHONE_LIKE.search(value):
+                offenders.append((i, col, value))
+    assert not offenders, (
+        f"found phone-number-like values in new channel-partner rows: {offenders}"
+    )
