@@ -145,14 +145,17 @@ def test_prepare_records_errors_on_missing_required_columns():
 
 
 def test_prepare_reads_two_csvs(tmp_path):
-    camp = tmp_path / "campanas.csv"; _campaigns_df().to_csv(camp, index=False)
-    inv = tmp_path / "inv.csv"; _inventory_df().to_csv(inv, index=False)
+    camp = tmp_path / "campanas.csv"
+    _campaigns_df().to_csv(camp, index=False)
+    inv = tmp_path / "inv.csv"
+    _inventory_df().to_csv(inv, index=False)
     payload = lrj.prepare(str(camp), {"inventory_path": str(inv), "as_of_date": "2026-07-01"})
     assert len(payload["records"]) == 2
 
 
 def test_prepare_requires_inventory_path(tmp_path):
-    camp = tmp_path / "campanas.csv"; _campaigns_df().to_csv(camp, index=False)
+    camp = tmp_path / "campanas.csv"
+    _campaigns_df().to_csv(camp, index=False)
     with pytest.raises(ValueError, match="inventory_path"):
         lrj.prepare(str(camp), {})
 
