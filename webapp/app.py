@@ -82,6 +82,7 @@ from webapp.offers import OFFERS, get_offer  # noqa: E402
 from webapp.operator_profile import get_operator_profile  # noqa: E402
 from webapp.paquetes_page import render_index_html, render_offer_html  # noqa: E402
 from webapp.pricing_page import render_pricing_html  # noqa: E402
+from webapp.pricing_quote import router as pricing_quote_router  # noqa: E402
 from webapp.stocky_alternative_page import render_stocky_alternative_html  # noqa: E402
 from webapp.tower_page import T1_DISPLAY_LIMIT, render_tower_html  # noqa: E402
 
@@ -281,6 +282,12 @@ if _PROD_WARNINGS and security.REQUIRE_SECURE:
 
 # Decision-support guardrail calculators (the human-facing Guided Execution Layer).
 app.include_router(decisions_router)
+
+# GMV-band commercial-pricing quote adapter (webapp/pricing_quote.py, Task 3 of
+# the GMV-band GTM plan) - GET /api/pricing-quote, a thin read-only wrapper over
+# src/commercial_pricing.py. Stateless, no auth required (same public-read
+# posture as GET /paquetes; nothing here is sensitive or mutating).
+app.include_router(pricing_quote_router)
 
 # Read-only MCP server (Phase A go-to-market: sell analysis-only access to other
 # AI agents). Shares this process's orchestrator (avoids loading the knowledge
