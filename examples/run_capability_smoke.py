@@ -402,6 +402,101 @@ def _run_case(orch: Orchestrator, key: str, fixtures_dir: Path,
     )
 
 
+# --------------------------------------------------------------------------- #
+# Stress / robustness pass -- feed each data tool degenerate inputs and see
+# whether it degrades with a helpful message or breaks (or, worse, silently
+# produces a deliverable from garbage).
+# --------------------------------------------------------------------------- #
+
+# Outcomes, worst first:
+#   CRASH     an uncaught exception escaped the tool (a real robustness bug)
+#   SUSPECT   returned ok on degenerate input (a deliverable built from garbage)
+#   GRACEFUL  clean protective status with a message (needs_data/error/qa_failed)
+_STRESS_ORDER = {"CRASH": 0, "SUSPECT": 1, "GRACEFUL": 2}
+
+
+def _stress_variants(base_csv: str) -> dict[str, str]:
+    """Derive degenerate CSVs from a tool's valid fixture."""
+    lines = [ln for ln in base_csv.splitlines() if ln.strip()]
+    header = lines[0] if lines else "a,b"
+    n_cols = len(header.split(","))
+    return {
+        "empty": header + "\n",  # headers, zero rows
+        "wrong_schema": "unrelated_x,unrelated_y\n1,2\n3,4\n",  # none of the expected columns
+        "nan_garbage": header + "\n" + "\n".join(  # right columns, non-numeric junk
+            ",".join(["junk"] * n_cols) for _ in range(3)
+        ) + "\n",
+    }
+
+
+def _base_csv_for(key: str, fixtures_dir: Path) -> str | None:
+    """The valid fixture as text, or None if the tool has no CSV fixture to mutate."""
+    if key in _CSV:
+        return _CSV[key]
+    if key in _SAMPLE and _SAMPLE[key].exists():
+        return _SAMPLE[key].read_text(encoding="utf-8")
+    if key == "forecast":
+        p = fixtures_dir / "f.csv"
+        _write_forecast_csv(p)
+        return p.read_text(encoding="utf-8")
+    if key == "sop":
+        p = fixtures_dir / "s.csv"
+        _write_sop_csv(p)
+        return p.read_text(encoding="utf-8")
+    return None  # no-data / xlsx / network tools
+
+
+def _run_stress(orch: Orchestrator, key: str, fixtures_dir: Path, out_dir: Path) -> CaseResult:
+    base = _base_csv_for(key, fixtures_dir)
+    if base is None:
+        return CaseResult(key, "SKIP", "no-csv-fixture", "no data CSV to mutate")
+
+    overrides = dict(_OVERRIDES.get(key) or {})
+    if key == "launch_readiness":
+        inv = fixtures_dir / "launch_inventory_stress.csv"
+        inv.write_text(
+            "product_id,on_hand,daily_demand,lead_time_days,demand_std,lead_time_std\n"
+            "P1,500,30,10,8,2\n",
+            encoding="utf-8",
+        )
+        overrides["inventory_path"] = str(inv)
+    brief = _BRIEF.get(key, f"run {key}")
+
+    worst = "GRACEFUL"
+    worst_detail = ""
+    for vname, csv in _stress_variants(base).items():
+        p = fixtures_dir / f"stress_{key}_{vname}.csv"
+        p.write_text(csv, encoding="utf-8")
+        try:
+            res = orch.run(brief, data_path=str(p), overrides=overrides or None,
+                           job_type=key, out_dir=str(out_dir / "stress" / key / vname))
+            outcome = "SUSPECT" if res.status in _PASS else "GRACEFUL"
+            detail = f"{vname}: {res.status}"
+        except Exception as exc:  # noqa: BLE001
+            outcome = "CRASH"
+            detail = f"{vname}: {type(exc).__name__}: {exc}"[:180]
+        if _STRESS_ORDER[outcome] < _STRESS_ORDER[worst]:
+            worst, worst_detail = outcome, detail
+    return CaseResult(key, worst, worst, worst_detail[:200])
+
+
+def _print_stress(results: list[CaseResult]) -> None:
+    icon = {"CRASH": "[CRSH]", "SUSPECT": "[SUSP]", "GRACEFUL": "[ OK ]", "SKIP": "[SKIP]"}
+    order = {"CRASH": 0, "SUSPECT": 1, "GRACEFUL": 2, "SKIP": 3}
+    shown = [r for r in results if r.bucket != "SKIP"]
+    print("\n" + "=" * 78)
+    print("KERN CAPABILITY STRESS -- {} data tools x (empty / wrong-schema / garbage)".format(len(shown)))
+    print("=" * 78)
+    for r in sorted(results, key=lambda x: (order[x.bucket], x.key)):
+        if r.bucket == "SKIP":
+            continue
+        print("{icon} {key:24s} {detail}".format(icon=icon[r.bucket], key=r.key, detail=r.detail)[:118])
+    counts = {b: sum(1 for r in results if r.bucket == b) for b in ("CRASH", "SUSPECT", "GRACEFUL", "SKIP")}
+    print("-" * 78)
+    print("CRASH={CRASH}  SUSPECT={SUSPECT}  GRACEFUL={GRACEFUL}  (skipped {SKIP} non-CSV tools)".format(**counts))
+    print("=" * 78)
+
+
 def _print_matrix(results: list[CaseResult]) -> None:
     icon = {"PASS": "[ OK ]", "GATED": "[GATE]", "FAIL": "[FAIL]", "SKIP": "[SKIP]"}
     print("\n" + "=" * 78)
@@ -449,6 +544,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--only", nargs="*", default=None, help="run only these tool keys")
     p.add_argument("--include-network", action="store_true",
                    help="also attempt price_watch / price_intelligence (need network)")
+    p.add_argument("--stress", action="store_true",
+                   help="robustness pass: feed each data tool degenerate inputs "
+                        "(empty / wrong-schema / garbage) and report crashes vs graceful handling")
     p.add_argument("--out", default="deliverables/capability_smoke",
                    help="root output directory for generated deliverables + reports")
     p.add_argument("--json", default=None, help="write the JSON report here (default: <out>/report.json)")
@@ -475,15 +573,23 @@ def main(argv: list[str] | None = None) -> int:
     results: list[CaseResult] = []
     with tempfile.TemporaryDirectory(prefix="kern_smoke_") as tmp:
         fixtures_dir = Path(tmp)
-        for key in keys:
-            results.append(_run_case(orch, key, fixtures_dir, out_dir, args.include_network))
+        if args.stress:
+            for key in keys:
+                results.append(_run_stress(orch, key, fixtures_dir, out_dir))
+        else:
+            for key in keys:
+                results.append(_run_case(orch, key, fixtures_dir, out_dir, args.include_network))
+
+    if args.stress:
+        _print_stress(results)
+        _write_reports(results, json_path, md_path)
+        print("reports -> {} , {}".format(json_path, md_path))
+        return 1 if any(r.bucket == "CRASH" for r in results) else 0
 
     _print_matrix(results)
     _write_reports(results, json_path, md_path)
     print("reports -> {} , {}".format(json_path, md_path))
-
-    fails = [r for r in results if r.bucket == "FAIL"]
-    return 1 if fails else 0
+    return 1 if any(r.bucket == "FAIL" for r in results) else 0
 
 
 if __name__ == "__main__":

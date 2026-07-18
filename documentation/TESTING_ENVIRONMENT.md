@@ -90,6 +90,31 @@ Adding a new tool? Add its `key` to `_BRIEF` and a fixture (`_SAMPLE` for an
 existing dataset, `_CSV` for an inline one, or a `_write_*` helper) — the harness
 picks it up automatically from the registry.
 
+### Robustness pass — `--stress`
+
+The default run is the happy path (does each capability *work*). `--stress` is
+the other half of "where does it fail": it feeds every data tool three
+degenerate inputs derived from its fixture — **empty** (headers, no rows),
+**wrong-schema** (none of the expected columns), **garbage** (right columns,
+non-numeric junk) — and buckets each tool by its worst outcome:
+
+| Outcome | Meaning |
+|---|---|
+| **CRASH** | an uncaught exception escaped the tool — a real robustness bug |
+| **SUSPECT** | returned `ok` on degenerate input — a deliverable built from garbage |
+| **GRACEFUL** | clean protective status with a message (`needs_data`/`error`/`qa_failed`) |
+
+```bash
+PYTHONPATH=. python examples/run_capability_smoke.py --stress
+```
+
+Exit code is non-zero iff any tool CRASHes. Baseline (2026-07-18): **0 CRASH /
+2 SUSPECT / 32 GRACEFUL** across 34 CSV-driven tools — nothing breaks on bad
+input. The 2 SUSPECTs are by-design: `data_quality` *audits* junk (reporting
+0% quality is the correct answer), and `forecast` coerces non-numeric demand to
+NaN and returns a hedged "review" signal rather than a number. Treat SUSPECT as
+"look and confirm it's intentional", CRASH as "fix it".
+
 ---
 
 ## 3. Full test suite
