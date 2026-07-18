@@ -8,7 +8,11 @@
 > Also includes **Variant C** (below), a hook-C variant for the AU/NZ
 > fractional-planning-team / agency positioning that backs the `/one-plan`
 > landing page — a buyer's-problem hook that never requires a completed
-> diagnostic run and never states a dollar figure.
+> diagnostic run and never states a dollar figure. **Variant D** (near the
+> end of this file) is a different audience again: cold outreach to
+> Cin7/Unleashed **channel partners** (implementation consultancies and
+> accounting practices) who would operate Kern under their own retainer,
+> not buy Kern's output directly — also hypothesis-only, no dollar figures.
 
 ## The one rule that makes this work
 
@@ -355,3 +359,199 @@ batch, not reinvented each time.
   structure (small paid diagnostic that upsells only if it finds real value,
   or a full-price money-back pilot) — don't try to close the full $2-18k
   package cold off one reply.
+
+---
+
+## Variant D — Channel Partner (Cin7/Unleashed operators)
+
+**Different audience from Variant A/B/C above.** Those variants are all
+written to the end retailer (the buyer of Kern's output). Variant D is
+written to a **channel partner** — a Cin7/Unleashed implementation
+consultancy or bookkeeping/accounting practice from
+`documentation/operator/kern-au-nz-target-list.csv`
+(`Segment = "Channel partner - inventory implementer"`, 42 rows) — who would
+**operate Kern underneath their own retainer**, not buy Kern's output
+directly. Do not send Variant A/B/C content to a Contact-path row from this
+segment, and do not send Variant D content to a direct-retailer row — the
+positioning is not interchangeable, and this is a NEW section, not a merge
+into Variant C.
+
+**Positioning:** Kern is not a competing tool for the partner's clients to
+buy. It's the analysis engine the partner runs underneath their OWN existing
+retainer — same client relationship, same invoice, more clients served per
+consultant-hour. Kern takes a rev-share (or wholesale per-seat) on the
+analysis layer; the partner keeps the client and marks it up inside what
+they already sell. Reversible, no exclusivity in the pilot phase.
+
+**Two sub-variants, keyed off the CSV's `ICP_Fit` column:**
+- **D1 (Tier-A, "you operate it")** — the pure inventory-implementation
+  operators, `ICP_Fit = "Tier-A"` in the CSV (e.g. Integration Kings, 9
+  Yards, Software4Business, SMB Consultants, GrowthPath, WorkSmart, and the
+  other rows ranked #1-15). Direct pitch: margin expansion by serving more
+  retainer clients without hiring, a defensible "own proprietary analysis
+  layer" story against other Cin7/Unleashed shops, and the fact that
+  Cin7/Unleashed data already flows through their existing engagements.
+- **D2 (Tier-C, lighter refer/resell)** — the accounting-led firms,
+  `ICP_Fit = "Tier-C"` in the CSV (e.g. Elevate Accounting, Empower
+  Business & Accounting Solutions, BDS Chartered Accountants, and the other
+  rows where Unleashed/inventory work is peripheral to a broader
+  bookkeeping practice). Lighter ask: refer a client for a rev-share,
+  don't operate the tool hands-on — these firms are less likely to want to
+  run analysis themselves.
+
+**Contact rule specific to this variant:** send only to the row's
+`Contact path` field (own-domain contact form for Tier-A, directory profile
+for most Tier-B/C rows) — the CSV deliberately has no contact-name column
+for this segment. Address the firm, never a guessed individual — use
+"Hi [Firm Name] team," not "Dear [Name]."
+
+**Where this funnels (reference only — these Email-1 templates only need to
+land the first reply; stages 2-5 are separate work, not written here):**
+
+| Stage | What happens | Requires |
+|---|---|---|
+| 1. Hypothesis | This cold touch — positioning-signal hypothesis + rev-share angle | Public `Contact path` only, no client names, no $ |
+| 2. NDA / sample-data | Mutual NDA signed | One anonymized client export from the partner |
+| 3. Diagnóstico | Kern runs the real diagnostic | The sample export from stage 2 |
+| 4. Puente | Convert to a rev-share design-partner agreement | A diagnostic result worth acting on |
+| 5. Expand | Partner rolls Kern across their client book | A working stage-4 agreement |
+
+The templates below are stage 1 only. Don't let the body promise or
+describe stages 2-5 in dollar or contractual detail — point to "a mutual
+NDA and one anonymized client export" as the next step and stop there. The
+Day-4/Day-9 cadence rules from the sequence overview above still apply
+(new angle, not a bump; low-pressure breakup) if this variant gets its own
+follow-up emails later, but that follow-up content is channel-partner
+specific and out of scope for this task — do not reuse Variant A/B/C's
+Email 2/Email 3 bodies verbatim, since their content (pricing scans, the
+Stocky shutdown hook) doesn't apply to this audience.
+
+---
+
+### D1 — Email 1: Tier-A ("you operate it") hypothesis
+
+**Subject line options** (hypothesis-framed, no dollar figures, under 40
+characters):
+- `A guess about [Firm Name]'s client cap`
+- `Scaling past manual stock reviews?`
+- `A hypothesis for [Firm Name]`
+
+**Body — D1a (full version):**
+
+```
+Hi [Firm Name] team,
+
+A guess, not a finding -- I haven't seen your client list, only your site:
+[Firm Name] sells reorder discipline, stock accuracy and dead-stock
+reduction to Cin7/Unleashed retailers, which usually means the actual
+review work is manual -- spreadsheets, one client at a time. If that's
+right, the number of clients that model can carry is probably capped by
+consultant hours, not by demand.
+
+I run Kern, an analysis engine built for exactly that layer -- demand,
+stock, purchasing and pricing worked as one plan instead of a spreadsheet
+reconciled by hand. It's not a competing tool for your clients to buy
+directly: it runs underneath your existing retainer, under your invoice,
+so you could serve more clients per consultant-hour without changing how
+the relationship works.
+
+If the capacity guess above is off, tell me and I'll leave it there. If
+it's close, I'd rather show you than pitch you: a mutual NDA, you send one
+anonymized client export, and I run the real diagnostic against it so you
+can see the output before anything else is discussed. No exclusivity,
+fully reversible if it's not a fit.
+
+[Your name]
+```
+
+**Body — D1b (shorter, direct-question version):**
+
+```
+Hi [Firm Name] team,
+
+Quick and honest: I don't know your client count, just a hypothesis from
+your site -- [Firm Name] positions on stock accuracy and reorder
+discipline for Cin7/Unleashed retailers, and that kind of review usually
+doesn't scale past a handful of retainer clients per consultant when it's
+done by hand. Could easily be wrong.
+
+I run Kern, an analysis layer that partners like you run underneath your
+own retainer -- same client, same invoice, more clients served per
+consultant-hour, without selling your clients a second tool. Worth a
+mutual NDA and one anonymized client export to see if the diagnostic
+actually holds up against your real data?
+
+[Your name]
+```
+
+**Why this shape:** the hypothesis targets the partner's own service model
+(observable from their own public positioning), not a named client's data —
+so it carries the same "I could be wrong, correct me" trust-building
+Variant C uses for retailers, without ever needing SKU-level facts about
+any retailer the partner serves. The CTA is the stage-2 NDA/sample-export
+step, not a call for its own sake — this variant sells a working session,
+not a meeting.
+
+---
+
+### D2 — Email 1: Tier-C (lighter refer/resell) ask
+
+**Subject line options:**
+- `A referral idea for [Firm Name]`
+- `A lighter ask for [Firm Name]`
+- `Quick question on Unleashed clients`
+
+**Body:**
+
+```
+Hi [Firm Name] team,
+
+A guess, not a finding -- from what's public, Unleashed/inventory work
+looks like it sits alongside a broader accounting practice at [Firm Name],
+not as the core service. That usually means stock or reorder questions
+come up with clients occasionally, but running the actual inventory
+analysis by hand isn't the best use of your time.
+
+I run Kern, an analysis engine for inventory-heavy retailers -- demand,
+stock, purchasing and pricing worked as one plan. This is a lighter ask
+than operating anything yourself: if a client ever raises a stock or
+reorder problem you'd rather not take on directly, referring them earns a
+rev-share -- you keep the relationship, we do the analysis work. No
+obligation, no exclusivity, and nothing about how you run the practice
+today has to change.
+
+If that's worth a short conversation, happy to explain how the rev-share
+works. If not, feel free to file this away for whenever it next comes up.
+
+[Your name]
+```
+
+**Why this shape:** Tier-C firms are not being asked to run a tool — the ask
+is refer-and-earn, which is why the body never mentions operating Kern,
+uploading data, or a diagnostic sprint. The same stage-1/2 funnel applies
+if a Tier-C firm wants to go further than a referral, but the email itself
+doesn't push them there.
+
+---
+
+**Guardrails specific to Variant D (do not skip):**
+- Never state a claim about the partner's actual client count, revenue, or
+  workflow as settled fact — always "usually means", "probably", "could
+  easily be wrong", "a guess, not a finding" — the same discipline as
+  Variant C's storefront hypotheses, applied to the partner's own business
+  instead of an end retailer's.
+- Never include a dollar figure, revenue estimate, or specific rev-share
+  percentage in a Variant D email — the rev-share mechanism is named, the
+  number is not; that belongs to a stage-4 (Puente) conversation, not a
+  stage-1 cold touch.
+- Never name or describe a specific client of the partner's — SMB
+  SKU-level and client data isn't public, and Variant D never needs it:
+  the hypothesis is about the partner's own service model, not their book.
+- Never address a guessed individual name — greet the firm ("Hi [Firm
+  Name] team,"), because the CSV's `Contact path` for this segment is a
+  company contact door or directory profile, not a named contact.
+- D1 (Tier-A) and D2 (Tier-C) are not interchangeable — sending the "you
+  operate it" pitch to a Tier-C accounting practice (or the lighter
+  referral ask to a Tier-A implementation specialist) undersells or
+  oversells the fit; check the row's `ICP_Fit` column before picking a
+  sub-variant.
