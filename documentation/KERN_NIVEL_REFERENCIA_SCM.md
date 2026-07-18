@@ -14,7 +14,7 @@ Todo lo marcado **EXISTE HOY** está verificado leyendo el código fuente del re
 
 | Métrica | Valor real (código) | Qué dicen los docs | Nota |
 |---|---|---|---|
-| Herramientas registradas | **40** (`scm_agent/tools.py`, 40 `register()`) | README/badge: 39 · `autonomy.py`: 37 · `package_specs.py`: 35 | Los docs van por detrás del código. |
+| Herramientas registradas | **41** (`scm_agent/tools.py`, 41 `register()`) | README/badge: 39 · `autonomy.py`: 37 · `package_specs.py`: 35 | Los docs van por detrás del código. |
 | Fuentes en el grafo de libros | **33** `source_file` distintos, 1953 nodos, 3810 aristas (`knowledge/scm-books/graph.json`) | README: "25 fuentes" | El grafo real es mayor. |
 | Paquetes comerciales | **8** `PackageSpec` (`package_specs.py`) | Docstring: "7 vendibles" | `retainer_ejecutivo` reusa el catálogo de `scale`. |
 
