@@ -55,6 +55,20 @@ OFFERS: tuple[Offer, ...] = (
         md_file="starter-fundamentos.md",
     ),
     Offer(
+        slug="starter-fundamentos-latam",
+        name="Starter LatAm -- Fundamentos de Inventario (alcance reducido)",
+        price="USD 250-300/mes (alcance reducido, no un descuento sobre el Starter completo)",
+        cadence="Mensual, alcance fijo (8 tools)",
+        recibe=(
+            "8 tools: data_quality, abc_xyz, forecast, whatif, inventory_optimization, "
+            "excel_replenishment, cycle_count, newsvendor"
+        ),
+        para_quien='E-commerce/distribuidor mono-almacen en LatAm, USD 1-10M, compra "a ojo" '
+                   "en Excel -- alcance de entrega mas liviano que el Starter Anglosfera, no el "
+                   "mismo producto mas barato",
+        md_file="starter-fundamentos-latam.md",
+    ),
+    Offer(
         slug="growth-operacion",
         name="Growth -- Operacion Completa de SC",
         price="USD 1.500/mes (piso ~2.000 SKUs, +$60/mes cada bloque de 500 SKUs, techo $3.200)",

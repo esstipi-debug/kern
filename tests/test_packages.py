@@ -21,6 +21,7 @@ from scm_agent.package_specs import (
     RETAINER_EJECUTIVO,
     SCALE,
     STARTER,
+    STARTER_LATAM,
     _optimized_targets_from_inventory,
     get_package,
 )
@@ -120,6 +121,33 @@ def test_scope_matches_monetization_brief():
     assert set(PROYECTO_SOURCING.tool_keys()) == {
         "sourcing", "landed_cost", "acceptance_sampling",
     }
+
+
+def test_starter_latam_is_reduced_scope_not_a_discount():
+    """Stage 1.5 (A1): LatAm gets a reduced-scope Starter-equivalent, USD 250-300/mes -
+    see MONETIZATION_BRIEF.md's "LatAm (solo equivalente a Starter)" paragraph, which is
+    explicit this must be reduced delivery, NOT a cheaper version of the same product.
+    Tool set is exactly the original pre-#167 8-tool Starter (STARTER's 15 tools minus
+    the 7 "universal" tools PR #167 moved down from Growth)."""
+    assert STARTER_LATAM.key == "starter_latam"
+    assert PACKAGES["starter_latam"] is STARTER_LATAM
+    # price string: USD 250-300/mes band, decided in the plan - not a formula to re-derive
+    assert "250" in STARTER_LATAM.price and "300" in STARTER_LATAM.price
+    # market marker: this package must read as LatAm-specific, not a generic re-list
+    assert "LatAm" in STARTER_LATAM.title or "LatAm" in STARTER_LATAM.audience
+    # reduced tool count: 8, not Starter's 15 - and not a random 8, exactly the
+    # pre-#167 original set (Starter minus the 7 universal tools moved down from Growth)
+    assert set(STARTER_LATAM.tool_keys()) == {
+        "data_quality", "abc_xyz", "forecast", "whatif",
+        "inventory_optimization", "excel_replenishment", "cycle_count", "newsvendor",
+    }
+    assert len(STARTER_LATAM.tool_keys()) == 8
+    assert set(STARTER_LATAM.tool_keys()) <= set(STARTER.tool_keys())
+    universal_tools = {
+        "excess_obsolete", "financial_kpis", "pricing", "reconciliation",
+        "landed_cost", "returns", "risk",
+    }
+    assert not set(STARTER_LATAM.tool_keys()) & universal_tools
 
 
 def test_retainer_ejecutivo_is_scale_same_tools_different_governance():

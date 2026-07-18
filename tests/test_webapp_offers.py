@@ -16,9 +16,17 @@ from webapp.offers import (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_nine_official_packages_present() -> None:
-    assert len(OFFERS) == 9
-    assert len({offer.slug for offer in OFFERS}) == 9  # slugs unique
+def test_ten_official_packages_present() -> None:
+    assert len(OFFERS) == 10
+    assert len({offer.slug for offer in OFFERS}) == 10  # slugs unique
+
+
+def test_get_offer_returns_starter_fundamentos_latam() -> None:
+    """Stage 1.5 (A1): LatAm reduced-scope Starter-equivalent, USD 250-300/mes."""
+    offer = get_offer("starter-fundamentos-latam")
+    assert offer is not None
+    assert "250" in offer.price and "300" in offer.price
+    assert offer.md_file == "starter-fundamentos-latam.md"
 
 
 def test_get_offer_returns_diagnostico_posicion_precios() -> None:

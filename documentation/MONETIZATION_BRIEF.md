@@ -54,6 +54,7 @@ Correcciones surgidas en verificación: Cogsy **no** parte en $199 (parte en $49
 |---|---|---|---|---|---|
 | 1 | **Diagnóstico de Arranque** | $1.500–2.500 único | Único, sprint 2 semanas | 4: `data_quality`, `abc_xyz`, `excess_obsolete`, `financial_kpis` | Primer contacto, cero confianza construida |
 | 2 | **Starter** — Fundamentos de Inventario | $900/mes (piso ~500 SKUs, +$40/mes c/bloque de 250 SKUs, techo $1.500) | Mensual, alcance variable por catálogo | 15: `forecast`, `abc_xyz`, `whatif`, `inventory_optimization`, `newsvendor`, `excel_replenishment`, `cycle_count`, `data_quality`, `pricing`, `excess_obsolete`, `financial_kpis`, `reconciliation`, `landed_cost`, `returns`, `risk` | E-commerce/distribuidor mono-almacén, $1–10M, compra "a ojo" en Excel |
+| 2L | **Starter LatAm** — Fundamentos de Inventario (alcance reducido) | $250–300/mes | Mensual, alcance fijo reducido | 8: `data_quality`, `abc_xyz`, `forecast`, `whatif`, `inventory_optimization`, `excel_replenishment`, `cycle_count`, `newsvendor` | E-commerce/distribuidor mono-almacén en LatAm, $1–10M, compra "a ojo" en Excel — alcance de entrega más liviano que el Starter Anglosfera, no el mismo producto más barato (ver nota debajo de la tabla) |
 | 3 | **Growth** — Operación Completa de SC | $1.500/mes (piso ~2.000 SKUs, +$60/mes c/bloque de 500 SKUs, techo $3.200) | Mensual + QBR trimestral | 26 (todo Starter + `multi_echelon`, `ddmrp`, `simulation`, `drp`, `odoo_replenishment`, `fefo`, `sourcing`, `acceptance_sampling`, `cost_to_serve`, `learning_curve`, `dea`) | Empresa en crecimiento, multi-almacén/canal, con o migrando a ERP (Odoo) |
 | 4 | **Scale** — Red, S&OP y Mando Ejecutivo | $3.200/mes (flat) | Quincenal + S&OP mensual | Las 35 tools del catálogo completo (+ `facility_location`, `transportation`, `warehouse_layout`, `slotting`, `queuing`, `scheduling`, `sop`, `earned_value`, `leadership_chain`) | Mid-market con red real (2+ plantas/CDs) |
 | 5 | **Retainer Ejecutivo Fraccional** | $4.500/mes (flat = Scale × 1,4) | Mensual + cadencia semanal + escalamiento con SLA | Mismas 35 tools de Scale — la diferencia es gobierno, no capacidad | Upgrade para cliente Scale existente (6–18 meses), mandato de VP/COO fraccional — no se vende en frío como opción de entrada |
@@ -83,7 +84,7 @@ que un cliente Starter mono-almacén todavía no tiene. Starter pasa de 8 a 15
 tools sin subir de precio base: son cómputo, no horas-founder, así que el
 costo marginal de entrega es bajo.
 
-**LatAm (solo equivalente a Starter):** USD 250–300/mes — **alcance de
+**LatAm (solo equivalente a Starter — fila 2L):** USD 250–300/mes — **alcance de
 entrega más liviano que el Starter Anglosfera, no el mismo producto más
 barato**: un salario real de analista LatAm (~USD 400–650/mes) es demasiado
 bajo para cubrir horas-founder a la lógica de %-de-salario que ancla el

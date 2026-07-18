@@ -20,6 +20,14 @@ three diverge, fix them together in the same PR.
   gating it - a present-but-malformed file blocks the whole package the same
   way a missing required file does, so a soft skip doesn't actually protect
   this one.
+- **starter_latam** - Starter LatAm, reduced scope: USD 250-300/mes, 8 tools -
+  exactly the original pre-#167 Starter (before the 7 "universal" tools moved
+  down from Growth). Added 2026-07-18 per MONETIZATION_BRIEF.md's "LatAm
+  (solo equivalente a Starter)" paragraph: a real LatAm analyst salary
+  (~USD 400-650/mes) is too low to carry the founder-hours-as-%-of-salary
+  logic that anchors the Anglosphere price, so this has to be a reduced-scope
+  offer, not a discount on the full Starter. Growth/Scale/Retainer do not
+  extend to LatAm this round.
 - **growth** - Operacion Completa de SC: monthly + quarterly QBR, 26 tools
   (everything in diagnostico + starter, plus 11 more).
 - **scale** - Red, S&OP y Mando Ejecutivo: biweekly + monthly S&OP, the full
@@ -361,6 +369,31 @@ STARTER = PackageSpec(
     steps=_STARTER_STEPS,
 )
 
+# Starter LatAm reduced-scope: exactly the original pre-#167 8 tools (see module
+# docstring) - i.e. _STARTER_STEPS before the 7 "universal" tools that moved down
+# from Growth on 2026-07-18. Slicing keeps this permanently in sync with that
+# shared tuple instead of duplicating the 8 PackageStep definitions. None of the
+# 8 tools needs the ``price`` column, so the input stays _VENTAS_BASIC (not
+# _VENTAS_GROWTH like STARTER) - one less required column for the client to send.
+_STARTER_LATAM_STEPS = _STARTER_STEPS[:8]
+
+STARTER_LATAM = PackageSpec(
+    key="starter_latam",
+    title="Starter LatAm - Fundamentos de Inventario (alcance reducido)",
+    # USD 250-300/mes is a reduced-scope offer, not a discount on the full Starter -
+    # see MONETIZATION_BRIEF.md's "LatAm (solo equivalente a Starter)" paragraph for
+    # the rationale (LatAm analyst salaries are too low to carry the founder-hours
+    # logic that anchors the Anglosphere price).
+    price="USD 250-300 / mes (alcance reducido: los 8 tools originales de Starter, "
+          "no los 15 de Starter Anglosfera - no es un descuento sobre el mismo "
+          "producto, es menos entrega)",
+    cadence="mensual",
+    audience="e-commerce o distribuidor mono-almacen en LatAm (USD 1-10M) que hoy "
+             "compra a ojo en Excel",
+    inputs=(_VENTAS_BASIC, _MAESTRO, _PLANILLA, _SUPUESTOS, _ESTACIONAL),
+    steps=_STARTER_LATAM_STEPS,
+)
+
 GROWTH = PackageSpec(
     key="growth",
     title="Growth - Operacion Completa de SC",
@@ -518,7 +551,7 @@ LIQUIDACION = PackageSpec(
 
 PACKAGES: dict[str, PackageSpec] = {
     spec.key: spec for spec in (
-        DIAGNOSTICO, STARTER, GROWTH, SCALE, RETAINER_EJECUTIVO,
+        DIAGNOSTICO, STARTER, STARTER_LATAM, GROWTH, SCALE, RETAINER_EJECUTIVO,
         PROYECTO_RED_ALMACEN, PROYECTO_SOURCING, LIQUIDACION,
     )
 }
