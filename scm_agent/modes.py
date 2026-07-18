@@ -22,9 +22,21 @@ from .orchestrator import Orchestrator
 from .registry import ToolRegistry
 from .tools import build_default_registry
 
-# Tool keys that belong to the stock-centric Inventory role. SCM is the superset
-# (tool_keys=None => every registered tool, including ones added later).
-_INVENTORY_TOOL_KEYS = frozenset({"inventory_optimization", "pricing"})
+# Tool keys that belong to the stock-centric Inventory role. Each backs one of
+# INVENTORY.deliverables below (kept in a 1:1 correspondence on purpose so a
+# brief routed through this mode can actually produce everything it promises;
+# see tests/test_modes.py::test_inventory_tool_keys_match_advertised_deliverables).
+# SCM is the superset (tool_keys=None => every registered tool, incl. later ones).
+_INVENTORY_TOOL_KEYS = frozenset({
+    "inventory_optimization",  # policy doc + reorder-point/safety-stock model
+    "abc_xyz",                 # ABC-XYZ classification + per-segment policy
+    "cycle_count",              # stock reconciliation / cycle-count plan
+    "reconciliation",           # stock reconciliation / cycle-count plan (IRA)
+    "excess_obsolete",          # E&O / dead-stock report
+    "forecast",                 # demand forecast package
+    "financial_kpis",           # inventory KPI dashboard
+    "excel_replenishment",      # purchase-order / replenishment plan
+})
 
 
 @dataclass(frozen=True)

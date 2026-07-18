@@ -58,3 +58,26 @@ def test_orchestrator_for_mode_is_scoped():
     keys = {t.key for t in orch.registry.list()}
     assert "leadership_chain" not in keys
     assert "inventory_optimization" in keys
+
+
+def test_inventory_tool_keys_match_advertised_deliverables():
+    """INVENTORY.deliverables is a promise about what a brief routed through this
+    mode can produce; tool_keys must actually reach every one of them, and expose
+    nothing that isn't promised (mirrors test_scope_matches_monetization_brief's
+    exact-set pinning in test_packages.py, which anchors the same tools to the
+    commercial Starter package)."""
+    required_for_deliverables = {
+        "inventory_optimization",  # policy doc + reorder-point/safety-stock model
+        "abc_xyz",                 # ABC-XYZ classification + per-segment policy
+        "cycle_count",              # stock reconciliation / cycle-count plan
+        "reconciliation",           # stock reconciliation / cycle-count plan (IRA)
+        "excess_obsolete",          # E&O / dead-stock report
+        "forecast",                 # demand forecast package
+        "financial_kpis",           # inventory KPI dashboard
+        "excel_replenishment",      # purchase-order / replenishment plan
+    }
+    assert set(INVENTORY.tool_keys) == required_for_deliverables
+
+    reg = build_default_registry()
+    for key in INVENTORY.tool_keys:
+        reg.get(key)  # KeyError => tool_keys drifted from the registry
