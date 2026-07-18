@@ -126,3 +126,28 @@ def test_page_links_to_free_demo_and_packages() -> None:
     body = client.get("/one-plan").text
     assert 'href="/demo"' in body
     assert 'href="/paquetes"' in body
+
+
+def test_faq_contains_the_three_deal_killer_objections() -> None:
+    """Task 6 (B2) / plan Asset 3 spec: the FAQ must cover the 3 deal-killer
+    objections (0 clients, black-box, "my ERP already does this"), and the
+    FAQPage JSON-LD must carry the same three, not just the rendered HTML.
+    Task 5 already shipped these entries in webapp.one_plan_page._FAQ; this
+    test pins that down as a regression guard rather than duplicating them.
+    """
+    body = client.get("/one-plan").text
+    match = re.search(
+        r'<script type="application/ld\+json">(.*?)</script>', body, re.DOTALL
+    )
+    assert match is not None, "FAQPage JSON-LD script tag not found"
+    doc = json.loads(match.group(1))
+    jsonld_questions = " ".join(entry["name"].lower() for entry in doc["mainEntity"])
+
+    body_lower = body.lower()
+    for needle, label in (
+        ("zero paying clients", "0-clients objection"),
+        ("black box", "black-box objection"),
+        ("already does this", "'my ERP already does this' objection"),
+    ):
+        assert needle in body_lower, f"rendered HTML missing the {label}"
+        assert needle in jsonld_questions, f"FAQPage JSON-LD missing the {label}"

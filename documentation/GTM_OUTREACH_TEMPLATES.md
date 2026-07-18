@@ -5,6 +5,10 @@
 > memory `kern-gtm-first-client-research-2026-07-16`. Targets the primary ICP
 > (US/UK/AU, $1-15M Shopify/Amazon retailers) in English — the buyer's language.
 > A LATAM/Spanish variant is a quick adaptation of the same structure if needed.
+> Also includes **Variant C** (below), a hook-C variant for the AU/NZ
+> fractional-planning-team / agency positioning that backs the `/one-plan`
+> landing page — a buyer's-problem hook that never requires a completed
+> diagnostic run and never states a dollar figure.
 
 ## The one rule that makes this work
 
@@ -33,7 +37,7 @@ instead of Variant A.
 
 | # | Send day | Variant | Subject line pattern | Purpose | Primary CTA |
 |---|---|---|---|---|---|
-| 1 | Day 0 | A (real finding) or B (soft offer) | Number + store name, <40 chars | Icebreaker — earn one reply | 15-min call or "want the full breakdown?" |
+| 1 | Day 0 | A (real finding), B (soft offer), or C (hook-C hypothesis, AU/NZ) | Number + store name, <40 chars (A/B) or problem-hook, no $ (C) | Icebreaker — earn one reply | 15-min call or "want the full breakdown?" |
 | 2 | Day 4 | Follow-up — new angle | Short question, no "follow up" | Re-surface with a DIFFERENT angle, not "just checking in" | Same as email 1 |
 | 3 | Day 9 | Breakup | Direct, low-pressure | Give a clean exit, last chance | Reply or opt-out |
 
@@ -126,6 +130,102 @@ can run manual diagnostics, or as the entry point for a colder, larger batch
 before you invest the time in A's personalized finding for the ones who
 engage. B converts lower but scales further — use A for your hand-picked
 top 10-15, B for the rest of the 20-30 list.
+
+---
+
+## Variant C — Email 1: hook-C buyer's-problem hypothesis (AU/NZ agency positioning, no diagnostic run required)
+
+**Different rule from A/B above.** Variant C does NOT require a completed
+Kern run before sending. It opens with the same buyer's-problem tension line
+used on the `/one-plan` landing page ("Still firefighting stockouts and
+overstock?") and turns exactly ONE storefront-observable signal into an
+explicit hypothesis — never a claimed finding, never a dollar figure. SMB
+SKU-level and margin data isn't public, so stating a specific number about a
+named prospect here isn't just risky, it's very likely wrong and burns the
+list on first contact. Use Variant C for the AU/NZ fractional-planning-team
+/ agency positioning (`/one-plan`), as distinct from Variant A/B's US/UK/AU
+package-diagnostic positioning above.
+
+**Storefront-observable signals to hypothesize from** (pick ONE per email,
+always phrased as a guess, never a stated fact):
+- Assortment breadth vs. apparent team size (a wide catalog next to what
+  looks like a lean team often means reorder decisions are made on gut feel)
+- In-stock / out-of-stock badge patterns (some categories reading as
+  chronically low or sold-out while others carry visibly deep, slow-moving
+  assortment at the same time)
+- Review velocity that looks like it's dropped off on apparent best-sellers
+  (can track with a SKU cycling in and out of stock)
+- Seasonal or category mix that looks stale relative to the time of year
+
+**Subject line options** (hypothesis-framed, no dollar figures, under 40
+characters):
+- `Still firefighting stockouts?`
+- `A guess about [Store Name]'s stock mix`
+- `Quick hypothesis on [Store Name]`
+
+**Body — C1 (storefront-hypothesis, full version):**
+
+```
+Still firefighting stockouts and overstock at [Store Name]?
+
+I'll be upfront that what follows is a guess, not a finding -- I haven't
+seen your numbers, only your storefront: [ONE observable-signal hypothesis,
+e.g. "a few categories read as chronically low or out-of-stock while others
+carry visibly deep, slow-moving assortment" -- pick from the signal list
+above, never invent a specific SKU count or dollar figure]. If that's
+actually happening, it's rarely a data problem -- it's usually demand, stock
+and purchasing being planned in separate spreadsheets that don't talk to
+each other.
+
+I run a fractional supply-chain planning practice for AU/NZ retailers --
+demand, stock, purchasing and pricing worked as one plan instead of three
+tools quietly arguing with each other. If the pattern above sounds familiar
+(or if I've got it wrong), I'd rather hear that than guess twice -- happy to
+spend 15 minutes walking through what a fixed-scope diagnostic on your
+actual data would look like. No pitch, no obligation.
+
+[Your name]
+```
+
+**Body — C2 (shorter, direct-question version):**
+
+```
+Still firefighting stockouts and overstock at [Store Name]?
+
+Quick and honest: I don't have your numbers, just a hypothesis from what's
+publicly visible on your site -- [ONE observable-signal hypothesis from the
+list above, e.g. "your in-stock badges suggest a handful of SKUs cycle in
+and out of stock often, which usually tracks with reorder points not being
+reviewed on any regular cadence"]. Could easily be off.
+
+I run a fractional supply-chain planning practice for AU/NZ retailers -- one
+plan across demand, stock, purchasing and pricing instead of three tools
+arguing. Worth 15 minutes to compare notes against your real data?
+
+[Your name]
+```
+
+**Why this shape:** the hook is the SAME buyer's-problem tension line as the
+`/one-plan` page, so a reply who clicks through never hits a jarring mismatch
+in framing. Naming the hypothesis explicitly as a guess -- and inviting
+correction ("or if I've got it wrong") -- does the trust-building work
+Variant A gets from a real finding, without needing a completed diagnostic
+run first, which is what lets C scale to a colder, larger AU/NZ batch than
+A/B alone can reach.
+
+**Guardrails specific to Variant C (do not skip):**
+- Never state the storefront signal as a settled fact -- always "suggests",
+  "often means", "could indicate", "I'd guess", never "I found" or "you
+  have."
+- Never include a dollar figure, estimated revenue impact, or specific SKU
+  count in a Variant C email -- that's exactly what separates it from
+  Variant A, and SMB SKU/margin data isn't public to verify against anyway.
+- Never claim a specific finding about the named prospect's actual data --
+  only a hypothesis grounded in what's publicly visible on the storefront.
+- Follow-ups reuse Email 2 (Day 4) / Email 3 (Day 9) below unchanged, EXCEPT
+  the "new angle" in Email 2 must stay equally hypothesis-only for Variant C
+  recipients -- don't let a $ figure creep in at touch 2 just because touch
+  1 didn't have one.
 
 ---
 
