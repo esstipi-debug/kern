@@ -513,10 +513,17 @@ def _print_matrix(results: list[CaseResult]) -> None:
     print("=" * 78)
 
 
+# Bucket display order across both modes (worst first). `.get(..., 99)` keeps
+# this safe if a new bucket is ever added.
+_BUCKET_ORDER = {"FAIL": 0, "CRASH": 0, "GATED": 1, "SUSPECT": 1, "SKIP": 2, "PASS": 3, "GRACEFUL": 3}
+
+
 def _write_reports(results: list[CaseResult], json_path: Path | None, md_path: Path | None) -> None:
+    buckets = sorted({r.bucket for r in results}, key=lambda b: _BUCKET_ORDER.get(b, 99))
+    counts = {b: sum(1 for r in results if r.bucket == b) for b in buckets}
     payload = {
         "total": len(results),
-        "counts": {b: sum(1 for r in results if r.bucket == b) for b in ("PASS", "GATED", "FAIL", "SKIP")},
+        "counts": counts,
         "cases": [
             {"key": r.key, "bucket": r.bucket, "status": r.status,
              "detail": r.detail, "deliverables": r.deliverables}
@@ -530,10 +537,10 @@ def _write_reports(results: list[CaseResult], json_path: Path | None, md_path: P
         md_path.parent.mkdir(parents=True, exist_ok=True)
         lines = ["# Kern capability smoke", "",
                  "| Bucket | Count |", "|---|---|"]
-        for b in ("PASS", "GATED", "FAIL", "SKIP"):
-            lines.append("| {} | {} |".format(b, payload["counts"][b]))
+        for b in buckets:
+            lines.append("| {} | {} |".format(b, counts[b]))
         lines += ["", "| Tool | Bucket | Status | Detail |", "|---|---|---|---|"]
-        for r in sorted(results, key=lambda x: ({"FAIL": 0, "GATED": 1, "SKIP": 2, "PASS": 3}[x.bucket], x.key)):
+        for r in sorted(results, key=lambda x: (_BUCKET_ORDER.get(x.bucket, 99), x.key)):
             detail = r.detail.replace("|", "\\|")
             lines.append("| {} | {} | {} | {} |".format(r.key, r.bucket, r.status, detail))
         md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
