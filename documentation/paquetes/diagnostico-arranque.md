@@ -50,8 +50,8 @@ objetivo y plazos de reposición típicos. Nada más.
 
 El diagnóstico cierra con una recomendación priorizada. Si quieres que el plan se
 ejecute y se mantenga mes a mes, ese es exactamente el alcance de los planes
-**Starter** (fundamentos de inventario, USD 2.000/mes) y **Growth** (operación
-completa de supply chain, USD 4.000/mes) — y el diagnóstico ya deja tus datos
+**Starter** (fundamentos de inventario, desde USD 900/mes) y **Growth** (operación
+completa de supply chain, desde USD 1.500/mes) — y el diagnóstico ya deja tus datos
 listos para arrancar cualquiera de los dos.
 
 ---

@@ -8,10 +8,10 @@ está escrito para **enviarse tal cual a un prospecto**:
 | # | Paquete | Precio | Cadencia | One-pager |
 |---|---|---|---|---|
 | 1 | **Diagnóstico de Arranque** | USD 1.500–2.500 único | Sprint de 2 semanas | [diagnostico-arranque.md](diagnostico-arranque.md) |
-| 2 | **Starter — Fundamentos de Inventario** | USD 2.000/mes | Mensual, alcance fijo | [starter-fundamentos.md](starter-fundamentos.md) |
-| 3 | **Growth — Operación Completa de SC** | USD 4.000/mes | Mensual + QBR trimestral | [growth-operacion.md](growth-operacion.md) |
-| 4 | **Scale — Red, S&OP y Mando Ejecutivo** | USD 7.500/mes | Quincenal + S&OP mensual | [scale-red-sop.md](scale-red-sop.md) |
-| 5 | **Retainer Ejecutivo Fraccional** | USD 9.000–12.000/mes | Mensual + semanal + SLA | [retainer-ejecutivo.md](retainer-ejecutivo.md) |
+| 2 | **Starter — Fundamentos de Inventario** | USD 900/mes (piso, techo 1.500) | Mensual, alcance variable por catálogo | [starter-fundamentos.md](starter-fundamentos.md) |
+| 3 | **Growth — Operación Completa de SC** | USD 1.500/mes (piso, techo 3.200) | Mensual + QBR trimestral | [growth-operacion.md](growth-operacion.md) |
+| 4 | **Scale — Red, S&OP y Mando Ejecutivo** | USD 3.200/mes (flat) | Quincenal + S&OP mensual | [scale-red-sop.md](scale-red-sop.md) |
+| 5 | **Retainer Ejecutivo Fraccional** | USD 4.500/mes (flat, solo upgrade) | Mensual + semanal + SLA | [retainer-ejecutivo.md](retainer-ejecutivo.md) |
 | 6 | **Proyecto de Red, Almacén y Operación** | USD 8.000–18.000 único | Proyecto, 4–8 semanas | [proyecto-red-almacen.md](proyecto-red-almacen.md) |
 | 7 | **Proyecto de Sourcing y Costo de Importación** | USD 5.000–10.000 único | Proyecto, recurrible trimestral/anual | [proyecto-sourcing.md](proyecto-sourcing.md) |
 | 8 | **Sprint de Liquidación** | 10–20% del cash recuperado (piso USD 1.500) | Sprint de 2–3 semanas | [sprint-liquidacion.md](sprint-liquidacion.md) |

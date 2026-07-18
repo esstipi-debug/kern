@@ -1,12 +1,14 @@
 # Starter — Fundamentos de Inventario, todos los meses
 
-> **USD 2.000 / mes** · alcance fijo · cancelas cuando quieras
+> **USD 900 / mes** (piso hasta ~500 SKUs, +USD 40/mes cada bloque de 250
+> SKUs, techo USD 1.500 — subir de piso nunca es una sorpresa, siempre se
+> aprueba antes) · alcance variable por catálogo · cancelas cuando quieras
 > Para e-commerce y distribuidores mono-almacén (USD 1–10M de venta) que hoy
 > deciden compras "a ojo" sobre una planilla de Excel.
 
 ## Qué recibes cada mes
 
-Un **reporte ejecutivo consolidado** más ocho análisis completos, cada uno con su
+Un **reporte ejecutivo consolidado** más quince análisis completos, cada uno con su
 reporte y Excel de trabajo:
 
 1. **Pronóstico de demanda por SKU** — con medición honesta de calidad: te decimos
@@ -27,6 +29,26 @@ reporte y Excel de trabajo:
    antes de que contaminen las decisiones del mes.
 8. **Compra de temporada (cuando aplique)** — cantidad óptima para compras de una
    sola oportunidad (newsvendor): ni te quedas corto ni entierras efectivo.
+9. **Precio óptimo por SKU** — margen máximo estimado a partir de tu historial de
+   precio/cantidad, con el impacto esperado en utilidad.
+10. **Excedente y obsolescencia** — qué stock muerto tenés y cuánto vale liberar
+    (opcional: corre si mandás `stock.csv`).
+11. **KPIs financieros de inventario** — vueltas, días de inventario, margen bruto
+    sobre el capital inmovilizado (opcional: corre si mandás `finanzas.csv`).
+12. **Conciliación de conteos (IRA)** — exactitud de registros entre sistema y
+    conteo físico (opcional: corre si mandás `conteos.csv`).
+13. **Costo total en destino (landed cost)** — costo real de tus importaciones más
+    allá del precio de lista (opcional: corre si mandás `importaciones.csv`).
+14. **Logística inversa de devoluciones** — mejor disposición por SKU devuelto
+    (opcional: corre si mandás `devoluciones.csv`).
+15. **Registro de riesgos** — mapa de calor EMV/RPN de tu cadena (opcional: corre
+    si mandás `riesgos.csv`, cadencia trimestral).
+
+Los tools 9–15 se sumaron el 2026-07-18: son "universales" (aplican a
+cualquier negocio sin importar tamaño) y de bajo costo marginal de cómputo,
+así que entran al Starter sin subir el precio base. Los 6 marcados
+"opcional" corren automáticamente el mes que mandes su archivo — si no lo
+mandás, simplemente se omiten y el resto del paquete se entrega igual.
 
 **Garantía de calidad:** cada análisis pasa una compuerta de QA automática. Si uno
 solo falla, el paquete completo no se emite ese ciclo — no entregamos números a
@@ -38,14 +60,17 @@ Una carpeta con 3 archivos al inicio de cada ciclo (los mismos cada mes):
 
 | Archivo | Contenido | Columnas mínimas |
 |---|---|---|
-| `ventas.csv` | Historial de ventas | `date, product_id, quantity, unit_cost` |
+| `ventas.csv` | Historial de ventas con precio | `date, product_id, quantity, unit_cost, price` |
 | `maestro.csv` | Maestro de productos | `sku` (+ nombre, código de barras, costo) |
 | `planilla.xlsx` | Tu planilla de reposición, tal como está | la detectamos automáticamente |
 
 Opcionales cuando apliquen: `supuestos.csv` (rangos para el what-if; si no lo
-mandas usamos una plantilla estándar ±20%) y `compra_estacional.csv` (compras de
-temporada). Los parámetros de tu negocio (costo de mantener, nivel de servicio,
-plazos) se relevan **una sola vez** y quedan guardados en tu perfil.
+mandas usamos una plantilla estándar ±20%), `compra_estacional.csv` (compras de
+temporada), `stock.csv`, `finanzas.csv`, `conteos.csv`, `importaciones.csv`,
+`devoluciones.csv` y `riesgos.csv` (destraban los análisis 10–15 de la lista
+de arriba el mes que los mandes). Los parámetros de tu negocio (costo de
+mantener, nivel de servicio, plazos) se relevan **una sola vez** y quedan
+guardados en tu perfil.
 
 ## Cómo se ve el mes
 
@@ -58,9 +83,9 @@ plazos) se relevan **una sola vez** y quedan guardados en tu perfil.
 ## Qué sigue después
 
 Cuando tu operación crezca a multi-almacén, ERP o importaciones, el plan
-**Growth** (USD 4.000/mes) suma la operación completa: reposición conectada a
-Odoo, red de distribución, pricing, costo de servir, proveedores y riesgo, con
-una revisión ejecutiva trimestral (QBR).
+**Growth** (desde USD 1.500/mes) suma la operación completa: reposición
+conectada a Odoo, red de distribución, DDMRP, simulación, costo de servir,
+sourcing y más, con una revisión ejecutiva trimestral (QBR).
 
 ---
 

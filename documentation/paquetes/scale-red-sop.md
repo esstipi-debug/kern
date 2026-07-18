@@ -1,6 +1,6 @@
 # Scale — Red, S&OP y Mando Ejecutivo
 
-> **USD 7.500 / mes** · ciclo quincenal + S&OP mensual
+> **USD 3.200 / mes** (flat, sin variable — certidumbre de presupuesto) · ciclo quincenal + S&OP mensual
 > Para empresas mid-market con red real (2+ plantas o centros de distribución) que
 > ya superaron el alcance de un solo almacén y necesitan gobernar la cadena
 > completa, no solo el inventario.
@@ -74,8 +74,9 @@ El ciclo S&OP mensual reutiliza tu `ventas.csv` — no pide un archivo adicional
 Este plan es para clientes que vienen operando en **Growth** y necesitan
 gobernar una red real, no solo un almacén. El salto natural desde acá, cuando
 la relación madura (6–18 meses), es el **Retainer Ejecutivo Fraccional**
-(USD 9.000–12.000/mes) — mismo alcance analítico, cadencia semanal y
-escalamiento con SLA para un mandato de VP/COO fraccional.
+(USD 4.500/mes) — mismo alcance analítico, cadencia semanal y
+escalamiento con SLA para un mandato de VP/COO fraccional. No es una opción
+de entrada: se ofrece como upgrade a un cliente Scale existente.
 
 ---
 

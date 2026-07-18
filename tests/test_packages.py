@@ -84,20 +84,23 @@ def test_every_package_defaults_to_spanish():
 
 def test_scope_matches_monetization_brief():
     """The brief (documentation/MONETIZATION_BRIEF.md) is the commercial source of
-    truth: 4 tools in the diagnostic sprint, 8 in Starter, 26 in Growth (Starter +
-    the diagnostic's E&O and financial KPIs + 16 more)."""
+    truth: 4 tools in the diagnostic sprint, 15 in Starter (8 original + 7
+    "universal" tools moved down from Growth 2026-07-18), 26 in Growth (Starter,
+    which now fully contains the diagnostic's E&O/financial KPIs, + 11 more)."""
     assert set(DIAGNOSTICO.tool_keys()) == {
         "data_quality", "abc_xyz", "excess_obsolete", "financial_kpis",
     }
     assert set(STARTER.tool_keys()) == {
         "forecast", "abc_xyz", "whatif", "inventory_optimization", "newsvendor",
         "excel_replenishment", "cycle_count", "data_quality",
+        "excess_obsolete", "financial_kpis", "pricing", "reconciliation",
+        "landed_cost", "returns", "risk",
     }
+    assert DIAGNOSTICO.tool_keys() and set(DIAGNOSTICO.tool_keys()) <= set(STARTER.tool_keys())
     assert set(GROWTH.tool_keys()) == set(STARTER.tool_keys()) | {
-        "excess_obsolete", "financial_kpis",
         "multi_echelon", "ddmrp", "simulation", "drp", "odoo_replenishment",
-        "reconciliation", "fefo", "sourcing", "landed_cost", "acceptance_sampling",
-        "pricing", "cost_to_serve", "learning_curve", "returns", "risk", "dea",
+        "fefo", "sourcing", "acceptance_sampling",
+        "cost_to_serve", "learning_curve", "dea",
     }
     assert len(GROWTH.tool_keys()) == 26
 
@@ -370,7 +373,7 @@ def test_diagnostico_deck_xlsx_headers_are_bilingual(demo_intake, tmp_path):
 def test_starter_end_to_end(demo_intake, tmp_path):
     out = tmp_path / "out"
     result = _run(STARTER, demo_intake, out)
-    _assert_delivered(result, out, "starter", 8)
+    _assert_delivered(result, out, "starter", 15)
     # the consolidated deck names every executed tool in its coverage table --
     # translated (E4), since STARTER.lang defaults to "es"
     deck = (out / "starter" / "deliverable.md").read_text(encoding="utf-8")

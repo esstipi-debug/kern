@@ -65,7 +65,7 @@ El diseño de bodega no requiere un archivo — se define directamente contigo
 Este es un proyecto puntual: se cobra una vez por el estudio y la
 implementación. Si además quieres que la operación resultante (inventario,
 reposición, red) se mantenga y optimice mes a mes, ese es el alcance de los
-planes **Growth** (USD 4.000/mes) o **Scale** (USD 7.500/mes) — y este proyecto
+planes **Growth** (desde USD 1.500/mes) o **Scale** (USD 3.200/mes) — y este proyecto
 ya deja el diseño de red y bodega listo para operar bajo cualquiera de los dos.
 
 ---

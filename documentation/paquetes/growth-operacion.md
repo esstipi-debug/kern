@@ -1,39 +1,39 @@
 # Growth — Operación Completa de Supply Chain
 
-> **USD 4.000 / mes** · ciclo mensual + revisión ejecutiva trimestral (QBR)
+> **USD 1.500 / mes** (piso hasta ~2.000 SKUs, +USD 60/mes cada bloque de 500
+> SKUs, techo USD 3.200) · ciclo mensual + revisión ejecutiva trimestral (QBR)
 > Para empresas en crecimiento, multi-almacén o multi-canal, operando con un ERP
 > (Odoo) o migrando hacia uno.
 
 ## Qué recibes
 
 **Cada mes**, un reporte ejecutivo consolidado más el ciclo completo de inventario
-(todo lo del plan Starter) ampliado con la operación end-to-end. Hasta **26
-análisis** cubiertos por el alcance — se corren los que tu operación activa:
+(**todo lo del plan Starter, incluidos precio óptimo, excedente/obsoletos, KPIs
+financieros, conciliación de conteos, landed cost, devoluciones y riesgos**)
+ampliado con la operación end-to-end. Hasta **26 análisis** cubiertos por el
+alcance — se corren los que tu operación activa:
 
-**Núcleo mensual**
+**Núcleo mensual (Starter completo, ver `starter-fundamentos.md`)**
 - Pronóstico, ABC-XYZ, política de inventario por SKU y análisis de sensibilidad.
 - Tu planilla devuelta con el plan de compra staged y reversible — o, si operas
   Odoo, la **reposición conectada directo a tu ERP**: puntos de reorden y borradores
   de orden de compra staged dentro de Odoo, siempre reversibles y con tu aprobación.
-- Excedente y obsoletos con efectivo en riesgo; KPIs financieros (rotación, DIO,
-  GMROI, cash-to-cash).
-- **Optimización de precios** por elasticidad, con las movidas de precio en las que
-  el modelo tiene confianza estadística (y las que no, marcadas como tales).
+- Precio óptimo por elasticidad, excedente/obsoletos, KPIs financieros,
+  conciliación de conteos (IRA), landed cost, devoluciones y registro de riesgos.
+
+**Lo que suma Growth sobre Starter**
 - **Costo de servir** por canal/segmento: qué clientes te dejan margen y cuáles te
   lo comen, con lente de capital de trabajo.
-- Exactitud de inventario (conteos vs. sistema), programa de conteo cíclico, FEFO y
-  vencimientos si manejas perecederos, devoluciones y logística inversa.
-
-**Si tienes red de distribución**
-- Ubicación óptima del stock de seguridad en la cadena (multi-echelon), buffers
-  DDMRP, plan de distribución por sucursal (DRP) y políticas afinadas por
-  simulación Monte Carlo.
+- Programa de conteo cíclico, FEFO y vencimientos si manejas perecederos.
+- Si tienes red de distribución: ubicación óptima del stock de seguridad en la
+  cadena (multi-echelon), buffers DDMRP, plan de distribución por sucursal (DRP)
+  y políticas afinadas por simulación Monte Carlo.
 
 **Cada trimestre (QBR)**
-- Scorecard y ranking de proveedores (OTIF, calidad, precio) para la negociación.
-- Mapa de riesgos de la cadena con pérdida esperada anual y mitigaciones rankeadas.
+- Scorecard y ranking de proveedores (OTIF, calidad, precio) para la negociación
+  y muestreo de aceptación de calidad.
 - Benchmarking de eficiencia entre bodegas/sucursales (DEA).
-- Curva de aprendizaje y costo de importación (landed cost) cuando aplique.
+- Curva de aprendizaje cuando aplique.
 
 **Garantía de calidad:** cada análisis pasa una compuerta de QA automática. Si uno
 solo de los análisis ejecutados falla, el paquete completo no se emite ese ciclo.

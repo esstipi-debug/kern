@@ -66,7 +66,7 @@ El Sprint de Liquidación resuelve el stock muerto que ya tenés — no evita qu
 se vuelva a acumular. Si querés que la clasificación de excedente, el
 pronóstico y la política de reposición corran todos los meses para que este
 problema no vuelva a aparecer, ese es el alcance de **Starter — Fundamentos
-de Inventario** (USD 2.000/mes).
+de Inventario** (desde USD 900/mes).
 
 ---
 

@@ -44,11 +44,12 @@ OFFERS: tuple[Offer, ...] = (
     Offer(
         slug="starter-fundamentos",
         name="Starter -- Fundamentos de Inventario",
-        price="USD 2.000/mes",
-        cadence="Mensual, alcance fijo",
+        price="USD 900/mes (piso ~500 SKUs, +$40/mes cada bloque de 250 SKUs, techo $1.500)",
+        cadence="Mensual, alcance variable por catalogo",
         recibe=(
-            "8 tools: forecast, abc_xyz, whatif, inventory_optimization, newsvendor, "
-            "excel_replenishment, cycle_count, data_quality"
+            "15 tools: forecast, abc_xyz, whatif, inventory_optimization, newsvendor, "
+            "excel_replenishment, cycle_count, data_quality, pricing, excess_obsolete, "
+            "financial_kpis, reconciliation, landed_cost, returns, risk"
         ),
         para_quien='E-commerce/distribuidor mono-almacen, USD 1-10M, compra "a ojo" en Excel',
         md_file="starter-fundamentos.md",
@@ -56,12 +57,11 @@ OFFERS: tuple[Offer, ...] = (
     Offer(
         slug="growth-operacion",
         name="Growth -- Operacion Completa de SC",
-        price="USD 4.000/mes",
+        price="USD 1.500/mes (piso ~2.000 SKUs, +$60/mes cada bloque de 500 SKUs, techo $3.200)",
         cadence="Mensual + QBR trimestral",
         recibe=(
             "26 tools: todo Starter + multi_echelon, ddmrp, simulation, drp, odoo_replenishment, "
-            "reconciliation, fefo, sourcing, landed_cost, acceptance_sampling, pricing, "
-            "cost_to_serve, learning_curve, returns, risk, dea"
+            "fefo, sourcing, acceptance_sampling, cost_to_serve, learning_curve, dea"
         ),
         para_quien="Empresa en crecimiento, multi-almacen/canal, con o migrando a ERP (Odoo)",
         md_file="growth-operacion.md",
@@ -69,7 +69,7 @@ OFFERS: tuple[Offer, ...] = (
     Offer(
         slug="scale-red-sop",
         name="Scale -- Red, S&OP y Mando Ejecutivo",
-        price="USD 7.500/mes",
+        price="USD 3.200/mes (flat)",
         cadence="Quincenal + S&OP mensual",
         recibe=(
             "Las 35 tools del catalogo completo (+ facility_location, transportation, "
@@ -81,10 +81,11 @@ OFFERS: tuple[Offer, ...] = (
     Offer(
         slug="retainer-ejecutivo",
         name="Retainer Ejecutivo Fraccional",
-        price="USD 9.000-12.000/mes",
+        price="USD 4.500/mes (flat = Scale x 1.4)",
         cadence="Mensual + cadencia semanal + escalamiento con SLA",
         recibe="Mismas 35 tools de Scale -- la diferencia es gobierno, no capacidad",
-        para_quien="Cliente maduro (6-18 meses en Scale), mandato de VP/COO fraccional",
+        para_quien="Upgrade para un cliente Scale existente (6-18 meses en Scale), mandato de "
+                   "VP/COO fraccional -- no se vende en frio como opcion de entrada",
         md_file="retainer-ejecutivo.md",
     ),
     Offer(

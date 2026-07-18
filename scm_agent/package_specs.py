@@ -7,9 +7,21 @@ the client-facing one-pagers in ``documentation/paquetes/``. If any of the
 three diverge, fix them together in the same PR.
 
 - **diagnostico** - Diagnostico de Arranque: one-time 2-week sprint, 4 tools.
-- **starter** - Fundamentos de Inventario: fixed monthly scope, 8 tools.
+- **starter** - Fundamentos de Inventario: variable monthly scope by SKU count
+  (floor USD 900 at ~500 SKUs, +USD 40/mes per 250-SKU block, hard ceiling
+  USD 1,500 = Growth's price), 15 tools. Includes 7 "universal" tools moved
+  down from Growth 2026-07-18 (excess_obsolete, financial_kpis, pricing,
+  reconciliation, landed_cost, returns, risk) - they apply to any business
+  regardless of size, unlike the network/org-complexity tools that stay
+  Growth-and-up. All 7 are wired ``required=False`` (skip gracefully if the
+  client hasn't sent that file yet) except ``pricing``, which is why Starter's
+  ``ventas`` input slot upgraded from ``_VENTAS_BASIC`` to ``_VENTAS_GROWTH``
+  (adds the ``price`` column ``jobs/pricing.py`` hard-requires) instead of
+  gating it - a present-but-malformed file blocks the whole package the same
+  way a missing required file does, so a soft skip doesn't actually protect
+  this one.
 - **growth** - Operacion Completa de SC: monthly + quarterly QBR, 26 tools
-  (everything in diagnostico + starter, plus 16 more).
+  (everything in diagnostico + starter, plus 11 more).
 - **scale** - Red, S&OP y Mando Ejecutivo: biweekly + monthly S&OP, the full
   35-tool catalog (everything in growth, plus 9 more).
 - **retainer_ejecutivo** - Retainer Ejecutivo Fraccional: same 35 tools as
@@ -291,22 +303,47 @@ _STARTER_STEPS = (
     PackageStep("newsvendor", "estacional", required=False, cadence="por temporada"),
     PackageStep("excel_replenishment", "planilla"),
     PackageStep("cycle_count", None, derive=_cycle_count_from_abc),
+    # Moved down from Growth 2026-07-18 - "universal" tools that apply to any
+    # business regardless of size/structure. pricing keeps required=True (see
+    # module docstring: Starter's ventas slot now carries the price column it
+    # needs); the other 6 are required=False since their files (stock/finanzas/
+    # conteos/importaciones/devoluciones/riesgos) aren't part of Starter's
+    # traditional intake - they run as a no-extra-charge bonus when sent.
+    PackageStep("pricing", "ventas"),
+    PackageStep("excess_obsolete", "stock", required=False),
+    PackageStep("financial_kpis", "finanzas", required=False),
+    PackageStep("reconciliation", "conteos", required=False),
+    PackageStep("landed_cost", "importaciones", required=False, cadence="por disparador"),
+    PackageStep("returns", "devoluciones", required=False),
+    PackageStep("risk", "riesgos", required=False, cadence="QBR trimestral"),
 )
 
 STARTER = PackageSpec(
     key="starter",
     title="Starter - Fundamentos de Inventario",
-    price="USD 2,000 / mes (alcance fijo)",
+    price="USD 900 / mes (variable: piso $900 hasta ~500 SKUs, +$40/mes cada "
+          "bloque de 250 SKUs, techo $1,500 - subir de piso nunca es una "
+          "sorpresa, siempre se aprueba antes)",
     cadence="mensual",
     audience="e-commerce o distribuidor mono-almacen (USD 1-10M) que hoy compra a ojo en Excel",
-    inputs=(_VENTAS_BASIC, _MAESTRO, _PLANILLA, _SUPUESTOS, _ESTACIONAL),
+    # _VENTAS_GROWTH (not _VENTAS_BASIC) because the pricing step moved in here
+    # needs the price column - see module docstring. Each PackageSpec's own
+    # `inputs` tuple is authoritative for its own steps (PackageSpec.input_for
+    # looks up slots on `self`, not on some shared registry), so the 6 other
+    # moved-down slots (stock/finanzas/conteos/importaciones/devoluciones/
+    # riesgos) must be declared here too, even though they're required=False -
+    # otherwise resolving them raises KeyError before the "file absent" skip
+    # path ever gets a chance to run.
+    inputs=(_VENTAS_GROWTH, _MAESTRO, _PLANILLA, _SUPUESTOS, _ESTACIONAL,
+            _STOCK, _FINANZAS, _CONTEOS, _IMPORTACIONES, _DEVOLUCIONES, _RIESGOS),
     steps=_STARTER_STEPS,
 )
 
 GROWTH = PackageSpec(
     key="growth",
     title="Growth - Operacion Completa de SC",
-    price="USD 4,000 / mes (mensual + QBR trimestral)",
+    price="USD 1,500 / mes (variable: piso $1,500 hasta ~2,000 SKUs, +$60/mes "
+          "cada bloque de 500 SKUs, techo $3,200; mensual + QBR trimestral)",
     cadence="mensual + QBR trimestral",
     audience="empresa en crecimiento, multi-almacen/canal, con o migrando a un ERP (Odoo)",
     inputs=(
@@ -315,12 +352,12 @@ GROWTH = PackageSpec(
         _SIMULACION, _DRP, _PROVEEDORES, _IMPORTACIONES, _CALIDAD, _CURVA,
         _DEVOLUCIONES, _RIESGOS, _UNIDADES,
     ),
+    # excess_obsolete/financial_kpis/pricing/reconciliation/landed_cost/returns/
+    # risk moved down into _STARTER_STEPS 2026-07-18 (see module docstring) -
+    # Growth still gets all of them, just inherited from the shared base tuple
+    # instead of listed here a second time.
     steps=_STARTER_STEPS + (
-        PackageStep("excess_obsolete", "stock"),
-        PackageStep("financial_kpis", "finanzas"),
-        PackageStep("pricing", "ventas"),
         PackageStep("cost_to_serve", "pedidos"),
-        PackageStep("reconciliation", "conteos", required=False),
         PackageStep("fefo", "lotes", required=False,
                     cadence="mensual (si hay perecederos)"),
         PackageStep("multi_echelon", "red", required=False,
@@ -332,11 +369,8 @@ GROWTH = PackageSpec(
         PackageStep("odoo_replenishment", None, required=False, gate=_odoo_gate,
                     cadence="mensual (si hay Odoo)"),
         PackageStep("sourcing", "proveedores", required=False, cadence="QBR trimestral"),
-        PackageStep("landed_cost", "importaciones", required=False, cadence="por disparador"),
         PackageStep("acceptance_sampling", "calidad", required=False, cadence="por disparador"),
         PackageStep("learning_curve", "curva", required=False, cadence="QBR trimestral"),
-        PackageStep("returns", "devoluciones", required=False),
-        PackageStep("risk", "riesgos", required=False, cadence="QBR trimestral"),
         PackageStep("dea", "unidades", required=False, cadence="QBR trimestral"),
     ),
 )
@@ -375,7 +409,7 @@ _SCALE_INPUTS = GROWTH.inputs + (
 SCALE = PackageSpec(
     key="scale",
     title="Scale - Red, S&OP y Mando Ejecutivo",
-    price="USD 7,500 / mes",
+    price="USD 3,200 / mes (flat, sin variable - certidumbre de presupuesto sobre facturacion incremental)",
     cadence="quincenal + S&OP mensual",
     audience="mid-market con red real (2+ plantas/CDs)",
     inputs=_SCALE_INPUTS,
@@ -385,9 +419,15 @@ SCALE = PackageSpec(
 RETAINER_EJECUTIVO = PackageSpec(
     key="retainer_ejecutivo",
     title="Retainer Ejecutivo Fraccional",
-    price="USD 9,000 - 12,000 / mes",
+    price="USD 4,500 / mes (flat = Scale x 1.4)",
     cadence="mensual + cadencia semanal + escalamiento con SLA",
-    audience="cliente maduro (6-18 meses en Scale), mandato de VP/COO fraccional",
+    # Not a 4th tier a cold buyer picks from a menu - offered ONLY as an
+    # upgrade to an existing Scale client (6-18 meses), never listed alongside
+    # Starter/Growth/Scale up front. Same 35 tools as Scale, zero new
+    # capability - the delta is governance (weekly cadence, SLA escalation,
+    # autonomous writeback authority), not analysis.
+    audience="upgrade ofrecido a un cliente Scale existente (6-18 meses en Scale, mandato de "
+             "VP/COO fraccional) - nunca vendido en frio como opcion de entrada",
     # Deliberately the SAME tool set as Scale - the brief is explicit the
     # difference is governance (weekly cadence, SLA-routed escalation, see
     # RB-6), not analytical capability. Nothing to re-derive here.

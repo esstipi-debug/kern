@@ -1,8 +1,10 @@
 # Retainer Ejecutivo Fraccional
 
-> **USD 9.000 – 12.000 / mes** · cadencia semanal + escalamiento con SLA
+> **USD 4.500 / mes** (flat = Scale × 1,4) · cadencia semanal + escalamiento con SLA
 > Para el cliente que ya pasó 6–18 meses en el plan Scale y necesita un mandato
 > de VP/COO fraccional de supply chain, no solo el análisis mensual.
+> **No es una opción de entrada** — se ofrece únicamente como upgrade a un
+> cliente Scale existente, nunca se lista junto a Starter/Growth/Scale de entrada.
 
 ## Qué cambia frente a Scale (y qué no)
 

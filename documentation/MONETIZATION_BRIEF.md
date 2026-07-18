@@ -53,15 +53,46 @@ Correcciones surgidas en verificación: Cogsy **no** parte en $199 (parte en $49
 | # | Sección | Precio | Cadencia | Tools incluidas | Cliente objetivo |
 |---|---|---|---|---|---|
 | 1 | **Diagnóstico de Arranque** | $1.500–2.500 único | Único, sprint 2 semanas | 4: `data_quality`, `abc_xyz`, `excess_obsolete`, `financial_kpis` | Primer contacto, cero confianza construida |
-| 2 | **Starter** — Fundamentos de Inventario | $2.000/mes | Mensual, alcance fijo | 8: `forecast`, `abc_xyz`, `whatif`, `inventory_optimization`, `newsvendor`, `excel_replenishment`, `cycle_count`, `data_quality` | E-commerce/distribuidor mono-almacén, $1–10M, compra "a ojo" en Excel |
-| 3 | **Growth** — Operación Completa de SC | $4.000/mes | Mensual + QBR trimestral | 26 (todo lo anterior + `multi_echelon`, `ddmrp`, `simulation`, `drp`, `odoo_replenishment`, `reconciliation`, `fefo`, `sourcing`, `landed_cost`, `acceptance_sampling`, `pricing`, `cost_to_serve`, `learning_curve`, `returns`, `risk`, `dea`) | Empresa en crecimiento, multi-almacén/canal, con o migrando a ERP (Odoo) |
-| 4 | **Scale** — Red, S&OP y Mando Ejecutivo | $7.500/mes | Quincenal + S&OP mensual | Las 35 tools del catálogo completo (+ `facility_location`, `transportation`, `warehouse_layout`, `slotting`, `queuing`, `scheduling`, `sop`, `earned_value`, `leadership_chain`) | Mid-market con red real (2+ plantas/CDs) |
-| 5 | **Retainer Ejecutivo Fraccional** | $9.000–12.000/mes | Mensual + cadencia semanal + escalamiento con SLA | Mismas 35 tools de Scale — la diferencia es gobierno, no capacidad | Cliente maduro (6–18 meses en Scale), mandato de VP/COO fraccional |
+| 2 | **Starter** — Fundamentos de Inventario | $900/mes (piso ~500 SKUs, +$40/mes c/bloque de 250 SKUs, techo $1.500) | Mensual, alcance variable por catálogo | 15: `forecast`, `abc_xyz`, `whatif`, `inventory_optimization`, `newsvendor`, `excel_replenishment`, `cycle_count`, `data_quality`, `pricing`, `excess_obsolete`, `financial_kpis`, `reconciliation`, `landed_cost`, `returns`, `risk` | E-commerce/distribuidor mono-almacén, $1–10M, compra "a ojo" en Excel |
+| 3 | **Growth** — Operación Completa de SC | $1.500/mes (piso ~2.000 SKUs, +$60/mes c/bloque de 500 SKUs, techo $3.200) | Mensual + QBR trimestral | 26 (todo Starter + `multi_echelon`, `ddmrp`, `simulation`, `drp`, `odoo_replenishment`, `fefo`, `sourcing`, `acceptance_sampling`, `cost_to_serve`, `learning_curve`, `dea`) | Empresa en crecimiento, multi-almacén/canal, con o migrando a ERP (Odoo) |
+| 4 | **Scale** — Red, S&OP y Mando Ejecutivo | $3.200/mes (flat) | Quincenal + S&OP mensual | Las 35 tools del catálogo completo (+ `facility_location`, `transportation`, `warehouse_layout`, `slotting`, `queuing`, `scheduling`, `sop`, `earned_value`, `leadership_chain`) | Mid-market con red real (2+ plantas/CDs) |
+| 5 | **Retainer Ejecutivo Fraccional** | $4.500/mes (flat = Scale × 1,4) | Mensual + cadencia semanal + escalamiento con SLA | Mismas 35 tools de Scale — la diferencia es gobierno, no capacidad | Upgrade para cliente Scale existente (6–18 meses), mandato de VP/COO fraccional — no se vende en frío como opción de entrada |
 | 6 | **Proyecto de Red, Almacén y Operación** | $8.000–18.000 único | Único, 4–8 semanas | 6: `facility_location`, `transportation`, `warehouse_layout`, `slotting`, `queuing`, `scheduling` | Inflexión estructural: nueva bodega, rediseño de red/almacén |
 | 7 | **Proyecto de Sourcing y Costo de Importación** | $5.000–10.000 único | Único, recurrible trimestral/anual | 3: `sourcing`, `landed_cost`, `acceptance_sampling` | Importadores / manufactura offshore |
 | 8 | **Sprint de Liquidación** | 10–20% del cash recuperado, piso $1.500 (contingente, no fijo) | Único, sprint 2–3 semanas | 3-4: `data_quality`, `excess_obsolete`, `markdown_liquidation` (+ `pricing` opcional) | Stock muerto/excedente ya diagnosticado, decidido a liquidar, resiste pagar un fee fijo por algo no recuperado |
 | 9 | **Diagnóstico de Posición de Precios** | $2.000–3.500 único | Único, sprint 2 semanas (one-shot) | 1: `price_intelligence` (nueva, Linchpin 3.0 — "el titán del pricing") | Vende productos comparables online, quiere saber dónde está caro/barato frente a la competencia con evidencia trazable, sin monitoreo continuo todavía |
 | 10 | **Evidencia de Auditoría de Inventario** *(vertical nueva, requiere build — ver nota)* | $6.000–15.000 por ciclo de auditoría | Único, recurrente cada auditoría (anual) | 4: `audit_evidence` (nueva) + `abc_xyz`, `reconciliation`, `acceptance_sampling` (existentes) | Controller/CFO de empresa privada en su 1ª auditoría o pre-IPO; o firma mid-tier que subcontrata la preparación de papeles de inventario/COGS |
+
+**Reprecio 2026-07-18 (Anglosfera: AU/NZ/US/UK/Canadá cotizan el mismo número
+en USD, convertido al tipo de cambio del día; ancla en datos reales de salario
+UK):** Starter y Growth pasan a **precio variable con techo** — el precio
+sube en bloques a medida que crece el catálogo del cliente, pero nunca más
+allá del techo (que coincide con el precio del tier siguiente) sin una
+conversación formal de upgrade, nunca como sorpresa en la factura. Scale y el
+Retainer Ejecutivo quedan **flat** (Scale porque el cliente mid-market quiere
+certidumbre de presupuesto sobre facturación incremental; el Retainer porque
+es Scale × 1,4 y dejó de venderse como 4º tier de menú — solo como upgrade
+ofrecido a un cliente Scale existente). También se reclasificaron 7
+herramientas "universales" (aplican a cualquier negocio sin importar tamaño/
+estructura) de Growth a Starter: `excess_obsolete`, `financial_kpis`,
+`pricing`, `reconciliation`, `landed_cost`, `returns`, `risk` — a diferencia
+de `multi_echelon`/`drp`/`dea`/`facility_location`/`sop`/`transportation`/
+`warehouse_layout`/`slotting`/`scheduling`/`queuing`, que sí requieren
+complejidad organizacional real (2+ ubicaciones, equipos cross-funcionales)
+que un cliente Starter mono-almacén todavía no tiene. Starter pasa de 8 a 15
+tools sin subir de precio base: son cómputo, no horas-founder, así que el
+costo marginal de entrega es bajo.
+
+**LatAm (solo equivalente a Starter):** USD 250–300/mes — **alcance de
+entrega más liviano que el Starter Anglosfera, no el mismo producto más
+barato**: un salario real de analista LatAm (~USD 400–650/mes) es demasiado
+bajo para cubrir horas-founder a la lógica de %-de-salario que ancla el
+precio Anglosfera, así que esto debe ser una oferta de alcance reducido, no
+un descuento sobre el Starter completo. Growth/Scale/Retainer **no** se
+extienden a LatAm (confirma la decisión previa en `ICP_Y_DIMENSIONAMIENTO.md`
+de que LatAm es un canal de auditoría/SaaS-lite, no la escalera completa de
+retainers). Diagnóstico, Proyecto de Red/Almacén, Proyecto de Sourcing y
+Sprint de Liquidación no cambian esta ronda.
 
 Nota sobre la sección 8: es la única con **precio contingente** — el
 honorario se calcula sobre el cash efectivamente recuperado (nunca sobre una
@@ -78,9 +109,13 @@ es el match confirmado — no depende del pipeline de matching automático
 (PR-14). Abre la puerta al **add-on de monitoreo continuo** (Growth/Scale)
 una vez que exista el Control Tower conectado (PR-15).
 
-**Camino a $8.000/mes:** 2 clientes Growth ($4.000 × 2) es la ruta más corta y el mix
-recomendado por defecto. Alternativas: 4 Starter, 1 Scale + 1 cliente pequeño, o 1 solo
-Retainer Ejecutivo. Los 2 proyectos puntuales (única excepción a "nunca vender un tool
+**Camino a $8.000/mes:** con el reprecio 2026-07-18, la vía más corta ya no es
+2 Growth — hoy es **3 Scale ($3.200 × 3 ≈ $9.600)** o **6 Growth ($1.500 × 6 =
+$9.000)** al piso de cada plan, o una mezcla (ej. 2 Scale + 4 Starter al piso
+≈ $10.000). Con clientes en el techo de su banda variable (Starter $1.500,
+Growth $3.200) el número de cuentas necesarias baja considerablemente. 1 solo
+Retainer Ejecutivo ($4.500) no alcanza el piso solo — necesita un segundo
+cliente Scale o Retainer. Los 2 proyectos puntuales (única excepción a "nunca vender un tool
 suelto") también cruzan el piso por sí solos en el mes que se cierran, aunque como caja
 puntual, no como MRR. Techo por cuenta a lo largo de su ciclo de vida (Diagnóstico → tier
 → Scale → Retainer Ejecutivo + proyectos anuales): **$150.000–250.000+/año** en la cuenta
@@ -138,7 +173,7 @@ de oro:** es un paquete de 4 tools, no un tool suelto.
 ## Qué hacer primero
 
 **30 días:** (1) Publicar el Diagnóstico de Arranque ($1.500–2.500, 2 semanas) y el tier
-Starter ($2.000/mes) como las dos ofertas de entrada — el modelo "assessment + sprint +
+Starter ($900/mes, piso variable) como las dos ofertas de entrada — el modelo "assessment + sprint +
 retainer" es el patrón recomendado en pricing de consultoría SC. (2) Publicar el módulo
 Odoo (gratis o barato) como anzuelo y ejecutar las submissions ya preparadas en
 `GTM_SUBMISSIONS.md`. (3) Conseguir los 2 primeros clientes vía Upwork/red directa aunque

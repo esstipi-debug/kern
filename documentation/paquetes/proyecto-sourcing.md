@@ -54,7 +54,7 @@ costo real, no el que asumías.
 
 Si además quieres que el costo de importación y la selección de proveedor se
 integren al ciclo mensual de tu operación completa de inventario, ese es el
-alcance del plan **Growth** (USD 4.000/mes) o **Scale** (USD 7.500/mes), que ya
+alcance del plan **Growth** (desde USD 1.500/mes) o **Scale** (USD 3.200/mes), que ya
 incluyen sourcing y landed cost como análisis situacionales del ciclo regular.
 
 ---
