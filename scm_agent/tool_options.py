@@ -12,8 +12,8 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import replace
 
-from src.escalation import maybe_escalate_data_quality
-from src.guided import ExecutionOption, GuidedOutcome, Residual, as_handoff, as_options
+from src.escalation import OPERATIONAL, escalate, maybe_escalate_data_quality
+from src.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_handoff, as_options
 
 # Each item is (label, summary, action, tradeoffs); the first item is the recommended default.
 _Item = tuple[str, str, str, str]
@@ -553,6 +553,39 @@ def excess_obsolete_options(report: object) -> GuidedOutcome:
         f"E&O over {report.n_skus} SKU(s): {report.eo_value:,.0f} at risk - choose how to release it.",
         items,
     )
+
+
+def launch_readiness_options(report: object) -> GuidedOutcome:
+    """Aggregate the per-SKU launch verdicts into one run-level outcome.
+
+    Any red SKU -> ESCALATED (routed to the campaign owner), bundling every red into one
+    packet and carrying those options at the top level too (mirrors src.escalation._maybe_
+    escalate's "nothing silently vanishes"). Else any yellow -> the worst-margin yellow SKU's
+    own OPTIONS outcome. Else all green -> EXECUTED.
+    """
+    reds = [line for line in report.lines if line.verdict == "red"]
+    if reds:
+        reason = f"{len(reds)} SKU(s) at launch risk: " + "; ".join(
+            f"{line.product_id} - {line.reason}" for line in reds)
+        options = [
+            ExecutionOption(
+                label="Route the red SKUs to the campaign owner", score=2.0, recommended=True,
+                summary=f"{len(reds)} SKU(s) cannot be ready for their launch date as planned.",
+                action="send the red-SKU handoff to the marketing campaign owner",
+                tradeoffs="protects day-one availability; needs a calendar/allocation decision"),
+            ExecutionOption(
+                label="Proceed only with the launch-ready SKUs", score=1.0,
+                summary=f"launch the {report.n_green} green SKU(s) on schedule; hold the rest.",
+                action="launch green SKUs only; defer yellow/red",
+                tradeoffs="keeps the date for what is ready; narrows the launch"),
+        ]
+        outcome = escalate(report.summary, OPERATIONAL, reason, route_to="marketing campaign owner",
+                           sla="before the campaign go/no-go", options=options, confidence=0.7)
+        return replace(outcome, options=list(outcome.escalation.options))
+    yellows = [line for line in report.lines if line.verdict == "yellow"]
+    if yellows:
+        return min(yellows, key=lambda line: (line.days_of_cover or 0.0) - line.days_until_launch).outcome
+    return as_executed(f"All {len(report.lines)} SKU(s) are launch-ready.", confidence=0.9)
 
 
 def markdown_liquidation_options(report: object) -> GuidedOutcome:
