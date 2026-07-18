@@ -251,6 +251,7 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
     "price_intelligence": {"es": "Diagnostico de Posicion de Precios", "en": "Price Position Diagnostic"},
     "price_watch": {"es": "Vigilancia de Precios Asistida por Descubrimiento",
                      "en": "Discovery-Assisted Price Watch"},
+    "launch_readiness": {"es": "Preparacion para el Lanzamiento", "en": "Launch Readiness"},
 }
 
 
