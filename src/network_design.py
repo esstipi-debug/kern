@@ -65,6 +65,72 @@ def _best_single_facility_distance(
     )
 
 
+def _var_index(i: int, j: int, n_s: int) -> int:
+    """Flattened index of x_ij (demand i served by site j) given n_s candidate sites.
+
+    Decision variables are laid out as [ y_0..y_{n_s-1}, x_00..x_{n_d-1,n_s-1} ]:
+    y_j = 1 if site j is opened; x_ij = 1 if demand i is served by site j.
+    """
+    return n_s + i * n_s + j
+
+
+def _assignment_constraint(n_d: int, n_s: int, n_var: int) -> LinearConstraint:
+    """Each demand assigned to exactly one site: sum_j x_ij = 1."""
+    a = np.zeros((n_d, n_var))
+    for i in range(n_d):
+        for j in range(n_s):
+            a[i, _var_index(i, j, n_s)] = 1.0
+    return LinearConstraint(a, lb=1.0, ub=1.0)
+
+
+def _linking_constraint(n_d: int, n_s: int, n_var: int) -> LinearConstraint:
+    """Can only assign to an open site: x_ij - y_j <= 0."""
+    n_x = n_d * n_s
+    a = np.zeros((n_x, n_var))
+    row = 0
+    for i in range(n_d):
+        for j in range(n_s):
+            a[row, _var_index(i, j, n_s)] = 1.0
+            a[row, j] = -1.0
+            row += 1
+    return LinearConstraint(a, lb=-np.inf, ub=0.0)
+
+
+def _count_constraint(p: int, n_s: int, n_var: int) -> LinearConstraint:
+    """Open exactly p sites: sum_j y_j = p."""
+    a = np.zeros((1, n_var))
+    a[0, :n_s] = 1.0
+    return LinearConstraint(a, lb=float(p), ub=float(p))
+
+
+def _capacity_constraint(
+    demands: list[DemandPoint],
+    sites: list[CandidateSite],
+    n_s: int,
+    n_var: int,
+    *,
+    respect_capacity: bool,
+) -> LinearConstraint | None:
+    """Capacity, only for sites that declare one: sum_i w_i x_ij - cap_j y_j <= 0.
+
+    Returns None when there is nothing to constrain (respect_capacity=False, or no
+    candidate site declares a capacity) - the caller skips appending it in that case.
+    """
+    cap_rows = [
+        (j, s.capacity)
+        for j, s in enumerate(sites)
+        if respect_capacity and s.capacity is not None
+    ]
+    if not cap_rows:
+        return None
+    a = np.zeros((len(cap_rows), n_var))
+    for r, (j, cap) in enumerate(cap_rows):
+        for i, d in enumerate(demands):
+            a[r, _var_index(i, j, n_s)] = d.weight
+        a[r, j] = -float(cap)
+    return LinearConstraint(a, lb=-np.inf, ub=0.0)
+
+
 def solve_p_median(
     demands: list[DemandPoint],
     sites: list[CandidateSite],
@@ -91,13 +157,7 @@ def solve_p_median(
 
     n_d = len(demands)
     n_s = len(sites)
-    n_x = n_d * n_s
-    n_var = n_s + n_x
-
-    # Flattened decision variables: [ y_0..y_{n_s-1}, x_00..x_{n_d-1,n_s-1} ].
-    #   y_j = 1 if site j is opened; x_ij = 1 if demand i is served by site j.
-    def xi(i: int, j: int) -> int:
-        return n_s + i * n_s + j
+    n_var = n_s + n_d * n_s
 
     # Objective: sum_j fixed_cost_j y_j + sum_ij w_i d_ij x_ij.
     c = np.zeros(n_var)
@@ -105,45 +165,18 @@ def solve_p_median(
         c[j] = s.fixed_cost
     for i, d in enumerate(demands):
         for j, s in enumerate(sites):
-            c[xi(i, j)] = d.weight * _distance(d, s)
+            c[_var_index(i, j, n_s)] = d.weight * _distance(d, s)
 
-    constraints: list[LinearConstraint] = []
-
-    # (1) each demand assigned to exactly one site: sum_j x_ij = 1.
-    a_assign = np.zeros((n_d, n_var))
-    for i in range(n_d):
-        for j in range(n_s):
-            a_assign[i, xi(i, j)] = 1.0
-    constraints.append(LinearConstraint(a_assign, lb=1.0, ub=1.0))
-
-    # (2) can only assign to an open site: x_ij - y_j <= 0.
-    a_link = np.zeros((n_x, n_var))
-    row = 0
-    for i in range(n_d):
-        for j in range(n_s):
-            a_link[row, xi(i, j)] = 1.0
-            a_link[row, j] = -1.0
-            row += 1
-    constraints.append(LinearConstraint(a_link, lb=-np.inf, ub=0.0))
-
-    # (3) open exactly p sites: sum_j y_j = p.
-    a_count = np.zeros((1, n_var))
-    a_count[0, :n_s] = 1.0
-    constraints.append(LinearConstraint(a_count, lb=float(p), ub=float(p)))
-
-    # (4) capacity, only for sites that declare one: sum_i w_i x_ij - cap_j y_j <= 0.
-    cap_rows = [
-        (j, s.capacity)
-        for j, s in enumerate(sites)
-        if respect_capacity and s.capacity is not None
+    constraints: list[LinearConstraint] = [
+        _assignment_constraint(n_d, n_s, n_var),
+        _linking_constraint(n_d, n_s, n_var),
+        _count_constraint(p, n_s, n_var),
     ]
-    if cap_rows:
-        a_cap = np.zeros((len(cap_rows), n_var))
-        for r, (j, cap) in enumerate(cap_rows):
-            for i, d in enumerate(demands):
-                a_cap[r, xi(i, j)] = d.weight
-            a_cap[r, j] = -float(cap)
-        constraints.append(LinearConstraint(a_cap, lb=-np.inf, ub=0.0))
+    cap_constraint = _capacity_constraint(
+        demands, sites, n_s, n_var, respect_capacity=respect_capacity
+    )
+    if cap_constraint is not None:
+        constraints.append(cap_constraint)
 
     integrality = np.ones(n_var)        # all variables binary
     bounds = Bounds(lb=0.0, ub=1.0)
