@@ -14,7 +14,7 @@ Todo lo marcado **EXISTE HOY** está verificado leyendo el código fuente del re
 
 | Métrica | Valor real (código) | Qué dicen los docs | Nota |
 |---|---|---|---|
-| Herramientas registradas | **43** (`scm_agent/tools.py`, 43 `register()`) | README/badge: 39 · `autonomy.py`: 37 · `package_specs.py`: 35 | Los docs van por detrás del código. |
+| Herramientas registradas | **45** (`scm_agent/tools.py`, 45 `register()`) | README/badge: 39 · `autonomy.py`: 37 · `package_specs.py`: 35 | Los docs van por detrás del código. |
 | Fuentes en el grafo de libros | **33** `source_file` distintos, 1953 nodos, 3810 aristas (`knowledge/scm-books/graph.json`) | README: "25 fuentes" | El grafo real es mayor. |
 | Paquetes comerciales | **8** `PackageSpec` (`package_specs.py`) | Docstring: "7 vendibles" | `retainer_ejecutivo` reusa el catálogo de `scale`. |
 
@@ -161,7 +161,7 @@ SCOR Digital Standard organiza la cadena en **Plan · Source · Transform · Ord
 
 | Cláusula ISO 9001 | Comportamiento equivalente en Kern (verificado) |
 |---|---|
-| **4.4 / 8.1 Enfoque a procesos** | Pipeline fijo y auto-descrito: cada capacidad es un `Tool` con `prepare/run/qa/deliver`; misma secuencia para las 40. |
+| **4.4 / 8.1 Enfoque a procesos** | Pipeline fijo y auto-descrito: cada capacidad es un `Tool` con `prepare/run/qa/deliver`; misma secuencia para las 45. |
 | **7.5 Información documentada** | `EvidenceRecord` (SHA-256 de inputs, control totals, `formula_versions`, atestaciones QA); `AuditEntry` de writeback; CHANGELOG (Keep-a-Changelog); citas L3 en cada entregable. |
 | **8.5.1 Control de la producción** | Grounding + confidence + opciones `guided` en cada deliverable; personas/KPIs por modo. |
 | **8.5.2 Trazabilidad** | **Parcial**: `data_quality` valida GTIN GS1; `lots/` da FEFO+caducidad; **falta genealogía de lote** → **evolución E3**. |

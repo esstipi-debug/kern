@@ -634,6 +634,44 @@ def facility_location_options(report: object) -> GuidedOutcome:
     )
 
 
+def network_design_options(report: object) -> GuidedOutcome:
+    sites = ", ".join(report.open_sites)
+    open_all = (
+        f"Open the {report.p} optimal site(s)",
+        f"Open [{sites}] - {report.total_weighted_distance:,.0f} total weighted travel, "
+        f"{report.saving_vs_baseline:,.0f} less than the best single facility "
+        f"({report.saving_pct * 100:.0f}%).",
+        f"open sites {sites} and assign each demand to its nearest open site",
+        "minimum load x distance across the network",
+    )
+    phase = (
+        "Phase the rollout",
+        f"Stand up the {report.p} site(s) in waves, busiest cluster first, to spread the capex.",
+        "open the busiest site first, then the rest on a schedule",
+        "slower to the full saving; smooths the investment",
+    )
+    single = (
+        "Keep a single facility",
+        f"Stay at one DC ({report.baseline_distance:,.0f} weighted travel) if the "
+        f"{report.saving_pct * 100:.0f}% saving doesn't beat the cost of running more sites.",
+        "keep one facility",
+        f"forgoes {report.saving_vs_baseline:,.0f} weighted travel; avoids multi-site overhead",
+    )
+    validate = (
+        "Validate the chosen site",
+        "Field-check the selected site against real road distance, land and labour before opening.",
+        "confirm the geometric optimum on the ground before committing",
+        "de-risks the straight-line model",
+    )
+    items: list[_Item] = (
+        [open_all, phase, single] if report.p > 1 else [open_all, validate]
+    )
+    return _ranked(
+        f"Network design over {report.n_demand} demand point(s): choose how many DCs and which.",
+        items,
+    )
+
+
 def drp_options(report: object) -> GuidedOutcome:
     items: list[_Item] = [
         ("Release the planned orders",
