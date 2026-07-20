@@ -273,3 +273,45 @@ def test_hat_kpis_have_frozen_keys():
     assert set(hat_kpis(inp, HAT_COMERCIAL, cand)) == {
         "fill_rate", "expected_units_short_per_year"}
     assert headline_kpi(HAT_CFO) == "capital_charge_usd"
+
+
+# -- council: ideals + tension map (N4 substrate) ------------------------------
+
+from src.hat_council import tension_map  # noqa: E402
+
+
+def test_ideal_ordering_q_cfo_le_planner_le_comprador():
+    """Spec Sec 12.1: with the synthetic breaks, Q_cfo <= Q_planner <= Q_comprador."""
+    tmap = tension_map(_inputs())
+    q = {k: tmap.ideals[k].candidate.order_quantity for k in HAT_KEYS}
+    assert q["cfo"] <= q["planner"] <= q["comprador"]
+    assert q["cfo"] < q["comprador"]          # genuine tension on the testbed SKU
+
+
+def test_ideal_comercial_is_max_sl_of_grid():
+    tmap = tension_map(_inputs())
+    assert tmap.ideals["comercial"].candidate.service_level == max(SL_GRID)
+
+
+def test_u_norm_at_ideal_is_one_for_every_hat():
+    tmap = tension_map(_inputs())
+    for key in HAT_KEYS:
+        assert tmap.ideals[key].utility_norm == 1.0
+
+
+def test_tension_map_shape_and_clash_ordering():
+    tmap = tension_map(_inputs())
+    assert tmap.sku == "SKU-T"
+    assert set(tmap.ideals) == set(HAT_KEYS)
+    assert tmap.candidates_evaluated >= 125
+    assert len(tmap.clashes) == 6              # C(4,2) pairs, nothing dropped
+    mags = [abs(c.delta_capital_usd) for c in tmap.clashes]
+    assert mags == sorted(mags, reverse=True)  # sorted by $ magnitude desc
+    for c in tmap.clashes:
+        assert c.hat_a in HAT_KEYS and c.hat_b in HAT_KEYS and c.hat_a != c.hat_b
+        assert c.delta_q == c.delta_q and abs(c.delta_q) != float("inf")
+
+
+def test_tension_map_is_deterministic():
+    inp = _inputs()
+    assert tension_map(inp) == tension_map(inp)
