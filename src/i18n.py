@@ -207,6 +207,8 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
             "en": "Sales & Operations Planning (S&OP / IBP)"},
     "abc_xyz": {"es": "Clasificacion ABC-XYZ", "en": "ABC-XYZ Classification"},
     "sourcing": {"es": "Seleccion y Sourcing de Proveedores", "en": "Supplier Sourcing & Selection"},
+    "supplier_management": {"es": "Segmentacion de Cartera de Proveedores (Kraljic)",
+                             "en": "Supplier Portfolio Segmentation (Kraljic)"},
     "ddmrp": {"es": "Plan de Buffers DDMRP", "en": "DDMRP Buffer Plan"},
     "landed_cost": {"es": "Estudio de Costo en Destino", "en": "Landed-Cost Study"},
     "warehouse_layout": {"es": "Layout de Bodega (3D)", "en": "Warehouse Layout (3D)"},

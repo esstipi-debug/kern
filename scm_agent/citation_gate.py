@@ -59,6 +59,10 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "sop": ("vollmann_sop", "aggregate_planning"),
     "abc_xyz": ("abc_classification", "vollmann_abc_analysis", "pareto_law"),
     "sourcing": ("outsourcing_decision", "local_sourcing", "offshore_sourcing"),
+    "supplier_management": (
+        "kraljic_matrix", "supplier_relationship_management",
+        "supplier_development", "procurement",
+    ),
     "ddmrp": ("demand_driven_supply_chain", "drum_buffer_rope", "vollmann_customer_order_decoupling_point"),
     "landed_cost": ("landed_cost",),
     "warehouse_layout": ("facility_layout", "load_distance_layout"),

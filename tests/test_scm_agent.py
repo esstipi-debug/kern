@@ -120,7 +120,7 @@ _CODE_GRAPH = Path(__file__).resolve().parent.parent / "graphify-out" / "graph.j
 def test_build_default_registry_tools():
     reg = tools.build_default_registry()
     keys = {t.key for t in reg.list()}
-    assert keys == {"inventory_optimization", "pricing", "leadership_chain", "cost_to_serve", "sop", "abc_xyz", "sourcing", "ddmrp", "landed_cost", "whatif", "financial_kpis", "reconciliation", "returns", "warehouse_layout", "queuing", "scheduling", "risk", "forecast", "data_quality", "dea", "acceptance_sampling", "earned_value", "learning_curve", "odoo_replenishment", "excel_replenishment", "newsvendor", "cycle_count", "multi_echelon", "transportation", "fefo", "slotting", "simulation", "digital_twin", "excess_obsolete", "markdown_liquidation", "facility_location", "network_design", "drp", "vehicle_routing", "price_intelligence", "price_watch", "launch_readiness"}
+    assert keys == {"inventory_optimization", "pricing", "leadership_chain", "cost_to_serve", "sop", "abc_xyz", "sourcing", "supplier_management", "ddmrp", "landed_cost", "whatif", "financial_kpis", "reconciliation", "returns", "warehouse_layout", "queuing", "scheduling", "risk", "forecast", "data_quality", "dea", "acceptance_sampling", "earned_value", "learning_curve", "odoo_replenishment", "excel_replenishment", "newsvendor", "cycle_count", "multi_echelon", "transportation", "fefo", "slotting", "simulation", "digital_twin", "excess_obsolete", "markdown_liquidation", "facility_location", "network_design", "drp", "vehicle_routing", "price_intelligence", "price_watch", "launch_readiness"}
     assert reg.get("leadership_chain").requires_data is False
     assert reg.get("odoo_replenishment").requires_data is False
     assert reg.get("inventory_optimization").requires_data is True

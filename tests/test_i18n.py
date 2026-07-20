@@ -31,7 +31,7 @@ def test_every_tool_title_has_both_languages(key):
     assert set(TOOL_TITLES[key]) == set(SUPPORTED_LANGS), key
 
 
-def test_all_38_registered_tool_keys_are_covered():
+def test_all_registered_tool_keys_are_covered():
     # Cross-check against the actual registry so a newly registered tool
     # without an i18n entry is caught here, not discovered in a client deck.
     tools_src = (__import__("pathlib").Path(__file__).resolve().parents[1]

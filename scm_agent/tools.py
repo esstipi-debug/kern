@@ -47,6 +47,7 @@ from jobs import (
     sop_deliverable,
     sop_job,
     sourcing_job,
+    supplier_management_job,
     transportation_job,
     vehicle_routing_job,
     whatif_job,
@@ -447,6 +448,62 @@ def sourcing_tool() -> Tool:
         deliver=lambda report, out_dir, client: sourcing_job.write_operational(report, out_dir, client),
         deck=lambda report, out_dir, client, citations, confidence, options: replace(
             sourcing_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
+# ---- supplier_management (Kraljic segmentation / strategic SRM) ---------------
+
+def _supplier_management_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(
+            status="needs_data",
+            messages=["a suppliers CSV (supplier, annual spend, plus risk-driver columns "
+                      "like lead time / single-source / quality) is required"],
+        )
+    try:
+        payload = supplier_management_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["suppliers"]:
+        return Prepared(status="needs_data", messages=["no suppliers found in the data"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _supplier_management_run(payload: object, params: dict) -> Produced:
+    report = supplier_management_job.run(
+        payload["suppliers"], payload["drivers"],
+        impact_pareto=params.get("impact_pareto", 0.8),
+        risk_threshold=params.get("risk_threshold", 0.5),
+    )
+    return Produced(report=report, summary=report.summary)
+
+
+def supplier_management_tool() -> Tool:
+    return Tool(
+        key="supplier_management",
+        title="Supplier Portfolio Segmentation (Kraljic)",
+        description="Segment suppliers on the Kraljic matrix (profit impact x supply risk) into "
+                    "strategic / bottleneck / leverage / non-critical quadrants and map each to a "
+                    "strategic-SRM playbook.",
+        intent_keywords=(
+            "kraljic matrix", "kraljic", "supplier segmentation", "supplier portfolio",
+            "purchasing portfolio", "strategic supplier relationship", "supplier relationship management",
+            "srm", "supply risk segmentation", "supplier quadrant", "categorize suppliers",
+        ),
+        requires_data=True,
+        options=lambda report: report.outcome,
+        prepare=_supplier_management_prepare,
+        run=_supplier_management_run,
+        qa=lambda report: supplier_management_job.verify(report),
+        deliver=lambda report, out_dir, client: supplier_management_job.write_operational(
+            report, out_dir, client
+        ),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            supplier_management_job.build_deck(
+                report, client=client, citations=tuple(citations), confidence=confidence
+            ),
             options=tuple(options),
         ).write_all(out_dir),
     )
@@ -2330,6 +2387,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(sop_tool())
     reg.register(abc_xyz_tool())
     reg.register(sourcing_tool())
+    reg.register(supplier_management_tool())
     reg.register(ddmrp_tool())
     reg.register(landed_cost_tool())
     reg.register(whatif_tool())
