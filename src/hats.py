@@ -16,7 +16,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from src.eoq import PriceBreak
+from src.eoq import PriceBreak, compute_eoq, compute_eoq_volume_discount
+from src.safety_stock import safety_stock
 
 HAT_COMPRADOR = "comprador"
 HAT_PLANNER = "planner"
@@ -196,3 +197,106 @@ def parse_weights(raw: str | dict | None) -> dict[str, float]:
     if total <= 0:
         raise ValueError("weights: sum must be > 0")
     return {k: w / total for k, w in weights.items()}
+
+
+# -- D8: price breaks ----------------------------------------------------------
+
+
+def default_price_breaks(
+    annual_demand: float, unit_cost: float, config: HatConfig,
+) -> tuple[PriceBreak, ...]:
+    """Deterministic synthetic tariff for the testbed (D8): -2% at 2x EOQ and
+    -4% at 4x EOQ over the base unit cost. Every output that uses this default
+    must label it "(assumed)" -- on a real client the breaks come from the
+    supplier tariff via params["price_breaks"]."""
+    q_eoq = compute_eoq(annual_demand, config.holding_rate * unit_cost, config.order_cost).order_quantity
+    return (
+        PriceBreak(min_quantity=0.0, unit_cost=unit_cost),
+        PriceBreak(min_quantity=2.0 * q_eoq, unit_cost=round(unit_cost * (1 - 0.02), 10)),
+        PriceBreak(min_quantity=4.0 * q_eoq, unit_cost=round(unit_cost * (1 - 0.04), 10)),
+    )
+
+
+def build_inputs(
+    *,
+    sku: str,
+    annual_demand: float,
+    mean_weekly: float,
+    std_weekly: float,
+    lead_time_weeks: float,
+    unit_cost: float,
+    config: HatConfig,
+    price_breaks: tuple[PriceBreak, ...] | None = None,
+) -> HatInputs:
+    """Assemble one SKU's inputs; `price_breaks=None` -> D8 synthetic default."""
+    assumed = price_breaks is None
+    breaks = (
+        default_price_breaks(annual_demand, unit_cost, config)
+        if assumed else tuple(price_breaks)
+    )
+    return HatInputs(
+        sku=sku, annual_demand=annual_demand, mean_weekly=mean_weekly,
+        std_weekly=std_weekly, lead_time_weeks=lead_time_weeks, unit_cost=unit_cost,
+        price_breaks=breaks, price_breaks_assumed=assumed, config=config,
+    )
+
+
+def unit_cost_at(inputs: HatInputs, order_quantity: float) -> float:
+    """Piecewise c(Q): the unit cost of the highest tier whose min_quantity <= Q;
+    base unit_cost when no tier covers Q (injected tariffs need no base tier)."""
+    best = inputs.unit_cost
+    for tier in sorted(inputs.price_breaks, key=lambda b: b.min_quantity):
+        if order_quantity >= tier.min_quantity:
+            best = tier.unit_cost
+    return best
+
+
+# -- Risk-period helpers ---------------------------------------------------------
+
+
+def sigma_over_lead(inputs: HatInputs) -> float:
+    """sigma_L = sigma_w * sqrt(L_w)."""
+    return inputs.std_weekly * (inputs.lead_time_weeks ** 0.5)
+
+
+def ss_units(inputs: HatInputs, service_level: float) -> float:
+    """SS(SL) = z(SL) * sigma_w * sqrt(L_w) -- the engine's own safety_stock."""
+    return safety_stock(
+        inputs.std_weekly, service_level, risk_periods=inputs.lead_time_weeks,
+    ).safety_stock
+
+
+# -- D1: the deterministic 2D grid ----------------------------------------------
+
+
+def anchor_quantities(inputs: HatInputs) -> tuple[float, float]:
+    """(q_eoq, q_disc): the two closed-form anchors, computed BEFORE the grid.
+
+    q_eoq  -- classic EOQ at the base unit cost.
+    q_disc -- best Q across the price-break tariff (all-units discounts).
+    """
+    cfg = inputs.config
+    q_eoq = compute_eoq(
+        inputs.annual_demand, cfg.holding_rate * inputs.unit_cost, cfg.order_cost,
+    ).order_quantity
+    q_disc = compute_eoq_volume_discount(
+        inputs.annual_demand, cfg.holding_rate, cfg.order_cost, list(inputs.price_breaks),
+    ).order_quantity
+    return q_eoq, q_disc
+
+
+def candidate_grid(inputs: HatInputs) -> tuple[Candidate, ...]:
+    """SL_GRID x 25 linear Q points on [0.5*min(anchors), 1.25*max(anchors)],
+    plus the mandatory candidates q_eoq, q_disc and the baseline Q (== q_eoq,
+    see baseline_plan) deduped in. Fixed order: SL asc outer, Q asc inner."""
+    q_eoq, q_disc = anchor_quantities(inputs)
+    lo = Q_SPAN_LO * min(q_eoq, q_disc)
+    hi = Q_SPAN_HI * max(q_eoq, q_disc)
+    qs = [lo + i * (hi - lo) / (N_Q_POINTS - 1) for i in range(N_Q_POINTS)]
+    for mandatory in (q_eoq, q_disc):        # baseline Q == q_eoq (dedupe handles it)
+        if not any(abs(q - mandatory) < 1e-12 for q in qs):
+            qs.append(mandatory)
+    qs.sort()
+    return tuple(
+        Candidate(order_quantity=q, service_level=sl) for sl in SL_GRID for q in qs
+    )

@@ -119,3 +119,79 @@ def test_inputs_validate():
         Candidate(order_quantity=0.0, service_level=0.95)
     with pytest.raises(ValueError):
         Candidate(order_quantity=10.0, service_level=1.0)
+
+
+# -- price breaks (D8) + grid (D1) --------------------------------------------
+
+from src.eoq import PriceBreak, compute_eoq  # noqa: E402
+from src.hats import (  # noqa: E402
+    anchor_quantities,
+    build_inputs,
+    candidate_grid,
+    ss_units,
+    unit_cost_at,
+)
+
+
+def _inputs(**kw):
+    """Representative smooth SKU: D=5200, mu_w=100, sigma_w=30, L=1w, c=10."""
+    base = dict(sku="SKU-T", annual_demand=5200.0, mean_weekly=100.0, std_weekly=30.0,
+                lead_time_weeks=1.0, unit_cost=10.0, config=HatConfig())
+    base.update(kw)
+    return build_inputs(**base)
+
+
+def test_default_breaks_are_labeled_assumed_and_deterministic():
+    inp = _inputs()
+    assert inp.price_breaks_assumed is True
+    q_eoq = compute_eoq(5200.0, 0.25 * 10.0, 75.0).order_quantity
+    assert inp.price_breaks == (
+        PriceBreak(0.0, 10.0),
+        PriceBreak(2.0 * q_eoq, 9.8),
+        PriceBreak(4.0 * q_eoq, 9.6),
+    )
+
+
+def test_injected_breaks_are_used_as_given_not_assumed():
+    breaks = (PriceBreak(0.0, 10.0), PriceBreak(500.0, 9.0))
+    inp = _inputs(price_breaks=breaks)
+    assert inp.price_breaks_assumed is False
+    assert inp.price_breaks == breaks
+
+
+def test_unit_cost_at_is_piecewise_with_base_fallback():
+    inp = _inputs(price_breaks=(PriceBreak(100.0, 9.5),))  # no base tier injected
+    assert unit_cost_at(inp, 50.0) == 10.0        # below every tier -> base unit_cost
+    assert unit_cost_at(inp, 100.0) == 9.5
+    assert unit_cost_at(inp, 5000.0) == 9.5
+
+
+def test_anchor_quantities_are_closed_form_and_precede_the_grid():
+    inp = _inputs()
+    q_eoq, q_disc = anchor_quantities(inp)
+    assert q_eoq == pytest.approx(compute_eoq(5200.0, 2.5, 75.0).order_quantity)
+    assert q_disc > q_eoq  # the -2%/-4% synthetic breaks make a bigger Q win
+
+
+def test_grid_is_deterministic_ordered_and_contains_the_anchors():
+    inp = _inputs()
+    grid = candidate_grid(inp)
+    assert grid == candidate_grid(inp)                       # bytes-identical rerun
+    sls = [c.service_level for c in grid]
+    assert sls == sorted(sls)                                # SL asc outer
+    q_eoq, q_disc = anchor_quantities(inp)
+    qs_at_95 = [c.order_quantity for c in grid if c.service_level == 0.95]
+    assert qs_at_95 == sorted(qs_at_95)                      # Q asc inner
+    for q in (q_eoq, q_disc):                                # mandatory candidates (+ baseline=q_eoq)
+        assert any(abs(c.order_quantity - q) < 1e-12 for c in grid)
+    assert len(grid) >= 125 and len(grid) % len(SL_GRID) == 0
+    lo = 0.5 * min(q_eoq, q_disc)
+    hi = 1.25 * max(q_eoq, q_disc)
+    assert min(qs_at_95) == pytest.approx(lo) and max(qs_at_95) == pytest.approx(hi)
+
+
+def test_ss_units_matches_engine_safety_stock():
+    from src.safety_stock import safety_stock
+    inp = _inputs()
+    assert ss_units(inp, 0.95) == pytest.approx(
+        safety_stock(30.0, 0.95, risk_periods=1.0).safety_stock)
