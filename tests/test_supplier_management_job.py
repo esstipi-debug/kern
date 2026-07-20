@@ -1,5 +1,7 @@
 """Kraljic supplier-segmentation job: suppliers CSV -> normalized drivers -> deck."""
 
+import math
+
 import pandas as pd
 import pytest
 
@@ -93,3 +95,32 @@ def test_build_deck_is_an_ascii_deliverable_naming_the_quadrants(tmp_path):
     md = deck.to_markdown()
     assert md.isascii()
     assert "strategic" in md and "## Coverage & handoff" in md
+
+
+def test_prepare_treats_unparseable_spend_as_zero_not_nan(tmp_path):
+    """One bad spend cell must not poison every supplier's spend_share.
+
+    ``pd.to_numeric(..., errors="coerce")`` turns an unparseable cell into NaN,
+    and NaN is truthy in Python (``bool(float('nan'))`` is True), so a naive
+    ``... or 0.0`` fallback never catches it. Because ``segment_suppliers``
+    sums ``annual_value`` across the whole batch once and divides every
+    supplier's spend_share by that shared total, a single NaN would corrupt
+    ALL suppliers' spend_share -- not just the bad row's.
+    """
+    csv = tmp_path / "sup_bad_spend.csv"
+    pd.DataFrame({
+        "supplier": ["A", "B", "C"],
+        "annual_spend": ["500.0", "N/A", "120.0"],
+        "lead_time_days": [40, 8, 34],
+    }).to_csv(csv, index=False)
+
+    payload = smj.prepare(str(csv), {})
+    by_name = {s.supplier: s.annual_value for s in payload["suppliers"]}
+    assert by_name["B"] == 0.0
+    assert not math.isnan(by_name["B"])
+
+    report = smj.run(payload["suppliers"], payload["drivers"])
+    assert len(report.segments) == 3
+    for s in report.segments:
+        assert math.isfinite(s.spend_share), f"{s.supplier} has non-finite spend_share: {s.spend_share}"
+        assert not math.isnan(s.spend_share)

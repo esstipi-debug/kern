@@ -111,10 +111,11 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
 
     suppliers: list[SupplierInput] = []
     for _, row in df.iterrows():
+        spend = pd.to_numeric(row[spend_col], errors="coerce")
         suppliers.append(
             SupplierInput(
                 supplier=str(row[supplier_col]),
-                annual_value=float(pd.to_numeric(row[spend_col], errors="coerce") or 0.0),
+                annual_value=0.0 if pd.isna(spend) else float(spend),
                 risk_scores=normed.get(str(row[supplier_col]), {}),
             )
         )
