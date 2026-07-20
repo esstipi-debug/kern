@@ -131,6 +131,47 @@ def _capacity_constraint(
     return LinearConstraint(a, lb=-np.inf, ub=0.0)
 
 
+def _build_objective(
+    demands: list[DemandPoint], sites: list[CandidateSite], n_s: int, n_var: int
+) -> np.ndarray:
+    """Objective: sum_j fixed_cost_j y_j + sum_ij w_i d_ij x_ij."""
+    c = np.zeros(n_var)
+    for j, s in enumerate(sites):
+        c[j] = s.fixed_cost
+    for i, d in enumerate(demands):
+        for j, s in enumerate(sites):
+            c[_var_index(i, j, n_s)] = d.weight * _distance(d, s)
+    return c
+
+
+def _extract_solution(
+    x: np.ndarray,
+    objective: float,
+    demands: list[DemandPoint],
+    sites: list[CandidateSite],
+    p: int,
+    n_s: int,
+    baseline: float,
+) -> NetworkDesign:
+    """Turn a feasible MILP solution vector into a NetworkDesign."""
+    open_sites = tuple(sites[j].name for j in range(n_s) if x[j] > 0.5)
+    assignment: dict[str, str] = {}
+    weighted = 0.0
+    for i, d in enumerate(demands):
+        j = np.argmax(x[n_s + i * n_s : n_s + (i + 1) * n_s])
+        assignment[d.name] = sites[j].name
+        weighted += d.weight * _distance(d, sites[j])
+    total_fixed = sum(sites[j].fixed_cost for j in range(n_s) if x[j] > 0.5)
+    saving = baseline - weighted
+    saving_pct = (saving / baseline) if baseline > 0 else 0.0
+    return NetworkDesign(
+        feasible=True, p=p, open_sites=open_sites, assignment=assignment,
+        total_weighted_distance=weighted, total_fixed_cost=total_fixed,
+        objective=objective, baseline_distance=baseline,
+        saving_vs_baseline=saving, saving_pct=saving_pct,
+    )
+
+
 def solve_p_median(
     demands: list[DemandPoint],
     sites: list[CandidateSite],
@@ -159,13 +200,7 @@ def solve_p_median(
     n_s = len(sites)
     n_var = n_s + n_d * n_s
 
-    # Objective: sum_j fixed_cost_j y_j + sum_ij w_i d_ij x_ij.
-    c = np.zeros(n_var)
-    for j, s in enumerate(sites):
-        c[j] = s.fixed_cost
-    for i, d in enumerate(demands):
-        for j, s in enumerate(sites):
-            c[_var_index(i, j, n_s)] = d.weight * _distance(d, s)
+    c = _build_objective(demands, sites, n_s, n_var)
 
     constraints: list[LinearConstraint] = [
         _assignment_constraint(n_d, n_s, n_var),
@@ -182,7 +217,6 @@ def solve_p_median(
     bounds = Bounds(lb=0.0, ub=1.0)
 
     res = milp(c=c, constraints=constraints, integrality=integrality, bounds=bounds)
-
     baseline = _best_single_facility_distance(demands, sites)
 
     if not res.success or res.x is None:
@@ -193,20 +227,4 @@ def solve_p_median(
             saving_vs_baseline=0.0, saving_pct=0.0,
         )
 
-    x = res.x
-    open_sites = tuple(sites[j].name for j in range(n_s) if x[j] > 0.5)
-    assignment: dict[str, str] = {}
-    weighted = 0.0
-    for i, d in enumerate(demands):
-        j = np.argmax(x[n_s + i * n_s : n_s + (i + 1) * n_s])
-        assignment[d.name] = sites[j].name
-        weighted += d.weight * _distance(d, sites[j])
-    total_fixed = sum(sites[j].fixed_cost for j in range(n_s) if x[j] > 0.5)
-    saving = baseline - weighted
-    saving_pct = (saving / baseline) if baseline > 0 else 0.0
-    return NetworkDesign(
-        feasible=True, p=p, open_sites=open_sites, assignment=assignment,
-        total_weighted_distance=weighted, total_fixed_cost=total_fixed,
-        objective=float(res.fun), baseline_distance=baseline,
-        saving_vs_baseline=saving, saving_pct=saving_pct,
-    )
+    return _extract_solution(res.x, float(res.fun), demands, sites, p, n_s, baseline)
