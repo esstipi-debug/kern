@@ -66,14 +66,22 @@ def _resolve_driver_cols(df: pd.DataFrame, params: dict) -> dict[str, str]:
     return resolved
 
 
-def normalize_drivers(df: pd.DataFrame, *, driver_cols: dict[str, str]) -> dict[str, dict[str, float]]:
+def normalize_drivers(
+    df: pd.DataFrame, *, driver_cols: dict[str, str], supplier_col: str | None = None
+) -> dict[str, dict[str, float]]:
     """Min-max scale each driver column to [0,1] (constant column -> all 0.0).
 
-    Returns supplier name -> {driver_key: normalized score}, keyed by the sniffed
-    supplier column (falls back to the DataFrame's positional index if no supplier
-    column is present, so the function stays usable standalone on an arbitrary df).
+    Returns supplier name -> {driver_key: normalized score}, keyed by ``supplier_col``.
+    ``prepare`` resolves the supplier column once (honoring any caller override) and
+    passes it in explicitly, so this function's own notion of "which column is the
+    supplier" always matches ``prepare``'s. When called standalone (e.g. directly in
+    tests) with no ``supplier_col``, it falls back to sniffing ``_SUPPLIER_COLS``
+    itself, and falls back further to the DataFrame's positional index if no supplier
+    column is present at all -- so the function stays usable standalone on an
+    arbitrary df.
     """
-    supplier_col = _pick_column(df, None, _SUPPLIER_COLS)
+    if supplier_col is None:
+        supplier_col = _pick_column(df, None, _SUPPLIER_COLS)
     keys = df[supplier_col].astype(str) if supplier_col is not None else df.index.to_series().astype(str)
 
     normed: dict[str, dict[str, float]] = {}
@@ -107,7 +115,7 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
 
     driver_cols = _resolve_driver_cols(df, params)
     df = df.reset_index(drop=True)
-    normed = normalize_drivers(df, driver_cols=driver_cols)
+    normed = normalize_drivers(df, driver_cols=driver_cols, supplier_col=supplier_col)
 
     suppliers: list[SupplierInput] = []
     for _, row in df.iterrows():

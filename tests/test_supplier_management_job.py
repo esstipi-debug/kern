@@ -61,6 +61,38 @@ def test_prepare_errors_without_a_spend_column(tmp_path):
         smj.prepare(str(csv), {})
 
 
+def test_prepare_threads_supplier_col_override_into_normalize_drivers(tmp_path):
+    """Regression: prepare's supplier_col override must reach normalize_drivers.
+
+    Before the fix, normalize_drivers re-sniffed the supplier column internally
+    with a hardcoded None override, ignoring params["supplier_col"]. For a CSV
+    whose supplier column has a non-standard name (e.g. a Spanish/LATAM client's
+    "proveedor"), that internal sniff found no standard-named column and fell
+    back to keying its output by positional index -- so prepare's
+    ``normed.get(str(row[supplier_col]), {})`` lookup always missed, and every
+    supplier silently got risk_scores={} (supply_risk 0.0 for everyone), masking
+    real risk under a wrong-but-plausible "all low risk" Kraljic answer.
+    """
+    csv = tmp_path / "sup_es.csv"
+    pd.DataFrame({
+        "proveedor": ["Acme", "Globex", "Initech"],
+        "annual_spend": [500.0, 300.0, 120.0],
+        "lead_time_days": [40, 8, 34],
+    }).to_csv(csv, index=False)
+
+    payload = smj.prepare(str(csv), {"supplier_col": "proveedor"})
+    assert {s.supplier for s in payload["suppliers"]} == {"Acme", "Globex", "Initech"}
+    assert any(s.risk_scores for s in payload["suppliers"]), (
+        "every supplier's risk_scores is empty -- normalize_drivers isn't keyed "
+        "by the resolved supplier_col"
+    )
+
+    report = smj.run(payload["suppliers"], payload["drivers"])
+    assert any(s.supply_risk > 0.0 for s in report.segments), (
+        "every supplier's supply_risk is 0.0 -- the risk axis is silently dead"
+    )
+
+
 def test_run_places_each_supplier_and_counts_quadrants(tmp_path):
     csv = tmp_path / "sup.csv"
     _suppliers_df().to_csv(csv, index=False)
