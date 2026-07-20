@@ -56,6 +56,8 @@ def _donut_svg(
     static/how_it_works.js for click-to-filter) plus a native <title> so a
     hover tooltip works with zero JS.
     """
+    if any(count < 0 for _, count in segments):
+        raise ValueError("segment counts must be non-negative")
     total = sum(count for _, count in segments)
     if total <= 0:
         raise ValueError("donut segments must sum to a positive total")
@@ -76,20 +78,20 @@ def _donut_svg(
         pct = round(fraction * 100)
         safe_label = escape(str(label))
         arcs.append(
-            f'<circle class="donut-seg" data-label="{safe_label}" data-count="{count}" '
-            f'data-pct="{pct}" tabindex="0" cx="{center}" cy="{center}" r="{radius:.3f}" '
-            f'fill="none" stroke="{color}" stroke-width="{stroke_width}" '
-            f'stroke-dasharray="{dash:.3f} {gap:.3f}" stroke-dashoffset="{offset:.3f}" '
-            f'transform="rotate(-90 {center} {center})">'
-            f"<title>{safe_label}: {count} ({pct}%)</title>"
+            f'<circle class="donut-seg" data-label="{safe_label}" data-count="{escape(str(count))}" '
+            f'data-pct="{escape(str(pct))}" tabindex="0" cx="{escape(f"{center:.3f}")}" cy="{escape(f"{center:.3f}")}" r="{escape(f"{radius:.3f}")}" '
+            f'fill="none" stroke="{color}" stroke-width="{escape(str(stroke_width))}" '
+            f'stroke-dasharray="{escape(f"{dash:.3f}")} {escape(f"{gap:.3f}")}" stroke-dashoffset="{escape(f"{offset:.3f}")}" '
+            f'transform="rotate(-90 {escape(f"{center:.3f}")} {escape(f"{center:.3f}")})">'
+            f"<title>{safe_label}: {escape(str(count))} ({escape(str(pct))}%)</title>"
             "</circle>"
         )
 
     return (
-        f'<svg class="donut" id="{escape(element_id)}" viewBox="0 0 {size} {size}" '
-        f'width="{size}" height="{size}" role="img" aria-label="Donut chart">'
+        f'<svg class="donut" id="{escape(element_id)}" viewBox="0 0 {escape(str(size))} {escape(str(size))}" '
+        f'width="{escape(str(size))}" height="{escape(str(size))}" role="img" aria-label="Donut chart">'
         + "".join(arcs)
-        + f'<text x="{center}" y="{center}" class="donut-total" text-anchor="middle" '
-        f'dominant-baseline="middle">{total}</text>'
+        + f'<text x="{escape(f"{center:.3f}")}" y="{escape(f"{center:.3f}")}" class="donut-total" text-anchor="middle" '
+        f'dominant-baseline="middle">{escape(str(total))}</text>'
         + "</svg>"
     )

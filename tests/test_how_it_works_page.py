@@ -5,7 +5,6 @@ tests through the real FastAPI app, mirroring tests/test_stocky_alternative_page
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
@@ -40,3 +39,10 @@ def test_donut_svg_rejects_empty_total() -> None:
 
     with pytest.raises(ValueError):
         _donut_svg([("A", 0), ("B", 0)], element_id="empty-donut")
+
+
+def test_donut_svg_rejects_negative_count() -> None:
+    import pytest
+
+    with pytest.raises(ValueError):
+        _donut_svg([("A", -5), ("B", 10)], element_id="negative-donut")
