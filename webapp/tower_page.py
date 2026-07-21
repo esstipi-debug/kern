@@ -64,6 +64,7 @@ _HEAD = """<!DOCTYPE html>
     --txt:#e7eef6; --txt-2:#c4cfdb; --muted:#9aa7b6; --faint:#5e6b7a;
     --accent:#4fd1c5; --accent-bright:#5eead4; --accent-soft:rgba(79,209,197,.14); --accent-bd:rgba(79,209,197,.45);
     --ok:#3fb950; --warn:#e3b341; --bad:#f0564a;
+    --accent-warm:#ffb545; --accent-warm-2:#ff8a5c; --accent-warm-deep:#b5601f;
     --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
     --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
     --r:13px;
@@ -84,10 +85,12 @@ _HEAD = """<!DOCTYPE html>
   .muted{color:var(--muted)} .sub{color:var(--txt-2)}
   section{padding:28px 0}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px}
-  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:600 13.5px/1 var(--sans);padding:9px 16px;border-radius:999px;border:1px solid transparent;cursor:pointer;transition:transform .15s,box-shadow .15s}
-  .btn-primary{background:linear-gradient(150deg,var(--accent-bright),var(--accent));color:#06201d;box-shadow:0 10px 26px -12px rgba(79,209,197,.6)}
-  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 16px 32px -12px rgba(79,209,197,.85)}
-  .btn-primary:disabled{opacity:.5;cursor:default;transform:none;box-shadow:none}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:600 13.5px/1 var(--sans);padding:9px 16px;border-radius:999px;border:1px solid transparent;cursor:pointer;transition:transform 80ms ease-out,box-shadow 80ms ease-out,filter 120ms ease-out}
+  .btn-primary{background:linear-gradient(150deg,var(--accent-warm),var(--accent-warm-2));color:#2a1200;box-shadow:0 4px 0 var(--accent-warm-deep)}
+  .btn-primary:hover{filter:saturate(1.08)}
+  .btn-primary:active{transform:translateY(4px);box-shadow:0 0 0 var(--accent-warm-deep)}
+  .btn-primary:focus-visible{outline:2px solid var(--accent-warm);outline-offset:2px}
+  .btn-primary:disabled{opacity:.5;cursor:default;transform:none;box-shadow:0 4px 0 var(--accent-warm-deep)}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   .field-label{font:600 12px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
   .input{background:var(--panel-2);border:1px solid var(--line-2);border-radius:8px;color:var(--txt);padding:9px 11px;font:14px/1 var(--sans)}
