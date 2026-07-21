@@ -36,6 +36,7 @@ _HEAD = """<!DOCTYPE html>
     --line:#1e2733; --line-2:#283341;
     --txt:#e7eef6; --txt-2:#c4cfdb; --muted:#9aa7b6; --faint:#5e6b7a;
     --accent:#4fd1c5; --accent-bright:#5eead4; --accent-soft:rgba(79,209,197,.14); --accent-bd:rgba(79,209,197,.45);
+    --accent-warm:#ffb545; --accent-warm-2:#ff8a5c; --accent-warm-deep:#b5601f;
     --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
     --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
     --r:13px;
@@ -56,11 +57,14 @@ _HEAD = """<!DOCTYPE html>
   .muted{{color:var(--muted)}} .sub{{color:var(--txt-2)}}
   section{{padding:38px 0}}
   .panel{{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:22px}}
-  .btn{{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:600 14px/1 var(--sans);padding:11px 18px;border-radius:999px;border:1px solid transparent;cursor:pointer;transition:transform .15s,box-shadow .15s}}
-  .btn-primary{{background:linear-gradient(150deg,var(--accent-bright),var(--accent));color:#06201d;box-shadow:0 10px 26px -12px rgba(79,209,197,.6)}}
-  .btn-primary:hover{{transform:translateY(-1px);box-shadow:0 16px 32px -12px rgba(79,209,197,.85)}}
+  .btn{{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:600 14px/1 var(--sans);padding:11px 18px;border-radius:999px;border:1px solid transparent;cursor:pointer;transition:transform 80ms ease-out,box-shadow 80ms ease-out,filter 120ms ease-out}}
+  .btn-primary{{background:linear-gradient(150deg,var(--accent-warm),var(--accent-warm-2));color:#2a1200;box-shadow:0 6px 0 var(--accent-warm-deep)}}
+  .btn-primary:hover{{filter:saturate(1.08)}}
+  .btn-primary:active{{transform:translateY(6px);box-shadow:0 0 0 var(--accent-warm-deep)}}
+  .btn-primary:focus-visible{{outline:2px solid var(--accent-warm);outline-offset:2px}}
   .btn-ghost{{background:transparent;color:var(--txt);border-color:var(--line-2)}}
   .btn-ghost:hover{{border-color:var(--accent-bd);background:var(--accent-soft)}}
+  .btn-ghost:active{{transform:translateY(2px)}}
   .row{{display:flex;gap:10px;flex-wrap:wrap;align-items:center}}
   .grid{{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:26px}}
   @media(max-width:780px){{.grid{{grid-template-columns:1fr}}}}

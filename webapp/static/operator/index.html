@@ -16,6 +16,7 @@
     --accent:#5eead4; --accent-2:#34d3bd; --accent-deep:#0fb39b;
     --accent-soft:rgba(94,234,212,.12); --accent-bd:rgba(94,234,212,.40);
     --glow:rgba(94,234,212,.22);
+    --accent-warm:#ffb545; --accent-warm-2:#ff8a5c; --accent-warm-deep:#b5601f;
     --ok:#3fb950; --warn:#e3b341; --bad:#f0564a; --info:#6ea8fe;
     --disp:'Space Grotesk',ui-sans-serif,system-ui,sans-serif;
     --sans:'Inter',ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
@@ -106,15 +107,19 @@
   .cta{display:flex; gap:13px; flex-wrap:wrap; margin-top:30px}
   .btn{
     display:inline-flex; align-items:center; gap:9px; font-weight:600; font-size:14.5px; padding:12px 22px;
-    border-radius:12px; border:1px solid transparent; cursor:pointer; transition:.18s;
+    border-radius:14px; border:1px solid transparent; cursor:pointer;
+    transition:transform 80ms ease-out, box-shadow 80ms ease-out, filter 120ms ease-out;
   }
   .btn-primary{
-    color:#04221d; background:linear-gradient(135deg, var(--accent), var(--accent-deep));
-    box-shadow:0 14px 34px -14px var(--glow), inset 0 1px 0 rgba(255,255,255,.25);
+    color:#2a1200; background:linear-gradient(135deg, var(--accent-warm), var(--accent-warm-2));
+    box-shadow:0 6px 0 var(--accent-warm-deep);
   }
-  .btn-primary:hover{transform:translateY(-2px); box-shadow:0 20px 44px -14px var(--glow)}
+  .btn-primary:hover{filter:saturate(1.08)}
+  .btn-primary:active{transform:translateY(6px); box-shadow:0 0 0 var(--accent-warm-deep)}
+  .btn-primary:focus-visible{outline:2px solid var(--accent-warm); outline-offset:2px}
   .btn-ghost{color:var(--txt-2); border-color:var(--line-2); background:rgba(255,255,255,.02)}
   .btn-ghost:hover{border-color:var(--accent-bd); color:var(--txt)}
+  .btn-ghost:active{transform:translateY(2px)}
 
   /* outcome mini-cards */
   .outcomes{margin-top:42px; padding-top:26px; border-top:1px solid var(--line)}

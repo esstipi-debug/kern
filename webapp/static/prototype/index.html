@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/theme.css">
 <style>
   :root{
     --ink:#080b11; --ink-2:#0d1219; --panel:#111722; --panel-2:#0f141d;
@@ -95,16 +96,18 @@
     padding:6px 12px; transition:all .16s var(--ease);
   }
   .scm-chip:hover{color:var(--accent-bright); border-color:var(--accent-dim); background:rgba(79,209,197,.07); transform:translateY(-1px);}
+  .scm-chip:active{transform:translateY(0) scale(.97);}
 
   .scm-run{
     width:100%; margin-top:20px; font-family:var(--sans); font-size:15px; font-weight:700; letter-spacing:.01em;
-    color:var(--ink); cursor:pointer; border:0; border-radius:12px; padding:13px 18px;
-    background:linear-gradient(150deg,var(--accent-bright),var(--accent));
-    box-shadow:0 12px 26px -12px rgba(79,209,197,.65); transition:transform .15s var(--ease), box-shadow .15s, filter .15s;
+    color:#2a1200; cursor:pointer; border:0; border-radius:14px; padding:13px 18px;
+    background:linear-gradient(150deg,var(--accent-warm),var(--accent-warm-2));
+    box-shadow:0 6px 0 var(--accent-warm-deep); transition:transform 80ms ease-out, box-shadow 80ms ease-out, filter 120ms ease-out;
     display:flex; align-items:center; justify-content:center; gap:9px;
   }
-  .scm-run:hover{transform:translateY(-1px); box-shadow:0 16px 32px -12px rgba(79,209,197,.8); filter:saturate(1.08);}
-  .scm-run:active{transform:translateY(0);}
+  .scm-run:hover{filter:saturate(1.08);}
+  .scm-run:active{transform:translateY(6px); box-shadow:0 0 0 var(--accent-warm-deep);}
+  .scm-run:focus-visible{outline:2px solid var(--accent-warm); outline-offset:2px;}
   .scm-err{color:var(--bad); font-size:13px; margin:12px 0 0;}
 
   .scm-empty{height:100%; min-height:300px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:14px; color:var(--faint);}

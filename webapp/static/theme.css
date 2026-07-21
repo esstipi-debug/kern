@@ -1,0 +1,61 @@
+/* webapp/static/theme.css
+   Additive tokens + component classes for the gamified button/progress-bar
+   treatment. See docs/superpowers/specs/2026-07-20-gamified-buttons-design.md.
+   Linked by index.html and prototype/index.html. operator/index.html keeps its
+   own standalone token system (different template/layout) and is not linked here.
+*/
+
+:root {
+  --accent-warm: #ffb545;
+  --accent-warm-2: #ff8a5c;
+  --accent-warm-deep: #b5601f;
+}
+
+/* compact "game" action buttons — app.js "export"/"retry" CTAs */
+.btn-warm-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: #2a1200;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--r-field);
+  padding: 10px 16px;
+  background: linear-gradient(150deg, var(--accent-warm), var(--accent-warm-2));
+  box-shadow: 0 4px 0 var(--accent-warm-deep);
+  transform: translateY(0);
+  transition: transform 80ms ease-out, box-shadow 80ms ease-out, filter 120ms ease-out;
+}
+.btn-warm-action:hover { filter: saturate(1.1); }
+.btn-warm-action:active { transform: translateY(4px); box-shadow: 0 0 0 var(--accent-warm-deep); }
+.btn-warm-action:focus-visible { outline: 2px solid var(--accent-warm); outline-offset: 2px; }
+
+/* progress bars — pill shape + glossy fill */
+.bar-track {
+  border-radius: var(--r-chip);
+  background: var(--track);
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .3);
+}
+.bar-fill-gloss {
+  border-radius: var(--r-chip);
+  box-shadow: inset 0 2px 5px rgba(255, 255, 255, .22), inset 0 -2px 4px rgba(0, 0, 0, .22);
+}
+.bar-fill-safety {
+  background: linear-gradient(to bottom, var(--accent-warm), var(--accent-warm-2));
+}
+.bar-fill-shimmer {
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, .15) 25%, transparent 25%,
+    transparent 50%, rgba(255, 255, 255, .15) 50%, rgba(255, 255, 255, .15) 75%, transparent 75%);
+  background-size: 20px 20px;
+  animation: bar-stripes 3s linear infinite;
+}
+@keyframes bar-stripes {
+  to { background-position: 40px 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-fill-shimmer { animation: none; background-image: none; }
+}
