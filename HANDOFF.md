@@ -22,6 +22,128 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-07-21 — Gamified UI + real-data demo: 2 open draft PRs, worktrees `.wt-gamified-buttons` / `.wt-realistic-demo-data`
+
+**Read this section first if you're picking up cold.** Started as "give the
+buttons a game-like feel," grew into two independent, mergeable draft PRs.
+Neither is merged to `main`. Neither is deployed.
+
+### PR #177 — `feat/gamified-buttons-ui` — gamified button/bar restyle + a real Budget Planner consequence panel
+
+Worktree: `C:\Users\Gamer\Music\scm\.wt-gamified-buttons`.
+
+- **Warm gold/coral (`#ffb545`→`#ff8a5c`, deep `#b5601f`) "ledge-press" bevel**
+  on every primary CTA, and **pill-shaped glossy progress bars**, across `/`,
+  `/console`, `/operator`, `/demo`, `/paquetes`, `/stocky-alternative`,
+  `/one-plan`, `/tower`. Brand teal, status chips, charts untouched —
+  additive tokens only, nothing existing redefined. Design spec:
+  `docs/superpowers/specs/2026-07-20-gamified-buttons-design.md`. Plan:
+  `docs/superpowers/plans/2026-07-20-gamified-buttons.md`.
+- **A real "consequence panel" on the Budget Planner** (last commit,
+  `0258e4a`): dragging the investment-cap/service-level slider now shows a
+  plain-language before/after contrast against the first-load baseline —
+  uncovered safety-stock buffer ($), coverage (%), budget headroom ($), a
+  verdict banner, and a "volver a lo que tenía pensado" reset. Real
+  `/api/portfolio` numbers, no synthetic formula. **A first draft used
+  `tot.n_risk` (a forecast-bias flag) as one of the three cards — it never
+  moved with the budget slider in any tested scenario (stayed 0 even at 44%
+  coverage), which would have read as "nothing changed."** Fixed before
+  commit: replaced with the dollar value of unfunded safety-stock buffer
+  (directly derived from `scale`, which the slider does control). If you
+  extend this panel, don't reintroduce `n_risk` as a budget-responsive
+  metric — it isn't one.
+- No JS test suite exists for this frontend (vanilla JS, no build step) —
+  verified via a live server + DOM/API inspection, not automated tests.
+  One opus-tier adversarial whole-branch review ran on the button-restyle
+  portion (before the consequence panel was added): 0 Critical/High, 2
+  Medium fixed (a shimmer animation silently clobbered by an inline
+  `background` shorthand; a legend swatch left the old color after its bar
+  turned gold).
+
+### PR #178 — `feat/realistic-demo-data` — real Olist e-commerce data, opt-in
+
+Worktree: `C:\Users\Gamer\Music\scm\.wt-realistic-demo-data`.
+
+The dashboard's default demo data (`SKU-A`..`SKU-H`) is fully synthetic,
+which made it hard to reason about what a decision actually does (a real
+conversation this session got stuck here before the fix). Added
+`scripts/generate_portfolio_from_olist.py`: aggregates the real Brazilian
+Olist dataset (fetched via the pre-existing `scripts/fetch_olist.py`, no
+Kaggle login) into the 8 highest-volume product categories with real
+average price + real purchase→delivery lead time. **Does not touch**
+`data/sample_demand_portfolio.csv` — several tests
+(`test_webapp.py`/`test_forecasting_auto.py`/...) assert specific `SKU-*`
+IDs against it. Writes to a new file (`data/sample_demand_portfolio_olist.csv`,
+committed, ~17KB) instead, opt-in via `LINCHPIN_PORTFOLIO_DATA_FILE`
+(same env-var-override pattern as `LINCHPIN_LEAD_REPORTS_DIR`). Default
+behavior is byte-for-byte unchanged — verified via direct API diff + the
+full suite of every test referencing the portfolio CSV (227 passed, 1
+skipped). Doesn't touch `webapp/static/app.js` at all, so it merges
+cleanly independent of PR #177 despite both being "make the demo feel
+real" work.
+
+### Gotcha: a stale, WRONG duplicate checkout exists — don't work in it again
+
+`C:\Users\Gamer\linchpin` (remote `github.com/esstipi-debug/linchpin`, NOT
+`kern.git`) is a **separate, far-less-active checkout** that this session
+initially (wrongly) targeted for ~2 hours before the mixup was caught (a
+`preview_start` launch-config name collision surfaced it — the real repo's
+`.claude/launch.json` had a same-named config pointing at the real
+`supply-chain-optimization` checkout). It has its own stale
+`feat/gamified-buttons-ui` branch (9 commits, superseded by PR #177 above,
+never pushed anywhere useful) sitting there unresolved — **the operator
+hasn't decided whether to delete it**, ask before touching it. The real,
+actively-developed checkout is always `C:\Users\Gamer\Music\scm\supply-chain-optimization`
+(or one of its `.wt-*` sibling worktrees) — remote `esstipi-debug/kern.git`.
+If a `preview_start`/launch.json config name looks ambiguous, verify
+`--app-dir` before trusting it.
+
+### Also discovered, not new work: the "Kern as AI agency" pricing already shipped
+
+Mid-session the operator asked "how would Kern's offer look as an AI
+agency instead of SaaS" — the answer turned out to be **already built**,
+not a gap: `/one-plan` (English AU/NZ agency landing page, fractional-team
+framing vs. a full-time planner hire) and the GMV-band-primary pricing
+picker on `/paquetes` both shipped 2026-07-18 per
+`docs/superpowers/plans/2026-07-18-kern-gmv-band-gtm.md` (that plan's own
+"Status: DESIGN COMPLETE" line is now stale — it's fully built, verify
+against `src/commercial_pricing.py` / `webapp/pricing_quote.py` /
+`webapp/one_plan_page.py` before assuming otherwise). Two small things
+flagged during this session's walkthrough, **neither fixed**:
+- `/one-plan`'s CTA buttons ("Pagar / Empezar", "Agendar una llamada")
+  render in Spanish even though the rest of the page is English — they
+  share `_cta_buttons`/`offers.py` label strings with the Spanish
+  `/paquetes` page's offers.
+- A broken/missing icon (renders as an empty `□`) at the top of each
+  pricing-tier card on the `/one-plan` (or `/paquetes`, unconfirmed which)
+  4-tier comparison view — likely an emoji or icon glyph that isn't
+  rendering; not investigated further.
+
+Also raised, not decided: whether **Retainer Ejecutivo** should keep being
+a 4th tier on the pricing page at all, since per `package_specs.py`'s own
+shape it's mechanically "Scale × 1.4, same 35 tools, governance-only
+delta" — arguably an upsell/add-on on Scale rather than a menu item a cold
+buyer picks from directly (the 2026-07-18 repricing session already
+decided this exact thing and said so — `HANDOFF.md`'s own 2026-07-18
+entry below: "sell it only as an upgrade offered to an existing Scale
+client, never listed alongside Starter/Growth/Scale up front" — but the
+live `/paquetes`/`/one-plan` cards currently DO list it as a 4th menu
+item, contradicting that decision. Worth resolving: fix the page to match
+the decision, or revisit the decision.).
+
+### Environment note for whoever picks this up
+
+The Claude Browser pane's `computer` screenshot action was unreliable all
+session (~30s timeouts, most attempts), while `get_page_text`,
+`javascript_tool` (DOM/computed-style reads), `read_network_requests`, and
+direct `curl` against the running dev server all worked fine throughout —
+lean on those for verification instead of fighting screenshots. Also: this
+machine's browser profile caches `/static/app.js?v=2`-style versioned
+script URLs aggressively across page loads/new tabs within the same
+session — when in doubt whether a change is live, `curl` the file directly
+or `fetch(url, {cache:'no-store'})` from `javascript_tool`, don't trust a
+plain navigate+read.
+
 ## 2026-07-18 — Stage 2 (GMV-band pricing calculator) SHIPPED: Tasks 2-4 of the GMV-band GTM plan (branch `worktree-gmv-band-gtm`)
 
 **Supersedes the "Stage 2 (variable-pricing billing logic) is still not started" note in the entry below.** Stage 2 is now live: `src/commercial_pricing.py` (pure GMV-band quote engine — `package_key` is the source of truth for price, `annual_revenue` only suggests a better-fitting package/flags a mismatch, never silently overrides), `webapp/pricing_quote.py` (`GET /api/pricing-quote?package=&revenue=&skus=`, mounted in `webapp/app.py`, boot-safety-verified: imports only `src.commercial_pricing` + stdlib/FastAPI, no optional-extra deps), and `webapp/paquetes_page.py` (additive band-picker widget — revenue/SKU inputs + "Calcular" button, plain JS `fetch()`, no new dependency — on the Starter/Growth/Scale/Retainer cards only, the 4 offers with a real GMV band; Diagnostico/Starter-LatAm/Proyecto-*/Liquidacion still show only their static price, since the endpoint 400s for them). Existing static `escape(offer.price)` anchors on every card are unchanged (diffed to confirm). Full plan: `docs/superpowers/plans/2026-07-18-kern-gmv-band-gtm.md`.
