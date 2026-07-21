@@ -87,7 +87,10 @@ from webapp.pricing_quote import router as pricing_quote_router  # noqa: E402
 from webapp.stocky_alternative_page import render_stocky_alternative_html  # noqa: E402
 from webapp.tower_page import T1_DISPLAY_LIMIT, render_tower_html  # noqa: E402
 
-DATA_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
+DATA_FILE = Path(
+    os.environ.get("LINCHPIN_PORTFOLIO_DATA_FILE", "").strip()
+    or (_REPO_ROOT / "data" / "sample_demand_portfolio.csv")
+)
 SAMPLE_STOCK_FILE = _REPO_ROOT / "data" / "sample_stock_snapshot.csv"
 # Lead mini-reports + follow-up drafts (operator-facing; gitignored). On a cloud
 # deploy point this at the persistent volume (e.g. /data/leads) or it is ephemeral.
