@@ -23,6 +23,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .community_summaries import CommunitySummaryIndex
+from .embeddings import EmbeddingIndex
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 BOOKS_GRAPH = _REPO_ROOT / "knowledge" / "scm-books" / "graph.json"
 CODE_GRAPH = _REPO_ROOT / "graphify-out" / "graph.json"
@@ -211,6 +214,24 @@ class KnowledgeBase:
                     adj.setdefault(tgt, set()).add(src)
             self._adjacency[name] = adj
 
+        # --- RAG enhancements (graceful fallback when fastembed absent) ---
+        # Semantic embedding index for the books graph
+        self._embedding_index = EmbeddingIndex()
+        self._embedding_cache = _REPO_ROOT / "knowledge" / "embeddings_cache.json"
+        books_nodes = self._graphs.get("books", {}).get("nodes", [])
+        if books_nodes:
+            self._embedding_index.build(
+                books_nodes,
+                adjacency=self._adjacency.get("books"),
+                cache_path=self._embedding_cache,
+            )
+
+        # Community summaries (template-based, no LLM, cached)
+        self._community_summaries = CommunitySummaryIndex.from_graph(
+            self._graphs.get("books", {}),
+            cache_path=_REPO_ROOT / "knowledge" / "community_summaries.json",
+        )
+
     def available(self) -> dict[str, int]:
         """Node count per graph (0 means the graph file was missing/empty)."""
         return {name: len(g["nodes"]) for name, g in self._graphs.items()}
@@ -387,6 +408,71 @@ class KnowledgeBase:
 
         scored.sort(key=lambda x: (-x[0], x[1].label))
         return [c for _, c in scored[:limit]]
+
+    def search_semantic(
+        self, query: str, *, graph: str = "books", limit: int = 5
+    ) -> list[tuple[Concept, float]]:
+        """Semantic search using fastembed embeddings — returns (concept, score) pairs.
+
+        Scores are cosine similarity (0-1, higher = more similar). Falls back
+        to an empty list if fastembed is not installed or the index is empty.
+
+        This catches paraphrases, synonyms, and conceptual proximity that
+        IDF-weighted token overlap misses — e.g. "buffer for uncertainty" matches
+        "safety stock" even though "buffer" and "safety" share no tokens.
+        """
+        if not self._embedding_index.ready:
+            return []
+
+        results = self._embedding_index.search(query, top_k=limit)
+        if not results:
+            return []
+
+        index = self._index.get(graph, {})
+        out: list[tuple[Concept, float]] = []
+        for node_id, score in results:
+            # node_id might be qualified (knowledge::x) or bare (x)
+            node = index.get(node_id) or index.get(f"knowledge::{node_id}")
+            if node is None:
+                continue
+            out.append((self._to_concept(node, graph), score))
+        return out
+
+    def community_summary(self, community_id: int | str | None) -> str:
+        """Return a plain-language summary of a community's key concepts."""
+        return self._community_summaries.get(community_id)
+
+    def community_summaries_all(self) -> dict[str, str]:
+        """Return all community summaries."""
+        return self._community_summaries.all()
+
+    def search_hybrid(
+        self, query: str, *, graph: str = "books", limit: int = 8
+    ) -> list[Concept]:
+        """Hybrid search: semantic results boosted with IDF-weighted keyword results.
+
+        Merges both result lists, preferring nodes that appear in both.
+        Falls back to pure keyword if fastembed is unavailable.
+        """
+        # Semantic pass
+        sem_results = self.search_semantic(query, graph=graph, limit=limit)
+
+        # Keyword pass
+        kw_results = self.search(query, graph=graph, limit=limit)
+        kw_ids = {c.id for c in kw_results}
+
+        # Merge: nodes in both get a boost, then union
+        merged: dict[str, tuple[float, Concept]] = {}
+        for concept, score in sem_results:
+            boost = 1.5 if concept.id in kw_ids else 1.0
+            merged[concept.id] = (score * boost, concept)
+        for concept in kw_results:
+            if concept.id not in merged:
+                # Give keyword-only results a baseline score so they're not invisible
+                merged[concept.id] = (0.3, concept)
+
+        ordered = sorted(merged.values(), key=lambda x: -x[0])
+        return [c for _, c in ordered[:limit]]
 
     def explain(self, concept_id: str) -> ConceptDetail | None:
         """Return a concept's rationale + neighbors.
