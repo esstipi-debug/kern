@@ -32328,6 +32328,21 @@
       "community": 126,
       "norm_label": "proximo paso propuesto: nuevas capacidades desde gaps del atlas",
       "repo": "knowledge"
+    },
+    {
+      "id": "reminder::evaluar_embeddings_con_modelos_mas_actua_2026-07-22",
+      "label": "Reminder: Evaluar embeddings con modelos mas actualizados: Fable 5, Kimi 3, o cualquier SO",
+      "node_type": "reminder",
+      "text": "Evaluar embeddings con modelos mas actualizados: Fable 5, Kimi 3, o cualquier SOTA en reranking/embedding. Reemplazar BAAI/bge-small-en-v1.5 cuando haya benchmark claro de mejora.",
+      "tags": [
+        "model_upgrade",
+        "embeddings",
+        "fable5",
+        "kimi3",
+        "eval"
+      ],
+      "captured_at": "2026-07-22T19:51:31.884937+00:00",
+      "repo": "knowledge"
     }
   ],
   "links": [
