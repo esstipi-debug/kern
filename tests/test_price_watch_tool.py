@@ -17,7 +17,8 @@ NOTE on the "39th tool" framing in the original task brief: by the time this
 PR landed, ``digital_twin_tool`` (a parallel, unrelated plan) had already been
 merged as the 33rd registered tool, and ``price_intelligence_tool`` (an
 earlier PR in THIS plan) as the 39th -- so ``price_watch_tool`` is actually
-the 40th. ``test_registry_now_has_40_tools`` asserts the real, current count,
+the 40th (and the reprice decision bridge later landed as the 41st).
+``test_registry_now_has_41_tools`` asserts the real, current count,
 not the brief's stale arithmetic.
 """
 
@@ -156,9 +157,9 @@ def test_routes_on_english_discovery_phrasing_without_colliding_with_price_intel
     assert classified.job_type == "price_watch"
 
 
-def test_registry_now_has_40_tools():
+def test_registry_now_has_41_tools():
     reg = tools.build_default_registry()
-    assert len(reg.list()) == 40
+    assert len(reg.list()) == 41
 
 
 def test_scm_agent_tools_module_imports_without_circular_import():

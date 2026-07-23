@@ -201,6 +201,7 @@ def label(key: str, lang: Lang = DEFAULT_LANG, **kwargs: object) -> str:
 TOOL_TITLES: dict[str, dict[Lang, str]] = {
     "inventory_optimization": {"es": "Optimizacion de Inventario", "en": "Inventory Optimization"},
     "pricing": {"es": "Optimizacion de Precio", "en": "Price Optimization"},
+    "repricing": {"es": "Reprecio Multicanal Propuesto", "en": "Proposed Multichannel Repricing"},
     "leadership_chain": {"es": "Liderazgo (CHAIN)", "en": "Leadership (CHAIN)"},
     "cost_to_serve": {"es": "Costo de Servir y Capital de Trabajo", "en": "Cost-to-Serve & Working Capital"},
     "sop": {"es": "Planificacion de Ventas y Operaciones (S&OP / IBP)",

@@ -3,6 +3,20 @@
 ## [Unreleased]
 
 ### Added
+- **`repricing` — proposed multichannel repricing (decision bridge, tool #41)**
+  (`jobs/reprice_recommend.py`): closes the gap between read-only competitor
+  observation and a written price. Joins the competitor price position
+  (handed over from `price_watch`/`price_intelligence`, or a standalone CSV)
+  with per-SKU elasticity into one proposed price — bounded at the elasticity
+  optimum vs. the observed market price, never below the margin floor, with
+  floor-vs-market conflicts surfaced rather than silently resolved.
+  Recommendations only: this tool never writes a price anywhere itself; the
+  proposal is meant to be staged into the existing approval-gated writeback
+  changeset (`src/writeback.py`) like any other reversible change. Deliberately
+  NOT on the read-only MCP surface (`webapp/mcp_server.py`) — it needs two
+  tabular inputs (demand/price history plus a competitor position table),
+  which the single-rows MCP bridge can't carry, same reasoning as the existing
+  `leadership_chain`/`warehouse_layout` exclusions. 22 tests.
 - **`GET /stocky-alternative` — English-language SEO/conversion landing page**
   (`webapp/stocky_alternative_page.py`) for the "stocky alternative" search wave: Shopify
   delisted its native Stocky forecasting/PO app from the App Store in Feb 2026 and shuts it

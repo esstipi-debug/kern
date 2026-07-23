@@ -1,12 +1,12 @@
 """Kern's read-only MCP server (Phase A go-to-market — see linchpin-monetization-plan).
 
-Exposes 33 of the 37 registered agent tools to remote MCP clients (other AI
+Exposes 33 of the 41 registered agent tools to remote MCP clients (other AI
 agents, via Streamable HTTP): analysis only, no writeback. `odoo_replenishment`
 and `excel_replenishment` mutate a client's system of record and are
 deliberately NOT exposed here — that stays for direct clients only, gated by the
 audited writeback safety plane (`src/writeback.py`), not by anything in this
 file. `leadership_chain` and `warehouse_layout` are also off this surface: they
-don't consume tabular rows, so the bridge below has nothing to feed them.
+don't consume tabular rows, so the bridge below has nothing to feed them; `repricing` needs TWO tabular inputs (price/quantity history plus a competitor position table), which the single-rows bridge cannot carry.
 
 The tool surface itself lives in `webapp/mcp_tool_specs.py` (one spec per tool:
 name, job_type, title, calling contract) — this module just registers each spec

@@ -5,7 +5,7 @@ deliverable, routing to the right capability.
 
 ## Capabilities
 
-**39 registered tools** — source of truth is `build_default_registry()` in
+**41 registered tools** — source of truth is `build_default_registry()` in
 [`tools.py`](tools.py); run it yourself rather than trusting a static count here,
 since it changes with every new `feat: wire ... as an agent tool` PR. Every tool
 follows the exact same `prepare → run → qa → deliver` contract; adding one is a

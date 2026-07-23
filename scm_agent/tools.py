@@ -2202,6 +2202,69 @@ def price_watch_tool() -> Tool:
     )
 
 
+# ---- repricing (decision bridge: competitor position + elasticity -> staged prices) ----
+
+# `jobs.reprice_recommend` imports `jobs.price_priority` (which itself imports
+# `jobs.price_intelligence` eagerly) at its own top level, so it is imported
+# LAZILY here -- exactly the circular-import reason documented at the top of
+# the price_intelligence section above and in jobs/price_watch_position.py.
+
+def _repricing_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    from jobs import reprice_recommend
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=["a price/quantity CSV/Excel file is required"])
+    if not request.params.get("price_position_path") and request.params.get("price_report") is None:
+        return Prepared(status="needs_data", messages=[
+            "a competitor position input is required: params['price_position_path'] "
+            "(CSV of product_id/our_price/competitor_price rows) or a price_report "
+            "handed over from a prior price_watch/price_intelligence run",
+        ])
+    try:
+        payload = reprice_recommend.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _repricing_run(payload: object, params: dict) -> Produced:
+    from jobs import reprice_recommend
+    report = reprice_recommend.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def _repricing_qa(report: object) -> list[str]:
+    from jobs import reprice_recommend
+    return reprice_recommend.verify(report)
+
+
+def _repricing_deliver(report: object, out_dir: Path, client: str) -> dict[str, Path]:
+    from jobs import reprice_recommend
+    return reprice_recommend.write_operational(report, out_dir, client)
+
+
+def repricing_tool() -> Tool:
+    return Tool(
+        key="repricing",
+        title="Proposed Multichannel Repricing",
+        description="Join the competitor price position with per-SKU elasticity into one numeric "
+                    "proposed price per SKU (elasticity optimum bounded at market, margin floor "
+                    "respected, honest floor-vs-market conflicts), ready to stage into the "
+                    "approval-gated repricing changeset - recommendations only; this tool never "
+                    "writes a price to any channel.",
+        intent_keywords=(
+            "reprice recommendation", "repricing proposal", "proposed reprice",
+            "propuesta de reprecio", "reprecio multicanal", "recomendacion de reprecio",
+            "stage price changes", "close the pricing loop",
+        ),
+        requires_data=True,
+        options=tool_options.repricing_options,
+        prepare=_repricing_prepare,
+        run=_repricing_run,
+        qa=_repricing_qa,
+        deliver=_repricing_deliver,
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -2244,4 +2307,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(vehicle_routing_tool())
     reg.register(price_intelligence_tool())
     reg.register(price_watch_tool())
+    reg.register(repricing_tool())
     return reg

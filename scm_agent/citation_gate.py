@@ -54,6 +54,10 @@ MAX_HOPS = 2
 TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "inventory_optimization": ("safety_stock", "service_level", "cycle_service_level"),
     "pricing": ("basic_pricing_theory", "price_sensitivity_measurement", "markdown_pricing"),
+    # The reprice bridge is the same pricing theory applied (elasticity optimum
+    # bounded at the competitor read) -- same anchors as "pricing", the exact
+    # reuse jobs/repricing.py's _TOOL_KEY="pricing" already leans on.
+    "repricing": ("basic_pricing_theory", "price_sensitivity_measurement", "markdown_pricing"),
     "leadership_chain": ("chain_model", "collaborative_leadership", "authentic_leadership"),
     "cost_to_serve": ("cost_to_serve", "activity_based_costing"),
     "sop": ("vollmann_sop", "aggregate_planning"),

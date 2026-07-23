@@ -754,3 +754,22 @@ def price_watch_options(report: object) -> GuidedOutcome:
         residuals=residuals,
     )
     return replace(outcome, options=list(happy_path.options))
+
+
+def repricing_options(report: object) -> GuidedOutcome:
+    n_stageable = report.n_proposed - report.n_rule_based
+    stage = ("Stage the elasticity-backed moves",
+             f"Stage the {n_stageable} stageable price move(s) into an approval-gated "
+             "changeset (dry-run diff, time-boxed approval, rollback).",
+             "stage the stageable prices for approval", "a human approves before any channel write")
+    widen = ("Opt the rule-based matches in",
+             f"Also stage the {report.n_rule_based} labeled match-to-market row(s) after review.",
+             "include the rule-based matches in staging", "explicit opt-in; not elasticity math")
+    test = ("Design price tests for the gaps",
+            f"{report.n_needs_data} SKU(s) lack signal; designed variation is the clean fix.",
+            "plan a price test on the needs_data SKUs", "slower, but the only clean identification")
+    items = [stage, widen, test] if n_stageable > 0 else [test, stage, widen]
+    return _ranked(
+        f"Reprice bridge: {report.n_proposed} proposed, {report.n_conflict} floor-vs-market conflict(s).",
+        items,
+    )
