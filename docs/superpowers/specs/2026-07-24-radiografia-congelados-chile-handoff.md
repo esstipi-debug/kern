@@ -108,19 +108,82 @@ observable desde afuera.
 5. **A Cuenta** escapa los precios dentro del stream RSC; un `grep '"price"'`
    plano no devuelve nada y parece renderizado en cliente.
 
+## Ventana 2 (2026-07-24, tarde) - lo que se hizo
+
+**El plan de implementacion existe pero esta INCOMPLETO.**
+`docs/superpowers/plans/2026-07-24-radiografia-congelados-chile.md` tiene
+escrito: header + Global Constraints + las 4 desviaciones del spec (D1-D4, ver
+abajo) + File Structure + PR-1 Task 0/1/2 completos con codigo y tests.
+**Falta escribir:** PR-1 Tasks 3-6, PR-2 completo, PR-3 completo, y la
+seccion Self-Review del skill. Cero codigo de produccion escrito todavia.
+
+### Contratos ya verificados - NO volver a explorar el codigo
+
+Costo tres agentes Explore con dumps verbatim. Todo esta en el plan, en
+`## Spec deviations` y `## Global Constraints`. Resumen de lo critico:
+
+- **D1: `src/risk_period.py` NO modela ventanas de riesgo.** Son 49 lineas de
+  matematica escalar de Vandeput (`demand_over_risk_period(...) ->
+  RiskPeriodStats`), sin fechas ni intervalos, con 6 callers. El spec se
+  equivoca. `veda_calendar.py` va autocontenido; no se toca `risk_period.py`.
+- **D2: el matching cruzado era matematicamente imposible.**
+  `ProductAttributes.__post_init__` (`match/fuzzy.py:67`) exige `brand` no
+  vacio y ninguno de los 9 sitios declara marca. Peor: con
+  `score = 0.55*title + 0.15*brand + 0.30*attr` y `CONFIRM_THRESHOLD = 0.96`,
+  si `brand_sim = 0` el techo es 0.85 -> todo cae en `suspect` -> `adjudicate`
+  con `llm=None` -> `deferred`. **La matriz habria salido vacia.** Solucion:
+  sentinela `NO_BRAND_DECLARED = "sin marca declarada"` identico en las 9
+  fuentes (mueve todos los pares igual, no altera ningun ranking; es la misma
+  disciplina del `1.0` neutro de `_attribute_similarity`).
+- **D3: alimentar refs CSV a `price_intelligence` re-descarga cada PDP**
+  (~700 fetches, 9 `config/sites/*.yaml` aprobados) para re-aprender precios
+  que el feed ya dio en 9 requests. Y **no hay modulo de matriz reusable** -- la
+  matriz vive dentro de `jobs/price_intelligence.py`, acoplada a la
+  adquisicion. Solucion: PR-3 calcula clusters/mediana/brecha en un modulo
+  puro nuevo `src/market_radiography.py`; el refs CSV queda como subproducto
+  para la suscripcion fase 2. El job registrado lee un CSV y es offline.
+- **D4: `DECISIVE_ATTRIBUTE_KEYS = ("pack_size","size","model","capacity","color")`**
+  (`match/probabilistic.py:103`) no incluye especie/calibre/estado/proceso.
+  Hay que extenderlo; es aditivo y seguro (solo compara claves presentes en
+  ambos lados, y ninguna oferta actual las lleva).
+- **Anclas de citacion para `market_radiography`, YA VERIFICADAS por BFS sobre
+  el grafo committeado (2026-07-24):**
+  `("competition_oriented_pricing", "price_positioning", "regulated_supply_chain_environment")`
+  -> clausura de 54 nodos, **cero magnets** (grado>50), asi que **no hace falta
+  entrada en `EXCLUDED_CONCEPTS`**. Descartada
+  `price_transparency` (arrastra `book_nagle` como magnet).
+- **Los "7 lugares fijados" reconstruidos** (no existen listados en ningun
+  archivo; se derivaron del commit `a2b137f` de `disruption_scan`):
+  1. `jobs/<x>_job.py` nuevo · 2. bloque import en `scm_agent/tools.py:32`
+  (alfabetico) · 3. `_<x>_prepare`/`_<x>_run`/`<x>_tool()` en `tools.py` ·
+  4. `reg.register(...)` en `build_default_registry()` (`tools.py:2571`) ·
+  5. `scm_agent/citation_gate.py:54` `TOOL_CONCEPTS` ·
+  6. `src/i18n.py:260` `TOOL_TITLES` (es != en, hay test) ·
+  7. `tests/test_scm_agent.py:123` (set de keys) **y**
+  `tests/test_price_watch_tool.py:165` (bump 46 -> 47).
+  **No tocar** `webapp/how_it_works_data.py` (congelado en 41 por 3 tests) ni
+  `webapp/mcp_tool_specs.py` (exposicion MCP diferida, mismo criterio que
+  `launch_readiness`).
+- **`config/**` NO va en el wheel** (sin `MANIFEST.in`, `packages = ["src"]`).
+  Se lee relativo al CWD con override por env, patron de
+  `acquire/base.py:55-57`.
+- **`normalize_price_string` exige `currency="CLP"` explicito**: `"$"` no esta
+  en `_UNAMBIGUOUS_SYMBOLS`, asi que sin el kwarg levanta excepcion.
+- El cliente HTTP de `pricing_intel` es una **funcion sync**, no una clase:
+  `acquire/pdp_fetcher.py:66` `fetch_pdp_html(url, *, client: httpx.Client, ...)
+  -> RawObservation | FetchError`. `CatalogRecord` no existe; hay que crearlo.
+
 ## Pendiente, en orden
 
-1. **Plan de implementacion** con `superpowers:writing-plans` apuntando al spec.
-   Se descompone en 3 PRs: (1) lectores de feed + normalizador CLP/kg + lexico
-   -> refs CSV, con CLI `examples/run_cl_catalog_scan.py`; (2) dataset de vedas
-   + `veda_calendar.py` + integracion con `risk_period.py`; (3) job
-   `market_radiography` registrado como herramienta, tocando los 7 lugares
-   fijados incluido `citation_gate.TOOL_CONCEPTS`.
+1. **Terminar el plan de implementacion** (PR-1 Tasks 3-6, PR-2, PR-3 +
+   Self-Review). El archivo ya existe y arranca bien; solo hay que continuar
+   apendando con el mismo formato de pasos TDD bite-sized.
 2. **One-pager de la propuesta B+C** en espanol, dirigido al dueno.
-3. **Lista de prospectos estrategicos**: habia un agente de investigacion
-   corriendo al cierre de la ventana anterior buscando 15-25 distribuidoras
-   chilenas adicionales que calcen con el ICP, con score de encaje, feed
-   publico y decision-maker. Si no quedo su resultado, relanzarlo.
+3. **Lista de prospectos estrategicos**: se relanzo el agente en esta ventana.
+   Escribe en `docs/gtm/2026-07-24-prospectos-congelados-cl.md` (15-25
+   distribuidoras con score, feed publico verificado, especies en veda,
+   ultima adjudicacion ChileCompra y decision-maker solo si esta publicado).
+   **Revisar si el archivo existe antes de relanzar.**
 
 ## Recordatorio
 
