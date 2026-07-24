@@ -72,7 +72,19 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "returns": ("reverse_logistics", "returnability", "refurbishing"),
     "queuing": ("mm1_queue", "md1_queue", "queuing_analysis", "queue_server_optimization"),
     "scheduling": ("dispatching_rules", "vollmann_spt", "vollmann_edd", "johnsons_rule"),
-    "risk": ("atomic_holistic_risk", "collaborative_risk_mitigation"),
+    # risk_assessment was added when the Khan et al. (2022) resilience book landed as
+    # source #27: the original two anchors are narrow nodes chosen when the graph had
+    # almost no risk coverage, so the new book's risk concepts sat 3-4 hops away and
+    # the tool degraded to zero citations.
+    # It is deliberately NOT the broader `supply_chain_risk`, which looks like the
+    # obvious canonical parent but is 1 hop from THREE book hubs (Chopra 356 /
+    # Christopher 265 / Grant 192) -- the shared-book-hub loophole this module rejects
+    # for `promotion_timing` below. Measured 2-hop closures on the 3002-node graph:
+    # original anchors 522 (17.4%), +supply_chain_risk 1389 (46.3%, the largest of all
+    # 45 anchor sets, admitting reverse_auction/dynamic_pricing/revenue_management),
+    # +risk_assessment 586 (19.5%). Both produce the SAME three citations, so the
+    # hub-free anchor is strictly better. Keep new anchors off the book hubs.
+    "risk": ("atomic_holistic_risk", "collaborative_risk_mitigation", "risk_assessment"),
     "forecast": ("forecastability", "crostons_method", "sbc_classification", "syntetos_boylan_approximation", "tsb_method"),
     # No topically-better node exists in the committed graph for SKU-master/
     # GTIN data quality (verified during the 2026-07 adversarial review) - this

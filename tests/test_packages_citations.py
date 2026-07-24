@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from scm_agent import citation_gate
 from scm_agent.citation_gate import MIN_CITATIONS
 from scm_agent.knowledge import KnowledgeBase
 from scm_agent.packages import _MAX_CITATIONS, _step_citations
@@ -53,7 +54,20 @@ _CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "whatif", "earned_value"
 
 # Anchor-islanded tools: zero at ANY pool (a separate anchor problem, not fixable
 # by pool sizing) -- pinned so a future anchor fix is a conscious change.
-_ISLANDED_TOOLS = ("dea", "learning_curve", "slotting")
+# vehicle_routing joined this set with the Khan et al. (2022) merge. Its two prior
+# citations were lexical false friends -- "Logistics as the Vehicle for Change"
+# (organisational change, not vehicles) and a "Route Sheet" from a product-design
+# chapter -- so shipping zero is the more honest outcome. The graph has no real
+# VRP theory to anchor on: vollmann_traveling_salesman is an isolate with 0 edges,
+# and the only hub-free routing nodes describe disruption re-routing, not
+# Clarke-Wright/savings VRP. Fix by ingesting VRP theory, not by a looser anchor.
+_ISLANDED_TOOLS = ("dea", "learning_curve", "slotting", "vehicle_routing")
+
+# Every anchored+registered tool that is allowed to ship zero citations: the four
+# whose zero is intentional plus the anchor-islanded ones. price_watch is NOT here
+# -- it was a zero before source #27 and the widened pool recovered it, so it is
+# now held to the same >= MIN_CITATIONS bar as everything else.
+_EXPECTED_ZERO_TOOLS = frozenset(_CORRECTLY_ZERO_TOOLS + _ISLANDED_TOOLS)
 
 _OFF_TOPIC_TERMS = (
     "cost of quality", "house of quality", "cash-to-cash", "quality circle", "tqm",
@@ -121,6 +135,34 @@ def test_returns_excludes_reverse_auction_and_stays_on_topic(_kb, _reg):
     joined = " ".join(cites).lower()
     assert "reverse auction" not in joined
     assert "reverse logistics" in joined
+
+
+def test_no_anchored_tool_regressed_to_zero(_kb, _reg):
+    """Coverage guard for the blast radius a books-graph merge actually has.
+
+    Every other test here iterates only the tools used by a PACKAGE. Ingesting
+    Khan et al. (2022) as source #27 silently dropped digital_twin,
+    launch_readiness and vehicle_routing from 2-3 citations to zero precisely
+    because none of them is a package step, so nothing failed. This pins the full
+    set of anchored+registered tools that must stay grounded: any future source
+    that starves one of them fails here instead of shipping a citation-less deck.
+
+    A tool belongs in _EXPECTED_ZERO_TOOLS only as a conscious, documented
+    decision (intentional zero, or anchor-islanded).
+    """
+    for tool_key in sorted(citation_gate.TOOL_CONCEPTS):
+        try:
+            tool = _reg.get(tool_key)
+        except Exception:  # anchored but not registered -- nothing to ground
+            continue
+        cites = _step_citations(_kb, tool, tool_key)
+        if tool_key in _EXPECTED_ZERO_TOOLS:
+            assert cites == (), f"{tool_key} was expected to be zero but now cites {cites}"
+        else:
+            assert len(cites) >= MIN_CITATIONS, (
+                f"{tool_key} regressed to {len(cites)} citation(s). Either fix its anchors/"
+                f"the candidate pool, or add it to _EXPECTED_ZERO_TOOLS with a reason."
+            )
 
 
 def test_fefo_needs_the_tool_title_not_keyword_only(_kb, _reg):

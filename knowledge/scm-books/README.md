@@ -4,12 +4,17 @@ A graphify knowledge graph built from **24 supply-chain books** (forecasting,
 pricing, revenue management, supply chain management, inventory optimization,
 manufacturing planning & control, operations management, logistics & operations
 strategy, sustainable logistics, **and supply-chain leadership**) plus a
-**25th source, AI applied to supply chains**, and a **26th source, Kern's own
-capability↔role atlas** (see below). This is the **domain knowledge** layer
-for the agent — distinct from the repo's `graphify-out/`, which graphs the
-*code*.
+**25th source, AI applied to supply chains**, a **26th source, Kern's own
+capability↔role atlas**, and a **27th source, supply chain risk & resilience**
+(see below). This is the **domain knowledge** layer for the agent — distinct
+from the repo's `graphify-out/`, which graphs the *code*.
 
-- `graph.json` — 2053 nodes · 3995 edges · 132 communities (GraphRAG-ready)
+- `graph.json` — 3002 nodes · 6141 links · 202 communities (GraphRAG-ready).
+  `GRAPH_REPORT.md` says 3001 nodes / 6113 edges / 201 communities: graphify builds
+  a simple undirected graph, which drops one malformed pre-existing node (a
+  `reminder::` node with no `source_file`) and collapses 28 links that share
+  endpoints but carry a different `relation`. Both numbers are correct for what
+  they describe.
 - `graph.html` — interactive visual (open in a browser)
 - `GRAPH_REPORT.md` — communities, god nodes, surprising cross-book connections
 
@@ -128,6 +133,76 @@ citation/knowledge-focused subset) before trusting a graph merge, since a new
 source's node *labels* can silently move a shallow-pool grounding call's
 top-N ranking anywhere in the codebase, not just at the merge site.
 
+**Khan, Huth, Zsidisin & Henke (eds.)**, *Supply Chain Resilience:
+Reconceptualizing Risk Management in a Post-Pandemic World* (Springer Series in
+Supply Chain Management vol. 21, 2022) was added as the **27th source** — 948
+new nodes / 2146 new links, extracted from **all 245 PDF pages** (front matter +
+13 chapters, every page in exactly one chunk, verified contiguous with no gaps).
+Of the 2260 extracted edges, 38 were pruned as low-confidence INFERRED (<0.75)
+and 76 collapsed as duplicate parallel links. 947 of the 948 new nodes are
+connected; one (`material_shortage`) is an orphan.
+This closes the graph's largest thematic hole: the other 26 sources are almost
+entirely classical OR/inventory/forecasting/pricing theory, and risk &
+resilience appeared only in fragments (Ivanov's risk chapters are flagged
+incomplete below). 77 of its concepts matched existing canonical ids and were
+**bridged onto the existing nodes rather than duplicated** — the merge is
+purely additive (an id-set guard confirmed zero pre-existing ids were lost).
+
+What it genuinely adds, beyond restating resilience theory: a **supplier risk
+tower** (Schaeffler's production early-warning architecture — signals, scoring,
+alert cadence, escalation, the mitigation actions it triggers, Ch 9); the
+**inventory / capacity / capability triad** for pandemic stockpiling from Sodhi
+& Tang, including why pure physical stockpiling fails (Ch 11); a full
+**supply-chain-finance instrument layer** the graph completely lacked — reverse
+factoring, dynamic discounting, approved payables/receivables, inventory
+financing, and distress propagation through the value network (Ch 7);
+**simulation-driven rapid reconfiguration** under public-private partnership
+(Fraunhofer OTD-NET, ventilator ramp-up, Ch 6); LSP/freight **visibility and
+control-tower** practice (Kuehne+Nagel, Ch 5); an empirical **German SCRM
+status-quo** study (Ch 4); and van Hoek's deliberately **skeptical closing
+chapter** on how little of the pandemic response became structural rather than
+temporary (Ch 13) — a useful counterweight to the rest of the corpus's
+optimism. Citations carry chapter *and* PDF page (`Khan et al. (2022), Ch 9,
+PDF p.177`).
+
+**This merge again proved the "run the FULL suite" lesson — and then proved that
+the full suite is still not enough.** The 948 new nodes are lexically strong for
+risk/logistics queries, so they displaced previously-cited nodes in the top-N
+candidate ranking of `scm_agent/packages.py::_step_citations`, which then failed
+the citation gate's 2-hop anchor test — shipping **zero citations**. The test
+suite caught two victims (`risk`, `odoo_replenishment`). An adversarial review
+of the merge found **two more that no test covered** (`digital_twin`,
+`launch_readiness`) plus `vehicle_routing`, because every existing test iterated
+only tools used by a *package*, and those three are registered but not package
+steps. `tests/test_packages_citations.py::test_no_anchored_tool_regressed_to_zero`
+now pins all 45 anchored+registered tools so this class of regression cannot
+recur silently.
+
+Three things worth carrying forward:
+
+1. **The pool ceiling is not a constant, and it moves in both directions.** The
+   old comment pinned pool 8 because data_quality broke at 11 and cycle_count at
+   12. After this merge, 8 *starves* four tools and the noise threshold rose to
+   16 (at 17 data_quality re-admits "Cost of Quality" / "House of Quality").
+   Re-measure with a 45-tool sweep on every source addition.
+2. **The obvious canonical anchor was the wrong one.** `risk` needed a wider
+   anchor, and `supply_chain_risk` looks like the correct parent — but it sits 1
+   hop from three book hubs (Chopra/Christopher/Grant), which blows `risk`'s
+   2-hop closure from 522 nodes (17.4%) to 1389 (46.3%), admitting
+   reverse_auction / dynamic_pricing / revenue_management. That is exactly the
+   shared-book-hub loophole the module rejects for `promotion_timing`. The
+   hub-free `risk_assessment` yields the *same three citations* at closure 586
+   (19.5%). **Check book-hub adjacency before adding any anchor.**
+3. **Losing a citation is not always a regression.** `vehicle_routing`'s two
+   prior citations were lexical false friends ("Logistics as the Vehicle for
+   Change"; a "Route Sheet" from a product-design chapter). It is now recorded as
+   anchor-islanded rather than papered over with a looser anchor — the graph has
+   no real VRP theory to point at.
+
+Net effect on citations: `digital_twin`, `price_watch` and `risk` improved
+(price_watch recovered a pre-existing zero), `launch_readiness` and
+`odoo_replenishment` held, `vehicle_routing` went to an honest zero.
+
 ## Intended use (L3)
 
 `scm_agent` should query this graph for domain grounding: definitions, which
@@ -165,4 +240,38 @@ graph's `source_location` carries chapter references for citations.
   register/venue. If the missing 8 are ever purchased, re-run the extraction
   over the full 20-chapter corpus and re-merge.
 
+- **Khan et al. (Supply Chain Resilience) is fully ingested but its community
+  labels are heuristic**: all 245 pages were extracted, but re-clustering after
+  the merge renumbered communities 132 → 201 and the labels in `GRAPH_REPORT.md`
+  are now derived deterministically from each community's highest-degree node
+  (`scripts/regen_books_report.py`) rather than an LLM naming pass. Node-level
+  citations and grounding are unaffected — only the report's section titles are
+  affected, and they are arguably better than the prior state (123 of the old 132
+  were bare "Community N" placeholders). Re-run `graphify label` with a backend if
+  you want prose community names.
+- **Louvain clustering is stochastic**: re-running `scripts/recluster_books_graph.py`
+  yields a slightly different community count (194-202 observed) and renumbers
+  communities. Nothing in the query path depends on community ids, but
+  `knowledge/community_summaries.json` is keyed by them — it self-invalidates on
+  a node/community count change and rebuilds on the next `KnowledgeBase()`.
+- **`graph.html` was not regenerated** for this merge; the committed copy renders
+  the **26-source** graph (last rebuilt at the Kern-atlas ingestion). Rebuild it
+  with `graphify export html` when a visual refresh matters.
+
 Regenerate / extend with `/graphify` over the book PDFs, then refresh these files.
+Per-source helper scripts live in `scripts/`, in run order:
+
+1. `merge_khan_resilience.py` — chunk JSONs → canonical graph. Applies every
+   transformation the committed artifact needs (namespacing, `source_file`
+   normalisation, rubric snapping, low-confidence pruning, parallel-edge
+   collapsing) so `graph.json` is reproducible from the script alone. Guards:
+   id-set (no pre-existing id may vanish), parallel-edge, and an idempotency
+   check that refuses a second run instead of silently doubling every edge.
+2. `recluster_books_graph.py` — in-place re-cluster preserving node attributes.
+3. `regen_books_report.py` — report rebuild, no API key needed.
+
+Steps 1 needs the raw corpus and chunk JSONs under
+`knowledge/scm-books-rebuild/<book>/`, which is **gitignored by design** (the raw
+book text is not committed) — regenerate them locally before merging. All three
+scripts need the `graphify` package, which lives in the graphify tool venv, not
+the repo `.venv` (see `graphify-out/.graphify_python`).

@@ -57,15 +57,22 @@ STEP_SKIPPED = "skipped"
 # the strict 2-hop gate, so 6 tools (inventory_optimization, pricing,
 # excel/odoo_replenishment, risk, reconciliation) shipped ZERO citations in
 # every package that runs them, incl. inventory_optimization in every inventory
-# package. Widening the pool to 8 recovers all six with on-topic citations.
-# 8 is the empirical CEILING, not an arbitrary value: widen further and the gate
-# starts admitting hub-noise for tools whose zero is CORRECT -- data_quality
-# (its zero is intentional, see citation_gate.TOOL_CONCEPTS) re-admits
-# manufacturing TQM/QFD citations at pool 11, and cycle_count re-admits cash-cycle
-# citations at pool 12. Pool 8 leaves those correctly at zero with margin.
-# (dea/learning_curve/slotting stay zero at any pool -- an anchor-islanding
-# problem pool sizing can't fix, a separate anchor-tightening item.)
-_CANDIDATE_POOL = 8   # candidates grounded and offered to the strict gate
+# package. Widening the pool recovers all six with on-topic citations.
+# The ceiling is EMPIRICAL and must be RE-MEASURED whenever a source is added to
+# the books graph -- it MOVES, in both directions. At 25 sources data_quality
+# re-admitted TQM/QFD hub-noise at pool 11 and cycle_count cash-cycle noise at 12,
+# so the pool was pinned at 8. Adding Khan et al. (2022) as source #27 shifted the
+# ranking enough that pool 8 now STARVES four tools that previously had citations
+# (odoo_replenishment, risk, digital_twin, launch_readiness), while the noise
+# threshold rose: measured across all 45 anchored tools on the 3002-node graph,
+# 16 is the exact ceiling -- at 17 data_quality re-admits "Cost of Quality" and
+# "House of Quality". 16 also recovers price_watch, a pre-existing zero.
+# Verify with a full 45-tool sweep, NOT just the package tools: the tools that
+# silently regressed here were precisely the ones no test covered. See
+# tests/test_packages_citations.py::test_no_anchored_tool_regressed_to_zero.
+# (dea/learning_curve/slotting/vehicle_routing stay zero at any pool -- an
+# anchor-islanding problem pool sizing can't fix, a separate anchor-tightening item.)
+_CANDIDATE_POOL = 16  # candidates grounded and offered to the strict gate
 _MAX_CITATIONS = 3    # kept, on-topic survivors ultimately shown (tight display)
 
 

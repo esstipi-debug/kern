@@ -35,6 +35,7 @@ htmlcov/
 graphify-out/
 knowledge/scm-books-rebuild/
 knowledge/scm-books/graph.json.bak
+knowledge/scm-books/graph.cluster.bak
 
 # generated client deliverables
 deliverables/
