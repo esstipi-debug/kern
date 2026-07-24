@@ -4,9 +4,7 @@
 
 ## Estado en una linea
 
-Diseno aprobado y commiteado. **Cero codigo escrito.** Falta el plan de
-implementacion, el one-pager de la propuesta de entrada, y cerrar la lista de
-prospectos.
+Diseno aprobado y commiteado. **Plan de implementacion completo (PR-1/PR-2/PR-3 + Self-Review). Cero codigo de produccion escrito todavia.** Falta ejecutar el plan, el one-pager de la propuesta de entrada, y cerrar la lista de prospectos. Ver "Ventana 3" mas abajo.
 
 ## Donde esta todo
 
@@ -173,14 +171,79 @@ Costo tres agentes Explore con dumps verbatim. Todo esta en el plan, en
   `acquire/pdp_fetcher.py:66` `fetch_pdp_html(url, *, client: httpx.Client, ...)
   -> RawObservation | FetchError`. `CatalogRecord` no existe; hay que crearlo.
 
+## Ventana 3 (2026-07-24, tarde/noche) -- plan de implementacion COMPLETO
+
+`docs/superpowers/plans/2026-07-24-radiografia-congelados-chile.md` esta
+**completo**: header + Global Constraints + 7 desviaciones del spec (D1-D7,
+D5-D7 nuevas de esta ventana) + File Structure + PR-1 (Tasks 0-6) + PR-2
+(Tasks 0-3) + PR-3 (Tasks 0-5) + Self-Review. **Sigue en cero codigo de
+produccion escrito** -- el plan esta listo para ejecutar con
+`superpowers:subagent-driven-development` o `superpowers:executing-plans`,
+tarea por tarea, PR-1 primero (PR-3 depende de PR-1 y PR-2 mergeados a
+`main`).
+
+### Tres desviaciones nuevas (D5-D7), descubiertas escribiendo el plan
+
+- **D5**: las lecturas de catalogo (WooCommerce Store API / Shopify
+  products.json) no encajan en ningun tier existente (`L0`-`L3` son API
+  oficial / PDP estructurado / webhook / spider). Se gatean como `L1`
+  (`require_approved_site` + `max_tier_allowed >= L1`), con los 9 configs de
+  `config/sites/*.yaml` **hand-authored** (nunca `auto_approve_site`,
+  reservado para dominios nunca vistos que `price_watch` descubre en vivo).
+- **D6**: el spec lista 9 fuentes pero solo diseña 2 lectores (Woo + Shopify).
+  IceFish y Mardeli son JSON-LD -- ningun sujeto los necesita (los 5 sujetos
+  son Woo/Shopify), asi que PR-1 los deja fuera; la mediana de mercado corre
+  con 7 fuentes en vez de 9. Un tercer lector JSON-LD queda como follow-up
+  nombrado, no una sorpresa futura.
+- **D7**: el clustering N-way entre 9 pares no encaja en
+  `homologate.homologate()`, que es bilateral ("nuestro catalogo" vs "un
+  competidor descubierto", con dos tipos distintos en cada lado). PR-3 llama
+  directo a la cascada de bajo nivel (`block_candidates` -> `score_pair` ->
+  `adjudicate_pair`) por cada par de fuentes y arma los clusters con un
+  union-find propio -- sigue reusando `match/` sin tocarlo, solo la
+  orquestacion es nueva.
+
+### Correcciones a lo que esta ventana anterior (Ventana 2) dejo mal anotado
+
+Verificado directamente contra el codigo el 2026-07-24 (no volver a
+verificar salvo que algo mas haya cambiado en `main`):
+
+- **Son 8 "lugares fijados", no 7** -- el bullet 7 de arriba junta dos
+  archivos distintos (`tests/test_scm_agent.py` y
+  `tests/test_price_watch_tool.py`) bajo un solo numero.
+- **Tres de los numeros de linea citados arriba apuntan a `launch_readiness`,
+  no a `disruption_scan`** (el ejemplo real que se uso para reconstruir la
+  lista): el import real de `disruption_scan_job` esta en la linea 19 (no
+  32), `reg.register(disruption_scan_tool())` esta en la linea 2546 (no
+  2571), y la entrada de `disruption_scan` en `i18n.py` esta en las lineas
+  223-224 (no 260). El plan usa los numeros correctos y ademas indica
+  re-verificar con grep antes de editar, no confiar ciegamente.
+- **`launch_readiness_job.py` NO demuestra el patron
+  `config/**`-relativo-al-CWD-con-override-por-env.** Ese patron vive
+  exclusivamente en `src/pricing_intel/acquire/base.py:55-57`
+  (`DEFAULT_SITES_CONFIG_DIR`). Ni `launch_readiness_job.py` ni
+  `disruption_scan_job.py` leen ningun `config/` ni variable de entorno.
+- `ProbabilisticScore` (`match/probabilistic.py:134-147`) fue releido
+  verbatim: campos `our, competitor, title_similarity, brand_similarity,
+  attribute_similarity, attribute_conflict, conflicting_attributes, score`
+  -- el campo compuesto SI se llama `.score`, confirmado, no una suposicion.
+- `base.py` importa `ACQUISITION_TIERS` directo desde `models`
+  (`acquire/base.py:49`), asi que `base.ACQUISITION_TIERS` existe y es el
+  mismo objeto que `models.ACQUISITION_TIERS` -- el plan lo usa asi
+  directamente, sin el rodeo de re-importar desde `models` que una version
+  anterior del plan tenia.
+
 ## Pendiente, en orden
 
-1. **Terminar el plan de implementacion** (PR-1 Tasks 3-6, PR-2, PR-3 +
-   Self-Review). El archivo ya existe y arranca bien; solo hay que continuar
-   apendando con el mismo formato de pasos TDD bite-sized.
-2. **One-pager de la propuesta B+C** en espanol, dirigido al dueno.
-3. **Lista de prospectos estrategicos**: se relanzo el agente en esta ventana.
-   Escribe en `docs/gtm/2026-07-24-prospectos-congelados-cl.md` (15-25
+1. ~~Terminar el plan de implementacion~~ **HECHO (Ventana 3).**
+2. **Ejecutar el plan** con `superpowers:subagent-driven-development` (PR-1
+   primero; PR-3 espera a que PR-1 y PR-2 esten en `main`). El Paso 0 de
+   PR-1 Task 6 (confirmar las 9 URLs base reales + autor de los 9
+   `config/sites/*.yaml` a mano) requiere red y no esta escrito en el plan a
+   proposito -- es un paso de operador, no fabricable de antemano.
+3. **One-pager de la propuesta B+C** en espanol, dirigido al dueno.
+4. **Lista de prospectos estrategicos**: se relanzo el agente en la Ventana
+   2. Escribe en `docs/gtm/2026-07-24-prospectos-congelados-cl.md` (15-25
    distribuidoras con score, feed publico verificado, especies en veda,
    ultima adjudicacion ChileCompra y decision-maker solo si esta publicado).
    **Revisar si el archivo existe antes de relanzar.**
