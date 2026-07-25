@@ -538,7 +538,7 @@ Spec: docs/superpowers/specs/2026-07-25-pattern-scan-design.md
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
 # --------------------------------------------------------------------------
@@ -1034,11 +1034,7 @@ def build_profiles(
             and profile.entity_id in entities_with_excess
             and (profile.recurrence_label == "chronic" or profile.is_persistent)
         )
-        resolved.append(
-            profile if not oscillating else RecurrenceProfile(**{
-                **profile.__dict__, "is_oscillating": True
-            })
-        )
+        resolved.append(replace(profile, is_oscillating=True) if oscillating else profile)
     return resolved
 
 
@@ -1237,14 +1233,20 @@ def test_correlated_dimensions_collapse_into_one_finding_with_aliases():
 
 
 def test_ranking_is_by_attributable_excess_not_by_lift():
-    """12-de-60 (exceso alto) tiene que ir antes que 10-de-12 (lift alto)."""
+    """BIG gana por exceso (7.2 vs 5.0) aunque SML gane por lift (6.25 vs 2.5).
+
+    Los numeros estan elegidos para que los dos criterios se CONTRADIGAN: si el
+    ranking fuera por lift (o por n*lift), este test daria SML. Con C=24 sobre
+    una base de 300: BIG 12-de-60 -> esperado 4.8, exceso 7.2; SML 6-de-12 ->
+    esperado 0.96, exceso 5.04.
+    """
     base = (
         {f"BIG{i}" for i in range(60)}
         | {f"SML{i}" for i in range(12)}
         | {f"OTH{i}" for i in range(228)}
     )
     chronic = (
-        [f"BIG{i}" for i in range(12)] + [f"SML{i}" for i in range(10)]
+        [f"BIG{i}" for i in range(12)] + [f"SML{i}" for i in range(6)]
         + [f"OTH{i}" for i in range(6)]
     )
 
@@ -1437,7 +1439,6 @@ def find_denominators(
             n_v = counts.get(value, 0)
             if m_v < thresholds.min_base or n_v < thresholds.min_chronics:
                 continue
-            expected = chronic_total * m_v / base_total if base_total else 0.0
             lift = (n_v / chronic_total) / (m_v / base_total) if chronic_total and m_v else 0.0
             if lift < thresholds.min_lift:
                 continue
@@ -1528,14 +1529,12 @@ def _collapse_overlapping(findings: list[GroupFinding], overlap_pct: float) -> l
             continue
         existing = kept[target]
         if finding.m_v > existing.m_v:
-            kept[target] = GroupFinding(
-                **{**finding.__dict__,
-                   "aliases": existing.aliases + ((existing.dimension, existing.value),)}
+            kept[target] = replace(
+                finding, aliases=existing.aliases + ((existing.dimension, existing.value),)
             )
         else:
-            kept[target] = GroupFinding(
-                **{**existing.__dict__,
-                   "aliases": existing.aliases + ((finding.dimension, finding.value),)}
+            kept[target] = replace(
+                existing, aliases=existing.aliases + ((finding.dimension, finding.value),)
             )
     return kept
 ```
@@ -1764,7 +1763,7 @@ Spec: docs/superpowers/specs/2026-07-25-pattern-scan-design.md
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -2059,7 +2058,9 @@ git commit -m "feat(pattern_scan): adaptadores de ledger, CSV de historia, maest
 Agregar a `tests/test_pattern_scan_job.py`:
 
 ```python
-from jobs.pattern_scan_job import LoadResult, run, verify
+from dataclasses import replace
+
+from jobs.pattern_scan_job import LoadResult, PatternReport, run, verify
 from src.guided import EXECUTED, OPTIONS
 from src.patterns import Occurrence
 
@@ -2119,8 +2120,7 @@ def test_verify_is_empty_on_a_healthy_report():
 def test_verify_blocks_when_dropped_rows_are_not_disclosed():
     report = run(_load(_runs("SKU-1", [0, 30, 60])), master={}, roster=set(),
                  now=BASE + timedelta(days=90), params={})
-    broken = PatternReport(**{**report.__dict__,
-                             "n_rows_dropped_bad_ts": 3, "data_quality_note": ""})
+    broken = replace(report, n_rows_dropped_bad_ts=3, data_quality_note="")
 
     assert any("descartada" in issue for issue in verify(broken))
 
@@ -2438,10 +2438,16 @@ def run(
     if load.n_rows_future_ts:
         quality_bits.append(f"{load.n_rows_future_ts} fila(s) con fecha futura excluida(s)")
 
+    # build_options necesita el report ya armado (mira profiles, denominator y la
+    # ventana), y el report lleva el outcome adentro. Se construye en dos pasos a
+    # proposito, con un outcome provisional que NUNCA sale de esta funcion: el
+    # return de abajo lo reemplaza por el definitivo. La alternativa (pasarle a
+    # build_options siete argumentos sueltos) duplica la firma del report.
+    draft_outcome = as_executed("outcome provisional, reemplazado antes del return")
     report = PatternReport(
         profiles=tuple(profiles),
         denominator=denominator,
-        outcome=as_executed("placeholder"),
+        outcome=draft_outcome,
         window_days_requested=window_days,
         window_days_effective=effective_days,
         window_note=window_note,
@@ -2469,7 +2475,7 @@ def run(
         n_boundaries_unknown=sum(p.n_boundaries_unknown for p in profiles),
         n_profiles_censored=len(censored),
     )
-    return PatternReport(**{**report.__dict__, "outcome": build_options(report)})
+    return replace(report, outcome=build_options(report))
 
 
 def verify(report: PatternReport) -> list[str]:
