@@ -650,16 +650,39 @@ supera ~900 lineas, esta es la primera pieza a cortar**: el tool sigue funcionan
 | 1 | `scm_agent/tools.py` | `reg.register(...)` |
 | 2 | `scm_agent/citation_gate.py` | `TOOL_CONCEPTS["pattern_scan"]` — las 6 anclas verificadas de la seccion 5.I. Pool con `limit>=16` sobre keyword set fijo (ceiling empirico, re-medir) |
 | 3 | `src/i18n.py` | `TOOL_TITLES` — el titulo `es` no puede ser identico al `en` (`tests/test_i18n.py:72`) |
-| 4 | `tests/test_scm_agent.py:123` | key set + assert anti-drift `{t.key for t in TOOLS} == {t.key for t in build_default_registry().list()}` |
+| 4 | `tests/test_scm_agent.py:123` | el key set de `test_build_default_registry_tools` — **un solo assert**. Aca no hay ningun assert anti-drift, y **no existe** una constante `TOOLS` (ver la nota de abajo) |
 | 5 | `tests/test_price_watch_tool.py:165` | pin global `len(reg.list()) == 46` -> `47` |
 | 6 | `webapp/how_it_works_data.py` | nueva `ToolInfo(...)` (46 -> 47 tras PR-0b) |
 | 7 | `tests/test_how_it_works_data.py` | los 3 asserts |
-| 8 | `examples/run_capability_smoke.py` | `_BRIEF` + fixture CSV, si no el tool sale `GATED` en vez de `PASS` |
+| 8 | `examples/run_capability_smoke.py` | **el fixture** (`_CSV["pattern_scan"]`) es lo que decide `PASS` vs `GATED`. La entrada en `_BRIEF` es opcional pero conviene (ver la nota de abajo) |
 | 9 | `scm_agent/events.py` + `jobs/digest_job.py` | lector acotado + port |
 
-El assert anti-drift va en `tests/test_scm_agent.py`, **no** en `tests/test_how_it_works_data.py`:
-ese modulo es deliberadamente pure-data y arrastrar `scm_agent` le mete orchestrator + grafo +
-openpyxl.
+**Los guardas anti-drift ya existen; no hay que escribirlos.** Son dos tests de paridad que
+**regex-scrapean el texto fuente** de `scm_agent/tools.py` con `key="([a-z_]+)"`:
+`tests/test_i18n.py::test_all_registered_tool_keys_are_covered` (contra `TOOL_TITLES`) y su
+gemelo en `tests/test_citation_gate.py` (contra `TOOL_CONCEPTS`). Tres consecuencias:
+
+- **La key tiene que ser `[a-z_]+`.** Una key con digito o guion es invisible para las dos
+  paridades, y el tool entraria al registry sin titulo ni anclas y sin que nada falle.
+  `pattern_scan` cumple.
+- **En `scm_agent/` no existe ninguna constante `TOOLS`.** `build_default_registry()` arma el
+  registry con 46 llamadas `reg.register(...)` imperativas; no hay lista de modulo a la que
+  agregarse. Un borrador de este spec citaba un assert `{t.key for t in TOOLS} == ...` que no
+  existe. **Cuidado con el homonimo:** `webapp/how_it_works_data.py` **si** define
+  `TOOLS: tuple[ToolInfo, ...]` — pero es la tabla de la pagina publica, no el registry. Son dos
+  listas distintas que se sincronizan a mano (pinned places #6 y #7), y esa duplicacion es
+  justamente el motivo por el que la pagina llego a publicar "41 capabilities" con 46 registradas.
+- `tests/test_how_it_works_data.py` sigue siendo deliberadamente pure-data — no importa
+  `scm_agent`, que le meteria orchestrator + grafo + openpyxl — asi que su conteo **no** esta
+  cubierto por esas paridades y se actualiza a mano.
+
+**Sobre `GATED` en el smoke.** `run_capability_smoke.py` resuelve el brief con
+`_BRIEF.get(key, f"run {key}")`: una key ausente **no** rompe nada, cae en un brief generico. Lo
+que decide el bucket es el estado que devuelve el orquestador (`_GATED = {"needs_data",
+"needs_clarification"}`), y eso depende de si `_fixture_path(key, ...)` encontro datos para un
+tool con `requires_data=True`. O sea: **sin fixture, `pattern_scan` sale `GATED`** — como los 5
+que ya salen asi hoy (`disruption_scan`, `hat_settlement`, `hat_tension`, `network_design`,
+`supplier_management`). `GATED` no es una falla del harness, pero es cobertura que no se ejerce.
 
 **Tests propios** (espejo de #182, que shipeo 3 archivos + 4 fixtures)
 
@@ -750,3 +773,16 @@ evidencia externa o contra el codigo, no por preferencia:
 - **Cadencia periodica (decision 9).** Verificado en el codigo que `cadence_minutes` es dato muerto,
   y que `_cycle_report_summary` (`webapp/app.py`) mas el docstring de `jobs/scheduled_jobs.py` son la
   razon concreta por la que el job no puede entrar en `PRODUCTION_JOB_IDS`.
+
+**Ronda 3 — correcciones a este mismo spec.** Una ronda de reconocimiento de 10 lectores sobre el
+codigo real, hecha para escribir el plan de implementacion, desmintio tres afirmaciones de la
+seccion 8 de este documento: la constante `TOOLS` no existe, el assert anti-drift que se citaba
+tampoco, y el `_BRIEF` del smoke no decide `GATED` (lo decide el fixture). Las tres estan
+corregidas arriba, verificadas leyendo `scm_agent/tools.py`, `tests/test_scm_agent.py`,
+`tests/test_i18n.py`, `tests/test_citation_gate.py` y `examples/run_capability_smoke.py`.
+
+Vale la pena registrar por que se colaron: las tres eran plausibles y ninguna estaba inventada de
+cero — describian un patron que **otros** repos si tienen (una lista de tools de modulo, un assert
+de paridad centralizado, un mapa de briefs que gatea el harness). Es el mismo modo de falla que la
+seccion 5.I: afirmar una estructura por analogia en vez de leerla. La regla que sale de aca es la
+misma que ya aplica a las citas — **si el spec nombra un simbolo, ese simbolo se abre y se lee.**

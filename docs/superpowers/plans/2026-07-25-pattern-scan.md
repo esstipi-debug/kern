@@ -35,7 +35,7 @@ corriendo) el codigo, no infiriendo.
 | `EventLedger` tiene `record()` / `append()` | El unico escritor es **`emit(event) -> bool`** (`False` = suprimido por dedup) |
 | `list_all()` viene ordenado por `ts` | Viene `ORDER BY seq ASC` (orden de insercion). Y el ledger **si** contiene filas cuyo orden por `ts` difiere del orden por `seq`: los eventos de `pricing_intel` traen `ts=offer.observed_at` |
 | Hay un indice por `ts` | No. `__init__` crea solo `idx_events_dedup_key` e `idx_events_type` |
-| Existe una constante `TOOLS` en `scm_agent/tools.py` | No existe. `build_default_registry()` arma el registry con 46 `reg.register(...)` imperativos |
+| Existe una constante `TOOLS` en `scm_agent/tools.py` | No existe — `build_default_registry()` arma el registry con 46 `reg.register(...)` imperativos. El homonimo `webapp/how_it_works_data.TOOLS` **si** existe, pero es la tabla de la pagina publica, no el registry |
 | El tipo de opcion se llama `Option` | Se llama **`ExecutionOption`**. Y `verify_guided` **devuelve** `list[str]`, no es generador |
 | `_BRIEF` de `run_capability_smoke.py` decide PASS vs GATED | Lo deciden los **fixtures**. `_BRIEF` ni siquiera tiene entrada para `disruption_scan`; hoy 5 tools salen GATED por falta de fixture |
 | `tests/test_scm_agent.py:123` tiene el key set **y** un assert anti-drift | Tiene **un** solo assert (el key set). Los guards anti-drift viven en `tests/test_i18n.py` |
@@ -45,15 +45,20 @@ corriendo) el codigo, no infiriendo.
 | `ScheduledJob.trigger` agenda algo | Es inerte: su unico consumidor es `build_scheduler()`, que necesita el extra `tower` y **no lo llama nadie**. La cadencia real es el cron de GitHub (Task 10) |
 | El conteo de tools es 41 o 45 (lo dice `CLAUDE.md`) | Es **46** en las cuatro pinned places, medido. Varios tests tienen nombres viejos (`test_registry_now_has_45_tools` afirma 46) — **no** renombrar el assert para que coincida con el nombre |
 
-**Dos correcciones al spec** (`docs/superpowers/specs/2026-07-25-pattern-scan-design.md`), que
-quedan anotadas aca en vez de bloquear el plan:
+**Tres correcciones al spec** — ya aplicadas en la seccion 8 de
+`docs/superpowers/specs/2026-07-25-pattern-scan-design.md`, en el mismo PR que este plan:
 
-- La seccion 8 justifica el pinned place #8 diciendo que sin entrada en `_BRIEF` el tool sale
-  `GATED` en vez de `PASS`. Es al reves: lo que gatea es el fixture. La entrada en `_BRIEF`
-  sigue haciendo falta, pero por otra razon (que el brief exista), y **hace falta ademas un
-  fixture CSV** o `pattern_scan` se suma a los 5 GATED de hoy.
-- La misma seccion describe `tests/test_scm_agent.py:123` como "key set + assert anti-drift".
-  Es solo el key set.
+- El pinned place #8 decia que sin entrada en `_BRIEF` el tool sale `GATED` en vez de `PASS`.
+  Es al reves: `_BRIEF.get(key, f"run {key}")` cae en un brief generico y no rompe nada; lo que
+  decide el bucket es el **fixture**. **Hace falta un `_CSV["pattern_scan"]`** o `pattern_scan`
+  se suma a los 5 GATED de hoy.
+- El pinned place #4 describia `tests/test_scm_agent.py:123` como "key set + assert anti-drift".
+  Es solo el key set (mas 6 asserts de `requires_data`).
+- El assert anti-drift que el spec citaba (`{t.key for t in TOOLS} == ...`) **no existe**, y en
+  `scm_agent/` tampoco existe una constante `TOOLS` (ojo: el homonimo de
+  `webapp/how_it_works_data.py` si existe, pero es otra cosa). Los guardas anti-drift reales son
+  las dos paridades que regex-scrapean `tools.py` (`tests/test_i18n.py`,
+  `tests/test_citation_gate.py`) — de ahi sale la restriccion de que la key sea `[a-z_]+`.
 
 ---
 
@@ -3443,7 +3448,69 @@ Expected: seis lineas `OK`. Si alguna dice `FALTA`, reemplazarla por un nodo que
 
 `tests/test_scm_agent.py:123`: agregar `"pattern_scan"` al key set esperado.
 
-`examples/run_capability_smoke.py`: agregar `_BRIEF["pattern_scan"] = "buscar patrones cronicos en mis alertas"` y apuntar su fixture a `tests/fixtures/patterns/history.csv`. Sin fixture el tool sale `GATED` en vez de `PASS`.
+`examples/run_capability_smoke.py`: el brief **y** el fixture.
+
+El brief es una linea:
+
+```python
+    "pattern_scan": "buscar patrones cronicos en mis alertas",
+```
+
+Es opcional en sentido estricto (`_BRIEF.get(key, f"run {key}")` cae en `"run pattern_scan"`),
+pero un brief generico deja el resumen del harness sin sentido.
+
+El fixture **no** puede ser una entrada de `_CSV` con fechas escritas a mano, y tampoco puede
+apuntar a `tests/fixtures/patterns/history.csv`: `_fixture_path()` solo mira `_SAMPLE`
+(`dict[str, Path]`, apunta a `data/`), `_CSV` (`dict[str, str]`, contenido inline que se
+materializa en un temp dir) y cuatro casos especiales. Un CSV inline con fechas fijas **caduca**:
+en cuanto pasen 90 dias sale de la ventana, el tool devuelve `needs_data` y `pattern_scan` vuelve
+a `GATED` sin que nadie toque nada.
+
+Se usa el mismo mecanismo que ya tiene `forecast`, que existe exactamente por este motivo — un
+writer que genera el fixture relativo a `now`:
+
+```python
+def _write_pattern_scan_csv(path: Path) -> None:
+    """Historia sintetica anclada a `now`, no a fechas fijas.
+
+    Tres episodios-falla separados ~30 dias sobre el mismo SKU: alcanza para
+    `chronic` (chronic_min_episodes=3) y para pasar `min_history_days=30`. Con
+    fechas hardcodeadas el fixture caduca a los 90 dias y el tool vuelve a
+    GATED en silencio.
+    """
+    # Import lazy adentro del writer: es el idiom del archivo (ver
+    # `_write_forecast_csv`, que hace `import pandas as pd` aca adentro), y el
+    # modulo NO importa datetime a nivel top -- solo argparse/json/sys/tempfile/
+    # dataclasses/pathlib.
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    rows = ["sku,tipo,fecha"]
+    for days_ago in (75, 74, 45, 44, 15, 14):
+        stamp = (now - timedelta(days=days_ago)).strftime("%d/%m/%Y %H:%M")
+        signal = "rop_breach" if days_ago % 2 else "stockout_projected"
+        rows.append(f"SKU-1,{signal},{stamp}")
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+```
+
+y en `_fixture_path()`, junto a los otros casos especiales:
+
+```python
+    if key == "pattern_scan":
+        p = fixtures_dir / "pattern_scan.csv"
+        _write_pattern_scan_csv(p)
+        return p
+```
+
+Verificar que efectivamente pase (no alcanza con que no falle):
+
+```bash
+python examples/run_capability_smoke.py 2>&1 | grep pattern_scan
+```
+
+Expected: `[ OK ]` — **no** `[GATE]`. Hoy hay 5 tools en `[GATE]` por falta de fixture
+(`disruption_scan`, `hat_settlement`, `hat_tension`, `network_design`, `supplier_management`);
+`pattern_scan` no tiene que ser el sexto.
 
 - [ ] **Step 5: El CLI**
 
