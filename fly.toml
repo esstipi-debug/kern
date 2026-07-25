@@ -15,6 +15,27 @@ primary_region = "iad"          # CHANGE ME if deploying your own copy elsewhere
   LINCHPIN_ENV = "production"
   LINCHPIN_LOG_JSON = "1"
   LINCHPIN_MCP_KEYS_PATH = "/data/mcp_keys.sqlite3"
+  # Every OTHER durable store defaulted under the app's own `data/` directory,
+  # which is /app/data on this image (WORKDIR /app) - the Machine's EPHEMERAL
+  # root filesystem, NOT the volume mounted at /data below. So each one was
+  # silently wiped on every single deploy:
+  #   - events        the Control Tower's event ledger (monitors' output)
+  #   - autonomy      the T1/T2/T3 autonomy + approval audit trail
+  #   - state         the system-state snapshots the monitors read
+  #   - pricing       the price-watch observation ledger + its SKU map
+  # For the price ledger that made the recurring price-watch cron pointless
+  # past one deploy cycle: it kept re-acquiring a history it could never keep.
+  # Each of these stores mkdir(parents=True, exist_ok=True) on its own base, so
+  # pointing them at fresh subpaths of the volume needs no migration - and there
+  # is nothing to migrate anyway, since the old location never survived a deploy.
+  # Nothing here is mounted at /app/data: the image's static sample CSVs
+  # (data/sample_demand_portfolio.csv etc.) stay exactly where they are - see
+  # the [[mounts]] comment below for why shadowing them crashes the app.
+  LINCHPIN_EVENTS_PATH = "/data/events.sqlite3"
+  LINCHPIN_AUTONOMY_PATH = "/data/autonomy.sqlite3"
+  LINCHPIN_STATE_PATH = "/data/state"
+  LINCHPIN_PRICING_LEDGER_PATH = "/data/pricing_intel/ledger"
+  LINCHPIN_SKU_MAP_PATH = "/data/pricing_intel/sku_map"
   # 2 workers OOM-killed a 512mb VM within ~10-25s of boot (each uvicorn worker
   # loads its own copy of pandas/numpy/scipy + the orchestrator + the L3
   # knowledge graph - not shared across worker processes). Confirmed live: 1
