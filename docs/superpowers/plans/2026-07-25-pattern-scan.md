@@ -1821,6 +1821,10 @@ class LoadResult:
     date_format_applied: str
     signal_vocabulary: tuple[str, ...]
     source_kind: str = "csv"  # "ledger" | "csv" -- solo el ledger puede certificar huecos
+    # Filas cuyo payload_json vino corrupto (Event.payload_corrupt). La ocurrencia
+    # se CONSERVA -- el analisis solo necesita (entidad, senal, ts) -- pero el
+    # numero se publica: una degradacion que no se cuenta es un cap silencioso.
+    n_rows_payload_corrupt: int = 0
 
 
 def _pick_column(df: pd.DataFrame, candidates: tuple[str, ...]) -> str | None:
@@ -1964,6 +1968,7 @@ def from_event_ledger(ledger: EventLedger, *, start: datetime, end: datetime) ->
         date_format_applied="iso",
         signal_vocabulary=tuple(vocabulary),
         source_kind="ledger",
+        n_rows_payload_corrupt=sum(1 for e in events if e.payload_corrupt),
     )
 
 
@@ -2217,6 +2222,7 @@ class PatternReport:
     n_rows_dropped_bad_ts: int
     n_rows_dropped_no_entity: int
     n_rows_future_ts: int
+    n_rows_payload_corrupt: int
     n_boundaries_unknown: int
     n_profiles_censored: int
 
@@ -2437,6 +2443,11 @@ def run(
         quality_bits.append(f"{load.n_rows_dropped_no_entity} fila(s) descartada(s) sin entidad")
     if load.n_rows_future_ts:
         quality_bits.append(f"{load.n_rows_future_ts} fila(s) con fecha futura excluida(s)")
+    if load.n_rows_payload_corrupt:
+        quality_bits.append(
+            f"{load.n_rows_payload_corrupt} fila(s) con payload corrupto (conservada(s), "
+            "el analisis no usa el payload)"
+        )
 
     # build_options necesita el report ya armado (mira profiles, denominator y la
     # ventana), y el report lleva el outcome adentro. Se construye en dos pasos a
@@ -2472,6 +2483,7 @@ def run(
         n_rows_dropped_bad_ts=load.n_rows_dropped_bad_ts,
         n_rows_dropped_no_entity=load.n_rows_dropped_no_entity,
         n_rows_future_ts=load.n_rows_future_ts,
+        n_rows_payload_corrupt=load.n_rows_payload_corrupt,
         n_boundaries_unknown=sum(p.n_boundaries_unknown for p in profiles),
         n_profiles_censored=len(censored),
     )
@@ -2499,7 +2511,8 @@ def verify(report: PatternReport) -> list[str]:
             issues.append(f"hallazgo en {finding.dimension} sin tabla de conteos absolutos")
 
     if (report.n_rows_dropped_bad_ts or report.n_rows_dropped_no_entity
-            or report.n_rows_future_ts) and not report.data_quality_note.strip():
+            or report.n_rows_future_ts or report.n_rows_payload_corrupt
+            ) and not report.data_quality_note.strip():
         issues.append("hay filas descartada(s) sin declarar en el reporte")
     if report.window_days_effective < report.window_days_requested - 0.5 and not report.window_note.strip():
         issues.append("ventana efectiva menor a la pedida sin declararlo")
