@@ -121,5 +121,98 @@ def test_mixed_entities_raise_because_the_caller_must_group_first():
         to_episodes(occs, gap_hours=48.0, cadence_hours=1.0)
 
 
+def test_mixed_families_raise_because_the_caller_must_group_first():
+    occs = [occ(0, signal="rop_breach"), occ(1, signal="excess_growing")]
+
+    with pytest.raises(ValueError, match="one family"):
+        to_episodes(occs, gap_hours=48.0, cadence_hours=1.0)
+
+
 def test_empty_input_returns_no_episodes():
     assert to_episodes([], gap_hours=48.0, cadence_hours=1.0) == []
+
+
+def test_default_certified_gap_treats_every_threshold_gap_as_certified():
+    """``certified_gap=None`` es el modo CSV: sin instrumentacion, todo hueco
+    >= umbral se asume certificado y parte. Si el default se invirtiera a
+    "nunca partir", este hueco de 99h se fundiria en un unico episodio de 4
+    ocurrencias en vez de partir en dos de a 2."""
+    occs = [occ(0), occ(1), occ(100), occ(101)]
+
+    episodes = to_episodes(occs, gap_hours=48.0, cadence_hours=1.0)
+
+    assert len(episodes) == 2
+    assert [e.n_occurrences for e in episodes] == [2, 2]
+    assert episodes[1].boundary_certified is True
+
+
+def test_peak_signal_is_the_escalation_signal_even_when_it_is_not_the_last_occurrence():
+    occs = [
+        occ(0, signal="rop_breach"),
+        occ(1, signal="stockout_projected"),
+        occ(2, signal="rop_breach"),
+    ]
+
+    episodes = to_episodes(occs, gap_hours=48.0, cadence_hours=1.0)
+
+    assert episodes[0].peak_signal == "stockout_projected"
+
+
+def test_peak_signal_falls_back_to_the_first_signal_when_there_is_no_escalation():
+    occs = [occ(0), occ(1)]
+
+    episodes = to_episodes(occs, gap_hours=48.0, cadence_hours=1.0)
+
+    assert episodes[0].peak_signal == "rop_breach"
+
+
+def test_prior_gap_hours_is_none_for_the_first_episode():
+    episodes = to_episodes([occ(0), occ(1)], gap_hours=48.0, cadence_hours=1.0)
+
+    assert episodes[0].prior_gap_hours is None
+
+
+def test_prior_gap_hours_carries_the_size_of_the_gap_that_opened_the_episode():
+    occs = [occ(0), occ(1), occ(100), occ(101)]
+
+    episodes = to_episodes(occs, gap_hours=48.0, cadence_hours=1.0,
+                           certified_gap=lambda a, b: True)
+
+    assert episodes[1].prior_gap_hours == pytest.approx(99.0)
+
+
+def test_multiple_consecutive_uncertified_gaps_all_merge_into_one_episode():
+    """Tres corridas separadas por DOS huecos sin certificar tienen que
+    fundirse en un unico episodio (no en dos fusiones independientes), y el
+    episodio fundido no debe heredar un prior_gap_hours espurio."""
+    occs = [occ(0), occ(1), occ(100), occ(101), occ(200), occ(201)]
+
+    episodes = to_episodes(occs, gap_hours=48.0, cadence_hours=1.0,
+                           certified_gap=lambda a, b: False)
+
+    assert len(episodes) == 1
+    assert episodes[0].n_occurrences == 6
+    assert episodes[0].boundary_certified is False
+    assert episodes[0].prior_gap_hours is None
+
+
+def test_mixed_certified_then_uncertified_gap_keeps_the_entry_gap_as_prior_gap_hours():
+    """Un corte certificado abre un episodio nuevo; un hueco DENTRO de ese
+    episodio que despues falla certificacion se funde sin pisar el
+    prior_gap_hours de entrada (el que si certifico)."""
+    entry_gap_start = BASE + timedelta(hours=1)
+
+    def certified_gap(start: datetime, end: datetime) -> bool:
+        return start == entry_gap_start
+
+    occs = [occ(0), occ(1), occ(100), occ(101), occ(250)]
+
+    episodes = to_episodes(occs, gap_hours=48.0, cadence_hours=1.0,
+                           certified_gap=certified_gap)
+
+    assert len(episodes) == 2
+    episode_a, episode_b = episodes
+    assert episode_a.n_occurrences == 2
+    assert episode_b.n_occurrences == 3
+    assert episode_b.boundary_certified is False
+    assert episode_b.prior_gap_hours == pytest.approx(99.0)
