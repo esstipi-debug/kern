@@ -1,10 +1,19 @@
 """Static content data for GET /how-it-works (webapp/how_it_works_page.py).
 
 Every count here is verified against the actual code, not copied from a
-possibly-stale doc: 41 tools = build_default_registry()'s 41 register()
+possibly-stale doc: 46 tools = build_default_registry()'s 46 register()
 calls in scm_agent/tools.py. The domain-area grouping matches README.md's
-"All 40 capabilities" table (corrected here to 41 -- launch_readiness,
-tool #41, postdates that table's last refresh). The SCOR Digital Standard
+"All 40 capabilities" table (corrected here to 46 -- launch_readiness,
+tool #41, postdates that table's last refresh, and disruption_scan,
+supplier_management, network_design, hat_tension, hat_settlement (#42-46)
+were backfilled in a later PR after this module fell behind the registry;
+each of those five was bucketed by domain_area/scor_bucket to match the
+sibling tool feeding the same engine or SCOR layer -- disruption_scan with
+risk (src/risk.py), supplier_management with sourcing (Kraljic sits in
+Procurement & sourcing / Source), network_design with facility_location
+(same siting family, Network & logistics / Order/Fulfill), and both
+hat_tension and hat_settlement with sop (S&OP decision-cadence layer,
+Planning cadence & projects / Plan)). The SCOR Digital Standard
 bucket per tool is grounded in documentation/KERN_NIVEL_REFERENCIA_SCM.md
 Section 2 (itself generated from a direct code read on 2026-07-17),
 cross-checked during this feature's design phase by a 45-agent adversarial
@@ -91,16 +100,22 @@ TOOLS: tuple[ToolInfo, ...] = (
              "First-Expired-First-Out issue order plus a markdown-vs-scrap disposition."),
     ToolInfo("data_quality", "Data Quality", "Inventory control & health", "Orchestrate",
              "Master/inventory data quality checks, including GTIN validation."),
-    # -- Procurement & sourcing (3) --
+    # -- Procurement & sourcing (4) --
     ToolInfo("sourcing", "Sourcing", "Procurement & sourcing", "Source",
              "Supplier scorecarding via OTIF/DIFOT and defect rate."),
+    ToolInfo("supplier_management", "Supplier Management", "Procurement & sourcing", "Source",
+             "Kraljic matrix segmentation (profit impact x supply risk) into strategic/"
+             "bottleneck/leverage/non-critical quadrants."),
     ToolInfo("landed_cost", "Landed Cost", "Procurement & sourcing", "Source",
              "Total cost to destination, Incoterm-aware."),
     ToolInfo("acceptance_sampling", "Acceptance Sampling", "Procurement & sourcing", "Source",
              "Incoming-quality sampling plan by AQL/LTPD."),
-    # -- Network & logistics (7) --
+    # -- Network & logistics (8) --
     ToolInfo("facility_location", "Facility Location", "Network & logistics", "Order/Fulfill",
              "Cost-minimizing single-facility siting via center-of-gravity and Weiszfeld."),
+    ToolInfo("network_design", "Network Design", "Network & logistics", "Order/Fulfill",
+             "Multi-facility p-median siting: which sites to open and how to assign demand, "
+             "minimizing total weighted travel."),
     ToolInfo("transportation", "Transportation", "Network & logistics", "Order/Fulfill",
              "Mode selection (parcel/LTL/FTL/intermodal) and the LTL-to-FTL break-even."),
     ToolInfo("vehicle_routing", "Vehicle Routing", "Network & logistics", "Order/Fulfill",
@@ -126,11 +141,14 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Cost-to-serve by customer/channel, including the whale-curve view."),
     ToolInfo("learning_curve", "Learning Curve", "Pricing & finance", "Transform",
              "Wright's-law cost projection over cumulative production volume."),
-    # -- Returns, risk & benchmarking (3) --
+    # -- Returns, risk & benchmarking (4) --
     ToolInfo("returns", "Returns", "Returns, risk & benchmarking", "Return",
              "Reverse-logistics disposition (restock/refurbish/liquidate/scrap)."),
     ToolInfo("risk", "Risk", "Returns, risk & benchmarking", "Orchestrate",
              "A supply chain risk register: EMV, FMEA, and a TTR-vs-TTS resilience gap."),
+    ToolInfo("disruption_scan", "Disruption Scan", "Returns, risk & benchmarking", "Orchestrate",
+             "Live GDELT disruption news scored per supplier: strikes, disasters, port/"
+             "logistics incidents, bankruptcies."),
     ToolInfo("dea", "DEA", "Returns, risk & benchmarking", "Orchestrate",
              "Data Envelopment Analysis efficiency benchmarking."),
     # -- Demand & classification (3) --
@@ -140,9 +158,15 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Demand forecasting, including intermittent-demand methods."),
     ToolInfo("whatif", "What-If", "Demand & classification", "Plan",
              "Sensitivity analysis: tornado charts, best/worst case, break-even."),
-    # -- Planning cadence & projects (3) --
+    # -- Planning cadence & projects (5) --
     ToolInfo("sop", "S&OP", "Planning cadence & projects", "Plan",
              "Aggregate Sales & Operations Planning: Chase/Level/Hybrid strategies."),
+    ToolInfo("hat_tension", "Hat Tension", "Planning cadence & projects", "Plan",
+             "One replenishment decision scored through 4 role hats (buyer/planner/cfo/sales), "
+             "mapping where they clash."),
+    ToolInfo("hat_settlement", "Hat Settlement", "Planning cadence & projects", "Plan",
+             "Reconciles the 4 role hats into one replenishment plan (Q*, SL*) via an explicit "
+             "weight policy, with a concession record."),
     ToolInfo("earned_value", "Earned Value", "Planning cadence & projects", "Transform",
              "Project earned-value management: SV/CV/SPI/CPI."),
     ToolInfo("launch_readiness", "Launch Readiness", "Planning cadence & projects", "Plan",
@@ -280,7 +304,7 @@ class IsoClause:
 ISO_9001_CLAUSES: tuple[IsoClause, ...] = (
     IsoClause("4.4 / 8.1 Process approach",
               "A fixed, self-describing pipeline: every capability is a Tool with "
-              "prepare/run/qa/deliver -- the same sequence for all 41."),
+              "prepare/run/qa/deliver -- the same sequence for all 46."),
     IsoClause("7.5 Documented information",
               "An EvidenceRecord (SHA-256 of inputs, control totals, formula versions, QA "
               "attestations); a writeback AuditEntry; a Keep-a-Changelog CHANGELOG; L3 "

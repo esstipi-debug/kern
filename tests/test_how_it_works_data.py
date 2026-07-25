@@ -25,22 +25,22 @@ from webapp.how_it_works_data import (  # noqa: E402
 
 
 def test_exactly_41_tools_with_unique_keys() -> None:
-    assert len(TOOLS) == 41
-    assert len({t.key for t in TOOLS}) == 41
+    assert len(TOOLS) == 46
+    assert len({t.key for t in TOOLS}) == 46
 
 
 def test_domain_area_tally_sums_to_41_and_matches_spec() -> None:
     tally = tally_by_domain_area()
-    assert sum(tally.values()) == 41
+    assert sum(tally.values()) == 46
     assert tally == {
         "Inventory & replenishment": 9,
-        "Network & logistics": 7,
+        "Network & logistics": 8,
         "Inventory control & health": 6,
         "Pricing & finance": 6,
         "Demand & classification": 3,
-        "Procurement & sourcing": 3,
-        "Returns, risk & benchmarking": 3,
-        "Planning cadence & projects": 3,
+        "Procurement & sourcing": 4,
+        "Returns, risk & benchmarking": 4,
+        "Planning cadence & projects": 5,
         "Leadership": 1,
     }
     assert set(tally) == set(DOMAIN_AREA_ORDER)
@@ -48,13 +48,13 @@ def test_domain_area_tally_sums_to_41_and_matches_spec() -> None:
 
 def test_scor_bucket_tally_sums_to_41_and_matches_spec() -> None:
     tally = tally_by_scor_bucket()
-    assert sum(tally.values()) == 41
+    assert sum(tally.values()) == 46
     assert tally == {
-        "Plan": 15,
-        "Order/Fulfill": 8,
-        "Orchestrate": 8,
+        "Plan": 17,
+        "Order/Fulfill": 9,
+        "Orchestrate": 9,
         "Transform": 4,
-        "Source": 3,
+        "Source": 4,
         "Return": 2,
         "Outside SCOR scope": 1,
     }
