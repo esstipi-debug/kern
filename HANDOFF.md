@@ -4,6 +4,27 @@
 
 **Purpose:** pick up Linchpin work in a fresh session without re-deriving context.
 
+> ## AVISO ENTRE SESIONES — pattern_scan (2026-07-25)
+>
+> **Si estas ejecutando `docs/superpowers/plans/2026-07-25-pattern-scan.md`: para en la Task 3.**
+>
+> El spec incorporo tres decisiones (7-9) DESPUES de que se escribiera la primera version del
+> plan, y la version reconciliada vive en la rama **`docs/pattern-scan-plan-reconcile`**
+> (worktree `.wt-pattern-scan-plan`). Sin mergearla, las Tasks 4, 7 y 9 implementan cosas que
+> ya se descartaron:
+>
+> - **Task 4 / Task 7** — `episode_gap_hours = 48.0` fijo. Ahora el hueco se **deriva** por
+>   familia (`k x cadencia`, k=4, piso 2h, techo 48h). Con 48h fijo, un SKU que rompe, se
+>   repone y vuelve a romper en la misma semana sale **un** episodio en vez de dos: se funde
+>   justo la firma que la tool existe para detectar.
+> - **Task 9** — el ancla `demand_variability` **no existe** como nodo del grafo (es el nombre
+>   de `src/demand_variability.py`). Reemplazada por seis anclas verificadas contra
+>   `knowledge/scm-books/graph.json`.
+> - **Falta la Task 10** — PR-2, la cadencia semanal por `ScheduledJob` + cron dedicado.
+>
+> La **Task 1** (backfill de `how_it_works` 41 -> 46) **no esta afectada**: se puede terminar y
+> mergear tal cual.
+
 > **Permanent priority rule:** if a `PIPELINE.md` file exists at the repo
 > root describing an active deal, that work takes priority over **everything
 > else in this file** — any checklist item, any Linchpin 2.0 épica, any
