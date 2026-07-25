@@ -15,7 +15,7 @@ Todo lo marcado **EXISTE HOY** está verificado leyendo el código fuente del re
 | Métrica | Valor real (código) | Qué dicen los docs | Nota |
 |---|---|---|---|
 | Herramientas registradas | **45** (`scm_agent/tools.py`, 45 `register()`) | README/badge: 39 · `autonomy.py`: 37 · `package_specs.py`: 35 | Los docs van por detrás del código. |
-| Fuentes en el grafo de libros | **33** `source_file` distintos, 1953 nodos, 3810 aristas (`knowledge/scm-books/graph.json`) | README: "25 fuentes" | El grafo real es mayor. |
+| Fuentes en el grafo de libros | **35** `source_file` distintos, 3002 nodos, 6141 aristas (recontado 2026-07-24; antes decía 33/1953/3810) | README: "25 fuentes" | Archivos ≠ obras: 9 de los 35 son capítulos de un mismo volumen editado y 1 es un documento propio de Kern (`KERN_ATLAS_SOMBREROS_SCM.md`, 100 nodos). Decir **25** en material público queda corto a propósito: es defendible. Nunca decir 33 ni 35. |
 | Paquetes comerciales | **8** `PackageSpec` (`package_specs.py`) | Docstring: "7 vendibles" | `retainer_ejecutivo` reusa el catálogo de `scale`. |
 
 **Fuentes académicas realmente embebidas en el código** (citadas en docstrings): Vandeput *Inventory Optimization* (2020) y *Data Science for Supply Chain Forecasting* (2021); Jacobs & Chase *OSCM* 15e; Chopra & Meindl 7e; Silver, Pyke & Thomas 4e; Christopher; Cooper & Kaplan (ABC); Ellram (TCO) + ICC Incoterms 2020; Ptak & Smith *DDMRP v3*; Syntetos, Boylan & Croston (2005); Hyndman & Athanasopoulos; Rezaei (BWM 2015); Gallego & van Ryzin; Simchi-Levi (TTR/TTS); Grant *Sustainable Logistics & Supply Chain*; SCOR/ASCM (cash-to-cash AM.1.1, OTIF); AICPA AU-C 530 / PCAOB AS 1105/1215/2315 (evidencia de auditoría).

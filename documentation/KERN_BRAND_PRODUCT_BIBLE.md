@@ -141,9 +141,9 @@ Marco honesto para un video explicativo o un deck (nunca decir "certificado" ni 
 
 ---
 
-## 4. La filosofía: autonomía ganada, no declarada
+## 4. La filosofía: quién opera y quién responde
 
-> **Por qué importa:** es la respuesta a la objeción #1 del mercado ("otra IA que promete magia"). Kern se diferencia diciendo lo contrario: no confíes de entrada, hacé que se lo gane.
+> **Por qué importa:** es la respuesta a la objeción #1 que recibimos — *"pero básicamente estás ofreciendo automatización"*. No se pelea la palabra: se concede y se mueve el eje. Sí, adentro hay automatización, igual que en los cinco competidores de §2. La diferencia es **qué** se automatiza (el criterio del oficio, no los clicks del cliente), que **rinde cuentas** (se niega a entregar su propia mala salida) y que **la entrega un humano que responde**, con lo que "responder" significa puesto por escrito. La autonomía, mientras tanto, se gana con evidencia — no se declara.
 
 ### 4.1 El arco de 4 escenas (storytelling / timeline animado)
 - **Mes 1:** un monitor detecta un SKU en punto de reorden → el agente propone la orden → como es la primera vez, **escala a un humano** (T3). El humano aprueba.
@@ -153,19 +153,53 @@ Marco honesto para un video explicativo o un deck (nunca decir "certificado" ni 
 
 **Remate:** *La autonomía no se asume, se gana. No se configura, se demuestra.*
 
-### 4.2 Automatización vs. Autonomía (carrusel de 2 columnas)
-| Automatización | Autonomía (Kern) |
+> **Dos aclaraciones que hacen que este arco no contradiga el mensaje madre:**
+> 1. Las cifras (8%, 94%, >92%, 4 ciclos) son **ejemplo de diseño del arco**, no una medición de un cliente. Rotularlas así en pantalla y en copy.
+> 2. La autonomía que se gana aplica a la **ejecución mecánica dentro de límites**, nunca al compromiso de plata: lo irreversible siempre exige un humano (`src/writeback.py`), y un monto por encima del umbral se re-rutea a `ESCALATED` (`src/escalation.py`). T1 no significa "sin humano" — significa "sin humano para el paso mecánico ya probado".
+
+### 4.2 "Eso es automatización" — la respuesta (carrusel de 2 columnas)
+
+**La línea de apertura, textual:** *"Sí. Igual que Netstock, que Stocky y que la regla min/max de tu ERP: la hay en los cinco. La pregunta útil no es si hay automatización — es quién la opera y quién responde cuando el número sale mal."*
+
+| Automatización que **operás vos** | Una función que **rinde cuentas y firma un humano** |
 |---|---|
-| Ejecuta reglas predefinidas | Decide con datos reales y modelos actualizados |
-| Alguien revisa los resultados | Se revisa a sí mismo y reporta su precisión |
-| El error es un bug | El error es un dato que ajusta el próximo ciclo |
-| Escalar = más reglas | Escalar = más confianza ganada |
+| Ejecuta la regla que escribiste vos, hace años, y nadie volvió a mirar | Corre el criterio del oficio: el colchón sobre el error del pronóstico, y el patrón de demanda elige el modelo |
+| Siempre entrega algo, aunque no aguante | Si no pasa su propio control de calidad, **no se escribe ningún archivo** |
+| Te da un número sin decir de dónde salió | Si no puede fundamentarlo con al menos dos fuentes, no te muestra ninguna — nunca rellena con una cita conveniente |
+| Escribe en tu sistema y después te enterás | Nada irreversible sin tu firma; lo reversible queda con rollback y bitácora |
+| Si sale mal, la consecuencia es tuya y no hay a quién llamar | Hay alguien con nombre, y está escrito qué pasa si nos equivocamos |
+| Cuesta USD 49-349/mes: a ese precio no entra el tiempo de nadie, entra un login | Cuesta lo que cuesta una función, porque incluye a quien la opera |
+
+**El segundo movimiento (el que convierte la amenaza de plataforma en argumento):** *"Tu Shopify o tu Odoo ya te sugieren reponer, gratis, hace dos años. ¿Cuándo fue la última vez que abriste esa pantalla y cambiaste algo con lo que te dijo? El problema nunca fue que falte automatización — falta quien la opere."*
+
+**Disciplina de copy (obligatoria):**
+- Nunca decir "no automatizamos" ni "no usamos IA": es falso (§5.4) y suena a esquive.
+- Nunca decir "3 de cada 4 veces para y pide permiso" (frecuencia no medida, roza §10). Sí: **"de los cuatro finales posibles, tres paran en un humano por diseño"**.
+- Nunca decir "si no puede citar, no entrega nada". Sí: **"si no puede fundamentar con dos fuentes, no te muestra ninguna"**.
+- Nunca decir "nada toca tu sistema sin tu firma". Sí: **"nada irreversible sin tu firma"**.
+- Nunca decir la palabra "SLA" fuera del Retainer Ejecutivo.
 
 ### 4.3 La metáfora del organismo (motion graphics)
 Kern no es un edificio que se construye planta por planta. Es un **organismo que crece añadiendo vasos sanguíneos:** cada sensor es un capilar, cada tool un músculo, cada verificación un reflejo más fuerte. Crece porque **nunca deja de medirse.**
 
 ### 4.4 Cita de cierre (frase final de video)
 > *"No es que la máquina sea perfecta. Es que la máquina sabe cuánto se equivoca y lo dice antes de que tú lo preguntes."* — Principio de diseño Kern A4
+
+### 4.5 Qué significa "responde" (la Carta de Responsabilidad)
+
+"Hay un humano que firma" no se dice sin esto detrás. Se entrega por escrito antes de la primera propuesta:
+
+| Compromiso | Alcance |
+|---|---|
+| Retrabajo sin cargo | Error de método en un entregable ⇒ se rehace sin cargo dentro de la ventana acordada |
+| Ciclo sin entregable = ciclo sin factura | Si la QA veta y el ciclo no sale, ese ciclo no se cobra |
+| Fee contingente | Sprint de Liquidación: % del cash recuperado, piso USD 1.500, **USD 0 si no se recupera nada** (`src/contingent_fee.py`) |
+| Una persona con nombre | En todos los peldaños. **SLA contractual sólo en el Retainer Ejecutivo** (`package_specs.py`) |
+| Lo que **no** es | No hay garantía de resultado ni indemnización por pérdidas. No hay matrícula profesional. Se dice primero, de frente. |
+
+**Y la frontera de alcance, en la misma frase que la promesa:** *"Vos seguí hablando con tus proveedores. Lo que te sacamos de encima es decidir qué pedirles, cuánto y cuándo."* Kern no negocia con proveedores, no persigue la orden, no recibe mercadería y no camina el depósito.
+
+> ⚠️ **Sin firmar** al 24-jul-2026. Hasta que estos 5 compromisos estén acordados, la frase "hay alguien que responde" no se usa en material público.
 
 ---
 

@@ -47,7 +47,7 @@ No "superamos" una certificación haciendo bien lo que enseña; **la hacemos aut
 
 Aquí está el terreno nuevo. Se describe **como mecanismo**, no como credencial:
 
-1. **Grounding con cita forzada.** Cada resultado *que se entrega* cita ≥2 de 33 fuentes curadas (1953 nodos, `knowledge/scm-books/graph.json`); si no puede fundamentar, **entrega nada** en vez de una conjetura plausible.
+1. **Grounding con cita forzada.** Cada resultado *que se entrega* cita ≥2 de 25 fuentes curadas (`knowledge/scm-books/graph.json`); si no puede fundamentar, **entrega nada** en vez de una conjetura plausible.
 2. **Citation gate anti-falso-amigo** (`MIN_CITATIONS=2`, `MAX_HOPS=2`, `EXCLUDED_CONCEPTS`). La explicabilidad como compuerta, no como feature de marketing.
 3. **Writeback firmado + time-boxed + idempotente + reversible.** HMAC-SHA256 ligado al *hash de contenido* del changeset (no solo a la clave de idempotencia), TTL 900s, `compare_digest` de tiempo constante, `rollback()`-able; irreversible siempre exige humano (`src/writeback.py`). *Pregúntale a tu ERP si su rastro de auditoría es no-repudiable a nivel de changeset.*
 4. **Autonomía ganada con evidencia + degradación inmediata.** El agente gana el derecho a actuar desde evidencia observada y lo pierde al instante ante drift.
@@ -81,12 +81,12 @@ Aquí está el terreno nuevo. Se describe **como mecanismo**, no como credencial
 
 **El principio, reencuadrado tras la revisión de realismo:** el retailer SMB objetivo (USD 1-15M, dueño/ops no-técnico) **no compara Kern contra un planificador que nunca contrató.** Compara contra *lo que hoy usa de verdad*: **su app de inventario (~AUD 100-300/mes) + sus propias horas.** Ese es el ancla honesto.
 
-> **"No reemplazas tu app; reemplazas las horas que hoy pones tú operándola —y el método que un planificador correría pero tú no tienes tiempo de correr. El costo cargado de contratar ese planificador (~1/3 a 1/2 más caro que `growth`/`scale`) es la comparación aspiracional, no la inmediata."**
+> **"No reemplazas tu app; reemplazas las horas que hoy pones tú operándola —y el método que un planificador correría pero tú no tienes tiempo de correr. El costo cargado de contratar ese planificador (~2× el `retainer_ejecutivo`, ~3× `scale`, ~6× `growth`) es la comparación aspiracional, no la inmediata."**
 
 Correcciones duras de la revisión:
 - **Cotizar y facturar en AUD/NZD, absorbiendo FX y GST.** La regla "USD ×1.5" *inflaba* cada número en la moneda del comprador — un aumento de precio auto-infligido sobre el comprador más sensible. Stripe cobra en USD internamente; el cliente ve moneda local.
-- **La aritmética honesta:** `growth` (USD 4k/mes ≈ 48k/año) contra un salario cargado de planificador AU de ~USD 100-120k `[SUPUESTO de mercado]` es **~40-50%**, no "10-20%". El único "10-20%" real del catálogo es el fee contingente de liquidación. *(Un CFO hace esta cuenta de cabeza; equivocarla quema la credibilidad de todos los demás números.)*
-- **Meta de ingreso con precios reales:** ≥ USD 8k/mes = **2× `growth`** o **4× `starter`** — no "3 retainers @ 2,700" (2,700 no es un precio del catálogo; era un promedio inventado).
+- **La aritmética honesta** *(recalculada 2026-07-24 con los precios reales de `package_specs.py`; la versión anterior de esta línea usaba precios muertos)*: contra un salario cargado de planificador AU de ~USD 100-120k `[SUPUESTO de mercado]`, `growth` (USD 1,500/mes = 18k/año) es **~15-18%**, `scale` (38,4k/año) **~32-38%**, y el `retainer_ejecutivo` (54k/año) **~45-54%**. Sólo el peldaño más alto se acerca a media contratación; los de entrada son una fracción chica de un sueldo. *(Un CFO hace esta cuenta de cabeza; equivocarla quema la credibilidad de todos los demás números.)* Ojo con el falso amigo: el "10-20%" del Sprint de Liquidación **no es** un % de salario — es % del cash recuperado.
+- **Meta de ingreso con precios reales:** ≥ USD 8k/mes = **2× `retainer_ejecutivo`** (9,000) · **2-3× `scale`** (6,400-9,600) · **5-6× `growth`** (7,500-9,000). Consecuencia de planeación, no cosmética: con los precios reales hacen falta **más del doble de clientes** que con la aritmética vieja para llegar a la misma meta.
 
 ### Resultado por paquete — *mecanismo* (seguro) vs *resultado* (por demostrar)
 
@@ -95,14 +95,14 @@ Precios verificados en `package_specs.py`. La columna de resultado es lo que el 
 | Paquete | Precio verificado (USD) | Mecanismo (verificado) | Resultado esperado (a demostrar) |
 |---|---|---|---|
 | **Diagnóstico de Arranque** | 1,500-2,500 (único) | ABC-XYZ + E&O + baseline cash-to-cash/DIO sobre *sus* datos | Cuantificar cash muerto y exposición antes de cualquier mensual |
-| **Starter — Fundamentos** | 2,000/mes | Forecast (σ_e) + reorden + safety stock forzado | Menos stockouts sin sobre-comprar |
-| **Growth — Operación** | 4,000/mes (+QBR) | + demanda/oferta/sourcing/logística/cost-to-serve | OTIF, WAPE, cost-to-serve % — medidos, no proyectados |
-| **Scale — Red, S&OP** | 7,500/mes | + facility location, transportation, slotting, SCOR L1 | Decisiones de red bajo cadencia ejecutiva |
-| **Retainer Ejecutivo** | 9,000-12,000/mes | **Mismo motor que Scale** (35 pasos idénticos) | *No es más análisis* — ver premium abajo |
+| **Starter — Fundamentos** | 900/mes (piso; techo 1,500 por catálogo) | Forecast (σ_e) + reorden + safety stock forzado | Menos stockouts sin sobre-comprar |
+| **Growth — Operación** | 1,500/mes (piso; +QBR) | + demanda/oferta/sourcing/logística/cost-to-serve | OTIF, WAPE, cost-to-serve % — medidos, no proyectados |
+| **Scale — Red, S&OP** | 3,200/mes (flat) | + facility location, transportation, slotting, SCOR L1 | Decisiones de red bajo cadencia ejecutiva |
+| **Retainer Ejecutivo** | 4,500/mes (flat = Scale × 1.4) | **Mismo motor que Scale** (35 pasos idénticos) | *No es más análisis* — ver premium abajo |
 | **Proyecto Red/Almacén** | 8,000-18,000 (único) | Inflexión estructural (nueva CD, rediseño) | Alternativa a un SOW de consultora, con evidencia re-ejecutable |
 | **Proyecto Sourcing** | 5,000-10,000 (único, recurrible) | Landed cost + acceptance sampling | Freight/duty visibles al board |
 
-**El premium del Retainer** (nombrar qué compra, no asumirlo): comparte los 35 pasos de Scale *verbatim* (`package_specs.py` líneas 391-393: "Nothing to re-derive here"). El delta de USD 1.5-4.5k/mes **no es capacidad** — es **gobernanza**: SLA contractual de respuesta de escalamiento + autoridad de writeback autónomo-firmado. *"Pagas accountability y velocidad-de-acción, como un retainer de VP fraccional, no un tier de software."*
+**El premium del Retainer** (nombrar qué compra, no asumirlo): comparte los 35 pasos de Scale *verbatim* (`package_specs.py` líneas 391-393: "Nothing to re-derive here"). El delta de USD 1,300/mes (Scale 3,200 → Retainer 4,500) **no es capacidad** — es **gobernanza**: SLA contractual de respuesta de escalamiento + autoridad de writeback autónomo-firmado. *"Pagas accountability y velocidad-de-acción, como un retainer de VP fraccional, no un tier de software."*
 
 ### La liquidación contingente como oferta de aterrizaje
 
@@ -122,9 +122,9 @@ El catálogo ya es una rampa de confianza: cada peldaño se gana con *evidencia*
 |---|---|---|---|---|
 | **LAND** | `liquidacion` (contingente) **o** `diagnostico` (1,500-2,500) | Nosotros (concierge) | Humano decide todo | Un número real de cash / problema cuantificado sobre *sus* datos |
 | **PUENTE** ⚠️ | `starter` mes-a-mes, **primer mes con devolución** o piloto pagado 30-60d | Nosotros | Human-in-loop | *Cierra el salto de confianza donde mueren los tratos SMB* |
-| **EXPAND 1** | `growth` 4,000/mes (+QBR) | Nosotros → el cliente lee el cockpit | Guided OPTIONS/HANDOFF | Multi-almacén/ERP; el QBR prueba la cadencia |
-| **EXPAND 2** | `scale` 7,500/mes (+S&OP) | El cliente opera el cockpit | Aprobación one-click (TTL 900s) | Red real, cadencia S&OP |
-| **EXPAND 3** | `retainer_ejecutivo` 9,000-12,000/mes | Cliente opera; Kern autónomo dentro de límites | Writeback autónomo firmado + escalamiento SLA | 6-18 meses de track record → se paga *gobernanza* |
+| **EXPAND 1** | `growth` 1,500/mes (+QBR) | Nosotros → el cliente lee el cockpit | Guided OPTIONS/HANDOFF | Multi-almacén/ERP; el QBR prueba la cadencia |
+| **EXPAND 2** | `scale` 3,200/mes (+S&OP) | El cliente opera el cockpit | Aprobación one-click (TTL 900s) | Red real, cadencia S&OP |
+| **EXPAND 3** | `retainer_ejecutivo` 4,500/mes | Cliente opera; Kern autónomo dentro de límites | Writeback autónomo firmado + escalamiento SLA | 6-18 meses de track record → se paga *gobernanza* |
 
 ⚠️ **El puente es la corrección crítica de la revisión GTM:** el salto de un diagnóstico único de 2k a un compromiso recurrente de 24k/año es donde mueren los tratos SMB. Insertar un peldaño barato de probar (mes con devolución / piloto pagado) es obligatorio, no opcional.
 
@@ -183,7 +183,7 @@ La revisión marcó lanzar dos audiencias a la vez (retailers directos + canal r
 
 ### El hook: ventana Stocky como *lead-gen*, no sprint de ingreso
 Shopify Stocky cierra el **2026-08-31**. Real y urgente, pero:
-- **No vender `starter` a 2k/mes en frío como "reemplazo de Stocky"** — Stocky viene efectivamente gratis en Shopify POS Pro (~USD 89/mes); anclar contra ~cero pierde. Anclar contra *el planificador/servicio*: "no otro dashboard que te dice qué pasó, sino la función de reorden que un planificador correría, como servicio."
+- **No vender `starter` (USD 900/mes; LatAm 250-300) en frío como "reemplazo de Stocky"** — Stocky viene efectivamente gratis en Shopify POS Pro (~USD 89/mes); anclar contra ~cero pierde. Anclar contra *el planificador/servicio*: "no otro dashboard que te dice qué pasó, sino la función de reorden que un planificador correría, como servicio."
 - **Tratar la ventana como una ola de leads que alimenta un pipeline de 3-6 meses,** no un sprint de 6 semanas — sobre todo protegiendo capacidad de entrega para que los primeros clientes se vuelvan las referencias que desbloquean al resto.
 - Activo vivo: la landing `/stocky-alternative` (https://linchpin.fly.dev/stocky-alternative, 200 verificado).
 
