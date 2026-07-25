@@ -157,11 +157,45 @@ diseñarlo dos veces.
 
 ```
 platform · route_used · pages_read · rows_emitted
+rows_declared:       int | None                         cuantas filas declaro la plataforma
 routes_probed:       ((ruta, status_http), ...)
 rows_dropped:        ((motivo_tipado, cuenta), ...)     la fila entera no se emitio
 undeclared_reasons:  ((motivo_tipado, cuenta), ...)     la fila se emitio, un atributo quedo sin declarar
+truncations:         (motivo_tipado, ...)               hay catalogo que no se leyo
+attribute_states:    ((atributo, (decl, no_decl, contra)), ...)
 outcome: ok | sin_feed_json | bloqueado_waf | plataforma_desconocida | error_red
 ```
+
+**`truncations`, cardinalidad cerrada en cuatro:** `TOPE_PAGINAS_ALCANZADO` ·
+`LECTURA_PARCIAL_PAGINA_FALLIDA` · `PAGINA_REPETIDA` ·
+`TOTAL_DECLARADO_NO_COINCIDE`. Existe como campo propio porque meter el
+truncamiento en `rows_dropped` rompería su cardinalidad de dos y confundiría
+"fila descartada" con "lectura cortada", que son cosas distintas.
+
+**La regla del desenlace: `outcome = "error_red" if truncations else "ok"`**,
+con `route_used` poblado. `route_used is None` si y solo si ninguna ruta
+entregó feed. Los cuatro truncamientos significan lo mismo desde el punto de
+vista de cobertura — hay catálogo que no se leyó y no se sabe cuánto — así que
+un consumidor que ramifica por `outcome`, el único campo que sobrevive a un log
+de una línea, no puede leer una lectura truncada como completa.
+
+**`rows_declared`** sale del header que la plataforma publica (`X-WP-Total` en
+Woo; Shopify no lo publica y queda `None`). Cuando no hubo ningún otro
+truncamiento, se reconcilia contra `rows_emitted + suma(rows_dropped)`; si
+difieren, entra el cuarto motivo. Sin esa reconciliación la única garantía de
+completitud sería "le creí al header de páginas": con un `X-WP-TotalPages`
+cacheado por un CDN, o un catálogo que cambia de tamaño a mitad de la lectura,
+el informe diría `ok` sobre una lectura parcial. El invariante interno
+(`rows_emitted + rows_dropped == filas crudas recibidas`) mide **consistencia**,
+no **completitud**: se satisface perfecto con la mitad del catálogo.
+
+**`attribute_states`** lleva, por atributo canónico, los conteos
+`(declarado, no_declarado, contradicho)`. Sin él, una lectura donde el 100% de
+las filas quedó sin `sku`, `gtin`, `weight_declared` y `stock_status` produciría
+un informe con `undeclared_reasons` vacío y `outcome == "ok"` — porque los tres
+motivos de `undeclared_reasons` son todos de precio y moneda. Un informe
+titulado "la cobertura, declarada siempre" no puede dejar sin declarar la
+cobertura de cuatro de los siete atributos canónicos.
 
 `rows_dropped` y `undeclared_reasons` son dos cosas distintas a propósito, y
 confundirlas es el error que este componente existe para no cometer. Una fila
@@ -197,6 +231,26 @@ Tres reglas que definen el desenlace:
 - **Si las cuatro dan 404**, una sola lectura de la home busca huellas de
   plataforma, para distinguir `sin_feed_json` (reconocí Jumpseller o Bsale) de
   `plataforma_desconocida`.
+
+### 6.1.1 Política de redirects
+
+El lector fija la política, no la hereda del cliente inyectado:
+**`follow_redirects=True` por pedido**, y `url`/`site` de cada fila salen de la
+respuesta que **efectivamente** entregó el feed, no de la URL pedida. Eso
+incluye un salto **cross-host**: si el 301 lleva a otro host, se sigue y se
+registra el host que respondió.
+
+Dos razones, y las dos son de honestidad:
+
+- Con el default de `httpx` (no seguir), una tienda que hace 301 de
+  `/products.json` caería en el desenlace de "ninguna ruta entregó feed" — un
+  falso negativo de tienda entera. Y la suite ejercitaría un camino distinto al
+  de las corridas reales, porque los tests con `MockTransport` no siguen
+  redirects.
+- Si se siguen redirects sin corregir la procedencia, las filas quedan
+  atribuidas a un host que no respondió. §5.2 dice que la procedencia de esos
+  metadatos "es el lector mismo": entonces tienen que decir la verdad de la
+  lectura, no la de la intención.
 
 ### 6.2 Paginado
 
@@ -243,6 +297,27 @@ antemano para las dos salidas posibles:
   activa en Shopify. No se busca el peso en `attributes[]` por heurística.
 - Si Woo **sí** trae peso en alguna clave: se mapea esa clave por nombre
   explícito, como cualquier otra.
+
+### 7.2 Registro de constataciones empíricas
+
+La Tarea 1 del plan escribe acá sus tres decisiones (`woo.WEIGHT_KEYS`,
+`shopify.WEIGHT_KEYS`, y el factor de precio de Shopify), cada una con el
+fixture que la sostiene. Hasta que esa tarea corra, esta sección está vacía a
+propósito: son hechos, y todavía no se midieron.
+
+**Regla obligatoria, ya fijada.** La unidad del peso **no viaja** en el payload
+de la Store API de Woo — es un ajuste del sitio. Así que la rama
+`woo.WEIGHT_KEYS = ("weight",)` declara una **magnitud sin unidad**. Si esa es
+la rama que la Tarea 1 constata, esta sección debe contener textualmente:
+
+> `weight_declared` en Woo no lleva unidad declarada; el consumidor no puede
+> tratarlo como kg.
+
+y la misma frase va en el docstring del adaptador y en el campo
+`woo_weight_unit_declared: false` del registro de decisiones. Cuando el
+normalizador de peso se traiga a esta base, el enganche `feed_weight_kg` tiene
+que leer ese campo **antes** de usar el número. Un peso sin unidad tratado como
+kilos es el mismo error de 1000× que ya costó una vez, con otra cara.
 
 ---
 
