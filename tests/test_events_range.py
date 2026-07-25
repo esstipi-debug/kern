@@ -98,3 +98,30 @@ def test_list_between_does_not_parse_payload_json(ledger):
 
     assert [e.sku for e in got] == ["ok"]
     assert got[0].payload == {}
+
+
+def test_row_with_corrupt_payload_json_is_flagged_payload_corrupt(ledger):
+    """Una fila con payload_json corrupto vuelve marcada, no solo silenciosamente vaciada:
+    perder la marca dejaria la fila indistinguible de una que legitimamente no tiene payload."""
+    base = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    ledger.emit(_ev("corrupt", base))
+    ledger._conn.execute("UPDATE events SET payload_json = ? WHERE sku = ?", ("{not json", "corrupt"))
+    ledger._conn.commit()
+
+    got = ledger.list_between(base, base + timedelta(days=1))
+
+    assert len(got) == 1
+    assert got[0].payload == {}
+    assert got[0].payload_corrupt is True
+
+
+def test_row_with_healthy_payload_json_is_not_flagged_payload_corrupt(ledger):
+    """Una fila sana (payload_json valido, incluso vacio) vuelve con payload_corrupt=False."""
+    base = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    ledger.emit(_ev("healthy", base))
+
+    got = ledger.list_between(base, base + timedelta(days=1))
+
+    assert len(got) == 1
+    assert got[0].payload == {}
+    assert got[0].payload_corrupt is False
