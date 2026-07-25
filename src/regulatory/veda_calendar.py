@@ -71,15 +71,43 @@ def fold(text: str) -> str:
 class Attribution:
     """Un atributo con su justificacion. ``evidence`` es el fragmento exacto
     del titulo que lo sostiene -- nunca una parafrasis, nunca un valor por
-    defecto. Sin evidencia, ``declared`` es False y ``value`` queda en None.
+    defecto.
+
+    TRES estados, nunca dos:
+
+    ``declarado``     el titulo lo dice y nada lo contradice.
+    ``no_declarado``  el titulo no lo dice. No se rellena con el valor mas
+                      probable.
+    ``contradicho``   el titulo trae dos senales de autoridad comparable que
+                      se pisan -- "Camaron 36/40 nacional" afirma origen
+                      nacional mientras su calibre es la convencion del
+                      camaron de cultivo importado.
+
+    El tercer estado no es un adorno. Colapsarlo contra ``no_declarado``
+    pierde la unica de las tres situaciones que es *accionable sin
+    preguntar*: un dato faltante es del cliente, pero una contradiccion es
+    un defecto en su propia ficha, y se le puede mostrar. Y colapsarlo
+    contra ``declarado`` -- eligiendo la senal "mas fuerte" en silencio --
+    es exactamente la clase de relleno que este modulo existe para impedir.
     """
 
     value: str | None = None
     evidence: str | None = None
+    conflicts: tuple[tuple[str, str], ...] = ()
 
     @property
     def declared(self) -> bool:
-        return self.value is not None and self.evidence is not None
+        return self.value is not None and self.evidence is not None and not self.conflicts
+
+    @property
+    def contradicted(self) -> bool:
+        return bool(self.conflicts)
+
+    @property
+    def state(self) -> str:
+        if self.contradicted:
+            return "contradicho"
+        return "declarado" if self.declared else "no_declarado"
 
 
 @dataclass(frozen=True)
@@ -101,7 +129,17 @@ class VedaAssessment:
     def sin_declarar(self) -> frozenset[str]:
         return frozenset(
             name for name in ("origen", "variante", "region")
-            if not getattr(self, name).declared
+            if getattr(self, name).state == "no_declarado"
+        )
+
+    @property
+    def contradichos(self) -> frozenset[str]:
+        """Los atributos que el propio titulo se contradice. Son distintos de
+        los faltantes: un dato que falta se le pregunta al cliente, uno
+        contradicho se le muestra."""
+        return frozenset(
+            name for name in ("origen", "variante", "region")
+            if getattr(self, name).contradicted
         )
 
 
@@ -134,20 +172,36 @@ def detect_especie(title: str, lexicon: Mapping) -> Attribution:
 
 
 def detect_origen(title: str, especie: str | None, lexicon: Mapping) -> Attribution:
-    """Tres estados. 'importado' gana sobre 'nacional' cuando ambos aparecen
-    ('merluza austral importada' es importada). Las reglas de formato solo
-    desempatan cuando ningun marcador lexico aparecio, y su evidencia es el
-    texto que el patron efectivamente capturo -- no el patron."""
+    """Origen en tres estados.
+
+    Se recolectan TODAS las senales antes de decidir, en vez de devolver la
+    primera que calza: es la unica forma de ver una contradiccion. Una senal
+    lexica ("ecuatoriano", "nacional") y una regla de formato (el calibre
+    36/40, convencion del camaron de cultivo importado) tienen autoridad
+    comparable sobre el origen, asi que cuando apuntan a valores distintos
+    el resultado es ``contradicho`` y NO se elige un ganador.
+
+    La evidencia de una regla de formato es el texto que el patron capturo
+    -- "36/40" -- nunca el patron, para que siga siendo un fragmento literal
+    del titulo verificable por el test de la invariante.
+    """
     folded = fold(title)
     origen = lexicon["origen"]
+    senales: list[tuple[str, str]] = []
     if marker := _find_marker(folded, origen["importado"]):
-        return Attribution("importado", marker)
+        senales.append(("importado", marker))
     if marker := _find_marker(folded, origen["nacional"]):
-        return Attribution("nacional", marker)
+        senales.append(("nacional", marker))
     for rule in origen.get("reglas_de_formato", ()):
         if especie in rule["aplica_a"] and (m := re.search(rule["patron"], folded)):
-            return Attribution(rule["implica"], m.group(0))
-    return Attribution()
+            senales.append((rule["implica"], m.group(0)))
+    if not senales:
+        return Attribution()
+    valores = {value for value, _ in senales}
+    if len(valores) > 1:
+        return Attribution(None, None, tuple(senales))
+    value, evidence = senales[0]
+    return Attribution(value, evidence)
 
 
 def detect_variante(title: str, especie: str | None, lexicon: Mapping) -> Attribution:
@@ -221,11 +275,20 @@ def assess(title: str, lexicon: Mapping, registry: Mapping, today: date) -> Veda
     scored.sort(key=lambda pair: pair[1])
     veda, dias = scored[0]
 
-    origen_value = origen.value or "no_declarado"
+    # Un origen contradicho no sube la severidad: si el titulo se pisa a si
+    # mismo, no hay base para afirmar que la prohibicion alcanza al producto.
+    # Toma el mismo techo que un origen ausente, pero se reporta distinto.
+    origen_value = origen.value if origen.declared else "no_declarado"
     severidad = SEVERIDAD[(veda["tipo"], origen_value)]
     cerradas = frozenset(r for v, d in scored if d == 0 for r in v["regiones"])
 
     notas: list[str] = []
+    if origen.contradicted:
+        choque = " vs ".join(f"{val} ({ev!r})" for val, ev in origen.conflicts)
+        notas.append(
+            f"ORIGEN CONTRADICHO: el titulo afirma {choque}. No es un dato que falte "
+            "-- es un defecto en su propia ficha, y se le puede mostrar sin preguntarle nada"
+        )
     variantes_posibles = {v.get("variante") for v, _ in scored}
     if not variante.declared and len(variantes_posibles) > 1 and severidad != "NULO":
         detalle = " o ".join(f"{v.get('variante')} en {d}d" for v, d in scored)
