@@ -129,7 +129,31 @@ variante:
   ostion:
     del_norte: [del norte]
 
-# Atributos que separan productos que de otro modo colisionan al homologar.
+# REGIONES. Una veda alcanza al recurso extraido en ciertas regiones, y casi
+# ningun titulo declara de donde vino -- pero algunos si nombran el puerto o
+# la zona, y cuando lo hacen desambiguan la fila entera. Los codigos son los
+# de config/regulatory/cl_vedas.yaml.
+#
+# Deliberadamente NO se listan aqui "austral", "del norte" ni "patagonia":
+# ya son marcadores de variante o de origen, y reusarlos como region haria
+# que un mismo token decidiera dos cosas distintas.
+region:
+  XV:   [arica, parinacota]
+  I:    [iquique, tarapaca, pisagua]
+  II:   [antofagasta, mejillones, tocopilla, taltal]
+  III:  [atacama, caldera, huasco, chanaral]
+  IV:   [coquimbo, tongoy, guanaqueros, la serena, los vilos]
+  V:    [valparaiso, san antonio, quintero, concon, algarrobo]
+  VI:   [ohiggins, o'higgins, pichilemu, navidad]
+  VII:  [maule, constitucion, pelluhue, curanipe]
+  XVI:  [nuble, cobquecura, buchupureo]
+  VIII: [biobio, talcahuano, coronel, lota, concepcion, lebu, tome]
+  IX:   [araucania, queule, puerto saavedra, tolten]
+  XIV:  [valdivia, los rios, corral, niebla, mehuin]
+  X:    [chiloe, puerto montt, calbuco, ancud, quellon, los lagos, reloncavi, dalcahue, castro]
+  XI:   [aysen, chonos, puerto cisnes, melinka]
+  XII:  [magallanes, punta arenas, porvenir, puerto natales, tierra del fuego]
+
 # Marcadores de producto ELABORADO -- decisivos solo para vedas extractivas.
 #
 # Una veda extractiva alcanza "procesamiento, elaboracion" y los productos
@@ -172,6 +196,7 @@ elaborado:
   - marinado
   - marinada
 
+# Atributos que separan productos que de otro modo colisionan al homologar.
 estado:   [crudo, cocido]
 proceso:  [pelado, desvenado, con caparazon, con cascara, sin cascara, apanado,
            rebosado, iqf, porcionado, entero, filete, trozos, medallon,
