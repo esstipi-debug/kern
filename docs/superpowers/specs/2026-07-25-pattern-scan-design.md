@@ -2,6 +2,7 @@
 
 > Spec de diseno. Fecha: 2026-07-25. Tool #47.
 > Estado: aprobado por el usuario, listo para `writing-plans`.
+> Segunda ronda (decisiones 7-9) cerrada el mismo dia — ver seccion 9.
 
 ## 1. Problema
 
@@ -45,6 +46,9 @@ de **politica**) del incidente aislado (-> pedido puntual).
 | 4 | Inferencia de episodios | **Por hueco temporal**, sin agregar eventos de resolucion |
 | 5 | Ubicacion de la logica | **Motor puro en `src/patterns.py`** + adaptadores en `jobs/pattern_scan_job.py` |
 | 6 | Roster de `src/state` | **Dentro de PR-1** (habilita `base_mode="evaluated"` y deteccion de censura) |
+| 7 | Anclaje del vocabulario DDMRP | **`src/ddmrp.py` (codigo), NO el grafo L3** — el grafo no tiene zonas de buffer (seccion 5.I) |
+| 8 | Umbral de episodio | **`k x cadencia observada por familia`** (k=4), piso 2h, techo 48h — no una constante de reloj (seccion 5.E) |
+| 9 | Cadencia periodica | **`ScheduledJob` semanal en PR-2**, no un septimo monitor. No escribe en el ledger (seccion 8) |
 
 ## 3. Arquitectura
 
@@ -188,8 +192,10 @@ Sin maestro, degrada al modo simple (solo perfiles, sin denominador) y lo dice. 
 | Param | Default | Rol |
 |---|---|---|
 | `window_days` | 90 | ventana pedida |
-| `episode_gap_hours` | 48 | hueco que parte episodio |
-| `episode_gap_hours_alt` | 24 | segunda corrida de sensibilidad |
+| `episode_gap_k` | 4 | multiplicador de cadencia que parte episodio (seccion 5.E) |
+| `episode_gap_k_alt` | (2, 8) | dos corridas de sensibilidad, en k y no en horas |
+| `episode_gap_floor_hours` | 2 | piso duro (2x la ventana de dedup del ledger) |
+| `episode_gap_ceiling_hours` | 48 | techo duro — el 48h del borrador, degradado de constante a cota superior |
 | `chronic_min_episodes` | 3 | clamp `max(2, valor)` |
 | `min_history_days` | 30 | por debajo -> `needs_data` |
 | `persistent_duty_pct` | 50 | umbral de duty cycle |
@@ -226,7 +232,7 @@ trazabilidad.
 **Construccion de episodios:**
 
 - Ocurrencias ordenadas por `ts` ASC, **nunca** por `seq`.
-- Un hueco parte episodio solo si `gap >= episode_gap_hours` **Y** el hueco esta **certificado**.
+- Un hueco parte episodio solo si `gap >= episode_gap(familia)` **Y** el hueco esta **certificado**.
 - **Certificacion (ledger):** el hueco esta certificado si el ledger escribio filas de cualquier
   otro tipo o entidad durante ese hueco (incluidos los eventos de salud). Si el ledger estuvo
   globalmente mudo, el sistema pudo estar caido -> hueco `unknown` -> **los dos lados quedan como
@@ -235,9 +241,49 @@ trazabilidad.
   reporte lo declara en una linea.
 - Cada episodio publica `start`, `end`, `span_hours`, `n_occurrences`, `peak_signal`,
   `boundary_certified: bool` y el tamano del hueco previo.
-- **Convencion de span:** `span = ultima - primera + una unidad de cadencia` (el dedup window,
-  3600s, para el ledger; el intervalo mediano observado para el CSV). Un episodio de una sola
-  ocurrencia nunca vale 0 horas.
+- **Convencion de span:** `span = ultima - primera + una unidad de cadencia`, donde la unidad es
+  `cadence_hat(familia)` — el mismo estimador que alimenta el gap, para las dos fuentes. Un
+  episodio de una sola ocurrencia nunca vale 0 horas.
+
+**Cadencia efectiva por familia — de donde sale `episode_gap`:**
+
+El umbral de silencio **no es una constante de reloj**: es un multiplo de la cadencia con que la
+fuente emite mientras la condicion esta encendida. `keephq/keep` no tiene deteccion de flapping
+dedicada — su motor resuelve por maquina de estados PENDING/FIRING/RESOLVED con ventana `for`, y
+trata la ausencia-antes-de-madurar como resolucion, o sea relativa a la cadencia y no a un reloj.
+El numero explicito lo pone Prometheus: `EndsAt = 3 x max(evaluation_interval, resend_delay)`.
+
+```
+cadence_prior(familia) = max(cadence_minutes declarados en config/monitors.yaml para las
+                             senales de la familia, ventana de dedup del ledger)
+cadence_hat(familia)   = mediana de los gaps consecutivos <= 3 x cadence_prior(familia),
+                         agrupando TODAS las entidades de la familia
+                         (si califican < 5 gaps -> cadence_prior)
+episode_gap(familia)   = clamp(episode_gap_k x cadence_hat(familia),
+                               episode_gap_floor_hours, episode_gap_ceiling_hours)
+```
+
+Tres propiedades que lo hacen defendible:
+
+- **Rompe el huevo-y-gallina.** El filtro `<= 3 x cadence_prior` solo admite gaps que, bajo la
+  cadencia declarada, son plausiblemente INTRA-episodio. Los huecos largos entre episodios — los que
+  la tool existe para detectar — nunca inflan el estimador que los detecta.
+- **Agrupa por familia, no por entidad.** La cadencia es propiedad del monitor, no del SKU: un perfil
+  con 3 episodios de una ocurrencia cada uno no tiene gaps intra-episodio propios; su familia si.
+- **Degrada a la config.** Sin datos suficientes cae en `cadence_prior`, que es exactamente lo que
+  `config/monitors.yaml` documenta. Para el CSV, que no tiene config, `cadence_prior` es la mediana
+  de todos los gaps consecutivos de la familia y el reporte lo declara.
+
+Por que un numero unico no servia: `config/monitors.yaml` **no tiene una cadencia sola**.
+`rop_breach` y `stockout_projected` declaran 60 min; `excess_growing`,
+`forecast_error_out_of_band` y `lead_time_drift` declaran **1440**; `competitor_price_move`
+declara 240. Un umbral fijo de 48h es 48x la cadencia de la primera familia — funde en un solo
+episodio el patron rompe/repone/rompe dentro de la misma semana, que es justo la firma buscada — y
+apenas 2x la de la segunda, al borde de fragmentar. El mismo numero significa "conservador" en un
+caso y "al limite" en el otro.
+
+`cadence_prior`, `cadence_hat`, el `episode_gap` resuelto y si se uso estimador o fallback se
+**imprimen por familia** en todo reporte.
 
 **Metricas por perfil:** `n_occurrences`, `n_episodes`, `n_failure_episodes`,
 `escalation_rate = n_failure_episodes / n_episodes`, `duty_cycle` (horas cubiertas / horas de
@@ -276,10 +322,11 @@ ventana efectiva), `days_since_last_episode`, `n_boundaries_unknown`.
   que no tuvieron actividad en el ultimo tercio de la ventana se marcan
   `"sin actividad en los ultimos K dias"`.
 
-**Sensibilidad al gap (obligatoria, costo cero):** la clasificacion se corre una segunda vez con
-`episode_gap_hours_alt=24` — es re-llamar una funcion pura — y el reporte declara toda entidad
-cuya etiqueta cambia: `"con gap=24h este SKU seria chronic(3) en vez de one_off"`. Convierte un
-riesgo de calibracion invisible en uno declarado.
+**Sensibilidad al gap (obligatoria, costo cero):** la clasificacion se corre dos veces mas con
+`episode_gap_k_alt = (2, 8)` — es re-llamar una funcion pura — y el reporte declara toda entidad
+cuya etiqueta cambia: `"con k=2 (gap 2h en esta familia) este SKU seria chronic(3) en vez de
+one_off"`. La sensibilidad se expresa **en k, no en horas**, porque el gap ya no es el mismo numero
+para todas las familias. Convierte un riesgo de calibracion invisible en uno declarado.
 
 **Fechas siempre visibles:** cada perfil imprime la lista de episodios con fechas e intervalos
 entre ellos (`"45, 42, 44 dias"`). Sin eso el humano no puede detectar ni una fusion espuria ni
@@ -431,14 +478,19 @@ y corre **antes** de `deliver()`)
 9. `master_provided` sin `dimensions_evaluated` ni `dimensions_rejected` -> issue.
 10. `group_findings` sin `absolute_counts_by_dimension` de la misma dimension -> issue.
 11. `n_boundaries_unknown` y `n_profiles_censored` presentes siempre, incluso en 0.
+12. Por cada familia evaluada: `cadence_prior`, `cadence_hat`, el `episode_gap` resuelto y la marca
+    de estimador-vs-fallback. Falta cualquiera -> issue. Un gap derivado que no se publica es un
+    cap silencioso (regla 14).
 
 **De dominio**
 
-12. Ninguna opcion que sume inventario cita una entidad `oscillating` o con `excess_growing` en la
+13. Ninguna opcion que sume inventario cita una entidad `oscillating` o con `excess_growing` en la
     misma ventana.
-13. `EXECUTED` bloqueado si existe cualquier perfil `persistent`, `chronic`, `acute` u `oscillating`.
-14. Un perfil `chronic` de familia `availability` con `escalation_rate == 0` no puede citarse como
+14. `EXECUTED` bloqueado si existe cualquier perfil `persistent`, `chronic`, `acute` u `oscillating`.
+15. Un perfil `chronic` de familia `availability` con `escalation_rate == 0` no puede citarse como
     falla de servicio ni fundar una opcion de subir buffer.
+16. Ningun texto del reporte afirma haber **medido** NFP, zona de buffer o penetracion del rojo. El
+    mapa DDMRP de la seccion 5.I se emite siempre como analogia declarada (la tool no calcula NFP).
 
 Se **elimina** el invariante `n_episodios > n_ocurrencias` del borrador: es imposible de violar
 por construccion y solo da falsa seguridad.
@@ -446,13 +498,66 @@ por construccion y solo da falsa seguridad.
 *Cobertura complementaria fuera de `qa()`:* un test asegura que el markdown de
 `write_operational` y `build_deck` imprime esos mismos campos. `qa()` nunca ve el markdown.
 
+### I. Anclaje del vocabulario DDMRP y citas
+
+**El grafo L3 no tiene el concepto.** Se consulto antes de escribir esta seccion, no despues: de
+los **3002 nodos** del books graph, **cero** hablan de zonas de buffer verde/amarillo/rojo o de
+penetracion del rojo. `buffer` aparece en 17 nodos, todos en sentido generico safety-stock / TOC
+(`safety_stock`, `safety_inventory`, `drum_buffer_rope`, `lead_time_variability`...). Los tres
+anclajes que `scm_agent/citation_gate.py:66` le da hoy a la tool `ddmrp` —
+`demand_driven_supply_chain`, `drum_buffer_rope`, `vollmann_customer_order_decoupling_point` — son
+todos sobre **desacople**, no sobre zonas.
+
+Citar `knowledge::*` para "penetracion recurrente del rojo" seria una **cita fabricada**: el modo
+de falla exacto que costo la trilogia #160/#162/#164. No se hace.
+
+**El anclaje real es el codigo.** `src/ddmrp.py` implementa el vocabulario completo y lleva la
+referencia bibliografica en su propio docstring (Ptak & Smith, *DDMRP v3*, 2019): `BufferZones`,
+`tor`/`toy`/`tog`, `zone in {red, yellow, green, over_green}`, y la regla `reorder = nfp <= toy`.
+
+**El mapa — y por que valida la regla de honestidad de la seccion E:**
+
+| Senal del ledger | Analogo DDMRP | Lectura |
+|---|---|---|
+| `rop_breach` | NFP entra en **amarillo** | Es el **disparo de pedido**. Normal por construccion: en DDMRP se repone justo al entrar en amarillo (`reorder = nfp <= toy`) |
+| `stockout_projected` | NFP penetra el **rojo** | Excepcion: se esta consumiendo la zona de variabilidad (`ADU x DLT x LTF x (1 + VF)`) |
+
+Es exactamente lo que ya decia la seccion E — un `availability` cronico con `escalation_rate == 0`
+es cadencia de reposicion sana, no una falla — pero ahora con el nombre de dominio que lo explica:
+**contar cruces de ROP como fallas es contar disparos de pedido como fallas.**
+
+Y da la receta correcta para el caso que si importa: en la doctrina DDMRP, penetrar el rojo de
+forma **recurrente** no se arregla expeditando, se arregla **re-perfilando el buffer** (ADU, DLT,
+LTF, VF). Es la tesis de la tool — sintoma repetido -> arreglo de politica — dicha en el idioma del
+dominio.
+
+**Limitacion declarada, impresa en el reporte:** esta tool **no calcula NFP**. `rop_breach` es un
+cruce de punto de reorden clasico, no una penetracion de zona medida contra un buffer
+dimensionado. El mapa de arriba es una **analogia de lectura, no una equivalencia**, y el reporte
+lo dice con esas palabras. Misma disciplina que `escalation_rate` vs cycle service level.
+
+**Pin del citation gate** (`TOOL_CONCEPTS["pattern_scan"]`) — las seis anclas verificadas contra
+el grafo, ninguna sobre zonas de buffer:
+
+```
+("cycle_service_level", "safety_stock", "managing_uncertainty_supply_chain",
+ "lead_time_variability", "bullwhip_effect", "demand_driven_supply_chain")
+```
+
+`bullwhip_effect` es el ancla de la clase `oscillating`. Pool con `limit>=16` sobre keyword set
+fijo; el techo es empirico y se re-mide (se mueve con cada fuente nueva del grafo).
+
+**Follow-up con issue, no bloqueante:** ingerir Ptak & Smith *DDMRP v3* como fuente #28 del books
+graph habilitaria citas reales de zonas, para esta tool y para `ddmrp`. Va aparte porque mover el
+grafo obliga a re-medir el techo del pool de todas las tools ya ancladas.
+
 ## 6. Fuera de alcance (YAGNI)
 
 | Que | Por que no |
 |---|---|
 | `Occurrence.metrics` + bandera "ROP vencido" | Analisis nuevo entero con sus umbrales, texto y tests. El orden de "los K peores" ya queda por `severity` + recurrencia. v2 |
 | Costeo del salto de nivel de servicio | El tool no tiene holding rate, costo unitario, sigma ni lead time. Se delega por `action`. Meter numeros seria el sobre-claim que #182 tuvo que corregir |
-| `episode_gap_hours` por entidad desde `lead_time_days` | Parametros por fila, join nuevo, superficie de test. La corrida de sensibilidad a 24h da el 90% del valor |
+| `episode_gap` por **entidad** desde `lead_time_days` | Parametros por fila, join nuevo, superficie de test. El gap por **familia** (decision 8) da la granularidad que hacia falta sin nada de eso, y la sensibilidad en k cubre el resto |
 | Clases `escalating`/`decaying`/`dormant`, detector estacional | Con `chronic_min_episodes=3` hay 2 huecos inter-episodio; cualquier estadistico sobre 2 observaciones es ruido |
 | Calendario de promociones como input | Input, join y tests nuevos. Se cubre con el copy de la Opcion 2 + las fechas visibles. v2 |
 | Banda `extended` (duty 20-50%) | Imprimir `duty_cycle` al lado de la etiqueta elimina el 90% del dano del acantilado |
@@ -464,6 +569,8 @@ por construccion y solo da falsa seguridad.
 | Bloquear si la cobertura del maestro difiere >10 puntos | La regla 14 pide **declarar**, no abortar. Bloquear castiga al cliente con datos imperfectos, que es el cliente tipico |
 | Fuzzy matching del vocabulario de senales | Generador de falsos amigos — exactamente lo que mordio en #160/#162/#164 |
 | `monitor_runs` + latido en `run_all_monitors` | La certificacion retrospectiva cubre el caso desde el dia 1 sin schema nuevo ni ruta de escritura nueva. Follow-up, issue abierto el mismo dia |
+| Septimo monitor en `scm_agent/monitors.py` | No puede correr semanal (`cadence_minutes` es dato muerto), escribiria en el ledger que esta tool lee, y por `event_routing.yaml` podria rutear a T2 — contradice la decision 3. La cadencia va por `ScheduledJob` (PR-2) |
+| Ingerir DDMRP v3 al books graph dentro de este alcance | Mover el grafo obliga a re-medir el techo del citation pool de todas las tools ancladas. Follow-up con issue (seccion 5.I) |
 
 ## 7. Riesgos declarados
 
@@ -475,6 +582,13 @@ por construccion y solo da falsa seguridad.
 - **Dimensiones correlacionadas.** El colapso las junta pero no separa cual es la causa. Declarado.
 - **`escalation_rate` es un proxy adelantado**, no cycle service level. Declarado en el texto y en
   la cita.
+- **El estimador de cadencia puede fallar en una familia esparsa.** Con menos de 5 gaps que
+  califican, `episode_gap` cae en `cadence_prior`, que es **documentacion y no medicion**:
+  `config/monitors.yaml` declara 1440 min para tres monitores pero `jobs/monitors_job.py:65` corre
+  los seis cada 60 sin mirar ese campo. El reporte imprime `cadence_prior`, `cadence_hat` y la marca
+  de fallback por familia (invariante 12) para que la discrepancia sea visible en vez de silenciosa.
+- **El anclaje DDMRP es analogia, no medicion.** La tool no calcula NFP ni dimensiona buffers; lee
+  eventos. Declarado en el reporte y bloqueado por el invariante 16.
 
 ## 8. Alcance
 
@@ -534,7 +648,7 @@ supera ~900 lineas, esta es la primera pieza a cortar**: el tool sigue funcionan
 | # | Archivo | Que |
 |---|---|---|
 | 1 | `scm_agent/tools.py` | `reg.register(...)` |
-| 2 | `scm_agent/citation_gate.py` | `TOOL_CONCEPTS["pattern_scan"]` — pool con `limit>=16` sobre keyword set fijo (ceiling empirico, re-medir) |
+| 2 | `scm_agent/citation_gate.py` | `TOOL_CONCEPTS["pattern_scan"]` — las 6 anclas verificadas de la seccion 5.I. Pool con `limit>=16` sobre keyword set fijo (ceiling empirico, re-medir) |
 | 3 | `src/i18n.py` | `TOOL_TITLES` — el titulo `es` no puede ser identico al `en` (`tests/test_i18n.py:72`) |
 | 4 | `tests/test_scm_agent.py:123` | key set + assert anti-drift `{t.key for t in TOOLS} == {t.key for t in build_default_registry().list()}` |
 | 5 | `tests/test_price_watch_tool.py:165` | pin global `len(reg.list()) == 46` -> `47` |
@@ -550,7 +664,10 @@ openpyxl.
 **Tests propios** (espejo de #182, que shipeo 3 archivos + 4 fixtures)
 
 - `tests/test_patterns.py` — motor puro: familias, episodios, certificacion de huecos, duty cycle,
-  Fisher+BH, ranking por exceso, colapso por solapamiento.
+  Fisher+BH, ranking por exceso, colapso por solapamiento. Mas el estimador de cadencia: que el
+  filtro `<= 3 x cadence_prior` **excluya** los gaps inter-episodio, que una familia con < 5 gaps
+  caiga en `cadence_prior`, y que dos familias con cadencias declaradas distintas (60 vs 1440)
+  resuelvan `episode_gap` distintos sobre la misma historia.
 - `tests/test_pattern_scan_job.py` — adaptadores, fallback de `entity_id`, parseo de fechas a nivel
   archivo, disclosure en el markdown.
 - `tests/test_pattern_scan_tool.py` — registro, `qa` bloqueante, GuidedOutcome.
@@ -561,13 +678,75 @@ openpyxl.
 **Follow-ups con issue abierto:** tabla `monitor_runs` + latido en
 `scm_agent/monitors.py::run_all_monitors` (si se hace, va **si o si** ahi, nunca en
 `jobs/monitors_job.py::run_monitors_cycle` — ese wrapper no es el camino de prod:
-`webapp/app.py:1058` llama `run_all_monitors` directo); y la politica de retencion del ledger
-(disparador: `ledger_growth` al 70% del volumen de 1 GB).
+`webapp/app.py:1058` llama `run_all_monitors` directo); la politica de retencion del ledger
+(disparador: `ledger_growth` al 70% del volumen de 1 GB); e ingerir Ptak & Smith *DDMRP v3* como
+fuente #28 del books graph (seccion 5.I).
+
+### PR-2 — la cadencia semanal (decision 9)
+
+**No es un septimo monitor.** Tres razones, las tres verificadas en el codigo:
+
+1. `cadence_minutes` de `config/monitors.yaml` es **dato muerto** — lo dice el propio archivo
+   ("*data only in this PR (no scheduler job reads it yet)*") y `jobs/monitors_job.py:65` corre los
+   seis monitores cada 60 min. Un septimo monitor correria horario, no semanal.
+2. Un monitor **escribe** en el `EventLedger` que esta tool **lee**: bucle de realimentacion, y sus
+   propios eventos habria que excluirlos del allowlist de la seccion 5.A.
+3. Via `config/event_routing.yaml` un tipo de evento nuevo puede rutear a T2 y auto-disparar
+   `inventory_optimization` — que es **exactamente el bug que esta tool existe para denunciar**
+   (seccion 1).
+
+**El mecanismo real:** `ScheduledJob` (`jobs/scheduler.py:64`) + cron externo. Golden rule 9 ("todo
+componente continuo degrada a batch") se respeta entera: ningun thread, ningun scheduler
+in-process.
+
+- `PATTERN_SCAN_JOB = ScheduledJob(id="pattern_scan_weekly", trigger="cron",
+  trigger_args={"day_of_week": "mon", "hour": 6})`, definido en `jobs/pattern_scan_job.py`. `func`
+  sin argumentos e idempotente, como exige el dataclass.
+- **NO entra en `PRODUCTION_JOB_IDS`.** `webapp/app.py::_cycle_report_summary` accede a
+  `report.outcomes` / `report.pairs_checked` / `report.summary` — un contrato price-shaped que un
+  `PatternScanReport` no cumple; agregarlo ahi tira `AttributeError` en el endpoint. Es el mismo
+  motivo, ya documentado en el docstring de `jobs/scheduled_jobs.py`, por el que `MONITORS_JOB`
+  queda afuera.
+- Registro en un `weekly_registry()` propio + endpoint dedicado `POST /api/jobs/run-weekly`, con la
+  misma auth que `run-scheduled`.
+- Workflow nuevo `.github/workflows/pattern-scan-cron.yml`, `cron: "0 6 * * 1"`. Cadencia semanal de
+  verdad, no un auto-gate montado sobre el cron de 4h de price-watch.
+
+**Entrega — cero auto-push a un merchant.** El job **computa y persiste** el reporte. El aviso es al
+**operador**, opt-in y apagado por defecto (`jobs/notify.py`, mismo patron que
+`LINCHPIN_MONITORS_NOTIFY`). El envio a un merchant sigue pasando por el concierge Fase 1
+(`jobs/monitors_job.py::run_concierge_alerts` -> `scm_agent/merchant_alerts.py`), que es **manual y
+revisado por un operador a proposito** — la compuerta "no app until there are payers" del
+MONETIZATION_BRIEF §7. Un job semanal que empiece a mandarle cosas a un merchant solo la rompe.
+
+**Por que va separado de PR-1.** PR-1 ya carga motor, dos adaptadores, roster y 9 pinned places, y
+tiene un tope declarado de ~900 lineas. Y hay una razon de calendario: con `min_history_days=30`
+contando **desde el deploy de PR-0**, el job semanal devolveria `needs_data` durante su primer mes.
+La cadencia no vale nada hasta que haya historia que leer.
 
 ## 9. Procedencia de este spec
 
-Borrador de contratos sometido a revision adversarial (`pattern-scan-contract-review`, 9 agentes,
-4 lentes independientes, fase de refutacion): 63 hallazgos crudos, 44 confirmados, 0 lentes
-fallados. Un hallazgo marcado `critical` por el lente de convencion (import circular via
-`scm_agent/__init__`) fue **refutado manualmente** contra el codigo y no se incorporo — ver la
-nota en la seccion 3.
+**Ronda 1 — contratos.** Borrador sometido a revision adversarial
+(`pattern-scan-contract-review`, 9 agentes, 4 lentes independientes, fase de refutacion): 63
+hallazgos crudos, 44 confirmados, 0 lentes fallados. Un hallazgo marcado `critical` por el lente de
+convencion (import circular via `scm_agent/__init__`) fue **refutado manualmente** contra el codigo
+y no se incorporo — ver la nota en la seccion 3.
+
+**Ronda 2 — tres puntos que el borrador daba por cerrados.** Los tres se resolvieron contra
+evidencia externa o contra el codigo, no por preferencia:
+
+- **Anclaje DDMRP (decision 7).** Consulta directa al books graph — 3002 nodos — *antes* de escribir
+  la seccion 5.I. Resultado negativo y decisivo: el concepto de penetracion de zona no esta en el
+  grafo, asi que el anclaje va al codigo (`src/ddmrp.py`, que ya lleva la referencia a Ptak & Smith
+  en su docstring) y el hueco se declara. Se verifico ademas que las 6 anclas propuestas para el
+  citation gate existen realmente como nodos.
+- **Umbral de episodio (decision 8).** `keephq/keep` **no tiene** deteccion de flapping dedicada: su
+  motor de evaluacion resuelve por maquina de estados PENDING/FIRING/RESOLVED con ventana `for`, y
+  trata la ausencia-antes-de-madurar como resolucion — relativa a la cadencia, no a un reloj. El
+  numero explicito lo aporta Prometheus (`EndsAt = 3 x max(evaluation_interval, resend_delay)`) y el
+  `resolve_timeout` de Alertmanager. La leccion comun: el umbral de silencio es un multiplo chico de
+  la cadencia de emision. Cruzada contra `config/monitors.yaml` — que declara **tres** cadencias
+  distintas (60 / 240 / 1440 min) — la constante de 48h dejo de ser defendible como numero unico.
+- **Cadencia periodica (decision 9).** Verificado en el codigo que `cadence_minutes` es dato muerto,
+  y que `_cycle_report_summary` (`webapp/app.py`) mas el docstring de `jobs/scheduled_jobs.py` son la
+  razon concreta por la que el job no puede entrar en `PRODUCTION_JOB_IDS`.
