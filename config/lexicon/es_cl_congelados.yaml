@@ -108,6 +108,48 @@ especie:
   jaiba:       [jaiba, jaibas]
 
 # Atributos que separan productos que de otro modo colisionan al homologar.
+# Marcadores de producto ELABORADO -- decisivos solo para vedas extractivas.
+#
+# Una veda extractiva alcanza "procesamiento, elaboracion" y los productos
+# derivados del recurso: una conserva de loco esta dentro de su alcance
+# igual que el loco vivo. Una veda biologica cierra la captura, asi que un
+# elaborado no cambia nada para ella (su efecto es de abastecimiento, aguas
+# arriba). Sin esta lista, "Locos Cocidos Conserva" -- el SKU de mayor
+# riesgo de un catalogo -- se clasifica igual que una empanada de camaron,
+# que no tiene ningun riesgo de tenencia.
+elaborado:
+  - conserva
+  - conservas
+  - al natural
+  - empanada
+  - empanadas
+  - gyoza
+  - gyozas
+  - croqueta
+  - croquetas
+  - nugget
+  - nuggets
+  - apanado
+  - apanada
+  - rebosado
+  - rebosada
+  - paté
+  - pate
+  - terrina
+  - pastel
+  - chupe
+  - ceviche
+  - relleno
+  - rellena
+  - hamburguesa
+  - albondiga
+  - albondigas
+  - ahumado
+  - ahumada
+  - en aceite
+  - marinado
+  - marinada
+
 estado:   [crudo, cocido]
 proceso:  [pelado, desvenado, con caparazon, con cascara, sin cascara, apanado,
            rebosado, iqf, porcionado, entero, filete, trozos, medallon,
