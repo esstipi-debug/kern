@@ -107,6 +107,28 @@ especie:
   erizo:       [erizo, erizos]
   jaiba:       [jaiba, jaibas]
 
+# VARIANTES dentro de una especie. Importan porque dos variantes de la misma
+# especie pueden tener vedas distintas: la merluza austral cierra del 1 al 31
+# de agosto y la comun del 1 al 30 de septiembre, con decretos distintos.
+#
+# Cuando el titulo NO declara variante, la respuesta correcta no es elegir
+# una: es reportar TODAS las ventanas aplicables y dejar que el cliente
+# confirme cual es. Elegir la primera de la lista fue exactamente el error
+# que "Merluza Apanada 1 Kg" destapo -- salio como austral (7 dias) cuando
+# igual de bien podia ser comun (38 dias).
+variante:
+  merluza:
+    austral: [austral]
+    comun:   [comun, pescada]
+    hubbsi:  [hubbsi]        # argentina; el filtro de origen ya la suprime
+  camaron:
+    nailon:  [nailon, nacional, primera, extra]
+  langostino:
+    colorado: [colorado]
+    amarillo: [amarillo]
+  ostion:
+    del_norte: [del norte]
+
 # Atributos que separan productos que de otro modo colisionan al homologar.
 # Marcadores de producto ELABORADO -- decisivos solo para vedas extractivas.
 #
