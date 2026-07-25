@@ -98,9 +98,21 @@ def test_stepper_renders_all_stages() -> None:
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
 
 
-def test_page_mentions_41_tools_and_33_sources_not_stale_numbers() -> None:
+def test_page_mentions_current_tool_count_and_33_sources_not_stale_numbers() -> None:
+    """Regression guard for the 41->46 backfill bug (fe372d9): the old version
+    of this test asserted the literal "41" appeared in the html, which was a
+    structural false positive -- hex color tokens in the page's own <style>
+    block (e.g. #283341) contain the substring "41" regardless of the real
+    tool count, so the assertion could never actually catch a stale count.
+    Assert against the computed len(TOOLS) instead, anchored to the specific
+    sentences that report the count, so this breaks if TOOLS grows/shrinks
+    and the page's copy doesn't follow in the same PR."""
+    from webapp.how_it_works_data import TOOLS
+
     html = render_how_it_works_html()
-    assert "41" in html
+    tool_count = str(len(TOOLS))
+    assert f"Kern's {tool_count} supply-chain capabilities" in html
+    assert f"{tool_count} agent-routable capabilities" in html
     assert "33" in html
     assert "25 curated" not in html  # the README's stale source count must never appear here
 
