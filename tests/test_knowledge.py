@@ -12,12 +12,14 @@ from pathlib import Path
 import pytest
 
 from scm_agent.knowledge import (
+    _INTERNAL_SOURCES,
     Bridge,
     Concept,
     ConceptDetail,
     GroundedCitation,
     KnowledgeBase,
     MethodAdvice,
+    _is_internal_source,
 )
 
 REPO = Path(__file__).resolve().parent.parent
@@ -372,3 +374,43 @@ def test_concept_distance_on_a_synthetic_disconnected_graph(tmp_path: Path) -> N
     assert kb.concept_distance("a", "isolated") is None
     assert kb.node_exists("isolated") is True
     assert kb.node_exists("nope") is False
+
+
+def test_is_internal_source_matches_on_basename() -> None:
+    """The denylist matches the file's basename, whatever path form the graph carries."""
+    def c(src: str | None) -> Concept:
+        return Concept(id="x", label="X", source=src, location=None, graph="books")
+
+    assert _is_internal_source(c("KERN_ATLAS_SOMBREROS_SCM.md"))
+    assert _is_internal_source(c("documentation/KERN_ATLAS_SOMBREROS_SCM.md"))
+    assert _is_internal_source(c(r"documentation\KERN_ATLAS_SOMBREROS_SCM.md"))
+    assert not _is_internal_source(c("chopra-meindl-supply-chain-management.pdf"))
+    assert not _is_internal_source(c(None))
+
+
+def test_internal_sources_are_never_cited_by_any_tool(kb: KnowledgeBase) -> None:
+    """No registered tool may ground a client-facing citation in one of Kern's own
+    documents. Kern's grounding claim is that it cites the field's published sources;
+    a self-citation listed beside Chopra & Meindl silently voids it.
+
+    Regression guard for the real leak found on 2026-07-24: 28 tools were pulling
+    ``KERN_ATLAS_SOMBREROS_SCM.md`` into their candidate pool and one shipped it in
+    a deliverable (``supplier_scorecard - KERN_ATLAS_SOMBREROS_SCM.md section 1``).
+    """
+    from scm_agent.tools import build_default_registry
+
+    offenders: list[str] = []
+    for tool in build_default_registry()._tools.values():
+        for cite in kb.ground_citations_detailed(tool.intent_keywords, tool.title, limit=12):
+            if any(internal in cite.text for internal in _INTERNAL_SOURCES):
+                offenders.append(f"{tool.key}: {cite.text}")
+    assert not offenders, "internal sources leaked into citations:\n" + "\n".join(offenders)
+
+
+def test_internal_sources_stay_searchable(kb: KnowledgeBase) -> None:
+    """The filter is scoped to *citations* only - the Atlas remains queryable as
+    internal knowledge (it is what the hats/roles work reads)."""
+    hits = kb.search("supply chain role certification", graph="books", limit=40)
+    assert any(_is_internal_source(h) for h in hits), (
+        "the Atlas should still be reachable via search; only citations are filtered"
+    )
