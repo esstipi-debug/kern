@@ -22,6 +22,59 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-07-26 — E0 "que Kern deje de mentir": PR #192 abierto (draft), worktree `.wt-degradacion-honesta`
+
+**Lee esto primero si agarrás en frío el hilo de honestidad/auditabilidad.** Rama
+`fix/degradacion-honesta` (off `origin/main`), **PR #192 draft**, no mergeado, no deployado.
+
+`sourcing` emitía respuestas confiadamente falsas: sobre las 777 OC reales de
+`data/kaggle/procurement`, scorecard entero en cero, QA limpio, `conf=1.00`, y **igual
+adjudicaba un ganador** — por orden alfabético, porque con todo en cero TOPSIS empata. Causa:
+`jobs/sourcing_job.py` convertía "columna ausente" en `False`/`0.0` por truthiness
+(`bool('Cancelled') == True`). Mismo defecto en el eje de riesgo de `supplier_management`
+(`supply_risk = 0.000` para todos → Kraljic colapsado a un Pareto de gasto).
+
+**Arreglado y verificado** (suite 3688 passed / 3 skipped sobre un export limpio de HEAD):
+tipado + rechazo por nombre de toda columna que decide; derivación desde export ERP crudo
+(fechas orden/entrega, fecha prometida o `sla_days` **declarado**, cantidad recibida o mapeo de
+estado explícito); exclusión declarada de filas inservibles; PPM medido sólo sobre filas
+inspeccionadas; tabla `tool → bucket` en el smoke reemplazando el piso `passes >= 35`.
+Evidencia antes/después para venta: `documentation/EVIDENCIA_AUTOAUDITORIA_SOURCING.md`.
+
+**Tres cosas que conviene saber antes de seguir:**
+
+1. **`confidence` es SOLO ruteo.** Sale de `scm_agent/intent.py` (ratio de keywords, o 1.0 con
+   `job_type` explícito). Nunca miró el dato — por eso `conf=1.00` sobre un scorecard vacío.
+   Cualquier plan que asuma que confidence refleja calidad de dato está mal parado.
+2. **El `residual` NUNCA llega al entregable renderizado.** `residual=` no aparece jamás en
+   `scm_agent/tools.py`, así que `Deliverable.residual` sale vacío y se imprime `no_residual`.
+   Los residuals de `intake_quality` sólo viven en el blob JSON `guided`. Hacerlos visibles es
+   cableado nuevo. (Este PR sí pasa `residual=` en el deck de sourcing.)
+3. **Hay DOS orquestadores.** `scm_agent/orchestrator.py` y `scm_agent/packages.py:429-439`
+   reimplementa prepare→run→qa→options. Cualquier hook que se agregue sólo al primero es un
+   no-op silencioso para los paquetes. El hook correcto vive dentro de `tool.options(...)`,
+   que ambos llaman.
+
+Números corregidos contra los que circulaban: **95 dataclasses** en `jobs/` (no 40), **51
+`verify`** (no 44), **46 tools registradas** (CLAUDE.md/README decían 45/41 — corregidos en
+este PR), y `intake_quality` es **1 de 46 tools** / 1 de 34 option builders, o sea una prueba
+de concepto, no un protocolo compartido.
+
+**Siguiente, en este orden (decidido con el operador):** PR 2 = protocolo `Provenance` +
+adopción en `ddmrp`/`cost_to_serve`/`excess_obsolete` + derate de `confidence`. PR 3 =
+`liquidation.below_cost`/`allow_below_cost` (ojo: `cost_is_imputed` **no existe** en ese
+camino; hay que threadearlo desde `jobs/excess_obsolete_job.py`, es más grande que el fix del
+piso). Fuera de alcance a propósito: resample de calendario del pronóstico, derivación de
+`unit_cost` en intake, `lead_time_std`, gate duro del ABC.
+
+**Gotcha de proceso, caro:** los subagentes de la revisión adversarial hicieron mutation
+testing **sobre el worktree vivo** — plantaron 5 mutaciones (incluida
+`ranking = sorted(names)` en `src/mcdm.py`, que revierte el award a alfabético), corrieron
+`git stash`/`pop` dejando marcadores de conflicto, y dejaron CSVs sueltos en la raíz. Dos
+llegaron a commitearse. Si corrés agentes de review sobre este repo: decíles READ-ONLY o
+dales `isolation: 'worktree'`, no uses `git add -A` mientras corren, y verificá el estado
+**commiteado** con `git archive HEAD | tar -x` — un verde sobre el working tree no prueba nada.
+
 ## 2026-07-21 — Gamified UI + real-data demo: 2 open draft PRs, worktrees `.wt-gamified-buttons` / `.wt-realistic-demo-data`
 
 **Read this section first if you're picking up cold.** Started as "give the
