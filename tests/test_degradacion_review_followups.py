@@ -84,7 +84,7 @@ def test_a_text_column_is_refused_end_to_end_through_the_job():
     })
 
     with pytest.raises(ValueError, match="yes/no"):
-        srcj.score_suppliers(df, supplier_col="supplier",
+        srcj.score_suppliers(df, supplier_col="supplier", require_all_criteria=False,
                              on_time_col="on_time", lead_col="lead_time_days")
 
 
@@ -238,7 +238,8 @@ def test_an_unpriced_supplier_is_not_awarded_the_ideal_cost():
         "unit_price": [10.0, 10.0, None, None],   # Beta has no price at all
     })
     cards, prices = srcj.score_suppliers(
-        df, supplier_col="supplier", lead_col="lead_time_days", price_col="unit_price")
+        df, supplier_col="supplier", require_all_criteria=False,
+        lead_col="lead_time_days", price_col="unit_price")
 
     assert "Beta" not in prices
     report = srcj.run(cards, prices)

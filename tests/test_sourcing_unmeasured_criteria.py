@@ -29,7 +29,32 @@ _LEAD_ONLY = pd.DataFrame({
 
 
 def _cards(df: pd.DataFrame, **cols):
-    return srcj.score_suppliers(df, supplier_col="supplier", **cols)
+    """The permissive policy: score what this export can support, name what it cannot.
+
+    The default (`require_all_criteria=True`, what `prepare` uses) refuses instead - that
+    contract is covered by tests/test_sourcing_degenerate_inputs.py and asserted below.
+    """
+    return srcj.score_suppliers(df, supplier_col="supplier", require_all_criteria=False, **cols)
+
+
+def test_the_strict_default_still_refuses_a_panel_missing_a_decisive_column():
+    with pytest.raises(ValueError, match="columns that decide the award"):
+        srcj.score_suppliers(_LEAD_ONLY, supplier_col="supplier", lead_col="lead_time_days")
+
+
+def test_the_refusal_points_at_the_permissive_mode():
+    """A dead end is not an answer: say what the caller can do instead."""
+    with pytest.raises(ValueError, match="require_all_criteria=False"):
+        srcj.score_suppliers(_LEAD_ONLY, supplier_col="supplier", lead_col="lead_time_days")
+
+
+def test_a_present_column_is_typed_strictly_even_in_permissive_mode():
+    """Permissive about absence is not permissive about junk."""
+    df = _LEAD_ONLY.assign(on_time=["Delivered", "Cancelled", "Delivered"] * 2)
+
+    with pytest.raises(ValueError, match="free text|yes/no"):
+        srcj.score_suppliers(df, supplier_col="supplier", require_all_criteria=False,
+                             on_time_col="on_time", lead_col="lead_time_days")
 
 
 # ---- absence propagates out of prepare --------------------------------------
@@ -45,14 +70,13 @@ def test_an_unfound_column_scores_as_absent_not_as_a_failed_delivery():
         assert card.avg_lead_time is not None
 
 
-def test_prepare_on_an_export_without_service_columns_reports_absence(tmp_path):
+def test_prepare_keeps_the_strict_policy_on_an_export_without_service_columns(tmp_path):
+    """`prepare` is the client-facing path and stays strict: no award without the columns."""
     csv = tmp_path / "po_export.csv"
     _LEAD_ONLY.to_csv(csv, index=False)
 
-    payload = srcj.prepare(str(csv), {})
-
-    assert {c.supplier for c in payload["scorecards"]} == {"Alpha", "Beta"}
-    assert all(c.otif is None for c in payload["scorecards"])
+    with pytest.raises(ValueError, match="on_time|quantity|columns that decide"):
+        srcj.prepare(str(csv), {})
 
 
 # ---- the award may only use measured criteria -------------------------------
