@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
+from scipy import stats as _sps
 
 from jobs.intake import IntakeQuality
 from src.classification import classify_portfolio
@@ -66,6 +68,19 @@ class JobReport:
     # inventory_options() reads this to decide whether to escalate.
     intake_quality: IntakeQuality | None = None
     intake_quality_threshold: float = 0.20
+
+
+def _observed_skewness(series) -> float | None:
+    """Sample skewness of the demand history, or None when it cannot be estimated.
+
+    Feeds ``demand_distribution='auto'``: the engine fits a gamma instead of a
+    normal when skewness exceeds the coefficient of variation (Vandeput ch. 9).
+    """
+    arr = np.asarray(series, dtype=float)
+    if arr.size < 3:
+        return None
+    value = float(_sps.skew(arr))
+    return value if np.isfinite(value) else None
 
 
 def _status(intermittent: bool, bias: float) -> str:
@@ -127,6 +142,7 @@ def run(
         sl = base_levels.get(pid, service_level)
         if observed_fill_rates and pid in observed_fill_rates:
             sl = tune_service_level(sl, observed_fill_rates[pid], target_fill_rate)
+        skewness = _observed_skewness(series)
 
         if fc.is_intermittent:
             pol = periodic_review_rs(
@@ -139,6 +155,8 @@ def run(
                 review_period=1.0,
                 cycle_service_level=sl,
                 lead_time_std=meta.lead_time_std_periods,
+                demand_distribution="auto",
+                observed_skewness=skewness,
             )
             kind, order_quantity = "(R, S)", None
         else:
@@ -151,6 +169,8 @@ def run(
                 lead_time_periods=lead,
                 cycle_service_level=sl,
                 lead_time_std=meta.lead_time_std_periods,
+                demand_distribution="auto",
+                observed_skewness=skewness,
             )
             kind, order_quantity = "(s, Q)", pol.order_quantity
 
