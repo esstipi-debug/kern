@@ -33,6 +33,8 @@ def test_quality_ppm():
     assert s.ppm == pytest.approx(1250.0)
 
 
-def test_no_deliveries_is_zeroed():
+def test_no_deliveries_measures_nothing():
+    """Zero deliveries is an absence of evidence, not a 0% on-time-in-full record."""
     s = score_supplier("Empty", [])
-    assert s.otif == 0.0 and s.deliveries == 0
+    assert s.otif is None and s.deliveries == 0
+    assert s.evaluable.otif == 0

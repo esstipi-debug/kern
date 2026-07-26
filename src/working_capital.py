@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.financial_kpis import cash_to_cash
+from src.finite import require_finite
 
 _DAYS_PER_YEAR = 365
 
@@ -54,7 +55,15 @@ class CashReleasePlan:
 def working_capital(
     *, revenue: float, cogs: float, dio: float, dso: float, dpo: float, days: int = _DAYS_PER_YEAR
 ) -> WorkingCapital:
-    """Decompose the cash-to-cash cycle into the dollars it ties up."""
+    """Decompose the cash-to-cash cycle into the dollars it ties up.
+
+    Every leg must be a real number: ``cash_to_cash`` returns ``None`` for a
+    non-finite input, and every formatter of ``cash_conversion_cycle`` takes a float.
+    Refusing here keeps that contract instead of shipping a ``None`` downstream.
+    """
+    for name, value in (("revenue", revenue), ("cogs", cogs),
+                        ("dio", dio), ("dso", dso), ("dpo", dpo)):
+        require_finite(value, name)
     inventory = cogs / days * dio
     receivables = revenue / days * dso
     payables = cogs / days * dpo

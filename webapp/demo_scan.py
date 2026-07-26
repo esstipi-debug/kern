@@ -122,10 +122,17 @@ def _md_safe(text: str, max_len: int = 60) -> str:
 def _scan_issues(eo: EOReport, fin: FinancialReport) -> list[str]:
     """Headline-specific finiteness gate on top of the jobs' own verify()."""
     issues: list[str] = []
-    if not math.isfinite(fin.dio) or fin.dio < 0:
+    # `None` is the finance pack saying "not measurable from this data" - the same
+    # gate, reached earlier and without a NaN having to survive the arithmetic first.
+    if fin.dio is None or not math.isfinite(fin.dio) or fin.dio < 0:
         issues.append(
             "DIO no computable (sin demanda o sin costos): el escaneo no puede "
             "estimar dias de inventario"
+        )
+    if fin.turns is None or not math.isfinite(fin.turns):
+        issues.append(
+            "rotacion no computable (sin inventario promedio): el escaneo no puede "
+            "estimar vueltas de inventario"
         )
     if eo.total_on_hand_value <= 0:
         issues.append(

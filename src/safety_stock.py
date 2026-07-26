@@ -15,6 +15,11 @@ class SafetyStockResult:
     service_level_factor: float
     cycle_service_level: float
     risk_periods: float
+    # Which demand distribution actually sized this buffer. The deliverable's
+    # Methodology section reads it instead of asserting a formula from a template:
+    # 'normal' means Ss = z * sigma_x; 'gamma' means Ss = iota_gamma - mu_x, which
+    # z does not describe at all (Ch. 9).
+    distribution: str = "normal"
 
 
 def service_level_factor(cycle_service_level: float) -> float:

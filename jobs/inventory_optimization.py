@@ -45,6 +45,13 @@ class SkuRecommendation:
     ss_investment: float
     investment: float
     status: str  # "ok" | "high_bias" | "review"
+    # What the run actually did, so the deliverable can describe it instead of
+    # asserting a template methodology the engine stopped using.
+    sigma_source: str = "forecast_error"      # see ForecastResult.sigma_source
+    buffer_distribution: str = "normal"       # the distribution that sized the buffer
+    lead_time_std: float = 0.0                # sigma_L fed to the risk period
+    lead_time_std_source: str = "defaulted_zero"   # "client_file" | "defaulted_zero"
+    risk_periods: float = 0.0                 # tau actually used (L, or L+R for (R,S))
 
 
 @dataclass(frozen=True)
@@ -87,6 +94,7 @@ def run(
     service_levels: dict[str, float] | None = None,
     differentiate_by_class: bool = False,
     lead_times: dict[str, float] | None = None,
+    lead_time_stds: dict[str, float] | None = None,
     observed_fill_rates: dict[str, float] | None = None,
     target_fill_rate: float = 0.95,
     intake_quality: IntakeQuality | None = None,
@@ -124,6 +132,11 @@ def run(
         inputs = fc.to_engine_inputs(periods_per_year=periods_per_year)
         holding_cost = max(holding_rate * meta.mean_unit_cost, 1e-6)
         lead = lead_times.get(pid, meta.lead_time_periods) if lead_times else meta.lead_time_periods
+        # sigma_L. Nothing in intake derives it today, so it is normally a *default*,
+        # not a measurement - and the deliverable has to say which it was.
+        lt_std = (lead_time_stds or {}).get(pid)
+        lt_std_source = "client_file" if lt_std is not None else "defaulted_zero"
+        lt_std = 0.0 if lt_std is None else float(lt_std)
         sl = base_levels.get(pid, service_level)
         if observed_fill_rates and pid in observed_fill_rates:
             sl = tune_service_level(sl, observed_fill_rates[pid], target_fill_rate)
@@ -136,6 +149,7 @@ def run(
                 holding_cost_per_unit=holding_cost,
                 fixed_order_cost=order_cost,
                 lead_time_periods=lead,
+                lead_time_std=lt_std,
                 review_period=1.0,
                 cycle_service_level=sl,
             )
@@ -148,6 +162,7 @@ def run(
                 holding_cost_per_unit=holding_cost,
                 fixed_order_cost=order_cost,
                 lead_time_periods=lead,
+                lead_time_std=lt_std,
                 cycle_service_level=sl,
             )
             kind, order_quantity = "(s, Q)", pol.order_quantity
@@ -168,6 +183,10 @@ def run(
                 unit_cost=meta.mean_unit_cost, lead_periods=lead,
                 cycle_investment=cycle_inv, ss_investment=ss_inv, investment=cycle_inv + ss_inv,
                 status=_status(fc.is_intermittent, fc.bias),
+                sigma_source=fc.sigma_source,
+                buffer_distribution=pol.safety_stock.distribution,
+                lead_time_std=lt_std, lead_time_std_source=lt_std_source,
+                risk_periods=pol.safety_stock.risk_periods,
             )
         )
         items.append(InventoryItem(product_id=pid, order_quantity=2.0 * cycle_units, safety_stock=ss, unit_cost=meta.mean_unit_cost))

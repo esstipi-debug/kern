@@ -7,6 +7,7 @@ via ``src.excess_obsolete``, sizing the cash tied up in slow and non-moving stoc
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -49,6 +50,25 @@ def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]
     return next((c for c in candidates if c in df.columns), None)
 
 
+def _is_number(value: object) -> bool:
+    """True when the cell holds a real number - not blank, not text, not inf."""
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _require_numeric(df: pd.DataFrame, product_col: str, col: str, field: str, why: str) -> None:
+    """Refuse a column with blanks or junk, naming the SKUs and the consequence."""
+    bad = df.loc[~df[col].apply(_is_number), product_col].astype(str).tolist()
+    if bad:
+        shown = ", ".join(bad[:10]) + (f" (+{len(bad) - 10} more)" if len(bad) > 10 else "")
+        raise ValueError(
+            f"{len(bad)} SKU(s) have a blank or non-numeric '{field}' in column '{col}': "
+            f"{shown}. Fill or drop those rows - {why}."
+        )
+
+
 def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
     """Sniff the stock columns and build the per-SKU stock records."""
     params = params or {}
@@ -60,19 +80,32 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
         cols = list(df.columns)[:10]
         raise ValueError(f"could not find {', '.join(missing)}; pass them in params (columns seen: {cols})")
 
-    if df[on_hand].isna().any():
-        bad = df.loc[df[on_hand].isna(), product].astype(str).tolist()
-        raise ValueError(f"missing/non-numeric on_hand for: {', '.join(bad[:10])}")
-
     cost = _pick_column(df, params.get("cost_col"), _COST_COLS)
     last_sale = _pick_column(df, params.get("last_sale_col"), _LASTSALE_COLS)
+
+    _require_numeric(df, product, on_hand, "on_hand", "it is the quantity every other number is built on")
+    # A blank demand used to be read as 0.0, which is `daily_demand <= 0` -> DEAD, and DEAD
+    # writes off the SKU's *entire* on-hand quantity as cash at risk and recommends
+    # liquidating it. That number is the headline of the public demo scan.
+    _require_numeric(df, product, demand, "daily_demand",
+                     "a blank one reads as zero demand, which marks the SKU dead and reports "
+                     "its whole on-hand value as cash at risk")
+    if cost:
+        # Valuing one SKU at 0 while the rest carry costs silently shrinks the total
+        # "cash at risk" - the one figure the scan exists to produce.
+        _require_numeric(df, product, cost, "unit_cost",
+                         "a blank one values that SKU at zero and understates the cash at risk")
+
     stocks = [
         SkuStock(
             product_id=str(row[product]),
             on_hand=float(row[on_hand]),
-            daily_demand=float(row[demand]) if pd.notna(row[demand]) else 0.0,
-            unit_cost=float(row[cost]) if cost and pd.notna(row[cost]) else 0.0,
-            days_since_last_sale=float(row[last_sale]) if last_sale and pd.notna(row[last_sale]) else 0.0,
+            daily_demand=float(row[demand]),
+            unit_cost=float(row[cost]) if cost else 0.0,
+            # None, not 0.0: "we never recorded a last sale" is not "it sold today".
+            days_since_last_sale=(
+                float(row[last_sale]) if last_sale and _is_number(row[last_sale]) else None
+            ),
         )
         for _, row in df.iterrows()
     ]

@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from src.forecasting import ForecastResult, forecast_demand, is_intermittent
+from src.forecasting import ForecastResult, _as_array, forecast_demand, is_intermittent
 
 # StatsForecast needs a minimum history; below this we keep SES/Croston.
 MIN_PERIODS_STATSFORECAST = 10
@@ -36,11 +36,7 @@ def history_to_frame(
     freq: str = "W",
 ) -> pd.DataFrame:
     """Convert a demand vector to Nixtla panel format (``unique_id``, ``ds``, ``y``)."""
-    arr = np.asarray(list(history), dtype=float)
-    if arr.size == 0:
-        raise ValueError("history is empty")
-    if np.any(arr < 0):
-        raise ValueError("demand history cannot contain negative values")
+    arr = _as_array(history)
     return pd.DataFrame(
         {
             "unique_id": unique_id,
@@ -74,17 +70,28 @@ def _model_for_route(route: str, season_length: int):
     raise ValueError(f"unknown route: {route!r}")
 
 
-def _error_stats_from_fitted(fitted: pd.DataFrame, model_col: str) -> tuple[float, float, float]:
-    """Return (error_std, bias, mae) from in-sample one-step fitted values."""
+def _error_stats_from_fitted(
+    fitted: pd.DataFrame, model_col: str
+) -> tuple[float, float, float, int]:
+    """Return (error_std, bias, mae, n_dropped) from in-sample one-step fitted values.
+
+    TSB and Croston emit a NaN warm-up row in their fitted values; AutoETS does not.
+    Averaging over that NaN used to return NaN for all three statistics, which then
+    took the ``demand_std`` fallback in ``ForecastResult.to_engine_inputs`` without a
+    warning. A NaN pair is one unusable *observation*, not an unusable statistic:
+    drop it and say how many were dropped.
+    """
     actual = fitted["y"].to_numpy(dtype=float)
     pred = fitted[model_col].to_numpy(dtype=float)
-    if actual.size == 0:
-        return 0.0, 0.0, 0.0
-    errors = actual - pred
+    usable = np.isfinite(actual) & np.isfinite(pred)
+    n_dropped = int(usable.size - np.count_nonzero(usable))
+    errors = actual[usable] - pred[usable]
+    if errors.size == 0:
+        return 0.0, 0.0, 0.0, n_dropped
     bias = float(np.mean(errors))
     mae = float(np.mean(np.abs(errors)))
     error_std = float(np.std(errors, ddof=1)) if errors.size > 1 else 0.0
-    return error_std, bias, mae
+    return error_std, bias, mae, n_dropped
 
 
 def _std(arr: np.ndarray) -> float:
@@ -117,11 +124,7 @@ def forecast_modern(
       - ``auto_ets``: force AutoETS.
       - ``tsb``: force TSB (intermittent specialist).
     """
-    arr = np.asarray(list(history), dtype=float)
-    if arr.size == 0:
-        raise ValueError("history is empty")
-    if np.any(arr < 0):
-        raise ValueError("demand history cannot contain negative values")
+    arr = _as_array(history)
 
     intermittent = is_intermittent(arr)
     route = _resolve_route(method, intermittent)
@@ -140,7 +143,7 @@ def forecast_modern(
     fitted = sf.forecast_fitted_values()
 
     point = float(fc[model_col].iloc[0])
-    error_std, bias, mae = _error_stats_from_fitted(fitted, model_col)
+    error_std, bias, mae, n_dropped = _error_stats_from_fitted(fitted, model_col)
 
     method_label = {
         "AutoETS": "auto_ets",
@@ -157,6 +160,7 @@ def forecast_modern(
         mae=mae,
         n_periods=arr.size,
         is_intermittent=intermittent,
+        n_error_obs_dropped=n_dropped,
     )
 
 

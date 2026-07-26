@@ -723,11 +723,17 @@ def _financial_kpis_prepare(request: JobRequest, provider: LLMProvider) -> Prepa
 
 def _financial_kpis_run(payload: object, params: dict) -> Produced:
     report = financial_kpis_job.run(
-        payload, dso=params.get("dso", 0.0), dpo=params.get("dpo", 0.0),
+        # No default: DSO/DPO come from the AR/AP ledgers, not from inventory data.
+        # A 0.0 stand-in made cash-to-cash == DIO and printed it as a measured cycle.
+        payload, dso=params.get("dso"), dpo=params.get("dpo"),
     )
+    # Any of these is None when this data could not support it (see src/financial_kpis).
+    # verify() only gates `turns`, so the others still have to be printable as absent.
     return Produced(report=report, summary=(
-        f"Inventory finance for {report.n_skus} SKU(s): {report.turns:.1f} turns, "
-        f"GMROI {report.gmroi:.2f}, {report.dio:.0f}-day DIO."
+        f"Inventory finance for {report.n_skus} SKU(s): "
+        f"{financial_kpis_job.fmt(report.turns, '.1f')} turns, "
+        f"GMROI {financial_kpis_job.fmt(report.gmroi, '.2f')}, "
+        f"{financial_kpis_job.fmt(report.dio, '.0f')}-day DIO."
     ))
 
 

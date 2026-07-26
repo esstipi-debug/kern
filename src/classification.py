@@ -19,9 +19,12 @@ Chains* (4th ed., 2017), Pareto/ABC; ABC-XYZ matrix as the action layer.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
+
+from src.finite import require_finite
 
 # Importance -> cycle-service-level target.
 _SERVICE_LEVEL = {"A": 0.98, "B": 0.95, "C": 0.90}
@@ -73,15 +76,29 @@ def classify_portfolio(
 
     enriched = []
     for it in items:
+        pid = it["product_id"]
         demand = np.asarray(it["demand"], dtype=float)
+        # A single blank demand cell used to make mean=nan, so `mean > 0` was False and
+        # cv fell to inf -> class 'Z'; the NaN annual value then poisoned the cumulative
+        # share, demoting every later SKU to 'C'. The deck printed "hold nan% of annual
+        # value" and recommended discontinuing the SKU. Refuse the blank instead.
+        if demand.size and not np.all(np.isfinite(demand)):
+            bad = int(np.count_nonzero(~np.isfinite(demand)))
+            raise ValueError(
+                f"SKU {pid!r}: demand must be finite, {bad} of {demand.size} period(s) are "
+                "blank or non-numeric - a period with no record is not a period of zero demand"
+            )
+        unit_cost = require_finite(it["unit_cost"], f"SKU {pid!r} unit_cost")
         annual_demand = float(demand.sum())
         mean = float(demand.mean()) if demand.size else 0.0
         std = float(demand.std(ddof=1)) if demand.size > 1 else 0.0
-        cv = std / mean if mean > 0 else float("inf")
+        # inf is the honest answer for a genuinely all-zero history (infinitely variable
+        # relative to its mean); isfinite keeps a NaN from borrowing that meaning.
+        cv = std / mean if math.isfinite(mean) and mean > 0 else float("inf")
         enriched.append(
             {
-                "product_id": it["product_id"],
-                "annual_value": float(it["unit_cost"]) * annual_demand,
+                "product_id": pid,
+                "annual_value": unit_cost * annual_demand,
                 "mean": mean,
                 "cv": cv,
             }
