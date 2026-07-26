@@ -61,7 +61,26 @@ def score_suppliers(
     defects_col: str | None = None,
     price_col: str | None = None,
 ) -> tuple[list[SupplierScore], dict[str, float]]:
-    """Aggregate delivery rows into one scorecard per supplier (+ avg price if present)."""
+    """Aggregate delivery rows into one scorecard per supplier (+ avg price if present).
+
+    Raises when not one performance column resolved: with all of them missing every
+    supplier would score OTIF 0.0 / lead 0.0 / PPM 0.0, and TOPSIS would still rank
+    the panel and award a winner off whatever criterion remained (price). A silent
+    all-zero scorecard is not a scorecard.
+    """
+    resolved = {
+        "on_time_col": on_time_col, "in_full_col": in_full_col, "lead_col": lead_col,
+        "units_col": units_col, "defects_col": defects_col,
+    }
+    if not any(resolved.values()):
+        raise ValueError(
+            "no supplier-performance column resolved "
+            f"({', '.join(resolved)}); every scorecard would be 0.0 and the award "
+            "would rest on price alone. Pass the column names in params, e.g. "
+            "{'on_time_col': 'delivered_on_time', 'lead_col': 'lead_time_days'}. "
+            f"Columns seen: {list(df.columns)[:12]}"
+        )
+
     cards: list[SupplierScore] = []
     prices: dict[str, float] = {}
     for supplier, g in df.groupby(supplier_col):
