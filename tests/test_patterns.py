@@ -3,11 +3,14 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from src.patterns import (
+    DenominatorThresholds,
     Occurrence,
     RecurrenceProfile,
     Thresholds,
+    benjamini_hochberg,
     build_profiles,
     family_of,
+    find_denominators,
     is_chronic_or_worse,
     to_episodes,
 )
@@ -559,3 +562,360 @@ def test_an_entity_with_no_occurrences_inside_the_window_produces_no_profile():
     profiles = _profiles(occs)
 
     assert profiles == []
+
+
+def test_duty_cycle_is_clamped_at_100_when_the_last_occurrence_lands_exactly_on_window_end():
+    """Un episodio que arranca en window_start y cuya ultima ocurrencia cae
+    EXACTO en window_end empuja el span mas alla de la ventana por
+    cadence_hours (el "dura 1h mas" de la ultima ocurrencia): sin clamp esto
+    da ~100.05%, no 100%. Sin acotar, ese numero se vuelca tal cual a un CSV
+    que ve el cliente -- un "104.6%" se lee como bug, no como caso limite."""
+    occs = [occ(h) for h in range(0, 24 * 90 + 1, 6)]
+
+    profile = _profiles(occs)[0]
+
+    assert profile.duty_cycle == 100.0
+
+
+# --------------------------------------------------------------------------
+# find_denominators: el gate de cuatro pisos (exposicion, tamano de efecto,
+# magnitud, evidencia)
+# --------------------------------------------------------------------------
+
+DTH = DenominatorThresholds()
+
+
+def _chronic_profile(entity: str) -> RecurrenceProfile:
+    occs = _failure_run(0, entity=entity) + _failure_run(30, entity=entity) + _failure_run(60, entity=entity)
+    return _profiles(occs, certified_gap=lambda a, b: True)[0]
+
+
+def test_benjamini_hochberg_is_monotone_and_never_below_the_raw_p():
+    qs = benjamini_hochberg([0.001, 0.02, 0.5])
+
+    assert qs == sorted(qs)
+    assert all(q >= p for q, p in zip(qs, [0.001, 0.02, 0.5]))
+
+
+def test_benjamini_hochberg_on_an_empty_list_returns_empty():
+    assert benjamini_hochberg([]) == []
+
+
+def test_benjamini_hochberg_enforces_monotonicity_even_when_raw_ranks_are_not_already_sorted():
+    """[0.001, 0.02, 0.5] (el otro test de monotonia) ya viene ascendente, asi
+    que el candidato crudo por rango sale ordenado incluso SIN el minimo
+    acumulado -- no distingue esa clausula. Estos tres p-values muy juntos
+    (0.008, 0.009, 0.01) sin el acumulado dan [0.024, 0.0135, 0.01]
+    (DESCENDENTE); con el acumulado, los tres se saturan a 0.01."""
+    qs = benjamini_hochberg([0.008, 0.009, 0.01])
+
+    assert qs == sorted(qs)
+    assert qs == pytest.approx([0.01, 0.01, 0.01])
+
+
+def test_a_real_concentration_is_found():
+    """20 de 30 SKUs del proveedor Alfa son cronicos, contra 2 de 70 del resto."""
+    chronic = [f"A{i}" for i in range(20)] + [f"B{i}" for i in range(2)]
+    base = {f"A{i}" for i in range(30)} | {f"B{i}" for i in range(70)}
+    attributes = {e: {"proveedor": "Alfa" if e.startswith("A") else "Beta"} for e in base}
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert [f.value for f in result.findings] == ["Alfa"]
+    assert result.findings[0].n_v == 20
+    assert result.findings[0].m_v == 30
+    assert result.findings[0].lift > 1.5
+    assert result.findings[0].q_value <= 0.10
+
+
+def test_pure_noise_produces_no_finding():
+    """Fluctuacion de conteo sin causa real, no una correlacion perfecta.
+
+    Una dimension de 10 valores, 20 base cada uno (esperado: 2 cronicos por
+    valor). El bucket 'v0' junta 5 cronicos y otros tres juntan 4 cada uno --
+    los cuatro cruzan el piso de tamano de efecto (lift=2.0, con margen del
+    limite 1.5 para no caer en el borde de precision de punto flotante) y
+    entran a la correccion. Solo, el p crudo de 'v0' (~0.035) se leeria como
+    significativo (< 0.05): eso es lo que el tool ofreceria SIN el piso de
+    evidencia. Corregido por Benjamini-Hochberg junto a las otras 3
+    comparaciones que tambien cruzan el piso, su q sube a ~0.122 y no
+    sobrevive fdr_q=0.10 -- exactamente el caso que el piso de evidencia
+    existe para cortar.
+    """
+    base = {f"S{i}" for i in range(200)}
+    attributes = {f"S{i}": {"dim": f"v{i // 20}"} for i in range(200)}
+    bucket_counts = [5, 4, 4, 4, 1, 1, 1, 0, 0, 0]
+    chronic = [
+        f"S{bucket * 20 + offset}"
+        for bucket, count in enumerate(bucket_counts)
+        for offset in range(count)
+    ]
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert result.findings == ()
+    assert result.n_comparisons == 10
+
+
+def test_a_value_below_the_exposure_floor_cannot_be_a_finding():
+    """3 de 3 SKUs de un proveedor chiquito: lift altisimo, evidencia nula."""
+    base = {f"A{i}" for i in range(3)} | {f"B{i}" for i in range(97)}
+    chronic = [f"A{i}" for i in range(3)]
+    attributes = {e: {"proveedor": "Chico" if e.startswith("A") else "Grande"} for e in base}
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert result.findings == ()
+
+
+def test_a_value_below_the_lift_floor_cannot_be_a_finding():
+    """X: 28 de 200 cronicos contra 12 de 200 en Y (400 base, 40 cronicos).
+
+    El lift de X (1.4) queda justo BAJO el piso de magnitud (1.5) -- pero con
+    N=400 la asociacion es estadisticamente muy fuerte (p~0.0058): sin el
+    piso de lift, esto SI pasaria el gate de evidencia y seria un hallazgo.
+    Aisla la clausula de magnitud de las otras tres (expone que min_base,
+    min_chronics y fdr_q por si solos NO alcanzan para cortar este caso).
+    """
+    base = {f"X{i}" for i in range(200)} | {f"Y{i}" for i in range(200)}
+    chronic = [f"X{i}" for i in range(28)] + [f"Y{i}" for i in range(12)]
+    attributes = {e: {"proveedor": "X" if e.startswith("X") else "Y"} for e in base}
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert result.findings == ()
+
+
+def test_a_value_below_the_chronics_floor_cannot_be_a_finding():
+    """"target" tiene m_v=15 (bien arriba de min_base=10) y lift=6.67 (bien
+    arriba de min_lift=1.5) -- solo 2 cronicos de un total de 2 (n_v=2, bajo
+    min_chronics=3). El p crudo (~0.021) pasaria fdr_q de estar solo en la
+    correccion: aisla la clausula de tamano de efecto de las otras tres, que
+    por si solas no alcanzan para cortar este caso."""
+    base = {f"T{i}" for i in range(15)} | {f"R{i}" for i in range(85)}
+    chronic = ["T0", "T1"]
+    attributes = {e: {"grupo": "target" if e.startswith("T") else "rest"} for e in base}
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert result.findings == ()
+
+
+def test_absolute_counts_are_published_even_when_nothing_passes_the_gate():
+    base = {f"A{i}" for i in range(3)} | {f"B{i}" for i in range(97)}
+    chronic = [f"A{i}" for i in range(3)]
+    attributes = {e: {"proveedor": "Chico" if e.startswith("A") else "Grande"} for e in base}
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert result.absolute_counts["proveedor"]["Chico"] == 3
+
+
+def test_entities_without_master_data_land_in_the_sin_dato_bucket():
+    base = {f"A{i}" for i in range(50)}
+    chronic = [f"A{i}" for i in range(10)]
+    attributes = {e: {"proveedor": "Alfa"} for e in list(base)[:25]}
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert "<sin dato>" in result.absolute_counts["proveedor"]
+    assert all(f.value != "<sin dato>" for f in result.findings)
+
+
+def test_sin_dato_never_becomes_a_finding_even_when_it_is_the_strongest_signal():
+    """18 de los 20 cronicos son justo las 20 entidades SIN dato de 'region'
+    (m_v=20, lift=4.5, muy por encima de los tres pisos de forma/magnitud) --
+    si el bucket <sin dato> no estuviera excluido de los valores candidatos,
+    esto seria HOY el hallazgo mas fuerte del reporte. 'Alfa' y 'Beta' tienen
+    apenas 1 cronico cada uno (bajo min_chronics), asi que el resultado
+    correcto es sin ningun hallazgo -- a diferencia del otro test del bucket
+    <sin dato>, aca la lista de hallazgos NO esta vacia por otro motivo
+    (columna uniforme): si <sin dato> colara, este test lo atraparia."""
+    base = {f"Z{i}" for i in range(20)} | {f"A{i}" for i in range(40)} | {f"B{i}" for i in range(40)}
+    chronic = [f"Z{i}" for i in range(18)] + ["A0", "B0"]
+    attributes = {
+        e: {"region": "Alfa" if e.startswith("A") else "Beta"}
+        for e in base
+        if not e.startswith("Z")
+    }
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert result.findings == ()
+
+
+def test_a_column_with_one_value_is_rejected_as_too_uniform():
+    base = {f"A{i}" for i in range(50)}
+    chronic = [f"A{i}" for i in range(10)]
+    attributes = {e: {"pais": "CL"} for e in base}
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert ("pais", "demasiado uniforme") in [
+        (r.column, r.reason) for r in result.dimensions_rejected
+    ]
+
+
+def test_a_column_with_too_many_values_is_rejected_as_too_granular():
+    base = {f"A{i}" for i in range(60)}
+    chronic = [f"A{i}" for i in range(10)]
+    attributes = {e: {"codigo_interno": e} for e in base}
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    reasons = {r.column: r.reason for r in result.dimensions_rejected}
+    assert "codigo_interno" in reasons
+    assert "granular" in reasons["codigo_interno"]
+
+
+def test_numeric_values_are_treated_as_discrete_labels():
+    """lead_time_days {7, 45} tiene cardinalidad 2 y es la dimension mas predictiva."""
+    base = {f"A{i}" for i in range(30)} | {f"B{i}" for i in range(70)}
+    chronic = [f"A{i}" for i in range(20)] + [f"B{i}" for i in range(2)]
+    attributes = {e: {"lead_time_days": 45 if e.startswith("A") else 7} for e in base}
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert [str(f.value) for f in result.findings] == ["45"]
+
+
+def test_correlated_dimensions_collapse_into_one_finding_with_aliases():
+    base = {f"A{i}" for i in range(30)} | {f"B{i}" for i in range(70)}
+    chronic = [f"A{i}" for i in range(20)] + [f"B{i}" for i in range(2)]
+    attributes = {
+        e: {
+            "proveedor": "Alfa" if e.startswith("A") else "Beta",
+            "marca": "Alfa-brand" if e.startswith("A") else "Beta-brand",
+        }
+        for e in base
+    }
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert len(result.findings) == 1
+    assert len(result.findings[0].aliases) == 1
+
+
+def test_collapse_keeps_the_larger_exposure_finding_not_whichever_is_seen_first():
+    """'proveedor=Alfa' (m_v=30) y 'certificacion=Cert1' (m_v=22, subconjunto
+    con los MISMOS 20 cronicos) describen el mismo grupo -- colapsan. A
+    diferencia del otro test de colapso (donde los dos m_v empatan en 30 y no
+    distinguen la direccion de la comparacion), aca difieren: el ganador
+    tiene que ser 'proveedor' (mayor exposicion, el mas accionable), no
+    'certificacion' solo por venir antes en el dict de atributos."""
+    base = {f"A{i}" for i in range(30)} | {f"B{i}" for i in range(70)}
+    chronic = [f"A{i}" for i in range(20)] + [f"B{i}" for i in range(2)]
+    attributes = {
+        e: {
+            "proveedor": "Alfa" if e.startswith("A") else "Beta",
+            "certificacion": (
+                "Cert1" if e.startswith("A") and int(e[1:]) < 22 else "Cert2"
+            ),
+        }
+        for e in base
+    }
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert len(result.findings) == 1
+    winner = result.findings[0]
+    assert (winner.dimension, winner.value) == ("proveedor", "Alfa")
+    assert winner.aliases == (("certificacion", "Cert1"),)
+
+
+def test_ranking_is_by_attributable_excess_not_by_lift():
+    """BIG gana por exceso (7.2 vs 5.0) aunque SML gane por lift (6.25 vs 2.5).
+
+    Los numeros estan elegidos para que los dos criterios se CONTRADIGAN: si el
+    ranking fuera por lift (o por n*lift), este test daria SML. Con C=24 sobre
+    una base de 300: BIG 12-de-60 -> esperado 4.8, exceso 7.2; SML 6-de-12 ->
+    esperado 0.96, exceso 5.04.
+    """
+    base = (
+        {f"BIG{i}" for i in range(60)}
+        | {f"SML{i}" for i in range(12)}
+        | {f"OTH{i}" for i in range(228)}
+    )
+    chronic = (
+        [f"BIG{i}" for i in range(12)] + [f"SML{i}" for i in range(6)]
+        + [f"OTH{i}" for i in range(6)]
+    )
+
+    def group(entity: str) -> str:
+        return entity[:3]
+
+    attributes = {e: {"proveedor": group(e)} for e in base}
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert [f.value for f in result.findings][0] == "BIG"
+
+
+def _one_off_profile(entity: str) -> RecurrenceProfile:
+    return _profiles(_failure_run(0, entity=entity), certified_gap=lambda a, b: True)[0]
+
+
+def test_only_chronic_or_worse_profiles_count_toward_the_denominator():
+    """Ninguno de los otros tests mezcla perfiles cronicos con no-cronicos en
+    el mismo llamado (_chronic_profile siempre da cronico) -- asi que ninguno
+    prueba que find_denominators filtre por is_chronic_or_worse en vez de
+    contar CUALQUIER perfil que le pasen. Un perfil one_off (una sola
+    corrida-falla) no puede sumar al denominador: si el filtro no se
+    aplicara, este conteo daria 11 en vez de 10."""
+    base = {f"A{i}" for i in range(50)}
+    attributes = {e: {"proveedor": "Alfa"} for e in base}
+    chronic_profiles = [_chronic_profile(f"A{i}") for i in range(10)]
+    one_off = _one_off_profile("A10")
+
+    result = find_denominators(
+        chronic_profiles + [one_off], attributes, base_entities=base, thresholds=DTH
+    )
+
+    assert result.absolute_counts["proveedor"]["Alfa"] == 10
+
+
+def test_a_chronic_entity_outside_base_entities_does_not_count():
+    """Un cronico de FUERA del universo base (p.ej. de otro segmento) no
+    puede inflar el denominador de ESTA busqueda: si find_denominators no
+    intersectara con base_entities, este conteo daria 11 en vez de 10."""
+    base = {f"A{i}" for i in range(50)}
+    attributes = {e: {"proveedor": "Alfa"} for e in base}
+    profiles = [_chronic_profile(f"A{i}") for i in range(10)] + [_chronic_profile("Z999")]
+
+    result = find_denominators(profiles, attributes, base_entities=base, thresholds=DTH)
+
+    assert result.absolute_counts["proveedor"]["Alfa"] == 10
+
+
+def test_no_chronics_produces_no_findings_and_no_crash():
+    base = {f"A{i}" for i in range(50)}
+    attributes = {e: {"proveedor": "Alfa"} for e in base}
+
+    result = find_denominators([], attributes, base_entities=base, thresholds=DTH)
+
+    assert result.findings == ()
+
+
+def test_no_master_data_at_all_evaluates_no_dimension():
+    base = {f"A{i}" for i in range(50)}
+    chronic = [f"A{i}" for i in range(10)]
+    profiles = [_chronic_profile(e) for e in chronic]
+
+    result = find_denominators(profiles, {}, base_entities=base, thresholds=DTH)
+
+    assert result.dimensions_evaluated == ()
+    assert result.findings == ()

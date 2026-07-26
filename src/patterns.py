@@ -16,6 +16,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
+from scipy.stats import fisher_exact
+
 # --------------------------------------------------------------------------
 # Occurrence: el unico contrato que ve el motor
 # --------------------------------------------------------------------------
@@ -307,7 +309,7 @@ def build_profiles(
         )
         n_failures = sum(1 for e in episodes if e.is_failure)
         covered = sum(e.span_hours for e in episodes)
-        duty = (covered / window_hours * 100.0) if window_hours > 0 else 0.0
+        duty = min(covered / window_hours * 100.0, 100.0) if window_hours > 0 else 0.0
         last_end = max(e.end for e in episodes)
         if n_failures >= thresholds.chronic_min_episodes:
             label = "chronic"
@@ -352,3 +354,251 @@ def is_chronic_or_worse(profile: RecurrenceProfile) -> bool:
         or profile.is_persistent
         or profile.is_oscillating
     )
+
+
+# --------------------------------------------------------------------------
+# Denominador comun
+# --------------------------------------------------------------------------
+
+SIN_DATO = "<sin dato>"
+
+
+@dataclass(frozen=True)
+class DenominatorThresholds:
+    """Los cuatro pisos del gate, mas los limites de forma de la dimension.
+
+    Son cuatro cosas DISTINTAS y las cuatro tienen que cumplirse: exposicion
+    (``min_base``), tamano de efecto (``min_chronics``), magnitud (``min_lift``)
+    y evidencia (``fdr_q``). El borrador solo tenia las dos del medio, y por eso
+    con 4 dimensiones de 10 valores y cero senal real encontraba un patron con
+    probabilidad 1.000.
+    """
+
+    min_lift: float = 1.5
+    min_chronics: int = 3
+    min_base: int = 10
+    fdr_q: float = 0.10
+    max_values: int = 50
+    overlap_pct: float = 80.0
+
+
+@dataclass(frozen=True)
+class GroupFinding:
+    """Una concentracion de cronicos en un valor de una dimension."""
+
+    dimension: str
+    value: str
+    n_v: int
+    m_v: int
+    chronic_total: int
+    base_total: int
+    lift: float
+    excess: float
+    p_value: float
+    q_value: float
+    entities: tuple[str, ...]
+    aliases: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class DimensionRejection:
+    column: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class DenominatorResult:
+    findings: tuple[GroupFinding, ...]
+    absolute_counts: dict[str, dict[str, int]]
+    dimensions_evaluated: tuple[str, ...]
+    dimensions_rejected: tuple[DimensionRejection, ...]
+    n_comparisons: int
+
+
+def benjamini_hochberg(p_values: list[float]) -> list[float]:
+    """q-valores de Benjamini-Hochberg, en el mismo orden que la entrada.
+
+    Controla la tasa de falsos descubrimientos: con K comparaciones, exigir
+    p<=0.05 en cada una garantiza falsos positivos cuando K crece. Se aplica la
+    correccion monotona estandar (minimo acumulado desde el p mas grande).
+    """
+    k = len(p_values)
+    if k == 0:
+        return []
+    order = sorted(range(k), key=lambda i: p_values[i])
+    q_sorted = [0.0] * k
+    running_min = 1.0
+    for rank in range(k, 0, -1):
+        index = order[rank - 1]
+        candidate = min(1.0, p_values[index] * k / rank)
+        running_min = min(running_min, candidate)
+        q_sorted[index] = running_min
+    return q_sorted
+
+
+def _dimension_columns(attributes: dict[str, dict]) -> list[str]:
+    columns: list[str] = []
+    for row in attributes.values():
+        for column in row:
+            if column not in columns:
+                columns.append(column)
+    return columns
+
+
+def find_denominators(
+    profiles: list[RecurrenceProfile],
+    attributes: dict[str, dict],
+    *,
+    base_entities: set[str],
+    thresholds: DenominatorThresholds,
+) -> DenominatorResult:
+    """Que tienen en comun los cronicos.
+
+    ``attributes`` mapea entidad -> {columna: valor}; toda columna es una
+    dimension candidata y ningun nombre esta hardcodeado. Las entidades de
+    ``base_entities`` sin dato para una dimension caen en el bucket
+    :data:`SIN_DATO`, para que las shares sumen 1.0 -- ese bucket se reporta
+    como calidad de dato pero NUNCA puede ser un hallazgo.
+    """
+    chronic_entities = {p.entity_id for p in profiles if is_chronic_or_worse(p)}
+    chronic_in_base = chronic_entities & base_entities
+
+    evaluated: list[str] = []
+    rejected: list[DimensionRejection] = []
+    absolute_counts: dict[str, dict[str, int]] = {}
+    cells: list[tuple[str, str, int, int, float]] = []
+
+    for column in _dimension_columns(attributes):
+        value_of = {
+            entity: str(attributes.get(entity, {}).get(column, SIN_DATO))
+            if attributes.get(entity, {}).get(column, None) is not None
+            else SIN_DATO
+            for entity in base_entities
+        }
+
+        # Las tablas de conteo absoluto se publican SIEMPRE, pase o no el
+        # gate de forma (uniforme/granular) que sigue mas abajo: son
+        # base-independientes y garantizan que el valor que concentra mas
+        # dolor no quede fuera del reporte por un artefacto de la eleccion de
+        # base -- incluye el bucket <sin dato> como senal de calidad de dato.
+        counts: dict[str, int] = {}
+        for entity in chronic_in_base:
+            counts[value_of[entity]] = counts.get(value_of[entity], 0) + 1
+        absolute_counts[column] = dict(sorted(counts.items(), key=lambda kv: -kv[1]))
+
+        distinct = {v for v in value_of.values() if v != SIN_DATO}
+        if len(distinct) < 2:
+            rejected.append(DimensionRejection(column, "demasiado uniforme"))
+            continue
+        if len(distinct) > thresholds.max_values:
+            rejected.append(
+                DimensionRejection(column, f"demasiado granular (k={len(distinct)} valores)")
+            )
+            continue
+
+        evaluated.append(column)
+        base_total = len(base_entities)
+        chronic_total = len(chronic_in_base)
+        for value in sorted(distinct):
+            m_v = sum(1 for v in value_of.values() if v == value)
+            n_v = counts.get(value, 0)
+            if m_v < thresholds.min_base or n_v < thresholds.min_chronics:
+                continue
+            lift = (n_v / chronic_total) / (m_v / base_total) if chronic_total and m_v else 0.0
+            if lift < thresholds.min_lift:
+                continue
+            table = [
+                [n_v, m_v - n_v],
+                [chronic_total - n_v, base_total - m_v - (chronic_total - n_v)],
+            ]
+            if table[1][1] < 0:
+                continue
+            _, p_value = fisher_exact(table, alternative="greater")
+            cells.append((column, value, n_v, m_v, float(p_value)))
+
+    n_comparisons = sum(
+        1
+        for column in evaluated
+        for value in {
+            str(attributes.get(e, {}).get(column))
+            for e in base_entities
+            if attributes.get(e, {}).get(column) is not None
+        }
+    )
+    q_values = benjamini_hochberg([c[4] for c in cells])
+
+    base_total = len(base_entities)
+    chronic_total = len(chronic_in_base)
+    survivors: list[GroupFinding] = []
+    for (column, value, n_v, m_v, p_value), q_value in zip(cells, q_values):
+        if q_value > thresholds.fdr_q:
+            continue
+        expected = chronic_total * m_v / base_total if base_total else 0.0
+        entities = tuple(
+            sorted(
+                e
+                for e in chronic_in_base
+                if str(attributes.get(e, {}).get(column, SIN_DATO)) == value
+            )
+        )
+        survivors.append(
+            GroupFinding(
+                dimension=column,
+                value=value,
+                n_v=n_v,
+                m_v=m_v,
+                chronic_total=chronic_total,
+                base_total=base_total,
+                lift=(n_v / chronic_total) / (m_v / base_total),
+                excess=n_v - expected,
+                p_value=p_value,
+                q_value=q_value,
+                entities=entities,
+            )
+        )
+
+    # Ranking por exceso atribuible ("cuantos cronicos se evitarian"), no por
+    # n*lift: esa expresion equivale a N*n^2/(C*m_v), o sea premia al
+    # denominador chico al cuadrado y entierra al hallazgo que cubre mas gente.
+    survivors.sort(key=lambda f: (-f.excess, f.q_value))
+    collapsed = _collapse_overlapping(survivors, thresholds.overlap_pct)
+
+    return DenominatorResult(
+        findings=tuple(collapsed),
+        absolute_counts=absolute_counts,
+        dimensions_evaluated=tuple(evaluated),
+        dimensions_rejected=tuple(rejected),
+        n_comparisons=n_comparisons,
+    )
+
+
+def _collapse_overlapping(findings: list[GroupFinding], overlap_pct: float) -> list[GroupFinding]:
+    """Colapsa hallazgos que describen al MISMO grupo de cronicos por otra columna.
+
+    "proveedor=Alfa" y "marca=Alfa-brand" sobre los mismos 12 SKUs son un
+    hallazgo, no dos. Se conserva el de mayor exposicion base (el mas
+    accionable) y el resto viaja como alias, para no inflar el reporte ni
+    sugerir que hay varias causas independientes.
+    """
+    kept: list[GroupFinding] = []
+    for finding in findings:
+        target = None
+        for index, existing in enumerate(kept):
+            shared = set(existing.entities) & set(finding.entities)
+            smaller = min(len(existing.entities), len(finding.entities))
+            if smaller and len(shared) / smaller * 100.0 >= overlap_pct:
+                target = index
+                break
+        if target is None:
+            kept.append(finding)
+            continue
+        existing = kept[target]
+        if finding.m_v > existing.m_v:
+            kept[target] = replace(
+                finding, aliases=existing.aliases + ((existing.dimension, existing.value),)
+            )
+        else:
+            kept[target] = replace(
+                existing, aliases=existing.aliases + ((finding.dimension, finding.value),)
+            )
+    return kept
