@@ -39,8 +39,14 @@ _RECEIVED_QTY_COLS = ("received_qty", "Received_Qty", "qty_received", "Qty_Recei
 
 _DEFAULT_WEIGHTS = {"otif": 0.4, "lead_time": 0.2, "ppm": 0.2, "price": 0.2}
 
-_TRUE_TOKENS = frozenset({"1", "true", "t", "yes", "y", "on time", "on_time", "ontime", "full", "complete"})
-_FALSE_TOKENS = frozenset({"0", "false", "f", "no", "n", "late", "partial", "incomplete", "delivered"})
+# Keep these two SYMMETRIC, and keep ORDER-STATUS values out of both. An asymmetric pair
+# mis-scores silently (if "no" parses but "yes" does not, a column holding only "no" reads as
+# 0% instead of being refused), and a status like "delivered" is not a yes/no answer at all -
+# it says nothing about timing, and it is a substring of "partially delivered". Status columns
+# go through the explicit in_full_status_col + in_full_ok_values mapping instead.
+_TRUE_TOKENS = frozenset({"1", "true", "t", "yes", "y", "on time", "on_time", "ontime",
+                          "full", "complete"})
+_FALSE_TOKENS = frozenset({"0", "false", "f", "no", "n", "late", "incomplete"})
 
 
 @dataclass(frozen=True)
@@ -73,12 +79,6 @@ def _as_bool(series: pd.Series, col: str, field: str) -> pd.Series:
     if pd.api.types.is_numeric_dtype(series):
         if series.isna().any():
             raise ValueError(f"column '{col}' ({field}) has blank rows; a blank is not a yes or a no")
-        off_scale = sorted({float(v) for v in series.unique()} - {0.0, 1.0})
-        if off_scale:
-            raise ValueError(
-                f"column '{col}' ({field}) holds {off_scale[:3]}, not 0/1 - it is a measurement, "
-                "not a yes/no flag"
-            )
         return series.astype(bool)
     text = series.astype(str).str.strip().str.lower()
     unknown = sorted(set(text) - _TRUE_TOKENS - _FALSE_TOKENS)

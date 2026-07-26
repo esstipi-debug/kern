@@ -83,6 +83,18 @@ def test_a_free_text_status_column_is_refused_as_on_time_not_read_as_true(tmp_pa
         srcj.prepare(str(csv), _params(on_time_col="Order_Status"))
 
 
+def test_an_order_status_column_is_refused_as_in_full_not_silently_scored(tmp_path):
+    """'Delivered' is a status, not a yes/no token.
+
+    Read as a flag it is ambiguous in both directions - it says nothing about timing, and
+    'delivered' vs 'partially delivered' is a substring trap. The supported path for a status
+    column is the explicit ``in_full_status_col`` + ``in_full_ok_values`` mapping, so a status
+    handed straight to ``in_full_col`` must refuse and say so.
+    """
+    with pytest.raises(ValueError, match="in_full_status_col|free text"):
+        srcj.prepare(str(_raw_erp_csv(tmp_path)), {"sla_days": SLA, "in_full_col": "Order_Status"})
+
+
 def test_a_rate_column_is_refused_as_a_per_delivery_flag(tmp_path):
     """One row per supplier holding an on-time RATE, not one row per delivery holding a flag.
 
