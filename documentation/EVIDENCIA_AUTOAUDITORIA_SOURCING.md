@@ -45,11 +45,11 @@ Mismo archivo, mismo comando, más una declaración explícita del SLA contractu
 
 ```
   supplier            n    otif  ontime  infull   lead       ppm   price  topsis
-  Alpha_Inc         117   0.538   0.726   0.761   10.6    17,677   58.20   0.971
-  Epsilon_Group     149   0.497   0.664   0.718   10.9    25,934   59.32   0.852
-  Gamma_Co          130   0.531   0.731   0.715   10.2    44,190   59.13   0.718
-  Beta_Supplies     143   0.448   0.650   0.699   11.3    79,445   58.20   0.303
-  Delta_Logistics   151   0.477   0.662   0.682   10.9   108,236   57.08   0.083
+  Alpha_Inc         116   0.534   0.724   0.759   10.7    21,946   58.05   0.966
+  Epsilon_Group     149   0.497   0.664   0.718   10.9    29,636   59.32   0.880
+  Gamma_Co          130   0.531   0.731   0.715   10.2    49,609   59.13   0.780
+  Beta_Supplies     143   0.448   0.650   0.699   11.3    93,253   58.20   0.397
+  Delta_Logistics   151   0.477   0.662   0.682   10.9   143,973   57.08   0.079
   recommended: Alpha_Inc   qa_issues=[]
 ```
 
@@ -57,12 +57,22 @@ Y el entregable ahora **declara sus propios supuestos**, en vez de esconderlos:
 
 ```
   [note] Lead time measured as 'Delivery_Date' minus 'Order_Date'.
+  [note] 1 row(s) have a negative lead time (delivery dated before the order) and are
+         excluded - such a row scores as the fastest, always-on-time supplier.
   [note] [ASSUMPTION] On-time measured against a declared 14-day SLA - the data carries
          no promised-delivery date. Confirm the contractual SLA before awarding.
   [note] In-full derived from 'Order_Status' being one of ['Delivered'].
-  [note] 136 of 777 rows had no defect count in 'Defective_Units'; counted as zero defects.
-  [note] 87 of 777 purchase orders have no completed delivery and are excluded.
+  [note] 136 of 777 rows had no defect count in 'Defective_Units'; defect PPM is measured
+         over the remaining rows only, not diluted across all of them.
+  [note] 88 of 777 purchase orders are excluded from the scorecard for the reasons above;
+         the panel is scored on the remaining 689.
 ```
+
+Vale la pena mirar el PPM: subió (Alpha 17.677 → 21.946) respecto de una versión intermedia
+de este mismo arreglo que rellenaba con cero los 136 conteos de defectos faltantes. Rellenar
+con cero no significa "sin defectos": mete 136 filas nunca inspeccionadas en el denominador y
+**baja** la tasa. El número honesto se mide sobre lo que sí se inspeccionó, y la cobertura se
+informa aparte.
 
 `Alpha_Inc` sigue ganando — pero ahora gana por 0.538 de OTIF contra 0.448 del último,
 no por la primera letra del nombre.

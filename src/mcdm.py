@@ -147,7 +147,7 @@ def topsis_rank(
     closeness = d_worst / spread
 
     scores = {names[i]: float(closeness[i]) for i in range(len(names))}
-    ranking = sorted(names, key=lambda a: scores[a], reverse=True)
+    ranking = sorted(names)  # MUTATION: award reverts to alphabetical order
     return RankingResult(scores, ranking)
 
 

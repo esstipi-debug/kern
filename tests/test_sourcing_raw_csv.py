@@ -127,12 +127,16 @@ def test_junk_in_a_numeric_column_is_refused_not_coerced_to_zero(tmp_path):
         srcj.prepare(str(csv), _params())
 
 
-def test_a_blank_quantity_is_refused_because_it_silently_means_flawless_quality(tmp_path):
+def test_a_blank_quantity_is_excluded_not_scored_as_flawless_quality(tmp_path):
     """PPM divides by units; ``NaN > 0`` is False, so a blank quantity scored 0 PPM - perfect."""
     csv = _raw_erp_csv(tmp_path, Quantity=[100, None, 100, 100, 100])
 
-    with pytest.raises(ValueError, match="quantity|units"):
-        srcj.prepare(str(csv), _params())
+    payload = srcj.prepare(str(csv), _params())
+
+    by = {c.supplier: c for c in payload["scorecards"]}
+    assert by["Alpha"].deliveries == 2                     # the blank-quantity row is dropped
+    assert by["Alpha"].ppm == pytest.approx(0.0)           # its 0 defects over 200 real units
+    assert any("quantity" in n.lower() for n in payload["notes"])
 
 
 def test_missing_lead_time_and_dates_refuses_instead_of_scoring_zero(tmp_path):

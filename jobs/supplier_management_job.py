@@ -63,6 +63,13 @@ def _resolve_driver_cols(df: pd.DataFrame, params: dict) -> dict[str, str]:
     like a missing column - silently, and straight into a zeroed risk axis.
     """
     overrides: dict[str, str] = params.get("risk_cols", {}) or {}
+    bad_keys = sorted(set(overrides) - set(_DRIVER_COLS))
+    if bad_keys:
+        raise ValueError(
+            f"risk_cols uses unknown risk driver key(s) {bad_keys}; valid keys are "
+            f"{sorted(_DRIVER_COLS)}. An unrecognised key is dropped in silence, taking its "
+            "risk axis with it."
+        )
     unknown = {k: v for k, v in overrides.items() if v and str(v) not in df.columns}
     if unknown:
         raise ValueError(
@@ -135,6 +142,21 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
         )
     df = df.reset_index(drop=True)
     normed = normalize_drivers(df, driver_cols=driver_cols, supplier_col=supplier_col)
+
+    # Resolving a driver column is not the same as measuring risk. min-max scaling a constant
+    # column gives 0.0 for everyone, and a non-numeric one is coerced to 0.0 first - both land
+    # on exactly the flat 0.000 risk axis the guard above exists to prevent.
+    flat = [
+        key for key in driver_cols
+        if len({round(scores.get(key, 0.0), 12) for scores in normed.values()}) <= 1
+    ]
+    if len(flat) == len(driver_cols):
+        raise ValueError(
+            f"every supply-risk driver {sorted(driver_cols)} has the same value for every "
+            f"supplier (columns {[driver_cols[k] for k in flat]}), so the risk axis is flat and "
+            "the Kraljic matrix collapses to a spend ranking. Supply a driver that actually "
+            "varies between suppliers, or a numeric one if the column holds text."
+        )
 
     suppliers: list[SupplierInput] = []
     for _, row in df.iterrows():

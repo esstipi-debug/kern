@@ -56,6 +56,43 @@ def test_real_risk_columns_still_produce_a_spread_of_supply_risk(tmp_path):
     assert smj.verify(report) == []
 
 
+def test_a_constant_risk_column_is_refused_because_it_normalizes_to_zero_for_everyone(tmp_path):
+    """min-max scaling a constant column yields 0.0 for every supplier.
+
+    Resolving a driver column is not the same as measuring risk: a column where every supplier
+    has the same value produces exactly the output the first guard exists to prevent - a Kraljic
+    matrix whose risk axis is identically 0.000.
+    """
+    csv = tmp_path / "constant_risk.csv"
+    pd.DataFrame({
+        "supplier": ["Alpha", "Beta", "Gamma"],
+        "annual_spend": [500_000.0, 120_000.0, 40_000.0],
+        "lead_time_days": [14.0, 14.0, 14.0],
+    }).to_csv(csv, index=False)
+
+    with pytest.raises(ValueError, match="same|constant|no spread"):
+        smj.prepare(str(csv), {})
+
+
+def test_a_non_numeric_risk_column_is_refused_not_zeroed(tmp_path):
+    """``pd.to_numeric(...).fillna(0.0)`` turned a text risk column into 0.0 for everyone."""
+    csv = tmp_path / "text_risk.csv"
+    pd.DataFrame({
+        "supplier": ["Alpha", "Beta", "Gamma"],
+        "annual_spend": [500_000.0, 120_000.0, 40_000.0],
+        "lead_time_days": ["short", "long", "medium"],
+    }).to_csv(csv, index=False)
+
+    with pytest.raises(ValueError, match="numeric|same|constant|no spread"):
+        smj.prepare(str(csv), {})
+
+
+def test_a_typo_in_a_risk_driver_KEY_is_refused(tmp_path):
+    """Only override VALUES were validated, so a bad key silently dropped that driver."""
+    with pytest.raises(ValueError, match="qualtiy|risk driver|unknown"):
+        smj.prepare(str(_suppliers_csv(tmp_path)), {"risk_cols": {"qualtiy": "defect_ppm"}})
+
+
 def test_verify_rejects_a_report_that_placed_suppliers_with_no_risk_driver(tmp_path):
     """Defence in depth: even hand-built payloads cannot ship a one-axis Kraljic."""
     payload = smj.prepare(str(_suppliers_csv(tmp_path)), {})

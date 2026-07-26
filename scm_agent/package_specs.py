@@ -139,7 +139,10 @@ _DRP = PackageInput(
 _PROVEEDORES = PackageInput(
     slot="proveedores", filename="proveedores.csv",
     description="registros de entrega por proveedor (scorecard + award TOPSIS)",
-    columns="supplier (+ on_time, in_full, lead_time_days, units, defects, unit_price) - una fila por entrega",
+    columns="supplier, on_time, in_full, lead_time_days, units, defects (todas requeridas: sin "
+            "ellas el scorecard sale en cero y el award es alfabetico) + unit_price opcional - "
+            "una fila por entrega. Alternativa: export ERP crudo con fechas de orden/entrega "
+            "(+ fecha prometida o sla_days declarado) y cantidad recibida",
 )
 _IMPORTACIONES = PackageInput(
     slot="importaciones", filename="importaciones.csv",

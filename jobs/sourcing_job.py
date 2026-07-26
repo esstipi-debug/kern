@@ -161,43 +161,70 @@ def score_suppliers(
 
 
 def _derive_lead_time(df: pd.DataFrame, params: dict, work: pd.DataFrame, notes: list[str]) -> pd.Series:
-    """lead_time_days from a direct column, else delivery date - order date."""
+    """lead_time_days from a direct column, else delivery date - order date.
+
+    The delivery date is read whenever the data carries one, even when lead time comes from a
+    direct column: the promised-date comparison downstream needs it, and hanging it off only
+    the subtraction path made a lead-time column silently disable on-time-vs-promise.
+    """
+    order_col = _pick_column(df, params.get("order_date_col"), _ORDER_DATE_COLS)
+    delivery_col = _pick_column(df, params.get("delivery_date_col"), _DELIVERY_DATE_COLS)
+    if delivery_col:
+        work["_delivered_at"] = pd.to_datetime(df[delivery_col], errors="coerce")
+
     lead_col = _pick_column(df, params.get("lead_col"), _LEAD_COLS)
     if lead_col:
         work["lead_time_days"] = _as_float(df[lead_col], lead_col, "lead_time")
-        return pd.Series(True, index=df.index)
-
-    order_col = _pick_column(df, params.get("order_date_col"), _ORDER_DATE_COLS)
-    delivery_col = _pick_column(df, params.get("delivery_date_col"), _DELIVERY_DATE_COLS)
-    if not (order_col and delivery_col):
+    elif order_col and delivery_col:
+        ordered_at = pd.to_datetime(df[order_col], errors="coerce")
+        work["lead_time_days"] = (work["_delivered_at"] - ordered_at).dt.days.astype("float64")
+        notes.append(f"Lead time measured as '{delivery_col}' minus '{order_col}'.")
+    else:
         raise ValueError(
             "cannot compute lead_time: the data has no lead-time column and no order/delivery date "
             f"pair (columns seen: {list(df.columns)[:12]}). Pass lead_col, or order_date_col plus "
             "delivery_date_col."
         )
-    ordered_at = pd.to_datetime(df[order_col], errors="coerce")
-    delivered_at = pd.to_datetime(df[delivery_col], errors="coerce")
-    work["lead_time_days"] = (delivered_at - ordered_at).dt.days.astype("float64")
-    work["_delivered_at"] = delivered_at
-    notes.append(f"Lead time measured as '{delivery_col}' minus '{order_col}'.")
-    return ordered_at.notna() & delivered_at.notna()
+
+    # A delivery dated before its order is the ideal point on both criteria: fastest lead time
+    # and always inside any SLA. It would win the award on a typo, so drop it.
+    negative = (work["lead_time_days"] < 0).fillna(False)
+    if bool(negative.any()):
+        notes.append(
+            f"{int(negative.sum())} row(s) have a negative lead time (delivery dated before the "
+            "order) and are excluded - such a row scores as the fastest, always-on-time supplier."
+        )
+
+    complete = work["lead_time_days"].notna() & ~negative
+    if "_delivered_at" in work:
+        complete &= work["_delivered_at"].notna()
+    return complete
 
 
-def _derive_on_time(df: pd.DataFrame, params: dict, work: pd.DataFrame, notes: list[str]) -> None:
-    """on_time from a direct column, else the promised date, else a declared SLA."""
+def _derive_on_time(df: pd.DataFrame, params: dict, work: pd.DataFrame,
+                    notes: list[str]) -> pd.Series:
+    """on_time from a direct column, else the promised date, else a declared SLA.
+
+    Returns the mask of rows whose on-time answer is actually knowable.
+    """
     on_time_col = _pick_column(df, params.get("on_time_col"), _ON_TIME_COLS)
     if on_time_col:
         work["on_time"] = _as_bool(df[on_time_col], on_time_col, "on_time")
-        return
+        return pd.Series(True, index=df.index)
 
     promised_col = _pick_column(df, params.get("promised_date_col"), _PROMISED_DATE_COLS)
     if promised_col and "_delivered_at" in work:
         promised_at = pd.to_datetime(df[promised_col], errors="coerce")
-        if promised_at.isna().all():
-            raise ValueError(f"promised-date column '{promised_col}' holds no parseable dates")
+        # A NaT comparison is False, i.e. "late". An unknown promise is not a missed one.
+        unknown = promised_at.isna() & work["_delivered_at"].notna()
+        if bool(unknown.any()):
+            notes.append(
+                f"{int(unknown.sum())} delivered row(s) have no promised date in '{promised_col}' "
+                "and are excluded - an unknown promise would otherwise score as a late delivery."
+            )
         work["on_time"] = work["_delivered_at"] <= promised_at
         notes.append(f"On-time measured against the promised date in '{promised_col}'.")
-        return
+        return ~unknown
 
     sla_days = params.get("sla_days")
     if sla_days is None:
@@ -215,23 +242,34 @@ def _derive_on_time(df: pd.DataFrame, params: dict, work: pd.DataFrame, notes: l
         f"[ASSUMPTION] On-time measured against a declared {sla:g}-day SLA - the data carries no "
         "promised-delivery date. Confirm the contractual SLA before awarding."
     )
+    return pd.Series(True, index=df.index)
 
 
 def _derive_in_full(df: pd.DataFrame, params: dict, work: pd.DataFrame, notes: list[str],
-                    units_col: str | None) -> None:
-    """in_full from a direct column, else received vs ordered quantity, else a status mapping."""
+                    units_col: str | None) -> pd.Series:
+    """in_full from a direct column, else received vs ordered quantity, else a status mapping.
+
+    Returns the mask of rows whose in-full answer is actually knowable.
+    """
     in_full_col = _pick_column(df, params.get("in_full_col"), _IN_FULL_COLS)
     if in_full_col:
         work["in_full"] = _as_bool(df[in_full_col], in_full_col, "in_full")
-        return
+        return pd.Series(True, index=df.index)
 
     received_col = _pick_column(df, params.get("received_qty_col"), _RECEIVED_QTY_COLS)
     if received_col and units_col:
         ordered_q = _as_float(df[units_col], units_col, "units")
         received_q = _as_float(df[received_col], received_col, "received_qty")
+        # `NaN >= ordered` is False: an unrecorded receipt would score as a short shipment.
+        unknown = received_q.isna() & ordered_q.notna()
+        if bool(unknown.any()):
+            notes.append(
+                f"{int(unknown.sum())} row(s) have no received quantity in '{received_col}' and "
+                "are excluded - an unrecorded receipt would otherwise score as a short shipment."
+            )
         work["in_full"] = received_q >= ordered_q
         notes.append(f"In-full derived from '{received_col}' against ordered '{units_col}'.")
-        return
+        return ~unknown
 
     status_col = params.get("in_full_status_col")
     ok_values = params.get("in_full_ok_values")
@@ -239,9 +277,17 @@ def _derive_in_full(df: pd.DataFrame, params: dict, work: pd.DataFrame, notes: l
         if status_col not in df.columns:
             raise ValueError(f"in_full_status_col '{status_col}' is not a column in the data")
         ok = {str(v).strip().lower() for v in ok_values}
-        work["in_full"] = df[status_col].astype(str).str.strip().str.lower().isin(ok)
+        matched = df[status_col].astype(str).str.strip().str.lower().isin(ok)
+        # 0% in full across every supplier is a broken mapping, not a service-level finding.
+        if not bool(matched.any()):
+            seen = sorted({str(v) for v in df[status_col].dropna().unique()})[:5]
+            raise ValueError(
+                f"in_full_ok_values {sorted(ok_values)} matched no row of '{status_col}' "
+                f"(values present: {seen}). Every supplier would score 0% in full."
+            )
+        work["in_full"] = matched
         notes.append(f"In-full derived from '{status_col}' being one of {sorted(ok_values)}.")
-        return
+        return pd.Series(True, index=df.index)
 
     raise ValueError(
         "cannot compute in_full: the data has no in-full column, no received-vs-ordered quantity "
@@ -267,18 +313,28 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
     work = pd.DataFrame(index=df.index)
     work["supplier"] = df[supplier].astype(str)
 
-    complete = _derive_lead_time(df, params, work, notes)
-    _derive_on_time(df, params, work, notes)
+    usable = _derive_lead_time(df, params, work, notes)
+    usable &= _derive_on_time(df, params, work, notes)
 
     units_col = _pick_column(df, params.get("units_col"), _UNITS_COLS)
-    _derive_in_full(df, params, work, notes, units_col)
+    usable &= _derive_in_full(df, params, work, notes, units_col)
 
     if units_col is None:
         raise ValueError(
             "cannot compute defect PPM without a quantity column; pass units_col "
             f"(columns seen: {list(df.columns)[:12]})"
         )
-    work["units"] = _as_float(df[units_col], units_col, "units")
+    # PPM divides by units, and `NaN > 0` is False - a blank quantity would report flawless
+    # quality rather than an unknown one, so those rows leave the panel.
+    raw_units = _as_float(df[units_col], units_col, "units")
+    blank_units = raw_units.isna()
+    if bool(blank_units.any()):
+        notes.append(
+            f"{int(blank_units.sum())} row(s) have no quantity in '{units_col}' and are excluded - "
+            "quantity is the denominator of defect PPM, so a blank one reads as flawless quality."
+        )
+    usable &= ~blank_units
+    work["units"] = raw_units
 
     defects_col = _pick_column(df, params.get("defects_col"), _DEFECTS_COLS)
     if defects_col is None:
@@ -286,38 +342,56 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
             "cannot compute defect PPM without a defects column; pass defects_col. Quality is a "
             "fifth of the award weighting - assuming zero defects flatters every supplier equally."
         )
-    defects = pd.to_numeric(df[defects_col], errors="coerce")
-    n_blank_defects = int(defects.isna().sum())
-    work["defects"] = defects.fillna(0.0).astype("float64")
+    defects = _as_float(df[defects_col], defects_col, "defects")
+    # PPM is defects/units. Zero-filling a blank count does not mean "no defects", it silently
+    # inflates the denominator with unmeasured units and understates the rate. Measure the rate
+    # over the rows that were actually inspected, and report the coverage separately.
+    known = defects.notna()
+    n_blank_defects = int((~known).sum())
+    work["defects"] = defects.fillna(0.0)
+    work["units"] = work["units"].where(known, 0.0)
     if n_blank_defects:
         notes.append(
-            f"{n_blank_defects} of {len(df)} rows had no defect count in '{defects_col}'; "
-            "counted as zero defects."
+            f"{n_blank_defects} of {len(df)} rows had no defect count in '{defects_col}'; defect "
+            "PPM is measured over the remaining rows only, not diluted across all of them."
         )
 
     price_col = _pick_column(df, params.get("price_col"), _PRICE_COLS)
     if price_col:
-        work["price"] = _as_float(df[price_col], price_col, "price")
+        price = _as_float(df[price_col], price_col, "price")
+        if bool(price.isna().any()):
+            notes.append(
+                f"{int(price.isna().sum())} row(s) have no unit price in '{price_col}' and are "
+                "excluded from the average price."
+            )
+        work["price"] = price
 
-    scored = work[complete & work["lead_time_days"].notna()]
+    scored = work
     n_open = len(work) - len(scored)
     if n_open:
         notes.append(
-            f"{n_open} of {len(work)} purchase orders have no completed delivery and are excluded "
-            "from the scorecard."
+            f"{n_open} of {len(work)} purchase orders are excluded from the scorecard for the "
+            "reasons above; the panel is scored on the remaining "
+            f"{len(scored)}."
         )
     if scored.empty:
-        raise ValueError("no completed deliveries to score - every row is missing a delivery date")
-
-    # PPM divides by units, and `NaN > 0` is False - so a delivered PO with a blank quantity
-    # falls into the `else 0.0` branch and reports flawless quality. Refuse instead.
-    n_blank_units = int(scored["units"].isna().sum())
-    if n_blank_units:
         raise ValueError(
-            f"{n_blank_units} delivered purchase order(s) have a blank quantity in '{units_col}'. "
-            "Quantity is the denominator of defect PPM: a blank one scores as zero defects, i.e. "
-            "flawless quality. Fill the quantity or exclude those rows before scoring."
+            "no usable purchase orders left to score - every row was missing a delivery, a "
+            "quantity, or a comparable date"
         )
+
+    if price_col:
+        # A supplier with no priced row at all yields a NaN mean, which propagates through
+        # TOPSIS and leaves every closeness score NaN - the award falls back to input order.
+        unpriced = sorted(
+            str(s) for s, g in scored.groupby("supplier") if bool(g["price"].isna().all())
+        )
+        if unpriced:
+            raise ValueError(
+                f"supplier(s) {unpriced} have no unit price on any scored row in '{price_col}'. "
+                "Their average price is NaN, which turns every TOPSIS score into NaN and decides "
+                "the award by input order. Fill those prices or drop price_col."
+            )
 
     cards, prices = score_suppliers(
         scored,
@@ -477,6 +551,7 @@ def build_deck(
         citations=tuple(citations),
         confidence=confidence,
         residual=" ".join((
+            *report.notes,
             "The final award, price negotiation, and contract terms are commercial / legal "
             "decisions - this ranks and prepares the packet; a human signs the award.",
         )),
