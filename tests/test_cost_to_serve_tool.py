@@ -134,8 +134,11 @@ def test_orchestrator_runs_cost_to_serve_and_emits_the_deck(tmp_path):
     _orderlines().to_csv(csv, index=False)
     orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback())
 
+    # an activity cost driver is required: without one, fulfillment/returns/overhead
+    # are all zero and the tool gates rather than restate gross margin as net-to-serve
     res = orch.run("cost to serve and profitability by segment", data_path=str(csv),
-                   client="Acme", out_dir=tmp_path)
+                   client="Acme", out_dir=tmp_path,
+                   overrides={"cost_per_order": 7.5, "cost_per_unit_shipped": 1.2})
 
     assert res.status == "ok"
     assert res.tool == "cost_to_serve"
