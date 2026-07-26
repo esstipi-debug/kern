@@ -393,10 +393,18 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Score suppliers on OTIF, lead time, quality (defect PPM) and price, then rank "
             "them (TOPSIS multi-criteria) into a recommended award decision.\n\n"
-            "Rows need columns: supplier (one row per delivery/PO line works best). "
-            "Optional but scoring improves with: on_time, in_full, lead_time_days, units, "
-            'defects, unit_price. E.g. {"supplier": "Acme", "on_time": 1, "in_full": 1, '
-            '"lead_time_days": 9, "units": 500, "defects": 3, "unit_price": 4.2}.\n\n'
+            "Rows need columns (one row per delivery / PO line): supplier, plus every field "
+            "that decides the award - on_time, in_full, lead_time_days, units, defects. "
+            "These are REQUIRED, not optional: a missing one used to score as zero and "
+            "produced an all-zero scorecard that still named a winner. unit_price is "
+            'genuinely optional (it adds a price criterion). E.g. {"supplier": "Acme", '
+            '"on_time": 1, "in_full": 1, "lead_time_days": 9, "units": 500, "defects": 3, '
+            '"unit_price": 4.2}.\n\n'
+            "A raw ERP export works too: pass order/delivery dates plus either a promised "
+            "date or an explicit sla_days, and on_time / in_full / lead_time_days are "
+            "derived (params: order_date_col, delivery_date_col, promised_date_col, "
+            "sla_days, received_qty_col, in_full_status_col + in_full_ok_values). "
+            "Anything that cannot be derived is refused by name as needs_data.\n\n"
             "Useful params: weights (dict; defaults otif 0.4 / lead_time 0.2 / ppm 0.2 / "
             "price 0.2).\n\n" + _RETURNS
         ),

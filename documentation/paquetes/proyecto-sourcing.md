@@ -32,7 +32,7 @@ Tres archivos:
 
 | Archivo | Contenido | Columnas mínimas |
 |---|---|---|
-| `proveedores.csv` | Registros de entrega por proveedor (una fila por entrega) | `supplier` (+ on_time, in_full, lead_time_days, defects, unit_price) |
+| `proveedores.csv` | Registros de entrega por proveedor (una fila por entrega) | `supplier`, `on_time`, `in_full`, `lead_time_days`, `units`, `defects` (requeridas) + `unit_price` opcional |
 | `importaciones.csv` | Líneas de importación | `sku, unit_cost, qty` (+ freight, insurance, duty_rate, incoterm) |
 | `calidad_aql.csv` | Niveles de calidad aceptables por componente | `part, aql, ltpd` |
 

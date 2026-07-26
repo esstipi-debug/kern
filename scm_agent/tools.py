@@ -427,6 +427,7 @@ def _sourcing_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
 def _sourcing_run(payload: object, params: dict) -> Produced:
     report = sourcing_job.run(
         payload["scorecards"], payload["prices"], weights=params.get("weights"),
+        notes=payload.get("notes"),
     )
     return Produced(report=report, summary=report.summary)
 
