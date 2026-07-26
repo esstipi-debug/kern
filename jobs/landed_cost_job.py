@@ -73,7 +73,14 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> list[dict]:
     incoterm = _pick_column(df, params.get("incoterm_col"), _INCOTERM_COLS)
 
     def _num(row, col):
-        return float(row[col]) if col else 0.0
+        """An optional cost leg: absent column *or* blank cell means 0, as documented.
+
+        Without the blank case, `require_finite` in src.landed_cost turned one empty
+        insurance cell into an opaque abort for the whole shipment file.
+        """
+        if not col or pd.isna(row[col]):
+            return 0.0
+        return float(row[col])
 
     return [
         {

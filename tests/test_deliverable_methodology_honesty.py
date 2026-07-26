@@ -165,16 +165,10 @@ def test_the_assumptions_say_when_the_lead_time_std_came_from_the_file(tmp_path)
     assert "defaulted to 0" not in md
 
 
-def test_the_assumptions_disclose_a_demand_std_fallback(tmp_path):
-    """Ties item 1 to the document: a substituted sigma must reach the reader."""
-    report = inventory_optimization.run(_demand())
-    fallbacks = [r for r in report.recommendations if r.sigma_source == "demand_std_fallback"]
-    md = deliverables.write_report_md(report, tmp_path / "r.md").read_text(encoding="utf-8")
-
-    if fallbacks:
-        assert "demand standard deviation" in md
-    else:
-        assert "forecast-error standard deviation" in md
+# The disclosure of a substituted sigma is asserted against the *Assumptions section*
+# in tests/test_degradacion_review_followups.py. A whole-document substring check was
+# vacuous here: the unconditional Methodology bullet names both dispersions, so both
+# branches matched and the test could never fail.
 
 
 def test_the_methodology_names_the_buffer_distribution_it_assumed(tmp_path):

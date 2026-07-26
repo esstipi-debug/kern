@@ -88,7 +88,8 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
         ("Inventory Optimization — Summary", ""),
         ("SKUs analyzed", report.n_skus),
         ("SKUs flagged (high bias)", report.n_at_risk),
-        ("Intermittent SKUs (Croston)", report.n_intermittent),
+        ("Intermittent SKUs", report.n_intermittent),
+        ("Forecast methods used", _methods_used(report) or "none"),
         ("Requested investment", round(report.requested_investment, 2)),
         ("Cycle-stock floor", round(report.cycle_floor, 2)),
         ("Final investment", round(report.final_investment, 2)),
@@ -97,7 +98,7 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
         ("Plan feasible", "yes" if report.feasible else "no"),
         ("", ""),
         ("Assumptions", ""),
-        ("Cycle service level", f"{p['service_level'] * 100:.1f}%"),
+        ("Cycle service level", _service_level_text(report)),
         ("Holding cost rate (of unit cost / yr)", f"{p['holding_rate'] * 100:.0f}%"),
         ("Order cost K", p["order_cost"]),
         ("Periods per year", p["periods_per_year"]),
@@ -143,6 +144,23 @@ def _plural(items: list[str]) -> str:
     if len(items) <= 1:
         return items[0] if items else ""
     return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _methods_used(report: JobReport) -> str:
+    """The forecast methods that actually ran, named as a client would read them."""
+    methods = sorted({r.method for r in report.recommendations})
+    return _plural([METHOD_LABEL.get(m, m) for m in methods])
+
+
+def _service_level_text(report: JobReport) -> str:
+    """The cycle service level(s) the run actually applied, read off the SKUs."""
+    levels = sorted({round(r.service_level, 4) for r in report.recommendations})
+    if not levels:
+        return f"{report.params['service_level'] * 100:.1f}%"
+    if len(levels) == 1:
+        return f"{levels[0] * 100:.1f}%"
+    per_sku = ", ".join(f"{lv * 100:.1f}%" for lv in levels)
+    return f"differentiated per SKU across {len(levels)} levels ({per_sku})"
 
 
 def _methodology_lines(report: JobReport) -> list[str]:
@@ -200,7 +218,11 @@ def _methodology_lines(report: JobReport) -> list[str]:
         "continuous-review (s,Q); periodic (R,S) order-up-to `S = mu_x + SS`."
         + (f" Policies used here: {_plural(policies)}." if policies else "")
     )
-    lines.append("- **Reorder point:** `s = mu_x + SS`.")
+    lines.append(
+        "- **Reorder point:** `s = mu_d * L + SS` - the lead-time mean plus the buffer. "
+        "Note this uses `L` alone, not the `tau` above: for an (R,S) SKU the review period "
+        "is covered by the order-up-to level `S`, not by `s`."
+    )
     lines.append(
         "- **Budget:** when a cap is set, safety stock is scaled across the portfolio to fit "
         "while preserving cycle-stock economics."
@@ -217,7 +239,10 @@ def _assumption_lines(report: JobReport) -> list[str]:
     defaulted = [r for r in recs if r.lead_time_std_source == "defaulted_zero"]
 
     lines = ["## Assumptions\n"]
-    lines.append(f"- Cycle service level: **{p['service_level'] * 100:.1f}%**")
+    # `params['service_level']` is the *default argument*, not necessarily what ran:
+    # service_levels= / differentiate_by_class= / observed_fill_rates= each override it
+    # per SKU, and stating one number here would describe a run that did not happen.
+    lines.append(f"- Cycle service level: **{_service_level_text(report)}**")
     lines.append(f"- Holding cost: **{p['holding_rate'] * 100:.0f}%** of unit cost per year")
     lines.append(f"- Fixed order cost (K): **${_fmt(p['order_cost'])}**")
     lines.append(
@@ -315,7 +340,11 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
             if r.status == "high_bias":
                 lines.append(f"- **{r.product_id}** — forecast bias {r.bias:+.1f} (|bias| ≥ 2). The forecast is consistently off; review the demand history or method before trusting the policy.")
             else:
-                lines.append(f"- **{r.product_id}** — intermittent demand, forecast via Croston. Lumpy demand makes a periodic (R,S) review more robust than a fixed reorder point.")
+                lines.append(
+                    f"- **{r.product_id}** — intermittent demand, forecast via "
+                    f"{METHOD_LABEL.get(r.method, r.method)}. Lumpy demand makes a periodic "
+                    "(R,S) review more robust than a fixed reorder point."
+                )
         lines.append("")
 
     lines.extend(_methodology_lines(report))

@@ -127,7 +127,9 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> list[dict]:
         return number if math.isfinite(number) else None
 
     for name, col in (("cogs", cogs), ("avg_inventory_value", inv)):
-        blanks = int(df[col].isna().sum()) + int((~df[col].apply(_is_finite)).sum())
+        # `_is_finite` is already False for NaN, so testing isna() as well would
+        # count every blank twice - a wrong number inside the honesty check itself.
+        blanks = int((~df[col].apply(_is_finite)).sum())
         if blanks:
             raise ValueError(
                 f"{blanks} row(s) have a blank or non-numeric '{name}' ({col}); it is a "

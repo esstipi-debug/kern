@@ -47,21 +47,55 @@ class SupplierScore:
 
 _NOT_MEASURED = Evaluable(on_time=0, in_full=0, otif=0, lead_time=0, ppm=0)
 
+# The only words that mean exactly one thing. Anything else is refused rather than
+# guessed: `bool("No")` and `bool("Cancelled")` are both True, so a Yes/No export
+# used to score a 100% OTIF over sixty late deliveries.
+_TRUE_WORDS = frozenset({"true", "t", "yes", "y"})
+_FALSE_WORDS = frozenset({"false", "f", "no", "n"})
+
 
 def _flag(delivery: dict, key: str) -> bool | None:
     """A recorded yes/no, or ``None`` when the row never carried one.
 
     ``False`` means "we looked and it was late"; ``None`` means "we never looked".
-    Collapsing the two is the whole defect.
+    Collapsing the two is the whole defect - and so is reading an uninterpretable
+    value as a yes, which is what plain ``bool()`` does to every non-empty string
+    and every non-zero number.
     """
     value = delivery.get(key)
     if value is None:
         return None
-    # A blank cell arrives from pandas as NaN, and `bool(nan)` is True - a missing
-    # record would otherwise score as the *best* possible outcome.
-    if isinstance(value, float) and math.isnan(value):
+
+    # Numbers (and bools, and numpy scalars) come through here. Only 0/1 is a flag:
+    # `bool(3)` on a days-late column marks a 3-day-late delivery as on time.
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = None
+    if number is not None:
+        # A blank cell arrives from pandas as NaN, and `bool(nan)` is True - a
+        # missing record would otherwise score as the *best* possible outcome.
+        if not math.isfinite(number):
+            return None
+        if number in (0.0, 1.0):
+            return bool(number)
+        raise ValueError(
+            f"'{key}' holds {value!r}, not 0/1 - that is a measurement, not a yes/no "
+            f"flag. Derive {key} from it explicitly instead of scoring it as one."
+        )
+
+    text = str(value).strip().lower()
+    if not text:
         return None
-    return bool(value)
+    if text in _TRUE_WORDS:
+        return True
+    if text in _FALSE_WORDS:
+        return False
+    raise ValueError(
+        f"'{key}' cannot be read as a yes/no flag: {value!r} is free text. Point "
+        f"{key} at a real boolean column, or map the status values explicitly - "
+        "guessing here scores every non-empty word as a successful delivery."
+    )
 
 
 def _number(delivery: dict, key: str) -> float | None:

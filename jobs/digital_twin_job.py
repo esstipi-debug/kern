@@ -139,7 +139,7 @@ def prepare(params: dict | None = None) -> dict:
             "start": _int_param(params, "disruption_start", max(periods // 3, 1), 0, periods - 1),
             "duration": _int_param(params, "disruption_duration",
                                    max(periods // 10, 1), 1, periods),
-            "magnitude": float(params.get("disruption_magnitude", 2.0)),
+            "magnitude": require_finite(params.get("disruption_magnitude", 2.0), "disruption_magnitude"),
         })
 
     return {
