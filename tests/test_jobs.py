@@ -44,10 +44,13 @@ def test_normalize_aggregates_transactions_to_weekly():
         }
     )
     canon = normalize(raw, detect_columns(raw), period="W")
-    assert list(canon.columns) == ["date", "product_id", "quantity", "unit_cost", "lead_time_days"]
+    assert list(canon.columns) == [
+        "date", "product_id", "quantity", "unit_cost", "lead_time_days", "lead_time_std",
+    ]
     assert len(canon) == 2  # week 1 (10+5) and week 2 (20)
     assert canon.iloc[0]["quantity"] == 15
     assert "lead_time_days" in canon.columns  # defaulted when absent
+    assert canon["lead_time_std"].eq(0.0).all()  # no dispersion known -> deterministic lead time
 
 
 def test_normalize_rejects_undetectable_data():

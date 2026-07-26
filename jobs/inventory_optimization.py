@@ -138,6 +138,7 @@ def run(
                 lead_time_periods=lead,
                 review_period=1.0,
                 cycle_service_level=sl,
+                lead_time_std=meta.lead_time_std_periods,
             )
             kind, order_quantity = "(R, S)", None
         else:
@@ -149,6 +150,7 @@ def run(
                 fixed_order_cost=order_cost,
                 lead_time_periods=lead,
                 cycle_service_level=sl,
+                lead_time_std=meta.lead_time_std_periods,
             )
             kind, order_quantity = "(s, Q)", pol.order_quantity
 

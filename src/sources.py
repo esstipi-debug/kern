@@ -76,6 +76,13 @@ def _metadata_from_frame(
     else:
         lt_periods = default_lead_time_periods
 
+    # sigma_LT, in the same period units as the mean lead time. 0.0 when the file
+    # carries no dispersion, which is the deterministic-lead-time case.
+    if "lead_time_std" in sku.columns:
+        lt_std_periods = float(sku["lead_time_std"].astype(float).median()) * periods_per_year / 365.0
+    else:
+        lt_std_periods = 0.0
+
     return ProductMetadata(
         product_id=product_id,
         mean_demand_per_period=mu,
@@ -83,6 +90,7 @@ def _metadata_from_frame(
         periods=len(values),
         mean_unit_cost=unit_cost,
         lead_time_periods=lt_periods,
+        lead_time_std_periods=lt_std_periods,
     )
 
 

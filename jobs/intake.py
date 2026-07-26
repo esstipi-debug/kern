@@ -15,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 CANONICAL_REQUIRED = ("date", "product_id", "quantity")
-CANONICAL_OPTIONAL = ("unit_cost", "lead_time_days")
+CANONICAL_OPTIONAL = ("unit_cost", "lead_time_days", "lead_time_std")
 
 ALIASES: dict[str, list[str]] = {
     "date": ["date", "order_date", "orderdate", "invoicedate", "invoice_date", "week", "period", "ds", "day", "timestamp", "datetime"],
@@ -23,6 +23,9 @@ ALIASES: dict[str, list[str]] = {
     "quantity": ["quantity", "qty", "sales", "demand", "units", "unit_sales", "unitsales", "order_qty", "orderqty", "volume", "sold", "units_sold"],
     "unit_cost": ["unit_cost", "unitcost", "price", "unitprice", "unit_price", "cost", "sell_price", "sellprice", "selling_price"],
     "lead_time_days": ["lead_time_days", "leadtimedays", "lead_time", "leadtime", "lead", "lt_days", "supplier_lead_time"],
+    # Lead-time dispersion (sigma_LT). Same alias set jobs/launch_readiness_job.py
+    # already accepts, so a file that works there works here too.
+    "lead_time_std": ["lead_time_std", "leadtimestd", "lead_std", "sigma_lead", "sigma_l"],
 }
 
 
@@ -120,6 +123,8 @@ def _normalize_core(
         out["unit_cost"] = pd.to_numeric(df[m["unit_cost"]], errors="coerce")
     if "lead_time_days" in m:
         out["lead_time_days"] = pd.to_numeric(df[m["lead_time_days"]], errors="coerce")
+    if "lead_time_std" in m:
+        out["lead_time_std"] = pd.to_numeric(df[m["lead_time_std"]], errors="coerce")
 
     n_raw = len(out)
     after_date = out.dropna(subset=["date"])
@@ -143,6 +148,8 @@ def _normalize_core(
         agg["unit_cost"] = "mean"
     if "lead_time_days" in out.columns:
         agg["lead_time_days"] = "median"
+    if "lead_time_std" in out.columns:
+        agg["lead_time_std"] = "median"
 
     grouped = out.groupby(["product_id", "bucket"], as_index=False).agg(agg).rename(columns={"bucket": "date"})
     if "unit_cost" not in grouped.columns:
@@ -153,9 +160,15 @@ def _normalize_core(
         grouped["lead_time_days"] = default_lead_days
     else:
         grouped["lead_time_days"] = grouped["lead_time_days"].fillna(default_lead_days)
+    # 0.0 = "no dispersion known", which is what the engine assumed before this
+    # column existed — so a file without it behaves exactly as it did.
+    if "lead_time_std" not in grouped.columns:
+        grouped["lead_time_std"] = 0.0
+    else:
+        grouped["lead_time_std"] = grouped["lead_time_std"].fillna(0.0)
 
     grouped = grouped.sort_values(["product_id", "date"]).reset_index(drop=True)
-    return grouped[["date", "product_id", "quantity", "unit_cost", "lead_time_days"]], quality
+    return grouped[["date", "product_id", "quantity", "unit_cost", "lead_time_days", "lead_time_std"]], quality
 
 
 def normalize(
