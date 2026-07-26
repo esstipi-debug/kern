@@ -47,7 +47,6 @@ def test_gsm_case4_all_downstream_cost():
         25,
         holding,
         0.95,
-        1.0,
         case_id=4,
     )
     assert case4.total_holding_cost == pytest.approx(520, abs=15)
@@ -63,7 +62,6 @@ def test_gsm_case1_higher_cost_than_optimal():
         25,
         holding,
         0.95,
-        1.0,
         case_id=1,
     )
     optimal = evaluate_serial_allocation(
@@ -73,7 +71,6 @@ def test_gsm_case1_higher_cost_than_optimal():
         25,
         holding,
         0.95,
-        1.0,
         case_id=3,
     )
     assert case1.total_holding_cost > optimal.total_holding_cost
