@@ -184,13 +184,17 @@ def _assign_action(classification: SkuClassification, eo: SkuEO, trend: str) -> 
 def _cut_reason(stock: SkuStock, dead_threshold_days: float) -> str:
     """Golden Rule 7: cite the EXACT E&O status + days-since-last-sale that
     justified a cut, and flag it as a recommendation, never an applied change."""
+    # `days_since_last_sale` is None when the file never recorded it - the cut can only
+    # have been triggered by demand in that case, and the citation must not invent a age.
+    idle = stock.days_since_last_sale
+    idle_txt = "not recorded" if idle is None else f"{idle:.0f}"
     trigger = (
         f"zero/negative demand (daily_demand={stock.daily_demand:.2f})"
         if stock.daily_demand <= 0
-        else f"no sale in {stock.days_since_last_sale:.0f}+ days"
+        else f"no sale in {idle_txt}+ days"
     )
     return (
-        f"E&O status=dead ({trigger}; days_since_last_sale={stock.days_since_last_sale:.0f}, "
+        f"E&O status=dead ({trigger}; days_since_last_sale={idle_txt}, "
         f"dead_threshold_days={dead_threshold_days:.0f}). RECOMMENDATION requiring human sign-off "
         "before any 301-redirect / deindex action -- no CMS/storefront writeback connector exists "
         "in this repo; this plan only recommends, it does not apply the change."
