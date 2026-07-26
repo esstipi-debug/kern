@@ -29,9 +29,9 @@ from src.guided import confidence_from_coverage
 REPO = Path(__file__).resolve().parents[1]
 OLIST = REPO / "data" / "kaggle" / "olist"
 
-# Known debt at the time T4a landed. It may go DOWN freely; going up means someone
+# Known debt at the time T4 landed. It may go DOWN freely; going up means someone
 # hardcoded a new confidence instead of deriving it.
-LITERAL_CONFIDENCE_CEILING = 44
+LITERAL_CONFIDENCE_CEILING = 43
 
 
 @pytest.fixture(scope="module")
@@ -129,6 +129,24 @@ def test_literal_confidence_defaults_do_not_grow():
         f"literal confidence defaults grew to {len(found)}; derive it instead:\n"
         + "\n".join(found)
     )
+
+
+def test_abc_deck_confidence_drops_when_value_ranks_on_units():
+    """T4b: witness 1 -- flat unit cost must cost the ABC deck confidence."""
+    from jobs import abc_xyz_job, intake
+
+    canon = pd.read_csv(REPO / "data" / "kaggle" / "superstore_canonical.csv")
+    degenerate = abc_xyz_job.run(abc_xyz_job.aggregate_skus(
+        canon, product_col="product_id", demand_col="quantity", cost_col="unit_cost"))
+    assert degenerate.value_basis.discriminates is False
+    assert abc_xyz_job.build_deck(degenerate).confidence < 0.9
+
+    raw = pd.read_csv(REPO / "data" / "kaggle" / "superstore.csv", encoding="latin-1")
+    healthy = abc_xyz_job.run(abc_xyz_job.aggregate_skus(
+        intake.normalize(raw, intake.detect_columns(raw)),
+        product_col="product_id", demand_col="quantity", cost_col="unit_cost"))
+    assert healthy.value_basis.discriminates is True
+    assert abc_xyz_job.build_deck(healthy).confidence == pytest.approx(0.9)
 
 
 def test_sourcing_deck_no_longer_hardcodes_confidence():

@@ -23,11 +23,14 @@ from src.classification import (
     value_basis,
 )
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
+from src.guided import confidence_from_coverage
 from src.export import write_summary_csv
 
 _PRODUCT_COLS = ("product_id", "ProductID", "sku", "SKU", "Product", "item")
 _DEMAND_COLS = ("quantity", "Quantity", "demand", "Demand", "units", "qty", "Sales", "sales")
 _COST_COLS = ("unit_cost", "Unit Cost", "cost", "Cost", "price", "Price")
+# Editorial prior for a complete ABC-XYZ study; coverage gaps subtract from it.
+_DECK_BASE_CONFIDENCE = 0.9
 
 
 @dataclass(frozen=True)
@@ -136,9 +139,19 @@ def build_deck(
     client: str = "Client",
     prepared: str = "",
     citations: tuple[str, ...] = (),
-    confidence: float = 0.9,
+    confidence: float | None = None,
 ) -> Deliverable:
-    """Compose the client deck: where the value concentrates, what to focus vs cull."""
+    """Compose the client deck: where the value concentrates, what to focus vs cull.
+
+    ``confidence`` is derived when not supplied: an ABC that reduces to a units
+    ranking because unit cost is flat is worth less than one ranked on real value
+    (see src/guided.py::confidence_from_coverage).
+    """
+    if confidence is None:
+        confidence = confidence_from_coverage(
+            [] if report.value_basis.discriminates else ["value_ranks_on_units"],
+            base=_DECK_BASE_CONFIDENCE,
+        )
     a_share = report.a_value_share * 100
     a_pct_skus = (report.n_a / report.n_skus * 100) if report.n_skus else 0.0
     n_z = sum(1 for c in report.classifications if c.xyz == "Z")
