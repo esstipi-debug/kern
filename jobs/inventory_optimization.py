@@ -23,6 +23,11 @@ from src.safety_stock import tune_service_level
 from src.sources import DataFrameDemandSource
 
 PERIODS_PER_YEAR = 52.0
+# Service level gained per point of fill-rate gap in the closed loop. The engine's
+# own default (0.5) drives a 15-point shortfall straight past 1.0 into its hi=0.999
+# clamp, which turns every chronically short SKU into a 99.9% target regardless of
+# how big the gap was.
+SERVICE_LEVEL_TUNING_STEP = 0.1
 
 
 @dataclass(frozen=True)
@@ -141,7 +146,10 @@ def run(
         lead = lead_times.get(pid, meta.lead_time_periods) if lead_times else meta.lead_time_periods
         sl = base_levels.get(pid, service_level)
         if observed_fill_rates and pid in observed_fill_rates:
-            sl = tune_service_level(sl, observed_fill_rates[pid], target_fill_rate)
+            sl = tune_service_level(
+                sl, observed_fill_rates[pid], target_fill_rate,
+                step=SERVICE_LEVEL_TUNING_STEP,
+            )
         skewness = _observed_skewness(series)
 
         if fc.is_intermittent:
