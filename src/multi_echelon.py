@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from itertools import product
 
 import numpy as np
 
+from src.finite import require_all_finite, require_finite
 from src.safety_stock import service_level_factor
 
 
@@ -77,13 +79,26 @@ def evaluate_serial_allocation(
     review_period: float = 1.0,
     case_id: int = 0,
 ) -> GSMAllocation:
-    """Ss_i = z * sigma_d * sqrt(x_i); cost = sum(Ss_i * h_i) (eq. 10.1)."""
+    """Ss_i = z * sigma_d * sqrt(x_i); cost = sum(Ss_i * h_i) (eq. 10.1).
+
+    A non-finite risk period is refused: ``nan > 0`` is False, so it used to leave the
+    echelon with a safety stock of exactly 0.0 - no buffer, and nothing to notice.
+    """
+    require_all_finite(risk_periods, "risk_periods")
+    require_all_finite(lead_times, "lead_times")
+    require_all_finite(holding_costs, "holding_costs")
+    require_finite(mean_demand_per_period, "mean_demand_per_period")
+    require_finite(demand_std_per_period, "demand_std_per_period")
+
     z = service_level_factor(cycle_service_level)
     nodes: list[EchelonNode] = []
     for i, (lt, h, x_tau) in enumerate(zip(lead_times, holding_costs, risk_periods)):
-        ss = z * demand_std_per_period * (x_tau**0.5) if x_tau > 0 else 0.0
+        # A genuinely zero risk period legitimately needs no buffer; isfinite keeps a
+        # NaN from borrowing that meaning.
+        exposed = math.isfinite(x_tau) and x_tau > 0
+        ss = z * demand_std_per_period * (x_tau**0.5) if exposed else 0.0
         mu_x = mean_demand_per_period * x_tau
-        order_up_to = mu_x + ss if x_tau > 0 else 0.0
+        order_up_to = mu_x + ss if exposed else 0.0
         nodes.append(
             EchelonNode(
                 index=i,

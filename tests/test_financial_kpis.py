@@ -4,7 +4,6 @@ Standards-anchored closed-form metrics computed from COGS / average inventory /
 margin. SCOR DS (cash-to-cash), retail-math GMROI, GAAP DIO.
 """
 
-import math
 
 import pytest
 
@@ -24,8 +23,9 @@ def test_inventory_turns():
     assert inventory_turns(cogs=1_000_000, average_inventory_value=250_000) == pytest.approx(4.0)
 
 
-def test_turns_with_zero_inventory_is_infinite():
-    assert math.isinf(inventory_turns(cogs=100, average_inventory_value=0))
+def test_turns_with_zero_inventory_is_not_measurable():
+    """"Infinite turns" is the best score on the sheet - never report it from no data."""
+    assert inventory_turns(cogs=100, average_inventory_value=0) is None
 
 
 def test_days_inventory_outstanding():
@@ -44,8 +44,9 @@ def test_sell_through_rate():
     assert sell_through(units_sold=80, units_on_hand=20) == pytest.approx(0.8)
 
 
-def test_sell_through_with_nothing_is_zero():
-    assert sell_through(units_sold=0, units_on_hand=0) == 0.0
+def test_sell_through_with_nothing_observed_is_not_measurable():
+    """No units sold and none on hand is an empty observation, not a 0% sell-through."""
+    assert sell_through(units_sold=0, units_on_hand=0) is None
 
 
 def test_weeks_of_supply():

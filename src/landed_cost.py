@@ -8,7 +8,10 @@ auditable for the QA gate. Reference: Ellram, *Total Cost of Ownership*; ICC Inc
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+
+from src.finite import require_finite
 
 # Incoterms whose customs (duty) base is the goods value only.
 _GOODS_ONLY_DUTY_BASE = {"EXW", "FCA", "FOB", "FAS", "FdA"}
@@ -40,7 +43,20 @@ def landed_cost(
     broker_fee: float = 0.0,
     incoterm: str = "FOB",
 ) -> LandedCost:
-    """Compute the fully-landed cost and per-unit landed cost."""
+    """Compute the fully-landed cost and per-unit landed cost.
+
+    Every money and quantity input is required to be a real number: a blank quantity
+    used to fall past ``qty > 0`` and report a per-unit landed cost of 0.00 - a free
+    import, which is also the best possible sourcing result.
+    """
+    unit_cost = require_finite(unit_cost, "unit_cost")
+    qty = require_finite(qty, "qty")
+    freight = require_finite(freight, "freight")
+    insurance = require_finite(insurance, "insurance")
+    duty_rate = require_finite(duty_rate, "duty_rate")
+    handling = require_finite(handling, "handling")
+    broker_fee = require_finite(broker_fee, "broker_fee")
+
     goods_value = unit_cost * qty
     term = incoterm.upper()
     if term in _GOODS_ONLY_DUTY_BASE:
@@ -49,7 +65,9 @@ def landed_cost(
         duty_base = goods_value + freight + insurance
     duty = duty_base * duty_rate
     total = goods_value + freight + insurance + handling + duty + broker_fee
-    per_unit = (total / qty) if qty > 0 else 0.0
+    # A genuinely zero-quantity line legitimately costs 0 per unit; isfinite keeps a
+    # NaN from borrowing that meaning (it cannot reach here after the guards above).
+    per_unit = (total / qty) if math.isfinite(qty) and qty > 0 else 0.0
     return LandedCost(
         incoterm=term, qty=qty, goods_value=goods_value, freight=freight,
         insurance=insurance, handling=handling, duty_base=duty_base, duty=duty,

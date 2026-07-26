@@ -26,6 +26,11 @@ from src import i18n
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
+# What a deliverable prints where a number was never measured. One shared token so a
+# reader (and a test) can tell "we looked and it was zero" from "we never looked" -
+# the distinction a rate over zero observations destroys when it renders as "0%".
+NOT_MEASURED = "no medido"
+
 
 def _visible(text: str) -> str:
     """``text`` with Unicode format characters (category "Cf" - zero-width

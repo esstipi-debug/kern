@@ -9,6 +9,7 @@ the Incoterm to FOB.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -117,7 +118,10 @@ def run(records: list[dict]) -> LandedCostReport:
         total_insurance=sum(ln.landed.insurance for ln in lines),
         total_duty=sum(ln.landed.duty for ln in lines),
         total_landed=total_landed,
-        landed_uplift_pct=((total_landed - total_goods) / total_goods) if total_goods > 0 else 0.0,
+        landed_uplift_pct=(
+            ((total_landed - total_goods) / total_goods)
+            if math.isfinite(total_goods) and total_goods > 0 else 0.0
+        ),
     )
 
 

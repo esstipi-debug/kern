@@ -11,7 +11,10 @@ guided.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+
+from src.finite import require_finite
 
 # The four standard end-of-life routes for a returned unit (best-recovery first is decided
 # per line, not by this order).
@@ -96,8 +99,16 @@ def best_disposition(line: ReturnLine, rates: DispositionRates) -> LineDispositi
 
 
 def returns_value_at_cost(lines: list[ReturnLine]) -> float:
-    """Original cost value tied up in the returns - the value at risk."""
-    return sum(ln.returned_units * ln.unit_cost for ln in lines)
+    """Original cost value tied up in the returns - the value at risk.
+
+    A blank unit count or cost is refused: it would make the total NaN, lose the
+    ``var > 0`` test in :func:`recovery_rate`, and report a 0% recovery as a fact.
+    """
+    return sum(
+        require_finite(ln.returned_units, f"{ln.product_id} returned_units")
+        * require_finite(ln.unit_cost, f"{ln.product_id} unit_cost")
+        for ln in lines
+    )
 
 
 def recovered_value(dispositions: list[LineDisposition]) -> float:
@@ -108,7 +119,7 @@ def recovered_value(dispositions: list[LineDisposition]) -> float:
 def recovery_rate(dispositions: list[LineDisposition], lines: list[ReturnLine]) -> float:
     """Recovered value / value at risk (can exceed 1 if resale beats cost, or go negative)."""
     var = returns_value_at_cost(lines)
-    return recovered_value(dispositions) / var if var > 0 else 0.0
+    return recovered_value(dispositions) / var if math.isfinite(var) and var > 0 else 0.0
 
 
 def reason_pareto(lines: list[ReturnLine]) -> list[tuple[str, float]]:

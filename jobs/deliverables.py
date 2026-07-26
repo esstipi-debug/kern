@@ -39,6 +39,13 @@ def _row(r: SkuRecommendation) -> dict:
         "reorder_point_s": round(r.reorder_point, 2),
         "safety_stock": round(r.safety_stock, 2),
         "sigma_e": round(r.error_std, 2),
+        # Which dispersion actually sized this row's buffer, and under which
+        # distribution - so the CSV can be reconciled against the stated formula.
+        "sigma_source": r.sigma_source,
+        "buffer_distribution": r.buffer_distribution,
+        "risk_periods_tau": round(r.risk_periods, 3),
+        "lead_time_std": round(r.lead_time_std, 3),
+        "lead_time_std_source": r.lead_time_std_source,
         "bias": round(r.bias, 2),
         "mae": round(r.mae, 2),
         "unit_cost": round(r.unit_cost, 2),
@@ -111,6 +118,157 @@ def _fmt(n: float) -> str:
     return f"{n:,.0f}"
 
 
+# How each forecast method is named to a client. The Methodology section lists the
+# labels for the methods that *ran*; asserting a fixed pair here is what let the
+# report claim "simple exponential smoothing (or Croston)" long after
+# src/forecasting.py started routing to AutoETS/TSB.
+METHOD_LABEL = {
+    "ses": "simple exponential smoothing (SES)",
+    "croston": "Croston's method",
+    "moving_average": "moving average",
+    "auto_ets": "AutoETS (StatsForecast)",
+    "tsb": "TSB (Teunter-Syntetos-Babai)",
+}
+
+_SIGMA_LABEL = {
+    "forecast_error": "the forecast-error standard deviation (sigma_e)",
+    "demand_std_fallback": "the raw demand standard deviation, because sigma_e could not "
+                           "be estimated for that SKU",
+    "unavailable": "no dispersion estimate at all",
+}
+
+
+def _plural(items: list[str]) -> str:
+    """Join labels for prose: 'a', 'a and b', 'a, b and c'."""
+    if len(items) <= 1:
+        return items[0] if items else ""
+    return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _methodology_lines(report: JobReport) -> list[str]:
+    """Describe the run that happened - read off the recommendations it produced."""
+    recs = report.recommendations
+    methods = sorted({r.method for r in recs})
+    distributions = sorted({r.buffer_distribution for r in recs})
+    policies = sorted({r.policy_kind for r in recs})
+
+    method_text = _plural([METHOD_LABEL.get(m, m) for m in methods]) or "no SKU was forecast"
+    # The split is only worth spelling out when more than one method actually ran.
+    counts = (
+        " (" + ", ".join(
+            f"{METHOD_LABEL.get(m, m)}: {sum(1 for r in recs if r.method == m)} SKU(s)"
+            for m in methods
+        ) + ")"
+        if len(methods) > 1 else ""
+    )
+
+    lines = ["## Methodology\n"]
+    lines.append(
+        f"- **Forecast:** per-SKU demand history was forecast with {method_text}{counts}. "
+        "The method is selected per SKU from the demand pattern, not fixed in advance."
+    )
+    lines.append(
+        "- **Dispersion:** safety stock is sized on the forecast-error standard deviation "
+        "sigma_e where it could be estimated, and on the raw demand standard deviation "
+        "where it could not (Vandeput 2021, Sec. 4.2.5). Per-SKU source in the "
+        "`sigma_source` column of summary.csv."
+    )
+    lines.append(
+        "- **Risk-period demand:** `sigma_x = sqrt(tau * sigma_d^2 + sigma_L^2 * mu_d^2)`, "
+        "where `tau = L` for (s,Q) and `tau = L + R` for (R,S), `sigma_d` is the dispersion "
+        "above and `sigma_L` the lead-time standard deviation (Vandeput 2020, eq. 6.4-6.5)."
+    )
+    if distributions == ["normal"]:
+        lines.append(
+            "- **Safety stock:** `SS = z * sigma_x` under a normal risk-period demand, with "
+            "`z` from the target cycle service level."
+        )
+    elif distributions == ["gamma"]:
+        lines.append(
+            "- **Safety stock:** fitted to a **gamma** risk-period demand (Ch. 9), "
+            "`SS = iota_gamma - mu_x`; `z` does not describe this buffer."
+        )
+    else:
+        lines.append(
+            "- **Safety stock:** `SS = z * sigma_x` under a normal risk-period demand for "
+            f"{sum(1 for r in recs if r.buffer_distribution == 'normal')} SKU(s), and a fitted "
+            f"**gamma** buffer `SS = iota_gamma - mu_x` for "
+            f"{sum(1 for r in recs if r.buffer_distribution == 'gamma')} SKU(s) (Ch. 9)."
+        )
+    lines.append(
+        "- **Order quantity:** Economic Order Quantity `Q* = sqrt(2*D*K/H)` for "
+        "continuous-review (s,Q); periodic (R,S) order-up-to `S = mu_x + SS`."
+        + (f" Policies used here: {_plural(policies)}." if policies else "")
+    )
+    lines.append("- **Reorder point:** `s = mu_x + SS`.")
+    lines.append(
+        "- **Budget:** when a cap is set, safety stock is scaled across the portfolio to fit "
+        "while preserving cycle-stock economics."
+    )
+    lines.append("- Models from Vandeput (2020), *Inventory Optimization: Models and Simulations*.\n")
+    return lines
+
+
+def _assumption_lines(report: JobReport) -> list[str]:
+    """State the inputs the run actually used, and which of them were defaults."""
+    p = report.params
+    recs = report.recommendations
+    from_file = sorted({r.lead_time_std for r in recs if r.lead_time_std_source == "client_file"})
+    defaulted = [r for r in recs if r.lead_time_std_source == "defaulted_zero"]
+
+    lines = ["## Assumptions\n"]
+    lines.append(f"- Cycle service level: **{p['service_level'] * 100:.1f}%**")
+    lines.append(f"- Holding cost: **{p['holding_rate'] * 100:.0f}%** of unit cost per year")
+    lines.append(f"- Fixed order cost (K): **${_fmt(p['order_cost'])}**")
+    lines.append(
+        f"- Demand bucketed into **{int(p['periods_per_year'])} periods/year**; lead time "
+        "taken from the data (or a default where absent)."
+    )
+
+    # sigma_L is the assumption most likely to be wrong and least likely to be noticed:
+    # a defaulted 0 asserts the supplier never varies, which shrinks every buffer.
+    if defaulted and not from_file:
+        lines.append(
+            "- Lead-time standard deviation (sigma_L): **defaulted to 0** for all "
+            f"{len(defaulted)} SKU(s) - this data carries no lead-time variability, so the "
+            "buffers assume a perfectly reliable lead time and are a floor, not a forecast."
+        )
+    elif from_file and not defaulted:
+        values = ", ".join(f"{v:g}" for v in from_file)
+        lines.append(
+            f"- Lead-time standard deviation (sigma_L): **from your file** ({values} periods)."
+        )
+    else:
+        values = ", ".join(f"{v:g}" for v in from_file)
+        lines.append(
+            f"- Lead-time standard deviation (sigma_L): **from your file** ({values} periods) for "
+            f"{len(recs) - len(defaulted)} SKU(s); **defaulted to 0** for the other "
+            f"{len(defaulted)}, whose buffers assume a perfectly reliable lead time."
+        )
+
+    fallbacks = [r for r in recs if r.sigma_source == "demand_std_fallback"]
+    unavailable = [r for r in recs if r.sigma_source == "unavailable"]
+    if fallbacks:
+        lines.append(
+            f"- Dispersion source: {len(fallbacks)} of {len(recs)} SKU(s) were sized on "
+            f"{_SIGMA_LABEL['demand_std_fallback']} "
+            f"({', '.join(r.product_id for r in fallbacks[:5])}"
+            + (", ..." if len(fallbacks) > 5 else "")
+            + ") - a wider buffer than the theory calls for."
+        )
+    elif not unavailable:
+        lines.append(
+            f"- Dispersion source: every SKU was sized on {_SIGMA_LABEL['forecast_error']}."
+        )
+    if unavailable:
+        lines.append(
+            f"- Dispersion source: {len(unavailable)} SKU(s) had {_SIGMA_LABEL['unavailable']}; "
+            "their buffers are zero by arithmetic, not by judgement."
+        )
+    lines.append("")
+    return lines
+
+
 def write_report_md(report: JobReport, path: str | Path, *, client: str = "Client") -> Path:
     """A written report: summary, recommendations, findings, methodology."""
     out = Path(path)
@@ -160,20 +318,8 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
                 lines.append(f"- **{r.product_id}** — intermittent demand, forecast via Croston. Lumpy demand makes a periodic (R,S) review more robust than a fixed reorder point.")
         lines.append("")
 
-    lines.append("## Methodology\n")
-    lines.append("- **Forecast:** per-SKU demand history is forecast with simple exponential smoothing (or Croston for intermittent demand), exposing the forecast-error standard deviation σₑ used for safety stock (Vandeput 2021, §4.2.5).")
-    lines.append("- **Safety stock:** `SS = z · σₑ · √L`, with `z` from the target cycle service level.")
-    lines.append("- **Order quantity:** Economic Order Quantity `Q* = √(2·D·K/H)` for continuous-review (s,Q); periodic (R,S) order-up-to `S = μ·(L+R) + SS` for intermittent SKUs.")
-    lines.append("- **Reorder point:** `s = μ·L + SS`.")
-    lines.append("- **Budget:** when a cap is set, safety stock is scaled across the portfolio to fit while preserving cycle-stock economics.")
-    lines.append("- Models from Vandeput (2020), *Inventory Optimization: Models and Simulations*.\n")
-
-    lines.append("## Assumptions\n")
-    lines.append(f"- Cycle service level: **{p['service_level'] * 100:.1f}%**")
-    lines.append(f"- Holding cost: **{p['holding_rate'] * 100:.0f}%** of unit cost per year")
-    lines.append(f"- Fixed order cost (K): **${_fmt(p['order_cost'])}**")
-    lines.append(f"- Demand bucketed into **{int(p['periods_per_year'])} periods/year**; lead time taken from the data (or a default where absent).")
-    lines.append("")
+    lines.extend(_methodology_lines(report))
+    lines.extend(_assumption_lines(report))
     lines.append("_Generated from the client's demand data. Figures are decision support; validate cost and lead-time inputs against your systems before ordering._")
 
     out.write_text("\n".join(lines), encoding="utf-8")

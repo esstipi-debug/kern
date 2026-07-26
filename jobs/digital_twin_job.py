@@ -10,6 +10,7 @@ policy tools to exercise them on a scenario whose ground truth is known.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +19,7 @@ import pandas as pd
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.digital_twin import DemandProfile, Disruption, NodeSpec, simulate_network
 from src.export import write_summary_csv
+from src.finite import require_finite
 
 _DEFAULT_PERIODS = 364
 _MIN_PERIODS, _MAX_PERIODS = 30, 5_000
@@ -75,7 +77,7 @@ def prepare(params: dict | None = None) -> dict:
             f"{_MAX_CELLS:,} (got {n_products * n_stores * periods:,})"
         )
     seed = int(params.get("seed", 42))
-    base = float(params.get("base_demand", 100.0))
+    base = require_finite(params.get("base_demand", 100.0), "base_demand")
     if base <= 0:
         raise ValueError("base_demand must be > 0")
 
@@ -109,15 +111,18 @@ def prepare(params: dict | None = None) -> dict:
         for i, f in enumerate(factors)
     ]
 
+    # Every knob is caller-supplied JSON (webapp/app.py json.loads accepts NaN). One
+    # non-finite value makes the whole demand trace NaN, which loses the
+    # `total_demand > 0` test and reports a 100% network fill rate.
     demand = {
-        "trend": float(params.get("trend", 0.0)),
-        "season_amplitude": float(params.get("season_amplitude", 0.25)),
+        "trend": require_finite(params.get("trend", 0.0), "trend"),
+        "season_amplitude": require_finite(params.get("season_amplitude", 0.25), "season_amplitude"),
         "season_period": _int_param(params, "season_period", 52, 2, 730),
         "promo_every": _int_param(params, "promo_every", 0, 0, 365),
         "promo_length": _int_param(params, "promo_length", 1, 1, 60),
-        "promo_uplift": float(params.get("promo_uplift", 0.5)),
-        "noise_cv": float(params.get("noise_cv", 0.25)),
-        "zero_prob": float(params.get("zero_prob", 0.0)),
+        "promo_uplift": require_finite(params.get("promo_uplift", 0.5), "promo_uplift"),
+        "noise_cv": require_finite(params.get("noise_cv", 0.25), "noise_cv"),
+        "zero_prob": require_finite(params.get("zero_prob", 0.0), "zero_prob"),
     }
 
     disruptions: list[dict] = []
@@ -213,10 +218,15 @@ def run(payload: dict) -> TwinReport:
         for name, agg in node_agg.items()
     )
     store_fills = {
-        s: (v[1] / v[0] if v[0] > 0 else 1.0) for s, v in store_totals.items()
+        s: (v[1] / v[0] if math.isfinite(v[0]) and v[0] > 0 else 1.0)
+        for s, v in store_totals.items()
     }
     weakest = min(store_fills, key=store_fills.get)
-    network_fill = (total_served / total_demand) if total_demand > 0 else 1.0
+    network_fill = (
+        (total_served / total_demand)
+        if math.isfinite(total_demand) and total_demand > 0
+        else 1.0
+    )
     disruption_label = (
         payload["disruptions"][0]["kind"] if payload["disruptions"] else "none"
     )

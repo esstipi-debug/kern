@@ -7,17 +7,22 @@ criteria (+ price when present), and composes the award deck inline.
 
 ``score_suppliers`` / ``run`` / ``verify`` / ``build_deck`` are deterministic;
 ``prepare`` reads a file. Column names are sniffed and overridable via params.
+
+A column the sniffer could not find yields ``None`` (absent), never ``False``/``0.0``.
+An absent criterion is dropped from the TOPSIS rather than scoring every supplier a
+tied zero, and is rendered "no medido" rather than a confident 0%.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
 
-from src.deliverable import DataSource, Deliverable, Finding, Kpi
+from src.deliverable import NOT_MEASURED, DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
-from src.guided import GuidedOutcome, verify_guided
+from src.guided import GuidedOutcome, HandoffPacket, as_handoff, verify_guided
 from src.mcdm import Criterion, RankingResult, award_outcome, topsis_rank
 from src.supplier_scorecard import SupplierScore, score_supplier
 
@@ -28,6 +33,14 @@ _LEAD_COLS = ("lead_time_days", "lead_time", "Lead Time", "lead")
 _UNITS_COLS = ("units", "Units", "quantity", "Quantity", "qty")
 _DEFECTS_COLS = ("defects", "Defects", "rejects", "ppm_defects")
 _PRICE_COLS = ("unit_price", "Unit Price", "price", "Price", "unit_cost", "cost")
+
+# criterion name -> (higher is better, how to read it off a scorecard)
+_CRITERIA: tuple[tuple[str, bool, object], ...] = (
+    ("otif", True, lambda card, prices: card.otif),
+    ("lead_time", False, lambda card, prices: card.avg_lead_time),
+    ("ppm", False, lambda card, prices: card.ppm),
+    ("price", False, lambda card, prices: prices.get(card.supplier)),
+)
 
 _DEFAULT_WEIGHTS = {"otif": 0.4, "lead_time": 0.2, "ppm": 0.2, "price": 0.2}
 
@@ -40,8 +53,29 @@ class SourcingReport:
     weights: dict[str, float]
     ranking: RankingResult
     outcome: GuidedOutcome
-    recommended: str
+    recommended: str            # "" when nothing could be ranked
     summary: str
+    # Criteria dropped because at least one supplier on the panel never measured
+    # them. Ranking on a tie of zeros awards alphabetically, which is not a decision.
+    unmeasured: tuple[str, ...] = field(default_factory=tuple)
+
+
+def _pct(rate: float | None) -> str:
+    """A share as a percentage - or the words that say it was never observed."""
+    return NOT_MEASURED if rate is None else f"{rate * 100:.0f}%"
+
+
+def _days(value: float | None) -> str:
+    return NOT_MEASURED if value is None else f"{value:.0f} days"
+
+
+def _ppm(value: float | None) -> str:
+    return NOT_MEASURED if value is None else f"{value:,.0f} PPM"
+
+
+def _cell(value: float | None, digits: int) -> float | str:
+    """A CSV cell: the rounded number, or blank. Never 0 standing in for absent."""
+    return "" if value is None else round(value, digits)
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -61,23 +95,32 @@ def score_suppliers(
     defects_col: str | None = None,
     price_col: str | None = None,
 ) -> tuple[list[SupplierScore], dict[str, float]]:
-    """Aggregate delivery rows into one scorecard per supplier (+ avg price if present)."""
+    """Aggregate delivery rows into one scorecard per supplier (+ avg price if present).
+
+    A column the caller could not resolve contributes ``None`` to every row - absent.
+    It used to contribute ``False``/``0.0``, which reads downstream as a measured
+    failure (OTIF 0%) or a measured perfection (0 defects, free supplier).
+    """
     cards: list[SupplierScore] = []
     prices: dict[str, float] = {}
     for supplier, g in df.groupby(supplier_col):
         deliveries = [
             {
-                "on_time": bool(row[on_time_col]) if on_time_col else False,
-                "in_full": bool(row[in_full_col]) if in_full_col else False,
-                "lead_time_days": float(row[lead_col]) if lead_col else 0.0,
-                "units": float(row[units_col]) if units_col else 0.0,
-                "defects": float(row[defects_col]) if defects_col else 0.0,
+                "on_time": row[on_time_col] if on_time_col else None,
+                "in_full": row[in_full_col] if in_full_col else None,
+                "lead_time_days": row[lead_col] if lead_col else None,
+                "units": row[units_col] if units_col else None,
+                "defects": row[defects_col] if defects_col else None,
             }
             for _, row in g.iterrows()
         ]
         cards.append(score_supplier(str(supplier), deliveries))
         if price_col:
-            prices[str(supplier)] = float(g[price_col].mean())
+            mean_price = float(g[price_col].mean())
+            # An unpriced supplier is not a free one: leave it out and let `run`
+            # drop price as a criterion rather than award it the ideal cost.
+            if math.isfinite(mean_price):
+                prices[str(supplier)] = mean_price
     return cards, prices
 
 
@@ -107,38 +150,87 @@ def run(
     *,
     weights: dict[str, float] | None = None,
 ) -> SourcingReport:
-    """Rank the scored suppliers by TOPSIS and present the award as protected options."""
+    """Rank the scored suppliers by TOPSIS and present the award as protected options.
+
+    Only criteria measured for **every** supplier on the panel enter the ranking. A
+    criterion nobody recorded scores everyone an identical zero, and TOPSIS on a full
+    tie falls back to input order - which is how an all-zero scorecard still produced
+    a confident "recommended award".
+    """
     prices = prices or {}
-    criteria = [Criterion("otif", benefit=True), Criterion("lead_time", benefit=False),
-                Criterion("ppm", benefit=False)]
-    alternatives: dict[str, dict[str, float]] = {}
-    for s in scorecards:
-        alt = {"otif": s.otif, "lead_time": s.avg_lead_time, "ppm": s.ppm}
-        if prices:
-            alt["price"] = prices.get(s.supplier, 0.0)
-        alternatives[s.supplier] = alt
-    if prices:
-        criteria.append(Criterion("price", benefit=False))
+    measured, unmeasured = [], []
+    for name, benefit, read in _CRITERIA:
+        if name == "price" and not prices:
+            continue      # no price column at all: not a criterion, not a gap either
+        if scorecards and all(read(card, prices) is not None for card in scorecards):
+            measured.append(Criterion(name, benefit=benefit))
+        else:
+            unmeasured.append(name)
 
     merged = {**_DEFAULT_WEIGHTS, **(weights or {})}
-    used = {c.name: merged[c.name] for c in criteria}
+    used = {c.name: merged[c.name] for c in measured}
+    readers = {name: read for name, _, read in _CRITERIA}
 
-    ranking = topsis_rank(alternatives, criteria, used)
+    if not measured:
+        return _nothing_to_rank(scorecards, prices, tuple(unmeasured))
+
+    alternatives = {
+        card.supplier: {c.name: float(readers[c.name](card, prices)) for c in measured}
+        for card in scorecards
+    }
+    ranking = topsis_rank(alternatives, measured, used)
     summary = (
-        f"Compared {len(scorecards)} suppliers on OTIF / lead time / quality"
-        + (" / price" if prices else "")
+        f"Compared {len(scorecards)} suppliers on "
+        + " / ".join(c.name for c in measured)
         + f"; recommended award: {ranking.best}."
+        + (f" Not measured in this data: {', '.join(unmeasured)}." if unmeasured else "")
     )
-    outcome = award_outcome(ranking, summary=summary)
     return SourcingReport(
         scorecards=tuple(scorecards),
         prices=prices,
-        criteria=tuple(criteria),
+        criteria=tuple(measured),
         weights=used,
         ranking=ranking,
-        outcome=outcome,
+        outcome=award_outcome(ranking, summary=summary),
         recommended=ranking.best,
         summary=summary,
+        unmeasured=tuple(unmeasured),
+    )
+
+
+def _nothing_to_rank(
+    scorecards: list[SupplierScore], prices: dict[str, float], unmeasured: tuple[str, ...]
+) -> SourcingReport:
+    """No criterion survived: hand the gap to a human instead of awarding on nothing."""
+    gap = ", ".join(unmeasured) if unmeasured else "every criterion"
+    summary = (
+        f"Cannot rank {len(scorecards)} supplier(s): {gap} was never measured in this data. "
+        "No award is defensible until at least one criterion is populated."
+    )
+    outcome = as_handoff(
+        summary,
+        [HandoffPacket(
+            title="Supply the missing supplier-performance columns",
+            steps=[
+                f"Add one of: {gap} to the delivery export (or map it via params).",
+                "On-time needs order/delivery dates or a promised date; in-full needs "
+                "ordered vs received quantity; quality needs units and defects.",
+                "Re-run the sourcing brief once at least one criterion is populated.",
+            ],
+            risk_if_skipped="Awarding without a measured criterion ranks suppliers by "
+                            "input order, not by performance.",
+        )],
+    )
+    return SourcingReport(
+        scorecards=tuple(scorecards),
+        prices=prices,
+        criteria=(),
+        weights={},
+        ranking=RankingResult({}, []),
+        outcome=outcome,
+        recommended="",
+        summary=summary,
+        unmeasured=unmeasured,
     )
 
 
@@ -147,6 +239,9 @@ def verify(report: SourcingReport) -> list[str]:
     issues = list(verify_guided(report.outcome))
     if not report.scorecards:
         issues.append("no suppliers scored")
+    if not report.criteria:
+        gap = ", ".join(report.unmeasured) if report.unmeasured else "every criterion"
+        issues.append(f"no measured criterion to rank suppliers on ({gap} absent)")
     return issues
 
 
@@ -158,14 +253,18 @@ def write_operational(report: SourcingReport, out_dir: str | Path, client: str =
         {
             "supplier": c.supplier,
             "deliveries": c.deliveries,
-            "otif": round(c.otif, 4),
-            "on_time_rate": round(c.on_time_rate, 4),
-            "in_full_rate": round(c.in_full_rate, 4),
-            "avg_lead_time": round(c.avg_lead_time, 2),
-            "ppm": round(c.ppm, 1),
-            "avg_price": round(report.prices.get(c.supplier, 0.0), 2),
-            "topsis_score": round(report.ranking.scores.get(c.supplier, 0.0), 4),
-            "rank": report.ranking.ranking.index(c.supplier) + 1,
+            "otif": _cell(c.otif, 4),
+            "otif_observations": c.evaluable.otif,
+            "on_time_rate": _cell(c.on_time_rate, 4),
+            "in_full_rate": _cell(c.in_full_rate, 4),
+            "avg_lead_time": _cell(c.avg_lead_time, 2),
+            "ppm": _cell(c.ppm, 1),
+            "avg_price": _cell(report.prices.get(c.supplier), 2),
+            "topsis_score": _cell(report.ranking.scores.get(c.supplier), 4),
+            "rank": (
+                report.ranking.ranking.index(c.supplier) + 1
+                if c.supplier in report.ranking.ranking else ""
+            ),
         }
         for c in report.scorecards
     ]
@@ -180,35 +279,53 @@ def build_deck(
     citations: tuple[str, ...] = (),
     confidence: float = 0.85,
 ) -> Deliverable:
-    """Compose the sourcing study: the recommended award and why, with the scorecard spread."""
+    """Compose the sourcing study: the recommended award and why, with the scorecard spread.
+
+    Every criterion prints what was measured, or the words ``no medido``. A rate over
+    zero observations is not zero percent, and a deck that prints it as one is the
+    exact failure this tool is supposed to catch in the client's own reporting.
+    """
+    if not report.recommended:
+        raise ValueError(
+            "no award to present: " + report.summary + " (verify() blocks this report)"
+        )
     best = next(c for c in report.scorecards if c.supplier == report.recommended)
     others = [c for c in report.scorecards if c.supplier != report.recommended]
+    ranked = " / ".join(c.name for c in report.criteria)
 
     summary = (
-        f"Compared {len(report.scorecards)} suppliers; recommended award to "
-        f"{report.recommended} (OTIF {best.otif * 100:.0f}%, lead {best.avg_lead_time:.0f}d, "
-        f"{best.ppm:,.0f} PPM)."
+        f"Compared {len(report.scorecards)} suppliers on {ranked}; recommended award to "
+        f"{report.recommended} (OTIF {_pct(best.otif)}, lead {_days(best.avg_lead_time)}, "
+        f"{_ppm(best.ppm)})."
     )
 
     findings = [
         Finding(
             f"Recommended award: {report.recommended}",
             f"Best TOPSIS closeness ({report.ranking.scores[report.recommended]:.3f}) across the "
-            "weighted criteria - the best balance of service, lead time and quality.",
+            f"weighted criteria actually measured here ({ranked}).",
             impact="consolidate volume here, with a backup qualified",
         )
     ]
-    if report.scorecards:
-        otifs = [c.otif for c in report.scorecards]
+    if report.unmeasured:
+        findings.append(Finding(
+            "Criteria this data could not measure",
+            f"{', '.join(report.unmeasured)} - not present for every supplier on the panel, so "
+            "excluded from the ranking rather than scored as zero.",
+            impact=f"the award rests on {ranked} alone; populate the rest to widen it",
+        ))
+    otifs = [c.otif for c in report.scorecards if c.otif is not None]
+    if otifs:
         findings.append(Finding(
             "OTIF spread across the panel",
-            f"On-time-in-full ranges {min(otifs) * 100:.0f}%-{max(otifs) * 100:.0f}% - the gap is the "
-            "reliability premium the award buys.",
+            f"On-time-in-full ranges {_pct(min(otifs))}-{_pct(max(otifs))} across the "
+            f"{len(otifs)} supplier(s) that recorded it - the gap is the reliability "
+            "premium the award buys.",
             impact="hold underperformers to a corrective plan",
         ))
     if others:
         alt = "; ".join(
-            f"{c.supplier} (OTIF {c.otif * 100:.0f}%, {report.ranking.scores[c.supplier]:.3f})"
+            f"{c.supplier} (OTIF {_pct(c.otif)}, {report.ranking.scores[c.supplier]:.3f})"
             for c in others
         )
         findings.append(Finding("Alternatives considered", f"Ranked against: {alt}.",
@@ -216,11 +333,15 @@ def build_deck(
 
     kpis = (
         Kpi("Recommended supplier", report.recommended, rationale="Top TOPSIS-ranked award"),
-        Kpi("Its OTIF", f"{best.otif * 100:.0f}%", target="95%+", rationale="On-time-in-full reliability"),
-        Kpi("Its lead time", f"{best.avg_lead_time:.0f} days", target="minimize",
-            rationale="Replenishment responsiveness"),
-        Kpi("Its quality (PPM)", f"{best.ppm:,.0f}", target="minimize", rationale="Defect parts per million"),
+        Kpi("Its OTIF", _pct(best.otif), target="95%+",
+            rationale=f"On-time-in-full over {best.evaluable.otif} scoreable delivery record(s)"),
+        Kpi("Its lead time", _days(best.avg_lead_time), target="minimize",
+            rationale=f"Replenishment responsiveness over {best.evaluable.lead_time} record(s)"),
+        Kpi("Its quality (PPM)", _ppm(best.ppm), target="minimize",
+            rationale=f"Defect parts per million over {best.evaluable.ppm} record(s)"),
         Kpi("Suppliers compared", str(len(report.scorecards)), rationale="Panel breadth"),
+        Kpi("Criteria ranked on", ranked or NOT_MEASURED,
+            rationale="Only criteria measured for every supplier enter the TOPSIS"),
     )
 
     data_sources = (
@@ -228,10 +349,24 @@ def build_deck(
         DataSource("Criteria weights", "engagement parameters", "per run"),
     )
 
+    # Only prescribe a target on something this data actually measured: "hold them to
+    # an OTIF target" is advice the reader cannot act on without an OTIF.
+    measured_names = {c.name for c in report.criteria}
+    corrective = (
+        "Put underperforming suppliers on a corrective-action plan with an OTIF target."
+        if "otif" in measured_names
+        else f"Put underperforming suppliers on a corrective-action plan against {ranked}, "
+             "the criteria this data supports."
+    )
     recommendations = [
         f"Award the primary volume to {report.recommended}; keep the runner-up qualified as backup.",
-        "Put underperforming suppliers on a corrective-action plan with an OTIF target.",
+        corrective,
     ]
+    if report.unmeasured:
+        recommendations.append(
+            f"Add {', '.join(report.unmeasured)} to the delivery export so the next award "
+            "weighs service and quality, not just what happened to be in the file."
+        )
 
     return Deliverable(
         title="Supplier Sourcing & Selection",

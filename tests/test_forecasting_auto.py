@@ -51,6 +51,15 @@ def test_auto_modern_intermittent_routes_to_tsb():
     assert result.method == "tsb"
     assert result.is_intermittent is True
     assert result.forecast > 0
+    # TSB emits a NaN warm-up row in its fitted values (AutoETS does not). Without
+    # a finiteness assert here, that NaN reached ForecastResult, lost the `> 0`
+    # test in to_engine_inputs, and silently swapped sigma_e for the demand std.
+    assert np.isfinite(result.error_std)
+    assert np.isfinite(result.bias)
+    assert np.isfinite(result.mae)
+    assert result.error_std > 0
+    assert result.n_error_obs_dropped >= 1
+    assert result.sigma_source == "forecast_error"
 
 
 def test_short_history_falls_back_to_legacy_ses():

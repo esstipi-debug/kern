@@ -30,7 +30,8 @@ def safety_stock_risk_period(
     if distribution == "auto" and mean_risk > 0 and observed_skewness is not None:
         use_gamma = observed_skewness > std_risk / mean_risk
 
-    if use_gamma and std_risk > 0:
+    fitted_gamma = use_gamma and std_risk > 0
+    if fitted_gamma:
         params = fit_gamma(mean_risk, std_risk, minimum)
         iota = inventory_for_cycle_service_gamma(cycle_service_level, params)
         ss = iota - mean_risk
@@ -42,4 +43,7 @@ def safety_stock_risk_period(
         service_level_factor=z,
         cycle_service_level=cycle_service_level,
         risk_periods=risk_periods,
+        # What was *fitted*, not what was *requested*: 'gamma' with std_risk == 0
+        # silently runs the normal branch, and the report must say so.
+        distribution="gamma" if fitted_gamma else "normal",
     )

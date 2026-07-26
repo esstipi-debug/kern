@@ -24,12 +24,22 @@ Methods:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
 
 # Syntetos-Boylan: demand is "intermittent" above this average demand interval.
 INTERMITTENT_ADI_THRESHOLD = 1.32
+
+
+def _is_usable_dispersion(value: float) -> bool:
+    """A dispersion estimate is usable only when it is a real, positive number.
+
+    ``nan > 0`` is False, so a plain ``> 0`` test silently routes a NaN down the
+    fallback branch. Every dispersion choice in this module goes through here.
+    """
+    return math.isfinite(value) and value > 0
 
 
 @dataclass(frozen=True)
@@ -45,6 +55,29 @@ class ForecastResult:
     mae: float
     n_periods: int
     is_intermittent: bool
+    # One-step error pairs discarded before computing error_std/bias/mae, e.g. the
+    # warm-up NaN that TSB and Croston emit in their fitted values. 0 on the
+    # closed-form legacy paths, which have no warm-up row to discard.
+    n_error_obs_dropped: int = 0
+
+    @property
+    def sigma_source(self) -> str:
+        """Which dispersion ``to_engine_inputs`` hands the engine, and why.
+
+        - ``forecast_error``: sigma_e was estimable and positive — the correct
+          input for safety stock (Vandeput 2021, §4.2.5).
+        - ``demand_std_fallback``: sigma_e was *not* estimable (too few periods,
+          or NaN fitted values), so the raw demand std stands in. A wider sigma
+          than the theory calls for, and the caller can now see that it happened.
+        - ``unavailable``: neither is a usable dispersion estimate.
+
+        Derived, never stored, so it cannot drift from the numbers it describes.
+        """
+        if _is_usable_dispersion(self.error_std):
+            return "forecast_error"
+        if _is_usable_dispersion(self.demand_std):
+            return "demand_std_fallback"
+        return "unavailable"
 
     def to_engine_inputs(self, periods_per_year: float = 52.0) -> dict[str, float]:
         """
@@ -52,9 +85,25 @@ class ForecastResult:
 
         Uses sigma_e (``error_std``) as ``demand_std_per_period`` — the correct
         dispersion for safety stock — falling back to the raw demand std when
-        too few periods exist to estimate the forecast error.
+        too few periods exist to estimate the forecast error. Which of the two
+        was used is on the record in :attr:`sigma_source`.
+
+        Raises when neither dispersion is a real number: substituting 0 there
+        would print "no buffer needed" as a confident fact.
         """
-        sigma = self.error_std if self.error_std > 0 else self.demand_std
+        source = self.sigma_source
+        if source == "forecast_error":
+            sigma = self.error_std
+        elif source == "demand_std_fallback":
+            sigma = self.demand_std
+        else:
+            if not (math.isfinite(self.error_std) and math.isfinite(self.demand_std)):
+                raise ValueError(
+                    f"cannot size safety stock: dispersion is not finite "
+                    f"(error_std={self.error_std!r}, demand_std={self.demand_std!r}) - "
+                    "the demand history this forecast came from is not usable"
+                )
+            sigma = 0.0  # a genuinely flat history: measured, not missing
         return {
             "annual_demand": self.forecast * periods_per_year,
             "mean_demand_per_period": self.forecast,
@@ -66,6 +115,15 @@ def _as_array(history: object) -> np.ndarray:
     arr = np.asarray(list(history), dtype=float)
     if arr.size == 0:
         raise ValueError("history is empty")
+    # Before the sign check: a blank cell in the client's CSV arrives as NaN, and
+    # `nan < 0` is False, so it used to sail through and poison every statistic
+    # downstream. A missing period is not a demand of zero.
+    if not np.all(np.isfinite(arr)):
+        bad = int(np.count_nonzero(~np.isfinite(arr)))
+        raise ValueError(
+            f"demand history must be finite: {bad} of {arr.size} value(s) are NaN or infinite "
+            "(a blank period is not a demand of zero - drop it or fill it deliberately)"
+        )
     if np.any(arr < 0):
         raise ValueError("demand history cannot contain negative values")
     return arr
