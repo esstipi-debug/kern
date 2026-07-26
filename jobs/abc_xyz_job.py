@@ -15,7 +15,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.classification import SkuClassification, classify_portfolio, portfolio_summary
+from src.classification import (
+    SkuClassification,
+    ValueBasis,
+    classify_portfolio,
+    portfolio_summary,
+    value_basis,
+)
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 
@@ -32,6 +38,8 @@ class AbcXyzReport:
     n_a: int
     n_cz: int              # erratic + low-value -> discontinuation candidates
     a_value_share: float   # share of total annual value held by the A class
+    # Whether annual_value ranks on value or (flat unit cost) merely on units
+    value_basis: ValueBasis = ValueBasis(0, 0.0, True)
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -86,6 +94,7 @@ def run(
         n_a=sum(1 for c in classifications if c.abc == "A"),
         n_cz=sum(1 for c in classifications if c.cell == "CZ"),
         a_value_share=a_value / total_value,
+        value_basis=value_basis(items),
     )
 
 
@@ -154,6 +163,15 @@ def build_deck(
             f"{report.n_cz} discontinuation candidates (CZ)",
             "Low value and erratic demand - the classic make-to-order / cull cell.",
             impact="free working capital; shrink the long tail"))
+    if not report.value_basis.discriminates:
+        findings.append(Finding(
+            "Ranked on units, not value",
+            f"Every SKU carries the same unit cost, so unit cost did not discriminate "
+            f"and annual usage value reduces to a units ranking "
+            f"({report.value_basis.unit_cost_nunique} distinct cost(s) across "
+            f"{report.n_skus} SKUs). The A/B/C split below is by volume.",
+            impact="supply real unit costs before using this to set service levels or "
+                   "cull the tail - a high-volume cheap SKU is not an A item"))
 
     kpis = (
         Kpi("SKUs classified", str(report.n_skus), rationale="Catalog coverage of the analysis"),
