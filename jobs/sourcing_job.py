@@ -366,7 +366,7 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
             )
         work["price"] = price
 
-    scored = work
+    scored = work[usable]
     n_open = len(work) - len(scored)
     if n_open:
         notes.append(
