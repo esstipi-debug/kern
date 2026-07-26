@@ -56,8 +56,19 @@ def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]
 
 
 def _resolve_driver_cols(df: pd.DataFrame, params: dict) -> dict[str, str]:
-    """Map each risk-driver key to a present column (params override the sniffing)."""
+    """Map each risk-driver key to a present column (params override the sniffing).
+
+    An override naming a column that is not in the data is a caller mistake, not an absent
+    driver: ``_pick_column`` collapses both to ``None``, so a typo used to degrade exactly
+    like a missing column - silently, and straight into a zeroed risk axis.
+    """
     overrides: dict[str, str] = params.get("risk_cols", {}) or {}
+    unknown = {k: v for k, v in overrides.items() if v and str(v) not in df.columns}
+    if unknown:
+        raise ValueError(
+            f"risk_cols names columns that are not in the data: {unknown}. "
+            f"Columns seen: {list(df.columns)[:12]}"
+        )
     resolved: dict[str, str] = {}
     for key, candidates in _DRIVER_COLS.items():
         col = _pick_column(df, overrides.get(key), candidates)
@@ -114,6 +125,14 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
         )
 
     driver_cols = _resolve_driver_cols(df, params)
+    if not driver_cols:
+        raise ValueError(
+            "could not find any supply-risk driver column, so the Kraljic matrix would have only "
+            "one real axis: every supplier would score 0.000 risk and the output would be a spend "
+            "ranking wearing a risk label. Supply at least one of "
+            f"{sorted(c[0] for c in _DRIVER_COLS.values())} (or map them with risk_cols in params). "
+            f"Columns seen: {list(df.columns)[:12]}"
+        )
     df = df.reset_index(drop=True)
     normed = normalize_drivers(df, driver_cols=driver_cols, supplier_col=supplier_col)
 
@@ -165,10 +184,15 @@ def run(
 
 
 def verify(report: SupplierManagementReport) -> list[str]:
-    """QA gate: a usable segmentation honors the contract and placed suppliers."""
+    """QA gate: a usable segmentation honors the contract and placed suppliers on BOTH axes."""
     issues = list(verify_guided(report.outcome))
     if not report.segments:
         issues.append("no suppliers segmented")
+    if report.segments and not report.drivers:
+        issues.append(
+            "no supply-risk driver was scored: every supplier sits at 0.000 risk, so this is a "
+            "spend ranking, not a Kraljic segmentation"
+        )
     return issues
 
 
