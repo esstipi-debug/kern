@@ -266,16 +266,33 @@ def build_profiles(
 ) -> list[RecurrenceProfile]:
     """Un perfil por (entidad, familia de senal).
 
-    ``is_oscillating`` se resuelve al final, cuando ya estan todos los perfiles:
-    necesita saber si la MISMA entidad tuvo ``excess_growing`` en la ventana, y
-    eso no se puede ver desde adentro del perfil de disponibilidad.
+    Las ocurrencias se filtran a ``window_start <= ts <= window_end`` (los dos
+    bordes inclusive) ANTES de agrupar por entidad y familia. Sin este filtro
+    ``duty_cycle`` no tiene techo: una entidad con historia que se extiende
+    mucho mas alla de la ventana (p.ej. 150 dias de ocurrencias contra una
+    ventana de 90) da un porcentaje sin sentido (166%) y arrastra
+    ``is_persistent`` a ``True`` con el, sin que el llamador se haya
+    equivocado en nada mas que en no recortar su propio input. Filtrar aca
+    deja el duty cycle acotado por construccion en vez de depender de eso.
+
+    Dos consecuencias del filtro, ambas intencionales:
+
+    - Una entidad/familia cuyas ocurrencias caen TODAS fuera de la ventana no
+      genera perfil -- ni vacio ni con datos. Nunca entra al ``dict`` de
+      agrupacion, asi que simplemente no aparece en el resultado.
+    - ``is_oscillating`` se resuelve al final, cuando ya estan todos los
+      perfiles (ya filtrados): necesita saber si la MISMA entidad tuvo
+      ``excess_growing`` en la ventana, y eso no se puede ver desde adentro
+      del perfil de disponibilidad.
     """
     window_start = _ensure_utc(window_start)
     window_end = _ensure_utc(window_end)
     window_hours = (window_end - window_start).total_seconds() / 3600.0
 
+    in_window = [o for o in occurrences if window_start <= _ensure_utc(o.ts) <= window_end]
+
     grouped: dict[tuple[str, str], list[Occurrence]] = {}
-    for occurrence in occurrences:
+    for occurrence in in_window:
         grouped.setdefault((occurrence.entity_id, family_of(occurrence.signal)), []).append(
             occurrence
         )

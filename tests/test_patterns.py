@@ -4,6 +4,7 @@ import pytest
 
 from src.patterns import (
     Occurrence,
+    RecurrenceProfile,
     Thresholds,
     build_profiles,
     family_of,
@@ -382,3 +383,179 @@ def test_a_persistent_excess_profile_is_never_oscillating_by_itself():
     assert profile.family == "excess"
     assert profile.is_persistent is True
     assert profile.is_oscillating is False
+
+
+# --------------------------------------------------------------------------
+# Thresholds: parametrizacion end-to-end (los 4 campos, valores NO default)
+# --------------------------------------------------------------------------
+
+
+def test_chronic_min_episodes_threshold_changes_the_recurrence_label():
+    """Con 3 episodios-falla, el default (chronic_min_episodes=3) clasifica
+    'chronic'. Subir el umbral a 4 sobre la MISMA entrada tiene que bajarlo a
+    'acute'. Si build_profiles ignorara thresholds.chronic_min_episodes y
+    usara el 3 default hardcodeado, el segundo perfil seguiria dando
+    'chronic'."""
+    occs = _failure_run(0) + _failure_run(30) + _failure_run(60)
+
+    default_profile = _profiles(occs)[0]
+    stricter_profile = _profiles(occs, thresholds=Thresholds(chronic_min_episodes=4))[0]
+
+    assert default_profile.recurrence_label == "chronic"
+    assert stricter_profile.recurrence_label == "acute"
+
+
+def test_persistent_duty_pct_threshold_changes_is_persistent():
+    """Estas ocurrencias dan un duty cycle de ~55%: pasa el default (50%) pero
+    no un umbral mas estricto (90%) sobre la MISMA entrada. Si build_profiles
+    ignorara thresholds.persistent_duty_pct y usara el 50.0 default
+    hardcodeado, el segundo perfil seguiria dando is_persistent=True."""
+    occs = [occ(h) for h in range(0, 24 * 50, 6)]
+
+    default_profile = _profiles(occs)[0]
+    stricter_profile = _profiles(occs, thresholds=Thresholds(persistent_duty_pct=90.0))[0]
+
+    assert default_profile.is_persistent is True
+    assert stricter_profile.is_persistent is False
+
+
+def test_episode_gap_hours_threshold_changes_episode_count():
+    """Un hueco de 59h parte en dos episodios bajo el default (48h) pero no
+    bajo un umbral mas laxo (100h) sobre la MISMA entrada. Si build_profiles
+    ignorara thresholds.episode_gap_hours y usara el 48.0 default
+    hardcodeado, ambos perfiles verian el mismo n_episodes."""
+    occs = [occ(0), occ(1), occ(60), occ(61)]
+
+    default_profile = _profiles(occs)[0]
+    laxer_profile = _profiles(occs, thresholds=Thresholds(episode_gap_hours=100.0))[0]
+
+    assert default_profile.n_episodes == 2
+    assert laxer_profile.n_episodes == 1
+
+
+def test_cadence_hours_threshold_changes_duty_cycle():
+    """cadence_hours entra en el span de cada episodio (span = ultima menos
+    primera ocurrencia, mas cadence). Agrandarlo sobre la MISMA entrada tiene
+    que mover duty_cycle proporcionalmente. Si build_profiles ignorara
+    thresholds.cadence_hours y usara el 1.0 default hardcodeado, ambos
+    perfiles tendrian el mismo duty_cycle."""
+    occs = [occ(0), occ(1), occ(2)]
+    window_hours = (WINDOW_END - WINDOW_START).total_seconds() / 3600.0
+
+    default_profile = _profiles(occs)[0]
+    wider_profile = _profiles(occs, thresholds=Thresholds(cadence_hours=10.0))[0]
+
+    assert default_profile.duty_cycle == pytest.approx(3 / window_hours * 100.0)
+    assert wider_profile.duty_cycle == pytest.approx(12 / window_hours * 100.0)
+    assert wider_profile.duty_cycle > default_profile.duty_cycle
+
+
+# --------------------------------------------------------------------------
+# is_chronic_or_worse: las 3 clausulas protegidas por separado
+# --------------------------------------------------------------------------
+
+
+def _synthetic_profile(
+    *, recurrence_label: str, is_persistent: bool, is_oscillating: bool
+) -> RecurrenceProfile:
+    """Perfil construido a mano, sin pasar por build_profiles.
+
+    build_profiles nunca produce is_oscillating=True con is_persistent=False
+    y recurrence_label != 'chronic' (is_oscillating exige chronic O persistent
+    como precondicion propia -- ver su docstring/logica). Un perfil derivado
+    de build_profiles para "oscilante pero no chronic" seria SIEMPRE tambien
+    persistent, y por lo tanto no distinguiria la clausula
+    ``or profile.is_oscillating`` de la clausula ``or profile.is_persistent``
+    en is_chronic_or_worse -- exactamente el patron de coincidencia accidental
+    que ya paso tres veces en este modulo. Construir el perfil a mano aisla
+    cada clausula de verdad.
+    """
+    return RecurrenceProfile(
+        entity_id="SKU-X",
+        family="availability",
+        episodes=(),
+        n_occurrences=0,
+        n_episodes=0,
+        n_failure_episodes=0,
+        escalation_rate=0.0,
+        duty_cycle=0.0,
+        days_since_last_episode=0.0,
+        n_boundaries_unknown=0,
+        recurrence_label=recurrence_label,
+        is_persistent=is_persistent,
+        is_oscillating=is_oscillating,
+    )
+
+
+def test_is_chronic_or_worse_is_true_for_persistent_profiles_that_are_not_chronic():
+    """Persistent solo (no chronic, no oscillating): protege especificamente
+    la clausula ``or profile.is_persistent``."""
+    profile = _profiles([occ(h) for h in range(0, 24 * 50, 6)])[0]
+
+    assert profile.recurrence_label == "one_off"
+    assert profile.is_persistent is True
+    assert profile.is_oscillating is False
+    assert is_chronic_or_worse(profile) is True
+
+
+def test_is_chronic_or_worse_is_true_for_oscillating_profiles_that_are_not_chronic_or_persistent():
+    """Oscillating solo (no chronic, no persistent): protege especificamente
+    la clausula ``or profile.is_oscillating``, aislada de is_persistent porque
+    build_profiles no puede producir esta combinacion (ver
+    ``_synthetic_profile``)."""
+    profile = _synthetic_profile(
+        recurrence_label="one_off", is_persistent=False, is_oscillating=True
+    )
+
+    assert is_chronic_or_worse(profile) is True
+
+
+# --------------------------------------------------------------------------
+# build_profiles: filtro de ventana [window_start, window_end]
+# --------------------------------------------------------------------------
+
+
+def test_duty_cycle_never_exceeds_100_even_with_occurrences_outside_the_window():
+    """150 dias de ocurrencias (cada 7h, antes/dentro/despues de una ventana
+    de 90 dias) sin filtro darian un duty_cycle de ~166% -- el mismo numero
+    sin sentido que motivo el arreglo. Filtradas a la ventana, el duty cycle
+    queda acotado."""
+    occs = [occ(h) for h in range(-720, 2880, 7)]
+
+    profile = _profiles(occs)[0]
+
+    assert profile.duty_cycle <= 100.0
+    assert profile.duty_cycle == pytest.approx(99.86, abs=0.01)
+
+
+def test_an_occurrence_outside_the_window_does_not_inflate_episode_count():
+    """Una ocurrencia 100h antes de window_start, si no se filtrara, abriria
+    un episodio propio (el hueco hasta la primera ocurrencia dentro de la
+    ventana es >= episode_gap_hours). Filtrada, el perfil ve solo las 2
+    ocurrencias dentro de la ventana en UN episodio."""
+    occs = [occ(-100), occ(0), occ(1)]
+
+    profile = _profiles(occs)[0]
+
+    assert profile.n_occurrences == 2
+    assert profile.n_episodes == 1
+
+
+def test_window_boundaries_are_inclusive():
+    """Una ocurrencia justo en window_start y otra justo en window_end tienen
+    que contar las dos -- el filtro es <= en los dos extremos, no exclusivo."""
+    occs = [occ(0), occ(24 * 90)]
+
+    profile = _profiles(occs)[0]
+
+    assert profile.n_occurrences == 2
+
+
+def test_an_entity_with_no_occurrences_inside_the_window_produces_no_profile():
+    """Si TODAS las ocurrencias de una entidad caen fuera de la ventana, no
+    tiene que aparecer en el resultado -- ni como perfil vacio."""
+    occs = [occ(-100), occ(-50)]
+
+    profiles = _profiles(occs)
+
+    assert profiles == []
