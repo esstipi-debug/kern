@@ -22,7 +22,12 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import linprog
 
-from src.guided import ExecutionOption, GuidedOutcome, as_options
+from src.guided import (
+    ExecutionOption,
+    GuidedOutcome,
+    as_options,
+    confidence_from_coverage,
+)
 
 # Rezaei's consistency index by a_BW (how many times the best beats the worst).
 _BWM_CI = {1: 0.0, 2: 0.44, 3: 1.0, 4: 1.63, 5: 2.30, 6: 3.0, 7: 3.73, 8: 4.47, 9: 5.23}
@@ -191,4 +196,9 @@ def award_outcome(
         )
         for a in ranking.ranking
     ]
-    return as_options(summary, options)
+    # An award decided on fewer criteria than it was asked to weigh is less certain
+    # than one decided on all of them; the default 1.0 claimed otherwise.
+    confidence = confidence_from_coverage(
+        ["ignored_criterion"] * len(ranking.ignored_criteria)
+    )
+    return as_options(summary, options, confidence=confidence)

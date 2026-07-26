@@ -17,7 +17,7 @@ import pandas as pd
 
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
-from src.guided import GuidedOutcome, verify_guided
+from src.guided import GuidedOutcome, confidence_from_coverage, verify_guided
 from src.mcdm import Criterion, RankingResult, award_outcome, topsis_rank
 from src.supplier_scorecard import SupplierScore, score_supplier
 
@@ -30,6 +30,8 @@ _DEFECTS_COLS = ("defects", "Defects", "rejects", "ppm_defects")
 _PRICE_COLS = ("unit_price", "Unit Price", "price", "Price", "unit_cost", "cost")
 
 _DEFAULT_WEIGHTS = {"otif": 0.4, "lead_time": 0.2, "ppm": 0.2, "price": 0.2}
+# Editorial prior for a complete sourcing study; coverage gaps subtract from it.
+_DECK_BASE_CONFIDENCE = 0.85
 
 
 @dataclass(frozen=True)
@@ -201,9 +203,19 @@ def build_deck(
     client: str = "Client",
     prepared: str = "",
     citations: tuple[str, ...] = (),
-    confidence: float = 0.85,
+    confidence: float | None = None,
 ) -> Deliverable:
-    """Compose the sourcing study: the recommended award and why, with the scorecard spread."""
+    """Compose the sourcing study: the recommended award and why, with the scorecard spread.
+
+    ``confidence`` is derived from the ranking's coverage when not supplied: an award
+    decided on fewer criteria than it weighed is less certain than one decided on all
+    of them (see src/guided.py::confidence_from_coverage).
+    """
+    if confidence is None:
+        confidence = confidence_from_coverage(
+            ["ignored_criterion"] * len(report.ranking.ignored_criteria),
+            base=_DECK_BASE_CONFIDENCE,
+        )
     best = next(c for c in report.scorecards if c.supplier == report.recommended)
     others = [c for c in report.scorecards if c.supplier != report.recommended]
 

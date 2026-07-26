@@ -14,6 +14,7 @@ dataclasses + pure functions, with a `verify_guided` QA gate shaped exactly like
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
 # Who must perform a residual step.
@@ -157,6 +158,35 @@ def passed_guided(outcome: GuidedOutcome) -> bool:
 # ── Builders — construct outcomes that are protected by construction ──────────────
 # Domain skills use these instead of the raw dataclass so a result can never come
 # out as a dead end (empty options / handoff / escalation raise immediately).
+
+
+# ── Confidence from coverage ──────────────────────────────────────────────────────
+# The builders below default to confidence=1.0, which is only honest when the inputs
+# were complete. Each named gap below is a measured way the inputs were NOT complete;
+# a caller that knows about one must subtract it rather than keep claiming certainty.
+COVERAGE_PENALTY: dict[str, float] = {
+    # a ranking criterion every alternative scored identically on (src/mcdm.py)
+    "ignored_criterion": 0.15,
+    # a canonical column intake synthesized wholesale (jobs/intake.py)
+    "synthesized_critical_column": 0.20,
+    # annual_value reduces to units because unit cost is flat (src/classification.py)
+    "value_ranks_on_units": 0.25,
+}
+CONFIDENCE_FLOOR = 0.10
+
+
+def confidence_from_coverage(
+    gaps: Iterable[str], *, base: float = 1.0, floor: float = CONFIDENCE_FLOOR
+) -> float:
+    """Derive a confidence from named coverage gaps, one documented penalty each.
+
+    Repeat a gap name once per occurrence (two dead criteria cost twice one). Raises
+    ``KeyError`` on an unknown gap so a typo cannot silently mean "no penalty".
+    """
+    total = 0.0
+    for gap in gaps:
+        total += COVERAGE_PENALTY[gap]
+    return max(floor, base - total)
 
 
 def as_executed(
