@@ -4,7 +4,10 @@ import pytest
 
 from src.patterns import (
     Occurrence,
+    Thresholds,
+    build_profiles,
     family_of,
+    is_chronic_or_worse,
     to_episodes,
 )
 
@@ -216,3 +219,138 @@ def test_mixed_certified_then_uncertified_gap_keeps_the_entry_gap_as_prior_gap_h
     assert episode_b.n_occurrences == 3
     assert episode_b.boundary_certified is False
     assert episode_b.prior_gap_hours == pytest.approx(99.0)
+
+
+WINDOW_START = BASE
+WINDOW_END = BASE + timedelta(days=90)
+TH = Thresholds()
+
+
+def _profiles(occs, **kwargs):
+    return build_profiles(
+        occs, window_start=WINDOW_START, window_end=WINDOW_END,
+        thresholds=kwargs.pop("thresholds", TH), **kwargs
+    )
+
+
+def _failure_run(day: float, *, entity: str = "SKU-1") -> list[Occurrence]:
+    """Un episodio-falla corto: cruza el ROP y escala a riesgo de quiebre."""
+    return [
+        occ(day * 24, entity=entity),
+        occ(day * 24 + 1, signal="stockout_projected", entity=entity),
+    ]
+
+
+def test_three_failure_episodes_is_chronic():
+    occs = _failure_run(0) + _failure_run(30) + _failure_run(60)
+
+    profile = _profiles(occs, certified_gap=lambda a, b: True)[0]
+
+    assert profile.n_failure_episodes == 3
+    assert profile.recurrence_label == "chronic"
+
+
+def test_two_failure_episodes_is_acute():
+    occs = _failure_run(0) + _failure_run(30)
+
+    profile = _profiles(occs, certified_gap=lambda a, b: True)[0]
+
+    assert profile.recurrence_label == "acute"
+
+
+def test_one_failure_episode_is_one_off():
+    profile = _profiles(_failure_run(0), certified_gap=lambda a, b: True)[0]
+
+    assert profile.recurrence_label == "one_off"
+
+
+def test_rop_only_episodes_never_reach_chronic():
+    """Seis cruces de ROP sin escalacion son ciclos de reposicion, no fallas."""
+    occs = [o for day in (0, 15, 30, 45, 60, 75) for o in [occ(day * 24)]]
+
+    profile = _profiles(occs, certified_gap=lambda a, b: True)[0]
+
+    assert profile.n_episodes == 6
+    assert profile.n_failure_episodes == 0
+    assert profile.escalation_rate == 0.0
+    assert profile.recurrence_label == "one_off"
+
+
+def test_persistent_is_an_independent_axis_from_the_episode_count():
+    """Un unico episodio que cubre media ventana es persistent, no one_off-y-listo."""
+    occs = [occ(h) for h in range(0, 24 * 50, 6)]
+
+    profile = _profiles(occs)[0]
+
+    assert profile.n_episodes == 1
+    assert profile.recurrence_label == "one_off"
+    assert profile.is_persistent is True
+
+
+def test_duty_cycle_is_covered_hours_over_window_hours():
+    occs = [occ(h) for h in range(0, 24 * 45, 6)]
+
+    profile = _profiles(occs)[0]
+
+    assert profile.duty_cycle == pytest.approx(50.0, abs=1.0)
+
+
+def test_oscillating_needs_availability_and_excess_on_the_same_entity():
+    occs = (
+        _failure_run(0) + _failure_run(30) + _failure_run(60)
+        + [occ(70 * 24, signal="excess_growing")]
+    )
+
+    profiles = _profiles(occs, certified_gap=lambda a, b: True)
+    availability = [p for p in profiles if p.family == "availability"][0]
+
+    assert availability.is_oscillating is True
+
+
+def test_excess_on_a_different_entity_does_not_make_it_oscillating():
+    occs = (
+        _failure_run(0) + _failure_run(30) + _failure_run(60)
+        + [occ(70 * 24, signal="excess_growing", entity="OTRO-SKU")]
+    )
+
+    profiles = _profiles(occs, certified_gap=lambda a, b: True)
+    availability = [p for p in profiles if p.entity_id == "SKU-1"][0]
+
+    assert availability.is_oscillating is False
+
+
+def test_uncertified_gaps_are_counted_and_reported():
+    occs = _failure_run(0) + _failure_run(30)
+
+    profile = _profiles(occs, certified_gap=lambda a, b: False)[0]
+
+    assert profile.n_episodes == 1
+    assert profile.n_boundaries_unknown == 1
+
+
+def test_days_since_last_episode_is_measured_from_the_window_end():
+    profile = _profiles(_failure_run(80), certified_gap=lambda a, b: True)[0]
+
+    assert profile.days_since_last_episode == pytest.approx(10.0, abs=0.2)
+
+
+def test_chronic_min_episodes_is_clamped_to_at_least_two():
+    """Con 1, todo one_off seria cronico y la clase acute quedaria indefinida."""
+    assert Thresholds(chronic_min_episodes=1).chronic_min_episodes == 2
+
+
+def test_profiles_are_built_per_entity_and_family():
+    occs = _failure_run(0, entity="A") + [occ(0, signal="excess_growing", entity="A")]
+
+    profiles = _profiles(occs)
+
+    assert {(p.entity_id, p.family) for p in profiles} == {("A", "availability"), ("A", "excess")}
+
+
+def test_is_chronic_or_worse_covers_chronic_persistent_and_oscillating():
+    chronic = _profiles(_failure_run(0) + _failure_run(30) + _failure_run(60),
+                        certified_gap=lambda a, b: True)[0]
+    one_off = _profiles(_failure_run(0), certified_gap=lambda a, b: True)[0]
+
+    assert is_chronic_or_worse(chronic) is True
+    assert is_chronic_or_worse(one_off) is False
