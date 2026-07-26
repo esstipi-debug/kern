@@ -84,6 +84,12 @@ def _observed_skewness(series) -> float | None:
     arr = np.asarray(series, dtype=float)
     if arr.size < 3:
         return None
+    # Skewness of a (near-)constant series is undefined: scipy warns about
+    # catastrophic cancellation and returns a meaningless value. Flat demand is
+    # not skewed, so let the engine keep the normal.
+    spread = float(np.std(arr))
+    if not np.isfinite(spread) or spread <= 1e-9 * max(1.0, abs(float(np.mean(arr)))):
+        return None
     value = float(_sps.skew(arr))
     return value if np.isfinite(value) else None
 

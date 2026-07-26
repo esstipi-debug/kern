@@ -73,6 +73,18 @@ def test_audit_delta_gamma_switch(skewed_panel):
     assert np.median(on_switched / base * 100) == pytest.approx(12.0, abs=0.1)
 
 
+def test_flat_demand_yields_no_skewness_and_no_warning(recwarn):
+    """Constant demand is not skewed; scipy must not be asked and must not warn."""
+    from jobs.inventory_optimization import _observed_skewness
+
+    assert _observed_skewness([5.0] * 12) is None
+    assert _observed_skewness([5.0, 5.0]) is None            # too short
+    assert _observed_skewness([5.0, 5.0 + 1e-15, 5.0]) is None  # near-constant
+    assert not [w for w in recwarn if "cancellation" in str(w.message)]
+    # a genuinely skewed series still reports
+    assert _observed_skewness([1, 1, 1, 1, 9]) > 0
+
+
 def test_job_uses_the_adaptive_distribution():
     """The job must hand the engine a skewness so 'auto' can act on it."""
     from jobs import inventory_optimization
