@@ -166,6 +166,10 @@ def verify(report: SourcingReport) -> list[str]:
     issues = list(verify_guided(report.outcome))
     if not report.scorecards:
         issues.append("no suppliers scored")
+    # A dropped criterion is NOT a QA failure: the ranking degraded on purpose and the
+    # deck discloses it (build_deck below). Raising it here would return qa_failed with
+    # no deliverables written -- which both refuses the run and makes the disclosure
+    # unreachable. Confidence, not the QA gate, carries "trust this less".
     return issues
 
 
@@ -232,6 +236,18 @@ def build_deck(
         )
         findings.append(Finding("Alternatives considered", f"Ranked against: {alt}.",
                                 impact="documented for the sourcing decision"))
+    if report.ranking.ignored_criteria:
+        ignored = report.ranking.ignored_criteria
+        dropped_weight = sum(report.weights.get(name, 0.0) for name in ignored)
+        findings.append(Finding(
+            f"{len(ignored)} criteri{'on' if len(ignored) == 1 else 'a'} did not discriminate",
+            f"Every supplier scored identically on {', '.join(ignored)}, so "
+            f"{'it was' if len(ignored) == 1 else 'they were'} dropped from the ranking "
+            f"despite carrying {dropped_weight:.0%} of the criteria weight. The award "
+            f"rests on the criteria that actually varied.",
+            impact="supply the missing performance data before treating this as a full "
+                   "multi-criteria award",
+        ))
 
     kpis = (
         Kpi("Recommended supplier", report.recommended, rationale="Top TOPSIS-ranked award"),
