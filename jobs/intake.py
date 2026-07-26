@@ -15,7 +15,9 @@ from pathlib import Path
 import pandas as pd
 
 CANONICAL_REQUIRED = ("date", "product_id", "quantity")
-CANONICAL_OPTIONAL = ("unit_cost", "lead_time_days", "lead_time_std")
+# ``revenue`` is detected but never emitted: it exists only to recover a real
+# unit cost (revenue / quantity) from files that carry money but no cost column.
+CANONICAL_OPTIONAL = ("unit_cost", "lead_time_days", "lead_time_std", "revenue")
 
 ALIASES: dict[str, list[str]] = {
     "date": ["date", "order_date", "orderdate", "invoicedate", "invoice_date", "week", "period", "ds", "day", "timestamp", "datetime"],
@@ -26,6 +28,7 @@ ALIASES: dict[str, list[str]] = {
     # Lead-time dispersion (sigma_LT). Same alias set jobs/launch_readiness_job.py
     # already accepts, so a file that works there works here too.
     "lead_time_std": ["lead_time_std", "leadtimestd", "lead_std", "sigma_lead", "sigma_l"],
+    "revenue": ["revenue", "sales", "sales_amount", "amount", "net_sales", "line_total", "total"],
 }
 
 
@@ -121,6 +124,16 @@ def _normalize_core(
     out["quantity"] = pd.to_numeric(df[m["quantity"]], errors="coerce")
     if "unit_cost" in m:
         out["unit_cost"] = pd.to_numeric(df[m["unit_cost"]], errors="coerce")
+    elif "revenue" in m and m["revenue"] != m["quantity"]:
+        # No cost column, but the file carries money: recover the real unit cost
+        # rather than falling back to a flat default (which makes any value-based
+        # ranking collapse onto units). Guarded against revenue *being* the
+        # quantity column -- 'sales' is an alias of both.
+        revenue = pd.to_numeric(df[m["revenue"]], errors="coerce")
+        qty = out["quantity"]
+        out["unit_cost"] = (revenue / qty.where(qty != 0)).replace(
+            [float("inf"), float("-inf")], None
+        )
     if "lead_time_days" in m:
         out["lead_time_days"] = pd.to_numeric(df[m["lead_time_days"]], errors="coerce")
     if "lead_time_std" in m:
@@ -216,15 +229,20 @@ def prepare(
     overrides: dict[str, str] | None = None,
     period: str = "W",
     default_lead_days: float = 14.0,
+    default_unit_cost: float = 1.0,
 ) -> pd.DataFrame:
     """Load a client file and return canonical, period-aggregated demand.
 
-    ``default_lead_days`` fills lead time only where the file carries none
-    (missing column or blank cells) — per-SKU CSV values always win.
+    ``default_lead_days`` / ``default_unit_cost`` fill lead time and unit cost only
+    where the file carries none (missing column or blank cells) — per-SKU CSV values
+    always win, and a unit cost derived from revenue/quantity wins over the default.
     """
     raw = load_table(path)
     mapping = detect_columns(raw, overrides)
-    return normalize(raw, mapping, period=period, default_lead_days=default_lead_days)
+    return normalize(
+        raw, mapping, period=period, default_lead_days=default_lead_days,
+        default_unit_cost=default_unit_cost,
+    )
 
 
 def prepare_tracked(
@@ -233,10 +251,14 @@ def prepare_tracked(
     overrides: dict[str, str] | None = None,
     period: str = "W",
     default_lead_days: float = 14.0,
+    default_unit_cost: float = 1.0,
 ) -> tuple[pd.DataFrame, IntakeQuality]:
     """Same as ``prepare``, plus the ``IntakeQuality`` signal for a caller that
     needs to decide whether the result is trustworthy enough to hand back with
     unqualified confidence — see ``normalize_tracked``."""
     raw = load_table(path)
     mapping = detect_columns(raw, overrides)
-    return normalize_tracked(raw, mapping, period=period, default_lead_days=default_lead_days)
+    return normalize_tracked(
+        raw, mapping, period=period, default_lead_days=default_lead_days,
+        default_unit_cost=default_unit_cost,
+    )
