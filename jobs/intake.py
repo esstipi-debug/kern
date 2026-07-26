@@ -9,7 +9,7 @@ product per period (weekly by default) ready for the engine.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pandas as pd
@@ -52,6 +52,12 @@ class IntakeQuality:
     n_dropped_bad_date: int
     n_dropped_bad_quantity: int
     n_dropped_negative_quantity: int
+    # Canonical column -> how many cells were filled from a default rather than read
+    # from the file. Dropped rows were never the only way a deliverable could rest on
+    # data that is not the client's: a column absent from the source is synthesized
+    # wholesale, and counting rows alone reports that as perfect quality.
+    synthesized: tuple[tuple[str, int], ...] = ()
+    n_canonical_rows: int = 0
 
     @property
     def n_dropped(self) -> int:
@@ -60,6 +66,15 @@ class IntakeQuality:
     @property
     def dropped_fraction(self) -> float:
         return self.n_dropped / self.n_raw if self.n_raw else 0.0
+
+    @property
+    def fully_synthesized_columns(self) -> tuple[str, ...]:
+        """Columns where every single cell came from a default."""
+        if not self.n_canonical_rows:
+            return ()
+        return tuple(
+            name for name, count in self.synthesized if count >= self.n_canonical_rows
+        )
 
 
 @dataclass(frozen=True)
@@ -165,20 +180,30 @@ def _normalize_core(
         agg["lead_time_std"] = "median"
 
     grouped = out.groupby(["product_id", "bucket"], as_index=False).agg(agg).rename(columns={"bucket": "date"})
-    if "unit_cost" not in grouped.columns:
-        grouped["unit_cost"] = default_unit_cost
-    else:
-        grouped["unit_cost"] = grouped["unit_cost"].fillna(default_unit_cost)
-    if "lead_time_days" not in grouped.columns:
-        grouped["lead_time_days"] = default_lead_days
-    else:
-        grouped["lead_time_days"] = grouped["lead_time_days"].fillna(default_lead_days)
+    synthesized: dict[str, int] = {}
+
+    def _fill(column: str, default: float) -> None:
+        """Fill a missing/blank optional column and record how many cells we invented."""
+        if column not in grouped.columns:
+            synthesized[column] = len(grouped)
+            grouped[column] = default
+            return
+        blank = int(grouped[column].isna().sum())
+        if blank:
+            synthesized[column] = blank
+            grouped[column] = grouped[column].fillna(default)
+
+    _fill("unit_cost", default_unit_cost)
+    _fill("lead_time_days", default_lead_days)
     # 0.0 = "no dispersion known", which is what the engine assumed before this
     # column existed — so a file without it behaves exactly as it did.
-    if "lead_time_std" not in grouped.columns:
-        grouped["lead_time_std"] = 0.0
-    else:
-        grouped["lead_time_std"] = grouped["lead_time_std"].fillna(0.0)
+    _fill("lead_time_std", 0.0)
+
+    quality = replace(
+        quality,
+        synthesized=tuple(sorted(synthesized.items())),
+        n_canonical_rows=len(grouped),
+    )
 
     grouped = grouped.sort_values(["product_id", "date"]).reset_index(drop=True)
     return grouped[["date", "product_id", "quantity", "unit_cost", "lead_time_days", "lead_time_std"]], quality

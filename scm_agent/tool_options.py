@@ -12,7 +12,18 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import replace
 
-from src.escalation import OPERATIONAL, escalate, maybe_escalate_data_quality
+from src.escalation import (
+    OPERATIONAL,
+    escalate,
+    maybe_escalate_data_quality,
+    maybe_escalate_synthesized_columns,
+)
+
+# Canonical columns whose wholesale synthesis silently changes a money number or a
+# ranking. lead_time_std is excluded on purpose: defaulting it to 0.0 is the documented
+# deterministic-lead-time assumption, and no shipped sample file carries it, so
+# escalating there would gate healthy runs instead of catching bad ones.
+_DECISION_CRITICAL_COLUMNS = ("unit_cost", "lead_time_days")
 from src.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_handoff, as_options
 
 # Each item is (label, summary, action, tradeoffs); the first item is the recommended default.
@@ -56,17 +67,37 @@ def _apply_intake_quality(outcome: GuidedOutcome, report: object) -> GuidedOutco
     e.g. examples/run_inventory_job.py) or intake dropped nothing.
     """
     quality = getattr(report, "intake_quality", None)
-    if quality is None or quality.n_dropped == 0:
+    if quality is None:
         return outcome
-    detail = _intake_quality_detail(quality)
-    residual = Residual(
-        description=f"{quality.n_dropped} of {quality.n_raw} source row(s) were dropped during intake ({detail}).",
-        risk_if_skipped="the analysis is built on a smaller, possibly unrepresentative slice of the real "
-                        "demand history - verify the source file's date/quantity columns.",
-    )
-    outcome = replace(outcome, residuals=[*outcome.residuals, residual])
-    threshold = getattr(report, "intake_quality_threshold", 0.20)
-    return maybe_escalate_data_quality(outcome, quality.dropped_fraction, threshold, detail=detail)
+
+    # Columns the source file never carried, so intake invented every value. Disclosed
+    # always; escalated only for the ones whose absence silently moves a money number
+    # or a ranking (a defaulted lead_time_std of 0.0 is the documented
+    # deterministic-lead-time assumption, and every shipped sample file lacks it).
+    synthesized = tuple(getattr(quality, "fully_synthesized_columns", ()))
+    if synthesized:
+        outcome = replace(outcome, residuals=[*outcome.residuals, Residual(
+            description=f"intake synthesized every value of {', '.join(synthesized)} - "
+                        f"the source file carried no such column.",
+            risk_if_skipped="the result rests on a placeholder rather than the client's "
+                            "own data for those fields; supply the column or confirm "
+                            "the default is right for this client.",
+        )])
+
+    if quality.n_dropped:
+        detail = _intake_quality_detail(quality)
+        outcome = replace(outcome, residuals=[*outcome.residuals, Residual(
+            description=f"{quality.n_dropped} of {quality.n_raw} source row(s) were dropped during intake ({detail}).",
+            risk_if_skipped="the analysis is built on a smaller, possibly unrepresentative slice of the real "
+                            "demand history - verify the source file's date/quantity columns.",
+        )])
+        threshold = getattr(report, "intake_quality_threshold", 0.20)
+        outcome = maybe_escalate_data_quality(
+            outcome, quality.dropped_fraction, threshold, detail=detail
+        )
+
+    critical = [c for c in synthesized if c in _DECISION_CRITICAL_COLUMNS]
+    return maybe_escalate_synthesized_columns(outcome, critical)
 
 
 def inventory_options(report: object) -> GuidedOutcome:
