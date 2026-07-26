@@ -29,7 +29,7 @@ class LandedCost:
     duty: float
     broker_fee: float
     total: float
-    per_unit: float
+    per_unit: float | None      # None when there are no units to divide by
 
 
 def landed_cost(
@@ -65,9 +65,9 @@ def landed_cost(
         duty_base = goods_value + freight + insurance
     duty = duty_base * duty_rate
     total = goods_value + freight + insurance + handling + duty + broker_fee
-    # A genuinely zero-quantity line legitimately costs 0 per unit; isfinite keeps a
-    # NaN from borrowing that meaning (it cannot reach here after the guards above).
-    per_unit = (total / qty) if math.isfinite(qty) and qty > 0 else 0.0
+    # Zero units is not a free import: `total` still carries real freight and duty, so
+    # there is no per-unit cost to report rather than a per-unit cost of nothing.
+    per_unit = (total / qty) if math.isfinite(qty) and qty > 0 else None
     return LandedCost(
         incoterm=term, qty=qty, goods_value=goods_value, freight=freight,
         insurance=insurance, handling=handling, duty_base=duty_base, duty=duty,

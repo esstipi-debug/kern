@@ -48,6 +48,10 @@ SUPPORTED_LANGS: tuple[Lang, ...] = ("es", "en")
 # ---- package-deck labels (jobs/package_deliverable.py) ------------------------
 
 LABELS: dict[str, dict[Lang, str]] = {
+    # What a deliverable prints where a number was never measured. One shared label so a
+    # reader (and a test) can tell "we looked and it was zero" from "we never looked" -
+    # the distinction a rate over zero observations destroys when it renders as "0%".
+    "not_measured": {"es": "no medido", "en": "not measured"},
     "cadence_word": {"es": "cadencia", "en": "cadence"},
     "for_client": {"es": "para", "en": "for"},
     "executed_of_scope": {

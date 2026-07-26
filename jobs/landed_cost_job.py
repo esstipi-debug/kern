@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.deliverable import DataSource, Deliverable, Finding, Kpi
+from src.deliverable import DataSource, Deliverable, Finding, Kpi, not_measured
 from src.export import write_summary_csv
 from src.landed_cost import LandedCost, landed_cost
 
@@ -159,7 +159,8 @@ def write_operational(report: LandedCostReport, out_dir: str | Path, client: str
             "handling": round(ln.landed.handling, 2),
             "broker_fee": round(ln.landed.broker_fee, 2),
             "total_landed": round(ln.landed.total, 2),
-            "per_unit_landed": round(ln.landed.per_unit, 4),
+            # Blank, not 0: a zero-quantity line has no per-unit cost to report.
+            "per_unit_landed": "" if ln.landed.per_unit is None else round(ln.landed.per_unit, 4),
         }
         for ln in report.lines
     ]
@@ -173,6 +174,7 @@ def build_deck(
     prepared: str = "",
     citations: tuple[str, ...] = (),
     confidence: float = 0.85,
+    lang: str = "en",
 ) -> Deliverable:
     """Compose the landed-cost study: the true delivered cost and where it accrues."""
     uplift = report.landed_uplift_pct * 100
@@ -200,7 +202,9 @@ def build_deck(
     if top is not None:
         findings.append(Finding(
             f"Highest landed cost: {top.sku}",
-            f"{top.landed.total:,.0f} landed ({top.landed.per_unit:,.2f}/unit, {top.landed.incoterm}).",
+            f"{top.landed.total:,.0f} landed ("
+            + (not_measured(lang) if top.landed.per_unit is None else f"{top.landed.per_unit:,.2f}/unit")
+            + f", {top.landed.incoterm}).",
             impact="biggest lever for a cost-down or re-sourcing",
         ))
 

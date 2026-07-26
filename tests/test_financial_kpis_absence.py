@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 
 from jobs import financial_kpis_job as fkj
-from src.deliverable import NOT_MEASURED
+from src.deliverable import not_measured
 from src.financial_kpis import (
     cash_to_cash,
     days_inventory_outstanding,
@@ -149,7 +149,7 @@ def test_the_deck_says_not_measured_instead_of_printing_a_number():
 
     md = fkj.build_deck(report, client="Acme").to_markdown()
 
-    assert NOT_MEASURED in md
+    assert not_measured() in md
     assert "GMROI 0.00" not in md
     assert md.isascii()
 
@@ -190,5 +190,5 @@ def test_the_agent_summary_and_options_survive_an_unmeasurable_gmroi(tmp_path):
                    data_path=str(csv), client="Acme", out_dir=tmp_path)
 
     assert res.status == "ok", res.summary
-    assert NOT_MEASURED in res.summary or "GMROI" in res.summary
+    assert not_measured() in res.summary or "GMROI" in res.summary
     assert res.guided is not None and res.guided.options

@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 
 from jobs import sourcing_job as srcj
+from src.deliverable import not_measured
 
 _FULL = pd.DataFrame({
     "supplier": ["Alpha"] * 4 + ["Beta"] * 4,
@@ -126,16 +127,26 @@ def test_a_fully_measured_panel_still_ranks_on_every_criterion():
 
 # ---- rendering ---------------------------------------------------------------
 
-def test_the_deck_says_no_medido_instead_of_printing_zero_percent():
+def test_the_deck_says_not_measured_instead_of_printing_zero_percent():
     cards, _ = _cards(_LEAD_ONLY, lead_col="lead_time_days")
     report = srcj.run(cards)
 
     md = srcj.build_deck(report, client="Acme").to_markdown()
 
-    assert "no medido" in md
+    assert not_measured() in md
     assert "OTIF 0%" not in md
     assert "0% PPM" not in md
     assert md.isascii()
+
+
+def test_the_same_deck_in_spanish_says_no_medido():
+    cards, _ = _cards(_LEAD_ONLY, lead_col="lead_time_days")
+    report = srcj.run(cards)
+
+    md = srcj.build_deck(report, client="Acme", lang="es").to_markdown()
+
+    assert "no medido" in md
+    assert "OTIF 0%" not in md
 
 
 def test_the_deck_does_not_claim_an_otif_spread_it_never_observed():
@@ -180,7 +191,7 @@ def test_a_measured_zero_is_still_printed_as_zero_percent():
     assert alpha.evaluable.otif == 2
 
     md = srcj.build_deck(report, client="Acme").to_markdown()
-    assert "no medido" not in md
+    assert not_measured() not in md
     assert "OTIF 0%" in md          # an observed zero, stated as one
 
 

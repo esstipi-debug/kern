@@ -111,10 +111,13 @@ def test_a_non_finite_unit_cost_is_refused():
         landed_cost(unit_cost=NAN, qty=100.0, freight=500.0)
 
 
-def test_a_genuinely_zero_quantity_lands_at_zero_per_unit():
+def test_a_genuinely_zero_quantity_has_no_per_unit_cost():
+    """This test used to assert per_unit == 0.0 - it pinned the very fallback the
+    review flagged. The finiteness guard only ever closed the NaN door; zero units
+    means there is nothing to divide by, which is `None`."""
     result = landed_cost(unit_cost=10.0, qty=0.0, freight=0.0)
 
-    assert result.per_unit == pytest.approx(0.0)
+    assert result.per_unit is None
 
 
 def test_a_blank_quantity_in_the_csv_is_refused_before_the_uplift_is_reported(tmp_path):

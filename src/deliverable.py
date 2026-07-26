@@ -26,10 +26,16 @@ from src import i18n
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
-# What a deliverable prints where a number was never measured. One shared token so a
-# reader (and a test) can tell "we looked and it was zero" from "we never looked" -
-# the distinction a rate over zero observations destroys when it renders as "0%".
-NOT_MEASURED = "no medido"
+def not_measured(lang: str = "en") -> str:
+    """What a deliverable prints where a number was never measured.
+
+    Defaults to English because an individual tool deck is English by design
+    (``Deliverable.lang`` defaults to ``"en"`` - see ``src/i18n.py``); the package
+    deck asks for its own language. Lets a reader tell "we looked and it was zero"
+    from "we never looked", which is the distinction a rate over zero observations
+    destroys when it renders as "0%".
+    """
+    return i18n.label("not_measured", lang)
 
 
 def _visible(text: str) -> str:

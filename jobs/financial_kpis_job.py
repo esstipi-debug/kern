@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.deliverable import NOT_MEASURED, DataSource, Deliverable, Finding, Kpi
+from src.deliverable import DataSource, Deliverable, Finding, Kpi, not_measured
 from src.export import write_summary_csv
 from src.financial_kpis import (
     cash_to_cash,
@@ -64,8 +64,8 @@ class FinancialReport:
     gmroi: float | None
     sell_through: float | None
     inventory_to_sales: float | None
-    dso: float
-    dpo: float
+    dso: float | None               # from the AR ledger; None when nobody supplied it
+    dpo: float | None               # from the AP ledger; None when nobody supplied it
     cash_to_cash: float | None
     worst: tuple[SkuFinance, ...]   # all SKUs, ranked by GMROI ascending (worst first)
 
@@ -87,14 +87,14 @@ def _num(value: float | None, digits: int) -> float | str:
     return "" if value is None else round(value, digits)
 
 
-def fmt(value: float | None, spec: str) -> str:
+def fmt(value: float | None, spec: str, lang: str = "en") -> str:
     """A figure, or the words that say it was never measurable.
 
     Public because the agent surfaces (``scm_agent/tools.py`` summary and
     ``tool_options.financial_kpis_options``) run *after* the QA gate, which only
     blocks on ``turns`` - every other KPI can still legitimately be ``None`` there.
     """
-    return NOT_MEASURED if value is None else format(value, spec)
+    return not_measured(lang) if value is None else format(value, spec)
 
 
 _fmt = fmt
@@ -164,12 +164,19 @@ def prepare(data_path: str, params: dict | None = None) -> list[dict]:
     return prepare_records(pd.read_csv(data_path), params)
 
 
-def run(records: list[dict], *, dso: float = 0.0, dpo: float = 0.0) -> FinancialReport:
+def run(
+    records: list[dict], *, dso: float | None = None, dpo: float | None = None
+) -> FinancialReport:
     """Roll up the records and compute the inventory-finance KPI pack.
 
     A KPI whose inputs were never observed comes back ``None``. It is not zero, and
     it is certainly not the infinite turns / infinite GMROI the degenerate branches
     used to report.
+
+    ``dso``/``dpo`` come from the AR/AP ledgers, which inventory data never contains.
+    Defaulting them to 0.0 made ``cash_to_cash`` return ``DIO + 0 - 0 == DIO`` and the
+    deck print it as a measured cycle. Unsupplied is ``None``; a supplied 0.0 (cash on
+    delivery) is still a real measurement.
     """
     total_cogs = sum(r["cogs"] for r in records)
     total_inv = sum(r["avg_inventory_value"] for r in records)
@@ -254,6 +261,7 @@ def build_deck(
     prepared: str = "",
     citations: tuple[str, ...] = (),
     confidence: float = 0.85,
+    lang: str = "en",
 ) -> Deliverable:
     """Compose the inventory-finance dashboard: how hard the inventory dollars work.
 
@@ -261,10 +269,11 @@ def build_deck(
     infinite turn rate) for a column nobody supplied is the failure this pack is meant
     to find in the client's own reporting.
     """
-    turns, dio, gm = _fmt(report.turns, ".1f"), _fmt(report.dio, ".0f"), _fmt(report.gmroi, ".2f")
-    c2c = _fmt(report.cash_to_cash, ".0f")
-    inv_sales = _fmt(report.inventory_to_sales, ".2f")
-    sell = NOT_MEASURED if report.sell_through is None else f"{report.sell_through * 100:.0f}%"
+    turns = fmt(report.turns, ".1f", lang)
+    dio, gm = fmt(report.dio, ".0f", lang), fmt(report.gmroi, ".2f", lang)
+    c2c = fmt(report.cash_to_cash, ".0f", lang)
+    inv_sales = fmt(report.inventory_to_sales, ".2f", lang)
+    sell = not_measured(lang) if report.sell_through is None else f"{report.sell_through * 100:.0f}%"
 
     summary = (
         f"Inventory finance across {report.n_skus} SKU(s): {turns} turns, "
@@ -281,7 +290,8 @@ def build_deck(
         Finding(
             "Working capital tied up",
             f"Cash-to-cash {c2c} days (DIO {dio} + DSO "
-            f"{report.dso:.0f} - DPO {report.dpo:.0f}); inventory-to-sales {inv_sales}.",
+            f"{fmt(report.dso, '.0f', lang)} - DPO {fmt(report.dpo, '.0f', lang)}); "
+            f"inventory-to-sales {inv_sales}.",
             impact="every day of DIO removed releases working capital",
         ),
     ]
@@ -297,7 +307,7 @@ def build_deck(
         findings.append(Finding(
             "KPIs this data could not support",
             f"{', '.join(unmeasurable)} - the inputs were absent, so they are reported as "
-            f"'{NOT_MEASURED}' rather than as a figure.",
+            f"'{not_measured(lang)}' rather than as a figure.",
             impact="supply the missing column(s) to complete the finance pack",
         ))
     measured_worst = [s for s in report.worst if s.gmroi is not None]
@@ -327,7 +337,7 @@ def build_deck(
 
     data_sources = (
         DataSource("Per-SKU financials (COGS / avg inventory / margin / units / sales)", "ERP + finance close", "monthly"),
-        DataSource("DSO / DPO", "AR / AP ledgers", "per run"),
+        DataSource("DSO / DPO", "AR / AP ledgers (not derivable from inventory data)", "per run"),
     )
 
     recommendations = [
