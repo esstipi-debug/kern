@@ -35,7 +35,6 @@ def continuous_review_sq(
     fixed_order_cost: float,
     lead_time_periods: float,
     cycle_service_level: float,
-    periods_per_year: float = 52.0,
     lead_time_std: float = 0.0,
     demand_distribution: DistributionKind = "normal",
     observed_skewness: float | None = None,
