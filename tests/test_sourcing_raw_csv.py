@@ -63,13 +63,23 @@ def test_prepare_derives_real_scorecards_from_an_unmapped_erp_export(tmp_path):
 
 
 def test_the_award_is_decided_by_real_performance_not_alphabetical_order(tmp_path):
-    payload = srcj.prepare(str(_raw_erp_csv(tmp_path)), _params())
+    """The best supplier is deliberately LAST alphabetically.
 
+    A fixture where the winner also sorts first cannot tell a real ranking apart from
+    ``sorted(names)`` - which is precisely the degenerate behaviour the all-zero scorecard
+    produced, and what a mutation of ``topsis_rank`` reintroduces.
+    """
+    csv = _raw_erp_csv(
+        tmp_path,
+        Supplier=["Zeta", "Zeta", "Zeta", "Beta", "Beta"],
+    )
+
+    payload = srcj.prepare(str(csv), _params())
     report = srcj.run(payload["scorecards"], payload["prices"])
 
-    assert report.recommended == "Alpha"
-    assert report.ranking.scores["Alpha"] > 0.0
-    assert report.ranking.scores["Alpha"] != report.ranking.scores["Beta"]
+    assert report.recommended == "Zeta"                    # better OTIF, lead and quality
+    assert report.ranking.ranking == ["Zeta", "Beta"]      # not sorted(["Beta", "Zeta"])
+    assert report.ranking.scores["Zeta"] > report.ranking.scores["Beta"]
 
 
 # -- the bug that shipped: truthiness on a free-text column -------------------
