@@ -79,6 +79,12 @@ def _as_bool(series: pd.Series, col: str, field: str) -> pd.Series:
     if pd.api.types.is_numeric_dtype(series):
         if series.isna().any():
             raise ValueError(f"column '{col}' ({field}) has blank rows; a blank is not a yes or a no")
+        off_scale = sorted({float(v) for v in series.unique()} - {0.0, 1.0})
+        if off_scale:
+            raise ValueError(
+                f"column '{col}' ({field}) holds {off_scale[:3]}, not 0/1 - it is a measurement, "
+                "not a yes/no flag"
+            )
         return series.astype(bool)
     text = series.astype(str).str.strip().str.lower()
     unknown = sorted(set(text) - _TRUE_TOKENS - _FALSE_TOKENS)
@@ -471,7 +477,6 @@ def build_deck(
         citations=tuple(citations),
         confidence=confidence,
         residual=" ".join((
-            *report.notes,
             "The final award, price negotiation, and contract terms are commercial / legal "
             "decisions - this ranks and prepares the packet; a human signs the award.",
         )),
