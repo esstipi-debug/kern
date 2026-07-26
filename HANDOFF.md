@@ -22,6 +22,79 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-07-26 — PR #193 "degradacion silenciosa": 5 commits, CI verde, DRAFT sin mergear
+
+**Lee esto primero si agarras en frio el hilo de honestidad numerica.** Rama
+`feat/degradacion-silenciosa`, worktree `.wt-degradacion-silenciosa`, **PR #193 draft**,
+MERGEABLE, CI verde (3.11/3.12/3.13 + prod-boot). **Suite 3836 passed / 3 skipped**
+(baseline `main` al empezar: 3672). `ruff check src tests examples` limpio. No deployado
+(no hay auto-deploy en `main`).
+
+Arranco de una autopsia verificada **corriendo codigo**: Kern comete la misma degradacion
+silenciosa contra la que se diferencia — ante un input imposible devuelve un numero
+plausible en vez de un error. TDD en todo: test que reproduce, RED verificado, despues el fix.
+
+**Los 5 commits**
+
+| commit | que cierra |
+|---|---|
+| `578e361` | Los 5 puntos del pedido (NaN/sigma_source, auditoria del patron, OTIF, ausencia-como-favorable, metodologia declarada != corrida) |
+| `356d984` | Los 10 hallazgos confirmados de una revision adversarial de 30 agentes |
+| `87c043b` | Merge de `origin/main` (#192) — politica estricta por defecto, degradacion como opt-in |
+| `d56391e` | E&O del demo publico |
+| `48c8c94` | Los 3 follow-ups restantes (DSO/DPO, qty=0, i18n de "no medido") |
+
+**El numero que justifica todo.** TSB/Croston emiten un NaN de warm-up en sus fitted values,
+**AutoETS no** — esa asimetria es lo que mantuvo el defecto vivo. `nan > 0` es False, asi que
+`to_engine_inputs` caia al fallback `demand_std` sin warning. Sobre
+`data/sample_demand_portfolio.csv` SKU-C: sigma **20,066** usada contra **21,794** correcta;
+safety stock 57,17 u / $6.860 donde iban 62,09 u / $7.451.
+
+**Cuatro cosas que conviene saber antes de seguir**
+
+1. **`require_all_criteria` en `jobs/sourcing_job.score_suppliers`.** #192 se mergeo en vuelo
+   con la politica OPUESTA para el mismo caso. Resolucion decidida con el operador: `True`
+   (default, y lo que usa `prepare`) = contrato de #192 intacto, **cero tests suyos tocados**;
+   `False` = ausencia -> `None`, criterio fuera del TOPSIS, "not measured" en el deck. Regla
+   que lo hizo funcionar: **permisivo con la ausencia no es permisivo con la basura** — una
+   columna que SI esta pasa por `_as_bool`/`_as_float` en los dos modos.
+2. **`src/finite.py` es nuevo** y lo importan 7 modulos (`classification`, `digital_twin`,
+   `landed_cost`, `multi_echelon`, `reverse_logistics`, `working_capital`, y dos jobs). Solo
+   stdlib, seguro para la cadena de boot de prod (`prod-boot` verde lo confirma).
+3. **`ForecastResult.sigma_source` es una property derivada, no un campo.** Se pidio "un
+   campo"; se desvio a proposito porque un campo guardado puede desincronizarse de
+   `error_std`/`demand_std`, que es el defecto que el PR ataca. Se serializa igual: es columna
+   de `summary.csv`.
+4. **"no medido" ahora se enruta por `src/i18n.py`** (`LABELS["not_measured"]` +
+   `src.deliverable.not_measured(lang)`). Decks por herramienta -> `"not measured"` (son
+   English-only por diseno documentado); `build_deck(..., lang="es")` -> `"no medido"`.
+
+**Tipos que cambiaron y hay que respetar** (todos significan "no medible", nunca cero):
+`SupplierScore.otif/.ppm/.on_time_rate/.in_full_rate/.avg_lead_time` -> `float | None` (+ el
+nuevo `SupplierScore.evaluable: Evaluable`); `FinancialReport` casi entero + `.dso`/`.dpo`;
+`SkuFinance.gmroi/.gross_margin`; las 8 funciones de `src/financial_kpis`;
+`LandedCost.per_unit`; `SkuStock.days_since_last_sale`. `SafetyStockResult` gano
+`distribution`; `SkuRecommendation` gano `sigma_source` / `buffer_distribution` /
+`lead_time_std` / `lead_time_std_source` / `risk_periods`.
+
+**Gotcha de proceso, repetido.** La revision adversarial (30 agentes, refutador independiente
+por hallazgo, 26 crudos -> 17 confirmados / 9 refutados) encontro **2 CRITICOS que no
+necesitaban un NaN**: `bool("No") is True` daba 100% de OTIF sobre 60 entregas tardias, y un
+test propio era vacuo en las dos ramas. Vale el costo. Correrla **read-only sobre el commit**,
+nunca sobre el working tree (memoria `review-agents-mutate-live-worktree`); esta vez el
+worktree quedo intacto, verificado con `git status` + HEAD sin mover.
+
+**Siguiente, en este orden:** (1) revisar y mergear #193 — no se mergeo por pedido explicito;
+(2) despues del merge, `flyctl deploy` manual si se quiere en prod (memoria
+`kern-prod-deploy-bs4-gotcha` tiene el playbook y el rollback); (3) opcional: threadear `lang`
+hasta `jobs/package_deliverable.py` para que el deck consolidado en "es" le pida
+`build_deck(..., lang="es")` a los 3 tools que ya lo aceptan.
+
+**Fuera de alcance a proposito, sin tocar:** `examples/run_scm_{dataco,olist,procurement,
+superstore}.py` formatean `.otif`/`.ppm`/`.per_unit` directo; con datos bien formados andan,
+pero necesitan los datasets de Kaggle para verificarse. Es el unico hueco conocido que queda.
+
+
 ## 2026-07-26 — E0 "que Kern deje de mentir": PR #192 abierto (draft), worktree `.wt-degradacion-honesta`
 
 **Lee esto primero si agarrás en frío el hilo de honestidad/auditabilidad.** Rama
