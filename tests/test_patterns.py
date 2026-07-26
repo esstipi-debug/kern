@@ -354,3 +354,31 @@ def test_is_chronic_or_worse_covers_chronic_persistent_and_oscillating():
 
     assert is_chronic_or_worse(chronic) is True
     assert is_chronic_or_worse(one_off) is False
+
+
+def test_escalation_rate_is_the_fraction_of_failure_episodes_over_all_episodes():
+    """Dos episodios-falla de tres: tiene que dar 2/3, no n_failures pelado ni 1.0."""
+    occs = (
+        _failure_run(0)      # episodio 1: escala a falla
+        + [occ(30 * 24)]     # episodio 2: solo cruza ROP, no escala
+        + _failure_run(60)   # episodio 3: escala a falla
+    )
+
+    profile = _profiles(occs)[0]
+
+    assert profile.n_episodes == 3
+    assert profile.n_failure_episodes == 2
+    assert profile.escalation_rate == pytest.approx(2 / 3)
+
+
+def test_a_persistent_excess_profile_is_never_oscillating_by_itself():
+    """is_oscillating describe el lado disponibilidad de un vaiven con exceso en
+    la MISMA entidad -- el propio perfil de excess (que trivialmente aparece en
+    entities_with_excess) no se marca oscillating aunque sea persistent."""
+    occs = [occ(h, signal="excess_growing") for h in range(0, 24 * 50, 6)]
+
+    profile = _profiles(occs)[0]
+
+    assert profile.family == "excess"
+    assert profile.is_persistent is True
+    assert profile.is_oscillating is False
