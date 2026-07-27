@@ -181,9 +181,23 @@ def inject_missing_lead_time(df: pd.DataFrame, rng: np.random.Generator) -> pd.D
     if not leads:
         return out
     blanked = {v for v in leads if rng.random() < 0.34}
+    if not blanked:
+        blanked = {leads[0]}
+    elif len(leads) >= 2 and len(blanked) == len(leads):
+        # Techo ("como mucho todos menos uno"): con solo dos valores
+        # distintos de lead time, blanquear ambos de forma independiente con
+        # p=0.34 ocurre en ~11.6% de las semillas (0.34**2) y vacia
+        # lead_time_days por completo. inject_renamed_supplier (nivel 3)
+        # deriva su columna `supplier` de esta misma columna, asi que un
+        # frame enteramente blanqueado lo deja sin ningun proveedor conocido
+        # de quien renombrar -- el defecto de nivel 3 desaparece en silencio
+        # (medido: 45 de 400 semillas en el camino de produccion,
+        # apply_dirt(level=3)). Se salva un valor -- el ultimo en orden
+        # ascendente, deterministico entre corridas -- para que el piso de
+        # nivel 2 ("al menos uno blanqueado", que sigue vigente arriba)
+        # nunca colapse en "todos los valores blanqueados."
+        blanked.discard(leads[-1])
     mask = numeric_leads.isin(blanked)
-    if not mask.any():
-        mask = numeric_leads == leads[0]
     out.loc[mask, "lead_time_days"] = np.nan
     return out
 
@@ -258,23 +272,31 @@ def inject_renamed_supplier(df: pd.DataFrame, rng: np.random.Generator) -> pd.Da
 
     Agrega una columna ``supplier`` que ``history_frame`` no produce (se
     deriva de ``lead_time_days``, el unico rasgo del proveedor que el
-    historico ya trae). No consume ``rng``: el corte es deterministico
-    (mediana de fechas), no un sorteo -- por eso no necesita el fallback "al
-    menos una" de los otros inyectores de este nivel.
+    historico ya trae). No consume ``rng`` para elegir el corte: la fecha de
+    corte es deterministica (mediana de fechas), no un sorteo.
 
     ``UNKNOWN_SUPPLIER`` (lead time no declarado) nunca es candidato a
-    victima. Este inyector vive en el nivel 3, y ``apply_dirt`` siempre
-    corre el nivel 2 antes -- donde ``inject_missing_lead_time`` puede
-    blanquear a NaN un grupo entero de lead times. En el fixture estandar
-    de este archivo, con solo dos valores de lead time distintos, blanquear
-    uno alcanza para volver ``UNKNOWN_SUPPLIER`` la moda de toda la columna
-    (medido: 6 de 8 semillas 0..7, incluida la semilla 0). Renombrar ese
-    bucket no es "un proveedor bajo dos razones sociales" -- son filas de
-    lead time desconocido que bien pueden pertenecer a proveedores reales
-    distintos, y agruparlas bajo un nombre inventado no reproduce el
-    defecto que este inyector modela. Si, tras excluirlo, no queda ningun
-    proveedor conocido, el frame se devuelve sin cambios: no hay a quien
-    renombrar.
+    victima -- son filas de lead time desconocido que bien pueden pertenecer
+    a proveedores reales distintos, y agruparlas bajo un nombre inventado no
+    reproduce el defecto que este inyector modela ("un proveedor bajo dos
+    razones sociales"). Este inyector vive en el nivel 3, y ``apply_dirt``
+    siempre corre el nivel 2 antes -- donde ``inject_missing_lead_time``
+    puede blanquear a NaN un grupo entero de lead times y, con eso, vaciar
+    ``known_suppliers`` por completo. Ese inyector garantiza ahora, ademas
+    del piso "al menos un valor blanqueado", un techo simetrico: con dos o
+    mas valores distintos de lead time, al menos uno queda SIN blanquear
+    (ver su docstring). Esa garantia es lo unico que asegura que este
+    inyector siempre tenga un proveedor conocido de quien renombrar en el
+    camino de produccion (``apply_dirt(df, level=3, seed=...)``) -- medido
+    directamente sobre las semillas 0..399 del fixture estandar de este
+    archivo: sin el techo, 45 de 400 semillas (11.25%, primera en la semilla
+    9) llegaban aca con ``known_suppliers`` vacio y este inyector devolvia
+    el frame intacto, un defecto de nivel 3 que desaparecia en silencio; con
+    el techo, 0 de 400. El guard de abajo (``if victim.empty: return out``)
+    queda como defensa en profundidad -- no deberia dispararse nunca por el
+    camino de produccion mientras la garantia de ``inject_missing_lead_time``
+    se mantenga, pero protege igual si algun catalogo futuro le pasa un
+    frame con un solo valor de lead time (donde esa garantia no aplica).
     """
     out = df.copy()
     leads = pd.to_numeric(out["lead_time_days"], errors="coerce")

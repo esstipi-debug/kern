@@ -664,17 +664,34 @@ def test_renamed_supplier_never_renames_the_unknown_bucket_on_the_production_pat
     moda de toda la columna: medido directamente, 6 de las semillas 0..7 --
     incluida la semilla 0, la unica que usa cada prueba de nivel 3 de este
     archivo -- renombraban el bucket desconocido en vez de un proveedor
-    real antes del fix. El 100% de las invocaciones reales (que siempre
-    pasan por el nivel 2 primero dentro de ``apply_dirt``) ejercitaban el
-    0% de esa cobertura. Esta prueba corre el punto de entrada real de
-    produccion, ``apply_dirt(df, level=3, seed=...)``, en las semillas 0..7
-    y fija que el proveedor renombrado sea siempre uno real, nunca el
-    bucket desconocido. (`inject_renamed_supplier` no toca `product_id`,
-    `date` ni `quantity`, asi que la capa cosmetica del nivel 1 -- que
-    corre despues, al final de `apply_dirt` -- no puede alterar la columna
-    `supplier` que se inspecciona aca.)"""
+    real antes del primer fix. El 100% de las invocaciones reales (que
+    siempre pasan por el nivel 2 primero dentro de ``apply_dirt``)
+    ejercitaban el 0% de esa cobertura.
+
+    Ese primer fix (excluir ``UNKNOWN_SUPPLIER`` de la eleccion de victima)
+    trajo un segundo problema, cerrado despues: si blanquear un valor de
+    lead time alcanzaba para volver ``UNKNOWN_SUPPLIER`` el 100% de la
+    columna (no solo la moda), ``known_suppliers`` quedaba vacio y el
+    inyector devolvia el frame SIN renombrar a nadie -- un defecto de nivel
+    3 que desaparecia en silencio en vez de aparecer mal. Medido: 45 de las
+    semillas 0..399 en este mismo camino de produccion, la primera en la
+    semilla 9 (fuera del rango 0..7 que cubria esta prueba originalmente).
+    El rango se amplia a 0..49 para que esa cobertura quede fijada, no
+    asumida; ver ``inject_missing_lead_time`` por la garantia de "al menos
+    un valor de lead time sin blanquear" que ahora lo previene.
+
+    Esta prueba corre el punto de entrada real de produccion,
+    ``apply_dirt(df, level=3, seed=...)``, y fija que el proveedor
+    renombrado sea siempre uno real, nunca el bucket desconocido, y que
+    SIEMPRE aparezca un rename. (Ninguno de los inyectores cosmeticos del
+    nivel 1 -- ``inject_whitespace_case``, ``inject_mixed_date_formats``,
+    ``inject_thousand_separators``, que corren al final de ``apply_dirt`` --
+    escribe la columna ``product_id``, ``date`` o ``quantity``
+    respectivamente y ninguno de los tres toca ``supplier`` en absoluto, asi
+    que la capa cosmetica no puede alterar la columna que se inspecciona
+    aca.)"""
     df = _clean_frame()
-    for seed in range(8):
+    for seed in range(50):
         dirty = apply_dirt(df, level=3, seed=seed)
         renamed = sorted(n for n in dirty["supplier"].unique() if n.endswith(" SpA"))
         assert renamed, f"seed {seed}: no se detecto ningun rename en el path de produccion"
