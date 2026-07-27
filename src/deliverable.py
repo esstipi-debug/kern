@@ -59,6 +59,15 @@ def ppm(value: float | None, lang: str = "en") -> str:
     return not_measured(lang) if value is None else f"{value:,.0f} PPM"
 
 
+def money(value: float | None, lang: str = "en", *, symbol: str = "$") -> str:
+    """An amount, or the words that say it was never observed.
+
+    ``landed_cost(...).per_unit`` is ``None`` over zero units; printing ``$0.00/unit``
+    there says the goods are free, which is the most expensive kind of wrong.
+    """
+    return not_measured(lang) if value is None else f"{symbol}{value:,.2f}"
+
+
 def _visible(text: str) -> str:
     """``text`` with Unicode format characters (category "Cf" - zero-width
     space/joiner/word-joiner, the BOM, etc.) stripped, so a name made only of

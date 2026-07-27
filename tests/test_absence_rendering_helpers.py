@@ -12,7 +12,7 @@ and say which ones were dropped.
 
 import pytest
 
-from src.deliverable import days, not_measured, pct, ppm
+from src.deliverable import days, money, not_measured, pct, ppm
 from src.supplier_scorecard import Evaluable, SupplierScore, rankable
 
 _MEASURED_ALL = Evaluable(on_time=4, in_full=4, otif=4, lead_time=4, ppm=4)
@@ -55,6 +55,18 @@ def test_a_genuine_zero_is_still_a_measurement_and_prints_as_one():
 def test_measured_quantities_carry_their_units():
     assert days(3.4) == "3 days"
     assert ppm(1234.6) == "1,235 PPM"    # thousands separator, no decimals
+
+
+def test_an_unmeasured_amount_of_money_is_not_free():
+    """`landed_cost(...).per_unit` is None over zero units; $0.00/unit reads as free."""
+    assert money(None) == "not measured"
+    assert money(None, "es") == "no medido"
+
+
+def test_a_measured_amount_of_money_prints_with_its_symbol_and_cents():
+    assert money(12.5) == "$12.50"
+    assert money(0.0) == "$0.00"
+    assert money(1234.5, symbol="R$") == "R$1,234.50"
 
 
 def test_the_formatters_agree_with_the_shared_i18n_token():

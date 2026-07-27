@@ -24,12 +24,42 @@ if str(ROOT) not in sys.path:
 
 from scm_agent.knowledge import KnowledgeBase  # noqa: E402
 from scm_agent.modes import SCM  # noqa: E402
-from src.deliverable import DataSource, Deliverable, Finding, Kpi  # noqa: E402
+from src.deliverable import (  # noqa: E402
+    DataSource,
+    Deliverable,
+    Finding,
+    Kpi,
+    days,
+    money,
+    not_measured,
+    pct,
+    ppm,
+)
 from src.landed_cost import landed_cost  # noqa: E402
 from src.mcdm import Criterion, topsis_rank  # noqa: E402
-from src.supplier_scorecard import score_supplier  # noqa: E402
+from src.supplier_scorecard import rankable, score_supplier  # noqa: E402
 
 SLA_DAYS = 14  # [ASSUMPTION] promised procurement lead time (no promised date in data)
+
+
+def supplier_scorecards(dl, suppliers) -> tuple[list, tuple[str, ...]]:
+    """Score each supplier's delivered POs, and name the ones this data could not score.
+
+    Cells go to ``score_supplier`` uncoerced: ``float(nan)`` on a missing receipt date
+    used to average into the lead time, and a zero-day lead time collapses the risk
+    period - i.e. removes the safety stock the buyer is being told to hold.
+    """
+    cards = []
+    for s in suppliers:
+        g = dl[dl["Supplier"] == s]
+        deliveries = [
+            {"on_time": (ld <= SLA_DAYS) if pd.notna(ld) else None,
+             "in_full": st == "Delivered", "lead_time_days": ld, "units": q, "defects": dfu}
+            for ld, st, q, dfu in zip(g["lead"], g["Order_Status"], g["Quantity"],
+                                      g["Defective_Units"])
+        ]
+        cards.append(score_supplier(s, deliveries))
+    return rankable(cards, ("otif", "on_time_rate", "in_full_rate", "avg_lead_time", "ppm"))
 
 
 def section(t):
@@ -55,15 +85,14 @@ def main():
     # 1) Supplier scorecards (on delivered/partial POs) -----------------------
     section("1) Supplier OTIF scorecards (M8) - 5 competing suppliers")
     dl = df[df["Delivery_Date"].notna()].copy()
-    cards = {}
-    for s in suppliers:
-        g = dl[dl["Supplier"] == s]
-        deliveries = [
-            {"on_time": bool(ld <= SLA_DAYS), "in_full": st == "Delivered",
-             "lead_time_days": float(ld), "units": float(q), "defects": float(dfu)}
-            for ld, st, q, dfu in zip(g["lead"], g["Order_Status"], g["Quantity"], g["Defective_Units"])
-        ]
-        cards[s] = score_supplier(s, deliveries)
+    scored, unscoreable = supplier_scorecards(dl, suppliers)
+    cards = {c.supplier: c for c in scored}
+    for s in unscoreable:
+        print(f"  {s:<16} {not_measured()} - no scoreable delivery in this data; "
+              "left out of the ranking")
+    if not cards:
+        sys.exit("no supplier carried a scoreable delivery; nothing to rank")
+    suppliers = [s for s in suppliers if s in cards]
     stats = {}
     for s in suppliers:
         gall = df[df["Supplier"] == s]
@@ -73,9 +102,9 @@ def main():
             "cancel": float((gall["Order_Status"] == "Cancelled").mean()),
         }
         c = cards[s]
-        print(f"  {s:<16} OTIF={c.otif*100:5.1f}%  on-time={c.on_time_rate*100:5.1f}%  "
-              f"in-full={c.in_full_rate*100:5.1f}%  lead={c.avg_lead_time:4.1f}d  "
-              f"defect_ppm={c.ppm:>8,.0f}  savings={stats[s]['savings']*100:4.1f}%  "
+        print(f"  {s:<16} OTIF={pct(c.otif):>6}  on-time={pct(c.on_time_rate):>6}  "
+              f"in-full={pct(c.in_full_rate):>6}  lead={days(c.avg_lead_time):>9}  "
+              f"defect_ppm={ppm(c.ppm):>16}  savings={stats[s]['savings']*100:4.1f}%  "
               f"compliant={stats[s]['compliance']*100:4.0f}%")
 
     # 2) MCDM supplier selection among the 5 ----------------------------------
@@ -105,7 +134,9 @@ def main():
     realized = float(((df["Unit_Price"] - df["Negotiated_Price"]) * df["Quantity"]).sum())
     print(f"  chosen '{chosen}': spend list=${spend_list:,.0f} -> negotiated=${spend_neg:,.0f} "
           f"(saved {(1-spend_neg/spend_list)*100:.1f}%)")
-    print(f"  landed/unit=${lc.per_unit:.2f}  (+{(lc.per_unit/(spend_neg/qty)-1)*100:.0f}% over negotiated unit)")
+    # per_unit is None over zero units; the premium it feeds is then unanswerable too.
+    premium = pct(lc.per_unit / (spend_neg / qty) - 1) if lc.per_unit is not None else not_measured()
+    print(f"  landed/unit={money(lc.per_unit)}  (+{premium} over negotiated unit)")
     print(f"  portfolio: avg negotiation savings {overall_savings*100:.1f}%  -> ${realized:,.0f} realized")
 
     # 4) Deliverable ----------------------------------------------------------
@@ -124,8 +155,9 @@ def main():
                     f"Leads the TOPSIS ranking; '{worst}' is the laggard.",
                     impact="consolidate spend on the top supplier"),
             Finding("Defect/quality spread",
-                    f"Defect PPM ranges {min(c.ppm for c in cards.values()):,.0f}"
-                    f"-{max(c.ppm for c in cards.values()):,.0f} across suppliers.",
+                    f"Defect PPM ranges {ppm(min(c.ppm for c in cards.values()))}"
+                    f"-{ppm(max(c.ppm for c in cards.values()))} across the "
+                    f"{len(cards)} supplier(s) that could be scored.",
                     impact="quality clauses + incoming inspection on the worst"),
             Finding("Negotiation is working",
                     f"Avg {overall_savings*100:.1f}% off list price, ${realized:,.0f} realized.",
@@ -133,11 +165,11 @@ def main():
         ),
         kpis=(
             Kpi("Recommended supplier", chosen, rationale="Best multi-criteria trade-off (TOPSIS)"),
-            Kpi("Best-supplier OTIF", f"{cards[chosen].otif*100:.0f}%", target="95%+",
+            Kpi("Best-supplier OTIF", pct(cards[chosen].otif), target="95%+",
                 rationale="On-time in-full delivery reliability"),
             Kpi("Avg negotiation savings", f"{overall_savings*100:.1f}%", rationale="Cost reduction vs list price"),
             Kpi("Realized savings", f"${realized:,.0f}", rationale="Hard dollars from negotiation"),
-            Kpi("Chosen-supplier landed/unit", f"${lc.per_unit:.2f}", rationale="Freight-loaded delivered cost"),
+            Kpi("Chosen-supplier landed/unit", money(lc.per_unit), rationale="Freight-loaded delivered cost"),
         ),
         data_sources=(
             DataSource("Order/Delivery dates + status -> OTIF", "Procurement KPI Analysis Dataset.csv", "per run"),
