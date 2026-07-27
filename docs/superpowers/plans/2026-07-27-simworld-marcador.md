@@ -745,14 +745,32 @@ def test_missing_lead_time_blanks_about_a_third_of_the_suppliers():
     assert out["lead_time_days"].notna().any()
 
 
+def _canon(series):
+    return series.astype(str).str.strip().str.upper()
+
+
 def test_levels_accumulate():
     df = _clean_frame()
     l1 = apply_dirt(df, level=1, seed=0)
     l2 = apply_dirt(df, level=2, seed=0)
     # el nivel 2 hereda el desprolijo del 1
     assert l2["product_id"].astype(str).str.contains(" ").any()
-    assert l1["product_id"].nunique() == df["product_id"].nunique()
-    assert l2["product_id"].nunique() > df["product_id"].nunique()
+    # el nivel 1 solo ensucia la grafia: normalizando vuelve el catalogo original
+    assert _canon(l1["product_id"]).nunique() == df["product_id"].nunique()
+    # el nivel 2 parte una SKU de verdad: normalizar no la recupera
+    assert _canon(l2["product_id"]).nunique() > df["product_id"].nunique()
+
+
+def test_value_changing_dirt_runs_before_the_cosmetic_layer():
+    """Si el formato se aplicara primero, los inyectores semanticos tendrian que
+    parsear "1.234,50" y coercionarian a NaN en silencio."""
+    df = _clean_frame()
+    l2 = apply_dirt(df, level=2, seed=0)
+    qty = pd.to_numeric(
+        l2["quantity"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False),
+        errors="coerce",
+    )
+    assert qty.notna().mean() > 0.9
 
 
 def test_level_two_degrades_intake_quality(tmp_path):
@@ -873,14 +891,27 @@ DIRT_BY_LEVEL: dict[int, tuple] = {
 Reemplazar `apply_dirt`:
 
 ```python
+COSMETIC_LEVEL = 1
+
+
 def apply_dirt(df: pd.DataFrame, *, level: int, seed: int = 0) -> pd.DataFrame:
-    """Aplica todos los inyectores hasta ``level`` inclusive. Los niveles acumulan."""
+    """Aplica la suciedad hasta ``level`` inclusive. Los niveles acumulan.
+
+    Orden deliberado: **primero los defectos que cambian el valor** (niveles 2 y
+    3), **despues los cosmeticos** del nivel 1. Es el orden real — el dato es lo
+    que es, y el formato del exporte se aplica al final — y ademas evita que un
+    inyector semantico tenga que parsear ``"1.234,50"`` y lo coercione a NaN en
+    silencio, corrompiendo el fixture en vez del archivo.
+    """
     if level not in LEVELS:
         raise ValueError(f"nivel de suciedad desconocido: {level}; conocidos: {LEVELS}")
     rng = np.random.default_rng(seed)
     out = df.copy()
-    for lvl in range(1, level + 1):
+    for lvl in range(COSMETIC_LEVEL + 1, level + 1):
         for injector in DIRT_BY_LEVEL[lvl]:
+            out = injector(out, rng)
+    if level >= COSMETIC_LEVEL:
+        for injector in DIRT_BY_LEVEL[COSMETIC_LEVEL]:
             out = injector(out, rng)
     return out
 ```
@@ -888,7 +919,7 @@ def apply_dirt(df: pd.DataFrame, *, level: int, seed: int = 0) -> pd.DataFrame:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `PYTHONPATH=. pytest tests/test_simworld_lens.py -v`
-Expected: 16 passed
+Expected: 17 passed
 
 - [ ] **Step 5: Lint and commit**
 
@@ -1034,7 +1065,7 @@ Reemplazar la entrada del nivel 3:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `PYTHONPATH=. pytest tests/test_simworld_lens.py -v`
-Expected: 22 passed
+Expected: 23 passed
 
 - [ ] **Step 5: Lint and commit**
 
@@ -2156,15 +2187,18 @@ def test_grid_writes_a_json_and_a_markdown_report(tmp_path):
     assert payload["seed"] == 4
 
 
+GOLDEN_FLOOR_COST = 0.0    # <- reemplazar en el Step 5 con el valor real medido
+GOLDEN_CEILING_COST = 0.0  # <- idem
+
+
+@pytest.mark.skip(reason="pendiente de fijar los valores medidos en el Step 5")
 def test_golden_floor_and_ceiling_costs_are_stable(tmp_path):
     """Fija el marcador de una corrida chica. Si esto cambia, cambio la fisica
     o la generacion del mundo — y eso tiene que ser una decision, no un accidente."""
     report = run_grid(seed=4, n_skus=6, n_suppliers=2, weeks=20, levels=(0,),
                       out_dir=tmp_path, include_kern=False)
-    # Rellenar con los valores reales de la primera corrida verde y dejarlos fijos.
-    assert report["floor"]["total_cost"] == pytest.approx(
-        report["floor"]["total_cost"], rel=1e-9
-    )
+    assert report["floor"]["total_cost"] == pytest.approx(GOLDEN_FLOOR_COST, rel=1e-6)
+    assert report["ceiling"]["total_cost"] == pytest.approx(GOLDEN_CEILING_COST, rel=1e-6)
     assert report["ceiling"]["fill_rate"] > report["floor"]["fill_rate"]
 ```
 
@@ -2428,16 +2462,14 @@ Correr una vez y anotar los numeros:
 PYTHONPATH=. python -c "from examples.run_world_sim import run_grid; import json; r=run_grid(seed=4,n_skus=6,n_suppliers=2,weeks=20,levels=(0,),out_dir='/tmp/g',include_kern=False); print(json.dumps({'floor':r['floor']['total_cost'],'ceiling':r['ceiling']['total_cost']},indent=2))"
 ```
 
-Reemplazar el `test_golden_floor_and_ceiling_costs_are_stable` tautologico por
-los valores literales que imprimio:
+Poner esos dos numeros en `GOLDEN_FLOOR_COST` y `GOLDEN_CEILING_COST`, y
+**borrar el `@pytest.mark.skip`**. El test queda activo con valores literales.
+Un golden que se compara contra si mismo no asegura nada: si al terminar el Step
+5 el `skip` sigue puesto o las constantes siguen en `0.0`, la tarea no esta
+hecha.
 
-```python
-def test_golden_floor_and_ceiling_costs_are_stable(tmp_path):
-    report = run_grid(seed=4, n_skus=6, n_suppliers=2, weeks=20, levels=(0,),
-                      out_dir=tmp_path, include_kern=False)
-    assert report["floor"]["total_cost"] == pytest.approx(<VALOR_PISO>, rel=1e-6)
-    assert report["ceiling"]["total_cost"] == pytest.approx(<VALOR_TECHO>, rel=1e-6)
-```
+Run: `PYTHONPATH=. pytest tests/test_simworld_e2e.py::test_golden_floor_and_ceiling_costs_are_stable -v`
+Expected: PASS (no SKIPPED)
 
 - [ ] **Step 6: Correr la grilla completa de verdad**
 
