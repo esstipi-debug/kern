@@ -91,6 +91,16 @@ def test_lost_sales_are_unmet_demand_never_negative():
     assert (out.lost >= 0).all()
     assert (out.lost > 0).any(), "el escenario debe forzar un quiebre real de al menos un SKU"
 
+    # Pin del ledger de inventario: con on_hand=0 no llega nada, asi que
+    # available=0 y sold=0. La forma CORRECTA (venta perdida) deja
+    # on_hand_end = available - sold = 0. Una implementacion de backorder
+    # (on_hand_end = available - demand) dejaria esto en -demand, negativo.
+    # Sin esta asercion, ambas formas pasan igual de bien el resto de la
+    # prueba porque ninguna otra asercion aqui lee on_hand_end.
+    assert np.allclose(out.on_hand_end, 0.0), (
+        "on_hand_end no debe quedar negativo: eso seria backorder, no venta perdida"
+    )
+
     # La prueba de que es venta PERDIDA y no backorder: la demanda reportada
     # la semana siguiente debe ser exactamente la demanda cruda del mundo para
     # esa semana, sin inflarse con el faltante de la semana anterior.
@@ -112,6 +122,11 @@ def test_order_arrives_after_the_real_lead_time_not_the_promised_one():
     t = int(np.argmax(real_row > promised))
     real = int(real_row[t])
     assert real > promised, "la semilla de prueba debe divergir real vs prometido en algun t"
+    assert t + real < w.weeks, (
+        "la semana derivada t+real debe caer dentro del horizonte; si no, un "
+        "cambio de fixture rompe esto con un IndexError de horizonte en vez "
+        "de la falla real que se queria probar"
+    )
 
     st = initial_state(w)
     for _ in range(t):
@@ -154,10 +169,23 @@ def test_nan_order_raises():
     # nan < 0 es False, asi que una guarda escrita como `if qty < 0` deja
     # pasar un NaN silenciosamente y envenena on_hand para siempre desde su
     # semana de llegada. La guarda debe rechazar NaN igual que un negativo.
+    # El mensaje debe decir "no finita", no "negativa" -- un NaN no es negativo
+    # y el traceback no debe mentirle a quien lo lea.
     w = _tiny()
     st = initial_state(w)
-    with pytest.raises(ValueError, match="negativa"):
+    with pytest.raises(ValueError, match="finita"):
         advance(w, st, {w.skus[0].sku: float("nan")})
+
+
+def test_inf_order_raises():
+    # `not float("inf") >= 0` es False (inf >= 0 es True), asi que una guarda
+    # escrita como `if not qty >= 0` deja pasar +inf silenciosamente: entra a
+    # `ordered`, y al llegar deja on_hand y on_hand_end en +inf para siempre.
+    # Mismo envenenamiento silencioso que el caso NaN.
+    w = _tiny()
+    st = initial_state(w)
+    with pytest.raises(ValueError, match="finita"):
+        advance(w, st, {w.skus[0].sku: float("inf")})
 
 
 def test_outcome_on_hand_end_is_independent_from_next_state_on_hand():

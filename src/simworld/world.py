@@ -128,6 +128,10 @@ def initial_state(world: World) -> WorldState:
 
 @dataclass(frozen=True)
 class WeekOutcome:
+    """Resultado de una semana. Los campos ndarray hacen `==` y `hash()`
+    inutilizables (`ValueError`/`TypeError`, igual que en ``WorldState``);
+    compara los campos explicitamente, no la instancia entera."""
+
     week: int
     demand: np.ndarray
     sold: np.ndarray
@@ -157,7 +161,9 @@ def advance(
     for sku, qty in orders.items():
         if sku not in index:
             raise KeyError(f"SKU desconocida en las ordenes: {sku}")
-        if not qty >= 0:  # catches NaN too: NaN < 0 is False, so `qty < 0` would let it through
+        if not np.isfinite(qty):
+            raise ValueError(f"cantidad no finita (NaN o infinita) para {sku}: {qty}")
+        if qty < 0:
             raise ValueError(f"cantidad negativa para {sku}: {qty}")
         ordered[index[sku]] += float(qty)
 
