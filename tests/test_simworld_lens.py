@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from jobs.intake import prepare_tracked
-from src.simworld.lens import apply_dirt, export_history, history_frame
+from src.simworld.lens import EPOCH, apply_dirt, export_history, history_frame
 from src.simworld.world import advance, generate_world, initial_state
 
 
@@ -45,13 +45,6 @@ def test_export_writes_a_readable_csv(tmp_path):
     assert len(back) == len(history_frame(w, outs))
 
 
-def test_lens_never_mutates_the_world():
-    w, outs = _run_weeks()
-    before = w.demand.copy()
-    history_frame(w, outs)
-    assert np.array_equal(w.demand, before)
-
-
 def test_unknown_level_raises(tmp_path):
     w, outs = _run_weeks()
     with pytest.raises(ValueError, match="nivel"):
@@ -75,15 +68,30 @@ def test_intake_reads_level_zero_without_dropping_rows(tmp_path):
 
 def test_level_zero_values_match_world_truth_not_just_column_names():
     """The brief's column-presence test would pass even if every cell were
-    garbage (zeros, swapped fields, wrong SKU). This pins the actual values."""
+    garbage (zeros, swapped fields, wrong SKU). This pins the actual values --
+    including `quantity` against a (product_id, date) -> sold mapping built
+    independently from the outcomes, cell by cell. `quantity >= 0.0` alone
+    (the original assertion here) is trivially true for every fixture and
+    would not catch a rotated/transposed SKU index: a `history_frame` that
+    wrote `out.sold[(i + 1) % n_skus]` into product_id `i`'s row preserves
+    every per-week total and every column, and still passes that check. The
+    per-cell lookup below fails on that mutation as long as SKUs differ in
+    their sold quantities at a given date, which a fresh random seed almost
+    certainly gives us; see task-3-report.md for the deliberate-break proof."""
     w, outs = _run_weeks(n_weeks=4, n_skus=3)
     df = history_frame(w, outs)
     cost_by_sku = {s.sku: s.unit_cost for s in w.skus}
     lead_by_sku = {s.sku: float(w.suppliers[s.supplier_idx].promised_lead_weeks * 7) for s in w.skus}
+    sold_by_key = {}
+    for out in outs:
+        date = (EPOCH + pd.Timedelta(weeks=out.week)).strftime("%Y-%m-%d")
+        for i, sku in enumerate(w.skus):
+            sold_by_key[(sku.sku, date)] = float(out.sold[i])
     for _, row in df.iterrows():
+        key = (row["product_id"], row["date"])
         assert row["unit_cost"] == pytest.approx(cost_by_sku[row["product_id"]])
         assert row["lead_time_days"] == pytest.approx(lead_by_sku[row["product_id"]])
-        assert row["quantity"] >= 0.0
+        assert row["quantity"] == pytest.approx(sold_by_key[key])
     # una fecha compartida por periodo (una por semana, no una por SKU)
     assert df["date"].nunique() == 4
 
@@ -127,10 +135,16 @@ def test_export_round_trip_preserves_values_exactly(tmp_path):
 
 
 def test_lens_never_mutates_outcomes_or_real_lead_weeks(tmp_path):
-    """The brief's mutation test only snapshots world.demand. history_frame
-    also reads world.real_lead_weeks and every outcome's ndarrays (sold,
-    demand, ...) -- an implementation that rounds/sorts/clips one of those
-    in place would sail through the brief's test alone."""
+    """history_frame's only ndarray read is out.sold (via world.skus and
+    world.suppliers, which are immutable dataclasses, not ndarrays); it does
+    not read world.demand, world.real_lead_weeks, or out.demand at all. The
+    out.sold check below is what actually kills a live bug -- an
+    implementation that rounds/sorts/clips sold in place would sail through
+    every other test in this file. The world.demand/real_lead_weeks/
+    out.demand snapshots are inert today (no plausible wrong implementation
+    trips them); they're kept as defence-in-depth against a future
+    history_frame that starts reading those fields too, so a regression there
+    fails a test instead of shipping silently."""
     w, outs = _run_weeks(n_weeks=6, n_skus=3)
     demand_before = w.demand.copy()
     real_lead_before = w.real_lead_weeks.copy()
