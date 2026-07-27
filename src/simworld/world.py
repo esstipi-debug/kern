@@ -124,3 +124,69 @@ def initial_state(world: World) -> WorldState:
     """Arranca con cuatro semanas de la demanda media de cada SKU en mano."""
     start = np.round(world.demand[:, : min(4, world.weeks)].mean(axis=1) * 4.0)
     return WorldState(week=0, on_hand=start.astype(float), in_transit=())
+
+
+@dataclass(frozen=True)
+class WeekOutcome:
+    week: int
+    demand: np.ndarray
+    sold: np.ndarray
+    lost: np.ndarray
+    received: np.ndarray
+    ordered: np.ndarray
+    on_hand_end: np.ndarray
+
+
+def advance(
+    world: World,
+    state: WorldState,
+    orders: dict[str, float],
+) -> tuple[WorldState, WeekOutcome]:
+    """Una semana: llega lo que vencio, se vende lo que hay, se emite lo pedido.
+
+    Venta perdida, no backorder: la demanda insatisfecha se pierde y no se arrastra.
+    """
+    t = state.week
+    if t >= world.weeks:
+        raise IndexError(f"semana {t} fuera del horizonte de {world.weeks}")
+
+    index = {s.sku: i for i, s in enumerate(world.skus)}
+    n = len(world.skus)
+
+    ordered = np.zeros(n, dtype=float)
+    for sku, qty in orders.items():
+        if sku not in index:
+            raise KeyError(f"SKU desconocida en las ordenes: {sku}")
+        if qty < 0:
+            raise ValueError(f"cantidad negativa para {sku}: {qty}")
+        ordered[index[sku]] += float(qty)
+
+    received = np.zeros(n, dtype=float)
+    still_in_transit = []
+    for sku_idx, arrival, qty in state.in_transit:
+        if arrival <= t:
+            received[sku_idx] += qty
+        else:
+            still_in_transit.append((sku_idx, arrival, qty))
+
+    available = state.on_hand + received
+    demand = world.demand[:, t].astype(float)
+    sold = np.minimum(available, demand)
+    lost = demand - sold
+    on_hand_end = available - sold
+
+    for i in range(n):
+        if ordered[i] > 0:
+            arrival = t + int(world.real_lead_weeks[i, t])
+            still_in_transit.append((i, arrival, float(ordered[i])))
+
+    next_state = WorldState(
+        week=t + 1,
+        on_hand=on_hand_end,
+        in_transit=tuple(still_in_transit),
+    )
+    outcome = WeekOutcome(
+        week=t, demand=demand, sold=sold, lost=lost,
+        received=received, ordered=ordered, on_hand_end=on_hand_end,
+    )
+    return next_state, outcome

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from src.simworld.world import generate_world, initial_state
+from src.simworld.world import advance, generate_world, initial_state
 
 
 def test_same_seed_gives_identical_world():
@@ -41,3 +41,62 @@ def test_initial_state_is_week_zero_with_nothing_in_transit():
     assert st.week == 0
     assert st.in_transit == ()
     assert st.on_hand.shape == (4,)
+
+
+def _tiny():
+    return generate_world(seed=11, n_skus=3, n_suppliers=1, weeks=12, regime="seasonal_trend")
+
+
+def test_advance_conserves_mass():
+    w = _tiny()
+    st = initial_state(w)
+    before = st.on_hand.copy()
+    st2, out = advance(w, st, {w.skus[0].sku: 25.0})
+    # lo que habia + lo recibido = lo vendido + lo que queda
+    left = before + out.received
+    right = out.sold + out.on_hand_end
+    assert np.allclose(left, right)
+
+
+def test_lost_sales_are_unmet_demand_never_negative():
+    w = _tiny()
+    st = initial_state(w)
+    _, out = advance(w, st, {})
+    assert np.allclose(out.lost, np.maximum(out.demand - out.sold, 0.0))
+    assert (out.lost >= 0).all()
+
+
+def test_order_arrives_after_the_real_lead_time_not_the_promised_one():
+    w = _tiny()
+    st = initial_state(w)
+    sku0 = w.skus[0].sku
+    lead = int(w.real_lead_weeks[0, 0])
+    st, _ = advance(w, st, {sku0: 100.0})
+    for _ in range(lead - 1):
+        st, out = advance(w, st, {})
+        assert out.received[0] == 0.0
+    st, out = advance(w, st, {})
+    assert out.received[0] == 100.0
+
+
+def test_unknown_sku_in_orders_raises():
+    w = _tiny()
+    st = initial_state(w)
+    with pytest.raises(KeyError, match="SKU-9999"):
+        advance(w, st, {"SKU-9999": 5.0})
+
+
+def test_negative_order_raises():
+    w = _tiny()
+    st = initial_state(w)
+    with pytest.raises(ValueError, match="negativa"):
+        advance(w, st, {w.skus[0].sku: -3.0})
+
+
+def test_advance_past_the_horizon_raises():
+    w = generate_world(seed=2, n_skus=2, n_suppliers=1, weeks=2, regime="seasonal_trend")
+    st = initial_state(w)
+    st, _ = advance(w, st, {})
+    st, _ = advance(w, st, {})
+    with pytest.raises(IndexError, match="horizonte"):
+        advance(w, st, {})
