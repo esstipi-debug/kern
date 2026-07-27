@@ -7,6 +7,7 @@ from src.simworld.lens import (
     CASE_SIZE,
     EPOCH,
     LEVELS,
+    UNKNOWN_SUPPLIER,
     apply_dirt,
     export_history,
     history_frame,
@@ -527,6 +528,37 @@ def test_duplicate_rows_added_rows_are_exact_duplicates_of_existing_rows():
         assert tuple(row) in original_rows
 
 
+def test_duplicate_rows_fallback_fires_when_the_draw_marks_no_row():
+    """El fallback "al menos una" (``if not mask.any()``) es codigo muerto
+    si ningun test lo ejecuta -- y con el 5% de tasa de muestreo sobre las
+    72 filas de este fixture, el sorteo de la semilla 0 (la unica que usan
+    las dos pruebas de arriba) SI marca filas, asi que nunca lo dispara.
+    Medido directamente sobre las semillas 0..399: el fallback dispara para
+    exactamente 10 de ellas, siendo la semilla 10 la primera. Se fija esa
+    semilla y se pin la forma exacta del fallback: se duplica una unica
+    fila (no cero, no mas de una)."""
+    df = _clean_frame()
+    rng = np.random.default_rng(10)
+    mask = rng.random(len(df)) < 0.05
+    assert not mask.any()  # sanity: esta semilla es realmente el sorteo vacio
+    out = inject_duplicate_rows(df, np.random.default_rng(10))
+    assert len(out) == len(df) + 1
+
+
+def test_duplicate_rows_on_an_empty_frame_returns_it_unchanged():
+    """El guard ``if out.empty: return out`` tampoco lo ejercita ningun test
+    con el fixture estandar (72 filas nunca esta vacio). Sin este guard, un
+    frame vacio pasado a `rng.random(0)` seguiria funcionando por
+    casualidad, pero el guard existe a proposito -- se lo ejercita
+    directamente."""
+    empty = pd.DataFrame(
+        columns=["date", "product_id", "quantity", "unit_cost", "lead_time_days", "lead_time_std"]
+    )
+    out = inject_duplicate_rows(empty, np.random.default_rng(0))
+    assert out.empty
+    assert list(out.columns) == list(empty.columns)
+
+
 def test_zero_cost_zeroes_some_unit_costs_but_not_all():
     df = _clean_frame()
     out = inject_zero_cost(df, np.random.default_rng(0))
@@ -554,6 +586,34 @@ def test_zero_cost_only_changes_masked_unit_cost_rows_and_nothing_else():
     assert (out["unit_cost"].to_numpy()[~touched] == df["unit_cost"].to_numpy()[~touched]).all()
 
 
+def test_zero_cost_fallback_fires_when_the_draw_marks_no_row():
+    """Mismo problema que el fallback de ``inject_duplicate_rows``, mas raro
+    todavia: con 8% de tasa de muestreo sobre 72 filas, medido directamente
+    sobre las semillas 0..399, el fallback dispara para una sola semilla
+    (30) -- un orden de magnitud menos frecuente que el 5% de
+    ``inject_duplicate_rows`` (10 semillas), porque la probabilidad de
+    sorteo vacio cae mientras mas alta es la tasa por fila. Se fija esa
+    semilla y se pin la forma exacta: se zera exactamente la primera fila,
+    ninguna otra."""
+    df = _clean_frame()
+    rng = np.random.default_rng(30)
+    mask = rng.random(len(df)) < 0.08
+    assert not mask.any()  # sanity: esta semilla es realmente el sorteo vacio
+    out = inject_zero_cost(df, np.random.default_rng(30))
+    touched = out["unit_cost"].to_numpy() == 0.0
+    assert touched.sum() == 1
+    assert touched[0]
+
+
+def test_zero_cost_on_an_empty_frame_returns_it_unchanged():
+    empty = pd.DataFrame(
+        columns=["date", "product_id", "quantity", "unit_cost", "lead_time_days", "lead_time_std"]
+    )
+    out = inject_zero_cost(empty, np.random.default_rng(0))
+    assert out.empty
+    assert list(out.columns) == list(empty.columns)
+
+
 def test_renamed_supplier_splits_one_lead_time_into_two():
     df = _clean_frame()
     out = inject_renamed_supplier(df, np.random.default_rng(0))
@@ -571,15 +631,13 @@ def test_renamed_supplier_split_is_a_real_rename_at_a_date_boundary():
     replica la logica del inyector (derivar supplier de lead_time_days,
     tomar el mas comun, cortar en la mediana de fechas) para pin: (1) antes
     del corte, el proveedor blanco conserva su nombre original; (2) despues
-    del corte, ESE proveedor -- y solo ese -- pasa a "<original> SpA"; (3)
-    cualquier OTRO proveedor no cambia de nombre en ninguna fila; y (4)
-    ambas grafias comparten el mismo lead_time_days declarado -- es el MISMO
-    proveedor logico bajo dos nombres, no una columna decorativa."""
+    del corte, ESE proveedor -- y solo ese -- pasa a "<original> SpA"; y (3)
+    cualquier OTRO proveedor no cambia de nombre en ninguna fila."""
     df = _clean_frame()
     out = inject_renamed_supplier(df, np.random.default_rng(0))
 
     leads = pd.to_numeric(df["lead_time_days"], errors="coerce")
-    derived = leads.map(lambda v: f"Prov-{int(v)}d" if pd.notna(v) else "Prov-?")
+    derived = leads.map(lambda v: f"Prov-{int(v)}d" if pd.notna(v) else UNKNOWN_SUPPLIER)
     dates = sorted(df["date"].astype(str).unique())
     cut = dates[len(dates) // 2]
     target = derived.mode().iloc[0]
@@ -594,8 +652,35 @@ def test_renamed_supplier_split_is_a_real_rename_at_a_date_boundary():
     assert (out.loc[after_cut, "supplier"] == f"{target} SpA").all()
     assert (out.loc[other_supplier, "supplier"] == derived[other_supplier]).all()
 
-    lead_by_name = out.groupby("supplier")["lead_time_days"].agg(lambda s: set(s.astype(float)))
-    assert lead_by_name[target] == lead_by_name[f"{target} SpA"]
+
+def test_renamed_supplier_never_renames_the_unknown_bucket_on_the_production_path():
+    """Las dos pruebas de arriba llaman al inyector directo sobre
+    ``_clean_frame()``, donde ``lead_time_days`` nunca es NaN y
+    ``UNKNOWN_SUPPLIER`` no existe. Pero ``inject_renamed_supplier`` vive en
+    ``DIRT_BY_LEVEL[3]``, y ``apply_dirt`` siempre corre el nivel 2 antes --
+    donde ``inject_missing_lead_time`` puede blanquear a NaN un grupo
+    entero de lead times. Con solo dos valores de lead time distintos en
+    este fixture, blanquear uno alcanza para volver ``UNKNOWN_SUPPLIER`` la
+    moda de toda la columna: medido directamente, 6 de las semillas 0..7 --
+    incluida la semilla 0, la unica que usa cada prueba de nivel 3 de este
+    archivo -- renombraban el bucket desconocido en vez de un proveedor
+    real antes del fix. El 100% de las invocaciones reales (que siempre
+    pasan por el nivel 2 primero dentro de ``apply_dirt``) ejercitaban el
+    0% de esa cobertura. Esta prueba corre el punto de entrada real de
+    produccion, ``apply_dirt(df, level=3, seed=...)``, en las semillas 0..7
+    y fija que el proveedor renombrado sea siempre uno real, nunca el
+    bucket desconocido. (`inject_renamed_supplier` no toca `product_id`,
+    `date` ni `quantity`, asi que la capa cosmetica del nivel 1 -- que
+    corre despues, al final de `apply_dirt` -- no puede alterar la columna
+    `supplier` que se inspecciona aca.)"""
+    df = _clean_frame()
+    for seed in range(8):
+        dirty = apply_dirt(df, level=3, seed=seed)
+        renamed = sorted(n for n in dirty["supplier"].unique() if n.endswith(" SpA"))
+        assert renamed, f"seed {seed}: no se detecto ningun rename en el path de produccion"
+        assert all(name != f"{UNKNOWN_SUPPLIER} SpA" for name in renamed), (
+            f"seed {seed}: se renombro el bucket desconocido en vez de un proveedor real: {renamed}"
+        )
 
 
 def test_unmarked_promo_creates_a_spike_without_a_flag_column():

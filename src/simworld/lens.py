@@ -70,6 +70,11 @@ def export_history(
 
 CASE_SIZE = 12.0
 
+# Cubeta de "lead time no declarado" que `inject_renamed_supplier` deriva de
+# un `lead_time_days` en NaN. Nunca es un proveedor de verdad -- ver el
+# docstring de esa funcion para por que no puede ser victima de rename.
+UNKNOWN_SUPPLIER = "Prov-?"
+
 
 def inject_whitespace_case(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
     """Cosmetico puro: la SKU sigue siendo la misma, solo mal escrita."""
@@ -210,7 +215,16 @@ def inject_duplicate_rows(df: pd.DataFrame, rng: np.random.Generator) -> pd.Data
         return out
     mask = rng.random(len(out)) < 0.05
     if not mask.any():
-        positive = np.flatnonzero(out["quantity"].to_numpy() > 0)
+        # Coercion defensiva: hoy `apply_dirt` corre este inyector antes de
+        # la capa cosmetica, asi que `quantity` siempre es numerico aca --
+        # pero ese orden vive en `apply_dirt`, no en esta funcion, y
+        # `out["quantity"].to_numpy() > 0` revienta con TypeError si alguna
+        # vez corre despues de `inject_thousand_separators` (quantity queda
+        # dtype object, strings tipo "1.234,50"). `pd.to_numeric` con
+        # `errors="coerce"` hace que esta rama sea correcta sin importar el
+        # orden de quien la llama.
+        qty = pd.to_numeric(out["quantity"], errors="coerce")
+        positive = np.flatnonzero(qty.to_numpy() > 0)
         idx = int(positive[0]) if len(positive) else 0
         mask = np.zeros(len(out), dtype=bool)
         mask[idx] = True
@@ -247,15 +261,30 @@ def inject_renamed_supplier(df: pd.DataFrame, rng: np.random.Generator) -> pd.Da
     historico ya trae). No consume ``rng``: el corte es deterministico
     (mediana de fechas), no un sorteo -- por eso no necesita el fallback "al
     menos una" de los otros inyectores de este nivel.
+
+    ``UNKNOWN_SUPPLIER`` (lead time no declarado) nunca es candidato a
+    victima. Este inyector vive en el nivel 3, y ``apply_dirt`` siempre
+    corre el nivel 2 antes -- donde ``inject_missing_lead_time`` puede
+    blanquear a NaN un grupo entero de lead times. En el fixture estandar
+    de este archivo, con solo dos valores de lead time distintos, blanquear
+    uno alcanza para volver ``UNKNOWN_SUPPLIER`` la moda de toda la columna
+    (medido: 6 de 8 semillas 0..7, incluida la semilla 0). Renombrar ese
+    bucket no es "un proveedor bajo dos razones sociales" -- son filas de
+    lead time desconocido que bien pueden pertenecer a proveedores reales
+    distintos, y agruparlas bajo un nombre inventado no reproduce el
+    defecto que este inyector modela. Si, tras excluirlo, no queda ningun
+    proveedor conocido, el frame se devuelve sin cambios: no hay a quien
+    renombrar.
     """
     out = df.copy()
     leads = pd.to_numeric(out["lead_time_days"], errors="coerce")
-    out["supplier"] = leads.map(lambda v: f"Prov-{int(v)}d" if pd.notna(v) else "Prov-?")
+    out["supplier"] = leads.map(lambda v: f"Prov-{int(v)}d" if pd.notna(v) else UNKNOWN_SUPPLIER)
     dates = sorted(out["date"].astype(str).unique())
     if len(dates) < 4:
         return out
     cut = dates[len(dates) // 2]
-    victim = out["supplier"].mode()
+    known_suppliers = out.loc[out["supplier"] != UNKNOWN_SUPPLIER, "supplier"]
+    victim = known_suppliers.mode()
     if victim.empty:
         return out
     target = victim.iloc[0]
