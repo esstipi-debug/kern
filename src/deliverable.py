@@ -38,6 +38,27 @@ def not_measured(lang: str = "en") -> str:
     return i18n.label("not_measured", lang)
 
 
+# The three shapes a supplier-performance figure takes on a page. They live here, next
+# to the token they fall back to, because every caller that renders a `float | None`
+# was otherwise re-deriving the same conditional privately - and one of them getting it
+# wrong prints an absence as a measurement, which is the defect this vocabulary exists
+# to prevent. A *genuine* zero still renders as a number: that is a measurement.
+
+def pct(rate: float | None, lang: str = "en") -> str:
+    """A share as a percentage, or the words that say it was never observed."""
+    return not_measured(lang) if rate is None else f"{rate * 100:.0f}%"
+
+
+def days(value: float | None, lang: str = "en") -> str:
+    """A duration in days, or the words that say it was never observed."""
+    return not_measured(lang) if value is None else f"{value:.0f} days"
+
+
+def ppm(value: float | None, lang: str = "en") -> str:
+    """A defect rate in parts per million, or the words that say it was never observed."""
+    return not_measured(lang) if value is None else f"{value:,.0f} PPM"
+
+
 def _visible(text: str) -> str:
     """``text`` with Unicode format characters (category "Cf" - zero-width
     space/joiner/word-joiner, the BOM, etc.) stripped, so a name made only of

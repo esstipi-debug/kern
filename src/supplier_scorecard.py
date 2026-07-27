@@ -155,6 +155,36 @@ def score_supplier(supplier: str, deliveries: list[dict]) -> SupplierScore:
     )
 
 
+def rankable(
+    scorecards: list[SupplierScore], criteria_fields: tuple[str, ...]
+) -> tuple[list[SupplierScore], tuple[str, ...]]:
+    """Split a panel into the suppliers that can be ranked, and the names of those that cannot.
+
+    A supplier missing one of the criteria being ranked on has no defensible position in
+    the ranking. Sorting or scoring it anyway needs a number, and every available number
+    is a lie: ``0`` awards it the worst possible score on a criterion nobody measured,
+    and the old fallbacks awarded it the best. Leaving it out - by name, so the caller can
+    say who and why - is the only honest option.
+
+    ``criteria_fields`` are :class:`SupplierScore` attribute names (``"otif"``,
+    ``"avg_lead_time"``, ``"ppm"``, ...), and only the ones actually being ranked on:
+    a missing PPM is irrelevant to a ranking that does not weigh quality.
+    """
+    for name in criteria_fields:
+        if not hasattr(SupplierScore, "__dataclass_fields__") or name not in SupplierScore.__dataclass_fields__:
+            raise AttributeError(
+                f"{name!r} is not a SupplierScore field - a typo here would silently empty "
+                f"the panel. Known fields: {', '.join(SupplierScore.__dataclass_fields__)}."
+            )
+    panel, dropped = [], []
+    for card in scorecards:
+        if all(getattr(card, name) is not None for name in criteria_fields):
+            panel.append(card)
+        else:
+            dropped.append(card.supplier)
+    return panel, tuple(dropped)
+
+
 def lead_times_by_supplier(scorecards: list[SupplierScore]) -> dict[str, float]:
     """Observed average lead time per supplier - the real number to feed the risk period.
 
