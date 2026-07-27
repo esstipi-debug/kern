@@ -24,6 +24,7 @@ block the package.
 
 from __future__ import annotations
 
+import inspect
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -252,6 +253,20 @@ def missing_required_inputs(spec: PackageSpec, intake_dir: str | Path | None) ->
     return missing
 
 
+def deck_accepts_lang(deck: Callable | None) -> bool:
+    """True when this tool's deck can be told which language the package sells in.
+
+    Asked of the callable rather than declared on the Tool on purpose. A flag would have
+    to be remembered the day a ``build_deck`` *gains* ``lang``, and the cost of forgetting
+    is a deck that silently keeps rendering English inside a Spanish package - the same
+    shape of silent default the rest of this work has been removing. Introspection cannot
+    drift; ``tests/test_package_threads_lang_to_tool_decks.py`` keeps the inventory visible.
+    """
+    if deck is None:
+        return False
+    return "lang" in inspect.signature(deck).parameters
+
+
 def run_package(
     spec: PackageSpec,
     intake_dir: str | Path | None,
@@ -273,10 +288,14 @@ def run_package(
 
     ``branding`` (see ``src/deliverable.py``) resolves explicit call-site
     override > the loaded client's ``profile.branding`` > Kern's own
-    default - only the CONSOLIDATED package deck carries it (mirrors how
-    ``lang`` is scoped; each individual tool's own deck under this package
-    keeps rendering Kern's default, unchanged - a deliberate, narrow
-    integration point, not every deck in the bundle)."""
+    default - only the CONSOLIDATED package deck carries it, a deliberate,
+    narrow integration point rather than every deck in the bundle.
+
+    ``spec.lang`` is scoped WIDER than that: it reaches the consolidated deck
+    AND every per-tool deck whose ``build_deck`` accepts a language (see
+    :func:`deck_accepts_lang`). A package sold in Spanish that hands back
+    English tool decks is not a Spanish deliverable. Decks that cannot take a
+    language are written unchanged, not skipped."""
     registry = registry if registry is not None else build_default_registry()
     provider = provider if provider is not None else get_provider()
     knowledge = knowledge if knowledge is not None else KnowledgeBase()
@@ -351,8 +370,9 @@ def run_package(
         files = tool.deliver(outcome.report, step_dir, client)
         if tool.deck is not None:
             deck_options = list(outcome.guided.options) if outcome.guided is not None else []
+            deck_lang = {"lang": spec.lang} if deck_accepts_lang(tool.deck) else {}
             deck_files = tool.deck(outcome.report, step_dir, client,
-                                   list(outcome.citations), 1.0, deck_options)
+                                   list(outcome.citations), 1.0, deck_options, **deck_lang)
             files.update({f"deck_{name}": path for name, path in deck_files.items()})
         written.update({f"{outcome.tool_key}_{name}": str(path) for name, path in files.items()})
 

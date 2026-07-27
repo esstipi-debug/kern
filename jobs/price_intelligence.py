@@ -503,9 +503,9 @@ def build_deck(
     citations: tuple[str, ...] = (),
     confidence: float = 0.85,
     lang: str = "en",  # matches Deliverable's own field default -- see src/deliverable.py's
-    # docstring: individual tool decks (this one included) stay "en" unless a caller
-    # explicitly opts into Spanish (the CLI does; the registered Tool's deck does not,
-    # exactly like every other jobs/<x>_job.py::build_deck).
+    # docstring: a deck stays "en" unless a caller opts in. The CLI does. A package run
+    # does too, for every registered deck that accepts `lang` (scm_agent.packages), but
+    # this build_deck is not wired to a Tool.deck, so a package never reaches it.
     branding: Branding | None = None,
 ) -> Deliverable:
     """Compose the price-position narrative deck. Matches every other job's

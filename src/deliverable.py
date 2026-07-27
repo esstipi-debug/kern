@@ -157,20 +157,23 @@ class Deliverable:
     residual: str = ""
     prepared: str = ""
     # Structural-scaffolding language (section headers, table columns, sheet
-    # names) - see src/i18n.py. Defaults to "en" so the ~37 individual tool
-    # decks (built by jobs/<x>_job.py, which never pass this) render exactly
-    # as before; only jobs/package_deliverable.py's CONSOLIDATED deck passes
-    # its package's lang explicitly. This does NOT translate the content
-    # (summary/findings/KPI values etc.) - only the scaffolding around it;
-    # see i18n.py's module docstring for the full scope boundary.
+    # names) - see src/i18n.py. Defaults to "en", so a tool run on its own
+    # renders exactly as before. Two callers opt in: jobs/package_deliverable.py's
+    # CONSOLIDATED deck, and - since a Spanish package handing back English tool
+    # decks is not a Spanish deliverable - scm_agent/packages.py, which passes
+    # spec.lang to every registered deck whose build_deck accepts it (3 of ~37
+    # today; scm_agent.packages.deck_accepts_lang is the live inventory).
+    # This does NOT translate the content (summary/findings/KPI values etc.) -
+    # only the scaffolding around it; see i18n.py's docstring for the boundary.
     lang: str = "en"
     # Who this deck is presented as prepared by - see Branding's own docstring.
     # Defaults to Kern's own identity, so every deck (all ~37 individual
     # tool decks AND the package deck) is branded out of the box with zero
     # caller changes. A partner's white-label identity is threaded in ONLY by
-    # jobs/package_deliverable.py (via ClientProfile.branding), mirroring
-    # exactly how ``lang`` above is scoped - the individual tool decks never
-    # pass this, by design (same E4 precedent/reasoning as ``lang``).
+    # jobs/package_deliverable.py (via ClientProfile.branding). Note this is
+    # NARROWER than ``lang`` above, which a package now also threads into the
+    # individual tool decks: a white-label identity is a commercial decision per
+    # deliverable, not a rendering detail that follows the package.
     branding: Branding = DEFAULT_BRANDING
 
     def to_markdown(self) -> str:

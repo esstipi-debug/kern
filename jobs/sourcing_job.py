@@ -682,4 +682,5 @@ def build_deck(
             "decisions - this ranks and prepares the packet; a human signs the award.",
         )),
         prepared=prepared,
+        lang=lang,      # section headers / table columns, not the content
     )
