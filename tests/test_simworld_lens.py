@@ -284,6 +284,31 @@ def test_split_sku_creates_a_second_spelling_and_preserves_total_quantity():
     assert new_qty > 0
 
 
+def test_split_sku_works_on_a_non_sku_dash_catalog():
+    """El reviewer verifico que, con el prefijo hardcodeado ``"SKU-"``, un
+    catalogo con otra convencion de nombres (p.ej. ``"P1000"``, sin guion)
+    hace que el inyector devuelva el frame intacto -- silenciosamente, sin
+    ninguna senal de que no hizo nada -- reduciendo el nivel 2 a cuatro
+    inyectores. Se repite el mismo fixture pero renombrando el catalogo a
+    ids ``P1000..P1005`` (sin ``"SKU-"``) para confirmar que ahora SI aparece
+    una segunda grafia, con las mismas garantias que la prueba de arriba:
+    cantidad total preservada, la grafia nueva carga parte de esa cantidad, y
+    la nueva grafia no colapsa con ninguna original bajo strip().upper()."""
+    df = _clean_frame()
+    rename = {old: f"P{1000 + i}" for i, old in enumerate(sorted(df["product_id"].unique()))}
+    df = df.assign(product_id=df["product_id"].map(rename))
+    out = inject_split_sku(df, np.random.default_rng(0))
+    assert out["product_id"].nunique() > df["product_id"].nunique()
+    assert out["quantity"].sum() == pytest.approx(df["quantity"].sum())
+    new_ids = set(out["product_id"]) - set(df["product_id"])
+    assert new_ids
+    new_qty = out.loc[out["product_id"].isin(new_ids), "quantity"].sum()
+    assert new_qty > 0
+    canon_new = _canon(pd.Series(sorted(new_ids)))
+    canon_original = set(_canon(df["product_id"]))
+    assert not canon_new.isin(canon_original).any()
+
+
 def test_mixed_units_divides_some_rows_by_the_case_size():
     """Ademas de "la suma baja": pin que las filas tocadas valen exactamente
     original/CASE_SIZE (redondeado), y que las filas no tocadas no se mueven
@@ -315,13 +340,14 @@ def test_returns_as_negatives_introduces_negative_quantities():
     assert (out.loc[~negative, "quantity"].to_numpy() == df.loc[~negative, "quantity"].to_numpy()).all()
 
 
-def test_missing_lead_time_blanks_about_a_third_of_the_suppliers():
+def test_missing_lead_time_blanks_about_a_third_of_the_lead_time_values():
     """El brief solo chequea que haya NaN y no-NaN. Eso pasaria igual si el
-    blanking fuera por FILA individual al azar en vez de por VALOR de lead
-    time (proveedor) -- que es la semantica real ("se perdio el dato del
-    proveedor", no "se perdieron filas sueltas"). Se pin que cada valor
-    original de lead_time_days queda enteramente NaN o enteramente intacto,
-    nunca mezclado dentro del mismo grupo."""
+    blanking fuera por FILA individual al azar en vez de por VALOR declarado
+    de lead time -- que es la semantica real del inyector (agrupa por valor,
+    no por proveedor: dos proveedores que declaren el mismo lead time se
+    blanquean o se salvan siempre juntos). Se pin que cada valor original de
+    lead_time_days queda enteramente NaN o enteramente intacto, nunca
+    mezclado dentro del mismo grupo."""
     df = _clean_frame()
     out = inject_missing_lead_time(df, np.random.default_rng(0))
     assert out["lead_time_days"].isna().any()
@@ -352,12 +378,45 @@ def test_calendar_gaps_drops_whole_dates_not_partial_rows():
         assert (out["date"].astype(str) == d).sum() == 0
 
 
+def test_calendar_gaps_always_drops_at_least_one_date():
+    """`inject_missing_lead_time` fuerza un blanking cuando el sorteo da cero
+    (ver el fallback ``if not mask.any()``); `inject_calendar_gaps` no tenia
+    ese mismo resguardo -- con 12 fechas y 12% de probabilidad por fecha, el
+    sorteo de la semilla 10 no tira NINGUNA fecha (medido directamente sobre
+    esta misma fixture), asi que sin el fallback el nivel 2 de esa semilla no
+    contendria huecos de calendario en absoluto. Se fija la semilla exacta
+    que reproduce ese sorteo vacio y se confirma que, con el fallback, sigue
+    cayendo al menos una fecha -- deterministicamente la primera en orden
+    ascendente."""
+    df = _clean_frame(n_weeks=12, n_skus=6)
+    dates = sorted(df["date"].astype(str).unique())
+    out = inject_calendar_gaps(df, np.random.default_rng(10))
+    assert len(out) < len(df)
+    remaining_dates = set(out["date"].astype(str))
+    assert dates[0] not in remaining_dates
+
+
 def test_levels_accumulate():
+    """El chequeo original de "el nivel 2 hereda el desprolijo del 1" solo pedia
+    un espacio en algun lado de product_id -- y `inject_split_sku` (propio del
+    nivel 2, sin tocar el nivel 1) ya produce ``"Sku 1005"``, que CONTIENE un
+    espacio. Un `apply_dirt` que saltara la capa cosmetica en niveles >= 2
+    (contract 3 roto) pasaria ese assert igual, porque la evidencia la
+    fabrica el propio inyector del nivel 2, no el del nivel 1.
+
+    Se reemplaza por una firma que SOLO `inject_whitespace_case` puede
+    producir: espacio inicial Y todo en minusculas. `inject_split_sku` nunca
+    produce eso -- su segunda grafia (``"Sku 1005"``) no lleva espacio inicial
+    y no es enteramente minuscula (la ``S`` queda mayuscula)."""
     df = _clean_frame()
     l1 = apply_dirt(df, level=1, seed=0)
     l2 = apply_dirt(df, level=2, seed=0)
-    # el nivel 2 hereda el desprolijo del 1
-    assert l2["product_id"].astype(str).str.contains(" ").any()
+    # el nivel 2 hereda el desprolijo del 1: firma exacta de inject_whitespace_case
+    # (espacio inicial + minusculas), que inject_split_sku no puede fabricar por
+    # su cuenta ("Sku 1005" no tiene espacio inicial ni es todo minuscula).
+    l2_ids = l2["product_id"].astype(str)
+    cosmetic_signature = l2_ids.str.startswith(" ") & (l2_ids == l2_ids.str.lower())
+    assert cosmetic_signature.any()
     # el nivel 1 solo ensucia la grafia: normalizando vuelve el catalogo original
     assert _canon(l1["product_id"]).nunique() == df["product_id"].nunique()
     # el nivel 2 parte una SKU de verdad: normalizar no la recupera
@@ -366,14 +425,26 @@ def test_levels_accumulate():
 
 def test_value_changing_dirt_runs_before_the_cosmetic_layer():
     """Si el formato se aplicara primero, los inyectores semanticos tendrian que
-    parsear "1.234,50" y coercionarian a NaN en silencio."""
+    parsear "1.234,50" y coercionarian a NaN en silencio.
+
+    El umbral original (``> 0.9``) no discrimina: replayado contra un
+    `apply_dirt` cosmetico-primero (``range(1, level + 1)``), la fraccion
+    recuperada da 0.9028 -- pasa con un margen de 2.8e-3, y entre las
+    semillas 0-11 el cosmetico-primero limpia 0.9 en 10 de 12. Con el orden
+    correcto (como esta shippeado) la fraccion es exactamente 1.0, asi que
+    ``> 0.99`` SI separa los dos ordenes. Ademas se pin la corrupcion real
+    que el orden correcto existe para evitar: ninguna celda de ``quantity``
+    queda en NaN despues del nivel 2 -- eso es precisamente lo que produce
+    parsear "1.234,50" como numero europeo cuando el separador de miles
+    europeo ya se aplico antes que el inyector semantico."""
     df = _clean_frame()
     l2 = apply_dirt(df, level=2, seed=0)
     qty = pd.to_numeric(
         l2["quantity"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False),
         errors="coerce",
     )
-    assert qty.notna().mean() > 0.9
+    assert qty.notna().mean() > 0.99
+    assert qty.notna().all()
 
 
 def test_level_two_degrades_intake_quality(tmp_path):

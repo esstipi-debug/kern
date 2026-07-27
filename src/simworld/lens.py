@@ -10,6 +10,7 @@ acumulan: 3 incluye 2 incluye 1.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import numpy as np
@@ -99,6 +100,37 @@ def inject_thousand_separators(df: pd.DataFrame, rng: np.random.Generator) -> pd
     return out
 
 
+def _alt_spelling(sku_id: str) -> str:
+    """Segunda grafia reconocible pero distinta del id original, derivada del
+    id mismo -- no de un prefijo fijo tipo ``"SKU-"`` (eso acopla el inyector
+    en silencio a la convencion de nombres de ``world.py``: con cualquier
+    otro catalogo, ``victim.replace("SKU-", "Sku ")`` no encuentra nada que
+    reemplazar y devuelve el id intacto, reduciendo el nivel 2 a cuatro
+    inyectores sin ninguna senal de que algo fallo).
+
+    Cualquier separador de catalogo (``-``, ``_``, ``.``) se cambia por un
+    espacio, imitando el mismo tipo de error humano que ``"SKU-1005"`` ->
+    ``"Sku 1005"``. Si no hay separador, se usa el borde letras/digitos
+    (``"P1000"`` -> ``"P 1000"``). Si tampoco hay eso, se inserta un espacio
+    interno. En todos los casos el caracter insertado es interno (nunca al
+    inicio o al final), a proposito: un espacio SOLO al borde desaparece bajo
+    ``strip()``, y la propiedad que el resto del harness necesita es que la
+    segunda grafia NO colapse con la original bajo ``strip().upper()``.
+    """
+    for sep in ("-", "_", "."):
+        if sep in sku_id:
+            prefix, _, rest = sku_id.partition(sep)
+            return f"{prefix.capitalize()} {rest}"
+    match = re.match(r"^([A-Za-z]+)(\d.*)$", sku_id)
+    if match:
+        letters, rest = match.groups()
+        return f"{letters.capitalize()} {rest}"
+    if len(sku_id) < 2:
+        return f"{sku_id}'"
+    mid = max(1, len(sku_id) // 2)
+    return f"{sku_id[:mid]} {sku_id[mid:]}"
+
+
 def inject_split_sku(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
     """La misma SKU cargada con dos grafias: la demanda se parte en dos series."""
     out = df.copy()
@@ -108,7 +140,7 @@ def inject_split_sku(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame
     victim = ids[int(rng.integers(0, len(ids)))]
     is_victim = out["product_id"].astype(str).str.strip() == victim
     flip = is_victim & (rng.random(len(out)) < 0.5)
-    out.loc[flip, "product_id"] = victim.replace("SKU-", "Sku ")
+    out.loc[flip, "product_id"] = _alt_spelling(victim)
     return out
 
 
@@ -131,16 +163,22 @@ def inject_returns_as_negatives(df: pd.DataFrame, rng: np.random.Generator) -> p
 
 
 def inject_missing_lead_time(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
-    """Decision-critico: se pierde el lead time prometido de algunos proveedores
-    (no filas sueltas al azar -- el dato falta por proveedor, como en la vida real)."""
+    """Decision-critico: se pierde el lead time prometido para algunos VALORES
+    de lead time declarados (no filas sueltas al azar -- el dato falta para
+    todo el grupo de filas que comparte ese valor, como en la vida real).
+
+    Nota: agrupa por valor de ``lead_time_days``, no por proveedor -- si dos
+    proveedores distintos prometen el mismo lead time, sus filas se blanquean
+    o se salvan siempre juntas (mismo valor = mismo grupo)."""
     out = df.copy()
-    leads = sorted(pd.to_numeric(out["lead_time_days"], errors="coerce").dropna().unique())
+    numeric_leads = pd.to_numeric(out["lead_time_days"], errors="coerce")
+    leads = sorted(numeric_leads.dropna().unique())
     if not leads:
         return out
     blanked = {v for v in leads if rng.random() < 0.34}
-    mask = pd.to_numeric(out["lead_time_days"], errors="coerce").isin(blanked)
-    if not mask.any() and leads:
-        mask = pd.to_numeric(out["lead_time_days"], errors="coerce") == leads[0]
+    mask = numeric_leads.isin(blanked)
+    if not mask.any():
+        mask = numeric_leads == leads[0]
     out.loc[mask, "lead_time_days"] = np.nan
     return out
 
@@ -152,6 +190,8 @@ def inject_calendar_gaps(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataF
     if len(dates) < 4:
         return out
     drop = {d for d in dates if rng.random() < 0.12}
+    if not drop:
+        drop = {dates[0]}
     return out[~out["date"].astype(str).isin(drop)].reset_index(drop=True)
 
 
@@ -183,6 +223,14 @@ def apply_dirt(df: pd.DataFrame, *, level: int, seed: int = 0) -> pd.DataFrame:
     """
     if level not in LEVELS:
         raise ValueError(f"nivel de suciedad desconocido: {level}; conocidos: {LEVELS}")
+    # Un solo `rng` compartido entre todas las llamadas de este `apply_dirt`
+    # (plan-mandado, no cambiar): a nivel 2 los inyectores semanticos avanzan
+    # el generador antes de que corra la capa cosmetica, asi que el nivel 2
+    # NO reproduce byte-a-byte el ruido cosmetico del nivel 1 con la misma
+    # semilla -- lleva danio de la MISMA naturaleza (mismos inyectores, mismas
+    # probabilidades) pero con OTRO draw aleatorio. Una tarea futura no puede
+    # descomponer un delta nivel-2 como "nivel 1 mas un incremento" celda a
+    # celda; solo puede comparar contra el nivel-0 limpio.
     rng = np.random.default_rng(seed)
     out = df.copy()
     for lvl in range(COSMETIC_LEVEL + 1, level + 1):
