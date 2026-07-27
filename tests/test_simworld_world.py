@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from src.simworld.world import advance, generate_world, initial_state
+from src.simworld.world import WorldState, advance, generate_world, initial_state
 
 
 def test_same_seed_gives_identical_world():
@@ -51,32 +51,89 @@ def test_advance_conserves_mass():
     w = _tiny()
     st = initial_state(w)
     before = st.on_hand.copy()
-    st2, out = advance(w, st, {w.skus[0].sku: 25.0})
+    st, out = advance(w, st, {w.skus[0].sku: 25.0})
     # lo que habia + lo recibido = lo vendido + lo que queda
     left = before + out.received
     right = out.sold + out.on_hand_end
     assert np.allclose(left, right)
 
+    # La orden recien puesta todavia no llego -- received es 0 por construccion
+    # en esta primera llamada, asi que el balance de arriba nunca ejercito el
+    # camino de credito de llegada. Seguimos avanzando hasta que realmente
+    # llegue (received > 0 para algun SKU) y re-verificamos el balance ahi.
+    saw_arrival = False
+    while st.week < w.weeks:
+        before = st.on_hand.copy()
+        st, out = advance(w, st, {})
+        left = before + out.received
+        right = out.sold + out.on_hand_end
+        assert np.allclose(left, right)
+        if out.received[0] > 0:
+            saw_arrival = True
+            break
+    assert saw_arrival, "la orden nunca llego dentro del horizonte de la semilla de prueba"
+
 
 def test_lost_sales_are_unmet_demand_never_negative():
     w = _tiny()
     st = initial_state(w)
-    _, out = advance(w, st, {})
+    # initial_state siembra 4 semanas de demanda media en mano, asi que la
+    # semana 0 real nunca puede quiebrar por construccion. Forzamos un
+    # quiebre real con on_hand deliberadamente chico (WorldState es frozen:
+    # construimos uno nuevo, no mutamos el de initial_state).
+    stockout_state = WorldState(
+        week=st.week,
+        on_hand=np.zeros_like(st.on_hand),
+        in_transit=st.in_transit,
+    )
+    next_state, out = advance(w, stockout_state, {})
     assert np.allclose(out.lost, np.maximum(out.demand - out.sold, 0.0))
     assert (out.lost >= 0).all()
+    assert (out.lost > 0).any(), "el escenario debe forzar un quiebre real de al menos un SKU"
+
+    # La prueba de que es venta PERDIDA y no backorder: la demanda reportada
+    # la semana siguiente debe ser exactamente la demanda cruda del mundo para
+    # esa semana, sin inflarse con el faltante de la semana anterior.
+    _, out2 = advance(w, next_state, {})
+    assert np.array_equal(out2.demand, w.demand[:, next_state.week])
 
 
 def test_order_arrives_after_the_real_lead_time_not_the_promised_one():
     w = _tiny()
-    st = initial_state(w)
     sku0 = w.skus[0].sku
-    lead = int(w.real_lead_weeks[0, 0])
-    st, _ = advance(w, st, {sku0: 100.0})
-    for _ in range(lead - 1):
+    sup = w.suppliers[w.skus[0].supplier_idx]
+    promised = sup.promised_lead_weeks
+    real_row = w.real_lead_weeks[0]
+
+    # Buscamos, en los datos (no hardcodeado), una semana t donde el lead real
+    # diverge del prometido. Si el fixture alguna vez dejara de producir esa
+    # divergencia, esta asercion falla ruidosamente en vez de dejar el resto
+    # de la prueba vacuo.
+    t = int(np.argmax(real_row > promised))
+    real = int(real_row[t])
+    assert real > promised, "la semilla de prueba debe divergir real vs prometido en algun t"
+
+    st = initial_state(w)
+    for _ in range(t):
+        st, _ = advance(w, st, {})
+
+    st, out_order = advance(w, st, {sku0: 100.0})
+    assert out_order.week == t
+
+    # Avanzamos desde t+1 hasta t+real inclusive. En cada semana intermedia
+    # -incluida t+promised, el lead PROMETIDO- no debe haber llegado nada.
+    # Solo en t+real (el lead REAL) debe acreditarse la cantidad completa.
+    received_at_promised = None
+    for week_offset in range(1, real + 1):
         st, out = advance(w, st, {})
-        assert out.received[0] == 0.0
-    st, out = advance(w, st, {})
-    assert out.received[0] == 100.0
+        if week_offset == promised:
+            received_at_promised = out.received[0]
+        if week_offset < real:
+            assert out.received[0] == 0.0
+        else:
+            assert out.received[0] == 100.0
+
+    assert received_at_promised == 0.0, "no debe llegar en el lead prometido, solo en el real"
 
 
 def test_unknown_sku_in_orders_raises():
@@ -91,6 +148,31 @@ def test_negative_order_raises():
     st = initial_state(w)
     with pytest.raises(ValueError, match="negativa"):
         advance(w, st, {w.skus[0].sku: -3.0})
+
+
+def test_nan_order_raises():
+    # nan < 0 es False, asi que una guarda escrita como `if qty < 0` deja
+    # pasar un NaN silenciosamente y envenena on_hand para siempre desde su
+    # semana de llegada. La guarda debe rechazar NaN igual que un negativo.
+    w = _tiny()
+    st = initial_state(w)
+    with pytest.raises(ValueError, match="negativa"):
+        advance(w, st, {w.skus[0].sku: float("nan")})
+
+
+def test_outcome_on_hand_end_is_independent_from_next_state_on_hand():
+    # Ambos dataclasses son frozen=True, pero frozen no vuelve inmutable un
+    # campo numpy: si next_state.on_hand y outcome.on_hand_end son el MISMO
+    # ndarray, un consumidor que mute uno corrompe el otro en silencio.
+    w = _tiny()
+    st = initial_state(w)
+    next_state, out = advance(w, st, {})
+
+    assert next_state.on_hand is not out.on_hand_end
+
+    before_mutation = next_state.on_hand.copy()
+    out.on_hand_end[:] = -999.0
+    assert np.array_equal(next_state.on_hand, before_mutation)
 
 
 def test_advance_past_the_horizon_raises():

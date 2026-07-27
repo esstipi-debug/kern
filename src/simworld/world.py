@@ -157,7 +157,7 @@ def advance(
     for sku, qty in orders.items():
         if sku not in index:
             raise KeyError(f"SKU desconocida en las ordenes: {sku}")
-        if qty < 0:
+        if not qty >= 0:  # catches NaN too: NaN < 0 is False, so `qty < 0` would let it through
             raise ValueError(f"cantidad negativa para {sku}: {qty}")
         ordered[index[sku]] += float(qty)
 
@@ -182,7 +182,7 @@ def advance(
 
     next_state = WorldState(
         week=t + 1,
-        on_hand=on_hand_end,
+        on_hand=on_hand_end.copy(),
         in_transit=tuple(still_in_transit),
     )
     outcome = WeekOutcome(
