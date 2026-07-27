@@ -195,12 +195,112 @@ def inject_calendar_gaps(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataF
     return out[~out["date"].astype(str).isin(drop)].reset_index(drop=True)
 
 
+def inject_duplicate_rows(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Doble exportacion: el mismo archivo se cargo dos veces para un punado
+    de filas -- identicas, sin ningun marcador que delate el duplicado.
+
+    Fallback "al menos una": si el sorteo no marca ninguna fila, se duplica
+    igual la primera fila con cantidad positiva (o la primera fila a secas si
+    ninguna califica), para que el inyector nunca sea un no-op silencioso --
+    ver la nota de asimetria del brief (mismo patron que
+    ``inject_missing_lead_time``/``inject_calendar_gaps``).
+    """
+    out = df.copy()
+    if out.empty:
+        return out
+    mask = rng.random(len(out)) < 0.05
+    if not mask.any():
+        positive = np.flatnonzero(out["quantity"].to_numpy() > 0)
+        idx = int(positive[0]) if len(positive) else 0
+        mask = np.zeros(len(out), dtype=bool)
+        mask[idx] = True
+    dupes = out[mask]
+    return pd.concat([out, dupes], ignore_index=True)
+
+
+def inject_zero_cost(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Costo unitario perdido en la carga: llega 0 en vez de vacio, asi que
+    ninguna regla de "completar con default" (ver ``jobs/intake.py``) lo
+    detecta como faltante -- un costo de $0 es un valor valido, no un hueco.
+
+    Mismo fallback "al menos una fila" que ``inject_duplicate_rows``.
+    """
+    out = df.copy()
+    if out.empty:
+        return out
+    mask = rng.random(len(out)) < 0.08
+    if not mask.any():
+        mask = np.zeros(len(out), dtype=bool)
+        mask[0] = True
+    out.loc[mask, "unit_cost"] = 0.0
+    return out
+
+
+def inject_renamed_supplier(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Un proveedor renombrado a mitad del historico: el mismo proveedor
+    logico queda registrado bajo dos razones sociales, y cualquier metrica
+    agrupada por ``supplier`` (OTIF incluido) se parte en dos series que nada
+    en el archivo dice que son la misma.
+
+    Agrega una columna ``supplier`` que ``history_frame`` no produce (se
+    deriva de ``lead_time_days``, el unico rasgo del proveedor que el
+    historico ya trae). No consume ``rng``: el corte es deterministico
+    (mediana de fechas), no un sorteo -- por eso no necesita el fallback "al
+    menos una" de los otros inyectores de este nivel.
+    """
+    out = df.copy()
+    leads = pd.to_numeric(out["lead_time_days"], errors="coerce")
+    out["supplier"] = leads.map(lambda v: f"Prov-{int(v)}d" if pd.notna(v) else "Prov-?")
+    dates = sorted(out["date"].astype(str).unique())
+    if len(dates) < 4:
+        return out
+    cut = dates[len(dates) // 2]
+    victim = out["supplier"].mode()
+    if victim.empty:
+        return out
+    target = victim.iloc[0]
+    mask = (out["supplier"] == target) & (out["date"].astype(str) >= cut)
+    out.loc[mask, "supplier"] = f"{target} SpA"
+    return out
+
+
+def inject_unmarked_promo(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Un pico de promocion que no es demanda base, y ninguna columna lo
+    dice: una sola fecha se dispara 4x, indistinguible de un salto real de
+    demanda para quien solo mira la serie de ``quantity``.
+
+    Fallback "al menos una" (misma familia que ``inject_duplicate_rows``/
+    ``inject_missing_lead_time``/``inject_calendar_gaps``): medido
+    directamente sobre el fixture estandar de este archivo, la semilla 0
+    hace que ``rng.integers`` caiga en una semana donde las 6 SKUs vendieron
+    exactamente 0 unidades -- 4x de cero sigue siendo cero, un no-op
+    silencioso indistinguible del frame limpio. Si la fecha sorteada no
+    tiene ninguna fila con cantidad positiva, se usa en su lugar la primera
+    fecha (orden ascendente) que si la tenga, para que el pico sea siempre
+    detectable.
+    """
+    out = df.copy()
+    dates = sorted(out["date"].astype(str).unique())
+    if not dates:
+        return out
+    qty = pd.to_numeric(out["quantity"], errors="coerce")
+    week = dates[int(rng.integers(0, len(dates)))]
+    if not (qty[out["date"].astype(str) == week] > 0).any():
+        with_demand = [d for d in dates if (qty[out["date"].astype(str) == d] > 0).any()]
+        if with_demand:
+            week = with_demand[0]
+    mask = out["date"].astype(str) == week
+    out.loc[mask, "quantity"] = (qty[mask] * 4.0).round(2)
+    return out
+
+
 DIRT_BY_LEVEL: dict[int, tuple] = {
     0: (),
     1: (inject_whitespace_case, inject_mixed_date_formats, inject_thousand_separators),
     2: (inject_split_sku, inject_mixed_units, inject_returns_as_negatives,
         inject_missing_lead_time, inject_calendar_gaps),
-    3: (),  # Task 5
+    3: (inject_duplicate_rows, inject_zero_cost, inject_renamed_supplier,
+        inject_unmarked_promo),
 }
 
 COSMETIC_LEVEL = 1

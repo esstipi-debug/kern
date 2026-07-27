@@ -11,13 +11,17 @@ from src.simworld.lens import (
     export_history,
     history_frame,
     inject_calendar_gaps,
+    inject_duplicate_rows,
     inject_missing_lead_time,
     inject_mixed_date_formats,
     inject_mixed_units,
+    inject_renamed_supplier,
     inject_returns_as_negatives,
     inject_split_sku,
     inject_thousand_separators,
+    inject_unmarked_promo,
     inject_whitespace_case,
+    inject_zero_cost,
 )
 from src.simworld.world import advance, generate_world, initial_state
 
@@ -492,3 +496,178 @@ def test_apply_dirt_is_deterministic_for_a_fixed_seed():
         first = apply_dirt(df, level=level, seed=0)
         second = apply_dirt(df, level=level, seed=0)
         pd.testing.assert_frame_equal(first, second)
+
+
+# --- Task 5: inyectores de suciedad nivel 3 (caotico) -----------------------
+
+
+def test_duplicate_rows_inflates_row_count_and_quantity():
+    df = _clean_frame()
+    out = inject_duplicate_rows(df, np.random.default_rng(0))
+    assert len(out) > len(df)
+    assert out["quantity"].sum() > df["quantity"].sum()
+
+
+def test_duplicate_rows_added_rows_are_exact_duplicates_of_existing_rows():
+    """"Mas filas y mas cantidad total" (el assert del brief) tambien lo
+    cumpliria un inyector que agregara filas BASURA con valores nuevos --
+    eso no es "el archivo se exporto dos veces", que es especificamente que
+    las filas de mas son copias exactas de filas que ya estaban. Se pin que
+    el bloque original (las primeras ``len(df)`` filas) no cambia un bit, y
+    que cada fila agregada coincide, celda a celda, con alguna fila del
+    frame original -- no una fila nueva que por casualidad tenga sentido."""
+    df = _clean_frame()
+    out = inject_duplicate_rows(df, np.random.default_rng(0))
+    assert len(out) > len(df)
+    original_block = out.iloc[: len(df)].reset_index(drop=True)
+    pd.testing.assert_frame_equal(original_block, df.reset_index(drop=True))
+    extra = out.iloc[len(df):]
+    original_rows = {tuple(row) for row in df.itertuples(index=False)}
+    for row in extra.itertuples(index=False):
+        assert tuple(row) in original_rows
+
+
+def test_zero_cost_zeroes_some_unit_costs_but_not_all():
+    df = _clean_frame()
+    out = inject_zero_cost(df, np.random.default_rng(0))
+    assert (out["unit_cost"] == 0).any()
+    assert (out["unit_cost"] > 0).any()
+
+
+def test_zero_cost_only_changes_masked_unit_cost_rows_and_nothing_else():
+    """Un `.any()` de cada lado sobre 72 filas es casi seguro pase lo que
+    pase (incluso con un inyector que zafara al azar sin relacion con el
+    sorteo real, o que ademas corrompiera otra columna). Se pin la
+    transformacion sobre las filas que el propio resultado dice haber
+    tocado: nunca fueron 0 en origen (el mundo genera unit_cost en
+    ``[2, 90]``, ver ``world.py``), son una fraccion real de las filas (ni
+    todas ni ninguna), ninguna otra columna se mueve en esas filas, y las
+    filas NO tocadas conservan su unit_cost original intacto."""
+    df = _clean_frame()
+    out = inject_zero_cost(df, np.random.default_rng(0))
+    touched = out["unit_cost"].to_numpy() == 0.0
+    assert touched.any()
+    assert touched.sum() < len(out)
+    assert (df["unit_cost"].to_numpy()[touched] != 0.0).all()
+    for col in ("date", "product_id", "quantity", "lead_time_days", "lead_time_std"):
+        assert (out[col].to_numpy() == df[col].to_numpy()).all()
+    assert (out["unit_cost"].to_numpy()[~touched] == df["unit_cost"].to_numpy()[~touched]).all()
+
+
+def test_renamed_supplier_splits_one_lead_time_into_two():
+    df = _clean_frame()
+    out = inject_renamed_supplier(df, np.random.default_rng(0))
+    assert "supplier" in out.columns
+    assert out["supplier"].nunique() > df.get(
+        "supplier", pd.Series(["x"] * len(df))
+    ).nunique()
+
+
+def test_renamed_supplier_split_is_a_real_rename_at_a_date_boundary():
+    """"nunique subio" (el assert del brief) tambien lo cumpliria una columna
+    'supplier' con nombres al azar sin relacion con el lead time, o que
+    rebautizara TODOS los proveedores en vez de uno solo -- ninguna de esas
+    dos cosas es "un proveedor renombrado a mitad del historico". Se
+    replica la logica del inyector (derivar supplier de lead_time_days,
+    tomar el mas comun, cortar en la mediana de fechas) para pin: (1) antes
+    del corte, el proveedor blanco conserva su nombre original; (2) despues
+    del corte, ESE proveedor -- y solo ese -- pasa a "<original> SpA"; (3)
+    cualquier OTRO proveedor no cambia de nombre en ninguna fila; y (4)
+    ambas grafias comparten el mismo lead_time_days declarado -- es el MISMO
+    proveedor logico bajo dos nombres, no una columna decorativa."""
+    df = _clean_frame()
+    out = inject_renamed_supplier(df, np.random.default_rng(0))
+
+    leads = pd.to_numeric(df["lead_time_days"], errors="coerce")
+    derived = leads.map(lambda v: f"Prov-{int(v)}d" if pd.notna(v) else "Prov-?")
+    dates = sorted(df["date"].astype(str).unique())
+    cut = dates[len(dates) // 2]
+    target = derived.mode().iloc[0]
+
+    before_cut = derived.eq(target) & (df["date"].astype(str) < cut)
+    after_cut = derived.eq(target) & (df["date"].astype(str) >= cut)
+    other_supplier = ~derived.eq(target)
+
+    assert before_cut.any()
+    assert after_cut.any()
+    assert (out.loc[before_cut, "supplier"] == target).all()
+    assert (out.loc[after_cut, "supplier"] == f"{target} SpA").all()
+    assert (out.loc[other_supplier, "supplier"] == derived[other_supplier]).all()
+
+    lead_by_name = out.groupby("supplier")["lead_time_days"].agg(lambda s: set(s.astype(float)))
+    assert lead_by_name[target] == lead_by_name[f"{target} SpA"]
+
+
+def test_unmarked_promo_creates_a_spike_without_a_flag_column():
+    """El assert literal del brief (``out["quantity"].max() > df["quantity"].max()``)
+    es FALSO contra la implementacion de referencia con el fixture estandar
+    de este archivo: medido directamente, con seed=0 ``rng.integers`` cae en
+    la fecha 2025-03-17, donde las 6 SKUs vendieron exactamente 0 unidades
+    esa semana -- 4x de cero sigue siendo cero, asi que el maximo global
+    (47.0, en otra fecha) no se mueve y el assert original revienta. Ademas
+    de invalidar la prueba tal como estaba escrita, es precisamente el no-op
+    silencioso que la nota de asimetria del brief pide evitar, asi que se
+    agrego un fallback a ``inject_unmarked_promo``: si la fecha sorteada no
+    tiene ninguna fila con cantidad positiva, usa la primera fecha (orden
+    ascendente) que si la tenga.
+
+    Esta prueba reproduce esa MISMA logica de seleccion (sorteo + fallback)
+    para saber de antemano cual fecha va a tocarse, y pin el invariante real:
+    esa fecha sube a exactamente 4x (no "el maximo subio", que es una prueba
+    indirecta y -- como acaba de demostrarse -- falsa para este seed/fixture),
+    ninguna otra fecha se mueve un centavo, ninguna otra columna cambia, y no
+    aparece ninguna columna 'promo'."""
+    df = _clean_frame()
+    dates = sorted(df["date"].astype(str).unique())
+    qty_all = pd.to_numeric(df["quantity"], errors="coerce")
+    rng = np.random.default_rng(0)
+    week = dates[int(rng.integers(0, len(dates)))]
+    if not (qty_all[df["date"].astype(str) == week] > 0).any():
+        with_demand = [d for d in dates if (qty_all[df["date"].astype(str) == d] > 0).any()]
+        week = with_demand[0]
+    hit = df["date"].astype(str) == week
+
+    out = inject_unmarked_promo(df, np.random.default_rng(0))
+
+    assert "promo" not in out.columns
+    assert hit.any()
+    expected = (df.loc[hit, "quantity"] * 4.0).round(2)
+    assert out.loc[hit, "quantity"].to_numpy() == pytest.approx(expected.to_numpy())
+    assert out["quantity"].max() > df["quantity"].max()
+    assert (out.loc[~hit, "quantity"].to_numpy() == df.loc[~hit, "quantity"].to_numpy()).all()
+    for col in ("date", "product_id", "unit_cost", "lead_time_days", "lead_time_std"):
+        assert (out[col].to_numpy() == df[col].to_numpy()).all()
+
+
+def test_level_three_includes_level_two_and_one():
+    """El marcador de nivel 1 del brief (" " en algun lugar de product_id) lo
+    puede fabricar tambien ``inject_split_sku`` (nivel 2: "Sku 1005" tiene un
+    espacio) -- exactamente el hallazgo que la Task 4 encontro en
+    ``test_levels_accumulate``, y que el propio enunciado de esta tarea pide
+    no repetir. Se usa en cambio la firma EXCLUSIVA de
+    ``inject_whitespace_case``: espacio INICIAL y todo en minusculas.
+    ``inject_split_sku`` capitaliza la primera letra de su grafia nueva
+    (nunca produce algo enteramente minusculo con espacio al inicio), y
+    ningun inyector de nivel 3 toca ``product_id`` en absoluto -- asi que
+    esta firma solo la puede fabricar el nivel 1.
+
+    Los otros dos marcadores si son exclusivos tal como estan: ninguna
+    filas queda con ``quantity < 0`` salvo por ``inject_returns_as_negatives``
+    (nivel 2 -- ningun inyector de nivel 1 o 3 niega una cantidad), y
+    ``unit_cost`` nunca es exactamente 0 en el mundo generado (rango ``[2,
+    90]``, ver ``world.py``) ni lo toca ningun inyector salvo
+    ``inject_zero_cost`` (nivel 3)."""
+    df = _clean_frame()
+    l3 = apply_dirt(df, level=3, seed=0)
+    ids = l3["product_id"].astype(str)
+    cosmetic_signature = ids.str.startswith(" ") & (ids == ids.str.lower())
+    assert cosmetic_signature.any()   # nivel 1 (firma exclusiva de inject_whitespace_case)
+    assert (pd.to_numeric(l3["quantity"], errors="coerce") < 0).any()  # nivel 2
+    assert (pd.to_numeric(l3["unit_cost"], errors="coerce") == 0).any()  # nivel 3
+
+
+def test_dirt_is_reproducible_for_a_given_seed():
+    df = _clean_frame()
+    a = apply_dirt(df, level=3, seed=42)
+    b = apply_dirt(df, level=3, seed=42)
+    pd.testing.assert_frame_equal(a, b)
