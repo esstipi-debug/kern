@@ -23,14 +23,41 @@ if str(ROOT) not in sys.path:
 
 from scm_agent.knowledge import KnowledgeBase  # noqa: E402
 from scm_agent.modes import SCM  # noqa: E402
-from src.deliverable import DataSource, Deliverable, Finding, Kpi  # noqa: E402
+from src.deliverable import (  # noqa: E402
+    DataSource,
+    Deliverable,
+    Finding,
+    Kpi,
+    days,
+    not_measured,
+    pct,
+)
 from src.mcdm import Criterion, topsis_rank  # noqa: E402
-from src.supplier_scorecard import score_supplier  # noqa: E402
+from src.supplier_scorecard import rankable, score_supplier  # noqa: E402
 
 # Operational columns only — deliberately excludes all customer PII (email, name, password, street).
 COLS = ["Days for shipping (real)", "Days for shipment (scheduled)", "Delivery Status",
         "Late_delivery_risk", "Order Item Profit Ratio", "Sales", "Market", "Order Region",
         "Customer Segment", "Category Name", "Shipping Mode", "Order Item Quantity"]
+
+
+def carrier_scorecards(df) -> tuple[list, tuple[str, ...]]:
+    """Score each shipping mode, and name the modes this data could not score.
+
+    The raw cell goes to ``score_supplier`` uncoerced on purpose: ``bool(nan)`` is True
+    and ``float(nan)`` poisons an average, so pre-converting here would decide the very
+    question - measured or absent? - that the scorecard exists to answer.
+    """
+    cards = []
+    for mode, g in df.groupby("Shipping Mode"):
+        deliveries = [{"on_time": ot, "in_full": inf, "lead_time_days": r,
+                       "units": q, "defects": 0.0}
+                      for ot, inf, r, q in zip(g["on_time"], g["in_full"], g["real"],
+                                               g["Order Item Quantity"])]
+        cards.append(score_supplier(mode, deliveries))
+    panel, dropped = rankable(cards, ("otif", "on_time_rate", "avg_lead_time"))
+    panel.sort(key=lambda c: c.otif, reverse=True)
+    return panel, dropped
 
 
 def section(t):
@@ -54,17 +81,17 @@ def main():
 
     # 1) Carrier (shipping-mode) OTIF scorecards - REAL actual-vs-scheduled -----
     section("1) Carrier OTIF scorecards - real actual-vs-scheduled days (M8)")
-    cards = {}
-    for mode, g in df.groupby("Shipping Mode"):
-        deliveries = [{"on_time": bool(ot), "in_full": bool(inf), "lead_time_days": float(r),
-                       "units": float(q), "defects": 0.0}
-                      for ot, inf, r, q in zip(g["on_time"], g["in_full"], g["real"], g["Order Item Quantity"])]
-        cards[mode] = score_supplier(mode, deliveries)
+    scored, unscoreable = carrier_scorecards(df)
     risk = df.groupby("Shipping Mode")["Late_delivery_risk"].mean()
-    cards = dict(sorted(cards.items(), key=lambda kv: kv[1].otif, reverse=True))
+    cards = {c.supplier: c for c in scored}
     for mode, c in cards.items():
-        print(f"  {mode:<16} n={c.deliveries:>6}  OTIF={c.otif*100:5.1f}%  on-time={c.on_time_rate*100:5.1f}%  "
-              f"avg lead={c.avg_lead_time:4.1f}d  late-risk={risk[mode]*100:4.0f}%")
+        print(f"  {mode:<16} n={c.deliveries:>6}  OTIF={pct(c.otif):>6}  on-time={pct(c.on_time_rate):>6}  "
+              f"avg lead={days(c.avg_lead_time):>9}  late-risk={risk[mode]*100:4.0f}%")
+    for mode in unscoreable:
+        print(f"  {mode:<16} {not_measured()} - no scoreable delivery in this data; "
+              "left out of the ranking")
+    if not cards:
+        sys.exit("no shipping mode carried a scoreable delivery; nothing to rank")
 
     # 2) MCDM shipping-mode selection -----------------------------------------
     section("2) MCDM shipping-mode selection (TOPSIS)")
@@ -113,8 +140,9 @@ def main():
                     f"{late_risk*100:.0f}% of orders carry late-delivery risk; real vs scheduled days diverge.",
                     impact="late deliveries erode service and incur penalties"),
             Finding("Shipping-mode reliability gap",
-                    f"OTIF ranges {min(c.otif for c in cards.values())*100:.0f}%"
-                    f"-{max(c.otif for c in cards.values())*100:.0f}% across modes.",
+                    f"OTIF ranges {pct(min(c.otif for c in cards.values()))}"
+                    f"-{pct(max(c.otif for c in cards.values()))} across the "
+                    f"{len(cards)} mode(s) that could be scored.",
                     impact=f"prefer '{chosen}' for time-critical lanes"),
             Finding("Thin, uniform margins",
                     f"All segments ~{overall_margin*100:.0f}%; lowest is {worst_seg['Customer Segment']} "

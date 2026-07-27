@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.deliverable import DataSource, Deliverable, Finding, Kpi, not_measured
+from src.deliverable import DataSource, Deliverable, Finding, Kpi, days, not_measured, pct, ppm
 from src.export import write_summary_csv
 from src.guided import GuidedOutcome, HandoffPacket, as_handoff, verify_guided
 from src.mcdm import Criterion, RankingResult, award_outcome, topsis_rank
@@ -79,19 +79,6 @@ class SourcingReport:
     # Only reachable via require_all_criteria=False; ranking on a tie of zeros awards
     # alphabetically, which is not a decision.
     unmeasured: tuple[str, ...] = field(default_factory=tuple)
-
-
-def _pct(rate: float | None, lang: str = "en") -> str:
-    """A share as a percentage - or the words that say it was never observed."""
-    return not_measured(lang) if rate is None else f"{rate * 100:.0f}%"
-
-
-def _days(value: float | None, lang: str = "en") -> str:
-    return not_measured(lang) if value is None else f"{value:.0f} days"
-
-
-def _ppm(value: float | None, lang: str = "en") -> str:
-    return not_measured(lang) if value is None else f"{value:,.0f} PPM"
 
 
 def _cell(value: float | None, digits: int) -> float | str:
@@ -606,8 +593,8 @@ def build_deck(
 
     summary = (
         f"Compared {len(report.scorecards)} suppliers on {ranked}; recommended award to "
-        f"{report.recommended} (OTIF {_pct(best.otif, lang)}, lead {_days(best.avg_lead_time, lang)}, "
-        f"{_ppm(best.ppm, lang)})."
+        f"{report.recommended} (OTIF {pct(best.otif, lang)}, lead {days(best.avg_lead_time, lang)}, "
+        f"{ppm(best.ppm, lang)})."
     )
 
     findings = [
@@ -629,14 +616,14 @@ def build_deck(
     if otifs:
         findings.append(Finding(
             "OTIF spread across the panel",
-            f"On-time-in-full ranges {_pct(min(otifs), lang)}-{_pct(max(otifs), lang)} across the "
+            f"On-time-in-full ranges {pct(min(otifs), lang)}-{pct(max(otifs), lang)} across the "
             f"{len(otifs)} supplier(s) that recorded it - the gap is the reliability "
             "premium the award buys.",
             impact="hold underperformers to a corrective plan",
         ))
     if others:
         alt = "; ".join(
-            f"{c.supplier} (OTIF {_pct(c.otif, lang)}, {report.ranking.scores[c.supplier]:.3f})"
+            f"{c.supplier} (OTIF {pct(c.otif, lang)}, {report.ranking.scores[c.supplier]:.3f})"
             for c in others
         )
         findings.append(Finding("Alternatives considered", f"Ranked against: {alt}.",
@@ -644,11 +631,11 @@ def build_deck(
 
     kpis = (
         Kpi("Recommended supplier", report.recommended, rationale="Top TOPSIS-ranked award"),
-        Kpi("Its OTIF", _pct(best.otif, lang), target="95%+",
+        Kpi("Its OTIF", pct(best.otif, lang), target="95%+",
             rationale=f"On-time-in-full over {best.evaluable.otif} scoreable delivery record(s)"),
-        Kpi("Its lead time", _days(best.avg_lead_time, lang), target="minimize",
+        Kpi("Its lead time", days(best.avg_lead_time, lang), target="minimize",
             rationale=f"Replenishment responsiveness over {best.evaluable.lead_time} record(s)"),
-        Kpi("Its quality (PPM)", _ppm(best.ppm, lang), target="minimize",
+        Kpi("Its quality (PPM)", ppm(best.ppm, lang), target="minimize",
             rationale=f"Defect parts per million over {best.evaluable.ppm} record(s)"),
         Kpi("Suppliers compared", str(len(report.scorecards)), rationale="Panel breadth"),
         Kpi("Criteria ranked on", ranked or not_measured(lang),
@@ -695,4 +682,5 @@ def build_deck(
             "decisions - this ranks and prepares the packet; a human signs the award.",
         )),
         prepared=prepared,
+        lang=lang,      # section headers / table columns, not the content
     )

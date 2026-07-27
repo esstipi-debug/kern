@@ -359,4 +359,5 @@ def build_deck(
         residual="DSO / DPO come from finance, not inventory data - confirm them with the "
                  "controller before quoting the cash-to-cash figure externally.",
         prepared=prepared,
+        lang=lang,      # section headers / table columns, not the content
     )

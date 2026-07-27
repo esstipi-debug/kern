@@ -449,8 +449,9 @@ def sourcing_tool() -> Tool:
         run=_sourcing_run,
         qa=lambda report: sourcing_job.verify(report),
         deliver=lambda report, out_dir, client: sourcing_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
-            sourcing_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+            sourcing_job.build_deck(report, client=client, citations=tuple(citations),
+                                    confidence=confidence, lang=lang),
             options=tuple(options),
         ).write_all(out_dir),
     )
@@ -595,8 +596,9 @@ def landed_cost_tool() -> Tool:
         run=_landed_cost_run,
         qa=lambda report: landed_cost_job.verify(report),
         deliver=lambda report, out_dir, client: landed_cost_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
-            landed_cost_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+            landed_cost_job.build_deck(report, client=client, citations=tuple(citations),
+                                       confidence=confidence, lang=lang),
             options=tuple(options),
         ).write_all(out_dir),
     )
@@ -754,8 +756,9 @@ def financial_kpis_tool() -> Tool:
         run=_financial_kpis_run,
         qa=lambda report: financial_kpis_job.verify(report),
         deliver=lambda report, out_dir, client: financial_kpis_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
-            financial_kpis_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+            financial_kpis_job.build_deck(report, client=client, citations=tuple(citations),
+                                          confidence=confidence, lang=lang),
             options=tuple(options),
         ).write_all(out_dir),
     )

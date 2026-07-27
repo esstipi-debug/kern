@@ -240,4 +240,5 @@ def build_deck(
         residual="HS-code classification and duty rates are advisory here - confirm tariff "
                  "treatment with a licensed customs broker before relying on the duty figures.",
         prepared=prepared,
+        lang=lang,      # section headers / table columns, not the content
     )

@@ -22,6 +22,78 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-07-27 — #193 MERGEADO + DEPLOYADO (Fly v35); PR #194 cierra sus follow-ups
+
+**Estado del hilo de honestidad numerica.** #193 se mergeo a `main` como squash `e1ff368`
+y se **deployo a prod: Fly v35**, checks 1/1, `/` y `/api/health` 200. Deploy desde
+worktree detached `.wt-deploy` @ e1ff368; rollback target era `deployment-01KYFV6FX6SPW4B68AQPQYKYZJ`
+(v34). El WARNING "app not listening on 0.0.0.0:8000" volvio a aparecer y volvio a ser el
+cold-start transitorio, no el crash-loop de bs4. Verificado **adentro del contenedor** con
+`flyctl machine exec 825476c7066798 --app linchpin` (en esta maquina Windows
+`flyctl ssh console` falla): `stockout_rate(0,0) -> None`, `inventory_turns(100,0) -> None`,
+`sigma_source` es property, `score_supplier` sin flags -> `otif=None`.
+
+**PR #194** `fix/degradacion-followups`, worktree `.wt-degradacion-followups`, **draft**,
+3 commits. Suite **3867 passed / 3 skipped** (baseline 3836/3). Cierra los dos follow-ups
+que #193 dejo abiertos, y encontro un tercer hueco al hacerlos.
+
+**Lo que conviene saber antes de seguir**
+
+1. **El hueco de `lang` eran DOS huecos, no uno.** El esperado: el runner de paquetes nunca
+   pasaba `lang` al deck por herramienta. El que solo aparece corriendolo: los 3 `build_deck`
+   que YA aceptaban `lang` lo usaban para `pct`/`days`/`ppm` pero **nunca lo pasaban a
+   `Deliverable(lang=...)`**, asi que los encabezados de seccion seguian en ingles aunque el
+   token "no medido" se tradujera. Si alguna vez un deck "acepta lang" pero sale en ingles,
+   mirar el `Deliverable(...)` del final, no la firma.
+2. **Solo 3 tools registrados tienen deck lang-aware:** `sourcing`, `landed_cost`,
+   `financial_kpis`. `integrated_plan` y `price_intelligence` tambien aceptan `lang` pero
+   **no estan cableados a ningun `Tool.deck`** (son CLI-only), asi que una corrida de paquete
+   nunca los alcanza. Documentado en `tests/test_package_threads_lang_to_tool_decks.py`.
+3. **El runner *pregunta*, no asume.** `scm_agent.packages.deck_accepts_lang` usa
+   `inspect.signature` en vez de un flag en `Tool`: un flag hay que acordarse de prenderlo el
+   dia que un `build_deck` gana `lang`, y olvidarlo deja un deck en ingles **en silencio**.
+4. **El hueco de `examples/` eran 5 archivos y 3 clases de bug.** Ademas de formatear, los
+   demos ordenaban / hacian `min`/`max` / alimentaban TOPSIS con los campos que #193 hizo
+   `float | None`. Pasarlos por `fmt()` no alcanzaba. Contrato nuevo: la entidad que no se
+   pudo puntuar **sale del ranking por nombre** (`supplier_scorecard.rankable()`).
+5. **`run_scm_olist.py` tenia la mentira en el script, no en el motor:** una fecha de entrega
+   faltante era `lead_time_days=0.0` (el vendedor mas rapido posible) y una review faltante
+   era `defects=0.0` (uno perfecto). Buscar coerciones `float(x) if pd.notna(x) else 0.0`
+   antes de confiar en cualquier otro example.
+
+**Seam reusable para testear un example sin datasets:** extraer el bloque de scoring a una
+funcion de modulo que tome el DataFrame, y ejercitarla con un frame sintetico de 4 filas.
+Los examples ya eran importables; lo que faltaba era la funcion.
+
+**Fuera de alcance a proposito:** los 4 `run_scm_*` siguen sin verificacion end-to-end real
+(necesitan credenciales de Kaggle). Los tests cubren sus bloques de scoring, no sus `main()`.
+
+**Que revisar primero si vas a mergear #194.** El diff es 789+/125- en 17 archivos, de los
+cuales ~500 lineas son tests nuevos (3 archivos). Los tres lugares donde vale mirar el codigo,
+no el test:
+
+- `scm_agent/packages.py::deck_accepts_lang` — la decision de usar `inspect.signature` en vez
+  de un flag en `Tool`. Es el unico punto "magico" del PR.
+- `src/supplier_scorecard.py::rankable` — valida los nombres de campo contra
+  `SupplierScore.__dataclass_fields__` y levanta `AttributeError` ante un typo, porque un
+  campo mal escrito vaciaria el panel entero en silencio.
+- Los 3 `Deliverable(lang=lang, ...)` agregados en `jobs/{sourcing,landed_cost,financial_kpis}_job.py`
+  — una linea cada uno, y son la mitad del fix de `lang` que no estaba en el plan.
+
+**Estado de CI al escribir esto:** `prod-boot` y GitGuardian **pass**; `test (3.11/3.12/3.13)`
+todavia `pending` (por eso `mergeStateStatus` dice `UNSTABLE`, no es un fallo). La suite
+completa corrio **local y en verde**: 3867 passed / 3 skipped, 547s. **Confirmar los 3 jobs
+en verde antes de mergear** — `gh pr checks 194`.
+
+**Como mergear** (mismo camino que #193): `gh pr ready 194` para sacarlo de draft, despues
+`gh pr merge 194 --squash --delete-branch=false`.
+
+**Despues del merge**, si se quiere en prod: `flyctl deploy` manual otra vez — no hay
+auto-deploy en `main`. El worktree `.wt-deploy` quedo detached en `e1ff368` justamente para
+eso; `git -C .wt-deploy checkout --detach <sha-nuevo>` y deployar desde ahi. Si no se va a
+usar, `git worktree remove .wt-deploy`.
+
+
 ## 2026-07-26 — PR #193 "degradacion silenciosa": 5 commits, CI verde, DRAFT sin mergear
 
 **Lee esto primero si agarras en frio el hilo de honestidad numerica.** Rama
