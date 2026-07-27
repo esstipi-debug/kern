@@ -68,8 +68,30 @@ Los examples ya eran importables; lo que faltaba era la funcion.
 **Fuera de alcance a proposito:** los 4 `run_scm_*` siguen sin verificacion end-to-end real
 (necesitan credenciales de Kaggle). Los tests cubren sus bloques de scoring, no sus `main()`.
 
-**Siguiente:** revisar y mergear #194 (no se mergeo por pedido explicito); despues, si se
-quiere en prod, `flyctl deploy` manual otra vez — no hay auto-deploy en `main`.
+**Que revisar primero si vas a mergear #194.** El diff es 789+/125- en 17 archivos, de los
+cuales ~500 lineas son tests nuevos (3 archivos). Los tres lugares donde vale mirar el codigo,
+no el test:
+
+- `scm_agent/packages.py::deck_accepts_lang` — la decision de usar `inspect.signature` en vez
+  de un flag en `Tool`. Es el unico punto "magico" del PR.
+- `src/supplier_scorecard.py::rankable` — valida los nombres de campo contra
+  `SupplierScore.__dataclass_fields__` y levanta `AttributeError` ante un typo, porque un
+  campo mal escrito vaciaria el panel entero en silencio.
+- Los 3 `Deliverable(lang=lang, ...)` agregados en `jobs/{sourcing,landed_cost,financial_kpis}_job.py`
+  — una linea cada uno, y son la mitad del fix de `lang` que no estaba en el plan.
+
+**Estado de CI al escribir esto:** `prod-boot` y GitGuardian **pass**; `test (3.11/3.12/3.13)`
+todavia `pending` (por eso `mergeStateStatus` dice `UNSTABLE`, no es un fallo). La suite
+completa corrio **local y en verde**: 3867 passed / 3 skipped, 547s. **Confirmar los 3 jobs
+en verde antes de mergear** — `gh pr checks 194`.
+
+**Como mergear** (mismo camino que #193): `gh pr ready 194` para sacarlo de draft, despues
+`gh pr merge 194 --squash --delete-branch=false`.
+
+**Despues del merge**, si se quiere en prod: `flyctl deploy` manual otra vez — no hay
+auto-deploy en `main`. El worktree `.wt-deploy` quedo detached en `e1ff368` justamente para
+eso; `git -C .wt-deploy checkout --detach <sha-nuevo>` y deployar desde ahi. Si no se va a
+usar, `git worktree remove .wt-deploy`.
 
 
 ## 2026-07-26 — PR #193 "degradacion silenciosa": 5 commits, CI verde, DRAFT sin mergear
