@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from src.simworld.world import WeekOutcome, World
@@ -66,8 +67,128 @@ def export_history(
     return out
 
 
+CASE_SIZE = 12.0
+
+
+def inject_whitespace_case(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Cosmetico puro: la SKU sigue siendo la misma, solo mal escrita."""
+    out = df.copy()
+    mask = rng.random(len(out)) < 0.35
+    ids = out["product_id"].astype(str)
+    out.loc[mask, "product_id"] = " " + ids[mask].str.lower()
+    return out
+
+
+def inject_mixed_date_formats(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Cosmetico puro: mismo dia calendario, otro formato de texto."""
+    out = df.copy()
+    mask = rng.random(len(out)) < 0.4
+    parsed = pd.to_datetime(out.loc[mask, "date"])
+    out.loc[mask, "date"] = parsed.dt.strftime("%d/%m/%Y")
+    return out
+
+
+def inject_thousand_separators(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Cosmetico puro: mismo numero, formato europeo de miles/decimales."""
+    out = df.copy()
+    mask = rng.random(len(out)) < 0.3
+    vals = out.loc[mask, "quantity"].astype(float)
+    out["quantity"] = out["quantity"].astype(object)
+    out.loc[mask, "quantity"] = [f"{v:,.2f}".replace(".", "#").replace(",", ".").replace("#", ",")
+                                 for v in vals]
+    return out
+
+
+def inject_split_sku(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """La misma SKU cargada con dos grafias: la demanda se parte en dos series."""
+    out = df.copy()
+    ids = sorted(out["product_id"].astype(str).str.strip().unique())
+    if not ids:
+        return out
+    victim = ids[int(rng.integers(0, len(ids)))]
+    is_victim = out["product_id"].astype(str).str.strip() == victim
+    flip = is_victim & (rng.random(len(out)) < 0.5)
+    out.loc[flip, "product_id"] = victim.replace("SKU-", "Sku ")
+    return out
+
+
+def inject_mixed_units(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Algunas filas vienen en cajas y otras en unidades, sin columna que lo diga."""
+    out = df.copy()
+    mask = rng.random(len(out)) < 0.25
+    qty = pd.to_numeric(out["quantity"], errors="coerce")
+    out.loc[mask, "quantity"] = (qty[mask] / CASE_SIZE).round(2)
+    return out
+
+
+def inject_returns_as_negatives(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Devoluciones cargadas en la misma columna de ventas, como cantidad negativa."""
+    out = df.copy()
+    mask = rng.random(len(out)) < 0.06
+    qty = pd.to_numeric(out["quantity"], errors="coerce")
+    out.loc[mask, "quantity"] = -(qty[mask] * 0.2).round(2)
+    return out
+
+
+def inject_missing_lead_time(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Decision-critico: se pierde el lead time prometido de algunos proveedores
+    (no filas sueltas al azar -- el dato falta por proveedor, como en la vida real)."""
+    out = df.copy()
+    leads = sorted(pd.to_numeric(out["lead_time_days"], errors="coerce").dropna().unique())
+    if not leads:
+        return out
+    blanked = {v for v in leads if rng.random() < 0.34}
+    mask = pd.to_numeric(out["lead_time_days"], errors="coerce").isin(blanked)
+    if not mask.any() and leads:
+        mask = pd.to_numeric(out["lead_time_days"], errors="coerce") == leads[0]
+    out.loc[mask, "lead_time_days"] = np.nan
+    return out
+
+
+def inject_calendar_gaps(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """Semanas sin filas: cero demanda o no se cargo, el archivo no lo dice."""
+    out = df.copy()
+    dates = sorted(out["date"].astype(str).unique())
+    if len(dates) < 4:
+        return out
+    drop = {d for d in dates if rng.random() < 0.12}
+    return out[~out["date"].astype(str).isin(drop)].reset_index(drop=True)
+
+
+DIRT_BY_LEVEL: dict[int, tuple] = {
+    0: (),
+    1: (inject_whitespace_case, inject_mixed_date_formats, inject_thousand_separators),
+    2: (inject_split_sku, inject_mixed_units, inject_returns_as_negatives,
+        inject_missing_lead_time, inject_calendar_gaps),
+    3: (),  # Task 5
+}
+
+COSMETIC_LEVEL = 1
+
+
 def apply_dirt(df: pd.DataFrame, *, level: int, seed: int = 0) -> pd.DataFrame:
-    """Nivel 0 devuelve el frame tal cual. Los inyectores llegan en las Tasks 4-5."""
+    """Aplica la suciedad hasta ``level`` inclusive. Los niveles acumulan.
+
+    Orden deliberado: **primero los defectos que cambian el valor** (niveles 2 y
+    3), **despues los cosmeticos** del nivel 1. Es el orden real — el dato es lo
+    que es, y el formato del exporte se aplica al final — y ademas evita que un
+    inyector semantico tenga que parsear ``"1.234,50"`` y lo coercione a NaN en
+    silencio, corrompiendo el fixture en vez del archivo.
+
+    Ningun inyector toca ``lead_time_std``: esa columna es la senal que Task 8
+    lee para saber si Kern sintetizo la dispersion del lead time
+    (``IntakeQuality.synthesized``), y debe quedar identica en todos los
+    niveles para que las deltas de degradacion nivel-N contra nivel-0 sean
+    comparables.
+    """
     if level not in LEVELS:
         raise ValueError(f"nivel de suciedad desconocido: {level}; conocidos: {LEVELS}")
-    return df.copy()
+    rng = np.random.default_rng(seed)
+    out = df.copy()
+    for lvl in range(COSMETIC_LEVEL + 1, level + 1):
+        for injector in DIRT_BY_LEVEL[lvl]:
+            out = injector(out, rng)
+    if level >= COSMETIC_LEVEL:
+        for injector in DIRT_BY_LEVEL[COSMETIC_LEVEL]:
+            out = injector(out, rng)
+    return out

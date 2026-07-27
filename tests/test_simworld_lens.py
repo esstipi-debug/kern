@@ -3,7 +3,22 @@ import pandas as pd
 import pytest
 
 from jobs.intake import prepare_tracked
-from src.simworld.lens import EPOCH, apply_dirt, export_history, history_frame
+from src.simworld.lens import (
+    CASE_SIZE,
+    EPOCH,
+    LEVELS,
+    apply_dirt,
+    export_history,
+    history_frame,
+    inject_calendar_gaps,
+    inject_missing_lead_time,
+    inject_mixed_date_formats,
+    inject_mixed_units,
+    inject_returns_as_negatives,
+    inject_split_sku,
+    inject_thousand_separators,
+    inject_whitespace_case,
+)
 from src.simworld.world import advance, generate_world, initial_state
 
 
@@ -179,3 +194,230 @@ def test_apply_dirt_unknown_level_raises():
     df = history_frame(w, outs)
     with pytest.raises(ValueError, match="nivel"):
         apply_dirt(df, level=9)
+
+
+# --- Task 4: inyectores de suciedad nivel 1 (cosmetico) y nivel 2 (semantico) --
+
+
+def _clean_frame(n_weeks=12, n_skus=6):
+    w, outs = _run_weeks(n_weeks=n_weeks, n_skus=n_skus)
+    return history_frame(w, outs)
+
+
+def _canon(series):
+    return series.astype(str).str.strip().str.upper()
+
+
+def test_whitespace_case_changes_only_product_id():
+    """No basta con "algo cambio en product_id": pin la transformacion exacta
+    (prefijo espacio + minusculas) en las filas tocadas, y que las filas NO
+    tocadas -- y las demas columnas, en todas las filas -- queden bit a bit
+    identicas. Una implementacion que tambien tocara quantity/date/lead_time_days,
+    o que reescribiera TODAS las filas en vez de una fraccion, pasaria el
+    assert original de "no cambio quantity" + "algo cambio en product_id" pero
+    falla aca."""
+    df = _clean_frame()
+    out = inject_whitespace_case(df, np.random.default_rng(0))
+    assert (out["quantity"].to_numpy() == df["quantity"].to_numpy()).all()
+    assert (out["unit_cost"].to_numpy() == df["unit_cost"].to_numpy()).all()
+    assert (out["date"].to_numpy() == df["date"].to_numpy()).all()
+    assert (out["lead_time_days"].to_numpy() == df["lead_time_days"].to_numpy()).all()
+    changed = out["product_id"] != df["product_id"]
+    assert changed.any()
+    assert changed.sum() < len(out)  # cosmetico parcial, no el 100% de las filas
+    assert (out.loc[changed, "product_id"] == " " + df.loc[changed, "product_id"].str.lower()).all()
+    assert (out.loc[~changed, "product_id"] == df.loc[~changed, "product_id"]).all()
+
+
+def test_mixed_date_formats_produces_two_distinct_patterns():
+    """Ademas del conteo parcial del brief: el dia calendario no cambia (solo
+    el formato de texto), y las filas no marcadas quedan exactamente en el
+    formato ISO original. Descarta una implementacion que corrompa la fecha
+    al reformatear, o que reformatee todas las filas."""
+    df = _clean_frame()
+    out = inject_mixed_date_formats(df, np.random.default_rng(0))
+    slashed = out["date"].astype(str).str.contains("/")
+    assert 0 < slashed.sum() < len(out)
+    # las marcadas cambiaron de formato (%d/%m/%Y) pero no de dia calendario
+    reparsed_slashed = pd.to_datetime(out.loc[slashed, "date"], format="%d/%m/%Y")
+    original_slashed = pd.to_datetime(df.loc[slashed, "date"], format="%Y-%m-%d")
+    assert (reparsed_slashed.to_numpy() == original_slashed.to_numpy()).all()
+    # las no marcadas quedan exactamente en el formato ISO original
+    assert (out.loc[~slashed, "date"] == df.loc[~slashed, "date"]).all()
+    assert (out["quantity"].to_numpy() == df["quantity"].to_numpy()).all()
+
+
+def test_thousand_separators_make_quantity_a_string_column():
+    """Ademas de "hay comas": las filas formateadas recuperan, parseadas, el
+    mismo numero original (no NaN, no un valor distinto), y las filas no
+    tocadas siguen valiendo lo mismo. Sin esto, un inyector que formatee mal
+    (o que trunque en vez de formatear) pasaria igual con solo "contains(',')"."""
+    df = _clean_frame()
+    out = inject_thousand_separators(df, np.random.default_rng(0))
+    assert out["quantity"].dtype == object
+    formatted = out["quantity"].astype(str).str.contains(",")
+    assert 0 < formatted.sum() < len(out)
+    recovered = pd.to_numeric(
+        out.loc[formatted, "quantity"].str.replace(".", "", regex=False).str.replace(",", ".", regex=False),
+        errors="coerce",
+    )
+    assert recovered.notna().all()
+    assert recovered.to_numpy() == pytest.approx(df.loc[formatted, "quantity"].to_numpy())
+    untouched = pd.to_numeric(out.loc[~formatted, "quantity"])
+    assert untouched.to_numpy() == pytest.approx(df.loc[~formatted, "quantity"].to_numpy())
+
+
+def test_split_sku_creates_a_second_spelling_and_preserves_total_quantity():
+    """El brief solo pide "aparece una grafia nueva" + "el total no cambia" --
+    ambas se cumplirian igual si el inyector "partiera" cero filas en la
+    practica (nunique no subiria) o si les asignara cantidad 0 (el total
+    seguiria cuadrando). Se pin que la grafia nueva efectivamente exista Y
+    cargue cantidad positiva -- si no, el split es cosmetico, no una SKU
+    partida de verdad."""
+    df = _clean_frame()
+    out = inject_split_sku(df, np.random.default_rng(0))
+    assert out["product_id"].nunique() > df["product_id"].nunique()
+    assert out["quantity"].sum() == pytest.approx(df["quantity"].sum())
+    new_ids = set(out["product_id"]) - set(df["product_id"])
+    assert new_ids
+    new_qty = out.loc[out["product_id"].isin(new_ids), "quantity"].sum()
+    assert new_qty > 0
+
+
+def test_mixed_units_divides_some_rows_by_the_case_size():
+    """Ademas de "la suma baja": pin que las filas tocadas valen exactamente
+    original/CASE_SIZE (redondeado), y que las filas no tocadas no se mueven
+    ni un centavo. Sin esto, cualquier corrupcion que baje la suma total
+    (poner NaN, restar un numero fijo) pasaria el assert del brief."""
+    df = _clean_frame()
+    out = inject_mixed_units(df, np.random.default_rng(0))
+    assert out["quantity"].sum() < df["quantity"].sum()
+    assert len(out) == len(df)
+    changed = out["quantity"].to_numpy() != df["quantity"].to_numpy()
+    assert changed.any()
+    expected = (df["quantity"].to_numpy()[changed] / CASE_SIZE).round(2)
+    assert out["quantity"].to_numpy()[changed] == pytest.approx(expected)
+    assert (out["quantity"].to_numpy()[~changed] == df["quantity"].to_numpy()[~changed]).all()
+
+
+def test_returns_as_negatives_introduces_negative_quantities():
+    """Ademas de "hay negativos": pin la magnitud exacta (-20% de la cantidad
+    original vendida), y que las filas sin devolucion no se toquen. Sin esto,
+    cualquier ruido que produzca AL MENOS un negativo por casualidad (o un bug
+    que niegue el 100% de las filas) pasaria el `.any()` del brief."""
+    df = _clean_frame()
+    out = inject_returns_as_negatives(df, np.random.default_rng(0))
+    negative = out["quantity"] < 0
+    assert negative.any()
+    assert negative.sum() < len(out)
+    expected = -(df.loc[negative, "quantity"] * 0.2).round(2)
+    assert out.loc[negative, "quantity"].to_numpy() == pytest.approx(expected.to_numpy())
+    assert (out.loc[~negative, "quantity"].to_numpy() == df.loc[~negative, "quantity"].to_numpy()).all()
+
+
+def test_missing_lead_time_blanks_about_a_third_of_the_suppliers():
+    """El brief solo chequea que haya NaN y no-NaN. Eso pasaria igual si el
+    blanking fuera por FILA individual al azar en vez de por VALOR de lead
+    time (proveedor) -- que es la semantica real ("se perdio el dato del
+    proveedor", no "se perdieron filas sueltas"). Se pin que cada valor
+    original de lead_time_days queda enteramente NaN o enteramente intacto,
+    nunca mezclado dentro del mismo grupo."""
+    df = _clean_frame()
+    out = inject_missing_lead_time(df, np.random.default_rng(0))
+    assert out["lead_time_days"].isna().any()
+    assert out["lead_time_days"].notna().any()
+    for _value, group in df.groupby("lead_time_days"):
+        status = out.loc[group.index, "lead_time_days"].isna()
+        assert status.all() or (~status).all()
+    assert (out["quantity"].to_numpy() == df["quantity"].to_numpy()).all()
+
+
+def test_calendar_gaps_drops_whole_dates_not_partial_rows():
+    """La semantica real es "la semana entera no se cargo", no "algunas filas
+    de esa semana se perdieron". Se pin que cada fecha remanente sigue
+    teniendo todas sus SKUs, y que las fechas eliminadas desaparecen del todo
+    -- un inyector que tirara filas individuales al azar (en vez de fechas
+    completas) pasaria un `len(out) < len(df)` pero fallaria aca."""
+    df = _clean_frame()
+    out = inject_calendar_gaps(df, np.random.default_rng(0))
+    assert len(out) < len(df)
+    n_skus = df["product_id"].nunique()
+    original_dates = set(df["date"].astype(str))
+    remaining_dates = set(out["date"].astype(str))
+    dropped_dates = original_dates - remaining_dates
+    assert dropped_dates
+    for d in remaining_dates:
+        assert (out["date"].astype(str) == d).sum() == n_skus
+    for d in dropped_dates:
+        assert (out["date"].astype(str) == d).sum() == 0
+
+
+def test_levels_accumulate():
+    df = _clean_frame()
+    l1 = apply_dirt(df, level=1, seed=0)
+    l2 = apply_dirt(df, level=2, seed=0)
+    # el nivel 2 hereda el desprolijo del 1
+    assert l2["product_id"].astype(str).str.contains(" ").any()
+    # el nivel 1 solo ensucia la grafia: normalizando vuelve el catalogo original
+    assert _canon(l1["product_id"]).nunique() == df["product_id"].nunique()
+    # el nivel 2 parte una SKU de verdad: normalizar no la recupera
+    assert _canon(l2["product_id"]).nunique() > df["product_id"].nunique()
+
+
+def test_value_changing_dirt_runs_before_the_cosmetic_layer():
+    """Si el formato se aplicara primero, los inyectores semanticos tendrian que
+    parsear "1.234,50" y coercionarian a NaN en silencio."""
+    df = _clean_frame()
+    l2 = apply_dirt(df, level=2, seed=0)
+    qty = pd.to_numeric(
+        l2["quantity"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False),
+        errors="coerce",
+    )
+    assert qty.notna().mean() > 0.9
+
+
+def test_level_two_degrades_intake_quality(tmp_path):
+    w, outs = _run_weeks(n_weeks=16, n_skus=6)
+    dirty = apply_dirt(history_frame(w, outs), level=2, seed=0)
+    p = tmp_path / "dirty.csv"
+    dirty.to_csv(p, index=False)
+    _, quality = prepare_tracked(p)
+    dropped = (
+        quality.n_dropped_bad_date
+        + quality.n_dropped_bad_quantity
+        + quality.n_dropped_negative_quantity
+    )
+    assert dropped > 0
+
+
+def test_no_injector_touches_lead_time_std():
+    """Restriccion dura del review de Task 3: jobs/intake.py usa 0.0 como
+    default cuando la columna falta, asi que un inyector que la vaciara
+    seria numericamente invisible ahi -- pero IntakeQuality.synthesized (la
+    senal que Task 8 lee) SI lo notaria, y si la corrupcion no fuera pareja
+    entre niveles, las deltas de degradacion nivel-N vs nivel-0 dejan de ser
+    comparables. Se corre en los cuatro niveles, no solo en el 2.
+
+    ``history_frame`` escribe ``0.0`` como literal para TODAS las filas (no es
+    un valor derivado por SKU), asi que comparar contra la constante original
+    equivale a comparar celda a celda contra el frame limpio -- y evita que
+    ``inject_calendar_gaps`` (que borra filas enteras a partir del nivel 2)
+    rompa la comparacion por un simple desajuste de forma."""
+    df = _clean_frame()
+    assert (df["lead_time_std"].to_numpy() == 0.0).all()  # sanity: la constante que comparamos
+    for level in LEVELS:
+        dirty = apply_dirt(df, level=level, seed=0)
+        assert "lead_time_std" in dirty.columns
+        assert not dirty.empty
+        assert (dirty["lead_time_std"].to_numpy() == 0.0).all()
+
+
+def test_apply_dirt_is_deterministic_for_a_fixed_seed():
+    """Misma semilla, misma suciedad, siempre -- si algun inyector usara
+    aleatoriedad no gobernada por el `rng` recibido (p.ej. np.random global),
+    dos corridas con seed=0 divergirian."""
+    df = _clean_frame()
+    for level in LEVELS:
+        first = apply_dirt(df, level=level, seed=0)
+        second = apply_dirt(df, level=level, seed=0)
+        pd.testing.assert_frame_equal(first, second)
