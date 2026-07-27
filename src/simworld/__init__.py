@@ -3,6 +3,7 @@
 No es una capacidad del agente. Nada de aca se registra en scm_agent/tools.py.
 """
 
+from src.simworld.lens import apply_dirt, export_history, history_frame
 from src.simworld.world import (
     Sku,
     Supplier,
@@ -17,4 +18,5 @@ from src.simworld.world import (
 __all__ = [
     "Sku", "Supplier", "WeekOutcome", "World", "WorldState",
     "advance", "generate_world", "initial_state",
+    "apply_dirt", "export_history", "history_frame",
 ]
