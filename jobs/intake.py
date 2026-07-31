@@ -39,23 +39,25 @@ def _norm(value: object) -> str:
 def _parse_dates(series: pd.Series) -> pd.Series:
     """Parse a date column, tolerating a genuinely mixed-format column.
 
-    ``pd.to_datetime`` without an explicit format locks onto whichever format
+    ``pd.to_datetime`` without ``format="mixed"`` locks onto whichever format
     it infers from the column and silently turns every row in a DIFFERENT
     format into NaT -- a real failure mode for messy client exports that mix
-    ISO and day-first dates in the same column, not a hypothetical. The first
-    pass keeps today's exact behavior for the common single-format case
-    (zero regression risk there); the second pass retries ONLY the rows that
-    failed, with ``dayfirst=True`` -- it never re-touches a value the first
-    pass already parsed, so an unambiguous ISO date can never be
-    misinterpreted by the day-first retry.
+    ISO and slash-delimited dates in the same column, not a hypothetical.
+    ``format="mixed"`` infers the format PER VALUE instead of once for the
+    whole column, so it does not drop rows just because an earlier row set a
+    different format.
+
+    Known, accepted limitation: a slash-delimited date where BOTH components
+    are <= 12 (e.g. "06/01/2025") is genuinely ambiguous without locale
+    context, and this defaults to month-first (the international/US
+    convention) absent one. That is a narrow, honest ambiguity -- it never
+    drops a row and it never corrupts an already-unambiguous date (ISO, or
+    any slash date with a component > 12) the way an earlier, reverted
+    ``dayfirst=True`` retry was found to do (it silently swapped month/day on
+    ~39% of ISO dates whenever a mixed column happened to lock onto a slash
+    format first).
     """
-    parsed = pd.to_datetime(series, errors="coerce")
-    unresolved = parsed.isna() & series.notna()
-    if unresolved.any():
-        parsed.loc[unresolved] = pd.to_datetime(
-            series[unresolved], errors="coerce", dayfirst=True
-        )
-    return parsed
+    return pd.to_datetime(series, errors="coerce", format="mixed")
 
 
 @dataclass(frozen=True)

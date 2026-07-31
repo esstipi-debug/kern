@@ -162,6 +162,78 @@ def test_normalize_tracked_single_iso_format_column_unaffected():
     ]
 
 
+def test_normalize_tracked_does_not_corrupt_iso_dates_when_a_slash_date_leads():
+    """Regression test for a reverted two-pass dayfirst=True retry: that fix
+    made pandas lock its FIRST pass onto whichever format led the column, so
+    an ISO date landing anywhere after a slash-formatted date got sent into
+    the dayfirst retry and silently swapped month/day (measured: ~39% of ISO
+    dates corrupted this way). Here the slash date leads the column -- the
+    exact trigger condition -- and both ISO dates must still parse to their
+    correct, unswapped calendar day."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["13/01/2025", "2025-01-06", "2025-02-10"],
+            "StockCode": ["A", "A", "A"],
+            "Quantity": [5, 10, 7],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_date == 0
+    dates = sorted(canon["date"].tolist())
+    assert pd.Timestamp("2025-01-06") in dates, "ISO date Jan 6 was corrupted"
+    assert pd.Timestamp("2025-02-10") in dates, "ISO date Feb 10 was corrupted"
+    assert pd.Timestamp("2025-06-01") not in dates, "Jan 6 was swapped to Jun 1"
+
+
+def test_normalize_tracked_does_not_corrupt_us_format_dates():
+    """Regression test for the same reverted dayfirst=True retry corrupting
+    genuine US-format (MM/DD/YYYY) dates, not just ISO ones. A slash date
+    leads the column (the exact trigger condition -- see the sibling ISO
+    regression test above) followed by an ISO date, a clearly-US-only-valid
+    date ('03/25/2025', day=25 rules out day-first), and an ambiguous-looking
+    '03/04/2025'. All must resolve correctly: 03/25 stays March 25, and
+    03/04 reads month-first as March 4, not April 3."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["13/01/2025", "2025-01-06", "03/25/2025", "03/04/2025"],
+            "StockCode": ["A", "A", "A", "A"],
+            "Quantity": [3, 10, 5, 7],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_date == 0
+    dates = sorted(canon["date"].tolist())
+    assert pd.Timestamp("2025-03-25") in dates, "US-only-valid date corrupted"
+    assert pd.Timestamp("2025-03-04") in dates, "03/04/2025 not read month-first (March 4)"
+    assert pd.Timestamp("2025-04-03") not in dates, "03/04/2025 misread as April 3rd"
+
+
+def test_normalize_tracked_ambiguous_slash_date_defaults_month_first():
+    """Documents the one honest, accepted limitation of format="mixed": a
+    slash-delimited date where BOTH components are <= 12 (e.g. '06/01/2025')
+    is genuinely ambiguous without locale context, and pandas defaults to
+    month-first (the international/US convention) absent one. This is NOT a
+    bug to fix here -- it never drops a row and never corrupts an
+    unambiguous date (ISO, or any slash date with a component > 12), unlike
+    the reverted dayfirst=True retry. A day-first client exporting this exact
+    shape would get this one narrow case read as June 1st instead of the
+    intended January 6th; that tradeoff is deliberate and documented in
+    jobs.intake._parse_dates."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["06/01/2025"],
+            "StockCode": ["A"],
+            "Quantity": [10],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_date == 0
+    assert canon["date"].iloc[0] == pd.Timestamp("2025-06-01")  # June 1st, not Jan 6
+
+
 def test_normalize_tracked_clean_data_has_zero_dropped_fraction():
     raw = pd.DataFrame(
         {
