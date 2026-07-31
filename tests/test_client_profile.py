@@ -401,3 +401,60 @@ def test_as_params_excludes_warehouse_capacity():
 
 def test_is_generic_client_label_covers_mcp_default():
     assert is_generic_client_label("MCP client")
+
+
+# -- objection_thresholds (spec 2026-07-31, sec 5.2) --------------------------
+
+def test_objection_thresholds_round_trip(tmp_path):
+    upsert_profile("Acme Corp", "Acme Corp", root=tmp_path,
+                   objection_thresholds={"cfo": 12_000.0, "comercial": 0.03})
+    loaded = load_profile("acme-corp", root=tmp_path)
+    assert loaded.objection_thresholds == {"cfo": 12_000.0, "comercial": 0.03}
+
+
+def test_partial_thresholds_are_legal(tmp_path):
+    # a partial dict is the honest case: the missing areas become NO_EVALUABLE
+    p = upsert_profile("Acme Corp", "Acme Corp", root=tmp_path,
+                       objection_thresholds={"cfo": 1.0})
+    assert set(p.objection_thresholds) == {"cfo"}
+    assert load_profile("acme-corp", root=tmp_path).objection_thresholds == {"cfo": 1.0}
+
+
+def test_unknown_area_key_rejected():
+    with pytest.raises(ValueError, match="objection_thresholds"):
+        ClientProfile(client_id="x", display_name="X",
+                      objection_thresholds={"almacen": 1.0})
+
+
+@pytest.mark.parametrize("bad", [0.0, -1.0, float("nan"), float("inf")])
+def test_non_positive_or_non_finite_threshold_rejected(bad):
+    with pytest.raises(ValueError, match="objection_thresholds"):
+        ClientProfile(client_id="x", display_name="X",
+                      objection_thresholds={"cfo": bad})
+
+
+def test_bool_threshold_rejected():
+    # bool subclasses int in Python - True would silently validate as 1.0,
+    # and for a [0,1] fill-rate KPI that threshold can never be exceeded, so
+    # the area would ACCEPT every possible change while looking configured.
+    with pytest.raises(ValueError, match="objection_thresholds"):
+        ClientProfile(client_id="x", display_name="X",
+                      objection_thresholds={"comercial": True})
+
+
+def test_thresholds_reach_as_params():
+    p = ClientProfile(client_id="x", display_name="X",
+                      objection_thresholds={"cfo": 5.0})
+    assert p.as_params()["objection_thresholds"] == {"cfo": 5.0}
+
+
+def test_none_thresholds_absent_from_as_params():
+    p = ClientProfile(client_id="x", display_name="X")
+    assert "objection_thresholds" not in p.as_params()
+
+
+def test_explicit_params_beat_the_profile():
+    p = ClientProfile(client_id="x", display_name="X",
+                      objection_thresholds={"cfo": 5.0})
+    merged = merge_params({"objection_thresholds": {"cfo": 99.0}}, p)
+    assert merged["objection_thresholds"] == {"cfo": 99.0}

@@ -173,6 +173,18 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # the working-capital lens (its acta is priced in capital terms).
     "hat_tension": ("safety_stock", "service_level", "cycle_service_level"),
     "hat_settlement": ("safety_stock", "service_level", "working_capital_efficiency"),
+    # cross_impact (tool #48) decides the SAME (Q, SL) space as hat_tension, so it
+    # inherits those three anchors; cross_functional_integration adds the
+    # coordination lens this tool is actually about. Measured by BFS over the
+    # 3002-node graph (2026-07-31): the three inherited anchors close 853 nodes
+    # (28.4%) at 2 hops; adding cross_functional_integration admits only 16 more
+    # (869, 28.9%) and it is hub-free (degree 3; neighbors Supply Chain
+    # Orientation / Supply Chain Agility / Tiger Team, all on topic).
+    # sales_and_operations_planning (own 2-hop closure 618) and functional_silos
+    # (degree 2 but closure 266 - one hop from a hub) were REJECTED as magnets,
+    # by measurement, not intuition.
+    "cross_impact": ("safety_stock", "service_level", "cycle_service_level",
+                     "cross_functional_integration"),
 }
 
 # tool_key -> concept ids that must NEVER be cited for this tool, even when
@@ -207,6 +219,20 @@ EXCLUDED_CONCEPTS: dict[str, tuple[str, ...]] = {
     # PR #164 false-friend class. The settlement anchors' closure (386 nodes)
     # contains neither; no exclusions needed there.
     "hat_tension": ("reverse_auction", "procurement_auction"),
+    # cross_docking is a flow-through warehousing technique (goods move from
+    # inbound to outbound without being stored) - it has nothing to do with the
+    # cost of coordination between business areas. It rides the "cross" lexical
+    # overlap with this tool's own keywords ("impacto cruzado", "cross-area
+    # impact") and clears MAX_HOPS via a shared book hub even though it is NOT
+    # reachable from the cross_functional_integration anchor at all. Measured
+    # against the committed books graph (2026-07-31):
+    #   cross_docking -> safety_stock              = 2 hops
+    #   cross_docking -> cycle_service_level        = 2 hops
+    #   cross_docking -> service_level              = unreachable
+    #   cross_docking -> cross_functional_integration = unreachable
+    # Same false-friend class as returns/reverse_auction and
+    # excess_obsolete/excess_capacity_and_inventory above.
+    "cross_impact": ("cross_docking",),
 }
 
 

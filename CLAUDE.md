@@ -15,11 +15,12 @@
 An **agentic supply-chain engine**: a plain-language brief becomes a finished,
 QA-gated deliverable (Excel + report + chart), grounded in a knowledge graph of
 25 SCM sources (24 books + an AI-in-SC source) and the codebase itself. A deterministic Python **engine** across
-**47 agent-routable tools** (EOQ, safety stock, `(s,Q)`/`(R,S)`, simulation,
+**48 agent-routable tools** (EOQ, safety stock, `(s,Q)`/`(R,S)`, simulation,
 a network digital twin, forecasting, pricing, price intelligence,
 discovery-assisted price watch, DDMRP, ABC-XYZ, sourcing, supplier segmentation (Kraljic),
 landed cost, cost-to-serve, S&OP, facility location, multi-facility network design (p-median),
-DRP, transportation, FEFO, launch readiness, vehicle routing, hat tension/settlement…) sits under an
+DRP, transportation, FEFO, launch readiness, vehicle routing, hat tension/settlement,
+flow map, cross-area impact/objection verdict…) sits under an
 **orchestrator agent** that classifies → runs → validates → delivers. Runs
 with or without an LLM.
 
@@ -54,6 +55,11 @@ Every consequential result is a `GuidedOutcome` with status:
 `EXECUTED` (agent did it) · `OPTIONS` (ranked choices) · `HANDOFF` (prepared
 human step) · `ESCALATED` (routed to a human with SLA). The last three need a
 human — that contract is what `documentation/operator/` documents.
+
+`cross_impact` mide el impacto de una decision propuesta sobre las otras areas
+y emite un veredicto de objecion contra umbrales del perfil de cliente. Un
+area sin umbral sale `no_evaluable` y el veredicto global es `indeterminado`
+- nunca "nadie objeta".
 
 ### Writeback safety (`src/writeback.py`)
 Never mutate a system of record blindly: stage a dry-run `Changeset`, classify by
@@ -209,6 +215,6 @@ See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
 `scm_agent/README.md` (agent reference) · `documentation/METHODOLOGY.md` (models) ·
 `documentation/operator/` (the human operator's portfolio) ·
 [`documentation/TESTING_ENVIRONMENT.md`](documentation/TESTING_ENVIRONMENT.md)
-(stand up a clean env + `examples/run_capability_smoke.py` to exercise all 47
+(stand up a clean env + `examples/run_capability_smoke.py` to exercise all 48
 tools and see where each fails; `scripts/setup-test-env.sh` for the reproducible
 full install the `SessionStart` hook now delegates to).

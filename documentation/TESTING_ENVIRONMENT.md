@@ -8,7 +8,7 @@
 
 ```bash
 bash scripts/setup-test-env.sh                      # 1. reproducible full install
-PYTHONPATH=. python examples/run_capability_smoke.py # 2. exercise all 46 tools
+PYTHONPATH=. python examples/run_capability_smoke.py # 2. exercise all 48 tools
 PYTHONPATH=. pytest tests/ -q                        # 3. the full 3250+ test suite
 PYTHONPATH=. python -m uvicorn webapp.app:app --reload  # 4. poke it by hand
 ```

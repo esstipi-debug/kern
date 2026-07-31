@@ -14,7 +14,7 @@ from pathlib import Path
 from examples.run_capability_smoke import _NETWORK, main
 from scm_agent.tools import build_default_registry
 
-# Expected bucket per tool for the default (offline, non-stress) run. 46 registered tools.
+# Expected bucket per tool for the default (offline, non-stress) run. 48 registered tools.
 #
 # This replaces a `passes >= 35` numeric floor. A floor erodes silently: gating one tool
 # just spends slack, and the suite stays green while a capability quietly stops producing
@@ -25,6 +25,7 @@ from scm_agent.tools import build_default_registry
 EXPECTED_OFFLINE_BUCKETS: dict[str, str] = {
     # --- GATED: requires_data=True and the harness has no fixture yet, so these never
     # execute a line of their own job code. Adding a fixture flips the row to PASS.
+    "cross_impact":           "GATED",
     "disruption_scan":        "GATED",
     "flow_map":               "GATED",
     "hat_settlement":         "GATED",

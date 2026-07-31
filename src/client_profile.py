@@ -27,6 +27,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from src.deliverable import Branding
+from src.hats import HAT_KEYS
 
 DEFAULT_CLIENTS_ROOT = Path("clients")
 
@@ -113,6 +114,16 @@ class ClientProfile:
     order_cost: float | None = None
     lead_time_days: float | None = None
     warehouse_capacity: WarehouseCapacity | None = None
+    # Per-area tolerance for the cross_impact tool (spec 2026-07-31, sec 5.2).
+    # Keys are exactly src.hats.HAT_KEYS; values are the maximum tolerated
+    # DETERIORATION in that area's own headline-KPI units, always positive:
+    #   comprador -> effective_unit_cost (usd/unit)   planner -> policy_cost (usd/yr)
+    #   cfo       -> capital_charge_usd (usd/yr)      comercial -> fill_rate (fraction)
+    # A PARTIAL dict is legal and intended: an area with no threshold comes out
+    # NO_EVALUABLE rather than silently taking an assumed tolerance. Unlike
+    # warehouse_capacity this IS included in as_params() - it is a plain dict of
+    # floats, so it does not break JSON-serializing the merged params.
+    objection_thresholds: dict[str, float] | None = None
     # A partner reselling under the white-label/rev-share model (E6) - see
     # src/deliverable.py's Branding docstring. Deliberately NOT an engine
     # param (no Tool reads it), so excluded from as_params(); only
@@ -141,6 +152,17 @@ class ClientProfile:
         _require_positive_finite(self.holding_rate, "holding_rate")
         _require_positive_finite(self.order_cost, "order_cost")
         _require_positive_finite(self.lead_time_days, "lead_time_days")
+        if self.objection_thresholds is not None:
+            for key, value in self.objection_thresholds.items():
+                if key not in HAT_KEYS:
+                    raise ValueError(
+                        f"objection_thresholds key {key!r} is not a known area "
+                        f"(expected one of {HAT_KEYS})")
+                if (isinstance(value, bool)
+                        or not (isinstance(value, (int, float)) and math.isfinite(value) and value > 0)):
+                    raise ValueError(
+                        f"objection_thresholds[{key!r}] must be a finite number > 0, "
+                        f"got {value!r}")
         if self.contingent_fee_pct is not None and not 0.10 <= self.contingent_fee_pct <= 0.20:
             raise ValueError("contingent_fee_pct must be in [0.10, 0.20]")
         if self.lang not in ("es", "en"):
@@ -156,9 +178,11 @@ class ClientProfile:
         deliberately NOT included: no engine consumes it yet, and a dataclass
         object inside ``params`` would poison any JSON-serialization of the
         merged dict — it stays profile-only reference data until the
-        capacitated-allocation capability lands.
+        capacitated-allocation capability lands. ``objection_thresholds`` IS
+        included: it is a plain dict of floats, so it serializes fine.
         """
-        fields = ("service_level", "holding_rate", "order_cost", "lead_time_days")
+        fields = ("service_level", "holding_rate", "order_cost", "lead_time_days",
+                  "objection_thresholds")
         return {k: v for k in fields if (v := getattr(self, k)) is not None}
 
 
@@ -199,6 +223,7 @@ def load_profile(client_id: str, *, root: Path | str = DEFAULT_CLIENTS_ROOT) -> 
             lead_time_days=raw.get("lead_time_days"),
             warehouse_capacity=WarehouseCapacity(**capacity_raw) if capacity_raw else None,
             branding=Branding(**branding_raw) if branding_raw else None,
+            objection_thresholds=raw.get("objection_thresholds"),
             contingent_fee_pct=raw.get("contingent_fee_pct"),
             lang=raw.get("lang", "es"),
             source=raw.get("source", "manual"),
