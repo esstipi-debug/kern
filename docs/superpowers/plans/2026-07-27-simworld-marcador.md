@@ -6,7 +6,9 @@
 
 **Architecture:** Cuatro unidades puras en `src/simworld/` — `world.py` (la verdad, nadie la ve), `lens.py` (el CSV sucio que Kern lee), `runners.py` (los cuatro corredores tras un contrato unico) y `scorer.py` (el contrato de KPI portado de gym-invmgmt mas la degradacion anunciada). Un CLI en `examples/run_world_sim.py`. Kern entra por `Orchestrator.run` completo; la unica modificacion fuera de `simworld/` es exponer el reporte estructurado en `JobResult`.
 
-**Tech Stack:** Python 3.11+, numpy, pandas, pytest. Sin dependencias nuevas.
+**Tech Stack:** Python 3.11+, numpy, pandas, pytest, scipy (`scipy.optimize.milp`,
+ya dependencia del repo via `jobs/inventory_optimization.py`). Sin dependencias
+nuevas.
 
 **Spec:** `docs/superpowers/specs/2026-07-27-simworld-marcador-design.md`
 
@@ -21,6 +23,47 @@
 - Sin mutacion: dataclasses `frozen=True`, funciones que devuelven copias nuevas.
 - Rama: `feat/simworld-marcador`. Commits frecuentes, uno por tarea como minimo.
 - **`simworld` NO se registra como herramienta del agente.** Es un arnes, no una capacidad de cliente. Nada de `register()` en `scm_agent/tools.py`.
+
+## Revision de Task 7 (post-hoc, 2026-07-31): el oraculo pasa de heuristica a MILP exacto
+
+Task 7 se implemento originalmente con un oraculo miope (ventana fija de su
+propio lead time). La revision adversarial lo encontro correcto en su
+aritmetica pero **no genuinamente optimo**: perdia contra el piso ingenuo en
+costo en 3 de 25 mundos simulados cuando el lead time de un proveedor variaba
+semana a semana, y la correccion inicial (ventana `L+1`) solo bajo eso a 3/25
+sin cerrarlo. La revisora demostro con una variante propia (misma forma,
+sin programacion dinamica, ~8 lineas) que el hueco SI se podia cerrar, dejando
+un veredicto de "Needs fixes" y una decision de diseno genuina: mantener el
+oraculo miope (documentando el limite) vs. cerrarlo con una heuristica mas
+larga vs. hacerlo verdaderamente optimo.
+
+**Decision del usuario: ir a fondo.** El oraculo ahora resuelve, por SKU y por
+llamada, el plan de compra exacto de costo minimo sobre el horizonte restante
+-- un lot-sizing de Wagner-Whitin con costo fijo de ordenar y opcion de venta
+perdida, formulado como MILP (`scipy.optimize.milp`, HiGHS) y validado: **gana
+o empata al piso en costo en 25/25 semillas** (n_skus=8, weeks=40, seeds 1-25).
+Optimiza la MISMA funcion de costo que `scorer.py` (Task 9) usara para juzgar
+cualquier corredor, asi el techo y la regla que lo mide nunca discrepan.
+
+**Hallazgo secundario, no un bug:** un oraculo genuinamente optimo en costo
+gana en costo mucho mas seguido de lo que gana en "unidades perdidas" (8/25
+en el mismo barrido) -- a veces es mas barato aceptar un quiebre que evitarlo
+(el margen perdido es menor que comprar + mantener + el costo fijo de
+ordenar). "Unidades perdidas" nunca fue el invariante correcto para validar
+un oraculo de costo; el marcador (Task 9) mide costo, y es contra costo que
+el oraculo esta validado.
+
+**Costo de rendimiento, documentado, no resuelto aca:** cada llamada resuelve
+un MILP (~50-60ms via HiGHS). Sobre el grid completo de produccion (Task 11:
+120 SKUs x 52 semanas) eso son ~6.240 resoluciones, varios minutos, si se
+llama semana a semana de forma ingenua. Se deja asi a proposito -- Task 7
+prioriza correccion, sus propios tests usan mundos chicos donde el costo es
+irrelevante -- pero **la Task 11 debe resolver el plan completo una vez por
+SKU en vez de re-resolver cada semana**, no descubrirlo por sorpresa al medir
+tiempos de la corrida completa.
+
+Ver `docs/superpowers/specs/2026-07-27-simworld-marcador-design.md` (seccion
+del oraculo, actualizada) para la descripcion final.
 
 ## Decision tomada durante la planificacion (no estaba en el spec)
 

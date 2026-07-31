@@ -134,7 +134,7 @@ Contrato unico: `(view) -> dict[sku, qty]`.
 | `naive` | **Piso** | Punto de reorden fijo, recalculado nunca: `R = 5 x promedio semanal de las ultimas 4 semanas observadas`, congelado en la semana 4. Cuando el stock en mano cae por debajo de `R`, pide hasta `R`. Es lo que hace el `stale_reorder_point` del demo actual, y lo que hace el cliente real |
 | `kern_brief` | **Lo que se mide** | `Orchestrator.run(brief, data_path=view)` con brief en lenguaje natural. Camino completo incluyendo clasificacion de intencion |
 | `kern_forced` | **Carril de diagnostico** | Igual pero `job_type="inventory_optimization"`. La diferencia contra `kern_brief` aisla el costo del ruteo |
-| `oracle` | **Techo** | Ve la demanda futura verdadera y el lead time real de cada orden que emite. Pide, en cada semana, exactamente lo que se consumira durante ese lead time real: sin stock de seguridad, porque no hay incertidumbre que cubrir. Miope por diseno y aun asi inalcanzable. **Nunca ve la lente** |
+| `oracle` | **Techo** | Ve la demanda futura verdadera y el lead time real de cada orden que emite. Para cada SKU resuelve exactamente el plan de compra de costo minimo sobre el horizonte restante — un MILP de lot-sizing con opcion de venta perdida (Wagner-Whitin con costo fijo de ordenar), sin heuristica: si dejar una semana sin cubrir sale mas barato que evitarla, lo decide con ese calculo, no con una regla. Genuinamente optimo, no aproximado — validado contra el optimo de programacion lineal. **Nunca ve la lente** |
 
 **Kern actua por el plano de writeback, no lo puentea.** El `GuidedOutcome` se
 traduce asi: `EXECUTED` -> se aplica la orden. `OPTIONS` -> se toma la mejor
@@ -222,6 +222,14 @@ motor. Los datos de esos regimenes no entran ahora.
   silencioso de safety stock cerrado en #193.)
 - ASCII en todo print de consola (cp1252 en Windows).
 - Ningun import de extra opcional a nivel de modulo en la cadena de arranque.
+- **`oracle_orders(world, state)` resuelve un MILP por SKU y por llamada
+  (~50-60ms via scipy/HiGHS) — correcto siempre, pero cuesta caro si se llama
+  semana a semana sobre el grid completo de produccion (120 SKUs x 52 semanas
+  ~ 6.240 resoluciones, varios minutos). Task 7 lo deja asi a proposito
+  (correccion antes que velocidad; los tests de Task 7 usan mundos chicos). La
+  Task 11, al construir la corrida masiva, debe resolver el plan completo una
+  vez por SKU en vez de re-resolver cada semana — documentado ahi, no una
+  sorpresa de ese implementador.
 
 ## Que NO entra (YAGNI)
 
