@@ -1,6 +1,6 @@
 # MCP server (Phase A go-to-market)
 
-Kern exposes 34 of its 48 registered tools to other AI agents over MCP
+Kern exposes 35 of its 49 registered tools to other AI agents over MCP
 (Model Context Protocol), mounted at `/mcp` on the same FastAPI app as the
 dashboard. This is **read-only analysis only** — no tool that mutates a
 client's system of record (e.g. `odoo_replenishment`, or any writeback path
@@ -46,6 +46,18 @@ this is Phase A of.
 | `linchpin_warehouse_slotting` | `slotting` |
 | `linchpin_vehicle_routing` | `vehicle_routing` |
 | `linchpin_flow_map` | `flow_map` |
+| `linchpin_org_friction_audit` | `org_friction_audit` |
+
+`org_friction_audit` runs here with three of its four detectors: the fourth
+(Goodhart / target-ratcheting) needs a second target-vs-actual history file,
+passed to the direct tool as `params["history_path"]`. This surface is
+anonymous and remote, and `params` is handed straight to the job, so every
+`*_path` override is dropped before it gets there
+(`strip_filesystem_params` in `webapp/mcp_server.py`) — otherwise a caller
+could name any file on the server and read back its existence and column
+headers through the job's own "missing required column(s)" error text. Use
+the direct tool (or `examples/run_org_friction.py --history`) when you need
+the ratchet detector.
 
 Deliberately not exposed: `odoo_replenishment` and `excel_replenishment`
 (writeback — they mutate a client's system of record and stay behind the

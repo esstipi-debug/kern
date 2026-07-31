@@ -257,6 +257,8 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
                         "en": "Network Design (Multi-Facility p-Median)"},
     "flow_map": {"es": "Mapa de Flujos (Red Observada y Transito Medido)",
                  "en": "Flow Map (Observed Network & Measured Transit)"},
+    "org_friction_audit": {"es": "Auditoria de Friccion Organizacional (Fabrica Oculta y Ratchet)",
+                           "en": "Organizational Friction Audit (Hidden Factory & Ratchet Detector)"},
     "drp": {"es": "Planificacion de Requerimientos de Distribucion (DRP)",
             "en": "Distribution Requirements Planning (DRP)"},
     "vehicle_routing": {"es": "Ruteo y Programacion de Vehiculos", "en": "Vehicle Routing & Scheduling"},

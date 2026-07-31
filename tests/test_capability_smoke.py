@@ -14,7 +14,7 @@ from pathlib import Path
 from examples.run_capability_smoke import _NETWORK, main
 from scm_agent.tools import build_default_registry
 
-# Expected bucket per tool for the default (offline, non-stress) run. 48 registered tools.
+# Expected bucket per tool for the default (offline, non-stress) run. 49 registered tools.
 #
 # This replaces a `passes >= 35` numeric floor. A floor erodes silently: gating one tool
 # just spends slack, and the suite stays green while a capability quietly stops producing
@@ -31,6 +31,7 @@ EXPECTED_OFFLINE_BUCKETS: dict[str, str] = {
     "hat_settlement":         "GATED",
     "hat_tension":            "GATED",
     "network_design":         "GATED",
+    "org_friction_audit":     "GATED",
     "supplier_management":    "GATED",
     # --- SKIP: network tools, not exercised without --include-network.
     "price_intelligence":     "SKIP",

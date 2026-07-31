@@ -1,6 +1,6 @@
 """Kern's read-only MCP server (Phase A go-to-market — see linchpin-monetization-plan).
 
-Exposes 33 of the 37 registered agent tools to remote MCP clients (other AI
+Exposes 35 of the 49 registered agent tools to remote MCP clients (other AI
 agents, via Streamable HTTP): analysis only, no writeback. `odoo_replenishment`
 and `excel_replenishment` mutate a client's system of record and are
 deliberately NOT exposed here — that stays for direct clients only, gated by the
@@ -95,6 +95,25 @@ class KernAnalysisInput(BaseModel):
         return v or "MCP client"
 
 
+def strip_filesystem_params(overrides: dict[str, Any]) -> dict[str, Any]:
+    """Drop any override that a job would interpret as a server-side file path.
+
+    This surface is anonymous and remote: the ONLY data a caller may supply is
+    `rows`, which lands in a per-call temp CSV under our control. A job that also
+    reads a secondary file from `params` (today `org_friction_audit`'s optional
+    `history_path`; tomorrow anything following that pattern) would otherwise turn
+    a passthrough override into an arbitrary-file-read primitive on the server --
+    not by returning the file, but by leaking its existence and its column headers
+    through the job's own "missing required column(s): ..." error text.
+
+    Dropped rather than rejected on purpose: every such param is optional by
+    construction (a required one could never be satisfied from this surface
+    anyway), so the call still runs, just without the feature that param unlocks.
+    Each affected tool's spec description says which detector goes quiet.
+    """
+    return {k: v for k, v in overrides.items() if not k.endswith("_path")}
+
+
 def _run_analysis_tool_sync(orchestrator: Orchestrator, job_type: str, params: KernAnalysisInput) -> str:
     """Blocking implementation: rows -> temp CSV -> orchestrator.run() -> JSON string.
 
@@ -112,7 +131,7 @@ def _run_analysis_tool_sync(orchestrator: Orchestrator, job_type: str, params: K
         result = orchestrator.run(
             f"MCP analysis request ({job_type})",
             data_path=str(data_path),
-            overrides=params.params,
+            overrides=strip_filesystem_params(params.params),
             job_type=job_type,
             client=params.client_label,
             out_dir=tmp_dir / "out",
