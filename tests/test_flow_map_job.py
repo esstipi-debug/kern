@@ -231,3 +231,16 @@ def test_render_sankey_on_empty_report_returns_minimal_valid_svg():
     assert "<title>" in svg and "<desc>" in svg
     assert "<rect" not in svg
     assert svg.endswith("</svg>")
+
+
+def test_deck_names_the_top_lane_and_declares_the_unmeasurable_ones(tmp_path):
+    rows = _lane("SUP-1", "DC-1", 2, 8) + _lane("DC-1", "STORE-1", 4, 8, start_day=2)
+    path = tmp_path / "deck.csv"
+    _frame(rows).to_csv(path, index=False)
+    report = flow_map_job.run(flow_map_job.prepare(str(path)))
+    deck = flow_map_job.build_deck(report, client="Acme", citations=("Vandeput, ch. 4",))
+    assert deck.client == "Acme"
+    assert deck.options == tuple(report.outcome.options)
+    assert "Vandeput, ch. 4" in deck.citations
+    assert any("lane" in f.title.lower() or "transit" in f.title.lower() for f in deck.findings)
+    assert "movement" in deck.residual

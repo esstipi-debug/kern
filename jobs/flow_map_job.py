@@ -16,8 +16,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 from src.flow_map import (
+    MEASURED,
     MIN_OBSERVATIONS,
     UNMEASURABLE,
     FlowReport,
@@ -203,3 +205,98 @@ def write_operational(
     html_path = d / "flow_map.html"
     html_path.write_text(render_page(report, client=client), encoding="utf-8")
     return {"csv": write_summary_csv(rows, d / "flow_map.csv"), "html": html_path}
+
+
+def build_deck(
+    report: FlowReport,
+    *,
+    client: str = "Client",
+    prepared: str = "",
+    citations: tuple[str, ...] = (),
+    confidence: float = 0.6,
+    lang: str = "en",
+) -> Deliverable:
+    """The client-facing map: which lane locks up capital, and what we could not measure."""
+    findings: list[Finding] = []
+    if report.buffers:
+        top = report.buffers[0]
+        edge = next(
+            e for e in report.edges
+            if (e.origin, e.destination) == (top.origin, top.destination)
+        )
+        findings.append(Finding(
+            f"Transit variability on {top.origin} -> {top.destination} locks up the most capital",
+            f"Measured over {edge.n} movement(s): {edge.mean_days:.1f} d average transit, "
+            f"{edge.stdev_days:.1f} d standard deviation, p90 {edge.p90_days:.1f} d. That spread "
+            f"forces roughly {top.buffer_units:,.0f} unit(s) of protective stock downstream.",
+            impact="stabilising this lane releases the buffer it forces",
+        ))
+        for b in report.buffers[1:3]:
+            findings.append(Finding(
+                f"Next lane: {b.origin} -> {b.destination}",
+                f"Forces roughly {b.buffer_units:,.0f} unit(s) of protective stock.",
+                impact="queue behind the top lane",
+            ))
+    else:
+        findings.append(Finding(
+            "No lane has enough observations to measure",
+            f"Every one of the {len(report.edges)} lane(s) fell below the "
+            f"{MIN_OBSERVATIONS}-movement threshold, so no transit statistic is reported.",
+            impact="widen the export window before treating any lane as stable",
+        ))
+
+    unmeasurable = [e for e in report.edges if e.status == UNMEASURABLE]
+    if unmeasurable:
+        names = ", ".join(f"{e.origin} -> {e.destination}" for e in unmeasurable[:5])
+        findings.append(Finding(
+            "Lanes we could not measure",
+            f"{len(unmeasurable)} lane(s) carry fewer than {MIN_OBSERVATIONS} observed "
+            f"movement(s) ({names}). They are drawn on the map but report no transit "
+            "number and are excluded from the ranking.",
+            impact="an empty cell is a declared gap, not a zero",
+        ))
+    if report.graph.cycle_note:
+        findings.append(Finding(
+            "Bidirectional flow in the network",
+            report.graph.cycle_note,
+            impact="confirm whether these legs are intended or are re-handling",
+        ))
+
+    measured = sum(1 for e in report.edges if e.status == MEASURED)
+    kpis = (
+        Kpi("Nodes mapped", f"{len(report.graph.nodes)}", rationale="Distinct origins and destinations"),
+        Kpi("Lanes mapped", f"{len(report.edges)}", rationale="Distinct origin-destination pairs"),
+        Kpi("Lanes measurable", f"{measured}", target=f"{len(report.edges)}",
+            rationale=f"Lanes with at least {MIN_OBSERVATIONS} observed movements"),
+        Kpi("Volume on unmeasurable lanes",
+            f"{report.unmeasurable_volume_share * 100:.0f}%", target="0%",
+            rationale="Share of volume with no transit statistic"),
+        Kpi("Movements read", f"{report.n_movements}", rationale="Rows that carried both dates and a quantity"),
+    )
+    data_sources = (
+        DataSource("Movements export (origin / destination / dates / quantity)", "client-supplied", "per run"),
+    )
+    recommendations = [
+        "Stabilise the top-ranked lane before adding stock to absorb it.",
+        "Widen the export window for any lane reported as unmeasurable, then re-run.",
+        "Feed the measured per-lane transit spread into the safety-stock review; it replaces an assumption.",
+    ]
+    return Deliverable(
+        title="Flow Map - Observed Network and Measured Transit",
+        client=client,
+        summary=report.summary,
+        findings=tuple(findings),
+        kpis=kpis,
+        data_sources=data_sources,
+        recommendations=tuple(recommendations),
+        options=tuple(report.outcome.options),
+        citations=tuple(citations),
+        confidence=confidence,
+        residual=(
+            "Transit is measured from the movement dates the client recorded, not from carrier "
+            "telemetry: a late-keyed receipt inflates the spread. The map shows the network that "
+            "actually moved goods in the export window, which may omit seasonal lanes."
+        ),
+        prepared=prepared,
+        lang=lang,
+    )
