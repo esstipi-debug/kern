@@ -39,6 +39,7 @@ from jobs import (
     network_design_job,
     newsvendor_job,
     odoo_job,
+    org_friction_job,
     price_watch_deliverable,
     qa,
     queuing_job,
@@ -1415,6 +1416,61 @@ def flow_map_tool() -> Tool:
     )
 
 
+# ---- org_friction (organizational-friction audit: hidden factory, ratchet, ------
+# ---- accountability vacuum, unclassified workarounds) ---------------------------
+
+def _org_friction_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a control points CSV/Excel is required: one row per KPI/checkpoint, with "
+            "whichever of official_value, shadow_value, owner, workaround_present and "
+            "workaround_classification you already track (an optional second file of "
+            "target-vs-actual history can be passed via params['history_path'])"
+        ])
+    try:
+        control_points = org_friction_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=control_points)
+
+
+def _org_friction_run(payload: object, params: dict) -> Produced:
+    report = org_friction_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def org_friction_tool() -> Tool:
+    return Tool(
+        key="org_friction_audit",
+        title="Organizational Friction Audit (Hidden Factory & Ratchet Detector)",
+        description="Audit a client's own control points (KPIs, data-load checkpoints) for "
+                    "the political layer no data-quality tool sees: numbers that disagree "
+                    "across channels, targets ratcheted up right after being met, control "
+                    "points nobody owns, and informal workarounds nobody has classified. "
+                    "Never renders a verdict on a person -- every finding is a ranked "
+                    "question for a human to go confirm.",
+        intent_keywords=(
+            "organizational friction", "hidden factory", "goodhart", "ratchet effect",
+            "gaming the metric", "shadow data", "accountability vacuum", "unclassified workaround",
+            "friction audit", "metrics being gamed", "kpi being managed", "political layer",
+        ),
+        requires_data=True,
+        prepare=_org_friction_prepare,
+        run=_org_friction_run,
+        qa=lambda report: org_friction_job.verify(report),
+        deliver=lambda report, out_dir, client: org_friction_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            org_friction_job.build_deck(
+                report, client=client, citations=tuple(citations), confidence=confidence
+            ),
+            options=tuple(options),
+        ).write_all(out_dir),
+        # Every finding is a triage choice, never an auto-verdict -> surface the ranked
+        # OPTIONS outcome on success (or the HANDOFF asking for more evidence).
+        options=lambda report: report.outcome,
+    )
+
+
 # ---- dea (efficiency benchmarking) -------------------------------------------
 
 def _dea_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
@@ -2687,4 +2743,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(hat_settlement_tool())
     reg.register(flow_map_tool())
     reg.register(cross_impact_tool())
+    reg.register(org_friction_tool())
     return reg

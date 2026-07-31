@@ -562,4 +562,30 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "statistic at all, by design), service_level (0-1, default 0.95).\n\n" + _RETURNS
         ),
     ),
+    MCPToolSpec(
+        name="linchpin_org_friction_audit",
+        job_type="org_friction_audit",
+        title="Audit Organizational Friction (Hidden Factory & Ratchet)",
+        description=(
+            "Audit a client's own control points for the political layer no data-quality "
+            "tool sees: numbers that disagree across two channels, control points nobody "
+            "owns, and informal workarounds nobody has classified. Every finding comes back "
+            "as a ranked question for a human to go confirm - never a verdict on a person, "
+            "and never an autonomous action.\n\n"
+            "Rows need column: name (or kpi / checkpoint / punto_control). Optional, and "
+            "each one unlocks a different detector: official_value + shadow_value (the two "
+            "independent readings of the same number), owner (blank = nobody accountable), "
+            "workaround_present (true/yes/si/1/x), workaround_classification (essential / "
+            'hindrance). One row per KPI or checkpoint, e.g. {"name": "OTIF", '
+            '"official_value": 97.0, "shadow_value": 81.5, "owner": "", '
+            '"workaround_present": "si", "workaround_classification": ""}.\n\n'
+            "Useful param: shadow_delta_threshold (relative official-vs-shadow gap that "
+            "counts as a hidden factory).\n\n"
+            "NOT available on this surface: the Goodhart/ratchet detector, which needs a "
+            "second target-vs-actual history file. That is supplied to the direct tool as "
+            "params['history_path'], and this remote surface drops every *_path override on "
+            "purpose (see `strip_filesystem_params` in webapp/mcp_server.py) - so a call "
+            "here runs three of the four detectors, never four.\n\n" + _RETURNS
+        ),
+    ),
 )

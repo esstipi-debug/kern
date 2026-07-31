@@ -125,6 +125,30 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # shipped deck; wiring filter_citations into flow_map's path is a separate,
     # larger-blast-radius change, not made here.
     "flow_map": ("lead_time_variability", "value_stream_mapping"),
+    # org_friction_audit (organizational-friction audit, tool #49; ANCHOR-ISLANDED, see
+    # tests/test_packages_citations.py::_ISLANDED_TOOLS) grounds on Hidden Factory alone --
+    # the one node in the committed graph that is genuinely on-topic for this tool's four
+    # detectors (hidden factory, Goodhart ratchet, accountability vacuum, unclassified
+    # workaround). Measured 2026-07-31 by BFS over knowledge/scm-books/graph.json + a real
+    # replay of _step_citations: vollmann_hidden_factory has degree 1 (its only edge is
+    # vollmann_jit) and a 26-node 2-hop closure containing nothing else on-topic -- a
+    # near-isolate, same shape as vehicle_routing's vollmann_traveling_salesman below.
+    # Two other candidates were measured and REJECTED, not merely omitted:
+    #   - misaligned_incentives: sits 1 hop from book_chopra_meindl (2-hop closure 356
+    #     nodes), so admitting it would self-validate almost anything from that entire
+    #     book via the shared-book-hub loophole EXCLUDED_CONCEPTS exists for (the same
+    #     anti-pattern documented under `risk` above) -- and it still produced zero real
+    #     citations when replayed, so there is no recall gain to trade against that risk.
+    #   - strategic_inertia: a small (8-node) but topically irrelevant closure, entirely
+    #     pandemic/crisis-recovery content (khan-supply-chain-resilience.txt) with nothing
+    #     about metrics, targets or accountability.
+    # No node for Goodhart's law, target-ratcheting, workaround typologies or metric-gaming
+    # exists anywhere in the 3002-node graph (checked by direct keyword search) -- the
+    # corpus is quantitative-methods-heavy and simply has no connected content for this
+    # tool's political-layer subject. Fix by ingesting organizational-behavior/performance-
+    # measurement-dysfunction theory (Goodhart, Ridgway, Merchant & Van der Stede), not by
+    # a looser or hub-adjacent anchor.
+    "org_friction_audit": ("vollmann_hidden_factory",),
     "forecast": ("forecastability", "crostons_method", "sbc_classification", "syntetos_boylan_approximation", "tsb_method"),
     # No topically-better node exists in the committed graph for SKU-master/
     # GTIN data quality (verified during the 2026-07 adversarial review) - this
