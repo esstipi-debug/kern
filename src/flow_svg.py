@@ -19,6 +19,16 @@ _MIN_NODE_HEIGHT = 8
 _MARGIN = 40
 _MAX_STROKE = 26.0
 _MIN_STROKE = 1.5
+_LABEL_OFFSET = 8
+_FONT_SIZE = 13
+# Deliberate conservative estimate, not a measurement: SVG text has no width
+# without a font engine, so this is a per-character advance at _FONT_SIZE that
+# is wide enough to cover the system-ui/sans-serif stack actually used below.
+# An over-wide canvas is harmless (just some blank margin); an under-wide one
+# clips the last column's labels, which is the bug this constant exists to
+# prevent. Chosen as roughly 0.62 * font-size, a safe upper bound for average
+# character width in a proportional sans-serif at this size.
+_CHAR_WIDTH_ESTIMATE = 8.0
 
 
 def _node_throughput(report: FlowReport) -> dict[str, float]:
@@ -54,7 +64,20 @@ def _layout(report: FlowReport) -> tuple[dict[str, tuple[float, float, float]], 
             )
             placed[node] = (float(_MARGIN + level * _COL_WIDTH), y, height)
             y += height + _NODE_GAP
-    width = _MARGIN * 2 + (max(columns) * _COL_WIDTH) + _NODE_WIDTH
+    rect_width = _MARGIN * 2 + (max(columns) * _COL_WIDTH) + _NODE_WIDTH
+    # Right edge of the widest rendered label, not just the rect -- the label is
+    # drawn at x + _NODE_WIDTH + _LABEL_OFFSET (see render_sankey below) and can
+    # extend well past the rect alone. Same shape of bug as the height fix just
+    # below: <svg> clips overflow, so a canvas sized only for the rect silently
+    # truncates the last column's node names. Estimated, not measured -- see
+    # _CHAR_WIDTH_ESTIMATE -- and kept as a floor against rect_width so this can
+    # only widen the canvas, never narrow it below the rects.
+    label_right_edge = max(
+        (x + _NODE_WIDTH + _LABEL_OFFSET + len(node) * _CHAR_WIDTH_ESTIMATE
+         for node, (x, _y, _h) in placed.items()),
+        default=0.0,
+    )
+    width = max(rect_width, label_right_edge + _MARGIN)
     # Bottom edge of the lowest node's rect, not its top -- a bare `y` here leaves the
     # canvas shorter than the drawing (the tallest node's own height goes uncounted),
     # and <svg> clips overflow by default, so the drawing gets silently truncated.
@@ -124,8 +147,8 @@ def render_sankey(report: FlowReport, *, client: str = "Client", width: int = 96
             f'rx="3" fill="#0F6E56"><title>{escape(node)}</title></rect>'
         )
         parts.append(
-            f'<text x="{x + _NODE_WIDTH + 8:.1f}" y="{y + h / 2 + 4:.1f}" '
-            f'font-family="system-ui, sans-serif" font-size="13" fill="#2C2C2A">'
+            f'<text x="{x + _NODE_WIDTH + _LABEL_OFFSET:.1f}" y="{y + h / 2 + 4:.1f}" '
+            f'font-family="system-ui, sans-serif" font-size="{_FONT_SIZE}" fill="#2C2C2A">'
             f"{escape(node)}</text>"
         )
     parts.append("</svg>")

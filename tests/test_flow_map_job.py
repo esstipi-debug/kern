@@ -7,7 +7,7 @@ import pytest
 
 from jobs import flow_map_job
 from src.flow_map import UNMEASURABLE, EdgeBuffer, EdgeStat, FlowGraph, FlowReport
-from src.flow_svg import render_page, render_sankey
+from src.flow_svg import _CHAR_WIDTH_ESTIMATE, render_page, render_sankey
 from src.guided import ExecutionOption, HandoffPacket, as_handoff, as_options
 
 GOLDEN = Path(__file__).parent / "fixtures" / "flow_map" / "sankey_golden.svg"
@@ -196,6 +196,42 @@ def test_sankey_viewbox_is_never_shorter_than_the_drawing(tmp_path):
 
     assert viewbox_height >= max(rect_bottoms)
     assert viewbox_height >= max(text_baselines)
+
+
+def test_sankey_viewbox_width_covers_the_widest_label(tmp_path):
+    """Horizontal twin of the height regression above (CRITICAL 1). _layout used
+    to size the canvas from the rightmost node's RECT only, never accounting for
+    its label, which is drawn to the right of the rect (x + _NODE_WIDTH + 8 in
+    render_sankey). <svg> clips overflow by default, so long node names in the
+    last column were silently truncated. Parse the actual text x's and labels out
+    of the rendered SVG and estimate each one's right edge with the same
+    conservative per-character constant the production code uses, rather than
+    hardcoding a pixel number -- this must survive a future layout change.
+
+    width=0 disables render_sankey's advisory-width floor so the assertion
+    exercises the layout's own computed width, not the default 960px canvas
+    that would mask the bug on modest node names.
+    """
+    long_name = "WAREHOUSE-INTERNATIONAL-HUB"  # 27 chars, well past the 25+ char bar
+    assert len(long_name) >= 25
+    rows = _lane("SUP-1", "DC-1", 2, 8) + _lane("DC-1", long_name, 4, 8, start_day=2)
+    path = tmp_path / "nombre_largo.csv"
+    _frame(rows).to_csv(path, index=False)
+    report = flow_map_job.run(flow_map_job.prepare(str(path)))
+
+    svg = render_sankey(report, width=0)
+
+    viewbox_match = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', svg)
+    assert viewbox_match is not None
+    viewbox_width = float(viewbox_match.group(1))
+
+    label_matches = re.findall(r'<text x="([\d.]+)"[^>]*>([^<]*)</text>', svg)
+    assert label_matches
+    assert any(long_name in label for _x, label in label_matches)
+
+    for x, label in label_matches:
+        estimated_right_edge = float(x) + len(label) * _CHAR_WIDTH_ESTIMATE
+        assert viewbox_width >= estimated_right_edge
 
 
 def test_page_is_self_contained(tmp_path):
