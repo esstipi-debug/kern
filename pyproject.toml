@@ -55,8 +55,14 @@ forecast = [
     "statsforecast>=2.0,<3",
     "utilsforecast>=0.2",
 ]
+# Capped below 2.0: mcp 2.0.0 (2026-07-28) removed the `mcp.server.fastmcp`
+# module that webapp/mcp_server.py builds the mounted /mcp server on, so an
+# unpinned `mcp>=1.0` resolves to a release that cannot import. That breaks the
+# app at BOOT (webapp/app.py hard-imports webapp.mcp_server), not just in tests.
+# Lift this cap only together with a migration of webapp/mcp_server.py off
+# mcp.server.fastmcp -- mcp 2.x also swaps in httpx2 / mcp-types / sse-starlette 3.
 mcp = [
-    "mcp>=1.0",
+    "mcp>=1.0,<2",
 ]
 # scm_agent/embeddings.py -- semantic (hybrid) retrieval over the books graph
 # for the operator discovery surfaces (KnowledgeBase.search_hybrid, used by
