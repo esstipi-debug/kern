@@ -64,6 +64,22 @@
   from 9 tools to 12 on a chart people read in sales calls. An eighth tool,
   `org_friction_audit` (#198), merged to `main` while this PR was open and drifted the table
   again within a day — caught by the guard added here, which is the argument for it. 3 tests.
+- **`GET /how-it-works` claimed 33 curated sources; the honest number is 26** (`webapp/
+  how_it_works_page.py`, `documentation/KERN_AGENCIA_IA_TESIS_COMERCIAL.md`). The 33 was not
+  invented — it was the verified count of distinct `source_file`s in `knowledge/scm-books/
+  graph.json` when the page was designed, and the spec deliberately picked it over the README's
+  25. Two things were wrong with it. (1) *Stale*: under its own file-counting methodology the
+  count is now **35** (the graph gained the Atlas and Khan resilience). (2) *Wrong unit*: files
+  overstate "curated sources" to a prospect, because 9 of them are single chapters of edited
+  volumes and `KERN_ATLAS_SOMBREROS_SCM.md` is **Kern's own internal doc** — citing yourself as
+  a curated external source is the actual overclaim (same auto-cita problem as #191). The page
+  now says **26 curated external sources** = the 27 in `knowledge/scm-books/README.md` minus the
+  Atlas, and the commercial thesis doc's matching claim (which also carried a stale 1953-node
+  figure, now 3002) is corrected with it. Guarded by a new test that pins the countable thing —
+  distinct non-Kern source files — so adding a book fails the build and forces the works count
+  to be re-derived instead of drifting. The design spec's "use 33, consistently" mandate is
+  marked SUPERSEDED in place, and its "every number must match" rule no longer inlines counts
+  that a build cannot check. 2 tests.
   audit, 3 findings). (1) *Wrong statistical gate*: the optimizer gated on the elasticity CI
   excluding **0**, but the constant-elasticity markup `p* = c*eps/(eps+1)` explodes as
   `eps -> -1` from below — `eps = -1.05` implied a price of **21x cost**, shipped as `ok`. The

@@ -148,6 +148,19 @@ adaptarse a diferentes contextos":
    gives 33 distinct `source_file`s in `knowledge/scm-books/graph.json`, and
    flags the README count as stale. Use 33, consistently, everywhere this page
    mentions the source count.)*
+
+   > **SUPERSEDED 2026-07-31 (PR #200) — the page now says 26, not 33.** Two
+   > reasons. (1) *Stale*: under this section's own file-counting methodology
+   > the count is now **35**, not 33 — the graph gained the Atlas and Khan
+   > resilience since. (2) *Wrong unit*: counting `source_file`s overstates
+   > "curated sources" to a prospect, because 9 of those files are single
+   > chapters of edited volumes, and `KERN_ATLAS_SOMBREROS_SCM.md` is **Kern's
+   > own internal doc** — citing yourself as a curated external source is the
+   > overclaim, and it is the same auto-cita problem flagged on #191. The page
+   > now claims **26 curated external works** = the 27 sources in
+   > `knowledge/scm-books/README.md` minus the Atlas. Guarded by
+   > `tests/test_how_it_works_page.py::test_source_count_claim_still_matches_the_books_graph`.
+   > Do not restore 33.
 2. **Client profiles** — per-client durable cost/capacity parameters (holding
    rate, order cost, service level, lead time, warehouse capacity), persisted
    under `clients/<slug>/profile.json`, merged into every run so the same brief
@@ -223,12 +236,22 @@ to use in full, not the narrower 3-certification version originally scoped).
   models taught in...", "aligns with...", "maps to...". This is a hard rule,
   not a style preference.
 - Every number on this page must match its most-recently-verified source:
-  **41 tools** (code, `scm_agent/tools.py`), **33 curated sources** (code,
-  `knowledge/scm-books/graph.json`'s verified count — not the README's stale
-  25), domain-area and SCOR-DS tallies as tabulated in §4.2 above. If a future
-  edit changes any underlying count, this page and its captions must be updated
-  in the same PR — no silently-stale numbers, matching the source document's
-  own stated methodology.
+  tool count (code, `scm_agent/tools.py`), curated-source count (code,
+  `knowledge/scm-books/graph.json`), domain-area and SCOR-DS tallies as
+  tabulated in §4.2 above. If a future edit changes any underlying count, this
+  page and its captions must be updated in the same PR — no silently-stale
+  numbers, matching the source document's own stated methodology.
+
+  > **UPDATED 2026-07-31 (PR #200).** This rule was stated with the counts of
+  > the day inlined (*41 tools, 33 curated sources*) — and both went stale
+  > anyway, because a rule written in prose cannot fail a build. The page had
+  > drifted to 41-of-49 tools and a stale 33 sources before anyone noticed.
+  > The counts are deliberately no longer inlined here; the enforcement lives
+  > in tests instead:
+  > `tests/test_how_it_works_data.py::test_tools_table_matches_the_registry_exactly`
+  > (set equality vs the registry, both directions) and
+  > `tests/test_how_it_works_page.py::test_source_count_claim_still_matches_the_books_graph`.
+  > Update the guards, not a number in a doc.
 - The gaps section (§4.5.4) stays even though it's less flattering than a pure
   capabilities showcase — approved explicitly because the audience is internal/
   onboarding, not sales.
