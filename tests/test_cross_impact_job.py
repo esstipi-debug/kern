@@ -1,12 +1,16 @@
 """prepare()'s validation contract (spec sec 5.1). Every gap is fatal."""
 
+import csv
+import math
+from dataclasses import replace
+
 import pandas as pd
 import pytest
 
 from jobs import cross_impact_job
-from src.guided import OPTIONS, verify_guided
+from src.guided import OPTIONS, ExecutionOption, GuidedOutcome, verify_guided
 from src.hats import HAT_COMPRADOR, HAT_KEYS, Candidate
-from src.objection import NO_EVALUABLE, OBJETA
+from src.objection import NO_EVALUABLE, OBJETA, Verdict
 
 
 @pytest.fixture
@@ -225,3 +229,139 @@ def test_confidence_drops_with_unevaluable_areas(demand_csv):
 def test_summary_names_the_verdict(demand_csv):
     r = cross_impact_job.run(_payload(demand_csv, objection_thresholds={"cfo": 1e9}))
     assert cross_impact_job.INDETERMINADO in r.summary
+
+
+# -- verify(): the QA gate (spec sec 8) --------------------------------------
+
+
+def _good_report(demand_csv):
+    return cross_impact_job.run(_payload(demand_csv))
+
+
+def test_honest_report_passes(demand_csv):
+    assert cross_impact_job.verify(_good_report(demand_csv)) == []
+
+
+def test_indeterminado_with_gaps_passes(demand_csv):
+    # a declared gap is a valid delivery, NOT a failure
+    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds={"cfo": 1e9}))
+    assert r.verdict == cross_impact_job.INDETERMINADO
+    assert cross_impact_job.verify(r) == []
+
+
+def test_veto_optimistic_verdict_with_unevaluable_areas(demand_csv):
+    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds={"cfo": 1e9}))
+    bad = replace(r, verdict=cross_impact_job.EJECUTAR)
+    issues = cross_impact_job.verify(bad)
+    assert any("no_evaluable" in i or "indeterminado" in i for i in issues)
+
+
+def test_veto_judged_verdict_with_empty_fields(demand_csv):
+    r = _good_report(demand_csv)
+    broken = replace(r.verdicts[0], kpi_current=None)
+    bad = replace(r, verdicts=(broken,) + r.verdicts[1:])
+    assert cross_impact_job.verify(bad)
+
+
+def test_veto_unevaluable_verdict_carrying_numbers(demand_csv):
+    r = _good_report(demand_csv)
+    fake = Verdict(hat_key=r.verdicts[0].hat_key, status=NO_EVALUABLE,
+                   kpi_name=r.verdicts[0].kpi_name, kpi_current=1.0,
+                   kpi_proposed=2.0, deterioration=1.0, threshold=None,
+                   reason="fabricado")
+    bad = replace(r, verdicts=(fake,) + r.verdicts[1:],
+                  n_unevaluable=1, verdict=cross_impact_job.INDETERMINADO)
+    assert cross_impact_job.verify(bad)
+
+
+def test_veto_wrong_verdict_count_or_keys(demand_csv):
+    r = _good_report(demand_csv)
+    assert cross_impact_job.verify(replace(r, verdicts=r.verdicts[:3]))
+
+
+def test_veto_non_finite_number(demand_csv):
+    r = _good_report(demand_csv)
+    broken = replace(r.impact, judge_cost_proposed=math.nan)
+    assert cross_impact_job.verify(replace(r, impact=broken))
+
+
+def test_veto_unprotected_outcome(demand_csv):
+    r = _good_report(demand_csv)
+    dead = GuidedOutcome(status="options", summary="x", options=[])
+    assert cross_impact_job.verify(replace(r, outcome=dead))
+
+
+def test_real_counterproposal_passes_the_self_check(demand_csv):
+    # the positive side of the self-check: a genuinely clean counterproposal
+    # (same setup as test_counterproposal_really_has_zero_objections) must not
+    # be flagged. Without this, only the negative path is covered.
+    thr = {k: 1e9 for k in HAT_KEYS}
+    thr["cfo"] = 5_000.0
+    r = cross_impact_job.run(_payload(demand_csv,
+                                      current={"q": 560.0, "sl": 0.95},
+                                      proposed={"q": 700.0, "sl": 0.99},
+                                      objection_thresholds=thr))
+    assert r.counterproposal is not None
+    assert cross_impact_job.verify(r) == []
+
+
+def test_veto_counterproposal_that_still_draws_objections(demand_csv):
+    thr = {k: 1e-9 for k in HAT_KEYS}
+    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds=thr))
+    assert r.counterproposal is None
+    liar = replace(r, counterproposal=Candidate(999.0, 0.99))
+    assert cross_impact_job.verify(liar)
+
+
+def test_veto_unknown_verdict_string(demand_csv):
+    r = _good_report(demand_csv)
+    assert cross_impact_job.verify(replace(r, verdict="quiza"))
+
+
+def test_veto_option_without_recommendation(demand_csv):
+    r = _good_report(demand_csv)
+    flat = replace(r.outcome, options=[
+        ExecutionOption(label="a", summary="a", score=1.0),
+        ExecutionOption(label="b", summary="b", score=0.0),
+    ])
+    assert cross_impact_job.verify(replace(r, outcome=flat))
+
+
+# -- write(): the deliverables (spec sec 7.4) --------------------------------
+
+
+def test_write_emits_both_csvs(demand_csv, tmp_path):
+    paths = cross_impact_job.write(_good_report(demand_csv), tmp_path, "Acme")
+    assert set(paths) == {"csv", "verdict_csv"}
+    assert all(p.exists() for p in paths.values())
+
+
+def test_unevaluable_cells_are_empty_not_zero(demand_csv, tmp_path):
+    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds={"cfo": 1e9}))
+    paths = cross_impact_job.write(r, tmp_path, "Acme")
+    rows = list(csv.DictReader(paths["csv"].open(encoding="utf-8")))
+    unevaluable = [row for row in rows if row["status"] == NO_EVALUABLE]
+    assert len(unevaluable) == 3
+    for row in unevaluable:
+        assert row["value_current"] == ""
+        assert row["deterioration"] == ""
+        assert row["threshold"] == ""
+
+
+def test_verdict_csv_is_one_countable_row(demand_csv, tmp_path):
+    r = _good_report(demand_csv)
+    paths = cross_impact_job.write(r, tmp_path, "Acme")
+    rows = list(csv.DictReader(paths["verdict_csv"].open(encoding="utf-8")))
+    assert len(rows) == 1
+    assert rows[0]["verdict"] == r.verdict
+    assert int(rows[0]["n_objections"]) == r.n_objections
+    assert int(rows[0]["n_unevaluable"]) == r.n_unevaluable
+
+
+def test_deck_carries_lang_and_options(demand_csv):
+    r = _good_report(demand_csv)
+    deck = cross_impact_job.build_deck(r, client="Acme", citations=("c1", "c2"),
+                                       confidence=0.9, lang="en")
+    assert deck.lang == "en"
+    assert deck.citations == ("c1", "c2")
+    assert deck.confidence == 0.9

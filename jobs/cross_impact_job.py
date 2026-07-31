@@ -13,11 +13,15 @@ declared in the client profile. Neither module imports the other beyond reusing
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from pathlib import Path
 
 from src.cross_impact import CrossImpact, measure
 from src.decision_options import Objective, Scenario, decide
-from src.guided import GuidedOutcome, Residual
+from src.deliverable import Deliverable, Finding, Kpi
+from src.export import write_summary_csv  # NOTE: export.py, not deliverable.py
+from src.guided import GuidedOutcome, Residual, verify_guided
 from src.hats import HAT_KEYS, Candidate, HatInputs, decision_cost, evaluate
 from src.objection import NO_EVALUABLE, OBJETA, Verdict, judge
 
@@ -281,4 +285,172 @@ def run(payload: dict) -> CrossImpactReport:
         impact=impact, verdicts=verdicts, n_objections=n_obj, n_unevaluable=n_unk,
         verdict=verdict, counterproposal=counter, outcome=outcome, summary=summary,
         inputs=inputs,
+    )
+
+
+def _finite_issues(report: CrossImpactReport) -> list[str]:
+    issues = []
+    numbers = [("judge_cost_current", report.impact.judge_cost_current),
+               ("judge_cost_proposed", report.impact.judge_cost_proposed)]
+    for row in report.impact.rows:
+        numbers += [(f"{row.hat_key}.value_current", row.value_current),
+                    (f"{row.hat_key}.value_proposed", row.value_proposed),
+                    (f"{row.hat_key}.delta", row.delta)]
+    for v in report.verdicts:
+        for name in ("kpi_current", "kpi_proposed", "deterioration", "threshold"):
+            value = getattr(v, name)
+            if value is not None:
+                numbers.append((f"{v.hat_key}.{name}", value))
+    for name, value in numbers:
+        if not math.isfinite(value):
+            issues.append(f"non-finite number in {name}: {value}")
+    return issues
+
+
+def verify(report: CrossImpactReport) -> list[str]:
+    """QA gate. Empty list = passed. QA fails => the orchestrator ships nothing.
+
+    Vetoes the DISHONEST combination, not the gap: reporting `indeterminado`
+    with the evaluable areas measured and the rest empty is a valid delivery.
+    """
+    issues: list[str] = []
+
+    if report.verdict not in VERDICTS:
+        issues.append(f"unknown verdict {report.verdict!r} (expected one of {VERDICTS})")
+
+    if tuple(v.hat_key for v in report.verdicts) != HAT_KEYS:
+        issues.append(
+            f"expected exactly one verdict per hat in {HAT_KEYS}, got "
+            f"{tuple(v.hat_key for v in report.verdicts)}")
+
+    n_unk = sum(1 for v in report.verdicts if v.status == NO_EVALUABLE)
+    if n_unk > 0 and report.verdict != INDETERMINADO:
+        issues.append(
+            f"{n_unk} area(s) are no_evaluable but the verdict is "
+            f"{report.verdict!r} - a declared gap can never be reported as a "
+            "clean verdict; it must be 'indeterminado'")
+
+    for v in report.verdicts:
+        empty = [n for n in ("kpi_current", "kpi_proposed", "deterioration", "threshold")
+                 if getattr(v, n) is None]
+        if v.status == NO_EVALUABLE:
+            if empty != ["kpi_current", "kpi_proposed", "deterioration", "threshold"]:
+                issues.append(
+                    f"verdict '{v.hat_key}' is no_evaluable but still carries "
+                    f"numbers (populated: {[n for n in ('kpi_current', 'kpi_proposed', 'deterioration', 'threshold') if n not in empty]})")
+        elif empty:
+            issues.append(f"verdict '{v.hat_key}' is judged ({v.status}) but "
+                          f"{', '.join(empty)} is empty")
+
+    issues += _finite_issues(report)
+    issues += verify_guided(report.outcome)
+
+    if sum(1 for o in report.outcome.options if o.recommended) != 1:
+        issues.append("the options must carry exactly one recommended default")
+
+    if report.counterproposal is not None:
+        if n_unk > 0:
+            issues.append("a counterproposal was offered while areas are no_evaluable - "
+                          "'zero objections' is not determinable")
+        else:
+            # self-check: the counterproposal must deliver what it promises
+            thresholds = {v.hat_key: v.threshold for v in report.verdicts
+                          if v.threshold is not None}
+            recheck = _judge_all(
+                _inputs_of(report), measure(_inputs_of(report), report.impact.current,
+                                            report.counterproposal, report.impact.proposed_by),
+                thresholds, report.counterproposal)
+            if any(v.status == OBJETA for v in recheck):
+                issues.append("the counterproposal still draws objections on re-check")
+
+    return issues
+
+
+def write(report: CrossImpactReport, out_dir, client: str = "Client") -> dict[str, Path]:
+    """Two CSVs: the per-area detail, and the ONE countable verdict row.
+
+    An unevaluable area's cells are written EMPTY (''), never 0 - the gap has to
+    look like a gap in the spreadsheet too.
+    """
+    d = Path(out_dir)
+    d.mkdir(parents=True, exist_ok=True)
+
+    def cell(value: float | None, digits: int) -> object:
+        return "" if value is None else round(value, digits)
+
+    rows = []
+    for row, v in zip(report.impact.rows, report.verdicts):
+        rows.append({
+            "sku": report.impact.sku,
+            "hat": row.hat_key,
+            "kpi": row.kpi_name,
+            "value_current": cell(v.kpi_current, 4),
+            "value_proposed": cell(v.kpi_proposed, 4),
+            "delta": cell(None if v.kpi_current is None else row.delta, 4),
+            "deterioration": cell(v.deterioration, 4),
+            "threshold": cell(v.threshold, 4),
+            "status": v.status,
+            "reason": v.reason,
+        })
+
+    verdict_row = {
+        "sku": report.impact.sku,
+        "proposed_by": report.impact.proposed_by,
+        "q_current": round(report.impact.current.order_quantity, 1),
+        "sl_current": report.impact.current.service_level,
+        "q_proposed": round(report.impact.proposed.order_quantity, 1),
+        "sl_proposed": report.impact.proposed.service_level,
+        "n_objections": report.n_objections,
+        "n_unevaluable": report.n_unevaluable,
+        "verdict": report.verdict,
+        "judge_cost_current": round(report.impact.judge_cost_current, 2),
+        "judge_cost_proposed": round(report.impact.judge_cost_proposed, 2),
+    }
+
+    return {
+        "csv": write_summary_csv(rows, d / "cross_impact.csv"),
+        "verdict_csv": write_summary_csv([verdict_row], d / "cross_impact_verdict.csv"),
+    }
+
+
+def build_deck(report: CrossImpactReport, *, client: str = "Client",
+               citations: tuple[str, ...] = (), confidence: float | None = None,
+               lang: str = "es") -> Deliverable:
+    """The premium deck. ``lang`` is passed explicitly - the PR #194 lesson."""
+    findings = [
+        Finding(f"{v.hat_key}: {v.status}", v.reason,
+                impact=("sin medir" if v.deterioration is None
+                        else f"{v.deterioration:+,.4f} {v.kpi_name}"))
+        for v in report.verdicts
+    ]
+    findings.append(Finding(
+        "Alcance declarado",
+        "Un SKU, el espacio (Q, SL) y cuatro areas. Almacen NO es uno de los cuatro "
+        "sombreros: su impacto no fue medido.",
+        impact="pedir la capacidad fisica antes de mover cantidades"))
+
+    kpis = [
+        Kpi("Veredicto de coordinacion", report.verdict,
+            rationale="cero objeciones = la reunion no se hace"),
+        Kpi("Areas que objetan", str(report.n_objections), target="0"),
+        Kpi("Areas sin umbral declarado", str(report.n_unevaluable), target="0",
+            rationale="cada una impide afirmar que nadie objeta"),
+    ]
+
+    return Deliverable(
+        title=f"Impacto cruzado - {report.impact.sku}",
+        client=client,
+        summary=report.summary,
+        findings=tuple(findings),
+        kpis=tuple(kpis),
+        recommendations=(
+            "Los umbrales son POLITICA DEL OPERADOR, no un consenso objetivo: revisalos "
+            "con cada area antes de tratarlos como un veto.",
+            "Declarar el umbral de las areas faltantes convierte un 'indeterminado' en un "
+            "veredicto accionable.",
+        ),
+        options=tuple(report.outcome.options),
+        citations=tuple(citations),
+        confidence=confidence,
+        lang=lang,
     )
