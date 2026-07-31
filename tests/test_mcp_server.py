@@ -57,6 +57,7 @@ EXPECTED_TOOL_NAMES = {
     "linchpin_facility_location",
     "linchpin_warehouse_slotting",
     "linchpin_vehicle_routing",
+    "linchpin_flow_map",
 }
 
 _ABC_XYZ_ROWS = [
@@ -79,7 +80,7 @@ async def _call(mcp, tool_name: str, **params) -> dict:
     return json.loads(content[0].text)
 
 
-# -- surface: exactly the intended 33, all read-only ----------------------------
+# -- surface: exactly the intended 34, all read-only ----------------------------
 
 
 async def test_server_name():
@@ -101,7 +102,7 @@ async def test_odoo_replenishment_and_writeback_tools_are_never_exposed(mcp):
 
 async def test_every_tool_is_annotated_read_only_and_non_destructive(mcp):
     tools = await mcp.list_tools()
-    assert len(tools) == len(EXPECTED_TOOL_NAMES) == 33
+    assert len(tools) == len(EXPECTED_TOOL_NAMES) == 34
     for tool in tools:
         assert tool.annotations is not None, f"{tool.name} has no annotations"
         assert tool.annotations.readOnlyHint is True, f"{tool.name} must be readOnlyHint=True"

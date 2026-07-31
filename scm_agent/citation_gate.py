@@ -89,6 +89,42 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # theory, distinct from the risk tool's mitigation anchors. Deliberately
     # disruption-specific concept nodes, not the broad supply_chain_risk hub.
     "disruption_scan": ("supply_chain_disruption", "supply_chain_resilience", "disruption_forecasting"),
+    # flow_map (tool #47, observed-network transit measurement) grounds on lead-time
+    # variability and process/value-stream mapping, not on network design: the
+    # verdict is the buffer that transit spread forces, not where to put a DC.
+    # Measured 2-hop closures on the committed 3002-node graph for every candidate
+    # considered, in order of preference: lead_time_variability 608 nodes (20.3%),
+    # lead_time_gap 266 nodes (8.9%), value_stream_mapping 195 nodes (6.5%),
+    # supply_chain_mapping 340 nodes (11.3%), bullwhip_effect 769 nodes (25.6%).
+    # None crosses the ~40% book-hub ceiling, so the anchor was picked on citation
+    # quality instead: replaying the real grounding call
+    # (kb.ground_citations_detailed(tool.intent_keywords, tool.title, limit=16))
+    # against each candidate pair, lead_time_variability + value_stream_mapping
+    # is the only combination whose GATED output stays on-topic (End-to-End
+    # Lead-Time Variability, Value-Stream Mapping, Activity Map, Bottleneck Time,
+    # Variability in Activity Times, Flow Time). lead_time_gap adds nothing over
+    # lead_time_variability (identical kept set). supply_chain_mapping and
+    # bullwhip_effect both pull in Khan et al. disruption/resilience noise
+    # (a "Finding - Measured Resiliency..." case study, a semiconductor shortage
+    # case) that has nothing to do with a client's observed lane transit times.
+    #
+    # IMPORTANT (2026-07-31 fix wave, IMPORTANT 4): these anchors govern what THIS
+    # module's filter_citations() would keep -- they are NOT on flow_map's shipped
+    # path today. The orchestrator (scm_agent/orchestrator.py:193, `_ground`) calls
+    # the UNGATED `knowledge.ground_citations(tool.intent_keywords, brief, limit=5)`
+    # directly; filter_citations is only wired into jobs/integrated_plan.py,
+    # jobs/price_intelligence.py and jobs/repricing.py. flow_map is not among them.
+    # Measured consequence, replaying the real orchestrator call
+    # (KnowledgeBase().ground_citations(flow_map_tool().intent_keywords, "", limit=5)):
+    # 3 of the 5 shipped citations are Khan et al. resilience-book noise --
+    # "Semiconductor and Raw Material Supply Bottleneck", "Realistic Transit Time
+    # Calculation", and "Fraunhofer Institute for Material Flow and Logistics (IML)"
+    # (all khan-supply-chain-resilience.txt) -- against only 2 of 5 from the anchors
+    # above (Christopher ch.9 "End-to-End Lead-Time Variability", Heizer ch.7
+    # "Value-Stream Mapping"). Do not read this comment as a guarantee about the
+    # shipped deck; wiring filter_citations into flow_map's path is a separate,
+    # larger-blast-radius change, not made here.
+    "flow_map": ("lead_time_variability", "value_stream_mapping"),
     "forecast": ("forecastability", "crostons_method", "sbc_classification", "syntetos_boylan_approximation", "tsb_method"),
     # No topically-better node exists in the committed graph for SKU-master/
     # GTIN data quality (verified during the 2026-07 adversarial review) - this

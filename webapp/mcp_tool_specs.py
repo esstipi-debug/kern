@@ -13,7 +13,11 @@ Deliberately NOT here (see docs/MCP_SERVER.md "What's NOT here yet"):
 - `leadership_chain` - takes a CHAIN scores dict / LLM-scored brief, not
   tabular rows; the rows->CSV bridge feeds it nothing usable.
 - `warehouse_layout` - a params-driven 3D layout generator (requires_data=False,
-  ignores rows) whose deliverable is an HTML viewer, not a data analysis.
+  ignores rows) whose deliverable is an HTML viewer, not a data analysis. Contrast
+  `flow_map`, which IS exposed below: its input is tabular movement rows and its
+  primary output is a data analysis (measured transit per lane); the self-contained
+  HTML sankey map it also writes is an extra visualization of that analysis, not
+  the whole deliverable the way warehouse_layout's 3D viewer is.
 
 Each description is the user-facing MCP contract: what the tool does, the
 canonical columns its job's `prepare()` matches (aliases are tolerated -
@@ -539,6 +543,23 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             '{"stop_id": "C-4", "x": 12.1, "y": 3.4, "demand": 18}.\n\n'
             "REQUIRED param: capacity (max demand units per vehicle) - without it the tool "
             "returns needs_data. Useful params: depot, speed.\n\n" + _RETURNS
+        ),
+    ),
+    MCPToolSpec(
+        name="linchpin_flow_map",
+        job_type="flow_map",
+        title="Map Observed Flows & Measure Transit",
+        description=(
+            "Reconstruct the supplier-to-store network from recorded movements and measure "
+            "transit time and its spread on every lane.\n\n"
+            "Rows need columns: fecha_salida (or ship_date / departure_date), fecha_llegada "
+            "(or receipt_date / arrival_date), origen (or origin / from), destino (or "
+            "destination / to), producto (or sku / product_id), cantidad (or quantity / qty); "
+            "costo_unitario (or unit_cost) is optional and values the buffer. One row per "
+            'shipment leg, e.g. {"ship_date": "2026-01-01", "receipt_date": "2026-01-04", '
+            '"origin": "SUP-1", "destination": "DC-1", "sku": "SKU-A", "quantity": 120}.\n\n'
+            "Useful params: min_observations (default 8 -- lanes below it report no transit "
+            "statistic at all, by design), service_level (0-1, default 0.95).\n\n" + _RETURNS
         ),
     ),
 )

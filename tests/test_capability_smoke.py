@@ -26,6 +26,7 @@ EXPECTED_OFFLINE_BUCKETS: dict[str, str] = {
     # --- GATED: requires_data=True and the harness has no fixture yet, so these never
     # execute a line of their own job code. Adding a fixture flips the row to PASS.
     "disruption_scan":        "GATED",
+    "flow_map":               "GATED",
     "hat_settlement":         "GATED",
     "hat_tension":            "GATED",
     "network_design":         "GATED",
