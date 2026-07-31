@@ -48,7 +48,7 @@
   caught by hand). To activate live: `flyctl secrets set SENTRY_DSN=... -a linchpin`.
 
 ### Fixed
-- **`GET /how-it-works` was advertising 41 of 48 tools** (`webapp/how_it_works_data.py`). The
+- **`GET /how-it-works` was advertising 41 of 49 tools** (`webapp/how_it_works_data.py`). The
   hand-maintained `TOOLS` table had fallen **seven** tools behind `build_default_registry()`:
   `supplier_management`, `network_design`, `disruption_scan`, `hat_tension`, `hat_settlement`,
   `flow_map` and `cross_impact` each landed a `register()` call with no matching `ToolInfo`, and
@@ -61,7 +61,9 @@
   `tests/test_scm_agent.py` and `tests/test_capability_smoke.py` — so the page cannot silently
   drift again. The three decision-alignment tools get their own domain area rather than being
   folded into "Inventory & replenishment", which would have overstated the inventory engine
-  from 9 tools to 12 on a chart people read in sales calls. 3 tests.
+  from 9 tools to 12 on a chart people read in sales calls. An eighth tool,
+  `org_friction_audit` (#198), merged to `main` while this PR was open and drifted the table
+  again within a day — caught by the guard added here, which is the argument for it. 3 tests.
   audit, 3 findings). (1) *Wrong statistical gate*: the optimizer gated on the elasticity CI
   excluding **0**, but the constant-elasticity markup `p* = c*eps/(eps+1)` explodes as
   `eps -> -1` from below — `eps = -1.05` implied a price of **21x cost**, shipped as `ok`. The

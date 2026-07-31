@@ -100,14 +100,14 @@ def test_stepper_renders_all_stages() -> None:
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
 
 
-def test_page_mentions_48_tools_and_33_sources_not_stale_numbers() -> None:
+def test_page_mentions_49_tools_and_33_sources_not_stale_numbers() -> None:
     html = render_how_it_works_html()
-    assert "48" in html
+    assert "49" in html
     assert "33" in html
     assert "25 curated" not in html  # the README's stale source count must never appear here
 
 
-def test_page_has_both_donut_lenses_totaling_48() -> None:
+def test_page_has_both_donut_lenses_totaling_49() -> None:
     html = render_how_it_works_html()
     assert 'id="donut-domain"' in html
     assert 'id="donut-scor"' in html

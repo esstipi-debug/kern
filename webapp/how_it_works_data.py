@@ -1,16 +1,18 @@
 """Static content data for GET /how-it-works (webapp/how_it_works_page.py).
 
 Every count here is verified against the actual code, not copied from a
-possibly-stale doc: 48 tools = build_default_registry()'s 48 register()
+possibly-stale doc: 49 tools = build_default_registry()'s 49 register()
 calls in scm_agent/tools.py, now enforced by
-tests/test_how_it_works_page.py::test_page_lists_every_registered_tool_exactly_once
+tests/test_how_it_works_data.py::test_tools_table_matches_the_registry_exactly
 (set equality against the registry, both directions). That guard exists
 because this table silently fell SEVEN tools behind between the
-launch_readiness PR and PR #199 -- supplier_management, network_design,
+launch_readiness PR and PR #200 -- supplier_management, network_design,
 disruption_scan, hat_tension, hat_settlement, flow_map and cross_impact
 each landed a register() call with no matching ToolInfo, and nothing
-failed. The domain-area grouping matches README.md's capability table.
-The SCOR Digital Standard
+failed. An eighth, org_friction_audit (#198), merged while PR #200 was
+open and drifted the table again inside a single day -- caught only
+because the guard was by then in place. The domain-area grouping matches
+README.md's capability table. The SCOR Digital Standard
 bucket per tool is grounded in documentation/KERN_NIVEL_REFERENCIA_SCM.md
 Section 2 (itself generated from a direct code read on 2026-07-17),
 cross-checked during this feature's design phase by a 45-agent adversarial
@@ -19,7 +21,7 @@ docs/superpowers/specs/2026-07-19-how-it-works-page-design.md Section 4.2
 for the two gaps that document's own table had (reconciliation/
 odoo_replenishment/excel_replenishment bundled under the tool they extend;
 launch_readiness added to Plan; leadership_chain marked as genuinely outside
-SCOR's scope rather than force-fit). The seven tools added in PR #199 postdate
+SCOR's scope rather than force-fit). The eight tools added in PR #200 postdate
 that document -- it buckets none of them -- so their placement is a judgment
 call recorded here: network_design sits in Plan because SCOR's Plan process
 owns supply-chain network design (note the tension with facility_location,
@@ -190,7 +192,11 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Measures what one area's proposed replenishment decision does to the other three "
              "and emits an objection verdict. An area with no declared threshold is reported as "
              "not evaluable -- never as nobody objects."),
-    # -- Leadership (1) --
+    # -- Leadership (2) --
+    ToolInfo("org_friction_audit", "Organizational Friction Audit", "Leadership", "Orchestrate",
+             "Audits the client's own control points (KPIs, data-load checkpoints) for gamed "
+             "numbers, ratcheted targets and unowned checkpoints. Never renders a verdict on a "
+             "person -- every finding is a ranked question for a human to confirm."),
     ToolInfo("leadership_chain", "Leadership Chain", "Leadership", "Outside SCOR scope",
              "A CHAIN leadership profile and directives -- an organizational assessment, "
              "not a supply chain operation."),
@@ -323,7 +329,7 @@ class IsoClause:
 ISO_9001_CLAUSES: tuple[IsoClause, ...] = (
     IsoClause("4.4 / 8.1 Process approach",
               "A fixed, self-describing pipeline: every capability is a Tool with "
-              "prepare/run/qa/deliver -- the same sequence for all 48."),
+              "prepare/run/qa/deliver -- the same sequence for all 49."),
     IsoClause("7.5 Documented information",
               "An EvidenceRecord (SHA-256 of inputs, control totals, formula versions, QA "
               "attestations); a writeback AuditEntry; a Keep-a-Changelog CHANGELOG; L3 "
