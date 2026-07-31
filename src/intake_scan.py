@@ -286,17 +286,20 @@ def rank_gaps(verdicts: tuple[ToolVerdict, ...]) -> tuple[ColumnGap, ...]:
 def rank_blocked_fixes(verdicts: tuple[ToolVerdict, ...]) -> tuple[BlockedFileGap, ...]:
     """Blocked files, ranked by how many tools fixing each one alone would unblock.
 
-    A tool only counts toward a file's total if that file is the tool's sole
-    obstacle -- if the tool is ALSO missing a column that was never sent, cleaning
-    up the blocked file would not unblock it by itself, so it is excluded here.
-    Ties break on the filename so two runs over the same folder agree.
+    A tool only counts toward a file's total if that file is its SOLE obstacle:
+    no genuinely missing column (fixing a file can't manufacture a column that
+    was never sent), and exactly one blocking file. A tool blocked by two or more
+    files is credited to none of them individually -- fixing just one still
+    leaves it red, so crediting any single file's option would promise an unblock
+    that will not happen. Ties break on the filename so two runs over the same
+    folder agree.
     """
     by_file: dict[str, list[str]] = {}
     for v in verdicts:
-        if v.missing_required:
+        if v.missing_required or len(v.blocked_by) != 1:
             continue
-        for filename in v.blocked_by:
-            by_file.setdefault(filename, []).append(v.tool_key)
+        (filename,) = v.blocked_by
+        by_file.setdefault(filename, []).append(v.tool_key)
     fixes = [
         BlockedFileGap(filename, len(keys), tuple(sorted(keys)))
         for filename, keys in by_file.items()
@@ -349,9 +352,13 @@ def _outcome(
         ),
     )
     if not gaps and not fixes:
-        if not verdicts:
+        n_evaluated = sum(1 for v in verdicts if v.state != UNDECLARED)
+        if n_evaluated == 0:
+            # Either no tools were passed in at all, or every one of them is
+            # UNDECLARED -- the common case in production. Neither is "the
+            # folder supports everything"; nothing was actually evaluated.
             return as_executed(
-                "No tools were declared for this scan; there is nothing to evaluate.",
+                "No declared tool was evaluated; there is nothing to claim coverage over.",
                 residuals=[residual],
             )
         n_green = sum(1 for v in verdicts if v.state == GREEN)

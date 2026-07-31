@@ -317,4 +317,36 @@ def test_no_tools_declared_does_not_falsely_claim_coverage():
     )
     assert report.outcome.status == EXECUTED
     assert "0 green" not in report.outcome.summary
-    assert "no tools" in report.outcome.summary.lower() or "no tools were declared" in report.outcome.summary.lower()
+    assert "no declared tool was evaluated" in report.outcome.summary.lower()
+
+
+def test_all_tools_undeclared_does_not_falsely_claim_coverage_either():
+    """The production-real case: tools is NOT empty, but every one of them is
+    UNDECLARED (no red, no gaps, no fixes), so the report falls into the same
+    'all good' branch as a genuinely green folder. It must not say the folder
+    'supports every declared tool' when zero tools were actually evaluated --
+    this is the path that will fire for real, since most registered tools
+    haven't declared their columns yet."""
+    tools_ = [_FakeTool("a"), _FakeTool("b"), _FakeTool("c")]
+    report = build_report(
+        classified=(), findings=(), tools=tools_,
+        available={"product_id": {"a.csv"}}, blocked=frozenset(),
+        n_files_read=1, n_unclassified=0,
+    )
+    assert report.outcome.status == EXECUTED
+    assert "0 green" not in report.outcome.summary
+    assert "supports every declared tool" not in report.outcome.summary
+    assert "no declared tool was evaluated" in report.outcome.summary.lower()
+
+
+def test_a_tool_blocked_by_two_files_is_not_credited_to_either_fix():
+    """The round-2 repro: a tool needing columns A and B, where A lives only in
+    fileX.csv (blocked) and B lives only in fileY.csv (blocked). Fixing fileX
+    alone still leaves the tool blocked by fileY, and vice versa -- neither fix
+    option may claim it unlocks this tool."""
+    tools_ = [_FakeTool("two_blocked", ("colA", "colB"))]
+    available = {"colA": {"fileX.csv"}, "colB": {"fileY.csv"}}
+    blocked = frozenset({"fileX.csv", "fileY.csv"})
+    verdicts = verdicts_for(available, blocked, tools_)
+    fixes = rank_blocked_fixes(verdicts)
+    assert all("two_blocked" not in fix.tools for fix in fixes)
