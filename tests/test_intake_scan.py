@@ -1,5 +1,15 @@
 """Tests for the pure intake_scan engine: profiles, circuit breakers, verdict."""
-from src.intake_scan import UNCLASSIFIED, FileColumns, classify_all, classify_file
+from src.intake_scan import (
+    UNCLASSIFIED,
+    BreakerFinding,
+    FileColumns,
+    FileSignals,
+    Thresholds,
+    blocking_files,
+    classify_all,
+    classify_file,
+    run_breakers,
+)
 
 
 def _file(name, columns, coverage=None, n_rows=100):
@@ -68,3 +78,49 @@ def test_single_date_column_maestro_is_closer_than_ventas():
     assert result.reason.startswith(UNCLASSIFIED)
     assert result.missing == ("sku",)
     assert "maestro" in result.reason
+
+
+def _signals(**kwargs):
+    base = dict(
+        filename="ventas.csv", n_impossible_dates=0, n_negative_quantities=0,
+        n_duplicate_rows=0, n_orphan_keys=0, n_rows=1000, orphans_evaluated=True,
+    )
+    base.update(kwargs)
+    return FileSignals(**base)
+
+
+def test_findings_carry_a_count_and_a_fraction_not_a_boolean():
+    (finding,) = [f for f in run_breakers([_signals(n_duplicate_rows=3)], Thresholds())
+                  if f.breaker == "duplicate_rows"]
+    assert isinstance(finding, BreakerFinding)
+    assert finding.n_affected == 3
+    assert finding.n_total == 1000
+    assert round(finding.fraction, 4) == 0.003
+    assert finding.blocking is False
+
+
+def test_a_breaker_over_its_threshold_blocks():
+    findings = run_breakers([_signals(n_impossible_dates=20)], Thresholds())
+    dates = next(f for f in findings if f.breaker == "impossible_dates")
+    assert dates.fraction == 0.02
+    assert dates.blocking is True
+    assert blocking_files(findings) == frozenset({"ventas.csv"})
+
+
+def test_thresholds_are_configurable():
+    findings = run_breakers([_signals(n_impossible_dates=20)], Thresholds(impossible_dates=0.05))
+    assert next(f for f in findings if f.breaker == "impossible_dates").blocking is False
+
+
+def test_orphans_not_evaluated_are_declared_not_reported_as_zero():
+    findings = run_breakers([_signals(orphans_evaluated=False)], Thresholds())
+    orphans = next(f for f in findings if f.breaker == "orphan_keys")
+    assert orphans.blocking is False
+    assert "not evaluated" in orphans.detail
+    assert orphans.n_affected == 0
+    assert orphans.fraction == 0.0
+
+
+def test_empty_file_never_divides_by_zero():
+    findings = run_breakers([_signals(n_rows=0)], Thresholds())
+    assert all(f.fraction == 0.0 for f in findings)

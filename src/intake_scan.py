@@ -92,3 +92,80 @@ def classify_file(file: FileColumns) -> Classified:
 def classify_all(files: list[FileColumns]) -> tuple[Classified, ...]:
     """Classify every file, sorted by filename so two runs agree."""
     return tuple(classify_file(f) for f in sorted(files, key=lambda f: f.filename))
+
+
+@dataclass(frozen=True)
+class Thresholds:
+    """Fractions above which a circuit breaker blocks. All configurable per run."""
+
+    impossible_dates: float = 0.01
+    negative_quantities: float = 0.01
+    duplicate_rows: float = 0.05
+    orphan_keys: float = 0.05
+    column_coverage: float = 0.50  # not a breaker: feeds the presence rule
+
+
+@dataclass(frozen=True)
+class FileSignals:
+    """Counts the job layer measured on one file. The engine judges, never counts."""
+
+    filename: str
+    n_rows: int = 0
+    n_impossible_dates: int = 0
+    n_negative_quantities: int = 0
+    n_duplicate_rows: int = 0
+    n_orphan_keys: int = 0
+    orphans_evaluated: bool = True
+
+
+@dataclass(frozen=True)
+class BreakerFinding:
+    """One breaker on one file: how many, out of how many, and whether it blocks."""
+
+    filename: str
+    breaker: str
+    n_affected: int
+    n_total: int
+    fraction: float
+    blocking: bool
+    detail: str = ""
+
+
+def _fraction(n_affected: int, n_total: int) -> float:
+    return (n_affected / n_total) if n_total > 0 else 0.0
+
+
+def run_breakers(
+    signals: list[FileSignals], thresholds: Thresholds | None = None
+) -> tuple[BreakerFinding, ...]:
+    """One finding per breaker per file, sorted by (filename, breaker)."""
+    limits = thresholds or Thresholds()
+    out: list[BreakerFinding] = []
+    for s in sorted(signals, key=lambda x: x.filename):
+        checks = (
+            ("impossible_dates", s.n_impossible_dates, limits.impossible_dates,
+             "rows whose date could not be parsed or fell outside the accepted window"),
+            ("negative_quantities", s.n_negative_quantities, limits.negative_quantities,
+             "rows carrying a negative quantity"),
+            ("duplicate_rows", s.n_duplicate_rows, limits.duplicate_rows,
+             "exactly duplicated rows"),
+            ("orphan_keys", s.n_orphan_keys, limits.orphan_keys,
+             "product ids absent from the master file"),
+        )
+        for name, affected, limit, detail in checks:
+            if name == "orphan_keys" and not s.orphans_evaluated:
+                out.append(BreakerFinding(
+                    s.filename, name, 0, s.n_rows, 0.0, False,
+                    "not evaluated: no master file was classified in this folder",
+                ))
+                continue
+            fraction = _fraction(affected, s.n_rows)
+            out.append(BreakerFinding(
+                s.filename, name, affected, s.n_rows, fraction, fraction > limit, detail,
+            ))
+    return tuple(sorted(out, key=lambda f: (f.filename, f.breaker)))
+
+
+def blocking_files(findings: tuple[BreakerFinding, ...]) -> frozenset[str]:
+    """Files with at least one breaker over its threshold; they cannot support a green."""
+    return frozenset(f.filename for f in findings if f.blocking)
