@@ -11,12 +11,14 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 
 from examples.run_world_sim import run_grid, simulate, simulate_oracle
 from src.simworld import runners as runners_mod
 from src.simworld.runners import Policy, naive_policy, oracle_orders
 from src.simworld.scorer import capture
+from src.simworld.scorer import degradation as real_degradation
 from src.simworld.world import generate_world
 
 
@@ -83,10 +85,26 @@ def test_simulate_oracle_never_touches_the_lens():
     nunca por `export_history` (la lente sucia que Kern lee). Discrimina
     contra una version futura que, por accidente, enrutara al oraculo a
     traves de la misma lente que Kern -- eso corromperia el techo mismo, no
-    solo lo que se mide contra el."""
+    solo lo que se mide contra el.
+
+    Parchea `lens.history_frame` (lo que `export_history` llama por dentro),
+    no `export_history` por nombre: cualquier binding de `export_history`,
+    sin importar donde se importe (`runners.export_history`,
+    `lens.export_history`, o incluso un `from src.simworld.lens import
+    export_history as _leak` a nivel de modulo dentro de
+    `examples/run_world_sim.py`), termina resolviendo `history_frame` contra
+    el namespace propio de `lens.py` en tiempo de llamada -- asi que
+    parchear ahi intercepta la fuga sin importar como `export_history` haya
+    llegado a estar ligado en otro lado. Un mutante real con ese import a
+    nivel de modulo pasaba las 18 pruebas existentes SIN DETECTARSE, incluida
+    la version anterior de esta prueba (que parcheaba `export_history` por
+    nombre en `runners_mod`) -- confirmado en el reporte de la tarea
+    (finding Important #2)."""
+    from src.simworld import lens as lens_mod
+
     w = generate_world(seed=6, n_skus=2, n_suppliers=1, weeks=6, regime="seasonal_trend")
-    original = runners_mod.export_history
-    with patch.object(runners_mod, "export_history", wraps=original) as spy:
+    original = lens_mod.history_frame
+    with patch.object(lens_mod, "history_frame", wraps=original) as spy:
         simulate_oracle(w)
     assert spy.call_count == 0
 
@@ -111,6 +129,53 @@ def test_oracle_beats_naive_and_the_grid_reports_it(floor_ceiling_report):
     assert report["floor"]["total_cost"] > report["ceiling"]["total_cost"]
 
 
+def test_floor_reorder_point_is_frozen_after_first_replan_not_recomputed_every_time():
+    """El piso ('punto de reorden fijo, congelado') calcula `naive_policy`
+    UNA sola vez -- en la primera replanificacion con WARMUP_WEEKS de
+    historia -- y reutiliza esa MISMA `Policy` en cada replanificacion
+    posterior, sin volver a mirar la historia mas reciente. Con
+    weeks=20/replan_every=4 hay 5 replanificaciones (semanas 0, 4, 8, 12,
+    16): la de la semana 0 no tiene historia todavia (Policy vacia), y las 4
+    restantes deben devolver EXACTAMENTE el mismo `reorder_point` -- no solo
+    parecido, identico campo a campo -- porque la ventana de
+    NAIVE_LOOKBACK_WEEKS que `naive_policy` mira se desplaza en cada replan
+    si el piso no esta genuinamente congelado, y eso cambia el promedio.
+
+    Replay: revertir la clausura `naive_plan` (en `run_grid`) a `return
+    naive_policy(w, outs), False` incondicional -- el bug real, transcrito
+    tal cual del brief stale (ver `docs/superpowers/plans/2026-07-27-simworld-marcador.md`
+    alrededor de la linea 2357) -- hace que esta prueba falle: confirmado
+    (`4 == 1`, con los 4 reorder_point reales distintos entre si) en el
+    reporte de la tarea antes de aplicar el fix, y vuelve a pasar una vez
+    restaurada la clausura con memoizacion."""
+    import examples.run_world_sim as cli_mod
+
+    original_simulate = cli_mod.simulate
+    plan_returns: list[dict[str, float]] = []
+
+    def spying_simulate(world, plan, *, replan_every=4):
+        def wrapped_plan(w, outs, week):
+            pol, announced = plan(w, outs, week)
+            plan_returns.append(dict(pol.reorder_point))
+            return pol, announced
+        return original_simulate(world, wrapped_plan, replan_every=replan_every)
+
+    with patch.object(cli_mod, "simulate", spying_simulate):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            cli_mod.run_grid(
+                seed=4, n_skus=6, n_suppliers=2, weeks=20, levels=(0,),
+                out_dir=tmp, include_kern=False,
+            )
+
+    # Semana 0: sin historia todavia -> Policy vacia ({}); semanas 4/8/12/16:
+    # historia suficiente -> Policy real. Se filtra la vacia para comparar
+    # solo las replanificaciones "reales" entre si.
+    real_replans = [d for d in plan_returns if d]
+    assert len(real_replans) == 4  # semanas 4, 8, 12, 16
+    assert all(d == real_replans[0] for d in real_replans)
+
+
 def test_grid_writes_a_json_and_a_markdown_report(floor_ceiling_report):
     report, out_dir = floor_ceiling_report
     assert (out_dir / "report.json").exists()
@@ -124,7 +189,17 @@ def test_grid_writes_a_json_and_a_markdown_report(floor_ceiling_report):
 # numeros reales (ver task-11-report.md, Step 5). Si esto cambia, cambio la
 # fisica o la generacion del mundo -- y eso tiene que ser una decision, no
 # un accidente.
-GOLDEN_FLOOR_COST = 173353.2065594952
+#
+# Re-pineado en la revision de Task 11 (finding CRITICAL #1): el piso NO
+# estaba genuinamente congelado -- `naive_plan` recalculaba `naive_policy`
+# en cada replanificacion en vez de una sola vez -- asi que el numero de
+# abajo (173,353.21) media un piso que replanifica cada 4 semanas, no el
+# piso "punto de reorden fijo" que el modulo dice implementar. Con la
+# clausura corregida (memoiza tras el primer calculo con WARMUP_WEEKS de
+# historia, ver `run_grid`), el costo real y estable del piso GENUINAMENTE
+# congelado en este fixture es 185,472.66 (medido directamente, ver
+# task-11-report.md).
+GOLDEN_FLOOR_COST = 185472.66449519232
 GOLDEN_CEILING_COST = 125825.87317307692
 
 
@@ -212,27 +287,44 @@ def test_run_grid_only_calls_the_lens_for_kern_never_for_the_floor_or_oracle():
     Cuenta las llamadas reales: con 2 niveles x 1 replan minimo cada uno,
     debe haber EXACTAMENTE ese numero de llamadas a la lente, ni una mas.
 
-    Parchea **las dos** referencias posibles a `export_history` --
-    `src.simworld.runners.export_history` (la que `kern_policy` ya trae
-    ligada desde su propio `from ... import`) Y `src.simworld.lens.export_history`
-    (el origen, por si algun codigo futuro la importa de nuevo directo desde
-    ahi). Un primer intento de este test que solo parcheaba la primera NO
-    detecto un mutante que agregaba un `from src.simworld.lens import
-    export_history` fresco dentro de `run_grid` -- ese import nuevo tomaba
-    la version SIN parchear porque el parche vive en el namespace de
-    `runners`, no en el de `lens`. Confirmado con el mutante real, ver el
-    reporte de la tarea."""
+    Historial de este test (por que ya no parchea `export_history` por
+    nombre): la primera version solo parcheaba
+    `src.simworld.runners.export_history`, y no detecto un mutante que
+    agregaba un `from src.simworld.lens import export_history` fresco
+    dentro de `run_grid` (ese import nuevo tomaba la version SIN parchear
+    porque el parche vivia en el namespace de `runners`, no en el de
+    `lens`). La segunda version parcheo **ambas** referencias
+    (`runners.export_history` Y `lens.export_history`) -- pero una revision
+    posterior (finding Important #2 del reporte de la tarea) encontro que
+    incluso esa version se salta con un import a nivel de MODULO dentro de
+    `examples/run_world_sim.py` mismo (p.ej. `from src.simworld.lens import
+    export_history as _leak` al principio del archivo): ese `_leak` queda
+    ligado al objeto funcion ORIGINAL en el momento del import del modulo,
+    antes de que el test corra ningun `patch.object`, y nunca vuelve a
+    resolverse contra el namespace de `lens` en tiempo de llamada -- ninguna
+    cantidad de parches por nombre a `export_history`, sin importar en que
+    modulo, puede cubrir ese caso. Confirmado con el mutante real: paso las
+    18 pruebas existentes (incluida la version de 2 parches de este test)
+    sin detectarse, escribiendo igual un CSV sucio real a disco.
+
+    Por eso ahora se parchea `lens.history_frame` -- la primera llamada que
+    `export_history` hace POR DENTRO de su propio cuerpo. Sin importar como
+    `export_history` haya llegado a estar ligada en otro lado (import
+    directo, alias, wrapper), su codigo siempre resuelve `history_frame`
+    contra el namespace propio de `lens.py` en tiempo de ejecucion -- eso es
+    simplemente como Python resuelve nombres globales dentro de una funcion:
+    contra el modulo donde fue DEFINIDA, no el modulo desde el que se llamo
+    o importo. Parchear ahi intercepta la fuga sin importar el binding."""
     from src.simworld import lens as lens_mod
 
-    original = lens_mod.export_history
+    original = lens_mod.history_frame
     call_count = {"n": 0}
 
-    def counting(world, outcomes, path, *, level, seed):
+    def counting(*args, **kwargs):
         call_count["n"] += 1
-        return original(world, outcomes, path, level=level, seed=seed)
+        return original(*args, **kwargs)
 
-    with patch.object(runners_mod, "export_history", counting), \
-         patch.object(lens_mod, "export_history", counting):
+    with patch.object(lens_mod, "history_frame", counting):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             report = run_grid(
@@ -277,6 +369,37 @@ def test_report_capture_matches_calling_capture_directly(kern_grid_report):
         assert entry["capture"] == pytest.approx(expected)
 
 
+def test_capture_is_null_with_a_note_when_kern_never_placed_a_real_order(kern_grid_report):
+    """Task 11 review (finding Important #4): `capture()` compara costos
+    entre corredores que efectivamente ordenan algo. En este fixture,
+    forced-L3 escala en las DOS replanificaciones reales que llega a correr
+    (ver `replan_status_counts` mas abajo) -- ningun estado no-"ok" de
+    `kern_policy` devuelve nunca una politica con cantidades reales, asi
+    que esta corrida jamas emite una orden. Publicar un `capture` numerico
+    aca se leeria como un resultado real (p.ej. "recupero 60% del hueco
+    piso-techo") cuando en realidad mide un corredor que no actuo contra un
+    piso y un techo que si ordenan -- exactamente el hallazgo real del
+    revisor. Debe salir `capture: None` con una nota explicando por que.
+
+    forced-L0, en el mismo fixture, SI llega a "ok" en sus dos replans
+    reales -- su `capture` debe seguir siendo un numero normal, confirmando
+    que este fix no rompio el caso "Kern si actuo"."""
+    report, _, _ = kern_grid_report
+
+    l3 = report["kern"]["forced-L3"]
+    assert l3["replan_status_counts"] == {"escalated": 2}
+    assert "ok" not in l3["replan_status_counts"]
+    assert l3["capture"] is None
+    assert "capture_note" in l3
+    assert "no emitio ninguna orden" in l3["capture_note"]
+
+    l0 = report["kern"]["forced-L0"]
+    assert l0["replan_status_counts"] == {"ok": 2}
+    assert l0["capture"] is not None
+    assert isinstance(l0["capture"], float)
+    assert "capture_note" not in l0
+
+
 def test_degradation_is_reported_only_for_dirty_levels_not_the_clean_baseline(kern_grid_report):
     report, _, _ = kern_grid_report
     assert "degradation" not in report["kern"]["forced-L0"]
@@ -291,6 +414,131 @@ def test_degradation_largest_week_is_present_and_bounded(kern_grid_report):
     largest = report["kern"]["forced-L3"]["degradation_largest_week"]
     assert 0 <= largest["week"] < 12
     assert isinstance(largest["value"], float)
+
+
+def test_degradation_pins_exact_drop_announced_silent_for_a_synthetic_clean_dirty_pair():
+    """Task 11 review (finding Important #3): la sospecha era que `run_grid`
+    pudiera llamar a `degradation(clean, dirty, flags, level=...)` con
+    `clean_weekly` pasado dos veces (``drop`` siempre 0) o con
+    clean/dirty INTERCAMBIADOS (signo invertido) y ninguna de las 18 pruebas
+    existentes lo notaria, porque todas comparan contra corridas reales
+    donde nunca se conoce a mano el numero "correcto" de antemano.
+
+    Se reemplaza `weekly_cost` por un par sintetico de arreglos clean/dirty
+    (no viene de una simulacion real) y se reemplaza el `flags` de la
+    replanificacion del nivel sucio por un patron de aviso conocido -- asi
+    el valor esperado de ``drop``/``announced``/``silent`` se puede calcular
+    a mano, sin depender de que el motor real produzca tal o cual numero.
+
+    excess = dirty - clean = [0, 50, -20, 20]; flags = [F, T, F, T] ->
+    drop = 50, announced = excess[1]+excess[3] = 70, silent = 50-70 = -20.
+    Un mutante que pase `clean_weekly` dos veces dejaria drop/announced/
+    silent en 0/0/0; uno que intercambie clean/dirty dejaria -50/-70/20
+    (signo invertido) -- ambos claramente distintos de 50/70/-20."""
+    import tempfile
+
+    import examples.run_world_sim as cli_mod
+
+    clean_synth = np.array([100.0, 100.0, 100.0, 100.0])
+    dirty_synth = np.array([100.0, 150.0, 80.0, 120.0])
+    flags_synth = [False, True, False, True]
+
+    weekly_cost_calls = {"n": 0}
+
+    def fake_weekly_cost(world, outs):
+        weekly_cost_calls["n"] += 1
+        # 1ra llamada de la seccion Kern = nivel 0 (limpio); 2da = nivel 1
+        # (sucio). La firma real se preserva pero el contenido es sintetico
+        # a proposito -- no derivado de `outs`.
+        del world, outs
+        return clean_synth if weekly_cost_calls["n"] == 1 else dirty_synth
+
+    original_simulate = cli_mod.simulate
+    simulate_calls = {"n": 0}
+
+    def fake_simulate(world, plan, *, replan_every=4):
+        simulate_calls["n"] += 1
+        outs, real_flags = original_simulate(world, plan, replan_every=replan_every)
+        # Llamada #1 = piso, #2 = Kern nivel 0, #3 = Kern nivel 1: solo la
+        # #3 (el nivel sucio, el unico que alimenta `degradation`) recibe el
+        # patron de aviso sintetico y conocido.
+        if simulate_calls["n"] == 3:
+            return outs, flags_synth
+        return outs, real_flags
+
+    with patch.object(cli_mod, "weekly_cost", fake_weekly_cost), \
+         patch.object(cli_mod, "simulate", fake_simulate):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = cli_mod.run_grid(
+                seed=5, n_skus=2, n_suppliers=1, weeks=4, levels=(0, 1),
+                replan_every=4, out_dir=tmp, include_kern=True,
+            )
+
+    deg = report["kern"]["forced-L1"]["degradation"]
+    expected = real_degradation(clean_synth, dirty_synth, flags_synth, level=1)
+    assert deg["drop"] == pytest.approx(expected.drop)
+    assert deg["announced"] == pytest.approx(expected.announced)
+    assert deg["silent"] == pytest.approx(expected.silent)
+    # Numeros concretos calculados a mano (ver el docstring), no solo
+    # "coincide con lo que devuelve `degradation()`" -- defensa en
+    # profundidad si algun dia `degradation()` misma se rompe.
+    assert deg["drop"] == pytest.approx(50.0)
+    assert deg["announced"] == pytest.approx(70.0)
+    assert deg["silent"] == pytest.approx(-20.0)
+
+
+def test_degradation_flags_reflect_this_levels_own_weekly_announcements_not_a_constant(
+    kern_grid_report,
+):
+    """Discrimina contra un `run_grid` que, en vez de reenviar a
+    `degradation()` los flags reales que `simulate()` devolvio para ESTE
+    nivel/carril (una senal por semana, en principio distinta semana a
+    semana), pasara una lista constante -- todo False (aviso hardcodeado a
+    False) o todo True (aviso hardcodeado a True) -- sin importar lo que
+    Kern haya hecho de verdad.
+
+    En este fixture (2 SKUs, 12 semanas, replan_every=4), forced-L3
+    replanifica en las semanas 0, 4 y 8: la de la semana 0 cae antes de
+    WARMUP_WEEKS de historia y SIEMPRE es sin aviso (Policy vacia,
+    independiente de cualquier mutante en la rama de Kern real); las de las
+    semanas 4 y 8 SI corren a Kern de verdad y ambas escalan (ver
+    `replan_status_counts`), asi que ambas llevan aviso -- exactamente 2
+    semanas de aviso sobre un horizonte de 12. Ese 2 es un valor
+    intermedio: ni 0 (mutante 'siempre False') ni 12 (mutante 'siempre
+    True', que ademas convertiria en avisadas las 9 semanas SIN
+    replanificacion, algo que ningun corredor real puede hacer)."""
+    report, _, _ = kern_grid_report
+    deg = report["kern"]["forced-L3"]["degradation"]
+    assert deg["weeks_announced"] == 2
+    assert 0 < deg["weeks_announced"] < 12
+
+
+def test_report_markdown_shows_the_real_capture_value_and_the_bias_disclosure_sentence(
+    kern_grid_report,
+):
+    """Discrimina contra un `_markdown(report)` reemplazado por un string
+    de relleno estatico (mutante real probado por la revision de Task 11,
+    finding Important #3c/e): si el reporte no vuelca ni la captura real
+    calculada para cada carril-nivel ni la frase de sesgo declarado contra
+    Kern, ninguna de las dos aserciones de abajo puede pasar contra un texto
+    generico."""
+    report, out_dir, _ = kern_grid_report
+    md = (out_dir / "report.md").read_text(encoding="utf-8")
+
+    numeric_captures = [
+        entry["capture"] for entry in report["kern"].values()
+        if entry.get("capture") is not None
+    ]
+    assert numeric_captures  # el fixture realmente produce captura numerica
+    for cap in numeric_captures:
+        assert f"{cap:.3f}" in md
+
+    # La frase de sesgo declarado, deliberado, en contra de Kern (ver
+    # `_markdown`): "silencio" cuenta como sin-aviso cualquier semana
+    # gobernada por un aviso de una replanificacion anterior, un sesgo que
+    # perjudica a Kern, nunca lo favorece. Debe seguir presente palabra por
+    # palabra.
+    assert "en contra de Kern" in md
 
 
 # ---------------------------------------------------------------------------

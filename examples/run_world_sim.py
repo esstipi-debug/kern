@@ -142,13 +142,25 @@ def run_grid(
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
+    frozen_floor: Policy | None = None
+
     def naive_plan(w: World, outs: list[WeekOutcome], week: int) -> tuple[Policy, bool]:
         # El piso se calcula una sola vez, en la primera semana con
         # WARMUP_WEEKS de historia, y no se revisa mas: esa es su
-        # definicion (punto de reorden fijo, congelado).
+        # definicion (punto de reorden fijo, congelado). `simulate()` sigue
+        # llamando a esta clausura en CADA replanificacion (no solo en la
+        # primera), asi que la congelacion tiene que vivir aca, en estado de
+        # clausura, no en `naive_policy` (que es sin estado por diseno): la
+        # primera vez que hay suficiente historia se calcula y se guarda en
+        # `frozen_floor` via `nonlocal`; toda llamada posterior devuelve esa
+        # MISMA `Policy`, sin volver a mirar `outs` ni recalcular nada.
+        nonlocal frozen_floor
+        if frozen_floor is not None:
+            return frozen_floor, False
         if len(outs) < WARMUP_WEEKS:
             return EMPTY_POLICY, False
-        return naive_policy(w, outs), False
+        frozen_floor = naive_policy(w, outs)
+        return frozen_floor, False
 
     floor_outs, _ = simulate(world, naive_plan, replan_every=replan_every)
     ceil_outs = simulate_oracle(world)
@@ -211,6 +223,24 @@ def run_grid(
                         f"span degenerado: el piso ({floor_k.total_cost:,.2f}) no "
                         f"cuesta mas que el techo ({ceil_k.total_cost:,.2f}) en "
                         "este mundo/escala; la captura no es medible aca"
+                    )
+                elif status_counts.get("ok", 0) == 0:
+                    # Kern nunca llego a un replan "ok" en toda la corrida:
+                    # todos los replans reales (si hubo alguno) bloquearon
+                    # (needs_data/needs_clarification/qa_failed/error/
+                    # handoff/escalated) -- ningun estado no-"ok" de
+                    # `kern_policy` devuelve nunca una politica con
+                    # cantidades reales, asi que esta corrida jamas emitio
+                    # una orden. Una captura numerica aca se leeria como un
+                    # resultado real (p.ej. "60% del hueco piso-techo"),
+                    # cuando en realidad compara el costo de un corredor que
+                    # no actuo contra un piso y un techo que si ordenan algo
+                    # -- un numero que parece un logro y no lo es.
+                    entry["capture"] = None
+                    entry["capture_note"] = (
+                        "Kern no emitio ninguna orden esta corrida (estados "
+                        f"observados: {dict(status_counts)}); la captura de "
+                        "costo no es comparable"
                     )
                 else:
                     # Deliberadamente SIN try/except: si Kern le gana al
