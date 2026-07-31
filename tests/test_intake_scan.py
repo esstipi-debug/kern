@@ -1,14 +1,22 @@
 """Tests for the pure intake_scan engine: profiles, circuit breakers, verdict."""
+from src.guided import EXECUTED, OPTIONS
 from src.intake_scan import (
+    GREEN,
+    RED,
     UNCLASSIFIED,
+    UNDECLARED,
+    YELLOW,
     BreakerFinding,
     FileColumns,
     FileSignals,
     Thresholds,
     blocking_files,
+    build_report,
     classify_all,
     classify_file,
+    rank_gaps,
     run_breakers,
+    verdicts_for,
 )
 
 
@@ -155,3 +163,104 @@ def test_multiple_signals_with_same_filename_are_handled_deterministically():
     # Verify sorting: findings should be in order by (filename, breaker)
     sorted_findings = sorted(findings, key=lambda f: (f.filename, f.breaker))
     assert findings == tuple(sorted_findings)
+
+
+class _FakeTool:
+    def __init__(self, key, required=(), optional=(), requires_data=True):
+        self.key = key
+        self.required_columns = tuple(required)
+        self.optional_columns = tuple(optional)
+        self.requires_data = requires_data
+
+
+def test_the_four_states():
+    tools_ = [
+        _FakeTool("green_tool", ("product_id",), ("unit_cost",)),
+        _FakeTool("yellow_tool", ("product_id",), ("gtin",)),
+        _FakeTool("red_tool", ("product_id", "cogs")),
+        _FakeTool("undeclared_tool"),
+    ]
+    available = {"product_id": {"maestro.csv"}, "unit_cost": {"maestro.csv"}}
+    states = {v.tool_key: v.state for v in verdicts_for(available, frozenset(), tools_)}
+    assert states == {
+        "green_tool": GREEN, "yellow_tool": YELLOW,
+        "red_tool": RED, "undeclared_tool": UNDECLARED,
+    }
+
+
+def test_an_undeclared_tool_is_never_green_even_with_every_column_present():
+    (verdict,) = verdicts_for({"product_id": {"a.csv"}}, frozenset(), [_FakeTool("x")])
+    assert verdict.state == UNDECLARED
+
+
+def test_a_blocked_file_cannot_support_a_green():
+    tools_ = [_FakeTool("t", ("product_id",))]
+    (verdict,) = verdicts_for({"product_id": {"malo.csv"}}, frozenset({"malo.csv"}), tools_)
+    assert verdict.state == RED
+    assert verdict.blocked_by == ("malo.csv",)
+
+
+def test_abc_xyz_style_tool_goes_red_without_unit_cost():
+    """The real case: a sales file without cost is a legitimate red for abc_xyz."""
+    tools_ = [_FakeTool("abc_xyz", ("product_id", "quantity", "unit_cost"))]
+    available = {"product_id": {"ventas.csv"}, "quantity": {"ventas.csv"}}
+    (verdict,) = verdicts_for(available, frozenset(), tools_)
+    assert verdict.state == RED
+    assert verdict.missing_required == ("unit_cost",)
+
+
+def test_gaps_rank_by_how_many_tools_each_column_unlocks():
+    verdicts = verdicts_for(
+        {"product_id": {"a.csv"}},
+        frozenset(),
+        [
+            _FakeTool("t1", ("product_id", "unit_cost")),
+            _FakeTool("t2", ("product_id", "unit_cost")),
+            _FakeTool("t3", ("product_id", "cogs")),
+        ],
+    )
+    gaps = rank_gaps(verdicts)
+    assert [g.column for g in gaps] == ["unit_cost", "cogs"]
+    assert gaps[0].unlocks == 2
+    assert gaps[0].tools == ("t1", "t2")
+
+
+def test_ties_break_by_column_name_so_two_runs_agree():
+    verdicts = verdicts_for(
+        {},
+        frozenset(),
+        [_FakeTool("t1", ("zeta",)), _FakeTool("t2", ("alfa",))],
+    )
+    assert [g.column for g in rank_gaps(verdicts)] == ["alfa", "zeta"]
+
+
+def test_report_with_gaps_offers_options():
+    tools_ = [_FakeTool("t", ("product_id", "unit_cost"))]
+    report = build_report(
+        classified=(), findings=(), tools=tools_,
+        available={"product_id": {"a.csv"}}, blocked=frozenset(),
+        n_files_read=1, n_unclassified=0,
+    )
+    assert report.outcome.status == OPTIONS
+    assert "unit_cost" in report.outcome.options[0].label
+
+
+def test_report_with_nothing_to_ask_for_is_executed_not_an_empty_menu():
+    tools_ = [_FakeTool("t", ("product_id",))]
+    report = build_report(
+        classified=(), findings=(), tools=tools_,
+        available={"product_id": {"a.csv"}}, blocked=frozenset(),
+        n_files_read=1, n_unclassified=0,
+    )
+    assert report.outcome.status == EXECUTED
+
+
+def test_report_counts_evaluated_against_total():
+    tools_ = [_FakeTool("declared", ("product_id",)), _FakeTool("undeclared")]
+    report = build_report(
+        classified=(), findings=(), tools=tools_,
+        available={"product_id": {"a.csv"}}, blocked=frozenset(),
+        n_files_read=1, n_unclassified=0,
+    )
+    assert (report.n_tools_evaluated, report.n_tools_total) == (1, 2)
+    assert "1 of 2" in report.summary

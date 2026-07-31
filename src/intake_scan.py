@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from src.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_options
+
 UNCLASSIFIED = "unclassified"
 AMBIGUOUS = "ambiguous"
 
@@ -171,3 +173,163 @@ def run_breakers(
 def blocking_files(findings: tuple[BreakerFinding, ...]) -> frozenset[str]:
     """Files with at least one breaker over its threshold; they cannot support a green."""
     return frozenset(f.filename for f in findings if f.blocking)
+
+
+GREEN = "verde"
+YELLOW = "amarillo"
+RED = "rojo"
+UNDECLARED = "no_declarado"
+
+_TOP_GAPS = 3
+
+
+@dataclass(frozen=True)
+class ToolVerdict:
+    """Whether one tool could run on this folder, and what stops it if not."""
+
+    tool_key: str
+    state: str
+    missing_required: tuple[str, ...] = ()
+    missing_optional: tuple[str, ...] = ()
+    blocked_by: tuple[str, ...] = ()
+    source_files: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ColumnGap:
+    """One missing column, and how much asking for it would buy."""
+
+    column: str
+    unlocks: int
+    tools: tuple[str, ...]
+
+
+def verdicts_for(
+    available: dict[str, set[str]], blocked: frozenset[str], tools: list
+) -> tuple[ToolVerdict, ...]:
+    """One verdict per tool, sorted by key. Undeclared is checked first, always."""
+    out: list[ToolVerdict] = []
+    for tool in sorted(tools, key=lambda t: t.key):
+        if not tool.required_columns:
+            out.append(ToolVerdict(tool.key, UNDECLARED))
+            continue
+
+        missing_required: list[str] = []
+        blocked_by: set[str] = set()
+        sources: set[str] = set()
+        for column in tool.required_columns:
+            files = available.get(column, set())
+            usable = files - blocked
+            if not usable:
+                missing_required.append(column)
+                blocked_by |= (files & blocked)
+            else:
+                sources |= usable
+
+        if missing_required:
+            out.append(ToolVerdict(
+                tool.key, RED, tuple(missing_required), (), tuple(sorted(blocked_by)),
+                tuple(sorted(sources)),
+            ))
+            continue
+
+        missing_optional = tuple(
+            c for c in tool.optional_columns if not (available.get(c, set()) - blocked)
+        )
+        state = YELLOW if missing_optional else GREEN
+        out.append(ToolVerdict(
+            tool.key, state, (), missing_optional, (), tuple(sorted(sources))
+        ))
+    return tuple(out)
+
+
+def rank_gaps(verdicts: tuple[ToolVerdict, ...]) -> tuple[ColumnGap, ...]:
+    """Missing required columns, ranked by how many tools each one would unlock.
+
+    Ties break on the column name so two runs over the same folder agree.
+    """
+    by_column: dict[str, list[str]] = {}
+    for v in verdicts:
+        for column in v.missing_required:
+            by_column.setdefault(column, []).append(v.tool_key)
+    gaps = [
+        ColumnGap(column, len(keys), tuple(sorted(keys)))
+        for column, keys in by_column.items()
+    ]
+    return tuple(sorted(gaps, key=lambda g: (-g.unlocks, g.column)))
+
+
+@dataclass(frozen=True)
+class ScanReport:
+    """The whole audit: what we read, what we found, what can run, what to ask for."""
+
+    classified: tuple
+    findings: tuple
+    verdicts: tuple[ToolVerdict, ...]
+    gaps: tuple[ColumnGap, ...]
+    n_files_read: int
+    n_unclassified: int
+    n_tools_evaluated: int
+    n_tools_total: int
+    outcome: GuidedOutcome
+    summary: str
+
+
+def _outcome(gaps: tuple[ColumnGap, ...], verdicts: tuple[ToolVerdict, ...]) -> GuidedOutcome:
+    residual = Residual(
+        description=(
+            "Tools that have not declared their data contract are reported as undeclared, "
+            "not as runnable; this scan cannot speak for them."
+        ),
+        risk_if_skipped=(
+            "Treating an undeclared tool as runnable is exactly the false green this scan exists "
+            "to prevent."
+        ),
+    )
+    if not gaps:
+        n_green = sum(1 for v in verdicts if v.state == GREEN)
+        return as_executed(
+            f"The folder supports every declared tool ({n_green} green); nothing to request.",
+            residuals=[residual],
+        )
+    options = [
+        ExecutionOption(
+            label=f"Request '{g.column}' from the client",
+            summary=(
+                f"Adding '{g.column}' unlocks {g.unlocks} tool(s): {', '.join(g.tools)}."
+            ),
+            score=float(g.unlocks),
+            recommended=rank == 0,
+            action=f"request_column:{g.column}",
+            tradeoffs="One column, one ask; the client can usually export it from the same system.",
+        )
+        for rank, g in enumerate(gaps[:_TOP_GAPS])
+    ]
+    return as_options(
+        "Missing columns, ranked by how many tools each one unlocks.",
+        options,
+        residuals=[residual],
+    )
+
+
+def build_report(
+    *, classified, findings, tools, available, blocked, n_files_read, n_unclassified,
+) -> ScanReport:
+    """Assemble the audit. Evaluated-vs-total travels in the summary, always."""
+    verdicts = verdicts_for(available, blocked, tools)
+    gaps = rank_gaps(verdicts)
+    evaluated = sum(1 for v in verdicts if v.state != UNDECLARED)
+    total = len(verdicts)
+    counts = {state: sum(1 for v in verdicts if v.state == state) for state in (GREEN, YELLOW, RED)}
+    top = f"asking for '{gaps[0].column}' unlocks {gaps[0].unlocks}" if gaps else "nothing to request"
+    summary = (
+        f"Read {n_files_read} file(s), {n_unclassified} unclassified; evaluated "
+        f"{evaluated} of {total} registered tool(s): {counts[GREEN]} green, "
+        f"{counts[YELLOW]} yellow, {counts[RED]} red; {top}."
+    )
+    return ScanReport(
+        classified=tuple(classified), findings=tuple(findings), verdicts=verdicts, gaps=gaps,
+        n_files_read=n_files_read, n_unclassified=n_unclassified,
+        n_tools_evaluated=evaluated, n_tools_total=total,
+        outcome=_outcome(gaps, verdicts), summary=summary,
+    )
