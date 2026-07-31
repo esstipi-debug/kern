@@ -42,17 +42,43 @@ def test_brief_routes_to_flow_map():
 
 def test_network_design_brief_is_not_stolen():
     reg = tools.build_default_registry()
+    # "weighted distance" was briefly added to facility_location_tool()'s intent_keywords
+    # while wiring flow_map (tool #47), then reverted: it collided with no OTHER tool's
+    # keywords, but facility_location and network_design both matched "weighted distance"
+    # equally, and intent.classify (scm_agent/intent.py) requires a strict score win --
+    # so the added keyword turned this brief's former network_design win into a tie,
+    # which classify() reports as None. Use a brief that carries a genuine network_design
+    # keyword ("which sites to open") alongside "weighted distance" so it still resolves.
     res = intent.classify(
-        "where should I open distribution centres to minimise weighted distance",
+        "which sites to open minimising weighted distance",
         reg, llm.RulesFallback(),
     )
     # The invariant this test exists to protect: flow_map's own intent keywords must
     # not steal a network-design-shaped brief.
     assert res.job_type != "flow_map"
     # The positive half: the brief should actually resolve to one of the two network
-    # tools. This depends on "weighted distance" being in facility_location_tool()'s
-    # intent_keywords (added alongside this test -- see the comment there).
+    # tools.
     assert res.job_type in {"network_design", "facility_location"}
+
+
+def test_weighted_distance_briefs_still_route_to_network_design():
+    """Regression for the reverted 'weighted distance' keyword (IMPORTANT 3 of the
+    2026-07-31 flow_map fix wave): these four briefs already route to network_design
+    today via its OWN keywords ("how many dcs", "p-median", "which sites to open",
+    "network optimization"), with no help from facility_location. If a future change
+    adds a colliding keyword to another tool, intent.classify's strict-score-win rule
+    (scm_agent/intent.py:59) can silently turn these wins into ties -> None. Pin them.
+    """
+    reg = tools.build_default_registry()
+    briefs = [
+        "how many dcs should I open to minimise weighted distance",
+        "p-median study to minimise weighted distance across our network",
+        "which sites to open minimising weighted distance",
+        "network optimization to reduce weighted distance",
+    ]
+    for brief in briefs:
+        res = intent.classify(brief, reg, llm.RulesFallback())
+        assert res.job_type == "network_design", f"{brief!r} routed to {res.job_type!r}"
 
 
 def test_prepare_without_data_asks_for_the_movements_file():

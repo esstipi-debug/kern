@@ -1,4 +1,5 @@
 """Tests for the flow_map job: intake, the QA gate, deliverables."""
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -171,6 +172,32 @@ def test_sankey_matches_the_golden(tmp_path):
     assert render_sankey(report) == GOLDEN.read_text(encoding="utf-8")
 
 
+def test_sankey_viewbox_is_never_shorter_than_the_drawing(tmp_path):
+    """Regression for CRITICAL 1 (2026-07-31 flow_map fix wave): _layout used to take
+    each node's TOP y-coordinate for the canvas bottom, never adding its height, so the
+    viewBox was always shorter than the drawing and <svg> silently clipped it (a client
+    opening flow_map.html saw only the first ~120px of a 560px map). Parse the actual
+    rect bottoms and text baselines out of the rendered SVG rather than hardcoding a
+    number, so this survives a future layout change.
+    """
+    report = flow_map_job.run(flow_map_job.prepare(str(_healthy_csv(tmp_path))))
+    svg = render_sankey(report)
+
+    viewbox_match = re.search(r'viewBox="0 0 (\d+) (\d+)"', svg)
+    assert viewbox_match is not None
+    viewbox_height = int(viewbox_match.group(2))
+
+    rect_bottoms = [
+        float(y) + float(h)
+        for y, h in re.findall(r'<rect x="[\d.]+" y="([\d.]+)" width="\d+" height="([\d.]+)"', svg)
+    ]
+    text_baselines = [float(y) for y in re.findall(r'<text x="[\d.]+" y="([\d.]+)"', svg)]
+    assert rect_bottoms and text_baselines
+
+    assert viewbox_height >= max(rect_bottoms)
+    assert viewbox_height >= max(text_baselines)
+
+
 def test_page_is_self_contained(tmp_path):
     report = flow_map_job.run(flow_map_job.prepare(str(_healthy_csv(tmp_path))))
     page = render_page(report, client="Acme")
@@ -192,6 +219,92 @@ def test_write_operational_emits_csv_and_html(tmp_path):
     assert paths["csv"].exists() and paths["html"].exists()
     body = paths["csv"].read_text(encoding="utf-8")
     assert "mean_days" in body
+
+
+def _lane_no_cost(origin, destination, days, n, start_day=1, qty=10.0):
+    """Same as _lane but with no cost column at all -- the movements file this client
+    sent simply never carried a costo_unitario/unit_cost column."""
+    return [
+        {
+            "ship_date": f"2026-01-{start_day + i:02d}",
+            "receipt_date": f"2026-01-{start_day + i + int(days):02d}",
+            "origin": origin, "destination": destination,
+            "sku": "SKU-A", "quantity": qty,
+        }
+        for i in range(n)
+    ]
+
+
+def test_cost_free_export_ranks_an_option_with_no_value_clause(tmp_path):
+    """Regression for CRITICAL 2 (2026-07-31 flow_map fix wave): when the movements
+    file carries no cost column at all, the ranked option text must never claim the
+    buffer is worth 0 -- it must simply omit the value clause.
+    """
+    rows = (
+        _lane_no_cost("SUP-1", "DC-1", 2, 8)
+        + _lane_no_cost("DC-1", "STORE-1", 4, 8, start_day=2)
+    )
+    path = tmp_path / "sin_costo.csv"
+    _frame(rows).to_csv(path, index=False)
+    report = flow_map_job.run(flow_map_job.prepare(str(path)))
+    assert flow_map_job.verify(report) == []
+    assert report.buffers
+    top = report.outcome.options[0]
+    assert "in value" not in top.summary
+    assert "0 in value" not in top.summary
+    assert "unit(s) of protective stock" in top.summary
+
+
+def test_cost_free_export_writes_an_empty_buffer_value_cell(tmp_path):
+    rows = (
+        _lane_no_cost("SUP-1", "DC-1", 2, 8)
+        + _lane_no_cost("DC-1", "STORE-1", 4, 8, start_day=2)
+    )
+    path = tmp_path / "sin_costo2.csv"
+    _frame(rows).to_csv(path, index=False)
+    report = flow_map_job.run(flow_map_job.prepare(str(path)))
+    paths = flow_map_job.write_operational(report, tmp_path / "out3")
+    body = paths["csv"].read_text(encoding="utf-8")
+    lines = body.splitlines()
+    header = lines[0].split(",")
+    buffer_value_idx = header.index("buffer_value")
+    data_rows = [line.split(",") for line in lines[1:]]
+    # At least one measured lane exists, and its buffer_value cell must be empty --
+    # never a printed 0 or 0.0 standing in for "no cost was recorded."
+    measured_rows = [row for row in data_rows if row[header.index("status")] == "measured"]
+    assert measured_rows
+    for row in measured_rows:
+        assert row[buffer_value_idx] == ""
+
+
+def test_cost_free_export_deck_never_prints_a_zero_value(tmp_path):
+    rows = (
+        _lane_no_cost("SUP-1", "DC-1", 2, 8)
+        + _lane_no_cost("DC-1", "STORE-1", 4, 8, start_day=2)
+    )
+    path = tmp_path / "sin_costo3.csv"
+    _frame(rows).to_csv(path, index=False)
+    report = flow_map_job.run(flow_map_job.prepare(str(path)))
+    deck = flow_map_job.build_deck(report, client="Acme")
+    for finding in deck.findings:
+        assert "0 in value" not in finding.detail
+        assert "(0 in value)" not in finding.detail
+
+
+def test_genuinely_zero_cost_row_is_still_treated_as_a_real_cost(tmp_path):
+    """A movements row that carries unit_cost=0 (a real zero-cost transfer) must be
+    measured as a real 0.0 mean_unit_cost, never folded into "no cost recorded" -- so
+    its buffer_value is a real (zero) number, not an empty cell.
+    """
+    rows = _lane("SUP-1", "DC-1", 2, 8)
+    for row in rows:
+        row["unit_cost"] = 0.0
+    rows += _lane("DC-1", "STORE-1", 4, 8, start_day=2)
+    path = tmp_path / "costo_cero.csv"
+    _frame(rows).to_csv(path, index=False)
+    report = flow_map_job.run(flow_map_job.prepare(str(path)))
+    edge = next(e for e in report.edges if (e.origin, e.destination) == ("SUP-1", "DC-1"))
+    assert edge.mean_unit_cost == 0.0
 
 
 def test_unmeasurable_lane_writes_empty_cells_not_zeros(tmp_path):

@@ -55,7 +55,10 @@ def _layout(report: FlowReport) -> tuple[dict[str, tuple[float, float, float]], 
             placed[node] = (float(_MARGIN + level * _COL_WIDTH), y, height)
             y += height + _NODE_GAP
     width = _MARGIN * 2 + (max(columns) * _COL_WIDTH) + _NODE_WIDTH
-    bottom = max(y for _, y, _ in placed.values())
+    # Bottom edge of the lowest node's rect, not its top -- a bare `y` here leaves the
+    # canvas shorter than the drawing (the tallest node's own height goes uncounted),
+    # and <svg> clips overflow by default, so the drawing gets silently truncated.
+    bottom = max(y + h for _, y, h in placed.values())
     height = int(bottom + _MARGIN + 40)
     return placed, int(width), height
 

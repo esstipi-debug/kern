@@ -72,6 +72,27 @@ def test_equal_volume_bidirectional_pair_does_not_claim_leg_ignored():
     assert "bidirectional flow detected (A <-> B)" in graph.cycle_note
 
 
+def test_mixed_equal_and_unequal_bidirectional_pairs_get_per_pair_wording():
+    """Regression (MINOR, 2026-07-31 flow_map fix wave): with one equal-volume 2-cycle
+    (A<->B) and one unequal-volume 2-cycle (C<->D), the old all-or-nothing note dropped
+    the 'ignored' clause entirely because not ALL pairs were unequal -- even though a leg
+    genuinely was ignored for C<->D. The note must name C<->D specifically and must not
+    claim A<->B had a leg ignored.
+    """
+    movements = [
+        _mv("A", "B", qty=50.0),
+        _mv("B", "A", qty=50.0),
+        _mv("C", "D", qty=100.0),
+        _mv("D", "C", qty=5.0),
+    ]
+    graph = build_graph(movements)
+    assert graph.bidirectional == (("A", "B"), ("C", "D"))
+    # The weaker (ignored) leg is named in the exact direction it was observed (D->C
+    # carried less volume than C->D), not the pair's canonical (sorted) order.
+    assert "the lower-volume leg is ignored when computing echelons for D <-> C" in graph.cycle_note
+    assert "for A <-> B" not in graph.cycle_note
+
+
 def test_edge_with_enough_observations_reports_statistics():
     movements = [_mv("DC-1", "STORE-1", days=d) for d in [2, 2, 3, 3, 4, 4, 5, 9]]
     (edge,) = measure_edges(movements)
@@ -112,6 +133,49 @@ def test_edges_are_sorted_and_bidirectional_is_flagged():
 
 def _edge_movements(origin, destination, days, qty=10.0, cost=2.0):
     return [_mv(origin, destination, days=d, qty=qty, cost=cost) for d in days]
+
+
+def test_edge_with_no_cost_rows_has_none_mean_unit_cost_not_zero():
+    """Regression for CRITICAL 2 (2026-07-31 flow_map fix wave): a cost-free movements
+    file must report mean_unit_cost as None, not 0.0 -- 0.0 reads to a client as "this
+    lane's protective stock is worthless," which is not what "we never measured it" means.
+    """
+    movements = [_mv("DC-1", "STORE-1", days=d, cost=None) for d in [2, 2, 3, 3, 4, 4, 5, 9]]
+    (edge,) = measure_edges(movements)
+    assert edge.status == MEASURED
+    assert edge.mean_unit_cost is None
+
+
+def test_edge_with_genuinely_zero_cost_rows_is_not_treated_as_missing():
+    """A real zero-cost transfer (e.g. an intracompany relocation) must still count as a
+    measured cost of 0.0, not be folded into "no cost recorded."
+    """
+    movements = [_mv("DC-1", "STORE-1", days=d, cost=0.0) for d in [2, 2, 3, 3, 4, 4, 5, 9]]
+    (edge,) = measure_edges(movements)
+    assert edge.status == MEASURED
+    assert edge.mean_unit_cost == 0.0
+
+
+def test_buffers_omit_value_when_no_cost_is_recorded_and_rank_by_units():
+    """No lane in this graph has a recorded cost, so every buffer_value is None; ranking
+    must still be deterministic, falling back to buffer_units.
+    """
+    noisy_small = [1.0, 9.0, 2.0, 8.0, 1.0, 9.0, 2.0, 8.0]
+    noisy_big = [1.0, 9.0, 2.0, 8.0, 1.0, 9.0, 2.0, 8.0]
+    movements = (
+        [Movement(origin="DC-1", destination="STORE-A", product="SKU-A", quantity=10.0,
+                   transit_days=d, unit_cost=None) for d in noisy_small]
+        + [Movement(origin="DC-1", destination="STORE-B", product="SKU-A", quantity=50.0,
+                     transit_days=d, unit_cost=None) for d in noisy_big]
+    )
+    report = analyze(movements, span_days=90.0)
+    assert all(b.buffer_value is None for b in report.buffers)
+    # Higher volume -> higher stdev-driven buffer_units -> ranked first when value is
+    # unavailable for every lane.
+    assert report.buffers[0].destination == "STORE-B"
+    option = report.outcome.options[0]
+    assert "in value" not in option.summary
+    assert "unit(s) of protective stock" in option.summary
 
 
 def test_analyze_ranks_the_noisiest_edge_first_and_recommends_it():

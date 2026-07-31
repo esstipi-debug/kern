@@ -2135,12 +2135,6 @@ def facility_location_tool() -> Tool:
             "facility location", "network design", "center of gravity", "centre of gravity",
             "center-of-gravity", "dc location", "distribution center location", "hub location",
             "site selection", "where to locate", "optimal location", "greenfield site",
-            # Added while wiring flow_map (tool #47): this phrase previously matched no
-            # tool at all, so a network_design-shaped brief phrased around it (e.g. "open
-            # distribution centres to minimise weighted distance") classified as None. It
-            # is grounded in this tool's own objective above ("minimize weighted travel"
-            # / "weighted distance") and collides with no other tool's keywords.
-            "weighted distance",
         ),
         requires_data=True,
         options=tool_options.facility_location_options,

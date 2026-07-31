@@ -46,7 +46,9 @@ class Movement:
     product: str
     quantity: float
     transit_days: float
-    unit_cost: float = 0.0
+    # None means the cost column was absent/unparseable for this row -- distinct from
+    # a genuinely recorded 0.0 (a legitimate zero-cost transfer). See EdgeStat.mean_unit_cost.
+    unit_cost: float | None = None
     departed_day: float = 0.0
 
 
@@ -101,14 +103,15 @@ def build_graph(movements: list[Movement]) -> FlowGraph:
     notes: list[str] = []
     if pairs:
         legs = ", ".join(f"{a} <-> {b}" for a, b in pairs)
-        all_pairs_unequal = all((a, b) in weaker or (b, a) in weaker for a, b in pairs)
-        if all_pairs_unequal:
-            notes.append(
-                f"bidirectional flow detected ({legs}); the lower-volume leg is ignored "
-                "when computing echelons"
-            )
-        else:
-            notes.append(f"bidirectional flow detected ({legs})")
+        note = f"bidirectional flow detected ({legs})"
+        # Per-pair, not all-or-nothing: a graph can mix an equal-volume 2-cycle (no leg
+        # ignored) with an unequal-volume one (lower-volume leg ignored) in the same
+        # note, so name exactly which pair(s) had a leg ignored rather than a blanket
+        # clause that is wrong for every pair whenever even one pair is equal-volume.
+        if weaker:
+            ignored = ", ".join(f"{a} <-> {b}" for a, b in sorted(weaker))
+            note += f"; the lower-volume leg is ignored when computing echelons for {ignored}"
+        notes.append(note)
 
     echelon = {n: 0 for n in nodes_set}
     if nodes_set and not sources:
@@ -155,7 +158,9 @@ class EdgeStat:
     stdev_days: float | None = None
     p50_days: float | None = None
     p90_days: float | None = None
-    mean_unit_cost: float = 0.0
+    # None when no row on this edge carried a cost -- distinct from a measured 0.0
+    # (a genuinely free/zero-cost transfer). See _buffers and jobs/flow_map_job.py.
+    mean_unit_cost: float | None = None
     bidirectional: bool = False
 
 
@@ -193,8 +198,10 @@ def measure_edges(
         rows = grouped[(origin, destination)]
         days = [r.transit_days for r in rows]
         volume = sum(r.quantity for r in rows)
-        cost_rows = [r for r in rows if r.unit_cost > 0]
-        mean_cost = sum(r.unit_cost for r in cost_rows) / len(cost_rows) if cost_rows else 0.0
+        # A row's cost is present iff unit_cost is not None -- a genuinely recorded 0.0
+        # (a real zero-cost transfer) must count as present, not be mistaken for absent.
+        cost_rows = [r for r in rows if r.unit_cost is not None]
+        mean_cost = sum(r.unit_cost for r in cost_rows) / len(cost_rows) if cost_rows else None
         is_two_way = (origin, destination) in two_way
         if len(days) < min_observations or len(days) < 2:
             stats.append(EdgeStat(
@@ -222,7 +229,9 @@ class EdgeBuffer:
     origin: str
     destination: str
     buffer_units: float
-    buffer_value: float
+    # None when the lane has no observed unit cost (see EdgeStat.mean_unit_cost) --
+    # never a 0.0 standing in for "we don't know", which reads to a client as "worthless".
+    buffer_value: float | None
 
 
 @dataclass(frozen=True)
@@ -254,12 +263,24 @@ def _buffers(
         if e.status != MEASURED or e.stdev_days is None:
             continue
         units = z * (e.volume / span_days) * e.stdev_days
+        value = None if e.mean_unit_cost is None else units * e.mean_unit_cost
         out.append(EdgeBuffer(
             origin=e.origin, destination=e.destination,
-            buffer_units=units, buffer_value=units * e.mean_unit_cost,
+            buffer_units=units, buffer_value=value,
         ))
+    # Ranking rule: lanes with a known value are ranked first (highest value first);
+    # lanes with no cost data sort after them, ranked by units instead since value is
+    # unavailable. Ties within each group break on units, then on (origin, destination)
+    # for a total, deterministic order -- never comparing None to a float.
     return tuple(sorted(
-        out, key=lambda b: (-b.buffer_value, -b.buffer_units, b.origin, b.destination)
+        out,
+        key=lambda b: (
+            b.buffer_value is None,
+            -b.buffer_value if b.buffer_value is not None else 0.0,
+            -b.buffer_units,
+            b.origin,
+            b.destination,
+        ),
     ))
 
 
@@ -295,15 +316,20 @@ def _options(buffers: tuple[EdgeBuffer, ...], edges: tuple[EdgeStat, ...]) -> Gu
     options: list[ExecutionOption] = []
     for rank, b in enumerate(buffers[:_TOP_OPTIONS]):
         e = by_edge[(b.origin, b.destination)]
+        # No cost was recorded for this lane -- omit the value clause entirely rather
+        # than print a 0, which would read as "this buffer is worthless" instead of
+        # "we don't know its value."
+        value_clause = (
+            f" ({b.buffer_value:,.0f} in value)" if b.buffer_value is not None else ""
+        )
         options.append(ExecutionOption(
             label=f"Stabilise {b.origin} -> {b.destination}",
             summary=(
                 f"Transit averages {e.mean_days:.1f} d with a {e.stdev_days:.1f} d spread "
                 f"over {e.n} observed movement(s); that spread alone forces "
-                f"{b.buffer_units:,.0f} unit(s) of protective stock "
-                f"({b.buffer_value:,.0f} in value) downstream."
+                f"{b.buffer_units:,.0f} unit(s) of protective stock{value_clause} downstream."
             ),
-            score=b.buffer_value,
+            score=b.buffer_value if b.buffer_value is not None else 0.0,
             recommended=rank == 0,
             action=f"review_lane:{b.origin}->{b.destination}",
             tradeoffs=(

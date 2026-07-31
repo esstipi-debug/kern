@@ -40,6 +40,11 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "destino": ("destino", "destination", "to", "tolocation", "hacia"),
     "producto": ("producto", "product", "productid", "sku", "item"),
     "cantidad": ("cantidad", "quantity", "qty", "units", "volume"),
+    # MINOR (2026-07-31 flow_map fix wave): bare "cost" and "price" are ambiguous --
+    # a client export where that column is a LINE TOTAL (unit_cost * quantity), not a
+    # per-unit cost, is silently mis-valued (every buffer_value inflated by ~quantity).
+    # Kept anyway: rejecting these two common header names would turn most real client
+    # exports cost-free (CRITICAL 2 above), which is worse than a possible mis-scaling.
     "costo_unitario": ("costounitario", "unitcost", "cost", "unitprice", "price"),
 }
 _REQUIRED = ("fecha_salida", "fecha_llegada", "origen", "destino", "producto", "cantidad")
@@ -81,6 +86,14 @@ def prepare(data_path: str, params: dict | None = None) -> list[Movement]:
     # format="mixed": client movement files carry heterogeneous date formats
     # (row-by-row), so this states that intent explicitly rather than letting
     # pandas warn about falling back to per-element dateutil parsing.
+    # RISK (MINOR, 2026-07-31 flow_map fix wave): format="mixed" parses each row with
+    # dateutil's per-element guesser, which is ambiguous whenever both day and month
+    # are <=12. A column mixing "13/01/2026" (unambiguous day-first) with "05/03/2026"
+    # (which dateutil will read month-first, i.e. May 3rd, not March 5th) parses each
+    # row under a DIFFERENT convention with no error or warning, silently shifting
+    # transit_days for the ambiguous rows. This is not auto-detected or corrected here
+    # -- only made visible, so the next reader knows to ask the client for an
+    # unambiguous export (ISO 8601) rather than trust transit_days blindly.
     departed = pd.to_datetime(df[cols["fecha_salida"]], errors="coerce", format="mixed")
     arrived = pd.to_datetime(df[cols["fecha_llegada"]], errors="coerce", format="mixed")
     cost_col = cols.get("costo_unitario")
@@ -97,10 +110,14 @@ def prepare(data_path: str, params: dict | None = None) -> list[Movement]:
         if pd.isna(quantity):
             dropped_quantity += 1
             continue
-        cost = 0.0
+        # None means "no cost recorded for this row" (the column was absent, or this
+        # cell was blank/unparseable) -- distinct from a genuinely recorded 0.0 (a real
+        # zero-cost transfer). Collapsing both to 0.0 is exactly the CRITICAL 2 defect
+        # this fix wave closes: a missing cost must never ship to the client as a value.
+        cost: float | None = None
         if cost_col is not None:
             parsed = pd.to_numeric(df[cost_col].iloc[i], errors="coerce")
-            cost = 0.0 if pd.isna(parsed) else float(parsed)
+            cost = None if pd.isna(parsed) else float(parsed)
         movements.append(Movement(
             origin=str(df[cols["origen"]].iloc[i]).strip(),
             destination=str(df[cols["destino"]].iloc[i]).strip(),
@@ -202,7 +219,9 @@ def write_operational(
             "p50_days": "" if e.p50_days is None else round(e.p50_days, 2),
             "p90_days": "" if e.p90_days is None else round(e.p90_days, 2),
             "buffer_units": "" if b is None else round(b.buffer_units, 2),
-            "buffer_value": "" if b is None else round(b.buffer_value, 2),
+            # b.buffer_value is None when the lane has no recorded unit cost (CRITICAL 2
+            # of the 2026-07-31 fix wave): an empty cell, never a printed 0.
+            "buffer_value": "" if b is None or b.buffer_value is None else round(b.buffer_value, 2),
             "bidirectional": "yes" if e.bidirectional else "",
         })
     html_path = d / "flow_map.html"
