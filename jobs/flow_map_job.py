@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.export import write_summary_csv
 from src.flow_map import (
     MIN_OBSERVATIONS,
     UNMEASURABLE,
@@ -169,3 +170,36 @@ def verify(report: FlowReport) -> list[str]:
     if ranked & unmeasurable:
         issues.append("a ranked option leans on an unmeasurable lane")
     return issues
+
+
+def write_operational(
+    report: FlowReport, out_dir: str | Path, client: str = "Client"
+) -> dict[str, Path]:
+    """One row per lane plus the self-contained map. Unmeasurable cells stay empty."""
+    from src.flow_svg import render_page
+
+    d = Path(out_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    buffer_by_edge = {(b.origin, b.destination): b for b in report.buffers}
+    rows = []
+    for e in report.edges:
+        b = buffer_by_edge.get((e.origin, e.destination))
+        rows.append({
+            "origin": e.origin,
+            "destination": e.destination,
+            "echelon_origin": report.graph.echelon.get(e.origin, ""),
+            "echelon_destination": report.graph.echelon.get(e.destination, ""),
+            "movements": e.n,
+            "volume": round(e.volume, 2),
+            "status": e.status,
+            "mean_days": "" if e.mean_days is None else round(e.mean_days, 2),
+            "stdev_days": "" if e.stdev_days is None else round(e.stdev_days, 2),
+            "p50_days": "" if e.p50_days is None else round(e.p50_days, 2),
+            "p90_days": "" if e.p90_days is None else round(e.p90_days, 2),
+            "buffer_units": "" if b is None else round(b.buffer_units, 2),
+            "buffer_value": "" if b is None else round(b.buffer_value, 2),
+            "bidirectional": "yes" if e.bidirectional else "",
+        })
+    html_path = d / "flow_map.html"
+    html_path.write_text(render_page(report, client=client), encoding="utf-8")
+    return {"csv": write_summary_csv(rows, d / "flow_map.csv"), "html": html_path}

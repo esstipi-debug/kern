@@ -1,10 +1,15 @@
 """Tests for the flow_map job: intake, the QA gate, deliverables."""
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
 from jobs import flow_map_job
 from src.flow_map import UNMEASURABLE, EdgeBuffer, EdgeStat, FlowGraph, FlowReport
-from src.guided import ExecutionOption, as_options
+from src.flow_svg import render_page, render_sankey
+from src.guided import ExecutionOption, HandoffPacket, as_handoff, as_options
+
+GOLDEN = Path(__file__).parent / "fixtures" / "flow_map" / "sankey_golden.svg"
 
 
 def _frame(rows):
@@ -147,3 +152,75 @@ def test_prepare_all_dropped_raises_no_usable_movements_not_the_threshold_messag
     _frame(rows).to_csv(path, index=False)
     with pytest.raises(ValueError, match="no usable movements"):
         flow_map_job.prepare(str(path))
+
+
+def test_sankey_is_deterministic(tmp_path):
+    report = flow_map_job.run(flow_map_job.prepare(str(_healthy_csv(tmp_path))))
+    assert render_sankey(report) == render_sankey(report)
+
+
+def test_sankey_matches_the_golden(tmp_path):
+    report = flow_map_job.run(flow_map_job.prepare(str(_healthy_csv(tmp_path))))
+    assert render_sankey(report) == GOLDEN.read_text(encoding="utf-8")
+
+
+def test_page_is_self_contained(tmp_path):
+    report = flow_map_job.run(flow_map_job.prepare(str(_healthy_csv(tmp_path))))
+    page = render_page(report, client="Acme")
+    assert "<svg" in page
+    # "http://" alone is not a valid signal here: every SVG root legitimately
+    # carries xmlns="http://www.w3.org/2000/svg" (an XML namespace id, not a
+    # network fetch). What actually matters is that the page loads nothing
+    # external -- no script tag, no src=, no http(s) href, no @import, no CDN.
+    assert "<script" not in page
+    assert "src=" not in page
+    assert 'href="http' not in page and "href='http" not in page
+    assert "@import" not in page
+    assert "cdn" not in page.lower()
+
+
+def test_write_operational_emits_csv_and_html(tmp_path):
+    report = flow_map_job.run(flow_map_job.prepare(str(_healthy_csv(tmp_path))))
+    paths = flow_map_job.write_operational(report, tmp_path / "out", client="Acme")
+    assert paths["csv"].exists() and paths["html"].exists()
+    body = paths["csv"].read_text(encoding="utf-8")
+    assert "mean_days" in body
+
+
+def test_unmeasurable_lane_writes_empty_cells_not_zeros(tmp_path):
+    rows = _lane("SUP-1", "DC-1", 2, 8) + _lane("DC-1", "STORE-9", 3, 3)
+    path = tmp_path / "mixto.csv"
+    _frame(rows).to_csv(path, index=False)
+    report = flow_map_job.run(flow_map_job.prepare(str(path)))
+    paths = flow_map_job.write_operational(report, tmp_path / "out2")
+    line = next(
+        row for row in paths["csv"].read_text(encoding="utf-8").splitlines()
+        if "STORE-9" in row
+    )
+    assert ",0," not in line and ",0.0," not in line
+    assert ",," in line
+
+
+def test_render_sankey_on_empty_report_returns_minimal_valid_svg():
+    """A FlowReport with no nodes is reachable (e.g. a hand-built empty graph);
+    _layout must not raise ValueError from max() on an empty sequence.
+    """
+    report = FlowReport(
+        graph=FlowGraph(nodes=()),
+        edges=(),
+        buffers=(),
+        n_movements=0,
+        n_negative_transit=0,
+        unmeasurable_volume_share=0.0,
+        span_days=1.0,
+        outcome=as_handoff(
+            "no data",
+            [HandoffPacket(title="widen the export window", steps=["re-run"])],
+        ),
+        summary="empty report",
+    )
+    svg = render_sankey(report)
+    assert svg.startswith("<svg")
+    assert "<title>" in svg and "<desc>" in svg
+    assert "<rect" not in svg
+    assert svg.endswith("</svg>")
