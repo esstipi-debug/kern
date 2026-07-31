@@ -272,20 +272,32 @@ def test_score_run_total_cost_matches_an_independently_written_oracle_style_form
     implementation under test, on a real simulated run rather than just the
     small hand-picked fixture above.
 
-    **What this test does NOT verify (corrected from an earlier, misleading
-    claim in this docstring):** live agreement with ``runners.py``.
-    ``_reference_oracle_style_total_cost`` hardcodes its own independent copies
-    of ``52.0`` and ``75.0``/``0.25``/``1.0`` -- it checks ``score_run`` against
-    a hand-derived formula using those SAME hardcoded numbers, not against
-    whatever ``runners.py`` actually defines today. Mutating ``runners.py``'s
-    ``WEEKS_PER_YEAR`` or ``oracle_orders``'s cost-parameter defaults changes
-    what outcomes the (real) oracle produces, but changes neither side of this
-    test's own comparison, so this test stays fully green through both drifts
-    (confirmed by replay: see task-9-report.md). The actual guard against
-    ``runners.py``-side drift is the shared ``WEEKS_PER_YEAR`` import in
-    ``scorer.py`` (makes that drift structurally impossible) plus
-    ``test_oracle_and_scorer_share_the_same_cost_defaults`` below (catches the
-    other three defaults drifting apart).
+    **What this test verifies, precisely (corrected from an earlier, now-stale
+    claim in this docstring):** ``_reference_oracle_style_total_cost`` hardcodes
+    its own independent literal copies of ``52.0``, ``75.0``, ``0.25`` and
+    ``1.0`` -- it never reads any of those four numbers from ``runners.py`` or
+    ``scorer.py``. Whether this test can detect a given drift in
+    ``runners.py`` therefore depends entirely on whether ``score_run``'s side
+    of the comparison also moves when that value changes:
+
+    - ``WEEKS_PER_YEAR``: ``scorer.py`` does ``from src.simworld.runners import
+      WEEKS_PER_YEAR`` (no longer its own literal), so ``score_run``'s side
+      DOES move with ``runners.py``'s constant while this test's reference
+      formula's hardcoded ``52.0`` does not -- the two totals stop matching and
+      this test FAILS. Confirmed by replay: temporarily setting
+      ``runners.py``'s ``WEEKS_PER_YEAR`` to ``26.0`` makes this exact test
+      fail (``81596.82... != 81037.94...``), reverted immediately after (see
+      task-9-report.md).
+    - ``oracle_orders``'s ``order_cost``/``holding_rate``/``shortage_penalty_rate``
+      defaults: ``score_run`` still hardcodes its own literal
+      ``75.0``/``0.25``/``1.0`` as its keyword defaults, matching this test's
+      reference formula's hardcoded values exactly, so mutating
+      ``oracle_orders``'s defaults changes what the (real) oracle produces but
+      changes neither side of THIS test's comparison -- this test stays green
+      through that drift. It is instead
+      ``test_oracle_and_scorer_share_the_same_cost_defaults`` (the
+      ``inspect.signature``-based test below) that catches this class of
+      drift.
     """
     w, outs = _run(_oracle, seed=9, weeks=20, n_skus=5)
     k = score_run(w, outs)
