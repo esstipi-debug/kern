@@ -97,6 +97,7 @@ def test_findings_carry_a_count_and_a_fraction_not_a_boolean():
     assert finding.n_total == 1000
     assert round(finding.fraction, 4) == 0.003
     assert finding.blocking is False
+    assert finding.evaluated is True
 
 
 def test_a_breaker_over_its_threshold_blocks():
@@ -119,8 +120,38 @@ def test_orphans_not_evaluated_are_declared_not_reported_as_zero():
     assert "not evaluated" in orphans.detail
     assert orphans.n_affected == 0
     assert orphans.fraction == 0.0
+    assert orphans.evaluated is False
 
 
 def test_empty_file_never_divides_by_zero():
+    # Test 0/0: empty file with no defects
     findings = run_breakers([_signals(n_rows=0)], Thresholds())
     assert all(f.fraction == 0.0 for f in findings)
+    # Test n/0: non-empty defects count but zero rows (the real division-by-zero risk)
+    findings = run_breakers([_signals(n_rows=0, n_duplicate_rows=5)], Thresholds())
+    dup = next(f for f in findings if f.breaker == "duplicate_rows")
+    assert dup.fraction == 0.0
+
+
+def test_blocking_threshold_is_strictly_greater_than_not_equal():
+    """When fraction equals the threshold exactly, the breaker does not block."""
+    findings = run_breakers([_signals(n_impossible_dates=10, n_rows=1000)], Thresholds())
+    dates = next(f for f in findings if f.breaker == "impossible_dates")
+    assert dates.fraction == 0.01  # exactly at the default threshold
+    assert dates.blocking is False  # must not block at the boundary
+
+
+def test_multiple_signals_with_same_filename_are_handled_deterministically():
+    """Each breaker produces one finding per file, sorted deterministically."""
+    signals = [
+        _signals(filename="data.csv", n_duplicate_rows=5),
+        _signals(filename="data.csv", n_impossible_dates=3),
+    ]
+    findings = run_breakers(signals, Thresholds())
+    # Both should process: we get findings for both the duplicate and date breakers
+    # even though they come from the same filename (the job layer splits by file+breaker)
+    filenames = {f.filename for f in findings}
+    assert filenames == {"data.csv"}
+    # Verify sorting: findings should be in order by (filename, breaker)
+    sorted_findings = sorted(findings, key=lambda f: (f.filename, f.breaker))
+    assert findings == tuple(sorted_findings)

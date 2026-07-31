@@ -129,6 +129,7 @@ class BreakerFinding:
     fraction: float
     blocking: bool
     detail: str = ""
+    evaluated: bool = True
 
 
 def _fraction(n_affected: int, n_total: int) -> float:
@@ -157,6 +158,7 @@ def run_breakers(
                 out.append(BreakerFinding(
                     s.filename, name, 0, s.n_rows, 0.0, False,
                     "not evaluated: no master file was classified in this folder",
+                    evaluated=False,
                 ))
                 continue
             fraction = _fraction(affected, s.n_rows)
