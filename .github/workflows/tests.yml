@@ -5,6 +5,19 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Nightly run against an UNCONSTRAINED resolve. Neither job caches pip and the
+  # repo has no lock file, so every run re-resolves the declared ranges against
+  # PyPI-as-of-today -- an upstream release can break this repo with zero commits
+  # here. Without a schedule that breakage stays invisible until someone happens
+  # to push, and the first victim is either an unrelated PR or a production
+  # deploy. That is exactly how mcp 2.0.0 (2026-07-28, dropped
+  # `mcp.server.fastmcp`) sat undetected for three days -- see PR #195. A nightly
+  # turns "ambushes the next contributor" into "an email within 24h".
+  schedule:
+    - cron: "17 6 * * *"  # 06:17 UTC daily
+  # Lets a human re-run the same unconstrained resolve on demand (e.g. right
+  # after an upstream release lands) without waiting for the cron.
+  workflow_dispatch:
 
 jobs:
   test:
@@ -25,6 +38,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
+
+      # The resolved set is the only record of WHAT this run actually tested.
+      # When a nightly goes red with no commits in between, diffing this against
+      # the last green run's output names the culprit in one step.
+      - name: Record the resolved dependency set
+        run: pip freeze
 
       - name: Lint
         run: ruff check src tests examples
@@ -65,6 +84,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[web,mcp]"
+
+      # Same rationale as the test job -- and this is the set that most closely
+      # mirrors what the next `flyctl deploy` will bake into the image.
+      - name: Record the resolved dependency set
+        run: pip freeze
 
       - name: Import the app the way uvicorn does (must boot without dev/optional extras)
         run: python -c "import webapp.app; print('prod boot import OK')"

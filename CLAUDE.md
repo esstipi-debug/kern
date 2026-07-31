@@ -187,6 +187,19 @@ See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
   green (those deps are present transitively in dev). See
   `tests/test_pricing_intel_boot_safety.py` and the `prod-boot` job in
   `.github/workflows/tests.yml`.
+- **CI resolves dependencies fresh on every run** — no lock file, no pip cache, so
+  an upstream release can turn this repo red with zero commits here. Two habits
+  follow. (1) When CI fails on a branch you believe is innocent, **suspect a
+  dependency before suspecting your code**: compare the last green run's timestamp
+  against the suspect package's PyPI upload dates, and diff the `pip freeze` step
+  against the last green run. (2) Don't "fix" this by mass-capping majors — CI
+  already runs and passes on pandas 3, numpy 2.5, pytest 9, pyarrow 25, lxml 6 and
+  python-stdnum 2 despite floors declared several majors lower, so a blanket cap
+  would silently *downgrade* the tested environment. Cap only when a specific
+  release actually breaks a specific import, with a comment saying which
+  (`mcp>=1.0,<2` is the one live example — mcp 2.0.0 deleted
+  `mcp.server.fastmcp`). A nightly cron on `tests.yml` exists so this class of
+  breakage surfaces on its own instead of ambushing the next PR or deploy.
 - The **books graph** (L3) needs an LLM backend (Kimi/Gemini) to rebuild; the
   **code graph** is AST-only (no key) and the hook handles it.
 
