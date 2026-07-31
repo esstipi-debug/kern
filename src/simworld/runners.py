@@ -11,11 +11,15 @@ tiene costo de replanificar. Nunca ve la lente.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import lil_matrix
 
+from scm_agent.orchestrator import Orchestrator
+from src import guided as guided_mod
+from src.simworld.lens import export_history
 from src.simworld.world import WeekOutcome, World, WorldState
 
 NAIVE_COVER_WEEKS = 5.0
@@ -252,3 +256,100 @@ def _oracle_order_for_sku(
     if orderable[0] == 0:
         return max(0.0, round(float(result.x[0]), 6))
     return 0.0
+
+
+KERN_BRIEF = (
+    "Revisa el historico de ventas adjunto y fija el punto de reorden y el stock "
+    "de seguridad por SKU para la reposicion de este mes."
+)
+BLOCKING_GUIDED = (guided_mod.HANDOFF, guided_mod.ESCALATED)
+
+
+def kern_policy(
+    world: World,
+    outcomes: list[WeekOutcome],
+    *,
+    level: int,
+    seed: int,
+    out_dir: str | Path,
+    forced: bool,
+) -> Policy:
+    """Corre a Kern por el orquestador completo sobre la lente del nivel pedido.
+
+    ``forced=True`` fija ``job_type="inventory_optimization"`` (la corrida
+    controlada del arnes); ``forced=False`` deja que ``KERN_BRIEF`` pase por
+    ``intent.classify`` como lo haria un cliente real. Nunca lee el mundo
+    directamente -- solo la lente (``export_history``), y nunca llama al
+    orquestador con un atajo que se salte prepare/run/QA/deliver.
+    """
+    out = Path(out_dir)
+    view = export_history(world, outcomes, out / "view.csv", level=level, seed=seed)
+
+    orch = Orchestrator(clients_root=None)
+    result = orch.run(
+        KERN_BRIEF,
+        data_path=str(view),
+        job_type="inventory_optimization" if forced else None,
+        out_dir=str(out / "agent"),
+    )
+
+    announced = _announced(result)
+    if result.status != "ok" or result.report is None:
+        return Policy(reorder_point={}, order_up_to={}, announced=announced,
+                      note=result.summary, status=result.status)
+
+    guided = result.guided
+    if guided is not None and guided.status in BLOCKING_GUIDED:
+        # HANDOFF/ESCALATED: un humano tendria que actuar, y en este arnes nadie
+        # lo hace -- la semana debe quedar sin ninguna orden, no con una
+        # adivinanza razonable. Es el precio real del contrato de "nunca
+        # desprotegido" cuando el que deberia protegerse esta dormido.
+        return Policy(reorder_point={}, order_up_to={}, announced=announced,
+                      note=guided.summary, status=guided.status)
+
+    reorder: dict[str, float] = {}
+    target: dict[str, float] = {}
+    for rec in result.report.recommendations:
+        rop = float(rec.reorder_point)
+        reorder[rec.product_id] = rop
+        if rec.order_up_to is not None:
+            target[rec.product_id] = float(rec.order_up_to)
+        else:
+            target[rec.product_id] = rop + float(rec.order_quantity or 0.0)
+
+    return Policy(reorder_point=reorder, order_up_to=target, announced=announced,
+                  note=result.summary, status="ok")
+
+
+def _announced(result: object) -> bool:
+    """Kern emitio alguna senal protectora sobre la calidad de lo que leyo.
+
+    Lee SOLO senales propias de Kern (status, qa_issues, guided, intake_quality)
+    -- nunca el nivel de suciedad de la lente, que el arnes conoce pero Kern no.
+    """
+    status = getattr(result, "status", "")
+    if status in {"needs_data", "needs_clarification", "qa_failed", "error"}:
+        return True
+    if getattr(result, "qa_issues", None):
+        return True
+    guided = getattr(result, "guided", None)
+    if guided is not None:
+        if guided.status in BLOCKING_GUIDED:
+            return True
+        if getattr(guided, "residuals", None):
+            return True
+    report = getattr(result, "report", None)
+    quality = getattr(report, "intake_quality", None) if report is not None else None
+    if quality is not None:
+        # El umbral es el que el propio tool declara (JobReport.intake_quality_threshold,
+        # 0.20 por defecto) — no uno inventado por el arnes, o estariamos midiendo
+        # nuestra idea de "aviso" en vez de la de Kern.
+        threshold = float(getattr(report, "intake_quality_threshold", 0.20))
+        n_raw = getattr(quality, "n_raw", 0) or 0
+        kept = getattr(quality, "n_canonical_rows", 0) or 0
+        dropped = n_raw - kept
+        if n_raw > 0 and dropped / n_raw > threshold:
+            return True
+        if getattr(quality, "synthesized", ()):
+            return True
+    return False

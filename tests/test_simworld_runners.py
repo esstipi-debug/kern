@@ -9,14 +9,29 @@ chose this path for its own (unrelated) JobResult.report tests.
 """
 
 import inspect
+import os
+import tempfile
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from jobs.intake import IntakeQuality
 from scm_agent.orchestrator import Orchestrator
 from scm_agent.types import STATUS_NEEDS_DATA, STATUS_OK, JobResult
-from src.simworld.runners import Policy, _oracle_order_for_sku, apply_policy, naive_policy, oracle_orders
+from src import guided as guided_mod
+from src.escalation import OPERATIONAL, build_escalation
+from src.simworld.runners import (
+    Policy,
+    _announced,
+    _oracle_order_for_sku,
+    apply_policy,
+    kern_policy,
+    naive_policy,
+    oracle_orders,
+)
 from src.simworld.world import Sku, Supplier, World, WorldState, advance, generate_world, initial_state
 
 pytest.importorskip("fastapi")
@@ -658,3 +673,312 @@ def test_oracle_orders_is_deterministic_across_repeated_calls():
     first = oracle_orders(w, st)
     second = oracle_orders(w, st)
     assert first == second
+
+
+# ---------------------------------------------------------------------------
+# Task 8: Kern, driven through the real orchestrator over the real (dirty) lens.
+# ---------------------------------------------------------------------------
+
+
+def _history(weeks=24, n_skus=5, seed=5):
+    w = generate_world(seed=seed, n_skus=n_skus, n_suppliers=2, weeks=weeks,
+                       regime="seasonal_trend")
+    st = initial_state(w)
+    outs = []
+    for _ in range(weeks):
+        st, out = advance(w, st, {})
+        outs.append(out)
+    return w, outs
+
+
+def test_kern_forced_returns_a_policy_covering_every_sku(tmp_path):
+    w, outs = _history()
+    pol = kern_policy(w, outs, level=0, seed=0, out_dir=tmp_path, forced=True)
+    assert pol.status in {"ok", "handoff", "escalated", "needs_data",
+                          "needs_clarification", "qa_failed", "error"}
+    if pol.status == "ok":
+        assert set(pol.reorder_point) == {s.sku for s in w.skus}
+
+
+def test_kern_brief_lane_routes_without_a_forced_job_type(tmp_path):
+    w, outs = _history()
+    pol = kern_policy(w, outs, level=0, seed=0, out_dir=tmp_path, forced=False)
+    assert isinstance(pol, Policy)
+
+
+def test_a_blocked_policy_orders_nothing(tmp_path):
+    w, outs = _history()
+    blocked = Policy(reorder_point={}, order_up_to={}, announced=True,
+                     note="handoff", status="handoff")
+    st = initial_state(w)
+    assert apply_policy(w, st, blocked) == {}
+
+
+def test_dirty_level_marks_the_policy_as_announced_or_degrades_it(tmp_path):
+    w, outs = _history(weeks=32, n_skus=6)
+    clean = kern_policy(w, outs, level=0, seed=0, out_dir=tmp_path / "c", forced=True)
+    dirty = kern_policy(w, outs, level=3, seed=0, out_dir=tmp_path / "d", forced=True)
+    # o Kern aviso, o el resultado cambio: lo que no puede pasar es que sea
+    # identico y silencioso
+    changed = dirty.reorder_point != clean.reorder_point or dirty.status != clean.status
+    assert dirty.announced or changed
+
+
+def test_kern_brief_lane_with_no_llm_key_and_a_spanish_brief_asks_for_clarification():
+    """Not in the brief; strengthens ``test_kern_brief_lane_routes_without_a_
+    forced_job_type`` above, which only asserts ``isinstance(pol, Policy)`` --
+    per the controller's own warning, an assertion so weak it would pass even
+    if ``kern_policy`` always returned an error ``Policy``. This test pins
+    the SPECIFIC, deterministic outcome for this exact fixture instead.
+
+    ``KERN_BRIEF`` is Spanish prose ("punto de reorden", "stock de
+    seguridad", "reposicion"); every tool's ``intent_keywords`` in
+    ``scm_agent/tools.py`` are English words/phrases ("reorder", "safety
+    stock", "replenish", ...) matched whole-word by
+    ``scm_agent.registry._keyword_matches`` -- confirmed by reading
+    ``KERN_BRIEF`` against ``inventory_optimization``'s keyword list: no
+    English keyword occurs as a whole word anywhere in the Spanish text, so
+    every tool scores 0 and ``intent.classify`` never takes the
+    keyword-ranking branch (``top_score >= 1`` fails for all tools).
+    ``ANTHROPIC_API_KEY`` is unset in this environment (confirmed directly
+    below), so ``scm_agent.llm.get_provider()`` returns ``RulesFallback``
+    (``available() -> False``) and the LLM fallback branch is skipped too --
+    ``classify`` falls through to its final branch and returns
+    ``job_type=None``, which the orchestrator turns into
+    ``STATUS_NEEDS_CLARIFICATION``. Confirmed by actually running this
+    fixture, not derived from reading the router code alone.
+
+    Discriminates against a ``kern_policy`` that silently passes
+    ``job_type="inventory_optimization"`` even when ``forced=False`` (the
+    exact "identical code path for both lanes" red flag the controller's
+    brief calls out): that mutant would return ``status="ok"`` here instead
+    of ``"needs_clarification"``.
+    """
+    assert "ANTHROPIC_API_KEY" not in os.environ, (
+        "this test's expected outcome (needs_clarification) assumes no LLM "
+        "provider is configured in this environment"
+    )
+    w, outs = _history(weeks=6, n_skus=2, seed=1)
+    with tempfile.TemporaryDirectory() as tmp:
+        pol = kern_policy(w, outs, level=0, seed=0, out_dir=tmp, forced=False)
+    assert pol.status == "needs_clarification"
+    assert pol.reorder_point == {}
+
+
+def test_kern_forced_flag_controls_whether_job_type_reaches_the_orchestrator(tmp_path):
+    """Not in the brief. Directly pins the contract sentence in the task-8
+    brief's ``Interfaces`` section: ``forced=True`` passes
+    ``job_type="inventory_optimization"``; ``forced=False`` passes
+    ``job_type=None`` so the request goes through real intent classification.
+    Mocks ``Orchestrator.run`` (same class object ``src.simworld.runners``
+    imported, so patching it here reaches the call ``kern_policy`` makes) and
+    inspects the actual kwargs it was called with, rather than inferring the
+    contract from the two behavioral tests above -- those could theoretically
+    both pass by coincidence (e.g. if both lanes always happened to route to
+    ``inventory_optimization`` for this fixture) without this contract ever
+    being checked directly.
+
+    Discriminates against a mutant that hardcodes
+    ``job_type="inventory_optimization"`` unconditionally (dropping the
+    ``if forced else None`` ternary) -- confirmed by replay: with that mutant
+    applied, the ``forced=False`` call below is observed with
+    ``job_type="inventory_optimization"`` instead of ``None``, and the
+    assertion fails (see task-8-report.md).
+    """
+    w, outs = _history(weeks=4, n_skus=2, seed=1)
+    calls: list[dict] = []
+
+    def fake_run(self, brief, **kwargs):
+        calls.append(kwargs)
+        return JobResult(status=STATUS_NEEDS_DATA, tool=None, confidence=0.0,
+                          deliverables={}, summary="stub, never inspected")
+
+    with patch.object(Orchestrator, "run", fake_run):
+        kern_policy(w, outs, level=0, seed=0, out_dir=tmp_path / "forced", forced=True)
+        kern_policy(w, outs, level=0, seed=0, out_dir=tmp_path / "brief", forced=False)
+
+    assert len(calls) == 2
+    assert calls[0]["job_type"] == "inventory_optimization"
+    assert calls[1]["job_type"] is None
+
+
+def _fake_ok_result(guided) -> JobResult:
+    """A JobResult shaped like a real orchestrator success: one recommendation,
+    clean intake, plus whatever ``guided`` outcome the caller wants to test the
+    translation against."""
+    report = SimpleNamespace(
+        recommendations=[
+            SimpleNamespace(product_id="SKU-1", reorder_point=42.0,
+                            order_quantity=10.0, order_up_to=None),
+        ],
+        intake_quality=None,
+        intake_quality_threshold=0.20,
+    )
+    return JobResult(status=STATUS_OK, tool="inventory_optimization", confidence=1.0,
+                     deliverables={}, summary="stub ok", guided=guided, report=report)
+
+
+def test_kern_policy_translates_a_handoff_guided_outcome_into_no_orders_that_week(tmp_path):
+    """Constructing a real end-to-end HANDOFF for ``inventory_optimization`` is
+    impractical -- its own ``scm_agent/tool_options.py:inventory_options``
+    never builds a HANDOFF outcome (only OPTIONS, possibly escalated to
+    ESCALATED by ``_apply_intake_quality``) -- so per the controller's brief,
+    this mocks ``Orchestrator.run``'s return value directly to exercise the
+    branch a real HANDOFF-capable tool would trigger.
+
+    Pins the property section verbatim: HANDOFF must produce a Policy with
+    EMPTY reorder points (a week with no order at all), not a best-effort
+    guess built from the report's recommendations that happen to be sitting
+    right there in the same JobResult -- ``_fake_ok_result`` deliberately
+    supplies a populated report (SKU-1, reorder_point=42.0) precisely so a
+    mutant that ignores ``guided.status`` and reads the report anyway is
+    caught: it would return ``{"SKU-1": 42.0}`` instead of ``{}``.
+    """
+    w, outs = _history(weeks=4, n_skus=2, seed=1)
+    packet = guided_mod.HandoffPacket(title="review the demand file",
+                                      steps=["a human checks the source data"],
+                                      artifact="draft note")
+    guided = guided_mod.as_handoff("needs a human to look at this", [packet])
+    result = _fake_ok_result(guided)
+
+    with patch.object(Orchestrator, "run", lambda self, brief, **kw: result):
+        pol = kern_policy(w, outs, level=0, seed=0, out_dir=tmp_path, forced=True)
+
+    assert pol.reorder_point == {}
+    assert pol.order_up_to == {}
+    assert pol.status == guided_mod.HANDOFF
+    assert pol.announced is True
+
+
+def test_kern_policy_translates_an_escalated_guided_outcome_into_no_orders_that_week(tmp_path):
+    """Same property, other blocking status. See the HANDOFF test's docstring
+    for why the report deliberately carries a populated (but must-be-ignored)
+    recommendation.
+    """
+    w, outs = _history(weeks=4, n_skus=2, seed=1)
+    packet = build_escalation(OPERATIONAL, "too much of the source file was dropped")
+    guided = guided_mod.as_escalation("escalated to a human", packet)
+    result = _fake_ok_result(guided)
+
+    with patch.object(Orchestrator, "run", lambda self, brief, **kw: result):
+        pol = kern_policy(w, outs, level=0, seed=0, out_dir=tmp_path, forced=True)
+
+    assert pol.reorder_point == {}
+    assert pol.order_up_to == {}
+    assert pol.status == guided_mod.ESCALATED
+    assert pol.announced is True
+
+
+def test_kern_policy_reads_the_lens_output_file_not_the_world_directly(tmp_path):
+    """Not in the brief -- pins the property the whole task exists to protect
+    (see the controller's brief): Kern must read the CSV ``export_history``
+    writes, never a shortcut fed clean numbers straight from the world.
+    Confirms the actual side effect (the written lens CSV at
+    ``out_dir/view.csv``, with the canonical intake columns) rather than
+    trusting the implementation's docstring.
+
+    Discriminates against an implementation that skips the ``export_history``
+    call entirely (e.g. builds a demand DataFrame from ``world``/``outcomes``
+    in memory and hands it to the orchestrator some other way): confirmed by
+    replay -- commenting out the ``export_history(...)`` call (leaving
+    ``view`` pointed at a path that is never written) makes this test fail
+    (``view.csv`` does not exist) while ``kern_policy`` itself still returns
+    *some* ``Policy`` (status ``needs_data``, since the orchestrator's intake
+    step cannot find the file) -- so a test that only checked
+    ``isinstance(pol, Policy)`` would NOT have caught this regression, but
+    this one does (see task-8-report.md).
+    """
+    w, outs = _history(weeks=8, n_skus=2, seed=2)
+    kern_policy(w, outs, level=0, seed=0, out_dir=tmp_path, forced=True)
+    view = tmp_path / "view.csv"
+    assert view.exists()
+    df = pd.read_csv(view)
+    assert {"date", "product_id", "quantity", "unit_cost", "lead_time_days"} <= set(df.columns)
+
+
+def _clean_intake_quality() -> IntakeQuality:
+    return IntakeQuality(n_raw=100, n_dropped_bad_date=0, n_dropped_bad_quantity=0,
+                         n_dropped_negative_quantity=0, synthesized=(), n_canonical_rows=100)
+
+
+def test_announced_is_false_when_every_one_of_kerns_own_signals_is_clean():
+    """Anchors the "no peeking at the harness's level" property from the
+    controller's brief: ``_announced`` takes only a ``result`` (never a
+    ``level``), so by construction it cannot read the lens's dirt level --
+    this test confirms the positive side of that contract empirically, not
+    just by inspecting the signature. Every signal ``_announced`` reads
+    (status, qa_issues, guided.status, guided.residuals, intake_quality) is
+    deliberately clean here; the level in whatever real scenario produced
+    numbers this clean is irrelevant and never enters this function.
+    """
+    guided = guided_mod.as_executed("all good")
+    report = SimpleNamespace(intake_quality=_clean_intake_quality(), intake_quality_threshold=0.20)
+    result = JobResult(status=STATUS_OK, tool="x", confidence=1.0, deliverables={},
+                       summary="", guided=guided, report=report)
+    assert _announced(result) is False
+
+
+def test_announced_is_true_when_the_orchestrator_status_itself_signals_trouble():
+    result = JobResult(status="needs_clarification", tool=None, confidence=0.0,
+                       deliverables={}, summary="ambiguous")
+    assert _announced(result) is True
+
+
+def test_announced_is_true_when_qa_issues_are_present_even_though_every_other_signal_is_clean():
+    """Isolates the qa_issues branch: status is "ok" and the guided/report
+    signals are the same clean fixture the False test above uses -- only
+    ``qa_issues`` is non-empty. If this branch were missing, this exact
+    scenario would fall through to "clean" and wrongly return False.
+    """
+    guided = guided_mod.as_executed("all good")
+    report = SimpleNamespace(intake_quality=_clean_intake_quality(), intake_quality_threshold=0.20)
+    result = JobResult(status=STATUS_OK, tool="x", confidence=1.0, deliverables={},
+                       summary="", qa_issues=["a math check failed"], guided=guided, report=report)
+    assert _announced(result) is True
+
+
+def test_announced_is_true_when_guided_carries_residuals_even_though_status_is_executed():
+    """Isolates the guided.residuals branch: guided.status is EXECUTED (not a
+    blocking status), but a residual is attached -- the never-unprotected
+    contract's way of saying "I did it, but here is what I could not cover."
+    """
+    guided = guided_mod.as_executed("mostly fine", residuals=[
+        guided_mod.Residual(description="some rows were dropped",
+                            risk_if_skipped="numbers rest on a smaller sample"),
+    ])
+    report = SimpleNamespace(intake_quality=_clean_intake_quality(), intake_quality_threshold=0.20)
+    result = JobResult(status=STATUS_OK, tool="x", confidence=1.0, deliverables={},
+                       summary="", guided=guided, report=report)
+    assert _announced(result) is True
+
+
+def test_announced_is_true_when_intake_dropped_more_than_the_reports_own_threshold():
+    """Isolates the intake dropped-fraction branch, using the report's OWN
+    ``intake_quality_threshold`` (0.20 here) rather than a value invented by
+    the harness -- per the controller's brief, the point of reading the
+    tool's declared threshold instead of a hardcoded one.
+    """
+    dirty_quality = IntakeQuality(n_raw=100, n_dropped_bad_date=0, n_dropped_bad_quantity=0,
+                                  n_dropped_negative_quantity=0, synthesized=(), n_canonical_rows=70)
+    guided = guided_mod.as_executed("ok")
+    report = SimpleNamespace(intake_quality=dirty_quality, intake_quality_threshold=0.20)
+    result = JobResult(status=STATUS_OK, tool="x", confidence=1.0, deliverables={},
+                       summary="", guided=guided, report=report)
+    assert _announced(result) is True
+
+
+def test_announced_is_true_when_a_column_was_fully_synthesized_with_zero_rows_dropped():
+    """Isolates the synthesized-column branch: dropped fraction is exactly
+    0.0 (no rows thrown away) but a decision-relevant column (unit_cost) was
+    invented for every single row -- the failure mode
+    ``IntakeQuality.dropped_fraction`` alone cannot see (a synthesized column
+    never shows up as a dropped row).
+    """
+    quality = IntakeQuality(n_raw=100, n_dropped_bad_date=0, n_dropped_bad_quantity=0,
+                            n_dropped_negative_quantity=0,
+                            synthesized=(("unit_cost", 100),), n_canonical_rows=100)
+    guided = guided_mod.as_executed("ok")
+    report = SimpleNamespace(intake_quality=quality, intake_quality_threshold=0.20)
+    result = JobResult(status=STATUS_OK, tool="x", confidence=1.0, deliverables={},
+                       summary="", guided=guided, report=report)
+    assert _announced(result) is True
