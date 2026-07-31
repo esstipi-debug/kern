@@ -289,18 +289,31 @@ def test_apply_policy_counts_in_transit_so_it_does_not_double_order():
 
 
 def test_oracle_orders_the_hand_computed_optimum_when_ordering_is_obviously_worth_it():
-    """Task 7 MILP rewrite, test 1/8. 1 SKU, 3 weeks, lead=0 (an order placed
-    in week t arrives in week t, so nothing NEEDS to be pre-bought), constant
-    demand of 10/week, margin=99 (price 100, unit_cost 1) -- selling is
-    overwhelmingly profitable relative to the tiny weekly holding cost
+    """Task 7 MILP rewrite, test 1/8. 1 SKU, 4 weeks, lead=1 (an order placed
+    in week t arrives in week t+1 -- matching how ``src/simworld/world.py``'s
+    ``advance`` actually works: it credits ``received`` (arrivals) BEFORE
+    appending the newly-placed order to ``in_transit``, so a ``lead=0`` order
+    in this harness's real physics arrives the NEXT week, not the same week.
+    A ``lead=0`` fixture would silently assert a value under physics the real
+    world never produces -- ``generate_world`` only ever samples
+    ``promised_lead_weeks in {1, 2, 3, 4}``, and slip only adds more -- so
+    ``lead=1`` is the smallest lead this harness can actually realize),
+    constant demand of 10/week, margin=99 (price 100, unit_cost 1) -- selling
+    is overwhelmingly profitable relative to the tiny weekly holding cost
     (1 * 0.25 / 52 = ~0.0048/unit-week) and the $75 fixed order cost.
 
-    Hand-enumerated alternatives (only 3 orderable weeks exist, so this is
-    exhaustive over the economically sane candidates): ordering 10 in each of
-    the 3 weeks pays the $75 fixed cost 3 times (225 total) with zero holding;
-    ordering all 30 in week 0 pays the $75 fixed cost once (75 total) plus
-    trivial holding (20 units held 1 week + 10 units held 2 weeks =
-    0.0048 * 40 = ~0.19) for total ~75.19 -- far cheaper than 225. Every
+    With lead=1, nothing can arrive before week 1, so week 0's demand (10
+    units) is an unavoidable total loss no matter what is ordered -- a fixed
+    cost across every candidate plan below, so it does not affect which plan
+    is cheapest. The real decision is how to cover weeks 1-3 (30 units total)
+    using the 3 orderable weeks (0, 1, 2, arriving 1, 2, 3 respectively).
+    Hand-enumerated alternatives (exhaustive over the economically sane
+    candidates): ordering 10 at each of the 3 orderable weeks pays the $75
+    fixed cost 3 times (225 total) with zero holding (each order arrives just
+    in time and sells out immediately); ordering all 30 at week 0 pays the
+    $75 fixed cost once (75 total) plus trivial holding (20 units held
+    through week 1's close + 10 units held through week 2's close =
+    0.0048 * 30 = ~0.14) for total ~75.14 -- far cheaper than 225. Every
     intermediate split (e.g. 20 then 10) lands strictly between those two.
     So consolidating into a single week-0 order of the full 30 units is the
     genuine cost-minimizing plan, not just "order enough" -- confirmed by
@@ -309,14 +322,14 @@ def test_oracle_orders_the_hand_computed_optimum_when_ordering_is_obviously_wort
     Discriminates against a mutant that drops the fixed order-cost term
     (``c[off_y:off_y + n_y] = order_cost`` deleted/zeroed): with no
     consolidation incentive, the solver has no reason to buy ahead of need
-    and returns 10.0 (just week 0's demand) instead of 30.0 -- confirmed by
-    replay (see task-7-report.md).
+    and returns 10.0 (just enough to cover week 1, the earliest coverable
+    week) instead of 30.0 -- confirmed by replay (see task-7-report.md).
     """
     sku = Sku(sku="SKU-X", unit_cost=1.0, price=100.0, supplier_idx=0)
-    supplier = Supplier(name="P", promised_lead_weeks=0, otif=1.0)
-    demand = np.full((1, 3), 10.0)
-    real_lead = np.full((1, 3), 0, dtype=int)
-    w = World(seed=0, weeks=3, regime="seasonal_trend", skus=(sku,), suppliers=(supplier,),
+    supplier = Supplier(name="P", promised_lead_weeks=1, otif=1.0)
+    demand = np.full((1, 4), 10.0)
+    real_lead = np.full((1, 4), 1, dtype=int)
+    w = World(seed=0, weeks=4, regime="seasonal_trend", skus=(sku,), suppliers=(supplier,),
               demand=demand, real_lead_weeks=real_lead)
     st = WorldState(week=0, on_hand=np.array([0.0]), in_transit=())
     orders = oracle_orders(w, st)
@@ -565,21 +578,29 @@ def test_oracle_beats_naive_on_total_cost_across_a_small_seed_sweep():
     (see the shortage-acceptance test above), so a lost-sales invariant is
     the wrong one to assert here.
 
-    Small on purpose (5 seeds, 4 SKUs, 16 weeks -- not the controller's
-    validated 25-seed/8-SKU/40-week sweep) so this stays a fast unit test;
-    the full 25-seed sweep is the controller's validation evidence, reported
-    separately, not re-run in CI on every commit. Confirmed by direct replay
-    to run in well under a second for this fixture size.
+    Scoped at 5 seeds, 8 SKUs, 24 weeks -- not the controller's validated
+    25-seed/8-SKU/40-week sweep, but wide enough to still catch a real
+    regression. A smaller scope (4 SKUs, 16 weeks) was tried first and found
+    NOT to discriminate: replaying the ORIGINAL myopic-window oracle (the
+    design this MILP replaced, which genuinely lost to naive on cost in some
+    worlds) through this exact test's own cost metric produced 0 losses at
+    4-SKU/16-week, and still 0 losses even at 15 seeds with the same
+    n_skus/weeks -- so that smaller scope would silently pass even if a
+    future change accidentally reverted the oracle to a myopic design. At
+    8 SKUs/24 weeks the old myopic oracle loses to naive on seed 1 -- this
+    scope actually catches the regression it exists to guard against.
+    Confirmed by direct replay to run in a few seconds for this fixture size
+    (not sub-second any more, but still fast enough for a unit test).
 
     Discriminates against a mutant that drops the ``committed_receipt`` term
     (the same pipeline-crediting bug the dedicated pipeline test above
     targets in isolation): at this seed range it causes genuinely worse cost
-    outcomes, not just a different single-call number -- confirmed by replay,
-    the oracle LOSES to naive on seeds 2 and 4 of this exact sweep once that
-    term is dropped (naive/oracle: seed 2 = 31710/43482, seed 4 = 86613/88768;
-    see task-7-report.md), because redundant re-ordering within an
-    already-covered pipeline window inflates procurement, holding, and fixed
-    order costs simultaneously.
+    outcomes, not just a different single-call number -- confirmed by replay
+    at the ORIGINAL 4-SKU/16-week scope, the oracle LOSES to naive on seeds 2
+    and 4 of that exact sweep once that term is dropped (naive/oracle:
+    seed 2 = 31710/43482, seed 4 = 86613/88768; see task-7-report.md),
+    because redundant re-ordering within an already-covered pipeline window
+    inflates procurement, holding, and fixed order costs simultaneously.
     """
     def run(world, strategy):
         st = initial_state(world)
@@ -598,7 +619,7 @@ def test_oracle_beats_naive_on_total_cost_across_a_small_seed_sweep():
 
     losers = {}
     for seed in range(1, 6):
-        w = generate_world(seed=seed, n_skus=4, n_suppliers=2, weeks=16, regime="seasonal_trend")
+        w = generate_world(seed=seed, n_skus=8, n_suppliers=2, weeks=24, regime="seasonal_trend")
         naive_cost = _oracle_total_cost(w, run(w, naive_s))
         oracle_cost = _oracle_total_cost(w, run(w, oracle_s))
         if oracle_cost > naive_cost:

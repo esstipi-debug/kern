@@ -179,7 +179,19 @@ def _oracle_order_for_sku(
 
     committed_receipt = np.zeros(n, dtype=float)
     for arrival_week, qty in in_transit:
-        if t0 <= arrival_week < horizon:
+        if arrival_week < t0:
+            # No alcanzable por el loop normal de `advance` (purga las entradas
+            # ya llegadas), pero un `WorldState` armado a mano si puede traer
+            # una entrada vencida sin acreditar. Antes esto se descartaba en
+            # silencio, perdiendo suministro comprometido real; ahora es un
+            # error explicito del llamador, no algo que el oraculo deba tapar.
+            raise ValueError(
+                f"in_transit trae una entrada vencida sin acreditar: llega en "
+                f"la semana {arrival_week}, antes de t0={t0} (cantidad={qty}); "
+                "el llamador debe acreditarla en on_hand0 antes de invocar al "
+                "oraculo"
+            )
+        if arrival_week < horizon:
             committed_receipt[arrival_week - t0] += qty
 
     n_q = n_y = m
@@ -232,6 +244,7 @@ def _oracle_order_for_sku(
         ],
         integrality=integrality,
         bounds=Bounds(lb, ub),
+        options={"mip_rel_gap": 0.0},
     )
     if not result.success:
         raise RuntimeError(f"el MILP del oraculo no convergio: {result.message}")
