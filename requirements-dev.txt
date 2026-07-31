@@ -16,7 +16,10 @@ sentry-sdk>=2.0  # optional error tracking (webapp/observability.py), no-op unle
 statsforecast>=2.0,<3
 utilsforecast>=0.2
 # MCP server (webapp/mcp_server.py) — mirrors pyproject [mcp]
-mcp>=1.0
+# Capped below 2.0: mcp 2.0.0 (2026-07-28) dropped `mcp.server.fastmcp`. Keep this
+# cap in lockstep with pyproject [mcp] — CI installs from THIS file, so changing
+# only one of the two silently does nothing.
+mcp>=1.0,<2
 # data-quality dedup + matching primitives (src/sku_dedup.py, pricing_intel/match/) — mirrors pyproject [dataquality]
 rapidfuzz>=3.0
 python-stdnum>=1.19
