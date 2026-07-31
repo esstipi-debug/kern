@@ -4,7 +4,9 @@ import pandas as pd
 import pytest
 
 from jobs import cross_impact_job
-from src.hats import HAT_COMPRADOR, Candidate
+from src.guided import OPTIONS, verify_guided
+from src.hats import HAT_COMPRADOR, HAT_KEYS, Candidate
+from src.objection import NO_EVALUABLE, OBJETA
 
 
 @pytest.fixture
@@ -103,3 +105,123 @@ def test_partial_thresholds_survive(demand_csv):
 def test_bad_threshold_key_is_fatal(demand_csv):
     with pytest.raises(ValueError, match="objection_thresholds"):
         cross_impact_job.prepare(demand_csv, _params(objection_thresholds={"almacen": 1.0}))
+
+
+# -- run(): verdict, counterproposal, options (spec sec 7) --------------------
+
+
+def _payload(demand_csv, **over):
+    return cross_impact_job.prepare(demand_csv, _params(**over))
+
+
+def test_zero_objections_verdict_is_ejecutar(demand_csv):
+    # generous thresholds: nobody objects to anything
+    huge = {k: 1e9 for k in HAT_KEYS}
+    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds=huge))
+    assert r.n_objections == 0
+    assert r.n_unevaluable == 0
+    assert r.verdict == cross_impact_job.EJECUTAR
+
+
+def test_one_objection_verdict_is_bilateral(demand_csv):
+    thr = {k: 1e9 for k in HAT_KEYS}
+    thr["cfo"] = 1e-9                      # only the CFO can object
+    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds=thr))
+    assert r.n_objections == 1
+    assert r.verdict == cross_impact_job.BILATERAL
+
+
+def test_two_objections_verdict_is_reunion(demand_csv):
+    # Q must OVERSHOOT the EOQ for two areas to worsen together. With the
+    # fixture (D=5200, K=75, h=0.25, c=10) the EOQ is ~559: at Q=400 the
+    # planner's policy_cost actually FALLS (400 is closer to the EOQ than the
+    # current 200), so only the CFO objects. At Q=2000 both the planner and the
+    # CFO worsen. Verified by arithmetic during the plan's pre-flight scan.
+    thr = {k: 1e-9 for k in HAT_KEYS}      # everyone objects to any deterioration
+    r = cross_impact_job.run(_payload(demand_csv, proposed={"q": 2000.0, "sl": 0.95},
+                                      objection_thresholds=thr))
+    assert r.n_objections >= 2
+    assert r.verdict == cross_impact_job.REUNION
+
+
+def test_unevaluable_beats_zero_objections(demand_csv):
+    # THE honesty rule: a declared gap outranks an optimistic verdict
+    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds={"cfo": 1e9}))
+    assert r.n_unevaluable == 3
+    assert r.n_objections == 0
+    assert r.verdict == cross_impact_job.INDETERMINADO
+
+
+def test_unevaluable_verdicts_have_empty_fields(demand_csv):
+    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds={"cfo": 1e9}))
+    for v in r.verdicts:
+        if v.status == NO_EVALUABLE:
+            assert v.kpi_current is None
+            assert v.kpi_proposed is None
+            assert v.deterioration is None
+            assert v.threshold is None
+
+
+def test_one_verdict_per_hat_in_order(demand_csv):
+    r = cross_impact_job.run(_payload(demand_csv))
+    assert tuple(v.hat_key for v in r.verdicts) == HAT_KEYS
+
+
+def test_planner_objects_when_proposal_breaches_sl_target(demand_csv):
+    # config default sl_target = 0.95; proposing 0.90 breaches it while making
+    # the planner's raw policy_cost CHEAPER (spec 9.1)
+    thr = {k: 1e9 for k in HAT_KEYS}
+    r = cross_impact_job.run(_payload(demand_csv, proposed={"q": 200.0, "sl": 0.90},
+                                      objection_thresholds=thr))
+    planner = next(v for v in r.verdicts if v.hat_key == "planner")
+    assert planner.status == OBJETA
+    assert planner.deterioration < 0          # the KPI actually improved
+    assert r.verdict == cross_impact_job.BILATERAL
+
+
+def test_counterproposal_absent_when_no_grid_point_is_clean(demand_csv):
+    thr = {k: 1e-9 for k in HAT_KEYS}
+    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds=thr))
+    assert r.counterproposal is None
+    assert len(r.outcome.options) == 2        # never fabricated to fill the slot
+
+
+def test_counterproposal_when_unevaluable_is_never_searched(demand_csv):
+    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds={"cfo": 1e9}))
+    assert r.counterproposal is None
+
+
+def test_counterproposal_really_has_zero_objections(demand_csv):
+    # The default fixture's current (Q=200) sits BELOW the whole grid (~280-700
+    # around the ~559 EOQ), so every grid point raises the CFO's capital charge
+    # and no clean point can exist - a counterproposal assertion there would
+    # pass vacuously forever. Put `current` INSIDE the grid and give the CFO
+    # real headroom so a clean point genuinely exists, then assert it is found.
+    thr = {k: 1e9 for k in HAT_KEYS}
+    thr["cfo"] = 5_000.0
+    r = cross_impact_job.run(_payload(demand_csv,
+                                      current={"q": 560.0, "sl": 0.95},
+                                      proposed={"q": 700.0, "sl": 0.99},
+                                      objection_thresholds=thr))
+    assert r.counterproposal is not None      # never vacuous
+    assert len(r.outcome.options) == 3
+
+
+def test_outcome_is_protected_options_with_one_recommendation(demand_csv):
+    r = cross_impact_job.run(_payload(demand_csv))
+    assert r.outcome.status == OPTIONS
+    assert verify_guided(r.outcome) == []
+    assert len(r.outcome.options) >= 2
+    assert sum(1 for o in r.outcome.options if o.recommended) == 1
+
+
+def test_confidence_drops_with_unevaluable_areas(demand_csv):
+    full = cross_impact_job.run(_payload(demand_csv))
+    partial = cross_impact_job.run(_payload(demand_csv, objection_thresholds={"cfo": 1e9}))
+    assert full.outcome.confidence == 1.0
+    assert partial.outcome.confidence < full.outcome.confidence
+
+
+def test_summary_names_the_verdict(demand_csv):
+    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds={"cfo": 1e9}))
+    assert cross_impact_job.INDETERMINADO in r.summary
