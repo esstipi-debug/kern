@@ -100,6 +100,68 @@ def test_normalize_tracked_counts_bad_dates_separately_from_bad_quantities():
     assert quality.dropped_fraction == pytest.approx(0.75)
 
 
+def test_normalize_tracked_handles_mixed_date_formats_without_dropping():
+    """A column mixing ISO ('2025-01-06') and day-first-slash ('13/01/2025')
+    dates is a real, common messy-client-export failure mode -- pandas locks
+    onto whichever format it infers first and turns every row in the other
+    format into NaT. Both rows here must survive, and the ambiguous ISO date
+    must land on the correct calendar day (Jan 6, not Jun 1), proving
+    dayfirst=True is actually applied to the retried rows."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2025-01-06", "13/01/2025"],
+            "StockCode": ["A", "A"],
+            "Quantity": [10, 5],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_date == 0
+    assert quality.n_raw == 2
+    dates = sorted(canon["date"].tolist())
+    assert dates[0] == pd.Timestamp("2025-01-06")
+    assert dates[1] == pd.Timestamp("2025-01-13")
+
+
+def test_normalize_tracked_still_drops_genuinely_bad_dates_amid_mixed_formats():
+    """Mixing ISO, day-first-slash, AND a garbage string in the same column
+    must only drop the garbage row -- proving the mixed-format fix doesn't
+    accidentally rescue truly unparseable data."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2025-01-06", "13/01/2025", "not-a-date"],
+            "StockCode": ["A", "A", "A"],
+            "Quantity": [10, 5, 7],
+        }
+    )
+    mapping = detect_columns(raw)
+    _, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_date == 1
+    assert quality.n_raw == 3
+
+
+def test_normalize_tracked_single_iso_format_column_unaffected():
+    """The common real-world case -- a column with only ISO dates, no mixing
+    -- must behave exactly as before: nothing dropped, dates parsed as-is."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2024-01-01", "2024-01-08", "2024-01-15"],
+            "StockCode": ["A", "A", "A"],
+            "Quantity": [10, 5, 20],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_date == 0
+    assert quality.n_raw == 3
+    dates = sorted(canon["date"].tolist())
+    assert dates == [
+        pd.Timestamp("2024-01-01"),
+        pd.Timestamp("2024-01-08"),
+        pd.Timestamp("2024-01-15"),
+    ]
+
+
 def test_normalize_tracked_clean_data_has_zero_dropped_fraction():
     raw = pd.DataFrame(
         {

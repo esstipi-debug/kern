@@ -36,6 +36,28 @@ def _norm(value: object) -> str:
     return re.sub(r"[^a-z0-9]", "", str(value).lower())
 
 
+def _parse_dates(series: pd.Series) -> pd.Series:
+    """Parse a date column, tolerating a genuinely mixed-format column.
+
+    ``pd.to_datetime`` without an explicit format locks onto whichever format
+    it infers from the column and silently turns every row in a DIFFERENT
+    format into NaT -- a real failure mode for messy client exports that mix
+    ISO and day-first dates in the same column, not a hypothetical. The first
+    pass keeps today's exact behavior for the common single-format case
+    (zero regression risk there); the second pass retries ONLY the rows that
+    failed, with ``dayfirst=True`` -- it never re-touches a value the first
+    pass already parsed, so an unambiguous ISO date can never be
+    misinterpreted by the day-first retry.
+    """
+    parsed = pd.to_datetime(series, errors="coerce")
+    unresolved = parsed.isna() & series.notna()
+    if unresolved.any():
+        parsed.loc[unresolved] = pd.to_datetime(
+            series[unresolved], errors="coerce", dayfirst=True
+        )
+    return parsed
+
+
 @dataclass(frozen=True)
 class IntakeQuality:
     """How much of the raw file survived cleaning, and why the rest didn't.
@@ -134,7 +156,7 @@ def _normalize_core(
 
     m = mapping.mapping
     out = pd.DataFrame()
-    out["date"] = pd.to_datetime(df[m["date"]], errors="coerce")
+    out["date"] = _parse_dates(df[m["date"]])
     out["product_id"] = df[m["product_id"]].astype(str).str.strip()
     out["quantity"] = pd.to_numeric(df[m["quantity"]], errors="coerce")
     if "unit_cost" in m:
