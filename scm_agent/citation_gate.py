@@ -173,7 +173,7 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # the working-capital lens (its acta is priced in capital terms).
     "hat_tension": ("safety_stock", "service_level", "cycle_service_level"),
     "hat_settlement": ("safety_stock", "service_level", "working_capital_efficiency"),
-    # cross_impact (tool #47) decides the SAME (Q, SL) space as hat_tension, so it
+    # cross_impact (tool #48) decides the SAME (Q, SL) space as hat_tension, so it
     # inherits those three anchors; cross_functional_integration adds the
     # coordination lens this tool is actually about. Measured by BFS over the
     # 3002-node graph (2026-07-31): the three inherited anchors close 853 nodes
