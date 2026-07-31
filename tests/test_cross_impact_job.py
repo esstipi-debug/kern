@@ -344,6 +344,8 @@ def test_unevaluable_cells_are_empty_not_zero(demand_csv, tmp_path):
     assert len(unevaluable) == 3
     for row in unevaluable:
         assert row["value_current"] == ""
+        assert row["value_proposed"] == ""
+        assert row["delta"] == ""
         assert row["deterioration"] == ""
         assert row["threshold"] == ""
 

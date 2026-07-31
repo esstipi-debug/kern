@@ -433,6 +433,15 @@ def test_non_positive_or_non_finite_threshold_rejected(bad):
                       objection_thresholds={"cfo": bad})
 
 
+def test_bool_threshold_rejected():
+    # bool subclasses int in Python - True would silently validate as 1.0,
+    # and for a [0,1] fill-rate KPI that threshold can never be exceeded, so
+    # the area would ACCEPT every possible change while looking configured.
+    with pytest.raises(ValueError, match="objection_thresholds"):
+        ClientProfile(client_id="x", display_name="X",
+                      objection_thresholds={"comercial": True})
+
+
 def test_thresholds_reach_as_params():
     p = ClientProfile(client_id="x", display_name="X",
                       objection_thresholds={"cfo": 5.0})

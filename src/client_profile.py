@@ -158,7 +158,8 @@ class ClientProfile:
                     raise ValueError(
                         f"objection_thresholds key {key!r} is not a known area "
                         f"(expected one of {HAT_KEYS})")
-                if not (isinstance(value, (int, float)) and math.isfinite(value) and value > 0):
+                if (isinstance(value, bool)
+                        or not (isinstance(value, (int, float)) and math.isfinite(value) and value > 0)):
                     raise ValueError(
                         f"objection_thresholds[{key!r}] must be a finite number > 0, "
                         f"got {value!r}")

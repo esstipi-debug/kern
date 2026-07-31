@@ -75,3 +75,18 @@ def test_sku_and_proposer_are_carried(inputs):
     ci = measure(inputs, Candidate(200.0, 0.95), Candidate(400.0, 0.95), HAT_COMPRADOR)
     assert ci.sku == "SKU-1"
     assert ci.proposed_by == HAT_COMPRADOR
+
+
+def test_missing_kpi_propagates_keyerror_instead_of_filling_in(inputs, monkeypatch):
+    # spec sec 10: measure() indexes hat_kpis(...)[name] with '[]', not .get(), so
+    # a hat that stops carrying its headline KPI must blow up loudly rather than
+    # silently being treated as a zero/None impact.
+    import src.cross_impact as cross_impact_module
+
+    def kpis_missing_headline(inputs, hat_key, cand):
+        return {k: v for k, v in hat_kpis(inputs, hat_key, cand).items()
+                if k != headline_kpi(hat_key)}
+
+    monkeypatch.setattr(cross_impact_module, "hat_kpis", kpis_missing_headline)
+    with pytest.raises(KeyError):
+        measure(inputs, Candidate(200.0, 0.95), Candidate(400.0, 0.95), HAT_COMPRADOR)

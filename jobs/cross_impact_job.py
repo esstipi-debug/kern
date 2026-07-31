@@ -199,14 +199,25 @@ def _find_counterproposal(inputs, thresholds: dict[str, float],
     return best
 
 
+def _objections_suffix(n_unevaluable: int) -> str:
+    """Appended to an 'Objeciones: N' summary so a zero on an indeterminate run
+    never reads as a measured, clean zero (spec: a declared gap must never be
+    papered over)."""
+    if n_unevaluable == 0:
+        return ""
+    return f" (y {n_unevaluable} area(s) sin umbral declarado)"
+
+
 def _scenarios(inputs, impact: CrossImpact, thresholds: dict[str, float],
-               n_objections: int, counterproposal: Candidate | None) -> list[Scenario]:
+               n_objections: int, counterproposal: Candidate | None,
+               n_unevaluable: int) -> list[Scenario]:
     cur, prop = impact.current, impact.proposed
+    suffix = _objections_suffix(n_unevaluable)
     out = [
         Scenario(
             label=f"Ejecutar la propuesta de {impact.proposed_by}",
             summary=(f"{impact.sku}: Q={prop.order_quantity:,.0f}, "
-                     f"SL={prop.service_level:.1%}. Objeciones: {n_objections}."),
+                     f"SL={prop.service_level:.1%}. Objeciones: {n_objections}{suffix}."),
             metrics={"n_objections": float(n_objections),
                      "judge_cost": impact.judge_cost_proposed},
             action=(f"adoptar Q={prop.order_quantity:,.0f} y SL={prop.service_level:.1%} "
@@ -216,7 +227,7 @@ def _scenarios(inputs, impact: CrossImpact, thresholds: dict[str, float],
         Scenario(
             label="Mantener el estado actual",
             summary=(f"{impact.sku}: Q={cur.order_quantity:,.0f}, "
-                     f"SL={cur.service_level:.1%}. Objeciones: 0 (nada cambia)."),
+                     f"SL={cur.service_level:.1%}. Objeciones: 0{suffix} (nada cambia)."),
             metrics={"n_objections": 0.0, "judge_cost": impact.judge_cost_current},
             action=f"no cambiar la politica de {impact.sku}",
             tradeoffs="se conserva el costo actual y se pierde el efecto buscado",
@@ -266,7 +277,7 @@ def run(payload: dict) -> CrossImpactReport:
 
     outcome = decide(
         summary,
-        _scenarios(inputs, impact, thresholds, n_obj, counter),
+        _scenarios(inputs, impact, thresholds, n_obj, counter, n_unk),
         [Objective("n_objections", weight=2.0), Objective("judge_cost", weight=1.0)],
         confidence=_confidence(n_unk),
         residuals=[
