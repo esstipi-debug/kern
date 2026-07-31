@@ -993,8 +993,14 @@ def test_one_objection_verdict_is_bilateral(demand_csv):
 
 
 def test_two_objections_verdict_is_reunion(demand_csv):
-    thr = {k: 1e-9 for k in HAT_KEYS}      # everyone objects to any change
-    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds=thr))
+    # Q must OVERSHOOT the EOQ for two areas to worsen together. With the
+    # fixture (D=5200, K=75, h=0.25, c=10) the EOQ is ~559: at Q=400 the
+    # planner's policy_cost actually FALLS (400 is closer to the EOQ than the
+    # current 200), so only the CFO objects. At Q=2000 both the planner and the
+    # CFO worsen. Verified by arithmetic during the plan's pre-flight scan.
+    thr = {k: 1e-9 for k in HAT_KEYS}      # everyone objects to any deterioration
+    r = cross_impact_job.run(_payload(demand_csv, proposed={"q": 2000.0, "sl": 0.95},
+                                      objection_thresholds=thr))
     assert r.n_objections >= 2
     assert r.verdict == cross_impact_job.REUNION
 
@@ -1047,11 +1053,19 @@ def test_counterproposal_when_unevaluable_is_never_searched(demand_csv):
 
 
 def test_counterproposal_really_has_zero_objections(demand_csv):
+    # The default fixture's current (Q=200) sits BELOW the whole grid (~280-700
+    # around the ~559 EOQ), so every grid point raises the CFO's capital charge
+    # and no clean point can exist - a counterproposal assertion there would
+    # pass vacuously forever. Put `current` INSIDE the grid and give the CFO
+    # real headroom so a clean point genuinely exists, then assert it is found.
     thr = {k: 1e9 for k in HAT_KEYS}
-    thr["cfo"] = 1.0
-    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds=thr))
-    if r.counterproposal is not None:
-        assert len(r.outcome.options) == 3
+    thr["cfo"] = 5_000.0
+    r = cross_impact_job.run(_payload(demand_csv,
+                                      current={"q": 560.0, "sl": 0.95},
+                                      proposed={"q": 700.0, "sl": 0.99},
+                                      objection_thresholds=thr))
+    assert r.counterproposal is not None      # never vacuous
+    assert len(r.outcome.options) == 3
 
 
 def test_outcome_is_protected_options_with_one_recommendation(demand_csv):
@@ -1373,6 +1387,20 @@ def test_veto_unprotected_outcome(demand_csv):
     r = _good_report(demand_csv)
     dead = GuidedOutcome(status="options", summary="x", options=[])
     assert cross_impact_job.verify(replace(r, outcome=dead))
+
+
+def test_real_counterproposal_passes_the_self_check(demand_csv):
+    # the positive side of the self-check: a genuinely clean counterproposal
+    # (same setup as test_counterproposal_really_has_zero_objections) must not
+    # be flagged. Without this, only the negative path is covered.
+    thr = {k: 1e9 for k in HAT_KEYS}
+    thr["cfo"] = 5_000.0
+    r = cross_impact_job.run(_payload(demand_csv,
+                                      current={"q": 560.0, "sl": 0.95},
+                                      proposed={"q": 700.0, "sl": 0.99},
+                                      objection_thresholds=thr))
+    assert r.counterproposal is not None
+    assert cross_impact_job.verify(r) == []
 
 
 def test_veto_counterproposal_that_still_draws_objections(demand_csv):
