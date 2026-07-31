@@ -91,13 +91,17 @@ def build_graph(movements: list[Movement]) -> FlowGraph:
     notes: list[str] = []
     if pairs:
         legs = ", ".join(f"{a} <-> {b}" for a, b in pairs)
-        notes.append(
-            f"bidirectional flow detected ({legs}); the lower-volume leg is ignored "
-            "when computing echelons"
-        )
+        all_pairs_unequal = all((a, b) in weaker or (b, a) in weaker for a, b in pairs)
+        if all_pairs_unequal:
+            notes.append(
+                f"bidirectional flow detected ({legs}); the lower-volume leg is ignored "
+                "when computing echelons"
+            )
+        else:
+            notes.append(f"bidirectional flow detected ({legs})")
 
     echelon = {n: 0 for n in nodes_set}
-    if not sources:
+    if nodes_set and not sources:
         notes.append("no source node (every node has inbound flow); echelons flattened to 0")
     else:
         frontier = list(sources)

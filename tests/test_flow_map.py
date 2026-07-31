@@ -40,3 +40,22 @@ def test_fully_cyclic_graph_flattens_echelons_and_says_so():
     graph = build_graph(movements)
     assert set(graph.echelon.values()) == {0}
     assert "no source node" in graph.cycle_note
+
+
+def test_empty_movements_produces_honest_cycle_note():
+    movements = []
+    graph = build_graph(movements)
+    assert graph.nodes == ()
+    assert graph.cycle_note == ""
+
+
+def test_equal_volume_bidirectional_pair_does_not_claim_leg_ignored():
+    movements = [
+        _mv("SUP-1", "A", qty=100.0),
+        _mv("A", "B", qty=50.0),
+        _mv("B", "A", qty=50.0),
+    ]
+    graph = build_graph(movements)
+    assert graph.bidirectional == (("A", "B"),)
+    assert "lower-volume leg is ignored" not in graph.cycle_note
+    assert "bidirectional flow detected (A <-> B)" in graph.cycle_note
