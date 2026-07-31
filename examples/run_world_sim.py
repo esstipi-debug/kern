@@ -290,6 +290,14 @@ def run_grid(
                 outs, flags = simulate(world, kern_plan, replan_every=replan_every)
                 kpis = score_run(world, outs)
                 wk = weekly_cost(world, outs)
+                # Verdad fisica de "Kern actuo": unidades REALMENTE pedidas
+                # (WeekOutcome.ordered, la cantidad que `advance()` acredito
+                # ese SKU esa semana), sumadas sobre todas las semanas de la
+                # corrida -- no el status que Kern se autoreporta. `ordered`
+                # nunca es negativo (`advance()` levanta si algun llamador
+                # intenta lo contrario), asi que la suma es 0 unicamente
+                # cuando NINGUNA semana ordeno nada.
+                total_ordered = float(sum(o.ordered.sum() for o in outs))
 
                 entry: dict = {
                     "lane": lane, "level": level,
@@ -309,18 +317,27 @@ def run_grid(
                         f"cuesta mas que el techo ({ceil_k.total_cost:,.2f}) en "
                         "este mundo/escala; la captura no es medible aca"
                     )
-                elif status_counts.get("ok", 0) == 0:
-                    # Kern nunca llego a un replan "ok" en toda la corrida:
-                    # todos los replans reales (si hubo alguno) bloquearon
-                    # (needs_data/needs_clarification/qa_failed/error/
-                    # handoff/escalated) -- ningun estado no-"ok" de
-                    # `kern_policy` devuelve nunca una politica con
-                    # cantidades reales, asi que esta corrida jamas emitio
-                    # una orden. Una captura numerica aca se leeria como un
-                    # resultado real (p.ej. "60% del hueco piso-techo"),
-                    # cuando en realidad compara el costo de un corredor que
-                    # no actuo contra un piso y un techo que si ordenan algo
-                    # -- un numero que parece un logro y no lo es.
+                elif total_ordered <= 0.0:
+                    # Kern jamas coloco una orden real esta corrida. Antes
+                    # esto se inferia mirando `replan_status_counts` (si
+                    # nunca hubo un replan "ok"), pero eso mide el status
+                    # AUTOREPORTADO de Kern, no el resultado fisico: un lane
+                    # puede tener status="ok" en TODOS sus replans (Kern
+                    # "corrio bien" segun su propio vocabulario) y aun asi no
+                    # pedir una sola unidad -- p.ej. una politica cuyo
+                    # reorder_point/order_up_to salen en cero para cada SKU,
+                    # o cualquier escenario donde `apply_policy` decide
+                    # legitimamente que no hace falta reponer. El guard viejo
+                    # no se activaba ahi (el status fue "ok" siempre) y
+                    # publicaba una captura numerica enganosa (medida en la
+                    # revision: 0.941, "recupero 94% del hueco piso-techo",
+                    # de un lane que ordeno cero unidades). Chequear
+                    # `total_ordered` en vez del status cubre ese caso
+                    # ademas del caso original (todos los replans reales
+                    # bloquearon con needs_data/needs_clarification/
+                    # qa_failed/error/handoff/escalated, que tambien
+                    # devuelven siempre una Policy vacia y por lo tanto
+                    # tambien caen en `total_ordered <= 0.0`).
                     entry["capture"] = None
                     entry["capture_note"] = (
                         "Kern no emitio ninguna orden esta corrida (estados "

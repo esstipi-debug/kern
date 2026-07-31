@@ -9,6 +9,7 @@ fixtures de este archivo se eligieron midiendo tiempos reales, no adivinando.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -400,6 +401,59 @@ def test_capture_is_null_with_a_note_when_kern_never_placed_a_real_order(kern_gr
     assert "capture_note" not in l0
 
 
+def test_capture_is_null_when_kern_reports_ok_on_every_replan_but_orders_nothing():
+    """Second review wave, Finding 2 (Minor): the guard above
+    (`test_capture_is_null_with_a_note_when_kern_never_placed_a_real_order`)
+    only covers the case where Kern *blocks* (a non-"ok" status on every
+    real replan). The reviewer found a second, distinct way to reach the
+    exact same misleading outcome: a lane can report status="ok" on EVERY
+    replan -- Kern "succeeded" in its own vocabulary -- while its policy's
+    `reorder_point`/`order_up_to` are all zero for every SKU, so
+    `apply_policy` never crosses the reorder trigger and not a single unit
+    is ever ordered. The OLD guard (`status_counts.get("ok", 0) == 0`) does
+    NOT fire here (status was "ok" on every replan), so it printed a fully
+    misleading numeric `capture` (the reviewer measured 0.941 -- "captured
+    94% of the piso-techo gap" -- from a lane that placed zero real
+    orders). The fix checks the PHYSICAL outcome
+    (`WeekOutcome.ordered`, summed across the whole run) instead of the
+    self-reported status, so this shape is now caught too.
+
+    A fully mocked `kern_policy` reproduces this for ~0.03s (no real
+    orchestrator call): same world/scale as `kern_grid_report` (guarantees
+    `span > 0`, i.e. this branch -- not the degenerate-span one -- is what
+    actually fires), but every replan returns a real "ok" `Policy` whose
+    reorder_point/order_up_to are 0.0 for every SKU."""
+    import tempfile
+
+    import examples.run_world_sim as cli_mod
+
+    def zero_reorder_kern_policy(w, outs, *, level, seed, out_dir, forced):
+        del outs, level, seed, out_dir, forced
+        return Policy(
+            reorder_point={s.sku: 0.0 for s in w.skus},
+            order_up_to={s.sku: 0.0 for s in w.skus},
+            announced=False, note="fake: nunca cruza el punto de reorden",
+            status="ok",
+        )
+
+    with patch.object(cli_mod, "kern_policy", zero_reorder_kern_policy):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = cli_mod.run_grid(
+                seed=4, n_skus=2, n_suppliers=2, weeks=12, levels=(0,),
+                replan_every=4, out_dir=tmp, include_kern=True,
+            )
+
+    l0 = report["kern"]["forced-L0"]
+    # Mismos dos replans reales que en `kern_grid_report` (semanas 4 y 8;
+    # la semana 0 cae antes de WARMUP_WEEKS y nunca llama a `kern_policy`),
+    # todos "ok" -- el status NUNCA bloquea en este escenario, a proposito:
+    # es justo el caso que el guard viejo no cubria.
+    assert l0["replan_status_counts"] == {"ok": 2}
+    assert l0["capture"] is None
+    assert "capture_note" in l0
+    assert "no emitio ninguna orden" in l0["capture_note"]
+
+
 def test_degradation_is_reported_only_for_dirty_levels_not_the_clean_baseline(kern_grid_report):
     report, _, _ = kern_grid_report
     assert "degradation" not in report["kern"]["forced-L0"]
@@ -511,6 +565,61 @@ def test_degradation_flags_reflect_this_levels_own_weekly_announcements_not_a_co
     deg = report["kern"]["forced-L3"]["degradation"]
     assert deg["weeks_announced"] == 2
     assert 0 < deg["weeks_announced"] < 12
+
+
+def test_weeks_announced_reflects_a_genuine_alternating_pattern_not_a_per_call_constant():
+    """Second review wave, Finding 1 (Important): the test above
+    (`test_degradation_flags_reflect_...`) already covers a real-Kern
+    fixture, but every real replan in THAT fixture happens to have
+    `announced=True` -- so a mutant that hardcodes `kern_plan`'s `return
+    pol, pol.announced` to `return pol, True` unconditionally is invisible
+    against it (nothing observable changes: the correct value was already
+    True everywhere real replans occur). The same mutant hardcoded to
+    `return pol, False` IS caught by that fixture (2 != 0), but that is
+    only half the mutant space.
+
+    A fully mocked `kern_policy` sidesteps the real orchestrator entirely
+    (no LLM, no lens, no QA -- just a `Policy` object), so this test is
+    nearly free (~0.03s) while forcing a genuine MIX of True/False
+    `announced` values across real replans: the fake alternates by replan
+    ordinal, parsed from `out_dir`'s `w{week:03d}` component (independent
+    of `level`/`lane`, so it does not depend on cross-level call
+    ordering). With weeks=20/replan_every=4, real replans (>= WARMUP_WEEKS
+    of history) land on weeks 4/8/12/16 -> ordinals 1/2/3/4 -> the fake
+    announces on odd ordinals (1, 3) and stays quiet on even ordinals (2,
+    4): a genuine 2-of-4 mix, an intermediate value neither an
+    always-True nor an always-False mutant can reproduce (see the task
+    report for the replay against both)."""
+    import tempfile
+
+    import examples.run_world_sim as cli_mod
+
+    replan_every = 4
+
+    def fake_kern_policy(w, outs, *, level, seed, out_dir, forced):
+        del outs, level, seed, forced
+        week = int(Path(out_dir).name.lstrip("w"))
+        ordinal = week // replan_every
+        announced = ordinal % 2 == 1  # alterna: impar -> True, par -> False
+        return Policy(
+            reorder_point={s.sku: 5.0 for s in w.skus},
+            order_up_to={s.sku: 50.0 for s in w.skus},
+            announced=announced, note="fake kern lane", status="ok",
+        )
+
+    with patch.object(cli_mod, "kern_policy", fake_kern_policy):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = cli_mod.run_grid(
+                seed=5, n_skus=2, n_suppliers=1, weeks=20, levels=(0, 1),
+                replan_every=replan_every, out_dir=tmp, include_kern=True,
+            )
+
+    deg = report["kern"]["forced-L1"]["degradation"]
+    # Replans reales en las semanas 4, 8, 12, 16 (ordinales 1-4); anunciado
+    # en los ordinales impares (1 y 3) = 2 de 4 replans reales -- ni 0
+    # (mutante 'siempre False') ni 4 (mutante 'siempre True').
+    assert deg["weeks_announced"] == 2
+    assert 0 < deg["weeks_announced"] < 4
 
 
 def test_report_markdown_shows_the_real_capture_value_and_the_bias_disclosure_sentence(
