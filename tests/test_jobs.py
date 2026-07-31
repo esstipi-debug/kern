@@ -290,6 +290,110 @@ def test_qa_catches_tampered_report():
     assert any("investment" in i for i in issues)
 
 
+# -- Zero-demand SKU isolation: one degenerate SKU must not kill the batch -----
+#
+# compute_eoq (src/eoq.py) raises ValueError when annual_demand <= 0. Before this
+# fix, that exception propagated straight out of run()'s per-SKU loop and killed
+# the ENTIRE portfolio's run - one brand-new/seasonal SKU with no sales, or a
+# messy export that split one SKU's demand across two spellings leaving one at
+# zero, blocked every other SKU's perfectly good recommendation too.
+
+
+def _clean_portfolio_df(n_periods: int = 20) -> pd.DataFrame:
+    """Two ordinary SKUs, no degenerate demand anywhere - the baseline used to
+    prove the good SKUs' recommendations are byte-identical whether or not a
+    degenerate SKU is present elsewhere in the same portfolio."""
+    dates = pd.date_range("2026-01-01", periods=n_periods, freq="W")
+    rows = []
+    for d in dates:
+        rows.append({"date": d, "product_id": "GOOD-A", "quantity": 100.0, "unit_cost": 10.0})
+        rows.append({"date": d, "product_id": "GOOD-B", "quantity": 40.0, "unit_cost": 25.0})
+    return pd.DataFrame(rows)
+
+
+def _zero_demand_portfolio_df(n_periods: int = 20, extra_zero_skus: tuple = ()) -> pd.DataFrame:
+    """The clean portfolio plus one or more all-zero-quantity SKUs (e.g. ZERO-C)."""
+    dates = pd.date_range("2026-01-01", periods=n_periods, freq="W")
+    rows = []
+    for d in dates:
+        rows.append({"date": d, "product_id": "GOOD-A", "quantity": 100.0, "unit_cost": 10.0})
+        rows.append({"date": d, "product_id": "GOOD-B", "quantity": 40.0, "unit_cost": 25.0})
+        rows.append({"date": d, "product_id": "ZERO-C", "quantity": 0.0, "unit_cost": 8.0})
+        for sku in extra_zero_skus:
+            rows.append({"date": d, "product_id": sku, "quantity": 0.0, "unit_cost": 5.0})
+    return pd.DataFrame(rows)
+
+
+def test_zero_demand_sku_is_skipped_not_fatal_to_batch():
+    """The bug this fixes, end to end: before the fix this call raised ValueError
+    and lost every SKU's recommendation, not just the degenerate one."""
+    report = run(_zero_demand_portfolio_df())
+    baseline = run(_clean_portfolio_df())
+
+    assert report.n_skus == 3
+    assert len(report.recommendations) == report.n_skus
+
+    by = {r.product_id: r for r in report.recommendations}
+    base_by = {r.product_id: r for r in baseline.recommendations}
+
+    zero_rec = by["ZERO-C"]
+    assert zero_rec.policy_kind == "skipped_zero_demand"
+    assert zero_rec.order_quantity is None
+    assert zero_rec.order_up_to is None
+    assert zero_rec.investment == 0.0
+    assert zero_rec.status == "review"
+
+    # the good SKUs get normal, correct recommendations, completely unaffected
+    # by the degenerate SKU's presence elsewhere in the same portfolio
+    for pid in ("GOOD-A", "GOOD-B"):
+        good, base = by[pid], base_by[pid]
+        assert good.policy_kind == base.policy_kind == "(s, Q)"
+        assert good.status == base.status == "ok"
+        assert good.order_quantity == pytest.approx(base.order_quantity)
+        assert good.reorder_point == pytest.approx(base.reorder_point)
+        assert good.safety_stock == pytest.approx(base.safety_stock)
+        assert good.investment == pytest.approx(base.investment)
+        assert good.investment == pytest.approx(good.cycle_investment + good.ss_investment)
+
+
+def test_qa_passes_on_report_with_skipped_sku():
+    """This is the test that would catch a wrong policy_kind choice (e.g. reusing
+    "(s, Q)" or "(R, S)" for a skipped rec) reintroducing the same crash-the-whole-
+    batch bug in QA-failure form instead of exception form."""
+    report = run(_zero_demand_portfolio_df())
+    assert qa.verify(report) == []
+
+
+def test_n_skipped_zero_demand_counts_correctly():
+    report = run(_zero_demand_portfolio_df())
+    assert report.n_skipped_zero_demand == 1
+
+    clean_report = run(_clean_portfolio_df())
+    assert clean_report.n_skipped_zero_demand == 0
+
+
+def test_multiple_zero_demand_skus_are_all_skipped_independently():
+    """The loop must not stop at the first degenerate SKU - every zero-demand SKU
+    is skipped and recorded, every normal SKU still gets a real recommendation."""
+    df = _zero_demand_portfolio_df(extra_zero_skus=("ZERO-D", "ZERO-E"))
+    report = run(df)
+
+    assert report.n_skus == 5
+    assert report.n_skipped_zero_demand == 3
+
+    by = {r.product_id: r for r in report.recommendations}
+    for pid in ("ZERO-C", "ZERO-D", "ZERO-E"):
+        assert by[pid].policy_kind == "skipped_zero_demand"
+        assert by[pid].investment == 0.0
+        assert by[pid].status == "review"
+    for pid in ("GOOD-A", "GOOD-B"):
+        assert by[pid].policy_kind == "(s, Q)"
+        assert by[pid].order_quantity is not None and by[pid].order_quantity > 0
+        assert by[pid].status == "ok"
+
+    assert qa.verify(report) == []
+
+
 def test_deliverables_written(tmp_path):
     demand = prepare(PORTFOLIO)
     report = run(demand, budget=40000)

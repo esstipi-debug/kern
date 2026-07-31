@@ -73,6 +73,10 @@ class JobReport:
     # inventory_options() reads this to decide whether to escalate.
     intake_quality: IntakeQuality | None = None
     intake_quality_threshold: float = 0.20
+    # SKUs skipped because their aggregate demand was zero (see run()'s per-SKU
+    # loop) - a real new/seasonal SKU with no activity, or a data-quality split
+    # that zeroed one spelling's demand. Isolated, not fatal to the batch.
+    n_skipped_zero_demand: int = 0
 
 
 def _observed_skewness(series) -> float | None:
@@ -148,9 +152,29 @@ def run(
         meta = source.metadata(pid)
         fc = forecast_demand(series)
         inputs = fc.to_engine_inputs(periods_per_year=periods_per_year)
-        holding_cost = max(holding_rate * meta.mean_unit_cost, 1e-6)
         lead = lead_times.get(pid, meta.lead_time_periods) if lead_times else meta.lead_time_periods
         sl = base_levels.get(pid, service_level)
+
+        # A SKU with zero aggregate demand (brand-new/seasonal SKU, or a messy
+        # export that split one SKU's sales across spellings) would otherwise
+        # reach compute_eoq's annual_demand > 0 guard and raise, killing the
+        # WHOLE portfolio's run. Isolate it instead: skip and record it as a
+        # distinct, flagged recommendation, then keep going.
+        if inputs["annual_demand"] <= 0:
+            recs.append(
+                SkuRecommendation(
+                    product_id=pid, method="none", intermittent=False,
+                    forecast=0.0, error_std=0.0, bias=0.0, mae=0.0,
+                    policy_kind="skipped_zero_demand", order_quantity=None, order_up_to=None,
+                    reorder_point=0.0, safety_stock=0.0, z_factor=0.0,
+                    service_level=sl, unit_cost=meta.mean_unit_cost, lead_periods=lead,
+                    cycle_investment=0.0, ss_investment=0.0, investment=0.0,
+                    status="review",
+                )
+            )
+            continue
+
+        holding_cost = max(holding_rate * meta.mean_unit_cost, 1e-6)
         if observed_fill_rates and pid in observed_fill_rates:
             sl = tune_service_level(
                 sl, observed_fill_rates[pid], target_fill_rate,
@@ -224,4 +248,5 @@ def run(
         n_skus=len(recs), n_at_risk=sum(1 for r in recs if r.status == "high_bias"),
         n_intermittent=sum(1 for r in recs if r.intermittent),
         intake_quality=intake_quality, intake_quality_threshold=intake_quality_threshold,
+        n_skipped_zero_demand=sum(1 for r in recs if r.policy_kind == "skipped_zero_demand"),
     )
