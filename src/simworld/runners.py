@@ -36,6 +36,7 @@ class Policy:
     note: str = ""
     status: str = "ok"
     extras: dict[str, float] = field(default_factory=dict)
+    forecast: dict[str, float] = field(default_factory=dict)  # SkuRecommendation.forecast por SKU
 
 
 def naive_policy(world: World, outcomes: list[WeekOutcome]) -> Policy:
@@ -309,16 +310,18 @@ def kern_policy(
 
     reorder: dict[str, float] = {}
     target: dict[str, float] = {}
+    forecast: dict[str, float] = {}
     for rec in result.report.recommendations:
         rop = float(rec.reorder_point)
         reorder[rec.product_id] = rop
+        forecast[rec.product_id] = float(rec.forecast)
         if rec.order_up_to is not None:
             target[rec.product_id] = float(rec.order_up_to)
         else:
             target[rec.product_id] = rop + float(rec.order_quantity or 0.0)
 
-    return Policy(reorder_point=reorder, order_up_to=target, announced=announced,
-                  note=result.summary, status="ok")
+    return Policy(reorder_point=reorder, order_up_to=target, forecast=forecast,
+                  announced=announced, note=result.summary, status="ok")
 
 
 def _announced(result: object) -> bool:

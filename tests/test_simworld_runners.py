@@ -945,7 +945,7 @@ def test_kern_policy_derives_order_up_to_from_reorder_point_plus_order_quantity_
         recommendations=[
             SimpleNamespace(product_id="SKU-1", policy_kind="(s, Q)",
                             reorder_point=reorder_point, order_quantity=order_quantity,
-                            order_up_to=None),
+                            order_up_to=None, forecast=15.0),
         ],
         intake_quality=None,
         intake_quality_threshold=0.20,
