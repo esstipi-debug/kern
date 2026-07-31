@@ -27,7 +27,7 @@
   - `src.hats.evaluate(inputs: HatInputs) -> GridEvaluation` (`.candidates: tuple[Candidate, ...]`)
   - `src.hats.HatConfig.sl_target: float` (default 0.95)
   - `jobs.hats_job.prepare(data_path: str, params: dict | None) -> dict` → `{"inputs": tuple[HatInputs, ...], "weights": ..., "config": HatConfig, "skipped": tuple[str, ...]}`
-  - `src.deliverable.write_summary_csv(rows: list[dict], path: Path) -> Path`
+  - `src.export.write_summary_csv(rows: list[dict], path: Path | str) -> Path` — vive en `src/export.py`, **no** en `src/deliverable.py` (así lo importa `jobs/hats_job.py:23`). Aplica `defuse_formula` a cada celda y escribe vía pandas, así que una celda `""` sale vacía en el CSV.
   - `src.decision_options.Scenario(label, summary, metrics, action, tradeoffs)` / `Objective(metric, weight, maximize)` / `decide(summary, scenarios, objectives, *, confidence, residuals) -> GuidedOutcome`
   - `src.guided.verify_guided(outcome) -> list[str]`, `Residual(description, owner, risk_if_skipped)`
   - **NO existe** `src.guided.confidence_from_coverage` ni `COVERAGE_PENALTY` en esta rama. Sí existen en `feat/simworld-marcador` (commit `25cd8ed`, sin mergear a main y sin PR). Este plan **no** los usa: la Tarea 5 deriva su confianza con una constante local. No los importes.
@@ -1485,7 +1485,8 @@ Agregar a `jobs/cross_impact_job.py`:
 import math
 from pathlib import Path
 
-from src.deliverable import Deliverable, Finding, Kpi, write_summary_csv
+from src.deliverable import Deliverable, Finding, Kpi
+from src.export import write_summary_csv      # NOTE: export.py, not deliverable.py
 from src.guided import verify_guided
 
 
