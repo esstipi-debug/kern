@@ -19,6 +19,7 @@ named in their docstring. See task-9-report.md for the full replay log.
 """
 
 import dataclasses
+import inspect
 
 import numpy as np
 import pytest
@@ -210,6 +211,24 @@ def test_weekly_cost_has_one_entry_per_week():
     assert weekly_cost(w, outs).shape == (30,)
 
 
+def test_weekly_cost_and_score_run_agree_on_empty_outcomes_by_both_raising():
+    """``weekly_cost(...).sum() == score_run(...).total_cost`` is documented
+    to hold for any run (see ``test_weekly_cost_sums_to_total_cost``); the two
+    functions must therefore agree at the empty-outcomes boundary too, not
+    just for non-empty runs. Before this fix, ``score_run([])`` raised
+    ``ValueError`` while ``weekly_cost([])`` silently returned an empty
+    array -- "no weeks to score" is a genuine caller error for both, not a
+    valid zero-cost answer for one of them. Confirmed by replay: before the
+    fix, the ``weekly_cost`` assertion below failed because no exception was
+    raised (see task-9-report.md).
+    """
+    w, _ = _two_sku_two_week_fixture()
+    with pytest.raises(ValueError):
+        score_run(w, [])
+    with pytest.raises(ValueError):
+        weekly_cost(w, [])
+
+
 def test_fill_rate_is_between_zero_and_one():
     w, outs = _run(_naive)
     k = score_run(w, outs)
@@ -245,18 +264,54 @@ def _reference_oracle_style_total_cost(world, outcomes, *, order_cost=75.0,
 
 
 def test_score_run_total_cost_matches_an_independently_written_oracle_style_formula():
-    """The property this whole task exists to protect, exercised end to end:
-    run the oracle for real (through ``oracle_orders``/``advance``, the exact
-    same machinery ``runners.py``'s own cost-comparison test uses) and
-    confirm ``score_run``'s ``total_cost`` matches a formula written
-    independently in this file, not derived by importing the implementation
-    under test. If ``score_run``'s formula silently drifted from the
-    oracle's (e.g. a different holding-rate divisor), this would catch it on
-    a real simulated run, not just the small hand-picked fixture above.
+    """Verifies internal formula correctness against a hand-derived reference,
+    exercised end to end: run the oracle for real (through
+    ``oracle_orders``/``advance``, the exact same machinery ``runners.py``'s own
+    cost-comparison test uses) and confirm ``score_run``'s ``total_cost`` matches
+    a formula written independently in this file, not derived by importing the
+    implementation under test, on a real simulated run rather than just the
+    small hand-picked fixture above.
+
+    **What this test does NOT verify (corrected from an earlier, misleading
+    claim in this docstring):** live agreement with ``runners.py``.
+    ``_reference_oracle_style_total_cost`` hardcodes its own independent copies
+    of ``52.0`` and ``75.0``/``0.25``/``1.0`` -- it checks ``score_run`` against
+    a hand-derived formula using those SAME hardcoded numbers, not against
+    whatever ``runners.py`` actually defines today. Mutating ``runners.py``'s
+    ``WEEKS_PER_YEAR`` or ``oracle_orders``'s cost-parameter defaults changes
+    what outcomes the (real) oracle produces, but changes neither side of this
+    test's own comparison, so this test stays fully green through both drifts
+    (confirmed by replay: see task-9-report.md). The actual guard against
+    ``runners.py``-side drift is the shared ``WEEKS_PER_YEAR`` import in
+    ``scorer.py`` (makes that drift structurally impossible) plus
+    ``test_oracle_and_scorer_share_the_same_cost_defaults`` below (catches the
+    other three defaults drifting apart).
     """
     w, outs = _run(_oracle, seed=9, weeks=20, n_skus=5)
     k = score_run(w, outs)
     assert k.total_cost == pytest.approx(_reference_oracle_style_total_cost(w, outs))
+
+
+def test_oracle_and_scorer_share_the_same_cost_defaults():
+    """The actual guard against the drift the docstring above disclaims:
+    ``oracle_orders``'s (``runners.py``) default ``order_cost``,
+    ``holding_rate`` and ``shortage_penalty_rate`` must equal ``score_run``'s
+    (``scorer.py``) defaults for the same three parameters -- if they ever
+    drift apart, the oracle stops being a genuine ceiling for what the scorer
+    measures, which is the entire point of this module. Confirmed by replay:
+    changing ``oracle_orders``'s ``order_cost`` default from ``75.0`` to
+    ``175.0`` (with no matching change in ``score_run``) makes this test fail,
+    even though every other test in this suite and in
+    ``tests/test_simworld_runners.py`` stays fully green (see
+    task-9-report.md).
+    """
+    oracle_params = inspect.signature(oracle_orders).parameters
+    scorer_params = inspect.signature(score_run).parameters
+    for name in ("order_cost", "holding_rate", "shortage_penalty_rate"):
+        assert oracle_params[name].default == scorer_params[name].default, (
+            f"{name}: oracle_orders default {oracle_params[name].default!r} != "
+            f"score_run default {scorer_params[name].default!r}"
+        )
 
 
 def test_oracle_costs_less_than_naive_over_a_full_run():
@@ -483,6 +538,19 @@ def test_capture_with_a_degenerate_span_raises():
     """
     with pytest.raises(ValueError, match="span"):
         capture(floor_cost=50.0, kern_cost=50.0, oracle_cost=50.0)
+
+
+def test_capture_raises_on_nan_input_instead_of_returning_nan_silently():
+    """``capture``'s own docstring commits to failing loud, never silent
+    ("Falla ruidosa, no silenciosa"). Before this guard, a NaN input passed
+    both the ``span <= 0`` and ``value > 1.0`` comparisons -- both evaluate
+    to ``False`` for NaN under IEEE 754 -- so neither raise fired and the
+    function returned ``nan`` in silence. Confirmed by replay: without the
+    ``math.isfinite`` guard, this exact call returns ``nan`` instead of
+    raising (see task-9-report.md).
+    """
+    with pytest.raises(ValueError, match="finit"):
+        capture(floor_cost=float("nan"), kern_cost=50.0, oracle_cost=40.0)
 
 
 def test_capture_with_an_inverted_span_also_raises():

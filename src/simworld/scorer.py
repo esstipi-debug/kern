@@ -18,13 +18,13 @@ techo genuino respecto de lo que este modulo mide.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
 
+from src.simworld.runners import WEEKS_PER_YEAR
 from src.simworld.world import WeekOutcome, World
-
-WEEKS_PER_YEAR = 52.0
 
 
 @dataclass(frozen=True)
@@ -59,7 +59,15 @@ def weekly_cost(
 
     La atribucion de la degradacion anunciada (Task 10) es por periodo, asi
     que el costo tiene que existir semana a semana, no solo agregado.
+
+    Levanta ``ValueError`` si ``outcomes`` esta vacio, igual que
+    ``score_run`` -- ambas funciones documentadas como sumando al mismo
+    total deben coincidir en este limite: "cero semanas" es un error real
+    de quien llama, no una respuesta valida de costo cero.
     """
+    if not outcomes:
+        raise ValueError("no hay semanas que puntuar")
+
     unit_cost = np.array([s.unit_cost for s in world.skus], dtype=float)
     margin = np.array([s.price - s.unit_cost for s in world.skus], dtype=float)
     weekly_holding = unit_cost * holding_rate / WEEKS_PER_YEAR
@@ -169,6 +177,12 @@ def capture(*, floor_cost: float, kern_cost: float, oracle_cost: float) -> float
     imposible: el oraculo ve el futuro, asi que superarlo significa fuga de
     informacion del mundo hacia la lente. Falla ruidosa, no silenciosa.
     """
+    if not (math.isfinite(floor_cost) and math.isfinite(kern_cost) and math.isfinite(oracle_cost)):
+        raise ValueError(
+            f"entrada no finita: floor_cost={floor_cost!r}, kern_cost={kern_cost!r}, "
+            f"oracle_cost={oracle_cost!r} deben ser numeros finitos "
+            "(nan/inf pasarian en silencio por las comparaciones de mas abajo)"
+        )
     span = floor_cost - oracle_cost
     if span <= 0:
         raise ValueError(
