@@ -1,5 +1,12 @@
 """Tests for the pure flow_map engine: graph, measurement, verdict."""
-from src.flow_map import Movement, build_graph
+from src.flow_map import (
+    MEASURED,
+    MIN_OBSERVATIONS,
+    UNMEASURABLE,
+    Movement,
+    build_graph,
+    measure_edges,
+)
 
 
 def _mv(origin, destination, days=3.0, qty=10.0, cost=1.0, product="SKU-A"):
@@ -59,3 +66,41 @@ def test_equal_volume_bidirectional_pair_does_not_claim_leg_ignored():
     assert graph.bidirectional == (("A", "B"),)
     assert "lower-volume leg is ignored" not in graph.cycle_note
     assert "bidirectional flow detected (A <-> B)" in graph.cycle_note
+
+
+def test_edge_with_enough_observations_reports_statistics():
+    movements = [_mv("DC-1", "STORE-1", days=d) for d in [2, 2, 3, 3, 4, 4, 5, 9]]
+    (edge,) = measure_edges(movements)
+    assert edge.n == 8
+    assert edge.status == MEASURED
+    assert edge.mean_days == 4.0
+    assert round(edge.stdev_days, 4) == 2.2678
+    assert edge.p50_days == 3.5
+    assert round(edge.p90_days, 4) == 6.2
+    assert edge.volume == 80.0
+
+
+def test_edge_below_the_threshold_is_unmeasurable_with_empty_statistics():
+    movements = [_mv("DC-1", "STORE-9", days=d) for d in [2, 3, 4, 5, 6, 7, 8]]
+    (edge,) = measure_edges(movements)
+    assert edge.n == 7
+    assert edge.status == UNMEASURABLE
+    assert edge.mean_days is None
+    assert edge.stdev_days is None
+    assert edge.p50_days is None
+    assert edge.p90_days is None
+    assert edge.volume == 70.0
+
+
+def test_threshold_is_configurable():
+    movements = [_mv("DC-1", "STORE-9", days=d) for d in [2, 3, 4]]
+    (edge,) = measure_edges(movements, min_observations=3)
+    assert edge.status == MEASURED
+    assert MIN_OBSERVATIONS == 8
+
+
+def test_edges_are_sorted_and_bidirectional_is_flagged():
+    movements = [_mv("B", "A"), _mv("A", "B")]
+    edges = measure_edges(movements, bidirectional=(("A", "B"),))
+    assert [(e.origin, e.destination) for e in edges] == [("A", "B"), ("B", "A")]
+    assert all(e.bidirectional for e in edges)

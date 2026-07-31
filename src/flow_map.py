@@ -127,3 +127,76 @@ def build_graph(movements: list[Movement]) -> FlowGraph:
         bidirectional=pairs,
         cycle_note="; ".join(notes),
     )
+
+
+MIN_OBSERVATIONS = 8  # below this an edge reports no transit statistics at all
+
+
+@dataclass(frozen=True)
+class EdgeStat:
+    """One leg's observed transit behaviour. Statistics are None when UNMEASURABLE."""
+
+    origin: str
+    destination: str
+    n: int
+    volume: float
+    status: str
+    mean_days: float | None = None
+    stdev_days: float | None = None
+    p50_days: float | None = None
+    p90_days: float | None = None
+    mean_unit_cost: float = 0.0
+    bidirectional: bool = False
+
+
+def _percentile(values: list[float], q: float) -> float:
+    """Linear-interpolation percentile on a sorted list (numpy's default method)."""
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    position = (len(ordered) - 1) * q
+    low = int(position)
+    high = min(low + 1, len(ordered) - 1)
+    return ordered[low] + (ordered[high] - ordered[low]) * (position - low)
+
+
+def _stdev(values: list[float], mean: float) -> float:
+    """Sample standard deviation (n-1). Callers guarantee len(values) >= 2."""
+    variance = sum((v - mean) ** 2 for v in values) / (len(values) - 1)
+    return variance**0.5
+
+
+def measure_edges(
+    movements: list[Movement],
+    *,
+    min_observations: int = MIN_OBSERVATIONS,
+    bidirectional: tuple[tuple[str, str], ...] = (),
+) -> tuple[EdgeStat, ...]:
+    """Transit statistics per edge, sorted by (origin, destination)."""
+    grouped: dict[tuple[str, str], list[Movement]] = defaultdict(list)
+    for m in movements:
+        grouped[(m.origin, m.destination)].append(m)
+
+    two_way = {node for pair in bidirectional for node in pair}
+    stats: list[EdgeStat] = []
+    for (origin, destination) in sorted(grouped):
+        rows = grouped[(origin, destination)]
+        days = [r.transit_days for r in rows]
+        volume = sum(r.quantity for r in rows)
+        cost_rows = [r for r in rows if r.unit_cost > 0]
+        mean_cost = sum(r.unit_cost for r in cost_rows) / len(cost_rows) if cost_rows else 0.0
+        is_two_way = origin in two_way and destination in two_way
+        if len(days) < min_observations or len(days) < 2:
+            stats.append(EdgeStat(
+                origin=origin, destination=destination, n=len(days), volume=volume,
+                status=UNMEASURABLE, mean_unit_cost=mean_cost, bidirectional=is_two_way,
+            ))
+            continue
+        mean = sum(days) / len(days)
+        stats.append(EdgeStat(
+            origin=origin, destination=destination, n=len(days), volume=volume,
+            status=MEASURED, mean_days=mean, stdev_days=_stdev(days, mean),
+            p50_days=_percentile(days, 0.5), p90_days=_percentile(days, 0.9),
+            mean_unit_cost=mean_cost, bidirectional=is_two_way,
+        ))
+    return tuple(stats)
