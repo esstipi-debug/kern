@@ -12,8 +12,9 @@
 
 `src/state/system_state.py` define seis dominios (`stock`, `prices_own`,
 `prices_competitor`, `forecast`, `decisions`, `outcomes`). Los seis tienen
-consumidor ya escrito y probado: `scm_agent/monitors.py` (5 monitores de
-inventario + drift), `src/verify/backtest.py` (MAPE/WAPE/bias, sugerencia de
+consumidor ya escrito y probado: `scm_agent/monitors.py` (5 monitores: ROP
+cruzado, stockout proyectado, exceso creciente, error de forecast fuera de
+banda, drift de lead time), `src/verify/backtest.py` (MAPE/WAPE/bias, sugerencia de
 recalibracion de sigma), `src/pricing_guardrails.py`. Ninguno tiene productor en
 produccion — `system_state.snapshot()` solo se llama desde `tests/`. El propio
 codigo lo asume como normal: `run_all_monitors` dice explicitamente que "a
@@ -41,7 +42,7 @@ pregunta sin esperar al primer cliente.
 | 1 | Modulo nuevo `src/state/record.py`, agnostico de simworld: `record_stock`/`record_forecast`/`record_decision`/`record_outcome`, cada una un wrapper delgado sobre `system_state.snapshot()` | Escribir DataFrames a mano desde `run_world_sim.py` (repite las columnas exactas en cada llamador; F2/F3 no tendrian una API compartida que enchufar despues) |
 | 2 | Punto de integracion: `simulate()` (Task 11) recibe un `state_store: StateStore \| None = None` opcional. `None` (default) = cero escrituras, ningun test ni golden existente cambia | Escribirlo dentro de `runners.py` (mezclaria I/O de estado con traduccion pura de politica) o en `scorer.py` (mezclaria el marcador de costo con el puente de estado) |
 | 3 | `stock` y `outcomes` se escriben **cada semana**; `forecast` y `decisions` solo en semanas de replanificacion (cuando `plan()` corre de verdad, no en las semanas donde se reaplica la politica sostenida) | Escribir forecast/decisions cada semana replicando el mismo numero (falsea el join: parece que Kern predijo de nuevo cuando en realidad la politica seguia congelada) |
-| 4 | `cycle_id` = numero de semana como string (`"0"`, `"1"`, ...) | Un prefijo tipo `"w1"` cae al orden lexicografico de `_cycle_sort_key` y `"w10"` ordena antes que `"w2"` -> `CycleOrderError` en la semana 2 |
+| 4 | `cycle_id` = numero de semana como string (`"0"`, `"1"`, ...) | Un prefijo tipo `"w0"`, `"w1"`, ... cae al orden lexicografico de `_cycle_sort_key` (no es parseable como `int` ni como fecha ISO). Escribir en orden ascendente real funciona hasta cruzar de una a dos cifras: `"w10"` ordena **antes** que `"w9"` (compara caracter a caracter, `'1' < '9'`), asi que el snapshot de la semana 10 llega con un `cycle_id` que retrocede respecto del de la semana 9 -> `CycleOrderError` justo ahi. Enteros puros evitan esto porque `_cycle_sort_key` los compara numericamente, no como texto |
 | 5 | `outcomes` lleva **dos metricas** por SKU y semana: `actual_qty` (demanda verdadera, `WeekOutcome.demand`) y `sold_qty` (venta observada, censurada por quiebre, `WeekOutcome.sold`) | Una sola metrica (esconde exactamente el sesgo que un cliente real sufre: si Kern subestimo y hubo quiebre, `sold` le da la razon aunque haya pedido mal) |
 | 6 | El backtest de forecast usa `actual_qty` (verdad no censurada), nunca `sold_qty` | Medir precision de forecast contra una venta ya recortada por el propio quiebre premia a un forecast malo que por suerte no genero quiebre ese periodo |
 | 7 | `decisions.order_qty` = la orden que `apply_policy` efectivamente emite esa semana (0.0 explicito en las SKU sin orden, no una fila ausente) | Omitir las semanas sin orden litera "sin senal" como si Kern no hubiera decidido nada, cuando "no pedir" es la decision |
