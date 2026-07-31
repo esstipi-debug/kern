@@ -41,13 +41,14 @@ pregunta sin esperar al primer cliente.
 |---|---|---|
 | 1 | Modulo nuevo `src/state/record.py`, agnostico de simworld: `record_stock`/`record_forecast`/`record_decision`/`record_outcome`, cada una un wrapper delgado sobre `system_state.snapshot()` | Escribir DataFrames a mano desde `run_world_sim.py` (repite las columnas exactas en cada llamador; F2/F3 no tendrian una API compartida que enchufar despues) |
 | 2 | Punto de integracion: `simulate()` (Task 11) recibe un `state_store: StateStore \| None = None` opcional. `None` (default) = cero escrituras, ningun test ni golden existente cambia | Escribirlo dentro de `runners.py` (mezclaria I/O de estado con traduccion pura de politica) o en `scorer.py` (mezclaria el marcador de costo con el puente de estado) |
-| 3 | `stock` y `outcomes` se escriben **cada semana**; `forecast` y `decisions` solo en semanas de replanificacion (cuando `plan()` corre de verdad, no en las semanas donde se reaplica la politica sostenida) | Escribir forecast/decisions cada semana replicando el mismo numero (falsea el join: parece que Kern predijo de nuevo cuando en realidad la politica seguia congelada) |
+| 3 | `stock`, `outcomes` y `decisions` se escriben **cada semana**; `forecast` solo en semanas de replanificacion (cuando `plan()` corre de verdad, no en las semanas donde `simulate()` solo reaplica la politica sostenida via `apply_policy`) | Escribir tambien `forecast` cada semana replicando el mismo numero (falsea el join: parece que Kern predijo de nuevo cuando en realidad la politica seguia congelada). `decisions` NO entra en esta regla: `apply_policy` recalcula la orden contra la posicion de inventario vigente en **cada** semana, replan o no -- es una decision real cada vez, nunca un numero repetido, y tratarla como "solo en replan" subcontaria las ordenes en un factor de `replan_every` |
 | 4 | `cycle_id` = numero de semana como string (`"0"`, `"1"`, ...) | Un prefijo tipo `"w0"`, `"w1"`, ... cae al orden lexicografico de `_cycle_sort_key` (no es parseable como `int` ni como fecha ISO). Escribir en orden ascendente real funciona hasta cruzar de una a dos cifras: `"w10"` ordena **antes** que `"w9"` (compara caracter a caracter, `'1' < '9'`), asi que el snapshot de la semana 10 llega con un `cycle_id` que retrocede respecto del de la semana 9 -> `CycleOrderError` justo ahi. Enteros puros evitan esto porque `_cycle_sort_key` los compara numericamente, no como texto |
 | 5 | `outcomes` lleva **dos metricas** por SKU y semana: `actual_qty` (demanda verdadera, `WeekOutcome.demand`) y `sold_qty` (venta observada, censurada por quiebre, `WeekOutcome.sold`) | Una sola metrica (esconde exactamente el sesgo que un cliente real sufre: si Kern subestimo y hubo quiebre, `sold` le da la razon aunque haya pedido mal) |
 | 6 | El backtest de forecast usa `actual_qty` (verdad no censurada), nunca `sold_qty` | Medir precision de forecast contra una venta ya recortada por el propio quiebre premia a un forecast malo que por suerte no genero quiebre ese periodo |
 | 7 | `decisions.order_qty` = la orden que `apply_policy` efectivamente emite esa semana (0.0 explicito en las SKU sin orden, no una fila ausente) | Omitir las semanas sin orden litera "sin senal" como si Kern no hubiera decidido nada, cuando "no pedir" es la decision |
 | 8 | `Policy` gana un campo `forecast: dict[str, float]`, poblado en `kern_policy()` (Task 8, aun sin implementar) desde `SkuRecommendation.forecast` | Derivar el forecast desde `reorder_point`/`order_up_to` (son una politica de reposicion, no una prediccion de demanda; confundirlos rompe la semantica que `verify/backtest.py` espera) |
 | 9 | `tool` = `"inventory_optimization"` en `decisions` y `outcomes` (el `job_type` real que `kern_policy(forced=True)` ya pasa al orquestador) | Un nombre inventado por el arnes (`"kern_simworld"`) no es una herramienta registrada; `match_decision_actuals` exige que `decisions.tool` y `outcomes.tool` coincidan, y usar el nombre real deja la fila legible fuera de este arnes tambien |
+| 10 | `stock.avg_daily_demand` se calcula como el promedio semanal de `sold` sobre las ultimas 4 semanas, **dividido por 7** | El nombre del campo (y `scm_agent/monitors.py`'s calculo de "dias de cobertura", `on_hand / avg_daily_demand`) asume una tasa diaria. simworld corre en semanas: pasar el promedio semanal crudo subestimaria la cobertura en un factor de 7 y activaria `rop_breach`/`stockout_projected` con umbrales de dias completamente descalibrados |
 
 ## Advertencia interpretativa (documentada, no escondida)
 
@@ -69,9 +70,9 @@ run_world_sim.simulate(..., state_store=StateStore(aislado))
   cada semana:
     -> record_stock(store, week, on_hand, reorder_point vigente, avg_daily_demand)
     -> record_outcome(store, week, actual_qty=demand, sold_qty=sold)
-  solo semanas de replan:
-    -> record_forecast(store, week, forecast_qty=Policy.forecast)
     -> record_decision(store, week, order_qty=apply_policy(...), tool="inventory_optimization")
+  solo semanas de replan (cuando `plan()` corre de verdad):
+    -> record_forecast(store, week, forecast_qty=Policy.forecast)
 
 Al final de la corrida (o en un test de integracion aparte):
   scm_agent.monitors.run_all_monitors(store=store)        -> deben salir eventos, no vacio
