@@ -1,12 +1,16 @@
 """Tests for the pure flow_map engine: graph, measurement, verdict."""
+import pytest
+
 from src.flow_map import (
     MEASURED,
     MIN_OBSERVATIONS,
     UNMEASURABLE,
     Movement,
+    analyze,
     build_graph,
     measure_edges,
 )
+from src.guided import HANDOFF, OPTIONS, verify_guided
 
 
 def _mv(origin, destination, days=3.0, qty=10.0, cost=1.0, product="SKU-A"):
@@ -104,6 +108,67 @@ def test_edges_are_sorted_and_bidirectional_is_flagged():
     edges = measure_edges(movements, bidirectional=(("A", "B"),))
     assert [(e.origin, e.destination) for e in edges] == [("A", "B"), ("B", "A")]
     assert all(e.bidirectional for e in edges)
+
+
+def _edge_movements(origin, destination, days, qty=10.0, cost=2.0):
+    return [_mv(origin, destination, days=d, qty=qty, cost=cost) for d in days]
+
+
+def test_analyze_ranks_the_noisiest_edge_first_and_recommends_it():
+    steady = [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]
+    noisy = [1.0, 9.0, 2.0, 8.0, 1.0, 9.0, 2.0, 8.0]
+    movements = (
+        _edge_movements("DC-1", "STORE-STEADY", steady)
+        + _edge_movements("DC-1", "STORE-NOISY", noisy)
+        + _edge_movements("SUP-1", "DC-1", steady)
+    )
+    report = analyze(movements, span_days=90.0)
+    assert report.outcome.status == OPTIONS
+    assert report.buffers[0].destination == "STORE-NOISY"
+    assert report.buffers[0].buffer_value > report.buffers[1].buffer_value
+    assert report.outcome.options[0].recommended is True
+    assert "STORE-NOISY" in report.outcome.options[0].label
+
+
+def test_unmeasurable_edges_never_enter_the_ranking():
+    movements = (
+        _edge_movements("DC-1", "STORE-A", [1.0, 9.0, 1.0, 9.0, 1.0, 9.0, 1.0, 9.0])
+        + _edge_movements("DC-1", "STORE-SHORT", [1.0, 20.0, 1.0], qty=1000.0)
+    )
+    report = analyze(movements, span_days=90.0)
+    ranked = {(b.origin, b.destination) for b in report.buffers}
+    assert ("DC-1", "STORE-SHORT") not in ranked
+    short = next(e for e in report.edges if e.destination == "STORE-SHORT")
+    assert short.status == UNMEASURABLE
+
+
+def test_unmeasurable_volume_share_and_negative_transit_are_counted():
+    movements = (
+        _edge_movements("DC-1", "STORE-A", [1.0, 9.0, 1.0, 9.0, 1.0, 9.0, 1.0, 9.0], qty=10.0)
+        + _edge_movements("DC-1", "STORE-SHORT", [-3.0, 4.0], qty=30.0)
+    )
+    report = analyze(movements, span_days=90.0)
+    assert report.n_movements == 10
+    assert report.n_negative_transit == 1
+    assert round(report.unmeasurable_volume_share, 4) == 0.4286
+
+
+def test_analyze_requires_a_positive_span():
+    with pytest.raises(ValueError):
+        analyze([_mv("A", "B")], span_days=0.0)
+
+
+def test_analyze_returns_handoff_when_no_lane_is_measurable():
+    movements = (
+        _edge_movements("DC-1", "STORE-A", [1.0, 2.0, 3.0], qty=10.0)
+        + _edge_movements("DC-1", "STORE-B", [4.0, 5.0], qty=5.0)
+    )
+    report = analyze(movements, span_days=90.0)
+    assert report.outcome.status == HANDOFF
+    assert report.buffers == ()
+    assert len(report.outcome.handoffs) == 1
+    assert report.outcome.handoffs[0].steps
+    assert verify_guided(report.outcome) == []
 
 
 def test_bidirectional_flagging_does_not_cross_contaminate():

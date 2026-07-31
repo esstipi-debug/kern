@@ -18,6 +18,16 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from src.guided import (
+    ExecutionOption,
+    GuidedOutcome,
+    HandoffPacket,
+    Residual,
+    as_handoff,
+    as_options,
+)
+from src.safety_stock import service_level_factor
+
 MEASURED = "measured"
 UNMEASURABLE = "unmeasurable"
 
@@ -200,3 +210,155 @@ def measure_edges(
             mean_unit_cost=mean_cost, bidirectional=is_two_way,
         ))
     return tuple(stats)
+
+
+_TOP_OPTIONS = 3
+
+
+@dataclass(frozen=True)
+class EdgeBuffer:
+    """Protective inventory an edge's transit variability forces downstream."""
+
+    origin: str
+    destination: str
+    buffer_units: float
+    buffer_value: float
+
+
+@dataclass(frozen=True)
+class FlowReport:
+    """Everything the job layer needs: the network, the measurement, the verdict."""
+
+    graph: FlowGraph
+    edges: tuple[EdgeStat, ...]
+    buffers: tuple[EdgeBuffer, ...]
+    n_movements: int
+    n_negative_transit: int
+    unmeasurable_volume_share: float
+    span_days: float
+    outcome: GuidedOutcome
+    summary: str
+
+
+def _buffers(
+    edges: tuple[EdgeStat, ...], *, z: float, span_days: float
+) -> tuple[EdgeBuffer, ...]:
+    """z * mean_daily_demand * sigma_LT, valued at the edge's mean unit cost.
+
+    Only the lead-time-variability term of the combined safety-stock formula:
+    ``src.safety_stock.safety_stock`` computes the DEMAND-variability term, which
+    an edge's transit noise does not drive. Only ``service_level_factor`` is reused.
+    """
+    out: list[EdgeBuffer] = []
+    for e in edges:
+        if e.status != MEASURED or e.stdev_days is None:
+            continue
+        units = z * (e.volume / span_days) * e.stdev_days
+        out.append(EdgeBuffer(
+            origin=e.origin, destination=e.destination,
+            buffer_units=units, buffer_value=units * e.mean_unit_cost,
+        ))
+    return tuple(sorted(
+        out, key=lambda b: (-b.buffer_value, -b.buffer_units, b.origin, b.destination)
+    ))
+
+
+def _options(buffers: tuple[EdgeBuffer, ...], edges: tuple[EdgeStat, ...]) -> GuidedOutcome:
+    by_edge = {(e.origin, e.destination): e for e in edges}
+
+    if not buffers:
+        packet = HandoffPacket(
+            title="Widen the export window and re-run flow_map",
+            steps=[
+                "No lane has the minimum observed movements to measure transit variance.",
+                "Widen the movement export's date range (or lower min_observations) so more "
+                "lanes clear the threshold.",
+                "Re-run flow_map analyze on the wider export.",
+            ],
+            risk_if_skipped=(
+                "No protective-inventory verdict can be produced; capital allocation across "
+                "lanes stays a guess."
+            ),
+        )
+        residual = Residual(
+            description=(
+                "No lane cleared the observation threshold, so no ranking could be formed."
+            ),
+            risk_if_skipped="Protective inventory decisions proceed without any measurement.",
+        )
+        return as_handoff(
+            "No lane has enough observations to rank; widen the export window and re-run.",
+            [packet],
+            residuals=[residual],
+        )
+
+    options: list[ExecutionOption] = []
+    for rank, b in enumerate(buffers[:_TOP_OPTIONS]):
+        e = by_edge[(b.origin, b.destination)]
+        options.append(ExecutionOption(
+            label=f"Stabilise {b.origin} -> {b.destination}",
+            summary=(
+                f"Transit averages {e.mean_days:.1f} d with a {e.stdev_days:.1f} d spread "
+                f"over {e.n} observed movement(s); that spread alone forces "
+                f"{b.buffer_units:,.0f} unit(s) of protective stock "
+                f"({b.buffer_value:,.0f} in value) downstream."
+            ),
+            score=b.buffer_value,
+            recommended=rank == 0,
+            action=f"review_lane:{b.origin}->{b.destination}",
+            tradeoffs=(
+                "Cutting transit variability on this lane releases the buffer; cutting the "
+                "average transit time does not, on its own, release any of it."
+            ),
+        ))
+    residual = Residual(
+        description=(
+            "Why the lane varies (carrier, customs, dock congestion, batching) is not in the "
+            "movement data; confirm the cause with the lane owner before acting."
+        ),
+        risk_if_skipped="Acting on the wrong root cause leaves the buffer in place.",
+    )
+    return as_options(
+        "Three lanes ranked by the protective inventory their transit variance forces.",
+        options,
+        residuals=[residual],
+    )
+
+
+def analyze(
+    movements: list[Movement],
+    *,
+    min_observations: int = MIN_OBSERVATIONS,
+    cycle_service_level: float = 0.95,
+    span_days: float = 0.0,
+) -> FlowReport:
+    """Build the graph, measure every edge, and rank the capital each lane locks up."""
+    if span_days <= 0:
+        raise ValueError("span_days must be > 0 (the calendar span the movements cover)")
+    graph = build_graph(movements)
+    edges = measure_edges(
+        movements, min_observations=min_observations, bidirectional=graph.bidirectional
+    )
+    total_volume = sum(e.volume for e in edges)
+    unmeasurable_volume = sum(e.volume for e in edges if e.status == UNMEASURABLE)
+    share = unmeasurable_volume / total_volume if total_volume > 0 else 0.0
+    buffers = _buffers(
+        edges, z=service_level_factor(cycle_service_level), span_days=span_days
+    )
+    outcome = _options(buffers, edges)
+    n_measured = sum(1 for e in edges if e.status == MEASURED)
+    top = (
+        f"the {buffers[0].origin} -> {buffers[0].destination} lane locks up the most capital"
+        if buffers else "no lane has enough observations to rank"
+    )
+    summary = (
+        f"Mapped {len(graph.nodes)} node(s) and {len(edges)} lane(s) from "
+        f"{len(movements)} movement(s); {n_measured} lane(s) measurable, "
+        f"{share * 100:.0f}% of volume on unmeasurable lanes; {top}."
+    )
+    return FlowReport(
+        graph=graph, edges=edges, buffers=buffers, n_movements=len(movements),
+        n_negative_transit=sum(1 for m in movements if m.transit_days < 0),
+        unmeasurable_volume_share=share, span_days=span_days,
+        outcome=outcome, summary=summary,
+    )
