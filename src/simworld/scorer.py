@@ -237,7 +237,15 @@ def degradation(
     "Anunciada" se ata a la semana ``t`` usando el flag de ``announced_weeks``
     en la posicion ``t`` -- la misma semana cuyo exceso se esta atribuyendo,
     nunca la semana anterior ni la siguiente.
+
+    Levanta ``ValueError`` si ``clean_weekly``/``dirty_weekly`` estan vacios,
+    igual que ``weekly_cost``: "cero semanas es un error real de quien llama,
+    no una respuesta valida" -- aca la respuesta invalida seria un
+    ``Degradation`` todo en cero, es decir "Kern no degrado nada y no
+    escondio nada", una afirmacion muy distinta de "no hay datos".
     """
+    if len(clean_weekly) == 0:
+        raise ValueError("no hay semanas que puntuar")
     clean = np.asarray(clean_weekly, dtype=float)
     dirty = np.asarray(dirty_weekly, dtype=float)
     if clean.shape != dirty.shape:

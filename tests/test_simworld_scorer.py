@@ -810,3 +810,20 @@ def test_mismatched_announced_length_raises():
     """
     with pytest.raises(ValueError, match="largo"):
         degradation(np.array([1.0, 2.0]), np.array([1.0, 2.0]), [False], level=1)
+
+
+def test_zero_length_weeks_raise():
+    """``degradation`` must agree with this same module's ``weekly_cost`` at
+    the zero-week boundary (see
+    ``test_weekly_cost_and_score_run_agree_on_empty_outcomes_by_both_raising``):
+    "cero semanas" is a real caller error, not a valid answer -- and here the
+    invalid answer would be especially misleading. Before this guard, this
+    exact call silently returned ``Degradation(level=0, drop=0.0,
+    announced=0.0, silent=0.0, weeks_announced=0)`` -- "Kern degraded not at
+    all and hid nothing" -- instead of raising. Confirmed by replay: removing
+    the zero-length guard makes the assertion below fail with "DID NOT RAISE
+    ValueError" (the all-zeros ``Degradation`` is returned instead); reverted
+    after.
+    """
+    with pytest.raises(ValueError, match="no hay semanas"):
+        degradation(np.array([]), np.array([]), [], level=0)
