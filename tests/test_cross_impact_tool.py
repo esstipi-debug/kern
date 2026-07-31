@@ -101,3 +101,17 @@ def test_anchors_are_the_expected_four():
     assert TOOL_CONCEPTS["cross_impact"] == (
         "safety_stock", "service_level", "cycle_service_level",
         "cross_functional_integration")
+
+
+def test_cli_module_imports_and_declares_its_flags():
+    import examples.run_cross_impact as cli
+    parser = cli.build_parser()
+    args = parser.parse_args([
+        "--data", "x.csv", "--sku", "S1",
+        "--current-q", "200", "--current-sl", "0.95",
+        "--proposed-q", "400", "--proposed-sl", "0.95",
+        "--proposed-by", "comprador",
+    ])
+    assert args.sku == "S1"
+    assert args.proposed_q == 400.0
+    assert args.proposed_by == "comprador"
