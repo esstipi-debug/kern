@@ -29,7 +29,8 @@
   - `jobs.hats_job.prepare(data_path: str, params: dict | None) -> dict` → `{"inputs": tuple[HatInputs, ...], "weights": ..., "config": HatConfig, "skipped": tuple[str, ...]}`
   - `src.deliverable.write_summary_csv(rows: list[dict], path: Path) -> Path`
   - `src.decision_options.Scenario(label, summary, metrics, action, tradeoffs)` / `Objective(metric, weight, maximize)` / `decide(summary, scenarios, objectives, *, confidence, residuals) -> GuidedOutcome`
-  - `src.guided.verify_guided(outcome) -> list[str]`, `confidence_from_coverage(gaps, *, base, floor) -> float`, `COVERAGE_PENALTY: dict[str, float]`, `Residual(description, owner, risk_if_skipped)`
+  - `src.guided.verify_guided(outcome) -> list[str]`, `Residual(description, owner, risk_if_skipped)`
+  - **NO existe** `src.guided.confidence_from_coverage` ni `COVERAGE_PENALTY` en esta rama. Sí existen en `feat/simworld-marcador` (commit `25cd8ed`, sin mergear a main y sin PR). Este plan **no** los usa: la Tarea 5 deriva su confianza con una constante local. No los importes.
 
 ---
 
@@ -952,11 +953,11 @@ git commit -m "feat(cross-impact-job): prepare con validacion fatal, sin default
 
 **Files:**
 - Modify: `jobs/cross_impact_job.py`
-- Modify: `src/guided.py:167-174` (agregar la penalización `unevaluable_area`)
+- **No** se toca `src/guided.py` (ver la nota de Global Constraints: el helper que este plan citaba no existe en esta rama)
 - Test: `tests/test_cross_impact_job.py` (agregar)
 
 **Interfaces:**
-- Consumes: `src.cross_impact.measure`, `src.objection.{judge, ACEPTA, OBJETA, NO_EVALUABLE}`, `src.decision_options.{Scenario, Objective, decide}`, `src.guided.{Residual, confidence_from_coverage}`, `src.hats.{evaluate, decision_cost}`.
+- Consumes: `src.cross_impact.measure`, `src.objection.{judge, ACEPTA, OBJETA, NO_EVALUABLE}`, `src.decision_options.{Scenario, Objective, decide}`, `src.guided.{GuidedOutcome, Residual}`, `src.hats.{evaluate, decision_cost}`.
 - Produces: `EJECUTAR`, `BILATERAL`, `REUNION`, `INDETERMINADO`, `CrossImpactReport`, `run(payload: dict) -> CrossImpactReport`.
 
 - [ ] **Step 1: Write the failing test**
@@ -1096,17 +1097,7 @@ PYTHONPATH=. pytest tests/test_cross_impact_job.py -q -k "verdict or counterprop
 
 Esperado: FAIL — `AttributeError: module 'jobs.cross_impact_job' has no attribute 'run'`.
 
-- [ ] **Step 3a: Agregar la penalización de cobertura**
-
-En `src/guided.py`, dentro de `COVERAGE_PENALTY` (línea 167), agregar la entrada:
-
-```python
-    # an area with no declared objection threshold in the client profile
-    # (src/client_profile.py) - cross_impact cannot judge it at all
-    "unevaluable_area": 0.20,
-```
-
-- [ ] **Step 3b: Write the implementation**
+- [ ] **Step 3: Write the implementation**
 
 Agregar a `jobs/cross_impact_job.py` (imports arriba, resto al final):
 
@@ -1115,7 +1106,7 @@ from dataclasses import dataclass
 
 from src.cross_impact import CrossImpact, measure
 from src.decision_options import Objective, Scenario, decide
-from src.guided import GuidedOutcome, Residual, confidence_from_coverage
+from src.guided import GuidedOutcome, Residual
 from src.hats import decision_cost, evaluate
 from src.objection import NO_EVALUABLE, OBJETA, Verdict, judge
 
@@ -1124,6 +1115,19 @@ BILATERAL = "bilateral"
 REUNION = "reunion"
 INDETERMINADO = "indeterminado"
 VERDICTS = (EJECUTAR, BILATERAL, REUNION, INDETERMINADO)
+
+# Confidence cost of ONE area we could not judge at all (no declared threshold in
+# the client profile). Deliberately local rather than imported: a general
+# `confidence_from_coverage` helper exists on the unmerged branch feat/simworld-
+# marcador (commit 25cd8ed) but NOT on main, and this capability must not depend
+# on another branch's unmerged work. Unify them if that commit ever lands.
+UNEVALUABLE_PENALTY = 0.20
+CONFIDENCE_FLOOR = 0.10
+
+
+def _confidence(n_unevaluable: int) -> float:
+    """1.0 when all four areas were judged; one penalty per area we could not."""
+    return max(CONFIDENCE_FLOOR, 1.0 - UNEVALUABLE_PENALTY * n_unevaluable)
 
 
 @dataclass(frozen=True)
@@ -1265,7 +1269,7 @@ def run(payload: dict) -> CrossImpactReport:
         summary,
         _scenarios(inputs, impact, thresholds, n_obj, counter),
         [Objective("n_objections", weight=2.0), Objective("judge_cost", weight=1.0)],
-        confidence=confidence_from_coverage(["unevaluable_area"] * n_unk),
+        confidence=_confidence(n_unk),
         residuals=[
             Residual(
                 description="La eleccion final la hace un humano; esto mide y ordena, no ejecuta.",
@@ -1294,15 +1298,15 @@ from src.hats import HAT_KEYS, Candidate, HatInputs, decision_cost, evaluate
 - [ ] **Step 4: Run tests to verify they pass**
 
 ```bash
-PYTHONPATH=. pytest tests/test_cross_impact_job.py tests/test_guided.py -q && ruff check jobs/cross_impact_job.py src/guided.py
+PYTHONPATH=. pytest tests/test_cross_impact_job.py -q && ruff check jobs/cross_impact_job.py
 ```
 
-Esperado: todo verde. Si `tests/test_guided.py` asertaba el contenido exacto de `COVERAGE_PENALTY`, actualizá esa aserción para incluir la key nueva.
+Esperado: todo verde. `src/guided.py` no se toca en esta tarea.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add jobs/cross_impact_job.py src/guided.py tests/test_cross_impact_job.py tests/test_guided.py
+git add jobs/cross_impact_job.py tests/test_cross_impact_job.py
 git commit -m "feat(cross-impact-job): veredicto global, contra-propuesta y opciones rankeadas"
 ```
 
