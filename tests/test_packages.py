@@ -343,6 +343,86 @@ def test_optimized_targets_empty_when_optimizer_produced_no_recommendations():
     ) == {}
 
 
+# ---- zero-demand skips must never fabricate a reorder_point=0.0 override --------
+#
+# jobs/inventory_optimization.py's run() skips a SKU with zero aggregate demand and
+# records it as a policy_kind="skipped_zero_demand" recommendation with all-zero
+# numeric fields (reorder_point=0.0, order_up_to=None) rather than crashing the whole
+# portfolio. Before this fix, this helper threaded that placeholder straight into
+# excel_replenishment_job's optimized_targets, which read reorder_point=0.0 as a real
+# Kern-computed policy and used it to override the client's own sheet value -
+# silently suppressing a genuine restock need (or, with negative on-hand, ordering an
+# arbitrary amount to bring the count to exactly 0). excel_replenishment_job.run's own
+# docstring says a SKU absent from optimized_targets degrades to the client's own
+# sheet value exactly - a skipped SKU is exactly that "no computable policy" case.
+
+def _skipped_recommendation(product_id: str) -> SkuRecommendation:
+    return SkuRecommendation(
+        product_id=product_id, method="none", intermittent=False,
+        forecast=0.0, error_std=0.0, bias=0.0, mae=0.0,
+        policy_kind="skipped_zero_demand", order_quantity=None, order_up_to=None,
+        reorder_point=0.0, safety_stock=0.0, z_factor=0.0,
+        service_level=0.95, unit_cost=1.0, lead_periods=1.0,
+        cycle_investment=0.0, ss_investment=0.0, investment=0.0, status="review",
+    )
+
+
+def test_optimized_targets_excludes_skipped_zero_demand_recommendation():
+    skipped = _skipped_recommendation("SKU-ZERO")
+    real = _fake_recommendation("SKU-REAL", reorder_point=50.0, order_quantity=30.0)
+    targets = _optimized_targets_from_inventory(
+        {"inventory_optimization": _fake_job_report(skipped, real)}
+    )
+    assert "SKU-ZERO" not in targets["optimized_targets"]
+    assert targets["optimized_targets"]["SKU-REAL"] == {"reorder_point": 50.0, "order_up_to": 80.0}
+
+
+def test_optimized_targets_all_skipped_never_overrides_anything():
+    targets = _optimized_targets_from_inventory(
+        {"inventory_optimization": _fake_job_report(_skipped_recommendation("SKU-ZERO"))}
+    )
+    assert targets.get("optimized_targets", {}) == {}
+
+
+def test_optimized_targets_skip_falls_through_to_client_sheet_end_to_end(tmp_path):
+    """Reproduces the reviewer's exact scenario: a client's own planilla says a SKU
+    needs restocking (own reorder point 40, on_hand 10 -> needs 70 units), but
+    inventory_optimization skipped that SKU for zero aggregate demand. After this fix,
+    the skip is absent from optimized_targets, so excel_replenishment_job.run() must
+    fall through to the client's own sheet values exactly, as if the SKU had never
+    appeared in the inventory report at all."""
+    from openpyxl import Workbook
+
+    from jobs import excel_replenishment_job
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Stock"
+    ws["A1"] = "INVENTARIO"
+    for col, header in enumerate(["Codigo", "Descripcion", "Stock", "Punto Reorden"], 1):
+        ws.cell(row=3, column=col, value=header)
+    ws.cell(row=4, column=1, value="SKU-ZERO")
+    ws.cell(row=4, column=2, value="Zero-demand SKU")
+    ws.cell(row=4, column=3, value=10)   # on_hand
+    ws.cell(row=4, column=4, value=40)   # client's own reorder point
+    f = tmp_path / "planilla.xlsx"
+    wb.save(f)
+
+    derived = _optimized_targets_from_inventory(
+        {"inventory_optimization": _fake_job_report(_skipped_recommendation("SKU-ZERO"))}
+    )
+    # The skip must never surface as an optimized_targets entry (an empty inner dict is
+    # fine - it degrades identically to {} once merged into the job's params).
+    assert derived.get("optimized_targets", {}) == {}
+
+    payload = excel_replenishment_job.prepare(str(f), {})
+    report = excel_replenishment_job.run(payload, optimized_targets=derived.get("optimized_targets"))
+    line = next(ln for ln in report.lines if ln.sku == "SKU-ZERO")
+    assert line.source == "client_sheet"
+    assert line.trigger == 40.0
+    assert line.restock_qty == 70.0  # 40 * 2.0 (default order_up_to_factor) - 10
+
+
 # ---- intake gating ------------------------------------------------------------
 
 def test_missing_required_inputs_lists_the_checklist(tmp_path):

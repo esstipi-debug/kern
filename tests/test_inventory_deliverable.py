@@ -62,6 +62,31 @@ def test_budget_constraint_surfaces_finding_and_recommendation():
     assert "below the cycle-stock floor" in md  # infeasible-budget recommendation
 
 
+def test_zero_demand_skip_excluded_from_concentration_finding():
+    """A skipped-zero-demand recommendation always carries investment=0.0 (see
+    jobs/inventory_optimization.py's run()) - it must never displace or clutter a
+    real finding in the 'Largest investments' top-3 summary."""
+    skipped = SkuRecommendation(
+        product_id="ZERO-C", method="none", intermittent=False,
+        forecast=0.0, error_std=0.0, bias=0.0, mae=0.0,
+        policy_kind="skipped_zero_demand", order_quantity=None, order_up_to=None,
+        reorder_point=0.0, safety_stock=0.0, z_factor=0.0,
+        service_level=0.95, unit_cost=1.0, lead_periods=1.0,
+        cycle_investment=0.0, ss_investment=0.0, investment=0.0, status="review",
+    )
+    report = JobReport(
+        recommendations=[_rec("GOOD-A", 2793.0), skipped],
+        params={"service_level": 0.95, "holding_rate": 0.25, "order_cost": 75.0, "periods_per_year": 52.0},
+        requested_investment=2793.0, cycle_floor=2000.0, final_investment=2793.0,
+        safety_stock_scale=1.0, feasible=True, budget=None,
+        n_skus=2, n_at_risk=0, n_intermittent=0,
+    )
+    d = build(report)
+    concentration = next(f for f in d.findings if "concentration" in f.title.lower())
+    assert "ZERO-C" not in concentration.detail
+    assert "GOOD-A" in concentration.detail
+
+
 def test_markdown_renders_and_is_ascii_safe():
     md = build(_report(), prepared="2026-06-23").to_markdown()
     for section in ["## Executive summary", "## Key findings", "## KPIs",

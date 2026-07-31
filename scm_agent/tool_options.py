@@ -103,6 +103,20 @@ def _apply_intake_quality(outcome: GuidedOutcome, report: object) -> GuidedOutco
 def inventory_options(report: object) -> GuidedOutcome:
     sl = report.params.get("service_level", 0.95)
     n_review = sum(1 for r in report.recommendations if getattr(r, "status", "ok") != "ok")
+    # A SKU skipped for zero demand is a data gap (no policy could be computed at all),
+    # not a genuinely low-value SKU worth trimming/deferring - keep it out of the
+    # "flagged SKU(s) to release budget" count so that action reads accurately. It still
+    # gets its own signal via _apply_zero_demand_skips below.
+    n_zero_demand = sum(
+        1 for r in report.recommendations if getattr(r, "policy_kind", None) == "skipped_zero_demand"
+    )
+    n_deferrable = n_review - n_zero_demand
+    defer_summary = f"Trim or defer the {n_deferrable} flagged-for-review SKU(s) to release budget."
+    if n_zero_demand:
+        defer_summary += (
+            f" ({n_zero_demand} more have no demand history to compute a policy from - "
+            "a data gap, not a deferral candidate.)"
+        )
     items: list[_Item] = [
         ("Adopt the recommended policy",
          f"Stage {report.final_investment:,.0f} of inventory under the (s,Q)/(R,S) policies at {sl * 100:.0f}% service.",
@@ -111,11 +125,35 @@ def inventory_options(report: object) -> GuidedOutcome:
          "Raise the cycle service level on the high-value SKUs (more safety stock).",
          "raise service level on the A class", "higher availability, more capital"),
         ("Free capital - defer low-value SKUs",
-         f"Trim or defer the {n_review} flagged SKU(s) to release budget.",
+         defer_summary,
          "defer / review the flagged low-value SKUs", "less capital, some service risk"),
     ]
     outcome = _ranked(f"Inventory policy for {len(report.recommendations)} SKU(s): choose how to act.", items)
-    return _apply_intake_quality(outcome, report)
+    outcome = _apply_intake_quality(outcome, report)
+    return _apply_zero_demand_skips(outcome, report)
+
+
+def _apply_zero_demand_skips(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
+    """State a residual whenever inventory_optimization's run() skipped one or more SKUs
+    for zero aggregate demand (``jobs/inventory_optimization.py``'s ``JobReport.
+    n_skipped_zero_demand``) - otherwise a portfolio that degenerates entirely to skipped
+    SKUs comes back ``status='ok'`` with a cheerful "$0 investment" summary and no signal
+    that anything unusual happened (a loud crash turned into a silent, misleadingly clean
+    report). Mirrors ``_apply_intake_quality``'s "transparency first" residual; a no-op
+    when the report carries no such field (untracked report stand-in) or nothing was
+    skipped.
+    """
+    n_skipped = getattr(report, "n_skipped_zero_demand", 0)
+    if not n_skipped:
+        return outcome
+    return replace(outcome, residuals=[*outcome.residuals, Residual(
+        description=f"{n_skipped} SKU(s) had zero aggregate demand history and were "
+                    "skipped - no policy was computed for them (see the "
+                    "'skipped_zero_demand' recommendations).",
+        risk_if_skipped="a real new/seasonal SKU with no activity yet and a data-quality "
+                        "split that zeroed a SKU's demand look identical here; verify "
+                        "each skipped SKU by hand before assuming no action is needed.",
+    )])
 
 
 def pricing_options(report: object) -> GuidedOutcome:
