@@ -78,8 +78,11 @@ def prepare(data_path: str, params: dict | None = None) -> list[Movement]:
         raise ValueError("the movements file has no rows")
     cols = _resolve_columns(df)
 
-    departed = pd.to_datetime(df[cols["fecha_salida"]], errors="coerce")
-    arrived = pd.to_datetime(df[cols["fecha_llegada"]], errors="coerce")
+    # format="mixed": client movement files carry heterogeneous date formats
+    # (row-by-row), so this states that intent explicitly rather than letting
+    # pandas warn about falling back to per-element dateutil parsing.
+    departed = pd.to_datetime(df[cols["fecha_salida"]], errors="coerce", format="mixed")
+    arrived = pd.to_datetime(df[cols["fecha_llegada"]], errors="coerce", format="mixed")
     cost_col = cols.get("costo_unitario")
 
     total_rows = len(df)

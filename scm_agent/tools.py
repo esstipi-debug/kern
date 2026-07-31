@@ -24,6 +24,7 @@ from jobs import (
     facility_location_job,
     fefo_job,
     financial_kpis_job,
+    flow_map_job,
     forecast_job,
     hats_job,
     intake,
@@ -1311,6 +1312,54 @@ def data_quality_tool() -> Tool:
     )
 
 
+# ---- flow_map (observed network + measured transit per lane) ------------------
+
+def _flow_map_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a movements CSV/Excel is required: one row per shipment leg with a departure "
+            "date, an arrival date, an origin, a destination, a product and a quantity"
+        ])
+    try:
+        movements = flow_map_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=movements)
+
+
+def _flow_map_run(payload: object, params: dict) -> Produced:
+    report = flow_map_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def flow_map_tool() -> Tool:
+    return Tool(
+        key="flow_map",
+        title="Flow Map (Observed Network & Measured Transit)",
+        description="Reconstruct the supplier-to-store network from recorded movements, "
+                    "measure real transit time and its spread on every lane, and rank the "
+                    "lanes whose variability locks up the most protective inventory. Lanes "
+                    "with too few movements report no number at all.",
+        intent_keywords=(
+            "flow map", "map my flows", "end to end flow", "value stream", "network map",
+            "map the network", "transit time", "transit variability",
+            "lead time by lane", "sankey", "material flow", "where is the bottleneck",
+        ),
+        requires_data=True,
+        prepare=_flow_map_prepare,
+        run=_flow_map_run,
+        qa=lambda report: flow_map_job.verify(report),
+        deliver=lambda report, out_dir, client: flow_map_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            flow_map_job.build_deck(
+                report, client=client, citations=tuple(citations), confidence=confidence
+            ),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
 # ---- dea (efficiency benchmarking) -------------------------------------------
 
 def _dea_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
@@ -2086,6 +2135,7 @@ def facility_location_tool() -> Tool:
             "facility location", "network design", "center of gravity", "centre of gravity",
             "center-of-gravity", "dc location", "distribution center location", "hub location",
             "site selection", "where to locate", "optimal location", "greenfield site",
+            "weighted distance",
         ),
         requires_data=True,
         options=tool_options.facility_location_options,
@@ -2581,4 +2631,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(launch_readiness_tool())
     reg.register(hat_tension_tool())
     reg.register(hat_settlement_tool())
+    reg.register(flow_map_tool())
     return reg

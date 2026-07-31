@@ -71,7 +71,7 @@ Every capability below is agent-routable — a brief in, a QA-gated deliverable 
 | **Inventory & replenishment** | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` (live Odoo ERP read + writeback) · `excel_replenishment` (client planilla read + writeback) · `hat_tension` (Decision Tension Map, 4 sombreros) · `hat_settlement` (Reconciled Replenishment Plan) |
 | **Inventory control & health** | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` |
 | **Procurement & sourcing** | `sourcing` · `supplier_management` (Kraljic segmentation) · `landed_cost` · `acceptance_sampling` |
-| **Network & logistics** | `facility_location` · `network_design` (multi-facility p-median) · `transportation` · `vehicle_routing` · `warehouse_layout` · `slotting` · `queuing` · `scheduling` |
+| **Network & logistics** | `facility_location` · `network_design` (multi-facility p-median) · `transportation` · `vehicle_routing` · `warehouse_layout` · `slotting` · `queuing` · `scheduling` · `flow_map` (observed network + measured transit per lane) |
 | **Pricing & finance** | `pricing` · `price_intelligence` (competitor price position, one-shot) · `price_watch` (discovery-assisted, recurring, read-only) · `financial_kpis` · `cost_to_serve` · `learning_curve` |
 | **Returns, risk & benchmarking** | `returns` · `risk` · `dea` |
 | **Planning cadence & projects** | `sop` · `earned_value` · `launch_readiness` (campaign launch-date vs lead-time & coverage) |

@@ -541,4 +541,21 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "returns needs_data. Useful params: depot, speed.\n\n" + _RETURNS
         ),
     ),
+    MCPToolSpec(
+        name="linchpin_flow_map",
+        job_type="flow_map",
+        title="Map Observed Flows & Measure Transit",
+        description=(
+            "Reconstruct the supplier-to-store network from recorded movements and measure "
+            "transit time and its spread on every lane.\n\n"
+            "Rows need columns: fecha_salida (or ship_date / departure_date), fecha_llegada "
+            "(or receipt_date / arrival_date), origen (or origin / from), destino (or "
+            "destination / to), producto (or sku / product_id), cantidad (or quantity / qty); "
+            "costo_unitario (or unit_cost) is optional and values the buffer. One row per "
+            'shipment leg, e.g. {"ship_date": "2026-01-01", "receipt_date": "2026-01-04", '
+            '"origin": "SUP-1", "destination": "DC-1", "sku": "SKU-A", "quantity": 120}.\n\n'
+            "Useful params: min_observations (default 8 -- lanes below it report no transit "
+            "statistic at all, by design), service_level (0-1, default 0.95).\n\n" + _RETURNS
+        ),
+    ),
 )

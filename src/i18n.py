@@ -255,6 +255,8 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
                            "en": "Facility Location (Network Design)"},
     "network_design": {"es": "Diseno de Red (Multi-Instalacion p-Mediana)",
                         "en": "Network Design (Multi-Facility p-Median)"},
+    "flow_map": {"es": "Mapa de Flujos (Red Observada y Transito Medido)",
+                 "en": "Flow Map (Observed Network & Measured Transit)"},
     "drp": {"es": "Planificacion de Requerimientos de Distribucion (DRP)",
             "en": "Distribution Requirements Planning (DRP)"},
     "vehicle_routing": {"es": "Ruteo y Programacion de Vehiculos", "en": "Vehicle Routing & Scheduling"},
