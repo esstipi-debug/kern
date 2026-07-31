@@ -48,6 +48,17 @@ from src.simworld.runners import (  # noqa: E402
 )
 from src.simworld.scorer import capture, degradation, score_run, weekly_cost  # noqa: E402
 from src.simworld.world import WeekOutcome, World, advance, generate_world, initial_state  # noqa: E402
+from src.state.record import (  # noqa: E402
+    record_decision,
+    record_forecast,
+    record_outcome,
+    record_stock,
+)
+from src.state.store import StateStore  # noqa: E402
+
+# El job_type real que kern_policy(forced=True) ya pasa al orquestador -- ver
+# docs/superpowers/specs/2026-07-31-marcador-state-bridge-design.md, decision 9.
+STATE_BRIDGE_TOOL = "inventory_optimization"
 
 # (world, outcomes-hasta-ahora, semana) -> (Policy, aviso)
 Plan = Callable[[World, list[WeekOutcome], int], tuple[Policy, bool]]
@@ -70,6 +81,7 @@ def simulate(
     plan: Plan,
     *,
     replan_every: int = 4,
+    state_store: StateStore | None = None,
 ) -> tuple[list[WeekOutcome], list[bool]]:
     """Corre el horizonte sosteniendo una politica entre replanificaciones.
 
@@ -82,6 +94,20 @@ def simulate(
     solo en la semana en que efectivamente se replanifico: es cuando el
     corredor miro los datos y pudo decir algo. Las semanas intermedias
     heredan la politica pero no un aviso nuevo.
+
+    Cuando ``state_store`` no es ``None``, ademas escribe ``stock``,
+    ``outcomes`` y ``decisions`` cada semana, y ``forecast`` solo en las
+    semanas de replanificacion (ver ``docs/superpowers/specs/
+    2026-07-31-marcador-state-bridge-design.md``). ``state_store=None``
+    (default) no escribe nada -- el comportamiento existente no cambia.
+
+    Advertencia para quien lea un backtest corrido sobre este puente: un
+    MAPE alto en ``decisions`` (``order_qty`` vs. ``actual_qty``) no
+    significa que Kern decida mal -- una politica de punto de reorden pide
+    en bloque para cubrir varios periodos, no para igualar la demanda
+    semana a semana. El marcador honesto de si la decision fue buena sigue
+    siendo ``src/simworld/scorer.py`` (captura normalizada contra el
+    oraculo).
     """
     if replan_every < 1:
         raise ValueError(f"replan_every debe ser >= 1, no {replan_every}")
@@ -92,14 +118,73 @@ def simulate(
     policy = EMPTY_POLICY
 
     for week in range(world.weeks):
+        cycle_id = str(week)
         announced = False
-        if week % replan_every == 0:
+        replanned = week % replan_every == 0
+        if replanned:
             policy, announced = plan(world, outcomes, week)
         orders = apply_policy(world, state, policy)
         state, outcome = advance(world, state, orders)
         outcomes.append(outcome)
         flags.append(bool(announced))
+
+        if state_store is not None:
+            _record_week(world, outcome, orders, policy, state_store, cycle_id,
+                        replanned=replanned, outcomes_so_far=outcomes)
     return outcomes, flags
+
+
+def _record_week(
+    world: World,
+    outcome: WeekOutcome,
+    orders: dict[str, float],
+    policy: Policy,
+    state_store: StateStore,
+    cycle_id: str,
+    *,
+    replanned: bool,
+    outcomes_so_far: list[WeekOutcome],
+) -> None:
+    """Escribe los cuatro dominios de ``src.state`` para una semana, cuando
+    ``simulate`` recibe un ``state_store``. Separado de ``simulate`` para que
+    el bucle principal no cargue con el detalle de columnas de cada dominio."""
+    # outcomes.append(outcome) ya corrio en simulate() antes de esta llamada,
+    # asi que window tiene como minimo la semana actual -- nunca esta vacio.
+    window = outcomes_so_far[-NAIVE_LOOKBACK_WEEKS:]
+    record_stock(state_store, cycle_id, [
+        {
+            "product_id": sku.sku,
+            "on_hand": float(outcome.on_hand_end[i]),
+            "reorder_point": float(policy.reorder_point.get(sku.sku, 0.0)),
+            # promedio semanal / 7: el dominio espera una tasa DIARIA
+            # (scm_agent/monitors.py calcula "dias de cobertura" con esto).
+            "avg_daily_demand": float(sum(w.sold[i] for w in window) / len(window) / 7.0),
+        }
+        for i, sku in enumerate(world.skus)
+    ])
+    record_outcome(state_store, cycle_id, [
+        row
+        for i, sku in enumerate(world.skus)
+        for row in (
+            {"product_id": sku.sku, "tool": STATE_BRIDGE_TOOL, "metric": "actual_qty",
+             "value": float(outcome.demand[i]), "period": cycle_id},
+            {"product_id": sku.sku, "tool": STATE_BRIDGE_TOOL, "metric": "sold_qty",
+             "value": float(outcome.sold[i]), "period": cycle_id},
+        )
+    ])
+    record_decision(state_store, cycle_id, [
+        {
+            "product_id": sku.sku, "tool": STATE_BRIDGE_TOOL,
+            "decision": "reponer" if orders.get(sku.sku, 0.0) > 0 else "sin orden",
+            "period": cycle_id, "order_qty": float(orders.get(sku.sku, 0.0)),
+        }
+        for sku in world.skus
+    ])
+    if replanned and policy.forecast:
+        record_forecast(state_store, cycle_id, [
+            {"product_id": product_id, "period": cycle_id, "forecast_qty": qty}
+            for product_id, qty in policy.forecast.items()
+        ])
 
 
 def simulate_oracle(world: World) -> list[WeekOutcome]:
