@@ -12,6 +12,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from html import escape  # noqa: E402
+
 from webapp.how_it_works_page import _donut_svg  # noqa: E402
 
 
@@ -98,14 +100,14 @@ def test_stepper_renders_all_stages() -> None:
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
 
 
-def test_page_mentions_41_tools_and_33_sources_not_stale_numbers() -> None:
+def test_page_mentions_48_tools_and_33_sources_not_stale_numbers() -> None:
     html = render_how_it_works_html()
-    assert "41" in html
+    assert "48" in html
     assert "33" in html
     assert "25 curated" not in html  # the README's stale source count must never appear here
 
 
-def test_page_has_both_donut_lenses_totaling_41() -> None:
+def test_page_has_both_donut_lenses_totaling_48() -> None:
     html = render_how_it_works_html()
     assert 'id="donut-domain"' in html
     assert 'id="donut-scor"' in html
@@ -161,8 +163,23 @@ def test_both_donut_lenses_have_a_named_clickable_legend() -> None:
         assert f'data-donut="donut-domain" data-bucket="{escape(area)}"' in html
     for bucket in SCOR_BUCKET_ORDER:
         assert f'data-donut="donut-scor" data-bucket="{escape(bucket)}"' in html
-    # 9 domain entries + 7 SCOR entries = 16 legend rows total
-    assert html.count('class="legend-item"') == 16
+    # 10 domain entries + 7 SCOR entries = 17 legend rows total
+    assert html.count('class="legend-item"') == len(DOMAIN_AREA_ORDER) + len(SCOR_BUCKET_ORDER)
+    assert html.count('class="legend-item"') == 17
+
+
+def test_every_registered_tool_is_rendered_on_the_page() -> None:
+    """The rendered-HTML half of the drift guard.
+
+    tests/test_how_it_works_data.py asserts the TOOLS table matches the
+    registry; this asserts the table actually reaches the page, so a
+    rendering bug (a bucket the donut does not draw, a truncated loop)
+    cannot hide a tool that the data layer believes is listed."""
+    from webapp.how_it_works_data import TOOLS
+
+    html = render_how_it_works_html()
+    for tool in TOOLS:
+        assert escape(tool.label) in html, tool.key
 
 
 from fastapi.testclient import TestClient  # noqa: E402
