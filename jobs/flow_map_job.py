@@ -28,6 +28,7 @@ from src.guided import verify_guided
 MAX_UNMEASURABLE_SHARE = 0.40
 MAX_NEGATIVE_TRANSIT_SHARE = 0.01
 MIN_EDGES = 2
+MAX_DROPPED_SHARE = 0.10
 
 COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "fecha_salida": ("fechasalida", "shipdate", "departuredate", "fechadespacho", "dispatchdate"),
@@ -78,12 +79,17 @@ def prepare(data_path: str, params: dict | None = None) -> list[Movement]:
     arrived = pd.to_datetime(df[cols["fecha_llegada"]], errors="coerce")
     cost_col = cols.get("costo_unitario")
 
+    total_rows = len(df)
+    dropped_date = 0
+    dropped_quantity = 0
     movements: list[Movement] = []
     for i in range(len(df)):
         if pd.isna(departed.iloc[i]) or pd.isna(arrived.iloc[i]):
+            dropped_date += 1
             continue
         quantity = pd.to_numeric(df[cols["cantidad"]].iloc[i], errors="coerce")
         if pd.isna(quantity):
+            dropped_quantity += 1
             continue
         cost = 0.0
         if cost_col is not None:
@@ -100,6 +106,20 @@ def prepare(data_path: str, params: dict | None = None) -> list[Movement]:
         ))
     if not movements:
         raise ValueError("no usable movements: every row was missing a date or a quantity")
+
+    # Precedence: the all-dropped case above always fires first (it is the more
+    # specific failure -- nothing at all survived). This threshold check only
+    # runs once at least one movement did survive, so a file that is mostly
+    # garbage does not silently produce a confident report from the remainder.
+    dropped = dropped_date + dropped_quantity
+    dropped_share = dropped / total_rows if total_rows else 0.0
+    if dropped_share > MAX_DROPPED_SHARE:
+        raise ValueError(
+            f"{dropped} of {total_rows} row(s) ({dropped_share * 100:.0f}%) were dropped "
+            f"(limit {MAX_DROPPED_SHARE * 100:.0f}%): {dropped_date} row(s) had a missing or "
+            f"unparseable fecha_salida/fecha_llegada, {dropped_quantity} row(s) had a missing or "
+            "unparseable cantidad. Fix those columns in the source file and re-run."
+        )
     return movements
 
 
@@ -139,6 +159,9 @@ def verify(report: FlowReport) -> list[str]:
         )
     if len(report.edges) < MIN_EDGES:
         issues.append(f"the graph has fewer than two lanes ({len(report.edges)})")
+    # Invariant guard, not a reachable-in-practice condition: src.flow_map._buffers
+    # only ever ranks MEASURED edges, so today these two sets are always disjoint.
+    # This can only fire if that invariant is ever broken upstream in the engine.
     ranked = {(b.origin, b.destination) for b in report.buffers[:3]}
     unmeasurable = {
         (e.origin, e.destination) for e in report.edges if e.status == UNMEASURABLE

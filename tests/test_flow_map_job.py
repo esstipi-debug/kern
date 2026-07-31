@@ -3,7 +3,8 @@ import pandas as pd
 import pytest
 
 from jobs import flow_map_job
-from src.flow_map import UNMEASURABLE
+from src.flow_map import UNMEASURABLE, EdgeBuffer, EdgeStat, FlowGraph, FlowReport
+from src.guided import ExecutionOption, as_options
 
 
 def _frame(rows):
@@ -76,3 +77,73 @@ def test_healthy_data_passes_the_gate(tmp_path):
     report = flow_map_job.run(flow_map_job.prepare(str(_healthy_csv(tmp_path))))
     assert flow_map_job.verify(report) == []
     assert report.edges[0].status != UNMEASURABLE
+
+
+def test_gate_invariant_fires_if_a_ranked_option_ever_points_at_an_unmeasurable_edge():
+    """_buffers only ever ranks MEASURED edges (src/flow_map.py), so this hand-built
+    report violates that invariant on purpose: it is the only way to exercise this
+    defensive check, which cannot occur via analyze() as the engine is written today.
+    """
+    edge = EdgeStat(
+        origin="SUP-1", destination="DC-1", n=1, volume=10.0, status=UNMEASURABLE,
+    )
+    buffer = EdgeBuffer(origin="SUP-1", destination="DC-1", buffer_units=5.0, buffer_value=25.0)
+    outcome = as_options(
+        "one option",
+        [ExecutionOption(label="Stabilise SUP-1 -> DC-1", summary="x", score=25.0, action="a")],
+    )
+    report = FlowReport(
+        graph=FlowGraph(nodes=("SUP-1", "DC-1")),
+        edges=(edge,),
+        buffers=(buffer,),
+        n_movements=1,
+        n_negative_transit=0,
+        unmeasurable_volume_share=1.0,
+        span_days=10.0,
+        outcome=outcome,
+        summary="hand-built report to exercise the invariant guard",
+    )
+    issues = flow_map_job.verify(report)
+    assert any("a ranked option leans on an unmeasurable lane" in i for i in issues)
+
+
+def _many_rows(n, *, bad_date=0, bad_qty=0):
+    """n rows across two well-observed lanes, with the first bad_date/bad_qty rows
+    (in that order) corrupted so prepare() must drop them.
+    """
+    rows = _lane("SUP-1", "DC-1", 2, n // 2) + _lane("DC-1", "STORE-1", 4, n - n // 2, start_day=2)
+    for row in rows[:bad_date]:
+        row["ship_date"] = "not-a-date"
+    for row in rows[bad_date:bad_date + bad_qty]:
+        row["quantity"] = "not-a-number"
+    return rows
+
+
+def test_prepare_tolerates_dropped_rows_just_under_the_threshold(tmp_path):
+    rows = _many_rows(20, bad_date=1, bad_qty=1)  # 2 of 20 = 10%, not > MAX_DROPPED_SHARE
+    path = tmp_path / "casi_al_limite.csv"
+    _frame(rows).to_csv(path, index=False)
+    movements = flow_map_job.prepare(str(path))
+    assert len(movements) == 18
+
+
+def test_prepare_refuses_when_too_many_rows_are_dropped(tmp_path):
+    rows = _many_rows(20, bad_date=2, bad_qty=1)  # 3 of 20 = 15% > MAX_DROPPED_SHARE
+    path = tmp_path / "muy_sucio.csv"
+    _frame(rows).to_csv(path, index=False)
+    with pytest.raises(ValueError, match=r"3 of 20 row\(s\)"):
+        flow_map_job.prepare(str(path))
+
+
+def test_prepare_all_dropped_raises_no_usable_movements_not_the_threshold_message(tmp_path):
+    """Precedence: when every row is unusable, the 'no usable movements' error fires
+    -- not the dropped-share threshold message, even though the share is also over
+    the limit in that case.
+    """
+    rows = _lane("SUP-1", "DC-1", 2, 8)
+    for row in rows:
+        row["quantity"] = "not-a-number"
+    path = tmp_path / "todo_sucio.csv"
+    _frame(rows).to_csv(path, index=False)
+    with pytest.raises(ValueError, match="no usable movements"):
+        flow_map_job.prepare(str(path))
