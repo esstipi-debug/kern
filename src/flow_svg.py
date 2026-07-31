@@ -96,7 +96,10 @@ def render_sankey(report: FlowReport, *, client: str = "Client", width: int = 96
         return "".join(parts)
 
     max_volume = max((e.volume for e in report.edges), default=0.0)
-    for edge in report.edges:
+    # measure_edges (src/flow_map.py) already emits edges sorted by (origin,
+    # destination), but sort explicitly here too so this module's determinism is
+    # provable on its own, not borrowed from an invariant that lives elsewhere.
+    for edge in sorted(report.edges, key=lambda e: (e.origin, e.destination)):
         if edge.origin not in placed or edge.destination not in placed:
             continue
         x1, y1, h1 = placed[edge.origin]

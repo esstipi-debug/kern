@@ -155,8 +155,15 @@ def test_prepare_all_dropped_raises_no_usable_movements_not_the_threshold_messag
 
 
 def test_sankey_is_deterministic(tmp_path):
-    report = flow_map_job.run(flow_map_job.prepare(str(_healthy_csv(tmp_path))))
-    assert render_sankey(report) == render_sankey(report)
+    """Same source CSV, run through prepare/run twice independently, must render to
+    byte-identical SVG -- not just the same FlowReport object rendered twice (which
+    would only prove render_sankey has no internal randomness, not that the pipeline
+    itself is deterministic).
+    """
+    csv_path = str(_healthy_csv(tmp_path))
+    first = flow_map_job.run(flow_map_job.prepare(csv_path))
+    second = flow_map_job.run(flow_map_job.prepare(csv_path))
+    assert render_sankey(first) == render_sankey(second)
 
 
 def test_sankey_matches_the_golden(tmp_path):
