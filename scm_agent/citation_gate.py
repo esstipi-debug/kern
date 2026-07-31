@@ -219,6 +219,20 @@ EXCLUDED_CONCEPTS: dict[str, tuple[str, ...]] = {
     # PR #164 false-friend class. The settlement anchors' closure (386 nodes)
     # contains neither; no exclusions needed there.
     "hat_tension": ("reverse_auction", "procurement_auction"),
+    # cross_docking is a flow-through warehousing technique (goods move from
+    # inbound to outbound without being stored) - it has nothing to do with the
+    # cost of coordination between business areas. It rides the "cross" lexical
+    # overlap with this tool's own keywords ("impacto cruzado", "cross-area
+    # impact") and clears MAX_HOPS via a shared book hub even though it is NOT
+    # reachable from the cross_functional_integration anchor at all. Measured
+    # against the committed books graph (2026-07-31):
+    #   cross_docking -> safety_stock              = 2 hops
+    #   cross_docking -> cycle_service_level        = 2 hops
+    #   cross_docking -> service_level              = unreachable
+    #   cross_docking -> cross_functional_integration = unreachable
+    # Same false-friend class as returns/reverse_auction and
+    # excess_obsolete/excess_capacity_and_inventory above.
+    "cross_impact": ("cross_docking",),
 }
 
 
