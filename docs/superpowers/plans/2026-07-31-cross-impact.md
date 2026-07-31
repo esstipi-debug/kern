@@ -1696,9 +1696,11 @@ git commit -m "feat(cross-impact-job): gate de QA que veta la combinacion deshon
 ### Task 7: Registrar el tool y anclar las citas
 
 **Files:**
-- Modify: `scm_agent/tools.py` (nueva función cerca de la línea 1098, `reg.register(...)` cerca de la 2601)
+- Modify: `scm_agent/tools.py` (nueva función cerca de la línea 1098; `reg.register(cross_impact_tool())` dentro de `build_default_registry()`, justo después de `reg.register(hat_settlement_tool())` y antes del `return reg`)
 - Modify: `scm_agent/citation_gate.py` (`TOOL_CONCEPTS`, línea 54)
 - Test: `tests/test_cross_impact_tool.py` (crear)
+- **Modify: `tests/test_price_watch_tool.py:165`** — asserta `len(reg.list()) == 46`. Pasa a **47**. No relajes la aserción a `>=`: ese número exacto es lo que hace que agregar un tool sea un diff revisable.
+- **Modify: `tests/test_capability_smoke.py`** — `EXPECTED_OFFLINE_BUCKETS` (línea 25) exige una fila por tool registrado (`assert set(EXPECTED_OFFLINE_BUCKETS) == registered`, línea 109), así que sin fila el test falla a propósito. Agregar `"cross_impact": "GATED",` junto a `"hat_tension"` y `"hat_settlement"`, que son los casos análogos: `requires_data=True` y sin fixture en el harness, así que no ejecutan su propio job. También actualizar el comentario de la línea 17 de "46 registered tools" a 47.
 
 **Interfaces:**
 - Consumes: todo lo de las tareas 1-6.
@@ -1717,7 +1719,7 @@ import pytest
 from scm_agent.citation_gate import TOOL_CONCEPTS
 from scm_agent.knowledge import KnowledgeBase
 from scm_agent.orchestrator import Orchestrator
-from scm_agent.tools import build_registry
+from scm_agent.tools import build_default_registry
 
 
 @pytest.fixture
@@ -1744,20 +1746,20 @@ def _params(**over):
 
 
 def test_tool_is_registered():
-    assert build_registry().get("cross_impact").key == "cross_impact"
+    assert build_default_registry().get("cross_impact").key == "cross_impact"
 
 
 def test_tool_declares_the_threshold_as_a_required_client_param():
-    tool = build_registry().get("cross_impact")
+    tool = build_default_registry().get("cross_impact")
     assert tool.required_client_params == ("objection_thresholds",)
 
 
 def test_tool_exposes_ranked_options():
-    assert build_registry().get("cross_impact").options is not None
+    assert build_default_registry().get("cross_impact").options is not None
 
 
 def test_brief_routes_to_cross_impact():
-    reg = build_registry()
+    reg = build_default_registry()
     top, _ = reg.match("que impacto tiene esta decision en las otras areas")[0]
     assert top.key == "cross_impact"
 
@@ -1923,9 +1925,9 @@ Esperado: todo verde, incluido `test_no_anchored_tool_regressed_to_zero`. **Si a
 ```bash
 PYTHONPATH=. python -c "
 from scm_agent.knowledge import KnowledgeBase
-from scm_agent.tools import build_registry
+from scm_agent.tools import build_default_registry
 from scm_agent import citation_gate
-tool = build_registry().get('cross_impact')
+tool = build_default_registry().get('cross_impact')
 kb = KnowledgeBase()
 cands = kb.ground_citations_detailed(tool.intent_keywords, tool.title, limit=16)
 for c in cands:
@@ -1948,7 +1950,7 @@ Esperado: todo verde.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add scm_agent/tools.py scm_agent/citation_gate.py tests/test_cross_impact_tool.py
+git add scm_agent/tools.py scm_agent/citation_gate.py tests/test_cross_impact_tool.py tests/test_price_watch_tool.py tests/test_capability_smoke.py
 git commit -m "feat(cross-impact): registrar el tool #47 y anclar sus citas medidas"
 ```
 
