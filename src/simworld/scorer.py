@@ -196,3 +196,65 @@ def capture(*, floor_cost: float, kern_cost: float, oracle_cost: float) -> float
             "Hay fuga de informacion del mundo hacia la lente."
         )
     return float(value)
+
+
+@dataclass(frozen=True)
+class Degradation:
+    """Cuanto le costo la suciedad a Kern, y cuanto de eso aviso.
+
+    La atribucion es por periodo (semana a semana), nunca global: comparar
+    solo los totales de dos corridas conflaria "esta semana empeoro por la
+    suciedad que Kern leyo" con "las dos corridas simplemente divergieron con
+    el tiempo por timing de ordenes distinto" -- una afirmacion mucho mas
+    debil. Misma semilla, mismo mundo, asi que la semana ``t`` del nivel 0 y
+    la semana ``t`` de cualquier otro nivel son directamente comparables.
+    """
+
+    level: int
+    drop: float              # exceso de costo total contra el nivel 0 (puede ser negativo)
+    announced: float         # la parte del exceso en semanas donde Kern aviso (puede ser negativa)
+    silent: float            # drop - announced. El numero que importa (puede ser negativo).
+    weeks_announced: int
+
+
+def degradation(
+    clean_weekly: np.ndarray,
+    dirty_weekly: np.ndarray,
+    announced_weeks: list[bool],
+    *,
+    level: int,
+) -> Degradation:
+    """Atribuye el exceso de costo semana a semana, no en bloque.
+
+    El exceso de una semana (``dirty - clean``) puede ser **negativo** -- la
+    suciedad puede abaratar una semana por accidente (una fila descartada que
+    por casualidad reduce una sobre-orden). No se recorta a cero en ningun
+    punto: ni por semana, ni el total, ni la parte anunciada, ni la parte
+    silenciosa -- todo se suma con su signo. Si el total sale negativo, o si
+    ``silent`` sale negativo mientras ``announced`` es positivo, el reporte lo
+    dice en vez de esconderlo detras de un ``max(0, ...)`` o un ``abs(...)``.
+
+    "Anunciada" se ata a la semana ``t`` usando el flag de ``announced_weeks``
+    en la posicion ``t`` -- la misma semana cuyo exceso se esta atribuyendo,
+    nunca la semana anterior ni la siguiente.
+    """
+    clean = np.asarray(clean_weekly, dtype=float)
+    dirty = np.asarray(dirty_weekly, dtype=float)
+    if clean.shape != dirty.shape:
+        raise ValueError(f"largo distinto: limpio {clean.shape} vs sucio {dirty.shape}")
+    if len(announced_weeks) != len(clean):
+        raise ValueError(
+            f"largo distinto: {len(announced_weeks)} avisos para {len(clean)} semanas"
+        )
+
+    excess = dirty - clean
+    flags = np.asarray(announced_weeks, dtype=bool)
+    drop = float(excess.sum())
+    announced = float(excess[flags].sum())
+    return Degradation(
+        level=level,
+        drop=drop,
+        announced=announced,
+        silent=drop - announced,
+        weeks_announced=int(flags.sum()),
+    )

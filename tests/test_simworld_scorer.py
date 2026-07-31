@@ -25,7 +25,16 @@ import numpy as np
 import pytest
 
 from src.simworld.runners import apply_policy, naive_policy, oracle_orders
-from src.simworld.scorer import Kpis, _anchoring, _demand_chasing, capture, score_run, weekly_cost
+from src.simworld.scorer import (
+    Degradation,
+    Kpis,
+    _anchoring,
+    _demand_chasing,
+    capture,
+    degradation,
+    score_run,
+    weekly_cost,
+)
 from src.simworld.world import Sku, Supplier, WeekOutcome, World, advance, generate_world, initial_state
 
 
@@ -578,3 +587,226 @@ def test_capture_with_an_inverted_span_also_raises():
     """
     with pytest.raises(ValueError, match="span"):
         capture(floor_cost=40.0, kern_cost=30.0, oracle_cost=50.0)
+
+
+# ---------------------------------------------------------------------------
+# Task 10: degradation -- per-period attribution of excess cost into the part
+# Kern announced and the part it ate in silence.
+#
+# The property this task exists to protect: attribution is PER-WEEK, using
+# the SAME-SEED clean (level 0) vs dirty (level N) weekly cost arrays, never
+# a global total-vs-total comparison. The excess of a single week can be
+# NEGATIVE (dirt occasionally makes a week cheaper by accident) and must be
+# summed with its sign, never clamped to zero -- clamping would silently
+# inflate the reported "silent" drop, exactly the class of bug this project
+# has a documented history of catching (PR #193's safety-stock NaN-to-zero
+# collapse).
+#
+# Every test below was confirmed by replay: the implementation was mutated
+# the specific way the docstring names, the test was re-run and observed to
+# fail, then the mutation was reverted and the test re-confirmed passing.
+# ---------------------------------------------------------------------------
+
+def test_no_extra_cost_means_no_drop():
+    """Identical clean/dirty weekly costs -> zero drop, zero silence, no
+    matter what the announced flags say. This is the simplest possible
+    sanity fixture (from the brief) and does not by itself discriminate much,
+    but it pins the zero-excess boundary explicitly rather than assuming it
+    falls out of the other tests.
+    """
+    clean = np.array([10.0, 10.0, 10.0])
+    d = degradation(clean, clean.copy(), [False, False, False], level=2)
+    assert d.drop == pytest.approx(0.0)
+    assert d.silent == pytest.approx(0.0)
+    assert d.announced == pytest.approx(0.0)
+    assert d.weeks_announced == 0
+    assert d.level == 2
+
+
+def test_all_the_extra_cost_in_announced_weeks_leaves_zero_silence():
+    """All the excess cost falls in the one week Kern flagged -> announced
+    equals the full drop and silent is exactly zero. Discriminates against a
+    mutant that always attributes 100% of the excess to ``silent`` regardless
+    of the flags (e.g. a stub that ignores ``announced_weeks`` entirely):
+    confirmed by replay, forcing ``announced = 0.0`` unconditionally makes
+    ``d.announced == pytest.approx(20.0)`` fail (got 0.0) and
+    ``d.silent == pytest.approx(0.0)`` fail (got 20.0); reverted after.
+    """
+    clean = np.array([10.0, 10.0, 10.0])
+    dirty = np.array([10.0, 30.0, 10.0])
+    d = degradation(clean, dirty, [False, True, False], level=2)
+    assert d.drop == pytest.approx(20.0)
+    assert d.announced == pytest.approx(20.0)
+    assert d.silent == pytest.approx(0.0)
+    assert d.weeks_announced == 1
+
+
+def test_extra_cost_in_a_silent_week_is_counted_as_silence():
+    """Mirror of the test above with the flag turned off: the same excess
+    cost, unflagged, must land entirely in ``silent``. Discriminates against
+    a mutant that always attributes 100% of the excess to ``announced``
+    regardless of the flags (e.g. treating every week as announced):
+    confirmed by replay, forcing ``announced = drop`` unconditionally makes
+    ``d.silent == pytest.approx(20.0)`` fail (got 0.0) and
+    ``d.announced == pytest.approx(0.0)`` fail (got 20.0); reverted after.
+    """
+    clean = np.array([10.0, 10.0, 10.0])
+    dirty = np.array([10.0, 30.0, 10.0])
+    d = degradation(clean, dirty, [False, False, False], level=3)
+    assert d.silent == pytest.approx(20.0)
+    assert d.announced == pytest.approx(0.0)
+    assert d.weeks_announced == 0
+
+
+def test_a_negative_week_is_summed_with_its_sign_not_clipped():
+    """Two weeks, +20 and -8: the correct signed sum is 12, never 28 (which
+    an ``abs()``-based sum would give) and never 20 (which a per-week
+    ``max(0, excess)`` clamp would give, discarding the -8 entirely).
+    Discriminates against BOTH of those wrong implementations at once.
+    Confirmed by replay: mutating ``drop = float(excess.sum())`` to
+    ``drop = float(np.abs(excess).sum())`` made this fail with 28.0 != 12.0;
+    mutating it to ``drop = float(np.maximum(excess, 0.0).sum())`` made it
+    fail with 20.0 != 12.0. Both reverted after.
+    """
+    clean = np.array([10.0, 10.0])
+    dirty = np.array([30.0, 2.0])   # +20 and -8
+    d = degradation(clean, dirty, [False, False], level=3)
+    assert d.drop == pytest.approx(12.0)
+
+
+def test_a_negative_total_drop_is_reported_as_negative_not_zero():
+    """Not in the brief. Dirt can make EVERY week cheaper on net, so the
+    total ``drop`` itself can be negative -- and must be reported as such,
+    not floored at zero. This is a distinct case from the mixed-sign test
+    above (there the total was still positive); here the total itself is
+    negative. Discriminates against a mutant that clamps the final ``drop``
+    with ``max(0.0, ...)`` at the end (as opposed to per-week): confirmed by
+    replay, wrapping the return's ``drop=drop`` in ``max(0.0, drop)`` made
+    ``d.drop == pytest.approx(-8.0)`` fail (got 0.0); reverted after.
+    """
+    clean = np.array([10.0, 10.0])
+    dirty = np.array([5.0, 7.0])   # -5 and -3
+    d = degradation(clean, dirty, [False, False], level=1)
+    assert d.drop == pytest.approx(-8.0)
+
+
+def test_silent_can_be_negative_when_unannounced_weeks_are_net_cheaper():
+    """Not in the brief. Kern announces during the one costly week (+20) but
+    a DIFFERENT, unflagged week happens to get cheaper (-10) by accident.
+    ``silent`` must reflect that net-negative contribution from the
+    unannounced weeks (-10), not be floored at zero. Discriminates against a
+    mutant that clamps ``silent`` with ``max(0.0, drop - announced)``:
+    confirmed by replay, that mutant made ``d.silent == pytest.approx(-10.0)``
+    fail (got 0.0) while ``d.drop``/``d.announced`` stayed correct; reverted
+    after. Also discriminates against a mutant using
+    ``silent = abs(drop - announced)``: confirmed by replay, that mutant
+    produced ``10.0`` instead of ``-10.0``; reverted after.
+    """
+    clean = np.array([100.0, 100.0])
+    dirty = np.array([120.0, 90.0])   # +20 (announced), -10 (silent)
+    d = degradation(clean, dirty, [True, False], level=2)
+    assert d.drop == pytest.approx(10.0)
+    assert d.announced == pytest.approx(20.0)
+    assert d.silent == pytest.approx(-10.0)
+
+
+def test_announced_sum_uses_signed_excess_even_when_an_announced_week_is_cheaper():
+    """Not in the brief. Both weeks are flagged announced, but one of them
+    is a net-negative (cheaper) week. ``announced`` must be the SIGNED sum
+    (+20 + -15 = 5), not the sum of absolute values (35). Discriminates
+    against a mutant using ``announced = float(np.abs(excess)[flags].sum())``:
+    confirmed by replay, that mutant produced ``35.0`` instead of ``5.0``
+    for this exact fixture; reverted after.
+    """
+    clean = np.array([50.0, 50.0])
+    dirty = np.array([70.0, 35.0])   # +20 and -15, both announced
+    d = degradation(clean, dirty, [True, True], level=1)
+    assert d.drop == pytest.approx(5.0)
+    assert d.announced == pytest.approx(5.0)
+    assert d.silent == pytest.approx(0.0)
+
+
+def test_per_week_attribution_on_a_five_week_mixed_sign_fixture_pins_exact_split():
+    """The test this whole task's design most needs: a synthetic, hand-
+    computable per-week cost sequence where the flags do NOT follow a
+    trivial pattern (not all-True, not all-False, not one-flag-in-three),
+    specifically so that an off-by-one error reading the WRONG week's
+    ``announced`` flag against a given week's excess produces a DIFFERENT
+    number than the correct one -- not a coincidentally-matching one.
+
+    excess = dirty - clean = [40, -5, 20, -2, 10]
+    flags  =                 [T,   F,  T,  F,  T]   (weeks 0, 2, 4 announced)
+
+    Hand computation:
+      drop            = 40 - 5 + 20 - 2 + 10 = 63
+      announced (0,2,4) = 40 + 20 + 10       = 70
+      silent (1,3)      = -5 + -2            = -7
+      drop - announced  = 63 - 70            = -7  (matches silent, as it must
+                                                       by definition -- this is
+                                                       a consistency check, not
+                                                       the discriminating one)
+
+    Discriminates against an off-by-one that reads ``announced_weeks``
+    shifted by one position relative to ``excess`` (e.g. ``np.roll(flags,
+    -1)``, attributing week t's excess using week t+1's flag, wrapping
+    around): confirmed by replay, that mutant computes ``announced`` over
+    indices {1, 3, 4} instead of {0, 2, 4}, giving
+    ``-5 + -2 + 10 == 3.0`` instead of the correct ``70.0`` -- a very
+    different number, not a coincidental near-match. Reverted after.
+    """
+    clean = np.array([10.0, 10.0, 10.0, 10.0, 10.0])
+    dirty = np.array([50.0, 5.0, 30.0, 8.0, 20.0])
+    flags = [True, False, True, False, True]
+    d = degradation(clean, dirty, flags, level=3)
+    assert d.drop == pytest.approx(63.0)
+    assert d.announced == pytest.approx(70.0)
+    assert d.silent == pytest.approx(-7.0)
+    assert d.weeks_announced == 3
+
+
+def test_degradation_is_frozen():
+    """Per the global constraint, ``Degradation`` must be ``frozen=True``
+    matching the rest of this module's dataclasses (``Kpis``). Discriminates
+    against a mutant that drops ``frozen=True`` from the ``@dataclass``
+    decorator: confirmed by replay, that mutant lets the attribute
+    assignment below succeed silently instead of raising
+    ``dataclasses.FrozenInstanceError``; reverted after.
+    """
+    clean = np.array([10.0, 10.0])
+    d = degradation(clean, clean.copy(), [False, False], level=0)
+    assert isinstance(d, Degradation)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        d.drop = 999.0
+
+
+def test_mismatched_lengths_raise():
+    """``clean_weekly`` and ``dirty_weekly`` of different length must raise
+    before any per-week arithmetic happens. This is NOT just a defensive
+    nicety: numpy's broadcasting rules silently accept a length-1 array
+    against a length-2 one (``(1,)`` broadcasts against ``(2,)``), so without
+    an explicit shape check, ``dirty - clean`` does not raise at all -- it
+    silently produces a wrong-but-finite answer. Confirmed by replay:
+    removing the ``clean.shape != dirty.shape`` guard made this exact call
+    return ``Degradation(level=1, drop=-1.0, announced=0.0, silent=-1.0,
+    weeks_announced=0)`` instead of raising (``DID NOT RAISE ValueError``);
+    reverted after.
+    """
+    with pytest.raises(ValueError, match="largo"):
+        degradation(np.array([1.0, 2.0]), np.array([1.0]), [False, False], level=1)
+
+
+def test_mismatched_announced_length_raises():
+    """``announced_weeks`` must have exactly one flag per week, and must
+    raise the module's own explicit, documented ``ValueError`` (matching
+    "largo") rather than whatever numpy happens to do internally. Confirmed
+    by replay: removing this length-check guard does NOT silently truncate
+    as might be assumed -- numpy's boolean indexing raises its own
+    ``IndexError`` ("boolean index did not match indexed array along axis 0")
+    instead. That is still a bug relative to this function's contract: an
+    ``IndexError`` with no "largo" in its message does not satisfy
+    ``pytest.raises(ValueError, match="largo")``, so this exact test fails
+    (with the ``IndexError`` propagating instead) when the guard is removed;
+    reverted after.
+    """
+    with pytest.raises(ValueError, match="largo"):
+        degradation(np.array([1.0, 2.0]), np.array([1.0, 2.0]), [False], level=1)

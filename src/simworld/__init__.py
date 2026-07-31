@@ -11,7 +11,7 @@ from src.simworld.runners import (  # noqa: E402
     naive_policy,
     oracle_orders,
 )
-from src.simworld.scorer import Kpis, capture, score_run, weekly_cost  # noqa: E402
+from src.simworld.scorer import Degradation, Kpis, capture, degradation, score_run, weekly_cost  # noqa: E402
 from src.simworld.world import (
     Sku,
     Supplier,
@@ -29,4 +29,5 @@ __all__ = [
     "apply_dirt", "export_history", "history_frame",
     "Policy", "apply_policy", "kern_policy", "naive_policy", "oracle_orders",
     "Kpis", "capture", "score_run", "weekly_cost",
+    "Degradation", "degradation",
 ]
