@@ -13,6 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+from scipy.optimize import Bounds, LinearConstraint, milp
+from scipy.sparse import lil_matrix
 
 from src.simworld.world import WeekOutcome, World, WorldState
 
@@ -70,35 +72,170 @@ def apply_policy(world: World, state: WorldState, policy: Policy) -> dict[str, f
     return orders
 
 
-def oracle_orders(world: World, state: WorldState) -> dict[str, float]:
-    """El techo: pide exactamente lo que se consumira durante su lead time real.
+WEEKS_PER_YEAR = 52.0
 
-    Una orden puesta en la semana ``t`` llega en ``t + lead`` (ver
-    ``world.advance``), asi que la ventana que debe cubrir es ``[t, t+lead]``
-    inclusive: la propia semana de llegada es la primera que puede quebrar. Solo
-    cuenta como cobertura ya en camino el inventario en transito que llegara a
-    tiempo para cerrar esa ventana (``arrival <= t + lead``); una orden anterior
-    que llega despues no protege este pedido y no debe restarse de la necesidad.
 
-    Sin stock de seguridad, porque no hay incertidumbre que cubrir. Miope por
-    diseno y aun asi inalcanzable. **Nunca ve la lente.**
+def oracle_orders(
+    world: World,
+    state: WorldState,
+    *,
+    order_cost: float = 75.0,
+    holding_rate: float = 0.25,
+    shortage_penalty_rate: float = 1.0,
+) -> dict[str, float]:
+    """El techo: el plan de compra exacto de costo minimo, por SKU, sobre el
+    horizonte restante -- dado conocimiento perfecto de la demanda futura y de
+    cada lead time real.
+
+    No es una heuristica de ventana fija: es un lot-sizing de Wagner-Whitin con
+    costo fijo de ordenar y opcion de venta perdida, resuelto como un MILP
+    pequeno (scipy/HiGHS). Cuando dejar una semana sin cubrir cuesta menos que
+    evitarla (el margen perdido es menor que comprar + mantener + el costo fijo
+    de ordenar), el solver lo decide con ese calculo -- no hay una regla de
+    ventana que lo intente aproximar y falle en los bordes.
+
+    Optimiza la MISMA funcion de costo que ``src/simworld/scorer.py`` usa para
+    juzgar a cualquier corredor (procurement + holding + shortage + costo fijo
+    de ordenar), asi el techo y la regla que lo mide nunca discrepan.
+
+    Costoso por llamada (un MILP por SKU, ~50-60ms via HiGHS) pero exacto
+    siempre. Si un futuro llamador necesita invocarlo semana a semana sobre un
+    horizonte largo y muchos SKUs, debe resolver el plan completo una vez por
+    SKU en lugar de re-resolver cada semana -- ver la Task 11.
+
+    **Nunca ve la lente.**
     """
-    t = state.week
-    if t >= world.weeks:
+    t0 = state.week
+    if t0 >= world.weeks:
         return {}
 
     orders: dict[str, float] = {}
     for i, sku in enumerate(world.skus):
-        lead = int(world.real_lead_weeks[i, t])
-        window_end = t + lead  # inclusive: la semana en que esta orden llegaria
-        end = min(window_end + 1, world.weeks)
-        need = float(world.demand[i, t:end].sum())
-        pipeline = sum(
-            qty for sku_idx, arrival, qty in state.in_transit
-            if sku_idx == i and arrival <= window_end
+        in_transit_i = [
+            (arrival, qty) for sku_idx, arrival, qty in state.in_transit if sku_idx == i
+        ]
+        qty = _oracle_order_for_sku(
+            demand_full=world.demand[i],
+            real_lead_full=world.real_lead_weeks[i],
+            unit_cost=sku.unit_cost,
+            price=sku.price,
+            on_hand0=float(state.on_hand[i]),
+            in_transit=in_transit_i,
+            t0=t0,
+            horizon=world.weeks,
+            order_cost=order_cost,
+            holding_rate=holding_rate,
+            shortage_penalty_rate=shortage_penalty_rate,
         )
-        have = float(state.on_hand[i]) + float(pipeline)
-        qty = need - have
         if qty > 0:
             orders[sku.sku] = qty
     return orders
+
+
+def _oracle_order_for_sku(
+    *,
+    demand_full: np.ndarray,
+    real_lead_full: np.ndarray,
+    unit_cost: float,
+    price: float,
+    on_hand0: float,
+    in_transit: list[tuple[int, float]],
+    t0: int,
+    horizon: int,
+    order_cost: float,
+    holding_rate: float,
+    shortage_penalty_rate: float,
+) -> float:
+    """Resuelve el MILP de lot-sizing para una SKU sobre ``[t0, horizon)`` y
+    devuelve solo la cantidad a pedir en la semana ``t0``.
+
+    Variables de decision, para cada semana ``t`` en el horizonte restante:
+    ``q_t`` (cuanto pedir, continua), ``y_t`` (si se pidio algo, binaria -- liga
+    el costo fijo de ordenar), ``I_t`` (inventario al cierre de la semana,
+    continua) y ``s_t`` (unidades vendidas, continua, acotada por la demanda).
+    Solo se crea una variable de pedido para semanas cuya llegada
+    (``t + lead_real[t]``) cae dentro del horizonte -- pedir para que llegue
+    despues del final de la corrida no puede reducir el costo, asi que no hace
+    falta una restriccion explicita para excluirlo.
+
+    Balance de inventario: ``I_t = I_{t-1} + recibido_t - s_t``, con
+    ``I_{-1} = on_hand0`` y ``recibido_t`` la suma de lo ya comprometido en
+    ``in_transit`` mas cualquier ``q`` cuya llegada caiga en ``t``.
+    """
+    n = horizon - t0
+    if n <= 0:
+        return 0.0
+
+    margin = price - unit_cost
+    weekly_holding = unit_cost * holding_rate / WEEKS_PER_YEAR
+    demand = np.asarray(demand_full[t0:horizon], dtype=float)
+    lead = np.asarray(real_lead_full[t0:horizon], dtype=int)
+    arrival = np.arange(t0, horizon) + lead
+
+    orderable = np.nonzero(arrival < horizon)[0]  # local week indices
+    m = len(orderable)
+    if m == 0:
+        return 0.0
+
+    committed_receipt = np.zeros(n, dtype=float)
+    for arrival_week, qty in in_transit:
+        if t0 <= arrival_week < horizon:
+            committed_receipt[arrival_week - t0] += qty
+
+    n_q = n_y = m
+    n_I = n_s = n
+    n_vars = n_q + n_y + n_I + n_s
+    off_y, off_I, off_s = n_q, n_q + n_y, n_q + n_y + n_I
+
+    total_remaining_demand = float(demand.sum())
+    big_m = max(total_remaining_demand, 1.0)
+
+    c = np.zeros(n_vars)
+    c[:n_q] = unit_cost
+    c[off_y:off_y + n_y] = order_cost
+    c[off_I:off_I + n_I] = weekly_holding
+    c[off_s:off_s + n_s] = -margin * shortage_penalty_rate
+
+    arrival_local = arrival[orderable] - t0
+    A_eq = lil_matrix((n, n_vars))
+    b_eq = np.zeros(n)
+    for pos in range(m):
+        A_eq[arrival_local[pos], pos] -= 1.0
+    for t in range(n):
+        A_eq[t, off_I + t] = 1.0
+        A_eq[t, off_s + t] = 1.0
+        if t == 0:
+            b_eq[t] = on_hand0 + committed_receipt[t]
+        else:
+            A_eq[t, off_I + t - 1] = -1.0
+            b_eq[t] = committed_receipt[t]
+
+    A_ub = lil_matrix((m, n_vars))
+    for pos in range(m):
+        A_ub[pos, pos] = 1.0
+        A_ub[pos, off_y + pos] = -big_m
+    b_ub = np.zeros(m)
+
+    lb = np.zeros(n_vars)
+    ub = np.full(n_vars, np.inf)
+    ub[off_y:off_y + n_y] = 1.0
+    ub[off_s:off_s + n_s] = demand
+
+    integrality = np.zeros(n_vars)
+    integrality[off_y:off_y + n_y] = 1
+
+    result = milp(
+        c,
+        constraints=[
+            LinearConstraint(A_eq.tocsr(), b_eq, b_eq),
+            LinearConstraint(A_ub.tocsr(), -np.inf, b_ub),
+        ],
+        integrality=integrality,
+        bounds=Bounds(lb, ub),
+    )
+    if not result.success:
+        raise RuntimeError(f"el MILP del oraculo no convergio: {result.message}")
+
+    if orderable[0] == 0:
+        return max(0.0, round(float(result.x[0]), 6))
+    return 0.0

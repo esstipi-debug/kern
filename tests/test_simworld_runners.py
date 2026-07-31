@@ -16,7 +16,7 @@ import pytest
 
 from scm_agent.orchestrator import Orchestrator
 from scm_agent.types import STATUS_NEEDS_DATA, STATUS_OK, JobResult
-from src.simworld.runners import Policy, apply_policy, naive_policy, oracle_orders
+from src.simworld.runners import Policy, _oracle_order_for_sku, apply_policy, naive_policy, oracle_orders
 from src.simworld.world import Sku, Supplier, World, WorldState, advance, generate_world, initial_state
 
 pytest.importorskip("fastapi")
@@ -288,159 +288,307 @@ def test_apply_policy_counts_in_transit_so_it_does_not_double_order():
     assert second == {}
 
 
-def test_oracle_orders_exactly_the_demand_of_its_real_lead_window():
-    """Not decorative-proof: at seed=9, ``initial_state``'s starting stock
-    (9.0 units) exceeds BOTH the short window's demand sum (4.0) and the
-    correct L+1 window's sum (6.0), so both clip to ``max(0, ...) == 0`` and
-    the original assertion could not tell the two window sizes apart --
-    confirmed by replaying the L+1 fix against the original body and seeing
-    it pass unchanged. Rebuilt on a hand-built World/WorldState with
-    on_hand deliberately 0, so the exact order quantity pins the L+1 window
-    specifically, the same style as
-    ``test_oracle_uses_the_real_lead_time_not_the_supplier_promise`` below.
+def test_oracle_orders_the_hand_computed_optimum_when_ordering_is_obviously_worth_it():
+    """Task 7 MILP rewrite, test 1/8. 1 SKU, 3 weeks, lead=0 (an order placed
+    in week t arrives in week t, so nothing NEEDS to be pre-bought), constant
+    demand of 10/week, margin=99 (price 100, unit_cost 1) -- selling is
+    overwhelmingly profitable relative to the tiny weekly holding cost
+    (1 * 0.25 / 52 = ~0.0048/unit-week) and the $75 fixed order cost.
+
+    Hand-enumerated alternatives (only 3 orderable weeks exist, so this is
+    exhaustive over the economically sane candidates): ordering 10 in each of
+    the 3 weeks pays the $75 fixed cost 3 times (225 total) with zero holding;
+    ordering all 30 in week 0 pays the $75 fixed cost once (75 total) plus
+    trivial holding (20 units held 1 week + 10 units held 2 weeks =
+    0.0048 * 40 = ~0.19) for total ~75.19 -- far cheaper than 225. Every
+    intermediate split (e.g. 20 then 10) lands strictly between those two.
+    So consolidating into a single week-0 order of the full 30 units is the
+    genuine cost-minimizing plan, not just "order enough" -- confirmed by
+    direct replay of the shipped MILP, not derived by hand alone.
+
+    Discriminates against a mutant that drops the fixed order-cost term
+    (``c[off_y:off_y + n_y] = order_cost`` deleted/zeroed): with no
+    consolidation incentive, the solver has no reason to buy ahead of need
+    and returns 10.0 (just week 0's demand) instead of 30.0 -- confirmed by
+    replay (see task-7-report.md).
     """
-    sku = Sku(sku="SKU-Y", unit_cost=1.0, price=2.0, supplier_idx=0)
-    supplier = Supplier(name="P", promised_lead_weeks=2, otif=1.0)
-    demand = np.array([[12.0, 15.0, 9.0, 20.0, 11.0]])
-    real_lead = np.array([[2, 2, 2, 2, 2]])
-    w = World(seed=0, weeks=5, regime="seasonal_trend", skus=(sku,), suppliers=(supplier,),
+    sku = Sku(sku="SKU-X", unit_cost=1.0, price=100.0, supplier_idx=0)
+    supplier = Supplier(name="P", promised_lead_weeks=0, otif=1.0)
+    demand = np.full((1, 3), 10.0)
+    real_lead = np.full((1, 3), 0, dtype=int)
+    w = World(seed=0, weeks=3, regime="seasonal_trend", skus=(sku,), suppliers=(supplier,),
               demand=demand, real_lead_weeks=real_lead)
     st = WorldState(week=0, on_hand=np.array([0.0]), in_transit=())
     orders = oracle_orders(w, st)
-    # window = weeks [0, lead] inclusive = 0,1,2 -> 12+15+9 = 36 (NOT the
-    # short window's 12+15=27); on_hand is 0, so the full 36 must be ordered.
-    assert orders["SKU-Y"] == pytest.approx(36.0)
+    assert orders["SKU-X"] == pytest.approx(30.0)
 
 
-def test_oracle_uses_the_real_lead_time_not_the_supplier_promise():
-    """Not in the brief. Replaying a mutant that reads
-    ``world.suppliers[sku.supplier_idx].promised_lead_weeks`` instead of
-    ``world.real_lead_weeks[i, t]`` showed it PASSES the brief's own oracle
-    test unchanged: at seed=9, sku 0, t=0, the real lead happens to equal the
-    promised lead (2 == 2) by chance of the RNG draw, so that single-seed
-    check cannot tell the two data sources apart. This constructs a tiny
-    synthetic World where the two are deliberately set apart, to pin that the
-    oracle reads the ground truth and not the supplier's promise.
+def test_oracle_accepts_a_shortage_when_covering_it_costs_more_than_it_saves():
+    """Task 7 MILP rewrite, test 2/8. Reference scenario from the brief:
+    unit_cost=5, price=10 (margin == unit_cost, the accounting break-even
+    point for this cost model -- buying a unit to avoid losing it costs
+    exactly as much as the shortage penalty it avoids, before even counting
+    holding or the fixed order cost), demand constant 10/week, lead=3,
+    on_hand=0. Covering the shortfall would require holding inventory for
+    multiple weeks (real cost) and paying the $75 fixed order fee, for zero
+    net accounting benefit -- so the genuinely cost-minimizing plan orders
+    NOTHING and accepts the loss. This is the exact property this whole task
+    revision exists to protect: a heuristic that always "covers the window"
+    would order the full 40 units (10/week x 4 weeks to the arrival week)
+    here regardless of whether it pays -- that is precisely what the OLD
+    myopic ``oracle_orders`` did (confirmed by replay against this scenario
+    before the rewrite: it returned 40.0, not 0.0).
+
+    Discriminates against a mutant that uses ``price`` instead of ``margin``
+    for the shortage-avoidance coefficient (``c[off_s:...] = -price`` instead
+    of ``-margin``) -- a very plausible real bug (conflating "the value of a
+    sale" with "the value of NOT losing a sale that was already going to
+    happen"). That mutant returns 70.0 for this exact scenario instead of 0.0
+    -- confirmed by replay (see task-7-report.md).
     """
-    sku = Sku(sku="SKU-X", unit_cost=1.0, price=2.0, supplier_idx=0)
-    supplier = Supplier(name="P", promised_lead_weeks=2, otif=1.0)
-    demand = np.array([[10.0, 10.0, 10.0, 10.0, 10.0]])
-    real_lead = np.array([[4, 4, 4, 4, 4]])  # always 4, promised is 2 - deliberately different
-    w = World(seed=0, weeks=5, regime="seasonal_trend", skus=(sku,), suppliers=(supplier,),
-              demand=demand, real_lead_weeks=real_lead)
-    st = WorldState(week=0, on_hand=np.array([0.0]), in_transit=())
-    orders = oracle_orders(w, st)
-    # window must be the REAL lead, inclusive of the arrival week (weeks
-    # 0-4, 5 weeks of demand -> 50), not the promised lead (weeks 0-1,
-    # 2 -> 20). (Was 40.0 under the old exclusive [t, t+lead) window over the
-    # real lead; updated to 50.0 for the fixed inclusive window -- this
-    # test's job is still to pin the SOURCE (real vs promised), which the
-    # 50 vs 20 gap still cleanly discriminates.)
-    assert orders["SKU-X"] == pytest.approx(50.0)
-
-
-def test_oracle_counts_its_own_pipeline_so_it_does_not_reorder_the_same_window():
-    """Not in the brief. Replaying a mutant that reads only
-    ``state.on_hand`` (ignoring ``state.in_transit``) in ``oracle_orders``
-    shows it passes every brief-given oracle test, INCLUDING
-    ``test_oracle_beats_naive_on_lost_sales_over_a_full_run`` -- over-ordering
-    can only reduce lost sales, never increase them, so a lost-sales-only
-    metric cannot tell a genuinely cost-minimizing oracle apart from one that
-    floods the pipeline with redundant orders every week within its own lead
-    window. That is exactly the "not truly cost-minimizing ceiling" failure
-    this task's property section calls Critical. Uses a fully controlled
-    synthetic World (constant demand, constant 3-week lead) so the second
-    week's order is pinned exactly, not just "less than" the first.
-    """
-    sku = Sku(sku="SKU-X", unit_cost=1.0, price=2.0, supplier_idx=0)
+    sku = Sku(sku="SKU-Z", unit_cost=5.0, price=10.0, supplier_idx=0)
     supplier = Supplier(name="P", promised_lead_weeks=3, otif=1.0)
     demand = np.full((1, 10), 10.0)
     real_lead = np.full((1, 10), 3, dtype=int)
     w = World(seed=0, weeks=10, regime="seasonal_trend", skus=(sku,), suppliers=(supplier,),
               demand=demand, real_lead_weeks=real_lead)
     st = WorldState(week=0, on_hand=np.array([0.0]), in_transit=())
-
-    first = oracle_orders(w, st)
-    # L+1 inclusive window at t=0, lead=3 -> weeks 0,1,2,3 (4 weeks x 10),
-    # nothing on hand. (Was 30.0 under the old exclusive [t, t+lead) window;
-    # updated to 40.0 for the fixed inclusive window -- verified by direct
-    # replay, not derived by hand alone.)
-    assert first["SKU-X"] == pytest.approx(40.0)
-
-    st2, _ = advance(w, st, first)
-    second = oracle_orders(w, st2)
-    # the week-0 order (40) has not arrived yet (lead=3, arrives week 3) but
-    # is fully in the pipeline. At t=1 the L+1 window closes at week 4, and
-    # its demand (weeks 1-4, 4 weeks x 10 = 40) is already exactly matched
-    # by the 40 units in transit -> no further order should be placed.
-    assert second.get("SKU-X", 0.0) == pytest.approx(0.0)
-
-
-def test_oracle_excludes_pipeline_that_arrives_after_its_window_closes():
-    """Not in the brief. The second compounding defect the review found:
-    crediting every in-transit unit toward the window regardless of when it
-    arrives. Here a slower, EARLIER order is already in transit but arrives
-    (week 5) strictly after this week's own L+1 window closes (t+lead =
-    0+1 = 1) -- it physically cannot help weeks 0-1, so it must not be
-    subtracted from ``need``. A version that credits it anyway would compute
-    ``need(20) - have(0 + 999) < 0`` and place no order at all.
-    """
-    sku = Sku(sku="SKU-Z", unit_cost=1.0, price=2.0, supplier_idx=0)
-    supplier = Supplier(name="P", promised_lead_weeks=1, otif=1.0)
-    demand = np.full((1, 10), 10.0)
-    real_lead = np.full((1, 10), 1, dtype=int)
-    w = World(seed=0, weeks=10, regime="seasonal_trend", skus=(sku,), suppliers=(supplier,),
-              demand=demand, real_lead_weeks=real_lead)
-    st = WorldState(week=0, on_hand=np.array([0.0]), in_transit=((0, 5, 999.0),))
     orders = oracle_orders(w, st)
-    # window = weeks [0, 1] inclusive = 20; the 999 arriving at week 5 must
-    # NOT be credited -> order the full 20.
-    assert orders["SKU-Z"] == pytest.approx(20.0)
+    assert orders == {}
 
 
-# Documented, verified exception to the sweep below -- NOT a silent carve-out.
-#
-# Seed 11 (n_skus=8, n_suppliers=2, weeks=40): naive_lost=256.0 vs
-# oracle_lost=728.0 even after the L+1-window + arrival-filtered-pipeline fix.
-# Root cause, confirmed by a week-by-week trace (see task-7-report.md): the
-# oracle prices an order by netting the WHOLE window's demand sum against
-# current have, then arrives all at once at week t+lead. If on-hand at week
-# t is not enough to cover demand for the weeks strictly BEFORE t+lead (e.g.
-# on_hand=51 at week 3, but weeks 3-5 need 161 before the week-3 order
-# arrives at week 6), a stockout in those pre-arrival weeks is physically
-# unavoidable no matter how large that single order is -- fixing it would
-# require the oracle to look ahead across FUTURE lead-time draws (multi-week
-# lookahead), which is explicitly out of scope for this task's 2-line fix
-# ("this is not a rewrite"). Seed 24 (outside the swept range below) shows
-# the same pattern. See task-7-report.md for the full trace and the
-# before/after seed sweep across 1-25.
-KNOWN_MYOPIC_WINDOW_GAP_SEEDS = {11}
+def test_oracle_orders_less_when_the_pipeline_already_covers_future_demand():
+    """Task 7 MILP rewrite, test 3/8. 1 SKU, 6 weeks, lead=1, constant demand
+    of 20/week, on_hand0=5 (too little to cover even week 0), margin=18
+    (price 20, unit_cost 2) -- comfortably worth ordering.
+
+    Without any committed pipeline, week 0 is an unavoidable partial
+    shortfall (nothing can arrive before week 1 regardless of what is
+    ordered), and the cost-minimizing plan consolidates the rest of the
+    horizon's demand (weeks 1-5, 100 units) into a single week-0 order of
+    100 (one $75 fixed fee beats several, same reasoning as the hand-computed
+    test above) -- confirmed by replay.
+
+    With a 100-unit shipment already committed to arrive in week 2
+    (``in_transit=((0, 2, 100.0),)``), that pipeline alone covers weeks 2-5
+    (80 units) with 20 to spare -- the ONLY genuine gap left is week 1 (20
+    units, since week 0's on_hand (5) is exhausted by week 0's own demand and
+    the pipeline doesn't land until week 2). The cost-minimizing order is
+    therefore exactly 20, not 100 -- pinning both numbers, not just
+    asserting "less than", so a bug that gets the DIRECTION right but the
+    MAGNITUDE wrong still fails.
+
+    Discriminates against a mutant that drops the ``committed_receipt`` term
+    from the inventory-balance constraint (i.e. the MILP never learns about
+    ``in_transit`` at all): the with-pipeline case would then also return
+    100.0, identical to the no-pipeline case -- confirmed by replay (see
+    task-7-report.md).
+    """
+    sku = Sku(sku="SKU-P", unit_cost=2.0, price=20.0, supplier_idx=0)
+    supplier = Supplier(name="P", promised_lead_weeks=1, otif=1.0)
+    demand = np.full((1, 6), 20.0)
+    real_lead = np.full((1, 6), 1, dtype=int)
+    w = World(seed=0, weeks=6, regime="seasonal_trend", skus=(sku,), suppliers=(supplier,),
+              demand=demand, real_lead_weeks=real_lead)
+
+    st_no_pipeline = WorldState(week=0, on_hand=np.array([5.0]), in_transit=())
+    without_pipeline = oracle_orders(w, st_no_pipeline)
+    assert without_pipeline["SKU-P"] == pytest.approx(100.0)
+
+    st_with_pipeline = WorldState(week=0, on_hand=np.array([5.0]), in_transit=((0, 2, 100.0),))
+    with_pipeline = oracle_orders(w, st_with_pipeline)
+    assert with_pipeline["SKU-P"] == pytest.approx(20.0)
+    assert with_pipeline["SKU-P"] < without_pipeline["SKU-P"]
 
 
-def test_oracle_beats_naive_on_lost_sales_over_a_full_run():
-    """Sweeps seeds 10-20 (11 seeds -- the range the task suggested; wide
-    enough to catch seed-specific luck without the runtime of a full 1-25
-    sweep, and independent of the brief's single hand-picked seed=4, which
-    replay showed was one of only 8/25 seeds where the ORIGINAL oracle beat
-    naive at all -- exactly the "trust one seed" failure mode this plan hit
-    before (Task 5's third wave)).
+def test_oracle_uses_the_real_lead_time_not_the_supplier_promise():
+    """Task 7 MILP rewrite, test 4/8 (same intent as the pre-MILP test this
+    replaces, re-derived for the new cost model). 1 SKU, 5 weeks, constant
+    demand 10/week, margin=99 (price 100, unit_cost 1, same "obviously worth
+    covering" economics as the hand-computed test above), promised_lead=2 but
+    real_lead=4 (deliberately different).
 
-    Before this task's fix: oracle beat-or-tied naive on only 8/25 seeds
-    overall (5/11 within 10-20). After: 23/25 overall (10/11 within 10-20).
-    The one remaining exception in this range, seed 11, is a documented,
-    diagnosed limitation (see KNOWN_MYOPIC_WINDOW_GAP_SEEDS above) -- it is
-    asserted explicitly below, not silently excluded, and is itself
-    regression-locked so a genuine future fix would be noticed.
+    With the REAL lead (4), a week-0 order is the only one that can possibly
+    arrive within the 5-week horizon (arrival = 0+4 = 4 < 5; every later
+    week's order would arrive at or past week 5, outside the horizon and
+    therefore worthless) -- so the only week that can ever be covered is week
+    4, and the cost-minimizing order is exactly 10.0 (that week's demand).
+    Weeks 0-3 are an unavoidable total loss no matter what is ordered.
+
+    If the implementation instead read the supplier's PROMISED lead (2), weeks
+    0, 1, and 2 would all become orderable (arrivals 2, 3, 4, all < 5), which
+    is a structurally different and much larger MILP with a different optimal
+    week-0 order -- so this does not merely tweak a number, it changes which
+    decision variables even exist. Discriminates against a mutant that reads
+    ``world.suppliers[sku.supplier_idx].promised_lead_weeks`` instead of
+    ``world.real_lead_weeks[i]`` -- confirmed by replay to return a different,
+    non-10.0 quantity (see task-7-report.md for the exact value observed).
+    """
+    sku = Sku(sku="SKU-X", unit_cost=1.0, price=100.0, supplier_idx=0)
+    supplier = Supplier(name="P", promised_lead_weeks=2, otif=1.0)
+    demand = np.full((1, 5), 10.0)
+    real_lead = np.full((1, 5), 4, dtype=int)  # always 4, promised is 2 - deliberately different
+    w = World(seed=0, weeks=5, regime="seasonal_trend", skus=(sku,), suppliers=(supplier,),
+              demand=demand, real_lead_weeks=real_lead)
+    st = WorldState(week=0, on_hand=np.array([0.0]), in_transit=())
+    orders = oracle_orders(w, st)
+    assert orders["SKU-X"] == pytest.approx(10.0)
+
+
+def test_oracle_orders_boundary_cases_without_crashing_or_going_negative():
+    """Task 7 MILP rewrite, test 5/8. Three edges in one test, all cheap:
+
+    1. ``state.week >= world.weeks`` returns ``{}`` immediately (the
+       "simulation already ended" guard, unchanged from the pre-MILP oracle).
+    2. The last week of the horizon with any positive lead has NO orderable
+       week at all (``m == 0`` inside ``_oracle_order_for_sku``: an order
+       placed now cannot arrive before the horizon ends), so that SKU is
+       correctly absent from the returned dict instead of crashing or
+       returning a bogus 0.0 entry.
+    3. A broader sweep of several generated worlds/weeks never produces a
+       negative order quantity from ``_oracle_order_for_sku`` (the per-SKU
+       solver call), called directly rather than through ``oracle_orders``:
+       ``oracle_orders`` gates its dict with ``if qty > 0``, which would
+       trivially satisfy "never negative" on the PUBLIC return value even
+       with a broken clamp (a tiny negative slips under a ``> 0`` check just
+       as readily as it would under a correct one) -- confirmed by replay,
+       this exact test PASSED against a clamp-removing mutant when written
+       against ``oracle_orders``' output, and only started discriminating
+       once rewritten against the private helper directly. This is not a
+       vacuous check even so: the raw MILP solution can carry ~1e-14-scale
+       negative floating-point noise (HiGHS returning e.g. -1.42e-14 instead
+       of exactly 0.0 for a should-be-zero variable) -- confirmed at seeds 6,
+       7, and 14 below (n_skus=5, weeks=10); seeds 1-5 at this same fixture
+       size never happened to trigger it, which is why this sweep pins the
+       specific seeds known to reproduce it rather than an arbitrary range.
+       The clamp is load-bearing, not decorative; a mutant that removes it
+       fails this sweep (see task-7-report.md).
+    """
+    sku = Sku(sku="SKU-X", unit_cost=1.0, price=100.0, supplier_idx=0)
+    supplier = Supplier(name="P", promised_lead_weeks=1, otif=1.0)
+    demand = np.full((1, 5), 10.0)
+    real_lead = np.full((1, 5), 1, dtype=int)
+    w = World(seed=0, weeks=5, regime="seasonal_trend", skus=(sku,), suppliers=(supplier,),
+              demand=demand, real_lead_weeks=real_lead)
+
+    st_past = WorldState(week=5, on_hand=np.array([0.0]), in_transit=())
+    assert oracle_orders(w, st_past) == {}
+
+    st_last = WorldState(week=4, on_hand=np.array([0.0]), in_transit=())
+    assert oracle_orders(w, st_last) == {}
+
+    for seed in (6, 7, 14):
+        world = generate_world(seed=seed, n_skus=5, n_suppliers=2, weeks=10, regime="seasonal_trend")
+        state = initial_state(world)
+        for _ in range(world.weeks):
+            for i, sku in enumerate(world.skus):
+                in_transit_i = [
+                    (arrival, qty) for sku_idx, arrival, qty in state.in_transit if sku_idx == i
+                ]
+                raw_qty = _oracle_order_for_sku(
+                    demand_full=world.demand[i],
+                    real_lead_full=world.real_lead_weeks[i],
+                    unit_cost=sku.unit_cost,
+                    price=sku.price,
+                    on_hand0=float(state.on_hand[i]),
+                    in_transit=in_transit_i,
+                    t0=state.week,
+                    horizon=world.weeks,
+                    order_cost=75.0,
+                    holding_rate=0.25,
+                    shortage_penalty_rate=1.0,
+                )
+                assert raw_qty >= 0.0
+            orders = oracle_orders(world, state)
+            state, _ = advance(world, state, orders)
+
+
+def test_oracle_orders_does_not_mutate_world_or_state():
+    """Task 7 MILP rewrite, test 6/8. Same established pattern as
+    ``test_lens_never_mutates_outcomes_or_real_lead_weeks`` and the
+    ``advance`` mutation check in ``tests/test_simworld_world.py``: snapshot
+    the ndarrays the MILP reads, call it, and confirm nothing shifted. The
+    MILP slices ``demand``/``real_lead_weeks`` and wraps each slice in
+    ``np.asarray(..., dtype=...)``; since both arrays already carry a
+    matching dtype, ``np.asarray`` returns the SAME buffer rather than a
+    copy -- confirmed with ``np.shares_memory`` -- so an in-place write to
+    the local ``lead``/``demand`` variables inside ``_oracle_order_for_sku``
+    (e.g. a defensive-looking ``lead[:] = 0`` or a clip) would silently
+    corrupt ``world.real_lead_weeks``/``world.demand`` for every other
+    runner sharing this World this week. Confirmed by replay: a mutant doing
+    exactly that fails this test (see task-7-report.md).
+    """
+    w = generate_world(seed=3, n_skus=4, n_suppliers=2, weeks=10, regime="seasonal_trend")
+    st = WorldState(week=2, on_hand=w.demand[:, 0].copy(), in_transit=((1, 4, 15.0), (3, 5, 8.0)))
+
+    demand_before = w.demand.copy()
+    real_lead_before = w.real_lead_weeks.copy()
+    on_hand_before = st.on_hand.copy()
+    in_transit_before = st.in_transit
+
+    oracle_orders(w, st)
+
+    assert np.array_equal(w.demand, demand_before)
+    assert np.array_equal(w.real_lead_weeks, real_lead_before)
+    assert np.array_equal(st.on_hand, on_hand_before)
+    assert st.in_transit == in_transit_before
+
+
+def _oracle_total_cost(world, outcomes, *, order_cost=75.0, holding_rate=0.25,
+                        shortage_penalty_rate=1.0):
+    """Local stand-in for Task 9's ``src/simworld/scorer.py`` (``weekly_cost``/
+    ``score_run``), which does not exist yet. Deliberately the same formula
+    documented in the plan for that module (procurement + holding + shortage +
+    fixed order cost) so this test measures the same thing Task 9 will --
+    written here, not imported, per the brief."""
+    unit_cost = np.array([s.unit_cost for s in world.skus], dtype=float)
+    price = np.array([s.price for s in world.skus], dtype=float)
+    margin = price - unit_cost
+    weekly_holding = unit_cost * holding_rate / 52.0
+
+    total = 0.0
+    for o in outcomes:
+        procurement = float((o.ordered * unit_cost).sum())
+        holding = float((o.on_hand_end * weekly_holding).sum())
+        shortage = float((o.lost * margin * shortage_penalty_rate).sum())
+        fixed = float(order_cost * int((o.ordered > 0).sum()))
+        total += procurement + holding + shortage + fixed
+    return total
+
+
+def test_oracle_beats_naive_on_total_cost_across_a_small_seed_sweep():
+    """Task 7 MILP rewrite, test 7/8. This is the property that replaces the
+    old lost-sales sweep (deleted above along with
+    ``KNOWN_MYOPIC_WINDOW_GAP_SEEDS``): a genuinely cost-minimizing oracle is
+    validated against COST, not lost units -- a correct oracle sometimes
+    accepts more lost units than the naive floor when doing so is cheaper
+    (see the shortage-acceptance test above), so a lost-sales invariant is
+    the wrong one to assert here.
+
+    Small on purpose (5 seeds, 4 SKUs, 16 weeks -- not the controller's
+    validated 25-seed/8-SKU/40-week sweep) so this stays a fast unit test;
+    the full 25-seed sweep is the controller's validation evidence, reported
+    separately, not re-run in CI on every commit. Confirmed by direct replay
+    to run in well under a second for this fixture size.
+
+    Discriminates against a mutant that drops the ``committed_receipt`` term
+    (the same pipeline-crediting bug the dedicated pipeline test above
+    targets in isolation): at this seed range it causes genuinely worse cost
+    outcomes, not just a different single-call number -- confirmed by replay,
+    the oracle LOSES to naive on seeds 2 and 4 of this exact sweep once that
+    term is dropped (naive/oracle: seed 2 = 31710/43482, seed 4 = 86613/88768;
+    see task-7-report.md), because redundant re-ordering within an
+    already-covered pipeline window inflates procurement, holding, and fixed
+    order costs simultaneously.
     """
     def run(world, strategy):
         st = initial_state(world)
-        outs, lost = [], 0.0
+        outs = []
         for _ in range(world.weeks):
             orders = strategy(world, st, outs)
             st, out = advance(world, st, orders)
             outs.append(out)
-            lost += float(out.lost.sum())
-        return lost
+        return outs
 
     def naive_s(wo, s, o):
         return apply_policy(wo, s, naive_policy(wo, o)) if len(o) >= 4 else {}
@@ -448,30 +596,44 @@ def test_oracle_beats_naive_on_lost_sales_over_a_full_run():
     def oracle_s(wo, s, o):
         return oracle_orders(wo, s)
 
-    unexpected_failures = {}
-    for seed in range(10, 21):
-        w = generate_world(seed=seed, n_skus=8, n_suppliers=2, weeks=40, regime="seasonal_trend")
-        naive_lost = run(w, naive_s)
-        oracle_lost = run(w, oracle_s)
-        if oracle_lost > naive_lost and seed not in KNOWN_MYOPIC_WINDOW_GAP_SEEDS:
-            unexpected_failures[seed] = (naive_lost, oracle_lost)
+    losers = {}
+    for seed in range(1, 6):
+        w = generate_world(seed=seed, n_skus=4, n_suppliers=2, weeks=16, regime="seasonal_trend")
+        naive_cost = _oracle_total_cost(w, run(w, naive_s))
+        oracle_cost = _oracle_total_cost(w, run(w, oracle_s))
+        if oracle_cost > naive_cost:
+            losers[seed] = (naive_cost, oracle_cost)
 
-    assert not unexpected_failures, (
-        f"oracle failed to beat-or-tie naive on UNEXPECTED seeds "
-        f"(seed: (naive_lost, oracle_lost)): {unexpected_failures}"
+    assert not losers, (
+        f"oracle failed to beat-or-tie naive on TOTAL COST for seeds "
+        f"(seed: (naive_cost, oracle_cost)): {losers}"
     )
 
-    # Regression-lock the one documented exception: if this ever starts
-    # PASSING (oracle_lost <= naive_lost), the myopic-window gap has been
-    # closed for this seed -- update KNOWN_MYOPIC_WINDOW_GAP_SEEDS, don't
-    # just let this assertion silently start failing.
-    for seed in KNOWN_MYOPIC_WINDOW_GAP_SEEDS:
-        w = generate_world(seed=seed, n_skus=8, n_suppliers=2, weeks=40, regime="seasonal_trend")
-        naive_lost = run(w, naive_s)
-        oracle_lost = run(w, oracle_s)
-        assert oracle_lost > naive_lost, (
-            f"seed {seed} was a documented myopic-window exception "
-            f"(naive={naive_lost}, oracle={oracle_lost} at the time this was "
-            f"written) -- it now beats-or-ties naive, so remove it from "
-            f"KNOWN_MYOPIC_WINDOW_GAP_SEEDS"
-        )
+
+def test_oracle_orders_is_deterministic_across_repeated_calls():
+    """Task 7 MILP rewrite, test 8/8. Same ``world``/``state``, called
+    repeatedly -- verified empirically rather than assumed, per the brief:
+    the "same seed, same world" reproducibility invariant this whole harness
+    depends on would break silently if the solver were ever nondeterministic
+    across repeated solves of the same problem.
+
+    Discriminates directly against a mutant that adds any per-call
+    randomness to the returned quantity (confirmed by replay: 5 calls in a
+    row without the mutant are bit-identical for this fixture; with a
+    corrupting mutant added after the solve, two calls differ on every SKU).
+    A milder, more realistic mutant was also tried and is worth recording
+    as a real finding, not just a passing check: adding a tiny (1e-9) random
+    perturbation to the MILP's objective coefficients -- the kind of
+    tie-breaking noise a solver-level source of nondeterminism might look
+    like -- did NOT change the result for this fixture across 5 repeated
+    calls. That is reassuring (this instance's optimum is not on a knife's
+    edge) but is evidence about THIS fixture, not a proof that HiGHS itself
+    is deterministic across all inputs/platforms/thread counts -- see
+    task-7-report.md for the concern as stated to the controller.
+    """
+    w = generate_world(seed=7, n_skus=5, n_suppliers=2, weeks=14, regime="seasonal_trend")
+    st = WorldState(week=3, on_hand=w.demand[:, 0].copy(), in_transit=((2, 6, 12.0),))
+
+    first = oracle_orders(w, st)
+    second = oracle_orders(w, st)
+    assert first == second
