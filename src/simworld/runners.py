@@ -73,6 +73,13 @@ def apply_policy(world: World, state: WorldState, policy: Policy) -> dict[str, f
 def oracle_orders(world: World, state: WorldState) -> dict[str, float]:
     """El techo: pide exactamente lo que se consumira durante su lead time real.
 
+    Una orden puesta en la semana ``t`` llega en ``t + lead`` (ver
+    ``world.advance``), asi que la ventana que debe cubrir es ``[t, t+lead]``
+    inclusive: la propia semana de llegada es la primera que puede quebrar. Solo
+    cuenta como cobertura ya en camino el inventario en transito que llegara a
+    tiempo para cerrar esa ventana (``arrival <= t + lead``); una orden anterior
+    que llega despues no protege este pedido y no debe restarse de la necesidad.
+
     Sin stock de seguridad, porque no hay incertidumbre que cubrir. Miope por
     diseno y aun asi inalcanzable. **Nunca ve la lente.**
     """
@@ -80,16 +87,17 @@ def oracle_orders(world: World, state: WorldState) -> dict[str, float]:
     if t >= world.weeks:
         return {}
 
-    pipeline = np.zeros(len(world.skus), dtype=float)
-    for sku_idx, _arrival, qty in state.in_transit:
-        pipeline[sku_idx] += qty
-
     orders: dict[str, float] = {}
     for i, sku in enumerate(world.skus):
         lead = int(world.real_lead_weeks[i, t])
-        end = min(t + lead, world.weeks)
+        window_end = t + lead  # inclusive: la semana en que esta orden llegaria
+        end = min(window_end + 1, world.weeks)
         need = float(world.demand[i, t:end].sum())
-        have = float(state.on_hand[i]) + float(pipeline[i])
+        pipeline = sum(
+            qty for sku_idx, arrival, qty in state.in_transit
+            if sku_idx == i and arrival <= window_end
+        )
+        have = float(state.on_hand[i]) + float(pipeline)
         qty = need - have
         if qty > 0:
             orders[sku.sku] = qty
