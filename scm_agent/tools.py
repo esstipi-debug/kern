@@ -10,6 +10,7 @@ from jobs import (
     acceptance_sampling_job,
     cost_to_serve_deliverable,
     cost_to_serve_job,
+    cross_impact_job,
     cycle_count_job,
     data_quality_job,
     ddmrp_job,
@@ -1102,6 +1103,60 @@ def hat_settlement_tool() -> Tool:
         ).write_all(out_dir),
         # The job already assembled the protected HANDOFF outcome (never EXECUTED).
         options=lambda report: report.outcome,
+    )
+
+
+# ---- cross_impact (cross-area impact of a decision already proposed) --------
+
+def _cross_impact_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    """Param problems are needs_clarification; missing/unusable data is needs_data.
+
+    The split matters: a missing 'current' is the OPERATOR's answer to give, not a
+    data-file problem - and it is never defaulted to baseline_plan().
+    """
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a weekly demand CSV (product_id, quantity, unit_cost, lead_time_days) is required"])
+    try:
+        payload = cross_impact_job.prepare(request.data_path, request.params)
+    except FileNotFoundError as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    except ValueError as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _cross_impact_run(payload: object, params: dict) -> Produced:
+    report = cross_impact_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def cross_impact_tool() -> Tool:
+    return Tool(
+        key="cross_impact",
+        title="Cross-Area Impact of a Proposed Decision",
+        description="Take a replenishment decision ALREADY proposed by one area "
+                    "(order quantity + service level) and measure what it does to the "
+                    "other three, then judge whether each would object against the "
+                    "threshold the operator declared. Zero objections means the "
+                    "meeting does not need to happen. Nothing is executed.",
+        intent_keywords=(
+            "impacto cruzado", "impacto en las otras areas", "en las otras areas",
+            "quien objeta", "costo de coordinacion", "cross-area impact",
+            "objection threshold", "si cambio esto que pasa", "necesito convocar",
+        ),
+        requires_data=True,
+        prepare=_cross_impact_prepare,
+        run=_cross_impact_run,
+        qa=lambda report: cross_impact_job.verify(report),
+        deliver=lambda report, out_dir, client: cross_impact_job.write(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            cross_impact_job.build_deck(report, client=client, citations=tuple(citations),
+                                        confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+        required_client_params=("objection_thresholds",),
     )
 
 
@@ -2631,4 +2686,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(hat_tension_tool())
     reg.register(hat_settlement_tool())
     reg.register(flow_map_tool())
+    reg.register(cross_impact_tool())
     return reg

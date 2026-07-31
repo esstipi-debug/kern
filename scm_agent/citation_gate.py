@@ -173,6 +173,18 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # the working-capital lens (its acta is priced in capital terms).
     "hat_tension": ("safety_stock", "service_level", "cycle_service_level"),
     "hat_settlement": ("safety_stock", "service_level", "working_capital_efficiency"),
+    # cross_impact (tool #47) decides the SAME (Q, SL) space as hat_tension, so it
+    # inherits those three anchors; cross_functional_integration adds the
+    # coordination lens this tool is actually about. Measured by BFS over the
+    # 3002-node graph (2026-07-31): the three inherited anchors close 853 nodes
+    # (28.4%) at 2 hops; adding cross_functional_integration admits only 16 more
+    # (869, 28.9%) and it is hub-free (degree 3; neighbors Supply Chain
+    # Orientation / Supply Chain Agility / Tiger Team, all on topic).
+    # sales_and_operations_planning (own 2-hop closure 618) and functional_silos
+    # (degree 2 but closure 266 - one hop from a hub) were REJECTED as magnets,
+    # by measurement, not intuition.
+    "cross_impact": ("safety_stock", "service_level", "cycle_service_level",
+                     "cross_functional_integration"),
 }
 
 # tool_key -> concept ids that must NEVER be cited for this tool, even when

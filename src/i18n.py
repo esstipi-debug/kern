@@ -268,6 +268,8 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
                      "en": "Decision Tension Map (Replenishment)"},
     "hat_settlement": {"es": "Plan de Reabastecimiento Reconciliado",
                         "en": "Reconciled Replenishment Plan"},
+    "cross_impact": {"es": "Impacto Cruzado de una Decision Propuesta",
+                      "en": "Cross-Area Impact of a Proposed Decision"},
 }
 
 
