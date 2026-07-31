@@ -2626,3 +2626,477 @@ Tres, anotadas para que no se re-introduzcan:
 3. **El umbral de calidad de intake estaba hardcodeado en el arnes.** Se toma de
    `JobReport.intake_quality_threshold`, que es el que el propio tool declara. Si
    no, el marcador mediria nuestra idea de "aviso" en vez de la de Kern.
+
+---
+
+## Adendo: Tasks 13-14 — puente hacia el estado general del Tower
+
+> **Spec:** `docs/superpowers/specs/2026-07-31-marcador-state-bridge-design.md`
+> (adicional al spec original de arriba, no lo reemplaza). Opcional respecto
+> del marcador primario: `scorer.py` (Tasks 9-10) sigue siendo la medida de si
+> Kern decidio bien. Esto prueba que la plomeria general del Tower (seis
+> dominios de `src.state` + `verify/backtest.py` + los monitores de
+> `scm_agent/monitors.py`) funciona de punta a punta con un productor real, en
+> vez de solo con DataFrames de test escritos a mano.
+>
+> **Depende de Task 8 (corredor Kern) ya implementada.** No modifica ni
+> reordena las Tasks 1-12 de arriba.
+
+### Estructura de archivos (adendo)
+
+| Archivo | Responsabilidad |
+|---|---|
+| `src/state/record.py` | Wrappers delgados sobre `system_state.snapshot()`, uno por dominio. Agnostico de simworld: reusable por un backfill de dataset real o instrumentacion en vivo despues |
+| `src/state/__init__.py` | **Modificar**: reexportar los cuatro `record_*` |
+| `src/simworld/runners.py` | **Modificar**: `Policy` gana el campo `forecast`; `kern_policy()` lo puebla |
+| `examples/run_world_sim.py` | **Modificar**: `simulate()` gana el parametro opcional `state_store` |
+| `tests/test_state_record.py` | Los cuatro `record_*`, mas la propiedad de orden de `cycle_id` |
+| `tests/test_simworld_state_bridge.py` | Integracion: los tres consumidores generales devuelven no-vacio contra una corrida de simworld |
+
+### Task 13: El escritor general — `src/state/record.py`
+
+**Files:**
+- Create: `src/state/record.py`
+- Modify: `src/state/__init__.py`
+- Test: `tests/test_state_record.py`
+
+**Interfaces:**
+- Consumes: `src.state.system_state.snapshot`, `StateSnapshot`, `SchemaValidationError`; `src.state.store.StateStore`; `src.state.system_state.history` (solo en el test, para la propiedad de orden)
+- Produces: `record_stock(store, cycle_id, rows: list[dict]) -> StateSnapshot`,
+  `record_forecast(store, cycle_id, rows) -> StateSnapshot`,
+  `record_decision(store, cycle_id, rows) -> StateSnapshot`,
+  `record_outcome(store, cycle_id, rows) -> StateSnapshot`
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_state_record.py
+from __future__ import annotations
+
+import pytest
+
+from src.state import record
+from src.state.store import StateStore
+from src.state.system_state import SchemaValidationError, history
+
+
+@pytest.fixture
+def store(tmp_path):
+    return StateStore(tmp_path / "state")
+
+
+def test_record_stock_writes_a_snapshot_the_domain_accepts(store):
+    rows = [
+        {"product_id": "A1", "on_hand": 40.0, "reorder_point": 20.0, "avg_daily_demand": 5.0},
+        {"product_id": "A2", "on_hand": 12.0, "reorder_point": 8.0, "avg_daily_demand": 2.0},
+    ]
+    snap = record.record_stock(store, "0", rows)
+    assert snap.domain == "stock"
+    assert snap.cycle_id == "0"
+    assert set(snap.payload["product_id"]) == {"A1", "A2"}
+
+
+def test_record_forecast_writes_product_period_forecast_qty(store):
+    rows = [{"product_id": "A1", "period": "0", "forecast_qty": 5.0}]
+    snap = record.record_forecast(store, "0", rows)
+    assert list(snap.payload["forecast_qty"]) == [5.0]
+
+
+def test_record_decision_writes_the_required_text_field_and_the_extra_order_qty(store):
+    rows = [{"product_id": "A1", "tool": "inventory_optimization",
+             "decision": "reponer", "period": "0", "order_qty": 30.0}]
+    snap = record.record_decision(store, "0", rows)
+    assert snap.payload.loc[0, "order_qty"] == 30.0
+    assert snap.payload.loc[0, "decision"] == "reponer"
+
+
+def test_record_outcome_writes_both_metrics_as_separate_rows(store):
+    rows = [
+        {"product_id": "A1", "tool": "inventory_optimization", "metric": "actual_qty",
+         "value": 12.0, "period": "0"},
+        {"product_id": "A1", "tool": "inventory_optimization", "metric": "sold_qty",
+         "value": 9.0, "period": "0"},
+    ]
+    snap = record.record_outcome(store, "0", rows)
+    assert set(snap.payload["metric"]) == {"actual_qty", "sold_qty"}
+
+
+def test_a_missing_required_column_raises_the_domains_own_validation_error(store):
+    with pytest.raises(SchemaValidationError):
+        record.record_stock(store, "0", [{"product_id": "A1", "on_hand": 40.0}])
+
+
+def test_sequential_integer_cycle_ids_beyond_nine_still_order_correctly(store):
+    for week in range(11):
+        record.record_stock(store, str(week), [
+            {"product_id": "A1", "on_hand": float(week), "reorder_point": 1.0,
+             "avg_daily_demand": 1.0},
+        ])
+    hist = history("stock", store=store)
+    assert [s.cycle_id for s in hist] == [str(w) for w in range(11)]
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `PYTHONPATH=. pytest tests/test_state_record.py -v`
+Expected: FAIL con `ModuleNotFoundError: No module named 'src.state.record'`
+
+- [ ] **Step 3: Write minimal implementation**
+
+```python
+# src/state/record.py
+"""Escritores ergonomicos, uno por dominio de src.state.system_state.
+
+Cada ``record_*`` es un wrapper delgado sobre ``snapshot()``: arma un
+DataFrame a partir de dicts planos y lo valida/agrega bajo el contrato de
+esquema propio del dominio. Sin logica de negocio, sin texto inventado, sin
+valores por defecto -- el llamador decide que significa cada fila. Es lo que
+permite que un backfill de dataset real o una instrumentacion en vivo,
+despues, enchufen la misma API que usa simworld hoy.
+"""
+
+from __future__ import annotations
+
+import pandas as pd
+
+from src.state.store import StateStore
+from src.state.system_state import StateSnapshot
+from src.state.system_state import snapshot as _snapshot
+
+
+def _record(domain: str, store: StateStore, cycle_id: str, rows: list[dict]) -> StateSnapshot:
+    return _snapshot(domain, pd.DataFrame(rows), cycle_id, store=store)
+
+
+def record_stock(store: StateStore, cycle_id: str, rows: list[dict]) -> StateSnapshot:
+    """Cada fila: ``product_id``, ``on_hand``, ``reorder_point``, ``avg_daily_demand``."""
+    return _record("stock", store, cycle_id, rows)
+
+
+def record_forecast(store: StateStore, cycle_id: str, rows: list[dict]) -> StateSnapshot:
+    """Cada fila: ``product_id``, ``period``, ``forecast_qty``."""
+    return _record("forecast", store, cycle_id, rows)
+
+
+def record_decision(store: StateStore, cycle_id: str, rows: list[dict]) -> StateSnapshot:
+    """Cada fila: ``product_id``, ``tool``, ``decision`` (texto libre), mas las
+    columnas extra que un join necesite (``period``, ``order_qty``)."""
+    return _record("decisions", store, cycle_id, rows)
+
+
+def record_outcome(store: StateStore, cycle_id: str, rows: list[dict]) -> StateSnapshot:
+    """Cada fila: ``product_id``, ``tool``, ``metric``, ``value``, mas ``period``
+    cuando un join posterior necesite calzarla con una fila de forecast o decision."""
+    return _record("outcomes", store, cycle_id, rows)
+```
+
+Agregar a `src/state/__init__.py` (import y `__all__`):
+
+```python
+from .record import record_decision, record_forecast, record_outcome, record_stock
+```
+
+y en `__all__`: `"record_decision"`, `"record_forecast"`, `"record_outcome"`, `"record_stock"`.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `PYTHONPATH=. pytest tests/test_state_record.py -v`
+Expected: 6 passed
+
+- [ ] **Step 5: Lint and commit**
+
+```bash
+ruff check src tests
+git add src/state/record.py src/state/__init__.py tests/test_state_record.py
+git commit -m "feat(state): escritores generales por dominio (record_stock/forecast/decision/outcome)"
+```
+
+---
+
+### Task 14: El puente enchufado — `simulate()` escribe, los tres consumidores generales leen
+
+**Files:**
+- Modify: `src/simworld/runners.py:24` (`Policy`), y el cuerpo de `kern_policy()`
+- Modify: `examples/run_world_sim.py` (`simulate()`)
+- Test: `tests/test_simworld_state_bridge.py`
+
+**Interfaces:**
+- Consumes: `record_stock/forecast/decision/outcome` (Task 13), `Policy`/`apply_policy`/`kern_policy`/`naive_policy` (Tasks 7-8), `simulate` (Task 11), `scm_agent.monitors.run_all_monitors`, `src.verify.backtest.run_forecast_backtest`/`match_decision_actuals`, `src.state.system_state.history`, `src.state.store.StateStore`
+- Produces: `Policy.forecast: dict[str, float]` (nuevo campo, default `{}`); `simulate(world, plan, *, replan_every=4, state_store: StateStore | None = None)`
+
+**Por que `decisions` se escribe cada semana y `forecast` no:** `apply_policy`
+recalcula la orden contra la posicion de inventario vigente en cada llamada a
+`simulate()` — replan o no — asi que es una decision real cada semana, nunca
+un numero repetido. `forecast`, en cambio, solo cambia cuando `plan()`
+efectivamente corre (las semanas de replanificacion); escribirlo cada semana
+falsificaria el dato, haciendo parecer que Kern predijo de nuevo cuando la
+politica seguia congelada.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_simworld_state_bridge.py
+from __future__ import annotations
+
+from src.simworld.runners import Policy, kern_policy, naive_policy
+from src.simworld.world import generate_world
+from src.state.store import StateStore
+from src.state.system_state import history
+from scm_agent.events import EventLedger
+from scm_agent.monitors import run_all_monitors
+from src.verify.backtest import match_decision_actuals, run_forecast_backtest
+
+from examples.run_world_sim import simulate
+
+EMPTY = Policy(reorder_point={}, order_up_to={}, announced=False, note="", status="ok")
+
+
+def _kern_plan(agent_dir, seed):
+    def plan(world, outcomes, week):
+        if len(outcomes) < 4:
+            return EMPTY, False
+        pol = kern_policy(world, outcomes, level=0, seed=seed,
+                          out_dir=agent_dir / f"w{week}", forced=True)
+        return pol, pol.announced
+    return plan
+
+
+def test_simulate_writes_all_four_domains_when_a_state_store_is_given(tmp_path):
+    world = generate_world(seed=7, n_skus=4, n_suppliers=1, weeks=12, regime="seasonal_trend")
+    store = StateStore(tmp_path / "state")
+
+    simulate(world, _kern_plan(tmp_path / "agent", seed=7), replan_every=4, state_store=store)
+
+    assert len(history("stock", store=store)) == 12
+    assert len(history("outcomes", store=store)) == 12
+    assert len(history("decisions", store=store)) == 12
+    assert len(history("forecast", store=store)) >= 1
+
+
+def test_the_three_general_consumers_return_non_empty_against_the_bridge(tmp_path):
+    world = generate_world(seed=7, n_skus=4, n_suppliers=1, weeks=12, regime="seasonal_trend")
+    store = StateStore(tmp_path / "state")
+
+    simulate(world, _kern_plan(tmp_path / "agent", seed=7), replan_every=4, state_store=store)
+
+    events = run_all_monitors(store=store, ledger=EventLedger(":memory:"))
+    forecast_results = run_forecast_backtest(store=store)
+    decision_obs = match_decision_actuals(
+        history("decisions", store=store), history("outcomes", store=store),
+        decision_value_column="order_qty",
+    )
+
+    assert len(events) > 0
+    assert len(forecast_results) > 0
+    assert len(decision_obs) > 0
+
+
+def test_state_store_none_does_not_change_existing_behavior():
+    world = generate_world(seed=3, n_skus=3, n_suppliers=1, weeks=8, regime="seasonal_trend")
+
+    def naive_plan(w, outs, week):
+        if len(outs) < 4:
+            return EMPTY, False
+        return naive_policy(w, outs), False
+
+    outs_default, flags_default = simulate(world, naive_plan, replan_every=4)
+    outs_none, flags_none = simulate(world, naive_plan, replan_every=4, state_store=None)
+
+    assert [o.on_hand_end.tolist() for o in outs_default] == [o.on_hand_end.tolist() for o in outs_none]
+    assert flags_default == flags_none
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `PYTHONPATH=. pytest tests/test_simworld_state_bridge.py -v`
+Expected: FAIL con `TypeError: simulate() got an unexpected keyword argument 'state_store'`
+
+- [ ] **Step 3: Write minimal implementation**
+
+En `src/simworld/runners.py`, agregar el campo a `Policy` (justo despues de `extras`):
+
+```python
+@dataclass(frozen=True)
+class Policy:
+    reorder_point: dict[str, float]
+    order_up_to: dict[str, float]
+    announced: bool = False
+    note: str = ""
+    status: str = "ok"
+    extras: dict[str, float] = field(default_factory=dict)
+    forecast: dict[str, float] = field(default_factory=dict)  # nuevo: SkuRecommendation.forecast por SKU
+```
+
+En `kern_policy()`, dentro del bucle que arma `reorder`/`target` desde
+`result.report.recommendations`, agregar un tercer acumulador y pasarlo al
+`Policy` final:
+
+```python
+    reorder: dict[str, float] = {}
+    target: dict[str, float] = {}
+    forecast: dict[str, float] = {}
+    for rec in result.report.recommendations:
+        rop = float(rec.reorder_point)
+        reorder[rec.product_id] = rop
+        forecast[rec.product_id] = float(rec.forecast)
+        if rec.order_up_to is not None:
+            target[rec.product_id] = float(rec.order_up_to)
+        else:
+            target[rec.product_id] = rop + float(rec.order_quantity or 0.0)
+
+    return Policy(reorder_point=reorder, order_up_to=target, forecast=forecast,
+                  announced=announced, note=result.summary, status="ok")
+```
+
+En `examples/run_world_sim.py`, `simulate()` gana el parametro y las cuatro
+escrituras. La Task 11 ya importa de `src.simworld.runners` (`Policy`,
+`apply_policy`, `kern_policy`, `naive_policy`, `oracle_orders`) -- agregar
+`NAIVE_LOOKBACK_WEEKS` a esa MISMA tupla de import, no una linea nueva
+separada, y sumar los dos imports de `src.state`:
+
+```python
+from src.simworld.runners import (
+    NAIVE_LOOKBACK_WEEKS,  # el mismo umbral que usa naive_policy, Task 7 -- no redefinir
+    Policy,
+    apply_policy,
+    kern_policy,
+    naive_policy,
+    oracle_orders,
+)
+from src.state.record import record_decision, record_forecast, record_outcome, record_stock
+from src.state.store import StateStore
+
+TOOL_NAME = "inventory_optimization"  # el job_type real que kern_policy(forced=True) pasa
+
+
+def simulate(
+    world: World,
+    plan: Plan,
+    *,
+    replan_every: int = 4,
+    state_store: StateStore | None = None,
+) -> tuple[list, list[bool]]:
+    """Corre el horizonte sosteniendo una politica entre replanificaciones.
+
+    Cuando ``state_store`` no es ``None``, ademas escribe ``stock``,
+    ``outcomes`` y ``decisions`` cada semana, y ``forecast`` solo en las
+    semanas de replanificacion (ver ``docs/superpowers/specs/
+    2026-07-31-marcador-state-bridge-design.md``). ``state_store=None``
+    (default) no escribe nada -- el comportamiento existente no cambia.
+
+    Advertencia para quien lea un backtest corrido sobre este puente: un MAPE
+    alto en ``decisions`` (``order_qty`` vs. ``actual_qty``) no significa que
+    Kern decida mal -- una politica de punto de reorden pide en bloque para
+    cubrir varios periodos, no para igualar la demanda semana a semana. El
+    marcador honesto de si la decision fue buena sigue siendo
+    ``src/simworld/scorer.py`` (captura normalizada contra el oraculo).
+    """
+    if replan_every < 1:
+        raise ValueError(f"replan_every debe ser >= 1, no {replan_every}")
+
+    state = initial_state(world)
+    outcomes: list = []
+    flags: list[bool] = []
+    policy = Policy(reorder_point={}, order_up_to={}, announced=False, note="", status="ok")
+
+    for week in range(world.weeks):
+        cycle_id = str(week)
+        announced = False
+        replanned = week % replan_every == 0
+        if replanned:
+            policy, announced = plan(world, outcomes, week)
+
+        orders = apply_policy(world, state, policy)
+        state, out = advance(world, state, orders)
+        outcomes.append(out)
+        flags.append(bool(announced))
+
+        if state_store is not None:
+            # outcomes.append(out) ya corrio arriba, asi que window tiene
+            # como minimo la semana actual -- nunca esta vacio aca.
+            window = outcomes[-NAIVE_LOOKBACK_WEEKS:]
+            record_stock(state_store, cycle_id, [
+                {
+                    "product_id": sku.sku,
+                    "on_hand": float(out.on_hand_end[i]),
+                    "reorder_point": float(policy.reorder_point.get(sku.sku, 0.0)),
+                    # promedio semanal / 7: el dominio espera una tasa DIARIA
+                    # (scm_agent/monitors.py calcula "dias de cobertura" con esto).
+                    "avg_daily_demand": float(sum(w.sold[i] for w in window) / len(window) / 7.0),
+                }
+                for i, sku in enumerate(world.skus)
+            ])
+            record_outcome(state_store, cycle_id, [
+                row
+                for i, sku in enumerate(world.skus)
+                for row in (
+                    {"product_id": sku.sku, "tool": TOOL_NAME, "metric": "actual_qty",
+                     "value": float(out.demand[i]), "period": cycle_id},
+                    {"product_id": sku.sku, "tool": TOOL_NAME, "metric": "sold_qty",
+                     "value": float(out.sold[i]), "period": cycle_id},
+                )
+            ])
+            record_decision(state_store, cycle_id, [
+                {
+                    "product_id": sku.sku, "tool": TOOL_NAME,
+                    "decision": "reponer" if orders.get(sku.sku, 0.0) > 0 else "sin orden",
+                    "period": cycle_id, "order_qty": float(orders.get(sku.sku, 0.0)),
+                }
+                for sku in world.skus
+            ])
+            if replanned and policy.forecast:
+                record_forecast(state_store, cycle_id, [
+                    {"product_id": product_id, "period": cycle_id, "forecast_qty": qty}
+                    for product_id, qty in policy.forecast.items()
+                ])
+    return outcomes, flags
+```
+
+**Si `test_the_three_general_consumers_return_non_empty_against_the_bridge`
+devuelve `run_all_monitors(...)` vacio:** revisar `config/monitors.yaml` --
+si algun monitor relevante (`rop_breach`, `stockout_projected`,
+`forecast_error_out_of_band`) tiene un umbral mas estricto que lo que un mundo
+de 4 SKUs / 12 semanas produce, subir `n_skus`/`weeks` en el test o pasar un
+`config` explicito con umbrales mas laxos -- no relajar el monitor de
+produccion para que el test pase.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `PYTHONPATH=. pytest tests/test_simworld_state_bridge.py -v`
+Expected: 3 passed
+
+- [ ] **Step 5: Verificar que nada del suite existente se rompio**
+
+Run: `PYTHONPATH=. pytest tests/test_simworld_runners.py tests/test_simworld_e2e.py -v`
+Expected: todos pasan (la firma de `Policy` y `simulate()` solo gano campos
+con default, ningun call site existente cambia)
+
+- [ ] **Step 6: Lint and commit**
+
+```bash
+ruff check src tests examples
+git add src/simworld/runners.py examples/run_world_sim.py tests/test_simworld_state_bridge.py
+git commit -m "feat(simworld): puente hacia src.state -- simulate() escribe los 4 dominios, el Tower general los lee"
+```
+
+---
+
+## Cobertura del spec (adendo, 2026-07-31)
+
+| Requisito del spec | Tarea |
+|---|---|
+| `record_stock`/`record_forecast`/`record_decision`/`record_outcome`, agnosticos de simworld | 13 |
+| `cycle_id` numerico, orden correcto mas alla de la semana 9 | 13 (test de propiedad) |
+| `stock`/`outcomes`/`decisions` cada semana; `forecast` solo en replan | 14 |
+| `outcomes` con dos metricas (`actual_qty` no censurada, `sold_qty` censurada) | 14 |
+| Backtest de forecast usa `actual_qty`, nunca `sold_qty` | 14 (`run_forecast_backtest` via `ACTUAL_QTY_METRIC`) |
+| `decisions.order_qty` explicito en 0.0, nunca fila ausente | 14 |
+| `Policy.forecast` poblado desde `SkuRecommendation.forecast` | 14 |
+| `tool` = `"inventory_optimization"` consistente entre `decisions` y `outcomes` | 14 |
+| `avg_daily_demand` convertido a tasa diaria (/7) | 14 |
+| `StateStore` siempre aislado, nunca `default_store()` | 13 (constructor explicito) + 14 (parametro, nunca el default global) |
+| `state_store=None` no cambia el comportamiento existente | 14 (test de propiedad) |
+| Los tres consumidores generales devuelven no-vacio | 14 (criterio de aceptacion) |
+| Punto de integracion es `simulate()`, no `runners.py` ni `scorer.py` | 14 (unico archivo modificado para el enchufe) |
+| Advertencia interpretativa (MAPE de `decisions` no es precision) documentada donde se lee, no solo en el spec | 14 (docstring de `simulate()`) |
+| No se registra como herramienta del agente | constraint global (ya cubierta arriba) |
