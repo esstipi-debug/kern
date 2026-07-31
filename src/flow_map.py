@@ -177,7 +177,7 @@ def measure_edges(
     for m in movements:
         grouped[(m.origin, m.destination)].append(m)
 
-    two_way = {node for pair in bidirectional for node in pair}
+    two_way = {p for a, b in bidirectional for p in ((a, b), (b, a))}
     stats: list[EdgeStat] = []
     for (origin, destination) in sorted(grouped):
         rows = grouped[(origin, destination)]
@@ -185,7 +185,7 @@ def measure_edges(
         volume = sum(r.quantity for r in rows)
         cost_rows = [r for r in rows if r.unit_cost > 0]
         mean_cost = sum(r.unit_cost for r in cost_rows) / len(cost_rows) if cost_rows else 0.0
-        is_two_way = origin in two_way and destination in two_way
+        is_two_way = (origin, destination) in two_way
         if len(days) < min_observations or len(days) < 2:
             stats.append(EdgeStat(
                 origin=origin, destination=destination, n=len(days), volume=volume,

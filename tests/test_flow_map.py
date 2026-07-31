@@ -104,3 +104,22 @@ def test_edges_are_sorted_and_bidirectional_is_flagged():
     edges = measure_edges(movements, bidirectional=(("A", "B"),))
     assert [(e.origin, e.destination) for e in edges] == [("A", "B"), ("B", "A")]
     assert all(e.bidirectional for e in edges)
+
+
+def test_bidirectional_flagging_does_not_cross_contaminate():
+    # Regression test: bidirectional set must contain exact pairs, not just pooled nodes.
+    # With pairs (("A","B"), ("C","D")), the A->D cross-edge should NOT be flagged.
+    movements = [
+        _mv("A", "B"),  # declared pair
+        _mv("B", "A"),  # declared pair
+        _mv("C", "D"),  # declared pair
+        _mv("D", "C"),  # declared pair
+        _mv("A", "D"),  # cross-edge, NOT declared
+    ]
+    edges = measure_edges(movements, bidirectional=(("A", "B"), ("C", "D")))
+    edge_flags = {(e.origin, e.destination): e.bidirectional for e in edges}
+    assert edge_flags[("A", "B")] is True
+    assert edge_flags[("A", "D")] is False
+    assert edge_flags[("B", "A")] is True
+    assert edge_flags[("C", "D")] is True
+    assert edge_flags[("D", "C")] is True
