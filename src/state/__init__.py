@@ -7,6 +7,7 @@ on-disk SQLite index + parquet/CSV history layout underneath it.
 
 from __future__ import annotations
 
+from .record import record_decision, record_forecast, record_outcome, record_stock
 from .store import DEFAULT_BASE_PATH, DuplicateCycleError, StateStore, StoredRecord, default_store
 from .system_state import (
     DOMAIN_COLUMNS,
@@ -36,5 +37,9 @@ __all__ = [
     "default_store",
     "history",
     "latest",
+    "record_decision",
+    "record_forecast",
+    "record_outcome",
+    "record_stock",
     "snapshot",
 ]
