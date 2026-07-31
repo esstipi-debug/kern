@@ -56,8 +56,30 @@ def _parse_dates(series: pd.Series) -> pd.Series:
     ``dayfirst=True`` retry was found to do (it silently swapped month/day on
     ~39% of ISO dates whenever a mixed column happened to lock onto a slash
     format first).
+
+    A separate failure mode: a column mixing timezone-naive values (e.g.
+    "2025-01-06") with timezone-aware ones at different offsets (e.g.
+    "2025-01-07T10:00:00-05:00") cannot be homogenized into one dtype, and
+    pandas treats that as a structural failure rather than a per-value parse
+    failure that ``errors="coerce"`` can turn into NaT. On pandas>=3 this
+    raises ``ValueError: Mixed timezones detected`` before coercion ever
+    runs; on pandas 2.x (the repo's declared floor) it instead silently
+    returns an object-dtype Series with the aware value un-coerced, which
+    crashes the very next ``.dt`` access downstream. Both are recovered the
+    same way: re-parse with ``utc=True`` (which lets per-value coercion run
+    normally, converting every value -- naive or aware -- to its UTC
+    instant) and drop the tz so the result matches the naive dtype the rest
+    of this module assumes.
     """
-    return pd.to_datetime(series, errors="coerce", format="mixed")
+    try:
+        parsed = pd.to_datetime(series, errors="coerce", format="mixed")
+    except ValueError as exc:
+        if "mixed timezone" not in str(exc).lower():
+            raise
+        parsed = None
+    if parsed is None or parsed.dtype == object:
+        parsed = pd.to_datetime(series, errors="coerce", format="mixed", utc=True).dt.tz_localize(None)
+    return parsed
 
 
 @dataclass(frozen=True)

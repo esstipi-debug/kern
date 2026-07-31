@@ -140,6 +140,81 @@ def test_normalize_tracked_still_drops_genuinely_bad_dates_amid_mixed_formats():
     assert quality.n_raw == 3
 
 
+def test_normalize_tracked_handles_mixed_naive_and_timezone_aware_dates():
+    """A column mixing a naive date ('2025-01-06') with a timezone-aware one
+    ('2025-01-07T21:00:00-05:00') is a real messy-export shape (e.g. a file
+    that switches from date-only rows to full timestamps mid-export). pandas
+    treats timezone heterogeneity as a structural failure rather than a
+    per-value parse failure: format="mixed" either raises ValueError outright
+    (pandas >=3, observed) or silently returns an object-dtype column that
+    crashes the very next `.dt` access downstream (pandas 2.x) -- neither is
+    a normal per-row 'bad date' that IntakeQuality can count, so both used to
+    escape all the way to the orchestrator's generic error status. Both rows
+    must survive here, with the aware value converted to its UTC-equivalent
+    instant: 21:00-05:00 on Jan 7 is 02:00 UTC on Jan 8, so it must land in
+    the Jan 8 bucket -- proving the conversion actually ran rather than the
+    value merely surviving with its local wall-clock day intact."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2025-01-06", "2025-01-07T21:00:00-05:00"],
+            "StockCode": ["A", "A"],
+            "Quantity": [10, 5],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_date == 0
+    assert quality.n_raw == 2
+    dates = sorted(canon["date"].tolist())
+    assert dates[0] == pd.Timestamp("2025-01-06")
+    assert dates[1] == pd.Timestamp("2025-01-08")  # 21:00-05:00 Jan 7 -> 02:00 UTC Jan 8
+
+
+def test_normalize_tracked_drops_garbage_amid_mixed_timezone_dates():
+    """Mixing a naive date, a timezone-aware date, AND a genuinely
+    unparseable string in the same column must only drop the garbage row as
+    a normal bad date -- proving the timezone-mixing recovery path still
+    runs errors="coerce" per value instead of failing (or corrupting) the
+    whole column."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2025-01-06", "2025-01-07T10:00:00-05:00", "not-a-date"],
+            "StockCode": ["A", "A", "A"],
+            "Quantity": [10, 5, 7],
+        }
+    )
+    mapping = detect_columns(raw)
+    _, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_date == 1
+    assert quality.n_raw == 3
+
+
+def test_normalize_tracked_handles_all_timezone_aware_dates_with_differing_offsets():
+    """No naive value at all here -- both rows are timezone-aware but at
+    DIFFERENT fixed offsets (-05:00 and +02:00). This is the other shape that
+    trips pandas's timezone-heterogeneity failure (it's about offset
+    consistency, not naive-vs-aware specifically), so it must be recovered
+    the same way. The two offsets are chosen so each value's UTC-bucketed day
+    differs from its local wall-clock day, in OPPOSITE directions -- proving
+    both rows were actually converted to their UTC instant rather than one
+    surviving by coincidence."""
+    raw = pd.DataFrame(
+        {
+            # 23:00-05:00 Jan 6 -> 04:00 UTC Jan 7
+            # 01:00+02:00 Jan 7 -> 23:00 UTC Jan 6
+            "InvoiceDate": ["2025-01-06T23:00:00-05:00", "2025-01-07T01:00:00+02:00"],
+            "StockCode": ["A", "A"],
+            "Quantity": [10, 5],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_date == 0
+    assert quality.n_raw == 2
+    dates = sorted(canon["date"].tolist())
+    assert dates == [pd.Timestamp("2025-01-06"), pd.Timestamp("2025-01-07")]
+
+
 def test_normalize_tracked_single_iso_format_column_unaffected():
     """The common real-world case -- a column with only ISO dates, no mixing
     -- must behave exactly as before: nothing dropped, dates parsed as-is."""
