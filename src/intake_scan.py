@@ -77,15 +77,15 @@ def classify_file(file: FileColumns) -> Classified:
         )
 
     # No profile matched: report the closest one's gap, chosen deterministically.
-    def _gap(profile: DatasetProfile) -> int:
-        matches = len([c for c in profile.required if c in present])
-        return -matches
+    # Closest = fewest missing required columns. Ties broken alphabetically by profile name.
+    def _gap(profile: DatasetProfile) -> tuple[int, str]:
+        return (len([c for c in profile.required if c not in present]), profile.name)
 
     closest = min(PROFILES, key=_gap)
     missing = tuple(c for c in closest.required if c not in present)
     return Classified(
         file.filename, None, missing=missing,
-        reason=UNCLASSIFIED,
+        reason=f"{UNCLASSIFIED}: closest profile '{closest.name}' needs {', '.join(missing)}",
     )
 
 
