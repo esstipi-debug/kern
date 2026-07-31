@@ -157,7 +157,7 @@ def test_routes_on_english_discovery_phrasing_without_colliding_with_price_intel
     assert classified.job_type == "price_watch"
 
 
-def test_registry_now_has_45_tools():
+def test_registry_tool_count_matches_the_pinned_list():
     # supplier_management_tool() + network_design_tool() (41 -> 43, origin/main) merged with
     # hat_tension_tool() + hat_settlement_tool() (41 -> 43, this branch) -> 45.
     # flow_map_tool() added (46 -> 47).

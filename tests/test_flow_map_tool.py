@@ -46,6 +46,12 @@ def test_network_design_brief_is_not_stolen():
         "where should I open distribution centres to minimise weighted distance",
         reg, llm.RulesFallback(),
     )
+    # The invariant this test exists to protect: flow_map's own intent keywords must
+    # not steal a network-design-shaped brief.
+    assert res.job_type != "flow_map"
+    # The positive half: the brief should actually resolve to one of the two network
+    # tools. This depends on "weighted distance" being in facility_location_tool()'s
+    # intent_keywords (added alongside this test -- see the comment there).
     assert res.job_type in {"network_design", "facility_location"}
 
 
