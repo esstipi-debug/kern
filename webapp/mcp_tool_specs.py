@@ -13,7 +13,11 @@ Deliberately NOT here (see docs/MCP_SERVER.md "What's NOT here yet"):
 - `leadership_chain` - takes a CHAIN scores dict / LLM-scored brief, not
   tabular rows; the rows->CSV bridge feeds it nothing usable.
 - `warehouse_layout` - a params-driven 3D layout generator (requires_data=False,
-  ignores rows) whose deliverable is an HTML viewer, not a data analysis.
+  ignores rows) whose deliverable is an HTML viewer, not a data analysis. Contrast
+  `flow_map`, which IS exposed below: its input is tabular movement rows and its
+  primary output is a data analysis (measured transit per lane); the self-contained
+  HTML sankey map it also writes is an extra visualization of that analysis, not
+  the whole deliverable the way warehouse_layout's 3D viewer is.
 
 Each description is the user-facing MCP contract: what the tool does, the
 canonical columns its job's `prepare()` matches (aliases are tolerated -
