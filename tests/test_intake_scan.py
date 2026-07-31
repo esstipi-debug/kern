@@ -14,6 +14,7 @@ from src.intake_scan import (
     build_report,
     classify_all,
     classify_file,
+    rank_blocked_fixes,
     rank_gaps,
     run_breakers,
     verdicts_for,
@@ -198,6 +199,10 @@ def test_a_blocked_file_cannot_support_a_green():
     (verdict,) = verdicts_for({"product_id": {"malo.csv"}}, frozenset({"malo.csv"}), tools_)
     assert verdict.state == RED
     assert verdict.blocked_by == ("malo.csv",)
+    # The column IS present -- it's the file that's disqualified, not the column
+    # that's absent. Must land in blocked_required, never in missing_required.
+    assert verdict.blocked_required == ("product_id",)
+    assert verdict.missing_required == ()
 
 
 def test_abc_xyz_style_tool_goes_red_without_unit_cost():
@@ -264,3 +269,52 @@ def test_report_counts_evaluated_against_total():
     )
     assert (report.n_tools_evaluated, report.n_tools_total) == (1, 2)
     assert "1 of 2" in report.summary
+
+
+def test_a_blocked_column_never_re_asks_the_client_for_data_they_already_sent():
+    """The reviewer's repro: unit_cost WAS sent (in bad.csv), but bad.csv is blocked
+    by a circuit breaker. Asking the client to send unit_cost again buys nothing --
+    the real fix is cleaning up bad.csv. The report must not conflate the two."""
+    tools_ = [_FakeTool("t", ("product_id", "unit_cost"))]
+    report = build_report(
+        classified=(), findings=(), tools=tools_,
+        available={"product_id": {"good.csv"}, "unit_cost": {"bad.csv"}},
+        blocked=frozenset({"bad.csv"}),
+        n_files_read=2, n_unclassified=0,
+    )
+    # The column ranking must not be inflated by a column that's merely blocked.
+    assert "unit_cost" not in [g.column for g in report.gaps]
+    # The fix-the-file option must be offered instead.
+    assert report.outcome.status == OPTIONS
+    fix_labels = [o.label for o in report.outcome.options]
+    assert any("bad.csv" in label for label in fix_labels)
+
+
+def test_fixing_a_blocked_file_does_not_count_as_unblocking_a_tool_missing_a_real_column():
+    """A tool that is ALSO missing a column that was never sent at all cannot be
+    unblocked by cleaning up the blocked file alone -- it still needs the missing
+    column. That tool must not inflate the count behind the "fix this file" option."""
+    tools_ = [
+        _FakeTool("only_blocked", ("product_id",)),
+        _FakeTool("blocked_and_missing", ("product_id", "cogs")),
+    ]
+    available = {"product_id": {"bad.csv"}}
+    verdicts = verdicts_for(available, frozenset({"bad.csv"}), tools_)
+    fixes = rank_blocked_fixes(verdicts)
+    (fix,) = fixes
+    assert fix.filename == "bad.csv"
+    assert fix.tools == ("only_blocked",)
+    assert "blocked_and_missing" not in fix.tools
+
+
+def test_no_tools_declared_does_not_falsely_claim_coverage():
+    """With zero tools registered, the report must not say 'supports every declared
+    tool (0 green)' -- that reads as good news when nothing was evaluated at all."""
+    report = build_report(
+        classified=(), findings=(), tools=[],
+        available={}, blocked=frozenset(),
+        n_files_read=0, n_unclassified=0,
+    )
+    assert report.outcome.status == EXECUTED
+    assert "0 green" not in report.outcome.summary
+    assert "no tools" in report.outcome.summary.lower() or "no tools were declared" in report.outcome.summary.lower()

@@ -12,7 +12,7 @@ has not declared its columns is reported as undeclared rather than as runnable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from src.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_options
 
@@ -185,11 +185,19 @@ _TOP_GAPS = 3
 
 @dataclass(frozen=True)
 class ToolVerdict:
-    """Whether one tool could run on this folder, and what stops it if not."""
+    """Whether one tool could run on this folder, and what stops it if not.
+
+    RED has two distinct causes that must never be conflated: a required column
+    that is genuinely absent from the folder (`missing_required` -- asking the
+    client for it would help), and a required column that IS present but only in
+    files a circuit breaker has blocked (`blocked_required` -- asking for the
+    same column again buys nothing; the file needs to be fixed instead).
+    """
 
     tool_key: str
     state: str
     missing_required: tuple[str, ...] = ()
+    blocked_required: tuple[str, ...] = ()
     missing_optional: tuple[str, ...] = ()
     blocked_by: tuple[str, ...] = ()
     source_files: tuple[str, ...] = ()
@@ -197,9 +205,18 @@ class ToolVerdict:
 
 @dataclass(frozen=True)
 class ColumnGap:
-    """One missing column, and how much asking for it would buy."""
+    """One genuinely missing column, and how much asking for it would buy."""
 
     column: str
+    unlocks: int
+    tools: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class BlockedFileGap:
+    """One blocked file, and how many tools cleaning it up alone would unblock."""
+
+    filename: str
     unlocks: int
     tools: tuple[str, ...]
 
@@ -215,21 +232,26 @@ def verdicts_for(
             continue
 
         missing_required: list[str] = []
+        blocked_required: list[str] = []
         blocked_by: set[str] = set()
         sources: set[str] = set()
         for column in tool.required_columns:
             files = available.get(column, set())
             usable = files - blocked
-            if not usable:
-                missing_required.append(column)
-                blocked_by |= (files & blocked)
-            else:
+            if usable:
                 sources |= usable
+            elif files:
+                # Present, but every file carrying it is blocked: a data-quality
+                # problem, not an absent column. Never lump this into missing_required.
+                blocked_required.append(column)
+                blocked_by |= files
+            else:
+                missing_required.append(column)
 
-        if missing_required:
+        if missing_required or blocked_required:
             out.append(ToolVerdict(
-                tool.key, RED, tuple(missing_required), (), tuple(sorted(blocked_by)),
-                tuple(sorted(sources)),
+                tool.key, RED, tuple(missing_required), tuple(blocked_required), (),
+                tuple(sorted(blocked_by)), tuple(sorted(sources)),
             ))
             continue
 
@@ -238,15 +260,17 @@ def verdicts_for(
         )
         state = YELLOW if missing_optional else GREEN
         out.append(ToolVerdict(
-            tool.key, state, (), missing_optional, (), tuple(sorted(sources))
+            tool.key, state, (), (), missing_optional, (), tuple(sorted(sources))
         ))
     return tuple(out)
 
 
 def rank_gaps(verdicts: tuple[ToolVerdict, ...]) -> tuple[ColumnGap, ...]:
-    """Missing required columns, ranked by how many tools each one would unlock.
+    """Genuinely missing required columns, ranked by how many tools each unlocks.
 
-    Ties break on the column name so two runs over the same folder agree.
+    A column that is merely blocked (present, but only in disqualified files) is
+    excluded -- asking for it again would not unlock anything. Ties break on the
+    column name so two runs over the same folder agree.
     """
     by_column: dict[str, list[str]] = {}
     for v in verdicts:
@@ -259,6 +283,27 @@ def rank_gaps(verdicts: tuple[ToolVerdict, ...]) -> tuple[ColumnGap, ...]:
     return tuple(sorted(gaps, key=lambda g: (-g.unlocks, g.column)))
 
 
+def rank_blocked_fixes(verdicts: tuple[ToolVerdict, ...]) -> tuple[BlockedFileGap, ...]:
+    """Blocked files, ranked by how many tools fixing each one alone would unblock.
+
+    A tool only counts toward a file's total if that file is the tool's sole
+    obstacle -- if the tool is ALSO missing a column that was never sent, cleaning
+    up the blocked file would not unblock it by itself, so it is excluded here.
+    Ties break on the filename so two runs over the same folder agree.
+    """
+    by_file: dict[str, list[str]] = {}
+    for v in verdicts:
+        if v.missing_required:
+            continue
+        for filename in v.blocked_by:
+            by_file.setdefault(filename, []).append(v.tool_key)
+    fixes = [
+        BlockedFileGap(filename, len(keys), tuple(sorted(keys)))
+        for filename, keys in by_file.items()
+    ]
+    return tuple(sorted(fixes, key=lambda g: (-g.unlocks, g.filename)))
+
+
 @dataclass(frozen=True)
 class ScanReport:
     """The whole audit: what we read, what we found, what can run, what to ask for."""
@@ -267,6 +312,7 @@ class ScanReport:
     findings: tuple
     verdicts: tuple[ToolVerdict, ...]
     gaps: tuple[ColumnGap, ...]
+    blocked_fixes: tuple[BlockedFileGap, ...]
     n_files_read: int
     n_unclassified: int
     n_tools_evaluated: int
@@ -275,7 +321,23 @@ class ScanReport:
     summary: str
 
 
-def _outcome(gaps: tuple[ColumnGap, ...], verdicts: tuple[ToolVerdict, ...]) -> GuidedOutcome:
+def _top_ask(
+    gaps: tuple[ColumnGap, ...], fixes: tuple[BlockedFileGap, ...]
+) -> str:
+    """One line describing the highest-value ask, whichever class it belongs to."""
+    candidates = [(-g.unlocks, g.column, f"asking for '{g.column}' unlocks {g.unlocks}") for g in gaps]
+    candidates += [
+        (-f.unlocks, f.filename, f"fixing '{f.filename}' unlocks {f.unlocks}") for f in fixes
+    ]
+    if not candidates:
+        return "nothing to request"
+    candidates.sort(key=lambda c: (c[0], c[1]))
+    return candidates[0][2]
+
+
+def _outcome(
+    gaps: tuple[ColumnGap, ...], fixes: tuple[BlockedFileGap, ...], verdicts: tuple[ToolVerdict, ...]
+) -> GuidedOutcome:
     residual = Residual(
         description=(
             "Tools that have not declared their data contract are reported as undeclared, "
@@ -286,27 +348,53 @@ def _outcome(gaps: tuple[ColumnGap, ...], verdicts: tuple[ToolVerdict, ...]) -> 
             "to prevent."
         ),
     )
-    if not gaps:
+    if not gaps and not fixes:
+        if not verdicts:
+            return as_executed(
+                "No tools were declared for this scan; there is nothing to evaluate.",
+                residuals=[residual],
+            )
         n_green = sum(1 for v in verdicts if v.state == GREEN)
         return as_executed(
             f"The folder supports every declared tool ({n_green} green); nothing to request.",
             residuals=[residual],
         )
-    options = [
-        ExecutionOption(
-            label=f"Request '{g.column}' from the client",
-            summary=(
-                f"Adding '{g.column}' unlocks {g.unlocks} tool(s): {', '.join(g.tools)}."
+
+    # Two distinct kinds of ask, ranked together in one menu: requesting an
+    # absent column, and fixing a blocked file. Ties break on the name so two
+    # runs over the same folder agree on the order.
+    column_entries = [
+        (
+            -g.unlocks, g.column,
+            ExecutionOption(
+                label=f"Request '{g.column}' from the client",
+                summary=f"Adding '{g.column}' unlocks {g.unlocks} tool(s): {', '.join(g.tools)}.",
+                score=float(g.unlocks),
+                action=f"request_column:{g.column}",
+                tradeoffs="One column, one ask; the client can usually export it from the same system.",
             ),
-            score=float(g.unlocks),
-            recommended=rank == 0,
-            action=f"request_column:{g.column}",
-            tradeoffs="One column, one ask; the client can usually export it from the same system.",
         )
-        for rank, g in enumerate(gaps[:_TOP_GAPS])
+        for g in gaps
+    ]
+    file_entries = [
+        (
+            -f.unlocks, f.filename,
+            ExecutionOption(
+                label=f"Fix the data quality of '{f.filename}'",
+                summary=f"Fixing '{f.filename}' unblocks {f.unlocks} tool(s): {', '.join(f.tools)}.",
+                score=float(f.unlocks),
+                action=f"fix_file:{f.filename}",
+                tradeoffs="Requires re-cleaning or re-exporting the file; no new column is needed.",
+            ),
+        )
+        for f in fixes
+    ]
+    ranked = sorted(column_entries + file_entries, key=lambda e: (e[0], e[1]))[:_TOP_GAPS]
+    options = [
+        replace(option, recommended=(rank == 0)) for rank, (_, __, option) in enumerate(ranked)
     ]
     return as_options(
-        "Missing columns, ranked by how many tools each one unlocks.",
+        "Missing columns and blocked files, ranked by how many tools each fix unlocks.",
         options,
         residuals=[residual],
     )
@@ -318,10 +406,11 @@ def build_report(
     """Assemble the audit. Evaluated-vs-total travels in the summary, always."""
     verdicts = verdicts_for(available, blocked, tools)
     gaps = rank_gaps(verdicts)
+    fixes = rank_blocked_fixes(verdicts)
     evaluated = sum(1 for v in verdicts if v.state != UNDECLARED)
     total = len(verdicts)
     counts = {state: sum(1 for v in verdicts if v.state == state) for state in (GREEN, YELLOW, RED)}
-    top = f"asking for '{gaps[0].column}' unlocks {gaps[0].unlocks}" if gaps else "nothing to request"
+    top = _top_ask(gaps, fixes)
     summary = (
         f"Read {n_files_read} file(s), {n_unclassified} unclassified; evaluated "
         f"{evaluated} of {total} registered tool(s): {counts[GREEN]} green, "
@@ -329,7 +418,7 @@ def build_report(
     )
     return ScanReport(
         classified=tuple(classified), findings=tuple(findings), verdicts=verdicts, gaps=gaps,
-        n_files_read=n_files_read, n_unclassified=n_unclassified,
+        blocked_fixes=fixes, n_files_read=n_files_read, n_unclassified=n_unclassified,
         n_tools_evaluated=evaluated, n_tools_total=total,
-        outcome=_outcome(gaps, verdicts), summary=summary,
+        outcome=_outcome(gaps, fixes, verdicts), summary=summary,
     )
