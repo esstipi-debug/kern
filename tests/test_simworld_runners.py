@@ -692,12 +692,58 @@ def _history(weeks=24, n_skus=5, seed=5):
 
 
 def test_kern_forced_returns_a_policy_covering_every_sku(tmp_path):
+    """Beyond the key-set check, pins actual VALUES against the real
+    ``SkuRecommendation``s the orchestrator produced for this exact run --
+    per the controller's brief, the original version of this test only
+    checked ``set(pol.reorder_point) == {s.sku for s in w.skus}``, which a
+    translation loop that zeroes every value, or multiplies every reorder
+    point by 1000, would still pass (the KEY set is unaffected by either
+    mutation).
+
+    Wraps (not mocks) ``Orchestrator.run`` with a spy that calls straight
+    through to the real implementation and records the ``JobResult`` --
+    this is still the real orchestrator over the real level-0 lens, just
+    with the return value captured so the test can compare ``Policy``
+    against the actual recommendations that produced it, instead of
+    re-deriving expected numbers from the implementation under test.
+    """
     w, outs = _history()
-    pol = kern_policy(w, outs, level=0, seed=0, out_dir=tmp_path, forced=True)
+    captured: list[JobResult] = []
+    original_run = Orchestrator.run
+
+    def spy_run(self, brief, **kwargs):
+        result = original_run(self, brief, **kwargs)
+        captured.append(result)
+        return result
+
+    with patch.object(Orchestrator, "run", spy_run):
+        pol = kern_policy(w, outs, level=0, seed=0, out_dir=tmp_path, forced=True)
+
     assert pol.status in {"ok", "handoff", "escalated", "needs_data",
                           "needs_clarification", "qa_failed", "error"}
     if pol.status == "ok":
         assert set(pol.reorder_point) == {s.sku for s in w.skus}
+        assert len(captured) == 1
+        recs = captured[0].report.recommendations
+        assert recs, "expected at least one real recommendation to pin values against"
+        for rec in recs:
+            sku = rec.product_id
+            rop = float(rec.reorder_point)
+            assert pol.reorder_point[sku] == pytest.approx(rop)
+            assert pol.reorder_point[sku] > 0
+            assert pol.order_up_to[sku] >= pol.reorder_point[sku]
+            if rec.order_up_to is not None:
+                expected_target = float(rec.order_up_to)
+            else:
+                expected_target = rop + float(rec.order_quantity or 0.0)
+            assert pol.order_up_to[sku] == pytest.approx(expected_target)
+            # Not a sentinel: real order-up-to must differ from the bare
+            # reorder point (a mutant zeroing the target, or one dropping
+            # the (s,Q) fallback entirely, would collapse toward rop or 0)
+            # and must stay in the same order of magnitude as this world's
+            # demand -- not a 1000x blowup from a mutated multiplier.
+            assert pol.order_up_to[sku] != pytest.approx(rop)
+            assert pol.order_up_to[sku] < 1000.0 * max(1.0, pol.reorder_point[sku])
 
 
 def test_kern_brief_lane_routes_without_a_forced_job_type(tmp_path):
@@ -867,6 +913,52 @@ def test_kern_policy_translates_an_escalated_guided_outcome_into_no_orders_that_
     assert pol.order_up_to == {}
     assert pol.status == guided_mod.ESCALATED
     assert pol.announced is True
+
+
+def test_kern_policy_derives_order_up_to_from_reorder_point_plus_order_quantity_for_the_s_q_fallback(tmp_path):
+    """The ``(s, Q)`` policy_kind (non-intermittent demand, per
+    ``jobs/inventory_optimization.py``'s ``run()``) carries ``order_up_to=None``
+    and ``order_quantity`` populated instead of the other way around --
+    ``kern_policy`` must derive the order-up-to level as
+    ``reorder_point + order_quantity`` for this branch.
+
+    No real fixture in this file produces non-intermittent demand through the
+    real orchestrator -- every level-0 recommendation observed for this
+    world's demand comes back ``(R, S)`` (see
+    ``test_kern_forced_returns_a_policy_covering_every_sku``, and the same
+    holds for every other fixture in this file) -- so, following the exact
+    same mocking technique as the HANDOFF/ESCALATED translation tests above,
+    this mocks ``Orchestrator.run``'s return value directly with a report
+    whose only recommendation is shaped like a real ``(s, Q)`` one.
+
+    Discriminates against a mutant that reads
+    ``target[rec.product_id] = rop`` for this branch instead of
+    ``rop + order_quantity`` -- that mutant drops the fallback's whole
+    ``order_quantity`` term silently, and no other test in this file (real
+    or mocked) exercises this branch, so it would go uncaught without this
+    test.
+    """
+    w, outs = _history(weeks=4, n_skus=2, seed=1)
+    reorder_point = 30.0
+    order_quantity = 12.5
+    report = SimpleNamespace(
+        recommendations=[
+            SimpleNamespace(product_id="SKU-1", policy_kind="(s, Q)",
+                            reorder_point=reorder_point, order_quantity=order_quantity,
+                            order_up_to=None),
+        ],
+        intake_quality=None,
+        intake_quality_threshold=0.20,
+    )
+    guided = guided_mod.as_executed("ok")
+    result = JobResult(status=STATUS_OK, tool="inventory_optimization", confidence=1.0,
+                       deliverables={}, summary="stub ok", guided=guided, report=report)
+
+    with patch.object(Orchestrator, "run", lambda self, brief, **kw: result):
+        pol = kern_policy(w, outs, level=0, seed=0, out_dir=tmp_path, forced=True)
+
+    assert pol.reorder_point == {"SKU-1": 30.0}
+    assert pol.order_up_to == {"SKU-1": 42.5}
 
 
 def test_kern_policy_reads_the_lens_output_file_not_the_world_directly(tmp_path):
