@@ -222,7 +222,7 @@ class RecalibrationSuggestion:
     """A pure recalibration *suggestion* -- nothing here writes to config or state.
 
     Promoting this to an actual change is a human-approved changeset through
-    ``src/writeback.py``'s safe-staging plane, exactly like any other write to a
+    ``nosilo_core/writeback.py``'s safe-staging plane, exactly like any other write to a
     system of record; this module only produces the evidence.
     """
 

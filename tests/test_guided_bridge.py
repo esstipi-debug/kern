@@ -5,9 +5,8 @@ This is the operational guarantee: no matter how a job ends (ok, needs data,
 ambiguous, QA failure, internal error), the caller receives an executable path.
 """
 
-from scm_agent.guided_bridge import to_guided_outcome
-from scm_agent.orchestrator import Orchestrator
-from scm_agent.types import (
+from nosilo_core.guided import ESCALATED, EXECUTED, HANDOFF, OPTIONS, passed_guided
+from nosilo_core.types import (
     STATUS_ERROR,
     STATUS_NEEDS_CLARIFICATION,
     STATUS_NEEDS_DATA,
@@ -15,7 +14,8 @@ from scm_agent.types import (
     STATUS_QA_FAILED,
     JobResult,
 )
-from src.guided import ESCALATED, EXECUTED, HANDOFF, OPTIONS, passed_guided
+from scm_agent.guided_bridge import to_guided_outcome
+from scm_agent.orchestrator import Orchestrator
 
 
 def _result(status, **kw):

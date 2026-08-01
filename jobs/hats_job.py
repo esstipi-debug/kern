@@ -18,10 +18,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.deliverable import DataSource, Deliverable, Finding, Kpi
-from src.eoq import PriceBreak
-from src.export import write_summary_csv
-from src.guided import (
+from nosilo_core.guided import (
     EXECUTED,
     HANDOFF,
     OPTIONS,
@@ -33,6 +30,9 @@ from src.guided import (
     as_options,
     verify_guided,
 )
+from src.deliverable import DataSource, Deliverable, Finding, Kpi
+from src.eoq import PriceBreak
+from src.export import write_summary_csv
 from src.hat_council import Settlement, TensionMap, settle, tension_map
 from src.hats import (
     HAT_KEYS,
@@ -544,5 +544,5 @@ def build_settlement_deck(report: SettlementReport, *, client: str = "Client", p
         recommendations=recommendations, citations=tuple(citations), confidence=confidence,
         residual="Los pesos son politica del operador, no consenso objetivo (D4). Aplicar el "
                  "plan es un paso humano (HANDOFF); cualquier escritura a un sistema de "
-                 "registro pasa por src/writeback.py - fuera de alcance aqui.",
+                 "registro pasa por nosilo_core/writeback.py - fuera de alcance aqui.",
         prepared=prepared)

@@ -41,12 +41,12 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 
-from src import writeback
+from nosilo_core import writeback
+from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
+from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 from src.connectors.excel import ExcelWorkbookStore
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
-from src.escalation import escalation_banner, maybe_escalate_financial
 from src.export import write_summary_csv
-from src.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 
 _EXCEL_SUFFIXES = (".xlsx", ".xlsm", ".xltx", ".xltm")
 _HEADER_SCAN_ROWS = 20
@@ -73,7 +73,7 @@ _DEMAND_CANDIDATES = (
     "pronostico", "forecast", "consumo promedio", "consumo",
 )
 # Optional - when present, sizes the restock plan's $ value for the financial-
-# threshold escalation check (src.escalation.maybe_escalate_financial). Absent
+# threshold escalation check (nosilo_core.escalation.maybe_escalate_financial). Absent
 # from a planilla is fine: the value stays unknown and the check never guesses.
 _COST_CANDIDATES = (
     "costo unitario", "costo", "precio unitario", "precio costo", "precio compra",
@@ -304,7 +304,7 @@ def prepare(data_path: str | None, params: dict | None = None) -> dict:
     # processes - what the operator apply CLI needs (in-memory audit dies with it).
     ledger = None
     if params.get("ledger_path"):
-        from src.writeback_store import SqliteAuditLedger
+        from nosilo_core.writeback_store import SqliteAuditLedger
         ledger = SqliteAuditLedger(params["ledger_path"])
     return {
         "store": ExcelWorkbookStore(path, ledger=ledger),
@@ -329,7 +329,7 @@ def _build_outcome(
 
     Above ``financial_threshold`` (estimated from the planilla's own cost column,
     when it has one), the options are gated behind a required finance sign-off
-    instead of being freely actionable - see ``src.escalation.maybe_escalate_financial``.
+    instead of being freely actionable - see ``nosilo_core.escalation.maybe_escalate_financial``.
     """
     if n_restock > 0:
         key = changeset.idempotency_key if changeset is not None else "n/a"
@@ -562,7 +562,7 @@ Programmatic alternative (same safety plane):
 
 ```python
 from jobs import excel_replenishment_job as job
-from src import writeback
+from nosilo_core import writeback
 
 payload = job.prepare(r"<path to {filename}>", {{}})   # same params as the original run
 report = job.run(payload)                              # re-stages; same content => same key

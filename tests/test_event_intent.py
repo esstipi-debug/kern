@@ -30,8 +30,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from nosilo_core import llm
+from nosilo_core.types import STATUS_OK
 from scm_agent import event_intent as event_intent_module
-from scm_agent import llm, tools
+from scm_agent import tools
 from scm_agent.event_intent import (
     DEFAULT_ROUTING_PATH,
     EventRoutingError,
@@ -46,7 +48,6 @@ from scm_agent.event_intent import (
 )
 from scm_agent.events import Event
 from scm_agent.orchestrator import Orchestrator
-from scm_agent.types import STATUS_OK
 
 PORTFOLIO = "data/sample_demand_portfolio.csv"  # same fixture tests/test_scm_agent.py uses
 

@@ -37,7 +37,7 @@ from jobs.repricing import (  # noqa: E402
     run_channel_repricing,
     stage_repricing,
 )
-from src import writeback  # noqa: E402
+from nosilo_core import writeback  # noqa: E402
 from src.connectors.meli_prices import MeliPriceStore, demo_meli  # noqa: E402
 from src.connectors.odoo import demo_odoo  # noqa: E402
 from src.connectors.odoo_prices import OdooPriceStore  # noqa: E402

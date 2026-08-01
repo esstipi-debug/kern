@@ -20,7 +20,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from src.writeback import ABSENT, AuditEntry
+from .writeback import ABSENT, AuditEntry
 
 DEFAULT_PATH = "data/writeback_ledger.sqlite3"
 

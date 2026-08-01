@@ -44,8 +44,8 @@ already-configured :data:`PdpLlmEnhancer` callable. No provider is wired in
 THIS PR (``llm=None`` is the shipped default, same stub/defer pattern as
 ``pricing_intel.extract``'s tier-5 stub and ``adjudicate.adjudicate_pair``);
 a future job wiring one is expected to build it on top of
-``scm_agent.llm.LLMProvider.complete()`` the same way
-``scm_agent.llm.narrative_rewrite`` already does for tool-result summaries
+``nosilo_core.llm.LLMProvider.complete()`` the same way
+``nosilo_core.llm.narrative_rewrite`` already does for tool-result summaries
 -- this module deliberately does not invent a second LLM integration point,
 only the strict request/response schema and re-verification a caller's
 wrapper around ``LLMProvider`` must satisfy.
@@ -69,7 +69,7 @@ longer appears anywhere in the rewritten text -- unlike
 individually, where a wrong-type response is a fail-fast programmer error),
 this is a batch content path: ANY enhancement failure degrades to the
 already-verified template output rather than raising, matching
-``scm_agent.llm.narrative_rewrite``'s "always optional decoration, never
+``nosilo_core.llm.narrative_rewrite``'s "always optional decoration, never
 load-bearing" contract.
 
 **No Kern watermark inside title_tag/meta_description/body_copy.** This is
@@ -517,7 +517,7 @@ def enhance_with_llm(content: PdpContent, llm: PdpLlmEnhancer) -> PdpContent:
     meta description exceeding :data:`META_DESCRIPTION_MAX_CHARS`, or the
     product's own title going missing from the rewritten text. Never raises
     itself -- an LLM enhancement is optional decoration, never load-bearing
-    (mirrors ``scm_agent.llm.narrative_rewrite``'s contract)."""
+    (mirrors ``nosilo_core.llm.narrative_rewrite``'s contract)."""
     soft_claims = tuple(c for c in content.claims if c.field not in PROTECTED_CLAIM_FIELDS)
     protected_claims = tuple(c for c in content.claims if c.field in PROTECTED_CLAIM_FIELDS)
     if not soft_claims:

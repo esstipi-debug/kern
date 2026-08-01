@@ -24,6 +24,7 @@ from decimal import Decimal
 import pandas as pd
 import pytest
 
+from nosilo_core.writeback import Change, Changeset
 from scm_agent.knowledge import GroundedCitation
 from src.pricing_guardrails import (
     DEFAULT_MARKETS_CONFIG_DIR,
@@ -40,7 +41,6 @@ from src.pricing_guardrails import (
 )
 from src.state.store import StateStore
 from src.state.system_state import snapshot
-from src.writeback import Change, Changeset
 
 MARKETS_DIR = "config/markets"
 

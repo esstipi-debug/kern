@@ -12,7 +12,7 @@ import threading
 
 import pytest
 
-from src.writeback import (
+from nosilo_core.writeback import (
     TIER_IRREVERSIBLE,
     TIER_READ,
     TIER_REVERSIBLE,
@@ -207,7 +207,7 @@ def test_directly_constructed_approval_with_wrong_signature_is_refused():
     deterministic hash of fields the caller already has, code could construct
     Approval(key, hash, "nobody", far_future_expiry) directly and satisfy the old
     matches() check with no call to approve() and no human ever involved."""
-    from src.writeback import Approval
+    from nosilo_core.writeback import Approval
 
     store = _store()
     cs = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
@@ -225,7 +225,7 @@ def test_approval_cannot_be_forged_even_by_recomputing_the_correct_content_hash(
     caller already has) and picking an arbitrary signature must not validate -
     only approve() (which holds the secret) can produce a signature matches()
     accepts."""
-    from src.writeback import Approval
+    from nosilo_core.writeback import Approval
 
     store = _store()
     cs = stage(store, "erp", {"SKU-A": {"reorder_point": 120}},
@@ -244,7 +244,7 @@ def test_approval_is_unforgeable_once_a_server_secret_is_configured(monkeypatch)
     import hashlib
     import hmac as hmac_module
 
-    from src.writeback import Approval
+    from nosilo_core.writeback import Approval
 
     monkeypatch.setenv("LINCHPIN_APPROVAL_SECRET", "top-secret-value")
     store = _store()

@@ -9,7 +9,7 @@ hand-built risk register. That mapping -- ``to_risk_factor`` feeding
 
 Two hard properties, mirroring the read-only price watch:
 
-* **100% read-only observation.** This module never imports ``src.writeback``;
+* **100% read-only observation.** This module never imports ``nosilo_core.writeback``;
   it only GETs public news metadata. Nothing is ever written anywhere.
 * **The GDELT signal is a SCREENING proxy, not a calibrated probability.** The
   derived ``likelihood`` prioritises which suppliers to investigate; it is not a

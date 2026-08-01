@@ -7,9 +7,8 @@ decision-options engine and the escalation builder through one gate.
 """
 
 from jobs.qa import coverage_gate, covered
-from src.decision_options import Objective, Scenario, decide
-from src.escalation import FINANCIAL, escalate
-from src.guided import (
+from nosilo_core.escalation import FINANCIAL, escalate
+from nosilo_core.guided import (
     EscalationPacket,
     ExecutionOption,
     GuidedOutcome,
@@ -17,6 +16,7 @@ from src.guided import (
     as_executed,
     as_handoff,
 )
+from src.decision_options import Objective, Scenario, decide
 
 
 def test_executed_outcome_is_covered():

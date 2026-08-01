@@ -7,7 +7,7 @@ financial threshold). Pure - no external deps.
 
 import pytest
 
-from src.escalation import (
+from nosilo_core.escalation import (
     DISPUTE,
     FINANCIAL,
     LEGAL,
@@ -18,7 +18,7 @@ from src.escalation import (
     maybe_escalate_data_quality,
     maybe_escalate_financial,
 )
-from src.guided import (
+from nosilo_core.guided import (
     ESCALATED,
     OPTIONS,
     EscalationPacket,

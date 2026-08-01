@@ -7,10 +7,10 @@ to the system of record, with a never-unprotected GuidedOutcome on every branch.
 
 import pytest
 
-from src.guided import ESCALATED, EXECUTED, HANDOFF, passed_guided
+from nosilo_core.guided import ESCALATED, EXECUTED, HANDOFF, passed_guided
+from nosilo_core.writeback import InMemoryStore
 from src.voice.caller import CALL_COMPLETED, CallOutcome, DryRunCaller
 from src.voice.followup import Contact, run_voice_followup
-from src.writeback import InMemoryStore
 
 
 def _run(caller, store, *, contact=None, dynamic_vars=None, **kw):

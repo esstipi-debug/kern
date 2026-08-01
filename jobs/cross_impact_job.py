@@ -17,11 +17,11 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
+from nosilo_core.guided import GuidedOutcome, Residual, verify_guided
 from src.cross_impact import CrossImpact, measure
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import Deliverable, Finding, Kpi
 from src.export import write_summary_csv  # NOTE: export.py, not deliverable.py
-from src.guided import GuidedOutcome, Residual, verify_guided
 from src.hats import HAT_KEYS, Candidate, HatInputs, decision_cost, evaluate
 from src.objection import NO_EVALUABLE, OBJETA, Verdict, judge
 

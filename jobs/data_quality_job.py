@@ -22,11 +22,11 @@ from pathlib import Path
 
 import pandas as pd
 
+from nosilo_core.guided import GuidedOutcome, recommend, verify_guided
 from src.data_quality import is_valid_gtin
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
-from src.guided import GuidedOutcome, recommend, verify_guided
 from src.sku_dedup import DuplicateCluster, find_duplicates
 
 _PRODUCT_COLS = ("sku", "product_id", "product", "item", "SKU", "Product", "material", "article")

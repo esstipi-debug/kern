@@ -13,8 +13,8 @@ from collections import Counter
 from dataclasses import replace
 
 from jobs.financial_kpis_job import fmt as fmt_kpi
-from src.escalation import OPERATIONAL, escalate, maybe_escalate_data_quality
-from src.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_handoff, as_options
+from nosilo_core.escalation import OPERATIONAL, escalate, maybe_escalate_data_quality
+from nosilo_core.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_handoff, as_options
 
 # Each item is (label, summary, action, tradeoffs); the first item is the recommended default.
 _Item = tuple[str, str, str, str]
@@ -48,7 +48,7 @@ def _intake_quality_detail(quality: object) -> str:
 def _apply_intake_quality(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
     """Shared by every intake-fed tool's options builder: state a residual
     whenever ANY source rows were dropped during intake (transparency first,
-    regardless of severity), and escalate (src.escalation.maybe_escalate_data_quality)
+    regardless of severity), and escalate (nosilo_core.escalation.maybe_escalate_data_quality)
     when the dropped share exceeds the report's own intake_quality_threshold - the
     never-unprotected contract applied to the intake step, the same failure class
     jobs/forecast_job.py's MASE=inf handling addresses for unvalidated SKUs.
@@ -568,7 +568,7 @@ def launch_readiness_options(report: object) -> GuidedOutcome:
     """Aggregate the per-SKU launch verdicts into one run-level outcome.
 
     Any red SKU -> ESCALATED (routed to the campaign owner), bundling every red into one
-    packet and carrying those options at the top level too (mirrors src.escalation._maybe_
+    packet and carrying those options at the top level too (mirrors nosilo_core.escalation._maybe_
     escalate's "nothing silently vanishes"). Else any yellow -> the worst-margin yellow SKU's
     own OPTIONS outcome. Else all green -> EXECUTED.
     """
@@ -775,7 +775,7 @@ def price_watch_options(report: object) -> GuidedOutcome:
     request is genuinely visible to the operator, not flattened into the
     ranked-options list or silently dropped. The happy-path's own ranked
     options travel along at the outcome's top level too (mirrors
-    ``src.escalation._maybe_escalate``'s "nothing silently vanishes from the
+    ``nosilo_core.escalation._maybe_escalate``'s "nothing silently vanishes from the
     rendered deliverable" contract) so the routine next steps stay visible
     alongside the pending approval.
     """

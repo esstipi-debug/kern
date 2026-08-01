@@ -27,7 +27,7 @@ Mirrors ``src/connectors/odoo.py``'s two-layer split exactly:
   needed only at deploy time. This is the SAME connector-independence
   pattern ``OdooConnector``/``_ReorderRuleStore`` established: the safety
   plane (risk tiers, signed Approval, idempotency, audit, rollback) is 100%
-  reused from ``src.writeback``, unchanged.
+  reused from ``nosilo_core.writeback``, unchanged.
 
 ``httpx`` (the ``repricing`` extra; already pinned by the ``tower`` and
 ``pricing-intel`` extras) is imported lazily and only required by
@@ -39,7 +39,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from src import writeback
+from nosilo_core import writeback
 
 try:  # optional: the 'repricing' extra (httpx already pinned by tower/pricing-intel)
     import httpx  # noqa: F401  (imported to prove availability; the caller builds the client)
@@ -141,7 +141,7 @@ class ShopifyPriceStore:
     ``src.connectors.odoo``'s ``_ReorderRuleStore`` does for Odoo reorder
     rules -- the only thing that differs per channel is this class.
 
-    ``ledger``, when given (a ``src.writeback_store.SqliteAuditLedger``),
+    ``ledger``, when given (a ``nosilo_core.writeback_store.SqliteAuditLedger``),
     persists the audit/idempotency bookkeeping across a process restart --
     matching every other store in this repo (``InMemoryStore``,
     ``ExcelWorkbookStore``, ``_ReorderRuleStore``).

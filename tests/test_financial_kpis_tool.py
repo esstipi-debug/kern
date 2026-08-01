@@ -12,7 +12,8 @@ import pandas as pd
 import pytest
 
 from jobs import financial_kpis_job as fkj
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable
 

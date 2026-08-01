@@ -42,7 +42,7 @@ MERCHANT-facing send is a different surface entirely
 (``scm_agent/merchant_alerts.py``, reviewed-then-sent by a concierge operator,
 never auto-pushed from here). This job is T1 sense-only: it reads state and
 records events. It never stages a PO, never touches an ERP, never imports
-``src/writeback.py``.
+``nosilo_core/writeback.py``.
 """
 
 from __future__ import annotations

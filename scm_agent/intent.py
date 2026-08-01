@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from .llm import LLMProvider
-from .registry import ToolRegistry
+from nosilo_core.llm import LLMProvider
+from nosilo_core.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 

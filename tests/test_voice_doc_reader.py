@@ -9,7 +9,7 @@ import sys
 
 import pytest
 
-from src.guided import EXECUTED, HANDOFF, passed_guided
+from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
 from src.voice.doc_reader import (
     DocExtraction,
     DocModel,
@@ -163,8 +163,8 @@ def test_unavailable_model_extracts_nothing():
 
 
 def test_default_model_falls_back_gracefully_when_agent_layer_unimportable(monkeypatch):
-    # Force the lazy `from scm_agent.llm import get_provider` to fail.
-    monkeypatch.setitem(sys.modules, "scm_agent.llm", None)
+    # Force the lazy `from nosilo_core.llm import get_provider` to fail.
+    monkeypatch.setitem(sys.modules, "nosilo_core.llm", None)
 
     ext = read_document("purchase_order", "<doc>")  # no provider -> default path
 

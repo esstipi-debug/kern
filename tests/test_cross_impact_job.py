@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from jobs import cross_impact_job
-from src.guided import OPTIONS, ExecutionOption, GuidedOutcome, verify_guided
+from nosilo_core.guided import OPTIONS, ExecutionOption, GuidedOutcome, verify_guided
 from src.hats import HAT_COMPRADOR, HAT_KEYS, Candidate
 from src.objection import NO_EVALUABLE, OBJETA, Verdict
 

@@ -6,7 +6,7 @@ Guarantees under test:
 - enforce_analysis_tier(): T1 auto-executes AND is audited (a durable
   AutonomyRecord exists); T2 does NOT auto-notify as done and produces a
   pending/HANDOFF outcome that acknowledge_pending() later completes; T3
-  always escalates through the real src/escalation.py machinery, never a
+  always escalates through the real nosilo_core/escalation.py machinery, never a
   fabricated ESCALATED outcome; a non-ok JobResult gates nothing;
 - enforce_writeback_tier(): T1 auto-applies a REVERSIBLE changeset but an
   IRREVERSIBLE changeset is NEVER auto-applied even when routed T1 -- the
@@ -24,8 +24,11 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from nosilo_core import llm, writeback
+from nosilo_core.guided import ESCALATED, EXECUTED, HANDOFF, ExecutionOption, as_executed, as_options, passed_guided
+from nosilo_core.types import STATUS_NEEDS_DATA, STATUS_OK, JobResult
 from scm_agent import event_intent as event_intent_module
-from scm_agent import llm, tools
+from scm_agent import tools
 from scm_agent.autonomy import (
     DEFAULT_TTL_SECONDS,
     STATUS_ACKNOWLEDGED,
@@ -46,9 +49,6 @@ from scm_agent.autonomy import (
 from scm_agent.event_intent import DEFAULT_ROUTING_PATH, Route, RoutedResult
 from scm_agent.events import Event
 from scm_agent.orchestrator import Orchestrator
-from scm_agent.types import STATUS_NEEDS_DATA, STATUS_OK, JobResult
-from src import writeback
-from src.guided import ESCALATED, EXECUTED, HANDOFF, ExecutionOption, as_executed, as_options, passed_guided
 
 PORTFOLIO = "data/sample_demand_portfolio.csv"  # same fixture tests/test_event_intent.py uses
 
@@ -228,7 +228,7 @@ def test_acknowledge_pending_unknown_id_raises():
         acknowledge_pending(ledger, "nope", "alice")
 
 
-# -- enforce_analysis_tier(): T3 always escalates via real src/escalation.py ----
+# -- enforce_analysis_tier(): T3 always escalates via real nosilo_core/escalation.py ----
 
 
 def test_t3_returns_a_real_escalated_outcome():
@@ -240,7 +240,7 @@ def test_t3_returns_a_real_escalated_outcome():
     assert outcome.status == ESCALATED
     assert passed_guided(outcome)
     assert outcome.escalation is not None       # a real EscalationPacket, not fabricated
-    assert outcome.escalation.route_to          # src/escalation.py filled a default route
+    assert outcome.escalation.route_to          # nosilo_core/escalation.py filled a default route
     assert outcome.escalation.sla                # ...and a default SLA
     assert outcome.escalation.recommendation == "Reorder plan computed."
 
@@ -327,7 +327,7 @@ def test_t1_auto_applies_a_reversible_changeset():
 def test_t1_never_auto_applies_an_irreversible_changeset():
     """THE safety-invariant test: writeback.requires_approval() hard-codes
     'irreversible always needs a human' regardless of auto_apply_reversible
-    (src/writeback.py). enforce_writeback_tier's T1 branch checks
+    (nosilo_core/writeback.py). enforce_writeback_tier's T1 branch checks
     changeset.risk_tier BEFORE ever calling writeback.apply() -- so an
     irreversible changeset never even attempts the write path under T1, and
     the invariant holds at two independent layers: this explicit tier check,

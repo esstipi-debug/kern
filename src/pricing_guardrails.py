@@ -73,7 +73,7 @@ already-append-only history).
 changeset -- from PR-16's ``price_optimizer``, this module's own discount
 validation, or anywhere else -- ships without BOTH a human-legible
 explanation and citations. Reuses
-``src.writeback.Changeset`` (already has a ``reason`` field -- no parallel
+``nosilo_core.writeback.Changeset`` (already has a ``reason`` field -- no parallel
 changeset type is built here) and
 ``scm_agent.citation_gate.filter_citations`` (the same gate
 Fase B PR-13 established for ``price_intelligence``; ``"pricing"`` is
@@ -97,11 +97,11 @@ from pathlib import Path
 
 import yaml
 
+from nosilo_core.writeback import Changeset
 from scm_agent.citation_gate import filter_citations
 from scm_agent.knowledge import GroundedCitation, KnowledgeBase
 from src.state.store import StateStore
 from src.state.system_state import history as state_history
-from src.writeback import Changeset
 
 # -- market profile loading (Golden Rule 12: declarative config, not `if`) ---
 
@@ -668,7 +668,7 @@ def gate_price_changeset(
     PR-16's ``price_optimizer`` output, this module's own discount
     validation, or any future caller (plan section 7 P5's central gate row).
 
-    Reuses ``src.writeback.Changeset`` verbatim (it already carries the
+    Reuses ``nosilo_core.writeback.Changeset`` verbatim (it already carries the
     human-legible ``reason`` field -- no second changeset type is built
     here) and ``scm_agent.citation_gate.filter_citations`` (the same
     convention Fase B PR-13 established for ``price_intelligence``;

@@ -8,8 +8,8 @@ import pandas as pd
 import pytest
 
 from jobs import disruption_scan_job as J
+from nosilo_core.guided import EXECUTED, HANDOFF, OPTIONS
 from src import disruption as D
-from src.guided import EXECUTED, HANDOFF, OPTIONS
 
 FIXTURES = Path(__file__).parent / "fixtures" / "gdelt"
 _ACME = (FIXTURES / "acme_electronics.json").read_text(encoding="utf-8")

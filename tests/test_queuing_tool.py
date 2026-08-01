@@ -9,10 +9,11 @@ from pathlib import Path
 import pandas as pd
 
 from jobs import queuing_job as qj
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from nosilo_core.guided import OPTIONS
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable
-from src.guided import OPTIONS
 
 
 def _stations_df() -> pd.DataFrame:

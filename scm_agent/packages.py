@@ -32,15 +32,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from src import client_profile
-from src.deliverable import DEFAULT_BRANDING, Branding
-
-from . import citation_gate
-from .knowledge import KnowledgeBase
-from .llm import LLMProvider, get_provider, narrative_rewrite
-from .registry import ToolRegistry
-from .tools import build_default_registry
-from .types import (
+from nosilo_core.llm import LLMProvider, get_provider, narrative_rewrite
+from nosilo_core.registry import ToolRegistry
+from nosilo_core.types import (
     STATUS_ERROR,
     STATUS_NEEDS_CLARIFICATION,
     STATUS_NEEDS_DATA,
@@ -48,6 +42,12 @@ from .types import (
     STATUS_QA_FAILED,
     JobRequest,
 )
+from src import client_profile
+from src.deliverable import DEFAULT_BRANDING, Branding
+
+from . import citation_gate
+from .knowledge import KnowledgeBase
+from .tools import build_default_registry
 
 STEP_SKIPPED = "skipped"
 
@@ -467,7 +467,7 @@ def _run_step(
     # Optional LLM polish in the package's target language (src/i18n.py's
     # static labels cover the deterministic path around this; this is the
     # only place a package step's own narrative gets translated - see
-    # scm_agent.llm.narrative_rewrite). Skipped without a provider, matching
+    # nosilo_core.llm.narrative_rewrite). Skipped without a provider, matching
     # the Orchestrator's equivalent single-tool behavior exactly.
     rewritten = narrative_rewrite(
         provider, produced.summary, tool.title, lang=spec.lang, citations=list(citations),

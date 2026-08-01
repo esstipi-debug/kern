@@ -9,17 +9,17 @@ target cover, and returns a guided **never-unprotected** outcome:
 - otherwise a ready-to-execute **restock packet** (the quantities + steps) is handed off.
 
 Either way no task ends in a dead end. Pure orchestration over the existing engines +
-``src.writeback`` plane; deterministic given the source.
+``nosilo_core.writeback`` plane; deterministic given the source.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from nosilo_core.guided import GuidedOutcome, HandoffPacket, Residual, as_executed, as_handoff
+from nosilo_core.writeback import Changeset
 from src.connectors import InventorySource, Order
 from src.forecasting import forecast_demand
-from src.guided import GuidedOutcome, HandoffPacket, Residual, as_executed, as_handoff
-from src.writeback import Changeset
 
 
 @dataclass(frozen=True)

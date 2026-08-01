@@ -102,7 +102,7 @@ brief ─▶ intent.classify ─▶ registry.get(tool) ─▶ prepare ─▶ run
               (rules + optional LLM)              any of the 49 registered tools
 ```
 
-- **`scm_agent/`** — `types` · `llm` (Claude / rules fallback) · `registry` · `tools` · `intent` · `orchestrator` · `knowledge` (L3 grounding) · `guided_bridge` (never-unprotected contract via `src/guided.py`)
+- **`scm_agent/`** — `types` · `llm` (Claude / rules fallback) · `registry` · `tools` · `intent` · `orchestrator` · `knowledge` (L3 grounding) · `guided_bridge` (never-unprotected contract via `nosilo_core/guided.py`)
 - **Entry points** — CLI `examples/run_agent.py`, HTTP `POST /api/jobs` (multipart, with downloadable deliverables), and the live console under `webapp/static/prototype/`
 - **Statuses** — `ok` · `needs_clarification` · `needs_data` · `qa_failed` · `error`
 

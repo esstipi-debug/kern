@@ -7,7 +7,7 @@ quadrants map to the standard SRM playbook - strategic -> partner/develop,
 bottleneck -> secure supply/dual-source, leverage -> competitive tender,
 non-critical -> simplify/automate.
 
-Pure (stdlib + src.guided only): mirrors the weighted-composite -> banding
+Pure (stdlib + nosilo_core.guided only): mirrors the weighted-composite -> banding
 template of src/multi_criteria_classification.py and returns a never-unprotected
 GuidedOutcome exactly like src/mcdm.py::award_outcome. Risk drivers arrive
 already normalized to [0,1] (higher = riskier); normalization is the job layer's
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.guided import ExecutionOption, GuidedOutcome, as_options
+from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options
 
 # (impact_band, risk_band) -> Kraljic quadrant.
 _QUADRANT = {

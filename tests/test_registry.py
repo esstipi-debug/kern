@@ -1,4 +1,4 @@
-"""Tests for the capability registry's keyword routing (scm_agent/registry.py).
+"""Tests for the capability registry's keyword routing (nosilo_core/registry.py).
 
 Regression coverage for the word-boundary matching fix: `match()` used to score a
 keyword hit on raw substring containment, so a short keyword like "upc" or "ean"
@@ -8,7 +8,7 @@ keyword hit on raw substring containment, so a short keyword like "upc" or "ean"
 
 from __future__ import annotations
 
-from scm_agent.registry import Tool, ToolRegistry
+from nosilo_core.registry import Tool, ToolRegistry
 from scm_agent.tools import build_default_registry
 
 

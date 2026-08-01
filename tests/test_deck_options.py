@@ -9,10 +9,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from scm_agent import llm, tools
+from nosilo_core import llm
+from nosilo_core.guided import ExecutionOption
+from scm_agent import tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable
-from src.guided import ExecutionOption
 
 
 def test_deliverable_renders_the_options_section():

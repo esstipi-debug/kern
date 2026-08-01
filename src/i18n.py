@@ -27,7 +27,7 @@ package deck unconditionally, by design, not by oversight:
   Recommendations and Coverage & handoff sections) is the same category of
   problem at the same scale and is equally out of scope here.
 
-When an ``LLMProvider`` is configured, ``scm_agent.llm.narrative_rewrite``
+When an ``LLMProvider`` is configured, ``nosilo_core.llm.narrative_rewrite``
 DOES rewrite a step's summary into the target language on the fly (see
 there) -- that is the intended path to full per-tool bilingual parity, not
 this static table; the guided-outcome text above is NOT currently run
