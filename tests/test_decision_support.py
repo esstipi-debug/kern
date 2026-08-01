@@ -85,6 +85,61 @@ def test_negociacion_rojo_below_minimum_margin():
     assert card.veredicto.nivel == ds.ROJO
 
 
+def test_negociacion_delta_ss_matches_sqrt_tau_without_lead_time_variability():
+    """Back-compat: sigma_L = 0 must reproduce the plain z * sigma_d * sqrt(tau) delta."""
+    from src.safety_stock import service_level_factor
+    card = ds.negociacion_proveedor(costo_unitario=60, precio_venta=100, margen_minimo_pct=0.3,
+                                    lead_time_actual_dias=7, demanda_std_dia=5, nivel_servicio=0.95)
+    z = service_level_factor(0.95)
+    esperado = z * 5 * (8**0.5 - 7**0.5)
+    assert card.supuestos["delta_ss_por_dia_extra"] == pytest.approx(esperado)
+
+
+def _estable_vs_variable():
+    base = dict(costo_unitario=60, precio_venta=100, margen_minimo_pct=0.3,
+                lead_time_actual_dias=7, demanda_std_dia=5, demanda_media_dia=100)
+    return (ds.negociacion_proveedor(**base),
+            ds.negociacion_proveedor(**base, lead_time_std_dias=2))
+
+
+def test_negociacion_lead_time_variability_raises_the_safety_stock_level():
+    """sigma_L^2 * mu_d^2 dominates the risk period: an unreliable plazo costs stock."""
+    estable, variable = _estable_vs_variable()
+    assert (variable.supuestos["safety_stock_actual_u"]
+            > 10 * estable.supuestos["safety_stock_actual_u"])
+
+
+def test_negociacion_lead_time_variability_flattens_the_marginal_day():
+    """Counter-intuitive but correct: sigma_L^2 * mu_d^2 is CONSTANT in L, so it flattens
+    sqrt(L * sigma_d^2 + C) and one more day matters LESS at the margin. The lever moves
+    from 'shorten the plazo' to 'make it reliable' -- which is what the card must say."""
+    estable, variable = _estable_vs_variable()
+    assert (variable.supuestos["delta_ss_por_dia_extra"]
+            < estable.supuestos["delta_ss_por_dia_extra"])
+
+
+def test_negociacion_flags_reliability_as_the_lever_when_lead_time_dominates():
+    estable, variable = _estable_vs_variable()
+    assert variable.supuestos["share_varianza_plazo"] > 0.5
+    assert estable.supuestos["share_varianza_plazo"] == 0.0
+    etiquetas = [g.etiqueta for g in variable.guardrails]
+    assert any("Confiabilidad" in e for e in etiquetas)
+
+
+def test_negociacion_lead_time_std_without_mean_demand_raises():
+    """sigma_L only bites through mu_d -- refuse to accept an input that would be inert."""
+    with pytest.raises(ValueError, match="demanda media diaria"):
+        ds.negociacion_proveedor(costo_unitario=60, precio_venta=100, margen_minimo_pct=0.3,
+                                 lead_time_actual_dias=7, demanda_std_dia=5, lead_time_std_dias=2)
+
+
+def test_negociacion_negative_lead_time_std_raises():
+    with pytest.raises(ValueError, match="no puede ser negativa"):
+        ds.negociacion_proveedor(costo_unitario=60, precio_venta=100, margen_minimo_pct=0.3,
+                                 lead_time_actual_dias=7, demanda_std_dia=5,
+                                 demanda_media_dia=100, lead_time_std_dias=-1)
+
+
 # ---- 3. cambiar de proveedor --------------------------------------------------------
 def test_proveedor_recommends_dominant_incumbent():
     # actual mejor en todo -> gana actual
