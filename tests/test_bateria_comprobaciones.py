@@ -55,5 +55,74 @@ def test_t11_sin_sku_en_riesgo_no_acredita_la_tarea(tmp_path):
 
 def test_t11_suma_al_marcador_global(tmp_path):
     puntaje = puntuar(_contexto(tmp_path, _FILAS_CON_RIESGO))
-    assert puntaje.puntos == 1.0
-    assert puntaje.porcentaje == 5.0  # 1 de 20
+    t11 = _t11(puntaje)
+    assert t11.puntos == 1.0
+    assert puntaje.puntos >= 1.0
+
+
+def _resultado(puntaje, tarea_id: str):
+    return next(r for r in puntaje.resultados if r.tarea_id == tarea_id)
+
+
+# --- T01 / T02: estructurales, no dependen del dataset -----------------------
+
+
+def test_t01_no_cumple_porque_el_entregable_no_lleva_banda():
+    """La fuente: 'Sin banda de incertidumbre NO cuenta'.
+
+    Si algun dia el job propaga ``error_std`` al entregable, este test se pone
+    rojo y hay que reevaluar el veredicto -- que es exactamente lo que queremos.
+    """
+    r = _resultado(puntuar(), "T01")
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.detalle["campos_de_dispersion"] == []
+    assert "forecast" in r.detalle["campos"]
+
+
+def test_t02_es_parcial_tiene_mape_pero_no_sesgo_ni_ciclo_previo():
+    r = _resultado(puntuar(), "T02")
+    assert r.estado is Estado.PARCIAL
+    assert set(r.detalle["faltantes"]) == {
+        "sesgo firmado",
+        "comparacion contra el ciclo previo",
+    }
+    assert r.puntos == 0.5
+
+
+# --- T03: segmentacion con servicio diferenciado -----------------------------
+
+_CSV_VENTAS = "sales_history.csv"
+
+# Costo unitario PLANO: el ABC ordena por unidades y se rotula valor anual.
+_VENTAS_COSTO_PLANO = "product_id,quantity,unit_cost\n" + "".join(
+    f"SKU-{i:02d},{10 + i * 7},1.0\n" for i in range(12) for _ in range(6)
+)
+
+# Costo unitario dispar: el ABC ordena por valor de verdad.
+_VENTAS_COSTO_DISPAR = "product_id,quantity,unit_cost\n" + "".join(
+    f"SKU-{i:02d},{10 + i * 7},{1.0 + i * 9.5}\n" for i in range(12) for _ in range(6)
+)
+
+
+def _ctx_ventas(tmp_path, contenido: str) -> Contexto:
+    (tmp_path / _CSV_VENTAS).write_text(contenido, encoding="utf-8")
+    return Contexto(data_root=tmp_path)
+
+
+def test_t03_sin_ventas_es_sin_dato(tmp_path):
+    assert _resultado(puntuar(Contexto(data_root=tmp_path)), "T03").estado is Estado.SIN_DATO
+
+
+def test_t03_con_costo_plano_es_parcial_el_abc_ordena_por_unidades(tmp_path):
+    """Un ranking por unidades rotulado 'valor anual' no es ABC por facturacion."""
+    r = _resultado(puntuar(_ctx_ventas(tmp_path, _VENTAS_COSTO_PLANO)), "T03")
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.detalle["ranking_por_unidades"] is True
+    assert "UNIDADES" in r.evidencia
+
+
+def test_t03_cumple_con_costo_dispar_y_servicio_diferenciado(tmp_path):
+    r = _resultado(puntuar(_ctx_ventas(tmp_path, _VENTAS_COSTO_DISPAR)), "T03")
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.detalle["ranking_por_unidades"] is False
+    assert len(r.detalle["niveles_de_servicio"]) > 1
