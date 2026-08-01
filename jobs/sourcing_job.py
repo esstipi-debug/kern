@@ -40,6 +40,8 @@ _LEAD_COLS = ("lead_time_days", "lead_time", "Lead Time", "lead")
 _UNITS_COLS = ("units", "Units", "quantity", "Quantity", "qty")
 _DEFECTS_COLS = ("defects", "Defects", "rejects", "ppm_defects", "Defective_Units", "defective_units")
 _PRICE_COLS = ("unit_price", "Unit Price", "price", "Price", "unit_cost", "cost", "Unit_Price")
+_PO_ID_COLS = ("po_number", "PO_Number", "po_id", "PO", "order_id", "Order_ID",
+               "purchase_order", "Purchase_Order", "reference", "Reference")
 
 # ERP exports carry dates, not booleans - these back the derivations below.
 _ORDER_DATE_COLS = ("order_date", "Order_Date", "Order Date", "po_date", "PO_Date")
@@ -84,6 +86,9 @@ class SourcingReport:
     # Only reachable via require_all_criteria=False; ranking on a tie of zeros awards
     # alphabetically, which is not a decision.
     unmeasured: tuple[str, ...] = field(default_factory=tuple)
+    # The bottom of the ranking, worst first: who the review is actually about. The
+    # award names the winner; nobody schedules a meeting about the winner.
+    worst_for_action: tuple[str, ...] = ()
 
 
 def _cell(value: float | None, digits: int) -> float | str:
@@ -193,7 +198,9 @@ def score_suppliers(
     prices: dict[str, float] = {}
     # Carried, not scored: the declared lead time and where the measured one came from
     # travel to the scorecard so it can report the gap instead of picking one silently.
-    pass_through = [c for c in ("declared_lead_time_days", "lead_time_source") if c in df.columns]
+    pass_through = [
+        c for c in ("declared_lead_time_days", "lead_time_source", "po_id") if c in df.columns
+    ]
     for extra in pass_through:
         scored[extra] = df[extra]
     for supplier, g in scored.groupby("supplier"):
@@ -377,6 +384,14 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
     notes: list[str] = []
     work = pd.DataFrame(index=df.index)
     work["supplier"] = df[supplier].astype(str)
+    po_col = _pick_column(df, params.get("po_id_col"), _PO_ID_COLS)
+    if po_col:
+        work["po_id"] = df[po_col].astype(str)
+    else:
+        notes.append(
+            "No purchase-order identifier column was found, so the scores cannot be traced "
+            "back to the orders that produced them; pass po_id_col to make the panel auditable."
+        )
 
     usable = _derive_lead_time(df, params, work, notes)
     usable &= _derive_on_time(df, params, work, notes)
@@ -471,6 +486,23 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
     return {"scorecards": cards, "prices": prices, "notes": tuple(notes)}
 
 
+#: How many of the bottom of the panel get flagged for the supplier review.
+WORST_FOR_ACTION = 3
+
+
+def _worst_for_action(ranking: list[str]) -> tuple[str, ...]:
+    """The bottom ``WORST_FOR_ACTION`` of the ranking, WORST first.
+
+    Never flags the whole panel: on a two-supplier panel, "both of you are the worst"
+    is not an action item. With <= WORST_FOR_ACTION suppliers only the last one is
+    flagged, so the list always leaves someone to compare against.
+    """
+    if len(ranking) <= 1:
+        return ()
+    n = min(WORST_FOR_ACTION, len(ranking) - 1)
+    return tuple(reversed(ranking[-n:]))
+
+
 def run(
     scorecards: list[SupplierScore],
     prices: dict[str, float] | None = None,
@@ -524,6 +556,7 @@ def run(
         summary=summary,
         notes=tuple(notes or ()),
         unmeasured=tuple(unmeasured),
+        worst_for_action=_worst_for_action(ranking.ranking),
     )
 
 
@@ -587,6 +620,13 @@ def write_operational(report: SourcingReport, out_dir: str | Path, client: str =
             "lead_time_p90": _cell(c.lead_time_p90, 2),
             "declared_lead_time": _cell(c.declared_lead_time, 2),
             "lead_time_gap": _cell(c.lead_time_gap, 2),
+            "flagged_for_action": c.supplier in report.worst_for_action,
+            # Traceability, capped so a 777-PO panel stays a readable cell. The cap is
+            # spelled out in the cell itself - a silent truncation reads as "these are
+            # all the orders", which is the opposite of auditable.
+            "scored_po_ids": " ".join(c.scored_po_ids[:20]) + (
+                f" (+{len(c.scored_po_ids) - 20} mas)" if len(c.scored_po_ids) > 20 else ""
+            ),
             "ppm": _cell(c.ppm, 1),
             "avg_price": _cell(report.prices.get(c.supplier), 2),
             "topsis_score": _cell(report.ranking.scores.get(c.supplier), 4),

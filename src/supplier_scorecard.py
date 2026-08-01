@@ -62,6 +62,11 @@ class SupplierScore:
     lead_time_gap: float | None = None
     #: Where ``avg_lead_time`` came from: LEAD_TIME_MEASURED | LEAD_TIME_DECLARED | None.
     lead_time_source: str | None = None
+    #: The purchase orders this score was computed over. A grade nobody can trace back
+    #: to the deliveries that produced it cannot be taken to a supplier review - the
+    #: supplier's first question is "which orders?". Empty when the export carried no
+    #: order identifier.
+    scored_po_ids: tuple[str, ...] = ()
 
 
 _NOT_MEASURED = Evaluable(on_time=0, in_full=0, otif=0, lead_time=0, ppm=0)
@@ -167,6 +172,7 @@ def score_supplier(supplier: str, deliveries: list[dict]) -> SupplierScore:
         v for v in (_number(d, "declared_lead_time_days") for d in deliveries) if v is not None
     ]
     fuentes = {str(d["lead_time_source"]) for d in deliveries if d.get("lead_time_source")}
+    po_ids = tuple(str(d["po_id"]) for d in deliveries if d.get("po_id"))
     quality = [
         (units, defects)
         for units, defects in ((_number(d, "units"), _number(d, "defects")) for d in deliveries)
@@ -210,6 +216,7 @@ def score_supplier(supplier: str, deliveries: list[dict]) -> SupplierScore:
             if avg_lead is not None and avg_declarado is not None else None
         ),
         lead_time_source=fuente,
+        scored_po_ids=po_ids,
     )
 
 

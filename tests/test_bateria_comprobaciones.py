@@ -600,19 +600,17 @@ def _candidato_scorecard(**cambios) -> _CandidatoScorecard:
     return _CandidatoScorecard(**{**base, **cambios})
 
 
-def test_t09_no_cumple_las_notas_no_son_trazables_a_las_oc():
-    """Veredicto real: el panel calcula OTIF, fill rate y rechazo y ordena el
-    ranking, pero las OC entran con id y ninguno sobrevive al reporte."""
+def test_t09_es_parcial_ya_es_trazable_y_marca_a_los_peores():
+    """Veredicto real despues del fix: las OC que generaron cada nota viajan con el
+    scorecard y el fondo del ranking queda marcado para la revision. Lo que falta
+    necesita un dato nuevo: el precio facturado contra el precio de la OC."""
     r = _resultado(puntuar(), "T09")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
-    assert r.detalle["trazable_a_las_oc"] is False
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert r.detalle["trazable_a_las_oc"] is True
     assert r.detalle["ranking"] == ["BETA", "ACME"]
     assert r.detalle["metricas"]["ACME"]["otif"] == 0.0
-    assert set(r.detalle["faltantes"]) == {
-        "desvio de precio % (OC vs facturado)",
-        "los peores marcados para accion",
-    }
+    assert r.detalle["faltantes"] == ["desvio de precio % (OC vs facturado)"]
 
 
 def test_t09_cumple_con_las_cuatro_metricas_ranking_y_trazabilidad():
