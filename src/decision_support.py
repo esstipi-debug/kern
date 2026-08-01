@@ -23,6 +23,7 @@ from src.eoq import compute_eoq
 from src.guided import ExecutionOption, as_options
 from src.mcdm import Criterion, topsis_rank
 from src.queuing import mmc
+from src.risk_period import demand_over_risk_period
 from src.safety_stock import safety_stock
 from src.working_capital import working_capital
 
@@ -212,6 +213,19 @@ def viabilidad_operativa(
 # --------------------------------------------------------------------------- #
 # 2. Negociacion con proveedor
 # --------------------------------------------------------------------------- #
+def _ss_sobre_plazo(
+    demanda_media_dia: float,
+    demanda_std_dia: float,
+    lead_time_dias: float,
+    lead_time_std_dias: float,
+    nivel_servicio: float,
+) -> float:
+    """Safety stock over a risk period of `lead_time_dias`, honouring lead-time variability."""
+    riesgo = demand_over_risk_period(
+        demanda_media_dia, demanda_std_dia, lead_time_dias, lead_time_std_dias)
+    return safety_stock(riesgo.demand_std, nivel_servicio, risk_periods=1.0).safety_stock
+
+
 def negociacion_proveedor(
     *,
     costo_unitario: float,
@@ -220,6 +234,8 @@ def negociacion_proveedor(
     lead_time_actual_dias: float,
     demanda_std_dia: float = 0.0,
     nivel_servicio: float = 0.95,
+    demanda_media_dia: float = 0.0,
+    lead_time_std_dias: float = 0.0,
 ) -> DecisionCard:
     """Guardrails to walk into a supplier negotiation: cost ceiling, max lead time, payment."""
     if precio_venta <= 0 or costo_unitario <= 0:
@@ -228,19 +244,40 @@ def negociacion_proveedor(
         raise ValueError("el margen minimo debe estar entre 0 y 1 (exclusivo)")
     if lead_time_actual_dias <= 0:
         raise ValueError("el lead time debe ser > 0")
+    if lead_time_std_dias < 0 or demanda_media_dia < 0:
+        raise ValueError("la variabilidad del plazo y la demanda media no puede ser negativa")
+    # sigma_L only enters the risk period through mu_d (eq. 6.5): accepting it without a
+    # mean demand would silently ignore it, so refuse instead of pretending it was used.
+    if lead_time_std_dias > 0 and demanda_media_dia <= 0:
+        raise ValueError(
+            "para usar la variabilidad del plazo hace falta la demanda media diaria (> 0)")
 
     costo_max = precio_venta * (1 - margen_minimo_pct)   # walk-away cost ceiling
     margen_actual = (precio_venta - costo_unitario) / precio_venta
-    # Extra safety stock per additional day of lead time (cost of a worse plazo).
-    ss_actual = safety_stock(demanda_std_dia, nivel_servicio, risk_periods=lead_time_actual_dias)
-    ss_mas_un_dia = safety_stock(demanda_std_dia, nivel_servicio, risk_periods=lead_time_actual_dias + 1)
-    delta_ss_dia = ss_mas_un_dia.safety_stock - ss_actual.safety_stock
+    # Extra safety stock per additional day of lead time (cost of a worse plazo). The risk
+    # period folds demand AND lead-time variability into a single sigma_x (eq. 6.4-6.5), so
+    # safety_stock() is then called with risk_periods=1.0 -- sqrt(tau) is already inside it.
+    # With lead_time_std_dias=0 this collapses back to z * sigma_d * sqrt(L).
+    ss_actual = _ss_sobre_plazo(demanda_media_dia, demanda_std_dia, lead_time_actual_dias,
+                                lead_time_std_dias, nivel_servicio)
+    ss_mas_un_dia = _ss_sobre_plazo(demanda_media_dia, demanda_std_dia, lead_time_actual_dias + 1,
+                                    lead_time_std_dias, nivel_servicio)
+    delta_ss_dia = ss_mas_un_dia - ss_actual
+    # How much of the risk-period variance comes from the plazo rather than from demand.
+    # Above ~0.5 the negotiation lever is reliability, not speed: sigma_L^2 * mu_d^2 is
+    # constant in L, so shaving a day off an erratic plazo barely moves the stock.
+    var_demanda = lead_time_actual_dias * demanda_std_dia**2
+    var_plazo = (lead_time_std_dias**2) * (demanda_media_dia**2)
+    var_total = var_demanda + var_plazo
+    share_plazo = var_plazo / var_total if var_total > 0 else 0.0
 
     supuestos = {
         "costo_unitario": costo_unitario, "precio_venta": precio_venta,
         "margen_minimo_pct": margen_minimo_pct, "lead_time_actual_dias": lead_time_actual_dias,
         "demanda_std_dia": demanda_std_dia, "nivel_servicio": nivel_servicio,
-        "margen_actual": margen_actual,
+        "demanda_media_dia": demanda_media_dia, "lead_time_std_dias": lead_time_std_dias,
+        "margen_actual": margen_actual, "delta_ss_por_dia_extra": delta_ss_dia,
+        "safety_stock_actual_u": ss_actual, "share_varianza_plazo": share_plazo,
     }
     cita = "Chopra & Meindl, margen y palancas de capital de trabajo; Vandeput cap. 4 (safety stock)."
 
@@ -254,7 +291,7 @@ def negociacion_proveedor(
         nivel = VERDE
         frase = "Hay margen para cerrar."
 
-    guardrails = (
+    guardrails = [
         Guardrail("Costo maximo aceptable (walk-away)", _money(costo_max),
                   f"Por encima de esto el margen cae bajo {_pct(margen_minimo_pct)}. Es tu limite duro."),
         Guardrail("Margen actual", _pct(margen_actual),
@@ -263,7 +300,16 @@ def negociacion_proveedor(
                   f"Cada dia extra agrega ~{delta_ss_dia:.1f} u de stock de seguridad."),
         Guardrail("Termino de pago objetivo", f">= {lead_time_actual_dias:g} dias",
                   "Que el plazo de pago cubra el inventario en transito (no financiarlo tu)."),
-    )
+    ]
+    if lead_time_std_dias > 0:
+        palanca = ("la confiabilidad, no la velocidad: pedi una ventana de entrega firme "
+                   "antes que un plazo mas corto." if share_plazo > 0.5
+                   else "la velocidad: acortar el plazo mueve mas stock que estabilizarlo.")
+        guardrails.append(Guardrail(
+            "Confiabilidad del plazo", f"+/- {lead_time_std_dias:g} dias",
+            f"{_pct(share_plazo)} del riesgo viene del plazo. Sostiene {ss_actual:,.0f} u de "
+            f"stock de seguridad. Tu palanca es {palanca}"))
+    guardrails = tuple(guardrails)
     if nivel == ROJO:
         opciones = _rank([
             ExecutionOption(label=f"Renegociar costo a <= {_money(costo_max)}",
