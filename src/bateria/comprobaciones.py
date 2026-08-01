@@ -35,6 +35,25 @@ def _alguno_contiene(campos: set[str], agujas: tuple[str, ...]) -> list[str]:
     return sorted(c for c in campos if any(a in c.lower() for a in agujas))
 
 
+def _cerrar_veredicto(
+    tarea_id: str,
+    *,
+    faltantes: list[str],
+    evidencia_cumple: str,
+    evidencia_falta: str,
+    detalle: dict[str, object],
+) -> ResultadoTarea:
+    """El tramo final compartido: sin faltantes CUMPLE, con uno PARCIAL, con mas NO_CUMPLE.
+
+    Las condiciones eliminatorias de cada tarea se resuelven ANTES de llamar acá
+    -- son propias del criterio y no se pueden promediar con las demas.
+    """
+    if not faltantes:
+        return ResultadoTarea(tarea_id, Estado.CUMPLE, evidencia_cumple, detalle)
+    estado = Estado.PARCIAL if len(faltantes) == 1 else Estado.NO_CUMPLE
+    return ResultadoTarea(tarea_id, estado, evidencia_falta, detalle)
+
+
 def _campos_planos(obj: object) -> set[str]:
     """Campos que el cliente ve por linea, aplanando UN nivel de anidamiento.
 
@@ -403,22 +422,14 @@ def _veredicto_oc(candidatos: tuple[_CandidatoOC, ...]) -> ResultadoTarea:
             detalle=detalle,
         )
 
-    if not mejor.faltantes:
-        return ResultadoTarea(
-            tarea_id="T05",
-            estado=Estado.CUMPLE,
-            evidencia=(
-                f"{mejor.tool} emite la OC con proveedor, SKU, cantidad, fecha y razon por "
-                f"linea, y descuenta el en-transito ({mejor.prueba_en_transito})"
-            ),
-            detalle=detalle,
-        )
-
-    estado = Estado.PARCIAL if len(mejor.faltantes) == 1 else Estado.NO_CUMPLE
-    return ResultadoTarea(
-        tarea_id="T05",
-        estado=estado,
-        evidencia=(
+    return _cerrar_veredicto(
+        "T05",
+        faltantes=mejor.faltantes,
+        evidencia_cumple=(
+            f"{mejor.tool} emite la OC con proveedor, SKU, cantidad, fecha y razon por "
+            f"linea, y descuenta el en-transito ({mejor.prueba_en_transito})"
+        ),
+        evidencia_falta=(
             f"{mejor.tool} descuenta el en-transito ({mejor.prueba_en_transito}) pero su "
             f"entregable sale sin: {', '.join(mejor.faltantes)}. Lo que llega es una lista de "
             f"reposicion por SKU ({', '.join(mejor.campos)}), no una OC por proveedor"
@@ -653,22 +664,14 @@ def _veredicto_ajuste(candidatos: tuple[_CandidatoAjuste, ...]) -> ResultadoTare
             detalle=detalle,
         )
 
-    if not mejor.faltantes:
-        return ResultadoTarea(
-            tarea_id="T06",
-            estado=Estado.CUMPLE,
-            evidencia=(
-                f"{mejor.tool} ajusta a {mejor.restriccion} ({mejor.prueba_ajuste}) y explicita el "
-                f"trade-off completo: exceso, cobertura agregada y recomendacion si/no"
-            ),
-            detalle=detalle,
-        )
-
-    estado = Estado.PARCIAL if len(mejor.faltantes) == 1 else Estado.NO_CUMPLE
-    return ResultadoTarea(
-        tarea_id="T06",
-        estado=estado,
-        evidencia=(
+    return _cerrar_veredicto(
+        "T06",
+        faltantes=mejor.faltantes,
+        evidencia_cumple=(
+            f"{mejor.tool} ajusta a {mejor.restriccion} ({mejor.prueba_ajuste}) y explicita el "
+            f"trade-off completo: exceso, cobertura agregada y recomendacion si/no"
+        ),
+        evidencia_falta=(
             f"{mejor.tool} ajusta a {mejor.restriccion} ({mejor.prueba_ajuste}) pero el entregable "
             f"sale sin: {', '.join(mejor.faltantes)}. {mejor.prueba_exceso}"
         ),
@@ -695,6 +698,163 @@ def t06_ajuste_a_las_condiciones_del_proveedor(_: Contexto) -> ResultadoTarea:
     lado: no hay candidato que sondear.
     """
     return _veredicto_ajuste((_candidato_purchase_plan(), _candidato_hats_settlement()))
+
+
+#: Nombres con los que una fecha de pago o una semana de egreso podria llegar al entregable.
+_CAMPOS_FECHA_PAGO = ("payment", "pago", "due", "vencimiento", "week", "semana", "calendar",
+                      "calendario", "date", "fecha")
+
+#: Nombres con los que el contraste contra el tope de caja podria llegar al entregable.
+_CAMPOS_TOPE = ("budget", "presupuesto", "tope", "shortfall", "deficit", "investment")
+
+#: Nombres con los que el impacto en quiebre del recorte podria llegar al entregable.
+_CAMPOS_QUIEBRE = ("stockout", "quiebre", "at_risk", "en_riesgo", "lost_sale", "fill_rate")
+
+#: Tope de caja con el que se sondea el recorte en T07 (por debajo de lo pedido).
+_TOPE_SONDA = 1000.0
+
+
+@dataclass(frozen=True)
+class _CandidatoCaja:
+    """El plan de compra enfrentado a un tope de caja (T07)."""
+
+    entregable: str
+    campos: tuple[str, ...]
+    pedido_usd: float
+    tope_usd: float
+    prioriza: bool
+    prueba_recorte: str
+
+    @property
+    def deficit_usd(self) -> float:
+        return self.pedido_usd - self.tope_usd
+
+    @property
+    def requisitos(self) -> dict[str, bool]:
+        campos = set(self.campos)
+        return {
+            "calendario de egresos por semana (fecha de pago)": bool(
+                _alguno_contiene(campos, _CAMPOS_FECHA_PAGO)
+            ),
+            "excedente/deficit contra el tope": bool(_alguno_contiene(campos, _CAMPOS_TOPE)),
+            "lista ordenada de lineas a recortar": self.prioriza,
+            "impacto en quiebre de cada recorte": bool(_alguno_contiene(campos, _CAMPOS_QUIEBRE)),
+        }
+
+    @property
+    def faltantes(self) -> list[str]:
+        return [nombre for nombre, ok in self.requisitos.items() if not ok]
+
+    def como_detalle(self) -> dict[str, object]:
+        return {
+            "entregable": self.entregable,
+            "campos": sorted(self.campos),
+            "faltantes": self.faltantes,
+            "deficit_usd": self.deficit_usd,
+            "prioriza_el_recorte": self.prioriza,
+            "prueba_recorte": self.prueba_recorte,
+        }
+
+
+def _veredicto_caja(cand: _CandidatoCaja) -> ResultadoTarea:
+    """Puntua T07. Eliminatorio, con las palabras de la fuente: un total de compra
+    sin fecha de pago no cuenta -- sin calendario no hay nada que contrastar semana
+    a semana, por bien que se compare el total contra el tope."""
+    detalle: dict[str, object] = cand.como_detalle()
+    if not cand.requisitos["calendario de egresos por semana (fecha de pago)"]:
+        return ResultadoTarea(
+            tarea_id="T07",
+            estado=Estado.NO_CUMPLE,
+            evidencia=(
+                f"el plan de compra devuelve un total ({cand.pedido_usd:,.0f} usd) sin ninguna "
+                f"fecha de pago: ningun campo del entregable ({', '.join(sorted(cand.campos))}) "
+                f"lleva semana ni vencimiento, y el criterio dice que asi no cuenta. Contra el "
+                f"tope si compara ({cand.deficit_usd:,.0f} usd de deficit), pero "
+                f"{cand.prueba_recorte}"
+            ),
+            detalle=detalle,
+        )
+
+    return _cerrar_veredicto(
+        "T07",
+        faltantes=cand.faltantes,
+        evidencia_cumple=(
+            f"el entregable calendariza los egresos, los contrasta contra el tope "
+            f"({cand.deficit_usd:,.0f} usd de deficit) y prioriza el recorte con impacto "
+            f"en quiebre"
+        ),
+        evidencia_falta=(
+            f"hay calendario de egresos, pero el entregable sale sin: "
+            f"{', '.join(cand.faltantes)}. {cand.prueba_recorte}"
+        ),
+        detalle=detalle,
+    )
+
+
+@comprobacion("T07")
+def t07_calendario_de_caja_contra_el_tope(_: Contexto) -> ResultadoTarea:
+    """T07 — comprometer caja por semana contra el presupuesto y recortar si no entra.
+
+    El criterio pide cuatro cosas y descalifica una: "Un total de compra sin fecha
+    de pago NO cuenta". Kern tiene UNA sola via donde la compra se enfrenta a un
+    tope -- ``allocate_under_budget``, que el plan de compra integrado expone como
+    ``BudgetAllocation`` -- asi que se la sondea a ella: se corre el mismo plan sin
+    tope y con un tope por debajo de lo pedido.
+
+    Lo que el sondeo muestra es que el recorte existe pero es un ESCALAR: un unico
+    ``safety_stock_scale`` que raspa el buffer de todos los SKU por igual. Eso no
+    es "una lista ordenada de lineas a recortar": nadie eligio que se difiere
+    primero, y no hay ningun numero de quiebre para elegirlo.
+    """
+    from src.constraints import BudgetAllocation
+    from src.sop_engine.demand_plan import NO_SHIFT_SOURCE, DemandPlanLine
+    from src.sop_engine.engine import IntegratedPlanReport
+    from src.sop_engine.purchase_plan import SkuPurchaseInputs, build_purchase_plan
+
+    demanda = (
+        DemandPlanLine("A", 100.0, 0.0, 100.0, NO_SHIFT_SOURCE, "sin shift de precio"),
+        DemandPlanLine("B", 200.0, 0.0, 200.0, NO_SHIFT_SOURCE, "sin shift de precio"),
+    )
+    entradas = {
+        "A": SkuPurchaseInputs("A", on_hand=0.0, unit_cost=10.0, reorder_point=60.0),
+        "B": SkuPurchaseInputs("B", on_hand=0.0, unit_cost=4.0, reorder_point=90.0),
+    }
+    lineas_libres, _ = build_purchase_plan(demanda, entradas)
+    lineas_topadas, asignacion = build_purchase_plan(demanda, entradas, budget=_TOPE_SONDA)
+
+    recortes = {
+        libre.product_id: libre.reorder_buffer - topada.reorder_buffer
+        for libre, topada in zip(lineas_libres, lineas_topadas, strict=True)
+    }
+    # Un recorte proporcional deja a todos con la MISMA fraccion del buffer: eso es
+    # raspar parejo, no priorizar. Se mide sobre la fraccion, no sobre las unidades.
+    fracciones = {
+        topada.product_id: topada.reorder_buffer / libre.reorder_buffer
+        for libre, topada in zip(lineas_libres, lineas_topadas, strict=True)
+    }
+    prioriza = len(set(round(f, 9) for f in fracciones.values())) > 1
+
+    campos = (
+        _campos_del_registro(type(lineas_topadas[0]))
+        | _campos_del_registro(BudgetAllocation)
+        | _campos_del_registro(IntegratedPlanReport)
+    )
+    return _veredicto_caja(_CandidatoCaja(
+        entregable=(
+            "src.sop_engine.purchase_plan.PurchasePlanLine + src.constraints.BudgetAllocation"
+        ),
+        campos=tuple(sorted(campos)),
+        pedido_usd=asignacion.requested_investment,
+        tope_usd=_TOPE_SONDA,
+        prioriza=prioriza,
+        prueba_recorte=(
+            f"con un tope de {_TOPE_SONDA:,.0f} usd contra "
+            f"{asignacion.requested_investment:,.0f} pedidos, el recorte es un escalar unico "
+            f"(safety_stock_scale={asignacion.safety_stock_scale:.3f}): "
+            f"{', '.join(f'{k} -{v:g} u' for k, v in recortes.items())}, todos ceden la misma "
+            "fraccion de su buffer"
+        ),
+    ))
 
 
 @comprobacion("T03")

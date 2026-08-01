@@ -5,8 +5,10 @@ from __future__ import annotations
 import src.bateria.comprobaciones  # noqa: F401  -- registra las comprobaciones
 from src.bateria.comprobaciones import (
     _CandidatoAjuste,
+    _CandidatoCaja,
     _CandidatoOC,
     _veredicto_ajuste,
+    _veredicto_caja,
     _veredicto_oc,
 )
 from src.bateria.scorer import Contexto, Estado, puntuar
@@ -303,6 +305,64 @@ def test_t06_gana_el_que_cuantifica_aunque_otro_tenga_mas_campos():
     r = _veredicto_ajuste((sin_cuantificar, cuantifica))
     assert r.detalle["mejor"] == "cuantifica"
     assert r.estado is Estado.NO_CUMPLE
+
+
+# --- T07: calendario de caja contra el tope ----------------------------------
+
+
+def _candidato_caja(**cambios) -> _CandidatoCaja:
+    """Un plan de caja que cumple TODO el criterio; los tests rompen una pieza."""
+    base = {
+        "entregable": "jobs.caja_job.LineaEgreso",
+        "campos": ("semana_de_pago", "egreso_usd", "tope_usd", "deficit_usd",
+                   "unidades_en_riesgo"),
+        "pedido_usd": 1860.0,
+        "tope_usd": 1000.0,
+        "prioriza": True,
+        "prueba_recorte": "se difieren primero las lineas de menor venta en riesgo",
+    }
+    return _CandidatoCaja(**{**base, **cambios})
+
+
+def test_t07_no_cumple_total_de_compra_sin_fecha_de_pago():
+    """Veredicto real: el plan de compra si compara contra el tope, pero devuelve
+    un total sin calendario, y recorta con un escalar unico que raspa el buffer de
+    todos por igual -- eso no es una lista ordenada de lineas a diferir."""
+    r = _resultado(puntuar(), "T07")
+    assert r.estado is Estado.NO_CUMPLE, r.evidencia
+    assert r.puntos == 0.0
+    assert r.detalle["prioriza_el_recorte"] is False
+    assert r.detalle["deficit_usd"] == 860.0
+    assert set(r.detalle["faltantes"]) == {
+        "calendario de egresos por semana (fecha de pago)",
+        "lista ordenada de lineas a recortar",
+        "impacto en quiebre de cada recorte",
+    }
+    assert "sin ninguna fecha de pago" in r.evidencia
+
+
+def test_t07_cumple_con_calendario_tope_prioridad_e_impacto():
+    r = _veredicto_caja(_candidato_caja())
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+
+
+def test_t07_sin_fecha_de_pago_es_eliminatorio_aunque_compare_contra_el_tope():
+    """La fuente: 'Un total de compra sin fecha de pago NO cuenta'."""
+    r = _veredicto_caja(_candidato_caja(campos=("egreso_usd", "tope_usd", "unidades_en_riesgo")))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+    assert "sin ninguna fecha de pago" in r.evidencia
+
+
+def test_t07_recorte_parejo_no_es_lista_priorizada():
+    """Raspar el buffer de todos por igual no es elegir que se difiere."""
+    r = _veredicto_caja(_candidato_caja(
+        prioriza=False, prueba_recorte="todos ceden la misma fraccion de su buffer"
+    ))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert "lista ordenada de lineas a recortar" in r.evidencia
 
 
 def test_t05_gana_el_que_netea_aunque_otro_tenga_mas_campos():
