@@ -2,6 +2,44 @@
 
 ## [Unreleased]
 
+### Added
+- **`nosilo_core.entities` — canonical entities with stable identity, per-field provenance and
+  bitemporal history**, plus `src/entities.py` declaring the three supply-chain master-data types
+  (**SKU**, **supplier**, **location**) on top of it. Kern has been job-centric until now — a file
+  goes in, a deliverable comes out, nothing is remembered between runs — which is fine for producing
+  a plan and useless for answering "what did we know about this supplier on the day we approved that
+  PO", or for recognising that Odoo's `product.product/42` and Shopify's `variant/99` are the same
+  SKU. Entity types are declared by the *domain*, not the core: a source-to-pay pack registers
+  `Invoice` exactly the way `src/entities.py` registers `Sku`, with no change to `nosilo_core` —
+  the first real proof that the extraction bought what it was meant to buy.
+  - **Genuinely append-only.** No `UPDATE` on `entity_version`, not even to stamp a closing
+    timestamp. Because every version is a full snapshot, "the version in effect at
+    (`valid_at`, `known_at`)" is just the highest version at or before both instants;
+    `valid_to`/`superseded_at` are derived from the neighbouring version at read time. Enforced by a
+    test that traces every SQL statement the store issues.
+  - **Two time axes.** `valid_from` is business time ("when was this true"), `recorded_at` is system
+    time ("when did we learn it"). The second is the one that reconstructs what a decider actually
+    knew, and neither can be added retroactively — the information was never captured.
+  - **Provenance per field, not per record.** A supplier's legal name can come from the ERP while its
+    bank account comes from a portal and its risk score from a third party.
+  - **Deterministic resolution**: declared owner → guarded-field hold → same-source revision →
+    trust → recency → source ordering. Total, so replay is reproducible.
+  - **Guarded fields** (`bank_account`, `credit_limit`, `payment_terms`, `list_price`) are never
+    overwritten by an automated feed at any trust level; a competing claim surfaces as a
+    `FieldConflict` for a human. Supplier bank-account takeover arrives looking exactly like a
+    routine master-data sync.
+  - **Money stays `Decimal` end to end**, including through JSON/SQLite via a tagged round-trip.
+  - Two bugs found by the tests and fixed before merge: (1) same-source revisions were dropped when
+    two observations shared a timestamp string, which they routinely do on Windows' ~15 ms timer
+    resolution — a source is now always authoritative over its own earlier claim, checked *before*
+    trust/recency precisely because those can tie; (2) `src.connectors.Product.cost` defaults to
+    `0.0`, so a storefront that simply does not track cost was asserting a zero book cost — a
+    non-positive amount from a connector DTO is now treated as "not reported".
+  - Exact natural-key matching only. Probabilistic entity resolution, merge/unmerge, backdated
+    corrections and policy-filtered reads are deliberately absent: each is a design decision rather
+    than a mechanical addition, and a wrong probabilistic match welds two real entities together.
+  92 tests.
+
 ### Changed
 - **`nosilo_core` — the domain-agnostic control plane extracted into its own package.**
   Seven modules move out of `src/` and `scm_agent/` with their history intact:
