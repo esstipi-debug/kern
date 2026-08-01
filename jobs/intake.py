@@ -82,6 +82,69 @@ def _parse_dates(series: pd.Series) -> pd.Series:
     return parsed
 
 
+_LATAM_NUMBER_RE = re.compile(r"^-?\d{1,3}(?:\.\d{3})+,\d+$|^-?\d{1,3},(?:\d{1,2}|\d{4,})$")
+_US_THOUSANDS_NUMBER_RE = re.compile(r"^-?\d{1,3}(?:,\d{3})+\.\d+$")
+
+
+def _parse_quantities(series: pd.Series) -> pd.Series:
+    """Parsea la columna de cantidad, tolerando dos convenciones de separador
+    de miles/decimal ademas del punto decimal simple que ``pd.to_numeric``
+    ya entiende por su cuenta.
+
+    ``pd.to_numeric`` sin mas no reconoce NINGUNA convencion real de
+    separador de miles -- ni la europea/LATAM (punto de miles, coma decimal:
+    ``"1.234,56"``) ni la anglosajona (coma de miles, punto decimal:
+    ``"1,234.56"``) -- y las descarta en silencio como cantidad invalida.
+    Real, no hipotetico: un archivo con cantidades en formato LATAM (un
+    patron de suciedad "cosmetico" del arnes de pruebas) perdio el 31.67% de
+    sus filas en una corrida real, con cero perdida de fecha.
+
+    Primera pasada: el comportamiento actual, sin cambios -- riesgo cero de
+    regresion para cualquier valor que ya se parseaba bien. Segunda pasada:
+    reintenta SOLO los valores que fallaron, usando dos patrones mutuamente
+    excluyentes.
+
+    El patron LATAM tiene DOS ramas deliberadas: (a) al menos un grupo de
+    miles real (``\\.\\d{3}`` una o mas veces) seguido de coma decimal -- sin
+    ambiguedad posible; (b) sin ningun punto, una coma seguida de 1-2 o 4+
+    digitos -- tambien sin ambiguedad, porque un separador de miles
+    anglosajon real SIEMPRE trae grupos de EXACTAMENTE 3 digitos. La rama
+    (b) excluye a proposito el shape ``coma + exactamente 3 digitos``
+    (ej. ``"1,234"``): ese es el unico caso genuinamente ambiguo sin contexto
+    de locale (miles anglosajon sin parte decimal, o decimal LATAM de 3
+    cifras) y se deja caer como cantidad invalida en vez de adivinar -- la
+    misma disciplina que ``_parse_dates`` aplica a sus propias fechas
+    ambiguas. (Una version anterior de este patron con ``(?:\\.\\d{3})*``
+    -- cero o mas grupos -- degeneraba con cero grupos a aceptar
+    ``"1,234"`` como LATAM, precisamente el caso que se queria excluir; el
+    ``+`` en la rama (a) y la rama (b) separada cierran ese hueco.)
+    """
+    parsed = pd.to_numeric(series, errors="coerce")
+    unresolved = parsed.isna() & series.notna()
+    if not unresolved.any():
+        return parsed
+
+    candidates = series[unresolved].astype(str)
+
+    is_latam = candidates.str.match(_LATAM_NUMBER_RE)
+    if is_latam.any():
+        fixed = (
+            candidates[is_latam]
+            .str.replace(".", "", regex=False)
+            .str.replace(",", ".", regex=False)
+        )
+        parsed.loc[fixed.index] = pd.to_numeric(fixed, errors="coerce")
+
+    still_unresolved = parsed.isna() & series.notna()
+    remaining = series[still_unresolved].astype(str)
+    is_us_thousands = remaining.str.match(_US_THOUSANDS_NUMBER_RE)
+    if is_us_thousands.any():
+        fixed2 = remaining[is_us_thousands].str.replace(",", "", regex=False)
+        parsed.loc[fixed2.index] = pd.to_numeric(fixed2, errors="coerce")
+
+    return parsed
+
+
 @dataclass(frozen=True)
 class IntakeQuality:
     """How much of the raw file survived cleaning, and why the rest didn't.
@@ -182,7 +245,7 @@ def _normalize_core(
     out = pd.DataFrame()
     out["date"] = _parse_dates(df[m["date"]])
     out["product_id"] = df[m["product_id"]].astype(str).str.strip()
-    out["quantity"] = pd.to_numeric(df[m["quantity"]], errors="coerce")
+    out["quantity"] = _parse_quantities(df[m["quantity"]])
     if "unit_cost" in m:
         out["unit_cost"] = pd.to_numeric(df[m["unit_cost"]], errors="coerce")
     elif "revenue" in m and m["revenue"] != m["quantity"]:

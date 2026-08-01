@@ -6,7 +6,14 @@ import pytest
 from openpyxl import load_workbook
 
 from jobs import deliverables, qa
-from jobs.intake import detect_columns, normalize, normalize_tracked, prepare, prepare_tracked
+from jobs.intake import (
+    _parse_quantities,
+    detect_columns,
+    normalize,
+    normalize_tracked,
+    prepare,
+    prepare_tracked,
+)
 from jobs.inventory_optimization import run
 from jobs.pricing import prepare_pricing
 from jobs.pricing import run as run_pricing
@@ -307,6 +314,120 @@ def test_normalize_tracked_ambiguous_slash_date_defaults_month_first():
     canon, quality = normalize_tracked(raw, mapping, period="D")
     assert quality.n_dropped_bad_date == 0
     assert canon["date"].iloc[0] == pd.Timestamp("2025-06-01")  # June 1st, not Jan 6
+
+
+# -- _parse_quantities: locale-aware thousands/decimal separators -----------
+
+
+def test_normalize_tracked_handles_latam_formatted_quantities_without_dropping():
+    """A quantity column mixing plain values and LATAM-formatted values
+    (period thousands separator, comma decimal separator, e.g. '1.234,56')
+    is a real, common export convention -- Kern's stated ICP explicitly
+    includes LATAM. ``pd.to_numeric`` alone understands only a bare decimal
+    point and silently drops every LATAM-formatted row as invalid quantity.
+    Confirmed on a real 120-SKU production run: a single 'cosmetic' dirt
+    injector that reformats quantities into LATAM convention alone drops
+    31.67% of rows (152/480), all attributed to bad quantity. Both rows must
+    survive here, and the parsed values must be the correct floats, not just
+    'not dropped'."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2024-01-01", "2024-01-08"],
+            "StockCode": ["A", "A"],
+            "Quantity": ["45.5", "1.234,56"],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_quantity == 0
+    quantities = sorted(canon["quantity"].tolist())
+    assert quantities == [45.5, 1234.56]
+
+
+def test_normalize_tracked_handles_us_thousands_formatted_quantities():
+    """US/international format (comma thousands separator, period decimal
+    separator, e.g. '1,234.56') also fails under plain ``pd.to_numeric`` --
+    this is a real improvement over the old (pre-fix) behavior, not just a
+    LATAM-specific patch."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2024-01-01", "2024-01-08"],
+            "StockCode": ["A", "A"],
+            "Quantity": ["45.5", "1,234.56"],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_quantity == 0
+    quantities = sorted(canon["quantity"].tolist())
+    assert quantities == [45.5, 1234.56]
+
+
+def test_normalize_tracked_ambiguous_thousands_quantity_still_drops():
+    """Documents the one honest, accepted limitation of ``_parse_quantities``:
+    a comma-separated value with exactly three trailing digits and no other
+    separator (e.g. '1,234') is genuinely ambiguous without locale context --
+    it could be a US thousands-separated integer (1234) or a LATAM decimal
+    (1.234) -- and this must stay dropped as bad quantity rather than guessed
+    either way, mirroring the discipline ``_parse_dates`` applies to its own
+    ambiguous dates. This is the exact shape a prior regex attempt at this
+    fix got wrong (a zero-thousands-groups degenerate case that silently
+    accepted '1,234' as LATAM 1.234); this test would have caught it.
+
+    The "good" values here are deliberately plain (already parseable by bare
+    ``pd.to_numeric``, no locale ambiguity at all) rather than LATAM/US
+    formatted -- there is nothing to discriminate against the old naive code
+    in this test, since the one point of the fix under test (leaving '1,234'
+    unresolved) is a no-op relative to old behavior: naive ``pd.to_numeric``
+    already turns '1,234' into NaN too, just for the wrong reason (it doesn't
+    understand comma separators at all, not because it recognizes the
+    ambiguity)."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2024-01-01", "2024-01-08", "2024-01-15"],
+            "StockCode": ["A", "B", "C"],
+            "Quantity": ["45.5", "1,234", "100"],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_quantity == 1
+    # exactly the ambiguous row (product B) dropped -- A and C survive with
+    # their correctly-parsed plain values.
+    assert set(canon["product_id"]) == {"A", "C"}
+    surviving = dict(zip(canon["product_id"], canon["quantity"]))
+    assert surviving == {"A": 45.5, "C": 100.0}
+
+
+def test_normalize_tracked_drops_garbage_amid_mixed_locale_quantities():
+    """Mixing a LATAM-formatted value, a US-thousands-formatted value, AND a
+    genuinely unparseable string in the same column must only drop the
+    garbage row -- proving the locale-recovery retry doesn't rescue actual
+    garbage."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2024-01-01", "2024-01-08", "2024-01-15"],
+            "StockCode": ["A", "B", "C"],
+            "Quantity": ["1.234,56", "1,234.56", "not-a-number"],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_quantity == 1
+    assert set(canon["product_id"]) == {"A", "B"}
+    surviving = dict(zip(canon["product_id"], canon["quantity"]))
+    assert surviving == {"A": 1234.56, "B": 1234.56}
+
+
+def test_parse_quantities_ambiguous_thousands_shape_stays_nan_in_isolation():
+    """Regression test for the specific prior-attempt regex bug: a
+    zero-thousands-groups degenerate pattern (``(?:\\.\\d{3})*`` instead of
+    ``+``) silently accepted '1,234' as LATAM (parsing it to 1.234) instead
+    of leaving it unresolved. Calls ``_parse_quantities`` directly (not
+    through the full pipeline) as cheap insurance against that exact defect
+    reappearing silently."""
+    result = _parse_quantities(pd.Series(["1,234"]))
+    assert pd.isna(result.iloc[0])
 
 
 def test_normalize_tracked_clean_data_has_zero_dropped_fraction():
