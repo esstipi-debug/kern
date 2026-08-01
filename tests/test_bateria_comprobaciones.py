@@ -7,12 +7,14 @@ from src.bateria.comprobaciones import (
     _CandidatoAjuste,
     _CandidatoCaja,
     _CandidatoLeadTime,
+    _CandidatoMarkdown,
     _CandidatoOC,
     _CandidatoScorecard,
     _CandidatoServicio,
     _veredicto_ajuste,
     _veredicto_caja,
     _veredicto_lead_time,
+    _veredicto_markdown,
     _veredicto_oc,
     _veredicto_scorecard,
     _veredicto_servicio,
@@ -311,6 +313,61 @@ def test_t06_gana_el_que_cuantifica_aunque_otro_tenga_mas_campos():
     r = _veredicto_ajuste((sin_cuantificar, cuantifica))
     assert r.detalle["mejor"] == "cuantifica"
     assert r.estado is Estado.NO_CUMPLE
+
+
+# --- T12: markdown con unidades y margen -------------------------------------
+
+
+def _candidato_markdown(**cambios) -> _CandidatoMarkdown:
+    """Un plan de markdown que cumple TODO; los tests rompen una pieza."""
+    base = {
+        "entregable": "jobs.markdown_job.LineaMarkdown",
+        "campos": ("product_id", "precio_propuesto", "descuento_pct", "units_to_clear",
+                   "margen_bruto_usd", "cobertura_liberada_meses"),
+        "metodos": {"SKU-EXC": "elasticity"},
+        "precios_propuestos": {"SKU-EXC": 12.68},
+        "prueba_degradacion": "sin historial degrada a remate",
+    }
+    return _CandidatoMarkdown(**{**base, **cambios})
+
+
+def test_t12_no_cumple_declara_el_supuesto_pero_no_trae_descuento_ni_margen():
+    """Veredicto real: el metodo (elasticity / salvage_heuristic) viene declarado
+    por linea, pero no hay % de descuento, ni margen bruto, ni cobertura liberada;
+    y sin historial de precios el SKU muerto sale sin precio propuesto."""
+    r = _resultado(puntuar(), "T12")
+    assert r.estado is Estado.NO_CUMPLE, r.evidencia
+    assert r.puntos == 0.0
+    assert r.detalle["declara_el_supuesto"] is True
+    assert r.detalle["metodos_declarados"]["SKU-EXC"] == "elasticity"
+    assert r.detalle["precios_propuestos"]["SKU-MUERTO"] is None
+    assert "margen bruto resultante en dinero" in r.detalle["faltantes"]
+    # "recovered_value" contiene "cover" pero es recaudacion, no cobertura.
+    assert "cobertura que se libera" in r.detalle["faltantes"]
+
+
+def test_t12_cumple_con_precio_descuento_unidades_margen_y_cobertura():
+    r = _veredicto_markdown(_candidato_markdown())
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+
+
+def test_t12_sin_declarar_el_supuesto_de_demanda_es_eliminatorio():
+    """La fuente: 'Debe declarar el supuesto de respuesta de demanda usado'."""
+    r = _veredicto_markdown(_candidato_markdown(metodos={"SKU-EXC": ""}))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+    assert "no declara con que supuesto" in r.evidencia
+
+
+def test_t12_un_sku_sin_precio_propuesto_no_acredita_la_linea():
+    """Un remate sin precio no es 'precio propuesto por SKU'."""
+    r = _veredicto_markdown(_candidato_markdown(
+        precios_propuestos={"SKU-EXC": 12.68, "SKU-MUERTO": None}
+    ))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert "precio propuesto por SKU" in r.evidencia
 
 
 # --- T10: servicio realizado al cliente --------------------------------------

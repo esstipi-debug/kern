@@ -461,8 +461,10 @@ _CAMPOS_COMPARACION = ("baseline", "sin_ajustar", "vs_", "delta", "ahorro", "sav
 #: Nombres con los que el sobrante de la restriccion podria estar rotulado.
 _CAMPOS_EXCESO = ("exceso", "extra", "sobra", "surplus", "overbuy", "redondeo", "rounding")
 
-#: Nombres con los que la cobertura agregada podria llegar al entregable.
-_CAMPOS_COBERTURA = ("cover", "cobertura", "meses", "months", "dio_days", "days_of")
+#: Nombres con los que la cobertura agregada podria llegar al entregable. Ojo con
+#: la aguja "cover" pelada: matchea "recovered_value" y "recovery_pct", que son
+#: recaudacion, no cobertura -- por eso van anclados con guion bajo.
+_CAMPOS_COBERTURA = ("_cover", "cover_", "cobertura", "meses", "months", "dio_days", "days_of")
 
 #: Nombres con los que una recomendacion si/no podria llegar al entregable.
 _CAMPOS_RECOMENDACION = ("go_nogo", "go_no_go", "verdict", "veredicto", "conviene", "aprobado")
@@ -1277,6 +1279,143 @@ def t10_servicio_realizado_al_cliente(_: Contexto) -> ResultadoTarea:
             f"sin una sola linea de pedido, con SS={_SS_SONDA:g} y sigma={_SIGMA_CICLO_SONDA:g} "
             f"sobre una demanda de ciclo de {_DEMANDA_CICLO_SONDA:g}, "
             f"fill_rate_from_safety_stock ya devuelve {beta:.1%}"
+        ),
+    ))
+
+
+#: Nombres con los que el descuento y el margen podrian llegar al entregable (T12).
+_CAMPOS_DESCUENTO = ("discount", "descuento", "markdown_pct", "pct_off")
+_CAMPOS_MARGEN = ("margin", "margen", "gross", "contribution")
+
+
+@dataclass(frozen=True)
+class _CandidatoMarkdown:
+    """El plan de liquidacion/markdown medido contra el criterio de T12."""
+
+    entregable: str
+    campos: tuple[str, ...]
+    metodos: dict[str, str]
+    precios_propuestos: dict[str, float | None]
+    prueba_degradacion: str
+
+    @property
+    def declara_el_supuesto(self) -> bool:
+        """Gate: "Debe declarar el supuesto de respuesta de demanda usado"."""
+        return bool(self.metodos) and all(bool(m) for m in self.metodos.values())
+
+    @property
+    def requisitos(self) -> dict[str, bool]:
+        campos = set(self.campos)
+        return {
+            "precio propuesto por SKU": bool(self.precios_propuestos) and all(
+                p is not None for p in self.precios_propuestos.values()
+            ),
+            "% de descuento": bool(_alguno_contiene(campos, _CAMPOS_DESCUENTO)),
+            "unidades proyectadas": bool(_alguno_contiene(campos, _CAMPOS_CANTIDAD)),
+            "margen bruto resultante en dinero": bool(_alguno_contiene(campos, _CAMPOS_MARGEN)),
+            "cobertura que se libera": bool(_alguno_contiene(campos, _CAMPOS_COBERTURA)),
+        }
+
+    @property
+    def faltantes(self) -> list[str]:
+        return [nombre for nombre, ok in self.requisitos.items() if not ok]
+
+    def como_detalle(self) -> dict[str, object]:
+        return {
+            "entregable": self.entregable,
+            "campos": sorted(self.campos),
+            "faltantes": self.faltantes,
+            "metodos_declarados": self.metodos,
+            "precios_propuestos": self.precios_propuestos,
+            "declara_el_supuesto": self.declara_el_supuesto,
+            "prueba_degradacion": self.prueba_degradacion,
+        }
+
+
+def _veredicto_markdown(cand: _CandidatoMarkdown) -> ResultadoTarea:
+    """Puntua T12. Eliminatorio: sin el supuesto de respuesta de demanda declarado,
+    el precio propuesto no se puede discutir con comercial -- es un numero sin
+    origen, que es la version elegante de "sugerir bajar el precio"."""
+    detalle: dict[str, object] = cand.como_detalle()
+    if not cand.declara_el_supuesto:
+        return ResultadoTarea(
+            tarea_id="T12",
+            estado=Estado.NO_CUMPLE,
+            evidencia=(
+                f"el entregable no declara con que supuesto de respuesta de demanda armo el "
+                f"precio ({cand.metodos}), y el criterio lo exige"
+            ),
+            detalle=detalle,
+        )
+
+    return _cerrar_veredicto(
+        "T12",
+        faltantes=cand.faltantes,
+        evidencia_cumple=(
+            f"por SKU: precio propuesto, % de descuento, unidades, margen bruto y cobertura "
+            f"liberada, con el supuesto declarado ({sorted(set(cand.metodos.values()))})"
+        ),
+        evidencia_falta=(
+            f"el supuesto si viene declarado por linea ({sorted(set(cand.metodos.values()))}), "
+            f"pero el entregable sale sin: {', '.join(cand.faltantes)}. "
+            f"{cand.prueba_degradacion}"
+        ),
+        detalle=detalle,
+    )
+
+
+@comprobacion("T12")
+def t12_markdown_con_unidades_y_margen(_: Contexto) -> ResultadoTarea:
+    """T12 — decidir markdown sobre el inventario existente y proyectar unidades y margen.
+
+    Se corre el plan de liquidacion dos veces sobre el MISMO stock: con historial
+    de precios y sin el. Con historial el metodo es ``elasticity`` y sale un
+    precio; sin historial todo cae a ``salvage_heuristic`` y el precio propuesto
+    es ``None`` -- el entregable pasa de "vendelo a este precio" a "rematalo al
+    30%", y lo dice, que es lo que salva el filo del criterio.
+
+    Lo que no sale de ningun lado es el % de descuento (el entregable no lleva el
+    precio actual contra el que compararlo), el margen bruto en dinero
+    (``recovered_value`` es recaudacion y ``at_risk_value`` es costo: la resta no
+    esta escrita) ni la cobertura que se libera.
+    """
+    import tempfile
+    from pathlib import Path
+
+    import pandas as pd
+
+    from jobs import markdown_liquidation_job as job
+    from src.liquidation import LiquidationLine
+
+    stock = pd.DataFrame({
+        "product_id": ["SKU-EXC", "SKU-MUERTO"],
+        "on_hand": [900.0, 500.0],
+        "daily_demand": [1.0, 0.0],
+        "unit_cost": [8.0, 12.5],
+        "days_since_last_sale": [10, 400],
+    })
+    historial = "\n".join(
+        ["date,product_id,price,quantity"]
+        + [f"2026-01-{i + 1:02d},SKU-EXC,{20.0 - i * 0.5},{5 + i * 2}" for i in range(12)]
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        ruta = Path(tmp) / "historial_precios.csv"
+        ruta.write_text(historial, encoding="utf-8")
+        con_historial = job.run(job.prepare_records(
+            stock, {"price_history_path": str(ruta), "price_period": "D"}
+        ))
+    sin_historial = job.run(job.prepare_records(stock))
+
+    return _veredicto_markdown(_CandidatoMarkdown(
+        entregable="src.liquidation.LiquidationLine",
+        campos=tuple(sorted(_campos_del_registro(LiquidationLine))),
+        metodos={ln.product_id: ln.method for ln in con_historial.lines},
+        precios_propuestos={ln.product_id: ln.clearance_price for ln in con_historial.lines},
+        prueba_degradacion=(
+            "sin historial de precios el plan degrada a "
+            f"{sorted({ln.method for ln in sin_historial.lines})} y el precio propuesto queda "
+            f"en {[ln.clearance_price for ln in sin_historial.lines]}: no propone precio, "
+            "propone remate"
         ),
     ))
 
