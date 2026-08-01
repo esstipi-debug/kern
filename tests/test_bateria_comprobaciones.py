@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import src.bateria.comprobaciones  # noqa: F401  -- registra las comprobaciones
-from src.bateria.comprobaciones import _CandidatoOC, _veredicto_oc
+from src.bateria.comprobaciones import (
+    _CandidatoAjuste,
+    _CandidatoOC,
+    _veredicto_ajuste,
+    _veredicto_oc,
+)
 from src.bateria.scorer import Contexto, Estado, puntuar
 
 _CSV = "stock_on_hand.csv"
@@ -214,6 +219,90 @@ def test_t05_es_parcial_cuando_solo_falta_una_pieza_de_la_oc():
     assert r.estado is Estado.PARCIAL, r.evidencia
     assert r.puntos == 0.5
     assert "fecha de pedido / llegada esperada" in r.evidencia
+
+
+def test_t06_no_cumple_ajusta_la_cantidad_pero_no_explicita_el_trade_off():
+    """Veredicto real: hat_settlement mueve Q* al corte de descuento y compara el
+    costo total contra el baseline, pero no dice cuanto stock extra se compra, ni
+    la cobertura que agrega, ni si conviene. El plan de compra ni siquiera
+    compara: redondea a MOQ/caja y el exceso solo sale de diferenciar corridas."""
+    r = _resultado(puntuar(), "T06")
+    assert r.estado is Estado.NO_CUMPLE, r.evidencia
+    assert r.puntos == 0.0
+    assert r.detalle["mejor"] == "hat_settlement"
+    por_tool = {c["tool"]: c for c in r.detalle["candidatos"]}
+    plan = por_tool["integrated_plan (purchase plan)"]
+    assert plan["cuantifica_el_exceso"] is False
+    assert "238 u de mas" in plan["prueba_exceso"]
+    assert "projected_position" in plan["prueba_exceso"]  # coincide, pero no acredita
+    hats = por_tool["hat_settlement"]
+    assert hats["cuantifica_el_exceso"] is True
+    assert set(hats["faltantes"]) == {
+        "stock extra en unidades",
+        "meses de cobertura que agrega",
+        "recomendacion si/no",
+    }
+
+
+def _candidato_ajuste(**cambios) -> _CandidatoAjuste:
+    """Un ajuste que cumple TODO el criterio; los tests rompen una pieza por vez."""
+    base = {
+        "tool": "ajuste_ideal",
+        "entregable": "jobs.oc_job.LineaAjustada",
+        "restriccion": "MOQ 250",
+        "campos": ("order_qty", "delta_costo_total_usd", "exceso_unidades",
+                   "cobertura_agregada_meses", "conviene"),
+        "ajusta": True,
+        "prueba_ajuste": "la cantidad sube de 50 a 250 u",
+        "prueba_exceso": "el redondeo compra 200 u de mas (2.000 usd)",
+    }
+    return _CandidatoAjuste(**{**base, **cambios})
+
+
+def test_t06_cumple_con_exceso_cobertura_y_recomendacion():
+    r = _veredicto_ajuste((_candidato_ajuste(),))
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+
+
+def test_t06_redondear_sin_cuantificar_el_exceso_es_eliminatorio():
+    """La fuente: \"'Redondear hacia arriba' sin cuantificar el exceso NO cuenta\"."""
+    r = _veredicto_ajuste((
+        _candidato_ajuste(campos=("order_qty", "cobertura_agregada_meses", "conviene")),
+    ))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+    assert "sin cuantificar el exceso" in r.evidencia
+
+
+def test_t06_es_parcial_cuando_solo_falta_la_cobertura():
+    r = _veredicto_ajuste((
+        _candidato_ajuste(campos=("order_qty", "exceso_unidades", "delta_costo_total_usd",
+                                  "conviene")),
+    ))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert "meses de cobertura que agrega" in r.evidencia
+
+
+def test_t06_no_ajustar_a_la_restriccion_tampoco_acredita():
+    """Un entregable que cuantifica un exceso que nunca aplico no ajusto nada."""
+    r = _veredicto_ajuste((
+        _candidato_ajuste(ajusta=False, prueba_ajuste="la cantidad no se mueve con MOQ 250"),
+    ))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+    assert "no se mueve" in r.evidencia
+
+
+def test_t06_gana_el_que_cuantifica_aunque_otro_tenga_mas_campos():
+    sin_cuantificar = _candidato_ajuste(
+        tool="mudo", campos=("order_qty", "cobertura_agregada_meses", "conviene")
+    )
+    cuantifica = _candidato_ajuste(tool="cuantifica", campos=("order_qty", "exceso_unidades"))
+    r = _veredicto_ajuste((sin_cuantificar, cuantifica))
+    assert r.detalle["mejor"] == "cuantifica"
+    assert r.estado is Estado.NO_CUMPLE
 
 
 def test_t05_gana_el_que_netea_aunque_otro_tenga_mas_campos():

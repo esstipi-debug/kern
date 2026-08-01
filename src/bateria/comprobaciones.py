@@ -444,6 +444,259 @@ def t05_propuesta_de_oc_por_proveedor(_: Contexto) -> ResultadoTarea:
     return _veredicto_oc((_candidato_excel(), _candidato_odoo(), _candidato_ddmrp()))
 
 
+#: Nombres con los que el entregable podria comparar contra la version sin ajustar.
+_CAMPOS_COMPARACION = ("baseline", "sin_ajustar", "vs_", "delta", "ahorro", "saving")
+
+#: Nombres con los que el sobrante de la restriccion podria estar rotulado.
+_CAMPOS_EXCESO = ("exceso", "extra", "sobra", "surplus", "overbuy", "redondeo", "rounding")
+
+#: Nombres con los que la cobertura agregada podria llegar al entregable.
+_CAMPOS_COBERTURA = ("cover", "cobertura", "meses", "months", "dio_days", "days_of")
+
+#: Nombres con los que una recomendacion si/no podria llegar al entregable.
+_CAMPOS_RECOMENDACION = ("go_nogo", "go_no_go", "verdict", "veredicto", "conviene", "aprobado")
+
+#: Restricciones de proveedor con las que se sondea el ajuste en T06.
+_MOQ_SONDA = 250.0
+_MULTIPLO_SONDA = 48.0
+_CORTE_SONDA_QTY = 1500.0
+_CORTE_SONDA_COSTO = 9.2
+
+
+@dataclass(frozen=True)
+class _CandidatoAjuste:
+    """Un entregable que ajusta la compra a una condicion del proveedor (T06)."""
+
+    tool: str
+    entregable: str
+    restriccion: str
+    campos: tuple[str, ...]
+    ajusta: bool
+    prueba_ajuste: str
+    prueba_exceso: str
+
+    @property
+    def requisitos(self) -> dict[str, bool]:
+        campos = set(self.campos)
+        return {
+            "ajusta a la restriccion del proveedor": self.ajusta,
+            "comparacion de costo total contra la version sin ajustar": bool(
+                _alguno_contiene(campos, _CAMPOS_COMPARACION)
+            ),
+            "stock extra en unidades": bool(_alguno_contiene(campos, _CAMPOS_EXCESO)),
+            "meses de cobertura que agrega": bool(_alguno_contiene(campos, _CAMPOS_COBERTURA)),
+            "recomendacion si/no": bool(_alguno_contiene(campos, _CAMPOS_RECOMENDACION)),
+        }
+
+    @property
+    def cuantifica_el_exceso(self) -> bool:
+        """El filo eliminatorio: redondear sin cuantificar el exceso no cuenta.
+
+        Cualquiera de las dos formas sirve -- el costo total contra la version
+        sin ajustar, o las unidades de mas -- pero alguna tiene que estar.
+        """
+        req = self.requisitos
+        return (
+            req["comparacion de costo total contra la version sin ajustar"]
+            or req["stock extra en unidades"]
+        )
+
+    @property
+    def faltantes(self) -> list[str]:
+        return [nombre for nombre, ok in self.requisitos.items() if not ok]
+
+    @property
+    def cumplidos(self) -> int:
+        return len(self.requisitos) - len(self.faltantes)
+
+    def como_detalle(self) -> dict[str, object]:
+        return {
+            "tool": self.tool,
+            "entregable": self.entregable,
+            "restriccion": self.restriccion,
+            "campos": sorted(self.campos),
+            "faltantes": self.faltantes,
+            "cuantifica_el_exceso": self.cuantifica_el_exceso,
+            "prueba_ajuste": self.prueba_ajuste,
+            "prueba_exceso": self.prueba_exceso,
+        }
+
+
+def _candidato_purchase_plan() -> _CandidatoAjuste:
+    """El plan de compra integrado: la unica via que aplica MOQ y multiplo de caja.
+
+    Se corre dos veces sobre la MISMA demanda, con y sin las condiciones del
+    proveedor, y se mide el sobrante que produce el redondeo. Que la
+    comprobacion tenga que DIFERENCIAR dos corridas para obtener ese numero es
+    justamente la prueba de que el entregable no lo dice: el cliente recibe una
+    sola corrida.
+    """
+    from src.sop_engine.demand_plan import NO_SHIFT_SOURCE, DemandPlanLine
+    from src.sop_engine.engine import IntegratedPlanReport
+    from src.sop_engine.purchase_plan import SkuPurchaseInputs, build_purchase_plan
+
+    demanda = (DemandPlanLine("A", 100.0, 0.0, 100.0, NO_SHIFT_SOURCE, "sin shift de precio"),)
+    comun = {"product_id": "A", "on_hand": 40.0, "unit_cost": 10.0, "reorder_point": 5.0,
+             "incoming_po": 10.0}
+    libre = SkuPurchaseInputs(**comun)
+    restringido = SkuPurchaseInputs(
+        **comun, minimum_order_quantity=_MOQ_SONDA, order_multiple=_MULTIPLO_SONDA
+    )
+    (crudo,), _ = build_purchase_plan(demanda, {"A": libre})
+    (ajustado,), _ = build_purchase_plan(demanda, {"A": restringido})
+
+    exceso_u = ajustado.recommended_order - crudo.recommended_order
+    exceso_usd = exceso_u * ajustado.unit_cost
+    campos_linea = _campos_del_registro(type(ajustado))
+    # Un campo puede COINCIDIR con el exceso sin ser el exceso. Se busca, se
+    # informa, y no acredita: lo que el criterio pide es explicitarlo.
+    coincidencias = sorted(
+        c for c in campos_linea
+        if isinstance(getattr(ajustado, c), float) and abs(getattr(ajustado, c) - exceso_u) < 1e-9
+    )
+    return _CandidatoAjuste(
+        tool="integrated_plan (purchase plan)",
+        entregable="src.sop_engine.purchase_plan.PurchasePlanLine",
+        restriccion=f"MOQ {_MOQ_SONDA:g} + multiplo de caja {_MULTIPLO_SONDA:g}",
+        campos=tuple(sorted(campos_linea | _campos_del_registro(IntegratedPlanReport))),
+        ajusta=ajustado.recommended_order > crudo.recommended_order,
+        prueba_ajuste=(
+            f"la cantidad sube de {crudo.recommended_order:g} a {ajustado.recommended_order:g} u "
+            f"al aplicar MOQ {_MOQ_SONDA:g} y multiplo {_MULTIPLO_SONDA:g}"
+        ),
+        prueba_exceso=(
+            f"el redondeo compra {exceso_u:g} u de mas ({exceso_usd:,.0f} usd) y ese numero solo "
+            f"sale de diferenciar dos corridas"
+            + (
+                f"; {', '.join(coincidencias)} coincide numericamente pero esta documentado como "
+                "posicion proyectada, no como el sobrante de la restriccion"
+                if coincidencias else "; ningun campo lo expone"
+            )
+        ),
+    )
+
+
+def _candidato_hats_settlement() -> _CandidatoAjuste:
+    """El plan reconciliado: la unica via que reacciona a un corte de descuento.
+
+    Se liquida el MISMO SKU con un tarifario plano y con uno que trae el corte,
+    bajo una politica de pesos del comprador (el sombrero cuyo objetivo es
+    capturar descuentos por volumen). Si el corte es real, Q* tiene que saltar.
+    """
+    from jobs.hats_job import SettlementReport, run_settlement
+    from src.eoq import PriceBreak
+    from src.hats import HatConfig, build_inputs
+
+    comun = {"sku": "A", "annual_demand": 5200.0, "mean_weekly": 100.0, "std_weekly": 20.0,
+             "lead_time_weeks": 2.0, "unit_cost": 10.0, "config": HatConfig()}
+    pesos = {"comprador": 1.0, "planner": 0.0, "cfo": 0.0, "comercial": 0.0}
+    base = (PriceBreak(0.0, 10.0),)
+    plano = build_inputs(price_breaks=base, **comun)
+    con_corte = build_inputs(
+        price_breaks=(*base, PriceBreak(_CORTE_SONDA_QTY, _CORTE_SONDA_COSTO)), **comun
+    )
+    sin = run_settlement({"inputs": (plano,), "weights": pesos}).settlements[0]
+    con = run_settlement({"inputs": (con_corte,), "weights": pesos}).settlements[0]
+
+    return _CandidatoAjuste(
+        tool="hat_settlement",
+        entregable="src.hat_council.Settlement",
+        restriccion=f"corte de descuento a {_CORTE_SONDA_QTY:g} u ({_CORTE_SONDA_COSTO:g} usd/u)",
+        campos=tuple(sorted(_campos_planos(con) | _campos_del_registro(SettlementReport))),
+        ajusta=con.chosen.order_quantity > sin.chosen.order_quantity,
+        prueba_ajuste=(
+            f"con el corte a {_CORTE_SONDA_QTY:g} u el Q* pasa de "
+            f"{sin.chosen.order_quantity:,.0f} a {con.chosen.order_quantity:,.0f} u"
+        ),
+        prueba_exceso=(
+            f"value_vs_baseline_usd compara el costo total contra la version sin ajustar "
+            f"({con.value_vs_baseline_usd:+,.0f} usd/anio), pero el entregable no trae el Q "
+            f"sin ajustar: las {con.chosen.order_quantity - sin.chosen.order_quantity:,.0f} u "
+            "de stock extra no estan escritas en ningun lado"
+        ),
+    )
+
+
+def _veredicto_ajuste(candidatos: tuple[_CandidatoAjuste, ...]) -> ResultadoTarea:
+    """Puntua T06 con el mejor candidato.
+
+    Dos condiciones eliminatorias, en orden: ajustar de verdad a la restriccion
+    (sin eso no hay tarea que puntuar, por completo que sea el resto del
+    entregable) y cuantificar el exceso. Recien despues cuentan los faltantes.
+    """
+    mejor = max(candidatos, key=lambda c: (c.ajusta, c.cuantifica_el_exceso, c.cumplidos))
+    detalle: dict[str, object] = {
+        "mejor": mejor.tool,
+        "candidatos": [c.como_detalle() for c in candidatos],
+    }
+
+    if not mejor.ajusta:
+        return ResultadoTarea(
+            tarea_id="T06",
+            estado=Estado.NO_CUMPLE,
+            evidencia=(
+                "ningun entregable mueve la cantidad al aplicar la condicion del proveedor. "
+                + "; ".join(f"{c.tool}: {c.prueba_ajuste}" for c in candidatos)
+            ),
+            detalle=detalle,
+        )
+
+    if not mejor.cuantifica_el_exceso:
+        return ResultadoTarea(
+            tarea_id="T06",
+            estado=Estado.NO_CUMPLE,
+            evidencia=(
+                "los entregables redondean hacia arriba sin cuantificar el exceso, y el criterio "
+                "dice que asi no cuenta. "
+                + "; ".join(f"{c.tool}: {c.prueba_exceso}" for c in candidatos)
+            ),
+            detalle=detalle,
+        )
+
+    if not mejor.faltantes:
+        return ResultadoTarea(
+            tarea_id="T06",
+            estado=Estado.CUMPLE,
+            evidencia=(
+                f"{mejor.tool} ajusta a {mejor.restriccion} ({mejor.prueba_ajuste}) y explicita el "
+                f"trade-off completo: exceso, cobertura agregada y recomendacion si/no"
+            ),
+            detalle=detalle,
+        )
+
+    estado = Estado.PARCIAL if len(mejor.faltantes) == 1 else Estado.NO_CUMPLE
+    return ResultadoTarea(
+        tarea_id="T06",
+        estado=estado,
+        evidencia=(
+            f"{mejor.tool} ajusta a {mejor.restriccion} ({mejor.prueba_ajuste}) pero el entregable "
+            f"sale sin: {', '.join(mejor.faltantes)}. {mejor.prueba_exceso}"
+        ),
+        detalle=detalle,
+    )
+
+
+@comprobacion("T06")
+def t06_ajuste_a_las_condiciones_del_proveedor(_: Contexto) -> ResultadoTarea:
+    """T06 — ajustar la compra a MOQ, multiplos, minimo de flete y cortes de descuento.
+
+    El criterio no se conforma con que la cantidad cambie: pide el trade-off en
+    dinero -- cuanto stock extra se compra, cuantos meses de cobertura agrega, y
+    si conviene o no. Y marca el atajo: "'Redondear hacia arriba' sin cuantificar
+    el exceso NO cuenta".
+
+    Kern parte la tarea en dos entregables que no se hablan: el plan de compra
+    aplica MOQ y multiplo de caja, y el plan reconciliado reacciona al corte de
+    descuento. Se sondean los dos corriendolos con y sin la restriccion, y se
+    puntua el mejor. No se cuenta como recomendacion el bloque ``recommendations``
+    del deck: son tres frases fijas ("aplicar Q*/SL*", "revisar el acta",
+    "re-correr con el tarifario real"), iguales corra lo que corra, no un si/no
+    sobre este trade-off. El minimo de flete no tiene implementacion en ningun
+    lado: no hay candidato que sondear.
+    """
+    return _veredicto_ajuste((_candidato_purchase_plan(), _candidato_hats_settlement()))
+
+
 @comprobacion("T03")
 def t03_segmentacion_con_servicio_diferenciado(ctx: Contexto) -> ResultadoTarea:
     """T03 — ABC-XYZ con nivel de servicio objetivo **distinto** por segmento.
