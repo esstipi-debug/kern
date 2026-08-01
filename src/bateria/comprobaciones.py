@@ -1013,6 +1013,152 @@ def t08_lead_time_real_por_proveedor(_: Contexto) -> ResultadoTarea:
     ))
 
 
+#: Nombres con los que el desvio de precio (OC vs facturado) podria llegar al entregable.
+_CAMPOS_DESVIO_PRECIO = ("price_variance", "desvio_precio", "price_gap", "price_dev", "billed")
+
+#: Nombres con los que los peores del panel podrian quedar marcados para accion.
+_CAMPOS_PEORES = ("peor", "worst", "accion", "action", "flag", "watchlist")
+
+#: Identificador de OC que se inyecta para ver si el entregable lo conserva (T09).
+_PREFIJO_OC_SONDA = "PO-000"
+
+
+@dataclass(frozen=True)
+class _CandidatoScorecard:
+    """El panel de proveedores medido contra el criterio de T09."""
+
+    entregable: str
+    campos: tuple[str, ...]
+    metricas: dict[str, dict[str, float | None]]
+    ranking: tuple[str, ...]
+    trazable_a_las_oc: bool
+    prueba_trazabilidad: str
+
+    def _medida_en_todos(self, metrica: str) -> bool:
+        return bool(self.metricas) and all(
+            m[metrica] is not None for m in self.metricas.values()
+        )
+
+    @property
+    def requisitos(self) -> dict[str, bool]:
+        campos = set(self.campos)
+        return {
+            "OTIF % por proveedor": self._medida_en_todos("otif"),
+            "fill rate % por proveedor": self._medida_en_todos("fill_rate"),
+            "tasa de rechazo % por proveedor": self._medida_en_todos("rechazo"),
+            "desvio de precio % (OC vs facturado)": bool(
+                _alguno_contiene(campos, _CAMPOS_DESVIO_PRECIO)
+            ),
+            "ranking ordenado del panel": len(self.ranking) == len(self.metricas) > 0,
+            "los peores marcados para accion": bool(_alguno_contiene(campos, _CAMPOS_PEORES)),
+        }
+
+    @property
+    def faltantes(self) -> list[str]:
+        return [nombre for nombre, ok in self.requisitos.items() if not ok]
+
+    def como_detalle(self) -> dict[str, object]:
+        return {
+            "entregable": self.entregable,
+            "campos": sorted(self.campos),
+            "faltantes": self.faltantes,
+            "metricas": self.metricas,
+            "ranking": list(self.ranking),
+            "trazable_a_las_oc": self.trazable_a_las_oc,
+            "prueba_trazabilidad": self.prueba_trazabilidad,
+        }
+
+
+def _veredicto_scorecard(cand: _CandidatoScorecard) -> ResultadoTarea:
+    """Puntua T09. Eliminatorio: "Debe ser trazable a las OC concretas que generaron
+    cada nota" -- una nota que nadie puede auditar no se puede llevar a la reunion
+    con el proveedor, por completa que sea la tabla."""
+    detalle: dict[str, object] = cand.como_detalle()
+    if not cand.trazable_a_las_oc:
+        return ResultadoTarea(
+            tarea_id="T09",
+            estado=Estado.NO_CUMPLE,
+            evidencia=(
+                f"las notas del panel ({cand.ranking}) no son trazables a las OC que las "
+                f"generaron: {cand.prueba_trazabilidad}. El criterio lo exige explicitamente. "
+                f"Ademas falta: {', '.join(cand.faltantes)}"
+                if cand.faltantes else
+                f"las notas del panel ({cand.ranking}) no son trazables a las OC que las "
+                f"generaron: {cand.prueba_trazabilidad}"
+            ),
+            detalle=detalle,
+        )
+
+    return _cerrar_veredicto(
+        "T09",
+        faltantes=cand.faltantes,
+        evidencia_cumple=(
+            f"panel con OTIF, fill rate, desvio de precio y rechazo por proveedor, ranking "
+            f"{list(cand.ranking)} con los peores marcados, trazable a las OC"
+        ),
+        evidencia_falta=(
+            f"el panel es trazable a las OC, pero sale sin: {', '.join(cand.faltantes)}"
+        ),
+        detalle=detalle,
+    )
+
+
+@comprobacion("T09")
+def t09_scorecard_de_proveedores(_: Contexto) -> ResultadoTarea:
+    """T09 — scorecard de proveedores y ranking para la revision con el proveedor.
+
+    Se corre el panel sobre OC sinteticas que llevan un identificador de OC
+    (``po_number``), y despues se busca ese identificador en el reporte entero:
+    si no aparece por ningun lado, la nota no se puede auditar contra las OC que
+    la generaron. Es un sondeo de caja negra sobre el entregable, no una lectura
+    de campos: si manana el reporte empieza a citar las OC, este check lo ve.
+
+    El desvio de precio del criterio es OC contra facturado; el panel promedia
+    UNA sola columna de precio, que no es lo mismo y no puede serlo con un solo
+    numero por linea.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from jobs import sourcing_job as job
+    from src.mcdm import RankingResult
+    from src.supplier_scorecard import SupplierScore
+
+    header = f"po_number,{_OC_SONDA_HEADER}"
+    filas = tuple(
+        f"{_PREFIJO_OC_SONDA}{i},{fila}" for i, fila in enumerate(_OC_SONDA_FILAS, start=1)
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        ruta = Path(tmp) / "oc_con_id.csv"
+        ruta.write_text("\n".join((header, *filas)), encoding="utf-8")
+        payload = job.prepare(str(ruta))
+        reporte = job.run(payload["scorecards"], payload["prices"], notes=payload["notes"])
+
+    ids = tuple(f"{_PREFIJO_OC_SONDA}{i}" for i in range(1, len(_OC_SONDA_FILAS) + 1))
+    entero = repr(reporte)
+    citadas = [oc for oc in ids if oc in entero]
+
+    return _veredicto_scorecard(_CandidatoScorecard(
+        entregable="jobs.sourcing_job.SourcingReport",
+        campos=tuple(sorted(
+            _campos_del_registro(SupplierScore)
+            | _campos_del_registro(job.SourcingReport)
+            | _campos_del_registro(RankingResult)
+        )),
+        metricas={
+            c.supplier: {"otif": c.otif, "fill_rate": c.in_full_rate, "rechazo": c.ppm}
+            for c in reporte.scorecards
+        },
+        ranking=tuple(reporte.ranking.ranking),
+        trazable_a_las_oc=bool(citadas),
+        prueba_trazabilidad=(
+            f"las OC entran con id ({', '.join(ids)}) y ninguno sobrevive al reporte -- "
+            "prepare arma el panel sobre columnas derivadas y descarta el identificador"
+            if not citadas else f"el reporte cita {', '.join(citadas)}"
+        ),
+    ))
+
+
 @comprobacion("T03")
 def t03_segmentacion_con_servicio_diferenciado(ctx: Contexto) -> ResultadoTarea:
     """T03 — ABC-XYZ con nivel de servicio objetivo **distinto** por segmento.

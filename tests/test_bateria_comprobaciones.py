@@ -8,10 +8,12 @@ from src.bateria.comprobaciones import (
     _CandidatoCaja,
     _CandidatoLeadTime,
     _CandidatoOC,
+    _CandidatoScorecard,
     _veredicto_ajuste,
     _veredicto_caja,
     _veredicto_lead_time,
     _veredicto_oc,
+    _veredicto_scorecard,
 )
 from src.bateria.scorer import Contexto, Estado, puntuar
 
@@ -307,6 +309,68 @@ def test_t06_gana_el_que_cuantifica_aunque_otro_tenga_mas_campos():
     r = _veredicto_ajuste((sin_cuantificar, cuantifica))
     assert r.detalle["mejor"] == "cuantifica"
     assert r.estado is Estado.NO_CUMPLE
+
+
+# --- T09: scorecard de proveedores -------------------------------------------
+
+
+def _candidato_scorecard(**cambios) -> _CandidatoScorecard:
+    """Un panel que cumple TODO el criterio; los tests rompen una pieza."""
+    base = {
+        "entregable": "jobs.panel_job.PanelProveedores",
+        "campos": ("supplier", "otif", "in_full_rate", "ppm", "price_variance_pct",
+                   "marcado_para_accion"),
+        "metricas": {
+            "ACME": {"otif": 0.0, "fill_rate": 0.5, "rechazo": 5000.0},
+            "BETA": {"otif": 1.0, "fill_rate": 1.0, "rechazo": 0.0},
+        },
+        "ranking": ("BETA", "ACME"),
+        "trazable_a_las_oc": True,
+        "prueba_trazabilidad": "cada nota lista las OC que la generaron",
+    }
+    return _CandidatoScorecard(**{**base, **cambios})
+
+
+def test_t09_no_cumple_las_notas_no_son_trazables_a_las_oc():
+    """Veredicto real: el panel calcula OTIF, fill rate y rechazo y ordena el
+    ranking, pero las OC entran con id y ninguno sobrevive al reporte."""
+    r = _resultado(puntuar(), "T09")
+    assert r.estado is Estado.NO_CUMPLE, r.evidencia
+    assert r.puntos == 0.0
+    assert r.detalle["trazable_a_las_oc"] is False
+    assert r.detalle["ranking"] == ["BETA", "ACME"]
+    assert r.detalle["metricas"]["ACME"]["otif"] == 0.0
+    assert set(r.detalle["faltantes"]) == {
+        "desvio de precio % (OC vs facturado)",
+        "los peores marcados para accion",
+    }
+
+
+def test_t09_cumple_con_las_cuatro_metricas_ranking_y_trazabilidad():
+    r = _veredicto_scorecard(_candidato_scorecard())
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+
+
+def test_t09_sin_trazabilidad_es_eliminatorio_aunque_la_tabla_este_completa():
+    """La fuente: 'Debe ser trazable a las OC concretas que generaron cada nota'."""
+    r = _veredicto_scorecard(_candidato_scorecard(
+        trazable_a_las_oc=False, prueba_trazabilidad="el id de OC no sobrevive al reporte"
+    ))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+    assert "no son trazables" in r.evidencia
+
+
+def test_t09_una_metrica_no_medida_en_todo_el_panel_no_acredita():
+    """Un OTIF ``None`` es 'no lo medimos', no un 0%: no puede contar como medido."""
+    r = _veredicto_scorecard(_candidato_scorecard(metricas={
+        "ACME": {"otif": None, "fill_rate": 0.5, "rechazo": 5000.0},
+        "BETA": {"otif": 1.0, "fill_rate": 1.0, "rechazo": 0.0},
+    }))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert "OTIF % por proveedor" in r.evidencia
 
 
 # --- T08: lead time real por proveedor ---------------------------------------
