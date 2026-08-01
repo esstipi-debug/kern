@@ -159,17 +159,23 @@ def t03_segmentacion_con_servicio_diferenciado(ctx: Contexto) -> ResultadoTarea:
     clases = reporte.classifications
     niveles = {c.service_level for c in clases}
     celdas = {c.cell for c in clases}
+    # El entregable puede o no declarar su base de valor. Se distinguen los tres
+    # casos con evidencia propia -- nunca con un default silencioso, que fue
+    # justo el bug que este check tuvo antes (getattr(..., 'is_flat', False)
+    # devolvia el default y daba CUMPLE donde correspondia PARCIAL).
+    base = getattr(reporte, "value_basis", None)
+    declara_base = base is not None
     # ``ValueBasis.discriminates`` es False cuando el costo unitario no varia: ahi
-    # el ABC ordena por unidades y se rotula valor anual. Se accede directo, sin
-    # getattr con default: si el campo se renombra queremos que rompa fuerte, no
-    # que el check devuelva un veredicto silenciosamente equivocado.
-    ranking_por_unidades = not reporte.value_basis.discriminates
+    # el ABC ordena por unidades y se rotula valor anual. Acceso directo al campo:
+    # si se renombra, tiene que romper fuerte.
+    ranking_por_unidades = declara_base and not base.discriminates
 
     detalle = {
         "dataset": str(ruta),
         "n_skus": reporte.n_skus,
         "celdas": sorted(celdas),
         "niveles_de_servicio": sorted(niveles),
+        "declara_base_de_valor": declara_base,
         "ranking_por_unidades": ranking_por_unidades,
     }
 
@@ -192,6 +198,19 @@ def t03_segmentacion_con_servicio_diferenciado(ctx: Contexto) -> ResultadoTarea:
                 f"hay {len(celdas)} celdas con {len(niveles)} niveles de servicio, pero el "
                 "costo unitario es plano en todo el catalogo: el ABC ordena por UNIDADES "
                 "y se rotula valor anual. La tarea pide ABC por facturacion o margen"
+            ),
+            detalle=detalle,
+        )
+
+    if not declara_base:
+        return ResultadoTarea(
+            tarea_id="T03",
+            estado=Estado.PARCIAL,
+            evidencia=(
+                f"hay {len(celdas)} celdas con {len(niveles)} niveles de servicio, pero el "
+                "entregable no declara su base de valor: no hay forma de saber si el ABC "
+                "ordeno por facturacion o por unidades con un costo placeholder. La tarea "
+                "pide ABC por facturacion o margen, y sin la declaracion no se acredita"
             ),
             detalle=detalle,
         )

@@ -50,11 +50,32 @@ venta con números publicados, no se toca de costado.
 
 ## Qué falta
 
-El scorer. Cada tarea de `tareas_software()` necesita una comprobación que corra
-el pipeline real y devuelva cumple/parcial/no **con evidencia**, no una opinión.
-Modelo a seguir: `src/simworld/` (harness de scoreboard, capa 5 de
-[TESTING_ENVIRONMENT.md](../../documentation/TESTING_ENVIRONMENT.md)).
+Once comprobaciones: **T04–T10, T12, T13, T14, T20**. Cada una corre el pipeline
+real y devuelve cumple/parcial/no **con evidencia**, no una opinión. El único
+punto de enganche es el decorador `@comprobacion("Txx")` en `comprobaciones.py`;
+`puntuar()` reporta qué falta.
 
-Hasta que exista, el 7,5% publicado se puntuó a mano y **no es reproducible**:
+Hasta que estén, el 7,5% publicado se puntuó a mano y **no es reproducible**:
 ningún loop autónomo puede usarlo como condición de salida. La medición además es
 anterior a #193/#194, que cerraron cinco degradaciones silenciosas.
+
+## Dos reglas de diseño que no se negocian
+
+1. **Se puntúa el entregable (capa `jobs/`), nunca `src/` directo.** La matemática
+   suele existir en `src/` y el job no le pasa los datos — puntuar la librería da
+   ~90% y vuelve inútil la vara. Es el patrón central de
+   [KERN_AUTOPSIA_FALLAS.md](../../documentation/KERN_AUTOPSIA_FALLAS.md).
+2. **`SIN_DATO` ≠ `NO_CUMPLE`.** Falta de dato del cliente no es bug. Confundirlas
+   manda a escribir código que no mueve el puntaje.
+
+`PENDIENTE` y `SIN_DATO` suman cero: omitir una comprobación nunca puede inflar el
+marcador.
+
+## Trampa conocida al escribir un check
+
+`getattr(obj, "campo", default)` devuelve el default cuando el campo se llama
+distinto, y el check emite un veredicto silenciosamente equivocado — el mismo
+patrón P2 que la batería denuncia. Acceder a los campos **directo**: un rename
+tiene que romper fuerte. Si un campo es genuinamente opcional (existe en algunas
+versiones del entregable y en otras no), tratar la ausencia como un caso propio
+**con evidencia propia**, nunca como el caso negativo.

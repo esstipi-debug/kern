@@ -113,16 +113,23 @@ def test_t03_sin_ventas_es_sin_dato(tmp_path):
     assert _resultado(puntuar(Contexto(data_root=tmp_path)), "T03").estado is Estado.SIN_DATO
 
 
-def test_t03_con_costo_plano_es_parcial_el_abc_ordena_por_unidades(tmp_path):
-    """Un ranking por unidades rotulado 'valor anual' no es ABC por facturacion."""
-    r = _resultado(puntuar(_ctx_ventas(tmp_path, _VENTAS_COSTO_PLANO)), "T03")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.detalle["ranking_por_unidades"] is True
-    assert "UNIDADES" in r.evidencia
+def test_t03_no_acredita_si_el_entregable_no_declara_su_base_de_valor(tmp_path):
+    """Hoy ``AbcXyzReport`` no expone ``value_basis``, asi que el ABC podria estar
+    ordenando por unidades con un costo placeholder y nadie lo sabria. Sin esa
+    declaracion la tarea no se acredita: es PARCIAL, no CUMPLE.
 
-
-def test_t03_cumple_con_costo_dispar_y_servicio_diferenciado(tmp_path):
+    Cuando el entregable empiece a declararla, este test se pone rojo y hay que
+    partirlo en los dos casos reales (ordena por valor / ordena por unidades).
+    """
     r = _resultado(puntuar(_ctx_ventas(tmp_path, _VENTAS_COSTO_DISPAR)), "T03")
-    assert r.estado is Estado.CUMPLE, r.evidencia
-    assert r.detalle["ranking_por_unidades"] is False
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.detalle["declara_base_de_valor"] is False
+    assert "no declara su base de valor" in r.evidencia
+    assert r.puntos == 0.5
+
+
+def test_t03_segmenta_de_verdad_celdas_y_niveles_diferenciados(tmp_path):
+    """Lo que si se puede acreditar hoy: hay mas de un nivel de servicio."""
+    r = _resultado(puntuar(_ctx_ventas(tmp_path, _VENTAS_COSTO_PLANO)), "T03")
     assert len(r.detalle["niveles_de_servicio"]) > 1
+    assert len(r.detalle["celdas"]) > 1
