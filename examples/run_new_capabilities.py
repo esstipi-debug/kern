@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from jobs.financial_kpis_job import fmt  # noqa: E402
 from scm_agent.orchestrator import Orchestrator  # noqa: E402
 from src.alerting import alerts_outcome, detect_events  # noqa: E402
 from src.classification import classify_portfolio, portfolio_summary  # noqa: E402
@@ -54,6 +55,22 @@ def load(data_path: Path):
 
 def section(title):
     print("\n" + "=" * 68 + f"\n{title}\n" + "=" * 68)
+
+
+def print_financial_kpis(annual_cogs: float, avg_inventory_cost: float, gm_pct: float) -> None:
+    """The turns / DIO / GMROI line, printed so an absence cannot pass for a good score.
+
+    All three are ``float | None`` since PR #193. They used to return ``inf`` with no
+    inventory to cycle - infinite turns and a zero-day DIO is a flawless operation, which
+    is the most flattering thing this demo could possibly print from having no data.
+    """
+    annual_sales = annual_cogs / (1 - gm_pct)
+    gross_margin_value = annual_sales - annual_cogs
+    turns = fmt(inventory_turns(annual_cogs, avg_inventory_cost), ".2f")
+    dio = fmt(days_inventory_outstanding(avg_inventory_cost, annual_cogs), ".1f")
+    gm = fmt(gmroi(gross_margin_value, avg_inventory_cost), ".2f")
+    print(f"  inventory turns: {turns}   DIO: {dio} days   "
+          f"GMROI [ASSUMPTION GM {gm_pct*100:.0f}%]: {gm}")
 
 
 def main():
@@ -99,14 +116,9 @@ def main():
     cover_weeks = (df["lead_time_days"].mean() / 7.0) + 4.0  # [ASSUMPTION] lead + 4 wks safety
     avg_inventory_cost = annual_cogs * cover_weeks / 52.0
     gm_pct = 0.35  # [ASSUMPTION] gross margin
-    annual_sales = annual_cogs / (1 - gm_pct)
-    gross_margin_value = annual_sales - annual_cogs
-    turns = inventory_turns(annual_cogs, avg_inventory_cost)
-    dio = days_inventory_outstanding(avg_inventory_cost, annual_cogs)
     print(f"  annual COGS (from data, annualized): {annual_cogs:,.0f}")
     print(f"  avg inventory value [ASSUMPTION {cover_weeks:.1f} wks cover]: {avg_inventory_cost:,.0f}")
-    print(f"  inventory turns: {turns:.2f}   DIO: {dio:.1f} days   "
-          f"GMROI [ASSUMPTION GM {gm_pct*100:.0f}%]: {gmroi(gross_margin_value, avg_inventory_cost):.2f}")
+    print_financial_kpis(annual_cogs, avg_inventory_cost, gm_pct)
 
     # 4) Inventory alerting (M14) -> Guided Execution Layer
     section("4) Inventory alerting (M14) -> protected handoff")

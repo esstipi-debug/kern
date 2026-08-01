@@ -12,19 +12,20 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import replace
 
+from jobs.financial_kpis_job import fmt as fmt_kpi
 from src.escalation import (
     OPERATIONAL,
     escalate,
     maybe_escalate_data_quality,
     maybe_escalate_synthesized_columns,
 )
+from src.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_handoff, as_options
 
 # Canonical columns whose wholesale synthesis silently changes a money number or a
 # ranking. lead_time_std is excluded on purpose: defaulting it to 0.0 is the documented
 # deterministic-lead-time assumption, and no shipped sample file carries it, so
 # escalating there would gate healthy runs instead of catching bad ones.
 _DECISION_CRITICAL_COLUMNS = ("unit_cost", "lead_time_days")
-from src.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_handoff, as_options
 
 # Each item is (label, summary, action, tradeoffs); the first item is the recommended default.
 _Item = tuple[str, str, str, str]
@@ -306,14 +307,22 @@ def financial_kpis_options(report: object) -> GuidedOutcome:
     markdown: _Item = ("Markdown / delist the weakest GMROI SKUs",
                        f"Bottom GMROI: {worst.product_id if worst else 'n/a'} - markdown, re-buy less, or delist.",
                        "markdown / delist the bottom-GMROI SKUs", "frees cash, lifts portfolio GMROI")
+    # These are None when the data could not support them; the QA gate only blocks on
+    # `turns`, so both the ranking test and the prose have to handle absence.
+    gm, turns, dio_days = report.gmroi, report.turns, report.dio
     dio: _Item = ("Cut DIO to release working capital",
-                  f"DIO {report.dio:.0f} days; each day cut releases cash.",
+                  f"DIO {fmt_kpi(dio_days, '.0f')} days; each day cut releases cash.",
                   "reduce days inventory outstanding", "cash now")
     floors: _Item = ("Set GMROI / turns floors by ABC class",
                      "Govern with a minimum GMROI and turns per class.",
                      "set per-class KPI floors", "structural discipline")
-    items = [markdown, dio, floors] if (report.gmroi < 1.0 or report.turns < 4.0) else [dio, floors, markdown]
-    return _ranked(f"Inventory finance: GMROI {report.gmroi:.2f}, {report.turns:.1f} turns - choose a lever.", items)
+    underperforming = (gm is not None and gm < 1.0) or (turns is not None and turns < 4.0)
+    items = [markdown, dio, floors] if underperforming else [dio, floors, markdown]
+    return _ranked(
+        f"Inventory finance: GMROI {fmt_kpi(gm, '.2f')}, {fmt_kpi(turns, '.1f')} turns "
+        "- choose a lever.",
+        items,
+    )
 
 
 def reconciliation_options(report: object) -> GuidedOutcome:

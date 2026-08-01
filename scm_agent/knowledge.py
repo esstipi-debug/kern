@@ -546,8 +546,16 @@ class KnowledgeBase:
 
         This is the cross-graph link: e.g. bridge("newsvendor") returns the
         book concept (with chapter) AND the source file that implements it.
+
+        The theory side uses hybrid (semantic + keyword) retrieval so a
+        paraphrased term ("buffer for uncertainty") still surfaces the right
+        book concept ("safety stock"). Falls back to pure keyword when
+        fastembed is absent, so behaviour is unchanged without the [rag] extra.
+        The code side stays keyword-only (no embedding index over the gitignored
+        code graph). This is a discovery surface only — the client-facing
+        citation path (jobs/*::gated_citations -> citation_gate) is untouched.
         """
-        theory = tuple(self.search(term, graph="books", limit=5))
+        theory = tuple(self.search_hybrid(term, graph="books", limit=5))
         impl = tuple(self.search(term, graph="code", limit=5))
         return Bridge(term=term, theory=theory, implementation=impl)
 

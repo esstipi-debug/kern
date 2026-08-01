@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import pandas as pd
+
 from jobs.stocky_importer import (
     StockyMigrationBatch,
     parse_stocky_purchase_orders_csv,
     parse_stocky_reorder_points_csv,
     parse_stocky_suppliers_csv,
+    to_client_profile_params,
+    to_intake_frame,
 )
 
 
@@ -55,3 +59,62 @@ def test_stocky_migration_batch_summary():
     summary = batch.summary()
     assert summary["suppliers_count"] == 1
     assert summary["purchase_orders_count"] == 0
+
+
+def _batch_with_reorders_and_pos() -> StockyMigrationBatch:
+    batch = StockyMigrationBatch()
+    batch.reorder_points = parse_stocky_reorder_points_csv(
+        "SKU,Min Stock,Max Stock,Target Stock\nSKU-100,15,60,60\nSKU-200,5,20,20\n"
+    )
+    batch.purchase_orders = parse_stocky_purchase_orders_csv(
+        "PO Number,Supplier Name,Status,SKU,Quantity Ordered,Quantity Received,Cost Price,Order Date\n"
+        "PO-1,Alpha,received,SKU-100,50,50,10.00,2026-01-01\n"
+        "PO-2,Beta,sent,SKU-100,30,0,12.00,2026-06-01\n"
+    )
+    return batch
+
+
+def test_to_intake_frame_keys_by_sku_and_latest_po_wins():
+    frame = to_intake_frame(_batch_with_reorders_and_pos())
+    assert list(frame.columns) == [
+        "sku", "reorder_point", "max_reorder_point", "target_stock", "primary_supplier", "last_unit_cost",
+    ]
+    assert set(frame["sku"]) == {"SKU-100", "SKU-200"}
+    row_100 = frame[frame["sku"] == "SKU-100"].iloc[0]
+    assert row_100["reorder_point"] == 15
+    # PO-2 (2026-06-01) is later than PO-1 (2026-01-01) -> its supplier/cost win
+    assert row_100["primary_supplier"] == "Beta"
+    assert row_100["last_unit_cost"] == 12.00
+    # SKU-200 has a reorder point but no PO -> supplier/cost are missing (NaN,
+    # pandas' sentinel; data_quality reads it via pd.notna)
+    row_200 = frame[frame["sku"] == "SKU-200"].iloc[0]
+    assert pd.isna(row_200["primary_supplier"])
+
+
+def test_to_intake_frame_empty_batch_has_columns_no_rows():
+    frame = to_intake_frame(StockyMigrationBatch())
+    assert len(frame) == 0
+    assert "sku" in frame.columns
+
+
+def test_to_client_profile_params_uses_median_lead_time():
+    batch = StockyMigrationBatch()
+    batch.suppliers = parse_stocky_suppliers_csv(
+        "Supplier Name,Lead Time (days),Currency\nA,10,USD\nB,20,USD\nC,30,USD\n"
+    )
+    params = to_client_profile_params(batch)
+    assert params["lead_time_days"] == 20.0  # median of 10,20,30
+    assert params["currency"] == "USD"
+
+
+def test_to_client_profile_params_omits_currency_when_mixed():
+    batch = StockyMigrationBatch()
+    batch.suppliers = parse_stocky_suppliers_csv(
+        "Supplier Name,Lead Time (days),Currency\nA,10,USD\nB,20,EUR\n"
+    )
+    params = to_client_profile_params(batch)
+    assert "currency" not in params
+
+
+def test_to_client_profile_params_empty_without_suppliers():
+    assert to_client_profile_params(StockyMigrationBatch()) == {}

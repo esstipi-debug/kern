@@ -191,10 +191,12 @@ def test_grid_is_deterministic_ordered_and_contains_the_anchors():
 
 
 def test_ss_units_matches_engine_safety_stock():
+    """lead_time_weeks != 1 on purpose: with L=1 this passes even if ss_units dropped
+    risk_periods entirely, since sqrt(tau) = 1. L=4 actually exercises the sqrt(tau) path."""
     from src.safety_stock import safety_stock
-    inp = _inputs()
+    inp = _inputs(lead_time_weeks=4.0)
     assert ss_units(inp, 0.95) == pytest.approx(
-        safety_stock(30.0, 0.95, risk_periods=1.0).safety_stock)
+        safety_stock(30.0, 0.95, risk_periods=4.0).safety_stock)
 
 
 # -- utilities, normalization, tie-break (D2, D3, sec 6) --------------------------

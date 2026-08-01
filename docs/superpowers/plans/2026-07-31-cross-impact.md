@@ -27,9 +27,10 @@
   - `src.hats.evaluate(inputs: HatInputs) -> GridEvaluation` (`.candidates: tuple[Candidate, ...]`)
   - `src.hats.HatConfig.sl_target: float` (default 0.95)
   - `jobs.hats_job.prepare(data_path: str, params: dict | None) -> dict` → `{"inputs": tuple[HatInputs, ...], "weights": ..., "config": HatConfig, "skipped": tuple[str, ...]}`
-  - `src.deliverable.write_summary_csv(rows: list[dict], path: Path) -> Path`
+  - `src.export.write_summary_csv(rows: list[dict], path: Path | str) -> Path` — vive en `src/export.py`, **no** en `src/deliverable.py` (así lo importa `jobs/hats_job.py:23`). Aplica `defuse_formula` a cada celda y escribe vía pandas, así que una celda `""` sale vacía en el CSV.
   - `src.decision_options.Scenario(label, summary, metrics, action, tradeoffs)` / `Objective(metric, weight, maximize)` / `decide(summary, scenarios, objectives, *, confidence, residuals) -> GuidedOutcome`
-  - `src.guided.verify_guided(outcome) -> list[str]`, `confidence_from_coverage(gaps, *, base, floor) -> float`, `COVERAGE_PENALTY: dict[str, float]`, `Residual(description, owner, risk_if_skipped)`
+  - `src.guided.verify_guided(outcome) -> list[str]`, `Residual(description, owner, risk_if_skipped)`
+  - **NO existe** `src.guided.confidence_from_coverage` ni `COVERAGE_PENALTY` en esta rama. Sí existen en `feat/simworld-marcador` (commit `25cd8ed`, sin mergear a main y sin PR). Este plan **no** los usa: la Tarea 5 deriva su confianza con una constante local. No los importes.
 
 ---
 
@@ -952,11 +953,11 @@ git commit -m "feat(cross-impact-job): prepare con validacion fatal, sin default
 
 **Files:**
 - Modify: `jobs/cross_impact_job.py`
-- Modify: `src/guided.py:167-174` (agregar la penalización `unevaluable_area`)
+- **No** se toca `src/guided.py` (ver la nota de Global Constraints: el helper que este plan citaba no existe en esta rama)
 - Test: `tests/test_cross_impact_job.py` (agregar)
 
 **Interfaces:**
-- Consumes: `src.cross_impact.measure`, `src.objection.{judge, ACEPTA, OBJETA, NO_EVALUABLE}`, `src.decision_options.{Scenario, Objective, decide}`, `src.guided.{Residual, confidence_from_coverage}`, `src.hats.{evaluate, decision_cost}`.
+- Consumes: `src.cross_impact.measure`, `src.objection.{judge, ACEPTA, OBJETA, NO_EVALUABLE}`, `src.decision_options.{Scenario, Objective, decide}`, `src.guided.{GuidedOutcome, Residual}`, `src.hats.{evaluate, decision_cost}`.
 - Produces: `EJECUTAR`, `BILATERAL`, `REUNION`, `INDETERMINADO`, `CrossImpactReport`, `run(payload: dict) -> CrossImpactReport`.
 
 - [ ] **Step 1: Write the failing test**
@@ -993,8 +994,14 @@ def test_one_objection_verdict_is_bilateral(demand_csv):
 
 
 def test_two_objections_verdict_is_reunion(demand_csv):
-    thr = {k: 1e-9 for k in HAT_KEYS}      # everyone objects to any change
-    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds=thr))
+    # Q must OVERSHOOT the EOQ for two areas to worsen together. With the
+    # fixture (D=5200, K=75, h=0.25, c=10) the EOQ is ~559: at Q=400 the
+    # planner's policy_cost actually FALLS (400 is closer to the EOQ than the
+    # current 200), so only the CFO objects. At Q=2000 both the planner and the
+    # CFO worsen. Verified by arithmetic during the plan's pre-flight scan.
+    thr = {k: 1e-9 for k in HAT_KEYS}      # everyone objects to any deterioration
+    r = cross_impact_job.run(_payload(demand_csv, proposed={"q": 2000.0, "sl": 0.95},
+                                      objection_thresholds=thr))
     assert r.n_objections >= 2
     assert r.verdict == cross_impact_job.REUNION
 
@@ -1047,11 +1054,19 @@ def test_counterproposal_when_unevaluable_is_never_searched(demand_csv):
 
 
 def test_counterproposal_really_has_zero_objections(demand_csv):
+    # The default fixture's current (Q=200) sits BELOW the whole grid (~280-700
+    # around the ~559 EOQ), so every grid point raises the CFO's capital charge
+    # and no clean point can exist - a counterproposal assertion there would
+    # pass vacuously forever. Put `current` INSIDE the grid and give the CFO
+    # real headroom so a clean point genuinely exists, then assert it is found.
     thr = {k: 1e9 for k in HAT_KEYS}
-    thr["cfo"] = 1.0
-    r = cross_impact_job.run(_payload(demand_csv, objection_thresholds=thr))
-    if r.counterproposal is not None:
-        assert len(r.outcome.options) == 3
+    thr["cfo"] = 5_000.0
+    r = cross_impact_job.run(_payload(demand_csv,
+                                      current={"q": 560.0, "sl": 0.95},
+                                      proposed={"q": 700.0, "sl": 0.99},
+                                      objection_thresholds=thr))
+    assert r.counterproposal is not None      # never vacuous
+    assert len(r.outcome.options) == 3
 
 
 def test_outcome_is_protected_options_with_one_recommendation(demand_csv):
@@ -1082,17 +1097,7 @@ PYTHONPATH=. pytest tests/test_cross_impact_job.py -q -k "verdict or counterprop
 
 Esperado: FAIL — `AttributeError: module 'jobs.cross_impact_job' has no attribute 'run'`.
 
-- [ ] **Step 3a: Agregar la penalización de cobertura**
-
-En `src/guided.py`, dentro de `COVERAGE_PENALTY` (línea 167), agregar la entrada:
-
-```python
-    # an area with no declared objection threshold in the client profile
-    # (src/client_profile.py) - cross_impact cannot judge it at all
-    "unevaluable_area": 0.20,
-```
-
-- [ ] **Step 3b: Write the implementation**
+- [ ] **Step 3: Write the implementation**
 
 Agregar a `jobs/cross_impact_job.py` (imports arriba, resto al final):
 
@@ -1101,7 +1106,7 @@ from dataclasses import dataclass
 
 from src.cross_impact import CrossImpact, measure
 from src.decision_options import Objective, Scenario, decide
-from src.guided import GuidedOutcome, Residual, confidence_from_coverage
+from src.guided import GuidedOutcome, Residual
 from src.hats import decision_cost, evaluate
 from src.objection import NO_EVALUABLE, OBJETA, Verdict, judge
 
@@ -1110,6 +1115,19 @@ BILATERAL = "bilateral"
 REUNION = "reunion"
 INDETERMINADO = "indeterminado"
 VERDICTS = (EJECUTAR, BILATERAL, REUNION, INDETERMINADO)
+
+# Confidence cost of ONE area we could not judge at all (no declared threshold in
+# the client profile). Deliberately local rather than imported: a general
+# `confidence_from_coverage` helper exists on the unmerged branch feat/simworld-
+# marcador (commit 25cd8ed) but NOT on main, and this capability must not depend
+# on another branch's unmerged work. Unify them if that commit ever lands.
+UNEVALUABLE_PENALTY = 0.20
+CONFIDENCE_FLOOR = 0.10
+
+
+def _confidence(n_unevaluable: int) -> float:
+    """1.0 when all four areas were judged; one penalty per area we could not."""
+    return max(CONFIDENCE_FLOOR, 1.0 - UNEVALUABLE_PENALTY * n_unevaluable)
 
 
 @dataclass(frozen=True)
@@ -1251,7 +1269,7 @@ def run(payload: dict) -> CrossImpactReport:
         summary,
         _scenarios(inputs, impact, thresholds, n_obj, counter),
         [Objective("n_objections", weight=2.0), Objective("judge_cost", weight=1.0)],
-        confidence=confidence_from_coverage(["unevaluable_area"] * n_unk),
+        confidence=_confidence(n_unk),
         residuals=[
             Residual(
                 description="La eleccion final la hace un humano; esto mide y ordena, no ejecuta.",
@@ -1280,15 +1298,15 @@ from src.hats import HAT_KEYS, Candidate, HatInputs, decision_cost, evaluate
 - [ ] **Step 4: Run tests to verify they pass**
 
 ```bash
-PYTHONPATH=. pytest tests/test_cross_impact_job.py tests/test_guided.py -q && ruff check jobs/cross_impact_job.py src/guided.py
+PYTHONPATH=. pytest tests/test_cross_impact_job.py -q && ruff check jobs/cross_impact_job.py
 ```
 
-Esperado: todo verde. Si `tests/test_guided.py` asertaba el contenido exacto de `COVERAGE_PENALTY`, actualizá esa aserción para incluir la key nueva.
+Esperado: todo verde. `src/guided.py` no se toca en esta tarea.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add jobs/cross_impact_job.py src/guided.py tests/test_cross_impact_job.py tests/test_guided.py
+git add jobs/cross_impact_job.py tests/test_cross_impact_job.py
 git commit -m "feat(cross-impact-job): veredicto global, contra-propuesta y opciones rankeadas"
 ```
 
@@ -1375,6 +1393,20 @@ def test_veto_unprotected_outcome(demand_csv):
     assert cross_impact_job.verify(replace(r, outcome=dead))
 
 
+def test_real_counterproposal_passes_the_self_check(demand_csv):
+    # the positive side of the self-check: a genuinely clean counterproposal
+    # (same setup as test_counterproposal_really_has_zero_objections) must not
+    # be flagged. Without this, only the negative path is covered.
+    thr = {k: 1e9 for k in HAT_KEYS}
+    thr["cfo"] = 5_000.0
+    r = cross_impact_job.run(_payload(demand_csv,
+                                      current={"q": 560.0, "sl": 0.95},
+                                      proposed={"q": 700.0, "sl": 0.99},
+                                      objection_thresholds=thr))
+    assert r.counterproposal is not None
+    assert cross_impact_job.verify(r) == []
+
+
 def test_veto_counterproposal_that_still_draws_objections(demand_csv):
     thr = {k: 1e-9 for k in HAT_KEYS}
     r = cross_impact_job.run(_payload(demand_csv, objection_thresholds=thr))
@@ -1453,7 +1485,8 @@ Agregar a `jobs/cross_impact_job.py`:
 import math
 from pathlib import Path
 
-from src.deliverable import Deliverable, Finding, Kpi, write_summary_csv
+from src.deliverable import Deliverable, Finding, Kpi
+from src.export import write_summary_csv      # NOTE: export.py, not deliverable.py
 from src.guided import verify_guided
 
 
@@ -1663,9 +1696,11 @@ git commit -m "feat(cross-impact-job): gate de QA que veta la combinacion deshon
 ### Task 7: Registrar el tool y anclar las citas
 
 **Files:**
-- Modify: `scm_agent/tools.py` (nueva función cerca de la línea 1098, `reg.register(...)` cerca de la 2601)
+- Modify: `scm_agent/tools.py` (nueva función cerca de la línea 1098; `reg.register(cross_impact_tool())` dentro de `build_default_registry()`, justo después de `reg.register(hat_settlement_tool())` y antes del `return reg`)
 - Modify: `scm_agent/citation_gate.py` (`TOOL_CONCEPTS`, línea 54)
 - Test: `tests/test_cross_impact_tool.py` (crear)
+- **Modify: `tests/test_price_watch_tool.py:165`** — asserta `len(reg.list()) == 46`. Pasa a **47**. No relajes la aserción a `>=`: ese número exacto es lo que hace que agregar un tool sea un diff revisable.
+- **Modify: `tests/test_capability_smoke.py`** — `EXPECTED_OFFLINE_BUCKETS` (línea 25) exige una fila por tool registrado (`assert set(EXPECTED_OFFLINE_BUCKETS) == registered`, línea 109), así que sin fila el test falla a propósito. Agregar `"cross_impact": "GATED",` junto a `"hat_tension"` y `"hat_settlement"`, que son los casos análogos: `requires_data=True` y sin fixture en el harness, así que no ejecutan su propio job. También actualizar el comentario de la línea 17 de "46 registered tools" a 47.
 
 **Interfaces:**
 - Consumes: todo lo de las tareas 1-6.
@@ -1684,7 +1719,7 @@ import pytest
 from scm_agent.citation_gate import TOOL_CONCEPTS
 from scm_agent.knowledge import KnowledgeBase
 from scm_agent.orchestrator import Orchestrator
-from scm_agent.tools import build_registry
+from scm_agent.tools import build_default_registry
 
 
 @pytest.fixture
@@ -1711,20 +1746,20 @@ def _params(**over):
 
 
 def test_tool_is_registered():
-    assert build_registry().get("cross_impact").key == "cross_impact"
+    assert build_default_registry().get("cross_impact").key == "cross_impact"
 
 
 def test_tool_declares_the_threshold_as_a_required_client_param():
-    tool = build_registry().get("cross_impact")
+    tool = build_default_registry().get("cross_impact")
     assert tool.required_client_params == ("objection_thresholds",)
 
 
 def test_tool_exposes_ranked_options():
-    assert build_registry().get("cross_impact").options is not None
+    assert build_default_registry().get("cross_impact").options is not None
 
 
 def test_brief_routes_to_cross_impact():
-    reg = build_registry()
+    reg = build_default_registry()
     top, _ = reg.match("que impacto tiene esta decision en las otras areas")[0]
     assert top.key == "cross_impact"
 
@@ -1890,9 +1925,9 @@ Esperado: todo verde, incluido `test_no_anchored_tool_regressed_to_zero`. **Si a
 ```bash
 PYTHONPATH=. python -c "
 from scm_agent.knowledge import KnowledgeBase
-from scm_agent.tools import build_registry
+from scm_agent.tools import build_default_registry
 from scm_agent import citation_gate
-tool = build_registry().get('cross_impact')
+tool = build_default_registry().get('cross_impact')
 kb = KnowledgeBase()
 cands = kb.ground_citations_detailed(tool.intent_keywords, tool.title, limit=16)
 for c in cands:
@@ -1915,7 +1950,7 @@ Esperado: todo verde.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add scm_agent/tools.py scm_agent/citation_gate.py tests/test_cross_impact_tool.py
+git add scm_agent/tools.py scm_agent/citation_gate.py tests/test_cross_impact_tool.py tests/test_price_watch_tool.py tests/test_capability_smoke.py
 git commit -m "feat(cross-impact): registrar el tool #47 y anclar sus citas medidas"
 ```
 

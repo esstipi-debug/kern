@@ -89,6 +89,66 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # theory, distinct from the risk tool's mitigation anchors. Deliberately
     # disruption-specific concept nodes, not the broad supply_chain_risk hub.
     "disruption_scan": ("supply_chain_disruption", "supply_chain_resilience", "disruption_forecasting"),
+    # flow_map (tool #47, observed-network transit measurement) grounds on lead-time
+    # variability and process/value-stream mapping, not on network design: the
+    # verdict is the buffer that transit spread forces, not where to put a DC.
+    # Measured 2-hop closures on the committed 3002-node graph for every candidate
+    # considered, in order of preference: lead_time_variability 608 nodes (20.3%),
+    # lead_time_gap 266 nodes (8.9%), value_stream_mapping 195 nodes (6.5%),
+    # supply_chain_mapping 340 nodes (11.3%), bullwhip_effect 769 nodes (25.6%).
+    # None crosses the ~40% book-hub ceiling, so the anchor was picked on citation
+    # quality instead: replaying the real grounding call
+    # (kb.ground_citations_detailed(tool.intent_keywords, tool.title, limit=16))
+    # against each candidate pair, lead_time_variability + value_stream_mapping
+    # is the only combination whose GATED output stays on-topic (End-to-End
+    # Lead-Time Variability, Value-Stream Mapping, Activity Map, Bottleneck Time,
+    # Variability in Activity Times, Flow Time). lead_time_gap adds nothing over
+    # lead_time_variability (identical kept set). supply_chain_mapping and
+    # bullwhip_effect both pull in Khan et al. disruption/resilience noise
+    # (a "Finding - Measured Resiliency..." case study, a semiconductor shortage
+    # case) that has nothing to do with a client's observed lane transit times.
+    #
+    # IMPORTANT (2026-07-31 fix wave, IMPORTANT 4): these anchors govern what THIS
+    # module's filter_citations() would keep -- they are NOT on flow_map's shipped
+    # path today. The orchestrator (scm_agent/orchestrator.py:193, `_ground`) calls
+    # the UNGATED `knowledge.ground_citations(tool.intent_keywords, brief, limit=5)`
+    # directly; filter_citations is only wired into jobs/integrated_plan.py,
+    # jobs/price_intelligence.py and jobs/repricing.py. flow_map is not among them.
+    # Measured consequence, replaying the real orchestrator call
+    # (KnowledgeBase().ground_citations(flow_map_tool().intent_keywords, "", limit=5)):
+    # 3 of the 5 shipped citations are Khan et al. resilience-book noise --
+    # "Semiconductor and Raw Material Supply Bottleneck", "Realistic Transit Time
+    # Calculation", and "Fraunhofer Institute for Material Flow and Logistics (IML)"
+    # (all khan-supply-chain-resilience.txt) -- against only 2 of 5 from the anchors
+    # above (Christopher ch.9 "End-to-End Lead-Time Variability", Heizer ch.7
+    # "Value-Stream Mapping"). Do not read this comment as a guarantee about the
+    # shipped deck; wiring filter_citations into flow_map's path is a separate,
+    # larger-blast-radius change, not made here.
+    "flow_map": ("lead_time_variability", "value_stream_mapping"),
+    # org_friction_audit (organizational-friction audit, tool #49; ANCHOR-ISLANDED, see
+    # tests/test_packages_citations.py::_ISLANDED_TOOLS) grounds on Hidden Factory alone --
+    # the one node in the committed graph that is genuinely on-topic for this tool's four
+    # detectors (hidden factory, Goodhart ratchet, accountability vacuum, unclassified
+    # workaround). Measured 2026-07-31 by BFS over knowledge/scm-books/graph.json + a real
+    # replay of _step_citations: vollmann_hidden_factory has degree 1 (its only edge is
+    # vollmann_jit) and a 26-node 2-hop closure containing nothing else on-topic -- a
+    # near-isolate, same shape as vehicle_routing's vollmann_traveling_salesman below.
+    # Two other candidates were measured and REJECTED, not merely omitted:
+    #   - misaligned_incentives: sits 1 hop from book_chopra_meindl (2-hop closure 356
+    #     nodes), so admitting it would self-validate almost anything from that entire
+    #     book via the shared-book-hub loophole EXCLUDED_CONCEPTS exists for (the same
+    #     anti-pattern documented under `risk` above) -- and it still produced zero real
+    #     citations when replayed, so there is no recall gain to trade against that risk.
+    #   - strategic_inertia: a small (8-node) but topically irrelevant closure, entirely
+    #     pandemic/crisis-recovery content (khan-supply-chain-resilience.txt) with nothing
+    #     about metrics, targets or accountability.
+    # No node for Goodhart's law, target-ratcheting, workaround typologies or metric-gaming
+    # exists anywhere in the 3002-node graph (checked by direct keyword search) -- the
+    # corpus is quantitative-methods-heavy and simply has no connected content for this
+    # tool's political-layer subject. Fix by ingesting organizational-behavior/performance-
+    # measurement-dysfunction theory (Goodhart, Ridgway, Merchant & Van der Stede), not by
+    # a looser or hub-adjacent anchor.
+    "org_friction_audit": ("vollmann_hidden_factory",),
     "forecast": ("forecastability", "crostons_method", "sbc_classification", "syntetos_boylan_approximation", "tsb_method"),
     # No topically-better node exists in the committed graph for SKU-master/
     # GTIN data quality (verified during the 2026-07 adversarial review) - this
@@ -137,6 +197,18 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # the working-capital lens (its acta is priced in capital terms).
     "hat_tension": ("safety_stock", "service_level", "cycle_service_level"),
     "hat_settlement": ("safety_stock", "service_level", "working_capital_efficiency"),
+    # cross_impact (tool #48) decides the SAME (Q, SL) space as hat_tension, so it
+    # inherits those three anchors; cross_functional_integration adds the
+    # coordination lens this tool is actually about. Measured by BFS over the
+    # 3002-node graph (2026-07-31): the three inherited anchors close 853 nodes
+    # (28.4%) at 2 hops; adding cross_functional_integration admits only 16 more
+    # (869, 28.9%) and it is hub-free (degree 3; neighbors Supply Chain
+    # Orientation / Supply Chain Agility / Tiger Team, all on topic).
+    # sales_and_operations_planning (own 2-hop closure 618) and functional_silos
+    # (degree 2 but closure 266 - one hop from a hub) were REJECTED as magnets,
+    # by measurement, not intuition.
+    "cross_impact": ("safety_stock", "service_level", "cycle_service_level",
+                     "cross_functional_integration"),
 }
 
 # tool_key -> concept ids that must NEVER be cited for this tool, even when
@@ -171,6 +243,20 @@ EXCLUDED_CONCEPTS: dict[str, tuple[str, ...]] = {
     # PR #164 false-friend class. The settlement anchors' closure (386 nodes)
     # contains neither; no exclusions needed there.
     "hat_tension": ("reverse_auction", "procurement_auction"),
+    # cross_docking is a flow-through warehousing technique (goods move from
+    # inbound to outbound without being stored) - it has nothing to do with the
+    # cost of coordination between business areas. It rides the "cross" lexical
+    # overlap with this tool's own keywords ("impacto cruzado", "cross-area
+    # impact") and clears MAX_HOPS via a shared book hub even though it is NOT
+    # reachable from the cross_functional_integration anchor at all. Measured
+    # against the committed books graph (2026-07-31):
+    #   cross_docking -> safety_stock              = 2 hops
+    #   cross_docking -> cycle_service_level        = 2 hops
+    #   cross_docking -> service_level              = unreachable
+    #   cross_docking -> cross_functional_integration = unreachable
+    # Same false-friend class as returns/reverse_auction and
+    # excess_obsolete/excess_capacity_and_inventory above.
+    "cross_impact": ("cross_docking",),
 }
 
 

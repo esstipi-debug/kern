@@ -9,12 +9,13 @@ the Incoterm to FOB.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
 
-from src.deliverable import DataSource, Deliverable, Finding, Kpi
+from src.deliverable import DataSource, Deliverable, Finding, Kpi, not_measured
 from src.export import write_summary_csv
 from src.landed_cost import LandedCost, landed_cost
 
@@ -72,7 +73,14 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> list[dict]:
     incoterm = _pick_column(df, params.get("incoterm_col"), _INCOTERM_COLS)
 
     def _num(row, col):
-        return float(row[col]) if col else 0.0
+        """An optional cost leg: absent column *or* blank cell means 0, as documented.
+
+        Without the blank case, `require_finite` in src.landed_cost turned one empty
+        insurance cell into an opaque abort for the whole shipment file.
+        """
+        if not col or pd.isna(row[col]):
+            return 0.0
+        return float(row[col])
 
     return [
         {
@@ -117,7 +125,10 @@ def run(records: list[dict]) -> LandedCostReport:
         total_insurance=sum(ln.landed.insurance for ln in lines),
         total_duty=sum(ln.landed.duty for ln in lines),
         total_landed=total_landed,
-        landed_uplift_pct=((total_landed - total_goods) / total_goods) if total_goods > 0 else 0.0,
+        landed_uplift_pct=(
+            ((total_landed - total_goods) / total_goods)
+            if math.isfinite(total_goods) and total_goods > 0 else 0.0
+        ),
     )
 
 
@@ -148,7 +159,8 @@ def write_operational(report: LandedCostReport, out_dir: str | Path, client: str
             "handling": round(ln.landed.handling, 2),
             "broker_fee": round(ln.landed.broker_fee, 2),
             "total_landed": round(ln.landed.total, 2),
-            "per_unit_landed": round(ln.landed.per_unit, 4),
+            # Blank, not 0: a zero-quantity line has no per-unit cost to report.
+            "per_unit_landed": "" if ln.landed.per_unit is None else round(ln.landed.per_unit, 4),
         }
         for ln in report.lines
     ]
@@ -162,6 +174,7 @@ def build_deck(
     prepared: str = "",
     citations: tuple[str, ...] = (),
     confidence: float = 0.85,
+    lang: str = "en",
 ) -> Deliverable:
     """Compose the landed-cost study: the true delivered cost and where it accrues."""
     uplift = report.landed_uplift_pct * 100
@@ -189,7 +202,9 @@ def build_deck(
     if top is not None:
         findings.append(Finding(
             f"Highest landed cost: {top.sku}",
-            f"{top.landed.total:,.0f} landed ({top.landed.per_unit:,.2f}/unit, {top.landed.incoterm}).",
+            f"{top.landed.total:,.0f} landed ("
+            + (not_measured(lang) if top.landed.per_unit is None else f"{top.landed.per_unit:,.2f}/unit")
+            + f", {top.landed.incoterm}).",
             impact="biggest lever for a cost-down or re-sourcing",
         ))
 
@@ -225,4 +240,5 @@ def build_deck(
         residual="HS-code classification and duty rates are advisory here - confirm tariff "
                  "treatment with a licensed customs broker before relying on the duty figures.",
         prepared=prepared,
+        lang=lang,      # section headers / table columns, not the content
     )

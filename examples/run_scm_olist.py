@@ -25,12 +25,43 @@ if str(ROOT) not in sys.path:
 
 from scm_agent.knowledge import KnowledgeBase  # noqa: E402
 from scm_agent.modes import SCM  # noqa: E402
-from src.deliverable import DataSource, Deliverable, Finding, Kpi  # noqa: E402
+from src.deliverable import (  # noqa: E402
+    DataSource,
+    Deliverable,
+    Finding,
+    Kpi,
+    days,
+    money,
+    not_measured,
+    pct,
+    ppm,
+)
 from src.landed_cost import landed_cost  # noqa: E402
 from src.mcdm import Criterion, topsis_rank  # noqa: E402
-from src.supplier_scorecard import score_supplier  # noqa: E402
+from src.supplier_scorecard import rankable, score_supplier  # noqa: E402
 
 MIN_DELIVERIES = 50  # only score sellers with enough delivered orders for stable stats
+
+
+def seller_scorecards(df, seller_ids, *, has_reviews: bool = True) -> tuple[list, tuple[str, ...]]:
+    """Score each seller, and name the sellers this data could not score.
+
+    Two lies used to live right here, in the script rather than the engine: a missing
+    delivery date became ``lead_time_days: 0.0`` (the fastest possible seller) and a
+    missing review became ``defects: 0.0`` (a perfect one). Both are absences now, so
+    the seller leaves the panel instead of topping it.
+    """
+    cards = []
+    for sid in seller_ids:
+        g = df[df["seller_id"] == sid]
+        reviews = g["review_score"] if has_reviews else [None] * len(g)
+        deliveries = [
+            {"on_time": ot, "in_full": True, "lead_time_days": ld, "units": 1.0,
+             "defects": None if (rs is None or pd.isna(rs)) else float(rs <= 2)}
+            for ot, ld, rs in zip(g["on_time"], g["lead_days"], reviews)
+        ]
+        cards.append(score_supplier(sid[:8], deliveries))
+    return rankable(cards, ("otif", "avg_lead_time"))
 
 
 def section(t):
@@ -80,27 +111,27 @@ def main():
     section("1) Seller (supplier) OTIF scorecards - real delivered-vs-estimated (M8)")
     vol = df.groupby("seller_id").size().sort_values(ascending=False)
     top_ids = vol[vol >= MIN_DELIVERIES].head(8).index.tolist()
-    cards = {}
+    scored, unscoreable = seller_scorecards(df, top_ids, has_reviews=rev is not None)
+    cards = {c.supplier: c for c in scored}
+    # Scorecards carry the short id; keep the full one to slice the frame by.
+    top_ids = [sid for sid in top_ids if sid[:8] in cards]
     for sid in top_ids:
-        g = df[df["seller_id"] == sid]
-        deliveries = [
-            {"on_time": bool(ot), "in_full": True, "lead_time_days": float(ld) if pd.notna(ld) else 0.0,
-             "units": 1.0, "defects": 1.0 if (rev is not None and pd.notna(rs) and rs <= 2) else 0.0}
-            for ot, ld, rs in zip(g["on_time"], g["lead_days"],
-                                  g["review_score"] if rev is not None else [None] * len(g))
-        ]
-        cards[sid] = score_supplier(sid[:8], deliveries)
-    for sid in top_ids:
-        c = cards[sid]
+        c = cards[sid[:8]]
         fr = df[df["seller_id"] == sid]["freight_pct"].mean()
-        print(f"  {sid[:8]}  deliveries={c.deliveries:>4}  OTIF={c.otif*100:5.1f}%  "
-              f"avg lead={c.avg_lead_time:4.1f}d  freight={fr*100:4.1f}%  defect_ppm={c.ppm:,.0f}")
+        print(f"  {sid[:8]}  deliveries={c.deliveries:>4}  OTIF={pct(c.otif):>6}  "
+              f"avg lead={days(c.avg_lead_time):>9}  freight={fr*100:4.1f}%  "
+              f"defect_ppm={ppm(c.ppm)}")
+    for sid in unscoreable:
+        print(f"  {sid}  {not_measured()} - no scoreable delivery in this data; "
+              "left out of the ranking")
+    if not cards:
+        sys.exit("no seller carried a scoreable delivery; nothing to rank")
 
     # 2) MCDM seller selection -------------------------------------------------
     section("2) MCDM seller selection (TOPSIS) - real OTIF / lead / freight / quality")
     alts = {}
     for sid in top_ids:
-        c = cards[sid]
+        c = cards[sid[:8]]          # cards are keyed by the short id the scorecard carries
         g = df[df["seller_id"] == sid]
         alts[sid[:8]] = {"otif": c.otif, "lead": c.avg_lead_time,
                          "freight": float(g["freight_pct"].mean()),
@@ -125,7 +156,7 @@ def main():
                      broker_fee=0.0, incoterm="CIF")
     print(f"  seller {chosen}: {qty:.0f} items  goods=R${goods:,.0f}  REAL freight=R${freight_real:,.0f} "
           f"({freight_real/goods*100:.1f}% of goods)")
-    print(f"  landed/unit=R${lc.per_unit:.2f}  total landed=R${lc.total:,.0f}")
+    print(f"  landed/unit={money(lc.per_unit, symbol='R$')}  total landed=R${lc.total:,.0f}")
 
     # 4) Cost-to-serve: freight burden by category -----------------------------
     section("4) Cost-to-serve - freight burden by category")
@@ -157,8 +188,9 @@ def main():
                  f"highest freight burden in '{worst_cat}'."),
         findings=(
             Finding("Wide seller OTIF spread",
-                    f"Top-volume sellers range OTIF {min(c.otif for c in cards.values())*100:.0f}%"
-                    f"-{max(c.otif for c in cards.values())*100:.0f}%.",
+                    f"Top-volume sellers range OTIF {pct(min(c.otif for c in cards.values()))}"
+                    f"-{pct(max(c.otif for c in cards.values()))} across the "
+                    f"{len(cards)} seller(s) that could be scored.",
                     impact="consolidate volume on reliable sellers"),
             Finding(f"Network on-time {on_time_rate*100:.0f}%",
                     f"{late:,} late deliveries vs estimated date; avg lead {avg_lead:.0f}d.",
@@ -172,7 +204,8 @@ def main():
             Kpi("Network on-time rate", f"{on_time_rate*100:.1f}%", target="95%+",
                 rationale="Delivered on/before the promised estimate"),
             Kpi("Avg delivery lead", f"{avg_lead:.0f} days", rationale="Order to customer delivery"),
-            Kpi("Chosen-seller landed/unit", f"R${lc.per_unit:.2f}", rationale="Real freight-loaded delivered cost"),
+            Kpi("Chosen-seller landed/unit", money(lc.per_unit, symbol="R$"),
+                rationale="Real freight-loaded delivered cost"),
             Kpi("Worst freight burden", f"{cat.iloc[0]['freight_pct']*100:.0f}% ({worst_cat[:20]})",
                 target="< 15%", rationale="Cost-to-serve hotspot"),
         ),

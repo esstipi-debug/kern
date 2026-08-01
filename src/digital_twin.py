@@ -26,10 +26,13 @@ Semantics (they define what the KPIs mean):
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
 from numpy.random import Generator
+
+from src.finite import require_finite
 
 _NODE_KINDS = ("supplier", "dc", "store")
 _DISRUPTION_KINDS = ("supplier_outage", "lead_time_spike", "demand_surge")
@@ -115,6 +118,12 @@ def generate_demand(profile: DemandProfile, periods: int, rng: Generator) -> np.
         raise ValueError("season_period and promo_length must be > 0")
     if profile.noise_std < 0 or profile.season_amplitude < 0:
         raise ValueError("noise_std and season_amplitude must be >= 0")
+    # Checked last so the specific messages above win. A non-finite `trend` (or any
+    # other knob) makes the whole trace NaN, which loses the `total_demand > 0` test
+    # downstream and reports a 100% fill rate - the best number the twin can print.
+    for field_name in ("base", "trend", "season_amplitude", "promo_uplift",
+                       "noise_std", "zero_prob"):
+        require_finite(getattr(profile, field_name), f"demand profile {field_name}")
 
     t = np.arange(periods, dtype=float)
     demand = profile.base + profile.trend * t
@@ -374,7 +383,11 @@ def simulate_network(
         stats.append(NodeStats(
             name=name,
             kind=state.spec.kind,
-            fill_rate=(state.total_served / state.total_demand) if state.total_demand > 0 else 1.0,
+            fill_rate=(
+                (state.total_served / state.total_demand)
+                if math.isfinite(state.total_demand) and state.total_demand > 0
+                else 1.0
+            ),
             stockout_periods=state.stockout_periods,
             mean_on_hand=state.on_hand_sum / periods if state.spec.kind != "supplier" else 0.0,
             orders_placed=len(qtys),
@@ -386,7 +399,11 @@ def simulate_network(
     return TwinResult(
         periods=periods,
         nodes=tuple(stats),
-        network_fill_rate=(total_served / total_demand) if total_demand > 0 else 1.0,
+        network_fill_rate=(
+            (total_served / total_demand)
+            if math.isfinite(total_demand) and total_demand > 0
+            else 1.0
+        ),
         total_mean_on_hand=sum(
             st.on_hand_sum / periods for st in states.values() if st.spec.kind != "supplier"
         ),

@@ -61,7 +61,16 @@ _CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "whatif", "earned_value"
 # VRP theory to anchor on: vollmann_traveling_salesman is an isolate with 0 edges,
 # and the only hub-free routing nodes describe disruption re-routing, not
 # Clarke-Wright/savings VRP. Fix by ingesting VRP theory, not by a looser anchor.
-_ISLANDED_TOOLS = ("dea", "learning_curve", "slotting", "vehicle_routing")
+# org_friction_audit (tool #49) joined this set at introduction, not via a later merge:
+# vollmann_hidden_factory (its sole anchor -- see citation_gate.TOOL_CONCEPTS's comment
+# for the full BFS measurement) has degree 1 and a 26-node 2-hop closure with nothing else
+# on-topic. Two richer-looking anchors were measured and rejected (misaligned_incentives
+# is 1 hop from the Chopra & Meindl book hub -- the self-validation loophole EXCLUDED_
+# CONCEPTS exists for; strategic_inertia's 8-node closure is pandemic-crisis content, not
+# metrics/accountability). No Goodhart's-law/ratchet/workaround/metric-gaming node exists
+# anywhere in the graph. Fix by ingesting performance-measurement-dysfunction theory, not
+# by a looser or hub-adjacent anchor.
+_ISLANDED_TOOLS = ("dea", "learning_curve", "slotting", "vehicle_routing", "org_friction_audit")
 
 # Every anchored+registered tool that is allowed to ship zero citations: the four
 # whose zero is intentional plus the anchor-islanded ones. price_watch is NOT here

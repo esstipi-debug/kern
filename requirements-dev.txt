@@ -16,7 +16,10 @@ sentry-sdk>=2.0  # optional error tracking (webapp/observability.py), no-op unle
 statsforecast>=2.0,<3
 utilsforecast>=0.2
 # MCP server (webapp/mcp_server.py) — mirrors pyproject [mcp]
-mcp>=1.0
+# Capped below 2.0: mcp 2.0.0 (2026-07-28) dropped `mcp.server.fastmcp`. Keep this
+# cap in lockstep with pyproject [mcp] — CI installs from THIS file, so changing
+# only one of the two silently does nothing.
+mcp>=1.0,<2
 # data-quality dedup + matching primitives (src/sku_dedup.py, pricing_intel/match/) — mirrors pyproject [dataquality]
 rapidfuzz>=3.0
 python-stdnum>=1.19
@@ -36,3 +39,8 @@ splink>=4
 statsmodels>=0.14
 # jobs/seo_audit.py's real site crawl (S1, PR-22) — mirrors pyproject [seo]
 advertools>=0.14
+# NOTE: pyproject [rag] (fastembed, semantic discovery) is DELIBERATELY excluded
+# here. Installing it makes every KnowledgeBase() init embed all books nodes
+# (model download + compute) — a per-run CI cost for a purely opt-in operator
+# feature. The RAG tests skipif(not _has_fastembed()); CI exercises the keyword
+# fallback path. Install locally with `pip install .[rag]` to run them.

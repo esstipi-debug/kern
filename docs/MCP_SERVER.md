@@ -1,6 +1,6 @@
 # MCP server (Phase A go-to-market)
 
-Kern exposes 33 of its 37 registered tools to other AI agents over MCP
+Kern exposes 35 of its 49 registered tools to other AI agents over MCP
 (Model Context Protocol), mounted at `/mcp` on the same FastAPI app as the
 dashboard. This is **read-only analysis only** — no tool that mutates a
 client's system of record (e.g. `odoo_replenishment`, or any writeback path
@@ -45,11 +45,39 @@ this is Phase A of.
 | `linchpin_facility_location` | `facility_location` |
 | `linchpin_warehouse_slotting` | `slotting` |
 | `linchpin_vehicle_routing` | `vehicle_routing` |
+| `linchpin_flow_map` | `flow_map` |
+| `linchpin_org_friction_audit` | `org_friction_audit` |
 
-Not exposed (4): `odoo_replenishment` and `excel_replenishment` (writeback —
-they mutate a client's system of record and stay behind the direct-client
-safety plane), `leadership_chain` and `warehouse_layout` (no tabular input —
-the rows→CSV bridge has nothing to feed them).
+`org_friction_audit` runs here with three of its four detectors: the fourth
+(Goodhart / target-ratcheting) needs a second target-vs-actual history file,
+passed to the direct tool as `params["history_path"]`. This surface is
+anonymous and remote, and `params` is handed straight to the job, so every
+`*_path` override is dropped before it gets there
+(`strip_filesystem_params` in `webapp/mcp_server.py`) — otherwise a caller
+could name any file on the server and read back its existence and column
+headers through the job's own "missing required column(s)" error text. Use
+the direct tool (or `examples/run_org_friction.py --history`) when you need
+the ratchet detector.
+
+Deliberately not exposed: `odoo_replenishment` and `excel_replenishment`
+(writeback — they mutate a client's system of record and stay behind the
+direct-client safety plane), `leadership_chain` (no tabular input — the
+rows→CSV bridge has nothing to feed it), `warehouse_layout` (a
+params-driven 3D layout generator that ignores rows entirely; its
+deliverable is an HTML viewer, not a data analysis). `flow_map`'s own
+deliverable also includes a self-contained HTML sankey map alongside the
+CSV, but unlike `warehouse_layout`, its *input* is tabular movement rows
+and its primary output is a data analysis (measured transit per lane),
+with the HTML map as an extra visualization, not the whole deliverable —
+that distinction is why it is exposed here and `warehouse_layout` is not.
+See `webapp/mcp_tool_specs.py`'s module docstring for the full reasoning.
+
+The remaining registered tools not in the table above (e.g. `digital_twin`,
+`disruption_scan`, `hat_tension`, `hat_settlement`, `launch_readiness`,
+`network_design`, `price_intelligence`, `price_watch`,
+`supplier_management`) are not deliberately excluded by the reasoning
+above — they simply have not been added to `webapp/mcp_tool_specs.py` yet.
+Adding one is a one-spec change; see that file's module docstring.
 
 Every tool takes the same shape: `rows` (tabular data as a list of JSON
 objects, like CSV rows), `params` (optional tool-specific overrides), and

@@ -23,11 +23,20 @@ if str(ROOT) not in sys.path:
 
 from scm_agent.knowledge import KnowledgeBase  # noqa: E402
 from scm_agent.modes import SCM  # noqa: E402
-from src.deliverable import DataSource, Deliverable, Finding, Kpi  # noqa: E402
+from src.deliverable import (  # noqa: E402
+    DataSource,
+    Deliverable,
+    Finding,
+    Kpi,
+    days,
+    money,
+    not_measured,
+    pct,
+)
 from src.financial_kpis import cash_to_cash  # noqa: E402
 from src.landed_cost import landed_cost  # noqa: E402
 from src.mcdm import Criterion, topsis_rank  # noqa: E402
-from src.supplier_scorecard import score_supplier  # noqa: E402
+from src.supplier_scorecard import rankable, score_supplier  # noqa: E402
 
 # Promised delivery SLA per ship mode (days) — the on-time benchmark. [ASSUMPTION]
 SLA = {"Same Day": 0, "First Class": 2, "Second Class": 3, "Standard Class": 4}
@@ -35,6 +44,36 @@ SLA = {"Same Day": 0, "First Class": 2, "Second Class": 3, "Standard Class": 4}
 
 def section(t):
     print("\n" + "=" * 68 + f"\n{t}\n" + "=" * 68)
+
+
+def carrier_scorecards(df) -> tuple[list, tuple[str, ...]]:
+    """Score each ship mode, and name the modes this data could not score.
+
+    A mode whose Ship Dates all failed to parse has no scoreable delivery at all. It
+    used to come back as a wall of zeros and rank last on a 0% OTIF nobody measured;
+    now its rates are ``None``, so it leaves the panel by name instead.
+    """
+    cards = []
+    for mode, g in df.groupby("Ship Mode"):
+        sla = SLA.get(mode, 7)
+        deliveries = [
+            {"on_time": int(L) <= sla, "in_full": True, "lead_time_days": float(L),
+             "units": float(q), "defects": 0.0}
+            for L, q in zip(g["lead"], g["Quantity"]) if pd.notna(L)
+        ]
+        cards.append(score_supplier(mode, deliveries))
+    panel, dropped = rankable(cards, ("otif", "on_time_rate", "avg_lead_time"))
+    panel.sort(key=lambda c: c.otif, reverse=True)
+    return panel, dropped
+
+
+def print_panel(cards, dropped) -> None:
+    for c in cards:
+        print(f"  {c.supplier:<15} deliveries={c.deliveries:>5}  OTIF={pct(c.otif):>6}  "
+              f"on-time={pct(c.on_time_rate):>6}  avg lead={days(c.avg_lead_time):>9}")
+    for name in dropped:
+        print(f"  {name:<15} {not_measured()} - no scoreable delivery in this data; "
+              "left out of the ranking")
 
 
 def main():
@@ -54,19 +93,10 @@ def main():
 
     # 1) Carrier OTIF scorecard (ship modes treated as carriers) ----------------
     section("1) Carrier delivery scorecard - OTIF (M8)")
-    cards = []
-    for mode, g in df.groupby("Ship Mode"):
-        sla = SLA.get(mode, 7)
-        deliveries = [
-            {"on_time": int(L) <= sla, "in_full": True, "lead_time_days": float(L),
-             "units": float(q), "defects": 0.0}
-            for L, q in zip(g["lead"], g["Quantity"]) if pd.notna(L)
-        ]
-        cards.append(score_supplier(mode, deliveries))
-    cards.sort(key=lambda c: c.otif, reverse=True)
-    for c in cards:
-        print(f"  {c.supplier:<15} deliveries={c.deliveries:>5}  OTIF={c.otif*100:5.1f}%  "
-              f"on-time={c.on_time_rate*100:5.1f}%  avg lead={c.avg_lead_time:4.1f}d")
+    cards, unscoreable = carrier_scorecards(df)
+    print_panel(cards, unscoreable)
+    if not cards:
+        sys.exit("no ship mode carried a scoreable delivery; nothing to rank")
     best, worst = cards[0], cards[-1]
 
     # 2) Cost-to-serve / profitability (the CFO lens) ---------------------------
@@ -105,13 +135,15 @@ def main():
     lc = landed_cost(unit_cost=float(top["uc"]), qty=float(top["qty"]),
                      freight=0.08 * goods, insurance=0.01 * goods, duty_rate=0.05,
                      handling=0.02 * goods, broker_fee=150.0, incoterm="CIF")
+    # per_unit is None over zero units; the premium it feeds is then unanswerable too.
+    premium = pct(lc.per_unit / float(top["uc"]) - 1) if lc.per_unit is not None else not_measured()
     print(f"  SKU {top.name} ({str(top['name'])[:34]})  qty={top['qty']:.0f}  unit_cost=${top['uc']:.2f}")
-    print(f"  landed/unit=${lc.per_unit:.2f}  (goods ${lc.goods_value:,.0f} + freight ${lc.freight:,.0f} "
-          f"+ duty ${lc.duty:,.0f} + ins/handling/broker)  -> +{(lc.per_unit/top['uc']-1)*100:.0f}% over unit cost")
+    print(f"  landed/unit={money(lc.per_unit)}  (goods ${lc.goods_value:,.0f} + freight ${lc.freight:,.0f} "
+          f"+ duty ${lc.duty:,.0f} + ins/handling/broker)  -> +{premium} over unit cost")
 
     # 5) Financial KPI - cash-to-cash -------------------------------------------
     c2c = cash_to_cash(dio=42.1, dso=45.0, dpo=30.0)  # [ASSUMPTION] DSO/DPO; DIO from inventory run
-    print(f"\n  Cash-to-cash cycle [ASSUMPTION DSO=45, DPO=30, DIO=42 from inventory run]: {c2c:.0f} days")
+    print(f"\n  Cash-to-cash cycle [ASSUMPTION DSO=45, DPO=30, DIO=42 from inventory run]: {days(c2c)}")
 
     # 6) Compose the client deliverable -----------------------------------------
     section("6) SCM deliverable (generated)")
@@ -125,23 +157,23 @@ def main():
                  f"{df['Product ID'].nunique():,} SKUs. Overall gross margin {overall_margin*100:.1f}%; "
                  f"{len(loss)} loss-making states; recommended carrier '{chosen}'."),
         findings=(
-            Finding(f"Carrier OTIF spread {worst.otif*100:.0f}%-{best.otif*100:.0f}%",
+            Finding(f"Carrier OTIF spread {pct(worst.otif)}-{pct(best.otif)}",
                     f"'{best.supplier}' leads on OTIF; '{worst.supplier}' lags.",
                     impact="shift volume to the reliable carrier"),
             Finding(f"{len(loss)} loss-making states",
                     f"Worst: {loss.index[0]} loses ${abs(loss.iloc[0]['profit']):,.0f}.",
                     impact="review pricing / cost-to-serve there"),
             Finding("Landed cost premium on top SKU",
-                    f"Landed/unit ${lc.per_unit:.2f} is +{(lc.per_unit/top['uc']-1)*100:.0f}% over unit cost.",
+                    f"Landed/unit {money(lc.per_unit)} is +{premium} over unit cost.",
                     impact="freight/duty are the levers"),
         ),
         kpis=(
-            Kpi("Best carrier (OTIF)", f"{chosen} ({best.otif*100:.0f}%)", target="95%+",
+            Kpi("Best carrier (OTIF)", f"{chosen} ({pct(best.otif)})", target="95%+",
                 rationale="On-time in-full is the service the customer feels"),
             Kpi("Overall gross margin", f"{overall_margin*100:.1f}%", rationale="Profitability of the book of business"),
             Kpi("Loss-making states", str(len(loss)), target="0", rationale="Cost-to-serve hotspots"),
-            Kpi("Top-SKU landed cost", f"${lc.per_unit:.2f}/unit", rationale="True delivered cost incl. freight/duty"),
-            Kpi("Cash-to-cash cycle", f"{c2c:.0f} days", target="< 60", rationale="Working capital tied up end-to-end"),
+            Kpi("Top-SKU landed cost", f"{money(lc.per_unit)}/unit", rationale="True delivered cost incl. freight/duty"),
+            Kpi("Cash-to-cash cycle", days(c2c), target="< 60", rationale="Working capital tied up end-to-end"),
         ),
         data_sources=(
             DataSource("Order/Ship dates -> lead time", "superstore.csv", "per run"),

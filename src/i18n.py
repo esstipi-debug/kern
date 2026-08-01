@@ -48,6 +48,10 @@ SUPPORTED_LANGS: tuple[Lang, ...] = ("es", "en")
 # ---- package-deck labels (jobs/package_deliverable.py) ------------------------
 
 LABELS: dict[str, dict[Lang, str]] = {
+    # What a deliverable prints where a number was never measured. One shared label so a
+    # reader (and a test) can tell "we looked and it was zero" from "we never looked" -
+    # the distinction a rate over zero observations destroys when it renders as "0%".
+    "not_measured": {"es": "no medido", "en": "not measured"},
     "cadence_word": {"es": "cadencia", "en": "cadence"},
     "for_client": {"es": "para", "en": "for"},
     "executed_of_scope": {
@@ -251,6 +255,10 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
                            "en": "Facility Location (Network Design)"},
     "network_design": {"es": "Diseno de Red (Multi-Instalacion p-Mediana)",
                         "en": "Network Design (Multi-Facility p-Median)"},
+    "flow_map": {"es": "Mapa de Flujos (Red Observada y Transito Medido)",
+                 "en": "Flow Map (Observed Network & Measured Transit)"},
+    "org_friction_audit": {"es": "Auditoria de Friccion Organizacional (Fabrica Oculta y Ratchet)",
+                           "en": "Organizational Friction Audit (Hidden Factory & Ratchet Detector)"},
     "drp": {"es": "Planificacion de Requerimientos de Distribucion (DRP)",
             "en": "Distribution Requirements Planning (DRP)"},
     "vehicle_routing": {"es": "Ruteo y Programacion de Vehiculos", "en": "Vehicle Routing & Scheduling"},
@@ -262,6 +270,8 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
                      "en": "Decision Tension Map (Replenishment)"},
     "hat_settlement": {"es": "Plan de Reabastecimiento Reconciliado",
                         "en": "Reconciled Replenishment Plan"},
+    "cross_impact": {"es": "Impacto Cruzado de una Decision Propuesta",
+                      "en": "Cross-Area Impact of a Proposed Decision"},
 }
 
 

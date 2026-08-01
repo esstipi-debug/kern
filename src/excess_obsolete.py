@@ -8,6 +8,7 @@ and last-sale in days).
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from src.i18n import DEFAULT_LANG, Lang
@@ -48,7 +49,10 @@ class SkuStock:
     on_hand: float
     daily_demand: float
     unit_cost: float = 0.0
-    days_since_last_sale: float = 0.0
+    # None = never recorded. It used to default to 0.0, i.e. "sold today" - the reading
+    # that most flatters the SKU, and the one that keeps a genuinely dead one out of the
+    # count. An unknown idle time simply does not trigger the idleness rule.
+    days_since_last_sale: float | None = None
 
 
 @dataclass(frozen=True)
@@ -72,9 +76,15 @@ def classify_sku(
 ) -> SkuEO:
     """Classify one SKU and size its at-risk (excess/dead) cash."""
     on_hand_value = stock.on_hand * stock.unit_cost
-    cover = stock.on_hand / stock.daily_demand if stock.daily_demand > 0 else float("inf")
+    cover = (
+        stock.on_hand / stock.daily_demand
+        if math.isfinite(stock.daily_demand) and stock.daily_demand > 0
+        else float("inf")
+    )
 
-    if stock.daily_demand <= 0 or stock.days_since_last_sale >= dead_threshold_days:
+    idle = stock.days_since_last_sale
+    long_idle = idle is not None and idle >= dead_threshold_days
+    if stock.daily_demand <= 0 or long_idle:
         classification, excess_units = DEAD, max(0.0, stock.on_hand)
     elif cover > target_cover_days:
         classification = EXCESS

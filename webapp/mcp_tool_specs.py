@@ -13,7 +13,11 @@ Deliberately NOT here (see docs/MCP_SERVER.md "What's NOT here yet"):
 - `leadership_chain` - takes a CHAIN scores dict / LLM-scored brief, not
   tabular rows; the rows->CSV bridge feeds it nothing usable.
 - `warehouse_layout` - a params-driven 3D layout generator (requires_data=False,
-  ignores rows) whose deliverable is an HTML viewer, not a data analysis.
+  ignores rows) whose deliverable is an HTML viewer, not a data analysis. Contrast
+  `flow_map`, which IS exposed below: its input is tabular movement rows and its
+  primary output is a data analysis (measured transit per lane); the self-contained
+  HTML sankey map it also writes is an extra visualization of that analysis, not
+  the whole deliverable the way warehouse_layout's 3D viewer is.
 
 Each description is the user-facing MCP contract: what the tool does, the
 canonical columns its job's `prepare()` matches (aliases are tolerated -
@@ -393,10 +397,18 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Score suppliers on OTIF, lead time, quality (defect PPM) and price, then rank "
             "them (TOPSIS multi-criteria) into a recommended award decision.\n\n"
-            "Rows need columns: supplier (one row per delivery/PO line works best). "
-            "Optional but scoring improves with: on_time, in_full, lead_time_days, units, "
-            'defects, unit_price. E.g. {"supplier": "Acme", "on_time": 1, "in_full": 1, '
-            '"lead_time_days": 9, "units": 500, "defects": 3, "unit_price": 4.2}.\n\n'
+            "Rows need columns (one row per delivery / PO line): supplier, plus every field "
+            "that decides the award - on_time, in_full, lead_time_days, units, defects. "
+            "These are REQUIRED, not optional: a missing one used to score as zero and "
+            "produced an all-zero scorecard that still named a winner. unit_price is "
+            'genuinely optional (it adds a price criterion). E.g. {"supplier": "Acme", '
+            '"on_time": 1, "in_full": 1, "lead_time_days": 9, "units": 500, "defects": 3, '
+            '"unit_price": 4.2}.\n\n'
+            "A raw ERP export works too: pass order/delivery dates plus either a promised "
+            "date or an explicit sla_days, and on_time / in_full / lead_time_days are "
+            "derived (params: order_date_col, delivery_date_col, promised_date_col, "
+            "sla_days, received_qty_col, in_full_status_col + in_full_ok_values). "
+            "Anything that cannot be derived is refused by name as needs_data.\n\n"
             "Useful params: weights (dict; defaults otif 0.4 / lead_time 0.2 / ppm 0.2 / "
             "price 0.2).\n\n" + _RETURNS
         ),
@@ -531,6 +543,49 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             '{"stop_id": "C-4", "x": 12.1, "y": 3.4, "demand": 18}.\n\n'
             "REQUIRED param: capacity (max demand units per vehicle) - without it the tool "
             "returns needs_data. Useful params: depot, speed.\n\n" + _RETURNS
+        ),
+    ),
+    MCPToolSpec(
+        name="linchpin_flow_map",
+        job_type="flow_map",
+        title="Map Observed Flows & Measure Transit",
+        description=(
+            "Reconstruct the supplier-to-store network from recorded movements and measure "
+            "transit time and its spread on every lane.\n\n"
+            "Rows need columns: fecha_salida (or ship_date / departure_date), fecha_llegada "
+            "(or receipt_date / arrival_date), origen (or origin / from), destino (or "
+            "destination / to), producto (or sku / product_id), cantidad (or quantity / qty); "
+            "costo_unitario (or unit_cost) is optional and values the buffer. One row per "
+            'shipment leg, e.g. {"ship_date": "2026-01-01", "receipt_date": "2026-01-04", '
+            '"origin": "SUP-1", "destination": "DC-1", "sku": "SKU-A", "quantity": 120}.\n\n'
+            "Useful params: min_observations (default 8 -- lanes below it report no transit "
+            "statistic at all, by design), service_level (0-1, default 0.95).\n\n" + _RETURNS
+        ),
+    ),
+    MCPToolSpec(
+        name="linchpin_org_friction_audit",
+        job_type="org_friction_audit",
+        title="Audit Organizational Friction (Hidden Factory & Ratchet)",
+        description=(
+            "Audit a client's own control points for the political layer no data-quality "
+            "tool sees: numbers that disagree across two channels, control points nobody "
+            "owns, and informal workarounds nobody has classified. Every finding comes back "
+            "as a ranked question for a human to go confirm - never a verdict on a person, "
+            "and never an autonomous action.\n\n"
+            "Rows need column: name (or kpi / checkpoint / punto_control). Optional, and "
+            "each one unlocks a different detector: official_value + shadow_value (the two "
+            "independent readings of the same number), owner (blank = nobody accountable), "
+            "workaround_present (true/yes/si/1/x), workaround_classification (essential / "
+            'hindrance). One row per KPI or checkpoint, e.g. {"name": "OTIF", '
+            '"official_value": 97.0, "shadow_value": 81.5, "owner": "", '
+            '"workaround_present": "si", "workaround_classification": ""}.\n\n'
+            "Useful param: shadow_delta_threshold (relative official-vs-shadow gap that "
+            "counts as a hidden factory).\n\n"
+            "NOT available on this surface: the Goodhart/ratchet detector, which needs a "
+            "second target-vs-actual history file. That is supplied to the direct tool as "
+            "params['history_path'], and this remote surface drops every *_path override on "
+            "purpose (see `strip_filesystem_params` in webapp/mcp_server.py) - so a call "
+            "here runs three of the four detectors, never four.\n\n" + _RETURNS
         ),
     ),
 )

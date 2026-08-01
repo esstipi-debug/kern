@@ -44,6 +44,8 @@ class NegociacionIn(BaseModel):
     lead_time_actual_dias: float = Field(..., gt=0)
     demanda_std_dia: float = Field(0.0, ge=0)
     nivel_servicio: float = Field(0.95, gt=0, lt=1)
+    demanda_media_dia: float = Field(0.0, ge=0)
+    lead_time_std_dias: float = Field(0.0, ge=0)
 
 
 @router.post("/negociacion")

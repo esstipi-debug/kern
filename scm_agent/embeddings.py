@@ -125,8 +125,18 @@ class EmbeddingIndex:
 
         Returns empty list if the index is not ready or query is empty.
         """
-        if not self._ready or not self._model or not query.strip():
+        if not self._ready or not query.strip():
             return []
+
+        # The model embeds the QUERY at search time. The cache-load path in
+        # build() sets _ready without instantiating a model, so load it lazily
+        # here — otherwise a warm-cache index silently returns nothing.
+        if self._model is None:
+            if not _has_fastembed():
+                return []
+            from fastembed import TextEmbedding
+
+            self._model = TextEmbedding(_MODEL_NAME)
 
         q_vec = list(self._model.embed([query], show_progress=False))[0]
         q_list = q_vec.tolist() if hasattr(q_vec, "tolist") else list(q_vec)

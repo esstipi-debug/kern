@@ -10,6 +10,7 @@ from jobs import (
     acceptance_sampling_job,
     cost_to_serve_deliverable,
     cost_to_serve_job,
+    cross_impact_job,
     cycle_count_job,
     data_quality_job,
     ddmrp_job,
@@ -24,6 +25,7 @@ from jobs import (
     facility_location_job,
     fefo_job,
     financial_kpis_job,
+    flow_map_job,
     forecast_job,
     hats_job,
     intake,
@@ -37,6 +39,7 @@ from jobs import (
     network_design_job,
     newsvendor_job,
     odoo_job,
+    org_friction_job,
     price_watch_deliverable,
     qa,
     queuing_job,
@@ -455,6 +458,7 @@ def _sourcing_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
 def _sourcing_run(payload: object, params: dict) -> Produced:
     report = sourcing_job.run(
         payload["scorecards"], payload["prices"], weights=params.get("weights"),
+        notes=payload.get("notes"),
     )
     return Produced(report=report, summary=report.summary)
 
@@ -476,8 +480,9 @@ def sourcing_tool() -> Tool:
         run=_sourcing_run,
         qa=lambda report: sourcing_job.verify(report),
         deliver=lambda report, out_dir, client: sourcing_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
-            sourcing_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+            sourcing_job.build_deck(report, client=client, citations=tuple(citations),
+                                    confidence=confidence, lang=lang),
             options=tuple(options),
         ).write_all(out_dir),
     )
@@ -622,8 +627,9 @@ def landed_cost_tool() -> Tool:
         run=_landed_cost_run,
         qa=lambda report: landed_cost_job.verify(report),
         deliver=lambda report, out_dir, client: landed_cost_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
-            landed_cost_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+            landed_cost_job.build_deck(report, client=client, citations=tuple(citations),
+                                       confidence=confidence, lang=lang),
             options=tuple(options),
         ).write_all(out_dir),
     )
@@ -750,11 +756,17 @@ def _financial_kpis_prepare(request: JobRequest, provider: LLMProvider) -> Prepa
 
 def _financial_kpis_run(payload: object, params: dict) -> Produced:
     report = financial_kpis_job.run(
-        payload, dso=params.get("dso", 0.0), dpo=params.get("dpo", 0.0),
+        # No default: DSO/DPO come from the AR/AP ledgers, not from inventory data.
+        # A 0.0 stand-in made cash-to-cash == DIO and printed it as a measured cycle.
+        payload, dso=params.get("dso"), dpo=params.get("dpo"),
     )
+    # Any of these is None when this data could not support it (see src/financial_kpis).
+    # verify() only gates `turns`, so the others still have to be printable as absent.
     return Produced(report=report, summary=(
-        f"Inventory finance for {report.n_skus} SKU(s): {report.turns:.1f} turns, "
-        f"GMROI {report.gmroi:.2f}, {report.dio:.0f}-day DIO."
+        f"Inventory finance for {report.n_skus} SKU(s): "
+        f"{financial_kpis_job.fmt(report.turns, '.1f')} turns, "
+        f"GMROI {financial_kpis_job.fmt(report.gmroi, '.2f')}, "
+        f"{financial_kpis_job.fmt(report.dio, '.0f')}-day DIO."
     ))
 
 
@@ -775,8 +787,9 @@ def financial_kpis_tool() -> Tool:
         run=_financial_kpis_run,
         qa=lambda report: financial_kpis_job.verify(report),
         deliver=lambda report, out_dir, client: financial_kpis_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
-            financial_kpis_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+            financial_kpis_job.build_deck(report, client=client, citations=tuple(citations),
+                                          confidence=confidence, lang=lang),
             options=tuple(options),
         ).write_all(out_dir),
     )
@@ -1122,6 +1135,60 @@ def hat_settlement_tool() -> Tool:
     )
 
 
+# ---- cross_impact (cross-area impact of a decision already proposed) --------
+
+def _cross_impact_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    """Param problems are needs_clarification; missing/unusable data is needs_data.
+
+    The split matters: a missing 'current' is the OPERATOR's answer to give, not a
+    data-file problem - and it is never defaulted to baseline_plan().
+    """
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a weekly demand CSV (product_id, quantity, unit_cost, lead_time_days) is required"])
+    try:
+        payload = cross_impact_job.prepare(request.data_path, request.params)
+    except FileNotFoundError as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    except ValueError as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _cross_impact_run(payload: object, params: dict) -> Produced:
+    report = cross_impact_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def cross_impact_tool() -> Tool:
+    return Tool(
+        key="cross_impact",
+        title="Cross-Area Impact of a Proposed Decision",
+        description="Take a replenishment decision ALREADY proposed by one area "
+                    "(order quantity + service level) and measure what it does to the "
+                    "other three, then judge whether each would object against the "
+                    "threshold the operator declared. Zero objections means the "
+                    "meeting does not need to happen. Nothing is executed.",
+        intent_keywords=(
+            "impacto cruzado", "impacto en las otras areas", "en las otras areas",
+            "quien objeta", "costo de coordinacion", "cross-area impact",
+            "objection threshold", "si cambio esto que pasa", "necesito convocar",
+        ),
+        requires_data=True,
+        prepare=_cross_impact_prepare,
+        run=_cross_impact_run,
+        qa=lambda report: cross_impact_job.verify(report),
+        deliver=lambda report, out_dir, client: cross_impact_job.write(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            cross_impact_job.build_deck(report, client=client, citations=tuple(citations),
+                                        confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+        required_client_params=("objection_thresholds",),
+    )
+
+
 # ---- risk (supply-chain risk assessment / mitigation) ------------------------
 
 def _risk_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
@@ -1325,6 +1392,109 @@ def data_quality_tool() -> Tool:
         ).write_all(out_dir),
         # The remediation decision IS a set of ranked, executable choices -> surface them as
         # the guided OPTIONS outcome on success (recommended default flagged).
+        options=lambda report: report.outcome,
+    )
+
+
+# ---- flow_map (observed network + measured transit per lane) ------------------
+
+def _flow_map_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a movements CSV/Excel is required: one row per shipment leg with a departure "
+            "date, an arrival date, an origin, a destination, a product and a quantity"
+        ])
+    try:
+        movements = flow_map_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=movements)
+
+
+def _flow_map_run(payload: object, params: dict) -> Produced:
+    report = flow_map_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def flow_map_tool() -> Tool:
+    return Tool(
+        key="flow_map",
+        title="Flow Map (Observed Network & Measured Transit)",
+        description="Reconstruct the supplier-to-store network from recorded movements, "
+                    "measure real transit time and its spread on every lane, and rank the "
+                    "lanes whose variability locks up the most protective inventory. Lanes "
+                    "with too few movements report no number at all.",
+        intent_keywords=(
+            "flow map", "map my flows", "end to end flow", "value stream", "network map",
+            "map the network", "transit time", "transit variability",
+            "lead time by lane", "sankey", "material flow", "where is the bottleneck",
+        ),
+        requires_data=True,
+        prepare=_flow_map_prepare,
+        run=_flow_map_run,
+        qa=lambda report: flow_map_job.verify(report),
+        deliver=lambda report, out_dir, client: flow_map_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            flow_map_job.build_deck(
+                report, client=client, citations=tuple(citations), confidence=confidence
+            ),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
+# ---- org_friction (organizational-friction audit: hidden factory, ratchet, ------
+# ---- accountability vacuum, unclassified workarounds) ---------------------------
+
+def _org_friction_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a control points CSV/Excel is required: one row per KPI/checkpoint, with "
+            "whichever of official_value, shadow_value, owner, workaround_present and "
+            "workaround_classification you already track (an optional second file of "
+            "target-vs-actual history can be passed via params['history_path'])"
+        ])
+    try:
+        control_points = org_friction_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=control_points)
+
+
+def _org_friction_run(payload: object, params: dict) -> Produced:
+    report = org_friction_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def org_friction_tool() -> Tool:
+    return Tool(
+        key="org_friction_audit",
+        title="Organizational Friction Audit (Hidden Factory & Ratchet Detector)",
+        description="Audit a client's own control points (KPIs, data-load checkpoints) for "
+                    "the political layer no data-quality tool sees: numbers that disagree "
+                    "across channels, targets ratcheted up right after being met, control "
+                    "points nobody owns, and informal workarounds nobody has classified. "
+                    "Never renders a verdict on a person -- every finding is a ranked "
+                    "question for a human to go confirm.",
+        intent_keywords=(
+            "organizational friction", "hidden factory", "goodhart", "ratchet effect",
+            "gaming the metric", "shadow data", "accountability vacuum", "unclassified workaround",
+            "friction audit", "metrics being gamed", "kpi being managed", "political layer",
+        ),
+        requires_data=True,
+        prepare=_org_friction_prepare,
+        run=_org_friction_run,
+        qa=lambda report: org_friction_job.verify(report),
+        deliver=lambda report, out_dir, client: org_friction_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            org_friction_job.build_deck(
+                report, client=client, citations=tuple(citations), confidence=confidence
+            ),
+            options=tuple(options),
+        ).write_all(out_dir),
+        # Every finding is a triage choice, never an auto-verdict -> surface the ranked
+        # OPTIONS outcome on success (or the HANDOFF asking for more evidence).
         options=lambda report: report.outcome,
     )
 
@@ -2599,4 +2769,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(launch_readiness_tool())
     reg.register(hat_tension_tool())
     reg.register(hat_settlement_tool())
+    reg.register(flow_map_tool())
+    reg.register(cross_impact_tool())
+    reg.register(org_friction_tool())
     return reg

@@ -2,7 +2,14 @@
 
 import pytest
 
-from src.supplier_scorecard import SupplierScore, score_supplier
+from src.supplier_scorecard import (
+    LEAD_TIME_DECLARED,
+    LEAD_TIME_MEASURED,
+    SupplierScore,
+    lead_time_stds_by_supplier,
+    lead_time_stds_for_skus,
+    score_supplier,
+)
 
 
 def _deliveries():
@@ -33,6 +40,60 @@ def test_quality_ppm():
     assert s.ppm == pytest.approx(1250.0)
 
 
-def test_no_deliveries_is_zeroed():
+def test_no_deliveries_measures_nothing():
+    """Zero deliveries is an absence of evidence, not a 0% on-time-in-full record."""
     s = score_supplier("Empty", [])
-    assert s.otif == 0.0 and s.deliveries == 0
+    assert s.otif is None and s.deliveries == 0
+    assert s.evaluable.otif == 0
+
+
+# --- Lead time: medido vs declarado, y el productor de sigma_L ----------------
+
+
+def _entrega(lead, **extra):
+    base = {"on_time": True, "in_full": True, "lead_time_days": lead,
+            "units": 100.0, "defects": 0.0, "lead_time_source": LEAD_TIME_MEASURED}
+    return {**base, **extra}
+
+
+def test_el_scorecard_reporta_desvio_y_p90_del_lead_time():
+    card = score_supplier("ACME", [_entrega(10.0), _entrega(20.0), _entrega(30.0)])
+    assert card.avg_lead_time == 20.0
+    assert card.lead_time_std == pytest.approx(10.0)
+    assert card.lead_time_p90 == pytest.approx(28.0)
+
+
+def test_una_sola_entrega_no_tiene_desvio_y_no_se_inventa_un_cero():
+    """Un sigma_L de 0.0 que parece medido borra la mitad del safety stock."""
+    card = score_supplier("ACME", [_entrega(10.0)])
+    assert card.lead_time_std is None
+    assert card.lead_time_p90 == 10.0
+
+
+def test_la_brecha_contra_el_lt_declarado_es_reportada_no_pisada():
+    card = score_supplier("ACME", [
+        _entrega(20.0, declared_lead_time_days=7.0),
+        _entrega(24.0, declared_lead_time_days=7.0),
+    ])
+    assert card.avg_lead_time == 22.0        # lo medido manda
+    assert card.declared_lead_time == 7.0
+    assert card.lead_time_gap == 15.0
+    assert card.lead_time_source == LEAD_TIME_MEASURED
+
+
+def test_sigma_l_solo_sale_de_lead_times_medidos():
+    """El productor que le faltaba a inventory_optimization(lead_time_stds=...).
+
+    Un proveedor cuyo LT es DECLARADO no aporta sigma: es una promesa, no una
+    observacion, y su varianza es cero por construccion.
+    """
+    medido = score_supplier("MEDIDO", [_entrega(10.0), _entrega(20.0)])
+    declarado = score_supplier("DECLARADO", [
+        _entrega(7.0, lead_time_source=LEAD_TIME_DECLARED),
+        _entrega(7.0, lead_time_source=LEAD_TIME_DECLARED),
+    ])
+    stds = lead_time_stds_by_supplier([medido, declarado])
+    assert set(stds) == {"MEDIDO"}
+    assert lead_time_stds_for_skus([medido, declarado], {"SKU-1": "MEDIDO", "SKU-2": "DECLARADO"}) == {
+        "SKU-1": stds["MEDIDO"]
+    }

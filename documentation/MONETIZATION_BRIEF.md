@@ -185,6 +185,14 @@ que ninguna app ofrece.
 - **Ya en producción:** los 3 monitores + dedup por `EventLedger`; el endpoint
   `POST /api/jobs/run-scheduled` ya corre `run_all_monitors` inline en cada tick
   (los monitores **ya sensan en prod**, acoplados al cron de precios).
+- **Chequeo de migración Stocky — tooling SHIPPED** (`jobs/stocky_importer.py` +
+  `src/stocky_migration.py` + `jobs/stocky_migration_job.py` + CLI
+  `examples/run_stocky_migration.py`): parsea los CSV de Stocky (proveedores,
+  OCs, puntos de reorden), audita el maestro de SKUs (duplicados, min>max,
+  reorden<=0) y entrega el **veredicto honesto** Stocky→Shopify-nativo anclado en
+  `SHOPIFY_NATIVE_COVERAGE` (native no cubre OCs/proveedores/reorden/forecasting →
+  brecha = Kern). Read-only sobre CSV, sin API Shopify. Operator-run, no tool
+  registrada. **Vendible ya** — solo falta landing+pago+Calendly ($350–400).
 - **Este PR (feat/kern-alerts-concierge):** entrega merchant-facing
   (`scm_agent/merchant_alerts.py` — render con qty sugerida + disclaimer, T1,
   puro, cero writeback) + runner concierge Fase-1

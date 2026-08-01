@@ -100,6 +100,14 @@ class PurchasePlanLine:
     reorder_buffer: float        # desired buffer beyond on_hand + incoming_po + recommended_order; MAY be budget-trimmed
     projected_position: float    # on_hand + incoming_po + recommended_order - shaped_demand
     order_value: float           # recommended_order * unit_cost (full purchase cost, not the Q/2 EOQ convention)
+    # What the SUPPLIER'S RULES added on top of the units this cycle actually needs:
+    # recommended_order minus the raw gap, i.e. everything MOQ and case-pack rounding
+    # bought beyond the requirement. Rounding up without pricing the leftover is how a
+    # plan quietly buys months of stock it did not ask for, so the three numbers travel
+    # with the line: units, money, and how much cover they add.
+    constraint_extra_units: float = 0.0
+    constraint_cost_delta: float = 0.0
+    constraint_extra_cover_periods: float = 0.0
 
 
 def build_purchase_plan(
@@ -123,12 +131,14 @@ def build_purchase_plan(
         raise ValueError(f"no purchase inputs (on_hand/unit_cost) for: {', '.join(missing)}")
 
     items: list[InventoryItem] = []
+    extra_by_sku: dict[str, float] = {}
     for d in demand_plan:
         inp = sku_inputs[d.product_id]
         gap = max(0.0, d.shaped_demand - inp.on_hand - inp.incoming_po)
         order_qty = apply_order_rules(
             gap, minimum_order_quantity=inp.minimum_order_quantity, order_multiple=inp.order_multiple,
         )
+        extra_by_sku[d.product_id] = order_qty - gap
         items.append(InventoryItem(
             product_id=d.product_id, order_quantity=order_qty,
             safety_stock=inp.reorder_point, unit_cost=inp.unit_cost,
@@ -146,5 +156,12 @@ def build_purchase_plan(
             incoming_po=inp.incoming_po, unit_cost=inp.unit_cost, recommended_order=item.order_quantity,
             reorder_buffer=item.safety_stock, projected_position=projected,
             order_value=item.order_quantity * inp.unit_cost,
+            constraint_extra_units=extra_by_sku[d.product_id],
+            constraint_cost_delta=extra_by_sku[d.product_id] * inp.unit_cost,
+            # Cover the leftover adds, in the same period the demand plan is stated in.
+            # Zero demand means no cover to speak of, not infinite cover.
+            constraint_extra_cover_periods=(
+                extra_by_sku[d.product_id] / d.shaped_demand if d.shaped_demand > 0 else 0.0
+            ),
         ))
     return tuple(lines), allocation

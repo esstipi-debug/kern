@@ -1,7 +1,7 @@
 """Tests for the read-only MCP server (Phase A go-to-market).
 
 Guarantees under test:
-- exactly the intended 33 analysis tools are exposed, all annotated read-only/
+- exactly the intended 35 analysis tools are exposed, all annotated read-only/
   non-destructive - the writeback pair (`odoo_replenishment`,
   `excel_replenishment`) and the two non-tabular tools (`leadership_chain`,
   `warehouse_layout`) stay off this surface;
@@ -57,6 +57,8 @@ EXPECTED_TOOL_NAMES = {
     "linchpin_facility_location",
     "linchpin_warehouse_slotting",
     "linchpin_vehicle_routing",
+    "linchpin_flow_map",
+    "linchpin_org_friction_audit",
 }
 
 _ABC_XYZ_ROWS = [
@@ -79,7 +81,7 @@ async def _call(mcp, tool_name: str, **params) -> dict:
     return json.loads(content[0].text)
 
 
-# -- surface: exactly the intended 33, all read-only ----------------------------
+# -- surface: exactly the intended 35, all read-only ----------------------------
 
 
 async def test_server_name():
@@ -101,7 +103,7 @@ async def test_odoo_replenishment_and_writeback_tools_are_never_exposed(mcp):
 
 async def test_every_tool_is_annotated_read_only_and_non_destructive(mcp):
     tools = await mcp.list_tools()
-    assert len(tools) == len(EXPECTED_TOOL_NAMES) == 33
+    assert len(tools) == len(EXPECTED_TOOL_NAMES) == 35
     for tool in tools:
         assert tool.annotations is not None, f"{tool.name} has no annotations"
         assert tool.annotations.readOnlyHint is True, f"{tool.name} must be readOnlyHint=True"
@@ -282,3 +284,39 @@ async def test_temp_csv_does_not_leak_past_the_call(mcp, tmp_path, monkeypatch):
 
     leftover = list(tmp_path.glob("linchpin_mcp_*"))
     assert leftover == [], f"temp dir(s) not cleaned up: {leftover}"
+
+
+# -- the anonymous surface never accepts a server-side file path -------------------
+
+
+def test_filesystem_params_are_stripped_before_reaching_a_job():
+    """`overrides` is passed straight through to `prepare()`, so a *_path override
+    would be an arbitrary-file-read primitive on an anonymous remote endpoint --
+    leaking a file's existence and headers through the job's own error text."""
+    from webapp.mcp_server import strip_filesystem_params
+
+    kept = strip_filesystem_params({
+        "history_path": "/etc/passwd",
+        "data_path": "C:/Users/someone/secrets.csv",
+        "shadow_delta_threshold": 0.1,
+        "service_level": 0.95,
+    })
+
+    assert kept == {"shadow_delta_threshold": 0.1, "service_level": 0.95}
+
+
+async def test_org_friction_audit_ignores_a_history_path_override(mcp, tmp_path):
+    """End-to-end: the tool still runs on rows alone, and the file named by the
+    dropped override is never opened (it does not even exist)."""
+    result = await _call(
+        mcp,
+        "linchpin_org_friction_audit",
+        rows=[
+            {"name": "OTIF", "official_value": 97.0, "shadow_value": 81.5, "owner": ""},
+            {"name": "Stock accuracy", "official_value": 99.0, "shadow_value": 98.6, "owner": "Ana"},
+        ],
+        params={"history_path": str(tmp_path / "does-not-exist.csv")},
+    )
+
+    assert result["status"] == "ok"
+    assert "does-not-exist" not in json.dumps(result)

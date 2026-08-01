@@ -1,216 +1,217 @@
-# Graph Report - C:\Users\Gamer\Music\scm\supply-chain-optimization  (2026-07-23)
+# Graph Report - C:\Users\Gamer\Music\scm\supply-chain-optimization  (2026-07-24)
 
 ## Corpus Check
 - 36 files · ~0 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3001 nodes · 6113 edges · 201 communities (177 shown, 24 thin omitted)
+- 3001 nodes · 6113 edges · 202 communities (177 shown, 25 thin omitted)
 - Extraction: 72% EXTRACTED · 28% INFERRED · 0% AMBIGUOUS · INFERRED: 1695 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_Boylan & Syntetos Intermittent Demand Forecasting (Context, Methods and Applications)|Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications)]]
-- [[_COMMUNITY_Box & Jenkins Time Series Analysis Forecasting and Control|Box & Jenkins: Time Series Analysis: Forecasting and Control]]
-- [[_COMMUNITY_Safety Stock|Safety Stock]]
-- [[_COMMUNITY_Forecasting Principles and Practice (3rd ed)|Forecasting: Principles and Practice (3rd ed)]]
-- [[_COMMUNITY_Impacts and SC Resilience Strategies to Cope with COVID-19 A Literature Review (Ch 1)|Impacts and SC Resilience Strategies to Cope with COVID-19: A Literature Review (Ch 1)]]
-- [[_COMMUNITY_Nagle & Müller — The Strategy and Tactics of Pricing|Nagle & Müller — The Strategy and Tactics of Pricing]]
-- [[_COMMUNITY_Simon & Fassnacht — Price Management|Simon & Fassnacht — Price Management]]
-- [[_COMMUNITY_Robert Phillips — Pricing and Revenue Optimization|Robert Phillips — Pricing and Revenue Optimization]]
-- [[_COMMUNITY_Economic Value|Economic Value]]
-- [[_COMMUNITY_Willingness-to-Pay|Willingness-to-Pay]]
-- [[_COMMUNITY_Dynamic Pricing|Dynamic Pricing]]
-- [[_COMMUNITY_Price War|Price War]]
-- [[_COMMUNITY_Transfer Pricing|Transfer Pricing]]
-- [[_COMMUNITY_Gallego & Topaloglu Revenue Management and Pricing Analytics|Gallego & Topaloglu: Revenue Management and Pricing Analytics]]
-- [[_COMMUNITY_Talluri & van Ryzin The Theory and Practice of Revenue Management|Talluri & van Ryzin: The Theory and Practice of Revenue Management]]
-- [[_COMMUNITY_Revenue Management|Revenue Management]]
-- [[_COMMUNITY_Managing Supply Chain Complexity|Managing Supply Chain Complexity]]
-- [[_COMMUNITY_Demand Forecasting|Demand Forecasting]]
-- [[_COMMUNITY_A Practical Price Optimization Approach for Omnichannel Retailing|A Practical Price Optimization Approach for Omnichannel Retailing]]
-- [[_COMMUNITY_No-Regret Learning for Stackelberg Equilibrium in Newsvendor Pricing Games|No-Regret Learning for Stackelberg Equilibrium in Newsvendor Pricing Games]]
-- [[_COMMUNITY_Operations and Supply Chain Management|Operations and Supply Chain Management]]
-- [[_COMMUNITY_Chopra & Meindl Supply Chain Management|Chopra & Meindl: Supply Chain Management]]
-- [[_COMMUNITY_Project Management|Project Management]]
-- [[_COMMUNITY_Sustainability|Sustainability]]
-- [[_COMMUNITY_Dynamic Pricing on E-commerce Platform with Deep RL A Field Experiment|Dynamic Pricing on E-commerce Platform with Deep RL: A Field Experiment]]
-- [[_COMMUNITY_Reward Function|Reward Function]]
-- [[_COMMUNITY_Plant Manager  Operations Manager|Plant Manager / Operations Manager]]
-- [[_COMMUNITY_Palamariu & Alicke From Source to Sold (Stories of Leadership in Supply Chain)|Palamariu & Alicke: From Source to Sold (Stories of Leadership in Supply Chain)]]
-- [[_COMMUNITY_Supply Chain Leader to CEO Pathway|Supply Chain Leader to CEO Pathway]]
-- [[_COMMUNITY_End-to-End Visibility|End-to-End Visibility]]
-- [[_COMMUNITY_Supply Chain Resilience|Supply Chain Resilience]]
-- [[_COMMUNITY_Crisis Leadership|Crisis Leadership]]
-- [[_COMMUNITY_COVID-19 and Pandemic-Era Disruption|COVID-19 and Pandemic-Era Disruption]]
-- [[_COMMUNITY_Talent and Leadership Development|Talent and Leadership Development]]
-- [[_COMMUNITY_Christopher Logistics and Supply Chain Management (4th ed.)|Christopher: Logistics and Supply Chain Management (4th ed.)]]
-- [[_COMMUNITY_Supply Chain Strategy or Design|Supply Chain Strategy or Design]]
-- [[_COMMUNITY_Learning from Mistakes|Learning from Mistakes]]
-- [[_COMMUNITY_Change Management (Desire-Vision-Process)|Change Management (Desire-Vision-Process)]]
-- [[_COMMUNITY_Technology and Digital Transformation|Technology and Digital Transformation]]
-- [[_COMMUNITY_Challenging the Status Quo and Innovating|Challenging the Status Quo and Innovating]]
-- [[_COMMUNITY_Employee Empowerment|Employee Empowerment]]
-- [[_COMMUNITY_Purpose Over Position|Purpose Over Position]]
-- [[_COMMUNITY_Building Trust Through Transparency|Building Trust Through Transparency]]
-- [[_COMMUNITY_Just-in-Time (JIT)|Just-in-Time (JIT)]]
-- [[_COMMUNITY_Network Design|Network Design]]
-- [[_COMMUNITY_Supply Chain Agility|Supply Chain Agility]]
-- [[_COMMUNITY_Supply Chain Orchestration|Supply Chain Orchestration]]
-- [[_COMMUNITY_Enterprise Risk Management|Enterprise Risk Management]]
-- [[_COMMUNITY_Supplier Risk Tower|Supplier Risk Tower]]
-- [[_COMMUNITY_Encouraging Healthy Dissent and Debate|Encouraging Healthy Dissent and Debate]]
-- [[_COMMUNITY_Continuous Improvement and a Fresh Eye|Continuous Improvement and a Fresh Eye]]
-- [[_COMMUNITY_Redundancy, Inventory Tolerance, and Flexibility|Redundancy, Inventory Tolerance, and Flexibility]]
-- [[_COMMUNITY_Simulation Modelling|Simulation Modelling]]
-- [[_COMMUNITY_Multi-Tier Supplier Visibility|Multi-Tier Supplier Visibility]]
-- [[_COMMUNITY_CHAIN Model (Supply Chain Leadership)|CHAIN Model (Supply Chain Leadership)]]
-- [[_COMMUNITY_Enterprise Resource Planning (ERP)|Enterprise Resource Planning (ERP)]]
-- [[_COMMUNITY_Demand Management|Demand Management]]
-- [[_COMMUNITY_Forecasting|Forecasting]]
-- [[_COMMUNITY_Sales and Operations Planning|Sales and Operations Planning]]
-- [[_COMMUNITY_Material Requirements Planning|Material Requirements Planning]]
-- [[_COMMUNITY_Customer Order Decoupling Point|Customer Order Decoupling Point]]
-- [[_COMMUNITY_Safety Stock|Safety Stock]]
-- [[_COMMUNITY_Mean Absolute Deviation (MAD)|Mean Absolute Deviation (MAD)]]
-- [[_COMMUNITY_Chase Strategy|Chase Strategy]]
-- [[_COMMUNITY_Master Production Schedule (MPS)|Master Production Schedule (MPS)]]
-- [[_COMMUNITY_Finite Scheduling|Finite Scheduling]]
-- [[_COMMUNITY_InputOutput Control|Input/Output Control]]
-- [[_COMMUNITY_Just-in-Time (JIT)|Just-in-Time (JIT)]]
-- [[_COMMUNITY_Shortest Processing Time (SPT)|Shortest Processing Time (SPT)]]
-- [[_COMMUNITY_Transfer Batch|Transfer Batch]]
-- [[_COMMUNITY_Work Center|Work Center]]
-- [[_COMMUNITY_Lead Time|Lead Time]]
-- [[_COMMUNITY_Distribution Requirements Planning (DRP)|Distribution Requirements Planning (DRP)]]
-- [[_COMMUNITY_Economic Order Quantity (EOQ)|Economic Order Quantity (EOQ)]]
-- [[_COMMUNITY_Traveling Salesman Problem|Traveling Salesman Problem]]
-- [[_COMMUNITY_Transit Stock|Transit Stock]]
-- [[_COMMUNITY_Anticipation Stock|Anticipation Stock]]
-- [[_COMMUNITY_Fill Rate|Fill Rate]]
-- [[_COMMUNITY_Inventory Turnover|Inventory Turnover]]
-- [[_COMMUNITY_Tightly Coupled JIT Supply|Tightly Coupled JIT Supply]]
-- [[_COMMUNITY_Warm Puppy Effect|Warm Puppy Effect]]
-- [[_COMMUNITY_S,T System (Periodic Review)|S,T System (Periodic Review)]]
-- [[_COMMUNITY_ABC Analysis|ABC Analysis]]
-- [[_COMMUNITY_Assemble-to-Order (ATO) Master Production Scheduling|Assemble-to-Order (ATO) Master Production Scheduling]]
-- [[_COMMUNITY_Order Penetration Point (OPP)|Order Penetration Point (OPP)]]
-- [[_COMMUNITY_Warehouse Location Problem (WLP)|Warehouse Location Problem (WLP)]]
-- [[_COMMUNITY_Steiner-Weber Model|Steiner-Weber Model]]
-- [[_COMMUNITY_Factor-Rating Method|Factor-Rating Method]]
-- [[_COMMUNITY_Utility Value Analysis|Utility Value Analysis]]
-- [[_COMMUNITY_Adidas Group|Adidas Group]]
-- [[_COMMUNITY_Intermodal Transportation|Intermodal Transportation]]
-- [[_COMMUNITY_Tesla|Tesla]]
-- [[_COMMUNITY_Industry 4.0|Industry 4.0]]
-- [[_COMMUNITY_Lean Production|Lean Production]]
-- [[_COMMUNITY_Supply Chain Integration|Supply Chain Integration]]
-- [[_COMMUNITY_Heizer, Render & Munson Operations Management (12th ed.)|Heizer, Render & Munson: Operations Management (12th ed.)]]
-- [[_COMMUNITY_Customer Service|Customer Service]]
-- [[_COMMUNITY_Economies of Scale|Economies of Scale]]
-- [[_COMMUNITY_Offshoring  Low-Cost Country Sourcing|Offshoring / Low-Cost Country Sourcing]]
-- [[_COMMUNITY_Quick Response|Quick Response]]
-- [[_COMMUNITY_Supply Chain Agility|Supply Chain Agility]]
-- [[_COMMUNITY_Strategic Lead-Time Management|Strategic Lead-Time Management]]
-- [[_COMMUNITY_Design of Goods and Services|Design of Goods and Services]]
-- [[_COMMUNITY_Supply Chain Mapping|Supply Chain Mapping]]
-- [[_COMMUNITY_Bullwhip Effect|Bullwhip Effect]]
-- [[_COMMUNITY_Bidirectional Demand Shock|Bidirectional Demand Shock]]
-- [[_COMMUNITY_Postponement|Postponement]]
-- [[_COMMUNITY_Agile Supply Chain|Agile Supply Chain]]
-- [[_COMMUNITY_Mass Customisation|Mass Customisation]]
-- [[_COMMUNITY_Supply Chain Vulnerability|Supply Chain Vulnerability]]
-- [[_COMMUNITY_Supply Chain Risk|Supply Chain Risk]]
-- [[_COMMUNITY_Critical Paths (Nodes and Links)|Critical Paths (Nodes and Links)]]
-- [[_COMMUNITY_Supply Chain Risk Management Process|Supply Chain Risk Management Process]]
-- [[_COMMUNITY_Supply Chain Capability Driver|Supply Chain Capability Driver]]
-- [[_COMMUNITY_Carbon Footprint|Carbon Footprint]]
-- [[_COMMUNITY_Cleaner Production|Cleaner Production]]
-- [[_COMMUNITY_Grant, Trautrims & Wong Sustainable Logistics and Supply Chain Management|Grant, Trautrims & Wong: Sustainable Logistics and Supply Chain Management]]
-- [[_COMMUNITY_Reverse Logistics|Reverse Logistics]]
-- [[_COMMUNITY_Freight Transport|Freight Transport]]
-- [[_COMMUNITY_Freight Transport Modes|Freight Transport Modes]]
-- [[_COMMUNITY_Nearshoring|Nearshoring]]
-- [[_COMMUNITY_Lifecycle Assessment|Lifecycle Assessment]]
-- [[_COMMUNITY_Hazardous Substances|Hazardous Substances]]
-- [[_COMMUNITY_Sustainable Procurement|Sustainable Procurement]]
-- [[_COMMUNITY_Product Recovery Management (PRM)|Product Recovery Management (PRM)]]
-- [[_COMMUNITY_Waste Hierarchy|Waste Hierarchy]]
-- [[_COMMUNITY_Corporate Social Responsibility (CSR)|Corporate Social Responsibility (CSR)]]
-- [[_COMMUNITY_Supplier Relationship Management (SRM)|Supplier Relationship Management (SRM)]]
-- [[_COMMUNITY_Facility Location and Capacity Allocation|Facility Location and Capacity Allocation]]
-- [[_COMMUNITY_Decision Analysis|Decision Analysis]]
-- [[_COMMUNITY_Aggregate Planning|Aggregate Planning]]
-- [[_COMMUNITY_Sustainability in the Supply Chain|Sustainability in the Supply Chain]]
-- [[_COMMUNITY_Container Dashboard (Real-Time Container Exception Monitoring)|Container Dashboard (Real-Time Container Exception Monitoring)]]
-- [[_COMMUNITY_Supply Chain Visibility|Supply Chain Visibility]]
-- [[_COMMUNITY_Supply Chain Risk Mitigation|Supply Chain Risk Mitigation]]
-- [[_COMMUNITY_Capacity Planning|Capacity Planning]]
-- [[_COMMUNITY_Global Operations Strategy Options|Global Operations Strategy Options]]
-- [[_COMMUNITY_Sourcing Manager|Sourcing Manager]]
-- [[_COMMUNITY_Process Analysis and Design|Process Analysis and Design]]
-- [[_COMMUNITY_Capacity|Capacity]]
-- [[_COMMUNITY_Jacobs & Chase Operations and Supply Chain Management (15th ed.)|Jacobs & Chase: Operations and Supply Chain Management (15th ed.)]]
-- [[_COMMUNITY_AI in Supply Chains Perspectives from Global Thought Leaders|AI in Supply Chains: Perspectives from Global Thought Leaders]]
-- [[_COMMUNITY_DRL in Inventory Management|DRL in Inventory Management]]
-- [[_COMMUNITY_Can AI really transform Real-world Supply Chains anytime soon|Can AI really transform Real-world Supply Chains anytime soon?]]
-- [[_COMMUNITY_Inventory Planner|Inventory Planner]]
-- [[_COMMUNITY_Chief Supply Chain Officer (CSCO)|Chief Supply Chain Officer (CSCO)]]
-- [[_COMMUNITY_Logistics Manager|Logistics Manager]]
-- [[_COMMUNITY_Warehouse  DC Manager|Warehouse / DC Manager]]
-- [[_COMMUNITY_Returns Manager|Returns Manager]]
-- [[_COMMUNITY_ISCEA CSSCP|ISCEA CSSCP]]
-- [[_COMMUNITY_COO (foco en operaciones)|COO (foco en operaciones)]]
-- [[_COMMUNITY_Reminder Evaluar embeddings con modelos mas actualizados Fable 5, Kimi 3, o cualquier SO|Reminder: Evaluar embeddings con modelos mas actualizados: Fable 5, Kimi 3, o cualquier SO]]
-- [[_COMMUNITY_Supply Chain Resilience Reconceptualizing Risk Management in a Post-Pandemic World|Supply Chain Resilience: Reconceptualizing Risk Management in a Post-Pandemic World]]
-- [[_COMMUNITY_Globalization of Supply Chains|Globalization of Supply Chains]]
-- [[_COMMUNITY_Ripple Effect|Ripple Effect]]
-- [[_COMMUNITY_Koncar et al. (2020) - Setbacks to IoT Implementation in FMCG Supply Chain Sustainability during COVID-19|Koncar et al. (2020) - Setbacks to IoT Implementation in FMCG Supply Chain Sustainability during COVID-19]]
-- [[_COMMUNITY_Blockchain Technology|Blockchain Technology]]
-- [[_COMMUNITY_Reactivity|Reactivity]]
-- [[_COMMUNITY_Remote Working Mode|Remote Working Mode]]
-- [[_COMMUNITY_Financial Management (SCM Impact Area)|Financial Management (SCM Impact Area)]]
-- [[_COMMUNITY_Exploitation Strategy|Exploitation Strategy]]
-- [[_COMMUNITY_Viable Supply Chain Model|Viable Supply Chain Model]]
-- [[_COMMUNITY_COVID-19 Medical Device Supply Chain Survey (Italy and Finland, 2020)|COVID-19 Medical Device Supply Chain Survey (Italy and Finland, 2020)]]
-- [[_COMMUNITY_Segment 2 - Unprepared|Segment 2 - Unprepared]]
-- [[_COMMUNITY_Risk Management Methods (SCRM Methods)|Risk Management Methods (SCRM Methods)]]
-- [[_COMMUNITY_Aigbogun (2022) - Exploration of Resilience in Medical Gloves Supply Chain During COVID-19|Aigbogun (2022) - Exploration of Resilience in Medical Gloves Supply Chain During COVID-19]]
-- [[_COMMUNITY_BME Logistics Survey 2020 Supply Chain Risk Management|BME Logistics Survey 2020: Supply Chain Risk Management]]
-- [[_COMMUNITY_SCRM Maturity Model (adapted RiskNet model)|SCRM Maturity Model (adapted RiskNet model)]]
-- [[_COMMUNITY_Pandemic as a Considered Risk Scenario|Pandemic as a Considered Risk Scenario]]
-- [[_COMMUNITY_Real-Time Visibility|Real-Time Visibility]]
-- [[_COMMUNITY_Logistics Service Provider (LSP)|Logistics Service Provider (LSP)]]
-- [[_COMMUNITY_Port Congestion|Port Congestion]]
-- [[_COMMUNITY_Port Dwell Time|Port Dwell Time]]
-- [[_COMMUNITY_Carrier Schedule Reliability|Carrier Schedule Reliability]]
-- [[_COMMUNITY_Four-Phase Disruption Management Model|Four-Phase Disruption Management Model]]
-- [[_COMMUNITY_Simulation Service Component for Rapid Reconfiguration|Simulation Service Component for Rapid Reconfiguration]]
-- [[_COMMUNITY_Generalized Conceptual Simulation Model|Generalized Conceptual Simulation Model]]
-- [[_COMMUNITY_Demcon Ventilator Module Use Case|Demcon Ventilator Module Use Case]]
-- [[_COMMUNITY_Supply Chain Financing (SCF)|Supply Chain Financing (SCF)]]
-- [[_COMMUNITY_Accounts Receivable (NWC Element 3)|Accounts Receivable (NWC Element 3)]]
-- [[_COMMUNITY_Accounts Payable (NWC Element 2)|Accounts Payable (NWC Element 2)]]
-- [[_COMMUNITY_Planning and the Cross-Functional Interface (NWC Element 5)|Planning and the Cross-Functional Interface (NWC Element 5)]]
-- [[_COMMUNITY_Invoice Discounting|Invoice Discounting]]
-- [[_COMMUNITY_Deep-Tier Supply Chain Finance|Deep-Tier Supply Chain Finance]]
-- [[_COMMUNITY_Payment Terms Extension|Payment Terms Extension]]
-- [[_COMMUNITY_Financial Service Provider (FSP)|Financial Service Provider (FSP)]]
-- [[_COMMUNITY_Single Sourcing|Single Sourcing]]
-- [[_COMMUNITY_Total Inbound Risk Score|Total Inbound Risk Score]]
-- [[_COMMUNITY_Supply Chain Configuration|Supply Chain Configuration]]
-- [[_COMMUNITY_Manufacturing Network Topology Taxonomy|Manufacturing Network Topology Taxonomy]]
-- [[_COMMUNITY_Three-Tiered Reserve (Inventory, Capacity, Capability)|Three-Tiered Reserve (Inventory, Capacity, Capability)]]
-- [[_COMMUNITY_Stockpile Inventory (Tier 1)|Stockpile Inventory (Tier 1)]]
-- [[_COMMUNITY_Backup  Reserve Manufacturing Capacity (Tier 2)|Backup / Reserve Manufacturing Capacity (Tier 2)]]
-- [[_COMMUNITY_Reactive Ad Hoc Capacity Conversion|Reactive Ad Hoc Capacity Conversion]]
-- [[_COMMUNITY_Highly Skewed Disaster Demand Distribution|Highly Skewed Disaster Demand Distribution]]
-- [[_COMMUNITY_Expected Total Cost vs Performance Trade-off (choose x, y, z)|Expected Total Cost vs Performance Trade-off (choose x, y, z)]]
-- [[_COMMUNITY_Ventilator Shortage in the Pandemic Response|Ventilator Shortage in the Pandemic Response]]
-- [[_COMMUNITY_Lateral Transshipment between Relief Depots|Lateral Transshipment between Relief Depots]]
-- [[_COMMUNITY_Human Dimension of Digital Transformation|Human Dimension of Digital Transformation]]
-- [[_COMMUNITY_Industry 4.0|Industry 4.0]]
-- [[_COMMUNITY_What Is New vs What Is Not New in Pandemic Risk Management (Table 13.1)|What Is New vs What Is Not New in Pandemic Risk Management (Table 13.1)]]
+- Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications)
+- Box & Jenkins: Time Series Analysis: Forecasting and Control
+- Safety Stock
+- Forecasting: Principles and Practice (3rd ed)
+- Impacts and SC Resilience Strategies to Cope with COVID-19: A Literature Review (Ch 1)
+- Nagle & Müller — The Strategy and Tactics of Pricing
+- Simon & Fassnacht — Price Management
+- Robert Phillips — Pricing and Revenue Optimization
+- Economic Value
+- Willingness-to-Pay
+- Dynamic Pricing
+- Price War
+- Transfer Pricing
+- Gallego & Topaloglu: Revenue Management and Pricing Analytics
+- Talluri & van Ryzin: The Theory and Practice of Revenue Management
+- Revenue Management
+- Managing Supply Chain Complexity
+- Demand Forecasting
+- A Practical Price Optimization Approach for Omnichannel Retailing
+- No-Regret Learning for Stackelberg Equilibrium in Newsvendor Pricing Games
+- Operations and Supply Chain Management
+- Chopra & Meindl: Supply Chain Management
+- Project Management
+- Sustainability
+- Dynamic Pricing on E-commerce Platform with Deep RL: A Field Experiment
+- Reward Function
+- Plant Manager / Operations Manager
+- Palamariu & Alicke: From Source to Sold (Stories of Leadership in Supply Chain)
+- Supply Chain Leader to CEO Pathway
+- End-to-End Visibility
+- Supply Chain Resilience
+- Crisis Leadership
+- COVID-19 and Pandemic-Era Disruption
+- Talent and Leadership Development
+- Christopher: Logistics and Supply Chain Management (4th ed.)
+- Supply Chain Strategy or Design
+- Learning from Mistakes
+- Change Management (Desire-Vision-Process)
+- Technology and Digital Transformation
+- Challenging the Status Quo and Innovating
+- Employee Empowerment
+- Purpose Over Position
+- Building Trust Through Transparency
+- Just-in-Time (JIT)
+- Network Design
+- Supply Chain Agility
+- Supply Chain Orchestration
+- Enterprise Risk Management
+- Supplier Risk Tower
+- Encouraging Healthy Dissent and Debate
+- Continuous Improvement and a Fresh Eye
+- Redundancy, Inventory Tolerance, and Flexibility
+- Simulation Modelling
+- Multi-Tier Supplier Visibility
+- CHAIN Model (Supply Chain Leadership)
+- Enterprise Resource Planning (ERP)
+- Demand Management
+- Forecasting
+- Sales and Operations Planning
+- Material Requirements Planning
+- Customer Order Decoupling Point
+- Safety Stock
+- Mean Absolute Deviation (MAD)
+- Chase Strategy
+- Master Production Schedule (MPS)
+- Finite Scheduling
+- Input/Output Control
+- Just-in-Time (JIT)
+- Shortest Processing Time (SPT)
+- Transfer Batch
+- Work Center
+- Lead Time
+- Distribution Requirements Planning (DRP)
+- Economic Order Quantity (EOQ)
+- Traveling Salesman Problem
+- Transit Stock
+- Anticipation Stock
+- Fill Rate
+- Inventory Turnover
+- Tightly Coupled JIT Supply
+- Warm Puppy Effect
+- S,T System (Periodic Review)
+- ABC Analysis
+- Assemble-to-Order (ATO) Master Production Scheduling
+- Order Penetration Point (OPP)
+- Warehouse Location Problem (WLP)
+- Steiner-Weber Model
+- Factor-Rating Method
+- Utility Value Analysis
+- Adidas Group
+- Intermodal Transportation
+- Tesla
+- Industry 4.0
+- Lean Production
+- Supply Chain Integration
+- Heizer, Render & Munson: Operations Management (12th ed.)
+- Customer Service
+- Economies of Scale
+- Offshoring / Low-Cost Country Sourcing
+- Quick Response
+- Supply Chain Agility
+- Strategic Lead-Time Management
+- Design of Goods and Services
+- Supply Chain Mapping
+- Bullwhip Effect
+- Bidirectional Demand Shock
+- Postponement
+- Agile Supply Chain
+- Mass Customisation
+- Supply Chain Vulnerability
+- Supply Chain Risk
+- Critical Paths (Nodes and Links)
+- Supply Chain Risk Management Process
+- Supply Chain Capability Driver
+- Carbon Footprint
+- Cleaner Production
+- Grant, Trautrims & Wong: Sustainable Logistics and Supply Chain Management
+- Reverse Logistics
+- Freight Transport
+- Freight Transport Modes
+- Nearshoring
+- Lifecycle Assessment
+- Hazardous Substances
+- Sustainable Procurement
+- Product Recovery Management (PRM)
+- Waste Hierarchy
+- Corporate Social Responsibility (CSR)
+- Supplier Relationship Management (SRM)
+- Facility Location and Capacity Allocation
+- Decision Analysis
+- Aggregate Planning
+- Sustainability in the Supply Chain
+- Container Dashboard (Real-Time Container Exception Monitoring)
+- Supply Chain Visibility
+- Supply Chain Risk Mitigation
+- Capacity Planning
+- Global Operations Strategy Options
+- Sourcing Manager
+- Process Analysis and Design
+- Capacity
+- Jacobs & Chase: Operations and Supply Chain Management (15th ed.)
+- AI in Supply Chains: Perspectives from Global Thought Leaders
+- DRL in Inventory Management
+- Can AI really transform Real-world Supply Chains anytime soon?
+- Inventory Planner
+- Chief Supply Chain Officer (CSCO)
+- Logistics Manager
+- Warehouse / DC Manager
+- Returns Manager
+- ISCEA CSSCP
+- COO (foco en operaciones)
+- Reminder: Evaluar embeddings con modelos mas actualizados: Fable 5, Kimi 3, o cualquier SO
+- Supply Chain Resilience: Reconceptualizing Risk Management in a Post-Pandemic World
+- Globalization of Supply Chains
+- Ripple Effect
+- Koncar et al. (2020) - Setbacks to IoT Implementation in FMCG Supply Chain Sustainability during COVID-19
+- Blockchain Technology
+- Reactivity
+- Remote Working Mode
+- Financial Management (SCM Impact Area)
+- Exploitation Strategy
+- Viable Supply Chain Model
+- COVID-19 Medical Device Supply Chain Survey (Italy and Finland, 2020)
+- Segment 2 - Unprepared
+- Risk Management Methods (SCRM Methods)
+- Raw Material Shortage
+- Aigbogun (2022) - Exploration of Resilience in Medical Gloves Supply Chain During COVID-19
+- BME Logistics Survey 2020: Supply Chain Risk Management
+- SCRM Maturity Model (adapted RiskNet model)
+- Pandemic as a Considered Risk Scenario
+- Real-Time Visibility
+- Logistics Service Provider (LSP)
+- Port Congestion
+- Port Dwell Time
+- Carrier Schedule Reliability
+- Four-Phase Disruption Management Model
+- Simulation Service Component for Rapid Reconfiguration
+- Generalized Conceptual Simulation Model
+- Demcon Ventilator Module Use Case
+- Supply Chain Financing (SCF)
+- Accounts Receivable (NWC Element 3)
+- Accounts Payable (NWC Element 2)
+- Planning and the Cross-Functional Interface (NWC Element 5)
+- Invoice Discounting
+- Deep-Tier Supply Chain Finance
+- Payment Terms Extension
+- Financial Service Provider (FSP)
+- Single Sourcing
+- Total Inbound Risk Score
+- Supply Chain Configuration
+- Manufacturing Network Topology Taxonomy
+- Three-Tiered Reserve (Inventory, Capacity, Capability)
+- Stockpile Inventory (Tier 1)
+- Backup / Reserve Manufacturing Capacity (Tier 2)
+- Reactive Ad Hoc Capacity Conversion
+- Highly Skewed Disaster Demand Distribution
+- Expected Total Cost vs Performance Trade-off (choose x, y, z)
+- Ventilator Shortage in the Pandemic Response
+- Lateral Transshipment between Relief Depots
+- Human Dimension of Digital Transformation
+- Industry 4.0
+- What Is New vs What Is Not New in Pandemic Risk Management (Table 13.1)
 
 ## God Nodes (most connected - your core abstractions)
 1. `Chopra & Meindl: Supply Chain Management` - 356 edges
@@ -239,7 +240,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (201 total, 24 thin omitted)
+## Communities (202 total, 25 thin omitted)
 
 ### Community 4 - "Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications)"
 Cohesion: 0.07
@@ -575,7 +576,7 @@ Nodes (19): Visibility of Demand, Information Iceberg, Feed-Forward of Demand In
 
 ### Community 36 - "Bidirectional Demand Shock"
 Cohesion: 0.11
-Nodes (23): Demand Management, Drones for Last-Mile Delivery, Production Management (SCM Impact Area), Panic Buying, Bidirectional Demand Shock, Change in Consumer Buying Behaviour, Raw Material Shortage, Production Interruption and Plant Closure (+15 more)
+Nodes (22): Demand Management, Drones for Last-Mile Delivery, Production Management (SCM Impact Area), Panic Buying, Bidirectional Demand Shock, Change in Consumer Buying Behaviour, Production Interruption and Plant Closure, Labour Force Shortage (+14 more)
 
 ### Community 11 - "Postponement"
 Cohesion: 0.06
@@ -988,7 +989,7 @@ Nodes (22): Fixing the Supply Chain (Structural Change vs Reversion), Pandemic: 
 ## Knowledge Gaps
 - **555 isolated node(s):** `Box & Jenkins: Time Series Analysis: Forecasting and Control`, `Erratic Demand`, `Hyperbolic Exponential Smoothing (HES)`, `Cross-Sectional Aggregation`, `Mean Square Error (MSE / RMSE)` (+550 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **24 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **25 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_

@@ -1,7 +1,11 @@
-"""Tests for the three Graph RAG improvements:
+"""Tests for the Graph RAG discovery improvements:
 1. Semantic embeddings (scm_agent/embeddings.py)
 2. Community summaries (scm_agent/community_summaries.py)
-3. Graph query learning loop (scm_agent/graph_memory.py)
+
+The query-learning loop (graph_memory.py) was removed: it wrote query_outcome
+nodes back into the canonical citation graph, the exact perturbation the
+citation-pool sweep exists to prevent. Retrieval-only scope keeps the graph
+immutable at query time.
 """
 
 from __future__ import annotations
@@ -13,14 +17,6 @@ import pytest
 
 from scm_agent.community_summaries import CommunitySummaryIndex, _build_summaries
 from scm_agent.embeddings import EmbeddingIndex, _has_fastembed
-from scm_agent.graph_memory import (
-    _slug,
-    load_outcomes,
-    load_reminders,
-    query_history,
-    save_query_outcome,
-    save_reminder,
-)
 
 REPO = Path(__file__).resolve().parent.parent
 BOOKS_GRAPH = REPO / "knowledge" / "scm-books" / "graph.json"
@@ -81,6 +77,29 @@ class TestEmbeddingIndex:
         idx2 = EmbeddingIndex()
         idx2.build(nodes_v2, cache_path=cache)
         assert idx2.size == 2  # rebuilt, not stale
+
+    @pytest.mark.skipif(not _has_fastembed(), reason="fastembed not installed")
+    def test_warm_cache_search_works(self, tmp_path: Path) -> None:
+        """A cache-loaded index must still answer queries.
+
+        Regression: build()'s cache-load path set _ready=True without
+        instantiating a model, so search() returned [] on every warm start —
+        the semantic path silently died on the 2nd process onward.
+        """
+        nodes = [
+            {"id": "a", "label": "safety stock", "rationale": "buffer against demand uncertainty"},
+            {"id": "b", "label": "reorder point", "rationale": "when to place a new order"},
+        ]
+        cache = tmp_path / "cache.json"
+        EmbeddingIndex().build(nodes, cache_path=cache)  # cold build populates cache
+
+        warm = EmbeddingIndex()
+        warm.build(nodes, cache_path=cache)  # loads from cache; no model built in build()
+        assert warm.ready
+        assert warm._model is None  # confirm we're exercising the cache-load path
+        results = warm.search("buffer for uncertain demand", top_k=1)
+        assert len(results) == 1
+        assert results[0][0] == "a"
 
     def test_search_empty_when_not_built(self) -> None:
         idx = EmbeddingIndex()
@@ -155,153 +174,6 @@ class TestCommunitySummaries:
         assert len(summaries) > 0
         # Community 12 is the largest (92 nodes)
         assert "12" in summaries
-
-
-# ── Graph Memory / Learning Loop ────────────────────────────────────
-
-
-class TestGraphMemory:
-    """Tests for the query learning loop."""
-
-    def test_slug_basic(self) -> None:
-        assert _slug("How does safety stock work?") == "how_does_safety_stock_work"
-
-    def test_slug_empty(self) -> None:
-        assert _slug("") == ""
-
-    def test_save_query_outcome(self, tmp_path: Path) -> None:
-        graph = {
-            "nodes": [
-                {"id": "knowledge::safety_stock", "label": "Safety Stock"},
-                {"id": "knowledge::reorder_point", "label": "Reorder Point"},
-            ],
-            "links": [],
-        }
-        graph_file = tmp_path / "graph.json"
-        graph_file.write_text(json.dumps(graph), encoding="utf-8")
-        mem_dir = tmp_path / "memory"
-
-        result = save_query_outcome(
-            question="What is safety stock?",
-            answer="Safety stock buffers against demand uncertainty.",
-            source_nodes=["knowledge::safety_stock", "knowledge::reorder_point"],
-            graph_path=graph_file,
-            memory_dir=mem_dir,
-        )
-        assert result is not None
-        assert result["node_type"] == "query_outcome"
-        assert "safety stock" in result["question"].lower()
-
-        # Verify graph was updated
-        updated = json.loads(graph_file.read_text(encoding="utf-8"))
-        qo_nodes = [n for n in updated["nodes"] if n.get("node_type") == "query_outcome"]
-        assert len(qo_nodes) == 1
-        qo_edges = [e for e in updated["links"] if e.get("relation") == "cited_in"]
-        assert len(qo_edges) == 2
-
-        # Verify markdown was written
-        md_files = list(mem_dir.glob("*.md"))
-        assert len(md_files) == 1
-
-    def test_dedup_within_5_minutes(self, tmp_path: Path) -> None:
-        graph = {"nodes": [{"id": "a", "label": "A"}], "links": []}
-        graph_file = tmp_path / "g.json"
-        graph_file.write_text(json.dumps(graph), encoding="utf-8")
-
-        r1 = save_query_outcome("test?", "ans", ["a"], graph_path=graph_file, memory_dir=tmp_path / "m1")
-        r2 = save_query_outcome("test?", "ans", ["a"], graph_path=graph_file, memory_dir=tmp_path / "m2")
-        assert r1 is not None
-        assert r2 is None  # deduped
-
-    def test_load_outcomes(self, tmp_path: Path) -> None:
-        graph = {
-            "nodes": [
-                {"id": "q::1", "node_type": "query_outcome", "question": "Q1", "outcome": "useful", "captured_at": "2026-07-20T10:00:00"},
-                {"id": "q::2", "node_type": "query_outcome", "question": "Q2", "outcome": "wrong", "captured_at": "2026-07-20T11:00:00"},
-                {"id": "regular", "label": "Not a query"},
-            ],
-            "links": [],
-        }
-        graph_file = tmp_path / "g.json"
-        graph_file.write_text(json.dumps(graph), encoding="utf-8")
-
-        all_outcomes = load_outcomes(graph_file)
-        assert len(all_outcomes) == 2
-
-        useful_only = load_outcomes(graph_file, outcome_filter="useful")
-        assert len(useful_only) == 1
-
-    def test_query_history_finds_similar(self, tmp_path: Path) -> None:
-        graph = {
-            "nodes": [
-                {
-                    "id": "q::1",
-                    "node_type": "query_outcome",
-                    "question": "How does safety stock work?",
-                    "outcome": "useful",
-                    "answer": "Buffers against uncertainty",
-                    "captured_at": "2026-07-20T10:00:00",
-                },
-            ],
-            "links": [],
-        }
-        graph_file = tmp_path / "g.json"
-        graph_file.write_text(json.dumps(graph), encoding="utf-8")
-
-        history = query_history("safety stock mechanism", graph_file)
-        assert len(history) == 1
-
-    def test_query_history_no_match(self, tmp_path: Path) -> None:
-        graph = {
-            "nodes": [
-                {
-                    "id": "q::1",
-                    "node_type": "query_outcome",
-                    "question": "How does EOQ work?",
-                    "outcome": "useful",
-                },
-            ],
-            "links": [],
-        }
-        graph_file = tmp_path / "g.json"
-        graph_file.write_text(json.dumps(graph), encoding="utf-8")
-
-        history = query_history("quantum computing basics", graph_file)
-        assert len(history) == 0
-
-    def test_save_reminder(self, tmp_path: Path) -> None:
-        graph = {"nodes": [], "links": []}
-        graph_file = tmp_path / "g.json"
-        graph_file.write_text(json.dumps(graph), encoding="utf-8")
-
-        result = save_reminder(
-            text="Evaluar Fable 5 para embeddings",
-            tags=["model_upgrade", "fable5"],
-            graph_path=graph_file,
-        )
-        assert result is not None
-        assert result["node_type"] == "reminder"
-        assert result["tags"] == ["model_upgrade", "fable5"]
-
-        updated = json.loads(graph_file.read_text(encoding="utf-8"))
-        reminders = [n for n in updated["nodes"] if n.get("node_type") == "reminder"]
-        assert len(reminders) == 1
-
-    def test_load_reminders(self, tmp_path: Path) -> None:
-        graph = {
-            "nodes": [
-                {"id": "r::1", "node_type": "reminder", "text": "Upgrade model", "captured_at": "2026-07-22T10:00:00"},
-                {"id": "r::2", "node_type": "reminder", "text": "Add tests", "captured_at": "2026-07-21T10:00:00"},
-                {"id": "q::1", "node_type": "query_outcome", "question": "X"},
-            ],
-            "links": [],
-        }
-        graph_file = tmp_path / "g.json"
-        graph_file.write_text(json.dumps(graph), encoding="utf-8")
-
-        reminders = load_reminders(graph_file)
-        assert len(reminders) == 2
-        assert reminders[0]["text"] == "Upgrade model"  # most recent first
 
 
 # ── KnowledgeBase integration ───────────────────────────────────────

@@ -26,6 +26,47 @@ from src import i18n
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
+def not_measured(lang: str = "en") -> str:
+    """What a deliverable prints where a number was never measured.
+
+    Defaults to English because an individual tool deck is English by design
+    (``Deliverable.lang`` defaults to ``"en"`` - see ``src/i18n.py``); the package
+    deck asks for its own language. Lets a reader tell "we looked and it was zero"
+    from "we never looked", which is the distinction a rate over zero observations
+    destroys when it renders as "0%".
+    """
+    return i18n.label("not_measured", lang)
+
+
+# The three shapes a supplier-performance figure takes on a page. They live here, next
+# to the token they fall back to, because every caller that renders a `float | None`
+# was otherwise re-deriving the same conditional privately - and one of them getting it
+# wrong prints an absence as a measurement, which is the defect this vocabulary exists
+# to prevent. A *genuine* zero still renders as a number: that is a measurement.
+
+def pct(rate: float | None, lang: str = "en") -> str:
+    """A share as a percentage, or the words that say it was never observed."""
+    return not_measured(lang) if rate is None else f"{rate * 100:.0f}%"
+
+
+def days(value: float | None, lang: str = "en") -> str:
+    """A duration in days, or the words that say it was never observed."""
+    return not_measured(lang) if value is None else f"{value:.0f} days"
+
+
+def ppm(value: float | None, lang: str = "en") -> str:
+    """A defect rate in parts per million, or the words that say it was never observed."""
+    return not_measured(lang) if value is None else f"{value:,.0f} PPM"
+
+
+def money(value: float | None, lang: str = "en", *, symbol: str = "$") -> str:
+    """An amount, or the words that say it was never observed.
+
+    ``landed_cost(...).per_unit`` is ``None`` over zero units; printing ``$0.00/unit``
+    there says the goods are free, which is the most expensive kind of wrong.
+    """
+    return not_measured(lang) if value is None else f"{symbol}{value:,.2f}"
+
 
 def _visible(text: str) -> str:
     """``text`` with Unicode format characters (category "Cf" - zero-width
@@ -116,20 +157,23 @@ class Deliverable:
     residual: str = ""
     prepared: str = ""
     # Structural-scaffolding language (section headers, table columns, sheet
-    # names) - see src/i18n.py. Defaults to "en" so the ~37 individual tool
-    # decks (built by jobs/<x>_job.py, which never pass this) render exactly
-    # as before; only jobs/package_deliverable.py's CONSOLIDATED deck passes
-    # its package's lang explicitly. This does NOT translate the content
-    # (summary/findings/KPI values etc.) - only the scaffolding around it;
-    # see i18n.py's module docstring for the full scope boundary.
+    # names) - see src/i18n.py. Defaults to "en", so a tool run on its own
+    # renders exactly as before. Two callers opt in: jobs/package_deliverable.py's
+    # CONSOLIDATED deck, and - since a Spanish package handing back English tool
+    # decks is not a Spanish deliverable - scm_agent/packages.py, which passes
+    # spec.lang to every registered deck whose build_deck accepts it (3 of ~37
+    # today; scm_agent.packages.deck_accepts_lang is the live inventory).
+    # This does NOT translate the content (summary/findings/KPI values etc.) -
+    # only the scaffolding around it; see i18n.py's docstring for the boundary.
     lang: str = "en"
     # Who this deck is presented as prepared by - see Branding's own docstring.
     # Defaults to Kern's own identity, so every deck (all ~37 individual
     # tool decks AND the package deck) is branded out of the box with zero
     # caller changes. A partner's white-label identity is threaded in ONLY by
-    # jobs/package_deliverable.py (via ClientProfile.branding), mirroring
-    # exactly how ``lang`` above is scoped - the individual tool decks never
-    # pass this, by design (same E4 precedent/reasoning as ``lang``).
+    # jobs/package_deliverable.py (via ClientProfile.branding). Note this is
+    # NARROWER than ``lang`` above, which a package now also threads into the
+    # individual tool decks: a white-label identity is a commercial decision per
+    # deliverable, not a rendering detail that follows the package.
     branding: Branding = DEFAULT_BRANDING
 
     def to_markdown(self) -> str:

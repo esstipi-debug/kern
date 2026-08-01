@@ -23,6 +23,8 @@ def test_cif_duty_base_includes_freight_and_insurance():
     assert lc.per_unit == pytest.approx(13.625)
 
 
-def test_zero_qty_is_safe():
+def test_zero_qty_has_no_per_unit_cost():
+    """Zero units is not a free import: there is no per-unit cost to report."""
     lc = landed_cost(unit_cost=10.0, qty=0, duty_rate=0.1)
-    assert lc.per_unit == 0.0
+    assert lc.per_unit is None
+    assert lc.total == 0.0

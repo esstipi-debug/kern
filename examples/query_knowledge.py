@@ -6,6 +6,12 @@
 
 --bridge is the cross-graph link: it shows the book theory (with chapter) AND
 the source file that implements it.
+
+--search and --bridge use hybrid (semantic + keyword) retrieval over the books
+graph when the optional [rag] extra is installed (`pip install .[rag]`), so a
+paraphrased query still finds the right concept. Without fastembed they fall
+back to keyword ranking — identical to before. These are operator discovery
+surfaces; the client-facing citation path is unaffected.
 """
 
 from __future__ import annotations
@@ -43,7 +49,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"knowledge: books={status['books']} nodes, code={status['code']} nodes\n")
 
     if args.search:
-        hits = kb.search(args.search, graph=args.graph)
+        # Hybrid (semantic+keyword) applies to the books graph only — the
+        # embedding index is books-only. code/both keep keyword ranking.
+        if args.graph == "books":
+            hits = kb.search_hybrid(args.search, graph="books")
+        else:
+            hits = kb.search(args.search, graph=args.graph)
         if not hits:
             print("no matches")
             return 1

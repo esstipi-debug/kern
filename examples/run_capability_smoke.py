@@ -61,10 +61,19 @@ Wholesale,4200,260,O4,3100,190,5
 Online,300,12,O5,180,25,0
 Online,450,18,O6,270,30,1
 """,
-    "sourcing": """supplier,on_time,in_full,lead_time_days,units,defects,unit_price
-Alpha,0.95,0.90,12,1000,5,10.5
-Beta,0.80,0.75,20,800,30,9.8
-Gamma,0.99,0.97,8,1200,2,11.2
+    # One row per PO line, as an ERP exports it -- NOT one row per supplier. The previous
+    # fixture put on-time/in-full *rates* (0.95, 0.90) in columns the job reads as per-delivery
+    # flags, so bool(0.95) scored every supplier a perfect 100% OTIF and the smoke passed.
+    "sourcing": """Supplier,Order_Date,Delivery_Date,Order_Status,Quantity,Defective_Units,Unit_Price
+Alpha,2024-01-02,2024-01-14,Delivered,1000,5,10.5
+Alpha,2024-02-01,2024-02-12,Delivered,1000,3,10.5
+Alpha,2024-03-04,2024-03-28,Partial,1000,4,10.5
+Beta,2024-01-03,2024-01-23,Delivered,800,30,9.8
+Beta,2024-02-05,2024-02-27,Partial,800,25,9.8
+Beta,2024-03-06,2024-03-24,Delivered,800,20,9.8
+Gamma,2024-01-08,2024-01-16,Delivered,1200,2,11.2
+Gamma,2024-02-09,2024-02-17,Delivered,1200,1,11.2
+Gamma,2024-03-11,2024-03-20,Delivered,1200,3,11.2
 """,
     "ddmrp": """part_id,adu,dlt,on_hand,on_order,qualified_demand
 P1,50,10,300,100,40
@@ -258,6 +267,10 @@ _BRIEF: dict[str, str] = {
 _OVERRIDES: dict[str, dict] = {
     "leadership_chain": {"scores": "3 2 3 1 1", "name": "Team"},
     "vehicle_routing": {"capacity": 40},
+    # The PO export carries no promised date, so the SLA has to be declared -- sourcing
+    # refuses to score on-time against an undeclared default rather than invent one.
+    "sourcing": {"sla_days": 14, "in_full_status_col": "Order_Status",
+                 "in_full_ok_values": ["Delivered"]},
 }
 
 # Tools that reach the network. Reported SKIP offline; a network error under

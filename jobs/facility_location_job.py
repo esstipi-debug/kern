@@ -23,6 +23,7 @@ from src.facility_location import (
     total_weighted_distance,
     weiszfeld,
 )
+from src.finite import require_finite
 
 _NAME_COLS = ("name", "location", "city", "node", "point", "customer", "label")
 _X_COLS = ("x", "lon", "longitude", "x_coord", "easting")
@@ -64,17 +65,27 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
 
     name = _pick_column(df, params.get("name_col"), _NAME_COLS)
     weight = _pick_column(df, params.get("weight_col"), _WEIGHT_COLS)
+    # A blank coordinate makes the weighted distance NaN, which loses the
+    # `current_dist > 0` test below and reports a 0% saving: "your site is already
+    # optimal" - the one answer that makes the whole study a no-op.
     points = [
         DemandPoint(
             name=str(row[name]) if name else f"P{i + 1}",
-            x=float(row[x]), y=float(row[y]),
-            weight=float(row[weight]) if weight and pd.notna(row[weight]) else 1.0,
+            x=require_finite(row[x], f"row {i + 1} x"),
+            y=require_finite(row[y], f"row {i + 1} y"),
+            weight=(
+                require_finite(row[weight], f"row {i + 1} weight")
+                if weight and pd.notna(row[weight]) else 1.0
+            ),
         )
         for i, (_, row) in enumerate(df.iterrows())
     ]
     current = None
     if params.get("current_x") is not None and params.get("current_y") is not None:
-        current = Location(float(params["current_x"]), float(params["current_y"]))
+        current = Location(
+            require_finite(params["current_x"], "current_x"),
+            require_finite(params["current_y"], "current_y"),
+        )
     return {"points": points, "current": current, "iterations": int(params.get("iterations", 200))}
 
 
@@ -96,7 +107,9 @@ def run(payload: dict) -> FacilityLocationReport:
     if current is not None:
         current_dist = total_weighted_distance(points, current)
         saving = current_dist - opt_dist
-        saving_pct = (saving / current_dist) if current_dist > 0 else 0.0
+        saving_pct = (
+            (saving / current_dist) if math.isfinite(current_dist) and current_dist > 0 else 0.0
+        )
 
     nearest = min(points, key=lambda p: math.hypot(p.x - opt.x, p.y - opt.y)).name
     save_txt = f", {saving:,.0f} less weighted travel than the current site" if saving is not None else ""

@@ -15,11 +15,12 @@
 An **agentic supply-chain engine**: a plain-language brief becomes a finished,
 QA-gated deliverable (Excel + report + chart), grounded in a knowledge graph of
 25 SCM sources (24 books + an AI-in-SC source) and the codebase itself. A deterministic Python **engine** across
-**45 agent-routable tools** (EOQ, safety stock, `(s,Q)`/`(R,S)`, simulation,
+**48 agent-routable tools** (EOQ, safety stock, `(s,Q)`/`(R,S)`, simulation,
 a network digital twin, forecasting, pricing, price intelligence,
 discovery-assisted price watch, DDMRP, ABC-XYZ, sourcing, supplier segmentation (Kraljic),
 landed cost, cost-to-serve, S&OP, facility location, multi-facility network design (p-median),
-DRP, transportation, FEFO, launch readiness, vehicle routing, hat tension/settlement…) sits under an
+DRP, transportation, FEFO, launch readiness, vehicle routing, hat tension/settlement,
+flow map, cross-area impact/objection verdict…) sits under an
 **orchestrator agent** that classifies → runs → validates → delivers. Runs
 with or without an LLM.
 
@@ -55,6 +56,11 @@ Every consequential result is a `GuidedOutcome` with status:
 `EXECUTED` (agent did it) · `OPTIONS` (ranked choices) · `HANDOFF` (prepared
 human step) · `ESCALATED` (routed to a human with SLA). The last three need a
 human — that contract is what `documentation/operator/` documents.
+
+`cross_impact` mide el impacto de una decision propuesta sobre las otras areas
+y emite un veredicto de objecion contra umbrales del perfil de cliente. Un
+area sin umbral sale `no_evaluable` y el veredicto global es `indeterminado`
+- nunca "nadie objeta".
 
 ### Writeback safety (`src/writeback.py`)
 Never mutate a system of record blindly: stage a dry-run `Changeset`, classify by
@@ -188,6 +194,19 @@ See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
   green (those deps are present transitively in dev). See
   `tests/test_pricing_intel_boot_safety.py` and the `prod-boot` job in
   `.github/workflows/tests.yml`.
+- **CI resolves dependencies fresh on every run** — no lock file, no pip cache, so
+  an upstream release can turn this repo red with zero commits here. Two habits
+  follow. (1) When CI fails on a branch you believe is innocent, **suspect a
+  dependency before suspecting your code**: compare the last green run's timestamp
+  against the suspect package's PyPI upload dates, and diff the `pip freeze` step
+  against the last green run. (2) Don't "fix" this by mass-capping majors — CI
+  already runs and passes on pandas 3, numpy 2.5, pytest 9, pyarrow 25, lxml 6 and
+  python-stdnum 2 despite floors declared several majors lower, so a blanket cap
+  would silently *downgrade* the tested environment. Cap only when a specific
+  release actually breaks a specific import, with a comment saying which
+  (`mcp>=1.0,<2` is the one live example — mcp 2.0.0 deleted
+  `mcp.server.fastmcp`). A nightly cron on `tests.yml` exists so this class of
+  breakage surfaces on its own instead of ambushing the next PR or deploy.
 - The **books graph** (L3) needs an LLM backend (Kimi/Gemini) to rebuild; the
   **code graph** is AST-only (no key) and the hook handles it.
 
@@ -197,6 +216,6 @@ See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
 `scm_agent/README.md` (agent reference) · `documentation/METHODOLOGY.md` (models) ·
 `documentation/operator/` (the human operator's portfolio) ·
 [`documentation/TESTING_ENVIRONMENT.md`](documentation/TESTING_ENVIRONMENT.md)
-(stand up a clean env + `examples/run_capability_smoke.py` to exercise all 41
+(stand up a clean env + `examples/run_capability_smoke.py` to exercise all 48
 tools and see where each fails; `scripts/setup-test-env.sh` for the reproducible
 full install the `SessionStart` hook now delegates to).
