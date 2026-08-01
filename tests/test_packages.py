@@ -384,6 +384,30 @@ def test_optimized_targets_all_skipped_never_overrides_anything():
     assert targets.get("optimized_targets", {}) == {}
 
 
+def _skipped_zero_cost_recommendation(product_id: str) -> SkuRecommendation:
+    return SkuRecommendation(
+        product_id=product_id, method="none", intermittent=False,
+        forecast=0.0, error_std=0.0, bias=0.0, mae=0.0,
+        policy_kind="skipped_zero_cost", order_quantity=None, order_up_to=None,
+        reorder_point=0.0, safety_stock=0.0, z_factor=0.0,
+        service_level=0.95, unit_cost=0.0, lead_periods=1.0,
+        cycle_investment=0.0, ss_investment=0.0, investment=0.0, status="review",
+    )
+
+
+def test_optimized_targets_excludes_skipped_zero_cost_recommendation():
+    """Same reasoning as the zero-demand exclusion above, on the cost axis: a
+    reorder_point=0.0 placeholder from a skipped-for-zero-cost SKU must never
+    override the client's own sheet value."""
+    skipped = _skipped_zero_cost_recommendation("SKU-FREE")
+    real = _fake_recommendation("SKU-REAL", reorder_point=50.0, order_quantity=30.0)
+    targets = _optimized_targets_from_inventory(
+        {"inventory_optimization": _fake_job_report(skipped, real)}
+    )
+    assert "SKU-FREE" not in targets["optimized_targets"]
+    assert targets["optimized_targets"]["SKU-REAL"] == {"reorder_point": 50.0, "order_up_to": 80.0}
+
+
 def test_optimized_targets_skip_falls_through_to_client_sheet_end_to_end(tmp_path):
     """Reproduces the reviewer's exact scenario: a client's own planilla says a SKU
     needs restocking (own reorder point 40, on_hand 10 -> needs 70 units), but

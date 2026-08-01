@@ -69,7 +69,18 @@ def _metadata_from_frame(
     mu = float(np.mean(values))
     sigma = float(np.std(values, ddof=1)) if len(values) > 1 else 0.0
 
-    unit_cost = float(sku["unit_cost"].astype(float).mean()) if "unit_cost" in sku.columns else 1.0
+    if "unit_cost" in sku.columns:
+        costs = sku["unit_cost"].astype(float)
+        positive_costs = costs[costs > 0]
+        # A cost of exactly $0 is a lost-in-transit value, not a real price (see
+        # jobs/inventory_optimization.py's zero-cost skip) -- averaging it in drags
+        # mean_unit_cost toward zero and, via holding_cost's 1e-6 floor, explodes the
+        # EOQ formula into an absurd order quantity. 0.0 when NO row has a usable
+        # cost is a deliberate, explicit "no valid cost observed" signal, distinct
+        # from the "column missing entirely" default of 1.0 below.
+        unit_cost = float(positive_costs.mean()) if len(positive_costs) > 0 else 0.0
+    else:
+        unit_cost = 1.0
 
     if "lead_time_days" in sku.columns:
         lt_periods = float(sku["lead_time_days"].astype(float).median()) * periods_per_year / 365.0

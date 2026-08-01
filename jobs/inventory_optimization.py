@@ -77,6 +77,12 @@ class JobReport:
     # loop) - a real new/seasonal SKU with no activity, or a data-quality split
     # that zeroed one spelling's demand. Isolated, not fatal to the batch.
     n_skipped_zero_demand: int = 0
+    # SKUs skipped because no row carried a usable (>0) unit_cost (see run()'s
+    # per-SKU loop) - a cost lost on load and reported as 0 instead of blank.
+    # Isolated for the same reason as zero demand: compute_eoq's holding-cost
+    # floor (1e-6) would otherwise turn a near-zero mean_unit_cost into an
+    # absurdly large, silently "valid-looking" order quantity.
+    n_skipped_zero_cost: int = 0
 
 
 def _observed_skewness(series) -> float | None:
@@ -174,6 +180,27 @@ def run(
             )
             continue
 
+        # Symmetric to the zero-demand skip above, on the cost axis instead of the
+        # demand axis: src/sources.py already excludes non-positive unit_cost rows
+        # from the mean, so mean_unit_cost <= 0 here means NO row for this SKU ever
+        # carried a usable cost. Without it, holding_cost's 1e-6 floor a few lines
+        # down would make compute_eoq's q_star = sqrt(2*S*D/h) explode - not a
+        # crash, a silently "valid-looking" order of hundreds of thousands of units
+        # that the caller has no way to distinguish from a real recommendation.
+        if meta.mean_unit_cost <= 0:
+            recs.append(
+                SkuRecommendation(
+                    product_id=pid, method="none", intermittent=False,
+                    forecast=0.0, error_std=0.0, bias=0.0, mae=0.0,
+                    policy_kind="skipped_zero_cost", order_quantity=None, order_up_to=None,
+                    reorder_point=0.0, safety_stock=0.0, z_factor=0.0,
+                    service_level=sl, unit_cost=meta.mean_unit_cost, lead_periods=lead,
+                    cycle_investment=0.0, ss_investment=0.0, investment=0.0,
+                    status="review",
+                )
+            )
+            continue
+
         holding_cost = max(holding_rate * meta.mean_unit_cost, 1e-6)
         if observed_fill_rates and pid in observed_fill_rates:
             sl = tune_service_level(
@@ -249,4 +276,5 @@ def run(
         n_intermittent=sum(1 for r in recs if r.intermittent),
         intake_quality=intake_quality, intake_quality_threshold=intake_quality_threshold,
         n_skipped_zero_demand=sum(1 for r in recs if r.policy_kind == "skipped_zero_demand"),
+        n_skipped_zero_cost=sum(1 for r in recs if r.policy_kind == "skipped_zero_cost"),
     )

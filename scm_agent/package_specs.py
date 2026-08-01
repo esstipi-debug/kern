@@ -234,16 +234,17 @@ def _optimized_targets_from_inventory(reports: dict[str, object]) -> dict:
         return {}
     targets: dict[str, dict] = {}
     for rec in report.recommendations:
-        # A skipped SKU (zero aggregate demand - see jobs/inventory_optimization.py's
-        # run()) has no real policy: reorder_point=0.0/order_up_to=None are placeholders,
-        # not a computed "reorder at zero" decision. Including it here would override the
+        # A skipped SKU (zero aggregate demand, or no row with a usable unit_cost -
+        # see jobs/inventory_optimization.py's run()) has no real policy:
+        # reorder_point=0.0/order_up_to=None are placeholders, not a computed
+        # "reorder at zero" decision. Including it here would override the
         # client's own sheet value with a fabricated 0.0 (silently suppressing a real
         # restock need, or - with negative on-hand - ordering just enough to reach 0) and
         # mislabel the line "kern_optimized" as if Kern deliberately chose zero. Leaving
         # it out of the dict makes it degrade to the client's own sheet value exactly, as
         # excel_replenishment_job.run's docstring promises for any SKU with no computable
         # policy.
-        if rec.policy_kind == "skipped_zero_demand":
+        if rec.policy_kind in ("skipped_zero_demand", "skipped_zero_cost"):
             continue
         order_up_to = rec.order_up_to
         if order_up_to is None and rec.order_quantity is not None:

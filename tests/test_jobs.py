@@ -587,6 +587,93 @@ def test_multiple_zero_demand_skus_are_all_skipped_independently():
         assert by[pid].order_quantity is not None and by[pid].order_quantity > 0
         assert by[pid].status == "ok"
 
+
+# ---- zero-cost skip: symmetric to the zero-demand skip above, but on the cost
+# axis. Found via the simworld harness's inject_zero_cost injector: a unit_cost
+# lost on load and reported as 0 instead of blank dragged mean_unit_cost toward
+# zero, which - via compute_eoq's holding-cost floor of 1e-6 - exploded q_star
+# into an order of hundreds of thousands of units for a single SKU. Unlike the
+# zero-demand bug (a loud ValueError that killed the whole batch), this one was
+# silent: a "valid-looking" recommendation with no QA flag. -----------------------
+
+
+def _zero_cost_portfolio_df(n_periods: int = 20, extra_zero_cost_skus: tuple = ()) -> pd.DataFrame:
+    """The clean portfolio plus one or more real-demand SKUs whose every row has
+    unit_cost=0 (a cost lost on load, not a genuinely free item)."""
+    dates = pd.date_range("2026-01-01", periods=n_periods, freq="W")
+    rows = []
+    for d in dates:
+        rows.append({"date": d, "product_id": "GOOD-A", "quantity": 100.0, "unit_cost": 10.0})
+        rows.append({"date": d, "product_id": "GOOD-B", "quantity": 40.0, "unit_cost": 25.0})
+        rows.append({"date": d, "product_id": "FREE-C", "quantity": 60.0, "unit_cost": 0.0})
+        for sku in extra_zero_cost_skus:
+            rows.append({"date": d, "product_id": sku, "quantity": 30.0, "unit_cost": 0.0})
+    return pd.DataFrame(rows)
+
+
+def test_zero_cost_sku_is_skipped_not_fatal_to_batch():
+    """The bug this fixes, end to end: before the fix, this SKU's mean_unit_cost of
+    0.0 drove holding_cost to its 1e-6 floor and compute_eoq's q_star exploded -
+    a huge, silently 'valid' order_quantity, not a crash, so nothing caught it."""
+    report = run(_zero_cost_portfolio_df())
+    baseline = run(_clean_portfolio_df())
+
+    assert report.n_skus == 3
+    assert len(report.recommendations) == report.n_skus
+
+    by = {r.product_id: r for r in report.recommendations}
+    base_by = {r.product_id: r for r in baseline.recommendations}
+
+    zero_rec = by["FREE-C"]
+    assert zero_rec.policy_kind == "skipped_zero_cost"
+    assert zero_rec.order_quantity is None
+    assert zero_rec.order_up_to is None
+    assert zero_rec.investment == 0.0
+    assert zero_rec.status == "review"
+
+    # the good SKUs get normal, correct recommendations, completely unaffected
+    # by the degenerate SKU's presence elsewhere in the same portfolio
+    for pid in ("GOOD-A", "GOOD-B"):
+        good, base = by[pid], base_by[pid]
+        assert good.policy_kind == base.policy_kind == "(s, Q)"
+        assert good.status == base.status == "ok"
+        assert good.order_quantity == pytest.approx(base.order_quantity)
+        assert good.reorder_point == pytest.approx(base.reorder_point)
+
+
+def test_qa_passes_on_report_with_skipped_zero_cost_sku():
+    """Catches a wrong policy_kind choice (e.g. reusing "(s, Q)"/"(R, S)") that would
+    reintroduce the bug in QA-failure form instead of silent-explosion form."""
+    report = run(_zero_cost_portfolio_df())
+    assert qa.verify(report) == []
+
+
+def test_n_skipped_zero_cost_counts_correctly():
+    report = run(_zero_cost_portfolio_df())
+    assert report.n_skipped_zero_cost == 1
+    assert report.n_skipped_zero_demand == 0
+
+    clean_report = run(_clean_portfolio_df())
+    assert clean_report.n_skipped_zero_cost == 0
+
+
+def test_multiple_zero_cost_skus_are_all_skipped_independently():
+    df = _zero_cost_portfolio_df(extra_zero_cost_skus=("FREE-D", "FREE-E"))
+    report = run(df)
+
+    assert report.n_skus == 5
+    assert report.n_skipped_zero_cost == 3
+
+    by = {r.product_id: r for r in report.recommendations}
+    for pid in ("FREE-C", "FREE-D", "FREE-E"):
+        assert by[pid].policy_kind == "skipped_zero_cost"
+        assert by[pid].investment == 0.0
+        assert by[pid].status == "review"
+    for pid in ("GOOD-A", "GOOD-B"):
+        assert by[pid].policy_kind == "(s, Q)"
+        assert by[pid].order_quantity is not None and by[pid].order_quantity > 0
+        assert by[pid].status == "ok"
+
     assert qa.verify(report) == []
 
 
