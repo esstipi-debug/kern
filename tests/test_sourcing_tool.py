@@ -133,3 +133,46 @@ def test_orchestrator_runs_sourcing_and_emits_the_deck(tmp_path):
     deck = Path(res.deliverables["deck_report"])
     assert deck.exists()
     assert "Alpha" in deck.read_text(encoding="utf-8")
+
+
+# --- Trazabilidad y los peores del panel -------------------------------------
+
+
+def test_el_scorecard_conserva_las_oc_que_generaron_la_nota(tmp_path):
+    """Una nota que nadie puede rastrear hasta sus OC no se puede llevar a la
+    reunion con el proveedor: la primera pregunta es 'cuales ordenes'."""
+    csv = tmp_path / "oc.csv"
+    csv.write_text(
+        "po_number,supplier,order_date,delivery_date,promised_date,quantity,received_qty,defects,unit_price\n"
+        "PO-1,ACME,2026-01-01,2026-01-21,2026-01-15,100,100,0,10\n"
+        "PO-2,ACME,2026-02-01,2026-02-25,2026-02-15,100,90,1,10\n"
+        "PO-3,BETA,2026-01-05,2026-01-12,2026-01-15,50,50,0,12\n",
+        encoding="utf-8",
+    )
+    cards = {c.supplier: c for c in srcj.prepare(str(csv))["scorecards"]}
+    assert cards["ACME"].scored_po_ids == ("PO-1", "PO-2")
+    assert cards["BETA"].scored_po_ids == ("PO-3",)
+
+
+def test_sin_columna_de_oc_lo_dice_en_vez_de_callarlo(tmp_path):
+    csv = tmp_path / "oc.csv"
+    csv.write_text(
+        "supplier,order_date,delivery_date,promised_date,quantity,received_qty,defects,unit_price\n"
+        "ACME,2026-01-01,2026-01-21,2026-01-15,100,100,0,10\n",
+        encoding="utf-8",
+    )
+    payload = srcj.prepare(str(csv))
+    assert payload["scorecards"][0].scored_po_ids == ()
+    assert any("purchase-order identifier" in n for n in payload["notes"])
+
+
+def test_los_peores_del_panel_quedan_marcados_peor_primero():
+    ranking = ["A", "B", "C", "D", "E"]
+    assert srcj._worst_for_action(ranking) == ("E", "D", "C")
+
+
+def test_nunca_se_marca_al_panel_entero():
+    """'Los dos son los peores' no es un item de accion."""
+    assert srcj._worst_for_action(["A", "B"]) == ("B",)
+    assert srcj._worst_for_action(["A"]) == ()
+    assert srcj._worst_for_action([]) == ()

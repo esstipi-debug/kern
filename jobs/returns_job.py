@@ -29,6 +29,8 @@ from src.reverse_logistics import (
     recovered_value,
     recovery_rate,
     returns_value_at_cost,
+    supplier_claim_base,
+    units_by_reason_kind,
 )
 
 _PRODUCT_COLS = ("product_id", "sku", "SKU", "item", "Product")
@@ -49,6 +51,13 @@ class ReturnsReport:
     dispositions: tuple[LineDisposition, ...]    # ranked by recovery value desc
     reason_pareto: tuple[tuple[str, float], ...]
     top_reason: str
+    # Units split by reason KIND (product_failure / dispatch_error / unspecified): the
+    # corrective action differs, so the split travels with the deliverable.
+    units_by_reason_kind: dict[str, float]
+    # Cost value of the product-failure lots. A claim BASE, not money owed: what is
+    # actually recoverable depends on each supplier's agreed terms, which this job is
+    # never given.
+    supplier_claim_base: float
     outcome: GuidedOutcome                        # ranked, executable portfolio strategies
     recommended_strategy: str
     summary: str
@@ -136,6 +145,8 @@ def run(
     rate = recovery_rate(dispositions, lines)
     pareto = tuple(reason_pareto(lines))
     top_reason = pareto[0][0] if pareto else "n/a"
+    por_motivo = units_by_reason_kind(lines)
+    claim_base = supplier_claim_base(dispositions)
 
     recovery = _strategy_recovery(lines, rates)
     summary = (
@@ -176,6 +187,8 @@ def run(
         dispositions=ranked,
         reason_pareto=pareto,
         top_reason=top_reason,
+        units_by_reason_kind=por_motivo,
+        supplier_claim_base=claim_base,
         outcome=outcome,
         recommended_strategy=recommended,
         summary=summary,
@@ -200,6 +213,8 @@ def write_operational(report: ReturnsReport, out_dir: str | Path, client: str = 
         {
             "product_id": dp.line.product_id,
             "reason": dp.line.reason,
+            "reason_kind": dp.reason_kind,
+            "supplier_claim_base": round(dp.supplier_claim_base, 2),
             "returned_units": round(dp.line.returned_units, 2),
             "recommended_action": dp.best.action,
             "net_recovery_per_unit": round(dp.best.net_recovery_per_unit, 2),

@@ -89,25 +89,21 @@ def _resultado(puntaje, tarea_id: str):
 # --- T01 / T02: estructurales, no dependen del dataset -----------------------
 
 
-def test_t01_no_cumple_porque_el_entregable_no_lleva_banda():
-    """La fuente: 'Sin banda de incertidumbre NO cuenta'.
-
-    Si algun dia el job propaga ``error_std`` al entregable, este test se pone
-    rojo y hay que reevaluar el veredicto -- que es exactamente lo que queremos.
-    """
+def test_t01_cumple_el_entregable_ya_lleva_banda_de_incertidumbre():
+    """La fuente: 'Sin banda de incertidumbre NO cuenta'. El job propaga la sigma
+    del error de pronostico, declara cual dispersion uso y emite el P10-P90."""
     r = _resultado(puntuar(), "T01")
-    assert r.estado is Estado.NO_CUMPLE
-    assert r.detalle["campos_de_dispersion"] == []
-    assert "forecast" in r.detalle["campos"]
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+    assert set(r.detalle["campos_de_dispersion"]) == {"error_std", "p10", "p90", "sigma_source"}
 
 
-def test_t02_es_parcial_tiene_mape_pero_no_sesgo_ni_ciclo_previo():
+def test_t02_es_parcial_ya_hay_sesgo_pero_no_hay_ciclo_previo():
+    """El sesgo firmado ya viaja por SKU; lo que falta es el ciclo anterior
+    congelado, que es estado que hoy no se guarda en ningun lado."""
     r = _resultado(puntuar(), "T02")
-    assert r.estado is Estado.PARCIAL
-    assert set(r.detalle["faltantes"]) == {
-        "sesgo firmado",
-        "comparacion contra el ciclo previo",
-    }
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.detalle["faltantes"] == ["comparacion contra el ciclo previo"]
     assert r.puntos == 0.5
 
 
@@ -237,27 +233,20 @@ def test_t05_es_parcial_cuando_solo_falta_una_pieza_de_la_oc():
     assert "fecha de pedido / llegada esperada" in r.evidencia
 
 
-def test_t06_no_cumple_ajusta_la_cantidad_pero_no_explicita_el_trade_off():
-    """Veredicto real: hat_settlement mueve Q* al corte de descuento y compara el
-    costo total contra el baseline, pero no dice cuanto stock extra se compra, ni
-    la cobertura que agrega, ni si conviene. El plan de compra ni siquiera
-    compara: redondea a MOQ/caja y el exceso solo sale de diferenciar corridas."""
+def test_t06_es_parcial_el_plan_ya_cuantifica_el_exceso_pero_no_recomienda():
+    """Veredicto real despues del fix: el plan de compra rotula lo que el MOQ y el
+    multiplo de caja compraron de mas (238 u / 2.380 usd) y cuanta cobertura
+    agregan. Lo que falta es el go/no-go: nadie dice si conviene."""
     r = _resultado(puntuar(), "T06")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
-    assert r.detalle["mejor"] == "hat_settlement"
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert r.detalle["mejor"] == "integrated_plan (purchase plan)"
     por_tool = {c["tool"]: c for c in r.detalle["candidatos"]}
     plan = por_tool["integrated_plan (purchase plan)"]
-    assert plan["cuantifica_el_exceso"] is False
+    assert plan["cuantifica_el_exceso"] is True
+    assert plan["faltantes"] == ["recomendacion si/no"]
     assert "238 u de mas" in plan["prueba_exceso"]
-    assert "projected_position" in plan["prueba_exceso"]  # coincide, pero no acredita
-    hats = por_tool["hat_settlement"]
-    assert hats["cuantifica_el_exceso"] is True
-    assert set(hats["faltantes"]) == {
-        "stock extra en unidades",
-        "meses de cobertura que agrega",
-        "recomendacion si/no",
-    }
+    assert "constraint_extra_units" in plan["prueba_exceso"]
 
 
 def _candidato_ajuste(**cambios) -> _CandidatoAjuste:
@@ -395,16 +384,20 @@ def _candidato_devoluciones(**cambios) -> _CandidatoDevoluciones:
     return _CandidatoDevoluciones(**{**base, **cambios})
 
 
-def test_t20_no_cumple_el_motivo_no_cambia_la_disposicion():
-    """Veredicto real: dos lotes identicos, uno por falla de producto y otro por
-    error de despacho, terminan los dos en 'restock' al mismo recupero. La unidad
-    fallada vuelve a stock a precio pleno."""
+def test_t20_es_parcial_distingue_el_motivo_pero_no_hay_tasa_sobre_ventas():
+    """Veredicto real despues del fix: la falla de producto ya no vuelve a stock
+    (va a refurbish) y arrastra su base reclamable al proveedor. Lo que sigue sin
+    poder calcularse es la TASA de devolucion: el job recibe solo devoluciones,
+    sin las ventas del periodo que serian el denominador."""
     r = _resultado(puntuar(), "T20")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
-    assert r.detalle["distingue_motivos"] is False
-    assert set(r.detalle["disposicion_por_motivo"].values()) == {"restock"}
-    assert "monto reclamable al proveedor" in r.detalle["faltantes"]
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert r.detalle["distingue_motivos"] is True
+    assert r.detalle["disposicion_por_motivo"] == {
+        "falla de producto": "refurbish",
+        "error de despacho": "restock",
+    }
+    assert r.detalle["faltantes"] == ["tasa de devolucion (%) por motivo"]
 
 
 def test_t20_cumple_con_tasa_por_motivo_destino_y_reclamo():
@@ -496,19 +489,18 @@ def _candidato_markdown(**cambios) -> _CandidatoMarkdown:
     return _CandidatoMarkdown(**{**base, **cambios})
 
 
-def test_t12_no_cumple_declara_el_supuesto_pero_no_trae_descuento_ni_margen():
-    """Veredicto real: el metodo (elasticity / salvage_heuristic) viene declarado
-    por linea, pero no hay % de descuento, ni margen bruto, ni cobertura liberada;
-    y sin historial de precios el SKU muerto sale sin precio propuesto."""
+def test_t12_es_parcial_ya_trae_descuento_margen_y_cobertura_liberada():
+    """Veredicto real despues del fix: la linea sale con % de descuento contra el
+    precio de referencia, margen bruto en dinero y los dias de cobertura que
+    libera. Lo unico que falta es el precio del SKU muerto, que va a remate: una
+    recuperacion de salvage no tiene precio unitario que proponer."""
     r = _resultado(puntuar(), "T12")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
     assert r.detalle["declara_el_supuesto"] is True
     assert r.detalle["metodos_declarados"]["SKU-EXC"] == "elasticity"
     assert r.detalle["precios_propuestos"]["SKU-MUERTO"] is None
-    assert "margen bruto resultante en dinero" in r.detalle["faltantes"]
-    # "recovered_value" contiene "cover" pero es recaudacion, no cobertura.
-    assert "cobertura que se libera" in r.detalle["faltantes"]
+    assert r.detalle["faltantes"] == ["precio propuesto por SKU"]
 
 
 def test_t12_cumple_con_precio_descuento_unidades_margen_y_cobertura():
@@ -608,19 +600,17 @@ def _candidato_scorecard(**cambios) -> _CandidatoScorecard:
     return _CandidatoScorecard(**{**base, **cambios})
 
 
-def test_t09_no_cumple_las_notas_no_son_trazables_a_las_oc():
-    """Veredicto real: el panel calcula OTIF, fill rate y rechazo y ordena el
-    ranking, pero las OC entran con id y ninguno sobrevive al reporte."""
+def test_t09_es_parcial_ya_es_trazable_y_marca_a_los_peores():
+    """Veredicto real despues del fix: las OC que generaron cada nota viajan con el
+    scorecard y el fondo del ranking queda marcado para la revision. Lo que falta
+    necesita un dato nuevo: el precio facturado contra el precio de la OC."""
     r = _resultado(puntuar(), "T09")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
-    assert r.detalle["trazable_a_las_oc"] is False
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert r.detalle["trazable_a_las_oc"] is True
     assert r.detalle["ranking"] == ["BETA", "ACME"]
     assert r.detalle["metricas"]["ACME"]["otif"] == 0.0
-    assert set(r.detalle["faltantes"]) == {
-        "desvio de precio % (OC vs facturado)",
-        "los peores marcados para accion",
-    }
+    assert r.detalle["faltantes"] == ["desvio de precio % (OC vs facturado)"]
 
 
 def test_t09_cumple_con_las_cuatro_metricas_ranking_y_trazabilidad():
@@ -665,18 +655,18 @@ def _candidato_lt(**cambios) -> _CandidatoLeadTime:
     return _CandidatoLeadTime(**{**base, **cambios})
 
 
-def test_t08_no_cumple_mide_el_lt_pero_lo_pisa_el_declarado_y_no_trae_desvio():
-    """Veredicto real: con solo fechas Kern mide 22 d para ACME; agregando una
-    columna 'lead_time_days=7' del proveedor devuelve 7 y se pierde hasta la nota
-    que decia como lo habia medido. Ademas no hay desvio/P90, ni comparacion
-    contra el LT cargado, ni lista de SKU a recalcular."""
+def test_t08_es_parcial_el_lt_medido_ya_gana_pero_falta_la_lista_de_recalculo():
+    """Veredicto real despues del fix: la columna de LT declarado ya no pisa la
+    medicion (ACME sigue en 22 d con y sin ella) y el scorecard trae desvio, P90 y
+    la brecha contra lo declarado. Lo que falta necesita un input que este job no
+    recibe: el mapa SKU -> proveedor para decir que SS/ROP recalcular."""
     r = _resultado(puntuar(), "T08")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
     assert r.detalle["lt_medido_de_las_fechas"]["ACME"] == 22.0
-    assert r.detalle["lt_con_columna_declarada"]["ACME"] == 7.0
-    assert r.detalle["prevalece_lo_medido"] is False
-    assert "desvio o P90 del LT" in r.detalle["faltantes"]
+    assert r.detalle["lt_con_columna_declarada"]["ACME"] == 22.0
+    assert r.detalle["prevalece_lo_medido"] is True
+    assert r.detalle["faltantes"] == ["lista de SKU cuyo SS/ROP debe recalcularse"]
 
 
 def test_t08_cumple_con_desvio_gap_y_lista_de_recalculo():
