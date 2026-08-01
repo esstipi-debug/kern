@@ -1,0 +1,647 @@
+<style>
+  :root {
+    /* neutrals — blue-biased (oklch 260, la superficie de marca) */
+    --paper: #e9edf1;
+    --surface: #f5f7f9;
+    --elevated: #ffffff;
+    --ink: #10141b;
+    --text: #1b212b;
+    --muted: #5a6472;
+    --faint: #8a94a2;
+    --line: #d5dbe3;
+    --line-soft: #e3e8ee;
+    /* signal */
+    --teal: #0c9d88;          /* kernel — deepened for light ground */
+    --teal-glow: #5eead4;     /* brand badge glow */
+    --accent: #2f66d6;        /* blue accent */
+    --ok: #1a9b49;
+    --warn: #b1791b;
+    --riesgo: #d63a40;
+    --shadow: 0 1px 2px rgba(16,20,27,.06), 0 8px 28px -12px rgba(16,20,27,.18);
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    --maxw: 1040px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0a0d12;
+      --surface: #11151c;
+      --elevated: #161b23;
+      --ink: #e9edf2;
+      --text: #dfe5ec;
+      --muted: #8894a2;
+      --faint: #5f6a78;
+      --line: #232b36;
+      --line-soft: #1b222c;
+      --teal: #37d0b6;
+      --teal-glow: #5eead4;
+      --accent: #6ea0ff;
+      --ok: #3fb950;
+      --warn: #e0a53a;
+      --riesgo: #ef5a5f;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 34px -14px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #e9edf1; --surface: #f5f7f9; --elevated: #ffffff;
+    --ink: #10141b; --text: #1b212b; --muted: #5a6472; --faint: #8a94a2;
+    --line: #d5dbe3; --line-soft: #e3e8ee;
+    --teal: #0c9d88; --teal-glow: #5eead4; --accent: #2f66d6;
+    --ok: #1a9b49; --warn: #b1791b; --riesgo: #d63a40;
+    --shadow: 0 1px 2px rgba(16,20,27,.06), 0 8px 28px -12px rgba(16,20,27,.18);
+  }
+  :root[data-theme="dark"] {
+    --paper: #0a0d12; --surface: #11151c; --elevated: #161b23;
+    --ink: #e9edf2; --text: #dfe5ec; --muted: #8894a2; --faint: #5f6a78;
+    --line: #232b36; --line-soft: #1b222c;
+    --teal: #37d0b6; --teal-glow: #5eead4; --accent: #6ea0ff;
+    --ok: #3fb950; --warn: #e0a53a; --riesgo: #ef5a5f;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 34px -14px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .page {
+    background:
+      radial-gradient(120% 60% at 50% -10%, color-mix(in oklab, var(--teal) 8%, var(--paper)) 0%, var(--paper) 55%);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    padding: clamp(20px, 4vw, 56px) clamp(16px, 4vw, 40px) 80px;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; }
+
+  /* ---------- type ---------- */
+  .mono { font-family: var(--font-mono); }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--teal); font-weight: 600;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  h1 {
+    font-size: clamp(30px, 5.4vw, 58px);
+    line-height: 1.02; letter-spacing: -.02em; font-weight: 800;
+    color: var(--ink); margin: 14px 0 6px; text-wrap: balance;
+  }
+  h1 .amp { color: var(--muted); font-weight: 500; }
+  .logline {
+    font-size: clamp(16px, 2.1vw, 20px); color: var(--muted);
+    max-width: 60ch; margin: 0; text-wrap: pretty;
+  }
+  .sectlabel {
+    font-family: var(--font-mono); font-size: 12px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--faint);
+  }
+
+  /* ---------- hero meta ---------- */
+  .hero { position: relative; padding-bottom: 30px; border-bottom: 1px solid var(--line-soft); }
+  .metastrip {
+    margin-top: 26px; display: grid; gap: 1px;
+    grid-template-columns: repeat(4, 1fr);
+    background: var(--line-soft); border: 1px solid var(--line-soft);
+    border-radius: 12px; overflow: hidden;
+  }
+  .metastrip .cell { background: var(--elevated); padding: 14px 16px; }
+  .metastrip .k { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+  .metastrip .v { font-size: 14px; color: var(--text); margin-top: 4px; font-weight: 600; }
+  @media (max-width: 680px) { .metastrip { grid-template-columns: repeat(2, 1fr); } }
+
+  /* ---------- timeline ---------- */
+  .timeline { margin-top: 26px; }
+  .tl-track {
+    position: relative; height: 46px; border-radius: 8px; overflow: hidden;
+    background:
+      linear-gradient(90deg,
+        color-mix(in oklab, var(--riesgo) 26%, var(--elevated)) 0%,
+        color-mix(in oklab, var(--warn) 20%, var(--elevated)) 22%,
+        color-mix(in oklab, var(--elevated) 100%, transparent) 24%,
+        color-mix(in oklab, var(--teal) 14%, var(--elevated)) 38%,
+        color-mix(in oklab, var(--ok) 18%, var(--elevated)) 100%);
+    border: 1px solid var(--line);
+    display: flex; align-items: center;
+  }
+  .tl-break { position: absolute; top: 0; bottom: 0; left: 24%; width: 2px; background: var(--ink); opacity: .5; }
+  .tl-break::after {
+    content: "acto II · 24s"; position: absolute; top: -18px; left: 6px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--muted); white-space: nowrap;
+  }
+  .tl-label { position: absolute; top: -18px; font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+  .tl-ticks { position: absolute; inset: 0; display: flex; justify-content: space-between; padding: 0 10px; align-items: center; }
+  .tl-ticks span { font-family: var(--font-mono); font-size: 11px; color: var(--text); opacity: .75; }
+  .tl-cap { display: flex; justify-content: space-between; margin-top: 20px; }
+  .tl-cap b { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  .tl-cap .a1 { color: var(--riesgo); }
+  .tl-cap .a2 { color: var(--teal); }
+
+  /* ---------- act headers ---------- */
+  .act { margin-top: 56px; }
+  .act-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 22px; }
+  .act-num {
+    font-family: var(--font-mono); font-weight: 700; font-size: 13px;
+    padding: 4px 10px; border-radius: 999px; letter-spacing: .1em;
+  }
+  .act-1 .act-num { color: var(--riesgo); background: color-mix(in oklab, var(--riesgo) 14%, transparent); }
+  .act-2 .act-num { color: var(--teal); background: color-mix(in oklab, var(--teal) 16%, transparent); }
+  .act-head h2 { margin: 0; font-size: clamp(20px, 3vw, 27px); letter-spacing: -.01em; color: var(--ink); font-weight: 750; }
+  .act-head .sub { color: var(--muted); font-size: 14px; margin-left: auto; align-self: center; text-align: right; }
+
+  /* ---------- shots ---------- */
+  .shots { display: flex; flex-direction: column; gap: 18px; }
+  .shot {
+    display: grid; grid-template-columns: 340px 1fr; gap: 22px;
+    background: var(--elevated); border: 1px solid var(--line);
+    border-radius: 16px; padding: 16px; box-shadow: var(--shadow);
+    position: relative;
+  }
+  .act-1 .shot { border-left: 3px solid color-mix(in oklab, var(--riesgo) 55%, var(--line)); }
+  .act-2 .shot { border-left: 3px solid color-mix(in oklab, var(--teal) 55%, var(--line)); }
+  @media (max-width: 760px) { .shot { grid-template-columns: 1fr; gap: 14px; } }
+
+  .shot-body { min-width: 0; padding: 2px 4px 4px 0; }
+  .shot-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .tc {
+    font-family: var(--font-mono); font-weight: 700; font-size: 13px;
+    color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+    padding: 3px 9px; border-radius: 7px; font-variant-numeric: tabular-nums;
+  }
+  .shotno { font-family: var(--font-mono); font-size: 11px; color: var(--faint); letter-spacing: .1em; }
+  .onscreen { font-size: 14px; color: var(--text); margin: 0 0 12px; }
+  .onscreen .lead { color: var(--muted); }
+
+  .line { display: grid; grid-template-columns: 78px 1fr; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line-soft); align-items: start; }
+  .line:first-of-type { border-top: 0; }
+  .tag {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    padding-top: 3px; font-weight: 600;
+  }
+  .tag.vo { color: var(--accent); }
+  .tag.tx { color: var(--teal); }
+  .tag.dir { color: var(--faint); }
+  .line .txt { font-size: 14.5px; }
+  .line.voice .txt { color: var(--text); font-weight: 500; }
+  .line.kinetic .txt { color: var(--ink); font-weight: 650; font-family: var(--font-mono); font-size: 13.5px; }
+  .line.dirn .txt { color: var(--muted); font-size: 13px; }
+
+  /* ---------- frame (schematic storyboard cell) ---------- */
+  .frame {
+    aspect-ratio: 16 / 9; width: 100%; border-radius: 11px; overflow: hidden;
+    position: relative; border: 1px solid var(--line);
+    background: var(--surface);
+    align-self: start;
+  }
+  .frame .scene { position: absolute; inset: 0; display: flex; }
+  .frame .fnum {
+    position: absolute; left: 8px; top: 7px; z-index: 5;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em;
+    color: var(--faint); background: color-mix(in oklab, var(--elevated) 70%, transparent);
+    padding: 1px 6px; border-radius: 5px; backdrop-filter: blur(2px);
+  }
+  .frame.dark { background: #0a0c11; color: #cdd4dd; }
+  .frame.dark .fnum { color: #7c8794; background: rgba(255,255,255,.06); }
+  .frame.warm { background: linear-gradient(160deg, #f7efe2, #efe6d6); }
+  :root[data-theme="dark"] .frame.warm,
+  .frame.warm { }
+  @media (prefers-color-scheme: dark) { .frame.warm { background: linear-gradient(160deg, #241f18, #1a160f); color: #e8ddc9; } }
+  :root[data-theme="dark"] .frame.warm { background: linear-gradient(160deg, #241f18, #1a160f); color: #e8ddc9; }
+  :root[data-theme="light"] .frame.warm { background: linear-gradient(160deg, #f7efe2, #efe6d6); color: #4a4130; }
+
+  .m { font-family: var(--font-mono); }
+  .redcell { color: var(--riesgo); }
+  .okcell { color: var(--ok); }
+
+  /* frame 1 — phone 3:07 */
+  .f-phone { align-items: center; justify-content: center; }
+  .phone {
+    width: 34%; aspect-ratio: 9/17; border-radius: 12px; background: #05070a;
+    border: 1px solid #1d2530; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    box-shadow: 0 0 34px rgba(94,234,212,.10);
+  }
+  .phone .t { font-family: var(--font-mono); font-size: 26px; font-weight: 700; color: #e6edf5; letter-spacing: .02em; }
+  .phone .am { font-family: var(--font-mono); font-size: 11px; color: #6b7684; margin-top: 2px; }
+  .reflect { position: absolute; right: 9%; bottom: 12%; display: grid; grid-template-columns: repeat(4, 12px); gap: 3px; opacity: .5; }
+  .reflect i { height: 9px; border-radius: 2px; background: #263041; }
+  .reflect i.b { background: color-mix(in oklab, var(--riesgo) 70%, #000); }
+
+  /* frame 2 — spreadsheet chaos */
+  .f-sheet { padding: 16px; align-items: center; }
+  .sheet { width: 100%; display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; }
+  .sheet b {
+    height: 15px; border-radius: 2px; background: color-mix(in oklab, var(--faint) 22%, var(--surface));
+  }
+  .frame.dark .sheet b { background: #171d26; }
+  .sheet b.r { background: color-mix(in oklab, var(--riesgo) 55%, #000); }
+  .sheet b.o { background: color-mix(in oklab, var(--ok) 42%, #000); }
+  .postit {
+    position: absolute; right: 10%; top: 16%; transform: rotate(6deg);
+    background: color-mix(in oklab, var(--warn) 55%, #fff2cf); color: #3a2c08;
+    font-family: var(--font-mono); font-size: 9.5px; padding: 6px 8px; border-radius: 3px;
+    box-shadow: 0 4px 10px rgba(0,0,0,.25); max-width: 96px; line-height: 1.25;
+  }
+
+  /* frame 3 — heartbeat */
+  .f-beat { align-items: center; justify-content: center; flex-direction: column; gap: 12px; text-align: center; padding: 18px; }
+  .beat { width: 46px; height: 46px; border-radius: 50%; position: relative; background: var(--teal-glow); box-shadow: 0 0 0 0 rgba(94,234,212,.5); }
+  @media (prefers-reduced-motion: no-preference) {
+    .beat { animation: pulse 2.6s ease-out infinite; }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(94,234,212,.45); }
+      70% { box-shadow: 0 0 0 26px rgba(94,234,212,0); }
+      100% { box-shadow: 0 0 0 0 rgba(94,234,212,0); }
+    }
+  }
+  .f-beat .q { font-family: var(--font-mono); font-size: 11px; color: #aeb8c4; max-width: 80%; line-height: 1.4; }
+
+  /* frame 4 — kern panel */
+  .f-panel { padding: 13px; flex-direction: column; gap: 7px; justify-content: center; }
+  .prow { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 10.5px; }
+  .prow .step { color: var(--teal); }
+  .prow .arm { color: #4b5563; }
+  .prow.dim { opacity: .5; }
+  .prow .sku { margin-left: auto; color: var(--warn); font-variant-numeric: tabular-nums; }
+  .cited { margin-top: 4px; font-family: var(--font-mono); font-size: 9.5px; color: var(--ok); }
+  .sleeper { position: absolute; right: 10px; bottom: 9px; font-family: var(--font-mono); font-size: 9px; color: #5f6a78; }
+
+  /* frame 5 — QA gate */
+  .f-gate { align-items: center; justify-content: center; gap: 0; }
+  .gate { position: relative; width: 62%; height: 58%; display: flex; align-items: center; justify-content: center; }
+  .gate .door { position: absolute; top: 0; bottom: 0; width: 34%; background: color-mix(in oklab, var(--warn) 40%, var(--elevated)); border: 1px solid var(--warn); }
+  .gate .door.l { left: 0; border-radius: 4px 0 0 4px; }
+  .gate .door.r { right: 0; border-radius: 0 4px 4px 0; }
+  .gate .doc { font-family: var(--font-mono); font-size: 22px; color: var(--riesgo); font-weight: 800; }
+  .gate-cap { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; font-family: var(--font-mono); font-size: 9.5px; color: var(--muted); }
+  .gate .pass { position: absolute; right: 12%; top: 14%; color: var(--ok); font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
+
+  /* frame 6 — morning deliverable + handoff */
+  .f-morning { padding: 14px; flex-direction: column; gap: 9px; justify-content: center; }
+  .chips { display: flex; gap: 6px; }
+  .chip {
+    font-family: var(--font-mono); font-size: 9.5px; padding: 4px 8px; border-radius: 6px;
+    background: color-mix(in oklab, var(--ok) 16%, transparent); color: var(--ok);
+    border: 1px solid color-mix(in oklab, var(--ok) 40%, transparent);
+  }
+  .ordercard {
+    border: 1px dashed color-mix(in oklab, var(--teal) 60%, var(--line)); border-radius: 8px; padding: 9px 11px;
+    background: color-mix(in oklab, var(--teal) 7%, transparent);
+  }
+  .ordercard .h { font-family: var(--font-mono); font-size: 10px; color: var(--teal); }
+  .ordercard .sign { margin-top: 8px; height: 1px; background: var(--muted); position: relative; }
+  .ordercard .sign::after { content: "firmá"; position: absolute; right: 0; top: -13px; font-family: var(--font-mono); font-size: 9px; color: var(--muted); }
+  .handoff-badge { position: absolute; left: 12px; bottom: 9px; font-family: var(--font-mono); font-size: 9px; color: var(--teal); letter-spacing: .1em; }
+
+  /* frame 7 — approve + writeback */
+  .f-write { padding: 14px; flex-direction: column; gap: 10px; justify-content: center; }
+  .btn-approve {
+    align-self: flex-start; font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+    color: #04140d; background: var(--teal-glow); padding: 6px 14px; border-radius: 7px;
+  }
+  .flow { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 9.5px; color: var(--muted); flex-wrap: wrap; }
+  .flow b { color: var(--text); font-weight: 600; }
+  .flow .arw { color: var(--faint); }
+  .wbadge { font-family: var(--font-mono); font-size: 10px; color: var(--ok); }
+  .wbadge .odoo { color: var(--accent); }
+
+  /* frame 8 — calm operation cycle */
+  .f-cycle { align-items: center; justify-content: center; }
+  .ring { width: 58%; aspect-ratio: 1; border-radius: 50%; border: 1.5px solid color-mix(in oklab, var(--teal) 45%, var(--line)); position: relative; }
+  .ring .node { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--teal); }
+  .ring .node:nth-child(1) { top: -5px; left: 50%; transform: translateX(-50%); }
+  .ring .node:nth-child(2) { right: -5px; top: 50%; transform: translateY(-50%); background: var(--ok); }
+  .ring .node:nth-child(3) { bottom: -5px; left: 50%; transform: translateX(-50%); }
+  .ring .node:nth-child(4) { left: -5px; top: 50%; transform: translateY(-50%); }
+  .ring .core { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 9.5px; color: var(--muted); }
+
+  /* frame 9 — end card */
+  .f-end { align-items: center; justify-content: center; flex-direction: column; gap: 10px; }
+  .markmark { width: 40px; height: 40px; }
+  .f-end .brand { font-family: var(--font-sans); font-weight: 800; font-size: 22px; letter-spacing: -.01em; color: var(--ink); }
+  .f-end .tag { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); }
+
+  /* ---------- kinetic band ---------- */
+  .band { margin-top: 56px; padding: 30px; border-radius: 18px; background: var(--elevated); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .band h3 { margin: 0 0 20px; font-size: 13px; font-family: var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+  .quotes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 680px) { .quotes { grid-template-columns: 1fr; } }
+  .quote { padding: 16px 18px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line-soft); font-family: var(--font-mono); font-size: 15px; font-weight: 650; color: var(--ink); line-height: 1.4; position: relative; }
+  .quote::before { content: attr(data-t); position: absolute; top: 10px; right: 12px; font-size: 10px; color: var(--faint); font-weight: 500; }
+
+  /* ---------- music arc ---------- */
+  .music { margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 680px) { .music { grid-template-columns: 1fr; } }
+  .mcard { padding: 18px 20px; border-radius: 14px; border: 1px solid var(--line); background: var(--elevated); }
+  .mcard .lab { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+  .mcard.a1 .lab { color: var(--riesgo); }
+  .mcard.a2 .lab { color: var(--teal); }
+  .mcard p { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+  .wave { display: flex; align-items: flex-end; gap: 3px; height: 30px; margin-top: 12px; }
+  .wave i { width: 4px; border-radius: 2px; }
+  .mcard.a1 .wave i { background: color-mix(in oklab, var(--riesgo) 60%, var(--line)); }
+  .mcard.a2 .wave i { background: color-mix(in oklab, var(--teal) 60%, var(--line)); }
+
+  /* ---------- cta + claim ---------- */
+  .foot { margin-top: 56px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; }
+  @media (max-width: 760px) { .foot { grid-template-columns: 1fr; } }
+  .cta {
+    padding: 30px; border-radius: 18px; color: #06231d;
+    background: linear-gradient(150deg, var(--teal-glow), #46c9b3);
+    position: relative; overflow: hidden;
+  }
+  .cta .k { font-family: var(--font-mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; opacity: .7; }
+  .cta p { font-size: clamp(18px, 2.6vw, 24px); font-weight: 750; margin: 10px 0 16px; line-height: 1.2; text-wrap: balance; }
+  .cta .pill { display: inline-block; font-family: var(--font-mono); font-size: 12px; font-weight: 700; background: rgba(4,20,13,.16); padding: 7px 14px; border-radius: 8px; }
+  .claim { padding: 22px 24px; border-radius: 18px; background: var(--elevated); border: 1px solid var(--line); }
+  .claim h4 { margin: 0 0 12px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ok); display: flex; align-items: center; gap: 7px; }
+  .claim ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 9px; }
+  .claim li { font-size: 12.5px; color: var(--muted); padding-left: 18px; position: relative; line-height: 1.4; }
+  .claim li::before { content: "✓"; position: absolute; left: 0; top: 0; color: var(--ok); font-weight: 700; }
+  .claim li.no::before { content: "✕"; color: var(--riesgo); }
+
+  .pagefoot { margin-top: 46px; padding-top: 20px; border-top: 1px solid var(--line-soft); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .pagefoot span { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+</style>
+
+<div class="page">
+  <div class="wrap">
+
+    <!-- HERO -->
+    <header class="hero">
+      <span class="eyebrow">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.4" fill="currentColor"/></svg>
+        Storyboard · Film de marca · Familia A
+      </span>
+      <h1>El planificador de las 3&nbsp;am <span class="amp">—</span> del caos del Excel a la calma del ciclo gobernado</h1>
+      <p class="logline">El mismo reloj, dos operaciones. Primero un humano peleando a las 3&nbsp;am con una planilla que no cierra. Después: el método corre mientras duerme, y a la mañana firma una decisión ya preparada, con su evidencia.</p>
+
+      <div class="metastrip">
+        <div class="cell"><div class="k">Duración</div><div class="v mono">90–100 s</div></div>
+        <div class="cell"><div class="k">Formato</div><div class="v">Cine de marca · 16:9</div></div>
+        <div class="cell"><div class="k">Objetivo</div><div class="v">Vender + explicar scope</div></div>
+        <div class="cell"><div class="k">Audiencia</div><div class="v">Director de Ops / SC</div></div>
+      </div>
+
+      <div class="timeline">
+        <div class="tl-track" role="img" aria-label="Línea de tiempo: acto I tenso 0-24s, quiebre en 24s, acto II calmo 24-100s">
+          <div class="tl-break"></div>
+          <div class="tl-ticks"><span>0s</span><span>25s</span><span>50s</span><span>75s</span><span>100s</span></div>
+        </div>
+        <div class="tl-cap">
+          <b class="a1">◄ Acto I — el caos (tenso, granulado, frío)</b>
+          <b class="a2">Acto II — el ciclo gobernado (calmo, teal) ►</b>
+        </div>
+      </div>
+    </header>
+
+    <!-- ACT I -->
+    <section class="act act-1">
+      <div class="act-head">
+        <span class="act-num">ACTO I</span>
+        <h2>3:07 am — la planilla otra vez no cierra</h2>
+        <span class="sub">El status quo: comprar “a ojo”, sin método ni memoria.</span>
+      </div>
+
+      <div class="shots">
+
+        <!-- shot 1 -->
+        <article class="shot">
+          <div class="frame dark">
+            <span class="fnum">SHOT 01</span>
+            <div class="scene f-phone">
+              <div class="phone"><div class="t">3:07</div><div class="am">AM</div></div>
+              <div class="reflect"><i class="b"></i><i></i><i class="b"></i><i></i><i></i><i class="b"></i><i></i><i></i></div>
+            </div>
+          </div>
+          <div class="shot-body">
+            <div class="shot-top"><span class="tc">0–6 s</span><span class="shotno">GANCHO / 0–3s</span></div>
+            <p class="onscreen"><span class="lead">En pantalla:</span> celular <span class="mono">3:07 AM</span> en la oscuridad; reflejado en los anteojos, una planilla llena de <span class="mono redcell">#REF!</span> y celdas rojas.</p>
+            <div class="line voice"><span class="tag vo">Voz off</span><span class="txt">“3:07 de la mañana. La planilla otra vez no cierra.”</span></div>
+            <div class="line dirn"><span class="tag dir">Dirección</span><span class="txt">Luz de monitor sobre un rostro agotado. Grano tenue, frío.</span></div>
+          </div>
+        </article>
+
+        <!-- shot 2 -->
+        <article class="shot">
+          <div class="frame dark">
+            <span class="fnum">SHOT 02</span>
+            <div class="scene f-sheet">
+              <div class="sheet">
+                <b></b><b class="r"></b><b></b><b class="o"></b><b></b><b class="r"></b>
+                <b class="r"></b><b></b><b></b><b></b><b class="r"></b><b></b>
+                <b></b><b></b><b class="r"></b><b></b><b></b><b class="o"></b>
+                <b class="r"></b><b></b><b></b><b class="r"></b><b></b><b></b>
+              </div>
+              <div class="postit">¿pedimos 200 o 500?</div>
+            </div>
+          </div>
+          <div class="shot-body">
+            <div class="shot-top"><span class="tc">6–18 s</span><span class="shotno">DESARROLLO</span></div>
+            <p class="onscreen"><span class="lead">En pantalla:</span> manos rehaciendo fórmulas; post-its “¿200 o 500?”; una columna <span class="mono">σ</span> mal calculada.</p>
+            <div class="line voice"><span class="tag vo">Voz off</span><span class="txt">“Sin método real. Sin memoria de cuánto te equivocaste el mes pasado. Y si esta persona se va, se va también el criterio.”</span></div>
+            <div class="line dirn"><span class="tag dir">Dirección</span><span class="txt">Cortes secos, cámara nerviosa. Tensión creciente.</span></div>
+          </div>
+        </article>
+
+        <!-- shot 3 -->
+        <article class="shot">
+          <div class="frame dark">
+            <span class="fnum">SHOT 03</span>
+            <div class="scene f-beat">
+              <div class="beat"></div>
+              <div class="q">¿Y si el método corriera solo — pero nada se moviera sin vos?</div>
+            </div>
+          </div>
+          <div class="shot-body">
+            <div class="shot-top"><span class="tc">18–24 s</span><span class="shotno">QUIEBRE</span></div>
+            <p class="onscreen"><span class="lead">En pantalla:</span> cierra la laptop. Corte a negro. Un latido teal aparece en el centro.</p>
+            <div class="line kinetic"><span class="tag tx">En pantalla</span><span class="txt">“¿Y si el método corriera solo — pero nada se moviera sin vos?”</span></div>
+            <div class="line dirn"><span class="tag dir">Dirección</span><span class="txt">Silencio. El latido calma el pulso del montaje.</span></div>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ACT II -->
+    <section class="act act-2">
+      <div class="act-head">
+        <span class="act-num">ACTO II</span>
+        <h2>El método corre mientras dormís — y vos firmás</h2>
+        <span class="sub">El ciclo gobernado real, hoy. Con humano en el loop.</span>
+      </div>
+
+      <div class="shots">
+
+        <!-- shot 4 -->
+        <article class="shot">
+          <div class="frame">
+            <span class="fnum">SHOT 04</span>
+            <div class="scene f-panel">
+              <div class="prow"><span class="step">clasifica</span><span class="arm">→</span><span class="step">corre</span><span class="arm">→</span><span class="step">valida</span><span class="sku">SKU·reorden</span></div>
+              <div class="prow dim"><span class="step">forecast</span><span class="arm">·</span><span class="step">σ_e</span><span class="arm">·</span><span class="step">(s,Q)</span></div>
+              <div class="prow dim"><span class="step">simulación</span><span class="arm">·</span><span class="step">fill-rate</span></div>
+              <div class="cited">citado: 2 / 25 fuentes ✓</div>
+              <div class="sleeper">🌙 casa a oscuras · duerme</div>
+            </div>
+          </div>
+          <div class="shot-body">
+            <div class="shot-top"><span class="tc">24–38 s</span><span class="shotno">EL MÉTODO</span></div>
+            <p class="onscreen"><span class="lead">En pantalla:</span> mismo reloj <span class="mono">3:07 AM</span>, pero la casa está a oscuras y la persona duerme. En un panel calmo, Kern <span class="mono">clasifica → corre → valida</span> un SKU en reorden.</p>
+            <div class="line voice"><span class="tag vo">Voz off</span><span class="txt">“Mientras dormís, corre el método correcto. Simula antes de recomendar. Y se cita: dos fuentes, o no entrega.”</span></div>
+            <div class="line dirn"><span class="tag dir">Dirección</span><span class="txt">Panel data-dense, monoespaciada, cifras alineadas. Nada titila.</span></div>
+          </div>
+        </article>
+
+        <!-- shot 5 -->
+        <article class="shot">
+          <div class="frame">
+            <span class="fnum">SHOT 05</span>
+            <div class="scene f-gate">
+              <div class="gate">
+                <div class="door l"></div>
+                <div class="doc">✕</div>
+                <div class="door r"></div>
+                <div class="pass">↻ verde</div>
+              </div>
+              <div class="gate-cap">un paso que falla ⇒ no se escribe archivo</div>
+            </div>
+          </div>
+          <div class="shot-body">
+            <div class="shot-top"><span class="tc">38–50 s</span><span class="shotno">QA-GATE</span></div>
+            <p class="onscreen"><span class="lead">En pantalla:</span> la QA-gate se cierra como una compuerta sobre un paso que falla; se descarta y reintenta hasta pasar en verde.</p>
+            <div class="line kinetic"><span class="tag tx">En pantalla</span><span class="txt">“QA veta. Un paso que falla ⇒ no se escribe archivo.”</span></div>
+            <div class="line dirn"><span class="tag dir">Dirección</span><span class="txt">Compuerta con peso mecánico. Ámbar → verde ok.</span></div>
+          </div>
+        </article>
+
+        <!-- shot 6 -->
+        <article class="shot">
+          <div class="frame warm">
+            <span class="fnum">SHOT 06</span>
+            <div class="scene f-morning">
+              <div class="chips"><span class="chip">Excel</span><span class="chip">Reporte</span><span class="chip">Gráfico</span></div>
+              <div class="ordercard">
+                <div class="h">Orden de compra · preparada</div>
+                <div class="sign"></div>
+              </div>
+              <div class="handoff-badge">HANDOFF · espera firma</div>
+            </div>
+          </div>
+          <div class="shot-body">
+            <div class="shot-top"><span class="tc">50–64 s</span><span class="shotno">LA MAÑANA</span></div>
+            <p class="onscreen"><span class="lead">En pantalla:</span> amanece. La persona abre el teléfono: un entregable listo —Excel + reporte + gráfico— y <b>una orden preparada esperando su firma</b> (<span class="mono">HANDOFF</span>).</p>
+            <div class="line voice"><span class="tag vo">Voz off</span><span class="txt">“A la mañana no encontrás un caos. Encontrás una decisión preparada, con su evidencia — y vos firmás.”</span></div>
+            <div class="line dirn"><span class="tag dir">Dirección</span><span class="txt">Luz cálida de mañana. Calma. La firma es un gesto humano, deliberado.</span></div>
+          </div>
+        </article>
+
+        <!-- shot 7 -->
+        <article class="shot">
+          <div class="frame">
+            <span class="fnum">SHOT 07</span>
+            <div class="scene f-write">
+              <span class="btn-approve">Aprobar ✓</span>
+              <div class="flow"><b>dry-run</b><span class="arw">→</span><b>aprobación · TTL</b><span class="arw">→</span><b>aplica</b></div>
+              <div class="wbadge"><span class="odoo">Odoo</span> · staged · reversible &nbsp; rollback ✓ · firma ✓</div>
+            </div>
+          </div>
+          <div class="shot-body">
+            <div class="shot-top"><span class="tc">64–78 s</span><span class="shotno">WRITEBACK</span></div>
+            <p class="onscreen"><span class="lead">En pantalla:</span> toca “aprobar”; el writeback entra a Odoo <b>staged y reversible</b>; badge <span class="mono">rollback ✓ · firma ✓</span>.</p>
+            <div class="line voice"><span class="tag vo">Voz off</span><span class="txt">“Se aplica sobre tu Odoo, en staging, reversible. Nunca a ciegas.”</span></div>
+            <div class="line dirn"><span class="tag dir">Dirección</span><span class="txt">Micro-interacción precisa. Verde ok final.</span></div>
+          </div>
+        </article>
+
+        <!-- shot 8 -->
+        <article class="shot">
+          <div class="frame">
+            <span class="fnum">SHOT 08</span>
+            <div class="scene f-cycle">
+              <div class="ring">
+                <span class="node"></span><span class="node"></span><span class="node"></span><span class="node"></span>
+                <span class="core">ciclo mensual<br>gobernado</span>
+              </div>
+            </div>
+          </div>
+          <div class="shot-body">
+            <div class="shot-top"><span class="tc">78–92 s</span><span class="shotno">RESOLUCIÓN</span></div>
+            <p class="onscreen"><span class="lead">En pantalla:</span> zoom-out: la operación entera corriendo en calma, un ciclo mensual gobernado en vez de un incendio.</p>
+            <div class="line voice"><span class="tag vo">Voz off</span><span class="txt">“El humano vende y decide. Kern produce el análisis —el trabajo mecánico, no la decisión— y siempre muestra su fuente.”</span></div>
+            <div class="line dirn"><span class="tag dir">Dirección</span><span class="txt">Respiración visual. El ritmo del organismo, sano.</span></div>
+          </div>
+        </article>
+
+        <!-- shot 9 -->
+        <article class="shot">
+          <div class="frame warm">
+            <span class="fnum">SHOT 09</span>
+            <div class="scene f-end">
+              <svg class="markmark" viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="24" cy="24" r="20" stroke="var(--teal)" stroke-width="2.4"/><circle cx="24" cy="24" r="7" fill="var(--teal)"/></svg>
+              <div class="brand">Kern</div>
+              <div class="tag">el núcleo que tu cadena no tiene</div>
+            </div>
+          </div>
+          <div class="shot-body">
+            <div class="shot-top"><span class="tc">92–100 s</span><span class="shotno">CIERRE</span></div>
+            <p class="onscreen"><span class="lead">En pantalla:</span> superficie clara, núcleo teal.</p>
+            <div class="line kinetic"><span class="tag tx">En pantalla</span><span class="txt">Kern · el núcleo que tu cadena no tiene.</span></div>
+            <div class="line dirn"><span class="tag dir">Dirección</span><span class="txt">Un beat. Corte final.</span></div>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- KINETIC -->
+    <section class="band">
+      <h3>Texto en pantalla clave · kinetic</h3>
+      <div class="quotes">
+        <div class="quote" data-t="0–6s">3:07 AM. La planilla otra vez no cierra.</div>
+        <div class="quote" data-t="24–38s">El método corriendo mientras dormís — sin que nadie decida saltárselo.</div>
+        <div class="quote" data-t="38–50s">QA veta. Un paso que falla ⇒ no se escribe archivo.</div>
+        <div class="quote" data-t="50–64s">Una decisión preparada, con su evidencia. Vos firmás.</div>
+      </div>
+
+      <div class="music">
+        <div class="mcard a1">
+          <div class="lab">Acto I · tensión</div>
+          <p>Tenso y granulado: tic-tac, teclado, respiración. Cámara nerviosa.</p>
+          <div class="wave"><i style="height:40%"></i><i style="height:70%"></i><i style="height:30%"></i><i style="height:85%"></i><i style="height:50%"></i><i style="height:95%"></i><i style="height:35%"></i><i style="height:75%"></i><i style="height:55%"></i><i style="height:90%"></i></div>
+        </div>
+        <div class="mcard a2">
+          <div class="lab">Acto II · calma</div>
+          <p>Quiebre a un pad cálido y minimal. Nunca triunfalista — la resolución es calma, no euforia.</p>
+          <div class="wave"><i style="height:30%"></i><i style="height:34%"></i><i style="height:40%"></i><i style="height:38%"></i><i style="height:46%"></i><i style="height:44%"></i><i style="height:50%"></i><i style="height:48%"></i><i style="height:52%"></i><i style="height:50%"></i></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA + CLAIM -->
+    <section class="foot">
+      <div class="cta">
+        <div class="k">Llamado a la acción</div>
+        <p>Cambiá la planilla de las 3 am por un ciclo mensual gobernado, conectado a tu Odoo.</p>
+        <span class="pill">→ Growth · Operación Completa</span>
+      </div>
+      <div class="claim">
+        <h4>✓ Claim-check · todo auditable</h4>
+        <ul>
+          <li>“Método corriendo a las 3am sin saltárselo” → línea textual del posicionamiento (§2.1 ④).</li>
+          <li>“Simula · cita ≥2 de 25 fuentes o no entrega” → loop §5.1 + grounding con cita forzada.</li>
+          <li>“HANDOFF · firma humana” → 3 de 4 desenlaces requieren humano (§5.2).</li>
+          <li>“Writeback Odoo staged · reversible · rollback” → src/writeback.py + src/connectors/odoo.py.</li>
+          <li class="no">Sin “autonomía total”, sin Control Tower autónomo, sin “ahorra X horas”.</li>
+          <li class="no">Sin casos de cliente reales: Kern produce el análisis, no la decisión.</li>
+        </ul>
+      </div>
+    </section>
+
+    <footer class="pagefoot">
+      <span>Kern · Video Playbook — Familia A / Guion 3</span>
+      <span>Fuente: KERN_VIDEO_PLAYBOOK.md · v1.0</span>
+    </footer>
+
+  </div>
+</div>

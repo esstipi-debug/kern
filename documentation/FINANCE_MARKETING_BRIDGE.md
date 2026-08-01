@@ -91,8 +91,10 @@ semanas de caja que hoy solo vive en retainers fraccionales de finanzas puros.
 - `src/excess_obsolete.py`: `classify_excess_obsolete()` ya clasifica sano/excedente/muerto y
   dimensiona el cash en riesgo (`excess_value`). `jobs/excess_obsolete_job.py` devuelve la
   clasificación + una acción recomendada en **texto plano**, distinta por clase (`DEAD` →
-  "liquidate / return to vendor / write off"; `EXCESS` → "stop buying; redistribute or promote
-  to draw down") — nunca calcula un precio.
+  "liquidar / devolver al proveedor / dar de baja"; `EXCESS` → "dejar de comprar; redistribuir
+  o promocionar para bajar stock") — nunca calcula un precio. El texto es bilingüe desde
+  2026-08-01 (`action_for(classification, lang)`, por defecto `es`; `lang="en"` devuelve el
+  texto original en inglés).
 - `src/pricing.py`: `markdown_price(remaining_units, periods_left, fit, current_price)` **ya
   existe** y resuelve el precio que agota el stock remanente en N periodos dada una curva de
   elasticidad constante (`q(p) = scale · p^elasticidad`). Pero hoy **no la llama nadie**: ni
