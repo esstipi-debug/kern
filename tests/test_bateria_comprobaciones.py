@@ -6,6 +6,7 @@ import src.bateria.comprobaciones  # noqa: F401  -- registra las comprobaciones
 from src.bateria.comprobaciones import (
     _CandidatoAjuste,
     _CandidatoCaja,
+    _CandidatoDevoluciones,
     _CandidatoExposicion,
     _CandidatoLeadTime,
     _CandidatoMarkdown,
@@ -14,6 +15,7 @@ from src.bateria.comprobaciones import (
     _CandidatoServicio,
     _veredicto_ajuste,
     _veredicto_caja,
+    _veredicto_devoluciones,
     _veredicto_exposicion,
     _veredicto_lead_time,
     _veredicto_markdown,
@@ -315,6 +317,60 @@ def test_t06_gana_el_que_cuantifica_aunque_otro_tenga_mas_campos():
     r = _veredicto_ajuste((sin_cuantificar, cuantifica))
     assert r.detalle["mejor"] == "cuantifica"
     assert r.estado is Estado.NO_CUMPLE
+
+
+# --- T20: flujo de devoluciones ----------------------------------------------
+
+
+def _candidato_devoluciones(**cambios) -> _CandidatoDevoluciones:
+    """Un plan de devoluciones que cumple TODO; los tests rompen una pieza."""
+    base = {
+        "entregable": "jobs.devoluciones_job.PlanDevoluciones",
+        "campos": ("product_id", "reason", "action", "monto_reclamable_proveedor"),
+        "disposicion_por_motivo": {
+            "falla de producto": "reclamar al proveedor",
+            "error de despacho": "restock",
+        },
+        "tasa_sobre_ventas": True,
+        "prueba_motivos": "la disposicion cambia segun el motivo",
+    }
+    return _CandidatoDevoluciones(**{**base, **cambios})
+
+
+def test_t20_no_cumple_el_motivo_no_cambia_la_disposicion():
+    """Veredicto real: dos lotes identicos, uno por falla de producto y otro por
+    error de despacho, terminan los dos en 'restock' al mismo recupero. La unidad
+    fallada vuelve a stock a precio pleno."""
+    r = _resultado(puntuar(), "T20")
+    assert r.estado is Estado.NO_CUMPLE, r.evidencia
+    assert r.puntos == 0.0
+    assert r.detalle["distingue_motivos"] is False
+    assert set(r.detalle["disposicion_por_motivo"].values()) == {"restock"}
+    assert "monto reclamable al proveedor" in r.detalle["faltantes"]
+
+
+def test_t20_cumple_con_tasa_por_motivo_destino_y_reclamo():
+    r = _veredicto_devoluciones(_candidato_devoluciones())
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+
+
+def test_t20_no_distinguir_el_motivo_es_eliminatorio():
+    """La fuente: la accion correctiva de una falla no es la de un error de despacho."""
+    r = _veredicto_devoluciones(_candidato_devoluciones(disposicion_por_motivo={
+        "falla de producto": "restock", "error de despacho": "restock",
+    }))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+    assert "el motivo no toca la decision" in r.evidencia
+
+
+def test_t20_una_participacion_sobre_devoluciones_no_es_una_tasa():
+    """Sin ventas del periodo no hay denominador: el pareto no es una tasa."""
+    r = _veredicto_devoluciones(_candidato_devoluciones(tasa_sobre_ventas=False))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert "tasa de devolucion (%) por motivo" in r.evidencia
 
 
 # --- T13: exposicion a disrupcion --------------------------------------------

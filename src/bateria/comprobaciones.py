@@ -1542,6 +1542,136 @@ def t13_exposicion_a_disrupcion(_: Contexto) -> ResultadoTarea:
     ))
 
 
+#: Motivos con los que se sondea si la disposicion cambia segun por que volvio (T20).
+_MOTIVO_FALLA = "falla de producto"
+_MOTIVO_DESPACHO = "error de despacho"
+
+#: Nombres con los que el reclamo al proveedor podria llegar al entregable.
+_CAMPOS_RECLAMO = ("claim", "reclam", "chargeback", "nota_credito", "credit_note", "supplier")
+
+
+@dataclass(frozen=True)
+class _CandidatoDevoluciones:
+    """El plan de devoluciones medido contra el criterio de T20."""
+
+    entregable: str
+    campos: tuple[str, ...]
+    disposicion_por_motivo: dict[str, str]
+    tasa_sobre_ventas: bool
+    prueba_motivos: str
+
+    @property
+    def distingue_motivos(self) -> bool:
+        """Gate: falla de producto y error de despacho no pueden terminar igual."""
+        return len(set(self.disposicion_por_motivo.values())) > 1
+
+    @property
+    def requisitos(self) -> dict[str, bool]:
+        campos = set(self.campos)
+        return {
+            "tasa de devolucion (%) por motivo": self.tasa_sobre_ventas,
+            "destino de cada lote devuelto": bool(_alguno_contiene(campos, ("action", "dispos"))),
+            "monto reclamable al proveedor": bool(_alguno_contiene(campos, _CAMPOS_RECLAMO)),
+            "distingue falla de producto de error de despacho": self.distingue_motivos,
+        }
+
+    @property
+    def faltantes(self) -> list[str]:
+        return [nombre for nombre, ok in self.requisitos.items() if not ok]
+
+    def como_detalle(self) -> dict[str, object]:
+        return {
+            "entregable": self.entregable,
+            "campos": sorted(self.campos),
+            "faltantes": self.faltantes,
+            "disposicion_por_motivo": self.disposicion_por_motivo,
+            "distingue_motivos": self.distingue_motivos,
+            "prueba_motivos": self.prueba_motivos,
+        }
+
+
+def _veredicto_devoluciones(cand: _CandidatoDevoluciones) -> ResultadoTarea:
+    """Puntua T20. Eliminatorio: "Debe distinguir devolucion por falla de producto
+    de devolucion por error de despacho: la accion correctiva es distinta"."""
+    detalle: dict[str, object] = cand.como_detalle()
+    if not cand.distingue_motivos:
+        return ResultadoTarea(
+            tarea_id="T20",
+            estado=Estado.NO_CUMPLE,
+            evidencia=(
+                f"el motivo no toca la decision: {cand.prueba_motivos}. El criterio lo marca como "
+                f"eliminatorio porque la accion correctiva es distinta. Tambien falta: "
+                f"{', '.join(n for n in cand.faltantes if 'distingue' not in n)}"
+            ),
+            detalle=detalle,
+        )
+
+    return _cerrar_veredicto(
+        "T20",
+        faltantes=cand.faltantes,
+        evidencia_cumple=(
+            "tasa de devolucion por motivo, destino de cada lote y monto reclamable al proveedor, "
+            "con la falla de producto separada del error de despacho"
+        ),
+        evidencia_falta=(
+            f"el motivo si cambia la disposicion ({cand.prueba_motivos}), pero el entregable sale "
+            f"sin: {', '.join(cand.faltantes)}"
+        ),
+        detalle=detalle,
+    )
+
+
+@comprobacion("T20")
+def t20_flujo_de_devoluciones(_: Contexto) -> ResultadoTarea:
+    """T20 — clasificar devoluciones por motivo, decidir disposicion y reclamar al proveedor.
+
+    El sondeo pone dos lotes IDENTICOS salvo el motivo: uno volvio por falla de
+    producto y el otro por error de despacho. Si la disposicion recomendada es la
+    misma, el motivo es decorativo -- y ahi el criterio corta, porque la accion
+    correctiva de una falla (reclamar al proveedor, bloquear el lote) no se parece
+    a la de un error de despacho (corregir el picking y reingresar).
+
+    Lo otro que no esta: la tasa de devolucion. El job recibe SOLO devoluciones,
+    sin ventas del periodo, asi que ``reason_pareto`` es participacion sobre las
+    devoluciones, no una tasa. Y ninguna linea tiene proveedor: no hay a quien
+    reclamarle.
+    """
+    import pandas as pd
+
+    from jobs import returns_job as job
+    from src.reverse_logistics import Disposition, ReturnLine
+
+    devoluciones = pd.DataFrame({
+        "product_id": ["SKU-A", "SKU-B"],
+        "returned_units": [10.0, 10.0],
+        "reason": [_MOTIVO_FALLA, _MOTIVO_DESPACHO],
+        "unit_cost": [20.0, 20.0],
+        "resale_value": [30.0, 30.0],
+    })
+    reporte = job.run(job.prepare_records(devoluciones))
+    por_motivo = {d.line.reason: d.best.action for d in reporte.dispositions}
+    recuperos = {d.line.reason: round(d.best.net_recovery_per_unit, 2) for d in reporte.dispositions}
+
+    return _veredicto_devoluciones(_CandidatoDevoluciones(
+        entregable="jobs.returns_job.ReturnsReport",
+        campos=tuple(sorted(
+            _campos_del_registro(ReturnLine)
+            | _campos_del_registro(Disposition)
+            | _campos_del_registro(job.ReturnsReport)
+        )),
+        disposicion_por_motivo=por_motivo,
+        # El job solo recibe devoluciones; sin ventas del periodo no hay denominador.
+        tasa_sobre_ventas=False,
+        prueba_motivos=(
+            f"dos lotes identicos, uno por '{_MOTIVO_FALLA}' y otro por '{_MOTIVO_DESPACHO}', "
+            f"reciben la misma disposicion {por_motivo} con el mismo recupero {recuperos} -- "
+            "la unidad fallada vuelve a stock a precio pleno"
+            if len(set(por_motivo.values())) == 1
+            else f"la disposicion cambia segun el motivo: {por_motivo}"
+        ),
+    ))
+
+
 @comprobacion("T03")
 def t03_segmentacion_con_servicio_diferenciado(ctx: Contexto) -> ResultadoTarea:
     """T03 — ABC-XYZ con nivel de servicio objetivo **distinto** por segmento.
