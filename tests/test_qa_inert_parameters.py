@@ -44,6 +44,26 @@ ALLOWLIST: set[tuple[str, str, str]] = {
     ("src/seo/geo_probe.py", "complete", "prompt"),
     ("src/voice/doc_reader.py", "extract", "prompt"),
     ("src/voice/doc_reader.py", "extract", "schema"),
+    # simworld dirt injectors share one calling convention (df, rng) -> df so
+    # apply_dirt's loop can call any of them uniformly; this one's transformation
+    # is deterministic (renames a fixed supplier), so it has no use for rng.
+    ("src/simworld/lens.py", "inject_renamed_supplier", "rng"),
+    # bateria comprobaciones (T01-T20) share one tXX_...(_) signature for a uniform
+    # dispatch table; a check that is fully self-contained (no external context
+    # needed) still takes the parameter to match the shared call site, and names it
+    # `_` to say so at the definition itself.
+    ("src/bateria/comprobaciones.py", "t01_pronostico_con_banda", "_"),
+    ("src/bateria/comprobaciones.py", "t02_sesgo_y_precision", "_"),
+    ("src/bateria/comprobaciones.py", "t04_politica_con_ss_sensible_al_lead_time", "_"),
+    ("src/bateria/comprobaciones.py", "t05_propuesta_de_oc_por_proveedor", "_"),
+    ("src/bateria/comprobaciones.py", "t06_ajuste_a_las_condiciones_del_proveedor", "_"),
+    ("src/bateria/comprobaciones.py", "t08_lead_time_real_por_proveedor", "_"),
+    ("src/bateria/comprobaciones.py", "t09_scorecard_de_proveedores", "_"),
+    ("src/bateria/comprobaciones.py", "t10_servicio_realizado_al_cliente", "_"),
+    ("src/bateria/comprobaciones.py", "t12_markdown_con_unidades_y_margen", "_"),
+    ("src/bateria/comprobaciones.py", "t13_exposicion_a_disrupcion", "_"),
+    ("src/bateria/comprobaciones.py", "t20_flujo_de_devoluciones", "_"),
+    ("src/bateria/comprobaciones.py", "t14_acta_de_sop", "_"),
 }
 
 

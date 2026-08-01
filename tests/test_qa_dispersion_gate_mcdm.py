@@ -31,11 +31,15 @@ OLIST = REPO / "data" / "kaggle" / "olist"
 
 @pytest.fixture(scope="module")
 def olist_partial_panel():
-    """Witness 2': the file carries lead time but no on-time/in-full flag.
+    """Witness 2': real lead time (discriminating), on-time/in-full/defects/units
+    measured for every supplier but held constant.
 
-    One performance column resolves, so the fix-3 guard passes -- but OTIF and PPM
-    come out identically 0.0 for all eight suppliers while still carrying 0.4 + 0.2
-    of the criteria weight.
+    All five performance columns resolve, so the fix-3 guard passes and otif/ppm are
+    real ranking criteria (not ``unmeasured`` - see jobs/sourcing_job.py::run, which
+    only drops a criterion into ``unmeasured`` when at least one supplier never
+    recorded it at all) -- but OTIF and PPM come out identically for all eight
+    suppliers while still carrying 0.4 + 0.2 of the criteria weight, so TOPSIS's own
+    dispersion gate must drop them (``ignored_criteria``), not intake's unmeasured gap.
     """
     items = pd.read_csv(OLIST / "olist_order_items_dataset.csv")
     orders = pd.read_csv(OLIST / "olist_orders_dataset.csv")
@@ -50,13 +54,18 @@ def olist_partial_panel():
     panel["lead_time_days"] = (
         panel.order_delivered_customer_date - panel.order_purchase_timestamp
     ).dt.days
+    panel["on_time"] = True
+    panel["in_full"] = True
+    panel["defects"] = 0
+    panel["units"] = 10
     return panel
 
 
 def test_witness_panel_is_degenerate_on_two_criteria(olist_partial_panel):
     cards, _prices = sourcing_job.score_suppliers(
-        olist_partial_panel, supplier_col="supplier", lead_col="lead_time_days",
-        price_col="price",
+        olist_partial_panel, supplier_col="supplier", on_time_col="on_time",
+        in_full_col="in_full", lead_col="lead_time_days", units_col="units",
+        defects_col="defects", price_col="price",
     )
     assert len(cards) == 8
     assert np.std([c.otif for c in cards]) == 0.0
@@ -104,8 +113,9 @@ def test_discriminating_run_is_untouched():
 def test_deck_discloses_the_dropped_criteria(olist_partial_panel):
     """The discarded criterion must reach the deliverable, not a log."""
     cards, prices = sourcing_job.score_suppliers(
-        olist_partial_panel, supplier_col="supplier", lead_col="lead_time_days",
-        price_col="price",
+        olist_partial_panel, supplier_col="supplier", on_time_col="on_time",
+        in_full_col="in_full", lead_col="lead_time_days", units_col="units",
+        defects_col="defects", price_col="price",
     )
     report = sourcing_job.run(cards, prices)
     assert set(report.ranking.ignored_criteria) == {"otif", "ppm"}

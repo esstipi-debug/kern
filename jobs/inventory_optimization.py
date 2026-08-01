@@ -167,11 +167,18 @@ def run(
         fc = forecast_demand(series)
         inputs = fc.to_engine_inputs(periods_per_year=periods_per_year)
         lead = lead_times.get(pid, meta.lead_time_periods) if lead_times else meta.lead_time_periods
-        # sigma_L. Nothing in intake derives it today, so it is normally a *default*,
-        # not a measurement - and the deliverable has to say which it was.
-        lt_std = (lead_time_stds or {}).get(pid)
-        lt_std_source = "client_file" if lt_std is not None else "defaulted_zero"
-        lt_std = 0.0 if lt_std is None else float(lt_std)
+        # sigma_L. An explicit override (lead_time_stds) wins; else fall back to the
+        # CSV's own lead_time_std column (meta.lead_time_std_periods, wired in src/sources.py
+        # long before this override dict existed) - both are client-supplied data, just
+        # via different paths, so both are labeled "client_file". Only a true absence of
+        # both, i.e. the CSV carries no such column, is a "default", not a measurement -
+        # and the deliverable has to say which it was.
+        override = (lead_time_stds or {}).get(pid)
+        if override is not None:
+            lt_std, lt_std_source = float(override), "client_file"
+        else:
+            lt_std = meta.lead_time_std_periods
+            lt_std_source = "client_file" if lt_std > 0 else "defaulted_zero"
         sl = base_levels.get(pid, service_level)
 
         # A SKU with zero aggregate demand (brand-new/seasonal SKU, or a messy
@@ -233,7 +240,6 @@ def run(
                 lead_time_std=lt_std,
                 review_period=1.0,
                 cycle_service_level=sl,
-                lead_time_std=meta.lead_time_std_periods,
                 demand_distribution="auto",
                 observed_skewness=skewness,
             )
@@ -248,7 +254,6 @@ def run(
                 lead_time_periods=lead,
                 lead_time_std=lt_std,
                 cycle_service_level=sl,
-                lead_time_std=meta.lead_time_std_periods,
                 demand_distribution="auto",
                 observed_skewness=skewness,
             )

@@ -31,11 +31,23 @@ OLIST = REPO / "data" / "kaggle" / "olist"
 
 # Known debt at the time T4 landed. It may go DOWN freely; going up means someone
 # hardcoded a new confidence instead of deriving it.
-LITERAL_CONFIDENCE_CEILING = 43
+#
+# Bumped 43 -> 45 merging origin/main (2026-08-01): jobs/vehicle_routing_job.py and
+# jobs/whatif_job.py landed independently on main with their own hardcoded confidence
+# defaults, never derived through confidence_from_coverage. Inherited debt from a
+# parallel branch, not a new hardcode added here - tracked as a follow-up, not fixed
+# in this merge (out of scope: deriving their confidence needs each tool's own notion
+# of coverage, not something to guess at while reconciling an unrelated conflict).
+LITERAL_CONFIDENCE_CEILING = 45
 
 
 @pytest.fixture(scope="module")
 def degenerate_cards():
+    """Real lead time + price (discriminating); on_time/in_full/defects/units are
+    measured for every supplier but held constant, so otif and ppm are ranking
+    criteria (not ``unmeasured`` - every scorecard has a value) that TOPSIS's own
+    dispersion gate must drop for carrying zero variance (``ignored_criteria``),
+    not because the column was absent."""
     items = pd.read_csv(OLIST / "olist_order_items_dataset.csv")
     orders = pd.read_csv(OLIST / "olist_orders_dataset.csv")
     df = items.merge(orders, on="order_id", how="inner")
@@ -49,8 +61,14 @@ def degenerate_cards():
     panel["lead_time_days"] = (
         panel.order_delivered_customer_date - panel.order_purchase_timestamp
     ).dt.days
+    panel["on_time"] = True
+    panel["in_full"] = True
+    panel["defects"] = 0
+    panel["units"] = 10
     return sourcing_job.score_suppliers(
-        panel, supplier_col="supplier", lead_col="lead_time_days", price_col="price"
+        panel, supplier_col="supplier", on_time_col="on_time", in_full_col="in_full",
+        lead_col="lead_time_days", units_col="units", defects_col="defects",
+        price_col="price",
     )
 
 

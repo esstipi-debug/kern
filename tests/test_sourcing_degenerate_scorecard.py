@@ -53,7 +53,13 @@ def test_extract_is_the_witness_case(po_extract_777):
 
 
 def test_prepare_raises_instead_of_awarding_on_zero_scorecard(po_extract_777, tmp_path):
-    """777 real POs with no recognisable performance column must fail loudly."""
+    """777 real POs with no recognisable performance column, and no date pair the
+    sniffer knows how to derive lead time from, must fail loudly - not silently
+    score a zero scorecard. prepare() now derives lead_time/on_time/in_full from
+    dates before falling back to score_suppliers' own column-resolution guard, so
+    this fixture (whose date columns are all Olist-specific names) refuses at the
+    lead-time derivation step instead - still a loud ValueError naming a way out,
+    just an earlier one in the pipeline."""
     path = tmp_path / "olist_po_extract.csv"
     po_extract_777.to_csv(path, index=False)
 
@@ -61,15 +67,13 @@ def test_prepare_raises_instead_of_awarding_on_zero_scorecard(po_extract_777, tm
         sourcing_job.prepare(str(path))
 
     msg = str(exc.value)
-    assert "performance" in msg.lower()
-    # the message has to name the way out
-    assert "on_time_col" in msg
-    assert "lead_col" in msg
+    # the message has to name a way out, whichever refusal fired first
+    assert "lead_col" in msg or "on_time_col" in msg
 
 
 def test_score_suppliers_raises_when_no_performance_column_resolves():
     df = pd.DataFrame({"supplier": ["S1", "S1", "S2"], "price": [10.0, 11.0, 9.0]})
-    with pytest.raises(ValueError, match="performance"):
+    with pytest.raises(ValueError, match="columns that decide the award"):
         sourcing_job.score_suppliers(df, supplier_col="supplier", price_col="price")
 
 
@@ -80,7 +84,8 @@ def test_one_resolved_performance_column_is_enough(po_extract_777):
         wired.order_delivered_customer_date <= wired.order_estimated_delivery_date
     )
     cards, prices = sourcing_job.score_suppliers(
-        wired, supplier_col="supplier", on_time_col="on_time", price_col="price"
+        wired, supplier_col="supplier", on_time_col="on_time", price_col="price",
+        require_all_criteria=False,
     )
     assert len(cards) == 8
     assert any(c.on_time_rate > 0 for c in cards)
