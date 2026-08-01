@@ -9,6 +9,8 @@ Importar este modulo registra las comprobaciones en el scorer.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from src.bateria.scorer import Contexto, Estado, ResultadoTarea, comprobacion
 
 #: Dataset de stock con el que se puntua T11. Sin el, la tarea es SIN_DATO.
@@ -31,6 +33,21 @@ def _campos_del_registro(clase: type) -> set[str]:
 
 def _alguno_contiene(campos: set[str], agujas: tuple[str, ...]) -> list[str]:
     return sorted(c for c in campos if any(a in c.lower() for a in agujas))
+
+
+def _campos_planos(obj: object) -> set[str]:
+    """Campos que el cliente ve por linea, aplanando UN nivel de anidamiento.
+
+    ``DdmrpPart`` guarda lo interesante adentro de ``zones``/``signal``; mirar
+    solo el nivel de arriba diria que la linea tiene tres campos y perderia el
+    ``order_qty``. Devuelve ``signal.order_qty`` para que quede a la vista de
+    donde sale cada requisito.
+    """
+    campos: set[str] = set()
+    for nombre in _campos_del_registro(type(obj)):
+        anidados = _campos_del_registro(type(getattr(obj, nombre)))
+        campos |= {f"{nombre}.{c}" for c in anidados} if anidados else {nombre}
+    return campos
 
 
 @comprobacion("T01")
@@ -218,6 +235,213 @@ def t04_politica_con_ss_sensible_al_lead_time(_: Contexto) -> ResultadoTarea:
         ),
         detalle=detalle,
     )
+
+
+#: Nombres con los que cada pieza de la OC podria llegar a la linea del entregable.
+_CAMPOS_PROVEEDOR = ("supplier", "vendor", "proveedor")
+_CAMPOS_SKU = ("sku", "part_id", "product_id", "item", "codigo")
+_CAMPOS_CANTIDAD = ("qty", "quantity", "cantidad", "restock", "units")
+_CAMPOS_FECHA = ("date", "fecha", "eta", "arriv", "llegada")
+_CAMPOS_RAZON = ("reason", "razon", "motivo", "zone", "trigger", "priority", "classification")
+
+#: Nombres con los que las ordenes ya emitidas podrian entrar al entregable.
+_CAMPOS_EN_TRANSITO = ("transit", "transito", "on_order", "onorder", "incoming", "open_po")
+
+#: Ordenes ya emitidas con las que se sondea el neteo en T05.
+_ON_ORDER_SONDA = 80.0
+
+
+@dataclass(frozen=True)
+class _CandidatoOC:
+    """Un entregable de reposicion, medido contra el criterio de T05.
+
+    ``descuenta_en_transito`` es ``None`` cuando el entregable TIENE un campo de
+    en-transito pero esta comprobacion no probo que lo netee: ahi no se acredita
+    y la evidencia lo dice: hay que escribir la sonda, no asumir.
+    """
+
+    tool: str
+    entregable: str
+    campos: tuple[str, ...]
+    descuenta_en_transito: bool | None
+    prueba_en_transito: str
+
+    @property
+    def requisitos(self) -> dict[str, list[str]]:
+        campos = set(self.campos)
+        return {
+            "OC agrupada por proveedor": _alguno_contiene(campos, _CAMPOS_PROVEEDOR),
+            "SKU por linea": _alguno_contiene(campos, _CAMPOS_SKU),
+            "cantidad por linea": _alguno_contiene(campos, _CAMPOS_CANTIDAD),
+            "fecha de pedido / llegada esperada": _alguno_contiene(campos, _CAMPOS_FECHA),
+            "razon de la linea": _alguno_contiene(campos, _CAMPOS_RAZON),
+        }
+
+    @property
+    def faltantes(self) -> list[str]:
+        return [nombre for nombre, hallados in self.requisitos.items() if not hallados]
+
+    @property
+    def cumplidos(self) -> int:
+        return len(self.requisitos) - len(self.faltantes)
+
+    def como_detalle(self) -> dict[str, object]:
+        return {
+            "tool": self.tool,
+            "entregable": self.entregable,
+            "campos": sorted(self.campos),
+            "faltantes": self.faltantes,
+            "descuenta_en_transito": self.descuenta_en_transito,
+            "prueba_en_transito": self.prueba_en_transito,
+        }
+
+
+def _candidato_excel() -> _CandidatoOC:
+    """``excel_replenishment``: el tool de reposicion sobre la planilla del cliente.
+
+    El neteo se juzga estructuralmente porque el hueco es de entrada, no de
+    calculo: ni la fila leida ni la linea emitida tienen donde recibir una OC
+    abierta, asi que ningun dataset del cliente lo arregla. El propio docstring
+    de ``run()`` lo declara como limitacion conocida.
+    """
+    from jobs.excel_replenishment_job import PlanillaRow, ReplenishmentLine
+
+    entrada = _campos_del_registro(PlanillaRow)
+    salida = _campos_del_registro(ReplenishmentLine)
+    en_transito = _alguno_contiene(entrada | salida, _CAMPOS_EN_TRANSITO)
+    return _CandidatoOC(
+        tool="excel_replenishment",
+        entregable="jobs.excel_replenishment_job.ReplenishmentLine",
+        campos=tuple(sorted(salida)),
+        descuenta_en_transito=None if en_transito else False,
+        prueba_en_transito=(
+            f"campos de en-transito hallados ({', '.join(en_transito)}) pero sin sonda de "
+            "comportamiento: no se acredita hasta escribirla"
+            if en_transito
+            else f"la fila leida ({', '.join(sorted(entrada))}) y la linea emitida no tienen "
+            "campo de en-transito: el job no tiene por donde recibir las OC ya emitidas"
+        ),
+    )
+
+
+def _candidato_odoo() -> _CandidatoOC:
+    """``odoo_replenishment``: reposicion contra el ERP, misma linea que el conector."""
+    from src.connectors.replenish import ReplenishmentLine
+
+    salida = _campos_del_registro(ReplenishmentLine)
+    en_transito = _alguno_contiene(salida, _CAMPOS_EN_TRANSITO)
+    return _CandidatoOC(
+        tool="odoo_replenishment",
+        entregable="src.connectors.replenish.ReplenishmentLine",
+        campos=tuple(sorted(salida)),
+        descuenta_en_transito=None if en_transito else False,
+        prueba_en_transito=(
+            f"campos de en-transito hallados ({', '.join(en_transito)}) pero sin sonda de "
+            "comportamiento: no se acredita hasta escribirla"
+            if en_transito
+            else "la linea se arma sobre el on-hand disponible y no expone ningun campo de "
+            "en-transito: las OC abiertas no entran al calculo"
+        ),
+    )
+
+
+def _candidato_ddmrp() -> _CandidatoOC:
+    """``ddmrp``: el unico que sí netea, y se prueba corriendolo.
+
+    Se corre dos veces sobre las MISMAS partes, con y sin ordenes ya emitidas: la
+    cantidad a pedir tiene que bajar. Es la propiedad que el criterio marca como
+    eliminatoria ("si se ignoran las ordenes ya emitidas, sobre-compra y no cuenta").
+    """
+    import pandas as pd
+
+    from jobs import ddmrp_job as job
+
+    partes = pd.DataFrame(
+        {
+            "part_id": ["P1", "P2"],
+            "adu": [10.0, 10.0],
+            "dlt": [7.0, 7.0],
+            "on_hand": [20.0, 20.0],
+            "on_order": [0.0, 0.0],
+            "qualified_demand": [5.0, 5.0],
+        }
+    )
+    sin_oc = job.run(job.prepare_records(partes))
+    con_oc = job.run(job.prepare_records(partes.assign(on_order=_ON_ORDER_SONDA)))
+    qty_sin = [p.signal.order_qty for p in sin_oc.parts]
+    qty_con = [p.signal.order_qty for p in con_oc.parts]
+    netea = all(b < a for a, b in zip(qty_sin, qty_con, strict=True))
+    return _CandidatoOC(
+        tool="ddmrp",
+        entregable="jobs.ddmrp_job.DdmrpPart",
+        campos=tuple(sorted(_campos_planos(sin_oc.parts[0]))),
+        descuenta_en_transito=netea,
+        prueba_en_transito=(
+            f"con {_ON_ORDER_SONDA:g} unidades ya emitidas la cantidad a pedir "
+            f"{'baja' if netea else 'NO baja'}: {qty_sin} -> {qty_con}"
+        ),
+    )
+
+
+def _veredicto_oc(candidatos: tuple[_CandidatoOC, ...]) -> ResultadoTarea:
+    """Puntua T05 con el mejor candidato: primero el que netea, despues el mas completo."""
+    mejor = max(candidatos, key=lambda c: (c.descuenta_en_transito is True, c.cumplidos))
+    detalle: dict[str, object] = {
+        "mejor": mejor.tool,
+        "candidatos": [c.como_detalle() for c in candidatos],
+    }
+
+    if mejor.descuenta_en_transito is not True:
+        sin_neteo = "; ".join(f"{c.tool}: {c.prueba_en_transito}" for c in candidatos)
+        return ResultadoTarea(
+            tarea_id="T05",
+            estado=Estado.NO_CUMPLE,
+            evidencia=(
+                "ningun entregable de reposicion descuenta el en-transito, y el criterio es "
+                f"terminante en que asi no cuenta (sobre-compra). {sin_neteo}"
+            ),
+            detalle=detalle,
+        )
+
+    if not mejor.faltantes:
+        return ResultadoTarea(
+            tarea_id="T05",
+            estado=Estado.CUMPLE,
+            evidencia=(
+                f"{mejor.tool} emite la OC con proveedor, SKU, cantidad, fecha y razon por "
+                f"linea, y descuenta el en-transito ({mejor.prueba_en_transito})"
+            ),
+            detalle=detalle,
+        )
+
+    estado = Estado.PARCIAL if len(mejor.faltantes) == 1 else Estado.NO_CUMPLE
+    return ResultadoTarea(
+        tarea_id="T05",
+        estado=estado,
+        evidencia=(
+            f"{mejor.tool} descuenta el en-transito ({mejor.prueba_en_transito}) pero su "
+            f"entregable sale sin: {', '.join(mejor.faltantes)}. Lo que llega es una lista de "
+            f"reposicion por SKU ({', '.join(mejor.campos)}), no una OC por proveedor"
+        ),
+        detalle=detalle,
+    )
+
+
+@comprobacion("T05")
+def t05_propuesta_de_oc_por_proveedor(_: Contexto) -> ResultadoTarea:
+    """T05 — ciclo de reposicion: posicion de inventario -> propuesta de OC por proveedor.
+
+    Dos filos distintos en el mismo criterio. Uno de forma: el entregable tiene
+    que ser una OC **por proveedor** con SKU, cantidad, fecha requerida y la razon
+    de cada linea. Otro de comportamiento y eliminatorio: "Debe descontar el
+    en-transito: si se ignoran las ordenes ya emitidas, sobre-compra y no cuenta".
+
+    Se miden los tres entregables de reposicion que Kern tiene hoy y se puntua el
+    mejor. Ninguno depende de un dataset del cliente para contestar esto: el
+    proveedor, la fecha y el campo de en-transito estan o no estan en el
+    entregable.
+    """
+    return _veredicto_oc((_candidato_excel(), _candidato_odoo(), _candidato_ddmrp()))
 
 
 @comprobacion("T03")

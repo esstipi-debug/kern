@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import src.bateria.comprobaciones  # noqa: F401  -- registra las comprobaciones
+from src.bateria.comprobaciones import _CandidatoOC, _veredicto_oc
 from src.bateria.scorer import Contexto, Estado, puntuar
 
 _CSV = "stock_on_hand.csv"
@@ -151,3 +152,78 @@ def test_t04_cumple_y_el_ss_reacciona_al_lead_time():
 def test_t04_el_entregable_declara_si_sigma_lt_fue_medido_o_defaulteado():
     """Un SS calculado con sigma_L=0 por defecto no es lo mismo que uno medido."""
     assert _resultado(puntuar(), "T04").detalle["declara_fuente_de_sigma_lt"] is True
+
+
+# --- T05: propuesta de OC por proveedor, descontando el en-transito ----------
+
+
+def _candidato(**cambios) -> _CandidatoOC:
+    """Un candidato que cumple TODO el criterio; los tests rompen una pieza por vez."""
+    base = {
+        "tool": "oc_ideal",
+        "entregable": "jobs.oc_job.LineaOC",
+        "campos": ("supplier", "sku", "order_qty", "required_date", "reason"),
+        "descuenta_en_transito": True,
+        "prueba_en_transito": "con 80 unidades emitidas la cantidad baja: [100] -> [20]",
+    }
+    return _CandidatoOC(**{**base, **cambios})
+
+
+def test_t05_hoy_no_cumple_ningun_entregable_emite_una_oc_por_proveedor():
+    """Veredicto real: ddmrp es el unico que netea el en-transito, pero lo que
+    entrega es una senal de buffer por parte -- sin proveedor y sin fechas no hay
+    OC. Si algun dia un entregable agrupa por proveedor, este test se pone rojo."""
+    r = _resultado(puntuar(), "T05")
+    assert r.estado is Estado.NO_CUMPLE, r.evidencia
+    assert r.puntos == 0.0
+    assert r.detalle["mejor"] == "ddmrp"
+    por_tool = {c["tool"]: c for c in r.detalle["candidatos"]}
+    assert por_tool["ddmrp"]["descuenta_en_transito"] is True
+    assert por_tool["excel_replenishment"]["descuenta_en_transito"] is False
+    assert "OC agrupada por proveedor" in por_tool["ddmrp"]["faltantes"]
+    assert "fecha de pedido / llegada esperada" in por_tool["ddmrp"]["faltantes"]
+
+
+def test_t05_cumple_con_oc_completa_que_netea_el_en_transito():
+    r = _veredicto_oc((_candidato(),))
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+
+
+def test_t05_ignorar_el_en_transito_es_eliminatorio_aunque_la_oc_este_completa():
+    """La fuente: 'si se ignoran las ordenes ya emitidas, sobre-compra y no cuenta'."""
+    r = _veredicto_oc((
+        _candidato(descuenta_en_transito=False, prueba_en_transito="no hay campo de en-transito"),
+    ))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+    assert "en-transito" in r.evidencia
+
+
+def test_t05_campo_de_en_transito_sin_sonda_no_se_acredita():
+    """``None`` = hay campo pero nadie probo que se netee. No se regala el punto."""
+    r = _veredicto_oc((
+        _candidato(descuenta_en_transito=None, prueba_en_transito="sin sonda de comportamiento"),
+    ))
+    assert r.estado is Estado.NO_CUMPLE
+    assert "sin sonda" in r.evidencia
+
+
+def test_t05_es_parcial_cuando_solo_falta_una_pieza_de_la_oc():
+    r = _veredicto_oc((_candidato(campos=("supplier", "sku", "order_qty", "reason")),))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert "fecha de pedido / llegada esperada" in r.evidencia
+
+
+def test_t05_gana_el_que_netea_aunque_otro_tenga_mas_campos():
+    """Un entregable mas completo que sobre-compra no puede tapar al que sí netea."""
+    completo_sin_neteo = _candidato(
+        tool="completo", descuenta_en_transito=False, prueba_en_transito="ignora las OC abiertas"
+    )
+    netea_incompleto = _candidato(
+        tool="netea", campos=("sku", "order_qty", "reason", "required_date")
+    )
+    r = _veredicto_oc((completo_sin_neteo, netea_incompleto))
+    assert r.detalle["mejor"] == "netea"
+    assert r.estado is Estado.PARCIAL
