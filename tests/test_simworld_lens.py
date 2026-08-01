@@ -453,7 +453,14 @@ def test_value_changing_dirt_runs_before_the_cosmetic_layer():
 
 
 def test_level_two_degrades_intake_quality(tmp_path):
-    w, outs = _run_weeks(n_weeks=16, n_skus=6)
+    # n_weeks/n_skus mas grandes que el resto del archivo a proposito: con
+    # (16, 6) el unico defecto de nivel 2 que intake puede detectar
+    # (inject_returns_as_negatives, al 6% de las filas) cae, para seed=0,
+    # sobre una sola fila y esa fila resulta ser un quiebre de stock
+    # (cantidad ya 0) -- una devolucion de 0 unidades es degenerada y queda
+    # sin marcar. Con una muestra mas grande el injector cae ademas sobre
+    # filas con cantidad real, que es la senal que este test necesita.
+    w, outs = _run_weeks(n_weeks=32, n_skus=10)
     dirty = apply_dirt(history_frame(w, outs), level=2, seed=0)
     p = tmp_path / "dirty.csv"
     dirty.to_csv(p, index=False)

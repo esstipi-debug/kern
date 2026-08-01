@@ -163,7 +163,11 @@ def inject_returns_as_negatives(df: pd.DataFrame, rng: np.random.Generator) -> p
     out = df.copy()
     mask = rng.random(len(out)) < 0.06
     qty = pd.to_numeric(out["quantity"], errors="coerce")
-    out.loc[mask, "quantity"] = -(qty[mask] * 0.2).round(2)
+    magnitude = (qty * 0.2).round(2)
+    # Una devolucion de 0 unidades es degenerada (y -0.0 no es detectable como
+    # negativa por comparacion de punto flotante) — se deja la fila intacta.
+    mask = mask & (magnitude != 0)
+    out.loc[mask, "quantity"] = -magnitude[mask]
     return out
 
 
