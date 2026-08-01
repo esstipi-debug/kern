@@ -20,6 +20,45 @@ from src.finite import require_finite
 # per line, not by this order).
 DISPOSITIONS = ("restock", "refurbish", "liquidate", "scrap")
 
+# Why a lot came back decides what may be DONE with it, not just what to report: a unit
+# that failed cannot be resold as-is, and a picking mistake has nothing wrong with the
+# unit. Kept as three explicit kinds - anything the words do not clearly say stays
+# UNSPECIFIED and changes nothing, because guessing here restocks a defective unit.
+REASON_PRODUCT_FAILURE = "product_failure"
+REASON_DISPATCH_ERROR = "dispatch_error"
+REASON_UNSPECIFIED = "unspecified"
+
+_FAILURE_WORDS = (
+    "defect", "defectu", "falla", "fallo", "faulty", "broken", "roto", "rotura",
+    "damaged", "danad", "dañad", "quality", "calidad", "expired", "vencid", "no funciona",
+    "malfunction", "leak", "contaminad",
+)
+_DISPATCH_WORDS = (
+    "wrong item", "wrong_item", "wrong sku", "wrong_sku", "wrong size", "wrong_size",
+    "error de despacho", "error_despacho", "mis-pick", "mispick", "picking",
+    "producto equivocado", "articulo equivocado", "shipping error", "wrong address",
+    "direccion equivocada", "sobre-envio", "over-shipment",
+)
+
+
+def classify_reason(reason: str) -> str:
+    """Map a free-text return reason onto the kind that changes the decision.
+
+    Word-list based and deliberately conservative: a reason that matches neither list
+    (or both) is :data:`REASON_UNSPECIFIED`, which leaves every disposition on the
+    table exactly as before. The corrective action differs by kind - a product failure
+    is claimable to the supplier and must never go back to the shelf as-is; a dispatch
+    error is an intact unit and a picking problem.
+    """
+    texto = reason.strip().lower()
+    falla = any(w in texto for w in _FAILURE_WORDS)
+    despacho = any(w in texto for w in _DISPATCH_WORDS)
+    if falla and not despacho:
+        return REASON_PRODUCT_FAILURE
+    if despacho and not falla:
+        return REASON_DISPATCH_ERROR
+    return REASON_UNSPECIFIED
+
 
 @dataclass(frozen=True)
 class DispositionRates:
@@ -54,13 +93,21 @@ class Disposition:
 
 
 def options_for(line: ReturnLine, rates: DispositionRates) -> list[Disposition]:
-    """Rank the feasible dispositions for a returned lot, best net recovery first."""
+    """Rank the feasible dispositions for a returned lot, best net recovery first.
+
+    A lot returned for a PRODUCT FAILURE never gets ``restock`` offered, even when the
+    row says ``sellable``: putting a failed unit back on the shelf at full resale value
+    is the wrong action, not a cheaper one. Refurbish stays (that is what reconditioning
+    is for). A dispatch error leaves the unit intact, so it keeps every route.
+    """
     options: list[Disposition] = []
-    if line.sellable:
+    fallado = classify_reason(line.reason) == REASON_PRODUCT_FAILURE
+    if line.sellable and not fallado:
         options.append(Disposition(
             "restock", line.resale_value - rates.restock_handling_per_unit,
             "resell as-is to the primary channel",
         ))
+    if line.sellable:
         options.append(Disposition(
             "refurbish",
             rates.refurbish_resale_factor * line.resale_value - rates.refurbish_cost_per_unit,
@@ -92,6 +139,23 @@ class LineDisposition:
         """Net recovery for the whole lot under the best route."""
         return self.best.net_recovery_per_unit * self.line.returned_units
 
+    @property
+    def reason_kind(self) -> str:
+        """Why it came back, in the terms that changed the route (see :func:`classify_reason`)."""
+        return classify_reason(self.line.reason)
+
+    @property
+    def supplier_claim_base(self) -> float:
+        """Cost value of this lot when the return is a PRODUCT FAILURE, else 0.
+
+        The claim BASE, not a claim amount: what is actually recoverable depends on the
+        terms agreed with each supplier, which this engine is never given. Naming it
+        "base" keeps it from being read as money already owed.
+        """
+        if self.reason_kind != REASON_PRODUCT_FAILURE:
+            return 0.0
+        return self.line.returned_units * self.line.unit_cost
+
 
 def best_disposition(line: ReturnLine, rates: DispositionRates) -> LineDisposition:
     """Resolve a returned lot into its ranked options + recommended route."""
@@ -120,6 +184,20 @@ def recovery_rate(dispositions: list[LineDisposition], lines: list[ReturnLine]) 
     """Recovered value / value at risk (can exceed 1 if resale beats cost, or go negative)."""
     var = returns_value_at_cost(lines)
     return recovered_value(dispositions) / var if math.isfinite(var) and var > 0 else 0.0
+
+
+def supplier_claim_base(dispositions: list[LineDisposition]) -> float:
+    """Cost value of everything that came back for a product failure (the claim base)."""
+    return sum(d.supplier_claim_base for d in dispositions)
+
+
+def units_by_reason_kind(lines: list[ReturnLine]) -> dict[str, float]:
+    """Units returned per reason KIND - the split the corrective action hangs off."""
+    totals: dict[str, float] = {}
+    for ln in lines:
+        kind = classify_reason(ln.reason)
+        totals[kind] = totals.get(kind, 0.0) + ln.returned_units
+    return totals
 
 
 def reason_pareto(lines: list[ReturnLine]) -> list[tuple[str, float]]:
