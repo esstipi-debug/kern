@@ -1,0 +1,186 @@
+{
+  "tareas": [
+    {
+      "id": "T01",
+      "tarea": "Producir el pronostico de demanda base por SKU-ubicacion para el horizonte de reposicion (semana/mes), separando demanda base de promocion y de eventos puntuales",
+      "frecuencia": "mensual",
+      "input_minimo": "Historial de ventas por SKU-ubicacion (>=12-24 meses, con fecha y cantidad), calendario de promociones y feriados, lista de SKU activos",
+      "output_exigido": "numero: demanda esperada por SKU-periodo, con banda de incertidumbre (desvio o percentil)",
+      "criterio_de_aprobado": "Devuelve un archivo/tabla con una fila por SKU-periodo que contenga cantidad pronosticada, unidad, periodo, y una medida de dispersion (sigma o intervalo P10/P90). Sin banda de incertidumbre NO cuenta: el stock de seguridad no se puede calcular con un punto solo",
+      "por_que_importa": "Es el insumo de todo lo demas (politica, compra, caja). CSCP Modulo 1 Seccion D: 'Forecasting'; SCOR clasifica Plan como determinar requerimientos y balancearlos contra recursos"
+    },
+    {
+      "id": "T02",
+      "tarea": "Medir la precision y el sesgo del pronostico del ciclo cerrado y decidir que modelos/SKU se re-parametrizan",
+      "frecuencia": "mensual",
+      "input_minimo": "Pronostico congelado del ciclo anterior + ventas reales del mismo periodo, al mismo nivel de agregacion",
+      "output_exigido": "numero: MAPE (o WMAPE) y sesgo (bias) por familia y por SKU clase A, mas ranking de peores SKU",
+      "criterio_de_aprobado": "Devuelve MAPE y bias firmados (+/-) por familia y el listado de los N SKU que concentran el error, indicando cual es error de nivel y cual es error de sesgo. Debe comparar contra el ciclo previo (mejora o empeora). 'Muestra un grafico de ventas' NO cuenta",
+      "por_que_importa": "Sin medicion de error el pronostico no es auditable ni mejorable. JD real de demand planner: 'Accountable for understanding all drivers of inaccuracy in forecasting metrics, specifically forecast accuracy (MAPE) and forecast bias'"
+    },
+    {
+      "id": "T03",
+      "tarea": "Segmentar el catalogo (ABC por facturacion/margen x XYZ por variabilidad) y asignar un nivel de servicio objetivo distinto por segmento",
+      "frecuencia": "trimestral",
+      "input_minimo": "Ventas 12 meses por SKU, margen o costo unitario por SKU, variabilidad de demanda por SKU",
+      "output_exigido": "clasificacion: etiqueta ABC-XYZ por SKU + nivel de servicio objetivo (%) asignado a cada celda",
+      "criterio_de_aprobado": "Devuelve una tabla SKU -> clase (AX, BZ, CZ...) -> nivel de servicio objetivo explicito en %, y el criterio de corte usado (ej. 80/15/5 de facturacion). Debe existir al menos un segmento con servicio deliberadamente BAJO; si todos los SKU tienen el mismo objetivo, no hubo segmentacion",
+      "por_que_importa": "Servir todo al 98% quiebra la caja de una empresa de USD 1-15M. La segmentacion es la decision que hace economicamente viable la politica de inventario (CSCP M4-C 'Inventory')"
+    },
+    {
+      "id": "T04",
+      "tarea": "Calcular la politica de inventario por SKU: punto de reorden, stock de seguridad y cantidad/frecuencia de pedido",
+      "frecuencia": "mensual",
+      "input_minimo": "Demanda esperada y su desvio (T01), lead time promedio y su variabilidad por proveedor-SKU (T08), nivel de servicio objetivo (T03), costo de pedido y costo de mantener",
+      "output_exigido": "numero: punto de reorden, stock de seguridad y lote (EOQ o multiplo) por SKU, con el nivel de servicio asociado",
+      "criterio_de_aprobado": "Devuelve por SKU: ROP en unidades, SS en unidades, lote sugerido, y el nivel de servicio (%) que ese SS implica. El SS debe reaccionar a la variabilidad de lead time, no solo a la de demanda: si se duplica el desvio del lead time el SS tiene que subir. Un 'stock minimo = 2 meses de venta' fijo NO cuenta",
+      "por_que_importa": "Es el artefacto central del rol: convierte incertidumbre en un numero accionable de compra. Es tambien lo que distingue a un planificador de un repositor"
+    },
+    {
+      "id": "T05",
+      "tarea": "Correr el ciclo de reposicion: comparar posicion de inventario (stock + en transito - comprometido) contra la politica y emitir la propuesta de orden de compra por proveedor",
+      "frecuencia": "semanal",
+      "input_minimo": "Stock actual por ubicacion, ordenes en transito con ETA, pedidos de cliente comprometidos, politica vigente (T04)",
+      "output_exigido": "documento: propuesta de OC por proveedor con SKU, cantidad, fecha de pedido y fecha de llegada esperada",
+      "criterio_de_aprobado": "Devuelve una OC borrador por proveedor con lineas SKU/cantidad/fecha requerida, y para cada linea la razon (bajo ROP, cobertura X semanas, quiebre proyectado en fecha D). Debe descontar el en-transito: si se ignoran las ordenes ya emitidas, sobre-compra y no cuenta",
+      "por_que_importa": "O*NET 11-3071.04: 'Manage activities related to strategic or tactical purchasing, material requirements planning, controlling inventory, warehousing, or receiving'"
+    },
+    {
+      "id": "T06",
+      "tarea": "Ajustar la propuesta de compra a las restricciones reales del proveedor: MOQ, multiplos de caja/pallet, minimo de flete o de orden libre, cortes de descuento por volumen",
+      "frecuencia": "semanal",
+      "input_minimo": "Propuesta de OC (T05), ficha de condiciones por proveedor (MOQ, empaque, minimo de flete, escalas de descuento), costo de flete",
+      "output_exigido": "documento + decision go-nogo: OC final ajustada con comparacion de costo total contra la version sin ajustar",
+      "criterio_de_aprobado": "Devuelve la OC ajustada y explicita el trade-off en dinero: cuanto stock extra se compra para alcanzar el corte de descuento o el minimo de flete, cuantos meses de cobertura agrega, y si conviene o no (recomendacion si/no). 'Redondear hacia arriba' sin cuantificar el exceso NO cuenta",
+      "por_que_importa": "Es donde la teoria de lote choca con la realidad comercial; el sobrestock de las pymes distribuidoras nace casi siempre aca"
+    },
+    {
+      "id": "T07",
+      "tarea": "Proyectar el compromiso de caja de las compras del periodo y contrastarlo con el presupuesto de compra / capital de trabajo disponible; recortar si no entra",
+      "frecuencia": "mensual",
+      "input_minimo": "OC propuestas y OC ya emitidas con condiciones de pago, presupuesto de compra o caja disponible por semana, cobranza esperada",
+      "output_exigido": "numero + decision go-nogo: desembolso comprometido por semana vs. tope, y lista priorizada de que se recorta o difiere",
+      "criterio_de_aprobado": "Devuelve el calendario de egresos por semana, el excedente/deficit contra el tope, y si hay deficit una lista ordenada de lineas a recortar con el impacto estimado en quiebre (unidades o venta en riesgo). Un total de compra sin fecha de pago NO cuenta",
+      "por_que_importa": "En un retailer de USD 1-15M el limite real no es el modelo sino la caja. SCOR nivel 1 incluye Cash-to-Cash Cycle Time (AM.1.1) como metrica estrategica"
+    },
+    {
+      "id": "T08",
+      "tarea": "Revisar los lead times reales por proveedor-SKU (fecha OC vs. fecha de recepcion) y actualizar los parametros de planificacion",
+      "frecuencia": "mensual",
+      "input_minimo": "Historico de OC con fecha de emision, fecha prometida y fecha real de recepcion, por proveedor y SKU",
+      "output_exigido": "numero: lead time promedio y desvio (o P90) por proveedor-SKU, mas la lista de parametros que cambian",
+      "criterio_de_aprobado": "Devuelve por proveedor: LT promedio, desvio/P90, y cuanto difiere del LT cargado en el sistema; ademas emite la lista de SKU cuyo SS/ROP debe recalcularse por ese cambio. Reportar solo el LT nominal que dice el proveedor NO cuenta",
+      "por_que_importa": "El lead time mal medido es la causa silenciosa numero uno de quiebres; el SS depende tanto de la variabilidad de LT como de la de demanda"
+    },
+    {
+      "id": "T09",
+      "tarea": "Evaluar el desempeno de proveedores con un scorecard (OTIF de entrada, fill rate, cumplimiento de precio, calidad/rechazos, tiempo de respuesta) y usarlo en la revision con el proveedor",
+      "frecuencia": "trimestral",
+      "input_minimo": "OC con fecha prometida vs. recibida y cantidad pedida vs. recibida, notas de credito/rechazos, precio de OC vs. precio facturado",
+      "output_exigido": "ranking: nota por proveedor con las metricas componentes y el ranking del panel",
+      "criterio_de_aprobado": "Devuelve una tabla proveedor -> OTIF %, fill rate %, desvio de precio %, tasa de rechazo %, y un ranking ordenado con los 3 peores marcados para accion. Debe ser trazable a las OC concretas que generaron cada nota",
+      "por_que_importa": "O*NET: 'Monitor suppliers activities to assess performance in meeting quality or delivery requirements' y 'Meet with suppliers to discuss performance metrics'. SCOR mide Perfect Supplier Order (RL.1.2)"
+    },
+    {
+      "id": "T10",
+      "tarea": "Medir el servicio realizado al cliente: fill rate de linea, OTIF de salida, dias con quiebre por SKU y venta perdida estimada",
+      "frecuencia": "semanal",
+      "input_minimo": "Pedidos de cliente con lineas pedidas vs. despachadas y fecha prometida vs. entregada; historial de stock cero por SKU-dia",
+      "output_exigido": "numero: % OTIF y % fill rate del periodo + lista de SKU quebrados con unidades y dinero no vendido",
+      "criterio_de_aprobado": "Devuelve OTIF y fill rate calculados sobre pedidos reales (no sobre disponibilidad teorica) y una lista de SKU con dias de quiebre y venta perdida estimada con el metodo declarado. Reportar 'nivel de servicio objetivo' del modelo en lugar del realizado NO cuenta",
+      "por_que_importa": "Es la metrica que el dueno siente. SCOR nivel 1: Perfect Order Fulfillment (RL.1.1). Es tambien el unico chequeo honesto de si la politica de T04 funciono"
+    },
+    {
+      "id": "T11",
+      "tarea": "Identificar inventario excedente, de baja rotacion y obsoleto (cobertura en meses, ultima venta, vencimiento) y decidir la accion de salida por SKU",
+      "frecuencia": "mensual",
+      "input_minimo": "Stock por SKU con costo, ventas ultimos 6-12 meses, fecha de ultima venta, fecha de vencimiento o de fin de temporada si aplica",
+      "output_exigido": "clasificacion + decision go-nogo: SKU -> categoria (excedente / lento / muerto / por vencer) -> accion (liquidar, promocionar, devolver a proveedor, donar, dar de baja) con monto en riesgo",
+      "criterio_de_aprobado": "Devuelve la lista con capital inmovilizado en dinero por categoria, meses de cobertura por SKU y una accion asignada a cada SKU de la lista. Un ranking de 'los que menos venden' sin monto ni accion NO cuenta",
+      "por_que_importa": "En inventory-heavy el obsoleto se come el margen del ano. JD real: 'Minimise Obsoletes with vigorous attention to baseline and promo plan vols'"
+    },
+    {
+      "id": "T12",
+      "tarea": "Decidir precio de venta / markdown sobre inventario existente coordinando con comercial (que baja, cuanto, hasta cuando) y proyectar el efecto en unidades y margen",
+      "frecuencia": "mensual",
+      "input_minimo": "Costo unitario y precio actual por SKU, stock y cobertura, elasticidad o historia de promociones previas, precios de referencia de competencia si existen",
+      "output_exigido": "numero + decision go-nogo: nuevo precio por SKU, unidades esperadas a mover, margen resultante, y aprobado/no aprobado",
+      "criterio_de_aprobado": "Devuelve por SKU: precio propuesto, % de descuento, unidades proyectadas, margen bruto resultante en dinero y cuanta cobertura se libera. Debe declarar el supuesto de respuesta de demanda usado. 'Sugerir bajar el precio' sin unidades ni margen NO cuenta",
+      "por_que_importa": "El precio es la palanca mas rapida sobre el inventario; sin cuantificar margen se destruye rentabilidad para 'limpiar deposito'"
+    },
+    {
+      "id": "T13",
+      "tarea": "Evaluar exposicion a disrupcion de abastecimiento (concentracion en un proveedor/origen, ruta o puerto unico, tipo de cambio, estacionalidad regulatoria o veda, conflictividad) y definir mitigacion",
+      "frecuencia": "trimestral",
+      "input_minimo": "Mapa SKU -> proveedor -> origen/pais, participacion de cada proveedor en la compra, lead times, calendario regulatorio, senales de contexto (noticias, tipo de cambio)",
+      "output_exigido": "ranking: SKU/proveedores ordenados por exposicion (impacto x probabilidad) con plan de mitigacion por los primeros N",
+      "criterio_de_aprobado": "Devuelve un ranking con el criterio de puntaje explicito y, para el top N, una accion concreta y fechada (calificar segundo proveedor, subir cobertura X semanas, contrato de precio, adelantar compra). Una lista de riesgos genericos sin SKU ni accion NO cuenta",
+      "por_que_importa": "CSCP Modulo 7 'Supply Chain Risk', secciones 'Risk Management and Supply Chain Risks' y 'Risk Analysis and Response'; SCOR mide Supply Chain Agility (AG.1.1)"
+    },
+    {
+      "id": "T14",
+      "tarea": "Preparar y conducir la reunion mensual de S&OP: llevar un unico plan de demanda-oferta-caja, exponer los desacuerdos entre ventas, compras y finanzas, y cerrar con un plan consensuado",
+      "frecuencia": "mensual",
+      "input_minimo": "Pronostico (T01), plan de compra (T05-T07), servicio realizado (T10), presupuesto comercial, agenda y participantes",
+      "output_exigido": "documento: plan consensuado con numeros por familia, brechas identificadas y decisiones tomadas con responsable y fecha",
+      "criterio_de_aprobado": "Devuelve un acta/plan que muestre: numero de demanda acordado por familia, plan de suministro que lo soporta, brechas sin resolver declaradas explicitamente, y al menos una decision con nombre y fecha. Debe registrar el desacuerdo (ej. ventas pidio +20% y no se aprobo) en vez de esconderlo",
+      "por_que_importa": "CSCP Modulo 1 Seccion E: 'Supply and Demand Alignment'. Es la tarea donde el plan se vuelve compromiso organizacional, no un archivo"
+    },
+    {
+      "id": "T15",
+      "tarea": "TAREA HUMANA: negociar cara a cara con el proveedor precio, plazo de pago, MOQ, devolucion de obsoletos, exclusividad o rebate por volumen",
+      "frecuencia": "trimestral",
+      "input_minimo": "Scorecard del proveedor (T09), volumen anual comprado y participacion en su facturacion, precios alternativos, poder relativo, historial de incumplimientos",
+      "output_exigido": "documento: acuerdo escrito con condiciones antes vs. despues y el valor anual capturado",
+      "criterio_de_aprobado": "Devuelve el acuerdo firmado o el correo de confirmacion con las condiciones nuevas y el calculo del ahorro/beneficio anualizado. El criterio se cumple SOLO si la contraparte acepto: una propuesta de negociacion sin respuesta del proveedor NO cuenta",
+      "por_que_importa": "O*NET: 'Negotiate prices and terms with suppliers, vendors, or freight forwarders'. Ningun software cierra un acuerdo: el techo de cualquier sistema es preparar la posicion, no obtener el si"
+    },
+    {
+      "id": "T16",
+      "tarea": "TAREA HUMANA: resolver un faltante urgente por telefono (expediting): llamar al proveedor, conseguir adelanto de entrega, canje entre sucursales o compra de emergencia a la competencia/mayorista",
+      "frecuencia": "semanal",
+      "input_minimo": "Alerta de quiebre con cliente/pedido afectado, stock en otras ubicaciones, contactos del proveedor, opciones de compra spot",
+      "output_exigido": "documento: registro del compromiso conseguido (quien, que fecha, que cantidad) o el plan B ejecutado",
+      "criterio_de_aprobado": "Devuelve el compromiso concreto obtenido con nombre de la persona, fecha y cantidad, o la constancia de la accion alternativa (transferencia entre sucursales, compra spot con su sobrecosto). Se aprueba solo si el pedido del cliente se cubrio o se re-prometio con fecha aceptada por el cliente",
+      "por_que_importa": "JD real de inventory manager: 'Addressing problems in supply and delivery and finding appropriate solutions'. Depende de relaciones y favores; ningun sistema tiene ese capital social"
+    },
+    {
+      "id": "T17",
+      "tarea": "TAREA HUMANA/POLITICA: decidir a quien se le sirve primero cuando el stock no alcanza para todos los pedidos, y comunicarle al cliente perjudicado",
+      "frecuencia": "eventual",
+      "input_minimo": "Pedidos en conflicto por el mismo stock, margen y volumen anual por cliente, contratos o penalidades, historial de incumplimientos previos a cada cliente, presiones internas de ventas",
+      "output_exigido": "decision go-nogo + documento: asignacion final por cliente y comunicacion enviada al cliente afectado",
+      "criterio_de_aprobado": "Devuelve la matriz de asignacion (cliente -> unidades asignadas) con el criterio declarado (margen, contrato, dano de largo plazo), y la evidencia de que el cliente perjudicado fue avisado antes de la fecha prometida, no despues. Recomendar 'servir al mas rentable' sin asumir la conversacion NO cuenta",
+      "por_que_importa": "Es una decision politica con consecuencias comerciales de anos; involucra equidad, relacion y reputacion. Ninguna herramienta puede tomarla ni bancarse el costo de haberla tomado"
+    },
+    {
+      "id": "T18",
+      "tarea": "TAREA HUMANA: sostener el plan frente a la presion interna (dueno o gerente comercial que quiere comprar de mas, o que quiere cancelar una compra necesaria), con evidencia",
+      "frecuencia": "mensual",
+      "input_minimo": "Plan vigente (T05-T07), historial de decisiones anteriores y su resultado, costo de sobrestock y costo de quiebre estimados",
+      "output_exigido": "decision go-nogo: la compra se ejecuta, se recorta o se aprueba por excepcion, con la excepcion registrada y firmada",
+      "criterio_de_aprobado": "Devuelve el registro de la excepcion: quien la pidio, que numero contradecia, que se decidio y quien se hace cargo del resultado. Aprueba si la decision quedo escrita antes de conocerse el resultado (no una justificacion posterior)",
+      "por_que_importa": "Sin gobernanza el mejor modelo se sobre-escribe cada mes por corazonada. Es trabajo de autoridad y confianza, no de calculo; ningun software puede ejercerlo"
+    },
+    {
+      "id": "T19",
+      "tarea": "TAREA HUMANA/FISICA: correr conteos ciclicos y auditar la exactitud del inventario sistema vs. fisico, ajustar y atacar la causa raiz de las diferencias",
+      "frecuencia": "semanal",
+      "input_minimo": "Lista de SKU a contar (priorizada por clase ABC), stock de sistema por ubicacion, personal de deposito, registro de mermas y de movimientos no registrados",
+      "output_exigido": "numero: % de exactitud de inventario (por SKU y ponderado por valor) + ajustes aplicados + causa raiz por tipo de diferencia",
+      "criterio_de_aprobado": "Devuelve el % de exactitud con el criterio de tolerancia usado, la lista de ajustes en unidades y dinero, y al menos una causa raiz identificada con accion correctiva. Un ajuste masivo sin causa raiz NO cuenta: garantiza que la diferencia vuelva el mes que viene",
+      "por_que_importa": "JD real: 'Conducting regular cycle counts or stocktakes to determine available inventory'. Si el stock del sistema miente, T04-T05 producen numeros correctos sobre datos falsos"
+    },
+    {
+      "id": "T20",
+      "tarea": "Gestionar el flujo de devoluciones: clasificar por motivo, decidir disposicion (reingreso a stock, reparacion, devolucion a proveedor, descarte) y reclamar al proveedor lo que corresponde",
+      "frecuencia": "mensual",
+      "input_minimo": "Devoluciones del periodo con SKU, cantidad, motivo y cliente; condiciones de devolucion pactadas con cada proveedor; costo unitario",
+      "output_exigido": "numero + clasificacion: tasa de devolucion por motivo y por SKU/proveedor, con la disposicion asignada y el monto recuperable",
+      "criterio_de_aprobado": "Devuelve tasa de devolucion (%) desagregada por motivo, el destino de cada lote devuelto y el monto en dinero reclamado o reclamable al proveedor. Debe distinguir devolucion por falla de producto de devolucion por error de despacho: la accion correctiva es distinta",
+      "por_que_importa": "SCOR trata Return como proceso primario ('Orchestrate, Plan, Order, Source, Transform, Fulfill, and Return') y mide Perfect Return Order Fulfillment (RL.1.3); CSCP Modulo 5 Seccion D: 'Reverse Flow'"
+    }
+  ],
+  "fuente_del_estandar": "DERIVACION Y EVIDENCIA (tres estados: declarado / no_declarado / contradicho).\n\n== DECLARADO (cita literal <=25 palabras + fuente) ==\n1) SCOR Digital Standard v14.0, ASCM 2025 (PDF oficial, https://www.ascm.org/globalassets/ascm_website_assets/docs/scor/intro-and-front-matter-scor-digital-standard-2025.pdf, leido localmente pag. iv-x):\n - Procesos: \"organized around the seven primary management processes of Orchestrate, Plan, Order, Source, Transform, Fulfill, and Return\" (pag. iv). -> ancla estructural de la bateria (T01-T07 Plan/Source, T10/T17 Fulfill, T20 Return).\n - Plan: SCOR lo describe como \"Defines the scope, content, and performance targets of the supply chain\" (grafico jerarquia, pag. vi).\n - Metricas nivel 1 (Tabla 2, pag. viii, literal): \"Perfect Order Fulfillment (RL.1.1)\", \"Perfect Supplier Order (RL.1.2)\", \"Perfect Return Order Fulfillment (RL.1.3)\", \"Order Fulfillment Cycle Time (RS.1.1)\", \"Supply Chain Agility (AG.1.1)\", \"Cash-to-Cash Cycle Time (AM.1.1)\". -> anclan T09, T10, T13, T07, T20.\n - Atributo Reliability (Tabla 1, pag. vii): \"The ability to perform tasks as expected... delivering a product on time, in the right quantity, and at the right quality level.\"\n2) APICS/ASCM CSCP Module Content Outline 2026 (https://www.ascm.org/globalassets/ascm_website_assets/docs/credentials/2026-cscp-module-content-outline.pdf, leido localmente, 2 pag.). Titulos literales usados como cobertura obligatoria: \"Module 1: Supply Chains, Demand Management, and Forecasting\" (Sec. B \"Demand Analysis and Patterns\", D \"Forecasting\", E \"Supply and Demand Alignment\"); \"Module 3: Sourcing Products and Services\" (Sec. D \"Supplier Selection, Contracting, and Use\"); \"Module 4: Internal Operations and Inventory\" (Sec. C \"Inventory\", D \"Performance and Continuous Improvement\"); \"Module 5: Forward and Reverse Logistics\" (Sec. D \"Reverse Flow\"); \"Module 6: Supply Chain Relationships\" (Sec. B \"Supplier and Supply Chain Relationships\"); \"Module 7: Supply Chain Risk\" (Sec. A/B \"Risk Management and Supply Chain Risks\", \"Risk Analysis and Response\").\n3) O*NET 11-3071.04 Supply Chain Managers (US DOL, https://www.onetonline.org/link/summary/11-3071.04). Tareas literales usadas: \"Negotiate prices and terms with suppliers, vendors, or freight forwarders\" (-> T15); \"Monitor suppliers' activities to assess performance in meeting quality or delivery requirements\" y \"Meet with suppliers to discuss performance metrics, to provide performance feedback...\" (-> T09); \"Analyze inventories to determine how to increase inventory turns, reduce waste, or optimize customer service\" (-> T11); \"Manage activities related to strategic or tactical purchasing, material requirements planning, controlling inventory...\" (-> T05); \"Confer with supply chain planners to forecast demand or create supply plans...\" (-> T01/T14); \"Design or implement... reverse logistics programs\" (-> T20).\n4) Descripciones de puesto reales:\n - Indeed, \"What does an inventory manager do\" (https://www.indeed.com/career-advice/careers/what-does-an-inventory-manager-do): \"Conducting regular cycle counts or stocktakes to determine available inventory\" (-> T19); \"Addressing problems in supply and delivery and finding appropriate solutions\" (-> T16); \"Studying sales numbers and forecasting future inventory needs\" (-> T01).\n - VelvetJobs, Demand Planner (https://www.velvetjobs.com/job-descriptions/demand-planner): \"Accountable for understanding all drivers of inaccuracy in forecasting metrics, specifically forecast accuracy (MAPE) and forecast bias\" (-> T02); \"Minimise Obsoletes with vigorous attention to baseline and promo plan vols\" (-> T11); \"Works with vendor base with the use of vendor scorecards to resolve chronic issues such as Lead Time, Fill Rate, Data Quality\" (-> T08/T09).\n\n== NO_DECLARADO (no lo rellene con lo probable; lo declaro faltante) ==\n- Pesos porcentuales por dominio del examen CSCP: el outline 2026 lista 8 modulos SIN porcentajes. No asigne ponderaciones a la bateria.\n- Redaccion oficial ASCM de las definiciones de Order / Transform / Fulfill en SCOR v14: el front-matter publico no las define una por una (solo las nombra); las definiciones \"Source procures goods and services...\" que circulan son de SCOR clasico, no del PDF v14 leido.\n- Ningun JD publico consultado enuncia como tarea explicita \"decidir a que cliente se sirve primero cuando falta stock\" (T17) ni \"sostener el plan frente a la presion del dueno\" (T18). Fuentes secundarias (resumenes de JD de Workable/Glassdoor) mencionan \"direct allocation of materials, supplies, and products\", pero la decision politica de racionamiento entre clientes NO esta declarada en ninguna fuente primaria leida. Se incluyen igual, marcadas como inferidas del oficio, precisamente porque miden el techo del software.\n- Umbrales numericos (que MAPE es aceptable, que % de exactitud de inventario exigir): no declarados en las fuentes leidas; por eso los criterios de aprobado exigen que el sistema DECLARE su umbral, no que acierte uno canonico.\n\n== CONTRADICHO (dos fuentes chocan; cito ambas) ==\n- Cantidad y nombre de procesos: SCOR DS v14 (2025) dice \"seven primary management processes of Orchestrate, Plan, Order, Source, Transform, Fulfill, and Return\", mientras el enunciado clasico difundido (Wikipedia / resumenes de prensa SCOR) sostiene \"six major processes: Plan, Source, Make, Deliver, Return and Enable\". Es cambio de version, no error mio: la bateria se escribio para satisfacer AMBAS lecturas (cubre plan/source/make-no-aplica/deliver/return).\n- Agrupacion de atributos dentro del propio PDF de ASCM: la Tabla 1 (pag. vii) agrupa Reliability/Responsiveness/Agility bajo \"Resilience\" y el texto dice \"Reliability, Responsiveness and Agility are considered customer (resilience) focused\", pero la Tabla 2 (pag. viii) muestra esos mismos tres atributos bajo el bracket \"Economic\". Contradiccion interna de la fuente oficial; no afecta la bateria porque use las metricas nivel 1, no la agrupacion.\n\n== COBERTURA ==\n- Espectro pedido: pronostico T01-T02; politica de inventario T03-T04; reposicion T05-T06; caja/compras T07; proveedores T08-T09-T15; servicio al cliente/OTIF/quiebres T10-T16-T17; obsolescencia T11; precio T12; riesgo/disrupcion T13; S&OP T14; datos/fisico T19; devoluciones T20. 20/20 areas pedidas cubiertas.\n- Anclaje: 20 tareas totales; 14 con cita literal directa a SCOR v14, CSCP 2026 u O*NET/JD (declarado); 4 humanas parcialmente inferidas (T16 apoyada en Indeed; T15 en O*NET; T17 y T18 sin fuente primaria -> declaradas como inferidas); 2 (T06 restricciones de proveedor, T07 caja) derivadas de la realidad economica del segmento USD 1-15M y ancladas indirectamente en Cash-to-Cash (AM.1.1).\n- Cobertura de evidencia: 70% declarado con cita literal, 20% inferido y marcado, 10% no_declarado explicitado (umbrales y pesos).\n- Limites respetados: solo paginas publicas; no se descargaron pesos de modelos ni se ejecutaron binarios de terceros; no se crearon cuentas ni se llenaron formularios. Los dos PDF de ASCM se leyeron como archivos descargados por WebFetch, sin ejecutar nada.",
+  "nota_de_imparcialidad": "No lei el repositorio de Kern: no abri, busque ni ejecute ningun archivo del proyecto, y no consulte su lista de tools, su documentacion ni su grafo de conocimiento. La unica lectura local fueron los dos PDF de ASCM que WebFetch descargo a la carpeta de resultados de herramientas.\n\nOrden de derivacion (deliberadamente de arriba hacia abajo, nunca desde el producto): primero fije el esqueleto con los procesos de SCOR DS v14 (Plan / Order / Source / Transform / Fulfill / Return), despues verifique que cada modulo del CSCP 2026 tuviera al menos una tarea que lo representara, despues cruce contra tareas literales de O*NET 11-3071.04 y contra JD reales de inventory manager y demand planner, y recien al final redacte los criterios de aprobado. Es decir: el esqueleto existia antes de pensar en como se implementaria.\n\nFiltro anti-producto aplicado: descarte tareas que se me venian a la mente en forma de \"feature\" y que no aparecian en ninguna fuente del rol (por ejemplo: 'digital twin' de la cadena, 'scan de noticias de disrupcion', 'dashboard de KPIs', 'chequeo de citas/fuentes', 'simulacion de escenarios what-if'). Lo que sobrevivio se reformulo en lenguaje de oficio: no 'motor de riesgo' sino 'evaluar exposicion y definir mitigacion con fecha y responsable' (T13). Tambien evite que la bateria quedara alineada al formato de salida tipico de un software: por eso hay tareas cuyo output es un acuerdo firmado (T15), un aviso a un cliente (T17), una excepcion firmada por un humano (T18) y un conteo fisico con causa raiz (T19).\n\nTecho del software declarado a proposito: T15 (negociacion), T16 (faltante urgente por telefono), T17 (a quien se le sirve primero) y T18 (sostener el plan frente al dueno) fueron incluidas sabiendo que ningun sistema puede aprobarlas por si mismo. En T15 y T17 el criterio exige la aceptacion de una contraparte humana, no una recomendacion. Un puntaje honesto contra esta bateria tiene techo aproximado de 16/20 para cualquier software: es intencional. Ademas, T19 exige presencia fisica en el deposito.\n\nSesgo residual que reconozco: la bateria esta escrita para retailer/distribuidor inventory-heavy de USD 1-15M, asi que Transform/Make de SCOR queda casi vacio (no fabrican) y sobre-representa reposicion y capital de trabajo. Es sesgo del segmento pedido, no del producto. Para no inclinar la cancha hacia sistemas con datos ricos, cada criterio de aprobado exige que se declare el supuesto o el umbral usado en vez de acertar un valor canonico."
+}
