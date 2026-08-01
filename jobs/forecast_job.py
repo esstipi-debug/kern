@@ -53,6 +53,19 @@ class SkuForecast:
     fva: float            # 1 - MASE; > 0 means the method beats the naive baseline
     beats_naive: bool
     n_periods: int
+    #: Signed forecast error over the fitted history: positive = the method runs HIGH.
+    #: MAPE says how wrong, this says in which direction, which is the half a planner
+    #: acts on (Vandeput 2021, sec 2.2) and the half the job used to discard.
+    bias: float = float("nan")
+    #: Dispersion of the forecast, and which one it is (see ForecastResult.sigma_source):
+    #: forecast_error | demand_std_fallback | unavailable. Safety stock cannot be sized
+    #: from a point, so shipping the point alone was never enough.
+    error_std: float = float("nan")
+    sigma_source: str = "unavailable"
+    #: 80% band around the point (P10 floored at zero: negative demand is not a scenario).
+    #: ``None`` when no dispersion was estimable - never a fabricated zero-width band.
+    p10: float | None = None
+    p90: float | None = None
 
 
 @dataclass(frozen=True)
@@ -179,6 +192,23 @@ def _policy_outcome(
     return decide(base_summary, scenarios, objectives, confidence=confidence, residuals=residuals)
 
 
+#: z(0.90): half-width of an 80% band (P10-P90) under a normal error.
+_Z80 = 1.2815515655446004
+
+
+def _dispersion(fc) -> float | None:
+    """The sigma the band is drawn with, or ``None`` when none was estimable.
+
+    Reuses ``ForecastResult.sigma_source`` instead of re-deciding: the engine and the
+    band must never disagree about which dispersion is in play.
+    """
+    if fc.sigma_source == "forecast_error":
+        return float(fc.error_std)
+    if fc.sigma_source == "demand_std_fallback":
+        return float(fc.demand_std)
+    return None
+
+
 def run(
     series_by_name: dict[str, list[float]],
     *,
@@ -190,7 +220,9 @@ def run(
     skus: list[SkuForecast] = []
     for f in seg.items:
         series = series_by_name[f.name]
-        point = float(forecast_demand(series, method=f.recommended_method).forecast)
+        fc = forecast_demand(series, method=f.recommended_method)
+        point = float(fc.forecast)
+        sigma = _dispersion(fc)
         metrics = _backtest(
             series, f.recommended_method,
             holdout_fraction=holdout_fraction, min_periods=min_backtest_periods,
@@ -205,6 +237,9 @@ def run(
             name=f.name, quadrant=f.quadrant, adi=f.adi, cv2=f.cv2, method=f.recommended_method,
             forecast=point, mae=mae, mape=mape, mase=mase, fva=fva, beats_naive=beats,
             n_periods=f.n_periods,
+            bias=float(fc.bias), error_std=float(fc.error_std), sigma_source=fc.sigma_source,
+            p10=(max(0.0, point - _Z80 * sigma) if sigma is not None else None),
+            p90=(point + _Z80 * sigma if sigma is not None else None),
         ))
 
     n = len(skus)
@@ -269,6 +304,11 @@ def write_operational(report: ForecastJobReport, out_dir: str | Path, client: st
             "cv2": round(s.cv2, 4),
             "method": s.method,
             "forecast": round(s.forecast, 2),
+            "p10": "" if s.p10 is None else round(s.p10, 2),
+            "p90": "" if s.p90 is None else round(s.p90, 2),
+            "sigma": _fmt(s.error_std),
+            "sigma_source": s.sigma_source,
+            "bias": _fmt(s.bias),
             "mape": _fmt(s.mape),
             "mase": _fmt(s.mase),
             "fva": round(s.fva, 4),

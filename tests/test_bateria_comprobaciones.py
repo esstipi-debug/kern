@@ -89,25 +89,21 @@ def _resultado(puntaje, tarea_id: str):
 # --- T01 / T02: estructurales, no dependen del dataset -----------------------
 
 
-def test_t01_no_cumple_porque_el_entregable_no_lleva_banda():
-    """La fuente: 'Sin banda de incertidumbre NO cuenta'.
-
-    Si algun dia el job propaga ``error_std`` al entregable, este test se pone
-    rojo y hay que reevaluar el veredicto -- que es exactamente lo que queremos.
-    """
+def test_t01_cumple_el_entregable_ya_lleva_banda_de_incertidumbre():
+    """La fuente: 'Sin banda de incertidumbre NO cuenta'. El job propaga la sigma
+    del error de pronostico, declara cual dispersion uso y emite el P10-P90."""
     r = _resultado(puntuar(), "T01")
-    assert r.estado is Estado.NO_CUMPLE
-    assert r.detalle["campos_de_dispersion"] == []
-    assert "forecast" in r.detalle["campos"]
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+    assert set(r.detalle["campos_de_dispersion"]) == {"error_std", "p10", "p90", "sigma_source"}
 
 
-def test_t02_es_parcial_tiene_mape_pero_no_sesgo_ni_ciclo_previo():
+def test_t02_es_parcial_ya_hay_sesgo_pero_no_hay_ciclo_previo():
+    """El sesgo firmado ya viaja por SKU; lo que falta es el ciclo anterior
+    congelado, que es estado que hoy no se guarda en ningun lado."""
     r = _resultado(puntuar(), "T02")
-    assert r.estado is Estado.PARCIAL
-    assert set(r.detalle["faltantes"]) == {
-        "sesgo firmado",
-        "comparacion contra el ciclo previo",
-    }
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.detalle["faltantes"] == ["comparacion contra el ciclo previo"]
     assert r.puntos == 0.5
 
 

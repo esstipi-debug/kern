@@ -156,9 +156,13 @@ def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
         tarea_id="T02",
         estado=estado,
         evidencia=(
-            f"el entregable sale sin: {', '.join(faltantes)}. "
-            "src.forecasting.ForecastResult calcula bias y el job lo descarta; "
-            "sin ciclo congelado guardado tampoco hay contra que comparar"
+            f"el entregable sale sin: {', '.join(faltantes)}"
+            + (
+                ". El sesgo firmado ya viaja por SKU; lo que falta es el ciclo anterior "
+                "congelado: sin el no hay contra que comparar"
+                if tiene_mape and sesgo else
+                ". src.forecasting.ForecastResult calcula bias y el job lo descarta"
+            )
         ),
         detalle=detalle,
     )
