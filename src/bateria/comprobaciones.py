@@ -571,6 +571,7 @@ def _candidato_purchase_plan() -> _CandidatoAjuste:
         c for c in campos_linea
         if isinstance(getattr(ajustado, c), float) and abs(getattr(ajustado, c) - exceso_u) < 1e-9
     )
+    rotulados = _alguno_contiene(campos_linea, _CAMPOS_EXCESO)
     return _CandidatoAjuste(
         tool="integrated_plan (purchase plan)",
         entregable="src.sop_engine.purchase_plan.PurchasePlanLine",
@@ -582,6 +583,9 @@ def _candidato_purchase_plan() -> _CandidatoAjuste:
             f"al aplicar MOQ {_MOQ_SONDA:g} y multiplo {_MULTIPLO_SONDA:g}"
         ),
         prueba_exceso=(
+            f"el redondeo compra {exceso_u:g} u de mas ({exceso_usd:,.0f} usd) y el entregable lo "
+            f"rotula en {', '.join(rotulados)}"
+            if rotulados else
             f"el redondeo compra {exceso_u:g} u de mas ({exceso_usd:,.0f} usd) y ese numero solo "
             f"sale de diferenciar dos corridas"
             + (

@@ -233,27 +233,20 @@ def test_t05_es_parcial_cuando_solo_falta_una_pieza_de_la_oc():
     assert "fecha de pedido / llegada esperada" in r.evidencia
 
 
-def test_t06_no_cumple_ajusta_la_cantidad_pero_no_explicita_el_trade_off():
-    """Veredicto real: hat_settlement mueve Q* al corte de descuento y compara el
-    costo total contra el baseline, pero no dice cuanto stock extra se compra, ni
-    la cobertura que agrega, ni si conviene. El plan de compra ni siquiera
-    compara: redondea a MOQ/caja y el exceso solo sale de diferenciar corridas."""
+def test_t06_es_parcial_el_plan_ya_cuantifica_el_exceso_pero_no_recomienda():
+    """Veredicto real despues del fix: el plan de compra rotula lo que el MOQ y el
+    multiplo de caja compraron de mas (238 u / 2.380 usd) y cuanta cobertura
+    agregan. Lo que falta es el go/no-go: nadie dice si conviene."""
     r = _resultado(puntuar(), "T06")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
-    assert r.detalle["mejor"] == "hat_settlement"
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert r.detalle["mejor"] == "integrated_plan (purchase plan)"
     por_tool = {c["tool"]: c for c in r.detalle["candidatos"]}
     plan = por_tool["integrated_plan (purchase plan)"]
-    assert plan["cuantifica_el_exceso"] is False
+    assert plan["cuantifica_el_exceso"] is True
+    assert plan["faltantes"] == ["recomendacion si/no"]
     assert "238 u de mas" in plan["prueba_exceso"]
-    assert "projected_position" in plan["prueba_exceso"]  # coincide, pero no acredita
-    hats = por_tool["hat_settlement"]
-    assert hats["cuantifica_el_exceso"] is True
-    assert set(hats["faltantes"]) == {
-        "stock extra en unidades",
-        "meses de cobertura que agrega",
-        "recomendacion si/no",
-    }
+    assert "constraint_extra_units" in plan["prueba_exceso"]
 
 
 def _candidato_ajuste(**cambios) -> _CandidatoAjuste:

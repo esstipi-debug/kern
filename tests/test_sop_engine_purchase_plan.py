@@ -105,3 +105,39 @@ def test_budget_infeasible_zeroes_reorder_buffer_and_keeps_cycle_floor():
     line = lines[0]
     assert line.recommended_order == pytest.approx(200.0)  # units never trimmed
     assert line.reorder_buffer == pytest.approx(0.0)       # buffer zeroed first
+
+
+# --- Lo que la restriccion del proveedor compro de mas ------------------------
+
+
+def _plan_con_moq(*, moq=0.0, multiple=0.0, demand=100.0, on_hand=40.0, incoming=10.0):
+    demanda = (DemandPlanLine("A", demand, 0.0, demand, NO_SHIFT_SOURCE, "sin shift"),)
+    entradas = {"A": SkuPurchaseInputs(
+        "A", on_hand=on_hand, unit_cost=10.0, reorder_point=5.0, incoming_po=incoming,
+        minimum_order_quantity=moq, order_multiple=multiple,
+    )}
+    lineas, _ = build_purchase_plan(demanda, entradas)
+    return lineas[0]
+
+
+def test_sin_restricciones_no_hay_exceso():
+    linea = _plan_con_moq()
+    assert linea.recommended_order == 50.0        # 100 - 40 - 10
+    assert linea.constraint_extra_units == 0.0
+    assert linea.constraint_cost_delta == 0.0
+    assert linea.constraint_extra_cover_periods == 0.0
+
+
+def test_el_moq_y_la_caja_cuantifican_lo_que_compraron_de_mas():
+    """238 u de mas sobre una necesidad de 50: 2.380 usd y 2,38 periodos de cobertura."""
+    linea = _plan_con_moq(moq=250.0, multiple=48.0)
+    assert linea.recommended_order == 288.0
+    assert linea.constraint_extra_units == 238.0
+    assert linea.constraint_cost_delta == 2380.0
+    assert linea.constraint_extra_cover_periods == pytest.approx(2.38)
+
+
+def test_sin_demanda_la_cobertura_extra_es_cero_no_infinita():
+    linea = _plan_con_moq(moq=100.0, demand=0.0, on_hand=0.0, incoming=0.0)
+    assert linea.constraint_extra_units == 0.0
+    assert linea.constraint_extra_cover_periods == 0.0
