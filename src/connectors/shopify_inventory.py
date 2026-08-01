@@ -1,0 +1,341 @@
+"""Shopify Admin API inventory writeback connector (Linchpin / Kern 3.0) -- ``[CRED]``, offline-first.
+
+Mirrors ``src/connectors/shopify_prices.py`` and ``src/connectors/odoo.py``:
+
+- ``ShopifyInventoryRPC`` is the Protocol defining RPC operations:
+  finding inventory item by SKU, querying stock by location, adjusting and setting stock.
+- ``ShopifyInventoryClient`` is the real transport over Shopify's GraphQL Admin API
+  (inventorySetQuantities, inventoryAdjustQuantities, locations).
+- ``ShopifyInventoryStore`` holds the writeback ``store`` surface
+  (read/applied_keys/claim/release/commit/rollback) speaking ``ShopifyInventoryRPC``.
+- ``InMemoryShopifyInventory`` is the offline stand-in for zero-dependency testing.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Protocol, runtime_checkable
+
+from src import writeback
+
+try:
+    import httpx
+
+    _HAS_HTTPX = True
+except ImportError:
+    _HAS_HTTPX = False
+
+_WB_TARGET = "shopify_inventory"
+_DEFAULT_API_VERSION = "2024-10"
+
+
+class ShopifyInventoryError(RuntimeError):
+    """A Shopify inventory read/write failed (transport, auth, or unknown SKU)."""
+
+
+@runtime_checkable
+class ShopifyInventoryRPC(Protocol):
+    """RPC interface for inventory operations against Shopify Admin API."""
+
+    def list_locations(self) -> list[dict]: ...
+
+    def find_inventory_item_by_sku(self, sku: str) -> dict | None: ...
+
+    def get_inventory_level(self, inventory_item_id: str, location_id: str) -> int: ...
+
+    def adjust_inventory(self, inventory_item_id: str, location_id: str, delta: int, reason: str = "correction") -> int: ...
+
+    def set_inventory(self, inventory_item_id: str, location_id: str, available: int, reason: str = "correction") -> int: ...
+
+
+class ShopifyInventoryClient:
+    """Real Shopify GraphQL Admin API client for inventory management."""
+
+    def __init__(self, http: Any, *, api_version: str = _DEFAULT_API_VERSION) -> None:
+        if not _HAS_HTTPX:
+            raise ShopifyInventoryError(
+                "httpx is required for live Shopify transport -- install 'repricing' extra "
+                "or use InMemoryShopifyInventory for offline tests"
+            )
+        self._http = http
+        self._graphql_path = f"/admin/api/{api_version}/graphql.json"
+        self._item_id_cache: dict[str, dict] = {}
+
+    def _graphql(self, query: str, variables: dict) -> dict:
+        resp = self._http.post(self._graphql_path, json={"query": query, "variables": variables})
+        resp.raise_for_status()
+        body = resp.json()
+        if body.get("errors"):
+            raise ShopifyInventoryError(f"Shopify GraphQL error: {body['errors']}")
+        return body["data"]
+
+    def list_locations(self) -> list[dict]:
+        query = """
+        query ListLocations {
+          locations(first: 50, includeInactive: false) {
+            edges {
+              node {
+                id
+                name
+                isPrimary
+              }
+            }
+          }
+        }
+        """
+        data = self._graphql(query, {})
+        edges = (data.get("locations") or {}).get("edges", [])
+        return [e["node"] for e in edges]
+
+    def find_inventory_item_by_sku(self, sku: str) -> dict | None:
+        if sku in self._item_id_cache:
+            return self._item_id_cache[sku]
+        query = """
+        query FindVariantInventoryBySku($q: String!) {
+          productVariants(first: 1, query: $q) {
+            edges {
+              node {
+                id
+                sku
+                inventoryItem {
+                  id
+                  tracked
+                }
+              }
+            }
+          }
+        }
+        """
+        data = self._graphql(query, {"q": f"sku:{sku}"})
+        edges = (data.get("productVariants") or {}).get("edges", [])
+        if not edges:
+            return None
+        node = edges[0]["node"]
+        inv_item = node.get("inventoryItem") or {}
+        res = {
+            "sku": node["sku"],
+            "variant_id": node["id"],
+            "inventory_item_id": inv_item.get("id"),
+            "tracked": inv_item.get("tracked", True),
+        }
+        self._item_id_cache[sku] = res
+        return res
+
+    def get_inventory_level(self, inventory_item_id: str, location_id: str) -> int:
+        query = """
+        query GetInventoryLevel($id: ID!) {
+          inventoryItem(id: $id) {
+            inventoryLevels(first: 50) {
+              edges {
+                node {
+                  location { id }
+                  quantities(names: ["available"]) {
+                    name
+                    quantity
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+        data = self._graphql(query, {"id": inventory_item_id})
+        item = data.get("inventoryItem") or {}
+        levels = (item.get("inventoryLevels") or {}).get("edges", [])
+        for edge in levels:
+            node = edge["node"]
+            if node["location"]["id"] == location_id:
+                quantities = node.get("quantities", [])
+                for q in quantities:
+                    if q["name"] == "available":
+                        return int(q["quantity"])
+        return 0
+
+    def adjust_inventory(self, inventory_item_id: str, location_id: str, delta: int, reason: str = "correction") -> int:
+        mutation = """
+        mutation AdjustInventory($input: InventoryAdjustQuantitiesInput!) {
+          inventoryAdjustQuantities(input: $input) {
+            inventoryAdjustmentGroup {
+              changes {
+                delta
+                quantityAfterChange
+              }
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+        """
+        input_data = {
+            "reason": reason,
+            "name": "available",
+            "changes": [
+                {
+                    "inventoryItemId": inventory_item_id,
+                    "locationId": location_id,
+                    "delta": delta,
+                }
+            ],
+        }
+        data = self._graphql(mutation, {"input": input_data})
+        res = data.get("inventoryAdjustQuantities") or {}
+        errors = res.get("userErrors") or []
+        if errors:
+            raise ShopifyInventoryError(f"Shopify rejected inventory adjustment: {errors}")
+        changes = (res.get("inventoryAdjustmentGroup") or {}).get("changes", [])
+        if changes:
+            return int(changes[0]["quantityAfterChange"])
+        return 0
+
+    def set_inventory(self, inventory_item_id: str, location_id: str, available: int, reason: str = "correction") -> int:
+        mutation = """
+        mutation SetInventory($input: InventorySetQuantitiesInput!) {
+          inventorySetQuantities(input: $input) {
+            inventorySetGroup {
+              changes {
+                quantityAfterChange
+              }
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+        """
+        input_data = {
+            "reason": reason,
+            "name": "available",
+            "ignoreCompareQuantity": True,
+            "quantities": [
+                {
+                    "inventoryItemId": inventory_item_id,
+                    "locationId": location_id,
+                    "quantity": available,
+                }
+            ],
+        }
+        data = self._graphql(mutation, {"input": input_data})
+        res = data.get("inventorySetQuantities") or {}
+        errors = res.get("userErrors") or []
+        if errors:
+            raise ShopifyInventoryError(f"Shopify rejected setting inventory: {errors}")
+        changes = (res.get("inventorySetGroup") or {}).get("changes", [])
+        if changes:
+            return int(changes[0]["quantityAfterChange"])
+        return available
+
+
+class ShopifyInventoryStore:
+    """writeback system-of-record store for Shopify Inventory (addressed by SKU@location_id)."""
+
+    def __init__(self, rpc: ShopifyInventoryRPC, location_id: str, *, ledger: object | None = None) -> None:
+        self._rpc = rpc
+        self._location_id = location_id
+        self._audit = writeback.AuditBookkeeping(ledger)
+
+    def read(self, entity_id: str) -> dict:
+        item = self._rpc.find_inventory_item_by_sku(entity_id)
+        if item is None or not item.get("inventory_item_id"):
+            return {}
+        qty = self._rpc.get_inventory_level(item["inventory_item_id"], self._location_id)
+        return {"quantity": qty}
+
+    def applied_keys(self) -> set[str]:
+        return self._audit.applied_keys()
+
+    def claim(self, idempotency_key: str, *, now: float | None = None) -> bool:
+        return self._audit.claim(idempotency_key, now=now)
+
+    def release(self, idempotency_key: str) -> None:
+        self._audit.release(idempotency_key)
+
+    def commit(self, changeset: writeback.Changeset, approved_by: str) -> writeback.AuditEntry:
+        restore: list[tuple[str, str, object]] = []
+        try:
+            for c in changeset.changes:
+                if c.is_noop:
+                    continue
+                item = self._rpc.find_inventory_item_by_sku(c.entity_id)
+                if item is None or not item.get("inventory_item_id"):
+                    raise ShopifyInventoryError(f"unknown SKU {c.entity_id!r} in Shopify")
+                inv_item_id = item["inventory_item_id"]
+                current_qty = self._rpc.get_inventory_level(inv_item_id, self._location_id)
+                restore.append((c.entity_id, c.field, current_qty))
+                new_qty = int(c.after)
+                self._rpc.set_inventory(inv_item_id, self._location_id, new_qty)
+        except Exception:
+            self._apply_restore(restore)
+            raise
+
+        entry = writeback.AuditEntry(changeset.idempotency_key, changeset.target, approved_by, tuple(restore))
+        self._audit.record(entry)
+        return entry
+
+    def rollback(self, idempotency_key: str) -> None:
+        entry = self._audit.get(idempotency_key)
+        if entry is None:
+            raise KeyError(idempotency_key)
+        self._apply_restore(entry.restore)
+        self._audit.forget(idempotency_key)
+
+    def _apply_restore(self, restore: list[tuple[str, str, object]] | tuple[tuple[str, str, object], ...]) -> None:
+        for entity_id, _field, original in restore:
+            item = self._rpc.find_inventory_item_by_sku(entity_id)
+            if item is None or not item.get("inventory_item_id"):
+                raise ShopifyInventoryError(f"cannot restore: SKU {entity_id!r} no longer exists")
+            self._rpc.set_inventory(item["inventory_item_id"], self._location_id, int(original))
+
+
+class InMemoryShopifyInventory:
+    """Offline stand-in for Shopify inventory management testing."""
+
+    def __init__(self, stock: dict[str, dict[str, int]] | None = None, locations: list[dict] | None = None) -> None:
+        self._stock: dict[str, dict[str, int]] = {sku: dict(locs) for sku, locs in (stock or {}).items()}
+        self._locations = locations or [{"id": "gid://shopify/Location/1", "name": "Main Warehouse", "isPrimary": True}]
+
+    def list_locations(self) -> list[dict]:
+        return list(self._locations)
+
+    def find_inventory_item_by_sku(self, sku: str) -> dict | None:
+        if sku not in self._stock:
+            return None
+        return {
+            "sku": sku,
+            "variant_id": f"gid://shopify/ProductVariant/{sku}",
+            "inventory_item_id": f"gid://shopify/InventoryItem/{sku}",
+            "tracked": True,
+        }
+
+    def get_inventory_level(self, inventory_item_id: str, location_id: str) -> int:
+        sku = inventory_item_id.replace("gid://shopify/InventoryItem/", "")
+        return self._stock.get(sku, {}).get(location_id, 0)
+
+    def adjust_inventory(self, inventory_item_id: str, location_id: str, delta: int, reason: str = "correction") -> int:
+        sku = inventory_item_id.replace("gid://shopify/InventoryItem/", "")
+        if sku not in self._stock:
+            self._stock[sku] = {}
+        curr = self._stock[sku].get(location_id, 0)
+        new_val = max(0, curr + delta)
+        self._stock[sku][location_id] = new_val
+        return new_val
+
+    def set_inventory(self, inventory_item_id: str, location_id: str, available: int, reason: str = "correction") -> int:
+        sku = inventory_item_id.replace("gid://shopify/InventoryItem/", "")
+        if sku not in self._stock:
+            self._stock[sku] = {}
+        self._stock[sku][location_id] = available
+        return available
+
+
+def demo_shopify_inventory() -> InMemoryShopifyInventory:
+    """Deterministic in-memory Shopify inventory store for tests and demos."""
+    loc = "gid://shopify/Location/1"
+    return InMemoryShopifyInventory(
+        stock={
+            "SKU-1": {loc: 150},
+            "SKU-2": {loc: 45},
+            "SKU-3": {loc: 12},
+        }
+    )
