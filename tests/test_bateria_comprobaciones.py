@@ -9,11 +9,13 @@ from src.bateria.comprobaciones import (
     _CandidatoLeadTime,
     _CandidatoOC,
     _CandidatoScorecard,
+    _CandidatoServicio,
     _veredicto_ajuste,
     _veredicto_caja,
     _veredicto_lead_time,
     _veredicto_oc,
     _veredicto_scorecard,
+    _veredicto_servicio,
 )
 from src.bateria.scorer import Contexto, Estado, puntuar
 
@@ -309,6 +311,59 @@ def test_t06_gana_el_que_cuantifica_aunque_otro_tenga_mas_campos():
     r = _veredicto_ajuste((sin_cuantificar, cuantifica))
     assert r.detalle["mejor"] == "cuantifica"
     assert r.estado is Estado.NO_CUMPLE
+
+
+# --- T10: servicio realizado al cliente --------------------------------------
+
+
+def _candidato_servicio(**cambios) -> _CandidatoServicio:
+    """Un entregable de servicio que cumple TODO; los tests rompen una pieza."""
+    base = {
+        "entregable": "jobs.servicio_job.LineaServicio",
+        "campos": ("sku", "otif_salida", "fill_rate_linea", "dias_quiebre", "venta_perdida_usd"),
+        # 0.0 = no hay forma de sacar un fill rate sin pedidos: el numero es medido.
+        "fill_rate_sin_pedidos": 0.0,
+        "prueba_origen": "el fill rate se calcula sobre lineas de pedido despachadas",
+    }
+    return _CandidatoServicio(**{**base, **cambios})
+
+
+def test_t10_no_cumple_el_servicio_reportado_es_el_del_modelo():
+    """Veredicto real: sin una sola linea de pedido, el motor ya devuelve un fill
+    rate del 99,6% a partir del safety stock. Eso es la beta que implica la
+    politica, no el servicio realizado, y el criterio lo descalifica por nombre."""
+    r = _resultado(puntuar(), "T10")
+    assert r.estado is Estado.NO_CUMPLE, r.evidencia
+    assert r.puntos == 0.0
+    assert r.detalle["mide_lo_realizado"] is False
+    assert r.detalle["fill_rate_sin_pedidos"] > 0.9
+    assert "dias con quiebre por SKU" in r.detalle["faltantes"]
+
+
+def test_t10_cumple_con_servicio_medido_quiebres_y_venta_perdida():
+    r = _veredicto_servicio(_candidato_servicio())
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+
+
+def test_t10_un_fill_rate_que_sale_sin_pedidos_es_eliminatorio():
+    """La fuente: reportar el nivel de servicio objetivo del modelo no cuenta."""
+    r = _veredicto_servicio(_candidato_servicio(
+        fill_rate_sin_pedidos=0.98,
+        prueba_origen="el fill rate sale del safety stock, sin pedidos",
+    ))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+    assert "el del modelo, no el realizado" in r.evidencia
+
+
+def test_t10_es_parcial_cuando_solo_falta_la_venta_perdida():
+    r = _veredicto_servicio(_candidato_servicio(
+        campos=("sku", "otif_salida", "fill_rate_linea", "dias_quiebre")
+    ))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert "venta perdida estimada" in r.evidencia
 
 
 # --- T09: scorecard de proveedores -------------------------------------------

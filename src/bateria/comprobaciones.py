@@ -1159,6 +1159,128 @@ def t09_scorecard_de_proveedores(_: Contexto) -> ResultadoTarea:
     ))
 
 
+#: Nombres con los que el servicio REALIZADO podria llegar al entregable.
+_CAMPOS_SERVICIO_REALIZADO = ("otif", "fill_rate", "realizado", "achieved", "actual_service")
+
+#: Nombres con los que los dias de quiebre podrian llegar al entregable.
+_CAMPOS_DIAS_QUIEBRE = ("stockout_day", "dias_quiebre", "days_out", "oos_days", "quiebre")
+
+#: Nombres con los que la venta perdida podria llegar al entregable.
+_CAMPOS_VENTA_PERDIDA = ("lost_sale", "venta_perdida", "perdida", "foregone", "unmet_value")
+
+#: Politica sintetica con la que se muestra que el fill rate sale sin pedidos (T10).
+_SS_SONDA = 50.0
+_DEMANDA_CICLO_SONDA = 500.0
+_SIGMA_CICLO_SONDA = 40.0
+
+
+@dataclass(frozen=True)
+class _CandidatoServicio:
+    """Los numeros de servicio que Kern emite, medidos contra el criterio de T10."""
+
+    entregable: str
+    campos: tuple[str, ...]
+    fill_rate_sin_pedidos: float
+    prueba_origen: str
+
+    @property
+    def mide_lo_realizado(self) -> bool:
+        """Gate: el numero tiene que venir de pedidos reales, no del modelo.
+
+        Se prueba al reves, que es lo unico demostrable de una sola corrida: si el
+        entregable puede emitir un fill rate SIN una sola linea de pedido, ese
+        numero es el objetivo del modelo. El criterio lo descalifica por nombre.
+        """
+        return self.fill_rate_sin_pedidos <= 0.0
+
+    @property
+    def requisitos(self) -> dict[str, bool]:
+        campos = set(self.campos)
+        return {
+            "OTIF de salida sobre pedidos reales": self.mide_lo_realizado,
+            "fill rate de linea sobre pedidos reales": self.mide_lo_realizado
+            and bool(_alguno_contiene(campos, _CAMPOS_SERVICIO_REALIZADO)),
+            "dias con quiebre por SKU": bool(_alguno_contiene(campos, _CAMPOS_DIAS_QUIEBRE)),
+            "venta perdida estimada": bool(_alguno_contiene(campos, _CAMPOS_VENTA_PERDIDA)),
+        }
+
+    @property
+    def faltantes(self) -> list[str]:
+        return [nombre for nombre, ok in self.requisitos.items() if not ok]
+
+    def como_detalle(self) -> dict[str, object]:
+        return {
+            "entregable": self.entregable,
+            "campos": sorted(self.campos),
+            "faltantes": self.faltantes,
+            "fill_rate_sin_pedidos": self.fill_rate_sin_pedidos,
+            "mide_lo_realizado": self.mide_lo_realizado,
+            "prueba_origen": self.prueba_origen,
+        }
+
+
+def _veredicto_servicio(cand: _CandidatoServicio) -> ResultadoTarea:
+    """Puntua T10. Eliminatorio: "Reportar 'nivel de servicio objetivo' del modelo
+    en lugar del realizado NO cuenta"."""
+    detalle: dict[str, object] = cand.como_detalle()
+    if not cand.mide_lo_realizado:
+        return ResultadoTarea(
+            tarea_id="T10",
+            estado=Estado.NO_CUMPLE,
+            evidencia=(
+                f"el servicio que Kern reporta es el del modelo, no el realizado: "
+                f"{cand.prueba_origen}. El criterio lo descalifica por nombre. Tambien falta: "
+                f"{', '.join(cand.faltantes)}"
+            ),
+            detalle=detalle,
+        )
+
+    return _cerrar_veredicto(
+        "T10",
+        faltantes=cand.faltantes,
+        evidencia_cumple=(
+            "OTIF y fill rate calculados sobre pedidos reales, con dias de quiebre y venta "
+            "perdida por SKU"
+        ),
+        evidencia_falta=(
+            f"el servicio sale de pedidos reales, pero el entregable no trae: "
+            f"{', '.join(cand.faltantes)}"
+        ),
+        detalle=detalle,
+    )
+
+
+@comprobacion("T10")
+def t10_servicio_realizado_al_cliente(_: Contexto) -> ResultadoTarea:
+    """T10 — medir el servicio REALIZADO: OTIF de salida, fill rate, quiebres, venta perdida.
+
+    El sondeo es una demostracion al reves: se le pide un fill rate al motor sin
+    entregarle una sola linea de pedido de cliente. Si sale un numero, ese numero
+    no puede ser lo realizado -- es la beta que implica la politica. Y eso es
+    exactamente lo que el criterio descalifica.
+
+    Vale registrar el corte de cableado, que es el mismo patron que sigma_L en
+    T08: ``jobs.inventory_optimization.run`` acepta ``observed_fill_rates`` para
+    realimentar la politica con el servicio medido, pero nadie en ``jobs/`` lo
+    calcula. El unico OTIF que Kern computa es de ENTRADA (proveedor -> nosotros,
+    ``SupplierScore.otif``, ver T09), no de salida al cliente.
+    """
+    from jobs.inventory_optimization import SkuRecommendation
+    from src.fill_rate import fill_rate_from_safety_stock
+
+    beta = fill_rate_from_safety_stock(_SS_SONDA, _DEMANDA_CICLO_SONDA, _SIGMA_CICLO_SONDA)
+    return _veredicto_servicio(_CandidatoServicio(
+        entregable="jobs.inventory_optimization.SkuRecommendation + src.fill_rate",
+        campos=tuple(sorted(_campos_del_registro(SkuRecommendation))),
+        fill_rate_sin_pedidos=beta,
+        prueba_origen=(
+            f"sin una sola linea de pedido, con SS={_SS_SONDA:g} y sigma={_SIGMA_CICLO_SONDA:g} "
+            f"sobre una demanda de ciclo de {_DEMANDA_CICLO_SONDA:g}, "
+            f"fill_rate_from_safety_stock ya devuelve {beta:.1%}"
+        ),
+    ))
+
+
 @comprobacion("T03")
 def t03_segmentacion_con_servicio_diferenciado(ctx: Contexto) -> ResultadoTarea:
     """T03 — ABC-XYZ con nivel de servicio objetivo **distinto** por segmento.
