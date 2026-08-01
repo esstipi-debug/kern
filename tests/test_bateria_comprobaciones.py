@@ -6,6 +6,7 @@ import src.bateria.comprobaciones  # noqa: F401  -- registra las comprobaciones
 from src.bateria.comprobaciones import (
     _CandidatoAjuste,
     _CandidatoCaja,
+    _CandidatoExposicion,
     _CandidatoLeadTime,
     _CandidatoMarkdown,
     _CandidatoOC,
@@ -13,6 +14,7 @@ from src.bateria.comprobaciones import (
     _CandidatoServicio,
     _veredicto_ajuste,
     _veredicto_caja,
+    _veredicto_exposicion,
     _veredicto_lead_time,
     _veredicto_markdown,
     _veredicto_oc,
@@ -313,6 +315,55 @@ def test_t06_gana_el_que_cuantifica_aunque_otro_tenga_mas_campos():
     r = _veredicto_ajuste((sin_cuantificar, cuantifica))
     assert r.detalle["mejor"] == "cuantifica"
     assert r.estado is Estado.NO_CUMPLE
+
+
+# --- T13: exposicion a disrupcion --------------------------------------------
+
+
+def _candidato_exposicion(**cambios) -> _CandidatoExposicion:
+    """Un ranking de exposicion que cumple TODO; los tests rompen una pieza."""
+    base = {
+        "entregable": "jobs.riesgo_job.LineaExposicion",
+        "campos": ("supplier", "exposure_score", "mitigation", "due_date"),
+        "ranking_por_puntaje": True,
+        "prueba_ranking": "EMV desc",
+    }
+    return _CandidatoExposicion(**{**base, **cambios})
+
+
+def test_t13_es_parcial_rankea_y_propone_pero_ninguna_accion_lleva_fecha():
+    """Veredicto real: el ranking sale por EMV con occurrence/severity/RPN
+    explicitos y anclado a proveedor, con mitigaciones rankeadas por beneficio
+    neto. Lo unico que falta es el "cuando": ninguna capa tiene fecha."""
+    r = _resultado(puntuar(), "T13")
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert r.detalle["anclado_y_accionable"] is True
+    assert r.detalle["faltantes"] == ["accion fechada"]
+
+
+def test_t13_cumple_con_ranking_ancla_accion_y_fecha():
+    r = _veredicto_exposicion(_candidato_exposicion())
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+
+
+def test_t13_riesgos_genericos_sin_ancla_no_cuentan():
+    """La fuente: 'Una lista de riesgos genericos sin SKU ni accion NO cuenta'."""
+    r = _veredicto_exposicion(_candidato_exposicion(
+        campos=("name", "category", "exposure_score", "mitigation", "due_date")
+    ))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+    assert "sin proveedor/SKU concreto" in r.evidencia
+
+
+def test_t13_un_orden_sin_puntaje_explicito_no_es_ranking_por_exposicion():
+    r = _veredicto_exposicion(_candidato_exposicion(
+        ranking_por_puntaje=False, prueba_ranking="sale en el orden del archivo de entrada"
+    ))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert "criterio de puntaje explicito" in r.evidencia
 
 
 # --- T12: markdown con unidades y margen -------------------------------------

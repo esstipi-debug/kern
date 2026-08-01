@@ -1420,6 +1420,128 @@ def t12_markdown_con_unidades_y_margen(_: Contexto) -> ResultadoTarea:
     ))
 
 
+#: Nombres con los que el ancla (proveedor/SKU) y la accion podrian llegar (T13).
+_CAMPOS_ANCLA = ("supplier", "proveedor", "sku", "product_id", "vendor")
+_CAMPOS_ACCION = ("mitigation", "mitigacion", "accion", "action", "recommended", "plan")
+_CAMPOS_FECHA_ACCION = ("due", "deadline", "fecha", "date", "sla", "by_when", "vence")
+
+
+@dataclass(frozen=True)
+class _CandidatoExposicion:
+    """El scan de disrupcion + el registro de riesgo, medidos contra T13."""
+
+    entregable: str
+    campos: tuple[str, ...]
+    ranking_por_puntaje: bool
+    prueba_ranking: str
+
+    @property
+    def requisitos(self) -> dict[str, bool]:
+        campos = set(self.campos)
+        return {
+            "ranking por exposicion con criterio de puntaje explicito": self.ranking_por_puntaje,
+            "anclado a un proveedor o SKU concreto": bool(_alguno_contiene(campos, _CAMPOS_ANCLA)),
+            "accion concreta para el top N": bool(_alguno_contiene(campos, _CAMPOS_ACCION)),
+            "accion fechada": bool(_alguno_contiene(campos, _CAMPOS_FECHA_ACCION)),
+        }
+
+    @property
+    def anclado_y_accionable(self) -> bool:
+        """Gate: "Una lista de riesgos genericos sin SKU ni accion NO cuenta"."""
+        req = self.requisitos
+        return req["anclado a un proveedor o SKU concreto"] and req["accion concreta para el top N"]
+
+    @property
+    def faltantes(self) -> list[str]:
+        return [nombre for nombre, ok in self.requisitos.items() if not ok]
+
+    def como_detalle(self) -> dict[str, object]:
+        return {
+            "entregable": self.entregable,
+            "campos": sorted(self.campos),
+            "faltantes": self.faltantes,
+            "anclado_y_accionable": self.anclado_y_accionable,
+            "prueba_ranking": self.prueba_ranking,
+        }
+
+
+def _veredicto_exposicion(cand: _CandidatoExposicion) -> ResultadoTarea:
+    """Puntua T13."""
+    detalle: dict[str, object] = cand.como_detalle()
+    if not cand.anclado_y_accionable:
+        return ResultadoTarea(
+            tarea_id="T13",
+            estado=Estado.NO_CUMPLE,
+            evidencia=(
+                "lo que sale es una lista de riesgos sin proveedor/SKU concreto o sin accion "
+                f"asociada, y el criterio dice que asi no cuenta. Falta: "
+                f"{', '.join(cand.faltantes)}"
+            ),
+            detalle=detalle,
+        )
+
+    return _cerrar_veredicto(
+        "T13",
+        faltantes=cand.faltantes,
+        evidencia_cumple=(
+            f"ranking por exposicion con puntaje explicito ({cand.prueba_ranking}), anclado a "
+            "proveedor y con accion fechada para el top N"
+        ),
+        evidencia_falta=(
+            f"el ranking sale por exposicion con puntaje explicito ({cand.prueba_ranking}) y "
+            f"anclado a proveedor, con mitigaciones rankeadas por beneficio neto, pero sale sin: "
+            f"{', '.join(cand.faltantes)} -- ninguna mitigacion lleva cuando"
+        ),
+        detalle=detalle,
+    )
+
+
+@comprobacion("T13")
+def t13_exposicion_a_disrupcion(_: Contexto) -> ResultadoTarea:
+    """T13 — exposicion a disrupcion de abastecimiento y mitigacion.
+
+    Se corre el registro de riesgo sobre dos hazards con impacto x probabilidad
+    distintos para verificar que el ranking sale de un puntaje explicito y no de
+    un orden de entrada. El ancla y la accion se miden sobre los campos del
+    entregable: ``SupplierDisruption`` rankea PROVEEDORES (no riesgos genericos) y
+    ``RiskAssessment`` trae mitigaciones rankeadas por beneficio neto.
+
+    Lo que no existe en ninguna capa es el "cuando": ni ``MitigationOption``, ni
+    ``RankedMitigation``, ni ``ExecutionOption`` tienen fecha. La accion queda
+    recomendada pero sin comprometer, que es la mitad de lo que pide el criterio.
+    """
+    from src.disruption import SupplierDisruption
+    from src.guided import ExecutionOption
+    from src.risk import MitigationOption, RankedMitigation, RiskAssessment, RiskFactor
+    from src.risk import assess_portfolio as _assess
+
+    chico = RiskFactor(
+        name="corte de ruta", category="logistics", likelihood=0.10, impact_value=50_000.0,
+        mitigations=(MitigationOption("segundo transportista", "redundancy", 5_000.0, 0.0, 0.4),),
+    )
+    grande = RiskFactor(
+        name="quiebre del proveedor unico", category="supplier", likelihood=0.30,
+        impact_value=400_000.0,
+        mitigations=(MitigationOption("calificar segundo proveedor", "redundancy", 20_000.0, 0.5),),
+    )
+    reporte = _assess([chico, grande])
+    orden = [a.name for a in reporte.assessments]
+    emvs = [round(a.emv, 1) for a in reporte.assessments]
+
+    campos = (
+        _campos_del_registro(SupplierDisruption)
+        | _campos_del_registro(RiskAssessment)
+        | _campos_del_registro(RankedMitigation)
+        | _campos_del_registro(ExecutionOption)
+    )
+    return _veredicto_exposicion(_CandidatoExposicion(
+        entregable="src.disruption.SupplierDisruption + src.risk.RiskAssessment",
+        campos=tuple(sorted(campos)),
+        ranking_por_puntaje=emvs == sorted(emvs, reverse=True) and len(set(emvs)) > 1,
+        prueba_ranking=f"EMV desc {dict(zip(orden, emvs, strict=True))}, con occurrence/severity/rpn por riesgo",
+    ))
+
+
 @comprobacion("T03")
 def t03_segmentacion_con_servicio_diferenciado(ctx: Contexto) -> ResultadoTarea:
     """T03 — ABC-XYZ con nivel de servicio objetivo **distinto** por segmento.
