@@ -207,3 +207,36 @@ def test_duplicate_product_ids_never_cross_contaminate_cost_or_demand() -> None:
     # more than its own at-risk value (100%) - cross-contamination would blow past it.
     for line in report.lines:
         assert line.recovery_pct <= 1.0 + 1e-9
+
+
+# --- El trade-off en dinero, no solo "bajá el precio" -------------------------
+
+
+def test_el_markdown_reporta_descuento_margen_y_cobertura_liberada():
+    """Un precio de liquidacion sin el % de descuento, el margen y la cobertura que
+    libera es "sugerir bajar el precio": no se puede aprobar ni rechazar."""
+    stock = SkuStock(product_id="SKU-EXC", on_hand=900.0, daily_demand=1.0, unit_cost=8.0,
+                     days_since_last_sale=10)
+    historial = {"SKU-EXC": ([20.0 - i * 0.5 for i in range(12)], [5 + i * 2 for i in range(12)])}
+    linea = plan_liquidation([stock], historial).lines[0]
+
+    assert linea.method == "elasticity"
+    assert linea.current_price is not None and linea.current_price > 0
+    assert linea.discount_pct == pytest.approx(1 - linea.clearance_price / linea.current_price)
+    assert linea.gross_margin_value == pytest.approx(
+        linea.recovered_value - linea.units_to_clear * 8.0
+    )
+    # 810 u de exceso a 1 u/dia de demanda: liberan 810 dias de cobertura.
+    assert linea.cover_days_released == pytest.approx(810.0)
+
+
+def test_un_remate_sin_precio_de_referencia_no_inventa_un_descuento():
+    """Sin historial no hay precio contra el cual medir el corte: None, no 0%."""
+    muerto = SkuStock(product_id="SKU-MUERTO", on_hand=500.0, daily_demand=0.0, unit_cost=12.5,
+                      days_since_last_sale=400)
+    linea = plan_liquidation([muerto]).lines[0]
+    assert linea.method == "salvage_heuristic"
+    assert linea.current_price is None
+    assert linea.discount_pct is None
+    assert linea.cover_days_released is None      # sin demanda no libera cobertura, libera caja
+    assert linea.gross_margin_value < 0           # se recupera 30% del costo: es perdida

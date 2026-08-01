@@ -489,19 +489,18 @@ def _candidato_markdown(**cambios) -> _CandidatoMarkdown:
     return _CandidatoMarkdown(**{**base, **cambios})
 
 
-def test_t12_no_cumple_declara_el_supuesto_pero_no_trae_descuento_ni_margen():
-    """Veredicto real: el metodo (elasticity / salvage_heuristic) viene declarado
-    por linea, pero no hay % de descuento, ni margen bruto, ni cobertura liberada;
-    y sin historial de precios el SKU muerto sale sin precio propuesto."""
+def test_t12_es_parcial_ya_trae_descuento_margen_y_cobertura_liberada():
+    """Veredicto real despues del fix: la linea sale con % de descuento contra el
+    precio de referencia, margen bruto en dinero y los dias de cobertura que
+    libera. Lo unico que falta es el precio del SKU muerto, que va a remate: una
+    recuperacion de salvage no tiene precio unitario que proponer."""
     r = _resultado(puntuar(), "T12")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
     assert r.detalle["declara_el_supuesto"] is True
     assert r.detalle["metodos_declarados"]["SKU-EXC"] == "elasticity"
     assert r.detalle["precios_propuestos"]["SKU-MUERTO"] is None
-    assert "margen bruto resultante en dinero" in r.detalle["faltantes"]
-    # "recovered_value" contiene "cover" pero es recaudacion, no cobertura.
-    assert "cobertura que se libera" in r.detalle["faltantes"]
+    assert r.detalle["faltantes"] == ["precio propuesto por SKU"]
 
 
 def test_t12_cumple_con_precio_descuento_unidades_margen_y_cobertura():

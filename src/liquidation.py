@@ -66,6 +66,18 @@ class LiquidationLine:
     weeks_to_clear: float        # inf when it cannot be estimated (dead / no demand response)
     recovered_value: float       # expected cash recovered if the disposition is executed
     recovery_pct: float          # recovered_value / at_risk_value (0.0 when nothing is at risk)
+    #: Reference price the markdown is measured from, and the cut as a share of it.
+    #: ``None`` on a salvage recovery (no price history -> nothing to discount FROM):
+    #: a discount reported against a price nobody knows is a made-up number.
+    current_price: float | None = None
+    discount_pct: float | None = None
+    #: Gross margin in money if the disposition is executed: recovered cash minus the
+    #: cost of the units it clears. Negative is the normal case on dead stock and is
+    #: reported as-is - "recovered 30%" reads like a win until you see the sign.
+    gross_margin_value: float = 0.0
+    #: Days of cover the clearance frees up (units_to_clear / daily demand). ``None``
+    #: when the SKU has no demand: dead stock frees no cover, it frees cash.
+    cover_days_released: float | None = None
 
 
 @dataclass(frozen=True)
@@ -147,6 +159,13 @@ def _plan_sku(
         weeks_to_clear=weeks,
         recovered_value=recovered,
         recovery_pct=(recovered / at_risk) if at_risk > 0 else 0.0,
+        current_price=current if current > 0 else None,
+        discount_pct=(
+            1.0 - clearance_price / current
+            if clearance_price is not None and current > 0 else None
+        ),
+        gross_margin_value=recovered - units * unit_cost,
+        cover_days_released=(units / daily_demand) if daily_demand > 0 else None,
     )
 
 

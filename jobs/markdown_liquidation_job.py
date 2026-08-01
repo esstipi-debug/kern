@@ -41,7 +41,8 @@ _DEFAULT_SALVAGE_RECOVERY_PCT = 0.30
 
 _CSV_COLUMNS = (
     "product_id", "classification", "method", "units_to_clear", "at_risk_value",
-    "clearance_price", "weeks_to_clear", "recovered_value", "recovery_pct",
+    "current_price", "clearance_price", "discount_pct", "weeks_to_clear",
+    "cover_days_released", "recovered_value", "gross_margin_value", "recovery_pct",
 )
 
 
@@ -191,9 +192,15 @@ def write_operational(report: LiquidationReport, out_dir: str | Path, client: st
             "method": line.method,
             "units_to_clear": round(line.units_to_clear, 1),
             "at_risk_value": round(line.at_risk_value, 2),
+            "current_price": ("" if line.current_price is None else round(line.current_price, 2)),
             "clearance_price": ("" if line.clearance_price is None else round(line.clearance_price, 2)),
+            "discount_pct": ("" if line.discount_pct is None else round(line.discount_pct * 100, 1)),
             "weeks_to_clear": ("inf" if math.isinf(line.weeks_to_clear) else round(line.weeks_to_clear, 1)),
+            "cover_days_released": (
+                "" if line.cover_days_released is None else round(line.cover_days_released, 1)
+            ),
             "recovered_value": round(line.recovered_value, 2),
+            "gross_margin_value": round(line.gross_margin_value, 2),
             "recovery_pct": round(line.recovery_pct * 100, 1),
         }
         for line in report.lines
