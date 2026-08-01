@@ -33,23 +33,40 @@ def test_file_matching_all_required_columns_gets_its_profile():
 
 
 def test_file_missing_one_required_column_is_unclassified_with_the_reason():
-    result = classify_file(_file("algo.csv", ["date", "product_id"]))
+    # No product_id at all: maestro and ventas both have gap=1 (missing only
+    # product_id); maestro wins the tie alphabetically.
+    result = classify_file(_file("algo.csv", ["date", "quantity"]))
     assert result.profile is None
     assert result.reason.startswith(UNCLASSIFIED)
-    # maestro and ventas both have gap=1; maestro wins alphabetically
-    assert result.missing == ("sku",)
+    assert result.missing == ("product_id",)
 
 
 def test_ambiguous_file_matching_two_profiles_is_not_guessed():
-    """A file carrying every column of two profiles is reported, never resolved."""
-    both = ["sku", "product_id", "on_hand", "daily_demand"]
+    """Genuine ambiguity: ventas (date, product_id, quantity) and stock
+    (product_id, on_hand, daily_demand) are both fully satisfied, and neither
+    required set is a subset of the other -- this is NOT the maestro-vs-anything
+    case (maestro's lone required column, product_id, is a strict subset of both
+    and gets filtered out; see classify_file's subset rule), it is two profiles
+    that could genuinely both be right."""
+    both = ["date", "product_id", "quantity", "on_hand", "daily_demand"]
     result = classify_file(_file("mezcla.csv", both))
     assert result.profile is None
     assert "ambiguous" in result.reason
+    assert "ventas" in result.reason and "stock" in result.reason
+
+
+def test_a_complete_ventas_file_is_not_ambiguous_with_maestro():
+    """Fixes the false-ambiguity the subset rule exists for: a file that fully
+    satisfies ventas also trivially satisfies maestro's lone required column
+    (product_id), but that does not make it ambiguous -- ventas is strictly MORE
+    specific than maestro, so it is not "could genuinely be either", and must
+    classify as ventas outright."""
+    result = classify_file(_file("ventas.csv", ["date", "product_id", "quantity", "unit_cost"]))
+    assert result.profile == "ventas"
 
 
 def test_classification_is_deterministic_and_sorted_by_filename():
-    files = [_file("z.csv", ["sku"]), _file("a.csv", ["product_id", "cogs", "avg_inventory_value"])]
+    files = [_file("z.csv", ["product_id"]), _file("a.csv", ["product_id", "cogs", "avg_inventory_value"])]
     first = classify_all(files)
     second = classify_all(list(reversed(files)))
     assert [c.filename for c in first] == ["a.csv", "z.csv"]
@@ -59,33 +76,34 @@ def test_classification_is_deterministic_and_sorted_by_filename():
 def test_tie_in_no_match_branch_broken_alphabetically_by_profile_name():
     """Verify that a tie in gap size is broken by profile name (alphabetical),
     so reordering PROFILES cannot silently change the result."""
-    # columns=["product_id", "date", "on_hand"] creates gap=1 for maestro, ventas, stock.
+    # No product_id: columns=["date", "quantity", "on_hand", "daily_demand"] creates
+    # gap=1 (missing only product_id) for maestro, ventas, AND stock alike.
     # Alphabetically: maestro < stock < ventas, so maestro wins the tie and is reported.
-    result = classify_file(_file("tied.csv", ["product_id", "date", "on_hand"]))
+    result = classify_file(_file("tied.csv", ["date", "quantity", "on_hand", "daily_demand"]))
     assert result.profile is None
     assert result.reason.startswith(UNCLASSIFIED)
     # maestro is chosen as closest despite being early in PROFILES, because
     # the tie is broken alphabetically not by tuple order
     assert "maestro" in result.reason
-    assert result.missing == ("sku",)
+    assert result.missing == ("product_id",)
 
 
 def test_empty_file_reports_closest_profile():
     """An empty file (no columns) should report the closest profile
-    (maestro, with gap=1 because it only requires sku)."""
+    (maestro, with gap=1 because it only requires product_id)."""
     result = classify_file(_file("empty.csv", []))
     assert result.profile is None
     assert result.reason.startswith(UNCLASSIFIED)
-    assert result.missing == ("sku",)
+    assert result.missing == ("product_id",)
 
 
 def test_single_date_column_maestro_is_closer_than_ventas():
-    """columns=("date",) is missing 1 from maestro (sku) but missing 2 from ventas
-    (product_id, quantity), so maestro is the closest profile."""
+    """columns=("date",) is missing 1 from maestro (product_id) but missing 2 from
+    ventas (product_id, quantity), so maestro is the closest profile."""
     result = classify_file(_file("date_only.csv", ["date"]))
     assert result.profile is None
     assert result.reason.startswith(UNCLASSIFIED)
-    assert result.missing == ("sku",)
+    assert result.missing == ("product_id",)
     assert "maestro" in result.reason
 
 

@@ -32,7 +32,11 @@ class DatasetProfile:
 # Derived from the PackageInput contracts of the "Diagnostico de Arranque" package
 # (scm_agent/package_specs.py) -- the four files a real first engagement asks for.
 PROFILES: tuple[DatasetProfile, ...] = (
-    DatasetProfile("maestro", ("sku",), ("name", "gtin", "unit_cost")),
+    # "sku" is not a distinct canonical name here -- it is the same real-world
+    # concept as "product_id" (single source of truth, same discipline as the
+    # data contract in Task 1). A file whose header literally says "sku" maps
+    # to canonical "product_id" via the job layer's alias table.
+    DatasetProfile("maestro", ("product_id",), ("name", "gtin", "unit_cost")),
     DatasetProfile("ventas", ("date", "product_id", "quantity"), ("unit_cost",)),
     DatasetProfile("stock", ("product_id", "on_hand", "daily_demand"),
                    ("unit_cost", "days_since_last_sale")),
@@ -66,6 +70,22 @@ def classify_file(file: FileColumns) -> Classified:
     """Match a file against every profile. No match or several -> no decision."""
     present = set(file.columns)
     hits = [p for p in PROFILES if set(p.required) <= present]
+
+    # A hit whose required set is a strict subset of another hit's required set is
+    # not genuinely ambiguous -- it is trivially satisfied by the less demanding
+    # profile as a side effect of satisfying the more specific one. "Ambiguous" has
+    # to mean "could genuinely be either", not "also happens to satisfy the least
+    # demanding profile" (e.g. a complete ventas file also satisfies maestro's sole
+    # required column, product_id -- that makes it MORE specific than maestro, not
+    # unclear which one it is). Order-independent: computed from set containment,
+    # not from PROFILES' iteration order.
+    if len(hits) > 1:
+        hits = [
+            p for p in hits
+            if not any(
+                other is not p and set(p.required) < set(other.required) for other in hits
+            )
+        ]
 
     if len(hits) == 1:
         profile = hits[0]

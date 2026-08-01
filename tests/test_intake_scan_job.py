@@ -75,14 +75,32 @@ def test_a_non_readable_file_is_listed_by_name_even_when_others_are_readable(tmp
     assert intake.ignored == ("leame.txt",)
 
 
-def test_maestros_sku_does_not_silently_double_as_product_id(tmp_path):
-    """The wrinkle: a master-only folder (sku, no product_id-named column
-    anywhere) must NOT have "product_id" show up in available -- sku and
-    product_id are kept as distinct canonical names, on purpose."""
+def test_maestros_sku_header_maps_to_canonical_product_id(tmp_path):
+    """sku and product_id are the SAME canonical name (product_id) as of the
+    unification fix below; a master file whose only identifier column is
+    literally named "sku" still contributes to canonical "product_id" via the
+    existing "sku" alias in jobs.intake.ALIASES["product_id"] -- no folder
+    with a maestro file, however isolated, should end up without product_id
+    in `available`. Compare to the false-red regression test further down."""
     folder = _folder(tmp_path, **{"maestro.csv": _maestro()})
     intake = intake_scan_job.prepare(str(folder))
-    assert "sku" in intake.available
-    assert "product_id" not in intake.available
+    assert "product_id" in intake.available
+
+
+def test_a_master_only_folder_does_not_false_red_data_quality(tmp_path):
+    """FIXES A FALSE RED. Regression test for the bug this task-5 follow-up
+    exists to close: a client sending ONLY their product master (maestro.csv,
+    header "sku") used to get data_quality = RED (missing_required=
+    ("product_id",)), because "sku" and "product_id" were two different
+    canonical names and nothing else in the folder carried a literally-named
+    "product_id" column. That verdict was wrong -- the master file plainly
+    identifies every product. Do not delete this test because it looks
+    redundant with the healthy-folder test above: this one has NO ventas.csv,
+    which is exactly the folder shape that used to trigger the false red."""
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro()})
+    report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
+    states = {v.tool_key: v.state for v in report.verdicts}
+    assert states["data_quality"] != RED
 
 
 def test_gate_blocks_when_nothing_classified(tmp_path):

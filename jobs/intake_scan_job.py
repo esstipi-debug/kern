@@ -7,19 +7,20 @@ scan needs), measures per-column coverage and the four circuit-breaker counts,
 and hands all of that to the pure engine (``src/intake_scan.py``) to classify
 files, judge breakers and build the tool-by-tool verdict report.
 
-The sku / product_id wrinkle: ``maestro`` (the master/catalog file) requires
-canonical ``sku``; several other profiles and most registry tools require
-canonical ``product_id`` -- the same real-world concept under a different
-column name. This module does NOT alias one to the other. Header-to-canonical
-mapping is first-match-wins (see ``_map_headers``): a header is claimed by at
-most one canonical name, so a master file whose only identifier column is
-literally named "sku" does NOT also satisfy "product_id" -- even though
-``jobs.intake.ALIASES["product_id"]`` lists "sku" as an alias for the
-single-file demand-intake use case. A folder with a master file (headers:
-sku, name, ...) and a sales file (headers: date, product_id, quantity, ...)
-gets a GREEN ``data_quality`` verdict sourced from the SALES file, not the
-master -- see the module's report for what happens when there is no second
-file to supply a literally-named "product_id" column.
+The sku / product_id resolution: ``maestro`` (the master/catalog file) and
+every other profile that identifies a product now require the SAME canonical
+name, ``product_id`` -- single source of truth for "identifier of a product",
+same discipline as the data contract in Task 1. "sku" is not a distinct
+canonical column here; it is a header alias that maps to ``product_id``, via
+``jobs.intake.ALIASES["product_id"]`` (already carried "sku" as an alias --
+this module did not need to add it, see ``prepare()``'s FolderIntake for what
+that means for a master-only folder). Earlier versions of this module treated
+"sku" as maestro's own canonical column, distinct from "product_id" -- that
+created a false RED: a folder holding only a master file (headers: sku, name,
+...) with no second file supplying a literally-named "product_id" reported
+``data_quality`` as RED (missing product_id) even though the master file
+obviously identifies every product. Unifying the canonical name fixes that;
+see ``tests/test_intake_scan_job.py::test_a_master_only_folder_does_not_false_red_data_quality``.
 """
 from __future__ import annotations
 
@@ -76,8 +77,7 @@ _CANONICAL_COLUMNS = _canonical_order()
 
 def _map_headers(columns) -> dict[str, str]:
     """Map raw headers to canonical scan columns: exact names win first, then
-    aliases; each header is claimed by at most one canonical name. See the
-    module docstring for why this matters for sku vs product_id.
+    aliases; each header is claimed by at most one canonical name.
     """
     by_norm = {_norm(c): c for c in columns}
     consumed: set[str] = set()
@@ -174,12 +174,12 @@ def prepare(data_path: str, params: dict | None = None) -> FolderIntake:
 
     maestro_files = {c.filename for c in classified if c.profile == "maestro"}
     orphans_evaluated = bool(maestro_files)
-    maestro_skus: set[str] = set()
+    maestro_product_ids: set[str] = set()
     if orphans_evaluated:
         for filename, mapping, df in records:
-            if filename in maestro_files and "sku" in mapping:
-                col = df[mapping["sku"]].dropna().astype(str).str.strip()
-                maestro_skus |= set(v for v in col if v)
+            if filename in maestro_files and "product_id" in mapping:
+                col = df[mapping["product_id"]].dropna().astype(str).str.strip()
+                maestro_product_ids |= set(v for v in col if v)
 
     signals: list[FileSignals] = []
     for filename, mapping, df in records:
@@ -205,7 +205,7 @@ def prepare(data_path: str, params: dict | None = None) -> FolderIntake:
         product_id_header = mapping.get("product_id")
         if orphans_evaluated and product_id_header is not None:
             pid = df[product_id_header].dropna().astype(str).str.strip()
-            n_orphan_keys = int((~pid.isin(maestro_skus)).sum())
+            n_orphan_keys = int((~pid.isin(maestro_product_ids)).sum())
 
         signals.append(FileSignals(
             filename=filename,
