@@ -28,6 +28,11 @@ from scm_agent import tool_options
 
 REPO = Path(__file__).resolve().parents[1]
 CRITICAL = ("unit_cost", "lead_time_days")
+_SUPERSTORE = REPO / "data" / "kaggle" / "superstore.csv"
+_needs_superstore = pytest.mark.skipif(
+    not _SUPERSTORE.exists(),
+    reason=f"{_SUPERSTORE} not present - large Kaggle dataset, fetched locally, not versioned",
+)
 
 
 def _superstore_slice(n_skus=25):
@@ -41,6 +46,7 @@ def _superstore_slice(n_skus=25):
     return raw[raw["Product ID"].isin(keep)].copy()
 
 
+@_needs_superstore
 def test_intake_counts_synthesized_cells_per_column():
     frame, quality = intake.normalize_tracked(
         _superstore_slice(), intake.detect_columns(_superstore_slice())
@@ -53,6 +59,7 @@ def test_intake_counts_synthesized_cells_per_column():
     assert set(quality.fully_synthesized_columns) == {"lead_time_days", "lead_time_std"}
 
 
+@_needs_superstore
 def test_the_old_signal_still_reports_clean():
     """The point of the witness: dropped_fraction alone says the data is perfect."""
     _frame, quality = intake.normalize_tracked(
@@ -77,6 +84,7 @@ def _options_for(raw: pd.DataFrame):
     return tool_options.inventory_options(report)
 
 
+@_needs_superstore
 def test_fabricated_lead_time_escalates_the_outcome():
     outcome = _options_for(_superstore_slice())
     assert outcome.status == "escalated", (

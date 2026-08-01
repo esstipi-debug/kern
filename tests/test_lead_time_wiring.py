@@ -33,7 +33,10 @@ SERVICE_LEVEL = 0.95
 @pytest.fixture(scope="module")
 def real_portfolio():
     """The audit's panel: canonical demand joined to sigma_LT from the raw ship dates."""
-    raw = pd.read_csv(REPO / "data" / "kaggle" / "superstore.csv", encoding="latin-1")
+    path = REPO / "data" / "kaggle" / "superstore.csv"
+    if not path.exists():
+        pytest.skip(f"{path} not present - large Kaggle dataset, fetched locally, not versioned")
+    raw = pd.read_csv(path, encoding="latin-1")
     raw["Order Date"] = pd.to_datetime(raw["Order Date"], format="%m/%d/%Y")
     raw["Ship Date"] = pd.to_datetime(raw["Ship Date"], format="%m/%d/%Y")
     raw["lead_days"] = (raw["Ship Date"] - raw["Order Date"]).dt.days

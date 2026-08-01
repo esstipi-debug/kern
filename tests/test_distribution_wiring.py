@@ -28,7 +28,10 @@ SERVICE_LEVEL = 0.95
 @pytest.fixture(scope="module")
 def skewed_panel():
     """The audit's panel: SKUs with enough history to estimate skewness."""
-    canon = pd.read_csv(REPO / "data" / "kaggle" / "superstore_canonical.csv")
+    path = REPO / "data" / "kaggle" / "superstore_canonical.csv"
+    if not path.exists():
+        pytest.skip(f"{path} not present - large Kaggle dataset, fetched locally, not versioned")
+    canon = pd.read_csv(path)
     g = canon.groupby("product_id")["quantity"]
     stats = pd.DataFrame({"mu": g.mean(), "sd": g.std(ddof=1), "n": g.count(),
                           "total": g.sum()}).dropna()

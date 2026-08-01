@@ -64,6 +64,10 @@ def test_revenue_not_used_when_it_is_the_quantity_column():
     assert canon["unit_cost"].eq(1.0).all(), "must fall back, not divide Sales by Sales"
 
 
+@pytest.mark.skipif(
+    not (REPO / "data" / "kaggle" / "superstore.csv").exists(),
+    reason="data/kaggle/superstore.csv not present - large Kaggle dataset, fetched locally, not versioned",
+)
 def test_abc_ranks_on_value_not_units_on_real_superstore():
     """The audit's headline: 1,111 A-items -> 414 once real cost reaches the classifier."""
     raw_path = REPO / "data" / "kaggle" / "superstore.csv"

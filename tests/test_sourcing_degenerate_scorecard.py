@@ -28,6 +28,8 @@ OLIST = REPO / "data" / "kaggle" / "olist"
 @pytest.fixture(scope="module")
 def po_extract_777():
     """A realistic PO extract: delivered order lines, the dataset's own column names."""
+    if not (OLIST / "olist_order_items_dataset.csv").exists():
+        pytest.skip(f"{OLIST} not present - large Kaggle dataset, fetched locally, not versioned")
     items = pd.read_csv(OLIST / "olist_order_items_dataset.csv")
     orders = pd.read_csv(OLIST / "olist_orders_dataset.csv")
     df = items.merge(orders, on="order_id", how="inner")

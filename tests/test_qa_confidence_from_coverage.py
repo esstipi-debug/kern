@@ -48,6 +48,8 @@ def degenerate_cards():
     criteria (not ``unmeasured`` - every scorecard has a value) that TOPSIS's own
     dispersion gate must drop for carrying zero variance (``ignored_criteria``),
     not because the column was absent."""
+    if not (OLIST / "olist_order_items_dataset.csv").exists():
+        pytest.skip(f"{OLIST} not present - large Kaggle dataset, fetched locally, not versioned")
     items = pd.read_csv(OLIST / "olist_order_items_dataset.csv")
     orders = pd.read_csv(OLIST / "olist_orders_dataset.csv")
     df = items.merge(orders, on="order_id", how="inner")

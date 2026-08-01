@@ -29,7 +29,10 @@ REPO = Path(__file__).resolve().parents[1]
 @pytest.fixture(scope="module")
 def degenerate_items():
     """Witness 1: the shipped canonical file, unit_cost flat at 1.0."""
-    canon = pd.read_csv(REPO / "data" / "kaggle" / "superstore_canonical.csv")
+    path = REPO / "data" / "kaggle" / "superstore_canonical.csv"
+    if not path.exists():
+        pytest.skip(f"{path} not present - large Kaggle dataset, fetched locally, not versioned")
+    canon = pd.read_csv(path)
     assert canon.unit_cost.nunique() == 1
     return abc_xyz_job.aggregate_skus(
         canon, product_col="product_id", demand_col="quantity", cost_col="unit_cost"
@@ -39,7 +42,10 @@ def degenerate_items():
 @pytest.fixture(scope="module")
 def healthy_items():
     """The same source file with real cost recovered from revenue."""
-    raw = pd.read_csv(REPO / "data" / "kaggle" / "superstore.csv", encoding="latin-1")
+    path = REPO / "data" / "kaggle" / "superstore.csv"
+    if not path.exists():
+        pytest.skip(f"{path} not present - large Kaggle dataset, fetched locally, not versioned")
+    raw = pd.read_csv(path, encoding="latin-1")
     canon = intake.normalize(raw, intake.detect_columns(raw))
     assert canon.unit_cost.nunique() > 1000
     return abc_xyz_job.aggregate_skus(
