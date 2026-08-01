@@ -26,7 +26,12 @@ from src.deliverable import DataSource, Deliverable, Finding, Kpi, days, not_mea
 from src.export import write_summary_csv
 from src.guided import GuidedOutcome, HandoffPacket, as_handoff, verify_guided
 from src.mcdm import Criterion, RankingResult, award_outcome, topsis_rank
-from src.supplier_scorecard import SupplierScore, score_supplier
+from src.supplier_scorecard import (
+    LEAD_TIME_DECLARED,
+    LEAD_TIME_MEASURED,
+    SupplierScore,
+    score_supplier,
+)
 
 _SUPPLIER_COLS = ("supplier", "Supplier", "vendor", "Vendor", "seller_id", "supplier_id")
 _ON_TIME_COLS = ("on_time", "On Time", "on_time_delivery", "ontime")
@@ -186,8 +191,15 @@ def score_suppliers(
 
     cards: list[SupplierScore] = []
     prices: dict[str, float] = {}
+    # Carried, not scored: the declared lead time and where the measured one came from
+    # travel to the scorecard so it can report the gap instead of picking one silently.
+    pass_through = [c for c in ("declared_lead_time_days", "lead_time_source") if c in df.columns]
+    for extra in pass_through:
+        scored[extra] = df[extra]
     for supplier, g in scored.groupby("supplier"):
-        deliveries = g[["on_time", "in_full", "lead_time_days", "units", "defects"]].to_dict("records")
+        deliveries = g[
+            ["on_time", "in_full", "lead_time_days", "units", "defects", *pass_through]
+        ].to_dict("records")
         cards.append(score_supplier(str(supplier), deliveries))
         if price_col:
             mean_price = float(g["price"].mean())
@@ -211,12 +223,27 @@ def _derive_lead_time(df: pd.DataFrame, params: dict, work: pd.DataFrame, notes:
         work["_delivered_at"] = pd.to_datetime(df[delivery_col], errors="coerce")
 
     lead_col = _pick_column(df, params.get("lead_col"), _LEAD_COLS)
-    if lead_col:
-        work["lead_time_days"] = _as_float(df[lead_col], lead_col, "lead_time")
-    elif order_col and delivery_col:
+    if order_col and delivery_col:
         ordered_at = pd.to_datetime(df[order_col], errors="coerce")
         work["lead_time_days"] = (work["_delivered_at"] - ordered_at).dt.days.astype("float64")
+        work["lead_time_source"] = LEAD_TIME_MEASURED
         notes.append(f"Lead time measured as '{delivery_col}' minus '{order_col}'.")
+        if lead_col:
+            # The dates win: a lead-time column is what the supplier SAYS, and the point of
+            # this panel is what actually happened. The declared number is kept beside the
+            # measured one so the gap is reportable instead of silently overwriting it.
+            work["declared_lead_time_days"] = _as_float(df[lead_col], lead_col, "lead_time")
+            notes.append(
+                f"'{lead_col}' carries a declared lead time; it is reported as the declared "
+                "number and compared against the measured one, not used in its place."
+            )
+    elif lead_col:
+        work["lead_time_days"] = _as_float(df[lead_col], lead_col, "lead_time")
+        work["lead_time_source"] = LEAD_TIME_DECLARED
+        notes.append(
+            f"Lead time taken from '{lead_col}' as DECLARED: the data has no order/delivery "
+            "date pair to measure it from, so it is a promise, not an observation."
+        )
     else:
         raise ValueError(
             "cannot compute lead_time: the data has no lead-time column and no order/delivery date "
@@ -555,6 +582,11 @@ def write_operational(report: SourcingReport, out_dir: str | Path, client: str =
             "on_time_rate": _cell(c.on_time_rate, 4),
             "in_full_rate": _cell(c.in_full_rate, 4),
             "avg_lead_time": _cell(c.avg_lead_time, 2),
+            "lead_time_source": c.lead_time_source or "",
+            "lead_time_std": _cell(c.lead_time_std, 2),
+            "lead_time_p90": _cell(c.lead_time_p90, 2),
+            "declared_lead_time": _cell(c.declared_lead_time, 2),
+            "lead_time_gap": _cell(c.lead_time_gap, 2),
             "ppm": _cell(c.ppm, 1),
             "avg_price": _cell(report.prices.get(c.supplier), 2),
             "topsis_score": _cell(report.ranking.scores.get(c.supplier), 4),

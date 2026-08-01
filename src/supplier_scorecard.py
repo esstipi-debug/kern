@@ -33,6 +33,14 @@ class Evaluable:
     ppm: int
 
 
+#: The lead time was computed from the delivery records themselves (dates or a
+#: per-delivery measurement). This is the only kind a planning parameter may be built on.
+LEAD_TIME_MEASURED = "measured"
+#: The lead time is what the supplier says it is, carried on the row. Reportable, but it
+#: is a promise, not an observation.
+LEAD_TIME_DECLARED = "declared"
+
+
 @dataclass(frozen=True)
 class SupplierScore:
     supplier: str
@@ -43,6 +51,17 @@ class SupplierScore:
     avg_lead_time: float | None
     ppm: float | None
     evaluable: Evaluable
+    #: Spread of the OBSERVED lead time. ``None`` when fewer than two deliveries carried
+    #: one - a single delivery has no variability, and reporting 0.0 there would hand
+    #: ``safety_stock`` a measured-looking zero (see src/safety_stock.py).
+    lead_time_std: float | None = None
+    lead_time_p90: float | None = None
+    #: What the supplier DECLARES, when the export also carried it, and how far the
+    #: observed average sits from it (observed - declared, signed).
+    declared_lead_time: float | None = None
+    lead_time_gap: float | None = None
+    #: Where ``avg_lead_time`` came from: LEAD_TIME_MEASURED | LEAD_TIME_DECLARED | None.
+    lead_time_source: str | None = None
 
 
 _NOT_MEASURED = Evaluable(on_time=0, in_full=0, otif=0, lead_time=0, ppm=0)
@@ -110,6 +129,27 @@ def _number(delivery: dict, key: str) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _std(values: list[float]) -> float | None:
+    """Sample standard deviation, or ``None`` with fewer than two observations."""
+    if len(values) < 2:
+        return None
+    mean = sum(values) / len(values)
+    return math.sqrt(sum((v - mean) ** 2 for v in values) / (len(values) - 1))
+
+
+def _p90(values: list[float]) -> float | None:
+    """Linear-interpolated 90th percentile, or ``None`` when nothing was observed."""
+    if not values:
+        return None
+    ordenados = sorted(values)
+    if len(ordenados) == 1:
+        return ordenados[0]
+    posicion = 0.9 * (len(ordenados) - 1)
+    bajo = int(math.floor(posicion))
+    alto = min(bajo + 1, len(ordenados) - 1)
+    return ordenados[bajo] + (ordenados[alto] - ordenados[bajo]) * (posicion - bajo)
+
+
 def _rate(hits: int, evaluable: int) -> float | None:
     """A share of the observations that existed - ``None`` when none did."""
     return (hits / evaluable) if evaluable > 0 else None
@@ -123,6 +163,10 @@ def score_supplier(supplier: str, deliveries: list[dict]) -> SupplierScore:
     on_times = [_flag(d, "on_time") for d in deliveries]
     in_fulls = [_flag(d, "in_full") for d in deliveries]
     leads = [v for v in (_number(d, "lead_time_days") for d in deliveries) if v is not None]
+    declarados = [
+        v for v in (_number(d, "declared_lead_time_days") for d in deliveries) if v is not None
+    ]
+    fuentes = {str(d["lead_time_source"]) for d in deliveries if d.get("lead_time_source")}
     quality = [
         (units, defects)
         for units, defects in ((_number(d, "units"), _number(d, "defects")) for d in deliveries)
@@ -137,13 +181,19 @@ def score_supplier(supplier: str, deliveries: list[dict]) -> SupplierScore:
     units = sum(u for u, _ in quality)
     defects = sum(d for _, d in quality)
 
+    avg_lead = (sum(leads) / len(leads)) if leads else None
+    avg_declarado = (sum(declarados) / len(declarados)) if declarados else None
+    # One source per supplier or nothing: a scorecard whose rows disagree about where the
+    # lead time came from cannot be labelled, and mislabelling is worse than not labelling.
+    fuente = fuentes.pop() if len(fuentes) == 1 else None
+
     return SupplierScore(
         supplier=supplier,
         deliveries=len(deliveries),
         on_time_rate=_rate(sum(1 for v in on_times if v), n_on_time),
         in_full_rate=_rate(sum(1 for v in in_fulls if v), n_in_full),
         otif=_rate(sum(1 for o, f in otif_pairs if o and f), len(otif_pairs)),
-        avg_lead_time=(sum(leads) / len(leads)) if leads else None,
+        avg_lead_time=avg_lead,
         ppm=(defects / units * 1_000_000) if units > 0 else None,
         evaluable=Evaluable(
             on_time=n_on_time,
@@ -152,6 +202,14 @@ def score_supplier(supplier: str, deliveries: list[dict]) -> SupplierScore:
             lead_time=len(leads),
             ppm=len(quality),
         ),
+        lead_time_std=_std(leads),
+        lead_time_p90=_p90(leads),
+        declared_lead_time=avg_declarado,
+        lead_time_gap=(
+            avg_lead - avg_declarado
+            if avg_lead is not None and avg_declarado is not None else None
+        ),
+        lead_time_source=fuente,
     )
 
 
@@ -192,6 +250,34 @@ def lead_times_by_supplier(scorecards: list[SupplierScore]) -> dict[str, float]:
     0: a zero-day lead time collapses the risk period, i.e. removes the safety stock.
     """
     return {s.supplier: s.avg_lead_time for s in scorecards if s.avg_lead_time is not None}
+
+
+def lead_time_stds_by_supplier(scorecards: list[SupplierScore]) -> dict[str, float]:
+    """Observed lead-time SPREAD per supplier - the producer sigma_L never had.
+
+    ``jobs.inventory_optimization.run(lead_time_stds=...)`` has always accepted this
+    number and nothing computed it, so every safety stock defaulted to sigma_L = 0 (the
+    gap the battery's T04/T08 checks surface). Suppliers with fewer than two measured
+    deliveries are omitted rather than reported as 0.0: a measured-looking zero removes
+    the lead-time half of the buffer, which is the failure this whole module guards.
+    """
+    return {
+        s.supplier: s.lead_time_std
+        for s in scorecards
+        if s.lead_time_std is not None and s.lead_time_source == LEAD_TIME_MEASURED
+    }
+
+
+def lead_time_stds_for_skus(
+    scorecards: list[SupplierScore], sku_supplier: dict[str, str]
+) -> dict[str, float]:
+    """Join observed lead-time spreads onto SKUs via a SKU->supplier map.
+
+    Same shape and same omission rule as :func:`lead_times_for_skus`; feeds
+    ``jobs.inventory_optimization.run(lead_time_stds=...)``.
+    """
+    by_supplier = lead_time_stds_by_supplier(scorecards)
+    return {sku: by_supplier[sup] for sku, sup in sku_supplier.items() if sup in by_supplier}
 
 
 def lead_times_for_skus(
