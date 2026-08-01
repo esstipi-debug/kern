@@ -21,8 +21,8 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from src.eoq import compute_eoq
-from src.safety_stock import safety_stock
+from src.eoq import compute_eoq  # noqa: E402
+from src.safety_stock import safety_stock  # noqa: E402
 
 
 def generate_chaotic_shopify_store(num_skus: int = 50, seed: int = 42) -> dict:

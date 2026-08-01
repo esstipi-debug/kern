@@ -6,7 +6,6 @@ import pytest
 
 from src import writeback
 from src.connectors.shopify_inventory import (
-    InMemoryShopifyInventory,
     ShopifyInventoryError,
     ShopifyInventoryStore,
     demo_shopify_inventory,

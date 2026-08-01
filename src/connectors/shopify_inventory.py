@@ -18,7 +18,7 @@ from typing import Any, Protocol, runtime_checkable
 from src import writeback
 
 try:
-    import httpx
+    import httpx  # noqa: F401  -- solo se testea disponibilidad
 
     _HAS_HTTPX = True
 except ImportError:
