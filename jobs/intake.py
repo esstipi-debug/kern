@@ -23,6 +23,26 @@ ALIASES: dict[str, list[str]] = {
     "quantity": ["quantity", "qty", "sales", "demand", "units", "unit_sales", "unitsales", "order_qty", "orderqty", "volume", "sold", "units_sold"],
     "unit_cost": ["unit_cost", "unitcost", "price", "unitprice", "unit_price", "cost", "sell_price", "sellprice", "selling_price"],
     "lead_time_days": ["lead_time_days", "leadtimedays", "lead_time", "leadtime", "lead", "lt_days", "supplier_lead_time"],
+    # Below: added for jobs/intake_scan_job.py (the intake_scan folder-audit job),
+    # which maps headers against a wider canonical set (src.intake_scan.PROFILES)
+    # than the demand-normalization set above. Deliberately NOT merged with the
+    # "product_id" aliases above (which already list "sku" for single-file demand
+    # intake) -- intake_scan_job claims each header for at most one canonical name
+    # (first-match-wins, processed in PROFILES order, "sku" before "product_id"),
+    # so a master file's "sku" column never silently doubles as "product_id" too.
+    # See intake_scan_job's module docstring for the wrinkle this preserves.
+    "sku": ["sku", "sku_code", "product_sku", "item_sku", "master_sku", "sku_id"],
+    "name": ["name", "product_name", "item_name", "description", "desc"],
+    "gtin": ["gtin", "ean", "upc_code", "barcode", "gtin_code"],
+    "on_hand": ["on_hand", "onhand", "stock_on_hand", "qty_on_hand", "inventory_on_hand", "current_stock", "stock_qty", "stock_quantity"],
+    "daily_demand": ["daily_demand", "avg_daily_demand", "demand_daily", "mean_daily_demand"],
+    "days_since_last_sale": ["days_since_last_sale", "days_since_sale", "last_sale_days", "dsls"],
+    "cogs": ["cogs", "cost_of_goods_sold", "cost_of_goods"],
+    "avg_inventory_value": ["avg_inventory_value", "average_inventory_value", "avg_inv_value", "inventory_value_avg"],
+    "gross_margin": ["gross_margin", "grossmargin", "margin"],
+    "units_sold": ["units_sold", "unitssold", "qty_sold"],
+    "units_on_hand": ["units_on_hand", "unitsonhand"],
+    "net_sales": ["net_sales", "netsales", "net_revenue"],
 }
 
 
