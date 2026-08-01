@@ -137,7 +137,17 @@ def test_el_moq_y_la_caja_cuantifican_lo_que_compraron_de_mas():
     assert linea.constraint_extra_cover_periods == pytest.approx(2.38)
 
 
-def test_sin_demanda_la_cobertura_extra_es_cero_no_infinita():
+def test_un_moq_sobre_una_necesidad_de_cero_queda_a_la_vista():
+    """``apply_order_rules`` pisa el piso del MOQ aunque no haga falta nada: 100 u
+    compradas contra una necesidad de 0. El comportamiento es de siempre; lo nuevo
+    es que la linea ahora lo dice en vez de esconderlo dentro de recommended_order.
+
+    La cobertura extra sale 0 porque sin demanda no hay periodos que cubrir: es
+    "no se puede expresar en cobertura", no "no agrega stock" -- las unidades y el
+    dinero, que si estan definidos, lo dicen.
+    """
     linea = _plan_con_moq(moq=100.0, demand=0.0, on_hand=0.0, incoming=0.0)
-    assert linea.constraint_extra_units == 0.0
+    assert linea.recommended_order == 100.0
+    assert linea.constraint_extra_units == 100.0
+    assert linea.constraint_cost_delta == 1000.0
     assert linea.constraint_extra_cover_periods == 0.0
