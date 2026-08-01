@@ -132,6 +132,57 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # safe outcome (see the module docstring), not a bug to "fix" with a
     # closer-sounding but wrong anchor.
     "data_quality": ("step_product_data_standard",),
+    # intake_scan (tool #49, raw-folder data-readiness audit -- not yet registered
+    # as of this comment, landing in Task 7 of the 2026-07-31 intake-scan plan) is
+    # a DELIBERATE, measured absence from this map, same discipline as data_quality
+    # right above. Candidates checked, in order of preference, against the
+    # committed 3002-node graph (2026-07-31):
+    #   master_data_management   -- does not exist (kb.node_exists() False)
+    #   data_quality_dimensions  -- does not exist (kb.node_exists() False)
+    #   information_sharing      -- EXISTS, 2-hop closure 772 nodes (25.7%, under
+    #                                the ~40% ceiling) but REJECTED: it is 1 hop
+    #                                from TWO book hubs (book_chopra_meindl,
+    #                                book_christopher) plus supply_chain_resilience
+    #                                -- the exact shared-book-hub loophole the
+    #                                `risk` entry above documents. Replaying the
+    #                                real grounding call (kb.ground_citations_detailed
+    #                                with title "Data Readiness Scan" and the
+    #                                intake/data-audit keyword set Task 7 registers,
+    #                                limit=16) and gating on this anchor alone kept
+    #                                exactly 5 citations -- ALL FIVE from
+    #                                khan-supply-chain-resilience.txt on "Readiness,
+    #                                Response and Recovery" / "Post-Crisis Risk
+    #                                Readiness" / big-data-analytics chapters: a
+    #                                disaster-recovery book riding the "readiness"/
+    #                                "data" lexical overlap with this tool's own
+    #                                keywords, not a single citation about column
+    #                                structure, coverage or data quality. Same
+    #                                false-friend class as excess_obsolete/
+    #                                excess_capacity_and_inventory and returns/
+    #                                reverse_auction above -- confirmed by measurement,
+    #                                not assumed from the closure percentage alone.
+    #   step_product_data_standard -- EXISTS, 2-hop closure 195 nodes (6.5%), same
+    #                                anchor data_quality already uses; alone it kept
+    #                                ZERO citations against the same grounding call
+    #                                (matches data_quality's own documented zero
+    #                                immediately above). Combined with
+    #                                information_sharing it just inherits that
+    #                                anchor's 5 off-topic Khan citations -- adds
+    #                                nothing clean.
+    # No candidate both exists and stays on-topic, so intake_scan is intentionally
+    # left OUT of this map (an omitted tool omits every candidate citation -- see
+    # filter_citations' "no concept map" branch below) rather than anchored on a
+    # closer-sounding but wrong node. tests/test_citation_gate.py::
+    # test_every_registered_tool_has_a_concept_map goes red once Task 7 registers
+    # intake_scan in scm_agent/tools.py without adding it here -- that is expected
+    # and intentional (see the Task 6 report), not a regression to "fix" by adding
+    # a bad anchor. NOTE: intake_scan is not yet added to
+    # tests/test_packages_citations.py's _CORRECTLY_ZERO_TOOLS either, on purpose:
+    # that set is exercised through the tool registry (`build_default_registry()
+    # .get(tool_key)`), which raises KeyError for any tool not yet registered --
+    # adding it there before Task 7 registers the tool would break a currently
+    # passing test file, not document anything. Task 7 is expected to add it there
+    # once the tool is registered.
     "dea": ("data_envelopment_analysis",),
     "acceptance_sampling": ("acceptance_sampling", "single_sampling_plan"),
     "earned_value": ("earned_value_management",),

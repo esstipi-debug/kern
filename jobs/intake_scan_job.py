@@ -30,9 +30,12 @@ from pathlib import Path
 import pandas as pd
 
 from jobs.intake import ALIASES, _norm
+from src.deliverable import DataSource, Deliverable, Finding, Kpi
+from src.export import write_summary_csv
 from src.intake_scan import (
     GREEN,
     PROFILES,
+    RED,
     UNDECLARED,
     Classified,
     FileColumns,
@@ -47,6 +50,10 @@ from src.intake_scan import (
 
 READABLE_SUFFIXES = (".csv", ".xlsx", ".xls")
 MAX_UNCLASSIFIED_SHARE = 0.50
+
+# Breaker ids, in the fixed order src.intake_scan.run_breakers always emits them
+# for one file -- the files CSV gets one column per breaker in this order.
+_BREAKER_COLUMNS = ("impossible_dates", "negative_quantities", "duplicate_rows", "orphan_keys")
 
 
 @dataclass(frozen=True)
@@ -305,3 +312,219 @@ def verify(report: ScanReport) -> list[str]:
             )
 
     return issues
+
+
+def _join(values: tuple[str, ...]) -> str:
+    """Empty tuple -> empty cell, never a placeholder; several values -> ';'-joined."""
+    return ";".join(values)
+
+
+def _tool_rows(report: ScanReport) -> list[dict[str, str]]:
+    """One row per tool verdict. ``missing_required`` and ``blocked_required`` are
+    kept as SEPARATE columns -- never collapsed -- because they are different
+    problems with different fixes: a genuinely absent column (ask the client for
+    it) versus a column present only in a file a circuit breaker blocked (fix
+    that file's data quality instead; asking again buys nothing)."""
+    return [
+        {
+            "tool_key": v.tool_key,
+            "state": v.state,
+            "missing_required": _join(v.missing_required),
+            "blocked_required": _join(v.blocked_required),
+            "missing_optional": _join(v.missing_optional),
+            "blocked_by": _join(v.blocked_by),
+            "source_files": _join(v.source_files),
+        }
+        for v in report.verdicts
+    ]
+
+
+def _file_rows(report: ScanReport) -> list[dict[str, object]]:
+    """One row per file read: profile (empty when unclassified), reason, row
+    count, and one column per breaker holding its fraction rounded to 4 places.
+    A breaker that never ran (``evaluated=False``, e.g. orphan_keys with no
+    master file classified in the folder) gets an empty cell, never a 0 --
+    a 0 would read as "checked and clean", which is not what happened."""
+    findings_by_file: dict[str, dict[str, object]] = {}
+    n_rows_by_file: dict[str, int] = {}
+    for f in report.findings:
+        bucket = findings_by_file.setdefault(f.filename, {})
+        bucket[f.breaker] = "" if not f.evaluated else round(f.fraction, 4)
+        n_rows_by_file[f.filename] = f.n_total
+
+    rows: list[dict[str, object]] = []
+    for c in report.classified:
+        row: dict[str, object] = {
+            "filename": c.filename,
+            "profile": c.profile or "",
+            "reason": c.reason,
+            "n_rows": n_rows_by_file.get(c.filename, ""),
+        }
+        breakers = findings_by_file.get(c.filename, {})
+        for breaker in _BREAKER_COLUMNS:
+            row[breaker] = breakers.get(breaker, "")
+        rows.append(row)
+    return rows
+
+
+def write_operational(
+    report: ScanReport, out_dir: str | Path, client: str = "Client",
+) -> dict[str, Path]:
+    """The machine-readable deliverable: one CSV per tool verdict, one per file.
+
+    ``client`` is accepted for signature parity with every other job's
+    ``write_operational`` (see ``jobs/disruption_scan_job.py``); this scan's
+    CSVs carry no client-specific numbers so it is not otherwise used.
+    """
+    d = Path(out_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    return {
+        "csv": write_summary_csv(_tool_rows(report), d / "intake_scan_tools.csv"),
+        "files_csv": write_summary_csv(_file_rows(report), d / "intake_scan_files.csv"),
+    }
+
+
+_SHAPE_NOT_TRUTH_RESIDUAL = (
+    "This scan judges the SHAPE of the client's data -- which columns exist, how "
+    "complete they are, and whether a handful of circuit breakers trip -- never "
+    "its truth. A file with every required column, full coverage and no breaker "
+    "tripped can still hold wrong numbers (a bad unit cost, a mis-typed date that "
+    "still parses); this scan cannot detect that and does not claim to."
+)
+
+
+def build_deck(
+    report: ScanReport,
+    *,
+    client: str = "Client",
+    prepared: str = "",
+    citations: tuple[str, ...] = (),
+    confidence: float = 0.9,
+    lang: str = "en",
+) -> Deliverable:
+    """Compose the Data Readiness Scan deck: what the folder supports today,
+    what the declared-limit of the scan is, and the single highest-value ask."""
+    findings: list[Finding] = []
+
+    # 1) The top-ranked ask (whichever class it belongs to: request a column,
+    # or fix a blocked file) -- reuse the guided outcome's own ranking and
+    # labels so the deck never re-derives, and can never disagree with, what
+    # the options menu already ranked #1.
+    options = list(report.outcome.options)
+    if options:
+        top = options[0]
+        findings.append(Finding(
+            f"Top opportunity: {top.label}",
+            top.summary,
+            impact=f"unlocks {top.score:.0f} tool(s)" if top.score else "",
+        ))
+    else:
+        findings.append(Finding(
+            "Nothing to request",
+            report.outcome.summary,
+            impact="",
+        ))
+
+    # 2) Undeclared tools are a declared LIMIT of this scan, not a silent gap --
+    # never let an undeclared tool read as "not evaluated because it's fine".
+    undeclared = sorted(v.tool_key for v in report.verdicts if v.state == UNDECLARED)
+    if undeclared:
+        findings.append(Finding(
+            "Declared limit of this scan",
+            f"{len(undeclared)} of {report.n_tools_total} registered tool(s) have not "
+            f"declared a data contract yet, so this scan cannot judge them: "
+            f"{', '.join(undeclared)}. They are reported as undeclared, never as runnable.",
+            impact="excluded from every verdict above; not the same as a red or a green",
+        ))
+
+    # 3) Tools red for TWO distinct reasons at once (a genuinely missing column
+    # AND a blocked file) must show both -- fixing only one still leaves them red.
+    both_reasons = [v for v in report.verdicts if v.missing_required and v.blocked_required]
+    if both_reasons:
+        keys = ", ".join(v.tool_key for v in both_reasons)
+        findings.append(Finding(
+            "Tools blocked for two distinct reasons",
+            f"{len(both_reasons)} tool(s) are red because of BOTH a genuinely missing "
+            f"column and a blocked file: {keys}. Fixing the blocked file alone will not "
+            "turn these green -- the missing column still needs to be requested.",
+            impact="both asks are required; neither alone unblocks these tools",
+        ))
+
+    # 4) One finding per breaker that actually blocked a file, with its count
+    # and fraction. A breaker whose evaluated=False is never `blocking` (see
+    # src.intake_scan.run_breakers), so it never lands here -- but see the
+    # dedicated not-evaluated finding right below, which reads `evaluated`
+    # directly rather than string-matching `detail`.
+    blocking = [f for f in report.findings if f.blocking]
+    for f in blocking:
+        findings.append(Finding(
+            f"{f.filename}: {f.breaker} over threshold",
+            f"{f.n_affected} of {f.n_total} row(s) ({f.fraction:.1%}) -- {f.detail}.",
+            impact=f"blocks every tool whose only source for a column is {f.filename}",
+        ))
+    if not blocking:
+        findings.append(Finding(
+            "No blocking data-quality issue",
+            "No file breached a circuit-breaker threshold on the rows read.",
+            impact="",
+        ))
+
+    # A breaker that could not run (typically orphan_keys with no master file
+    # classified in the folder) must never read as a clean pass -- decided by
+    # the typed `evaluated` field, never by matching words in `detail`.
+    not_evaluated = [f for f in report.findings if not f.evaluated]
+    if not_evaluated:
+        files = ", ".join(sorted({f.filename for f in not_evaluated}))
+        breakers = ", ".join(sorted({f.breaker for f in not_evaluated}))
+        findings.append(Finding(
+            "Some checks could not run",
+            f"{breakers} could not be evaluated for: {files}. This is not a clean pass -- "
+            "it means the check never ran, most likely because no master file was "
+            "classified in this folder.",
+            impact="treat these as unknown, not as clear",
+        ))
+
+    n_green = sum(1 for v in report.verdicts if v.state == GREEN)
+    n_red = sum(1 for v in report.verdicts if v.state == RED)
+    kpis = (
+        # Evaluated-over-total travels here (and in the summary/residual below)
+        # exactly as it does in the engine report -- a deck that dropped the
+        # denominator would reintroduce the false-coverage claim already fixed
+        # in src/intake_scan.py's build_report.
+        Kpi("Tools evaluated", f"{report.n_tools_evaluated} of {report.n_tools_total}",
+            rationale="Declared tools judged, out of every tool registered in Kern"),
+        Kpi("Files read", f"{report.n_files_read}", rationale="Readable files found in the folder"),
+        Kpi("Files unclassified", f"{report.n_unclassified}", target="0",
+            rationale="Files that matched no known profile, or matched more than one"),
+        Kpi("Tools ready to run (green)", f"{n_green}",
+            rationale="Declared tools with every required column available and unblocked"),
+        Kpi("Tools blocked (red)", f"{n_red}", target="0",
+            rationale="Declared tools missing a required column, or blocked by a dirty file"),
+    )
+
+    data_sources = (
+        DataSource("Folder contents (CSV/XLSX headers, coverage, row counts)",
+                    "client-supplied", "per run"),
+    )
+
+    recommendations = [
+        "Act on the top-ranked ask first -- it unlocks the most tools per unit of effort.",
+        "Treat every undeclared tool as not-yet-available, not as a silent green.",
+        "Re-run this scan after any fix or new file to confirm the breaker actually cleared.",
+    ]
+
+    return Deliverable(
+        title="Data Readiness Scan",
+        client=client,
+        summary=report.summary,
+        findings=tuple(findings),
+        kpis=kpis,
+        data_sources=data_sources,
+        recommendations=tuple(recommendations),
+        options=tuple(report.outcome.options),
+        citations=tuple(citations),
+        confidence=confidence,
+        residual=_SHAPE_NOT_TRUTH_RESIDUAL,
+        prepared=prepared,
+        lang=lang,
+    )

@@ -185,3 +185,81 @@ def test_verify_flags_a_gap_naming_an_undeclared_tool(tmp_path):
     )
     issues = intake_scan_job.verify(report)
     assert any("fake_tool" in i and "date" in i for i in issues)
+
+
+# -- Deliverables: write_operational (two CSVs) and build_deck (client-ready deck) --
+
+
+def test_write_operational_emits_both_csvs_with_the_undeclared_rows(tmp_path):
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro(), "ventas.csv": _ventas()})
+    report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
+    paths = intake_scan_job.write_operational(report, tmp_path / "out", client="Acme")
+    assert paths["csv"].exists() and paths["files_csv"].exists()
+    body = paths["csv"].read_text(encoding="utf-8")
+    assert "no_declarado" in body
+    assert "data_quality" in body
+    # Both column tuples of ToolVerdict travel as SEPARATE csv columns -- a tool
+    # red for a genuinely missing column and a tool red only because its file is
+    # blocked must never collapse into one "missing" column.
+    header = body.splitlines()[0]
+    assert "missing_required" in header
+    assert "blocked_required" in header
+
+
+def test_write_operational_files_csv_carries_one_column_per_breaker_fraction(tmp_path):
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro(), "ventas.csv": _ventas()})
+    report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
+    paths = intake_scan_job.write_operational(report, tmp_path / "out", client="Acme")
+    body = paths["files_csv"].read_text(encoding="utf-8")
+    header = body.splitlines()[0]
+    for breaker in ("impossible_dates", "negative_quantities", "duplicate_rows", "orphan_keys"):
+        assert breaker in header
+    assert "maestro.csv" in body
+    assert "n_rows" in header
+
+
+def test_deck_states_the_coverage_as_a_fraction_not_as_a_verdict(tmp_path):
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro(), "ventas.csv": _ventas()})
+    report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
+    deck = intake_scan_job.build_deck(report, client="Acme", citations=("Fuente X",))
+    assert deck.client == "Acme"
+    assert deck.options == tuple(report.outcome.options)
+    assert any(str(report.n_tools_total) in k.value or str(report.n_tools_total) in k.rationale
+               for k in deck.kpis)
+    assert "undeclared" in " ".join(f.detail for f in deck.findings).lower()
+
+
+def test_deck_residual_says_shape_not_truth(tmp_path):
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro(), "ventas.csv": _ventas()})
+    report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
+    deck = intake_scan_job.build_deck(report, client="Acme")
+    assert "shape" in deck.residual.lower()
+    assert "not" in deck.residual.lower()
+
+
+def test_deck_names_the_top_ranked_ask_when_options_exist(tmp_path):
+    """maestro+ventas has no stock/finanzas file, so at least one column gap or
+    blocked-file fix is ranked; the deck's first finding names it, matching the
+    same label the guided outcome itself ranked #1."""
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro(), "ventas.csv": _ventas()})
+    report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
+    deck = intake_scan_job.build_deck(report, client="Acme")
+    assert report.outcome.options  # sanity: this fixture does produce ranked options
+    top = report.outcome.options[0]
+    assert any(top.label in f.title or top.label in f.detail for f in deck.findings)
+
+
+def test_deck_reports_a_blocking_breaker_using_the_evaluated_field(tmp_path):
+    """A blocking circuit-breaker finding must appear in the deck, with its
+    count and fraction -- and the deck must decide whether a breaker ran via
+    BreakerFinding.evaluated, never by string-matching detail."""
+    dirty = _ventas(n=20)
+    dirty["quantity"] = [-1] * 20  # every row negative -> breaks the 1% threshold
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro(), "ventas.csv": dirty})
+    report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
+    blocking = [f for f in report.findings if f.blocking]
+    assert blocking  # sanity: this fixture does trigger a breaker
+    deck = intake_scan_job.build_deck(report, client="Acme")
+    full_text = " ".join(f.title + " " + f.detail for f in deck.findings)
+    assert "negative_quantities" in full_text
+    assert "ventas.csv" in full_text
