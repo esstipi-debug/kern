@@ -151,6 +151,12 @@ def test_literal_confidence_defaults_do_not_grow():
     )
 
 
+@pytest.mark.skipif(
+    not (REPO / "data" / "kaggle" / "superstore_canonical.csv").exists()
+    or not (REPO / "data" / "kaggle" / "superstore.csv").exists(),
+    reason="data/kaggle/superstore*.csv not present - large Kaggle dataset, "
+           "fetched locally, not versioned",
+)
 def test_abc_deck_confidence_drops_when_value_ranks_on_units():
     """T4b: witness 1 -- flat unit cost must cost the ABC deck confidence."""
     from jobs import abc_xyz_job, intake

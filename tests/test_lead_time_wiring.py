@@ -34,7 +34,8 @@ SERVICE_LEVEL = 0.95
 def real_portfolio():
     """The audit's panel: canonical demand joined to sigma_LT from the raw ship dates."""
     path = REPO / "data" / "kaggle" / "superstore.csv"
-    if not path.exists():
+    canon_path = REPO / "data" / "kaggle" / "superstore_canonical.csv"
+    if not path.exists() or not canon_path.exists():
         pytest.skip(f"{path} not present - large Kaggle dataset, fetched locally, not versioned")
     raw = pd.read_csv(path, encoding="latin-1")
     raw["Order Date"] = pd.to_datetime(raw["Order Date"], format="%m/%d/%Y")
@@ -45,7 +46,7 @@ def real_portfolio():
     lt = pd.DataFrame({"mean_days": g.mean(), "std_days": g.std(ddof=1), "n_orders": g.count()})
     lt = lt[lt["n_orders"] >= 3].dropna()
 
-    canon = pd.read_csv(REPO / "data" / "kaggle" / "superstore_canonical.csv")
+    canon = pd.read_csv(canon_path)
     d = canon.groupby("product_id")["quantity"]
     stats = pd.DataFrame({"mu": d.mean(), "sd": d.std(ddof=1), "total": d.sum()}).dropna()
 

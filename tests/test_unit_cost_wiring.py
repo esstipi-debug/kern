@@ -65,8 +65,10 @@ def test_revenue_not_used_when_it_is_the_quantity_column():
 
 
 @pytest.mark.skipif(
-    not (REPO / "data" / "kaggle" / "superstore.csv").exists(),
-    reason="data/kaggle/superstore.csv not present - large Kaggle dataset, fetched locally, not versioned",
+    not (REPO / "data" / "kaggle" / "superstore.csv").exists()
+    or not (REPO / "data" / "kaggle" / "superstore_canonical.csv").exists(),
+    reason="data/kaggle/superstore*.csv not present - large Kaggle dataset, "
+           "fetched locally, not versioned",
 )
 def test_abc_ranks_on_value_not_units_on_real_superstore():
     """The audit's headline: 1,111 A-items -> 414 once real cost reaches the classifier."""
