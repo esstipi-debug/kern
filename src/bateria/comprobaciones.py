@@ -128,6 +128,98 @@ def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
     )
 
 
+#: sigma_L con el que se sondea la reaccion del safety stock en T04.
+_SIGMA_LT_SONDA = 4.0
+
+
+@comprobacion("T04")
+def t04_politica_con_ss_sensible_al_lead_time(_: Contexto) -> ResultadoTarea:
+    """T04 — politica por SKU: ROP, SS, lote y el nivel de servicio implicado.
+
+    El filo del criterio es de comportamiento, no de forma: "El SS debe reaccionar
+    a la variabilidad de lead time, no solo a la de demanda". Un entregable que
+    trae los cuatro campos pero calcula el SS ignorando sigma_L no cumple.
+
+    Se sondea con una serie sintetica porque la propiedad es del codigo, no del
+    dato del cliente: se corre dos veces sobre la MISMA demanda, con y sin
+    sigma_L, y el SS tiene que subir. Que la politica sirva sobre el catalogo
+    real es otra pregunta, y la contesta T05.
+    """
+    import pandas as pd
+
+    from jobs.inventory_optimization import run
+
+    demanda = pd.DataFrame(
+        {
+            "product_id": ["A"] * 10 + ["B"] * 10,
+            "date": pd.date_range("2025-01-01", periods=10).tolist() * 2,
+            "quantity": [10, 12, 9, 11, 10, 13, 8, 12, 11, 10] * 2,
+            "unit_cost": [5.0] * 10 + [9.0] * 10,
+        }
+    )
+    sin_sigma = run(demanda)
+    con_sigma = run(demanda, lead_time_stds=dict.fromkeys(("A", "B"), _SIGMA_LT_SONDA))
+
+    campos = _campos_del_registro(type(sin_sigma.recommendations[0]))
+    faltantes = [
+        nombre
+        for nombre, campo in (
+            ("ROP en unidades", "reorder_point"),
+            ("SS en unidades", "safety_stock"),
+            ("nivel de servicio implicado", "service_level"),
+        )
+        if campo not in campos
+    ]
+    # El lote puede llegar como cantidad de pedido (s,Q) o como nivel objetivo (R,S).
+    if not {"order_quantity", "order_up_to"} & campos:
+        faltantes.append("lote sugerido")
+
+    ss_base = [r.safety_stock for r in sin_sigma.recommendations]
+    ss_sigma = [r.safety_stock for r in con_sigma.recommendations]
+    reacciona = all(b > a for a, b in zip(ss_base, ss_sigma, strict=True))
+    declara_fuente = "lead_time_std_source" in campos
+
+    detalle = {
+        "entregable": "jobs.inventory_optimization.SkuRecommendation",
+        "faltantes": faltantes,
+        "ss_sin_sigma_lt": ss_base,
+        "ss_con_sigma_lt": ss_sigma,
+        "reacciona_al_lead_time": reacciona,
+        "declara_fuente_de_sigma_lt": declara_fuente,
+    }
+
+    if faltantes:
+        return ResultadoTarea(
+            tarea_id="T04",
+            estado=Estado.NO_CUMPLE,
+            evidencia=f"la politica sale sin: {', '.join(faltantes)}",
+            detalle=detalle,
+        )
+
+    if not reacciona:
+        return ResultadoTarea(
+            tarea_id="T04",
+            estado=Estado.PARCIAL,
+            evidencia=(
+                f"estan los cuatro campos, pero duplicar la variabilidad de lead time "
+                f"(sigma_L={_SIGMA_LT_SONDA}) no mueve el safety stock: {ss_base} -> "
+                f"{ss_sigma}. El SS solo reacciona a la variabilidad de demanda"
+            ),
+            detalle=detalle,
+        )
+
+    return ResultadoTarea(
+        tarea_id="T04",
+        estado=Estado.CUMPLE,
+        evidencia=(
+            f"ROP, SS, lote y nivel de servicio por SKU; con sigma_L={_SIGMA_LT_SONDA} "
+            f"el SS sube de {ss_base[0]:.1f} a {ss_sigma[0]:.1f}"
+            + (" y el entregable declara si sigma_L fue medido o defaulteado" if declara_fuente else "")
+        ),
+        detalle=detalle,
+    )
+
+
 @comprobacion("T03")
 def t03_segmentacion_con_servicio_diferenciado(ctx: Contexto) -> ResultadoTarea:
     """T03 — ABC-XYZ con nivel de servicio objetivo **distinto** por segmento.

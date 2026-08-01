@@ -133,3 +133,21 @@ def test_t03_segmenta_de_verdad_celdas_y_niveles_diferenciados(tmp_path):
     r = _resultado(puntuar(_ctx_ventas(tmp_path, _VENTAS_COSTO_PLANO)), "T03")
     assert len(r.detalle["niveles_de_servicio"]) > 1
     assert len(r.detalle["celdas"]) > 1
+
+
+# --- T04: politica con SS sensible al lead time ------------------------------
+
+
+def test_t04_cumple_y_el_ss_reacciona_al_lead_time():
+    """El filo del criterio es de comportamiento: duplicar sigma_L debe mover el SS."""
+    r = _resultado(puntuar(), "T04")
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.detalle["reacciona_al_lead_time"] is True
+    base = r.detalle["ss_sin_sigma_lt"]
+    con = r.detalle["ss_con_sigma_lt"]
+    assert all(b > a for a, b in zip(base, con, strict=True))
+
+
+def test_t04_el_entregable_declara_si_sigma_lt_fue_medido_o_defaulteado():
+    """Un SS calculado con sigma_L=0 por defecto no es lo mismo que uno medido."""
+    assert _resultado(puntuar(), "T04").detalle["declara_fuente_de_sigma_lt"] is True
