@@ -857,6 +857,162 @@ def t07_calendario_de_caja_contra_el_tope(_: Contexto) -> ResultadoTarea:
     ))
 
 
+#: Nombres con los que el desvio del lead time podria llegar al entregable.
+_CAMPOS_DESVIO_LT = ("std", "desvio", "sigma", "p90", "percentil", "variab")
+
+#: Nombres con los que la comparacion contra el LT cargado podria llegar al entregable.
+_CAMPOS_LT_SISTEMA = ("nominal", "sistema", "cargado", "planned", "declarad", "gap", "diferencia")
+
+#: Nombres con los que la lista de parametros a recalcular podria llegar al entregable.
+_CAMPOS_RECALCULO = ("recalc", "reorder_point", "safety_stock", "rop", "ss_", "parametro")
+
+#: OC sintéticas con las que se sondea el lead time observado (T08).
+_OC_SONDA_HEADER = "supplier,order_date,delivery_date,promised_date,quantity,received_qty,defects,unit_price"
+_OC_SONDA_FILAS = (
+    "ACME,2026-01-01,2026-01-21,2026-01-15,100,100,0,10",
+    "ACME,2026-02-01,2026-02-25,2026-02-15,100,90,1,10",
+    "BETA,2026-01-05,2026-01-12,2026-01-15,50,50,0,12",
+    "BETA,2026-02-05,2026-02-13,2026-02-15,50,50,0,12",
+)
+#: Lead time "que dice el proveedor", inyectado como columna en la segunda corrida.
+_LT_DECLARADO_SONDA = 7.0
+
+
+@dataclass(frozen=True)
+class _CandidatoLeadTime:
+    """El scorecard de proveedores medido contra el criterio de T08."""
+
+    entregable: str
+    campos: tuple[str, ...]
+    lt_medido: dict[str, float]
+    lt_con_columna_declarada: dict[str, float]
+
+    @property
+    def mide_de_las_fechas(self) -> bool:
+        """Gate: el LT sale de fecha OC vs recepcion, no de lo que declara el proveedor."""
+        return bool(self.lt_medido) and any(
+            lt != _LT_DECLARADO_SONDA for lt in self.lt_medido.values()
+        )
+
+    @property
+    def prevalece_lo_medido(self) -> bool:
+        """Con las dos fuentes presentes, el entregable tiene que quedarse con la medida."""
+        return self.lt_con_columna_declarada == self.lt_medido
+
+    @property
+    def requisitos(self) -> dict[str, bool]:
+        campos = set(self.campos)
+        return {
+            "LT promedio observado por proveedor": self.mide_de_las_fechas,
+            "desvio o P90 del LT": bool(_alguno_contiene(campos, _CAMPOS_DESVIO_LT)),
+            "el LT medido prevalece sobre el declarado": self.prevalece_lo_medido,
+            "diferencia contra el LT cargado en el sistema": bool(
+                _alguno_contiene(campos, _CAMPOS_LT_SISTEMA)
+            ),
+            "lista de SKU cuyo SS/ROP debe recalcularse": bool(
+                _alguno_contiene(campos, _CAMPOS_RECALCULO)
+            ),
+        }
+
+    @property
+    def faltantes(self) -> list[str]:
+        return [nombre for nombre, ok in self.requisitos.items() if not ok]
+
+    def como_detalle(self) -> dict[str, object]:
+        return {
+            "entregable": self.entregable,
+            "campos": sorted(self.campos),
+            "faltantes": self.faltantes,
+            "lt_medido_de_las_fechas": self.lt_medido,
+            "lt_con_columna_declarada": self.lt_con_columna_declarada,
+            "prevalece_lo_medido": self.prevalece_lo_medido,
+        }
+
+
+def _veredicto_lead_time(cand: _CandidatoLeadTime) -> ResultadoTarea:
+    """Puntua T08. Eliminatorio: "Reportar solo el LT nominal que dice el proveedor
+    NO cuenta" -- si el entregable no sabe medirlo de las fechas, no hay tarea."""
+    detalle: dict[str, object] = cand.como_detalle()
+    if not cand.mide_de_las_fechas:
+        return ResultadoTarea(
+            tarea_id="T08",
+            estado=Estado.NO_CUMPLE,
+            evidencia=(
+                "el entregable no mide el lead time de fecha de OC contra fecha de recepcion: "
+                f"devuelve {cand.lt_medido}, que es el LT declarado. El criterio dice que asi "
+                "no cuenta"
+            ),
+            detalle=detalle,
+        )
+
+    fuga = (
+        f"con una columna de LT declarado ({_LT_DECLARADO_SONDA:g} d) el entregable la prefiere "
+        f"en silencio: {cand.lt_medido} -> {cand.lt_con_columna_declarada}, y hasta la nota "
+        '"lead time measured as delivery_date minus order_date" desaparece'
+        if not cand.prevalece_lo_medido else "el LT medido prevalece sobre el declarado"
+    )
+    return _cerrar_veredicto(
+        "T08",
+        faltantes=cand.faltantes,
+        evidencia_cumple=(
+            f"LT medido de las fechas por proveedor ({cand.lt_medido}), con desvio, diferencia "
+            f"contra el LT cargado y la lista de SKU a recalcular"
+        ),
+        evidencia_falta=(
+            f"el LT si sale de las fechas ({cand.lt_medido}), pero el entregable sale sin: "
+            f"{', '.join(cand.faltantes)}. {fuga}"
+        ),
+        detalle=detalle,
+    )
+
+
+@comprobacion("T08")
+def t08_lead_time_real_por_proveedor(_: Contexto) -> ResultadoTarea:
+    """T08 — medir el lead time real y actualizar los parametros de planificacion.
+
+    Se corre el scorecard de proveedores dos veces sobre las MISMAS OC: una con
+    solo las fechas (OC y recepcion) y otra agregando una columna de lead time
+    "que dice el proveedor". La primera prueba que Kern sabe medirlo; la segunda
+    muestra que, cuando el export trae el declarado, lo prefiere sin avisar.
+
+    El resto del criterio no depende del dato: el desvio/P90, la diferencia contra
+    el LT cargado y la lista de SKU a recalcular estan o no estan en el entregable.
+    Vale notar el corte del cableado: ``jobs.inventory_optimization`` ya sabe
+    consumir ``lead_time_stds`` y declarar si sigma_L fue medido o defaulteado
+    (ver T04), pero nadie mide ese desvio -- el scorecard solo promedia.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from jobs import sourcing_job as job
+    from src.supplier_scorecard import SupplierScore
+
+    def _lt(lineas: tuple[str, ...], carpeta: Path, nombre: str) -> dict[str, float]:
+        ruta = carpeta / nombre
+        ruta.write_text("\n".join(lineas), encoding="utf-8")
+        tarjetas = job.prepare(str(ruta))["scorecards"]
+        return {c.supplier: c.avg_lead_time for c in tarjetas}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        carpeta = Path(tmp)
+        medido = _lt((_OC_SONDA_HEADER, *_OC_SONDA_FILAS), carpeta, "solo_fechas.csv")
+        declarado = _lt(
+            (
+                f"{_OC_SONDA_HEADER},lead_time_days",
+                *(f"{fila},{_LT_DECLARADO_SONDA:g}" for fila in _OC_SONDA_FILAS),
+            ),
+            carpeta,
+            "con_lt_declarado.csv",
+        )
+
+    return _veredicto_lead_time(_CandidatoLeadTime(
+        entregable="src.supplier_scorecard.SupplierScore",
+        campos=tuple(sorted(_campos_del_registro(SupplierScore))),
+        lt_medido=medido,
+        lt_con_columna_declarada=declarado,
+    ))
+
+
 @comprobacion("T03")
 def t03_segmentacion_con_servicio_diferenciado(ctx: Contexto) -> ResultadoTarea:
     """T03 — ABC-XYZ con nivel de servicio objetivo **distinto** por segmento.

@@ -6,9 +6,11 @@ import src.bateria.comprobaciones  # noqa: F401  -- registra las comprobaciones
 from src.bateria.comprobaciones import (
     _CandidatoAjuste,
     _CandidatoCaja,
+    _CandidatoLeadTime,
     _CandidatoOC,
     _veredicto_ajuste,
     _veredicto_caja,
+    _veredicto_lead_time,
     _veredicto_oc,
 )
 from src.bateria.scorer import Contexto, Estado, puntuar
@@ -305,6 +307,60 @@ def test_t06_gana_el_que_cuantifica_aunque_otro_tenga_mas_campos():
     r = _veredicto_ajuste((sin_cuantificar, cuantifica))
     assert r.detalle["mejor"] == "cuantifica"
     assert r.estado is Estado.NO_CUMPLE
+
+
+# --- T08: lead time real por proveedor ---------------------------------------
+
+
+def _candidato_lt(**cambios) -> _CandidatoLeadTime:
+    """Un scorecard que cumple TODO el criterio; los tests rompen una pieza."""
+    base = {
+        "entregable": "jobs.lt_job.LeadTimePorProveedor",
+        "campos": ("supplier", "avg_lead_time", "lead_time_p90", "gap_vs_lt_sistema",
+                   "skus_a_recalcular_rop"),
+        "lt_medido": {"ACME": 22.0, "BETA": 7.5},
+        "lt_con_columna_declarada": {"ACME": 22.0, "BETA": 7.5},
+    }
+    return _CandidatoLeadTime(**{**base, **cambios})
+
+
+def test_t08_no_cumple_mide_el_lt_pero_lo_pisa_el_declarado_y_no_trae_desvio():
+    """Veredicto real: con solo fechas Kern mide 22 d para ACME; agregando una
+    columna 'lead_time_days=7' del proveedor devuelve 7 y se pierde hasta la nota
+    que decia como lo habia medido. Ademas no hay desvio/P90, ni comparacion
+    contra el LT cargado, ni lista de SKU a recalcular."""
+    r = _resultado(puntuar(), "T08")
+    assert r.estado is Estado.NO_CUMPLE, r.evidencia
+    assert r.puntos == 0.0
+    assert r.detalle["lt_medido_de_las_fechas"]["ACME"] == 22.0
+    assert r.detalle["lt_con_columna_declarada"]["ACME"] == 7.0
+    assert r.detalle["prevalece_lo_medido"] is False
+    assert "desvio o P90 del LT" in r.detalle["faltantes"]
+
+
+def test_t08_cumple_con_desvio_gap_y_lista_de_recalculo():
+    r = _veredicto_lead_time(_candidato_lt())
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+
+
+def test_t08_reportar_el_lt_declarado_es_eliminatorio():
+    """La fuente: 'Reportar solo el LT nominal que dice el proveedor NO cuenta'."""
+    r = _veredicto_lead_time(_candidato_lt(
+        lt_medido={"ACME": 7.0, "BETA": 7.0}, lt_con_columna_declarada={"ACME": 7.0, "BETA": 7.0}
+    ))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+    assert "no mide el lead time" in r.evidencia
+
+
+def test_t08_es_parcial_cuando_solo_falta_el_desvio():
+    r = _veredicto_lead_time(_candidato_lt(
+        campos=("supplier", "avg_lead_time", "gap_vs_lt_sistema", "skus_a_recalcular_rop")
+    ))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert "desvio o P90 del LT" in r.evidencia
 
 
 # --- T07: calendario de caja contra el tope ----------------------------------
