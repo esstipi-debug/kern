@@ -1672,6 +1672,157 @@ def t20_flujo_de_devoluciones(_: Contexto) -> ResultadoTarea:
     ))
 
 
+#: Nombres con los que cada pieza del acta de S&OP podria llegar al entregable.
+_CAMPOS_DEMANDA_ACORDADA = ("shaped_demand", "demanda", "demand_plan", "forecast")
+_CAMPOS_SUMINISTRO = ("purchase_plan", "recommended_order", "supply", "order_quantity", "chosen")
+_CAMPOS_BRECHAS = ("check", "brecha", "gap", "unresolved", "unmeasured", "residual")
+_CAMPOS_RESPONSABLE = ("owner", "responsable", "asignado", "assignee")
+
+
+@dataclass(frozen=True)
+class _CandidatoActa:
+    """Un entregable de S&OP medido contra el criterio de T14."""
+
+    tool: str
+    entregable: str
+    campos: tuple[str, ...]
+    registra_desacuerdo: bool
+    prueba_desacuerdo: str
+
+    @property
+    def requisitos(self) -> dict[str, bool]:
+        campos = set(self.campos)
+        return {
+            "numero de demanda acordado": bool(
+                _alguno_contiene(campos, _CAMPOS_DEMANDA_ACORDADA)
+            ),
+            "plan de suministro que lo soporta": bool(_alguno_contiene(campos, _CAMPOS_SUMINISTRO)),
+            "brechas sin resolver declaradas": bool(_alguno_contiene(campos, _CAMPOS_BRECHAS)),
+            "una decision con nombre y fecha": bool(
+                _alguno_contiene(campos, _CAMPOS_RESPONSABLE)
+            ) and bool(_alguno_contiene(campos, _CAMPOS_FECHA_ACCION)),
+        }
+
+    @property
+    def faltantes(self) -> list[str]:
+        return [nombre for nombre, ok in self.requisitos.items() if not ok]
+
+    @property
+    def cumplidos(self) -> int:
+        return len(self.requisitos) - len(self.faltantes)
+
+    def como_detalle(self) -> dict[str, object]:
+        return {
+            "tool": self.tool,
+            "entregable": self.entregable,
+            "campos": sorted(self.campos),
+            "faltantes": self.faltantes,
+            "registra_desacuerdo": self.registra_desacuerdo,
+            "prueba_desacuerdo": self.prueba_desacuerdo,
+        }
+
+
+def _veredicto_acta(candidatos: tuple[_CandidatoActa, ...]) -> ResultadoTarea:
+    """Puntua T14. Eliminatorio: "Debe registrar el desacuerdo ... en vez de
+    esconderlo" -- un acta que solo muestra el numero final no es un acta."""
+    mejor = max(candidatos, key=lambda c: (c.registra_desacuerdo, c.cumplidos))
+    detalle: dict[str, object] = {
+        "mejor": mejor.tool,
+        "candidatos": [c.como_detalle() for c in candidatos],
+    }
+    if not mejor.registra_desacuerdo:
+        return ResultadoTarea(
+            tarea_id="T14",
+            estado=Estado.NO_CUMPLE,
+            evidencia=(
+                "ningun entregable registra el desacuerdo entre areas; sale el numero final y "
+                "nada de lo que se discutio para llegar ahi. "
+                + "; ".join(f"{c.tool}: {c.prueba_desacuerdo}" for c in candidatos)
+            ),
+            detalle=detalle,
+        )
+
+    return _cerrar_veredicto(
+        "T14",
+        faltantes=mejor.faltantes,
+        evidencia_cumple=(
+            f"{mejor.tool} lleva demanda acordada, suministro que la soporta, brechas declaradas "
+            f"y una decision con nombre y fecha, con el desacuerdo registrado "
+            f"({mejor.prueba_desacuerdo})"
+        ),
+        evidencia_falta=(
+            f"{mejor.tool} registra el desacuerdo ({mejor.prueba_desacuerdo}) pero el acta sale "
+            f"sin: {', '.join(mejor.faltantes)}"
+        ),
+        detalle=detalle,
+    )
+
+
+@comprobacion("T14")
+def t14_acta_de_sop(_: Contexto) -> ResultadoTarea:
+    """T14 — la reunion mensual de S&OP: un solo plan y el desacuerdo registrado.
+
+    La tarea esta partida en dos entregables que no se hablan. El plan integrado
+    trae demanda, suministro y las brechas (los coherence checks), pero es un
+    documento sin conflicto: nadie pidio nada que no se aprobara. El plan
+    reconciliado si trae el conflicto -- el acta de concesiones dice cuanto cede
+    cada sombrero respecto de su ideal -- pero no lleva el numero de demanda
+    acordado ni las brechas.
+
+    Y lo que falta en los dos es el cierre: ninguna capa tiene responsable ni
+    fecha, asi que no hay "una decision con nombre y fecha" en ningun lado.
+    """
+    from jobs.hats_job import SettlementReport, run_settlement
+    from src.eoq import PriceBreak
+    from src.hat_council import ActaEntry, Settlement
+    from src.hats import HatConfig, build_inputs
+    from src.sop_engine.demand_plan import DemandPlanLine
+    from src.sop_engine.engine import IntegratedPlanReport
+    from src.sop_engine.purchase_plan import PurchasePlanLine
+
+    entrada = build_inputs(
+        sku="A", annual_demand=5200.0, mean_weekly=100.0, std_weekly=20.0,
+        lead_time_weeks=2.0, unit_cost=10.0, config=HatConfig(),
+        price_breaks=(PriceBreak(0.0, 10.0),),
+    )
+    from src.hats import DEFAULT_WEIGHTS
+
+    acuerdo = run_settlement(
+        {"inputs": (entrada,), "weights": dict(DEFAULT_WEIGHTS)}
+    ).settlements[0]
+    concesiones = {e.hat_key: round(e.concesion, 3) for e in acuerdo.acta}
+
+    plan = _CandidatoActa(
+        tool="integrated_plan",
+        entregable="src.sop_engine.engine.IntegratedPlanReport",
+        campos=tuple(sorted(
+            _campos_del_registro(IntegratedPlanReport)
+            | _campos_del_registro(DemandPlanLine)
+            | _campos_del_registro(PurchasePlanLine)
+        )),
+        registra_desacuerdo=False,
+        prueba_desacuerdo=(
+            "el plan integrado no tiene donde anotar que pidio cada area: sus checks son "
+            "incoherencias tecnicas del plan, no posiciones de ventas, compras o finanzas"
+        ),
+    )
+    settlement = _CandidatoActa(
+        tool="hat_settlement",
+        entregable="src.hat_council.Settlement",
+        campos=tuple(sorted(
+            _campos_planos(acuerdo)
+            | _campos_del_registro(ActaEntry)
+            | _campos_del_registro(Settlement)
+            | _campos_del_registro(SettlementReport)
+        )),
+        registra_desacuerdo=any(c > 0 for c in concesiones.values()),
+        prueba_desacuerdo=(
+            f"el acta anota cuanto cede cada sombrero respecto de su ideal: {concesiones}"
+        ),
+    )
+    return _veredicto_acta((plan, settlement))
+
+
 @comprobacion("T03")
 def t03_segmentacion_con_servicio_diferenciado(ctx: Contexto) -> ResultadoTarea:
     """T03 — ABC-XYZ con nivel de servicio objetivo **distinto** por segmento.

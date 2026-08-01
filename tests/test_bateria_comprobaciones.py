@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import src.bateria.comprobaciones  # noqa: F401  -- registra las comprobaciones
 from src.bateria.comprobaciones import (
+    _CandidatoActa,
     _CandidatoAjuste,
     _CandidatoCaja,
     _CandidatoDevoluciones,
@@ -13,6 +14,7 @@ from src.bateria.comprobaciones import (
     _CandidatoOC,
     _CandidatoScorecard,
     _CandidatoServicio,
+    _veredicto_acta,
     _veredicto_ajuste,
     _veredicto_caja,
     _veredicto_devoluciones,
@@ -317,6 +319,62 @@ def test_t06_gana_el_que_cuantifica_aunque_otro_tenga_mas_campos():
     r = _veredicto_ajuste((sin_cuantificar, cuantifica))
     assert r.detalle["mejor"] == "cuantifica"
     assert r.estado is Estado.NO_CUMPLE
+
+
+# --- T14: acta de S&OP -------------------------------------------------------
+
+
+def _candidato_acta(**cambios) -> _CandidatoActa:
+    """Un acta que cumple TODO el criterio; los tests rompen una pieza."""
+    base = {
+        "tool": "acta_ideal",
+        "entregable": "jobs.sop_job.ActaSOP",
+        "campos": ("familia", "demanda_acordada", "purchase_plan", "brechas_abiertas",
+                   "owner", "due_date"),
+        "registra_desacuerdo": True,
+        "prueba_desacuerdo": "ventas pidio +20% y quedo asentado como no aprobado",
+    }
+    return _CandidatoActa(**{**base, **cambios})
+
+
+def test_t14_no_cumple_el_acta_esta_partida_en_dos_entregables():
+    """Veredicto real: el plan integrado trae demanda, suministro y brechas pero
+    no tiene donde anotar el desacuerdo; el acta de concesiones si lo registra
+    pero no trae el plan. Y ninguno cierra con responsable y fecha."""
+    r = _resultado(puntuar(), "T14")
+    assert r.estado is Estado.NO_CUMPLE, r.evidencia
+    assert r.puntos == 0.0
+    assert r.detalle["mejor"] == "hat_settlement"
+    por_tool = {c["tool"]: c for c in r.detalle["candidatos"]}
+    assert por_tool["integrated_plan"]["registra_desacuerdo"] is False
+    assert por_tool["hat_settlement"]["registra_desacuerdo"] is True
+    # Lo unico que le falta al plan integrado es el cierre con nombre y fecha.
+    assert por_tool["integrated_plan"]["faltantes"] == ["una decision con nombre y fecha"]
+
+
+def test_t14_cumple_con_plan_brechas_decision_y_desacuerdo_registrado():
+    r = _veredicto_acta((_candidato_acta(),))
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+
+
+def test_t14_esconder_el_desacuerdo_es_eliminatorio():
+    """La fuente: debe registrar el desacuerdo en vez de esconderlo."""
+    r = _veredicto_acta((_candidato_acta(
+        registra_desacuerdo=False, prueba_desacuerdo="solo queda el numero final"
+    ),))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+    assert "registra el desacuerdo" in r.evidencia
+
+
+def test_t14_una_decision_sin_fecha_no_cierra_la_reunion():
+    r = _veredicto_acta((_candidato_acta(
+        campos=("familia", "demanda_acordada", "purchase_plan", "brechas_abiertas", "owner")
+    ),))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert "una decision con nombre y fecha" in r.evidencia
 
 
 # --- T20: flujo de devoluciones ----------------------------------------------
