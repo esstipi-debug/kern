@@ -22,13 +22,46 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
-## 2026-08-01 — PR #199 (simworld + hardening): de CONFLICTING/CI-nunca-corrida a MERGEABLE/CI-verde. Sigue en draft, whole-branch review en curso
+## 2026-08-01/02 — PR #199 (simworld + hardening): **MERGEADO A MAIN** (`5dda9bf`)
 
-**Lee esto primero si agarras en frio el hilo de `feat/simworld-marcador`.** Rama
-`feat/simworld-marcador`, **PR #199 draft**, `mergeable: MERGEABLE`,
-`mergeStateStatus: CLEAN`, CI **verde por primera vez en toda la vida de la
-rama/PR** (nacio hace mas de una semana, jamas habia corrido `tests.yml` antes
-de esta sesion — confirmado via API directa, no solo `gh pr checks`).
+**Cierre del hilo `feat/simworld-marcador`.** El PR paso por CONFLICTING (dos
+veces — ver abajo) -> CI nunca-corrida -> CI verde -> whole-branch review ->
+sacado de draft -> **squash-merged a `main`** el 2026-08-02
+(`gh pr merge 199 --squash --delete-branch=false`, confirmado via `gh pr view
+199 --json state,mergedAt,mergeCommit` -> `MERGED`, `5dda9bf`). La rama
+`feat/simworld-marcador` se borro despues (remota y local, `-D` porque el
+squash-merge deja la ancestria de git sin fast-forward aunque el contenido
+este integro — verificado con `git diff origin/main feat/simworld-marcador`
+antes de forzar el borrado).
+
+**Segundo conflicto, encontrado literalmente al ejecutar el merge:** entre
+que se confirmo `mergeable: MERGEABLE`/CI verde y el `gh pr merge`, `main`
+avanzo con **#204** ("extract nosilo_core, el control plane agnostico de
+dominio" — mueve `writeback`/`guided`/`escalation`/`registry`/`types`/`llm`
+de `src/`/`scm_agent/` a un paquete nuevo `nosilo_core/`, SIN shims, 136
+consumidores reescritos) y **#209** (cambio de trigger de CI). Si agarras
+otro PR viejo en este repo y `mergeable` te sorprende en `CONFLICTING`
+despues de haberlo visto `MERGEABLE`, este es el patron: **siempre
+re-verificar `mergeable` inmediatamente antes de mergear, no confiar en un
+chequeo de hace unos minutos** — main en este repo se mueve rapido (PRs
+`#204`, `#206`, `#207`, `#209` todos landearon en el lapso de esta sesion).
+
+**Si algun modulo tuyo todavia importa de `src.guided`/`src.escalation`/
+`scm_agent.registry`/`scm_agent.types`/`scm_agent.llm`/`src.writeback`/
+`src.writeback_store`: esas rutas YA NO EXISTEN**, se movieron a
+`nosilo_core.*` sin dejar re-export. Un archivo que main nunca toco no va a
+mostrar conflicto de git aunque tenga una de estas rutas colgando — solo
+falla al importar. Grep amplio sobre TODO el arbol (no solo los archivos que
+git marca en conflicto) es la unica forma confiable de encontrarlos todos.
+
+---
+
+**Lee esto para el contexto completo de que construyo esta rama.** Rama
+`feat/simworld-marcador` (ya borrada), PR #199 (ya mergeado, ver arriba). Al
+momento de escribir la seccion original de abajo, CI **verde por primera vez
+en toda la vida de la rama/PR** (nacio hace mas de una semana, jamas habia
+corrido `tests.yml` antes de esta sesion — confirmado via API directa, no
+solo `gh pr checks`).
 
 **Que construye esta rama:** `src/simworld/` — un arnes de scoreboard que
 simula un mundo de reposicion con verdad conocida, le inyecta suciedad de
@@ -77,25 +110,15 @@ explotando la formula de EOQ via el piso de `holding_cost` (tambien en
 (merge), `9c9a8f1` (fixes de merge no stageados), `a928d55` (skip guards),
 `df3b576` (guard perdido + refuerzo). Todos pusheados.
 
-**Que sigue, en este orden:**
-1. **Un agente de whole-branch review esta corriendo en background** (lanzado
-   al final de esta sesion, resultado todavia no leido por nadie) — cubre el
-   diff propio de esta rama contra `main` (`git diff origin/main
-   feat/simworld-marcador`, ~90 archivos, +17.4k/-88), cruzado contra los docs
-   de diseno/plan, e incluye una mirada a Tasks 13-14 (hechas por otra sesion
-   concurrente, nunca revisadas independientemente). Si arrancas en frio y no
-   ves su resultado en la conversacion, no fue reportado todavia — no asumir
-   que el review dijo "aprobado" solo porque CI esta verde.
-2. Si el review sale limpio: `gh pr ready 199` + revisar antes de squash-merge
-   (proceso estandar del repo).
-3. Deuda trackeada, NO arreglada en esta sesion: `jobs/vehicle_routing_job.py`
-   y `jobs/whatif_job.py` tienen `confidence=0.85` hardcodeado (heredado de
-   main, `tests/test_qa_confidence_from_coverage.py::LITERAL_CONFIDENCE_
-   CEILING` subio de 43 a 45 para no romper el ratchet sin arreglarlo).
-4. Pendiente de siempre: rebase/decision sobre si esta rama debe seguir
-   viviendo aparte o si conviene cerrarla mas seguido dado el patron de uso
-   como trunk compartido (ver `linchpin-concurrent-sessions` memoria, 10ma
-   instancia documentada esta sesion).
+**Que paso despues (cierre):** el whole-branch review corrio, encontro un
+hallazgo Important (arreglado en el mismo ciclo), `gh pr ready 199`, y
+squash-merge — ver el bloque de cierre al principio de esta seccion.
+
+**Deuda trackeada, NO arreglada en esta sesion (sigue abierta en `main`):**
+`jobs/vehicle_routing_job.py` y `jobs/whatif_job.py` tienen `confidence=0.85`
+hardcodeado (heredado de main, `tests/test_qa_confidence_from_coverage.py::
+LITERAL_CONFIDENCE_CEILING` subio de 43 a 45 para no romper el ratchet sin
+arreglarlo).
 
 ## 2026-07-27 — #193 MERGEADO + DEPLOYADO (Fly v35); PR #194 cierra sus follow-ups
 
