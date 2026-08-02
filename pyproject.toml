@@ -177,11 +177,25 @@ seo = [
 [project.urls]
 Homepage = "https://github.com/esstipi-debug/kern"
 
-[tool.setuptools]
+[tool.setuptools.packages.find]
+# Discovery, not a hand-written list. An explicit `packages = [...]` does NOT
+# auto-include subpackages, so every new one has to be remembered - and twice it
+# was not: twelve src subpackages (src.connectors, src.state, src.verify, ...)
+# were silently absent from every built wheel, and nosilo_core.access joined them
+# the moment it was added. Nothing caught it because no deployment installs the
+# wheel: the Dockerfile and Railway both `pip install -e .` with PYTHONPATH
+# pointing at the source tree, so imports resolve from there and the package list
+# never gets exercised. That makes this the worst kind of latent bug - free to
+# introduce, invisible until the first `pip install .`.
+#
+# Patterns rather than bare discovery: `webapp`, `scm_agent` and `jobs` are
+# deliberately NOT packaged (they are the application, imported off PYTHONPATH by
+# uvicorn), and bare discovery would try to sweep them in along with `tests`.
+#
 # nosilo_core is the domain-agnostic control plane (see nosilo_core/__init__.py);
-# src is the SCM domain engine that depends on it. The dependency runs one way and
-# is enforced by tests/test_core_boundary.py.
-packages = ["nosilo_core", "nosilo_core.access", "nosilo_core.entities", "packs", "packs.source_to_pay", "src"]
+# packs/ and src/ are the domain packs that depend on it. That direction is
+# enforced by tests/test_core_boundary.py and tests/test_pack_boundary.py.
+include = ["nosilo_core*", "packs*", "src*"]
 
 [tool.pytest.ini_options]
 pythonpath = "."
