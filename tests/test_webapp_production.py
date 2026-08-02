@@ -64,8 +64,19 @@ def test_development_has_no_production_warnings(monkeypatch):
 
 
 def test_secured_production_has_no_warnings(monkeypatch):
+    """What counts as "secured" now includes having an access policy.
+
+    The three controls below were the whole list when this test was written, and
+    they no longer are: a deployment with a shared API key and no PolicySet has
+    no per-principal authorisation at all - every caller behind the key can do
+    everything and no field classification is applied. That is a gap worth
+    shouting about at boot, so it joins the list rather than being assumed away.
+    """
+    from nosilo_core.access import PolicySet
+
     monkeypatch.setattr(security, "ENV", "production")
     monkeypatch.setattr(security, "API_KEY", "a-real-key")
     monkeypatch.setattr(security, "RATE_LIMIT", 120)
     monkeypatch.setattr(security, "APPROVAL_SECRET", "a-real-secret")
+    monkeypatch.setattr(security, "POLICY", PolicySet(version="2026-08-01"))
     assert security.production_warnings() == []

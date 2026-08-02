@@ -261,6 +261,12 @@ app = FastAPI(
 # short-circuits with an early 401 - Starlette's innermost-added-middleware-first
 # dispatch order means the reverse registration would strip hardening headers off
 # every 401 this middleware returns (caught by code review, verified live).
+# Identity, attached to request.state for every route. Registered FIRST, which
+# under Starlette's dispatch order makes it the innermost layer: it runs
+# immediately before the handler, so request.state.principal is always set by the
+# time one reads it, and it never sees a request that an outer layer already
+# short-circuited with a 401 (no handler runs for those either).
+app.middleware("http")(security.principal_middleware)
 app.middleware("http")(security.jobs_output_auth_middleware)
 # Always-on hardening headers (+ path-aware CSP). CORS is opt-in via env allowlist.
 app.middleware("http")(security.security_headers_middleware)

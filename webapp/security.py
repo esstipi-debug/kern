@@ -24,6 +24,9 @@ from collections import defaultdict, deque
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from nosilo_core.access import PolicyEngine, PolicySet
+from webapp import principal
+
 
 def _int_env(name: str, default: int) -> int:
     try:
@@ -44,6 +47,19 @@ REQUIRE_SECURE = os.environ.get("LINCHPIN_REQUIRE_SECURE", "").strip().lower() i
 APPROVAL_SECRET = os.environ.get("LINCHPIN_APPROVAL_SECRET", "").strip()
 
 
+#: The deployment's access policy. ``None`` means ungoverned: every principal is
+#: permitted every action and no field classification is applied, which is the
+#: shipped default and what keeps this layer from changing existing behaviour.
+#: Set at boot by a deployment that wants authorisation. Module-level so tests
+#: (and a reload) can flip it, same convention as the gates above.
+POLICY: PolicySet | None = None
+
+
+def policy_engine() -> PolicyEngine:
+    """The decision point, built from :data:`POLICY` at call time."""
+    return PolicyEngine(POLICY)
+
+
 def production_warnings() -> list[str]:
     """Misconfiguration warnings for a production deploy.
 
@@ -56,6 +72,26 @@ def production_warnings() -> list[str]:
     out: list[str] = []
     if not API_KEY:
         out.append("LINCHPIN_API_KEY is not set - POST /api/jobs is unauthenticated")
+    if POLICY is None:
+        out.append(
+            "webapp.security.POLICY is not set - no access policy is configured, so every "
+            "principal is permitted every action and no field classification is applied"
+        )
+    if principal.TRUSTED_IDENTITY_HEADERS:
+        # Reading identity from client-settable headers is a complete
+        # authentication bypass unless a reverse proxy strips the client's own
+        # copy first. That requirement lives outside this codebase, so the most
+        # this can do is refuse to let it be forgotten.
+        out.append(
+            "LINCHPIN_TRUSTED_IDENTITY_HEADERS is on - X-Auth-Subject is taken at face value. "
+            "This is safe ONLY behind a proxy that terminates auth and strips client-supplied "
+            "X-Auth-* headers; without one, any caller can claim any identity"
+        )
+        if not API_KEY:
+            out.append(
+                "LINCHPIN_TRUSTED_IDENTITY_HEADERS is on with no LINCHPIN_API_KEY - there is "
+                "nothing at all stopping a caller from asserting its own identity"
+            )
     if RATE_LIMIT <= 0:
         out.append("LINCHPIN_RATE_LIMIT is 0 - POST /api/jobs is not rate limited")
     if not APPROVAL_SECRET:
@@ -120,6 +156,47 @@ def require_api_key(request: Request) -> None:
     provided = request.headers.get("x-api-key", "")
     if not hmac.compare_digest(provided, expected):
         raise HTTPException(status_code=401, detail="invalid or missing API key")
+
+
+async def principal_middleware(request: Request, call_next):
+    """Attach the caller's identity and starting authority to every request.
+
+    Runs for every route, including the ones with no auth dependency, because
+    "who was this" is as useful on an anonymous request as on an authenticated
+    one - an audit entry that only exists for authenticated calls cannot answer
+    what an unauthenticated caller did.
+
+    Attaches, never enforces. Authorisation is the policy engine's job at the
+    point of access; a middleware that returned 403 here would have to guess the
+    action and resource from the URL, which is exactly the kind of guess that
+    goes wrong quietly. Handlers read ``request.state.principal``.
+
+    Cannot fail the request: identity derivation is wrapped so a malformed header
+    degrades to anonymous rather than turning into a 500.
+    """
+    try:
+        who = principal.principal_from_request(request, api_key=API_KEY)
+    except Exception:  # pragma: no cover - defensive; derivation is already total
+        who = principal.anonymous()
+    request.state.principal = who
+    request.state.capability = principal.capability_for(who)
+    return await call_next(request)
+
+
+def request_principal(request: Request):
+    """The principal attached by :func:`principal_middleware`.
+
+    Falls back to anonymous rather than raising, so a handler exercised without
+    the middleware (a unit test, a sub-application) behaves like an
+    unauthenticated call instead of blowing up.
+    """
+    return getattr(request.state, "principal", None) or principal.anonymous()
+
+
+def request_capability(request: Request):
+    """The starting authority attached by :func:`principal_middleware`."""
+    existing = getattr(request.state, "capability", None)
+    return existing if existing is not None else principal.capability_for(request_principal(request))
 
 
 async def jobs_output_auth_middleware(request: Request, call_next):

@@ -3,6 +3,36 @@
 ## [Unreleased]
 
 ### Added
+- **Identity on the live request path** (`webapp/principal.py`, `webapp/security.py`). The access
+  layer added previously governed entity-store reads, and nothing in the running service called them
+  — it was, honestly, a library the app did not use. This wires it in: every request now carries a
+  `Principal` and a starting `Capability` on `request.state`, derived in exactly one place.
+  - **Three identity modes, in decreasing order of what they can prove.** Trusted proxy headers
+    (opt-in), the shared API key, and anonymous. Identity derivation scattered across route handlers
+    is how an authorisation bypass ends up in a codebase without anyone choosing it, so it lives in
+    one file.
+  - **`X-Auth-*` headers are ignored unless `LINCHPIN_TRUSTED_IDENTITY_HEADERS=1`.** Reading them is
+    the shape every real OIDC deployment ends up in *and* a complete authentication bypass if the
+    proxy that strips the client's own copy is not there — any caller could otherwise assert any
+    identity. Off by default, flagged loudly in production when on, flagged twice when on with no API
+    key. Tested from the negative side: forged headers are ignored end to end through the real
+    middleware.
+  - **The API-key holder is a `service` principal, never a human.** A shared secret identifies a
+    deployment; putting a person's name on an audit entry nobody is accountable for is worse than
+    leaving it anonymous.
+  - **The middleware attaches, it never enforces.** Authorisation happens at the point of access,
+    where the action and resource are known; a middleware returning 403 would have to guess them from
+    the URL. It also cannot fail a request — a malformed header degrades to anonymous rather than
+    becoming a 500.
+  - **`production_warnings()` gained the access checks**, and `test_secured_production_has_no_warnings`
+    was updated with them. That test encoded a definition of "secured" that was complete when written
+    and no longer is: a deployment with a shared API key and no `PolicySet` has no per-principal
+    authorisation at all.
+  - Nothing changes by default. With no configuration every request is anonymous, the policy engine
+    is ungoverned, and behaviour is identical to before.
+  25 tests. Note: `webapp/` has never been in CI's `--cov` scope, so `webapp/principal.py` is
+  tested but not coverage-gated; widening that scope would move the baseline and belongs in its own
+  change.
 - **`packs/source_to_pay` — the second domain pack, and the test of whether the core extraction
   actually bought anything.** Accounts payable: three-way match of supplier invoices against purchase
   orders and goods receipts, with price/quantity variances, duplicate detection, currency mismatch and
