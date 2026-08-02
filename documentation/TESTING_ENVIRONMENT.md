@@ -219,22 +219,44 @@ metric, stated rather than hidden:
   the CLI's report prints that "largest single week" figure next to the three
   headline scalars.
 
-**Kern escalates under dirt more than it fails.** In runs against this
-harness, Kern routes to `ESCALATED`/`HANDOFF` (never crashes) on a large share
-of replans once dirt appears — even cosmetic-only dirt (level 1) has driven
-every replan on a small fixture to `escalated` in a verified run. This is
-Kern's own pre-existing, conservative data-quality threshold working as
-intended, not a defect: an escalated week is a week with zero orders placed,
-and the harness prices that refusal at full cost like any other week, so the
-score reflects what "correctly refusing to guess" actually costs, not just
-what "guessing wrong" costs.
+**Kern can escalate rather than guess — but the fixes below mean it no longer
+needs to just to survive normal-looking dirt.** Before the 5 fixes documented
+next, even cosmetic-only dirt (level 1) drove *every* replan on the harness's
+production-scale grid (120 SKUs, 52 weeks) to `ESCALATED` — not because Kern's
+judgment was too conservative, but because two real intake bugs (mixed date
+formats, mixed US/LATAM number formats) were silently dropping enough rows to
+cross Kern's own data-quality threshold on data that was actually fine. With
+those bugs fixed, the same grid shows **zero escalations across all 4 dirt
+levels** — Kern operates normally everywhere, with capture against the oracle
+ranging from -6.8% (level 3, the messiest) to +5.0% (level 2): a genuinely
+graduated curve instead of a cliff. The escalation mechanism itself is still
+real and still exercised elsewhere in the suite — a `GuidedOutcome` blocked on
+truly missing or contradictory data still routes to `ESCALATED`/`HANDOFF`,
+never a crash, and the harness still prices a genuine escalation at full cost
+like any other week. The harness's own early runs were themselves a case
+study in the exact silent-degradation failure mode Kern is supposed to catch,
+one level removed.
 
-This harness has already surfaced two real production bugs in Kern's core
-code (both outside `src/simworld/`, both fixed on this branch): `jobs/intake.py`'s
-date parser used to corrupt or drop rows on a genuinely mixed-format date
-column, and `jobs/inventory_optimization.py` used to let one SKU with zero
-aggregate demand crash the entire portfolio's run instead of being isolated,
-flagged, and skipped while the rest of the portfolio kept processing normally.
+This harness has surfaced **5 real bugs** — 4 in Kern's core production code,
+1 in the harness's own dirt injector, all fixed on this branch:
+- `jobs/intake.py`'s date parser used to corrupt or drop rows on a genuinely
+  mixed-format date column.
+- `jobs/intake.py`'s number parser didn't handle mixed US/LATAM thousand-
+  separator conventions — a single cosmetic-level injector alone dropped up
+  to 31% of rows on data that was perfectly valid, just formatted differently.
+- `jobs/inventory_optimization.py` used to let one SKU with zero aggregate
+  demand crash the entire portfolio's run instead of being isolated, flagged,
+  and skipped while the rest of the portfolio kept processing normally.
+- `jobs/inventory_optimization.py` (via `src/sources.py`) used to let a
+  single `$0` unit cost — a cost lost on load, not a genuinely free item —
+  silently explode the EOQ formula through its holding-cost floor: one bad
+  SKU drove a full production-scale grid run to a capture score of **-14.04**
+  (**$29.6M** cost against a **$7.4M** floor), with no crash and no QA flag.
+  The most dramatic finding of the five — exactly the class of confident-but-
+  wrong decision this harness exists to catch.
+- `src/simworld/lens.py`'s own `inject_returns_as_negatives` produced an
+  undetectable `-0.0` (`-0.0 < 0` is `False` in IEEE 754) instead of a real
+  negative value, silently weakening its own level-2 dirt signal.
 
 Writes `deliverables/simworld/report.{md,json}` (gitignored).
 
