@@ -84,7 +84,7 @@ Las dos fuentes citables ya existen: [`KERN_AUTOPSIA_FALLAS.md`](KERN_AUTOPSIA_F
 | B4 | La autopsia que caducó en tres días | cinco de siete "bugs vivos" estaban cerrados al re-verificar | **sí** — el post más honesto del carril: una autopsia sin sello de commit no vale nada |
 | B5 | El diferencial que construí y no supe mostrar | `src/risk_period.py`, sigma_x con lead time estocástico (Vandeput 6.4-6.5) | **sí** — falla de comunicación, no de matemática |
 
-**Nota de vigencia.** La medición de la batería es del 25-jul, anterior a #193/#194, y no se re-corrió. Antes de publicar el 7,5% hay que volver a correrla y sellar el commit.
+**Nota de vigencia.** La batería se re-corrió: **27,50% · 5,5/20** sobre `73b912d` (02-ago), posterior a #193/#194 y #203. El 7,5% del 25-jul era manual y queda superado. Re-correr y sellar el commit antes de cada publicación — nada congela la cifra.
 
 ---
 

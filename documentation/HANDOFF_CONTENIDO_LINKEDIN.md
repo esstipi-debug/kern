@@ -86,7 +86,7 @@ La idea que hace viable el carril D: **una corrida rinde siete posts**, lo que c
 1. **Sesgo del grafo.** 3.002 nodos, 36 fuentes, pero Khan (*Supply Chain Resilience*) pesa **32%**; Palamariu y Chopra 10% cada uno. Sin corregir, una serie larga suena toda a resiliencia y pricing. **Regla: ningún tramo de 4 posts consecutivos cita la misma fuente dos veces.**
 2. **El Atlas ya tuvo certificaciones inventadas** — un "Laurels Institute" y una sigla "CUSECO" — corregidas por dos revisiones adversariales. **Solo se publican las filas con certificación verificada.** Las marcadas "por confirmar" (GBCI, programa IBF de S&OP) quedan fuera.
 3. **§10 del bible manda sobre todo.** Nada de porcentaje de autonomía, "sin humano", casos de éxito con $ de clientes reales, integración Shopify/Amazon/inventario MELI, ni Control Tower autónomo como producto de hoy. Toda cifra de rival rotulada "ancla de mercado"; toda cifra de ejemplo rotulada "ej./estimado".
-4. **El puntaje de 7,5% de la batería es del 25-jul, anterior a #193/#194, y no se re-corrió.** Antes de publicarlo hay que volver a correrlo y sellar el commit.
+4. **El puntaje vigente de la batería es 27,50% · 5,5/20**, corrido el 02-ago sobre `73b912d` — posterior a #193/#194 y #203. Sustituye al 7,5% del 25-jul, que era manual. Re-correr y sellar el commit antes de publicarlo: nada congela la cifra, ni un test ni la CI corren la batería.
 5. **`sourcing` con `confidence=1.00` sobre scorecard en 0.0** — desde la medición se incorporó allowlist de tokens y mapeo explícito. **No re-corrido:** no afirmar que está cerrado ni que sigue abierto.
 
 ---
