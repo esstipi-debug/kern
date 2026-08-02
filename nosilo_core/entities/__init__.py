@@ -60,10 +60,18 @@ from .resolution import (
     Resolution,
     resolve,
 )
-from .store import DEFAULT_PATH, EntityStoreError, ObserveResult, SqliteEntityStore
+from .store import (
+    ACTION_READ,
+    DEFAULT_PATH,
+    EntityStoreError,
+    ObserveResult,
+    ReadResult,
+    SqliteEntityStore,
+)
 
 __all__ = [
     "ABSENT",
+    "ACTION_READ",
     "DEFAULT_PATH",
     "EntityStoreError",
     "EntityType",
@@ -76,6 +84,7 @@ __all__ = [
     "LINK_MANUAL",
     "LINK_MINTED",
     "ObserveResult",
+    "ReadResult",
     "REASON_GUARDED",
     "REASON_NOT_OWNER",
     "REASON_OWNER",

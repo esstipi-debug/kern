@@ -40,6 +40,15 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping
 
+from ..access import (
+    DEFAULT_TENANT,
+    AccessRequest,
+    Capability,
+    Decision,
+    Filtered,
+    PolicyEngine,
+    Principal,
+)
 from .model import (
     LINK_EXACT_KEY,
     LINK_MINTED,
@@ -54,6 +63,9 @@ from .model import (
     utc_now,
 )
 from .resolution import FieldConflict, resolve
+
+#: The action name a governed read is authorised against.
+ACTION_READ = "entity.read"
 
 DEFAULT_PATH = os.environ.get("LINCHPIN_ENTITIES_PATH", "").strip() or "data/entities.sqlite3"
 
@@ -137,11 +149,65 @@ class ObserveResult:
         return self.version is not None
 
 
-class SqliteEntityStore:
-    """Canonical entities, their versions, and their links to source systems."""
+@dataclass(frozen=True)
+class ReadResult:
+    """What one :meth:`SqliteEntityStore.read` call returned, and under what decision.
 
-    def __init__(self, registry: EntityTypeRegistry, path: str | Path = DEFAULT_PATH) -> None:
+    ``version is None`` covers both "no such entity" and "denied" - by design.
+    Distinguishing them in the return value would turn every denial into an
+    existence oracle, which is how access controls leak the shape of data they
+    successfully protect the contents of. ``decision`` says which it was, and is
+    what a caller shows the user and writes to the audit trail.
+
+    ``values`` is the *filtered* attribute map. It is a plain mapping rather than
+    an :class:`~.model.EntityVersion` precisely so a masked value cannot be
+    mistaken for a real one and fed back into :meth:`observe`.
+    """
+
+    version: EntityVersion | None
+    values: Mapping[str, Any]
+    decision: Decision
+    filtered: Filtered | None
+
+    @property
+    def allowed(self) -> bool:
+        return self.decision.allowed
+
+    @property
+    def withheld(self) -> Mapping[str, str]:
+        """``field -> transform`` for everything not returned intact."""
+        return self.filtered.transformed if self.filtered else {}
+
+
+class SqliteEntityStore:
+    """Canonical entities, their versions, and their links to source systems.
+
+    Scoped to one ``tenant``. Every table carries it and every query filters on
+    it, so two stores over the same file see disjoint data - the isolation is a
+    property of the schema rather than of each query author remembering a
+    ``WHERE``. It is here from the first version on purpose: adding a tenant
+    column later means a migration, a backfill, and re-auditing every query
+    written in between, which is exactly the kind of work that never gets done.
+
+    ``policy`` is the decision point used by :meth:`read`. Left unset, the store
+    behaves exactly as it did before this existed - see :class:`PolicyEngine`
+    for why the permissive default is the right one here and how a production
+    deploy is told it is still in that state.
+    """
+
+    def __init__(
+        self,
+        registry: EntityTypeRegistry,
+        path: str | Path = DEFAULT_PATH,
+        *,
+        tenant: str = DEFAULT_TENANT,
+        policy: PolicyEngine | None = None,
+    ) -> None:
+        if not tenant or not tenant.strip():
+            raise ValueError("tenant must be a non-empty string")
         self._registry = registry
+        self._tenant = tenant
+        self._policy = policy or PolicyEngine()
         self._path = str(path)
         if self._path != ":memory:":
             Path(self._path).parent.mkdir(parents=True, exist_ok=True)
@@ -150,20 +216,28 @@ class SqliteEntityStore:
         self._conn.row_factory = sqlite3.Row
         self._ensure_schema()
 
+    @property
+    def tenant(self) -> str:
+        return self._tenant
+
     # ---- schema -------------------------------------------------------------
 
     def _ensure_schema(self) -> None:
+        self._reject_pre_tenant_schema()
         self._conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS entity (
-                nosilo_id   TEXT PRIMARY KEY,
+                tenant      TEXT NOT NULL,
+                nosilo_id   TEXT NOT NULL,
                 entity_type TEXT NOT NULL,
-                created_at  TEXT NOT NULL
+                created_at  TEXT NOT NULL,
+                PRIMARY KEY (tenant, nosilo_id)
             );
-            CREATE INDEX IF NOT EXISTS entity_by_type ON entity(entity_type);
+            CREATE INDEX IF NOT EXISTS entity_by_type ON entity(tenant, entity_type);
 
             CREATE TABLE IF NOT EXISTS entity_version (
                 version_id    TEXT PRIMARY KEY,
+                tenant        TEXT NOT NULL,
                 nosilo_id     TEXT NOT NULL,
                 entity_type   TEXT NOT NULL,
                 version       INTEGER NOT NULL,
@@ -171,12 +245,15 @@ class SqliteEntityStore:
                 valid_from    TEXT NOT NULL,
                 recorded_at   TEXT NOT NULL,
                 change_reason TEXT NOT NULL DEFAULT '',
-                UNIQUE (nosilo_id, version)
+                UNIQUE (tenant, nosilo_id, version)
             );
-            CREATE INDEX IF NOT EXISTS version_by_entity ON entity_version(nosilo_id, version);
+            CREATE INDEX IF NOT EXISTS version_by_entity
+                ON entity_version(tenant, nosilo_id, version);
 
-            -- The PK is the invariant: one source record resolves to one entity.
+            -- The PK is the invariant: within a tenant, one source record
+            -- resolves to exactly one entity.
             CREATE TABLE IF NOT EXISTS entity_xref (
+                tenant        TEXT NOT NULL,
                 source_system TEXT NOT NULL,
                 source_entity TEXT NOT NULL,
                 source_id     TEXT NOT NULL,
@@ -184,23 +261,50 @@ class SqliteEntityStore:
                 confidence    REAL NOT NULL,
                 method        TEXT NOT NULL,
                 recorded_at   TEXT NOT NULL,
-                PRIMARY KEY (source_system, source_entity, source_id)
+                PRIMARY KEY (tenant, source_system, source_entity, source_id)
             );
-            CREATE INDEX IF NOT EXISTS xref_by_entity ON entity_xref(nosilo_id);
+            CREATE INDEX IF NOT EXISTS xref_by_entity ON entity_xref(tenant, nosilo_id);
 
             -- A derived projection of the CURRENT natural-key values, not history:
             -- it is rewritten when a key value changes. entity_version remains the
             -- only record of what was true when.
             CREATE TABLE IF NOT EXISTS entity_natural_key (
+                tenant      TEXT NOT NULL,
                 entity_type TEXT NOT NULL,
                 key_name    TEXT NOT NULL,
                 key_value   TEXT NOT NULL,
                 nosilo_id   TEXT NOT NULL,
-                PRIMARY KEY (entity_type, key_name, key_value)
+                PRIMARY KEY (tenant, entity_type, key_name, key_value)
             );
             """
         )
         self._conn.commit()
+
+    def _reject_pre_tenant_schema(self) -> None:
+        """Fail loudly on a database written before tenant scoping existed.
+
+        No data migration, deliberately. ``tenant`` is part of three primary
+        keys, so the tables would have to be rebuilt - and this schema has never
+        shipped, so the only databases in that shape are local scratch files from
+        an unmerged branch. Writing a data-preserving migration for a state that
+        has never existed in production is speculative work; failing with an
+        instruction is honest and costs nothing.
+
+        From here on the schema carries ``tenant``, and a real migration path can
+        be sequenced properly the first time one is actually needed.
+        """
+        legacy = [
+            table
+            for table in ("entity", "entity_version", "entity_xref", "entity_natural_key")
+            for columns in [{row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})")}]
+            if columns and "tenant" not in columns
+        ]
+        if legacy:
+            raise EntityStoreError(
+                f"{self._path} was written by a pre-tenant build of the entity store "
+                f"(tables {legacy} have no tenant column). That schema was never released, so "
+                "there is no migration: delete the file and let it be recreated."
+            )
 
     def close(self) -> None:
         self._conn.close()
@@ -210,15 +314,17 @@ class SqliteEntityStore:
     def resolve_source(self, source: SourceRef) -> str | None:
         """The entity a source record is linked to, or ``None`` if never seen."""
         row = self._conn.execute(
-            "SELECT nosilo_id FROM entity_xref WHERE source_system=? AND source_entity=? AND source_id=?",
-            (source.system, source.entity, source.id),
+            "SELECT nosilo_id FROM entity_xref"
+            " WHERE tenant=? AND source_system=? AND source_entity=? AND source_id=?",
+            (self._tenant, source.system, source.entity, source.id),
         ).fetchone()
         return row["nosilo_id"] if row else None
 
     def find_by_natural_key(self, entity_type: str, key_name: str, key_value: object) -> str | None:
         row = self._conn.execute(
-            "SELECT nosilo_id FROM entity_natural_key WHERE entity_type=? AND key_name=? AND key_value=?",
-            (entity_type, key_name, str(key_value)),
+            "SELECT nosilo_id FROM entity_natural_key"
+            " WHERE tenant=? AND entity_type=? AND key_name=? AND key_value=?",
+            (self._tenant, entity_type, key_name, str(key_value)),
         ).fetchone()
         return row["nosilo_id"] if row else None
 
@@ -247,17 +353,18 @@ class SqliteEntityStore:
             )
         self._conn.execute(
             "INSERT OR REPLACE INTO entity_xref"
-            " (source_system, source_entity, source_id, nosilo_id, confidence, method, recorded_at)"
-            " VALUES (?,?,?,?,?,?,?)",
-            (source.system, source.entity, source.id, nosilo_id, confidence, method, stamped),
+            " (tenant, source_system, source_entity, source_id, nosilo_id, confidence, method, recorded_at)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (self._tenant, source.system, source.entity, source.id, nosilo_id, confidence, method, stamped),
         )
         self._conn.commit()
         return Xref(nosilo_id, source, confidence, method, stamped)
 
     def xrefs(self, nosilo_id: str) -> tuple[Xref, ...]:
         rows = self._conn.execute(
-            "SELECT * FROM entity_xref WHERE nosilo_id=? ORDER BY source_system, source_entity, source_id",
-            (nosilo_id,),
+            "SELECT * FROM entity_xref WHERE tenant=? AND nosilo_id=?"
+            " ORDER BY source_system, source_entity, source_id",
+            (self._tenant, nosilo_id),
         ).fetchall()
         return tuple(
             Xref(
@@ -355,8 +462,8 @@ class SqliteEntityStore:
 
         nosilo_id = new_entity_id()
         self._conn.execute(
-            "INSERT INTO entity (nosilo_id, entity_type, created_at) VALUES (?,?,?)",
-            (nosilo_id, declared.name, recorded_at),
+            "INSERT INTO entity (tenant, nosilo_id, entity_type, created_at) VALUES (?,?,?,?)",
+            (self._tenant, nosilo_id, declared.name, recorded_at),
         )
         self.link(nosilo_id, source, confidence=1.0, method=LINK_MINTED, recorded_at=recorded_at)
         return nosilo_id, LINK_MINTED
@@ -381,9 +488,10 @@ class SqliteEntityStore:
         number = (previous.version + 1) if previous else 1
         self._conn.execute(
             "INSERT INTO entity_version"
-            " (version_id, nosilo_id, entity_type, version, fields_json, valid_from, recorded_at, change_reason)"
-            " VALUES (?,?,?,?,?,?,?,?)",
-            (str(uuid.uuid4()), nosilo_id, entity_type, number, _fields_to_json(fields),
+            " (version_id, tenant, nosilo_id, entity_type, version, fields_json, valid_from, recorded_at,"
+            "  change_reason)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            (str(uuid.uuid4()), self._tenant, nosilo_id, entity_type, number, _fields_to_json(fields),
              valid_from, recorded_at, change_reason),
         )
         return EntityVersion(
@@ -404,13 +512,14 @@ class SqliteEntityStore:
             if held is None or held.value is None:
                 continue
             self._conn.execute(
-                "DELETE FROM entity_natural_key WHERE entity_type=? AND key_name=? AND nosilo_id=?",
-                (declared.name, key_name, nosilo_id),
+                "DELETE FROM entity_natural_key"
+                " WHERE tenant=? AND entity_type=? AND key_name=? AND nosilo_id=?",
+                (self._tenant, declared.name, key_name, nosilo_id),
             )
             self._conn.execute(
                 "INSERT OR REPLACE INTO entity_natural_key"
-                " (entity_type, key_name, key_value, nosilo_id) VALUES (?,?,?,?)",
-                (declared.name, key_name, str(held.value), nosilo_id),
+                " (tenant, entity_type, key_name, key_value, nosilo_id) VALUES (?,?,?,?,?)",
+                (self._tenant, declared.name, key_name, str(held.value), nosilo_id),
             )
 
     # ---- reading ------------------------------------------------------------
@@ -418,8 +527,8 @@ class SqliteEntityStore:
     def current(self, nosilo_id: str) -> EntityVersion | None:
         """The newest version, regardless of either time axis."""
         row = self._conn.execute(
-            "SELECT * FROM entity_version WHERE nosilo_id=? ORDER BY version DESC LIMIT 1",
-            (nosilo_id,),
+            "SELECT * FROM entity_version WHERE tenant=? AND nosilo_id=? ORDER BY version DESC LIMIT 1",
+            (self._tenant, nosilo_id),
         ).fetchone()
         return self._row_to_version(row) if row else None
 
@@ -433,8 +542,8 @@ class SqliteEntityStore:
         reconstructs the information the decider actually had rather than the
         information that exists now.
         """
-        clauses = ["nosilo_id=?"]
-        params: list[Any] = [nosilo_id]
+        clauses = ["tenant=?", "nosilo_id=?"]
+        params: list[Any] = [self._tenant, nosilo_id]
         if valid_at is not None:
             clauses.append("valid_from<=?")
             params.append(valid_at)
@@ -450,7 +559,8 @@ class SqliteEntityStore:
     def history(self, nosilo_id: str) -> tuple[EntityVersion, ...]:
         """Every version, oldest first, with closing bounds derived from neighbours."""
         rows = self._conn.execute(
-            "SELECT * FROM entity_version WHERE nosilo_id=? ORDER BY version ASC", (nosilo_id,)
+            "SELECT * FROM entity_version WHERE tenant=? AND nosilo_id=? ORDER BY version ASC",
+            (self._tenant, nosilo_id),
         ).fetchall()
         versions = [self._row_to_version(r) for r in rows]
         closed: list[EntityVersion] = []
@@ -473,9 +583,65 @@ class SqliteEntityStore:
             )
         return tuple(closed)
 
+    def read(
+        self,
+        nosilo_id: str,
+        *,
+        principal: Principal,
+        purpose: str,
+        capability: Capability | None = None,
+        valid_at: str | None = None,
+        known_at: str | None = None,
+        now: str | None = None,
+    ) -> ReadResult:
+        """The governed read: authorise, then return only what may be seen.
+
+        Deliberately a separate method rather than an optional ``principal=``
+        argument on :meth:`current`. An optional security parameter is one a
+        caller forgets and a reviewer cannot see the absence of; a differently
+        named method makes "did this path go through policy?" answerable by
+        reading the call site.
+
+        :meth:`current`, :meth:`as_of` and :meth:`history` stay ungoverned on
+        purpose - :meth:`observe` needs the true values to merge against, and a
+        masked value must never be written back as if it were real.
+        """
+        request = AccessRequest(
+            principal=principal,
+            action=ACTION_READ,
+            resource="",  # filled in once the entity type is known
+            purpose=purpose,
+            tenant=self._tenant,
+        )
+        version = self.as_of(nosilo_id, valid_at=valid_at, known_at=known_at)
+        if version is None:
+            decision = self._policy.decide(request, capability=capability, now=now)
+            return ReadResult(version=None, values={}, decision=decision, filtered=None)
+
+        request = AccessRequest(
+            principal=principal,
+            action=ACTION_READ,
+            resource=version.entity_type,
+            purpose=purpose,
+            tenant=self._tenant,
+        )
+        decision = self._policy.decide(request, capability=capability, now=now)
+        if not decision.allowed:
+            # Nothing leaks on a denial - not the attributes, not the entity type.
+            return ReadResult(version=None, values={}, decision=decision, filtered=None)
+
+        clearance = capability.max_sensitivity if capability is not None else None
+        filtered = self._policy.filter_fields(
+            version.entity_type, version.attributes, clearance=clearance
+        )
+        return ReadResult(
+            version=version, values=filtered.values, decision=decision, filtered=filtered
+        )
+
     def entities_of_type(self, entity_type: str) -> tuple[str, ...]:
         rows = self._conn.execute(
-            "SELECT nosilo_id FROM entity WHERE entity_type=? ORDER BY nosilo_id", (entity_type,)
+            "SELECT nosilo_id FROM entity WHERE tenant=? AND entity_type=? ORDER BY nosilo_id",
+            (self._tenant, entity_type),
         ).fetchall()
         return tuple(r["nosilo_id"] for r in rows)
 
