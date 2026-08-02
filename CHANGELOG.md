@@ -211,6 +211,21 @@
   caught by hand). To activate live: `flyctl secrets set SENTRY_DSN=... -a linchpin`.
 
 ### Fixed
+- **A built wheel silently shipped without thirteen subpackages** (`src.connectors`, `src.state`,
+  `src.verify`, `src.pricing_intel` and its two children, `src.simworld`, `src.seo`, `src.voice`,
+  `src.lots`, `src.logistics`, `src.sop_engine`, `src.bateria`). `[tool.setuptools] packages = [...]`
+  is an explicit list and does **not** auto-include subpackages, so each new one had to be
+  remembered — and twice it was not. Verified rather than reasoned about: a wheel built from the
+  previous config installs into a clean venv where `import src.connectors` raises
+  `ModuleNotFoundError`; with the fix it imports. 111 → 189 modules in the wheel, none lost.
+  Replaced with `[tool.setuptools.packages.find]` so discovery is automatic and the list cannot rot
+  again. Patterns (`nosilo_core*`, `packs*`, `src*`) rather than bare discovery, because `webapp`,
+  `scm_agent` and `jobs` are deliberately not packaged — they are the application, imported off
+  `PYTHONPATH` by uvicorn.
+  Nothing was broken in practice, which is exactly why it survived: the Dockerfile and Railway both
+  `pip install -e .` with `PYTHONPATH` on the source tree, so imports never resolve through the
+  installed package and the list was never exercised. Free to introduce, invisible until the first
+  `pip install .`.
 - **`optimize_sku_price` could ship an exploding markup as `status="ok"`** (adversarial pricing
   audit, 3 findings). (1) *Wrong statistical gate*: the optimizer gated on the elasticity CI
   excluding **0**, but the constant-elasticity markup `p* = c*eps/(eps+1)` explodes as
