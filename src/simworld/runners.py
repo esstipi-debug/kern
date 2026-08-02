@@ -17,8 +17,8 @@ import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import lil_matrix
 
-from scm_agent.orchestrator import Orchestrator
 from nosilo_core import guided as guided_mod
+from scm_agent.orchestrator import Orchestrator
 from src.simworld.lens import export_history
 from src.simworld.world import WeekOutcome, World, WorldState
 
