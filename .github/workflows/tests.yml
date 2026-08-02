@@ -59,14 +59,14 @@ jobs:
         run: pip freeze
 
       - name: Lint
-        run: ruff check nosilo_core src tests examples
+        run: ruff check nosilo_core packs src tests examples
 
       # nosilo_core is measured alongside src: the control-plane modules
       # (writeback, registry, guided, ...) moved out of src/ but are as
       # coverage-critical as anything left in it -- dropping them from --cov
       # would quietly stop gating the code that gates every write.
       - name: Run tests with coverage
-        run: pytest tests/ -q --cov=nosilo_core --cov=src --cov-report=term-missing --cov-fail-under=80
+        run: pytest tests/ -q --cov=nosilo_core --cov=packs --cov=src --cov-report=term-missing --cov-fail-under=80
         env:
           PYTHONPATH: .
 
