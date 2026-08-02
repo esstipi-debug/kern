@@ -51,7 +51,7 @@ consequential result ends in one of four outcomes — and three need a human
 - Statuses: `ok` · `needs_clarification` · `needs_data` · `qa_failed` · `error`.
 - Adding a capability = one `register()` call + a `jobs/<x>_job.py`; no routing edits.
 
-### Never-unprotected (`src/guided.py`)
+### Never-unprotected (`nosilo_core/guided.py`)
 Every consequential result is a `GuidedOutcome` with status:
 `EXECUTED` (agent did it) · `OPTIONS` (ranked choices) · `HANDOFF` (prepared
 human step) · `ESCALATED` (routed to a human with SLA). The last three need a
@@ -62,7 +62,7 @@ y emite un veredicto de objecion contra umbrales del perfil de cliente. Un
 area sin umbral sale `no_evaluable` y el veredicto global es `indeterminado`
 - nunca "nadie objeta".
 
-### Writeback safety (`src/writeback.py`)
+### Writeback safety (`nosilo_core/writeback.py`)
 Never mutate a system of record blindly: stage a dry-run `Changeset`, classify by
 risk tier (`read`/`reversible`/`irreversible`), gate on a time-boxed `Approval`
 (900 s TTL), apply idempotently, `rollback()`-able. Irreversible always needs
@@ -77,7 +77,7 @@ Auto-onboard a never-seen competitor site, homologate its product pages against
 your catalog, then re-acquire and monitor the confirmed pairs on a recurring
 cadence. Two hard invariants: it is **100% read-only observation** — no price is
 ever written back to any competitor, marketplace, or your own catalog anywhere
-in the pipeline (`src/writeback.py` is never imported); and **auto-onboarding is
+in the pipeline (`nosilo_core/writeback.py` is never imported); and **auto-onboarding is
 robots.txt-only and always `limited`** (`tos_decision` is never `"allowed"`,
 `max_tier_allowed` never above `L1` — robots.txt says nothing about a site's
 ToS, so no automated basis to claim a human legal review). A tier raise beyond
@@ -95,7 +95,7 @@ merged dict) — profile values only fill gaps, an explicit `overrides`/`params`
 value always wins, and profile `lead_time_days` is intake's default lead time
 only where the CSV carries none. Pass `Orchestrator.run(..., strict_params=True)`
 (CLI: `--strict-params`) to make a tool's `required_client_params` (see
-`scm_agent/registry.py`) block with `needs_clarification` instead of silently
+`nosilo_core/registry.py`) block with `needs_clarification` instead of silently
 taking the engine's generic default (0.95 / 0.25 / $75) — the answer, once
 supplied, is persisted via `client_profile.upsert_profile(...)` so it is asked
 only once per client. Trust boundary: generic labels ("Client", "MCP client")
@@ -103,7 +103,7 @@ never resolve a profile; `Orchestrator(clients_root=None)` disables profiles
 entirely and is what the webapp/MCP surface uses by default (the `client` field
 there is a caller-typed label, not an authenticated identity — opt in locally
 via `LINCHPIN_CLIENTS_ROOT`). Not a connector to the client's own system of
-record (that's `src/writeback.py`).
+record (that's `nosilo_core/writeback.py`).
 
 ## Understand the code fast (don't just grep — query the graphs)
 

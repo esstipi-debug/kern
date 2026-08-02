@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from src import writeback
+from nosilo_core import writeback
 from src.connectors.meli_prices import (
     InMemoryMeli,
     MeliPricesError,

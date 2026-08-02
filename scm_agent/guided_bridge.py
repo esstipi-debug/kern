@@ -11,7 +11,7 @@ contract. Whatever status a job ends in, the caller receives an executable path:
 
 from __future__ import annotations
 
-from src.guided import (
+from nosilo_core.guided import (
     EscalationPacket,
     ExecutionOption,
     GuidedOutcome,
@@ -21,8 +21,7 @@ from src.guided import (
     as_handoff,
     as_options,
 )
-
-from .types import (
+from nosilo_core.types import (
     STATUS_NEEDS_CLARIFICATION,
     STATUS_NEEDS_DATA,
     STATUS_OK,

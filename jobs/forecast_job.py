@@ -24,13 +24,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from nosilo_core.guided import GuidedOutcome, Residual, recommend, verify_guided
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 from src.forecast_metrics import compute_metrics
 from src.forecastability import segment
 from src.forecasting import forecast_demand
-from src.guided import GuidedOutcome, Residual, recommend, verify_guided
 
 _PRODUCT_COLS = ("sku", "product_id", "product", "item", "SKU", "Product", "material")
 _QTY_COLS = ("demand", "quantity", "qty", "units", "sales", "Demand", "Quantity", "value")

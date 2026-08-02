@@ -8,7 +8,7 @@ for the two shapes a routed tool result can take (plan S5, A3 row):
 
 (a) **Analysis-only tools** (the common case -- most of ``scm_agent/tools.py``'s
     37 registered tools): a routed run produces a
-    ``scm_agent.types.JobResult`` with no system-of-record write attached.
+    ``nosilo_core.types.JobResult`` with no system-of-record write attached.
     :func:`enforce_analysis_tier` gates it:
 
       - **T1** auto-execute: the tool already ran (through the real QA gate)
@@ -25,13 +25,13 @@ for the two shapes a routed tool result can take (plan S5, A3 row):
         record's id; :func:`acknowledge_pending` is the accept/approve
         function PR-7's ``POST /api/approvals/{id}`` calls to complete it.
       - **T3** full escalation: wrapped in a real ``ESCALATED`` outcome via
-        ``src/escalation.py`` (never a hand-rolled one) and recorded with
+        ``nosilo_core/escalation.py`` (never a hand-rolled one) and recorded with
         ``status=STATUS_ESCALATED`` -- never treated as done, never
         auto-notified.
 
 (b) **Writeback-capable tool results** (``odoo_replenishment``,
     ``excel_replenishment`` -- the few tools whose report carries a staged
-    ``src.writeback.Changeset``, not just a ``JobResult``):
+    ``nosilo_core.writeback.Changeset``, not just a ``JobResult``):
     :func:`enforce_writeback_tier` gates the changeset directly:
 
       - **T1** auto-applies (``writeback.apply(..., auto_apply_reversible=True)``)
@@ -47,7 +47,7 @@ for the two shapes a routed tool result can take (plan S5, A3 row):
 Neither path needs its own ``jobs/qa.py``-style ``verify_*``/``*_passed``
 gate: there is no new deliverable/report here to QA -- the routed tool's own
 QA veto (plan rule 2) already ran upstream, and every ``GuidedOutcome`` this
-module returns is itself checked by ``src.guided.verify_guided`` at
+module returns is itself checked by ``nosilo_core.guided.verify_guided`` at
 construction time (``as_handoff``/``as_executed``/``escalate`` all raise or
 enforce the contract already). This mirrors PR-1/PR-2's precedent of
 skipping a QA function where the module has no ``JobReport`` to gate.
@@ -63,9 +63,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from src import escalation, writeback
-from src.escalation import escalate
-from src.guided import GuidedOutcome, HandoffPacket, as_executed, as_handoff
+from nosilo_core import escalation, writeback
+from nosilo_core.escalation import escalate
+from nosilo_core.guided import GuidedOutcome, HandoffPacket, as_executed, as_handoff
+from nosilo_core.types import STATUS_OK
 
 from .event_intent import (
     DEFAULT_ROUTING_PATH,
@@ -78,7 +79,6 @@ from .event_intent import (
 from .event_intent import handle_event as _handle_event
 from .events import Event
 from .orchestrator import Orchestrator
-from .types import STATUS_OK
 
 # Friendly aliases for VALID_AUTONOMY_TIERS's three values -- reused (not
 # redefined) from event_intent.py so the two modules can never disagree about
@@ -99,7 +99,7 @@ DEFAULT_PATH = os.environ.get("LINCHPIN_AUTONOMY_PATH", "").strip() or "data/aut
 
 def _default_ttl_seconds() -> float:
     """The T2 one-click-approval window, in seconds. Defaults to 900s -- the
-    same TTL ``src/writeback.py``'s ``Approval`` uses, which this module's own
+    same TTL ``nosilo_core/writeback.py``'s ``Approval`` uses, which this module's own
     docstring says the autonomy layer *extends* (plan S12: "T2 con Approval
     TTL"). Overridable via ``LINCHPIN_AUTONOMY_TTL_SECONDS`` (env convention
     matching ``LINCHPIN_AUTONOMY_PATH`` above); a non-positive or unparseable
@@ -181,7 +181,7 @@ def _row_to_record(row: tuple) -> AutonomyRecord:
 class AutonomyLedger:
     """SQLite-backed audit trail for every T1/T2/T3 decision (A3's own
     ledger, alongside ``scm_agent.events.EventLedger`` and
-    ``src.writeback_store.SqliteAuditLedger``).
+    ``nosilo_core.writeback_store.SqliteAuditLedger``).
 
     ``path`` is injectable so tests never touch a real data directory: pass
     ``":memory:"`` for a pure in-process ledger, or a ``tmp_path``-based file
@@ -329,7 +329,7 @@ class AutonomyLedger:
 
         The safe direction on timeout, by construction: expiry makes a T2 item
         *lapse* (it must be re-triggered), never auto-approves it -- consistent
-        with src/guided.py's "three of four outcomes need a human" contract.
+        with nosilo_core/guided.py's "three of four outcomes need a human" contract.
         """
         moment = _ensure_utc(now) if now is not None else datetime.now(timezone.utc)
         lapsed = [r for r in self.list_pending() if r.is_expired(moment)]
@@ -468,7 +468,7 @@ def enforce_analysis_tier(
         )
         return as_handoff(f"T2: {context} -- awaiting one-click acknowledgment.", [packet])
 
-    # TIER_T3: full escalation, using the real src/escalation.py machinery --
+    # TIER_T3: full escalation, using the real nosilo_core/escalation.py machinery --
     # never a hand-rolled ESCALATED outcome, and never auto-notified as done
     # (handle_event_tiered() suppresses notify() for T3 same as T2).
     ledger.record(
@@ -518,7 +518,7 @@ def enforce_writeback_tier(
     is ever called, rather than relying solely on ``writeback.apply()`` to
     refuse: ``writeback.requires_approval()`` already hard-codes "irreversible
     always needs a human" independently of ``auto_apply_reversible`` (see
-    ``src/writeback.py``), so this check does not weaken or bypass that rule
+    ``nosilo_core/writeback.py``), so this check does not weaken or bypass that rule
     -- it is a second, independent layer in front of the same invariant. Even
     if this check were ever accidentally removed, ``apply()`` would still
     raise ``WritebackRefused`` instead of silently writing an irreversible
@@ -540,8 +540,8 @@ def enforce_writeback_tier(
             title=f"Approve writeback: {changeset.target}",
             steps=[
                 f"Review: {changeset.summary()}",
-                "src.writeback.approve(changeset, approved_by) then "
-                "src.writeback.apply(store, changeset, approval=approval) to commit.",
+                "nosilo_core.writeback.approve(changeset, approved_by) then "
+                "nosilo_core.writeback.apply(store, changeset, approval=approval) to commit.",
             ],
             data={"idempotency_key": changeset.idempotency_key, "risk_tier": changeset.risk_tier},
             risk_if_skipped=f"staged change to {changeset.target} never lands",

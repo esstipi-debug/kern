@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from jobs.financial_kpis_job import fmt  # noqa: E402
+from nosilo_core.guided import passed_guided  # noqa: E402
 from scm_agent.orchestrator import Orchestrator  # noqa: E402
 from src.alerting import alerts_outcome, detect_events  # noqa: E402
 from src.classification import classify_portfolio, portfolio_summary  # noqa: E402
@@ -29,7 +30,6 @@ from src.financial_kpis import (  # noqa: E402
     gmroi,
     inventory_turns,
 )
-from src.guided import passed_guided  # noqa: E402
 
 
 def load(data_path: Path):

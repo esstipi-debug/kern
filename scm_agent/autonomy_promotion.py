@@ -15,7 +15,7 @@ that rule as code, split along the same asymmetry the plan states:
     :class:`PromotionRecord` a human can review (PR-7's Tower tab surfaces
     it). Only :func:`approve_promotion` -- an explicit human action --
     actually mutates ``config/event_routing.yaml``, and it does so as a
-    real, signed :class:`src.writeback.Changeset`/``Approval``, never a
+    real, signed :class:`nosilo_core.writeback.Changeset`/``Approval``, never a
     bare file edit: "auditable como cualquier changeset" (plan section 5).
 
   - :func:`evaluate_degradation` looks at ONLY the single latest report (no
@@ -33,7 +33,7 @@ that rule as code, split along the same asymmetry the plan states:
     as it does to a T1 analysis run (see ``scm_agent/autonomy.py``).
 
 :class:`RoutingConfigStore` is the connector that makes both of the above
-real ``src.writeback`` changesets against ``config/event_routing.yaml``:
+real ``nosilo_core.writeback`` changesets against ``config/event_routing.yaml``:
 it implements the same read/claim/release/commit/rollback surface as
 ``writeback.InMemoryStore`` / ``src.connectors.excel.ExcelWorkbookStore``,
 rewriting only the exact ``autonomy_tier:`` token for one route (a scoped
@@ -49,7 +49,7 @@ evidence-gated *config change proposal* those functions read as data on
 their next run. Like PR-1/PR-2/PR-6, there is no ``jobs/qa.py``-style
 ``verify_*``/``*_passed`` gate here: there is no new deliverable to QA, and
 every ``GuidedOutcome`` returned is itself checked by
-``src.guided.verify_guided`` at construction time.
+``nosilo_core.guided.verify_guided`` at construction time.
 """
 
 from __future__ import annotations
@@ -67,8 +67,8 @@ from pathlib import Path
 
 import yaml
 
-from src import writeback
-from src.guided import GuidedOutcome, HandoffPacket, as_executed, as_handoff
+from nosilo_core import writeback
+from nosilo_core.guided import GuidedOutcome, HandoffPacket, as_executed, as_handoff
 from src.verify.reliability import ToolReliabilityReport
 
 from .autonomy import DEFAULT_PATH, TIER_T1, TIER_T2
@@ -332,7 +332,7 @@ class PromotionLedger:
     """SQLite-backed audit trail for A4-driven tier-transition decisions --
     alongside ``scm_agent.autonomy.AutonomyLedger`` (T1/T2/T3 routed-event
     decisions), ``scm_agent.events.EventLedger``, and
-    ``src.writeback_store.SqliteAuditLedger``.
+    ``nosilo_core.writeback_store.SqliteAuditLedger``.
 
     Shares ``scm_agent.autonomy.AutonomyLedger``'s file convention (same
     ``DEFAULT_PATH``/``LINCHPIN_AUTONOMY_PATH`` env var by default) so one
@@ -479,7 +479,7 @@ def propose_promotion(
     )
 
 
-# ---- the one real config mutation: a src.writeback.Changeset against ---------
+# ---- the one real config mutation: a nosilo_core.writeback.Changeset against ---------
 # ---- config/event_routing.yaml's autonomy_tier field --------------------------
 
 
@@ -533,7 +533,7 @@ def _atomic_write_text(path: Path, text: str) -> None:
 
 
 class RoutingConfigStore:
-    """``src.writeback`` system-of-record surface over
+    """``nosilo_core.writeback`` system-of-record surface over
     ``config/event_routing.yaml``'s per-route ``autonomy_tier`` field --
     reuses the SAME safe-staging plane (stage/approve/apply/rollback) every
     other writeback-capable tool uses, for the one config mutation this
@@ -599,7 +599,7 @@ def approve_promotion(
 ) -> GuidedOutcome:
     """The human sign-off Golden Rule 11 requires: apply a PENDING
     promotion's tier change to ``config/event_routing.yaml`` as a real,
-    signed :class:`src.writeback.Changeset`/``Approval`` -- never a bare
+    signed :class:`nosilo_core.writeback.Changeset`/``Approval`` -- never a bare
     file edit. This is what actually makes a SUBSEQUENT event of
     ``record.event_type`` route T1 (any :class:`~scm_agent.event_intent.Route`
     resolved before this call keeps its old tier -- routes are frozen

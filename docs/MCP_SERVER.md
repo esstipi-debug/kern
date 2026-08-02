@@ -4,7 +4,7 @@ Kern exposes 35 of its 49 registered tools to other AI agents over MCP
 (Model Context Protocol), mounted at `/mcp` on the same FastAPI app as the
 dashboard. This is **read-only analysis only** — no tool that mutates a
 client's system of record (e.g. `odoo_replenishment`, or any writeback path
-through `src/writeback.py`) is exposed here. See
+through `nosilo_core/writeback.py`) is exposed here. See
 [linchpin-monetization-plan] in project memory for the billing/publishing plan
 this is Phase A of.
 

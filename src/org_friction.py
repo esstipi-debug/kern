@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.guided import (
+from nosilo_core.guided import (
     ExecutionOption,
     GuidedOutcome,
     HandoffPacket,

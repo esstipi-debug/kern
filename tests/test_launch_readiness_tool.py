@@ -5,9 +5,10 @@ from datetime import date
 import pandas as pd
 
 from jobs import launch_readiness_job as lrj
-from scm_agent import intent, llm, tool_options, tools
+from nosilo_core import llm
+from nosilo_core.guided import ESCALATED, EXECUTED, OPTIONS
+from scm_agent import intent, tool_options, tools
 from scm_agent.orchestrator import Orchestrator
-from src.guided import ESCALATED, EXECUTED, OPTIONS
 
 AS_OF = date(2026, 7, 1)
 

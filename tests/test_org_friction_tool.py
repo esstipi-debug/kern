@@ -3,8 +3,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from scm_agent import intent, llm, tools
-from src.guided import HANDOFF, OPTIONS
+from nosilo_core import llm
+from nosilo_core.guided import HANDOFF, OPTIONS
+from scm_agent import intent, tools
 
 
 def _control_points_csv(tmp_path: Path) -> Path:
@@ -38,7 +39,7 @@ def test_brief_routes_to_org_friction():
 
 
 def test_prepare_without_data_asks_for_the_control_points_file():
-    from scm_agent.types import JobRequest
+    from nosilo_core.types import JobRequest
 
     tool = tools.build_default_registry().get("org_friction_audit")
     prepared = tool.prepare(
@@ -49,7 +50,7 @@ def test_prepare_without_data_asks_for_the_control_points_file():
 
 
 def test_end_to_end_produces_options_and_the_findings_csv(tmp_path):
-    from scm_agent.types import JobRequest
+    from nosilo_core.types import JobRequest
 
     tool = tools.build_default_registry().get("org_friction_audit")
     prepared = tool.prepare(
@@ -65,7 +66,7 @@ def test_end_to_end_produces_options_and_the_findings_csv(tmp_path):
 
 
 def test_end_to_end_yields_handoff_when_nothing_triangulates(tmp_path):
-    from scm_agent.types import JobRequest
+    from nosilo_core.types import JobRequest
 
     tool = tools.build_default_registry().get("org_friction_audit")
     prepared = tool.prepare(
@@ -79,7 +80,7 @@ def test_end_to_end_yields_handoff_when_nothing_triangulates(tmp_path):
 
 
 def test_deck_builds_and_writes_both_files(tmp_path):
-    from scm_agent.types import JobRequest
+    from nosilo_core.types import JobRequest
 
     tool = tools.build_default_registry().get("org_friction_audit")
     prepared = tool.prepare(

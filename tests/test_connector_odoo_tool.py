@@ -9,10 +9,11 @@ with no network or API key.
 from pathlib import Path
 
 from jobs import odoo_job
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from nosilo_core.guided import ESCALATED, OPTIONS, passed_guided
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.connectors.odoo import InMemoryOdoo, demo_odoo
-from src.guided import ESCALATED, OPTIONS, passed_guided
 
 
 def _deep_odoo() -> InMemoryOdoo:

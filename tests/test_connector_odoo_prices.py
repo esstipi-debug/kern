@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from src import writeback
+from nosilo_core import writeback
 from src.connectors.odoo import InMemoryOdoo, OdooError, demo_odoo
 from src.connectors.odoo_prices import OdooPriceStore
 

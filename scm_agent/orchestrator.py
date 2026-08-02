@@ -6,15 +6,9 @@ import logging
 from dataclasses import replace
 from pathlib import Path
 
-from src import client_profile
-
-from .guided_bridge import to_guided_outcome
-from .intent import classify
-from .knowledge import KnowledgeBase
-from .llm import LLMProvider, get_provider, narrative_rewrite
-from .registry import Tool, ToolRegistry
-from .tools import build_default_registry
-from .types import (
+from nosilo_core.llm import LLMProvider, get_provider, narrative_rewrite
+from nosilo_core.registry import Tool, ToolRegistry
+from nosilo_core.types import (
     STATUS_ERROR,
     STATUS_NEEDS_CLARIFICATION,
     STATUS_NEEDS_DATA,
@@ -23,6 +17,12 @@ from .types import (
     JobRequest,
     JobResult,
 )
+from src import client_profile
+
+from .guided_bridge import to_guided_outcome
+from .intent import classify
+from .knowledge import KnowledgeBase
+from .tools import build_default_registry
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ Each function answers ONE decision a remote Inventory/SCM operator faces but the
 cannot take on its own (negotiate, switch supplier, approve spend, staff a shift). Rather
 than leave the human with a blank, it returns a ``DecisionCard``: a semaforo verdict, the
 *guardrails* (healthy minimums / ranges / floors), >=2 ranked executable options (reusing
-``src.guided``), the reasoning, and an L3 citation.
+``nosilo_core.guided``), the reasoning, and an L3 citation.
 
 Pure / deterministic: composes the existing engines (queuing, capacity_planning, pricing,
 safety_stock, eoq, working_capital, mcdm) and never does I/O. The webapp layer
@@ -19,8 +19,8 @@ from __future__ import annotations
 import math
 from dataclasses import asdict, dataclass, field
 
+from nosilo_core.guided import ExecutionOption, as_options
 from src.eoq import compute_eoq
-from src.guided import ExecutionOption, as_options
 from src.mcdm import Criterion, topsis_rank
 from src.queuing import mmc
 from src.risk_period import demand_over_risk_period

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.guided import GuidedOutcome
+    from .guided import GuidedOutcome
 
 STATUS_OK = "ok"
 STATUS_NEEDS_CLARIFICATION = "needs_clarification"
@@ -25,7 +25,7 @@ class JobRequest:
     params: dict = field(default_factory=dict)
     client: str = "Client"
     # Opt-in gate: when True, a tool whose required_client_params (see
-    # scm_agent/registry.py) aren't resolvable from params+client profile returns
+    # nosilo_core/registry.py) aren't resolvable from params+client profile returns
     # needs_clarification instead of silently taking the engine's generic default.
     strict_params: bool = False
 

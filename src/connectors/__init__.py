@@ -5,7 +5,7 @@ The plumbing that lets Kern run against a real e-commerce / ERP backend. A thin
 backend, exactly as ``src.sources.DemandSource`` does for demand — so swapping CSV for a
 live Shopify/Amazon adapter later means writing one adapter, not touching the engines.
 
-The write side reuses the safe-staging plane in ``src.writeback`` (dry-run -> approval ->
+The write side reuses the safe-staging plane in ``nosilo_core.writeback`` (dry-run -> approval ->
 idempotent apply -> audit/rollback): connectors never mutate a system of record directly.
 
 This package ships an offline ``simulator.SimulatedStore`` so the whole pipeline can run

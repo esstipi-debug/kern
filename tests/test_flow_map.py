@@ -1,6 +1,7 @@
 """Tests for the pure flow_map engine: graph, measurement, verdict."""
 import pytest
 
+from nosilo_core.guided import HANDOFF, OPTIONS, verify_guided
 from src.flow_map import (
     MEASURED,
     MIN_OBSERVATIONS,
@@ -10,7 +11,6 @@ from src.flow_map import (
     build_graph,
     measure_edges,
 )
-from src.guided import HANDOFF, OPTIONS, verify_guided
 
 
 def _mv(origin, destination, days=3.0, qty=10.0, cost=1.0, product="SKU-A"):

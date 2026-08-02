@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .guided import HandoffPacket, Residual, as_executed, as_handoff
+from nosilo_core.guided import HandoffPacket, Residual, as_executed, as_handoff
 
 _SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
 

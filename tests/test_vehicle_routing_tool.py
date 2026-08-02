@@ -10,7 +10,8 @@ import pandas as pd
 import pytest
 
 from jobs import vehicle_routing_job as vrj
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from scm_agent import intent, tools
 from src.deliverable import Deliverable
 
 

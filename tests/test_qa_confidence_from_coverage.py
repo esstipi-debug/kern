@@ -24,7 +24,7 @@ import pandas as pd
 import pytest
 
 from jobs import sourcing_job
-from src.guided import confidence_from_coverage
+from nosilo_core.guided import confidence_from_coverage
 
 REPO = Path(__file__).resolve().parents[1]
 OLIST = REPO / "data" / "kaggle" / "olist"

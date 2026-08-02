@@ -19,7 +19,7 @@ didn't take is caught immediately, not trusted
 (:func:`verify_applied` -- plan QA row: "apply sin verificacion = incidente").
 
 Pure orchestration over the safe-staging plane already proven by
-``src/writeback.py`` + ``src/connectors/{odoo,excel}.py``: this module adds
+``nosilo_core/writeback.py`` + ``src/connectors/{odoo,excel}.py``: this module adds
 zero new safety machinery, only channel wiring. A multichannel client is a
 separate ``PriceStore`` per channel (one ``ShopifyPriceStore``,
 ``MeliPriceStore``, or ``OdooPriceStore`` instance each) -- this module
@@ -32,8 +32,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from nosilo_core import writeback
 from scm_agent.knowledge import GroundedCitation, KnowledgeBase
-from src import writeback
 from src.price_optimizer import PriceOptimizationResult
 from src.pricing_guardrails import GATE_MAX_MOVE_PCT_DEFAULT, GuardrailGateResult, gate_price_changeset
 
@@ -141,7 +141,7 @@ def stage_repricing(
     claim/release/commit/rollback) -- a ``ShopifyPriceStore``,
     ``MeliPriceStore``, or ``OdooPriceStore``
     (``src.connectors.{shopify,meli,odoo}_prices``), or any store matching
-    that surface (``src.writeback.InMemoryStore`` in tests).
+    that surface (``nosilo_core.writeback.InMemoryStore`` in tests).
 
     ``reason`` is REQUIRED (no default): a changeset with a blank reason is
     exactly what the gate blocks (plan QA row), so forcing every caller to

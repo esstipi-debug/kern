@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import linprog
 
-from src.guided import (
+from nosilo_core.guided import (
     ExecutionOption,
     GuidedOutcome,
     as_options,

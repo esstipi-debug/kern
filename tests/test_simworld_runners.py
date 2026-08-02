@@ -20,9 +20,9 @@ import pytest
 
 from jobs.intake import IntakeQuality
 from scm_agent.orchestrator import Orchestrator
-from scm_agent.types import STATUS_NEEDS_DATA, STATUS_OK, JobResult
-from src import guided as guided_mod
-from src.escalation import OPERATIONAL, build_escalation
+from nosilo_core import guided as guided_mod
+from nosilo_core.escalation import OPERATIONAL, build_escalation
+from nosilo_core.types import STATUS_NEEDS_DATA, STATUS_OK, JobResult
 from src.simworld.runners import (
     Policy,
     _announced,
@@ -781,13 +781,13 @@ def test_kern_brief_lane_with_no_llm_key_and_a_spanish_brief_asks_for_clarificat
     seguridad", "reposicion"); every tool's ``intent_keywords`` in
     ``scm_agent/tools.py`` are English words/phrases ("reorder", "safety
     stock", "replenish", ...) matched whole-word by
-    ``scm_agent.registry._keyword_matches`` -- confirmed by reading
+    ``nosilo_core.registry._keyword_matches`` -- confirmed by reading
     ``KERN_BRIEF`` against ``inventory_optimization``'s keyword list: no
     English keyword occurs as a whole word anywhere in the Spanish text, so
     every tool scores 0 and ``intent.classify`` never takes the
     keyword-ranking branch (``top_score >= 1`` fails for all tools).
     ``ANTHROPIC_API_KEY`` is unset in this environment (confirmed directly
-    below), so ``scm_agent.llm.get_provider()`` returns ``RulesFallback``
+    below), so ``nosilo_core.llm.get_provider()`` returns ``RulesFallback``
     (``available() -> False``) and the LLM fallback branch is skipped too --
     ``classify`` falls through to its final branch and returns
     ``job_type=None``, which the orchestrator turns into

@@ -11,6 +11,7 @@ import pytest
 
 from examples.run_package import DEMO_PARAMS, build_demo_intake
 from jobs.inventory_optimization import JobReport, SkuRecommendation
+from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
 from scm_agent.package_specs import (
     DIAGNOSTICO,
     GROWTH,
@@ -26,7 +27,6 @@ from scm_agent.package_specs import (
     get_package,
 )
 from scm_agent.packages import PackageSpec, PackageStep, missing_required_inputs, run_package
-from scm_agent.registry import Prepared, Produced, Tool, ToolRegistry
 from scm_agent.tools import build_default_registry
 from src import client_profile
 from src.deliverable import Branding

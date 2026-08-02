@@ -1518,8 +1518,8 @@ def t13_exposicion_a_disrupcion(_: Contexto) -> ResultadoTarea:
     ``RankedMitigation``, ni ``ExecutionOption`` tienen fecha. La accion queda
     recomendada pero sin comprometer, que es la mitad de lo que pide el criterio.
     """
+    from nosilo_core.guided import ExecutionOption
     from src.disruption import SupplierDisruption
-    from src.guided import ExecutionOption
     from src.risk import MitigationOption, RankedMitigation, RiskAssessment, RiskFactor
     from src.risk import assess_portfolio as _assess
 

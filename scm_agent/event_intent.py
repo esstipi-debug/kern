@@ -19,7 +19,7 @@ aceptacion F0"):
 The routing table is DATA (plan rule: "ruteo como dato") -- adding a new
 event type means adding a YAML entry + (if the tool needs payload shaped
 differently than an existing builder) one small function in
-``PARAM_BUILDERS``, never editing ``scm_agent/registry.py`` or
+``PARAM_BUILDERS``, never editing ``nosilo_core/registry.py`` or
 ``scm_agent/tools.py``.
 """
 
@@ -36,10 +36,10 @@ import pandas as pd
 import yaml
 
 from jobs.notify import notify
+from nosilo_core.types import STATUS_OK, JobResult
 
 from .events import Event
 from .orchestrator import Orchestrator
-from .types import STATUS_OK, JobResult
 
 # Env-override convention matching scm_agent/events.py's DEFAULT_PATH and
 # src/state/store.py's LINCHPIN_STATE_PATH.
@@ -364,7 +364,7 @@ def build_params(event: Event, route: Route) -> dict:
 @dataclass(frozen=True)
 class RoutedResult:
     """What :func:`handle_event` produced: the route it resolved, the
-    orchestrator's real :class:`~scm_agent.types.JobResult`, and whether
+    orchestrator's real :class:`~nosilo_core.types.JobResult`, and whether
     ``notify()`` was invoked and succeeded (``False`` on non-``ok`` status,
     on a no-op notify -- e.g. no webhook configured -- or on a delivery
     failure; see ``jobs/notify.py``)."""
@@ -396,7 +396,7 @@ def handle_event(
     ``payload["client"]`` label must never resolve a real client's cost
     profile.
 
-    On :data:`~scm_agent.types.STATUS_OK`, calls ``jobs.notify.notify()``
+    On :data:`~nosilo_core.types.STATUS_OK`, calls ``jobs.notify.notify()``
     with a short summary; any other status (``needs_data``, ``qa_failed``,
     ``error``, ...) is returned without notifying -- the plan's QA veto
     (rule 2) applies here exactly as it does to a brief-driven run: no

@@ -8,9 +8,9 @@ import pandas as pd
 import pytest
 
 from jobs import launch_readiness_job as lrj
+from nosilo_core.guided import ESCALATED, EXECUTED, OPTIONS
+from nosilo_core.guided import as_executed as _as_executed
 from src.deliverable import Deliverable as _Deliverable
-from src.guided import ESCALATED, EXECUTED, OPTIONS
-from src.guided import as_executed as _as_executed
 
 AS_OF = date(2026, 7, 1)
 

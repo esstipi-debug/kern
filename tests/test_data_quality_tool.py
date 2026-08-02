@@ -12,10 +12,11 @@ import pandas as pd
 import pytest
 
 from jobs import data_quality_job as dq
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from nosilo_core.guided import OPTIONS, passed_guided
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable
-from src.guided import OPTIONS, passed_guided
 
 
 # GS1-valid GTINs: 00012345600012 and 036000291452. 00012345600015 fails the check digit.

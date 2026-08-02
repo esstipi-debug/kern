@@ -20,7 +20,7 @@ business RULE that maps three already-computed numbers to an action:
   - E&O status DEAD (per ``src.excess_obsolete``'s own threshold) -> **cut**, a
     301-redirect / deindex RECOMMENDATION. This is flagged
     ``requires_human_signoff=True`` and is never auto-applied: no CMS /
-    storefront writeback connector exists in this repo (``src/writeback.py``'s
+    storefront writeback connector exists in this repo (``nosilo_core/writeback.py``'s
     connectors are Odoo and Excel only), so this module only recommends.
   - Everything else (B/C-class, excess-but-not-dead, flat/declining/unproven
     forecast) -> **hold** (no change this cycle).

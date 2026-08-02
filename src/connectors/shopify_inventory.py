@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from src import writeback
+from nosilo_core import writeback
 
 try:
     import httpx  # noqa: F401  -- solo se testea disponibilidad

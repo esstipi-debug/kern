@@ -6,9 +6,10 @@ import pandas as pd
 import pytest
 
 from jobs import learning_curve_job as lcj
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from nosilo_core.guided import OPTIONS
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
-from src.guided import OPTIONS
 
 
 def _products_df() -> pd.DataFrame:

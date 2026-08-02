@@ -13,10 +13,11 @@ import pytest
 
 from jobs import digital_twin_job as dt
 from jobs import forecast_job
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from nosilo_core.guided import OPTIONS
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable
-from src.guided import OPTIONS
 
 _FAST = {"periods": 60, "n_products": 2, "n_stores": 2}
 

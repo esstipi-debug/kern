@@ -47,7 +47,7 @@ except ImportError:
 # Configurable base path (Linchpin 3.0 plan S4.1: "Persistencia en Fly ... un
 # volumen"). Empty env var falls back to the repo-relative default, matching
 # the "LINCHPIN_*" env-override convention already used by webapp/security.py
-# and src/writeback.py.
+# and nosilo_core/writeback.py.
 DEFAULT_BASE_PATH = os.environ.get("LINCHPIN_STATE_PATH", "").strip() or "data/state"
 
 _SAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")
@@ -104,7 +104,7 @@ class StateStore:
         self._base = Path(base_path)
         self._base.mkdir(parents=True, exist_ok=True)
         self._db_path = self._base / "index.sqlite3"
-        # timeout=30 matches src/writeback_store.py's SqliteAuditLedger convention.
+        # timeout=30 matches nosilo_core/writeback_store.py's SqliteAuditLedger convention.
         self._conn = sqlite3.connect(self._db_path, timeout=30.0)
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS snapshots ("

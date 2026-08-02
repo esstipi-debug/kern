@@ -176,7 +176,7 @@ class AuditBookkeeping:
     """Shared applied/audit bookkeeping for a writeback store.
 
     Backed by an in-memory dict, or - when ``ledger`` is given (e.g. a
-    ``src.writeback_store.SqliteAuditLedger``) - a persistent ledger that survives a
+    ``nosilo_core.writeback_store.SqliteAuditLedger``) - a persistent ledger that survives a
     process restart. Any store implementing read/commit/rollback (``InMemoryStore``
     below, or a real connector's system-of-record wrapper) composes this instead of
     re-deriving the same ledger-or-dict branching - including this class's
@@ -214,7 +214,7 @@ class AuditBookkeeping:
         both create a purchase order in Odoo for the same restock).
 
         ``now`` is only meaningful for a ledger-backed store (see
-        ``src.writeback_store.SqliteAuditLedger.claim`` - it bounds how long an
+        ``nosilo_core.writeback_store.SqliteAuditLedger.claim`` - it bounds how long an
         orphaned claim from a crashed process can block a legitimate retry); the
         in-memory path below ignores it, since a crashed process's memory - claims
         included - is simply gone, with nothing left to go stale.
@@ -263,7 +263,7 @@ class InMemoryStore:
     """Reference system-of-record. Real connectors mirror read/claim/release/_commit/rollback.
 
     ``ledger``, when given, persists the applied/audit bookkeeping (e.g. a
-    ``src.writeback_store.SqliteAuditLedger``) so idempotency and rollback survive
+    ``nosilo_core.writeback_store.SqliteAuditLedger``) so idempotency and rollback survive
     a process restart. Without one, bookkeeping lives in process memory exactly as
     before - fully backward compatible.
     """

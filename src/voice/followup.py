@@ -5,7 +5,7 @@ Wires the voice brain end to end with no phone network and no credentials:
     compliance gate -> build_agent_config -> place call -> capture CallOutcome -> sync
 
 Every branch returns a ``VoiceFollowupResult`` carrying a never-unprotected
-``GuidedOutcome`` (Guided Execution Layer, src/guided.py): the call is either executed
+``GuidedOutcome`` (Guided Execution Layer, nosilo_core/guided.py): the call is either executed
 and its result safely staged/applied to the system of record, or the human is handed a
 ranked escalation / prepared manual follow-up. The dial itself is injected as a
 ``VoiceCaller``; with ``DryRunCaller`` the whole flow is testable offline.
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.guided import (
+from nosilo_core.guided import (
     EscalationPacket,
     GuidedOutcome,
     HandoffPacket,
@@ -24,7 +24,7 @@ from src.guided import (
     as_executed,
     as_handoff,
 )
-from src.writeback import (
+from nosilo_core.writeback import (
     TIER_REVERSIBLE,
     ApplyResult,
     Changeset,

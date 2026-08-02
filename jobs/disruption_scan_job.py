@@ -21,6 +21,16 @@ from pathlib import Path
 
 import pandas as pd
 
+from nosilo_core.guided import (
+    ExecutionOption,
+    GuidedOutcome,
+    HandoffPacket,
+    Residual,
+    as_executed,
+    as_handoff,
+    as_options,
+    verify_guided,
+)
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.disruption import (
     GDELT_ATTRIBUTION,
@@ -31,16 +41,6 @@ from src.disruption import (
     to_risk_factor,
 )
 from src.export import write_summary_csv
-from src.guided import (
-    ExecutionOption,
-    GuidedOutcome,
-    HandoffPacket,
-    Residual,
-    as_executed,
-    as_handoff,
-    as_options,
-    verify_guided,
-)
 from src.risk import RiskReport, assess_portfolio
 
 _SUPPLIER_COLS = ("supplier", "Supplier", "vendor", "Vendor", "supplier_name", "name", "Name")

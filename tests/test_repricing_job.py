@@ -22,7 +22,7 @@ from jobs.repricing import (
     stage_repricing,
     verify_applied,
 )
-from src import writeback
+from nosilo_core import writeback
 from src.connectors.meli_prices import InMemoryMeli, MeliPriceStore
 from src.connectors.odoo import demo_odoo
 from src.connectors.odoo_prices import OdooPriceStore

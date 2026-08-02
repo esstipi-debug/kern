@@ -48,12 +48,13 @@ from jobs.price_monitor import (
     run_price_monitor_cycle,
 )
 from jobs.scheduler import JobRegistry
+from nosilo_core import llm
+from nosilo_core.types import STATUS_OK
 from scm_agent import event_intent as event_intent_module
-from scm_agent import llm, tools
+from scm_agent import tools
 from scm_agent.event_intent import DEFAULT_ROUTING_PATH, handle_event
 from scm_agent.events import Event, EventLedger
 from scm_agent.orchestrator import Orchestrator
-from scm_agent.types import STATUS_OK
 from src.pricing_intel.ledger import PriceLedger
 from src.pricing_intel.match.sku_map import AUTO_CONFIRMED_BY, SkuMap
 from src.pricing_intel.models import CompetitorOffer, MatchCandidate

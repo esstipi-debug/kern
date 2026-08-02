@@ -50,7 +50,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from src import writeback
+from nosilo_core import writeback
 
 try:  # optional: the 'repricing' extra (httpx already pinned by tower/pricing-intel)
     import httpx  # noqa: F401  (imported to prove availability; the caller builds the client)
@@ -122,7 +122,7 @@ class MeliPriceStore:
     ``src.connectors.odoo``'s ``_ReorderRuleStore`` does for Odoo reorder
     rules -- the only thing that differs per channel is this class.
 
-    ``ledger``, when given (a ``src.writeback_store.SqliteAuditLedger``),
+    ``ledger``, when given (a ``nosilo_core.writeback_store.SqliteAuditLedger``),
     persists the audit/idempotency bookkeeping across a process restart --
     matching every other store in this repo.
     """

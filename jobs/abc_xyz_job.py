@@ -23,7 +23,7 @@ from src.classification import (
     value_basis,
 )
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
-from src.guided import confidence_from_coverage
+from nosilo_core.guided import confidence_from_coverage
 from src.export import write_summary_csv
 
 _PRODUCT_COLS = ("product_id", "ProductID", "sku", "SKU", "Product", "item")

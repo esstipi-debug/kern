@@ -4,7 +4,7 @@ Exposes 35 of the 49 registered agent tools to remote MCP clients (other AI
 agents, via Streamable HTTP): analysis only, no writeback. `odoo_replenishment`
 and `excel_replenishment` mutate a client's system of record and are
 deliberately NOT exposed here — that stays for direct clients only, gated by the
-audited writeback safety plane (`src/writeback.py`), not by anything in this
+audited writeback safety plane (`nosilo_core/writeback.py`), not by anything in this
 file. `leadership_chain` and `warehouse_layout` are also off this surface: they
 don't consume tabular rows, so the bridge below has nothing to feed them.
 
@@ -162,7 +162,7 @@ def _run_analysis_tool_sync(orchestrator: Orchestrator, job_type: str, params: K
             # what a human still has to decide. Orchestrator.run() always
             # attaches a GuidedOutcome (falling back to a generic one derived
             # from `status`), so this is only null for a non-orchestrator result.
-            # Frozen dataclasses all the way down (src/guided.py) -> plain,
+            # Frozen dataclasses all the way down (nosilo_core/guided.py) -> plain,
             # JSON-safe dicts.
             "guided": asdict(result.guided) if result.guided is not None else None,
         }

@@ -669,7 +669,7 @@ def _run_job_sync(
         # the tool produced. Orchestrator.run() always attaches one (falling
         # back to a generic one derived from `status` when a tool supplies
         # none), so this is never null for a real orchestrator result. Frozen
-        # dataclasses all the way down (src/guided.py) -> plain, JSON-safe dicts.
+        # dataclasses all the way down (nosilo_core/guided.py) -> plain, JSON-safe dicts.
         "guided": asdict(result.guided) if result.guided is not None else None,
     }
 
@@ -1371,12 +1371,12 @@ def api_approve_pending(
     Note: today this only completes an ANALYSIS-tier T2 item (the path
     enforce_analysis_tier()/handle_event_tiered() actually wire into
     AutonomyLedger). enforce_writeback_tier()'s T2 HANDOFF -- staging a real
-    src.writeback.Changeset for the few writeback-capable tools -- is not
+    nosilo_core.writeback.Changeset for the few writeback-capable tools -- is not
     yet persisted anywhere id-addressable (AutonomyRecord carries no
     changeset reference, and no caller threads one through the ledger), so
     there is nothing yet for this endpoint to approve()+apply() against for
     that path. Wiring that up (giving AutonomyRecord an optional serialized
-    Changeset, and calling src.writeback.approve()+apply() here with a real
+    Changeset, and calling nosilo_core.writeback.approve()+apply() here with a real
     900s TTL Approval when one is present) is left to a future PR rather
     than inventing a second, ad hoc changeset store here.
     """

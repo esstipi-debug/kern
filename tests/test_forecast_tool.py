@@ -14,10 +14,11 @@ import pandas as pd
 import pytest
 
 from jobs import forecast_job as fj
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from nosilo_core.guided import OPTIONS, passed_guided
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable
-from src.guided import OPTIONS, passed_guided
 
 _SMOOTH = [10, 11, 9, 10, 12, 8, 10, 11, 9, 10, 11, 10]
 _ERRATIC = [1, 20, 2, 18, 3, 25, 1, 22, 4, 19, 2, 23]

@@ -42,10 +42,11 @@ from jobs.price_monitor import PairOutcome
 from jobs.price_priority import ExcludedSku, PricePriorityReport, SkuPriceAction
 from jobs.price_watch import PriceWatchCycleReport
 from jobs.price_watch_position import PriceWatchToolReport
-from scm_agent import intent, llm, tool_options, tools
+from nosilo_core import llm
+from nosilo_core.guided import EXECUTED, HANDOFF, OPTIONS, as_executed, passed_guided
+from scm_agent import intent, tool_options, tools
 from scm_agent.events import EventLedger
 from scm_agent.orchestrator import Orchestrator
-from src.guided import EXECUTED, HANDOFF, OPTIONS, as_executed, passed_guided
 from src.pricing_intel.homologate import HomologationReport, HomologationRow
 from src.pricing_intel.ledger import PriceLedger
 from src.pricing_intel.match.fuzzy import ProductAttributes
@@ -233,7 +234,7 @@ def test_options_surfaces_pending_ceiling_raise():
     assert outcome.handoffs[0].steps == pending.handoffs[0].steps
     assert outcome.residuals  # the human-owner residual travels too.
     # the routine ranked next steps are NOT lost either -- still visible at
-    # the outcome's top level (mirrors src.escalation._maybe_escalate).
+    # the outcome's top level (mirrors nosilo_core.escalation._maybe_escalate).
     assert len(outcome.options) >= 2
 
 
@@ -373,7 +374,7 @@ def test_write_operational_writes_partial_set_when_only_homologation_present(tmp
 
 
 def test_prepare_needs_data_without_a_seed_url():
-    from scm_agent.types import JobRequest
+    from nosilo_core.types import JobRequest
 
     reg = tools.build_default_registry()
     tool = reg.get("price_watch")

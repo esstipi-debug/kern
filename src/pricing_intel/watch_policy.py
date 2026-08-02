@@ -19,7 +19,7 @@ tier*. Those two moves are NOT equal in risk:
   without asking" branch, no matter how valuable the SKU.
 
 This module is a pure decision (frozen dataclass + pure functions, the
-analytical-core style of ``src/guided.py``). It NEVER mutates the ``SiteConfig``
+analytical-core style of ``nosilo_core/guided.py``). It NEVER mutates the ``SiteConfig``
 it is given and NEVER writes a ``config/sites/*.yaml`` file -- surfacing the
 request is the whole job; applying it is a human's. PR-9 wires this into
 ``jobs/price_watch.py``'s scaling step, where the code that would apply a tier
@@ -33,7 +33,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from src.guided import GuidedOutcome, HandoffPacket, Residual, as_handoff
+from nosilo_core.guided import GuidedOutcome, HandoffPacket, Residual, as_handoff
 from src.pricing_intel.models import ACQUISITION_TIERS, SiteConfig
 
 # Decision kinds -- the three ways a scaling request can legitimately resolve.

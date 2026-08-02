@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from src.guided import ExecutionOption, GuidedOutcome, Residual, as_options
+from nosilo_core.guided import ExecutionOption, GuidedOutcome, Residual, as_options
 
 
 @dataclass(frozen=True)

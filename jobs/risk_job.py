@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
-from src.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 from src.risk import (
     DEFAULT_SEVERITY_THRESHOLDS,
     MitigationOption,

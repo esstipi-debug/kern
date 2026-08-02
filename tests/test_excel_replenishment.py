@@ -15,10 +15,10 @@ import pytest
 from openpyxl import Workbook, load_workbook
 
 from jobs import excel_replenishment_job as job
-from scm_agent import llm, tools
+from nosilo_core import llm, writeback
+from nosilo_core.guided import ESCALATED, OPTIONS, passed_guided
+from scm_agent import tools
 from scm_agent.orchestrator import Orchestrator
-from src import writeback
-from src.guided import ESCALATED, OPTIONS, passed_guided
 
 SHEET = "Stock Bodega"
 

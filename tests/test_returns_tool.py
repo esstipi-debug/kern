@@ -12,10 +12,11 @@ import pandas as pd
 import pytest
 
 from jobs import returns_job as rj
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from nosilo_core.guided import OPTIONS, passed_guided
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable
-from src.guided import OPTIONS, passed_guided
 
 
 def _returns_df() -> pd.DataFrame:
@@ -152,7 +153,7 @@ def test_a_non_returns_tool_also_surfaces_ranked_options_on_success(tmp_path):
 
 def test_executed_fallback_when_a_tool_has_no_options_hook():
     # backward-compat: a result with no tool-supplied options still leaves protected (EXECUTED).
+    from nosilo_core.types import JobResult
     from scm_agent.guided_bridge import to_guided_outcome
-    from scm_agent.types import JobResult
     res = JobResult(status="ok", tool="x", confidence=1.0, deliverables={}, summary="done")
     assert to_guided_outcome(res).status == "executed"

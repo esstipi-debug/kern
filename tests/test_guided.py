@@ -8,7 +8,7 @@ options, a prepared handoff packet, or an escalation). `verify_guided` is the QA
 
 import pytest
 
-from src.guided import (
+from nosilo_core.guided import (
     ESCALATED,
     EXECUTED,
     HANDOFF,
@@ -169,7 +169,7 @@ def test_infinite_option_score_is_flagged():
 
 
 def test_non_finite_score_inside_an_escalation_packets_options_is_also_flagged():
-    """maybe_escalate_financial (src/escalation.py) copies the same ranked options
+    """maybe_escalate_financial (nosilo_core/escalation.py) copies the same ranked options
     into EscalationPacket.options - that nested copy must be checked too, not just
     the top-level GuidedOutcome.options."""
     bad_option = ExecutionOption(label="a", summary="bad", score=float("nan"))

@@ -7,9 +7,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from nosilo_core.guided import OPTIONS
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
-from src.guided import OPTIONS
 
 FIXTURES = Path(__file__).parent / "fixtures" / "gdelt"
 _ACME = (FIXTURES / "acme_electronics.json").read_text(encoding="utf-8")

@@ -21,7 +21,7 @@ Highest-stakes tests in the whole plan:
   needs_ceiling_raise, the guard IS consulted and the apply helper is NEVER
   reached (order proof, not a happens-to-look-right-by-accident check);
 - every surfaced escalation passes the REAL ``verify_guided``/``passed_guided``
-  gate from ``src/guided.py``.
+  gate from ``nosilo_core/guided.py``.
 
 Same offline convention as tests/test_price_watch_cycle.py: every httpx.Client is
 built on httpx.MockTransport; discovered-retailer.test (approved to L1) is a
@@ -39,8 +39,8 @@ import httpx
 from jobs import price_watch as pw
 from jobs import price_watch_scaling as pws
 from jobs.price_watch import SkuScalingRequest
+from nosilo_core.guided import passed_guided, verify_guided
 from scm_agent.events import EventLedger
-from src.guided import passed_guided, verify_guided
 from src.pricing_intel.acquire import base
 from src.pricing_intel.ledger import PriceLedger
 from src.pricing_intel.match.sku_map import AUTO_CONFIRMED_BY, SkuMap
@@ -244,7 +244,7 @@ def test_apply_reached_on_within_ceiling_is_the_positive_control(tmp_path, monke
 
 
 def test_pending_escalations_pass_verify_guided(tmp_path) -> None:
-    """Every surfaced escalation honors src/guided.py's never-unprotected
+    """Every surfaced escalation honors nosilo_core/guided.py's never-unprotected
     contract -- checked with the REAL verify_guided/passed_guided, not a
     hand-rolled equivalent."""
     sku_map = SkuMap(tmp_path / "sku_map")

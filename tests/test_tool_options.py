@@ -7,9 +7,9 @@ system-wide invariant that every registered tool wires a Tool.options hook.
 from types import SimpleNamespace as NS
 
 from jobs.intake import IntakeQuality
+from nosilo_core.guided import ESCALATED, OPTIONS, passed_guided, recommend
 from scm_agent import tool_options as to
 from scm_agent import tools
-from src.guided import ESCALATED, OPTIONS, passed_guided, recommend
 
 
 def _assert_ranked(outcome, *, min_options=2):
@@ -138,7 +138,7 @@ def test_inventory_options_defer_item_excludes_skipped_zero_cost_from_count():
 
 
 # -- intake plausibility: a residual (always, once anything was dropped) or an
-# escalation (dropped_fraction over threshold) - src/escalation.py wired in --
+# escalation (dropped_fraction over threshold) - nosilo_core/escalation.py wired in --
 
 
 def test_inventory_options_clean_intake_has_no_residual():

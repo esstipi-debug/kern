@@ -9,8 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from src.guided import GuidedOutcome
-
+from .guided import GuidedOutcome
 from .llm import LLMProvider
 from .types import JobRequest
 

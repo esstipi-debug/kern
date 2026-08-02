@@ -5,10 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
+from nosilo_core.types import JobRequest, JobResult
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
-from scm_agent.registry import Prepared, Produced, Tool, ToolRegistry
-from scm_agent.types import JobRequest, JobResult
 from src import client_profile
 
 
@@ -130,7 +131,7 @@ def test_build_default_registry_tools():
 
 
 def test_inventory_tool_pipeline_on_sample(tmp_path):
-    from scm_agent import llm
+    from nosilo_core import llm
     t = tools.inventory_tool()
     req = JobRequest(brief="reorder points", data_path=PORTFOLIO)
     prep = t.prepare(req, llm.RulesFallback())
@@ -142,7 +143,7 @@ def test_inventory_tool_pipeline_on_sample(tmp_path):
 
 
 def test_inventory_tool_reports_needs_data_when_columns_undetectable(tmp_path):
-    from scm_agent import llm
+    from nosilo_core import llm
     bad = tmp_path / "bad.csv"
     bad.write_text("foo,bar\n1,2\n", encoding="utf-8")
     t = tools.inventory_tool()
@@ -152,7 +153,7 @@ def test_inventory_tool_reports_needs_data_when_columns_undetectable(tmp_path):
 
 
 def test_pricing_tool_pipeline_on_sample(tmp_path):
-    from scm_agent import llm
+    from nosilo_core import llm
     t = tools.pricing_tool()
     prep = t.prepare(JobRequest(brief="optimal price", data_path=PRICING_CSV), llm.RulesFallback())
     assert prep.status == "ok"
@@ -163,7 +164,7 @@ def test_pricing_tool_pipeline_on_sample(tmp_path):
 
 
 def test_leadership_tool_with_scores_in_params(tmp_path):
-    from scm_agent import llm
+    from nosilo_core import llm
     t = tools.leadership_tool()
     req = JobRequest(brief="evaluate our SC leadership", params={"scores": "3 2 3 1 1", "name": "Equipo X"})
     prep = t.prepare(req, llm.RulesFallback())
@@ -175,7 +176,7 @@ def test_leadership_tool_with_scores_in_params(tmp_path):
 
 
 def test_leadership_tool_needs_clarification_without_scores_or_llm():
-    from scm_agent import llm
+    from nosilo_core import llm
     t = tools.leadership_tool()
     prep = t.prepare(JobRequest(brief="how is my leadership?"), llm.RulesFallback())
     assert prep.status == "needs_clarification"
@@ -270,7 +271,7 @@ def test_leadership_tool_scores_via_llm_provider():
 
 
 def _rules_orch():
-    from scm_agent import llm
+    from nosilo_core import llm
     return Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback())
 
 
@@ -413,7 +414,7 @@ def test_orchestrator_unslugifiable_client_label_still_runs(tmp_path):
     assert "95%" in res.summary
 
 
-# -- intake plausibility, end to end: src/escalation.py wired through the real
+# -- intake plausibility, end to end: nosilo_core/escalation.py wired through the real
 # prepare -> run -> options pipeline, not just unit-tested in isolation --
 
 
@@ -621,7 +622,7 @@ def test_orchestrator_grounds_inventory_job_with_citations(tmp_path):
 
 
 def test_orchestrator_degrades_without_knowledge_graph(tmp_path):
-    from scm_agent import llm
+    from nosilo_core import llm
     from scm_agent.knowledge import KnowledgeBase
     empty_kb = KnowledgeBase(books_path=tmp_path / "no.json", code_path=tmp_path / "no2.json")
     orch = Orchestrator(registry=tools.build_default_registry(),
@@ -687,7 +688,7 @@ def test_cli_inventory_happy_path(tmp_path):
 def test_claude_provider_complete_and_extract_with_fake_client():
     # Lock the Anthropic SDK call shape without the SDK installed or any network:
     # inject a fake client so _ensure_client never imports anthropic.
-    from scm_agent import llm
+    from nosilo_core import llm
 
     class _FakeBlock:
         def __init__(self, text):

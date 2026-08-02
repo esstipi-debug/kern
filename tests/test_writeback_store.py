@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.writeback import (
+from nosilo_core.writeback import (
     ABSENT,
     TIER_IRREVERSIBLE,
     TIER_REVERSIBLE,
@@ -21,7 +21,7 @@ from src.writeback import (
     approve,
     stage,
 )
-from src.writeback_store import CLAIM_STALE_SECONDS, SqliteAuditLedger
+from nosilo_core.writeback_store import CLAIM_STALE_SECONDS, SqliteAuditLedger
 
 
 def _mem_ledger() -> SqliteAuditLedger:
@@ -113,7 +113,7 @@ def test_apply_still_refuses_an_expired_approval_with_a_persistent_ledger(tmp_pa
                risk_tier=TIER_IRREVERSIBLE, idempotency_key="cs1")
     appr = approve(cs, "stipi", now=0.0, ttl_seconds=900.0)
 
-    from src.writeback import WritebackRefused
+    from nosilo_core.writeback import WritebackRefused
 
     with pytest.raises(WritebackRefused):
         apply(store, cs, approval=appr, now=1000.0)  # past expiry

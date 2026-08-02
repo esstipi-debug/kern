@@ -6,8 +6,8 @@ needs no external deps. Events feed the Guided Execution Layer so an alert alway
 arrives as an executable handoff, never a bare warning.
 """
 
+from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
 from src.alerting import InventoryEvent, alerts_outcome, detect_events
-from src.guided import EXECUTED, HANDOFF, passed_guided
 
 
 def test_low_cover_is_stockout_risk_high():
