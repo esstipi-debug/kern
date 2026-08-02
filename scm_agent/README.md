@@ -5,7 +5,7 @@ deliverable, routing to the right capability.
 
 ## Capabilities
 
-**48 registered tools** — source of truth is `build_default_registry()` in
+**49 registered tools** — source of truth is `build_default_registry()` in
 [`tools.py`](tools.py); run it yourself rather than trusting a static count here,
 since it changes with every new `feat: wire ... as an agent tool` PR. Every tool
 follows the exact same `prepare → run → qa → deliver` contract; adding one is a
@@ -15,7 +15,7 @@ single `register()` call, no routing edits.
 |---|---|
 | Demand & classification | `abc_xyz` · `forecast` · `whatif` |
 | Inventory & replenishment | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` · `excel_replenishment` · `hat_tension` · `hat_settlement` |
-| Inventory control & health | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` |
+| Inventory control & health | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` · `intake_scan` |
 | Procurement & sourcing | `sourcing` · `supplier_management` · `landed_cost` · `acceptance_sampling` |
 | Network & logistics | `facility_location` · `network_design` · `transportation` · `vehicle_routing` · `warehouse_layout` · `slotting` · `queuing` · `scheduling` · `flow_map` |
 | Pricing & finance | `pricing` · `price_intelligence` · `price_watch` · `financial_kpis` · `cost_to_serve` · `learning_curve` |

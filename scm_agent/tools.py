@@ -29,6 +29,7 @@ from jobs import (
     forecast_job,
     hats_job,
     intake,
+    intake_scan_job,
     inventory_deliverable,
     landed_cost_job,
     launch_readiness_job,
@@ -2645,6 +2646,53 @@ def price_watch_tool() -> Tool:
     )
 
 
+# ---- intake_scan (raw folder data-readiness audit) ---------------------------
+
+def _intake_scan_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path or not Path(request.data_path).is_dir():
+        return Prepared(status="needs_data", messages=[
+            "a folder of raw client files (CSV/XLSX) is required: point this at the "
+            "folder itself, not a single file"
+        ])
+    try:
+        folder = intake_scan_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=folder)
+
+
+def _intake_scan_run(payload: object, params: dict) -> Produced:
+    report = intake_scan_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def intake_scan_tool() -> Tool:
+    return Tool(
+        key="intake_scan",
+        title="Data Readiness Scan",
+        description="Walk a raw client folder, classify every readable file against the known "
+                    "intake profiles (maestro/ventas/stock/finanzas), and report which registered "
+                    "tools can run today -- green, yellow, red, or not-yet-declared -- plus the "
+                    "single highest-value column to request or file to fix next.",
+        intent_keywords=(
+            "intake", "auditoria de datos", "que puedo correr", "what can i run",
+            "escanear la carpeta", "scan the folder", "aptitud del dato", "data readiness",
+            "que datos necesito", "what data do i need", "missing columns",
+        ),
+        requires_data=True,
+        prepare=_intake_scan_prepare,
+        run=_intake_scan_run,
+        qa=lambda report: intake_scan_job.verify(report),
+        deliver=lambda report, out_dir, client: intake_scan_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            intake_scan_job.build_deck(report, client=client, citations=tuple(citations),
+                                        confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -2695,4 +2743,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(hat_settlement_tool())
     reg.register(flow_map_tool())
     reg.register(cross_impact_tool())
+    reg.register(intake_scan_tool())
     return reg

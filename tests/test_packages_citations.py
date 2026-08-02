@@ -50,7 +50,14 @@ _RECOVERED_TOOLS = (
 # earned_value recover only by surfacing topically-wrong or filler citations
 # past the permissive gate, so degrading to zero is the right outcome. A pool
 # above 8 would wrongly surface those -- these pin the ceiling.
-_CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "whatif", "earned_value")
+# intake_scan is a documented zero, not an unmeasured gap: Task 6 (intake_scan
+# design) measured the L3 anchors for it and found no TOOL_CONCEPTS entry that
+# both existed and stayed on-topic -- `information_sharing` was the only
+# candidate and it pulled in Khan-resilience noise hanging off the word
+# "readiness". This could not be added here while intake_scan was still
+# unregistered: reg.get(tool_key) below raises KeyError for an unknown key,
+# verified twice before Task 7 registered the tool.
+_CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "whatif", "earned_value", "intake_scan")
 
 # Anchor-islanded tools: zero at ANY pool (a separate anchor problem, not fixable
 # by pool sizing) -- pinned so a future anchor fix is a conscious change.

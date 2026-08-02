@@ -52,10 +52,55 @@ class _FakeKB:
 
 # ---- spec integrity: every real tool key is mapped to real, resolving concepts --
 
+# -- Why this exemption exists, and why it is narrow ---------------------------
+#
+# This test used to assert `registered == set(TOOL_CONCEPTS)` -- a strict set
+# equality. That equality is fundamentally incompatible with a DOCUMENTED
+# zero-anchor tool: the only way to satisfy it for every registered tool is to
+# give every registered tool a key in TOOL_CONCEPTS, but a key with a real
+# entry means "here are the anchor concepts", and `intake_scan` measurably has
+# none (see citation_gate.py's TOOL_CONCEPTS comment directly above the "dea"
+# entry for the full measurement). Something has to give: either the equality,
+# or a fabricated anchor. A fabricated anchor is the actual regression this
+# guard exists to prevent everywhere else, so the equality is what narrows.
+#
+# The "obvious" alternative -- give it an empty tuple, `"intake_scan": ()`, and
+# keep the strict equality -- does NOT work: `test_no_tool_has_an_empty_anchor_tuple`
+# below asserts `len(ids) >= 1` for every value in TOOL_CONCEPTS, specifically
+# to catch exactly this shortcut (an empty tuple silently no-ops instead of
+# documenting why). Passing both tests at once is only possible by keeping
+# `intake_scan` OUT of the dict entirely and carving the registry comparison
+# around it, which is what this exemption set does.
+#
+# `data_quality` is NOT a precedent for "it's fine to be zero, don't sweat it":
+# data_quality HAS a real anchor (`step_product_data_standard`) that is proven
+# to exist in the graph and simply never survives the gate's on-topic/hop-budget
+# filtering on real runs -- a filtered-to-zero anchor, still a key in the dict,
+# still covered by every other test in this file. `intake_scan` has NO anchor
+# candidate that even clears the "exists in the graph" bar without pulling in
+# off-topic noise (see the measurement log in citation_gate.py) -- it is the
+# first tool in this repo with no anchor at all, not another instance of an
+# already-handled shape.
+#
+# This is a single, explicit, auditable name, not a blanket skip: it does not
+# relax `test_every_anchor_concept_exists_in_the_real_graph` or
+# `test_no_tool_has_an_empty_anchor_tuple` for anyone, and it does not touch
+# `filter_citations`' own "no concept map" behavior (see
+# `test_tool_with_no_concept_map_omits_every_candidate`), which already treats
+# an absent key as "omit every candidate citation" -- the correct, safe runtime
+# behavior for a tool with no anchor. Adding a SECOND name to this set later
+# requires the same measured justification as this one: a concrete list of
+# candidate concepts checked against the real committed graph, each one shown
+# to either not exist or to only surface off-topic citations -- not "we
+# haven't gotten to it yet" (that case is `UNDECLARED_TOOLS` in
+# tests/test_tool_data_contract.py, a different problem with a different list).
+_NO_CONCEPT_MAP_BY_DESIGN = frozenset({"intake_scan"})
+
+
 def test_every_registered_tool_has_a_concept_map():
     tools_src = (Path(__file__).resolve().parents[1] / "scm_agent" / "tools.py").read_text(encoding="utf-8")
     registered = set(re.findall(r'key="([a-z_]+)"', tools_src))
-    assert registered == set(TOOL_CONCEPTS)
+    assert registered - _NO_CONCEPT_MAP_BY_DESIGN == set(TOOL_CONCEPTS)
 
 
 def test_every_anchor_concept_exists_in_the_real_graph():

@@ -249,6 +249,38 @@ def test_deck_names_the_top_ranked_ask_when_options_exist(tmp_path):
     assert any(top.label in f.title or top.label in f.detail for f in deck.findings)
 
 
+def test_deck_names_both_causes_when_a_tool_is_red_for_two_distinct_reasons():
+    """A tool can be RED for TWO independent reasons at once: a genuinely
+    missing required column AND a required column that is present only in a
+    file a circuit breaker blocked. Fixing only the blocked file still leaves
+    it red -- the deck must name both asks, not just whichever one it noticed
+    first. Hand-built (rather than driven through a real folder) because no
+    fixture folder happens to produce both at once on the same tool; a second
+    tool shares the same blocked file but is missing no column, to prove the
+    deck does not over-name tools that only have one problem."""
+    both = ToolVerdict(
+        tool_key="tool_a", state=RED,
+        missing_required=("cogs",), blocked_required=("date",),
+        blocked_by=("sucio.csv",),
+    )
+    only_blocked = ToolVerdict(
+        tool_key="tool_b", state=RED,
+        blocked_required=("date",), blocked_by=("sucio.csv",),
+    )
+    report = ScanReport(
+        classified=(), findings=(), verdicts=(both, only_blocked), gaps=(), blocked_fixes=(),
+        n_files_read=1, n_unclassified=0, n_tools_evaluated=2, n_tools_total=2,
+        outcome=_dummy_outcome(), summary="test",
+    )
+    deck = intake_scan_job.build_deck(report, client="Acme")
+
+    two_reasons = [f for f in deck.findings if f.title == "Tools blocked for two distinct reasons"]
+    assert len(two_reasons) == 1
+    detail = two_reasons[0].detail
+    assert "tool_a" in detail
+    assert "tool_b" not in detail  # only one problem each -- must not be over-named
+
+
 def test_deck_reports_a_blocking_breaker_using_the_evaluated_field(tmp_path):
     """A blocking circuit-breaker finding must appear in the deck, with its
     count and fraction -- and the deck must decide whether a breaker ran via

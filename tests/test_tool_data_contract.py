@@ -14,10 +14,15 @@ from scm_agent.types import JobRequest
 # Tools with requires_data=True that have NOT yet declared their columns.
 # This list starts long and shrinks; it never grows. Removing a name here without
 # adding a declaration makes test_every_data_tool_declares_its_columns fail.
-# Count: 39 (43 requires_data tools total, 4 declared -- data_quality, abc_xyz,
+# Count: 40 (44 requires_data tools total, 4 declared -- data_quality, abc_xyz,
 # excess_obsolete, financial_kpis). Derived via:
 #   python -c "from scm_agent import tools; r=tools.build_default_registry(); \
 #   print(sorted(t.key for t in r.list() if t.requires_data and not t.required_columns))"
+#
+# "intake_scan" is a PERMANENT entry here, not a pending one: it consumes a
+# raw FOLDER of client files, not one canonical table, so it has no
+# `required_columns` to ever declare -- there is nothing to "fix" by moving it
+# out of this set in a future batch.
 UNDECLARED_TOOLS = frozenset({
     "acceptance_sampling",
     "cost_to_serve",
@@ -35,6 +40,7 @@ UNDECLARED_TOOLS = frozenset({
     "forecast",
     "hat_settlement",
     "hat_tension",
+    "intake_scan",
     "inventory_optimization",
     "landed_cost",
     "launch_readiness",
