@@ -181,7 +181,7 @@ Homepage = "https://github.com/esstipi-debug/kern"
 # nosilo_core is the domain-agnostic control plane (see nosilo_core/__init__.py);
 # src is the SCM domain engine that depends on it. The dependency runs one way and
 # is enforced by tests/test_core_boundary.py.
-packages = ["nosilo_core", "src"]
+packages = ["nosilo_core", "nosilo_core.entities", "src"]
 
 [tool.pytest.ini_options]
 pythonpath = "."

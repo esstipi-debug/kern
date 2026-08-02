@@ -34,7 +34,15 @@ DOMAIN_PACKAGES = frozenset({"src", "scm_agent", "jobs", "webapp", "examples", "
 #: degrades to ``RulesFallback`` without it, so it is optional in practice.
 ALLOWED_THIRD_PARTY = frozenset({"anthropic"})
 
-CORE_MODULES = sorted(p for p in CORE.glob("*.py") if p.name != "__init__.py")
+#: Every source file in the core, subpackages included. ``rglob`` rather than
+#: ``glob``: a boundary check that only walks the top level stops guarding the
+#: moment someone adds a subpackage, which is exactly when it matters most.
+CORE_MODULES = sorted(p for p in CORE.rglob("*.py") if p != CORE / "__init__.py")
+
+
+def _module_id(path: Path) -> str:
+    """Stable pytest id; bare filenames collide once subpackages exist."""
+    return path.relative_to(CORE).as_posix()
 
 
 def _imported_roots(path: Path) -> set[str]:
@@ -53,12 +61,12 @@ def _imported_roots(path: Path) -> set[str]:
     return roots
 
 
-@pytest.mark.parametrize("module", CORE_MODULES, ids=lambda p: p.name)
+@pytest.mark.parametrize("module", CORE_MODULES, ids=_module_id)
 def test_core_never_imports_the_domain(module: Path) -> None:
     """nosilo_core must not depend on src / scm_agent / jobs / webapp."""
     offenders = sorted(_imported_roots(module) & DOMAIN_PACKAGES)
     assert not offenders, (
-        f"nosilo_core/{module.name} imports domain package(s) {offenders}.\n"
+        f"nosilo_core/{_module_id(module)} imports domain package(s) {offenders}.\n"
         "The core is domain-agnostic by contract: a second domain pack "
         "(source-to-pay, order-to-cash, ...) must be able to reuse it without "
         "inheriting supply chain.\n"
@@ -68,13 +76,13 @@ def test_core_never_imports_the_domain(module: Path) -> None:
     )
 
 
-@pytest.mark.parametrize("module", CORE_MODULES, ids=lambda p: p.name)
+@pytest.mark.parametrize("module", CORE_MODULES, ids=_module_id)
 def test_core_dependencies_stay_stdlib(module: Path) -> None:
     """The core stays stdlib-only apart from an explicit, tiny allowlist."""
     stdlib = set(sys.stdlib_module_names)
     third_party = sorted(_imported_roots(module) - stdlib - ALLOWED_THIRD_PARTY - DOMAIN_PACKAGES)
     assert not third_party, (
-        f"nosilo_core/{module.name} pulls in third-party package(s) {third_party}.\n"
+        f"nosilo_core/{_module_id(module)} pulls in third-party package(s) {third_party}.\n"
         f"The core's dependency surface is deliberately {sorted(ALLOWED_THIRD_PARTY)} plus stdlib "
         "so it stays liftable into its own distribution.\n"
         "Add it to ALLOWED_THIRD_PARTY here only if the core truly cannot work "
@@ -82,7 +90,7 @@ def test_core_dependencies_stay_stdlib(module: Path) -> None:
     )
 
 
-@pytest.mark.parametrize("module", CORE_MODULES, ids=lambda p: p.name)
+@pytest.mark.parametrize("module", CORE_MODULES, ids=_module_id)
 def test_core_has_no_dynamic_domain_imports(module: Path) -> None:
     """AST checks miss ``import_module("src.x")`` / ``sys.modules["src.x"]``."""
     source = module.read_text(encoding="utf-8")
@@ -96,7 +104,7 @@ def test_core_has_no_dynamic_domain_imports(module: Path) -> None:
         and (node.value in DOMAIN_PACKAGES or "." in node.value)
     }
     assert not offenders, (
-        f"nosilo_core/{module.name} references domain module path(s) "
+        f"nosilo_core/{_module_id(module)} references domain module path(s) "
         f"{sorted(offenders)} as a string - a dynamic import escapes the AST check "
         "above but re-couples the core just the same."
     )
@@ -110,7 +118,10 @@ def test_every_core_module_is_exported() -> None:
     """
     import nosilo_core
 
-    on_disk = {p.stem for p in CORE_MODULES}
+    # Top-level surface only: a bare module contributes its stem, a subpackage
+    # contributes its directory name (its internals are its own business).
+    on_disk = {p.stem for p in CORE.glob("*.py") if p.name != "__init__.py"}
+    on_disk |= {d.name for d in CORE.iterdir() if d.is_dir() and (d / "__init__.py").exists()}
     exported = set(nosilo_core.__all__)
     assert on_disk == exported, (
         f"nosilo_core/ has {sorted(on_disk - exported)} not listed in __all__ and "

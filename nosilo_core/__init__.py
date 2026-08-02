@@ -30,6 +30,11 @@ What lives here, and why each piece is core rather than domain:
     The ``LLMProvider`` protocol plus a rules-only fallback, so a domain pack
     never imports a vendor SDK directly. This is the seat a multi-model router
     takes later.
+``entities``
+    Canonical entities: stable identity, per-field provenance, bitemporal
+    history, and cross-references to source-system ids. The core stores them
+    without knowing what any of them mean - entity types are declared by the
+    domain (``src/entities.py`` for the supply-chain ones).
 
 Dependency direction is one-way and enforced by
 ``tests/test_core_boundary.py``: ``nosilo_core`` may not import from ``src``,
@@ -42,9 +47,10 @@ Imports inside this package are relative on purpose: the package is meant to be
 liftable into its own distribution without editing a single import line.
 """
 
-from . import escalation, guided, llm, registry, types, writeback, writeback_store
+from . import entities, escalation, guided, llm, registry, types, writeback, writeback_store
 
 __all__ = [
+    "entities",
     "escalation",
     "guided",
     "llm",
