@@ -33,9 +33,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from nosilo_core.types import STATUS_OK
 from scm_agent.package_specs import PACKAGES, get_package
 from scm_agent.packages import PackageSpec, missing_required_inputs, run_package
-from scm_agent.types import STATUS_OK
 from src import client_profile, contingent_fee
 
 # ---------------------------------------------------------------------------

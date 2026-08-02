@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from scm_agent import citation_gate, intent, llm, tools
+from nosilo_core import llm
+from scm_agent import citation_gate, intent, tools
 from scm_agent.orchestrator import Orchestrator
 
 

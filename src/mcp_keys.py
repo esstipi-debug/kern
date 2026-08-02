@@ -11,7 +11,7 @@ Keys are high-entropy random tokens (``secrets.token_urlsafe``); only their
 SHA-256 hash is ever persisted, mirroring how GitHub/Stripe-style tokens work -
 the plaintext is returned once, at ``issue()`` time, and cannot be recovered
 from the store afterward. SQLite (stdlib), same pattern as
-``src.writeback_store.SqliteAuditLedger``.
+``nosilo_core.writeback_store.SqliteAuditLedger``.
 """
 
 from __future__ import annotations

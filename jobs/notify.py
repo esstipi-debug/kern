@@ -8,7 +8,7 @@ funcion notify() para que el swap sea trivial") touches one file.
 
 Safe-by-default, matching the repo's existing "empty env var disables the
 feature" convention (``LINCHPIN_API_KEY`` in ``webapp/security.py``,
-``LINCHPIN_APPROVAL_SECRET`` in ``src/writeback.py``): with no webhook URL
+``LINCHPIN_APPROVAL_SECRET`` in ``nosilo_core/writeback.py``): with no webhook URL
 configured, ``notify()`` no-ops and returns ``False`` -- it never raises, so
 it is always safe to call from a job in tests/CI with zero config. httpx (the
 ``tower`` extra) is imported lazily and guarded the same way; without it,

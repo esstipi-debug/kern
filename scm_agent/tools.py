@@ -60,11 +60,11 @@ from jobs import (
 from jobs.inventory_optimization import run as run_inventory
 from jobs.pricing import prepare_pricing
 from jobs.pricing import run as run_pricing
+from nosilo_core.llm import LLMProvider
+from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
+from nosilo_core.types import JobRequest
 
 from . import tool_options
-from .llm import LLMProvider
-from .registry import Prepared, Produced, Tool, ToolRegistry
-from .types import JobRequest
 
 from src.connectors.odoo import OdooError  # isort: skip  (local package)
 from src.cost_to_serve import ServiceCostRates  # isort: skip  (local package)

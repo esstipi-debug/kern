@@ -352,12 +352,12 @@ def test_jobs_response_includes_citations_key():
 
 # -- guided: the never-unprotected contract, exposed to every /api/jobs caller ---
 #
-# Previously invisible: JobResult.guided (src/guided.py's GuidedOutcome) was
+# Previously invisible: JobResult.guided (nosilo_core/guided.py's GuidedOutcome) was
 # computed by every orchestrator run but never left webapp/app.py - an API/UI
 # caller had no structured way to know "this needs a ranked choice", "this is
 # gated behind a finance approver", or "this needs a data file", short of
 # parsing the free-text `summary`/`clarifications` strings. Now serialized via
-# dataclasses.asdict (src/guided.py's dataclasses are frozen + JSON-plain, so
+# dataclasses.asdict (nosilo_core/guided.py's dataclasses are frozen + JSON-plain, so
 # this is a lossless, zero-custom-code mapping) under the "guided" key.
 
 

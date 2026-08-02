@@ -112,7 +112,7 @@ class EventLedger:
         if self._path != ":memory:":
             Path(self._path).parent.mkdir(parents=True, exist_ok=True)
         self._dedup_window_seconds = dedup_window_seconds
-        # timeout=30 matches src/writeback_store.py's SqliteAuditLedger and
+        # timeout=30 matches nosilo_core/writeback_store.py's SqliteAuditLedger and
         # src/state/store.py's StateStore convention.
         self._conn = sqlite3.connect(self._path, timeout=30.0)
         self._conn.execute(

@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from src.guided import EXECUTED, GuidedOutcome, verify_guided
+from nosilo_core.guided import EXECUTED, GuidedOutcome, verify_guided
 from src.sop_engine.coherence import CHECK_BUDGET_FEASIBILITY, CHECK_PROMO_COVERAGE, CHECK_SERVICE_LEVEL
 
 from . import forecast_job

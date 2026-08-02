@@ -2,7 +2,7 @@
 
 Implements the ``InventorySource`` read side (products, inventory levels, sales orders)
 straight from Odoo's standard models, plus a write side that routes restock decisions
-through the safe-staging ``src.writeback`` plane (dry-run -> approval -> idempotent apply
+through the safe-staging ``nosilo_core.writeback`` plane (dry-run -> approval -> idempotent apply
 -> audit/rollback) as Odoo *reorder rules* -- Kern never mutates the system of record
 blindly.
 
@@ -39,7 +39,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import pandas as pd
 
-from src import writeback
+from nosilo_core import writeback
 from src.connectors import InventoryLevel, Order, OrderLine, Product
 
 # Odoo ORM methods that only read: safe to retry on a transient transport error,
@@ -204,7 +204,7 @@ class DraftPOResult:
 class OdooConnector:
     """``InventorySource`` over Odoo, with safe-staging restock as reorder-point writes.
 
-    ``ledger``, when given (a ``src.writeback_store.SqliteAuditLedger``), persists the
+    ``ledger``, when given (a ``nosilo_core.writeback_store.SqliteAuditLedger``), persists the
     audit/idempotency bookkeeping for BOTH write paths (reorder points and draft POs)
     so a process restart cannot re-apply an idempotency key or lose rollback data.
     Without one, bookkeeping lives in process memory - unchanged from before.

@@ -39,7 +39,7 @@ API_KEY = os.environ.get("LINCHPIN_API_KEY", "").strip()  # empty disables the g
 CORS_ORIGINS = [o.strip() for o in os.environ.get("LINCHPIN_CORS_ORIGINS", "").split(",") if o.strip()]
 ENV = os.environ.get("LINCHPIN_ENV", "development").strip().lower()  # "production" tightens checks
 REQUIRE_SECURE = os.environ.get("LINCHPIN_REQUIRE_SECURE", "").strip().lower() in ("1", "true", "yes")
-# Signs writeback Approvals (src/writeback.py) so they can't be forged by
+# Signs writeback Approvals (nosilo_core/writeback.py) so they can't be forged by
 # constructing the dataclass directly. Empty disables signing, same convention.
 APPROVAL_SECRET = os.environ.get("LINCHPIN_APPROVAL_SECRET", "").strip()
 
@@ -61,7 +61,7 @@ def production_warnings() -> list[str]:
     if not APPROVAL_SECRET:
         out.append(
             "LINCHPIN_APPROVAL_SECRET is not set - writeback Approvals are unsigned "
-            "and can be forged by any code with access to src.writeback"
+            "and can be forged by any code with access to nosilo_core.writeback"
         )
     return out
 

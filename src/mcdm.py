@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import linprog
 
-from src.guided import ExecutionOption, GuidedOutcome, as_options
+from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options
 
 # Rezaei's consistency index by a_BW (how many times the best beats the worst).
 _BWM_CI = {1: 0.0, 2: 0.44, 3: 1.0, 4: 1.63, 5: 2.30, 6: 3.0, 7: 3.73, 8: 4.47, 9: 5.23}

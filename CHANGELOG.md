@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### Changed
+- **`nosilo_core` — the domain-agnostic control plane extracted into its own package.**
+  Seven modules move out of `src/` and `scm_agent/` with their history intact:
+  `writeback` + `writeback_store` (the safe-staging write plane), `guided` +
+  `escalation` (the never-unprotected contract), `registry` (the
+  `prepare → run → qa → deliver` tool contract and the "QA fails ⇒ no deliverable"
+  veto), `types`, and `llm` (the `LLMProvider` protocol). None of them knew anything
+  about supply chain; keeping them inside the SCM package meant a second domain pack
+  could not reuse them without inheriting SCM. Pure move — no behavior change, no
+  compatibility shims: all 136 consumers were rewritten to import from `nosilo_core`
+  so the boundary is visible at every call site rather than hidden behind a
+  re-export. Imports *inside* the package are relative, so it can be lifted into its
+  own distribution without editing a line. The core turns out to be stdlib-only apart
+  from a lazy, optional `anthropic` import in `llm`.
+  `tests/test_core_boundary.py` (22 tests) is what makes this stick: it walks each
+  core module's AST — so a lazy import inside a function body is caught like a
+  top-level one — and fails if the core ever imports `src` / `scm_agent` / `jobs` /
+  `webapp`, pulls in an unlisted third-party package, or references a domain module
+  by string for a dynamic import. CI now lints and measures coverage on
+  `nosilo_core` alongside `src`; dropping it from `--cov` would have quietly stopped
+  gating the code that gates every write. Suite: 4173 → 4195 passing (+22, exactly
+  the new boundary tests), 3 skipped, 95.62% coverage.
+
 ### Added
 - **`network_design` — multi-facility p-median network design tool** (`src/network_design.py`, `jobs/network_design_job.py`). Solves which `p` of several candidate sites to open and assigns each demand point to one, minimizing total weighted travel (with optional fixed costs/capacities), via an exact MILP (`scipy.optimize.milp`, HiGHS branch-and-bound) — the multi-facility counterpart to the existing single-site `facility_location` tool (continuous center-of-gravity/Weiszfeld). Reuses `facility_location`'s `DemandPoint`/`Location`/`total_weighted_distance` primitives rather than duplicating them. Reports the weighted-travel saving versus the best single-facility baseline. Part of the CSCP/SCPro gap-closing initiative (raising ASCM/CSCMP reference-doc coverage). 15 tests (engine + job + routing/orchestrator).
 - **`supplier_management` — Kraljic supplier segmentation tool** (`src/supplier_management.py`, `jobs/supplier_management_job.py`). Segments suppliers on the classic spend-x-supply-risk quadrant matrix (leverage/strategic/non-critical/bottleneck) from a supplier CSV, with a ranked `GuidedOutcome` per quadrant. Part of the CSCP/SCPro gap-closing initiative (Phase 1, alongside `network_design`). Two real bugs found and fixed during review: a NaN spend value corrupting every supplier's spend_share via a shared total, and `normalize_drivers` re-sniffing the supplier column internally instead of honoring `prepare()`'s resolved `supplier_col` override (silently zeroing every supplier's risk score for non-English column names). Full engine + job + routing test coverage.

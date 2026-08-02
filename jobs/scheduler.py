@@ -82,7 +82,7 @@ class ScheduledJob:
 class JobRegistry:
     """A named collection of :class:`ScheduledJob` definitions.
 
-    Instance-based (matching ``scm_agent.registry.ToolRegistry`` and
+    Instance-based (matching ``nosilo_core.registry.ToolRegistry`` and
     ``src.state.store.StateStore``), so tests construct their own isolated
     registry instead of mutating shared module state.
     """

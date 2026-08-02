@@ -214,13 +214,13 @@ async def test_tool_specific_params_reach_the_underlying_engine(mcp):
 
 # -- never-unprotected contract, exposed over MCP (parity with POST /api/jobs) ---
 
-# The four legitimate GuidedOutcome statuses (src/guided.py). Three of them
+# The four legitimate GuidedOutcome statuses (nosilo_core/guided.py). Three of them
 # (options/handoff/escalated) require a human - that contract is the product.
 _GUIDED_STATUSES = {"executed", "options", "handoff", "escalated"}
 
 
 async def test_response_carries_the_guided_outcome_with_an_executable_path(mcp):
-    """The never-unprotected contract (src/guided.py) must be machine-readable on
+    """The never-unprotected contract (nosilo_core/guided.py) must be machine-readable on
     the MCP surface, exactly as POST /api/jobs already serializes it - an MCP
     client (another agent) needs the ranked options / prepared handoff /
     escalation, not just the human-readable report. abc_xyz on this input
@@ -232,7 +232,7 @@ async def test_response_carries_the_guided_outcome_with_an_executable_path(mcp):
     assert isinstance(guided, dict), "guided must be a serialized GuidedOutcome, not absent"
     assert guided["status"] in _GUIDED_STATUSES
     # A non-EXECUTED outcome must carry an executable path for the human - the
-    # whole point of surfacing it (mirrors src/guided.py's own verify gate).
+    # whole point of surfacing it (mirrors nosilo_core/guided.py's own verify gate).
     if guided["status"] != "executed":
         assert guided["options"] or guided["handoffs"] or guided["escalation"] is not None
     # abc_xyz specifically offers ranked options with a recommended one.

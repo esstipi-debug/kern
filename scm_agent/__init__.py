@@ -1,10 +1,11 @@
 """scm_agent — the orchestrator spine: brief + data -> routed deliverable."""
 
+from nosilo_core.llm import get_provider
+from nosilo_core.types import JobRequest, JobResult
+
 from .knowledge import Bridge, Concept, ConceptDetail, KnowledgeBase, MethodAdvice
-from .llm import get_provider
 from .orchestrator import Orchestrator
 from .tools import build_default_registry
-from .types import JobRequest, JobResult
 
 __all__ = [
     "Orchestrator",

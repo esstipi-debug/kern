@@ -1,9 +1,9 @@
-"""Tests for scm_agent/llm.py's narrative_rewrite(): the shared LLM-polish
+"""Tests for nosilo_core/llm.py's narrative_rewrite(): the shared LLM-polish
 helper behind both the Orchestrator's single-tool path and the commercial
 package runner's per-step narrative (see scm_agent/packages.py::_run_step)."""
 from __future__ import annotations
 
-from scm_agent.llm import narrative_rewrite
+from nosilo_core.llm import narrative_rewrite
 
 
 class _RecordingProvider:

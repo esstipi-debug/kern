@@ -22,15 +22,15 @@ planning; Heizer & Render, "Aggregate Planning and S&OP"):
 Pure / deterministic (frozen dataclasses + pure functions, no external deps),
 mirroring the analytical-core style so it is auditable for the QA gate. The
 ranked, never-dead-end option-package is assembled in ``run_sop_cycle`` over the
-Guided Execution Layer (``src.decision_options`` / ``src.guided``).
+Guided Execution Layer (``src.decision_options`` / ``nosilo_core.guided``).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from nosilo_core.guided import OWNER_HUMAN, GuidedOutcome, Residual, recommend
 from src.decision_options import Objective, Scenario, decide
-from src.guided import OWNER_HUMAN, GuidedOutcome, Residual, recommend
 
 
 @dataclass(frozen=True)

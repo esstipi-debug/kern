@@ -8,7 +8,7 @@ import math
 
 import pytest
 
-from src.guided import verify_guided
+from nosilo_core.guided import verify_guided
 from src.supplier_management import (
     RiskDriver,
     SupplierInput,

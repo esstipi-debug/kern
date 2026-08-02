@@ -5,7 +5,7 @@ makes that planilla a first-class, SAFELY writable system of record. It exposes
 the same store surface as ``writeback.InMemoryStore`` / the Odoo stores
 (``read`` / ``applied_keys`` / ``claim`` / ``release`` / ``commit`` /
 ``rollback``), so the entire safety plane — risk tiers, signed time-boxed
-approvals, idempotency, audit — is reused from ``src.writeback`` unchanged:
+approvals, idempotency, audit — is reused from ``nosilo_core.writeback`` unchanged:
 
     store = ExcelWorkbookStore("planilla_cliente.xlsx")
     cells = store.resolve_row_edits("Stock", "Codigo", {"SKU-001": {"Punto Reorden": 60}})
@@ -54,7 +54,7 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from src import writeback
+from nosilo_core import writeback
 
 # How deep to scan for a client's header row (planillas often stack title/blank
 # rows above the real table; 20 covers every layout seen in client files so far).

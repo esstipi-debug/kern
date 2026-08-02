@@ -28,7 +28,7 @@ chat products' terms of service prohibit automated querying outright, so
 there is no ToS-compliant way to "ask ChatGPT" or "ask Google AI Overview"
 programmatically today without that engine's own OFFICIAL API. Claude is
 different: this repo already has a sanctioned, official integration
-(``scm_agent.llm.LLMProvider`` / ``ClaudeProvider``, the Anthropic Python
+(``nosilo_core.llm.LLMProvider`` / ``ClaudeProvider``, the Anthropic Python
 SDK) used elsewhere for narrative rewriting and document extraction. This
 module's ONE real, working probe target (:func:`build_claude_probe`) wraps
 that same official API. See :data:`SINGLE_SANCTIONED_ENGINE_CAVEAT` --
@@ -42,7 +42,7 @@ a response string back" -- exactly the injected-callable convention
 ``PdpLlmEnhancer`` already use for the same reason: this module is
 ``src/`` (pure functions only), so it must never itself hold an API
 client. :func:`build_claude_probe` is the one built-in factory that
-produces such a callable from ``scm_agent.llm.LLMProvider`` (imported
+produces such a callable from ``nosilo_core.llm.LLMProvider`` (imported
 lazily, inside the function, mirroring ``src/voice/doc_reader.py``'s
 ``_default_model()`` -- an engine-layer module must not statically depend
 on the agent layer). A caller with a different, OFFICIALLY sanctioned
@@ -128,7 +128,7 @@ logger = logging.getLogger(__name__)
 # tests assert this constant's content directly.
 SINGLE_SANCTIONED_ENGINE_CAVEAT = (
     "GEO probing in this module ships with exactly ONE sanctioned, working engine "
-    "target: Claude, via scm_agent.llm.LLMProvider's official Anthropic API "
+    "target: Claude, via nosilo_core.llm.LLMProvider's official Anthropic API "
     "integration (build_claude_probe). Any OTHER engine (a hypothetical ChatGPT, "
     "Google AI Overview, Perplexity, or similar prober) MUST be wired through that "
     "engine's own OFFICIAL, ToS-compliant API before it is added here -- this module "
@@ -402,12 +402,12 @@ def aggregate_share_of_voice(
     )
 
 
-# -- the one sanctioned, working probe: Claude via scm_agent.llm.LLMProvider -
+# -- the one sanctioned, working probe: Claude via nosilo_core.llm.LLMProvider -
 
 
 @runtime_checkable
 class GeoLlmModel(Protocol):
-    """The slice of LLMProvider a GEO probe needs (scm_agent.llm.LLMProvider
+    """The slice of LLMProvider a GEO probe needs (nosilo_core.llm.LLMProvider
     fits) -- same minimal-Protocol pattern as src/voice/doc_reader.py's
     DocModel, so this engine-layer module never statically imports the
     agent layer."""
@@ -429,7 +429,7 @@ def _default_model() -> GeoLlmModel:
     a static agent-layer import, same as src/voice/doc_reader.py's own
     ``_default_model``)."""
     try:
-        from scm_agent.llm import get_provider
+        from nosilo_core.llm import get_provider
 
         return get_provider()
     except Exception:
@@ -439,13 +439,13 @@ def _default_model() -> GeoLlmModel:
 def build_claude_probe(model: GeoLlmModel | None = None) -> Callable[[str], str]:
     """The ONE sanctioned, working probe target this module ships (see
     module docstring / :data:`SINGLE_SANCTIONED_ENGINE_CAVEAT`). Wraps
-    ``scm_agent.llm.LLMProvider.complete()`` -- Claude's official Anthropic
+    ``nosilo_core.llm.LLMProvider.complete()`` -- Claude's official Anthropic
     API integration, already used elsewhere in this repo (narrative
     rewriting, document extraction) -- as a ``Callable[[str], str]`` this
     module's own :func:`run_probe`/:func:`run_probe_set` accept.
 
     ``model`` defaults to the repo's configured provider
-    (``scm_agent.llm.get_provider()``, resolved lazily); inject a stub for
+    (``nosilo_core.llm.get_provider()``, resolved lazily); inject a stub for
     tests, or a different :class:`GeoLlmModel`-shaped object if the caller
     manages its own Claude client. Raises ``RuntimeError`` immediately if
     no provider is available (no ``ANTHROPIC_API_KEY`` configured) rather

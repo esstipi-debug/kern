@@ -6,7 +6,7 @@ using a pluggable, LLMProvider-shaped model: Claude (PDF + citations) when an
 is injected, so the whole reader is exercised credential-free with a stub.
 
 Architecture note: this is engine-layer code, so it must not statically depend on the
-agent layer. The default model is fetched via a *lazy* import of ``scm_agent.llm`` and
+agent layer. The default model is fetched via a *lazy* import of ``nosilo_core.llm`` and
 any object with ``available()``/``extract()`` (the ``DocModel`` shape) can be injected.
 When no model is available - or required fields are missing - ``extraction_outcome``
 maps the result to a never-unprotected manual-entry handoff (Guided Execution Layer).
@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-from src.guided import GuidedOutcome, HandoffPacket, as_executed, as_handoff
+from nosilo_core.guided import GuidedOutcome, HandoffPacket, as_executed, as_handoff
 
 from .doc_schemas import DocSchema, get_doc_schema, required_fields
 
@@ -27,7 +27,7 @@ _CITATIONS_KEY = "_citations"
 
 @runtime_checkable
 class DocModel(Protocol):
-    """The slice of LLMProvider the reader needs (scm_agent.llm.LLMProvider fits)."""
+    """The slice of LLMProvider the reader needs (nosilo_core.llm.LLMProvider fits)."""
 
     def available(self) -> bool: ...
     def extract(self, prompt: str, schema: dict) -> dict: ...
@@ -98,7 +98,7 @@ def read_document(
 ) -> DocExtraction:
     """Extract ``doc_type``'s schema fields from ``document_text`` using ``provider``.
 
-    With no provider injected, lazily resolves the default (scm_agent.llm.get_provider).
+    With no provider injected, lazily resolves the default (nosilo_core.llm.get_provider).
     An unavailable model yields an empty extraction with every required field flagged.
     """
     schema = get_doc_schema(doc_type)  # validates the type up front
@@ -141,7 +141,7 @@ def extraction_outcome(extraction: DocExtraction, *, doc_ref: str = "") -> Guide
 def _default_model() -> DocModel:
     """Resolve the default model lazily, keeping the engine free of a static agent import."""
     try:
-        from scm_agent.llm import get_provider
+        from nosilo_core.llm import get_provider
 
         return get_provider()
     except Exception:

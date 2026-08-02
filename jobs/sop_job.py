@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from nosilo_core.guided import verify_guided
 from src.export import write_summary_csv
-from src.guided import verify_guided
 from src.sop import CostModel, SopReview, run_sop_cycle
 
 _DATE_COLS = ("Order Date", "order_date", "Date", "date", "ds", "period", "Period")

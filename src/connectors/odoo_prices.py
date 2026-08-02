@@ -17,12 +17,12 @@ SAME ``InMemoryOdoo`` used everywhere else in the repo.
 addressed by SKU (``default_code``) -- the same
 connector-independence pattern ``_ReorderRuleStore`` established: the
 safety plane (risk tiers, signed Approval, idempotency, audit, rollback) is
-100% reused from ``src.writeback``, unchanged.
+100% reused from ``nosilo_core.writeback``, unchanged.
 """
 
 from __future__ import annotations
 
-from src import writeback
+from nosilo_core import writeback
 from src.connectors.odoo import InMemoryOdoo, OdooError, OdooRPC, demo_odoo  # noqa: F401  (re-exported)
 
 _M_PRODUCT = "product.product"
@@ -32,7 +32,7 @@ _WB_TARGET = "odoo"
 class OdooPriceStore:
     """writeback system-of-record surface over Odoo ``product.product.list_price``.
 
-    ``ledger``, when given (a ``src.writeback_store.SqliteAuditLedger``),
+    ``ledger``, when given (a ``nosilo_core.writeback_store.SqliteAuditLedger``),
     persists the audit/idempotency bookkeeping across a process restart --
     matching every other store in this repo.
     """

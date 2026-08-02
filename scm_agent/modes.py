@@ -18,8 +18,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from nosilo_core.registry import ToolRegistry
+
 from .orchestrator import Orchestrator
-from .registry import ToolRegistry
 from .tools import build_default_registry
 
 # Tool keys that belong to the stock-centric Inventory role. Each backs one of

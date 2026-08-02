@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from jobs import org_friction_job
-from src.guided import HANDOFF, OPTIONS, ExecutionOption, as_options
+from nosilo_core.guided import HANDOFF, OPTIONS, ExecutionOption, as_options
 from src.org_friction import GOODHART_RATCHET, FrictionFinding, FrictionReport
 
 

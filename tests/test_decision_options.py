@@ -8,8 +8,8 @@ recommended default. Pure - no external deps.
 
 import pytest
 
+from nosilo_core.guided import OPTIONS, passed_guided, recommend
 from src.decision_options import Objective, Scenario, decide, rank, weighted_scores
-from src.guided import OPTIONS, passed_guided, recommend
 
 # investment (minimize) vs service level (maximize): A cheap/low, B balanced, C rich/high.
 _A = Scenario("A", "lean reorder", {"investment": 100.0, "service": 0.90}, action="stage:A")

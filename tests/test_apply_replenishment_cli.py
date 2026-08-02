@@ -46,7 +46,7 @@ def ledger(tmp_path):
 def test_prepare_wires_ledger_when_ledger_path_given(planilla, ledger):
     p1 = job.prepare(str(planilla), {"ledger_path": str(ledger)})
     r1 = job.run(p1)
-    from src import writeback
+    from nosilo_core import writeback
     writeback.apply(p1["store"], r1.changeset, approval=writeback.approve(r1.changeset, "op"))
     # A brand-new store instance over the same ledger remembers the applied key.
     p2 = job.prepare(str(planilla), {"ledger_path": str(ledger)})

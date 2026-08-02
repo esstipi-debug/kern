@@ -33,10 +33,10 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from jobs import excel_replenishment_job as job  # noqa: E402
-from src import writeback  # noqa: E402
+from nosilo_core import writeback  # noqa: E402
+from nosilo_core.writeback_store import DEFAULT_PATH as LEDGER_DEFAULT_PATH  # noqa: E402
+from nosilo_core.writeback_store import SqliteAuditLedger  # noqa: E402
 from src.connectors.excel import ExcelWorkbookStore, ExcelWritebackError  # noqa: E402
-from src.writeback_store import DEFAULT_PATH as LEDGER_DEFAULT_PATH  # noqa: E402
-from src.writeback_store import SqliteAuditLedger  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:

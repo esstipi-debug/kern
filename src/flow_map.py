@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from src.guided import (
+from nosilo_core.guided import (
     ExecutionOption,
     GuidedOutcome,
     HandoffPacket,

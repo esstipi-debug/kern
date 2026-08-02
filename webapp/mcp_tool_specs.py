@@ -9,7 +9,7 @@ code edits.
 Deliberately NOT here (see docs/MCP_SERVER.md "What's NOT here yet"):
 - `odoo_replenishment`, `excel_replenishment` - writeback tools; they mutate a
   client's system of record and stay behind the direct-client safety plane
-  (`src/writeback.py`), never on this anonymous-remote surface.
+  (`nosilo_core/writeback.py`), never on this anonymous-remote surface.
 - `leadership_chain` - takes a CHAIN scores dict / LLM-scored brief, not
   tabular rows; the rows->CSV bridge feeds it nothing usable.
 - `warehouse_layout` - a params-driven 3D layout generator (requires_data=False,

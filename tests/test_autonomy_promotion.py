@@ -20,7 +20,7 @@ Guarantees under test:
   autonomy_tier token, leaving every comment and every other route's block
   byte-for-byte untouched;
 - approve_promotion(): a PENDING proposal, once approved, actually mutates
-  config/event_routing.yaml as a real, signed src.writeback.Changeset --
+  config/event_routing.yaml as a real, signed nosilo_core.writeback.Changeset --
   END TO END: propose -> approve -> reload routing -> resolve_route() on a
   brand-new synthetic event of that type now resolves T1, not T2;
 - apply_degradation(): T1->T2 degradation happens immediately (no approval
@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import pytest
 
+from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
 from scm_agent.autonomy import TIER_T1, TIER_T2, TIER_T3
 from scm_agent.autonomy_promotion import (
     DEFAULT_AUTONOMY_CONFIG_PATH,
@@ -57,7 +58,6 @@ from scm_agent.autonomy_promotion import (
     reject_promotion,
 )
 from scm_agent.event_intent import DEFAULT_ROUTING_PATH, Event, EventRoutingError, Route, load_routing, resolve_route
-from src.guided import EXECUTED, HANDOFF, passed_guided
 from src.verify.reliability import ToolReliabilityReport
 
 TOOL = "inventory_optimization"
@@ -371,7 +371,7 @@ def test_routing_config_store_commit_rewrites_only_the_targeted_route(tmp_path):
     routing_path = tmp_path / "routing.yaml"
     routing_path.write_text(_FIXTURE_ROUTING_YAML, encoding="utf-8")
     store = RoutingConfigStore(routing_path)
-    import src.writeback as writeback
+    import nosilo_core.writeback as writeback
 
     changeset = writeback.stage(
         store, str(routing_path), {"stock_below_rop": {"autonomy_tier": "T1"}},
@@ -461,7 +461,7 @@ def test_approve_promotion_rejects_a_stale_proposal_whose_config_already_moved(t
     )
     # Simulate the config having already moved (e.g. a prior approval).
     store = RoutingConfigStore(routing_path)
-    import src.writeback as writeback
+    import nosilo_core.writeback as writeback
     cs = writeback.stage(store, str(routing_path), {"stock_below_rop": {"autonomy_tier": "T1"}},
                           risk_tier=writeback.TIER_REVERSIBLE, idempotency_key="k-preexisting")
     store.commit(cs, "someone-else")

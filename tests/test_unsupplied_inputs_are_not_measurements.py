@@ -66,7 +66,8 @@ def test_the_deck_does_not_print_a_cash_to_cash_nobody_could_compute():
 
 
 def test_the_agent_surface_survives_an_unsupplied_cash_to_cash(tmp_path):
-    from scm_agent import llm, tools
+    from nosilo_core import llm
+    from scm_agent import tools
     from scm_agent.orchestrator import Orchestrator
 
     csv = tmp_path / "fin.csv"
@@ -80,7 +81,8 @@ def test_the_agent_surface_survives_an_unsupplied_cash_to_cash(tmp_path):
 
 
 def test_the_tool_still_honours_dso_and_dpo_passed_as_params(tmp_path):
-    from scm_agent import llm, tools
+    from nosilo_core import llm
+    from scm_agent import tools
     from scm_agent.orchestrator import Orchestrator
 
     csv = tmp_path / "fin.csv"

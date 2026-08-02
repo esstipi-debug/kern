@@ -122,9 +122,9 @@ import pandas as pd
 
 from jobs.price_monitor import PairOutcome, accept_observation
 from jobs.seo_audit import AdvertoolsUnavailableError, _ensure_scripts_on_path, pages_from_crawl_dataframe
+from nosilo_core.guided import GuidedOutcome
 from scm_agent.events import Event, EventLedger
 from src.export import write_summary_csv
-from src.guided import GuidedOutcome
 from src.pricing_intel.acquire import base
 from src.pricing_intel.acquire.auto_approve import OnboardingResult, auto_approve_site
 from src.pricing_intel.acquire.l1 import AcquisitionSkipped, acquire_l1_offer
@@ -368,7 +368,7 @@ def run_homologation(
     rows (including every row in ``report.unmatched``) are reported back to
     the caller but NEVER persisted -- NON-GOAL 4: this function only ever
     calls ``sku_map.record`` (append-only match metadata), never a writeback
-    to the competitor or our own catalog (``src/writeback.py`` is never
+    to the competitor or our own catalog (``nosilo_core/writeback.py`` is never
     imported here).
 
     ``sku_map`` defaults to the process-wide :func:`default_sku_map`

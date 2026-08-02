@@ -12,6 +12,7 @@ import threading
 
 import pytest
 
+from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
 from src.connectors import InventorySource, OrderLine, Product
 from src.connectors.odoo import (
     InMemoryOdoo,
@@ -21,7 +22,6 @@ from src.connectors.odoo import (
     demo_odoo,
 )
 from src.connectors.replenish import plan_replenishment
-from src.guided import EXECUTED, HANDOFF, passed_guided
 from src.sources import DataFrameDemandSource
 
 
@@ -529,7 +529,7 @@ def test_stage_draft_purchase_orders_is_a_dry_run_until_applied():
 def test_apply_draft_purchase_orders_without_approval_can_be_required():
     """auto_apply_reversible=False makes draft-PO creation require a human approval,
     exactly like reorder-point writes already do."""
-    from src.writeback import WritebackRefused
+    from nosilo_core.writeback import WritebackRefused
 
     odoo = _odoo()
     connector = OdooConnector(odoo)
@@ -544,7 +544,7 @@ def test_apply_draft_purchase_orders_without_approval_can_be_required():
 
 
 def test_connector_with_a_sqlite_ledger_persists_both_write_paths(tmp_path):
-    from src.writeback_store import SqliteAuditLedger
+    from nosilo_core.writeback_store import SqliteAuditLedger
 
     ledger_path = tmp_path / "odoo_writeback.sqlite3"
     odoo = _odoo()

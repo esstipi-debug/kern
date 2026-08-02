@@ -6,9 +6,10 @@ import pandas as pd
 import pytest
 
 from jobs import hats_job
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from nosilo_core.guided import EXECUTED, HANDOFF, OPTIONS, as_executed, passed_guided
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
-from src.guided import EXECUTED, HANDOFF, OPTIONS, as_executed, passed_guided
 from src.hats import HAT_KEYS
 
 

@@ -18,12 +18,12 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
+from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 from src.connectors.odoo import OdooClient, OdooConnector, OdooRPC, demo_odoo
 from src.connectors.replenish import ReplenishmentLine, plan_replenishment
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
-from src.escalation import escalation_banner, maybe_escalate_financial
 from src.export import write_summary_csv
-from src.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,7 @@ def _build_outcome(
 
     Above ``financial_threshold`` (estimated from Odoo's own product cost), the
     options are gated behind a required finance sign-off instead of being freely
-    actionable - see ``src.escalation.maybe_escalate_financial``.
+    actionable - see ``nosilo_core.escalation.maybe_escalate_financial``.
     """
     if n_restock > 0:
         options = [

@@ -9,12 +9,12 @@ a dead end and nothing is mutated until a human approves.
 
 from fastapi.testclient import TestClient
 
+from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
 from src.connectors import InventoryLevel, Order, OrderLine, Product
 from src.connectors.emulator import create_app
 from src.connectors.http_client import StoreApiClient
 from src.connectors.replenish import plan_replenishment
 from src.connectors.simulator import SimulatedStore
-from src.guided import EXECUTED, HANDOFF, passed_guided
 
 _PRODUCTS = [Product("SKU-1", "Thin", 20.0, 6.0), Product("SKU-2", "Deep", 50.0, 12.0)]
 _STEADY_ORDERS = [

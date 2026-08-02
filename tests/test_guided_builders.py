@@ -3,7 +3,7 @@
 
 import pytest
 
-from src.guided import (
+from nosilo_core.guided import (
     ESCALATED,
     EXECUTED,
     HANDOFF,

@@ -11,7 +11,8 @@ import pandas as pd
 import pytest
 
 from jobs import sourcing_job as srcj
-from scm_agent import intent, llm, tools
+from nosilo_core import llm
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable
 

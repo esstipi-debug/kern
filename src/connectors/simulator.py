@@ -3,7 +3,7 @@
 ``SimulatedStore`` implements the ``InventorySource`` read side (products, inventory,
 orders) entirely in memory, bridges its orders into the demand pipeline the engines
 already consume, and routes restocks through the safe-staging writeback plane
-(``src.writeback``) so applies are dry-run-first, idempotent, audited and reversible.
+(``nosilo_core.writeback``) so applies are dry-run-first, idempotent, audited and reversible.
 
 Point the whole chain at one of these to develop and test connector-driven flows
 offline; a real Shopify/Amazon adapter later implements the same protocol.
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src import writeback
+from nosilo_core import writeback
 from src.connectors import InventoryLevel, Order, OrderLine, Product
 
 _TARGET = "simulated-store"

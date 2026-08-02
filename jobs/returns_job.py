@@ -16,10 +16,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from nosilo_core.guided import GuidedOutcome, recommend, verify_guided
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
-from src.guided import GuidedOutcome, recommend, verify_guided
 from src.reverse_logistics import (
     DispositionRates,
     LineDisposition,

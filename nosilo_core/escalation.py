@@ -5,14 +5,14 @@ bundles context + ranked options + the recommended response + citations and rout
 to the right role with an SLA. Filling the route/SLA defaults per trigger keeps every
 escalation actionable - it never lands as an unrouted dead end.
 
-Pure: frozen dataclasses + pure functions, over ``src/guided.py``'s contract.
+Pure: frozen dataclasses + pure functions, over ``nosilo_core/guided.py``'s contract.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
 
-from src.guided import ESCALATED, OPTIONS, EscalationPacket, ExecutionOption, GuidedOutcome, as_escalation
+from .guided import ESCALATED, OPTIONS, EscalationPacket, ExecutionOption, GuidedOutcome, as_escalation
 
 # Escalation triggers.
 DISPUTE = "dispute"                 # OS&D, billing, booking-reference disputes

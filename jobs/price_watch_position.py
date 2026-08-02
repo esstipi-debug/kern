@@ -46,8 +46,8 @@ from decimal import Decimal
 from jobs.price_intelligence import PriceIntelReport, RowOutcome
 from jobs.price_priority import PricePriorityReport
 from jobs.price_watch import PriceWatchCycleReport
+from nosilo_core.guided import GuidedOutcome
 from scm_agent.events import Event
-from src.guided import GuidedOutcome
 from src.pricing_intel.homologate import HomologationReport
 from src.pricing_intel.ledger import PriceLedger
 from src.pricing_intel.match.sku_map import SkuMapEntry
