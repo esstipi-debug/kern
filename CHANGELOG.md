@@ -3,6 +3,39 @@
 ## [Unreleased]
 
 ### Added
+- **`packs/source_to_pay` — the second domain pack, and the test of whether the core extraction
+  actually bought anything.** Accounts payable: three-way match of supplier invoices against purchase
+  orders and goods receipts, with price/quantity variances, duplicate detection, currency mismatch and
+  self-inconsistent-document checks. Not one line of supply chain, and **it imports nothing from
+  `src`** — `tests/test_pack_boundary.py` enforces that, which turns "the core generalises" from a
+  claim into a check that fails when it stops being true. Verified to bite: a deliberate
+  `from src.eoq import ...` in `matching.py` fails the suite.
+  - **One `register()` call** puts it through the identical `prepare → run → qa → deliver` pipeline the
+    49 supply-chain capabilities use, with the same QA veto and the same never-unprotected outcome. No
+    orchestrator change, no routing special case. If a second domain had needed any of those, the tool
+    contract would have been an SCM contract wearing a generic name.
+  - **`supplier` is reused, not redeclared.** `build_s2p_registry()` accepts the SCM pack's registry so
+    both packs observe into one shared entity type — two packs with their own idea of the same company
+    is exactly the silo the platform exists to remove.
+  - **`Decimal` end to end.** A matcher on binary floats disagrees with the supplier's arithmetic by a
+    cent somewhere and raises an exception a human then dismisses, which trains people to click through
+    exceptions — worse than not checking at all.
+  - **Tolerances take whichever bound is greater**, absolute or percentage: 2% is meaningless on a €3
+    line and €5 is meaningless on a €50,000 one. Stated explicitly because the stricter reading also
+    exists in the wild and the choice silently changes which invoices need a human. Defaults are tight
+    (1% price, zero quantity slack) so a tolerance nobody chose is never why an overcharge is paid.
+  - **Severity is about consequence, not size.** A €1 duplicate blocks (the failure mode is paying
+    twice); a €90,000 price variance only asks for review (recoverable). A duplicate is surfaced as its
+    own `HANDOFF` rather than one row among ninety exceptions somebody skims.
+  - **QA refuses a run where almost nothing matched.** An exception rate above 80% is nearly always a
+    mapping problem, and delivering it as "94% of your invoices have exceptions" sends an AP team
+    chasing ghosts for a day.
+  - Guarded fields carried over from the core: invoice totals and the remit-to account cannot be moved
+    by an OCR pipeline, at any trust level — extraction confidence is not authority.
+  - Pure and clock-free, including "which invoices have we seen before", so a disputed match is
+    replayable months later.
+  65 tests (30 matching engine + 23 pack integration + 12 boundary). Also fixes `nosilo_core.access` missing from the setuptools
+  package list, which would have excluded it from a built wheel.
 - **`nosilo_core.access` — identity and policy in front of the core**, plus tenant scoping and a
   governed read path in the entity store. Kern authenticates with one shared API key today: there is
   no principal, so there is nothing to authorise against, and "can this agent see supplier bank
