@@ -3,8 +3,21 @@ name: tests
 on:
   push:
     branches: [main]
+  # Every PR, whatever it targets -- not just PRs into main. A stacked PR (one
+  # whose base is another feature branch, the natural shape for a change split
+  # into reviewable pieces) matched no filter here and therefore got NO checks at
+  # all: the only signal on it was GitGuardian, and "no red X" looked identical
+  # to "tested and green". Retargeting such a PR at main to force a run does not
+  # even work -- that emits a `pull_request` event of type `edited`, and the
+  # default types are opened/synchronize/reopened -- and it makes the diff
+  # cumulative with its parent, which is exactly the review clarity stacking
+  # exists to buy.
+  #
+  # The cost is one matrix run per stacked PR. That is the point: the alternative
+  # is merging code whose only green tick came from a manual `workflow_dispatch`
+  # someone remembered to fire.
   pull_request:
-    branches: [main]
+    branches: ['**']
   # Nightly run against an UNCONSTRAINED resolve. Neither job caches pip and the
   # repo has no lock file, so every run re-resolves the declared ranges against
   # PyPI-as-of-today -- an upstream release can break this repo with zero commits
