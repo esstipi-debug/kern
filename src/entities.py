@@ -28,6 +28,19 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from nosilo_core.access import (
+    BUCKET,
+    CONFIDENTIAL,
+    DROP,
+    INTERNAL,
+    MASK,
+    PUBLIC,
+    RESTRICTED,
+    Classification,
+    FieldPolicy,
+    PolicySet,
+    Rule,
+)
 from nosilo_core.entities import (
     EntityType,
     EntityTypeRegistry,
@@ -87,6 +100,65 @@ LOCATION = EntityType(
 )
 
 SCM_ENTITY_TYPES = (SKU, SUPPLIER, LOCATION)
+
+
+# ---- how sensitive each field is --------------------------------------------
+# The core stores values; the domain says how exposed each one may be. A buyer
+# legitimately needs a supplier's name and lead time while having no business
+# seeing its bank account, so this is per field rather than per record.
+#
+# Undeclared attributes fall to the Classification default (INTERNAL, dropped
+# below clearance) rather than PUBLIC: a field nobody has classified yet must not
+# be the one that leaks.
+
+SKU_CLASSIFICATION = Classification(
+    fields={
+        "sku_code": FieldPolicy(level=PUBLIC),
+        "title": FieldPolicy(level=PUBLIC),
+        # Book cost is the margin input. Bucketed rather than dropped for readers
+        # below the bar, because order of magnitude is often all a planning
+        # conversation needs and the exact figure is what must not travel.
+        "unit_cost": FieldPolicy(level=CONFIDENTIAL, below_clearance=BUCKET),
+        "list_price": FieldPolicy(level=INTERNAL),
+    }
+)
+
+SUPPLIER_CLASSIFICATION = Classification(
+    fields={
+        "tax_id": FieldPolicy(level=INTERNAL, below_clearance=MASK),
+        "legal_name": FieldPolicy(level=INTERNAL),
+        # RESTRICTED and dropped, not masked: a masked account number still
+        # confirms which account is on file, which is enough to make a
+        # convincing change request.
+        "bank_account": FieldPolicy(level=RESTRICTED, below_clearance=DROP),
+        "credit_limit": FieldPolicy(level=RESTRICTED, below_clearance=DROP),
+        "payment_terms": FieldPolicy(level=CONFIDENTIAL),
+    }
+)
+
+LOCATION_CLASSIFICATION = Classification(
+    fields={
+        "location_code": FieldPolicy(level=PUBLIC),
+        "name": FieldPolicy(level=PUBLIC),
+        "address": FieldPolicy(level=INTERNAL),
+    }
+)
+
+SCM_CLASSIFICATIONS = {
+    SKU.name: SKU_CLASSIFICATION,
+    SUPPLIER.name: SUPPLIER_CLASSIFICATION,
+    LOCATION.name: LOCATION_CLASSIFICATION,
+}
+
+
+def scm_policy(version: str, rules: tuple[Rule, ...] = ()) -> PolicySet:
+    """A :class:`PolicySet` carrying the supply-chain field classifications.
+
+    Rules are supplied by the deployment, not hardcoded here: who may do what is
+    a customer's decision, while how sensitive a supplier's bank account is, is
+    not.
+    """
+    return PolicySet(version=version, rules=rules, classifications=SCM_CLASSIFICATIONS)
 
 
 def build_scm_registry() -> EntityTypeRegistry:

@@ -30,6 +30,11 @@ What lives here, and why each piece is core rather than domain:
     The ``LLMProvider`` protocol plus a rules-only fallback, so a domain pack
     never imports a vendor SDK directly. This is the seat a multi-model router
     takes later.
+``access``
+    Identity and policy: who is acting, a capability algebra that can only
+    narrow authority, per-field sensitivity classification, and the decision
+    point that ties them together. Unconfigured it permits everything, so it
+    lands without changing any existing caller.
 ``entities``
     Canonical entities: stable identity, per-field provenance, bitemporal
     history, and cross-references to source-system ids. The core stores them
@@ -47,9 +52,10 @@ Imports inside this package are relative on purpose: the package is meant to be
 liftable into its own distribution without editing a single import line.
 """
 
-from . import entities, escalation, guided, llm, registry, types, writeback, writeback_store
+from . import access, entities, escalation, guided, llm, registry, types, writeback, writeback_store
 
 __all__ = [
+    "access",
     "entities",
     "escalation",
     "guided",

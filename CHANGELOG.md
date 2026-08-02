@@ -3,6 +3,45 @@
 ## [Unreleased]
 
 ### Added
+- **`nosilo_core.access` — identity and policy in front of the core**, plus tenant scoping and a
+  governed read path in the entity store. Kern authenticates with one shared API key today: there is
+  no principal, so there is nothing to authorise against, and "can this agent see supplier bank
+  details" has no answer the product can give. This supplies the missing nouns.
+  - **Capability attenuation can only narrow.** There is no widening operation in the module, so
+    privilege escalation is absent from the algebra rather than prevented by a check somebody has to
+    remember. `tenant` is deliberately not a parameter of `attenuate()` — crossing tenants is not a
+    narrowing operation and must be unreachable. An exhaustive test runs every ordering of every
+    subset of attenuation requests and asserts the result stays inside the original grant on every
+    axis.
+  - **Delegation to an agent** intersects the human's rights, the agent role's rights and the single
+    declared purpose, bounded by an expiry, and records the chain for audit. An agent with no
+    `on_behalf_of` cannot be constructed: no accountable owner, nothing to authorise.
+  - **Per-field sensitivity, not per-record.** A buyer needs a supplier's lead time and has no
+    business seeing its bank account; denying the whole record makes the product unusable and
+    returning it whole makes it unsellable. `bank_account` and `credit_limit` are `DROP`ped rather
+    than masked — a masked account number still confirms which account is on file, which is enough
+    to make a convincing change request. `unit_cost` is bucketed to an order of magnitude.
+    Unclassified fields default to `INTERNAL`, so a field nobody has thought about is not the one
+    that leaks.
+  - **Every decision carries a `reason_code` and a `policy_version`**, including denials. Deny beats
+    allow; no matching rule denies; `REQUIRE_APPROVAL` is explicitly *not* `allowed`, because
+    treating "a human must sign this off" as a soft yes is how approval gates get bypassed.
+  - **Tenant is in every primary key and every `WHERE`** in the entity store, from the first version.
+    Two stores over one file see disjoint data even for identical source ids and natural keys. Added
+    now because adding it later means a migration, a backfill, and re-auditing every query written in
+    between.
+  - **The governed read is a separate method** (`store.read`), not an optional `principal=` argument
+    on `current()`. An optional security parameter is one a caller forgets and a reviewer cannot see
+    the absence of. `current`/`as_of`/`history` stay ungoverned on purpose: `observe()` merges
+    against real values, and a masked value must never be written back as if it were data.
+  - **A denial returns exactly what a missing entity returns.** Distinguishing them would turn every
+    denial into an existence oracle.
+  - Unconfigured, the policy engine permits everything and reports `no_policy_configured` — the same
+    "empty disables the gate" convention `webapp/security.py` already uses. `ungoverned_warning()`
+    is how a production deploy finds out it is still in that state.
+  - Not OPA/Rego: `nosilo_core` is stdlib-only by contract and a sidecar is a large operational ask
+    for a rule set this size. The trigger to switch is documented in `policy.py`.
+  51 tests (39 access + 12 store integration), plus 12 new boundary cases for the new subpackage.
 - **`nosilo_core.entities` — canonical entities with stable identity, per-field provenance and
   bitemporal history**, plus `src/entities.py` declaring the three supply-chain master-data types
   (**SKU**, **supplier**, **location**) on top of it. Kern has been job-centric until now — a file
