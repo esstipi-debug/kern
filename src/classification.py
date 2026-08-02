@@ -48,6 +48,31 @@ class SkuClassification:
     buffer_distribution: str
 
 
+@dataclass(frozen=True)
+class ValueBasis:
+    """Whether ``annual_value`` actually ranks on value, or just on units.
+
+    ``annual_value = unit_cost * annual_demand``. If unit cost is identical across the
+    portfolio it is a constant factor, so the ABC ranking is a *units* ranking — which
+    is correct arithmetic for a genuinely uniform-cost catalog, and a silent lie when
+    the cost column was a placeholder. Callers must state this in the deliverable.
+    """
+
+    unit_cost_nunique: int
+    unit_cost_std: float
+    discriminates: bool
+
+
+def value_basis(items: list[dict]) -> ValueBasis:
+    """Report whether unit cost varies enough for ABC to be a value ranking."""
+    costs = np.asarray([float(it["unit_cost"]) for it in items], dtype=float)
+    if costs.size == 0:
+        return ValueBasis(0, 0.0, False)
+    std = float(costs.std())
+    nunique = int(np.unique(costs).size)
+    return ValueBasis(nunique, std, bool(nunique > 1 and std > 0.0))
+
+
 def _xyz_class(cv: float, x_cut: float, y_cut: float) -> str:
     if cv < x_cut:
         return "X"

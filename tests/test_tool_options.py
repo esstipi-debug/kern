@@ -39,16 +39,102 @@ def _quality(n_raw: int, *, bad_date: int = 0, bad_qty: int = 0, negative_qty: i
     )
 
 
-def _inventory_report(*, intake_quality=None, intake_quality_threshold=0.20):
+def _inventory_report(*, intake_quality=None, intake_quality_threshold=0.20,
+                       n_skipped_zero_demand=0, n_skipped_zero_cost=0):
     return NS(
         params={"service_level": 0.95},
         recommendations=[NS(status="ok"), NS(status="review")], final_investment=120_000.0,
         intake_quality=intake_quality, intake_quality_threshold=intake_quality_threshold,
+        n_skipped_zero_demand=n_skipped_zero_demand, n_skipped_zero_cost=n_skipped_zero_cost,
     )
 
 
 def test_inventory_options():
     _assert_ranked(to.inventory_options(_inventory_report()), min_options=3)
+
+
+# -- zero-demand skips (jobs/inventory_optimization.py's n_skipped_zero_demand): a
+# residual (never just silently folded into n_review), the never-unprotected contract
+# applied to the same "loud crash became a silent success" failure class -----------
+
+
+def test_inventory_options_no_skips_has_no_zero_demand_residual():
+    out = to.inventory_options(_inventory_report())
+    assert out.residuals == []
+
+
+def test_inventory_options_zero_demand_skip_adds_residual():
+    out = to.inventory_options(_inventory_report(n_skipped_zero_demand=2))
+    assert out.status == OPTIONS
+    assert len(out.residuals) == 1
+    desc = out.residuals[0].description.lower()
+    assert "2" in desc and "zero" in desc and "demand" in desc
+    assert out.residuals[0].risk_if_skipped.strip()  # never a bare/empty risk statement
+
+
+def test_inventory_options_defer_item_excludes_skipped_zero_demand_from_count():
+    """The 'Free capital - defer low-value SKUs' option must not conflate a zero-demand
+    skip (a data gap - no policy could be computed) with a genuinely flagged, deferrable
+    SKU (e.g. high forecast bias)."""
+    recs = [
+        NS(status="ok", policy_kind="(s, Q)"),
+        NS(status="review", policy_kind="(s, Q)"),  # genuinely flagged (e.g. high bias)
+        NS(status="review", policy_kind="skipped_zero_demand"),
+    ]
+    report = NS(
+        params={"service_level": 0.95}, recommendations=recs, final_investment=100_000.0,
+        intake_quality=None, intake_quality_threshold=0.20, n_skipped_zero_demand=1,
+    )
+    out = to.inventory_options(report)
+    defer_item = next(o for o in out.options if o.label.startswith("Free capital"))
+    assert "1 flagged-for-review" in defer_item.summary
+    assert "data gap" in defer_item.summary.lower()
+
+
+# -- zero-cost skips (jobs/inventory_optimization.py's n_skipped_zero_cost): the
+# EOQ-explosion bug found via the simworld harness's inject_zero_cost injector --
+# same "loud crash became a silent success" failure class as zero-demand, but on
+# the cost axis (mean_unit_cost <= 0 explodes compute_eoq via the holding-cost
+# floor instead of raising a ValueError). --------------------------------------
+
+
+def test_inventory_options_no_skips_has_no_zero_cost_residual():
+    out = to.inventory_options(_inventory_report())
+    assert out.residuals == []
+
+
+def test_inventory_options_zero_cost_skip_adds_residual():
+    out = to.inventory_options(_inventory_report(n_skipped_zero_cost=3))
+    assert out.status == OPTIONS
+    assert len(out.residuals) == 1
+    desc = out.residuals[0].description.lower()
+    assert "3" in desc and "cost" in desc
+    assert out.residuals[0].risk_if_skipped.strip()  # never a bare/empty risk statement
+
+
+def test_inventory_options_both_skip_kinds_add_two_separate_residuals():
+    """Zero-demand and zero-cost are different data-quality findings; a report
+    hitting both must surface both, not collapse into one generic residual."""
+    out = to.inventory_options(_inventory_report(n_skipped_zero_demand=1, n_skipped_zero_cost=2))
+    assert len(out.residuals) == 2
+    descriptions = " ".join(r.description.lower() for r in out.residuals)
+    assert "demand" in descriptions and "cost" in descriptions
+
+
+def test_inventory_options_defer_item_excludes_skipped_zero_cost_from_count():
+    recs = [
+        NS(status="ok", policy_kind="(s, Q)"),
+        NS(status="review", policy_kind="(s, Q)"),  # genuinely flagged (e.g. high bias)
+        NS(status="review", policy_kind="skipped_zero_cost"),
+    ]
+    report = NS(
+        params={"service_level": 0.95}, recommendations=recs, final_investment=100_000.0,
+        intake_quality=None, intake_quality_threshold=0.20, n_skipped_zero_cost=1,
+    )
+    out = to.inventory_options(report)
+    defer_item = next(o for o in out.options if o.label.startswith("Free capital"))
+    assert "1 flagged-for-review" in defer_item.summary
+    assert "data gap" in defer_item.summary.lower()
 
 
 # -- intake plausibility: a residual (always, once anything was dropped) or an

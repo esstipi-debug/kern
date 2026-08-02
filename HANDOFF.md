@@ -22,6 +22,81 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-01 — PR #199 (simworld + hardening): de CONFLICTING/CI-nunca-corrida a MERGEABLE/CI-verde. Sigue en draft, whole-branch review en curso
+
+**Lee esto primero si agarras en frio el hilo de `feat/simworld-marcador`.** Rama
+`feat/simworld-marcador`, **PR #199 draft**, `mergeable: MERGEABLE`,
+`mergeStateStatus: CLEAN`, CI **verde por primera vez en toda la vida de la
+rama/PR** (nacio hace mas de una semana, jamas habia corrido `tests.yml` antes
+de esta sesion — confirmado via API directa, no solo `gh pr checks`).
+
+**Que construye esta rama:** `src/simworld/` — un arnes de scoreboard que
+simula un mundo de reposicion con verdad conocida, le inyecta suciedad de
+datos en 4 niveles, y corre tres decisores sobre el mismo mundo (piso de
+reorden fijo, Kern completo via el orquestador real, techo MILP clarividente)
+puntuando las decisiones de Kern contra una captura normalizada. 12 tareas TDD
++ un adendo (Tasks 13-14, puente hacia `src/state/` para que los consumidores
+de monitoreo tengan un productor real). Al validar contra una grilla de
+produccion real, encontro y arreglo **5 bugs reales de robustez en el motor de
+Kern** (no en el arnes): parseo de fechas mixtas y numeros US/LATAM en
+`jobs/intake.py`, un crash por demanda-cero en `jobs/inventory_optimization.py`,
+un `-0.0` indetectable en el propio injector del arnes, y un costo-cero
+explotando la formula de EOQ via el piso de `holding_cost` (tambien en
+`jobs/inventory_optimization.py` + `src/sources.py`). Doc completa de cada uno:
+`.superpowers/sdd/progress.md` (gitignored, esta en el checkout).
+
+**Lo que paso esta sesion (arranco de "hacele push al fix de costo-cero"):**
+
+1. Chequear el estado antes de pushear encontro el PR en `CONFLICTING`, diff de
+   114 archivos, cero corridas de CI historicas — la rama se uso como trunk
+   compartido por sesiones concurrentes para trabajo NO relacionado (bateria,
+   Shopify connector, org-friction, cross-impact, knowledge RAG) que ya se
+   mergeo a `main` por sus propios PRs.
+2. `git merge origin/main`: 16 conflictos reales, resueltos archivo por
+   archivo (verificado, no asumido) — la mayoria eran borradores tempranos de
+   esta rama superados por la version completa de main; `scm_agent/
+   tool_options.py` y `jobs/sourcing_job.py` tenian trabajo genuino e
+   independiente en ambos lados, mergeados aditivamente.
+3. **2 bugs de auto-merge silencioso** (sin marcadores de conflicto, por eso
+   invisibles): un keyword argument duplicado en `jobs/inventory_
+   optimization.py` (SyntaxError real, atrapado por `py_compile`) y un test de
+   `bateria` que main reintroducia ya resuelto en esta rama.
+4. El primer commit del merge (`0ef5b32`) describia fixes que no contenia —
+   los archivos auto-mergeados quedan pre-stageados, y editarlos despues no
+   los re-agrega al index solo. Atrapado por `git status` antes de pushear, no
+   por la suite en verde. Commit de seguimiento: `9c9a8f1`.
+5. Primera corrida de CI (recien ahi, primera vez en la vida de la rama):
+   5 fallas + 16 errores, TODOS `FileNotFoundError` en `data/kaggle/*.csv`
+   (gitignoreado, nunca fetcheado en CI). Los 8 archivos afectados existen
+   SOLO en esta rama — no es un artefacto del merge, es la primera vez que
+   corren sin los datasets locales. 2 rondas mas de `skipif`/`pytest.skip()`
+   para cazar un test completamente sin guard + 2 guards que solo chequeaban
+   uno de dos archivos leidos por la misma funcion (`a928d55`, `df3b576`).
+
+**Commits nuevos de esta sesion:** `78d9e30` (fix zero-cost), `0ef5b32`
+(merge), `9c9a8f1` (fixes de merge no stageados), `a928d55` (skip guards),
+`df3b576` (guard perdido + refuerzo). Todos pusheados.
+
+**Que sigue, en este orden:**
+1. **Un agente de whole-branch review esta corriendo en background** (lanzado
+   al final de esta sesion, resultado todavia no leido por nadie) — cubre el
+   diff propio de esta rama contra `main` (`git diff origin/main
+   feat/simworld-marcador`, ~90 archivos, +17.4k/-88), cruzado contra los docs
+   de diseno/plan, e incluye una mirada a Tasks 13-14 (hechas por otra sesion
+   concurrente, nunca revisadas independientemente). Si arrancas en frio y no
+   ves su resultado en la conversacion, no fue reportado todavia — no asumir
+   que el review dijo "aprobado" solo porque CI esta verde.
+2. Si el review sale limpio: `gh pr ready 199` + revisar antes de squash-merge
+   (proceso estandar del repo).
+3. Deuda trackeada, NO arreglada en esta sesion: `jobs/vehicle_routing_job.py`
+   y `jobs/whatif_job.py` tienen `confidence=0.85` hardcodeado (heredado de
+   main, `tests/test_qa_confidence_from_coverage.py::LITERAL_CONFIDENCE_
+   CEILING` subio de 43 a 45 para no romper el ratchet sin arreglarlo).
+4. Pendiente de siempre: rebase/decision sobre si esta rama debe seguir
+   viviendo aparte o si conviene cerrarla mas seguido dado el patron de uso
+   como trunk compartido (ver `linchpin-concurrent-sessions` memoria, 10ma
+   instancia documentada esta sesion).
+
 ## 2026-07-27 — #193 MERGEADO + DEPLOYADO (Fly v35); PR #194 cierra sus follow-ups
 
 **Estado del hilo de honestidad numerica.** #193 se mergeo a `main` como squash `e1ff368`

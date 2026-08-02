@@ -122,6 +122,30 @@ def maybe_escalate_financial(outcome: GuidedOutcome, value: float, threshold: fl
     )
 
 
+def maybe_escalate_synthesized_columns(
+    outcome: GuidedOutcome, columns: tuple[str, ...] | list[str]
+) -> GuidedOutcome:
+    """Re-route an 'options' outcome to ESCALATED when a decision-critical column was
+    fabricated wholesale during intake.
+
+    ``IntakeQuality.dropped_fraction`` only sees rows that were thrown away. A column
+    the source file never had is synthesized for every row instead, so the dropped
+    share stays 0.0 and the quality signal reads as pristine while a money number or a
+    ranking rests entirely on a placeholder. Caller decides which columns are critical:
+    a defaulted ``lead_time_std`` of 0.0 is a documented modelling assumption
+    (deterministic lead time), whereas an invented unit cost or mean lead time is not.
+    """
+    if not columns:
+        return outcome
+    names = ", ".join(sorted(columns))
+    return _maybe_escalate(
+        outcome, True, OPERATIONAL,
+        f"intake synthesized every value of {names} - the source file carried no such "
+        "column, so this result rests on a placeholder rather than the client's data. "
+        "Supply the column (or confirm the default) before trusting the numbers.",
+    )
+
+
 def maybe_escalate_data_quality(
     outcome: GuidedOutcome, dropped_fraction: float, threshold: float, *, detail: str
 ) -> GuidedOutcome:

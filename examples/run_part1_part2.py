@@ -49,7 +49,6 @@ def main() -> None:
         fixed_order_cost=args.order_cost,
         lead_time_periods=args.lead_time,
         cycle_service_level=args.service_level,
-        periods_per_year=args.periods_per_year,
     )
 
     rs = periodic_review_rs(

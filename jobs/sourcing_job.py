@@ -22,7 +22,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from nosilo_core.guided import GuidedOutcome, HandoffPacket, as_handoff, verify_guided
+from nosilo_core.guided import (
+    GuidedOutcome,
+    HandoffPacket,
+    as_handoff,
+    confidence_from_coverage,
+    verify_guided,
+)
 from src.deliverable import DataSource, Deliverable, Finding, Kpi, days, not_measured, pct, ppm
 from src.export import write_summary_csv
 from src.mcdm import Criterion, RankingResult, award_outcome, topsis_rank
@@ -60,6 +66,11 @@ _CRITERIA: tuple[tuple[str, bool, object], ...] = (
 )
 
 _DEFAULT_WEIGHTS = {"otif": 0.4, "lead_time": 0.2, "ppm": 0.2, "price": 0.2}
+# build_deck's confidence floor when nothing was ignored - matches the fixed default this
+# replaced, so a panel with no ignored (tied, non-discriminating) criterion behaves exactly
+# as before. See confidence_from_coverage: an award decided on fewer discriminating criteria
+# than it weighed is less certain than one decided on all of them.
+_DECK_BASE_CONFIDENCE = 0.85
 
 # Keep these two SYMMETRIC, and keep ORDER-STATUS values out of both. An asymmetric pair
 # mis-scores silently (if "no" parses but "yes" does not, a column holding only "no" reads as
@@ -596,6 +607,10 @@ def verify(report: SourcingReport) -> list[str]:
     issues = list(verify_guided(report.outcome))
     if not report.scorecards:
         issues.append("no suppliers scored")
+    # A criterion dropped for not discriminating (every supplier tied - see
+    # report.ranking.ignored_criteria) is NOT a QA failure on its own: the ranking
+    # degraded on purpose and build_deck discloses it via a lower confidence and a
+    # Finding, not a blocked run. Only "nothing left to rank on at all" blocks here.
     if not report.criteria:
         gap = ", ".join(report.unmeasured) if report.unmeasured else "every criterion"
         issues.append(f"no measured criterion to rank suppliers on ({gap} absent)")
@@ -646,7 +661,7 @@ def build_deck(
     client: str = "Client",
     prepared: str = "",
     citations: tuple[str, ...] = (),
-    confidence: float = 0.85,
+    confidence: float | None = None,
     lang: str = "en",
 ) -> Deliverable:
     """Compose the sourcing study: the recommended award and why, with the scorecard spread.
@@ -654,10 +669,21 @@ def build_deck(
     Every criterion prints what was measured, or the words ``no medido``. A rate over zero
     observations is not zero percent, and a deck that prints it as one is the exact failure
     this tool is supposed to catch in the client's own reporting.
+
+    ``confidence`` is derived from the ranking's coverage when not supplied: an award
+    decided on fewer discriminating criteria than it weighed is less certain than one
+    decided on all of them (see src/guided.py::confidence_from_coverage). A criterion
+    every supplier tied on (``report.ranking.ignored_criteria``) is a different gap than
+    one this data never measured at all (``report.unmeasured``, disclosed separately below).
     """
     if not report.recommended:
         raise ValueError(
             "no award to present: " + report.summary + " (verify() blocks this report)"
+        )
+    if confidence is None:
+        confidence = confidence_from_coverage(
+            ["ignored_criterion"] * len(report.ranking.ignored_criteria),
+            base=_DECK_BASE_CONFIDENCE,
         )
     best = next(c for c in report.scorecards if c.supplier == report.recommended)
     others = [c for c in report.scorecards if c.supplier != report.recommended]
@@ -683,6 +709,18 @@ def build_deck(
             f"{', '.join(report.unmeasured)} - not present for every supplier on the panel, so "
             "excluded from the ranking rather than scored as zero.",
             impact=f"the award rests on {ranked} alone; populate the rest to widen it",
+        ))
+    if report.ranking.ignored_criteria:
+        ignored = report.ranking.ignored_criteria
+        dropped_weight = sum(report.weights.get(name, 0.0) for name in ignored)
+        findings.append(Finding(
+            f"{len(ignored)} criteri{'on' if len(ignored) == 1 else 'a'} did not discriminate",
+            f"Every supplier scored identically on {', '.join(ignored)}, so "
+            f"{'it was' if len(ignored) == 1 else 'they were'} dropped from the ranking "
+            f"despite carrying {dropped_weight:.0%} of the criteria weight. The award "
+            f"rests on the criteria that actually varied.",
+            impact="supply data that actually varies before treating this as a full "
+                    "confirmation of the award",
         ))
     otifs = [c.otif for c in report.scorecards if c.otif is not None]
     if otifs:

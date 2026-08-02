@@ -11,15 +11,36 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from src.i18n import DEFAULT_LANG, Lang
+
 HEALTHY = "healthy"
 EXCESS = "excess"
 DEAD = "dead"
 
-_ACTIONS = {
-    DEAD: "liquidate / return to vendor / write off",
-    EXCESS: "stop buying; redistribute or promote to draw down",
-    HEALTHY: "monitor; no action",
+# ``recommended_action`` es el unico campo de este modulo que llega tal cual a un
+# entregable cliente-facing, asi que es bilingue y sigue el idioma por defecto del
+# repo (``src.i18n.DEFAULT_LANG`` = "es"). El resto de la prosa del tool sigue
+# siendo nativa en ingles, como documenta ``src/i18n.py``.
+_ACTIONS: dict[str, dict[Lang, str]] = {
+    DEAD: {
+        "es": "liquidar / devolver al proveedor / dar de baja",
+        "en": "liquidate / return to vendor / write off",
+    },
+    EXCESS: {
+        "es": "dejar de comprar; redistribuir o promocionar para bajar stock",
+        "en": "stop buying; redistribute or promote to draw down",
+    },
+    HEALTHY: {
+        "es": "monitorear; sin accion",
+        "en": "monitor; no action",
+    },
 }
+
+
+def action_for(classification: str, lang: Lang = DEFAULT_LANG) -> str:
+    """Accion recomendada para una clasificacion, en ``lang`` (fallback: es)."""
+    by_lang = _ACTIONS[classification]
+    return by_lang.get(lang, by_lang[DEFAULT_LANG])
 
 
 @dataclass(frozen=True)
@@ -51,6 +72,7 @@ def classify_sku(
     *,
     target_cover_days: float = 90.0,
     dead_threshold_days: float = 180.0,
+    lang: Lang = DEFAULT_LANG,
 ) -> SkuEO:
     """Classify one SKU and size its at-risk (excess/dead) cash."""
     on_hand_value = stock.on_hand * stock.unit_cost
@@ -73,7 +95,8 @@ def classify_sku(
     return SkuEO(
         product_id=stock.product_id, on_hand=stock.on_hand, on_hand_value=on_hand_value,
         days_of_cover=cover, classification=classification, excess_units=excess_units,
-        excess_value=excess_units * stock.unit_cost, recommended_action=_ACTIONS[classification],
+        excess_value=excess_units * stock.unit_cost,
+        recommended_action=action_for(classification, lang),
     )
 
 
@@ -82,10 +105,16 @@ def classify_excess_obsolete(
     *,
     target_cover_days: float = 90.0,
     dead_threshold_days: float = 180.0,
+    lang: Lang = DEFAULT_LANG,
 ) -> list[SkuEO]:
     """Classify every SKU; rank by at-risk (excess) value descending."""
     out = [
-        classify_sku(s, target_cover_days=target_cover_days, dead_threshold_days=dead_threshold_days)
+        classify_sku(
+            s,
+            target_cover_days=target_cover_days,
+            dead_threshold_days=dead_threshold_days,
+            lang=lang,
+        )
         for s in stocks
     ]
     out.sort(key=lambda e: e.excess_value, reverse=True)

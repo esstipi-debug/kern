@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
+from scipy import stats as _sps
 
 from jobs.intake import IntakeQuality
 from src.classification import classify_portfolio
@@ -21,6 +23,11 @@ from src.safety_stock import tune_service_level
 from src.sources import DataFrameDemandSource
 
 PERIODS_PER_YEAR = 52.0
+# Service level gained per point of fill-rate gap in the closed loop. The engine's
+# own default (0.5) drives a 15-point shortfall straight past 1.0 into its hi=0.999
+# clamp, which turns every chronically short SKU into a 99.9% target regardless of
+# how big the gap was.
+SERVICE_LEVEL_TUNING_STEP = 0.1
 
 
 @dataclass(frozen=True)
@@ -73,6 +80,35 @@ class JobReport:
     # inventory_options() reads this to decide whether to escalate.
     intake_quality: IntakeQuality | None = None
     intake_quality_threshold: float = 0.20
+    # SKUs skipped because their aggregate demand was zero (see run()'s per-SKU
+    # loop) - a real new/seasonal SKU with no activity, or a data-quality split
+    # that zeroed one spelling's demand. Isolated, not fatal to the batch.
+    n_skipped_zero_demand: int = 0
+    # SKUs skipped because no row carried a usable (>0) unit_cost (see run()'s
+    # per-SKU loop) - a cost lost on load and reported as 0 instead of blank.
+    # Isolated for the same reason as zero demand: compute_eoq's holding-cost
+    # floor (1e-6) would otherwise turn a near-zero mean_unit_cost into an
+    # absurdly large, silently "valid-looking" order quantity.
+    n_skipped_zero_cost: int = 0
+
+
+def _observed_skewness(series) -> float | None:
+    """Sample skewness of the demand history, or None when it cannot be estimated.
+
+    Feeds ``demand_distribution='auto'``: the engine fits a gamma instead of a
+    normal when skewness exceeds the coefficient of variation (Vandeput ch. 9).
+    """
+    arr = np.asarray(series, dtype=float)
+    if arr.size < 3:
+        return None
+    # Skewness of a (near-)constant series is undefined: scipy warns about
+    # catastrophic cancellation and returns a meaningless value. Flat demand is
+    # not skewed, so let the engine keep the normal.
+    spread = float(np.std(arr))
+    if not np.isfinite(spread) or spread <= 1e-9 * max(1.0, abs(float(np.mean(arr)))):
+        return None
+    value = float(_sps.skew(arr))
+    return value if np.isfinite(value) else None
 
 
 def _status(intermittent: bool, bias: float) -> str:
@@ -130,16 +166,68 @@ def run(
         meta = source.metadata(pid)
         fc = forecast_demand(series)
         inputs = fc.to_engine_inputs(periods_per_year=periods_per_year)
-        holding_cost = max(holding_rate * meta.mean_unit_cost, 1e-6)
         lead = lead_times.get(pid, meta.lead_time_periods) if lead_times else meta.lead_time_periods
-        # sigma_L. Nothing in intake derives it today, so it is normally a *default*,
-        # not a measurement - and the deliverable has to say which it was.
-        lt_std = (lead_time_stds or {}).get(pid)
-        lt_std_source = "client_file" if lt_std is not None else "defaulted_zero"
-        lt_std = 0.0 if lt_std is None else float(lt_std)
+        # sigma_L. An explicit override (lead_time_stds) wins; else fall back to the
+        # CSV's own lead_time_std column (meta.lead_time_std_periods, wired in src/sources.py
+        # long before this override dict existed) - both are client-supplied data, just
+        # via different paths, so both are labeled "client_file". Only a true absence of
+        # both, i.e. the CSV carries no such column, is a "default", not a measurement -
+        # and the deliverable has to say which it was.
+        override = (lead_time_stds or {}).get(pid)
+        if override is not None:
+            lt_std, lt_std_source = float(override), "client_file"
+        else:
+            lt_std = meta.lead_time_std_periods
+            lt_std_source = "client_file" if lt_std > 0 else "defaulted_zero"
         sl = base_levels.get(pid, service_level)
+
+        # A SKU with zero aggregate demand (brand-new/seasonal SKU, or a messy
+        # export that split one SKU's sales across spellings) would otherwise
+        # reach compute_eoq's annual_demand > 0 guard and raise, killing the
+        # WHOLE portfolio's run. Isolate it instead: skip and record it as a
+        # distinct, flagged recommendation, then keep going.
+        if inputs["annual_demand"] <= 0:
+            recs.append(
+                SkuRecommendation(
+                    product_id=pid, method="none", intermittent=False,
+                    forecast=0.0, error_std=0.0, bias=0.0, mae=0.0,
+                    policy_kind="skipped_zero_demand", order_quantity=None, order_up_to=None,
+                    reorder_point=0.0, safety_stock=0.0, z_factor=0.0,
+                    service_level=sl, unit_cost=meta.mean_unit_cost, lead_periods=lead,
+                    cycle_investment=0.0, ss_investment=0.0, investment=0.0,
+                    status="review",
+                )
+            )
+            continue
+
+        # Symmetric to the zero-demand skip above, on the cost axis instead of the
+        # demand axis: src/sources.py already excludes non-positive unit_cost rows
+        # from the mean, so mean_unit_cost <= 0 here means NO row for this SKU ever
+        # carried a usable cost. Without it, holding_cost's 1e-6 floor a few lines
+        # down would make compute_eoq's q_star = sqrt(2*S*D/h) explode - not a
+        # crash, a silently "valid-looking" order of hundreds of thousands of units
+        # that the caller has no way to distinguish from a real recommendation.
+        if meta.mean_unit_cost <= 0:
+            recs.append(
+                SkuRecommendation(
+                    product_id=pid, method="none", intermittent=False,
+                    forecast=0.0, error_std=0.0, bias=0.0, mae=0.0,
+                    policy_kind="skipped_zero_cost", order_quantity=None, order_up_to=None,
+                    reorder_point=0.0, safety_stock=0.0, z_factor=0.0,
+                    service_level=sl, unit_cost=meta.mean_unit_cost, lead_periods=lead,
+                    cycle_investment=0.0, ss_investment=0.0, investment=0.0,
+                    status="review",
+                )
+            )
+            continue
+
+        holding_cost = max(holding_rate * meta.mean_unit_cost, 1e-6)
         if observed_fill_rates and pid in observed_fill_rates:
-            sl = tune_service_level(sl, observed_fill_rates[pid], target_fill_rate)
+            sl = tune_service_level(
+                sl, observed_fill_rates[pid], target_fill_rate,
+                step=SERVICE_LEVEL_TUNING_STEP,
+            )
+        skewness = _observed_skewness(series)
 
         if fc.is_intermittent:
             pol = periodic_review_rs(
@@ -152,6 +240,8 @@ def run(
                 lead_time_std=lt_std,
                 review_period=1.0,
                 cycle_service_level=sl,
+                demand_distribution="auto",
+                observed_skewness=skewness,
             )
             kind, order_quantity = "(R, S)", None
         else:
@@ -164,6 +254,8 @@ def run(
                 lead_time_periods=lead,
                 lead_time_std=lt_std,
                 cycle_service_level=sl,
+                demand_distribution="auto",
+                observed_skewness=skewness,
             )
             kind, order_quantity = "(s, Q)", pol.order_quantity
 
@@ -207,4 +299,6 @@ def run(
         n_skus=len(recs), n_at_risk=sum(1 for r in recs if r.status == "high_bias"),
         n_intermittent=sum(1 for r in recs if r.intermittent),
         intake_quality=intake_quality, intake_quality_threshold=intake_quality_threshold,
+        n_skipped_zero_demand=sum(1 for r in recs if r.policy_kind == "skipped_zero_demand"),
+        n_skipped_zero_cost=sum(1 for r in recs if r.policy_kind == "skipped_zero_cost"),
     )

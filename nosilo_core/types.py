@@ -44,3 +44,8 @@ class JobResult:
     citations: list[str] = field(default_factory=list)  # L3 domain grounding (book/chapter)
     kb_warnings: list[str] = field(default_factory=list)  # surfaced when a knowledge graph is degraded
     guided: GuidedOutcome | None = None  # never-unprotected contract (Guided Execution Layer)
+    # The tool's structured report (e.g. jobs.inventory_optimization.JobReport), for an
+    # in-process caller that needs the numbers rather than the files (the harness in
+    # src/simworld/). It is an arbitrary object: NEVER assume it is serializable, and
+    # NEVER include it in an HTTP/MCP payload.
+    report: object | None = None

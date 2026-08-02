@@ -46,3 +46,32 @@ def test_classify_ranks_by_at_risk_value():
     ranked = classify_excess_obsolete(stocks)
     assert [e.product_id for e in ranked] == ["excess", "dead", "healthy"]   # by excess_value desc
     assert ranked[-1].classification == HEALTHY
+
+
+def test_recommended_action_defaults_to_spanish():
+    """El campo cliente-facing sale en el idioma por defecto del repo (es)."""
+    dead = classify_sku(SkuStock("d", on_hand=100, daily_demand=0, unit_cost=2, days_since_last_sale=300))
+    excess = classify_sku(SkuStock("e", on_hand=1000, daily_demand=5, unit_cost=2, days_since_last_sale=5))
+    healthy = classify_sku(SkuStock("h", on_hand=100, daily_demand=5, unit_cost=2, days_since_last_sale=5))
+
+    assert dead.recommended_action == "liquidar / devolver al proveedor / dar de baja"
+    assert excess.recommended_action == "dejar de comprar; redistribuir o promocionar para bajar stock"
+    assert healthy.recommended_action == "monitorear; sin accion"
+
+
+def test_recommended_action_can_be_english():
+    eo = classify_sku(
+        SkuStock("d", on_hand=100, daily_demand=0, unit_cost=2, days_since_last_sale=300),
+        lang="en",
+    )
+    assert eo.recommended_action == "liquidate / return to vendor / write off"
+
+
+def test_lang_propagates_through_portfolio_classification():
+    ranked = classify_excess_obsolete([SkuStock("d", 100, 0, 2, 300)], lang="en")
+    assert ranked[0].recommended_action == "liquidate / return to vendor / write off"
+
+
+def test_unknown_lang_falls_back_to_default():
+    eo = classify_sku(SkuStock("d", 100, 0, 2, 300), lang="pt")
+    assert eo.recommended_action == "liquidar / devolver al proveedor / dar de baja"

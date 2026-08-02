@@ -180,7 +180,7 @@ class Orchestrator:
             status=STATUS_OK, tool=tool.key, confidence=intent.confidence,
             deliverables={name: str(path) for name, path in written.items()}, summary=summary,
             citations=citations, kb_warnings=self.knowledge.warnings(),
-            guided=guided,
+            guided=guided, report=produced.report,
         )
 
     def _ground(self, tool: Tool, brief: str = "") -> list[str]:

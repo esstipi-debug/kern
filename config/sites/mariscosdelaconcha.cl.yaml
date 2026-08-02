@@ -1,0 +1,27 @@
+# PENDIENTE DE REVISION DEL OPERADOR -- ver "Revision final" abajo.
+#
+# Lo que SI se verifico (2026-07-24): se leyo el robots.txt real de mariscosdelaconcha.cl y
+# las rutas de ficha de producto estan permitidas; el sitio publica precios
+# de cara al publico sin muro de login.
+#
+# Lo que NO se hizo: revision legal de los Terminos de Servicio. Por eso
+# tos_decision es "limited" y no "allowed" -- "limited" es exactamente el
+# estado "sin revision legal humana todavia", y max_tier_allowed queda en
+# L1 (solo lectura de datos estructurados que la pagina ya publica).
+
+domain: mariscosdelaconcha.cl
+
+robots_txt_respected: true
+robots_checked_at: "2026-07-24"
+
+tos_summary: >
+  Paginas de producto publicas con precio visible, sin muro de login. El
+  robots.txt permite las rutas de producto (verificado 2026-07-24). NO se
+  realizo revision legal de los ToS: se trata como LIMITED hasta que el
+  operador la haga.
+tos_decision: limited
+
+rate_limit_seconds: 5.0
+max_tier_allowed: L1
+pii_policy: none
+selectors_version: "1"

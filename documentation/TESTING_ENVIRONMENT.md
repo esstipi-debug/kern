@@ -149,6 +149,123 @@ the dashboard imports here it imports in production.
 
 ---
 
+## 5. Scoreboard against known truth — `examples/run_world_sim.py`
+
+Layers 1-4 answer "does it run". This one answers **"does it decide well"**.
+
+`src/simworld/` generates a seeded replenishment world (`world.py`) — true
+weekly demand and true lead times are drawn once at generation time, never
+during the run, so every runner faces the identical realization — then runs
+three runners over the same world for N weeks:
+
+| Runner | What it is |
+|---|---|
+| Floor | Fixed reorder point (`5 x` the last 4 weeks' average demand), computed once after `NAIVE_LOOKBACK_WEEKS=4` weeks of warmup and **genuinely frozen** thereafter — never revised again for the rest of the run. What a real client's own unmanaged process does. |
+| Kern | The full `Orchestrator.run` pipeline (brief -> intent -> prepare -> run -> QA -> deliver), replanning every `--replan-every` weeks (default 4) |
+| Ceiling | An oracle that sees the true future demand and true lead times, never the lens |
+
+```bash
+PYTHONPATH=. python examples/run_world_sim.py                             # small default: 8 SKUs, 24 weeks
+PYTHONPATH=. python examples/run_world_sim.py --no-kern                    # floor vs ceiling only, cheap
+PYTHONPATH=. python examples/run_world_sim.py --skus 120 --weeks 52 --levels 0 1 2 3   # production scale, several minutes
+```
+
+**The oracle is exact, not a heuristic window** — a per-SKU, cost-minimizing
+MILP (Wagner-Whitin-style lot-sizing with a fixed order cost and a lost-sales
+option, `scipy.optimize.milp` via HiGHS) that optimizes the *same* cost
+function `scorer.py` uses to judge every runner (procurement + holding +
+shortage + fixed order cost), so the ceiling and the ruler that measures it
+never disagree. This is a hard-won, adversarially verified property, not
+marketing language: it went through multiple rounds of adversarial review,
+including an independent from-scratch dynamic-program re-derivation checked
+against 214 hand-built test instances with zero mismatches. It is also
+expensive — one MILP solve per SKU per week-call, ~50-60ms via HiGHS — so a
+full production-scale grid (120 SKUs x 52 weeks x 4 dirt levels) is estimated
+at roughly 15-20 minutes (documented, not yet exhaustively measured
+end-to-end). That cost is accepted, not yet optimized: solving each SKU's
+full-horizon plan once instead of re-solving it every week-call is a known
+future improvement, not implemented today.
+
+**Captured score:** `(floor_cost - kern_cost) / (floor_cost - oracle_cost)`.
+0 is no better than the frozen floor, 1 is matching the oracle; a negative
+score (worse than the floor) is reported with its sign, never clipped. If
+Kern's score comes out above 1 the CLI raises instead of printing a number —
+beating a clairvoyant oracle means information leaked from the world into the
+lens, not a real win.
+
+**Staged dirt.** Kern never reads the world directly — only an exported CSV,
+at level 0 (canonical, what `jobs/intake.py` expects verbatim), 1 (cosmetic:
+whitespace/case, mixed date formats, thousands separators), 2 (typical
+SME mess: one SKU split across two spellings, mixed units, negative-quantity
+returns, missing lead times) or 3 (chaotic: duplicate rows, zeroed costs, a
+mid-history supplier rename, an unmarked promo spike). Levels accumulate
+(3 includes 2 includes 1). The score is always computed against the clean
+truth, even when Kern only ever saw the dirty export.
+
+**Announced degradation** — the number no published benchmark measures. For
+each dirt level (against that level's own lane at level 0) the report carries
+three headline figures — how much the dirt cost (`drop`), how much of that
+Kern announced (`announced`, via its own status, QA issues, a blocking
+`GuidedOutcome`, or `IntakeQuality` crossing its own declared threshold), and
+the difference (`silent`) — plus a "largest single week" figure, since one
+outlier week can dominate the total. Two honest, deliberate biases in this
+metric, stated rather than hidden:
+- "Silent" only reflects the *same replan week's* announced flag. A week
+  governed by an earlier warning (from a prior replan) still counts as silent
+  here, even though a real operator would still be acting on that earlier
+  warning. This biases the number conservatively, against Kern — it
+  under-credits Kern for warnings it already gave.
+- The metric can be dominated by a single outlier week, which is exactly why
+  the CLI's report prints that "largest single week" figure next to the three
+  headline scalars.
+
+**Kern can escalate rather than guess — but the fixes below mean it no longer
+needs to just to survive normal-looking dirt.** Before the 5 fixes documented
+next, even cosmetic-only dirt (level 1) drove *every* replan on the harness's
+production-scale grid (120 SKUs, 52 weeks) to `ESCALATED` — not because Kern's
+judgment was too conservative, but because two real intake bugs (mixed date
+formats, mixed US/LATAM number formats) were silently dropping enough rows to
+cross Kern's own data-quality threshold on data that was actually fine. With
+those bugs fixed, the same grid shows **zero escalations across all 4 dirt
+levels** — Kern operates normally everywhere, with capture against the oracle
+ranging from -6.8% (level 3, the messiest) to +5.0% (level 2): a genuinely
+graduated curve instead of a cliff. The escalation mechanism itself is still
+real and still exercised elsewhere in the suite — a `GuidedOutcome` blocked on
+truly missing or contradictory data still routes to `ESCALATED`/`HANDOFF`,
+never a crash, and the harness still prices a genuine escalation at full cost
+like any other week. The harness's own early runs were themselves a case
+study in the exact silent-degradation failure mode Kern is supposed to catch,
+one level removed.
+
+This harness has surfaced **5 real bugs** — 4 in Kern's core production code,
+1 in the harness's own dirt injector, all fixed on this branch:
+- `jobs/intake.py`'s date parser used to corrupt or drop rows on a genuinely
+  mixed-format date column.
+- `jobs/intake.py`'s number parser didn't handle mixed US/LATAM thousand-
+  separator conventions — a single cosmetic-level injector alone dropped up
+  to 31% of rows on data that was perfectly valid, just formatted differently.
+- `jobs/inventory_optimization.py` used to let one SKU with zero aggregate
+  demand crash the entire portfolio's run instead of being isolated, flagged,
+  and skipped while the rest of the portfolio kept processing normally.
+- `jobs/inventory_optimization.py` (via `src/sources.py`) used to let a
+  single `$0` unit cost — a cost lost on load, not a genuinely free item —
+  silently explode the EOQ formula through its holding-cost floor: one bad
+  SKU drove a full production-scale grid run to a capture score of **-14.04**
+  (**$29.6M** cost against a **$7.4M** floor), with no crash and no QA flag.
+  The most dramatic finding of the five — exactly the class of confident-but-
+  wrong decision this harness exists to catch.
+- `src/simworld/lens.py`'s own `inject_returns_as_negatives` produced an
+  undetectable `-0.0` (`-0.0 < 0` is `False` in IEEE 754) instead of a real
+  negative value, silently weakening its own level-2 dirt signal.
+
+Writes `deliverables/simworld/report.{md,json}` (gitignored).
+
+**Never register this as an agent capability.** `src/simworld/` is a test
+harness, not a client-facing tool — there is no `register()` call for it in
+`scm_agent/tools.py`, and there must never be one.
+
+---
+
 ## Where to look when something is red
 
 - **`import` errors / half the suite red on a fresh session** → step 1, the

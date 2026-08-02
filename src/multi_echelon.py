@@ -76,7 +76,6 @@ def evaluate_serial_allocation(
     demand_std_per_period: float,
     holding_costs: list[float],
     cycle_service_level: float,
-    review_period: float = 1.0,
     case_id: int = 0,
 ) -> GSMAllocation:
     """Ss_i = z * sigma_d * sqrt(x_i); cost = sum(Ss_i * h_i) (eq. 10.1).
@@ -147,7 +146,6 @@ def optimize_serial_gsm(
             demand_std_per_period,
             holding_costs,
             cycle_service_level,
-            review_period,
             case_id=idx,
         )
         if best is None or candidate.total_holding_cost < best.total_holding_cost:

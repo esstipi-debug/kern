@@ -42,6 +42,36 @@ def test_dataframe_source_metadata():
     assert meta.lead_time_periods == pytest.approx(14 * 52 / 365)
 
 
+def test_metadata_ignores_zero_cost_rows_in_the_average():
+    """A unit_cost of exactly 0 is a lost-in-transit value (see
+    jobs/inventory_optimization.py's zero-cost skip), not a real price - averaging
+    it in would drag mean_unit_cost toward zero and, via compute_eoq's holding-cost
+    floor, explode the recommended order quantity. This is the test that would fail
+    against the old plain ``.mean()`` (it would return 25.0, half of 50.0)."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2024-01-01", "2024-01-08", "2024-01-15", "2024-01-22"]),
+        "product_id": ["SKU-A"] * 4,
+        "quantity": [100, 100, 100, 100],
+        "unit_cost": [50, 50, 0, 0],
+    })
+    meta = DataFrameDemandSource(df).metadata("SKU-A")
+    assert meta.mean_unit_cost == pytest.approx(50.0)
+
+
+def test_metadata_mean_unit_cost_is_zero_when_no_row_has_a_usable_cost():
+    """Every row's cost was lost -> an explicit 0.0 signal (never a computable
+    average, never a silent fallback to the 'column missing' default of 1.0), so
+    the caller can distinguish 'no usable cost data' from 'a real $1 item'."""
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2024-01-01", "2024-01-08"]),
+        "product_id": ["SKU-A", "SKU-A"],
+        "quantity": [100, 100],
+        "unit_cost": [0, 0],
+    })
+    meta = DataFrameDemandSource(df).metadata("SKU-A")
+    assert meta.mean_unit_cost == 0.0
+
+
 def test_dataframe_source_rejects_missing_columns():
     with pytest.raises(ValueError):
         DataFrameDemandSource(pd.DataFrame({"date": [], "product_id": []}))

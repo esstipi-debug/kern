@@ -39,7 +39,6 @@ def load_demand_csv(
     *,
     product_id: str | None = None,
     quantity_col: str = "quantity",
-    date_col: str = "date",
     product_col: str = "product_id",
 ) -> pd.Series:
     """Return a time-ordered demand series for one SKU."""

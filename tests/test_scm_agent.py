@@ -430,12 +430,18 @@ def _demand_csv_with_bad_rows(tmp_path, *, n_good: int = 16, n_bad: int = 8) -> 
 
     good_start = _dt.date(2020, 1, 1)
     bad_start = _dt.date(2024, 1, 1)  # a disjoint range so good/bad weeks never collide for the same SKU
+    # unit_cost / lead_time_days are supplied so these two tests isolate the row-drop
+    # severity they are about: without them intake would synthesize both columns
+    # wholesale and escalate for that reason instead (see T2,
+    # tests/test_qa_synthesized_provenance.py).
     rows = [
-        {"date": (good_start + _dt.timedelta(weeks=i)).isoformat(), "product_id": "SKU-A", "quantity": 10}
+        {"date": (good_start + _dt.timedelta(weeks=i)).isoformat(), "product_id": "SKU-A",
+         "quantity": 10, "unit_cost": 12.5, "lead_time_days": 7}
         for i in range(n_good)
     ]
     rows += [
-        {"date": (bad_start + _dt.timedelta(weeks=i)).isoformat(), "product_id": "SKU-A", "quantity": -5}
+        {"date": (bad_start + _dt.timedelta(weeks=i)).isoformat(), "product_id": "SKU-A",
+         "quantity": -5, "unit_cost": 12.5, "lead_time_days": 7}
         for i in range(n_bad)
     ]
     path = tmp_path / "messy_demand.csv"

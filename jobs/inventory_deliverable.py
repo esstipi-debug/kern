@@ -52,7 +52,11 @@ def build(
             f"${report.budget:,.0f} budget.",
             impact="service drops below target on the tail",
         ))
-    top = sorted(report.recommendations, key=lambda r: r.investment, reverse=True)[:3]
+    # A skipped-zero-demand SKU always carries investment=0.0 (see
+    # jobs/inventory_optimization.py's run()) - exclude it so it never displaces or
+    # clutters a real finding on a small portfolio.
+    investable = [r for r in report.recommendations if r.investment > 0]
+    top = sorted(investable, key=lambda r: r.investment, reverse=True)[:3]
     if top:
         names = ", ".join(f"{r.product_id} (${r.investment:,.0f})" for r in top)
         findings.append(Finding(

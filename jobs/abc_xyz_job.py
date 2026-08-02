@@ -15,13 +15,22 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.classification import SkuClassification, classify_portfolio, portfolio_summary
+from src.classification import (
+    SkuClassification,
+    ValueBasis,
+    classify_portfolio,
+    portfolio_summary,
+    value_basis,
+)
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
+from nosilo_core.guided import confidence_from_coverage
 from src.export import write_summary_csv
 
 _PRODUCT_COLS = ("product_id", "ProductID", "sku", "SKU", "Product", "item")
 _DEMAND_COLS = ("quantity", "Quantity", "demand", "Demand", "units", "qty", "Sales", "sales")
 _COST_COLS = ("unit_cost", "Unit Cost", "cost", "Cost", "price", "Price")
+# Editorial prior for a complete ABC-XYZ study; coverage gaps subtract from it.
+_DECK_BASE_CONFIDENCE = 0.9
 
 
 @dataclass(frozen=True)
@@ -32,6 +41,8 @@ class AbcXyzReport:
     n_a: int
     n_cz: int              # erratic + low-value -> discontinuation candidates
     a_value_share: float   # share of total annual value held by the A class
+    # Whether annual_value ranks on value or (flat unit cost) merely on units
+    value_basis: ValueBasis = ValueBasis(0, 0.0, True)
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -86,6 +97,7 @@ def run(
         n_a=sum(1 for c in classifications if c.abc == "A"),
         n_cz=sum(1 for c in classifications if c.cell == "CZ"),
         a_value_share=a_value / total_value,
+        value_basis=value_basis(items),
     )
 
 
@@ -127,9 +139,19 @@ def build_deck(
     client: str = "Client",
     prepared: str = "",
     citations: tuple[str, ...] = (),
-    confidence: float = 0.9,
+    confidence: float | None = None,
 ) -> Deliverable:
-    """Compose the client deck: where the value concentrates, what to focus vs cull."""
+    """Compose the client deck: where the value concentrates, what to focus vs cull.
+
+    ``confidence`` is derived when not supplied: an ABC that reduces to a units
+    ranking because unit cost is flat is worth less than one ranked on real value
+    (see src/guided.py::confidence_from_coverage).
+    """
+    if confidence is None:
+        confidence = confidence_from_coverage(
+            [] if report.value_basis.discriminates else ["value_ranks_on_units"],
+            base=_DECK_BASE_CONFIDENCE,
+        )
     a_share = report.a_value_share * 100
     a_pct_skus = (report.n_a / report.n_skus * 100) if report.n_skus else 0.0
     n_z = sum(1 for c in report.classifications if c.xyz == "Z")
@@ -154,6 +176,15 @@ def build_deck(
             f"{report.n_cz} discontinuation candidates (CZ)",
             "Low value and erratic demand - the classic make-to-order / cull cell.",
             impact="free working capital; shrink the long tail"))
+    if not report.value_basis.discriminates:
+        findings.append(Finding(
+            "Ranked on units, not value",
+            f"Every SKU carries the same unit cost, so unit cost did not discriminate "
+            f"and annual usage value reduces to a units ranking "
+            f"({report.value_basis.unit_cost_nunique} distinct cost(s) across "
+            f"{report.n_skus} SKUs). The A/B/C split below is by volume.",
+            impact="supply real unit costs before using this to set service levels or "
+                   "cull the tail - a high-volume cheap SKU is not an A item"))
 
     kpis = (
         Kpi("SKUs classified", str(report.n_skus), rationale="Catalog coverage of the analysis"),

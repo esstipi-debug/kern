@@ -9,13 +9,15 @@ product per period (weekly by default) ready for the engine.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pandas as pd
 
 CANONICAL_REQUIRED = ("date", "product_id", "quantity")
-CANONICAL_OPTIONAL = ("unit_cost", "lead_time_days")
+# ``revenue`` is detected but never emitted: it exists only to recover a real
+# unit cost (revenue / quantity) from files that carry money but no cost column.
+CANONICAL_OPTIONAL = ("unit_cost", "lead_time_days", "lead_time_std", "revenue")
 
 ALIASES: dict[str, list[str]] = {
     "date": ["date", "order_date", "orderdate", "invoicedate", "invoice_date", "week", "period", "ds", "day", "timestamp", "datetime"],
@@ -23,11 +25,124 @@ ALIASES: dict[str, list[str]] = {
     "quantity": ["quantity", "qty", "sales", "demand", "units", "unit_sales", "unitsales", "order_qty", "orderqty", "volume", "sold", "units_sold"],
     "unit_cost": ["unit_cost", "unitcost", "price", "unitprice", "unit_price", "cost", "sell_price", "sellprice", "selling_price"],
     "lead_time_days": ["lead_time_days", "leadtimedays", "lead_time", "leadtime", "lead", "lt_days", "supplier_lead_time"],
+    # Lead-time dispersion (sigma_LT). Same alias set jobs/launch_readiness_job.py
+    # already accepts, so a file that works there works here too.
+    "lead_time_std": ["lead_time_std", "leadtimestd", "lead_std", "sigma_lead", "sigma_l"],
+    "revenue": ["revenue", "sales", "sales_amount", "amount", "net_sales", "line_total", "total"],
 }
 
 
 def _norm(value: object) -> str:
     return re.sub(r"[^a-z0-9]", "", str(value).lower())
+
+
+def _parse_dates(series: pd.Series) -> pd.Series:
+    """Parse a date column, tolerating a genuinely mixed-format column.
+
+    ``pd.to_datetime`` without ``format="mixed"`` locks onto whichever format
+    it infers from the column and silently turns every row in a DIFFERENT
+    format into NaT -- a real failure mode for messy client exports that mix
+    ISO and slash-delimited dates in the same column, not a hypothetical.
+    ``format="mixed"`` infers the format PER VALUE instead of once for the
+    whole column, so it does not drop rows just because an earlier row set a
+    different format.
+
+    Known, accepted limitation: a slash-delimited date where BOTH components
+    are <= 12 (e.g. "06/01/2025") is genuinely ambiguous without locale
+    context, and this defaults to month-first (the international/US
+    convention) absent one. That is a narrow, honest ambiguity -- it never
+    drops a row and it never corrupts an already-unambiguous date (ISO, or
+    any slash date with a component > 12) the way an earlier, reverted
+    ``dayfirst=True`` retry was found to do (it silently swapped month/day on
+    ~39% of ISO dates whenever a mixed column happened to lock onto a slash
+    format first).
+
+    A separate failure mode: a column mixing timezone-naive values (e.g.
+    "2025-01-06") with timezone-aware ones at different offsets (e.g.
+    "2025-01-07T10:00:00-05:00") cannot be homogenized into one dtype, and
+    pandas treats that as a structural failure rather than a per-value parse
+    failure that ``errors="coerce"`` can turn into NaT. On pandas>=3 this
+    raises ``ValueError: Mixed timezones detected`` before coercion ever
+    runs; on pandas 2.x (the repo's declared floor) it instead silently
+    returns an object-dtype Series with the aware value un-coerced, which
+    crashes the very next ``.dt`` access downstream. Both are recovered the
+    same way: re-parse with ``utc=True`` (which lets per-value coercion run
+    normally, converting every value -- naive or aware -- to its UTC
+    instant) and drop the tz so the result matches the naive dtype the rest
+    of this module assumes.
+    """
+    try:
+        parsed = pd.to_datetime(series, errors="coerce", format="mixed")
+    except ValueError as exc:
+        if "mixed timezone" not in str(exc).lower():
+            raise
+        parsed = None
+    if parsed is None or parsed.dtype == object:
+        parsed = pd.to_datetime(series, errors="coerce", format="mixed", utc=True).dt.tz_localize(None)
+    return parsed
+
+
+_LATAM_NUMBER_RE = re.compile(r"^-?\d{1,3}(?:\.\d{3})+,\d+$|^-?\d{1,3},(?:\d{1,2}|\d{4,})$")
+_US_THOUSANDS_NUMBER_RE = re.compile(r"^-?\d{1,3}(?:,\d{3})+\.\d+$")
+
+
+def _parse_quantities(series: pd.Series) -> pd.Series:
+    """Parsea la columna de cantidad, tolerando dos convenciones de separador
+    de miles/decimal ademas del punto decimal simple que ``pd.to_numeric``
+    ya entiende por su cuenta.
+
+    ``pd.to_numeric`` sin mas no reconoce NINGUNA convencion real de
+    separador de miles -- ni la europea/LATAM (punto de miles, coma decimal:
+    ``"1.234,56"``) ni la anglosajona (coma de miles, punto decimal:
+    ``"1,234.56"``) -- y las descarta en silencio como cantidad invalida.
+    Real, no hipotetico: un archivo con cantidades en formato LATAM (un
+    patron de suciedad "cosmetico" del arnes de pruebas) perdio el 31.67% de
+    sus filas en una corrida real, con cero perdida de fecha.
+
+    Primera pasada: el comportamiento actual, sin cambios -- riesgo cero de
+    regresion para cualquier valor que ya se parseaba bien. Segunda pasada:
+    reintenta SOLO los valores que fallaron, usando dos patrones mutuamente
+    excluyentes.
+
+    El patron LATAM tiene DOS ramas deliberadas: (a) al menos un grupo de
+    miles real (``\\.\\d{3}`` una o mas veces) seguido de coma decimal -- sin
+    ambiguedad posible; (b) sin ningun punto, una coma seguida de 1-2 o 4+
+    digitos -- tambien sin ambiguedad, porque un separador de miles
+    anglosajon real SIEMPRE trae grupos de EXACTAMENTE 3 digitos. La rama
+    (b) excluye a proposito el shape ``coma + exactamente 3 digitos``
+    (ej. ``"1,234"``): ese es el unico caso genuinamente ambiguo sin contexto
+    de locale (miles anglosajon sin parte decimal, o decimal LATAM de 3
+    cifras) y se deja caer como cantidad invalida en vez de adivinar -- la
+    misma disciplina que ``_parse_dates`` aplica a sus propias fechas
+    ambiguas. (Una version anterior de este patron con ``(?:\\.\\d{3})*``
+    -- cero o mas grupos -- degeneraba con cero grupos a aceptar
+    ``"1,234"`` como LATAM, precisamente el caso que se queria excluir; el
+    ``+`` en la rama (a) y la rama (b) separada cierran ese hueco.)
+    """
+    parsed = pd.to_numeric(series, errors="coerce")
+    unresolved = parsed.isna() & series.notna()
+    if not unresolved.any():
+        return parsed
+
+    candidates = series[unresolved].astype(str)
+
+    is_latam = candidates.str.match(_LATAM_NUMBER_RE)
+    if is_latam.any():
+        fixed = (
+            candidates[is_latam]
+            .str.replace(".", "", regex=False)
+            .str.replace(",", ".", regex=False)
+        )
+        parsed.loc[fixed.index] = pd.to_numeric(fixed, errors="coerce")
+
+    still_unresolved = parsed.isna() & series.notna()
+    remaining = series[still_unresolved].astype(str)
+    is_us_thousands = remaining.str.match(_US_THOUSANDS_NUMBER_RE)
+    if is_us_thousands.any():
+        fixed2 = remaining[is_us_thousands].str.replace(",", "", regex=False)
+        parsed.loc[fixed2.index] = pd.to_numeric(fixed2, errors="coerce")
+
+    return parsed
 
 
 @dataclass(frozen=True)
@@ -46,6 +161,12 @@ class IntakeQuality:
     n_dropped_bad_date: int
     n_dropped_bad_quantity: int
     n_dropped_negative_quantity: int
+    # Canonical column -> how many cells were filled from a default rather than read
+    # from the file. Dropped rows were never the only way a deliverable could rest on
+    # data that is not the client's: a column absent from the source is synthesized
+    # wholesale, and counting rows alone reports that as perfect quality.
+    synthesized: tuple[tuple[str, int], ...] = ()
+    n_canonical_rows: int = 0
 
     @property
     def n_dropped(self) -> int:
@@ -54,6 +175,15 @@ class IntakeQuality:
     @property
     def dropped_fraction(self) -> float:
         return self.n_dropped / self.n_raw if self.n_raw else 0.0
+
+    @property
+    def fully_synthesized_columns(self) -> tuple[str, ...]:
+        """Columns where every single cell came from a default."""
+        if not self.n_canonical_rows:
+            return ()
+        return tuple(
+            name for name, count in self.synthesized if count >= self.n_canonical_rows
+        )
 
 
 @dataclass(frozen=True)
@@ -113,13 +243,25 @@ def _normalize_core(
 
     m = mapping.mapping
     out = pd.DataFrame()
-    out["date"] = pd.to_datetime(df[m["date"]], errors="coerce")
+    out["date"] = _parse_dates(df[m["date"]])
     out["product_id"] = df[m["product_id"]].astype(str).str.strip()
-    out["quantity"] = pd.to_numeric(df[m["quantity"]], errors="coerce")
+    out["quantity"] = _parse_quantities(df[m["quantity"]])
     if "unit_cost" in m:
         out["unit_cost"] = pd.to_numeric(df[m["unit_cost"]], errors="coerce")
+    elif "revenue" in m and m["revenue"] != m["quantity"]:
+        # No cost column, but the file carries money: recover the real unit cost
+        # rather than falling back to a flat default (which makes any value-based
+        # ranking collapse onto units). Guarded against revenue *being* the
+        # quantity column -- 'sales' is an alias of both.
+        revenue = pd.to_numeric(df[m["revenue"]], errors="coerce")
+        qty = out["quantity"]
+        out["unit_cost"] = (revenue / qty.where(qty != 0)).replace(
+            [float("inf"), float("-inf")], None
+        )
     if "lead_time_days" in m:
         out["lead_time_days"] = pd.to_numeric(df[m["lead_time_days"]], errors="coerce")
+    if "lead_time_std" in m:
+        out["lead_time_std"] = pd.to_numeric(df[m["lead_time_std"]], errors="coerce")
 
     n_raw = len(out)
     after_date = out.dropna(subset=["date"])
@@ -143,19 +285,37 @@ def _normalize_core(
         agg["unit_cost"] = "mean"
     if "lead_time_days" in out.columns:
         agg["lead_time_days"] = "median"
+    if "lead_time_std" in out.columns:
+        agg["lead_time_std"] = "median"
 
     grouped = out.groupby(["product_id", "bucket"], as_index=False).agg(agg).rename(columns={"bucket": "date"})
-    if "unit_cost" not in grouped.columns:
-        grouped["unit_cost"] = default_unit_cost
-    else:
-        grouped["unit_cost"] = grouped["unit_cost"].fillna(default_unit_cost)
-    if "lead_time_days" not in grouped.columns:
-        grouped["lead_time_days"] = default_lead_days
-    else:
-        grouped["lead_time_days"] = grouped["lead_time_days"].fillna(default_lead_days)
+    synthesized: dict[str, int] = {}
+
+    def _fill(column: str, default: float) -> None:
+        """Fill a missing/blank optional column and record how many cells we invented."""
+        if column not in grouped.columns:
+            synthesized[column] = len(grouped)
+            grouped[column] = default
+            return
+        blank = int(grouped[column].isna().sum())
+        if blank:
+            synthesized[column] = blank
+            grouped[column] = grouped[column].fillna(default)
+
+    _fill("unit_cost", default_unit_cost)
+    _fill("lead_time_days", default_lead_days)
+    # 0.0 = "no dispersion known", which is what the engine assumed before this
+    # column existed — so a file without it behaves exactly as it did.
+    _fill("lead_time_std", 0.0)
+
+    quality = replace(
+        quality,
+        synthesized=tuple(sorted(synthesized.items())),
+        n_canonical_rows=len(grouped),
+    )
 
     grouped = grouped.sort_values(["product_id", "date"]).reset_index(drop=True)
-    return grouped[["date", "product_id", "quantity", "unit_cost", "lead_time_days"]], quality
+    return grouped[["date", "product_id", "quantity", "unit_cost", "lead_time_days", "lead_time_std"]], quality
 
 
 def normalize(
@@ -203,15 +363,20 @@ def prepare(
     overrides: dict[str, str] | None = None,
     period: str = "W",
     default_lead_days: float = 14.0,
+    default_unit_cost: float = 1.0,
 ) -> pd.DataFrame:
     """Load a client file and return canonical, period-aggregated demand.
 
-    ``default_lead_days`` fills lead time only where the file carries none
-    (missing column or blank cells) — per-SKU CSV values always win.
+    ``default_lead_days`` / ``default_unit_cost`` fill lead time and unit cost only
+    where the file carries none (missing column or blank cells) — per-SKU CSV values
+    always win, and a unit cost derived from revenue/quantity wins over the default.
     """
     raw = load_table(path)
     mapping = detect_columns(raw, overrides)
-    return normalize(raw, mapping, period=period, default_lead_days=default_lead_days)
+    return normalize(
+        raw, mapping, period=period, default_lead_days=default_lead_days,
+        default_unit_cost=default_unit_cost,
+    )
 
 
 def prepare_tracked(
@@ -220,10 +385,14 @@ def prepare_tracked(
     overrides: dict[str, str] | None = None,
     period: str = "W",
     default_lead_days: float = 14.0,
+    default_unit_cost: float = 1.0,
 ) -> tuple[pd.DataFrame, IntakeQuality]:
     """Same as ``prepare``, plus the ``IntakeQuality`` signal for a caller that
     needs to decide whether the result is trustworthy enough to hand back with
     unqualified confidence — see ``normalize_tracked``."""
     raw = load_table(path)
     mapping = detect_columns(raw, overrides)
-    return normalize_tracked(raw, mapping, period=period, default_lead_days=default_lead_days)
+    return normalize_tracked(
+        raw, mapping, period=period, default_lead_days=default_lead_days,
+        default_unit_cost=default_unit_cost,
+    )

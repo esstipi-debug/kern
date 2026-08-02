@@ -22,7 +22,12 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import linprog
 
-from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options
+from nosilo_core.guided import (
+    ExecutionOption,
+    GuidedOutcome,
+    as_options,
+    confidence_from_coverage,
+)
 
 # Rezaei's consistency index by a_BW (how many times the best beats the worst).
 _BWM_CI = {1: 0.0, 2: 0.44, 3: 1.0, 4: 1.63, 5: 2.30, 6: 3.0, 7: 3.73, 8: 4.47, 9: 5.23}
@@ -48,6 +53,11 @@ class BWMResult:
 class RankingResult:
     scores: dict[str, float]        # alternative -> closeness coefficient in [0,1]
     ranking: list[str] = field(default_factory=list)  # best-first
+    # Criteria dropped because every alternative scored the same on them: they carried
+    # weight but could not discriminate. Callers must disclose these in the
+    # deliverable -- a decision presented as "balanced across N criteria" when it
+    # actually rested on fewer is the bug this field exists to prevent.
+    ignored_criteria: tuple[str, ...] = ()
 
     @property
     def best(self) -> str:
@@ -124,7 +134,26 @@ def topsis_rank(
         raise ValueError("no alternatives to rank")
 
     names = list(alternatives)
-    matrix = np.array([[float(alternatives[a][c.name]) for c in criteria] for a in names])
+    full_matrix = np.array([[float(alternatives[a][c.name]) for c in criteria] for a in names])
+
+    # Dispersion gate: a criterion identical across every alternative contributes the
+    # same offset to all of them, so it cannot change the ranking -- it only makes the
+    # comparison look broader than it is. Drop it, renormalize, and report it.
+    if len(names) > 1:
+        spread_per_criterion = full_matrix.max(axis=0) - full_matrix.min(axis=0)
+        discriminates = ~np.isclose(spread_per_criterion, 0.0)
+    else:
+        discriminates = np.ones(len(criteria), dtype=bool)
+    ignored = tuple(c.name for c, keep in zip(criteria, discriminates) if not keep)
+    if not discriminates.any():
+        raise ValueError(
+            "no criterion can discriminate between the alternatives: every one of "
+            f"{[c.name for c in criteria]} is identical across all {len(names)} "
+            "alternatives, so any ranking would be arbitrary (insertion order). "
+            "Check that the scoring inputs were actually populated."
+        )
+    criteria = [c for c, keep in zip(criteria, discriminates) if keep]
+    matrix = full_matrix[:, discriminates]
 
     w = np.array([weights[c.name] for c in criteria], dtype=float)
     if w.sum() <= 0:
@@ -148,7 +177,7 @@ def topsis_rank(
 
     scores = {names[i]: float(closeness[i]) for i in range(len(names))}
     ranking = sorted(names, key=lambda a: scores[a], reverse=True)
-    return RankingResult(scores, ranking)
+    return RankingResult(scores, ranking, ignored_criteria=ignored)
 
 
 def award_outcome(
@@ -167,4 +196,9 @@ def award_outcome(
         )
         for a in ranking.ranking
     ]
-    return as_options(summary, options)
+    # An award decided on fewer criteria than it was asked to weigh is less certain
+    # than one decided on all of them; the default 1.0 claimed otherwise.
+    confidence = confidence_from_coverage(
+        ["ignored_criterion"] * len(ranking.ignored_criteria)
+    )
+    return as_options(summary, options, confidence=confidence)

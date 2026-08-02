@@ -264,7 +264,35 @@ def _cost_to_serve_prepare(request: JobRequest, provider: LLMProvider) -> Prepar
         return Prepared(status="needs_data", messages=[str(exc)])
     if not activities:
         return Prepared(status="needs_data", messages=["no segments found in the data"])
+    if not _has_cost_to_serve_signal(activities, request.params):
+        return Prepared(status="needs_data", messages=[
+            "cost to serve needs at least one activity cost driver: pass "
+            "cost_per_order, cost_per_unit_shipped and/or return_handling_per_unit "
+            "in params (or supply a freight column in the data). Without any of "
+            "them fulfillment, returns and overhead are all zero, so the "
+            "net-to-serve margin would just restate the gross margin."
+        ])
     return Prepared(status="ok", payload=activities)
+
+
+_CTS_RATE_KEYS = ("cost_per_order", "cost_per_unit_shipped", "return_handling_per_unit")
+
+
+def _has_cost_to_serve_signal(activities, params: dict) -> bool:
+    """True when *some* cost-to-serve driver exists, from params or from the data.
+
+    Zero rates are legitimate when the file already carries the money (freight is
+    sniffed into SegmentActivity.outbound_freight, overhead can be set by a
+    caller building activities directly) -- so this only blocks the case where
+    there is no cost signal anywhere.
+    """
+    if any(float(params.get(k, 0.0) or 0.0) > 0 for k in _CTS_RATE_KEYS):
+        return True
+    return any(
+        float(getattr(a, "outbound_freight", 0.0) or 0.0) > 0
+        or float(getattr(a, "overhead", 0.0) or 0.0) > 0
+        for a in activities
+    )
 
 
 def _cost_to_serve_run(payload: object, params: dict) -> Produced:
