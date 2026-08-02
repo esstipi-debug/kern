@@ -36,28 +36,67 @@ T01.criterio_de_aprobado:
    calcular con un punto solo"
 ```
 
-## Discrepancia abierta con el doc publicado
+## Cómo correrla
 
-`documentation/KERN_BATERIA_20_TAREAS.md` afirma **3 tareas humanas** (T15/T16/T17)
-y de ahí deriva el techo humano de **85% · 17/20**. La fuente marca `TAREA HUMANA`
-en **cinco**: T15–T19. El doc además atribuye a T18 "campos tipados del ledger",
-cuando T18 es *"sostener el plan frente a la presión interna"*.
+Las **15 comprobaciones de software están escritas** (`Puntaje.cobertura == 100%`).
+Cada una corre el pipeline real y devuelve cumple/parcial/no **con evidencia**, no
+una opinión. El punto de enganche es el decorador `@comprobacion("Txx")`.
 
-Con 5 tareas humanas, las alcanzables por software son **15, no 17**, y la
-aritmética del techo cambia. `tests/test_bateria_tareas.py` congela lo que dice la
-fuente para que corregir el doc sea una decisión deliberada — es una pieza de
-venta con números publicados, no se toca de costado.
+```python
+import src.bateria.comprobaciones  # NO es opcional -- ver abajo
+from src.bateria.scorer import puntuar
 
-## Qué falta
+p = puntuar()
+print(p.puntos, p.porcentaje)  # 5.5 27.5
+```
 
-Once comprobaciones: **T04–T10, T12, T13, T14, T20**. Cada una corre el pipeline
-real y devuelve cumple/parcial/no **con evidencia**, no una opinión. El único
-punto de enganche es el decorador `@comprobacion("Txx")` en `comprobaciones.py`;
-`puntuar()` reporta qué falta.
+> **Sin ese import el marcador da 0,0% y no falla nada.** `_REGISTRO` se puebla por
+> efecto secundario del decorador, y `scorer.py` importa `TareaBateria`/`cargar_bateria`
+> pero **no** `comprobaciones.py`. Sin él las 15 tareas salen `PENDIENTE`, que suma
+> cero por diseño, y el resultado es un 0,0% perfectamente silencioso. Si obtienes 0,
+> es esto — no es que no haya nada implementado.
 
-Hasta que estén, el 7,5% publicado se puntuó a mano y **no es reproducible**:
-ningún loop autónomo puede usarlo como condición de salida. La medición además es
-anterior a #193/#194, que cerraron cinco degradaciones silenciosas.
+### El puntaje de hoy
+
+**27,50% · 5,5/20**, medido sobre `73b912d` y reproducible: dos corridas seguidas dan
+el mismo vector de estados.
+
+| Estado | N | Tareas |
+|---|---|---|
+| `CUMPLE` | 2 | T01, T04 |
+| `PARCIAL` | 7 | T02, T06, T08, T09, T12, T13, T20 |
+| `NO_CUMPLE` | 4 | T05, T07, T10, T14 |
+| `SIN_DATO` | 2 | T03, T11 |
+| `FUERA_DE_ALCANCE` | 5 | T15–T19 |
+
+Dos cosas que ese número exige aclarar, o la próxima corrida parecerá una regresión:
+
+**Es el puntaje con `Contexto()` vacío.** T03 y T11 piden `sales_history.csv` y
+`stock_on_hand.csv` bajo un `data_root`; sin él son `SIN_DATO`, no `NO_CUMPLE`. Con
+datasets reales enchufados el número se mueve, y eso es correcto, no un fallo.
+
+**Nada lo congela.** Ningún test fija el agregado y la CI no corre la batería —
+`tests/test_bateria_scorer.py` cubre la aritmética, no el resultado. Un cambio en
+`jobs/` puede mover el marcador sin que nada se ponga rojo. Re-córrela antes de
+citarla.
+
+## Discrepancias abiertas con el doc publicado
+
+`documentation/KERN_BATERIA_20_TAREAS.md` está desalineado con la fuente en dos
+puntos. **Ninguno se corrige de costado**: es una pieza de venta con números
+publicados, y ajustar al alza el puntaje de una vara que uno mismo propuso es
+exactamente el movimiento que la destruye. Las dos son decisiones del dueño.
+
+**Cuántas tareas son humanas.** El doc afirma **3** (T15/T16/T17) y de ahí deriva
+el techo humano de 85% · 17/20. La fuente marca `TAREA HUMANA` en **cinco**:
+T15–T19. El doc además atribuye a T18 "campos tipados del ledger", cuando T18 es
+*"sostener el plan frente a la presión interna"*. Con 5 humanas, las alcanzables
+por software son **15, no 17**, y la aritmética del techo cambia — de ahí que
+`Puntaje` reporte los dos techos en paralelo. `tests/test_bateria_tareas.py`
+congela lo que dice la fuente.
+
+**Qué puntaje se publica.** El doc sigue en **7,5% · 1,5/20**: la corrida manual
+del 25-jul-2026, anterior a #193/#194 y a #203. El harness da 27,50%.
 
 ## Dos reglas de diseño que no se negocian
 
