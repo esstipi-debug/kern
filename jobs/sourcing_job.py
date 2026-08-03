@@ -47,6 +47,8 @@ _UNITS_COLS = ("units", "Units", "quantity", "Quantity", "qty")
 _DEFECTS_COLS = ("defects", "Defects", "rejects", "ppm_defects", "Defective_Units", "defective_units")
 _PRICE_COLS = ("unit_price", "Unit Price", "price", "Price", "unit_cost", "cost", "Unit_Price")
 _PRODUCT_COLS = ("product_id", "sku", "SKU", "Product_ID", "item", "Item", "material")
+_INVOICED_PRICE_COLS = ("invoiced_price", "Invoiced_Price", "billed_price", "invoice_unit_price",
+                        "actual_price", "precio_facturado")
 _PO_ID_COLS = ("po_number", "PO_Number", "po_id", "PO", "order_id", "Order_ID",
                "purchase_order", "Purchase_Order", "reference", "Reference")
 
@@ -211,7 +213,8 @@ def score_suppliers(
     # Carried, not scored: the declared lead time and where the measured one came from
     # travel to the scorecard so it can report the gap instead of picking one silently.
     pass_through = [
-        c for c in ("declared_lead_time_days", "lead_time_source", "po_id", "product_id")
+        c for c in ("declared_lead_time_days", "lead_time_source", "po_id", "product_id",
+                    "price_variance_pct")
         if c in df.columns
     ]
     for extra in pass_through:
@@ -468,6 +471,24 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
                 "excluded from the average price."
             )
         work["price"] = price
+        # What the supplier actually billed, when the export carries it. The ordered price
+        # is what was agreed; the gap between the two is the leak a scorecard is supposed to
+        # catch, and it is invisible while only one of the two numbers travels.
+        invoiced_col = _pick_column(df, params.get("invoiced_price_col"), _INVOICED_PRICE_COLS)
+        if invoiced_col:
+            invoiced = _as_float(df[invoiced_col], invoiced_col, "invoiced_price")
+            # Computed here, where both prices are side by side, so a single ready-made
+            # column travels to the scorecard. A zero ordered price has no percentage to
+            # take, and NaN keeps it out of the average instead of scoring it as 0% drift.
+            work["price_variance_pct"] = (
+                (invoiced - price) / price.where(price > 0) * 100.0
+            )
+        else:
+            notes.append(
+                f"No invoiced-price column was found next to '{price_col}', so the panel reports "
+                "the agreed price only; a supplier billing above its own quote is not visible. "
+                "Pass invoiced_price_col to score the deviation."
+            )
 
     scored = work[usable]
     n_open = len(work) - len(scored)
@@ -653,6 +674,7 @@ def write_operational(report: SourcingReport, out_dir: str | Path, client: str =
                 f" (+{len(c.skus_to_recalculate) - 20} mas)"
                 if len(c.skus_to_recalculate) > 20 else ""
             ),
+            "price_variance_pct": _cell(c.price_variance_pct, 2),
             "flagged_for_action": c.supplier in report.worst_for_action,
             # Traceability, capped so a 777-PO panel stays a readable cell. The cap is
             # spelled out in the cell itself - a silent truncation reads as "these are

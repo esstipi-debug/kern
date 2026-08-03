@@ -73,6 +73,10 @@ class SupplierScore:
     #: product identifier - an empty tuple means "nothing to recalculate here", and
     #: `lead_time_gap` is what says whether that is because the gap was small.
     skus_to_recalculate: tuple[str, ...] = ()
+    #: Average % the supplier BILLED above (or below) the price its own PO agreed to.
+    #: ``None`` when the export carried no invoiced price - a supplier nobody compared
+    #: is not a supplier that billed correctly, and 0.0 would say it was.
+    price_variance_pct: float | None = None
 
 
 #: How far the observed lead time has to sit from the declared one before the SS/ROP built
@@ -186,6 +190,9 @@ def score_supplier(supplier: str, deliveries: list[dict]) -> SupplierScore:
     fuentes = {str(d["lead_time_source"]) for d in deliveries if d.get("lead_time_source")}
     po_ids = tuple(str(d["po_id"]) for d in deliveries if d.get("po_id"))
     skus = tuple(sorted({str(d["product_id"]) for d in deliveries if d.get("product_id")}))
+    desvios = [
+        v for v in (_number(d, "price_variance_pct") for d in deliveries) if v is not None
+    ]
     quality = [
         (units, defects)
         for units, defects in ((_number(d, "units"), _number(d, "defects")) for d in deliveries)
@@ -241,6 +248,7 @@ def score_supplier(supplier: str, deliveries: list[dict]) -> SupplierScore:
         lead_time_source=fuente,
         scored_po_ids=po_ids,
         skus_to_recalculate=skus if stale else (),
+        price_variance_pct=(sum(desvios) / len(desvios)) if desvios else None,
     )
 
 

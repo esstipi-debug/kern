@@ -118,3 +118,17 @@ def test_una_brecha_inmaterial_no_manda_a_recalcular_nada():
     ])
     assert card.lead_time_gap == 1.0
     assert card.skus_to_recalculate == ()
+
+
+def test_el_desvio_de_precio_promedia_lo_facturado_contra_lo_pactado():
+    card = score_supplier("ACME", [
+        _entrega(10.0, price_variance_pct=8.0),
+        _entrega(10.0, price_variance_pct=2.0),
+    ])
+    assert card.price_variance_pct == pytest.approx(5.0)
+
+
+def test_sin_precio_facturado_el_desvio_es_none_no_cero():
+    """0.0 dice 'facturo exacto'. Nadie lo comparo: eso es None."""
+    card = score_supplier("ACME", [_entrega(10.0), _entrega(10.0)])
+    assert card.price_variance_pct is None
