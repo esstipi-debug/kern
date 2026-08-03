@@ -63,7 +63,7 @@ El harness responde exactamente esa pregunta, porque corre 13 de las 15 tareas *
 
 2 + 10 + 3 = 15. **Cierra.**
 
-**T10 está en el cubo de dato, pero arrastra un defecto propio que no espera al cliente:** hoy reporta el fill rate *del modelo* bajo la etiqueta de servicio *realizado*. Sin una sola línea de pedido, con SS=50 y sigma=40 sobre demanda de ciclo 500, `fill_rate_from_safety_stock` devuelve 99,6%. El criterio lo descalifica por nombre, y con razón: es un número que parece correcto y no lo es. Corregir la etiqueta no necesita dato de nadie.
+**T10 no tiene ningún campo de servicio realizado** — ni OTIF de salida, ni fill rate de línea, ni días de quiebre. El único OTIF que Kern calcula es de **entrada** (proveedor → nosotros, ver T09). Y el motor devuelve un fill rate sin una sola línea de pedido: con SS=50 y sigma=40 sobre demanda de ciclo 500, `fill_rate_from_safety_stock` da 99,6%. Es la beta que implica la política, no lo servido; el criterio lo descalifica por nombre.
 
 ### La evidencia, tarea por tarea
 
@@ -108,6 +108,7 @@ Dicho de otro modo: entre el 27,50% de hoy y el 60%, **no hay ningún dato del c
 
 Casos verificados en la corrida del 25-jul:
 
+- el **resumen ejecutivo** del entregable de inventario citaba `params['service_level']`, el *argumento por defecto*, no lo que corrió. Con niveles diferenciados por SKU abría con "at a 95% cycle service level" mientras la sección de supuestos —tres secciones más abajo, en el mismo documento— listaba los reales (90% y 99%). El comentario del propio código advertía del riesgo junto a la línea que lo cometía. Corregido; el resumen ahora los lee de los SKU
 - `lead_time_std` nunca pasado, aunque `src/policies.py` lo acepta
 - `bias()` calculado dentro de `compute_metrics` y descartado en la misma línea que lo recibe
 - `resale_value` y `unit_cost` defaulteados sin declararlo
