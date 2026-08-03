@@ -170,12 +170,16 @@ NO_PROFILE = "sin_perfil"
 class ToolVerdict:
     """Si una herramienta correría hoy con números del cliente, y qué le falta.
 
-    Los tres modos de falla viajan SEPARADOS porque cada uno tiene un arreglo
+    Los cuatro modos de falla viajan SEPARADOS porque cada uno tiene un arreglo
     distinto, y decirle al operador el equivocado le hace perder la reunión:
 
     - `missing`: el parámetro nunca se declaró. Hay que PEDIRLO.
     - `out_of_range`: está cargado pero es implausible (el clásico holding_rate
       de 25.0 en vez de 0.25). Pedirlo de nuevo no sirve: hay que CORREGIRLO.
+    - `malformed`: el parámetro está presente pero es del tipo equivocado (un
+      bool, un string, un dict donde va un escalar o viceversa). No sirve
+      pedirlo de nuevo ni corregir un número: hay que REEMPLAZAR el valor
+      basura por uno del tipo correcto.
     - `incomplete`: parámetro granular presente pero parcial. La corrida es
       válida y cubre menos -- por eso amarillo, nunca rojo.
     """
@@ -185,16 +189,43 @@ class ToolVerdict:
     missing: tuple[str, ...] = ()
     out_of_range: tuple[tuple[str, float], ...] = ()
     incomplete: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    malformed: tuple[tuple[str, str], ...] = ()
+
+
+_MALFORMED_REPR_MAX = 40
+
+
+def _is_malformed(spec: ParamSpec, value: object) -> bool:
+    """El valor está presente pero es del tipo equivocado para este parámetro.
+
+    Un escalar (`not spec.subkeys`) es malformado si es un bool -- un bool es
+    un int en Python y nunca es un valor legítimo para estos parámetros -- o
+    si no es un int/float en absoluto (string, None, lista...). Un granular
+    (`spec.subkeys`) es malformado si no es un dict: `_missing_subkeys` solo
+    puede juzgar completitud sobre un dict real, y un no-dict no es "una
+    corrida parcial legítima" sino datos rotos.
+    """
+    if spec.subkeys:
+        return not isinstance(value, dict)
+    return isinstance(value, bool) or not isinstance(value, (int, float))
+
+
+def _short_repr(value: object) -> str:
+    """Repr corto y acotado para que un valor gigante no reviente una celda CSV."""
+    text = repr(value)
+    if len(text) > _MALFORMED_REPR_MAX:
+        return text[:_MALFORMED_REPR_MAX]
+    return text
 
 
 def _out_of_range(spec: ParamSpec, value: object) -> bool:
-    """Un escalar fuera del rango plausible del catálogo.
+    """Un escalar numérico fuera del rango plausible del catálogo.
 
-    Los granulares y los no-numéricos no se evalúan por rango aquí: su
-    completitud se juzga en `_missing_subkeys`. Un bool es un int en Python y
-    nunca es un valor legítimo para estos parámetros, así que se rechaza.
+    Los granulares no se evalúan por rango aquí: su completitud se juzga en
+    `_missing_subkeys`. Los valores mal tipados (bool, string, etc.) ya fueron
+    descartados por `_is_malformed` antes de llegar acá.
     """
-    if spec.subkeys or isinstance(value, bool) or not isinstance(value, (int, float)):
+    if spec.subkeys:
         return False
     return not (spec.low <= float(value) <= spec.high)
 
@@ -227,6 +258,7 @@ def verdicts_for(tools: list, params: dict | None) -> tuple[ToolVerdict, ...]:
         missing: list[str] = []
         bad_range: list[tuple[str, float]] = []
         incomplete: list[tuple[str, tuple[str, ...]]] = []
+        bad_type: list[tuple[str, str]] = []
         for name in sorted(required):
             spec = spec_for(name)
             if name not in params:
@@ -238,6 +270,9 @@ def verdicts_for(tools: list, params: dict | None) -> tuple[ToolVerdict, ...]:
                 # capa de job lo reporta como fallo duro (ver jobs/discovery_brief_job.verify).
                 continue
             value = params[name]
+            if _is_malformed(spec, value):
+                bad_type.append((name, _short_repr(value)))
+                continue
             if _out_of_range(spec, value):
                 bad_range.append((name, float(value)))
                 continue
@@ -245,7 +280,7 @@ def verdicts_for(tools: list, params: dict | None) -> tuple[ToolVerdict, ...]:
             if faltan:
                 incomplete.append((name, faltan))
 
-        if missing or bad_range:
+        if missing or bad_range or bad_type:
             state = RED
         elif incomplete:
             state = YELLOW
@@ -256,5 +291,6 @@ def verdicts_for(tools: list, params: dict | None) -> tuple[ToolVerdict, ...]:
             missing=tuple(missing),
             out_of_range=tuple(bad_range),
             incomplete=tuple(incomplete),
+            malformed=tuple(bad_type),
         ))
     return tuple(out)
