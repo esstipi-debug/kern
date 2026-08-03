@@ -688,10 +688,10 @@ def excess_obsolete_options(report: object) -> GuidedOutcome:
         items = [draw_down, caps, clear_dead]
     else:
         items = [caps, draw_down, clear_dead]
-    return _ranked(
+    return _apply_quantity_audit(_ranked(
         f"E&O over {report.n_skus} SKU(s): {report.eo_value:,.0f} at risk - choose how to release it.",
         items,
-    )
+    ), report)
 
 
 def launch_readiness_options(report: object) -> GuidedOutcome:

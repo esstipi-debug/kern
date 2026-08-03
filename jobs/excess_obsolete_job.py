@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from jobs.quantity_audit import LEVEL, QuantityAudit, audit_quantities
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.excess_obsolete import DEAD, EXCESS, SkuEO, SkuStock, classify_excess_obsolete
 from src.export import write_summary_csv
@@ -42,6 +43,10 @@ class EOReport:
     target_cover_days: float
     dead_threshold_days: float
     summary: str
+    # Negative on-hand levels seen in the source file (jobs/quantity_audit.py).
+    # kind=LEVEL: any negative is material, because a negative stock level is a
+    # broken ledger, not a return.
+    quantity_audit: QuantityAudit | None = None
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -113,6 +118,7 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
         "stocks": stocks,
         "target_cover_days": float(params.get("target_cover_days", _DEFAULT_TARGET_COVER_DAYS)),
         "dead_threshold_days": float(params.get("dead_threshold_days", _DEFAULT_DEAD_THRESHOLD_DAYS)),
+        "audit": audit_quantities(df, quantity_col=on_hand, product_col=product, kind=LEVEL),
     }
 
 
@@ -145,6 +151,7 @@ def run(payload: dict) -> EOReport:
         eo_value=eo_value, eo_pct_of_value=(eo_value / total_value) if total_value > 0 else 0.0,
         lines=tuple(lines), target_cover_days=payload["target_cover_days"],
         dead_threshold_days=payload["dead_threshold_days"], summary=summary,
+        quantity_audit=payload.get("audit"),
     )
 
 
@@ -159,6 +166,8 @@ def verify(report: EOReport) -> list[str]:
         issues.append("E&O value is negative or non-finite")
     if not 0.0 <= report.eo_pct_of_value <= 1.0:
         issues.append(f"E&O share out of [0,1]: {report.eo_pct_of_value}")
+    if report.quantity_audit is not None:
+        issues.extend(report.quantity_audit.issues())
     return issues
 
 

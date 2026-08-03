@@ -152,3 +152,30 @@ def test_forecast_clean_data_passes():
     })
     report = forecast_job.run(forecast_job.prepare_records(df))
     assert forecast_job.verify(report) == []
+
+
+def test_excess_obsolete_blocks_on_any_negative_on_hand():
+    from jobs import excess_obsolete_job as eo
+
+    df = pd.DataFrame({
+        "product_id": ["A", "B"],
+        "on_hand": [-500.0, 100.0],
+        "daily_demand": [10.0, 10.0],
+        "unit_cost": [20.0, 20.0],
+    })
+    report = eo.run(eo.prepare_records(df))
+    issues = eo.verify(report)
+    assert any("negative" in issue and "on_hand" in issue for issue in issues)
+
+
+def test_excess_obsolete_clean_stock_passes():
+    from jobs import excess_obsolete_job as eo
+
+    df = pd.DataFrame({
+        "product_id": ["A", "B"],
+        "on_hand": [500.0, 100.0],
+        "daily_demand": [10.0, 10.0],
+        "unit_cost": [20.0, 20.0],
+    })
+    report = eo.run(eo.prepare_records(df))
+    assert eo.verify(report) == []
