@@ -347,6 +347,18 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
                 )
         lines.append("")
 
+    quality = report.intake_quality
+    if quality is not None and quality.n_dropped_negative_quantity:
+        lines.append("## Data quality\n")
+        lines.append(
+            f"- **{quality.n_dropped_negative_quantity} of {quality.n_raw} source row(s)** "
+            "carried a negative quantity and were excluded from this analysis. Kern cannot "
+            "tell a legitimate return from an inverted sign or a mis-mapped column, so "
+            "those rows were not reinterpreted. The demand above is therefore gross of "
+            "returns, not net."
+        )
+        lines.append("")
+
     lines.extend(_methodology_lines(report))
     lines.extend(_assumption_lines(report))
     lines.append("_Generated from the client's demand data. Figures are decision support; validate cost and lead-time inputs against your systems before ordering._")

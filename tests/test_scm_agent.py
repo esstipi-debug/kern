@@ -420,10 +420,16 @@ def test_orchestrator_unslugifiable_client_label_still_runs(tmp_path):
 
 def _demand_csv_with_bad_rows(tmp_path, *, n_good: int = 16, n_bad: int = 8) -> str:
     """A demand CSV for one SKU: n_good clean weekly rows + n_bad rows carrying
-    an invalid (negative) quantity — intake.py drops the bad ones silently;
+    an invalid (non-numeric) quantity — intake.py drops the bad ones silently;
     the escalation wiring is what's supposed to make that visible. Dates step by
     a real week (datetime + timedelta) so an arbitrarily large n_good/n_bad never
-    overflows into an invalid month/day and silently inflates the drop count."""
+    overflows into an invalid month/day and silently inflates the drop count.
+
+    Bad rows are non-numeric (not negative) on purpose: this fixture exercises the
+    generic intake_quality_threshold escalation path, which is orthogonal to the
+    negative-quantity gate added in jobs/qa.py (see tests/test_negative_quantity_gate.py).
+    A negative quantity here would trip that gate first and short-circuit before
+    ever reaching escalation, which is not what these two tests are about."""
     import datetime as _dt
 
     import pandas as pd
@@ -441,7 +447,7 @@ def _demand_csv_with_bad_rows(tmp_path, *, n_good: int = 16, n_bad: int = 8) -> 
     ]
     rows += [
         {"date": (bad_start + _dt.timedelta(weeks=i)).isoformat(), "product_id": "SKU-A",
-         "quantity": -5, "unit_cost": 12.5, "lead_time_days": 7}
+         "quantity": "invalid", "unit_cost": 12.5, "lead_time_days": 7}
         for i in range(n_bad)
     ]
     path = tmp_path / "messy_demand.csv"

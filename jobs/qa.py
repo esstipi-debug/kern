@@ -79,6 +79,25 @@ def verify(report: JobReport) -> list[str]:
     if report.budget is None and abs(sku_sum - report.requested_investment) > max(1.0, sku_sum * 1e-6):
         issues.append("requested investment != sum of SKU investments")
 
+    # Negative demand is not a valid quantity: a mis-loaded return, an inverted sign,
+    # or a mis-mapped column. jobs/intake.py already drops and counts those rows; this
+    # is what makes the count BLOCK instead of only decorating guided.residuals, which
+    # the orchestrator computes after this gate and so can never act on.
+    #
+    # Fraction-only by construction: intake drops negatives BEFORE the groupby
+    # (jobs/intake.py:271 vs :291), so a SKU can never surface here as net-negative.
+    quality = report.intake_quality
+    if quality is not None and quality.n_dropped_negative_quantity:
+        threshold = report.negative_quantity_threshold
+        share = quality.n_dropped_negative_quantity / quality.n_raw if quality.n_raw else 0.0
+        if share > threshold:
+            issues.append(
+                f"{quality.n_dropped_negative_quantity} of {quality.n_raw} source row(s) "
+                f"carry a negative quantity ({share * 100:.1f}%, over the "
+                f"{threshold * 100:.0f}% tolerance) - too many to read as returns; "
+                "verify the sign convention and the column mapping"
+            )
+
     return issues
 
 

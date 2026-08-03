@@ -80,6 +80,10 @@ class JobReport:
     # inventory_options() reads this to decide whether to escalate.
     intake_quality: IntakeQuality | None = None
     intake_quality_threshold: float = 0.20
+    # Share of source rows that may be negative before the negative-quantity gate
+    # (jobs/quantity_audit.py) blocks the deliverable. Distinct from
+    # intake_quality_threshold above, which covers ALL drop reasons together.
+    negative_quantity_threshold: float = 0.02
     # SKUs skipped because their aggregate demand was zero (see run()'s per-SKU
     # loop) - a real new/seasonal SKU with no activity, or a data-quality split
     # that zeroed one spelling's demand. Isolated, not fatal to the batch.
@@ -135,6 +139,7 @@ def run(
     target_fill_rate: float = 0.95,
     intake_quality: IntakeQuality | None = None,
     intake_quality_threshold: float = 0.20,
+    negative_quantity_threshold: float = 0.02,
 ) -> JobReport:
     """Run the inventory-optimization analysis over canonical demand.
 
@@ -299,6 +304,7 @@ def run(
         n_skus=len(recs), n_at_risk=sum(1 for r in recs if r.status == "high_bias"),
         n_intermittent=sum(1 for r in recs if r.intermittent),
         intake_quality=intake_quality, intake_quality_threshold=intake_quality_threshold,
+        negative_quantity_threshold=negative_quantity_threshold,
         n_skipped_zero_demand=sum(1 for r in recs if r.policy_kind == "skipped_zero_demand"),
         n_skipped_zero_cost=sum(1 for r in recs if r.policy_kind == "skipped_zero_cost"),
     )
