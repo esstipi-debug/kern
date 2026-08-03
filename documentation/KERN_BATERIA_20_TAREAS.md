@@ -1,6 +1,6 @@
 # Kern — Batería de 20 tareas del oficio
 
-> **Vara común para medir cualquier alternativa del mercado, incluida la propia.** Medición del 25-jul-2026.
+> **Vara común para medir cualquier alternativa del mercado, incluida la propia.** Medición del 02-ago-2026, corrida sobre el commit [`73b912d`](https://github.com/esstipi-debug/kern/commit/73b912d).
 >
 > **Qué es.** Una batería de 20 tareas del rol de supply chain manager, derivada de SCOR + CSCP + descripciones de puesto reales. Sirve como criterio único para puntuar Excel, un SaaS de planificación, un planificador humano y Kern con la misma regla.
 >
@@ -15,6 +15,7 @@ Tres reglas, aplicadas antes de puntuar nada:
 1. **La batería no se derivó de las capacidades de Kern.** El agente que la escribió tenía prohibido leer el repositorio. Si la vara sale del producto, mide el producto contra sí mismo.
 2. **Tres tareas son deliberadamente humanas** — T15 negociar con proveedor, T16 expediting telefónico, T17 racionar stock entre clientes — para que el techo de *cualquier* software quede visible en la misma tabla.
 3. **Kern se puntuó corrido, no descrito.** Con el venv del repo sobre Superstore, Olist y 777 órdenes de compra reales. Una capacidad descrita es una promesa; una capacidad corrida es un hecho.
+4. **El puntaje lo emite un harness, no un juicio.** `src/bateria/` corre las 20 tareas contra el criterio escrito por adelantado y devuelve cumple/parcial/no **con evidencia campo por campo**. Cualquiera con el repo obtiene el mismo número sobre el mismo commit.
 
 ---
 
@@ -24,11 +25,23 @@ Tres reglas, aplicadas antes de puntuar nada:
 |---|--:|---|
 | **Techo humano** (planificador con experiencia) | **85%** · 17/20 | las 3 tareas humanas son el techo estructural de todo software |
 | **Techo de Kern sin ningún cliente** | **42,5%** | ningún PR mueve esta cifra: falta el dato, no el código |
-| **Kern, corrido** | **7,5%** · 1,5/20 | cero tareas en "cumple" |
+| **Kern, corrido** | **27,50%** · 5,5/20 | 2 tareas cumplen · 7 quedan a medias |
 
-**Sobre el 7,5%.** El primer juez había puesto 22,5%. Dos lentes adversariales que auditaron fila por fila lo bajaron a 7,5% y ~5%. Se publica el número bajo, no el alto. Un puntaje inflado en una vara que uno mismo propone destruye la vara.
+**Sobre el 27,50%, y por qué subió.** La cifra anterior publicada era **7,5%**, puntuada a mano el 25-jul: el primer juez había puesto 22,5% y dos lentes adversariales que auditaron fila por fila lo bajaron a 7,5% y ~5%. Se publicó el número bajo, no el alto.
 
-**Advertencia de vigencia.** La medición es del 25-jul-2026, anterior a los merges #193 y #194, que cerraron cinco degradaciones silenciosas (ver [`KERN_AUTOPSIA_FALLAS.md`](KERN_AUTOPSIA_FALLAS.md)). El puntaje **no fue re-corrido** después de esos merges. Antes de usar esta cifra en una pieza pública, re-correr la batería y sellar el commit.
+Un número que sube en la vara que uno mismo propone merece desconfianza por defecto, así que la cadena está medida, no argumentada:
+
+| Momento | Puntaje | Quién puntúa |
+|---|--:|---|
+| 25-jul, código de entonces | 7,5% · 1,5/20 | juicio manual adversarial |
+| **#202**, mismo código, harness recién escrito | **10,0%** · 2,0/20 | harness mecánico |
+| #203 en adelante | 27,50% · 5,5/20 | harness mecánico |
+
+Sobre el **mismo código**, el harness cae a **media tarea** del veredicto adversarial. No es un juez más blando: la subida viene de [#203](https://github.com/esstipi-debug/kern/pull/203), que arregló los defectos de cableado que la propia batería destapó — la matemática que existía en `src/` y el job no recibía. El criterio no se movió: `tareas.json` está congelado por `tests/test_bateria_tareas.py`.
+
+**Sigue siendo un puntaje bajo, y esa es la lectura.** 27,50% sobre un techo de 85% son dos tareas cumplidas de veinte.
+
+**Vigencia.** Corrida el 02-ago-2026 sobre `73b912d`, posterior a #193/#194 (cinco degradaciones silenciosas cerradas, ver [`KERN_AUTOPSIA_FALLAS.md`](KERN_AUTOPSIA_FALLAS.md)) y a #203. Reproducible: dos corridas seguidas dan el mismo vector de estados. **Nada la congela** — ni un test ni la CI corren la batería, así que un cambio en `jobs/` puede moverla sin que nada se ponga rojo. Re-correr y sellar el commit antes de cada uso público.
 
 ---
 
@@ -43,6 +56,8 @@ De las 17 tareas alcanzables por software:
 | Devuelven un número apoyado en un supuesto propio | 3 | `unit_cost=1.0` en las 9.826 filas del canónico → el ABC sale por unidades y se rotula "annual value"; margen imputado 0,6·precio |
 
 **La conclusión comercial:** el cuello de botella no es el motor. Son **cuatro adjuntos por mail** — inventario, ventas, compras, proveedores — que desbloquean 12 de las 20 tareas. Eso convierte al intake en el producto, no en el trámite previo al producto.
+
+**Este desglose es el del 25-jul y no se re-derivó.** El harness marca hoy `SIN_DATO` en dos tareas (T03, T11), no en once — pero mide otra cosa: sólo marca falta de dato donde el check pide un dataset por ruta, mientras el conteo de arriba clasificó tarea por tarea a mano. **No afirmar ninguno de los dos como el vigente hasta re-derivarlo**; la conclusión comercial de los cuatro adjuntos no depende de cuál gane.
 
 ---
 
@@ -81,9 +96,9 @@ Lo que hace que funcione no es el puntaje de Kern: es que las tres tareas humana
 No se contradicen porque miden cosas distintas:
 
 - La auditoría de completitud (16-jul) mide **el motor contra su propio roadmap** — ~72% motor, ~50% e2e.
-- Esta batería mide **el entregable contra el criterio del oficio** — 7,5% corrido.
+- Esta batería mide **el entregable contra el criterio del oficio** — 27,50% corrido.
 
-Un motor al 72% de su roadmap puede entregar el 7,5% de lo que el oficio pide, y las dos cosas ser ciertas: el roadmap fue escrito por nosotros y el criterio del oficio no.
+Un motor al 72% de su roadmap puede entregar el 27,50% de lo que el oficio pide, y las dos cosas ser ciertas: el roadmap fue escrito por nosotros y el criterio del oficio no.
 
 ---
 

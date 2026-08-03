@@ -80,14 +80,15 @@ datasets reales enchufados el número se mueve, y eso es correcto, no un fallo.
 `jobs/` puede mover el marcador sin que nada se ponga rojo. Re-córrela antes de
 citarla.
 
-## Discrepancias abiertas con el doc publicado
+## Discrepancias con el doc publicado
 
-`documentation/KERN_BATERIA_20_TAREAS.md` está desalineado con la fuente en dos
+`documentation/KERN_BATERIA_20_TAREAS.md` estuvo desalineado con la fuente en dos
 puntos. **Ninguno se corrige de costado**: es una pieza de venta con números
 publicados, y ajustar al alza el puntaje de una vara que uno mismo propuso es
-exactamente el movimiento que la destruye. Las dos son decisiones del dueño.
+exactamente el movimiento que la destruye. Las dos son decisiones del dueño; una
+sigue abierta.
 
-**Cuántas tareas son humanas.** El doc afirma **3** (T15/T16/T17) y de ahí deriva
+**Cuántas tareas son humanas — ABIERTA.** El doc afirma **3** (T15/T16/T17) y de ahí deriva
 el techo humano de 85% · 17/20. La fuente marca `TAREA HUMANA` en **cinco**:
 T15–T19. El doc además atribuye a T18 "campos tipados del ledger", cuando T18 es
 *"sostener el plan frente a la presión interna"*. Con 5 humanas, las alcanzables
@@ -95,8 +96,10 @@ por software son **15, no 17**, y la aritmética del techo cambia — de ahí qu
 `Puntaje` reporte los dos techos en paralelo. `tests/test_bateria_tareas.py`
 congela lo que dice la fuente.
 
-**Qué puntaje se publica.** El doc sigue en **7,5% · 1,5/20**: la corrida manual
-del 25-jul-2026, anterior a #193/#194 y a #203. El harness da 27,50%.
+~~**Qué puntaje se publica.**~~ **Cerrada.** El doc publicaba 7,5% · 1,5/20 (corrida
+manual del 25-jul, anterior a #193/#194 y #203); se actualizó al 27,50% del harness
+con el commit sellado. La cadena que justifica la subida —el harness da 10,0% sobre
+el código de #202, a media tarea del veredicto manual— está en el propio doc.
 
 ## Dos reglas de diseño que no se negocian
 

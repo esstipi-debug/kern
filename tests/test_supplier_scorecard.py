@@ -97,3 +97,38 @@ def test_sigma_l_solo_sale_de_lead_times_medidos():
     assert lead_time_stds_for_skus([medido, declarado], {"SKU-1": "MEDIDO", "SKU-2": "DECLARADO"}) == {
         "SKU-1": stds["MEDIDO"]
     }
+
+
+def test_una_brecha_material_nombra_los_sku_cuyo_ss_rop_quedo_viejo():
+    """La observacion sin la lista de SKU no es una accion: nadie sabe que recalcular."""
+    card = score_supplier("ACME", [
+        _entrega(20.0, declared_lead_time_days=7.0, product_id="SKU-B"),
+        _entrega(24.0, declared_lead_time_days=7.0, product_id="SKU-A"),
+        _entrega(22.0, declared_lead_time_days=7.0, product_id="SKU-A"),
+    ])
+    assert card.lead_time_gap == 15.0
+    assert card.skus_to_recalculate == ("SKU-A", "SKU-B")
+
+
+def test_una_brecha_inmaterial_no_manda_a_recalcular_nada():
+    """22 vs 21 dias no justifica redimensionar: la lista tiene que quedar vacia."""
+    card = score_supplier("ACME", [
+        _entrega(22.0, declared_lead_time_days=21.0, product_id="SKU-A"),
+        _entrega(22.0, declared_lead_time_days=21.0, product_id="SKU-B"),
+    ])
+    assert card.lead_time_gap == 1.0
+    assert card.skus_to_recalculate == ()
+
+
+def test_el_desvio_de_precio_promedia_lo_facturado_contra_lo_pactado():
+    card = score_supplier("ACME", [
+        _entrega(10.0, price_variance_pct=8.0),
+        _entrega(10.0, price_variance_pct=2.0),
+    ])
+    assert card.price_variance_pct == pytest.approx(5.0)
+
+
+def test_sin_precio_facturado_el_desvio_es_none_no_cero():
+    """0.0 dice 'facturo exacto'. Nadie lo comparo: eso es None."""
+    card = score_supplier("ACME", [_entrega(10.0), _entrega(10.0)])
+    assert card.price_variance_pct is None
