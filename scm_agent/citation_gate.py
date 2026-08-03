@@ -321,6 +321,17 @@ EXCLUDED_CONCEPTS: dict[str, tuple[str, ...]] = {
     # Same false-friend class as returns/reverse_auction and
     # excess_obsolete/excess_capacity_and_inventory above.
     "cross_impact": ("cross_docking",),
+    # Surfaced 2026-07-24 when internal sources stopped occupying candidate slots
+    # (see knowledge._INTERNAL_SOURCES): both ride the bare "quality" token from
+    # this tool's own keywords ("data quality") and sit within MAX_HOPS of
+    # step_product_data_standard via a shared Heizer & Render book hub - the same
+    # false-friend class as PR #164. They are about *product/process* quality
+    # (COQ's prevention/appraisal/failure cost categories; QFD's customer-
+    # requirement design matrix), not about master-data or GTIN validation, which
+    # is all this tool does. The books graph carries no genuine MDM/data-quality
+    # source, so degrading to zero citations is the honest outcome here - pinned
+    # by test_data_quality_step_degrades_to_no_citations_on_the_demo_intake.
+    "data_quality": ("cost_of_quality", "house_of_quality"),
 }
 
 

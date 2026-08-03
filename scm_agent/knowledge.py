@@ -32,6 +32,23 @@ CODE_GRAPH = _REPO_ROOT / "graphify-out" / "graph.json"
 
 _LOG = logging.getLogger("linchpin.knowledge")
 
+# Sources that live in the books graph but are NOT external field literature -
+# they are Kern's own documents. They stay queryable (they are legitimate
+# internal knowledge), but they must never surface as a *citation* in a client
+# deliverable: the whole grounding claim is "we cite the field's published
+# sources", and citing ourselves next to Chopra & Meindl silently voids it.
+# Filtered in one place - see ``ground_citations_detailed``, the single
+# chokepoint every citation path funnels through.
+# Matched on the basename of the node's ``source_file``.
+_INTERNAL_SOURCES: frozenset[str] = frozenset({"KERN_ATLAS_SOMBREROS_SCM.md"})
+
+
+def _is_internal_source(concept: "Concept") -> bool:
+    """True if this node comes from one of Kern's own documents (never citable)."""
+    src = (concept.source or "").replace("\\", "/").rsplit("/", 1)[-1]
+    return src in _INTERNAL_SOURCES
+
+
 _TOKEN = re.compile(r"[a-z0-9]{3,}")
 
 
@@ -349,6 +366,8 @@ class KnowledgeBase:
         for qi, query in enumerate(queries):
             weight = 2.0 if qi == 0 else 3.0  # brief matches weigh more
             for hit in self.search(query, graph="books", limit=limit + 2):
+                if _is_internal_source(hit):
+                    continue
                 loc_bonus = 1 if hit.location else 0
                 shared = _tokens(query) & _tokens(f"{hit.label} {hit.id}")
                 weighted = sum(idf.get(t, 0.0) for t in shared) * weight
@@ -358,6 +377,8 @@ class KnowledgeBase:
                 if prev is None or rank[:2] > prev[:2]:
                     scored[key] = rank
         for advice in self.advise(brief, limit=2, domain_terms=domain_terms):
+            if _is_internal_source(advice.concept):
+                continue
             key = advice.concept.qualified_id
             # Score by the trigger's own specificity (highest IDF among its trigger
             # tokens) rather than a flat constant, so a rare, precise trigger (e.g.

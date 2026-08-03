@@ -101,6 +101,16 @@ from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
 
 
 def test_page_mentions_49_tools_and_26_sources_not_stale_numbers() -> None:
+    """La pagina no puede inflar el conteo de fuentes.
+
+    Esta aserto estuvo invertida: fijaba "33" y prohibia "25 curated" como si
+    fuera el numero viejo del README. Un recuento de knowledge/scm-books/graph.json
+    (2026-07-24) mostro lo contrario: el grafo tiene 35 source_file distintos, pero
+    9 son capitulos de un mismo volumen editado (Cohen & Dai) y 1 era el propio
+    KERN_ATLAS_SOMBREROS_SCM.md de Kern -- o sea que 33 contaba capitulos como
+    obras enteras y contaba un documento interno como literatura del campo. La
+    cifra externa honesta es 26. 33 no lo es.
+    """
     html = render_how_it_works_html()
     assert "49" in html
     assert "26 curated external sources" in html
