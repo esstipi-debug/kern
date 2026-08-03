@@ -176,14 +176,18 @@ See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
 - **Toda tool que ingiere cantidades audita los negativos**, y el gate vive en
   su `qa()`, no en `options()`: `tool.qa()` corre en `orchestrator.py:163` y
   `tool.options()` en la `176`, asi que una escalacion nacida en `options`
-  nunca puede bloquear un entregable. Cuatro de las cinco tools gateadas
-  (`abc_xyz`, `forecast`, `excess_obsolete`, `ddmrp`) usan `jobs/quantity_audit.py`
+  nunca puede bloquear un entregable. De las cinco tools gateadas, tres
+  (`abc_xyz`, `forecast`, `excess_obsolete`) usan `jobs/quantity_audit.py`
   para eso; `inventory_optimization` es la excepcion — al ser la unica que pasa
   por `jobs/intake.py`, su gate lee `IntakeQuality.n_dropped_negative_quantity`
-  directamente en vez de correr su propio audit. Si agregas una tool nueva con
-  columna de cantidad, usa `jobs/quantity_audit.py` (no repliques el atajo de
-  `inventory_optimization`): contá los negativos en `prepare()`, colgá el audit
-  del report y llamá a `audit.issues()` desde `verify()`.
+  directamente en vez de correr su propio audit; y `ddmrp` es otra excepcion —
+  bloquea con su propio chequeo directo de `adu < 0` en `verify()`, sin pasar
+  por el audit compartido, porque el ADU ya es una tasa por parte en el
+  reporte y no una columna de cantidad que contar. Si agregas una tool nueva
+  con columna de cantidad, usa `jobs/quantity_audit.py` (no repliques el
+  atajo de `inventory_optimization` ni el de `ddmrp`): contá los negativos en
+  `prepare()`, colgá el audit del report y llamá a `audit.issues()` desde
+  `verify()`.
 - **ASCII-only in console prints** (Windows cp1252 breaks on em dashes). Markdown
   files written utf-8 are fine.
 - **Gitignored & regenerable:** `graphify-out/`, `data/`, `deliverables/`, `.env`.

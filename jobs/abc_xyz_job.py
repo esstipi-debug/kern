@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from jobs.quantity_audit import QuantityAudit, audit_quantities
+from jobs.quantity_audit import DEFAULT_NEGATIVE_THRESHOLD, QuantityAudit, audit_quantities
 from src.classification import (
     SkuClassification,
     ValueBasis,
@@ -86,7 +86,7 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
         raise ValueError(f"could not find {', '.join(missing)}; pass them in params (columns seen: {cols})")
     audit = audit_quantities(
         df, quantity_col=demand, product_col=product,
-        threshold=float(params.get("negative_quantity_threshold", 0.02)),
+        threshold=float(params.get("negative_quantity_threshold", DEFAULT_NEGATIVE_THRESHOLD)),
     )
     items = aggregate_skus(df, product_col=product, demand_col=demand, cost_col=cost)
     return {"items": items, "audit": audit}

@@ -104,11 +104,15 @@ def _apply_intake_quality(outcome: GuidedOutcome, report: object) -> GuidedOutco
 def _apply_quantity_audit(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
     """State a residual whenever the source file carried ANY negative quantity.
 
-    Sibling of ``_apply_intake_quality``, for the four tools that read their own CSV
-    instead of going through jobs/intake.py. Disclosure only: the MATERIAL case is
-    already blocked upstream by the tool's qa() (jobs/quantity_audit.py), so anything
-    that reaches here is the sub-threshold case -- the one that used to vanish
-    entirely. A no-op when the report carries no audit or the file was clean.
+    Sibling of ``_apply_intake_quality``, wired into three of the tools that read
+    their own CSV instead of going through jobs/intake.py (abc_xyz, forecast,
+    excess_obsolete). Disclosure only: the MATERIAL case is already blocked
+    upstream by the tool's qa() (jobs/quantity_audit.py). For excess_obsolete
+    specifically, its audit is LEVEL-kind, where ``is_material`` and
+    ``disclosure()`` fire on the identical ``n_negative > 0`` condition, so
+    verify() always blocks first and this helper never actually runs for that
+    tool -- there is no sub-threshold case for it to surface. A no-op when the
+    report carries no audit or the file was clean.
     """
     audit = getattr(report, "quantity_audit", None)
     if audit is None:

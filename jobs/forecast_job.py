@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from jobs.quantity_audit import QuantityAudit, audit_quantities
+from jobs.quantity_audit import DEFAULT_NEGATIVE_THRESHOLD, QuantityAudit, audit_quantities
 from nosilo_core.guided import GuidedOutcome, Residual, recommend, verify_guided
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
@@ -115,7 +115,7 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
     work = df[cols].copy()
     audit = audit_quantities(
         work, quantity_col=qty_col, product_col=product_col,
-        threshold=float(params.get("negative_quantity_threshold", 0.02)),
+        threshold=float(params.get("negative_quantity_threshold", DEFAULT_NEGATIVE_THRESHOLD)),
     )
     work[qty_col] = pd.to_numeric(work[qty_col], errors="coerce").fillna(0.0).clip(lower=0.0)
 

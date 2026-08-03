@@ -14,6 +14,7 @@ import pandas as pd
 from scipy import stats as _sps
 
 from jobs.intake import IntakeQuality
+from jobs.quantity_audit import DEFAULT_NEGATIVE_THRESHOLD
 from src.classification import classify_portfolio
 from src.classification import service_levels as class_service_levels
 from src.constraints import InventoryItem, allocate_under_budget
@@ -83,7 +84,7 @@ class JobReport:
     # Share of source rows that may be negative before the negative-quantity gate
     # (jobs/quantity_audit.py) blocks the deliverable. Distinct from
     # intake_quality_threshold above, which covers ALL drop reasons together.
-    negative_quantity_threshold: float = 0.02
+    negative_quantity_threshold: float = DEFAULT_NEGATIVE_THRESHOLD
     # SKUs skipped because their aggregate demand was zero (see run()'s per-SKU
     # loop) - a real new/seasonal SKU with no activity, or a data-quality split
     # that zeroed one spelling's demand. Isolated, not fatal to the batch.
@@ -139,7 +140,7 @@ def run(
     target_fill_rate: float = 0.95,
     intake_quality: IntakeQuality | None = None,
     intake_quality_threshold: float = 0.20,
-    negative_quantity_threshold: float = 0.02,
+    negative_quantity_threshold: float = DEFAULT_NEGATIVE_THRESHOLD,
 ) -> JobReport:
     """Run the inventory-optimization analysis over canonical demand.
 

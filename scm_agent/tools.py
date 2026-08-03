@@ -60,6 +60,7 @@ from jobs import (
 from jobs.inventory_optimization import run as run_inventory
 from jobs.pricing import prepare_pricing
 from jobs.pricing import run as run_pricing
+from jobs.quantity_audit import DEFAULT_NEGATIVE_THRESHOLD
 from nosilo_core.llm import LLMProvider
 from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
 from nosilo_core.types import JobRequest
@@ -121,7 +122,7 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         target_fill_rate=params.get("target_fill_rate", 0.95),
         intake_quality=payload["intake_quality"],
         intake_quality_threshold=params.get("intake_quality_threshold", 0.20),
-        negative_quantity_threshold=params.get("negative_quantity_threshold", 0.02),
+        negative_quantity_threshold=params.get("negative_quantity_threshold", DEFAULT_NEGATIVE_THRESHOLD),
     )
     summary = (
         f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
