@@ -210,3 +210,13 @@ def test_excess_obsolete_level_rule_fires_where_the_flow_rule_would_not():
 
     report = eo.run(eo.prepare_records(df))
     assert any("negative" in issue and "on_hand" in issue for issue in eo.verify(report))
+
+
+def test_ddmrp_names_the_negative_adu():
+    from jobs import ddmrp_job
+
+    df = pd.DataFrame({"part_id": ["P1"], "adu": [-50.0], "dlt": [10.0]})
+    report = ddmrp_job.run(ddmrp_job.prepare_records(df))
+    issues = ddmrp_job.verify(report)
+    assert any("negative average daily usage" in issue for issue in issues)
+    assert any("P1" in issue for issue in issues)

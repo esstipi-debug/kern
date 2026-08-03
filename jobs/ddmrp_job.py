@@ -123,6 +123,15 @@ def verify(report: DdmrpReport) -> list[str]:
         issues.append("no parts to buffer")
     for p in report.parts:
         z = p.zones
+        # Check the CAUSE before the symptom: a negative ADU makes the zones
+        # invalid, and "invalid buffer zones" alone gives the operator no reason
+        # to go look at the usage column.
+        if z.adu < 0:
+            issues.append(
+                f"negative average daily usage for {p.part_id} ({z.adu:,.1f}) - "
+                "usage cannot be negative; verify the sign convention and the column mapping"
+            )
+            continue
         if not (z.tog >= z.toy >= z.tor >= 0):
             issues.append(f"invalid buffer zones for {p.part_id}")
     return issues
