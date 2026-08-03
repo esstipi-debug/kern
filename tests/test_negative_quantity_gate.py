@@ -179,3 +179,34 @@ def test_excess_obsolete_clean_stock_passes():
     })
     report = eo.run(eo.prepare_records(df))
     assert eo.verify(report) == []
+
+
+def test_excess_obsolete_level_rule_fires_where_the_flow_rule_would_not():
+    """The LEVEL/FLOW discriminator.
+
+    One negative row in 200, all for the same SKU: the negative share is 0.5%
+    (under FLOW's 2% tolerance) and the SKU's aggregate stays firmly positive
+    (+19,850), so the FLOW rule would find nothing material. Only kind=LEVEL
+    blocks here -- which is the whole point: a negative stock LEVEL is a broken
+    ledger, not a return. If kind=LEVEL is ever dropped from
+    jobs/excess_obsolete_job.py's audit_quantities call, this test fails and the
+    two tests above do not.
+    """
+    from jobs import excess_obsolete_job as eo
+
+    n = 200
+    on_hand = [100.0] * (n - 1) + [-50.0]
+    df = pd.DataFrame({
+        "product_id": ["A"] * n,
+        "on_hand": on_hand,
+        "daily_demand": [10.0] * n,
+        "unit_cost": [20.0] * n,
+    })
+    audit = eo.prepare_records(df)["audit"]
+    # Guard the premise: under FLOW this frame would be immaterial.
+    assert audit.n_negative == 1
+    assert audit.negative_fraction < 0.02
+    assert audit.n_entities_net_negative == 0
+
+    report = eo.run(eo.prepare_records(df))
+    assert any("negative" in issue and "on_hand" in issue for issue in eo.verify(report))
