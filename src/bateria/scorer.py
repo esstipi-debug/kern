@@ -8,11 +8,12 @@ signifique algo:
    infla el resultado: la matematica suele existir en ``src/`` y el job no le
    pasa los datos (patron verificado 4+ veces, ver KERN_AUTOPSIA_FALLAS.md).
 2. **Falta de dato no es falla de codigo.** Si el dataset no esta, el estado es
-   ``SIN_DATO``, no ``NO_CUMPLE``. Hay tareas que ningun PR mueve porque falta el
-   dato del cliente; confundir las dos cosas manda al loop a escribir codigo que
-   no cambia el puntaje. (Cuantas son exactamente esta sin re-derivar: el conteo
-   manual del 25-jul decia 11 y el harness marca 2, pero miden cosas distintas
-   — ver la seccion 2 de ``documentation/KERN_BATERIA_20_TAREAS.md``.)
+   ``SIN_DATO``, no ``NO_CUMPLE``; confundir las dos cosas manda al loop a
+   escribir codigo que no cambia el puntaje. Son **3** las que ningun PR mueve
+   (T03, T11, T10); las otras 10 no cumplen porque el entregable no emite el
+   campo que el criterio exige, con el dato ya puesto — re-derivado el
+   02-ago-2026, ver la seccion 2 de
+   ``documentation/KERN_BATERIA_20_TAREAS.md``.
 
 Aritmetica. El denominador es siempre 20 y el techo sale de la fuente: 5 tareas
 son humanas (T15-T19), luego 15 son alcanzables por software y el techo es 75%.
