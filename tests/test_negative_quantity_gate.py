@@ -5,7 +5,6 @@ Every test here fails against the pre-gate code.
 """
 
 import pandas as pd
-import pytest
 
 from scm_agent import Orchestrator
 
