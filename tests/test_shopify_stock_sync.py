@@ -78,3 +78,90 @@ def test_idempotency_key_ignores_dict_ordering():
     one = idempotency_key({"SKU-1": {"quantity": 1.0}, "SKU-2": {"quantity": 2.0}})
     two = idempotency_key({"SKU-2": {"quantity": 2.0}, "SKU-1": {"quantity": 1.0}})
     assert one == two
+
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from jobs.shopify_stock_sync import (  # noqa: E402
+    EVENT_TYPE,
+    SOURCE,
+    run_stock_sync,
+)
+from scm_agent.events import EventLedger  # noqa: E402
+
+
+def _ledger() -> EventLedger:
+    return EventLedger(path=":memory:")
+
+
+def test_no_divergence_emits_no_event():
+    report, event, emitted = run_stock_sync(_store({"SKU-1": 40}), {"SKU-1": 40}, ledger=_ledger())
+    assert report.changeset is None
+    assert event is None
+    assert emitted is False
+
+
+def test_empty_desired_emits_no_event():
+    report, event, emitted = run_stock_sync(_store({"SKU-1": 40}), {}, ledger=_ledger())
+    assert event is None
+    assert emitted is False
+
+
+def test_divergence_emits_an_event_keyed_on_the_changeset_hash():
+    store = _store({"SKU-1": 37})
+    report, event, emitted = run_stock_sync(store, {"SKU-1": 40}, ledger=_ledger())
+    assert emitted is True
+    assert event.type == EVENT_TYPE
+    assert event.source == SOURCE
+    assert event.dedup_key == report.changeset.content_hash
+
+
+def test_event_payload_carries_what_the_approval_surface_needs():
+    _report, event, _emitted = run_stock_sync(_store({"SKU-1": 37}), {"SKU-1": 40}, ledger=_ledger())
+    assert event.payload["idempotency_key"].startswith("shopify-stock-sync:")
+    assert event.payload["n_divergent"] == 1
+    assert event.payload["target"] == TARGET
+    assert event.payload["missing_skus"] == []
+
+
+def test_shopify_ahead_of_odoo_is_high_severity():
+    # Shopify says 45, Odoo says 40 -> five units that can be oversold.
+    _report, event, _emitted = run_stock_sync(_store({"SKU-1": 45}), {"SKU-1": 40}, ledger=_ledger())
+    assert event.severity == "high"
+
+
+def test_shopify_behind_odoo_is_medium_severity():
+    _report, event, _emitted = run_stock_sync(_store({"SKU-1": 37}), {"SKU-1": 40}, ledger=_ledger())
+    assert event.severity == "medium"
+
+
+def test_the_same_divergence_twice_in_one_window_emits_once():
+    ledger = _ledger()
+    ts = datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+    _r1, _e1, first = run_stock_sync(_store({"SKU-1": 37}), {"SKU-1": 40}, ledger=ledger, now=ts)
+    _r2, _e2, second = run_stock_sync(_store({"SKU-1": 37}), {"SKU-1": 40}, ledger=ledger,
+                                      now=ts + timedelta(minutes=5))
+    assert first is True
+    assert second is False
+
+
+def test_a_different_divergence_emits_again():
+    ledger = _ledger()
+    ts = datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+    _r1, _e1, first = run_stock_sync(_store({"SKU-1": 37}), {"SKU-1": 40}, ledger=ledger, now=ts)
+    _r2, _e2, second = run_stock_sync(_store({"SKU-1": 30}), {"SKU-1": 40}, ledger=ledger,
+                                      now=ts + timedelta(minutes=5))
+    assert first is True
+    assert second is True
+
+
+def test_a_persisting_divergence_emits_again_after_the_window():
+    # The ledger dedups within a 1h window; the cron runs every 4h, so a
+    # divergence that persists re-emits. That is a reminder, not noise.
+    ledger = _ledger()
+    ts = datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+    _r1, _e1, first = run_stock_sync(_store({"SKU-1": 37}), {"SKU-1": 40}, ledger=ledger, now=ts)
+    _r2, _e2, second = run_stock_sync(_store({"SKU-1": 37}), {"SKU-1": 40}, ledger=ledger,
+                                      now=ts + timedelta(hours=4))
+    assert first is True
+    assert second is True

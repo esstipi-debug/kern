@@ -20,9 +20,11 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from nosilo_core import writeback
+from scm_agent.events import Event, EventLedger
 
 #: writeback target for the Shopify inventory store.
 TARGET = "shopify_inventory"
@@ -90,3 +92,59 @@ def plan_stock_sync(store: Any, desired: dict[str, float]) -> SyncReport:
         reason="stock sync Odoo -> Shopify",
     )
     return SyncReport(changeset=changeset, missing_skus=tuple(missing))
+
+
+#: Event type routed to tier T2 in config/event_routing.yaml.
+EVENT_TYPE = "shopify_stock_divergence"
+SOURCE = "shopify_stock_sync"
+
+
+def _severity(changeset: writeback.Changeset) -> str:
+    """Rate the divergence: high when Shopify is ahead of Odoo.
+
+    Shopify holding more than Odoo means units that can be oversold.
+
+    Shopify lagging behind is a lost sale: annoying, recoverable, and it does
+    not put the shop in the position of selling stock it does not have.
+    """
+    for change in changeset.changes:
+        if float(change.before) > float(change.after):
+            return "high"
+    return "medium"
+
+
+def run_stock_sync(
+    store: Any,
+    desired: dict[str, float],
+    *,
+    ledger: EventLedger,
+    now: datetime | None = None,
+) -> tuple[SyncReport, Event | None, bool]:
+    """Plan the sync and emit one event describing what needs approving.
+
+    Returns the report, the event (None when there is nothing to propose) and
+    whether the ledger accepted it -- False means the same divergence was
+    already recorded within the dedup window.
+
+    ``now`` sets the event timestamp, which is what the dedup window is
+    measured against; passing it explicitly makes the dedup behaviour
+    deterministic in tests and correct in a replay.
+    """
+    report = plan_stock_sync(store, desired)
+    if report.changeset is None:
+        return report, None, False
+
+    event = Event(
+        type=EVENT_TYPE,
+        severity=_severity(report.changeset),
+        source=SOURCE,
+        dedup_key=report.changeset.content_hash,
+        payload={
+            "idempotency_key": report.changeset.idempotency_key,
+            "target": TARGET,
+            "n_divergent": len(report.changeset.changes),
+            "missing_skus": list(report.missing_skus),
+        },
+        **({"ts": now} if now is not None else {}),
+    )
+    return report, event, ledger.emit(event)
