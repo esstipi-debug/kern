@@ -233,18 +233,18 @@ def test_t05_es_parcial_cuando_solo_falta_una_pieza_de_la_oc():
     assert "fecha de pedido / llegada esperada" in r.evidencia
 
 
-def test_t06_es_parcial_el_plan_ya_cuantifica_el_exceso_pero_no_recomienda():
-    """Veredicto real despues del fix: el plan de compra rotula lo que el MOQ y el
-    multiplo de caja compraron de mas (238 u / 2.380 usd) y cuanta cobertura
-    agregan. Lo que falta es el go/no-go: nadie dice si conviene."""
+def test_t06_cumple_el_plan_cuantifica_el_exceso_y_ahora_recomienda():
+    """Veredicto real: el plan de compra rotula lo que el MOQ y el multiplo de caja
+    compraron de mas (238 u / 2.380 usd), cuanta cobertura agregan, y desde que
+    ``PurchasePlanLine`` trae ``constraint_verdict`` tambien dice si conviene."""
     r = _resultado(puntuar(), "T06")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.puntos == 0.5
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["mejor"] == "integrated_plan (purchase plan)"
     por_tool = {c["tool"]: c for c in r.detalle["candidatos"]}
     plan = por_tool["integrated_plan (purchase plan)"]
     assert plan["cuantifica_el_exceso"] is True
-    assert plan["faltantes"] == ["recomendacion si/no"]
+    assert plan["faltantes"] == []
     assert "238 u de mas" in plan["prueba_exceso"]
     assert "constraint_extra_units" in plan["prueba_exceso"]
 
@@ -384,20 +384,20 @@ def _candidato_devoluciones(**cambios) -> _CandidatoDevoluciones:
     return _CandidatoDevoluciones(**{**base, **cambios})
 
 
-def test_t20_es_parcial_distingue_el_motivo_pero_no_hay_tasa_sobre_ventas():
-    """Veredicto real despues del fix: la falla de producto ya no vuelve a stock
-    (va a refurbish) y arrastra su base reclamable al proveedor. Lo que sigue sin
-    poder calcularse es la TASA de devolucion: el job recibe solo devoluciones,
-    sin las ventas del periodo que serian el denominador."""
+def test_t20_cumple_distingue_el_motivo_y_mide_la_tasa_sobre_ventas():
+    """Veredicto real: la falla de producto ya no vuelve a stock (va a refurbish) y
+    arrastra su base reclamable al proveedor, y desde que ``returns_job.run`` acepta
+    ``units_sold`` la tasa se mide contra las ventas del periodo. El check exige el 1%
+    real, no el 50% que daria la participacion sobre las devoluciones."""
     r = _resultado(puntuar(), "T20")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.puntos == 0.5
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["distingue_motivos"] is True
     assert r.detalle["disposicion_por_motivo"] == {
         "falla de producto": "refurbish",
         "error de despacho": "restock",
     }
-    assert r.detalle["faltantes"] == ["tasa de devolucion (%) por motivo"]
+    assert r.detalle["faltantes"] == []
 
 
 def test_t20_cumple_con_tasa_por_motivo_destino_y_reclamo():
@@ -600,17 +600,17 @@ def _candidato_scorecard(**cambios) -> _CandidatoScorecard:
     return _CandidatoScorecard(**{**base, **cambios})
 
 
-def test_t09_es_parcial_ya_es_trazable_y_marca_a_los_peores():
-    """Veredicto real despues del fix: las OC que generaron cada nota viajan con el
-    scorecard y el fondo del ranking queda marcado para la revision. Lo que falta
-    necesita un dato nuevo: el precio facturado contra el precio de la OC."""
+def test_t09_cumple_es_trazable_marca_a_los_peores_y_compara_el_precio():
+    """Veredicto real: las OC que generaron cada nota viajan con el scorecard, el fondo
+    del ranking queda marcado para la revision, y desde que ``sourcing_job`` lee la
+    columna de precio facturado el panel trae el desvio contra el precio de la OC."""
     r = _resultado(puntuar(), "T09")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.puntos == 0.5
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["trazable_a_las_oc"] is True
     assert r.detalle["ranking"] == ["BETA", "ACME"]
     assert r.detalle["metricas"]["ACME"]["otif"] == 0.0
-    assert r.detalle["faltantes"] == ["desvio de precio % (OC vs facturado)"]
+    assert r.detalle["faltantes"] == []
 
 
 def test_t09_cumple_con_las_cuatro_metricas_ranking_y_trazabilidad():
@@ -655,18 +655,19 @@ def _candidato_lt(**cambios) -> _CandidatoLeadTime:
     return _CandidatoLeadTime(**{**base, **cambios})
 
 
-def test_t08_es_parcial_el_lt_medido_ya_gana_pero_falta_la_lista_de_recalculo():
-    """Veredicto real despues del fix: la columna de LT declarado ya no pisa la
-    medicion (ACME sigue en 22 d con y sin ella) y el scorecard trae desvio, P90 y
-    la brecha contra lo declarado. Lo que falta necesita un input que este job no
-    recibe: el mapa SKU -> proveedor para decir que SS/ROP recalcular."""
+def test_t08_cumple_el_lt_medido_gana_y_nombra_los_sku_a_recalcular():
+    """Veredicto real: la columna de LT declarado no pisa la medicion (ACME sigue en
+    22 d con y sin ella), el scorecard trae desvio, P90 y la brecha contra lo
+    declarado, y desde que ``sourcing_job`` lee la columna de producto tambien
+    nombra los SKU cuyo SS/ROP quedo dimensionado sobre el LT que las entregas
+    desmienten."""
     r = _resultado(puntuar(), "T08")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.puntos == 0.5
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["lt_medido_de_las_fechas"]["ACME"] == 22.0
     assert r.detalle["lt_con_columna_declarada"]["ACME"] == 22.0
     assert r.detalle["prevalece_lo_medido"] is True
-    assert r.detalle["faltantes"] == ["lista de SKU cuyo SS/ROP debe recalcularse"]
+    assert r.detalle["faltantes"] == []
 
 
 def test_t08_cumple_con_desvio_gap_y_lista_de_recalculo():

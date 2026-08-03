@@ -206,3 +206,34 @@ def reason_pareto(lines: list[ReturnLine]) -> list[tuple[str, float]]:
     for ln in lines:
         totals[ln.reason] = totals.get(ln.reason, 0.0) + ln.returned_units
     return sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
+
+
+def return_rate_by_reason(
+    lines: list[ReturnLine], units_sold: dict[str, float]
+) -> dict[str, float]:
+    """Returned units per reason as a % of units SOLD in the period.
+
+    This is the number ``reason_pareto`` is often mistaken for. The Pareto is a share
+    of the returns themselves: with one return line it reads 100% no matter how much
+    was sold. A rate needs the denominator the returns job is otherwise never given.
+
+    ``units_sold`` must carry every returned SKU - a mapping that omits one shrinks the
+    denominator and inflates every rate, so the missing SKUs are named rather than
+    skipped (same boundary refusal as ``build_purchase_plan``).
+    """
+    faltan = sorted({ln.product_id for ln in lines} - set(units_sold))
+    if faltan:
+        raise ValueError(
+            "cannot compute a return rate: no units sold given for returned SKU(s) "
+            f"{', '.join(faltan)}. Every returned SKU must appear in units_sold, or the "
+            "denominator is short and every rate reads high."
+        )
+    total = sum(units_sold.values())
+    if total <= 0:
+        raise ValueError(
+            "cannot compute a return rate: units_sold totals 0. A period with no sales "
+            "has no rate, and reporting 0% would say nothing came back."
+        )
+    return {
+        motivo: unidades / total * 100.0 for motivo, unidades in reason_pareto(lines)
+    }

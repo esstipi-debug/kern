@@ -1656,7 +1656,13 @@ def t20_flujo_de_devoluciones(_: Contexto) -> ResultadoTarea:
         "unit_cost": [20.0, 20.0],
         "resale_value": [30.0, 30.0],
     })
-    reporte = job.run(job.prepare_records(devoluciones))
+    # Las ventas del periodo son el denominador que la tasa necesita. Se pasan a
+    # proposito distintas de las devoluciones (500 vendidas contra 20 devueltas): si el
+    # entregable devolviera la participacion sobre las devoluciones en vez de la tasa
+    # sobre ventas, daria 50/50 y no 2%.
+    ventas = {"SKU-A": 500.0, "SKU-B": 500.0}
+    reporte = job.run(job.prepare_records(devoluciones), units_sold=ventas)
+    tasa = reporte.return_rate_by_reason or {}
     por_motivo = {d.line.reason: d.best.action for d in reporte.dispositions}
     recuperos = {d.line.reason: round(d.best.net_recovery_per_unit, 2) for d in reporte.dispositions}
 
@@ -1668,8 +1674,12 @@ def t20_flujo_de_devoluciones(_: Contexto) -> ResultadoTarea:
             | _campos_del_registro(job.ReturnsReport)
         )),
         disposicion_por_motivo=por_motivo,
-        # El job solo recibe devoluciones; sin ventas del periodo no hay denominador.
-        tasa_sobre_ventas=False,
+        # No alcanza con que el campo exista: tiene que ser una tasa SOBRE VENTAS. Con
+        # 10 u devueltas por motivo contra 1000 vendidas, la tasa es 1% por motivo; la
+        # participacion sobre las devoluciones daria 50%. Se exige el 1%.
+        tasa_sobre_ventas=bool(tasa) and all(
+            abs(v - 1.0) < 1e-9 for v in tasa.values()
+        ),
         prueba_motivos=(
             f"dos lotes identicos, uno por '{_MOTIVO_FALLA}' y otro por '{_MOTIVO_DESPACHO}', "
             f"reciben la misma disposicion {por_motivo} con el mismo recupero {recuperos} -- "

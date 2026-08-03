@@ -19,6 +19,7 @@ from src.reverse_logistics import (
     reason_pareto,
     recovered_value,
     recovery_rate,
+    return_rate_by_reason,
     returns_value_at_cost,
     supplier_claim_base,
     units_by_reason_kind,
@@ -142,3 +143,30 @@ def test_las_unidades_se_parten_por_tipo_de_motivo():
         REASON_PRODUCT_FAILURE: 4.0,
         REASON_DISPATCH_ERROR: 10.0,
     }
+
+
+# --- tasa de devolucion: el denominador que el Pareto no tiene -----------------
+
+def test_la_tasa_se_mide_sobre_ventas_no_sobre_las_devoluciones():
+    """Con 10 y 5 u devueltas contra 1000 vendidas, la tasa es 1% y 0,5%.
+
+    El reason_pareto de esos mismos lotes reparte 66,7% / 33,3% -- participacion
+    sobre las devoluciones. Confundirlos da una tasa de devolucion de dos digitos
+    en una operacion sana.
+    """
+    lineas = [_SELLABLE, _DAMAGED]
+    tasa = return_rate_by_reason(lineas, {"SKU-A": 600.0, "SKU-B": 400.0})
+    assert tasa == pytest.approx({"wrong_size": 1.0, "damaged": 0.5})
+    reparto = dict(reason_pareto(lineas))
+    assert reparto["wrong_size"] / sum(reparto.values()) == pytest.approx(2 / 3)
+
+
+def test_un_sku_devuelto_sin_ventas_declaradas_es_rechazado_por_nombre():
+    """Omitirlo achica el denominador y sube todas las tasas."""
+    with pytest.raises(ValueError, match="SKU-B"):
+        return_rate_by_reason([_SELLABLE, _DAMAGED], {"SKU-A": 600.0})
+
+
+def test_un_periodo_sin_ventas_no_tiene_tasa_no_tiene_cero():
+    with pytest.raises(ValueError, match="totals 0"):
+        return_rate_by_reason([_SELLABLE], {"SKU-A": 0.0})
