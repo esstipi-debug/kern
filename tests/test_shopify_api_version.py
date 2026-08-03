@@ -64,3 +64,66 @@ def test_check_served_is_silent_without_a_header_even_on_writes():
 
 def test_pinned_version_is_2024_10():
     assert PINNED_VERSION == "2024-10"
+
+
+from src.connectors.shopify_api_version import (  # noqa: E402
+    EXPIRED,
+    EXPIRING,
+    SUPPORTED,
+    check_pin,
+    discover_versions,
+    parse_versions,
+)
+
+_VERSIONS_PAYLOAD = {
+    "publicApiVersions": [
+        {"handle": "2025-10", "supported": True, "displayName": "2025-10"},
+        {"handle": "2026-01", "supported": True, "displayName": "2026-01"},
+        {"handle": "2026-07", "supported": True, "displayName": "2026-07"},
+        {"handle": "unstable", "supported": False, "displayName": "unstable"},
+    ]
+}
+
+
+def test_parse_versions_keeps_handle_and_support_flag():
+    versions = parse_versions(_VERSIONS_PAYLOAD)
+    assert {"handle": "2025-10", "supported": True} in versions
+    assert len(versions) == 4
+
+
+def test_parse_versions_rejects_an_unexpected_shape():
+    with pytest.raises(ValueError, match="publicApiVersions"):
+        parse_versions({"somethingElse": []})
+
+
+def test_parse_versions_rejects_entries_without_a_handle():
+    with pytest.raises(ValueError, match="handle"):
+        parse_versions({"publicApiVersions": [{"supported": True}]})
+
+
+def test_check_pin_reports_a_supported_version():
+    assert check_pin(parse_versions(_VERSIONS_PAYLOAD), pinned="2026-01") == SUPPORTED
+
+
+def test_check_pin_reports_the_oldest_supported_version_as_expiring():
+    assert check_pin(parse_versions(_VERSIONS_PAYLOAD), pinned="2025-10") == EXPIRING
+
+
+def test_check_pin_reports_an_absent_version_as_expired():
+    assert check_pin(parse_versions(_VERSIONS_PAYLOAD), pinned="2024-10") == EXPIRED
+
+
+def test_check_pin_reports_an_unsupported_version_as_expired():
+    assert check_pin(parse_versions(_VERSIONS_PAYLOAD), pinned="unstable") == EXPIRED
+
+
+def test_discover_versions_calls_graphql_and_parses():
+    calls = []
+
+    def fake_graphql(query, variables):
+        calls.append((query, variables))
+        return _VERSIONS_PAYLOAD
+
+    versions = discover_versions(fake_graphql)
+    assert len(versions) == 4
+    assert "publicApiVersions" in calls[0][0]

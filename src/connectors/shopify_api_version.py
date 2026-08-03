@@ -74,3 +74,60 @@ def check_served(response: Any, *, requested: str, is_write: bool) -> None:
     if is_write:
         raise ShopifyVersionDriftError(message)
     logger.warning(message)
+
+
+#: The pinned version is accessible and not the next one to be retired.
+SUPPORTED = "SOPORTADA"
+#: The pinned version is the oldest supported one, so it is next to be retired.
+EXPIRING = "POR_VENCER"
+#: The pinned version is not in the supported set. Shopify is falling forward.
+EXPIRED = "VENCIDA"
+
+VERSIONS_QUERY = """
+query PublicApiVersions {
+  publicApiVersions {
+    handle
+    supported
+    displayName
+  }
+}
+"""
+
+
+def parse_versions(data: dict) -> list[dict]:
+    """Normalise a ``publicApiVersions`` payload to ``[{handle, supported}]``."""
+    rows = data.get("publicApiVersions")
+    if not isinstance(rows, list):
+        raise ValueError(f"unexpected publicApiVersions payload: {data!r}")
+    versions = []
+    for row in rows:
+        handle = (row or {}).get("handle")
+        if not handle:
+            raise ValueError(f"publicApiVersions entry without a handle: {row!r}")
+        versions.append({"handle": str(handle), "supported": bool(row.get("supported"))})
+    return versions
+
+
+def check_pin(versions: list[dict], *, pinned: str) -> str:
+    """Classify the pin against the versions Shopify currently reports.
+
+    ``publicApiVersions`` carries no dates, only a support flag. Since Shopify
+    retires versions in release order, the OLDEST supported handle is by
+    construction the next one to go -- that is what EXPIRING means here.
+    """
+    supported = sorted(v["handle"] for v in versions if v["supported"])
+    if pinned not in supported:
+        return EXPIRED
+    if supported and pinned == supported[0]:
+        return EXPIRING
+    return SUPPORTED
+
+
+def discover_versions(graphql) -> list[dict]:
+    """Run ``publicApiVersions`` through any ``(query, variables) -> data`` callable.
+
+    Deliberately NOT called at import time or on every request: it needs the
+    network, and doing so would break the offline suite. Call it from
+    ``scripts/check_shopify_api_version.py`` on a quarterly cadence.
+    """
+    return parse_versions(graphql(VERSIONS_QUERY, {}))
