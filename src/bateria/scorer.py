@@ -8,14 +8,19 @@ signifique algo:
    infla el resultado: la matematica suele existir en ``src/`` y el job no le
    pasa los datos (patron verificado 4+ veces, ver KERN_AUTOPSIA_FALLAS.md).
 2. **Falta de dato no es falla de codigo.** Si el dataset no esta, el estado es
-   ``SIN_DATO``, no ``NO_CUMPLE``. 11 de las tareas estan bloqueadas por dato del
-   cliente y ningun PR las mueve; confundir las dos cosas manda al loop a
-   escribir codigo que no cambia el puntaje.
+   ``SIN_DATO``, no ``NO_CUMPLE``; confundir las dos cosas manda al loop a
+   escribir codigo que no cambia el puntaje. Son **3** las que ningun PR mueve
+   (T03, T11, T10); las otras 10 no cumplen porque el entregable no emite el
+   campo que el criterio exige, con el dato ya puesto — re-derivado el
+   02-ago-2026, ver la seccion 2 de
+   ``documentation/KERN_BATERIA_20_TAREAS.md``.
 
-Aritmetica dual (decision del 01-ago-2026). El denominador es siempre 20. Lo que
-esta en disputa es el *techo*: el doc publicado cuenta 3 tareas humanas (techo
-85%) y la fuente marca 5 (techo 75%). Se reportan los dos hasta que se corrija el
-doc — ver ``src/bateria/README.md``.
+Aritmetica. El denominador es siempre 20 y el techo sale de la fuente: 5 tareas
+son humanas (T15-T19), luego 15 son alcanzables por software y el techo es 75%.
+Entre el 01 y el 02-ago-2026 hubo una aritmetica dual porque el doc publicado
+contaba 3 humanas y derivaba un techo de 85%; el doc se corrigio y la dualidad
+se elimino. Si vuelve a aparecer un techo de 85% en algun lado, es el error
+viejo, no una segunda convencion valida.
 """
 
 from __future__ import annotations
@@ -30,9 +35,6 @@ from src.bateria import TareaBateria, cargar_bateria, tareas_humanas
 #: Puntos que suma cada estado. Un "parcial" vale medio punto, como en la corrida
 #: original (7,5% = 1,5/20).
 _PUNTOS = {"CUMPLE": 1.0, "PARCIAL": 0.5}
-
-#: Tareas humanas segun el doc publicado, para reportar su techo en paralelo.
-_HUMANAS_SEGUN_DOC = frozenset({"T15", "T16", "T17"})
 
 TOTAL_TAREAS = 20
 
@@ -117,7 +119,7 @@ def _fuera_de_alcance(tarea: TareaBateria) -> ResultadoTarea:
 
 @dataclass(frozen=True)
 class Puntaje:
-    """El marcador completo, con las dos aritmeticas en disputa."""
+    """El marcador completo: los 20 veredictos, sus puntos y el techo."""
 
     resultados: tuple[ResultadoTarea, ...]
 
@@ -132,13 +134,12 @@ class Puntaje:
 
     @property
     def techo_segun_fuente(self) -> float:
-        """Techo de cualquier software si 5 tareas son humanas (T15-T19)."""
+        """Techo estructural de cualquier software: 75%, porque la fuente marca
+        5 tareas como humanas (T15-T19). Se DERIVA de ``tareas_humanas()``, no
+        de una constante, para que marcar una ``TAREA HUMANA`` mas o menos en
+        ``tareas.json`` mueva el techo en vez de dejarlo mintiendo.
+        """
         return 100.0 * (TOTAL_TAREAS - len(tareas_humanas())) / TOTAL_TAREAS
-
-    @property
-    def techo_segun_doc(self) -> float:
-        """Techo que afirma el doc publicado, que cuenta 3 humanas."""
-        return 100.0 * (TOTAL_TAREAS - len(_HUMANAS_SEGUN_DOC)) / TOTAL_TAREAS
 
     def por_estado(self, estado: Estado) -> tuple[ResultadoTarea, ...]:
         return tuple(r for r in self.resultados if r.estado is estado)

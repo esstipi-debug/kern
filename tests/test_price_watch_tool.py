@@ -162,10 +162,10 @@ def test_registry_tool_count_matches_the_pinned_list():
     # supplier_management_tool() + network_design_tool() (41 -> 43, origin/main) merged with
     # hat_tension_tool() + hat_settlement_tool() (41 -> 43, this branch) -> 45.
     # flow_map_tool() added (46 -> 47). cross_impact_tool() added (47 -> 48).
-    # org_friction_tool() added (48 -> 49).
+    # org_friction_tool() and intake_scan_tool() both added (48 -> 50).
     # bump this count again the next time a tool is registered, same as every prior update.
     reg = tools.build_default_registry()
-    assert len(reg.list()) == 49
+    assert len(reg.list()) == 50
 
 
 def test_scm_agent_tools_module_imports_without_circular_import():

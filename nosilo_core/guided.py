@@ -171,6 +171,10 @@ COVERAGE_PENALTY: dict[str, float] = {
     "synthesized_critical_column": 0.20,
     # annual_value reduces to units because unit cost is flat (src/classification.py)
     "value_ranks_on_units": 0.25,
+    # most registered data tools have not declared a data contract, so a folder audit
+    # can only speak for a minority of them (jobs/intake_scan_job.py). The verdict it
+    # DOES give is sound; its COVERAGE of the registry is not.
+    "undeclared_tools_dominate": 0.25,
 }
 CONFIDENCE_FLOOR = 0.10
 

@@ -156,6 +156,70 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # safe outcome (see the module docstring), not a bug to "fix" with a
     # closer-sounding but wrong anchor.
     "data_quality": ("step_product_data_standard",),
+    # intake_scan (tool #49, raw-folder data-readiness audit; registered in
+    # Task 7 of the 2026-07-31 intake-scan plan, scm_agent/tools.py) is a
+    # DELIBERATE, measured absence from this map, same discipline as data_quality
+    # right above. Candidates checked, in order of preference, against the
+    # committed 3002-node graph (2026-07-31):
+    #   master_data_management   -- does not exist (kb.node_exists() False)
+    #   data_quality_dimensions  -- does not exist (kb.node_exists() False)
+    #   information_sharing      -- EXISTS, 2-hop closure 772 nodes (25.7%, under
+    #                                the ~40% ceiling) but REJECTED: it is 1 hop
+    #                                from TWO book hubs (book_chopra_meindl,
+    #                                book_christopher) plus supply_chain_resilience
+    #                                -- the exact shared-book-hub loophole the
+    #                                `risk` entry above documents. Replaying the
+    #                                real grounding call (kb.ground_citations_detailed
+    #                                with title "Data Readiness Scan" and the
+    #                                intake/data-audit keyword set now registered on
+    #                                the tool, limit=16) and gating on this anchor alone kept
+    #                                exactly 5 citations -- ALL FIVE from
+    #                                khan-supply-chain-resilience.txt on "Readiness,
+    #                                Response and Recovery" / "Post-Crisis Risk
+    #                                Readiness" / big-data-analytics chapters: a
+    #                                disaster-recovery book riding the "readiness"/
+    #                                "data" lexical overlap with this tool's own
+    #                                keywords, not a single citation about column
+    #                                structure, coverage or data quality. Same
+    #                                false-friend class as excess_obsolete/
+    #                                excess_capacity_and_inventory and returns/
+    #                                reverse_auction above -- confirmed by measurement,
+    #                                not assumed from the closure percentage alone.
+    #   step_product_data_standard -- EXISTS, 2-hop closure 195 nodes (6.5%), same
+    #                                anchor data_quality already uses; alone it kept
+    #                                ZERO citations against the same grounding call
+    #                                (matches data_quality's own documented zero
+    #                                immediately above). Combined with
+    #                                information_sharing it just inherits that
+    #                                anchor's 5 off-topic Khan citations -- adds
+    #                                nothing clean.
+    # No candidate both exists and stays on-topic, so intake_scan is intentionally
+    # left OUT of this map rather than anchored on a closer-sounding but wrong
+    # node. tests/test_citation_gate.py::test_every_registered_tool_has_a_concept_map
+    # carries intake_scan in its own documented exemption set
+    # (_NO_CONCEPT_MAP_BY_DESIGN); tests/test_packages_citations.py's
+    # _CORRECTLY_ZERO_TOOLS also lists intake_scan. Both were added by Task 7 when
+    # it registered the tool (see the Task 7 report) -- neither is pending.
+    #
+    # IMPORTANT (2026-07-31 fix wave, IMPORTANT 4): "omitted from this map" only
+    # controls what THIS module's filter_citations() would keep -- it is NOT what
+    # the shipped intake_scan deck actually cites (an omitted tool "omits every
+    # candidate citation" is true of filter_citations' own "no concept map"
+    # branch below, false of the deck a client receives). filter_citations is
+    # wired into jobs/integrated_plan.py, jobs/price_intelligence.py and
+    # jobs/repricing.py only; intake_scan is not among them, same gap as
+    # flow_map's own IMPORTANT-4 note above. The orchestrator
+    # (scm_agent/orchestrator.py, `_ground`) calls the UNGATED
+    # `knowledge.ground_citations(tool.intent_keywords, brief, limit=5)` directly
+    # for every single-tool run, intake_scan included. Measured consequence,
+    # replaying the real orchestrator call (KnowledgeBase().ground_citations(
+    # intake_scan_tool().intent_keywords, "", limit=5)): 3 of the 5 shipped
+    # citations are Khan et al. resilience-book noise -- "Post-Crisis Risk
+    # Readiness Regression", "Readiness Phase", and "Barriers to Adopting
+    # Sophisticated Risk Methods" (all khan-supply-chain-resilience.txt) -- the
+    # exact false-friend class measured and rejected above. Wiring
+    # filter_citations into intake_scan's path is a separate, larger-blast-radius
+    # change, not made here.
     "dea": ("data_envelopment_analysis",),
     "acceptance_sampling": ("acceptance_sampling", "single_sampling_plan"),
     "earned_value": ("earned_value_management",),

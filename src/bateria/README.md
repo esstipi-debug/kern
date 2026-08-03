@@ -47,7 +47,7 @@ import src.bateria.comprobaciones  # NO es opcional -- ver abajo
 from src.bateria.scorer import puntuar
 
 p = puntuar()
-print(p.puntos, p.porcentaje)  # 5.5 27.5
+print(p.puntos, p.porcentaje)  # 7.5 37.5
 ```
 
 > **Sin ese import el marcador da 0,0% y no falla nada.** `_REGISTRO` se puebla por
@@ -58,13 +58,13 @@ print(p.puntos, p.porcentaje)  # 5.5 27.5
 
 ### El puntaje de hoy
 
-**27,50% · 5,5/20**, medido sobre `73b912d` y reproducible: dos corridas seguidas dan
+**37,50% · 7,5/20**, medido sobre `b0b7bb6` y reproducible: dos corridas seguidas dan
 el mismo vector de estados.
 
 | Estado | N | Tareas |
 |---|---|---|
-| `CUMPLE` | 2 | T01, T04 |
-| `PARCIAL` | 7 | T02, T06, T08, T09, T12, T13, T20 |
+| `CUMPLE` | 6 | T01, T04, T06, T08, T09, T20 |
+| `PARCIAL` | 3 | T02, T12, T13 |
 | `NO_CUMPLE` | 4 | T05, T07, T10, T14 |
 | `SIN_DATO` | 2 | T03, T11 |
 | `FUERA_DE_ALCANCE` | 5 | T15–T19 |
@@ -75,28 +75,52 @@ Dos cosas que ese número exige aclarar, o la próxima corrida parecerá una reg
 `stock_on_hand.csv` bajo un `data_root`; sin él son `SIN_DATO`, no `NO_CUMPLE`. Con
 datasets reales enchufados el número se mueve, y eso es correcto, no un fallo.
 
+Medido: `scripts/build_bateria_datasets.py` arma `sales_history.csv` desde los
+extractos M5 CA_1 (3.049 SKU × 64 meses, precio real) y **T03 pasa a `CUMPLE`** —
+`42,50% · 8,5/20`. Es el mismo código: lo único que cambia es que el dato está.
+
+**T11 sigue `SIN_DATO` y no lo destraba ningún dataset del repo.** Pide `on_hand`
+por SKU, o sea una FOTO de inventario; M5, Superstore, Olist y DataCo son
+transaccionales y registran lo vendido, nunca lo que quedó en góndola.
+`daily_demand` sí sale de las ventas, pero derivar `on_hand` de ellas sería
+inventarlo. `python scripts/build_bateria_datasets.py --explicar-t11` imprime las
+columnas exactas que habría que pedirle a un cliente.
+
+> **`SIN_DATO` no es el conteo de "bloqueadas por dato".** Sólo lo marcan los dos
+> checks que piden un dataset por ruta; los otros 13 corren sobre fixtures donde el
+> dato **sí está** y aun así el campo exigido no sale. Por eso las bloqueadas de
+> verdad son **tres** (T03, T11 y T10, que necesita líneas de pedido reales) y las
+> otras **diez** son hueco de entregable: el dato perfecto no las mueve. Desglose
+> con evidencia en la §2 de `documentation/KERN_BATERIA_20_TAREAS.md`.
+
 **Nada lo congela.** Ningún test fija el agregado y la CI no corre la batería —
 `tests/test_bateria_scorer.py` cubre la aritmética, no el resultado. Un cambio en
 `jobs/` puede mover el marcador sin que nada se ponga rojo. Re-córrela antes de
 citarla.
 
-## Discrepancias abiertas con el doc publicado
+## Discrepancias con el doc publicado — ambas cerradas
 
-`documentation/KERN_BATERIA_20_TAREAS.md` está desalineado con la fuente en dos
-puntos. **Ninguno se corrige de costado**: es una pieza de venta con números
-publicados, y ajustar al alza el puntaje de una vara que uno mismo propuso es
-exactamente el movimiento que la destruye. Las dos son decisiones del dueño.
+`documentation/KERN_BATERIA_20_TAREAS.md` estuvo desalineado con la fuente en dos
+puntos, los dos resueltos el 02-ago-2026 como decisión del dueño y no de costado:
+es una pieza de venta con números publicados.
 
-**Cuántas tareas son humanas.** El doc afirma **3** (T15/T16/T17) y de ahí deriva
-el techo humano de 85% · 17/20. La fuente marca `TAREA HUMANA` en **cinco**:
-T15–T19. El doc además atribuye a T18 "campos tipados del ledger", cuando T18 es
-*"sostener el plan frente a la presión interna"*. Con 5 humanas, las alcanzables
-por software son **15, no 17**, y la aritmética del techo cambia — de ahí que
-`Puntaje` reporte los dos techos en paralelo. `tests/test_bateria_tareas.py`
-congela lo que dice la fuente.
+**Qué puntaje se publica.** Publicaba 7,5% · 1,5/20 (corrida manual del 25-jul,
+anterior a #193/#194 y #203); ahora el puntaje del harness con el commit sellado.
+La cadena que justifica la subida —el harness da 10,0% sobre el código de #202, a
+media tarea del veredicto manual— está en el propio doc.
 
-**Qué puntaje se publica.** El doc sigue en **7,5% · 1,5/20**: la corrida manual
-del 25-jul-2026, anterior a #193/#194 y a #203. El harness da 27,50%.
+**Cuántas tareas son humanas.** Afirmaba **3** (T15/T16/T17), techo 85% · 17/20.
+La fuente marca `TAREA HUMANA` en **cinco** (T15–T19), luego 15 alcanzables y
+techo **75%**. El doc además contaba a T18 entre las de "código puro" y la
+describía como "campos tipados del ledger", cuando T18 es *"sostener el plan
+frente a la presión interna"*. Corregido en los dos sitios.
+
+Con eso, `Puntaje` dejó de reportar dos techos: `techo_segun_doc` y
+`_HUMANAS_SEGUN_DOC` existían **sólo** para modelar el desacuerdo y se
+eliminaron. El techo vivo se deriva de `tareas_humanas()`, así que marcar una
+`TAREA HUMANA` de más o de menos en `tareas.json` lo mueve solo en vez de dejarlo
+mintiendo — y `tests/test_bateria_scorer.py` comprueba precisamente esa
+derivación, no el 75,0 literal.
 
 ## Dos reglas de diseño que no se negocian
 
