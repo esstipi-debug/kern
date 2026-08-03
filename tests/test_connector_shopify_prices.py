@@ -254,7 +254,12 @@ def test_client_read_tolerates_drift():
     assert variant["sku"] == "SKU-1"
 
 
-def test_client_write_refuses_to_run_under_drift():
+# NOTE: this does not prevent the write from reaching Shopify -- by the time
+# `check_served` inspects the response, the mutation has already executed there.
+# What it prevents is the CALLER treating a drifted write as if it had succeeded:
+# the raised error aborts the surrounding operation (e.g. a changeset commit stops
+# at the first failure) instead of letting bad data look confirmed.
+def test_client_write_raises_instead_of_succeeding_under_drift():
     http = _FakeHttp(_VARIANT_PAYLOAD)
     client = ShopifyClient(http)
     client.find_variant_by_sku("SKU-1")

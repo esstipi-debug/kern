@@ -163,7 +163,12 @@ def test_inventory_client_read_tolerates_drift():
     assert ShopifyInventoryClient(http).list_locations()[0]["name"] == "Main"
 
 
-def test_inventory_client_write_refuses_to_run_under_drift():
+# NOTE: this does not prevent the write from reaching Shopify -- by the time
+# `check_served` inspects the response, the mutation has already executed there.
+# What it prevents is the CALLER treating a drifted write as if it had succeeded:
+# the raised error aborts the surrounding operation (e.g. a changeset commit stops
+# at the first failure) instead of letting bad data look confirmed.
+def test_inventory_client_write_raises_instead_of_succeeding_under_drift():
     http = _FakeHttp(_SET_PAYLOAD, headers={"X-Shopify-API-Version": "2099-01"})
     with pytest.raises(ShopifyVersionDriftError):
         ShopifyInventoryClient(http).set_inventory(
