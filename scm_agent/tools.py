@@ -1304,12 +1304,12 @@ def _forecast_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
     if not request.data_path:
         return Prepared(status="needs_data", messages=["a demand-history CSV (sku, period, quantity) is required"])
     try:
-        series = forecast_job.prepare(request.data_path, request.params)
+        payload = forecast_job.prepare(request.data_path, request.params)
     except (ValueError, FileNotFoundError) as exc:
         return Prepared(status="needs_data", messages=[str(exc)])
-    if not series:
+    if not payload["series"]:
         return Prepared(status="needs_data", messages=["no demand series found in the data"])
-    return Prepared(status="ok", payload=series)
+    return Prepared(status="ok", payload=payload)
 
 
 def _forecast_run(payload: object, params: dict) -> Produced:
@@ -1346,7 +1346,7 @@ def forecast_tool() -> Tool:
         ).write_all(out_dir),
         # The forecasting-policy decision IS a set of ranked, executable choices -> surface them
         # as the guided OPTIONS outcome on success (recommended default flagged).
-        options=lambda report: report.outcome,
+        options=tool_options.forecast_options,
     )
 
 

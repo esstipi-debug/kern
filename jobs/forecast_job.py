@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from jobs.quantity_audit import QuantityAudit, audit_quantities
 from nosilo_core.guided import GuidedOutcome, Residual, recommend, verify_guided
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
@@ -80,6 +81,10 @@ class ForecastJobReport:
     mean_mase: float
     outcome: GuidedOutcome
     summary: str
+    # Negative quantities seen in the source file, counted BEFORE the clip in
+    # prepare_records floors them (jobs/quantity_audit.py). None when the caller
+    # passed a bare series dict.
+    quantity_audit: QuantityAudit | None = None
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -88,11 +93,12 @@ def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]
     return next((c for c in candidates if c in df.columns), None)
 
 
-def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict[str, list[float]]:
+def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
     """Sniff the demand columns and build one cleaned, period-ordered series per SKU.
 
     Required columns: product and quantity (raises ValueError listing any missing). A period
-    column, when present, orders each SKU's series. Missing demand -> 0; negatives floored.
+    column, when present, orders each SKU's series. Missing demand -> 0; negatives floored
+    and counted (see ``quantity_audit``). Returns the payload dict ``{"series", "audit"}``.
     """
     params = params or {}
     product_col = _pick_column(df, params.get("product_col"), _PRODUCT_COLS)
@@ -107,6 +113,10 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict[str, l
 
     cols = [product_col, qty_col] + ([period_col] if period_col else [])
     work = df[cols].copy()
+    audit = audit_quantities(
+        work, quantity_col=qty_col, product_col=product_col,
+        threshold=float(params.get("negative_quantity_threshold", 0.02)),
+    )
     work[qty_col] = pd.to_numeric(work[qty_col], errors="coerce").fillna(0.0).clip(lower=0.0)
 
     series_by_name: dict[str, list[float]] = {}
@@ -116,10 +126,10 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict[str, l
         series_by_name[str(product)] = [float(v) for v in group[qty_col].tolist()]
     if not series_by_name:
         raise ValueError("no demand series found in the data")
-    return series_by_name
+    return {"series": series_by_name, "audit": audit}
 
 
-def prepare(data_path: str, params: dict | None = None) -> dict[str, list[float]]:
+def prepare(data_path: str, params: dict | None = None) -> dict:
     """Read a demand-history CSV and build the cleaned per-SKU series."""
     return prepare_records(pd.read_csv(data_path), params)
 
@@ -210,12 +220,21 @@ def _dispersion(fc) -> float | None:
 
 
 def run(
-    series_by_name: dict[str, list[float]],
+    payload: dict,
     *,
     holdout_fraction: float = 0.25,
     min_backtest_periods: int = 4,
 ) -> ForecastJobReport:
-    """Segment, auto-forecast + backtest each SKU, and present ranked forecasting policies."""
+    """Segment, auto-forecast + backtest each SKU, and present ranked forecasting policies.
+
+    Accepts either the ``prepare_records`` payload (``{"series", "audit"}``) or a bare
+    ``{name: series}`` dict, the older shape still used by examples/ and hand-built tests.
+    """
+    if "series" in payload and isinstance(payload.get("series"), dict):
+        series_by_name, audit = payload["series"], payload.get("audit")
+    else:
+        series_by_name, audit = payload, None
+
     seg = segment(series_by_name)
     skus: list[SkuForecast] = []
     for f in seg.items:
@@ -274,6 +293,7 @@ def run(
         mean_mase=mean_mase,
         outcome=outcome,
         summary=summary,
+        quantity_audit=audit,
     )
 
 
@@ -284,6 +304,8 @@ def verify(report: ForecastJobReport) -> list[str]:
         issues.append("no SKUs to forecast")
     if not all(math.isfinite(s.forecast) for s in report.skus):
         issues.append("a forecast is not finite")
+    if report.quantity_audit is not None:
+        issues.extend(report.quantity_audit.issues())
     return issues
 
 

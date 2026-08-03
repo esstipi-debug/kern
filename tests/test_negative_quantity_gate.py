@@ -122,3 +122,33 @@ def test_abc_xyz_clean_data_passes():
     })
     report = abc_xyz_job.run(abc_xyz_job.prepare_records(df))
     assert abc_xyz_job.verify(report) == []
+
+
+def test_forecast_counts_negatives_before_flooring_them():
+    from jobs import forecast_job
+
+    df = pd.DataFrame({
+        "product_id": ["A"] * 6,
+        "period": range(6),
+        "quantity": [100, 100, 100, -400, 100, 100],
+    })
+    payload = forecast_job.prepare_records(df)
+    assert payload["audit"].n_negative == 1
+    assert payload["audit"].negative_total == -400.0
+    # The clip stays: the SERIES is still floored, it is just no longer silent.
+    assert payload["series"]["A"] == [100.0, 100.0, 100.0, 0.0, 100.0, 100.0]
+
+    report = forecast_job.run(payload)
+    assert any("negative" in issue for issue in forecast_job.verify(report))
+
+
+def test_forecast_clean_data_passes():
+    from jobs import forecast_job
+
+    df = pd.DataFrame({
+        "product_id": ["A"] * 6,
+        "period": range(6),
+        "quantity": [100, 105, 95, 100, 102, 98],
+    })
+    report = forecast_job.run(forecast_job.prepare_records(df))
+    assert forecast_job.verify(report) == []

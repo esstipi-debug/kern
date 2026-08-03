@@ -43,7 +43,8 @@ def test_prepare_builds_one_ordered_series_per_sku(tmp_path):
     csv = tmp_path / "demand.csv"
     _demand_df().to_csv(csv, index=False)
 
-    series = fj.prepare(str(csv), {})
+    payload = fj.prepare(str(csv), {})
+    series = payload["series"]
 
     assert set(series) == {"A", "B", "C", "D"}
     assert series["A"] == _SMOOTH                      # order preserved by period
@@ -55,9 +56,11 @@ def test_prepare_cleans_missing_and_negative_to_zero(tmp_path):
     csv = tmp_path / "d.csv"
     df.to_csv(csv, index=False)
 
-    series = fj.prepare(str(csv), {})
+    payload = fj.prepare(str(csv), {})
+    series = payload["series"]
 
     assert series["A"] == [5.0, 0.0, 0.0]              # NaN -> 0, negative floored to 0
+    assert payload["audit"].n_negative == 1             # the one negative was counted, not just floored
 
 
 def test_prepare_errors_without_required_columns(tmp_path):

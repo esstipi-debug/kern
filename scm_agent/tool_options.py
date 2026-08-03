@@ -123,6 +123,12 @@ def _apply_quantity_audit(outcome: GuidedOutcome, report: object) -> GuidedOutco
     )])
 
 
+def forecast_options(report: object) -> GuidedOutcome:
+    """The forecast job builds its own ranked outcome inside run(); this only adds the
+    intake-side residual the tool cannot know about from its own numbers."""
+    return _apply_quantity_audit(report.outcome, report)
+
+
 def inventory_options(report: object) -> GuidedOutcome:
     sl = report.params.get("service_level", 0.95)
     n_review = sum(1 for r in report.recommendations if getattr(r, "status", "ok") != "ok")
