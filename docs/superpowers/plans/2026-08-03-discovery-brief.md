@@ -21,6 +21,7 @@
 - **`nosilo_core` es externo y pineado.** No editar nada bajo `nosilo_core/`; si algo parece necesitarlo, es señal de que el diseño se torció.
 - **Correr la suite completa antes del último commit.** `python -m pytest -q` desde la raíz del worktree.
 - **Comandos:** usar el intérprete del venv del repo principal: `/c/Users/Gamer/Music/scm/supply-chain-optimization/.venv/Scripts/python.exe`. En los ejemplos aparece como `python`.
+- **El lint de CI es `ruff check src tests examples`** — incluye `tests/`. Los bloques de import que aparecen en este plan son ilustrativos: importá solo lo que cada archivo realmente usa. Un import sin usar en un test pone la rama en rojo igual que uno en `src/`. Correr `ruff check src tests examples` antes de cada commit.
 
 ## Estructura de archivos
 
@@ -294,7 +295,7 @@ git commit -m "feat(discovery_brief): catalogo de parametros indexado por parame
 
 **Interfaces:**
 - Consumes: `ParamSpec`, `spec_for` de la Tarea 1.
-- Produces: constantes `GREEN = "verde"`, `YELLOW = "amarillo"`, `RED = "rojo"`, `UNDECLARED = "no_declarado"`, `NO_PROFILE = "sin_perfil"`; `ParamVerdict`; `ToolVerdict`; `verdicts_for(tools: list, params: dict | None) -> tuple[ToolVerdict, ...]`.
+- Produces: constantes `GREEN = "verde"`, `YELLOW = "amarillo"`, `RED = "rojo"`, `UNDECLARED = "no_declarado"`, `NO_PROFILE = "sin_perfil"`; `ToolVerdict`; `verdicts_for(tools: list, params: dict | None) -> tuple[ToolVerdict, ...]`.
 
 `params` es el dict que sale de `ClientProfile.as_params()`, o `None` cuando el cliente no tiene perfil.
 
