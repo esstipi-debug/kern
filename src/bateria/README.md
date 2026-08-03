@@ -47,7 +47,7 @@ import src.bateria.comprobaciones  # NO es opcional -- ver abajo
 from src.bateria.scorer import puntuar
 
 p = puntuar()
-print(p.puntos, p.porcentaje)  # 5.5 27.5
+print(p.puntos, p.porcentaje)  # 7.5 37.5
 ```
 
 > **Sin ese import el marcador da 0,0% y no falla nada.** `_REGISTRO` se puebla por
@@ -58,13 +58,13 @@ print(p.puntos, p.porcentaje)  # 5.5 27.5
 
 ### El puntaje de hoy
 
-**27,50% · 5,5/20**, medido sobre `73b912d` y reproducible: dos corridas seguidas dan
+**37,50% · 7,5/20**, medido sobre `b0b7bb6` y reproducible: dos corridas seguidas dan
 el mismo vector de estados.
 
 | Estado | N | Tareas |
 |---|---|---|
-| `CUMPLE` | 2 | T01, T04 |
-| `PARCIAL` | 7 | T02, T06, T08, T09, T12, T13, T20 |
+| `CUMPLE` | 6 | T01, T04, T06, T08, T09, T20 |
+| `PARCIAL` | 3 | T02, T12, T13 |
 | `NO_CUMPLE` | 4 | T05, T07, T10, T14 |
 | `SIN_DATO` | 2 | T03, T11 |
 | `FUERA_DE_ALCANCE` | 5 | T15–T19 |
@@ -74,6 +74,17 @@ Dos cosas que ese número exige aclarar, o la próxima corrida parecerá una reg
 **Es el puntaje con `Contexto()` vacío.** T03 y T11 piden `sales_history.csv` y
 `stock_on_hand.csv` bajo un `data_root`; sin él son `SIN_DATO`, no `NO_CUMPLE`. Con
 datasets reales enchufados el número se mueve, y eso es correcto, no un fallo.
+
+Medido: `scripts/build_bateria_datasets.py` arma `sales_history.csv` desde los
+extractos M5 CA_1 (3.049 SKU × 64 meses, precio real) y **T03 pasa a `CUMPLE`** —
+`42,50% · 8,5/20`. Es el mismo código: lo único que cambia es que el dato está.
+
+**T11 sigue `SIN_DATO` y no lo destraba ningún dataset del repo.** Pide `on_hand`
+por SKU, o sea una FOTO de inventario; M5, Superstore, Olist y DataCo son
+transaccionales y registran lo vendido, nunca lo que quedó en góndola.
+`daily_demand` sí sale de las ventas, pero derivar `on_hand` de ellas sería
+inventarlo. `python scripts/build_bateria_datasets.py --explicar-t11` imprime las
+columnas exactas que habría que pedirle a un cliente.
 
 > **`SIN_DATO` no es el conteo de "bloqueadas por dato".** Sólo lo marcan los dos
 > checks que piden un dataset por ruta; los otros 13 corren sobre fixtures donde el
@@ -94,7 +105,7 @@ puntos, los dos resueltos el 02-ago-2026 como decisión del dueño y no de costa
 es una pieza de venta con números publicados.
 
 **Qué puntaje se publica.** Publicaba 7,5% · 1,5/20 (corrida manual del 25-jul,
-anterior a #193/#194 y #203); ahora el 27,50% del harness con el commit sellado.
+anterior a #193/#194 y #203); ahora el puntaje del harness con el commit sellado.
 La cadena que justifica la subida —el harness da 10,0% sobre el código de #202, a
 media tarea del veredicto manual— está en el propio doc.
 
