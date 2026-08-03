@@ -47,10 +47,13 @@ def _write(leads_path, *records):
 def test_empty_or_missing_leads_file_returns_all_zero_counts(isolated_leads):
     # File doesn't even exist yet (no lead captured since deploy) - must not crash.
     body = client.get("/api/metrics").json()
-    assert body == {
-        "leads": {"total_captures": 0, "unique_emails": 0, "by_source": {}},
-        "demo_scan": {"total_runs": 0, "by_status": {}, "by_dataset": {}},
-    }
+    assert body["leads"] == {"total_captures": 0, "unique_emails": 0, "by_source": {}}
+    assert body["demo_scan"] == {"total_runs": 0, "by_status": {}, "by_dataset": {}}
+    # The payload also carries a `capabilities` section (nosilo_core/metrics.py).
+    # Asserted by key, not by exact value: those counters are process-global, so
+    # whatever else ran in this pytest session is legitimately reflected there --
+    # pinning the whole payload would make this test fail based on test ordering.
+    assert "capabilities" in body
 
 
 def test_aggregates_leads_and_demo_scan_records_separately(isolated_leads):

@@ -38,6 +38,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: 
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from jobs.price_monitor import accept_observation  # noqa: E402
+from nosilo_core import metrics  # noqa: E402
 from jobs.scheduled_jobs import PRODUCTION_JOB_IDS, production_registry  # noqa: E402
 from scm_agent import Orchestrator  # noqa: E402
 from scm_agent.autonomy import DEFAULT_PATH as AUTONOMY_DEFAULT_PATH  # noqa: E402
@@ -1303,6 +1304,12 @@ def api_metrics() -> dict:
             "by_status": demo_scan_status,
             "by_dataset": demo_scan_dataset,
         },
+        # Capability runs (nosilo_core/metrics.py). Answers the question leads.jsonl
+        # cannot: which tool ran, how it ended, how long it took. In particular
+        # `qa_failed` -- the gate that vetoes deliverables was previously uncounted,
+        # so it going quiet was indistinguishable from it never being needed.
+        # Volatile and per-worker; the payload says so in its own `scope` field.
+        "capabilities": metrics.snapshot(),
     }
 
 

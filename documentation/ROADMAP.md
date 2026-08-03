@@ -59,17 +59,38 @@ publico, instruccion de `docker pull` en el README.
 
 ---
 
-## 3. Observabilidad estructurada: request id, latencia por tool, tasa de QA fallado
+## 3. ~~Metricas por capacidad~~ + correlacion request id -> tool
 
 **Labels:** `observability`, `enhancement`
+**Estado:** las metricas por tool ya estan (`nosilo_core/metrics.py`); falta la correlacion.
 
-`LINCHPIN_LOG_JSON` ya da logs estructurados. Falta la capa de arriba: correlacion
-por request id a traves de orchestrator -> tool -> deliverable, y metricas por
-capacidad. En un forward deployment la pregunta operativa no es "anda?", es "que
-tool falla QA en que cliente y con que datos".
+Correccion a como estaba escrito este item: el request id **ya existia**
+(`webapp/observability.py` lo mintea, lo respeta si viene de un proxy, y lo
+devuelve como `X-Request-ID`), igual que los logs JSON y Sentry. Lo que no
+existia eran las metricas por capacidad — el docstring del propio
+`GET /api/metrics` lo decia: *"there is nothing (yet) to report about
+commercial-package runs, which aren't logged anywhere"*.
 
-**Definition of done:** middleware de request id, contadores por tool
-(`runs`, `qa_failed`, `p95_latency`), endpoint `/metrics` o export a Sentry.
+**Hecho:** `nosilo_core/metrics.py` cuenta cada corrida del orquestador por tool
+y por status, con p50/p95 sobre una ventana acotada de 256 muestras. Se registra
+en el unico boundary por el que ya pasaban todos los caminos de `run()`, asi que
+una capacidad nueva queda medida sin tocar ese archivo. Se expone como la seccion
+`capabilities` de `GET /api/metrics` (mismo gate de API key: latencia y fallas
+por tool son exactamente la forma de una filtracion operativa).
+
+`qa_failed` sale como total propio a proposito: es el numero que dice si el gate
+sigue mordiendo. Sin el, un gate que dejo de objetar se ve identico a uno que
+nunca hizo falta — que es justo el modo de falla del hallazgo de cantidad
+negativa.
+
+**Falta:** el request id vive solo en la capa HTTP. No baja al orquestador ni a
+la tool, asi que no se puede reconstruir "este deliverable salio de este
+request". Necesita un `contextvar` seteado por el middleware y un filtro de
+logging que lo inyecte en los records de `scm_agent`/`nosilo_core`.
+
+**Definition of done:** contextvar + filtro, un log record por corrida de tool
+que lleve `request_id` y `tool`, y un test que verifique la correlacion punta a
+punta.
 
 ---
 
