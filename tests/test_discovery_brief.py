@@ -425,3 +425,59 @@ def test_build_report_es_determinista():
     dos = build_report(tools=list(reversed(tools)), params={})
     assert uno.summary == dos.summary
     assert [g.param for g in uno.gaps] == [g.param for g in dos.gaps]
+
+
+# --- Fix round 1: la auditoría no puede reclamar más cobertura de la que logró. ---
+
+
+def test_summary_sin_perfil_no_dice_nada_que_preguntar():
+    """El summary manda 'Evaluadas X de Y' como campo siempre-cierto; si termina
+    en 'nada que preguntar' mientras el outcome ofrece crear el perfil, el
+    operador que solo lee el summary se queda sin acción."""
+    r = build_report(tools=[_FakeTool("a", ("holding_rate",))], params=None, client_id="acme")
+    assert "nada que preguntar" not in r.summary
+    assert "crear" in r.summary.lower()
+    assert "Evaluadas" in r.summary
+
+
+def test_declarados_completos_pero_granular_incompleto_no_dice_cubre_todo():
+    """objection_thresholds con 2 de 4 areas es amarillo -- 'cubre todo' mentiria
+    sobre las dos areas que van a salir no_evaluable rio abajo."""
+    tool = _FakeTool("cross_impact", ("objection_thresholds",))
+    r = build_report(
+        tools=[tool],
+        params={"objection_thresholds": {"cfo": 1000.0, "planner": 500.0}},
+    )
+    assert r.gaps == ()
+    assert r.outcome.status == "executed"
+    assert "cubre todo" not in r.outcome.summary.lower()
+    assert "objection_thresholds" in r.outcome.summary
+
+
+def test_perfil_totalmente_verde_sigue_diciendo_que_cubre_todo():
+    """Regresion: sin amarillos ni huecos, la afirmacion de cobertura completa
+    sigue siendo honesta y el fix no debe volverse pesimista de mas."""
+    tool = _FakeTool("inventory_optimization", ("holding_rate", "service_level"))
+    r = build_report(
+        tools=[tool],
+        params={"holding_rate": 0.28, "service_level": 0.97},
+    )
+    assert r.gaps == ()
+    assert r.outcome.status == "executed"
+    assert "cubre todo" in r.outcome.summary.lower()
+
+
+def test_cinco_huecos_trunca_a_top_3_pero_lo_dice_en_el_summary():
+    """El cap de 3 esta bien; ocultar que hay 2 mas no lo esta."""
+    tools = [
+        _FakeTool("a", ("holding_rate",)),
+        _FakeTool("b", ("service_level",)),
+        _FakeTool("c", ("order_cost",)),
+        _FakeTool("d", ("goodwill",)),
+        _FakeTool("e", ("objection_thresholds",)),
+    ]
+    r = build_report(tools=tools, params={})
+    assert len(r.gaps) == 5
+    assert len(r.outcome.options) == 3
+    assert "3" in r.outcome.summary
+    assert "5" in r.outcome.summary

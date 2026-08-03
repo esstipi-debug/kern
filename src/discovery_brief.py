@@ -416,6 +416,16 @@ def _outcome(
                 "así que no hay cobertura que reclamar.",
                 residuals=[_TRUTH_RESIDUAL],
             )
+        yellow = [v for v in verdicts if v.state == YELLOW]
+        if yellow:
+            incomplete_params = sorted({name for v in yellow for name, _ in v.incomplete})
+            return as_executed(
+                f"Los parámetros declarados están todos presentes, pero {len(yellow)} "
+                f"herramienta(s) corren con un parámetro granular incompleto: "
+                f"{', '.join(incomplete_params)}. Cobertura parcial, no total: falta "
+                "completar esas sub-claves.",
+                residuals=[_TRUTH_RESIDUAL],
+            )
         return as_executed(
             f"El perfil cubre todo lo declarado ({n_evaluated} herramienta(s) evaluada(s)); "
             "nada que preguntar.",
@@ -424,8 +434,17 @@ def _outcome(
 
     ranked = [_gap_option(g) for g in gaps[:_TOP_GAPS]]
     options = [replace(o, recommended=(i == 0)) for i, o in enumerate(ranked)]
+    if len(gaps) > _TOP_GAPS:
+        outcome_summary = (
+            "Parámetros ausentes, ordenados por cuántas herramientas desbloquea cada uno; "
+            f"mostrando los {_TOP_GAPS} de {len(gaps)}."
+        )
+    else:
+        outcome_summary = (
+            "Parámetros ausentes, ordenados por cuántas herramientas desbloquea cada uno."
+        )
     return as_options(
-        "Parámetros ausentes, ordenados por cuántas herramientas desbloquea cada uno.",
+        outcome_summary,
         options,
         residuals=[_TRUTH_RESIDUAL],
     )
@@ -441,10 +460,13 @@ def build_report(*, tools: list, params: dict | None, client_id: str = "") -> Br
         state: sum(1 for v in verdicts if v.state == state)
         for state in (GREEN, YELLOW, RED, NO_PROFILE)
     }
-    top = (
-        f"lo más valioso: preguntar '{gaps[0].param}' desbloquea {gaps[0].unlocks}"
-        if gaps else "nada que preguntar"
-    )
+    has_profile = params is not None
+    if not has_profile:
+        top = "el cliente no tiene perfil: crearlo es el paso previo a preguntar nada"
+    elif gaps:
+        top = f"lo más valioso: preguntar '{gaps[0].param}' desbloquea {gaps[0].unlocks}"
+    else:
+        top = "nada que preguntar"
     summary = (
         f"Evaluadas {evaluated} de {total} herramienta(s) registrada(s): "
         f"{counts[GREEN]} verde, {counts[YELLOW]} amarillo, {counts[RED]} rojo, "
@@ -456,7 +478,7 @@ def build_report(*, tools: list, params: dict | None, client_id: str = "") -> Br
         undeclared_use=UNDECLARED_USE,
         n_tools_evaluated=evaluated,
         n_tools_total=total,
-        has_profile=params is not None,
-        outcome=_outcome(gaps, verdicts, params is not None, client_id),
+        has_profile=has_profile,
+        outcome=_outcome(gaps, verdicts, has_profile, client_id),
         summary=summary,
     )
