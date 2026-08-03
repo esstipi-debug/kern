@@ -184,3 +184,91 @@ def test_live_transport_without_httpx_raises_clear_error(monkeypatch):
     monkeypatch.setattr(mod, "_HAS_HTTPX", False)
     with pytest.raises(ShopifyPricesError, match="repricing"):
         mod.ShopifyClient(http=object())
+
+
+# ---- transport (ShopifyClient) ------------------------------------------------
+# First tests to ever exercise the real GraphQL client; everything above this
+# line covers InMemoryShopify and the writeback store instead.
+
+from src.connectors.shopify_api_version import (  # noqa: E402
+    PINNED_VERSION,
+    ShopifyVersionDriftError,
+)
+from src.connectors.shopify_prices import ShopifyClient  # noqa: E402
+
+
+class _FakeResponse:
+    def __init__(self, payload: dict, headers: dict | None = None) -> None:
+        self._payload = payload
+        self.headers = headers if headers is not None else {}
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class _FakeHttp:
+    """httpx-shaped stand-in that records what was posted."""
+
+    def __init__(self, payload: dict, headers: dict | None = None) -> None:
+        self._payload = payload
+        self._headers = headers
+        self.calls: list[tuple[str, dict]] = []
+
+    def post(self, path: str, json: dict) -> _FakeResponse:
+        self.calls.append((path, json))
+        return _FakeResponse(self._payload, self._headers)
+
+
+_VARIANT_PAYLOAD = {
+    "data": {
+        "productVariants": {
+            "edges": [
+                {
+                    "node": {
+                        "id": "gid://shopify/ProductVariant/1",
+                        "price": "20.0",
+                        "sku": "SKU-1",
+                        "product": {"id": "gid://shopify/Product/9"},
+                    }
+                }
+            ]
+        }
+    }
+}
+
+_UPDATE_PAYLOAD = {"data": {"productVariantsBulkUpdate": {"userErrors": []}}}
+
+
+def test_client_uses_the_shared_pinned_version():
+    http = _FakeHttp(_VARIANT_PAYLOAD)
+    ShopifyClient(http).find_variant_by_sku("SKU-1")
+    assert http.calls[0][0] == f"/admin/api/{PINNED_VERSION}/graphql.json"
+
+
+def test_client_read_tolerates_drift():
+    http = _FakeHttp(_VARIANT_PAYLOAD, headers={"X-Shopify-API-Version": "2099-01"})
+    variant = ShopifyClient(http).find_variant_by_sku("SKU-1")
+    assert variant["sku"] == "SKU-1"
+
+
+def test_client_write_refuses_to_run_under_drift():
+    http = _FakeHttp(_VARIANT_PAYLOAD)
+    client = ShopifyClient(http)
+    client.find_variant_by_sku("SKU-1")
+
+    drifted = _FakeHttp(_UPDATE_PAYLOAD, headers={"X-Shopify-API-Version": "2099-01"})
+    client._http = drifted
+    with pytest.raises(ShopifyVersionDriftError):
+        client.update_variant_price("gid://shopify/ProductVariant/1", 25.0)
+
+
+def test_client_write_succeeds_without_drift():
+    http = _FakeHttp(_VARIANT_PAYLOAD)
+    client = ShopifyClient(http)
+    client.find_variant_by_sku("SKU-1")
+
+    client._http = _FakeHttp(_UPDATE_PAYLOAD, headers={"X-Shopify-API-Version": PINNED_VERSION})
+    client.update_variant_price("gid://shopify/ProductVariant/1", 25.0)
