@@ -136,8 +136,13 @@ def test_shopify_behind_odoo_is_medium_severity():
 
 
 def test_the_same_divergence_twice_in_one_window_emits_once():
+    # This test passes both with and without honouring the now parameter, because
+    # both calls execute milliseconds apart in real time (within the 1h dedup window
+    # either way). The 4-hour test below is what truly ensures now is honoured.
+    # A test that would discriminate without mocking datetime would require either
+    # putting a real sleep between calls or changing the ledger's time source.
     ledger = _ledger()
-    ts = datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+    ts = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
     _r1, _e1, first = run_stock_sync(_store({"SKU-1": 37}), {"SKU-1": 40}, ledger=ledger, now=ts)
     _r2, _e2, second = run_stock_sync(_store({"SKU-1": 37}), {"SKU-1": 40}, ledger=ledger,
                                       now=ts + timedelta(minutes=5))
@@ -165,3 +170,19 @@ def test_a_persisting_divergence_emits_again_after_the_window():
                                       now=ts + timedelta(hours=4))
     assert first is True
     assert second is True
+
+
+def test_payload_includes_per_sku_divergence_details():
+    _report, event, _emitted = run_stock_sync(_store({"SKU-1": 37}), {"SKU-1": 40}, ledger=_ledger())
+    assert len(event.payload["divergences"]) == 1
+    assert event.payload["divergences"][0] == {"sku": "SKU-1", "before": 37.0, "after": 40.0}
+
+
+def test_payload_truncates_divergences_over_max_and_sets_flag():
+    # Create a store with 60 SKUs, all with divergence
+    stock = {f"SKU-{i}": 37 for i in range(60)}
+    desired = {f"SKU-{i}": 40 for i in range(60)}
+    _report, event, _emitted = run_stock_sync(_store(stock), desired, ledger=_ledger())
+    assert len(event.payload["divergences"]) == 50
+    assert event.payload["divergences_truncated"] is True
+    assert event.payload["n_divergent"] == 60

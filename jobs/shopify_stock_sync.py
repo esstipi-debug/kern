@@ -97,6 +97,7 @@ def plan_stock_sync(store: Any, desired: dict[str, float]) -> SyncReport:
 #: Event type routed to tier T2 in config/event_routing.yaml.
 EVENT_TYPE = "shopify_stock_divergence"
 SOURCE = "shopify_stock_sync"
+_MAX_PAYLOAD_ROWS = 50
 
 
 def _severity(changeset: writeback.Changeset) -> str:
@@ -134,6 +135,11 @@ def run_stock_sync(
     if report.changeset is None:
         return report, None, False
 
+    divergences = [
+        {"sku": c.entity_id, "before": float(c.before), "after": float(c.after)}
+        for c in report.changeset.changes
+    ]
+
     event = Event(
         type=EVENT_TYPE,
         severity=_severity(report.changeset),
@@ -144,6 +150,8 @@ def run_stock_sync(
             "target": TARGET,
             "n_divergent": len(report.changeset.changes),
             "missing_skus": list(report.missing_skus),
+            "divergences": divergences[:_MAX_PAYLOAD_ROWS],
+            "divergences_truncated": len(divergences) > _MAX_PAYLOAD_ROWS,
         },
         **({"ts": now} if now is not None else {}),
     )
