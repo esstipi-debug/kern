@@ -62,5 +62,5 @@ def test_check_served_is_silent_without_a_header_even_on_writes():
     check_served(_Resp(), requested="2024-10", is_write=True)
 
 
-def test_pinned_version_looks_like_a_shopify_version():
-    assert len(PINNED_VERSION) == 7 and PINNED_VERSION[4] == "-"
+def test_pinned_version_is_2024_10():
+    assert PINNED_VERSION == "2024-10"
