@@ -26,6 +26,7 @@ from src.reverse_logistics import (
     ReturnLine,
     best_disposition,
     reason_pareto,
+    return_rate_by_reason,
     recovered_value,
     recovery_rate,
     returns_value_at_cost,
@@ -51,6 +52,10 @@ class ReturnsReport:
     dispositions: tuple[LineDisposition, ...]    # ranked by recovery value desc
     reason_pareto: tuple[tuple[str, float], ...]
     top_reason: str
+    # Returned units per reason as a % of units SOLD. ``None`` when the caller gave no
+    # sales for the period: reason_pareto is a share of the returns themselves, and
+    # passing it off as a rate reads 100% on a single return line.
+    return_rate_by_reason: dict[str, float] | None
     # Units split by reason KIND (product_failure / dispatch_error / unspecified): the
     # corrective action differs, so the split travels with the deliverable.
     units_by_reason_kind: dict[str, float]
@@ -129,6 +134,7 @@ def run(
     refurbish_resale_factor: float = 0.6,
     liquidation_recovery_pct: float = 0.2,
     scrap_cost_per_unit: float = 0.0,
+    units_sold: dict[str, float] | None = None,
 ) -> ReturnsReport:
     """Rank each lot's disposition and present the portfolio as protected ranked options."""
     rates = DispositionRates(
@@ -146,6 +152,7 @@ def run(
     pareto = tuple(reason_pareto(lines))
     top_reason = pareto[0][0] if pareto else "n/a"
     por_motivo = units_by_reason_kind(lines)
+    tasa = return_rate_by_reason(lines, units_sold) if units_sold else None
     claim_base = supplier_claim_base(dispositions)
 
     recovery = _strategy_recovery(lines, rates)
@@ -187,6 +194,7 @@ def run(
         dispositions=ranked,
         reason_pareto=pareto,
         top_reason=top_reason,
+        return_rate_by_reason=tasa,
         units_by_reason_kind=por_motivo,
         supplier_claim_base=claim_base,
         outcome=outcome,
@@ -214,6 +222,12 @@ def write_operational(report: ReturnsReport, out_dir: str | Path, client: str = 
             "product_id": dp.line.product_id,
             "reason": dp.line.reason,
             "reason_kind": dp.reason_kind,
+            # Blank, not 0, when no sales were given: a rate nobody could compute is not
+            # a reason that never came back.
+            "return_rate_pct": (
+                round((report.return_rate_by_reason or {}).get(dp.line.reason, 0.0), 2)
+                if report.return_rate_by_reason else ""
+            ),
             "supplier_claim_base": round(dp.supplier_claim_base, 2),
             "returned_units": round(dp.line.returned_units, 2),
             "recommended_action": dp.best.action,

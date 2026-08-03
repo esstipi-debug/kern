@@ -384,20 +384,20 @@ def _candidato_devoluciones(**cambios) -> _CandidatoDevoluciones:
     return _CandidatoDevoluciones(**{**base, **cambios})
 
 
-def test_t20_es_parcial_distingue_el_motivo_pero_no_hay_tasa_sobre_ventas():
-    """Veredicto real despues del fix: la falla de producto ya no vuelve a stock
-    (va a refurbish) y arrastra su base reclamable al proveedor. Lo que sigue sin
-    poder calcularse es la TASA de devolucion: el job recibe solo devoluciones,
-    sin las ventas del periodo que serian el denominador."""
+def test_t20_cumple_distingue_el_motivo_y_mide_la_tasa_sobre_ventas():
+    """Veredicto real: la falla de producto ya no vuelve a stock (va a refurbish) y
+    arrastra su base reclamable al proveedor, y desde que ``returns_job.run`` acepta
+    ``units_sold`` la tasa se mide contra las ventas del periodo. El check exige el 1%
+    real, no el 50% que daria la participacion sobre las devoluciones."""
     r = _resultado(puntuar(), "T20")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.puntos == 0.5
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["distingue_motivos"] is True
     assert r.detalle["disposicion_por_motivo"] == {
         "falla de producto": "refurbish",
         "error de despacho": "restock",
     }
-    assert r.detalle["faltantes"] == ["tasa de devolucion (%) por motivo"]
+    assert r.detalle["faltantes"] == []
 
 
 def test_t20_cumple_con_tasa_por_motivo_destino_y_reclamo():
