@@ -9,6 +9,7 @@ from src.discovery_brief import (
     UNDECLARED,
     UNDECLARED_USE,
     YELLOW,
+    build_report,
     rank_gaps,
     spec_for,
     verdicts_for,
@@ -368,3 +369,59 @@ def test_empates_se_rompen_por_nombre_de_parametro():
     tools = [_FakeTool("x", ("order_cost",)), _FakeTool("y", ("holding_rate",))]
     gaps = rank_gaps(verdicts_for(tools, {}))
     assert [g.param for g in gaps] == ["holding_rate", "order_cost"]
+
+
+def test_el_summary_siempre_lleva_numerador_y_denominador():
+    tools = [_FakeTool("a", ("holding_rate",)), _FakeTool("b"), _FakeTool("c")]
+    r = build_report(tools=tools, params={})
+    assert "1 de 3" in r.summary
+    assert r.n_tools_evaluated == 1
+    assert r.n_tools_total == 3
+
+
+def test_sin_ninguna_declaracion_no_dice_que_esta_todo_bien():
+    """Cero evaluadas no es 'el perfil alcanza para todo'. No se evaluó nada."""
+    r = build_report(tools=[_FakeTool("a"), _FakeTool("b")], params={"holding_rate": 0.25})
+    assert r.n_tools_evaluated == 0
+    assert r.outcome.status == "executed"
+    assert "no se evaluó" in r.outcome.summary.lower()
+
+
+def test_con_huecos_el_outcome_es_un_menu_rankeado():
+    tools = [_FakeTool("a", ("holding_rate",)), _FakeTool("b", ("holding_rate",))]
+    r = build_report(tools=tools, params={})
+    assert r.outcome.status == "options"
+    assert r.outcome.options[0].action == "ask_param:holding_rate"
+    assert r.outcome.options[0].recommended is True
+
+
+def test_la_opcion_dice_que_cifra_se_mueve():
+    """Sin eso la entrevista es una lista de nombres sin razón para el cliente."""
+    r = build_report(tools=[_FakeTool("a", ("holding_rate",))], params={})
+    assert "costo de mantener" in r.outcome.options[0].summary
+
+
+def test_sin_perfil_propone_crear_el_perfil_no_preguntar_numeros():
+    r = build_report(tools=[_FakeTool("a", ("holding_rate",))], params=None, client_id="acme")
+    assert r.has_profile is False
+    assert r.outcome.status == "options"
+    assert r.outcome.options[0].action == "create_profile:acme"
+
+
+def test_el_residual_declara_que_no_juzga_la_verdad():
+    r = build_report(tools=[_FakeTool("a", ("holding_rate",))], params={})
+    texto = " ".join(res.description for res in r.outcome.residuals).lower()
+    assert "verdad" in texto
+
+
+def test_el_reporte_lleva_el_backlog_de_no_declarados():
+    r = build_report(tools=[_FakeTool("a", ("holding_rate",))], params={})
+    assert "review_period" in [s.name for s in r.undeclared_use]
+
+
+def test_build_report_es_determinista():
+    tools = [_FakeTool("b", ("order_cost",)), _FakeTool("a", ("holding_rate",))]
+    uno = build_report(tools=tools, params={})
+    dos = build_report(tools=list(reversed(tools)), params={})
+    assert uno.summary == dos.summary
+    assert [g.param for g in uno.gaps] == [g.param for g in dos.gaps]

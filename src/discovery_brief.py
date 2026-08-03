@@ -12,7 +12,9 @@ instancias del mismo defecto en intake_scan.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
+from nosilo_core.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_options
 
 # Las cuatro areas de src.hats.HAT_KEYS, copiadas a proposito en vez de
 # importadas: src.hats arrastra numpy y scipy por su cadena de imports, y este
@@ -331,3 +333,130 @@ def rank_gaps(verdicts: tuple[ToolVerdict, ...]) -> tuple[ParamGap, ...]:
         for param, keys in by_param.items()
     ]
     return tuple(sorted(gaps, key=lambda g: (-g.unlocks, g.param)))
+
+
+_TOP_GAPS = 3
+
+_TRUTH_RESIDUAL = Residual(
+    description=(
+        "Esta auditoría dice si el parámetro ESTA cargado, nunca si es VERDAD. Un "
+        "holding_rate de 0.25 en rango y cargado puede haber sido inventado por el "
+        "analista; discovery_brief no lo puede detectar y no lo pretende."
+    ),
+    risk_if_skipped=(
+        "Leer un verde como 'los números del cliente son correctos' es exactamente el "
+        "falso verde que esta auditoría existe para evitar."
+    ),
+)
+
+
+@dataclass(frozen=True)
+class BriefReport:
+    """La auditoría completa: qué corre hoy, qué falta y qué preguntar primero."""
+
+    verdicts: tuple[ToolVerdict, ...]
+    gaps: tuple[ParamGap, ...]
+    undeclared_use: tuple[ParamSpec, ...]
+    n_tools_evaluated: int
+    n_tools_total: int
+    has_profile: bool
+    outcome: GuidedOutcome
+    summary: str
+
+
+def _gap_option(gap: ParamGap) -> ExecutionOption:
+    spec = spec_for(gap.param)
+    pregunta = spec.question if spec else gap.param
+    mueve = spec.moves if spec else "efecto no catalogado"
+    unidad = f" ({spec.unit}, entre {spec.low:g} y {spec.high:g})" if spec else ""
+    return ExecutionOption(
+        label=f"Preguntar '{gap.param}' al cliente{unidad}",
+        summary=(
+            f"{pregunta} Desbloquea {gap.unlocks} herramienta(s): "
+            f"{', '.join(gap.tools)}. Si no lo dan: {mueve}"
+        ),
+        score=float(gap.unlocks),
+        action=f"ask_param:{gap.param}",
+        tradeoffs=(
+            "Una pregunta, un número. Cargarlo sigue siendo un paso deliberado del "
+            f"operador: client_profile.upsert_profile(..., {gap.param}=<valor>)"
+        ),
+    )
+
+
+def _outcome(
+    gaps: tuple[ParamGap, ...],
+    verdicts: tuple[ToolVerdict, ...],
+    has_profile: bool,
+    client_id: str,
+) -> GuidedOutcome:
+    if not has_profile:
+        return as_options(
+            "El cliente no tiene perfil cargado: no hay número que auditar todavía.",
+            [ExecutionOption(
+                label="Crear el perfil del cliente",
+                summary=(
+                    "Ninguna herramienta puede tomar parámetros reales hasta que exista "
+                    "el perfil. Crearlo primero; recién después tiene sentido rankear "
+                    "qué preguntar."
+                ),
+                score=1.0,
+                recommended=True,
+                action=f"create_profile:{client_id}",
+                tradeoffs="Un solo paso del operador, con los números que ya tenga a mano.",
+            )],
+            residuals=[_TRUTH_RESIDUAL],
+        )
+
+    n_evaluated = sum(1 for v in verdicts if v.state != UNDECLARED)
+    if not gaps:
+        if n_evaluated == 0:
+            return as_executed(
+                "Ninguna herramienta declara parámetros de cliente: no se evaluó nada, "
+                "así que no hay cobertura que reclamar.",
+                residuals=[_TRUTH_RESIDUAL],
+            )
+        return as_executed(
+            f"El perfil cubre todo lo declarado ({n_evaluated} herramienta(s) evaluada(s)); "
+            "nada que preguntar.",
+            residuals=[_TRUTH_RESIDUAL],
+        )
+
+    ranked = [_gap_option(g) for g in gaps[:_TOP_GAPS]]
+    options = [replace(o, recommended=(i == 0)) for i, o in enumerate(ranked)]
+    return as_options(
+        "Parámetros ausentes, ordenados por cuántas herramientas desbloquea cada uno.",
+        options,
+        residuals=[_TRUTH_RESIDUAL],
+    )
+
+
+def build_report(*, tools: list, params: dict | None, client_id: str = "") -> BriefReport:
+    """Arma la auditoría. El evaluadas-sobre-total viaja en el summary, siempre."""
+    verdicts = verdicts_for(tools, params)
+    gaps = rank_gaps(verdicts)
+    evaluated = sum(1 for v in verdicts if v.state != UNDECLARED)
+    total = len(verdicts)
+    counts = {
+        state: sum(1 for v in verdicts if v.state == state)
+        for state in (GREEN, YELLOW, RED, NO_PROFILE)
+    }
+    top = (
+        f"lo más valioso: preguntar '{gaps[0].param}' desbloquea {gaps[0].unlocks}"
+        if gaps else "nada que preguntar"
+    )
+    summary = (
+        f"Evaluadas {evaluated} de {total} herramienta(s) registrada(s): "
+        f"{counts[GREEN]} verde, {counts[YELLOW]} amarillo, {counts[RED]} rojo, "
+        f"{counts[NO_PROFILE]} sin perfil; {top}."
+    )
+    return BriefReport(
+        verdicts=verdicts,
+        gaps=gaps,
+        undeclared_use=UNDECLARED_USE,
+        n_tools_evaluated=evaluated,
+        n_tools_total=total,
+        has_profile=params is not None,
+        outcome=_outcome(gaps, verdicts, params is not None, client_id),
+        summary=summary,
+    )
