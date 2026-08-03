@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from src.bateria import tareas_humanas
 from src.bateria.scorer import TOTAL_TAREAS, Contexto, Estado, ResultadoTarea, puntuar
 
 
@@ -31,11 +32,17 @@ def test_parcial_vale_medio_punto():
     assert ResultadoTarea("T99", Estado.CUMPLE, "entero").puntos == 1.0
 
 
-def test_reporta_las_dos_aritmeticas_en_disputa():
-    """Decision del 01-ago: se reportan los dos techos hasta corregir el doc."""
+def test_el_techo_lo_manda_la_fuente_y_se_deriva_de_ella():
+    """75%: 15 de 20 alcanzables porque la fuente marca 5 humanas (T15-T19).
+
+    El doc publicado afirmaba 85% contando 3; se corrigio el 02-ago y la
+    aritmetica dual se elimino. Se comprueba que el techo se DERIVA de
+    ``tareas_humanas()`` y no de una constante: si alguien marca una tarea mas
+    como humana en ``tareas.json``, el techo tiene que moverse solo.
+    """
     p = puntuar()
-    assert p.techo_segun_fuente == 75.0  # 15 de 20 alcanzables por software
-    assert p.techo_segun_doc == 85.0  # el doc cuenta 3 humanas, no 5
+    assert p.techo_segun_fuente == 75.0
+    assert p.techo_segun_fuente == 100.0 * (TOTAL_TAREAS - len(tareas_humanas())) / TOTAL_TAREAS
 
 
 def test_el_porcentaje_se_calcula_sobre_20_no_sobre_las_alcanzables():
