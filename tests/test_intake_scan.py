@@ -358,6 +358,43 @@ def test_rank_undercovered_fixes_ranks_by_tools_unlocked():
     assert fix.tools == ("t1", "t2")
 
 
+def test_rank_undercovered_fixes_does_not_credit_a_tool_red_for_a_second_reason_too():
+    """The re-review's finding: rank_undercovered_fixes used to credit ANY tool
+    with an under_covered_detail entry, even one that is ALSO red because a
+    different required column is entirely missing, blocked, or split. That
+    promises an unblock populating the sparse column will not deliver. Same
+    exclusion discipline rank_blocked_fixes already had (missing_required/
+    under_covered_required/split_required exclude a tool from a blocked-file
+    credit) now applies symmetrically here.
+
+    Coordinator's own repro: colA lives only in a blocked file, colB is
+    under-covered in a different, unblocked file. Neither ranked fix may
+    promise an unblock -- populating colB does nothing while colA's file
+    stays blocked, and vice versa."""
+    tools_ = [_FakeTool("t", ("colA", "colB"))]
+    files = _files(**{"bad.csv": ["colA"], "good.csv": []})
+    under_covered = (("good.csv", "colB", 0.2),)
+    verdicts = verdicts_for(files, frozenset({"bad.csv"}), tools_, under_covered)
+    (verdict,) = verdicts
+    assert verdict.state == RED
+    assert verdict.blocked_required == ("colA",)
+    assert verdict.under_covered_required == ("colB",)
+
+    assert rank_blocked_fixes(verdicts) == ()
+    assert rank_undercovered_fixes(verdicts) == ()
+
+
+def test_rank_undercovered_fixes_does_not_credit_a_tool_under_covered_on_two_columns():
+    """Symmetric with the two-blocking-files case: a tool under-covered on TWO
+    columns is credited to neither individually -- populating just one still
+    leaves it red."""
+    tools_ = [_FakeTool("t", ("colA", "colB"))]
+    files = _files(**{"stock.csv": []})
+    under_covered = (("stock.csv", "colA", 0.2), ("stock.csv", "colB", 0.3))
+    verdicts = verdicts_for(files, frozenset(), tools_, under_covered)
+    assert rank_undercovered_fixes(verdicts) == ()
+
+
 def test_gaps_rank_by_how_many_tools_each_column_unlocks():
     files = _files(**{"a.csv": ["product_id"]})
     verdicts = verdicts_for(

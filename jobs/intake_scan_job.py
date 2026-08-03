@@ -42,6 +42,7 @@ from src.intake_scan import (
     FileSignals,
     ScanReport,
     Thresholds,
+    ToolVerdict,
     blocking_files,
     build_report,
     classify_all,
@@ -82,6 +83,11 @@ class FolderIntake:
     # dropped or allowed to abort the scan of the rest of the folder.
     unreadable: tuple[tuple[str, str], ...]
     under_covered: tuple[tuple[str, str, float], ...]
+    # Subdirectory names never walked (this scan is one level deep) -- named
+    # even on a fully successful scan, not just in the "nothing readable"
+    # error path, so a client zip's "2025/" folder next to maestro.csv leaves
+    # a trace in the deliverable instead of vanishing without comment.
+    skipped_subdirs: tuple[str, ...]
 
 
 def _canonical_order() -> tuple[str, ...]:
@@ -289,6 +295,7 @@ def prepare(data_path: str, params: dict | None = None) -> FolderIntake:
         ignored=tuple(ignored),
         unreadable=tuple(unreadable),
         under_covered=tuple(under_covered),
+        skipped_subdirs=tuple(subdirs),
     )
 
 
@@ -312,6 +319,7 @@ def run(folder: FolderIntake, params: dict | None = None) -> ScanReport:
         n_unclassified=n_unclassified,
         under_covered=folder.under_covered,
         unreadable=folder.unreadable,
+        skipped_subdirs=folder.skipped_subdirs,
     )
 
 
@@ -375,6 +383,21 @@ def _join(values: tuple[str, ...]) -> str:
     return ";".join(values)
 
 
+# The four independent RED causes a ToolVerdict can carry at once, paired with
+# a human-readable label. Order matches ToolVerdict's own field order.
+_CAUSE_LABELS: tuple[tuple[str, str], ...] = (
+    ("missing_required", "a genuinely missing column"),
+    ("blocked_required", "a blocked file"),
+    ("under_covered_required", "an under-populated column"),
+    ("split_required", "required columns split across files"),
+)
+
+
+def _active_causes(v: ToolVerdict) -> list[str]:
+    """Which of the four RED causes are non-empty on this verdict, labeled."""
+    return [label for field, label in _CAUSE_LABELS if getattr(v, field)]
+
+
 def _tool_rows(report: ScanReport) -> list[dict[str, str]]:
     """One row per tool verdict. ``missing_required``, ``blocked_required``,
     ``under_covered_required`` and ``split_required`` are kept as SEPARATE
@@ -402,14 +425,16 @@ def _tool_rows(report: ScanReport) -> list[dict[str, str]]:
 
 
 def _file_rows(report: ScanReport) -> list[dict[str, object]]:
-    """One row per file read PLUS one row per unreadable file: profile (empty
-    when unclassified or unreadable), reason, row count, and one column per
-    breaker holding its fraction rounded to 4 places. A breaker that never ran
+    """One row per file read, PLUS one row per unreadable file, PLUS one row
+    per skipped subdirectory: profile (empty when unclassified, unreadable,
+    or a subdirectory), reason, row count, and one column per breaker holding
+    its fraction rounded to 4 places. A breaker that never ran
     (``evaluated=False``, e.g. orphan_keys with no master file classified in
     the folder) gets an empty cell, never a 0 -- a 0 would read as "checked
-    and clean", which is not what happened. An unreadable file is a declared
-    hole in the folder, not a silent absence -- it gets its own row, with its
-    reason prefixed so it reads distinctly from a merely-unclassified file."""
+    and clean", which is not what happened. An unreadable file or a skipped
+    subdirectory is a declared hole in the folder, not a silent absence --
+    each gets its own row, with its reason prefixed so it reads distinctly
+    from a merely-unclassified file."""
     findings_by_file: dict[str, dict[str, object]] = {}
     n_rows_by_file: dict[str, int] = {}
     for f in report.findings:
@@ -435,6 +460,17 @@ def _file_rows(report: ScanReport) -> list[dict[str, object]]:
             "filename": filename,
             "profile": "",
             "reason": f"unreadable: {reason}",
+            "n_rows": "",
+        }
+        for breaker in _BREAKER_COLUMNS:
+            row[breaker] = ""
+        rows.append(row)
+
+    for name in report.skipped_subdirs:
+        row = {
+            "filename": name,
+            "profile": "",
+            "reason": "skipped subdirectory: this scan is one level deep and does not walk into it",
             "n_rows": "",
         }
         for breaker in _BREAKER_COLUMNS:
@@ -524,17 +560,25 @@ def build_deck(
             impact="excluded from every verdict above; not the same as a red or a green",
         ))
 
-    # 3) Tools red for TWO distinct reasons at once (a genuinely missing column
-    # AND a blocked file) must show both -- fixing only one still leaves them red.
-    both_reasons = [v for v in report.verdicts if v.missing_required and v.blocked_required]
-    if both_reasons:
-        keys = ", ".join(v.tool_key for v in both_reasons)
+    # 3) A tool can be red for MORE THAN ONE independent reason at once (any
+    # combination of the four RED causes: a genuinely missing column, a
+    # blocked file, an under-populated column, or required columns split
+    # across files) -- fixing only one still leaves it red, and the client
+    # must be told about every named cause, not just whichever one a check
+    # happened to name first. Generalized over all four causes (not just
+    # missing+blocked) so a tool that is e.g. missing one column AND has a
+    # second column under-populated elsewhere is never silently promised a
+    # single-fix unblock it will not get.
+    multi_cause = [(v, _active_causes(v)) for v in report.verdicts]
+    multi_cause = [(v, causes) for v, causes in multi_cause if len(causes) >= 2]
+    if multi_cause:
+        lines = [f"{v.tool_key} ({' AND '.join(causes)})" for v, causes in multi_cause]
         findings.append(Finding(
-            "Tools blocked for two distinct reasons",
-            f"{len(both_reasons)} tool(s) are red because of BOTH a genuinely missing "
-            f"column and a blocked file: {keys}. Fixing the blocked file alone will not "
-            "turn these green -- the missing column still needs to be requested.",
-            impact="both asks are required; neither alone unblocks these tools",
+            "Tools blocked for two or more distinct reasons",
+            f"{len(multi_cause)} tool(s) are red for MORE THAN ONE independent reason at "
+            f"once: {'; '.join(lines)}. Fixing only one of the named causes will not turn "
+            "these green -- every named cause needs its own fix.",
+            impact="every named ask is required; fixing only one leaves the tool red",
         ))
 
     # 3b) Tools red because their required columns exist in the folder, but
@@ -581,6 +625,20 @@ def build_deck(
             f"{len(report.unreadable)} file(s) could not be read and were skipped; the rest "
             f"of the folder was scanned anyway: {names}.",
             impact="treat as an unscanned hole in the folder, not as an absence of data",
+        ))
+
+    # 3e) Subdirectories sitting next to the scanned files are never walked
+    # (this scan is one level deep) -- the common case of a client zip with a
+    # dated subfolder ("2025/") beside maestro.csv. Named even on a fully
+    # successful scan, same discipline as unreadable files, so the client
+    # knows there may be more data one level down that this run never saw.
+    if report.skipped_subdirs:
+        names = ", ".join(report.skipped_subdirs)
+        findings.append(Finding(
+            "Some subdirectories were not scanned",
+            f"{len(report.skipped_subdirs)} subdirectory(ies) sit next to the scanned files "
+            f"and were not walked into: {names}. This scan is one level deep only.",
+            impact="there may be more client data one level down that this run never saw",
         ))
 
     # 4) One finding per breaker that actually blocked a file, with its count
@@ -632,6 +690,9 @@ def build_deck(
         Kpi("Files unreadable", f"{len(report.unreadable)}", target="0",
             rationale="Readable-extension files that failed to parse (locked/corrupt); "
                        "scanned separately, never dropped silently"),
+        Kpi("Subdirectories skipped", f"{len(report.skipped_subdirs)}", target="0",
+            rationale="Subdirectories next to the scanned files; this scan is one level "
+                       "deep and never walks into them"),
         Kpi("Tools ready to run (green)", f"{n_green}",
             rationale="Declared tools with every required column available and unblocked"),
         Kpi("Tools blocked (red)", f"{n_red}", target="0",

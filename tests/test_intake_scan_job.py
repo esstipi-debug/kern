@@ -135,6 +135,32 @@ def test_a_subdirectory_is_named_when_the_scan_finds_nothing_readable(tmp_path):
         intake_scan_job.prepare(str(d))
 
 
+def test_a_subdirectory_next_to_good_files_is_named_even_on_a_successful_scan(tmp_path):
+    """The re-review's own MINOR finding: `subdirs` used to be computed but
+    only ever read inside the "nothing readable" error branch -- a scan that
+    DID find readable files (the common case: a client zip with maestro.csv
+    plus a dated "2025/" subfolder) silently dropped the subdirectory with no
+    trace anywhere. It must now travel to FolderIntake, ScanReport, the files
+    CSV, and the deck, exactly like an unreadable file."""
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro()})
+    (folder / "2025").mkdir()
+    intake = intake_scan_job.prepare(str(folder))
+    assert intake.skipped_subdirs == ("2025",)
+
+    report = intake_scan_job.run(intake)
+    assert report.skipped_subdirs == ("2025",)
+
+    deck = intake_scan_job.build_deck(report, client="Acme")
+    full_text = " ".join(f.title + " " + f.detail for f in deck.findings)
+    assert "2025" in full_text
+    assert any(k.name == "Subdirectories skipped" for k in deck.kpis)
+
+    paths = intake_scan_job.write_operational(report, tmp_path / "out", client="Acme")
+    body = paths["files_csv"].read_text(encoding="utf-8")
+    assert "2025" in body
+    assert "subdirectory" in body.lower()
+
+
 def test_the_deck_and_files_csv_surface_unreadable_files(tmp_path):
     folder = _folder(tmp_path, **{"maestro.csv": _maestro()})
     (folder / "~$maestro.xlsx").write_bytes(b"garbage")
@@ -190,6 +216,41 @@ def test_under_covered_required_column_is_red_never_missing_and_never_re_asked(t
     deck = intake_scan_job.build_deck(report, client="Acme")
     full_text = " ".join(f.title + " " + f.detail for f in deck.findings)
     assert "10%" in full_text
+
+
+def test_populating_an_under_covered_column_is_never_offered_when_the_tool_is_also_missing_a_different_column(tmp_path):
+    """The re-review's own real repro through the actual registry: stock.csv
+    carries product_id and daily_demand (populated in only 10 of 100 rows),
+    but NOT on_hand at all. excess_obsolete needs both on_hand and
+    daily_demand -- it is red for TWO independent reasons at once
+    (missing_required=('on_hand',) AND under_covered_required=('daily_demand',)).
+    Populating daily_demand alone would not unblock it (on_hand was never
+    sent), so the 'Populate daily_demand' option must never be offered, and
+    the deck must name BOTH causes on this tool, not just one."""
+    n = 100
+    stock = {
+        "product_id": [f"SKU-{i}" for i in range(n)],
+        "daily_demand": [1.0] * 10 + [None] * (n - 10),
+    }
+    folder = _folder(tmp_path, **{"stock.csv": stock})
+    report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
+    (verdict,) = [v for v in report.verdicts if v.tool_key == "excess_obsolete"]
+    assert verdict.state == RED
+    assert verdict.missing_required == ("on_hand",)
+    assert verdict.under_covered_required == ("daily_demand",)
+
+    # No option promises an unlock that populating daily_demand cannot
+    # deliver by itself.
+    labels = [o.label for o in report.outcome.options]
+    assert not any("Populate 'daily_demand'" in label for label in labels)
+    assert not any(g.column == "daily_demand" for g in report.undercovered_fixes)
+
+    deck = intake_scan_job.build_deck(report, client="Acme")
+    multi = [f for f in deck.findings if f.title == "Tools blocked for two or more distinct reasons"]
+    assert len(multi) == 1
+    assert "excess_obsolete" in multi[0].detail
+    assert "missing" in multi[0].detail.lower()
+    assert "under-populated" in multi[0].detail.lower()
 
 
 def test_maestros_sku_header_maps_to_canonical_product_id(tmp_path):
@@ -436,11 +497,49 @@ def test_deck_names_both_causes_when_a_tool_is_red_for_two_distinct_reasons():
     )
     deck = intake_scan_job.build_deck(report, client="Acme")
 
-    two_reasons = [f for f in deck.findings if f.title == "Tools blocked for two distinct reasons"]
+    two_reasons = [f for f in deck.findings if f.title == "Tools blocked for two or more distinct reasons"]
     assert len(two_reasons) == 1
     detail = two_reasons[0].detail
     assert "tool_a" in detail
     assert "tool_b" not in detail  # only one problem each -- must not be over-named
+
+
+def test_multi_cause_finding_fires_for_any_pair_of_the_four_causes_not_just_missing_plus_blocked():
+    """The re-review's finding: the multi-cause finding used to test ONLY
+    missing_required AND blocked_required. A tool red because of a missing
+    column AND an under-populated column (or ANY other pair among the four
+    causes) is just as real a "fixing one alone won't help" case, and must be
+    named too."""
+    missing_plus_undercovered = ToolVerdict(
+        tool_key="tool_c", state=RED,
+        missing_required=("on_hand",),
+        under_covered_required=("daily_demand",),
+        under_covered_detail=(("daily_demand", "stock.csv", 0.1),),
+    )
+    blocked_plus_split = ToolVerdict(
+        tool_key="tool_d", state=RED,
+        blocked_required=("cost",), blocked_by=("sucio.csv",),
+        split_required=("product_id", "quantity"), split_files=("a.csv", "b.csv"),
+    )
+    only_one_cause = ToolVerdict(
+        tool_key="tool_e", state=RED, under_covered_required=("daily_demand",),
+        under_covered_detail=(("daily_demand", "stock.csv", 0.1),),
+    )
+    report = ScanReport(
+        classified=(), findings=(),
+        verdicts=(missing_plus_undercovered, blocked_plus_split, only_one_cause),
+        gaps=(), blocked_fixes=(),
+        n_files_read=1, n_unclassified=0, n_tools_evaluated=3, n_tools_total=3,
+        outcome=_dummy_outcome(), summary="test",
+    )
+    deck = intake_scan_job.build_deck(report, client="Acme")
+
+    multi = [f for f in deck.findings if f.title == "Tools blocked for two or more distinct reasons"]
+    assert len(multi) == 1
+    detail = multi[0].detail
+    assert "tool_c" in detail
+    assert "tool_d" in detail
+    assert "tool_e" not in detail  # single-cause tool must not be over-named
 
 
 def test_deck_reports_a_blocking_breaker_using_the_evaluated_field(tmp_path):

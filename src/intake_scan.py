@@ -481,10 +481,23 @@ def rank_undercovered_fixes(verdicts: tuple[ToolVerdict, ...]) -> tuple[UnderCov
     """Required columns present but too sparsely populated, ranked by how many
     tools populating each one (in its named file) would unlock. Ties break on
     (column, filename) so two runs over the same folder agree.
+
+    Same exclusion discipline as rank_blocked_fixes (see its docstring): a
+    tool only counts toward a column's "populate" credit if that column is
+    its SOLE obstacle. A tool that is ALSO red for a genuinely missing column,
+    a blocked file, or a split-across-files column cannot be unblocked by
+    populating this one column alone -- crediting it here would promise an
+    unlock that will not happen (populating daily_demand does nothing for a
+    tool still missing on_hand entirely). Symmetric with the two-blocking-
+    files case too: a tool under-covered on TWO OR MORE columns is credited
+    to none of them individually -- populating just one still leaves it red.
     """
     by_key: dict[tuple[str, str], list[str]] = {}
     coverage_by_key: dict[tuple[str, str], float] = {}
     for v in verdicts:
+        if (v.missing_required or v.blocked_required or v.split_required
+                or len(v.under_covered_detail) != 1):
+            continue
         for column, filename, frac in v.under_covered_detail:
             key = (column, filename)
             by_key.setdefault(key, []).append(v.tool_key)
@@ -521,6 +534,12 @@ class ScanReport:
     # (filename, short reason) for every readable-extension file that failed
     # to parse -- a declared hole in the folder, never silently dropped.
     unreadable: tuple[tuple[str, str], ...] = ()
+    # Subdirectory names sitting alongside the scanned files -- this scan is
+    # one level deep and never walks into them, but a successful scan that
+    # silently drops them leaves a client zip's "2025/" folder (or similar)
+    # with no trace anywhere in the deliverable. Named here the same way an
+    # unreadable file is, not just in the "nothing readable" error path.
+    skipped_subdirs: tuple[str, ...] = ()
 
 
 def _top_ask(
@@ -667,7 +686,7 @@ def _outcome(
 
 def build_report(
     *, classified, findings, tools, files, blocked, n_files_read, n_unclassified,
-    under_covered=(), unreadable=(),
+    under_covered=(), unreadable=(), skipped_subdirs=(),
 ) -> ScanReport:
     """Assemble the audit. Evaluated-vs-total travels in the summary, always.
 
@@ -696,4 +715,5 @@ def build_report(
         outcome=_outcome(gaps, fixes, split_fixes, undercovered_fixes, verdicts), summary=summary,
         split_fixes=split_fixes, undercovered_fixes=undercovered_fixes,
         under_covered=tuple(under_covered), unreadable=tuple(unreadable),
+        skipped_subdirs=tuple(skipped_subdirs),
     )
