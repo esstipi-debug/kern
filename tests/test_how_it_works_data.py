@@ -24,37 +24,64 @@ from webapp.how_it_works_data import (  # noqa: E402
 )
 
 
-def test_exactly_41_tools_with_unique_keys() -> None:
-    assert len(TOOLS) == 41
-    assert len({t.key for t in TOOLS}) == 41
+def test_tools_table_matches_the_registry_exactly() -> None:
+    """THE drift guard -- the one that would have caught this PR's bug.
+
+    TOOLS is hand-maintained and feeds a client-facing page that gets quoted
+    in sales conversations, so a stale entry is a wrong claim to a prospect,
+    not just a cosmetic count. It silently fell SEVEN tools behind the
+    registry between the launch_readiness PR and PR #199 (supplier_management,
+    network_design, disruption_scan, hat_tension, hat_settlement, flow_map,
+    cross_impact) because a `register()` call with no matching ToolInfo broke
+    nothing.
+
+    Set equality in BOTH directions, like tests/test_scm_agent.py's registry
+    test: registering a tool without listing it fails here, and so does
+    listing a tool that no longer exists. The exact-count assertions below
+    stay as a second, cheaper tripwire -- they are what make the intended
+    number an explicit, reviewable diff instead of a silently moving target.
+    """
+    from scm_agent.tools import build_default_registry
+
+    registered = {t.key for t in build_default_registry().list()}
+    listed = [t.key for t in TOOLS]
+
+    assert len(listed) == len(set(listed)), "duplicate ToolInfo key"
+    assert set(listed) == registered
 
 
-def test_domain_area_tally_sums_to_41_and_matches_spec() -> None:
+def test_exactly_49_tools_with_unique_keys() -> None:
+    assert len(TOOLS) == 50
+    assert len({t.key for t in TOOLS}) == 50
+
+
+def test_domain_area_tally_sums_to_50_and_matches_spec() -> None:
     tally = tally_by_domain_area()
-    assert sum(tally.values()) == 41
+    assert sum(tally.values()) == 50
     assert tally == {
         "Inventory & replenishment": 9,
-        "Network & logistics": 7,
-        "Inventory control & health": 6,
+        "Network & logistics": 9,
+        "Inventory control & health": 7,
         "Pricing & finance": 6,
         "Demand & classification": 3,
-        "Procurement & sourcing": 3,
-        "Returns, risk & benchmarking": 3,
+        "Procurement & sourcing": 4,
+        "Returns, risk & benchmarking": 4,
         "Planning cadence & projects": 3,
-        "Leadership": 1,
+        "Decision alignment": 3,
+        "Leadership": 2,
     }
     assert set(tally) == set(DOMAIN_AREA_ORDER)
 
 
-def test_scor_bucket_tally_sums_to_41_and_matches_spec() -> None:
+def test_scor_bucket_tally_sums_to_50_and_matches_spec() -> None:
     tally = tally_by_scor_bucket()
-    assert sum(tally.values()) == 41
+    assert sum(tally.values()) == 50
     assert tally == {
-        "Plan": 15,
+        "Plan": 17,
         "Order/Fulfill": 8,
-        "Orchestrate": 8,
+        "Orchestrate": 14,
         "Transform": 4,
-        "Source": 3,
+        "Source": 4,
         "Return": 2,
         "Outside SCOR scope": 1,
     }
