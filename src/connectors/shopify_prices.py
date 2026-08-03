@@ -16,10 +16,9 @@ Mirrors ``src/connectors/odoo.py``'s two-layer split exactly:
   Shopify's Admin API is per-store, app-scoped credentials the client
   provisions in their own admin -- never requested from the operator by this
   module; wiring a real token is a deploy-time step, not a code change here.
-  The GraphQL field/mutation names are current as of API version 2024-10 at
-  design time -- Shopify revises its Admin API on a quarterly release
-  schedule, so VERIFY the field/mutation shapes against the live API docs
-  for the shop's actual API version before pointing this at production.
+  The GraphQL field/mutation names are pinned by
+  ``src/connectors/shopify_api_version.PINNED_VERSION``; drift against the
+  version Shopify actually serves is detected per request by ``check_served``.
 - ``ShopifyPriceStore`` holds the entire writeback ``store`` surface
   (read/applied_keys/claim/release/commit/rollback) and speaks only the
   ``ShopifyRPC`` duck type, so the whole connector runs and is tested
@@ -40,6 +39,7 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from nosilo_core import writeback
+from src.connectors.shopify_api_version import PINNED_VERSION, check_served
 
 try:  # optional: the 'repricing' extra (httpx already pinned by tower/pricing-intel)
     import httpx  # noqa: F401  (imported to prove availability; the caller builds the client)
@@ -49,7 +49,6 @@ except ImportError:
     _HAS_HTTPX = False
 
 _WB_TARGET = "shopify"
-_DEFAULT_API_VERSION = "2024-10"
 
 
 class ShopifyPricesError(RuntimeError):
@@ -76,19 +75,21 @@ class ShopifyClient:
     ``OdooConnector``'s own ``_sku_by_id``/``_id_by_sku`` caches.
     """
 
-    def __init__(self, http: Any, *, api_version: str = _DEFAULT_API_VERSION) -> None:
+    def __init__(self, http: Any, *, api_version: str = PINNED_VERSION) -> None:
         if not _HAS_HTTPX:
             raise ShopifyPricesError(
                 "httpx is required for the live Shopify transport -- install the 'repricing' extra "
                 "(`pip install .[repricing]`) or use InMemoryShopify for offline use"
             )
         self._http = http
+        self._api_version = api_version
         self._graphql_path = f"/admin/api/{api_version}/graphql.json"
         self._product_id_by_variant: dict[str, str] = {}
 
-    def _graphql(self, query: str, variables: dict) -> dict:
+    def _graphql(self, query: str, variables: dict, *, is_write: bool = False) -> dict:
         resp = self._http.post(self._graphql_path, json={"query": query, "variables": variables})
         resp.raise_for_status()
+        check_served(resp, requested=self._api_version, is_write=is_write)
         body = resp.json()
         if body.get("errors"):
             raise ShopifyPricesError(f"Shopify GraphQL error: {body['errors']}")
@@ -128,6 +129,7 @@ class ShopifyClient:
         data = self._graphql(
             mutation,
             {"productId": product_id, "variants": [{"id": variant_id, "price": str(price)}]},
+            is_write=True,
         )
         errors = (data.get("productVariantsBulkUpdate") or {}).get("userErrors") or []
         if errors:
