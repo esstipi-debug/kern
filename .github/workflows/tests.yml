@@ -114,6 +114,19 @@ jobs:
         with:
           python-version: "3.12"  # matches Dockerfile `FROM python:3.12-slim`
 
+      # This job installs from pyproject, which is where the private nosilo-core
+      # dependency lives - so it needs the credential exactly as much as the test
+      # job does, even though it never builds an image. Missing it here would
+      # turn "the production import surface is broken" into the reported failure
+      # for what is actually a missing secret.
+      - name: Authenticate to the private core
+        run: |
+          if [ -z "${{ secrets.NOSILO_CORE_TOKEN }}" ]; then
+            echo "::error::NOSILO_CORE_TOKEN is not set. nosilo-core is a private dependency; see docs/DEPLOYMENT.md section 0."
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${{ secrets.NOSILO_CORE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
       - name: Install ONLY the production extras (mirrors the Dockerfile)
         run: |
           python -m pip install --upgrade pip

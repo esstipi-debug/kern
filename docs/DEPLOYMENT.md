@@ -5,6 +5,56 @@ public deploy needs the access controls turned on and TLS terminated at a proxy.
 This is the checklist. See [SECURITY.md](../SECURITY.md) for the threat model and
 the controls already enforced in code.
 
+## 0. The private dependency (do this before any deploy path)
+
+`nosilo-core` — the control plane the app is built on — lives in a **private**
+repository and is pinned by tag in `requirements.txt` and `pyproject.toml`. Every
+build path resolves it over `git+https`, so every build path needs a credential.
+Without one the build fails at dependency resolution, before any of the rest of
+this document matters.
+
+Create the token once:
+
+1. GitHub → Settings → Developer settings → **Fine-grained personal access token**
+2. Repository access: **only** `esstipi-debug/nosilo-core`
+3. Permissions: **Contents → Read-only**. Nothing else.
+
+Then give it to whichever build path you use:
+
+| Path | How | Where the token lives |
+|---|---|---|
+| **GitHub Actions** | Actions secret `NOSILO_CORE_TOKEN` | Only in the runner, only for the job |
+| **Docker / Fly** | `--secret id=nosilo_token,env=NOSILO_CORE_TOKEN` | Only in the RUN that installs; never in a layer |
+| **Railway** | Service variable `NOSILO_CORE_TOKEN` | ⚠️ also present at runtime — see below |
+
+```bash
+export NOSILO_CORE_TOKEN=github_pat_...
+
+# Docker (BuildKit is the default in modern Docker; the syntax directive at the
+# top of the Dockerfile pins the frontend that provides --mount=type=secret)
+docker build --secret id=nosilo_token,env=NOSILO_CORE_TOKEN -t kern .
+
+# Fly uses the same Dockerfile
+fly deploy --build-secret nosilo_token="$NOSILO_CORE_TOKEN"
+
+# Railway reads it as a build-time variable
+railway variables set NOSILO_CORE_TOKEN="$NOSILO_CORE_TOKEN"
+```
+
+**Why the token is never written with `git config --global`.** That command
+writes it into `/root/.gitconfig`, which is part of the committed image layer and
+readable by anyone who pulls it. Every path here passes the credential through
+`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0` instead, which git
+reads from the environment and never persists.
+
+**Railway is the weak spot, and it is inherent.** Nixpacks has no equivalent of a
+BuildKit secret mount, so the token has to be a service variable — and Railway
+service variables are present in the runtime environment too, not just the build.
+Anything that can read the app's environment can read the token. That is why the
+scope above is one repository, read-only: it is the difference between a leak
+that exposes source and one that exposes an account. Rotate it if the deploy
+environment is ever compromised, and prefer the Fly path when the choice is open.
+
 ## 1. Production checklist
 
 ```bash
