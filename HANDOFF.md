@@ -22,6 +22,82 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-03 — `intake_scan` (tool #50) MERGEADO Y PUSHEADO; **DEPLOY BLOQUEADO** por la POLICY de acceso
+
+**Leé esto primero si arrancás en frío.** Dos capacidades del Plan Maestro SCM-FDE
+entregadas esta ventana. La segunda está en `main` pero **NO en producción**, y el
+bloqueo no es la capacidad.
+
+### Lo que quedó en `main`
+- **`flow_map`** (tool #47): mapea la red observada desde un export de movimientos y
+  mide el tránsito real por tramo. Mergeado, pusheado y **EN PRODUCCIÓN** (Fly v37 en su
+  momento), verificado corriendo dentro del contenedor.
+- **`intake_scan`** (tool #50, no #49 — `cross_impact` y `org_friction_audit` entraron en
+  el medio): audita la carpeta cruda del cliente, clasifica cada archivo por firma de
+  columnas, corre cinco cortacircuitos y emite un semáforo de cuatro estados por
+  herramienta más las acciones rankeadas por cuántas desbloquea. Merge en `c828d24`,
+  pusheado dentro de `537a852`. Suite sobre el resultado mergeado: 4756 passed, 0 fallos.
+- Spec y plan de ambas en `docs/superpowers/{specs,plans}/2026-07-31-*`.
+
+### BLOQUEANTE: producción NO tiene `intake_scan`
+Deployar `537a852` crasheó la app al arranque:
+```
+RuntimeError: LINCHPIN_REQUIRE_SECURE is set but: webapp.security.POLICY is not set
+```
+`webapp/app.py:292`, `raise` a nivel de módulo mientras uvicorn importa la app. El guard
+llegó con el refactor a `nosilo_core` (`nosilo_core/access/`): prod tiene
+`LINCHPIN_REQUIRE_SECURE` activo y **no** tiene la política de acceso configurada.
+CI no lo ve porque en tests esa variable no está seteada. **Verde en CI, muerto en prod**
+— misma familia que el crash de `bs4`, distinto mecanismo.
+
+**Rollback ya hecho**, servicio sano: prod corre la imagen previa al merge (redeployada
+como v41). Verificado dentro del contenedor: 49 tools, `intake_scan` ausente,
+`nosilo_core` ausente, raíz y `/api/health` en 200.
+
+**Para desbloquear** hace falta una decisión del operador: configurar la POLICY en Fly
+(qué política, qué clasificación de campos), o desactivar `LINCHPIN_REQUIRE_SECURE` —
+pero lo segundo apaga a propósito el guard que impide arrancar sin control de acceso, así
+que no son equivalentes. Sumado a los secrets pendientes.
+
+### Trampa operativa que casi me engaña
+`flyctl deploy ... | tail` devolvió **exit 0 con prod caída**: el exit code es el del
+pipe, no el de flyctl. Después de cualquier deploy hay que mirar `flyctl status` y
+curlear, nunca fiarse del código de salida.
+
+### Trampa de merge que git NO marca
+`main` había movido `guided`, `registry`, `llm` y `types` de `src/` y `scm_agent/` a
+`nosilo_core/`. Git mergeó esos archivos **sin un solo conflicto** porque la rama nunca
+los tocó: cinco archivos quedaron importando módulos inexistentes — árbol limpio, código
+roto. **Un merge sin marcadores no prueba que el código importe.** Con `main` lejos,
+correr la suite sobre el resultado mergeado no es opcional.
+(Lo bueno: git detectó el rename de `registry.py` y arrastró el contrato de datos del
+`Tool` dataclass hasta `nosilo_core/registry.py`. Verificado leyendo, no asumido.)
+
+### Deuda declarada de `intake_scan` (adjudicada, nada oculto)
+1. **Un helper único de causas activas.** Aparecieron CINCO instancias del mismo defecto
+   en una sola rama: un ranker prometiendo un desbloqueo que no ocurre. Los cuatro
+   rankers reimplementan por separado la regla "acreditá solo si es causa única", así que
+   cada causa nueva obliga a acordarse de los cuatro. Hoy quedaron simétricos **a mano**.
+   Si aparece una sexta, la respuesta es el helper, no otro parche.
+2. **41 de 45 herramientas no declaran sus columnas.** `intake_scan` solo puede evaluar
+   las que sí, hoy las 4 del Diagnóstico de Arranque. El primer escaneo real dirá "puedo
+   hablar de cuatro y de las otras 41 no sé". Se vacía por tandas; el marcador es
+   `UNDECLARED_TOOLS` en `tests/test_tool_data_contract.py`.
+3. `source_files` sigue siendo unión de la carpeta en un rojo por `missing_required`.
+   No afirma ejecutabilidad (es rojo) y es pre-existente.
+
+### Lo que enseñó la revisión de rama completa
+Las siete revisiones por tarea aprobaron todo y **el final review encontró igual dos
+Críticos**: un falso verde (una herramienta declarada lista cuando sus columnas estaban
+repartidas en archivos distintos, certificado por un test del propio plan) y un cero que
+le pedía al cliente una columna que ya había mandado. Mismo patrón que en `flow_map`.
+**El final review no es trámite.**
+
+### Del Plan Maestro SCM-FDE quedan dos sub-proyectos sin empezar
+`discovery_brief` (fase 1: crux, costo de inacción, mapa de stakeholders, System of
+Record) y `fairness_guard` (fase 7: DIR/SPD/EOD como restricciones del optimizador, no
+como auditoría posterior). Cada uno con su propio spec.
+
 ## 2026-08-01/02 — PR #199 (simworld + hardening): **MERGEADO A MAIN** (`5dda9bf`)
 
 **Cierre del hilo `feat/simworld-marcador`.** El PR paso por CONFLICTING (dos
