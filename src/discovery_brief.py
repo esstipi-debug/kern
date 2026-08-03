@@ -54,7 +54,7 @@ CATALOG: tuple[ParamSpec, ...] = (
         moves="El costo de mantener y, con él, el ahorro anual de la portada.",
         defaults=(
             ("inventory_optimization", 0.25, "src/client_profile.py (docstring)"),
-            ("webapp", 0.22, "webapp/app.py:511"),
+            ("webapp", 0.22, "webapp/app.py:510"),
         ),
     ),
     ParamSpec(
@@ -79,9 +79,10 @@ CATALOG: tuple[ParamSpec, ...] = (
         defaults=(
             ("batch", 1000.0, "src/batch.py:28"),
             ("hats", 75.0, "src/hats.py:90"),
+            ("inventory_optimization", 75.0, "jobs/inventory_optimization.py:127"),
             ("powerbi_export", 1000.0, "src/powerbi_export.py:56,249"),
             ("simulation", 100.0, "jobs/simulation_job.py:31"),
-            ("webapp", 80.0, "webapp/app.py:510"),
+            ("webapp", 80.0, "webapp/app.py:509"),
         ),
     ),
     ParamSpec(
