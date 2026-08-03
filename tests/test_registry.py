@@ -9,6 +9,7 @@ keyword hit on raw substring containment, so a short keyword like "upc" or "ean"
 from __future__ import annotations
 
 from nosilo_core.registry import Tool, ToolRegistry
+
 from scm_agent.tools import build_default_registry
 
 

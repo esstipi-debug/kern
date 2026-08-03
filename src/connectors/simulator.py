@@ -12,8 +12,8 @@ offline; a real Shopify/Amazon adapter later implements the same protocol.
 from __future__ import annotations
 
 import pandas as pd
-
 from nosilo_core import writeback
+
 from src.connectors import InventoryLevel, Order, OrderLine, Product
 
 _TARGET = "simulated-store"

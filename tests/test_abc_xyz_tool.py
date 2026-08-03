@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from nosilo_core import llm
 
 from jobs import abc_xyz_job as axj
-from nosilo_core import llm
 from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable

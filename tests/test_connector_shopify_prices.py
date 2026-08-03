@@ -9,8 +9,8 @@ repricing scenario reads intuitively.
 from __future__ import annotations
 
 import pytest
-
 from nosilo_core import writeback
+
 from src.connectors.shopify_prices import (
     InMemoryShopify,
     ShopifyPricesError,

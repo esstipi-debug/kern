@@ -8,3 +8,15 @@ scipy>=1.10
 matplotlib>=3.7
 openpyxl>=3.1
 PyYAML>=6.0
+
+# The domain-agnostic control plane, split into esstipi-debug/nosilo-core.
+# Declared HERE as well as in pyproject.toml because the two install paths are
+# different and always have been: CI runs `pip install -r requirements-dev.txt`
+# (which includes this file) and never reads pyproject's [project.dependencies],
+# while the Dockerfile runs `pip install -e .` and never reads this file. Listing
+# it in only one place installs it in only one of them.
+#
+# Private repo: the install needs a credential. CI configures a git URL rewrite
+# from the NOSILO_CORE_TOKEN secret; see .github/workflows/tests.yml and the
+# core's CONSUMING.md.
+nosilo-core @ git+https://github.com/esstipi-debug/nosilo-core.git@v0.1.0

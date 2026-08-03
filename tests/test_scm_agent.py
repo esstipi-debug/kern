@@ -4,10 +4,10 @@ import importlib
 from pathlib import Path
 
 import pytest
-
 from nosilo_core import llm
 from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
 from nosilo_core.types import JobRequest, JobResult
+
 from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src import client_profile
@@ -623,6 +623,7 @@ def test_orchestrator_grounds_inventory_job_with_citations(tmp_path):
 
 def test_orchestrator_degrades_without_knowledge_graph(tmp_path):
     from nosilo_core import llm
+
     from scm_agent.knowledge import KnowledgeBase
     empty_kb = KnowledgeBase(books_path=tmp_path / "no.json", code_path=tmp_path / "no2.json")
     orch = Orchestrator(registry=tools.build_default_registry(),
