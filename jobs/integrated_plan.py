@@ -341,6 +341,7 @@ def write_operational(bundle: IntegratedPlanBundle, out_dir: str | Path, client:
             "constraint_extra_units": round(line.constraint_extra_units, 2),
             "constraint_cost_delta": round(line.constraint_cost_delta, 2),
             "constraint_extra_cover_periods": round(line.constraint_extra_cover_periods, 2),
+            "constraint_verdict": line.constraint_verdict,
             "reorder_buffer": round(line.reorder_buffer, 2),
             "projected_position": round(line.projected_position, 2),
             "order_value": round(line.order_value, 2),

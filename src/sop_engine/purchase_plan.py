@@ -84,6 +84,41 @@ class SkuPurchaseInputs:
             raise ValueError(f"{self.product_id}: order_multiple must be >= 0")
 
 
+#: The supplier's terms cost nothing extra on this line - there was nothing to round.
+UNCONSTRAINED = "unconstrained"
+#: The rounding buys leftover the demand plan absorbs inside the horizon: take the terms.
+WORTH_IT = "worth_it"
+#: The rounding buys more cover than the horizon allows. The lever is not the plan, it is
+#: the terms: renegotiate the MOQ, split the order, or source it elsewhere.
+NOT_WORTH_IT = "not_worth_it"
+#: There is leftover but no demand to measure it against, so no cover can be computed and
+#: no verdict is honest. Never collapsed into WORTH_IT - a SKU whose shaped demand is zero
+#: still gets a full MOQ ordered (``apply_order_rules`` floors at the MOQ even on a zero
+#: gap), and reporting 0.0 extra cover there reads as "the terms cost nothing".
+UNMEASURED = "unmeasured"
+
+#: How much extra cover the rounding may add before it stops being worth it, in the periods
+#: the demand plan is stated in. One full extra period of demand bought on top of what the
+#: cycle needed is the point where a case-pack stops being a rounding and starts being a
+#: stocking decision. Per-plan, because the tolerable horizon is a business call.
+DEFAULT_CONSTRAINT_COVER_HORIZON = 1.0
+
+
+def constraint_verdict(
+    extra_units: float, shaped_demand: float, cover_horizon: float
+) -> str:
+    """Is taking the supplier's terms worth it on this line?
+
+    Split from ``build_purchase_plan`` so the judgement is testable without a plan, and
+    so the zero-demand case is impossible to reach by accident.
+    """
+    if extra_units <= 0:
+        return UNCONSTRAINED
+    if shaped_demand <= 0:
+        return UNMEASURED
+    return WORTH_IT if extra_units / shaped_demand <= cover_horizon else NOT_WORTH_IT
+
+
 @dataclass(frozen=True)
 class PurchasePlanLine:
     """One SKU's purchase/inventory plan: what's on hand, what's already
@@ -108,6 +143,10 @@ class PurchasePlanLine:
     constraint_extra_units: float = 0.0
     constraint_cost_delta: float = 0.0
     constraint_extra_cover_periods: float = 0.0
+    #: Whether taking the supplier's terms is worth it, on those three numbers. Three
+    #: numbers and no verdict leaves the buyer to eyeball it, which is the decision this
+    #: plan exists to make. One of the CONSTRAINT_* tokens below.
+    constraint_verdict: str = UNCONSTRAINED
 
 
 def build_purchase_plan(
@@ -115,6 +154,7 @@ def build_purchase_plan(
     sku_inputs: dict[str, SkuPurchaseInputs],
     *,
     budget: float | None = None,
+    cover_horizon: float = DEFAULT_CONSTRAINT_COVER_HORIZON,
 ) -> tuple[tuple[PurchasePlanLine, ...], BudgetAllocation | None]:
     """Build the purchase/inventory plan for every SKU in ``demand_plan``.
 
@@ -162,6 +202,9 @@ def build_purchase_plan(
             # Zero demand means no cover to speak of, not infinite cover.
             constraint_extra_cover_periods=(
                 extra_by_sku[d.product_id] / d.shaped_demand if d.shaped_demand > 0 else 0.0
+            ),
+            constraint_verdict=constraint_verdict(
+                extra_by_sku[d.product_id], d.shaped_demand, cover_horizon
             ),
         ))
     return tuple(lines), allocation

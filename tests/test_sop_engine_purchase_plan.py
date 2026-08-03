@@ -5,7 +5,14 @@ from __future__ import annotations
 import pytest
 
 from src.sop_engine.demand_plan import NO_SHIFT_SOURCE, DemandPlanLine
-from src.sop_engine.purchase_plan import SkuPurchaseInputs, build_purchase_plan
+from src.sop_engine.purchase_plan import (
+    NOT_WORTH_IT,
+    UNCONSTRAINED,
+    UNMEASURED,
+    WORTH_IT,
+    SkuPurchaseInputs,
+    build_purchase_plan,
+)
 
 
 def _line(product_id: str, base: float, shaped: float, source: str = NO_SHIFT_SOURCE) -> DemandPlanLine:
@@ -151,3 +158,54 @@ def test_un_moq_sobre_una_necesidad_de_cero_queda_a_la_vista():
     assert linea.constraint_extra_units == 100.0
     assert linea.constraint_cost_delta == 1000.0
     assert linea.constraint_extra_cover_periods == 0.0
+
+
+# ---- constraint_verdict: los tres numeros ya estaban, faltaba el juicio ----
+
+def test_el_redondeo_que_la_demanda_absorbe_se_recomienda_tomar():
+    """238 u de sobra sobre 100 de demanda son 2,38 periodos: fuera del horizonte."""
+    (linea,), _ = build_purchase_plan(
+        (_line("A", 100.0, 100.0),),
+        {"A": SkuPurchaseInputs(product_id="A", on_hand=40.0, unit_cost=10.0,
+                                reorder_point=5.0, incoming_po=10.0,
+                                minimum_order_quantity=250.0, order_multiple=48.0)},
+    )
+    assert linea.constraint_extra_cover_periods == pytest.approx(2.38)
+    assert linea.constraint_verdict == NOT_WORTH_IT
+
+    (holgado,), _ = build_purchase_plan(
+        (_line("A", 100.0, 100.0),),
+        {"A": SkuPurchaseInputs(product_id="A", on_hand=40.0, unit_cost=10.0,
+                                reorder_point=5.0, incoming_po=10.0,
+                                minimum_order_quantity=250.0, order_multiple=48.0)},
+        cover_horizon=3.0,
+    )
+    assert holgado.constraint_verdict == WORTH_IT
+
+
+def test_sin_demanda_no_hay_veredicto_aunque_el_moq_haya_comprado_igual():
+    """El caso que un veredicto ingenuo aprueba: cobertura 0.0 no es cobertura barata.
+
+    ``apply_order_rules`` pisa el gap con el MOQ, asi que un SKU sin demanda igual
+    se lleva 250 u; reportar 0.0 periodos de cobertura extra ahi se lee como "las
+    condiciones no cuestan nada".
+    """
+    (linea,), _ = build_purchase_plan(
+        (_line("A", 0.0, 0.0),),
+        {"A": SkuPurchaseInputs(product_id="A", on_hand=0.0, unit_cost=10.0,
+                                reorder_point=0.0, incoming_po=0.0,
+                                minimum_order_quantity=250.0)},
+    )
+    assert linea.recommended_order == 250.0
+    assert linea.constraint_extra_cover_periods == 0.0
+    assert linea.constraint_verdict == UNMEASURED
+
+
+def test_sin_condiciones_del_proveedor_no_hay_nada_que_juzgar():
+    (linea,), _ = build_purchase_plan(
+        (_line("A", 100.0, 100.0),),
+        {"A": SkuPurchaseInputs(product_id="A", on_hand=40.0, unit_cost=10.0,
+                                reorder_point=5.0, incoming_po=10.0)},
+    )
+    assert linea.constraint_extra_units == 0.0
+    assert linea.constraint_verdict == UNCONSTRAINED

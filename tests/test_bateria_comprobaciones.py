@@ -233,18 +233,18 @@ def test_t05_es_parcial_cuando_solo_falta_una_pieza_de_la_oc():
     assert "fecha de pedido / llegada esperada" in r.evidencia
 
 
-def test_t06_es_parcial_el_plan_ya_cuantifica_el_exceso_pero_no_recomienda():
-    """Veredicto real despues del fix: el plan de compra rotula lo que el MOQ y el
-    multiplo de caja compraron de mas (238 u / 2.380 usd) y cuanta cobertura
-    agregan. Lo que falta es el go/no-go: nadie dice si conviene."""
+def test_t06_cumple_el_plan_cuantifica_el_exceso_y_ahora_recomienda():
+    """Veredicto real: el plan de compra rotula lo que el MOQ y el multiplo de caja
+    compraron de mas (238 u / 2.380 usd), cuanta cobertura agregan, y desde que
+    ``PurchasePlanLine`` trae ``constraint_verdict`` tambien dice si conviene."""
     r = _resultado(puntuar(), "T06")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.puntos == 0.5
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["mejor"] == "integrated_plan (purchase plan)"
     por_tool = {c["tool"]: c for c in r.detalle["candidatos"]}
     plan = por_tool["integrated_plan (purchase plan)"]
     assert plan["cuantifica_el_exceso"] is True
-    assert plan["faltantes"] == ["recomendacion si/no"]
+    assert plan["faltantes"] == []
     assert "238 u de mas" in plan["prueba_exceso"]
     assert "constraint_extra_units" in plan["prueba_exceso"]
 
