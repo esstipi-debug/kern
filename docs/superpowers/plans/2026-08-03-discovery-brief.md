@@ -561,6 +561,13 @@ def test_fuera_de_rango_tambien_bloquea_la_acreditacion():
     assert gaps == ()
 
 
+def test_malformado_tambien_bloquea_la_acreditacion():
+    """Mismo razonamiento: pedir el faltante deja el valor basura donde estaba."""
+    tools = [_FakeTool("mixta", ("holding_rate", "order_cost"))]
+    gaps = rank_gaps(verdicts_for(tools, {"holding_rate": True}))
+    assert gaps == ()
+
+
 def test_sin_perfil_no_produce_ranking_de_parametros():
     """La acción es crear el perfil; rankear preguntas sería el consejo equivocado."""
     tools = [_FakeTool("a", ("holding_rate",))]
@@ -597,8 +604,8 @@ def rank_gaps(verdicts: tuple[ToolVerdict, ...]) -> tuple[ParamGap, ...]:
 
     REGLA DE CAUSA UNICA: una herramienta solo acredita a un parámetro si ese
     parámetro es su UNICO obstáculo. Si le faltan dos, o si además tiene uno
-    fuera de rango, pedir uno solo la deja roja igual -- acreditarla prometería
-    un desbloqueo que no va a ocurrir.
+    fuera de rango o uno malformado, pedir uno solo la deja roja igual --
+    acreditarla prometería un desbloqueo que no va a ocurrir.
 
     ``sin_perfil`` no entra: ahí la acción es crear el perfil, no preguntar.
     Un solo ranker a propósito, para no repetir la regla en varios lugares (ver
@@ -609,7 +616,7 @@ def rank_gaps(verdicts: tuple[ToolVerdict, ...]) -> tuple[ParamGap, ...]:
     """
     by_param: dict[str, list[str]] = {}
     for v in verdicts:
-        if v.state != RED or v.out_of_range or len(v.missing) != 1:
+        if v.state != RED or v.out_of_range or v.malformed or len(v.missing) != 1:
             continue
         (param,) = v.missing
         by_param.setdefault(param, []).append(v.tool_key)
@@ -1443,7 +1450,8 @@ def verify(report: BriefReport) -> list[str]:
     huerfanos = sorted({
         p
         for v in report.verdicts
-        for p in (*v.missing, *(n for n, _ in v.out_of_range), *(n for n, _ in v.incomplete))
+        for p in (*v.missing, *(n for n, _ in v.out_of_range),
+                  *(n for n, _ in v.malformed), *(n for n, _ in v.incomplete))
         if p not in conocidos
     })
     if huerfanos:
@@ -1453,7 +1461,7 @@ def verify(report: BriefReport) -> list[str]:
         )
 
     for v in report.verdicts:
-        if v.state == GREEN and (v.missing or v.out_of_range or v.incomplete):
+        if v.state == GREEN and (v.missing or v.out_of_range or v.malformed or v.incomplete):
             issues.append(
                 f"invariante roto: '{v.tool_key}' está verde con obstáculos declarados"
             )
@@ -1486,15 +1494,17 @@ def _param_rows(report: BriefReport) -> list[dict[str, object]]:
 
 
 def _tool_rows(report: BriefReport) -> list[dict[str, object]]:
-    """Una fila por herramienta. `missing`, `out_of_range` e `incomplete` van en
-    columnas SEPARADAS -- nunca colapsadas -- porque cada una nombra un problema
-    distinto: pedir el número, corregirlo, o completarlo."""
+    """Una fila por herramienta. `missing`, `out_of_range`, `malformed` e
+    `incomplete` van en columnas SEPARADAS -- nunca colapsadas -- porque cada una
+    nombra un problema distinto: pedir el número, corregirlo, reemplazar la
+    basura, o completarlo."""
     return [
         {
             "tool_key": v.tool_key,
             "state": v.state,
             "missing": ", ".join(v.missing),
             "out_of_range": ", ".join(f"{n}={val:g}" for n, val in v.out_of_range),
+            "malformed": ", ".join(f"{n}={val}" for n, val in v.malformed),
             "incomplete": ", ".join(f"{n}:{'/'.join(faltan)}" for n, faltan in v.incomplete),
         }
         for v in report.verdicts
