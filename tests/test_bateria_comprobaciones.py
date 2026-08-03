@@ -438,15 +438,23 @@ def _candidato_exposicion(**cambios) -> _CandidatoExposicion:
     return _CandidatoExposicion(**{**base, **cambios})
 
 
-def test_t13_es_parcial_rankea_y_propone_pero_ninguna_accion_lleva_fecha():
-    """Veredicto real: el ranking sale por EMV con occurrence/severity/RPN
-    explicitos y anclado a proveedor, con mitigaciones rankeadas por beneficio
-    neto. Lo unico que falta es el "cuando": ninguna capa tiene fecha."""
+def test_t13_cumple_ahora_que_la_mitigacion_lleva_fecha():
+    """Veredicto real. El ranking ya salia por EMV con occurrence/severity/RPN
+    explicitos y anclado a proveedor; lo unico que faltaba era el "cuando", y
+    ninguna capa lo tenia. ``RankedMitigation`` ahora lleva ``by_when``, derivado
+    de la ventana de aviso del propio riesgo (velocity - detectability, cero si
+    TTR > TTS).
+
+    Este test era la caracterizacion del estado roto -- se llamaba "ninguna
+    accion lleva fecha" -- y pasa a ser su guardia de regresion: si la fecha
+    desaparece, ``faltantes`` vuelve a ["accion fechada"], T13 cae a PARCIAL y
+    esto falla.
+    """
     r = _resultado(puntuar(), "T13")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.puntos == 0.5
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["anclado_y_accionable"] is True
-    assert r.detalle["faltantes"] == ["accion fechada"]
+    assert r.detalle["faltantes"] == []
 
 
 def test_t13_cumple_con_ranking_ancla_accion_y_fecha():
