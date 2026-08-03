@@ -56,6 +56,14 @@ class Tool:
     # ask for once, rather than silently take the engine's generic default — only enforced
     # when the caller opts in via JobRequest.strict_params. Empty => never blocks (default).
     required_client_params: tuple[str, ...] = ()
+    # The tool's data contract, stated as data rather than buried in prepare().
+    # `required_columns` are canonical names whose absence makes prepare() refuse;
+    # `optional_columns` improve the result when present. Both empty means the tool
+    # has not declared yet -- `intake_scan` reports such a tool as `no_declarado`,
+    # never as runnable. Declaring is done in batches; see
+    # tests/test_tool_data_contract.py::UNDECLARED_TOOLS.
+    required_columns: tuple[str, ...] = ()
+    optional_columns: tuple[str, ...] = ()
 
 
 class ToolRegistry:
