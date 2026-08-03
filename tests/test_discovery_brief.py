@@ -1,5 +1,10 @@
 """Tests del motor puro de discovery_brief. Nada aquí toca disco."""
-from src.discovery_brief import CATALOG, UNDECLARED_USE, ParamSpec, spec_for
+from dataclasses import dataclass
+
+from src.discovery_brief import (
+    CATALOG, GREEN, NO_PROFILE, RED, UNDECLARED, UNDECLARED_USE, YELLOW,
+    ParamSpec, ToolVerdict, spec_for, verdicts_for,
+)
 
 
 def test_el_catalogo_no_repite_nombres():
@@ -161,3 +166,78 @@ def test_todas_las_citas_de_linea_son_exactas():
         f"{expected_checked} esperadas ({total_defaults} citas totales, "
         f"{len(skipped_sites)} saltadas a proposito: {skipped_sites})"
     )
+
+
+@dataclass(frozen=True)
+class _FakeTool:
+    """Lo mínimo del contrato de nosilo_core.registry.Tool que este motor lee."""
+    key: str
+    required_client_params: tuple[str, ...] = ()
+
+
+def test_una_tool_sin_declaracion_sale_no_declarado():
+    """No podemos hablar por ella. Nunca 'verde' por omisión."""
+    (v,) = verdicts_for([_FakeTool("forecast")], {"holding_rate": 0.3})
+    assert v.state == UNDECLARED
+
+
+def test_todos_los_parametros_presentes_y_en_rango_sale_verde():
+    tool = _FakeTool("inventory_optimization", ("holding_rate", "service_level"))
+    (v,) = verdicts_for([tool], {"holding_rate": 0.28, "service_level": 0.97})
+    assert v.state == GREEN
+    assert v.missing == ()
+
+
+def test_un_parametro_ausente_sale_rojo_y_lo_nombra():
+    tool = _FakeTool("inventory_optimization", ("holding_rate", "service_level"))
+    (v,) = verdicts_for([tool], {"service_level": 0.97})
+    assert v.state == RED
+    assert v.missing == ("holding_rate",)
+
+
+def test_fuera_de_rango_es_rojo_pero_distinguible_de_ausente():
+    """holding_rate=25.0 -- porcentaje tipeado donde va una fracción -- pasa la
+    validación de ClientProfile y multiplica por cien el costo de mantener.
+    Pedirlo de nuevo no sirve: hay que corregirlo, y por eso viaja aparte."""
+    tool = _FakeTool("inventory_optimization", ("holding_rate", "service_level"))
+    (v,) = verdicts_for([tool], {"holding_rate": 25.0, "service_level": 0.97})
+    assert v.state == RED
+    assert v.missing == ()
+    assert v.out_of_range == (("holding_rate", 25.0),)
+
+
+def test_sin_perfil_no_se_colapsa_en_rojo():
+    """La acción es distinta: crear el perfil, no pedirle un número al cliente."""
+    tool = _FakeTool("inventory_optimization", ("holding_rate", "service_level"))
+    (v,) = verdicts_for([tool], None)
+    assert v.state == NO_PROFILE
+
+
+def test_objection_thresholds_parcial_es_amarillo_no_rojo():
+    """Un dict parcial es legal a propósito: cross_impact devuelve NO_EVALUABLE
+    en voz alta para el área sin umbral. NO toma un default en silencio, así que
+    no es rojo -- corre y cubre menos, que es exactamente lo que amarillo dice."""
+    tool = _FakeTool("cross_impact", ("objection_thresholds",))
+    (v,) = verdicts_for([tool], {"objection_thresholds": {"cfo": 1000.0, "planner": 500.0}})
+    assert v.state == YELLOW
+    assert v.incomplete == (("objection_thresholds", ("comercial", "comprador")),)
+
+
+def test_objection_thresholds_completo_es_verde():
+    tool = _FakeTool("cross_impact", ("objection_thresholds",))
+    completo = {k: 1.0 for k in ("comprador", "planner", "cfo", "comercial")}
+    (v,) = verdicts_for([tool], {"objection_thresholds": completo})
+    assert v.state == GREEN
+
+
+def test_objection_thresholds_ausente_es_rojo():
+    tool = _FakeTool("cross_impact", ("objection_thresholds",))
+    (v,) = verdicts_for([tool], {"holding_rate": 0.25})
+    assert v.state == RED
+    assert v.missing == ("objection_thresholds",)
+
+
+def test_los_veredictos_salen_ordenados_por_key():
+    tools = [_FakeTool("zeta"), _FakeTool("alfa"), _FakeTool("media")]
+    keys = [v.tool_key for v in verdicts_for(tools, {})]
+    assert keys == ["alfa", "media", "zeta"]

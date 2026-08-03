@@ -157,3 +157,104 @@ _BY_NAME: dict[str, ParamSpec] = {s.name: s for s in CATALOG + UNDECLARED_USE}
 def spec_for(name: str) -> ParamSpec | None:
     """El ParamSpec de un parámetro, o None si el catálogo no lo conoce."""
     return _BY_NAME.get(name)
+
+
+GREEN = "verde"
+YELLOW = "amarillo"
+RED = "rojo"
+UNDECLARED = "no_declarado"
+NO_PROFILE = "sin_perfil"
+
+
+@dataclass(frozen=True)
+class ToolVerdict:
+    """Si una herramienta correría hoy con números del cliente, y qué le falta.
+
+    Los tres modos de falla viajan SEPARADOS porque cada uno tiene un arreglo
+    distinto, y decirle al operador el equivocado le hace perder la reunión:
+
+    - `missing`: el parámetro nunca se declaró. Hay que PEDIRLO.
+    - `out_of_range`: está cargado pero es implausible (el clásico holding_rate
+      de 25.0 en vez de 0.25). Pedirlo de nuevo no sirve: hay que CORREGIRLO.
+    - `incomplete`: parámetro granular presente pero parcial. La corrida es
+      válida y cubre menos -- por eso amarillo, nunca rojo.
+    """
+
+    tool_key: str
+    state: str
+    missing: tuple[str, ...] = ()
+    out_of_range: tuple[tuple[str, float], ...] = ()
+    incomplete: tuple[tuple[str, tuple[str, ...]], ...] = ()
+
+
+def _out_of_range(spec: ParamSpec, value: object) -> bool:
+    """Un escalar fuera del rango plausible del catálogo.
+
+    Los granulares y los no-numéricos no se evalúan por rango aquí: su
+    completitud se juzga en `_missing_subkeys`. Un bool es un int en Python y
+    nunca es un valor legítimo para estos parámetros, así que se rechaza.
+    """
+    if spec.subkeys or isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return not (spec.low <= float(value) <= spec.high)
+
+
+def _missing_subkeys(spec: ParamSpec, value: object) -> tuple[str, ...]:
+    """Las sub-claves que un parámetro granular no trae. Ordenadas alfabéticamente."""
+    if not spec.subkeys:
+        return ()
+    present = set(value) if isinstance(value, dict) else set()
+    return tuple(sorted(k for k in spec.subkeys if k not in present))
+
+
+def verdicts_for(tools: list, params: dict | None) -> tuple[ToolVerdict, ...]:
+    """Un veredicto por herramienta, ordenado por key para que dos corridas coincidan.
+
+    ``params`` es lo que devuelve ``ClientProfile.as_params()``, o ``None``
+    cuando el cliente no tiene perfil -- un estado propio, nunca colapsado en
+    rojo: la acción es crear el perfil, no pedirle un número al cliente.
+    """
+    out: list[ToolVerdict] = []
+    for tool in sorted(tools, key=lambda t: t.key):
+        required = tuple(tool.required_client_params)
+        if not required:
+            out.append(ToolVerdict(tool.key, UNDECLARED))
+            continue
+        if params is None:
+            out.append(ToolVerdict(tool.key, NO_PROFILE, missing=tuple(sorted(required))))
+            continue
+
+        missing: list[str] = []
+        bad_range: list[tuple[str, float]] = []
+        incomplete: list[tuple[str, tuple[str, ...]]] = []
+        for name in sorted(required):
+            spec = spec_for(name)
+            if name not in params:
+                missing.append(name)
+                continue
+            if spec is None:
+                # Declaración huérfana: el catálogo no conoce este parámetro. El
+                # motor no adivina -- lo trata como presente y el QA gate de la
+                # capa de job lo reporta como fallo duro (ver jobs/discovery_brief_job.verify).
+                continue
+            value = params[name]
+            if _out_of_range(spec, value):
+                bad_range.append((name, float(value)))
+                continue
+            faltan = _missing_subkeys(spec, value)
+            if faltan:
+                incomplete.append((name, faltan))
+
+        if missing or bad_range:
+            state = RED
+        elif incomplete:
+            state = YELLOW
+        else:
+            state = GREEN
+        out.append(ToolVerdict(
+            tool.key, state,
+            missing=tuple(missing),
+            out_of_range=tuple(bad_range),
+            incomplete=tuple(incomplete),
+        ))
+    return tuple(out)
