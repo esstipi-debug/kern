@@ -13,7 +13,7 @@
 Tres reglas, aplicadas antes de puntuar nada:
 
 1. **La batería no se derivó de las capacidades de Kern.** El agente que la escribió tenía prohibido leer el repositorio. Si la vara sale del producto, mide el producto contra sí mismo.
-2. **Tres tareas son deliberadamente humanas** — T15 negociar con proveedor, T16 expediting telefónico, T17 racionar stock entre clientes — para que el techo de *cualquier* software quede visible en la misma tabla.
+2. **Cinco tareas son deliberadamente humanas** — T15 negociar cara a cara con el proveedor, T16 expediting telefónico, T17 racionar stock entre clientes, T18 sostener el plan frente a la presión interna, T19 conteos cíclicos y exactitud física del inventario — para que el techo de *cualquier* software quede visible en la misma tabla.
 3. **Kern se puntuó corrido, no descrito.** Con el venv del repo sobre Superstore, Olist y 777 órdenes de compra reales. Una capacidad descrita es una promesa; una capacidad corrida es un hecho.
 4. **El puntaje lo emite un harness, no un juicio.** `src/bateria/` corre las 20 tareas contra el criterio escrito por adelantado y devuelve cumple/parcial/no **con evidencia campo por campo**. Cualquiera con el repo obtiene el mismo número sobre el mismo commit.
 
@@ -23,7 +23,7 @@ Tres reglas, aplicadas antes de puntuar nada:
 
 | Sujeto | Puntaje | Lectura |
 |---|--:|---|
-| **Techo humano** (planificador con experiencia) | **85%** · 17/20 | las 3 tareas humanas son el techo estructural de todo software |
+| **Techo humano** (planificador con experiencia) | **75%** · 15/20 | las 5 tareas humanas son el techo estructural de todo software |
 | **Techo de Kern sin ningún cliente** | **42,5%** | ningún PR mueve esta cifra: falta el dato, no el código |
 | **Kern, corrido** | **27,50%** · 5,5/20 | 2 tareas cumplen · 7 quedan a medias |
 
@@ -39,7 +39,7 @@ Un número que sube en la vara que uno mismo propone merece desconfianza por def
 
 Sobre el **mismo código**, el harness cae a **media tarea** del veredicto adversarial. No es un juez más blando: la subida viene de [#203](https://github.com/esstipi-debug/kern/pull/203), que arregló los defectos de cableado que la propia batería destapó — la matemática que existía en `src/` y el job no recibía. El criterio no se movió: `tareas.json` está congelado por `tests/test_bateria_tareas.py`.
 
-**Sigue siendo un puntaje bajo, y esa es la lectura.** 27,50% sobre un techo de 85% son dos tareas cumplidas de veinte.
+**Sigue siendo un puntaje bajo, y esa es la lectura.** 27,50% sobre un techo de 75% son dos tareas cumplidas de veinte.
 
 **Vigencia.** Corrida el 02-ago-2026 sobre `73b912d`, posterior a #193/#194 (cinco degradaciones silenciosas cerradas, ver [`KERN_AUTOPSIA_FALLAS.md`](KERN_AUTOPSIA_FALLAS.md)) y a #203. Reproducible: dos corridas seguidas dan el mismo vector de estados. **Nada la congela** — ni un test ni la CI corren la batería, así que un cambio en `jobs/` puede moverla sin que nada se ponga rojo. Re-correr y sellar el commit antes de cada uso público.
 
@@ -47,17 +47,22 @@ Sobre el **mismo código**, el harness cae a **media tarea** del veredicto adver
 
 ## 2. El hallazgo que reordena la estrategia
 
-De las 17 tareas alcanzables por software:
+De las **15** tareas alcanzables por software:
 
 | Bloqueo | Tareas | Qué significa |
 |---|--:|---|
 | **Bloqueadas por dato del cliente** | **11** | no se cumplen con **ninguna** cantidad de código sobre ningún archivo que exista hoy en el repo. Falta stock on-hand real, órdenes en tránsito, pedidos comprometidos, condiciones de pago |
-| Código puro | 3 | T01 banda de incertidumbre · T02 columna de bias · T18 campos tipados del ledger |
+| Código puro | 2 | T01 banda de incertidumbre · T02 columna de bias |
 | Devuelven un número apoyado en un supuesto propio | 3 | `unit_cost=1.0` en las 9.826 filas del canónico → el ABC sale por unidades y se rotula "annual value"; margen imputado 0,6·precio |
 
 **La conclusión comercial:** el cuello de botella no es el motor. Son **cuatro adjuntos por mail** — inventario, ventas, compras, proveedores — que desbloquean 12 de las 20 tareas. Eso convierte al intake en el producto, no en el trámite previo al producto.
 
-**Este desglose es el del 25-jul y no se re-derivó.** El harness marca hoy `SIN_DATO` en dos tareas (T03, T11), no en once — pero mide otra cosa: sólo marca falta de dato donde el check pide un dataset por ruta, mientras el conteo de arriba clasificó tarea por tarea a mano. **No afirmar ninguno de los dos como el vigente hasta re-derivarlo**; la conclusión comercial de los cuatro adjuntos no depende de cuál gane.
+**Este desglose es el del 25-jul y no se re-derivó. Los cubos ya no suman.** Dos motivos, ambos declarados en vez de maquillados:
+
+- **T18 estaba contada como "código puro"** ("campos tipados del ledger"). La fuente la marca `TAREA HUMANA` y su enunciado real es *"sostener el plan frente a la presión interna"* — nada que ver. Sale del cubo, que baja de 3 a 2, y por eso 11 + 2 + 3 = 16 sobre 15 alcanzables: **el conteo original tenía al menos un error propio**, independiente del recuento de humanas.
+- **El harness marca `SIN_DATO` en dos tareas (T03, T11), no en once**, pero mide otra cosa: sólo donde el check pide un dataset por ruta, mientras el conteo de arriba clasificó tarea por tarea a mano.
+
+**No afirmar ninguno de los dos como el vigente hasta re-derivarlo**, y lo mismo vale para el 42,5% de "techo sin ningún cliente" de la tabla anterior, que sale de este desglose. La conclusión comercial de los cuatro adjuntos no depende de cuál gane.
 
 ---
 
@@ -87,7 +92,7 @@ Tres columnas, misma vara, cita textual en cada celda que no sea propia:
 | **SaaS de planificación** | **solo** lo que su documentación pública dice, con cita textual y enlace. Nunca inferido |
 | **Kern** | el puntaje corrido, sin maquillar, con el commit |
 
-Lo que hace que funcione no es el puntaje de Kern: es que las tres tareas humanas queden visibles y que Kern aparezca con un número bajo. Una vara donde el que la propone gana no convence a nadie que sepa del oficio.
+Lo que hace que funcione no es el puntaje de Kern: es que las cinco tareas humanas queden visibles y que Kern aparezca con un número bajo. Una vara donde el que la propone gana no convence a nadie que sepa del oficio.
 
 ---
 

@@ -80,26 +80,29 @@ datasets reales enchufados el número se mueve, y eso es correcto, no un fallo.
 `jobs/` puede mover el marcador sin que nada se ponga rojo. Re-córrela antes de
 citarla.
 
-## Discrepancias con el doc publicado
+## Discrepancias con el doc publicado — ambas cerradas
 
 `documentation/KERN_BATERIA_20_TAREAS.md` estuvo desalineado con la fuente en dos
-puntos. **Ninguno se corrige de costado**: es una pieza de venta con números
-publicados, y ajustar al alza el puntaje de una vara que uno mismo propuso es
-exactamente el movimiento que la destruye. Las dos son decisiones del dueño; una
-sigue abierta.
+puntos, los dos resueltos el 02-ago-2026 como decisión del dueño y no de costado:
+es una pieza de venta con números publicados.
 
-**Cuántas tareas son humanas — ABIERTA.** El doc afirma **3** (T15/T16/T17) y de ahí deriva
-el techo humano de 85% · 17/20. La fuente marca `TAREA HUMANA` en **cinco**:
-T15–T19. El doc además atribuye a T18 "campos tipados del ledger", cuando T18 es
-*"sostener el plan frente a la presión interna"*. Con 5 humanas, las alcanzables
-por software son **15, no 17**, y la aritmética del techo cambia — de ahí que
-`Puntaje` reporte los dos techos en paralelo. `tests/test_bateria_tareas.py`
-congela lo que dice la fuente.
+**Qué puntaje se publica.** Publicaba 7,5% · 1,5/20 (corrida manual del 25-jul,
+anterior a #193/#194 y #203); ahora el 27,50% del harness con el commit sellado.
+La cadena que justifica la subida —el harness da 10,0% sobre el código de #202, a
+media tarea del veredicto manual— está en el propio doc.
 
-~~**Qué puntaje se publica.**~~ **Cerrada.** El doc publicaba 7,5% · 1,5/20 (corrida
-manual del 25-jul, anterior a #193/#194 y #203); se actualizó al 27,50% del harness
-con el commit sellado. La cadena que justifica la subida —el harness da 10,0% sobre
-el código de #202, a media tarea del veredicto manual— está en el propio doc.
+**Cuántas tareas son humanas.** Afirmaba **3** (T15/T16/T17), techo 85% · 17/20.
+La fuente marca `TAREA HUMANA` en **cinco** (T15–T19), luego 15 alcanzables y
+techo **75%**. El doc además contaba a T18 entre las de "código puro" y la
+describía como "campos tipados del ledger", cuando T18 es *"sostener el plan
+frente a la presión interna"*. Corregido en los dos sitios.
+
+Con eso, `Puntaje` dejó de reportar dos techos: `techo_segun_doc` y
+`_HUMANAS_SEGUN_DOC` existían **sólo** para modelar el desacuerdo y se
+eliminaron. El techo vivo se deriva de `tareas_humanas()`, así que marcar una
+`TAREA HUMANA` de más o de menos en `tareas.json` lo mueve solo en vez de dejarlo
+mintiendo — y `tests/test_bateria_scorer.py` comprueba precisamente esa
+derivación, no el 75,0 literal.
 
 ## Dos reglas de diseño que no se negocian
 
