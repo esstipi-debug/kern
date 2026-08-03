@@ -101,6 +101,16 @@ def test_parse_versions_rejects_entries_without_a_handle():
         parse_versions({"publicApiVersions": [{"supported": True}]})
 
 
+def test_parse_versions_rejects_a_non_dict_data():
+    with pytest.raises(ValueError, match="publicApiVersions"):
+        parse_versions([{"handle": "2025-10", "supported": True}])
+
+
+def test_parse_versions_rejects_a_non_dict_entry():
+    with pytest.raises(ValueError, match="handle"):
+        parse_versions({"publicApiVersions": ["2025-10"]})
+
+
 def test_check_pin_reports_a_supported_version():
     assert check_pin(parse_versions(_VERSIONS_PAYLOAD), pinned="2026-01") == SUPPORTED
 

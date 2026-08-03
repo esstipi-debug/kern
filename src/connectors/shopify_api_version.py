@@ -96,12 +96,18 @@ query PublicApiVersions {
 
 def parse_versions(data: dict) -> list[dict]:
     """Normalise a ``publicApiVersions`` payload to ``[{handle, supported}]``."""
-    rows = data.get("publicApiVersions")
+    try:
+        rows = data.get("publicApiVersions")
+    except AttributeError:
+        raise ValueError(f"unexpected publicApiVersions payload: {data!r}")
     if not isinstance(rows, list):
         raise ValueError(f"unexpected publicApiVersions payload: {data!r}")
     versions = []
     for row in rows:
-        handle = (row or {}).get("handle")
+        try:
+            handle = (row or {}).get("handle")
+        except AttributeError:
+            raise ValueError(f"publicApiVersions entry without a handle: {row!r}")
         if not handle:
             raise ValueError(f"publicApiVersions entry without a handle: {row!r}")
         versions.append({"handle": str(handle), "supported": bool(row.get("supported"))})
