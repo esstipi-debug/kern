@@ -75,6 +75,13 @@ Dos cosas que ese número exige aclarar, o la próxima corrida parecerá una reg
 `stock_on_hand.csv` bajo un `data_root`; sin él son `SIN_DATO`, no `NO_CUMPLE`. Con
 datasets reales enchufados el número se mueve, y eso es correcto, no un fallo.
 
+> **`SIN_DATO` no es el conteo de "bloqueadas por dato".** Sólo lo marcan los dos
+> checks que piden un dataset por ruta; los otros 13 corren sobre fixtures donde el
+> dato **sí está** y aun así el campo exigido no sale. Por eso las bloqueadas de
+> verdad son **tres** (T03, T11 y T10, que necesita líneas de pedido reales) y las
+> otras **diez** son hueco de entregable: el dato perfecto no las mueve. Desglose
+> con evidencia en la §2 de `documentation/KERN_BATERIA_20_TAREAS.md`.
+
 **Nada lo congela.** Ningún test fija el agregado y la CI no corre la batería —
 `tests/test_bateria_scorer.py` cubre la aritmética, no el resultado. Un cambio en
 `jobs/` puede mover el marcador sin que nada se ponga rojo. Re-córrela antes de

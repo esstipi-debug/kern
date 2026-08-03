@@ -10,11 +10,11 @@
 
 ## 0. Reglas de imparcialidad (lo que hace válida la vara)
 
-Tres reglas, aplicadas antes de puntuar nada:
+Cuatro reglas, aplicadas antes de puntuar nada:
 
 1. **La batería no se derivó de las capacidades de Kern.** El agente que la escribió tenía prohibido leer el repositorio. Si la vara sale del producto, mide el producto contra sí mismo.
 2. **Cinco tareas son deliberadamente humanas** — T15 negociar cara a cara con el proveedor, T16 expediting telefónico, T17 racionar stock entre clientes, T18 sostener el plan frente a la presión interna, T19 conteos cíclicos y exactitud física del inventario — para que el techo de *cualquier* software quede visible en la misma tabla.
-3. **Kern se puntuó corrido, no descrito.** Con el venv del repo sobre Superstore, Olist y 777 órdenes de compra reales. Una capacidad descrita es una promesa; una capacidad corrida es un hecho.
+3. **Kern se puntuó corrido, no descrito.** Una capacidad descrita es una promesa; una capacidad corrida es un hecho. La corrida manual del 25-jul usó Superstore, Olist y 777 órdenes de compra reales; el harness de hoy corre sobre fixtures versionados, porque `data/kaggle/` es gitignored y no viaja con el repo. **Eso importa para leer la §2**: con fixtures el dato está, así que lo que falta es del entregable.
 4. **El puntaje lo emite un harness, no un juicio.** `src/bateria/` corre las 20 tareas contra el criterio escrito por adelantado y devuelve cumple/parcial/no **con evidencia campo por campo**. Cualquiera con el repo obtiene el mismo número sobre el mismo commit.
 
 ---
@@ -24,7 +24,7 @@ Tres reglas, aplicadas antes de puntuar nada:
 | Sujeto | Puntaje | Lectura |
 |---|--:|---|
 | **Techo humano** (planificador con experiencia) | **75%** · 15/20 | las 5 tareas humanas son el techo estructural de todo software |
-| **Techo de Kern sin ningún cliente** | **42,5%** | ningún PR mueve esta cifra: falta el dato, no el código |
+| **Techo de Kern sin ningún cliente** | **60%** · 12/20 | sólo 3 tareas dependen de que el cliente entregue algo (§2). Entre el 27,50% de hoy y este techo no hay dato de por medio: es todo código |
 | **Kern, corrido** | **27,50%** · 5,5/20 | 2 tareas cumplen · 7 quedan a medias |
 
 **Sobre el 27,50%, y por qué subió.** La cifra anterior publicada era **7,5%**, puntuada a mano el 25-jul: el primer juez había puesto 22,5% y dos lentes adversariales que auditaron fila por fila lo bajaron a 7,5% y ~5%. Se publicó el número bajo, no el alto.
@@ -45,24 +45,60 @@ Sobre el **mismo código**, el harness cae a **media tarea** del veredicto adver
 
 ---
 
-## 2. El hallazgo que reordena la estrategia
+## 2. Dónde está el bloqueo, tarea por tarea
 
-De las **15** tareas alcanzables por software:
+Re-derivado el 02-ago-2026 sobre `73b912d`. Sustituye al desglose del 25-jul, cuyos cubos no cerraban.
+
+**El discriminador, y por qué es el correcto:** *¿pasaría la tarea si el cliente entregara hoy el dato perfecto, sin tocar una línea de código?* Si no, el bloqueo es el entregable, no el dato.
+
+El harness responde exactamente esa pregunta, porque corre 13 de las 15 tareas **sobre fixtures donde el dato sí está** — y aun así el campo que el criterio exige no sale. Eso es evidencia directa: no hace falta saber si el cliente tiene el dato para saber que entregárselo no alcanzaría.
+
+### El desglose
 
 | Bloqueo | Tareas | Qué significa |
 |---|--:|---|
-| **Bloqueadas por dato del cliente** | **11** | no se cumplen con **ninguna** cantidad de código sobre ningún archivo que exista hoy en el repo. Falta stock on-hand real, órdenes en tránsito, pedidos comprometidos, condiciones de pago |
-| Código puro | 2 | T01 banda de incertidumbre · T02 columna de bias |
-| Devuelven un número apoyado en un supuesto propio | 3 | `unit_cost=1.0` en las 9.826 filas del canónico → el ABC sale por unidades y se rotula "annual value"; margen imputado 0,6·precio |
+| **Cumple** | **2** | T01 · T04 |
+| **El entregable no tiene el campo** | **10** | T02 · T05 · T06 · T07 · T08 · T09 · T12 · T13 · T14 · T20. Con el dato puesto, el campo sigue sin salir. **El código va primero**; varias necesitarán dato *después* |
+| **Falta el dato y no hay sustituto** | **3** | T03 ventas 12m con costo · T11 stock on-hand · T10 líneas de pedido reales. Ningún PR las mueve |
 
-**La conclusión comercial:** el cuello de botella no es el motor. Son **cuatro adjuntos por mail** — inventario, ventas, compras, proveedores — que desbloquean 12 de las 20 tareas. Eso convierte al intake en el producto, no en el trámite previo al producto.
+2 + 10 + 3 = 15. **Cierra.**
 
-**Este desglose es el del 25-jul y no se re-derivó. Los cubos ya no suman.** Dos motivos, ambos declarados en vez de maquillados:
+**T10 está en el cubo de dato, pero arrastra un defecto propio que no espera al cliente:** hoy reporta el fill rate *del modelo* bajo la etiqueta de servicio *realizado*. Sin una sola línea de pedido, con SS=50 y sigma=40 sobre demanda de ciclo 500, `fill_rate_from_safety_stock` devuelve 99,6%. El criterio lo descalifica por nombre, y con razón: es un número que parece correcto y no lo es. Corregir la etiqueta no necesita dato de nadie.
 
-- **T18 estaba contada como "código puro"** ("campos tipados del ledger"). La fuente la marca `TAREA HUMANA` y su enunciado real es *"sostener el plan frente a la presión interna"* — nada que ver. Sale del cubo, que baja de 3 a 2, y por eso 11 + 2 + 3 = 16 sobre 15 alcanzables: **el conteo original tenía al menos un error propio**, independiente del recuento de humanas.
-- **El harness marca `SIN_DATO` en dos tareas (T03, T11), no en once**, pero mide otra cosa: sólo donde el check pide un dataset por ruta, mientras el conteo de arriba clasificó tarea por tarea a mano.
+### La evidencia, tarea por tarea
 
-**No afirmar ninguno de los dos como el vigente hasta re-derivarlo**, y lo mismo vale para el 42,5% de "techo sin ningún cliente" de la tabla anterior, que sale de este desglose. La conclusión comercial de los cuatro adjuntos no depende de cuál gane.
+Cada línea es lo que el harness devolvió, no una opinión:
+
+| Tarea | Qué falta en el entregable |
+|---|---|
+| T02 | el ciclo anterior congelado — y lo produce Kern, no el cliente |
+| T05 | el motor descuenta el en-tránsito, pero sale una lista por SKU, no una OC por proveedor con fechas |
+| T06 | ajusta MOQ 250 y múltiplo 48 (50 → 288 u) pero no emite recomendación sí/no |
+| T07 | **ningún** campo del entregable lleva semana ni vencimiento. Las condiciones de pago no tendrían dónde entrar |
+| T08 | mide el lead time real (ACME 22,0 · BETA 7,5) pero no lista qué SKU deben recalcular SS/ROP |
+| T09 | el panel promedia **una sola columna de precio**: el desvío OC-vs-facturado no cabe en el modelo actual |
+| T12 | el precio propuesto sale `[None, None]` — no propone precio, propone remate |
+| T13 | rankea por EMV y ancla a proveedor, pero ninguna mitigación lleva **cuándo** |
+| T14 | el acta registra cuánto cede cada sombrero, pero sin número de demanda acordado ni decisión fechada |
+| T20 | el motivo sí cambia la disposición, pero no sale la tasa de devolución por motivo |
+
+### Lo que esto cambia
+
+**El desglose del 25-jul decía lo contrario: 11 de 17 bloqueadas por dato del cliente.** Sale casi invertido — **10 de 15 no las mueve el dato**. Tres cosas lo explican, y ninguna es que aquel análisis fuera deshonesto:
+
+- **#203 arregló una tanda de cableado** entre medio, y el puntaje pasó de 10,0% a 27,50%. Lo que quedó al descubierto debajo es la capa de entregable.
+- **Aquella corrida fue sobre datasets reales** (Superstore, Olist, 777 OC) que hoy **no están en el repo**: `data/kaggle/` es gitignored. Corriendo sobre ellos, la falta de dato tapa la falta de campo.
+- **Los cubos eran excluyentes y la realidad está en capas.** Casi todas necesitan código *y después* dato. T07 y T09 son el caso puro: aunque el cliente entregue condiciones de pago y facturas hoy, no hay campo donde ponerlas.
+
+**No sostiene la conclusión de los cuatro adjuntos.** Entregarlos hoy —inventario, ventas, compras, proveedores— mueve **3 tareas**, no 12, y aun ésas exigen que el entregable esté bien. El intake sigue importando, pero como segundo paso: **el cuello de botella hoy es la capa de entregable, que es exactamente el patrón de la §3.**
+
+Es la lectura incómoda y por eso vale: dice que el trabajo pendiente es propio, no del cliente.
+
+### Techo sin ningún cliente: 60%
+
+Se re-deriva de lo anterior: 20 − 5 humanas − 3 bloqueadas por dato = **12 alcanzables sin que el cliente entregue nada** → **60% · 12/20**. Sustituye al 42,5% publicado, que salía del desglose viejo.
+
+Dicho de otro modo: entre el 27,50% de hoy y el 60%, **no hay ningún dato del cliente de por medio**. Sólo código.
 
 ---
 
@@ -104,6 +140,8 @@ No se contradicen porque miden cosas distintas:
 - Esta batería mide **el entregable contra el criterio del oficio** — 27,50% corrido.
 
 Un motor al 72% de su roadmap puede entregar el 27,50% de lo que el oficio pide, y las dos cosas ser ciertas: el roadmap fue escrito por nosotros y el criterio del oficio no.
+
+La §2 explica **dónde** se pierde esa diferencia: no en la matemática, sino en la capa de entregable. Diez de las quince tareas alcanzables fallan porque el campo que el oficio exige no sale del job, con el dato ya puesto.
 
 ---
 
