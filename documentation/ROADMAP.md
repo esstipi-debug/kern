@@ -101,17 +101,29 @@ contrato compartidos entre los tres conectores, seccion en el README.
 
 ---
 
-## 6. Dataset de demo end-to-end + `make demo` de un comando
+## 6. ~~`make demo` de un comando~~ + dataset de demo mas sucio
 
 **Labels:** `documentation`, `dx`
+**Estado:** el comando ya esta (`Makefile` + `examples/run_demo.py`); falta el dataset realista.
 
-Quien evalua el repo (reclutador tecnico, cliente, contribuidor) hoy necesita
-elegir un ejemplo entre 40 archivos en `examples/`. Un comando que genere datos,
-corra tres capacidades representativas y deje los entregables en `output/demo/`
-baja el costo de evaluacion de una hora a un minuto.
+Quien evalua el repo (reclutador tecnico, cliente, contribuidor) tenia que elegir
+un ejemplo entre 40 archivos en `examples/`.
 
-**Definition of done:** `make demo` (o `python examples/run_demo.py`), salida
-determinista, capturas en el README.
+**Hecho:** `make demo` corre cuatro briefs por el orquestador real en ~15s, sin
+claves y sin red, sobre los samples commiteados. El cuarto paso es el que
+importa: el mismo brief de reposicion contra un archivo inservible, que debe
+terminar sin entregable. El exit code depende de los cuatro, asi que el demo
+falla si el sistema deja de refusar bien. Cubierto en CI via `make demo` (no
+`python` directo) para que el Makefile tambien quede testeado.
+
+**Falta:** los samples son chicos y limpios. Un dataset sucio de verdad —
+duplicados, huecos de fecha, unidades mezcladas, cantidades negativas — ejercita
+el gate de QA mucho mas que un CSV de 8 SKUs, y es lo que un evaluador tecnico
+quiere ver. Ver tambien el hallazgo abierto: hoy una cantidad negativa **no**
+levanta ninguna objecion.
+
+**Definition of done:** dataset sucio versionado (o generador con seed fijo), un
+quinto paso del demo que lo use, y capturas en el README.
 
 ---
 

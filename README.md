@@ -257,14 +257,34 @@ pip install -e ".[web,mcp]"
 cp .env.example .env                                # optional — every key is optional
 ```
 
-Run it:
+### See it work in 15 seconds
 
 ```bash
-PYTHONPATH=. pytest tests/ -q                       # 1,100+ tests
+make demo          # or: PYTHONPATH=. python examples/run_demo.py
+```
+
+Four briefs through the real orchestrator, against the committed sample data, with no keys and no network:
+
+| Step | Brief | What it proves |
+|---|---|---|
+| 1 | *"replenishment plan for my portfolio within an $80k budget"* | forecast → `(s,Q)`/`(R,S)` → MOQ and budget fit, as an Excel plan |
+| 2 | *"what price maximizes margin on these SKUs"* | per-SKU elasticity, plus an explicit *not enough signal* verdict |
+| 3 | *"classify my portfolio by value and demand variability"* | where the value sits, and which SKUs are discontinuation candidates |
+| 4 | the same replenishment brief, with an **unusable file** | **no deliverable** — it names the missing columns instead of inventing a plan |
+
+Step 4 is the point of the other three, and the exit code depends on it: the demo fails unless the system also refuses correctly. Deliverables land in `output/demo/` with the source concept and the `src/` function behind each number.
+
+### Everything else
+
+```bash
+make test                                           # or: PYTHONPATH=. pytest tests/ -q
+make lint
+make serve                                          # dashboard at /, agent console at /console
 PYTHONPATH=. python examples/run_agent.py --brief "optimize inventory for my 12 SKUs, $44k budget" --data data/sample_demand.csv
-PYTHONPATH=. uvicorn webapp.app:app --reload        # dashboard at /, agent console at /console
 PYTHONPATH=. python examples/query_knowledge.py --bridge "safety stock"
 ```
+
+`make` is a convenience wrapper, not a requirement — `make help` lists every target, and each one is a single command you can run directly (useful on Windows, where `make` is usually absent).
 
 ### Docker
 
@@ -356,7 +376,7 @@ Full issue bodies, labels and suggested priority order: [`documentation/ROADMAP.
 | 3 | Structured observability: request IDs, per-tool latency and QA-failure rate | Today failures are visible in logs; a forward deployment needs a dashboard for which tools fail at which client | `observability`, `enhancement` |
 | 4 | Complete the `linchpin` → `kern` identifier rename (env vars, MCP tool names, Odoo module) | The public name and the infra names diverge; the migration checklist already exists in `HANDOFF.md` | `chore`, `breaking-change` |
 | 5 | A second ERP connector (SAP B1 or NetSuite) behind the existing writeback protocol | Proves the connector abstraction generalizes past Odoo — the main objection to a forward-deployed pitch | `integration`, `enhancement` |
-| 6 | End-to-end demo dataset + one-command `make demo` | Cuts evaluation time for a reviewer from an hour to a minute | `documentation`, `dx` |
+| 6 | ~~One-command `make demo`~~ — **shipped**; next: a larger, messier demo dataset | The four-step demo runs on the small committed samples; a realistic dirty dataset would exercise the QA gate harder | `documentation`, `dx` |
 | 7 | Contract tests for the MCP surface | The `/mcp` server is a public API for other agents; it needs its own regression suite | `testing`, `integration` |
 | 8 | Per-tool accuracy tracking feeding the T1/T2/T3 autonomy tiers | Autonomy is earned from measured accuracy; the measurement loop should be automatic | `enhancement`, `research` |
 | 9 | English translation of the operator documentation | `documentation/operator/` is the most differentiated material in the repo and is currently Spanish-only | `documentation` |
