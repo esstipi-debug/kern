@@ -52,7 +52,10 @@ CATALOG: tuple[ParamSpec, ...] = (
         unit="fracción anual",
         low=0.05, high=0.60,
         moves="El costo de mantener y, con él, el ahorro anual de la portada.",
-        defaults=(("inventory_optimization", 0.25, "src/client_profile.py (docstring)"),),
+        defaults=(
+            ("inventory_optimization", 0.25, "src/client_profile.py (docstring)"),
+            ("webapp", 0.22, "webapp/app.py:511"),
+        ),
     ),
     ParamSpec(
         name="service_level",
@@ -73,7 +76,11 @@ CATALOG: tuple[ParamSpec, ...] = (
         unit="usd/pedido",
         low=1.0, high=5000.0,
         moves="El lote económico y la frecuencia de reposición de toda la simulación.",
-        defaults=(("simulation", 100.0, "jobs/simulation_job.py:31"),),
+        defaults=(
+            ("hats", 75.0, "src/hats.py:90"),
+            ("simulation", 100.0, "jobs/simulation_job.py:31"),
+            ("webapp", 80.0, "webapp/app.py:510"),
+        ),
     ),
     ParamSpec(
         name="goodwill",

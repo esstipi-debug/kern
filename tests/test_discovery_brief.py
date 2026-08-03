@@ -26,13 +26,16 @@ def test_todo_parametro_tiene_rango_plausible():
 def test_order_cost_registra_su_default_por_sitio():
     """Los defaults son una TUPLA a propósito: order_cost vale 100.0 en
     simulation_job mientras client_profile documenta 75. Un default único
-    mentiría en la columna `moves`."""
+    mentiría en la columna `moves`. El catálogo debe demostrar DIVERGENCIA:
+    múltiples valores para el MISMO parámetro."""
     s = spec_for("order_cost")
     assert s is not None
     sitios = {tool_key for tool_key, _, _ in s.defaults}
     assert "simulation" in sitios
     valores = {valor for _, valor, _ in s.defaults}
     assert 100.0 in valores
+    # Verifica que hay divergencia real: más de un valor distinto
+    assert len(valores) > 1, f"order_cost debe tener >1 valor distinto, pero tiene {valores}"
 
 
 def test_objection_thresholds_es_granular():
