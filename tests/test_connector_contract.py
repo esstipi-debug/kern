@@ -3,9 +3,9 @@ safe-staging writeback safe, asserted against each connector rather than once
 against the reference implementation.
 
 Why this exists. ``nosilo_core/writeback.py`` documents a store surface --
-``read / applied_keys / claim / release / commit / rollback`` -- and six classes
-implement it today (Odoo reorder rules, Odoo prices, client Excel workbooks,
-MercadoLibre prices, Shopify prices, Shopify inventory). Each had its own test
+``read / applied_keys / claim / release / commit / rollback`` -- and seven classes
+implement it today (Odoo reorder rules, Odoo prices, SAP Business One prices,
+client Excel workbooks, MercadoLibre prices, Shopify prices, Shopify inventory). Each had its own test
 file asserting its own behavior in its own words. Nothing asserted that they
 agree. A connector that quietly claims a key twice, or rolls back a field that
 never existed by writing ``None`` instead of removing it, would pass its own
@@ -18,8 +18,8 @@ The parametrization IS the test. A seventh connector is one entry in
 cheapest possible answer to "does this abstraction actually generalize".
 
 Scope, stated rather than implied: this covers the reference ``InMemoryStore``
-plus the four connectors addressable by a single field edit (Excel, Odoo prices,
-MercadoLibre prices, Shopify prices). ``odoo.py`` and ``shopify_inventory.py``
+plus the five connectors addressable by a single field edit (Excel, Odoo prices,
+MercadoLibre prices, Shopify prices, SAP Business One prices). ``odoo.py`` and ``shopify_inventory.py``
 also implement the surface but need a richer fixture (reorder rules, inventory
 levels) than a price change, and keep their own suites; the final test in this
 file fails if a NEW implementor appears and is silently left out of both lists.
@@ -46,6 +46,7 @@ from src.connectors.excel import ExcelWorkbookStore  # noqa: E402
 from src.connectors.meli_prices import InMemoryMeli, MeliPriceStore  # noqa: E402
 from src.connectors.odoo import InMemoryOdoo  # noqa: E402
 from src.connectors.odoo_prices import OdooPriceStore  # noqa: E402
+from src.connectors.sap_b1 import InMemorySapB1, SapB1PriceStore  # noqa: E402
 from src.connectors.shopify_prices import InMemoryShopify, ShopifyPriceStore  # noqa: E402
 
 
@@ -92,6 +93,12 @@ def _meli_prices(_tmp: Path) -> MeliPriceStore:
     return MeliPriceStore(InMemoryMeli({"SKU-1": {"item_id": "MLA1", "price": 20.0}}))
 
 
+def _sap_b1(_tmp: Path) -> SapB1PriceStore:
+    # Price list pinned explicitly: "the price" of a B1 item is meaningless
+    # without saying which list it lives on.
+    return SapB1PriceStore(InMemorySapB1({"SKU-1": {1: 20.0, 2: 16.0}}), price_list=1)
+
+
 def _shopify_prices(_tmp: Path) -> ShopifyPriceStore:
     return ShopifyPriceStore(
         InMemoryShopify({"SKU-1": {"variant_id": "gid://shopify/ProductVariant/1", "price": 20.0}})
@@ -104,6 +111,7 @@ STORES: tuple[StoreCase, ...] = (
     StoreCase("odoo_prices", "odoo:prices", "SKU-1", "price", 25.0, _odoo_prices),
     StoreCase("meli_prices", "meli:seller", "SKU-1", "price", 25.0, _meli_prices),
     StoreCase("shopify_prices", "shopify:demo-shop", "SKU-1", "price", 25.0, _shopify_prices),
+    StoreCase("sap_b1", "sap_b1:list-1", "SKU-1", "price", 25.0, _sap_b1),
 )
 
 
@@ -241,7 +249,7 @@ def test_every_full_surface_connector_is_covered_by_this_suite():
         if all(re.search(rf"{m}\b", source) for m in required):
             implementors.add(path.stem)
 
-    covered = {"excel", "odoo_prices", "meli_prices", "shopify_prices"}
+    covered = {"excel", "odoo_prices", "meli_prices", "shopify_prices", "sap_b1"}
     # odoo.py and shopify_inventory.py expose the surface through stores that
     # need a richer fixture (reorder rules / inventory levels) than a price
     # edit; they keep their own suites. Named here so the exclusion is a
