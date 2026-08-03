@@ -1129,6 +1129,15 @@ En `rollback`:
 
 Sin esto la Tarea 5 rompe tres tests verdes con `TypeError: set_inventory() missing 1 required keyword-only argument`.
 
+10. **Actualiza el test del pin en `tests/test_shopify_api_version.py`.** La Tarea 1 lo dejó afirmando el valor exacto, para que el pin no se moviera por accidente antes de esta tarea. Ahora sí se mueve, así que el test tiene que moverse con él. Renómbralo y cambia el valor:
+
+```python
+def test_pinned_version_is_2026_07():
+    assert PINNED_VERSION == "2026-07"
+```
+
+Sin esto, la Tarea 5 rompe `test_pinned_version_is_2024_10`. Que ese test falle es la señal correcta: el bump es un cambio deliberado y tiene que verse en el diff.
+
 - [ ] **Step 4: Run the full suite**
 
 ```bash
