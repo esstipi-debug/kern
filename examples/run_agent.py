@@ -79,6 +79,21 @@ def main(argv: list[str] | None = None) -> int:
         for c in result.clarifications:
             print("  - " + c)
 
+    # The guided outcome is where a data-quality objection lives when it is not
+    # severe enough to fail QA outright. Printing it is the difference between an
+    # objection Kern made and an objection the operator ever sees.
+    guided = result.guided
+    if guided is not None and guided.residuals:
+        print("Residuals (human side):")
+        for r in guided.residuals:
+            print("  - " + r.description)
+            if r.risk_if_skipped:
+                print("      risk if skipped: " + r.risk_if_skipped)
+    if guided is not None and guided.escalation is not None:
+        e = guided.escalation
+        print(f"Escalated -> {e.route_to} (SLA: {e.sla})")
+        print("  reason: " + e.reason)
+
     return 0 if result.status == "ok" else 1
 
 

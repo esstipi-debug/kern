@@ -67,3 +67,30 @@ def test_threshold_is_overridable_per_run(tmp_path):
         overrides={"negative_quantity_threshold": 0.5},
     )
     assert result.status == "ok"
+
+
+def test_cli_prints_residuals_and_escalation(tmp_path, capsys):
+    from examples import run_agent
+
+    # 25% unparseable dates trips intake's own 20% escalation threshold, while a
+    # single negative row (0.5%, under the 2% gate) rides along so the printed
+    # residual names it. Deliberately NOT a material negative share: that path
+    # fails QA and returns no guided outcome at all, so it could not test this.
+    rows = ["date,product_id,quantity,unit_cost,lead_time_days"]
+    start = pd.Timestamp("2023-01-02")
+    for i in range(200):
+        date = "not-a-date" if i % 4 == 0 else (start + pd.Timedelta(weeks=i)).date()
+        qty = -100 if i == 3 else 100
+        rows.append(f"{date},SKU-A,{qty},50,7")
+    data = tmp_path / "dirty_dates.csv"
+    data.write_text("\n".join(rows), encoding="utf-8")
+
+    run_agent.main([
+        "--brief", "demo", "--job", "inventory_optimization",
+        "--data", str(data), "--out", str(tmp_path / "out"), "--client", "Demo",
+    ])
+    printed = capsys.readouterr().out
+    assert "Residuals" in printed
+    assert "negative quantity" in printed
+    assert "Escalated" in printed
+    assert "operations owner" in printed
