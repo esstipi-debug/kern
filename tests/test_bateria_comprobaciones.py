@@ -655,18 +655,19 @@ def _candidato_lt(**cambios) -> _CandidatoLeadTime:
     return _CandidatoLeadTime(**{**base, **cambios})
 
 
-def test_t08_es_parcial_el_lt_medido_ya_gana_pero_falta_la_lista_de_recalculo():
-    """Veredicto real despues del fix: la columna de LT declarado ya no pisa la
-    medicion (ACME sigue en 22 d con y sin ella) y el scorecard trae desvio, P90 y
-    la brecha contra lo declarado. Lo que falta necesita un input que este job no
-    recibe: el mapa SKU -> proveedor para decir que SS/ROP recalcular."""
+def test_t08_cumple_el_lt_medido_gana_y_nombra_los_sku_a_recalcular():
+    """Veredicto real: la columna de LT declarado no pisa la medicion (ACME sigue en
+    22 d con y sin ella), el scorecard trae desvio, P90 y la brecha contra lo
+    declarado, y desde que ``sourcing_job`` lee la columna de producto tambien
+    nombra los SKU cuyo SS/ROP quedo dimensionado sobre el LT que las entregas
+    desmienten."""
     r = _resultado(puntuar(), "T08")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.puntos == 0.5
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["lt_medido_de_las_fechas"]["ACME"] == 22.0
     assert r.detalle["lt_con_columna_declarada"]["ACME"] == 22.0
     assert r.detalle["prevalece_lo_medido"] is True
-    assert r.detalle["faltantes"] == ["lista de SKU cuyo SS/ROP debe recalcularse"]
+    assert r.detalle["faltantes"] == []
 
 
 def test_t08_cumple_con_desvio_gap_y_lista_de_recalculo():
