@@ -207,17 +207,35 @@ _TOP_GAPS = 3
 class ToolVerdict:
     """Whether one tool could run on this folder, and what stops it if not.
 
-    RED has two distinct causes that must never be conflated: a required column
-    that is genuinely absent from the folder (`missing_required` -- asking the
-    client for it would help), and a required column that IS present but only in
-    files a circuit breaker has blocked (`blocked_required` -- asking for the
-    same column again buys nothing; the file needs to be fixed instead).
+    RED has FOUR distinct causes that must never be conflated -- each one has a
+    different fix, and telling the client the wrong one wastes their time:
+
+    - `missing_required`: a required column genuinely absent from the whole
+      folder -- asking the client for it would help.
+    - `blocked_required`: a required column IS present with good coverage, but
+      every file carrying it is disqualified by a circuit breaker -- asking
+      for the same column again buys nothing; the file needs to be fixed.
+    - `under_covered_required`: a required column IS present -- the client
+      already sent it -- but never populated densely enough anywhere to count
+      (see `under_covered_detail` for the file and the measured fraction).
+      Asking the client to send the column again buys nothing either; it needs
+      to be POPULATED, not re-sent.
+    - `split_required`: every required column individually lives in some
+      unblocked, sufficiently-covered file, but never all together in ONE
+      file. `prepare()` always reads exactly one file per tool, so a tool
+      cannot actually run just because the union of the folder happens to
+      cover every required name -- see `split_files` for which files
+      collectively (never jointly) carry them.
     """
 
     tool_key: str
     state: str
     missing_required: tuple[str, ...] = ()
     blocked_required: tuple[str, ...] = ()
+    under_covered_required: tuple[str, ...] = ()
+    under_covered_detail: tuple[tuple[str, str, float], ...] = ()  # (column, filename, coverage)
+    split_required: tuple[str, ...] = ()
+    split_files: tuple[str, ...] = ()
     missing_optional: tuple[str, ...] = ()
     blocked_by: tuple[str, ...] = ()
     source_files: tuple[str, ...] = ()
@@ -241,10 +259,81 @@ class BlockedFileGap:
     tools: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class SplitColumnGap:
+    """Required columns that all exist somewhere in the folder, but never
+    together in one file -- consolidating them into a single export would
+    unlock every tool listed."""
+
+    columns: tuple[str, ...]
+    files: tuple[str, ...]
+    unlocks: int
+    tools: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class UnderCoveredGap:
+    """One required column that IS present in a file -- the client already
+    sent it -- but too sparsely populated to count. Populating it (never
+    re-sending it) would unlock every tool listed."""
+
+    column: str
+    filename: str
+    coverage: float
+    unlocks: int
+    tools: tuple[str, ...]
+
+
+def _best_file_for(
+    tool, files: dict[str, frozenset[str]], blocked: frozenset[str]
+) -> tuple[str, tuple[str, ...]] | None:
+    """The single unblocked file that carries every required column together,
+    choosing the one with fewest missing optional columns (ties broken by
+    filename so two runs over the same folder agree). None if no single file
+    carries every required column -- ``prepare()`` always reads exactly one
+    file, so a tool can never actually run on the union of several.
+    """
+    required = frozenset(tool.required_columns)
+    candidates = []
+    for filename, cols in files.items():
+        if filename in blocked:
+            continue
+        if required <= cols:
+            missing_opt = tuple(c for c in tool.optional_columns if c not in cols)
+            candidates.append((len(missing_opt), filename, missing_opt))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda c: (c[0], c[1]))
+    _, filename, missing_opt = candidates[0]
+    return filename, missing_opt
+
+
 def verdicts_for(
-    available: dict[str, set[str]], blocked: frozenset[str], tools: list
+    files: dict[str, frozenset[str]],
+    blocked: frozenset[str],
+    tools: list,
+    under_covered: tuple[tuple[str, str, float], ...] = (),
 ) -> tuple[ToolVerdict, ...]:
-    """One verdict per tool, sorted by key. Undeclared is checked first, always."""
+    """One verdict per tool, sorted by key. Undeclared is checked first, always.
+
+    ``files`` maps filename -> the canonical columns that file carries with
+    sufficient coverage (never a folder-wide union): GREEN and YELLOW require
+    ONE unblocked file to carry every required column together, matching how
+    every declared tool's own ``prepare()`` actually reads data (a single
+    file). ``under_covered`` carries every (filename, column, coverage
+    fraction) the job layer measured below the coverage threshold, so a
+    column the client already sent -- just too sparsely populated -- is never
+    reported as if it had never arrived.
+    """
+    available: dict[str, set[str]] = {}
+    for filename, cols in files.items():
+        for c in cols:
+            available.setdefault(c, set()).add(filename)
+
+    under_covered_by_col: dict[str, list[tuple[str, float]]] = {}
+    for filename, column, frac in under_covered:
+        under_covered_by_col.setdefault(column, []).append((filename, frac))
+
     out: list[ToolVerdict] = []
     for tool in sorted(tools, key=lambda t: t.key):
         if not tool.required_columns:
@@ -253,34 +342,66 @@ def verdicts_for(
 
         missing_required: list[str] = []
         blocked_required: list[str] = []
+        under_covered_required: list[str] = []
+        under_covered_detail: list[tuple[str, str, float]] = []
         blocked_by: set[str] = set()
         sources: set[str] = set()
         for column in tool.required_columns:
-            files = available.get(column, set())
-            usable = files - blocked
+            column_files = available.get(column, set())
+            usable = column_files - blocked
             if usable:
                 sources |= usable
-            elif files:
-                # Present, but every file carrying it is blocked: a data-quality
-                # problem, not an absent column. Never lump this into missing_required.
+            elif column_files:
+                # Present with sufficient coverage, but every file carrying it is
+                # blocked: a data-quality problem, not an absent or sparse column.
                 blocked_required.append(column)
-                blocked_by |= files
+                blocked_by |= column_files
+            elif column in under_covered_by_col:
+                # Present -- the client already sent it -- but never populated
+                # densely enough anywhere to clear the coverage threshold.
+                # Never lump this into missing_required: re-asking for the
+                # column buys nothing, it needs to be POPULATED, not re-sent.
+                # Deterministic pick when the column is under-covered in more
+                # than one file: the highest coverage (closest to usable),
+                # ties broken by filename.
+                best_file, best_frac = sorted(
+                    under_covered_by_col[column], key=lambda oc: (-oc[1], oc[0])
+                )[0]
+                under_covered_required.append(column)
+                under_covered_detail.append((column, best_file, best_frac))
             else:
                 missing_required.append(column)
 
-        if missing_required or blocked_required:
+        if missing_required or blocked_required or under_covered_required:
             out.append(ToolVerdict(
-                tool.key, RED, tuple(missing_required), tuple(blocked_required), (),
-                tuple(sorted(blocked_by)), tuple(sorted(sources)),
+                tool.key, RED,
+                missing_required=tuple(missing_required),
+                blocked_required=tuple(blocked_required),
+                under_covered_required=tuple(under_covered_required),
+                under_covered_detail=tuple(under_covered_detail),
+                blocked_by=tuple(sorted(blocked_by)),
+                source_files=tuple(sorted(sources)),
             ))
             continue
 
-        missing_optional = tuple(
-            c for c in tool.optional_columns if not (available.get(c, set()) - blocked)
-        )
+        candidate = _best_file_for(tool, files, blocked)
+        if candidate is None:
+            # Every required column individually lives in some unblocked,
+            # sufficiently-covered file, but never all together in ONE file.
+            # prepare() reads a single file, so this tool cannot actually run
+            # despite every column technically being "available" in the
+            # folder's union -- the exact false green this fixes.
+            out.append(ToolVerdict(
+                tool.key, RED,
+                split_required=tuple(tool.required_columns),
+                split_files=tuple(sorted(sources)),
+            ))
+            continue
+
+        filename, missing_optional = candidate
         state = YELLOW if missing_optional else GREEN
         out.append(ToolVerdict(
-            tool.key, state, (), (), missing_optional, (), tuple(sorted(sources))
+            tool.key, state, missing_optional=missing_optional, source_files=(filename,),
         ))
     return tuple(out)
 
@@ -316,7 +437,13 @@ def rank_blocked_fixes(verdicts: tuple[ToolVerdict, ...]) -> tuple[BlockedFileGa
     """
     by_file: dict[str, list[str]] = {}
     for v in verdicts:
-        if v.missing_required or len(v.blocked_by) != 1:
+        # A tool only counts if the blocked file is its SOLE obstacle: no
+        # genuinely missing column, no under-covered column (fixing the file's
+        # breaker does not populate a sparse column elsewhere), no split
+        # (fixing one file cannot conjure the required columns together), and
+        # exactly one blocking file.
+        if (v.missing_required or v.under_covered_required or v.split_required
+                or len(v.blocked_by) != 1):
             continue
         (filename,) = v.blocked_by
         by_file.setdefault(filename, []).append(v.tool_key)
@@ -325,6 +452,48 @@ def rank_blocked_fixes(verdicts: tuple[ToolVerdict, ...]) -> tuple[BlockedFileGa
         for filename, keys in by_file.items()
     ]
     return tuple(sorted(fixes, key=lambda g: (-g.unlocks, g.filename)))
+
+
+def rank_split_fixes(verdicts: tuple[ToolVerdict, ...]) -> tuple[SplitColumnGap, ...]:
+    """Required columns that exist in the folder but never together in one
+    file, ranked by how many tools consolidating them into a single export
+    would unlock. Grouped by the exact required-column set a tool needs
+    together, since that is exactly what one consolidated file would have to
+    carry. Ties break on the column tuple so two runs over the same folder
+    agree.
+    """
+    by_key: dict[tuple[str, ...], tuple[set[str], list[str]]] = {}
+    for v in verdicts:
+        if not v.split_required:
+            continue
+        key = tuple(sorted(v.split_required))
+        bucket = by_key.setdefault(key, (set(), []))
+        bucket[0].update(v.split_files)
+        bucket[1].append(v.tool_key)
+    gaps = [
+        SplitColumnGap(columns, tuple(sorted(files)), len(keys), tuple(sorted(keys)))
+        for columns, (files, keys) in by_key.items()
+    ]
+    return tuple(sorted(gaps, key=lambda g: (-g.unlocks, g.columns)))
+
+
+def rank_undercovered_fixes(verdicts: tuple[ToolVerdict, ...]) -> tuple[UnderCoveredGap, ...]:
+    """Required columns present but too sparsely populated, ranked by how many
+    tools populating each one (in its named file) would unlock. Ties break on
+    (column, filename) so two runs over the same folder agree.
+    """
+    by_key: dict[tuple[str, str], list[str]] = {}
+    coverage_by_key: dict[tuple[str, str], float] = {}
+    for v in verdicts:
+        for column, filename, frac in v.under_covered_detail:
+            key = (column, filename)
+            by_key.setdefault(key, []).append(v.tool_key)
+            coverage_by_key[key] = frac
+    gaps = [
+        UnderCoveredGap(column, filename, coverage_by_key[(column, filename)], len(keys), tuple(sorted(keys)))
+        for (column, filename), keys in by_key.items()
+    ]
+    return tuple(sorted(gaps, key=lambda g: (-g.unlocks, g.column, g.filename)))
 
 
 @dataclass(frozen=True)
@@ -342,15 +511,42 @@ class ScanReport:
     n_tools_total: int
     outcome: GuidedOutcome
     summary: str
+    split_fixes: tuple[SplitColumnGap, ...] = ()
+    undercovered_fixes: tuple[UnderCoveredGap, ...] = ()
+    # Every (filename, column, coverage fraction) the job layer measured below
+    # the coverage threshold -- travels all the way to the deck/CSVs so a
+    # column the client already sent, just too sparsely, is never reported as
+    # if it had never arrived (see ToolVerdict.under_covered_required).
+    under_covered: tuple[tuple[str, str, float], ...] = ()
+    # (filename, short reason) for every readable-extension file that failed
+    # to parse -- a declared hole in the folder, never silently dropped.
+    unreadable: tuple[tuple[str, str], ...] = ()
 
 
 def _top_ask(
-    gaps: tuple[ColumnGap, ...], fixes: tuple[BlockedFileGap, ...]
+    gaps: tuple[ColumnGap, ...],
+    fixes: tuple[BlockedFileGap, ...],
+    split_fixes: tuple[SplitColumnGap, ...] = (),
+    undercovered_fixes: tuple[UnderCoveredGap, ...] = (),
 ) -> str:
     """One line describing the highest-value ask, whichever class it belongs to."""
     candidates = [(-g.unlocks, g.column, f"asking for '{g.column}' unlocks {g.unlocks}") for g in gaps]
     candidates += [
         (-f.unlocks, f.filename, f"fixing '{f.filename}' unlocks {f.unlocks}") for f in fixes
+    ]
+    candidates += [
+        (
+            -s.unlocks, ",".join(s.columns),
+            f"consolidating {', '.join(s.columns)} into one file unlocks {s.unlocks}",
+        )
+        for s in split_fixes
+    ]
+    candidates += [
+        (
+            -u.unlocks, f"{u.column}:{u.filename}",
+            f"populating '{u.column}' in '{u.filename}' unlocks {u.unlocks}",
+        )
+        for u in undercovered_fixes
     ]
     if not candidates:
         return "nothing to request"
@@ -359,7 +555,11 @@ def _top_ask(
 
 
 def _outcome(
-    gaps: tuple[ColumnGap, ...], fixes: tuple[BlockedFileGap, ...], verdicts: tuple[ToolVerdict, ...]
+    gaps: tuple[ColumnGap, ...],
+    fixes: tuple[BlockedFileGap, ...],
+    split_fixes: tuple[SplitColumnGap, ...],
+    undercovered_fixes: tuple[UnderCoveredGap, ...],
+    verdicts: tuple[ToolVerdict, ...],
 ) -> GuidedOutcome:
     residual = Residual(
         description=(
@@ -371,7 +571,7 @@ def _outcome(
             "to prevent."
         ),
     )
-    if not gaps and not fixes:
+    if not gaps and not fixes and not split_fixes and not undercovered_fixes:
         n_evaluated = sum(1 for v in verdicts if v.state != UNDECLARED)
         if n_evaluated == 0:
             # Either no tools were passed in at all, or every one of them is
@@ -387,9 +587,10 @@ def _outcome(
             residuals=[residual],
         )
 
-    # Two distinct kinds of ask, ranked together in one menu: requesting an
-    # absent column, and fixing a blocked file. Ties break on the name so two
-    # runs over the same folder agree on the order.
+    # Four distinct kinds of ask, ranked together in one menu: requesting an
+    # absent column, fixing a blocked file, consolidating split columns into
+    # one file, and populating an under-covered column. Ties break on the
+    # name so two runs over the same folder agree on the order.
     column_entries = [
         (
             -g.unlocks, g.column,
@@ -416,28 +617,73 @@ def _outcome(
         )
         for f in fixes
     ]
-    ranked = sorted(column_entries + file_entries, key=lambda e: (e[0], e[1]))[:_TOP_GAPS]
+    split_entries = [
+        (
+            -s.unlocks, ",".join(s.columns),
+            ExecutionOption(
+                label=f"Consolidate {', '.join(s.columns)} into one file",
+                summary=(
+                    f"'{', '.join(s.columns)}' all exist in the folder ({', '.join(s.files)}) "
+                    f"but never together in one file; consolidating them unlocks {s.unlocks} "
+                    f"tool(s): {', '.join(s.tools)}."
+                ),
+                score=float(s.unlocks),
+                action=f"consolidate_columns:{'+'.join(s.columns)}",
+                tradeoffs="No new column is needed; the same data just needs to land in one export.",
+            ),
+        )
+        for s in split_fixes
+    ]
+    undercovered_entries = [
+        (
+            -u.unlocks, f"{u.column}:{u.filename}",
+            ExecutionOption(
+                label=f"Populate '{u.column}' in '{u.filename}'",
+                summary=(
+                    f"'{u.column}' in '{u.filename}' is currently {u.coverage:.0%} filled; "
+                    f"populating it unlocks {u.unlocks} tool(s): {', '.join(u.tools)}."
+                ),
+                score=float(u.unlocks),
+                action=f"populate_column:{u.filename}:{u.column}",
+                tradeoffs="The column is already there; only the missing values need to be filled in.",
+            ),
+        )
+        for u in undercovered_fixes
+    ]
+    ranked = sorted(
+        column_entries + file_entries + split_entries + undercovered_entries,
+        key=lambda e: (e[0], e[1]),
+    )[:_TOP_GAPS]
     options = [
         replace(option, recommended=(rank == 0)) for rank, (_, __, option) in enumerate(ranked)
     ]
     return as_options(
-        "Missing columns and blocked files, ranked by how many tools each fix unlocks.",
+        "Missing columns, blocked files, split columns and under-populated columns, ranked by "
+        "how many tools each fix unlocks.",
         options,
         residuals=[residual],
     )
 
 
 def build_report(
-    *, classified, findings, tools, available, blocked, n_files_read, n_unclassified,
+    *, classified, findings, tools, files, blocked, n_files_read, n_unclassified,
+    under_covered=(), unreadable=(),
 ) -> ScanReport:
-    """Assemble the audit. Evaluated-vs-total travels in the summary, always."""
-    verdicts = verdicts_for(available, blocked, tools)
+    """Assemble the audit. Evaluated-vs-total travels in the summary, always.
+
+    ``files`` maps filename -> the canonical columns that file carries with
+    sufficient coverage (see ``verdicts_for``'s own docstring for why this is
+    per-file, never a folder-wide union).
+    """
+    verdicts = verdicts_for(files, blocked, tools, tuple(under_covered))
     gaps = rank_gaps(verdicts)
     fixes = rank_blocked_fixes(verdicts)
+    split_fixes = rank_split_fixes(verdicts)
+    undercovered_fixes = rank_undercovered_fixes(verdicts)
     evaluated = sum(1 for v in verdicts if v.state != UNDECLARED)
     total = len(verdicts)
     counts = {state: sum(1 for v in verdicts if v.state == state) for state in (GREEN, YELLOW, RED)}
-    top = _top_ask(gaps, fixes)
+    top = _top_ask(gaps, fixes, split_fixes, undercovered_fixes)
     summary = (
         f"Read {n_files_read} file(s), {n_unclassified} unclassified; evaluated "
         f"{evaluated} of {total} registered tool(s): {counts[GREEN]} green, "
@@ -447,5 +693,7 @@ def build_report(
         classified=tuple(classified), findings=tuple(findings), verdicts=verdicts, gaps=gaps,
         blocked_fixes=fixes, n_files_read=n_files_read, n_unclassified=n_unclassified,
         n_tools_evaluated=evaluated, n_tools_total=total,
-        outcome=_outcome(gaps, fixes, verdicts), summary=summary,
+        outcome=_outcome(gaps, fixes, split_fixes, undercovered_fixes, verdicts), summary=summary,
+        split_fixes=split_fixes, undercovered_fixes=undercovered_fixes,
+        under_covered=tuple(under_covered), unreadable=tuple(unreadable),
     )

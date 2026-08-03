@@ -16,6 +16,8 @@ from src.intake_scan import (
     classify_file,
     rank_blocked_fixes,
     rank_gaps,
+    rank_split_fixes,
+    rank_undercovered_fixes,
     run_breakers,
     verdicts_for,
 )
@@ -24,6 +26,12 @@ from src.intake_scan import (
 def _file(name, columns, coverage=None, n_rows=100):
     cov = coverage or {c: 1.0 for c in columns}
     return FileColumns(filename=name, columns=tuple(columns), coverage=cov, n_rows=n_rows)
+
+
+def _files(**by_filename) -> dict[str, frozenset[str]]:
+    """filename=[cols...] -> {filename: frozenset(cols)}, the shape verdicts_for
+    and build_report expect: PER FILE, never a folder-wide union of columns."""
+    return {name: frozenset(cols) for name, cols in by_filename.items()}
 
 
 def test_file_matching_all_required_columns_gets_its_profile():
@@ -199,8 +207,8 @@ def test_the_four_states():
         _FakeTool("red_tool", ("product_id", "cogs")),
         _FakeTool("undeclared_tool"),
     ]
-    available = {"product_id": {"maestro.csv"}, "unit_cost": {"maestro.csv"}}
-    states = {v.tool_key: v.state for v in verdicts_for(available, frozenset(), tools_)}
+    files = _files(**{"maestro.csv": ["product_id", "unit_cost"]})
+    states = {v.tool_key: v.state for v in verdicts_for(files, frozenset(), tools_)}
     assert states == {
         "green_tool": GREEN, "yellow_tool": YELLOW,
         "red_tool": RED, "undeclared_tool": UNDECLARED,
@@ -208,13 +216,14 @@ def test_the_four_states():
 
 
 def test_an_undeclared_tool_is_never_green_even_with_every_column_present():
-    (verdict,) = verdicts_for({"product_id": {"a.csv"}}, frozenset(), [_FakeTool("x")])
+    (verdict,) = verdicts_for(_files(**{"a.csv": ["product_id"]}), frozenset(), [_FakeTool("x")])
     assert verdict.state == UNDECLARED
 
 
 def test_a_blocked_file_cannot_support_a_green():
     tools_ = [_FakeTool("t", ("product_id",))]
-    (verdict,) = verdicts_for({"product_id": {"malo.csv"}}, frozenset({"malo.csv"}), tools_)
+    files = _files(**{"malo.csv": ["product_id"]})
+    (verdict,) = verdicts_for(files, frozenset({"malo.csv"}), tools_)
     assert verdict.state == RED
     assert verdict.blocked_by == ("malo.csv",)
     # The column IS present -- it's the file that's disqualified, not the column
@@ -226,15 +235,133 @@ def test_a_blocked_file_cannot_support_a_green():
 def test_abc_xyz_style_tool_goes_red_without_unit_cost():
     """The real case: a sales file without cost is a legitimate red for abc_xyz."""
     tools_ = [_FakeTool("abc_xyz", ("product_id", "quantity", "unit_cost"))]
-    available = {"product_id": {"ventas.csv"}, "quantity": {"ventas.csv"}}
-    (verdict,) = verdicts_for(available, frozenset(), tools_)
+    files = _files(**{"ventas.csv": ["product_id", "quantity"]})
+    (verdict,) = verdicts_for(files, frozenset(), tools_)
     assert verdict.state == RED
     assert verdict.missing_required == ("unit_cost",)
 
 
+# -- CRITICAL 1: required columns spread across DIFFERENT files ---------------
+
+
+def test_required_columns_split_across_two_files_is_red_not_a_false_green():
+    """THE bug: product_id+unit_cost live in maestro.csv, quantity lives in
+    ventas.csv -- the folder's UNION has every column abc_xyz needs, but no
+    SINGLE file does, and prepare() always reads exactly one file. The old
+    union-based check reported this GREEN with source_files=(maestro, ventas);
+    that tool cannot actually run."""
+    tools_ = [_FakeTool("abc_xyz", ("product_id", "quantity", "unit_cost"))]
+    files = _files(**{
+        "maestro.csv": ["product_id", "name", "gtin", "unit_cost"],
+        "ventas.csv": ["date", "product_id", "quantity"],
+    })
+    (verdict,) = verdicts_for(files, frozenset(), tools_)
+    assert verdict.state == RED
+    assert verdict.missing_required == ()
+    assert verdict.blocked_required == ()
+    assert set(verdict.split_required) == {"product_id", "quantity", "unit_cost"}
+    assert set(verdict.split_files) == {"maestro.csv", "ventas.csv"}
+    # Never a union claiming both files "satisfy" the tool -- that claim is
+    # exactly what's false; source_files stays empty for a split verdict.
+    assert verdict.source_files == ()
+
+
+def test_a_tool_whose_required_columns_all_live_in_one_file_is_still_green():
+    """Guards against over-correcting into "never green again": when one file
+    genuinely carries every required column together, the tool is GREEN, and
+    source_files names exactly that one file -- not a false red either."""
+    tools_ = [_FakeTool("abc_xyz", ("product_id", "quantity", "unit_cost"))]
+    files = _files(**{
+        "maestro.csv": ["product_id", "name", "unit_cost"],
+        # ventas.csv alone carries every required column for abc_xyz.
+        "ventas.csv": ["date", "product_id", "quantity", "unit_cost"],
+    })
+    (verdict,) = verdicts_for(files, frozenset(), tools_)
+    assert verdict.state == GREEN
+    assert verdict.split_required == ()
+    # Only the file that actually satisfies it, never a union of files that
+    # jointly do -- maestro.csv never had "quantity", so it never qualifies.
+    assert verdict.source_files == ("ventas.csv",)
+
+
+def test_split_verdict_prefers_the_single_file_that_actually_satisfies_it():
+    """When one candidate file satisfies a tool by itself, that tool is never
+    reported as split even though a second, unrelated file also happens to
+    carry one of the same column names."""
+    tools_ = [_FakeTool("t", ("product_id", "quantity"))]
+    files = _files(**{
+        "ventas.csv": ["product_id", "quantity"],  # satisfies alone
+        "otro.csv": ["product_id"],  # partial overlap, irrelevant to the verdict
+    })
+    (verdict,) = verdicts_for(files, frozenset(), tools_)
+    assert verdict.state == GREEN
+    assert verdict.source_files == ("ventas.csv",)
+
+
+def test_rank_split_fixes_ranks_by_tools_unlocked():
+    files = _files(**{
+        "maestro.csv": ["product_id", "unit_cost"],
+        "ventas.csv": ["product_id", "quantity"],
+    })
+    tools_ = [
+        _FakeTool("t1", ("product_id", "quantity", "unit_cost")),
+        _FakeTool("t2", ("product_id", "quantity", "unit_cost")),
+    ]
+    verdicts = verdicts_for(files, frozenset(), tools_)
+    (fix,) = rank_split_fixes(verdicts)
+    assert fix.unlocks == 2
+    assert fix.tools == ("t1", "t2")
+    assert set(fix.columns) == {"product_id", "quantity", "unit_cost"}
+    assert set(fix.files) == {"maestro.csv", "ventas.csv"}
+
+
+# -- CRITICAL 2: a column the client already sent, but under-populated --------
+
+
+def test_under_covered_required_column_is_red_but_not_missing():
+    """The column WAS sent -- it's in the file, just too sparsely populated
+    (below the coverage threshold) -- so it must never be reported as if it
+    had never arrived. Re-asking for it would get the client the exact same
+    header back; it needs to be POPULATED."""
+    tools_ = [_FakeTool("excess_obsolete", ("product_id", "daily_demand"))]
+    files = _files(**{"stock.csv": ["product_id"]})  # daily_demand didn't clear coverage
+    under_covered = (("stock.csv", "daily_demand", 0.1),)
+    (verdict,) = verdicts_for(files, frozenset(), tools_, under_covered)
+    assert verdict.state == RED
+    assert verdict.missing_required == ()
+    assert verdict.blocked_required == ()
+    assert verdict.under_covered_required == ("daily_demand",)
+    assert verdict.under_covered_detail == (("daily_demand", "stock.csv", 0.1),)
+
+
+def test_under_covered_column_picks_the_highest_coverage_occurrence_deterministically():
+    tools_ = [_FakeTool("t", ("daily_demand",))]
+    files = _files(**{"a.csv": [], "b.csv": []})
+    under_covered = (("a.csv", "daily_demand", 0.2), ("b.csv", "daily_demand", 0.4))
+    (verdict,) = verdicts_for(files, frozenset(), tools_, under_covered)
+    assert verdict.under_covered_detail == (("daily_demand", "b.csv", 0.4),)
+
+
+def test_rank_undercovered_fixes_ranks_by_tools_unlocked():
+    tools_ = [
+        _FakeTool("t1", ("daily_demand",)),
+        _FakeTool("t2", ("daily_demand",)),
+    ]
+    files = _files(**{"stock.csv": []})
+    under_covered = (("stock.csv", "daily_demand", 0.1),)
+    verdicts = verdicts_for(files, frozenset(), tools_, under_covered)
+    (fix,) = rank_undercovered_fixes(verdicts)
+    assert fix.column == "daily_demand"
+    assert fix.filename == "stock.csv"
+    assert fix.coverage == 0.1
+    assert fix.unlocks == 2
+    assert fix.tools == ("t1", "t2")
+
+
 def test_gaps_rank_by_how_many_tools_each_column_unlocks():
+    files = _files(**{"a.csv": ["product_id"]})
     verdicts = verdicts_for(
-        {"product_id": {"a.csv"}},
+        files,
         frozenset(),
         [
             _FakeTool("t1", ("product_id", "unit_cost")),
@@ -261,7 +388,7 @@ def test_report_with_gaps_offers_options():
     tools_ = [_FakeTool("t", ("product_id", "unit_cost"))]
     report = build_report(
         classified=(), findings=(), tools=tools_,
-        available={"product_id": {"a.csv"}}, blocked=frozenset(),
+        files=_files(**{"a.csv": ["product_id"]}), blocked=frozenset(),
         n_files_read=1, n_unclassified=0,
     )
     assert report.outcome.status == OPTIONS
@@ -272,7 +399,7 @@ def test_report_with_nothing_to_ask_for_is_executed_not_an_empty_menu():
     tools_ = [_FakeTool("t", ("product_id",))]
     report = build_report(
         classified=(), findings=(), tools=tools_,
-        available={"product_id": {"a.csv"}}, blocked=frozenset(),
+        files=_files(**{"a.csv": ["product_id"]}), blocked=frozenset(),
         n_files_read=1, n_unclassified=0,
     )
     assert report.outcome.status == EXECUTED
@@ -282,7 +409,7 @@ def test_report_counts_evaluated_against_total():
     tools_ = [_FakeTool("declared", ("product_id",)), _FakeTool("undeclared")]
     report = build_report(
         classified=(), findings=(), tools=tools_,
-        available={"product_id": {"a.csv"}}, blocked=frozenset(),
+        files=_files(**{"a.csv": ["product_id"]}), blocked=frozenset(),
         n_files_read=1, n_unclassified=0,
     )
     assert (report.n_tools_evaluated, report.n_tools_total) == (1, 2)
@@ -296,7 +423,7 @@ def test_a_blocked_column_never_re_asks_the_client_for_data_they_already_sent():
     tools_ = [_FakeTool("t", ("product_id", "unit_cost"))]
     report = build_report(
         classified=(), findings=(), tools=tools_,
-        available={"product_id": {"good.csv"}, "unit_cost": {"bad.csv"}},
+        files=_files(**{"good.csv": ["product_id"], "bad.csv": ["unit_cost"]}),
         blocked=frozenset({"bad.csv"}),
         n_files_read=2, n_unclassified=0,
     )
@@ -316,8 +443,8 @@ def test_fixing_a_blocked_file_does_not_count_as_unblocking_a_tool_missing_a_rea
         _FakeTool("only_blocked", ("product_id",)),
         _FakeTool("blocked_and_missing", ("product_id", "cogs")),
     ]
-    available = {"product_id": {"bad.csv"}}
-    verdicts = verdicts_for(available, frozenset({"bad.csv"}), tools_)
+    files = _files(**{"bad.csv": ["product_id"]})
+    verdicts = verdicts_for(files, frozenset({"bad.csv"}), tools_)
     fixes = rank_blocked_fixes(verdicts)
     (fix,) = fixes
     assert fix.filename == "bad.csv"
@@ -330,7 +457,7 @@ def test_no_tools_declared_does_not_falsely_claim_coverage():
     tool (0 green)' -- that reads as good news when nothing was evaluated at all."""
     report = build_report(
         classified=(), findings=(), tools=[],
-        available={}, blocked=frozenset(),
+        files={}, blocked=frozenset(),
         n_files_read=0, n_unclassified=0,
     )
     assert report.outcome.status == EXECUTED
@@ -348,7 +475,7 @@ def test_all_tools_undeclared_does_not_falsely_claim_coverage_either():
     tools_ = [_FakeTool("a"), _FakeTool("b"), _FakeTool("c")]
     report = build_report(
         classified=(), findings=(), tools=tools_,
-        available={"product_id": {"a.csv"}}, blocked=frozenset(),
+        files=_files(**{"a.csv": ["product_id"]}), blocked=frozenset(),
         n_files_read=1, n_unclassified=0,
     )
     assert report.outcome.status == EXECUTED
@@ -363,8 +490,8 @@ def test_a_tool_blocked_by_two_files_is_not_credited_to_either_fix():
     alone still leaves the tool blocked by fileY, and vice versa -- neither fix
     option may claim it unlocks this tool."""
     tools_ = [_FakeTool("two_blocked", ("colA", "colB"))]
-    available = {"colA": {"fileX.csv"}, "colB": {"fileY.csv"}}
+    files = _files(**{"fileX.csv": ["colA"], "fileY.csv": ["colB"]})
     blocked = frozenset({"fileX.csv", "fileY.csv"})
-    verdicts = verdicts_for(available, blocked, tools_)
+    verdicts = verdicts_for(files, blocked, tools_)
     fixes = rank_blocked_fixes(verdicts)
     assert all("two_blocked" not in fix.tools for fix in fixes)

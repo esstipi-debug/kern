@@ -29,11 +29,15 @@ def _maestro(n=20):
 
 
 def _ventas(n=20):
+    # Deliberately NO unit_cost here -- the canonical first-contact folder from
+    # the spec: maestro carries the cost, ventas carries the sale. A file that
+    # duplicated unit_cost into ventas too would mask the CRITICAL-1 split bug
+    # this module's fix closes (see test_a_master_plus_sales_folder_where_
+    # abc_xyz_columns_are_split_across_files below).
     return {
         "date": ["2026-01-01"] * n,
         "product_id": [f"SKU-{i}" for i in range(n)],
         "quantity": [10] * n,
-        "unit_cost": [5.0] * n,
     }
 
 
@@ -73,6 +77,119 @@ def test_a_non_readable_file_is_listed_by_name_even_when_others_are_readable(tmp
     (folder / "leame.txt").write_text("hola", encoding="utf-8")
     intake = intake_scan_job.prepare(str(folder))
     assert intake.ignored == ("leame.txt",)
+
+
+# -- IMPORTANT 3: one unreadable file must never abort the whole scan --------
+
+
+def test_an_excel_lock_file_is_skipped_by_name_and_the_rest_of_the_folder_still_scans(tmp_path):
+    """A locked Excel workbook leaves a "~$foo.xlsx" temp file behind with
+    binary garbage content -- present in essentially every real client folder
+    where a workbook was open. It must not raise and abort the whole scan; it
+    must be listed by name in `unreadable`, and the rest of the folder (a
+    perfectly good maestro.csv) must still classify and evaluate normally."""
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro()})
+    (folder / "~$maestro.xlsx").write_bytes(b"not a real xlsx file, just garbage bytes")
+    intake = intake_scan_job.prepare(str(folder))
+    names = [name for name, _ in intake.unreadable]
+    assert names == ["~$maestro.xlsx"]
+    assert intake.unreadable[0][1]  # a non-empty reason travels with the name
+    # The rest of the folder is unaffected.
+    assert {c.profile for c in intake.classified} == {"maestro"}
+    assert "product_id" in intake.available
+
+
+def test_a_zero_byte_csv_is_skipped_by_name_and_the_rest_of_the_folder_still_scans(tmp_path):
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro()})
+    (folder / "vacio.csv").write_bytes(b"")
+    intake = intake_scan_job.prepare(str(folder))
+    names = [name for name, _ in intake.unreadable]
+    assert names == ["vacio.csv"]
+    assert {c.profile for c in intake.classified} == {"maestro"}
+
+
+def test_prepare_raises_only_when_nothing_at_all_is_readable_and_names_both_ignored_and_unreadable(tmp_path):
+    """Only when NOT ONE file in the folder is readable does this raise -- and
+    the message must list the unsupported-extension files (ignored) AND the
+    readable-extension files that failed to parse (unreadable) separately,
+    not conflate the two."""
+    d = tmp_path / "vacia"
+    d.mkdir()
+    (d / "notas.txt").write_text("hola", encoding="utf-8")
+    (d / "~$roto.xlsx").write_bytes(b"garbage, not a real workbook")
+    with pytest.raises(ValueError) as exc_info:
+        intake_scan_job.prepare(str(d))
+    message = str(exc_info.value)
+    assert "notas.txt" in message
+    assert "~$roto.xlsx" in message
+
+
+def test_a_subdirectory_is_named_when_the_scan_finds_nothing_readable(tmp_path):
+    """_list_dir only ever reads files, never walks into subdirectories -- but
+    a subdirectory silently skipped with no trace makes an empty scan read as
+    "found: nothing" when there was actually a folder sitting right there."""
+    d = tmp_path / "vacia"
+    d.mkdir()
+    (d / "subcarpeta").mkdir()
+    with pytest.raises(ValueError, match="subcarpeta"):
+        intake_scan_job.prepare(str(d))
+
+
+def test_the_deck_and_files_csv_surface_unreadable_files(tmp_path):
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro()})
+    (folder / "~$maestro.xlsx").write_bytes(b"garbage")
+    report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
+    assert report.unreadable == (("~$maestro.xlsx", report.unreadable[0][1]),)
+
+    deck = intake_scan_job.build_deck(report, client="Acme")
+    full_text = " ".join(f.title + " " + f.detail for f in deck.findings)
+    assert "~$maestro.xlsx" in full_text
+
+    paths = intake_scan_job.write_operational(report, tmp_path / "out", client="Acme")
+    body = paths["files_csv"].read_text(encoding="utf-8")
+    assert "~$maestro.xlsx" in body
+    assert "unreadable" in body.lower()
+
+
+# -- CRITICAL 2: a column the client already sent, but under-populated -------
+
+
+def test_under_covered_required_column_is_red_never_missing_and_never_re_asked(tmp_path):
+    """stock.csv carries daily_demand, populated in only 10 of 100 rows -- well
+    under the 50% coverage threshold. excess_obsolete needs daily_demand: the
+    honest verdict names it under_covered_required (not missing_required), and
+    the report must not offer to "request" the column again -- it needs to be
+    POPULATED, not re-sent."""
+    n = 100
+    stock = {
+        "product_id": [f"SKU-{i}" for i in range(n)],
+        "on_hand": [10] * n,
+        "daily_demand": [1.0] * 10 + [None] * (n - 10),
+    }
+    folder = _folder(tmp_path, **{"stock.csv": stock})
+    intake = intake_scan_job.prepare(str(folder))
+    assert any(f == "stock.csv" and c == "daily_demand" for f, c, _ in intake.under_covered)
+
+    report = intake_scan_job.run(intake)
+    (verdict,) = [v for v in report.verdicts if v.tool_key == "excess_obsolete"]
+    assert verdict.state == RED
+    assert "daily_demand" not in verdict.missing_required
+    assert "daily_demand" in verdict.under_covered_required
+    column, filename, coverage = verdict.under_covered_detail[0]
+    assert (column, filename) == ("daily_demand", "stock.csv")
+    assert round(coverage, 2) == 0.10
+
+    # No "request the column" ask for a column that's already there.
+    assert "daily_demand" not in [g.column for g in report.gaps]
+    labels = [o.label for o in report.outcome.options]
+    assert not any("Request 'daily_demand'" in label for label in labels)
+    assert any("Populate 'daily_demand'" in label for label in labels)
+
+    # The measured coverage percentage must appear in the deliverable, not
+    # just an internal count.
+    deck = intake_scan_job.build_deck(report, client="Acme")
+    full_text = " ".join(f.title + " " + f.detail for f in deck.findings)
+    assert "10%" in full_text
 
 
 def test_maestros_sku_header_maps_to_canonical_product_id(tmp_path):
@@ -119,6 +236,13 @@ def test_gate_blocks_when_most_files_are_unclassified(tmp_path):
 
 
 def test_healthy_folder_passes_the_gate_and_evaluates_the_declared_tools(tmp_path):
+    """maestro.csv carries unit_cost, ventas.csv does not -- the canonical
+    first-contact folder from the spec. abc_xyz needs (product_id, quantity,
+    unit_cost) together in ONE file; neither file alone has all three, so the
+    honest verdict is RED with the split cause named, not the false GREEN a
+    folder-wide union used to report (see CRITICAL 1 in the 2026-07-31 fix
+    wave report, and test_a_master_plus_sales_folder_where_abc_xyz_columns_
+    are_split_across_files below for the dedicated repro)."""
     folder = _folder(tmp_path, **{"maestro.csv": _maestro(), "ventas.csv": _ventas()})
     report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
     assert intake_scan_job.verify(report) == []
@@ -128,10 +252,48 @@ def test_healthy_folder_passes_the_gate_and_evaluates_the_declared_tools(tmp_pat
     # the honest verdict is YELLOW (missing_optional=("gtin",)), not GREEN. See the
     # task-5 report for this discrepancy against the original brief.
     assert states["data_quality"] == YELLOW
-    assert states["abc_xyz"] == GREEN
+    assert states["abc_xyz"] == RED
     assert states["excess_obsolete"] == RED  # no stock file in this folder
     assert states["risk"] == UNDECLARED
     assert report.n_tools_evaluated == 4
+
+
+def test_a_master_plus_sales_folder_where_abc_xyz_columns_are_split_across_files(tmp_path):
+    """CRITICAL 1's own reproduction, verbatim: maestro carries product_id +
+    unit_cost, ventas carries product_id + quantity. abc_xyz needs all three
+    together and no single file has them -- the honest verdict is RED with
+    split_required naming all three, and split_files naming both files. This
+    is the exact false-green the whole-branch review found: verdicts_for used
+    to union columns across the folder instead of checking one file at a
+    time, and every declared tool's prepare() only ever reads one file."""
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro(), "ventas.csv": _ventas()})
+    report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
+    (verdict,) = [v for v in report.verdicts if v.tool_key == "abc_xyz"]
+    assert verdict.state == RED
+    assert verdict.missing_required == ()
+    assert verdict.blocked_required == ()
+    assert set(verdict.split_required) == {"product_id", "quantity", "unit_cost"}
+    assert set(verdict.split_files) == {"maestro.csv", "ventas.csv"}
+    # The split is ranked alongside every other ask (this folder also has
+    # column gaps for excess_obsolete/financial_kpis, so the split fix does
+    # not necessarily make the top-3 menu -- but it must be RANKED, never
+    # silently dropped from the report).
+    (split_fix,) = report.split_fixes
+    assert split_fix.tools == ("abc_xyz",)
+    assert split_fix.unlocks == 1
+
+
+def test_a_single_file_that_carries_every_required_column_is_still_green(tmp_path):
+    """Guards the fix against over-correcting into "never green again": when
+    ventas.csv alone carries product_id, quantity AND unit_cost, abc_xyz is
+    genuinely GREEN, sourced from that one file."""
+    ventas_with_cost = _ventas()
+    ventas_with_cost["unit_cost"] = [5.0] * 20
+    folder = _folder(tmp_path, **{"maestro.csv": _maestro(), "ventas.csv": ventas_with_cost})
+    report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
+    (verdict,) = [v for v in report.verdicts if v.tool_key == "abc_xyz"]
+    assert verdict.state == GREEN
+    assert verdict.source_files == ("ventas.csv",)
 
 
 def test_report_always_carries_evaluated_over_total(tmp_path):

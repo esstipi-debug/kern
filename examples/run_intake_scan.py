@@ -23,19 +23,32 @@ def _print_tool_table(report) -> None:
             extra.append(f"missing: {', '.join(v.missing_required)}")
         if v.blocked_required:
             extra.append(f"blocked: {', '.join(v.blocked_required)}")
+        if v.under_covered_required:
+            extra.append(f"under-populated: {', '.join(v.under_covered_required)}")
+        if v.split_required:
+            extra.append(f"split across files: {', '.join(v.split_files)}")
         detail = f" ({'; '.join(extra)})" if extra else ""
         print(f"  {v.tool_key:<22} {v.state}{detail}")
+    if report.unreadable:
+        print("\nUnreadable files (skipped, not counted as absent data):")
+        for name, reason in report.unreadable:
+            print(f"  {name}: {reason}")
 
 
 def _print_ranked_gaps(report) -> None:
     print("\nRanked gaps:")
-    if not report.gaps and not report.blocked_fixes:
+    if not report.gaps and not report.blocked_fixes and not report.split_fixes and not report.undercovered_fixes:
         print("  nothing to request")
         return
     for g in report.gaps:
         print(f"  request column '{g.column}': unlocks {g.unlocks} tool(s) ({', '.join(g.tools)})")
     for f in report.blocked_fixes:
         print(f"  fix file '{f.filename}': unlocks {f.unlocks} tool(s) ({', '.join(f.tools)})")
+    for s in report.split_fixes:
+        print(f"  consolidate {', '.join(s.columns)}: unlocks {s.unlocks} tool(s) ({', '.join(s.tools)})")
+    for u in report.undercovered_fixes:
+        print(f"  populate '{u.column}' in '{u.filename}' ({u.coverage:.0%} filled): "
+              f"unlocks {u.unlocks} tool(s) ({', '.join(u.tools)})")
 
 
 def main() -> int:

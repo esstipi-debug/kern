@@ -48,6 +48,14 @@ from src.intake_scan import (
     run_breakers,
 )
 
+# Exceptions a broken/locked file can raise while pandas reads it -- caught
+# per file so one bad file (an Excel lock file "~$foo.xlsx", a 0-byte CSV, a
+# corrupt workbook) never aborts the scan of an otherwise-readable folder.
+# Deliberately broad (Exception, not a specific pandas/openpyxl type): the
+# actual exception class differs by engine and by what exactly is wrong with
+# the file, and the only thing this scan needs to know is "could not be read".
+_UNREADABLE_EXCEPTIONS = (Exception,)
+
 READABLE_SUFFIXES = (".csv", ".xlsx", ".xls")
 MAX_UNCLASSIFIED_SHARE = 0.50
 
@@ -64,8 +72,15 @@ class FolderIntake:
     signals: tuple[FileSignals, ...]
     classified: tuple[Classified, ...]
     available: dict[str, set[str]]
+    # filename -> canonical columns THAT FILE carries with sufficient coverage.
+    # Per-file, never unioned across the folder -- see src.intake_scan.verdicts_for.
+    by_file: dict[str, frozenset[str]]
     blocked: frozenset[str]
     ignored: tuple[str, ...]
+    # (filename, short reason) for every readable-extension file that failed to
+    # parse -- a declared hole in the folder, listed by name, never silently
+    # dropped or allowed to abort the scan of the rest of the folder.
+    unreadable: tuple[tuple[str, str], ...]
     under_covered: tuple[tuple[str, str, float], ...]
 
 
@@ -129,32 +144,65 @@ def _thresholds_from_params(params: dict | None) -> Thresholds:
     return override if isinstance(override, Thresholds) else Thresholds()
 
 
-def _list_dir(data_path: str) -> tuple[Path, list[Path]]:
+def _list_dir(data_path: str) -> tuple[Path, list[Path], list[str]]:
     p = Path(data_path)
     if p.is_file():
         raise ValueError(f"expected a directory, got a file: {data_path}")
     if not p.is_dir():
         raise ValueError(f"directory not found: {data_path}")
-    return p, sorted(e for e in p.iterdir() if e.is_file())
+    entries = list(p.iterdir())
+    files = sorted(e for e in entries if e.is_file())
+    # Subdirectories are never walked (this scan is one level deep) -- but a
+    # future reader diagnosing an empty scan needs to know they were SEEN and
+    # skipped, not that the folder looked empty. See prepare()'s "found:" error.
+    subdirs = sorted(e.name for e in entries if e.is_dir())
+    return p, files, subdirs
+
+
+def _short_reason(exc: Exception) -> str:
+    """A one-line reason for an unreadable file -- the exception type plus its
+    own message, never a raw multi-line pandas/openpyxl traceback string."""
+    text = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
+    return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
 
 
 def prepare(data_path: str, params: dict | None = None) -> FolderIntake:
     """Read every readable file in ``data_path``, map headers, measure coverage
-    and the circuit-breaker counts, and classify the folder."""
-    _, entries = _list_dir(data_path)
+    and the circuit-breaker counts, and classify the folder.
+
+    A file with a readable extension that still fails to parse (a locked
+    Excel temp file, a 0-byte CSV, a corrupt workbook) never aborts the whole
+    scan: it is caught per file, listed by name in ``unreadable`` with a short
+    reason, and the rest of the folder is scanned anyway. Only when NOT ONE
+    file in the folder is readable does this raise.
+    """
+    _, entries, subdirs = _list_dir(data_path)
 
     ignored: list[str] = []
+    unreadable: list[tuple[str, str]] = []
     records: list[tuple[str, dict[str, str], pd.DataFrame]] = []
     for entry in entries:
         if entry.suffix.lower() not in READABLE_SUFFIXES:
             ignored.append(entry.name)
             continue
-        df = _read_table(entry)
+        try:
+            df = _read_table(entry)
+        except _UNREADABLE_EXCEPTIONS as exc:
+            unreadable.append((entry.name, _short_reason(exc)))
+            continue
         mapping = _map_headers(df.columns)
         records.append((entry.name, mapping, df))
 
     if not records:
-        found = ", ".join(ignored) if ignored else "nothing"
+        parts = []
+        if ignored:
+            parts.append(f"ignored: {', '.join(ignored)}")
+        if unreadable:
+            parts.append(f"unreadable: {', '.join(name for name, _ in unreadable)}")
+        if subdirs:
+            noun = "subdirectory" if len(subdirs) == 1 else "subdirectories"
+            parts.append(f"skipped {noun}: {', '.join(subdirs)}")
+        found = "; ".join(parts) if parts else "nothing"
         raise ValueError(f"no readable file found in {data_path}; found: {found}")
 
     files: list[FileColumns] = []
@@ -171,13 +219,17 @@ def prepare(data_path: str, params: dict | None = None) -> FolderIntake:
 
     thresholds = _thresholds_from_params(params)
     available: dict[str, set[str]] = {}
+    by_file: dict[str, frozenset[str]] = {}
     under_covered: list[tuple[str, str, float]] = []
     for fc in files:
+        covered_here: set[str] = set()
         for col, cov in fc.coverage.items():
             if cov >= thresholds.column_coverage:
                 available.setdefault(col, set()).add(fc.filename)
+                covered_here.add(col)
             else:
                 under_covered.append((fc.filename, col, cov))
+        by_file[fc.filename] = frozenset(covered_here)
 
     maestro_files = {c.filename for c in classified if c.profile == "maestro"}
     orphans_evaluated = bool(maestro_files)
@@ -232,8 +284,10 @@ def prepare(data_path: str, params: dict | None = None) -> FolderIntake:
         signals=tuple(signals),
         classified=classified,
         available=available,
+        by_file=by_file,
         blocked=blocked,
         ignored=tuple(ignored),
+        unreadable=tuple(unreadable),
         under_covered=tuple(under_covered),
     )
 
@@ -252,10 +306,12 @@ def run(folder: FolderIntake, params: dict | None = None) -> ScanReport:
         classified=folder.classified,
         findings=findings,
         tools=registry_tools,
-        available=folder.available,
+        files=folder.by_file,
         blocked=folder.blocked,
         n_files_read=len(folder.files),
         n_unclassified=n_unclassified,
+        under_covered=folder.under_covered,
+        unreadable=folder.unreadable,
     )
 
 
@@ -320,19 +376,25 @@ def _join(values: tuple[str, ...]) -> str:
 
 
 def _tool_rows(report: ScanReport) -> list[dict[str, str]]:
-    """One row per tool verdict. ``missing_required`` and ``blocked_required`` are
-    kept as SEPARATE columns -- never collapsed -- because they are different
-    problems with different fixes: a genuinely absent column (ask the client for
-    it) versus a column present only in a file a circuit breaker blocked (fix
-    that file's data quality instead; asking again buys nothing)."""
+    """One row per tool verdict. ``missing_required``, ``blocked_required``,
+    ``under_covered_required`` and ``split_required`` are kept as SEPARATE
+    columns -- never collapsed -- because each names a different problem with
+    a different fix: a genuinely absent column (ask the client for it), a
+    column present only in a file a circuit breaker blocked (fix that file's
+    data quality), a column present but too sparsely populated (populate it,
+    do not re-ask for it), or required columns that exist but never together
+    in one file (consolidate them; the data is already there)."""
     return [
         {
             "tool_key": v.tool_key,
             "state": v.state,
             "missing_required": _join(v.missing_required),
             "blocked_required": _join(v.blocked_required),
+            "under_covered_required": _join(v.under_covered_required),
+            "split_required": _join(v.split_required),
             "missing_optional": _join(v.missing_optional),
             "blocked_by": _join(v.blocked_by),
+            "split_files": _join(v.split_files),
             "source_files": _join(v.source_files),
         }
         for v in report.verdicts
@@ -340,11 +402,14 @@ def _tool_rows(report: ScanReport) -> list[dict[str, str]]:
 
 
 def _file_rows(report: ScanReport) -> list[dict[str, object]]:
-    """One row per file read: profile (empty when unclassified), reason, row
-    count, and one column per breaker holding its fraction rounded to 4 places.
-    A breaker that never ran (``evaluated=False``, e.g. orphan_keys with no
-    master file classified in the folder) gets an empty cell, never a 0 --
-    a 0 would read as "checked and clean", which is not what happened."""
+    """One row per file read PLUS one row per unreadable file: profile (empty
+    when unclassified or unreadable), reason, row count, and one column per
+    breaker holding its fraction rounded to 4 places. A breaker that never ran
+    (``evaluated=False``, e.g. orphan_keys with no master file classified in
+    the folder) gets an empty cell, never a 0 -- a 0 would read as "checked
+    and clean", which is not what happened. An unreadable file is a declared
+    hole in the folder, not a silent absence -- it gets its own row, with its
+    reason prefixed so it reads distinctly from a merely-unclassified file."""
     findings_by_file: dict[str, dict[str, object]] = {}
     n_rows_by_file: dict[str, int] = {}
     for f in report.findings:
@@ -363,6 +428,17 @@ def _file_rows(report: ScanReport) -> list[dict[str, object]]:
         breakers = findings_by_file.get(c.filename, {})
         for breaker in _BREAKER_COLUMNS:
             row[breaker] = breakers.get(breaker, "")
+        rows.append(row)
+
+    for filename, reason in report.unreadable:
+        row = {
+            "filename": filename,
+            "profile": "",
+            "reason": f"unreadable: {reason}",
+            "n_rows": "",
+        }
+        for breaker in _BREAKER_COLUMNS:
+            row[breaker] = ""
         rows.append(row)
     return rows
 
@@ -427,11 +503,22 @@ def build_deck(
 
     # 2) Undeclared tools are a declared LIMIT of this scan, not a silent gap --
     # never let an undeclared tool read as "not evaluated because it's fine".
-    undeclared = sorted(v.tool_key for v in report.verdicts if v.state == UNDECLARED)
+    # Scoped to tools that actually consume file data: a tool registered with
+    # requires_data=False could never declare a column contract in the first
+    # place (it has none to declare), so counting it as "has not declared one
+    # YET" misstates a category mismatch as a pending gap and inflates the
+    # denominator (49 registered tools total, but only ~44 ever read a file).
+    from scm_agent import tools as _tools_mod  # inside the function: avoids a circular import at load
+
+    data_tool_keys = {t.key for t in _tools_mod.build_default_registry().list() if t.requires_data}
+    n_data_tools = len(data_tool_keys)
+    undeclared = sorted(
+        v.tool_key for v in report.verdicts if v.state == UNDECLARED and v.tool_key in data_tool_keys
+    )
     if undeclared:
         findings.append(Finding(
             "Declared limit of this scan",
-            f"{len(undeclared)} of {report.n_tools_total} registered tool(s) have not "
+            f"{len(undeclared)} of {n_data_tools} tool(s) that consume file data have not "
             f"declared a data contract yet, so this scan cannot judge them: "
             f"{', '.join(undeclared)}. They are reported as undeclared, never as runnable.",
             impact="excluded from every verdict above; not the same as a red or a green",
@@ -448,6 +535,52 @@ def build_deck(
             f"column and a blocked file: {keys}. Fixing the blocked file alone will not "
             "turn these green -- the missing column still needs to be requested.",
             impact="both asks are required; neither alone unblocks these tools",
+        ))
+
+    # 3b) Tools red because their required columns exist in the folder, but
+    # never together in one file -- prepare() reads exactly one file, so this
+    # is a real block, not a false green.
+    split_tools = [v for v in report.verdicts if v.split_required]
+    if split_tools:
+        lines = [
+            f"{v.tool_key} needs {', '.join(v.split_required)} together, but no single file "
+            f"carries all of them (seen split across {', '.join(v.split_files)})"
+            for v in split_tools
+        ]
+        findings.append(Finding(
+            "Tools blocked because required columns are split across files",
+            "; ".join(lines),
+            impact=(
+                "consolidating the columns into one export unlocks these tools; the data "
+                "already exists, it just needs to land in one file"
+            ),
+        ))
+
+    # 3c) Tools red because a required column is present but too sparsely
+    # populated -- the client already sent it; re-asking for it buys nothing.
+    undercovered_tools = [v for v in report.verdicts if v.under_covered_required]
+    if undercovered_tools:
+        lines = [
+            f"{v.tool_key}: '{column}' in '{filename}' is only {frac:.0%} filled"
+            for v in undercovered_tools
+            for column, filename, frac in v.under_covered_detail
+        ]
+        findings.append(Finding(
+            "Tools blocked because a required column is present but under-populated",
+            "; ".join(lines),
+            impact="the column needs to be POPULATED, not re-sent -- it is already there",
+        ))
+
+    # 3d) Files that could not be read at all are a declared hole in the
+    # folder, never a silent absence -- a locked Excel temp file or a corrupt
+    # workbook must never look identical to "the client sent nothing".
+    if report.unreadable:
+        names = ", ".join(f"{name} ({reason})" for name, reason in report.unreadable)
+        findings.append(Finding(
+            "Some files could not be read",
+            f"{len(report.unreadable)} file(s) could not be read and were skipped; the rest "
+            f"of the folder was scanned anyway: {names}.",
+            impact="treat as an unscanned hole in the folder, not as an absence of data",
         ))
 
     # 4) One finding per breaker that actually blocked a file, with its count
@@ -496,6 +629,9 @@ def build_deck(
         Kpi("Files read", f"{report.n_files_read}", rationale="Readable files found in the folder"),
         Kpi("Files unclassified", f"{report.n_unclassified}", target="0",
             rationale="Files that matched no known profile, or matched more than one"),
+        Kpi("Files unreadable", f"{len(report.unreadable)}", target="0",
+            rationale="Readable-extension files that failed to parse (locked/corrupt); "
+                       "scanned separately, never dropped silently"),
         Kpi("Tools ready to run (green)", f"{n_green}",
             rationale="Declared tools with every required column available and unblocked"),
         Kpi("Tools blocked (red)", f"{n_red}", target="0",
