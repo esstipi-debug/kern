@@ -260,8 +260,48 @@ def test_store_commit_passes_the_changeset_key_through():
     )
     store.claim(cs.idempotency_key)
     store.commit(cs, approved_by="operator@kern.ai")
-    assert rpc.idempotency_keys == ["key-inv-777"]
+    # The key is derived per (changeset, entity): deterministic but distinct per SKU.
+    assert rpc.idempotency_keys == ["key-inv-777:SKU-1"]
 
     store.rollback("key-inv-777")
-    # A restore is a distinct write: sharing the key would make Shopify drop it.
-    assert rpc.idempotency_keys[-1] == "key-inv-777:restore"
+    # A restore is a distinct write: sharing the forward-write key would make
+    # Shopify drop it.
+    assert rpc.idempotency_keys[-1] == "key-inv-777:SKU-1:restore"
+
+
+def test_store_commit_derives_a_distinct_key_per_entity_in_a_multi_change_changeset():
+    # A restock touching several SKUs in one changeset must not reuse the same
+    # key across SKUs -- Shopify rejects a reused key with different parameters
+    # (IDEMPOTENCY_KEY_PARAMETER_MISMATCH) rather than silently deduping.
+    loc = "gid://shopify/Location/1"
+    rpc = demo_shopify_inventory()
+    store = ShopifyInventoryStore(rpc, location_id=loc)
+    cs = writeback.Changeset(
+        idempotency_key="key-restock-001",
+        target="shopify_inventory",
+        risk_tier=writeback.TIER_REVERSIBLE,
+        changes=(
+            writeback.Change(entity_id="SKU-1", field="quantity", before=150, after=160),
+            writeback.Change(entity_id="SKU-2", field="quantity", before=45, after=55),
+            writeback.Change(entity_id="SKU-3", field="quantity", before=12, after=20),
+        ),
+    )
+    store.claim(cs.idempotency_key)
+    store.commit(cs, approved_by="operator@kern.ai")
+
+    commit_keys = rpc.idempotency_keys[-3:]
+    assert len(set(commit_keys)) == 3
+    assert commit_keys == [
+        "key-restock-001:SKU-1",
+        "key-restock-001:SKU-2",
+        "key-restock-001:SKU-3",
+    ]
+
+    store.rollback("key-restock-001")
+    restore_keys = rpc.idempotency_keys[-3:]
+    assert len(set(restore_keys)) == 3
+    assert restore_keys == [
+        "key-restock-001:SKU-1:restore",
+        "key-restock-001:SKU-2:restore",
+        "key-restock-001:SKU-3:restore",
+    ]

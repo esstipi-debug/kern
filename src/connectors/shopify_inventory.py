@@ -291,8 +291,13 @@ class ShopifyInventoryStore:
                 current_qty = self._rpc.get_inventory_level(inv_item_id, self._location_id)
                 restore.append((c.entity_id, c.field, current_qty))
                 new_qty = int(c.after)
+                # One key per (changeset, entity): deterministic so a genuine retry
+                # of the same write dedupes, but distinct per SKU so Shopify does not
+                # reject sibling writes in the same changeset with
+                # IDEMPOTENCY_KEY_PARAMETER_MISMATCH (it rejects reuse with different
+                # parameters rather than silently deduping).
                 self._rpc.set_inventory(inv_item_id, self._location_id, new_qty,
-                                        idempotency_key=changeset.idempotency_key)
+                                        idempotency_key=f"{changeset.idempotency_key}:{c.entity_id}")
         except Exception:
             self._apply_restore(restore, idempotency_key=changeset.idempotency_key)
             raise
@@ -314,8 +319,11 @@ class ShopifyInventoryStore:
             item = self._rpc.find_inventory_item_by_sku(entity_id)
             if item is None or not item.get("inventory_item_id"):
                 raise ShopifyInventoryError(f"cannot restore: SKU {entity_id!r} no longer exists")
+            # Same rationale as commit(): one key per (changeset, entity), plus the
+            # ":restore" suffix so a restore never collides with the forward write
+            # it undoes, and distinct entities never collide with each other.
             self._rpc.set_inventory(item["inventory_item_id"], self._location_id, int(original),
-                                    idempotency_key=f"{idempotency_key}:restore")
+                                    idempotency_key=f"{idempotency_key}:{entity_id}:restore")
 
 
 class InMemoryShopifyInventory:
