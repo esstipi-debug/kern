@@ -9,6 +9,7 @@ src.hats.select_best_index's shared tie-break (spec sec 6).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from itertools import combinations
 
 from src.hats import (
@@ -104,6 +105,29 @@ class ActaEntry:
     kpi_chosen: float
 
 
+#: A hat conceding more than this much of its ideal is not "aligned with some
+#: give" -- it lost the argument, and an acta that folds that into an average is
+#: hiding the disagreement it exists to record. Half its ideal utility is the
+#: line: below it the hat still recognises the plan as broadly its own.
+UNRESOLVED_CONCESSION_THRESHOLD = 0.5
+
+#: What the owner field says when nobody was named. An empty string reads as
+#: "already assigned, name omitted"; this reads as what it is.
+UNASSIGNED = "unassigned"
+
+
+@dataclass(frozen=True)
+class UnresolvedGap:
+    """A hat that gave up more than the threshold: the disagreement the acta must
+    carry forward instead of settling. Named, quantified and traceable to its
+    acta line, so the next S&OP can reopen it rather than rediscover it."""
+
+    hat_key: str
+    concesion: float
+    kpi_ideal: float
+    kpi_chosen: float
+
+
 @dataclass(frozen=True)
 class Settlement:
     """N5: one reconciled plan + the acta. `weights` is the operator's POLICY
@@ -118,6 +142,16 @@ class Settlement:
     judge_cost_chosen: float
     judge_cost_baseline: float
     value_vs_baseline_usd: float
+    #: The demand the council settled ON. Without it the acta records what was
+    #: agreed but not what it was agreed about, and the next cycle cannot tell a
+    #: plan change from a demand change.
+    agreed_demand_plan: float = 0.0
+    #: Concessions above the threshold, declared instead of averaged away.
+    unresolved_gaps: tuple[UnresolvedGap, ...] = ()
+    #: Who owns the decision and when it was taken. A plan nobody signed is a
+    #: suggestion; the criterion asks for a decision, which needs both.
+    decision_owner: str = UNASSIGNED
+    decision_date: date | None = None
 
 
 @dataclass(frozen=True)
@@ -138,6 +172,9 @@ def settle(
     inputs: HatInputs,
     weights: str | dict | None,
     ev: GridEvaluation | None = None,
+    *,
+    owner: str = UNASSIGNED,
+    decided_on: date | None = None,
 ) -> Settlement:
     """Weighted sum of NORMALIZED utilities over the grid, shared tie-break.
 
@@ -172,6 +209,14 @@ def settle(
         sku=inputs.sku, chosen=chosen, weights=w, acta=acta,
         judge_cost_chosen=c_chosen, judge_cost_baseline=c_base,
         value_vs_baseline_usd=c_base - c_chosen,
+        agreed_demand_plan=inputs.annual_demand,
+        unresolved_gaps=tuple(
+            UnresolvedGap(e.hat_key, e.concesion, e.kpi_ideal, e.kpi_chosen)
+            for e in acta
+            if e.concesion > UNRESOLVED_CONCESSION_THRESHOLD
+        ),
+        decision_owner=owner or UNASSIGNED,
+        decision_date=decided_on or date.today(),
     )
 
 

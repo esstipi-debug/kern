@@ -326,18 +326,28 @@ def _candidato_acta(**cambios) -> _CandidatoActa:
     return _CandidatoActa(**{**base, **cambios})
 
 
-def test_t14_no_cumple_el_acta_esta_partida_en_dos_entregables():
-    """Veredicto real: el plan integrado trae demanda, suministro y brechas pero
-    no tiene donde anotar el desacuerdo; el acta de concesiones si lo registra
-    pero no trae el plan. Y ninguno cierra con responsable y fecha."""
+def test_t14_cumple_ahora_que_el_acta_cierra():
+    """Veredicto real. El acta de concesiones ya registraba el desacuerdo pero no
+    cerraba: no decia sobre que demanda se acordo, no declaraba que concesiones
+    quedaban abiertas, y no tenia dueno ni fecha. ``Settlement`` ahora lleva
+    ``agreed_demand_plan``, ``unresolved_gaps`` (concesion sobre el umbral) y
+    ``decision_owner`` / ``decision_date``.
+
+    Este test era la caracterizacion del estado roto -- se llamaba "el acta esta
+    partida en dos entregables" -- y pasa a ser su guardia de regresion.
+
+    Lo que NO cambio, y se sigue afirmando: el plan integrado no tiene donde
+    anotar el desacuerdo, asi que no puede ganar por si solo, y su unico
+    faltante sigue siendo el cierre con nombre y fecha.
+    """
     r = _resultado(puntuar(), "T14")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["mejor"] == "hat_settlement"
     por_tool = {c["tool"]: c for c in r.detalle["candidatos"]}
     assert por_tool["integrated_plan"]["registra_desacuerdo"] is False
     assert por_tool["hat_settlement"]["registra_desacuerdo"] is True
-    # Lo unico que le falta al plan integrado es el cierre con nombre y fecha.
+    assert por_tool["hat_settlement"]["faltantes"] == []
     assert por_tool["integrated_plan"]["faltantes"] == ["una decision con nombre y fecha"]
 
 
