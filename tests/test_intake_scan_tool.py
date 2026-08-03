@@ -4,8 +4,8 @@ prepare -> run -> qa -> deliver path through the registry's own Tool object
 import pandas as pd
 
 from nosilo_core import llm
-from scm_agent import intent, tools
 from nosilo_core.types import JobRequest
+from scm_agent import intent, tools
 
 
 def _folder(tmp_path, **frames):
