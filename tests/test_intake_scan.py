@@ -412,6 +412,54 @@ def test_gaps_rank_by_how_many_tools_each_column_unlocks():
     assert gaps[0].tools == ("t1", "t2")
 
 
+def test_rank_gaps_does_not_credit_a_tool_red_for_a_second_reason_too():
+    """The re-review's own repro, driven straight through the pure engine:
+    excess_obsolete-style tool needs product_id, on_hand, daily_demand.
+    on_hand is entirely missing; daily_demand is present but under-covered.
+    Requesting on_hand does not unblock the tool -- daily_demand would still
+    sit at 10% coverage -- so rank_gaps must not credit anyone with it. Same
+    exclusion discipline rank_blocked_fixes and rank_undercovered_fixes
+    already carry, now applied to the fourth ranker."""
+    tools_ = [_FakeTool("excess_obsolete", ("product_id", "on_hand", "daily_demand"))]
+    files = _files(**{"stock.csv": ["product_id"]})
+    under_covered = (("stock.csv", "daily_demand", 0.1),)
+    (verdict,) = verdicts_for(files, frozenset(), tools_, under_covered)
+    assert verdict.state == RED
+    assert verdict.missing_required == ("on_hand",)
+    assert verdict.under_covered_required == ("daily_demand",)
+
+    assert rank_gaps((verdict,)) == ()
+
+
+def test_rank_gaps_does_not_credit_a_tool_missing_two_columns_at_once():
+    """Symmetric with the two-blocking-files / two-under-covered-columns
+    cases: a tool missing TWO required columns is credited to neither
+    individually -- requesting just one still leaves it red."""
+    tools_ = [_FakeTool("t", ("colA", "colB"))]
+    verdicts = verdicts_for({}, frozenset(), tools_)
+    assert rank_gaps(verdicts) == ()
+
+
+def test_rank_gaps_still_credits_a_single_missing_column_with_no_other_cause():
+    """Anti-over-correction proof: a column that IS a tool's sole cause of red
+    -- nothing blocked, nothing under-covered, nothing split, exactly one
+    missing column -- must still be ranked with its unlock count. "Request
+    this column" is the most common ask this capability makes; if the
+    exclusion guard silently swallowed the ordinary case it would break the
+    capability, not just the edge case it was meant to close. Two tools share
+    the same missing column so the unlock count is pinned too."""
+    tools_ = [
+        _FakeTool("t1", ("product_id", "unit_cost")),
+        _FakeTool("t2", ("product_id", "unit_cost")),
+    ]
+    files = _files(**{"a.csv": ["product_id"]})
+    verdicts = verdicts_for(files, frozenset(), tools_)
+    (gap,) = rank_gaps(verdicts)
+    assert gap.column == "unit_cost"
+    assert gap.unlocks == 2
+    assert gap.tools == ("t1", "t2")
+
+
 def test_ties_break_by_column_name_so_two_runs_agree():
     verdicts = verdicts_for(
         {},

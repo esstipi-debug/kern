@@ -409,12 +409,23 @@ def verdicts_for(
 def rank_gaps(verdicts: tuple[ToolVerdict, ...]) -> tuple[ColumnGap, ...]:
     """Genuinely missing required columns, ranked by how many tools each unlocks.
 
-    A column that is merely blocked (present, but only in disqualified files) is
-    excluded -- asking for it again would not unlock anything. Ties break on the
-    column name so two runs over the same folder agree.
+    Same exclusion discipline as rank_blocked_fixes/rank_undercovered_fixes
+    (see their docstrings): a tool only counts toward a column's "request"
+    credit if that column is its SOLE obstacle. A tool that is ALSO red
+    because of a blocked file, an under-populated column, or a split-across-
+    files column cannot be unblocked by requesting one more column alone --
+    crediting it here would promise an unlock that will not happen (asking
+    for on_hand does nothing for a tool that still has daily_demand at 10%
+    coverage). Symmetric with the two-blocking-files case too: a tool missing
+    TWO OR MORE required columns is credited to none of them individually --
+    requesting just one still leaves it red. Ties break on the column name so
+    two runs over the same folder agree.
     """
     by_column: dict[str, list[str]] = {}
     for v in verdicts:
+        if (v.blocked_required or v.under_covered_required or v.split_required
+                or len(v.missing_required) != 1):
+            continue
         for column in v.missing_required:
             by_column.setdefault(column, []).append(v.tool_key)
     gaps = [
