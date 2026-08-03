@@ -1,16 +1,27 @@
 """Shared negative-quantity counter for every tool that ingests quantities.
 
-Counts, never mutates. The five quantity-ingesting tools each read their own
-CSV (a deliberate convention -- only ``inventory_optimization`` goes through
-``jobs/intake.py``), so the shared piece cannot be a single intake step: it is
-this audit, computed at ``prepare()`` time, carried on the payload into
-``run()``, hung on the report, and gated in the tool's ``qa()``.
+Counts, never mutates. Each tool reads its own CSV (a deliberate convention --
+only ``inventory_optimization`` goes through ``jobs/intake.py``), so the shared
+piece cannot be a single intake step: it is this audit, computed at
+``prepare()`` time, carried on the payload into ``run()``, hung on the report,
+and gated in the tool's ``qa()``.
+
+``audit_quantities`` has three callers: ``abc_xyz``, ``forecast`` and
+``excess_obsolete``. The other two gated tools never call it, for reasons
+specific to each. ``inventory_optimization`` imports only
+``DEFAULT_NEGATIVE_THRESHOLD`` from here, so the tolerance stays one number
+across the codebase, but its gate reads the count ``jobs/intake.py`` already
+keeps (``IntakeQuality.n_dropped_negative_quantity``) -- it is the one tool that
+goes through intake, so recounting would duplicate work intake already did.
+``ddmrp`` has no quantity column to audit at all: its ADU is already a per-part
+rate on the report, so it checks ``adu < 0`` directly in its own ``verify()``.
 
 Routing the signal into ``qa()`` is what makes it bite: ``qa_issues`` is the
 only channel the orchestrator's "QA fails => no deliverable" gate respects.
-An escalation raised later, in ``tool.options()``, runs AFTER that gate
-(``scm_agent/orchestrator.py``: qa at line 156, options at line 169) and so can
-never block a deliverable.
+``Orchestrator._execute`` calls ``tool.qa()`` and only later ``tool.options()``,
+so an escalation raised in ``options()`` runs AFTER the gate and can never block
+a deliverable. (Grep for ``issues = tool.qa`` rather than trusting a line
+number: this docstring has already been wrong once because the lines moved.)
 
 Kern cannot tell a legitimate return from an inverted sign from a mis-mapped
 column, so it does not guess: negatives are reported, not reinterpreted.
