@@ -101,6 +101,14 @@ def test_objection_thresholds_es_granular():
 
 def test_spec_for_devuelve_none_para_un_desconocido():
     assert spec_for("no_existe_este_parametro") is None
+
+
+def test_las_areas_copiadas_no_derivaron_de_hats():
+    """El motor puro copia HAT_KEYS en vez de importarlo (src.hats arrastra numpy
+    y scipy). Esta aserción es lo único que impide que la copia derive."""
+    from src.hats import HAT_KEYS
+
+    assert spec_for("objection_thresholds").subkeys == HAT_KEYS
 ```
 
 - [ ] **Step 2: Correr el test y verificar que falla**
@@ -129,7 +137,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.hats import HAT_KEYS
+# Las cuatro areas de src.hats.HAT_KEYS, copiadas a proposito en vez de
+# importadas: src.hats arrastra numpy y scipy por su cadena de imports, y este
+# modulo es puro y liviano por contrato. La copia NO puede derivar -- 
+# tests/test_discovery_brief.py asierta igualdad contra src.hats.HAT_KEYS, donde
+# importar scipy no cuesta nada.
+_HAT_KEYS = ("comprador", "planner", "cfo", "comercial")
 
 
 @dataclass(frozen=True)
@@ -204,7 +217,7 @@ CATALOG: tuple[ParamSpec, ...] = (
         moves="Qué áreas pueden evaluarse en el cruce de impacto; sin umbral, el "
               "área sale NO_EVALUABLE.",
         defaults=(),
-        subkeys=HAT_KEYS,
+        subkeys=_HAT_KEYS,
     ),
 )
 
@@ -254,7 +267,7 @@ def spec_for(name: str) -> ParamSpec | None:
 - [ ] **Step 4: Correr el test y verificar que pasa**
 
 Run: `python -m pytest tests/test_discovery_brief.py -v`
-Expected: PASS, 6 tests.
+Expected: PASS, 7 tests.
 
 - [ ] **Step 5: Verificar a mano los defaults citados**
 
@@ -486,7 +499,7 @@ def verdicts_for(tools: list, params: dict | None) -> tuple[ToolVerdict, ...]:
 - [ ] **Step 4: Correr y verificar que pasa**
 
 Run: `python -m pytest tests/test_discovery_brief.py -v`
-Expected: PASS, 15 tests.
+Expected: PASS, 16 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -609,7 +622,7 @@ def rank_gaps(verdicts: tuple[ToolVerdict, ...]) -> tuple[ParamGap, ...]:
 - [ ] **Step 4: Correr y verificar que pasa**
 
 Run: `python -m pytest tests/test_discovery_brief.py -v`
-Expected: PASS, 20 tests.
+Expected: PASS, 21 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -650,14 +663,14 @@ def test_sin_ninguna_declaracion_no_dice_que_esta_todo_bien():
     """Cero evaluadas no es 'el perfil alcanza para todo'. No se evaluó nada."""
     r = build_report(tools=[_FakeTool("a"), _FakeTool("b")], params={"holding_rate": 0.25})
     assert r.n_tools_evaluated == 0
-    assert r.outcome.status == "EXECUTED"
+    assert r.outcome.status == "executed"
     assert "no se evaluó" in r.outcome.summary.lower()
 
 
 def test_con_huecos_el_outcome_es_un_menu_rankeado():
     tools = [_FakeTool("a", ("holding_rate",)), _FakeTool("b", ("holding_rate",))]
     r = build_report(tools=tools, params={})
-    assert r.outcome.status == "OPTIONS"
+    assert r.outcome.status == "options"
     assert r.outcome.options[0].action == "ask_param:holding_rate"
     assert r.outcome.options[0].recommended is True
 
@@ -671,7 +684,7 @@ def test_la_opcion_dice_que_cifra_se_mueve():
 def test_sin_perfil_propone_crear_el_perfil_no_preguntar_numeros():
     r = build_report(tools=[_FakeTool("a", ("holding_rate",))], params=None, client_id="acme")
     assert r.has_profile is False
-    assert r.outcome.status == "OPTIONS"
+    assert r.outcome.status == "options"
     assert r.outcome.options[0].action == "create_profile:acme"
 
 
@@ -844,7 +857,7 @@ def build_report(*, tools: list, params: dict | None, client_id: str = "") -> Br
 - [ ] **Step 4: Correr y verificar que pasa**
 
 Run: `python -m pytest tests/test_discovery_brief.py -v`
-Expected: PASS, 28 tests.
+Expected: PASS, 29 tests.
 
 Si `test_sin_ninguna_declaracion_no_dice_que_esta_todo_bien` falla por el `status`, verificar el valor real con:
 ```bash
