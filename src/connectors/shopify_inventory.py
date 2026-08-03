@@ -17,6 +17,8 @@ from typing import Any, Protocol, runtime_checkable
 
 from nosilo_core import writeback
 
+from src.connectors.shopify_api_version import PINNED_VERSION, check_served
+
 try:
     import httpx  # noqa: F401  -- solo se testea disponibilidad
 
@@ -25,7 +27,6 @@ except ImportError:
     _HAS_HTTPX = False
 
 _WB_TARGET = "shopify_inventory"
-_DEFAULT_API_VERSION = "2024-10"
 
 
 class ShopifyInventoryError(RuntimeError):
@@ -50,19 +51,21 @@ class ShopifyInventoryRPC(Protocol):
 class ShopifyInventoryClient:
     """Real Shopify GraphQL Admin API client for inventory management."""
 
-    def __init__(self, http: Any, *, api_version: str = _DEFAULT_API_VERSION) -> None:
+    def __init__(self, http: Any, *, api_version: str = PINNED_VERSION) -> None:
         if not _HAS_HTTPX:
             raise ShopifyInventoryError(
                 "httpx is required for live Shopify transport -- install 'repricing' extra "
                 "or use InMemoryShopifyInventory for offline tests"
             )
         self._http = http
+        self._api_version = api_version
         self._graphql_path = f"/admin/api/{api_version}/graphql.json"
         self._item_id_cache: dict[str, dict] = {}
 
-    def _graphql(self, query: str, variables: dict) -> dict:
+    def _graphql(self, query: str, variables: dict, *, is_write: bool = False) -> dict:
         resp = self._http.post(self._graphql_path, json={"query": query, "variables": variables})
         resp.raise_for_status()
+        check_served(resp, requested=self._api_version, is_write=is_write)
         body = resp.json()
         if body.get("errors"):
             raise ShopifyInventoryError(f"Shopify GraphQL error: {body['errors']}")
@@ -178,7 +181,7 @@ class ShopifyInventoryClient:
                 }
             ],
         }
-        data = self._graphql(mutation, {"input": input_data})
+        data = self._graphql(mutation, {"input": input_data}, is_write=True)
         res = data.get("inventoryAdjustQuantities") or {}
         errors = res.get("userErrors") or []
         if errors:
@@ -192,7 +195,7 @@ class ShopifyInventoryClient:
         mutation = """
         mutation SetInventory($input: InventorySetQuantitiesInput!) {
           inventorySetQuantities(input: $input) {
-            inventorySetGroup {
+            inventoryAdjustmentGroup {
               changes {
                 quantityAfterChange
               }
@@ -216,15 +219,20 @@ class ShopifyInventoryClient:
                 }
             ],
         }
-        data = self._graphql(mutation, {"input": input_data})
+        data = self._graphql(mutation, {"input": input_data}, is_write=True)
         res = data.get("inventorySetQuantities") or {}
         errors = res.get("userErrors") or []
         if errors:
             raise ShopifyInventoryError(f"Shopify rejected setting inventory: {errors}")
-        changes = (res.get("inventorySetGroup") or {}).get("changes", [])
-        if changes:
-            return int(changes[0]["quantityAfterChange"])
-        return available
+        # The payload field is inventoryAdjustmentGroup, not inventorySetGroup. Echoing
+        # `available` back on a missing field made a failed write look like a success.
+        changes = (res.get("inventoryAdjustmentGroup") or {}).get("changes", [])
+        if not changes:
+            raise ShopifyInventoryError(
+                f"Shopify did not confirm the inventory set for {inventory_item_id!r} "
+                f"at {location_id!r}: no inventoryAdjustmentGroup in the response"
+            )
+        return int(changes[0]["quantityAfterChange"])
 
 
 class ShopifyInventoryStore:

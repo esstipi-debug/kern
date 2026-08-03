@@ -92,3 +92,97 @@ def test_shopify_inventory_store_unknown_sku():
 
     with pytest.raises(ShopifyInventoryError, match="unknown SKU 'SKU-UNKNOWN'"):
         store.commit(cs, approved_by="operator@kern.ai")
+
+
+# ---- transport (ShopifyInventoryClient) ---------------------------------------
+# First tests to ever exercise the real GraphQL client.
+
+from src.connectors.shopify_api_version import (  # noqa: E402
+    PINNED_VERSION,
+    ShopifyVersionDriftError,
+)
+from src.connectors.shopify_inventory import ShopifyInventoryClient  # noqa: E402
+
+
+class _FakeResponse:
+    def __init__(self, payload: dict, headers: dict | None = None) -> None:
+        self._payload = payload
+        self.headers = headers if headers is not None else {}
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class _FakeHttp:
+    def __init__(self, payload: dict, headers: dict | None = None) -> None:
+        self._payload = payload
+        self._headers = headers
+        self.calls: list[tuple[str, dict]] = []
+
+    def post(self, path: str, json: dict) -> _FakeResponse:
+        self.calls.append((path, json))
+        return _FakeResponse(self._payload, self._headers)
+
+
+_LOCATIONS_PAYLOAD = {
+    "data": {
+        "locations": {
+            "edges": [
+                {"node": {"id": "gid://shopify/Location/1", "name": "Main", "isPrimary": True}}
+            ]
+        }
+    }
+}
+
+_SET_PAYLOAD = {
+    "data": {
+        "inventorySetQuantities": {
+            "inventoryAdjustmentGroup": {"changes": [{"quantityAfterChange": 180}]},
+            "userErrors": [],
+        }
+    }
+}
+
+_SET_PAYLOAD_EMPTY = {
+    "data": {"inventorySetQuantities": {"inventoryAdjustmentGroup": None, "userErrors": []}}
+}
+
+
+def test_inventory_client_uses_the_shared_pinned_version():
+    http = _FakeHttp(_LOCATIONS_PAYLOAD)
+    ShopifyInventoryClient(http).list_locations()
+    assert http.calls[0][0] == f"/admin/api/{PINNED_VERSION}/graphql.json"
+
+
+def test_inventory_client_read_tolerates_drift():
+    http = _FakeHttp(_LOCATIONS_PAYLOAD, headers={"X-Shopify-API-Version": "2099-01"})
+    assert ShopifyInventoryClient(http).list_locations()[0]["name"] == "Main"
+
+
+def test_inventory_client_write_refuses_to_run_under_drift():
+    http = _FakeHttp(_SET_PAYLOAD, headers={"X-Shopify-API-Version": "2099-01"})
+    with pytest.raises(ShopifyVersionDriftError):
+        ShopifyInventoryClient(http).set_inventory(
+            "gid://shopify/InventoryItem/SKU-1", "gid://shopify/Location/1", 180
+        )
+
+
+def test_set_inventory_reads_the_inventory_adjustment_group():
+    http = _FakeHttp(_SET_PAYLOAD, headers={"X-Shopify-API-Version": PINNED_VERSION})
+    qty = ShopifyInventoryClient(http).set_inventory(
+        "gid://shopify/InventoryItem/SKU-1", "gid://shopify/Location/1", 180
+    )
+    assert qty == 180
+
+
+def test_set_inventory_fails_instead_of_echoing_the_requested_quantity():
+    # The old code returned `available` when the payload field was missing, so a
+    # silent failure was indistinguishable from a confirmed write.
+    http = _FakeHttp(_SET_PAYLOAD_EMPTY, headers={"X-Shopify-API-Version": PINNED_VERSION})
+    with pytest.raises(ShopifyInventoryError, match="did not confirm"):
+        ShopifyInventoryClient(http).set_inventory(
+            "gid://shopify/InventoryItem/SKU-1", "gid://shopify/Location/1", 180
+        )
