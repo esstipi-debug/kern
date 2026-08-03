@@ -5,7 +5,9 @@ Mirrors ``src/connectors/shopify_prices.py`` and ``src/connectors/odoo.py``:
 - ``ShopifyInventoryRPC`` is the Protocol defining RPC operations:
   finding inventory item by SKU, querying stock by location, adjusting and setting stock.
 - ``ShopifyInventoryClient`` is the real transport over Shopify's GraphQL Admin API
-  (inventorySetQuantities, inventoryAdjustQuantities, locations).
+  (inventorySetQuantities, inventoryAdjustQuantities, locations). Both inventory
+  mutations carry the ``@idempotent`` directive, required since API version
+  2026-04.
 - ``ShopifyInventoryStore`` holds the writeback ``store`` surface
   (read/applied_keys/claim/release/commit/rollback) speaking ``ShopifyInventoryRPC``.
 - ``InMemoryShopifyInventory`` is the offline stand-in for zero-dependency testing.
@@ -43,9 +45,11 @@ class ShopifyInventoryRPC(Protocol):
 
     def get_inventory_level(self, inventory_item_id: str, location_id: str) -> int: ...
 
-    def adjust_inventory(self, inventory_item_id: str, location_id: str, delta: int, reason: str = "correction") -> int: ...
+    def adjust_inventory(self, inventory_item_id: str, location_id: str, delta: int,
+                         reason: str = "correction", *, idempotency_key: str) -> int: ...
 
-    def set_inventory(self, inventory_item_id: str, location_id: str, available: int, reason: str = "correction") -> int: ...
+    def set_inventory(self, inventory_item_id: str, location_id: str, available: int,
+                      reason: str = "correction", *, idempotency_key: str) -> int: ...
 
 
 class ShopifyInventoryClient:
@@ -153,9 +157,11 @@ class ShopifyInventoryClient:
                         return int(q["quantity"])
         return 0
 
-    def adjust_inventory(self, inventory_item_id: str, location_id: str, delta: int, reason: str = "correction") -> int:
+    def adjust_inventory(self, inventory_item_id: str, location_id: str, delta: int,
+                         reason: str = "correction", *, idempotency_key: str) -> int:
         mutation = """
-        mutation AdjustInventory($input: InventoryAdjustQuantitiesInput!) {
+        mutation AdjustInventory($input: InventoryAdjustQuantitiesInput!, $idempotencyKey: String!)
+        @idempotent(key: $idempotencyKey) {
           inventoryAdjustQuantities(input: $input) {
             inventoryAdjustmentGroup {
               changes {
@@ -181,19 +187,28 @@ class ShopifyInventoryClient:
                 }
             ],
         }
-        data = self._graphql(mutation, {"input": input_data}, is_write=True)
+        data = self._graphql(
+            mutation,
+            {"input": input_data, "idempotencyKey": idempotency_key},
+            is_write=True,
+        )
         res = data.get("inventoryAdjustQuantities") or {}
         errors = res.get("userErrors") or []
         if errors:
             raise ShopifyInventoryError(f"Shopify rejected inventory adjustment: {errors}")
         changes = (res.get("inventoryAdjustmentGroup") or {}).get("changes", [])
-        if changes:
-            return int(changes[0]["quantityAfterChange"])
-        return 0
+        if not changes:
+            raise ShopifyInventoryError(
+                f"Shopify did not confirm the inventory adjustment for {inventory_item_id!r} "
+                f"at {location_id!r}: no inventoryAdjustmentGroup in the response"
+            )
+        return int(changes[0]["quantityAfterChange"])
 
-    def set_inventory(self, inventory_item_id: str, location_id: str, available: int, reason: str = "correction") -> int:
+    def set_inventory(self, inventory_item_id: str, location_id: str, available: int,
+                      reason: str = "correction", *, idempotency_key: str) -> int:
         mutation = """
-        mutation SetInventory($input: InventorySetQuantitiesInput!) {
+        mutation SetInventory($input: InventorySetQuantitiesInput!, $idempotencyKey: String!)
+        @idempotent(key: $idempotencyKey) {
           inventorySetQuantities(input: $input) {
             inventoryAdjustmentGroup {
               changes {
@@ -219,7 +234,11 @@ class ShopifyInventoryClient:
                 }
             ],
         }
-        data = self._graphql(mutation, {"input": input_data}, is_write=True)
+        data = self._graphql(
+            mutation,
+            {"input": input_data, "idempotencyKey": idempotency_key},
+            is_write=True,
+        )
         res = data.get("inventorySetQuantities") or {}
         errors = res.get("userErrors") or []
         if errors:
@@ -272,9 +291,10 @@ class ShopifyInventoryStore:
                 current_qty = self._rpc.get_inventory_level(inv_item_id, self._location_id)
                 restore.append((c.entity_id, c.field, current_qty))
                 new_qty = int(c.after)
-                self._rpc.set_inventory(inv_item_id, self._location_id, new_qty)
+                self._rpc.set_inventory(inv_item_id, self._location_id, new_qty,
+                                        idempotency_key=changeset.idempotency_key)
         except Exception:
-            self._apply_restore(restore)
+            self._apply_restore(restore, idempotency_key=changeset.idempotency_key)
             raise
 
         entry = writeback.AuditEntry(changeset.idempotency_key, changeset.target, approved_by, tuple(restore))
@@ -285,15 +305,17 @@ class ShopifyInventoryStore:
         entry = self._audit.get(idempotency_key)
         if entry is None:
             raise KeyError(idempotency_key)
-        self._apply_restore(entry.restore)
+        self._apply_restore(entry.restore, idempotency_key=idempotency_key)
         self._audit.forget(idempotency_key)
 
-    def _apply_restore(self, restore: list[tuple[str, str, object]] | tuple[tuple[str, str, object], ...]) -> None:
+    def _apply_restore(self, restore: list[tuple[str, str, object]] | tuple[tuple[str, str, object], ...],
+                       *, idempotency_key: str) -> None:
         for entity_id, _field, original in restore:
             item = self._rpc.find_inventory_item_by_sku(entity_id)
             if item is None or not item.get("inventory_item_id"):
                 raise ShopifyInventoryError(f"cannot restore: SKU {entity_id!r} no longer exists")
-            self._rpc.set_inventory(item["inventory_item_id"], self._location_id, int(original))
+            self._rpc.set_inventory(item["inventory_item_id"], self._location_id, int(original),
+                                    idempotency_key=f"{idempotency_key}:restore")
 
 
 class InMemoryShopifyInventory:
@@ -302,6 +324,10 @@ class InMemoryShopifyInventory:
     def __init__(self, stock: dict[str, dict[str, int]] | None = None, locations: list[dict] | None = None) -> None:
         self._stock: dict[str, dict[str, int]] = {sku: dict(locs) for sku, locs in (stock or {}).items()}
         self._locations = locations or [{"id": "gid://shopify/Location/1", "name": "Main Warehouse", "isPrimary": True}]
+        # Records every key it was told, so callers can assert the key was threaded
+        # through and the parameter is not inert -- it does not emulate Shopify's
+        # dedup behaviour, since every test defaults to the same "offline" key.
+        self.idempotency_keys: list[str] = []
 
     def list_locations(self) -> list[dict]:
         return list(self._locations)
@@ -320,7 +346,9 @@ class InMemoryShopifyInventory:
         sku = inventory_item_id.replace("gid://shopify/InventoryItem/", "")
         return self._stock.get(sku, {}).get(location_id, 0)
 
-    def adjust_inventory(self, inventory_item_id: str, location_id: str, delta: int, reason: str = "correction") -> int:
+    def adjust_inventory(self, inventory_item_id: str, location_id: str, delta: int,
+                         reason: str = "correction", *, idempotency_key: str = "offline") -> int:
+        self.idempotency_keys.append(idempotency_key)
         sku = inventory_item_id.replace("gid://shopify/InventoryItem/", "")
         if sku not in self._stock:
             self._stock[sku] = {}
@@ -329,7 +357,9 @@ class InMemoryShopifyInventory:
         self._stock[sku][location_id] = new_val
         return new_val
 
-    def set_inventory(self, inventory_item_id: str, location_id: str, available: int, reason: str = "correction") -> int:
+    def set_inventory(self, inventory_item_id: str, location_id: str, available: int,
+                      reason: str = "correction", *, idempotency_key: str = "offline") -> int:
+        self.idempotency_keys.append(idempotency_key)
         sku = inventory_item_id.replace("gid://shopify/InventoryItem/", "")
         if sku not in self._stock:
             self._stock[sku] = {}

@@ -6,6 +6,7 @@ import pytest
 
 from nosilo_core import writeback
 from src.connectors.shopify_inventory import (
+    InMemoryShopifyInventory,
     ShopifyInventoryError,
     ShopifyInventoryStore,
     demo_shopify_inventory,
@@ -166,14 +167,20 @@ def test_inventory_client_write_refuses_to_run_under_drift():
     http = _FakeHttp(_SET_PAYLOAD, headers={"X-Shopify-API-Version": "2099-01"})
     with pytest.raises(ShopifyVersionDriftError):
         ShopifyInventoryClient(http).set_inventory(
-            "gid://shopify/InventoryItem/SKU-1", "gid://shopify/Location/1", 180
+            "gid://shopify/InventoryItem/SKU-1",
+            "gid://shopify/Location/1",
+            180,
+            idempotency_key="key-t4",
         )
 
 
 def test_set_inventory_reads_the_inventory_adjustment_group():
     http = _FakeHttp(_SET_PAYLOAD, headers={"X-Shopify-API-Version": PINNED_VERSION})
     qty = ShopifyInventoryClient(http).set_inventory(
-        "gid://shopify/InventoryItem/SKU-1", "gid://shopify/Location/1", 180
+        "gid://shopify/InventoryItem/SKU-1",
+        "gid://shopify/Location/1",
+        180,
+        idempotency_key="key-t4",
     )
     assert qty == 180
 
@@ -184,5 +191,77 @@ def test_set_inventory_fails_instead_of_echoing_the_requested_quantity():
     http = _FakeHttp(_SET_PAYLOAD_EMPTY, headers={"X-Shopify-API-Version": PINNED_VERSION})
     with pytest.raises(ShopifyInventoryError, match="did not confirm"):
         ShopifyInventoryClient(http).set_inventory(
-            "gid://shopify/InventoryItem/SKU-1", "gid://shopify/Location/1", 180
+            "gid://shopify/InventoryItem/SKU-1",
+            "gid://shopify/Location/1",
+            180,
+            idempotency_key="key-t4",
         )
+
+
+def test_set_inventory_sends_the_idempotent_directive_and_key():
+    http = _FakeHttp(_SET_PAYLOAD, headers={"X-Shopify-API-Version": PINNED_VERSION})
+    ShopifyInventoryClient(http).set_inventory(
+        "gid://shopify/InventoryItem/SKU-1",
+        "gid://shopify/Location/1",
+        180,
+        idempotency_key="key-abc",
+    )
+    _path, sent = http.calls[0]
+    assert "@idempotent" in sent["query"]
+    assert sent["variables"]["idempotencyKey"] == "key-abc"
+
+
+def test_adjust_inventory_sends_the_idempotent_directive_and_key():
+    payload = {
+        "data": {
+            "inventoryAdjustQuantities": {
+                "inventoryAdjustmentGroup": {"changes": [{"delta": -10, "quantityAfterChange": 140}]},
+                "userErrors": [],
+            }
+        }
+    }
+    http = _FakeHttp(payload, headers={"X-Shopify-API-Version": PINNED_VERSION})
+    ShopifyInventoryClient(http).adjust_inventory(
+        "gid://shopify/InventoryItem/SKU-1",
+        "gid://shopify/Location/1",
+        -10,
+        idempotency_key="key-xyz",
+    )
+    _path, sent = http.calls[0]
+    assert "@idempotent" in sent["query"]
+    assert sent["variables"]["idempotencyKey"] == "key-xyz"
+
+
+def test_adjust_inventory_fails_instead_of_returning_zero():
+    # `0` is a plausible stock level, so the old fallback made an unconfirmed
+    # write indistinguishable from an adjustment down to zero.
+    payload = {
+        "data": {"inventoryAdjustQuantities": {"inventoryAdjustmentGroup": None, "userErrors": []}}
+    }
+    http = _FakeHttp(payload, headers={"X-Shopify-API-Version": PINNED_VERSION})
+    with pytest.raises(ShopifyInventoryError, match="did not confirm"):
+        ShopifyInventoryClient(http).adjust_inventory(
+            "gid://shopify/InventoryItem/SKU-1",
+            "gid://shopify/Location/1",
+            -10,
+            idempotency_key="key-adj",
+        )
+
+
+def test_store_commit_passes_the_changeset_key_through():
+    loc = "gid://shopify/Location/1"
+    rpc = InMemoryShopifyInventory(stock={"SKU-1": {loc: 150}})
+    store = ShopifyInventoryStore(rpc, location_id=loc)
+    cs = writeback.Changeset(
+        idempotency_key="key-inv-777",
+        target="shopify_inventory",
+        risk_tier=writeback.TIER_REVERSIBLE,
+        changes=(writeback.Change(entity_id="SKU-1", field="quantity", before=150, after=180),),
+    )
+    store.claim(cs.idempotency_key)
+    store.commit(cs, approved_by="operator@kern.ai")
+    assert rpc.idempotency_keys == ["key-inv-777"]
+
+    store.rollback("key-inv-777")
+    # A restore is a distinct write: sharing the key would make Shopify drop it.
+    assert rpc.idempotency_keys[-1] == "key-inv-777:restore"

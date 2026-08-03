@@ -62,8 +62,14 @@ def test_check_served_is_silent_without_a_header_even_on_writes():
     check_served(_Resp(), requested="2024-10", is_write=True)
 
 
-def test_pinned_version_is_2024_10():
-    assert PINNED_VERSION == "2024-10"
+def test_pinned_version_is_2026_07():
+    assert PINNED_VERSION == "2026-07"
+
+
+def test_pin_is_the_version_that_requires_the_idempotent_directive():
+    # 2026-04 onwards requires @idempotent on the inventory mutations; the
+    # connector sends it, so the pin must not fall below that.
+    assert PINNED_VERSION >= "2026-04"
 
 
 from src.connectors.shopify_api_version import (  # noqa: E402

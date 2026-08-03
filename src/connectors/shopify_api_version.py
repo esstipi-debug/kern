@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 _HEADER = "x-shopify-api-version"
 
 #: The Admin API version both Shopify connectors request.
-PINNED_VERSION = "2024-10"
+PINNED_VERSION = "2026-07"
 
 
 class ShopifyVersionDriftError(RuntimeError):
