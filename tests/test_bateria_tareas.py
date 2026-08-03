@@ -44,14 +44,17 @@ def test_la_particion_humana_software_cubre_las_20_sin_solapar():
 
 
 def test_la_fuente_marca_cinco_tareas_humanas_no_tres():
-    """Regresion sobre una discrepancia real de la vara publicada.
+    """Regresion sobre una discrepancia real que tuvo la vara publicada.
 
-    ``documentation/KERN_BATERIA_20_TAREAS.md`` afirma "3 tareas deliberadamente
-    humanas" (T15/T16/T17) y de ahi deriva "techo humano 85% - 17/20". La fuente
-    original marca ``TAREA HUMANA`` en cinco: T15-T19. El doc tambien atribuye a
-    T18 "campos tipados del ledger", cuando T18 es "sostener el plan frente a la
-    presion interna". Este test congela lo que dice la fuente para que la
-    correccion del doc sea deliberada y no se pierda de vista.
+    Hasta el 02-ago-2026 ``documentation/KERN_BATERIA_20_TAREAS.md`` afirmaba
+    "3 tareas deliberadamente humanas" (T15/T16/T17) y de ahi derivaba "techo
+    humano 85% - 17/20"; ademas atribuia a T18 "campos tipados del ledger",
+    cuando T18 es "sostener el plan frente a la presion interna". El doc se
+    corrigio a 5 humanas y techo 75% - 15/20.
+
+    Este test sigue vivo porque congela la FUENTE, no el doc: si alguien vuelve
+    a contar tres, falla aqui antes de que el numero llegue a una pieza de
+    venta. Es la unica copia versionada de ese hecho.
     """
     assert {t.id for t in tareas_humanas(cargar_bateria())} == {
         "T15",
