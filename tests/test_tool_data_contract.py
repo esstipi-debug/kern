@@ -9,8 +9,8 @@ import csv
 import pytest
 
 from nosilo_core import llm
-from scm_agent import tools
 from nosilo_core.types import JobRequest
+from scm_agent import tools
 
 # Tools with requires_data=True that have NOT yet declared their columns.
 # This list starts long and shrinks; it never grows. Removing a name here without
