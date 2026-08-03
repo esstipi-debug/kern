@@ -9,6 +9,7 @@ from src.discovery_brief import (
     UNDECLARED,
     UNDECLARED_USE,
     YELLOW,
+    rank_gaps,
     spec_for,
     verdicts_for,
 )
@@ -316,3 +317,54 @@ def test_declaracion_huerfana_con_valor_presente_no_bloquea():
     assert v.state == GREEN
     assert v.missing == ()
     assert v.malformed == ()
+
+
+def test_ranking_por_cuantas_tools_desbloquea():
+    tools = [
+        _FakeTool("a", ("holding_rate",)),
+        _FakeTool("b", ("holding_rate",)),
+        _FakeTool("c", ("order_cost",)),
+    ]
+    gaps = rank_gaps(verdicts_for(tools, {}))
+    assert [(g.param, g.unlocks) for g in gaps] == [("holding_rate", 2), ("order_cost", 1)]
+    assert gaps[0].tools == ("a", "b")
+
+
+def test_causa_unica_dos_faltantes_no_acreditan_a_ninguno():
+    """Pedir UNO deja la herramienta roja igual, así que acreditarle el
+    desbloqueo prometería algo que no va a ocurrir. Es la regla que en
+    intake_scan quedó reimplementada por separado en cuatro rankers."""
+    tools = [
+        _FakeTool("dos_faltantes", ("holding_rate", "order_cost")),
+        _FakeTool("uno_solo", ("holding_rate",)),
+    ]
+    gaps = rank_gaps(verdicts_for(tools, {}))
+    assert [(g.param, g.unlocks) for g in gaps] == [("holding_rate", 1)]
+    assert gaps[0].tools == ("uno_solo",)
+
+
+def test_fuera_de_rango_tambien_bloquea_la_acreditacion():
+    """Una tool con un parámetro faltante Y otro fuera de rango no se desbloquea
+    pidiendo el faltante: el otro sigue corrompido."""
+    tools = [_FakeTool("mixta", ("holding_rate", "order_cost"))]
+    gaps = rank_gaps(verdicts_for(tools, {"holding_rate": 25.0}))
+    assert gaps == ()
+
+
+def test_malformado_tambien_bloquea_la_acreditacion():
+    """Mismo razonamiento: pedir el faltante deja el valor basura donde estaba."""
+    tools = [_FakeTool("mixta", ("holding_rate", "order_cost"))]
+    gaps = rank_gaps(verdicts_for(tools, {"holding_rate": True}))
+    assert gaps == ()
+
+
+def test_sin_perfil_no_produce_ranking_de_parametros():
+    """La acción es crear el perfil; rankear preguntas sería el consejo equivocado."""
+    tools = [_FakeTool("a", ("holding_rate",))]
+    assert rank_gaps(verdicts_for(tools, None)) == ()
+
+
+def test_empates_se_rompen_por_nombre_de_parametro():
+    tools = [_FakeTool("x", ("order_cost",)), _FakeTool("y", ("holding_rate",))]
+    gaps = rank_gaps(verdicts_for(tools, {}))
+    assert [g.param for g in gaps] == ["holding_rate", "order_cost"]

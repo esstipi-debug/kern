@@ -294,3 +294,40 @@ def verdicts_for(tools: list, params: dict | None) -> tuple[ToolVerdict, ...]:
             malformed=tuple(bad_type),
         ))
     return tuple(out)
+
+
+@dataclass(frozen=True)
+class ParamGap:
+    """Un parámetro genuinamente ausente, y cuánto compra preguntarlo."""
+
+    param: str
+    unlocks: int
+    tools: tuple[str, ...]
+
+
+def rank_gaps(verdicts: tuple[ToolVerdict, ...]) -> tuple[ParamGap, ...]:
+    """Parámetros ausentes, ordenados por cuántas herramientas desbloquea cada uno.
+
+    REGLA DE CAUSA UNICA: una herramienta solo acredita a un parámetro si ese
+    parámetro es su UNICO obstáculo. Si le faltan dos, o si además tiene uno
+    fuera de rango o uno malformado, pedir uno solo la deja roja igual --
+    acreditarla prometería un desbloqueo que no va a ocurrir.
+
+    ``sin_perfil`` no entra: ahí la acción es crear el perfil, no preguntar.
+    Un solo ranker a propósito, para no repetir la regla en varios lugares (ver
+    la deuda #1 declarada de intake_scan, donde cuatro rankers la
+    reimplementaron y quedaron simétricos a mano).
+
+    Empates por nombre de parámetro, para que dos corridas coincidan.
+    """
+    by_param: dict[str, list[str]] = {}
+    for v in verdicts:
+        if v.state != RED or v.out_of_range or v.malformed or len(v.missing) != 1:
+            continue
+        (param,) = v.missing
+        by_param.setdefault(param, []).append(v.tool_key)
+    gaps = [
+        ParamGap(param, len(keys), tuple(sorted(keys)))
+        for param, keys in by_param.items()
+    ]
+    return tuple(sorted(gaps, key=lambda g: (-g.unlocks, g.param)))
