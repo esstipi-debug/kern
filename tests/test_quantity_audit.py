@@ -1,6 +1,9 @@
 """Unit tests for the shared negative-quantity counter (jobs/quantity_audit.py)."""
 
+import dataclasses
+
 import pandas as pd
+import pytest
 
 from jobs.quantity_audit import QuantityAudit, audit_quantities
 
@@ -97,12 +100,8 @@ def test_empty_frame_is_inert():
 def test_audit_is_frozen():
     audit = QuantityAudit(column="quantity", kind="flow", n_rows=1, n_negative=0,
                           negative_total=0.0, n_entities_net_negative=0)
-    try:
+    with pytest.raises(dataclasses.FrozenInstanceError):
         audit.n_negative = 5
-    except Exception as exc:
-        assert "frozen" in str(exc).lower()
-    else:
-        raise AssertionError("QuantityAudit must be frozen")
 
 
 def test_audit_does_not_mutate_the_input_frame():

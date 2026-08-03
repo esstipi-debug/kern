@@ -19,7 +19,7 @@ column, so it does not guess: negatives are reported, not reinterpreted.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, FrozenInstanceError
+from dataclasses import dataclass
 
 import pandas as pd
 
@@ -102,13 +102,6 @@ class QuantityAudit:
             f"{self.column} (total {self.negative_total:,.1f}). Kern cannot tell a "
             "return from an inverted sign, so these rows were not reinterpreted."
         )
-
-
-def _frozen_setattr(self, name, value):
-    raise FrozenInstanceError(f"cannot assign to field {name!r}: QuantityAudit is frozen")
-
-
-QuantityAudit.__setattr__ = _frozen_setattr
 
 
 def audit_quantities(
