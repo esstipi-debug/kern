@@ -351,7 +351,7 @@ Full issue bodies, labels and suggested priority order: [`documentation/ROADMAP.
 
 | # | Item | Why it matters | Suggested labels |
 |---|---|---|---|
-| 1 | Auto-generate the capability table from `build_default_registry()` and fail CI on drift | The README table is maintained by hand and has already drifted (48 vs 49); documentation that lies is worse than none | `documentation`, `automation`, `good first issue` |
+| 1 | Auto-generate the capability table from `build_default_registry()` — the drift *guard* already ships (`tests/test_readme_capability_drift.py`) | Documentation that lies is worse than none. The guard catches divergence; a generator would fix it in one command | `documentation`, `automation`, `good first issue` |
 | 2 | Publish the container image to GHCR on tagged releases | A client should be able to `docker pull` a versioned image instead of building from source | `enhancement`, `devops` |
 | 3 | Structured observability: request IDs, per-tool latency and QA-failure rate | Today failures are visible in logs; a forward deployment needs a dashboard for which tools fail at which client | `observability`, `enhancement` |
 | 4 | Complete the `linchpin` → `kern` identifier rename (env vars, MCP tool names, Odoo module) | The public name and the infra names diverge; the migration checklist already exists in `HANDOFF.md` | `chore`, `breaking-change` |

@@ -20,17 +20,30 @@ gh label create benchmark     --color c5def5 --description "Medicion reproducibl
 
 ---
 
-## 1. Generar la tabla de capacidades desde el registry y romper CI si hay drift
+## 1. Generar la tabla de capacidades desde el registry ~~y romper CI si hay drift~~
 
 **Labels:** `documentation`, `automation`, `good first issue`
+**Estado:** la mitad de deteccion ya esta hecha (`tests/test_readme_capability_drift.py`); falta la generacion.
 
 El README mantiene a mano la tabla de las 49 capacidades. Ya divergio (el texto
-dice "48 agent-routable" en un parrafo y "49 registered tools" en otro). Un
-script que lea `build_default_registry()` y regenere la seccion, mas un job de CI
-que falle si el archivo commiteado no coincide con el generado.
+decia "48 agent-routable" en un parrafo y "49 registered tools" en otro).
+
+**Hecho:** `tests/test_readme_capability_drift.py` compara el conjunto de tools
+documentadas contra `build_default_registry()` y verifica que todos los conteos
+en la prosa coincidan con `len(registry)`. Es igualdad de conjuntos, no conteo:
+un conteo pasa cuando se renombra una tool o se agrega una y se quita otra, que
+es justo cuando la prosa alrededor tambien esta mal. Verificado contra el README
+viejo — falla ahi, pasa aca.
+
+**Falta:** que la tabla se *genere* en vez de solo validarse. Hoy el guard dice
+que algo divergio pero no lo arregla; con un generador el fix es correr un
+comando. Requiere agrupar por area, y `Tool` (en `nosilo_core/registry.py`) no
+tiene campo `area` — la agrupacion del README es editorial. Decidir si se agrega
+el campo al `Tool` o se mantiene un mapa aparte en el script.
 
 **Definition of done:** `scripts/gen_capability_table.py`, seccion delimitada por
-marcadores en README.md, job `docs-drift` en CI.
+marcadores en README.md, y el guard existente extendido para comparar contra la
+salida del generador.
 
 ---
 
