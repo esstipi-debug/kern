@@ -75,9 +75,11 @@ CATALOG: tuple[ParamSpec, ...] = (
         question="¿Cuánto les cuesta emitir y recibir UNA orden de compra, todo incluido?",
         unit="usd/pedido",
         low=1.0, high=5000.0,
-        moves="El lote económico y la frecuencia de reposición de toda la simulación.",
+        moves="El lote económico y la frecuencia de reposición de toda la red.",
         defaults=(
+            ("batch", 1000.0, "src/batch.py:28"),
             ("hats", 75.0, "src/hats.py:90"),
+            ("powerbi_export", 1000.0, "src/powerbi_export.py:56,249"),
             ("simulation", 100.0, "jobs/simulation_job.py:31"),
             ("webapp", 80.0, "webapp/app.py:510"),
         ),
@@ -126,8 +128,12 @@ UNDECLARED_USE: tuple[ParamSpec, ...] = (
         question="¿Cuánto les cuesta dejar una unidad pendiente hasta poder entregarla?",
         unit="usd/unidad/período",
         low=0.0, high=10000.0,
-        moves="El balance faltante-vs-exceso de la simulación.",
-        defaults=(("simulation", 5.0, "jobs/simulation_job.py:32"),),
+        moves="El balance faltante-vs-exceso: impacto de costo de escasez vs exceso.",
+        defaults=(
+            ("batch", 50.0, "src/batch.py:29"),
+            ("powerbi_export", 50.0, "src/powerbi_export.py:57,250"),
+            ("simulation", 5.0, "jobs/simulation_job.py:32"),
+        ),
     ),
     ParamSpec(
         name="lead_time_days",
