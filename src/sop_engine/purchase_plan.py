@@ -92,9 +92,10 @@ WORTH_IT = "worth_it"
 #: the terms: renegotiate the MOQ, split the order, or source it elsewhere.
 NOT_WORTH_IT = "not_worth_it"
 #: There is leftover but no demand to measure it against, so no cover can be computed and
-#: no verdict is honest. Never collapsed into WORTH_IT - a SKU whose shaped demand is zero
-#: still gets a full MOQ ordered (``apply_order_rules`` floors at the MOQ even on a zero
-#: gap), and reporting 0.0 extra cover there reads as "the terms cost nothing".
+#: no verdict is honest - ``constraint_extra_cover_periods`` reports 0.0 there, which reads
+#: as "the terms cost nothing". ``build_purchase_plan`` can no longer reach this (it does
+#: not order against a zero gap at all), so this is what the public function answers to a
+#: caller that hands it that pair rather than a plausible-looking WORTH_IT.
 UNMEASURED = "unmeasured"
 
 #: How much extra cover the rounding may add before it stops being worth it, in the periods
@@ -110,7 +111,7 @@ def constraint_verdict(
     """Is taking the supplier's terms worth it on this line?
 
     Split from ``build_purchase_plan`` so the judgement is testable without a plan, and
-    so the zero-demand case is impossible to reach by accident.
+    so the zero-demand case answers UNMEASURED instead of a plausible-looking verdict.
     """
     if extra_units <= 0:
         return UNCONSTRAINED
@@ -175,9 +176,14 @@ def build_purchase_plan(
     for d in demand_plan:
         inp = sku_inputs[d.product_id]
         gap = max(0.0, d.shaped_demand - inp.on_hand - inp.incoming_po)
+        # The supplier's terms shape an order; they do not create one. `apply_order_rules`
+        # floors at the MOQ, so handing it a zero gap ordered a full MOQ for a SKU that
+        # needed nothing - 250 units of pure excess, priced and stocked as if requested.
+        # The floor is correct where it is used on a real quantity (and on a price floor,
+        # in price_optimizer); the decision of WHETHER to order belongs here.
         order_qty = apply_order_rules(
             gap, minimum_order_quantity=inp.minimum_order_quantity, order_multiple=inp.order_multiple,
-        )
+        ) if gap > 0 else 0.0
         extra_by_sku[d.product_id] = order_qty - gap
         items.append(InventoryItem(
             product_id=d.product_id, order_quantity=order_qty,

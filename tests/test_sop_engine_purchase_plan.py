@@ -12,6 +12,7 @@ from src.sop_engine.purchase_plan import (
     WORTH_IT,
     SkuPurchaseInputs,
     build_purchase_plan,
+    constraint_verdict,
 )
 
 
@@ -144,20 +145,15 @@ def test_el_moq_y_la_caja_cuantifican_lo_que_compraron_de_mas():
     assert linea.constraint_extra_cover_periods == pytest.approx(2.38)
 
 
-def test_un_moq_sobre_una_necesidad_de_cero_queda_a_la_vista():
-    """``apply_order_rules`` pisa el piso del MOQ aunque no haga falta nada: 100 u
-    compradas contra una necesidad de 0. El comportamiento es de siempre; lo nuevo
-    es que la linea ahora lo dice en vez de esconderlo dentro de recommended_order.
-
-    La cobertura extra sale 0 porque sin demanda no hay periodos que cubrir: es
-    "no se puede expresar en cobertura", no "no agrega stock" -- las unidades y el
-    dinero, que si estan definidos, lo dicen.
+def test_un_moq_sobre_una_necesidad_de_cero_ya_no_compra_nada():
+    """Antes esto compraba 100 u contra una necesidad de 0 y las rotulaba como
+    exceso de la restriccion. Rotularlo era mejor que esconderlo, pero el pedido no
+    tendria que existir: el MOQ condiciona un pedido, no obliga a hacerlo.
     """
     linea = _plan_con_moq(moq=100.0, demand=0.0, on_hand=0.0, incoming=0.0)
-    assert linea.recommended_order == 100.0
-    assert linea.constraint_extra_units == 100.0
-    assert linea.constraint_cost_delta == 1000.0
-    assert linea.constraint_extra_cover_periods == 0.0
+    assert linea.recommended_order == 0.0
+    assert linea.constraint_extra_units == 0.0
+    assert linea.constraint_cost_delta == 0.0
 
 
 # ---- constraint_verdict: los tres numeros ya estaban, faltaba el juicio ----
@@ -183,22 +179,21 @@ def test_el_redondeo_que_la_demanda_absorbe_se_recomienda_tomar():
     assert holgado.constraint_verdict == WORTH_IT
 
 
-def test_sin_demanda_no_hay_veredicto_aunque_el_moq_haya_comprado_igual():
-    """El caso que un veredicto ingenuo aprueba: cobertura 0.0 no es cobertura barata.
-
-    ``apply_order_rules`` pisa el gap con el MOQ, asi que un SKU sin demanda igual
-    se lleva 250 u; reportar 0.0 periodos de cobertura extra ahi se lee como "las
-    condiciones no cuestan nada".
-    """
+def test_el_sku_cubierto_por_lo_que_ya_viene_tampoco_ordena_el_moq():
+    """Mismo corte con demanda real: 100 pedidas, 60 en mano y 40 en camino."""
     (linea,), _ = build_purchase_plan(
-        (_line("A", 0.0, 0.0),),
-        {"A": SkuPurchaseInputs(product_id="A", on_hand=0.0, unit_cost=10.0,
-                                reorder_point=0.0, incoming_po=0.0,
-                                minimum_order_quantity=250.0)},
+        (_line("A", 100.0, 100.0),),
+        {"A": SkuPurchaseInputs(product_id="A", on_hand=60.0, unit_cost=10.0,
+                                reorder_point=5.0, incoming_po=40.0,
+                                minimum_order_quantity=250.0, order_multiple=48.0)},
     )
-    assert linea.recommended_order == 250.0
-    assert linea.constraint_extra_cover_periods == 0.0
-    assert linea.constraint_verdict == UNMEASURED
+    assert linea.recommended_order == 0.0
+    assert linea.constraint_verdict == UNCONSTRAINED
+
+
+def test_la_funcion_pura_no_juzga_sin_demanda_contra_que_medir():
+    """El par imposible por construccion tiene respuesta propia, no una plausible."""
+    assert constraint_verdict(250.0, 0.0, 1.0) == UNMEASURED
 
 
 def test_sin_condiciones_del_proveedor_no_hay_nada_que_juzgar():
