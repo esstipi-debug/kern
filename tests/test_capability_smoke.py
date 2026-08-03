@@ -30,6 +30,7 @@ EXPECTED_OFFLINE_BUCKETS: dict[str, str] = {
     "flow_map":               "GATED",
     "hat_settlement":         "GATED",
     "hat_tension":            "GATED",
+    "intake_scan":            "GATED",
     "network_design":         "GATED",
     "org_friction_audit":     "GATED",
     "supplier_management":    "GATED",

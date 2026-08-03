@@ -12,6 +12,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from html import escape  # noqa: E402
+
 from webapp.how_it_works_page import _donut_svg  # noqa: E402
 
 
@@ -98,14 +100,59 @@ def test_stepper_renders_all_stages() -> None:
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
 
 
-def test_page_mentions_41_tools_and_33_sources_not_stale_numbers() -> None:
+def test_page_mentions_49_tools_and_26_sources_not_stale_numbers() -> None:
+    """La pagina no puede inflar el conteo de fuentes.
+
+    Esta aserto estuvo invertida: fijaba "33" y prohibia "25 curated" como si
+    fuera el numero viejo del README. Un recuento de knowledge/scm-books/graph.json
+    (2026-07-24) mostro lo contrario: el grafo tiene 35 source_file distintos, pero
+    9 son capitulos de un mismo volumen editado (Cohen & Dai) y 1 era el propio
+    KERN_ATLAS_SOMBREROS_SCM.md de Kern -- o sea que 33 contaba capitulos como
+    obras enteras y contaba un documento interno como literatura del campo. La
+    cifra externa honesta es 26. 33 no lo es.
+    """
     html = render_how_it_works_html()
-    assert "41" in html
-    assert "33" in html
-    assert "25 curated" not in html  # the README's stale source count must never appear here
+    assert "49" in html
+    assert "26 curated external sources" in html
+    # Every superseded source count this page has carried or been tempted by.
+    for stale in ("33 curated", "25 curated", "35 curated", "27 curated"):
+        assert stale not in html, stale
 
 
-def test_page_has_both_donut_lenses_totaling_41() -> None:
+def test_source_count_claim_still_matches_the_books_graph() -> None:
+    """The source count is a claim made to prospects, so it gets a tripwire too.
+
+    The page says "26 curated external sources". That number is not directly
+    countable from graph.json -- it is distinct external WORKS, whereas the
+    graph stores files: 9 of them are single chapters of edited volumes, and
+    KERN_ATLAS_SOMBREROS_SCM.md is Kern's own internal doc, not a curated
+    external source (counting it was the overclaim this test exists to stop
+    coming back).
+
+    So this pins the countable thing -- distinct non-Kern source files -- and
+    documents the mapping. Add a book and this fails, forcing whoever adds it
+    to re-derive the works count instead of letting the page quietly drift,
+    which is exactly how it got stuck at a stale 33.
+    """
+    import json
+    from pathlib import Path
+
+    graph = json.loads(
+        (_REPO_ROOT / "knowledge" / "scm-books" / "graph.json").read_text(encoding="utf-8")
+    )
+    files = {
+        Path(str(n["source_file"])).name
+        for n in graph["nodes"]
+        if n.get("source_file")
+    }
+    external = {f for f in files if not f.startswith("KERN_")}
+
+    assert len(external) == 34, sorted(external)
+    assert "KERN_ATLAS_SOMBREROS_SCM.md" in files  # the internal doc is in the graph...
+    assert "KERN_ATLAS_SOMBREROS_SCM.md" not in external  # ...and excluded from the claim
+
+
+def test_page_has_both_donut_lenses_totaling_49() -> None:
     html = render_how_it_works_html()
     assert 'id="donut-domain"' in html
     assert 'id="donut-scor"' in html
@@ -161,8 +208,23 @@ def test_both_donut_lenses_have_a_named_clickable_legend() -> None:
         assert f'data-donut="donut-domain" data-bucket="{escape(area)}"' in html
     for bucket in SCOR_BUCKET_ORDER:
         assert f'data-donut="donut-scor" data-bucket="{escape(bucket)}"' in html
-    # 9 domain entries + 7 SCOR entries = 16 legend rows total
-    assert html.count('class="legend-item"') == 16
+    # 10 domain entries + 7 SCOR entries = 17 legend rows total
+    assert html.count('class="legend-item"') == len(DOMAIN_AREA_ORDER) + len(SCOR_BUCKET_ORDER)
+    assert html.count('class="legend-item"') == 17
+
+
+def test_every_registered_tool_is_rendered_on_the_page() -> None:
+    """The rendered-HTML half of the drift guard.
+
+    tests/test_how_it_works_data.py asserts the TOOLS table matches the
+    registry; this asserts the table actually reaches the page, so a
+    rendering bug (a bucket the donut does not draw, a truncated loop)
+    cannot hide a tool that the data layer believes is listed."""
+    from webapp.how_it_works_data import TOOLS
+
+    html = render_how_it_works_html()
+    for tool in TOOLS:
+        assert escape(tool.label) in html, tool.key
 
 
 from fastapi.testclient import TestClient  # noqa: E402

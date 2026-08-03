@@ -272,6 +272,7 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
                         "en": "Reconciled Replenishment Plan"},
     "cross_impact": {"es": "Impacto Cruzado de una Decision Propuesta",
                       "en": "Cross-Area Impact of a Proposed Decision"},
+    "intake_scan": {"es": "Escaneo de Aptitud del Dato", "en": "Data Readiness Scan"},
 }
 
 

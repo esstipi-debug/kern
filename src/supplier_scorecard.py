@@ -67,6 +67,22 @@ class SupplierScore:
     #: supplier's first question is "which orders?". Empty when the export carried no
     #: order identifier.
     scored_po_ids: tuple[str, ...] = ()
+    #: The SKUs bought from this supplier whose safety stock and reorder point were sized
+    #: on a lead time the deliveries contradict. Empty when the gap is immaterial, when the
+    #: export carried no declared lead time to compare against, or when it carried no
+    #: product identifier - an empty tuple means "nothing to recalculate here", and
+    #: `lead_time_gap` is what says whether that is because the gap was small.
+    skus_to_recalculate: tuple[str, ...] = ()
+    #: Average % the supplier BILLED above (or below) the price its own PO agreed to.
+    #: ``None`` when the export carried no invoiced price - a supplier nobody compared
+    #: is not a supplier that billed correctly, and 0.0 would say it was.
+    price_variance_pct: float | None = None
+
+
+#: How far the observed lead time has to sit from the declared one before the SS/ROP built
+#: on the declared number is worth redoing. Relative, because 2 days on a 7-day lead time
+#: is a different problem than 2 days on a 60-day one.
+LEAD_TIME_GAP_MATERIAL = 0.10
 
 
 _NOT_MEASURED = Evaluable(on_time=0, in_full=0, otif=0, lead_time=0, ppm=0)
@@ -173,6 +189,10 @@ def score_supplier(supplier: str, deliveries: list[dict]) -> SupplierScore:
     ]
     fuentes = {str(d["lead_time_source"]) for d in deliveries if d.get("lead_time_source")}
     po_ids = tuple(str(d["po_id"]) for d in deliveries if d.get("po_id"))
+    skus = tuple(sorted({str(d["product_id"]) for d in deliveries if d.get("product_id")}))
+    desvios = [
+        v for v in (_number(d, "price_variance_pct") for d in deliveries) if v is not None
+    ]
     quality = [
         (units, defects)
         for units, defects in ((_number(d, "units"), _number(d, "defects")) for d in deliveries)
@@ -193,6 +213,19 @@ def score_supplier(supplier: str, deliveries: list[dict]) -> SupplierScore:
     # lead time came from cannot be labelled, and mislabelling is worse than not labelling.
     fuente = fuentes.pop() if len(fuentes) == 1 else None
 
+    gap = (
+        avg_lead - avg_declarado
+        if avg_lead is not None and avg_declarado is not None else None
+    )
+    # The SS/ROP of every SKU bought here was sized on `avg_declarado`. Once the deliveries
+    # say otherwise by more than the materiality band, those parameters are stale - naming
+    # the SKUs is the difference between a lead-time observation and an action.
+    stale = (
+        gap is not None
+        and avg_declarado > 0
+        and abs(gap) / avg_declarado >= LEAD_TIME_GAP_MATERIAL
+    )
+
     return SupplierScore(
         supplier=supplier,
         deliveries=len(deliveries),
@@ -211,12 +244,11 @@ def score_supplier(supplier: str, deliveries: list[dict]) -> SupplierScore:
         lead_time_std=_std(leads),
         lead_time_p90=_p90(leads),
         declared_lead_time=avg_declarado,
-        lead_time_gap=(
-            avg_lead - avg_declarado
-            if avg_lead is not None and avg_declarado is not None else None
-        ),
+        lead_time_gap=gap,
         lead_time_source=fuente,
         scored_po_ids=po_ids,
+        skus_to_recalculate=skus if stale else (),
+        price_variance_pct=(sum(desvios) / len(desvios)) if desvios else None,
     )
 
 

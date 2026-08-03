@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from nosilo_core.guided import ExecutionOption, HandoffPacket, as_handoff, as_options
 
 from jobs import flow_map_job
-from nosilo_core.guided import ExecutionOption, HandoffPacket, as_handoff, as_options
 from src.flow_map import UNMEASURABLE, EdgeBuffer, EdgeStat, FlowGraph, FlowReport
 from src.flow_svg import _CHAR_WIDTH_ESTIMATE, render_page, render_sankey
 

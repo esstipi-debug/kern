@@ -8,9 +8,9 @@ from dataclasses import replace
 
 import pandas as pd
 import pytest
+from nosilo_core import llm
 
 from jobs import vehicle_routing_job as vrj
-from nosilo_core import llm
 from scm_agent import intent, tools
 from src.deliverable import Deliverable
 

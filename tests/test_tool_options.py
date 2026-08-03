@@ -6,8 +6,9 @@ system-wide invariant that every registered tool wires a Tool.options hook.
 
 from types import SimpleNamespace as NS
 
-from jobs.intake import IntakeQuality
 from nosilo_core.guided import ESCALATED, OPTIONS, passed_guided, recommend
+
+from jobs.intake import IntakeQuality
 from scm_agent import tool_options as to
 from scm_agent import tools
 

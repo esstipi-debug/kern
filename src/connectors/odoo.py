@@ -38,8 +38,8 @@ from dataclasses import replace as _dc_replace
 from typing import Any, Protocol, runtime_checkable
 
 import pandas as pd
-
 from nosilo_core import writeback
+
 from src.connectors import InventoryLevel, Order, OrderLine, Product
 
 # Odoo ORM methods that only read: safe to retry on a transient transport error,

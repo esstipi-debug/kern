@@ -4,11 +4,11 @@
 
 ### An agentic supply-chain engine: plain-language brief in, QA-gated deliverable out.
 
-**Kern** turns a sentence like *"replenish my 400 SKUs within a $80k budget"* into a finished Excel plan, a written report and a chart — or into nothing at all, because a QA gate refuses to ship a deliverable it cannot defend. Behind it: a deterministic Python engine implementing the field's established models (EOQ, safety stock, `(s,Q)`/`(R,S)`, multi-echelon, newsvendor, simulation optimization, elasticity pricing), an orchestrator that routes **49 capabilities** through one pipeline, and a knowledge graph of **25 curated SCM sources** that grounds every number in both the source concept and the `src/` function that computes it.
+**Kern** turns a sentence like *"replenish my 400 SKUs within a $80k budget"* into a finished Excel plan, a written report and a chart — or into nothing at all, because a QA gate refuses to ship a deliverable it cannot defend. Behind it: a deterministic Python engine implementing the field's established models (EOQ, safety stock, `(s,Q)`/`(R,S)`, multi-echelon, newsvendor, simulation optimization, elasticity pricing), an orchestrator that routes **50 capabilities** through one pipeline, and a knowledge graph of **25 curated SCM sources** that grounds every number in both the source concept and the `src/` function that computes it.
 
 **Highlights**
 
-- **49 agent-routable capabilities**, one router — inventory, network design, pricing, sourcing, S&OP, warehouse, risk. Adding one is a single `register()` call, no routing edits.
+- **50 agent-routable capabilities**, one router — inventory, network design, pricing, sourcing, S&OP, warehouse, risk. Adding one is a single `register()` call, no routing edits.
 - **QA-gated by construction** — `classify → prepare → run → QA → deliver`. QA fails ⇒ no deliverable. Enforced in one place, not per tool.
 - **25-source SCM knowledge graph** (~1,950 concept nodes) bridged to the codebase: every result cites the concept *and* the module implementing it.
 - **Never-unprotected contract** — every result is `EXECUTED`, or hands back ranked `OPTIONS`, a prepared `HANDOFF`, or an `ESCALATED` path. No dead ends, no silent autonomy.
@@ -89,7 +89,7 @@ flowchart TD
 
     subgraph AGENT["Orchestrator — scm_agent/"]
         C["intent.classify<br/>(rules + optional LLM)"]
-        R["registry.get(tool)<br/>49 registered capabilities"]
+        R["registry.get(tool)<br/>50 registered capabilities"]
         P["prepare → run → qa → deliver"]
         Q{"QA gate"}
     end
@@ -130,7 +130,7 @@ flowchart TD
     Q -->|fail| N
 ```
 
-**How it is designed.** The orchestrator is registry-based: every capability is a `Tool` with four stages (`prepare → run → qa → deliver`) that the orchestrator drives, so `"QA fails ⇒ no deliverable"` is enforced in exactly one place instead of 49. Intent classification is rules-first with an optional LLM refinement, which means the system degrades to a deterministic path rather than failing when no API key is present. The analytical layer under it is a set of pure functions — one module, one question, one lens — validated against reference numeric examples from the literature and cross-checked against Monte-Carlo simulation, so the policies are verified rather than asserted. Grounding is a read-only query surface over two graphs (the committed 25-source domain graph and a regenerable AST code graph) joined by a bridge that resolves each cited concept to the module implementing it. Quality gating is structural: each tool ships its own `qa()`, the orchestrator refuses to write deliverables when it fails, and the HTTP layer returns the same envelope with `status: qa_failed` and an empty `deliverables` map. Forward deployment is a single Docker image with zero mandatory secrets: the engine, web app and full test suite run without any key, hardening controls are opt-in environment variables, and the connectors (Odoo, Excel, Power BI) meet the client inside the stack they already own.
+**How it is designed.** The orchestrator is registry-based: every capability is a `Tool` with four stages (`prepare → run → qa → deliver`) that the orchestrator drives, so `"QA fails ⇒ no deliverable"` is enforced in exactly one place instead of 50. Intent classification is rules-first with an optional LLM refinement, which means the system degrades to a deterministic path rather than failing when no API key is present. The analytical layer under it is a set of pure functions — one module, one question, one lens — validated against reference numeric examples from the literature and cross-checked against Monte-Carlo simulation, so the policies are verified rather than asserted. Grounding is a read-only query surface over two graphs (the committed 25-source domain graph and a regenerable AST code graph) joined by a bridge that resolves each cited concept to the module implementing it. Quality gating is structural: each tool ships its own `qa()`, the orchestrator refuses to write deliverables when it fails, and the HTTP layer returns the same envelope with `status: qa_failed` and an empty `deliverables` map. Forward deployment is a single Docker image with zero mandatory secrets: the engine, web app and full test suite run without any key, hardening controls are opt-in environment variables, and the connectors (Odoo, Excel, Power BI) meet the client inside the stack they already own.
 
 <details>
 <summary><b>Request lifecycle — <code>POST /api/jobs</code></b></summary>
@@ -180,7 +180,7 @@ Statuses: `ok` · `needs_clarification` · `needs_data` · `qa_failed` · `error
 </details>
 
 <details>
-<summary><b>All 49 capabilities, by area</b></summary>
+<summary><b>All 50 capabilities, by area</b></summary>
 
 Source of truth: `build_default_registry()` in [`scm_agent/tools.py`](scm_agent/tools.py). If this table and the code disagree, trust the code.
 
@@ -188,7 +188,7 @@ Source of truth: `build_default_registry()` in [`scm_agent/tools.py`](scm_agent/
 |---|---|
 | **Demand & classification** | `abc_xyz` · `forecast` · `whatif` |
 | **Inventory & replenishment** | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` · `excel_replenishment` · `hat_tension` · `hat_settlement` |
-| **Inventory control & health** | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` · `org_friction_audit` |
+| **Inventory control & health** | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` · `org_friction_audit` · `intake_scan` |
 | **Procurement & sourcing** | `sourcing` · `supplier_management` (Kraljic) · `landed_cost` · `acceptance_sampling` |
 | **Network & logistics** | `facility_location` · `network_design` (p-median) · `transportation` · `vehicle_routing` · `warehouse_layout` · `slotting` · `queuing` · `scheduling` · `flow_map` |
 | **Pricing & finance** | `pricing` · `price_intelligence` · `price_watch` · `financial_kpis` · `cost_to_serve` · `learning_curve` |
@@ -223,7 +223,7 @@ Source of truth: `build_default_registry()` in [`scm_agent/tools.py`](scm_agent/
 <summary><b>Project layout</b></summary>
 
 ```
-scm_agent/            Orchestrator: brief → classify → tool (49 registered) → QA → deliver
+scm_agent/            Orchestrator: brief → classify → tool (50 registered) → QA → deliver
 nosilo_core/          Control plane: writeback · guided outcomes · registry · access
 src/                  Pure-function engine (EOQ → simulation optimization → forecasting → pricing)
 jobs/                 Per-tool data-prep playbooks + deliverable builders
@@ -356,7 +356,7 @@ Every deliverable therefore carries **Fuentes**: the concept it rests on and the
 
 ## Why this project matters for my resume
 
-- **AI agent design and orchestration** — a registry-based agent where 49 heterogeneous capabilities share one `classify → prepare → run → QA → deliver` contract, with a rules-first path that works when the LLM is absent. Extensibility is a `register()` call, not a refactor.
+- **AI agent design and orchestration** — a registry-based agent where 50 heterogeneous capabilities share one `classify → prepare → run → QA → deliver` contract, with a rules-first path that works when the LLM is absent. Extensibility is a `register()` call, not a refactor.
 - **SCM process and domain modeling** — inventory policies, multi-echelon placement, network design, S&OP cadence, Kraljic segmentation and cross-area objection logic, implemented from primary sources rather than approximated.
 - **Data pipelines and operational documentation** — pluggable sources (CSV / DataFrame / SQL), per-tool intake with pandas, Excel / Power BI / CSV exports, and documentation written for the operator running the engagement (`documentation/operator/`), not only for the developer.
 - **Production and QA engineering** — 1,100+ tests, coverage gate, a CI matrix across three Python versions, a job reproducing the production container's import surface, a nightly unconstrained dependency resolve, and a documented threat model.

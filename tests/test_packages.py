@@ -8,10 +8,10 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
 
 from examples.run_package import DEMO_PARAMS, build_demo_intake
 from jobs.inventory_optimization import JobReport, SkuRecommendation
-from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
 from scm_agent.package_specs import (
     DIAGNOSTICO,
     GROWTH,

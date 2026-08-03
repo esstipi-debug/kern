@@ -34,6 +34,7 @@ import math
 from dataclasses import dataclass
 
 from nosilo_core.guided import GuidedOutcome, HandoffPacket, Residual, as_handoff
+
 from src.pricing_intel.models import ACQUISITION_TIERS, SiteConfig
 
 # Decision kinds -- the three ways a scaling request can legitimately resolve.

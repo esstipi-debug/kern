@@ -7,7 +7,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
-from nosilo_core import metrics
+from . import metrics
 from nosilo_core.llm import LLMProvider, get_provider, narrative_rewrite
 from nosilo_core.registry import Tool, ToolRegistry
 from nosilo_core.types import (
@@ -84,7 +84,7 @@ class Orchestrator:
                                deliverables={}, summary="An internal error occurred.")
         # Counted here, at the single boundary every path already funnels through,
         # so a new capability is measured without touching this file. Volatile and
-        # per-process by design (see nosilo_core/metrics.py); it can never raise.
+        # per-process by design (see scm_agent/metrics.py); it can never raise.
         metrics.record_run(result.tool, result.status, (time.monotonic() - started) * 1000.0)
         # Single boundary: every result leaves with a protected, executable path. A tool may
         # supply its own ranked-options outcome on success (set in _run); otherwise derive the

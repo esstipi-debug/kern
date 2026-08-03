@@ -1,10 +1,10 @@
 # MCP server (Phase A go-to-market)
 
-Kern exposes 35 of its 49 registered tools to other AI agents over MCP
+Kern exposes 35 of its 50 registered tools to other AI agents over MCP
 (Model Context Protocol), mounted at `/mcp` on the same FastAPI app as the
 dashboard. This is **read-only analysis only** — no tool that mutates a
 client's system of record (e.g. `odoo_replenishment`, or any writeback path
-through `nosilo_core/writeback.py`) is exposed here. See
+through `nosilo_core.writeback`) is exposed here. See
 [linchpin-monetization-plan] in project memory for the billing/publishing plan
 this is Phase A of.
 
@@ -145,3 +145,12 @@ ledger already relies on.
 - No writeback tools. If a client needs `odoo_replenishment` or any other
   tool that touches their live systems, that's a direct-client relationship
   outside this MCP surface, not something to add here.
+- `intake_scan` — deliberately excluded, not just not-yet-added. It takes a
+  directory path and reads every readable file inside it; exposing that on
+  the anonymous remote MCP surface would hand any caller an arbitrary-file-read
+  primitive (point it at any path the server process can see, get back what's
+  in it). Same class of risk the `org_friction` `*_path` params guard closes
+  on its own MCP bridge — a directory/path argument on an anonymous endpoint
+  is a path-traversal surface until it is explicitly scoped and validated,
+  which this tool has not been. Adding `intake_scan` here would need that
+  guard first, not just an `MCPToolSpec` entry.

@@ -22,9 +22,9 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from nosilo_core.guided import confidence_from_coverage
 
 from jobs import sourcing_job
-from nosilo_core.guided import confidence_from_coverage
 
 REPO = Path(__file__).resolve().parents[1]
 OLIST = REPO / "data" / "kaggle" / "olist"

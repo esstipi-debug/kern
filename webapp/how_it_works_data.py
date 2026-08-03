@@ -1,10 +1,19 @@
 """Static content data for GET /how-it-works (webapp/how_it_works_page.py).
 
 Every count here is verified against the actual code, not copied from a
-possibly-stale doc: 41 tools = build_default_registry()'s 41 register()
-calls in scm_agent/tools.py. The domain-area grouping matches README.md's
-"All 40 capabilities" table (corrected here to 41 -- launch_readiness,
-tool #41, postdates that table's last refresh). The SCOR Digital Standard
+possibly-stale doc: 50 tools = build_default_registry()'s 50 register()
+calls in scm_agent/tools.py, now enforced by
+tests/test_how_it_works_data.py::test_tools_table_matches_the_registry_exactly
+(set equality against the registry, both directions). That guard exists
+because this table silently fell SEVEN tools behind between the
+launch_readiness PR and PR #200 -- supplier_management, network_design,
+disruption_scan, hat_tension, hat_settlement, flow_map and cross_impact
+each landed a register() call with no matching ToolInfo, and nothing
+failed. An eighth, org_friction_audit (#198), merged while PR #200 was
+open and drifted the table again inside a single day -- caught only
+because the guard was by then in place. A ninth, intake_scan, did the same
+during this PR's rebase onto main, and the guard caught that one too. The domain-area grouping matches
+README.md's capability table. The SCOR Digital Standard
 bucket per tool is grounded in documentation/KERN_NIVEL_REFERENCIA_SCM.md
 Section 2 (itself generated from a direct code read on 2026-07-17),
 cross-checked during this feature's design phase by a 45-agent adversarial
@@ -13,7 +22,20 @@ docs/superpowers/specs/2026-07-19-how-it-works-page-design.md Section 4.2
 for the two gaps that document's own table had (reconciliation/
 odoo_replenishment/excel_replenishment bundled under the tool they extend;
 launch_readiness added to Plan; leadership_chain marked as genuinely outside
-SCOR's scope rather than force-fit).
+SCOR's scope rather than force-fit). The eight tools added in PR #200 postdate
+that document -- it buckets none of them -- so their placement is a judgment
+call recorded here: network_design sits in Plan because SCOR's Plan process
+owns supply-chain network design (note the tension with facility_location,
+its single-site counterpart, bucketed Order/Fulfill before this PR and left
+alone here rather than re-bucketed in a drift-closing change); flow_map in
+Plan because what it produces is a measured planning parameter (lead time
+per lane); disruption_scan in Orchestrate alongside risk, which it feeds.
+
+The three decision-alignment tools (hat_tension, hat_settlement,
+cross_impact) get their own domain area rather than joining "Inventory &
+replenishment": they do not compute a replenishment plan, they arbitrate one
+across roles, and folding them in would have overstated the inventory engine
+from 9 tools to 12 on a chart that gets read in sales conversations.
 
 If a future PR changes the tool count, add/remove/re-bucket a tool here in
 the SAME PR -- this module is the single source of truth the donuts and
@@ -45,6 +67,7 @@ DOMAIN_AREA_ORDER: tuple[str, ...] = (
     "Procurement & sourcing",
     "Returns, risk & benchmarking",
     "Planning cadence & projects",
+    "Decision alignment",
     "Leadership",
 )
 
@@ -78,7 +101,7 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Live Odoo ERP read plus staged, reversible replenishment writeback."),
     ToolInfo("excel_replenishment", "Excel Replenishment", "Inventory & replenishment", "Plan",
              "Client spreadsheet read plus staged, reversible replenishment writeback."),
-    # -- Inventory control & health (6) --
+    # -- Inventory control & health (7) --
     ToolInfo("cycle_count", "Cycle Count", "Inventory control & health", "Plan",
              "Cycle-counting program design by ABC class, tracking inventory record accuracy."),
     ToolInfo("reconciliation", "Reconciliation", "Inventory control & health", "Plan",
@@ -91,16 +114,29 @@ TOOLS: tuple[ToolInfo, ...] = (
              "First-Expired-First-Out issue order plus a markdown-vs-scrap disposition."),
     ToolInfo("data_quality", "Data Quality", "Inventory control & health", "Orchestrate",
              "Master/inventory data quality checks, including GTIN validation."),
-    # -- Procurement & sourcing (3) --
+    ToolInfo("intake_scan", "Intake Scan", "Inventory control & health", "Orchestrate",
+             "Walks a raw client folder, classifies every readable file against the known intake "
+             "profiles, and reports which tools can run today -- plus the single highest-value "
+             "column to request or file to fix next."),
+    # -- Procurement & sourcing (4) --
     ToolInfo("sourcing", "Sourcing", "Procurement & sourcing", "Source",
              "Supplier scorecarding via OTIF/DIFOT and defect rate."),
+    ToolInfo("supplier_management", "Supplier Segmentation", "Procurement & sourcing", "Source",
+             "Kraljic portfolio segmentation (profit impact x supply risk) into four quadrants, "
+             "each mapped to a strategic-SRM playbook."),
     ToolInfo("landed_cost", "Landed Cost", "Procurement & sourcing", "Source",
              "Total cost to destination, Incoterm-aware."),
     ToolInfo("acceptance_sampling", "Acceptance Sampling", "Procurement & sourcing", "Source",
              "Incoming-quality sampling plan by AQL/LTPD."),
-    # -- Network & logistics (7) --
+    # -- Network & logistics (9) --
     ToolInfo("facility_location", "Facility Location", "Network & logistics", "Order/Fulfill",
              "Cost-minimizing single-facility siting via center-of-gravity and Weiszfeld."),
+    ToolInfo("network_design", "Network Design", "Network & logistics", "Plan",
+             "Multi-facility p-median MILP: which of the candidate sites to open, and which one "
+             "serves each demand point. Offline, straight-line distance."),
+    ToolInfo("flow_map", "Flow Map", "Network & logistics", "Plan",
+             "Rebuilds the supplier-to-store network from recorded movements and measures real "
+             "transit time and its spread per lane. Thin lanes report no number at all."),
     ToolInfo("transportation", "Transportation", "Network & logistics", "Order/Fulfill",
              "Mode selection (parcel/LTL/FTL/intermodal) and the LTL-to-FTL break-even."),
     ToolInfo("vehicle_routing", "Vehicle Routing", "Network & logistics", "Order/Fulfill",
@@ -126,13 +162,16 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Cost-to-serve by customer/channel, including the whale-curve view."),
     ToolInfo("learning_curve", "Learning Curve", "Pricing & finance", "Transform",
              "Wright's-law cost projection over cumulative production volume."),
-    # -- Returns, risk & benchmarking (3) --
+    # -- Returns, risk & benchmarking (4) --
     ToolInfo("returns", "Returns", "Returns, risk & benchmarking", "Return",
              "Reverse-logistics disposition (restock/refurbish/liquidate/scrap)."),
     ToolInfo("risk", "Risk", "Returns, risk & benchmarking", "Orchestrate",
              "A supply chain risk register: EMV, FMEA, and a TTR-vs-TTS resilience gap."),
     ToolInfo("dea", "DEA", "Returns, risk & benchmarking", "Orchestrate",
              "Data Envelopment Analysis efficiency benchmarking."),
+    ToolInfo("disruption_scan", "Disruption Scan", "Returns, risk & benchmarking", "Orchestrate",
+             "Screens a supplier list against live GDELT disruption news and ranks who to "
+             "investigate first -- a screen, not a calibrated probability."),
     # -- Demand & classification (3) --
     ToolInfo("abc_xyz", "ABC-XYZ", "Demand & classification", "Plan",
              "ABC-XYZ classification into a 9-cell policy matrix."),
@@ -147,7 +186,22 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Project earned-value management: SV/CV/SPI/CPI."),
     ToolInfo("launch_readiness", "Launch Readiness", "Planning cadence & projects", "Plan",
              "Campaign launch-date readiness versus lead time and coverage."),
-    # -- Leadership (1) --
+    # -- Decision alignment (3) --
+    ToolInfo("hat_tension", "Decision Tension Map", "Decision alignment", "Orchestrate",
+             "Scores one replenishment decision through 4 role hats (buyer / planner / CFO / "
+             "commercial) and ranks where they disagree, in dollars. The human resolves it."),
+    ToolInfo("hat_settlement", "Reconciled Plan", "Decision alignment", "Orchestrate",
+             "Reconciles those 4 hats into ONE replenishment plan under the operator's explicit "
+             "weight policy, with a concession record. Ends in a human handoff."),
+    ToolInfo("cross_impact", "Cross-Area Impact", "Decision alignment", "Orchestrate",
+             "Measures what one area's proposed replenishment decision does to the other three "
+             "and emits an objection verdict. An area with no declared threshold is reported as "
+             "not evaluable -- never as nobody objects."),
+    # -- Leadership (2) --
+    ToolInfo("org_friction_audit", "Organizational Friction Audit", "Leadership", "Orchestrate",
+             "Audits the client's own control points (KPIs, data-load checkpoints) for gamed "
+             "numbers, ratcheted targets and unowned checkpoints. Never renders a verdict on a "
+             "person -- every finding is a ranked question for a human to confirm."),
     ToolInfo("leadership_chain", "Leadership Chain", "Leadership", "Outside SCOR scope",
              "A CHAIN leadership profile and directives -- an organizational assessment, "
              "not a supply chain operation."),
@@ -280,7 +334,7 @@ class IsoClause:
 ISO_9001_CLAUSES: tuple[IsoClause, ...] = (
     IsoClause("4.4 / 8.1 Process approach",
               "A fixed, self-describing pipeline: every capability is a Tool with "
-              "prepare/run/qa/deliver -- the same sequence for all 41."),
+              "prepare/run/qa/deliver -- the same sequence for all 49."),
     IsoClause("7.5 Documented information",
               "An EvidenceRecord (SHA-256 of inputs, control totals, formula versions, QA "
               "attestations); a writeback AuditEntry; a Keep-a-Changelog CHANGELOG; L3 "

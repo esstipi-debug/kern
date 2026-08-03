@@ -3,6 +3,34 @@
 ## [Unreleased]
 
 ### Added
+- **Shopify Admin API version drift detection** (`src/connectors/shopify_api_version.py`) — Shopify
+  does not error when the pinned API version falls out of support; it silently *falls forward* and
+  serves the request with the oldest version it still accepts, so a stale pin looks healthy while the
+  semantics underneath it move. `check_served()` compares the `X-Shopify-API-Version` response header
+  against the version requested: a drifted read is logged, a drifted write raises the new
+  `ShopifyVersionDriftError`, since writing stock or prices under the wrong version's semantics puts
+  bad data in the customer's system of record. `discover_versions()` / `check_pin()` classify the pin
+  against Shopify's `publicApiVersions` (SOPORTADA / POR_VENCER / VENCIDA) so an operator can see drift
+  coming before it happens. The pin itself — duplicated as `_DEFAULT_API_VERSION` in both the prices
+  and inventory connectors — is now the single `PINNED_VERSION` constant in this module, bumped from
+  `"2024-10"` to `"2026-07"`.
+- **Idempotency key on the two Shopify inventory writes** (`src/connectors/shopify_inventory.py`) —
+  `inventorySetQuantities` and `inventoryAdjustQuantities` require the `@idempotent(key: ...)` directive
+  as of API version 2026-04, without which the pinned-version bump above would have broken both
+  mutations outright. `ShopifyInventoryRPC.set_inventory()` / `.adjust_inventory()` gained a required
+  keyword-only `idempotency_key` parameter — **a breaking change for any direct caller of
+  `ShopifyInventoryRPC`**, callers now derive the key per entity rather than per changeset so retries of
+  the same logical write collide as intended.
+
+### Fixed
+- **Two Shopify inventory writes stopped returning a plausible value for an unconfirmed change.**
+  `set_inventory()` used to echo back the requested quantity when Shopify's response omitted the
+  `inventoryAdjustmentGroup` field (a wrong field name, not a genuine confirmation); `adjust_inventory()`
+  used to return `0` in the same situation. Both now raise `ShopifyInventoryError` instead, since a
+  returned number the caller cannot distinguish from a real confirmation is worse than an explicit
+  failure.
+
+### Added
 - **Identity on the live request path** (`webapp/principal.py`, `webapp/security.py`). The access
   layer added previously governed entity-store reads, and nothing in the running service called them
   — it was, honestly, a library the app did not use. This wires it in: every request now carries a
@@ -211,6 +239,23 @@
   caught by hand). To activate live: `flyctl secrets set SENTRY_DSN=... -a linchpin`.
 
 ### Fixed
+- **`GET /how-it-works` was advertising 41 of 50 tools** (`webapp/how_it_works_data.py`). The
+  hand-maintained `TOOLS` table had fallen **nine** tools behind `build_default_registry()`:
+  `supplier_management`, `network_design`, `disruption_scan`, `hat_tension`, `hat_settlement`,
+  `flow_map`, `cross_impact`, `org_friction_audit` and `intake_scan` each landed a `register()`
+  call with no matching `ToolInfo`, and nothing failed. Accumulated drift across several PRs, not
+  a regression from any one of them. This page is client-facing and gets quoted in sales
+  conversations, so a stale table understates the product to a prospect -- it is not a cosmetic
+  count. Adds the nine entries (both lenses + legend) and a **drift guard** asserting set equality
+  between `TOOLS` and the registry in both directions -- the pattern that already catches this in
+  `tests/test_scm_agent.py` and `tests/test_capability_smoke.py`. The guard immediately earned
+  itself twice: `org_friction_audit` (#198) drifted the table again within a day of the original
+  fix, and `intake_scan` did the same during this PR's rebase onto `main` -- both caught by the
+  assertion rather than by someone reading the page. The old test asserted only
+  `len(TOOLS) == 41`, which is self-consistent and can never go red on its own; that is the
+  failure mode being closed, not the count itself. The three decision-alignment tools get their
+  own domain area rather than being folded into "Inventory & replenishment", which would have
+  overstated the inventory engine from 9 tools to 12 on a chart people read in sales calls.
 - **A built wheel silently shipped without thirteen subpackages** (`src.connectors`, `src.state`,
   `src.verify`, `src.pricing_intel` and its two children, `src.simworld`, `src.seo`, `src.voice`,
   `src.lots`, `src.logistics`, `src.sop_engine`, `src.bateria`). `[tool.setuptools] packages = [...]`

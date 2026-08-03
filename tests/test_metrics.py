@@ -1,4 +1,4 @@
-"""Tests for nosilo_core/metrics.py and its wiring into the orchestrator.
+"""Tests for scm_agent/metrics.py and its wiring into the orchestrator.
 
 The behavior worth guarding is not "a counter increments" -- it is that a run
 which produced NO deliverable is still counted, and counted under the status
@@ -18,7 +18,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from nosilo_core import metrics  # noqa: E402
+from scm_agent import metrics  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

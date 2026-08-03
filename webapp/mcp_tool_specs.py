@@ -18,6 +18,10 @@ Deliberately NOT here (see docs/MCP_SERVER.md "What's NOT here yet"):
   primary output is a data analysis (measured transit per lane); the self-contained
   HTML sankey map it also writes is an extra visualization of that analysis, not
   the whole deliverable the way warehouse_layout's 3D viewer is.
+- `intake_scan` - takes a directory path and reads every file inside it; on an
+  anonymous remote MCP surface that is an arbitrary-file-read primitive, not a
+  data-analysis input. See docs/MCP_SERVER.md's "What's NOT here yet" for the
+  full reasoning (same class of risk the `org_friction` `*_path` guard closes).
 
 Each description is the user-facing MCP contract: what the tool does, the
 canonical columns its job's `prepare()` matches (aliases are tolerated -
