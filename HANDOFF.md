@@ -22,6 +22,31 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-03 (cierre de ventana) — `discovery_brief`: brainstorm INTERRUMPIDO con 4 decisiones cerradas
+
+Sub-proyecto **3 de 4** del Plan SCM-FDE. **Cero codigo, cero spec, cero plan.** El brainstorm
+quedo a mitad: falta presentar las secciones 2 y 3 del diseno, aprobarlas, escribir el spec y
+recien ahi el plan. **Las 4 decisiones de abajo YA estan cerradas — no re-brainstormearlas.**
+
+**Se reformulo respecto del plan maestro.** El plan lo pedia como formulario (crux, costo de
+inaccion, stakeholders, System of Record). Como formulario no agregaba nada al motor. Quedo
+como **el espejo de `intake_scan` sobre parametros**: `intake_scan` audita si el DATO alcanza,
+`discovery_brief` audita si el CONTEXTO alcanza y guia la entrevista que lo obtiene.
+
+1. **Producto:** audita `required_client_params` y alimenta `ClientProfile`, que el motor ya lee.
+2. **Alcance:** solo diagnostica y prioriza, **NO escribe**. Cargar el perfil sigue siendo un
+   paso deliberado (`client_profile.upsert_profile`). Mismo contrato que `intake_scan`.
+3. **Primera tanda:** donde un default SILENCIOSO mueve la cifra de portada — `flow_map` (su
+   buffer escala con z y hoy no declara nada), `multi_echelon`, `newsvendor`, `simulation`, mas
+   el ya declarado `inventory_optimization`. Se declara donde el default ENGANA, no donde existe.
+4. **Catalogo por PARAMETRO** (no por tool), en el modulo nuevo: pregunta al cliente, unidad,
+   rango, default actual y **que cifra se mueve si no lo dan** — ese ultimo campo es el producto.
+
+**Medido contra `origin/main`:** `required_client_params` lo declaran **2 de 50** tools
+(`inventory_optimization`, `cross_impact`), y solo se hace cumplir con `strict_params`
+(`orchestrator.py:135`). Mismo riesgo que `intake_scan`: arranca con poca cobertura, asi que el
+reporte debe mostrar numerador y denominador siempre.
+
 ## 2026-08-03 — `intake_scan` (tool #50) MERGEADO Y PUSHEADO; **DEPLOY BLOQUEADO** por la POLICY de acceso
 
 **Leé esto primero si arrancás en frío.** Dos capacidades del Plan Maestro SCM-FDE
