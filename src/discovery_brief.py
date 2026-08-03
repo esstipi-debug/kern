@@ -53,6 +53,7 @@ CATALOG: tuple[ParamSpec, ...] = (
         low=0.05, high=0.60,
         moves="El costo de mantener y, con él, el ahorro anual de la portada.",
         defaults=(
+            ("inventory_optimization", 0.25, "jobs/inventory_optimization.py:126"),
             ("inventory_optimization", 0.25, "src/client_profile.py (docstring)"),
             ("webapp", 0.22, "webapp/app.py:510"),
         ),
@@ -65,8 +66,9 @@ CATALOG: tuple[ParamSpec, ...] = (
         low=0.50, high=0.999,
         moves="El z del stock de seguridad: mueve el inventario objetivo de toda la red.",
         defaults=(
-            ("inventory_optimization", 0.95, "src/client_profile.py (docstring)"),
             ("flow_map", 0.95, "jobs/flow_map_job.py:163"),
+            ("inventory_optimization", 0.95, "jobs/inventory_optimization.py:125"),
+            ("inventory_optimization", 0.95, "src/client_profile.py (docstring)"),
             ("multi_echelon", 0.95, "jobs/multi_echelon_job.py:31"),
         ),
     ),
@@ -80,7 +82,8 @@ CATALOG: tuple[ParamSpec, ...] = (
             ("batch", 1000.0, "src/batch.py:28"),
             ("hats", 75.0, "src/hats.py:90"),
             ("inventory_optimization", 75.0, "jobs/inventory_optimization.py:127"),
-            ("powerbi_export", 1000.0, "src/powerbi_export.py:56,249"),
+            ("powerbi_export", 1000.0, "src/powerbi_export.py:56"),
+            ("powerbi_export", 1000.0, "src/powerbi_export.py:249"),
             ("simulation", 100.0, "jobs/simulation_job.py:31"),
             ("webapp", 80.0, "webapp/app.py:509"),
         ),
@@ -132,7 +135,8 @@ UNDECLARED_USE: tuple[ParamSpec, ...] = (
         moves="El balance faltante-vs-exceso: impacto de costo de escasez vs exceso.",
         defaults=(
             ("batch", 50.0, "src/batch.py:29"),
-            ("powerbi_export", 50.0, "src/powerbi_export.py:57,250"),
+            ("powerbi_export", 50.0, "src/powerbi_export.py:57"),
+            ("powerbi_export", 50.0, "src/powerbi_export.py:250"),
             ("simulation", 5.0, "jobs/simulation_job.py:32"),
         ),
     ),

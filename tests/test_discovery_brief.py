@@ -62,85 +62,102 @@ def test_todas_las_citas_de_linea_son_exactas():
     Este test PREVIENE la regresión de citas off-by-one (como las que ocurrieron
     en webapp/app.py:509/510). Para cada entrada en defaults con formato
     'path/to/file.py:NNN', lee esa línea (1-indexada) y verifica que contenga
-    una representación del número citado con límites de palabra."""
+    una representación del número citado con límites de palabra.
+
+    No hay excepción silenciosa: un sitio que contiene '.py:' pero no se deja
+    parsear a un número de línea usable es un FALLO del test, no un `continue`.
+    Solo los sitios legítimamente sin línea (ej. "(docstring)", sin ".py:") se
+    cuentan como saltados a propósito, y se nombran si el conteo verificado
+    queda corto."""
     import re
 
     checked_count = 0
+    skipped_sites: list[str] = []
 
     for spec in CATALOG + UNDECLARED_USE:
         for tool_key, value, site in spec.defaults:
-            # Saltar sitios sin número de línea (ej: "(docstring)")
-            if ":" not in site:
+            if ".py:" not in site:
+                # Sitio legítimamente sin línea (ej. "src/client_profile.py (docstring)").
+                skipped_sites.append(f"{spec.name}: {site}")
                 continue
 
-            # Parsear archivo:línea
-            if not site.endswith(")"):  # Saltar formato con parens
-                parts = site.split(":")
-                if len(parts) < 2:
-                    continue
+            # Parsear archivo:línea. Cualquier fallo de parseo es un FALLO del
+            # test -- no un `continue` silencioso -- porque un sitio con ".py:"
+            # que no parsea es exactamente el hueco que dejaba pasar citas
+            # sin verificar (ver Fix Round 4 en task-1-report.md).
+            parts = site.split(":")
+            if len(parts) < 2:
+                raise AssertionError(
+                    f"{spec.name}: {site} — contiene '.py:' pero no se pudo "
+                    f"separar en archivo:línea"
+                )
 
-                filepath = ":".join(parts[:-1])  # Manejar rutas con ":"
-                try:
-                    line_num = int(parts[-1])
-                except ValueError:
-                    continue
+            filepath = ":".join(parts[:-1])  # Manejar rutas con ":"
+            try:
+                line_num = int(parts[-1])
+            except ValueError:
+                raise AssertionError(
+                    f"{spec.name}: {site} — el segmento final {parts[-1]!r} "
+                    f"no es un número de línea entero"
+                )
 
-                # Leer el archivo
-                try:
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        lines = f.readlines()
-                except FileNotFoundError:
-                    raise AssertionError(
-                        f"{spec.name}: {site} — archivo no encontrado"
-                    )
+            # Leer el archivo
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+            except FileNotFoundError:
+                raise AssertionError(
+                    f"{spec.name}: {site} — archivo no encontrado"
+                )
 
-                # Verificar línea (1-indexada)
-                if line_num < 1 or line_num > len(lines):
-                    raise AssertionError(
-                        f"{spec.name}: {site} — línea {line_num} fuera de rango "
-                        f"(archivo tiene {len(lines)} líneas)"
-                    )
+            # Verificar línea (1-indexada)
+            if line_num < 1 or line_num > len(lines):
+                raise AssertionError(
+                    f"{spec.name}: {site} — línea {line_num} fuera de rango "
+                    f"(archivo tiene {len(lines)} líneas)"
+                )
 
-                line_text = lines[line_num - 1]
+            line_text = lines[line_num - 1]
 
-                # Verificar que la línea contiene el valor con límites de palabra
-                # Normalizar el valor: 100.0 → r"\b100\.0\b", 0.22 → r"\b0\.22\b"
-                # También permitir representación sin decimal: 1.0 también matchea 1
-                value_str = str(value)
-                # Escapar puntos en la expresión regular
-                value_pattern = re.escape(value_str)
-                # Usar límites de palabra
-                pattern = r"\b" + value_pattern + r"\b"
+            # Verificar que la línea contiene el valor con límites de palabra
+            # Normalizar el valor: 100.0 → r"\b100\.0\b", 0.22 → r"\b0\.22\b"
+            # También permitir representación sin decimal: 1.0 también matchea 1
+            value_str = str(value)
+            # Escapar puntos en la expresión regular
+            value_pattern = re.escape(value_str)
+            # Usar límites de palabra
+            pattern = r"\b" + value_pattern + r"\b"
 
-                # Si es un float que termina en .0, también probar sin el .0
-                alternative_pattern = None
-                if isinstance(value, float) and value == int(value):
-                    # 1.0 → también probar r"\b1\b"
-                    int_str = str(int(value))
-                    alternative_pattern = r"\b" + re.escape(int_str) + r"\b"
+            # Si es un float que termina en .0, también probar sin el .0
+            alternative_pattern = None
+            if isinstance(value, float) and value == int(value):
+                # 1.0 → también probar r"\b1\b"
+                int_str = str(int(value))
+                alternative_pattern = r"\b" + re.escape(int_str) + r"\b"
 
-                found = re.search(pattern, line_text)
-                if not found and alternative_pattern:
-                    found = re.search(alternative_pattern, line_text)
+            found = re.search(pattern, line_text)
+            if not found and alternative_pattern:
+                found = re.search(alternative_pattern, line_text)
 
-                if not found:
-                    raise AssertionError(
-                        f"{spec.name}: {site} cita valor {value}, "
-                        f"pero línea {line_num} no contiene ese valor.\n"
-                        f"Línea actual: {line_text.rstrip()}\n"
-                        f"Patrón esperado: {pattern}"
-                        + (f" o {alternative_pattern}" if alternative_pattern else "")
-                    )
+            if not found:
+                raise AssertionError(
+                    f"{spec.name}: {site} cita valor {value}, "
+                    f"pero línea {line_num} no contiene ese valor.\n"
+                    f"Línea actual: {line_text.rstrip()}\n"
+                    f"Patrón esperado: {pattern}"
+                    + (f" o {alternative_pattern}" if alternative_pattern else "")
+                )
 
-                checked_count += 1
+            checked_count += 1
 
-    # Verificar que se verificaron la mayoría de las citas
-    total_defaults = sum(
-        len(s.defaults) for s in CATALOG + UNDECLARED_USE
-    )
-    # Permitir que (docstring) y similares no se verifiquen, pero al menos 70%
-    min_checked = int(total_defaults * 0.7)
-    assert checked_count >= min_checked, (
-        f"Solo {checked_count}/{total_defaults} citas fueron verificadas "
-        f"(mínimo {min_checked}). Demasiadas citas sin línea de número."
+    # Con la excepción silenciosa eliminada, toda cita "archivo.py:línea" es
+    # verificable -- el unico salto legitimo es la ausencia de ".py:" en el
+    # sitio. El piso ahora es 100% de las citas parseables, no un 70% que
+    # dejaba espacio para que un hueco de parseo pasara desapercibido.
+    total_defaults = sum(len(s.defaults) for s in CATALOG + UNDECLARED_USE)
+    expected_checked = total_defaults - len(skipped_sites)
+    assert checked_count == expected_checked, (
+        f"Se verificaron {checked_count} citas mecanicas de "
+        f"{expected_checked} esperadas ({total_defaults} citas totales, "
+        f"{len(skipped_sites)} saltadas a proposito: {skipped_sites})"
     )
