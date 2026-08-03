@@ -243,9 +243,9 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
             "reads (product_id, on_hand, daily_demand [, unit_cost, days_since_last_sale])"
         )
 
-    abc_items = abc_xyz_job.prepare(data_path, params)
+    abc_payload = abc_xyz_job.prepare(data_path, params)
     abc_report = abc_xyz_job.run(
-        abc_items,
+        abc_payload,
         abc_thresholds=params.get("abc_thresholds", (0.80, 0.95)),
         cv_cuts=params.get("cv_cuts", (0.5, 1.0)),
     )

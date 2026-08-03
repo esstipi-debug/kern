@@ -399,12 +399,12 @@ def _abc_xyz_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
     if not request.data_path:
         return Prepared(status="needs_data", messages=["a per-SKU demand CSV (product, demand, unit cost) is required"])
     try:
-        items = abc_xyz_job.prepare(request.data_path, request.params)
+        payload = abc_xyz_job.prepare(request.data_path, request.params)
     except (ValueError, FileNotFoundError) as exc:
         return Prepared(status="needs_data", messages=[str(exc)])
-    if not items:
+    if not payload["items"]:
         return Prepared(status="needs_data", messages=["no SKUs found in the data"])
-    return Prepared(status="ok", payload=items)
+    return Prepared(status="ok", payload=payload)
 
 
 def _abc_xyz_run(payload: object, params: dict) -> Produced:

@@ -94,3 +94,31 @@ def test_cli_prints_residuals_and_escalation(tmp_path, capsys):
     assert "negative quantity" in printed
     assert "Escalated" in printed
     assert "operations owner" in printed
+
+
+def test_abc_xyz_blocks_on_a_net_negative_sku():
+    from jobs import abc_xyz_job
+
+    df = pd.DataFrame({
+        "product_id": ["A"] * 4 + ["B"] * 4,
+        "period": [1, 2, 3, 4] * 2,
+        "quantity": [100, 100, 100, -300, 100, 100, 100, 100],
+        "unit_cost": [10] * 8,
+    })
+    payload = abc_xyz_job.prepare_records(df)
+    report = abc_xyz_job.run(payload)
+    issues = abc_xyz_job.verify(report)
+    assert any("negative" in issue for issue in issues)
+
+
+def test_abc_xyz_clean_data_passes():
+    from jobs import abc_xyz_job
+
+    df = pd.DataFrame({
+        "product_id": ["A"] * 4 + ["B"] * 4,
+        "period": [1, 2, 3, 4] * 2,
+        "quantity": [100, 90, 110, 100, 10, 12, 8, 10],
+        "unit_cost": [10] * 8,
+    })
+    report = abc_xyz_job.run(abc_xyz_job.prepare_records(df))
+    assert abc_xyz_job.verify(report) == []

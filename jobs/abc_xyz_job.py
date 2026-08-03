@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from jobs.quantity_audit import QuantityAudit, audit_quantities
 from src.classification import (
     SkuClassification,
     ValueBasis,
@@ -43,6 +44,9 @@ class AbcXyzReport:
     a_value_share: float   # share of total annual value held by the A class
     # Whether annual_value ranks on value or (flat unit cost) merely on units
     value_basis: ValueBasis = ValueBasis(0, 0.0, True)
+    # Negative quantities seen in the source file (jobs/quantity_audit.py). None when
+    # the caller built the report from raw items rather than through prepare_records.
+    quantity_audit: QuantityAudit | None = None
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -65,10 +69,14 @@ def aggregate_skus(
     return items
 
 
-def prepare(data_path: str, params: dict | None = None) -> list[dict]:
-    """Read a per-SKU demand CSV and aggregate it to classifier items."""
+def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
+    """Sniff the columns, audit the quantities, and aggregate to classifier items.
+
+    Returns ``{"items": [...], "audit": QuantityAudit}``. The audit is counted on the
+    RAW frame, before aggregation: once summed, a SKU whose sign was inverted looks
+    merely small, not wrong.
+    """
     params = params or {}
-    df = pd.read_csv(data_path)
     product = _pick_column(df, params.get("product_col"), _PRODUCT_COLS)
     demand = _pick_column(df, params.get("demand_col"), _DEMAND_COLS)
     cost = _pick_column(df, params.get("cost_col"), _COST_COLS)
@@ -76,16 +84,34 @@ def prepare(data_path: str, params: dict | None = None) -> list[dict]:
     if missing:
         cols = list(df.columns)[:10]
         raise ValueError(f"could not find {', '.join(missing)}; pass them in params (columns seen: {cols})")
-    return aggregate_skus(df, product_col=product, demand_col=demand, cost_col=cost)
+    audit = audit_quantities(
+        df, quantity_col=demand, product_col=product,
+        threshold=float(params.get("negative_quantity_threshold", 0.02)),
+    )
+    items = aggregate_skus(df, product_col=product, demand_col=demand, cost_col=cost)
+    return {"items": items, "audit": audit}
+
+
+def prepare(data_path: str, params: dict | None = None) -> dict:
+    """Read a per-SKU demand CSV and aggregate it to classifier items + a quantity audit."""
+    return prepare_records(pd.read_csv(data_path), params)
 
 
 def run(
-    items: list[dict],
+    payload: dict | list[dict],
     *,
     abc_thresholds: tuple[float, float] = (0.80, 0.95),
     cv_cuts: tuple[float, float] = (0.5, 1.0),
 ) -> AbcXyzReport:
-    """Classify the portfolio into the ABC-XYZ matrix and roll up the headline counts."""
+    """Classify the portfolio into the ABC-XYZ matrix and roll up the headline counts.
+
+    Accepts either the ``prepare_records`` payload or a bare item list (the older
+    shape, still used by examples/ and tests that build items by hand).
+    """
+    if isinstance(payload, dict):
+        items, audit = payload["items"], payload.get("audit")
+    else:
+        items, audit = payload, None
     classifications = classify_portfolio(items, abc_thresholds=abc_thresholds, cv_cuts=cv_cuts)
     summary = portfolio_summary(classifications)
     total_value = sum(c.annual_value for c in classifications) or 1.0
@@ -98,6 +124,7 @@ def run(
         n_cz=sum(1 for c in classifications if c.cell == "CZ"),
         a_value_share=a_value / total_value,
         value_basis=value_basis(items),
+        quantity_audit=audit,
     )
 
 
@@ -109,6 +136,8 @@ def verify(report: AbcXyzReport) -> list[str]:
     for c in report.classifications:
         if len(c.cell) != 2 or c.abc not in "ABC" or c.xyz not in "XYZ":
             issues.append(f"invalid ABC-XYZ cell for {c.product_id}: {c.cell}")
+    if report.quantity_audit is not None:
+        issues.extend(report.quantity_audit.issues())
     return issues
 
 

@@ -47,9 +47,9 @@ def test_prepare_reads_a_portfolio_csv(tmp_path):
     csv = tmp_path / "p.csv"
     _portfolio_df().to_csv(csv, index=False)
 
-    items = axj.prepare(str(csv), {})
+    payload = axj.prepare(str(csv), {})
 
-    assert {it["product_id"] for it in items} == {"A", "B"}
+    assert {it["product_id"] for it in payload["items"]} == {"A", "B"}
 
 
 def test_prepare_errors_without_product_or_cost_column(tmp_path):

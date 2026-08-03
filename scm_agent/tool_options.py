@@ -101,6 +101,28 @@ def _apply_intake_quality(outcome: GuidedOutcome, report: object) -> GuidedOutco
     return maybe_escalate_synthesized_columns(outcome, critical)
 
 
+def _apply_quantity_audit(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
+    """State a residual whenever the source file carried ANY negative quantity.
+
+    Sibling of ``_apply_intake_quality``, for the four tools that read their own CSV
+    instead of going through jobs/intake.py. Disclosure only: the MATERIAL case is
+    already blocked upstream by the tool's qa() (jobs/quantity_audit.py), so anything
+    that reaches here is the sub-threshold case -- the one that used to vanish
+    entirely. A no-op when the report carries no audit or the file was clean.
+    """
+    audit = getattr(report, "quantity_audit", None)
+    if audit is None:
+        return outcome
+    text = audit.disclosure()
+    if not text:
+        return outcome
+    return replace(outcome, residuals=[*outcome.residuals, Residual(
+        description=text,
+        risk_if_skipped="demand is counted gross of returns, so the plan may be sized "
+                        "slightly high; confirm the sign convention of the source column.",
+    )])
+
+
 def inventory_options(report: object) -> GuidedOutcome:
     sl = report.params.get("service_level", 0.95)
     n_review = sum(1 for r in report.recommendations if getattr(r, "status", "ok") != "ok")
@@ -261,7 +283,9 @@ def abc_xyz_options(report: object) -> GuidedOutcome:
          "Put the stable B/C cells on automated reorder.",
          "automate reorder for the stable cells", "operational efficiency"),
     ]
-    return _ranked(f"ABC-XYZ over {report.n_skus} SKU(s): choose the policy moves.", items)
+    return _apply_quantity_audit(
+        _ranked(f"ABC-XYZ over {report.n_skus} SKU(s): choose the policy moves.", items), report
+    )
 
 
 def ddmrp_options(report: object) -> GuidedOutcome:
