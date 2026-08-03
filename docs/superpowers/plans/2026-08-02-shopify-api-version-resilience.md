@@ -1138,6 +1138,39 @@ def test_pinned_version_is_2026_07():
 
 Sin esto, la Tarea 5 rompe `test_pinned_version_is_2024_10`. Que ese test falle es la señal correcta: el bump es un cambio deliberado y tiene que verse en el diff.
 
+11. **`adjust_inventory` tiene el mismo fallo silencioso que se arregló en `set_inventory`.** Lo destapó la revisión de la Tarea 4. Lee el campo correcto, pero cuando Shopify no confirma la escritura hace `return 0` — y `0` es un nivel de stock plausible, así que quien llama no distingue "ajustado hasta cero" de "no se confirmó". Como esta tarea ya modifica el método para enhebrar la clave, se arregla aquí. Sustituye el final del método:
+
+```python
+        changes = (res.get("inventoryAdjustmentGroup") or {}).get("changes", [])
+        if not changes:
+            raise ShopifyInventoryError(
+                f"Shopify did not confirm the inventory adjustment for {inventory_item_id!r} "
+                f"at {location_id!r}: no inventoryAdjustmentGroup in the response"
+            )
+        return int(changes[0]["quantityAfterChange"])
+```
+
+Y añade el test que lo pina, junto a los demás de inventario:
+
+```python
+def test_adjust_inventory_fails_instead_of_returning_zero():
+    # `0` is a plausible stock level, so the old fallback made an unconfirmed
+    # write indistinguishable from an adjustment down to zero.
+    payload = {
+        "data": {"inventoryAdjustQuantities": {"inventoryAdjustmentGroup": None, "userErrors": []}}
+    }
+    http = _FakeHttp(payload, headers={"X-Shopify-API-Version": PINNED_VERSION})
+    with pytest.raises(ShopifyInventoryError, match="did not confirm"):
+        ShopifyInventoryClient(http).adjust_inventory(
+            "gid://shopify/InventoryItem/SKU-1",
+            "gid://shopify/Location/1",
+            -10,
+            idempotency_key="key-adj",
+        )
+```
+
+Deja los dos métodos hermanos con el mismo criterio: sin confirmación, no hay valor de retorno que inventar.
+
 - [ ] **Step 4: Run the full suite**
 
 ```bash
