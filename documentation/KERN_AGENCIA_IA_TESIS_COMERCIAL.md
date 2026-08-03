@@ -47,7 +47,7 @@ No "superamos" una certificación haciendo bien lo que enseña; **la hacemos aut
 
 Aquí está el terreno nuevo. Se describe **como mecanismo**, no como credencial:
 
-1. **Grounding con cita forzada.** Cada resultado *que se entrega* cita ≥2 de 33 fuentes curadas (1953 nodos, `knowledge/scm-books/graph.json`); si no puede fundamentar, **entrega nada** en vez de una conjetura plausible.
+1. **Grounding con cita forzada.** Cada resultado *que se entrega* cita ≥2 de 26 fuentes externas curadas (3002 nodos, `knowledge/scm-books/graph.json`); si no puede fundamentar, **entrega nada** en vez de una conjetura plausible.
 2. **Citation gate anti-falso-amigo** (`MIN_CITATIONS=2`, `MAX_HOPS=2`, `EXCLUDED_CONCEPTS`). La explicabilidad como compuerta, no como feature de marketing.
 3. **Writeback firmado + time-boxed + idempotente + reversible.** HMAC-SHA256 ligado al *hash de contenido* del changeset (no solo a la clave de idempotencia), TTL 900s, `compare_digest` de tiempo constante, `rollback()`-able; irreversible siempre exige humano (`src/writeback.py`). *Pregúntale a tu ERP si su rastro de auditoría es no-repudiable a nivel de changeset.*
 4. **Autonomía ganada con evidencia + degradación inmediata.** El agente gana el derecho a actuar desde evidencia observada y lo pierde al instante ante drift.

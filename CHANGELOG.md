@@ -211,6 +211,23 @@
   caught by hand). To activate live: `flyctl secrets set SENTRY_DSN=... -a linchpin`.
 
 ### Fixed
+- **`GET /how-it-works` was advertising 41 of 50 tools** (`webapp/how_it_works_data.py`). The
+  hand-maintained `TOOLS` table had fallen **nine** tools behind `build_default_registry()`:
+  `supplier_management`, `network_design`, `disruption_scan`, `hat_tension`, `hat_settlement`,
+  `flow_map`, `cross_impact`, `org_friction_audit` and `intake_scan` each landed a `register()`
+  call with no matching `ToolInfo`, and nothing failed. Accumulated drift across several PRs, not
+  a regression from any one of them. This page is client-facing and gets quoted in sales
+  conversations, so a stale table understates the product to a prospect -- it is not a cosmetic
+  count. Adds the nine entries (both lenses + legend) and a **drift guard** asserting set equality
+  between `TOOLS` and the registry in both directions -- the pattern that already catches this in
+  `tests/test_scm_agent.py` and `tests/test_capability_smoke.py`. The guard immediately earned
+  itself twice: `org_friction_audit` (#198) drifted the table again within a day of the original
+  fix, and `intake_scan` did the same during this PR's rebase onto `main` -- both caught by the
+  assertion rather than by someone reading the page. The old test asserted only
+  `len(TOOLS) == 41`, which is self-consistent and can never go red on its own; that is the
+  failure mode being closed, not the count itself. The three decision-alignment tools get their
+  own domain area rather than being folded into "Inventory & replenishment", which would have
+  overstated the inventory engine from 9 tools to 12 on a chart people read in sales calls.
 - **A built wheel silently shipped without thirteen subpackages** (`src.connectors`, `src.state`,
   `src.verify`, `src.pricing_intel` and its two children, `src.simworld`, `src.seo`, `src.voice`,
   `src.lots`, `src.logistics`, `src.sop_engine`, `src.bateria`). `[tool.setuptools] packages = [...]`
