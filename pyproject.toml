@@ -22,6 +22,13 @@ dependencies = [
     # degrade without (unlike the optional-extra heavy deps below, there is no
     # meaningful fallback for "the routing table failed to parse").
     "PyYAML>=6.0",
+    # The domain-agnostic control plane, split out of this repo into
+    # esstipi-debug/nosilo-core once a second domain pack (packs/source_to_pay)
+    # proved it generalised. Pinned to a TAG, never a branch: a branch dependency
+    # means a build that passed on Monday fails on Tuesday with no commit in
+    # between, and the failure names the wrong repository. The repo is private -
+    # CI needs a token, see the workflow and the core's CONSUMING.md.
+    "nosilo-core @ git+https://github.com/esstipi-debug/nosilo-core.git@v0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -195,7 +202,7 @@ Homepage = "https://github.com/esstipi-debug/kern"
 # nosilo_core is the domain-agnostic control plane (see nosilo_core/__init__.py);
 # packs/ and src/ are the domain packs that depend on it. That direction is
 # enforced by tests/test_core_boundary.py and tests/test_pack_boundary.py.
-include = ["nosilo_core*", "packs*", "src*"]
+include = ["packs*", "src*"]
 
 [tool.pytest.ini_options]
 pythonpath = "."
@@ -203,8 +210,8 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.coverage.run]
-source = ["nosilo_core", "packs", "src"]
-omit = ["src/__init__.py", "nosilo_core/__init__.py", "packs/__init__.py"]
+source = ["packs", "src"]
+omit = ["src/__init__.py", "packs/__init__.py"]
 
 [tool.coverage.report]
 show_missing = true

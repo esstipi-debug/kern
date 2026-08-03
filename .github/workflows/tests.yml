@@ -47,6 +47,23 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # nosilo-core is a PRIVATE repo, and a workflow's built-in GITHUB_TOKEN is
+      # scoped to THIS repository only - it cannot read another private one. A
+      # fine-grained PAT with Contents:read on esstipi-debug/nosilo-core must
+      # exist as the NOSILO_CORE_TOKEN secret or every install below fails at
+      # dependency resolution.
+      #
+      # Rewriting the URL in git config rather than embedding the token in
+      # pyproject.toml keeps the dependency a clean, shareable URL and confines
+      # the credential to this runner for the life of the job.
+      - name: Authenticate to the private core
+        run: |
+          if [ -z "${{ secrets.NOSILO_CORE_TOKEN }}" ]; then
+            echo "::error::NOSILO_CORE_TOKEN is not set. nosilo-core is a private dependency; see its CONSUMING.md."
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${{ secrets.NOSILO_CORE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -59,14 +76,14 @@ jobs:
         run: pip freeze
 
       - name: Lint
-        run: ruff check nosilo_core packs src tests examples
+        run: ruff check packs src tests examples
 
-      # nosilo_core is measured alongside src: the control-plane modules
-      # (writeback, registry, guided, ...) moved out of src/ but are as
-      # coverage-critical as anything left in it -- dropping them from --cov
+      # nosilo-core is no longer measured here: it lives in its own repo with
+      # its own coverage gate. Measuring an installed third-party package from
+      # this side would report a number neither repo is responsible for -- and
       # would quietly stop gating the code that gates every write.
       - name: Run tests with coverage
-        run: pytest tests/ -q --cov=nosilo_core --cov=packs --cov=src --cov-report=term-missing --cov-fail-under=80
+        run: pytest tests/ -q --cov=packs --cov=src --cov-report=term-missing --cov-fail-under=80
         env:
           PYTHONPATH: .
 
@@ -96,6 +113,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"  # matches Dockerfile `FROM python:3.12-slim`
+
+      # This job installs from pyproject, which is where the private nosilo-core
+      # dependency lives - so it needs the credential exactly as much as the test
+      # job does, even though it never builds an image. Missing it here would
+      # turn "the production import surface is broken" into the reported failure
+      # for what is actually a missing secret.
+      - name: Authenticate to the private core
+        run: |
+          if [ -z "${{ secrets.NOSILO_CORE_TOKEN }}" ]; then
+            echo "::error::NOSILO_CORE_TOKEN is not set. nosilo-core is a private dependency; see docs/DEPLOYMENT.md section 0."
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${{ secrets.NOSILO_CORE_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Install ONLY the production extras (mirrors the Dockerfile)
         run: |

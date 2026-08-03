@@ -11,8 +11,8 @@ from __future__ import annotations
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-
 from nosilo_core.access import ANY, PRINCIPAL_HUMAN, PRINCIPAL_SERVICE, PolicySet
+
 from webapp import principal, security
 from webapp.app import app
 

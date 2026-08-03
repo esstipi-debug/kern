@@ -8,8 +8,8 @@ Fully exercised with a stub - no credentials, no network.
 import sys
 
 import pytest
-
 from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
+
 from src.voice.doc_reader import (
     DocExtraction,
     DocModel,

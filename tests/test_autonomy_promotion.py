@@ -33,8 +33,8 @@ Guarantees under test:
 from __future__ import annotations
 
 import pytest
-
 from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
+
 from scm_agent.autonomy import TIER_T1, TIER_T2, TIER_T3
 from scm_agent.autonomy_promotion import (
     DEFAULT_AUTONOMY_CONFIG_PATH,

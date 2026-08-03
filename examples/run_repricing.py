@@ -31,13 +31,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from nosilo_core import writeback  # noqa: E402
+
 from jobs.repricing import (  # noqa: E402
     RepricingGuardrailBlocked,
     RepricingVerificationFailed,
     run_channel_repricing,
     stage_repricing,
 )
-from nosilo_core import writeback  # noqa: E402
 from src.connectors.meli_prices import MeliPriceStore, demo_meli  # noqa: E402
 from src.connectors.odoo import demo_odoo  # noqa: E402
 from src.connectors.odoo_prices import OdooPriceStore  # noqa: E402

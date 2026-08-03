@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from nosilo_core.guided import EXECUTED, HANDOFF, OPTIONS
 
 from jobs import disruption_scan_job as J
-from nosilo_core.guided import EXECUTED, HANDOFF, OPTIONS
 from src import disruption as D
 
 FIXTURES = Path(__file__).parent / "fixtures" / "gdelt"

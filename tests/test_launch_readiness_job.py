@@ -6,10 +6,10 @@ from pathlib import Path as _Path
 
 import pandas as pd
 import pytest
-
-from jobs import launch_readiness_job as lrj
 from nosilo_core.guided import ESCALATED, EXECUTED, OPTIONS
 from nosilo_core.guided import as_executed as _as_executed
+
+from jobs import launch_readiness_job as lrj
 from src.deliverable import Deliverable as _Deliverable
 
 AS_OF = date(2026, 7, 1)

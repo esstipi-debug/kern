@@ -7,8 +7,8 @@ quadrant, so every band boundary and strategy mapping is asserted numerically.
 import math
 
 import pytest
-
 from nosilo_core.guided import verify_guided
+
 from src.supplier_management import (
     RiskDriver,
     SupplierInput,

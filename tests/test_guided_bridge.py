@@ -14,6 +14,7 @@ from nosilo_core.types import (
     STATUS_QA_FAILED,
     JobResult,
 )
+
 from scm_agent.guided_bridge import to_guided_outcome
 from scm_agent.orchestrator import Orchestrator
 

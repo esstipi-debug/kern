@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from nosilo_core import llm
+
 from scm_agent import tools
 from scm_agent.knowledge import KnowledgeBase
 from scm_agent.orchestrator import Orchestrator

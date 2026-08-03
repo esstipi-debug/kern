@@ -12,8 +12,8 @@ Planning"; Heizer & Render, "Aggregate Planning and S&OP"; Oliver Wight 5-step c
 """
 
 import pytest
-
 from nosilo_core.guided import OPTIONS, OWNER_HUMAN, passed_guided, recommend
+
 from src.decision_options import Objective
 from src.sop import (
     DEFAULT_OBJECTIVES,

@@ -12,8 +12,8 @@ Items API, a different integration surface (see module docstring).
 from __future__ import annotations
 
 import pytest
-
 from nosilo_core import writeback
+
 from src.connectors.meli_prices import (
     InMemoryMeli,
     MeliPricesError,

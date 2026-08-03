@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
-
 from nosilo_core import writeback
+
 from src.connectors.shopify_inventory import (
     InMemoryShopifyInventory,
     ShopifyInventoryError,

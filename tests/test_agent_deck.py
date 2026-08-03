@@ -10,6 +10,7 @@ Additive: a tool without a deck hook is unchanged.
 from pathlib import Path
 
 from nosilo_core import llm
+
 from scm_agent.orchestrator import Orchestrator
 from scm_agent.tools import build_default_registry
 
