@@ -52,7 +52,18 @@ Imports inside this package are relative on purpose: the package is meant to be
 liftable into its own distribution without editing a single import line.
 """
 
-from . import access, entities, escalation, guided, llm, registry, types, writeback, writeback_store
+from . import (
+    access,
+    entities,
+    escalation,
+    guided,
+    llm,
+    metrics,
+    registry,
+    types,
+    writeback,
+    writeback_store,
+)
 
 __all__ = [
     "access",
@@ -60,6 +71,7 @@ __all__ = [
     "escalation",
     "guided",
     "llm",
+    "metrics",
     "registry",
     "types",
     "writeback",
