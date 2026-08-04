@@ -19,8 +19,27 @@
 - **Esta herramienta NO escribe el perfil.** Ningún paso puede llamar a `client_profile.upsert_profile` fuera de un test. La salida propone; el operador ejecuta.
 - **Numerador y denominador siempre.** Todo `summary` que hable de cobertura dice "X de Y", nunca solo X.
 - **`nosilo_core` es externo y pineado.** No editar nada bajo `nosilo_core/`; si algo parece necesitarlo, es señal de que el diseño se torció.
-- **Correr la suite completa antes del último commit.** `python -m pytest -q` desde la raíz del worktree.
-- **Comandos:** usar el intérprete del venv del repo principal: `/c/Users/Gamer/Music/scm/supply-chain-optimization/.venv/Scripts/python.exe`. En los ejemplos aparece como `python`.
+- **Correr la suite completa antes del último commit.** `python -m pytest tests/ -q` desde la raíz del worktree.
+- **Comandos: usar el venv PROPIO de ESTE worktree**, `.wt-discovery-brief/.venv/Scripts/python.exe`. En los ejemplos aparece como `python`.
+  > **Nunca el venv de otro worktree.** Una versión previa de este plan mandaba usar
+  > `supply-chain-optimization/.venv`. Ese venv tiene kern instalado **editable apuntando a
+  > aquel worktree** y **no** tiene instalado `nosilo-core`, así que `import nosilo_core`
+  > resolvía al directorio local de una rama vieja, anterior a `required_columns`. Las Tareas
+  > 1-4 se dieron por verdes contra la dependencia equivocada; la suite completa lo destapó
+  > con 22 errores de colección. Verde local contra la dependencia que no es — la familia
+  > inversa del crash de `bs4` (verde en CI, muerto en prod).
+  >
+  > Recrear el entorno, si hiciera falta:
+  > ```bash
+  > uv venv .venv && VIRTUAL_ENV=$(pwd)/.venv uv pip install -r requirements-dev.txt
+  > ```
+  > `requirements-dev.txt` es lo que instala CI, así que es la única definición fiel del
+  > entorno. Comprobación de sanidad antes de confiar en cualquier verde:
+  > ```bash
+  > .venv/Scripts/python.exe -c "import nosilo_core; print(nosilo_core.__file__)"
+  > ```
+  > Tiene que imprimir una ruta dentro de `.venv/Lib/site-packages/`, nunca un directorio de
+  > trabajo. Medido así: **4604 passed, 30 skipped** en `a52b0de`.
 - **El lint de CI es `ruff check src tests examples`** — incluye `tests/`. Los bloques de import que aparecen en este plan son ilustrativos: importá solo lo que cada archivo realmente usa. Un import sin usar en un test pone la rama en rojo igual que uno en `src/`. Correr `ruff check src tests examples` antes de cada commit.
 
 ## Estructura de archivos
