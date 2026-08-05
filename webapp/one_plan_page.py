@@ -1,10 +1,16 @@
 """Server-rendered HTML for GET /one-plan.
 
-The English-language AU/NZ agency landing page. Where /stocky-alternative
-targets a specific search wave (Shopify retiring its Stocky app), /one-plan
-carries the durable agency positioning: Kern as a *fractional planning team*
-that works demand, stock, purchasing and pricing as a single plan, instead of
-another point-tool app to log into.
+The English-language AU/NZ landing page. Where /stocky-alternative targets a
+specific search wave (Shopify retiring its Stocky app), /one-plan carries the
+durable acquisition positioning: a *fractional planning team* that works demand,
+stock, purchasing and pricing as a single plan.
+
+The served engagement is the CHANNEL, not the product (operator decision,
+2026-08-05). Kern itself is self-serve software the client runs; the engagement
+is how a client starts, and the plan and engine stay theirs to drive once they
+are standing. So this page may sell the first step as done-with-you, but it must
+never position the software as the thing you would rather not have -- the old H2
+("not another app to log into") did exactly that and was removed.
 
 Deliberately English + its own minimal shell (not webapp/paquetes_page.py's
 Spanish nav/copy), reusing the SAME visual system as
@@ -265,7 +271,7 @@ def render_one_plan_html(offer_starter: Offer, offer_diagnostico: Offer) -> str:
 
 <section>
   <span class="eyebrow">How we work</span>
-  <h2 style="margin-top:10px">A fractional planning team, not another app to log into</h2>
+  <h2 style="margin-top:10px">A planning team to start with, not a headcount to carry</h2>
   <p class="sub" style="max-width:64ch">
     A full-time demand or inventory planner is roughly a
     USD&nbsp;{_PLANNER_LOADED_LOW_USD}&ndash;{_PLANNER_LOADED_HIGH_USD}k/year hire once
@@ -275,7 +281,9 @@ def render_one_plan_html(offer_starter: Offer, offer_diagnostico: Offer) -> str:
     USD&nbsp;{_STARTER_MONTHLY_USD}/month (about
     USD&nbsp;{_STARTER_ANNUAL_USD:,}/year), a fraction of a full-time hire's loaded
     salary &mdash; on the order of a tenth. You are renting a planning team's output,
-    not paying to recruit, train and retain one.
+    not paying to recruit, train and retain one. And the engagement is how you start,
+    not what you are tied to: the plan and the engine behind it stay yours, and your
+    own team can drive them once they are standing.
   </p>
   <ul class="check" style="margin-top:16px;max-width:64ch">
     <li>One plan across demand, stock, purchasing and pricing &mdash; reconciled, not four screens that disagree</li>
