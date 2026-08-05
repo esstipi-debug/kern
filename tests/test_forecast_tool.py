@@ -85,12 +85,58 @@ def test_run_segments_and_picks_method_per_quadrant():
 def test_run_quantifies_value_add_vs_naive():
     report = fj.run(fj.prepare_records(_demand_df()))
 
-    # smooth and intermittent series are comfortably forecastable -> beat the naive baseline
     by = {s.name: s for s in report.skus}
-    assert by["A"].beats_naive is True
-    assert by["C"].beats_naive is True
+    assert by["A"].beats_naive is True          # smooth: a real win, on both scales
+    assert by["D"].beats_naive is True
     assert by["A"].fva > 0.0
     assert report.n_beating_naive >= 2
+
+
+def test_a_seasonal_series_is_scored_against_a_seasonal_naive_not_lag_1():
+    """B alternates low/high. Against a lag-1 naive a flat forecast looks great - the
+    benchmark is swinging +-20 every period. Against the seasonal naive it is 3.8x worse,
+    which is the truth: repeating last cycle beats the model outright."""
+    report = fj.run(fj.prepare_records(_demand_df()))
+
+    b = {s.name: s for s in report.skus}["B"]
+    assert b.season_length > 1
+    assert b.beats_naive is False
+    assert b.mase > 1.0
+
+
+def test_a_perfectly_repeating_series_reports_naive_exact_not_unvalidated():
+    """C is 10,0,10,0... The seasonal naive reproduces it exactly, so nothing can beat it.
+    That is a verdict, not a missing measurement, and it must not be reported as one."""
+    report = fj.run(fj.prepare_records(_demand_df()))
+
+    c = {s.name: s for s in report.skus}["C"]
+    assert c.benchmark_state == "exact"
+    assert c.beats_naive is False
+    assert any("exactly by the naive" in r.description for r in report.outcome.residuals)
+
+
+def test_the_gate_needs_both_scales_and_records_the_disagreement():
+    """MASE is MAE-based, so on intermittent demand it can bless a forecast of ~0.
+    RMSSE is the second lock; SKUs that pass one and fail the other are counted."""
+    report = fj.run(fj.prepare_records(_demand_df()))
+
+    for s in report.skus:
+        assert s.beats_naive is (s.beats_naive_mase and s.beats_naive_rmsse)
+    assert report.n_mase_only == sum(
+        1 for s in report.skus if s.beats_naive_mase and not s.beats_naive_rmsse
+    )
+
+
+def test_exceptional_periods_are_flagged_and_never_silently_cleaned():
+    spiky = dict(A=_SMOOTH.copy())
+    spiky["A"][6] = 400.0
+    report = fj.run(spiky)
+
+    a = report.skus[0]
+    assert a.n_outliers >= 1 and 6 in a.outlier_periods
+    assert report.n_skus_with_outliers == 1
+    # the input series is untouched: reporting is not mutating
+    assert spiky["A"][6] == 400.0
 
 
 def test_run_emits_ranked_policy_options_with_one_recommended():
@@ -170,7 +216,13 @@ def test_write_operational_one_row_per_sku(tmp_path):
     assert out["csv"].exists()
     df = pd.read_csv(out["csv"])
     assert len(df) == 4
-    assert set(df.columns) >= {"name", "quadrant", "adi", "cv2", "method", "forecast", "mase", "fva", "beats_naive"}
+    assert set(df.columns) >= {
+        "name", "quadrant", "adi", "cv2", "method", "forecast", "mase", "fva", "beats_naive",
+        # the audit trail for *what the value-add was measured against*, and what got flagged
+        "rmsse", "fva_rmsse", "beats_naive_mase", "beats_naive_rmsse",
+        "benchmark", "season_length", "n_outliers", "outlier_periods",
+    }
+    assert set(df["benchmark"]) <= {"naive", "seasonal_naive"}
 
 
 # -- routing ------------------------------------------------------------------

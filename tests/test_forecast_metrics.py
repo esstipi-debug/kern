@@ -4,7 +4,17 @@ import math
 
 import pytest
 
-from src.forecast_metrics import ForecastMetrics, compute_metrics, mae, mape, rmsse, wape
+from src.forecast_metrics import (
+    ForecastMetrics,
+    _naive_mae,
+    _naive_rmse,
+    compute_metrics,
+    mae,
+    mape,
+    mase,
+    rmsse,
+    wape,
+)
 
 
 def test_mae():
@@ -38,3 +48,34 @@ def test_compute_metrics_bundles_everything():
     assert m.bias == pytest.approx(1.25)  # mean(forecast - actual)
     assert m.wape == pytest.approx(35 / 405)
     assert m.mase == pytest.approx(8.75 / 12.5)  # naive MAE = mean([10,10,10,20]) = 12.5
+    assert m.season_length == 1  # default benchmark is the plain lag-1 naive
+
+
+def test_seasonal_naive_is_a_harder_benchmark_than_lag_1_on_seasonal_demand():
+    """The whole point of the season_length knob: a lag-1 naive flatters the model."""
+    train = [10, 40, 20, 5] * 5
+    actual, forecast = [10, 40, 20, 5], [12, 38, 22, 6]
+    lag1 = mase(actual, forecast, train, 1)
+    seasonal = mase(actual, forecast, train, 4)
+    # A perfect 4-cycle: the seasonal naive is exact, so nothing can beat it.
+    assert math.isinf(seasonal)
+    assert lag1 < 1.0  # ... whereas lag-1 would have called this a win
+
+
+def test_seasonal_naive_scales_by_the_same_period_last_cycle():
+    train = [10.0, 20.0, 12.0, 26.0, 14.0, 32.0]  # season length 2, drifting up
+    # naive errors at m=2: [2, 6, 2, 6] -> MAE 4.0 ; at m=1: [10,-8,14,-12,18] -> MAE 12.4
+    assert _naive_mae(train, 2) == pytest.approx(4.0)
+    assert _naive_mae(train, 1) == pytest.approx(62 / 5)
+    assert _naive_rmse(train, 2) == pytest.approx(math.sqrt(20.0))
+
+
+def test_train_shorter_than_the_season_gives_an_infinite_scaled_error():
+    """No usable benchmark must never look like a great score."""
+    assert math.isinf(mase([1, 2], [1, 2], [5.0, 6.0], 4))
+    assert math.isinf(rmsse([1, 2], [1, 2], [5.0, 6.0], 4))
+
+
+def test_season_length_below_one_is_rejected():
+    with pytest.raises(ValueError):
+        mase([1, 2], [1, 2], [1, 2, 3], 0)

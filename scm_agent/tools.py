@@ -1332,8 +1332,9 @@ def forecast_tool() -> Tool:
         description="Segment each SKU by forecastability (Syntetos-Boylan ADI x CV^2: smooth / "
                     "erratic / intermittent / lumpy), auto-select and backtest the matching method "
                     "(AutoETS/TSB when installed, else SES/Croston), quantify forecast value-add "
-                    "vs naive, and rank forecasting "
-                    "policies into an exec-ready, executable plan.",
+                    "against a naive baseline that is seasonal when the series is - requiring a "
+                    "win on both MASE and RMSSE - flag exceptional periods without cleaning them, "
+                    "and rank forecasting policies into an exec-ready, executable plan.",
         intent_keywords=(
             "forecast", "forecasting", "forecast demand", "demand forecast", "forecastability",
             "intermittent demand", "croston", "forecast accuracy", "forecast value add",
