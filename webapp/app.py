@@ -1630,11 +1630,14 @@ def stocky_alternative_page() -> HTMLResponse:
 
 @app.get("/one-plan")
 def one_plan_page() -> HTMLResponse:
-    """English AU/NZ agency landing page. Positions Kern as a fractional
-    planning team that works demand, stock, purchasing and pricing as a single
-    plan. CTAs into the SAME two real offers the stocky page uses -- no new
-    pricing is authored on the page (see webapp/one_plan_page.py's docstring for
-    the banned-words + fractional-team-economics guardrails)."""
+    """English AU/NZ landing page. Sells the served engagement as the ACQUISITION
+    CHANNEL -- a fractional planning team working demand, stock, purchasing and
+    pricing as a single plan -- while the product itself stays self-serve software
+    the client runs (operator decision, 2026-08-05). CTAs into the SAME two real
+    offers the stocky page uses -- no new pricing is authored on the page (see
+    webapp/one_plan_page.py's docstring for the banned-words +
+    fractional-team-economics guardrails, and for why the page must never position
+    the software as something you would rather not have)."""
     offer_starter = get_offer("starter-fundamentos")
     offer_diagnostico = get_offer("diagnostico-arranque")
     assert offer_starter is not None and offer_diagnostico is not None, (
