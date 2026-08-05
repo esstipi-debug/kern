@@ -22,6 +22,97 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-05 (c) — Sombreros: el motor YA ESTA; falta el puente. Decidida opcion A. **Cero codigo.**
+
+**La memoria vieja mentia** ("nada de codigo aun"): `src/hats.py` (533 lineas) + `src/hat_council.py`
+(214) estan mergeados y `hat_tension` / `hat_settlement` registradas. **No son agentes** — `Hat` es un
+dataclass descriptivo, la utilidad es funcion pura, no hablan ni llaman tools. Alcance: **una sola
+decision**, reabastecimiento `(Q, SL)`.
+
+**Son estructura portante:** `src/hats.py` lo importan 7 modulos de produccion (`hat_council`,
+`cross_impact`, `objection`, `client_profile`, `bateria/comprobaciones`, `jobs/hats_job`,
+`jobs/cross_impact_job`). Tocar `HAT_KEYS` toca `cross_impact` (#48).
+
+**Lo que falta:** `Hat.mode_key` / `Hat.tool_keys` estan declarados y **nadie los resuelve** — se leen
+solo en `tests/test_hats.py:101`, que verifica que el string sea valido. `scm_agent/modes.py` SI
+recorta el registro (`build_registry` + `orchestrator_for`, que ya setea `persona`); `src/hats.py` no
+cambia nada de lo que Kern ve. Kern puntua desde 4 angulos; **no puede ponerse el sombrero**.
+
+**DECISION (el operador delego la eleccion): opcion A, con ROSTER VARIABLE.** Resolver
+`mode_key`/`tool_keys` contra `build_registry`, **del lado `scm_agent`** (D7: `src/` nunca importa
+`scm_agent`). Roster variable porque `src/client_profile.py:118` ya guarda umbrales por cliente
+keyeados por `HAT_KEYS` — el elenco es la continuacion natural.
+
+**Trampa a cerrar en la misma tarea:** `src/objection.py:33` hardcodea
+`MAXIMIZED_HATS = {HAT_COMERCIAL}`. Con roster variable, un sombrero nuevo entraria tratado como
+minimizador **en silencio** y `cross_impact` invertiria el veredicto sin fallar. Regla: el sombrero
+declara su direccion; no la infiere una lista aparte.
+
+**B** (el sombrero opina sobre cualquier decision) **diferido** — es una tarea por tipo de decision,
+cada una con su grilla de candidatos y su costo-juez en $. **C** (persona LLM que argumenta)
+**descartado**: rompe el determinismo, que es la propiedad que Liu confirma como motor de adopcion.
+
+**Argumento de venta:** Liu p.30 exige compromiso de alta direccion y cultura entre areas, y no da
+ningun mecanismo (cero "change management" en 388 pags). Los sombreros son ese mecanismo.
+
+## 2026-08-05 (b) — Liu, *Supply Chain Analytics* (Palgrave 2022) digerido. **Cero codigo.**
+
+388 pags leidas completas en 4 carriles paralelos. **No ingerido al grafo L3** — el objetivo era
+acordar el producto, no sumar una fuente. Capa de texto limpia (`pypdf` directo). ~40% del libro
+es tutorial de pandas/sklearn sin dominio. Detalle completo en la memoria
+`liu-supply-chain-analytics-findings`.
+
+**Veredicto:** confirma la arquitectura, ataca el modelo de entrega y el vocabulario.
+
+**CONFIRMA:** el nivel prescriptivo con el ejemplo textual "safety stock and inventory level
+recommendations for different SKUs" (p.26); simple > sofisticado como criterio de adopcion (p.29);
+capa de decision sobre el sistema de registro, con Nike/i2 como modo de falla documentado (p.37-38);
+EOQ + safety stock + ROP + (R,S) son los **cuatro unicos** metodos de inventario del libro
+(p.241-248); VRP heuristico es el estandar, no una concesion (p.367).
+
+**Dos puntos donde Kern es MAS correcto que el libro** (verificado en codigo): Liu confunde cycle
+service level con fill rate en p.246 (`src/safety_stock.py:25` los separa), y usa sigma_LT sin
+preguntar de donde sale (Kern declara `lead_time_std_source`, `jobs/deliverables.py:48`).
+
+**CONTRADICE — las tres que mas pesan:**
+1. **Kraljic no aparece ni una vez en 388 pags.** Liu usa scorecard ponderado (p.183) + matriz
+   Performance x Criticality -> Strategic/Develop/Stable/Drop (p.185).
+2. **`alpha` fijo (0,3 / 0,1) sin respaldo** — Liu exige elegirlo por MAD/MSE (p.287-288). Y **SES
+   solo pronostica un periodo** ("leaving long-term forecasts 'flat'", p.288), sin Holt ni
+   Holt-Winters como salida.
+3. **El landed cost recibe el flete como escalar**; Liu p.335 lo calcula:
+   `max(peso bruto, volumen/6000)` aereo. Subestima todo producto voluminoso y liviano.
+Ademas: p-median toma `p` como dato mientras Liu resuelve **cuantos abrir y de que porte** (p.349).
+
+**CAMBIA la definicion del producto:**
+- **"Analytics" es la palabra equivocada.** p.30 separa OR de SCA; el Prefacio (p.6) dice "no further
+  topics from OR are included". Medido asi, el grueso de las 50 tools es OR. Afecta el material en
+  ingles AU/NZ, no el motor.
+- **Self-serve queda con condicion de diseno:** p.29 condiciona "Meaningful"/"Actionable" a un
+  experto humano; el modo de falla nombrado es output "correcto e irrelevante". El producto tiene que
+  llevar adentro ese juicio (historia minima por metodo, rechazo de SKUs sin dato, gate de
+  confiabilidad del pronostico).
+- **Timely = proactivo, no on-demand** (p.30). Conecta con la config de cadencia no cableada.
+- **Integracion > modelo:** encuesta Logility/APICS n>1000 (p.28): 28% quiere mezclar datos
+  multi-sistema, 19% quiere ML para pronostico. Cin7/Unleashed no es plomeria previa al producto.
+
+**Silencios (barrido regex, cero ocurrencias en todo el libro):** S&OP, DDMRP, Croston, demanda
+intermitente, fill rate, OTIF, SCOR, digital twin, carbono, cost-to-serve, Kraljic, postponement,
+TCO, GDPR, gestion del cambio. Tampoco hay **historia minima declarada** en ninguna pagina.
+Corolario de venta: **nadie va a pedir Croston por su nombre** — venderlo como "SKUs que se venden
+3 veces al mes".
+
+**Hallazgos sueltos, sin arreglar:**
+- `src/landed_cost.py:17` incluye `"FdA"` en `_GOODS_ONLY_DUTY_BASE` — no es un Incoterm (los 11 de
+  2020 son EXW FCA CPT CIP DAP DPU DDP FAS FOB CFR CIF). Cae en la base imponible de aduana.
+- README sigue en lenguaje de agencia y dice "25 curated sources" contra 28 en CLAUDE.md.
+- **No existe Tracking Signal en el repo** (Liu p.312, `TS = sum(Et)/MAD`, fuera de +-6 = modelo roto
+  o cambio de regimen). Guard de degradacion silenciosa que no pide dato nuevo.
+
+**Camino acordado:** A (vocabulario + README) -> C (meter el juicio del experto en el producto) ->
+B (Tracking Signal, barrido de alpha, chargeable weight/PVD), B recien con CI verde.
+**Los 3 bloqueos de la entrada siguiente siguen intactos: ninguno se movio en esta ventana.**
+
 ## 2026-08-05 (cierre de ventana) — DECISION de producto + 3 bloqueos abiertos
 
 ### Lo que se decidio (revierte cosas que estaban en memoria)
