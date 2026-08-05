@@ -5,12 +5,26 @@ pricing, revenue management, supply chain management, inventory optimization,
 manufacturing planning & control, operations management, logistics & operations
 strategy, sustainable logistics, **and supply-chain leadership**) plus a
 **25th source, AI applied to supply chains**, a **26th source, Kern's own
-capability↔role atlas**, and a **27th source, supply chain risk & resilience**
-(see below). This is the **domain knowledge** layer for the agent — distinct
-from the repo's `graphify-out/`, which graphs the *code*.
+capability↔role atlas**, a **27th source, supply chain risk & resilience**, and
+a **28th source, data science for supply chain forecasting** (see below). This
+is the **domain knowledge** layer for the agent — distinct from the repo's
+`graphify-out/`, which graphs the *code*.
 
-- `graph.json` — 3002 nodes · 6141 links · 202 communities (GraphRAG-ready).
-  `GRAPH_REPORT.md` says 3001 nodes / 6113 edges / 201 communities: graphify builds
+> **Three counts, all correct, none a typo for the others.**
+> **28** curated works — what this README numbers, Kern's own capability atlas included.
+> **27** curated *external* works — what `/how-it-works` claims to prospects, which
+> excludes the atlas because it is Kern's own document, not an external source.
+> **36** distinct `source_file` values in `graph.json` — several works entered as
+> per-chapter PDFs (`ch01-cachon_ch02-tang.pdf`, `ch16-lee-shen-qi-chen.pdf`, …) and as
+> individual arXiv papers. The bridge: 35 external files − 9 chapter files + 1 for the
+> volume they belong to = 27, +1 for the atlas = 28.
+> `tests/test_how_it_works_page.py::test_source_count_claim_still_matches_the_books_graph`
+> pins the file count so adding a source cannot drift the page silently.
+> Marketing collateral across `documentation/` still says "25 fuentes" in many places —
+> stale since the 26th source, and deliberately not chased here.
+
+- `graph.json` — 3062 nodes · 6364 links · 204 communities (GraphRAG-ready).
+  `GRAPH_REPORT.md` says 3061 nodes / 6336 edges / 204 communities: graphify builds
   a simple undirected graph, which drops one malformed pre-existing node (a
   `reminder::` node with no `source_file`) and collapses 28 links that share
   endpoints but carry a different `relation`. Both numbers are correct for what
@@ -203,6 +217,34 @@ Net effect on citations: `digital_twin`, `price_watch` and `risk` improved
 (price_watch recovered a pre-existing zero), `launch_readiness` and
 `odoo_replenishment` held, `vehicle_routing` went to an honest zero.
 
+**Vandeput**, *Data Science for Supply Chain Forecasting* (De Gruyter, 2nd ed. 2021)
+is the **28th source** — 60 new nodes / 223 edges, landing on **38 pre-existing
+canonical nodes**, so it is a bridge rather than an island. Not to be confused with
+the same author's *Inventory Optimization* (2020), already here since the inventory
+layer. It fills the graph's largest forecasting hole: the exponential-smoothing family
+beyond SES (double, damped trend, triple, additive vs multiplicative seasonality),
+outlier handling on demand history, the ML ladder (trees → XGBoost → neural networks)
+and — the part with no prior coverage at all — **the management of a forecasting
+process**: Oliva & Watson's intentional/unintentional bias split, and Gilliland's FVA
+applied per team rather than per model.
+
+Several nodes exist specifically to make an *insight* citable rather than just a
+method: `mae_optimum_is_the_median` (why an MAE-based gate blesses a forecast of zero
+on intermittent demand), `seasonal_naive_benchmark` (why scoring seasonal demand
+against a lag-1 naive inflates the reported value-add), `forecast_error_outlier_threshold`
+and `iterative_outlier_threshold_refinement` (why the threshold goes on the error's
+spread, not the demand's), and `sales_versus_demand_blind_spot`. These are the L3
+anchors for the corrections in PR #232.
+
+**This source's extraction lives in the repo, not in the gitignored rebuild tree.**
+`scripts/merge_vandeput_forecasting.py` carries its nodes and edges inline, so
+`graph.json` is reproducible from a clean clone with no API key and no raw corpus —
+unlike the chunk-file sources, which need both. Only concept labels and one-line
+descriptions are stored; none of the book's text is reproduced. It adds one guard the
+other scripts lack: canonical ids the book only *attaches* to are declared in `BRIDGES`
+and asserted to exist, so a typo fails loudly instead of silently forking a concept
+that already has a node under the correct id.
+
 ## Intended use (L3)
 
 `scm_agent` should query this graph for domain grounding: definitions, which
@@ -261,6 +303,8 @@ graph's `source_location` carries chapter references for citations.
 Regenerate / extend with `/graphify` over the book PDFs, then refresh these files.
 Per-source helper scripts live in `scripts/`, in run order:
 
+0. `merge_vandeput_forecasting.py` — self-contained (extraction inline, no chunk
+   JSONs, no API key). Supports `--dry-run`.
 1. `merge_khan_resilience.py` — chunk JSONs → canonical graph. Applies every
    transformation the committed artifact needs (namespacing, `source_file`
    normalisation, rubric snapping, low-confidence pruning, parallel-edge

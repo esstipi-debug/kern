@@ -100,29 +100,34 @@ def test_stepper_renders_all_stages() -> None:
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
 
 
-def test_page_mentions_49_tools_and_26_sources_not_stale_numbers() -> None:
+def test_page_mentions_49_tools_and_27_sources_not_stale_numbers() -> None:
     """La pagina no puede inflar el conteo de fuentes.
 
     Esta aserto estuvo invertida: fijaba "33" y prohibia "25 curated" como si
     fuera el numero viejo del README. Un recuento de knowledge/scm-books/graph.json
-    (2026-07-24) mostro lo contrario: el grafo tiene 35 source_file distintos, pero
+    (2026-07-24) mostro lo contrario: el grafo tenia 35 source_file distintos, pero
     9 son capitulos de un mismo volumen editado (Cohen & Dai) y 1 era el propio
     KERN_ATLAS_SOMBREROS_SCM.md de Kern -- o sea que 33 contaba capitulos como
-    obras enteras y contaba un documento interno como literatura del campo. La
-    cifra externa honesta es 26. 33 no lo es.
+    obras enteras y contaba un documento interno como literatura del campo.
+
+    2026-08-05: ingresa Vandeput *Data Science for SC Forecasting* como fuente
+    externa nueva -> 36 source_file (35 externos) -> 27 obras externas. El 26 pasa
+    a la lista de superados. Ojo al agregar la proxima: el numero correcto de hoy
+    es el numero prohibido de manana, asi que hay que MOVER la cifra de una lista
+    a la otra, no solo agregarla.
     """
     html = render_how_it_works_html()
     assert "49" in html
-    assert "26 curated external sources" in html
+    assert "27 curated external sources" in html
     # Every superseded source count this page has carried or been tempted by.
-    for stale in ("33 curated", "25 curated", "35 curated", "27 curated"):
+    for stale in ("33 curated", "25 curated", "26 curated", "35 curated", "36 curated"):
         assert stale not in html, stale
 
 
 def test_source_count_claim_still_matches_the_books_graph() -> None:
     """The source count is a claim made to prospects, so it gets a tripwire too.
 
-    The page says "26 curated external sources". That number is not directly
+    The page says "27 curated external sources". That number is not directly
     countable from graph.json -- it is distinct external WORKS, whereas the
     graph stores files: 9 of them are single chapters of edited volumes, and
     KERN_ATLAS_SOMBREROS_SCM.md is Kern's own internal doc, not a curated
@@ -133,6 +138,14 @@ def test_source_count_claim_still_matches_the_books_graph() -> None:
     documents the mapping. Add a book and this fails, forcing whoever adds it
     to re-derive the works count instead of letting the page quietly drift,
     which is exactly how it got stuck at a stale 33.
+
+    The arithmetic, spelled out so the next person does not have to re-derive it:
+    35 external files - 9 chapter files + 1 for the edited volume they belong to
+    = 27 external works. knowledge/scm-books/README.md says "28 sources" for the
+    same graph; the difference is exactly KERN_ATLAS_SOMBREROS_SCM.md, which that
+    README counts (it is a curated source of the graph) and this page does not
+    (it is not *external*, and claiming it to a prospect would be the overclaim).
+    Both numbers are right for what they describe; neither is a typo for the other.
     """
     import json
     from pathlib import Path
@@ -147,7 +160,7 @@ def test_source_count_claim_still_matches_the_books_graph() -> None:
     }
     external = {f for f in files if not f.startswith("KERN_")}
 
-    assert len(external) == 34, sorted(external)
+    assert len(external) == 35, sorted(external)
     assert "KERN_ATLAS_SOMBREROS_SCM.md" in files  # the internal doc is in the graph...
     assert "KERN_ATLAS_SOMBREROS_SCM.md" not in external  # ...and excluded from the claim
 
