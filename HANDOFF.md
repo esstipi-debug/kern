@@ -22,6 +22,40 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-05 — L3: Vandeput *Data Science for SC Forecasting* como fuente #28 (PR #233, draft)
+
+Ingerido el libro que tambien origino **PR #232** (correcciones de benchmark/gate/outliers en
+`jobs/forecast_job.py`; esa rama es `fix/forecast-benchmark-gate-outliers` y lleva su propia
+entrada de handoff). Los dos PR son independientes.
+
+**Sin clave LLM** — el paso que necesita un LLM es la extraccion, y la hizo quien leyo el libro
+completo. Lo que dice CLAUDE.md ("el grafo de libros necesita Kimi/Gemini") es un default de
+costo para rebuilds masivos, no una regla.
+
+3002→3062 nodos, 6141→6364 aristas, 202→204 comunidades; **38 nodos canonicos preexistentes**
+reciben aristas, o sea entra como puente y no como isla.
+
+**Patron nuevo y preferible:** `scripts/merge_vandeput_forecasting.py` lleva la extraccion
+**inline**. Los otros scripts por libro leen chunk JSONs desde el gitignoreado
+`knowledge/scm-books-rebuild/`, asi que `graph.json` solo era reproducible con ese working tree
++ clave viva. Este se reproduce desde un clone limpio. Guard extra que los otros no tienen:
+`BRIDGES` verifica que los ids canonicos a los que el libro solo se engancha existan de verdad,
+asi un typo falla fuerte en vez de forkear en silencio un concepto ya existente.
+
+**Techo del pool de citas remedido y NO se movio** — ventana valida [16, 17], `_CANDIDATE_POOL`
+ya esta en 16. Que no se mueva tambien es un resultado; habia que medirlo para saberlo.
+
+**Conteos de fuentes reconciliados** (el guard de /how-it-works fallo, que es para lo que
+existe): 28 obras curadas / 27 externas / 36 `source_file` distintos. Actualizados la pagina,
+los dos guards, CLAUDE.md y el README. El material comercial en `documentation/` sigue diciendo
+"25 fuentes" **a proposito** — son guiones de video y avisos, es decision del usuario.
+
+**Estado:** draft, suite completa verde (4630), ruff sin errores nuevos. CI no puede correr:
+falta el secret `NOSILO_CORE_TOKEN` y `main` esta rojo desde el 2026-08-04 (ajeno a este PR).
+
+**Siguiente, cuando entre #232:** anclar `TOOL_CONCEPTS["forecast"]` a `outlier_detection` para
+que el tool pueda citar lo que hace. Deliberadamente fuera de este PR.
+
 ## 2026-08-03 (cierre de ventana) — `discovery_brief`: brainstorm INTERRUMPIDO con 4 decisiones cerradas
 
 Sub-proyecto **3 de 4** del Plan SCM-FDE. **Cero codigo, cero spec, cero plan.** El brainstorm
