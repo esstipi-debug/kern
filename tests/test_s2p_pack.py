@@ -11,6 +11,10 @@ import json
 from decimal import Decimal
 
 import pytest
+from nosilo_core.guided import ESCALATED, HANDOFF, OPTIONS, verify_guided
+from nosilo_core.registry import ToolRegistry
+from nosilo_core.types import STATUS_NEEDS_DATA, STATUS_OK, JobRequest
+
 from nosilo_core.access import (
     ALLOW,
     DROP,
@@ -22,10 +26,6 @@ from nosilo_core.access import (
     Rule,
 )
 from nosilo_core.entities import EntityTypeRegistry, SqliteEntityStore
-from nosilo_core.guided import ESCALATED, HANDOFF, OPTIONS, verify_guided
-from nosilo_core.registry import ToolRegistry
-from nosilo_core.types import STATUS_NEEDS_DATA, STATUS_OK, JobRequest
-
 from packs.source_to_pay import (
     PURCHASE_ORDER,
     SUPPLIER_INVOICE,

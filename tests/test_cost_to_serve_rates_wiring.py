@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-from nosilo_core import llm
 from nosilo_core.types import JobRequest
 
+from nosilo_core import llm
 from scm_agent import tools
 from src.cost_to_serve import SegmentActivity, ServiceCostRates, analyze_portfolio
 

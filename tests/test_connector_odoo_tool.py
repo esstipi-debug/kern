@@ -8,10 +8,10 @@ with no network or API key.
 
 from pathlib import Path
 
-from nosilo_core import llm
 from nosilo_core.guided import ESCALATED, OPTIONS, passed_guided
 
 from jobs import odoo_job
+from nosilo_core import llm
 from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.connectors.odoo import InMemoryOdoo, demo_odoo

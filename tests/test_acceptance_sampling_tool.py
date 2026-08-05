@@ -3,10 +3,10 @@
 from pathlib import Path
 
 import pandas as pd
-from nosilo_core import llm
 from nosilo_core.guided import OPTIONS
 
 from jobs import acceptance_sampling_job as asj
+from nosilo_core import llm
 from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 

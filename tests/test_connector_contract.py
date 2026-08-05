@@ -40,8 +40,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from nosilo_core import writeback  # noqa: E402
 from nosilo_core.writeback import ABSENT, InMemoryStore  # noqa: E402
+
+from nosilo_core import writeback  # noqa: E402
 from src.connectors.excel import ExcelWorkbookStore  # noqa: E402
 from src.connectors.meli_prices import InMemoryMeli, MeliPriceStore  # noqa: E402
 from src.connectors.odoo import InMemoryOdoo  # noqa: E402

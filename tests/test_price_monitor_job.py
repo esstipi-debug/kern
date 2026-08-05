@@ -39,7 +39,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import httpx
-from nosilo_core import llm
 from nosilo_core.types import STATUS_OK
 
 from jobs.price_monitor import (
@@ -50,6 +49,7 @@ from jobs.price_monitor import (
     run_price_monitor_cycle,
 )
 from jobs.scheduler import JobRegistry
+from nosilo_core import llm
 from scm_agent import event_intent as event_intent_module
 from scm_agent import tools
 from scm_agent.event_intent import DEFAULT_ROUTING_PATH, handle_event

@@ -38,12 +38,12 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
+from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
+from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 
 from nosilo_core import writeback
-from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
-from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 from src.connectors.excel import ExcelWorkbookStore
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
