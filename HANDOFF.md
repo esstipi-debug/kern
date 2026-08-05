@@ -22,6 +22,77 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-05 (cierre de ventana) — DECISION de producto + 3 bloqueos abiertos
+
+### Lo que se decidio (revierte cosas que estaban en memoria)
+
+- **Kern es software SELF-SERVE**, el cliente lo corre solo. **Revierte el pivot a agencia.**
+  Invierte que es urgente: prod, CI, onboarding y control de acceso pasan a **ser** el producto.
+- **Beachhead = AU/NZ via Cin7/Unleashed.** Quedan fuera de esta etapa congelados HORECA Chile
+  y el ICP LATAM amplio. Implica conectores Cin7/Unleashed (hoy hay Odoo y Excel) y material en ingles.
+- **Prioridad #1 = destrabar CI y deploy.** Nada de motor nuevo hasta que la cadena de
+  integracion funcione. PR #232 y #233 entran a main primero.
+- Despues de destrabar: **cap. 6 de Vandeput, optimizador de parametros**.
+
+### PENDIENTE 1 — CI muerta, bloquea todo (accion del usuario)
+
+Falta el secret `NOSILO_CORE_TOKEN` en `esstipi-debug/kern`. Los 4 jobs mueren en ~8 s en el
+step "Authenticate to the private core"; `gh secret list` devuelve vacio; `main` rojo desde el
+2026-08-04. Hace falta un PAT con lectura sobre `esstipi-debug/nosilo-core`. **Ninguna rama
+puede ir a verde hasta eso.** Verificacion mientras tanto: solo local.
+
+### PENDIENTE 2 — POLICY de acceso: falta CODIGO, no solo una decision
+
+**El diagnostico viejo estaba mal y quedo corregido.** "Configurar la POLICY en Fly" **no es
+una opcion**: `webapp/security.py:55` declara `POLICY: PolicySet | None = None` y **nadie se lo
+asigna nunca** — no hay loader por env, ni por archivo, ni factory. El docstring promete una
+capacidad que no existe. `nosilo_core.access` expone las primitivas (`PolicySet`, `Rule`,
+`FieldPolicy`, `Classification`, `PolicyEngine`) y **ningun** `load`/`from_env`/`from_json`.
+
+Salidas reales: (a) apagar `LINCHPIN_REQUIRE_SECURE`, que apaga el guard a proposito e implica
+"every principal is permitted every action" — inaceptable en self-serve; (b) **escribir el
+loader que falta** + que el usuario decida que dice la politica (principals, capabilities,
+clasificacion de campos).
+
+Propuesta puesta sobre la mesa y **sin responder**: escribir el loader con un default minimo y
+explicito (humano operador todo; agente lee y propone pero sin writeback irreversible; servicio
+solo lectura) para que el usuario ajuste sobre algo concreto. **No empezar sin su OK.**
+
+### PENDIENTE 3 — prod no corre lo que dice correr
+
+El Dockerfile instala `.[web,mcp,pricing-intel,dataquality]` — **sin el extra `forecast`**, que
+es donde vive `statsforecast`. Verificado corriendo el motor con y sin la libreria: en prod sale
+`ses x6, croston x2`, nunca `auto_ets`/`tsb`, pese a que la descripcion del tool promete
+AutoETS/TSB. El giro: la precision es casi identica (MASE 3,02 vs 3,14 en Olist), o sea **el
+cuello no es la sofisticacion del modelo** — es que ninguno de los dos ve tendencia ni estacion
+y `alpha` esta clavado en un literal. En self-serve esto es brecha entre lo que el producto
+afirma y lo que hace, en manos del cliente. Decision pendiente: sumar el extra (toca la cadena
+de boot, donde ya mordio `bs4`) o corregir lo que se afirma.
+
+### Estado de los dos PR (ambos draft, verdes localmente, sin CI)
+
+- **#232** `fix/forecast-benchmark-gate-outliers` — naive estacional, gate MASE+RMSSE,
+  `src/outliers.py`. Suite 4662 verde. `beats_naive` se vuelve mas estricto **a proposito**.
+- **#233** `feat/l3-vandeput-forecasting` — el libro como fuente L3 #28 (+60 nodos, +223
+  aristas, 38 puentes). Suite 4630 verde. Techo del pool de citas remedido: **no se movio**,
+  ventana valida [16, 17].
+- Encadenado, no antes de que entre #232: anclar `TOOL_CONCEPTS["forecast"]` a
+  `outlier_detection` para que el tool pueda citar lo que hace.
+
+### cavecrew NO esta instalado
+
+El usuario pidio usar cavecrew **siempre** en este repo. La skill carga sus instrucciones pero
+`cavecrew-investigator` / `cavecrew-builder` / `cavecrew-reviewer` **no existen** en el registro
+de agentes (Agent tool: "type not found"). Faltan las definiciones en `~/.claude/agents/`.
+Hasta que se instalen: `Explore` vanilla o hilo principal. **Avisar, nunca simular que se delego.**
+
+### Siguiente tarea acordada
+
+**Digerir un libro mas antes de seguir:** Kurt Y. Liu, *Supply Chain Analytics* (Palgrave
+Macmillan, 2022), 388 pags, en la carpeta `Documents\books_0099\`. Capa de texto limpia (a
+diferencia de Vandeput, que venia cifrado sin `ToUnicode`). El objetivo declarado es
+**ponerse de acuerdo sobre el producto**, no codear todavia.
+
 ## 2026-08-05 — L3: Vandeput *Data Science for SC Forecasting* como fuente #28 (PR #233, draft)
 
 Ingerido el libro que tambien origino **PR #232** (correcciones de benchmark/gate/outliers en
