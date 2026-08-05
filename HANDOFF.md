@@ -22,6 +22,41 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-05 — forecast: naive estacional, gate doble y outliers (PR #232, draft)
+
+Salio de leer completo **Vandeput, _Data Science for Supply Chain Forecasting_ (2021, 2ed)** y
+contrastarlo contra el codigo. Ese libro **no esta en el grafo L3** (ahi esta *Inventory
+Optimization* 2020, que es el otro) — queda como fuente candidata a ingesta. El PDF viene sin
+`ToUnicode` y pypdf devuelve texto cifrado; el mapa de descifrado esta en la memoria
+`vandeput-forecasting-book-findings`.
+
+**Lo que se arreglo** (3 bugs de exactitud en numeros que Kern ya publicaba, + 1 modulo que
+faltaba). Detalle completo en el cuerpo del PR #232:
+
+1. El benchmark de MASE/RMSSE era lag-1 para toda serie -> el value-add salia inflado en
+   demanda estacional. Nuevo `src/seasonality.py`; la estacion se detecta dentro de
+   `_backtest` sobre el train, no se puede pasar desde afuera (fuga de datos).
+2. El gate era `mase < 1`, o sea MAE puro, que apunta a la **mediana** de la demanda — 0 en
+   intermitente, justo los SKU que este job rutea a TSB/Croston. Ahora exige MASE **y** RMSSE.
+3. `MASE=inf` significaba a la vez "sin benchmark" y "benchmark exacto". `_benchmark_state`
+   separa `scaled` / `exact` / `unavailable`.
+4. `src/outliers.py` nuevo: umbral sobre la dispersion del **error**, banda por fase, mediana
+   movil centrada. **Solo reporta**, no limpia (limpiar cambiaria el pronostico de todos los
+   clientes en silencio).
+
+**Corrida real** (`data/sample_demand_portfolio_olist.csv`, 8 SKU): **0/8** le ganan al naive,
+mean MASE 3.16, 22 periodos excepcionales en los 8 SKU. Sobrio y honesto: con el benchmark
+viejo varios de esos habrian pasado.
+
+**Estado:** PR #232 en **draft**, verde localmente (4662 tests, ~14 min) y sin errores nuevos de
+ruff. **CI no puede correr**: `main` esta rojo desde el 2026-08-04 porque falta el secret
+`NOSILO_CORE_TOKEN` (ver memoria `kern-ci-rota-nosilo-core-token`). No es de esta rama. Sin deploy.
+
+**Proximo paso:** cargar el secret, dejar que corra la CI, y recien ahi sacar el draft. Lo que
+sigue del libro, ya diseñado pero sin empezar: **FVA de proceso** (medir delta de error Y horas
+por cada equipo que toca el pronostico, Gilliland/cap.27) — es un entregable vendible, no una
+mejora de motor.
+
 ## 2026-08-03 (cierre de ventana) — `discovery_brief`: brainstorm INTERRUMPIDO con 4 decisiones cerradas
 
 Sub-proyecto **3 de 4** del Plan SCM-FDE. **Cero codigo, cero spec, cero plan.** El brainstorm
