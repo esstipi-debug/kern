@@ -70,9 +70,22 @@ def main() -> int:
     p.add_argument("--semanas", type=int, default=52)
     p.add_argument("--replan-cada", type=int, default=4)
     p.add_argument("--out", default="deliverables/descomposicion")
+    p.add_argument("--inyectores", default=None, metavar="A,B",
+                   help="restringe el barrido a estos inyectores (por defecto, "
+                        "todos los del nivel). Sirve para gastar la muestra donde "
+                        "hace falta: una primera pasada sobre los cuatro senala un "
+                        "sospechoso, y confirmarlo con el doble de mundos cuesta la "
+                        "mitad si solo se corren control y sospechoso")
     args = p.parse_args()
 
     inyectores = nombres_de_inyectores(args.nivel)
+    if args.inyectores:
+        pedidos = tuple(n.strip() for n in args.inyectores.split(","))
+        desconocidos = set(pedidos) - set(inyectores)
+        if desconocidos:
+            p.error(f"inyectores desconocidos en el nivel {args.nivel}: "
+                    f"{sorted(desconocidos)}; conocidos: {list(inyectores)}")
+        inyectores = pedidos
     semillas = tuple(range(args.semilla_inicial, args.semilla_inicial + args.mundos))
     raiz = Path(args.out)
 
