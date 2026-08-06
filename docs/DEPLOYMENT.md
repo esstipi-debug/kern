@@ -13,6 +13,13 @@ build path resolves it over `git+https`, so every build path needs a credential.
 Without one the build fails at dependency resolution, before any of the rest of
 this document matters.
 
+> **Building on your own machine? You do not need a token.** If `nosilo_core` is
+> already installed in your venv there is nothing to fetch: pack it into a wheel,
+> drop it in `vendor/`, and build with `--build-arg CORE_FROM_WHEEL=1`. Full
+> recipe in [`vendor/README.md`](../vendor/README.md). The token below is for the
+> paths that build on a machine that has never had the package — CI, Fly, Railway
+> — which is every path in this section.
+
 Create the token once:
 
 1. GitHub → Settings → Developer settings → **Fine-grained personal access token**

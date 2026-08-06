@@ -52,18 +52,47 @@ COPY . .
 # image. Supplied via env, it exists only in this process. The secret mount does
 # the same job for the file itself: /run/secrets/nosilo_token is never written to
 # a layer. Between the two, nothing about the token survives this RUN.
+# Offline escape hatch for LOCAL builds (CORE_FROM_WHEEL=1). The secret above is
+# the right mechanism for CI and for the operator's deploy, and it is pure
+# friction on a developer machine where nosilo_core is already installed in the
+# venv: there is nothing to fetch. `vendor/` is versioned (empty but for its
+# README) precisely so this COPY cannot fail; the wheels inside are gitignored,
+# because a private dependency's wheel does not belong in this repo.
+#
+# The `sed` on that path is load-bearing, not tidying: pyproject declares
+# nosilo-core as a DIRECT URL, and pip re-resolves a direct-URL requirement even
+# when a matching version is already installed. Flattening it to a bare name
+# INSIDE the image is what lets pip accept the wheel as satisfying it. The
+# working tree's pyproject.toml is never touched.
+ARG CORE_FROM_WHEEL=0
+COPY vendor/ /wheels/
+
 RUN --mount=type=secret,id=nosilo_token \
-    if [ ! -s /run/secrets/nosilo_token ]; then \
-        echo "ERROR: build secret 'nosilo_token' is missing or empty." >&2; \
-        echo "nosilo-core is a private dependency. Build with:" >&2; \
-        echo "  docker build --secret id=nosilo_token,env=NOSILO_CORE_TOKEN ..." >&2; \
-        echo "See docs/DEPLOYMENT.md." >&2; \
-        exit 1; \
-    fi; \
-    GIT_CONFIG_COUNT=1 \
-    GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/nosilo_token)@github.com/.insteadOf" \
-    GIT_CONFIG_VALUE_0="https://github.com/" \
-    pip install -e ".[web,mcp,pricing-intel,dataquality]"
+    if [ "${CORE_FROM_WHEEL}" = "1" ]; then \
+        set -e; \
+        if ! ls /wheels/nosilo_core-*.whl >/dev/null 2>&1; then \
+            echo "ERROR: CORE_FROM_WHEEL=1 but no nosilo_core wheel in vendor/." >&2; \
+            echo "See vendor/README.md for how to pack the installed package." >&2; \
+            exit 1; \
+        fi; \
+        pip install /wheels/nosilo_core-*.whl; \
+        sed -i 's|"nosilo-core @ git+https://[^"]*"|"nosilo-core"|' pyproject.toml; \
+        pip install -e ".[web,mcp,pricing-intel,dataquality]"; \
+    else \
+        if [ ! -s /run/secrets/nosilo_token ]; then \
+            echo "ERROR: build secret 'nosilo_token' is missing or empty." >&2; \
+            echo "nosilo-core is a private dependency. Build with:" >&2; \
+            echo "  docker build --secret id=nosilo_token,env=NOSILO_CORE_TOKEN ..." >&2; \
+            echo "...or build offline from a local wheel:" >&2; \
+            echo "  docker build --build-arg CORE_FROM_WHEEL=1 ...  (see vendor/README.md)" >&2; \
+            echo "See docs/DEPLOYMENT.md." >&2; \
+            exit 1; \
+        fi; \
+        GIT_CONFIG_COUNT=1 \
+        GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/nosilo_token)@github.com/.insteadOf" \
+        GIT_CONFIG_VALUE_0="https://github.com/" \
+        pip install -e ".[web,mcp,pricing-intel,dataquality]"; \
+    fi
 
 EXPOSE 8000
 
