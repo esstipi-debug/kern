@@ -101,27 +101,40 @@ desordena de la ruta crítica.
 Lo que la imagen SÍ debe hacer: arrancar con un banner inequívoco cuando corre sin API key,
 en vez de arrancar callada o morir.
 
-## Problema 3 — la imagen tiene que correr lo que dice correr
+## Problema 3 — RESUELTO, la premisa estaba vieja
 
-Hoy el Dockerfile instala `.[web,mcp,pricing-intel,dataquality]` — **sin el extra `forecast`**, donde
-vive `statsforecast`. Verificado: prod saca `ses x6, croston x2`, nunca `auto_ets`/`tsb`, pese a que
-la descripción del tool promete AutoETS/TSB.
+**Corrección 2026-08-06 (verificado superficie por superficie).** La versión previa de esta spec
+afirmaba que "la descripción del tool promete AutoETS/TSB" mientras la imagen corre SES/Croston, y
+declaraba eso bloqueante para publicar. **Es falso.** Todas las superficies ya son condicionales:
 
-En una imagen que corre un tercero eso deja de ser cosmético: es una brecha entre lo que el producto
-afirma y lo que hace, en manos del cliente, sin nadie que la explique. **Hay que cerrarla antes de
-publicar**, en una de las dos direcciones:
+| Superficie | Texto real |
+|---|---|
+| `scm_agent/tools.py:1334` | "AutoETS/TSB **when installed**, else SES/Croston" |
+| `webapp/mcp_tool_specs.py:104` | "SES/Croston, or AutoETS/TSB **when installed**" |
+| `webapp/app.py:514` | "auto (AutoETS/TSB **when [forecast] installed**)" |
+| `jobs/deliverables.py:126` | `METHOD_LABEL` — la sección Methodology nombra **los métodos que corrieron** |
+| `documentation/*` | no mencionan AutoETS |
 
-- **(a)** sumar el extra `forecast` a la imagen — toca la cadena de boot, donde ya mordió `bs4`;
-  el job `prod-boot` de CI es el guard que lo cubre.
-- **(b)** corregir lo que el tool afirma.
+El bug existió y ya fue arreglado, con guard propio: `tests/test_deliverable_methodology_honesty.py`,
+cuyo docstring lo documenta ("the report claim 'simple exponential smoothing (or Croston)' long after
+`src/forecasting.py` started routing to AutoETS/TSB"). El deliverable que recibe el cliente nombra el
+método que efectivamente se usó, no una plantilla.
 
-Decisión pendiente del operador. **Publicar sin resolverla no es una opción.**
+**Consecuencia: sumar el extra `forecast` deja de ser condición para publicar.** Pasa a ser una
+decisión de capacidad, no de honestidad, y la evidencia disponible la vuelve poco urgente: medido
+sobre Olist, la diferencia es MASE 3,02 con la librería contra 3,14 sin ella. El cuello real no es la
+sofisticación del modelo — ninguno de los dos ve tendencia ni estación, y `alpha` está clavado en un
+literal (`src/forecasting.py:185`, SES 0,3 / Croston 0,1). Eso lo ataca el barrido de `alpha`, no un
+extra más pesado.
+
+Queda como mejora opcional, después de que la CI vuelva a verde, porque el guard que cubre ese riesgo
+—el job `prod-boot`, que es lo que atrapó la regresión de `bs4`— hoy no puede correr.
 
 ## Qué tiene que ser verdad antes de publicar
 
 1. Existe el secret `NOSILO_CORE_TOKEN` en `esstipi-debug/kern` (bloqueo abierto, acción manual).
    Sin eso ni la CI puede construir la imagen, mucho menos publicarla.
-2. Problema 3 resuelto en (a) o en (b).
+2. ~~Problema 3 resuelto~~ — **ya no aplica**: las superficies son honestas hoy (ver arriba).
 3. `KERN_DATA_DIR` implementado y **todas** las rutas de estado derivadas de él, con un test que falle
    si una ruta nueva no lo respeta.
 4. Arranque sin API key = banner explícito, no silencio ni crash.
