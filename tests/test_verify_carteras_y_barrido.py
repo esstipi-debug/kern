@@ -8,9 +8,17 @@ convierte "la mitad de los mundos no discrimina" en una media limpia y falsa.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
-from src.verify.barrido import Distribucion, agregar, degrada_con_la_suciedad
+from src.verify.barrido import (
+    Distribucion,
+    agregar,
+    comparar_con_linea_base,
+    degrada_con_la_suciedad,
+    guardar_linea_base,
+)
 from src.verify.carteras import (
     TRAMOS,
     TRAMOS_POR_NOMBRE,
@@ -221,3 +229,70 @@ def test_una_mejora_dentro_del_ruido_no_se_marca():
         Distribucion("base", 1, 5, 5, 0.705, 0.01, 0.70, 0.705, 0.71, 0.70, 0.71),
     ]
     assert degrada_con_la_suciedad(dists, "base") == []
+
+
+# --------------------------------------------------------------------------
+# Trinquete de captura contra la linea base
+# --------------------------------------------------------------------------
+
+
+def _dist(nivel, media, sd, n=25):
+    return Distribucion("forced", nivel, n, n, media, sd,
+                        media - sd, media, media + sd, media - sd, media + sd)
+
+
+def test_una_captura_igual_a_la_linea_base_no_es_regresion(tmp_path):
+    base = [_dist(0, 0.087, 0.074)]
+    ruta = guardar_linea_base(base, tmp_path / "b.json", contexto={"mundos": 25})
+    reg, avisos = comparar_con_linea_base(base, ruta)
+    assert reg == [] and avisos == []
+
+
+def test_una_caida_grande_de_captura_es_regresion(tmp_path):
+    ruta = guardar_linea_base([_dist(0, 0.087, 0.074)], tmp_path / "b.json",
+                              contexto={"mundos": 25})
+    reg, _ = comparar_con_linea_base([_dist(0, -0.020, 0.074)], ruta)
+    assert len(reg) == 1
+    assert "8.7% -> -2.0%" in reg[0]
+
+
+def test_una_caida_dentro_del_ruido_no_es_regresion(tmp_path):
+    """Con sd 7,4% sobre 25 mundos el error estandar es 1,5 puntos; dos puntos
+    de caida no distinguen senal de azar."""
+    ruta = guardar_linea_base([_dist(0, 0.087, 0.074)], tmp_path / "b.json",
+                              contexto={"mundos": 25})
+    reg, _ = comparar_con_linea_base([_dist(0, 0.067, 0.074)], ruta)
+    assert reg == []
+
+
+def test_subir_la_captura_nunca_es_regresion(tmp_path):
+    ruta = guardar_linea_base([_dist(0, 0.087, 0.074)], tmp_path / "b.json",
+                              contexto={"mundos": 25})
+    reg, _ = comparar_con_linea_base([_dist(0, 0.400, 0.074)], ruta)
+    assert reg == []
+
+
+def test_un_grupo_que_deja_de_medirse_sale_como_aviso_no_como_verde(tmp_path):
+    """Asi es exactamente como se pierde una verificacion sin que nadie lo note."""
+    ruta = guardar_linea_base([_dist(0, 0.087, 0.074), _dist(3, 0.006, 0.088)],
+                              tmp_path / "b.json", contexto={"mundos": 25})
+    reg, avisos = comparar_con_linea_base([_dist(0, 0.087, 0.074)], ruta)
+    assert reg == []
+    assert any("ya no se mide" in a for a in avisos)
+
+
+def test_un_grupo_nuevo_sale_como_aviso(tmp_path):
+    ruta = guardar_linea_base([_dist(0, 0.087, 0.074)], tmp_path / "b.json",
+                              contexto={"mundos": 25})
+    _, avisos = comparar_con_linea_base([_dist(0, 0.087, 0.074), _dist(3, 0.006, 0.088)],
+                                        ruta)
+    assert any("sin linea base" in a for a in avisos)
+
+
+def test_la_linea_base_guarda_el_contexto_del_experimento(tmp_path):
+    """Comparar numeros de experimentos distintos es peor que no comparar: da
+    una respuesta con la forma de una medicion."""
+    ruta = guardar_linea_base([_dist(0, 0.087, 0.074)], tmp_path / "b.json",
+                              contexto={"mundos": 25, "n_skus": 16, "semanas": 52})
+    datos = json.loads(ruta.read_text(encoding="utf-8"))
+    assert datos["contexto"] == {"mundos": 25, "n_skus": 16, "semanas": 52}

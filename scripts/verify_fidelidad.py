@@ -30,7 +30,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from examples.run_world_sim import run_grid
-from src.verify.barrido import agregar, degrada_con_la_suciedad
+from src.verify.barrido import (
+    agregar,
+    comparar_con_linea_base,
+    degrada_con_la_suciedad,
+    guardar_linea_base,
+)
 
 
 def main() -> int:
@@ -45,6 +50,10 @@ def main() -> int:
     p.add_argument("--niveles", default="0,1,2,3",
                    help="niveles de suciedad, separados por coma")
     p.add_argument("--out", default="deliverables/fidelidad")
+    p.add_argument("--grabar-linea-base", metavar="RUTA", default=None,
+                   help="graba esta corrida como referencia futura")
+    p.add_argument("--contra-linea-base", metavar="RUTA", default=None,
+                   help="falla si la captura cayo respecto de esa referencia")
     args = p.parse_args()
 
     niveles = tuple(int(n) for n in args.niveles.split(","))
@@ -104,6 +113,29 @@ def main() -> int:
         return 1
 
     print("\nSin anomalias: mas suciedad nunca mejoro la captura.")
+
+    contexto = {
+        "mundos": len(semillas), "semilla_inicial": args.semilla_inicial,
+        "n_skus": args.n_skus, "n_proveedores": args.n_proveedores,
+        "semanas": args.semanas, "replan_cada": args.replan_cada,
+        "niveles": list(niveles),
+    }
+    if args.grabar_linea_base:
+        ruta = guardar_linea_base(dists, args.grabar_linea_base, contexto=contexto)
+        print(f"\nLinea base grabada en {ruta}")
+
+    if args.contra_linea_base:
+        regresiones, avisos = comparar_con_linea_base(dists, args.contra_linea_base)
+        for a in avisos:
+            print(f"  aviso: {a}")
+        if regresiones:
+            print("\nREGRESION DE DECISION contra la linea base:")
+            for r in regresiones:
+                print(f"  ! {r}")
+            print("\nKern decide peor que cuando se grabo la referencia. No es un "
+                  "fallo de tests: es que el producto empeoro.")
+            return 1
+        print("\nSin regresion contra la linea base.")
     return 0
 
 

@@ -21,10 +21,12 @@ viaja en el resultado y quien lea el numero ve sobre cuantos mundos se calculo.
 
 from __future__ import annotations
 
+import json
 import math
 import statistics
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -180,3 +182,80 @@ def _margen(a: Distribucion, b: Distribucion) -> float:
         # n_medibles para que quien lea sepa por que.
         return float("inf")
     return max(MARGEN_MINIMO, SIGMAS * se_dif)
+
+
+# --------------------------------------------------------------------------
+# Linea base: el trinquete de decision
+# --------------------------------------------------------------------------
+
+#: Cuantos errores estandar de la diferencia tiene que caer la captura para
+#: llamarlo regresion. Mismo criterio que la alarma de suciedad, por la misma
+#: razon: una puerta que salta con ruido se acaba desactivando.
+SIGMAS_REGRESION = 2.0
+
+
+def guardar_linea_base(dists: Sequence[Distribucion], ruta: str | Path,
+                       *, contexto: dict) -> Path:
+    """Graba una distribucion medida como referencia futura.
+
+    ``contexto`` lleva los parametros del barrido (mundos, SKU, semanas,
+    semilla inicial). Sin el, comparar contra la linea base seria comparar
+    numeros producidos por experimentos distintos, que es peor que no comparar:
+    da una respuesta con la forma de una medicion.
+    """
+    out = Path(ruta)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({
+        "contexto": contexto,
+        "distribuciones": [asdict(d) for d in dists],
+    }, indent=2, ensure_ascii=False), encoding="utf-8")
+    return out
+
+
+def comparar_con_linea_base(dists: Sequence[Distribucion],
+                            ruta: str | Path) -> tuple[list[str], list[str]]:
+    """Devuelve (regresiones, avisos) contra la linea base grabada.
+
+    Los avisos no son fallos: cubren los casos en los que la comparacion NO se
+    puede hacer -- un grupo que desaparecio, uno nuevo, o una muestra sin
+    desviacion. Salen listados en vez de tratarse como "todo bien", porque un
+    grupo que deja de medirse es exactamente como se pierde una verificacion
+    sin que nadie lo note.
+    """
+    datos = json.loads(Path(ruta).read_text(encoding="utf-8"))
+    base = {(d["carril"], d["nivel"]): d for d in datos["distribuciones"]}
+    actual = {(d.carril, d.nivel): d for d in dists}
+
+    regresiones: list[str] = []
+    avisos: list[str] = []
+
+    for clave in sorted(set(base) - set(actual)):
+        avisos.append(f"L{clave[1]}/{clave[0]}: estaba en la linea base y ya no se mide")
+    for clave in sorted(set(actual) - set(base)):
+        avisos.append(f"L{clave[1]}/{clave[0]}: nuevo, sin linea base contra la que comparar")
+
+    for clave in sorted(set(base) & set(actual)):
+        b, a = base[clave], actual[clave]
+        etiqueta = f"L{clave[1]}/{clave[0]}"
+        if b["media"] is None or a.media is None:
+            avisos.append(f"{etiqueta}: alguna de las dos corridas no fue medible")
+            continue
+        se_b = _se_de(b["desviacion"], b["n_medibles"])
+        se_a = _se_de(a.desviacion, a.n_medibles)
+        if not (math.isfinite(se_b) and math.isfinite(se_a)):
+            avisos.append(f"{etiqueta}: sin muestra para estimar el ruido")
+            continue
+        margen = max(MARGEN_MINIMO, SIGMAS_REGRESION * math.hypot(se_b, se_a))
+        caida = b["media"] - a.media
+        if caida > margen:
+            regresiones.append(
+                f"{etiqueta}: captura {b['media'] * 100:.1f}% -> {a.media * 100:.1f}% "
+                f"(caida {caida * 100:.1f}%, margen {margen * 100:.1f}%)"
+            )
+    return regresiones, avisos
+
+
+def _se_de(desviacion: float | None, n: int) -> float:
+    if desviacion is None or n < 2:
+        return float("inf")
+    return desviacion / math.sqrt(n)
