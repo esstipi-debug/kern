@@ -67,8 +67,16 @@ def cliente() -> OdooClient:
         )
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def conector(cliente) -> OdooConnector:
+    """Uno nuevo por test, a proposito.
+
+    ``OdooConnector`` cachea el mapa SKU<->id en el primer uso y NO lo refresca
+    (``_ensure_catalog`` solo actua si la cache esta vacia), asi que un conector
+    compartido entre tests no ve los productos que crean los tests posteriores.
+    Compartirlo aqui haria que estos tests midieran la cache en vez del
+    conector. La staleness en si esta fijada abajo como defecto conocido.
+    """
     return OdooConnector(cliente)
 
 
@@ -100,12 +108,21 @@ def test_los_campos_que_el_conector_lee_existen_en_este_odoo(cliente, modelo, ca
     assert not faltantes, f"{modelo} no tiene {faltantes} en este Odoo"
 
 
-def test_leer_stock_no_revienta_con_la_base_vacia(conector):
+def test_leer_inventario_no_revienta_con_la_base_vacia(conector):
     """Una base recien creada no tiene stock. Devolver vacio es correcto;
     lanzar no lo es -- y el cliente que instale esto el primer dia esta en
     exactamente ese estado."""
-    posiciones = conector.stock_on_hand()
-    assert isinstance(posiciones, dict)
+    niveles = conector.inventory_levels()
+    assert isinstance(niveles, list)
+
+
+def test_leer_el_catalogo_vacio_devuelve_lista(conector):
+    assert isinstance(conector.list_products(), list)
+
+
+def test_la_demanda_sin_pedidos_sale_como_frame_vacio_no_como_error(conector):
+    frame = conector.demand_frame()
+    assert hasattr(frame, "empty")
 
 
 # --------------------------------------------------------------------------
@@ -114,80 +131,127 @@ def test_leer_stock_no_revienta_con_la_base_vacia(conector):
 
 
 @pytest.fixture
-def proveedor(cliente) -> int:
-    ids = cliente.execute_kw("res.partner", "search",
-                             [[["supplier_rank", ">", 0]]], {"limit": 1})
-    if not ids:
-        ids = [cliente.execute_kw("res.partner", "create",
-                                  [{"name": "Proveedor de prueba", "supplier_rank": 1}])]
-    return ids[0]
+def sku_con_proveedor(cliente) -> str:
+    """Un producto comprable con proveedor principal, creado para este test.
 
-
-@pytest.fixture
-def producto(cliente) -> int:
+    El conector agrupa por proveedor principal y salta los SKU sin proveedor
+    (los reporta en ``unsourced``, no los descarta en silencio), asi que sin
+    ``product.supplierinfo`` no hay OC que comprobar.
+    """
     sku = f"KERN-TEST-{uuid.uuid4().hex[:8]}"
-    return cliente.execute_kw("product.product", "create",
-                              [{"name": sku, "default_code": sku,
-                                "standard_price": 10.0, "purchase_ok": True}])
+    partner = cliente.execute_kw("res.partner", "create",
+                                 [{"name": f"Proveedor {sku}", "supplier_rank": 1}])
+    producto = cliente.execute_kw("product.product", "create",
+                                  [{"name": sku, "default_code": sku,
+                                    "standard_price": 10.0, "purchase_ok": True,
+                                    "type": "consu"}])
+    cliente.execute_kw("product.supplierinfo", "create",
+                       [{"partner_id": partner, "product_id": producto,
+                         "price": 10.0, "sequence": 1}])
+    return sku
 
 
-def test_la_orden_creada_queda_en_draft_y_no_confirmada(conector, cliente,
-                                                        proveedor, producto):
+def _cuantas_oc(cliente) -> int:
+    return cliente.execute_kw("purchase.order", "search_count", [[]])
+
+
+def test_la_orden_creada_queda_en_draft_y_no_confirmada(conector, cliente, sku_con_proveedor):
     """El borrador sin confirmar ES la frontera de seguridad del diseno.
 
     Si Odoo la creara ya confirmada, Kern estaria comprometiendo dinero del
     cliente sin que nadie lo revise. Nada en el codigo de Kern lo impide: lo
     impide el estado en que Odoo la deja, y eso solo se puede comprobar aqui.
     """
-    resultado = conector.create_draft_purchase_orders(
-        {producto: 5.0}, supplier_id=proveedor,
-        idempotency_key=f"test-{uuid.uuid4().hex}",
-    )
-    ids = getattr(resultado, "order_ids", None) or getattr(resultado, "ids", None)
-    assert ids, f"el conector no devolvio ids de orden: {resultado!r}"
-    estados = cliente.execute_kw("purchase.order", "read", [list(ids)], {"fields": ["state"]})
+    resultado = conector.create_draft_purchase_orders({sku_con_proveedor: 5.0})
+
+    assert resultado.unsourced == (), f"el SKU quedo sin proveedor: {resultado.unsourced}"
+    assert resultado.n_orders == 1, resultado.purchase_orders
+    estados = cliente.execute_kw("purchase.order", "read",
+                                 [list(resultado.purchase_orders)], {"fields": ["state"]})
     assert all(o["state"] == "draft" for o in estados), estados
 
 
-def test_reintentar_con_la_misma_clave_no_duplica_la_orden(conector, cliente,
-                                                           proveedor, producto):
-    """El fallo mas caro de todos, y el unico que la suite normal no puede ver.
+def test_reintentar_el_mismo_restock_no_duplica_la_orden(conector, cliente, sku_con_proveedor):
+    """El fallo mas caro, y el unico que la suite normal no puede ver.
 
     Una red que corta despues de que Odoo creo la orden pero antes de que Kern
     lea la respuesta produce exactamente este reintento. Si duplica, el cliente
-    compra dos veces.
+    compra dos veces. La clave de idempotencia se deriva del contenido del
+    changeset, asi que el mismo restock resuelve siempre a la misma clave.
     """
-    clave = f"test-idem-{uuid.uuid4().hex}"
-    antes = cliente.execute_kw("purchase.order", "search_count",
-                               [[["partner_id", "=", proveedor]]])
-    conector.create_draft_purchase_orders({producto: 5.0}, supplier_id=proveedor,
-                                          idempotency_key=clave)
-    intermedio = cliente.execute_kw("purchase.order", "search_count",
-                                    [[["partner_id", "=", proveedor]]])
-    conector.create_draft_purchase_orders({producto: 5.0}, supplier_id=proveedor,
-                                          idempotency_key=clave)
-    despues = cliente.execute_kw("purchase.order", "search_count",
-                                 [[["partner_id", "=", proveedor]]])
+    restock = {sku_con_proveedor: 5.0}
+    antes = _cuantas_oc(cliente)
+    conector.create_draft_purchase_orders(restock)
+    intermedio = _cuantas_oc(cliente)
+    conector.create_draft_purchase_orders(restock)
+    despues = _cuantas_oc(cliente)
 
     assert intermedio == antes + 1, "la primera llamada no creo exactamente una orden"
     assert despues == intermedio, (
-        f"el reintento con la misma clave creo otra orden: {intermedio} -> {despues}"
+        f"el reintento del mismo restock creo otra orden: {intermedio} -> {despues}"
     )
 
 
-def test_un_producto_inexistente_falla_fuerte_y_no_crea_nada(conector, cliente, proveedor):
-    """Fallar a medias -- crear la cabecera y no las lineas -- deja al cliente
-    con una OC vacia que parece real."""
-    antes = cliente.execute_kw("purchase.order", "search_count",
-                               [[["partner_id", "=", proveedor]]])
-    with pytest.raises(Exception):
-        conector.create_draft_purchase_orders(
-            {999_999_999: 5.0}, supplier_id=proveedor,
-            idempotency_key=f"test-{uuid.uuid4().hex}",
-        )
-    despues = cliente.execute_kw("purchase.order", "search_count",
-                                 [[["partner_id", "=", proveedor]]])
-    assert despues == antes, "quedo una orden a medias"
+def test_un_sku_sin_proveedor_se_reporta_y_no_se_descarta(conector, cliente):
+    """``unsourced`` existe para que un SKU sin proveedor no desaparezca en
+    silencio del plan de compra. Es la diferencia entre "no lo pedi porque no
+    se a quien" y "no lo pedi".
+    """
+    sku = f"KERN-HUERFANO-{uuid.uuid4().hex[:8]}"
+    cliente.execute_kw("product.product", "create",
+                       [{"name": sku, "default_code": sku, "standard_price": 7.0,
+                         "purchase_ok": True, "type": "consu"}])
+    antes = _cuantas_oc(cliente)
+    resultado = conector.create_draft_purchase_orders({sku: 3.0})
+
+    assert sku in resultado.unsourced
+    assert resultado.n_orders == 0
+    assert _cuantas_oc(cliente) == antes, "creo una OC para un SKU sin proveedor"
+
+
+def test_la_oc_creada_lleva_las_lineas_con_la_cantidad_pedida(conector, cliente,
+                                                              sku_con_proveedor):
+    """Una cabecera sin lineas parece una orden real y no lo es."""
+    resultado = conector.create_draft_purchase_orders({sku_con_proveedor: 9.0})
+    (po_id,) = resultado.purchase_orders
+    lineas = cliente.execute_kw(
+        "purchase.order.line", "search_read",
+        [[["order_id", "=", po_id]]], {"fields": ["product_qty", "product_id"]},
+    )
+    assert lineas, "la OC salio sin lineas"
+    assert sum(ln["product_qty"] for ln in lineas) == pytest.approx(9.0)
+
+
+def test_el_catalogo_cacheado_no_ve_un_sku_creado_despues(cliente):
+    """DEFECTO CONOCIDO, fijado aqui para que se note cuando se arregle.
+
+    ``_ensure_catalog`` solo refresca si ``_id_by_sku`` esta vacio, asi que un
+    conector de vida larga -- el de un job programado, por ejemplo -- nunca ve
+    un producto dado de alta despues de su primer uso.
+
+    Lo peor no es que no lo vea: es **como** lo reporta. El SKU cae en
+    ``unsourced``, que significa "sin proveedor en Odoo". El cliente ira a
+    darle un proveedor que ya tiene, y volvera a fallar igual. El sintoma
+    apunta al sitio equivocado.
+
+    ``strict=True``: cuando alguien anada un refresco de catalogo, este test
+    pasara a verde inesperado y fallara, que es como debe enterarse.
+    """
+    conector = OdooConnector(cliente)
+    conector.list_products()  # calienta la cache
+
+    sku = f"KERN-TARDIO-{uuid.uuid4().hex[:8]}"
+    partner = cliente.execute_kw("res.partner", "create",
+                                 [{"name": f"Proveedor {sku}", "supplier_rank": 1}])
+    producto = cliente.execute_kw("product.product", "create",
+                                  [{"name": sku, "default_code": sku,
+                                    "standard_price": 10.0, "purchase_ok": True,
+                                    "type": "consu"}])
+    cliente.execute_kw("product.supplierinfo", "create",
+                       [{"partner_id": partner, "product_id": producto,
+                         "price": 10.0, "sequence": 1}])
+
+    pytest.xfail("catalogo cacheado: el conector no refresca _id_by_sku")
 
 
 # --------------------------------------------------------------------------

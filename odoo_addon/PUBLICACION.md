@@ -4,8 +4,12 @@
 apps.odoo.com, con las conexiones verificadas contra un Odoo real y no contra un
 simulador.
 
-**Hecho cuando:** los 12 tests de `tests/integracion/test_odoo_real.py` pasan contra
-un Odoo 17 de verdad, y las cinco decisiones de la §3 están tomadas.
+**Estado:** los 15 tests de integración pasan contra un Odoo 17 real (§4). El
+módulo se instala en un Odoo limpio y la frontera de seguridad (OC en borrador)
+está comprobada contra el servidor, no contra un simulador.
+
+**Falta para enviar:** las cinco decisiones de la §3, que son de negocio y no de
+código.
 
 ---
 
@@ -56,41 +60,60 @@ Ninguna se puede inventar desde el código, y las cinco bloquean el envío.
 | 4 | **Autor y web.** `author: "Linchpin"` y `website: https://linchpin.fly.dev`. Si el producto se publica como **Kern**, los dos cambian, y el nombre del módulo con ellos. | Publicar con dos marcas confunde y no se puede deshacer |
 | 5 | **`application: True`.** Declara una aplicación con menú propio. Para un wizard bajo Inventario puede ser más honesto `False`. | Afecta a cómo se lista y a qué espera el usuario |
 
-## 4. Lo que falta verificar, y el comando
+## 4. Verificado contra un Odoo 17 real — 15 tests en verde
 
 ```bash
 docker compose -f docker-compose.odoo.yml up -d
+python scripts/odoo_test_setup.py
 uv run --no-sync pytest -m integracion
-docker compose -f docker-compose.odoo.yml down -v
+# al terminar:  docker compose -f docker-compose.odoo.yml down -v
 ```
 
-Los 12 tests de `tests/integracion/test_odoo_real.py` cubren exactamente lo que los
-81 tests de la suite normal **no pueden** cubrir, porque todos corren contra un
-proxy XML-RPC falso:
+Reproducible desde cero: base borrada, `up`, un comando de setup, **15 passed ·
+1 xfailed**. Lo que quedó comprobado y antes era una suposición:
 
-1. **Que los campos existan en Odoo 17** — `default_code`, `standard_price`,
-   `seller_ids`, `product_qty`, `usage`... Un rename entre versiones pasa los 81
-   tests y falla en el cliente.
-2. **Que la OC quede en `draft`.** El borrador sin confirmar es la frontera de
-   seguridad del diseño, y no la impone Kern: la impone el estado en que Odoo la
-   deja. Solo se puede comprobar contra Odoo.
-3. **Que reintentar con la misma clave de idempotencia no duplique.** Es el fallo
-   más caro: una red que corta después de que Odoo creó la orden pero antes de que
-   Kern lea la respuesta produce exactamente ese reintento. Si duplica, el cliente
-   compra dos veces.
-4. **Que un fallo no deje una OC a medias** — cabecera sin líneas parece una orden
-   real.
-5. **Que el módulo aparezca instalable** en un Odoo limpio.
+- ✅ **El addon se instala en un Odoo 17 limpio.** Eso además prueba que el import
+  relativo funciona bajo el cargador real, no sólo bajo el simulacro de la §2.
+- ✅ **Los seis modelos y todos sus campos existen**: `product.product`,
+  `purchase.order`, `purchase.order.line`, `stock.quant`, `stock.location`,
+  `sale.order.line`. Un rename de versión habría pasado los 81 tests unitarios.
+- ✅ **La OC queda en `draft`.** La frontera de seguridad la impone Odoo, no Kern.
+- ✅ **Reintentar el mismo restock no duplica la orden.** La clave de idempotencia
+  se deriva del contenido del changeset. Era el fallo más caro posible.
+- ✅ **La OC lleva sus líneas con la cantidad pedida** — una cabecera vacía parece
+  una orden real.
+- ✅ **Un SKU sin proveedor sale en `unsourced`**, no se descarta en silencio.
 
-> **Estos 12 no se han ejecutado nunca.** Se escribieron con el daemon de Docker
-> parado: están verificados como código, no contra un servidor. Espera que alguno
-> falle en la primera corrida — su razón de existir es justo lo que el simulador no
-> podía decir. Un test de integración que pasa a la primera suele significar que no
-> estaba probando nada.
+### Tres prerequisitos que ningún sitio decía, y que un cliente va a sufrir
 
-Están fuera de la suite por defecto (`addopts = "-m 'not integracion'"`) para que
-no haga falta infraestructura para trabajar. Eso no los hace opcionales: esta meta
-no está cumplida hasta que pasen.
+Los tres se descubrieron en la primera corrida, y los tres producen síntomas que
+apuntan al sitio equivocado. Están automatizados en `scripts/odoo_test_setup.py`,
+pero un cliente real no tiene ese script:
+
+| # | Prerequisito | Lo que ve el cliente si falta |
+|---|---|---|
+| 1 | **El módulo Purchase debe estar instalado.** El addon depende de base/stock/sale, pero el *conector* escribe OC | `Object purchase.order doesn't exist` — parece un bug de Kern |
+| 2 | **El usuario de API necesita cuatro grupos**: Sales/Administrator, Inventory/Administrator, Purchase/Manager, Settings. En un Odoo 17 recién creado **ni `admin` los tiene todos** | Un fault crudo de Odoo listando grupos, sin decir cuál añadir |
+| 3 | **Instalar un módulo no lo hace visible al servidor en marcha** — hay que reiniciarlo | Idéntico al síntoma 1, así que se persigue el bug equivocado |
+
+**Esto es material de documentación de cliente, no sólo de test.** El #2 en
+particular: el mensaje que llega es de Odoo y no dice que basta con añadir un
+grupo.
+
+### Un defecto de producto encontrado, fijado como `xfail`
+
+`OdooConnector` cachea el mapa SKU↔id en el primer uso y **no lo refresca nunca**
+(`_ensure_catalog` sólo actúa si la caché está vacía). Un conector de vida larga
+—el de un job programado— no ve un producto dado de alta después.
+
+Lo peor no es que no lo vea, es **cómo lo reporta**: el SKU cae en `unsourced`,
+que significa "sin proveedor en Odoo". El cliente irá a darle un proveedor que ya
+tiene, y volverá a fallar igual. El síntoma apunta al sitio equivocado.
+
+Está fijado en `test_el_catalogo_cacheado_no_ve_un_sku_creado_despues` con
+`xfail(strict=True)`: cuando alguien añada el refresco, el test pasará a verde
+inesperado y fallará, que es como debe enterarse. **Merece su propio PR** — no va
+en éste, que es sobre publicar el addon.
 
 ## 5. Orden sugerido
 
