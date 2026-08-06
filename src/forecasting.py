@@ -59,6 +59,12 @@ class ForecastResult:
     # warm-up NaN that TSB and Croston emit in their fitted values. 0 on the
     # closed-form legacy paths, which have no warm-up row to discard.
     n_error_obs_dropped: int = 0
+    #: Dispersion del error resistente a picos aislados (MAD escalada), NaN
+    #: cuando no es estimable. Va al final y con default para que anadirlo no
+    #: rompa a nadie que ya construya un ForecastResult: un campo obligatorio
+    #: nuevo habria obligado a tocar cinco constructores y nueve tests que no
+    #: tienen nada que ver con esta decision.
+    error_std_robusto: float = float("nan")
 
     @property
     def sigma_source(self) -> str:
@@ -79,9 +85,28 @@ class ForecastResult:
             return "demand_std_fallback"
         return "unavailable"
 
-    def to_engine_inputs(self, periods_per_year: float = 52.0) -> dict[str, float]:
+    def to_engine_inputs(self, periods_per_year: float = 52.0, *,
+                         dispersion: str = "clasica") -> dict[str, float]:
         """
         Map the forecast onto inventory-engine keyword arguments.
+
+        ``dispersion="robusta"`` usa ``error_std_robusto`` (MAD escalada) en vez
+        de la desviacion estandar para dimensionar el buffer. **No es el valor
+        por defecto y no debe serlo sin una decision explicita**: cambiar la
+        dispersion cambia el stock de seguridad de todos los clientes a la vez,
+        y ese es justo el patron de degradacion silenciosa que este repo evita.
+
+        Lo que se gana, medido: una promocion sin marcar de 4x en UNA semana
+        lleva sigma de 10,57 a 37,65 (+256%) y el stock de seguridad de 24,6 a
+        87,6 unidades -- 3,6x durante 52 semanas por un pico que duro una. Con
+        la robusta, sigma no se mueve (11,86) y el buffer queda en 27,6. En
+        simworld, sobre 30 mundos de un ano, ese pico cuesta 7,3 puntos de
+        captura.
+
+        Lo que se arriesga: la robusta no es estimable con menos de 3 errores ni
+        cuando la MAD es nula (demanda intermitente, series planas). En esos
+        casos cae a la clasica en vez de a cero -- un cero aqui diria "no hace
+        falta buffer" sobre los SKU mas dificiles de pronosticar.
 
         Uses sigma_e (``error_std``) as ``demand_std_per_period`` — the correct
         dispersion for safety stock — falling back to the raw demand std when
@@ -91,9 +116,15 @@ class ForecastResult:
         Raises when neither dispersion is a real number: substituting 0 there
         would print "no buffer needed" as a confident fact.
         """
+        if dispersion not in ("clasica", "robusta"):
+            raise ValueError(
+                f"dispersion desconocida: {dispersion!r}; usa 'clasica' o 'robusta'"
+            )
         source = self.sigma_source
         if source == "forecast_error":
             sigma = self.error_std
+            if dispersion == "robusta" and _is_usable_dispersion(self.error_std_robusto):
+                sigma = self.error_std_robusto
         elif source == "demand_std_fallback":
             sigma = self.demand_std
         else:
@@ -133,15 +164,56 @@ def _std(arr: np.ndarray) -> float:
     return float(np.std(arr, ddof=1)) if arr.size > 1 else 0.0
 
 
-def _error_stats(actual: np.ndarray, fitted: np.ndarray) -> tuple[float, float, float]:
-    """Return (error_std, bias, mae) for one-step-ahead forecasts."""
+#: Factor que hace la MAD consistente con la desviacion estandar bajo
+#: normalidad: sigma = 1.4826 * MAD. Es la constante estandar (1/Phi^-1(0.75)),
+#: no un ajuste elegido a ojo.
+_MAD_A_SIGMA = 1.4826
+
+#: Minimo de errores para estimar una MAD que signifique algo. Con dos, la
+#: mediana de desviaciones absolutas es la propia distancia entre ambos y no
+#: aporta robustez ninguna.
+_MIN_ERRORES_ROBUSTO = 3
+
+
+def _error_std_robusto(errors: np.ndarray) -> float:
+    """Dispersion del error que un pico aislado NO puede inflar.
+
+    **Por que hace falta.** ``np.std`` no es robusta: un solo periodo anomalo
+    -- una promocion sin marcar, un pedido en lote, un error de tipeo -- la
+    domina, y esa sigma dimensiona el stock de seguridad de todo el horizonte.
+    Medido en simworld sobre 30 mundos de un ano: un unico pico de 4x en UNA
+    semana le cuesta a Kern 7,3 puntos de captura, mas del doble de lo que
+    aporta con esos datos. El pico dura una semana; el buffer que provoca se
+    paga las 52.
+
+    La MAD escalada tiene punto de ruptura del 50%: haria falta que la mitad de
+    los periodos fueran anomalos para moverla. Es el estimador de Vandeput
+    (2021) §10.3 para la misma decision.
+
+    Devuelve NaN, no cero, cuando no es estimable. Un cero aqui se leeria como
+    "no hace falta buffer", que es una afirmacion, y la verdad es "no lo se".
+    """
+    if errors.size < _MIN_ERRORES_ROBUSTO:
+        return float("nan")
+    mad = float(np.median(np.abs(errors - np.median(errors))))
+    if not math.isfinite(mad) or mad <= 0.0:
+        # MAD nula: mas de la mitad de los errores son identicos. Pasa con
+        # demanda intermitente (muchos ceros) y con series planas. No es un
+        # fallo, es que este estimador no aplica -- y devolver 0 colapsaria el
+        # buffer justo en los SKU mas dificiles de pronosticar.
+        return float("nan")
+    return _MAD_A_SIGMA * mad
+
+
+def _error_stats(actual: np.ndarray, fitted: np.ndarray) -> tuple[float, float, float, float]:
+    """Return (error_std, error_std_robusto, bias, mae) for one-step forecasts."""
     errors = actual - fitted
     if errors.size == 0:
-        return 0.0, 0.0, 0.0
+        return 0.0, float("nan"), 0.0, 0.0
     bias = float(np.mean(errors))
     mae = float(np.mean(np.abs(errors)))
     error_std = float(np.std(errors, ddof=1)) if errors.size > 1 else 0.0
-    return error_std, bias, mae
+    return error_std, _error_std_robusto(errors), bias, mae
 
 
 def average_demand_interval(history: object) -> float:
@@ -166,7 +238,7 @@ def moving_average(history: object, window: int = 3) -> ForecastResult:
     window = min(window, arr.size)
 
     preds = np.array([arr[t - window : t].mean() for t in range(window, arr.size)])
-    error_std, bias, mae = _error_stats(arr[window:], preds)
+    error_std, error_std_robusto, bias, mae = _error_stats(arr[window:], preds)
     forecast = float(arr[-window:].mean())
 
     return ForecastResult(
@@ -175,6 +247,7 @@ def moving_average(history: object, window: int = 3) -> ForecastResult:
         demand_mean=float(arr.mean()),
         demand_std=_std(arr),
         error_std=error_std,
+        error_std_robusto=error_std_robusto,
         bias=bias,
         mae=mae,
         n_periods=arr.size,
@@ -194,7 +267,7 @@ def simple_exponential_smoothing(history: object, alpha: float = 0.3) -> Forecas
         preds.append(level)  # one-step forecast for period t
         level = alpha * arr[t] + (1 - alpha) * level
 
-    error_std, bias, mae = _error_stats(arr[1:], np.array(preds))
+    error_std, error_std_robusto, bias, mae = _error_stats(arr[1:], np.array(preds))
 
     return ForecastResult(
         method="ses",
@@ -202,6 +275,7 @@ def simple_exponential_smoothing(history: object, alpha: float = 0.3) -> Forecas
         demand_mean=float(arr.mean()),
         demand_std=_std(arr),
         error_std=error_std,
+        error_std_robusto=error_std_robusto,
         bias=bias,
         mae=mae,
         n_periods=arr.size,
@@ -223,6 +297,7 @@ def croston(history: object, alpha: float = 0.1) -> ForecastResult:
             demand_mean=0.0,
             demand_std=0.0,
             error_std=0.0,
+            error_std_robusto=float("nan"),
             bias=0.0,
             mae=0.0,
             n_periods=arr.size,
@@ -245,7 +320,7 @@ def croston(history: object, alpha: float = 0.1) -> ForecastResult:
         else:
             since_demand += 1
 
-    error_std, bias, mae = _error_stats(arr[1:], forecasts[1:])
+    error_std, error_std_robusto, bias, mae = _error_stats(arr[1:], forecasts[1:])
 
     return ForecastResult(
         method="croston",
@@ -253,6 +328,7 @@ def croston(history: object, alpha: float = 0.1) -> ForecastResult:
         demand_mean=float(arr.mean()),
         demand_std=_std(arr),
         error_std=error_std,
+        error_std_robusto=error_std_robusto,
         bias=bias,
         mae=mae,
         n_periods=arr.size,

@@ -16,7 +16,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from src.forecasting import ForecastResult, _as_array, forecast_demand, is_intermittent
+from src.forecasting import (
+    ForecastResult,
+    _as_array,
+    _error_std_robusto,
+    forecast_demand,
+    is_intermittent,
+)
 
 # StatsForecast needs a minimum history; below this we keep SES/Croston.
 MIN_PERIODS_STATSFORECAST = 10
@@ -73,7 +79,7 @@ def _model_for_route(route: str, season_length: int):
 def _error_stats_from_fitted(
     fitted: pd.DataFrame, model_col: str
 ) -> tuple[float, float, float, int]:
-    """Return (error_std, bias, mae, n_dropped) from in-sample one-step fitted values.
+    """Return (error_std, error_std_robusto, bias, mae, n_dropped) from fitted values.
 
     TSB and Croston emit a NaN warm-up row in their fitted values; AutoETS does not.
     Averaging over that NaN used to return NaN for all three statistics, which then
@@ -87,11 +93,13 @@ def _error_stats_from_fitted(
     n_dropped = int(usable.size - np.count_nonzero(usable))
     errors = actual[usable] - pred[usable]
     if errors.size == 0:
-        return 0.0, 0.0, 0.0, n_dropped
+        return 0.0, float("nan"), 0.0, 0.0, n_dropped
     bias = float(np.mean(errors))
     mae = float(np.mean(np.abs(errors)))
     error_std = float(np.std(errors, ddof=1)) if errors.size > 1 else 0.0
-    return error_std, bias, mae, n_dropped
+    # La robusta se calcula con el mismo estimador que la ruta legacy, para que
+    # las dos rutas de pronostico no den buffers distintos ante el mismo pico.
+    return error_std, _error_std_robusto(errors), bias, mae, n_dropped
 
 
 def _std(arr: np.ndarray) -> float:
@@ -143,7 +151,9 @@ def forecast_modern(
     fitted = sf.forecast_fitted_values()
 
     point = float(fc[model_col].iloc[0])
-    error_std, bias, mae, n_dropped = _error_stats_from_fitted(fitted, model_col)
+    error_std, error_std_robusto, bias, mae, n_dropped = _error_stats_from_fitted(
+        fitted, model_col
+    )
 
     method_label = {
         "AutoETS": "auto_ets",
@@ -156,6 +166,7 @@ def forecast_modern(
         demand_mean=float(arr.mean()),
         demand_std=_std(arr),
         error_std=error_std,
+        error_std_robusto=error_std_robusto,
         bias=bias,
         mae=mae,
         n_periods=arr.size,

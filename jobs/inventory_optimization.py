@@ -135,6 +135,7 @@ def run(
     target_fill_rate: float = 0.95,
     intake_quality: IntakeQuality | None = None,
     intake_quality_threshold: float = 0.20,
+    dispersion: str = "clasica",
 ) -> JobReport:
     """Run the inventory-optimization analysis over canonical demand.
 
@@ -165,7 +166,8 @@ def run(
         series = source.demand_series(pid)
         meta = source.metadata(pid)
         fc = forecast_demand(series)
-        inputs = fc.to_engine_inputs(periods_per_year=periods_per_year)
+        inputs = fc.to_engine_inputs(periods_per_year=periods_per_year,
+                                     dispersion=dispersion)
         lead = lead_times.get(pid, meta.lead_time_periods) if lead_times else meta.lead_time_periods
         # sigma_L. An explicit override (lead_time_stds) wins; else fall back to the
         # CSV's own lead_time_std column (meta.lead_time_std_periods, wired in src/sources.py
@@ -293,7 +295,12 @@ def run(
 
     return JobReport(
         recommendations=recs,
-        params={"service_level": service_level, "holding_rate": holding_rate, "order_cost": order_cost, "periods_per_year": periods_per_year},
+        params={"service_level": service_level, "holding_rate": holding_rate,
+                "order_cost": order_cost, "periods_per_year": periods_per_year,
+                # Va en params para que el entregable diga con que dispersion se
+                # dimensiono el buffer. Sin eso, dos informes con buffers muy
+                # distintos parecen contradecirse sin explicacion visible.
+                "dispersion": dispersion},
         requested_investment=requested, cycle_floor=cycle_floor, final_investment=final,
         safety_stock_scale=scale, feasible=feasible, budget=budget,
         n_skus=len(recs), n_at_risk=sum(1 for r in recs if r.status == "high_bias"),
