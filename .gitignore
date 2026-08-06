@@ -87,3 +87,4 @@ webapp/_leads/
 # knowledge caches regenerados por scm_agent/knowledge.py y community_summaries.py
 knowledge/embeddings_cache.json
 knowledge/community_summaries.json
+.env.odoo
