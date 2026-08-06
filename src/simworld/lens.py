@@ -56,12 +56,17 @@ def export_history(
     *,
     level: int = 0,
     seed: int = 0,
+    omit: frozenset[str] | set[str] | tuple[str, ...] = (),
 ) -> Path:
-    """Escribe el historico con el nivel de suciedad pedido y devuelve la ruta."""
+    """Escribe el historico con el nivel de suciedad pedido y devuelve la ruta.
+
+    ``omit`` se pasa tal cual a ``apply_dirt`` -- ver alli la advertencia sobre
+    que omitir cambia el sorteo de los inyectores posteriores.
+    """
     if level not in LEVELS:
         raise ValueError(f"nivel de suciedad desconocido: {level}; conocidos: {LEVELS}")
     df = history_frame(world, outcomes)
-    df = apply_dirt(df, level=level, seed=seed)
+    df = apply_dirt(df, level=level, seed=seed, omit=omit)
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out, index=False)
@@ -361,7 +366,18 @@ DIRT_BY_LEVEL: dict[int, tuple] = {
 COSMETIC_LEVEL = 1
 
 
-def apply_dirt(df: pd.DataFrame, *, level: int, seed: int = 0) -> pd.DataFrame:
+def nombres_de_inyectores(level: int | None = None) -> tuple[str, ...]:
+    """Los inyectores de un nivel, o de todos, por nombre.
+
+    Existe para que ``omit`` no se escriba a mano contra una lista que puede
+    cambiar: quien descomponga un nivel pide sus nombres y los recorre.
+    """
+    niveles = LEVELS if level is None else (level,)
+    return tuple(f.__name__ for lvl in niveles for f in DIRT_BY_LEVEL[lvl])
+
+
+def apply_dirt(df: pd.DataFrame, *, level: int, seed: int = 0,
+               omit: frozenset[str] | set[str] | tuple[str, ...] = ()) -> pd.DataFrame:
     """Aplica la suciedad hasta ``level`` inclusive. Los niveles acumulan.
 
     Orden deliberado: **primero los defectos que cambian el valor** (niveles 2 y
@@ -375,9 +391,30 @@ def apply_dirt(df: pd.DataFrame, *, level: int, seed: int = 0) -> pd.DataFrame:
     (``IntakeQuality.synthesized``), y debe quedar identica en todos los
     niveles para que las deltas de degradacion nivel-N contra nivel-0 sean
     comparables.
+
+    ``omit`` salta inyectores por nombre. Existe para **descomponer un nivel**:
+    medir el nivel 3 completo y luego el nivel 3 sin cada uno de sus cuatro
+    inyectores dice cual se come la ventaja de Kern, pregunta que el nivel
+    agregado no puede responder.
+
+    > **Omitir cambia el sorteo de los inyectores posteriores.** El ``rng`` es
+    > uno solo para toda la llamada (ver el comentario de abajo), asi que no
+    > llamar a un inyector deja de avanzarlo y los siguientes reciben otro
+    > draw. Una corrida con ``omit`` NO es "la misma suciedad menos una pieza":
+    > es otra realizacion de la misma naturaleza. La comparacion sigue valida
+    > en esperanza sobre muchos mundos -- la diferencia de stream es ruido, no
+    > sesgo -- pero leer UNA corrida con ``omit`` como si aislara el efecto de
+    > un inyector es un error de lectura, no del arnes.
     """
     if level not in LEVELS:
         raise ValueError(f"nivel de suciedad desconocido: {level}; conocidos: {LEVELS}")
+    omit = frozenset(omit)
+    desconocidos = omit - set(nombres_de_inyectores())
+    if desconocidos:
+        raise ValueError(
+            f"inyectores desconocidos en omit: {sorted(desconocidos)}; "
+            f"conocidos: {sorted(nombres_de_inyectores())}"
+        )
     # Un solo `rng` compartido entre todas las llamadas de este `apply_dirt`
     # (plan-mandado, no cambiar): a nivel 2 los inyectores semanticos avanzan
     # el generador antes de que corra la capa cosmetica, asi que el nivel 2
@@ -390,8 +427,12 @@ def apply_dirt(df: pd.DataFrame, *, level: int, seed: int = 0) -> pd.DataFrame:
     out = df.copy()
     for lvl in range(COSMETIC_LEVEL + 1, level + 1):
         for injector in DIRT_BY_LEVEL[lvl]:
+            if injector.__name__ in omit:
+                continue
             out = injector(out, rng)
     if level >= COSMETIC_LEVEL:
         for injector in DIRT_BY_LEVEL[COSMETIC_LEVEL]:
+            if injector.__name__ in omit:
+                continue
             out = injector(out, rng)
     return out
