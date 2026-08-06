@@ -208,6 +208,16 @@ include = ["packs*", "src*"]
 pythonpath = "."
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# `integracion` marca los tests que necesitan un servicio externo levantado
+# (hoy: un Odoo real, ver tests/integracion/). Se excluyen por defecto para que
+# la suite siga siendo ejecutable sin infraestructura -- correrlos con
+# `pytest -m integracion`. Excluirlos por defecto NO es esconderlos: el fichero
+# tests/integracion/README.md dice como levantarlos y la publicacion del addon
+# los exige verdes.
+markers = [
+    "integracion: necesita un servicio externo levantado (Odoo, etc.)",
+]
+addopts = "-m 'not integracion'"
 
 [tool.coverage.run]
 source = ["packs", "src"]
