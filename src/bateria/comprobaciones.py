@@ -2393,13 +2393,46 @@ def t03_segmentacion_con_servicio_diferenciado(ctx: Contexto) -> ResultadoTarea:
             detalle=detalle,
         )
 
+    # "y el criterio de corte usado (ej. 80/15/5 de facturacion)" es una clausula literal
+    # de la fuente que este check nunca miro. Sin ella la etiqueta "A" no es falsable: el
+    # lector no puede estar en desacuerdo con una segmentacion cuyo corte no ve. Se exige
+    # el corte REAL del reporte, no el nombre de un campo: si la propiedad devuelve algo
+    # que no menciona los tres tramos, no cuenta.
+    # Y se comprueba por VALOR, no por presencia: se vuelve a correr con un corte
+    # DISTINTO del habitual y se exige que el criterio declarado lo siga. Comparar el
+    # texto contra el propio campo del reporte seria circular -- medido: con los campos
+    # defaulteados a 80/95, borrar el cableado de run() dejaba el reporte declarando
+    # 80/15/5 sobre una corrida que corto en otro sitio, y el check no lo veia.
+    _CORTE_SONDA = (0.70, 0.90)
+    sondeo = job.run(job.prepare(str(ruta)), abc_thresholds=_CORTE_SONDA)
+    corte_sonda = str(getattr(sondeo, "cut_criterion", "") or "")
+    corte = str(getattr(reporte, "cut_criterion", "") or "")
+    detalle["criterio_de_corte"] = corte or None
+    detalle["criterio_de_corte_sondeado"] = corte_sonda or None
+    declara_el_corte = (
+        bool(corte) and all(t in corte for t in ("80", "15", "5"))
+        and bool(corte_sonda) and all(t in corte_sonda for t in ("70", "20", "10"))
+    )
+    if not declara_el_corte:
+        return ResultadoTarea(
+            tarea_id="T03",
+            estado=Estado.PARCIAL,
+            evidencia=(
+                f"hay {len(celdas)} celdas con {len(niveles)} niveles de servicio y el ABC "
+                f"ordena por valor, pero el entregable no declara el criterio de corte "
+                "(80/15/5 de facturacion): la fuente lo pide con esas palabras y "
+                "sin el la clase de cada SKU no es discutible"
+            ),
+            detalle=detalle,
+        )
+
     return ResultadoTarea(
         tarea_id="T03",
         estado=Estado.CUMPLE,
         evidencia=(
             f"{reporte.n_skus} SKU en {len(celdas)} celdas ABC-XYZ con {len(niveles)} "
-            f"niveles de servicio distintos (min {min(niveles):.0%}, max {max(niveles):.0%}) "
-            f"y el ABC ordena por valor, no por unidades"
+            f"niveles de servicio distintos (min {min(niveles):.0%}, max {max(niveles):.0%}), "
+            f"el ABC ordena por valor y el entregable declara su corte: {corte}"
         ),
         detalle=detalle,
     )
