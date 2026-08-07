@@ -10,8 +10,9 @@ for that. This is Kern's own local operating data about a client, so it
 carries none of the risk-tier/approval ceremony writeback does.
 
 Resolution priority (highest first), enforced by the caller via
-``merge_params``: explicit per-call ``params`` > this profile > the engine's
-own hardcoded default.
+``merge_params``: explicit per-call ``params`` > this profile > the client's
+industry pack (``src.vertical_profile``, keyed on this profile's ``vertical``
+field) > the engine's own hardcoded default.
 """
 
 from __future__ import annotations
@@ -25,6 +26,12 @@ import time
 import unicodedata
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # import-only: src.vertical_profile imports THIS module at
+    # runtime (for _require_positive_finite), so a runtime import back would
+    # be a cycle. `from __future__ import annotations` keeps the hint a string.
+    from src.vertical_profile import VerticalProfile
 
 from src.deliverable import Branding
 from src.hats import HAT_KEYS
@@ -143,6 +150,17 @@ class ClientProfile:
     # (no Tool reads it), so excluded from as_params(); the package CLI reads
     # it directly off the loaded profile, same as contingent_fee_pct.
     lang: str = "es"
+    # The client's industry -- the key into config/verticals/<vertical>.yaml,
+    # which supplies the defaults BELOW this profile (see
+    # src.vertical_profile). Deliberately NOT an engine param (no Tool reads
+    # the slug itself), so it is excluded from as_params(); the caller resolves
+    # it to a VerticalProfile and passes that to merge_params.
+    #
+    # Not validated here beyond "a string if present": the only place the value
+    # can do harm is when it becomes a path, and _vertical_config_path()
+    # validates it there. One regex, one home -- see that module's note on the
+    # three copies of _norm this repo already paid for.
+    vertical: str | None = None
     source: str = "manual"
     updated_at: str | None = None  # ISO date; caller-supplied (module stays pure)
 
@@ -225,6 +243,7 @@ def load_profile(client_id: str, *, root: Path | str = DEFAULT_CLIENTS_ROOT) -> 
             branding=Branding(**branding_raw) if branding_raw else None,
             objection_thresholds=raw.get("objection_thresholds"),
             contingent_fee_pct=raw.get("contingent_fee_pct"),
+            vertical=raw.get("vertical"),
             lang=raw.get("lang", "es"),
             source=raw.get("source", "manual"),
             updated_at=raw.get("updated_at"),
@@ -311,8 +330,31 @@ def upsert_profile(
     return updated
 
 
-def merge_params(params: dict, profile: ClientProfile | None) -> dict:
-    """Client profile fills gaps only — any key already in ``params`` always wins."""
-    if profile is None:
-        return dict(params)
-    return {**profile.as_params(), **params}
+def merge_params(
+    params: dict,
+    profile: ClientProfile | None,
+    vertical: VerticalProfile | None = None,
+) -> dict:
+    """Layer the parameter sources, lowest precedence first::
+
+        vertical pack  <  client profile  <  explicit per-call params
+
+    Both lower layers fill gaps only: any key already in ``params`` always
+    wins, and any number the client's own profile records beats the industry
+    default. An industry default is a better starting point than the engine's
+    textbook constants (0.95 service level, 0.25 holding rate) but a worse one
+    than a number an operator actually recorded for this client.
+
+    ``vertical`` is a plain argument rather than something resolved from
+    ``profile.vertical`` in here on purpose: this function never touches disk,
+    so it stays pure and trivially testable. The caller resolves the slug via
+    ``src.vertical_profile.load_vertical_profile``.
+    """
+    merged: dict = {}
+    for layer in (
+        vertical.as_params() if vertical is not None else {},
+        profile.as_params() if profile is not None else {},
+        params,
+    ):
+        merged.update(layer)
+    return merged

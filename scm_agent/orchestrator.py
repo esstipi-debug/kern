@@ -17,7 +17,7 @@ from nosilo_core.types import (
     JobRequest,
     JobResult,
 )
-from src import client_profile
+from src import client_profile, vertical_profile
 
 from .guided_bridge import to_guided_outcome
 from .intent import classify
@@ -119,7 +119,28 @@ class Orchestrator:
                             "client_profile.upsert_profile(...)",
                         ],
                     )
-        params = client_profile.merge_params(params, profile)
+        vertical = None
+        if profile is not None and profile.vertical:
+            try:
+                vertical = vertical_profile.load_vertical_profile(profile.vertical)
+            except (vertical_profile.VerticalNotConfiguredError, ValueError) as exc:
+                # Same rule as the corrupt-profile branch above, for the same
+                # reason: this client DECLARED an industry, and the engine's
+                # generic defaults (0.95 service level, 0.25 holding rate) are
+                # exactly what that industry's pack exists to correct. Falling
+                # back would hand them textbook numbers with a confident face.
+                # A client with no declared vertical is untouched — the layer is
+                # simply absent, which is how this stays behaviour-neutral for
+                # every profile written before the field existed.
+                return JobResult(
+                    status=STATUS_ERROR, tool=tool.key, confidence=intent.confidence,
+                    deliverables={}, summary=str(exc),
+                    clarifications=[
+                        f"add config/verticals/{profile.vertical}.yaml, or clear the "
+                        f"'vertical' field on clients/{profile.client_id}/profile.json",
+                    ],
+                )
+        params = client_profile.merge_params(params, profile, vertical)
         # prepare() must see the same merged params run() will: several tools bake
         # params into their payload at prepare time (multi_echelon service_level,
         # simulation order_cost, inventory lead_time_days).
