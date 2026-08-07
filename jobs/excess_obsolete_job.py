@@ -15,6 +15,11 @@ import pandas as pd
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.excess_obsolete import DEAD, EXCESS, SkuEO, SkuStock, classify_excess_obsolete
 from src.export import write_summary_csv
+from src.i18n import DEFAULT_LANG, Lang, tool_title
+
+# `classification` es un token de maquina (dead/excess/healthy) y viaja tal cual
+# en el CSV operativo; solo se traduce donde lo lee un cliente.
+_CLASS_ES = {DEAD: "muerto", EXCESS: "excedido", "healthy": "sano"}
 
 _PRODUCT_COLS = ("product_id", "sku", "SKU", "item", "Product", "product")
 _ONHAND_COLS = ("on_hand", "quantity", "qty", "stock", "units", "On Hand")
@@ -101,9 +106,10 @@ def run(payload: dict) -> EOReport:
     n_dead = sum(1 for e in lines if e.classification == DEAD)
     n_excess = sum(1 for e in lines if e.classification == EXCESS)
     summary = (
-        f"E&O over {len(lines)} SKU(s): {n_dead} dead + {n_excess} excess hold "
-        f"{eo_value:,.0f} ({(eo_value / total_value * 100) if total_value > 0 else 0:.0f}% of "
-        f"{total_value:,.0f} on-hand value) at risk."
+        f"E&O sobre {len(lines)} SKU(s): {n_dead} muertos + {n_excess} excedidos retienen "
+        f"{eo_value:,.0f} en riesgo "
+        f"({(eo_value / total_value * 100) if total_value > 0 else 0:.0f}% de "
+        f"{total_value:,.0f} de valor en mano)."
     )
     return EOReport(
         n_skus=len(lines), n_dead=n_dead, n_excess=n_excess,
@@ -155,61 +161,79 @@ def build_deck(
     prepared: str = "",
     citations: tuple[str, ...] = (),
     confidence: float = 0.85,
+    lang: Lang = DEFAULT_LANG,
 ) -> Deliverable:
-    """Compose the E&O study: how much cash is stuck in dead and excess stock, and what to do."""
+    """Compose the E&O study: how much cash is stuck in dead and excess stock, and what to do.
+
+    La prosa narrativa de este deck (summary, findings, recomendaciones, residual)
+    es **nativa en castellano**: es un entregable cliente-facing y el idioma por
+    defecto del repo es ``es``. Esto invierte, solo para este tool, la convencion
+    que documenta ``src/i18n.py`` (prosa de tool nativa en ingles).
+
+    ``lang`` gobierna el titulo y el andamiaje estructural del ``Deliverable``
+    (encabezados de seccion, columnas de tabla, hojas de Excel) -- no traduce la
+    narrativa.
+    """
     summary = (
-        f"Excess & obsolete over {report.n_skus} SKU(s): {report.n_dead} dead "
-        f"({report.dead_value:,.0f}) + {report.n_excess} excess ({report.excess_value:,.0f}) = "
-        f"{report.eo_value:,.0f} at risk, {report.eo_pct_of_value * 100:.0f}% of the "
-        f"{report.total_on_hand_value:,.0f} on-hand value."
+        f"Excedente y obsoleto sobre {report.n_skus} SKU(s): {report.n_dead} muertos "
+        f"({report.dead_value:,.0f}) + {report.n_excess} excedidos ({report.excess_value:,.0f}) = "
+        f"{report.eo_value:,.0f} en riesgo, {report.eo_pct_of_value * 100:.0f}% del "
+        f"valor en mano de {report.total_on_hand_value:,.0f}."
     )
 
     worst = report.lines[0] if report.lines else None
     findings = [
         Finding(
-            "Dead stock (non-moving)",
-            f"{report.n_dead} SKU(s) with no sale in {report.dead_threshold_days:.0f}+ days hold "
+            "Stock muerto (sin movimiento)",
+            f"{report.n_dead} SKU(s) sin venta en {report.dead_threshold_days:.0f}+ dias retienen "
             f"{report.dead_value:,.0f}.",
-            impact="cash and space locked up - liquidate, return to vendor, or write off",
+            impact="cash y espacio inmovilizados - liquidar, devolver al proveedor o dar de baja",
         ),
         Finding(
-            "Excess stock (over cover)",
-            f"{report.n_excess} SKU(s) above the {report.target_cover_days:.0f}-day cover target hold "
-            f"{report.excess_value:,.0f} of excess.",
-            impact="stop buying and draw down before it ages into dead stock",
+            "Stock excedido (sobre la cobertura)",
+            f"{report.n_excess} SKU(s) por encima del objetivo de "
+            f"{report.target_cover_days:.0f} dias de cobertura retienen "
+            f"{report.excess_value:,.0f} de excedente.",
+            impact="dejar de comprar y bajar el stock antes de que envejezca a muerto",
         ),
     ]
     if worst is not None and worst.excess_value > 0:
         findings.append(Finding(
-            f"Largest single exposure: {worst.product_id}",
-            f"{worst.classification}, {worst.excess_value:,.0f} at risk "
-            f"({worst.on_hand:,.0f} on hand).",
-            impact="act on this SKU first",
+            f"Mayor exposicion individual: {worst.product_id}",
+            f"{_CLASS_ES.get(worst.classification, worst.classification)}, "
+            f"{worst.excess_value:,.0f} en riesgo ({worst.on_hand:,.0f} en mano).",
+            impact="actuar primero sobre este SKU",
         ))
 
     kpis = (
-        Kpi("SKUs", f"{report.n_skus}", rationale="Stock lines assessed"),
-        Kpi("Dead SKUs", f"{report.n_dead}", target="minimize", rationale="No movement past the threshold"),
-        Kpi("Excess SKUs", f"{report.n_excess}", target="minimize", rationale="Above the cover target"),
-        Kpi("Cash at risk (E&O)", f"{report.eo_value:,.0f}", target="minimize",
-            rationale="Dead value + excess value"),
-        Kpi("E&O share of value", f"{report.eo_pct_of_value * 100:.0f}%", target="minimize",
-            rationale="At-risk cash as a share of on-hand value"),
+        Kpi("SKUs", f"{report.n_skus}", rationale="Lineas de stock evaluadas"),
+        Kpi("SKUs muertos", f"{report.n_dead}", target="minimize",
+            rationale="Sin movimiento pasado el umbral"),
+        Kpi("SKUs excedidos", f"{report.n_excess}", target="minimize",
+            rationale="Por encima del objetivo de cobertura"),
+        Kpi("Cash en riesgo (E&O)", f"{report.eo_value:,.0f}", target="minimize",
+            rationale="Valor muerto + valor excedido"),
+        Kpi("Participacion E&O del valor", f"{report.eo_pct_of_value * 100:.0f}%", target="minimize",
+            rationale="Cash en riesgo como porcion del valor en mano"),
     )
 
     data_sources = (
-        DataSource("On-hand stock, daily demand, days since last sale", "WMS / sales history", "weekly"),
-        DataSource("Unit cost", "Cost master", "per cost review"),
+        DataSource("Stock en mano, demanda diaria, dias desde la ultima venta",
+                   "WMS / historial de ventas", "semanal"),
+        DataSource("Costo unitario", "Maestro de costos", "por revision de costos"),
     )
 
     recommendations = (
-        "Liquidate / return / write off the dead stock to release the locked cash and space.",
-        "Stop buying the excess SKUs and redistribute or promote them before they age to dead.",
-        "Set a days-of-cover ceiling per ABC class to keep excess from rebuilding.",
+        "Liquidar / devolver / dar de baja el stock muerto para liberar el cash y el espacio "
+        "inmovilizados.",
+        "Dejar de comprar los SKUs excedidos y redistribuirlos o promocionarlos antes de que "
+        "envejezcan a muertos.",
+        "Fijar un techo de dias de cobertura por clase ABC para que el excedente no se reconstruya.",
     )
 
     return Deliverable(
-        title="Excess & Obsolete (E&O) Stock",
+        title=tool_title("excess_obsolete", lang, fallback="Excess & Obsolete (E&O) Stock"),
+        lang=lang,
         client=client,
         summary=summary,
         findings=tuple(findings),
@@ -218,8 +242,9 @@ def build_deck(
         recommendations=recommendations,
         citations=tuple(citations),
         confidence=confidence,
-        residual="Disposition is a human / commercial decision: the agent delivers the ranked at-risk "
-                 "list and recommended actions to approve - it does not liquidate, return or write off "
-                 "stock. Confirm the cover target, the dead threshold and salvage channels before acting.",
+        residual="La disposicion es una decision humana / comercial: el agente entrega la lista "
+                 "priorizada de stock en riesgo y las acciones recomendadas para aprobar - no "
+                 "liquida, devuelve ni da de baja stock. Confirmar el objetivo de cobertura, el "
+                 "umbral de stock muerto y los canales de recupero antes de actuar.",
         prepared=prepared,
     )

@@ -57,7 +57,18 @@ def test_build_deck_is_ascii_deliverable():
     assert isinstance(deck, Deliverable)
     md = deck.to_markdown()
     assert md.isascii()
+    # El deck es cliente-facing y sale en el idioma por defecto del repo (es),
+    # scaffolding incluido. La version en ingles sigue disponible via lang="en".
+    assert "Stock Excedente y Obsoleto" in md and "## Cobertura y transferencia" in md
+
+
+def test_lang_en_flips_scaffolding_but_not_the_narrative():
+    """``lang`` gobierna titulo y andamiaje; la prosa del tool es nativa en es."""
+    report = eoj.run(eoj.prepare_records(_stock_df()))
+    md = eoj.build_deck(report, client="Acme", lang="en").to_markdown()
+    assert md.isascii()
     assert "Excess & Obsolete" in md and "## Coverage & handoff" in md
+    assert "Stock muerto (sin movimiento)" in md          # prosa: sigue en es
 
 
 def test_brief_routes_to_excess_obsolete():

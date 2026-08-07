@@ -151,7 +151,10 @@ class Deliverable:
             for f in self.findings:
                 line = f"- **{f.title}** - {f.detail}"
                 if f.impact:
-                    line += f" _(impact: {f.impact})_"
+                    # El camino a Excel ya usaba L("col_impact"); el de markdown
+                    # tenia la etiqueta hardcodeada en ingles y se colaba en un
+                    # deck lang="es".
+                    line += f" _({L('col_impact').lower()}: {f.impact})_"
                 out.append(line)
             out.append("")
 
