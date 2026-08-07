@@ -366,9 +366,12 @@ def render_how_it_works_html() -> str:
     grounding_cards = "".join([
         _expandable_card(
             "Knowledge graph", "26 curated external sources + the codebase itself",
-            "<p>Every deliverable carries L3 citations, gated by <code>citation_gate</code> "
-            "(minimum 2 citations, max 2 hops, an EXCLUDED_CONCEPTS false-friend filter) so a "
-            "result is never grounded in an off-topic source.</p>",
+            "<p>Every deliverable carries L3 citations. On the package path they also pass "
+            "<code>citation_gate</code> (minimum 2 citations, max 2 hops, an EXCLUDED_CONCEPTS "
+            "false-friend filter): a candidate that does not resolve to a graph node near the "
+            "tool's own anchor concepts is dropped, never substituted, and a batch below the "
+            "minimum degrades to no citations at all rather than shipping one weak hit. "
+            "Single-tool runs through the orchestrator are grounded but not gated.</p>",
             card_id="card-knowledge",
         ),
         _expandable_card(

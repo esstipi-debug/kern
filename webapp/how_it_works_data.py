@@ -338,7 +338,7 @@ ISO_9001_CLAUSES: tuple[IsoClause, ...] = (
     IsoClause("7.5 Documented information",
               "An EvidenceRecord (SHA-256 of inputs, control totals, formula versions, QA "
               "attestations); a writeback AuditEntry; a Keep-a-Changelog CHANGELOG; L3 "
-              "citations on every deliverable."),
+              "citations on every deliverable, gated by citation_gate on the package path."),
     IsoClause("8.5.1 Control of production",
               "Grounding, confidence, and guided options on every deliverable; personas/KPIs "
               "per mode."),
