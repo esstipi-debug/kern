@@ -108,13 +108,31 @@ en `scm_agent/tools.py`, `webapp/mcp_tool_specs.py` y `scm_agent/citation_gate.p
   análisis de datos) e `intake_scan` (lee un directorio entero: en una
   superficie remota anónima sería una primitiva de lectura arbitraria de
   archivos).
-- `citation_gate.py`'s `TOOL_CONCEPTS` tiene **49 claves para 50 tools**. Ya
-  no es 1:1. Cuatro tools registradas no tienen entrada bajo su nombre —
-  `intake_scan`, `inventory`, `leadership`, `org_friction` — y tres claves no
-  corresponden a ninguna tool registrada: `inventory_optimization`,
-  `leadership_chain`, `org_friction_audit`. Tres de las cuatro parecen
-  desfase de nombres (renombres no propagados), no ausencia real de concepto.
-  **Pendiente de auditar antes de usarse como claim público.**
+- `citation_gate.py`'s `TOOL_CONCEPTS` tiene **49 claves para 50 tools**, y el
+  mapeo es correcto: la única tool sin concepto es `intake_scan`, omitida
+  **por diseño** (`_NO_CONCEPT_MAP_BY_DESIGN`, con `_CORRECTLY_ZERO_TOOLS` en
+  `tests/test_packages_citations.py`). No hay claves huérfanas ni desfase de
+  nombres. El gate es fail-closed: una tool sin anclas omite *todas* sus
+  citas, nunca inventa un sustituto.
+
+**Límite de alcance del gate — relevante para lo que se puede prometer.**
+`filter_citations` está cableado en `scm_agent/packages.py::_run_step`,
+`jobs/integrated_plan.py`, `jobs/price_intelligence.py`, `jobs/repricing.py` y
+`src/pricing_guardrails.py`. **El camino de tool única del orquestador no pasa
+por el gate:** `scm_agent/orchestrator.py::_ground` llama al `ground_citations`
+sin filtrar, y ese es el camino de la webapp, del servidor MCP y de
+`examples/run_agent.py`.
+
+El propio código mide la consecuencia y la deja escrita (nota IMPORTANT-4 del
+31-jul-2026): replicando la llamada real del orquestador para `flow_map` e
+`intake_scan`, **3 de las 5 citas entregadas son ruido del libro de
+resiliencia de Khan** — que pesa el 32% del grafo. El gate existe justamente
+para vetar eso, pero no corre en ese camino.
+
+**Consecuencia comercial:** el claim defendible es *"los entregables de
+paquete comercial pasan por un gate de citación"*, no *"todo resultado cita su
+fuente"*. Cablear el gate al camino de tool única está señalado en el código
+como un cambio de radio de impacto mayor, no hecho todavía.
 
 > **Nota de vigencia.** La versión anterior de esta sección decía 37 tools y
 > 33 expuestas vía MCP. Era correcto en su momento (commit `62844c3`) y quedó
