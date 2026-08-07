@@ -44,12 +44,12 @@ from .matching import (
     PRICE_VARIANCE,
     QTY_OVER_ORDER,
     QTY_OVER_RECEIPT,
+    ZERO,
     LineMatch,
     MatchException,
     MatchResult,
     MatchRun,
     SupplierInvoice,
-    ZERO,
 )
 
 #: Why each unprovable code cannot be priced. Absence of an entry is a bug, not a zero:

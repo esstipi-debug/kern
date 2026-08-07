@@ -20,6 +20,7 @@ import pytest
 from packs.source_to_pay.matching import (
     DUPLICATE_INVOICE,
     InvoiceLine,
+    MatchException,
     PurchaseOrderLine,
     ReceiptLine,
     SupplierInvoice,
@@ -27,7 +28,12 @@ from packs.source_to_pay.matching import (
     match_batch,
     match_invoice,
 )
-from packs.source_to_pay.recovery import recover_invoice, recover_run
+from packs.source_to_pay.recovery import (
+    RecoveryItem,
+    quantified_items,
+    recover_invoice,
+    recover_run,
+)
 
 RUT = "76.543.210-K"
 TIGHT = Tolerance(
@@ -271,3 +277,75 @@ def test_recover_run_refuses_an_invoice_it_was_not_given():
 
     with pytest.raises(KeyError, match="F-12"):
         recover_run(run, [])
+
+
+def test_quantified_items_ranks_the_batch_largest_first():
+    """What goes on the fee invoice, in the order a client reads it."""
+    po = [_po("1", "12", "74900")]
+    receipts = [_receipt("1", "9")]
+    phantom = _invoice("F-13", (_line("1", "12", "74900"),), "898800")
+    repeated = _invoice("F-14", (_line("1", "12", "74900"),), "898800")
+
+    run = match_batch(
+        [phantom, repeated],
+        po_lines=po,
+        receipts=receipts,
+        tolerance=TIGHT,
+        seen_invoices=[(RUT, "F-14")],
+    )
+    ranked = quantified_items(recover_run(run, [phantom, repeated]))
+
+    assert [i.code for i in ranked][0] == DUPLICATE_INVOICE
+    assert [i.amount for i in ranked] == sorted((i.amount for i in ranked), reverse=True)
+
+
+# ---- the guardrails have to be able to fail ---------------------------------
+#
+# Everything below exists because a mutation run proved the module's central rule was
+# unfalsifiable: replacing the KeyError in ``_unquantified`` with a quantified zero left
+# all eleven tests green. A guardrail no test can break is a guardrail that arrives at
+# the future already broken - and the future here is the day someone adds a code to
+# ``matching.py``, which is exactly when a silent zero would ship unnoticed.
+
+
+def test_an_unclassified_code_raises_instead_of_falling_through_as_zero():
+    """The rule the whole module rests on, and the one nothing could break before."""
+    from packs.source_to_pay.recovery import _unquantified
+
+    orphan = MatchException(code="a_code_nobody_classified", severity="review", line_no="1")
+
+    with pytest.raises(KeyError, match="a_code_nobody_classified"):
+        _unquantified(orphan, basis="whatever")
+
+
+def test_an_invoice_level_finding_that_is_not_a_duplicate_is_not_priced():
+    """Totals that do not add up: no single line can be held responsible."""
+    line = _line("1", "10", "1000")
+    invoice = _invoice("F-15", (line,), "999999")  # net_total disagrees with the lines
+
+    result = match_invoice(
+        invoice,
+        po_lines=[_po("1", "10", "1000")],
+        receipts=[_receipt("1", "10")],
+        tolerance=TIGHT,
+    )
+    recovery = recover_invoice(result, invoice)
+    item = _by_code(recovery, "invoice_arithmetic")
+
+    assert item.quantified is False
+    assert item.amount is None
+    assert recovery.quantified_total == Decimal("0")
+
+
+@pytest.mark.parametrize(
+    "kwargs, expected",
+    [
+        (dict(quantified=True, amount=None), "without an amount"),
+        (dict(quantified=False, amount=Decimal("1"), reason="r"), "carrying an amount"),
+        (dict(quantified=False, amount=None), "without a reason"),
+    ],
+)
+def test_a_recovery_item_cannot_be_built_in_a_dishonest_shape(kwargs, expected):
+    """The three states that would let a silent zero exist are unconstructable."""
+    with pytest.raises(ValueError, match=expected):
+        RecoveryItem(code="c", severity="review", line_no=None, basis="b", **kwargs)
