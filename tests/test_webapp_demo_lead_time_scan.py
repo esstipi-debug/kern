@@ -102,6 +102,71 @@ def test_menos_de_tres_recepciones_no_es_un_proveedor_medido():
     assert any("recepciones" in i for i in result.qa_issues)
 
 
+def test_un_export_en_espaniol_con_acentos_se_mide_sin_configurar_nada():
+    """El caso real del mercado objetivo: Defontana, Softland, Contpaqi."""
+    df = pd.DataFrame(
+        [
+            {
+                "Proveedor": "Rodamientos Andes",
+                "Fecha Orden": o,
+                "Fecha Recepción": r,
+                "Plazo": 21,
+                "Código": "RD-6205",
+            }
+            for o, r in [
+                ("2026-01-01", "2026-02-04"),
+                ("2026-02-01", "2026-03-10"),
+                ("2026-03-01", "2026-03-29"),
+            ]
+        ]
+    )
+    result = scan.run_lead_time_scan(df)
+
+    assert result.ok, result.qa_issues
+    assert result.scores[0].supplier == "Rodamientos Andes"
+    assert result.scores[0].declared_lead_time == 21.0
+    assert result.scores[0].avg_lead_time == pytest.approx(33.0)
+
+
+def test_fechas_en_formatos_mezclados_no_pierden_recepciones_en_silencio():
+    """Un export que mezcla ISO con dd/mm/yyyy es normal, no un caso borde.
+
+    `pd.to_datetime` sin `format="mixed"` se queda con el formato que infiere de
+    las primeras filas y manda a NaT todo lo demas: la recepcion desaparece del
+    promedio sin que nadie se entere.
+    """
+    df = _receipts(
+        [
+            ("ACME", "2026-01-01", "2026-02-04", 21.0),
+            ("ACME", "2026-02-01", "2026-03-10", 21.0),
+            ("ACME", "2026-03-01", "2026-03-29", 21.0),
+        ]
+    )
+    df.loc[2, "order_date"] = "03/01/2026"  # mismo dia, otro formato
+    df.loc[2, "receipt_date"] = "03/29/2026"
+    result = scan.run_lead_time_scan(df)
+
+    assert result.ok, result.qa_issues
+    assert result.dropped["sin_fecha"] == 0
+    assert result.scores[0].deliveries == 3
+
+
+def test_overrides_ganan_cuando_el_automapeo_no_encuentra_la_columna():
+    df = _receipts(
+        [
+            ("ACME", "2026-01-01", "2026-02-04", 21.0),
+            ("ACME", "2026-02-01", "2026-03-10", 21.0),
+            ("ACME", "2026-03-01", "2026-03-29", 21.0),
+        ]
+    ).rename(columns={"receipt_date": "Fecha 2"})
+    with pytest.raises(ValueError, match="fecha de recepcion"):
+        scan.run_lead_time_scan(df)
+
+    result = scan.run_lead_time_scan(df, {"receipt_date": "Fecha 2"})
+    assert result.ok, result.qa_issues
+    assert result.scores[0].avg_lead_time == pytest.approx(33.0)
+
+
 def test_el_mini_reporte_dice_no_medido_en_vez_de_cero():
     df = _receipts(
         [

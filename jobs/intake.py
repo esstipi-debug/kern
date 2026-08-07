@@ -9,6 +9,7 @@ product per period (weekly by default) ready for the engine.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -20,11 +21,11 @@ CANONICAL_REQUIRED = ("date", "product_id", "quantity")
 CANONICAL_OPTIONAL = ("unit_cost", "lead_time_days", "lead_time_std", "revenue")
 
 ALIASES: dict[str, list[str]] = {
-    "date": ["date", "order_date", "orderdate", "invoicedate", "invoice_date", "week", "period", "ds", "day", "timestamp", "datetime"],
-    "product_id": ["product_id", "productid", "sku", "item", "item_id", "itemid", "stockcode", "stock_code", "product", "material", "article", "part_number", "upc"],
-    "quantity": ["quantity", "qty", "sales", "demand", "units", "unit_sales", "unitsales", "order_qty", "orderqty", "volume", "sold", "units_sold"],
-    "unit_cost": ["unit_cost", "unitcost", "price", "unitprice", "unit_price", "cost", "sell_price", "sellprice", "selling_price"],
-    "lead_time_days": ["lead_time_days", "leadtimedays", "lead_time", "leadtime", "lead", "lt_days", "supplier_lead_time"],
+    "date": ["date", "order_date", "orderdate", "invoicedate", "invoice_date", "week", "period", "ds", "day", "timestamp", "datetime", "fecha", "fecha_documento", "fecha_venta", "fecha_factura", "data", "data_emissao"],
+    "product_id": ["product_id", "productid", "sku", "item", "item_id", "itemid", "stockcode", "stock_code", "product", "material", "article", "part_number", "upc", "codigo", "codigo_producto", "cod_producto", "articulo", "codigo_articulo", "referencia", "clave_producto", "produto", "codigo_produto"],
+    "quantity": ["quantity", "qty", "sales", "demand", "units", "unit_sales", "unitsales", "order_qty", "orderqty", "volume", "sold", "units_sold", "cantidad", "cant", "cantidad_vendida", "unidades", "quantidade"],
+    "unit_cost": ["unit_cost", "unitcost", "price", "unitprice", "unit_price", "cost", "sell_price", "sellprice", "selling_price", "costo", "costo_unitario", "precio", "precio_unitario", "custo", "preco"],
+    "lead_time_days": ["lead_time_days", "leadtimedays", "lead_time", "leadtime", "lead", "lt_days", "supplier_lead_time", "declared_lead_time_days", "promised_lead_time_days", "planned_lead_time", "plazo", "plazo_dias", "plazo_entrega", "plazo_declarado", "dias_entrega", "prazo", "prazo_entrega"],
     # Lead-time dispersion (sigma_LT). Same alias set jobs/launch_readiness_job.py
     # already accepts, so a file that works there works here too.
     "lead_time_std": ["lead_time_std", "leadtimestd", "lead_std", "sigma_lead", "sigma_l"],
@@ -35,9 +36,9 @@ ALIASES: dict[str, list[str]] = {
     # it is not a distinct canonical name anywhere in this codebase, it is a
     # header alias for "product_id" (already listed above) -- a client's "sku"
     # column maps straight to canonical product_id, same as "item_id"/"upc"/etc.
-    "name": ["name", "product_name", "item_name", "description", "desc"],
+    "name": ["name", "product_name", "item_name", "description", "desc", "nombre", "nombre_producto", "descripcion", "detalle", "glosa", "nome", "descricao"],
     "gtin": ["gtin", "ean", "upc_code", "barcode", "gtin_code"],
-    "on_hand": ["on_hand", "onhand", "stock_on_hand", "qty_on_hand", "inventory_on_hand", "current_stock", "stock_qty", "stock_quantity"],
+    "on_hand": ["on_hand", "onhand", "stock_on_hand", "qty_on_hand", "inventory_on_hand", "current_stock", "stock_qty", "stock_quantity", "stock", "stock_actual", "existencia", "existencias", "saldo", "disponible", "estoque"],
     "daily_demand": ["daily_demand", "avg_daily_demand", "demand_daily", "mean_daily_demand"],
     "days_since_last_sale": ["days_since_last_sale", "days_since_sale", "last_sale_days", "dsls"],
     "cogs": ["cogs", "cost_of_goods_sold", "cost_of_goods"],
@@ -45,12 +46,41 @@ ALIASES: dict[str, list[str]] = {
     "gross_margin": ["gross_margin", "grossmargin", "margin"],
     "units_sold": ["units_sold", "unitssold", "qty_sold"],
     "units_on_hand": ["units_on_hand", "unitsonhand"],
-    "net_sales": ["net_sales", "netsales", "net_revenue"],
+    "net_sales": ["net_sales", "netsales", "net_revenue", "venta_neta", "importe_neto"],
+    # Abajo: el export de RECEPCIONES (webapp/demo_lead_time_scan.py). Son campos
+    # canonicos propios y no alias de los de arriba porque la distincion es justo
+    # la que da valor: `date` acepta un "date" pelado, y en un export de compras
+    # esa columna tanto puede ser la fecha de la orden como la de la recepcion.
+    # Confundirlas invierte el signo del plazo medido, asi que ninguna de las dos
+    # acepta un encabezado ambiguo: o el archivo las nombra, o no se mide.
+    "supplier": ["supplier", "supplier_name", "supplier_id", "vendor", "vendor_name", "partner_id", "proveedor", "nombre_proveedor", "razon_social_proveedor", "fornecedor"],
+    "order_date": ["order_date", "orderdate", "po_date", "podate", "issue_date", "date_order", "ordered_at", "fecha_orden", "fecha_pedido", "fecha_oc", "fecha_emision_oc", "data_pedido"],
+    "receipt_date": ["receipt_date", "received_date", "receipt_dt", "delivery_date", "actual_delivery_date", "date_done", "fecha_recepcion", "fecha_recibido", "fecha_entrega", "fecha_llegada", "data_recebimento"],
+    "po_id": ["po_id", "po", "po_number", "order_id", "purchase_order", "purchase_order_id", "numero_oc", "num_oc", "orden_compra", "folio", "pedido"],
 }
+
+#: Los campos que `webapp/demo_lead_time_scan.py` le pide a `detect_columns`.
+#: `lead_time_days` entra como OPCIONAL y significa el plazo DECLARADO: en un
+#: export de recepciones esa columna es lo que el sistema promete, nunca lo que
+#: se observo -- lo observado se calcula de las dos fechas y de ningun otro lado.
+RECEIPT_REQUIRED = ("supplier", "order_date", "receipt_date")
+RECEIPT_OPTIONAL = ("lead_time_days", "product_id", "po_id")
 
 
 def _norm(value: object) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(value).lower())
+    """Header -> comparison key: acentos plegados, todo lo demas fuera.
+
+    El plegado NFKD importa porque sin el ``[^a-z0-9]`` **borra** la vocal
+    acentuada en vez de reducirla: ``Descripcion`` con tilde caia en
+    ``descripcin``, que no coincide con ningun alias, y una cabecera
+    ``Codigo`` con tilde caia en ``cdigo``. Un export de Defontana, Softland o
+    Contpaqi no mapeaba esa columna y el job la trataba como ausente -- en un
+    producto cuyo primer mercado es LatAm, ese era el modo de falla por
+    defecto, no un caso borde. Con el plegado, ``Descripcion`` acentuada y
+    ``descripcion`` son la misma clave.
+    """
+    folded = unicodedata.normalize("NFKD", str(value).lower())
+    return re.sub(r"[^a-z0-9]", "", folded)
 
 
 def _parse_dates(series: pd.Series) -> pd.Series:
@@ -215,12 +245,25 @@ class ColumnMapping:
         return not self.unmatched_required
 
 
-def detect_columns(df: pd.DataFrame, overrides: dict[str, str] | None = None) -> ColumnMapping:
-    """Heuristically map canonical fields to the client's column names."""
+def detect_columns(
+    df: pd.DataFrame,
+    overrides: dict[str, str] | None = None,
+    *,
+    required: tuple[str, ...] = CANONICAL_REQUIRED,
+    optional: tuple[str, ...] = CANONICAL_OPTIONAL,
+) -> ColumnMapping:
+    """Heuristically map canonical fields to the client's column names.
+
+    ``required``/``optional`` default al juego de demanda, que es lo que pedian
+    todos los llamadores previos. Se parametrizan porque el mismo mapeo por alias
+    sirve a otros formularios de entrada -- recepciones, por ejemplo -- y
+    duplicar la tabla de alias por cada uno es como se termina con cinco
+    normalizadores que divergen (`RECEIPT_REQUIRED` arriba es el segundo juego).
+    """
     overrides = overrides or {}
     by_norm = {_norm(c): c for c in df.columns}
     mapping: dict[str, str] = {}
-    for canon in (*CANONICAL_REQUIRED, *CANONICAL_OPTIONAL):
+    for canon in (*required, *optional):
         if canon in overrides and overrides[canon] in df.columns:
             mapping[canon] = overrides[canon]
             continue
@@ -229,7 +272,7 @@ def detect_columns(df: pd.DataFrame, overrides: dict[str, str] | None = None) ->
             if hit is not None:
                 mapping[canon] = hit
                 break
-    unmatched = [c for c in CANONICAL_REQUIRED if c not in mapping]
+    unmatched = [c for c in required if c not in mapping]
     return ColumnMapping(mapping=mapping, unmatched_required=unmatched)
 
 

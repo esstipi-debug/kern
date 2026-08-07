@@ -12,6 +12,11 @@ y compone el titular. Misma forma que ``webapp/demo_scan.py`` y
 ``webapp/demo_price_scan.py``: puro, sin I/O, con compuerta de QA -- si nada es
 comparable no hay artefacto, y el issue dice que columna falta.
 
+El mapeo de columnas tampoco es propio: sale de ``jobs.intake.detect_columns``,
+la misma tabla de alias que usa el resto de la ingesta. Un juego de tuplas
+local habria sido el sexto normalizador del repo, y el sexto que se queda atras
+cuando alguien agrega un alias en el que si se mantiene.
+
 **La regla que hace honesta esta salida:** el plazo medido sale SIEMPRE de las
 fechas de la recepcion. Una columna ``lead_time_days`` en un export es el campo
 del ERP -- una promesa -- y usarla como observacion compara la promesa consigo
@@ -25,6 +30,12 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from jobs.intake import (
+    RECEIPT_OPTIONAL,
+    RECEIPT_REQUIRED,
+    _parse_dates,
+    detect_columns,
+)
 from src.supplier_scorecard import (
     LEAD_TIME_GAP_MATERIAL,
     LEAD_TIME_MEASURED,
@@ -38,33 +49,19 @@ MIN_DELIVERIES = 3
 
 CTA_PATH = "/paquetes/diagnostico-arranque"
 
-_ORDER_DATE_COLS = (
-    "order_date", "po_date", "issue_date", "ordered_at", "date_order",
-    "fecha_orden", "fecha_emision", "fecha_pedido",
-)
-_RECEIPT_DATE_COLS = (
-    "receipt_date", "received_date", "delivery_date", "actual_delivery_date",
-    "date_done", "fecha_recepcion", "fecha_entrega", "fecha_recibido",
-)
-_DECLARED_COLS = (
-    "declared_lead_time_days", "promised_lead_time_days", "lead_time_days",
-    "lead_time", "planned_lead_time", "delay", "plazo_dias", "plazo_declarado",
-)
-_SUPPLIER_COLS = (
-    "supplier", "Supplier", "vendor", "Vendor", "supplier_name", "supplier_id",
-    "partner_id", "proveedor",
-)
-_PRODUCT_COLS = ("product_id", "sku", "item", "codigo", "StockCode")
-_PO_COLS = ("po_id", "po", "order_id", "purchase_order", "name", "oc")
+#: Como nombrar cada campo requerido cuando hay que decir cual falta. Un 400 que
+#: dice `receipt_date` le sirve a quien escribio el CSV; uno que dice "fecha de
+#: recepcion" le sirve a quien lo exporto del ERP, que es el visitante.
+_ES = {
+    "supplier": "proveedor",
+    "order_date": "fecha de orden",
+    "receipt_date": "fecha de recepcion",
+}
 
 REQUIRED_COLUMNS_HINT = (
     "proveedor, fecha de orden y fecha de recepcion (y opcional: "
     "plazo declarado en dias, product_id, po_id)"
 )
-
-
-def _pick(df: pd.DataFrame, candidates: tuple[str, ...]) -> str | None:
-    return next((c for c in candidates if c in df.columns), None)
 
 
 @dataclass(frozen=True)
@@ -116,49 +113,51 @@ def _relative_gap(score: SupplierScore) -> float | None:
     return abs(score.lead_time_gap) / score.declared_lead_time
 
 
-def to_deliveries(df: pd.DataFrame) -> tuple[dict[str, list[dict]], dict[str, int]]:
+def to_deliveries(
+    df: pd.DataFrame, overrides: dict[str, str] | None = None
+) -> tuple[dict[str, list[dict]], dict[str, int]]:
     """Filas de recepcion -> las que ``score_supplier`` come, agrupadas por proveedor.
 
     Devuelve tambien el conteo de descartes por causa. El plazo medido sale de
     ``receipt_date - order_date`` y de ningun otro lugar (ver el docstring del
     modulo). Levanta ValueError cuando falta una columna estructural, que es lo
-    que el endpoint mapea a un 400 accionable.
+    que el endpoint mapea a un 400 accionable. ``overrides`` es el escape para
+    cuando el auto-mapeo elige mal: ``{"receipt_date": "Fecha 2"}``.
     """
-    supplier_col = _pick(df, _SUPPLIER_COLS)
-    order_col = _pick(df, _ORDER_DATE_COLS)
-    receipt_col = _pick(df, _RECEIPT_DATE_COLS)
-
-    missing = [
-        name
-        for name, col in (
-            ("proveedor", supplier_col),
-            ("fecha de orden", order_col),
-            ("fecha de recepcion", receipt_col),
-        )
-        if col is None
-    ]
-    if missing:
+    # Mismo mapeo por alias que el resto de la ingesta, con acentos plegados y
+    # cabeceras en espanol: un export de Defontana o Contpaqi entra sin tocar nada.
+    detected = detect_columns(
+        df, overrides, required=RECEIPT_REQUIRED, optional=RECEIPT_OPTIONAL
+    )
+    if detected.unmatched_required:
+        faltan = ", ".join(_ES[c] for c in detected.unmatched_required)
         raise ValueError(
-            f"faltan columnas: {', '.join(missing)}. Sin fecha de orden y de "
-            "recepcion el plazo no se puede medir, y el campo de plazo del ERP "
-            "es la promesa que veniamos a contrastar, no una medicion. "
+            f"faltan columnas: {faltan}. Sin fecha de orden y de recepcion el "
+            "plazo no se puede medir, y el campo de plazo del ERP es la promesa "
+            "que veniamos a contrastar, no una medicion. "
             f"Columnas vistas: {list(df.columns)[:12]}"
         )
 
-    declared_col = _pick(df, _DECLARED_COLS)
-    product_col = _pick(df, _PRODUCT_COLS)
-    po_col = _pick(df, _PO_COLS)
+    cols = detected.mapping
+    supplier_col = cols["supplier"]
+    declared_col = cols.get("lead_time_days")
+    product_col = cols.get("product_id")
+    po_col = cols.get("po_id")
 
-    ordered = pd.to_datetime(df[order_col], errors="coerce")
-    received = pd.to_datetime(df[receipt_col], errors="coerce")
+    # `_parse_dates` y no `pd.to_datetime` a secas: sin `format="mixed"` pandas se
+    # queda con el formato que infiere de las primeras filas y convierte en NaT
+    # toda fila que venga en otro -- un export que mezcla ISO con dd/mm/yyyy
+    # perderia recepciones en silencio, y aqui una recepcion perdida es plazo
+    # observado que no se mide.
+    ordered = _parse_dates(df[cols["order_date"]])
+    received = _parse_dates(df[cols["receipt_date"]])
     days = (received - ordered).dt.days
 
     # ponytail: bucle fila-a-fila con `df.at`, ~10 s sobre 200k recepciones (medido).
     # Un export tipico de 12 meses para 5k SKU son decenas de miles de filas, bajo 1 s.
     # Si un cliente sube algo cerca del tope de 25 MB y la espera se nota, vectorizar
     # con `itertuples` o construir los grupos con `groupby` -- el limite lo pone esto,
-    # no `score_supplier`. Las fechas en formato mixto tambien caen a `dateutil` por
-    # elemento (mismo aviso que jobs/sourcing_job.py:250).
+    # no `score_supplier`.
 
     grouped: dict[str, list[dict]] = {}
     dropped = {"sin_fecha": 0, "plazo_negativo": 0, "sin_proveedor": 0}
@@ -277,13 +276,15 @@ def _findings(scan_scores: list[SupplierScore], dropped: dict[str, int]) -> tupl
     return tuple(findings)
 
 
-def run_lead_time_scan(df: pd.DataFrame) -> LeadTimeScan:
-    """El scan completo: sniff de columnas, medicion, scorecards, QA, hallazgos.
+def run_lead_time_scan(
+    df: pd.DataFrame, overrides: dict[str, str] | None = None
+) -> LeadTimeScan:
+    """El scan completo: mapeo de columnas, medicion, scorecards, QA, hallazgos.
 
     Levanta ValueError (desde ``to_deliveries``) cuando faltan las columnas
     estructurales; el endpoint lo mapea a un 400 accionable.
     """
-    grouped, dropped = to_deliveries(df)
+    grouped, dropped = to_deliveries(df, overrides)
 
     scores = [
         score_supplier(supplier, rows)

@@ -11,11 +11,11 @@ few observations, or the verdict leans on one of them, nothing ships.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pandas as pd
 
+from jobs.intake import _norm
 from nosilo_core.guided import verify_guided
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
@@ -48,10 +48,6 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "costo_unitario": ("costounitario", "unitcost", "cost", "unitprice", "price"),
 }
 _REQUIRED = ("fecha_salida", "fecha_llegada", "origen", "destino", "producto", "cantidad")
-
-
-def _norm(header: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(header).lower())
 
 
 def _resolve_columns(df: pd.DataFrame) -> dict[str, str]:
