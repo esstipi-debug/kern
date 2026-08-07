@@ -74,7 +74,13 @@ from src.state.store import StateStore  # noqa: E402
 from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
-from webapp import demo_price_scan, demo_scan, observability, security  # noqa: E402
+from webapp import (  # noqa: E402
+    demo_lead_time_scan,
+    demo_price_scan,
+    demo_scan,
+    observability,
+    security,
+)
 from webapp.decisions import router as decisions_router  # noqa: E402
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
@@ -93,6 +99,7 @@ DATA_FILE = Path(
     or (_REPO_ROOT / "data" / "sample_demand_portfolio.csv")
 )
 SAMPLE_STOCK_FILE = _REPO_ROOT / "data" / "sample_stock_snapshot.csv"
+SAMPLE_RECEIPTS_FILE = _REPO_ROOT / "data" / "sample_receipts.csv"
 # Lead mini-reports + follow-up drafts (operator-facing; gitignored). On a cloud
 # deploy point this at the persistent volume (e.g. /data/leads) or it is ephemeral.
 LEAD_REPORTS_DIR = Path(
@@ -739,6 +746,44 @@ def _prune_excess_lead_dirs(limit: int = MAX_LEAD_DIRS) -> None:
         shutil.rmtree(stale, ignore_errors=True)
 
 
+async def _stage_csv_upload(file: UploadFile) -> tuple[Path, str]:
+    """Land a visitor's CSV in an isolated per-request tempdir under JOBS_OUTPUT_DIR.
+
+    The SECURITY.md upload controls for the demo funnels in ONE place --
+    basename-only filename, 25 MB cap, TTL-purged staging dir -- so a new funnel
+    endpoint cannot ship with a quietly weaker copy of them. Returns the staged
+    path and the sanitized label the report and telemetry line carry.
+    """
+    import tempfile
+
+    safe_name = _safe_upload_basename(file.filename or "upload")
+    scan_dir = Path(tempfile.mkdtemp(dir=JOBS_OUTPUT_DIR))
+    upload = scan_dir / safe_name
+    if upload.resolve().parent != scan_dir.resolve():
+        raise HTTPException(status_code=400, detail="invalid upload filename")
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
+    try:
+        upload.write_bytes(data)
+    except OSError as exc:
+        # A filename that's syntactically fine for os.path.basename() can still be
+        # rejected by the underlying filesystem (Windows: <>:"|?*, reserved names;
+        # any OS: an overlong path) - a 400, not a crash.
+        raise HTTPException(status_code=400, detail="invalid upload filename") from exc
+    return upload, safe_name
+
+
+def _lead_dir_for(addr: str) -> Path:
+    """The traversal-checked lead directory for an email, created on demand."""
+    _prune_excess_lead_dirs()
+    lead_dir = LEAD_REPORTS_DIR / demo_scan.safe_lead_dirname(addr)
+    if lead_dir.resolve().parent != LEAD_REPORTS_DIR.resolve():
+        raise HTTPException(status_code=400, detail="invalid email")
+    lead_dir.mkdir(parents=True, exist_ok=True)
+    return lead_dir
+
+
 @app.post("/api/demo-scan", dependencies=[Depends(security.rate_limit)])
 async def api_demo_scan(
     email: str = Form(...),
@@ -760,28 +805,8 @@ async def api_demo_scan(
 
     _prune_old_jobs()
 
-    import tempfile
-
     if file is not None and file.filename:
-        raw_name = (file.filename or "upload").replace("\\", "/")
-        safe_name = os.path.basename(raw_name)
-        if not safe_name or safe_name in (".", ".."):
-            raise HTTPException(status_code=400, detail="invalid upload filename")
-        scan_dir = Path(tempfile.mkdtemp(dir=JOBS_OUTPUT_DIR))
-        upload = scan_dir / safe_name
-        if upload.resolve().parent != scan_dir.resolve():
-            raise HTTPException(status_code=400, detail="invalid upload filename")
-        data = await file.read(MAX_UPLOAD_BYTES + 1)
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
-        try:
-            upload.write_bytes(data)
-        except OSError as exc:
-            # A filename that's syntactically fine for os.path.basename() can
-            # still be rejected by the underlying filesystem (Windows: <>:"|?*,
-            # reserved names; any OS: an overlong path) - a 400, not a crash.
-            raise HTTPException(status_code=400, detail="invalid upload filename") from exc
-        data_path, dataset_label = upload, safe_name
+        data_path, dataset_label = await _stage_csv_upload(file)
     elif use_sample:
         data_path, dataset_label = SAMPLE_STOCK_FILE, "sample_stock_snapshot.csv"
     else:
@@ -802,11 +827,7 @@ async def api_demo_scan(
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     if result.ok:
         # QA passed -> persist the operator's follow-up artifacts for this lead.
-        _prune_excess_lead_dirs()
-        lead_dir = LEAD_REPORTS_DIR / demo_scan.safe_lead_dirname(addr)
-        if lead_dir.resolve().parent != LEAD_REPORTS_DIR.resolve():
-            raise HTTPException(status_code=400, detail="invalid email")
-        lead_dir.mkdir(parents=True, exist_ok=True)
+        lead_dir = _lead_dir_for(addr)
         (lead_dir / "mini_report.md").write_text(
             demo_scan.render_mini_report(result, email=addr, dataset_label=dataset_label, ts=ts),
             encoding="utf-8",
@@ -835,6 +856,91 @@ async def api_demo_scan(
         "headline": result.headline,
         "findings": list(result.findings),
         "cta_url": demo_scan.CTA_PATH,
+        "dataset": dataset_label,
+    }
+
+
+@app.post("/api/demo-lead-time", dependencies=[Depends(security.rate_limit)])
+async def api_demo_lead_time(
+    email: str = Form(...),
+    use_sample: bool = Form(False),
+    file: UploadFile | None = File(None),
+) -> dict:
+    """The /demo funnel, salida #1: a receipts CSV -> real lead time vs. declared.
+
+    The output 05-GTM-KERN puts first, because it is a fact about the visitor's
+    own data rather than an opinion: the ERP says 21 days, the last 40 receipts
+    say 34 with a deviation of 11. Same shape as /api/demo-scan -- public,
+    rate-limited, shared upload controls, lead artifacts written only when QA
+    passes, follow-up e-mail a DRAFT that is never auto-sent.
+    """
+    addr = email.strip().lower()
+    if len(addr) > 254 or not EMAIL_RE.match(addr):
+        raise HTTPException(status_code=400, detail="invalid email")
+
+    _prune_old_jobs()
+
+    if file is not None and file.filename:
+        data_path, dataset_label = await _stage_csv_upload(file)
+    elif use_sample:
+        data_path, dataset_label = SAMPLE_RECEIPTS_FILE, "sample_receipts.csv"
+    else:
+        raise HTTPException(
+            status_code=400, detail="sube un CSV de recepciones o marca use_sample"
+        )
+
+    try:
+        df = pd.read_csv(data_path)
+    except Exception as exc:  # pandas raises several parse/encoding error types
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
+    try:
+        result = demo_lead_time_scan.run_lead_time_scan(df)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"columnas requeridas: {demo_lead_time_scan.REQUIRED_COLUMNS_HINT} ({exc})",
+        ) from exc
+
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if result.ok:
+        lead_dir = _lead_dir_for(addr)
+        (lead_dir / "lead_time_report.md").write_text(
+            demo_lead_time_scan.render_mini_report(
+                result, dataset_label=dataset_label, ts=ts
+            ),
+            encoding="utf-8",
+        )
+        (lead_dir / "lead_time_followup_draft.md").write_text(
+            demo_lead_time_scan.render_followup_email(
+                result, email=addr, dataset_label=dataset_label
+            ),
+            encoding="utf-8",
+        )
+
+    # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
+    record = {
+        "email": addr,
+        "source": "demo-lead-time",
+        "ts": ts,
+        "dataset": dataset_label,
+        "status": "ok" if result.ok else "qa_failed",
+        "result": result.headline if result.ok else None,
+    }
+    with LEADS_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    if not result.ok:
+        return {
+            "status": "qa_failed",
+            "qa_issues": list(result.qa_issues),
+            "dataset": dataset_label,
+        }
+    return {
+        "status": "ok",
+        "headline": result.headline,
+        "findings": list(result.findings),
+        "dropped": result.dropped,
+        "cta_url": demo_lead_time_scan.CTA_PATH,
         "dataset": dataset_label,
     }
 
