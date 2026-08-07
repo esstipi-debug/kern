@@ -1,0 +1,7 @@
+po_id,supplier,product_id,order_date,receipt_date,declared_lead_time_days
+PO-1001,Proveedor A,SKU-001,2025-06-02,2025-07-08,21
+PO-1002,Proveedor A,SKU-002,2025-06-19,2025-07-21,21
+PO-1003,Proveedor A,SKU-001,2025-07-04,2025-08-14,21
+PO-1004,Proveedor B,SKU-010,2025-06-05,2025-06-19,14
+PO-1005,Proveedor B,SKU-011,2025-06-24,2025-07-09,14
+PO-1006,Proveedor B,SKU-010,2025-07-11,2025-07-25,14

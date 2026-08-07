@@ -88,8 +88,8 @@
 
   <section>
     <span class="eyebrow">Escaneo gratis &middot; resultado en segundos</span>
-    <h1 style="margin-top:12px">&iquest;Cu&aacute;nto dinero tienes atrapado en stock muerto?</h1>
-    <p class="sub" style="max-width:62ch;margin-top:10px">Sube un CSV con tu stock actual y Kern te devuelve la cifra: cu&aacute;nto capital est&aacute; inmovilizado en inventario muerto o excedente, qu&eacute; productos concentran el valor y cu&aacute;ntos d&iacute;as tarda tu inventario en volverse caja. El mismo an&aacute;lisis con el que abre el <a href="/paquetes/diagnostico-arranque">Diagn&oacute;stico de Arranque</a>.</p>
+    <h1 style="margin-top:12px">Tu ERP dice 21 d&iacute;as. &iquest;Y tus recepciones?</h1>
+    <p class="sub" style="max-width:62ch;margin-top:10px">Sube el export de recepciones y Kern mide el plazo real de cada proveedor &mdash; promedio, desviaci&oacute;n y p90 &mdash; contra el que dice tu sistema, y te dice qu&eacute; SKU tienen el stock de seguridad dimensionado contra el n&uacute;mero equivocado. Tambi&eacute;n puedes escanear tu <strong>stock</strong> y ver cu&aacute;nto capital est&aacute; inmovilizado. El mismo an&aacute;lisis con el que abre el <a href="/paquetes/diagnostico-arranque">Diagn&oacute;stico de Arranque</a>.</p>
   </section>
 
   <!-- EMAIL GATE -->
@@ -110,25 +110,29 @@
   <section id="demo" class="hidden">
     <div class="grid">
       <div class="panel">
-        <h2>1 &middot; Tu stock</h2>
-        <p class="muted" style="font-size:13px;margin:0 0 16px">Un CSV con una fila por producto. Columnas: <span style="font-family:var(--mono);font-size:12px">product_id, on_hand, daily_demand</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">unit_cost, days_since_last_sale</span>). <a href="/static/demo/plantilla_stock.csv" download>Descargar plantilla &darr;</a></p>
+        <h2>1 &middot; Tus datos</h2>
+        <div class="row" style="margin-bottom:14px">
+          <button id="modeLead" class="btn btn-primary">Plazos de entrega</button>
+          <button id="modeStock" class="btn btn-ghost">Stock</button>
+        </div>
+        <p id="modeHint" class="muted" style="font-size:13px;margin:0 0 16px"></p>
 
         <label for="file">Archivo (CSV)</label>
         <input id="file" type="file" accept=".csv">
 
         <div class="row" style="margin-top:18px">
-          <button id="runUpload" class="btn btn-primary">Escanear mi stock &rarr;</button>
+          <button id="runUpload" class="btn btn-primary">Medir mis plazos &rarr;</button>
           <button id="runSample" class="btn btn-ghost">Ver con datos de ejemplo</button>
         </div>
         <p id="runErr" class="err"></p>
-        <p class="privacy">El dataset de ejemplo es <span class="muted">sample_stock_snapshot.csv</span> (8 SKU).</p>
+        <p id="sampleHint" class="privacy"></p>
         <p class="privacy">Tu archivo se procesa en un directorio aislado por sesi&oacute;n (tama&ntilde;o y ruta validados) y se descarta autom&aacute;ticamente — no se ejecuta c&oacute;digo ni consultas externas sobre tus datos, y el archivo crudo nunca se copia al reporte. <a href="https://github.com/esstipi-debug/kern/blob/main/SECURITY.md" target="_blank" rel="noopener">Detalle de seguridad &#8599;</a></p>
       </div>
 
       <div class="panel">
         <h2>2 &middot; Tu mini-reporte</h2>
         <div id="out">
-          <div class="empty" id="outEmpty">Ejecuta el escaneo para ver cu&aacute;nto capital puedes liberar.</div>
+          <div class="empty" id="outEmpty">Ejecuta la medici&oacute;n para ver qu&eacute; tan lejos est&aacute; tu ERP de la realidad.</div>
         </div>
       </div>
     </div>
@@ -148,6 +152,48 @@
   var runSample = document.getElementById("runSample");
   var runErr = document.getElementById("runErr");
   var out = document.getElementById("out");
+  var modeLead = document.getElementById("modeLead");
+  var modeStock = document.getElementById("modeStock");
+  var modeHint = document.getElementById("modeHint");
+  var sampleHint = document.getElementById("sampleHint");
+
+  // Plazos va primero a proposito: es un hecho sobre los datos del visitante, es lo
+  // mas barato de calcular y es lo que se gana el derecho a seguir hablando
+  // (05-GTM-KERN §5). Para volver a liderar con stock, cambia MODE_DEFAULT.
+  var MODES = {
+    lead: {
+      endpoint: "/api/demo-lead-time",
+      cta: "Medir mis plazos &rarr;",
+      spinner: "Midiendo tus plazos de entrega…",
+      empty: "Ejecuta la medición para ver qué tan lejos está tu ERP de la realidad.",
+      needFile: "Sube un CSV de recepciones o usa los datos de ejemplo.",
+      hint: 'Un CSV con una fila por recepción. Columnas: <span style="font-family:var(--mono);font-size:12px">supplier, order_date, receipt_date</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">declared_lead_time_days, product_id, po_id</span>). <a href="/static/demo/plantilla_recepciones.csv" download>Descargar plantilla &darr;</a>',
+      sample: 'El dataset de ejemplo es <span class="muted">sample_receipts.csv</span> (49 recepciones, 4 proveedores).'
+    },
+    stock: {
+      endpoint: "/api/demo-scan",
+      cta: "Escanear mi stock &rarr;",
+      spinner: "Escaneando tu inventario…",
+      empty: "Ejecuta el escaneo para ver cuánto capital puedes liberar.",
+      needFile: "Sube un CSV de stock o usa los datos de ejemplo.",
+      hint: 'Un CSV con una fila por producto. Columnas: <span style="font-family:var(--mono);font-size:12px">product_id, on_hand, daily_demand</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">unit_cost, days_since_last_sale</span>). <a href="/static/demo/plantilla_stock.csv" download>Descargar plantilla &darr;</a>',
+      sample: 'El dataset de ejemplo es <span class="muted">sample_stock_snapshot.csv</span> (8 SKU).'
+    }
+  };
+  var MODE_DEFAULT = "lead";
+  var mode = MODE_DEFAULT;
+
+  function setMode(next){
+    mode = next;
+    var cfg = MODES[mode];
+    modeLead.className = "btn " + (mode === "lead" ? "btn-primary" : "btn-ghost");
+    modeStock.className = "btn " + (mode === "stock" ? "btn-primary" : "btn-ghost");
+    modeHint.innerHTML = cfg.hint;
+    sampleHint.innerHTML = cfg.sample;
+    runUpload.innerHTML = cfg.cta;
+    runErr.textContent = "";
+    out.innerHTML = '<div class="empty">' + cfg.empty + '</div>';
+  }
 
   function unlock(){ gate.classList.add("hidden"); demo.classList.remove("hidden"); }
   if (localStorage.getItem(LS_KEY)) unlock();
@@ -183,6 +229,7 @@
       out.innerHTML = qh;
       return;
     }
+    if (mode === "lead") return renderLead(d);
     var h = d.headline || {};
     var html = '<div class="chips"><span class="chip ok">escaneo completo</span>'
       + '<span class="chip">'+esc(h.n_skus)+' SKUs</span></div>'
@@ -207,11 +254,42 @@
     out.innerHTML = html;
   }
 
+  function days(x){ return Math.round(x) + " d"; }
+
+  function renderLead(d){
+    var h = d.headline || {};
+    var gap = (h.worst_observed || 0) - (h.worst_declared || 0);
+    var html = '<div class="chips"><span class="chip ok">medición completa</span>'
+      + '<span class="chip">'+esc(h.n_deliveries)+' recepciones</span>'
+      + '<span class="chip">'+esc(h.n_suppliers)+' proveedores</span></div>'
+      + '<div class="stat-big">'+esc(h.worst_declared)+' &rarr; '+esc(h.worst_observed)+' d&iacute;as</div>'
+      + '<div class="stat-sub">Tu sistema dice que <strong>'+esc(h.worst_supplier)+'</strong> entrega en '
+      + days(h.worst_declared)+'. Las recepciones dicen '+days(h.worst_observed)
+      + (h.worst_std ? ', con desviaci&oacute;n de '+days(h.worst_std) : '')
+      + '. Diferencia: <strong>'+(gap>0?'+':'')+days(gap)+'</strong>.</div>'
+      + '<div class="chips">'
+      + '<span class="chip warn">'+esc(h.n_skus_to_recalculate)+' SKU con SS/ROP mal dimensionado</span>'
+      + (h.worst_p90 ? '<span class="chip">p90 '+days(h.worst_p90)+'</span>' : '')
+      + '</div>';
+    var fs = d.findings || [];
+    if (fs.length){
+      html += '<div class="h3">Hallazgos ejecutivos</div><ul class="list">';
+      fs.forEach(function(f){ html += '<li>'+esc(f)+'</li>'; });
+      html += '</ul>';
+    }
+    html += '<div class="cta-box">'
+      + '<p>No tienes mucho inventario: tienes el inventario equivocado. El Diagn&oacute;stico de Arranque convierte esta brecha en el buffer que cada SKU necesita realmente, con cada n&uacute;mero trazable y compuerta de QA.</p>'
+      + '<div class="row"><a class="btn btn-primary" href="'+esc(d.cta_url||"/paquetes/diagnostico-arranque")+'">Ver el Diagn&oacute;stico &rarr;</a>'
+      + '<a class="btn btn-ghost" href="/paquetes">Todos los paquetes</a></div>'
+      + '</div>';
+    out.innerHTML = html;
+  }
+
   function run(useSample){
     runErr.textContent = "";
     var fileEl = document.getElementById("file");
     var file = fileEl && fileEl.files && fileEl.files[0];
-    if (!useSample && !file){ runErr.textContent = "Sube un CSV o usa los datos de ejemplo."; return; }
+    if (!useSample && !file){ runErr.textContent = MODES[mode].needFile; return; }
     var email = leadEmail();
     if (!validEmail(email)){ localStorage.removeItem(LS_KEY); gate.classList.remove("hidden"); demo.classList.add("hidden"); return; }
 
@@ -221,8 +299,8 @@
     if (!useSample && file) fd.append("file", file);
 
     runUpload.disabled = true; runSample.disabled = true;
-    out.innerHTML = '<div class="empty"><span class="spin"></span> Escaneando tu inventario…</div>';
-    fetch("/api/demo-scan", { method:"POST", body:fd })
+    out.innerHTML = '<div class="empty"><span class="spin"></span> '+MODES[mode].spinner+'</div>';
+    fetch(MODES[mode].endpoint, { method:"POST", body:fd })
       .then(function(r){ return r.json().then(function(j){ return { ok:r.ok, j:j }; }); })
       .then(function(res){
         if (!res.ok){ out.innerHTML = '<div class="empty">'+esc((res.j && res.j.detail) || "El servidor rechazó la solicitud.")+'</div>'; return; }
@@ -232,8 +310,11 @@
       .finally(function(){ runUpload.disabled = false; runSample.disabled = false; });
   }
 
+  modeLead.addEventListener("click", function(){ setMode("lead"); });
+  modeStock.addEventListener("click", function(){ setMode("stock"); });
   runUpload.addEventListener("click", function(){ run(false); });
   runSample.addEventListener("click", function(){ run(true); });
+  setMode(MODE_DEFAULT);
 })();
 </script>
 </body>

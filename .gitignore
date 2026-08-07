@@ -19,6 +19,10 @@ __pycache__/
 node_modules/
 .env
 .env.local
+# Cada archivo de credenciales por conector (.env.odoo, .env.shopify, ...). Las dos
+# lineas de arriba solo cubrian los dos nombres que existian cuando se escribieron:
+# los secretos del siguiente conector quedaban a un `git add -A` de la historia.
+.env.*
 
 # Python
 *.egg-info/
