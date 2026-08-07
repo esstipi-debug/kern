@@ -93,16 +93,34 @@ el operador. Ver más en la sección 3.3 (¿herramienta para CEO?).
 
 ### 1.4 Cobertura del motor y correcciones a supuestos previos
 
-VERIFICADO por conteo directo (`scm_agent/tools.py`, `webapp/mcp_tool_specs.py`):
+RE-VERIFICADO por conteo directo sobre `main` @ `c6dc63a` (v2.9.0, 07-ago-2026)
+en `scm_agent/tools.py`, `webapp/mcp_tool_specs.py` y `scm_agent/citation_gate.py`:
 
-- **37 tools** registradas en el motor (no 38 — la cifra de 38 no aparece en
-  ningún archivo de esta rama; `CLAUDE.md` local dice 37 y el conteo por
-  `grep -c 'key="'` lo confirma exacto).
-- **33 de 37** expuestas vía MCP. Las 4 no expuestas: `excel_replenishment`,
-  `leadership_chain`, `odoo_replenishment`, `warehouse_layout` — mismo gap que
-  reportaba la auditoría previa (`linchpin-verified-audit`), sin cambios.
-- `citation_gate.py`'s `TOOL_CONCEPTS` mapea las 37 tools 1:1 (confirmado por
-  conteo de claves).
+- **50 tools** registradas en el motor — 50 llamadas a `.register()` en
+  `build_default_registry()`, 50 nombres únicos. Coincide con las "50
+  agent-routable capabilities" del README.
+- **35 de 50** expuestas vía MCP (35 instancias de `MCPToolSpec` en
+  `webapp/mcp_tool_specs.py`, 35 `job_type` únicos). Las 5 no expuestas y su
+  razón, documentadas en el docstring de ese archivo: `odoo_replenishment` y
+  `excel_replenishment` (escriben en el sistema del cliente y quedan detrás
+  del plano de seguridad de cliente directo), `leadership_chain` (no toma
+  filas tabulares), `warehouse_layout` (su entregable es un visor 3D, no un
+  análisis de datos) e `intake_scan` (lee un directorio entero: en una
+  superficie remota anónima sería una primitiva de lectura arbitraria de
+  archivos).
+- `citation_gate.py`'s `TOOL_CONCEPTS` tiene **49 claves para 50 tools**. Ya
+  no es 1:1. Cuatro tools registradas no tienen entrada bajo su nombre —
+  `intake_scan`, `inventory`, `leadership`, `org_friction` — y tres claves no
+  corresponden a ninguna tool registrada: `inventory_optimization`,
+  `leadership_chain`, `org_friction_audit`. Tres de las cuatro parecen
+  desfase de nombres (renombres no propagados), no ausencia real de concepto.
+  **Pendiente de auditar antes de usarse como claim público.**
+
+> **Nota de vigencia.** La versión anterior de esta sección decía 37 tools y
+> 33 expuestas vía MCP. Era correcto en su momento (commit `62844c3`) y quedó
+> obsoleto al crecer el registro. El número **35** sigue siendo real, pero mide
+> la superficie MCP, no el motor. Confundir ambos subvende el producto en 15
+> herramientas.
 
 **Corrección importante — conectores reales (VERIFICADO por grep en
 `src/connectors/`, `scm_agent/`, `jobs/`, `webapp/`, case-insensitive):**
@@ -600,7 +618,7 @@ más alto, ciclo de venta más largo (consistente con el benchmark de §2.3).
 - Micro-empresas (bajo el piso Micro de AR/MX, §2.2) — sin presupuesto real
   para ningún paquete, ni siquiera el Diagnóstico.
 - Empresas sin inventario físico (servicios puros, software) — cero
-  encaje con las 37 tools del motor.
+  encaje con las 50 tools del motor.
 - Empresas que ya tienen SAP IBP/Blue Yonder u otro suite enterprise
   desplegado — resuelto el problema que Kern ataca, ciclo de venta
   desperdiciado.
@@ -834,7 +852,7 @@ seguimiento y alertas de inventario; ninguno de los tres, por lo que se
 encontró en esta investigación, ofrece el paquete completo de Kern de
 forecasting econométrico + DDMRP + S&OP + pricing por elasticidad +
 citas a literatura + QA-gate — son herramientas de *tracking*, no el motor
-analítico de 37 tools que vende Kern). No se encontró (ni se esperaba
+analítico de 50 tools que vende Kern). No se encontró (ni se esperaba
 encontrar) una cifra de "% de mercado ya cubierto por estas herramientas"
 — con 8.500 clientes de contra ~400.000 empresas calificadas, la
 penetración de categoría sigue siendo baja en términos absolutos.
