@@ -70,7 +70,30 @@ structural soundness (finite numbers, all 3 required check kinds present,
 internally-consistent counts) -- a FAILED coherence check is an intended
 FINDING this deliverable reports to a human, not a QA failure that blocks
 the deliverable (mirrors every other job's QA gate: it guards the DATA is
-sound, not that the business outcome is good).
+sound, not that the business outcome is good). :func:`verify` is the other
+half: it guards what the plan is allowed to CLAIM.
+
+**The silent zero this module used to sign.** ``reorder_point`` and
+``incoming_po`` are optional columns, and an absent one used to reach
+``SkuPurchaseInputs`` as ``0.0``. A reorder buffer of ``0.0`` is a buffer
+every plan clears, so the service-level check passed for free and the deck
+reported "3/3 coherence check(s) passed ... no cross-domain conflict detected"
+off a number nobody had supplied. Present-but-empty was worse: the column
+NAME existed, so the cell reached the check as ``nan`` and manufactured a
+citable-looking stockout ("below its nan-unit reorder buffer"). Both shapes
+are one defect -- a check that resolves BY THE ABSENCE of the number it exists
+to compare against certifies a plan nobody verified.
+
+The fix splits the work the way ``jobs/risk_job.py`` splits it for TTR/TTS.
+This module -- the only layer that sees the CSV cell -- records, per SKU, WHICH
+optional inputs the file actually stated (``prepare``'s ``unsupplied_inputs``);
+``src.sop_engine.coherence`` gains nothing but the vocabulary to express a
+check with no verdict (``UnevaluableCheck``). Every claim downstream is then
+made from :class:`CoherenceTally`, which counts evaluated results and declared
+absences separately, and never from ``plan.n_checks_passed``, which is the
+engine's arithmetic over placeholders. A ``0.0`` the client DID state is a
+policy and is judged like any other number -- refusing to judge it would be
+the mirror-image dishonesty.
 """
 
 from __future__ import annotations
@@ -93,6 +116,16 @@ from src.elasticity_batch import estimate_portfolio_elasticities
 from src.export import write_summary_csv
 from src.liquidation import LiquidationLine
 from src.price_optimizer import PriceOptimizationResult, optimize_portfolio_prices
+from src.sop_engine.coherence import (
+    CHECK_BUDGET_FEASIBILITY,
+    CHECK_PROMO_COVERAGE,
+    CHECK_SERVICE_LEVEL,
+    NOT_EVALUABLE,
+    STATUS_FAILED,
+    STATUS_PASSED,
+    CoherenceResult,
+    UnevaluableCheck,
+)
 from src.sop_engine.demand_plan import NO_SHIFT_SOURCE
 from src.sop_engine.engine import IntegratedPlanReport, run_integrated_plan
 from src.sop_engine.purchase_plan import SkuPurchaseInputs
@@ -108,6 +141,39 @@ _REORDER_COLS = ("reorder_point", "rop", "reorder_pt", "reorder_level")
 _INCOMING_PO_COLS = ("incoming_po", "po_incoming", "on_order", "in_transit", "open_po")
 _MOQ_COLS = ("minimum_order_quantity", "moq", "min_order_qty")
 _MULTIPLE_COLS = ("order_multiple", "case_pack", "pack_size")
+
+# -- coherence verdict vocabulary ---------------------------------------------
+# Named like jobs/cross_impact_job.py's: INDETERMINATE is a first-class outcome,
+# not an error, and it outranks the clean verdict on purpose.
+COHERENT = "coherent"
+INCOHERENT = "incoherent"
+INDETERMINATE = "indeterminate"
+VERDICTS = (COHERENT, INCOHERENT, INDETERMINATE)
+
+# Which purchase input each coherence check's PER-SKU verdict rests on. ``None``
+# means the check reads no per-SKU purchase input at all (the budget check is
+# portfolio-level by construction). A check kind absent from this map has no
+# declared grounding and :func:`_grounding_column` raises rather than assume it
+# is safe -- packs/source_to_pay/recovery.py's ``_unquantified`` rule: a code
+# nobody classified must not fall through as zero.
+_GROUNDING_COLUMN: dict[str, str | None] = {
+    CHECK_SERVICE_LEVEL: "reorder_point",
+    CHECK_PROMO_COVERAGE: "incoming_po",
+    CHECK_BUDGET_FEASIBILITY: None,
+}
+
+# What one NOT-EVALUABLE check costs the deck's confidence. Deliberately local
+# rather than imported, for the reason jobs/cross_impact_job.py states for its
+# own: nosilo_core.guided.COVERAGE_PENALTY has no key for this gap and raises on
+# an unknown one, by design.
+_UNEVALUABLE_PENALTY = 0.20
+_CONFIDENCE_FLOOR = 0.10
+# This capability's ceiling when the purchase inputs are NOT the problem.
+_DECK_BASE_CONFIDENCE = 0.75
+
+# The arithmetic value an unstated optional input takes in SkuPurchaseInputs,
+# whose fields are plain floats. Never a reading -- see :func:`_or_placeholder`.
+_PLACEHOLDER = 0.0
 
 _CITATION_KEYWORDS = (
     "sales and operations planning", "s&op", "demand supply reconciliation",
@@ -142,17 +208,104 @@ _MAX_CITATIONS = 3    # kept, on-topic survivors ultimately shown (tight display
 
 
 @dataclass(frozen=True)
+class CoherenceTally:
+    """The coherence checks split into the three answers they can have: a pass,
+    a fail, and the absence of either.
+
+    The count that used to ship read "N/M passed" with M = every check RUN. A
+    check nobody could evaluate inflated both sides of that fraction, so the
+    fraction certified itself. Here M is what was EVALUATED, and the checks that
+    were not are counted apart, named, and carried with the input whose absence
+    cost them their verdict. The counts are derived, never stored, so no caller
+    can hand this object a total that its own contents contradict.
+    """
+
+    passed: tuple[CoherenceResult, ...]
+    failed: tuple[CoherenceResult, ...]
+    unevaluable: tuple[UnevaluableCheck, ...]
+
+    @property
+    def n_passed(self) -> int:
+        return len(self.passed)
+
+    @property
+    def n_failed(self) -> int:
+        return len(self.failed)
+
+    @property
+    def n_evaluated(self) -> int:
+        return len(self.passed) + len(self.failed)
+
+    @property
+    def n_unevaluable(self) -> int:
+        return len(self.unevaluable)
+
+    @property
+    def n_total(self) -> int:
+        return self.n_evaluated + self.n_unevaluable
+
+    @property
+    def missing_columns(self) -> tuple[str, ...]:
+        """The distinct inputs whose absence cost a check its verdict, for the ask."""
+        return tuple(sorted({u.column for u in self.unevaluable}))
+
+    @property
+    def headline(self) -> str:
+        """The one line every summary, deck and KPI derives from, so the gap cannot
+        survive in one rendering and vanish in another."""
+        head = (
+            "no coherence check could be evaluated" if not self.n_evaluated
+            else f"{self.n_passed}/{self.n_evaluated} evaluated coherence check(s) passed"
+        )
+        if self.n_failed:
+            head += f", {self.n_failed} FAILED"
+        if self.unevaluable:
+            head += (f", {self.n_unevaluable} NOT EVALUABLE "
+                     f"({', '.join(self.missing_columns)} not supplied)")
+        return head
+
+
+def _verdict(tally: CoherenceTally) -> str:
+    """First match wins. INDETERMINATE outranks INCOHERENT and COHERENT alike: a
+    plan with an unmeasured check has not been found coherent OR incoherent, and
+    a declared gap must never be reported as either (jobs/cross_impact_job.py's
+    ``_global_verdict``)."""
+    if tally.unevaluable:
+        return INDETERMINATE
+    if tally.failed:
+        return INCOHERENT
+    return COHERENT
+
+
+@dataclass(frozen=True)
 class IntegratedPlanBundle:
     """The full A5 v1 result: the forecast step's own report (never hidden --
     a client can see the underlying per-SKU forecasts) plus the integrated
     plan (demand/purchase/coherence) and which forecasted SKUs were excluded
     for lack of matching purchase-plan data (never a silent drop -- Golden
-    Rule 14)."""
+    Rule 14).
+
+    ``tally``/``verdict`` are the provenance-aware reading of ``plan.checks``;
+    ``unsupplied_inputs`` is the evidence they rest on, carried so :func:`verify`
+    can re-derive both instead of taking their word for it (the same stored-not-
+    derived split ``jobs/cross_impact_job.py`` keeps for its coordination
+    verdict).
+    """
 
     forecast_report: ForecastJobReport
     plan: IntegratedPlanReport
     dropped_no_purchase_data: tuple[str, ...]
     summary: str
+    tally: CoherenceTally
+    verdict: str
+    # product_id -> the optional purchase inputs the stock file did NOT state.
+    unsupplied_inputs: dict[str, frozenset[str]]
+
+    def __post_init__(self) -> None:
+        if self.verdict not in VERDICTS:
+            raise ValueError(f"unknown coherence verdict {self.verdict!r} (expected one of {VERDICTS})")
+        if not self.summary.strip():
+            raise ValueError("an integrated plan must carry a legible summary")
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -161,14 +314,41 @@ def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]
     return next((c for c in candidates if c in df.columns), None)
 
 
-def _prepare_sku_inputs(df: pd.DataFrame, params: dict) -> dict[str, SkuPurchaseInputs]:
+def _cell(row: pd.Series, col: str | None) -> float | None:
+    """The number the stock file actually held, or None when it held nothing.
+
+    An absent COLUMN and an empty CELL are the same answer -- "nobody wrote this
+    down" -- and both must stay distinguishable from a 0 the client did write.
+    Testing the column name alone was the defect's second shape: it read ``nan``
+    and fabricated a stockout out of it.
+    """
+    if not col or not pd.notna(row[col]):
+        return None
+    return float(row[col])
+
+
+def _or_placeholder(value: float | None) -> float:
+    """The arithmetic value ``SkuPurchaseInputs``' float field demands when nothing
+    was stated -- NOT a reading. ``unsupplied_inputs``, built alongside it, is what
+    every claim about this SKU is judged against."""
+    return _PLACEHOLDER if value is None else value
+
+
+def _prepare_sku_inputs(
+    df: pd.DataFrame, params: dict
+) -> tuple[dict[str, SkuPurchaseInputs], dict[str, frozenset[str]]]:
     """Sniff the stock/purchase-inputs columns and build one
-    :class:`~src.sop_engine.purchase_plan.SkuPurchaseInputs` per row.
-    ``product_id``/``on_hand``/``unit_cost`` are required; ``reorder_point``/
-    ``incoming_po``/``minimum_order_quantity``/``order_multiple`` default to
-    ``0.0`` when the column is absent (documented, not silently invented --
-    a caller who wants a real reorder buffer or a real committed PO must
-    supply it)."""
+    :class:`~src.sop_engine.purchase_plan.SkuPurchaseInputs` per row, PLUS -- per
+    SKU -- which of the optional inputs the file did not state.
+
+    ``product_id``/``on_hand``/``unit_cost`` are required. ``reorder_point``/
+    ``incoming_po``/``minimum_order_quantity``/``order_multiple`` are optional and
+    enter the engine as ``0.0`` when unstated, because the engine's fields are
+    plain floats -- but that ``0.0`` is a placeholder, and the second return value
+    is what keeps it out of every downstream verdict. The provenance is recorded
+    HERE, at the boundary that saw the cell, rather than teaching the shared
+    coherence engine about absence (``jobs/risk_job.py``'s split, verbatim).
+    """
     product = _pick_column(df, params.get("product_col"), _PRODUCT_COLS)
     on_hand = _pick_column(df, params.get("on_hand_col"), _ONHAND_COLS)
     cost = _pick_column(df, params.get("cost_col"), _COST_COLS)
@@ -180,24 +360,29 @@ def _prepare_sku_inputs(df: pd.DataFrame, params: dict) -> dict[str, SkuPurchase
             f"(columns seen: {cols})"
         )
 
-    reorder = _pick_column(df, params.get("reorder_col"), _REORDER_COLS)
-    incoming = _pick_column(df, params.get("incoming_po_col"), _INCOMING_PO_COLS)
-    moq = _pick_column(df, params.get("moq_col"), _MOQ_COLS)
-    multiple = _pick_column(df, params.get("order_multiple_col"), _MULTIPLE_COLS)
+    optional_cols = {
+        "reorder_point": _pick_column(df, params.get("reorder_col"), _REORDER_COLS),
+        "incoming_po": _pick_column(df, params.get("incoming_po_col"), _INCOMING_PO_COLS),
+        "minimum_order_quantity": _pick_column(df, params.get("moq_col"), _MOQ_COLS),
+        "order_multiple": _pick_column(df, params.get("order_multiple_col"), _MULTIPLE_COLS),
+    }
 
     out: dict[str, SkuPurchaseInputs] = {}
+    unsupplied: dict[str, frozenset[str]] = {}
     for _, row in df.iterrows():
         pid = str(row[product]).strip()
+        stated = {name: _cell(row, col) for name, col in optional_cols.items()}
+        unsupplied[pid] = frozenset(name for name, value in stated.items() if value is None)
         out[pid] = SkuPurchaseInputs(
             product_id=pid,
             on_hand=float(row[on_hand]),
             unit_cost=float(row[cost]),
-            reorder_point=float(row[reorder]) if reorder else 0.0,
-            incoming_po=float(row[incoming]) if incoming else 0.0,
-            minimum_order_quantity=float(row[moq]) if moq else 0.0,
-            order_multiple=float(row[multiple]) if multiple else 0.0,
+            reorder_point=_or_placeholder(stated["reorder_point"]),
+            incoming_po=_or_placeholder(stated["incoming_po"]),
+            minimum_order_quantity=_or_placeholder(stated["minimum_order_quantity"]),
+            order_multiple=_or_placeholder(stated["order_multiple"]),
         )
-    return out
+    return out, unsupplied
 
 
 def _build_price_shifts(params: dict, unit_costs: dict[str, float]) -> dict[str, PriceOptimizationResult]:
@@ -244,6 +429,77 @@ def _build_liquidation_lines(stock_df: pd.DataFrame, params: dict) -> dict[str, 
     return {line.product_id: line for line in report.lines}
 
 
+def _grounding_column(result: CoherenceResult) -> str | None:
+    """Which purchase input this check's per-SKU verdict RESTS ON, or ``None``
+    when it rests on no per-SKU purchase input at all.
+
+    Raises for a check kind nobody classified. A fourth check added to the engine
+    must not default to "evaluable": that default is precisely how a verdict built
+    on a filled-in number ships unnoticed, so the cost of adding a check is one
+    line in ``_GROUNDING_COLUMN`` (the rule ``packs/source_to_pay/recovery.py``'s
+    ``_unquantified`` already enforces for exception codes).
+    """
+    try:
+        return _GROUNDING_COLUMN[result.check]
+    except KeyError:
+        raise KeyError(
+            f"{result.check!r} has no declared grounding column: classify it explicitly "
+            "in _GROUNDING_COLUMN (the purchase input its verdict reads, or None if it "
+            "reads none) rather than letting it pass as evaluable by default"
+        ) from None
+
+
+def _unsupplied_grounding(
+    result: CoherenceResult, unsupplied: dict[str, frozenset[str]]
+) -> str | None:
+    """The input this result's verdict rests on AND nobody supplied, or ``None``
+    when the verdict stands on numbers that were actually stated.
+
+    A PORTFOLIO-level result (``product_id is None``) reads no SKU's purchase
+    inputs -- the promo check's "no SKU carries a demand lift, check not
+    applicable" is a real, self-declared verdict about the demand plan, and the
+    budget check is portfolio-level by construction -- so neither can be voided
+    by a column some SKU happens to be missing.
+    """
+    column = _grounding_column(result)
+    if column is None or result.product_id is None:
+        return None
+    return column if column in unsupplied.get(result.product_id, frozenset()) else None
+
+
+def _absence_reason(result: CoherenceResult, column: str) -> str:
+    return (
+        f"{result.product_id}: the stock file states no {column}, so this check has no "
+        f"number to compare against -- neither a pass nor a fail can be stated from an "
+        f"unsupplied {column} (supply it, or the 0 you actually mean by it)."
+    )
+
+
+def _tally(
+    checks: tuple[CoherenceResult, ...], unsupplied: dict[str, frozenset[str]]
+) -> CoherenceTally:
+    """Split the engine's results into verdicts and declared absences.
+
+    Every result the engine produced is accounted for exactly once: a check whose
+    grounding input was never supplied is not dropped, it is re-declared as the
+    absence it always was, with the column named.
+    """
+    passed: list[CoherenceResult] = []
+    failed: list[CoherenceResult] = []
+    unevaluable: list[UnevaluableCheck] = []
+    for c in checks:
+        column = _unsupplied_grounding(c, unsupplied)
+        if column is not None:
+            unevaluable.append(
+                UnevaluableCheck(c.check, c.product_id, column, _absence_reason(c, column))
+            )
+        elif c.passed:
+            passed.append(c)
+        else:
+            failed.append(c)
+    return CoherenceTally(tuple(passed), tuple(failed), tuple(unevaluable))
+
+
 def prepare(data_path: str, params: dict | None = None) -> dict:
     """Read the demand-history CSV (forecast, step 1) and the required
     ``params['stock_path']`` CSV (purchase inputs, step 3 -- optionally also
@@ -266,7 +522,7 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
     forecast = {s.name: s.forecast for s in forecast_report.skus}
 
     stock_df = pd.read_csv(stock_path)
-    sku_inputs = _prepare_sku_inputs(stock_df, params)
+    sku_inputs, unsupplied_inputs = _prepare_sku_inputs(stock_df, params)
     unit_costs = {pid: inp.unit_cost for pid, inp in sku_inputs.items()}
 
     price_shifts = _build_price_shifts(params, unit_costs)
@@ -277,6 +533,10 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
         "forecast_report": forecast_report,
         "forecast": forecast,
         "sku_inputs": sku_inputs,
+        # Which optional purchase inputs the stock file did NOT state, per SKU.
+        # Travels with sku_inputs because the 0.0 inside those is a placeholder
+        # and this is the only thing that says so.
+        "unsupplied_inputs": unsupplied_inputs,
         "price_shifts": price_shifts,
         "liquidation_lines": liquidation_lines,
         "budget": float(budget) if budget is not None else None,
@@ -286,9 +546,23 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
 def run(payload: dict) -> IntegratedPlanBundle:
     """Run the sequential A5 v1 pipeline. Forecasted SKUs without a matching
     stock-file row are excluded from the purchase/coherence steps -- named
-    in ``dropped_no_purchase_data``, never silently dropped."""
+    in ``dropped_no_purchase_data``, never silently dropped.
+
+    ``payload['unsupplied_inputs']`` is REQUIRED, with no default: a caller that
+    did not build its payload with :func:`prepare` cannot tell an absent input
+    from a stated zero, and defaulting to "everything was supplied" would quietly
+    restore the exact defect this module was fixed for.
+    """
+    if "unsupplied_inputs" not in payload:
+        raise KeyError(
+            "payload['unsupplied_inputs'] is required: it records, per SKU, which optional "
+            "purchase inputs the stock file never stated. Build the payload with prepare(); "
+            "assuming everything was supplied is how a coherence verdict standing on a 0.0 "
+            "nobody wrote gets signed as coherent"
+        )
     forecast: dict[str, float] = payload["forecast"]
     sku_inputs: dict[str, SkuPurchaseInputs] = payload["sku_inputs"]
+    unsupplied_inputs: dict[str, frozenset[str]] = payload["unsupplied_inputs"]
 
     common = sorted(set(forecast) & set(sku_inputs))
     dropped = tuple(sorted(set(forecast) - set(sku_inputs)))
@@ -299,8 +573,17 @@ def run(payload: dict) -> IntegratedPlanBundle:
         price_shifts=payload["price_shifts"], liquidation_lines=payload["liquidation_lines"],
         budget=payload["budget"],
     )
+    tally = _tally(plan.checks, unsupplied_inputs)
 
-    summary = f"{payload['forecast_report'].summary} {plan.summary}"
+    # NOT plan.summary: that sentence counts every check the engine RAN as a
+    # verdict, including the ones it resolved against a placeholder. The summary
+    # is the one line a caller is guaranteed to read, so the gap is declared in
+    # it (jobs/risk_job.py:363's rule) and verify() below refuses a summary that
+    # drops it.
+    summary = (
+        f"{payload['forecast_report'].summary} "
+        f"Integrated plan over {plan.n_skus} SKU(s): {tally.headline}."
+    )
     if dropped:
         shown = ", ".join(dropped[:5]) + ("..." if len(dropped) > 5 else "")
         summary += f" {len(dropped)} forecast SKU(s) excluded for lack of purchase-plan data: {shown}."
@@ -308,7 +591,58 @@ def run(payload: dict) -> IntegratedPlanBundle:
     return IntegratedPlanBundle(
         forecast_report=payload["forecast_report"], plan=plan,
         dropped_no_purchase_data=dropped, summary=summary,
+        tally=tally, verdict=_verdict(tally), unsupplied_inputs=unsupplied_inputs,
     )
+
+
+def verify(bundle: IntegratedPlanBundle) -> list[str]:
+    """What this plan is ALLOWED TO CLAIM. Empty list = it may ship as it stands.
+
+    Bites both ways on purpose (``jobs/fefo_job.py``'s rule): it vetoes a verdict
+    counted from a number nobody supplied AND a gap declared where the number was
+    supplied, so neither "call everything evaluable" nor "call everything a gap"
+    is a passing implementation. The GAP itself is never the issue -- a plan
+    reporting INDETERMINATE with the missing column named and its confidence
+    degraded is a valid delivery. What must never ship is a coherence certificate
+    resting on an input the client never sent.
+
+    Structural soundness is ``jobs.qa.verify_integrated_plan``'s job, not this one.
+    """
+    issues: list[str] = []
+    tally = bundle.tally
+
+    honest = _verdict(tally)
+    if bundle.verdict != honest:
+        issues.append(
+            f"verdict {bundle.verdict!r} contradicts the tally it claims to summarise "
+            f"({tally.n_passed} passed, {tally.n_failed} failed, {tally.n_unevaluable} not "
+            f"evaluable) -- the honest verdict is {honest!r}")
+    if tally.unevaluable and bundle.verdict == COHERENT:
+        issues.append(
+            f"a clean verdict cannot be issued while {tally.n_unevaluable} coherence check(s) "
+            f"are NOT EVALUABLE ({', '.join(tally.missing_columns)} not supplied)")
+
+    # Re-derive both sides from the evidence instead of believing the tally.
+    for result in tally.passed + tally.failed:
+        column = _unsupplied_grounding(result, bundle.unsupplied_inputs)
+        if column is not None:
+            issues.append(
+                f"{result.check} for {result.product_id} is counted as an evaluated verdict "
+                f"but rests on a 0.0 nobody stated: the stock file supplies no {column}")
+    for gap in tally.unevaluable:
+        if gap.column not in bundle.unsupplied_inputs.get(gap.product_id, frozenset()):
+            issues.append(
+                f"fabricated gap: {gap.check} for {gap.product_id} is declared NOT EVALUABLE "
+                f"on {gap.column}, which the stock file did supply -- refusing to judge a "
+                f"number the client stated is the mirror image of judging one they did not")
+
+    if tally.unevaluable and tally.headline not in bundle.summary:
+        issues.append(
+            "the summary reports the plan without disclosing that "
+            f"{tally.n_unevaluable} check(s) are NOT EVALUABLE -- the text must not read "
+            "clean when the basis is missing")
+
+    return issues
 
 
 def write_operational(bundle: IntegratedPlanBundle, out_dir: str | Path, client: str = "Client") -> dict[str, Path]:
@@ -348,8 +682,25 @@ def write_operational(bundle: IntegratedPlanBundle, out_dir: str | Path, client:
         }
         for line in plan.purchase_plan
     ]
+    # A check with no verdict gets an EMPTY passed cell and says why in its message
+    # (jobs/cross_impact_job.write's rule): a spreadsheet reader scanning the column
+    # must see a blank, because True and False are both claims here and "False" would
+    # read as a measured incoherence nobody measured.
+    gaps = {(u.check, u.product_id): u for u in bundle.tally.unevaluable}
     check_rows = [
-        {"check": c.check, "passed": c.passed, "product_id": c.product_id or "", "message": c.message}
+        {
+            "check": c.check,
+            "passed": "" if (c.check, c.product_id) in gaps else c.passed,
+            "status": (
+                NOT_EVALUABLE if (c.check, c.product_id) in gaps
+                else (STATUS_PASSED if c.passed else STATUS_FAILED)
+            ),
+            "product_id": c.product_id or "",
+            "message": (
+                gaps[(c.check, c.product_id)].reason if (c.check, c.product_id) in gaps
+                else c.message
+            ),
+        }
         for c in plan.checks
     ]
     return {
@@ -359,28 +710,47 @@ def write_operational(bundle: IntegratedPlanBundle, out_dir: str | Path, client:
     }
 
 
+def _degrade(base: float, tally: CoherenceTally) -> float:
+    """Cap a caller-supplied confidence by the coherence coverage it does not have.
+
+    The caller's optimism does not survive contact with a missing input: a plan with
+    an unmeasured check cannot claim the certainty of one whose checks were all
+    measured, however sure the caller was (jobs/intake_scan_job.py's rule for its own
+    registry coverage, jobs/risk_job.py's for its resilience test).
+    """
+    return max(_CONFIDENCE_FLOOR, base - _UNEVALUABLE_PENALTY * tally.n_unevaluable)
+
+
 def build_deck(
     bundle: IntegratedPlanBundle,
     *,
     client: str = "Client",
     prepared: str = "",
     citations: tuple[str, ...] = (),
-    confidence: float = 0.75,
+    confidence: float | None = None,
     lang: str = "en",
     branding: Branding | None = None,
 ) -> Deliverable:
     """Compose ONE integrated narrative across forecast -> demand shaping ->
     purchase plan -> coherence checks (Golden Rule 13's E4/E6 hooks; never
-    four tool reports stapled together)."""
+    four tool reports stapled together).
+
+    Every coherence claim comes from ``bundle.tally``, never from
+    ``plan.n_checks_passed``/``n_checks``: those are the engine's arithmetic over
+    inputs it had to treat as real, so on a stock file with no reorder_point they
+    said 3/3 -- the most favourable statement this tool can make, issued from
+    nothing. ``confidence`` is DERIVED when not supplied, and treated as a ceiling
+    when it is.
+    """
     plan = bundle.plan
-    failed = [c for c in plan.checks if not c.passed]
+    tally = bundle.tally
     shaped = [line for line in plan.demand_plan if line.source != NO_SHIFT_SOURCE]
 
     summary = (
         f"Integrated plan over {plan.n_skus} SKU(s), sequencing the latest forecast, any price-cut/"
         f"liquidation demand shaping, and the resulting purchase plan into one view: "
-        f"{plan.n_checks_passed}/{plan.n_checks} coherence check(s) passed"
-        + (f", {plan.n_checks_failed} FAILED -- see Key Findings" if plan.n_checks_failed else "")
+        f"{tally.headline}"
+        + (" -- see Key Findings" if tally.failed or tally.unevaluable else "")
         + "."
     )
 
@@ -406,11 +776,20 @@ def build_deck(
             impact="supply a price_history_path (P2) or a liquidation-shaped stock file (P4) to activate this step",
         ))
 
-    for c in failed[:5]:
+    for c in tally.failed[:5]:
         findings.append(Finding(f"Coherence check FAILED: {c.check}", c.message,
                                  impact="needs a human decision before this plan executes"))
-    if not failed:
-        findings.append(Finding("Coherence checks (step 4)", f"all {plan.n_checks} check(s) passed.",
+    # The gap, its motive, and the ask -- one finding per check that lost its
+    # verdict, never folded into the pass/fail count above.
+    for gap in tally.unevaluable[:5]:
+        findings.append(Finding(
+            f"Coherence check NOT EVALUABLE: {gap.check}",
+            gap.reason,
+            impact=f"supply {gap.column} for {gap.product_id} and re-run -- until then this "
+                   f"plan carries no {gap.check} verdict for it, in either direction",
+        ))
+    if not tally.failed and not tally.unevaluable:
+        findings.append(Finding("Coherence checks (step 4)", f"{tally.headline}.",
                                  impact="no cross-domain conflict detected this cycle"))
 
     if bundle.dropped_no_purchase_data:
@@ -426,8 +805,13 @@ def build_deck(
     total_order_value = sum(line.order_value for line in plan.purchase_plan)
     kpis = [
         Kpi("SKUs planned", f"{plan.n_skus}", rationale="Forecasted SKUs with matching purchase-plan data"),
-        Kpi("Coherence checks passed", f"{plan.n_checks_passed}/{plan.n_checks}", target=f"{plan.n_checks}/{plan.n_checks}",
-            rationale="Cross-domain checks between the demand plan and the purchase plan"),
+        Kpi("Coherence checks passed", f"{tally.n_passed}/{tally.n_evaluated}",
+            target=f"{tally.n_total}/{tally.n_total}",
+            rationale="Cross-domain checks between the demand plan and the purchase plan, "
+                      "counted over the ones that could be EVALUATED"),
+        Kpi("Coherence checks NOT EVALUABLE", f"{tally.n_unevaluable}", target="0",
+            rationale="Checks whose grounding purchase input the stock file never supplied: "
+                      "no verdict was issued for them, in either direction"),
         Kpi("SKUs demand-shaped", f"{len(shaped)}", rationale="Carry a price-cut/markdown-implied demand shift"),
         Kpi("Recommended purchase value", f"{total_order_value:,.0f}",
             rationale="Sum of recommended_order * unit_cost across the portfolio"),
@@ -450,6 +834,12 @@ def build_deck(
         "Re-run after the next forecast/price/liquidation cycle -- this is a single-pass v1 pipeline, "
         "not a continuously reconciled plan.",
     )
+    if tally.unevaluable:
+        recommendations = (
+            f"Supply {', '.join(tally.missing_columns)} in the stock file and re-run: "
+            f"{tally.n_unevaluable} coherence check(s) have no verdict without it, and this plan "
+            "cannot be called coherent or incoherent until they do.",
+        ) + recommendations
 
     residual = (
         "This is A5 v1: a strictly SEQUENTIAL pipeline (forecast -> demand shaping -> purchase plan -> "
@@ -471,7 +861,7 @@ def build_deck(
         data_sources=data_sources,
         recommendations=recommendations,
         citations=tuple(citations),
-        confidence=confidence,
+        confidence=_degrade(_DECK_BASE_CONFIDENCE if confidence is None else confidence, tally),
         residual=residual,
         prepared=prepared,
         lang=lang,
@@ -514,7 +904,7 @@ def write_deliverable(
     prepared: str = "",
     lang: str = i18n.DEFAULT_LANG,
     branding: Branding | None = None,
-    confidence: float = 0.75,
+    confidence: float | None = None,
     kb: KnowledgeBase | None = None,
 ) -> dict[str, Path]:
     """The full deliverable: 3 operational CSVs + ONE integrated report.md
