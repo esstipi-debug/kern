@@ -17,7 +17,11 @@ from jobs.intake import IntakeQuality
 from src.classification import classify_portfolio
 from src.classification import service_levels as class_service_levels
 from src.constraints import InventoryItem, allocate_under_budget
-from src.forecasting import forecast_demand
+from src.forecasting import (
+    DEFAULT_OOS_ORIGINS,
+    MIN_PERIODS_FOR_POLICY,
+    forecast_with_oos_sigma,
+)
 from src.policies import continuous_review_sq, periodic_review_rs
 from src.safety_stock import tune_service_level
 from src.sources import DataFrameDemandSource
@@ -59,6 +63,11 @@ class SkuRecommendation:
     lead_time_std: float = 0.0                # sigma_L fed to the risk period
     lead_time_std_source: str = "defaulted_zero"   # "client_file" | "defaulted_zero"
     risk_periods: float = 0.0                 # tau actually used (L, or L+R for (R,S))
+    # Observed demand periods behind this line. Carried on the record (not just
+    # counted on the report) for two reasons: jobs/qa.py asserts the minimum-history
+    # gate actually fired for every priced line, and the deliverable can show the
+    # reader how much history each number rests on.
+    n_periods: int = 0
 
 
 @dataclass(frozen=True)
@@ -90,6 +99,14 @@ class JobReport:
     # floor (1e-6) would otherwise turn a near-zero mean_unit_cost into an
     # absurdly large, silently "valid-looking" order quantity.
     n_skipped_zero_cost: int = 0
+    # SKUs refused for too little demand history (see run()'s per-SKU loop and
+    # src/forecasting.py's MIN_PERIODS_FOR_POLICY). Distinct from the two skips
+    # above: those are degenerate DATA (no demand at all, no usable cost), this
+    # one is degenerate KNOWLEDGE - there may be plenty of real demand, we simply
+    # have too few observations of it to size a buffer honestly. Reported so
+    # scm_agent/tool_options.py can state it as a residual instead of letting a
+    # portfolio of refusals come back as a cheerful, cheap-looking plan.
+    n_insufficient_history: int = 0
 
 
 def _observed_skewness(series) -> float | None:
@@ -135,6 +152,9 @@ def run(
     target_fill_rate: float = 0.95,
     intake_quality: IntakeQuality | None = None,
     intake_quality_threshold: float = 0.20,
+    min_periods: int = MIN_PERIODS_FOR_POLICY,
+    period_freq: str | None = None,
+    oos_origins: int = DEFAULT_OOS_ORIGINS,
 ) -> JobReport:
     """Run the inventory-optimization analysis over canonical demand.
 
@@ -149,7 +169,9 @@ def run(
     if holding_rate <= 0 or order_cost <= 0:
         raise ValueError("holding_rate and order_cost must be > 0")
 
-    source = DataFrameDemandSource(demand, periods_per_year=periods_per_year)
+    source = DataFrameDemandSource(
+        demand, periods_per_year=periods_per_year, period_freq=period_freq
+    )
     base_levels: dict[str, float] = dict(service_levels or {})
     if not base_levels and differentiate_by_class:
         class_items = [
@@ -164,7 +186,7 @@ def run(
     for pid in source.list_products():
         series = source.demand_series(pid)
         meta = source.metadata(pid)
-        fc = forecast_demand(series)
+        fc = forecast_with_oos_sigma(series, max_origins=oos_origins)
         inputs = fc.to_engine_inputs(periods_per_year=periods_per_year)
         lead = lead_times.get(pid, meta.lead_time_periods) if lead_times else meta.lead_time_periods
         # sigma_L. An explicit override (lead_time_stds) wins; else fall back to the
@@ -180,6 +202,35 @@ def run(
             lt_std = meta.lead_time_std_periods
             lt_std_source = "client_file" if lt_std > 0 else "defaulted_zero"
         sl = base_levels.get(pid, service_level)
+        n_periods = int(len(series))
+
+        # Too little history to size ANY buffer honestly. This gate runs BEFORE the
+        # zero-demand and zero-cost guards below on purpose: with two observations
+        # you cannot conclude "this SKU has no demand", you can only conclude "I
+        # have not seen enough of it" - and labelling the first as the second is
+        # exactly the confident-but-wrong claim this whole gate exists to stop.
+        #
+        # Refuse rather than degrade. A quantity with no dispersion behind it is
+        # indistinguishable, in the deliverable, from one backed by two years of
+        # history; the operator has no way to tell them apart, so we must not
+        # produce it. min_periods is a parameter (not a hardcoded read of the
+        # constant) so a client with, say, monthly buckets can raise it - lowering
+        # it below the default is a decision someone has to make explicitly.
+        if n_periods < min_periods:
+            recs.append(
+                SkuRecommendation(
+                    product_id=pid, method="none", intermittent=False,
+                    forecast=0.0, error_std=0.0, bias=0.0, mae=0.0,
+                    policy_kind="insufficient_history", order_quantity=None, order_up_to=None,
+                    reorder_point=0.0, safety_stock=0.0, z_factor=0.0,
+                    service_level=sl, unit_cost=meta.mean_unit_cost, lead_periods=lead,
+                    cycle_investment=0.0, ss_investment=0.0, investment=0.0,
+                    status="review",
+                    sigma_source="insufficient_history",
+                    n_periods=n_periods,
+                )
+            )
+            continue
 
         # A SKU with zero aggregate demand (brand-new/seasonal SKU, or a messy
         # export that split one SKU's sales across spellings) would otherwise
@@ -196,6 +247,7 @@ def run(
                     service_level=sl, unit_cost=meta.mean_unit_cost, lead_periods=lead,
                     cycle_investment=0.0, ss_investment=0.0, investment=0.0,
                     status="review",
+                    n_periods=n_periods,
                 )
             )
             continue
@@ -217,6 +269,7 @@ def run(
                     service_level=sl, unit_cost=meta.mean_unit_cost, lead_periods=lead,
                     cycle_investment=0.0, ss_investment=0.0, investment=0.0,
                     status="review",
+                    n_periods=n_periods,
                 )
             )
             continue
@@ -279,6 +332,7 @@ def run(
                 buffer_distribution=pol.safety_stock.distribution,
                 lead_time_std=lt_std, lead_time_std_source=lt_std_source,
                 risk_periods=pol.safety_stock.risk_periods,
+                n_periods=n_periods,
             )
         )
         items.append(InventoryItem(product_id=pid, order_quantity=2.0 * cycle_units, safety_stock=ss, unit_cost=meta.mean_unit_cost))
@@ -301,4 +355,5 @@ def run(
         intake_quality=intake_quality, intake_quality_threshold=intake_quality_threshold,
         n_skipped_zero_demand=sum(1 for r in recs if r.policy_kind == "skipped_zero_demand"),
         n_skipped_zero_cost=sum(1 for r in recs if r.policy_kind == "skipped_zero_cost"),
+        n_insufficient_history=sum(1 for r in recs if r.policy_kind == "insufficient_history"),
     )

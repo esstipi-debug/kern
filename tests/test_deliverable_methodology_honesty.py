@@ -74,13 +74,68 @@ def test_the_policy_carries_the_distribution_through():
 
 # ---- the job records what it actually ran -----------------------------------
 
-def test_each_recommendation_records_the_method_and_buffer_that_produced_it():
-    report = inventory_optimization.run(_demand())
+#: Every value `SkuRecommendation.method` is allowed to carry. "none" is what the run
+#: records when it declined to size the SKU at all (zero demand, zero cost, or too
+#: little history) -- there was no model, so naming one would be the exact dishonesty
+#: this module exists to prevent.
+_METHODS = {"ses", "croston", "moving_average", "auto_ets", "tsb", "none"}
 
+#: Every value `sigma_source` is allowed to carry, and what each one claims:
+#:   forecast_error_oos   - measured on one-step errors the model never saw (rolling
+#:                          origin). What z * sigma_e * sqrt(tau) actually assumes.
+#:   forecast_error       - in-sample residual std. Right quantity, optimistic measure.
+#:   demand_std_fallback  - sigma_e was not estimable; raw demand std stood in.
+#:   unavailable          - no usable dispersion at all (a genuinely flat history).
+#:   insufficient_history - the run refused to size this SKU; there is no buffer to
+#:                          describe. Deliberately NOT folded into "unavailable": that
+#:                          one means "measured, and it was zero", this one means "not
+#:                          measured", and jobs/qa.py's evidence invariant depends on
+#:                          telling them apart.
+_SIGMA_SOURCES = {
+    "forecast_error_oos", "forecast_error", "demand_std_fallback",
+    "unavailable", "insufficient_history",
+}
+
+
+def _assert_honest(rec) -> None:
+    assert rec.method in _METHODS, rec.method
+    assert rec.buffer_distribution in {"normal", "gamma"}, rec.buffer_distribution
+    assert rec.sigma_source in _SIGMA_SOURCES, rec.sigma_source
+
+
+def test_each_recommendation_records_the_method_and_buffer_that_produced_it():
+    for rec in inventory_optimization.run(_demand()).recommendations:
+        _assert_honest(rec)
+
+
+def test_the_recommendations_the_run_DECLINED_to_size_are_described_just_as_honestly():
+    """The gap the healthy fixture above leaves open.
+
+    Every assertion in this module ran only against SKUs the engine could actually
+    model, so the vocabulary the run uses for the ones it REFUSES was never checked --
+    and those are exactly the rows a client is most likely to query, because they are
+    the ones with no number next to them. A refused SKU must still say truthfully which
+    model ran (none), which distribution shaped the buffer (none was), and why there is
+    no sigma.
+    """
+    dates = pd.date_range("2026-01-04", periods=24, freq="W")
+    rows = [{"date": dates[i], "product_id": "HEALTHY", "quantity": 8.0 + (i % 5),
+             "unit_cost": 40.0} for i in range(24)]
+    rows.append({"date": dates[23], "product_id": "BRAND-NEW", "quantity": 10.0,
+                 "unit_cost": 250.0})                       # first sold last period
+    rows += [{"date": dates[i], "product_id": "NO-DEMAND", "quantity": 0.0,
+              "unit_cost": 12.0} for i in range(24)]
+    rows += [{"date": dates[i], "product_id": "NO-COST", "quantity": 5.0,
+              "unit_cost": 0.0} for i in range(24)]
+
+    report = inventory_optimization.run(pd.DataFrame(rows), period_freq="W")
+    by_kind = {r.policy_kind for r in report.recommendations}
+
+    assert {"insufficient_history", "skipped_zero_demand", "skipped_zero_cost"} <= by_kind, (
+        f"the fixture stopped producing every refusal kind: {by_kind}"
+    )
     for rec in report.recommendations:
-        assert rec.method in {"ses", "croston", "moving_average", "auto_ets", "tsb"}
-        assert rec.buffer_distribution in {"normal", "gamma"}
-        assert rec.sigma_source in {"forecast_error", "demand_std_fallback", "unavailable"}
+        _assert_honest(rec)
 
 
 def test_an_unsupplied_lead_time_std_is_recorded_as_defaulted_not_as_measured():
