@@ -87,7 +87,7 @@ def test_un_solo_archivo_es_400_que_explica_por_que(isolated_stores):
         files={"receipts": ("recepciones.csv", RECEIPTS_CSV, "text/csv")},
     )
     assert r.status_code == 400
-    assert "LOS DOS CSV" in r.json()["detail"]
+    assert "LOS DOS archivos" in r.json()["detail"]
 
 
 def test_demanda_sin_costo_es_qa_fallado_no_una_cifra_inventada(isolated_stores):

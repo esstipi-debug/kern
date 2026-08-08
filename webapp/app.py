@@ -31,12 +31,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import pandas as pd  # noqa: E402
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+from jobs.intake import load_table  # noqa: E402
 from jobs.price_monitor import accept_observation  # noqa: E402
 from jobs.scheduled_jobs import PRODUCTION_JOB_IDS, production_registry  # noqa: E402
 from scm_agent import Orchestrator  # noqa: E402
@@ -751,13 +751,18 @@ def _prune_excess_lead_dirs(limit: int = MAX_LEAD_DIRS) -> None:
         shutil.rmtree(stale, ignore_errors=True)
 
 
-async def _stage_csv_upload(file: UploadFile) -> tuple[Path, str]:
-    """Land a visitor's CSV in an isolated per-request tempdir under JOBS_OUTPUT_DIR.
+async def _stage_table_upload(file: UploadFile) -> tuple[Path, str]:
+    """Land a visitor's table (CSV or Excel) in an isolated per-request tempdir.
 
     The SECURITY.md upload controls for the demo funnels in ONE place --
     basename-only filename, 25 MB cap, TTL-purged staging dir -- so a new funnel
     endpoint cannot ship with a quietly weaker copy of them. Returns the staged
     path and the sanitized label the report and telemetry line carry.
+
+    The staged name keeps the caller's extension on purpose: ``jobs.intake.load_table``
+    dispatches CSV vs. Excel on the suffix, so flattening it here would silently
+    send every .xlsx down the ``read_csv`` path. The client whose inventory lives
+    in a spreadsheet is the archetypal visitor of this funnel, not an edge case.
     """
     import tempfile
 
@@ -811,16 +816,16 @@ async def api_demo_scan(
     _prune_old_jobs()
 
     if file is not None and file.filename:
-        data_path, dataset_label = await _stage_csv_upload(file)
+        data_path, dataset_label = await _stage_table_upload(file)
     elif use_sample:
         data_path, dataset_label = SAMPLE_STOCK_FILE, "sample_stock_snapshot.csv"
     else:
-        raise HTTPException(status_code=400, detail="sube un CSV de stock o marca use_sample")
+        raise HTTPException(status_code=400, detail="sube un CSV o Excel de stock o marca use_sample")
 
     try:
-        df = pd.read_csv(data_path)
+        df = load_table(data_path)
     except Exception as exc:  # pandas raises several parse/encoding error types
-        raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el archivo: {exc}") from exc
     try:
         result = demo_scan.run_demo_scan(df)
     except ValueError as exc:
@@ -886,18 +891,18 @@ async def api_demo_lead_time(
     _prune_old_jobs()
 
     if file is not None and file.filename:
-        data_path, dataset_label = await _stage_csv_upload(file)
+        data_path, dataset_label = await _stage_table_upload(file)
     elif use_sample:
         data_path, dataset_label = SAMPLE_RECEIPTS_FILE, "sample_receipts.csv"
     else:
         raise HTTPException(
-            status_code=400, detail="sube un CSV de recepciones o marca use_sample"
+            status_code=400, detail="sube un CSV o Excel de recepciones o marca use_sample"
         )
 
     try:
-        df = pd.read_csv(data_path)
+        df = load_table(data_path)
     except Exception as exc:  # pandas raises several parse/encoding error types
-        raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el archivo: {exc}") from exc
     try:
         result = demo_lead_time_scan.run_lead_time_scan(df)
     except ValueError as exc:
@@ -975,8 +980,8 @@ async def api_demo_gap_value(
     _prune_old_jobs()
 
     if receipts is not None and receipts.filename and demand is not None and demand.filename:
-        receipts_path, receipts_label = await _stage_csv_upload(receipts)
-        demand_path, demand_label = await _stage_csv_upload(demand)
+        receipts_path, receipts_label = await _stage_table_upload(receipts)
+        demand_path, demand_label = await _stage_table_upload(demand)
         dataset_label = f"{receipts_label} + {demand_label}"
     elif use_sample:
         receipts_path = SAMPLE_RECEIPTS_PORTFOLIO_FILE
@@ -986,16 +991,16 @@ async def api_demo_gap_value(
         raise HTTPException(
             status_code=400,
             detail=(
-                "sube LOS DOS CSV (recepciones y movimientos de demanda con costo "
+                "sube LOS DOS archivos (recepciones y movimientos de demanda con costo "
                 "unitario) o marca use_sample: con uno solo no hay cifra de plata"
             ),
         )
 
     try:
-        receipts_df = pd.read_csv(receipts_path)
-        demand_df = pd.read_csv(demand_path)
+        receipts_df = load_table(receipts_path)
+        demand_df = load_table(demand_path)
     except Exception as exc:  # pandas raises several parse/encoding error types
-        raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el archivo: {exc}") from exc
     try:
         result = demo_gap_value.run_gap_value(receipts_df, demand_df)
     except ValueError as exc:

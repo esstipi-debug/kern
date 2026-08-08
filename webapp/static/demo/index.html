@@ -118,12 +118,12 @@
         </div>
         <p id="modeHint" class="muted" style="font-size:13px;margin:0 0 16px"></p>
 
-        <label for="file" id="fileLabel">Archivo (CSV)</label>
-        <input id="file" type="file" accept=".csv">
+        <label for="file" id="fileLabel">Archivo (CSV o Excel)</label>
+        <input id="file" type="file" accept=".csv,.xlsx,.xlsm,.xls">
 
         <div id="file2Wrap" class="hidden" style="margin-top:14px">
-          <label for="file2" id="file2Label">Segundo archivo (CSV)</label>
-          <input id="file2" type="file" accept=".csv">
+          <label for="file2" id="file2Label">Segundo archivo (CSV o Excel)</label>
+          <input id="file2" type="file" accept=".csv,.xlsx,.xlsm,.xls">
         </div>
 
         <div class="row" style="margin-top:18px">
@@ -176,8 +176,8 @@
       cta: "Medir mis plazos &rarr;",
       spinner: "Midiendo tus plazos de entrega…",
       empty: "Ejecuta la medición para ver qué tan lejos está tu ERP de la realidad.",
-      needFile: "Sube un CSV de recepciones o usa los datos de ejemplo.",
-      hint: 'Un CSV con una fila por recepción. Columnas: <span style="font-family:var(--mono);font-size:12px">supplier, order_date, receipt_date</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">declared_lead_time_days, product_id, po_id</span>). <a href="/static/demo/plantilla_recepciones.csv" download>Descargar plantilla &darr;</a>',
+      needFile: "Sube un CSV o Excel de recepciones o usa los datos de ejemplo.",
+      hint: 'Un CSV o Excel con una fila por recepción. Columnas: <span style="font-family:var(--mono);font-size:12px">supplier, order_date, receipt_date</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">declared_lead_time_days, product_id, po_id</span>). <a href="/static/demo/plantilla_recepciones.csv" download>Descargar plantilla &darr;</a>',
       sample: 'El dataset de ejemplo es <span class="muted">sample_receipts.csv</span> (49 recepciones, 4 proveedores).'
     },
     value: {
@@ -187,9 +187,9 @@
       empty: "Ejecuta la valorización para ver la brecha en dinero, en dos monedas.",
       needFile: "Necesito los DOS archivos: recepciones y movimientos. Con uno solo no hay cifra de plata.",
       twoFiles: true,
-      fileLabel: "Recepciones (CSV)",
-      file2Label: "Movimientos de demanda, con costo unitario (CSV)",
-      hint: 'Dos CSV. <b>Recepciones:</b> <span style="font-family:var(--mono);font-size:12px">supplier, order_date, receipt_date, declared_lead_time_days, product_id</span>. <b>Movimientos:</b> <span style="font-family:var(--mono);font-size:12px">date, product_id, quantity, unit_cost</span>. El costo unitario no es opcional acá: sin él no hay cifra en dinero y el escaneo lo dice en vez de inventarla.',
+      fileLabel: "Recepciones (CSV o Excel)",
+      file2Label: "Movimientos de demanda, con costo unitario (CSV o Excel)",
+      hint: 'Dos archivos (CSV o Excel). <b>Recepciones:</b> <span style="font-family:var(--mono);font-size:12px">supplier, order_date, receipt_date, declared_lead_time_days, product_id</span>. <b>Movimientos:</b> <span style="font-family:var(--mono);font-size:12px">date, product_id, quantity, unit_cost</span>. El costo unitario no es opcional acá: sin él no hay cifra en dinero y el escaneo lo dice en vez de inventarla.',
       sample: 'El par de ejemplo es <span class="muted">sample_receipts_portfolio.csv + sample_demand_portfolio.csv</span> (8 SKU, 4 proveedores, 52 semanas).'
     },
     stock: {
@@ -197,8 +197,8 @@
       cta: "Escanear mi stock &rarr;",
       spinner: "Escaneando tu inventario…",
       empty: "Ejecuta el escaneo para ver cuánto capital puedes liberar.",
-      needFile: "Sube un CSV de stock o usa los datos de ejemplo.",
-      hint: 'Un CSV con una fila por producto. Columnas: <span style="font-family:var(--mono);font-size:12px">product_id, on_hand, daily_demand</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">unit_cost, days_since_last_sale</span>). <a href="/static/demo/plantilla_stock.csv" download>Descargar plantilla &darr;</a>',
+      needFile: "Sube un CSV o Excel de stock o usa los datos de ejemplo.",
+      hint: 'Un CSV o Excel con una fila por producto. Columnas: <span style="font-family:var(--mono);font-size:12px">product_id, on_hand, daily_demand</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">unit_cost, days_since_last_sale</span>). <a href="/static/demo/plantilla_stock.csv" download>Descargar plantilla &darr;</a>',
       sample: 'El dataset de ejemplo es <span class="muted">sample_stock_snapshot.csv</span> (8 SKU).'
     }
   };
@@ -214,8 +214,8 @@
     modeHint.innerHTML = cfg.hint;
     sampleHint.innerHTML = cfg.sample;
     runUpload.innerHTML = cfg.cta;
-    fileLabel.textContent = cfg.fileLabel || "Archivo (CSV)";
-    file2Label.textContent = cfg.file2Label || "Segundo archivo (CSV)";
+    fileLabel.textContent = cfg.fileLabel || "Archivo (CSV o Excel)";
+    file2Label.textContent = cfg.file2Label || "Segundo archivo (CSV o Excel)";
     file2Wrap.classList.toggle("hidden", !cfg.twoFiles);
     runErr.textContent = "";
     out.innerHTML = '<div class="empty">' + cfg.empty + '</div>';

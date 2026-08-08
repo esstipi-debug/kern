@@ -112,8 +112,9 @@ def test_rescanning_the_same_email_overwrites_with_latest_numbers(isolated_store
 
 
 def test_binary_upload_is_a_clean_400_not_a_500(isolated_stores):
-    # A real .xlsx (or any non-CSV binary) must never surface as a 500 -- the
-    # client-side accept=".csv,.xlsx,.xls" filter is cosmetic, not a server guarantee.
+    # Un .xlsx bien formado ya entra (jobs.intake.load_table despacha por sufijo),
+    # pero uno CORRUPTO tiene que seguir siendo un 400 y nunca un 500: el filtro
+    # accept= del cliente es cosmetico, no una garantia del servidor.
     blob = bytes(range(256)) * 4
     r = client.post(
         "/api/demo-scan",
@@ -121,7 +122,7 @@ def test_binary_upload_is_a_clean_400_not_a_500(isolated_stores):
         files={"file": ("stock.xlsx", blob, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
     )
     assert r.status_code == 400
-    assert "CSV" in r.json()["detail"]
+    assert "no se pudo leer el archivo" in r.json()["detail"]
 
 
 def test_duplicate_product_id_rows_sum_like_the_paid_jobs_do(isolated_stores):
