@@ -273,6 +273,14 @@
       fs.forEach(function(f){ html += '<li>'+esc(f)+'</li>'; });
       html += '</ul>';
     }
+    // El entregable en el formato del que subio el archivo. Va ANTES del CTA:
+    // primero se lleva algo suyo, despues se le ofrece comprar.
+    if (d.workbook_url){
+      html += '<div class="cta-box">'
+        + '<p>El escaneo completo en Excel: d&oacute;nde est&aacute; la plata de tu inventario, cada SKU con su plata detenida, la concentraci&oacute;n de valor y los d&iacute;as de cobertura.</p>'
+        + '<div class="row"><a class="btn btn-primary" href="'+esc(d.workbook_url)+'" download>Descargar el Excel &darr;</a></div>'
+        + '</div>';
+    }
     html += '<div class="cta-box">'
       + '<p>El Diagn&oacute;stico de Arranque (sprint de 2 semanas) convierte esta cifra en un plan de recuperaci&oacute;n priorizado, con cada n&uacute;mero trazable y compuerta de QA.</p>'
       + '<div class="row"><a class="btn btn-primary" href="'+esc(d.cta_url||"/paquetes/diagnostico-arranque")+'">Ver el Diagn&oacute;stico &rarr;</a>'
@@ -338,6 +346,14 @@
       html += '<div class="h3">Hallazgos ejecutivos</div><ul class="list">';
       fs.forEach(function(f){ html += '<li>'+esc(f)+'</li>'; });
       html += '</ul>';
+    }
+    // El entregable en el formato del que subio el archivo. Va ANTES del CTA:
+    // primero se lleva algo suyo, despues se le ofrece comprar.
+    if (d.workbook_url){
+      html += '<div class="cta-box">'
+        + '<p>El escaneo completo en Excel: las dos monedas, el detalle SKU por SKU con el c&aacute;lculo de los dos escenarios, y de cu&aacute;ntos SKU de tu archivo sali&oacute; la cifra.</p>'
+        + '<div class="row"><a class="btn btn-primary" href="'+esc(d.workbook_url)+'" download>Descargar el Excel &darr;</a></div>'
+        + '</div>';
     }
     html += '<div class="cta-box">'
       + '<p>' + (sube

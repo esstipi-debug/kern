@@ -90,7 +90,13 @@ def test_upload_scan_end_to_end(isolated_stores):
     # SECURITY.md claims the raw upload is never copied into the lead's folder --
     # only the two derived .md artifacts should exist there.
     lead_dir = reports / safe_lead_dirname("up@x.com")
-    assert {p.name for p in lead_dir.iterdir()} == {"mini_report.md", "followup_email_draft.md"}
+    # El .xlsx acompana a los dos .md desde que el embudo entrega en Excel: los
+    # .md son para el operador y el libro es la copia de lo que se llevo el
+    # visitante. Este arbol NUNCA se sirve -- lo que se descarga vive en
+    # DEMO_OUTPUT_DIR, con TTL y sin PII en la ruta.
+    assert {p.name for p in lead_dir.iterdir()} == {
+        "mini_report.md", "followup_email_draft.md", "escaneo_stock.xlsx",
+    }
 
 
 def test_rescanning_the_same_email_overwrites_with_latest_numbers(isolated_stores):

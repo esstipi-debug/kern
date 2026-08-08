@@ -76,9 +76,11 @@ from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
 from webapp import (  # noqa: E402
     demo_gap_value,
+    demo_gap_workbook,
     demo_lead_time_scan,
     demo_price_scan,
     demo_scan,
+    demo_stock_workbook,
     demo_workbook,
     observability,
     security,
@@ -132,7 +134,7 @@ DEMO_OUTPUT_DIR = _REPO_ROOT / "webapp" / "_demo_output"
 DEMO_TTL_SECONDS = 3600
 #: Lo unico que este arbol sirve. Cualquier otro nombre es un 404, para que la ruta
 #: no se convierta en un lector de archivos arbitrario.
-DEMO_DOWNLOADS = {"plazo_real.xlsx"}
+DEMO_DOWNLOADS = {"plazo_real.xlsx", "escaneo_stock.xlsx", "brecha_en_plata.xlsx"}
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 PERIODS_PER_YEAR = 52.0
 MAX_LEAD_PERIODS = 52.0
@@ -887,6 +889,15 @@ async def api_demo_scan(
             demo_scan.render_followup_email(result, email=addr, dataset_label=dataset_label),
             encoding="utf-8",
         )
+        _prune_old_demo_outputs()
+        DEMO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        book_dir = Path(tempfile.mkdtemp(dir=DEMO_OUTPUT_DIR))
+        book = demo_stock_workbook.write_stock_workbook(
+            result, book_dir / "escaneo_stock.xlsx", dataset_label=dataset_label, ts=ts
+        )
+        shutil.copyfile(book, lead_dir / "escaneo_stock.xlsx")
+        workbook_url = _demo_download_url(book)
+
 
     # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
     record = {
@@ -902,13 +913,17 @@ async def api_demo_scan(
 
     if not result.ok:
         return {"status": "qa_failed", "qa_issues": list(result.qa_issues), "dataset": dataset_label}
-    return {
+    payload = {
         "status": "ok",
         "headline": result.headline,
         "findings": list(result.findings),
         "cta_url": demo_scan.CTA_PATH,
         "dataset": dataset_label,
     }
+    # Se omite la clave entera si el minteo fallo: mejor sin boton que con uno roto.
+    if workbook_url:
+        payload["workbook_url"] = workbook_url
+    return payload
 
 
 @app.post("/api/demo-lead-time", dependencies=[Depends(security.rate_limit)])
@@ -1094,6 +1109,7 @@ async def api_demo_gap_value(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    workbook_url: str | None = None
     if result.ok:
         lead_dir = _lead_dir_for(addr)
         (lead_dir / "gap_value_report.md").write_text(
@@ -1106,6 +1122,15 @@ async def api_demo_gap_value(
             ),
             encoding="utf-8",
         )
+        _prune_old_demo_outputs()
+        DEMO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        book_dir = Path(tempfile.mkdtemp(dir=DEMO_OUTPUT_DIR))
+        book = demo_gap_workbook.write_gap_value_workbook(
+            result, book_dir / "brecha_en_plata.xlsx", dataset_label=dataset_label, ts=ts
+        )
+        shutil.copyfile(book, lead_dir / "brecha_en_plata.xlsx")
+        workbook_url = _demo_download_url(book)
+
 
     # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
     record = {
@@ -1125,13 +1150,17 @@ async def api_demo_gap_value(
             "qa_issues": list(result.qa_issues),
             "dataset": dataset_label,
         }
-    return {
+    payload = {
         "status": "ok",
         "headline": result.headline,
         "findings": list(result.findings),
         "cta_url": demo_gap_value.CTA_PATH,
         "dataset": dataset_label,
     }
+    # Se omite la clave entera si el minteo fallo: mejor sin boton que con uno roto.
+    if workbook_url:
+        payload["workbook_url"] = workbook_url
+    return payload
 
 
 @app.post("/api/demo-price-scan", dependencies=[Depends(security.rate_limit)])

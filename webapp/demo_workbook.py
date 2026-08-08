@@ -28,25 +28,16 @@ titular no significa nada, asi que un libro seria un objeto con forma de resulta
 sin resultado adentro.
 """
 
+
 from __future__ import annotations
 
-import math
-import os
-from collections.abc import Collection, Sequence
 from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook
-from openpyxl.chart import BarChart, Reference
-from openpyxl.chart.label import DataLabelList
-from openpyxl.chart.shapes import GraphicalProperties
-from openpyxl.formatting.rule import FormulaRule
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
+from openpyxl.chart import Reference
+from openpyxl.styles import Font  # noqa: E402  (fuentes puntuales de una sola celda)
 
-from src.deliverable import not_measured
-from src.excel_export import HEADER_FILL, HEADER_FONT
-from src.sanitize import defuse_formula
 from src.supplier_scorecard import LEAD_TIME_GAP_MATERIAL, SupplierScore
 from webapp.demo_lead_time_scan import (
     CTA_PATH,
@@ -55,21 +46,42 @@ from webapp.demo_lead_time_scan import (
     relative_gap,
     signed_relative_gap,
 )
+
+# Las primitivas viven en un solo lugar: ver el docstring de demo_workbook_base.
+from webapp.demo_workbook_base import (
+    _BASE_URL,
+    _BIG,
+    _FILL_FINA,
+    _FILL_TARDE,
+    _FILL_TEMPRANO,
+    _MID,
+    _NOTE,
+    _SECTION,
+    _TITLE,
+    _WRAP,
+    C_ALERTA,
+    C_DECLARADO,
+    C_NEUTRO,
+    C_OBSERVADO,
+    FMT_COUNT,
+    FMT_DATE,
+    FMT_DAYS_1,
+    FMT_PCT_SIGNED,
+    FMT_UNITS_1,
+    NO_MEDIDO,
+    TOP_N_PROVEEDOR,
+    _bar,
+    _cap,
+    _cell,
+    _chart_block,
+    _headers,
+    _isnumber_rule,
+    _link_row,
+    _measured,
+    _widths,
+    rows_below,
+)
 from webapp.operator_profile import get_operator_profile
-
-#: El token de honestidad, con una sola definicion en todo el modulo.
-NO_MEDIDO: str = not_measured("es")
-
-#: Tope de series de un grafico. La TABLA nunca se topa por esto -- un grafico con
-#: 200 barras no se lee, una tabla con 200 filas si.
-TOP_N_PROVEEDOR = 15
-
-#: Tope duro de filas por hoja. fly.toml fija WEB_CONCURRENCY=1 sobre 512 MB (dos
-#: workers ya murieron por OOM), y el tope de subida son 25 MB: un export de
-#: recepciones de ese tamano son cientos de miles de filas y openpyxl las mantiene
-#: todas en memoria. Se topa, y se DICE que se topo -- callarlo seria el "nada se
-#: descarta en silencio" roto justo en la hoja que existe para no descartar nada.
-MAX_TABLE_ROWS = 5_000
 
 #: Bajo esta cantidad de recepciones el promedio es indicativo y la variacion es
 #: ruido. No descalifica al proveedor (para eso esta MIN_DELIVERIES); avisa.
@@ -77,206 +89,6 @@ EVIDENCIA_FINA = 8
 
 #: Ancho del bin del histograma, en dias.
 BIN_DIAS = 5
-
-_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or "https://linchpin.fly.dev").rstrip("/")
-
-FMT_DAYS_1 = '#,##0.0" d"'
-FMT_UNITS_1 = "#,##0.0"
-FMT_COUNT = "#,##0"
-FMT_PCT_SIGNED = "+0%;-0%;0%"
-FMT_DATE = "yyyy-mm-dd"
-
-C_DECLARADO = "9AA5B1"  # gris: la promesa
-C_OBSERVADO = "1F4E79"  # azul: la medicion
-C_ALERTA = "C0392B"
-C_NEUTRO = "9AA5B1"
-
-_TITLE = Font(bold=True, size=15)
-_SECTION = Font(bold=True, size=12)
-_BIG = Font(bold=True, size=20)
-_MID = Font(bold=True, size=14)
-_NOTE = Font(italic=True, size=9, color="5A6570")
-_BLOCK = Font(bold=True, size=10, color="5A6570")
-_LINK = Font(bold=True, color="1F4E79", underline="single")
-_WRAP = Alignment(wrap_text=True, vertical="top")
-
-_FILL_TARDE = PatternFill("solid", fgColor="F8D7DA")
-_FILL_TEMPRANO = PatternFill("solid", fgColor="FDE2C8")
-_FILL_FINA = PatternFill("solid", fgColor="EEF1F4")
-
-
-# --------------------------------------------------------------------------- #
-# primitivas
-# --------------------------------------------------------------------------- #
-
-
-def _cell(
-    ws,
-    row: int,
-    col: int,
-    value: Any,
-    *,
-    fmt: str | None = None,
-    font: Font | None = None,
-    align: Alignment | None = None,
-):
-    """El unico camino por el que se escribe una celda en este modulo.
-
-    ``defuse_formula`` va aca y en ningun otro lado: un solo punto de paso es lo
-    que hace que "se defusa todo" sea verificable leyendo una funcion en vez de
-    auditando cada hoja.
-    """
-    c = ws.cell(row=row, column=col, value=defuse_formula(value))
-    if fmt:
-        c.number_format = fmt
-    if font:
-        c.font = font
-    if align:
-        c.alignment = align
-    return c
-
-
-def _headers(ws, row: int, labels: Sequence[str], *, start_col: int = 1) -> None:
-    """Encabezados: literales del desarrollador, no dato del cliente."""
-    for i, label in enumerate(labels):
-        c = ws.cell(row=row, column=start_col + i, value=label)
-        c.fill = HEADER_FILL
-        c.font = HEADER_FONT
-
-
-def _measured(value: float | None, *, digits: int = 1) -> float | str:
-    """El valor cuando es un numero finito; ``NO_MEDIDO`` cuando no lo es.
-
-    Un ``None`` escrito como celda vacia se lee como cero, y en un plazo de
-    entrega cero es una afirmacion fuerte y falsa.
-    """
-    if value is None:
-        return NO_MEDIDO
-    try:
-        v = float(value)
-    except (TypeError, ValueError):
-        return NO_MEDIDO
-    if not math.isfinite(v):
-        return NO_MEDIDO
-    return round(v, digits)
-
-
-def _autosize(ws, *, min_w: int = 10, max_w: int = 52, skip: Collection[int] = ()) -> None:
-    for col in ws.columns:
-        idx = col[0].column
-        if idx in skip:
-            continue
-        width = max((len(str(c.value or "")) for c in col), default=0) + 2
-        ws.column_dimensions[get_column_letter(idx)].width = max(min_w, min(width, max_w))
-
-
-def _widths(ws, mapping: dict[str, int]) -> None:
-    for letter, width in mapping.items():
-        ws.column_dimensions[letter].width = width
-
-
-def _bar(
-    *,
-    data: Reference,
-    cats: Reference,
-    title: str,
-    kind: str = "col",
-    y_title: str | None = None,
-    colors: Sequence[str] = (),
-    width: float = 20,
-    height: float = 10,
-    legend: str | None = "b",
-    show_values: bool = True,
-    gap: int | None = None,
-) -> BarChart:
-    """El unico constructor de barras. Concentra la higiene que se olvida de a una."""
-    ch = BarChart()
-    ch.type = kind
-    ch.grouping = "clustered"
-    ch.title = title
-    ch.add_data(data, titles_from_data=True)
-    ch.set_categories(cats)
-    ch.width = width
-    ch.height = height
-    # Sin esto el grafico se VACIA apenas el cliente usa el autofiltro de la hoja:
-    # openpyxl escribe plotVisOnly=1 por defecto y Excel deja de graficar las filas
-    # ocultas, incluidas las del bloque de datos que vive a la derecha.
-    ch.visible_cells_only = False
-    # Un hueco se dibuja como hueco y no como cero.
-    ch.dispBlanksAs = "gap"
-    ch.x_axis.delete = False
-    ch.y_axis.delete = False
-    if y_title:
-        ch.y_axis.title = y_title
-    ch.y_axis.scaling.min = 0
-    if gap is not None:
-        ch.gapWidth = gap
-    if legend:
-        ch.legend.position = legend
-    else:
-        ch.legend = None
-    if show_values:
-        ch.dLbls = DataLabelList()
-        ch.dLbls.showVal = True
-    for i, color in enumerate(colors):
-        if i < len(ch.series):
-            ch.series[i].graphicalProperties = GraphicalProperties(solidFill=color)
-    return ch
-
-
-def _chart_block(
-    ws,
-    top_row: int,
-    title: str,
-    headers: Sequence[str],
-    rows: Sequence[Sequence[Any]],
-    *,
-    start_col: int,
-    fmt: str | None = None,
-) -> tuple[int, int]:
-    """Escribe el origen de un grafico, visible y rotulado, y devuelve sus filas.
-
-    Visible a proposito: el cliente puede ver exactamente que filas entraron al
-    grafico y cuales no. Un bloque oculto convierte el criterio de exclusion en
-    algo que hay que creer.
-    """
-    _cell(ws, top_row, start_col, title, font=_BLOCK)
-    header_row = top_row + 1
-    _headers(ws, header_row, headers, start_col=start_col)
-    for r, row in enumerate(rows, header_row + 1):
-        for c, value in enumerate(row):
-            _cell(ws, r, start_col + c, value, fmt=fmt if c > 0 else None)
-    return header_row, header_row + len(rows)
-
-
-def _cap(rows: list, ws, row: int, col: int, total: int, orden: str) -> list:
-    """Aplica MAX_TABLE_ROWS y, si topa, lo escribe en la hoja."""
-    if total <= MAX_TABLE_ROWS:
-        return rows
-    _cell(
-        ws,
-        row,
-        col,
-        f"Se muestran las primeras {MAX_TABLE_ROWS:,} de {total:,} filas, ordenadas por "
-        f"{orden}. El resto no se perdio: esta en el archivo que subiste y entra "
-        "completo en el Diagnostico.".replace(",", "."),
-        font=_NOTE,
-        align=_WRAP,
-    )
-    return rows[:MAX_TABLE_ROWS]
-
-
-def _isnumber_rule(col: str, first: int, last: int, test: str, fill: PatternFill) -> tuple:
-    """Regla condicional que primero comprueba que la celda sea un numero.
-
-    Sin el ``ISNUMBER`` esto pinta las celdas que dicen "no medido": Excel ordena
-    numeros < texto, asi que cualquier ``>=`` contra un umbral da TRUE sobre
-    texto, y la hoja terminaria afirmando en rojo justo donde no midio nada.
-    """
-    return (
-        f"{col}{first}:{col}{last}",
-        FormulaRule(formula=[f"AND(ISNUMBER(${col}{first}),${col}{first}{test})"], fill=fill),
-    )
 
 
 # --------------------------------------------------------------------------- #
@@ -360,8 +172,9 @@ def _sheet_resumen(ws, scan: LeadTimeScan, *, dataset_label: str, ts: str) -> No
     )
     ws.add_chart(ch, "A15")
 
-    # 9,5 cm / 0,529 cm por fila ~ 18 filas. Se deja margen y se sigue debajo.
-    row = 15 + 20
+    # Se sigue debajo del ALTO RENDERIZADO del grafico, nunca debajo de su bloque
+    # de datos: el ancla fija la esquina y el alto son EMU absolutos.
+    row = 15 + rows_below(9.5)
     _cell(ws, row, 1, "Que dice esto", font=_SECTION)
     row += 1
     for finding in scan.findings:
@@ -374,8 +187,7 @@ def _sheet_resumen(ws, scan: LeadTimeScan, *, dataset_label: str, ts: str) -> No
     operator = get_operator_profile()
     _cell(ws, row, 1, "Siguiente paso", font=_SECTION)
     row += 1
-    link = _cell(ws, row, 1, "Diagnostico de Arranque (abrir)", font=_LINK)
-    link.hyperlink = f"{_BASE_URL}{CTA_PATH}"
+    _link_row(ws, row, 1, "Diagnostico de Arranque (abrir)", f"{_BASE_URL}{CTA_PATH}")
     row += 1
     if operator.email:
         _cell(ws, row, 1, "Responde a:")
