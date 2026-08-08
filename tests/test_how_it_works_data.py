@@ -50,16 +50,19 @@ def test_tools_table_matches_the_registry_exactly() -> None:
     assert set(listed) == registered
 
 
-def test_exactly_49_tools_with_unique_keys() -> None:
-    assert len(TOOLS) == 50
-    assert len({t.key for t in TOOLS}) == 50
+def test_every_tool_is_listed_once_with_a_unique_key() -> None:
+    # The count lived in this test's NAME and drifted: it read "exactly_49" while
+    # asserting 50. A name that has to be edited in lockstep with a number will
+    # eventually not be, so the number now lives only in the assertion.
+    assert len(TOOLS) == 52
+    assert len({t.key for t in TOOLS}) == 52
 
 
-def test_domain_area_tally_sums_to_50_and_matches_spec() -> None:
+def test_domain_area_tally_matches_spec() -> None:
     tally = tally_by_domain_area()
-    assert sum(tally.values()) == 50
+    assert sum(tally.values()) == 52
     assert tally == {
-        "Inventory & replenishment": 9,
+        "Inventory & replenishment": 11,
         "Network & logistics": 9,
         "Inventory control & health": 7,
         "Pricing & finance": 6,
@@ -73,11 +76,11 @@ def test_domain_area_tally_sums_to_50_and_matches_spec() -> None:
     assert set(tally) == set(DOMAIN_AREA_ORDER)
 
 
-def test_scor_bucket_tally_sums_to_50_and_matches_spec() -> None:
+def test_scor_bucket_tally_matches_spec() -> None:
     tally = tally_by_scor_bucket()
-    assert sum(tally.values()) == 50
+    assert sum(tally.values()) == 52
     assert tally == {
-        "Plan": 17,
+        "Plan": 19,
         "Order/Fulfill": 8,
         "Orchestrate": 14,
         "Transform": 4,

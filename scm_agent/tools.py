@@ -5,9 +5,14 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from nosilo_core.llm import LLMProvider
+from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
+from nosilo_core.types import JobRequest
+
 from jobs import (
     abc_xyz_job,
     acceptance_sampling_job,
+    channel_replenishment_job,
     cost_to_serve_deliverable,
     cost_to_serve_job,
     cross_impact_job,
@@ -48,6 +53,7 @@ from jobs import (
     returns_job,
     risk_job,
     scheduling_job,
+    shopify_job,
     simulation_job,
     slotting_job,
     sop_deliverable,
@@ -61,13 +67,12 @@ from jobs import (
 from jobs.inventory_optimization import run as run_inventory
 from jobs.pricing import prepare_pricing
 from jobs.pricing import run as run_pricing
-from nosilo_core.llm import LLMProvider
-from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
-from nosilo_core.types import JobRequest
 
 from . import tool_options
 
 from src.connectors.odoo import OdooError  # isort: skip  (local package)
+from src.connectors.shopify import ShopifyCommerceError  # isort: skip  (local package)
+from src.connectors.shopify_inventory import ShopifyInventoryError  # isort: skip  (local package)
 from src.cost_to_serve import ServiceCostRates  # isort: skip  (local package)
 from src.sop import CostModel  # isort: skip  (local package)
 
@@ -1736,6 +1741,115 @@ def odoo_replenishment_tool() -> Tool:
     )
 
 
+# ---- channel_replenishment (storefront demand -> ERP reorder point) ----------
+
+def _channel_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    try:
+        payload = channel_replenishment_job.prepare(request.data_path, request.params)
+    except (ValueError, OdooError, ShopifyCommerceError, ShopifyInventoryError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["matched"]:
+        return Prepared(
+            status="needs_data",
+            messages=["no SKU is present in both the storefront and the ERP: the catalogues do not "
+                      "intersect, so the SKU codes probably do not agree between the two systems"],
+        )
+    return Prepared(status="ok", payload=payload)
+
+
+def _channel_run(payload: object, params: dict) -> Produced:
+    report = channel_replenishment_job.run(
+        payload,
+        cover_periods=params.get("cover_periods", 8.0),
+        financial_threshold=params.get("financial_threshold", 50_000.0),
+    )
+    return Produced(report=report, summary=report.summary)
+
+
+def channel_replenishment_tool() -> Tool:
+    return Tool(
+        key="channel_replenishment",
+        title="Channel to ERP Replenishment",
+        description="Forecast each SKU from a live sales channel's real orders (Shopify or "
+                    "MercadoLibre, via params['channel']), compare against the ERP's stock and "
+                    "lead times, and stage the restock as a reversible reorder point in the ERP. "
+                    "Also reports where the two systems disagree about on-hand - a divergence "
+                    "neither single-system tool can see.",
+        intent_keywords=(
+            "channel replenishment", "shopify to odoo", "storefront to erp", "omnichannel inventory",
+            "cross system replenishment", "channel demand erp stock", "stock divergence",
+            "reconcile shopify odoo", "dtc replenishment erp",
+            # MercadoLibre routes here rather than to a tool of its own: like a storefront, its
+            # writable quantity is physical stock, so the plan belongs in the ERP either way.
+            # A separate meli_replenishment would be this job with different labels.
+            "mercadolibre", "mercado libre", "meli to odoo", "mercadolibre replenishment",
+            "reponer mercadolibre", "marketplace replenishment",
+        ),
+        requires_data=False,
+        options=lambda report: report.outcome,
+        prepare=_channel_prepare,
+        run=_channel_run,
+        qa=lambda report: channel_replenishment_job.verify(report),
+        deliver=lambda report, out_dir, client: channel_replenishment_job.write_operational(
+            report, out_dir, client
+        ),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            channel_replenishment_job.build_deck(
+                report, client=client, citations=tuple(citations), confidence=confidence
+            ),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
+# ---- shopify_replenishment (live storefront connector) -----------------------
+
+def _shopify_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    try:
+        payload = shopify_job.prepare(request.data_path, request.params)
+    except (ValueError, ShopifyCommerceError, ShopifyInventoryError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if payload["n_products"] == 0:
+        return Prepared(status="needs_data",
+                        messages=["no product variants with a SKU found in Shopify"])
+    return Prepared(status="ok", payload=payload)
+
+
+def _shopify_run(payload: object, params: dict) -> Produced:
+    report = shopify_job.run(
+        payload,
+        cover_periods=params.get("cover_periods", 8.0),
+        financial_threshold=params.get("financial_threshold", 50_000.0),
+    )
+    return Produced(report=report, summary=report.summary)
+
+
+def shopify_replenishment_tool() -> Tool:
+    return Tool(
+        key="shopify_replenishment",
+        title="Shopify Replenishment (live storefront)",
+        description="Connect to a live Shopify storefront (or an offline stand-in), read catalog / "
+                    "on-hand / orders, forecast each SKU and recommend replenishment. Shopify raises "
+                    "no purchase order, so the plan is handed off for purchasing; the only write "
+                    "offered is reconciling on-hand against a physical count, staged reversibly.",
+        intent_keywords=(
+            "shopify", "shopify inventory", "shopify replenishment", "connect shopify",
+            "connect to shopify", "sync shopify", "from shopify", "pull from shopify",
+            "storefront connector", "dtc inventory", "ecommerce replenishment",
+        ),
+        requires_data=False,
+        options=lambda report: report.outcome,
+        prepare=_shopify_prepare,
+        run=_shopify_run,
+        qa=lambda report: shopify_job.verify(report),
+        deliver=lambda report, out_dir, client: shopify_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            shopify_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
+
 # ---- excel_replenishment (client planilla as system of record) ----------------
 
 def _excel_replenishment_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
@@ -2805,6 +2919,8 @@ def build_default_registry() -> ToolRegistry:
     reg.register(earned_value_tool())
     reg.register(learning_curve_tool())
     reg.register(odoo_replenishment_tool())
+    reg.register(shopify_replenishment_tool())
+    reg.register(channel_replenishment_tool())
     reg.register(excel_replenishment_tool())
     reg.register(newsvendor_tool())
     reg.register(cycle_count_tool())

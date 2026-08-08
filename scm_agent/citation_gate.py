@@ -225,6 +225,8 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "earned_value": ("earned_value_management",),
     "learning_curve": ("learning_curve_model",),
     "odoo_replenishment": ("continuous_replenishment", "multiple_replenishment_orders"),
+    "shopify_replenishment": ("continuous_replenishment", "multiple_replenishment_orders"),
+    "channel_replenishment": ("continuous_replenishment", "multiple_replenishment_orders"),
     "excel_replenishment": ("continuous_replenishment_program",),
     "newsvendor": ("newsvendor_model", "generalized_newsvendor_problem", "price_setting_newsvendor"),
     "cycle_count": ("abc_classification", "vollmann_abc_analysis"),
