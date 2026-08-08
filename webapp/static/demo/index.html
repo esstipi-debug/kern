@@ -113,12 +113,18 @@
         <h2>1 &middot; Tus datos</h2>
         <div class="row" style="margin-bottom:14px">
           <button id="modeLead" class="btn btn-primary">Plazos de entrega</button>
+          <button id="modeValue" class="btn btn-ghost">La brecha en plata</button>
           <button id="modeStock" class="btn btn-ghost">Stock</button>
         </div>
         <p id="modeHint" class="muted" style="font-size:13px;margin:0 0 16px"></p>
 
-        <label for="file">Archivo (CSV)</label>
+        <label for="file" id="fileLabel">Archivo (CSV)</label>
         <input id="file" type="file" accept=".csv">
+
+        <div id="file2Wrap" class="hidden" style="margin-top:14px">
+          <label for="file2" id="file2Label">Segundo archivo (CSV)</label>
+          <input id="file2" type="file" accept=".csv">
+        </div>
 
         <div class="row" style="margin-top:18px">
           <button id="runUpload" class="btn btn-primary">Medir mis plazos &rarr;</button>
@@ -153,9 +159,13 @@
   var runErr = document.getElementById("runErr");
   var out = document.getElementById("out");
   var modeLead = document.getElementById("modeLead");
+  var modeValue = document.getElementById("modeValue");
   var modeStock = document.getElementById("modeStock");
   var modeHint = document.getElementById("modeHint");
   var sampleHint = document.getElementById("sampleHint");
+  var fileLabel = document.getElementById("fileLabel");
+  var file2Wrap = document.getElementById("file2Wrap");
+  var file2Label = document.getElementById("file2Label");
 
   // Plazos va primero a proposito: es un hecho sobre los datos del visitante, es lo
   // mas barato de calcular y es lo que se gana el derecho a seguir hablando
@@ -169,6 +179,18 @@
       needFile: "Sube un CSV de recepciones o usa los datos de ejemplo.",
       hint: 'Un CSV con una fila por recepción. Columnas: <span style="font-family:var(--mono);font-size:12px">supplier, order_date, receipt_date</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">declared_lead_time_days, product_id, po_id</span>). <a href="/static/demo/plantilla_recepciones.csv" download>Descargar plantilla &darr;</a>',
       sample: 'El dataset de ejemplo es <span class="muted">sample_receipts.csv</span> (49 recepciones, 4 proveedores).'
+    },
+    value: {
+      endpoint: "/api/demo-gap-value",
+      cta: "Valorizar la brecha &rarr;",
+      spinner: "Dimensionando dos veces y restando…",
+      empty: "Ejecuta la valorización para ver la brecha en dinero, en dos monedas.",
+      needFile: "Necesito los DOS archivos: recepciones y movimientos. Con uno solo no hay cifra de plata.",
+      twoFiles: true,
+      fileLabel: "Recepciones (CSV)",
+      file2Label: "Movimientos de demanda, con costo unitario (CSV)",
+      hint: 'Dos CSV. <b>Recepciones:</b> <span style="font-family:var(--mono);font-size:12px">supplier, order_date, receipt_date, declared_lead_time_days, product_id</span>. <b>Movimientos:</b> <span style="font-family:var(--mono);font-size:12px">date, product_id, quantity, unit_cost</span>. El costo unitario no es opcional acá: sin él no hay cifra en dinero y el escaneo lo dice en vez de inventarla.',
+      sample: 'El par de ejemplo es <span class="muted">sample_receipts_portfolio.csv + sample_demand_portfolio.csv</span> (8 SKU, 4 proveedores, 52 semanas).'
     },
     stock: {
       endpoint: "/api/demo-scan",
@@ -187,10 +209,14 @@
     mode = next;
     var cfg = MODES[mode];
     modeLead.className = "btn " + (mode === "lead" ? "btn-primary" : "btn-ghost");
+    modeValue.className = "btn " + (mode === "value" ? "btn-primary" : "btn-ghost");
     modeStock.className = "btn " + (mode === "stock" ? "btn-primary" : "btn-ghost");
     modeHint.innerHTML = cfg.hint;
     sampleHint.innerHTML = cfg.sample;
     runUpload.innerHTML = cfg.cta;
+    fileLabel.textContent = cfg.fileLabel || "Archivo (CSV)";
+    file2Label.textContent = cfg.file2Label || "Segundo archivo (CSV)";
+    file2Wrap.classList.toggle("hidden", !cfg.twoFiles);
     runErr.textContent = "";
     out.innerHTML = '<div class="empty">' + cfg.empty + '</div>';
   }
@@ -230,6 +256,7 @@
       return;
     }
     if (mode === "lead") return renderLead(d);
+    if (mode === "value") return renderValue(d);
     var h = d.headline || {};
     var html = '<div class="chips"><span class="chip ok">escaneo completo</span>'
       + '<span class="chip">'+esc(h.n_skus)+' SKUs</span></div>'
@@ -285,18 +312,53 @@
     out.innerHTML = html;
   }
 
+  function renderValue(d){
+    var h = d.headline || {};
+    var sube = (h.net || 0) > 0;
+    var html = '<div class="chips"><span class="chip ok">valorización completa</span>'
+      + '<span class="chip">'+esc(h.n_skus)+' SKU</span>'
+      + '<span class="chip">costo de mantener '+Math.round((h.holding_rate||0)*100)+'%</span></div>'
+      + '<div class="stat-big">'+money(h.cash_release)+' liberables</div>'
+      + '<div class="stat-sub">de una vez, al balance, en <strong>'+esc(h.n_over)+'</strong> SKU con el plazo declarado inflado &mdash; '
+      + money(h.recurring_saving)+' al a&ntilde;o al resultado, y no depende de nada m&aacute;s.</div>'
+      + '<div class="chips">'
+      + '<span class="chip warn">'+money(h.exposure)+' de exposici&oacute;n en '+esc(h.n_under)+' SKU cortos</span>'
+      + '<span class="chip'+(sube?'':' ok')+'">inventario neto '+(sube?'+':'')+money(h.net)+'</span>'
+      + '</div>';
+    var fs = d.findings || [];
+    if (fs.length){
+      html += '<div class="h3">Hallazgos ejecutivos</div><ul class="list">';
+      fs.forEach(function(f){ html += '<li>'+esc(f)+'</li>'; });
+      html += '</ul>';
+    }
+    html += '<div class="cta-box">'
+      + '<p>' + (sube
+          ? 'El neto sube porque medir la dispersi&oacute;n del plazo revela buffer que faltaba: es riesgo que ya estabas corriendo sin tenerlo en el balance. Lo que baja el neto es mover el buffer entre bodegas, y eso necesita tu red completa.'
+          : 'No tienes mucho inventario: tienes el inventario equivocado. Baja en unos SKU, sube en otros, y el neto queda a favor.')
+      + ' El Diagn&oacute;stico de Arranque lo convierte en el plan por SKU, con cada n&uacute;mero trazable y compuerta de QA.</p>'
+      + '<div class="row"><a class="btn btn-primary" href="'+esc(d.cta_url||"/paquetes/diagnostico-arranque")+'">Ver el Diagn&oacute;stico &rarr;</a>'
+      + '<a class="btn btn-ghost" href="/paquetes">Todos los paquetes</a></div>'
+      + '</div>';
+    out.innerHTML = html;
+  }
+
   function run(useSample){
     runErr.textContent = "";
+    var cfg = MODES[mode];
     var fileEl = document.getElementById("file");
+    var file2El = document.getElementById("file2");
     var file = fileEl && fileEl.files && fileEl.files[0];
-    if (!useSample && !file){ runErr.textContent = MODES[mode].needFile; return; }
+    var file2 = file2El && file2El.files && file2El.files[0];
+    // Los dos archivos van juntos o ninguno: valorizar con uno solo no da numero.
+    if (!useSample && (!file || (cfg.twoFiles && !file2))){ runErr.textContent = cfg.needFile; return; }
     var email = leadEmail();
     if (!validEmail(email)){ localStorage.removeItem(LS_KEY); gate.classList.remove("hidden"); demo.classList.add("hidden"); return; }
 
     var fd = new FormData();
     fd.append("email", email);
     if (useSample) fd.append("use_sample", "true");
-    if (!useSample && file) fd.append("file", file);
+    if (!useSample && cfg.twoFiles){ fd.append("receipts", file); fd.append("demand", file2); }
+    else if (!useSample && file) fd.append("file", file);
 
     runUpload.disabled = true; runSample.disabled = true;
     out.innerHTML = '<div class="empty"><span class="spin"></span> '+MODES[mode].spinner+'</div>';
@@ -311,6 +373,7 @@
   }
 
   modeLead.addEventListener("click", function(){ setMode("lead"); });
+  modeValue.addEventListener("click", function(){ setMode("value"); });
   modeStock.addEventListener("click", function(){ setMode("stock"); });
   runUpload.addEventListener("click", function(){ run(false); });
   runSample.addEventListener("click", function(){ run(true); });

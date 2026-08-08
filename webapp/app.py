@@ -75,6 +75,7 @@ from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
 from webapp import (  # noqa: E402
+    demo_gap_value,
     demo_lead_time_scan,
     demo_price_scan,
     demo_scan,
@@ -100,6 +101,10 @@ DATA_FILE = Path(
 )
 SAMPLE_STOCK_FILE = _REPO_ROOT / "data" / "sample_stock_snapshot.csv"
 SAMPLE_RECEIPTS_FILE = _REPO_ROOT / "data" / "sample_receipts.csv"
+# El par que cruza: mismos SKU en los dos archivos, que es lo que la valorizacion
+# necesita y lo que sample_receipts.csv (por si solo, para /api/demo-lead-time) no da.
+SAMPLE_RECEIPTS_PORTFOLIO_FILE = _REPO_ROOT / "data" / "sample_receipts_portfolio.csv"
+SAMPLE_DEMAND_PORTFOLIO_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
 # Lead mini-reports + follow-up drafts (operator-facing; gitignored). On a cloud
 # deploy point this at the persistent volume (e.g. /data/leads) or it is ephemeral.
 LEAD_REPORTS_DIR = Path(
@@ -941,6 +946,98 @@ async def api_demo_lead_time(
         "findings": list(result.findings),
         "dropped": result.dropped,
         "cta_url": demo_lead_time_scan.CTA_PATH,
+        "dataset": dataset_label,
+    }
+
+
+@app.post("/api/demo-gap-value", dependencies=[Depends(security.rate_limit)])
+async def api_demo_gap_value(
+    email: str = Form(...),
+    use_sample: bool = Form(False),
+    receipts: UploadFile | None = File(None),
+    demand: UploadFile | None = File(None),
+) -> dict:
+    """The /demo funnel, la conversion a plata: recepciones + movimientos -> las dos monedas.
+
+    Corre el mismo motor de inventario dos veces -- con el plazo declarado y sigma_L
+    cero (lo que hace un ERP) y con el plazo y la dispersion observados -- y pone la
+    diferencia en dinero. Es el puente al Diagnostico pago. Solo lectura, como los
+    otros dos embudos: nada se escribe en los sistemas del cliente.
+
+    Los dos archivos van juntos o ninguno: valorizar necesita el plazo (recepciones)
+    y la variabilidad de demanda con su costo (movimientos), y con uno solo el
+    numero no existe.
+    """
+    addr = email.strip().lower()
+    if len(addr) > 254 or not EMAIL_RE.match(addr):
+        raise HTTPException(status_code=400, detail="invalid email")
+
+    _prune_old_jobs()
+
+    if receipts is not None and receipts.filename and demand is not None and demand.filename:
+        receipts_path, receipts_label = await _stage_csv_upload(receipts)
+        demand_path, demand_label = await _stage_csv_upload(demand)
+        dataset_label = f"{receipts_label} + {demand_label}"
+    elif use_sample:
+        receipts_path = SAMPLE_RECEIPTS_PORTFOLIO_FILE
+        demand_path = SAMPLE_DEMAND_PORTFOLIO_FILE
+        dataset_label = "sample_receipts_portfolio.csv + sample_demand_portfolio.csv"
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "sube LOS DOS CSV (recepciones y movimientos de demanda con costo "
+                "unitario) o marca use_sample: con uno solo no hay cifra de plata"
+            ),
+        )
+
+    try:
+        receipts_df = pd.read_csv(receipts_path)
+        demand_df = pd.read_csv(demand_path)
+    except Exception as exc:  # pandas raises several parse/encoding error types
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
+    try:
+        result = demo_gap_value.run_gap_value(receipts_df, demand_df)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if result.ok:
+        lead_dir = _lead_dir_for(addr)
+        (lead_dir / "gap_value_report.md").write_text(
+            demo_gap_value.render_mini_report(result, dataset_label=dataset_label, ts=ts),
+            encoding="utf-8",
+        )
+        (lead_dir / "gap_value_followup_draft.md").write_text(
+            demo_gap_value.render_followup_email(
+                result, email=addr, dataset_label=dataset_label
+            ),
+            encoding="utf-8",
+        )
+
+    # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
+    record = {
+        "email": addr,
+        "source": "demo-gap-value",
+        "ts": ts,
+        "dataset": dataset_label,
+        "status": "ok" if result.ok else "qa_failed",
+        "result": result.headline if result.ok else None,
+    }
+    with LEADS_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    if not result.ok:
+        return {
+            "status": "qa_failed",
+            "qa_issues": list(result.qa_issues),
+            "dataset": dataset_label,
+        }
+    return {
+        "status": "ok",
+        "headline": result.headline,
+        "findings": list(result.findings),
+        "cta_url": demo_gap_value.CTA_PATH,
         "dataset": dataset_label,
     }
 
