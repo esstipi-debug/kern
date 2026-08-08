@@ -329,8 +329,24 @@ def run_lead_time_scan(
     Levanta ValueError (desde ``to_deliveries``) cuando faltan las columnas
     estructurales; el endpoint lo mapea a un 400 accionable.
     """
-    grouped, dropped = to_deliveries(df, overrides)
+    return scan_from_deliveries(*to_deliveries(df, overrides))
 
+
+def scan_from_deliveries(
+    grouped: dict[str, list[dict]],
+    dropped: dict[str, int],
+    extra_issues: tuple[str, ...] = (),
+) -> LeadTimeScan:
+    """El scan a partir de recepciones YA agrupadas, venga de donde venga.
+
+    Existe separado de :func:`run_lead_time_scan` porque las recepciones no
+    siempre llegan en un DataFrame subido: ``src.connectors.odoo.receipts()`` las
+    lee de un Odoo vivo y emite exactamente estas filas. Sin este corte, esa
+    capacidad seria una funcion del conector que nadie puede consumir.
+
+    ``extra_issues`` es para lo que sabe la fuente y el scorecard no puede saber
+    -- por ejemplo, que un Odoo mide contra el clic de validar la recepcion.
+    """
     qualifies = {s: rows for s, rows in sorted(grouped.items()) if len(rows) >= MIN_DELIVERIES}
     scores = [score_supplier(supplier, rows) for supplier, rows in qualifies.items()]
     declared_seen = any(s.declared_lead_time is not None for s in scores)
@@ -349,6 +365,10 @@ def run_lead_time_scan(
 
     qa_issues = _scan_issues(scores, declared_seen)
     findings = _findings(scores, dropped) if not qa_issues else ()
+    # Los avisos de la fuente van DESPUES: no descalifican el scan (`ok` mira
+    # `qa_issues`), asi que solo se suman cuando ya hay algo que reportar.
+    if extra_issues and not qa_issues:
+        findings = (*findings, *extra_issues)
     return LeadTimeScan(
         scores=tuple(scores),
         dropped=dropped,
