@@ -12,7 +12,12 @@ This package ships an offline ``simulator.SimulatedStore`` so the whole pipeline
 end-to-end without any live API keys; real adapters (``odoo.py``, ``shopify.py`` ...)
 implement the same protocol against their SDKs. ``odoo.py`` is the first live adapter: it
 reads Odoo's standard models over XML-RPC and stages restocks back as reorder rules, with
-an ``InMemoryOdoo`` stand-in so it too runs and tests fully offline.
+an ``InMemoryOdoo`` stand-in so it too runs and tests fully offline. ``shopify.py`` is the
+second: same protocol over the GraphQL Admin API, but it deliberately does NOT stage a
+restock -- Shopify has no reorder point, and its only writable inventory number is physical
+on-hand, so the plan is handed off and the writeback plane carries reconciliation against a
+physical count instead. Implementing this protocol is what makes a backend usable; being
+able to stage a *plan* back into it is a separate question each backend answers for itself.
 """
 
 from __future__ import annotations

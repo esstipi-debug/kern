@@ -40,8 +40,14 @@ class ReplenishmentPlan:
     changeset: Changeset | None        # staged dry-run, when a writable store was provided
 
 
-def _demand_by_sku(orders: list[Order]) -> dict[str, list[float]]:
-    """Per-SKU demand as a per-period series (summed within a date, ordered by date)."""
+def demand_by_sku(orders: list[Order]) -> dict[str, list[float]]:
+    """Per-SKU demand as a per-period series (summed within a date, ordered by date).
+
+    Public because a second consumer exists: ``jobs/channel_replenishment_job.py``
+    forecasts from one system's orders against another system's stock, so it needs the
+    demand half of ``plan_replenishment`` without the planning half that assumes both
+    come from the same ``InventorySource``.
+    """
     by_date: dict[str, dict[str, float]] = {}
     for order in orders:
         for line in order.lines:
@@ -89,7 +95,7 @@ def plan_replenishment(
     stage the restock as a dry-run; omit it to get a ready-to-execute packet only.
     """
     on_hand = {lvl.sku: lvl.available for lvl in source.inventory_levels()}
-    series = _demand_by_sku(source.orders())
+    series = demand_by_sku(source.orders())
 
     lines: list[ReplenishmentLine] = []
     restock: dict[str, float] = {}
