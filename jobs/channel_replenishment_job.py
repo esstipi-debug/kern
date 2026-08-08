@@ -16,11 +16,17 @@ through the writeback plane the ERP connector already owns. No new write path is
 here; this job composes two existing ones.
 
 **The join goes through the entity layer, not a dict on the SKU string.** ``src/entities.py``
-declares ``unit_cost`` as owned by Odoo, so a storefront's idea of cost -- a display
-artefact -- cannot overwrite the book value the restock is valued at and the financial
-escalation threshold is measured against. A hand-rolled merge would re-create exactly the
-bug that module was written to prevent. The store is opened in memory per run by default,
-so the join costs no persistence unless an operator asks for it.
+declares ``unit_cost`` as owned by **whichever ERP is in play**, so a channel's idea of cost
+-- a display artefact -- cannot overwrite the book value the restock is valued at and the
+financial escalation threshold is measured against. A hand-rolled merge would re-create
+exactly the bug that module was written to prevent. The store is opened in memory per run by
+default, so the join costs no persistence unless an operator asks for it.
+
+That ownership used to be the constant ``SOURCE_ODOO``, and making the ERP swappable is
+what exposed why it could not stay one: ownership breaks ties only among systems that
+reported, so naming an absent system as the owner does not fail loudly -- it hands the tie
+to the channel. Measured with Unleashed as the ERP: Shopify's 18.00 beat the ERP's 12.00
+until ``build_scm_registry`` learned to take a ``cost_owner``.
 
 **Stock divergence is an output, not an aside.** The two systems both report on-hand. When
 they disagree, one of them is wrong, and neither single-connector tool can see it. Planning
@@ -34,18 +40,26 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from nosilo_core.access import Principal
+from nosilo_core.entities import SqliteEntityStore
 from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
 from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 from nosilo_core.writeback import Changeset
 
-from nosilo_core.access import Principal
-from nosilo_core.entities import SqliteEntityStore
 from src.connectors.meli import MeliConnector, demo_meli_commerce
 from src.connectors.odoo import OdooConnector, demo_odoo
 from src.connectors.replenish import demand_by_sku
 from src.connectors.shopify import ShopifyConnector, demo_shopify
+from src.connectors.unleashed import UnleashedConnector, demo_unleashed
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
-from src.entities import SOURCE_MELI, SOURCE_ODOO, SOURCE_SHOPIFY, build_scm_registry, observe_product
+from src.entities import (
+    SOURCE_MELI,
+    SOURCE_ODOO,
+    SOURCE_SHOPIFY,
+    SOURCE_UNLEASHED,
+    build_scm_registry,
+    observe_product,
+)
 from src.export import write_summary_csv
 from src.forecasting import forecast_demand
 
@@ -174,7 +188,7 @@ def _channel_connector(params: dict) -> tuple[object, str, str]:
     return connector, label, system
 
 
-def _erp_connector(params: dict) -> tuple[OdooConnector, str]:
+def _odoo_erp(params: dict) -> tuple[object, str]:
     injected = params.get("odoo_rpc")
     if injected is not None:
         return OdooConnector(injected), "injected Odoo RPC"
@@ -189,6 +203,45 @@ def _erp_connector(params: dict) -> tuple[OdooConnector, str]:
     return OdooConnector(demo_odoo()), "in-memory Odoo stand-in (demo data)"
 
 
+def _unleashed_erp(params: dict) -> tuple[object, str]:
+    injected = params.get("unleashed_rpc")
+    if injected is not None:
+        return UnleashedConnector(injected), "injected Unleashed RPC"
+    api_id = params.get("unleashed_api_id") or os.environ.get("UNLEASHED_API_ID")
+    api_key = params.get("unleashed_api_key") or os.environ.get("UNLEASHED_API_KEY")
+    if api_id and api_key:
+        import httpx
+
+        from src.connectors.unleashed import _BASE_URL, UnleashedClient
+
+        http = httpx.Client(base_url=_BASE_URL, timeout=30.0)
+        return UnleashedConnector(UnleashedClient(http, api_id=api_id, api_key=api_key)), "live Unleashed"
+    return UnleashedConnector(demo_unleashed()), "in-memory Unleashed stand-in (demo data)"
+
+
+#: Systems that can RECEIVE a plan: they hold a reorder point, a planning parameter their
+#: own replenishment acts on. This is the same line that keeps Shopify and MercadoLibre out
+#: of the ERP slot -- and it is why Xero is absent despite >60% of the Australian market:
+#: its Accounting API has no reorder point, and Inventory Plus's levels are informational.
+#: The second element is the entity-system constant, which decides who owns ``unit_cost``.
+_ERP_RESOLVERS = {
+    "odoo": (_odoo_erp, SOURCE_ODOO, "product.product"),
+    "unleashed": (_unleashed_erp, SOURCE_UNLEASHED, "product"),
+}
+ERPS = tuple(_ERP_RESOLVERS)
+DEFAULT_ERP = "odoo"
+
+
+def _erp_connector(params: dict) -> tuple[object, str, str, str]:
+    """Resolve the destination. Returns (connector, label, entity-system, source entity)."""
+    erp = str(params.get("erp") or DEFAULT_ERP).lower()
+    if erp not in _ERP_RESOLVERS:
+        raise ValueError(f"unknown erp {erp!r}; expected one of {', '.join(ERPS)}")
+    resolver, system, source_entity = _ERP_RESOLVERS[erp]
+    connector, label = resolver(params)
+    return connector, label, system, source_entity
+
+
 def prepare(data_path: str | None = None, params: dict | None = None) -> dict:
     """Open both connections, read both catalogues, resolve them to one identity each.
 
@@ -198,9 +251,15 @@ def prepare(data_path: str | None = None, params: dict | None = None) -> dict:
     """
     params = params or {}
     channel, channel_source, channel_system = _channel_connector(params)
-    erp, erp_source = _erp_connector(params)
+    erp, erp_source, erp_system, erp_source_entity = _erp_connector(params)
 
-    store = SqliteEntityStore(build_scm_registry(), params.get("entity_store_path") or ":memory:")
+    # The registry is built around WHICH ERP is in play, not around Odoo. Ownership only
+    # decides ties among systems that reported, so a registry naming an absent system as
+    # the cost owner is not a no-op -- it hands the tie to the channel, whose cost is a
+    # display figure. See src/entities.sku_entity_type.
+    store = SqliteEntityStore(
+        build_scm_registry(cost_owner=erp_system), params.get("entity_store_path") or ":memory:"
+    )
 
     channel_products = channel.list_products()
     erp_products = erp.list_products()
@@ -211,7 +270,7 @@ def prepare(data_path: str | None = None, params: dict | None = None) -> dict:
     ids_by_sku: dict[str, str] = {}
     for product in erp_products:
         ids_by_sku[product.sku] = observe_product(
-            store, product, system=SOURCE_ODOO, source_entity="product.product"
+            store, product, system=erp_system, source_entity=erp_source_entity
         ).nosilo_id
     source_entity = "variant" if channel_system == SOURCE_SHOPIFY else "item"
     for product in channel_products:
@@ -223,6 +282,7 @@ def prepare(data_path: str | None = None, params: dict | None = None) -> dict:
     return {
         "channel": channel,
         "erp": erp,
+        "erp_system": erp_system,
         "store": store,
         "channel_system": channel_system,
         "channel_source": channel_source,
@@ -334,7 +394,8 @@ def run(
     # rather than a Protocol because ``truncated`` is a connector courtesy, not part of
     # InventorySource, and inventing a Protocol for one attribute would be ceremony.
     channel: ShopifyConnector | MeliConnector = payload["channel"]
-    erp: OdooConnector = payload["erp"]
+    # Any ERP in ERPS: reads through InventorySource, writes through stage_restock.
+    erp: OdooConnector | UnleashedConnector = payload["erp"]
     store: SqliteEntityStore = payload["store"]
     matched: list[str] = list(payload["matched"])
 

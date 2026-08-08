@@ -1772,9 +1772,9 @@ def channel_replenishment_tool() -> Tool:
         title="Channel to ERP Replenishment",
         description="Forecast each SKU from a live sales channel's real orders (Shopify or "
                     "MercadoLibre, via params['channel']), compare against the ERP's stock and "
-                    "lead times, and stage the restock as a reversible reorder point in the ERP. "
-                    "Also reports where the two systems disagree about on-hand - a divergence "
-                    "neither single-system tool can see.",
+                    "lead times, and stage the restock as a reversible reorder point in the ERP "
+                    "(Odoo or Unleashed, via params['erp']). Also reports where the two systems "
+                    "disagree about on-hand - a divergence neither single-system tool can see.",
         intent_keywords=(
             "channel replenishment", "shopify to odoo", "storefront to erp", "omnichannel inventory",
             "cross system replenishment", "channel demand erp stock", "stock divergence",
@@ -1784,6 +1784,9 @@ def channel_replenishment_tool() -> Tool:
             # A separate meli_replenishment would be this job with different labels.
             "mercadolibre", "mercado libre", "meli to odoo", "mercadolibre replenishment",
             "reponer mercadolibre", "marketplace replenishment",
+            # The ERP side is a parameter too. Unleashed qualifies because it holds a
+            # reorder point (MinStockAlertLevel); Xero does not and is therefore absent.
+            "unleashed", "shopify to unleashed", "unleashed replenishment", "unleashed reorder point",
         ),
         requires_data=False,
         options=lambda report: report.outcome,

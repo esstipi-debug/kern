@@ -31,13 +31,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the channel -> ERP replenishment loop.")
     parser.add_argument("--channel", default=job.DEFAULT_CHANNEL, choices=list(job.CHANNELS),
                         help="which sales channel to read demand from")
+    parser.add_argument("--erp", default=job.DEFAULT_ERP, choices=list(job.ERPS),
+                        help="which ERP receives the reorder points")
     parser.add_argument("--cover", type=float, default=8.0, help="target periods of demand to cover")
     parser.add_argument("--apply", action="store_true",
                         help="apply the staged reorder points to the ERP (reversible)")
     args = parser.parse_args()
 
     print("\n=== Channel -> ERP replenishment ===")
-    payload = job.prepare(None, {"channel": args.channel})
+    payload = job.prepare(None, {"channel": args.channel, "erp": args.erp})
     print(f"  demand from : {payload['channel_source']}")
     print(f"  stock from  : {payload['erp_source']}")
     print(f"  matched     : {len(payload['matched'])} SKU(s)")
