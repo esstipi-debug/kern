@@ -42,6 +42,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from nosilo_core import writeback  # noqa: E402
 from nosilo_core.writeback import ABSENT, InMemoryStore  # noqa: E402
+
 from src.connectors.excel import ExcelWorkbookStore  # noqa: E402
 from src.connectors.meli_prices import InMemoryMeli, MeliPriceStore  # noqa: E402
 from src.connectors.odoo import InMemoryOdoo  # noqa: E402
@@ -98,9 +99,24 @@ def _shopify_prices(_tmp: Path) -> ShopifyPriceStore:
     )
 
 
+def _unleashed(_tmp: Path):
+    """Unleashed's reorder point is a single writable field on the product, so unlike
+    ``odoo.py`` it needs no richer fixture than a price edit does, and belongs in this
+    parametrization rather than in the excluded list below."""
+    from src.connectors.unleashed import InMemoryUnleashed, UnleashedConnector
+
+    rpc = InMemoryUnleashed(
+        products=[{"Guid": "guid-SKU-1", "ProductCode": "SKU-1", "MinStockAlertLevel": 20.0}]
+    )
+    connector = UnleashedConnector(rpc)
+    connector.list_products()  # populates the SKU -> guid map the store writes through
+    return connector.store
+
+
 STORES: tuple[StoreCase, ...] = (
     StoreCase("in_memory", "reference", "SKU-1", "price", 25.0, _in_memory),
     StoreCase("excel", "excel:planilla", "Plan", "B2", 25.0, _excel),
+    StoreCase("unleashed", "unleashed", "SKU-1", "MinStockAlertLevel", 25.0, _unleashed),
     StoreCase("odoo_prices", "odoo:prices", "SKU-1", "price", 25.0, _odoo_prices),
     StoreCase("meli_prices", "meli:seller", "SKU-1", "price", 25.0, _meli_prices),
     StoreCase("shopify_prices", "shopify:demo-shop", "SKU-1", "price", 25.0, _shopify_prices),
@@ -241,7 +257,7 @@ def test_every_full_surface_connector_is_covered_by_this_suite():
         if all(re.search(rf"{m}\b", source) for m in required):
             implementors.add(path.stem)
 
-    covered = {"excel", "odoo_prices", "meli_prices", "shopify_prices"}
+    covered = {"excel", "odoo_prices", "meli_prices", "shopify_prices", "unleashed"}
     # odoo.py and shopify_inventory.py expose the surface through stores that
     # need a richer fixture (reorder rules / inventory levels) than a price
     # edit; they keep their own suites. Named here so the exclusion is a

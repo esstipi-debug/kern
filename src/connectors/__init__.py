@@ -18,6 +18,12 @@ restock -- Shopify has no reorder point, and its only writable inventory number 
 on-hand, so the plan is handed off and the writeback plane carries reconciliation against a
 physical count instead. Implementing this protocol is what makes a backend usable; being
 able to stage a *plan* back into it is a separate question each backend answers for itself.
+
+``unleashed.py`` is the second backend to answer it yes. The test is not "is this an ERP"
+but "does it hold a field its own replenishment acts on": Unleashed has
+``MinStockAlertLevel``, Odoo has ``product_min_qty``, MercadoLibre has only published stock
+-- and Xero, despite being the accounting system of record for most of the Australian
+market, has neither, which is why there is no ``xero.py`` beside this file.
 """
 
 from __future__ import annotations
