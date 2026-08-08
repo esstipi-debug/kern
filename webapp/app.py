@@ -79,6 +79,7 @@ from webapp import (  # noqa: E402
     demo_lead_time_scan,
     demo_price_scan,
     demo_scan,
+    demo_workbook,
     observability,
     security,
 )
@@ -122,6 +123,17 @@ LEADS_FILE = LEADS_DIR / "leads.jsonl"  # one JSON object per captured demo lead
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # cap /api/jobs uploads at 25 MB
 JOBS_TTL_SECONDS = 3600  # per-job output dirs older than this are swept on the next request
+
+# SIBLING of JOBS_OUTPUT_DIR, deliberately not a child: _prune_old_jobs() rmtree's
+# every child dir older than the TTL, so a child here would be swept wholesale.
+# Separate subtree also keeps it outside the /jobs-output API-key gate, which is
+# what lets an anonymous /demo visitor fetch their own workbook.
+DEMO_OUTPUT_DIR = _REPO_ROOT / "webapp" / "_demo_output"
+DEMO_TTL_SECONDS = 3600
+#: Lo unico que este arbol sirve. Cualquier otro nombre es un 404, para que la ruta
+#: no se convierta en un lector de archivos arbitrario.
+DEMO_DOWNLOADS = {"plazo_real.xlsx"}
+XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 PERIODS_PER_YEAR = 52.0
 MAX_LEAD_PERIODS = 52.0
 
@@ -607,6 +619,35 @@ def _prune_old_jobs(now: float | None = None) -> None:
             continue
 
 
+def _prune_old_demo_outputs(now: float | None = None) -> None:
+    """Same best-effort sweep as _prune_old_jobs, over the anonymous demo subtree."""
+    cutoff = (now if now is not None else time.time()) - DEMO_TTL_SECONDS
+    try:
+        entries = list(DEMO_OUTPUT_DIR.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            if entry.is_dir() and entry.stat().st_mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
+        except OSError:
+            continue
+
+
+def _demo_download_url(path: Path) -> str | None:
+    """Mint the public URL for a generated demo artifact, or None if it escaped.
+
+    Same containment guard as the /api/jobs minting path: resolve, then require
+    the result to sit under DEMO_OUTPUT_DIR. On failure the caller OMITS the key
+    rather than returning a link that 404s.
+    """
+    try:
+        rel = path.resolve().relative_to(DEMO_OUTPUT_DIR.resolve())
+    except (ValueError, OSError):
+        return None
+    return "/demo-output/" + rel.as_posix()
+
+
 def _safe_upload_basename(filename: str) -> str:
     """Reduce a client-supplied filename to a bare basename, raising 400 if it
     doesn't survive the reduction (empty, '.', '..') — never trust the
@@ -912,6 +953,7 @@ async def api_demo_lead_time(
         ) from exc
 
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    workbook_url: str | None = None
     if result.ok:
         lead_dir = _lead_dir_for(addr)
         (lead_dir / "lead_time_report.md").write_text(
@@ -926,6 +968,19 @@ async def api_demo_lead_time(
             ),
             encoding="utf-8",
         )
+        # El entregable que el visitante SI puede abrir. El .md de arriba es para
+        # el operador; quien sube una planilla no lee markdown.
+        # Solo bajo result.ok, igual que los otros dos artefactos: con QA fallado
+        # `findings` viene vacio y el libro seria un resultado sin resultado.
+        _prune_old_demo_outputs()
+        DEMO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        book_dir = Path(tempfile.mkdtemp(dir=DEMO_OUTPUT_DIR))
+        book = demo_workbook.write_lead_time_workbook(
+            result, book_dir / "plazo_real.xlsx", dataset_label=dataset_label, ts=ts
+        )
+        # Una copia para el operador, junto al .md. Ese arbol NUNCA se sirve.
+        shutil.copyfile(book, lead_dir / "plazo_real.xlsx")
+        workbook_url = _demo_download_url(book)
 
     # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
     record = {
@@ -945,7 +1000,7 @@ async def api_demo_lead_time(
             "qa_issues": list(result.qa_issues),
             "dataset": dataset_label,
         }
-    return {
+    payload = {
         "status": "ok",
         "headline": result.headline,
         "findings": list(result.findings),
@@ -953,6 +1008,38 @@ async def api_demo_lead_time(
         "cta_url": demo_lead_time_scan.CTA_PATH,
         "dataset": dataset_label,
     }
+    # Se omite la clave entera si el minteo fallo: mejor sin boton que con uno roto.
+    if workbook_url:
+        payload["workbook_url"] = workbook_url
+    return payload
+
+
+@app.get("/demo-output/{token}/{name}")
+async def demo_output(token: str, name: str) -> FileResponse:
+    """Serve a generated /demo workbook to the anonymous visitor who produced it.
+
+    An explicit route rather than `app.mount(StaticFiles(...))`, and the media type
+    is hardcoded rather than sniffed: Python's `mimetypes` has no entry for `.xlsx`
+    and the `python:3.12-slim` base image ships no `/etc/mime.types`, so Starlette
+    would guess `text/plain` and the browser would show XML soup instead of opening
+    Excel. The one thing this file exists to do would fail on the deploy and work
+    on every developer's laptop.
+
+    Containment: `token` and `name` are both re-checked against the resolved path,
+    and `name` must be one of the known artifacts - this is a download endpoint for
+    three known files, never a reader of arbitrary paths.
+    """
+    if name not in DEMO_DOWNLOADS:
+        raise HTTPException(status_code=404, detail="not found")
+    candidate = DEMO_OUTPUT_DIR / token / name
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(DEMO_OUTPUT_DIR.resolve())
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=404, detail="not found") from exc
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(resolved, media_type=XLSX_MEDIA_TYPE, filename=name)
 
 
 @app.post("/api/demo-gap-value", dependencies=[Depends(security.rate_limit)])

@@ -304,6 +304,14 @@
       fs.forEach(function(f){ html += '<li>'+esc(f)+'</li>'; });
       html += '</ul>';
     }
+    // El entregable en el formato del que subio el archivo. Va ANTES del CTA:
+    // primero se lleva algo suyo, despues se le ofrece comprar.
+    if (d.workbook_url){
+      html += '<div class="cta-box">'
+        + '<p>El escaneo completo en Excel: el gr&aacute;fico de lo prometido contra lo medido, la tabla por proveedor, cada recepci&oacute;n con sus dos fechas para que lo verifiques, y las filas que no entraron.</p>'
+        + '<div class="row"><a class="btn btn-primary" href="'+esc(d.workbook_url)+'" download>Descargar el Excel &darr;</a></div>'
+        + '</div>';
+    }
     html += '<div class="cta-box">'
       + '<p>No tienes mucho inventario: tienes el inventario equivocado. El Diagn&oacute;stico de Arranque convierte esta brecha en el buffer que cada SKU necesita realmente, con cada n&uacute;mero trazable y compuerta de QA.</p>'
       + '<div class="row"><a class="btn btn-primary" href="'+esc(d.cta_url||"/paquetes/diagnostico-arranque")+'">Ver el Diagn&oacute;stico &rarr;</a>'
