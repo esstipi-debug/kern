@@ -47,7 +47,15 @@ def main() -> None:
     parser.add_argument("--cover", type=float, default=8.0, help="target periods of demand to cover")
     parser.add_argument("--draft-po", action="store_true",
                         help="raise draft purchase orders instead of applying reorder points")
+    parser.add_argument("--approved-by", default=None,
+                        help="who authorises the purchase orders (required with --draft-po); "
+                             "recorded on the writeback audit entry")
     args = parser.parse_args()
+    if args.draft_po and not args.approved_by:
+        # Creating POs is TIER_IRREVERSIBLE. There is no unattended path to it by
+        # design, so the CLI refuses here rather than inventing an "operator" default
+        # that would put an anonymous signature on a real purchase.
+        parser.error("--draft-po requires --approved-by (the human authorising the spend)")
 
     print("\n=== Odoo connector (read -> forecast -> safe restock) ===")
     connector = OdooConnector(_rpc())
@@ -73,7 +81,7 @@ def main() -> None:
 
     if args.draft_po:
         # Option 2: raise draft purchase orders (RFQs), grouped by each SKU's primary supplier.
-        po = connector.create_draft_purchase_orders(restock)
+        po = connector.create_draft_purchase_orders(restock, approved_by=args.approved_by)
         print(f"\n  Created {po.n_orders} draft PO(s) in Odoo (left unconfirmed for a buyer to review):")
         for po_id, skus in po.purchase_orders.items():
             print(f"    PO {po_id}: {', '.join(skus)}")
