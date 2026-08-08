@@ -276,11 +276,80 @@ def detect_columns(
     return ColumnMapping(mapping=mapping, unmatched_required=unmatched)
 
 
+#: Cuantas filas de arriba se miran buscando el encabezado real. Doce cubre el
+#: titulo + logo + filtros + linea en blanco de un export de ERP sin volverse un
+#: escaneo del archivo entero.
+HEADER_SCAN_ROWS = 12
+
+#: Sufijos que van por ``pd.read_excel``. El resto se lee como CSV.
+_EXCEL_SUFFIXES = (".xlsx", ".xlsm", ".xls")
+
+
+def _alias_keys() -> frozenset[str]:
+    """Todo alias conocido, normalizado, para puntuar una fila candidata.
+
+    Se arma en cada llamada a proposito: ``ALIASES`` es mutable y el pack por
+    vertical (``config/verticals/*.yaml``) existe justamente para prependerle
+    alias del rubro. Cachearlo a nivel de modulo congelaria la tabla en el
+    primer import y el pack dejaria de verse. Son unos cientos de strings.
+    """
+    return frozenset(_norm(alias) for aliases in ALIASES.values() for alias in aliases)
+
+
+def _header_score(row: pd.Series, keys: frozenset[str]) -> int:
+    """Cuantos encabezados CANONICOS DISTINTOS reconoce esta fila.
+
+    Distintos, no totales: una fila de relleno con la misma palabra repetida no
+    puede ganarle a un encabezado de verdad.
+    """
+    return len({k for cell in row if (k := _norm(cell)) and k in keys})
+
+
+def detect_sheet_and_header(path: str | Path) -> tuple[object, int]:
+    """(hoja, fila de encabezado) del libro: la combinacion que reconoce mas columnas.
+
+    ``pd.read_excel(p)`` a secas asume PRIMERA HOJA y FILA 0, y las dos son
+    falsas en la planilla que manda un cliente: un titulo arriba ("Reporte de
+    Recepciones 2026") desplaza el encabezado, y media docena de ERPs exportan
+    una portada con el logo y dejan los datos en la segunda hoja. Medido, esos
+    dos casos mapeaban CERO columnas y salian por el 400 -- friccion en el paso
+    que el embudo self-serve necesita que sea de cero contacto.
+
+    Se puntua por evidencia: la fila que mas alias conocidos reconoce gana. No
+    se adivina por posicion ni por nombre de hoja ("Datos", "Hoja1") porque eso
+    es una heuristica sobre la convencion de quien exporto, no sobre el archivo.
+
+    Empates -> la hoja mas a la izquierda y la fila mas arriba, para que dos
+    corridas sobre el mismo archivo den lo mismo. Si NINGUNA fila de ninguna
+    hoja reconoce un solo alias, devuelve ``(0, 0)`` -- el comportamiento previo
+    exacto, para que un archivo que hoy es un 400 explicito lo siga siendo en
+    vez de convertirse en un mapeo inventado.
+    """
+    probe = pd.read_excel(path, sheet_name=None, header=None, nrows=HEADER_SCAN_ROWS)
+    keys = _alias_keys()
+    best: tuple[int, object, int] | None = None
+    for name, frame in probe.items():
+        for row_idx in range(len(frame)):
+            score = _header_score(frame.iloc[row_idx], keys)
+            if score and (best is None or score > best[0]):
+                best = (score, name, row_idx)
+    if best is None:
+        return 0, 0
+    return best[1], best[2]
+
+
 def load_table(path: str | Path) -> pd.DataFrame:
-    """Read a client file (CSV or Excel) into a DataFrame."""
+    """Read a client file (CSV or Excel) into a DataFrame.
+
+    Excel pasa por :func:`detect_sheet_and_header` en vez de asumir la primera
+    hoja y la fila 0. El camino CSV queda igual: ahi un titulo arriba rompe el
+    parseo con un error de columnas desparejas en vez de mapear en silencio, y
+    es otra clase de arreglo.
+    """
     p = Path(path)
-    if p.suffix.lower() in (".xlsx", ".xlsm", ".xls"):
-        return pd.read_excel(p)
+    if p.suffix.lower() in _EXCEL_SUFFIXES:
+        sheet, header = detect_sheet_and_header(p)
+        return pd.read_excel(p, sheet_name=sheet, header=header)
     return pd.read_csv(p)
 
 
