@@ -170,42 +170,53 @@ def test_t02_es_parcial_ya_hay_sesgo_pero_no_hay_ciclo_previo():
 
 #: Los campos que, declarados VACIOS, movian cinco tareas del marcador sin una
 #: sola capacidad nueva: +3,5 puntos (37,50% -> 55,00%) sobre los gates nominales.
-#: Por tarea: modulo, clase del entregable, campos a inyectar y el estado que la
-#: tarea tiene HOY y no puede mejorar por declarar un nombre.
+#: Por tarea: modulo, clase del entregable y campos a inyectar. SIN veredicto
+#: esperado, a proposito. La version anterior fijaba el estado de cada tarea y se
+#: puso roja el dia que T13 y T14 se GANARON de verdad, al recuperar #219 y #220.
+#: Un test que se rompe cuando el producto mejora entrena a editarlo, y el dia que
+#: haya que editarlo por la razon equivocada nadie lo va a notar.
 _ATAQUE_DE_NOMBRE = (
     ("T02", "jobs.forecast_job", "SkuForecast",
-     (("mape_previous", 0.0),), Estado.PARCIAL),
+     (("mape_previous", 0.0),)),
     ("T05", "jobs.ddmrp_job", "DdmrpPart",
-     (("supplier", ""), ("expected_date", "")), Estado.NO_CUMPLE),
+     (("supplier", ""), ("expected_date", ""))),
     ("T07", "src.sop_engine.purchase_plan", "PurchasePlanLine",
-     (("payment_date", ""), ("stockout_units", 0.0)), Estado.NO_CUMPLE),
+     (("payment_date", ""), ("stockout_units", 0.0))),
     ("T13", "src.risk", "RankedMitigation",
-     (("due_date", ""),), Estado.PARCIAL),
+     (("due_date", ""),)),
     ("T14", "jobs.hats_job", "SettlementReport",
-     (("demand_plan", ""), ("gap", ""), ("owner", ""), ("due_date", "")), Estado.NO_CUMPLE),
+     (("demand_plan", ""), ("gap", ""), ("owner", ""), ("due_date", ""))),
 )
 
 
 @pytest.mark.parametrize(
-    ("tarea_id", "modulo", "clase", "campos", "esperado"),
+    ("tarea_id", "modulo", "clase", "campos"),
     _ATAQUE_DE_NOMBRE,
     ids=[a[0] for a in _ATAQUE_DE_NOMBRE],
 )
-def test_declarar_el_campo_vacio_no_mueve_la_tarea(tarea_id, modulo, clase, campos, esperado):
+def test_declarar_el_campo_vacio_no_mueve_la_tarea(tarea_id, modulo, clase, campos):
     """El test que sostiene todo el endurecimiento.
 
     Con los gates nominales, agregar estos campos VACIOS al dataclass llevaba el
     marcador de 7,5/20 a 11,0/20 sin construir nada: los gates preguntaban si
     ``__dataclass_fields__`` contenia cierta subcadena. Si este test se pone
     rojo, la vara volvio a medir nombres.
+
+    Se mide limpio PRIMERO y se compara. Lo que se afirma es RELATIVO -- el ataque
+    no mueve el veredicto, sea cual sea el veredicto -- para que el test sobreviva
+    a que el producto gane la tarea por las buenas.
     """
+    limpio = _resultado(puntuar(), tarea_id)
+
     with ExitStack() as pila:
         for nombre, vacio in campos:
             pila.enter_context(_campo_inyectado(modulo, clase, nombre, vacio))
         atacado = _resultado(puntuar(), tarea_id)
 
-    assert atacado.estado is esperado, atacado.evidencia
-    assert atacado.estado is _resultado(puntuar(), tarea_id).estado
+    assert atacado.estado is limpio.estado, (
+        f"{tarea_id} paso de {limpio.estado.name} a {atacado.estado.name} solo por declarar "
+        f"{[n for n, _ in campos]} vacio(s): {atacado.evidencia}"
+    )
 
 
 @contextmanager
@@ -253,7 +264,7 @@ def test_el_ataque_completo_no_mueve_el_marcador():
     """Los diez campos vacios a la vez, contra el marcador publicable."""
     limpio = puntuar().puntos
     with ExitStack() as pila:
-        for _, modulo, clase, campos, _ in _ATAQUE_DE_NOMBRE:
+        for _, modulo, clase, campos in _ATAQUE_DE_NOMBRE:
             for nombre, vacio in campos:
                 pila.enter_context(_campo_inyectado(modulo, clase, nombre, vacio))
         atacado = puntuar().puntos
@@ -526,19 +537,27 @@ def _candidato_acta(**cambios) -> _CandidatoActa:
     return _CandidatoActa(**{**base, **cambios})
 
 
-def test_t14_no_cumple_el_acta_esta_partida_en_dos_entregables():
-    """Veredicto real: el plan integrado trae demanda, suministro y brechas pero
-    no tiene donde anotar el desacuerdo; el acta de concesiones si lo registra
-    pero no trae el plan. Y ninguno cierra con responsable y fecha."""
+def test_t14_cumple_el_acta_dejo_de_estar_partida_en_dos_entregables():
+    """Veredicto real, y cambio el dia que se recupero #220.
+
+    El acta traia el conflicto -- cuanto cede cada sombrero respecto de su ideal --
+    y le faltaba el cierre. Ahora lleva la demanda acordada, el suministro que la
+    soporta, las brechas sin resolver como ``UnresolvedGap``, y una decision con
+    nombre y fecha.
+
+    El plan integrado sigue sin poder ganar el desempate: ``registra_desacuerdo``
+    es False para el, y esa es una limitacion del arnes que se deja anotada -- sus
+    checks son incoherencias tecnicas del plan, no posiciones de areas. Cualquier
+    trabajo sobre ``src/sop_engine/`` sigue valiendo cero en T14.
+    """
     r = _resultado(puntuar(), "T14")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["mejor"] == "hat_settlement"
     por_tool = {c["tool"]: c for c in r.detalle["candidatos"]}
     assert por_tool["integrated_plan"]["registra_desacuerdo"] is False
     assert por_tool["hat_settlement"]["registra_desacuerdo"] is True
-    # Lo unico que le falta al plan integrado es el cierre con nombre y fecha.
-    assert por_tool["integrated_plan"]["faltantes"] == ["una decision con nombre y fecha"]
+    assert por_tool["hat_settlement"]["faltantes"] == []
 
 
 def test_t14_cumple_con_plan_brechas_decision_y_desacuerdo_registrado():
@@ -672,15 +691,23 @@ def _candidato_exposicion(**cambios) -> _CandidatoExposicion:
     return _CandidatoExposicion(**{**base, **cambios})
 
 
-def test_t13_es_parcial_rankea_y_propone_pero_ninguna_accion_lleva_fecha():
-    """Veredicto real: el ranking sale por EMV con occurrence/severity/RPN
-    explicitos y anclado a proveedor, con mitigaciones rankeadas por beneficio
-    neto. Lo unico que falta es el "cuando": ninguna capa tiene fecha."""
+def test_t13_cumple_la_accion_lleva_fecha_derivada_de_la_urgencia():
+    """Veredicto real, y cambio el dia que se recupero #219.
+
+    Antes faltaba el "cuando": ninguna capa tenia fecha. Ahora
+    ``warning_window_days`` la deriva de la urgencia del propio riesgo
+    (``velocity_days - detectability_days``) y ``RankedMitigation`` la lleva.
+
+    La sonda del gate no se conforma con que el campo exista: corre el registro
+    dos veces, con el mismo riesgo remoto y vuelto inminente, y exige que la
+    fecha SE MUEVA. Un ``due_date`` declarado y vacio no pasa -- eso lo fija
+    ``test_declarar_el_campo_vacio_no_mueve_la_tarea[T13]``.
+    """
     r = _resultado(puntuar(), "T13")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.puntos == 0.5
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["anclado_y_accionable"] is True
-    assert r.detalle["faltantes"] == ["accion fechada"]
+    assert r.detalle["faltantes"] == []
 
 
 def test_t13_cumple_con_ranking_ancla_accion_y_fecha():
