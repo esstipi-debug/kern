@@ -14,7 +14,7 @@ single `register()` call, no routing edits.
 | Area | Tools |
 |---|---|
 | Demand & classification | `abc_xyz` · `forecast` · `whatif` |
-| Inventory & replenishment | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` · `excel_replenishment` · `hat_tension` · `hat_settlement` |
+| Inventory & replenishment | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` · `shopify_replenishment` · `channel_replenishment` · `excel_replenishment` · `hat_tension` · `hat_settlement` |
 | Inventory control & health | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` · `intake_scan` |
 | Procurement & sourcing | `sourcing` · `supplier_management` · `landed_cost` · `acceptance_sampling` |
 | Network & logistics | `facility_location` · `network_design` · `transportation` · `vehicle_routing` · `warehouse_layout` · `slotting` · `queuing` · `scheduling` · `flow_map` |
