@@ -24,6 +24,20 @@ Three checks (the plan's stated floor):
    actually keep every committed SKU's projected inventory position at or
    above its reorder point, given the reconciled (shaped) forecast.
 
+**A check reads a number it did not put there, so it can be asked to compare
+against a number nobody supplied.** ``SkuPurchaseInputs`` types every optional
+purchase input as a plain float defaulting to ``0.0``, and a reorder buffer of
+``0.0`` is byte-identical whether the client set that policy or never mentioned
+the column: ``projected_position >= 0.0`` then passes for free, and the most
+favourable statement this module can make gets issued from nothing. This engine
+cannot tell the two apart -- it never saw the CSV cell -- so it does not try.
+What it owns is the VOCABULARY for the answer: :class:`CoherenceResult` is a
+real verdict and :class:`UnevaluableCheck` is the declared absence of one. The
+caller that read the cell (``jobs/integrated_plan.py``) is the layer that knows
+which of the two a given input deserves, exactly as ``jobs/risk_job.py``'s
+``RegisterRiskFactor`` keeps TTR/TTS provenance out of the shared ``src/risk.py``
+scorer.
+
 Pure, no I/O.
 """
 
@@ -39,19 +53,67 @@ CHECK_PROMO_COVERAGE = "promo_markdown_po_coverage"
 CHECK_BUDGET_FEASIBILITY = "budget_allocation_feasibility"
 CHECK_SERVICE_LEVEL = "reorder_point_service_level"
 
+# What one check's outcome is called once absence is a first-class outcome.
+# ``NOT_EVALUABLE`` is not an error and not a failure: it is the third answer,
+# and it outranks the clean one wherever the two are summarised together
+# (jobs/cross_impact_job.py's rule for its own unevaluable areas).
+STATUS_PASSED = "passed"
+STATUS_FAILED = "failed"
+NOT_EVALUABLE = "not_evaluable"
+CHECK_STATUSES = (STATUS_PASSED, STATUS_FAILED, NOT_EVALUABLE)
+
 _TOL = 1e-6
 
 
 @dataclass(frozen=True)
 class CoherenceResult:
-    """One coherence check's verdict for one SKU (or the whole portfolio,
+    """One coherence check's VERDICT for one SKU (or the whole portfolio,
     when ``product_id`` is ``None`` -- the budget check, which is portfolio-
-    level by construction)."""
+    level by construction).
+
+    ``passed`` is a judgement about numbers that were actually supplied. When
+    the number a check compares against was never supplied, there is no verdict
+    to record and building one of these -- with either boolean -- is the defect:
+    use :class:`UnevaluableCheck` instead.
+    """
 
     check: str
     passed: bool
     product_id: str | None
     message: str
+
+
+@dataclass(frozen=True)
+class UnevaluableCheck:
+    """A coherence check that HAS NO VERDICT, and the input whose absence cost it one.
+
+    The engine never builds one of these: it cannot see a CSV cell, so it cannot know
+    that the ``0.0`` it compared against was a placeholder rather than a policy. The
+    caller that read the cell builds it, and this type is what makes that answer
+    sayable at all -- without it, a caller discovering a missing input has only
+    ``passed=True`` or ``passed=False`` to say it with, and both are lies.
+
+    ``__post_init__`` refuses the empty-handed version: an absence with no column and
+    no reason is indistinguishable from a shrug, and the reason IS the value (the same
+    bar ``jobs/risk_job.py``'s ``ResilienceGap`` holds its own note to).
+    """
+
+    check: str
+    product_id: str | None
+    column: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not self.check.strip():
+            raise ValueError("an unevaluable check must name the check that lost its verdict")
+        if not self.column.strip():
+            raise ValueError(
+                f"{self.check}: an unevaluable check must name the input that was not "
+                "supplied -- 'something was missing' is not a declared absence")
+        if not self.reason.strip():
+            raise ValueError(
+                f"{self.check}: an unevaluable check must carry a legible reason: it is "
+                "what a reader gets in place of the verdict")
 
 
 def check_promo_coverage(

@@ -1,6 +1,25 @@
-"""Las comprobaciones deben poder decir NO. Un check que solo sabe aprobar no mide."""
+"""Las comprobaciones deben poder decir NO. Un check que solo sabe aprobar no mide.
+
+Hay dos familias de tests aca y conviene no confundirlas:
+
+- Los que corren la bateria de verdad (``puntuar()``) y congelan el VEREDICTO de
+  hoy. Si el producto mejora, se ponen rojos: es el punto.
+- Los que arman un candidato sintetico y le rompen una pieza por vez, para
+  probar que el corrector sabe decir que no.
+
+Desde el endurecimiento, un candidato sintetico ya no se describe con una lista
+de nombres de campo: se describe con los VALORES que emitieron dos corridas. Un
+test que solo nombra campos no puede distinguir una capacidad de un
+``__dataclass_fields__`` con una linea de mas, que era exactamente el agujero.
+"""
 
 from __future__ import annotations
+
+import dataclasses
+import importlib
+from contextlib import ExitStack, contextmanager
+
+import pytest
 
 import src.bateria.comprobaciones  # noqa: F401  -- registra las comprobaciones
 from src.bateria.comprobaciones import (
@@ -14,6 +33,7 @@ from src.bateria.comprobaciones import (
     _CandidatoOC,
     _CandidatoScorecard,
     _CandidatoServicio,
+    _Muestra,
     _veredicto_acta,
     _veredicto_ajuste,
     _veredicto_caja,
@@ -28,6 +48,42 @@ from src.bateria.comprobaciones import (
 from src.bateria.scorer import Contexto, Estado, puntuar
 
 _CSV = "stock_on_hand.csv"
+
+
+def _muestra(**campos: object) -> _Muestra:
+    """Una muestra sintetica: por campo, lo que emitieron dos corridas.
+
+    Una tupla son los valores de cada corrida; un valor suelto es un campo
+    constante (se repite en las dos), que es como se escribe "existe pero no se
+    mueve".
+    """
+    return _Muestra({
+        nombre: valor if isinstance(valor, tuple) else (valor, valor)
+        for nombre, valor in campos.items()
+    })
+
+
+@contextmanager
+def _campo_inyectado(modulo: str, clase: str, nombre: str, vacio: object):
+    """Agrega al entregable un campo con el nombre que el gate busca y nada adentro.
+
+    Es el ataque entero en una linea, y no requiere mala fe: quien lee el
+    corrector ve que nombre mira y lo declara. El campo queda en
+    ``__dataclass_fields__`` -- que es lo unico que miraban los gates nominales --
+    y toda instancia lo devuelve vacio y constante.
+    """
+    cls = getattr(importlib.import_module(modulo), clase)
+    campo = dataclasses.field(default=vacio)
+    campo.name = nombre
+    campo.type = "object"
+    campo._field_type = dataclasses._FIELD
+    cls.__dataclass_fields__[nombre] = campo
+    setattr(cls, nombre, vacio)
+    try:
+        yield
+    finally:
+        del cls.__dataclass_fields__[nombre]
+        delattr(cls, nombre)
 
 # product_id, on_hand, daily_demand, unit_cost, days_since_last_sale
 _FILAS_CON_RIESGO = (
@@ -99,12 +155,110 @@ def test_t01_cumple_el_entregable_ya_lleva_banda_de_incertidumbre():
 
 
 def test_t02_es_parcial_ya_hay_sesgo_pero_no_hay_ciclo_previo():
-    """El sesgo firmado ya viaja por SKU; lo que falta es el ciclo anterior
-    congelado, que es estado que hoy no se guarda en ningun lado."""
+    """El sesgo firmado ya viaja por SKU CON VALOR y el MAPE se mueve entre dos
+    ciclos de error distinto; lo que falta es el ciclo anterior congelado, que es
+    estado que hoy no se guarda en ningun lado."""
     r = _resultado(puntuar(), "T02")
     assert r.estado is Estado.PARCIAL, r.evidencia
     assert r.detalle["faltantes"] == ["comparacion contra el ciclo previo"]
     assert r.puntos == 0.5
+    assert len(set(r.detalle["sonda_mape"].values())) == 2  # la sonda es valida
+    assert all(v != 0.0 for v in r.detalle["sonda_sesgo"].values())
+
+
+# --- El ataque de inyeccion de nombre, contra la bateria entera --------------
+
+#: Los campos que, declarados VACIOS, movian cinco tareas del marcador sin una
+#: sola capacidad nueva: +3,5 puntos (37,50% -> 55,00%) sobre los gates nominales.
+#: Por tarea: modulo, clase del entregable, campos a inyectar y el estado que la
+#: tarea tiene HOY y no puede mejorar por declarar un nombre.
+_ATAQUE_DE_NOMBRE = (
+    ("T02", "jobs.forecast_job", "SkuForecast",
+     (("mape_previous", 0.0),), Estado.PARCIAL),
+    ("T05", "jobs.ddmrp_job", "DdmrpPart",
+     (("supplier", ""), ("expected_date", "")), Estado.NO_CUMPLE),
+    ("T07", "src.sop_engine.purchase_plan", "PurchasePlanLine",
+     (("payment_date", ""), ("stockout_units", 0.0)), Estado.NO_CUMPLE),
+    ("T13", "src.risk", "RankedMitigation",
+     (("due_date", ""),), Estado.PARCIAL),
+    ("T14", "jobs.hats_job", "SettlementReport",
+     (("demand_plan", ""), ("gap", ""), ("owner", ""), ("due_date", "")), Estado.NO_CUMPLE),
+)
+
+
+@pytest.mark.parametrize(
+    ("tarea_id", "modulo", "clase", "campos", "esperado"),
+    _ATAQUE_DE_NOMBRE,
+    ids=[a[0] for a in _ATAQUE_DE_NOMBRE],
+)
+def test_declarar_el_campo_vacio_no_mueve_la_tarea(tarea_id, modulo, clase, campos, esperado):
+    """El test que sostiene todo el endurecimiento.
+
+    Con los gates nominales, agregar estos campos VACIOS al dataclass llevaba el
+    marcador de 7,5/20 a 11,0/20 sin construir nada: los gates preguntaban si
+    ``__dataclass_fields__`` contenia cierta subcadena. Si este test se pone
+    rojo, la vara volvio a medir nombres.
+    """
+    with ExitStack() as pila:
+        for nombre, vacio in campos:
+            pila.enter_context(_campo_inyectado(modulo, clase, nombre, vacio))
+        atacado = _resultado(puntuar(), tarea_id)
+
+    assert atacado.estado is esperado, atacado.evidencia
+    assert atacado.estado is _resultado(puntuar(), tarea_id).estado
+
+
+@contextmanager
+def _campo_cableado(modulo: str, clase: str, nombre: str, calcular):
+    """Como :func:`_campo_inyectado` pero el campo lleva un valor de verdad.
+
+    Sirve para lo contrario: probar que el gate endurecido SI se puede pasar. Un
+    gate que ningun entregable concebible aprueba esta tan roto como uno que
+    aprueba cualquier nombre -- es el error que tenia T10.
+    """
+    cls = getattr(importlib.import_module(modulo), clase)
+    campo = dataclasses.field(default=None)
+    campo.name = nombre
+    campo.type = "object"
+    campo._field_type = dataclasses._FIELD
+    cls.__dataclass_fields__[nombre] = campo
+    setattr(cls, nombre, property(calcular))
+    try:
+        yield
+    finally:
+        del cls.__dataclass_fields__[nombre]
+        delattr(cls, nombre)
+
+
+def test_t02_un_delta_contra_el_ciclo_previo_con_valor_si_acredita():
+    """El gate endurecido de T02 no es imposible: es exigente.
+
+    Mismo campo que el ataque, pero cableado: un delta que cambia cuando cambia
+    el error del ciclo. Eso es lo que un ciclo previo congelado produciria, y la
+    tarea pasa a CUMPLE. Sin esta prueba, "endurecer" seria indistinguible de
+    "romper".
+    """
+    with _campo_cableado(
+        "jobs.forecast_job", "SkuForecast",
+        "mape_vs_previous", lambda self: round(self.mape - 0.10, 6),
+    ):
+        r = _resultado(puntuar(), "T02")
+
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+    assert r.detalle["campos_de_ciclo_previo_con_valor_que_se_mueve"] == ["mape_vs_previous"]
+
+
+def test_el_ataque_completo_no_mueve_el_marcador():
+    """Los diez campos vacios a la vez, contra el marcador publicable."""
+    limpio = puntuar().puntos
+    with ExitStack() as pila:
+        for _, modulo, clase, campos, _ in _ATAQUE_DE_NOMBRE:
+            for nombre, vacio in campos:
+                pila.enter_context(_campo_inyectado(modulo, clase, nombre, vacio))
+        atacado = puntuar().puntos
+
+    assert atacado == limpio, f"cero producto movio el marcador: {limpio} -> {atacado}"
 
 
 # --- T03: segmentacion con servicio diferenciado -----------------------------
@@ -179,7 +333,13 @@ def _candidato(**cambios) -> _CandidatoOC:
     base = {
         "tool": "oc_ideal",
         "entregable": "jobs.oc_job.LineaOC",
-        "campos": ("supplier", "sku", "order_qty", "required_date", "reason"),
+        "muestra": _muestra(
+            supplier=("S-NORTE", "S-SUR"),
+            sku=("SKU-1", "SKU-2"),
+            order_qty=(120.0, 80.0),
+            required_date=("2026-08-14", "2026-08-28"),
+            reason=("bajo ROP", "quiebre proyectado 2026-08-20"),
+        ),
         "descuenta_en_transito": True,
         "prueba_en_transito": "con 80 unidades emitidas la cantidad baja: [100] -> [20]",
     }
@@ -227,10 +387,44 @@ def test_t05_campo_de_en_transito_sin_sonda_no_se_acredita():
 
 
 def test_t05_es_parcial_cuando_solo_falta_una_pieza_de_la_oc():
-    r = _veredicto_oc((_candidato(campos=("supplier", "sku", "order_qty", "reason")),))
+    r = _veredicto_oc((_candidato(muestra=_muestra(
+        supplier=("S-NORTE", "S-SUR"), sku=("SKU-1", "SKU-2"),
+        order_qty=(120.0, 80.0), reason=("bajo ROP", "quiebre proyectado"),
+    )),))
     assert r.estado is Estado.PARCIAL, r.evidencia
     assert r.puntos == 0.5
     assert "fecha de pedido / llegada esperada" in r.evidencia
+
+
+def test_t05_un_campo_de_proveedor_vacio_no_es_una_oc_por_proveedor():
+    """El ataque, en la unidad: el nombre esta y el valor no. No acredita."""
+    r = _veredicto_oc((_candidato(muestra=_muestra(
+        supplier=("", ""), sku=("SKU-1", "SKU-2"), order_qty=(120.0, 80.0),
+        required_date=("2026-08-14", "2026-08-28"), reason=("bajo ROP", "quiebre"),
+    )),))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert "OC agrupada por proveedor" in r.evidencia
+    assert "supplier" in r.detalle["candidatos"][0]["campos_solo_de_nombre"]
+
+
+def test_t05_un_proveedor_constante_tampoco_agrupa_por_proveedor():
+    """Dos SKU de dos proveedores distintos no pueden salir con el mismo valor:
+    un campo que no se mueve no esta transportando el proveedor."""
+    r = _veredicto_oc((_candidato(muestra=_muestra(
+        supplier="S-UNICO", sku=("SKU-1", "SKU-2"), order_qty=(120.0, 80.0),
+        required_date=("2026-08-14", "2026-08-28"), reason=("bajo ROP", "quiebre"),
+    )),))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert "OC agrupada por proveedor" in r.evidencia
+
+
+def test_t05_un_entregable_sin_sonda_de_valores_no_acredita_nada():
+    """``de_nombres`` = se conocen los campos y ningun valor. Hay que escribir la sonda."""
+    cand = _candidato(muestra=_Muestra.de_nombres(
+        ("supplier", "sku", "order_qty", "required_date", "reason")
+    ))
+    assert cand.faltantes == list(cand.requisitos)
+    assert cand.solo_de_nombre == []  # no es que este vacio: es que nadie lo corrio
 
 
 def test_t06_cumple_el_plan_cuantifica_el_exceso_y_ahora_recomienda():
@@ -318,8 +512,14 @@ def _candidato_acta(**cambios) -> _CandidatoActa:
     base = {
         "tool": "acta_ideal",
         "entregable": "jobs.sop_job.ActaSOP",
-        "campos": ("familia", "demanda_acordada", "purchase_plan", "brechas_abiertas",
-                   "owner", "due_date"),
+        "muestra": _muestra(
+            familia=("bebidas", "snacks"),
+            demanda_acordada=(5_200.0, 26_000.0),
+            purchase_plan=(4_800.0, 25_100.0),
+            brechas_abiertas=("ventas pidio +20% sin cobertura", "2 SKU sin segundo proveedor"),
+            owner=("M. Rossi", "J. Paz"),
+            due_date=("2026-08-31", "2026-09-30"),
+        ),
         "registra_desacuerdo": True,
         "prueba_desacuerdo": "ventas pidio +20% y quedo asentado como no aprobado",
     }
@@ -358,12 +558,40 @@ def test_t14_esconder_el_desacuerdo_es_eliminatorio():
 
 
 def test_t14_una_decision_sin_fecha_no_cierra_la_reunion():
-    r = _veredicto_acta((_candidato_acta(
-        campos=("familia", "demanda_acordada", "purchase_plan", "brechas_abiertas", "owner")
-    ),))
+    r = _veredicto_acta((_candidato_acta(muestra=_muestra(
+        familia=("bebidas", "snacks"), demanda_acordada=(5_200.0, 26_000.0),
+        purchase_plan=(4_800.0, 25_100.0),
+        brechas_abiertas=("ventas pidio +20%", "2 SKU sin segundo proveedor"),
+        owner=("M. Rossi", "J. Paz"),
+    )),))
     assert r.estado is Estado.PARCIAL, r.evidencia
     assert r.puntos == 0.5
     assert "una decision con nombre y fecha" in r.evidencia
+
+
+def test_t14_un_responsable_y_una_fecha_vacios_no_cierran_la_reunion():
+    """El ataque, en la unidad: cuatro campos con el nombre correcto y nada adentro."""
+    r = _veredicto_acta((_candidato_acta(muestra=_muestra(
+        familia=("bebidas", "snacks"), demanda_acordada=(5_200.0, 26_000.0),
+        purchase_plan=(4_800.0, 25_100.0), brechas_abiertas=("", ""),
+        owner=("", ""), due_date=("", ""),
+    )),))
+    assert r.estado is Estado.NO_CUMPLE, r.evidencia
+    assert r.puntos == 0.0
+    solo_nombre = r.detalle["candidatos"][0]["campos_solo_de_nombre"]
+    assert {"owner", "due_date", "brechas_abiertas"} <= set(solo_nombre)
+
+
+def test_t14_una_demanda_que_no_se_entera_de_que_la_demanda_cambio_no_es_el_numero_acordado():
+    """Dos corridas con demanda muy distinta y un solo numero: no lo esta llevando."""
+    r = _veredicto_acta((_candidato_acta(muestra=_muestra(
+        familia=("bebidas", "snacks"), demanda_acordada=5_200.0,
+        purchase_plan=(4_800.0, 25_100.0),
+        brechas_abiertas=("ventas pidio +20%", "2 SKU sin segundo proveedor"),
+        owner=("M. Rossi", "J. Paz"), due_date=("2026-08-31", "2026-09-30"),
+    )),))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert "numero de demanda acordado" in r.evidencia
 
 
 # --- T20: flujo de devoluciones ----------------------------------------------
@@ -431,7 +659,13 @@ def _candidato_exposicion(**cambios) -> _CandidatoExposicion:
     """Un ranking de exposicion que cumple TODO; los tests rompen una pieza."""
     base = {
         "entregable": "jobs.riesgo_job.LineaExposicion",
-        "campos": ("supplier", "exposure_score", "mitigation", "due_date"),
+        "muestra": _muestra(
+            supplier=("ACME", "BOREAL"),
+            exposure_score=(0.81, 0.42),
+            mitigation=("calificar segundo proveedor", "subir cobertura 4 semanas"),
+            # Se mueve con la urgencia: el riesgo inminente vence antes.
+            due_date=("2026-08-10", "2026-11-30"),
+        ),
         "ranking_por_puntaje": True,
         "prueba_ranking": "EMV desc",
     }
@@ -457,17 +691,42 @@ def test_t13_cumple_con_ranking_ancla_accion_y_fecha():
 
 def test_t13_riesgos_genericos_sin_ancla_no_cuentan():
     """La fuente: 'Una lista de riesgos genericos sin SKU ni accion NO cuenta'."""
-    r = _veredicto_exposicion(_candidato_exposicion(
-        campos=("name", "category", "exposure_score", "mitigation", "due_date")
-    ))
+    r = _veredicto_exposicion(_candidato_exposicion(muestra=_muestra(
+        name=("corte de ruta", "quiebre del proveedor unico"), category=("logistics", "supplier"),
+        exposure_score=(0.81, 0.42), mitigation=("segundo transportista", "segundo proveedor"),
+        due_date=("2026-08-10", "2026-11-30"),
+    )))
     assert r.estado is Estado.NO_CUMPLE
     assert r.puntos == 0.0
     assert "sin proveedor/SKU concreto" in r.evidencia
 
 
+def test_t13_una_fecha_vacia_no_fecha_la_accion():
+    """El ataque, en la unidad: ``due_date`` declarado y sin un cuando adentro."""
+    r = _veredicto_exposicion(_candidato_exposicion(muestra=_muestra(
+        supplier=("ACME", "BOREAL"), exposure_score=(0.81, 0.42),
+        mitigation=("calificar segundo proveedor", "subir cobertura"), due_date=("", ""),
+    )))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert "accion fechada" in r.evidencia
+    assert "due_date" in r.detalle["campos_solo_de_nombre"]
+
+
+def test_t13_una_fecha_constante_no_se_mueve_con_la_urgencia():
+    """Un riesgo remoto y el mismo riesgo inminente no pueden vencer el mismo dia:
+    eso es un SLA estampado, no una accion comprometida."""
+    r = _veredicto_exposicion(_candidato_exposicion(muestra=_muestra(
+        supplier=("ACME", "BOREAL"), exposure_score=(0.81, 0.42),
+        mitigation=("calificar segundo proveedor", "subir cobertura"), due_date="2026-12-31",
+    )))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert "accion fechada" in r.evidencia
+
+
 def test_t13_un_orden_sin_puntaje_explicito_no_es_ranking_por_exposicion():
     r = _veredicto_exposicion(_candidato_exposicion(
-        ranking_por_puntaje=False, prueba_ranking="sale en el orden del archivo de entrada"
+        ranking_por_puntaje=False, prueba_ranking="sale en el orden del archivo de entrada",
     ))
     assert r.estado is Estado.PARCIAL, r.evidencia
     assert "criterio de puntaje explicito" in r.evidencia
@@ -534,23 +793,32 @@ def _candidato_servicio(**cambios) -> _CandidatoServicio:
     """Un entregable de servicio que cumple TODO; los tests rompen una pieza."""
     base = {
         "entregable": "jobs.servicio_job.LineaServicio",
-        "campos": ("sku", "otif_salida", "fill_rate_linea", "dias_quiebre", "venta_perdida_usd"),
-        # 0.0 = no hay forma de sacar un fill rate sin pedidos: el numero es medido.
-        "fill_rate_sin_pedidos": 0.0,
+        "muestra": _muestra(
+            sku=("SKU-1", "SKU-2"),
+            otif_salida=(0.60, 0.99),
+            fill_rate_linea=(0.60, 0.99),
+            dias_quiebre=(4.0, 1.0),
+            venta_perdida_usd=(1_200.0, 340.0),
+        ),
+        # El numero reportado reproduce el servicio que de verdad se observo.
+        "reporta_lo_medido": ("fill_rate_linea", "otif_salida"),
+        # La beta teorica SIGUE EXISTIENDO en la libreria y ya no descalifica: ver
+        # test_t10_que_la_libreria_sepa_el_beta_teorico_ya_no_descalifica.
+        "fill_rate_sin_pedidos": 0.9959,
         "prueba_origen": "el fill rate se calcula sobre lineas de pedido despachadas",
     }
     return _CandidatoServicio(**{**base, **cambios})
 
 
 def test_t10_no_cumple_el_servicio_reportado_es_el_del_modelo():
-    """Veredicto real: sin una sola linea de pedido, el motor ya devuelve un fill
-    rate del 99,6% a partir del safety stock. Eso es la beta que implica la
-    politica, no el servicio realizado, y el criterio lo descalifica por nombre."""
+    """Veredicto real: se le inyecta al job el servicio realmente observado (60% y
+    99%) y ningun campo del entregable devuelve ese numero. Lo unico que se mueve
+    es el objetivo de la politica, que es lo que el criterio descalifica."""
     r = _resultado(puntuar(), "T10")
     assert r.estado is Estado.NO_CUMPLE, r.evidencia
     assert r.puntos == 0.0
     assert r.detalle["mide_lo_realizado"] is False
-    assert r.detalle["fill_rate_sin_pedidos"] > 0.9
+    assert r.detalle["campos_que_reproducen_lo_medido"] == []
     assert "dias con quiebre por SKU" in r.detalle["faltantes"]
 
 
@@ -560,11 +828,32 @@ def test_t10_cumple_con_servicio_medido_quiebres_y_venta_perdida():
     assert r.puntos == 1.0
 
 
-def test_t10_un_fill_rate_que_sale_sin_pedidos_es_eliminatorio():
-    """La fuente: reportar el nivel de servicio objetivo del modelo no cuenta."""
+def test_t10_que_la_libreria_sepa_el_beta_teorico_ya_no_descalifica():
+    """Correccion del arnes, no ablandamiento.
+
+    El gate viejo era ``fill_rate_sin_pedidos <= 0.0`` y ese numero salia de
+    ``fill_rate_from_safety_stock``, una funcion PURA que no lee nada del
+    entregable: T10 era imposible aunque se construyera el OTIF de salida
+    perfecto, y la unica forma de pasarla era BORRAR ``src/fill_rate.py``. La
+    fuente no dice eso: dice que reportar el objetivo EN LUGAR del realizado no
+    cuenta. Un entregable que reporta lo medido cumple, tenga la libreria el
+    beta teorico que tenga.
+    """
+    r = _veredicto_servicio(_candidato_servicio(fill_rate_sin_pedidos=0.9959))
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.detalle["fill_rate_sin_pedidos"] > 0.99
+
+
+def test_t10_reportar_el_objetivo_del_modelo_sigue_siendo_eliminatorio():
+    """La fuente: reportar el nivel de servicio objetivo del modelo no cuenta.
+    Un numero que se mueve con lo observado pero no lo iguala es el objetivo."""
     r = _veredicto_servicio(_candidato_servicio(
-        fill_rate_sin_pedidos=0.98,
-        prueba_origen="el fill rate sale del safety stock, sin pedidos",
+        muestra=_muestra(
+            sku=("SKU-1", "SKU-2"), service_level=(0.985, 0.946),
+            dias_quiebre=(4.0, 1.0), venta_perdida_usd=(1_200.0, 340.0),
+        ),
+        reporta_lo_medido=(),
+        prueba_origen="el numero se mueve con lo observado pero no lo reproduce",
     ))
     assert r.estado is Estado.NO_CUMPLE
     assert r.puntos == 0.0
@@ -572,11 +861,23 @@ def test_t10_un_fill_rate_que_sale_sin_pedidos_es_eliminatorio():
 
 
 def test_t10_es_parcial_cuando_solo_falta_la_venta_perdida():
-    r = _veredicto_servicio(_candidato_servicio(
-        campos=("sku", "otif_salida", "fill_rate_linea", "dias_quiebre")
-    ))
+    r = _veredicto_servicio(_candidato_servicio(muestra=_muestra(
+        sku=("SKU-1", "SKU-2"), otif_salida=(0.60, 0.99),
+        fill_rate_linea=(0.60, 0.99), dias_quiebre=(4.0, 1.0),
+    )))
     assert r.estado is Estado.PARCIAL, r.evidencia
     assert r.puntos == 0.5
+    assert "venta perdida estimada" in r.evidencia
+
+
+def test_t10_una_venta_perdida_en_cero_no_es_una_venta_perdida_estimada():
+    """Mismo criterio que ``recovery._unquantified``: lo que nadie cuantifico no
+    puede pasar por un cero medido."""
+    r = _veredicto_servicio(_candidato_servicio(muestra=_muestra(
+        sku=("SKU-1", "SKU-2"), otif_salida=(0.60, 0.99),
+        fill_rate_linea=(0.60, 0.99), dias_quiebre=(4.0, 1.0), venta_perdida_usd=0.0,
+    )))
+    assert r.estado is Estado.PARCIAL, r.evidencia
     assert "venta perdida estimada" in r.evidencia
 
 
@@ -702,8 +1003,14 @@ def _candidato_caja(**cambios) -> _CandidatoCaja:
     """Un plan de caja que cumple TODO el criterio; los tests rompen una pieza."""
     base = {
         "entregable": "jobs.caja_job.LineaEgreso",
-        "campos": ("semana_de_pago", "egreso_usd", "tope_usd", "deficit_usd",
-                   "unidades_en_riesgo"),
+        "muestra": _muestra(
+            semana_de_pago=("2026-W33", "2026-W35"),
+            egreso_usd=(1_000.0, 860.0),
+            tope_usd=1_000.0,
+            deficit_usd=860.0,
+            # Sin recorte no hay impacto; con recorte lo hay. Por eso se mueve.
+            unidades_en_riesgo=(0.0, 145.0),
+        ),
         "pedido_usd": 1860.0,
         "tope_usd": 1000.0,
         "prioriza": True,
@@ -737,10 +1044,34 @@ def test_t07_cumple_con_calendario_tope_prioridad_e_impacto():
 
 def test_t07_sin_fecha_de_pago_es_eliminatorio_aunque_compare_contra_el_tope():
     """La fuente: 'Un total de compra sin fecha de pago NO cuenta'."""
-    r = _veredicto_caja(_candidato_caja(campos=("egreso_usd", "tope_usd", "unidades_en_riesgo")))
+    r = _veredicto_caja(_candidato_caja(muestra=_muestra(
+        egreso_usd=(1_000.0, 860.0), tope_usd=1_000.0, unidades_en_riesgo=(0.0, 145.0),
+    )))
     assert r.estado is Estado.NO_CUMPLE
     assert r.puntos == 0.0
     assert "sin ninguna fecha de pago" in r.evidencia
+
+
+def test_t07_una_fecha_de_pago_vacia_es_lo_mismo_que_no_tenerla():
+    """El ataque, en la unidad: el total sigue sin fecha aunque el campo exista."""
+    r = _veredicto_caja(_candidato_caja(muestra=_muestra(
+        payment_date=("", ""), egreso_usd=(1_000.0, 860.0), tope_usd=1_000.0,
+        unidades_en_riesgo=(0.0, 145.0),
+    )))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+    assert "sin ninguna fecha de pago" in r.evidencia
+    assert "payment_date" in r.detalle["campos_solo_de_nombre"]
+
+
+def test_t07_un_impacto_en_quiebre_que_no_cambia_con_el_recorte_no_mide_el_recorte():
+    """Con tope y sin tope no puede salir el mismo numero: no esta midiendo nada."""
+    r = _veredicto_caja(_candidato_caja(muestra=_muestra(
+        semana_de_pago=("2026-W33", "2026-W35"), egreso_usd=(1_000.0, 860.0),
+        tope_usd=1_000.0, unidades_en_riesgo=0.0,
+    )))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert "impacto en quiebre de cada recorte" in r.evidencia
 
 
 def test_t07_recorte_parejo_no_es_lista_priorizada():
@@ -758,9 +1089,10 @@ def test_t05_gana_el_que_netea_aunque_otro_tenga_mas_campos():
     completo_sin_neteo = _candidato(
         tool="completo", descuenta_en_transito=False, prueba_en_transito="ignora las OC abiertas"
     )
-    netea_incompleto = _candidato(
-        tool="netea", campos=("sku", "order_qty", "reason", "required_date")
-    )
+    netea_incompleto = _candidato(tool="netea", muestra=_muestra(
+        sku=("SKU-1", "SKU-2"), order_qty=(120.0, 80.0),
+        reason=("bajo ROP", "quiebre"), required_date=("2026-08-14", "2026-08-28"),
+    ))
     r = _veredicto_oc((completo_sin_neteo, netea_incompleto))
     assert r.detalle["mejor"] == "netea"
     assert r.estado is Estado.PARCIAL

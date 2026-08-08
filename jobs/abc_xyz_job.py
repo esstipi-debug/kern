@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
+from nosilo_core.guided import confidence_from_coverage
 
 from src.classification import (
     SkuClassification,
@@ -23,7 +24,6 @@ from src.classification import (
     value_basis,
 )
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
-from nosilo_core.guided import confidence_from_coverage
 from src.export import write_summary_csv
 
 _PRODUCT_COLS = ("product_id", "ProductID", "sku", "SKU", "Product", "item")
@@ -43,6 +43,30 @@ class AbcXyzReport:
     a_value_share: float   # share of total annual value held by the A class
     # Whether annual_value ranks on value or (flat unit cost) merely on units
     value_basis: ValueBasis = ValueBasis(0, 0.0, True)
+    #: The cuts this run used. They were ``run()`` parameters and stopped there, which
+    #: left every class label unfalsifiable: "A" means nothing without "A is the top 80%
+    #: of turnover". A reader who cannot see the cut cannot disagree with the
+    #: segmentation, and a segmentation nobody can disagree with is a label, not a
+    #: decision. Carried on the report so it reaches the page.
+    #: Default ``None``, NOT the usual 80/95: a report that does not carry the cuts its
+    #: own run used must say so. Defaulting them here would print "80/15/5" over a run
+    #: that cut somewhere else - a fabricated criterion, and the reader has no way to
+    #: tell. Measured: with a default in place, deleting the wiring from ``run()`` left
+    #: the deliverable still declaring 80/15/5 and the battery still crediting the task.
+    abc_thresholds: tuple[float, float] | None = None
+    cv_cuts: tuple[float, float] | None = None
+
+    @property
+    def cut_criterion(self) -> str | None:
+        """The cuts in the form the trade states them, or None if this run did not record them."""
+        if self.abc_thresholds is None or self.cv_cuts is None:
+            return None
+        a, b = self.abc_thresholds
+        x, y = self.cv_cuts
+        return (
+            f"ABC {a * 100:.0f}/{(b - a) * 100:.0f}/{(1 - b) * 100:.0f} of annual value; "
+            f"XYZ by coefficient of variation X<{x:g}, Y<{y:g}, Z>={y:g}"
+        )
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -98,6 +122,8 @@ def run(
         n_cz=sum(1 for c in classifications if c.cell == "CZ"),
         a_value_share=a_value / total_value,
         value_basis=value_basis(items),
+        abc_thresholds=abc_thresholds,
+        cv_cuts=cv_cuts,
     )
 
 
