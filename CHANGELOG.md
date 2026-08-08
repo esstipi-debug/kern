@@ -3,6 +3,37 @@
 ## [Unreleased]
 
 ### Added
+- **Unleashed as a second ERP, and the ERP slot that made it possible**
+  (`src/connectors/unleashed.py`) — Unleashed is what an Australian SMB runs for inventory
+  on top of Xero, and unlike Xero it holds `MinStockAlertLevel`: a reorder point its own
+  Reorder Report acts on. That puts it on Odoo's side of the line this repo keeps drawing —
+  a system that can *receive* a plan — while Xero, at >60% of the Australian accounting
+  market, stays off the list because its Accounting API has no reorder point at all and
+  Inventory Plus's levels are informational. `channel_replenishment` now takes
+  `params['erp']` alongside `params['channel']`, so all four channel × ERP combinations run
+  through one job.
+
+  **Making the ERP swappable exposed a live bug, which is the real content of this change.**
+  `src/entities.py` named `SOURCE_ODOO` as the owner of `unit_cost` as a *constant*, and
+  ownership only breaks ties among systems that actually reported. So with any other ERP no
+  system owned cost, the channel's display figure won on recency, and the restock was priced
+  at a storefront's number — silently, and in the direction that under-reports value to the
+  financial escalation threshold. Measured before the fix: Unleashed 12.00, Shopify 18.00,
+  resolved 18.00. `build_scm_registry(cost_owner=...)` now takes the ERP in play, and
+  `COST_OWNING_SYSTEMS` refuses to let a storefront or marketplace be named — that would
+  invert the guarantee rather than merely fail to apply it.
+
+  Unleashed's store joins `tests/test_connector_contract.py`'s parametrization rather than
+  its exclusion list: the reorder point is a single writable field, so it needs no richer
+  fixture than a price edit and is held to the same six invariants as every other store.
+  The drift guard caught its absence unprompted, which is the whole point of that test.
+
+  Two API details that only show up against the real docs: authentication is an
+  **HMAC-SHA256 signature over the query string** — parameters only, not the endpoint, not
+  the `?`, and the empty string when there are none — and the public field list disagrees
+  with the prose about `AverageLandPrice` / `AverageLandedPrice`, so both spellings are
+  read. Betting on one and losing yields a silent `0.0`, which is a zero book cost.
+
 - **MercadoLibre as a demand source** (`src/connectors/meli.py`) — `meli_prices.py` could
   already reprice a seller account, but nothing could *plan* against one: no adapter
   implemented `InventorySource`, so the channel had a write half and no read half. The new
