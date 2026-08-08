@@ -58,26 +58,57 @@ SOURCE_ODOO = "odoo"
 SOURCE_SHOPIFY = "shopify"
 SOURCE_MELI = "meli"
 SOURCE_EXCEL = "excel"
+SOURCE_UNLEASHED = "unleashed"
 SOURCE_MANUAL = "manual"
+
+#: Systems that may own ``unit_cost`` -- the ones holding a book value rather than a
+#: display figure. A set rather than a bare parameter so ``build_scm_registry`` rejects a
+#: typo, or a storefront being handed ownership, instead of accepting it and producing a
+#: registry where the guarantee is silently inverted.
+COST_OWNING_SYSTEMS = frozenset({SOURCE_ODOO, SOURCE_UNLEASHED, SOURCE_EXCEL, SOURCE_MANUAL})
 
 
 # ---- entity types -----------------------------------------------------------
 
-SKU = EntityType(
-    name="sku",
-    # The SKU code is the one identifier every channel agrees to carry, which is
-    # what makes exact cross-system matching possible at all here. GTIN would be
-    # stronger where it exists, but it is absent often enough in practice that
-    # requiring it would leave most catalogues unresolved.
-    natural_keys=("sku_code",),
-    # Cost is an ERP fact. A storefront's idea of cost is a display artefact and
-    # must never overwrite the book value that margin calculations run on.
-    field_owners={"unit_cost": SOURCE_ODOO},
-    # Contract/list price is guarded, not owned: several channels legitimately
-    # carry their own price, so the rule is "an automated feed never silently
-    # rewrites the established one", not "only the ERP may speak".
-    guarded_fields=frozenset({"list_price"}),
-)
+def sku_entity_type(cost_owner: str = SOURCE_ODOO) -> EntityType:
+    """The SKU type, with ``unit_cost`` owned by whichever system is the ERP here.
+
+    ``cost_owner`` is a parameter and not a constant because the ERP is. Odoo was the
+    only one when this module was written; Unleashed is the Australian equivalent and
+    holds the same book value.
+
+    Why this had to change rather than stay hardcoded: ownership only decides ties among
+    systems that actually reported. With ``SOURCE_ODOO`` fixed and no Odoo observation in
+    play, a storefront's display cost wins on recency and overwrites the book value the
+    restock is priced at -- which is the exact bug this declaration exists to prevent,
+    reappearing through the seam that made the ERP swappable. Measured, not assumed: with
+    the constant hardcoded and Unleashed as the ERP, Shopify's 18.00 beat the ERP's 12.00.
+    """
+    if cost_owner not in COST_OWNING_SYSTEMS:
+        raise ValueError(
+            f"{cost_owner!r} cannot own unit_cost; expected one of {sorted(COST_OWNING_SYSTEMS)}. "
+            "A storefront or marketplace reports a display price, not a book cost."
+        )
+    return EntityType(
+        name="sku",
+        # The SKU code is the one identifier every channel agrees to carry, which is
+        # what makes exact cross-system matching possible at all here. GTIN would be
+        # stronger where it exists, but it is absent often enough in practice that
+        # requiring it would leave most catalogues unresolved.
+        natural_keys=("sku_code",),
+        # Cost is an ERP fact. A storefront's idea of cost is a display artefact and
+        # must never overwrite the book value that margin calculations run on.
+        field_owners={"unit_cost": cost_owner},
+        # Contract/list price is guarded, not owned: several channels legitimately
+        # carry their own price, so the rule is "an automated feed never silently
+        # rewrites the established one", not "only the ERP may speak".
+        guarded_fields=frozenset({"list_price"}),
+    )
+
+
+#: The default shape, kept as a module constant for the callers that predate a swappable
+#: ERP and legitimately mean "the Odoo one".
+SKU = sku_entity_type()
 
 SUPPLIER = EntityType(
     name="supplier",
@@ -161,22 +192,27 @@ def scm_policy(version: str, rules: tuple[Rule, ...] = ()) -> PolicySet:
     return PolicySet(version=version, rules=rules, classifications=SCM_CLASSIFICATIONS)
 
 
-def build_scm_registry() -> EntityTypeRegistry:
+def build_scm_registry(*, cost_owner: str = SOURCE_ODOO) -> EntityTypeRegistry:
     """A registry with the three supply-chain entity types registered.
 
     Returns a fresh instance rather than a module-level singleton, matching
     ``build_default_registry()``'s instance-based choice: two stores in the same
     process (a test and a job, say) must not share mutable registration state.
+
+    ``cost_owner`` names the ERP in play -- see :func:`sku_entity_type`. Callers that do
+    not pass one get the Odoo shape, which is what every caller written before the ERP
+    became swappable meant.
     """
     registry = EntityTypeRegistry()
-    for entity_type in SCM_ENTITY_TYPES:
+    registry.register(sku_entity_type(cost_owner))
+    for entity_type in (SUPPLIER, LOCATION):
         registry.register(entity_type)
     return registry
 
 
-def open_scm_store(path: str | None = None) -> SqliteEntityStore:
+def open_scm_store(path: str | None = None, *, cost_owner: str = SOURCE_ODOO) -> SqliteEntityStore:
     """A store pre-loaded with the supply-chain entity types."""
-    registry = build_scm_registry()
+    registry = build_scm_registry(cost_owner=cost_owner)
     return SqliteEntityStore(registry, path) if path else SqliteEntityStore(registry)
 
 
