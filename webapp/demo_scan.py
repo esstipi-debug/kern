@@ -171,12 +171,33 @@ def _findings(eo: EOReport, abc: AbcXyzReport, fin: FinancialReport) -> tuple[st
     return (f1, f2, f3)
 
 
+# El umbral de stock muerto del escaneo gratis es 365 dias, no el default de
+# 180 del motor. Dos razones, y la segunda pesa mas que la primera:
+#
+# 1. Es lo que promete la doc. 05-GTM-KERN §5 salida #4 dice "sin movimiento
+#    12+ meses" y los packs de config/verticals la llaman dead_stock_12m. Con
+#    180 el visitante leia "sin venta hace 180+ dias" bajo una salida que dos
+#    documentos definen como anual.
+# 2. A 180 dias, cualquier negocio estacional entrega falsos positivos. Un
+#    articulo de temporada lleva seis meses quieto y esta sano. En el escaneo
+#    gratis no hay humano que filtre eso, y es primer contacto: un "stock
+#    muerto" mal llamado cuesta la conversacion entera. El §5 dice que esta
+#    salida "casi siempre sorprende" -- solo sirve si la sorpresa es real.
+#
+# El default de 180 del motor NO se toca: lo comparten markdown_liquidation_job
+# y seo_priority, donde la decision la revisa un humano y donde bajar el umbral
+# a la mitad cambia recomendaciones de precio. Es un default de motor, no una
+# promesa al visitante.
+_DEMO_DEAD_THRESHOLD_DAYS = 365.0
+
+
 def run_demo_scan(df: pd.DataFrame, params: dict | None = None) -> DemoScanResult:
     """The whole scan: sniff columns, run the 3 jobs, QA-gate, compose findings.
 
     Raises ValueError (from the E&O prepare) when the required columns are
     missing -- the endpoint maps that to an actionable 400.
     """
+    params = {"dead_threshold_days": _DEMO_DEAD_THRESHOLD_DAYS, **(params or {})}
     payload = excess_obsolete_job.prepare_records(df, params)
     stocks: list[SkuStock] = payload["stocks"]
 
