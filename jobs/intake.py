@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -58,6 +59,11 @@ ALIASES: dict[str, list[str]] = {
     "receipt_date": ["receipt_date", "received_date", "receipt_dt", "delivery_date", "actual_delivery_date", "date_done", "fecha_recepcion", "fecha_recibido", "fecha_entrega", "fecha_llegada", "data_recebimento"],
     "po_id": ["po_id", "po", "po_number", "order_id", "purchase_order", "purchase_order_id", "numero_oc", "num_oc", "orden_compra", "folio", "pedido"],
 }
+
+#: La tabla de alias que un mapeo usa. Normalmente ``ALIASES``, o
+#: ``VerticalProfile.merged_aliases(ALIASES)`` cuando el cliente declaro un rubro.
+#: ``None`` en cada firma de abajo significa "usa la del modulo".
+AliasTable = Mapping[str, Sequence[str]]
 
 #: Los campos que `webapp/demo_lead_time_scan.py` le pide a `detect_columns`.
 #: `lead_time_days` entra como OPCIONAL y significa el plazo DECLARADO: en un
@@ -251,6 +257,7 @@ def detect_columns(
     *,
     required: tuple[str, ...] = CANONICAL_REQUIRED,
     optional: tuple[str, ...] = CANONICAL_OPTIONAL,
+    aliases: AliasTable | None = None,
 ) -> ColumnMapping:
     """Heuristically map canonical fields to the client's column names.
 
@@ -259,15 +266,46 @@ def detect_columns(
     sirve a otros formularios de entrada -- recepciones, por ejemplo -- y
     duplicar la tabla de alias por cada uno es como se termina con cinco
     normalizadores que divergen (`RECEIPT_REQUIRED` arriba es el segundo juego).
+
+    ``aliases`` es la tabla a usar; ``None`` significa la del modulo. El pack por
+    vertical llega por aqui y por ningun otro lado -- ver :data:`AliasTable`.
+
+    **Precedencia**, por campo canonico: cuanto mas estrecha la poblacion sobre
+    la que la afirmacion habla, mas arriba queda. Un ``overrides`` que nombra una
+    columna que existe en ESTE archivo gana; despues los alias del rubro (una
+    afirmacion sobre una industria); despues los genericos (sobre todos los
+    archivos). Entre campos canonicos no arbitra nadie: sigue mandando el orden
+    de ``(*required, *optional)``, que este cambio no toca.
     """
+    if aliases is not None and not aliases:
+        raise ValueError(
+            "aliases={} esta vacia: pasa None para la tabla del modulo, o "
+            "vertical.merged_aliases(jobs.intake.ALIASES) para un pack. Pasar "
+            "VerticalProfile.aliases crudo es el error que esto atrapa: tiene la "
+            "forma correcta y no fallaria, solo dejaria de detectar casi todo."
+        )
+    table = ALIASES if aliases is None else aliases
     overrides = overrides or {}
+    # El branch de overrides vive DENTRO del bucle, asi que una clave fuera de
+    # required|optional se evapora en silencio -- la capa de mayor precedencia
+    # fallando de la forma mas callada. Se valida antes de empezar.
+    desconocidas = sorted(set(overrides) - set(required) - set(optional))
+    if desconocidas:
+        raise ValueError(
+            f"overrides nombra campos canonicos que esta llamada no detecta: {desconocidas}; "
+            f"required={list(required)} optional={list(optional)}"
+        )
     by_norm = {_norm(c): c for c in df.columns}
     mapping: dict[str, str] = {}
     for canon in (*required, *optional):
         if canon in overrides and overrides[canon] in df.columns:
             mapping[canon] = overrides[canon]
             continue
-        for alias in ALIASES[canon]:
+        # `.get` y no corchete: un pack CREA canonicas que la tabla base no tiene
+        # (`equipment_id`, `work_order`), y un llamador que pida una de ellas
+        # levantaria KeyError -- que no es ValueError, asi que los endpoints que
+        # capturan ValueError lo convertirian en un 500 en vez de un 400.
+        for alias in table.get(canon, (canon,)):
             hit = by_norm.get(_norm(alias))
             if hit is not None:
                 mapping[canon] = hit
@@ -285,15 +323,33 @@ HEADER_SCAN_ROWS = 12
 _EXCEL_SUFFIXES = (".xlsx", ".xlsm", ".xls")
 
 
-def _alias_keys() -> frozenset[str]:
+#: Largo minimo de un alias para poder votar por la fila de encabezado. `ot`
+#: (orden de trabajo, del pack de repuestos) tiene dos caracteres y aparece como
+#: VALOR en cualquier export con una columna "Tipo Documento": cada fila de datos
+#: se llevaria un punto gratis en `_header_score`, y los empates van a la fila mas
+#: arriba, asi que la primera fila de datos le ganaria al encabezado real. Medido,
+#: el piso descarta exactamente `ds` y `po` de la tabla base y `ot` del pack.
+_MIN_ALIAS_KEY = 3
+
+
+def _alias_keys(aliases: AliasTable | None = None) -> frozenset[str]:
     """Todo alias conocido, normalizado, para puntuar una fila candidata.
 
-    Se arma en cada llamada a proposito: ``ALIASES`` es mutable y el pack por
-    vertical (``config/verticals/*.yaml``) existe justamente para prependerle
-    alias del rubro. Cachearlo a nivel de modulo congelaria la tabla en el
-    primer import y el pack dejaria de verse. Son unos cientos de strings.
+    ``ALIASES`` **no se muta nunca**: el pack por vertical llega por el parametro
+    y por ningun otro camino. La alternativa -- un `ALIASES.update(...)` global --
+    seria un bug de concurrencia, no un atajo: webapp/app.py corre los jobs en
+    `asyncio.to_thread` sobre un unico orquestador y con el servidor MCP montado
+    encima, asi que la tabla mutada para un cliente de mineria re-mapearia la
+    subida simultanea del siguiente cliente de distribucion. Daria un numero
+    equivocado, no un error, y no seria reproducible.
     """
-    return frozenset(_norm(alias) for aliases in ALIASES.values() for alias in aliases)
+    table = ALIASES if aliases is None else aliases
+    return frozenset(
+        k
+        for entries in table.values()
+        for alias in entries
+        if len(k := _norm(alias)) >= _MIN_ALIAS_KEY
+    )
 
 
 def _header_score(row: pd.Series, keys: frozenset[str]) -> int:
@@ -305,7 +361,9 @@ def _header_score(row: pd.Series, keys: frozenset[str]) -> int:
     return len({k for cell in row if (k := _norm(cell)) and k in keys})
 
 
-def detect_sheet_and_header(path: str | Path) -> tuple[object, int]:
+def detect_sheet_and_header(
+    path: str | Path, *, aliases: AliasTable | None = None
+) -> tuple[object, int]:
     """(hoja, fila de encabezado) del libro: la combinacion que reconoce mas columnas.
 
     ``pd.read_excel(p)`` a secas asume PRIMERA HOJA y FILA 0, y las dos son
@@ -326,7 +384,7 @@ def detect_sheet_and_header(path: str | Path) -> tuple[object, int]:
     vez de convertirse en un mapeo inventado.
     """
     probe = pd.read_excel(path, sheet_name=None, header=None, nrows=HEADER_SCAN_ROWS)
-    keys = _alias_keys()
+    keys = _alias_keys(aliases)
     best: tuple[int, object, int] | None = None
     for name, frame in probe.items():
         for row_idx in range(len(frame)):
@@ -338,7 +396,7 @@ def detect_sheet_and_header(path: str | Path) -> tuple[object, int]:
     return best[1], best[2]
 
 
-def load_table(path: str | Path) -> pd.DataFrame:
+def load_table(path: str | Path, *, aliases: AliasTable | None = None) -> pd.DataFrame:
     """Read a client file (CSV or Excel) into a DataFrame.
 
     Excel pasa por :func:`detect_sheet_and_header` en vez de asumir la primera
@@ -348,7 +406,7 @@ def load_table(path: str | Path) -> pd.DataFrame:
     """
     p = Path(path)
     if p.suffix.lower() in _EXCEL_SUFFIXES:
-        sheet, header = detect_sheet_and_header(p)
+        sheet, header = detect_sheet_and_header(p, aliases=aliases)
         return pd.read_excel(p, sheet_name=sheet, header=header)
     return pd.read_csv(p)
 
@@ -493,6 +551,7 @@ def prepare(
     period: str = "W",
     default_lead_days: float = 14.0,
     default_unit_cost: float = 1.0,
+    aliases: AliasTable | None = None,
 ) -> pd.DataFrame:
     """Load a client file and return canonical, period-aggregated demand.
 
@@ -500,8 +559,8 @@ def prepare(
     where the file carries none (missing column or blank cells) — per-SKU CSV values
     always win, and a unit cost derived from revenue/quantity wins over the default.
     """
-    raw = load_table(path)
-    mapping = detect_columns(raw, overrides)
+    raw = load_table(path, aliases=aliases)
+    mapping = detect_columns(raw, overrides, aliases=aliases)
     return normalize(
         raw, mapping, period=period, default_lead_days=default_lead_days,
         default_unit_cost=default_unit_cost,
@@ -515,12 +574,13 @@ def prepare_tracked(
     period: str = "W",
     default_lead_days: float = 14.0,
     default_unit_cost: float = 1.0,
+    aliases: AliasTable | None = None,
 ) -> tuple[pd.DataFrame, IntakeQuality]:
     """Same as ``prepare``, plus the ``IntakeQuality`` signal for a caller that
     needs to decide whether the result is trustworthy enough to hand back with
     unqualified confidence — see ``normalize_tracked``."""
-    raw = load_table(path)
-    mapping = detect_columns(raw, overrides)
+    raw = load_table(path, aliases=aliases)
+    mapping = detect_columns(raw, overrides, aliases=aliases)
     return normalize_tracked(
         raw, mapping, period=period, default_lead_days=default_lead_days,
         default_unit_cost=default_unit_cost,
