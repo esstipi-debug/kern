@@ -176,3 +176,44 @@ def test_the_methodology_names_the_buffer_distribution_it_assumed(tmp_path):
     md = deliverables.write_report_md(report, tmp_path / "r.md").read_text(encoding="utf-8")
 
     assert "normal" in md.lower()
+
+
+# ---- the executive summary must not quote a service level that did not run ----
+#
+# jobs/deliverables.py:242 warns, in its own comment, that params['service_level']
+# is the *default argument* and that "stating one number here would describe a run
+# that did not happen" -- and the Assumptions section duly reads the levels off the
+# SKUs. The Executive summary, three sections above, still quoted the default.
+#
+# With differentiated levels the document contradicted itself: the summary claimed a
+# single figure nobody ran while the Assumptions listed the real ones. It is the most
+# read line of the deliverable, and it is the substitution T10's criterion names --
+# "reportar 'nivel de servicio objetivo' del modelo en lugar del realizado NO cuenta".
+
+
+def _summary_of(md: str) -> str:
+    """The Executive summary section alone, so Assumptions cannot satisfy the check."""
+    ini = md.index("## Executive summary")
+    return md[ini:md.index("\n## ", ini + 1)]
+
+
+def test_the_executive_summary_does_not_quote_the_default_when_levels_differ(tmp_path):
+    report = inventory_optimization.run(
+        _demand(), service_level=0.95, service_levels={"SKU-1": 0.90, "SKU-2": 0.99},
+    )
+    md = deliverables.write_report_md(report, tmp_path / "r.md").read_text(encoding="utf-8")
+    summary = _summary_of(md)
+
+    # 95% is the default argument; no SKU ran at it.
+    assert {round(r.service_level, 4) for r in report.recommendations} == {0.90, 0.99}
+    assert "95%" not in summary
+    assert "90.0%" in summary and "99.0%" in summary
+
+
+def test_the_executive_summary_states_the_level_that_ran_when_it_is_uniform(tmp_path):
+    report = inventory_optimization.run(_demand(), service_level=0.90)
+    summary = _summary_of(
+        deliverables.write_report_md(report, tmp_path / "r.md").read_text(encoding="utf-8")
+    )
+
+    assert "90" in summary
