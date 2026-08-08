@@ -11,6 +11,7 @@ Risk Mitigation (Redundancy vs Flexibility), TTR/TTS exposure (Simchi-Levi), FME
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, timedelta
 
 CATEGORIES = (
     "demand", "supply", "operational", "logistics", "financial",
@@ -59,6 +60,13 @@ class RankedMitigation:
     net_benefit: float
     roi: float
     recommended: bool = False
+    #: Days between noticing the hazard and being hit by it -- the window in which the
+    #: control still has time to matter. Zero when TTR > TTS (already exposed) or when
+    #: detection is slower than the hazard.
+    days_available: float = 0.0
+    #: The date that window closes. A mitigation nobody committed to a date is a
+    #: suggestion, not an action -- and the risk register is read as a plan.
+    by_when: date | None = None
 
 
 @dataclass(frozen=True)
@@ -132,8 +140,29 @@ def _zone(score: int) -> str:
     return "critical"
 
 
-def rank_mitigations(risk: RiskFactor) -> tuple[RankedMitigation, ...]:
-    """Score every mitigation (plus an always-present "Accept / monitor") by net benefit."""
+def warning_window_days(risk: RiskFactor) -> float:
+    """Days of usable warning: how long the hazard takes to bite, minus how long it
+    takes to notice it. Never negative -- detection slower than the hazard means you
+    find out afterwards, which is no window at all.
+
+    Zero when TTR > TTS: the Simchi-Levi exposure gap says the hole is already there,
+    so nothing about this risk can be scheduled for later.
+    """
+    if risk.time_to_recover > risk.time_to_survive:
+        return 0.0
+    return max(0.0, risk.velocity_days - risk.detectability_days)
+
+
+def rank_mitigations(
+    risk: RiskFactor, *, as_of: date | None = None
+) -> tuple[RankedMitigation, ...]:
+    """Score every mitigation (plus an always-present "Accept / monitor") by net benefit.
+
+    ``as_of`` anchors the deadline and defaults to today; it is injectable so the
+    deliverable is reproducible and tests are deterministic.
+    """
+    dias = warning_window_days(risk)
+    vence = (as_of or date.today()) + timedelta(days=dias)
     base = risk.likelihood * risk.impact_value
     options = list(risk.mitigations) + [MitigationOption("Accept / monitor", "accept", 0.0)]
     ranked = []
@@ -142,26 +171,32 @@ def rank_mitigations(risk: RiskFactor) -> tuple[RankedMitigation, ...]:
         reduction = base - resid
         net = reduction - m.cost
         roi = reduction / m.cost if m.cost > 0 else float("inf")
-        ranked.append(RankedMitigation(m.name, m.kind, m.cost, resid, reduction, net, roi))
+        ranked.append(RankedMitigation(
+            m.name, m.kind, m.cost, resid, reduction, net, roi,
+            days_available=dias, by_when=vence,
+        ))
     ranked.sort(key=lambda r: r.net_benefit, reverse=True)
     best = ranked[0]
     return tuple(
         RankedMitigation(
             r.name, r.kind, r.cost, r.residual_emv, r.risk_reduction, r.net_benefit, r.roi,
-            recommended=(r is best),
+            recommended=(r is best), days_available=r.days_available, by_when=r.by_when,
         )
         for r in ranked
     )
 
 
 def assess(
-    risk: RiskFactor, *, severity_thresholds: tuple[float, ...] = DEFAULT_SEVERITY_THRESHOLDS
+    risk: RiskFactor,
+    *,
+    severity_thresholds: tuple[float, ...] = DEFAULT_SEVERITY_THRESHOLDS,
+    as_of: date | None = None,
 ) -> RiskAssessment:
     """Rate one risk on occurrence/severity/detection and rank its mitigations."""
     o = _rate_occurrence(risk.likelihood)
     s = _rate_severity(risk.impact_value, severity_thresholds)
     d = _rate_detection(risk.detectability_days)
-    mits = rank_mitigations(risk)
+    mits = rank_mitigations(risk, as_of=as_of)
     rec = next((m.name for m in mits if m.recommended), "Accept / monitor")
     return RiskAssessment(
         risk.name, risk.category, o, s, d, o * s, _zone(o * s),
@@ -171,11 +206,19 @@ def assess(
 
 
 def assess_portfolio(
-    risks, *, severity_thresholds: tuple[float, ...] = DEFAULT_SEVERITY_THRESHOLDS
+    risks,
+    *,
+    severity_thresholds: tuple[float, ...] = DEFAULT_SEVERITY_THRESHOLDS,
+    as_of: date | None = None,
 ) -> RiskReport:
-    """Assess every risk, rank by EMV, and roll up totals, the heatmap and the worst gap."""
+    """Assess every risk, rank by EMV, and roll up totals, the heatmap and the worst gap.
+
+    ``as_of`` is resolved once here, not per risk: a portfolio whose deadlines drifted
+    because the clock ticked mid-run would not be reproducible.
+    """
+    hoy = as_of or date.today()
     a = sorted(
-        (assess(r, severity_thresholds=severity_thresholds) for r in risks),
+        (assess(r, severity_thresholds=severity_thresholds, as_of=hoy) for r in risks),
         key=lambda x: x.emv, reverse=True,
     )
     total = sum(x.emv for x in a)
