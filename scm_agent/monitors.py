@@ -65,7 +65,7 @@ import pandas as pd
 import yaml
 
 from src.alerting import detect_events
-from src.state.store import StateStore
+from src.state.store import StateStore, default_store
 from src.state.system_state import StateSnapshot
 from src.state.system_state import history as state_history
 from src.state.system_state import latest as state_latest
@@ -606,6 +606,10 @@ def run_all_monitors(
     inventory-only Tower cycle is still a complete, valid cycle.
     """
     config = config if config is not None else load_monitor_config()
+    # Resolve the partition once, here, rather than letting a None reach
+    # src.state three calls deeper: a Tower cycle reads stock, forecast and
+    # outcomes, so a dropped client identity would mix three domains at once.
+    store = store if store is not None else default_store()
     events: list[Event] = []
 
     stock_hist = state_history("stock", window=stock_history_window, store=store)

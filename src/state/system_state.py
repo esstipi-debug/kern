@@ -32,7 +32,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from .store import StateStore, default_store
+from .store import StateStore
 
 try:  # optional strict schema validation
     import pandera.pandas as pa
@@ -122,6 +122,35 @@ class UnknownDomainError(ValueError):
     def __init__(self, domain: str) -> None:
         self.domain = domain
         super().__init__(f"unknown state domain '{domain}' (known: {', '.join(DOMAINS)})")
+
+
+class MissingStoreError(ValueError):
+    """No ``store`` was given, and there is no safe way to guess one.
+
+    ``store=None`` used to resolve to the process-wide ``default_store()``.
+    Every call site in this tree already passes ``store=`` explicitly, so that
+    fallback was never taken on purpose -- the only way to reach it was a
+    ``None`` forwarded down from an entry point, and what it did then was read
+    (and write, since ``StateStore`` mkdir's on construction) the shared
+    partition on behalf of whoever had dropped the identity. With more than
+    one client in a process that is a cross-client leak with no log line.
+
+    Opting into the shared partition is still allowed -- ``store_for(None)``
+    or ``default_store()`` -- it just has to be written down.
+    """
+
+    def __init__(self, operation: str) -> None:
+        self.operation = operation
+        super().__init__(
+            f"{operation}() requires an explicit store: pass store=store_for(client_id) for one"
+            " client's partition, or store=default_store() to opt into the shared one on purpose"
+        )
+
+
+def _require_store(store: StateStore | None, operation: str) -> StateStore:
+    if store is None:
+        raise MissingStoreError(operation)
+    return store
 
 
 class SchemaValidationError(ValueError):
@@ -240,11 +269,12 @@ def snapshot(
 ) -> StateSnapshot:
     """Validate and append a new snapshot for ``domain``. Never overwrites history.
 
-    Raises ``UnknownDomainError`` for a domain outside ``DOMAINS``,
-    ``SchemaValidationError`` if ``payload`` fails the domain's schema
-    contract, or ``CycleOrderError`` if ``cycle_id`` is not strictly after the
-    domain's latest stored cycle. Nothing is written to disk unless all three
-    checks pass.
+    Raises ``MissingStoreError`` if ``store`` is None (there is no safe guess
+    once more than one client exists), ``UnknownDomainError`` for a domain
+    outside ``DOMAINS``, ``SchemaValidationError`` if ``payload`` fails the
+    domain's schema contract, or ``CycleOrderError`` if ``cycle_id`` is not
+    strictly after the domain's latest stored cycle. Nothing is written to
+    disk unless all of them pass.
     """
     if domain not in DOMAIN_COLUMNS:
         raise UnknownDomainError(domain)
@@ -252,10 +282,10 @@ def snapshot(
         raise TypeError(f"payload must be a pandas DataFrame, got {type(payload).__name__}")
     if not isinstance(cycle_id, str) or not cycle_id.strip():
         raise ValueError("cycle_id must be a non-empty string")
+    store = _require_store(store, "snapshot")
 
     _validate_schema(domain, payload)  # raises SchemaValidationError; nothing written on failure
 
-    store = store or default_store()
     latest_id = store.latest_cycle_id(domain)
     if latest_id is not None and _cycle_sort_key(cycle_id) <= _cycle_sort_key(latest_id):
         raise CycleOrderError(domain, cycle_id, latest_id)
@@ -268,7 +298,7 @@ def latest(domain: str, *, store: StateStore | None = None) -> StateSnapshot | N
     """The most recently stored snapshot for ``domain``, or None if it has none."""
     if domain not in DOMAIN_COLUMNS:
         raise UnknownDomainError(domain)
-    store = store or default_store()
+    store = _require_store(store, "latest")
     record = store.latest_record(domain)
     if record is None:
         return None
@@ -285,7 +315,7 @@ def history(
     if window is not None and window < 0:
         raise ValueError("window must be >= 0")
 
-    store = store or default_store()
+    store = _require_store(store, "history")
     records = store.list_records(domain)
     if window is not None:
         records = records[-window:] if window > 0 else []
