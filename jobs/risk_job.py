@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -23,6 +24,7 @@ from src.export import write_summary_csv
 from src.risk import (
     DEFAULT_SEVERITY_THRESHOLDS,
     MitigationOption,
+    RankedMitigation,
     RiskFactor,
     RiskReport,
     assess_portfolio,
@@ -329,13 +331,23 @@ def _degrade(base: float, resilience: ResilienceGap, verdict: str) -> float:
 
 
 _BASE_OPTIONS_CONFIDENCE = 0.8
+def _plazo(m: RankedMitigation) -> str:
+    """The deadline, phrased so "act now" never reads like a formatting glitch."""
+    if m.by_when is None:                       # pragma: no cover - defensive
+        return "no deadline computed"
+    if m.days_available <= 0:
+        return f"act now ({m.by_when:%Y-%m-%d}): no warning window left"
+    return f"by {m.by_when:%Y-%m-%d} ({m.days_available:.0f}d of warning)"
 
 
 def run(
-    records: list[RiskFactor], *, severity_thresholds: tuple[float, ...] = DEFAULT_SEVERITY_THRESHOLDS
+    records: list[RiskFactor],
+    *,
+    severity_thresholds: tuple[float, ...] = DEFAULT_SEVERITY_THRESHOLDS,
+    as_of: date | None = None,
 ) -> RiskJobReport:
     """Score the register and present the top risk's mitigations as protected ranked options."""
-    risk_report = assess_portfolio(records, severity_thresholds=severity_thresholds)
+    risk_report = assess_portfolio(records, severity_thresholds=severity_thresholds, as_of=as_of)
     top = risk_report.assessments[0]
     resilience = assess_resilience(records)
     verdict = resilience_verdict(resilience)
@@ -344,11 +356,11 @@ def run(
             label=m.name,
             summary=(
                 f"residual EMV ${m.residual_emv:,.0f} (cuts ${m.risk_reduction:,.0f}); "
-                f"net benefit ${m.net_benefit:,.0f}"
+                f"net benefit ${m.net_benefit:,.0f}; {_plazo(m)}"
             ),
             score=m.net_benefit,
             recommended=m.recommended,
-            action=f"apply '{m.name}' ({m.kind}) to {top.name}",
+            action=f"apply '{m.name}' ({m.kind}) to {top.name}; {_plazo(m)}",
             tradeoffs=(f"{m.kind}; ${m.cost:,.0f} spend" if m.cost > 0 else "no spend; risk retained"),
         )
         for m in top.mitigations

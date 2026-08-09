@@ -199,3 +199,40 @@ def test_end_to_end_settlement_run(tmp_path):
                    out_dir=str(tmp_path / "out"))
     assert res.status == "ok"
     assert res.guided is not None and res.guided.status == "handoff"
+
+
+# ---- el acta tiene que cerrar en el documento, no solo en el dataclass ------
+
+
+def _payload_una_sku(**extra):
+    from src.eoq import PriceBreak
+    from src.hats import DEFAULT_WEIGHTS, HatConfig, build_inputs
+
+    entrada = build_inputs(
+        sku="A", annual_demand=5200.0, mean_weekly=100.0, std_weekly=20.0,
+        lead_time_weeks=2.0, unit_cost=10.0, config=HatConfig(),
+        price_breaks=(PriceBreak(0.0, 10.0),),
+    )
+    return {"inputs": (entrada,), "weights": dict(DEFAULT_WEIGHTS), **extra}
+
+
+def test_el_acta_imprime_demanda_acordada_brechas_y_firma():
+    from datetime import date
+
+    from jobs.hats_job import run_settlement
+
+    acta = run_settlement(_payload_una_sku(owner="planning", decided_on=date(2026, 8, 3)))
+    texto = acta.outcome.handoffs[0].artifact
+
+    assert "DEMANDA ACORDADA" in texto
+    assert "5,200" in texto
+    assert "BRECHAS SIN RESOLVER" in texto
+    assert "DECISION: planning, 2026-08-03" in texto
+
+
+def test_un_acta_sin_dueno_lo_grita_en_vez_de_dejar_el_hueco():
+    from jobs.hats_job import run_settlement
+
+    texto = run_settlement(_payload_una_sku()).outcome.handoffs[0].artifact
+
+    assert "SIN ASIGNAR" in texto
