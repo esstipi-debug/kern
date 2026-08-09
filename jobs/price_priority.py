@@ -68,9 +68,10 @@ from pathlib import Path
 import pandas as pd
 
 from jobs import abc_xyz_job
-from jobs.price_intelligence import PriceIntelReport, _position_index
+from jobs.price_intelligence import PriceIntelReport, _position_index, eligible_competitor_prices
 from src.classification import SkuClassification
 from src.export import write_summary_csv
+from src.pricing_intel.models import CompetitorOffer
 
 IGUALAR_PRECIO = "igualar_precio"
 OPORTUNIDAD_SUBIR = "oportunidad_subir"
@@ -158,15 +159,22 @@ def _price_positions_from_report(report: PriceIntelReport) -> list[SkuPricePosit
     gets an entry, even with ``position_index=None``, so a SKU that was only
     skipped/quarantined/discarded still reads ``insufficient_signal`` rather
     than being silently absent from the join."""
-    offers_by_pid: dict[str, list[Decimal]] = {}
+    offers_by_pid: dict[str, list[CompetitorOffer]] = {}
     for offer in report.offers:
         if offer.matched_product_id:
-            offers_by_pid.setdefault(offer.matched_product_id, []).append(offer.price_normalized)
+            offers_by_pid.setdefault(offer.matched_product_id, []).append(offer)
 
     attempted_pids = {row.product_id for row in report.rows} | set(offers_by_pid) | set(report.our_prices)
     positions: list[SkuPricePosition] = []
     for pid in sorted(attempted_pids):
-        idx = _position_index(report.our_prices.get(pid), offers_by_pid.get(pid, []))
+        # El gate de la *pricing pair* corre ANTES del promedio: un competidor
+        # agotado, con lectura vencida o con match dudoso no restringe nuestro
+        # precio, y dejarlo entrar sesga el índice hacia arriba — o sea hacia
+        # `igualar_precio`, que es bajar el precio contra quien no vende.
+        pair = eligible_competitor_prices(
+            offers_by_pid.get(pid, []), sla_hours=report.sla_hours, now=report.now,
+        )
+        idx = _position_index(report.our_prices.get(pid), list(pair.prices))
         positions.append(SkuPricePosition(
             product_id=pid,
             position_index=float(idx) if idx is not None else None,
@@ -181,7 +189,20 @@ def _price_positions_from_csv(df: pd.DataFrame, params: dict) -> list[SkuPricePo
     observation) for a client who has not run the full
     ``jobs.price_intelligence`` acquisition cascade. Still reuses
     ``_position_index`` verbatim -- this function only sniffs columns and
-    aggregates per SKU, it never computes the ratio itself."""
+    aggregates per SKU, it never computes the ratio itself.
+
+    LIMITACIÓN, y es asimétrica respecto del camino de
+    :func:`_price_positions_from_report`: este CSV **no trae disponibilidad,
+    ni timestamp, ni confianza de match**, así que el gate de la *pricing
+    pair* (``price_intelligence.eligible_competitor_prices``) no se puede
+    aplicar acá. El índice que sale de este camino promedia todo lo que venga
+    en el archivo, incluidos competidores agotados si el cliente los exportó.
+
+    No se marca con un ``competitor_read`` propio a propósito: agregar un
+    tercer valor al vocabulario cambiaría la semántica de ``_assign_action``
+    y de ``verify``, que es una decisión de diseño y no una corrección. Lo que
+    corresponde es que el entregable diga de qué camino salió cada índice —
+    pendiente anotado, no resuelto acá."""
     product = _pick_column(df, params.get("price_product_col"), _PRICE_PRODUCT_COLS)
     our_price_col = _pick_column(df, params.get("our_price_col"), _OUR_PRICE_COLS)
     competitor_col = _pick_column(df, params.get("competitor_price_col"), _COMPETITOR_PRICE_COLS)
