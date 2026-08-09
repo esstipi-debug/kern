@@ -163,9 +163,11 @@ def test_registry_tool_count_matches_the_pinned_list():
     # hat_tension_tool() + hat_settlement_tool() (41 -> 43, this branch) -> 45.
     # flow_map_tool() added (46 -> 47). cross_impact_tool() added (47 -> 48).
     # org_friction_tool() and intake_scan_tool() both added (48 -> 50).
+    # seo_audit_tool() added (50 -> 51) -- jobs/seo_audit.py existed and was tested
+    # since PR-22 but had never been registered, so no brief could reach it.
     # bump this count again the next time a tool is registered, same as every prior update.
     reg = tools.build_default_registry()
-    assert len(reg.list()) == 50
+    assert len(reg.list()) == 51
 
 
 def test_scm_agent_tools_module_imports_without_circular_import():

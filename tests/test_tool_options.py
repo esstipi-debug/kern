@@ -255,3 +255,37 @@ def test_warehouse_options():
     from warehouse.generator import generate_layout
 
     _assert_ranked(to.warehouse_options(generate_layout({})), min_options=3)
+
+
+def _seo_report(*, robots: bool, sitemap: bool, ranked=None):
+    return NS(
+        domain="shop.example.com", pages_crawled=12,
+        findings=[NS(issue_type="missing_title", url="u", detail="d")],
+        ranked_issues=list(ranked if ranked is not None else [
+            NS(issue_type="missing_title", severity_weight=9, affected_count=4, score=36,
+               example_urls=("https://shop.example.com/a", "https://shop.example.com/b")),
+        ]),
+        robots_txt=NS(present=robots), sitemap=NS(present=sitemap),
+    )
+
+
+def test_seo_audit_options_leads_with_the_top_issue_when_the_site_gates_are_fine():
+    outcome = to.seo_audit_options(_seo_report(robots=True, sitemap=True))
+    _assert_ranked(outcome, min_options=3)
+    assert "missing_title" in outcome.options[0].label
+
+
+def test_seo_audit_options_promotes_a_missing_site_gate_above_the_top_issue():
+    """robots.txt/sitemap.xml are site-level gates: while they are broken, fixing
+    per-page tags moves nothing, so they must outrank the top page issue."""
+    outcome = to.seo_audit_options(_seo_report(robots=False, sitemap=True))
+    _assert_ranked(outcome, min_options=3)
+    assert outcome.options[0].recommended
+    assert "robots.txt" in outcome.options[0].label
+
+
+def test_seo_audit_options_survives_a_clean_crawl_with_no_ranked_issues():
+    """A clean site still has to hand back ranked, executable choices -- an empty
+    ranked_issues list must never index out of range."""
+    outcome = to.seo_audit_options(_seo_report(robots=True, sitemap=True, ranked=[]))
+    _assert_ranked(outcome, min_options=3)

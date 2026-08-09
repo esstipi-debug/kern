@@ -57,7 +57,14 @@ _RECOVERED_TOOLS = (
 # "readiness". This could not be added here while intake_scan was still
 # unregistered: reg.get(tool_key) below raises KeyError for an unknown key,
 # verified twice before Task 7 registered the tool.
-_CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "whatif", "earned_value", "intake_scan")
+# seo_audit is the same documented-zero shape as intake_scan: it has no
+# TOOL_CONCEPTS entry at all (see citation_gate's _NO_CONCEPT_MAP_BY_DESIGN note),
+# because the books graph carries no SEO source. filter_citations' own "no concept
+# map" branch omits every candidate, so this pins the honest zero rather than
+# leaving it to be re-discovered.
+_CORRECTLY_ZERO_TOOLS = (
+    "data_quality", "cycle_count", "whatif", "earned_value", "intake_scan", "seo_audit",
+)
 
 # Anchor-islanded tools: zero at ANY pool (a separate anchor problem, not fixable
 # by pool sizing) -- pinned so a future anchor fix is a conscious change.

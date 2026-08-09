@@ -94,7 +94,15 @@ class _FakeKB:
 # to either not exist or to only surface off-topic citations -- not "we
 # haven't gotten to it yet" (that case is `UNDECLARED_TOOLS` in
 # tests/test_tool_data_contract.py, a different problem with a different list).
-_NO_CONCEPT_MAP_BY_DESIGN = frozenset({"intake_scan"})
+# seo_audit joins intake_scan here for the same measured reason, not as an
+# oversight: the 27-source books graph is SCM / operations research / inventory /
+# forecasting / pricing theory and carries no SEO source whatsoever (no
+# `search_engine_optimization` node exists in the committed graph). Every
+# closer-sounding candidate would be a lexical false friend of the
+# vehicle_routing class ("Logistics as the Vehicle for Change"), so the tool is
+# deliberately left out of TOOL_CONCEPTS and ships zero citations honestly.
+# Fix by ingesting SEO theory, never by a looser anchor.
+_NO_CONCEPT_MAP_BY_DESIGN = frozenset({"intake_scan", "seo_audit"})
 
 
 def test_every_registered_tool_has_a_concept_map():

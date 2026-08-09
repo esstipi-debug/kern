@@ -36,7 +36,11 @@ def _prod_like_env() -> dict[str, str]:
 
 # Top-level import names of the optional-extra deps that prod's `.[web,mcp]`
 # install does NOT include. Blocking these simulates the production container.
-_BLOCKED = ("bs4", "price_parser", "rapidfuzz", "stdnum")
+# advertools/scrapy joined this list when the seo_audit tool was registered:
+# jobs/seo_audit.py crawls via advertools (the optional `seo` extra) and is now
+# reachable from scm_agent/tools.py, so the same module-level-import mistake
+# would crash prod boot exactly the way pricing_intel's did.
+_BLOCKED = ("bs4", "price_parser", "rapidfuzz", "stdnum", "advertools", "scrapy")
 
 _BOOT_SCRIPT = textwrap.dedent(
     f"""

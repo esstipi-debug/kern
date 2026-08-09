@@ -2777,6 +2777,106 @@ def intake_scan_tool() -> Tool:
     )
 
 
+# ---- seo_audit (technical SEO / search-visibility audit) ---------------------
+
+def _seo_audit_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    # Lazy import, same as _price_watch_prepare above: jobs/seo_audit.py reaches
+    # advertools (the optional `seo` extra) at crawl time, and this module sits on
+    # webapp.app's boot chain (webapp.app -> scm_agent -> tools -> jobs -> src).
+    # See CLAUDE.md's prod-boot gotcha and tests/test_pricing_intel_boot_safety.py,
+    # whose _BLOCKED list now also covers advertools/scrapy because of this tool.
+    from jobs import seo_audit as seo_audit_job
+
+    seed_url = request.params.get("seed_url") or request.data_path
+    if not seed_url:
+        return Prepared(status="needs_data", messages=[
+            "an SEO audit needs the site to crawl: pass the site's URL as "
+            "params['seed_url'] (e.g. https://www.tusitio.cl/)"
+        ])
+    # Asked BEFORE entering the job, so no crawl can start against a domain nobody
+    # named. The job enforces the same rule itself (DomainNotConfirmedError); this
+    # only turns "missing" into a question instead of an error.
+    if not request.params.get("confirmed_domain"):
+        return Prepared(status="needs_clarification", messages=[
+            "params['confirmed_domain'] is required before any crawl: name the EXACT "
+            "domain you authorize auditing (it must match seed_url's own hostname)"
+        ])
+    try:
+        payload = seo_audit_job.prepare(str(seed_url), request.params)
+    # DomainNotConfirmedError subclasses ValueError -- it must be caught before the
+    # generic branch below, or a mismatched domain would read as "bad data" instead
+    # of "confirm which domain you meant".
+    except seo_audit_job.DomainNotConfirmedError as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    except seo_audit_job.AdvertoolsUnavailableError as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    if not payload["pages"]:
+        return Prepared(status="needs_data", messages=[
+            f"no page could be crawled at {payload['domain']} - check the seed URL is "
+            "reachable and that robots.txt does not disallow the whole site"
+        ])
+    return Prepared(status="ok", payload=payload)
+
+
+def _seo_audit_run(payload: object, params: dict) -> Produced:
+    from jobs import seo_audit as seo_audit_job
+
+    report = seo_audit_job.run(payload)
+    return Produced(report=report, summary=report.summary)
+
+
+def _seo_audit_qa(report: object) -> list[str]:
+    from jobs import seo_audit as seo_audit_job
+
+    return seo_audit_job.verify(report)
+
+
+def _seo_audit_deliver(report: object, out_dir: object, client: str) -> dict[str, Path]:
+    from jobs import seo_audit as seo_audit_job
+
+    # write_operational takes no client: the two CSVs are per-domain, and the audited
+    # domain already identifies the engagement.
+    return seo_audit_job.write_operational(report, out_dir)
+
+
+def seo_audit_tool() -> Tool:
+    """Registers the already-built, already-tested jobs/seo_audit.py.
+
+    No `deck`: this tool has no L3 citations to render (the books graph carries no
+    SEO source at all -- see tests/test_seo_audit_tool.py's
+    test_seo_audit_has_no_concept_map_by_design), so it ships the two operational
+    CSVs only. Same shape as price_watch / pricing / leadership_chain /
+    warehouse_layout, the other deck-less tools.
+    """
+    return Tool(
+        key="seo_audit",
+        title="Technical SEO Audit",
+        description="Crawl a client's OWN site (robots.txt-respecting, rate-limited, "
+                    "identifiable user-agent) and rank its technical SEO defects - missing "
+                    "titles/meta descriptions/alt text, duplicate titles and content, broken "
+                    "internal links, missing canonicals, absent or suspicious robots.txt and "
+                    "sitemap.xml, malformed structured data - by a documented severity x reach "
+                    "heuristic, with an optional Lighthouse pass. Requires an explicit "
+                    "operator-confirmed domain; the ranking is a prioritization aid, not a "
+                    "measured traffic-impact model.",
+        intent_keywords=(
+            "seo audit", "technical seo audit", "auditoria seo", "seo tecnico",
+            "crawl my site", "rastrear mi sitio", "site crawl audit",
+            "broken internal links", "missing meta descriptions", "missing alt text",
+            "duplicate title tags", "robots txt and sitemap",
+            "visibilidad en buscadores", "posicionamiento organico",
+        ),
+        requires_data=False,
+        options=tool_options.seo_audit_options,
+        prepare=_seo_audit_prepare,
+        run=_seo_audit_run,
+        qa=_seo_audit_qa,
+        deliver=_seo_audit_deliver,
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -2829,4 +2929,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(cross_impact_tool())
     reg.register(org_friction_tool())
     reg.register(intake_scan_tool())
+    reg.register(seo_audit_tool())
     return reg

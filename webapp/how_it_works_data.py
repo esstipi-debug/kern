@@ -69,6 +69,10 @@ DOMAIN_AREA_ORDER: tuple[str, ...] = (
     "Planning cadence & projects",
     "Decision alignment",
     "Leadership",
+    # seo_audit's own area rather than a seat inside "Demand & classification":
+    # a site crawl is not a demand-planning method, and filing it there would
+    # overstate what the SCM taxonomy actually covers.
+    "Search & digital presence",
 )
 
 SCOR_BUCKET_ORDER: tuple[str, ...] = (
@@ -205,6 +209,11 @@ TOOLS: tuple[ToolInfo, ...] = (
     ToolInfo("leadership_chain", "Leadership Chain", "Leadership", "Outside SCOR scope",
              "A CHAIN leadership profile and directives -- an organizational assessment, "
              "not a supply chain operation."),
+    # -- Search & digital presence (1) --
+    ToolInfo("seo_audit", "Technical SEO Audit", "Search & digital presence", "Outside SCOR scope",
+             "Crawls the client's own site and ranks its technical SEO defects by a "
+             "severity x reach heuristic -- a digital-presence audit, not a supply "
+             "chain operation, and the one tool with no L3 citations to show."),
 )
 
 

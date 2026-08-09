@@ -380,6 +380,63 @@ def warehouse_options(layout: object) -> GuidedOutcome:
     )
 
 
+def seo_audit_options(report: object) -> GuidedOutcome:
+    """Ranked next steps over a technical SEO audit.
+
+    Ranking rule, deliberately explicit: a MISSING robots.txt or sitemap.xml is
+    recommended ahead of the top-ranked page issue, because those two are
+    site-level gates -- while they are broken, fixing per-page tags moves nothing.
+    They carry the audit's two highest severity weights (10 and 8) for the same
+    reason. Otherwise the report's own #1 ranked issue leads.
+
+    ``ranked_issues`` can legitimately be empty (a clean crawl), so no option here
+    indexes into it unguarded -- the site-level and re-crawl choices always exist.
+    """
+    ranked = list(report.ranked_issues)
+    top = ranked[0] if ranked else None
+    n_findings = len(report.findings)
+    site_level_broken = not report.robots_txt.present or not report.sitemap.present
+
+    missing = [
+        name
+        for name, present in (("robots.txt", report.robots_txt.present),
+                              ("sitemap.xml", report.sitemap.present))
+        if not present
+    ]
+    site_item: _Item = (
+        f"Fix the site-level gates first ({', '.join(missing) or 'both present'})",
+        (f"{' and '.join(missing)} missing on {report.domain}: crawlers cannot be told what to "
+         "index until this is in place.")
+        if missing else
+        f"robots.txt and sitemap.xml are both present on {report.domain}; re-verify their contents.",
+        "publish the missing robots.txt / sitemap.xml",
+        "cheapest fix, and it gates how much every per-page fix is worth",
+    )
+    top_item: _Item = (
+        f"Fix the top-ranked issue: {top.issue_type}" if top else "No page-level issue was found",
+        (f"{top.affected_count} page(s) affected, score {top.score} "
+         f"(severity {top.severity_weight} x reach). Examples: {', '.join(top.example_urls[:3])}.")
+        if top else
+        f"The crawl of {report.pages_crawled} page(s) surfaced no ranked issue type.",
+        f"remediate {top.issue_type} across the affected pages" if top else "re-crawl with a wider seed set",
+        "highest severity x reach, but the ranking is a heuristic, not measured traffic impact",
+    )
+    recrawl_item: _Item = (
+        "Re-crawl deeper before committing effort",
+        f"Only {report.pages_crawled} URL(s) were crawled for {n_findings} finding(s); widen "
+        "follow_links / raise the page budget so the ranking rests on the whole site.",
+        "re-run the audit with a wider crawl",
+        "delays remediation, but a partial crawl can mis-rank what matters",
+    )
+
+    items = [site_item, top_item, recrawl_item] if site_level_broken else [top_item, site_item, recrawl_item]
+    return _ranked(
+        f"SEO audit of {report.domain}: {n_findings} finding(s) over {report.pages_crawled} "
+        f"page(s), {len(ranked)} ranked issue type(s). Choose where to start.",
+        items,
+    )
+
+
 def queuing_options(report: object) -> GuidedOutcome:
     busiest = report.busiest_station
     items: list[_Item] = [

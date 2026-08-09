@@ -50,14 +50,14 @@ def test_tools_table_matches_the_registry_exactly() -> None:
     assert set(listed) == registered
 
 
-def test_exactly_49_tools_with_unique_keys() -> None:
-    assert len(TOOLS) == 50
-    assert len({t.key for t in TOOLS}) == 50
+def test_exactly_51_tools_with_unique_keys() -> None:
+    assert len(TOOLS) == 51
+    assert len({t.key for t in TOOLS}) == 51
 
 
-def test_domain_area_tally_sums_to_50_and_matches_spec() -> None:
+def test_domain_area_tally_sums_to_51_and_matches_spec() -> None:
     tally = tally_by_domain_area()
-    assert sum(tally.values()) == 50
+    assert sum(tally.values()) == 51
     assert tally == {
         "Inventory & replenishment": 9,
         "Network & logistics": 9,
@@ -69,13 +69,16 @@ def test_domain_area_tally_sums_to_50_and_matches_spec() -> None:
         "Planning cadence & projects": 3,
         "Decision alignment": 3,
         "Leadership": 2,
+        # seo_audit got its own area instead of a seat in "Demand &
+        # classification": a site crawl is not a demand-planning method.
+        "Search & digital presence": 1,
     }
     assert set(tally) == set(DOMAIN_AREA_ORDER)
 
 
-def test_scor_bucket_tally_sums_to_50_and_matches_spec() -> None:
+def test_scor_bucket_tally_sums_to_51_and_matches_spec() -> None:
     tally = tally_by_scor_bucket()
-    assert sum(tally.values()) == 50
+    assert sum(tally.values()) == 51
     assert tally == {
         "Plan": 17,
         "Order/Fulfill": 8,
@@ -83,7 +86,9 @@ def test_scor_bucket_tally_sums_to_50_and_matches_spec() -> None:
         "Transform": 4,
         "Source": 4,
         "Return": 2,
-        "Outside SCOR scope": 1,
+        # leadership_chain + seo_audit: the two capabilities Kern ships that are
+        # deliberately NOT supply chain operations.
+        "Outside SCOR scope": 2,
     }
     assert set(tally) == set(SCOR_BUCKET_ORDER)
 

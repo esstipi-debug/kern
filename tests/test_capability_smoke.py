@@ -37,6 +37,9 @@ EXPECTED_OFFLINE_BUCKETS: dict[str, str] = {
     # --- SKIP: network tools, not exercised without --include-network.
     "price_intelligence":     "SKIP",
     "price_watch":            "SKIP",
+    # seo_audit crawls the client's own site and additionally needs a real
+    # operator-confirmed domain, which no synthetic fixture can supply.
+    "seo_audit":              "SKIP",
     # --- PASS: produces a real deliverable end to end.
     "abc_xyz":                "PASS",
     "acceptance_sampling":    "PASS",

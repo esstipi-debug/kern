@@ -257,6 +257,23 @@ graph's `source_location` carries chapter references for citations.
 - **`graph.html` was not regenerated** for this merge; the committed copy renders
   the **26-source** graph (last rebuilt at the Kern-atlas ingestion). Rebuild it
   with `graphify export html` when a visual refresh matters.
+- **No SEO / search-visibility theory exists anywhere in the corpus.** All 27
+  sources are SCM, operations research, inventory, forecasting and pricing. When
+  `seo_audit` (`jobs/seo_audit.py`) was registered as tool #51, no candidate anchor
+  both existed and stayed on topic: `search_engine_optimization` is not a node, and
+  every closer-sounding candidate is a lexical false friend of the
+  `vehicle_routing` class documented above. It is therefore registered **without** a
+  `TOOL_CONCEPTS` entry at all (`citation_gate._NO_CONCEPT_MAP_BY_DESIGN` — the
+  `intake_scan` shape, not the `vehicle_routing` one, since there is no defensible
+  anchor to record even as islanded) and ships **zero citations honestly**. Fix by
+  ingesting SEO theory, never by a looser anchor.
+  Two neighbouring modules were checked in the same pass and deliberately **not**
+  registered, for reasons that are not about citations at all: `jobs/seo_priority.py`
+  declares its own non-registration in its module docstring (it needs two file
+  shapes, so it does not fit the registry's single-`data_path` contract — the
+  `jobs/integrated_plan.py` precedent), and `src/retention.py` is a **data**-retention
+  / deletion policy engine, not customer churn, so the graph's `customer_retention`
+  node would be a false friend for it too.
 
 Regenerate / extend with `/graphify` over the book PDFs, then refresh these files.
 Per-source helper scripts live in `scripts/`, in run order:

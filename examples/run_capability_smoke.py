@@ -19,9 +19,10 @@ protective gating:
   GATED  needs_data / needs_clarification  ran, then asked for input (by design)
   FAIL   qa_failed / error / EXCEPTION     something is actually broken -- look here
 
-Two tools (price_watch, price_intelligence) reach the network; offline they are
-reported as SKIP unless --include-network is passed, and even then a network
-error is not counted as a FAIL.
+Three tools (price_watch, price_intelligence, seo_audit) reach the network; offline
+they are reported as SKIP unless --include-network is passed, and even then a network
+error is not counted as a FAIL. seo_audit additionally needs a real, operator-confirmed
+domain, so it stays SKIP even with --include-network unless one is supplied.
 
 ASCII-only console output (Windows cp1252 safe).
 """
@@ -275,7 +276,10 @@ _OVERRIDES: dict[str, dict] = {
 
 # Tools that reach the network. Reported SKIP offline; a network error under
 # --include-network is not counted as a FAIL.
-_NETWORK = {"price_watch", "price_intelligence"}
+# seo_audit crawls the client's own site, so it belongs here too -- and it would
+# additionally need a real, operator-confirmed domain (params['confirmed_domain']),
+# which no synthetic fixture can supply: there is no site to crawl offline.
+_NETWORK = {"price_watch", "price_intelligence", "seo_audit"}
 
 _PASS = {"ok"}
 _GATED = {"needs_data", "needs_clarification"}

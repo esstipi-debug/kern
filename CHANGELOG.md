@@ -3,6 +3,21 @@
 ## [Unreleased]
 
 ### Added
+- **`seo_audit` registered as an agent tool (50 → 51).** `jobs/seo_audit.py` shipped fully built and
+  covered by `tests/test_seo_audit_job.py` but was never in `scm_agent/tools.py`, so no brief could
+  ever reach it. This adds only the `JobRequest` → `Prepared` adapter: the crawl, the severity × reach
+  ranking, the Lighthouse degradation and the QA gate are untouched. The job's domain-confirmation gate
+  (`DomainNotConfirmedError`) is translated into `needs_clarification` rather than escaping as a
+  traceback — an audit never crawls a domain nobody named — and the missing-`confirmed_domain` case is
+  asked *before* the job is entered, so no crawl can start. Two properties are pinned by tests:
+  the job import is **lazy** (`advertools`, the optional `seo` extra, must never reach `webapp.app`'s
+  boot chain — `advertools`/`scrapy` joined `tests/test_pricing_intel_boot_safety.py`'s `_BLOCKED`
+  list), and the tool ships **zero L3 citations honestly** — the 27-source books graph carries no SEO
+  source at all, so it is registered *without* a `TOOL_CONCEPTS` entry
+  (`citation_gate._NO_CONCEPT_MAP_BY_DESIGN`, the `intake_scan` shape) instead of being anchored on a
+  `vehicle_routing`-class lexical false friend. It gets its own `Search & digital presence` domain area
+  and the existing `Outside SCOR scope` bucket, joining `leadership_chain` as the second capability
+  Kern ships that is deliberately not a supply-chain operation.
 - **Shopify Admin API version drift detection** (`src/connectors/shopify_api_version.py`) — Shopify
   does not error when the pinned API version falls out of support; it silently *falls forward* and
   serves the request with the oldest version it still accepts, so a stale pin looks healthy while the
