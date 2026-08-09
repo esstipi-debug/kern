@@ -186,3 +186,50 @@ def test_payload_truncates_divergences_over_max_and_sets_flag():
     assert len(event.payload["divergences"]) == 50
     assert event.payload["divergences_truncated"] is True
     assert event.payload["n_divergent"] == 60
+
+
+from jobs.shopify_stock_sync import (  # noqa: E402
+    STOCK_SYNC_JOB,
+    desired_from_odoo,
+)
+from src.connectors import InventoryLevel  # noqa: E402
+
+
+class _FakeOdoo:
+    def __init__(self, levels: list[InventoryLevel]) -> None:
+        self._levels = levels
+
+    def inventory_levels(self) -> list[InventoryLevel]:
+        return list(self._levels)
+
+
+def test_desired_from_odoo_maps_sku_to_quantity():
+    odoo = _FakeOdoo([InventoryLevel("SKU-1", 40.0), InventoryLevel("SKU-2", 12.0)])
+    assert desired_from_odoo(odoo) == {"SKU-1": 40.0, "SKU-2": 12.0}
+
+
+def test_desired_from_odoo_sums_across_locations():
+    odoo = _FakeOdoo([
+        InventoryLevel("SKU-1", 30.0, "WH-A"),
+        InventoryLevel("SKU-1", 10.0, "WH-B"),
+    ])
+    assert desired_from_odoo(odoo) == {"SKU-1": 40.0}
+
+
+def test_desired_from_odoo_on_an_empty_erp_is_empty():
+    assert desired_from_odoo(_FakeOdoo([])) == {}
+
+
+def test_the_scheduled_job_is_registrable():
+    assert STOCK_SYNC_JOB.id == "shopify_stock_sync"
+    assert STOCK_SYNC_JOB.trigger == "interval"
+    assert STOCK_SYNC_JOB.trigger_args == {"hours": 4}
+
+
+def test_the_event_type_is_routed_at_tier_t2():
+    import yaml
+
+    with open("config/event_routing.yaml", encoding="utf-8") as fh:
+        routing = yaml.safe_load(fh)
+    route = routing["routes"][EVENT_TYPE]
+    assert route["autonomy_tier"] == "T2"

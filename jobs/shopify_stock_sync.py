@@ -26,6 +26,8 @@ from typing import Any
 from nosilo_core import writeback
 from scm_agent.events import Event, EventLedger
 
+from .scheduler import ScheduledJob
+
 #: writeback target for the Shopify inventory store.
 TARGET = "shopify_inventory"
 
@@ -156,3 +158,48 @@ def run_stock_sync(
         **({"ts": now} if now is not None else {}),
     )
     return report, event, ledger.emit(event)
+
+
+#: Matches the external cron's cadence for the other scheduled jobs.
+DEFAULT_CADENCE_HOURS = 4
+
+
+def desired_from_odoo(odoo: Any) -> dict[str, float]:
+    """Map ``OdooConnector.inventory_levels()`` to the SKU -> quantity shape.
+
+    This is the ONLY thing tying the stock sync to Odoo, which is why it lives
+    apart from the job itself: the price sync will feed the same job from the
+    repricing engine instead, with nothing else changing.
+
+    A SKU stocked in several Odoo locations is SUMMED -- Shopify holds one
+    level per SKU at the configured location, so the shop's sellable quantity
+    is the total on hand, not whichever warehouse happened to be read last.
+    """
+    totals: dict[str, float] = {}
+    for level in odoo.inventory_levels():
+        totals[level.sku] = totals.get(level.sku, 0.0) + float(level.available)
+    return totals
+
+
+def _not_wired() -> None:
+    """Placeholder callable: this job is registrable but not yet wired to credentials.
+
+    Building a live OdooConnector and ShopifyInventoryStore needs ODOO_URL,
+    ODOO_DB, ODOO_USERNAME, ODOO_API_KEY, SHOPIFY_SHOP_URL and
+    SHOPIFY_ACCESS_TOKEN. That is deploy-time wiring, it cannot run offline,
+    and it is deliberately NOT part of this plan -- see the plan's closing
+    section. Raising rather than silently doing nothing means a deploy that
+    schedules this job before wiring it finds out immediately.
+    """
+    raise NotImplementedError(
+        "shopify_stock_sync is not wired to credentials yet -- see "
+        "docs/superpowers/plans/2026-08-03-shopify-stock-sync.md"
+    )
+
+
+STOCK_SYNC_JOB = ScheduledJob(
+    id="shopify_stock_sync",
+    func=_not_wired,
+    trigger="interval",
+    trigger_args={"hours": DEFAULT_CADENCE_HOURS},
+)
