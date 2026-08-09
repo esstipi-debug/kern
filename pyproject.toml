@@ -22,16 +22,24 @@ dependencies = [
     # degrade without (unlike the optional-extra heavy deps below, there is no
     # meaningful fallback for "the routing table failed to parse").
     "PyYAML>=6.0",
-    # The domain-agnostic control plane, split out of this repo into
-    # esstipi-debug/nosilo-core once a second domain pack (packs/source_to_pay)
-    # proved it generalised. Pinned to a TAG, never a branch: a branch dependency
-    # means a build that passed on Monday fails on Tuesday with no commit in
-    # between, and the failure names the wrong repository. The repo is private -
-    # CI needs a token, see the workflow and the core's CONSUMING.md.
-    "nosilo-core @ git+https://github.com/esstipi-debug/nosilo-core.git@v0.1.0",
+    # nosilo-core (private control plane, esstipi-debug/nosilo-core@v0.1.0) is
+    # intentionally NOT a hard dependency so `pip install -e .` works without a
+    # token (external evaluators / demos). Full install:
+    #   pip install -e ".[core]"              # just the core
+    #   pip install -e ".[core,web,mcp]"      # prod parity (mirrors Dockerfile)
+    # Demo shortcut when core is expected but token is absent:
+    #   pip install -e . --no-deps
+    # Vendoring alternative: `git subtree add --prefix=nosilo_core ...` -> remove
+    # the git URL entirely (see docs/NOSILO_CORE_FALLBACK.md). Pin is to a TAG,
+    # never a branch (branch = build that passes Mon fails Tue with no commit).
+    # Private repo -> CI needs NOSILO_CORE_TOKEN, see .github/workflows/tests.yml
+    # and the core's CONSUMING.md.
 ]
 
 [project.optional-dependencies]
+core = [
+    "nosilo-core @ git+https://github.com/esstipi-debug/nosilo-core.git@v0.1.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",

@@ -17,7 +17,15 @@ written for each row, so a read is never ambiguous about how to load it back.
 This module has NO opinion about what a "domain" is or what schema it must
 satisfy -- that is ``system_state.py``'s job. It only appends immutable rows
 and lists them back out, in insertion order, per domain. Rows are never
-updated or deleted: append-only (Linchpin 3.0 plan rule 8).
+updated: append-only (Linchpin 3.0 plan rule 8).
+
+The one exception to "never deleted" is :meth:`StateStore.prune_before`, the
+retention path (``config/retention.yaml`` -> ``src/retention.py`` ->
+``jobs/retention_job.py``). Append-only is a guarantee about the write path --
+nothing edits history in place -- not a promise to keep client datasets
+forever, which is the opposite of what data minimization wants. Retention is
+the only caller that removes anything, it removes whole rows and their payload
+files together, and it never touches a row inside its window.
 """
 
 from __future__ import annotations
@@ -57,6 +65,18 @@ def _sanitize(token: str) -> str:
     """Make ``token`` safe for use as (part of) a filename on any OS."""
     cleaned = _SAFE_CHARS.sub("_", token).strip("_")
     return cleaned or "cycle"
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    """Treat a naive datetime as already-UTC; convert an aware one to UTC.
+
+    Same normalization as ``scm_agent.events._ensure_utc`` -- duplicated rather
+    than imported because ``src/`` is the pure engine and does not depend on
+    ``scm_agent/`` (the dependency runs the other way).
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 # A client id must be a plain name. Deliberately NOT passed through
@@ -221,6 +241,92 @@ class StateStore:
         if record.file_format == "parquet":
             return pd.read_parquet(path)
         return pd.read_csv(path)
+
+    def count_all(self) -> int:
+        """Total indexed snapshots across every domain -- the denominator
+        ``src.retention.decide`` measures a run's expired share against."""
+        return int(self._conn.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0])
+
+    def count_before(self, cutoff: datetime) -> int:
+        """How many snapshots are older than ``cutoff`` (exclusive), without
+        deleting anything -- the dry-run half of :meth:`prune_before`."""
+        return len(self._records_before(cutoff))
+
+    def _records_before(self, cutoff: datetime) -> list[StoredRecord]:
+        """Every indexed snapshot strictly older than ``cutoff``, any domain.
+
+        ``created_at`` is compared in Python rather than as ``WHERE created_at
+        < ?`` for the same reason ``scm_agent.events.EventLedger._seqs_before``
+        does it: the column is ISO text, so a lexicographic compare only
+        matches an instant compare while every row shares one UTC offset --
+        true today, not enforced by the schema, and wrong in exactly the
+        direction that deletes a row it should have kept.
+        """
+        cutoff = _ensure_utc(cutoff)
+        rows = self._conn.execute(
+            "SELECT seq, domain, cycle_id, created_at, file_path, file_format, row_count FROM snapshots"
+        ).fetchall()
+        records = [_row_to_record(r) for r in rows]
+        return [r for r in records if _ensure_utc(datetime.fromisoformat(r.created_at)) < cutoff]
+
+    def prune_before(self, cutoff: datetime) -> int:
+        """Delete every snapshot older than ``cutoff`` -- index row AND payload
+        file -- and return how many rows went.
+
+        Deleting the row without the file would protect nothing: the file is
+        where the client's actual dataset lives; the row is only metadata. The
+        file goes first, so a crash between the two leaves an indexed row
+        pointing at a missing file (loud, and ``load_payload`` raises) rather
+        than an orphaned file no index knows about (silent, and invisible to
+        the next retention run).
+
+        A file already gone is not an error -- retention must converge on a
+        store someone has hand-cleaned. A resolved path landing outside
+        ``base_path`` is skipped and its row kept: ``file_path`` is read back
+        out of the database, and no value from storage gets to name an
+        arbitrary path on disk for a routine to unlink.
+
+        The caller is expected to have run the counts past
+        ``src.retention.decide`` first; this method applies no cap of its own.
+        """
+        doomed = self._records_before(cutoff)
+        if not doomed:
+            return 0
+
+        base = self._base.resolve()
+        removed_seqs: list[int] = []
+        touched_dirs: set[Path] = set()
+        for record in doomed:
+            path = (self._base / record.file_path).resolve()
+            if path != base and base not in path.parents:
+                continue  # see docstring: never unlink outside the store
+            path.unlink(missing_ok=True)
+            touched_dirs.add(path.parent)
+            removed_seqs.append(record.seq)
+
+        if not removed_seqs:
+            return 0
+
+        for start in range(0, len(removed_seqs), 500):
+            chunk = removed_seqs[start : start + 500]
+            placeholders = ",".join("?" * len(chunk))
+            self._conn.execute(f"DELETE FROM snapshots WHERE seq IN ({placeholders})", chunk)
+        self._conn.commit()
+
+        # Drop the now-empty date=YYYY-MM-DD partitions (and a domain directory
+        # that just lost its last one) so the tree does not accumulate empty
+        # scaffolding forever. rmdir only removes an already-empty directory,
+        # so this can never take a file with it.
+        for directory in sorted(touched_dirs, key=lambda p: len(p.parts), reverse=True):
+            for candidate in (directory, directory.parent):
+                if candidate == base or base not in candidate.parents:
+                    continue
+                try:
+                    candidate.rmdir()
+                except OSError:
+                    pass  # not empty, or gone already
+
+        return len(removed_seqs)
 
     def close(self) -> None:
         self._conn.close()

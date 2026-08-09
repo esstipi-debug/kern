@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -251,6 +252,7 @@ def detect_columns(
     *,
     required: tuple[str, ...] = CANONICAL_REQUIRED,
     optional: tuple[str, ...] = CANONICAL_OPTIONAL,
+    aliases: Mapping[str, Sequence[str]] | None = None,
 ) -> ColumnMapping:
     """Heuristically map canonical fields to the client's column names.
 
@@ -259,15 +261,33 @@ def detect_columns(
     sirve a otros formularios de entrada -- recepciones, por ejemplo -- y
     duplicar la tabla de alias por cada uno es como se termina con cinco
     normalizadores que divergen (`RECEIPT_REQUIRED` arriba es el segundo juego).
+
+    ``aliases`` reemplaza la tabla global. Su caso de uso es el pack de rubro:
+    ``VerticalProfile.merged_aliases(ALIASES)`` devuelve esta misma tabla con los
+    alias del rubro ADELANTE -- el export de una constructora trae `partida` y
+    `faena`, el de un distribuidor trae `local` y `guia de despacho`, y ninguno
+    de esos encabezados esta ni puede estar en una tabla generica. Como el
+    recorrido de abajo toma el PRIMER alias que pega, el orden de la tabla es
+    parte de su significado: quien la construya tiene que prependear, no anexar.
     """
     overrides = overrides or {}
+    table = ALIASES if aliases is None else aliases
+    # Un canonico pedido que la tabla no conoce se dice, no se ignora. Antes esto
+    # era un `ALIASES[canon]` pelado, cuyo KeyError decia el nombre y nada mas; y
+    # con tablas de rubro el error deja de ser siempre un typo -- tambien puede
+    # ser un pack al que le falta un campo que el llamador da por hecho.
+    missing = [c for c in (*required, *optional) if c not in table]
+    if missing:
+        raise KeyError(
+            f"detect_columns: la tabla de alias no tiene entrada para {missing} "
+            f"(pedidos: required={list(required)}, optional={list(optional)})")
     by_norm = {_norm(c): c for c in df.columns}
     mapping: dict[str, str] = {}
     for canon in (*required, *optional):
         if canon in overrides and overrides[canon] in df.columns:
             mapping[canon] = overrides[canon]
             continue
-        for alias in ALIASES[canon]:
+        for alias in table[canon]:
             hit = by_norm.get(_norm(alias))
             if hit is not None:
                 mapping[canon] = hit

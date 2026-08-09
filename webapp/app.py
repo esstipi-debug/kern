@@ -79,6 +79,7 @@ from webapp import (  # noqa: E402
     demo_lead_time_scan,
     demo_price_scan,
     demo_scan,
+    demo_verticals,
     observability,
     security,
 )
@@ -562,6 +563,36 @@ def api_portfolio(
     )
 
 
+@app.get("/api/verticals")
+def api_verticals() -> dict:
+    """Los rubros que /demo puede servir, con el orden de salidas de cada uno.
+
+    Publico y sin datos: es la pregunta unica del embudo ("que mueves?"), y la
+    pagina la arma con esto en vez de tener la lista escrita en el HTML. Esa
+    diferencia es la metrica de control: un tercer vertical es un archivo en
+    config/verticals/, no un cambio de codigo ni de plantilla.
+    """
+    return demo_verticals.verticals_payload()
+
+
+@app.get("/api/demo-data")
+def api_demo_data() -> dict:
+    import csv
+
+    path = _REPO_ROOT / "data" / "sample_demand.csv"
+    rows: list[dict] = []
+    try:
+        with path.open(newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            for index, row in enumerate(reader):
+                if index >= 20:
+                    break
+                rows.append(dict(row))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="sample_demand.csv not found") from exc
+    return {"rows": rows, "count": len(rows), "source": "sample_demand.csv"}
+
+
 @app.get("/api/health")
 def api_health() -> dict:
     return {"ok": True, "skus": len(_load_forecasts())}
@@ -818,9 +849,11 @@ async def api_demo_scan(
         raise HTTPException(status_code=400, detail="sube un CSV de stock o marca use_sample")
 
     try:
-        df = pd.read_csv(data_path)
+        df = pd.read_csv(data_path, nrows=20000)
     except Exception as exc:  # pandas raises several parse/encoding error types
         raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
+    if len(df) > 10000:
+        raise HTTPException(status_code=413, detail="archivo demasiado grande para demo gratis, usa Starter Mass")
     try:
         result = demo_scan.run_demo_scan(df)
     except ValueError as exc:
@@ -870,6 +903,7 @@ async def api_demo_lead_time(
     email: str = Form(...),
     use_sample: bool = Form(False),
     file: UploadFile | None = File(None),
+    vertical: str = Form(""),
 ) -> dict:
     """The /demo funnel, salida #1: a receipts CSV -> real lead time vs. declared.
 
@@ -899,7 +933,12 @@ async def api_demo_lead_time(
     except Exception as exc:  # pandas raises several parse/encoding error types
         raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
     try:
-        result = demo_lead_time_scan.run_lead_time_scan(df)
+        # Tabla de alias del rubro cuando el visitante declaro uno. Un slug
+        # desconocido o manipulado devuelve None y mapea con la tabla generica:
+        # esto es un formulario publico, no el perfil que escribio un operador.
+        result = demo_lead_time_scan.run_lead_time_scan(
+            df, aliases=demo_verticals.aliases_for(vertical)
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=400,
