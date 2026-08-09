@@ -77,6 +77,11 @@ IGUALAR_PRECIO = "igualar_precio"
 OPORTUNIDAD_SUBIR = "oportunidad_subir"
 VIGILAR = "vigilar"
 IGNORAR_BAJO_VALOR = "ignorar_bajo_valor"
+# Igualar bajaría el precio por debajo de `landed_cost * (1 + min_margin_pct)`.
+# No es "no hagas nada": la posición sigue siendo mala y alguien tiene que
+# decidir entre resignar margen, resignar volumen, o atacar el costo. Por eso es
+# una acción propia y no un `vigilar` -- `vigilar` significa que no pasa nada.
+REVISAR_MARGEN = "revisar_margen"
 
 CONFIRMED = "confirmed"
 INSUFFICIENT_SIGNAL = "insufficient_signal"
@@ -106,6 +111,11 @@ class SkuPricePosition:
     product_id: str
     position_index: float | None
     competitor_read: str  # "confirmed" | "insufficient_signal"
+    # El promedio de mercado que produjo el índice. Necesario para evaluar el
+    # piso de margen: el índice es un ratio y un piso es un monto, así que no se
+    # pueden comparar sin él. `None` cuando el índice también lo es, o cuando el
+    # camino CSV no lo pudo derivar.
+    competitor_avg: float | None = None
 
 
 @dataclass(frozen=True)
@@ -140,6 +150,9 @@ class PricePriorityReport:
     n_excluded: int
     band: float
     summary: str
+    # Va al final y con default para no romper a quien construya el reporte
+    # posicionalmente. Cuenta igual en el total que `verify` cuadra.
+    n_revisar_margen: int = 0
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -179,6 +192,11 @@ def _price_positions_from_report(report: PriceIntelReport) -> list[SkuPricePosit
             product_id=pid,
             position_index=float(idx) if idx is not None else None,
             competitor_read=CONFIRMED if idx is not None else INSUFFICIENT_SIGNAL,
+            # El promedio se toma sobre las MISMAS ofertas que produjeron el
+            # índice, no sobre todas: si el piso se comparara contra un promedio
+            # distinto del que generó la acción, los dos números del reporte se
+            # contradirían.
+            competitor_avg=float(sum(pair.prices) / len(pair.prices)) if pair.prices else None,
         ))
     return positions
 
@@ -232,11 +250,15 @@ def _price_positions_from_csv(df: pd.DataFrame, params: dict) -> list[SkuPricePo
 
     positions: list[SkuPricePosition] = []
     for pid in sorted(all_pids):
-        idx = _position_index(our_price_by_pid.get(pid), competitor_prices_by_pid.get(pid, []))
+        competitor_prices = competitor_prices_by_pid.get(pid, [])
+        idx = _position_index(our_price_by_pid.get(pid), competitor_prices)
         positions.append(SkuPricePosition(
             product_id=pid,
             position_index=float(idx) if idx is not None else None,
             competitor_read=CONFIRMED if idx is not None else INSUFFICIENT_SIGNAL,
+            competitor_avg=(
+                float(sum(competitor_prices) / len(competitor_prices)) if competitor_prices else None
+            ),
         ))
     return positions
 
@@ -273,29 +295,83 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
         "classifications": list(abc_report.classifications),
         "price_positions": price_positions,
         "band": float(params.get("band", _DEFAULT_BAND)),
+        # Opt-in: sin `landed_costs` el piso no corre y la salida es la de
+        # siempre. `landed_costs` es el mismo dict que
+        # `src.price_optimizer.optimize_portfolio` ya pide.
+        "landed_costs": params.get("landed_costs") or {},
+        "min_margin_pct": float(params.get("min_margin_pct", 0.0)),
     }
 
 
-def _assign_action(classification: SkuClassification, position: SkuPricePosition, band: float) -> str:
+def _margin_floor(product_id: str, landed_costs: dict, min_margin_pct: float) -> float | None:
+    """``landed_cost * (1 + min_margin_pct)`` -- el mismo piso que
+    ``src.price_optimizer`` ya usa, en el módulo de al lado. ``None`` cuando el
+    SKU no tiene costo declarado: el piso es opt-in, y no tenerlo devuelve el
+    comportamiento previo en vez de inventar una restricción que nadie declaró.
+    """
+    cost = landed_costs.get(product_id)
+    if cost is None:
+        return None
+    return float(cost) * (1.0 + min_margin_pct)
+
+
+def _assign_action(
+    classification: SkuClassification,
+    position: SkuPricePosition,
+    band: float,
+    *,
+    landed_costs: dict | None = None,
+    min_margin_pct: float = 0.0,
+) -> str:
     """The R6 business rule -- C-class is checked FIRST (unconditional,
     exactly like seo_priority's E&O DEAD check), then a missing confirmed
     read always reads vigilar/insufficient_signal, never a guessed
-    igualar_precio/oportunidad_subir."""
+    igualar_precio/oportunidad_subir.
+
+    El piso de margen corre **después** de que la regla decidió
+    ``igualar_precio``, no antes: primero se establece que la posición es mala,
+    y recién entonces se pregunta si la corrección obvia es ejecutable. Al revés
+    escondería la posición mala detrás de la restricción de costo.
+
+    Solo toca ``igualar_precio``. ``oportunidad_subir`` mueve el precio hacia
+    arriba y un piso restringe por abajo: aplicarlo ahí sería una condición que
+    no puede activarse.
+    """
     if classification.abc == "C":
         return IGNORAR_BAJO_VALOR
     if position.position_index is None:
         return VIGILAR
     if position.position_index > 1 + band:
+        floor = _margin_floor(classification.product_id, landed_costs or {}, min_margin_pct)
+        # Sin promedio de mercado el piso es incomparable — un ratio contra un
+        # monto. La salida honesta es dejar la acción como estaba.
+        if floor is not None and position.competitor_avg is not None and position.competitor_avg < floor:
+            return REVISAR_MARGEN
         return IGUALAR_PRECIO
     if position.position_index < 1 - band:
         return OPORTUNIDAD_SUBIR
     return VIGILAR
 
 
-def _reason(action: str, classification: SkuClassification, position: SkuPricePosition, band: float) -> str:
+def _reason(
+    action: str,
+    classification: SkuClassification,
+    position: SkuPricePosition,
+    band: float,
+    *,
+    floor: float | None = None,
+) -> str:
     """Golden rule 7: cite the exact numbers behind the action, and flag the
     price-changing actions as recommendations only -- this module never
     writes a price anywhere (NON-GOAL 4)."""
+    if action == REVISAR_MARGEN:
+        return (
+            f"ABC class={classification.abc}; position_index={position.position_index:.3f} > 1+band "
+            f"({1 + band:.2f}), pero igualar a mercado ({position.competitor_avg:.2f}) quedaría bajo "
+            f"el piso de margen ({floor:.2f} = landed_cost x (1 + min_margin_pct)). La posición es "
+            "mala Y la corrección obvia no es ejecutable: decisión humana entre resignar margen, "
+            "resignar volumen, o atacar el costo. No se aplica ningún precio automáticamente."
+        )
     if action == IGNORAR_BAJO_VALOR:
         return (
             f"ABC class=C (low importance, {classification.cell} cell); not worth a price "
@@ -337,6 +413,13 @@ def run(payload: dict) -> PricePriorityReport:
     classifications: list[SkuClassification] = payload["classifications"]
     price_positions: list[SkuPricePosition] = payload["price_positions"]
     band = float(payload.get("band", _DEFAULT_BAND))
+    landed_costs: dict = payload.get("landed_costs") or {}
+    min_margin_pct = float(payload.get("min_margin_pct", 0.0))
+    if min_margin_pct < 0:
+        # Un piso negativo significa "vendé bajo costo a propósito". Si alguien
+        # lo quiere, que sea explícito por otro camino; como parámetro suelto es
+        # casi siempre un signo invertido.
+        raise ValueError(f"min_margin_pct must be >= 0, got {min_margin_pct}")
 
     # Duplicate product_id in an input resolves to its LAST occurrence
     # (matches jobs.seo_priority / jobs.markdown_liquidation_job precedent).
@@ -360,8 +443,14 @@ def run(payload: dict) -> PricePriorityReport:
     for pid in joined_pids:
         classification = class_by_pid[pid]
         position = position_by_pid[pid]
-        action = _assign_action(classification, position, band)
-        reason = _reason(action, classification, position, band)
+        action = _assign_action(
+            classification, position, band,
+            landed_costs=landed_costs, min_margin_pct=min_margin_pct,
+        )
+        reason = _reason(
+            action, classification, position, band,
+            floor=_margin_floor(pid, landed_costs, min_margin_pct),
+        )
         actions.append(SkuPriceAction(
             product_id=pid, action=action, abc=classification.abc, xyz=classification.xyz,
             position_index=position.position_index, competitor_read=position.competitor_read,
@@ -372,12 +461,18 @@ def run(payload: dict) -> PricePriorityReport:
     n_subir = sum(1 for a in actions if a.action == OPORTUNIDAD_SUBIR)
     n_vigilar = sum(1 for a in actions if a.action == VIGILAR)
     n_ignorar = sum(1 for a in actions if a.action == IGNORAR_BAJO_VALOR)
+    n_revisar_margen = sum(1 for a in actions if a.action == REVISAR_MARGEN)
 
     summary = (
         f"Price priority plan over {len(actions)} SKU(s) (ABC-XYZ x price-position join): "
         f"{n_igualar} igualar_precio, {n_subir} oportunidad_subir, {n_vigilar} vigilar, "
         f"{n_ignorar} ignorar_bajo_valor."
     )
+    if n_revisar_margen:
+        summary += (
+            f" {n_revisar_margen} SKU(s) en revisar_margen: igualar a mercado quedaría bajo el "
+            "piso de margen."
+        )
     if excluded:
         shown = ", ".join(e.product_id for e in excluded[:5]) + ("..." if len(excluded) > 5 else "")
         summary += f" {len(excluded)} SKU(s) excluded for missing input: {shown}."
@@ -385,7 +480,8 @@ def run(payload: dict) -> PricePriorityReport:
     return PricePriorityReport(
         actions=tuple(actions), excluded=tuple(excluded),
         n_igualar_precio=n_igualar, n_oportunidad_subir=n_subir, n_vigilar=n_vigilar,
-        n_ignorar_bajo_valor=n_ignorar, n_excluded=len(excluded), band=band, summary=summary,
+        n_ignorar_bajo_valor=n_ignorar, n_revisar_margen=n_revisar_margen,
+        n_excluded=len(excluded), band=band, summary=summary,
     )
 
 
@@ -401,13 +497,16 @@ def verify(report: PricePriorityReport) -> list[str]:
     issues: list[str] = []
     if not report.actions and not report.excluded:
         issues.append("no SKUs assessed (empty ABC-XYZ and price-position inputs)")
-    total = report.n_igualar_precio + report.n_oportunidad_subir + report.n_vigilar + report.n_ignorar_bajo_valor
+    total = (report.n_igualar_precio + report.n_oportunidad_subir + report.n_vigilar
+             + report.n_ignorar_bajo_valor + report.n_revisar_margen)
     if total != len(report.actions):
         issues.append("action counts do not match len(actions)")
 
-    valid_actions = {IGUALAR_PRECIO, OPORTUNIDAD_SUBIR, VIGILAR, IGNORAR_BAJO_VALOR}
+    valid_actions = {IGUALAR_PRECIO, OPORTUNIDAD_SUBIR, VIGILAR, IGNORAR_BAJO_VALOR, REVISAR_MARGEN}
     valid_reads = {CONFIRMED, INSUFFICIENT_SIGNAL}
-    price_changing_actions = {IGUALAR_PRECIO, OPORTUNIDAD_SUBIR}
+    # `revisar_margen` se deriva de `igualar_precio`, así que hereda su
+    # invariante: fabricarlo sin lectura confirmada es el mismo defecto.
+    price_changing_actions = {IGUALAR_PRECIO, OPORTUNIDAD_SUBIR, REVISAR_MARGEN}
     for a in report.actions:
         if a.action not in valid_actions:
             issues.append(f"{a.product_id}: invalid action {a.action!r}")
