@@ -26,6 +26,7 @@ fechas no se mide: se rechaza y se dice cuales faltan.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import pandas as pd
@@ -114,7 +115,10 @@ def _relative_gap(score: SupplierScore) -> float | None:
 
 
 def to_deliveries(
-    df: pd.DataFrame, overrides: dict[str, str] | None = None
+    df: pd.DataFrame,
+    overrides: dict[str, str] | None = None,
+    *,
+    aliases: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[dict[str, list[dict]], dict[str, int]]:
     """Filas de recepcion -> las que ``score_supplier`` come, agrupadas por proveedor.
 
@@ -126,8 +130,13 @@ def to_deliveries(
     """
     # Mismo mapeo por alias que el resto de la ingesta, con acentos plegados y
     # cabeceras en espanol: un export de Defontana o Contpaqi entra sin tocar nada.
+    # ``aliases`` llega desde el pack del rubro (VerticalProfile.merged_aliases):
+    # `razon_social_proveedor` ya esta en la tabla global, pero `representante` e
+    # `importador` solo existen en el pack de repuestos, y `casa_matriz` solo en
+    # el de distribucion.
     detected = detect_columns(
-        df, overrides, required=RECEIPT_REQUIRED, optional=RECEIPT_OPTIONAL
+        df, overrides, required=RECEIPT_REQUIRED, optional=RECEIPT_OPTIONAL,
+        aliases=aliases,
     )
     if detected.unmatched_required:
         faltan = ", ".join(_ES[c] for c in detected.unmatched_required)
@@ -277,14 +286,20 @@ def _findings(scan_scores: list[SupplierScore], dropped: dict[str, int]) -> tupl
 
 
 def run_lead_time_scan(
-    df: pd.DataFrame, overrides: dict[str, str] | None = None
+    df: pd.DataFrame,
+    overrides: dict[str, str] | None = None,
+    *,
+    aliases: Mapping[str, Sequence[str]] | None = None,
 ) -> LeadTimeScan:
     """El scan completo: mapeo de columnas, medicion, scorecards, QA, hallazgos.
 
     Levanta ValueError (desde ``to_deliveries``) cuando faltan las columnas
     estructurales; el endpoint lo mapea a un 400 accionable.
+
+    ``aliases`` es la tabla del rubro cuando el visitante declaro uno; None deja
+    la global, que es el caso del visitante anonimo del embudo.
     """
-    grouped, dropped = to_deliveries(df, overrides)
+    grouped, dropped = to_deliveries(df, overrides, aliases=aliases)
 
     scores = [
         score_supplier(supplier, rows)

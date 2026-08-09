@@ -140,6 +140,25 @@ class Orchestrator:
                         f"'vertical' field on clients/{profile.client_id}/profile.json",
                     ],
                 )
+        veto = vertical.forbids(intent.job_type) if vertical is not None else None
+        if veto is not None:
+            # No corre, y dice por que. El caso que obliga a esto es alimentos:
+            # inventory_optimization y multi_echelon dimensionan buffer sin
+            # ninguna nocion de vida util, asi que sobre un catalogo perecible
+            # "sube el buffer" convierte capital en merma. El motor SI sabe de
+            # vida util (src/lots/expiry.py, jobs/fefo_job.py) pero lo sabe en
+            # otra capacidad, desde una columna que estas dos no leen -- no es un
+            # parametro que falte, es un calculo que no aplica.
+            #
+            # Sin pasar por strict_params a proposito: ese interruptor es correcto
+            # para "te falto un numero" y equivocado para "este calculo es
+            # invalido sobre tu catalogo". Un veto opcional no es un veto.
+            return JobResult(
+                status=STATUS_NEEDS_CLARIFICATION, tool=tool.key,
+                confidence=intent.confidence, deliverables={},
+                summary=veto.reason.strip(),
+                clarifications=[c for c in (veto.instead.strip(),) if c],
+            )
         params = client_profile.merge_params(params, profile, vertical)
         # prepare() must see the same merged params run() will: several tools bake
         # params into their payload at prepare time (multi_echelon service_level,

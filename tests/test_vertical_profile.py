@@ -99,11 +99,84 @@ def test_shipped_packs_disagree_on_stockout_tolerance():
 
 def test_list_verticals_finds_the_shipped_packs():
     assert list_verticals(config_dir=REPO_VERTICALS) == [
-        "distribucion-b2b", "repuestos-industriales"]
+        "alimentos", "distribucion-b2b", "repuestos-industriales"]
 
 
 def test_list_verticals_on_a_missing_directory_is_empty_not_an_error(tmp_path):
     assert list_verticals(config_dir=tmp_path / "nope") == []
+
+
+# ---- the veto ------------------------------------------------------------------
+
+
+ALIMENTOS_VETOED = ("inventory_optimization", "multi_echelon")
+
+
+def _alimentos() -> VerticalProfile:
+    return load_vertical_profile("alimentos", config_dir=REPO_VERTICALS)
+
+
+@pytest.mark.parametrize("capability", ALIMENTOS_VETOED)
+def test_perishable_pack_refuses_to_size_a_buffer(capability):
+    # The defect this closes: before the veto, a food client fell through to the
+    # generic defaults and got "raise the buffer on these SKUs" -- which on a
+    # perishable catalog turns capital into waste, delivered with full confidence.
+    veto = _alimentos().forbids(capability)
+    assert veto is not None
+    assert "vida util" in veto.reason
+    assert veto.instead  # a refusal without a next step gets routed around
+
+
+@pytest.mark.parametrize("capability", ["fefo", "newsvendor", "forecast"])
+def test_perishable_pack_allows_the_capabilities_that_know_about_shelf_life(capability):
+    assert _alimentos().forbids(capability) is None
+
+
+def test_veto_keys_are_real_registry_keys():
+    # A typo here is a veto that never fires, which is worse than no veto: the
+    # pack would look like protection and be decoration. Skipped where the engine
+    # dependency is absent rather than silently asserting nothing.
+    pytest.importorskip("nosilo_core")
+    from scm_agent.tools import build_default_registry
+
+    registry = build_default_registry()
+    for capability in ALIMENTOS_VETOED:
+        assert registry.get(capability) is not None
+
+
+@pytest.mark.parametrize("slug", ["repuestos-industriales", "distribucion-b2b"])
+def test_the_two_serving_packs_forbid_nothing(slug):
+    profile = load_vertical_profile(slug, config_dir=REPO_VERTICALS)
+    assert profile.demand.forbidden_methods == ()
+    assert profile.forbids("inventory_optimization") is None
+
+
+def test_no_capability_means_no_veto():
+    assert _alimentos().forbids(None) is None
+    assert _alimentos().forbids("") is None
+
+
+def test_bare_capability_name_without_a_reason_is_rejected(tmp_path):
+    _write(tmp_path, "prueba",
+           _yaml(extra="demand:\n  forbidden_methods:\n    - inventory_optimization"))
+    with pytest.raises(ValueError, match="must be mappings"):
+        load_vertical_profile("prueba", config_dir=tmp_path)
+
+
+def test_veto_without_a_reason_is_rejected(tmp_path):
+    _write(tmp_path, "prueba",
+           _yaml(extra="demand:\n  forbidden_methods:\n    - capability: inventory_optimization"))
+    with pytest.raises(ValueError, match="needs a 'reason'"):
+        load_vertical_profile("prueba", config_dir=tmp_path)
+
+
+def test_two_vetoes_for_one_capability_are_rejected(tmp_path):
+    _write(tmp_path, "prueba", _yaml(extra=(
+        "demand:\n  forbidden_methods:\n"
+        "    - capability: multi_echelon\n      reason: una\n"
+        "    - capability: multi_echelon\n      reason: otra")))
+    with pytest.raises(ValueError, match="repeats capability"):
+        load_vertical_profile("prueba", config_dir=tmp_path)
 
 
 # ---- the hard gate -------------------------------------------------------------
