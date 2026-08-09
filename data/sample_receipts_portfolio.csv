@@ -1,0 +1,59 @@
+po_id,supplier,product_id,order_date,receipt_date,declared_lead_time_days
+OC-7201,Hidraulica Austral,SKU-F,2024-01-10,2024-02-12,75
+OC-7217,Suministros del Norte,SKU-B,2024-01-10,2024-01-23,14
+OC-7246,Sellos y Empaques SpA,SKU-G,2024-01-10,2024-02-11,30
+OC-7231,Rodamientos Andes,SKU-A,2024-01-11,2024-02-03,21
+OC-7202,Hidraulica Austral,SKU-C,2024-01-29,2024-02-24,75
+OC-7218,Suministros del Norte,SKU-E,2024-01-29,2024-02-15,14
+OC-7232,Rodamientos Andes,SKU-D,2024-01-29,2024-03-12,21
+OC-7247,Sellos y Empaques SpA,SKU-H,2024-02-01,2024-03-10,30
+OC-7203,Hidraulica Austral,SKU-F,2024-02-19,2024-03-19,75
+OC-7248,Sellos y Empaques SpA,SKU-G,2024-02-22,2024-03-22,30
+OC-7219,Suministros del Norte,SKU-B,2024-02-23,2024-03-11,14
+OC-7233,Rodamientos Andes,SKU-A,2024-02-23,2024-03-12,21
+OC-7220,Suministros del Norte,SKU-E,2024-03-11,2024-03-29,14
+OC-7234,Rodamientos Andes,SKU-D,2024-03-12,2024-04-13,21
+OC-7249,Sellos y Empaques SpA,SKU-H,2024-03-13,2024-04-17,30
+OC-7204,Hidraulica Austral,SKU-C,2024-03-15,2024-04-10,75
+OC-7205,Hidraulica Austral,SKU-F,2024-04-01,2024-05-02,75
+OC-7250,Sellos y Empaques SpA,SKU-G,2024-04-01,2024-05-07,30
+OC-7235,Rodamientos Andes,SKU-A,2024-04-04,2024-04-17,21
+OC-7221,Suministros del Norte,SKU-B,2024-04-05,2024-04-23,14
+OC-7206,Hidraulica Austral,SKU-C,2024-04-22,2024-05-18,75
+OC-7236,Rodamientos Andes,SKU-D,2024-04-22,2024-05-26,21
+OC-7251,Sellos y Empaques SpA,SKU-H,2024-04-23,2024-05-26,30
+OC-7222,Suministros del Norte,SKU-E,2024-04-26,2024-05-10,14
+OC-7223,Suministros del Norte,SKU-B,2024-05-14,2024-05-28,14
+OC-7252,Sellos y Empaques SpA,SKU-G,2024-05-14,2024-06-12,30
+OC-7207,Hidraulica Austral,SKU-F,2024-05-16,2024-06-10,75
+OC-7237,Rodamientos Andes,SKU-A,2024-05-17,2024-06-02,21
+OC-7224,Suministros del Norte,SKU-E,2024-06-05,2024-06-24,14
+OC-7238,Rodamientos Andes,SKU-D,2024-06-05,2024-06-27,21
+OC-7253,Sellos y Empaques SpA,SKU-H,2024-06-06,2024-06-28,30
+OC-7208,Hidraulica Austral,SKU-C,2024-06-07,2024-07-07,75
+OC-7254,Sellos y Empaques SpA,SKU-G,2024-06-24,2024-08-05,30
+OC-7239,Rodamientos Andes,SKU-A,2024-06-26,2024-07-20,21
+OC-7209,Hidraulica Austral,SKU-F,2024-06-27,2024-07-31,75
+OC-7225,Suministros del Norte,SKU-B,2024-06-27,2024-07-12,14
+OC-7210,Hidraulica Austral,SKU-C,2024-07-16,2024-08-15,75
+OC-7255,Sellos y Empaques SpA,SKU-H,2024-07-16,2024-08-10,30
+OC-7226,Suministros del Norte,SKU-E,2024-07-17,2024-08-03,14
+OC-7240,Rodamientos Andes,SKU-D,2024-07-19,2024-08-07,21
+OC-7227,Suministros del Norte,SKU-B,2024-08-06,2024-08-27,14
+OC-7256,Sellos y Empaques SpA,SKU-G,2024-08-06,2024-09-11,30
+OC-7241,Rodamientos Andes,SKU-A,2024-08-08,2024-09-06,21
+OC-7211,Hidraulica Austral,SKU-F,2024-08-09,2024-09-12,75
+OC-7228,Suministros del Norte,SKU-E,2024-08-27,2024-09-09,14
+OC-7242,Rodamientos Andes,SKU-D,2024-08-28,2024-09-25,21
+OC-7212,Hidraulica Austral,SKU-C,2024-08-29,2024-09-24,75
+OC-7257,Sellos y Empaques SpA,SKU-H,2024-08-29,2024-10-05,30
+OC-7213,Hidraulica Austral,SKU-F,2024-09-16,2024-10-16,75
+OC-7229,Suministros del Norte,SKU-B,2024-09-16,2024-10-01,14
+OC-7243,Rodamientos Andes,SKU-A,2024-09-19,2024-10-15,21
+OC-7258,Sellos y Empaques SpA,SKU-G,2024-09-19,2024-10-18,30
+OC-7214,Hidraulica Austral,SKU-C,2024-10-08,2024-11-05,75
+OC-7230,Suministros del Norte,SKU-E,2024-10-09,2024-10-26,14
+OC-7244,Rodamientos Andes,SKU-D,2024-10-09,2024-11-03,21
+OC-7215,Hidraulica Austral,SKU-F,2024-10-30,2024-11-22,75
+OC-7245,Rodamientos Andes,SKU-A,2024-11-01,2024-12-09,21
+OC-7216,Hidraulica Austral,SKU-C,2024-11-22,2024-12-23,75
