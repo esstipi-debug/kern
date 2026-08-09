@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kern — modo simple</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/theme.css">
+<style>
+:root{
+  --ink:#080b11; --ink-2:#0d1219; --panel:#111722; --panel-2:#0f141d;
+  --line:#1e2733; --line-2:#283341;
+  --txt:#e7eef6; --txt-2:#c4cfdb; --muted:#9aa7b6; --faint:#5e6b7a;
+  --accent:#4fd1c5; --accent-bright:#5eead4; --accent-dim:#1c3b39;
+  --ok:#3fb950; --warn:#d4a017; --bad:#f0564a;
+  --r-card:16px; --r-field:11px; --r-chip:999px;
+  --shadow:0 18px 50px -22px rgba(0,0,0,.8), 0 2px 8px -2px rgba(0,0,0,.5);
+  --sans:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{font-family:var(--sans); background:var(--ink); color:var(--txt); -webkit-font-smoothing:antialiased; line-height:1.5;
+  background-image: radial-gradient(1100px 520px at 12% -8%, rgba(79,209,197,.10), transparent 60%), radial-gradient(900px 600px at 108% 0%, rgba(120,90,255,.06), transparent 55%); background-attachment:fixed;}
+.wrap{max-width:760px; margin:0 auto; padding:28px 20px 60px;}
+.head{display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px;}
+.brand{display:flex; gap:12px; align-items:center;}
+.logo{width:42px; height:42px; display:grid; place-items:center; border-radius:12px; background:linear-gradient(150deg,var(--accent-bright),var(--accent)); color:var(--ink); font-size:20px; box-shadow:0 8px 22px -8px rgba(79,209,197,.6);}
+.head h1{margin:0; font-size:20px; font-weight:800; letter-spacing:-.02em;}
+.head p{margin:1px 0 0; font-size:12.5px; color:var(--muted);}
+.badge{font-family:var(--mono); font-size:11px; color:var(--accent-bright); border:1px solid var(--accent-dim); background:rgba(79,209,197,.06); padding:6px 10px; border-radius:999px;}
+.card{background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--shadow); padding:22px;}
+.label{font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:0 0 7px; display:block;}
+.hint{font-weight:500; text-transform:none; letter-spacing:0; color:var(--faint); font-size:11px;}
+.input{width:100%; font-family:var(--sans); font-size:15px; color:var(--txt); background:var(--ink-2); border:1px solid var(--line-2); border-radius:var(--r-field); padding:12px 14px; transition:.18s;}
+.input:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 4px rgba(79,209,197,.12); background:#0b1018;}
+.textarea{min-height:92px; resize:vertical; line-height:1.55;}
+.chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
+.chip{font-family:var(--sans); font-size:13px; font-weight:600; color:var(--txt-2); background:var(--ink-2); border:1px solid var(--line-2); border-radius:999px; padding:8px 13px; cursor:pointer; transition:.15s;}
+.chip:hover{border-color:var(--accent); color:var(--accent-bright); background:rgba(79,209,197,.07); transform:translateY(-1px);}
+.chip.active{border-color:var(--accent); background:rgba(79,209,197,.12); color:var(--accent-bright);}
+.drop{margin-top:14px; border:1.5px dashed var(--line-2); border-radius:12px; padding:18px; text-align:center; background:var(--ink-2); cursor:pointer; transition:.15s;}
+.drop:hover{border-color:var(--accent); background:#0b1018;}
+.drop strong{color:var(--txt-2); font-size:13px;}
+.drop p{margin:4px 0 0; font-size:12px; color:var(--muted);}
+.drop input{display:none;}
+.file-ok{margin-top:8px; font-family:var(--mono); font-size:12px; color:var(--accent-bright);}
+.qbox{margin-top:16px; padding:14px; background:var(--ink-2); border:1px solid var(--line-2); border-radius:11px; display:none;}
+.qbox.on{display:block;}
+.q{margin-bottom:12px;}
+.q:last-child{margin:0;}
+.q label{font-size:13px; font-weight:600; color:var(--txt-2); display:block; margin-bottom:6px;}
+.q small{display:block; font-size:11.5px; color:var(--muted); margin-bottom:6px; line-height:1.45;}
+.range-row{display:flex; gap:10px; align-items:center;}
+.range-row input[type=range]{flex:1;}
+.range-val{font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--accent-bright); min-width:46px; text-align:right;}
+.run{width:100%; margin-top:18px; font-size:15.5px; font-weight:800; color:#2a1200; border:0; border-radius:14px; padding:13px 18px; background:linear-gradient(150deg,var(--accent-warm),var(--accent-warm-2)); box-shadow:0 6px 0 var(--accent-warm-deep); cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; transition:transform 80ms, box-shadow 80ms;}
+.run:active{transform:translateY(6px); box-shadow:0 0 0 var(--accent-warm-deep);}
+.run:disabled{opacity:.6; cursor:not-allowed; transform:none; box-shadow:0 4px 0 var(--accent-warm-deep);}
+.link{font-size:12px; color:var(--muted); text-decoration:none; border:1px solid var(--line-2); padding:6px 10px; border-radius:999px;}
+.link:hover{color:var(--accent-bright); border-color:var(--accent-dim);}
+.err{margin-top:12px; font-size:13px; color:var(--bad); background:rgba(240,86,74,.08); border:1px solid rgba(240,86,74,.25); padding:10px 12px; border-radius:10px; display:none;}
+.err.on{display:block;}
+.results{margin-top:18px; display:none;}
+.results.on{display:block;}
+.kern-says{background:var(--ink-2); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:10px; padding:14px 16px; font-size:14.5px; line-height:1.6; margin-bottom:14px;}
+.cards{display:grid; grid-template-columns:1fr; gap:10px;}
+@media(min-width:600px){.cards{grid-template-columns:1fr 1fr 1fr;}}
+.mini{border-radius:12px; padding:14px; border:1px solid var(--line); background:var(--ink-2);}
+.mini b{font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); display:block; margin-bottom:6px;}
+.mini .big{font-size:19px; font-weight:800; letter-spacing:-.02em;}
+.mini .sub{font-size:11.5px; color:var(--muted); margin-top:4px; line-height:1.45;}
+.status-ok{color:var(--ok)} .status-warn{color:var(--warn)} .status-bad{color:var(--bad)}
+.downloads{margin-top:14px; display:flex; flex-direction:column; gap:8px;}
+.dl{display:flex; justify-content:space-between; align-items:center; padding:11px 14px; border-radius:10px; background:var(--ink-2); border:1px solid var(--line-2); text-decoration:none; transition:.15s;}
+.dl:hover{border-color:var(--accent); transform:translateX(2px);}
+.dl span:first-child{font-family:var(--mono); font-size:13px; color:var(--txt);}
+.dl span:last-child{font-family:var(--mono); font-size:12px; color:var(--accent-bright);}
+.details{margin-top:14px; border:1px solid var(--line); border-radius:11px; overflow:hidden;}
+.details summary{cursor:pointer; padding:11px 14px; font-size:13px; font-weight:600; color:var(--muted); background:var(--ink-2); list-style:none;}
+.details summary::-webkit-details-marker{display:none;}
+.details .inner{padding:14px; font-family:var(--mono); font-size:11.5px; color:var(--muted); line-height:1.6; background:var(--panel-2);}
+.preview{margin-top:10px; border:1px solid var(--line); border-radius:11px; overflow:hidden; display:none; background:var(--ink-2);}
+.preview.on{display:block;}
+.preview head{font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); padding:10px 12px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line);}
+.preview table{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:11.5px;}
+.preview th{ text-align:left; padding:7px 10px; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid var(--line); background:var(--panel-2);}
+.preview td{padding:6px 10px; border-bottom:1px solid var(--line); color:var(--txt-2); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.preview .ok{color:var(--ok)} .preview .bad{color:var(--bad)}
+.spin{width:15px;height:15px;border-radius:50%;border:2px solid rgba(42,18,0,.25);border-top-color:#2a1200;animation:rot .7s linear infinite;display:inline-block;}
+@keyframes rot{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="head">
+    <div class="brand">
+      <div class="logo">◈</div>
+      <div>
+        <h1>Kern</h1>
+        <p>decime qué querés lograr — yo hago los números</p>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <a class="link" href="/console">modo experto →</a>
+      <span class="badge">● modo simple</span>
+    </div>
+  </header>
+
+  <div id="history" style="display:none; margin-bottom:12px; background:var(--panel); border:1px solid var(--line); border-radius:11px; padding:10px 12px;"></div>
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+      <label class="label" style="margin:0;">¿Qué querés lograr hoy? <span class="hint">— escribí o dictá</span></label>
+      <button id="mic" type="button" title="Dictar con voz" style="font-size:13px; padding:6px 10px; border-radius:999px; border:1px solid var(--line-2); background:var(--ink-2); color:var(--muted); cursor:pointer; display:flex; gap:6px; align-items:center;">🎤 Dictar</button>
+    </div>
+    <textarea id="brief" class="input textarea" placeholder="ej: no quedarme sin stock de congelados las próximas 2 semanas sin gastar de más"></textarea>
+    <div id="micHint" style="display:none; font-size:11.5px; color:var(--accent-bright); margin-top:6px;">● escuchando… hablá claro y pausado</div>
+    <div class="chips" id="chips">
+      <button class="chip" data-brief="no quedarme sin stock y no comprar de más" data-need="stock">No quedarme sin stock</button>
+      <button class="chip" data-brief="poner precios que dejen más plata sin perder ventas" data-need="pricing">Poner mejores precios</button>
+      <button class="chip" data-brief="evaluar cómo está liderando mi equipo de supply chain" data-need="chain">Evaluar mi equipo</button>
+      <button class="chip" data-brief="ordenar mi bodega para que sea más rápida" data-need="warehouse">Ordenar bodega</button>
+    </div>
+
+    <label class="label" style="margin-top:16px;">Tu archivo <span class="hint">— Excel o CSV como lo tengas, si no tenés probamos con datos de ejemplo</span></label>
+    <label class="drop" id="drop">
+      <strong id="dropTitle">Arrastrá tu archivo acá o hacé clic</strong>
+      <p>CSV / Excel · máx 25 MB · podés saltear este paso</p>
+      <input id="file" type="file" accept=".csv,.xlsx,.xls">
+      <div id="fileOk" class="file-ok" style="display:none;"></div>
+    </label>
+    <div id="preview" class="preview"></div>
+    <label style="display:flex; gap:8px; align-items:center; margin-top:10px; font-size:12.5px; color:var(--muted); cursor:pointer;">
+      <input id="useSample" type="checkbox"> Usar datos de ejemplo si no subo nada
+    </label>
+
+    <div style="margin-top:14px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+      <span style="font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);">Kern habla como:</span>
+      <button class="chip tone active" data-tone="operario" onclick="setTone('operario')">Operario</button>
+      <button class="chip tone" data-tone="gerente" onclick="setTone('gerente')">Gerente</button>
+      <button class="chip tone" data-tone="auditor" onclick="setTone('auditor')">Auditor</button>
+    </div>
+    <div id="qbox" class="qbox">
+      <div style="font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--accent-bright); margin-bottom:10px;">◆ Kern te pregunta 1 cosa más para hacerlo bien</div>
+      <div id="qStock" class="q" style="display:none;">
+        <label>¿De cada 100 pedidos, cuántos querés cumplir sin quiebre?</label>
+        <small>Kern usa esto para calcular tu colchón de seguridad. 95 es el estándar — 98 si es producto crítico.</small>
+        <div class="range-row"><input id="sl" type="range" min="80" max="99" step="1" value="95"><span id="slVal" class="range-val">95%</span></div>
+      </div>
+      <div id="qBudget" class="q" style="display:none;">
+        <label>¿Tenés un tope de plata para este pedido?</label>
+        <small>Si lo dejás vacío, Kern calcula el óptimo. Si ponés un tope, ajusta el colchón para que entre.</small>
+        <input id="budget" class="input" type="number" placeholder="ej: 44000" inputmode="numeric">
+      </div>
+    </div>
+
+    <button id="run" class="run">Ejecutar con Kern ▸</button>
+    <div id="err" class="err"></div>
+
+    <div id="results" class="results">
+      <div id="kernSays" class="kern-says"></div>
+      <div class="cards" id="cards"></div>
+      <div id="downloads" class="downloads"></div>
+      <div id="share" style="display:none; margin-top:10px; display:none; gap:8px; align-items:center; flex-wrap:wrap;"></div>
+      <details class="details" id="details" style="display:none;"><summary>ver detalle técnico ▾</summary><div class="inner" id="detailInner"></div></details>
+    </div>
+  </div>
+
+  <p style="text-align:center; margin-top:14px; font-size:11.5px; color:var(--faint);">Kern traduce tus palabras a 50 herramientas y te responde en criollo. El detalle técnico queda guardado pero no te molesta.</p>
+</div>
+
+<script>
+const $ = s => document.getElementById(s);
+const HIST_KEY='kern_simple_history';
+function loadHist(){ try{ return JSON.parse(localStorage.getItem(HIST_KEY)||'[]'); }catch{ return []; } }
+function saveHist(a){ localStorage.setItem(HIST_KEY, JSON.stringify(a.slice(0,5))); }
+function timeAgo(ts){ const s=(Date.now()-ts)/1000; if(s<60) return 'ahora'; if(s<3600) return Math.round(s/60)+'m'; if(s<86400) return Math.round(s/3600)+'h'; return Math.round(s/86400)+'d'; }
+function renderHist(){
+  const h=loadHist(), el=$('history');
+  if(!h.length){ el.style.display='none'; return; }
+  el.style.display='block';
+  el.innerHTML='<div style="font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">Recientes <button onclick="clearHist()" style="font-size:11px; background:none; border:1px solid var(--line-2); color:var(--muted); border-radius:999px; padding:2px 8px; cursor:pointer;">limpiar</button></div><div style="display:flex; gap:6px; flex-wrap:wrap;">'+h.map((x,i)=>'<button onclick="rehydrate('+i+')" style="font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid '+(x.status==='ok'?'rgba(63,185,80,.4)':'var(--line-2)')+'; background:var(--ink-2); color:var(--txt-2); cursor:pointer; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">'+escapeHtml(x.brief.slice(0,32))+' · '+timeAgo(x.ts)+' · '+x.status+'</button>').join('')+'</div>';
+}
+function clearHist(){ localStorage.removeItem(HIST_KEY); renderHist(); }
+function rehydrate(i){
+  const h=loadHist()[i]; if(!h) return;
+  $('brief').value=h.brief; setNeed(detectNeed(h.brief));
+  if(h.result) renderResult(h.result);
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+function pushHist(brief, result){
+  const h=loadHist();
+  h.unshift({brief, ts:Date.now(), status: result.status||'ok', summary: result.summary||'', result});
+  saveHist(h); renderHist();
+}
+const briefEl = $('brief'), fileEl = $('file'), drop = $('drop'), fileOk = $('fileOk'), useSampleEl = $('useSample');
+const qbox = $('qbox'), qStock = $('qStock'), qBudget = $('qBudget'), sl = $('sl'), slVal = $('slVal'), budgetEl = $('budget');
+const runBtn = $('run'), errEl = $('err'), resultsEl = $('results'), kernSaysEl = $('kernSays'), cardsEl = $('cards'), downloadsEl = $('downloads'), detailsEl = $('details'), detailInner = $('detailInner');
+
+let need = null;
+let forcedTool = null;
+const TOOL_FOR_NEED = {stock: 'inventory_optimization', pricing: 'pricing', chain: 'leadership_chain', warehouse: 'warehouse_layout'};
+
+function setNeed(n, fromChip){
+  need = n;
+  forcedTool = fromChip ? (TOOL_FOR_NEED[n] || null) : null;
+  const show = n==='stock' || n==='pricing' || n===null;
+  qbox.classList.toggle('on', show);
+  qStock.style.display = (n==='stock' || n===null) ? 'block' : 'none';
+  qBudget.style.display = (n==='stock') ? 'block' : 'none';
+}
+function detectNeed(text){
+  const t = text.toLowerCase();
+  if(t.includes('precio')||t.includes('margen')||t.includes('plata') && t.includes('precio')) return 'pricing';
+  if(t.includes('lider')||t.includes('equipo')||t.includes('chain')) return 'chain';
+  if(t.includes('bodega')||t.includes('layout')||t.includes('rack')) return 'warehouse';
+  return 'stock';
+}
+
+document.querySelectorAll('.chip').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    briefEl.value = b.dataset.brief;
+    setNeed(b.dataset.need, true);
+  });
+});
+briefEl.addEventListener('input', ()=>{ if(!briefEl.value.trim()) setNeed(null); else setNeed(detectNeed(briefEl.value)); });
+sl.addEventListener('input', ()=> slVal.textContent = sl.value + '%');
+
+drop.addEventListener('click', ()=> fileEl.click());
+drop.addEventListener('dragover', e=>{e.preventDefault(); drop.style.borderColor='var(--accent)';});
+drop.addEventListener('dragleave', ()=> drop.style.borderColor='');
+drop.addEventListener('drop', e=>{e.preventDefault(); drop.style.borderColor=''; if(e.dataTransfer.files[0]){ fileEl.files = e.dataTransfer.files; onFile(); }});
+fileEl.addEventListener('change', onFile);
+async function onFile(){
+  const f = fileEl.files[0];
+  if(!f) return;
+  fileOk.style.display='block';
+  fileOk.textContent = '✓ ' + f.name + ' (' + (f.size/1024).toFixed(0) + ' KB)';
+  $('dropTitle').textContent = 'Archivo listo — podés cambiarlo haciendo clic';
+  const pv = $('preview');
+  pv.classList.add('on');
+  pv.innerHTML = '<div style="padding:10px 12px; font-size:12px; color:var(--muted);"><span class="spin" style="width:12px;height:12px; vertical-align:middle; margin-right:6px; border-color:var(--line-2); border-top-color:var(--accent);"></span> Kern revisa tu archivo…</div>';
+  try{
+    const fd = new FormData(); fd.append('brief', briefEl.value.trim()); fd.append('file', f);
+    const r = await fetch('/api/preview', {method:'POST', body: fd});
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok){ pv.innerHTML = '<div style="padding:10px 12px; font-size:12px; color:var(--bad);">'+escapeHtml(d.detail||'No se pudo previsualizar')+'</div>'; return; }
+    const cols = d.columns||[], missing = d.missing||[], rows = d.rows||[];
+    const can = d.can_run;
+    let head = '<head><span style="color:'+(can?'var(--ok)':'var(--warn)')+'">'+(can?'✓ Listo para ejecutar':'▲ Falta pulir')+'</span><span style="font-family:var(--mono); font-size:11px; color:var(--faint);">'+escapeHtml(d.inferred_tool||'')+'</span></head>';
+    head += '<div style="padding:8px 12px; font-size:11.5px; color:var(--muted); border-bottom:1px solid var(--line);">Columnas: '+cols.map(c=> missing.includes(c.toLowerCase())?'<b class="bad">'+escapeHtml(c)+'</b>':'<b class="ok">'+escapeHtml(c)+'</b>').join(' · ')+(missing.length?' <span class="bad">→ faltan: '+missing.join(', ')+'</span>':'')+'<br>'+escapeHtml(d.suggestion||'')+'</div>';
+    let table = '';
+    if(rows.length){ table = '<div style="overflow:auto; max-height:160px;"><table><thead><tr>'+cols.map(c=>'<th>'+escapeHtml(c)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>'<td>'+escapeHtml(r[c]||'')+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>'; }
+    pv.innerHTML = head + table;
+  }catch(e){ pv.innerHTML = '<div style="padding:10px 12px; font-size:12px; color:var(--bad);">Error preview: '+escapeHtml(e.message||e)+'</div>'; }
+}
+
+function showErr(msg){ errEl.textContent = msg; errEl.classList.add('on'); }
+function clearErr(){ errEl.classList.remove('on'); }
+
+runBtn.addEventListener('click', async ()=>{
+  clearErr();
+  const brief = briefEl.value.trim();
+  if(!brief){ showErr('Contame qué querés lograr en una frase.'); briefEl.focus(); return; }
+  const file = fileEl.files[0];
+  const useSample = useSampleEl.checked;
+
+  // traducir preguntas simples -> params técnicos
+  const params = {};
+  if((need==='stock' || need===null) && sl.value) params.service_level = parseInt(sl.value,10)/100;
+  if(budgetEl.value) params.budget = parseFloat(budgetEl.value);
+
+  // mapear intención simple a brief mejorado (Kern traduce)
+  let finalBrief = brief;
+  if(need==='stock') finalBrief = brief + ' (calcular puntos de reposición y stock de seguridad)';
+  if(need==='pricing') finalBrief = brief + ' (optimizar precios)';
+
+  const fd = new FormData();
+  fd.append('brief', finalBrief);
+  fd.append('client', 'Modo simple');
+  if(forcedTool) fd.append('job_type', forcedTool);
+  fd.append('params', JSON.stringify(params));
+  fd.append('use_sample', useSample ? 'true' : 'false');
+  if(file) fd.append('file', file);
+
+  runBtn.disabled = true;
+  runBtn.innerHTML = '<span class="spin"></span> Kern está calculando…';
+  resultsEl.classList.remove('on');
+  try{
+    const r = await fetch('/api/jobs', {method:'POST', body: fd});
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok){
+      const msg = r.status===401 ? 'Falta API key en este deploy — probá sin ella o pedí la clave.' : (data.detail || 'Error ' + r.status);
+      showErr(msg); return;
+    }
+    // si Kern todavía duda, apunta a su opción recomendada y reintenta una sola vez
+    if((data.status==='needs_clarification' || data.status==='needs_data') && (data.guided?.options?.length || data.clarifications?.length) && !fd.get('job_type')){
+      const opt = (data.guided?.options||[]).find(o=>o.recommended) || (data.guided?.options||[])[0] || null;
+      const tool = opt?.label || opt?.tool || data.clarifications?.[0] || null;
+      if(tool){
+        fd.set('job_type', tool);
+        const r2 = await fetch('/api/jobs', {method:'POST', body: fd});
+        const d2 = await r2.json().catch(()=>({}));
+        if(r2.ok){ renderResult(d2); pushHist(finalBrief, d2); return; }
+      }
+    }
+    renderResult(data);
+    pushHist(finalBrief, data);
+  }catch(e){ showErr('Fallo de red: ' + (e.message||e)); }
+  finally{ runBtn.disabled=false; runBtn.innerHTML='Ejecutar con Kern ▸'; }
+});
+
+function renderResult(data){
+  resultsEl.classList.add('on');
+  const status = data.status || 'error';
+  const isOk = status==='ok';
+  const conf = Math.round((data.confidence||0)*100);
+
+  // Kern habla en criollo
+  let says = '';
+  if(isOk){
+    says = `<b style="color:var(--accent-bright);">Kern listo — confianza ${conf}%.</b> ${escapeHtml(toneWrap(data.summary||'Plan calculado.', data.tool||'—'))}`;
+    says += `<br><small style="color:var(--muted);">Detecté <b>${escapeHtml(data.tool||'—')}</b> como la mejor herramienta para tu pedido. Abajo tenés qué hacer, en plata y unidades.</small>`;
+  } else if(status==='needs_data' || status==='needs_clarification'){
+    const clar = (data.clarifications||[]).join(' · ');
+    says = `<b style="color:var(--warn);">Kern necesita un dato más:</b> ${escapeHtml(clar || data.summary || 'Faltan datos')}<br><small style="color:var(--muted);">Subí tu Excel o marcá "usar datos de ejemplo" y volvé a ejecutar.</small>`;
+  } else if(status==='qa_failed'){
+    says = `<b style="color:var(--bad);">Kern no entrega porque algo no cierra:</b> ${(data.qa_issues||[]).map(escapeHtml).join(' · ') || escapeHtml(data.summary||'')}<br><small style="color:var(--muted);">Corregí el archivo y reintentá — Kern prefiere no entregar antes que entregar mal.</small>`;
+  } else {
+    says = escapeHtml(data.summary||'Error');
+  }
+  kernSaysEl.innerHTML = says;
+
+  // 3 tarjetas humanas
+  cardsEl.innerHTML = '';
+  if(isOk){
+    // intentar inferir números del summary, sino mostrar genérico
+    const dlCount = Object.keys(data.download_urls||{}).length;
+    const cards = [
+      {k:'Qué hacer', v: dlCount? dlCount+' entregables listos':'Plan listo', sub:'Bajalos abajo y compartilos con tu equipo', cls:'status-ok'},
+      {k:'Riesgo', v: status==='ok'?'Validado por QA':'Revisar', sub:'Kern cruza tus números con simulación', cls:'status-ok'},
+      {k:'Próximo paso', v:'Descargar y ejecutar', sub:'Excel + reporte ya están generados', cls:'status-ok'},
+    ];
+    cards.forEach(c=>{
+      const d=document.createElement('div'); d.className='mini';
+      d.innerHTML = `<b>${c.k}</b><div class="big ${c.cls}">${escapeHtml(c.v)}</div><div class="sub">${escapeHtml(c.sub)}</div>`;
+      cardsEl.appendChild(d);
+    });
+  }
+
+  // downloads
+  downloadsEl.innerHTML='';
+  const urls = data.download_urls||{};
+  Object.entries(urls).forEach(([name,url])=>{
+    const a=document.createElement('a'); a.className='dl'; a.href=url; a.target='_blank'; a.rel='noopener';
+    a.innerHTML = `<span>${escapeHtml(name)}</span><span>abrir ↗</span>`;
+    downloadsEl.appendChild(a);
+  });
+  // share link
+  const shareEl=$('share');
+  const firstUrl = Object.values(urls)[0]||'';
+  const m = firstUrl.match(/\/jobs-output\/([^\/]+)/);
+  if(m){
+    const sid=m[1];
+    const shareUrl = location.origin + '/share/' + sid;
+    shareEl.style.display='flex';
+    shareEl.innerHTML = '<span style="font-size:12px; color:var(--muted);">Compartir:</span><input id="shareInput" readonly style="flex:1; min-width:180px; font-family:var(--mono); font-size:12px; padding:7px 10px; border-radius:8px; border:1px solid var(--line-2); background:var(--ink-2); color:var(--txt-2);" value="'+shareUrl+'"><button onclick="copyShare()" style="font-size:12px; font-weight:600; padding:7px 12px; border-radius:999px; border:1px solid var(--accent); background:rgba(79,209,197,.12); color:var(--accent-bright); cursor:pointer;">Copiar link</button><a href="https://wa.me/?text='+encodeURIComponent(shareUrl)+'" target="_blank" style="font-size:12px; padding:7px 12px; border-radius:999px; border:1px solid var(--line-2); color:var(--muted); text-decoration:none;">WhatsApp ↗</a>';
+    window.copyShare = ()=>{ const i=$('shareInput'); i.select(); document.execCommand('copy'); if(navigator.clipboard) navigator.clipboard.writeText(shareUrl); i.style.borderColor='var(--ok)'; setTimeout(()=> i.style.borderColor='var(--line-2)',1200); };
+  } else { shareEl.style.display='none'; }
+
+  // detalle técnico colapsado
+  if(data.tool || data.citations){
+    detailsEl.style.display='block';
+    const cites = (data.citations||[]).join(' · ');
+    detailInner.innerHTML = `<b>tool:</b> ${escapeHtml(data.tool||'—')} &nbsp; <b>conf:</b> ${conf}%<br><b>status:</b> ${escapeHtml(status)}<br>${cites?'<b>fuentes:</b> '+escapeHtml(cites):''}<br><small>Parámetros técnicos usados: ${escapeHtml(JSON.stringify(data.params||{}))}</small>`;
+  } else detailsEl.style.display='none';
+
+  resultsEl.scrollIntoView({behavior:'smooth', block:'start'});
+}
+const TONE_KEY='kern_tono';
+function getTone(){ return localStorage.getItem(TONE_KEY)||'operario'; }
+function setTone(t){ localStorage.setItem(TONE_KEY,t); document.querySelectorAll('.chip.tone').forEach(b=> b.classList.toggle('active', b.dataset.tone===t)); const last=loadHist()[0]; if(last && last.result) renderResult(last.result); }
+function toneWrap(summary, tool){
+  const t=getTone();
+  if(t==='gerente') return 'Resumen ejecutivo: ' + summary + ' · Herramienta: ' + tool + ' · Enfoque en plata y cobertura.';
+  if(t==='auditor') return summary + ' [tool=' + tool + ' · validado por QA y simulación]';
+  return summary;
+}
+let recog=null;
+(function(){
+  const mic=$('mic'), hint=$('micHint');
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ mic.style.opacity=.5; mic.title='Voz no soportada en este navegador (probá Chrome)'; return; }
+  mic.addEventListener('click', ()=>{
+    if(recog){ recog.stop(); return; }
+    recog = new SR(); recog.lang='es-CL'; recog.interimResults=false; recog.maxAlternatives=1;
+    mic.textContent='● Parar'; mic.style.borderColor='var(--bad)'; mic.style.color='var(--bad)';
+    hint.style.display='block';
+    recog.onresult = e=>{
+      const t=e.results[0][0].transcript;
+      briefEl.value = (briefEl.value ? briefEl.value+' ' : '') + t;
+      setNeed(detectNeed(briefEl.value));
+    };
+    recog.onend = ()=>{ recog=null; mic.textContent='🎤 Dictar'; mic.style.borderColor='var(--line-2)'; mic.style.color='var(--muted)'; hint.style.display='none'; };
+    recog.onerror = ()=>{ recog=null; mic.textContent='🎤 Dictar'; hint.style.display='none'; };
+    recog.start();
+  });
+})();
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+setNeed(null); renderHist(); setTone(getTone());
+</script>
+</body>
+</html>
