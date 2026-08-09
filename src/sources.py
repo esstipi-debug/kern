@@ -47,11 +47,93 @@ def _validate_frame(df: pd.DataFrame) -> pd.DataFrame:
     return df.sort_values(["product_id", "date"])
 
 
-def _series_from_frame(df: pd.DataFrame, product_id: str) -> np.ndarray:
+def _series_from_frame(
+    df: pd.DataFrame, product_id: str, *, period_freq: str | None = None
+) -> np.ndarray:
+    """This SKU's demand on a complete period grid, zero-filled where it did not sell.
+
+    A transactional export has a row only where something happened: a SKU that sold in
+    weeks 1, 50 and 100 of a two-year file contributes three rows, not 104. Returning
+    those three quantities as the series told the engine the SKU sold in three
+    CONSECUTIVE periods, which is wrong in both directions at once:
+
+      - ``src.forecasting.average_demand_interval`` is ``size / count_nonzero``, so with
+        no zero rows it returned exactly 1.0 for every SKU in every real export. Nothing
+        ever measured as intermittent, ``is_intermittent`` was always False, and the
+        Croston/TSB branch (``src/forecasting.py``'s dispatch) was unreachable from
+        production data -- the whole Syntetos-Boylan segmentation collapsed to "smooth".
+      - the mean was computed over demand periods only, so ``to_engine_inputs``'
+        ``forecast * periods_per_year`` overstated annual demand by roughly the SKU's
+        true ADI. For the three-sales-in-two-years case above that is ~17x.
+
+    So: reindex onto a complete grid. It starts at this SKU's first observed sale, not
+    the file's first date -- padding before a product existed would invent absence and
+    drag its mean down -- and runs to the file's last date, because silence after a
+    SKU's last sale is real zero demand, not missing data.
+
+    ``period_freq`` is the pandas offset alias the dates were bucketed to ("W", "M",
+    ...). Supply it whenever it is known -- ``jobs/intake.py`` snaps every date to a
+    period start and therefore knows it exactly. Without it the grid falls back to the
+    distinct dates the FILE contains, which is complete only as long as *some* SKU sold
+    in every period; on a uniformly sparse portfolio that fallback still under-counts,
+    so it is a best effort, not a guarantee.
+
+    Same-date rows are summed rather than treated as separate periods: for a canonical
+    frame out of ``jobs/intake.py`` there is at most one row per (SKU, date) and the sum
+    is a no-op, but ``CsvDemandSource`` reads raw files where two transactions on one day
+    are two rows, and those are one period's demand.
+    """
     sku = df[df["product_id"] == product_id]
     if sku.empty:
         raise ValueError(f"no rows for product_id={product_id!r}")
-    return sku["quantity"].astype(float).to_numpy()
+
+    by_date = sku.groupby("date")["quantity"].sum().astype(float).sort_index()
+    first, last = by_date.index.min(), df["date"].max()
+    return by_date.reindex(_period_grid(df, first, last, period_freq), fill_value=0.0).to_numpy()
+
+
+def _period_grid(
+    df: pd.DataFrame, first, last, period_freq: str | None
+) -> pd.DatetimeIndex | pd.Series:
+    """The complete set of period starts from ``first`` to ``last``.
+
+    Anchoring matters more than it looks. ``pd.date_range(first, last, freq="W")``
+    does NOT step from ``first``: "W" is W-SUN, so pandas snaps the start to the next
+    Sunday and every generated date misses the frame's own (Saturday-anchored, say)
+    period starts. The reindex then matches nothing and a real demand history comes
+    back as an all-zero series -- silently, because zero-filling is exactly what this
+    function is meant to do. So for fixed-width periods, convert the alias to its
+    Timedelta and step from ``first`` itself, which is by construction a date the data
+    actually uses. Month/quarter/year offsets have no fixed width; those stay on the
+    anchored path, where intake's own month-start snapping already agrees.
+    """
+    if period_freq:
+        offset = pd.tseries.frequencies.to_offset(period_freq)
+        step = _fixed_width(offset)
+        if step is not None:
+            return pd.date_range(first, last, freq=step)
+        return pd.date_range(first, last, freq=offset)       # M, Q, Y -> anchored
+
+    observed = df["date"].drop_duplicates().sort_values()
+    return observed[observed >= first]
+
+
+def _fixed_width(offset) -> pd.Timedelta | None:
+    """The offset's constant width, or None when it has none (month/quarter/year).
+
+    ``Week`` needs its own branch: it is fixed-width (7 days x n) but pandas models it
+    as an ANCHORED offset, so ``pd.Timedelta(offset)`` raises for it exactly as it does
+    for ``MonthEnd``. Lumping the two together is what made the first version of this
+    fix silently wrong -- weekly data fell through to the anchored path, the grid
+    started on the next Sunday instead of the data's own Monday period starts, and a
+    real demand history reindexed to all zeros.
+    """
+    if isinstance(offset, pd.tseries.offsets.Week):
+        return pd.Timedelta(days=7 * offset.n)
+    try:
+        return pd.Timedelta(offset)
+    except (ValueError, TypeError):
+        return None
 
 
 def _metadata_from_frame(
@@ -114,16 +196,22 @@ class _FrameDemandSource:
         *,
         periods_per_year: float = 52.0,
         default_lead_time_periods: float = 2.0,
+        period_freq: str | None = None,
     ) -> None:
         self._df = _validate_frame(frame)
         self._periods_per_year = periods_per_year
         self._default_lead_time_periods = default_lead_time_periods
+        #: Offset alias the dates were bucketed to, when the caller knows it. See
+        #: _series_from_frame: it turns the demand grid from "periods this SKU sold in"
+        #: into "periods this SKU existed for", which is what every downstream model
+        #: assumes it is being handed.
+        self._period_freq = period_freq
 
     def list_products(self) -> list[str]:
         return sorted(self._df["product_id"].unique().tolist())
 
     def demand_series(self, product_id: str) -> np.ndarray:
-        return _series_from_frame(self._df, product_id)
+        return _series_from_frame(self._df, product_id, period_freq=self._period_freq)
 
     def metadata(self, product_id: str) -> ProductMetadata:
         return _metadata_from_frame(

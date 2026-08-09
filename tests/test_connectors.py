@@ -58,8 +58,12 @@ def test_demand_frame_feeds_the_demand_source_pipeline():
     src = DataFrameDemandSource(store.demand_frame())
 
     assert set(src.list_products()) == {"SKU-1", "SKU-2"}
-    # SKU-1 was ordered 3 then 2 -> the engine sees that demand series.
-    assert list(src.demand_series("SKU-1")) == [3.0, 2.0]
+    # SKU-1 was ordered 3 then 2, and sold NOTHING in the third period (the one where
+    # only SKU-2 moved). That trailing zero is the point of the period grid in
+    # src/sources.py: a period a SKU did not sell in is demand of zero, not a period
+    # that did not happen. Dropping it is what used to make every SKU in every real
+    # export measure as ADI 1.0 / "smooth".
+    assert list(src.demand_series("SKU-1")) == [3.0, 2.0, 0.0]
 
 
 # -- write side: restock through the safe-staging plane -----------------------
