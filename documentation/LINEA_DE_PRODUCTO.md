@@ -94,11 +94,24 @@ tools "universales" de Growth a Starter fue correcta y está bien argumentada en
 `newsvendor` · `excel_replenishment` · `cycle_count` · `pricing` · `excess_obsolete` ·
 `financial_kpis` · `reconciliation` · `landed_cost` · `returns` · `risk`
 
-**Un ascenso al núcleo:** `sourcing`. Hoy vive en Growth (QBR trimestral), pero corre
-`src/supplier_scorecard.py`, que es **el motor de la salida #1** — la que 05-GTM §5 llama
-*"si solo pudieras entregar una, entrega esta"*. Que la salida que se usa para ganar al
-cliente en el escaneo gratis luego solo esté disponible dos tiers más arriba es un
-contrasentido comercial. Va al núcleo como corrida mensual.
+**Un ascenso recomendado, y por qué no se ejecutó todavía:** `sourcing`. Hoy vive en
+Growth (QBR trimestral), pero corre `src/supplier_scorecard.py`, que es **el motor de la
+salida #1** — la que 05-GTM §5 llama *"si solo pudieras entregar una, entrega esta"*. Que
+la salida que gana al cliente en el escaneo gratis luego solo esté disponible dos tiers
+más arriba es un contrasentido comercial.
+
+Se midió antes de moverlo y **no se movió**, por un riesgo concreto. El paso tendría que
+entrar `required=False`, y el propio docstring de `package_specs.py` documenta que eso no
+protege: *"a present-but-malformed file blocks the whole package the same way a missing
+required file does, so a soft skip doesn't actually protect this one"* — la lección que
+dejó `pricing`. Y `jobs/sourcing_job.py` usa `require_all_criteria=True` en `prepare`, o
+sea **rechaza por nombre** cuando faltan columnas. Un cliente Starter que mande un
+`proveedores.csv` parcial bloquearía su entregable mensual completo a cambio de un bonus.
+
+Queda como recomendación con precondición: primero hacer que un paso opcional que rechaza
+degrade a `skipped` en vez de bloquear el paquete, después mover `sourcing`. Mientras
+tanto el cliente **ya ve** esa salida: está en el escaneo gratis, que es donde 05-GTM la
+quiere.
 
 ### Segundo anillo — solo con complejidad real (21 tools)
 
@@ -217,7 +230,8 @@ el trabajo de ingeniería no está bloqueado por esa decisión comercial.
 1. **No se registra ninguna tool nueva** salvo la que un paquete justifique. Hoy eso es
    ninguna: `kanban` y `seo_audit` quedan fuera por decisión, `seo_priority` queda pendiente
    del problema de citas.
-2. **`sourcing` sube al núcleo** (de QBR trimestral a corrida mensual).
+2. **`sourcing` NO sube al núcleo todavía** — recomendado, bloqueado por la semántica de
+   paso opcional que rechaza (§2). Precondición antes de tocar `package_specs.py`.
 3. **Tres SKU declarados en `documentation/paquetes/` no tienen `PackageSpec`**
    (`price_intelligence`, `org_friction_audit`, y `evidencia-auditoria-inventario` que
    además no tiene código). O se implementan o se retiran del directorio: un one-pager que
@@ -242,6 +256,6 @@ Cada decisión de arriba es separable. Si alguien quiere revertir una sola:
 | Un solo bucle de producto | Que un operador solo puede vender y operar 5 tiers + 3 proyectos con 0 clientes hoy |
 | Retirar Growth/Scale del menú | Que un comprador frío elige entre "26 tools" y "35 tools" por criterio propio |
 | Retirar el Retainer Ejecutivo | Que 1,4× por gobierno sin capacidad nueva no es honorario de consultoría |
-| `sourcing` al núcleo | Que la salida que gana al cliente puede vivir dos tiers arriba del que lo compra |
+| Dejar `sourcing` fuera del núcleo por ahora | Que un `proveedores.csv` parcial bloqueando el entregable mensual completo es un precio aceptable por adelantar la salida #1 |
 | No registrar `kanban` | Que una tercera respuesta a la pregunta que ya responden DDMRP y `(s,Q)` agrega algo |
 | No registrar `seo_audit` | Que un crawl técnico de sitio es cadena de suministro |
