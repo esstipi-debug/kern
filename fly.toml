@@ -23,8 +23,12 @@ primary_region = "iad"          # CHANGE ME if deploying your own copy elsewhere
   #   - autonomy      the T1/T2/T3 autonomy + approval audit trail
   #   - state         the system-state snapshots the monitors read
   #   - pricing       the price-watch observation ledger + its SKU map
+  #   - leads         captured demo-lead emails, and their mini-reports/drafts
   # For the price ledger that made the recurring price-watch cron pointless
   # past one deploy cycle: it kept re-acquiring a history it could never keep.
+  # For leads: every email captured through /demo, /paquetes' funnel, or any of
+  # the /api/demo-* scans was gone on the next deploy - the only record of who
+  # asked was never durable.
   # Each of these stores mkdir(parents=True, exist_ok=True) on its own base, so
   # pointing them at fresh subpaths of the volume needs no migration - and there
   # is nothing to migrate anyway, since the old location never survived a deploy.
@@ -36,6 +40,8 @@ primary_region = "iad"          # CHANGE ME if deploying your own copy elsewhere
   LINCHPIN_STATE_PATH = "/data/state"
   LINCHPIN_PRICING_LEDGER_PATH = "/data/pricing_intel/ledger"
   LINCHPIN_SKU_MAP_PATH = "/data/pricing_intel/sku_map"
+  LINCHPIN_LEADS_DIR = "/data/leads"
+  LINCHPIN_LEAD_REPORTS_DIR = "/data/leads/reports"
   # 2 workers OOM-killed a 512mb VM within ~10-25s of boot (each uvicorn worker
   # loads its own copy of pandas/numpy/scipy + the orchestrator + the L3
   # knowledge graph - not shared across worker processes). Confirmed live: 1

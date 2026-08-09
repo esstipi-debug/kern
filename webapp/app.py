@@ -25,14 +25,14 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 # Make `src` importable no matter where uvicorn is launched from.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import pandas as pd  # noqa: E402
-from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
@@ -59,6 +59,7 @@ from scm_agent.events import DEFAULT_PATH as EVENTS_DEFAULT_PATH  # noqa: E402
 from scm_agent.events import Event, EventLedger  # noqa: E402
 from scm_agent.monitors import EVENT_COMPETITOR_PRICE_MOVE, run_all_monitors  # noqa: E402
 from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
+from src.csv_io import read_csv_robust  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
 from src.mcp_keys import DEFAULT_PATH as MCP_KEYS_DEFAULT_PATH  # noqa: E402
 from src.mcp_keys import McpKeyStore  # noqa: E402
@@ -116,7 +117,14 @@ OPERATOR_DOCS_DIR = _REPO_ROOT / "documentation" / "operator"
 PAQUETES_DOCS_DIR = _REPO_ROOT / "documentation" / "paquetes"
 JOBS_OUTPUT_DIR = _REPO_ROOT / "webapp" / "_jobs_output"
 JOBS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-LEADS_DIR = _REPO_ROOT / "webapp" / "_leads"
+# Captured demo-lead emails (PII; gitignored). Same convention as LEAD_REPORTS_DIR
+# above: without an override this lives inside the checkout and a deploy that
+# recreates the filesystem -- which is every deploy here, see fly.toml's volume
+# mounts -- silently drops every lead captured since the last one.
+LEADS_DIR = Path(
+    os.environ.get("LINCHPIN_LEADS_DIR", "").strip()
+    or (_REPO_ROOT / "webapp" / "_leads")
+)
 LEADS_DIR.mkdir(parents=True, exist_ok=True)
 LEADS_FILE = LEADS_DIR / "leads.jsonl"  # one JSON object per captured demo lead (PII; gitignored)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -567,8 +575,33 @@ def api_health() -> dict:
     return {"ok": True, "skus": len(_load_forecasts())}
 
 
+_UTM_KEYS = ("utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term")
+
+
+def _acquisition_context(request: Request) -> dict[str, str]:
+    """Where a lead came from, read entirely off the Referer header so it needs
+    no frontend change: any ``utm_*`` on the page the visitor submitted from
+    rides along in that URL's own query string.
+
+    Without this every lead record was anonymous past "which endpoint captured
+    it" -- no distinction between a click from a campaign and a bookmark, so the
+    CAC that decides LatAm-vs-global (05-GTM-KERN.md §6) could never be measured
+    even once real traffic exists.
+    """
+    referer = request.headers.get("referer", "")
+    if not referer:
+        return {}
+    out = {"referer": referer[:512]}
+    qs = parse_qs(urlparse(referer).query)
+    for key in _UTM_KEYS:
+        values = qs.get(key)
+        if values and values[0]:
+            out[key] = values[0][:128]
+    return out
+
+
 @app.post("/api/leads", dependencies=[Depends(security.rate_limit)])
-async def api_leads(email: str = Form(...), source: str = Form("demo")) -> dict:
+async def api_leads(request: Request, email: str = Form(...), source: str = Form("demo")) -> dict:
     """Capture a demo lead: validate the email and append it to a JSONL store.
 
     The store lives under webapp/_leads/ (gitignored — it holds PII) and is never
@@ -582,6 +615,7 @@ async def api_leads(email: str = Form(...), source: str = Form("demo")) -> dict:
         "email": addr,
         "source": clean_source,
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "acquisition": _acquisition_context(request),
     }
     with LEADS_FILE.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -791,6 +825,7 @@ def _lead_dir_for(addr: str) -> Path:
 
 @app.post("/api/demo-scan", dependencies=[Depends(security.rate_limit)])
 async def api_demo_scan(
+    request: Request,
     email: str = Form(...),
     use_sample: bool = Form(False),
     file: UploadFile | None = File(None),
@@ -818,7 +853,7 @@ async def api_demo_scan(
         raise HTTPException(status_code=400, detail="sube un CSV de stock o marca use_sample")
 
     try:
-        df = pd.read_csv(data_path)
+        df = read_csv_robust(data_path)
     except Exception as exc:  # pandas raises several parse/encoding error types
         raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
     try:
@@ -850,6 +885,7 @@ async def api_demo_scan(
         "dataset": dataset_label,
         "status": "ok" if result.ok else "qa_failed",
         "result": result.headline if result.ok else None,
+        "acquisition": _acquisition_context(request),
     }
     with LEADS_FILE.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -867,6 +903,7 @@ async def api_demo_scan(
 
 @app.post("/api/demo-lead-time", dependencies=[Depends(security.rate_limit)])
 async def api_demo_lead_time(
+    request: Request,
     email: str = Form(...),
     use_sample: bool = Form(False),
     file: UploadFile | None = File(None),
@@ -895,7 +932,7 @@ async def api_demo_lead_time(
         )
 
     try:
-        df = pd.read_csv(data_path)
+        df = read_csv_robust(data_path)
     except Exception as exc:  # pandas raises several parse/encoding error types
         raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
     try:
@@ -930,6 +967,7 @@ async def api_demo_lead_time(
         "dataset": dataset_label,
         "status": "ok" if result.ok else "qa_failed",
         "result": result.headline if result.ok else None,
+        "acquisition": _acquisition_context(request),
     }
     with LEADS_FILE.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -952,6 +990,7 @@ async def api_demo_lead_time(
 
 @app.post("/api/demo-gap-value", dependencies=[Depends(security.rate_limit)])
 async def api_demo_gap_value(
+    request: Request,
     email: str = Form(...),
     use_sample: bool = Form(False),
     receipts: UploadFile | None = File(None),
@@ -992,8 +1031,8 @@ async def api_demo_gap_value(
         )
 
     try:
-        receipts_df = pd.read_csv(receipts_path)
-        demand_df = pd.read_csv(demand_path)
+        receipts_df = read_csv_robust(receipts_path)
+        demand_df = read_csv_robust(demand_path)
     except Exception as exc:  # pandas raises several parse/encoding error types
         raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
     try:
@@ -1023,6 +1062,7 @@ async def api_demo_gap_value(
         "dataset": dataset_label,
         "status": "ok" if result.ok else "qa_failed",
         "result": result.headline if result.ok else None,
+        "acquisition": _acquisition_context(request),
     }
     with LEADS_FILE.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -1044,6 +1084,7 @@ async def api_demo_gap_value(
 
 @app.post("/api/demo-price-scan", dependencies=[Depends(security.rate_limit)])
 async def api_demo_price_scan(
+    request: Request,
     email: str = Form(...),
     urls: str = Form(...),
     product_id: str = Form("Product"),
@@ -1098,6 +1139,7 @@ async def api_demo_price_scan(
         "email": addr, "source": "demo-price-scan", "ts": ts, "dataset": product_id,
         "status": "ok" if result.ok else "qa_failed",
         "result": result.headline,
+        "acquisition": _acquisition_context(request),
     }
     with LEADS_FILE.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")

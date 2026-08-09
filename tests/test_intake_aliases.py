@@ -14,6 +14,7 @@ from jobs.intake import (
     RECEIPT_REQUIRED,
     _norm,
     detect_columns,
+    load_table,
 )
 
 
@@ -77,3 +78,19 @@ def test_el_juego_por_defecto_sigue_siendo_el_de_demanda():
     assert m.ok
     assert set(m.mapping) >= {"date", "product_id", "quantity"}
     assert "supplier" not in m.mapping  # no se cuela el juego de recepciones
+
+
+def test_load_table_lee_un_export_chileno_punto_y_coma_cp1252(tmp_path):
+    """El caso que 08-MEDICION.md §8 media: un Excel guardado en Windows en
+    espaniol usa `;` (la coma decimal ya esta ocupada) y cp1252. Antes fallaba
+    con un UnicodeDecodeError o ParserError crudo antes de llegar a detect_columns.
+    """
+    p = tmp_path / "export.csv"
+    contenido = "Código;Descripción;Cantidad;Fecha\nA-01;Válvula;12;2026-01-01\n"
+    p.write_bytes(contenido.encode("cp1252"))
+
+    df = load_table(p)
+    m = detect_columns(df)
+
+    assert m.ok, m.unmatched_required
+    assert df.loc[0, "Descripción"] == "Válvula"

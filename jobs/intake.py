@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.csv_io import read_csv_robust
+
 CANONICAL_REQUIRED = ("date", "product_id", "quantity")
 # ``revenue`` is detected but never emitted: it exists only to recover a real
 # unit cost (revenue / quantity) from files that carry money but no cost column.
@@ -281,7 +283,7 @@ def load_table(path: str | Path) -> pd.DataFrame:
     p = Path(path)
     if p.suffix.lower() in (".xlsx", ".xlsm", ".xls"):
         return pd.read_excel(p)
-    return pd.read_csv(p)
+    return read_csv_robust(p)
 
 
 def _normalize_core(

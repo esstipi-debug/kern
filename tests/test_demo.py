@@ -41,6 +41,37 @@ def test_lead_capture_appends_normalized_record(tmp_path, monkeypatch):
     assert rec["ts"].endswith("Z")
 
 
+def test_lead_capture_reads_utm_and_referer_off_the_referer_header(tmp_path, monkeypatch):
+    """utm_* rides on the referring page's own URL -- the funnel page the
+    visitor was on when they submitted -- so this needs no frontend change."""
+    leads = tmp_path / "leads.jsonl"
+    monkeypatch.setattr(appmod, "LEADS_FILE", leads)
+
+    r = client.post(
+        "/api/leads",
+        data={"email": "a@x.com"},
+        headers={"referer": "https://linchpin.fly.dev/demo?utm_source=google&utm_medium=cpc&noise=1"},
+    )
+    assert r.status_code == 200
+
+    rec = json.loads(leads.read_text(encoding="utf-8").splitlines()[0])
+    assert rec["acquisition"]["referer"].startswith("https://linchpin.fly.dev/demo?")
+    assert rec["acquisition"]["utm_source"] == "google"
+    assert rec["acquisition"]["utm_medium"] == "cpc"
+    assert "noise" not in rec["acquisition"]  # solo se levantan las claves utm_*
+
+
+def test_lead_capture_without_a_referer_still_writes_a_valid_record(tmp_path, monkeypatch):
+    leads = tmp_path / "leads.jsonl"
+    monkeypatch.setattr(appmod, "LEADS_FILE", leads)
+
+    r = client.post("/api/leads", data={"email": "a@x.com"})
+    assert r.status_code == 200
+
+    rec = json.loads(leads.read_text(encoding="utf-8").splitlines()[0])
+    assert rec["acquisition"] == {}
+
+
 def test_lead_capture_is_append_only(tmp_path, monkeypatch):
     leads = tmp_path / "leads.jsonl"
     monkeypatch.setattr(appmod, "LEADS_FILE", leads)

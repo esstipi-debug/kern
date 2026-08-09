@@ -22,9 +22,20 @@ except ImportError:
     pytest.importorskip("multipart")
 from fastapi.testclient import TestClient  # noqa: E402
 
+import webapp.app as appmod  # noqa: E402
 from webapp.app import app  # noqa: E402
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_leads_file(tmp_path, monkeypatch):
+    """The endpoint tests below post real lead emails to capture the SSRF and
+    validation behaviour -- without this, every run appended another
+    ``lead@example.com`` to the real ``webapp/_leads/leads.jsonl``. That file
+    ended up with 120 records, 116 of them this fixture's absence.
+    """
+    monkeypatch.setattr(appmod, "LEADS_FILE", tmp_path / "leads.jsonl")
 
 
 def _mock_client() -> httpx.Client:
