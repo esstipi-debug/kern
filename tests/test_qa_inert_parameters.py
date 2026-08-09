@@ -52,18 +52,21 @@ ALLOWLIST: set[tuple[str, str, str]] = {
     # dispatch table; a check that is fully self-contained (no external context
     # needed) still takes the parameter to match the shared call site, and names it
     # `_` to say so at the definition itself.
-    ("src/bateria/comprobaciones.py", "t01_pronostico_con_banda", "_"),
-    ("src/bateria/comprobaciones.py", "t02_sesgo_y_precision", "_"),
-    ("src/bateria/comprobaciones.py", "t04_politica_con_ss_sensible_al_lead_time", "_"),
-    ("src/bateria/comprobaciones.py", "t05_propuesta_de_oc_por_proveedor", "_"),
-    ("src/bateria/comprobaciones.py", "t06_ajuste_a_las_condiciones_del_proveedor", "_"),
-    ("src/bateria/comprobaciones.py", "t08_lead_time_real_por_proveedor", "_"),
-    ("src/bateria/comprobaciones.py", "t09_scorecard_de_proveedores", "_"),
-    ("src/bateria/comprobaciones.py", "t10_servicio_realizado_al_cliente", "_"),
-    ("src/bateria/comprobaciones.py", "t12_markdown_con_unidades_y_margen", "_"),
-    ("src/bateria/comprobaciones.py", "t13_exposicion_a_disrupcion", "_"),
-    ("src/bateria/comprobaciones.py", "t20_flujo_de_devoluciones", "_"),
-    ("src/bateria/comprobaciones.py", "t14_acta_de_sop", "_"),
+    # (comprobaciones.py se partio en un paquete por familia de tarea; las rutas
+    # siguen a la funcion, el criterio no cambio)
+    ("src/bateria/comprobaciones/pronostico.py", "t01_pronostico_con_banda", "_"),
+    ("src/bateria/comprobaciones/pronostico.py", "t02_sesgo_y_precision", "_"),
+    ("src/bateria/comprobaciones/politica.py", "t04_politica_con_ss_sensible_al_lead_time", "_"),
+    ("src/bateria/comprobaciones/abastecimiento.py", "t05_propuesta_de_oc_por_proveedor", "_"),
+    ("src/bateria/comprobaciones/abastecimiento.py",
+     "t06_ajuste_a_las_condiciones_del_proveedor", "_"),
+    ("src/bateria/comprobaciones/proveedores.py", "t08_lead_time_real_por_proveedor", "_"),
+    ("src/bateria/comprobaciones/proveedores.py", "t09_scorecard_de_proveedores", "_"),
+    ("src/bateria/comprobaciones/proveedores.py", "t10_servicio_realizado_al_cliente", "_"),
+    ("src/bateria/comprobaciones/comercial.py", "t12_markdown_con_unidades_y_margen", "_"),
+    ("src/bateria/comprobaciones/comercial.py", "t13_exposicion_a_disrupcion", "_"),
+    ("src/bateria/comprobaciones/comercial.py", "t20_flujo_de_devoluciones", "_"),
+    ("src/bateria/comprobaciones/comercial.py", "t14_acta_de_sop", "_"),
 }
 
 
