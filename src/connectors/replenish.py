@@ -20,7 +20,7 @@ from nosilo_core.guided import GuidedOutcome, HandoffPacket, Residual, as_execut
 from nosilo_core.writeback import Changeset
 
 from src.connectors import InventorySource, Order
-from src.forecasting import forecast_demand
+from src.forecasting import MIN_PERIODS_FOR_POLICY, forecast_demand
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,13 @@ class ReplenishmentLine:
     forecast_per_period: float
     target: float
     restock_qty: float
+    #: "ok" when the line carries a real, evidence-backed quantity;
+    #: "insufficient_history" when the SKU's order history was too short to
+    #: forecast from and the engine declined to size it (restock_qty stays 0).
+    status: str = "ok"
+    #: Order-days observed for this SKU. See demand_by_sku()'s docstring on why
+    #: this is order-DAYS and not calendar periods.
+    n_observations: int = 0
 
 
 @dataclass(frozen=True)
@@ -50,9 +57,41 @@ def _demand_by_sku(orders: list[Order]) -> dict[str, list[float]]:
     return {sku: [dates[d] for d in sorted(dates)] for sku, dates in by_date.items()}
 
 
-def _packet(restock: dict[str, float], changeset: Changeset | None) -> GuidedOutcome:
+def _refusal_residual(refused: tuple[str, ...]) -> Residual:
+    return Residual(
+        description=f"{len(refused)} SKU(s) had too little order history to forecast from "
+                    f"and were NOT sized: {', '.join(sorted(refused))}.",
+        risk_if_skipped="these SKUs are unplanned, not well-stocked - a slow mover with a "
+                        "genuine gap and a brand-new SKU look identical here; review each "
+                        "by hand before assuming no action is needed.",
+    )
+
+
+def _packet(
+    restock: dict[str, float],
+    changeset: Changeset | None,
+    refused: tuple[str, ...] = (),
+) -> GuidedOutcome:
     """Wrap the restock as a protected handoff (or executed when there's nothing to do)."""
     if not restock:
+        # A portfolio where every SKU was REFUSED is not a portfolio that is well
+        # stocked, and must never report as one. Route the refusals to a human
+        # instead: a refusal that goes nowhere is exactly the dead end the
+        # never-unprotected contract (nosilo_core.guided.verify_guided) exists to stop.
+        if refused:
+            packet = HandoffPacket(
+                title=f"Unplanned SKUs: {len(refused)}",
+                steps=["Review each SKU's order history by hand.",
+                       "Set an opening buy manually, or wait for more sales history."],
+                artifact="\n".join(f"  {sku}" for sku in sorted(refused)),
+                data={"insufficient_history": list(sorted(refused))},
+                risk_if_skipped="An unplanned SKU stocks out with nobody watching it.",
+            )
+            return as_handoff(
+                f"No SKU could be planned: {len(refused)} had too little order history.",
+                [packet],
+                residuals=[_refusal_residual(refused)],
+            )
         return as_executed("All SKUs are above target cover - no restock needed.")
 
     artifact = "\n".join(f"  {sku}: +{qty:g} units" for sku, qty in sorted(restock.items()))
@@ -68,11 +107,13 @@ def _packet(restock: dict[str, float], changeset: Changeset | None) -> GuidedOut
         data=dict(restock),
         risk_if_skipped="The thin SKUs stock out before the next replenishment cycle.",
     )
-    residual = Residual(
+    residuals = [Residual(
         description="Approve and apply the restock (or issue the POs).",
         risk_if_skipped="Stockouts and lost sales on the under-covered SKUs.",
-    )
-    return as_handoff(f"Restock {len(restock)} SKU(s) to target cover.", [packet], residuals=[residual])
+    )]
+    if refused:
+        residuals.append(_refusal_residual(refused))
+    return as_handoff(f"Restock {len(restock)} SKU(s) to target cover.", [packet], residuals=residuals)
 
 
 def plan_replenishment(
@@ -82,6 +123,7 @@ def plan_replenishment(
     method: str = "auto",
     store: object | None = None,
     idempotency_key: str = "replenish-1",
+    min_observations: int = MIN_PERIODS_FOR_POLICY,
 ) -> ReplenishmentPlan:
     """Forecast each SKU and plan the restock to ``cover_periods`` of demand.
 
@@ -93,14 +135,31 @@ def plan_replenishment(
 
     lines: list[ReplenishmentLine] = []
     restock: dict[str, float] = {}
+    refused: list[str] = []
     for product in source.list_products():
         sku = product.sku
         history = series.get(sku, [])
-        forecast = float(forecast_demand(history, method=method).forecast) if history else 0.0
-        target = forecast * cover_periods
         current = on_hand.get(sku, 0.0)
+
+        # Too few observations to forecast from. This path is thinner than the CSV
+        # path's (src/forecasting.py's MIN_PERIODS_FOR_POLICY, shared) and needs the
+        # gate MORE, not less: there is no safety stock here at all - the target is
+        # a bare `forecast * cover_periods` - so a forecast built on two order-days
+        # goes straight into a purchase quantity with nothing damping it.
+        if len(history) < min_observations:
+            lines.append(ReplenishmentLine(
+                sku, current, 0.0, 0.0, 0.0,
+                status="insufficient_history", n_observations=len(history),
+            ))
+            refused.append(sku)
+            continue
+
+        forecast = float(forecast_demand(history, method=method).forecast)
+        target = forecast * cover_periods
         qty = max(0.0, round(target - current, 1))
-        lines.append(ReplenishmentLine(sku, current, forecast, target, qty))
+        lines.append(ReplenishmentLine(
+            sku, current, forecast, target, qty, n_observations=len(history),
+        ))
         if qty > 0:
             restock[sku] = qty
 
@@ -112,6 +171,6 @@ def plan_replenishment(
     return ReplenishmentPlan(
         lines=tuple(lines),
         restock=restock,
-        outcome=_packet(restock, changeset),
+        outcome=_packet(restock, changeset, tuple(refused)),
         changeset=changeset,
     )

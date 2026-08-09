@@ -163,6 +163,28 @@ def _service_level_text(report: JobReport) -> str:
     return f"differentiated per SKU across {len(levels)} levels ({per_sku})"
 
 
+def _service_level_clause(report: JobReport) -> str:
+    """The service-level clause of the executive summary, read off the SKUs.
+
+    Same rule as the Assumptions bullet, and for the same reason: quoting
+    ``params['service_level']`` states the *default argument*, which
+    ``service_levels=`` / ``differentiate_by_class=`` / ``observed_fill_rates=``
+    each override per SKU. A run differentiated across 90% and 99% used to open
+    with "at a 95% cycle service level" -- a figure no SKU ran at, contradicting
+    the Assumptions section of the same document three sections below.
+    """
+    levels = sorted({round(r.service_level, 4) for r in report.recommendations})
+    if len(levels) == 1:
+        return f", at a **{levels[0] * 100:.1f}%** cycle service level. "
+    if not levels:  # no SKU survived the run; the default is all there is to state
+        return f", at a **{report.params['service_level'] * 100:.1f}%** cycle service level. "
+    per_sku = ", ".join(f"{lv * 100:.1f}%" for lv in levels)
+    return (
+        f", at cycle service levels **differentiated per SKU** across "
+        f"{len(levels)} levels ({per_sku}). "
+    )
+
+
 def _methodology_lines(report: JobReport) -> list[str]:
     """Describe the run that happened - read off the recommendations it produced."""
     recs = report.recommendations
@@ -298,7 +320,6 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
     """A written report: summary, recommendations, findings, methodology."""
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    p = report.params
     over = report.budget is not None and report.requested_investment > report.budget
 
     lines: list[str] = []
@@ -308,7 +329,7 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
         f"Analyzed **{report.n_skus} SKUs**. Recommended inventory investment is "
         f"**${_fmt(report.final_investment)}**"
         + (f" against a budget of **${_fmt(report.budget)}**" if report.budget is not None else "")
-        + f", at a **{p['service_level'] * 100:.0f}%** cycle service level. "
+        + _service_level_clause(report)
         + (f"{report.n_at_risk} SKU(s) show high forecast bias and {report.n_intermittent} are intermittent (review recommended)."
            if (report.n_at_risk or report.n_intermittent) else "All SKUs are on track.")
     )

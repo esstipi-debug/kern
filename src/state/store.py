@@ -79,6 +79,43 @@ def _ensure_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+# A client id must be a plain name. Deliberately NOT passed through
+# _sanitize() -- see ClientIdError for why rewriting one would be a leak.
+_CLIENT_ID = re.compile(r"\A[A-Za-z0-9._-]+\Z")
+_RESERVED_CLIENT_IDS = frozenset({".", ".."})
+
+
+class ClientIdError(ValueError):
+    """``client_id`` is not usable as a partition name.
+
+    Rejected rather than sanitized, which is the opposite of what ``cycle_id``
+    gets. Two reasons, and either alone is decisive:
+
+    - ``_SAFE_CHARS`` maps every character outside ``[A-Za-z0-9._-]`` to
+      ``_``, so "a/b" and "a_b" would resolve to the SAME directory. Silently
+      merging two clients into one partition is the exact cross-client leak
+      that partitioning exists to prevent.
+    - "." and ".." are inside that character class, so sanitizing returns them
+      untouched and ``base / ".."`` walks straight out of the base path.
+
+    An identity is the one kind of token you must never quietly rewrite.
+    """
+
+    def __init__(self, client_id: object) -> None:
+        self.client_id = client_id
+        super().__init__(
+            f"invalid client_id {client_id!r}: expected a non-empty name of letters, digits,"
+            " '.', '_' or '-' (a client id is rejected, never rewritten -- rewriting could map"
+            " two different clients onto one partition)"
+        )
+
+
+def _validate_client_id(client_id: str) -> str:
+    if not isinstance(client_id, str) or client_id in _RESERVED_CLIENT_IDS or not _CLIENT_ID.match(client_id):
+        raise ClientIdError(client_id)
+    return client_id
+
+
 class DuplicateCycleError(ValueError):
     """A domain already has a stored snapshot for this exact ``cycle_id``.
 
@@ -305,8 +342,44 @@ def default_store() -> StateStore:
     own ``StateStore(tmp_path / "state")`` and pass it explicitly to
     ``system_state.snapshot``/``latest``/``history`` instead of touching this
     singleton, so they never read or write the real ``data/state`` directory.
+
+    This is the UNNAMED partition -- shared by every caller that does not name
+    a client. It is no longer reachable by accident: ``system_state`` raises
+    ``MissingStoreError`` on ``store=None`` rather than resolving to it, so
+    landing here is now always a written-down decision.
     """
     global _default_store
     if _default_store is None:
         _default_store = StateStore(DEFAULT_BASE_PATH)
     return _default_store
+
+
+def store_for(client_id: str | None = None, *, base_path: str | Path = DEFAULT_BASE_PATH) -> StateStore:
+    """The state store for one client, isolated from every other client's.
+
+    ``client_id=None`` is the unnamed partition and maps to ``base_path``
+    ITSELF, not to a subdirectory: an existing deployment's ``data/state``
+    keeps working with no migration of the live volume. That asymmetry with
+    named clients is deliberate and cheap; a migration on a running system is
+    neither.
+
+    A named client gets ``base_path/<client_id>``, so isolation is a separate
+    SQLite file rather than a ``WHERE client_id = ?`` that every future query
+    in this module would have to remember. A query that forgets a filter is a
+    silent cross-client read; a query that cannot reach another client's file
+    is not a query anyone can write wrong.
+
+    Raises ``ClientIdError`` -- before touching the filesystem -- if
+    ``client_id`` is not a plain name.
+
+    Note that partitioning is only as trustworthy as the identity that selects
+    it. Today the write surface (``POST /api/jobs``) authenticates with one
+    shared ``LINCHPIN_API_KEY`` and its ``client`` field is a caller-typed
+    label, which ``webapp/app.py``'s ``_get_orchestrator`` already refuses to
+    trust for exactly this reason. Feed this an authenticated client id, never
+    that label.
+    """
+    if client_id is None:
+        return StateStore(base_path)
+    validated = _validate_client_id(client_id)
+    return StateStore(Path(base_path) / validated)
