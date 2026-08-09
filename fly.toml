@@ -36,6 +36,11 @@ primary_region = "iad"          # CHANGE ME if deploying your own copy elsewhere
   LINCHPIN_STATE_PATH = "/data/state"
   LINCHPIN_PRICING_LEDGER_PATH = "/data/pricing_intel/ledger"
   LINCHPIN_SKU_MAP_PATH = "/data/pricing_intel/sku_map"
+  # Prod hardening defaults: rate limiting ON at 60 req/min (no longer 0/disabled);
+  # LINCHPIN_REQUIRE_SECURE stays 0 until POLICY is configured - prod debe poner 1
+  # cuando tenga POLICY para fail-closed, pero rate limit ya no es 0 desde el arranque.
+  LINCHPIN_RATE_LIMIT = "60"
+  LINCHPIN_REQUIRE_SECURE = "0"
   # 2 workers OOM-killed a 512mb VM within ~10-25s of boot (each uvicorn worker
   # loads its own copy of pandas/numpy/scipy + the orchestrator + the L3
   # knowledge graph - not shared across worker processes). Confirmed live: 1
