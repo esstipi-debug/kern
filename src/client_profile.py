@@ -120,6 +120,11 @@ class ClientProfile:
     holding_rate: float | None = None
     order_cost: float | None = None
     lead_time_days: float | None = None
+    # Price floor as a MARKUP fraction over landed cost (not a gross margin):
+    # src/price_optimizer.py computes floor_price = landed_cost * (1 + this).
+    # Beats the vertical pack's value, per merge_params' asymmetry -- a number an
+    # operator recorded for THIS client outranks an industry default.
+    min_margin_pct: float | None = None
     warehouse_capacity: WarehouseCapacity | None = None
     # Per-area tolerance for the cross_impact tool (spec 2026-07-31, sec 5.2).
     # Keys are exactly src.hats.HAT_KEYS; values are the maximum tolerated
@@ -170,6 +175,14 @@ class ClientProfile:
         _require_positive_finite(self.holding_rate, "holding_rate")
         _require_positive_finite(self.order_cost, "order_cost")
         _require_positive_finite(self.lead_time_days, "lead_time_days")
+        if self.min_margin_pct is not None:
+            # Mirrors optimize_sku_price's own [0, 1) check so a profile can
+            # never store a value the engine rejects at call time. 0.0 is legal:
+            # "this client sets no floor" is a decision, not a missing value.
+            if isinstance(self.min_margin_pct, bool) or not isinstance(self.min_margin_pct, (int, float)):
+                raise ValueError(f"min_margin_pct must be a number, got {self.min_margin_pct!r}")
+            if not math.isfinite(self.min_margin_pct) or not 0 <= self.min_margin_pct < 1:
+                raise ValueError(f"min_margin_pct must be in [0, 1), got {self.min_margin_pct!r}")
         if self.objection_thresholds is not None:
             for key, value in self.objection_thresholds.items():
                 if key not in HAT_KEYS:
@@ -200,7 +213,7 @@ class ClientProfile:
         included: it is a plain dict of floats, so it serializes fine.
         """
         fields = ("service_level", "holding_rate", "order_cost", "lead_time_days",
-                  "objection_thresholds")
+                  "objection_thresholds", "min_margin_pct")
         return {k: v for k in fields if (v := getattr(self, k)) is not None}
 
 
@@ -239,6 +252,7 @@ def load_profile(client_id: str, *, root: Path | str = DEFAULT_CLIENTS_ROOT) -> 
             holding_rate=raw.get("holding_rate"),
             order_cost=raw.get("order_cost"),
             lead_time_days=raw.get("lead_time_days"),
+            min_margin_pct=raw.get("min_margin_pct"),
             warehouse_capacity=WarehouseCapacity(**capacity_raw) if capacity_raw else None,
             branding=Branding(**branding_raw) if branding_raw else None,
             objection_thresholds=raw.get("objection_thresholds"),

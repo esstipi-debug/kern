@@ -48,6 +48,10 @@ from src.connectors.shopify_prices import ShopifyPriceStore, demo_shopify  # noq
 _DEMO_PRICES = {"SKU-1": 18.0, "SKU-2": 45.0}
 # A reason the pricing guardrail gate accepts (mirrors the repricing test's REASON).
 _DEMO_REASON = "Repricing to close a margin gap vs landed cost (elasticity-driven)."
+# Landed costs arm the gate's below-cost check. stage_repricing REQUIRES this map --
+# a None here used to leave that check unarmed on every call. A --prices plan that
+# drops a SKU under its cost below is what the gate is supposed to block.
+_DEMO_LANDED_COSTS = {"SKU-1": 11.0, "SKU-2": 30.0}
 
 
 def _demo_store(channel: str) -> object:
@@ -106,7 +110,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  price plan : {', '.join(f'{s}={p:g}' for s, p in prices.items())}")
 
     try:
-        changeset = stage_repricing(store, channel_label, prices, idempotency_key=idem, reason=reason)
+        changeset = stage_repricing(
+            store, channel_label, prices, idempotency_key=idem, reason=reason,
+            landed_costs=_DEMO_LANDED_COSTS,
+        )
     except RepricingGuardrailBlocked as exc:
         print(f"\n  BLOCKED by pricing guardrails (nothing staged, nothing written): {exc}")
         return 2
@@ -122,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         result = run_channel_repricing(
             store, channel_label, prices,
             idempotency_key=idem, reason=reason, approved_by=args.approved_by,
+            landed_costs=_DEMO_LANDED_COSTS,
         )
     except RepricingGuardrailBlocked as exc:
         print(f"\n  BLOCKED by pricing guardrails: {exc}")

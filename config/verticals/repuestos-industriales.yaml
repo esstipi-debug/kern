@@ -42,6 +42,20 @@ demo_question_label: "repuestos, insumos y componentes para equipos"
 # desconocido y se ignora en silencio, que es el peor modo de falla posible.
 engine_params:
 
+  # Piso de precio, como fraccion de MARKUP sobre el costo landed:
+  # src/price_optimizer.py calcula floor_price = landed_cost * (1 + esto).
+  # NO es margen bruto -- 0.20 seria 20% de markup (~16,7% de margen bruto).
+  #
+  # 0.0 = este pack no declara piso, y es una decision explicita, no un olvido:
+  # no hay dato de margen contrastado con un cliente de este rubro, y un numero
+  # inventado aqui se aplicaria a todas las cuentas del vertical. El piso real
+  # sigue viniendo del caller (ClientProfile o params por llamada), que es la
+  # capa donde un operador registra el numero de SU cliente.
+  #
+  # Que se rellene esto es barato: una cuenta real, su margen objetivo por
+  # familia, y deja de ser 0.0.
+  min_margin_pct: 0.0
+
   # ESTIMADO. El 22% del desglose de 05-GTM-KERN seccion 5 (capital 10-14 +
   # bodegaje 3-6 + seguro 0,5-1 + obsolescencia 3-8). El default del motor es
   # 0,25 (src/batch.py:27), que para este rubro sobrestima: la obsolescencia de
