@@ -1,0 +1,69 @@
+{
+  "runs": [
+    {
+      "run_id": "20260810-130416",
+      "ts": "2026-08-10T13:04:16.924160+00:00",
+      "firma": "higiene",
+      "obtenido": 1.0,
+      "escala": 1.0,
+      "parcial": true,
+      "main_commit": "84f3798",
+      "bateria_detalle": null,
+      "capturas": {},
+      "issues": 0
+    },
+    {
+      "run_id": "20260810-130433",
+      "ts": "2026-08-10T13:05:50.541277+00:00",
+      "firma": "bateria+capacidades+higiene",
+      "obtenido": 4.6,
+      "escala": 10.0,
+      "parcial": false,
+      "main_commit": "84f3798",
+      "bateria_detalle": "45.0% (9.0/20) sobre techo 75%",
+      "capturas": {
+        "forced-L0": -0.44601348155316123,
+        "forced-L1": 0.43716408071499735
+      },
+      "issues": 1
+    },
+    {
+      "run_id": "20260810-130835",
+      "ts": "2026-08-10T13:09:51.837993+00:00",
+      "firma": "bateria+capacidades+higiene",
+      "obtenido": 7.6,
+      "escala": 10.0,
+      "parcial": false,
+      "main_commit": "84f3798",
+      "bateria_detalle": "45.0% (9.0/20) sobre techo 75%",
+      "capturas": {
+        "forced-L0": -0.44601348155316123,
+        "forced-L1": 0.43716408071499735
+      },
+      "issues": 0
+    },
+    {
+      "run_id": "20260810-131353",
+      "ts": "2026-08-10T13:15:09.624064+00:00",
+      "firma": "bateria+capacidades+higiene",
+      "obtenido": 7.6,
+      "escala": 10.0,
+      "parcial": false,
+      "main_commit": "84f3798",
+      "bateria_pct": 45.0,
+      "bateria_detalle": "45.0% (9.0/20) sobre techo 75%",
+      "capturas": {
+        "forced-L0": -0.44601348155316123,
+        "forced-L1": 0.43716408071499735
+      },
+      "issues": 0
+    }
+  ],
+  "last_run_at": "2026-08-10T13:15:09.624064+00:00",
+  "last_main_commit": "84f3798",
+  "last_bateria_pct": 45.0,
+  "last_capturas": {
+    "forced-L0": -0.44601348155316123,
+    "forced-L1": 0.43716408071499735
+  }
+}
