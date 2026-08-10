@@ -90,6 +90,30 @@ class GapValue:
     qa_issues: tuple[str, ...]
     findings: tuple[str, ...]
 
+    # -- el embudo de SKU -----------------------------------------------------
+    # Cada cifra de plata de este resultado suma sobre `gaps`, que es una
+    # interseccion estrechada tres veces. Sin estos contadores el entregable dice
+    # "SKU valorizados: 12" sin decir 12 de cuantos, que es exactamente lo que el
+    # docstring de este modulo prohibe. Son locales de `run_gap_value` y no se
+    # pueden recalcular desde el dataclass: hacerlo obligaria a re-ingerir los dos
+    # archivos, y dos ingestas del mismo archivo pueden discrepar.
+    #: SKU distintos en el archivo de MOVIMIENTOS. El denominador de todo lo demas.
+    n_demand_skus: int = 0
+    #: SKU distintos que las RECEPCIONES identifican con un proveedor.
+    n_receipt_skus: int = 0
+    #: Los que estan en los dos archivos. Interseccion, no una suma.
+    n_matched_skus: int = 0
+    #: Los tres requisitos son PARALELOS, no encadenados: un SKU puede tener plazo
+    #: observado sin declarado. Encadenarlos en un embudo daria barras que suben.
+    n_with_declared: int = 0
+    n_with_observed: int = 0
+    n_with_std: int = 0
+    #: Recepciones que entraron, y las que quedaron fuera por proveedor corto --
+    #: la cuarta causa de descarte, que `dropped_receipts` no ve.
+    n_receipts_used: int = 0
+    n_receipts_below_min: int = 0
+    n_suppliers_below_min: int = 0
+
     @property
     def ok(self) -> bool:
         return not self.qa_issues
@@ -317,6 +341,9 @@ def run_gap_value(
         if len(rows) >= MIN_DELIVERIES
     ]
     sku_supplier = sku_supplier_map(grouped)
+    # La cuarta causa de descarte: filas que se leyeron bien y aun asi no entraron
+    # en ningun numero, porque su proveedor no junta MIN_DELIVERIES.
+    _short = {s: rows for s, rows in grouped.items() if len(rows) < MIN_DELIVERIES}
 
     mapping = intake.detect_columns(demand)
     if mapping.unmatched_required:
@@ -339,6 +366,24 @@ def run_gap_value(
     comparables = sorted(
         set(declared_days) & set(observed_days) & set(observed_std_days)
     )
+
+    # El embudo, todo intersecado contra los SKU de la demanda para que cada parte
+    # sea una fraccion valida del mismo denominador. Los SKU que solo aparecen en
+    # las recepciones se cuentan aparte: no son un subconjunto y dibujarian una
+    # barra mas alta que la primera.
+    _demand_skus = set(canonical["product_id"].unique())
+    _matched = _demand_skus & set(sku_supplier)
+    _funnel = {
+        "n_demand_skus": len(_demand_skus),
+        "n_receipt_skus": len(sku_supplier),
+        "n_matched_skus": len(_matched),
+        "n_with_declared": len(_matched & set(declared_days)),
+        "n_with_observed": len(_matched & set(observed_days)),
+        "n_with_std": len(_matched & set(observed_std_days)),
+        "n_receipts_used": sum(len(rows) for rows in grouped.values() if len(rows) >= MIN_DELIVERIES),
+        "n_receipts_below_min": sum(len(rows) for rows in _short.values()),
+        "n_suppliers_below_min": len(_short),
+    }
 
     gaps: list[SkuGap] = []
     if comparables and not cost_synthesized:
@@ -387,6 +432,7 @@ def run_gap_value(
         intake_quality=quality,
         qa_issues=tuple(issues),
         findings=(),
+        **_funnel,
     )
     if issues:
         return value
@@ -396,6 +442,7 @@ def run_gap_value(
         intake_quality=value.intake_quality,
         qa_issues=(),
         findings=_findings(value),
+        **_funnel,
     )
 
 

@@ -75,6 +75,18 @@ class LeadTimeScan:
     dropped: dict[str, int]
     qa_issues: tuple[str, ...]
     findings: tuple[str, ...]
+    #: Las recepciones que SI entraron, una por fila, con las dos fechas y el plazo
+    #: que salio de restarlas. `to_deliveries` ya las calculaba y las tiraba: sin
+    #: ellas el entregable pide creerle a un promedio, y 05-GTM-KERN §5 promete lo
+    #: contrario -- "verificable en 5 min. Te ganas el derecho a seguir".
+    #: Solo las de proveedores que califican, para que el total cuadre con
+    #: ``headline["n_deliveries"]``.
+    measured: tuple[dict, ...] = ()
+    #: (proveedores, recepciones) que quedaron fuera por no llegar a
+    #: ``MIN_DELIVERIES``. Es la cuarta causa de descarte, y la unica que
+    #: ``dropped`` no veia: sin ella "total descartado + usadas" no suma las filas
+    #: del archivo, y una reconciliacion que no cuadra se lee como un error.
+    below_min: tuple[int, int] = (0, 0)
 
     @property
     def ok(self) -> bool:
@@ -107,11 +119,39 @@ class LeadTimeScan:
         }
 
 
-def _relative_gap(score: SupplierScore) -> float | None:
-    """|observado - declarado| / declarado. None cuando no hay con que comparar."""
+def relative_gap(score: SupplierScore) -> float | None:
+    """|observado - declarado| / declarado. None cuando no hay con que comparar.
+
+    El ``not score.declared_lead_time`` cubre None **y** cero, y esa segunda mitad
+    es la que importa: un plazo declarado de 0 es el default de un ERP sin
+    configurar, no una promesa de entrega inmediata, y dividir por el revienta.
+    Publica para que el libro de Excel use ESTA definicion de "comparable" en vez
+    de restatearla -- una segunda copia del guardia es como se reintroduce el bug.
+    """
     if score.lead_time_gap is None or not score.declared_lead_time:
         return None
     return abs(score.lead_time_gap) / score.declared_lead_time
+
+
+def signed_relative_gap(score: SupplierScore) -> float | None:
+    """Igual, con signo: positivo = tarda mas de lo prometido. El signo ES el mensaje.
+
+    Exige declarado **> 0**, y no solo distinto de cero como :func:`relative_gap`:
+    ``to_deliveries`` acepta cualquier declarado finito, negativo incluido, y
+    dividir por uno negativo invierte el signo -- o sea, muestra "llega antes"
+    sobre un proveedor que llega tarde. Frente a un declarado roto el libro dice
+    "no medido"; ``relative_gap`` conserva su semantica de siempre porque de ella
+    dependen ``worst`` y los hallazgos del .md.
+    """
+    if score.lead_time_gap is None or not score.declared_lead_time:
+        return None
+    if score.declared_lead_time <= 0:
+        return None
+    return score.lead_time_gap / score.declared_lead_time
+
+
+#: Alias interno historico. Los llamadores de este modulo lo usaban en privado.
+_relative_gap = relative_gap
 
 
 def to_deliveries(
@@ -188,6 +228,11 @@ def to_deliveries(
             continue
 
         row: dict = {"lead_time_days": lead, "lead_time_source": LEAD_TIME_MEASURED}
+        # Las dos fechas de las que salio `lead`, para que el entregable pueda
+        # mostrar la recepcion que produjo el numero en vez de pedir que le crean
+        # al promedio. `score_supplier` lee por clave, asi que ignora estas dos.
+        row["order_date"] = ordered.loc[pos]
+        row["receipt_date"] = received.loc[pos]
         if declared_col is not None:
             declared = pd.to_numeric(df.at[pos, declared_col], errors="coerce")
             if pd.notna(declared) and math.isfinite(float(declared)):
@@ -299,22 +344,53 @@ def run_lead_time_scan(
     ``aliases`` es la tabla del rubro cuando el visitante declaro uno; None deja
     la global, que es el caso del visitante anonimo del embudo.
     """
-    grouped, dropped = to_deliveries(df, overrides, aliases=aliases)
+    return scan_from_deliveries(*to_deliveries(df, overrides, aliases=aliases))
 
-    scores = [
-        score_supplier(supplier, rows)
-        for supplier, rows in sorted(grouped.items())
-        if len(rows) >= MIN_DELIVERIES
-    ]
+
+def scan_from_deliveries(
+    grouped: dict[str, list[dict]],
+    dropped: dict[str, int],
+    extra_issues: tuple[str, ...] = (),
+) -> LeadTimeScan:
+    """El scan a partir de recepciones YA agrupadas, venga de donde venga.
+
+    Existe separado de :func:`run_lead_time_scan` porque las recepciones no
+    siempre llegan en un DataFrame subido: ``src.connectors.odoo.receipts()`` las
+    lee de un Odoo vivo y emite exactamente estas filas. Sin este corte, esa
+    capacidad seria una funcion del conector que nadie puede consumir.
+
+    ``extra_issues`` es para lo que sabe la fuente y el scorecard no puede saber
+    -- por ejemplo, que un Odoo mide contra el clic de validar la recepcion.
+    """
+    qualifies = {s: rows for s, rows in sorted(grouped.items()) if len(rows) >= MIN_DELIVERIES}
+    scores = [score_supplier(supplier, rows) for supplier, rows in qualifies.items()]
     declared_seen = any(s.declared_lead_time is not None for s in scores)
+
+    # La cuarta causa de descarte. `dropped` cuenta filas que no se pudieron leer;
+    # esta cuenta filas que se leyeron bien y aun asi no entraron en ningun numero,
+    # porque su proveedor no junta MIN_DELIVERIES. Sin contarla, "descartadas +
+    # usadas" no suma las filas del archivo y la hoja de honestidad miente.
+    short = {s: rows for s, rows in grouped.items() if len(rows) < MIN_DELIVERIES}
+    below_min = (len(short), sum(len(rows) for rows in short.values()))
+
+    # Solo las recepciones que SI entraron, para que el detalle cuadre con el titular.
+    measured = tuple(
+        {**row, "supplier": supplier} for supplier, rows in qualifies.items() for row in rows
+    )
 
     qa_issues = _scan_issues(scores, declared_seen)
     findings = _findings(scores, dropped) if not qa_issues else ()
+    # Los avisos de la fuente van DESPUES: no descalifican el scan (`ok` mira
+    # `qa_issues`), asi que solo se suman cuando ya hay algo que reportar.
+    if extra_issues and not qa_issues:
+        findings = (*findings, *extra_issues)
     return LeadTimeScan(
         scores=tuple(scores),
         dropped=dropped,
         qa_issues=tuple(qa_issues),
         findings=findings,
+        measured=measured,
+        below_min=below_min,
     )
 
 

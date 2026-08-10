@@ -102,6 +102,7 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
             # Client-wide lead time (typically from the client profile) fills in only
             # where the CSV carries none; per-SKU CSV values always win.
             default_lead_days=float(request.params.get("lead_time_days", 14.0)),
+            aliases=request.params.get("column_aliases"),
         )
     except (ValueError, FileNotFoundError, TypeError) as exc:
         return Prepared(status="needs_data", messages=[str(exc)])
