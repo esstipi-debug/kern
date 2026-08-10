@@ -65,6 +65,22 @@ _TOOL_KEY = "pricing"
 TIER = writeback.TIER_REVERSIBLE  # a price can always be set back -- plan section 7 P3
 
 
+class LandedCostsRequired(ValueError):
+    """Raised by :func:`stage_repricing` / :func:`run_channel_repricing` when the
+    caller did not supply ``landed_costs``.
+
+    ``landed_costs`` used to default to ``None`` and ``run_channel_repricing``
+    never passed it, so the gate's below-cost check
+    (:func:`src.pricing_guardrails.gate_price_changeset`) was a silent no-op on
+    the production path: any price, however far below cost, cleared the gate.
+    A missing cost map is a caller contract violation, not a pricing verdict, so
+    it fails loudly here instead of degrading into an unguarded changeset.
+
+    Pass an explicit empty mapping to mean "no cost data for these SKUs" -- that
+    is a deliberate decision on the record, which ``None`` never was.
+    """
+
+
 class RepricingGuardrailBlocked(RuntimeError):
     """Raised by :func:`stage_repricing` when PR-17's central pricing gate
     rejects the changeset -- it is never handed back as a stageable
@@ -149,11 +165,21 @@ def stage_repricing(
     generic gate error later. Raises :class:`RepricingGuardrailBlocked` --
     never returns a changeset that failed the gate.
 
+    ``landed_costs`` is REQUIRED (raises :class:`LandedCostsRequired` when
+    omitted or ``None``): it is what arms the gate's below-cost check, and a
+    default of ``None`` made that check a silent no-op for every caller that
+    forgot it. Pass ``{}`` to state explicitly that no cost data exists.
+
     ``max_move_pct``/``landed_costs`` are forwarded verbatim to the gate's
     economic sanity checks (max % move per change, default 50%; below-cost
-    block when landed costs are supplied) -- see
+    block per SKU present in ``landed_costs``) -- see
     :func:`src.pricing_guardrails.gate_price_changeset`.
     """
+    if landed_costs is None:
+        raise LandedCostsRequired(
+            "Landed costs required for margin floor validation: pass landed_costs "
+            "(or an explicit {} when no cost data exists for these SKUs)."
+        )
     edits = {sku: {"price": price} for sku, price in prices.items()}
     changeset = writeback.stage(
         store, channel, edits, risk_tier=TIER, idempotency_key=idempotency_key, reason=reason,
@@ -227,6 +253,7 @@ def run_channel_repricing(
     approved_by: str,
     kb: KnowledgeBase | None = None,
     candidate_citations: list[GroundedCitation] | None = None,
+    landed_costs: dict[str, float] | None = None,
     now: float | None = None,
     ttl_seconds: float = 900.0,
 ) -> ChannelRepricingResult:
@@ -240,12 +267,17 @@ def run_channel_repricing(
     then call :func:`apply_repricing` (+ :func:`verify_applied`) separately
     once ``approved_by`` is known -- the primitives above are what such a UI
     would actually call across that time gap. Raises
-    :class:`RepricingGuardrailBlocked`, ``writeback.WritebackRefused``, or
-    :class:`RepricingVerificationFailed` -- never silently degrades.
+    :class:`LandedCostsRequired`, :class:`RepricingGuardrailBlocked`,
+    ``writeback.WritebackRefused``, or :class:`RepricingVerificationFailed` --
+    never silently degrades.
+
+    ``landed_costs`` is forwarded to :func:`stage_repricing` and is REQUIRED:
+    this cycle is the production path that previously dropped it and left the
+    below-cost gate unarmed.
     """
     changeset = stage_repricing(
         store, channel, prices, idempotency_key=idempotency_key, reason=reason,
-        kb=kb, candidate_citations=candidate_citations,
+        kb=kb, candidate_citations=candidate_citations, landed_costs=landed_costs,
     )
     approval = writeback.approve(changeset, approved_by, now=now, ttl_seconds=ttl_seconds)
     result = apply_repricing(store, changeset, approval, now=now)

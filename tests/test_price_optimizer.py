@@ -41,6 +41,26 @@ def _fit(**overrides) -> SkuElasticityFit:
     return SkuElasticityFit(**base)
 
 
+def test_a_floor_resolved_from_the_vertical_pack_binds_the_proposed_price():
+    """End to end for the per-vertical price floor: pack -> merge_params ->
+    ``optimize_sku_price``. The engine default is 0.0 (no floor at all), so the
+    number has to travel the whole resolution chain to bind anything."""
+    from src.client_profile import merge_params
+    from src.vertical_profile import VerticalEngineParams, VerticalProfile
+
+    pack = VerticalProfile(
+        vertical="prueba", display_name="Prueba",
+        engine_params=VerticalEngineParams(min_margin_pct=0.60),
+    )
+    resolved = merge_params({}, None, pack)["min_margin_pct"]
+    # elasticity=-3 alone would propose 15.0; the pack's floor lifts it to 16.0.
+    result = optimize_sku_price(
+        _fit(), landed_cost=10.0, min_margin_pct=resolved, max_move_pct=None,
+    )
+    assert result.floor_applied is True
+    assert result.proposed_price == pytest.approx(16.0)
+
+
 def test_proposed_price_matches_constant_elasticity_formula():
     # elasticity=-3 -> p* = c*eps/(eps+1) = 10*(-3)/(-2) = 15.0
     fit = _fit(elasticity=-3.0, shrunk_elasticity=-3.0)
