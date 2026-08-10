@@ -300,3 +300,182 @@ def test_la_config_del_simworld_coincide_con_la_firma_de_run_grid():
     parametros = set(inspect.signature(run_grid).parameters)
     assert set(loop.SIMWORLD_BASE) <= parametros
     assert "out_dir" in parametros
+
+
+# --------------------------------------------------------------------------
+# REPORT: el reporte es lo que se publica, y no puede decir mas de lo que se midio
+# --------------------------------------------------------------------------
+
+
+def _reporte(monkeypatch, tmp_path, puntaje, *, previo=None, issues=None, capturas=None) -> str:
+    destino = tmp_path / "reporte.md"
+    monkeypatch.setattr(loop, "REPORT_PATH", destino)
+    loop.generar_reporte(loop.LoopResult(
+        run_id="20260810-000000",
+        timestamp="2026-08-10T00:00:00+00:00",
+        puntaje=puntaje,
+        previo=previo,
+        issues=issues or [],
+        capturas=capturas or {},
+        main_commit="84f3798",
+    ))
+    return destino.read_text(encoding="utf-8")
+
+
+PARCIAL = loop.Puntaje((_comp("higiene", 1.0, 1.0), _comp("bateria", 6.0, None)))
+COMPLETO = loop.Puntaje((
+    _comp("bateria", 6.0, 3.6), _comp("capacidades", 3.0, 3.0), _comp("higiene", 1.0, 1.0),
+))
+
+
+def test_un_puntaje_parcial_se_publica_como_parcial_con_su_escala(monkeypatch, tmp_path):
+    """La unica linea del reporte que no se puede equivocar.
+
+    Sin ella, `1.00/1.0` de un `--check` se lee como un 100%, que es la misma
+    mentira que el 10/10 original con otra cara.
+    """
+    texto = _reporte(monkeypatch, tmp_path, PARCIAL)
+    assert "**PARCIAL**" in texto
+    assert "no corrieron: bateria" in texto
+    assert "1.00 / 1.0" in texto
+    assert "no sobre 10" in texto
+    assert "(completo)" not in texto
+
+
+def test_un_puntaje_completo_no_dice_parcial(monkeypatch, tmp_path):
+    texto = _reporte(monkeypatch, tmp_path, COMPLETO)
+    assert "PARCIAL" not in texto
+    assert "7.60 / 10.0" in texto
+    assert "(completo)" in texto
+
+
+def test_el_componente_que_no_corrio_se_marca_en_la_tabla(monkeypatch, tmp_path):
+    """Nunca un 0.00: en la tabla tambien hay que poder ver que no se midio."""
+    texto = _reporte(monkeypatch, tmp_path, PARCIAL)
+    assert "no corrio" in texto
+    assert "| bateria | 6.0 | 0.00 |" not in texto
+
+
+def test_sin_corrida_previa_no_se_inventa_tendencia(monkeypatch, tmp_path):
+    assert "sin base comparable" in _reporte(monkeypatch, tmp_path, COMPLETO)
+
+
+def test_una_firma_distinta_se_declara_no_comparable(monkeypatch, tmp_path):
+    previo = {"firma": "higiene", "obtenido": 1.0, "run_id": "20260809-000000"}
+    texto = _reporte(monkeypatch, tmp_path, COMPLETO, previo=previo)
+    assert "no comparable" in texto
+
+
+def test_la_misma_firma_si_da_delta(monkeypatch, tmp_path):
+    previo = {"firma": COMPLETO.firma, "obtenido": 4.6, "run_id": "20260809-000000"}
+    texto = _reporte(monkeypatch, tmp_path, COMPLETO, previo=previo)
+    assert "+3.00 vs 20260809-000000" in texto
+
+
+def test_un_desvio_se_publica_con_severidad_ubicacion_y_arreglo(monkeypatch, tmp_path):
+    issues = [loop.DetectIssue(
+        "import_viejo", "high", "Import viejo: src.guided", "jobs/qa.py", 12, "usar nosilo_core.guided")]
+    texto = _reporte(monkeypatch, tmp_path, COMPLETO, issues=issues)
+    assert "[HIGH]" in texto
+    assert "`jobs/qa.py`:12" in texto
+    assert "usar nosilo_core.guided" in texto
+
+
+def test_un_desvio_en_zona_excluida_se_publica_como_solo_reporte(monkeypatch, tmp_path):
+    issues = [loop.DetectIssue("import_viejo", "high", "m", "src/writeback.py", 3)]
+    texto = _reporte(monkeypatch, tmp_path, COMPLETO, issues=issues)
+    assert "zona excluida: solo se reporta" in texto
+
+
+def test_sin_desvios_lo_dice_explicitamente(monkeypatch, tmp_path):
+    assert "Ninguno." in _reporte(monkeypatch, tmp_path, COMPLETO)
+
+
+def test_el_simworld_se_publica_aclarando_que_no_puntua(monkeypatch, tmp_path):
+    texto = _reporte(monkeypatch, tmp_path, COMPLETO, capturas={"forced-L0": -0.446})
+    assert "no puntua" in texto
+    assert "-0.446" in texto
+
+
+def test_el_reporte_deja_constancia_del_commit_de_main(monkeypatch, tmp_path):
+    """Un puntaje sin el commit contra el que se midio no es auditable."""
+    assert "84f3798" in _reporte(monkeypatch, tmp_path, COMPLETO)
+
+
+# --------------------------------------------------------------------------
+# main(): los modos, end-to-end
+# --------------------------------------------------------------------------
+
+
+def _correr_main(monkeypatch, tmp_path, *flags: str) -> tuple[int, dict]:
+    """Corre `main()` con estado y reporte redirigidos a tmp. Devuelve (rc, estado)."""
+    import json
+
+    estado = tmp_path / "estado.json"
+    monkeypatch.setattr(loop, "STATE_PATH", estado)
+    monkeypatch.setattr(loop, "DATA_LOOPS", tmp_path)
+    monkeypatch.setattr(loop, "REPORT_PATH", tmp_path / "reporte.md")
+    monkeypatch.setattr(sys, "argv", ["nosilo_kern_loop.py", *flags])
+    with pytest.raises(SystemExit) as salida:
+        loop.main()
+    guardado = json.loads(estado.read_text(encoding="utf-8")) if estado.exists() else {}
+    return salida.value.code, guardado
+
+
+def test_check_end_to_end_no_corre_las_medidas_caras_y_sale_cero(monkeypatch, tmp_path):
+    """`--check` sobre el repo real: rapido, parcial y honesto sobre serlo."""
+    rc, estado = _correr_main(monkeypatch, tmp_path, "--check")
+    assert rc == 0
+    assert estado["runs"][-1]["firma"] == "higiene"
+    assert estado["runs"][-1]["parcial"] is True
+    assert estado["runs"][-1]["escala"] == 1.0
+    assert (tmp_path / "reporte.md").exists()
+
+
+def test_check_no_pisa_la_ultima_bateria_ni_la_ultima_captura(monkeypatch, tmp_path):
+    """Una corrida barata no puede borrar lo que midio una cara.
+
+    Si `--check` reseteara estos campos, la primera corrida barata despues de
+    una completa dejaria al simworld sin base y a la tendencia sin historia.
+    """
+    import json
+
+    estado = tmp_path / "estado.json"
+    estado.write_text(json.dumps({
+        "runs": [], "last_bateria_pct": 45.0, "last_capturas": {"forced-L0": -0.446},
+    }), encoding="utf-8")
+    _, guardado = _correr_main(monkeypatch, tmp_path, "--check")
+    assert guardado["last_bateria_pct"] == 45.0
+    assert guardado["last_capturas"] == {"forced-L0": -0.446}
+
+
+def test_full_end_to_end_compone_el_diez_y_guarda_la_cifra_cruda(monkeypatch, tmp_path):
+    monkeypatch.setattr(loop, "puntuar_bateria", lambda issues: loop.Componente(
+        "bateria", loop.PESO_BATERIA, 3.6, "45.0% (9.0/20) sobre techo 75%", dato=45.0))
+    monkeypatch.setattr(loop, "puntuar_capacidades", lambda issues: loop.Componente(
+        "capacidades", loop.PESO_CAPACIDADES, 3.0, "5 passed"))
+    monkeypatch.setattr(loop, "correr_simworld", lambda issues, base: {"forced-L0": -0.446})
+
+    rc, estado = _correr_main(monkeypatch, tmp_path, "--full")
+    ultima = estado["runs"][-1]
+    assert rc == 0
+    assert (ultima["obtenido"], ultima["escala"], ultima["parcial"]) == (7.6, 10.0, False)
+    assert ultima["bateria_pct"] == 45.0
+    assert estado["last_bateria_pct"] == 45.0
+    assert estado["last_capturas"] == {"forced-L0": -0.446}
+    assert estado["last_main_commit"]
+
+
+def test_un_desvio_alto_hace_salir_con_uno(monkeypatch, tmp_path):
+    """El exit code es lo unico que un hook o un cron mira. Tiene que doler."""
+    monkeypatch.setattr(loop, "detectar_imports_viejos", lambda: [
+        loop.DetectIssue("import_viejo", "high", "m", "jobs/qa.py", 1, "arreglar")])
+    rc, _ = _correr_main(monkeypatch, tmp_path, "--check")
+    assert rc == 1
+
+
+def test_un_desvio_menor_no_hace_fallar_la_corrida(monkeypatch, tmp_path):
+    monkeypatch.setattr(loop, "detectar_imports_viejos", lambda: [
+        loop.DetectIssue("simworld_regresion", "medium", "m", "src/simworld/runners.py")])
+    rc, _ = _correr_main(monkeypatch, tmp_path, "--check")
+    assert rc == 0

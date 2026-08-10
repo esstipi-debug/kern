@@ -253,7 +253,7 @@ TDD, zonas excluidas, verificacion adversarial, reporte siempre).
 
 ## 5. Testing
 
-`tests/test_nosilo_kern_loop.py` — **33 tests, 2,8 s**. Ninguno corre la
+`tests/test_nosilo_kern_loop.py` — **49 tests, 4,0 s**. Ninguno corre la
 bateria, el smoke ni el simworld de verdad (77 s entre los tres): se los
 sustituye. Un instrumento de medicion que nadie mide es la falla que este loop
 acaba de dejar atras, asi que la suite es parte del entregable, no un extra.
@@ -270,10 +270,17 @@ propiedad: **separan "no midio" de "midio y fallo"**. Confundirlos *era* el bug.
 | Estado | Corrupto → se archiva y devuelve vacio; no-objeto → se descarta; sano → se lee |
 | Simworld | Desvio > tolerancia → `medium`; identico → nada; bajo tolerancia → nada; sin base previa → registra sin acusar; sin `run_grid` → se reporta y no tumba el loop |
 | Contrato | `SIMWORLD_BASE` ⊆ la firma real de `run_grid` — el unico test que importa el modulo de verdad |
+| REPORT | Un parcial publica el cartel PARCIAL, a quien le falto y su escala; un completo dice `(completo)` y no dice PARCIAL; el componente ausente sale `no corrio` y nunca `0.00`; sin previo no se inventa tendencia, con otra firma se declara `no comparable`, con la misma da delta; el desvio sale con severidad, ubicacion y arreglo; el de zona excluida se marca solo-reporte; el commit de `main` consta |
+| `main()` | `--check` es parcial y sale 0; `--check` **no pisa** `last_bateria_pct` ni `last_capturas` de una corrida cara previa; `--full` compone 7,60/10 y guarda la cifra cruda; un desvio `high` sale 1 y uno `medium` sale 0 |
 
-Ese ultimo es el que mas importa: es la clase de bug que origino todo (el loop
+El contrato es el que mas importa: es la clase de bug que origino todo (el loop
 llamando a algo que no existe con la forma que cree). Agarra un rename de
 parametro en la firma, no como un `TypeError` a mitad de una corrida de 77 s.
+
+**La suite se verifico por mutacion**, no solo por estar verde: romper el guard
+que protege `last_bateria_pct` de un `--check`, y suprimir el cartel PARCIAL del
+reporte, hacen fallar exactamente un test cada uno y ninguno mas. Una suite que
+pasa a la primera merece esa desconfianza.
 
 Verificado ademas a mano el 2026-08-10, end-to-end:
 
@@ -281,11 +288,11 @@ Verificado ademas a mano el 2026-08-10, end-to-end:
 - `--full`: `7.60/10.0`, 0 desvios, exit 0.
 - Reproducibilidad del simworld: 4 corridas independientes, capturas identicas
   hasta el ultimo decimal — la propiedad que habilita usarlas como alarma.
-- Estado corrupto: archivado como `nosilo_kern_state.corrupto.json`, el loop
-  sigue.
 
-Sigue pendiente: no hay test end-to-end de `main()` (los modos se verifican
-corriendolos, no en la suite), y `tests/` no cubre el formato del reporte.
+Sigue sin cubrir: la corrida real de `--full` (la suite sustituye las tres
+medidas caras, asi que nadie prueba que la bateria y el smoke de verdad se
+integren — eso solo lo dice correr el loop), y el `--fix` sobre un repo con
+imports viejos reales.
 
 `scripts/` no esta en `[tool.coverage.run] source`, asi que esta suite no mueve
 el gate de cobertura del 80% en ningun sentido.
