@@ -253,30 +253,42 @@ TDD, zonas excluidas, verificacion adversarial, reporte siempre).
 
 ## 5. Testing
 
-Verificado a mano el 2026-08-10 (el loop todavia **no tiene suite propia** en
-`tests/` — esta es la deuda principal que deja esta version):
+`tests/test_nosilo_kern_loop.py` — **33 tests, 2,8 s**. Ninguno corre la
+bateria, el smoke ni el simworld de verdad (77 s entre los tres): se los
+sustituye. Un instrumento de medicion que nadie mide es la falla que este loop
+acaba de dejar atras, asi que la suite es parte del entregable, no un extra.
 
-- ✅ `--check` end-to-end sobre la rama sin drift: 0 imports viejos, puntaje
-  `1.00/1.0` marcado PARCIAL, ~0,2 s.
-- ✅ `--full` end-to-end: `7.60/10.0`, 0 desvios, exit 0.
-- ✅ Los dos modos de "no midio" dan codigos distinguibles y se detectan:
-  ruta inexistente → pytest `rc=4`; script sin tests → `rc=5`; smoke real →
-  `rc=0`.
-- ✅ La alarma de regresion del simworld: con una base desplazada 0,05 en
-  `forced-L0` levanta un desvio `medium`, y con `forced-L1` identica no levanta
-  nada.
-- ✅ Reproducibilidad del simworld: 4 corridas independientes, capturas
-  identicas hasta el ultimo decimal.
+Casi todos los tests tienen la misma forma, porque defienden la misma
+propiedad: **separan "no midio" de "midio y fallo"**. Confundirlos *era* el bug.
 
-Pendiente de automatizar:
+| Grupo | Que fija |
+|---|---|
+| Puntaje | Lo que no corrio no suma puntos **ni escala**; los tres pesos suman 10; un `--check` y un `--full` no comparten firma, asi que no se comparan |
+| Capacidades | `rc=4` y `rc=5` → `obtenido is None` + `critical` (el bug original); `rc=1` → `0.0`, que consta como corrio; `rc=0` con el warning de pandas encima → puntaje completo (el bug de la primera correccion) |
+| DETECT | Un `src.guided` se marca con su numero de linea; un `nosilo_core.guided` no; un consumidor ausente es `high` |
+| PROPOSE | Ocho rutas sensibles dan `es_zona_excluida`; un hallazgo ahi se imprime `OMITIDO` y **no** propone el fix; uno fuera si lo propone |
+| Estado | Corrupto → se archiva y devuelve vacio; no-objeto → se descarta; sano → se lee |
+| Simworld | Desvio > tolerancia → `medium`; identico → nada; bajo tolerancia → nada; sin base previa → registra sin acusar; sin `run_grid` → se reporta y no tumba el loop |
+| Contrato | `SIMWORLD_BASE` ⊆ la firma real de `run_grid` — el unico test que importa el modulo de verdad |
 
-- Un fixture con imports viejos simulados (`src.guided` en vez de
-  `nosilo_core.guided`) detectado como `mechanical`.
-- La exclusion de zonas sensibles forzando un "hallazgo" en cada path excluido y
-  comprobando que NO se propone fix.
+Ese ultimo es el que mas importa: es la clase de bug que origino todo (el loop
+llamando a algo que no existe con la forma que cree). Agarra un rename de
+parametro en la firma, no como un `TypeError` a mitad de una corrida de 77 s.
 
-(El state file corrupto ya no esta pendiente: `load_state()` lo archiva como
-`nosilo_kern_state.corrupto.json` y arranca de cero — verificado abajo.)
+Verificado ademas a mano el 2026-08-10, end-to-end:
+
+- `--check` sobre la rama sin drift: `1.00/1.0` PARCIAL, ~0,2 s.
+- `--full`: `7.60/10.0`, 0 desvios, exit 0.
+- Reproducibilidad del simworld: 4 corridas independientes, capturas identicas
+  hasta el ultimo decimal — la propiedad que habilita usarlas como alarma.
+- Estado corrupto: archivado como `nosilo_kern_state.corrupto.json`, el loop
+  sigue.
+
+Sigue pendiente: no hay test end-to-end de `main()` (los modos se verifican
+corriendolos, no en la suite), y `tests/` no cubre el formato del reporte.
+
+`scripts/` no esta en `[tool.coverage.run] source`, asi que esta suite no mueve
+el gate de cobertura del 80% en ningun sentido.
 
 ## 6. Estado inicial
 
