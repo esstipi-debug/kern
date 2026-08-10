@@ -11,6 +11,7 @@ import math
 from typing import TYPE_CHECKING
 
 from nosilo_core.guided import EXECUTED, GuidedOutcome, verify_guided
+from src.forecasting import MIN_PERIODS_FOR_POLICY
 from src.sop_engine.coherence import CHECK_BUDGET_FEASIBILITY, CHECK_PROMO_COVERAGE, CHECK_SERVICE_LEVEL
 
 from . import forecast_job
@@ -39,6 +40,14 @@ if TYPE_CHECKING:  # avoid a real circular import: jobs.digest_job -> scm_agent.
 
 TOL = 1e-6
 PRICE_INTEL_COVERAGE_MIN = 0.60  # plan section 6.9 item 2: ">=60% SKUs con >=1 competidor confirmado"
+
+#: policy_kinds that carry NO quantity by design -- the engine declined to size them
+#: (degenerate demand, degenerate cost, or too little history). Everything else is a
+#: "priced" line: a number an operator is being asked to act on, and therefore subject
+#: to the evidence invariants in verify() below.
+UNPRICED_POLICY_KINDS = frozenset({
+    "skipped_zero_demand", "skipped_zero_cost", "insufficient_history",
+})
 _REQUIRED_INTEGRATED_PLAN_CHECKS = {CHECK_PROMO_COVERAGE, CHECK_BUDGET_FEASIBILITY, CHECK_SERVICE_LEVEL}
 
 
@@ -63,6 +72,30 @@ def verify(report: JobReport) -> list[str]:
         # the lead-only reorder must stay below order-up-to for (R,S)
         if r.policy_kind == "(R, S)" and r.order_up_to is not None and r.reorder_point > r.order_up_to + TOL:
             issues.append(f"{r.product_id}: reorder point exceeds order-up-to level")
+
+        # ---- evidence invariants: does this number rest on anything? ----
+        # These are the second line behind jobs/inventory_optimization.py's
+        # minimum-history gate. The gate can be bypassed (a caller lowering
+        # min_periods, a future refactor dropping the branch, a report assembled
+        # by hand); these cannot, because they are checked on the record itself.
+        if r.policy_kind not in UNPRICED_POLICY_KINDS:
+            n_periods = getattr(r, "n_periods", 0)
+            if n_periods < MIN_PERIODS_FOR_POLICY:
+                issues.append(
+                    f"{r.product_id}: priced policy built on {n_periods} period(s) of demand "
+                    f"history, below the {MIN_PERIODS_FOR_POLICY}-period minimum"
+                )
+
+        # sigma_source 'unavailable' means NO dispersion was estimable. A positive
+        # buffer cannot come from that - z_alpha * sigma * sqrt(tau) with no sigma
+        # is a fabricated number. The converse (unavailable + zero buffer) is the
+        # legitimate measured-flat-history case and must keep passing: see
+        # src/forecasting.py's to_engine_inputs "measured, not missing" branch.
+        if getattr(r, "sigma_source", "") == "unavailable" and r.safety_stock > TOL:
+            issues.append(
+                f"{r.product_id}: safety stock {r.safety_stock:.4g} with no estimable "
+                "dispersion (sigma_source='unavailable')"
+            )
 
     if not (0.0 - TOL <= report.safety_stock_scale <= 1.0 + TOL):
         issues.append(f"safety_stock_scale out of [0,1]: {report.safety_stock_scale}")
@@ -255,7 +288,17 @@ def verify_integrated_plan(bundle: IntegratedPlanBundle) -> list[str]:
     coherence-check kinds present, internally-consistent counts) -- a
     FAILED coherence check is an intended FINDING this deliverable reports
     to a human (see ``jobs.integrated_plan``'s module docstring), never
-    itself a QA failure that blocks the deliverable.
+    itself a QA failure that blocks the deliverable. A NOT-EVALUABLE check
+    is likewise a valid, declared delivery here: whether the plan is allowed
+    to CLAIM coherence on top of one is ``jobs.integrated_plan.verify``'s
+    question, not this gate's.
+
+    ``plan.n_checks_passed`` and ``bundle.tally.n_passed`` are deliberately NOT
+    compared: they count different things on purpose. The first is the engine's
+    arithmetic over every check it ran, including any it resolved against a
+    placeholder input; the second counts only the checks that could be evaluated.
+    Reconciling them would mean deciding the engine's naive count is the truth,
+    which is the defect the tally exists to undo.
     """
     issues: list[str] = list(forecast_job.verify(bundle.forecast_report))
     plan = bundle.plan
@@ -266,6 +309,23 @@ def verify_integrated_plan(bundle: IntegratedPlanBundle) -> list[str]:
         issues.append("integrated_plan: n_checks does not match len(checks)")
     if plan.n_checks_passed + plan.n_checks_failed != plan.n_checks:
         issues.append("integrated_plan: n_checks_passed + n_checks_failed != n_checks")
+
+    # The tally must account for every check the engine produced, exactly once:
+    # a result quietly dropped from all three buckets would shrink the "N/M
+    # evaluated" denominator with nothing to show for it.
+    tally = bundle.tally
+    if tally.n_total != len(plan.checks):
+        issues.append(
+            f"integrated_plan: the coherence tally accounts for {tally.n_total} check(s) but "
+            f"the plan holds {len(plan.checks)}")
+    tallied = sorted(
+        [(c.check, c.product_id) for c in tally.passed + tally.failed]
+        + [(u.check, u.product_id) for u in tally.unevaluable]
+    )
+    if tallied != sorted((c.check, c.product_id) for c in plan.checks):
+        issues.append(
+            "integrated_plan: the coherence tally is not a partition of the plan's checks "
+            f"(tallied {tallied})")
 
     present_kinds = {c.check for c in plan.checks}
     missing_kinds = _REQUIRED_INTEGRATED_PLAN_CHECKS - present_kinds

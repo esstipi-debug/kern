@@ -17,10 +17,18 @@ from src.connectors.replenish import plan_replenishment
 from src.connectors.simulator import SimulatedStore
 
 _PRODUCTS = [Product("SKU-1", "Thin", 20.0, 6.0), Product("SKU-2", "Deep", 50.0, 12.0)]
+# Eight weekly order-days, not three. These tests exercise the replenishment
+# MECHANICS (forecast -> target -> stage -> apply), and three order-days is below
+# plan_replenishment's min_observations gate (src/forecasting.py's
+# MIN_PERIODS_FOR_POLICY), so a three-day fixture now exercises the refusal branch
+# instead of the mechanics. Demand stays a flat 10/period for SKU-1 and 5/period
+# for SKU-2, so every arithmetic assertion below is unchanged: SES on a constant
+# series returns that constant regardless of how many periods it saw.
+_ORDER_DATES = ("2026-01-01", "2026-01-08", "2026-01-15", "2026-01-22",
+                "2026-01-29", "2026-02-05", "2026-02-12", "2026-02-19")
 _STEADY_ORDERS = [
-    Order("o1", "2026-01-01", (OrderLine("SKU-1", 10.0, 20.0), OrderLine("SKU-2", 5.0, 50.0))),
-    Order("o2", "2026-01-08", (OrderLine("SKU-1", 10.0, 20.0), OrderLine("SKU-2", 5.0, 50.0))),
-    Order("o3", "2026-01-15", (OrderLine("SKU-1", 10.0, 20.0), OrderLine("SKU-2", 5.0, 50.0))),
+    Order(f"o{i + 1}", date, (OrderLine("SKU-1", 10.0, 20.0), OrderLine("SKU-2", 5.0, 50.0)))
+    for i, date in enumerate(_ORDER_DATES)
 ]
 
 

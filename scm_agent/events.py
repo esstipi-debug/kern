@@ -222,5 +222,53 @@ class EventLedger:
         rows = self._conn.execute(query, params).fetchall()
         return [_row_to_event(r) for r in reversed(rows)]
 
+    def count_all(self) -> int:
+        """Total recorded events -- the denominator ``src.retention.decide``
+        measures a run's expired share against."""
+        return int(self._conn.execute("SELECT COUNT(*) FROM events").fetchone()[0])
+
+    def count_before(self, cutoff: datetime) -> int:
+        """How many events are older than ``cutoff`` (exclusive), without
+        deleting anything -- the dry-run half of :meth:`prune_before`."""
+        return len(self._seqs_before(cutoff))
+
+    def _seqs_before(self, cutoff: datetime) -> list[int]:
+        """Row ids strictly older than ``cutoff``.
+
+        The comparison is done in Python, not as ``WHERE ts < ?`` in SQL, on
+        purpose. ``ts`` is stored as ``datetime.isoformat()`` text, and a
+        lexicographic compare of ISO strings is only equivalent to a compare of
+        the instants they denote while every row carries the same UTC offset
+        and the same microsecond formatting. Both are true today (``Event.ts``
+        defaults to an aware UTC clock) but neither is enforced by the schema,
+        and a single row written from a different offset would make the SQL
+        form silently delete the wrong side of the boundary. Parsing is the
+        cheap, boring, correct option for a table this job walks once a day.
+        """
+        cutoff = _ensure_utc(cutoff)
+        rows = self._conn.execute("SELECT seq, ts FROM events").fetchall()
+        return [seq for seq, ts in rows if _ensure_utc(datetime.fromisoformat(ts)) < cutoff]
+
+    def prune_before(self, cutoff: datetime) -> int:
+        """Delete every event older than ``cutoff`` and return how many went.
+
+        Retention's delete path (``jobs/retention_job.py``); this is the only
+        method on the ledger that removes anything -- ``emit`` is otherwise
+        append-only. The caller is expected to have run the row counts past
+        ``src.retention.decide`` first: this method deletes exactly what it is
+        told to and applies no cap of its own.
+        """
+        seqs = self._seqs_before(cutoff)
+        if not seqs:
+            return 0
+        # Chunked so a large first prune cannot exceed SQLite's variable limit
+        # (SQLITE_MAX_VARIABLE_NUMBER, 999 on older builds).
+        for start in range(0, len(seqs), 500):
+            chunk = seqs[start : start + 500]
+            placeholders = ",".join("?" * len(chunk))
+            self._conn.execute(f"DELETE FROM events WHERE seq IN ({placeholders})", chunk)
+        self._conn.commit()
+        return len(seqs)
+
     def close(self) -> None:
         self._conn.close()

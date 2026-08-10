@@ -95,9 +95,10 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
         # cleaning, and why) so a heavily-filtered source file can be escalated
         # instead of silently delivered with unqualified confidence — see
         # scm_agent/tool_options.py's _apply_intake_quality.
+        period = request.params.get("period", "W")
         demand, quality = intake.prepare_tracked(
             request.data_path,
-            period=request.params.get("period", "W"),
+            period=period,
             # Client-wide lead time (typically from the client profile) fills in only
             # where the CSV carries none; per-SKU CSV values always win.
             default_lead_days=float(request.params.get("lead_time_days", 14.0)),
@@ -105,7 +106,14 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
         )
     except (ValueError, FileNotFoundError, TypeError) as exc:
         return Prepared(status="needs_data", messages=[str(exc)])
-    return Prepared(status="ok", payload={"demand": demand, "intake_quality": quality})
+    # `period` rides along: src/sources.py needs it to rebuild the COMPLETE period
+    # grid per SKU. Without it a SKU's series is only the periods it sold in, which
+    # makes every real export look like regular demand (ADI == 1.0) and overstates
+    # annual demand by the SKU's true demand interval.
+    return Prepared(
+        status="ok",
+        payload={"demand": demand, "intake_quality": quality, "period": period},
+    )
 
 
 def _inventory_run(payload: object, params: dict) -> Produced:
@@ -123,6 +131,7 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         target_fill_rate=params.get("target_fill_rate", 0.95),
         intake_quality=payload["intake_quality"],
         intake_quality_threshold=params.get("intake_quality_threshold", 0.20),
+        period_freq=payload.get("period"),
     )
     summary = (
         f"Analyzed {report.n_skus} SKUs; recommended inventory investment "

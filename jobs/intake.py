@@ -269,6 +269,12 @@ def detect_columns(
 
     ``aliases`` es la tabla a usar; ``None`` significa la del modulo. El pack por
     vertical llega por aqui y por ningun otro lado -- ver :data:`AliasTable`.
+    ``VerticalProfile.merged_aliases(ALIASES)`` devuelve esta misma tabla con los
+    alias del rubro ADELANTE -- el export de una constructora trae `partida` y
+    `faena`, el de un distribuidor trae `local` y `guia de despacho`, y ninguno
+    de esos encabezados esta ni puede estar en una tabla generica. Como el
+    recorrido de abajo toma el PRIMER alias que pega, el orden de la tabla es
+    parte de su significado: quien la construya tiene que prependear, no anexar.
 
     **Precedencia**, por campo canonico: cuanto mas estrecha la poblacion sobre
     la que la afirmacion habla, mas arriba queda. Un ``overrides`` que nombra una
@@ -289,23 +295,44 @@ def detect_columns(
     # El branch de overrides vive DENTRO del bucle, asi que una clave fuera de
     # required|optional se evapora en silencio -- la capa de mayor precedencia
     # fallando de la forma mas callada. Se valida antes de empezar.
+    #
+    # Va ANTES del chequeo de la tabla a proposito: quien escribe
+    # `overrides={"equipment_id": ...}` con los juegos por defecto tiene un error
+    # de llamada, y el mensaje util nombra el override, no la tabla de alias.
     desconocidas = sorted(set(overrides) - set(required) - set(optional))
     if desconocidas:
         raise ValueError(
             f"overrides nombra campos canonicos que esta llamada no detecta: {desconocidas}; "
             f"required={list(required)} optional={list(optional)}"
         )
+    # Un canonico pedido que la tabla no conoce se dice, no se ignora. Antes esto
+    # era un `ALIASES[canon]` pelado, cuyo KeyError decia el nombre y nada mas; y
+    # con tablas de rubro el error deja de ser siempre un typo -- tambien puede
+    # ser un pack al que le falta un campo que el llamador da por hecho.
+    #
+    # Se rechaza aqui y no con un `table.get(canon, (canon,))` mas abajo. Ese
+    # default INVENTA un alias -- el propio nombre canonico -- y convierte un
+    # pack incompleto en "columna no encontrada", que es la respuesta correcta a
+    # otra pregunta. `required` y `optional` los fija el codigo, nunca el
+    # visitante, asi que esto solo se dispara por un bug o por un pack mal
+    # armado, y en los dos casos hay que verlo. Si algun dia un endpoint pasa una
+    # canonica de pack en `required`, este KeyError sale por el manejador de 500:
+    # ahi se envuelve en la capa que llama, no se ablanda la guarda.
+    missing = [c for c in (*required, *optional) if c not in table]
+    if missing:
+        raise KeyError(
+            f"detect_columns: la tabla de alias no tiene entrada para {missing} "
+            f"(pedidos: required={list(required)}, optional={list(optional)})")
     by_norm = {_norm(c): c for c in df.columns}
     mapping: dict[str, str] = {}
     for canon in (*required, *optional):
         if canon in overrides and overrides[canon] in df.columns:
             mapping[canon] = overrides[canon]
             continue
-        # `.get` y no corchete: un pack CREA canonicas que la tabla base no tiene
-        # (`equipment_id`, `work_order`), y un llamador que pida una de ellas
-        # levantaria KeyError -- que no es ValueError, asi que los endpoints que
-        # capturan ValueError lo convertirian en un 500 en vez de un 400.
-        for alias in table.get(canon, (canon,)):
+        # Corchete y no `.get`: la guarda de `missing` de arriba ya garantiza la
+        # clave, y un default aqui volveria a inventar el alias que aquella
+        # rechaza.
+        for alias in table[canon]:
             hit = by_norm.get(_norm(alias))
             if hit is not None:
                 mapping[canon] = hit

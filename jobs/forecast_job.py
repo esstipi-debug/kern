@@ -202,6 +202,8 @@ def _dispersion(fc) -> float | None:
     Reuses ``ForecastResult.sigma_source`` instead of re-deciding: the engine and the
     band must never disagree about which dispersion is in play.
     """
+    if fc.sigma_source == "forecast_error_oos":
+        return float(fc.error_std_oos)
     if fc.sigma_source == "forecast_error":
         return float(fc.error_std)
     if fc.sigma_source == "demand_std_fallback":

@@ -42,6 +42,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from nosilo_core import writeback  # noqa: E402
 from nosilo_core.writeback import ABSENT, InMemoryStore  # noqa: E402
+
 from src.connectors.excel import ExcelWorkbookStore  # noqa: E402
 from src.connectors.meli_prices import InMemoryMeli, MeliPriceStore  # noqa: E402
 from src.connectors.odoo import InMemoryOdoo  # noqa: E402

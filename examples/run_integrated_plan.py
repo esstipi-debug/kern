@@ -99,7 +99,10 @@ def main() -> int:
     payload = ip.prepare(demand_path, params)
     bundle = ip.run(payload)
     print(f"Forecast: {bundle.forecast_report.summary}")
-    print(f"Plan: {bundle.plan.summary}")
+    # bundle.summary, not bundle.plan.summary: the engine's own count cannot tell a
+    # stated 0.0 from an input nobody supplied, so it reported "3/3 passed" on a plan it
+    # never verified. The bundle's tally separates evaluated from NOT EVALUABLE.
+    print(f"Plan: {bundle.summary}")
     if bundle.dropped_no_purchase_data:
         print(f"  (excluded for lack of purchase data: {', '.join(bundle.dropped_no_purchase_data)})")
 
@@ -110,13 +113,21 @@ def main() -> int:
             print("  - " + i, file=sys.stderr)
         return 1
 
-    failed_checks = [c for c in bundle.plan.checks if not c.passed]
-    if failed_checks:
-        print(f"QA passed. {len(failed_checks)} coherence check(s) FAILED (reported in the deck, not blocking):")
-        for c in failed_checks:
+    # Branch on the tally, not on `not c.passed`: a check that was never evaluable has
+    # passed=False in the engine's object, so the old test printed it as a real failure
+    # while the else-branch certified "all checks passed" when the number was absent.
+    tally = bundle.tally
+    if tally.failed:
+        print(f"QA passed. {len(tally.failed)} coherence check(s) FAILED "
+              "(reported in the deck, not blocking):")
+        for c in tally.failed:
             print(f"  [{c.check}] {c.product_id or 'portfolio'}: {c.message}")
-    else:
-        print("QA passed. All coherence checks passed.")
+    if tally.unevaluable:
+        print(f"QA passed. {len(tally.unevaluable)} coherence check(s) NOT EVALUABLE:")
+        for u in tally.unevaluable:
+            print(f"  [{u.check}] {u.product_id or 'portfolio'}: {u.reason}")
+    if not tally.failed and not tally.unevaluable:
+        print(f"QA passed. All {tally.n_evaluated} evaluated coherence check(s) passed.")
 
     branding = Branding(name=args.brand_name) if args.brand_name else None
     brief = f"integrated plan for {args.client}: forecast, demand shaping, and purchase-plan coherence"

@@ -144,14 +144,27 @@ def test_el_pack_le_gana_a_la_tabla_base_en_un_archivo_que_trae_las_dos(merged):
 # --- guardias ---------------------------------------------------------------
 
 
-def test_una_canonica_que_la_tabla_no_tiene_no_levanta_KeyError():
-    """El corchete `ALIASES[canon]` era un 500 esperando.
+def test_una_canonica_que_la_tabla_no_tiene_se_nombra():
+    """Pedir una canonica de pack con la tabla base es un error, y lo dice.
 
-    `KeyError` no es `ValueError`, y los endpoints capturan `ValueError`: pedir
-    una canonica del pack con la tabla base devolvia un 500, no un 400.
+    Esta rama llego pidiendo lo contrario -- `table.get(canon, (canon,))`, para
+    que el caso cayera en `unmatched_required` y el endpoint devolviera 400 en
+    vez de 500. Se resolvio a favor de `main` al reparentar, por dos razones:
+
+    1. Ese default INVENTA un alias (el propio nombre canonico). Convierte un
+       pack incompleto en "columna no encontrada", que es la respuesta correcta
+       a otra pregunta -- el antipatron que 08-MEDICION llama "un default que
+       suplanta una medicion".
+    2. El 500 que motivaba el cambio no es alcanzable: `required` y `optional`
+       los fija el codigo, nunca el visitante, y ningun llamador de las dos
+       ramas pone una canonica de pack en `required`. Si algun dia lo hace, se
+       envuelve en la capa que llama; la guarda no se ablanda.
+
+    Lo que si sobrevive de esta rama son las otras dos guardias de abajo, que
+    `main` no tenia.
     """
-    m = detect_columns(pd.DataFrame(columns=["Patente"]), required=("equipment_id",))
-    assert m.unmatched_required == ["equipment_id"]
+    with pytest.raises(KeyError, match="no tiene entrada"):
+        detect_columns(pd.DataFrame(columns=["Patente"]), required=("equipment_id",))
 
 
 def test_una_tabla_vacia_es_un_error_explicito(merged):

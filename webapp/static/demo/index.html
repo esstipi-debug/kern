@@ -111,7 +111,17 @@
     <div class="grid">
       <div class="panel">
         <h2>1 &middot; Tus datos</h2>
-        <div class="row" style="margin-bottom:14px">
+
+        <!-- La pregunta unica del embudo. Se arma desde /api/verticals, no desde
+             aqui: un tercer rubro tiene que ser un archivo en config/verticals/,
+             no una edicion de esta plantilla. Si el fetch falla, el bloque queda
+             oculto y el demo sigue funcionando con el orden canonico. -->
+        <div id="verticalBlock" class="hidden" style="margin-bottom:14px">
+          <p id="verticalQuestion" class="muted" style="font-size:13px;margin:0 0 8px"></p>
+          <div id="verticalOpts" class="row"></div>
+        </div>
+
+        <div id="modeRow" class="row" style="margin-bottom:14px">
           <button id="modeLead" class="btn btn-primary">Plazos de entrega</button>
           <button id="modeValue" class="btn btn-ghost">La brecha en plata</button>
           <button id="modeStock" class="btn btn-ghost">Stock</button>
@@ -166,6 +176,10 @@
   var fileLabel = document.getElementById("fileLabel");
   var file2Wrap = document.getElementById("file2Wrap");
   var file2Label = document.getElementById("file2Label");
+  var modeRow = document.getElementById("modeRow");
+  var verticalBlock = document.getElementById("verticalBlock");
+  var verticalQuestion = document.getElementById("verticalQuestion");
+  var verticalOpts = document.getElementById("verticalOpts");
 
   // Plazos va primero a proposito: es un hecho sobre los datos del visitante, es lo
   // mas barato de calcular y es lo que se gana el derecho a seguir hablando
@@ -204,6 +218,56 @@
   };
   var MODE_DEFAULT = "lead";
   var mode = MODE_DEFAULT;
+  var MODE_BTN = { lead: modeLead, stock: modeStock };
+
+  // Rubro declarado por el visitante. "" = anonimo, que es el caso por defecto
+  // y seguira siendolo para la mayoria: la pregunta es opcional a proposito,
+  // porque una pregunta obligatoria en un formulario publico cuesta conversion.
+  var vertical = "";
+
+  // El orden de las pestanas es el orden de salidas del pack (§5 dice que la
+  // primera es la que se gana el derecho a seguir hablando, y no es la misma en
+  // todos los rubros: en distribucion el pooling sube de quinta a segunda).
+  function applyModeOrder(modes){
+    for (var i = 0; i < modes.length; i++){
+      var btn = MODE_BTN[modes[i]];
+      if (btn) modeRow.appendChild(btn);  // appendChild re-ordena, no duplica
+    }
+    if (modes.length) setMode(modes[0]);
+  }
+
+  function selectVertical(opt, btn){
+    vertical = opt ? opt.slug : "";
+    var all = verticalOpts.querySelectorAll("button");
+    for (var i = 0; i < all.length; i++){
+      all[i].className = "btn " + (all[i] === btn ? "btn-primary" : "btn-ghost");
+    }
+    applyModeOrder(opt ? opt.modes : [MODE_DEFAULT, "stock"]);
+  }
+
+  function loadVerticals(){
+    fetch("/api/verticals")
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data){
+        if (!data || !data.options || !data.options.length) return;
+        verticalQuestion.textContent = data.question;
+        data.options.forEach(function(opt){
+          var btn = document.createElement("button");
+          btn.className = "btn btn-ghost";
+          btn.textContent = opt.label;
+          btn.title = opt.display_name;
+          btn.addEventListener("click", function(){ selectVertical(opt, btn); });
+          verticalOpts.appendChild(btn);
+        });
+        var none = document.createElement("button");
+        none.className = "btn btn-ghost";
+        none.textContent = "Otra cosa";
+        none.addEventListener("click", function(){ selectVertical(null, none); });
+        verticalOpts.appendChild(none);
+        verticalBlock.classList.remove("hidden");
+      })
+      .catch(function(){ /* el demo funciona igual con el orden canonico */ });
+  }
 
   function setMode(next){
     mode = next;
@@ -383,6 +447,9 @@
     if (useSample) fd.append("use_sample", "true");
     if (!useSample && cfg.twoFiles){ fd.append("receipts", file); fd.append("demand", file2); }
     else if (!useSample && file) fd.append("file", file);
+    // El rubro elige la tabla de alias del mapeo. Un slug desconocido no rompe
+    // nada: el servidor cae a la tabla generica (webapp/demo_verticals.aliases_for).
+    if (vertical) fd.append("vertical", vertical);
 
     runUpload.disabled = true; runSample.disabled = true;
     out.innerHTML = '<div class="empty"><span class="spin"></span> '+MODES[mode].spinner+'</div>';
@@ -402,6 +469,7 @@
   runUpload.addEventListener("click", function(){ run(false); });
   runSample.addEventListener("click", function(){ run(true); });
   setMode(MODE_DEFAULT);
+  loadVerticals();
 })();
 </script>
 </body>

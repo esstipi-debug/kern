@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
-
 from nosilo_core.guided import (
     EXECUTED,
     HANDOFF,
@@ -30,10 +29,18 @@ from nosilo_core.guided import (
     as_options,
     verify_guided,
 )
+
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.eoq import PriceBreak
 from src.export import write_summary_csv
-from src.hat_council import Settlement, TensionMap, settle, tension_map
+from src.hat_council import (
+    UNASSIGNED,
+    UNRESOLVED_CONCESSION_THRESHOLD,
+    Settlement,
+    TensionMap,
+    settle,
+    tension_map,
+)
 from src.hats import (
     HAT_KEYS,
     HATS,
@@ -283,6 +290,33 @@ def _acta_artifact(settlements: tuple[Settlement, ...], weights: dict[str, float
             f"{e.hat_key} cede {e.concesion:.2f} ({e.kpi_ideal:,.2f} -> {e.kpi_chosen:,.2f})"
             for e in s.acta)
         lines.append(f"{s.sku}: {parts}")
+    # Lo que convierte el acta en una decision y no en un calculo: sobre que demanda
+    # se acordo, que quedo sin resolver, y quien firma y cuando.
+    lines.append("")
+    lines.append("DEMANDA ACORDADA (unidades/anio, la base sobre la que se reconcilio)")
+    for s in settlements:
+        lines.append(f"{s.sku}: {s.agreed_demand_plan:,.0f}")
+    lines.append("")
+    lines.append(
+        f"BRECHAS SIN RESOLVER (concesion > {UNRESOLVED_CONCESSION_THRESHOLD:.0%} del ideal)"
+    )
+    abiertas = [(s, g) for s in settlements for g in s.unresolved_gaps]
+    for s, g in abiertas:
+        lines.append(
+            f"{s.sku}: {g.hat_key} cede {g.concesion:.2f} "
+            f"({g.kpi_ideal:,.2f} -> {g.kpi_chosen:,.2f}) - queda abierta"
+        )
+    if not abiertas:
+        lines.append("ninguna: ningun sombrero cede por encima del umbral")
+    lines.append("")
+    firma = settlements[0]
+    lines.append(
+        f"DECISION: {firma.decision_owner}, {firma.decision_date:%Y-%m-%d}"
+        + (
+            "  <- SIN ASIGNAR: el plan no tiene dueno, pasar owner= para cerrarlo"
+            if firma.decision_owner == UNASSIGNED else ""
+        )
+    )
     if assumed:
         lines.append("")
         lines.append("NOTA: tarifario de descuentos sintetico (assumed), no del proveedor.")
@@ -292,7 +326,11 @@ def _acta_artifact(settlements: tuple[Settlement, ...], weights: dict[str, float
 def run_settlement(payload: dict) -> SettlementReport:
     inputs = payload["inputs"]
     weights = payload["weights"]
-    settlements = tuple(settle(i, weights) for i in inputs)
+    settlements = tuple(
+        settle(i, weights, owner=payload.get("owner", UNASSIGNED),
+               decided_on=payload.get("decided_on"))
+        for i in inputs
+    )
     assumed = any(i.price_breaks_assumed for i in inputs)
     total = sum(s.value_vs_baseline_usd for s in settlements)
     packet = HandoffPacket(
