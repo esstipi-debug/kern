@@ -42,7 +42,8 @@ from nosilo_core.types import (
     STATUS_QA_FAILED,
     JobRequest,
 )
-from src import client_profile
+from jobs.intake import ALIASES as BASE_ALIASES
+from src import client_profile, vertical_profile
 from src.deliverable import DEFAULT_BRANDING, Branding
 
 from . import citation_gate
@@ -307,6 +308,24 @@ def run_package(
     if profile_error:
         return _failed(spec, client, STATUS_ERROR, profile_error)
 
+    # El camino comercial no resolvia el vertical: `merge_params` recibia dos
+    # argumentos, asi que `holding_rate: 0.22` y `order_cost: 1400` del pack de
+    # repuestos no llegaban a una corrida de paquete. Se resuelve UNA vez, antes
+    # del bucle, con la misma negativa a caer al generico que el orquestador: un
+    # cliente que DECLARO un rubro y recibe los defaults de libro es peor que un
+    # error, porque el numero equivocado viaja con cara de correcto.
+    vertical = None
+    if profile is not None and profile.vertical:
+        try:
+            vertical = vertical_profile.load_vertical_profile(profile.vertical)
+        except (vertical_profile.VerticalNotConfiguredError, ValueError) as exc:
+            return _failed(spec, client, STATUS_ERROR, str(exc))
+    pack_aliases = (
+        vertical.merged_aliases(BASE_ALIASES)
+        if vertical is not None and vertical.aliases
+        else None
+    )
+
     missing = missing_required_inputs(spec, intake_dir)
     if missing:
         return PackageResult(
@@ -323,7 +342,9 @@ def run_package(
         scratch = Path(scratch_str)
         for step in spec.steps:
             tool = registry.get(step.tool_key)
-            merged = client_profile.merge_params({**step.params, **params}, profile)
+            merged = client_profile.merge_params({**step.params, **params}, profile, vertical)
+            if pack_aliases is not None:
+                merged = {**merged, "column_aliases": pack_aliases}
             outcome = _run_step(spec, step, tool, intake, scratch, reports,
                                 merged, client, provider, knowledge, strict_params)
             outcomes.append(outcome)

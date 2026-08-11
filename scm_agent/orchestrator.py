@@ -17,6 +17,7 @@ from nosilo_core.types import (
     JobRequest,
     JobResult,
 )
+from jobs import intake
 from src import client_profile, vertical_profile
 
 from .guided_bridge import to_guided_outcome
@@ -160,6 +161,13 @@ class Orchestrator:
                 clarifications=[c for c in (veto.instead.strip(),) if c],
             )
         params = client_profile.merge_params(params, profile, vertical)
+        if vertical is not None and vertical.aliases:
+            # DESPUES de merge_params a proposito. Esta es una tabla que ESTE
+            # proceso resolvio del rubro declarado por el cliente, no una perilla
+            # que el llamador ajusta, asi que un params["column_aliases"] que
+            # llegue por /api/jobs (JSON crudo) no puede ganarle: merge_params
+            # pone los params del llamador ultimos, y por lo tanto mas altos.
+            params = {**params, "column_aliases": vertical.merged_aliases(intake.ALIASES)}
         # prepare() must see the same merged params run() will: several tools bake
         # params into their payload at prepare time (multi_echelon service_level,
         # simulation order_cost, inventory lead_time_days).

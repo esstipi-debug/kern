@@ -31,12 +31,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import pandas as pd  # noqa: E402
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+from jobs.intake import load_table  # noqa: E402
 from jobs.price_monitor import accept_observation  # noqa: E402
 from jobs.scheduled_jobs import PRODUCTION_JOB_IDS, production_registry  # noqa: E402
 from scm_agent import Orchestrator  # noqa: E402
@@ -76,10 +76,13 @@ from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
 from webapp import (  # noqa: E402
     demo_gap_value,
+    demo_gap_workbook,
     demo_lead_time_scan,
     demo_price_scan,
     demo_scan,
+    demo_stock_workbook,
     demo_verticals,
+    demo_workbook,
     observability,
     security,
 )
@@ -123,6 +126,17 @@ LEADS_FILE = LEADS_DIR / "leads.jsonl"  # one JSON object per captured demo lead
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # cap /api/jobs uploads at 25 MB
 JOBS_TTL_SECONDS = 3600  # per-job output dirs older than this are swept on the next request
+
+# SIBLING of JOBS_OUTPUT_DIR, deliberately not a child: _prune_old_jobs() rmtree's
+# every child dir older than the TTL, so a child here would be swept wholesale.
+# Separate subtree also keeps it outside the /jobs-output API-key gate, which is
+# what lets an anonymous /demo visitor fetch their own workbook.
+DEMO_OUTPUT_DIR = _REPO_ROOT / "webapp" / "_demo_output"
+DEMO_TTL_SECONDS = 3600
+#: Lo unico que este arbol sirve. Cualquier otro nombre es un 404, para que la ruta
+#: no se convierta en un lector de archivos arbitrario.
+DEMO_DOWNLOADS = {"plazo_real.xlsx", "escaneo_stock.xlsx", "brecha_en_plata.xlsx"}
+XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 PERIODS_PER_YEAR = 52.0
 MAX_LEAD_PERIODS = 52.0
 
@@ -638,6 +652,35 @@ def _prune_old_jobs(now: float | None = None) -> None:
             continue
 
 
+def _prune_old_demo_outputs(now: float | None = None) -> None:
+    """Same best-effort sweep as _prune_old_jobs, over the anonymous demo subtree."""
+    cutoff = (now if now is not None else time.time()) - DEMO_TTL_SECONDS
+    try:
+        entries = list(DEMO_OUTPUT_DIR.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            if entry.is_dir() and entry.stat().st_mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
+        except OSError:
+            continue
+
+
+def _demo_download_url(path: Path) -> str | None:
+    """Mint the public URL for a generated demo artifact, or None if it escaped.
+
+    Same containment guard as the /api/jobs minting path: resolve, then require
+    the result to sit under DEMO_OUTPUT_DIR. On failure the caller OMITS the key
+    rather than returning a link that 404s.
+    """
+    try:
+        rel = path.resolve().relative_to(DEMO_OUTPUT_DIR.resolve())
+    except (ValueError, OSError):
+        return None
+    return "/demo-output/" + rel.as_posix()
+
+
 def _safe_upload_basename(filename: str) -> str:
     """Reduce a client-supplied filename to a bare basename, raising 400 if it
     doesn't survive the reduction (empty, '.', '..') — never trust the
@@ -782,13 +825,18 @@ def _prune_excess_lead_dirs(limit: int = MAX_LEAD_DIRS) -> None:
         shutil.rmtree(stale, ignore_errors=True)
 
 
-async def _stage_csv_upload(file: UploadFile) -> tuple[Path, str]:
-    """Land a visitor's CSV in an isolated per-request tempdir under JOBS_OUTPUT_DIR.
+async def _stage_table_upload(file: UploadFile) -> tuple[Path, str]:
+    """Land a visitor's table (CSV or Excel) in an isolated per-request tempdir.
 
     The SECURITY.md upload controls for the demo funnels in ONE place --
     basename-only filename, 25 MB cap, TTL-purged staging dir -- so a new funnel
     endpoint cannot ship with a quietly weaker copy of them. Returns the staged
     path and the sanitized label the report and telemetry line carry.
+
+    The staged name keeps the caller's extension on purpose: ``jobs.intake.load_table``
+    dispatches CSV vs. Excel on the suffix, so flattening it here would silently
+    send every .xlsx down the ``read_csv`` path. The client whose inventory lives
+    in a spreadsheet is the archetypal visitor of this funnel, not an edge case.
     """
     import tempfile
 
@@ -842,16 +890,20 @@ async def api_demo_scan(
     _prune_old_jobs()
 
     if file is not None and file.filename:
-        data_path, dataset_label = await _stage_csv_upload(file)
+        data_path, dataset_label = await _stage_table_upload(file)
     elif use_sample:
         data_path, dataset_label = SAMPLE_STOCK_FILE, "sample_stock_snapshot.csv"
     else:
-        raise HTTPException(status_code=400, detail="sube un CSV de stock o marca use_sample")
+        raise HTTPException(status_code=400, detail="sube un CSV o Excel de stock o marca use_sample")
 
     try:
-        df = pd.read_csv(data_path, nrows=20000)
+        df = load_table(data_path)
     except Exception as exc:  # pandas raises several parse/encoding error types
-        raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el archivo: {exc}") from exc
+    # El tope de filas es la regla de negocio del demo gratis y no viajaba con el
+    # `nrows=20000` que reemplazo `load_table`: aquel era un tope de LECTURA, este
+    # es la puerta. `load_table` no acepta `nrows` -- tiene que elegir hoja y fila
+    # de encabezado antes de saber cuantas filas hay -- asi que se mide despues.
     if len(df) > 10000:
         raise HTTPException(status_code=413, detail="archivo demasiado grande para demo gratis, usa Starter Mass")
     try:
@@ -874,6 +926,15 @@ async def api_demo_scan(
             demo_scan.render_followup_email(result, email=addr, dataset_label=dataset_label),
             encoding="utf-8",
         )
+        _prune_old_demo_outputs()
+        DEMO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        book_dir = Path(tempfile.mkdtemp(dir=DEMO_OUTPUT_DIR))
+        book = demo_stock_workbook.write_stock_workbook(
+            result, book_dir / "escaneo_stock.xlsx", dataset_label=dataset_label, ts=ts
+        )
+        shutil.copyfile(book, lead_dir / "escaneo_stock.xlsx")
+        workbook_url = _demo_download_url(book)
+
 
     # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
     record = {
@@ -889,13 +950,17 @@ async def api_demo_scan(
 
     if not result.ok:
         return {"status": "qa_failed", "qa_issues": list(result.qa_issues), "dataset": dataset_label}
-    return {
+    payload = {
         "status": "ok",
         "headline": result.headline,
         "findings": list(result.findings),
         "cta_url": demo_scan.CTA_PATH,
         "dataset": dataset_label,
     }
+    # Se omite la clave entera si el minteo fallo: mejor sin boton que con uno roto.
+    if workbook_url:
+        payload["workbook_url"] = workbook_url
+    return payload
 
 
 @app.post("/api/demo-lead-time", dependencies=[Depends(security.rate_limit)])
@@ -920,18 +985,18 @@ async def api_demo_lead_time(
     _prune_old_jobs()
 
     if file is not None and file.filename:
-        data_path, dataset_label = await _stage_csv_upload(file)
+        data_path, dataset_label = await _stage_table_upload(file)
     elif use_sample:
         data_path, dataset_label = SAMPLE_RECEIPTS_FILE, "sample_receipts.csv"
     else:
         raise HTTPException(
-            status_code=400, detail="sube un CSV de recepciones o marca use_sample"
+            status_code=400, detail="sube un CSV o Excel de recepciones o marca use_sample"
         )
 
     try:
-        df = pd.read_csv(data_path)
+        df = load_table(data_path)
     except Exception as exc:  # pandas raises several parse/encoding error types
-        raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el archivo: {exc}") from exc
     try:
         # Tabla de alias del rubro cuando el visitante declaro uno. Un slug
         # desconocido o manipulado devuelve None y mapea con la tabla generica:
@@ -946,6 +1011,7 @@ async def api_demo_lead_time(
         ) from exc
 
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    workbook_url: str | None = None
     if result.ok:
         lead_dir = _lead_dir_for(addr)
         (lead_dir / "lead_time_report.md").write_text(
@@ -960,6 +1026,19 @@ async def api_demo_lead_time(
             ),
             encoding="utf-8",
         )
+        # El entregable que el visitante SI puede abrir. El .md de arriba es para
+        # el operador; quien sube una planilla no lee markdown.
+        # Solo bajo result.ok, igual que los otros dos artefactos: con QA fallado
+        # `findings` viene vacio y el libro seria un resultado sin resultado.
+        _prune_old_demo_outputs()
+        DEMO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        book_dir = Path(tempfile.mkdtemp(dir=DEMO_OUTPUT_DIR))
+        book = demo_workbook.write_lead_time_workbook(
+            result, book_dir / "plazo_real.xlsx", dataset_label=dataset_label, ts=ts
+        )
+        # Una copia para el operador, junto al .md. Ese arbol NUNCA se sirve.
+        shutil.copyfile(book, lead_dir / "plazo_real.xlsx")
+        workbook_url = _demo_download_url(book)
 
     # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
     record = {
@@ -979,7 +1058,7 @@ async def api_demo_lead_time(
             "qa_issues": list(result.qa_issues),
             "dataset": dataset_label,
         }
-    return {
+    payload = {
         "status": "ok",
         "headline": result.headline,
         "findings": list(result.findings),
@@ -987,6 +1066,38 @@ async def api_demo_lead_time(
         "cta_url": demo_lead_time_scan.CTA_PATH,
         "dataset": dataset_label,
     }
+    # Se omite la clave entera si el minteo fallo: mejor sin boton que con uno roto.
+    if workbook_url:
+        payload["workbook_url"] = workbook_url
+    return payload
+
+
+@app.get("/demo-output/{token}/{name}")
+async def demo_output(token: str, name: str) -> FileResponse:
+    """Serve a generated /demo workbook to the anonymous visitor who produced it.
+
+    An explicit route rather than `app.mount(StaticFiles(...))`, and the media type
+    is hardcoded rather than sniffed: Python's `mimetypes` has no entry for `.xlsx`
+    and the `python:3.12-slim` base image ships no `/etc/mime.types`, so Starlette
+    would guess `text/plain` and the browser would show XML soup instead of opening
+    Excel. The one thing this file exists to do would fail on the deploy and work
+    on every developer's laptop.
+
+    Containment: `token` and `name` are both re-checked against the resolved path,
+    and `name` must be one of the known artifacts - this is a download endpoint for
+    three known files, never a reader of arbitrary paths.
+    """
+    if name not in DEMO_DOWNLOADS:
+        raise HTTPException(status_code=404, detail="not found")
+    candidate = DEMO_OUTPUT_DIR / token / name
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(DEMO_OUTPUT_DIR.resolve())
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=404, detail="not found") from exc
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(resolved, media_type=XLSX_MEDIA_TYPE, filename=name)
 
 
 @app.post("/api/demo-gap-value", dependencies=[Depends(security.rate_limit)])
@@ -1014,8 +1125,8 @@ async def api_demo_gap_value(
     _prune_old_jobs()
 
     if receipts is not None and receipts.filename and demand is not None and demand.filename:
-        receipts_path, receipts_label = await _stage_csv_upload(receipts)
-        demand_path, demand_label = await _stage_csv_upload(demand)
+        receipts_path, receipts_label = await _stage_table_upload(receipts)
+        demand_path, demand_label = await _stage_table_upload(demand)
         dataset_label = f"{receipts_label} + {demand_label}"
     elif use_sample:
         receipts_path = SAMPLE_RECEIPTS_PORTFOLIO_FILE
@@ -1025,22 +1136,23 @@ async def api_demo_gap_value(
         raise HTTPException(
             status_code=400,
             detail=(
-                "sube LOS DOS CSV (recepciones y movimientos de demanda con costo "
+                "sube LOS DOS archivos (recepciones y movimientos de demanda con costo "
                 "unitario) o marca use_sample: con uno solo no hay cifra de plata"
             ),
         )
 
     try:
-        receipts_df = pd.read_csv(receipts_path)
-        demand_df = pd.read_csv(demand_path)
+        receipts_df = load_table(receipts_path)
+        demand_df = load_table(demand_path)
     except Exception as exc:  # pandas raises several parse/encoding error types
-        raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el archivo: {exc}") from exc
     try:
         result = demo_gap_value.run_gap_value(receipts_df, demand_df)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    workbook_url: str | None = None
     if result.ok:
         lead_dir = _lead_dir_for(addr)
         (lead_dir / "gap_value_report.md").write_text(
@@ -1053,6 +1165,15 @@ async def api_demo_gap_value(
             ),
             encoding="utf-8",
         )
+        _prune_old_demo_outputs()
+        DEMO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        book_dir = Path(tempfile.mkdtemp(dir=DEMO_OUTPUT_DIR))
+        book = demo_gap_workbook.write_gap_value_workbook(
+            result, book_dir / "brecha_en_plata.xlsx", dataset_label=dataset_label, ts=ts
+        )
+        shutil.copyfile(book, lead_dir / "brecha_en_plata.xlsx")
+        workbook_url = _demo_download_url(book)
+
 
     # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
     record = {
@@ -1072,13 +1193,17 @@ async def api_demo_gap_value(
             "qa_issues": list(result.qa_issues),
             "dataset": dataset_label,
         }
-    return {
+    payload = {
         "status": "ok",
         "headline": result.headline,
         "findings": list(result.findings),
         "cta_url": demo_gap_value.CTA_PATH,
         "dataset": dataset_label,
     }
+    # Se omite la clave entera si el minteo fallo: mejor sin boton que con uno roto.
+    if workbook_url:
+        payload["workbook_url"] = workbook_url
+    return payload
 
 
 @app.post("/api/demo-price-scan", dependencies=[Depends(security.rate_limit)])
