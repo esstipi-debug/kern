@@ -10,9 +10,96 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from src.deliverable import DataSource, Deliverable, Finding, Kpi
+from src import order_fulfillment as of
+from src.deliverable import DataSource, Deliverable, Finding, Kpi, money, pct
 
 from .inventory_optimization import JobReport
+
+#: How each provenance reads on a client page. The deck must never print a service
+#: number without saying where it came from - that is the whole T10 defect: a
+#: target the model set, presented where a client expects what they actually got.
+#: Every PROVENANCE_* constant ``src/order_fulfillment.py`` declares is keyed here,
+#: MODEL_IMPLIED included: that module's docstring lists it as one of the four
+#: procedences a RealizedService can carry, so leaving it out did not make it
+#: impossible - it made ``build()`` die with ``KeyError`` on the one record whose
+#: label matters most, the model number wearing a measurement's name.
+_ORIGIN_TEXT = {
+    of.PROVENANCE_OBSERVED: "measured here from customer order lines",
+    of.PROVENANCE_CLIENT_REPORTED: "fill rate reported by the client",
+    of.PROVENANCE_MIXED: "part measured from order lines, part reported by the client",
+    of.PROVENANCE_NOT_MEASURED: "no order lines and no fill rate reported by the client",
+    of.PROVENANCE_MODEL_IMPLIED: (
+        "NOT measured: the fill rate the sized policy implies, not service any "
+        "customer received"
+    ),
+}
+
+#: What ``lost_sales_value`` was valued AT, which is not the same money in every
+#: case. ``of.measure_from_order_lines`` values the shortfall at the line's own
+#: ``unit_price`` - revenue. ``of.from_reported_fill_rate`` values it at
+#: ``unit_cost``, and says so itself in ``of.METHOD_REPORTED_FILL_RATE`` ("valued at
+#: mean unit cost"); a cost printed as revenue overstates the loss by the whole
+#: margin. ``of.aggregate`` can sum both into one total, so the mixed roll-up names
+#: both bases rather than picking one and staying quiet about the other. Keyed by
+#: provenance for the same reason ``_ORIGIN_TEXT`` is: the label follows where the
+#: number came from, never the other way round.
+_LOST_VALUE_BASIS = {
+    of.PROVENANCE_OBSERVED: "of revenue not captured",
+    of.PROVENANCE_CLIENT_REPORTED: "of unserved demand, valued at unit cost (not revenue)",
+    of.PROVENANCE_MIXED: "of unserved demand, part valued at selling price and part at unit cost",
+    of.PROVENANCE_NOT_MEASURED: "of unserved demand (no valuation basis: nothing was measured)",
+    of.PROVENANCE_MODEL_IMPLIED: (
+        "of demand the sized POLICY expects to miss - a model output, not a loss "
+        "anyone observed"
+    ),
+}
+
+#: What a provenance neither table knows reads as. A ``KeyError`` here suppresses
+#: the whole deliverable over a label; a silent generic sentence would be worse -
+#: it would put a claim in the client's hands that no code stands behind. So the
+#: fallback names its own ignorance, in the deck, where it gets noticed.
+_UNRECOGNIZED = "provenance {0!r}, which this deck carries no wording for"
+
+
+def _origin_text(provenance: str) -> str:
+    """Where this number came from, in a client's words. Never raises."""
+    return _ORIGIN_TEXT.get(provenance, _UNRECOGNIZED.format(provenance))
+
+
+def _lost_value_basis(provenance: str) -> str:
+    """What the lost-sales money was valued AT. Never raises."""
+    return _LOST_VALUE_BASIS.get(provenance, f"of unserved demand, valued under an unstated basis "
+                                             f"({_UNRECOGNIZED.format(provenance)})")
+
+
+def _realized(report: JobReport) -> of.RealizedService:
+    """Portfolio realized service, or a not-measured record when nothing came in.
+
+    Records built by hand (older callers, tests) carry ``realized_service=None``;
+    they contribute nothing rather than being counted as a zero.
+    """
+    measured = [r.realized_service for r in report.recommendations if r.realized_service]
+    return of.aggregate(measured) if measured else of.not_measured("PORTFOLIO")
+
+
+def _service_findings(service: of.RealizedService, broken: tuple[str, ...]) -> list[Finding]:
+    """What the service gap cost, in units, money and named SKUs. Empty when unmeasured.
+
+    The money carries its valuation basis (:data:`_LOST_VALUE_BASIS`) because the
+    same field holds revenue on an order-line measurement and cost on a
+    client-reported one. Calling both "revenue" hands the client a number labelled
+    as something it is not.
+    """
+    if not service.lost_sales_units:
+        return []
+    detail = f"{service.lost_sales_units:,.0f} units were ordered and not delivered"
+    if broken:
+        detail += f"; SKUs with stockout days: {', '.join(broken[:5])}"
+    return [Finding(
+        "Demand the network did not serve",
+        f"{detail} ({_origin_text(service.provenance)}).",
+        impact=f"{money(service.lost_sales_value)} {_lost_value_basis(service.provenance)}",
+    )]
 
 
 def build(
@@ -27,12 +114,17 @@ def build(
 ) -> Deliverable:
     """Build a Deliverable from an inventory-optimization report."""
     sl = report.params.get("service_level", 0.95)
+    service = _realized(report)
+    broken = of.skus_out_of_stock(
+        [r.realized_service for r in report.recommendations if r.realized_service]
+    )
     summary = (
         f"Analyzed {report.n_skus} SKUs; recommended ${report.final_investment:,.0f} "
-        f"inventory investment at {sl * 100:.0f}% cycle service level."
+        f"inventory investment at a {sl * 100:.0f}% cycle service level target. "
+        f"Service actually delivered to customers: {pct(service.fill_rate)} fill rate."
     )
 
-    findings: list[Finding] = []
+    findings: list[Finding] = list(_service_findings(service, broken))
     if report.n_at_risk:
         findings.append(Finding(
             f"{report.n_at_risk} SKUs with high forecast bias",
@@ -65,13 +157,24 @@ def build(
             impact="focus cycle counts and review cadence here",
         ))
 
+    origin = _origin_text(service.provenance)
     kpis = (
         Kpi("SKUs analyzed", str(report.n_skus), rationale="Catalog coverage of the analysis"),
         Kpi("Recommended investment", f"${report.final_investment:,.0f}",
             target=(f"<= ${report.budget:,.0f}" if report.budget is not None else ""),
             rationale="Capital tied up in cycle + safety stock"),
-        Kpi("Cycle service level", f"{sl * 100:.0f}%", target="95%+",
-            rationale="Probability of not stocking out within a replenishment cycle"),
+        # The two realized KPIs come FIRST among the service numbers, and the model's
+        # target is labelled as one. A client checking our deck against their own
+        # numbers has to land on the measured line, not on the goal.
+        Kpi("Realized fill rate (observed)", pct(service.fill_rate), target="95%+",
+            rationale=f"Units delivered over units ordered on real customer orders - "
+                      f"what was actually served ({origin})"),
+        Kpi("Realized OTIF (observed)", pct(service.otif), target="95%+",
+            rationale=f"Order lines delivered complete AND by the promised date, SCOR "
+                      f"RL.1.1 ({origin})"),
+        Kpi("Cycle service level (model target)", f"{sl * 100:.0f}%", target="95%+",
+            rationale="The probability of not stocking out that the POLICY is sized for. "
+                      "A target, not an outcome - read it against the realized fill rate above"),
         Kpi("High-bias SKUs", str(report.n_at_risk), target="0",
             rationale="Forecast-quality risk that distorts policy sizing"),
         Kpi("Intermittent SKUs", str(report.n_intermittent),
@@ -81,6 +184,14 @@ def build(
     data_sources = (
         DataSource("Demand history & unit cost", data_source, "per run"),
         DataSource("Service level / holding rate / order cost", "engagement parameters", "per run"),
+        DataSource("Realized fill rate / OTIF / lost sales",
+                   f"{origin}; method: {service.method}", "per run"),
+        DataSource("Days out of stock",
+                   "customer order lines with dates, or the client's stock-zero history "
+                   "- a scalar fill rate cannot produce it", "per run"),
+        DataSource("Cycle service level (model target)",
+                   "engagement parameter, tuned toward the observed fill rate - a policy "
+                   "setting, never a measurement of service", "per run"),
     )
 
     recs: list[str] = []

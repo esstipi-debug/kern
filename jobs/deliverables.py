@@ -51,6 +51,39 @@ def _row(r: SkuRecommendation) -> dict:
         "unit_cost": round(r.unit_cost, 2),
         "inventory_value": round(r.investment, 2),
         "status": STATUS_LABEL[r.status],
+        # Service, with the model's number and the client's kept in separate columns.
+        # `service_level_target` is what the policy above is sized for; the
+        # `observed_*` columns are what customers actually got, and
+        # `service_provenance` says which of the two any given row rests on. A
+        # spreadsheet is exactly where these get confused, so they never share a name.
+        "service_level_target": round(r.service_level, 4),
+        "model_implied_beta": (
+            round(r.model_implied_beta, 4) if r.model_implied_beta is not None else ""
+        ),
+        **_service_columns(r.realized_service),
+    }
+
+
+def _service_columns(service) -> dict:
+    """The realized-service columns, blank where nothing was measured.
+
+    Blank, never 0: a zero in a fill-rate column is a total stockout, and printing
+    one for a SKU whose service nobody measured is the same lie in a cell that
+    ``src.deliverable.not_measured`` exists to prevent on a page.
+    """
+    if service is None:
+        return {
+            "observed_fill_rate": "", "observed_otif": "", "days_out_of_stock": "",
+            "lost_sales_units": "", "lost_sales_value": "", "service_provenance": "",
+        }
+    number = lambda v, d=4: round(v, d) if v is not None else ""  # noqa: E731
+    return {
+        "observed_fill_rate": number(service.fill_rate),
+        "observed_otif": number(service.otif),
+        "days_out_of_stock": service.days_out_of_stock if service.days_out_of_stock is not None else "",
+        "lost_sales_units": number(service.lost_sales_units, 2),
+        "lost_sales_value": number(service.lost_sales_value, 2),
+        "service_provenance": service.provenance,
     }
 
 

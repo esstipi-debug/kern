@@ -14,9 +14,11 @@ import pandas as pd
 from scipy import stats as _sps
 
 from jobs.intake import IntakeQuality
+from src import order_fulfillment
 from src.classification import classify_portfolio
 from src.classification import service_levels as class_service_levels
 from src.constraints import InventoryItem, allocate_under_budget
+from src.fill_rate import fill_rate_from_safety_stock
 from src.forecasting import (
     DEFAULT_OOS_ORIGINS,
     MIN_PERIODS_FOR_POLICY,
@@ -68,6 +70,21 @@ class SkuRecommendation:
     # gate actually fired for every priced line, and the deliverable can show the
     # reader how much history each number rests on.
     n_periods: int = 0
+    # Service the client ACTUALLY got - order-line fill rate, outbound OTIF, days
+    # out of stock, lost sales - with the provenance of each number attached
+    # (src/order_fulfillment.py). Until this field existed the only service number
+    # on the record was `service_level` above, which is the policy's TARGET: a
+    # client comparing our deck against their own numbers had nothing here that
+    # answered "what did we actually serve?". None only if the caller built the
+    # record by hand; run() always fills it, with provenance 'not_measured' when
+    # neither order lines nor a client-reported fill rate came in.
+    realized_service: order_fulfillment.RealizedService | None = None
+    # The beta this sized policy IMPLIES (Vandeput 7.3.1, via src/fill_rate.py):
+    # provenance 'model_implied'. It is what the model expects to achieve, not what
+    # happened, and it is deliberately NOT named *_fill_rate so that neither a
+    # reader nor a column mapping can pick it up as realized service. None when the
+    # policy has no cycle demand or no dispersion to imply a beta from.
+    model_implied_beta: float | None = None
 
 
 @dataclass(frozen=True)
@@ -128,6 +145,69 @@ def _observed_skewness(series) -> float | None:
     return value if np.isfinite(value) else None
 
 
+def _lines_by_sku(order_lines: pd.DataFrame | None) -> dict[str, list[dict]]:
+    """Group the client's outbound order lines by SKU, once, before the per-SKU loop."""
+    if order_lines is None or order_lines.empty or "product_id" not in order_lines.columns:
+        return {}
+    return {
+        str(pid): group.to_dict("records")
+        for pid, group in order_lines.groupby("product_id")
+    }
+
+
+def _realized_service(
+    pid: str,
+    lines: list[dict],
+    observed_fill_rates: dict[str, float] | None,
+    stockout_days: dict[str, int] | None,
+    *,
+    shipped_units: float,
+    unit_cost: float,
+    n_periods: int,
+) -> order_fulfillment.RealizedService:
+    """The service this SKU actually delivered, from the strongest evidence available.
+
+    Order lines beat a reported rate: they carry the dates OTIF needs and the days
+    a scalar beta can never produce. A reported rate is still a fact about the
+    client's operation, so it is carried through and labelled 'client_reported'
+    rather than being consumed by the tuning loop and thrown away. With neither,
+    the answer is 'not_measured' - never a zero nobody observed.
+    """
+    days = (stockout_days or {}).get(pid)
+    if lines:
+        return order_fulfillment.measure_from_order_lines(
+            pid, lines, stockout_days=days, periods_covered=n_periods
+        )
+    reported = (observed_fill_rates or {}).get(pid)
+    if reported is None:
+        return order_fulfillment.not_measured(pid)
+    return order_fulfillment.from_reported_fill_rate(
+        pid,
+        float(reported),
+        shipped_units=shipped_units,
+        unit_cost=unit_cost if unit_cost > 0 else None,
+        periods_covered=n_periods,
+        stockout_days=days,
+    )
+
+
+def _model_implied_beta(pol, kind: str, mean_demand_per_period: float, review_period: float = 1.0):
+    """beta = 1 - Us/dc for the policy just sized (Vandeput 7.3.1). A MODEL number.
+
+    Reported next to - never instead of - ``realized_service``: it says what the
+    buffer is designed to achieve, which is exactly the claim a client checks
+    against their own fill rate. ``None`` where the identity is undefined
+    (no cycle demand, or no dispersion over the risk period).
+    """
+    cycle_demand = pol.order_quantity if kind == "(s, Q)" else mean_demand_per_period * review_period
+    sigma_x = pol.demand_std_risk_period
+    if not cycle_demand or cycle_demand <= 0 or sigma_x <= 0:
+        return None
+    return fill_rate_from_safety_stock(
+        pol.safety_stock.safety_stock, float(cycle_demand), float(sigma_x)
+    )
+
+
 def _status(intermittent: bool, bias: float) -> str:
     if intermittent:
         return "review"
@@ -150,6 +230,8 @@ def run(
     lead_time_stds: dict[str, float] | None = None,
     observed_fill_rates: dict[str, float] | None = None,
     target_fill_rate: float = 0.95,
+    order_lines: pd.DataFrame | None = None,
+    stockout_days: dict[str, int] | None = None,
     intake_quality: IntakeQuality | None = None,
     intake_quality_threshold: float = 0.20,
     min_periods: int = MIN_PERIODS_FOR_POLICY,
@@ -163,6 +245,22 @@ def run(
     ``lead_times`` overrides the per-SKU risk period (e.g. observed supplier lead times); and
     ``observed_fill_rates`` closes the loop, nudging each SKU's service level toward
     ``target_fill_rate`` so chronic stockouts raise the buffer and over-service relaxes it.
+
+    Two inputs describe what the client's customers actually experienced, and they
+    only ever feed ``SkuRecommendation.realized_service`` - never the policy:
+
+    ``order_lines``
+        One row per outbound order line, with ``product_id`` plus any of
+        ``ordered_qty``, ``delivered_qty``, ``promised_date``, ``delivered_date``
+        and ``unit_price``. The only input that can produce an outbound OTIF.
+    ``stockout_days``
+        Days at zero stock per SKU, when the client measured them. Without it the
+        count falls back to the dates the order lines went short, a lower bound.
+
+    ``observed_fill_rates`` doubles as the weakest of the three: absent order lines
+    it is still reported, as a client-reported measurement, instead of being
+    consumed by the tuning loop and discarded. A SKU with none of the three comes
+    back 'not_measured' rather than as a service number nobody observed.
     """
     if not 0 < service_level < 1:
         raise ValueError("service_level must be in (0, 1)")
@@ -180,6 +278,7 @@ def run(
             for p in source.list_products()
         ]
         base_levels = class_service_levels(classify_portfolio(class_items))
+    lines_by_sku = _lines_by_sku(order_lines)
     recs: list[SkuRecommendation] = []
     items: list[InventoryItem] = []
 
@@ -203,6 +302,15 @@ def run(
             lt_std_source = "client_file" if lt_std > 0 else "defaulted_zero"
         sl = base_levels.get(pid, service_level)
         n_periods = int(len(series))
+        # Measured BEFORE the policy gates below, and independently of them: what the
+        # customer got last quarter does not stop being a fact because this SKU has too
+        # little history to size a buffer from, or no usable cost on file.
+        realized = _realized_service(
+            pid, lines_by_sku.get(pid, []), observed_fill_rates, stockout_days,
+            shipped_units=float(np.sum(series)),
+            unit_cost=meta.mean_unit_cost,
+            n_periods=n_periods,
+        )
 
         # Too little history to size ANY buffer honestly. This gate runs BEFORE the
         # zero-demand and zero-cost guards below on purpose: with two observations
@@ -228,6 +336,7 @@ def run(
                     status="review",
                     sigma_source="insufficient_history",
                     n_periods=n_periods,
+                    realized_service=realized,
                 )
             )
             continue
@@ -248,6 +357,7 @@ def run(
                     cycle_investment=0.0, ss_investment=0.0, investment=0.0,
                     status="review",
                     n_periods=n_periods,
+                    realized_service=realized,
                 )
             )
             continue
@@ -270,6 +380,7 @@ def run(
                     cycle_investment=0.0, ss_investment=0.0, investment=0.0,
                     status="review",
                     n_periods=n_periods,
+                    realized_service=realized,
                 )
             )
             continue
@@ -333,6 +444,10 @@ def run(
                 lead_time_std=lt_std, lead_time_std_source=lt_std_source,
                 risk_periods=pol.safety_stock.risk_periods,
                 n_periods=n_periods,
+                realized_service=realized,
+                model_implied_beta=_model_implied_beta(
+                    pol, kind, inputs["mean_demand_per_period"]
+                ),
             )
         )
         items.append(InventoryItem(product_id=pid, order_quantity=2.0 * cycle_units, safety_stock=ss, unit_cost=meta.mean_unit_cost))

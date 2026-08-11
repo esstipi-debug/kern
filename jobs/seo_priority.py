@@ -63,7 +63,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from jobs import abc_xyz_job, forecast_job
+from jobs import abc_xyz_job, forecast_cycle, forecast_job
 from jobs.excess_obsolete_job import prepare_records as _prepare_stock_records
 from jobs.forecast_job import SkuForecast
 from src.classification import SkuClassification
@@ -234,7 +234,12 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
     ``jobs.excess_obsolete_job`` reads) -- then RUN each of the three
     already-existing jobs so this module never re-derives their math, only
     cross-references their output. Mirrors ``jobs.integrated_plan``'s
-    multi-file ``params['stock_path']`` convention (see module docstring)."""
+    multi-file ``params['stock_path']`` convention (see module docstring).
+
+    ``params['state_client_id']`` (optional) names the partition the forecast
+    step's cycle memory reads and writes. Omitted, the memory is off and the
+    forecast report says so; it is never defaulted onto a shared partition
+    (``jobs.forecast_cycle.store_from_params``)."""
     params = params or {}
     stock_path = params.get("stock_path")
     if not stock_path:
@@ -257,6 +262,9 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
         series_by_name,
         holdout_fraction=float(params.get("holdout_fraction", 0.25)),
         min_backtest_periods=int(params.get("min_backtest_periods", 4)),
+        # Same declared channel jobs/integrated_plan.py uses: the partition is
+        # named by params['state_client_id'], never defaulted to a shared one.
+        store=forecast_cycle.store_from_params(params),
     )
 
     return {

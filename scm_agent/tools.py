@@ -26,6 +26,7 @@ from jobs import (
     fefo_job,
     financial_kpis_job,
     flow_map_job,
+    forecast_cycle,
     forecast_job,
     hats_job,
     intake,
@@ -1330,6 +1331,11 @@ def _forecast_run(payload: object, params: dict) -> Produced:
         payload,
         holdout_fraction=params.get("holdout_fraction", 0.25),
         min_backtest_periods=params.get("min_backtest_periods", 4),
+        # Cycle memory is opt-in and named: params['state_client_id'] selects
+        # one client's partition. NOT request.client -- that is a caller-typed
+        # display label this surface already refuses to trust as an identity
+        # (webapp/app.py::_get_orchestrator). See forecast_cycle.store_from_params.
+        store=forecast_cycle.store_from_params(params),
     )
     return Produced(report=report, summary=report.summary)
 

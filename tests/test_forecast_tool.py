@@ -26,6 +26,25 @@ _INTERMITTENT = [10, 0, 10, 0, 10, 0, 10, 0, 10, 0, 10, 0]
 _LUMPY = [0, 30, 0, 0, 5, 0, 0, 40, 0, 2, 0, 15]
 
 
+@pytest.fixture(autouse=True)
+def _isolated_state(monkeypatch):
+    """Esta suite llama ``run()`` sin store, y eso ya no puede tocar ``src/state``.
+
+    La memoria de ciclo es OPT-IN (ver ``jobs/forecast_cycle.NO_STORE_MEMORY``):
+    sin ``store``, ``run()`` no lee ni congela nada. Este fixture redirigia la
+    particion compartida a un ``tmp_path`` porque la corrida sin store SI la
+    escribia; ahora afirma lo mas fuerte que se puede afirmar en su lugar --
+    resolverla vuelve a ser un error, no un destino silencioso.
+    """
+    import src.state.store as store_module
+
+    monkeypatch.setattr(
+        store_module,
+        "default_store",
+        lambda: pytest.fail("la suite resolvio la particion compartida default_store()"),
+    )
+
+
 def _demand_df() -> pd.DataFrame:
     series = {"A": _SMOOTH, "B": _ERRATIC, "C": _INTERMITTENT, "D": _LUMPY}
     rows = [
@@ -91,6 +110,17 @@ def test_run_quantifies_value_add_vs_naive():
     assert by["C"].beats_naive is True
     assert by["A"].fva > 0.0
     assert report.n_beating_naive >= 2
+
+
+def test_run_reports_portfolio_mape_signed_bias_and_the_cycle_line():
+    """MASE contesta 'mejor que naive?'. El planner tambien pregunta cuanto se
+    equivoco y para que lado, y contra que ciclo se compara eso."""
+    report = fj.run(fj.prepare_records(_demand_df()))
+
+    assert math.isfinite(report.mean_mape)
+    assert math.isfinite(report.mean_bias)
+    assert report.cycle_comparison.strip()          # nunca vacio, ni en la primera corrida
+    assert fj.verify(report) == []
 
 
 def test_run_emits_ranked_policy_options_with_one_recommended():

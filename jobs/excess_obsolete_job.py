@@ -25,6 +25,10 @@ _LASTSALE_COLS = ("days_since_last_sale", "last_sale_days", "days_no_sale", "sin
 
 _DEFAULT_TARGET_COVER_DAYS = 90.0
 _DEFAULT_DEAD_THRESHOLD_DAYS = 180.0
+# The mean Gregorian month, not the warehouse's 30. Cover is stated in months to the
+# people who decide (a buyer plans in months, an S&OP cycle runs in months), and a 30-day
+# month quietly inflates every figure by ~1.7% - small per SKU, not small over a catalog.
+_DAYS_PER_MONTH = 365.25 / 12
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,23 @@ def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]
     if override:
         return str(override) if str(override) in df.columns else None
     return next((c for c in candidates if c in df.columns), None)
+
+
+def _months_of_cover(days: float) -> float:
+    """Days of cover restated in months, preserving inf for a SKU with no demand.
+
+    A unit conversion, on purpose in the deliverable layer rather than on ``SkuEO``:
+    ``days_of_cover`` is what the model computes and what src/alerting.py,
+    src/liquidation.py and jobs/seo_priority.py consume. Months are how the report is
+    read. inf survives the division and must stay inf - "never runs out" is not a big
+    number, and rounding it into one would put a dead SKU on a replenishment plan.
+    """
+    return days / _DAYS_PER_MONTH
+
+
+def _fmt_cover(value: float) -> str | float:
+    """inf renders as the literal 'inf', never as a number a spreadsheet can average."""
+    return "inf" if value == float("inf") else round(value, 1)
 
 
 def _is_number(value: object) -> bool:
@@ -163,7 +184,13 @@ def verify(report: EOReport) -> list[str]:
 
 
 def write_operational(report: EOReport, out_dir: str | Path, client: str = "Client") -> dict[str, Path]:
-    """The machine-readable deliverable: the at-risk SKUs (dead/excess) by cash exposure."""
+    """The machine-readable deliverable: the at-risk SKUs (dead/excess) by cash exposure.
+
+    Cover is written in both units. ``days_of_cover`` is the model's own figure and the
+    existing contract; ``months_of_cover`` is the unit the decision is made in - a buyer
+    asked to cut stock reasons in months, and "1,278 days" is a number nobody converts in
+    their head before agreeing to it. Additive: the days column stays.
+    """
     d = Path(out_dir)
     d.mkdir(parents=True, exist_ok=True)
     rows = [
@@ -171,7 +198,8 @@ def write_operational(report: EOReport, out_dir: str | Path, client: str = "Clie
             "product_id": e.product_id,
             "classification": e.classification,
             "on_hand": round(e.on_hand, 1),
-            "days_of_cover": ("inf" if e.days_of_cover == float("inf") else round(e.days_of_cover, 1)),
+            "days_of_cover": _fmt_cover(e.days_of_cover),
+            "months_of_cover": _fmt_cover(_months_of_cover(e.days_of_cover)),
             "excess_units": round(e.excess_units, 1),
             "at_risk_value": round(e.excess_value, 2),
             "recommended_action": e.recommended_action,
@@ -213,10 +241,18 @@ def build_deck(
         ),
     ]
     if worst is not None and worst.excess_value > 0:
+        # Cover in months, the unit the buyer decides in. inf is spelled out rather than
+        # printed: "inf months" reads as a formatting glitch, and rounding it to a large
+        # number would hide that the SKU has no demand at all.
+        cover_txt = (
+            "no demand recorded, cover unbounded"
+            if worst.days_of_cover == float("inf")
+            else f"{_months_of_cover(worst.days_of_cover):,.1f} months of cover"
+        )
         findings.append(Finding(
             f"Largest single exposure: {worst.product_id}",
             f"{worst.classification}, {worst.excess_value:,.0f} at risk "
-            f"({worst.on_hand:,.0f} on hand).",
+            f"({worst.on_hand:,.0f} on hand, {cover_txt}).",
             impact="act on this SKU first",
         ))
 

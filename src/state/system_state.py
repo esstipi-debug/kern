@@ -28,7 +28,7 @@ with a clear error and nothing is written.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -188,15 +188,36 @@ def _cycle_sort_key(cycle_id: str) -> tuple:
     chronologically, anything else sorts lexicographically as a last resort.
     Callers should keep one scheme per domain; comparing across schemes still
     produces a total (if not very meaningful) order rather than raising.
+
+    A parsed timestamp without an offset is read as UTC -- the same convention
+    as ``store._ensure_utc`` and ``scm_agent.events._ensure_utc``. Not a detail:
+    both spellings are ISO cycle ids a caller legitimately produces
+    (``forecast_cycle.now_cycle_id`` emits an aware UTC stamp; a caller naming a
+    cycle by hand writes "2026-08-01T00:00:00"), and Python refuses to compare a
+    naive datetime with an aware one. Without the normalization this function
+    raised ``TypeError`` on that pair -- and a key that raises on a legal pair is
+    not a total order, so ``snapshot()`` blew up through every caller that
+    happened to mix the two rather than rejecting or accepting the cycle.
+
+    ``AttributeError`` is deliberately NOT caught. It is what ``.replace`` raises
+    for a ``cycle_id`` that is neither an int nor a str -- ``None`` arriving from
+    a broken path, a stray object -- and that is a caller bug, not a scheme this
+    function orders. Swallowing it returned ``(2, None)``, a key that compares
+    fine against another bucket-2 key right up until it meets a string, and then
+    raises ``TypeError`` inside the comparison in :func:`snapshot`, several frames
+    away from whoever produced the ``None``. The timezone fix above needed the
+    try/else restructure, not a wider net.
     """
     try:
         return (0, int(cycle_id))
     except (TypeError, ValueError):
         pass
     try:
-        return (1, datetime.fromisoformat(cycle_id.replace("Z", "+00:00")))
+        parsed = datetime.fromisoformat(cycle_id.replace("Z", "+00:00"))
     except (TypeError, ValueError):
         pass
+    else:
+        return (1, parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc))
     return (2, cycle_id)
 
 

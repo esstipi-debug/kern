@@ -185,6 +185,20 @@ def check_budget_feasibility(
     fabricated shortfall) -- ``allocate_under_budget`` never raises on an
     infeasible portfolio, it flags it, and this is the check that turns that
     flag into a citable finding instead of a silent truncation.
+
+    **What the passing message may say about ``safety_stock_scale``.** It used
+    to read "safety-stock scale S applied to R requested", and both halves of
+    that had stopped being true. ``S`` is not applied to ``requested_investment``
+    -- it is the fraction of the requested SAFETY-stock investment the cap
+    funded, while ``requested_investment`` is that safety total PLUS the
+    preserved cycle floor. And since ``purchase_plan._allocate`` puts
+    ``budget_deferral.defer_by_priority`` in the middle, ``S`` is no longer
+    applied per line at all: the distribution is by priority -- the cheapest
+    cover is kept whole and the expensive buffers are deferred by name. A
+    message a client can cite must not assert a mechanism that stopped running,
+    so it now states what the number IS (a portfolio fraction) and stops there.
+    WHICH line kept its buffer is ``budget_deferral.deferral_order``'s answer,
+    and this check never had the inputs to see it.
     """
     if allocation is None or budget is None:
         return (CoherenceResult(
@@ -194,8 +208,10 @@ def check_budget_feasibility(
         return (CoherenceResult(
             CHECK_BUDGET_FEASIBILITY, True, None,
             f"portfolio investment {allocation.final_investment:,.2f} fits the {budget:,.2f} budget "
-            f"cap (safety-stock scale {allocation.safety_stock_scale:.2f} applied to "
-            f"{allocation.requested_investment:,.2f} requested).",
+            f"cap (of {allocation.requested_investment:,.2f} requested, the cap funded "
+            f"{allocation.safety_stock_scale:.0%} of the requested safety-stock investment -- a "
+            "portfolio total, not a per-line multiplier; which lines kept their buffer is a "
+            "separate decision this check does not make).",
         ),)
     shortfall = allocation.final_investment - budget
     return (CoherenceResult(

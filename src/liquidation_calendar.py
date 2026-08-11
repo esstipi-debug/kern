@@ -42,9 +42,12 @@ existing ``LiquidationReport``:
    different, auditable decisions -- plan section 7's own framing).
 
 3. **Omnibus gate (PR-17 -> this module).** "Every liquidation markdown IS a
-   discount announcement" (plan section 7): for every priced line (elasticity or
-   default-markdown -- salvage lines carry no price, so no discount is being
-   announced and this check does not apply to them), this module computes the
+   discount announcement" (plan section 7): for every ANNOUNCED line (elasticity
+   or default-markdown -- a salvage line is a disposal, not an advertised
+   markdown, so no discount is being announced and this check does not apply to
+   it; that test is ``src.liquidation.announces_discount(line.method)``, asked of
+   the METHOD and never of whether ``clearance_price`` happens to be populated --
+   a salvage line does quote a cost-anchored per-unit recovery), this module computes the
    REFERENCE price the calendar would cite as the "before" price -- the median
    of the SAME ``price_history`` positive prices ``plan_liquidation`` itself used
    to pick that SKU's clearance price (a tiny local re-derivation of
@@ -76,7 +79,12 @@ from datetime import date, datetime
 from pathlib import Path
 from statistics import median
 
-from src.liquidation import LiquidationLine, LiquidationReport, PriceHistory
+from src.liquidation import (
+    LiquidationLine,
+    LiquidationReport,
+    PriceHistory,
+    announces_discount,
+)
 from src.price_optimizer import CompetitorPriceContext
 from src.pricing_guardrails import (
     DEFAULT_MARKETS_CONFIG_DIR,
@@ -184,9 +192,11 @@ def _omnibus_result(
 ) -> tuple[DiscountValidation | None, str | None]:
     """Returns ``(validation, exclusion_reason)``. ``exclusion_reason`` is
     ``None`` when the step is Omnibus-clear, or when the check does not
-    apply at all (a salvage line announces no price -- ``clearance_price``
-    is ``None``)."""
-    if line.clearance_price is None:
+    apply at all -- a salvage line is a DISPOSAL and announces no discount
+    (``src.liquidation.announces_discount``), even though it does quote a
+    cost-anchored per-unit recovery. The ``clearance_price is None`` arm is
+    a defensive guard for a line with no price at all, not the invariant."""
+    if not announces_discount(line.method) or line.clearance_price is None:
         return None, None
 
     reference = _reference_price(price_history, line.product_id)
@@ -223,9 +233,13 @@ def _competitor_result(
     undercut_reasons: dict[str, str] | None,
 ) -> tuple[CompetitorFloorCheck | None, str | None]:
     """Returns ``(check, exclusion_reason)``. ``check`` is ``None`` when the
-    step has no price (salvage) or no confirmed competitor match/price at
-    all -- v1 fallback behavior, this PR is additive (plan QA row)."""
-    if line.clearance_price is None:
+    step announces no shelf price (salvage -- a jobber/return-to-vendor lot
+    is not sold against a competitor's shelf, so undercutting one is not a
+    decision anybody has to sign off; its cost-anchored per-unit recovery is
+    deliberately NOT compared to a retail price) or when there is no
+    confirmed competitor match/price at all -- v1 fallback behavior, this PR
+    is additive (plan QA row)."""
+    if not announces_discount(line.method) or line.clearance_price is None:
         return None, None
     context = (competitor_contexts or {}).get(line.product_id)
     if context is None:

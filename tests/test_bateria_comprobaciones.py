@@ -154,16 +154,61 @@ def test_t01_cumple_el_entregable_ya_lleva_banda_de_incertidumbre():
     assert set(r.detalle["campos_de_dispersion"]) == {"error_std", "p10", "p90", "sigma_source"}
 
 
-def test_t02_es_parcial_ya_hay_sesgo_pero_no_hay_ciclo_previo():
-    """El sesgo firmado ya viaja por SKU CON VALOR y el MAPE se mueve entre dos
-    ciclos de error distinto; lo que falta es el ciclo anterior congelado, que es
-    estado que hoy no se guarda en ningun lado."""
+def test_t02_es_parcial_porque_la_sonda_no_nombra_ningun_store():
+    """T02 volvio a PARCIAL, y el CUMPLE anterior estaba sostenido por un bug.
+
+    La sonda de T02 corre ``job.run()`` DOS veces, sobre dos datasets distintos
+    (``SKU-EST`` y ``SKU-VOL``), y sin pasar ``store``. Mientras ``store=None``
+    resolvia ``default_store()``, las dos corridas compartian la particion sin
+    nombre: la segunda leia el ciclo congelado por la PRIMERA y la comparacion se
+    movia. O sea que el tercer requisito se acreditaba con el cruce de datos entre
+    clientes, que es exactamente el bug que se cerro (ver
+    ``jobs/forecast_cycle.NO_STORE_MEMORY`` y
+    ``tests/test_forecast_cycle.py::test_two_datasets_without_a_store_do_not_see_each_other``).
+
+    Hoy un llamador que no nombra store no tiene ciclo previo, y la bateria lo
+    dice con esas palabras. PARCIAL es el veredicto honesto de la sonda tal como
+    esta escrita. La capacidad SI esta cableada -- eso se prueba abajo, contra un
+    store explicito -- y el dia que la comprobacion le pase uno propio y aislado,
+    T02 vuelve a CUMPLE sin tocar el producto.
+    """
     r = _resultado(puntuar(), "T02")
+
     assert r.estado is Estado.PARCIAL, r.evidencia
     assert r.detalle["faltantes"] == ["comparacion contra el ciclo previo"]
     assert r.puntos == 0.5
-    assert len(set(r.detalle["sonda_mape"].values())) == 2  # la sonda es valida
+    assert len(set(r.detalle["sonda_mape"].values())) == 2  # la sonda sigue siendo valida
     assert all(v != 0.0 for v in r.detalle["sonda_sesgo"].values())
+    # MAPE y sesgo firmado, los otros dos requisitos, siguen acreditando
+    assert "MAPE por SKU" not in r.detalle["faltantes"]
+    assert "sesgo firmado" not in r.detalle["faltantes"]
+
+
+def test_t02_la_capacidad_esta_cableada_cuando_se_nombra_un_store(tmp_path):
+    """La otra mitad del test de arriba: lo que falta es el store de la sonda, no
+    la capacidad del entregable. Con un store propio y aislado -- las mismas dos
+    series con las que sondea T02 -- el ciclo previo queda congelado y los cinco
+    campos de comparacion salen con valor y se mueven."""
+    from jobs import forecast_job as fj
+    from src.bateria.comprobaciones import _SERIE_ESTABLE, _SERIE_VOLATIL
+    from src.state.store import StateStore
+
+    store = StateStore(tmp_path / "state")
+    estable = fj.run({"SKU-EST": list(_SERIE_ESTABLE)}, store=store, cycle_id="c1")
+    volatil = fj.run({"SKU-VOL": list(_SERIE_VOLATIL)}, store=store, cycle_id="c2")
+
+    movidos = _Muestra.de_corridas(
+        estable.skus, volatil.skus, (estable,), (volatil,)
+    ).se_mueve(("previo", "anterior", "previous", "delta", "vs_"))
+
+    assert volatil.previous_cycle_id == "c1"
+    assert sorted(movidos) == [
+        "mean_bias_vs_previous",
+        "mean_mape_vs_previous",
+        "previous_cycle_id",
+        "previous_mean_bias",
+        "previous_mean_mape",
+    ]
 
 
 # --- El ataque de inyeccion de nombre, contra la bateria entera --------------
@@ -248,6 +293,15 @@ def test_t02_un_delta_contra_el_ciclo_previo_con_valor_si_acredita():
     el error del ciclo. Eso es lo que un ciclo previo congelado produciria, y la
     tarea pasa a CUMPLE. Sin esta prueba, "endurecer" seria indistinguible de
     "romper".
+
+    El campo inyectado esta SOLO en la lista, y eso es lo correcto: la sonda de
+    T02 corre ``job.run()`` sin ``store``, y desde que la memoria de ciclo es
+    opt-in una corrida sin store no congela ni compara (los cinco campos que
+    ``jobs/forecast_cycle.py`` cablea de verdad quedan en ``None``, iguales en las
+    dos corridas). Antes acompanaban al inyectado porque las dos corridas -- dos
+    datasets distintos -- compartian la particion sin nombre. La igualdad se
+    mantiene EXACTA (no se afloja a un ``in``) justamente para que la lista siga
+    siendo auditable campo por campo.
     """
     with _campo_cableado(
         "jobs.forecast_job", "SkuForecast",
@@ -357,19 +411,37 @@ def _candidato(**cambios) -> _CandidatoOC:
     return _CandidatoOC(**{**base, **cambios})
 
 
-def test_t05_hoy_no_cumple_ningun_entregable_emite_una_oc_por_proveedor():
-    """Veredicto real: ddmrp es el unico que netea el en-transito, pero lo que
-    entrega es una senal de buffer por parte -- sin proveedor y sin fechas no hay
-    OC. Si algun dia un entregable agrupa por proveedor, este test se pone rojo."""
+def test_t05_cumple_la_oc_sale_por_proveedor_con_fechas_y_razon():
+    """Veredicto real: CUMPLE. Antes era NO_CUMPLE y el test lo congelaba asi.
+
+    Lo que cambio es el producto, no la vara. ddmrp ya era el unico que neteaba el
+    en-transito (el filo eliminatorio), pero entregaba una senal de buffer por
+    parte: sin proveedor y sin fechas eso no es una OC. Ahora ``DdmrpPart`` cuelga
+    un ``po_line`` -- proveedor, SKU, cantidad, fecha de pedido, fecha requerida,
+    llegada esperada y razon -- armado por ``src/purchase_proposal.py``, y los
+    cinco requisitos se acreditan por VALOR QUE SE MUEVE entre las dos corridas de
+    la sonda (dos pares de proveedores y dos lead times distintos).
+
+    El docstring anterior decia "si algun dia un entregable agrupa por proveedor,
+    este test se pone rojo". Ese dia llego: se edita por la razon correcta y queda
+    escrito cual fue. Los otros nueve tests de T05 -- los sinteticos sobre
+    ``_veredicto_oc`` / ``_candidato`` -- no se tocan: siguen probando que el
+    corrector sabe decir que no.
+    """
     r = _resultado(puntuar(), "T05")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["mejor"] == "ddmrp"
     por_tool = {c["tool"]: c for c in r.detalle["candidatos"]}
     assert por_tool["ddmrp"]["descuenta_en_transito"] is True
+    assert por_tool["ddmrp"]["faltantes"] == []
+    assert por_tool["ddmrp"]["campos_solo_de_nombre"] == []
+    assert "po_line.supplier" in por_tool["ddmrp"]["campos"]
+    assert "po_line.expected_arrival" in por_tool["ddmrp"]["campos"]
+    # Los otros dos entregables de reposicion siguen sin netear: el veredicto se
+    # gano con uno, no con los tres.
     assert por_tool["excel_replenishment"]["descuenta_en_transito"] is False
-    assert "OC agrupada por proveedor" in por_tool["ddmrp"]["faltantes"]
-    assert "fecha de pedido / llegada esperada" in por_tool["ddmrp"]["faltantes"]
+    assert por_tool["odoo_replenishment"]["descuenta_en_transito"] is False
 
 
 def test_t05_cumple_con_oc_completa_que_netea_el_en_transito():
@@ -775,18 +847,25 @@ def _candidato_markdown(**cambios) -> _CandidatoMarkdown:
     return _CandidatoMarkdown(**{**base, **cambios})
 
 
-def test_t12_es_parcial_ya_trae_descuento_margen_y_cobertura_liberada():
-    """Veredicto real despues del fix: la linea sale con % de descuento contra el
-    precio de referencia, margen bruto en dinero y los dias de cobertura que
-    libera. Lo unico que falta es el precio del SKU muerto, que va a remate: una
-    recuperacion de salvage no tiene precio unitario que proponer."""
+def test_t12_cumple_los_dos_skus_proponen_precio_cada_uno_con_su_metodo():
+    """Veredicto real hoy. Este test antes fijaba PARCIAL, con el argumento de que
+    "una recuperacion de salvage no tiene precio unitario que proponer". Eso era
+    falso: el remate SIEMPRE supo cuanto recuperaba por unidad
+    (``salvage_recovery_pct * unit_cost``); lo que no hacia era escribirlo. Ahora el
+    SKU muerto sale con precio anclado al costo y rotulado ``salvage_heuristic``, y
+    el SKU con historial con precio resuelto sobre la curva: dos precios, dos
+    metodos declarados, ningun numero inventado. Ver
+    tests/test_liquidation_salvage_price.py para el invariante legal que sostiene la
+    diferencia entre los dos."""
     r = _resultado(puntuar(), "T12")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.puntos == 0.5
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["declara_el_supuesto"] is True
     assert r.detalle["metodos_declarados"]["SKU-EXC"] == "elasticity"
-    assert r.detalle["precios_propuestos"]["SKU-MUERTO"] is None
-    assert r.detalle["faltantes"] == ["precio propuesto por SKU"]
+    assert r.detalle["metodos_declarados"]["SKU-MUERTO"] == "salvage_heuristic"
+    # 0.30 (salvage_recovery_pct por defecto) * 12.5 (unit_cost del SKU muerto).
+    assert r.detalle["precios_propuestos"]["SKU-MUERTO"] == pytest.approx(3.75)
+    assert r.detalle["faltantes"] == []
 
 
 def test_t12_cumple_con_precio_descuento_unidades_margen_y_cobertura():
@@ -837,16 +916,28 @@ def _candidato_servicio(**cambios) -> _CandidatoServicio:
     return _CandidatoServicio(**{**base, **cambios})
 
 
-def test_t10_no_cumple_el_servicio_reportado_es_el_del_modelo():
-    """Veredicto real: se le inyecta al job el servicio realmente observado (60% y
-    99%) y ningun campo del entregable devuelve ese numero. Lo unico que se mueve
-    es el objetivo de la politica, que es lo que el criterio descalifica."""
+def test_t10_es_parcial_ya_reporta_el_hecho_pero_no_los_dias_de_quiebre():
+    """Veredicto real, despues de que el job pasara a reportar el servicio observado.
+
+    Se le inyecta al job el servicio realmente observado (60% y 99%) y ahora un
+    campo del entregable lo REPRODUCE: ``realized_service.fill_rate``, con la
+    procedencia pegada al lado. Lo eliminatorio -- reportar el objetivo del modelo
+    en lugar del realizado -- ya no aplica.
+
+    Queda un solo faltante, y es un limite de la sonda, no del entregable: los
+    dias a stock cero no se derivan de un beta escalar (un quiebre largo y muchos
+    cortos dan el mismo numero), y ``observed_fill_rates`` es el unico canal por
+    el que la comprobacion inyecta hechos del cliente. El camino queda cableado
+    para el dia en que se le pasen lineas de pedido con fecha: ahi
+    ``days_out_of_stock`` sale medido. El limite esta admitido en el propio
+    docstring de la comprobacion.
+    """
     r = _resultado(puntuar(), "T10")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
-    assert r.detalle["mide_lo_realizado"] is False
-    assert r.detalle["campos_que_reproducen_lo_medido"] == []
-    assert "dias con quiebre por SKU" in r.detalle["faltantes"]
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert r.puntos == 0.5
+    assert r.detalle["mide_lo_realizado"] is True
+    assert r.detalle["campos_que_reproducen_lo_medido"] == ["realized_service.fill_rate"]
+    assert r.detalle["faltantes"] == ["dias con quiebre por SKU"]
 
 
 def test_t10_cumple_con_servicio_medido_quiebres_y_venta_perdida():
@@ -1046,21 +1137,23 @@ def _candidato_caja(**cambios) -> _CandidatoCaja:
     return _CandidatoCaja(**{**base, **cambios})
 
 
-def test_t07_no_cumple_total_de_compra_sin_fecha_de_pago():
-    """Veredicto real: el plan de compra si compara contra el tope, pero devuelve
-    un total sin calendario, y recorta con un escalar unico que raspa el buffer de
-    todos por igual -- eso no es una lista ordenada de lineas a diferir."""
+def test_t07_cumple_el_plan_de_compra_ya_dice_cuando_sale_la_plata():
+    """Veredicto real, despues de que el plan de compra ganara el eje temporal.
+
+    Lo que antes reprobaba el eliminatorio -- un total de 1.860 usd sin ninguna
+    fecha de pago -- hoy sale con el plazo del proveedor por linea (declarado o
+    supuesto, y rotulado como cual), la semana en que vence, y un recorte que
+    elige que linea difiere en vez de raspar a todas la misma fraccion.
+    """
     r = _resultado(puntuar(), "T07")
-    assert r.estado is Estado.NO_CUMPLE, r.evidencia
-    assert r.puntos == 0.0
-    assert r.detalle["prioriza_el_recorte"] is False
-    assert r.detalle["deficit_usd"] == 860.0
-    assert set(r.detalle["faltantes"]) == {
-        "calendario de egresos por semana (fecha de pago)",
-        "lista ordenada de lineas a recortar",
-        "impacto en quiebre de cada recorte",
-    }
-    assert "sin ninguna fecha de pago" in r.evidencia
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+    assert r.detalle["faltantes"] == []
+    assert r.detalle["prioriza_el_recorte"] is True
+    assert r.detalle["deficit_usd"] == 860.0  # la sonda no cambio: 1.860 pedidos vs 1.000 de tope
+    # El eje temporal viaja en la linea, no en un nombre suelto del reporte.
+    assert {"payment_terms", "payment_due_week"} <= set(r.detalle["campos"])
+    assert r.detalle["campos_solo_de_nombre"] == []
 
 
 def test_t07_cumple_con_calendario_tope_prioridad_e_impacto():
