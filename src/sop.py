@@ -27,6 +27,7 @@ Guided Execution Layer (``src.decision_options`` / ``nosilo_core.guided``).
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from nosilo_core.guided import OWNER_HUMAN, GuidedOutcome, Residual, recommend
@@ -87,6 +88,38 @@ def _as_floats(demand: object) -> list[float]:
     if not out:
         raise ValueError("demand horizon is empty")
     return out
+
+
+def apply_promo_lift(demand: object, promo_lift: dict[int, float] | None = None) -> list[float]:
+    """Apply a sparse promotion calendar multiplicatively to a demand horizon.
+
+    ``promo_lift`` maps a 0-based PERIOD INDEX in the horizon to a demand
+    multiplier: ``{1: 1.5}`` means "the second period's demand is 50% higher (a
+    promo)"; a value under 1.0 is a dip (a post-promo trough or a delist).
+    Multipliers are multiplicative and every non-listed period is untouched.
+    ``None`` (or an empty dict) returns the horizon unchanged, so the engine's
+    existing callers keep working untouched.
+
+    Indices are POSITIONS, not labels: the calendar is applied to the raw demand
+    series before ``build_scenarios``, and an index outside the horizon is an
+    error rather than a silently ignored promo (the supply plan would otherwise
+    be dated against a demand that was never adjusted).
+    """
+    d = _as_floats(demand)
+    if not promo_lift:
+        return d
+    for idx, mult in promo_lift.items():
+        if not isinstance(idx, int):
+            raise TypeError(f"promo period index must be an int, got {idx!r}")
+        if not 0 <= idx < len(d):
+            raise ValueError(f"promo period index {idx} is outside the {len(d)}-period horizon")
+        try:
+            mult = float(mult)
+        except (TypeError, ValueError):
+            raise ValueError(f"promo multiplier for period {idx} must be a number, got {mult!r}") from None
+        if not math.isfinite(mult) or mult <= 0:
+            raise ValueError(f"promo multiplier for period {idx} must be a finite number > 0, got {mult}")
+    return [value * float(promo_lift.get(i, 1.0)) for i, value in enumerate(d)]
 
 
 def level_plan(demand: object, *, opening_inventory: float = 0.0, target: float = 0.0) -> list[float]:
@@ -266,6 +299,12 @@ class SopReview:
     outcome: GuidedOutcome
     recommended: PlanEvaluation
     objectives: tuple[Objective, ...]
+    #: The promotion calendar applied to demand before planning (``None`` when no
+    #: demand-shaping was applied), and the demand horizon the strategies were
+    #: actually planned against -- the two together let the QA gate tell a promo-
+    #: inflated plan from a baseline one.
+    promo_lift: dict[int, float] | None = None
+    adjusted_demand: tuple[float, ...] = ()
 
 
 def _scenario_for(ev: PlanEvaluation) -> Scenario:
@@ -291,13 +330,18 @@ def _scenario_for(ev: PlanEvaluation) -> Scenario:
     )
 
 
-def _cycle_summary(demand: list[float], evals: dict[str, PlanEvaluation]) -> str:
+def _cycle_summary(demand: list[float], evals: dict[str, PlanEvaluation], promo_lift: dict[int, float] | None = None) -> str:
     total = sum(demand)
     rec = min(evals.values(), key=lambda e: e.total_cost)
+    note = (
+        f" Demand adjusted by a promotion calendar ({len(promo_lift)} period(s)) before planning."
+        if promo_lift
+        else ""
+    )
     return (
         f"S&OP review over {len(demand)} periods of {total:,.0f} units demand: chase / "
         f"level / hybrid supply strategies compared on cost, working capital and service "
-        f"(lowest-cost option: {rec.name})."
+        f"(lowest-cost option: {rec.name}).{note}"
     )
 
 
@@ -314,12 +358,20 @@ def run_sop_cycle(
     confidence: float = 0.8,
     residuals: list[Residual] | None = None,
     summary: str | None = None,
+    promo_lift: dict[int, float] | None = None,
 ) -> SopReview:
     """Run one monthly S&OP cadence: build, cost, and rank the supply strategies into
-    a protected option-package with a recommended default."""
+    a protected option-package with a recommended default.
+
+    ``promo_lift`` is the demand-shaping input from the demand review: a sparse
+    calendar mapping period indices to demand multipliers (see
+    :func:`apply_promo_lift`), applied to the demand horizon BEFORE the strategies
+    are built. ``None`` keeps the historical behaviour exactly.
+    """
+    d = apply_promo_lift(demand, promo_lift)
     objs = list(objectives) if objectives is not None else list(DEFAULT_OBJECTIVES)
     evals = build_scenarios(
-        demand,
+        d,
         opening_inventory=opening_inventory,
         target=target,
         cost=cost,
@@ -328,7 +380,7 @@ def run_sop_cycle(
         hybrid_mix=hybrid_mix,
     )
     scenarios = [_scenario_for(evals[name]) for name in ("Chase", "Level", "Hybrid")]
-    text = summary or _cycle_summary(_as_floats(demand), evals)
+    text = summary or _cycle_summary(d, evals, promo_lift)
     outcome = decide(
         text,
         scenarios,
@@ -343,4 +395,6 @@ def run_sop_cycle(
         outcome=outcome,
         recommended=recommended,
         objectives=tuple(objs),
+        promo_lift=dict(promo_lift) if promo_lift else None,
+        adjusted_demand=tuple(d),
     )

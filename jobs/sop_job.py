@@ -58,6 +58,34 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
     return {"demand": demand, "labels": labels}
 
 
+def parse_promo_lift(raw: object) -> dict[int, float] | None:
+    """Turn the client-facing ``params['promo_lift']`` (a JSON object whose keys are
+    period indices) into the engine's ``dict[int, float]``.
+
+    Returns ``None`` when the param is absent (no demand-shaping). A malformed
+    calendar raises ``ValueError`` naming the offending entry -- a promo calendar
+    is never silently dropped, because an un-applied promo would date the whole
+    supply plan against baseline demand.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("promo_lift must be a dict mapping period index -> demand multiplier")
+    if not raw:
+        return None
+    out: dict[int, float] = {}
+    for key, value in raw.items():
+        try:
+            idx = int(key)
+        except (TypeError, ValueError):
+            raise ValueError(f"promo_lift key {key!r} is not a period index") from None
+        try:
+            out[idx] = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"promo_lift multiplier for period {idx} is not a number") from None
+    return out
+
+
 def run(
     payload: dict,
     *,
@@ -65,8 +93,13 @@ def run(
     target: float = 0.0,
     cost: CostModel | None = None,
     confidence: float = 0.8,
+    promo_lift: dict[int, float] | None = None,
 ) -> SopReview:
-    """Run the S&OP cadence over the periodized demand horizon."""
+    """Run the S&OP cadence over the periodized demand horizon.
+
+    ``promo_lift`` (a sparse period-index -> multiplier calendar) shapes the demand
+    at the demand-review step, before the supply strategies are built.
+    """
     return run_sop_cycle(
         payload["demand"],
         opening_inventory=opening_inventory,
@@ -74,6 +107,7 @@ def run(
         cost=cost,
         period_labels=payload["labels"],
         confidence=confidence,
+        promo_lift=promo_lift,
     )
 
 

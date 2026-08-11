@@ -374,6 +374,7 @@ def _sop_run(payload: object, params: dict) -> Produced:
         opening_inventory=params.get("opening_inventory", 0.0),
         target=params.get("target", 0.0),
         cost=cost,
+        promo_lift=sop_job.parse_promo_lift(params.get("promo_lift")),
     )
     return Produced(report=review, summary=review.summary)
 

@@ -22,6 +22,77 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-11 — `pytest tests/ -q` "se cuelga" = **ETS de statsforecast patológicamente lento, NO un deadlock**. Preexistente, ajeno al trabajo de S&OP.
+
+### Síntoma
+La suite completa (5378 tests) parece quedarse colgada **en puntos distintos entre corridas**
+(~2% una vez, ~21% otra). Los archivos sospechosos pasan rápido en aislamiento
+(`test_excel_replenishment.py` 51 tests en 4.9s, `test_capability_smoke.py` en 51s). El "punto
+de cuelgue" cambia run a run porque el costo es el mismo test siempre: **quien primero toque una
+serie patológica para el ajuste ETS**.
+
+### Evidencia (capturada con faulthandler)
+`dump_traceback_later(75, exit=True)` mostró el stack real en `test_bateria_comprobaciones.py`:
+
+```
+src/bateria/comprobaciones.py::t10_servicio_realizado_al_cliente
+  -> jobs/inventory_optimization.py::run
+  -> src/forecasting.py::forecast_with_oos_sigma -> rolling_origin_error_std
+  -> src/forecasting.py::forecast_demand(method="auto")
+  -> src/forecasting_auto.py::forecast_modern -> StatsForecast AutoETS
+  -> statsforecast/ets.py::ets_f -> etsmodel -> optimize_ets_target_fn  (scipy minimize)
+```
+
+El hilo de `tqdm._monitor` en el stack es benigno (daemon de progreso).
+
+### Causa raíz
+`AutoETS(model="ZZZ")` (default de statsforecast) barre hasta ~38 combinaciones
+E×T×S×damped, y `ets_f` corre cada una con `maxit=2000` en `scipy.optimize.minimize` sobre una
+función de verosimilitud no convexa. En series moderadas con `season_length` hasta 52 (ver
+`_season_length` en `src/forecasting_auto.py:49`) **una sola optimización puede tardar de
+segundos a minutos según la trayectoria** — alta varianza run-to-run. `rolling_origin_error_std`
+además lo repite por cada rolling-origin, multiplicando el costo. No es un cuelgue: es
+lentitud; CI (que instala `statsforecast` vía `requirements-dev.txt`) lo tolera con timeouts
+de job, la tool de bash no.
+
+### Reproducir
+```
+python -X faulthandler -m pytest tests/test_bateria_comprobaciones.py::test_declarar_el_campo_vacio_no_mueve_la_tarea -q
+```
+(y el plugin `C:\Users\Gamer\AppData\Local\Temp\opencode\hookwatch.py` con
+`faulthandler.dump_traceback_later(75, exit=True)` para capturar el stack si tarda).
+
+### Opciones de fix (penden para una sesión que las valide contra `tests/test_forecasting*.py`)
+1. **Restringir la búsqueda de AutoETS** en `src/forecasting_auto.py:_model_for_route`, p.ej.
+   `AutoETS(season_length=..., model="ZAZ", damped=False)` — corta el espacio E-T-S de ~38 a 4.
+   Riesgo: cambia resultados/`method_label` de los tests de forecasting.
+2. **Aplanar `season_length`** en `_season_length`: `min(52, n//2)` es demasiado agresivo para
+   data mensual (~24-52 puntos); 12 sería lo típico. Riesgo: mismo, cambia el modelo elegido.
+3. **Capar el optimizador**: statsforecast no expone `maxit` por `AutoETS.__init__`; habría que
+   pasar `maxit=` a `ets_f` (parchear el default) o envolver `forecast_modern` en un watchdog
+   con fallback a `_legacy_fallback`. Más hacky.
+Cualquier opción debe validarse corriendo `tests/test_forecasting.py test_forecasting_auto.py
+test_forecasting_auto_fallback.py test_forecasting_nan_degradation.py` antes de tocar nada.
+
+### También preexistente
+`ruff check src jobs scm_agent tests` marca `I001` en `jobs/sop_job.py:12` y `scm_agent/tools.py:3`
+(bloques de import sin orden isort). No los introdujo el trabajo de S&OP (no se tocaron imports);
+dejarlos o arreglarlos es decisión de la sesión que los aborde. CI ya lo tolera o usa otra versión
+de ruff — ver gotcha "suspect a dependency" en CLAUDE.md.
+
+## 2026-08-11 — S&OP: demand-shaping por calendario de promociones (implementado, tests verdes)
+
+Se agregó `promo_lift` al ciclo S&OP sin romper callers previos:
+- `src/sop.py`: `apply_promo_lift()` (calendario disperso `{periodo: multiplicador}`;
+  `None`/`{}` = no-op; índice fuera de horizonte o multiplicador inválido = error);
+  `SopReview.promo_lift` / `SopReview.adjusted_demand` (para que el QA gate distinga plan
+  inflado por promo de baseline); `run_sop_cycle(..., promo_lift=...)` aplica el lift ANTES de
+  `build_scenarios`.
+- `jobs/sop_job.py`: `parse_promo_lift()` (JSON string-keys → `dict[int,float]`,
+  `None`/`{}` → `None`, malformado → `ValueError`) y passthrough en `run()`.
+- `scm_agent/tools.py`: la tool `sop` lee `params.get("promo_lift")`.
+- Tests: `test_sop.py` (+12) y `test_sop_tool.py` (+12) — **46 passed** en esos dos archivos.
+
 ## 2026-08-03 (cierre de ventana) — `discovery_brief`: brainstorm INTERRUMPIDO con 4 decisiones cerradas
 
 Sub-proyecto **3 de 4** del Plan SCM-FDE. **Cero codigo, cero spec, cero plan.** El brainstorm
