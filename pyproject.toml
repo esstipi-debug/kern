@@ -188,6 +188,18 @@ seo = [
     "advertools>=0.14",
     "pyarrow>=15",
 ]
+# src/connectors/browser/cdp.py -- the setup agent's real transport: drives the
+# user's Chrome over the Chrome DevTools Protocol (websocket) with HTTP target
+# discovery. Both are optional-extra deps imported lazily (the module is never
+# on the app boot chain, and the whole recipe loop runs offline against
+# FakeBrowser with zero network). websockets>=13 is the floor for the
+# websockets.asyncio.client API the driver uses; the installed 15.x satisfies
+# it. httpx is already pinned by tower/pricing-intel/repricing -- declared here
+# too so `pip install .[browser]` alone is enough.
+browser = [
+    "websockets>=13",
+    "httpx>=0.28",
+]
 
 [project.urls]
 Homepage = "https://github.com/esstipi-debug/kern"
