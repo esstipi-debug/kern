@@ -220,6 +220,36 @@ el artefacto.
 - `pyproject.toml` / `requirements*.txt` / `Dockerfile`
 - Nada bajo `documentation/` que no sea el reporte del loop
 
+**`EXCLUSION_PREFIXES` en `scripts/nosilo_kern_loop.py` es la fuente unica de
+esa lista**, y desde el 2026-08-18 no la usa solo el loop: el hook de escritura
+`.claude/hooks/ruff-on-write.sh` la **importa** para no tocar esos archivos.
+
+La lista no se copia al hook a proposito. Dos copias se desincronizan, y un hook
+que cree proteger una ruta que el loop ya dejo de proteger es la clase de mentira
+que este loop viene cazando — encima silenciosa, porque nadie se entera hasta que
+algo reescribe un archivo protegido. `test_la_lista_de_exclusiones_vive_en_el_loop`
+lo fija: ningun prefijo puede aparecer en las lineas ejecutables del hook, y
+`EXCLUSION_PREFIXES` tiene que aparecer.
+
+Division del trabajo entre los dos, que es la traduccion fiel de "se reportan,
+nunca se tocan":
+
+| | Zona excluida | Resto del repo |
+|---|---|---|
+| **hook** (`ruff-on-write.sh`) | no la toca, sale 0 | `ruff check --fix`, y exit 2 con lo que quede |
+| **loop** (fase DETECT) | la reporta | la reporta |
+| **loop** (fase PROPOSE) | imprime `OMITIDO` | propone el arreglo |
+
+Un desvio en zona excluida no se pierde: solo no lo arregla nadie
+automaticamente. Si el hook no puede leer la lista, **no lintea nada** — un hook
+roto que no hace nada se nota; uno que reescribe `writeback.py` porque no pudo
+leer la lista, no.
+
+El caso que forzo esto: `webapp/security.py` conserva un `I001` a proposito
+(decision del 2026-08-18, PR #247). Sin exclusion en el hook, cualquiera que
+editara ese archivo recibia un `exit 2` por una violacion que no escribio y que
+no debe tocar.
+
 ## 3. Trigger y schedule
 
 Los modos estan separados por **costo medido**, para que el barato se pueda
