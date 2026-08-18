@@ -323,3 +323,39 @@ no el nivel 2. Queda retirado en vez de arrastrado.
 
 Las capturas se reprodujeron identicas en cuatro corridas independientes, que es
 la propiedad que habilita usarlas como alarma de regresion.
+
+## 7. Primera tendencia real (2026-08-18)
+
+Ocho dias despues, sobre `main` en **`140558f`**. Es la primera comparacion que
+no es entre corridas de la misma tarde, y por eso la primera que dice algo.
+
+| Medida | 10-ago (`84f3798`) | 18-ago (`140558f`) |
+|---|---|---|
+| **Puntaje del loop** | 7,60 / 10,0 | **8,80 / 10,0** |
+| Bateria | 45,0% (9,0/20) | **60,0% (12,0/20)** |
+| Capability smoke | 5 passed, ~62 s | 5 passed, ~21 s |
+| Simworld `forced-L0` | -0,446 | **-0,446** |
+| Simworld `forced-L1` | +0,437 | **+0,437** |
+
+Desglose de la bateria hoy: **11 CUMPLE** (T01, T04-T09, T12, T13, T14, T20),
+2 PARCIAL (T02, T10), 2 SIN_DATO (T03, T11), 5 FUERA_DE_ALCANCE (T15-T19).
+Contra el techo de 75%, Kern esta al **80% de lo alcanzable por software**.
+
+La tendencia (`+1,20`) la calculo el loop solo, porque las dos corridas tienen la
+misma firma de componentes. Contra un `--check` se habria negado a comparar, que
+es el punto.
+
+**Lo que no se movio es la mitad interesante.** Las dos capturas del simworld
+salieron identicas hasta el ultimo decimal despues de ocho dias de desarrollo
+ajeno encima. La alarma de regresion se quedo callada, que es lo que tenia que
+hacer: mismo mundo, misma semilla, misma politica.
+
+### Lo que esta corrida encontro en el propio loop
+
+El reporte publicado en `main` decia `main: 9baeb7d` cuando `main` era
+`140558f`: `commit_de_main()` leia la ref **local** `main`, que estaba 3 commits
+atras sin avisar. El puntaje quedaba anclado a un commit que ya no era main —
+exactamente la obsolescencia silenciosa que este loop existe para detectar,
+adentro suyo. Ahora prefiere `origin/main` y publica cual ref uso
+(`140558f (origin/main)`), porque las dos no dicen lo mismo y quien lee el
+reporte tiene que poder distinguirlas sin correr nada.

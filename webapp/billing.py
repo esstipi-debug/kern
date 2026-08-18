@@ -9,9 +9,7 @@ Sessions is a future step once per-customer sub-metering is needed.
 
 from __future__ import annotations
 
-import os
-
-from webapp.offers import OFFERS, Offer, get_offer, resolve_pagar_cta
+from webapp.offers import get_offer, resolve_pagar_cta
 
 
 def create_checkout_session(offer_slug: str, sku_count: int | None = None) -> dict:

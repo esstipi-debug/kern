@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
-
 from nosilo_core.guided import (
     GuidedOutcome,
     HandoffPacket,
@@ -29,6 +28,7 @@ from nosilo_core.guided import (
     confidence_from_coverage,
     verify_guided,
 )
+
 from src.deliverable import DataSource, Deliverable, Finding, Kpi, days, not_measured, pct, ppm
 from src.export import write_summary_csv
 from src.mcdm import Criterion, RankingResult, award_outcome, topsis_rank

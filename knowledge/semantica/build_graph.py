@@ -264,13 +264,13 @@ def main() -> None:
         graph.add_node(bid, btype, content=label)
         edge_stats["book->node"] += 1
 
-    for l in blinks:
-        s = bmap.get(l.get("source"))
-        t = bmap.get(l.get("target"))
+    for blink in blinks:
+        s = bmap.get(blink.get("source"))
+        t = bmap.get(blink.get("target"))
         if not s or not t:
             continue
-        rel = (l.get("relation") or "related_to").replace(" ", "_")
-        graph.add_edge(s, t, edge_type=rel, weight=float(l.get("weight", 1.0)))
+        rel = (blink.get("relation") or "related_to").replace(" ", "_")
+        graph.add_edge(s, t, edge_type=rel, weight=float(blink.get("weight", 1.0)))
         edge_stats["book->book"] += 1
 
     # ---------- THEORY -> CODE BRIDGE ----------

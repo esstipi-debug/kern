@@ -66,9 +66,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-
 from nosilo_core import writeback
 from nosilo_core.guided import GuidedOutcome, HandoffPacket, as_executed, as_handoff
+
 from src.verify.reliability import ToolReliabilityReport
 
 from .autonomy import DEFAULT_PATH, TIER_T1, TIER_T2

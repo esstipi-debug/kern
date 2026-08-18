@@ -34,9 +34,9 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+from nosilo_core.types import STATUS_OK, JobResult
 
 from jobs.notify import notify
-from nosilo_core.types import STATUS_OK, JobResult
 
 from .events import Event
 from .orchestrator import Orchestrator
