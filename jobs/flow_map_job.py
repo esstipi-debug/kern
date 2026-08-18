@@ -14,9 +14,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+from nosilo_core.guided import verify_guided
 
 from jobs.intake import _norm
-from nosilo_core.guided import verify_guided
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 from src.flow_map import (

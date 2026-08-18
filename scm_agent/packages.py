@@ -31,7 +31,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
-
 from nosilo_core.llm import LLMProvider, get_provider, narrative_rewrite
 from nosilo_core.registry import ToolRegistry
 from nosilo_core.types import (
@@ -42,6 +41,7 @@ from nosilo_core.types import (
     STATUS_QA_FAILED,
     JobRequest,
 )
+
 from jobs.intake import ALIASES as BASE_ALIASES
 from src import client_profile, vertical_profile
 from src.deliverable import DEFAULT_BRANDING, Branding

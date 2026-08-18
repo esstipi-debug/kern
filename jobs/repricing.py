@@ -33,6 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from nosilo_core import writeback
+
 from scm_agent.knowledge import GroundedCitation, KnowledgeBase
 from src.price_optimizer import PriceOptimizationResult
 from src.pricing_guardrails import GATE_MAX_MOVE_PCT_DEFAULT, GuardrailGateResult, gate_price_changeset
