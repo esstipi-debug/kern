@@ -23,8 +23,8 @@ from collections import defaultdict, deque
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
-from nosilo_core.access import PolicyEngine, PolicySet
 
+from nosilo_core.access import PolicyEngine, PolicySet
 from webapp import principal
 
 
