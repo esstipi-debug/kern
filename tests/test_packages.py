@@ -823,7 +823,13 @@ def test_liquidacion_markdown_liquidation_uses_real_price_history_when_present(d
     result = _run(LIQUIDACION, demo_intake, out)
     liq = next(s for s in result.steps if s.tool_key == "markdown_liquidation")
     assert liq.report.n_elasticity > 0
-    assert liq.report.total_recovered > 40_000  # elasticity-priced, not the ~9.5k salvage-only figure
+    # Measured on this intake: 35,188 wired (2 elasticity + 1 salvage) vs 9,566 unwired
+    # (0 elasticity + 3 salvage). The threshold was 40_000 while _choose_disposition let
+    # the DEAD SKU take the elasticity branch; excluding it there moved the third line to
+    # salvage and took ~5k of projected recovery off the total -- cash the plan was
+    # booking against demand that SKU no longer has. What this test guards is the wiring,
+    # and a 3.7x gap still separates wired from fallback.
+    assert liq.report.total_recovered > 30_000  # elasticity-priced, not the 9.5k salvage-only figure
 
 
 def test_liquidacion_markdown_liquidation_degrades_without_ventas_csv(demo_intake, tmp_path):
