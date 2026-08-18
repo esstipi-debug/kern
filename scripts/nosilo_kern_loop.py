@@ -220,9 +220,24 @@ def run_cmd(args: list[str], timeout: int = 30) -> tuple[int, str]:
 
 
 def commit_de_main() -> str:
-    rc, out = run_cmd(["git", "rev-parse", "--short", "main"])
-    out = out.strip()
-    return out if rc == 0 and 0 < len(out) <= 12 else "desconocido"
+    """El commit contra el que se midio, con la ref que se uso a la vista.
+
+    Prefiere `origin/main` sobre el `main` local. El local se queda atras sin
+    avisar -- medido el 2026-08-18: 3 commits -- y entonces el reporte ancla el
+    puntaje a un commit que ya no es main. Es exactamente la obsolescencia
+    silenciosa que este loop existe para detectar, y la tenia adentro: el
+    reporte publicado decia `main: 9baeb7d` cuando main era `140558f`.
+
+    La ref viaja en el texto a proposito: `9baeb7d (main)` y `140558f
+    (origin/main)` no dicen lo mismo, y quien lea el reporte tiene que poder
+    distinguirlos sin correr nada.
+    """
+    for ref in ("origin/main", "main"):
+        rc, out = run_cmd(["git", "rev-parse", "--short", ref])
+        out = out.strip()
+        if rc == 0 and 0 < len(out) <= 12:
+            return f"{out} ({ref})"
+    return "desconocido"
 
 
 def load_state() -> dict:
