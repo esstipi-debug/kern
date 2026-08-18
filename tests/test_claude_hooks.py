@@ -304,3 +304,82 @@ def test_el_hook_nunca_reformatea(dir_temporal):
         if not linea.strip().startswith("#")
     ).replace("--output-format", "")
     assert "format" not in codigo
+
+
+# --------------------------------------------------------------------------
+# Zonas excluidas: el hook nunca las toca, y la lista tiene UNA sola fuente
+# --------------------------------------------------------------------------
+
+
+def _lineas_ejecutables(ruta: Path) -> str:
+    return "\n".join(
+        linea for linea in ruta.read_text(encoding="utf-8").splitlines()
+        if not linea.strip().startswith("#")
+    )
+
+
+def test_la_lista_de_exclusiones_vive_en_el_loop():
+    """Una sola fuente. Dos copias se desincronizan.
+
+    Un hook que cree proteger `src/connectors/` cuando el loop ya protege otra
+    cosa es la clase de mentira que este repo viene cazando, y encima
+    silenciosa: nadie se entera hasta que algo toca un archivo protegido.
+    """
+    from scripts.nosilo_kern_loop import EXCLUSION_PREFIXES
+
+    assert EXCLUSION_PREFIXES, "el loop dejo de declarar zonas excluidas"
+
+    ejecutable = _lineas_ejecutables(RUFF_HOOK)
+    for prefijo in EXCLUSION_PREFIXES:
+        assert prefijo not in ejecutable, (
+            f"el hook hardcodea {prefijo!r} en vez de importarlo del loop"
+        )
+    assert "EXCLUSION_PREFIXES" in ejecutable, "el hook no importa la lista del loop"
+
+
+@pytest.mark.parametrize("relativa", ["webapp/security.py", "webapp/principal.py"])
+def test_un_archivo_en_zona_excluida_no_se_toca(relativa):
+    """El caso que motivo esto: `webapp/security.py` tiene un I001 sostenido a
+    proposito, y quien lo edite no puede recibir un exit 2 por el."""
+    archivo = RAIZ / relativa
+    if not archivo.is_file():
+        pytest.skip(f"{relativa} no existe en este arbol")
+    antes = archivo.read_bytes()
+    resultado = _editar(archivo)
+    assert resultado.returncode == 0, resultado.stderr
+    assert "zona excluida" in resultado.stderr
+    assert archivo.read_bytes() == antes, "el hook modifico una zona excluida"
+
+
+def test_un_archivo_fuera_de_zona_excluida_si_se_lintea(dir_temporal):
+    """La contraparte: excluir no puede volverse un apagon general."""
+    archivo = dir_temporal / "normal.py"
+    archivo.write_text("def g():\n    return no_definido_aca\n", encoding="utf-8")
+    resultado = _editar(archivo)
+    assert resultado.returncode == 2
+    assert "zona excluida" not in resultado.stderr
+
+
+def test_sin_la_lista_el_hook_no_lintea_nada(tmp_path):
+    """Fail-safe: si no se puede leer la lista, no se toca nada.
+
+    Preferimos que el hook no haga nada antes que auto-arreglar un archivo que
+    quizas estaba protegido. Un hook roto que no hace nada se nota; uno que
+    reescribe `src/writeback.py` porque no pudo leer la lista, no.
+    """
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "nosilo_kern_loop.py").write_text(
+        "esto no es python valido (", encoding="utf-8"
+    )
+    objetivo = tmp_path / "sucio.py"
+    objetivo.write_text("import os\n", encoding="utf-8")
+
+    entorno = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))
+    resultado = subprocess.run(
+        [BASH, str(RUFF_HOOK)],
+        input=json.dumps({"tool_name": "Edit", "tool_input": {"file_path": str(objetivo)}}),
+        capture_output=True, text=True, cwd=str(tmp_path), env=entorno, timeout=180,
+    )
+    assert resultado.returncode == 0
+    assert "no se lintea nada" in resultado.stderr
+    assert objetivo.read_text(encoding="utf-8") == "import os\n", "linteo sin saber si podia"
