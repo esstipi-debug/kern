@@ -97,6 +97,18 @@ class OdooError(RuntimeError):
     """Odoo transport, authentication, or mapping failure."""
 
 
+class OdooTransportError(OdooError):
+    """La conexion se cayo: ni llego, o no volvio la respuesta.
+
+    Subclase para que todo ``except OdooError`` existente la siga atrapando, y
+    separada para que quien tenga que distinguirla no lo haga mirando el texto.
+    La diferencia importa: ``OdooError`` a secas desde ``receipts()`` significa
+    "este Odoo no se puede medir" (falta el modulo de compras) y se le reporta al
+    cliente como dato faltante; esto otro significa "se corto la red" y reportarlo
+    como dato faltante manda a revisar el ERP por un problema que no esta ahi.
+    """
+
+
 @runtime_checkable
 class OdooRPC(Protocol):
     """The single method the connector needs: Odoo's ``execute_kw`` dispatch."""
@@ -133,6 +145,23 @@ class _TimeoutSafeTransport(xmlrpc.client.SafeTransport):
         return conn
 
 
+def server_proxies(url: str, *, timeout: float = _DEFAULT_TIMEOUT_SECONDS) -> tuple[Any, Any]:
+    """Los dos ``ServerProxy`` de Odoo para ``url``, con el timeout de socket acotado.
+
+    Publica porque el validador de conexion de ``odoo_connect.py`` necesita hablar
+    con ``/xmlrpc/2/common`` ANTES de que exista un ``OdooClient`` -- distinguir
+    "el host no contesta" de "la credencial no sirve" exige preguntar la version
+    del servidor sin autenticar. Sin este corte, ese modulo copiaria la eleccion
+    de transporte y el dia que aqui cambie el timeout quedaria una copia atras.
+    """
+    base = url.rstrip("/")
+    transport_cls = _TimeoutSafeTransport if base.startswith("https") else _TimeoutTransport
+    return (
+        xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/common", transport=transport_cls(timeout)),
+        xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/object", transport=transport_cls(timeout)),
+    )
+
+
 class OdooClient:
     """Real XML-RPC transport to an Odoo server (stdlib ``xmlrpc.client``).
 
@@ -162,10 +191,9 @@ class OdooClient:
         backoff_seconds: float = _DEFAULT_BACKOFF_SECONDS,
     ) -> None:
         if common is None or models is None:
-            base = url.rstrip("/")
-            transport_cls = _TimeoutSafeTransport if base.startswith("https") else _TimeoutTransport
-            common = common or xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/common", transport=transport_cls(timeout))
-            models = models or xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/object", transport=transport_cls(timeout))
+            hechos = server_proxies(url, timeout=timeout)
+            common = common or hechos[0]
+            models = models or hechos[1]
         uid = common.authenticate(db, username, api_key, {})
         if not uid:
             raise OdooError(f"Odoo authentication failed for user {username!r} on db {db!r}")
@@ -195,7 +223,7 @@ class OdooClient:
                 if attempt + 1 >= attempts:
                     break
                 time.sleep(self._backoff_seconds * (2**attempt))
-        raise OdooError(
+        raise OdooTransportError(
             f"Odoo transport failed for {model}.{method} after {attempts} attempt(s): {last_exc}"
         ) from last_exc
 

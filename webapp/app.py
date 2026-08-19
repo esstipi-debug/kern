@@ -58,6 +58,7 @@ from scm_agent.event_intent import DEFAULT_ROUTING_PATH as EVENT_ROUTING_DEFAULT
 from scm_agent.events import DEFAULT_PATH as EVENTS_DEFAULT_PATH  # noqa: E402
 from scm_agent.events import Event, EventLedger  # noqa: E402
 from scm_agent.monitors import EVENT_COMPETITOR_PRICE_MOVE, run_all_monitors  # noqa: E402
+from src.connectors import odoo_connect  # noqa: E402
 from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
 from src.mcp_keys import DEFAULT_PATH as MCP_KEYS_DEFAULT_PATH  # noqa: E402
@@ -1070,6 +1071,106 @@ async def api_demo_lead_time(
     if workbook_url:
         payload["workbook_url"] = workbook_url
     return payload
+
+
+@app.post(
+    "/api/odoo-lead-time",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+def api_odoo_lead_time(
+    url: str = Form(""),
+    db: str = Form(""),
+    login: str = Form(""),
+    api_key: str = Form(""),
+    since: str = Form(""),
+) -> dict:
+    """Salida #1 leida de un Odoo Online vivo, en SOLO LECTURA. Cuatro campos.
+
+    Odoo Online no admite modulos de terceros (``odoo_addon/linchpin_dry_run`` es
+    para Odoo.sh y on-premise), asi que la unica puerta al SaaS es la External
+    API. Esto reemplaza la subida del CSV de recepciones por una lectura directa
+    y desemboca en el MISMO ``scan_from_deliveries`` que come el camino del CSV:
+    el motor no se entera de donde vinieron las filas.
+
+    Autenticada y con rate limit, igual que ``POST /api/jobs`` y por la misma
+    razon que el spec del agente de setup exige para su consola: una credencial
+    del ERP de un cliente no se pide en un formulario anonimo, por mas que el
+    alcance sea de solo lectura.
+
+    ``def`` y no ``async def`` a proposito: la lectura de Odoo es I/O de red
+    sincrona con timeout de 30 s por llamada, y FastAPI corre los handlers
+    sincronos en su threadpool. Declararlo ``async`` bloquearia el event loop
+    entero mientras un Odoo lento contesta.
+
+    Tres cosas que NO hace, y cada una es deliberada:
+
+    * **No escribe en Odoo.** Ni con aprobacion. Esta ruta no toca
+      ``nosilo_core.writeback`` y ``odoo_connect`` no ejecuta un solo metodo que
+      no sea de lectura -- hay un test que lo comprueba por las llamadas hechas.
+    * **No persiste la clave de API, ni la registra en el archivo de leads.** Se
+      usa para esta lectura y se descarta con el request. Los cuatro campos
+      llegan con default "" en vez de ser obligatorios para que un campo faltante
+      lo rechace este handler con su propio mensaje, y no un 422 de validacion
+      cuyo cuerpo puede arrastrar el resto del formulario.
+    * **No emite el .xlsx por el arbol publico de /demo-output.** Ese arbol se
+      sirve sin autenticacion contra un token efimero, que esta bien para una
+      planilla anonima del embudo y es un escalon menos que la puerta que esta
+      ruta acaba de poner. Los numeros van en el JSON; el libro es trabajo del
+      Diagnostico, sobre un canal que ya identifica al cliente.
+    """
+    creds = odoo_connect.OdooCredentials(url=url, db=db, login=login, api_key=api_key)
+    entrada = odoo_connect.scan_input(creds, since=since.strip() or None)
+
+    if not entrada.check.ok:
+        # 400 y no 500: lo que esta mal son los datos que mando el llamador, y el
+        # mensaje ya viene escrito en el idioma del cliente con la pantalla de SU
+        # Odoo donde se arregla. `reason` es para que la UI ramifique sin parsear
+        # texto.
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "reason": entrada.check.reason,
+                "message": entrada.check.message,
+                "models": list(entrada.check.models),
+            },
+        )
+
+    pre = entrada.preflight
+    resumen = {
+        "n_receipts": pre.n_receipts,
+        "n_suppliers": pre.n_suppliers,
+        "first_receipt": pre.first_receipt,
+        "last_receipt": pre.last_receipt,
+        "span_days": pre.span_days,
+        "n_with_declared": pre.n_with_declared,
+        "dropped": pre.dropped,
+        "warnings": list(pre.warnings),
+    }
+    if not pre.ok:
+        # La conexion sirve y el Odoo no tiene con que medir. `needs_data` es el
+        # mismo vocabulario de estados del orquestador, y `missing` nombra lo que
+        # falta: nunca se cae al plazo declarado de la ficha del proveedor, que
+        # es la promesa que este escaneo viene a contrastar.
+        return {"status": "needs_data", "preflight": resumen, "missing": list(pre.missing)}
+
+    result = demo_lead_time_scan.scan_from_deliveries(
+        entrada.grouped, entrada.dropped, entrada.source_notes
+    )
+    if not result.ok:
+        return {
+            "status": "qa_failed",
+            "preflight": resumen,
+            "qa_issues": list(result.qa_issues),
+        }
+    return {
+        "status": "ok",
+        "connection": {"host": creds.host, "server_version": entrada.check.server_version},
+        "preflight": resumen,
+        "headline": result.headline,
+        "findings": list(result.findings),
+        "dropped": result.dropped,
+        "cta_url": demo_lead_time_scan.CTA_PATH,
+    }
 
 
 @app.get("/demo-output/{token}/{name}")
