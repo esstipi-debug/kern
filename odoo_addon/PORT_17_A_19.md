@@ -166,8 +166,10 @@ toque este modulo** — todo lo que rompe es de 19.0.
   instalacion.
 - La **guia de migracion de la OCA para 19.0 no existe todavia**.
 - Odoo 19 trae un CLI oficial de reescritura, `odoo-bin upgrade_code --from 17.0 --to 19.0`
-  ([`odoo/upgrade_code`](https://github.com/odoo/odoo/tree/19.0/odoo/upgrade_code)). No se
-  uso como fuente de verdad; queda como cross-check opcional.
+  ([`odoo/upgrade_code`](https://github.com/odoo/odoo/tree/19.0/odoo/upgrade_code)). **Se
+  corrio como cross-check y no propone un solo cambio en ninguno de los dos arboles** — ni
+  siquiera en el 17.0 sin portar, que es el que NO instala en 19. Ver seccion 4: la
+  herramienta oficial, sola, habria dejado el modulo roto.
 - **No hay medidas oficiales en pixeles** para icono, cover ni capturas del Store.
 
 ---
@@ -294,6 +296,38 @@ Y la serie 17.0, para confirmar que el rename no la rompio (`ODOO_SERIES=17`, im
 ```bash
 ODOO_SERIES=17 docker compose run --rm odoo odoo -d kern17_test -i kern_dry_run --stop-after-init --log-level=warn
 ```
+
+### Cross-check con la herramienta oficial de Odoo
+
+`odoo-bin upgrade_code` es el reescritor de codigo que Odoo 19 trae para migrar fuentes.
+Corrido sobre copias de los dos arboles:
+
+```bash
+docker run --rm --user root --entrypoint /usr/bin/odoo -v "<padre-del-modulo>:/w" odoo:19   upgrade_code --from 17.0 --to 19.0 --addons-path /w
+```
+
+| arbol | cambios propuestos |
+|---|---|
+| `17.0/kern_dry_run` (sin portar, **no instala en 19**) | ninguno |
+| `19.0/kern_dry_run` (portado) | ninguno |
+
+**El cero del arbol 17.0 es el dato interesante: la herramienta oficial no detecta nada, y
+ese arbol no instala.** `upgrade_code` solo aplica las reescrituras mecanicas para las que
+tiene script (renombres de API en Python, `<tree>`/`<list>` en vistas); un `<field
+name="category_id"/>` dentro de un `<record model="res.groups">` no es ninguna de ellas.
+Sirve de corroboracion de que el modulo no tiene deuda de API en Python — no de que este
+portado.
+
+> El primer intento dio "cero cambios" **porque la herramienta ni siquiera llego a los
+> archivos**: `--addons-path` tiene que apuntar al *padre* del modulo, no al modulo. Se
+> detecto plantando un canario (`<tree>` en una vista, que `upgrade_code` si reescribe) y
+> comprobando que no se tocaba. Con el path corregido el canario se reescribe y el modulo
+> aparece listado; recien ahi el cero significa algo.
+
+### Suite del repo
+
+`ruff check packs src tests examples` limpio, y `pytest` completo: **5446 passed, 30
+skipped, 0 failed** (14m55s), con los 15 tests de `lib/mcp_client.py` verdes tras el rename.
 
 ### Lo que NO se probo, y por que
 
