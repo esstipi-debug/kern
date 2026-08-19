@@ -3,6 +3,38 @@
 ## [Unreleased]
 
 ### Added
+- **Onboarding autoservicio de Odoo Online, en solo lectura** (`src/connectors/odoo_connect.py`,
+  `POST /api/odoo-lead-time`) — Odoo Online no admite código Python de terceros, así que
+  `odoo_addon/linchpin_dry_run` nunca fue una opción para el SaaS de odoo.com; la única puerta es la
+  External API que `odoo.py` ya hablaba. Lo que faltaba no era el conector sino el tramo de **cuatro
+  campos** (url, base, usuario, clave de API) hasta el mismo `scan_from_deliveries` que consume un CSV
+  subido — el motor de la salida #1 no se entera de dónde vinieron las filas.
+  `check_connection()` **clasifica** la falla en vez de devolver un "no se pudo conectar" genérico, que
+  en un embudo sin humano al otro lado no le sirve a nadie: host inalcanzable / base inexistente /
+  credencial inválida / permisos insuficientes mandan a cuatro pantallas distintas del Odoo del cliente.
+  La separación base-vs-credencial es determinista y no por texto (`authenticate` no *puede* devolver
+  `False` contra una base que no existe: no logra abrir el cursor, levanta), y la de permisos-vs-módulo
+  se resuelve consultando `ir.model` antes de probar lectura — un `"AccessError" in fault` funciona en
+  inglés y falla en el Odoo en español del cliente, que es exactamente donde tiene que funcionar. Se
+  agregó un quinto motivo, `modulo_ausente`: sin la app de Compras instalada el remedio está en
+  Aplicaciones, no en permisos de usuario, y confundirlos es media hora perdida del cliente.
+  `preflight()` es **pura sobre lo ya leído** (cero RPC extra: una segunda pasada por el ERP se paga en
+  latencia y puede contar sobre un estado distinto del que después se mide) y reporta recepciones,
+  proveedores, rango de fechas y qué falta. **Sin fechas de recepción se niega a correr nombrando lo que
+  falta, y nunca cae a `product.supplierinfo.delay`** — usar la promesa como observación la compara
+  consigo misma y devuelve brecha cero sobre el defecto exacto que el escaneo viene a mostrar; es la
+  misma regla que el camino del CSV defiende con un test dedicado, replicada aquí.
+  La ruta va **autenticada** (`require_api_key` + `rate_limit`, igual que `POST /api/jobs`): una
+  credencial del ERP de un cliente no se pide en un formulario anónimo por más que el alcance sea de
+  solo lectura. Los cuatro campos llegan con default `""` para que un campo faltante lo rechace el
+  handler con su propio mensaje y no un 422 de pydantic, cuyo cuerpo puede arrastrar el resto del
+  formulario —con la clave dentro— a la respuesta. Cero writeback, cero persistencia de la credencial,
+  cero línea en `leads.jsonl`; `_scrub()` borra la clave de todo texto que venga del servidor.
+  57 tests offline contra `InMemoryOdooServer` (nuevo doble del **transporte**: `InMemoryOdoo` dobla el
+  ORM, y los cuatro modos de falla viven una capa más abajo). Bajo la regla del gate endurecido: los que
+  afirman que algo se mide corren **dos** Odoo con plazos distintos y exigen que la brecha publicada se
+  mueva —y por los dos ejes, observado y declarado—, porque `assert "lead_time_days" in fila` pasa igual
+  de verde sobre un número correcto que sobre una constante.
 - **Shopify Admin API version drift detection** (`src/connectors/shopify_api_version.py`) — Shopify
   does not error when the pinned API version falls out of support; it silently *falls forward* and
   serves the request with the oldest version it still accepts, so a stale pin looks healthy while the
