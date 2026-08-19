@@ -1,2 +1,0 @@
-id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_linchpin_analysis_wizard_linchpin_user,linchpin.analysis.wizard.linchpin.user,model_linchpin_analysis_wizard,group_linchpin_user,1,1,1,1

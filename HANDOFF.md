@@ -967,7 +967,9 @@ repo GitHub + `linchpin.fly.dev` + `cd linchpin` en docs (hasta ejecutar la
 checklist externa) · env vars `LINCHPIN_*` · tool names MCP `linchpin_*` +
 server name `linchpin_mcp` (contrato con clientes MCP conectados) · prefijo de
 keys `lpk_` (keys emitidas siguen funcionando) · logger `linchpin.access` ·
-`odoo_addon/linchpin_dry_run/` (identidad del modulo en el Store) · slugs
+~~`odoo_addon/linchpin_dry_run/`~~ (renombrado a `kern_dry_run` el 2026-08-19
+junto con el port a Odoo 19; el modulo nunca se publico, no habia identidad que
+preservar en el Store) · slugs
 `linchpin-*` en CAPABILITY_EXPANSION_PLAN · historicos (graph-memory,
 docs/superpowers, CHANGELOG viejo, books graph generado) · `server.json`
 `name`/URLs (atados al repo name para validacion del registry MCP — se
@@ -996,12 +998,17 @@ actualizan JUNTO con el repo rename, ver checklist).
    flyctl apps create kern && flyctl deploy -a kern && flyctl secrets set ... -a kern
    # migrar keys MCP de clientes, avisar, y recien despues: flyctl apps destroy linchpin
    ```
-3. **Modulo Odoo `linchpin_dry_run`** — recomendacion: **renombrar en la
-   PROXIMA version funcional, no ahora.** Un rename de modulo tecnico
-   (directorio + manifest + XML ids) es re-submission completa al Store y
-   rompe upgrades de instalaciones existentes; hacerlo sin cambios
-   funcionales es puro costo. Cuando toque: nuevo modulo `kern_dry_run` con
-   hook de migracion desde `linchpin_dry_run`.
+3. **Modulo Odoo `linchpin_dry_run`** — **HECHO 2026-08-19**, en la primera
+   version funcional siguiente (el port a Odoo 19), que es exactamente la
+   condicion que pedia esta linea. Ahora `odoo_addon/17.0/kern_dry_run` y
+   `odoo_addon/19.0/kern_dry_run`: mismo nombre tecnico en las dos series, que
+   es lo que el Store exige para que sean la misma app. Sin hook de migracion:
+   el modulo nunca llego a publicarse, asi que no hay instalaciones que romper.
+   Razonamiento original, que sigue valiendo para el caso general: un rename de
+   modulo tecnico (directorio + manifest + XML ids) es re-submission completa al
+   Store y rompe upgrades de instalaciones existentes, asi que hacerlo sin
+   cambios funcionales es puro costo — y si hubiera habido instalaciones, esto
+   habria necesitado un hook de migracion desde `linchpin_dry_run`.
 4. **Listings MCP** — donde figure Linchpin (directorios MCP, cuando se
    ejecute el plan de listings de [linchpin-monetization-plan]): usar nombre
    Kern + descripcion nueva de `server.json`; requiere logins del operador.
