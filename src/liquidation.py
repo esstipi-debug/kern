@@ -216,11 +216,24 @@ def _choose_disposition(
     ``salvage_heuristic`` is the DEFAULT, not the failure case: it already proposes a
     cost-anchored per-unit price, so a SKU neither priced branch can take still leaves
     with a number and the label of the method that produced it.
+
+    Both ANNOUNCED branches require ``EXCESS``: dead stock stopped moving, so a markdown
+    does not clear it. It binds hardest on the elasticity branch, which also promises a
+    DATE -- ``weeks = units / demand_at(fit, price)`` reads a rate off a curve fitted on
+    demand the SKU no longer has, so a dead SKU left with a finite horizon.
+
+    PRECONDITION, and the reason ``== EXCESS`` is safe rather than over-restrictive:
+    ``plan_liquidation`` only builds lines for ``EXCESS``/``DEAD`` (the comprehension
+    filters ``HEALTHY`` out), so here ``== EXCESS`` means ``!= DEAD``. Widen that filter
+    to plan every SKU and healthy stock starts falling through to SALVAGE in silence --
+    a worse defect than the dead-SKU markdown this guard was added to stop. Whoever
+    changes the caller has to revisit these two branches.
     """
     # A non-negative elasticity (flat or upward-sloping demand) is not a usable
     # clearance curve - it would recommend cutting price to sell FEWER units, the
     # opposite of what a markdown should do. Fall through to default_discount/salvage.
-    if fit is not None and fit.identified and fit.elasticity < 0 and current > 0 and units > 0:
+    if (classification == EXCESS and fit is not None and fit.identified
+            and fit.elasticity < 0 and current > 0 and units > 0):
         floor = floor_ratio * unit_cost if floor_ratio > 0 else None
         price = markdown_price(units, horizon_weeks, fit, current, floor=floor)
         rate = demand_at(fit, price)  # units per week at the clearance price
