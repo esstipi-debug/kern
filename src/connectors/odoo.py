@@ -1199,6 +1199,59 @@ _DEMO_SALE_LINES = {
 }
 
 
+def demo_odoo_receipts() -> InMemoryOdoo:
+    """Un Odoo offline con recepciones de compra REALES, para medir el plazo.
+
+    ``demo_odoo()`` no sirve para esto: no tiene ``purchase.order`` ni
+    ``stock.move``, asi que ``receipts()`` no encuentra nada que restar. Y sin un
+    fixture asi, el ejemplo de la salida #1 solo correria contra un Odoo vivo --
+    o sea, contra ninguno, hasta que alguien tenga credenciales. Todos los demas
+    ejemplos del repo corren offline; este tambien.
+
+    Acme promete 7 dias en la ficha y entrega en ~20. Esa brecha es el punto: un
+    fixture donde promesa y comportamiento coinciden no muestra nada.
+    """
+    data: dict = {
+        _M_PRODUCT: {
+            1: {"default_code": "SKU-1", "name": "Rodamiento", "list_price": 20.0, "standard_price": 12.0},
+        },
+        _M_PARTNER: {
+            69: {"name": "Acme", "commercial_partner_id": [69, "Acme"]},
+            70: {"name": "Acme Sucursal Santiago", "commercial_partner_id": [69, "Acme"]},
+        },
+        _M_PICKING_TYPE: {10: {"code": "incoming"}, 11: {"code": "outgoing"}},
+        _M_SUPPLIERINFO: {
+            400: {"partner_id": [70, "Acme Sucursal Santiago"], "product_id": [1, "Rodamiento"],
+                  "delay": 7.0, "sequence": 1},
+        },
+        _M_PO: {}, _M_PO_LINE: {},
+        # Un despacho a cliente: existe para que `fields_get` vea el campo aunque
+        # se filtren todas las recepciones, y de paso comprueba que un movimiento
+        # sin linea de OC no entra al calculo.
+        _M_MOVE: {
+            999: {"state": "done", "date": "2026-01-02 09:00:00", "product_id": [1, "Rodamiento"],
+                  "purchase_line_id": False, "picking_id": [999, "WH/OUT/1"],
+                  "picking_type_id": [11, "Entregas"]},
+        },
+    }
+    for i, (orden, recepcion) in enumerate(
+        [("2026-01-05", "2026-01-25"), ("2026-02-02", "2026-02-23"), ("2026-03-02", "2026-03-21")]
+    ):
+        po, pol = 200 + i, 300 + i
+        data[_M_PO][po] = {
+            "name": f"PO-{i:03d}", "date_order": f"{orden} 09:00:00",
+            "date_approve": f"{orden} 11:00:00",
+            "partner_id": [70, "Acme Sucursal Santiago"], "state": "purchase",
+        }
+        data[_M_PO_LINE][pol] = {"order_id": [po, f"PO-{i:03d}"]}
+        data[_M_MOVE][400 + i] = {
+            "state": "done", "date": f"{recepcion} 15:00:00", "product_id": [1, "Rodamiento"],
+            "purchase_line_id": [pol, "linea"], "picking_id": [500 + i, f"WH/IN/{i}"],
+            "picking_type_id": [10, "Recepciones"],
+        }
+    return InMemoryOdoo(data)
+
+
 def demo_odoo() -> InMemoryOdoo:
     """A small, deterministic in-memory Odoo for demos and tests (no randomness)."""
     return InMemoryOdoo(
