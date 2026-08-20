@@ -23,6 +23,10 @@ import pytest
 
 import src.bateria.comprobaciones  # noqa: F401  -- registra las comprobaciones
 from src.bateria.comprobaciones import (
+    _CORRIDA_ALTA,
+    _CORRIDA_BAJA,
+    _TOLERANCIA_CONTEO,
+    _TOLERANCIA_SERVICIO,
     _CandidatoActa,
     _CandidatoAjuste,
     _CandidatoCaja,
@@ -33,7 +37,11 @@ from src.bateria.comprobaciones import (
     _CandidatoOC,
     _CandidatoScorecard,
     _CandidatoServicio,
+    _demanda_sonda,
     _Muestra,
+    _reproduce_el_hecho,
+    _SondaPedidos,
+    _valores_planos,
     _veredicto_acta,
     _veredicto_ajuste,
     _veredicto_caja,
@@ -896,18 +904,24 @@ def test_t12_un_sku_sin_precio_propuesto_no_acredita_la_linea():
 
 
 def _candidato_servicio(**cambios) -> _CandidatoServicio:
-    """Un entregable de servicio que cumple TODO; los tests rompen una pieza."""
+    """Un entregable de servicio que cumple TODO; los tests rompen una pieza.
+
+    Cada criterio trae su PROPIA lista de campos que reproducen su propio hecho.
+    Que sean listas distintas es el punto: el fill rate ya no acredita el OTIF.
+    """
     base = {
         "entregable": "jobs.servicio_job.LineaServicio",
         "muestra": _muestra(
             sku=("SKU-1", "SKU-2"),
-            otif_salida=(0.60, 0.99),
-            fill_rate_linea=(0.60, 0.99),
-            dias_quiebre=(4.0, 1.0),
-            venta_perdida_usd=(1_200.0, 340.0),
+            otif_salida=(0.60, 0.94),
+            fill_rate_linea=(0.80, 0.99),
+            dias_quiebre=(20.0, 1.0),
+            venta_perdida_usd=(2_400.0, 120.0),
         ),
-        # El numero reportado reproduce el servicio que de verdad se observo.
-        "reporta_lo_medido": ("fill_rate_linea", "otif_salida"),
+        "reporta_lo_medido": ("fill_rate_linea",),
+        "reporta_otif": ("otif_salida",),
+        "reporta_dias": ("dias_quiebre",),
+        "reporta_venta_perdida": ("venta_perdida_usd",),
         # La beta teorica SIGUE EXISTIENDO en la libreria y ya no descalifica: ver
         # test_t10_que_la_libreria_sepa_el_beta_teorico_ya_no_descalifica.
         "fill_rate_sin_pedidos": 0.9959,
@@ -916,34 +930,75 @@ def _candidato_servicio(**cambios) -> _CandidatoServicio:
     return _CandidatoServicio(**{**base, **cambios})
 
 
-def test_t10_es_parcial_ya_reporta_el_hecho_pero_no_los_dias_de_quiebre():
-    """Veredicto real, despues de que el job pasara a reportar el servicio observado.
+def test_t10_cumple_sobre_lineas_de_pedido_con_los_cuatro_numeros_medidos():
+    """Veredicto real, con la sonda alimentada por lineas de pedido.
 
-    Se le inyecta al job el servicio realmente observado (60% y 99%) y ahora un
-    campo del entregable lo REPRODUCE: ``realized_service.fill_rate``, con la
-    procedencia pegada al lado. Lo eliminatorio -- reportar el objetivo del modelo
-    en lugar del realizado -- ya no aplica.
-
-    Queda un solo faltante, y es un limite de la sonda, no del entregable: los
-    dias a stock cero no se derivan de un beta escalar (un quiebre largo y muchos
-    cortos dan el mismo numero), y ``observed_fill_rates`` es el unico canal por
-    el que la comprobacion inyecta hechos del cliente. El camino queda cableado
-    para el dia en que se le pasen lineas de pedido con fecha: ahi
-    ``days_out_of_stock`` sale medido. El limite esta admitido en el propio
-    docstring de la comprobacion.
+    Se le inyectan al job lineas con cantidad pedida, despachada y fechas
+    prometida/entregada, y los cuatro numeros del criterio vuelven MEDIDOS: cada
+    uno en su propio campo y cada uno reproduciendo el hecho de su corrida. Que
+    las cuatro listas sean distintas es lo que prueba que ninguno se acredito de
+    arrastre con otro.
     """
     r = _resultado(puntuar(), "T10")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.puntos == 0.5
-    assert r.detalle["mide_lo_realizado"] is True
-    assert r.detalle["campos_que_reproducen_lo_medido"] == ["realized_service.fill_rate"]
-    assert r.detalle["faltantes"] == ["dias con quiebre por SKU"]
-
-
-def test_t10_cumple_con_servicio_medido_quiebres_y_venta_perdida():
-    r = _veredicto_servicio(_candidato_servicio())
     assert r.estado is Estado.CUMPLE, r.evidencia
     assert r.puntos == 1.0
+    assert r.detalle["faltantes"] == []
+    assert r.detalle["campos_que_reproducen_lo_medido"] == ["realized_service.fill_rate"]
+    assert r.detalle["campos_que_reproducen_el_otif"] == ["realized_service.otif"]
+    assert r.detalle["campos_que_reproducen_los_dias"] == ["realized_service.days_out_of_stock"]
+    assert r.detalle["campos_que_reproducen_la_venta_perdida"] == [
+        "realized_service.lost_sales_units"
+    ]
+    # Ningun campo con nombre de servicio salio vacio: no hay acreditacion por nombre.
+    assert r.detalle["campos_solo_de_nombre"] == []
+
+
+def test_t10_la_sonda_inyecta_un_fill_rate_y_un_otif_que_nunca_coinciden():
+    """El anti-gaming de la sonda nueva, medido sobre la sonda misma.
+
+    Las lineas completas pero TARDE cuentan entero en el fill rate y fallan OTIF.
+    Si las dos mezclas dieran el mismo numero para los dos criterios, un
+    entregable que publica un solo numero con dos nombres acreditaria ambos.
+    """
+    for mezcla in (_CORRIDA_BAJA, _CORRIDA_ALTA):
+        sonda = _SondaPedidos(*mezcla)
+        assert sonda.tarde > 0
+        assert sonda.fill_rate != sonda.otif
+        # Y ninguno cae sobre el objetivo por defecto de la politica, que es lo
+        # que el criterio descalifica.
+        assert sonda.fill_rate != pytest.approx(0.95)
+        assert sonda.otif != pytest.approx(0.95)
+
+
+def test_t10_publicar_el_mismo_numero_con_dos_nombres_no_acredita_los_dos_criterios():
+    """El endurecimiento, en una linea: el OTIF se verifica contra SU hecho.
+
+    Con la vara vieja ``requisitos`` colgaba OTIF y fill rate del mismo booleano,
+    asi que un entregable que solo sabia calcular el fill rate acreditaba los dos.
+    """
+    r = _veredicto_servicio(_candidato_servicio(
+        muestra=_muestra(
+            sku=("SKU-1", "SKU-2"),
+            # El mismo numero, dos nombres: es el fill rate haciendose pasar por OTIF.
+            otif_salida=(0.80, 0.99), fill_rate_linea=(0.80, 0.99),
+            dias_quiebre=(20.0, 1.0), venta_perdida_usd=(2_400.0, 120.0),
+        ),
+        reporta_otif=(),
+    ))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert "OTIF de salida sobre pedidos reales" in r.evidencia
+
+
+def test_t10_un_dia_de_quiebre_poblado_pero_que_no_reproduce_ya_no_acredita():
+    """Antes alcanzaba con ``poblado``: cualquier numero adentro servia.
+
+    Con lineas de pedido el arnes SI puede mover los dias, asi que se exige el
+    numero, no la presencia. Es la misma regla del gate endurecido que cerro los
+    cinco campos vacios, aplicada a un campo que ahora tiene canal.
+    """
+    r = _veredicto_servicio(_candidato_servicio(reporta_dias=()))
+    assert r.estado is Estado.PARCIAL, r.evidencia
+    assert "dias con quiebre por SKU" in r.evidencia
 
 
 def test_t10_que_la_libreria_sepa_el_beta_teorico_ya_no_descalifica():
@@ -968,7 +1023,7 @@ def test_t10_reportar_el_objetivo_del_modelo_sigue_siendo_eliminatorio():
     r = _veredicto_servicio(_candidato_servicio(
         muestra=_muestra(
             sku=("SKU-1", "SKU-2"), service_level=(0.985, 0.946),
-            dias_quiebre=(4.0, 1.0), venta_perdida_usd=(1_200.0, 340.0),
+            dias_quiebre=(20.0, 1.0), venta_perdida_usd=(2_400.0, 120.0),
         ),
         reporta_lo_medido=(),
         prueba_origen="el numero se mueve con lo observado pero no lo reproduce",
@@ -979,24 +1034,76 @@ def test_t10_reportar_el_objetivo_del_modelo_sigue_siendo_eliminatorio():
 
 
 def test_t10_es_parcial_cuando_solo_falta_la_venta_perdida():
-    r = _veredicto_servicio(_candidato_servicio(muestra=_muestra(
-        sku=("SKU-1", "SKU-2"), otif_salida=(0.60, 0.99),
-        fill_rate_linea=(0.60, 0.99), dias_quiebre=(4.0, 1.0),
-    )))
+    r = _veredicto_servicio(_candidato_servicio(reporta_venta_perdida=()))
     assert r.estado is Estado.PARCIAL, r.evidencia
     assert r.puntos == 0.5
     assert "venta perdida estimada" in r.evidencia
 
 
-def test_t10_una_venta_perdida_en_cero_no_es_una_venta_perdida_estimada():
-    """Mismo criterio que ``recovery._unquantified``: lo que nadie cuantifico no
-    puede pasar por un cero medido."""
-    r = _veredicto_servicio(_candidato_servicio(muestra=_muestra(
-        sku=("SKU-1", "SKU-2"), otif_salida=(0.60, 0.99),
-        fill_rate_linea=(0.60, 0.99), dias_quiebre=(4.0, 1.0), venta_perdida_usd=0.0,
-    )))
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert "venta perdida estimada" in r.evidencia
+def test_t10_un_campo_con_nombre_de_servicio_no_acredita_si_no_trae_el_hecho():
+    """El ataque de nombres, en la version que le queda a T10.
+
+    ``reporta_*`` sale de comparar contra el hecho inyectado, asi que un campo
+    con el nombre correcto y un valor cualquiera adentro no entra en ninguna de
+    las cuatro listas -- y sin lista no hay criterio acreditado.
+    """
+    r = _veredicto_servicio(_candidato_servicio(
+        muestra=_muestra(
+            sku=("SKU-1", "SKU-2"),
+            otif_salida=(0.11, 0.22), fill_rate_linea=(0.33, 0.44),
+            dias_quiebre=(7.0, 7.0), venta_perdida_usd=(1.0, 2.0),
+        ),
+        reporta_lo_medido=(), reporta_otif=(), reporta_dias=(), reporta_venta_perdida=(),
+    ))
+    assert r.estado is Estado.NO_CUMPLE
+    assert r.puntos == 0.0
+
+
+def test_t10_reproduce_el_hecho_rechaza_el_booleano_y_la_constante():
+    """``True`` es ``1`` en Python: un flag no puede pasar por una medicion.
+    Y una constante acierta una corrida por casualidad, nunca las dos."""
+    assert _reproduce_el_hecho(0.80, 0.99, 0.80, 0.99, 0.005) is True
+    assert _reproduce_el_hecho(True, True, 1.0, 1.0, 0.005) is False
+    assert _reproduce_el_hecho(0.80, 0.80, 0.80, 0.99, 0.005) is False
+    assert _reproduce_el_hecho(None, 0.99, 0.80, 0.99, 0.005) is False
+    assert _reproduce_el_hecho("0.80", "0.99", 0.80, 0.99, 0.005) is False
+
+def test_t10_el_canal_viejo_ya_no_alcanza_para_acreditar():
+    """La prueba de que esto fue endurecimiento y no ablandamiento.
+
+    Se alimenta el canal VIEJO -- ``observed_fill_rates``, un beta escalar -- con
+    los mismos betas que implican las lineas de la sonda nueva. Con la vara vieja
+    eso daba PARCIAL (0,5): el fill rate reproducia, el OTIF se acreditaba de
+    arrastre con el, y los dias y la venta perdida se conformaban con ``poblado``.
+    Con la vara nueva da NO_CUMPLE: de los cuatro criterios solo sobrevive el fill
+    rate, que es exactamente lo unico que un beta escalar puede sostener.
+
+    Si algun dia este test empieza a pasar con mas de un criterio acreditado, o
+    alguien aflojo la vara o el job aprendio a derivar de un escalar cosas que de
+    un escalar no se derivan. Las dos merecen que se pare a mirar.
+    """
+    from jobs import inventory_optimization as job
+
+    baja, alta = _SondaPedidos(*_CORRIDA_BAJA), _SondaPedidos(*_CORRIDA_ALTA)
+    demanda = _demanda_sonda()
+    bajo = job.run(demanda, observed_fill_rates={"SKU-1": baja.fill_rate})
+    alto = job.run(demanda, observed_fill_rates={"SKU-1": alta.fill_rate})
+    vb, va = _valores_planos(bajo.recommendations[0]), _valores_planos(alto.recommendations[0])
+
+    def reproducen(hecho, tolerancia):
+        return tuple(sorted(
+            c for c in vb
+            if _reproduce_el_hecho(vb.get(c), va.get(c), hecho(baja), hecho(alta), tolerancia)
+        ))
+
+    # El beta escalar sostiene el fill rate y NADA MAS.
+    assert reproducen(lambda s: s.fill_rate, _TOLERANCIA_SERVICIO) == (
+        "realized_service.fill_rate",
+    )
+    assert reproducen(lambda s: s.otif, _TOLERANCIA_SERVICIO) == ()
+    assert reproducen(lambda s: float(s.dias_quiebre), _TOLERANCIA_CONTEO) == ()
+    assert reproducen(lambda s: s.unidades_perdidas, _TOLERANCIA_CONTEO) == ()
+
 
 
 # --- T09: scorecard de proveedores -------------------------------------------
