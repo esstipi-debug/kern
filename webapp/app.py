@@ -31,11 +31,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import pandas as pd  # noqa: E402
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+from jobs import abc_xyz_job, excess_obsolete_job  # noqa: E402
 from jobs.intake import load_table  # noqa: E402
 from jobs.price_monitor import accept_observation  # noqa: E402
 from jobs.scheduled_jobs import PRODUCTION_JOB_IDS, production_registry  # noqa: E402
@@ -58,7 +60,7 @@ from scm_agent.event_intent import DEFAULT_ROUTING_PATH as EVENT_ROUTING_DEFAULT
 from scm_agent.events import DEFAULT_PATH as EVENTS_DEFAULT_PATH  # noqa: E402
 from scm_agent.events import Event, EventLedger  # noqa: E402
 from scm_agent.monitors import EVENT_COMPETITOR_PRICE_MOVE, run_all_monitors  # noqa: E402
-from src.connectors import odoo_connect  # noqa: E402
+from src.connectors import odoo_connect, shopify_connect  # noqa: E402
 from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
 from src.mcp_keys import DEFAULT_PATH as MCP_KEYS_DEFAULT_PATH  # noqa: E402
@@ -1170,6 +1172,305 @@ def api_odoo_lead_time(
         "findings": list(result.findings),
         "dropped": result.dropped,
         "cta_url": demo_lead_time_scan.CTA_PATH,
+    }
+
+
+#: Tope de SKU multi-bodega que se detallan en la respuesta. Existe porque un
+#: catalogo grande por varias locations infla el JSON sin que nadie lo lea, y va
+#: DECLARADO en el cuerpo (``n_multi_location`` + ``truncated``): un tope
+#: silencioso se lee como "estos son todos" cuando no lo son.
+_POOLING_MAX_SKUS = 50
+
+
+#: Cuanto espera el handler a una lectura masiva antes de devolver `in_progress`.
+#: Corto a proposito: el hilo del threadpool que espera es un hilo que no atiende.
+_BULK_MAX_WAIT_SEGUNDOS = 20.0
+
+
+def _modo_de_ordenes(valor: str) -> str:
+    """Valida el modo aqui, para que un valor raro no llegue como 500.
+
+    ``paged`` es el default y no cambia: pagina barata para la tienda chica.
+    ``bulk`` no tiene techo de costo ni de tamano y es el unico que sirve para un
+    historial largo, a cambio de ser asincrono.
+    """
+    limpio = (valor or "").strip() or shopify_connect.ORDERS_PAGED
+    if limpio not in (shopify_connect.ORDERS_PAGED, shopify_connect.ORDERS_BULK):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "reason": "parametro_invalido",
+                "message": f"orders_mode tiene que ser {shopify_connect.ORDERS_PAGED!r} o "
+                           f"{shopify_connect.ORDERS_BULK!r}, llego {limpio!r}.",
+            },
+        )
+    return limpio
+
+
+def _entero_opcional(valor: str, campo: str) -> int | None:
+    """Vacio -> None; ``"12"`` -> 12; ``"doce"`` -> 400 nombrando el campo.
+
+    Se parsea aqui y no con ``int = Form(...)`` para que un valor invalido lo
+    rechace este handler nombrando el campo, y no un 422 de validacion de forma
+    cuyo cuerpo puede arrastrar el resto del formulario -- que en esta ruta
+    incluye el token.
+    """
+    limpio = (valor or "").strip()
+    if not limpio:
+        return None
+    try:
+        return int(limpio)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "reason": "parametro_invalido",
+                "message": f"{campo} tiene que ser un numero entero, llego {limpio!r}.",
+            },
+        ) from None
+
+
+def _pooling(stock_rows: tuple[dict, ...]) -> dict:
+    """El stock por bodega: el resumen completo, y el detalle multi-bodega acotado.
+
+    La dimension location es la fuente de valor #2 de esta ruta ("tienes 40
+    unidades muertas en Santiago y estas comprando las mismas 40 para
+    Concepcion"), asi que la respuesta la EXPONE en vez de plegarla. El resumen
+    por location es chico y va entero; el detalle por SKU se corta en
+    ``_POOLING_MAX_SKUS`` y el corte va declarado en el cuerpo.
+    """
+    por_location: dict[str, dict] = {}
+    por_sku: dict[str, list[dict]] = {}
+    for fila in stock_rows:
+        loc = por_location.setdefault(
+            fila["location_id"],
+            {
+                "location_id": fila["location_id"],
+                "name": fila["location_name"],
+                "n_skus": 0,
+                "units": 0.0,
+            },
+        )
+        # Solo lo que tiene existencias: la lectura emite la grilla completa
+        # (una fila por SKU y bodega, con cero donde no hay), asi que contar
+        # filas le daria a TODA bodega el mismo total -- el del catalogo.
+        if fila["on_hand"] > 0:
+            loc["n_skus"] += 1
+        loc["units"] += fila["on_hand"]
+        por_sku.setdefault(fila["product_id"], []).append(
+            {
+                "location_id": fila["location_id"],
+                "name": fila["location_name"],
+                "on_hand": fila["on_hand"],
+            }
+        )
+
+    multi = {
+        sku: filas
+        for sku, filas in por_sku.items()
+        if sum(1 for f in filas if f["on_hand"] > 0) > 1
+    }
+    ordenados = sorted(multi.items(), key=lambda kv: -sum(f["on_hand"] for f in kv[1]))
+    recortado = ordenados[:_POOLING_MAX_SKUS]
+    return {
+        "locations": sorted(por_location.values(), key=lambda x: -x["units"]),
+        "stock_by_location": {
+            "n_multi_location": len(multi),
+            "truncated": len(ordenados) > len(recortado),
+            "limit": _POOLING_MAX_SKUS,
+            "skus": dict(recortado),
+        },
+    }
+
+
+@app.post(
+    "/api/shopify-scan",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+def api_shopify_scan(
+    shop_domain: str = Form(""),
+    access_token: str = Form(""),
+    since: str = Form(""),
+    until: str = Form(""),
+    required_days: str = Form(""),
+    min_periods: str = Form(""),
+    orders_mode: str = Form(shopify_connect.ORDERS_PAGED),
+    bulk_id: str = Form(""),
+) -> dict:
+    """T03 (ABC/XYZ) y T11 (excedente/obsoleto) desde una tienda Shopify viva, en SOLO LECTURA.
+
+    Dos campos: el dominio ``.myshopify.com`` y el Admin API access token de una
+    app CUSTOM -- la que el comerciante crea en su propio admin. NO es una app
+    del App Store: eso exige OAuth, app embebida, los tres webhooks de GDPR y
+    Billing API, y nada de eso esta en esta ruta.
+
+    Desemboca en los MISMOS ``jobs/abc_xyz_job`` y ``jobs/excess_obsolete_job``
+    que comen un CSV: los motores no se enteran de donde vinieron las filas.
+
+    Autenticada y con rate limit por la misma razon que ``/api/odoo-lead-time``:
+    un token del comercio de un cliente no se pide en un formulario anonimo, por
+    mas que el alcance sea de solo lectura.
+
+    ``def`` y no ``async def`` a proposito: la lectura de Shopify es I/O de red
+    sincrona (httpx con timeout de 30 s), y FastAPI corre los handlers sincronos
+    en su threadpool. Declararlo ``async`` bloquearia el event loop entero
+    mientras una tienda lenta contesta.
+
+    **NO devuelve plazo de proveedor, y lo dice.** Shopify no tiene ordenes de
+    compra ni recepciones: el objeto no existe en su Admin API, asi que la salida
+    #1 del embudo es imposible por esta puerta. La clave ``lead_time`` viaja
+    SIEMPRE con el motivo -- una respuesta que simplemente omitiera el plazo es
+    indistinguible de una que lo midio y le dio cero.
+
+    Tres cosas que NO hace, cada una deliberada:
+
+    * **No escribe en Shopify.** Ni con aprobacion. ``shopify_connect`` no toca
+      ``nosilo_core.writeback`` ni el lado de escritura del conector -- hay un
+      test que lo comprueba por el AST y otro por las llamadas hechas. Si el
+      comerciante concedio scopes de escritura igual, se los reporta en
+      ``connection.write_scopes`` para que pueda desmarcarlos.
+    * **No persiste el token ni lo registra en el archivo de leads.** Se usa para
+      esta lectura y se descarta con el request.
+    * **No emite el .xlsx por el arbol publico de /demo-output.** Ese arbol se
+      sirve sin autenticacion contra un token efimero, que es un escalon menos
+      que la puerta que esta ruta acaba de poner. Los numeros van en el JSON.
+    """
+    creds = shopify_connect.ShopifyCredentials(
+        shop_domain=shop_domain, access_token=access_token
+    )
+    entrada = shopify_connect.scan_input(
+        creds,
+        since=since.strip() or None,
+        until=until.strip() or None,
+        required_days=_entero_opcional(required_days, "required_days"),
+        min_periods=_entero_opcional(min_periods, "min_periods"),
+        orders_mode=_modo_de_ordenes(orders_mode),
+        bulk_id=bulk_id.strip(),
+        # Acotado al request: una lectura masiva puede tardar minutos, y este
+        # handler corre en el threadpool de FastAPI. Si no termina a tiempo se
+        # responde `in_progress` con el id y el llamador vuelve -- que es mas
+        # barato que un hilo tomado y un cliente esperando un timeout.
+        max_wait=_BULK_MAX_WAIT_SEGUNDOS,
+    )
+
+    ausencia = {"status": "ausente", "reason": shopify_connect.PLAZO_AUSENTE}
+
+    if entrada.in_progress:
+        # La lectura masiva arranco y sigue. NO es una falla y no lleva
+        # resultados: un parcial presentado como final no se distingue de uno
+        # completo. El llamador vuelve con `bulk_id` y no paga el arranque otra vez.
+        return {
+            "status": "in_progress",
+            "bulk_id": entrada.bulk.id,
+            "bulk_status": entrada.bulk.status,
+            "retry_after_seconds": _BULK_MAX_WAIT_SEGUNDOS,
+            "lead_time": ausencia,
+        }
+
+    if not entrada.check.ok:
+        # 400 y no 500: lo que esta mal son los datos que mando el llamador, y el
+        # mensaje ya viene escrito en el idioma del comerciante con la pantalla
+        # de SU admin donde se arregla. `reason` es para que la UI ramifique sin
+        # parsear texto.
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "reason": entrada.check.reason,
+                "message": entrada.check.message,
+                "scopes_missing": list(entrada.check.scopes_missing),
+            },
+        )
+
+    pre = entrada.preflight
+    resumen = {
+        "n_orders": pre.n_orders,
+        "n_skus": pre.n_skus,
+        "n_locations": pre.n_locations,
+        "first_order": pre.first_order,
+        "last_order": pre.last_order,
+        "span_days": pre.span_days,
+        "n_periods": pre.n_periods,
+        "cost_basis": pre.cost_basis,
+        "dropped": pre.dropped,
+        "warnings": list(pre.warnings),
+    }
+    conexion = {
+        "shop": entrada.check.shop_name,
+        "shop_domain": creds.shop_domain,
+        "api_version": entrada.check.api_version_served or entrada.check.api_version_requested,
+        "scopes": list(entrada.check.scopes_granted),
+        "write_scopes": list(entrada.check.write_scopes),
+        "all_orders": entrada.check.all_orders,
+        "orders_mode": orders_mode,
+    }
+
+    if not pre.ok:
+        # La conexion sirve y la tienda no tiene con que correr las tareas.
+        # `needs_data` es el mismo vocabulario de estados del orquestador, y
+        # `missing` nombra lo que falta: nunca se completa una ventana corta ni
+        # se rellena un costo ausente.
+        return {
+            "status": "needs_data",
+            "connection": conexion,
+            "preflight": resumen,
+            "missing": list(pre.missing),
+            "lead_time": ausencia,
+        }
+
+    abc = abc_xyz_job.run(
+        abc_xyz_job.aggregate_skus(
+            pd.DataFrame(list(entrada.demand_rows)),
+            product_col="product_id",
+            demand_col="quantity",
+            cost_col="unit_cost",
+        )
+    )
+    eo = excess_obsolete_job.run(
+        excess_obsolete_job.prepare_records(pd.DataFrame(list(entrada.eo_rows)))
+    )
+    # Las compuertas de QA de cada job, no una segunda copia de su criterio aqui:
+    # la segunda copia de un guardia es como se reintroduce el defecto que el
+    # primero atajaba.
+    qa = abc_xyz_job.verify(abc) + excess_obsolete_job.verify(eo)
+    if qa:
+        return {
+            "status": "qa_failed",
+            "connection": conexion,
+            "preflight": resumen,
+            "qa_issues": qa,
+            "lead_time": ausencia,
+        }
+
+    return {
+        "status": "ok",
+        "connection": conexion,
+        "preflight": resumen,
+        "lead_time": ausencia,
+        "abc_xyz": {
+            "n_skus": abc.n_skus,
+            "n_a": abc.n_a,
+            "n_cz": abc.n_cz,
+            "a_value_share": round(abc.a_value_share, 4),
+            # El corte viaja con las letras: una clase sin su criterio no es
+            # falsable, y un lector que no puede ver el corte no puede estar en
+            # desacuerdo con la segmentacion.
+            "cut_criterion": abc.cut_criterion or "",
+            "ranks_on_value": abc.value_basis.discriminates,
+            "cells": abc.summary,
+        },
+        "excess_obsolete": {
+            "n_skus": eo.n_skus,
+            "n_dead": eo.n_dead,
+            "n_excess": eo.n_excess,
+            "dead_value": round(eo.dead_value, 2),
+            "excess_value": round(eo.excess_value, 2),
+            "eo_value": round(eo.eo_value, 2),
+            "eo_pct_of_value": round(eo.eo_pct_of_value, 4),
+            "total_on_hand_value": round(eo.total_on_hand_value, 2),
+            "summary": eo.summary,
+        },
+        **_pooling(entrada.stock_rows),
+        "source_notes": list(entrada.source_notes),
     }
 
 
