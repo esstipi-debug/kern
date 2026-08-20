@@ -244,6 +244,11 @@ _SERIE_VOLATIL = (60.0, 140.0, 55.0, 150.0, 70.0, 130.0, 45.0, 160.0,
 #: Nombres con los que la comparacion contra el ciclo anterior podria llegar.
 _CAMPOS_CICLO_PREVIO = ("previo", "anterior", "previous", "delta", "vs_")
 
+#: EL MISMO id en los dos ciclos de la sonda de T02. Con ids distintos
+#: ``previous_mape`` por SKU no matchea nunca, y el campo saldria vacio por una
+#: razon que no es la que se esta midiendo.
+_SKU_SONDA = "SKU-01"
+
 
 @comprobacion("T02")
 def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
@@ -260,22 +265,66 @@ def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
     sin mala fe, acreditaba "comparo contra el ciclo previo" sin que nadie
     guardara un ciclo previo.
 
-    Sobre el filo del tercer requisito: la sonda mueve el ciclo ACTUAL, no el
-    anterior, porque el job no tiene parametro por donde recibir un pronostico
-    congelado. Con el ciclo previo fijo, una comparacion real se mueve igual
-    cuando se mueve el error de hoy. El dia que exista ese canal de entrada, el
-    endurecimiento natural es variar tambien el ciclo previo.
+    ENDURECIDO (2026-08-19). El docstring anterior decia que la sonda movia el
+    ciclo ACTUAL y no el anterior "porque el job no tiene parametro por donde
+    recibir un pronostico congelado", y cerraba: "el dia que exista ese canal de
+    entrada, el endurecimiento natural es variar tambien el ciclo previo".
+
+    Ese canal existe -- ``jobs/forecast_job.py::run(..., store=, cycle_id=)``, con
+    tres llamadores de produccion (``jobs/integrated_plan.py``,
+    ``jobs/seo_priority.py``, ``scm_agent/tools.py``). La razon escrita era falsa
+    y el endurecimiento es este: DOS stores, cada uno con dos ciclos, cruzados.
+
+      store A: ciclo previo VOLATIL  -> ciclo de hoy ESTABLE   (el error mejoro)
+      store B: ciclo previo ESTABLE  -> ciclo de hoy VOLATIL   (el error empeoro)
+
+    Asi ``mean_mape_vs_previous`` CAMBIA DE SIGNO entre las dos corridas, que es
+    la prueba mas fuerte de que la comparacion es real: un campo constante, o uno
+    que solo aparece, no puede cambiar de signo.
+
+    Dos trampas que el que lo escriba tiene que evitar, y por eso estan fijadas
+    aca:
+
+    1. **El mismo ``product_id`` en los dos ciclos.** Con ids distintos
+       (``SKU-EST`` / ``SKU-VOL``, como hacia la sonda vieja) ``previous_mape``
+       por SKU no matchea nunca y el campo sale ``None`` por una razon que no es
+       la que se esta midiendo.
+    2. **Dos stores, no uno.** Con un solo store y dos ciclos consecutivos,
+       ``previous_mean_mape`` va de ``None`` a un valor y ``se_mueve`` lo
+       acreditaria POR APARICION -- que es otra vez acreditar por presencia, el
+       defecto que esta bateria existe para no repetir.
     """
+    import tempfile
+
     from jobs import forecast_job as job
     from jobs.forecast_job import SkuForecast
+    from src.state.store import store_for
 
-    estable = job.run({"SKU-EST": list(_SERIE_ESTABLE)})
-    volatil = job.run({"SKU-VOL": list(_SERIE_VOLATIL)})
+    def _dos_ciclos(carpeta: str, particion: str, previo, hoy):
+        """Congela ``previo`` como ciclo 1 y devuelve el reporte del ciclo 2.
+
+        El store se CIERRA antes de salir: en Windows el sqlite abierto impide
+        borrar el temporal, y una sonda que deja basura no es una sonda limpia.
+        """
+        store = store_for(particion, base_path=carpeta)
+        try:
+            job.run({_SKU_SONDA: list(previo)}, store=store, cycle_id="1")
+            return job.run({_SKU_SONDA: list(hoy)}, store=store, cycle_id="2")
+        finally:
+            store.close()
+
+    with tempfile.TemporaryDirectory() as carpeta:
+        estable = _dos_ciclos(carpeta, "sonda-mejora", _SERIE_VOLATIL, _SERIE_ESTABLE)
+        volatil = _dos_ciclos(carpeta, "sonda-empeora", _SERIE_ESTABLE, _SERIE_VOLATIL)
+
     muestra = _Muestra.de_corridas(
         estable.skus, volatil.skus, (estable,), (volatil,)
     )
-    mapes = {s.name: round(s.mape, 4) for s in (*estable.skus, *volatil.skus)}
-    sesgos = {s.name: round(s.bias, 4) for s in (*estable.skus, *volatil.skus)}
+    # Con el mismo product_id en las dos corridas, la clave util es la CORRIDA.
+    mapes = {"hoy_estable": round(estable.skus[0].mape, 4),
+             "hoy_volatil": round(volatil.skus[0].mape, 4)}
+    sesgos = {"hoy_estable": round(estable.skus[0].bias, 4),
+              "hoy_volatil": round(volatil.skus[0].bias, 4)}
 
     tiene_mape = bool(muestra.se_mueve(("mape",)))
     sesgo = muestra.poblado(_CAMPOS_SESGO)
@@ -1431,6 +1480,38 @@ _SIGMA_CICLO_SONDA = 40.0
 _FILL_RATE_MEDIDO_BAJO = 0.60
 _FILL_RATE_MEDIDO_ALTO = 0.99
 
+#: Los dos servicios que la sonda de T10 INYECTA como lineas de pedido reales.
+#: Los valores son mutuamente consistentes: una linea solo cuenta como OTIF si
+#: llego COMPLETA y en fecha, asi que un fill rate de 99% no puede convivir con
+#: un OTIF de 100% -- la linea corta que baja el fill tambien pierde el OTIF.
+#: Elegir un par imposible haria fallar la sonda por aritmetica, no por producto.
+_SERVICIO_SONDA_BAJO = {"fill_rate": 0.60, "otif": 0.25, "dias": 12}
+_SERVICIO_SONDA_ALTO = {"fill_rate": 0.99, "otif": 0.75, "dias": 1}
+
+#: Cuatro lineas de 100 unidades cada una, por corrida. `entregas` dice cuanto
+#: llego en cada una y `en_fecha` si llego a tiempo.
+_LINEAS_SONDA = {
+    0.60: ((100, True), (60, True), (50, True), (30, True)),   # 240/400, 1 de 4 completa
+    0.99: ((100, True), (100, True), (100, True), (96, True)),  # 396/400, 3 de 4 completas
+}
+
+
+def _lineas_sonda(perfil: dict):
+    """Lineas de pedido que producen EXACTAMENTE el servicio del perfil."""
+    import pandas as pd
+
+    filas = []
+    for i, (entregado, en_fecha) in enumerate(_LINEAS_SONDA[perfil["fill_rate"]]):
+        filas.append({
+            "product_id": "SKU-1",
+            "ordered_qty": 100.0,
+            "delivered_qty": float(entregado),
+            "promised_date": f"2026-03-{10 + i:02d}",
+            "delivered_date": f"2026-03-{(10 + i) if en_fecha else (12 + i):02d}",
+            "unit_price": 10.0,
+        })
+    return pd.DataFrame(filas)
+
 #: Tolerancia con la que se acepta que un campo REPRODUCE el servicio medido.
 _TOLERANCIA_SERVICIO = 0.005
 
@@ -1589,28 +1670,62 @@ def t10_servicio_realizado_al_cliente(_: Contexto) -> ResultadoTarea:
     Kern computa es de ENTRADA (proveedor -> nosotros, ``SupplierScore.otif``,
     ver T09), no de salida al cliente.
 
-    Limite conocido de la sonda: se ata al canal de entrada que hoy existe. Si
-    algun dia el job recibe las lineas de pedido crudas y calcula el OTIF de
-    ellas, hay que reescribir la sonda para alimentarlo por ahi -- el gate mide
-    el reporte contra el hecho inyectado, y el hecho hay que poder inyectarlo.
+    ENDURECIDO (2026-08-19). El docstring anterior cerraba con este limite:
+    "se ata al canal de entrada que hoy existe. Si algun dia el job recibe las
+    lineas de pedido crudas y calcula el OTIF de ellas, hay que reescribir la
+    sonda para alimentarlo por ahi".
+
+    Ese canal existe: ``run(..., order_lines=DataFrame, stockout_days=dict)``,
+    y ``src/order_fulfillment.py::measure_from_order_lines`` calcula de ahi el
+    fill rate, el OTIF de salida, los dias con quiebre y la venta perdida. La
+    sonda vieja alimentaba por ``observed_fill_rates`` -- un escalar -- y con un
+    escalar ``from_reported_fill_rate`` NO PUEDE producir OTIF ni dias: por eso
+    esos dos campos salian como "solo de nombre". El gate tenia razon y el hueco
+    era de la sonda.
+
+    Ahora se inyectan LINEAS DE PEDIDO reales, dos juegos con servicios muy
+    distintos, y se exige que cada campo REPRODUZCA el hecho inyectado:
+
+      corrida BAJA:  fill rate 60%, OTIF 25%, 12 dias con quiebre
+      corrida ALTA:  fill rate 99%, OTIF 100%, 1 dia con quiebre
+
+    ``stockout_days`` va explicito para que el dia contado sea el del cliente y
+    no el piso inferior que se deduce de las fechas cortas -- el modulo declara
+    esa diferencia en ``method`` y la sonda no debe confundirlas.
     """
+
     from jobs import inventory_optimization as job
     from src.fill_rate import fill_rate_from_safety_stock
 
     demanda = _demanda_sonda()
-    bajo = job.run(demanda, observed_fill_rates={"SKU-1": _FILL_RATE_MEDIDO_BAJO})
-    alto = job.run(demanda, observed_fill_rates={"SKU-1": _FILL_RATE_MEDIDO_ALTO})
+    bajo = job.run(demanda, order_lines=_lineas_sonda(_SERVICIO_SONDA_BAJO),
+                   stockout_days={"SKU-1": _SERVICIO_SONDA_BAJO["dias"]})
+    alto = job.run(demanda, order_lines=_lineas_sonda(_SERVICIO_SONDA_ALTO),
+                   stockout_days={"SKU-1": _SERVICIO_SONDA_ALTO["dias"]})
     valores_bajo = _valores_planos(bajo.recommendations[0])
     valores_alto = _valores_planos(alto.recommendations[0])
 
+    # Cada campo se juzga contra SU hecho inyectado, no contra el fill rate.
+    # Un campo que se mueve pero no reproduce el hecho no acredita: es lo que el
+    # criterio descalifica cuando `service_level` se tironea hacia lo observado
+    # sin igualarlo.
+    _ESPERADO = {
+        "fill_rate": (_SERVICIO_SONDA_BAJO["fill_rate"], _SERVICIO_SONDA_ALTO["fill_rate"]),
+        "otif": (_SERVICIO_SONDA_BAJO["otif"], _SERVICIO_SONDA_ALTO["otif"]),
+        "days_out_of_stock": (_SERVICIO_SONDA_BAJO["dias"], _SERVICIO_SONDA_ALTO["dias"]),
+    }
+
     def _reproduce(campo: str) -> bool:
-        a, b = valores_bajo[campo], valores_alto.get(campo)
-        if not (isinstance(a, float) and isinstance(b, float)):
+        esperado = _ESPERADO.get(campo.rsplit(".", 1)[-1])
+        if esperado is None:
             return False
-        return (
-            abs(a - _FILL_RATE_MEDIDO_BAJO) <= _TOLERANCIA_SERVICIO
-            and abs(b - _FILL_RATE_MEDIDO_ALTO) <= _TOLERANCIA_SERVICIO
-        )
+        a, b = valores_bajo[campo], valores_alto.get(campo)
+        if not (isinstance(a, (int, float)) and isinstance(b, (int, float))):
+            return False
+        if isinstance(a, bool) or isinstance(b, bool):
+            return False
+        return (abs(a - esperado[0]) <= _TOLERANCIA_SERVICIO
+                and abs(b - esperado[1]) <= _TOLERANCIA_SERVICIO)
 
     reporta = tuple(sorted(c for c in valores_bajo if _reproduce(c)))
     beta = fill_rate_from_safety_stock(_SS_SONDA, _DEMANDA_CICLO_SONDA, _SIGMA_CICLO_SONDA)

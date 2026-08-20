@@ -154,8 +154,8 @@ def test_t01_cumple_el_entregable_ya_lleva_banda_de_incertidumbre():
     assert set(r.detalle["campos_de_dispersion"]) == {"error_std", "p10", "p90", "sigma_source"}
 
 
-def test_t02_es_parcial_porque_la_sonda_no_nombra_ningun_store():
-    """T02 volvio a PARCIAL, y el CUMPLE anterior estaba sostenido por un bug.
+def test_t02_cumple_con_dos_stores_aislados_y_el_ciclo_previo_variando():
+    """T02 vuelve a CUMPLE, y esta vez SIN el bug que sostenia el CUMPLE viejo.
 
     La sonda de T02 corre ``job.run()`` DOS veces, sobre dos datasets distintos
     (``SKU-EST`` y ``SKU-VOL``), y sin pasar ``store``. Mientras ``store=None``
@@ -166,22 +166,29 @@ def test_t02_es_parcial_porque_la_sonda_no_nombra_ningun_store():
     ``jobs/forecast_cycle.NO_STORE_MEMORY`` y
     ``tests/test_forecast_cycle.py::test_two_datasets_without_a_store_do_not_see_each_other``).
 
-    Hoy un llamador que no nombra store no tiene ciclo previo, y la bateria lo
-    dice con esas palabras. PARCIAL es el veredicto honesto de la sonda tal como
-    esta escrita. La capacidad SI esta cableada -- eso se prueba abajo, contra un
-    store explicito -- y el dia que la comprobacion le pase uno propio y aislado,
-    T02 vuelve a CUMPLE sin tocar el producto.
+    El docstring anterior cerraba con una prediccion: "la capacidad SI esta
+    cableada -- eso se prueba abajo, contra un store explicito -- y EL DIA QUE LA
+    COMPROBACION LE PASE UNO PROPIO Y AISLADO, T02 VUELVE A CUMPLE SIN TOCAR EL
+    PRODUCTO". Ese dia llego, y se edita por esa razon exacta.
+
+    Lo que NO se repite del CUMPLE viejo: aquel usaba una sola particion sin
+    nombre, asi que la segunda corrida leia el ciclo de la primera y el tercer
+    requisito se acreditaba con cruce de datos entre clientes. La sonda de hoy
+    usa DOS stores aislados, cada uno con sus dos ciclos, cruzados -- previo
+    volatil sobre hoy estable en uno, al reves en el otro. Un solo store
+    compartido volveria a ser aquel bug con otra ropa.
     """
     r = _resultado(puntuar(), "T02")
 
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.detalle["faltantes"] == ["comparacion contra el ciclo previo"]
-    assert r.puntos == 0.5
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.detalle["faltantes"] == []
+    assert r.puntos == 1.0
     assert len(set(r.detalle["sonda_mape"].values())) == 2  # la sonda sigue siendo valida
     assert all(v != 0.0 for v in r.detalle["sonda_sesgo"].values())
-    # MAPE y sesgo firmado, los otros dos requisitos, siguen acreditando
-    assert "MAPE por SKU" not in r.detalle["faltantes"]
-    assert "sesgo firmado" not in r.detalle["faltantes"]
+    # Los campos que acreditan tienen VALOR que se mueve, no solo nombre.
+    movidos = r.detalle["campos_de_ciclo_previo_con_valor_que_se_mueve"]
+    assert "previous_mean_mape" in movidos
+    assert "mean_mape_vs_previous" in movidos
 
 
 def test_t02_la_capacidad_esta_cableada_cuando_se_nombra_un_store(tmp_path):
@@ -294,14 +301,12 @@ def test_t02_un_delta_contra_el_ciclo_previo_con_valor_si_acredita():
     tarea pasa a CUMPLE. Sin esta prueba, "endurecer" seria indistinguible de
     "romper".
 
-    El campo inyectado esta SOLO en la lista, y eso es lo correcto: la sonda de
-    T02 corre ``job.run()`` sin ``store``, y desde que la memoria de ciclo es
-    opt-in una corrida sin store no congela ni compara (los cinco campos que
-    ``jobs/forecast_cycle.py`` cablea de verdad quedan en ``None``, iguales en las
-    dos corridas). Antes acompanaban al inyectado porque las dos corridas -- dos
-    datasets distintos -- compartian la particion sin nombre. La igualdad se
-    mantiene EXACTA (no se afloja a un ``in``) justamente para que la lista siga
-    siendo auditable campo por campo.
+    El campo inyectado ya NO esta solo en la lista, y eso tambien es correcto:
+    desde que la sonda nombra dos stores aislados, los campos que
+    ``jobs/forecast_cycle.py`` cablea de verdad tambien se mueven y acreditan por
+    su cuenta. Se afirma la PERTENENCIA del inyectado y ademas que los reales
+    siguen ahi -- si algun dia el inyectado quedara solo, seria senal de que la
+    memoria de ciclo dejo de funcionar y este test lo diria.
     """
     with _campo_cableado(
         "jobs.forecast_job", "SkuForecast",
@@ -311,7 +316,12 @@ def test_t02_un_delta_contra_el_ciclo_previo_con_valor_si_acredita():
 
     assert r.estado is Estado.CUMPLE, r.evidencia
     assert r.puntos == 1.0
-    assert r.detalle["campos_de_ciclo_previo_con_valor_que_se_mueve"] == ["mape_vs_previous"]
+    movidos = r.detalle["campos_de_ciclo_previo_con_valor_que_se_mueve"]
+    assert "mape_vs_previous" in movidos
+    assert "previous_mean_mape" in movidos, (
+        "los campos reales de memoria de ciclo dejaron de moverse: el inyectado "
+        "esta tapando una regresion"
+    )
 
 
 def test_el_ataque_completo_no_mueve_el_marcador():
@@ -916,28 +926,37 @@ def _candidato_servicio(**cambios) -> _CandidatoServicio:
     return _CandidatoServicio(**{**base, **cambios})
 
 
-def test_t10_es_parcial_ya_reporta_el_hecho_pero_no_los_dias_de_quiebre():
-    """Veredicto real, despues de que el job pasara a reportar el servicio observado.
+def test_t10_cumple_con_lineas_de_pedido_reales_y_dias_de_quiebre():
+    """T10 pasa a CUMPLE, por la razon que el docstring anterior habia nombrado.
 
-    Se le inyecta al job el servicio realmente observado (60% y 99%) y ahora un
-    campo del entregable lo REPRODUCE: ``realized_service.fill_rate``, con la
-    procedencia pegada al lado. Lo eliminatorio -- reportar el objetivo del modelo
-    en lugar del realizado -- ya no aplica.
+    Ese docstring decia: "Queda un solo faltante, y es un limite de la sonda, no
+    del entregable... EL CAMINO QUEDA CABLEADO PARA EL DIA EN QUE SE LE PASEN
+    LINEAS DE PEDIDO CON FECHA: AHI ``days_out_of_stock`` SALE MEDIDO".
 
-    Queda un solo faltante, y es un limite de la sonda, no del entregable: los
-    dias a stock cero no se derivan de un beta escalar (un quiebre largo y muchos
-    cortos dan el mismo numero), y ``observed_fill_rates`` es el unico canal por
-    el que la comprobacion inyecta hechos del cliente. El camino queda cableado
-    para el dia en que se le pasen lineas de pedido con fecha: ahi
-    ``days_out_of_stock`` sale medido. El limite esta admitido en el propio
-    docstring de la comprobacion.
+    Ese dia llego. ``run(..., order_lines=, stockout_days=)`` ya existia y
+    ``src/order_fulfillment.py::measure_from_order_lines`` ya calculaba OTIF,
+    dias y venta perdida; la sonda alimentaba por ``observed_fill_rates``, un
+    escalar del que ``from_reported_fill_rate`` NO PUEDE derivar OTIF ni dias.
+    Por eso esos dos campos salian "solo de nombre": el gate tenia razon y el
+    hueco era de la sonda.
+
+    Los tres campos acreditan REPRODUCIENDO el hecho inyectado, cada uno contra
+    el suyo -- no contra el fill rate, y no por moverse. Moverse sin igualar es
+    lo que descalifica a ``service_level``.
     """
     r = _resultado(puntuar(), "T10")
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.puntos == 0.5
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
     assert r.detalle["mide_lo_realizado"] is True
-    assert r.detalle["campos_que_reproducen_lo_medido"] == ["realized_service.fill_rate"]
-    assert r.detalle["faltantes"] == ["dias con quiebre por SKU"]
+    assert r.detalle["faltantes"] == []
+    assert r.detalle["campos_solo_de_nombre"] == [], (
+        "un campo que existe y no reproduce el hecho no puede quedar acreditado"
+    )
+    assert set(r.detalle["campos_que_reproducen_lo_medido"]) == {
+        "realized_service.fill_rate",
+        "realized_service.otif",
+        "realized_service.days_out_of_stock",
+    }
 
 
 def test_t10_cumple_con_servicio_medido_quiebres_y_venta_perdida():
