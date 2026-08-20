@@ -16,12 +16,29 @@
 # cabecera: un `pip install -r` plano aborta la transaccion entera en el
 # contenedor). Corre desde el hook de SessionStart, no por la tool Bash, asi que
 # este guard no lo intercepta; e invocado a mano su nombre no contiene `pip`.
+#
+# La DECISION vive en `uv_guard.py`, al lado. Este archivo solo mueve bytes: el
+# guard es de los pocos controles que quedan con la CI roja, y uno que no se
+# puede testear no es un control. Con la logica en un modulo importable,
+# `tests/test_hooks_uv_guard.py` la fija en la suite en vez de en una verificacion
+# manual que no se vuelve a correr. Se sigue parseando el JSON con Python porque
+# en esta maquina no hay `jq`.
 set -uo pipefail
 
-PAYLOAD="$(cat)"
+AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-PAYLOAD="$PAYLOAD" python - <<'PY'
-import json, os, re, sys
+PAYLOAD="$(cat)" AQUI="$AQUI" python - <<'PY'
+import importlib.util
+import json
+import os
+import sys
+
+ruta = os.path.join(os.environ["AQUI"], "uv_guard.py")
+spec = importlib.util.spec_from_file_location("uv_guard", ruta)
+if spec is None or spec.loader is None:
+    raise SystemExit(0)  # sin el modulo el hook se calla, no rompe la sesion
+modulo = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(modulo)
 
 try:
     datos = json.loads(os.environ.get("PAYLOAD") or "{}")
@@ -32,70 +49,9 @@ comando = (datos.get("tool_input") or {}).get("command") or ""
 if not comando:
     raise SystemExit(0)
 
-# Subcomandos que no tocan el entorno instalado.
-LECTURA = {
-    "pip": {"download", "list", "show", "freeze", "check", "config", "cache", "index"},
-    "poetry": {"show", "check", "search", "about", "env", "run", "version"},
-    "pipenv": {"graph", "check"},
-}
-
-EQUIVALENTE = {
-    ("pip", "install"): "uv pip install  (o `uv add` si va a pyproject.toml)",
-    ("pip", "uninstall"): "uv pip uninstall",
-    ("pip", "sync"): "uv pip sync",
-    ("poetry", "add"): "uv add",
-    ("poetry", "remove"): "uv remove",
-    ("poetry", "install"): "uv sync",
-    ("poetry", "update"): "uv lock --upgrade",
-    ("poetry", "lock"): "uv lock",
-    ("pipenv", "install"): "uv sync",
-    ("pipenv", "uninstall"): "uv remove",
-}
-
-# Descarta asignaciones de entorno al principio (`VAR=1 pip install ...`).
-PREFIJO_ENV = re.compile(r"^(?:\w+=\S*\s+)*")
-INVOCACION = re.compile(r"^(?:python\d?\s+-m\s+)?(pip3?|poetry|pipenv)\b(.*)$")
-
-
-def subcomando(resto):
-    """El primer token que no sea bandera.
-
-    `pip -q install x` tiene que leerse como `install`: si no, cualquier bandera
-    antes del subcomando esquiva el guard entero.
-    """
-    for token in resto.split():
-        if not token.startswith("-"):
-            return token
-    return ""
-
-
-# Corta en segmentos ejecutables. El salto de linea se normaliza a `;` antes de
-# partir, para no meter un escape de newline dentro de la clase de caracteres.
-segmentos = re.split(r"&&|\|\||[;|]", comando.replace("\n", ";"))
-
-for segmento in segmentos:
-    limpio = PREFIJO_ENV.sub("", segmento.strip())
-    coincidencia = INVOCACION.match(limpio)
-    if not coincidencia:
-        continue
-    herramienta = coincidencia.group(1)
-    sub = subcomando(coincidencia.group(2))
-    canonica = "pip" if herramienta == "pip3" else herramienta
-    # Sin subcomando real (`pip --version`, `pip`) no hay mutacion posible.
-    if not sub or sub in LECTURA.get(canonica, set()):
-        continue
-    sugerencia = EQUIVALENTE.get((canonica, sub))
-    print(
-        "Bloqueado: `%s %s` mutaria el entorno sin tocar uv.lock.\n%s\nComando: %s"
-        % (
-            herramienta,
-            sub,
-            "Usa en su lugar: %s" % sugerencia if sugerencia else "Este repo maneja dependencias con uv.",
-            segmento.strip(),
-        ),
-        file=sys.stderr,
-    )
+mensaje = modulo.revisar(comando)
+if mensaje:
+    print(mensaje, file=sys.stderr)
     raise SystemExit(2)
-
 raise SystemExit(0)
 PY
