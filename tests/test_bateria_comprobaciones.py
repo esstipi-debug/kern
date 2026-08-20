@@ -162,34 +162,77 @@ def test_t01_cumple_el_entregable_ya_lleva_banda_de_incertidumbre():
     assert set(r.detalle["campos_de_dispersion"]) == {"error_std", "p10", "p90", "sigma_source"}
 
 
-def test_t02_es_parcial_porque_la_sonda_no_nombra_ningun_store():
-    """T02 volvio a PARCIAL, y el CUMPLE anterior estaba sostenido por un bug.
+def test_t02_cumple_con_su_propio_store_aislado():
+    """T02 vuelve a CUMPLE, y sin tocar una linea de producto.
 
-    La sonda de T02 corre ``job.run()`` DOS veces, sobre dos datasets distintos
-    (``SKU-EST`` y ``SKU-VOL``), y sin pasar ``store``. Mientras ``store=None``
-    resolvia ``default_store()``, las dos corridas compartian la particion sin
-    nombre: la segunda leia el ciclo congelado por la PRIMERA y la comparacion se
-    movia. O sea que el tercer requisito se acreditaba con el cruce de datos entre
-    clientes, que es exactamente el bug que se cerro (ver
-    ``jobs/forecast_cycle.NO_STORE_MEMORY`` y
-    ``tests/test_forecast_cycle.py::test_two_datasets_without_a_store_do_not_see_each_other``).
+    El test anterior aqui dejaba escrito el camino: *"la capacidad SI esta
+    cableada [...] y el dia que la comprobacion le pase un store propio y aislado,
+    T02 vuelve a CUMPLE sin tocar el producto"*. Eso es lo que hace ahora la
+    sonda: dos ciclos por serie sobre una particion temporal propia, el primero
+    congela y el segundo compara.
 
-    Hoy un llamador que no nombra store no tiene ciclo previo, y la bateria lo
-    dice con esas palabras. PARCIAL es el veredicto honesto de la sonda tal como
-    esta escrita. La capacidad SI esta cableada -- eso se prueba abajo, contra un
-    store explicito -- y el dia que la comprobacion le pase uno propio y aislado,
-    T02 vuelve a CUMPLE sin tocar el producto.
+    Y la comparacion ya no se acredita con cualquier campo que se mueva: se exige
+    que REPRODUZCA el MAPE que el primer ciclo emitio, y que el cambio sea la
+    resta contra ese numero. Cada uno lo acredita un campo distinto.
     """
     r = _resultado(puntuar(), "T02")
 
-    assert r.estado is Estado.PARCIAL, r.evidencia
-    assert r.detalle["faltantes"] == ["comparacion contra el ciclo previo"]
-    assert r.puntos == 0.5
-    assert len(set(r.detalle["sonda_mape"].values())) == 2  # la sonda sigue siendo valida
+    assert r.estado is Estado.CUMPLE, r.evidencia
+    assert r.puntos == 1.0
+    assert r.detalle["faltantes"] == []
+    assert r.detalle["campos_que_reproducen_el_ciclo_previo"] == ["previous_mape"]
+    assert r.detalle["campos_que_reproducen_el_cambio"] == ["mape_change_vs_previous"]
+    # La sonda sigue siendo valida: dos ciclos con error distinto, sesgo con signo.
+    assert len(set(r.detalle["sonda_mape"].values())) == 2
+    assert len(set(r.detalle["sonda_mape_congelado"].values())) == 2
     assert all(v != 0.0 for v in r.detalle["sonda_sesgo"].values())
-    # MAPE y sesgo firmado, los otros dos requisitos, siguen acreditando
-    assert "MAPE por SKU" not in r.detalle["faltantes"]
-    assert "sesgo firmado" not in r.detalle["faltantes"]
+
+
+def test_t02_los_campos_que_solo_se_mueven_ya_no_acreditan():
+    """La prueba de que esto endurecio, sobre el entregable real y sin inyectar nada.
+
+    Siete campos del entregable llevan nombre de comparacion y cinco de ellos se
+    MUEVEN entre las dos corridas. Con el gate viejo -- ``se_mueve`` -- cualquiera
+    de los cinco acreditaba "comparo contra el ciclo previo", incluidos los de
+    nivel PORTAFOLIO, que no tienen nada que ver con el ciclo congelado de este
+    SKU. Con el gate nuevo solo acreditan los dos que devuelven el numero real.
+    """
+    d = _resultado(puntuar(), "T02").detalle
+    acreditan = set(
+        d["campos_que_reproducen_el_ciclo_previo"] + d["campos_que_reproducen_el_cambio"]
+    )
+    con_nombre = set(d["campos_de_ciclo_previo_por_nombre"])
+
+    assert acreditan == {"previous_mape", "mape_change_vs_previous"}
+    # Los que quedan afuera existen, llevan el nombre y no alcanzan.
+    assert con_nombre - acreditan == {
+        "mean_bias_vs_previous",
+        "mean_mape_vs_previous",
+        "previous_cycle_id",
+        "previous_mean_bias",
+        "previous_mean_mape",
+    }
+
+
+def test_t02_cada_sku_lee_su_propio_ciclo_congelado_y_no_el_del_otro():
+    """El guardia contra el bug que ya se pago una vez.
+
+    Cuando ``store=None`` resolvia ``default_store()``, las dos series de la sonda
+    compartian la particion sin nombre y ``SKU-VOL`` leia el ciclo congelado por
+    ``SKU-EST``: la comparacion se movia por cruce de datos entre clientes. La
+    sonda nueva le da a cada serie su propia carpeta Y su propio ``client_id``, y
+    este test lo comprueba por el VALOR: el MAPE congelado de cada uno es distinto
+    del otro, y cada ``previous_mape`` es el suyo.
+    """
+    d = _resultado(puntuar(), "T02").detalle
+    congelado = d["sonda_mape_congelado"]
+
+    assert set(congelado) == {"SKU-EST", "SKU-VOL"}
+    assert congelado["SKU-EST"] != congelado["SKU-VOL"]
+    # Y el ciclo previo de cada uno esta en el orden que su propia serie implica:
+    # la estable erra poco en los dos ciclos, la volatil erra mucho en los dos.
+    assert congelado["SKU-EST"] < congelado["SKU-VOL"]
+    assert d["sonda_mape"]["SKU-EST"] < d["sonda_mape"]["SKU-VOL"]
 
 
 def test_t02_la_capacidad_esta_cableada_cuando_se_nombra_un_store(tmp_path):
@@ -294,22 +337,20 @@ def _campo_cableado(modulo: str, clase: str, nombre: str, calcular):
         delattr(cls, nombre)
 
 
-def test_t02_un_delta_contra_el_ciclo_previo_con_valor_si_acredita():
-    """El gate endurecido de T02 no es imposible: es exigente.
+def test_t02_un_delta_fabricado_ya_no_acredita_el_ciclo_previo():
+    """El escalon que cerro el gate nuevo, con el campo que antes lo pasaba.
 
-    Mismo campo que el ataque, pero cableado: un delta que cambia cuando cambia
-    el error del ciclo. Eso es lo que un ciclo previo congelado produciria, y la
-    tarea pasa a CUMPLE. Sin esta prueba, "endurecer" seria indistinguible de
-    "romper".
+    La version anterior de este test inyectaba ``mape_vs_previous = mape - 0.10``
+    -- un delta que se mueve cuando se mueve el error, pero cuyo 0,10 no sale de
+    ningun ciclo congelado -- y afirmaba que eso ACREDITABA. Era verdad con
+    ``se_mueve``, y es justo el hueco que quedaba: un numero inventado que varia
+    con el error es indistinguible de una comparacion real si solo se mira que
+    cambie.
 
-    El campo inyectado esta SOLO en la lista, y eso es lo correcto: la sonda de
-    T02 corre ``job.run()`` sin ``store``, y desde que la memoria de ciclo es
-    opt-in una corrida sin store no congela ni compara (los cinco campos que
-    ``jobs/forecast_cycle.py`` cablea de verdad quedan en ``None``, iguales en las
-    dos corridas). Antes acompanaban al inyectado porque las dos corridas -- dos
-    datasets distintos -- compartian la particion sin nombre. La igualdad se
-    mantiene EXACTA (no se afloja a un ``in``) justamente para que la lista siga
-    siendo auditable campo por campo.
+    Ahora se exige que el valor sea el MAPE que el primer ciclo emitio. El campo
+    fabricado se mueve igual y no entra en ninguna de las dos listas. T02 sigue
+    CUMPLE por los campos que SI salen del ciclo congelado, que es lo correcto:
+    el gate no se rompe con un campo de mas, solo deja de premiarlo.
     """
     with _campo_cableado(
         "jobs.forecast_job", "SkuForecast",
@@ -317,9 +358,10 @@ def test_t02_un_delta_contra_el_ciclo_previo_con_valor_si_acredita():
     ):
         r = _resultado(puntuar(), "T02")
 
+    assert "mape_vs_previous" in r.detalle["campos_de_ciclo_previo_por_nombre"]
+    assert "mape_vs_previous" not in r.detalle["campos_que_reproducen_el_ciclo_previo"]
+    assert "mape_vs_previous" not in r.detalle["campos_que_reproducen_el_cambio"]
     assert r.estado is Estado.CUMPLE, r.evidencia
-    assert r.puntos == 1.0
-    assert r.detalle["campos_de_ciclo_previo_con_valor_que_se_mueve"] == ["mape_vs_previous"]
 
 
 def test_el_ataque_completo_no_mueve_el_marcador():

@@ -9,6 +9,7 @@ Importar este modulo registra las comprobaciones en el scorer.
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -244,6 +245,39 @@ _SERIE_VOLATIL = (60.0, 140.0, 55.0, 150.0, 70.0, 130.0, 45.0, 160.0,
 #: Nombres con los que la comparacion contra el ciclo anterior podria llegar.
 _CAMPOS_CICLO_PREVIO = ("previo", "anterior", "previous", "delta", "vs_")
 
+#: Periodos del primer ciclo de la sonda de T02. El segundo corre sobre la serie
+#: entera, asi que los dos ciclos tienen error distinto y el ciclo PREVIO tambien
+#: se mueve entre las dos corridas -- que es el endurecimiento que el docstring
+#: viejo de esta comprobacion dejo pedido para el dia que existiera el canal.
+_CORTE_CICLO_PREVIO = 12
+
+#: Tolerancia con la que se acepta que un campo REPRODUCE un MAPE congelado. El
+#: numero viaja a disco y vuelve, asi que no se exige identidad de bits.
+_TOLERANCIA_MAPE = 1e-6
+
+
+def _dos_ciclos(nombre: str, serie: tuple[float, ...], carpeta: str):
+    """Corre el job DOS veces sobre la misma partición: el primero congela, el segundo compara.
+
+    Devuelve ``(mape_congelado, informe_del_segundo_ciclo)``. El MAPE del primer
+    ciclo es el hecho contra el que se mide: la comprobacion no lo escribe a mano,
+    lo lee de la corrida que lo produjo.
+    """
+    from jobs import forecast_job as job
+    from src.state.store import store_for
+
+    tienda = store_for(nombre.lower(), base_path=carpeta)
+    try:
+        primero = job.run(
+            {nombre: list(serie[:_CORTE_CICLO_PREVIO])}, store=tienda, cycle_id="2026-01"
+        )
+        segundo = job.run({nombre: list(serie)}, store=tienda, cycle_id="2026-02")
+    finally:
+        # Sin esto SQLite deja el fichero abierto y en Windows el temporal no se
+        # borra. Un corrector que ensucia el disco de quien lo corre no es gratis.
+        tienda.close()
+    return primero.skus[0].mape, segundo
+
 
 @comprobacion("T02")
 def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
@@ -253,40 +287,78 @@ def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
     ciclo anterior (mejora o empeora). Un grafico de ventas explicitamente no
     cuenta.
 
-    Se corre el job DOS veces, sobre un ciclo estable y uno volatil, y los tres
-    requisitos se miden sobre los valores emitidos, no sobre los nombres del
-    dataclass. El gate viejo aceptaba cualquier campo que contuviera
-    ``previo|anterior|previous|delta|vs_``: un ``delta_*`` cualquiera, agregado
-    sin mala fe, acreditaba "comparo contra el ciclo previo" sin que nadie
-    guardara un ciclo previo.
+    **Por que cambio la sonda.** La version anterior corria el job una sola vez
+    por serie, sin ``store``, y anotaba el motivo: *"la sonda mueve el ciclo
+    ACTUAL, no el anterior, porque el job no tiene parametro por donde recibir un
+    pronostico congelado. El dia que exista ese canal de entrada, el
+    endurecimiento natural es variar tambien el ciclo previo"*. Ese canal existe:
+    ``forecast_job.run`` toma ``store`` y ``cycle_id``, y ``jobs/forecast_cycle``
+    congela el ciclo y lo lee de vuelta. Sin pasarlos, el job responde
+    ``NO_STORE_MEMORY`` -- que es la conducta correcta, no un fallo -- y la
+    comparacion salia vacia por construccion, dejando T02 clavada en PARCIAL
+    contra un entregable que ya sabia hacerla.
 
-    Sobre el filo del tercer requisito: la sonda mueve el ciclo ACTUAL, no el
-    anterior, porque el job no tiene parametro por donde recibir un pronostico
-    congelado. Con el ciclo previo fijo, una comparacion real se mueve igual
-    cuando se mueve el error de hoy. El dia que exista ese canal de entrada, el
-    endurecimiento natural es variar tambien el ciclo previo.
+    Ahora la sonda corre DOS ciclos por serie sobre una particion propia: el
+    primero congela, el segundo lee. Y **es endurecimiento**, no ablandamiento:
+
+    - el ciclo PREVIO se mueve entre las dos corridas (no solo el actual), que es
+      exactamente lo que el docstring viejo pedia;
+    - la comparacion pasa de ``se_mueve`` -- cualquier ``delta_*`` que cambie --
+      a REPRODUCIR el MAPE que el primer ciclo emitio de verdad, y el cambio a
+      reproducir la resta contra el. Un numero plausible que no salga del ciclo
+      congelado ya no acredita.
+
+    El gate viejo ya habia cerrado el ataque de nombres (``previo|anterior|
+    previous|delta|vs_`` acreditaba con cualquier campo que se moviera); esto
+    cierra el escalon siguiente, que es el campo que se mueve por su cuenta.
     """
-    from jobs import forecast_job as job
+    import tempfile
+    from pathlib import Path
+
     from jobs.forecast_job import SkuForecast
 
-    estable = job.run({"SKU-EST": list(_SERIE_ESTABLE)})
-    volatil = job.run({"SKU-VOL": list(_SERIE_VOLATIL)})
-    muestra = _Muestra.de_corridas(
-        estable.skus, volatil.skus, (estable,), (volatil,)
-    )
+    carpeta = tempfile.mkdtemp(prefix="bateria-t02-")
+    try:
+        mape_previo_est, estable = _dos_ciclos(
+            "SKU-EST", _SERIE_ESTABLE, str(Path(carpeta) / "est")
+        )
+        mape_previo_vol, volatil = _dos_ciclos(
+            "SKU-VOL", _SERIE_VOLATIL, str(Path(carpeta) / "vol")
+        )
+    finally:
+        shutil.rmtree(carpeta, ignore_errors=True)
+
+    muestra = _Muestra.de_corridas(estable.skus, volatil.skus, (estable,), (volatil,))
+    valores_est = _valores_planos(estable.skus[0])
+    valores_vol = _valores_planos(volatil.skus[0])
     mapes = {s.name: round(s.mape, 4) for s in (*estable.skus, *volatil.skus)}
     sesgos = {s.name: round(s.bias, 4) for s in (*estable.skus, *volatil.skus)}
+    congelados = {"SKU-EST": round(mape_previo_est, 4), "SKU-VOL": round(mape_previo_vol, 4)}
+
+    def _reproducen(hecho_est: float, hecho_vol: float) -> list[str]:
+        return sorted(
+            c for c in valores_est
+            if _reproduce_el_hecho(
+                valores_est.get(c), valores_vol.get(c), hecho_est, hecho_vol, _TOLERANCIA_MAPE
+            )
+        )
 
     tiene_mape = bool(muestra.se_mueve(("mape",)))
     sesgo = muestra.poblado(_CAMPOS_SESGO)
-    ciclo_previo = muestra.se_mueve(_CAMPOS_CICLO_PREVIO)
+    # El ciclo previo, tal como lo emitio la corrida que lo congelo.
+    reporta_el_previo = _reproducen(mape_previo_est, mape_previo_vol)
+    # Y el cambio, que tiene que ser la resta contra ESE numero, no cualquier delta.
+    reporta_el_cambio = _reproducen(
+        estable.skus[0].mape - mape_previo_est, volatil.skus[0].mape - mape_previo_vol
+    )
+    ciclo_previo = bool(reporta_el_previo) and bool(reporta_el_cambio)
 
     faltantes = [
         nombre
         for nombre, ok in (
             ("MAPE por SKU", tiene_mape),
             ("sesgo firmado", bool(sesgo)),
-            ("comparacion contra el ciclo previo", bool(ciclo_previo)),
+            ("comparacion contra el ciclo previo", ciclo_previo),
         )
         if not ok
     ]
@@ -296,7 +368,9 @@ def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
         "faltantes": faltantes,
         "sonda_mape": mapes,
         "sonda_sesgo": sesgos,
-        "campos_de_ciclo_previo_con_valor_que_se_mueve": ciclo_previo,
+        "sonda_mape_congelado": congelados,
+        "campos_que_reproducen_el_ciclo_previo": reporta_el_previo,
+        "campos_que_reproducen_el_cambio": reporta_el_cambio,
         "campos_de_ciclo_previo_por_nombre": _alguno_contiene(
             muestra.campos, _CAMPOS_CICLO_PREVIO
         ),
@@ -307,9 +381,11 @@ def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
             tarea_id="T02",
             estado=Estado.CUMPLE,
             evidencia=(
-                f"el entregable mide de verdad: el MAPE se mueve entre los dos ciclos "
-                f"({mapes}), el sesgo firmado sale con valor ({sesgos}) y la comparacion "
-                f"contra el ciclo previo cambia con el error ({', '.join(ciclo_previo)})"
+                f"el entregable mide de verdad y contra el ciclo que congelo: el MAPE se mueve "
+                f"entre los dos ciclos ({mapes}), el sesgo firmado sale con valor ({sesgos}) y "
+                f"la comparacion reproduce el MAPE congelado ({congelados}) en "
+                f"{', '.join(reporta_el_previo)}, con el cambio en "
+                f"{', '.join(reporta_el_cambio)}"
             ),
             detalle=detalle,
         )
@@ -322,11 +398,13 @@ def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
         evidencia=(
             f"el entregable sale sin: {', '.join(faltantes)}. El MAPE se mueve entre los dos "
             f"ciclos ({mapes}) y el sesgo firmado viaja por SKU con valor ({sesgos}); lo que "
-            "falta es el ciclo anterior congelado: sin el no hay contra que comparar"
+            f"falta es que la comparacion salga del ciclo congelado ({congelados}): "
+            f"reproducen el previo {reporta_el_previo or 'ninguno'} y el cambio "
+            f"{reporta_el_cambio or 'ninguno'}"
             + (
-                f". Hay campos con nombre de comparacion ({', '.join(nominales)}) cuyo valor "
-                "NO se mueve entre las dos corridas: un nombre no es una comparacion"
-                if nominales and not ciclo_previo else ""
+                f". Hay campos con nombre de comparacion ({', '.join(nominales)}) que no "
+                "reproducen ese numero: un nombre no es una comparacion"
+                if nominales else ""
             )
         ),
         detalle=detalle,
