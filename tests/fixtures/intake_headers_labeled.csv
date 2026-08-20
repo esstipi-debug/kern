@@ -1,0 +1,239 @@
+case_id,forma,personalidad,encabezado,campo_canonico
+demanda-p01,demanda,p01,Fecha,date
+demanda-p01,demanda,p01,Código Producto,product_id
+demanda-p01,demanda,p01,Ctd,quantity
+demanda-p01,demanda,p01,P Unitario,unit_cost
+demanda-p01,demanda,p01,Lt Días,lead_time_days
+demanda-p01,demanda,p01,Total,ninguno
+demanda-p01,demanda,p01,Subtotal,ninguno
+demanda-p01,demanda,p01,Monto Total,ninguno
+recepciones-p01,recepciones,p01,Proveedor,supplier
+recepciones-p01,recepciones,p01,Fecha Pedido,order_date
+recepciones-p01,recepciones,p01,Fecha Ingreso,receipt_date
+recepciones-p01,recepciones,p01,Días De Entrega,lead_time_days
+recepciones-p01,recepciones,p01,Id Producto,product_id
+recepciones-p01,recepciones,p01,Número Oc,po_id
+recepciones-p01,recepciones,p01,Iva,ninguno
+recepciones-p01,recepciones,p01,Neto,ninguno
+recepciones-p01,recepciones,p01,Impuesto,ninguno
+demanda-p02,demanda,p02,fecha_documento,date
+demanda-p02,demanda,p02,cod_prod,product_id
+demanda-p02,demanda,p02,unidades,quantity
+demanda-p02,demanda,p02,vlr_unitario,unit_cost
+demanda-p02,demanda,p02,plazo_entrega,lead_time_days
+demanda-p02,demanda,p02,bodega,ninguno
+demanda-p02,demanda,p02,almacen,ninguno
+demanda-p02,demanda,p02,sucursal,ninguno
+recepciones-p02,recepciones,p02,nombre_proveedor,supplier
+recepciones-p02,recepciones,p02,fecha_oc,order_date
+recepciones-p02,recepciones,p02,fecha_guia,receipt_date
+recepciones-p02,recepciones,p02,lt_dias,lead_time_days
+recepciones-p02,recepciones,p02,cod_art,product_id
+recepciones-p02,recepciones,p02,nro_oc,po_id
+recepciones-p02,recepciones,p02,centro_costo,ninguno
+recepciones-p02,recepciones,p02,vendedor,ninguno
+recepciones-p02,recepciones,p02,usuario,ninguno
+demanda-p03,demanda,p03,FECHA EMISIÓN,date
+demanda-p03,demanda,p03,CÓDIGO INTERNO,product_id
+demanda-p03,demanda,p03,CANT VENDIDA,quantity
+demanda-p03,demanda,p03,PRECIO UNITARIO,unit_cost
+demanda-p03,demanda,p03,PLAZO DÍAS,lead_time_days
+demanda-p03,demanda,p03,RUT CLIENTE,ninguno
+demanda-p03,demanda,p03,NOMBRE CLIENTE,ninguno
+demanda-p03,demanda,p03,ESTADO,ninguno
+recepciones-p03,recepciones,p03,RAZÓN SOCIAL PROVEEDOR,supplier
+recepciones-p03,recepciones,p03,EMISIÓN OC,order_date
+recepciones-p03,recepciones,p03,FECHA LLEGADA,receipt_date
+recepciones-p03,recepciones,p03,PLAZO ENTREGA,lead_time_days
+recepciones-p03,recepciones,p03,CÓDIGO,product_id
+recepciones-p03,recepciones,p03,ORDEN COMPRA,po_id
+recepciones-p03,recepciones,p03,OBSERVACIONES,ninguno
+recepciones-p03,recepciones,p03,NOTA INTERNA,ninguno
+recepciones-p03,recepciones,p03,MONEDA,ninguno
+demanda-p04,demanda,p04,FechaVenta,date
+demanda-p04,demanda,p04,IdProducto,product_id
+demanda-p04,demanda,p04,Unid,quantity
+demanda-p04,demanda,p04,CostoUnitario,unit_cost
+demanda-p04,demanda,p04,TiempoEntrega,lead_time_days
+demanda-p04,demanda,p04,TipoCambio,ninguno
+demanda-p04,demanda,p04,CondicionPago,ninguno
+demanda-p04,demanda,p04,Total,ninguno
+recepciones-p04,recepciones,p04,Prov,supplier
+recepciones-p04,recepciones,p04,FechaCompra,order_date
+recepciones-p04,recepciones,p04,FechaRecepcion,receipt_date
+recepciones-p04,recepciones,p04,PlazoDias,lead_time_days
+recepciones-p04,recepciones,p04,CodigoProducto,product_id
+recepciones-p04,recepciones,p04,Folio,po_id
+recepciones-p04,recepciones,p04,Subtotal,ninguno
+recepciones-p04,recepciones,p04,MontoTotal,ninguno
+recepciones-p04,recepciones,p04,Iva,ninguno
+demanda-p05,demanda,p05,fec_emisión,date
+demanda-p05,demanda,p05,cod_art,product_id
+demanda-p05,demanda,p05,cantidad_1,quantity
+demanda-p05,demanda,p05,valor_unitario,unit_cost
+demanda-p05,demanda,p05,días_de_entrega,lead_time_days
+demanda-p05,demanda,p05,neto,ninguno
+demanda-p05,demanda,p05,impuesto,ninguno
+demanda-p05,demanda,p05,bodega,ninguno
+recepciones-p05,recepciones,p05,razón_social,supplier
+recepciones-p05,recepciones,p05,fecha_orden,order_date
+recepciones-p05,recepciones,p05,fecha_recibido_1,receipt_date
+recepciones-p05,recepciones,p05,tiempo_entrega,lead_time_days
+recepciones-p05,recepciones,p05,cod_prod,product_id
+recepciones-p05,recepciones,p05,documento_compra_1,po_id
+recepciones-p05,recepciones,p05,almacen,ninguno
+recepciones-p05,recepciones,p05,sucursal,ninguno
+recepciones-p05,recepciones,p05,centro_costo,ninguno
+demanda-p06,demanda,p06,fecha,date
+demanda-p06,demanda,p06,F_codigo,product_id
+demanda-p06,demanda,p06,cant,quantity
+demanda-p06,demanda,p06,p_unitario,unit_cost
+demanda-p06,demanda,p06,F_lt_dias,lead_time_days
+demanda-p06,demanda,p06,vendedor,ninguno
+demanda-p06,demanda,p06,usuario,ninguno
+demanda-p06,demanda,p06,rut_cliente,ninguno
+recepciones-p06,recepciones,p06,proveedor,supplier
+recepciones-p06,recepciones,p06,F_fecha_pedido,order_date
+recepciones-p06,recepciones,p06,fecha_ingreso,receipt_date
+recepciones-p06,recepciones,p06,dias_de_entrega,lead_time_days
+recepciones-p06,recepciones,p06,F_codigo_interno,product_id
+recepciones-p06,recepciones,p06,numero_oc,po_id
+recepciones-p06,recepciones,p06,nombre_cliente,ninguno
+recepciones-p06,recepciones,p06,estado,ninguno
+recepciones-p06,recepciones,p06,observaciones,ninguno
+demanda-p07,demanda,p07,Fecha  Documento ,date
+demanda-p07,demanda,p07,Código Producto,product_id
+demanda-p07,demanda,p07,Ctd,quantity
+demanda-p07,demanda,p07,Vlr  Unitario ,unit_cost
+demanda-p07,demanda,p07,Plazo Entrega,lead_time_days
+demanda-p07,demanda,p07,Nota Interna,ninguno
+demanda-p07,demanda,p07,Moneda,ninguno
+demanda-p07,demanda,p07,Tipo Cambio,ninguno
+recepciones-p07,recepciones,p07,Nombre  Proveedor ,supplier
+recepciones-p07,recepciones,p07,Fecha Oc,order_date
+recepciones-p07,recepciones,p07,Fecha Guía,receipt_date
+recepciones-p07,recepciones,p07,Lt  Días ,lead_time_days
+recepciones-p07,recepciones,p07,Id Producto,product_id
+recepciones-p07,recepciones,p07,Nro Oc,po_id
+recepciones-p07,recepciones,p07,Condición Pago,ninguno
+recepciones-p07,recepciones,p07,Total,ninguno
+recepciones-p07,recepciones,p07,Subtotal,ninguno
+demanda-p08,demanda,p08,fecha-emision,date
+demanda-p08,demanda,p08,cod-prod,product_id
+demanda-p08,demanda,p08,unidades,quantity
+demanda-p08,demanda,p08,precio-unitario,unit_cost
+demanda-p08,demanda,p08,plazo-dias,lead_time_days
+demanda-p08,demanda,p08,monto-total,ninguno
+demanda-p08,demanda,p08,iva,ninguno
+demanda-p08,demanda,p08,neto,ninguno
+recepciones-p08,recepciones,p08,razon-social-proveedor,supplier
+recepciones-p08,recepciones,p08,emision-oc,order_date
+recepciones-p08,recepciones,p08,fecha-llegada,receipt_date
+recepciones-p08,recepciones,p08,plazo-entrega,lead_time_days
+recepciones-p08,recepciones,p08,cod-art,product_id
+recepciones-p08,recepciones,p08,orden-compra,po_id
+recepciones-p08,recepciones,p08,impuesto,ninguno
+recepciones-p08,recepciones,p08,bodega,ninguno
+recepciones-p08,recepciones,p08,almacen,ninguno
+demanda-p09,demanda,p09,Data Venda,date
+demanda-p09,demanda,p09,Produto,product_id
+demanda-p09,demanda,p09,Qtde,quantity
+demanda-p09,demanda,p09,Preço,unit_cost
+demanda-p09,demanda,p09,Prazo Entrega,lead_time_days
+demanda-p09,demanda,p09,Total,ninguno
+demanda-p09,demanda,p09,Subtotal,ninguno
+demanda-p09,demanda,p09,Valor Total,ninguno
+recepciones-p09,recepciones,p09,Fornecedor,supplier
+recepciones-p09,recepciones,p09,Data Emissão Pedido,order_date
+recepciones-p09,recepciones,p09,Data Recebimento,receipt_date
+recepciones-p09,recepciones,p09,Prazo Días,lead_time_days
+recepciones-p09,recepciones,p09,Produto,product_id
+recepciones-p09,recepciones,p09,Num Pedido,po_id
+recepciones-p09,recepciones,p09,Icms,ninguno
+recepciones-p09,recepciones,p09,Situação,ninguno
+recepciones-p09,recepciones,p09,Depósito,ninguno
+demanda-p10,demanda,p10,data,date
+demanda-p10,demanda,p10,codigo_produto,product_id
+demanda-p10,demanda,p10,qtd,quantity
+demanda-p10,demanda,p10,preco_unitario,unit_cost
+demanda-p10,demanda,p10,prazo_dias,lead_time_days
+demanda-p10,demanda,p10,filial,ninguno
+demanda-p10,demanda,p10,vendedor,ninguno
+demanda-p10,demanda,p10,cliente,ninguno
+recepciones-p10,recepciones,p10,nome_fornecedor,supplier
+recepciones-p10,recepciones,p10,data_pedido,order_date
+recepciones-p10,recepciones,p10,data_entrega,receipt_date
+recepciones-p10,recepciones,p10,prazo_entrega,lead_time_days
+recepciones-p10,recepciones,p10,codigo_produto,product_id
+recepciones-p10,recepciones,p10,numero_pedido,po_id
+recepciones-p10,recepciones,p10,observacao,ninguno
+recepciones-p10,recepciones,p10,moeda,ninguno
+recepciones-p10,recepciones,p10,condicao_pagamento,ninguno
+demanda-p11,demanda,p11,doc_date,date
+demanda-p11,demanda,p11,stock_code,product_id
+demanda-p11,demanda,p11,quantity,quantity
+demanda-p11,demanda,p11,unit_cost,unit_cost
+demanda-p11,demanda,p11,lead_time_days,lead_time_days
+demanda-p11,demanda,p11,total,ninguno
+demanda-p11,demanda,p11,subtotal,ninguno
+demanda-p11,demanda,p11,line_total,ninguno
+recepciones-p11,recepciones,p11,supplier,supplier
+recepciones-p11,recepciones,p11,po_date,order_date
+recepciones-p11,recepciones,p11,receipt_date,receipt_date
+recepciones-p11,recepciones,p11,lead_time,lead_time_days
+recepciones-p11,recepciones,p11,stock_code,product_id
+recepciones-p11,recepciones,p11,purchase_order,po_id
+recepciones-p11,recepciones,p11,tax,ninguno
+recepciones-p11,recepciones,p11,status,ninguno
+recepciones-p11,recepciones,p11,warehouse,ninguno
+demanda-p12,demanda,p12,Invoice Date,date
+demanda-p12,demanda,p12,Product Id,product_id
+demanda-p12,demanda,p12,Qty,quantity
+demanda-p12,demanda,p12,Unit Price,unit_cost
+demanda-p12,demanda,p12,Lead Time,lead_time_days
+demanda-p12,demanda,p12,Branch,ninguno
+demanda-p12,demanda,p12,Salesperson,ninguno
+demanda-p12,demanda,p12,Customer,ninguno
+recepciones-p12,recepciones,p12,Vendor Name,supplier
+recepciones-p12,recepciones,p12,Order Date,order_date
+recepciones-p12,recepciones,p12,Received Date,receipt_date
+recepciones-p12,recepciones,p12,Lead Time Days,lead_time_days
+recepciones-p12,recepciones,p12,Product Id,product_id
+recepciones-p12,recepciones,p12,Po Number,po_id
+recepciones-p12,recepciones,p12,Notes,ninguno
+recepciones-p12,recepciones,p12,Currency,ninguno
+recepciones-p12,recepciones,p12,Payment Terms,ninguno
+demanda-p13,demanda,p13,F_Fecha Emisión,date
+demanda-p13,demanda,p13,Código Producto,product_id
+demanda-p13,demanda,p13,Ctd,quantity
+demanda-p13,demanda,p13,F_Precio Unitario,unit_cost
+demanda-p13,demanda,p13,Plazo Días,lead_time_days
+demanda-p13,demanda,p13,Sucursal,ninguno
+demanda-p13,demanda,p13,Centro Costo,ninguno
+demanda-p13,demanda,p13,Vendedor,ninguno
+recepciones-p13,recepciones,p13,F_Razón Social Proveedor,supplier
+recepciones-p13,recepciones,p13,Emisión Oc,order_date
+recepciones-p13,recepciones,p13,Fecha Llegada,receipt_date
+recepciones-p13,recepciones,p13,F_Plazo Entrega,lead_time_days
+recepciones-p13,recepciones,p13,Id Producto,product_id
+recepciones-p13,recepciones,p13,Orden Compra,po_id
+recepciones-p13,recepciones,p13,Usuario,ninguno
+recepciones-p13,recepciones,p13,Rut Cliente,ninguno
+recepciones-p13,recepciones,p13,Nombre Cliente,ninguno
+demanda-p14,demanda,p14,data_emissão,date
+demanda-p14,demanda,p14,cod_produto,product_id
+demanda-p14,demanda,p14,quantidade_1,quantity
+demanda-p14,demanda,p14,custo_unitario,unit_cost
+demanda-p14,demanda,p14,prazo_días,lead_time_days
+demanda-p14,demanda,p14,total,ninguno
+demanda-p14,demanda,p14,subtotal,ninguno
+demanda-p14,demanda,p14,valor_total,ninguno
+recepciones-p14,recepciones,p14,nome_fornecedor,supplier
+recepciones-p14,recepciones,p14,data_pedido,order_date
+recepciones-p14,recepciones,p14,data_entrega_1,receipt_date
+recepciones-p14,recepciones,p14,prazo_entrega,lead_time_days
+recepciones-p14,recepciones,p14,cod_produto,product_id
+recepciones-p14,recepciones,p14,número_pedido_1,po_id
+recepciones-p14,recepciones,p14,icms,ninguno
+recepciones-p14,recepciones,p14,situação,ninguno
+recepciones-p14,recepciones,p14,depósito,ninguno
