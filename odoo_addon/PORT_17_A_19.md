@@ -381,3 +381,14 @@ del duenio:
   `static/description/`. Hoy la divulgacion de datos esta inline en los tres lugares que el
   Store exige (manifest, ficha y la propia app), que es la parte que si esta cubierta.
 - ~~La serie 17.0 sin reinstalar~~ — **hecho**: instala limpio en `odoo:17` (seccion 4).
+- **`knowledge/semantica/graph.json` quedo desactualizado** por el rename: sigue indexando
+  `odoo_addon.linchpin_dry_run.*`. Es un artefacto **generado** de 15 MB, trackeado, con su
+  propio build (`knowledge/semantica/build_graph.py`). No lo regenere y no lo edite a mano:
+  su `ROOT` esta hardcodeado a `kern-main` y escribe a `kern-semantica-out/`, asi que correrlo
+  desde este worktree indexaria el arbol equivocado; ademas el paquete `semantica` que importa
+  no esta instalado en este entorno, y refrescarlo arrastraria todo el drift del repo, no solo
+  este rename. Corresponde a quien corre esa pipeline (el commit `9baeb7d` en `main` fue
+  exactamente eso).
+- Las referencias a `linchpin_dry_run` que sobreviven en `CHANGELOG.md` y en
+  `HANDOFF.md:2066` son **historicas a proposito** (registran lo que era cierto entonces) y no
+  se tocaron. Las referencias vivas de `documentation/` si se actualizaron.

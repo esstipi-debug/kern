@@ -3,6 +3,49 @@
 ## [Unreleased]
 
 ### Added
+- **The Odoo module now ships for Odoo 19, as `kern_dry_run`** (`odoo_addon/19.0/kern_dry_run/`,
+  v19.0.1.0.0) — verified by installing it on a clean Odoo 19.0-20260817 database in Docker, not by
+  reading the code. The port itself touches three files (+43/-12); the Python and the wizard/menu/
+  settings views are byte-identical to the 17.0 tree, checkable with a single `diff -rq`. What actually
+  broke: Odoo 19 **removed `res.groups.category_id`** and replaced it with `privilege_id`, pointing at a
+  new `res.groups.privilege` model, so the module's one security record failed to install. Odoo's own
+  19.0 security documentation is stale here — it still documents `category_id` and never mentions
+  `res.groups.privilege` — so verifying against the prose rather than the source would have missed it.
+  The group hangs off a Kern-owned privilege rather than stock's, because a privilege renders as a
+  single select on the user form: sharing stock's would have made "may run an external analysis"
+  mutually exclusive with Inventory User/Administrator, the opposite of what that group exists to say.
+  Two further changes fail *silently* if skipped — a manifest `version` that does not start with the
+  running series is forced to `installable=False` with only a log warning (`odoo/modules/module.py`),
+  and `category` generates the `ir.module.category` xmlid, which moved from `Inventory/Inventory` to
+  `Supply Chain/Inventory` in 19. Odoo 18.0 contributes no change that touches this module. Field
+  semantics were checked against a fixture with known values rather than demo data (the official image
+  creates databases without demo), including two vendors at different sequences to prove
+  `seller_ids[:1]` still resolves the primary one; `product.supplierinfo.delay` changed label
+  (`Delivery Lead Time` -> `Lead Time`) but not meaning. `_assert_safe_base_url` is untouched and still
+  blocks localhost, private ranges and the cloud-metadata address. The module still writes nothing.
+- **17.0 kept in parallel** (`odoo_addon/17.0/kern_dry_run/`, v17.0.1.0.0, re-verified on `odoo:17`)
+  under the *same* technical name, which is what the Apps Store requires for two series to be the same
+  app. A reproducible install harness lives in `odoo_addon/test/` (`ODOO_SERIES=17|19`) and the whole
+  port is written up in `odoo_addon/PORT_17_A_19.md`.
+
+### Changed
+- **`linchpin_dry_run` renamed to `kern_dry_run`**, executing item 3 of the HANDOFF external checklist,
+  which gated the rename on "the next functional version" — this port is it. No migration hook: the
+  module was never actually published, so there are no installations to break. `linchpin.fly.dev`, the
+  `linchpin_inventory_optimize` tool name and the `lpk_` key prefix deliberately keep the old name;
+  they are wire and infrastructure identifiers, not branding.
+
+### Fixed
+- **Two Apps Store rule violations in the Odoo module's description page**, present since 17.0 and
+  corrected in both series: an external link (the description may only link inside
+  `static/description`) and a promotional block quoting revenue-share and white-label pricing. A
+  manifest or listing error unpublishes *every* module in the repository, not just the offending one.
+- **Stale cross-references left by the rename**, in `documentation/legal/dpa-lite.md`,
+  `documentation/operator/09_checklist_lanzamiento.md` and `documentation/ICP_Y_DIMENSIONAMIENTO.md`.
+  The launch checklist also claimed the module's "For partners" section still linked to the partner
+  one-pager, which stopped being true when that link was removed for the Store rule above.
+
+### Added
 - **Shopify Admin API version drift detection** (`src/connectors/shopify_api_version.py`) — Shopify
   does not error when the pinned API version falls out of support; it silently *falls forward* and
   serves the request with the oldest version it still accepts, so a stale pin looks healthy while the

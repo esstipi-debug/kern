@@ -28,7 +28,7 @@ comerciales que el Cliente suministra, típicamente:
   inventario, plazos de reposición)
 - Si el paquete incluye *writeback* Odoo: los mismos campos que lee el
   módulo de Odoo (ver la sección "What data is sent, and where" de
-  `odoo_addon/linchpin_dry_run/static/description/index.html`) — SKU,
+  `odoo_addon/19.0/kern_dry_run/static/description/index.html`) — SKU,
   fecha, cantidad, costo unitario, plazo de entrega del proveedor principal,
   y el nombre de la empresa del Cliente. **El stock a mano nunca se lee ni
   se envía a través de ese módulo específico** (dry-run).
