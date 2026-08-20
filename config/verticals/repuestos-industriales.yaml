@@ -12,14 +12,19 @@
 # El dia que un vertical necesita un `if` en src/, es personalizacion con otro
 # nombre: se borra o se gradua a capacidad del core.
 #
-# ESTADO: hoy este archivo es DATO INERTE. Nada lo carga todavia. Falta, en este
-# orden (seccion 8.4 del mismo documento):
-#   1. dataclass VerticalProfile con __post_init__ que valide los rangos
-#   2. load_vertical_profile() con fallo duro al estilo MarketNotConfiguredError
-#      -- un rubro sin perfil NO cae al generico en silencio, se niega a correr
-#   3. tercer diccionario en src/client_profile.py::merge_params (linea 314):
-#        hoy  {**profile.as_params(), **params}
-#        con  {**vertical.as_params(), **profile.as_params(), **params}
+# ESTADO (corregido 2026-08-19): este archivo NO es dato inerte. Los tres pasos
+# que este comentario daba por pendientes estan hechos hace tiempo, y dejarlos
+# escritos como faltantes mando a mas de una sesion a construir lo que ya existe:
+#   1. src/vertical_profile.py::VerticalProfile, con __post_init__ que valida
+#   2. load_vertical_profile(), que lanza VerticalNotConfiguredError -- un rubro
+#      sin perfil NO cae al generico en silencio, se niega a correr
+#   3. src/client_profile.py::merge_params ya recibe `vertical` como tercer nivel
+#
+# Y el veto se hace cumplir en los DOS caminos de despacho:
+#   - scm_agent/orchestrator.py  (una capacidad suelta)
+#   - scm_agent/packages.py      (un paquete completo; cerrado el 2026-08-19,
+#     hasta entonces resolvia el vertical para los parametros y corria el paso
+#     prohibido igual)
 #
 # CONFIANZA: los numeros economicos son ESTIMACIONES DE ESCRITORIO, no
 # mediciones, y van marcados uno por uno. Ninguno se ha contrastado con un
