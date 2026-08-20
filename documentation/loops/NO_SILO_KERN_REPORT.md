@@ -1,21 +1,21 @@
 # Nosilo KERN Loop Report
 
-**Corrida:** 20260810-131353
-**Timestamp:** 2026-08-10T13:15:09.624064+00:00
-**main:** `84f3798`
-**Duracion:** 76403 ms
+**Corrida:** 20260818-133047
+**Timestamp:** 2026-08-18T13:31:16.902198+00:00
+**main:** `140558f (origin/main)`
+**Duracion:** 29953 ms
 
 ## Puntaje
 
-- **7.60 / 10.0**  (completo)
+- **8.80 / 10.0**  (completo)
 
-- Tendencia: +0.00 vs 20260810-130835
+- Tendencia: +1.20 vs 20260810-131353
 
 | Componente | Peso | Obtenido | Detalle |
 |---|---|---|---|
 | higiene | 1.0 | 1.00 | 0 desvios estaticos |
-| bateria | 6.0 | 3.60 | 45.0% (9.0/20) sobre techo 75% |
-| capacidades | 3.0 | 3.00 | 5 passed, 10 warnings in 61.73s (0:01:01) |
+| bateria | 6.0 | 4.80 | 60.0% (12.0/20) sobre techo 75% |
+| capacidades | 3.0 | 3.00 | 5 passed, 10 warnings in 20.89s |
 
 ## Simworld (alarma de regresion, no puntua)
 

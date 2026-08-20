@@ -17,6 +17,7 @@ from nosilo_core.types import (
     JobRequest,
     JobResult,
 )
+
 from jobs import intake
 from src import client_profile, vertical_profile
 

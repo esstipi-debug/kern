@@ -14,20 +14,37 @@
 #      archivos, asi que cada cambio funcional viajaria enterrado en ruido de
 #      diff. Formatear este repo es una decision aparte, no un efecto secundario
 #      de tocar un archivo.
+#   4. NUNCA toca una zona excluida. Ver abajo.
 #
 # Solo actua sobre .py dentro del repo: se puede trabajar en otro codebase desde
 # aca, y ese no es asunto de este hook.
+#
+# ZONAS EXCLUIDAS
+# ---------------
+# La lista NO se copia aca: se importa de `scripts/nosilo_kern_loop.py`
+# (EXCLUSION_PREFIXES). Dos copias de la misma lista se desincronizan, y un hook
+# que cree proteger una ruta que el loop ya dejo de proteger es precisamente la
+# clase de mentira que este repo viene cazando -- y encima silenciosa. Una sola
+# fuente.
+#
+# Division del trabajo: el hook NUNCA toca una zona excluida; el loop SI la
+# reporta (su fase DETECT las ve, su fase PROPOSE no las arregla). Un desvio
+# ahi no se pierde: solo no lo arregla nadie automaticamente.
+#
+# Si la lista no se puede leer, el hook NO lintea. Preferimos que no haga nada
+# antes que auto-arreglar un archivo que quizas estaba protegido: un hook roto
+# que no hace nada se nota, uno que reescribe writeback.py no.
 #
 # Idempotente, no interactivo, y si ruff no esta no rompe la sesion.
 set -uo pipefail
 
 PAYLOAD="$(cat)"
 
-# Un solo paso en Python: extrae el path, filtra por extension y verifica que
-# caiga dentro del repo. En bash habria que pelear con los separadores de
-# Windows, y ademas no hay `jq` en esta maquina.
-ARCHIVO="$(PAYLOAD="$PAYLOAD" RAIZ="${CLAUDE_PROJECT_DIR:-$(pwd)}" python - <<'PY' 2>/dev/null
-import json, os, re
+# Un solo paso en Python: extrae el path, filtra por extension, verifica que
+# caiga dentro del repo y decide si esta en zona excluida. En bash habria que
+# pelear con los separadores de Windows, y ademas no hay `jq` en esta maquina.
+VEREDICTO="$(PAYLOAD="$PAYLOAD" RAIZ="${CLAUDE_PROJECT_DIR:-$(pwd)}" python - <<'PY' 2>/dev/null
+import json, os, re, sys
 from pathlib import Path
 
 
@@ -58,16 +75,35 @@ ruta = normalizar(crudo)
 if ruta.suffix != ".py" or not ruta.is_file():
     raise SystemExit(0)
 
+raiz = normalizar(os.environ["RAIZ"]).resolve()
 try:
-    ruta.resolve().relative_to(normalizar(os.environ["RAIZ"]).resolve())
+    relativa = ruta.resolve().relative_to(raiz).as_posix()
 except (ValueError, OSError):
     raise SystemExit(0)
 
-print(ruta.resolve())
+# Fuente unica: la lista vive en el loop, no aca.
+if str(raiz) not in sys.path:
+    sys.path.insert(0, str(raiz))
+try:
+    from scripts.nosilo_kern_loop import EXCLUSION_PREFIXES
+except Exception as exc:
+    print("SINLISTA %s: %s" % (type(exc).__name__, exc))
+    raise SystemExit(0)
+
+if any(relativa.startswith(prefijo) for prefijo in EXCLUSION_PREFIXES):
+    print("EXCLUIDO %s" % relativa)
+    raise SystemExit(0)
+
+print("LINTEAR %s" % ruta.resolve())
 PY
 )"
 
-[ -n "$ARCHIVO" ] || exit 0
+case "$VEREDICTO" in
+  LINTEAR\ *)  ARCHIVO="${VEREDICTO#LINTEAR }" ;;
+  EXCLUIDO\ *) echo "[hook] zona excluida, no se toca: ${VEREDICTO#EXCLUIDO }" >&2; exit 0 ;;
+  SINLISTA\ *) echo "[hook] no se pudo leer EXCLUSION_PREFIXES (${VEREDICTO#SINLISTA }); no se lintea nada" >&2; exit 0 ;;
+  *)           exit 0 ;;
+esac
 
 if command -v ruff >/dev/null 2>&1; then
   RUFF=(ruff)

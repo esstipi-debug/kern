@@ -397,6 +397,41 @@ def test_el_simworld_se_publica_aclarando_que_no_puntua(monkeypatch, tmp_path):
     assert "-0.446" in texto
 
 
+def test_el_commit_de_main_prefiere_el_remoto_y_dice_cual_uso(monkeypatch):
+    """El `main` local se queda atras sin avisar.
+
+    Medido el 2026-08-18: 3 commits de atraso, y el reporte publicado anclaba el
+    puntaje a `9baeb7d` cuando main era `140558f`. Anclar contra una ref vieja
+    es la misma obsolescencia silenciosa que el loop existe para detectar.
+    """
+    vistas = []
+
+    def falso_run_cmd(args, timeout=30):
+        vistas.append(args[-1])
+        # Con el salto al final a proposito: git lo emite y hay que recortarlo.
+        return (0, "abc1234\n") if args[-1] == "origin/main" else (0, "viejo99\n")
+
+    monkeypatch.setattr(loop, "run_cmd", falso_run_cmd)
+    resultado = loop.commit_de_main()
+    assert resultado == "abc1234 (origin/main)"
+    assert "main" not in vistas[1:], "no deberia consultar el main local si el remoto responde"
+
+
+def test_el_commit_de_main_cae_al_local_si_no_hay_remoto(monkeypatch):
+    def falso_run_cmd(args, timeout=30):
+        if args[-1] == "origin/main":
+            return (128, "unknown revision")
+        return (0, "viejo99\n")
+
+    monkeypatch.setattr(loop, "run_cmd", falso_run_cmd)
+    assert loop.commit_de_main() == "viejo99 (main)"
+
+
+def test_el_commit_de_main_no_inventa_cuando_git_no_responde(monkeypatch):
+    monkeypatch.setattr(loop, "run_cmd", lambda *a, **k: (-2, "COMMAND_NOT_FOUND"))
+    assert loop.commit_de_main() == "desconocido"
+
+
 def test_el_reporte_deja_constancia_del_commit_de_main(monkeypatch, tmp_path):
     """Un puntaje sin el commit contra el que se midio no es auditable."""
     assert "84f3798" in _reporte(monkeypatch, tmp_path, COMPLETO)

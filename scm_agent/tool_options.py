@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import replace
 
-from jobs.financial_kpis_job import fmt as fmt_kpi
 from nosilo_core.escalation import (
     OPERATIONAL,
     escalate,
@@ -20,6 +19,8 @@ from nosilo_core.escalation import (
     maybe_escalate_synthesized_columns,
 )
 from nosilo_core.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_handoff, as_options
+
+from jobs.financial_kpis_job import fmt as fmt_kpi
 
 # Canonical columns whose wholesale synthesis silently changes a money number or a
 # ranking. lead_time_std is excluded on purpose: defaulting it to 0.0 is the documented
