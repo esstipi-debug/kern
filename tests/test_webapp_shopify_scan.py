@@ -147,6 +147,68 @@ def test_un_parametro_no_numerico_se_rechaza_nombrando_el_campo(monkeypatch, abi
     assert "required_days" in detalle["message"]
 
 
+# --- 1b. el copy del onboarding, ANTES de conectar ---------------------------------
+
+
+def test_la_ruta_de_setup_entrega_los_pasos_y_los_permisos(abierto):
+    r = client.get("/api/shopify-scan/setup")
+    assert r.status_code == 200
+    cuerpo = r.json()
+    assert cuerpo["status"] == "ok"
+    assert [p["handle"] for p in cuerpo["permisos"]["obligatorios"]] == list(REQUIRED_SCOPES)
+    assert len(cuerpo["pasos"]) >= 4
+
+
+def test_el_setup_nombra_read_all_orders_ANTES_de_que_el_comerciante_configure():
+    """El permiso que rompe el analisis es el que nadie marca.
+
+    Enterarse recien cuando el escaneo avisa cuesta la vuelta entera: hay que
+    volver a la app, marcar el permiso Y REINSTALARLA, porque el token no toma
+    permisos nuevos. Por eso el copy tiene que llegar antes.
+    """
+    cuerpo = client.get("/api/shopify-scan/setup").json()
+    recomendado = cuerpo["permisos"]["recomendado"][0]
+    assert recomendado["handle"] == shopify_connect.ALL_ORDERS_SCOPE
+    assert "60" in recomendado["para_que"]
+    assert recomendado["si_falta"]
+
+
+def test_el_setup_dice_que_nunca_se_piden_permisos_de_escritura():
+    cuerpo = client.get("/api/shopify-scan/setup").json()
+    assert "write_inventory" in cuerpo["permisos"]["nunca_se_piden"]
+
+
+def test_el_setup_no_esconde_lo_que_esta_ruta_no_puede_dar(abierto):
+    """Un onboarding que promete todo y despues declara la ausencia llega tarde."""
+    cuerpo = client.get("/api/shopify-scan/setup").json()
+    assert cuerpo["lo_que_esto_no_puede_dar"] == shopify_connect.PLAZO_AUSENTE
+
+
+def test_el_setup_esta_detras_de_la_misma_puerta_que_el_escaneo(monkeypatch):
+    monkeypatch.setattr(security, "API_KEY", "llave-del-operador")
+    monkeypatch.setattr(security, "RATE_LIMIT", 0)
+    security.reset_rate_limit()
+    assert client.get("/api/shopify-scan/setup").status_code in (401, 403)
+
+
+def test_el_400_por_scope_faltante_explica_que_se_pierde_y_adonde_ir(monkeypatch, abierto):
+    _con(monkeypatch, _tienda(scopes=("read_products", "read_locations")))
+    detalle = _post().json()["detail"]
+    ayuda = {h["handle"]: h["para_que"] for h in detalle["scopes_help"]}
+    assert set(ayuda) == {"read_inventory", "read_orders"}
+    assert all(ayuda.values())
+    assert detalle["setup_url"] == "/api/shopify-scan/setup"
+
+
+def test_sin_read_all_orders_la_ruta_avisa_aunque_no_se_pida_ventana(monkeypatch, abierto):
+    """La regresion del tope silencioso, comprobada donde la ve el comerciante."""
+    _con(monkeypatch, _tienda(orders=_ordenes_estables()[:2]))
+    cuerpo = _post().json()
+    assert cuerpo["status"] == "ok"
+    assert cuerpo["connection"]["all_orders"] is False
+    assert any(shopify_connect.ALL_ORDERS_SCOPE in w for w in cuerpo["preflight"]["warnings"])
+
+
 # --- 2. los modos de falla ----------------------------------------------------
 
 

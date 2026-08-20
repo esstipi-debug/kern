@@ -36,10 +36,12 @@ from src.connectors.shopify_connect import (
     DRIFT,
     FOUR_MODES,
     ORDERS_QUERY,
+    ORDERS_WINDOW_WITHOUT_ALL_ORDERS_DAYS,
     PLAZO_AUSENTE,
     REDACTED,
     REQUIRED_SCOPES,
     SCOPE,
+    SCOPE_COPY,
     SCOPES_QUERY,
     SERVIDOR,
     SHOP_QUERY,
@@ -63,6 +65,7 @@ from src.connectors.shopify_connect import (
     read_sales_history_bulk,
     read_stock_on_hand,
     scan_input,
+    setup_copy,
 )
 from src.connectors.shopify_inventory import InMemoryShopifyInventory
 
@@ -565,6 +568,92 @@ def test_un_catalogo_truncado_bloquea_en_vez_de_seguir_con_medio_catalogo():
     pre = preflight(historial, _stock(_inventario(), ["SKU-1", "SKU-2"]))
     assert not pre.ok
     assert any("catalogo" in m and "incompleto" in m for m in pre.missing)
+
+
+# -- el copy del onboarding, y el permiso que nadie marca ---------------------------
+
+
+def test_sin_read_all_orders_se_avisa_SIEMPRE_y_no_solo_si_se_pidio_una_ventana():
+    """El tope silencioso que tenia este modulo, y la razon de que el copy exista.
+
+    Shopify contesta 200 con una lista corta, no con un error. Antes el aviso solo
+    salia cuando el llamador pedia `required_days`; sin ese parametro el
+    comerciante recibia un analisis armado sobre 60 dias y NADA se lo decia -- el
+    preflight contaba lo que llego y la clasificacion salia con la forma correcta
+    y las letras equivocadas. Un tope que nadie declara se lee como "esto es todo
+    lo que hay".
+    """
+    admin = InMemoryShopifyAdmin(_ordenes_estables()[:2])  # sin read_all_orders
+    scan = scan_input(_creds(), http=_tienda(admin))  # y sin pedir ventana
+
+    assert scan.ok, "no bloquea: corre igual, pero avisando"
+    aviso = [w for w in scan.preflight.warnings if ALL_ORDERS_SCOPE in w]
+    assert aviso, scan.preflight.warnings
+    assert str(ORDERS_WINDOW_WITHOUT_ALL_ORDERS_DAYS) in aviso[0]
+
+
+def test_con_read_all_orders_no_se_avisa_de_los_60_dias():
+    """Avisar de un permiso ya marcado es la vuelta perdida del comerciante."""
+    admin = InMemoryShopifyAdmin(
+        _ordenes_estables(), scopes=REQUIRED_SCOPES + (ALL_ORDERS_SCOPE,)
+    )
+    scan = scan_input(_creds(), http=_tienda(admin))
+    assert scan.check.all_orders
+    assert not [w for w in scan.preflight.warnings if ALL_ORDERS_SCOPE in w]
+
+
+def test_el_copy_cubre_todos_los_permisos_que_el_codigo_exige():
+    """El guardia contra la desincronizacion.
+
+    Si alguien agrega un scope a REQUIRED_SCOPES y el copy fuera una lista
+    escrita a mano en otro lado, el comerciante configuraria de menos y se
+    enteraria recien al fallar -- y la lista vieja es justamente la que lee antes
+    de configurar.
+    """
+    assert set(REQUIRED_SCOPES) <= set(SCOPE_COPY)
+    copy = setup_copy()
+    assert [p["handle"] for p in copy["permisos"]["obligatorios"]] == list(REQUIRED_SCOPES)
+    assert all(p["para_que"] for p in copy["permisos"]["obligatorios"])
+
+
+def test_el_copy_nombra_read_all_orders_como_el_que_se_pasa_por_alto():
+    copy = setup_copy()
+    recomendado = copy["permisos"]["recomendado"][0]
+    assert recomendado["handle"] == ALL_ORDERS_SCOPE
+    assert str(ORDERS_WINDOW_WITHOUT_ALL_ORDERS_DAYS) in recomendado["para_que"]
+    # Y dice que la respuesta es exitosa, que es lo que lo vuelve invisible.
+    assert "EXITOSA" in recomendado["para_que"].upper()
+
+
+def test_el_copy_declara_que_nunca_se_piden_permisos_de_escritura():
+    """El argumento de venta entero, en la pantalla donde el comerciante decide."""
+    copy = setup_copy()
+    nunca = copy["permisos"]["nunca_se_piden"]
+    assert "write_inventory" in nunca
+    assert not set(nunca) & set(REQUIRED_SCOPES)
+    # Y el copy tampoco esconde lo que esta ruta NO puede dar.
+    assert copy["lo_que_esto_no_puede_dar"] == PLAZO_AUSENTE
+
+
+def test_el_copy_de_los_pasos_manda_a_pantallas_concretas_del_admin():
+    """Un paso sin la pantalla donde se hace es una instruccion que no se sigue."""
+    pasos = setup_copy()["pasos"]
+    assert len(pasos) >= 4
+    for p in pasos:
+        assert p["titulo"] and p["donde"] and p["detalle"]
+    texto = " ".join(p["donde"] + p["detalle"] for p in pasos)
+    assert "Admin API access scopes" in texto
+    assert "shpat_" in texto
+    assert "myshopify.com" in texto
+
+
+def test_el_mensaje_de_scope_faltante_explica_que_se_pierde_sin_cada_permiso():
+    admin = InMemoryShopifyAdmin(_ordenes_estables(), scopes=("read_products", "read_locations"))
+    check = check_connection(_creds(), http=admin)
+    assert check.reason == SCOPE
+    # No solo el handle: el para-que, que es lo que hace accionable el mensaje.
+    assert SCOPE_COPY["read_orders"][:30] in check.message
+    assert SCOPE_COPY["read_inventory"][:30] in check.message
 
 
 # -- la lectura masiva (bulk operations) -------------------------------------------

@@ -413,6 +413,109 @@ class ShopifyScanInput:
         return self.preflight is None and self.bulk is not None and not self.bulk.done
 
 
+# -- el copy del onboarding -------------------------------------------------------
+
+#: Que desbloquea cada permiso, en el idioma del comerciante. Es la UNICA fuente:
+#: de aqui salen el mensaje de la falla de scope, la advertencia del preflight y
+#: la pantalla de setup. Tres listas de permisos escritas a mano en tres lugares
+#: se desincronizan en el primer cambio, y la que queda vieja es justamente la
+#: que el comerciante lee antes de configurar.
+SCOPE_COPY: dict[str, str] = {
+    "read_products": "el catalogo: que SKU existen. Sin esto no se puede saber que hay que "
+                     "analizar, y lo que nunca vendio -- que es lo que hay que encontrar -- "
+                     "seria invisible.",
+    "read_inventory": "las existencias por bodega y el 'Costo por articulo'. Sin el costo la "
+                      "clasificacion se hace por unidades y no por valor.",
+    "read_orders": "el historial de venta, que es de donde sale la demanda.",
+    "read_locations": "las bodegas. Sin esto no se puede decir en cual esta el stock parado.",
+}
+
+#: El permiso que se pasa por alto y que rompe el analisis en silencio.
+ALL_ORDERS_COPY = (
+    "el historial de mas de 60 dias. ESTE ES EL QUE SE PASA POR ALTO: sin el, Shopify entrega "
+    "solo los ultimos 60 dias de ordenes, y lo hace con una respuesta EXITOSA y una lista corta "
+    "-- no con un error. Sesenta dias son dos meses, y con dos observaciones no se distingue un "
+    "SKU estable de uno erratico: la clasificacion sale con la forma correcta y las letras "
+    "equivocadas. Marcalo junto con los demas."
+)
+
+#: Los que esta ruta NUNCA pide. Va en el copy a proposito: que el motion no
+#: escriba es el argumento de venta, y un argumento que solo aparece en un
+#: docstring no lo lee el que decide.
+NEVER_REQUESTED = ("write_products", "write_inventory", "write_orders")
+
+SETUP_STEPS: tuple[dict[str, str], ...] = (
+    {
+        "n": "1",
+        "titulo": "Crea una app custom en tu propio admin",
+        "donde": "Configuracion -> Apps y canales de venta -> Desarrollar apps -> Crear una app",
+        "detalle": "Es una app tuya, dentro de tu tienda. No se instala nada del App Store y no "
+                   "hay que aprobar permisos de un tercero.",
+    },
+    {
+        "n": "2",
+        "titulo": "Marca los permisos de LECTURA",
+        "donde": "tu app -> Configuracion -> Admin API access scopes",
+        "detalle": "Son cuatro obligatorios mas uno que casi todos se saltan. Ninguno de "
+                   "escritura: si ves marcado alguno de " + ", ".join(NEVER_REQUESTED) +
+                   ", desmarcalo -- esta lectura no lo usa.",
+    },
+    {
+        "n": "3",
+        "titulo": "Instala la app y revela el token UNA vez",
+        "donde": "tu app -> Claves de API -> Admin API access token -> Revelar token una vez",
+        "detalle": "Empieza con 'shpat_'. Se muestra una sola vez: si se pierde hay que "
+                   "desinstalar y reinstalar la app para generar otro. No es la clave ni el "
+                   "secreto de la API, que estan en la misma pantalla y no sirven aqui.",
+    },
+    {
+        "n": "4",
+        "titulo": "Pega el dominio y el token",
+        "donde": "Configuracion -> Dominios -> 'dominio de myshopify'",
+        "detalle": "El dominio termina en .myshopify.com. El dominio publico de la tienda no "
+                   "sirve: la Admin API solo responde en ese.",
+    },
+)
+
+
+def setup_copy() -> dict:
+    """El copy del onboarding, armado desde las mismas constantes que valida el codigo.
+
+    Se entrega estructurado y no como un texto ya maquetado para que la pantalla
+    que lo muestre decida como se ve, sin volver a escribir los permisos. El unico
+    modo de que el copy y la validacion digan lo mismo es que salgan del mismo
+    lado: si alguien agrega un scope a ``REQUIRED_SCOPES`` y el copy fuera una
+    lista aparte, el comerciante configuraria de menos y se enteraria recien al
+    fallar.
+    """
+    return {
+        "tipo_de_app": "custom",
+        "por_que_no_app_store": (
+            "Una app del App Store exige OAuth, app embebida, los tres webhooks obligatorios de "
+            "GDPR y Billing API. Una app custom la creas vos en tu propio admin en unos minutos, "
+            "y el token no sale de tu tienda."
+        ),
+        "pasos": [dict(p) for p in SETUP_STEPS],
+        "permisos": {
+            "obligatorios": [
+                {"handle": s, "para_que": SCOPE_COPY[s]} for s in REQUIRED_SCOPES
+            ],
+            "recomendado": [
+                {
+                    "handle": ALL_ORDERS_SCOPE,
+                    "para_que": ALL_ORDERS_COPY,
+                    "si_falta": (
+                        f"el analisis corre igual, pero sobre "
+                        f"{ORDERS_WINDOW_WITHOUT_ALL_ORDERS_DAYS} dias de historial, y se avisa."
+                    ),
+                }
+            ],
+            "nunca_se_piden": list(NEVER_REQUESTED),
+        },
+        "lo_que_esto_no_puede_dar": PLAZO_AUSENTE,
+    }
+
+
 # -- transporte -----------------------------------------------------------------
 
 
@@ -729,10 +832,11 @@ def check_connection(
     if faltantes:
         return _fail(
             SCOPE,
-            f"a la app custom le faltan {len(faltantes)} permiso(s) de lectura: "
-            f"{', '.join(faltantes)}. En tu admin: Configuracion -> Apps y canales de venta -> "
-            "Desarrollar apps -> tu app -> Configuracion -> Admin API scopes, marcarlos y guardar. "
-            "Despues hay que reinstalar la app para que el token tome los permisos nuevos.",
+            f"a la app custom le faltan {len(faltantes)} permiso(s) de lectura. "
+            + " ".join(f"{s}: {SCOPE_COPY.get(s, '')}" for s in faltantes)
+            + " En tu admin: Configuracion -> Apps y canales de venta -> Desarrollar apps -> tu "
+            "app -> Configuracion -> Admin API scopes, marcarlos y guardar. Despues hay que "
+            "reinstalar la app para que el token tome los permisos nuevos.",
             scopes_missing=faltantes,
             scopes_granted=concedidos,
             write_scopes=escritura,
@@ -1701,6 +1805,20 @@ def preflight(
             f"la tienda tiene {len(locations)} locations. La demanda de Shopify no es atribuible por "
             "location (una orden no dice de que bodega salio), asi que el excedente se calcula sobre "
             "el stock TOTAL. El detalle por location se conserva aparte para el analisis de pooling."
+        )
+    if check is not None and not check.all_orders:
+        # SIEMPRE, no solo cuando la ventana pedida no alcanza. Sin este aviso, un
+        # comerciante que no pide una ventana explicita recibe un analisis sobre
+        # 60 dias y nada se lo dice: Shopify contesta 200 con una lista corta, el
+        # preflight cuenta lo que llego, y la clasificacion sale con la forma
+        # correcta y las letras equivocadas. Un tope que nadie declara se lee como
+        # "esto es todo lo que hay".
+        warnings.append(
+            f"a la app le falta el permiso {ALL_ORDERS_SCOPE}, asi que Shopify entrego SOLO los "
+            f"ultimos {ORDERS_WINDOW_WITHOUT_ALL_ORDERS_DAYS} dias de ordenes -- con una respuesta "
+            "exitosa y una lista corta, no con un error. Con dos meses de historial la variabilidad "
+            "(XYZ) no distingue un SKU estable de uno erratico. Se marca en Admin API scopes junto "
+            "a los demas y despues hay que reinstalar la app."
         )
     if check is not None and check.write_scopes:
         warnings.append(

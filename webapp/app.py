@@ -1283,6 +1283,32 @@ def _pooling(stock_rows: tuple[dict, ...]) -> dict:
     }
 
 
+@app.get(
+    "/api/shopify-scan/setup",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+def api_shopify_setup() -> dict:
+    """Que tiene que configurar el comerciante ANTES de conectar, y por que.
+
+    Existe porque el permiso que rompe el analisis es el que nadie marca:
+    ``read_all_orders``. Sin el, Shopify entrega solo los ultimos 60 dias de
+    ordenes con una respuesta exitosa y una lista corta, y la clasificacion sale
+    con la forma correcta y las letras equivocadas. Enterarse de eso recien
+    cuando el escaneo avisa cuesta una vuelta entera: crear la app, marcar el
+    permiso que falta y REINSTALARLA, porque el token no toma permisos nuevos.
+
+    El cuerpo sale de ``shopify_connect.setup_copy()``, que se arma con las
+    mismas constantes que valida el conector. Copiar la lista de permisos a una
+    plantilla la desincroniza en el primer cambio, y la copia vieja es la que el
+    comerciante lee.
+
+    Sin secretos: es la misma informacion que esta en la documentacion publica de
+    Shopify. Va detras de la misma puerta que el escaneo por consistencia, no
+    porque haya algo que proteger.
+    """
+    return {"status": "ok", **shopify_connect.setup_copy()}
+
+
 @app.post(
     "/api/shopify-scan",
     dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
@@ -1378,6 +1404,13 @@ def api_shopify_scan(
                 "reason": entrada.check.reason,
                 "message": entrada.check.message,
                 "scopes_missing": list(entrada.check.scopes_missing),
+                # Con el para-que de cada uno: un handle suelto no le dice al
+                # comerciante que se pierde si no lo marca.
+                "scopes_help": [
+                    {"handle": h, "para_que": shopify_connect.SCOPE_COPY.get(h, "")}
+                    for h in entrada.check.scopes_missing
+                ],
+                "setup_url": "/api/shopify-scan/setup",
             },
         )
 
