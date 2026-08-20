@@ -34,11 +34,24 @@ import os
 import sys
 
 ruta = os.path.join(os.environ["AQUI"], "uv_guard.py")
-spec = importlib.util.spec_from_file_location("uv_guard", ruta)
-if spec is None or spec.loader is None:
-    raise SystemExit(0)  # sin el modulo el hook se calla, no rompe la sesion
-modulo = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(modulo)
+try:
+    spec = importlib.util.spec_from_file_location("uv_guard", ruta)
+    if spec is None or spec.loader is None:
+        raise ImportError("spec_from_file_location devolvio None")
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+except Exception as exc:
+    # Se AVISA y se deja pasar. No se puede bloquear cada comando Bash porque
+    # falte un archivo, pero salir 0 callado seria el modo de falla que esta
+    # suite existe para cazar: sin el modulo, todo `pip install` pasa y no hay
+    # nada en pantalla que lo diga -- se ve identico a "no habia nada que
+    # bloquear".
+    print(
+        "uv-guard: NO OPERATIVO, no se pudo cargar %s (%s). "
+        "Los cambios de dependencias no estan siendo revisados." % (ruta, exc),
+        file=sys.stderr,
+    )
+    raise SystemExit(0)
 
 try:
     datos = json.loads(os.environ.get("PAYLOAD") or "{}")
