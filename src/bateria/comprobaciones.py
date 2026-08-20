@@ -9,6 +9,7 @@ Importar este modulo registra las comprobaciones en el scorer.
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -244,6 +245,39 @@ _SERIE_VOLATIL = (60.0, 140.0, 55.0, 150.0, 70.0, 130.0, 45.0, 160.0,
 #: Nombres con los que la comparacion contra el ciclo anterior podria llegar.
 _CAMPOS_CICLO_PREVIO = ("previo", "anterior", "previous", "delta", "vs_")
 
+#: Periodos del primer ciclo de la sonda de T02. El segundo corre sobre la serie
+#: entera, asi que los dos ciclos tienen error distinto y el ciclo PREVIO tambien
+#: se mueve entre las dos corridas -- que es el endurecimiento que el docstring
+#: viejo de esta comprobacion dejo pedido para el dia que existiera el canal.
+_CORTE_CICLO_PREVIO = 12
+
+#: Tolerancia con la que se acepta que un campo REPRODUCE un MAPE congelado. El
+#: numero viaja a disco y vuelve, asi que no se exige identidad de bits.
+_TOLERANCIA_MAPE = 1e-6
+
+
+def _dos_ciclos(nombre: str, serie: tuple[float, ...], carpeta: str):
+    """Corre el job DOS veces sobre la misma partición: el primero congela, el segundo compara.
+
+    Devuelve ``(mape_congelado, informe_del_segundo_ciclo)``. El MAPE del primer
+    ciclo es el hecho contra el que se mide: la comprobacion no lo escribe a mano,
+    lo lee de la corrida que lo produjo.
+    """
+    from jobs import forecast_job as job
+    from src.state.store import store_for
+
+    tienda = store_for(nombre.lower(), base_path=carpeta)
+    try:
+        primero = job.run(
+            {nombre: list(serie[:_CORTE_CICLO_PREVIO])}, store=tienda, cycle_id="2026-01"
+        )
+        segundo = job.run({nombre: list(serie)}, store=tienda, cycle_id="2026-02")
+    finally:
+        # Sin esto SQLite deja el fichero abierto y en Windows el temporal no se
+        # borra. Un corrector que ensucia el disco de quien lo corre no es gratis.
+        tienda.close()
+    return primero.skus[0].mape, segundo
+
 
 @comprobacion("T02")
 def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
@@ -253,40 +287,78 @@ def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
     ciclo anterior (mejora o empeora). Un grafico de ventas explicitamente no
     cuenta.
 
-    Se corre el job DOS veces, sobre un ciclo estable y uno volatil, y los tres
-    requisitos se miden sobre los valores emitidos, no sobre los nombres del
-    dataclass. El gate viejo aceptaba cualquier campo que contuviera
-    ``previo|anterior|previous|delta|vs_``: un ``delta_*`` cualquiera, agregado
-    sin mala fe, acreditaba "comparo contra el ciclo previo" sin que nadie
-    guardara un ciclo previo.
+    **Por que cambio la sonda.** La version anterior corria el job una sola vez
+    por serie, sin ``store``, y anotaba el motivo: *"la sonda mueve el ciclo
+    ACTUAL, no el anterior, porque el job no tiene parametro por donde recibir un
+    pronostico congelado. El dia que exista ese canal de entrada, el
+    endurecimiento natural es variar tambien el ciclo previo"*. Ese canal existe:
+    ``forecast_job.run`` toma ``store`` y ``cycle_id``, y ``jobs/forecast_cycle``
+    congela el ciclo y lo lee de vuelta. Sin pasarlos, el job responde
+    ``NO_STORE_MEMORY`` -- que es la conducta correcta, no un fallo -- y la
+    comparacion salia vacia por construccion, dejando T02 clavada en PARCIAL
+    contra un entregable que ya sabia hacerla.
 
-    Sobre el filo del tercer requisito: la sonda mueve el ciclo ACTUAL, no el
-    anterior, porque el job no tiene parametro por donde recibir un pronostico
-    congelado. Con el ciclo previo fijo, una comparacion real se mueve igual
-    cuando se mueve el error de hoy. El dia que exista ese canal de entrada, el
-    endurecimiento natural es variar tambien el ciclo previo.
+    Ahora la sonda corre DOS ciclos por serie sobre una particion propia: el
+    primero congela, el segundo lee. Y **es endurecimiento**, no ablandamiento:
+
+    - el ciclo PREVIO se mueve entre las dos corridas (no solo el actual), que es
+      exactamente lo que el docstring viejo pedia;
+    - la comparacion pasa de ``se_mueve`` -- cualquier ``delta_*`` que cambie --
+      a REPRODUCIR el MAPE que el primer ciclo emitio de verdad, y el cambio a
+      reproducir la resta contra el. Un numero plausible que no salga del ciclo
+      congelado ya no acredita.
+
+    El gate viejo ya habia cerrado el ataque de nombres (``previo|anterior|
+    previous|delta|vs_`` acreditaba con cualquier campo que se moviera); esto
+    cierra el escalon siguiente, que es el campo que se mueve por su cuenta.
     """
-    from jobs import forecast_job as job
+    import tempfile
+    from pathlib import Path
+
     from jobs.forecast_job import SkuForecast
 
-    estable = job.run({"SKU-EST": list(_SERIE_ESTABLE)})
-    volatil = job.run({"SKU-VOL": list(_SERIE_VOLATIL)})
-    muestra = _Muestra.de_corridas(
-        estable.skus, volatil.skus, (estable,), (volatil,)
-    )
+    carpeta = tempfile.mkdtemp(prefix="bateria-t02-")
+    try:
+        mape_previo_est, estable = _dos_ciclos(
+            "SKU-EST", _SERIE_ESTABLE, str(Path(carpeta) / "est")
+        )
+        mape_previo_vol, volatil = _dos_ciclos(
+            "SKU-VOL", _SERIE_VOLATIL, str(Path(carpeta) / "vol")
+        )
+    finally:
+        shutil.rmtree(carpeta, ignore_errors=True)
+
+    muestra = _Muestra.de_corridas(estable.skus, volatil.skus, (estable,), (volatil,))
+    valores_est = _valores_planos(estable.skus[0])
+    valores_vol = _valores_planos(volatil.skus[0])
     mapes = {s.name: round(s.mape, 4) for s in (*estable.skus, *volatil.skus)}
     sesgos = {s.name: round(s.bias, 4) for s in (*estable.skus, *volatil.skus)}
+    congelados = {"SKU-EST": round(mape_previo_est, 4), "SKU-VOL": round(mape_previo_vol, 4)}
+
+    def _reproducen(hecho_est: float, hecho_vol: float) -> list[str]:
+        return sorted(
+            c for c in valores_est
+            if _reproduce_el_hecho(
+                valores_est.get(c), valores_vol.get(c), hecho_est, hecho_vol, _TOLERANCIA_MAPE
+            )
+        )
 
     tiene_mape = bool(muestra.se_mueve(("mape",)))
     sesgo = muestra.poblado(_CAMPOS_SESGO)
-    ciclo_previo = muestra.se_mueve(_CAMPOS_CICLO_PREVIO)
+    # El ciclo previo, tal como lo emitio la corrida que lo congelo.
+    reporta_el_previo = _reproducen(mape_previo_est, mape_previo_vol)
+    # Y el cambio, que tiene que ser la resta contra ESE numero, no cualquier delta.
+    reporta_el_cambio = _reproducen(
+        estable.skus[0].mape - mape_previo_est, volatil.skus[0].mape - mape_previo_vol
+    )
+    ciclo_previo = bool(reporta_el_previo) and bool(reporta_el_cambio)
 
     faltantes = [
         nombre
         for nombre, ok in (
             ("MAPE por SKU", tiene_mape),
             ("sesgo firmado", bool(sesgo)),
-            ("comparacion contra el ciclo previo", bool(ciclo_previo)),
+            ("comparacion contra el ciclo previo", ciclo_previo),
         )
         if not ok
     ]
@@ -296,7 +368,9 @@ def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
         "faltantes": faltantes,
         "sonda_mape": mapes,
         "sonda_sesgo": sesgos,
-        "campos_de_ciclo_previo_con_valor_que_se_mueve": ciclo_previo,
+        "sonda_mape_congelado": congelados,
+        "campos_que_reproducen_el_ciclo_previo": reporta_el_previo,
+        "campos_que_reproducen_el_cambio": reporta_el_cambio,
         "campos_de_ciclo_previo_por_nombre": _alguno_contiene(
             muestra.campos, _CAMPOS_CICLO_PREVIO
         ),
@@ -307,9 +381,11 @@ def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
             tarea_id="T02",
             estado=Estado.CUMPLE,
             evidencia=(
-                f"el entregable mide de verdad: el MAPE se mueve entre los dos ciclos "
-                f"({mapes}), el sesgo firmado sale con valor ({sesgos}) y la comparacion "
-                f"contra el ciclo previo cambia con el error ({', '.join(ciclo_previo)})"
+                f"el entregable mide de verdad y contra el ciclo que congelo: el MAPE se mueve "
+                f"entre los dos ciclos ({mapes}), el sesgo firmado sale con valor ({sesgos}) y "
+                f"la comparacion reproduce el MAPE congelado ({congelados}) en "
+                f"{', '.join(reporta_el_previo)}, con el cambio en "
+                f"{', '.join(reporta_el_cambio)}"
             ),
             detalle=detalle,
         )
@@ -322,11 +398,13 @@ def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
         evidencia=(
             f"el entregable sale sin: {', '.join(faltantes)}. El MAPE se mueve entre los dos "
             f"ciclos ({mapes}) y el sesgo firmado viaja por SKU con valor ({sesgos}); lo que "
-            "falta es el ciclo anterior congelado: sin el no hay contra que comparar"
+            f"falta es que la comparacion salga del ciclo congelado ({congelados}): "
+            f"reproducen el previo {reporta_el_previo or 'ninguno'} y el cambio "
+            f"{reporta_el_cambio or 'ninguno'}"
             + (
-                f". Hay campos con nombre de comparacion ({', '.join(nominales)}) cuyo valor "
-                "NO se mueve entre las dos corridas: un nombre no es una comparacion"
-                if nominales and not ciclo_previo else ""
+                f". Hay campos con nombre de comparacion ({', '.join(nominales)}) que no "
+                "reproducen ese numero: un nombre no es una comparacion"
+                if nominales else ""
             )
         ),
         detalle=detalle,
@@ -1425,14 +1503,114 @@ _SS_SONDA = 50.0
 _DEMANDA_CICLO_SONDA = 500.0
 _SIGMA_CICLO_SONDA = 40.0
 
-#: Servicio REALIZADO que se le entrega al job por su unico canal de entrada de
-#: hechos del cliente. Dos valores lejanos entre si y lejanos del objetivo por
-#: defecto (0,95) para que ninguna coincidencia numerica acredite la tarea.
-_FILL_RATE_MEDIDO_BAJO = 0.60
-_FILL_RATE_MEDIDO_ALTO = 0.99
+#: Las dos corridas de la sonda, como mezcla de lineas de pedido de cliente:
+#: (completas y a tiempo, completas pero TARDE, cortas). Las tres cifras se
+#: eligen para que los cuatro numeros del criterio salgan DISTINTOS entre si
+#: dentro de cada corrida -- un entregable que publica el mismo numero dos veces
+#: no puede acreditar con el el fill rate Y el OTIF -- y para que ninguno caiga
+#: sobre el objetivo por defecto de la politica (0,95), que es lo que el criterio
+#: descalifica.
+_CORRIDA_BAJA = (60, 20, 20)   # fill 80%, OTIF 60%, 20 dias, 200 u perdidas
+_CORRIDA_ALTA = (94, 5, 1)     # fill 99%, OTIF 94%,  1 dia,   10 u perdidas
 
-#: Tolerancia con la que se acepta que un campo REPRODUCE el servicio medido.
+#: Unidades por linea y precio unitario con los que se arma cada linea sondeada.
+_UNIDADES_POR_LINEA = 10.0
+_PRECIO_SONDA = 12.0
+
+#: Dias que una linea tarde llega despues de lo prometido. Cualquier valor > 0
+#: sirve: lo que importa es que la linea entregue COMPLETO y aun asi falle OTIF,
+#: que es lo que separa los dos numeros.
+_ATRASO_SONDA = 3
+
+#: Tolerancia con la que se acepta que un campo REPRODUCE una razon de servicio.
 _TOLERANCIA_SERVICIO = 0.005
+
+#: Tolerancia con la que se acepta que un campo REPRODUCE un conteo (dias, unidades).
+_TOLERANCIA_CONTEO = 0.5
+
+
+@dataclass(frozen=True)
+class _SondaPedidos:
+    """Las lineas de pedido que se le inyectan al job, y el hecho que implican.
+
+    El hecho se DERIVA de las mismas lineas que se entregan; no se escribe al
+    lado como constante. Si alguien cambia la mezcla, el numero contra el que se
+    compara cambia con ella y la sonda no puede quedar afirmando un hecho que ya
+    no inyecta -- que es exactamente como T10 llego a ser imposible la primera
+    vez, con un umbral escrito a mano contra una funcion pura de libreria.
+    """
+
+    a_tiempo: int
+    tarde: int
+    cortas: int
+
+    @property
+    def lineas(self) -> int:
+        return self.a_tiempo + self.tarde + self.cortas
+
+    @property
+    def fill_rate(self) -> float:
+        """Unidades entregadas / pedidas. Las TARDE entregaron completo: cuentan."""
+        return (self.a_tiempo + self.tarde) / self.lineas
+
+    @property
+    def otif(self) -> float:
+        """Completas Y a tiempo. Nunca igual al fill rate mientras haya lineas tarde."""
+        return self.a_tiempo / self.lineas
+
+    @property
+    def unidades_perdidas(self) -> float:
+        return self.cortas * _UNIDADES_POR_LINEA
+
+    @property
+    def valor_perdido(self) -> float:
+        return self.unidades_perdidas * _PRECIO_SONDA
+
+    @property
+    def dias_quiebre(self) -> int:
+        """Fechas distintas con una linea corta. Una linea por dia: son las cortas."""
+        return self.cortas
+
+    def como_dataframe(self):
+        """Una linea por dia, para que las fechas cortas sean distintas entre si."""
+        import pandas as pd
+
+        origen = pd.Timestamp("2024-01-01")
+        completas = self.a_tiempo + self.tarde
+        return pd.DataFrame([
+            {
+                "product_id": "SKU-1",
+                "ordered_qty": _UNIDADES_POR_LINEA,
+                "delivered_qty": _UNIDADES_POR_LINEA if i < completas else 0.0,
+                "promised_date": origen + pd.Timedelta(days=i),
+                "delivered_date": origen + pd.Timedelta(
+                    days=i + (0 if i < self.a_tiempo else _ATRASO_SONDA)
+                ),
+                "unit_price": _PRECIO_SONDA,
+            }
+            for i in range(self.lineas)
+        ])
+
+
+def _reproduce_el_hecho(
+    emitido_bajo: object, emitido_alto: object,
+    hecho_bajo: float, hecho_alto: float, tolerancia: float,
+) -> bool:
+    """El campo devuelve, en las DOS corridas, el hecho que se inyecto en cada una.
+
+    Reproducir los dos es lo que separa medir de apuntar: una constante acierta
+    una corrida por casualidad y falla la otra, y un objetivo tironeado hacia lo
+    observado se mueve sin igualar ninguna. ``bool`` se excluye antes que
+    ``int`` porque en Python ``True`` es ``1`` y un flag no es una medicion.
+    """
+    if isinstance(emitido_bajo, bool) or isinstance(emitido_alto, bool):
+        return False
+    if not (isinstance(emitido_bajo, (int, float)) and isinstance(emitido_alto, (int, float))):
+        return False
+    return (
+        abs(emitido_bajo - hecho_bajo) <= tolerancia
+        and abs(emitido_alto - hecho_alto) <= tolerancia
+    )
 
 
 @dataclass(frozen=True)
@@ -1464,9 +1642,20 @@ class _CandidatoServicio:
 
     entregable: str
     muestra: _Muestra
+    #: Campos que reproducen el FILL RATE realizado que se inyecto. Eliminatorio.
     reporta_lo_medido: tuple[str, ...]
+    #: Beta teorico de la libreria. Se reporta y NO descalifica: ver el docstring.
     fill_rate_sin_pedidos: float
     prueba_origen: str
+    #: Campos que reproducen el OTIF de salida inyectado. Numero distinto del fill
+    #: rate a proposito: las lineas que llegaron completas pero TARDE cuentan en uno
+    #: y no en el otro, asi que un entregable que publica el mismo numero con dos
+    #: nombres no puede acreditar los dos criterios.
+    reporta_otif: tuple[str, ...] = ()
+    #: Campos que reproducen los dias con linea corta inyectados.
+    reporta_dias: tuple[str, ...] = ()
+    #: Campos que reproducen las unidades no vendidas inyectadas.
+    reporta_venta_perdida: tuple[str, ...] = ()
 
     @property
     def campos(self) -> tuple[str, ...]:
@@ -1474,17 +1663,31 @@ class _CandidatoServicio:
 
     @property
     def mide_lo_realizado(self) -> bool:
-        """Gate: algun campo emitido reproduce el servicio que de verdad se observo."""
-        return bool(self.reporta_lo_medido)
+        """Gate: algun campo CON NOMBRE DE SERVICIO reproduce el fill rate observado."""
+        return bool(_alguno_contiene(set(self.reporta_lo_medido), _CAMPOS_SERVICIO_REALIZADO))
 
     @property
     def requisitos(self) -> dict[str, bool]:
+        """Cada criterio contra SU PROPIO hecho, y bajo un nombre que el cliente ubique.
+
+        Antes los dos primeros colgaban del mismo booleano: el fill rate acreditaba
+        tambien el OTIF, que nunca se verificaba por separado. Y los dos ultimos se
+        conformaban con ``poblado`` porque la sonda vieja -- un beta escalar por
+        ``observed_fill_rates`` -- no tenia con que moverlos. Con lineas de pedido
+        el arnes mueve los cuatro, asi que se les exige a los cuatro lo mismo:
+        devolver el numero que se inyecto, en las dos corridas.
+        """
         return {
-            "OTIF de salida sobre pedidos reales": self.mide_lo_realizado,
-            "fill rate de linea sobre pedidos reales": self.mide_lo_realizado
-            and bool(self.muestra.poblado(_CAMPOS_SERVICIO_REALIZADO)),
-            "dias con quiebre por SKU": bool(self.muestra.poblado(_CAMPOS_DIAS_QUIEBRE)),
-            "venta perdida estimada": bool(self.muestra.poblado(_CAMPOS_VENTA_PERDIDA)),
+            "OTIF de salida sobre pedidos reales": bool(
+                _alguno_contiene(set(self.reporta_otif), _CAMPOS_SERVICIO_REALIZADO)
+            ),
+            "fill rate de linea sobre pedidos reales": self.mide_lo_realizado,
+            "dias con quiebre por SKU": bool(
+                _alguno_contiene(set(self.reporta_dias), _CAMPOS_DIAS_QUIEBRE)
+            ),
+            "venta perdida estimada": bool(
+                _alguno_contiene(set(self.reporta_venta_perdida), _CAMPOS_VENTA_PERDIDA)
+            ),
         }
 
     @property
@@ -1504,6 +1707,9 @@ class _CandidatoServicio:
             "faltantes": self.faltantes,
             "campos_solo_de_nombre": self.solo_de_nombre,
             "campos_que_reproducen_lo_medido": list(self.reporta_lo_medido),
+            "campos_que_reproducen_el_otif": list(self.reporta_otif),
+            "campos_que_reproducen_los_dias": list(self.reporta_dias),
+            "campos_que_reproducen_la_venta_perdida": list(self.reporta_venta_perdida),
             "fill_rate_sin_pedidos": self.fill_rate_sin_pedidos,
             "mide_lo_realizado": self.mide_lo_realizado,
             "prueba_origen": self.prueba_origen,
@@ -1572,66 +1778,81 @@ def _demanda_sonda(periodos: int = 60):
 def t10_servicio_realizado_al_cliente(_: Contexto) -> ResultadoTarea:
     """T10 — medir el servicio REALIZADO: OTIF de salida, fill rate, quiebres, venta perdida.
 
-    El sondeo le entrega al job el servicio que de verdad se observo, dos veces
-    con valores muy distintos (60% y 99%), por el unico canal que Kern tiene para
-    hechos del cliente: ``observed_fill_rates``. Despues busca en lo emitido un
-    campo que REPRODUZCA ese numero. Si ninguno lo reproduce, lo que el
-    entregable reporta no es lo que paso: es lo que el modelo se propone.
+    La sonda le entrega al job LINEAS DE PEDIDO de cliente -- pedidas contra
+    despachadas, prometida contra entregada, con precio -- dos veces con mezclas
+    muy distintas, y despues busca en lo emitido los campos que devuelvan los
+    cuatro numeros que esas lineas implican. El hecho se deriva de las mismas
+    lineas que se inyectan (:class:`_SondaPedidos`), asi que la vara no puede
+    quedar comparando contra un numero que ya no entra.
 
-    Y eso es exactamente lo que se mide. ``service_level`` SI se mueve entre las
-    dos corridas -- ``tune_service_level`` lo tironea hacia lo observado -- pero
-    no lo iguala ni de lejos, porque es el objetivo, no el resultado. Moverse no
-    alcanza; hay que reportar el hecho.
+    **Por que cambio la sonda.** La version anterior alimentaba el unico canal
+    que existia entonces, ``observed_fill_rates``: un beta escalar. Con eso solo
+    el fill rate podia reproducirse, el OTIF se acreditaba de arrastre y los dias
+    a stock cero eran INDERIVABLES por construccion -- un quiebre largo y muchos
+    cortos dan el mismo beta, y ``order_fulfillment.from_reported_fill_rate`` se
+    niega, con razon, a inventarlos. Esa sonda dejaba a T10 clavada en PARCIAL
+    contra un entregable que ya sabia calcular las cuatro cosas. El propio
+    docstring viejo dejo escrito el disparador: "si algun dia el job recibe las
+    lineas de pedido crudas y calcula el OTIF de ellas, hay que reescribir la
+    sonda para alimentarlo por ahi". Ese dia llego.
 
-    Vale registrar el corte de cableado, que es el mismo patron que sigma_L en
-    T08: el job acepta ``observed_fill_rates`` para realimentar la politica con
-    el servicio medido, pero nadie en ``jobs/`` lo calcula. El unico OTIF que
-    Kern computa es de ENTRADA (proveedor -> nosotros, ``SupplierScore.otif``,
-    ver T09), no de salida al cliente.
+    **Es endurecimiento, no ablandamiento**, y en los cuatro criterios a la vez:
 
-    Limite conocido de la sonda: se ata al canal de entrada que hoy existe. Si
-    algun dia el job recibe las lineas de pedido crudas y calcula el OTIF de
-    ellas, hay que reescribir la sonda para alimentarlo por ahi -- el gate mide
-    el reporte contra el hecho inyectado, y el hecho hay que poder inyectarlo.
+    - el OTIF pasa a verificarse contra SU propio hecho, no contra el fill rate;
+    - los dias de quiebre y la venta perdida pasan de ``poblado`` -- que solo pedia
+      que hubiera algo -- a reproducir el numero inyectado en las dos corridas;
+    - la mezcla se elige para que fill rate y OTIF NUNCA coincidan (las lineas
+      completas-pero-tarde cuentan en uno y no en el otro), asi que publicar el
+      mismo numero con dos nombres ya no acredita dos criterios;
+    - y ninguno de los cuatro cae sobre 0,95, el objetivo por defecto de la
+      politica, que es lo que el criterio descalifica.
+
+    Lo eliminatorio no se movio: reportar el objetivo del modelo en lugar del
+    realizado sigue valiendo cero. Ahora ademas el contraste es mas limpio, porque
+    alimentado por lineas el job no tironea ``service_level``: el objetivo se queda
+    quieto mientras los cuatro numeros medidos se mueven.
     """
     from jobs import inventory_optimization as job
     from src.fill_rate import fill_rate_from_safety_stock
 
     demanda = _demanda_sonda()
-    bajo = job.run(demanda, observed_fill_rates={"SKU-1": _FILL_RATE_MEDIDO_BAJO})
-    alto = job.run(demanda, observed_fill_rates={"SKU-1": _FILL_RATE_MEDIDO_ALTO})
+    baja, alta = _SondaPedidos(*_CORRIDA_BAJA), _SondaPedidos(*_CORRIDA_ALTA)
+    bajo = job.run(demanda, order_lines=baja.como_dataframe())
+    alto = job.run(demanda, order_lines=alta.como_dataframe())
     valores_bajo = _valores_planos(bajo.recommendations[0])
     valores_alto = _valores_planos(alto.recommendations[0])
 
-    def _reproduce(campo: str) -> bool:
-        a, b = valores_bajo[campo], valores_alto.get(campo)
-        if not (isinstance(a, float) and isinstance(b, float)):
-            return False
-        return (
-            abs(a - _FILL_RATE_MEDIDO_BAJO) <= _TOLERANCIA_SERVICIO
-            and abs(b - _FILL_RATE_MEDIDO_ALTO) <= _TOLERANCIA_SERVICIO
-        )
+    def _reproducen(hecho, tolerancia: float) -> tuple[str, ...]:
+        """Campos que devuelven ese hecho en las dos corridas."""
+        return tuple(sorted(
+            c for c in valores_bajo
+            if _reproduce_el_hecho(
+                valores_bajo.get(c), valores_alto.get(c),
+                hecho(baja), hecho(alta), tolerancia,
+            )
+        ))
 
-    reporta = tuple(sorted(c for c in valores_bajo if _reproduce(c)))
     beta = fill_rate_from_safety_stock(_SS_SONDA, _DEMANDA_CICLO_SONDA, _SIGMA_CICLO_SONDA)
-    servicio = {
-        "service_level": (
-            valores_bajo.get("service_level"), valores_alto.get("service_level")
-        )
-    }
+    objetivo = (valores_bajo.get("service_level"), valores_alto.get("service_level"))
     return _veredicto_servicio(_CandidatoServicio(
         entregable="jobs.inventory_optimization.SkuRecommendation",
         muestra=_Muestra.de_corridas(bajo.recommendations, alto.recommendations),
-        reporta_lo_medido=reporta,
+        reporta_lo_medido=_reproducen(lambda s: s.fill_rate, _TOLERANCIA_SERVICIO),
+        reporta_otif=_reproducen(lambda s: s.otif, _TOLERANCIA_SERVICIO),
+        reporta_dias=_reproducen(lambda s: float(s.dias_quiebre), _TOLERANCIA_CONTEO),
+        reporta_venta_perdida=_reproducen(lambda s: s.unidades_perdidas, _TOLERANCIA_CONTEO),
         fill_rate_sin_pedidos=beta,
         prueba_origen=(
-            f"con un servicio realmente observado de {_FILL_RATE_MEDIDO_BAJO:.0%} y de "
-            f"{_FILL_RATE_MEDIDO_ALTO:.0%}, ningun campo del entregable devuelve ese numero; "
-            f"lo unico que se mueve es el objetivo de la politica "
-            f"({servicio['service_level'][0]:.3f} -> {servicio['service_level'][1]:.3f}), que "
-            f"es lo que el criterio descalifica. En paralelo, sin una sola linea de pedido "
-            f"fill_rate_from_safety_stock ya devuelve {beta:.1%}: la beta que implica la "
-            f"politica esta disponible y el servicio realizado no"
+            f"se le inyectan {baja.lineas} lineas de pedido con cantidad pedida, despachada "
+            f"y fechas prometida/entregada: fill rate {baja.fill_rate:.0%} -> "
+            f"{alta.fill_rate:.0%}, OTIF {baja.otif:.0%} -> {alta.otif:.0%}, "
+            f"{baja.dias_quiebre} -> {alta.dias_quiebre} dias con linea corta y "
+            f"{baja.unidades_perdidas:,.0f} -> {alta.unidades_perdidas:,.0f} unidades no "
+            f"vendidas. El objetivo de la politica no se mueve con nada de eso "
+            f"({objetivo[0]} -> {objetivo[1]}), que es lo que el criterio descalifica. "
+            f"En paralelo, sin una sola linea de pedido fill_rate_from_safety_stock ya "
+            f"devuelve {beta:.1%}: la beta que implica la politica esta disponible y el "
+            f"servicio realizado es otra cosa"
         ),
     ))
 
