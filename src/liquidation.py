@@ -221,6 +221,13 @@ def _choose_disposition(
     does not clear it. It binds hardest on the elasticity branch, which also promises a
     DATE -- ``weeks = units / demand_at(fit, price)`` reads a rate off a curve fitted on
     demand the SKU no longer has, so a dead SKU left with a finite horizon.
+
+    PRECONDITION, and the reason ``== EXCESS`` is safe rather than over-restrictive:
+    ``plan_liquidation`` only builds lines for ``EXCESS``/``DEAD`` (the comprehension
+    filters ``HEALTHY`` out), so here ``== EXCESS`` means ``!= DEAD``. Widen that filter
+    to plan every SKU and healthy stock starts falling through to SALVAGE in silence --
+    a worse defect than the dead-SKU markdown this guard was added to stop. Whoever
+    changes the caller has to revisit these two branches.
     """
     # A non-negative elasticity (flat or upward-sloping demand) is not a usable
     # clearance curve - it would recommend cutting price to sell FEWER units, the
