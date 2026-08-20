@@ -127,6 +127,28 @@ BLOQUEAR = [
     "cd /tmp && pip install foo",
     "pytest -q ; pip install foo",
     "PIP_INDEX_URL=http://x pip install foo",
+    "python3.11 -m pip install numpy",     # el interprete versionado
+    "cat requirements.txt | pip install -r -",  # al otro lado de un pipe
+    "pytest -q\npip install foo",          # segunda LINEA, no segundo segmento
+]
+
+#: Formas con RUTA o ENVOLTORIO. Salieron de probar el guard con una matriz mas
+#: ancha que la original: las cuatro pasaban enteras, y ninguna es una evasion --
+#: son como se escribe normalmente. `./venv/bin/pip install` es, de hecho, la
+#: manera MAS probable de instalar sin pensar, no la menos.
+#:
+#: El ancla `^(pip3?|poetry|pipenv)` solo veia el nombre pelado al principio del
+#: segmento. Y `run` estaba en la lista de lectura -- correcto para `poetry run
+#: pytest`, y por eso mismo el guard se quedaba en el `run` sin mirar lo que
+#: corria adentro.
+BLOQUEAR_CON_RUTA_O_ENVOLTORIO = [
+    "./venv/bin/pip install requests",
+    "venv/Scripts/pip.exe install requests",   # la forma Windows
+    "/usr/bin/pip3 install requests",
+    "sudo pip install requests",
+    "sudo -H pip install requests",
+    "poetry run pip install requests",
+    "pipenv run pip install requests",
 ]
 
 PASAR = [
@@ -152,6 +174,21 @@ PASAR = [
     "grep -r 'pip install' docs/",
     "git commit -m 'no usar pip install'",
     "bash scripts/setup-test-env.sh",
+    "pip",                    # sin subcomando no hay mutacion posible
+    "pip freeze",
+    "poetry run pytest -q",   # la contracara de `poetry run pip install`
+    "echo pip install",
+]
+
+#: EL FALSO POSITIVO, que duele mas que un falso negativo porque bloquea trabajo
+#: bueno. El split por regex sobre `;` no respetaba comillas, asi que el string
+#: se leia como dos comandos y el segundo se bloqueaba. Con exit 2 el agente
+#: reescribe el comando: el hook terminaba mutilando el mensaje de un commit --
+#: y el commit que introdujo el hook habla de pip, asi que no es hipotetico.
+PASAR_CON_PUNTO_Y_COMA_ENTRE_COMILLAS = [
+    'git commit -m "usar uv en vez de pip; pip install queda prohibido"',
+    'echo "hola; pip install x"',
+    "python -c 'import x; print(1)'",
 ]
 
 
@@ -172,6 +209,66 @@ def test_el_guard_deja_pasar_lo_que_no_toca_el_lock(comando):
     """
     resultado = _correr(GUARD, {"tool_name": "Bash", "tool_input": {"command": comando}})
     assert resultado.returncode == 0, f"no deberia bloquear: {comando}\n{resultado.stderr}"
+
+
+@pytest.mark.parametrize("comando", BLOQUEAR_CON_RUTA_O_ENVOLTORIO)
+def test_el_guard_ve_el_pip_detras_de_una_ruta_o_un_envoltorio(comando):
+    """Un pip con ruta sigue siendo pip, y `poetry run X` es X."""
+    resultado = _correr(GUARD, {"tool_name": "Bash", "tool_input": {"command": comando}})
+    assert resultado.returncode == 2, f"deberia bloquear: {comando}"
+    assert "uv.lock" in resultado.stderr
+
+
+@pytest.mark.parametrize("comando", PASAR_CON_PUNTO_Y_COMA_ENTRE_COMILLAS)
+def test_un_punto_y_coma_entre_comillas_no_inventa_un_comando(comando):
+    """Bloquear un `git commit` cuesta mas que dejar pasar un `pip install`."""
+    resultado = _correr(GUARD, {"tool_name": "Bash", "tool_input": {"command": comando}})
+    assert resultado.returncode == 0, f"no deberia bloquear: {comando}\n{resultado.stderr}"
+
+
+def test_comillas_sin_cerrar_no_apagan_el_guard():
+    """La tokenizacion levanta con comillas desbalanceadas, y ahi hay respaldo:
+    perder el guard entero por un comando mal escrito es peor que un falso
+    positivo."""
+    resultado = _correr(
+        GUARD, {"tool_name": "Bash", "tool_input": {"command": 'pip install requests "'}}
+    )
+    assert resultado.returncode == 2
+
+
+def test_se_reporta_el_segmento_que_ofende_y_no_la_linea_entera():
+    """En `ls -la && pip install x` lo accionable es la mitad de la derecha."""
+    resultado = _correr(
+        GUARD, {"tool_name": "Bash", "tool_input": {"command": "ls -la && pip install requests"}}
+    )
+    assert "pip install requests" in resultado.stderr
+    assert "ls -la" not in resultado.stderr
+
+
+def test_una_herramienta_sin_equivalente_igual_explica_la_regla():
+    """`pip wheel` no tiene traduccion 1:1, y aun asi no puede salir un mensaje
+    mudo: sin el por que, se lee como un error del sistema y no como una regla."""
+    resultado = _correr(GUARD, {"tool_name": "Bash", "tool_input": {"command": "pip wheel ."}})
+    assert resultado.returncode == 2
+    assert "uv" in resultado.stderr
+
+
+def test_si_falta_el_modulo_de_decision_el_guard_LO_DICE_en_vez_de_callarse():
+    """La decision vive en `uv_guard.py`, al lado del .sh. Si desaparece, el
+    guard no puede bloquear cada comando Bash del mundo -- pero salir 0 callado
+    seria exactamente el modo de falla que este archivo existe para cazar: todo
+    `pip install` pasaria y nada en pantalla lo diria.
+    """
+    with tempfile.TemporaryDirectory() as afuera:
+        copia = Path(afuera) / "uv-guard.sh"
+        shutil.copyfile(GUARD, copia)  # el .sh SIN su modulo al lado
+        resultado = subprocess.run(
+            [BASH, str(copia)],
+            input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "pip install x"}}),
+            capture_output=True, text=True, timeout=180,
+        )
+    assert resultado.returncode == 0, "no puede bloquear todo por un archivo faltante"
+    assert "NO OPERATIVO" in resultado.stderr, "se callo: se ve igual que 'nada que bloquear'"
 
 
 def test_el_guard_sugiere_el_equivalente_en_uv():
