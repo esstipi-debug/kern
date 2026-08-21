@@ -48,10 +48,44 @@ class EOReport:
     summary: str
 
 
-def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
+def _pick_column(
+    df: pd.DataFrame,
+    override: object,
+    candidates: tuple[str, ...],
+    canonical: str | None = None,
+) -> str | None:
+    """Pick the client's column for a canonical field.
+
+    Order, and it matters: an explicit override wins, then this job's own short
+    list, then -- only if both came up empty -- the wide alias table in
+    jobs/intake.py.
+
+    The fallback is strictly additive: it fires exactly where this function used
+    to return None, which is where the caller used to raise. No export that works
+    today changes behaviour, because for those the short list already matched.
+
+    It exists because the short lists here are English-only while intake's table
+    is rich in Spanish. A Defontana or Bsale export ("codigo", "existencia",
+    "costo_unitario") went through intake and then died in the two jobs that
+    produce what the client actually sees. 05-GTM-KERN.md declares the unfair
+    advantage in LatAm to be the language; this was the code contradicting it on
+    the first file a client uploads.
+    """
     if override:
         return str(override) if str(override) in df.columns else None
-    return next((c for c in candidates if c in df.columns), None)
+    directo = next((c for c in candidates if c in df.columns), None)
+    if directo is not None or canonical is None:
+        return directo
+
+    # Lazy: keeps the import cost off every caller that never needs the fallback.
+    from jobs.intake import ALIASES
+
+    conocidas = {str(c).strip().lower(): str(c) for c in df.columns}
+    for alias in ALIASES.get(canonical, ()):
+        encontrada = conocidas.get(alias.strip().lower())
+        if encontrada is not None:
+            return encontrada
+    return None
 
 
 def _months_of_cover(days: float) -> float:
@@ -93,16 +127,16 @@ def _require_numeric(df: pd.DataFrame, product_col: str, col: str, field: str, w
 def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
     """Sniff the stock columns and build the per-SKU stock records."""
     params = params or {}
-    product = _pick_column(df, params.get("product_col"), _PRODUCT_COLS)
-    on_hand = _pick_column(df, params.get("on_hand_col"), _ONHAND_COLS)
-    demand = _pick_column(df, params.get("demand_col"), _DEMAND_COLS)
+    product = _pick_column(df, params.get("product_col"), _PRODUCT_COLS, "product_id")
+    on_hand = _pick_column(df, params.get("on_hand_col"), _ONHAND_COLS, "on_hand")
+    demand = _pick_column(df, params.get("demand_col"), _DEMAND_COLS, "daily_demand")
     missing = [n for n, c in (("product_id", product), ("on_hand", on_hand), ("daily_demand", demand)) if c is None]
     if missing:
         cols = list(df.columns)[:10]
         raise ValueError(f"could not find {', '.join(missing)}; pass them in params (columns seen: {cols})")
 
-    cost = _pick_column(df, params.get("cost_col"), _COST_COLS)
-    last_sale = _pick_column(df, params.get("last_sale_col"), _LASTSALE_COLS)
+    cost = _pick_column(df, params.get("cost_col"), _COST_COLS, "unit_cost")
+    last_sale = _pick_column(df, params.get("last_sale_col"), _LASTSALE_COLS, "days_since_last_sale")
 
     _require_numeric(df, product, on_hand, "on_hand", "it is the quantity every other number is built on")
     # A blank demand used to be read as 0.0, which is `daily_demand <= 0` -> DEAD, and DEAD
