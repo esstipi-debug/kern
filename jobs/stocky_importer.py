@@ -185,12 +185,40 @@ class StockyPurchaseOrder:
         _reject_negative(self, ("quantity_ordered", "quantity_received", "cost_per_unit"))
 
 
-@dataclass
+_REORDER_OPTIONAL = ("min_reorder_point", "max_reorder_point", "target_stock")
+
+
+@dataclass(frozen=True)
 class StockyReorderPoint:
+    """One reorder-point row. ``sku`` is the only field it cannot lack.
+
+    This record used to be the exception in this module: while its two sibling
+    dataclasses made a dishonest record unconstructible, a reorder point with no
+    exported minimum was built as ``min_reorder_point=0`` -- and
+    ``src.stocky_migration.audit_sku_master`` then reported that SKU under
+    "reorden <=0 -- limpiar antes de migrar" in a paid report. A merchant whose
+    export simply had no minimum column was told their whole SKU master was
+    dirty. The defect they were shown was ours, not theirs.
+
+    The three measurements are now ``int | None`` with a :class:`FieldAbsence`
+    each, exactly like :class:`StockySupplier` and :class:`StockyPurchaseOrder`,
+    so "the export did not carry this" and "this really is zero" stop being the
+    same value. Its consumer in ``src/stocky_migration.py`` was changed in the
+    same breath -- that coupling is why the fix was deferred here originally.
+    """
+
     sku: str
-    min_reorder_point: int
-    max_reorder_point: int
-    target_stock: int
+    min_reorder_point: int | None = None
+    max_reorder_point: int | None = None
+    target_stock: int | None = None
+    absences: tuple[FieldAbsence, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.sku.strip():
+            raise ValueError("StockyReorderPoint.sku is empty - a reorder point with no SKU "
+                             "cannot be keyed to anything")
+        _check_absences(self, _REORDER_OPTIONAL)
+        _reject_negative(self, _REORDER_OPTIONAL)
 
 
 @dataclass
@@ -386,38 +414,69 @@ def parse_stocky_purchase_orders_csv(csv_content: str | io.StringIO) -> list[Sto
     return pos
 
 
+_REORDER_SKU_COLUMNS = ("SKU", "Variant SKU")
+_REORDER_MIN_COLUMNS = ("Min Stock", "Reorder Point")
+_REORDER_MAX_COLUMNS = ("Max Stock", "Target Stock")
+_REORDER_TARGET_COLUMNS = ("Target Stock",)
+
+
 def parse_stocky_reorder_points_csv(csv_content: str | io.StringIO) -> list[StockyReorderPoint]:
-    """Parse Stocky reorder points / min-max CSV export.
+    """Parse a Stocky reorder-points / min-max export.
 
-    NOTE (known gap, deliberately not fixed here): a missing "Min Stock" column
-    still lands as ``0``, which ``src.stocky_migration.audit_sku_master`` then
-    reports as "reorden <=0 -- limpiar antes de migrar", a data defect the
-    merchant does not actually have. Making these ``int | None`` crashes that
-    audit (``None <= 0``), and ``src/stocky_migration.py`` is outside this
-    change's ownership. See the handoff note for the exact diff it needs.
+    This reader was the last one in the module still collapsing the three ways a
+    value can be missing into a zero: ``int(row.get("Min Stock") or
+    row.get("Reorder Point", 0))`` gave the same ``0`` to an export with no
+    minimum column, to a row whose cell was blank, and to a genuine minimum of
+    zero -- and blew up with an uncaught ``ValueError`` on a cell reading "por
+    confirmar", taking the whole paid job down with it. Its two siblings had
+    been fixed; this one carried a ``NOTE (known gap, deliberately not fixed
+    here)`` pointing at a handoff note that was never written.
+
+    Now it uses the same :func:`_raw` / :func:`_as_int` path as they do, so each
+    of the three states is distinguishable by the caller and the offending cell
+    travels in the reason.
+
+    The two derivations that DO stand are kept, because they read data the
+    export really carried rather than filling a hole -- the same standing as the
+    supplier slug derived from a supplier's name:
+
+    * ``Target Stock`` remains an alias for the maximum, as before.
+    * ``target_stock`` falls back to the measured maximum and then to the
+      measured minimum, as before. It is absent only when none of the three was
+      measured -- and then it says so instead of reporting ``0``.
+
+    Rows with no SKU are skipped: there is nothing to key them to.
     """
-    if isinstance(csv_content, str):
-        f = io.StringIO(csv_content)
-    else:
-        f = csv_content
+    f = io.StringIO(csv_content) if isinstance(csv_content, str) else csv_content
 
-    reader = csv.DictReader(f)
     reorders = []
-    for row in reader:
-        sku = row.get("SKU") or row.get("Variant SKU", "")
-        min_pt = int(row.get("Min Stock") or row.get("Reorder Point", 0))
-        max_pt = int(row.get("Max Stock") or row.get("Target Stock", 0))
-        target = int(row.get("Target Stock") or max_pt or min_pt)
+    for row in csv.DictReader(f):
+        sku, _ = _raw(row, _REORDER_SKU_COLUMNS)
+        if not sku:
+            continue
 
-        if sku:
-            reorders.append(
-                StockyReorderPoint(
-                    sku=str(sku),
-                    min_reorder_point=min_pt,
-                    max_reorder_point=max_pt,
-                    target_stock=target,
-                )
+        min_pt, min_reason = _as_int(*_raw(row, _REORDER_MIN_COLUMNS), "el minimo de reorden")
+        max_pt, max_reason = _as_int(*_raw(row, _REORDER_MAX_COLUMNS), "el maximo de reorden")
+        target, target_reason = _as_int(*_raw(row, _REORDER_TARGET_COLUMNS), "el stock objetivo")
+
+        if target is None:
+            derivado = max_pt if max_pt is not None else min_pt
+            if derivado is not None:
+                target, target_reason = derivado, None
+
+        reorders.append(
+            StockyReorderPoint(
+                sku=str(sku),
+                min_reorder_point=min_pt,
+                max_reorder_point=max_pt,
+                target_stock=target,
+                absences=_absences({
+                    "min_reorder_point": min_reason,
+                    "max_reorder_point": max_reason,
+                    "target_stock": target_reason,
+                }),
             )
+        )
     return reorders
 
 
