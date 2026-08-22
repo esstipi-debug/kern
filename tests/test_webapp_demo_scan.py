@@ -279,3 +279,20 @@ def test_lead_reports_dir_env_var_is_honored():
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().replace("\\", "/").endswith("/tmp/custom-leads-dir")
+
+
+def test_leads_dir_env_var_is_honored():
+    # Espejo del de arriba, para el OTRO almacen de leads. LEADS_DIR no tenia
+    # override y por tanto el ledger de leads -- que es PII y es la unica prueba
+    # de que alguien uso el embudo -- vivia en el filesystem efimero de la
+    # Machine y se perdia en cada deploy, sin forma de apuntarlo al volumen.
+    code = "from webapp.app import LEADS_DIR; print(LEADS_DIR)"
+    env = {**os.environ, "LINCHPIN_LEADS_DIR": "/tmp/custom-leads-ledger", "PYTHONPATH": "."}
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(appmod._REPO_ROOT),
+        env=env,
+        capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().replace("\\", "/").endswith("/tmp/custom-leads-ledger")
