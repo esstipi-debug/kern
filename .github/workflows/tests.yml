@@ -67,15 +67,38 @@ jobs:
       - name: Record the resolved dependency set
         run: pip freeze
 
+      # `.`, not a path list. The list said `packs src tests examples`, which left
+      # `scm_agent/` (20 modules) and `jobs/` (79) -- the two packages the agent
+      # itself lives in -- entirely outside the only lint gate this repo has,
+      # together with `webapp/`, `scripts/`, `warehouse/`, `odoo_addon/` and
+      # `knowledge/`. A list has to be edited every time a package appears and
+      # NOTHING fails when it is not: that is how those six went missing without
+      # a single red run. `.` cannot drift.
+      #
+      # Measured on a clean checkout of dfaffb7 before widening: the whole repo
+      # was one I001 away from clean (webapp/security.py, fixed in this same
+      # commit), so this costs no cleanup and no new ignores. Ruff already
+      # honours .gitignore plus its own default excludes, so generated trees
+      # (output/, deliverables/, graphify-out/, .venv/) stay out on their own.
+      # tests/test_ci_lint_and_coverage_scope.py fails if a package with tracked
+      # .py ever falls outside this again.
       - name: Lint
-        run: ruff check packs src tests examples
+        run: ruff check .
 
       # nosilo-core is no longer measured here: it lives in its own repo with
       # its own coverage gate. Measuring an installed third-party package from
       # this side would report a number neither repo is responsible for -- and
       # would quietly stop gating the code that gates every write.
+      #
+      # scm_agent/ and jobs/ ARE measured, and were not: the gate read
+      # `--cov=packs --cov=src`, so the orchestrator, the tools, the intent
+      # router and all 79 job modules could go to zero covered lines without
+      # moving the number that blocks the merge. The threshold below is a
+      # measured floor over the WIDER set, not the old one carried over --
+      # softening the gate to fit the new denominator would have been the same
+      # bug with a green tick.
       - name: Run tests with coverage
-        run: pytest tests/ -q --cov=packs --cov=src --cov-report=term-missing --cov-fail-under=80
+        run: pytest tests/ -q --cov=packs --cov=src --cov=scm_agent --cov=jobs --cov-report=term-missing --cov-fail-under=80
         env:
           PYTHONPATH: .
 

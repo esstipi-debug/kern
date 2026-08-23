@@ -230,12 +230,18 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.coverage.run]
-source = ["packs", "src"]
+# Debe coincidir con los `--cov=` del paso "Run tests with coverage" en
+# .github/workflows/tests.yml. Los dos existen porque miden en momentos
+# distintos -- la CI pasa los flags explicitos, un `pytest --cov` local lee esto
+# -- y cuando se despegan, el numero que ve el dev deja de ser el que bloquea el
+# merge. tests/test_ci_lint_and_coverage_scope.py falla si se desincronizan.
+source = ["packs", "src", "scm_agent", "jobs"]
 omit = ["src/__init__.py", "packs/__init__.py"]
 
 [tool.coverage.report]
 show_missing = true
-# Raise over time; current measured coverage is ~90%.
+# Piso medido sobre el conjunto de arriba, no heredado del anterior. Bajarlo para
+# que entre un conjunto mas grande es ablandar la prueba, no medirla.
 fail_under = 80
 
 [tool.ruff]
