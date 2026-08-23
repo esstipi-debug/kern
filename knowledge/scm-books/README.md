@@ -9,7 +9,15 @@ capability↔role atlas**, and a **27th source, supply chain risk & resilience**
 (see below). This is the **domain knowledge** layer for the agent — distinct
 from the repo's `graphify-out/`, which graphs the *code*.
 
-- `graph.json` — 3002 nodes · 6141 links · 202 communities (GraphRAG-ready).
+A **28th source, Kern's own capacity gaps**
+(`documentation/KERN_BRECHAS_DE_CAPACIDAD.md`), was added the same way as #26: eight
+capabilities Kern does *not* have, each bridged to a theory concept that already
+existed here and to the code site where it would land. Like #26 it is an internal
+document listed in `scm_agent/knowledge.py::_INTERNAL_SOURCES`, so it can be searched
+but can never be cited to a client — `tests/test_capacity_gaps_graph.py` enforces that
+adversarially. Ingest it with `python scripts/merge_capacity_gaps.py`.
+
+- `graph.json` — 3019 nodes · 6164 links · 203 communities (GraphRAG-ready).
   `GRAPH_REPORT.md` says 3001 nodes / 6113 edges / 201 communities: graphify builds
   a simple undirected graph, which drops one malformed pre-existing node (a
   `reminder::` node with no `source_file`) and collapses 28 links that share

@@ -66,10 +66,21 @@ STEP_SKIPPED = "skipped"
 # so the pool was pinned at 8. Adding Khan et al. (2022) as source #27 shifted the
 # ranking enough that pool 8 now STARVES four tools that previously had citations
 # (odoo_replenishment, risk, digital_twin, launch_readiness), while the noise
-# threshold rose: measured across all 45 anchored tools on the 3002-node graph,
-# 16 is the exact ceiling -- at 17 data_quality re-admits "Cost of Quality" and
-# "House of Quality". 16 also recovers price_watch, a pre-existing zero.
-# Verify with a full 45-tool sweep, NOT just the package tools: the tools that
+# threshold rose: measured across all 49 anchored tools (citation_gate.TOOL_CONCEPTS
+# -- every registered tool except intake_scan) on the then-3002-node graph, 16 is the
+# exact ceiling -- at 17 data_quality re-admitted "Cost of Quality" and "House of
+# Quality". 16 also recovers price_watch, a pre-existing zero.
+# RE-MEASURED at source #28 (KERN_BRECHAS_DE_CAPACIDAD.md, 3002 -> 3019 nodes): the
+# ceiling did NOT move and nothing regressed. Sweeping all 49 anchored tools at pool
+# 16 on both graphs gives the SAME nine zeros (whatif, org_friction_audit,
+# data_quality, dea, earned_value, learning_curve, cycle_count, slotting,
+# vehicle_routing -- all pre-existing), and one tool gains: abc_xyz 3 -> 4. The
+# pool-17 noise probe no longer reproduces because data_quality now keeps nothing at
+# any pool 15-18, so its two hub citations are not the canary they were. Source #28
+# is internal (_INTERNAL_SOURCES) and filtered inside ground_citations_detailed, but
+# it is filtered AFTER search() ranks, so its nodes can still consume pool slots --
+# which is why this was measured rather than assumed.
+# Verify with a full 49-tool sweep, NOT just the package tools: the tools that
 # silently regressed here were precisely the ones no test covered. See
 # tests/test_packages_citations.py::test_no_anchored_tool_regressed_to_zero.
 # (dea/learning_curve/slotting/vehicle_routing stay zero at any pool -- an
