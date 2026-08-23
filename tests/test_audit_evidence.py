@@ -276,6 +276,40 @@ def test_ipe_attestation_flags_untied_total():
     assert not att.within_tolerance
 
 
+def test_ipe_attestation_without_an_expected_total_is_not_a_pass():
+    """The bait: nothing to tie against must never read as "tied and within tolerance".
+
+    Both tests above hand in an ``expected_total``, so until now the no-total path was
+    unmeasured -- and it returned ``within_tolerance=True`` off a ``tie_difference`` of
+    0.0 that no comparison produced. On a workpaper that renders as "IPE completeness &
+    accuracy: PASS", which is the first thing a PCAOB inspector checks and the exact
+    distinction ``src.deliverable.not_measured`` exists to keep: we looked and it was
+    zero, versus we never looked.
+    """
+    lines = [{"sku": "a", "value": 10.0}, {"sku": "b", "value": 15.0}]
+    att = ipe_attestation(
+        lines, source_label="listing", amount_field="value", tied_to="GL acct 1400",
+    )
+    assert att.tied is False
+    assert att.tie_difference is None
+    assert att.within_tolerance is False
+    # The evidence that IS real survives: the listing was read and totalled.
+    assert att.row_count == 2
+    assert att.control_total == pytest.approx(25.0)
+
+
+def test_ipe_attestation_tied_flag_separates_a_failed_tie_from_no_tie():
+    """A failed tie and an absent tie both refuse, and stay distinguishable."""
+    lines = [{"sku": "a", "value": 10.0}]
+    failed = ipe_attestation(
+        lines, source_label="x", amount_field="value", tied_to="GL", expected_total=12.0,
+    )
+    absent = ipe_attestation(lines, source_label="x", amount_field="value", tied_to="GL")
+    assert failed.within_tolerance is absent.within_tolerance is False
+    assert failed.tied is True and absent.tied is False
+    assert failed.tie_difference == pytest.approx(-2.0) and absent.tie_difference is None
+
+
 # -- evidence / lineage -------------------------------------------------------------- #
 
 

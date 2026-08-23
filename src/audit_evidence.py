@@ -494,9 +494,16 @@ class IpeAttestation:
     row_count: int
     control_total: float
     tied_to: str
-    tie_difference: float
+    tie_difference: float | None
     columns: tuple[str, ...]
     within_tolerance: bool
+    #: Whether an independent figure was actually supplied to tie against. False means
+    #: NOTHING was compared -- ``tie_difference`` is None and ``within_tolerance`` is
+    #: False, because a tolerance you never measured is not a tolerance you met. The
+    #: attestation still records the row count, control total and columns, which is
+    #: real evidence; what it must not do is claim the AS 1105.10 completeness and
+    #: accuracy test happened when no independent total was ever provided.
+    tied: bool = True
 
 
 def ipe_attestation(
@@ -509,12 +516,22 @@ def ipe_attestation(
     tolerance: float = 0.0,
 ) -> IpeAttestation:
     """Build the on-the-workpaper record that company-produced data was tested for completeness
-    and accuracy (row count + control total agreed to an independent figure)."""
+    and accuracy (row count + control total agreed to an independent figure).
+
+    ``expected_total=None`` means no independent figure was supplied, so no test was performed:
+    the result comes back ``tied=False`` with ``tie_difference=None`` and ``within_tolerance``
+    False. It is deliberately NOT a pass. AS 1105.10 requires the auditor to test the accuracy
+    and completeness of company-produced information before relying on it, and an attestation
+    that reports "within tolerance" against nothing is the precise failure PCAOB inspections
+    look for first (memo section 4.3). Callers must branch on ``tied`` before printing any
+    conclusion -- see ``jobs/audit_evidence_job.py``, which turns an untied listing into a
+    declared coverage gap that lowers the deliverable's confidence."""
     if not lines:
         raise ValueError("lines is empty; nothing to attest")
     columns = tuple(sorted(lines[0].keys()))
     control_total = sum(float(r[amount_field]) for r in lines)
-    tie_difference = 0.0 if expected_total is None else control_total - expected_total
+    tied = expected_total is not None
+    tie_difference = None if not tied else control_total - expected_total
     return IpeAttestation(
         source_label=source_label,
         row_count=len(lines),
@@ -522,7 +539,8 @@ def ipe_attestation(
         tied_to=tied_to,
         tie_difference=tie_difference,
         columns=columns,
-        within_tolerance=abs(tie_difference) <= tolerance,
+        within_tolerance=tied and abs(tie_difference) <= tolerance,
+        tied=tied,
     )
 
 

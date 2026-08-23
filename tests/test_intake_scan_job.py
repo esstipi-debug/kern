@@ -316,7 +316,11 @@ def test_healthy_folder_passes_the_gate_and_evaluates_the_declared_tools(tmp_pat
     assert states["abc_xyz"] == RED
     assert states["excess_obsolete"] == RED  # no stock file in this folder
     assert states["risk"] == UNDECLARED
-    assert report.n_tools_evaluated == 4
+    # audit_evidence declared its columns when it was registered (tool #51), so the scan
+    # evaluates it too: RED, because neither fixture carries a valuation column to sample
+    # over. That is the scan doing its job -- naming the one column that would unlock it.
+    assert states["audit_evidence"] == RED
+    assert report.n_tools_evaluated == 5
 
 
 def test_a_master_plus_sales_folder_where_abc_xyz_columns_are_split_across_files(tmp_path):

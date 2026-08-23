@@ -101,7 +101,10 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Live Odoo ERP read plus staged, reversible replenishment writeback."),
     ToolInfo("excel_replenishment", "Excel Replenishment", "Inventory & replenishment", "Plan",
              "Client spreadsheet read plus staged, reversible replenishment writeback."),
-    # -- Inventory control & health (7) --
+    # -- Inventory control & health (8) --
+    ToolInfo("audit_evidence", "Audit-Grade Evidence", "Inventory control & health", "Orchestrate",
+             "Monetary-unit sampling plan over an inventory listing, GL tie-out and a "
+             "re-performable lineage record; hands off to the auditor, never signs."),
     ToolInfo("cycle_count", "Cycle Count", "Inventory control & health", "Plan",
              "Cycle-counting program design by ABC class, tracking inventory record accuracy."),
     ToolInfo("reconciliation", "Reconciliation", "Inventory control & health", "Plan",
