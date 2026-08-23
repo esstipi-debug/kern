@@ -31,7 +31,7 @@ from nosilo_core.guided import (
 
 from src.deliverable import DataSource, Deliverable, Finding, Kpi, days, not_measured, pct, ppm
 from src.export import write_summary_csv
-from src.mcdm import Criterion, RankingResult, award_outcome, topsis_rank
+from src.mcdm import UNMEASURED_CRITERION, Criterion, RankingResult, award_outcome, topsis_rank
 from src.supplier_scorecard import (
     LEAD_TIME_DECLARED,
     LEAD_TIME_MEASURED,
@@ -595,7 +595,7 @@ def run(
         criteria=tuple(measured),
         weights=used,
         ranking=ranking,
-        outcome=award_outcome(ranking, summary=summary),
+        outcome=award_outcome(ranking, summary=summary, unmeasured=tuple(unmeasured)),
         recommended=ranking.best,
         summary=summary,
         notes=tuple(notes or ()),
@@ -714,7 +714,10 @@ def build_deck(
     decided on fewer discriminating criteria than it weighed is less certain than one
     decided on all of them (see src/guided.py::confidence_from_coverage). A criterion
     every supplier tied on (``report.ranking.ignored_criteria``) is a different gap than
-    one this data never measured at all (``report.unmeasured``, disclosed separately below).
+    one this data never measured at all (``report.unmeasured``) -- different penalties,
+    and BOTH counted. They used to be described as different here and then only the first
+    was passed, so a deck built on three of five criteria printed the same confidence as
+    one built on all five, with a clean verify() either way.
     """
     if not report.recommended:
         raise ValueError(
@@ -722,7 +725,8 @@ def build_deck(
         )
     if confidence is None:
         confidence = confidence_from_coverage(
-            ["ignored_criterion"] * len(report.ranking.ignored_criteria),
+            ["ignored_criterion"] * len(report.ranking.ignored_criteria)
+            + [UNMEASURED_CRITERION] * len(report.unmeasured),
             base=_DECK_BASE_CONFIDENCE,
         )
     best = next(c for c in report.scorecards if c.supplier == report.recommended)
