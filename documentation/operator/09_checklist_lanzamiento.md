@@ -17,7 +17,8 @@
 - [ ] Subir una foto a `webapp/static/operator/` (PR) y configurar
       `OPERATOR_PHOTO_URL=/static/operator/<archivo>`
 - [ ] Visitar `https://linchpin.fly.dev/paquetes` en producción y revisar que
-      los 8 paquetes, precios y CTAs se vean bien
+      self-serve (79 / 49-99 / 350-400 / 250-300) esté arriba, el Starter 900
+      en "Con operador", y Scale/Retainer **no** en la grilla fría
 
 ## Distribución (ya preparado, pendiente de tu login — ver [GTM_SUBMISSIONS.md](../GTM_SUBMISSIONS.md))
 
@@ -26,10 +27,11 @@
 - [ ] Reclamar/publicar en Glama
 - [ ] Reclamar/publicar en Smithery
 - [ ] Reclamar/publicar en PulseMCP
-- [ ] Publicar el módulo Odoo en el Apps Store (ver
-      `odoo_addon/19.0/kern_dry_run/` y la sección 5 de
-      `documentation/GTM_SUBMISSIONS.md`, que lista lo que todavía falta:
-      `support` en el manifest, capturas y cover image)
+- [x] Ficha Odoo: `support`, cover, capturas y precio Store **gratis** en
+      `odoo_addon/{17.0,19.0}/kern_dry_run/` (sigue faltando tu login en
+      apps.odoo.com — ver GTM_SUBMISSIONS.md §5)
+- [ ] Publicar el módulo Odoo en el Apps Store (repo
+      `linchpin-odoo-apps`, ramas `17.0`/`19.0`)
 
 ## Funnel demo (E2 — mini-reporte, ya en código)
 

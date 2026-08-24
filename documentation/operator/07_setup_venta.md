@@ -51,6 +51,10 @@ cuenta del honorario final si preferís cobrar un adelanto simbólico.
    | Paquete | Variable |
    |---|---|
    | Diagnóstico de Arranque | `STRIPE_LINK_DIAGNOSTICO_ARRANQUE` |
+   | Starter Mass | `STRIPE_LINK_STARTER_MASS` |
+   | Kern Alerts | `STRIPE_LINK_KERN_ALERTS` |
+   | Chequeo de migracion Stocky | `STRIPE_LINK_CHEQUEO_STOCKY` |
+   | Starter LatAm | `STRIPE_LINK_STARTER_FUNDAMENTOS_LATAM` |
    | Starter — Fundamentos de Inventario | `STRIPE_LINK_STARTER_FUNDAMENTOS` |
    | Growth — Operación Completa de SC | `STRIPE_LINK_GROWTH_OPERACION` |
    | Scale — Red, S&OP y Mando Ejecutivo | `STRIPE_LINK_SCALE_RED_SOP` |

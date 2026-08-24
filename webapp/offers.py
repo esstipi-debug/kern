@@ -6,6 +6,16 @@ documentation/paquetes/README.md) - extracted here ONCE into a structured form s
 sales routes never re-derive or duplicate that prose. The full one-pager copy stays
 exclusively in documentation/paquetes/*.md; GET /paquetes/{slug} fetches it, it is
 never copied into this module.
+
+``lane`` is the cold-catalog filter:
+- ``self_serve`` -- app-store / CSV prices (Gratis, Alerts, Starter Mass, Chequeo
+  Stocky, Starter LatAm). Shown first on /paquetes. This is what Shopify and
+  Odoo listings must match.
+- ``operator`` -- human-in-the-loop retainers (Diagnostico, Starter 900, Growth,
+  Liquidacion, Posicion de precios). Shown on /paquetes under a separate heading.
+- ``upgrade`` -- Scale, Retainer, proyectos de red/sourcing. Detail URLs still
+  work; they are never listed on the cold /paquetes grid (0 paying clients,
+  those tickets are not an entry offer).
 """
 
 from __future__ import annotations
@@ -13,6 +23,11 @@ from __future__ import annotations
 import os
 import urllib.parse
 from dataclasses import dataclass
+
+LANE_SELF_SERVE = "self_serve"
+LANE_OPERATOR = "operator"
+LANE_UPGRADE = "upgrade"
+COLD_LANES = (LANE_SELF_SERVE, LANE_OPERATOR)
 
 
 @dataclass(frozen=True)
@@ -24,6 +39,7 @@ class Offer:
     recibe: str
     para_quien: str
     md_file: str
+    lane: str
 
     @property
     def stripe_env_var(self) -> str:
@@ -33,15 +49,6 @@ class Offer:
 
 OFFERS: tuple[Offer, ...] = (
     Offer(
-        slug="diagnostico-arranque",
-        name="Diagnostico de Arranque",
-        price="USD 1.500-2.500 unico",
-        cadence="Unico, sprint de 2 semanas",
-        recibe="4 tools: data_quality, abc_xyz, excess_obsolete, financial_kpis",
-        para_quien="Primer contacto, cero confianza construida",
-        md_file="diagnostico-arranque.md",
-    ),
-    Offer(
         slug="gratis",
         name="Gratis — Prueba sin permiso",
         price="USD 0 para siempre (100 SKUs, 1 archivo, watermark)",
@@ -49,6 +56,20 @@ OFFERS: tuple[Offer, ...] = (
         recibe="3 tools: data_quality (intake_scan), abc_xyz, forecast — 1 Excel de muestra precargado, sin tarjeta",
         para_quien="Quiere probar Kern sin hablar con nadie ni pasar tarjeta",
         md_file="gratis.md",
+        lane=LANE_SELF_SERVE,
+    ),
+    Offer(
+        slug="kern-alerts",
+        name="Kern Alerts",
+        price="USD 49/mes (hasta 1.000 SKUs, 1 ubic.) o USD 99/mes (hasta 5.000 SKUs, multi)",
+        cadence="Mensual, 100% software (solo notifica)",
+        recibe=(
+            "3 monitores: rop_breach, stockout_projected, excess_growing — cantidad sugerida "
+            "con disclaimer; sin writeback, sin revision humana"
+        ),
+        para_quien="Merchant Shopify/Excel que quiere avisos de reorden, no un operador",
+        md_file="kern-alerts.md",
+        lane=LANE_SELF_SERVE,
     ),
     Offer(
         slug="starter-mass",
@@ -58,19 +79,20 @@ OFFERS: tuple[Offer, ...] = (
         recibe="5 tools: data_quality, abc_xyz, forecast, inventory_optimization, excel_replenishment",
         para_quien="Jefe de ops que hoy compra a ojo en Excel, quiere probar sin hablar con nadie",
         md_file="starter-mass.md",
+        lane=LANE_SELF_SERVE,
     ),
     Offer(
-        slug="starter-fundamentos",
-        name="Starter -- Fundamentos de Inventario",
-        price="USD 900/mes (piso ~500 SKUs, +$40/mes cada bloque de 250 SKUs, techo $1.500)",
-        cadence="Mensual, alcance variable por catalogo",
+        slug="chequeo-stocky",
+        name="Chequeo de migracion Stocky",
+        price="USD 350-400 unico",
+        cadence="Unico, operator-run sobre CSV de Stocky",
         recibe=(
-            "15 tools: forecast, abc_xyz, whatif, inventory_optimization, newsvendor, "
-            "excel_replenishment, cycle_count, data_quality, pricing, excess_obsolete, "
-            "financial_kpis, reconciliation, landed_cost, returns, risk"
+            "Veredicto Stocky vs Shopify-nativo (OCs, proveedores, reorden, forecast) + "
+            "auditoria del maestro de SKUs; read-only, sin API Shopify"
         ),
-        para_quien='E-commerce/distribuidor mono-almacen, USD 1-10M, compra "a ojo" en Excel',
-        md_file="starter-fundamentos.md",
+        para_quien="Tienda Shopify que usaba Stocky (cierre 31-ago-2026) y necesita reemplazo honesto",
+        md_file="chequeo-stocky.md",
+        lane=LANE_SELF_SERVE,
     ),
     Offer(
         slug="starter-fundamentos-latam",
@@ -85,6 +107,31 @@ OFFERS: tuple[Offer, ...] = (
                    "en Excel -- alcance de entrega mas liviano que el Starter Anglosfera, no el "
                    "mismo producto mas barato",
         md_file="starter-fundamentos-latam.md",
+        lane=LANE_SELF_SERVE,
+    ),
+    Offer(
+        slug="diagnostico-arranque",
+        name="Diagnostico de Arranque",
+        price="USD 1.500-2.500 unico",
+        cadence="Unico, sprint de 2 semanas",
+        recibe="4 tools: data_quality, abc_xyz, excess_obsolete, financial_kpis",
+        para_quien="Primer contacto, cero confianza construida",
+        md_file="diagnostico-arranque.md",
+        lane=LANE_OPERATOR,
+    ),
+    Offer(
+        slug="starter-fundamentos",
+        name="Starter -- Fundamentos de Inventario",
+        price="USD 900/mes (piso ~500 SKUs, +$40/mes cada bloque de 250 SKUs, techo $1.500)",
+        cadence="Mensual, alcance variable por catalogo",
+        recibe=(
+            "15 tools: forecast, abc_xyz, whatif, inventory_optimization, newsvendor, "
+            "excel_replenishment, cycle_count, data_quality, pricing, excess_obsolete, "
+            "financial_kpis, reconciliation, landed_cost, returns, risk"
+        ),
+        para_quien='E-commerce/distribuidor mono-almacen, USD 1-10M, compra "a ojo" en Excel -- con operador',
+        md_file="starter-fundamentos.md",
+        lane=LANE_OPERATOR,
     ),
     Offer(
         slug="growth-operacion",
@@ -97,46 +144,7 @@ OFFERS: tuple[Offer, ...] = (
         ),
         para_quien="Empresa en crecimiento, multi-almacen/canal, con o migrando a ERP (Odoo)",
         md_file="growth-operacion.md",
-    ),
-    Offer(
-        slug="scale-red-sop",
-        name="Scale -- Red, S&OP y Mando Ejecutivo",
-        price="USD 3.200/mes (flat)",
-        cadence="Quincenal + S&OP mensual",
-        recibe=(
-            "Las 35 tools del catalogo completo (+ facility_location, transportation, "
-            "warehouse_layout, slotting, queuing, scheduling, sop, earned_value, leadership_chain)"
-        ),
-        para_quien="Mid-market con red real (2+ plantas/CDs)",
-        md_file="scale-red-sop.md",
-    ),
-    Offer(
-        slug="retainer-ejecutivo",
-        name="Retainer Ejecutivo Fraccional",
-        price="USD 4.500/mes (flat = Scale x 1.4)",
-        cadence="Mensual + cadencia semanal + escalamiento con SLA",
-        recibe="Mismas 35 tools de Scale -- la diferencia es gobierno, no capacidad",
-        para_quien="Upgrade para un cliente Scale existente (6-18 meses en Scale), mandato de "
-                   "VP/COO fraccional -- no se vende en frio como opcion de entrada",
-        md_file="retainer-ejecutivo.md",
-    ),
-    Offer(
-        slug="proyecto-red-almacen",
-        name="Proyecto de Red, Almacen y Operacion",
-        price="USD 8.000-18.000 unico",
-        cadence="Unico, 4-8 semanas",
-        recibe="6 tools: facility_location, transportation, warehouse_layout, slotting, queuing, scheduling",
-        para_quien="Inflexion estructural: nueva bodega, rediseno de red/almacen",
-        md_file="proyecto-red-almacen.md",
-    ),
-    Offer(
-        slug="proyecto-sourcing",
-        name="Proyecto de Sourcing y Costo de Importacion",
-        price="USD 5.000-10.000 unico",
-        cadence="Unico, recurrible trimestral/anual",
-        recibe="3 tools: sourcing, landed_cost, acceptance_sampling",
-        para_quien="Importadores / manufactura offshore",
-        md_file="proyecto-sourcing.md",
+        lane=LANE_OPERATOR,
     ),
     Offer(
         slug="sprint-liquidacion",
@@ -150,6 +158,7 @@ OFFERS: tuple[Offer, ...] = (
         para_quien="Stock muerto/excedente ya diagnosticado, decidido a liquidar -- "
                    "no quiere pagar un fee fijo por algo que todavia no se recupero",
         md_file="sprint-liquidacion.md",
+        lane=LANE_OPERATOR,
     ),
     Offer(
         slug="diagnostico-posicion-precios",
@@ -160,6 +169,51 @@ OFFERS: tuple[Offer, ...] = (
         para_quien="Vende productos comparables online, quiere saber donde esta caro/barato "
                    "frente a la competencia con evidencia trazable, sin monitoreo continuo todavia",
         md_file="diagnostico-posicion-precios.md",
+        lane=LANE_OPERATOR,
+    ),
+    Offer(
+        slug="scale-red-sop",
+        name="Scale -- Red, S&OP y Mando Ejecutivo",
+        price="USD 3.200/mes (flat)",
+        cadence="Quincenal + S&OP mensual",
+        recibe=(
+            "Las 35 tools del catalogo completo (+ facility_location, transportation, "
+            "warehouse_layout, slotting, queuing, scheduling, sop, earned_value, leadership_chain)"
+        ),
+        para_quien="Mid-market con red real (2+ plantas/CDs) -- no se vende en frio",
+        md_file="scale-red-sop.md",
+        lane=LANE_UPGRADE,
+    ),
+    Offer(
+        slug="retainer-ejecutivo",
+        name="Retainer Ejecutivo Fraccional",
+        price="USD 4.500/mes (flat = Scale x 1.4)",
+        cadence="Mensual + cadencia semanal + escalamiento con SLA",
+        recibe="Mismas 35 tools de Scale -- la diferencia es gobierno, no capacidad",
+        para_quien="Upgrade para un cliente Scale existente (6-18 meses en Scale), mandato de "
+                   "VP/COO fraccional -- no se vende en frio como opcion de entrada",
+        md_file="retainer-ejecutivo.md",
+        lane=LANE_UPGRADE,
+    ),
+    Offer(
+        slug="proyecto-red-almacen",
+        name="Proyecto de Red, Almacen y Operacion",
+        price="USD 8.000-18.000 unico",
+        cadence="Unico, 4-8 semanas",
+        recibe="6 tools: facility_location, transportation, warehouse_layout, slotting, queuing, scheduling",
+        para_quien="Inflexion estructural: nueva bodega, rediseno de red/almacen -- cotizacion, no menu frio",
+        md_file="proyecto-red-almacen.md",
+        lane=LANE_UPGRADE,
+    ),
+    Offer(
+        slug="proyecto-sourcing",
+        name="Proyecto de Sourcing y Costo de Importacion",
+        price="USD 5.000-10.000 unico",
+        cadence="Unico, recurrible trimestral/anual",
+        recibe="3 tools: sourcing, landed_cost, acceptance_sampling",
+        para_quien="Importadores / manufactura offshore -- cotizacion, no menu frio",
+        md_file="proyecto-sourcing.md",
+        lane=LANE_UPGRADE,
     ),
 )
 
@@ -168,6 +222,15 @@ _OFFERS_BY_SLUG: dict[str, Offer] = {offer.slug: offer for offer in OFFERS}
 
 def get_offer(slug: str) -> Offer | None:
     return _OFFERS_BY_SLUG.get(slug)
+
+
+def catalog_offers() -> tuple[Offer, ...]:
+    """Offers listed on the cold /paquetes grid (self-serve + operator)."""
+    return tuple(offer for offer in OFFERS if offer.lane in COLD_LANES)
+
+
+def offers_in_lane(lane: str) -> tuple[Offer, ...]:
+    return tuple(offer for offer in OFFERS if offer.lane == lane)
 
 
 @dataclass(frozen=True)

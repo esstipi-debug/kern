@@ -7,15 +7,26 @@ está escrito para **enviarse tal cual a un prospecto**:
 
 | # | Paquete | Precio | Cadencia | One-pager |
 |---|---|---|---|---|
+| A | **Gratis** | USD 0 (100 SKUs, watermark) | Siempre | [gratis.md](gratis.md) |
+| B | **Kern Alerts** | USD 49 / 99 mes | Mensual, solo notifica | [kern-alerts.md](kern-alerts.md) |
+| C | **Starter Mass** | USD 79/mes (techo 290) | Mensual self-serve | [starter-mass.md](starter-mass.md) |
+| D | **Chequeo Stocky** | USD 350–400 único | CSV, operator-run | [chequeo-stocky.md](chequeo-stocky.md) |
+| 2L | **Starter LatAm** | USD 250–300/mes | Mensual, 8 tools | [starter-fundamentos-latam.md](starter-fundamentos-latam.md) |
 | 1 | **Diagnóstico de Arranque** | USD 1.500–2.500 único | Sprint de 2 semanas | [diagnostico-arranque.md](diagnostico-arranque.md) |
-| 2 | **Starter — Fundamentos de Inventario** | USD 900/mes (piso, techo 1.500) | Mensual, alcance variable por catálogo | [starter-fundamentos.md](starter-fundamentos.md) |
+| 2 | **Starter — Fundamentos de Inventario** | USD 900/mes (piso, techo 1.500) | Mensual, con operador | [starter-fundamentos.md](starter-fundamentos.md) |
 | 3 | **Growth — Operación Completa de SC** | USD 1.500/mes (piso, techo 3.200) | Mensual + QBR trimestral | [growth-operacion.md](growth-operacion.md) |
-| 4 | **Scale — Red, S&OP y Mando Ejecutivo** | USD 3.200/mes (flat) | Quincenal + S&OP mensual | [scale-red-sop.md](scale-red-sop.md) |
-| 5 | **Retainer Ejecutivo Fraccional** | USD 4.500/mes (flat, solo upgrade) | Mensual + semanal + SLA | [retainer-ejecutivo.md](retainer-ejecutivo.md) |
-| 6 | **Proyecto de Red, Almacén y Operación** | USD 8.000–18.000 único | Proyecto, 4–8 semanas | [proyecto-red-almacen.md](proyecto-red-almacen.md) |
-| 7 | **Proyecto de Sourcing y Costo de Importación** | USD 5.000–10.000 único | Proyecto, recurrible trimestral/anual | [proyecto-sourcing.md](proyecto-sourcing.md) |
 | 8 | **Sprint de Liquidación** | 10–20% del cash recuperado (piso USD 1.500) | Sprint de 2–3 semanas | [sprint-liquidacion.md](sprint-liquidacion.md) |
 | 9 | **Diagnóstico de Posición de Precios** | USD 2.000–3.500 único | Sprint de 2 semanas (one-shot) | [diagnostico-posicion-precios.md](diagnostico-posicion-precios.md) |
+
+Scale, Retainer y los proyectos de red/sourcing **existen** (one-pagers abajo)
+pero `lane=upgrade`: no salen en la grilla fría de `/paquetes`.
+
+| # | Paquete (upgrade, no frío) | Precio | One-pager |
+|---|---|---|---|
+| 4 | **Scale — Red, S&OP y Mando Ejecutivo** | USD 3.200/mes (flat) | [scale-red-sop.md](scale-red-sop.md) |
+| 5 | **Retainer Ejecutivo Fraccional** | USD 4.500/mes (flat, solo upgrade) | [retainer-ejecutivo.md](retainer-ejecutivo.md) |
+| 6 | **Proyecto de Red, Almacén y Operación** | USD 8.000–18.000 único | [proyecto-red-almacen.md](proyecto-red-almacen.md) |
+| 7 | **Proyecto de Sourcing y Costo de Importación** | USD 5.000–10.000 único | [proyecto-sourcing.md](proyecto-sourcing.md) |
 
 Nota: Scale (4) y Retainer Ejecutivo (5) corren el **mismo** catálogo completo
 de 35 herramientas — el brief es explícito en que la diferencia es gobierno

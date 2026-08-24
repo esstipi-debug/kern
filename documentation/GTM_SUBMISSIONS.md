@@ -81,19 +81,19 @@ no importa para la ficha). Rama `17.0` ya preparada; hay que crear la rama `19.0
 5. Set the price (OPL-1 -> de pago es la norma; minimo 9 EUR, y solo se aceptan
    EUR/USD) y publicar.
 
-**Antes de publicar, lo que todavia falta** (verificado contra las reglas vigentes
-del Store, 2026-08-19):
+**Antes de publicar, listing assets (este repo, 2026-08-24):**
 
-- `"support"`: falta en el manifest. Es el mail de reclamos, obligatorio de facto
-  para apps de pago (se muestra solo a compradores). Decidir cual usar.
-- **Capturas de pantalla**: una app de pago sin capturas de sus funcionalidades
-  puede ser despublicada. `index.html` hoy no tiene ninguna.
-- **Cover image**: `"images"` apunta al icono. El ranking de la ficha penaliza
-  "missing cover image"; icono y cover son cosas distintas.
-- `"name"`: "Kern Inventory AI" cumple el limite de 25 caracteres, pero la guia
-  pide evitar el nombre de la empresa en el titulo. Riesgo bajo, decision del duenio.
-- Un error de manifest **despublica todos los modulos del repositorio**, no solo
-  el roto. Revisar el scan despues de cada push.
+- `"support"`: `https://linchpin.fly.dev/paquetes` en ambos manifests.
+- **Capturas**: `screenshot_wizard.png` + `screenshot_result.png` (mockups del
+  wizard real, no una db live). Tambien incrustadas en `index.html`.
+- **Cover**: `static/description/cover.png` es el primer item de `"images"`;
+  `icon.png` queda como icono del modulo.
+- **Precio Store**: sin clave `price` = **gratis** (anzuelo). Los retainers se
+  venden fuera del Store.
+- Regenerar imagenes: `python scripts/gen_odoo_listing_assets.py`.
+
+Publicar sigue siendo tu login en apps.odoo.com (pasos 1-5 arriba). Un error de
+manifest **despublica todos los modulos del repositorio**.
 
 Keeping the store repo in sync after module changes in the main repo:
 

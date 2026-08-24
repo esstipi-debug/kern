@@ -1,7 +1,7 @@
 """Server-rendered HTML for GET /paquetes and GET /paquetes/{slug}.
 
-/paquetes renders the 7-offer grid straight from webapp/offers.py (structured
-data only -- no prose duplicated here). /paquetes/{slug} renders a shell that
+/paquetes renders the cold catalog from webapp/offers.py (self-serve + operator
+lanes; upgrade-lane offers are omitted). /paquetes/{slug} renders a shell that
 fetches the real one-pager markdown from the mounted /paquetes-docs/ and
 converts it client-side with the already-vendored marked.min.js, the same
 pattern proven by webapp/static/operator/index.html.
@@ -12,6 +12,9 @@ from __future__ import annotations
 from html import escape
 
 from webapp.offers import (
+    LANE_OPERATOR,
+    LANE_SELF_SERVE,
+    LANE_UPGRADE,
     Offer,
     is_safe_external_url,
     is_safe_same_origin_or_external_url,
@@ -282,36 +285,58 @@ _ROI_BANNER_SCRIPT = """
 """
 
 
+def _offer_card(offer: Offer) -> tuple[str, bool]:
+    band_picker_html = _band_picker_widget(offer)
+    html = (
+        '<div class="card">'
+        f'<h3>{escape(offer.name)}</h3>'
+        f'<div class="price">{escape(offer.price)}</div>'
+        f'<div class="cadence">{escape(offer.cadence)}</div>'
+        f'<p class="field"><b>Recibe:</b> {escape(offer.recibe)}</p>'
+        f'<p class="field"><b>Para quien:</b> {escape(offer.para_quien)}</p>'
+        f'<div class="card-cta">{_cta_buttons(offer)}</div>'
+        f'<a class="detail-link" href="/paquetes/{escape(offer.slug)}">Ver detalle &rarr;</a>'
+        f"{band_picker_html}"
+        "</div>"
+    )
+    return html, bool(band_picker_html)
+
+
 def render_index_html(offers: tuple[Offer, ...], profile: OperatorProfile) -> str:
-    cards = []
+    # Upgrade-lane retainers (Scale, ejecutivo, proyectos de red) stay
+    # reachable at /paquetes/{slug} but are not a cold entry offer.
+    visible = [offer for offer in offers if offer.lane != LANE_UPGRADE]
+    self_serve = [offer for offer in visible if offer.lane == LANE_SELF_SERVE]
+    operator = [offer for offer in visible if offer.lane == LANE_OPERATOR]
     has_band_picker = False
-    for offer in offers:
-        band_picker_html = _band_picker_widget(offer)
-        has_band_picker = has_band_picker or bool(band_picker_html)
-        cards.append(
-            '<div class="card">'
-            f'<h3>{escape(offer.name)}</h3>'
-            f'<div class="price">{escape(offer.price)}</div>'
-            f'<div class="cadence">{escape(offer.cadence)}</div>'
-            f'<p class="field"><b>Recibe:</b> {escape(offer.recibe)}</p>'
-            f'<p class="field"><b>Para quien:</b> {escape(offer.para_quien)}</p>'
-            f'<div class="card-cta">{_cta_buttons(offer)}</div>'
-            f'<a class="detail-link" href="/paquetes/{escape(offer.slug)}">Ver detalle &rarr;</a>'
-            f"{band_picker_html}"
-            "</div>"
-        )
+    self_cards: list[str] = []
+    for offer in self_serve:
+        card, picked = _offer_card(offer)
+        self_cards.append(card)
+        has_band_picker = has_band_picker or picked
+    op_cards: list[str] = []
+    for offer in operator:
+        card, picked = _offer_card(offer)
+        op_cards.append(card)
+        has_band_picker = has_band_picker or picked
     body = (
         _HEAD.format(title="Paquetes - Kern")
         + '<section style="padding-bottom:6px">'
         + '<span class="eyebrow">Paquetes comerciales</span>'
         + '<h1 style="margin-top:12px">Kern produce, vos vendes y firmas</h1>'
-        + '<p class="sub" style="max-width:70ch;margin-top:10px">8 paquetes '
-        + "(7 de alcance fijo, 1 de precio contingente), cada uno un conjunto de "
-        + "herramientas del motor -- nunca una sola tool suelta. "
-        + "Cada resultado sale citado contra la base de conocimiento y pasa un gate de QA "
-        + "antes de entregarse.</p>"
+        + '<p class="sub" style="max-width:70ch;margin-top:10px">'
+        + "En la tienda (Odoo / Shopify / CSV) el precio es de software: "
+        + "Gratis, Alerts USD 49-99, Starter Mass USD 79, Chequeo Stocky USD 350-400, "
+        + "LatAm USD 250-300. El Starter de USD 900 y Growth son servicio con operador "
+        + "-- una persona revisa, no solo codigo corriendo. Scale y retainer no se "
+        + "cotizan en frio.</p>"
         + _ROI_BANNER_HTML
-        + f'<div class="grid">{"".join(cards)}</div>'
+        + '<h2 style="margin:28px 0 4px">Self-serve / tiendas</h2>'
+        + '<p class="muted" style="margin:0 0 8px;font-size:13.5px">Ancla de Prediko/Genie/Cogsy: USD 49-199. Sin humano en el loop.</p>'
+        + f'<div class="grid">{"".join(self_cards)}</div>'
+        + '<h2 style="margin:36px 0 4px">Con operador</h2>'
+        + '<p class="muted" style="margin:0 0 8px;font-size:13.5px">Retainers de inventario. El precio sube porque hay una persona pensando.</p>'
+        + f'<div class="grid">{"".join(op_cards)}</div>'
         + "</section>"
         + _operator_block(profile)
         + _ROI_BANNER_SCRIPT

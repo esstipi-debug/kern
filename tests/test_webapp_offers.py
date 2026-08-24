@@ -5,7 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from webapp.offers import (
+    LANE_SELF_SERVE,
+    LANE_UPGRADE,
     OFFERS,
+    catalog_offers,
     get_offer,
     is_safe_external_url,
     is_safe_same_origin_or_external_url,
@@ -17,8 +20,34 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_ten_official_packages_present() -> None:
-    assert len(OFFERS) == 12
-    assert len({offer.slug for offer in OFFERS}) == 12  # slugs unique
+    assert len(OFFERS) == 14
+    assert len({offer.slug for offer in OFFERS}) == 14  # slugs unique
+    assert len(catalog_offers()) == 10
+    assert all(offer.lane != LANE_UPGRADE for offer in catalog_offers())
+
+
+def test_storefront_lane_carries_app_store_prices() -> None:
+    alerts = get_offer("kern-alerts")
+    check = get_offer("chequeo-stocky")
+    mass = get_offer("starter-mass")
+    assert alerts is not None and check is not None and mass is not None
+    assert alerts.lane == LANE_SELF_SERVE
+    assert check.lane == LANE_SELF_SERVE
+    assert "49" in alerts.price and "99" in alerts.price
+    assert "350" in check.price and "400" in check.price
+    assert "79" in mass.price
+
+
+def test_upgrade_lane_is_not_a_cold_entry() -> None:
+    for slug in (
+        "scale-red-sop",
+        "retainer-ejecutivo",
+        "proyecto-red-almacen",
+        "proyecto-sourcing",
+    ):
+        offer = get_offer(slug)
+        assert offer is not None
+        assert offer.lane == LANE_UPGRADE
 
 
 def test_get_offer_returns_starter_fundamentos_latam() -> None:

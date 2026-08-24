@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from html import escape
 
-from webapp.offers import OFFERS, get_offer
+from webapp.offers import OFFERS, catalog_offers, get_offer
 from webapp.operator_profile import OperatorProfile
 from webapp.paquetes_page import render_index_html, render_offer_html
 
@@ -19,11 +19,14 @@ _PROFILE = OperatorProfile(
 
 def test_index_lists_all_seven_offers_with_price_and_cadence() -> None:
     html = render_index_html(OFFERS, _PROFILE)
-    for offer in OFFERS:
+    for offer in catalog_offers():
         assert escape(offer.name) in html
         assert escape(offer.price) in html
         assert escape(offer.cadence) in html
         assert f"/paquetes/{offer.slug}" in html
+    for offer in OFFERS:
+        if offer.lane == "upgrade":
+            assert f"/paquetes/{offer.slug}" not in html
 
 
 def test_index_shows_operator_name_and_bio() -> None:
@@ -73,7 +76,7 @@ def test_index_cta_degrades_to_mailto_without_env_vars(monkeypatch) -> None:
         monkeypatch.delenv(offer.stripe_env_var, raising=False)
     monkeypatch.delenv("CALENDLY_URL", raising=False)
     html = render_index_html(OFFERS, _PROFILE)
-    assert html.count("mailto:") == len(OFFERS) * 2  # agendar + pagar per offer
+    assert html.count("mailto:") == len(catalog_offers()) * 2  # agendar + pagar per visible offer
 
 
 def test_offer_page_embeds_fetch_of_its_own_md_file() -> None:
@@ -101,13 +104,14 @@ def test_index_shows_band_picker_widget_on_gmv_band_offers() -> None:
     gmv_band = {
         "starter-fundamentos": "starter",
         "growth-operacion": "growth",
-        "scale-red-sop": "scale",
     }
     for slug, package_key in gmv_band.items():
         assert f'data-slug="{slug}"' in html
         assert f'data-package="{package_key}"' in html
     assert "/api/pricing-quote" in html
     assert "Calcular" in html
+    # Scale is upgrade-lane: no card, so no band-picker on the cold index.
+    assert 'data-slug="scale-red-sop"' not in html
 
 
 def test_index_omits_band_picker_widget_on_non_gmv_band_offers() -> None:
@@ -134,7 +138,7 @@ def test_index_band_picker_is_additive_static_price_string_unchanged() -> None:
     """The band-picker widget must be purely additive: every offer's existing
     static escape(offer.price) anchor still renders, byte-for-byte, unchanged."""
     html = render_index_html(OFFERS, _PROFILE)
-    for offer in OFFERS:
+    for offer in catalog_offers():
         assert f'<div class="price">{escape(offer.price)}</div>' in html
 
 
@@ -148,3 +152,17 @@ def test_offer_page_inline_script_has_balanced_braces() -> None:
     inline_script = html.split("<script>", 1)[1].split("</script>", 1)[0]
     assert inline_script.count("{") == inline_script.count("}")
     assert ".then(function(md){document" in inline_script
+
+
+def test_stocky_landing_uses_app_store_prices_not_operator_starter() -> None:
+    from webapp.stocky_alternative_page import render_stocky_alternative_html
+
+    alerts = get_offer("kern-alerts")
+    check = get_offer("chequeo-stocky")
+    html = render_stocky_alternative_html(alerts, check)
+    assert "kern-alerts" in html
+    assert "chequeo-stocky" in html
+    assert "49" in html and "99" in html
+    assert "350" in html
+    assert "/paquetes/starter-fundamentos" not in html
+    assert "USD 900" not in html

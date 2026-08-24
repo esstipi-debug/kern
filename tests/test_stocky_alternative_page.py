@@ -30,8 +30,8 @@ def test_page_names_the_real_shutdown_date_and_offers() -> None:
     resp = client.get("/stocky-alternative")
     body = resp.text
     assert "August 31, 2026" in body
-    starter = get_offer("starter-fundamentos")
-    diagnostico = get_offer("diagnostico-arranque")
+    starter = get_offer("kern-alerts")
+    diagnostico = get_offer("chequeo-stocky")
     assert starter is not None and diagnostico is not None
     assert starter.slug in body
     assert diagnostico.slug in body
@@ -56,7 +56,7 @@ def test_page_contains_valid_faq_jsonld() -> None:
 
 
 def test_page_degrades_cleanly_without_any_sales_env_vars(monkeypatch) -> None:
-    for slug in ("starter-fundamentos", "diagnostico-arranque"):
+    for slug in ("kern-alerts", "chequeo-stocky"):
         offer = get_offer(slug)
         assert offer is not None
         monkeypatch.delenv(offer.stripe_env_var, raising=False)
@@ -68,7 +68,7 @@ def test_page_degrades_cleanly_without_any_sales_env_vars(monkeypatch) -> None:
 
 
 def test_page_uses_configured_stripe_link(monkeypatch) -> None:
-    offer = get_offer("diagnostico-arranque")
+    offer = get_offer("chequeo-stocky")
     assert offer is not None
     monkeypatch.setenv(offer.stripe_env_var, "https://buy.stripe.com/live_test_stocky")
     resp = client.get("/stocky-alternative")

@@ -13,11 +13,11 @@ of the site targets. Reuses the SAME visual system (dark/teal, Inter +
 JetBrains Mono) so a visitor who clicks through to /paquetes or /demo doesn't
 hit a jarring style change.
 
-CTAs point at the two offers that actually replace what Stocky did (demand
-forecasting + reorder points + PO suggestions): "starter-fundamentos" (the
-ongoing replacement) and "diagnostico-arranque" (the low-commitment first
-step) -- both structured, fixed-scope data from webapp/offers.py, no new
-pricing invented here.
+CTAs point at the two Shopify-priced offers that replace what Stocky did
+(demand forecasting + reorder points + low-stock alerts): "kern-alerts"
+(USD 49-99/mo software, T1 notify-only) and "chequeo-stocky" (USD 350-400
+one-time CSV check). The operator Starter at USD 900/mo is not on this
+page -- that price belongs on /one-plan (fractional team vs a hire).
 """
 
 from __future__ import annotations
@@ -144,11 +144,11 @@ _FAQ: tuple[tuple[str, str], ...] = (
     ),
     (
         "Is this another $49-599/month subscription like the other Stocky alternatives?",
-        "Not by default. Most Stocky alternatives are recurring dashboards. Kern's entry "
-        "point is a one-time, fixed-scope diagnostic (no subscription) -- you get a "
-        "citation-backed report and a reversible restock plan, not a login you have to keep "
-        "paying for. An ongoing engagement is available if you want continuous monitoring, "
-        "but it's a choice, not the only option.",
+        "The first step is a one-time Stocky migration check (USD 350-400, CSV only, no "
+        "app install). If you then want ongoing low-stock / ROP alerts, Kern Alerts is "
+        "USD 49/month (or USD 99/month multi-location) -- the same band as Prediko/Genie, "
+        "not a $900 operator retainer. The retainer exists, on a different page, when you "
+        "want a human in the loop.",
     ),
     (
         "What makes the output trustworthy if I've never used Kern before?",
@@ -190,7 +190,7 @@ def _cta_buttons(offer: Offer) -> str:
     )
 
 
-def render_stocky_alternative_html(offer_starter: Offer, offer_diagnostico: Offer) -> str:
+def render_stocky_alternative_html(offer_ongoing: Offer, offer_check: Offer) -> str:
     faq_items = "".join(
         f'<div class="faq-item"><h3>{escape(q)}</h3><p>{escape(a)}</p></div>' for q, a in _FAQ
     )
@@ -211,7 +211,7 @@ def render_stocky_alternative_html(offer_starter: Offer, offer_diagnostico: Offe
     or purchase-order suggestions, you need a replacement before then -- not another
     black-box dashboard, a diagnostic you can actually check the math on.
   </p>
-  <div class="row" style="margin-top:22px">{_cta_buttons(offer_diagnostico)}</div>
+  <div class="row" style="margin-top:22px">{_cta_buttons(offer_check)}</div>
 </section>
 
 <section>
@@ -224,9 +224,9 @@ def render_stocky_alternative_html(offer_starter: Offer, offer_diagnostico: Offe
   </ul>
   <p class="sub" style="margin-top:16px;max-width:62ch">
     A lot of "Stocky alternatives" only really cover the first one. Kern's
-    <a href="/paquetes/starter-fundamentos">Starter package</a> is built to cover all
-    three, plus what-if scenario testing and Excel-native reorder staging if you're not
-    ready to move off spreadsheets entirely.
+    <a href="/paquetes/kern-alerts">Alerts</a> cover the three jobs as software
+    (notify-only). The <a href="/paquetes/chequeo-stocky">Stocky migration check</a>
+    tells you, from your own CSVs, what Shopify native does not cover.
   </p>
 </section>
 
@@ -237,7 +237,7 @@ def render_stocky_alternative_html(offer_starter: Offer, offer_diagnostico: Offe
     <table>
       <thead><tr><th>&nbsp;</th><th>Stocky (retiring)</th><th>Typical alternative</th><th class="col-kern">Kern</th></tr></thead>
       <tbody>
-        <tr><td>Cost</td><td>Free (built into Shopify)</td><td>$49-599/month recurring</td><td class="col-kern">One-time diagnostic, no subscription required</td></tr>
+        <tr><td>Cost</td><td>Free (built into Shopify)</td><td>$49-599/month recurring</td><td class="col-kern">USD 350-400 one-time check, then USD 49-99/mo alerts if you want them</td></tr>
         <tr><td>Setup</td><td>Already installed</td><td>New app install + permissions</td><td class="col-kern">CSV export -- no app, no new Shopify permissions</td></tr>
         <tr><td>Reorder writeback</td><td>Manual, in Shopify admin</td><td>Varies by vendor</td><td class="col-kern">Reversible dry-run staged into your own sheet/system first</td></tr>
         <tr><td>Methodology</td><td>Not published</td><td>Usually a black box</td><td class="col-kern">Cited against a documented model (safety stock, EOQ, ABC-XYZ)</td></tr>
@@ -251,19 +251,20 @@ def render_stocky_alternative_html(offer_starter: Offer, offer_diagnostico: Offe
   <span class="eyebrow">Two ways to start</span>
   <h2 style="margin-top:10px">Pick based on how much certainty you want first</h2>
   <div class="panel" style="margin-top:16px">
-    <h3>{escape(offer_diagnostico.name)}</h3>
-    <p class="sub" style="margin:6px 0 14px">{escape(offer_diagnostico.price)} &middot; {escape(offer_diagnostico.cadence)}
-      &mdash; the lowest-commitment way to see what Kern finds in your own data before
-      deciding on anything ongoing.
-      <a href="/paquetes/{escape(offer_diagnostico.slug)}">Full details &rarr;</a></p>
-    <div class="row">{_cta_buttons(offer_diagnostico)}</div>
+    <h3>{escape(offer_check.name)}</h3>
+    <p class="sub" style="margin:6px 0 14px">{escape(offer_check.price)} &middot; {escape(offer_check.cadence)}
+      &mdash; the lowest-commitment way to see what Shopify native misses in your Stocky
+      export before deciding on anything ongoing.
+      <a href="/paquetes/{escape(offer_check.slug)}">Full details &rarr;</a></p>
+    <div class="row">{_cta_buttons(offer_check)}</div>
   </div>
   <div class="panel" style="margin-top:14px">
-    <h3>{escape(offer_starter.name)}</h3>
-    <p class="sub" style="margin:6px 0 14px">{escape(offer_starter.price)} &middot; {escape(offer_starter.cadence)}
-      &mdash; the direct, ongoing replacement for what Stocky did: forecasting, reorder
-      points, and PO suggestions, plus what-if scenario testing.</p>
-    <div class="row">{_cta_buttons(offer_starter)}</div>
+    <h3>{escape(offer_ongoing.name)}</h3>
+    <p class="sub" style="margin:6px 0 14px">{escape(offer_ongoing.price)} &middot; {escape(offer_ongoing.cadence)}
+      &mdash; ongoing ROP / stockout / excess alerts at app-store prices. No writeback,
+      no operator retainer.
+      <a href="/paquetes/{escape(offer_ongoing.slug)}">Full details &rarr;</a></p>
+    <div class="row">{_cta_buttons(offer_ongoing)}</div>
   </div>
   <p class="sub" style="margin-top:16px">
     Not ready for either? Run the <a href="{demo_scan_href}">free self-serve demo</a> on
@@ -283,7 +284,7 @@ def render_stocky_alternative_html(offer_starter: Offer, offer_diagnostico: Offe
     Whichever way you go, don't wait until Stocky actually stops working to figure out
     the replacement.
   </p>
-  <div class="row" style="justify-content:center">{_cta_buttons(offer_diagnostico)}</div>
+  <div class="row" style="justify-content:center">{_cta_buttons(offer_check)}</div>
 </section>
 """
         + _FOOT

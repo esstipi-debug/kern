@@ -211,6 +211,24 @@ esquiva tratándose como embudo con criterios de corte. Canibalización de un
 Starter hacia Alerts: improbable — Alerts no ejecuta, no revisa, no cubre
 excepciones (la frontera sugerencia/ejecución es la protección).
 
+### Catálogo en frío (2026-08-24) — tienda ≠ operador
+
+`webapp/offers.py` marca cada oferta con `lane`:
+
+- **self_serve** (lo que Odoo Apps / Shopify / CSV deben mostrar): Gratis,
+  Kern Alerts USD 49–99, Starter Mass USD 79, Chequeo Stocky USD 350–400,
+  Starter LatAm USD 250–300.
+- **operator** (humano en el loop): Diagnóstico, Starter USD 900, Growth,
+  Liquidación, Posición de precios. Siguen en `/paquetes` bajo un heading
+  aparte.
+- **upgrade** (Scale USD 3.200, Retainer USD 4.500, proyectos 5–18k): la
+  URL `/paquetes/{slug}` sigue viva; **no** aparecen en la grilla fría.
+
+El módulo Odoo `kern_dry_run` se lista **gratis** en el Apps Store (anzuelo;
+sin `price` en el manifest). Capturas, cover y `support` van en
+`odoo_addon/{17.0,19.0}/kern_dry_run/`. Publicar sigue siendo un login humano
+(`documentation/GTM_SUBMISSIONS.md` §5).
+
 ### Nota — Sección 10: vertical de auditoría (comprador distinto, mayor poder de precio)
 
 Por qué se añade y por qué mueve el techo: las secciones 1–7 le venden al **comprador de

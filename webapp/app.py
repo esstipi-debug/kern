@@ -2408,8 +2408,9 @@ def decisiones_page() -> FileResponse:
 
 @app.get("/paquetes")
 def paquetes_index() -> HTMLResponse:
-    """The 7-package sales grid — structured data from webapp/offers.py, CTAs
-    degrade to mailto when Stripe/Calendly env vars are not configured."""
+    """Cold sales grid from webapp/offers.py (self-serve + operator lanes).
+    Upgrade-lane offers stay off this page. CTAs degrade to mailto when
+    Stripe/Calendly env vars are not configured."""
     return HTMLResponse(render_index_html(OFFERS, get_operator_profile()))
 
 
@@ -2428,24 +2429,23 @@ def paquetes_offer(slug: str) -> HTMLResponse:
 def stocky_alternative_page() -> HTMLResponse:
     """SEO/conversion landing page for the "stocky alternative" search wave --
     Shopify delisted Stocky from the App Store Feb 2026 and shuts it down
-    2026-08-31. Points at the two packages that actually replace Stocky's
-    forecasting/reorder-point/PO-suggestion job (see
-    webapp/stocky_alternative_page.py's module docstring)."""
-    offer_starter = get_offer("starter-fundamentos")
-    offer_diagnostico = get_offer("diagnostico-arranque")
-    assert offer_starter is not None and offer_diagnostico is not None, (
-        "starter-fundamentos/diagnostico-arranque must exist in webapp.offers.OFFERS"
+    2026-08-31. Points at the Shopify-priced offers (Chequeo Stocky USD 350-400
+    + Kern Alerts USD 49-99), not the operator Starter at USD 900."""
+    offer_check = get_offer("chequeo-stocky")
+    offer_alerts = get_offer("kern-alerts")
+    assert offer_check is not None and offer_alerts is not None, (
+        "chequeo-stocky/kern-alerts must exist in webapp.offers.OFFERS"
     )
-    return HTMLResponse(render_stocky_alternative_html(offer_starter, offer_diagnostico))
+    return HTMLResponse(render_stocky_alternative_html(offer_alerts, offer_check))
 
 
 @app.get("/one-plan")
 def one_plan_page() -> HTMLResponse:
     """English AU/NZ agency landing page. Positions Kern as a fractional
     planning team that works demand, stock, purchasing and pricing as a single
-    plan. CTAs into the SAME two real offers the stocky page uses -- no new
-    pricing is authored on the page (see webapp/one_plan_page.py's docstring for
-    the banned-words + fractional-team-economics guardrails)."""
+    plan. CTAs into Diagnostico + operator Starter (fractional-team economics,
+    USD 900/mo vs a loaded planner hire). Shopify storefront pricing lives on
+    /stocky-alternative, not here."""
     offer_starter = get_offer("starter-fundamentos")
     offer_diagnostico = get_offer("diagnostico-arranque")
     assert offer_starter is not None and offer_diagnostico is not None, (
