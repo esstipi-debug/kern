@@ -98,7 +98,7 @@ jobs:
       # softening the gate to fit the new denominator would have been the same
       # bug with a green tick.
       - name: Run tests with coverage
-        run: pytest tests/ -q --cov=packs --cov=src --cov=scm_agent --cov=jobs --cov-report=term-missing --cov-fail-under=80
+        run: pytest tests/ -q --cov=packs --cov=src --cov=scm_agent --cov=jobs --cov-report=term-missing --cov-fail-under=90
         env:
           PYTHONPATH: .
 

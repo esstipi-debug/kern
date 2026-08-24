@@ -47,7 +47,11 @@ WORKFLOW = RAIZ / ".github" / "workflows" / "tests.yml"
 #: Umbral de cobertura por debajo del cual no se baja. Existe para que ampliar
 #: el conjunto medido no se pueda "pagar" bajando el numero: si la cobertura
 #: real cae debajo, la decision es escribir tests, no mover esta constante.
-UMBRAL_MINIMO = 80
+#:
+#: Subio de 80 a 90 el 2026-08-23, por decision explicita y con la medicion
+#: delante (>95% real sobre 29.547 sentencias). 80 era el numero heredado de un
+#: conjunto medido mas chico y dejaba ~15 pp de caida silenciosa.
+UMBRAL_MINIMO = 90
 
 #: Directorios con .py rastreado que NO son codigo despachado y por eso quedan
 #: fuera del lint. Cada uno con su motivo escrito: una exclusion sin motivo es
