@@ -180,7 +180,11 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # safe outcome (see the module docstring), not a bug to "fix" with a
     # closer-sounding but wrong anchor.
     "data_quality": ("step_product_data_standard",),
-    # intake_scan (tool #49, raw-folder data-readiness audit; registered in
+    # intake_scan (tool #50 -- NOT #49: cross_impact and org_friction_audit went in
+    # between, as HANDOFF.md already recorded on 2026-08-03 and this comment did not;
+    # org_friction_audit above is the real #49, so the file carried two of them.
+    # Verified 2026-08-24 against build_default_registry().list(), which is the only
+    # count that cannot go stale. Raw-folder data-readiness audit; registered in
     # Task 7 of the 2026-07-31 intake-scan plan, scm_agent/tools.py) is a
     # DELIBERATE, measured absence from this map, same discipline as data_quality
     # right above. Candidates checked, in order of preference, against the
