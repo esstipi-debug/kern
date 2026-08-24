@@ -286,6 +286,29 @@ class OdooReceipts:
 
 
 @dataclass(frozen=True)
+class OdooLeadTimes:
+    """Lo que `OdooConnector.declared_lead_times()` devuelve: la promesa del ERP,
+    y los SKU sobre los que el ERP no promete nada.
+
+    Misma forma que :class:`OdooReceipts` a proposito -- un hueco que no viaja
+    junto al dato no llega a ninguna pantalla, y ese fue el defecto original.
+    """
+
+    #: SKU -> plazo declarado en dias. Solo los que traen uno utilizable.
+    declared: dict[str, float]
+    #: SKU con linea de proveedor pero sin plazo cargado, ordenados para que el
+    #: aviso no cambie entre corridas.
+    missing: tuple[str, ...]
+    #: Lo que el lector tiene que saber para no sobre-leer el numero.
+    qa_issues: tuple[str, ...]
+
+
+#: Cuantos SKU se nombran en el aviso antes de resumir el resto. Un aviso con
+#: cinco mil codigos no se lee, y uno sin ninguno no es accionable.
+_MAX_SKU_EN_AVISO = 10
+
+
+@dataclass(frozen=True)
 class DraftPOResult:
     """Outcome of staging draft purchase orders: what was created and what couldn't be sourced."""
 
@@ -302,6 +325,28 @@ def _cuenta(valores) -> dict:
     for v in valores:
         salida[v] = salida.get(v, 0) + 1
     return salida
+
+
+def _aviso_plazos(missing: tuple[str, ...], n_con_linea: int) -> tuple[str, ...]:
+    """El aviso de plazos declarados ausentes, o nada si no falta ninguno.
+
+    Vacio cuando no hay SKU sin plazo -- incluido el caso de un Odoo sin ninguna
+    linea de proveedor, que no tiene plazos ausentes sino que no tiene plazos. Un
+    aviso que aparece siempre deja de leerse, que es como se pierde el unico
+    que importaba.
+    """
+    if not missing:
+        return ()
+    nombrados = ", ".join(missing[:_MAX_SKU_EN_AVISO])
+    resto = len(missing) - _MAX_SKU_EN_AVISO
+    if resto > 0:
+        nombrados += f" y {resto} mas"
+    return (
+        f"plazo declarado ausente en {len(missing)} de {n_con_linea} SKU con linea de "
+        f"proveedor ({nombrados}): el ERP no registra cuanto promete el proveedor, asi "
+        "que no se reporta plazo para esos SKU en vez de reportar cero. El plazo "
+        "observado se mide aparte, con receipts().",
+    )
 
 
 def _collapse_shipments(filas: list[dict]) -> list[dict]:
@@ -424,24 +469,69 @@ class OdooConnector:
             quantity=("quantity", "sum"), unit_cost=("unit_cost", "first")
         )
 
-    def lead_times(self) -> dict[str, float]:
-        """Per-SKU purchasing lead time (days) from ``product.supplierinfo.delay``.
+    def declared_lead_times(self) -> OdooLeadTimes:
+        """El plazo DECLARADO por SKU, con los que no lo traen nombrados aparte.
 
-        Feeds the canonical ``lead_time_days`` the inventory engines and the risk-period
-        differentiation already consume. Only variant-scoped supplier lines are mapped.
+        ``product.supplierinfo.delay`` es la **promesa** del proveedor, no una
+        observacion; la contraparte medida es :meth:`receipts`. Alimenta el
+        ``lead_time_days`` canonico que consumen los motores de inventario y la
+        diferenciacion del periodo de riesgo. Solo se mapean las lineas con
+        variante.
+
+        **Un ``delay`` que no supera ``_DECLARED_DELAY_FLOOR`` no se convierte en
+        un plazo.** La conversion original era ``float(r.get("delay") or 0.0)``, y
+        es el mismo defecto que ``src/order_fulfillment.py`` y
+        ``src/supplier_scorecard.py`` ya nombran: una ausencia renderizada como
+        medicion. Duele mas aca que en una tasa, porque un plazo de compra corto
+        no es una lectura neutra sino la mas favorable que existe -- dice que el
+        proveedor entrega casi en el acto, y de ahi sale un buffer que no cubre
+        nada.
+
+        El piso es el mismo que aplica :meth:`receipts` sobre el mismo campo, y
+        por la misma razon: ``delay`` viene con ``default=1`` en Odoo, asi que un
+        1 no es una promesa sino el campo sin configurar, y desde XML-RPC no se
+        distingue del 1 que alguien escribio a mano. Ante dos lecturas posibles
+        se toma la que no baja la proteccion recomendada. Que las dos lecturas
+        del campo compartan la constante es deliberado: dos umbrales distintos
+        para el mismo hecho, en el mismo archivo, es como empiezan a divergir.
+
+        Una segunda linea del mismo SKU con plazo utilizable le gana a una
+        primera sin plazo: una linea que no promete nada no tiene por que tapar
+        a una que si. Antes ganaba siempre la primera que llegara.
         """
         rows = self._rpc.execute_kw(
             _M_SUPPLIERINFO, "search_read", [[]], {"fields": ["product_id", "delay"]}
         )
-        out: dict[str, float] = {}
+        declared: dict[str, float] = {}
+        con_linea: list[str] = []          # orden de aparicion, sin repetir
         for r in rows:
             pid = _m2o_id(r.get("product_id"))
             if pid is None:
                 continue
             sku = self._sku(pid)
-            if sku is not None and sku not in out:
-                out[sku] = float(r.get("delay") or 0.0)
-        return out
+            if sku is None:
+                continue
+            if sku not in con_linea:
+                con_linea.append(sku)
+            if sku in declared:
+                continue
+            dias = float(r.get("delay") or 0.0)
+            if dias > _DECLARED_DELAY_FLOOR:
+                declared[sku] = dias
+        missing = tuple(sorted(s for s in con_linea if s not in declared))
+        return OdooLeadTimes(
+            declared=declared, missing=missing, qa_issues=_aviso_plazos(missing, len(con_linea))
+        )
+
+    def lead_times(self) -> dict[str, float]:
+        """Plazo declarado por SKU, solo para los que el ERP lo trae.
+
+        Accesorio de :meth:`declared_lead_times` para el llamador que solo quiere
+        el diccionario. Un SKU sin plazo cargado **no aparece** en vez de aparecer
+        con cero; el porque, y el hueco que hay que mostrar en su lugar, estan en
+        ese metodo.
+        """
+        return self.declared_lead_times().declared
 
     def receipts(
         self, *, since: str | None = None, unit: str = "shipment", max_moves: int = 20_000
