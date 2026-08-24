@@ -83,8 +83,22 @@ STEP_SKIPPED = "skipped"
 # Verify with a full 49-tool sweep, NOT just the package tools: the tools that
 # silently regressed here were precisely the ones no test covered. See
 # tests/test_packages_citations.py::test_no_anchored_tool_regressed_to_zero.
-# (dea/learning_curve/slotting/vehicle_routing stay zero at any pool -- an
-# anchor-islanding problem pool sizing can't fix, a separate anchor-tightening item.)
+# Nine of the 49 anchored tools returned zero at this pool. Re-measured on the
+# committed 3019-node graph (2026-08-24), that was ONE problem misfiled as another:
+# four of the nine ranked their own anchor at hop 0 as a perfectly on-topic candidate
+# and then lost the whole batch to the MIN_CITATIONS=2 floor -- one survivor, degraded
+# to none. They were a citation short, not starved of theory, and one extra anchor each
+# recovered them: whatif, dea, earned_value, learning_curve (measurements in
+# citation_gate.TOOL_CONCEPTS).
+# The five that stay zero do so for two DIFFERENT reasons, both written down there and
+# pinned in tests/test_packages_citations.py -- pool sizing fixes neither:
+#   cycle_count / data_quality / intake_scan -- every in-radius candidate is a lexical
+#     false friend (this tool's "Cycle-Count Program" pulls Paycheck Protection Program
+#     and Biological Nutrient Cycle; "SKU Master ... Quality" pulls Master Production
+#     Schedule and Cost of Quality). Zero is the honest output.
+#   slotting / vehicle_routing / org_friction_audit -- the corpus carries no
+#     storage-assignment, VRP or performance-measurement-dysfunction theory at all.
+#     Fixed by ingesting sources, not by a looser anchor.
 _CANDIDATE_POOL = 16  # candidates grounded and offered to the strict gate
 _MAX_CITATIONS = 3    # kept, on-topic survivors ultimately shown (tight display)
 
