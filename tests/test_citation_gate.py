@@ -94,7 +94,7 @@ class _FakeKB:
 # to either not exist or to only surface off-topic citations -- not "we
 # haven't gotten to it yet" (that case is `UNDECLARED_TOOLS` in
 # tests/test_tool_data_contract.py, a different problem with a different list).
-_NO_CONCEPT_MAP_BY_DESIGN = frozenset({"intake_scan"})
+_NO_CONCEPT_MAP_BY_DESIGN = frozenset({"intake_scan", "audit_evidence"})
 
 
 def test_every_registered_tool_has_a_concept_map():

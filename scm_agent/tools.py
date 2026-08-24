@@ -12,6 +12,7 @@ from nosilo_core.types import JobRequest
 from jobs import (
     abc_xyz_job,
     acceptance_sampling_job,
+    audit_evidence_job,
     cost_to_serve_deliverable,
     cost_to_serve_job,
     cross_impact_job,
@@ -1617,6 +1618,87 @@ def acceptance_sampling_tool() -> Tool:
     )
 
 
+# ---- audit_evidence (audit-grade sampling, GL tie-out, lineage) ---------------
+#
+# `options` is wired to the report's own outcome, not to a ranked-options menu. That is
+# load-bearing: the orchestrator derives JobResult.guided from `tool.options` and falls back
+# to as_executed(...) on success when it is None (scm_agent/guided_bridge.py). For this
+# vertical EXECUTED is contractually wrong -- only the auditor of record concludes and signs
+# (AS 1215) -- so leaving `options` unset would silently breach the contract on the happy
+# path. Returning the report's outcome keeps one source of truth: the same object
+# audit_evidence_job.verify() gates is the one the caller receives.
+
+
+def _audit_evidence_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(
+            status="needs_data",
+            messages=["an inventory/subledger listing CSV (key, amount) is required"],
+        )
+    try:
+        payload = audit_evidence_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _audit_evidence_run(payload: object, params: dict) -> Produced:
+    # run_id and produced_at enter HERE, at the boundary: the engine is clock-free so the run
+    # stays exactly re-performable from the record (AS 1215). uuid4 rather than a counter
+    # because two engagements must never collide on a run id.
+    import uuid
+    from datetime import datetime, timezone
+
+    report = audit_evidence_job.run(
+        payload,
+        risk_of_incorrect_acceptance=float(params.get("risk_of_incorrect_acceptance", 0.05)),
+        expected_misstatement=float(params.get("expected_misstatement", 0.0)),
+        tolerance=float(params.get("tolerance", 0.0)),
+        random_start=params.get("random_start"),
+        expected_total=(
+            float(params["expected_total"])
+            if params.get("expected_total") not in (None, "")
+            else None
+        ),
+        run_id=str(params.get("run_id") or uuid.uuid4()),
+        produced_at=str(
+            params.get("produced_at")
+            or datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        ),
+    )
+    return Produced(report=report, summary=report.summary)
+
+
+def audit_evidence_tool() -> Tool:
+    return Tool(
+        key="audit_evidence",
+        title="Audit-Grade Evidence (sampling, GL tie-out, lineage)",
+        description="Design a monetary-unit sampling plan over an inventory listing, select the "
+                    "items to test, tie the listing out to its GL control account, and emit a "
+                    "re-performable lineage record. Hands off to the auditor of record; it never "
+                    "concludes or signs.",
+        intent_keywords=(
+            "audit sampling", "inventory audit sampling", "audit sample size",
+            "monetary unit sampling", "mus sample",
+            "gl reconciliation", "general ledger", "trial balance", "tie-out", "tie out",
+            "audit workpaper", "workpaper", "audit evidence",
+            "substantive testing", "test of details",
+        ),
+        requires_data=True,
+        options=tool_options.audit_evidence_options,
+        prepare=_audit_evidence_prepare,
+        run=_audit_evidence_run,
+        qa=lambda report: audit_evidence_job.verify(report),
+        deliver=lambda report, out_dir, client: audit_evidence_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            audit_evidence_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        required_columns=("product_id", "amount"),
+        optional_columns=("account",),
+    )
+
+
 # ---- earned_value (project control) ------------------------------------------
 
 def _earned_value_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
@@ -2820,6 +2902,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(data_quality_tool())
     reg.register(dea_tool())
     reg.register(acceptance_sampling_tool())
+    reg.register(audit_evidence_tool())
     reg.register(earned_value_tool())
     reg.register(learning_curve_tool())
     reg.register(odoo_replenishment_tool())

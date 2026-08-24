@@ -486,6 +486,18 @@ def acceptance_sampling_options(report: object) -> GuidedOutcome:
     return _ranked(f"Receiving inspection for {report.n_parts} part(s): choose the posture.", items)
 
 
+def audit_evidence_options(report: object) -> GuidedOutcome:
+    """Return the report's OWN outcome, unchanged -- deliberately not a ranked menu.
+
+    Every other tool here builds an OPTIONS outcome. This one must not: the orchestrator
+    reads `tool.options` to fill JobResult.guided and otherwise derives EXECUTED on success,
+    and an audit workpaper the agent declares finished is exactly what AS 1215 forbids. The
+    job already decided between HANDOFF and ESCALATED on the evidence; re-deciding it here
+    would be a second implementation of one rule, which is how the two drift apart.
+    """
+    return report.outcome
+
+
 def earned_value_options(report: object) -> GuidedOutcome:
     p = report.portfolio
     worst = report.tasks[0].task if report.tasks else "n/a"

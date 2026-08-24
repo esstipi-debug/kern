@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from nosilo_core.guided import EXECUTED, GuidedOutcome, verify_guided
+from nosilo_core.guided import ESCALATED, EXECUTED, HANDOFF, GuidedOutcome, verify_guided
 
 from src.forecasting import MIN_PERIODS_FOR_POLICY
 from src.sop_engine.coherence import CHECK_BUDGET_FEASIBILITY, CHECK_PROMO_COVERAGE, CHECK_SERVICE_LEVEL
@@ -281,6 +281,34 @@ def coverage_gate(outcome: GuidedOutcome) -> list[str]:
 
 def covered(outcome: GuidedOutcome) -> bool:
     return not coverage_gate(outcome)
+
+
+#: Statuses an audit-evidence outcome may end in. EXECUTED is absent on purpose.
+AUDIT_EVIDENCE_ALLOWED_STATUSES = (HANDOFF, ESCALATED)
+
+
+def audit_evidence_gate(outcome: GuidedOutcome) -> list[str]:
+    """``coverage_gate`` plus the one rule audit evidence adds: never EXECUTED.
+
+    Only the auditor of record can conclude, sign and file a workpaper (AS 1215). An
+    EXECUTED outcome asserts the agent finished the work, which for this vertical would put
+    the engine in the auditor's chair -- so it is a QA FAILURE here even when every number
+    is right, and the orchestrator's single "QA fails => no deliverable" gate then stops the
+    deliverable from being produced at all.
+
+    This lives beside ``coverage_gate`` rather than inside it because the generic gate has
+    no idea which tool produced the outcome, and teaching it would make every other tool pay
+    for this vertical's rule. ``jobs.audit_evidence_job.verify`` calls it; the design doc
+    asked for defence in depth and this is the second of the three layers (the first is that
+    ``_outcome`` has no ``as_executed`` branch to take, the third is the tool wiring test).
+    """
+    issues = coverage_gate(outcome)
+    if outcome.status == EXECUTED:
+        issues.append(
+            "audit evidence must never be EXECUTED: only the auditor of record concludes "
+            "and signs a workpaper (AS 1215)"
+        )
+    return issues
 
 
 def verify_integrated_plan(bundle: IntegratedPlanBundle) -> list[str]:

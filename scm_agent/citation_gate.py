@@ -156,6 +156,40 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # safe outcome (see the module docstring), not a bug to "fix" with a
     # closer-sounding but wrong anchor.
     "data_quality": ("step_product_data_standard",),
+    # audit_evidence (tool #51, audit-grade sampling + GL tie-out + lineage) is a
+    # DELIBERATE, measured absence from this map, same discipline as data_quality and
+    # intake_scan below. Candidates checked against the committed graph (2026-08-23):
+    #   audit_sampling, monetary_unit_sampling, statistical_sampling, materiality,
+    #   attribute_sampling, internal_control, inventory_audit
+    #                            -- NONE exist (kb.node_exists() False for all seven).
+    #                               The knowledge base is supply-chain texts; this tool's
+    #                               authority is the auditing standards, which are not in it.
+    #   acceptance_sampling / single_sampling_plan
+    #                            -- EXIST, and are the nearest true relatives (the memo
+    #                               says so itself: attribute sampling is "the same
+    #                               family as src/acceptance_sampling.py"). REJECTED
+    #                               anyway: they are QUALITY-inspection sampling (AQL/
+    #                               LTPD), and AUDIT sampling is framed on TDR/RIA/
+    #                               tolerable misstatement. Citing Heizer & Render's
+    #                               statistical-quality-control supplement on a PCAOB
+    #                               workpaper tells a reviewing partner the tool does not
+    #                               know which standard it is working under -- a worse
+    #                               failure than citing nothing.
+    #   inventory_record_accuracy -- EXISTS (reconciliation's anchor) but is book-vs-
+    #                               physical count accuracy, not a GL control-account
+    #                               tie-out. Different procedure, different assertion.
+    # Replaying the real grounding call (kb.ground_citations_detailed with this tool's
+    # own keyword set and title, limit=16) returns the false-friend class in the open:
+    # "Eco-Management and Audit Scheme (EMAS)" (an ENVIRONMENTAL standard, riding
+    # "audit"), "Purposive and Snowball Sampling" (qualitative research methodology,
+    # riding "sampling"), "Supplier Audit" (supply-chain, not financial-statement), and
+    # Tranfield/Denyer/Smart on evidence-informed MANAGEMENT plus two blockchain and
+    # food-delivery "evidence" cases, all riding "evidence". Same false-friend class as
+    # intake_scan/information_sharing below -- confirmed by measurement, not assumed.
+    # This tool does not degrade to zero authority by being left out: its citations are
+    # the standards themselves, set explicitly in jobs/audit_evidence_job.build_deck
+    # (AU-C 530 / AS 2315, AS 1105, AS 1215), and the engine echoes `formula_ref` onto
+    # every result so the citation survives onto the workpaper face.
     # intake_scan (tool #49, raw-folder data-readiness audit; registered in
     # Task 7 of the 2026-07-31 intake-scan plan, scm_agent/tools.py) is a
     # DELIBERATE, measured absence from this map, same discipline as data_quality

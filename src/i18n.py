@@ -218,6 +218,8 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
     "warehouse_layout": {"es": "Layout de Bodega (3D)", "en": "Warehouse Layout (3D)"},
     "whatif": {"es": "Estudio What-If / Sensibilidad", "en": "What-If / Sensitivity Study"},
     "financial_kpis": {"es": "KPIs Financieros de Inventario", "en": "Inventory Financial KPIs"},
+    "audit_evidence": {"es": "Evidencia de Auditoria (Muestreo, Cuadre con el Mayor y Trazabilidad)",
+                       "en": "Audit-Grade Evidence (Sampling, GL Tie-Out & Lineage)"},
     "reconciliation": {"es": "Exactitud de Registro de Inventario (IRA)",
                         "en": "Inventory Record Accuracy (IRA)"},
     "returns": {"es": "Devoluciones y Logistica Inversa", "en": "Returns & Reverse Logistics"},
