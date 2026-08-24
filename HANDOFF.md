@@ -118,6 +118,132 @@ como **el espejo de `intake_scan` sobre parametros**: `intake_scan` audita si el
 (`orchestrator.py:135`). Mismo riesgo que `intake_scan`: arranca con poca cobertura, asi que el
 reporte debe mostrar numerador y denominador siempre.
 
+## 2026-08-24 — El gate de CI restaurado, 3 brechas de capacidad y 3 de lanzamiento cerradas; **L2 (app de Shopify) A MEDIO HACER**
+
+**Rama:** `fix/ci-gate-alcance-lint-y-cobertura`, **PR #273 abierta como draft**, 16 commits.
+**`main`** quedo en `69b52d1` (se mergearon #269 y #258 en esta sesion).
+**Working tree limpio** salvo `.mcp.json` (modificado por OTRA sesion: pin de serena a `@v1.7.0`) y `data/bateria/` sin trackear, que ya estaban.
+
+### LO PRIMERO, Y NO CAMBIO EN TODA LA SESION
+
+**La CI de este repo no ejercita un solo test y no lo hace desde el 2026-08-03.**
+`gh api repos/esstipi-debug/kern/actions/secrets` devuelve `{"total_count":0}` y
+`nosilo-core` tiene **cero deploy keys**. Los 4 jobs mueren en 6-8 s en
+`Authenticate to the private core`. Todo lo de esta sesion —incluidos dos merges
+a `main`— esta verificado **solo a mano, en esta maquina**.
+
+Los pasos exactos estan en `docs/DEPLOYMENT.md` seccion 0. En corto: `ssh-keygen
+-t ed25519 -N "" -f nosilo_core_ci`; la mitad publica como deploy key **por la UI
+web** de `nosilo-core`, sin marcar "Allow write access"; `gh secret set
+NOSILO_CORE_SSH_KEY --repo esstipi-debug/kern < nosilo_core_ci`; borrar los dos
+archivos. **No** usar `gh repo deploy-key add`: su propio `--help` avisa que la
+key queda atada al token del CLI y se borra si se de-autoriza, que es justo el
+modo de falla que el deploy key vino a evitar.
+
+Falta tambien `KERN_JOBS_API_KEY` (el cron de precios lleva 6 corridas rojas por dia).
+
+### DONDE QUEDO L2, QUE ES LO QUE SIGUE
+
+Commit `a8f015e`, **incompleto a proposito**. Entran, lintean y funcionan aisladas:
+
+* **`webapp/shopify_app.py`** — `shop_valido`, `install_url`, `verify_oauth_callback`,
+  `verify_webhook`, `exchange_code`, `create_subscription`.
+* **`src/shopify_installs.py`** — `ShopifyInstallStore` (dominio -> token, `forget()` borra de verdad).
+
+**Falta, en este orden:**
+
+1. **Las rutas en `webapp/app.py`**: `GET /shopify/install`, `GET /shopify/oauth/callback`,
+   y los tres webhooks `POST /webhooks/customers/data_request`, `/customers/redact`, `/shop/redact`.
+   Los tres de GDPR tienen que devolver **200 con HMAC verificado** o Shopify desaprueba la app entera.
+2. **El `state` de OAuth**: hay que emitirlo, guardarlo y compararlo. `verify_oauth_callback`
+   ya lo exige, pero nadie lo emite todavia. Sin eso el callback no es atribuible.
+3. **Un lazy singleton del store** en `app.py`, con la MISMA forma que `_get_mcp_key_store()`
+   (mirado fresco en cada request, para que un test lo cambie con `monkeypatch`), y su ruta
+   apuntada al volumen `/data` por variable de entorno — no al filesystem efimero, que es la
+   falla que costo el ledger de leads (L1, ya cerrada).
+4. **Los tests**, que son el "cerrada cuando" de la ficha: alta de punta a punta contra un stub
+   — redireccion OAuth, callback que persiste el token, los tres webhooks respondiendo 200 con
+   HMAC verificado, y un cargo creado por Billing API.
+5. **Actualizar la ficha L2 y la tabla** de `documentation/KERN_BRECHAS_DE_LANZAMIENTO.md`, y el
+   nodo del grafo via `scripts/merge_launch_gaps.py`. La sonda de L2 ya exige la evidencia
+   correcta (OAuth de Shopify **Y** los tres webhooks de GDPR), asi que va a pasar sola cuando
+   este de verdad.
+
+**Trampa ya pagada, no volver a pisarla:** `normalize_shop_domain` deja pasar un dominio publico
+personalizado TAL CUAL. Es correcto para leer una tienda y es un **open redirect** en la ruta de
+instalacion, porque el `shop` llega por query string y termina dentro de una URL a la que se
+redirige al comerciante. Por eso `shop_valido()` normaliza y **despues** exige `*.myshopify.com`.
+
+**Segunda trampa:** los dos HMAC de Shopify no se parecen — OAuth es **hex sobre la query
+ordenada**, los webhooks son **base64 sobre el cuerpo crudo**. Confundirlos no falla
+ruidosamente: falla como "firma invalida" para todo, y el paso siguiente natural es aflojar la
+verificacion.
+
+**Y una advertencia de estrategia, que sigue en pie:** `documentation/MONETIZATION_BRIEF.md` pone
+la app real de Shopify en **Fase 2**, con decision aparte y **solo con los numeros de Fase 1 en
+mano**. La Fase 0 es el Chequeo Stocky manual, cuyo criterio de kill es *0 ventas con >=300
+contactos*. Al 2026-08-24 el embudo no tiene evidencia de trafico real (ver abajo). Construir L2
+antes de eso contradice la estrategia escrita del propio repo; se avanzo porque se pidio
+explicitamente.
+
+### EL EMBUDO NO TIENE EVIDENCIA DE USO REAL
+
+Medido sobre el ledger LOCAL el 2026-08-24 (el de produccion era irrecuperable hasta #269):
+**249 filas** entre el 12-jul y ese dia, pero **6 dominios distintos y uno solo explica 149** —
+casi todo autotesteo — y **162 de 249 (65%) terminaron en `qa_failed`**. Desde #269 eso **si** se
+puede medir en produccion. Vale la pena mirarlo antes de construir mas canal.
+
+**Stocky:** la ventana muere el **31-ago-2026** segun el research del propio repo (fecha NO
+verificada contra Shopify). La capacidad esta entera, `/stocky-alternative` responde 200, el
+precio esta fijado. **No falta codigo: falta outreach.**
+
+### QUE SE CERRO EN ESTA SESION
+
+| Punto | Estado |
+|---|---|
+| Alcance de lint (`ruff check .`) y cobertura (+`scm_agent`, +`jobs`) | cerrado, gate a 90 |
+| `reflect_lessons --check` | cerrado como TEST, no como paso suelto (ver abajo) |
+| `knowledge/semantica/` (15 MB huerfanos) | borrado |
+| Anclas de `TOOL_CONCEPTS` | 9 herramientas en cero -> 5 |
+| Cosmeticos (`graphify-out` viejo, conteo de tools) | cerrados |
+| Brechas de capacidad **8** (critico del narrativo), **6** (MCP como cliente), **5** (fan-out) | cerradas |
+| Brechas de lanzamiento **L1**, **L3**, **L4** | cerradas |
+
+**Por que `reflect_lessons --check` no es un paso de la CI:** medido, no supuesto. El script
+invoca el binario `graphify` (paquete `graphifyy`), que **no** esta declarado en
+`requirements-dev.txt` ni en `pyproject.toml` —lo instala el hook de SessionStart— y resuelve
+contra `graphify-out/graph.json`, 17 MB **gitignoreados**. Sin las dos cosas el documento se
+regenera podado: **69 lineas con la union contra 41 solo con el grafo de libros**. Un paso ahi
+devolveria 1 SIEMPRE. Lo que si es verificable con lo commiteado —que el encabezado resuma las
+memorias que hay— lo chequea `tests/test_graph_lessons_no_deriva.py`.
+
+### INVARIANTES QUE COSTARON CARO Y NO HAY QUE REDESCUBRIR
+
+* **Tocar `knowledge/scm-books/graph.json` obliga suite completa.** ~35-47 min, 5900+ tests.
+  Mueve el IDF de TODAS las citas. `-p no:randomly` si; `--timeout` **no existe** como plugin y
+  pasarlo aborta sin correr nada, pareciendo que paso.
+* **Un `nosilo_core/` suelto en la raiz envenena todo `ruff` local** (y el hook `ruff-on-write`):
+  lo clasifica como first-party y exige el orden de imports CONTRARIO al de la CI. 80 `I001`
+  fantasma. Se arregla con `rm -rf nosilo_core`. Ya esta escrito en `CLAUDE.md`.
+* **`webapp/app.py` no tiene `logger` de modulo ni importa `Request`** por defecto: usa
+  `logging.getLogger("linchpin.<x>")` inline.
+* **Dos `TestClient` con lifespan sobre el sub-app de MCP revientan** (es un singleton de modulo).
+  Por eso el e2e de L3 vive en `tests/test_mcp_mount.py` y no en `tests/test_stripe_webhook.py`.
+* **`merge_launch_gaps.py` se niega a re-correr.** Para actualizar la fuente #29:
+  `git checkout origin/main -- knowledge/scm-books/graph.json` y re-correr. **No** `--force`.
+
+### FALTA CONFIGURAR (humano, no codigo)
+
+* `NOSILO_CORE_SSH_KEY` — sin esto nada de lo de arriba lo verifico otra maquina.
+* `KERN_JOBS_API_KEY` — el cron de precios.
+* `STRIPE_WEBHOOK_SECRET` + registrar `https://linchpin.fly.dev/webhooks/stripe` en Stripe,
+  suscripto a `checkout.session.completed`. **L3 no cobra hasta eso.**
+* **La entrega de la credencial no existe**: no hay envio de correo en el repo. La key se emite,
+  queda atada al pago, y espera que un humano la mande. Eso es lo que mantiene abierta la brecha
+  de capacidad **7**, no L3.
+
+---
+
 ## 2026-08-03 — `intake_scan` (tool #50) MERGEADO Y PUSHEADO; **DEPLOY BLOQUEADO** por la POLICY de acceso
 
 **Leé esto primero si arrancás en frío.** Dos capacidades del Plan Maestro SCM-FDE
