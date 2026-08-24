@@ -27,7 +27,9 @@
 - [ ] Reclamar/publicar en Smithery
 - [ ] Reclamar/publicar en PulseMCP
 - [ ] Publicar el módulo Odoo en el Apps Store (ver
-      `odoo_addon/linchpin_dry_run/`)
+      `odoo_addon/19.0/kern_dry_run/` y la sección 5 de
+      `documentation/GTM_SUBMISSIONS.md`, que lista lo que todavía falta:
+      `support` en el manifest, capturas y cover image)
 
 ## Funnel demo (E2 — mini-reporte, ya en código)
 
@@ -59,8 +61,13 @@
 
 - [ ] Nada obligatorio hasta que se firme un partner real (integrador Odoo o
       consultora — ver [partner-odoo.md](../paquetes/partner-odoo.md) para el
-      pitch y los dos modelos). El módulo Odoo (`odoo_addon/linchpin_dry_run/`)
-      ya tiene su sección "For partners" enlazando al one-pager.
+      pitch y los dos modelos). El módulo Odoo
+      (`odoo_addon/{17.0,19.0}/kern_dry_run/`) conserva una sección
+      "For partners", pero **ya no enlaza al one-pager ni menciona los
+      montos**: las reglas del Apps Store prohíben enlaces externos y
+      términos comerciales en la página de descripción (se corrigió el
+      2026-08-19, ver `odoo_addon/PORT_17_A_19.md` §1.4). El one-pager
+      se entrega por fuera del Store.
 - [ ] Al firmar un partner: acordar por escrito el modelo (rev-share 20% o
       white-label a tarifa fija mensual, con su monto) y quién factura a quién
       — no hay plantilla de contrato de partner todavía (a diferencia del

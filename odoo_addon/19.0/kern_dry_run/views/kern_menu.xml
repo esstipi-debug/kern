@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_kern_analysis"
+              name="Kern Inventory Analysis"
+              parent="stock.menu_stock_inventory_control"
+              action="kern_analysis_wizard_action"
+              groups="group_kern_user"
+              sequence="99"/>
+</odoo>

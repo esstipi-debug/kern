@@ -6,11 +6,11 @@ DEFAULT_BASE_URL = "https://linchpin.fly.dev"
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
-    linchpin_base_url = fields.Char(
-        string="Linchpin URL",
-        config_parameter="linchpin_dry_run.base_url",
+    kern_base_url = fields.Char(
+        string="Kern URL",
+        config_parameter="kern_dry_run.base_url",
         default=DEFAULT_BASE_URL,
-        help="Base URL of the Linchpin instance to call. Only change this if you run your own deployment.",
+        help="Base URL of the Kern instance to call. Only change this if you run your own deployment.",
     )
     # config_parameter fields store as plain text in ir.config_parameter - this
     # is Odoo's standard res.config.settings persistence mechanism (the same
@@ -21,10 +21,10 @@ class ResConfigSettings(models.TransientModel):
     # already requires base.group_system (Settings/Technical access), which is
     # the accepted boundary here - same as Odoo's own outgoing-mail-server
     # credentials.
-    linchpin_api_key = fields.Char(
-        string="Linchpin API Key",
-        config_parameter="linchpin_dry_run.api_key",
-        help="Per-client key issued by Linchpin (not your Odoo password or any Odoo credential). "
+    kern_api_key = fields.Char(
+        string="Kern API Key",
+        config_parameter="kern_dry_run.api_key",
+        help="Per-client key issued by Kern (not your Odoo password or any Odoo credential). "
         "Stored as plain text, readable by Settings > Technical admins - same as other API-key "
         "settings in Odoo. Get one at https://linchpin.fly.dev.",
     )
