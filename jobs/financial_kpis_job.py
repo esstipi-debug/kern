@@ -4,7 +4,8 @@ The data-prep + deck half of the financial-KPIs tool. Reads per-SKU financial ro
 average inventory value, gross margin, units sold/on-hand, net sales) with pandas directly
 (deliberately *not* via jobs/intake.py, which the parallel loop owns), rolls them up, and
 computes the auditable inventory-finance pack via ``src.financial_kpis`` (turns, DIO, GMROI,
-sell-through, inventory-to-sales, cash-to-cash).
+sell-through, inventory-to-sales, cash-to-cash, and stockout rate when the file carries
+the observation — never a 0% printed from a missing column).
 
 An optional column the sniffer could not find, or a blank cell inside one, is **absent**:
 it contributes nothing and its roll-up is ``None``. It used to contribute 0.0, which reads
@@ -29,6 +30,7 @@ from src.financial_kpis import (
     inventory_to_sales,
     inventory_turns,
     sell_through,
+    stockout_rate as realized_stockout_rate,
 )
 
 _PRODUCT_COLS = ("product_id", "sku", "SKU", "item", "Product")
@@ -38,6 +40,12 @@ _MARGIN_COLS = ("gross_margin", "margin", "Gross Margin")
 _UNITS_SOLD_COLS = ("units_sold", "sold", "Units Sold")
 _UNITS_OH_COLS = ("units_on_hand", "on_hand", "Units On Hand", "stock")
 _NET_SALES_COLS = ("net_sales", "sales", "revenue", "Net Sales")
+_STOCKOUT_PERIOD_COLS = (
+    "stockout_periods", "stockout_days", "days_oos", "dias_quiebre", "Days OOS",
+)
+_TOTAL_PERIOD_COLS = (
+    "total_periods", "periods", "sku_days", "dias_periodo", "Days in Period",
+)
 
 
 @dataclass(frozen=True)
@@ -68,6 +76,7 @@ class FinancialReport:
     dpo: float | None               # from the AP ledger; None when nobody supplied it
     cash_to_cash: float | None
     worst: tuple[SkuFinance, ...]   # all SKUs, ranked by GMROI ascending (worst first)
+    stockout_rate: float | None = None
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -78,7 +87,7 @@ def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]
 
 def _total(records: list[dict], key: str) -> float | None:
     """Sum the observed values; ``None`` when nothing was observed at all."""
-    observed = [r[key] for r in records if r[key] is not None]
+    observed = [r[key] for r in records if r.get(key) is not None]
     return sum(observed) if observed else None
 
 
@@ -115,6 +124,8 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> list[dict]:
     sold = _pick_column(df, params.get("units_sold_col"), _UNITS_SOLD_COLS)
     on_hand = _pick_column(df, params.get("units_on_hand_col"), _UNITS_OH_COLS)
     net_sales = _pick_column(df, params.get("net_sales_col"), _NET_SALES_COLS)
+    stockout = _pick_column(df, params.get("stockout_periods_col"), _STOCKOUT_PERIOD_COLS)
+    periods = _pick_column(df, params.get("total_periods_col"), _TOTAL_PERIOD_COLS)
 
     def _optional(row, col) -> float | None:
         """An observed number, or ``None``. A blank margin is not a zero margin."""
@@ -146,6 +157,8 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> list[dict]:
             "units_sold": _optional(row, sold),
             "units_on_hand": _optional(row, on_hand),
             "net_sales": _optional(row, net_sales),
+            "stockout_periods": _optional(row, stockout),
+            "total_periods": _optional(row, periods),
         }
         for _, row in df.iterrows()
     ]
@@ -184,6 +197,8 @@ def run(
     units_sold = _total(records, "units_sold")
     units_on_hand = _total(records, "units_on_hand")
     net_sales = _total(records, "net_sales")
+    stockout_periods = _total(records, "stockout_periods")
+    total_periods = _total(records, "total_periods")
 
     dio = days_inventory_outstanding(total_inv, total_cogs)
     worst = tuple(sorted(
@@ -222,6 +237,10 @@ def run(
         dso=dso,
         dpo=dpo,
         cash_to_cash=cash_to_cash(dio, dso, dpo),
+        stockout_rate=(
+            realized_stockout_rate(stockout_periods, total_periods)
+            if stockout_periods is not None and total_periods is not None else None
+        ),
         worst=worst,
     )
 
@@ -274,6 +293,10 @@ def build_deck(
     c2c = fmt(report.cash_to_cash, ".0f", lang)
     inv_sales = fmt(report.inventory_to_sales, ".2f", lang)
     sell = not_measured(lang) if report.sell_through is None else f"{report.sell_through * 100:.0f}%"
+    oos = (
+        not_measured(lang) if report.stockout_rate is None
+        else f"{report.stockout_rate * 100:.1f}%"
+    )
 
     summary = (
         f"Inventory finance across {report.n_skus} SKU(s): {turns} turns, "
@@ -303,6 +326,9 @@ def build_deck(
             ("cash-to-cash", report.cash_to_cash),
         ) if value is None
     ]
+    # Stockout is optional on this pack: a finance close without a WMS ledger
+    # is not incomplete. The KPI row still prints not_measured when the
+    # observation is missing; it is not listed here as a gap of this file type.
     if unmeasurable:
         findings.append(Finding(
             "KPIs this data could not support",
@@ -333,11 +359,14 @@ def build_deck(
             rationale="Average inventory value / net sales"),
         Kpi("Cash-to-cash (days)", c2c, target="minimize",
             rationale="Cash conversion cycle = DIO + DSO - DPO"),
+        Kpi("Stockout rate", oos, target="minimize",
+            rationale="Fraction of observed periods spent in stockout; not the policy target"),
     )
 
     data_sources = (
         DataSource("Per-SKU financials (COGS / avg inventory / margin / units / sales)", "ERP + finance close", "monthly"),
         DataSource("DSO / DPO", "AR / AP ledgers (not derivable from inventory data)", "per run"),
+        DataSource("Stockout periods / total periods", "inventory ledger or WMS (optional)", "per run"),
     )
 
     recommendations = [

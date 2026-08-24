@@ -171,6 +171,29 @@ def test_a_fully_populated_pack_is_unchanged():
     assert report.gmroi == pytest.approx(1100.0 / 750.0)
     assert report.sell_through == pytest.approx(300.0 / 375.0)
     assert math.isfinite(report.cash_to_cash)
+    assert report.stockout_rate is None
+    assert fkj.verify(report) == []
+
+
+def test_stockout_rate_stays_unmeasured_when_the_file_has_no_observation():
+    report = fkj.run(fkj.prepare_records(_ROWS))
+
+    assert report.stockout_rate is None
+    md = fkj.build_deck(report, client="Acme").to_markdown()
+    assert "Stockout rate" in md
+    assert not_measured() in md
+
+
+def test_stockout_rate_is_the_fraction_of_observed_periods(tmp_path):
+    df = _ROWS.copy()
+    df["stockout_days"] = [3.0, 1.0]
+    df["periods"] = [10.0, 10.0]
+
+    report = fkj.run(fkj.prepare_records(df))
+
+    assert report.stockout_rate == pytest.approx(0.2)
+    md = fkj.build_deck(report, client="Acme").to_markdown()
+    assert "20.0%" in md
     assert fkj.verify(report) == []
 
 
