@@ -102,6 +102,21 @@ jobs:
         env:
           PYTHONPATH: .
 
+      # No hay un paso suelto de `python scripts/reflect_lessons.py --check`, y no
+      # es un olvido. Ese script invoca el binario `graphify` (paquete `graphifyy`,
+      # que instala el hook de SessionStart, no este workflow) y resuelve las
+      # memorias contra la UNION del grafo de libros y `graphify-out/graph.json`
+      # -- 17 MB gitignoreados. Sin las dos cosas el documento se regenera podado:
+      # medido el 2026-08-24, 69 lineas con la union (identico al commiteado) y 41
+      # solo con el grafo de libros. Un paso aca devolveria 1 SIEMPRE, por una
+      # razon que no tiene nada que ver con que el documento este al dia, y una CI
+      # que siempre falla en el mismo lugar es la que se aprende a ignorar.
+      #
+      # Lo que SI es verificable con lo commiteado -- que el encabezado resuma las
+      # memorias que realmente hay en knowledge/graph-memory/ -- lo chequea
+      # tests/test_graph_lessons_no_deriva.py, que corre en el paso de arriba. Ese
+      # mismo archivo corre ademas el --check completo, byte a byte, cuando la
+      # maquina tiene el binario y el grafo; en la CI se saltea diciendo cual falta.
       - name: Smoke examples
         run: |
           python examples/run_part1_part2.py
