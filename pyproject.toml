@@ -240,8 +240,23 @@ omit = ["src/__init__.py", "packs/__init__.py"]
 
 [tool.coverage.report]
 show_missing = true
-# Piso medido sobre el conjunto de arriba, no heredado del anterior. Bajarlo para
-# que entre un conjunto mas grande es ablandar la prueba, no medirla.
+# Medido el 2026-08-23 sobre el conjunto de arriba, suite completa, 5842 tests,
+# 38m44s, cero fallos:
+#
+#   packs + src                      95.20%   (16216/17033)  <- lo que media antes
+#   packs + src + scm_agent + jobs   94.70%   (28130/29703)  <- lo que mide ahora
+#   solo scm_agent + jobs            94.03%   (11914/12670)
+#
+# Sumar los dos paquetes del agente cuesta 0,50 pp. No hubo que decidir umbral.
+#
+# 80 es PISO, no objetivo: quedan ~14,7 pp para regresar en silencio antes de que
+# esto corte. Subirlo es una decision aparte y deliberada. Lo que no se hace es
+# bajarlo para que entre un conjunto mas grande -- eso es acomodar la prueba al
+# resultado, que es lo contrario de medir.
+#
+# Nota al medir en local: si tenes instalado el extra [rag] (fastembed), corren
+# tests que en la CI se saltean, y scm_agent/embeddings.py sale mejor de lo que
+# va a salir alla. requirements-dev.txt lo excluye a proposito.
 fail_under = 80
 
 [tool.ruff]
