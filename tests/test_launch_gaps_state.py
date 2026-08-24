@@ -1,6 +1,6 @@
 """El harness de las brechas de lanzamiento: mide, no cree.
 
-`documentation/KERN_BRECHAS_DE_LANZAMIENTO.md` declara cinco items y su estado.
+`documentation/KERN_BRECHAS_DE_LANZAMIENTO.md` declara seis items y su estado.
 Este archivo MIDE cada uno contra el codigo y falla si lo medido no coincide con
 lo declarado -- en las dos direcciones:
 
@@ -34,7 +34,8 @@ DOC = RAIZ / "documentation" / "KERN_BRECHAS_DE_LANZAMIENTO.md"
 APP = RAIZ / "webapp" / "app.py"
 BILLING = RAIZ / "webapp" / "billing.py"
 SHOPIFY = RAIZ / "src" / "connectors" / "shopify_connect.py"
-MANIFEST = RAIZ / "odoo_addon" / "linchpin_dry_run" / "__manifest__.py"
+MANIFEST = RAIZ / "odoo_addon" / "19.0" / "kern_dry_run" / "__manifest__.py"
+ODOO_CONNECT = RAIZ / "src" / "connectors" / "odoo_connect.py"
 
 
 # --- las sondas, puras sobre texto -------------------------------------------
@@ -47,9 +48,18 @@ def l1_abierta(texto_app: str) -> bool:
     la Machine, que se borra en cada deploy; sin variable de entorno no hay
     forma de apuntarla al volumen /data.
     """
-    linea = next((x for x in texto_app.splitlines() if x.startswith("LEADS_DIR")), "")
-    assert linea, "webapp/app.py ya no asigna LEADS_DIR; esta sonda quedo vieja"
-    return "environ" not in linea and "getenv" not in linea
+    lineas = texto_app.splitlines()
+    i = next((n for n, x in enumerate(lineas) if x.startswith("LEADS_DIR =")), None)
+    assert i is not None, "webapp/app.py ya no asigna LEADS_DIR; esta sonda quedo vieja"
+    # La SENTENCIA, no la primera linea. La version original de esta sonda miraba
+    # solo `lineas[i]` y el arreglo real (PR #269) puso el os.environ.get en una
+    # CONTINUACION -- habria seguido reportando ABIERTA sobre una brecha ya
+    # cerrada. Un falso negativo en un medidor de estado es peor que no tenerlo.
+    sentencia = lineas[i]
+    while sentencia.count("(") > sentencia.count(")") and i + 1 < len(lineas):
+        i += 1
+        sentencia += lineas[i]
+    return "environ" not in sentencia and "getenv" not in sentencia
 
 
 #: Lo que una app del App Store necesita y una custom app no: OAuth, el callback,
@@ -72,18 +82,27 @@ def l3_abierta(texto_billing: str, texto_app: str) -> bool:
 
 
 def l4_abierta(texto_manifest: str, serie_soportada: str = "19.0") -> bool:
-    """Dos techos: la serie del manifest y la incompatibilidad con Odoo Online.
+    """La serie que declara el manifest de la serie soportada.
 
-    Alcanza con que UNO siga en pie para que el canal Odoo siga bloqueado, y son
-    independientes: portar de version no toca la restriccion de la plataforma
-    para modulos con codigo Python.
+    La version original de esta sonda mezclaba dos cosas: la serie (trabajo, se
+    cierra) y la incompatibilidad con Odoo Online (restriccion de plataforma, no
+    se cierra nunca). Eso hacia que F2 pareciera backlog. Estan separadas desde
+    que la PR #258 cerro la mitad que si era trabajo.
     """
     version = re.search(r'"version"\s*:\s*"([\d.]+)"', texto_manifest)
     assert version, "el manifest del addon ya no declara version; esta sonda quedo vieja"
-    serie_vieja = not version.group(1).startswith(serie_soportada)
-    sin_online = "not\ncompatible with Odoo Online" in texto_manifest or \
-                 "compatible with Odoo Online" in texto_manifest
-    return serie_vieja or sin_online
+    return not version.group(1).startswith(serie_soportada)
+
+
+def f2_intacta(texto_manifest: str, texto_odoo_connect: str) -> bool:
+    """La FRONTERA de Odoo: el modulo sigue declarando que no corre en Odoo
+    Online, Y la ruta que SI lo cubre sigue existiendo.
+
+    Las dos mitades importan. Si desapareciera la External API, el addon
+    quedaria como unico camino y la frontera pasaria a bloquear el canal de
+    verdad -- que es justo lo que hoy no hace.
+    """
+    return "Odoo Online" in texto_manifest and "def check_connection" in texto_odoo_connect
 
 
 def f1_intacta(texto_shopify: str) -> bool:
@@ -102,10 +121,10 @@ def _estado_declarado() -> dict[str, str]:
     brecha se podria "arreglar" tocando solo el test y el documento quedaria
     mintiendo -- que es el modo de falla que este archivo existe para impedir.
     """
-    filas = re.findall(r"^\|\s*(L\d|F1)\s*\|[^|]*\|\s*\*{0,2}([A-ZÁ-Ú]+)\*{0,2}\s*\|",
+    filas = re.findall(r"^\|\s*(L\d|F\d)\s*\|[^|]*\|\s*\*{0,2}([A-ZÁ-Ú]+)\*{0,2}\s*\|",
                        DOC.read_text(encoding="utf-8"), re.MULTILINE)
     estados = dict(filas)
-    assert len(estados) == 5, f"se esperaban 5 items en la tabla del documento, hay {len(estados)}: {estados}"
+    assert len(estados) == 6, f"se esperaban 6 items en la tabla del documento, hay {len(estados)}: {estados}"
     return estados
 
 
@@ -116,11 +135,13 @@ def _medido() -> dict[str, str]:
         "L2": "ABIERTA" if l2_abierta(app) else "CERRADA",
         "L3": "ABIERTA" if l3_abierta(BILLING.read_text(encoding="utf-8"), app) else "CERRADA",
         "L4": "ABIERTA" if l4_abierta(MANIFEST.read_text(encoding="utf-8")) else "CERRADA",
+        "F2": "FRONTERA" if f2_intacta(MANIFEST.read_text(encoding="utf-8"),
+                                       ODOO_CONNECT.read_text(encoding="utf-8")) else "ROTA",
         "F1": "FRONTERA" if f1_intacta(SHOPIFY.read_text(encoding="utf-8")) else "ROTA",
     }
 
 
-@pytest.mark.parametrize("clave", ["L1", "L2", "L3", "L4", "F1"])
+@pytest.mark.parametrize("clave", ["L1", "L2", "L3", "L4", "F1", "F2"])
 def test_el_estado_declarado_coincide_con_el_medido(clave):
     """EL TEST QUE IMPORTA.
 
@@ -164,12 +185,17 @@ def test_la_sonda_del_billing_muerde():
 
 
 def test_la_sonda_del_addon_muerde():
-    viejo = '"version": "17.0.1.0.0",\nnot compatible with Odoo Online'
-    portado = '"version": "19.0.1.0.0",\nnot compatible with Odoo Online'
-    listo = '"version": "19.0.1.0.0",\ncorre en cualquier despliegue'
-    assert l4_abierta(viejo)
-    assert l4_abierta(portado), "portar la serie no levanta el techo de Odoo Online"
-    assert not l4_abierta(listo)
+    assert l4_abierta('"version": "17.0.1.0.0",')
+    assert not l4_abierta('"version": "19.0.1.0.0",')
+
+
+def test_la_sonda_de_la_frontera_de_odoo_muerde():
+    """Las dos mitades: la declaracion del manifest y la ruta alternativa."""
+    manifest = "not compatible with Odoo Online (SaaS)"
+    conector = "def check_connection(url, base, usuario, clave):"
+    assert f2_intacta(manifest, conector)
+    assert not f2_intacta("corre en cualquier despliegue", conector)
+    assert not f2_intacta(manifest, "# el conector ya no existe")
 
 
 def test_la_sonda_de_la_frontera_muerde():
@@ -184,7 +210,8 @@ def test_toda_ficha_del_documento_nombra_su_sitio_de_codigo():
     for archivo in ("webapp/app.py::LEADS_DIR",
                     "src/connectors/shopify_connect.py::check_connection",
                     "webapp/billing.py::create_checkout_session",
-                    "odoo_addon/linchpin_dry_run/__manifest__.py",
+                    "odoo_addon/19.0/kern_dry_run/__manifest__.py",
+                    "src/connectors/odoo_connect.py::check_connection",
                     "src/connectors/shopify_connect.py::PLAZO_AUSENTE"):
         assert archivo in texto, f"el documento ya no nombra {archivo}"
         ruta = RAIZ / archivo.split("::")[0]

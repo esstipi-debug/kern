@@ -54,7 +54,7 @@ REPO_TAG = "knowledge"
 COMMUNITY = 203
 
 #: El commit contra el que se verifico cada sitio de codigo de las fichas.
-COMMIT_VERIFICADO = "dc2eff5"
+COMMIT_VERIFICADO = "69b52d1"
 
 GAPS: tuple[dict, ...] = (
     {
@@ -62,10 +62,11 @@ GAPS: tuple[dict, ...] = (
         "slug": "ledger_de_leads_efimero",
         "label": "Brecha L1: el ledger de leads se borra en cada deploy",
         "rationale": (
-            "LEADS_DIR esta fijo sobre el filesystem efimero de la Machine, sin override "
-            "de entorno, asi que la unica prueba de que alguien uso el embudo se pierde en "
-            "cada deploy. Es el quinto almacen efimero; los otros cuatro ya se apuntaron "
-            "al volumen. Sin esto no se puede medir ningun embudo, ni el de Stocky."
+            "CERRADA por la PR #269 (b883f18). LEADS_DIR estaba fijo sobre el filesystem "
+            "efimero de la Machine, sin override de entorno, asi que la unica prueba de que "
+            "alguien uso el embudo se perdia en cada deploy -- el quinto almacen efimero, y "
+            "el unico que no se podia apuntar al volumen. Ahora acepta LINCHPIN_LEADS_DIR y "
+            "fly.toml lo manda a /data/leads_ledger. Sin esto no se podia medir ningun embudo."
         ),
         "theory": "knowledge::inventory_record_accuracy",
         "relation": "conceptually_related_to",
@@ -112,20 +113,38 @@ GAPS: tuple[dict, ...] = (
     {
         "n": "L4",
         "slug": "addon_odoo_serie_y_online",
-        "label": "Brecha L4: el addon de Odoo esta en 17.0 y no corre en Odoo Online",
+        "label": "Brecha L4: el addon de Odoo estaba en 17.0",
         "rationale": (
-            "Dos techos independientes: el manifest declara la serie 17.0 (la PR #258 lo "
-            "porta a 19, sin mergear) y el modulo no es compatible con Odoo Online por "
-            "incluir codigo Python, lo que deja afuera al segmento mas grande. Portar la "
-            "serie no toca la restriccion de plataforma. Ademas el addon es un dry run: no "
-            "escribe nada de vuelta."
+            "CERRADA por la PR #258 (69b52d1): el addon corre en Odoo 19, verificado "
+            "instalandolo en una base limpia en Docker, y las dos series conviven bajo el "
+            "mismo nombre tecnico como exige la Apps Store. El segundo techo que esta ficha "
+            "mezclaba -- Odoo Online -- no era una brecha sino una restriccion de plataforma, y se separo a F2."
         ),
         "theory": "knowledge::enterprise_resource_planning",
         "relation": "conceptually_related_to",
         "theory2": "knowledge::erp_data_integration",
-        "code_label": "odoo_addon/linchpin_dry_run/__manifest__.py",
-        "code_location": "manifest",
+        "code_label": "odoo_addon/19.0/kern_dry_run/__manifest__.py",
+        "code_location": "manifest de la serie 19.0",
         "doc_location": "Brecha L4",
+    },
+    {
+        "n": "F2",
+        "slug": "frontera_odoo_online",
+        "label": "Frontera F2: Odoo Online no acepta modulos de terceros",
+        "rationale": (
+            "NO es trabajo pendiente y no se cierra nunca. El SaaS de odoo.com no admite "
+            "modulos de terceros con codigo Python, asi que ninguna serie del addon va a "
+            "correr ahi. No bloquea el canal: la External API que src/connectors/odoo_connect.py "
+            "ya habla cubre Odoo Online, Odoo.sh y on-premise con una sola ruta de solo "
+            "lectura -- el manifest de la serie 19.0 lo dice de frente. El addon es una "
+            "comodidad para quien puede instalarlo, no el unico camino."
+        ),
+        "theory": "knowledge::erp_data_integration",
+        "relation": "conceptually_related_to",
+        "theory2": None,
+        "code_label": "src/connectors/odoo_connect.py::check_connection",
+        "code_location": "modulo",
+        "doc_location": "Frontera F2",
     },
     {
         "n": "F1",
@@ -192,7 +211,7 @@ def _edge(source: str, target: str, relation: str, location: str) -> dict:
 
 
 def build_payload() -> tuple[list[dict], list[dict]]:
-    """Los 11 nodos y 15 aristas que aporta esta fuente. Puro, sin I/O."""
+    """Los 13 nodos y 18 aristas que aporta esta fuente. Puro, sin I/O."""
     nodes: list[dict] = [
         _node(
             HUB_ID,

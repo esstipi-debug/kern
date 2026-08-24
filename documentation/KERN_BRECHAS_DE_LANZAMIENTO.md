@@ -12,8 +12,8 @@ aparece al lado de Chopra & Meindl.
 Es un documento de **build time**. Se ingiere con
 `scripts/merge_launch_gaps.py` en un PR revisado, nunca en tiempo de consulta.
 
-**Estado del código verificado contra el commit `dc2eff5`** (rama
-`fix/ci-gate-alcance-lint-y-cobertura`), el 2026-08-24.
+**Estado del código verificado contra `69b52d1` (main)**, el 2026-08-24, después
+de mergear #269 y #258 — que cerraron dos de los cinco items originales.
 
 ## Cómo leer cada ficha
 
@@ -30,15 +30,21 @@ Es un documento de **build time**. Se ingiere con
 
 | # | Brecha | Estado | Bloquea |
 |---|--------|--------|---------|
-| L1 | El ledger de leads se borra en cada deploy | ABIERTA | medir cualquier embudo |
+| L1 | El ledger de leads se borra en cada deploy | CERRADA | — |
 | L2 | Shopify es custom app, no app del App Store | ABIERTA | distribución por Shopify |
 | L3 | El billing es un stub sin webhook de Stripe | ABIERTA | cobro self-serve (L2 y el peldaño Alerts) |
-| L4 | El addon de Odoo está en 17.0 y no corre en Odoo Online | ABIERTA | distribución por Odoo |
+| L4 | El addon de Odoo está en 17.0 | CERRADA | — |
+| F2 | Odoo Online no acepta módulos de terceros | **FRONTERA** | nada: no se cierra nunca |
 | F1 | El plazo de proveedor es imposible desde Shopify | **FRONTERA** | nada: no se cierra nunca |
 
 ---
 
-## L1 — El ledger de leads se borra en cada deploy
+## L1 — El ledger de leads se borraba en cada deploy — **CERRADA**
+
+**Cerrada por la PR #269** (`b883f18`, mergeada el 2026-08-24). `LEADS_DIR` acepta
+`LINCHPIN_LEADS_DIR` con el mismo patrón que `LEAD_REPORTS_DIR`, el default no
+cambia, y `fly.toml` lo apunta a `/data/leads_ledger` — durable por defecto y no
+por acordarse del paso 34 del checklist. Un test espeja el del otro almacén.
 
 **Teoría:** `knowledge::inventory_record_accuracy` — "Inventory Record Accuracy"
 (Chopra & Meindl, cap. 12). Ajuste **moderado** y se dice como tal: el concepto
@@ -49,26 +55,29 @@ realmente pasó, y toda decisión que se apoye en él hereda el error. Arista
 
 **Código:** `webapp/app.py::LEADS_DIR` (línea 126).
 
-**Qué falta.** `LEADS_DIR = _REPO_ROOT / "webapp" / "_leads"` está fijo, sin
+**Qué faltaba.** `LEADS_DIR = _REPO_ROOT / "webapp" / "_leads"` estaba fijo, sin
 override de entorno. En la imagen de Fly eso es `/app/webapp/_leads`, sobre el
 filesystem EFÍMERO de la Machine: **se borra en cada deploy**. El bloque `[env]`
 de `fly.toml` ya documenta esta falla para otros cuatro almacenes (events,
 autonomy, state y el ledger de precios), que se apuntaron al volumen `/data` y
-quedaron arreglados. Éste es el quinto y el único que ni con `fly secrets` se
-podía mover. La PR #269 lo arregla y está abierta.
+quedaron arreglados. Éste era el quinto y el único que ni con `fly secrets` se
+podía mover.
 
 **Por qué importa más que los otros cuatro.** Ese archivo es la **única prueba
 que existe de que alguien usó el embudo**: una fila por scan, con `ts`, `source`,
 `email`, `dataset`, `result` y `status`.
 
-**Medición del 2026-08-24 sobre el archivo LOCAL** (el de producción es
-irrecuperable por lo de arriba): 249 filas entre el 12-jul y hoy, **6 dominios
+**Medición del 2026-08-24 sobre el archivo LOCAL**, tomada ANTES del arreglo
+(el de producción hasta ese día era irrecuperable): 249 filas entre el 12-jul y hoy, **6 dominios
 distintos y uno solo explica 149**, y **162 de 249 (65%) terminaron en
 `qa_failed`**. O sea: el ledger legible es casi todo autotesteo, y de las
-corridas reales dos de cada tres no pasan el gate de datos. Ninguna de las dos
-cosas se puede confirmar en producción hasta que esto se cierre.
+corridas reales dos de cada tres no pasan el gate de datos. Desde el próximo
+deploy eso SÍ se puede medir en producción, que es todo el punto de la brecha.
 
-**Sonda:** la línea que asigna `LEADS_DIR` no menciona `environ` ni `getenv`.
+**Sonda:** la SENTENCIA que asigna `LEADS_DIR` no menciona `environ` ni `getenv`.
+La primera versión de esta sonda miraba sólo la primera línea y el arreglo real
+puso el `os.environ.get(...)` en una continuación — habría seguido reportando
+ABIERTA sobre una brecha cerrada. Corregido: lee hasta el paréntesis que cierra.
 
 **Cerrada cuando** una prueba apunta `LEADS_DIR` a un directorio arbitrario por
 variable de entorno, escribe un lead y lo lee de ahí — y el default sin esa
@@ -142,7 +151,16 @@ que hoy emite `webapp/mcp_auth.py`.
 
 ---
 
-## L4 — El addon de Odoo está en 17.0 y no corre en Odoo Online
+## L4 — El addon de Odoo estaba en 17.0 — **CERRADA**
+
+**Cerrada por la PR #258** (`69b52d1`, mergeada el 2026-08-24), verificada
+instalando el módulo en una base Odoo 19.0-20260817 limpia en Docker, no leyendo
+el código. Las dos series conviven bajo el mismo nombre técnico
+(`odoo_addon/17.0/kern_dry_run/` y `19.0/`), que es lo que la Apps Store exige
+para que dos series sean la misma app.
+
+El segundo techo que esta ficha mezclaba —Odoo Online— **no era una brecha**: es
+una restricción de la plataforma. Se separó a F2.
 
 **Teoría:** `knowledge::enterprise_resource_planning` — "Enterprise Resource
 Planning (ERP)" (Chopra & Meindl, cap. 3). Ajuste **moderado**: el concepto es el
@@ -150,7 +168,7 @@ ERP como sistema, y la brecha es sobre el modelo de despliegue de ese ERP.
 Arista `conceptually_related_to`. Secundario: `knowledge::erp_data_integration`
 (Khan), la interfaz de integración, que es literalmente lo que el addon es.
 
-**Código:** `odoo_addon/linchpin_dry_run/__manifest__.py`.
+**Código:** `odoo_addon/19.0/kern_dry_run/__manifest__.py`.
 
 **Qué falta, y son dos techos distintos.**
 
@@ -166,13 +184,40 @@ Arista `conceptually_related_to`. Secundario: `knowledge::erp_data_integration`
 muestra recomendaciones y **no escribe nada de vuelta**. Vender ejecución por
 Odoo es la brecha de capacidad 3, no ésta.
 
-**Sonda:** la serie del manifest, y la presencia de la cláusula de
-incompatibilidad con Odoo Online.
+**Sonda:** la serie que declara `odoo_addon/19.0/kern_dry_run/__manifest__.py`.
 
 **Cerrada cuando** el manifest declara la serie que se soporta, una prueba la
 contrasta contra la que el repo dice soportar, y la incompatibilidad con Odoo
 Online está declarada en un lugar que una prueba puede leer — no sólo en prosa
 del `description`.
+
+---
+
+## F2 — FRONTERA: Odoo Online no acepta módulos de terceros
+
+**Esto no es una brecha y no se cierra nunca.** Estaba mezclado dentro de L4, que
+lo hacía parecer trabajo pendiente; separarlo es la mitad del valor de esta
+revisión.
+
+**Teoría:** `knowledge::erp_data_integration` — "ERP Data Integration Interface"
+(Khan). Ajuste **moderado**: el módulo es exactamente eso, y la frontera es que
+esa interfaz no puede vivir dentro del SaaS. Arista `conceptually_related_to`.
+
+**Código:** `src/connectors/odoo_connect.py::check_connection` — la ruta que sí
+cubre Odoo Online.
+
+**El hecho.** Odoo Online (el SaaS de odoo.com) no admite módulos de terceros con
+código Python. Ninguna versión del addon va a correr ahí, y portarlo de serie no
+lo cambia.
+
+**Y por qué no bloquea el canal.** El manifest de la serie 19.0 lo dice de frente:
+*"On Odoo Online you do not need this module to get the same analysis"* — la
+External API que `src/connectors/odoo_connect.py` ya habla cubre Odoo Online,
+Odoo.sh y on-premise con una sola ruta, de sólo lectura, con cuatro campos. O sea
+el addon es una comodidad para quien puede instalarlo, no el único camino.
+
+**Se rompe cuando** alguien vuelve a tratar esto como trabajo pendiente, o cuando
+la ruta de la External API deja de existir y el addon queda como único camino.
 
 ---
 
@@ -212,5 +257,6 @@ de la casa es que la ausencia se declara y nunca se rellena.
 | L1 | Ledger de leads efímero | `knowledge::inventory_record_accuracy` | moderado | `conceptually_related_to` | `webapp/app.py::LEADS_DIR` |
 | L2 | Shopify sin App Store | — *(no existe ancla)* | — | — | `src/connectors/shopify_connect.py::check_connection` |
 | L3 | Billing stub sin webhook | `knowledge::supplier_onboarding_scf` | moderado | `conceptually_related_to` | `webapp/billing.py::create_checkout_session` |
-| L4 | Addon Odoo 17.0 / sin Online | `knowledge::enterprise_resource_planning` | moderado | `conceptually_related_to` | `odoo_addon/linchpin_dry_run/__manifest__.py` |
+| L4 | Addon Odoo en 17.0 | `knowledge::enterprise_resource_planning` | moderado | `conceptually_related_to` | `odoo_addon/19.0/kern_dry_run/__manifest__.py` |
+| F2 | Odoo Online sin terceros | `knowledge::erp_data_integration` | moderado | `conceptually_related_to` | `src/connectors/odoo_connect.py::check_connection` |
 | F1 | Plazo imposible desde Shopify | `knowledge::information_sharing_difficulty` | moderado | `conceptually_related_to` | `src/connectors/shopify_connect.py::PLAZO_AUSENTE` |
