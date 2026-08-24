@@ -353,6 +353,44 @@ def run_package(
         scratch = Path(scratch_str)
         for step in spec.steps:
             tool = registry.get(step.tool_key)
+            # El veto del rubro, con la misma semantica que el orquestador
+            # (scm_agent/orchestrator.py::_dispatch): NEEDS_CLARIFICATION y no
+            # ERROR, porque no se rompio nada -- hay una decision que tomar.
+            #
+            # Este camino resolvia el vertical para `merge_params` y `aliases` y
+            # NUNCA preguntaba si el paso estaba prohibido. El resultado: un
+            # cliente de alimentos corriendo el paquete ejecutaba igual
+            # `inventory_optimization` (package_specs.py, paso REQUERIDO), que es
+            # exactamente la capacidad que su pack existe para impedir. Los
+            # parametros del rubro llegaban -- holding_rate 0.40 en vez de 0.25 --
+            # asi que el numero salia menos equivocado y con la misma cara de
+            # correcto, que es peor.
+            #
+            # Fuera de `strict_params` a proposito, igual que en el orquestador:
+            # ese interruptor es correcto para "te falto un numero" y equivocado
+            # para "este calculo es invalido sobre tu catalogo".
+            veto = vertical.forbids(step.tool_key) if vertical is not None else None
+            if veto is not None:
+                if step.required:
+                    # Un paquete cuyo paso REQUERIDO no aplica al rubro no es un
+                    # paquete al que le falta un pedazo: es el paquete equivocado
+                    # para este cliente. Entregarlo sin su analisis central seria
+                    # la version silenciosa del mismo error.
+                    return _failed(
+                        spec, client, STATUS_NEEDS_CLARIFICATION,
+                        f"{spec.title}: '{tool.title}' no aplica a un catalogo de "
+                        f"{vertical.display_name}. {veto.reason.strip()}"
+                        + (f" En su lugar: {veto.instead.strip()}" if veto.instead.strip() else ""),
+                    )
+                outcomes.append(StepOutcome(
+                    tool_key=step.tool_key, title=tool.title, status=STEP_SKIPPED,
+                    cadence=step.cadence, source="(no aplica al rubro)",
+                    required=step.required,
+                    summary=veto.reason.strip(),
+                    skip_reason=veto.reason.strip(),
+                    messages=tuple(c for c in (veto.instead.strip(),) if c),
+                ))
+                continue
             merged = client_profile.merge_params({**step.params, **params}, profile, vertical)
             if pack_aliases is not None:
                 merged = {**merged, "column_aliases": pack_aliases}
