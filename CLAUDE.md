@@ -8,9 +8,11 @@
 
 > Renamed from **Linchpin** on 2026-07-12 — narrative in
 > [documentation/KERN_IDENTIDAD_Y_FILOSOFIA.md](documentation/KERN_IDENTIDAD_Y_FILOSOFIA.md).
-> Infra identifiers (repo name, linchpin.fly.dev, LINCHPIN_* env vars, linchpin_*
-> MCP tool names, odoo_addon/linchpin_dry_run) intentionally still say "linchpin"
-> until the external checklist in HANDOFF.md is executed.
+> Infra identifiers (linchpin.fly.dev, LINCHPIN_* env vars, linchpin_* MCP tool
+> names, the `lpk_` API-key prefix) intentionally still say "linchpin" until the
+> external checklist in HANDOFF.md is executed. Already executed: the GitHub repo
+> (2026-07-13) and the Odoo addon, now `odoo_addon/{17.0,19.0}/kern_dry_run`
+> (2026-08-19, together with the Odoo 19 port).
 
 An **agentic supply-chain engine**: a plain-language brief becomes a finished,
 QA-gated deliverable (Excel + report + chart), grounded in a knowledge graph of

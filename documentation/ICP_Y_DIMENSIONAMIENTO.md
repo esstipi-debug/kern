@@ -344,9 +344,10 @@ fuente externa:
 - **Odoo en LATAM (footprint):** se buscó explícitamente. **NO RELIABLE
   SOURCE FOUND** — Odoo no publica cifras públicas de partners/clientes por
   país LATAM. No usar un número inventado aquí; el canal Odoo App Store sigue
-  siendo la apuesta de `GTM_SUBMISSIONS.md` (módulo `linchpin_dry_run`,
-  listo para publicar), pero su alcance real es desconocido hasta que se
-  publique y se mida.
+  siendo la apuesta de `GTM_SUBMISSIONS.md` (módulo `kern_dry_run`, portado a
+  Odoo 19 y verificado en instalación limpia, pendiente de los ítems de ficha
+  listados en `GTM_SUBMISSIONS.md` §5), pero su alcance real es desconocido
+  hasta que se publique y se mida.
 - **Conversión lead→cierre en ads B2B (ESTIMADO, benchmark general no
   LATAM-específico):** profesional services en LinkedIn Ads cierra
   aproximadamente 2-5% de los leads generados por formulario (fuente:

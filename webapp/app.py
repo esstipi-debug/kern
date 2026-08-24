@@ -123,7 +123,16 @@ OPERATOR_DOCS_DIR = _REPO_ROOT / "documentation" / "operator"
 PAQUETES_DOCS_DIR = _REPO_ROOT / "documentation" / "paquetes"
 JOBS_OUTPUT_DIR = _REPO_ROOT / "webapp" / "_jobs_output"
 JOBS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-LEADS_DIR = _REPO_ROOT / "webapp" / "_leads"
+# Captured demo leads (PII; gitignored). Same env-var-override pattern as
+# LEAD_REPORTS_DIR above, and for the same reason: the default sits on the
+# Machine's EPHEMERAL root filesystem, so on a cloud deploy it is wiped every
+# single time. That is the exact failure fly.toml's [env] block already
+# documents fixing for events, autonomy, state and the pricing ledger -- this
+# was the one durable store left with no way to point it at the volume.
+LEADS_DIR = Path(
+    os.environ.get("LINCHPIN_LEADS_DIR", "").strip()
+    or (_REPO_ROOT / "webapp" / "_leads")
+)
 LEADS_DIR.mkdir(parents=True, exist_ok=True)
 LEADS_FILE = LEADS_DIR / "leads.jsonl"  # one JSON object per captured demo lead (PII; gitignored)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

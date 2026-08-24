@@ -1,0 +1,22 @@
+# Throwaway Odoo 19 + Postgres for verifying kern_dry_run installs on a clean DB.
+# Not shipped to the Odoo Apps Store: the store syncs only odoo_addon/19.0/kern_dry_run.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: odoo
+      POSTGRES_DB: postgres
+      # No password: this database is disposable (tmpfs, no published port, torn
+      # down with `docker compose down -v`). Trust auth keeps a credential pair out
+      # of the repo entirely rather than committing one that only looks like a secret.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    tmpfs: [/var/lib/postgresql/data]   # clean DB every run, nothing persisted
+  odoo:
+    image: odoo:${ODOO_SERIES:-19}
+    depends_on: [db]
+    ports: ["8069:8069"]
+    environment:
+      HOST: db
+      USER: odoo
+    volumes:
+      - ../${ODOO_SERIES:-19}.0:/mnt/extra-addons:ro   # ODOO_SERIES=17 tests the 17.0 tree

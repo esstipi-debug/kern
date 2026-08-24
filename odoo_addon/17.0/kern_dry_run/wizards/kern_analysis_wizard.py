@@ -17,7 +17,7 @@ from ..models.res_config_settings import DEFAULT_BASE_URL
 _LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "lib")
 if _LIB_DIR not in sys.path:
     sys.path.insert(0, _LIB_DIR)
-from mcp_client import LinchpinMcpClient, LinchpinMcpError  # noqa: E402
+from mcp_client import KernMcpClient, KernMcpError  # noqa: E402
 
 _logger = logging.getLogger(__name__)
 
@@ -27,9 +27,9 @@ _logger = logging.getLogger(__name__)
 _MAX_ROWS = 5000
 
 
-class LinchpinAnalysisWizard(models.TransientModel):
-    _name = "linchpin.analysis.wizard"
-    _description = "Linchpin Inventory Analysis (dry run, read-only)"
+class KernAnalysisWizard(models.TransientModel):
+    _name = "kern.analysis.wizard"
+    _description = "Kern Inventory Analysis (dry run, read-only)"
     # Odoo's default TransientModel vacuum cutoff is 1 hour - too short for a
     # result that took a real (possibly rate-limited) API call to produce and
     # that a user might reasonably want to come back to after switching tabs
@@ -64,7 +64,7 @@ class LinchpinAnalysisWizard(models.TransientModel):
             )
         if len(lines) >= _MAX_ROWS:
             _logger.warning(
-                "Linchpin dry-run: sales history truncated at %(limit)s rows (history_days=%(days)s)",
+                "Kern dry-run: sales history truncated at %(limit)s rows (history_days=%(days)s)",
                 {"limit": _MAX_ROWS, "days": self.history_days},
             )
 
@@ -90,20 +90,20 @@ class LinchpinAnalysisWizard(models.TransientModel):
     def action_run_analysis(self):
         self.ensure_one()
         icp = self.env["ir.config_parameter"].sudo()
-        base_url = icp.get_param("linchpin_dry_run.base_url") or DEFAULT_BASE_URL
-        api_key = icp.get_param("linchpin_dry_run.api_key")
+        base_url = icp.get_param("kern_dry_run.base_url") or DEFAULT_BASE_URL
+        api_key = icp.get_param("kern_dry_run.api_key")
         if not api_key:
             raise UserError(
-                _("Set your Linchpin API key first: Settings > Inventory > Linchpin. Get one at %s.") % DEFAULT_BASE_URL
+                _("Set your Kern API key first: Settings > Inventory > Kern. Get one at %s.") % DEFAULT_BASE_URL
             )
 
         rows = self._collect_rows()
-        client = LinchpinMcpClient(base_url, api_key)
+        client = KernMcpClient(base_url, api_key)
         try:
             result = client.call_tool(
                 "linchpin_inventory_optimize", rows, client_label=self.env.company.name or "Odoo"
             )
-        except LinchpinMcpError as exc:
+        except KernMcpError as exc:
             raise UserError(str(exc)) from exc
 
         self.write(

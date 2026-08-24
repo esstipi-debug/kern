@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="linchpin_analysis_wizard_view_form" model="ir.ui.view">
-        <field name="name">linchpin.analysis.wizard.view.form</field>
-        <field name="model">linchpin.analysis.wizard</field>
+    <record id="kern_analysis_wizard_view_form" model="ir.ui.view">
+        <field name="name">kern.analysis.wizard.view.form</field>
+        <field name="model">kern.analysis.wizard</field>
         <field name="arch" type="xml">
-            <form string="Linchpin Inventory Analysis">
+            <form string="Kern Inventory Analysis">
                 <field name="state" invisible="1"/>
                 <group invisible="state != 'draft'">
                     <field name="history_days"/>
                     <p class="text-muted">
                         For each confirmed sale in the window above, this sends the product's
                         SKU, order date, quantity, unit cost, your primary supplier's lead time,
-                        and your company name to Linchpin's cloud service for analysis. No
+                        and your company name to Kern's cloud service for analysis. No
                         stock/on-hand quantities are read or sent. Nothing is written back to
                         Odoo - this is a read-only dry run.
                     </p>
@@ -29,9 +29,9 @@
         </field>
     </record>
 
-    <record id="linchpin_analysis_wizard_action" model="ir.actions.act_window">
-        <field name="name">Linchpin Inventory Analysis</field>
-        <field name="res_model">linchpin.analysis.wizard</field>
+    <record id="kern_analysis_wizard_action" model="ir.actions.act_window">
+        <field name="name">Kern Inventory Analysis</field>
+        <field name="res_model">kern.analysis.wizard</field>
         <field name="view_mode">form</field>
         <field name="target">new</field>
     </record>

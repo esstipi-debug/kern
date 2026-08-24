@@ -57,34 +57,57 @@ Glama auto-indexes public GitHub MCP servers and lets authors claim them.
 
 ## 5. Odoo Apps Store (apps.odoo.com)
 
-The module (`odoo_addon/linchpin_dry_run/`, v17.0.1.0.0, OPL-1, icon +
-`index.html` description page included) is install-verified. The store pulls from
-a **dedicated repository whose branch name matches the Odoo version** with the
-module at the top level — that repo is already prepared:
-`https://github.com/esstipi-debug/linchpin-odoo-apps` (private), branch `17.0`,
-`linchpin_dry_run/` at the root.
+The module lives at `odoo_addon/<serie>/kern_dry_run/` — hoy `17.0/` (v17.0.1.0.0,
+install-verified) y `19.0/` (v19.0.1.0.0, el port). **Mismo nombre tecnico en las
+dos series a proposito**: el Store trata un modulo como *la misma app* en varias
+versiones solo si el directorio se llama igual en cada rama. OPL-1, icono +
+`index.html` en las dos.
+
+El Store lee de un **repositorio dedicado cuyo nombre de rama coincide con la
+version de Odoo**, con el modulo en la raiz:
+`https://github.com/esstipi-debug/linchpin-odoo-apps` (privado; el nombre del repo
+no importa para la ficha). Rama `17.0` ya preparada; hay que crear la rama `19.0`.
 
 1. Log in at `https://apps.odoo.com` (create the free account with your GitHub
    email if you don't have one).
-2. Top-right menu -> **Upload / your repositories** -> register
-   `git@github.com:esstipi-debug/linchpin-odoo-apps.git` for version **17.0**.
+2. Top-right menu -> **Upload / your repositories** -> registrar el repo por SSH
+   con la rama como fragmento: `ssh://git@github.com/esstipi-debug/linchpin-odoo-apps#19.0`
+   (y lo mismo con `#17.0` para la serie vieja).
 3. Odoo shows a deploy/SSH key -> add it in GitHub: repo **Settings -> Deploy
-   keys** (read-only) on `linchpin-odoo-apps`.
-4. Trigger the scan; the store picks up `linchpin_dry_run` from the branch, using
-   `static/description/index.html` + `icon.png` as the listing page.
-5. Set the price (the module is OPL-1 licensed — paid is the norm; free also
-   drives leads to the hosted service) and publish.
+   keys** (read-only) on `linchpin-odoo-apps`. Para repos privados hay que dar
+   acceso de lectura al usuario GitHub `online-odoo`.
+4. Trigger the scan; el Store toma `kern_dry_run` de la rama y usa
+   `static/description/index.html` + `icon.png` como ficha.
+5. Set the price (OPL-1 -> de pago es la norma; minimo 9 EUR, y solo se aceptan
+   EUR/USD) y publicar.
+
+**Antes de publicar, lo que todavia falta** (verificado contra las reglas vigentes
+del Store, 2026-08-19):
+
+- `"support"`: falta en el manifest. Es el mail de reclamos, obligatorio de facto
+  para apps de pago (se muestra solo a compradores). Decidir cual usar.
+- **Capturas de pantalla**: una app de pago sin capturas de sus funcionalidades
+  puede ser despublicada. `index.html` hoy no tiene ninguna.
+- **Cover image**: `"images"` apunta al icono. El ranking de la ficha penaliza
+  "missing cover image"; icono y cover son cosas distintas.
+- `"name"`: "Kern Inventory AI" cumple el limite de 25 caracteres, pero la guia
+  pide evitar el nombre de la empresa en el titulo. Riesgo bajo, decision del duenio.
+- Un error de manifest **despublica todos los modulos del repositorio**, no solo
+  el roto. Revisar el scan despues de cada push.
 
 Keeping the store repo in sync after module changes in the main repo:
 
 ```
-# from the main repo root, after a change under odoo_addon/linchpin_dry_run/
+# desde la raiz del repo principal, tras un cambio bajo odoo_addon/19.0/kern_dry_run/
+git -C ../linchpin-odoo-apps checkout 19.0
 git -C ../linchpin-odoo-apps pull
-robocopy odoo_addon/linchpin_dry_run ../linchpin-odoo-apps/linchpin_dry_run /MIR /XD __pycache__
+robocopy odoo_addon/19.0/kern_dry_run ../linchpin-odoo-apps/kern_dry_run /MIR /XD __pycache__
 git -C ../linchpin-odoo-apps add -A
 git -C ../linchpin-odoo-apps commit -m "sync from main repo"
 git -C ../linchpin-odoo-apps push
 ```
+
+(Para la serie 17.0: mismas lineas con `checkout 17.0` y `odoo_addon/17.0/kern_dry_run`.)
 
 ---
 
