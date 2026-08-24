@@ -957,7 +957,15 @@ def test_malformed_liderazgo_csv_blocks_with_an_actionable_message(demo_intake, 
 # ---- E4: lang threads into the LLM narrative rewrite --------------------------
 
 class _RecordingProvider:
-    """Available provider that records every prompt and returns a fixed reply."""
+    """Available provider that records every prompt and returns a marked reply.
+
+    La respuesta ECHOA el bloque del prompt posterior a la linea en blanco -- que
+    es donde `narrative_rewrite` pone el resumen deterministico -- para conservar
+    sus cifras. Desde la brecha 8, `scm_agent/narrative_critic.py` revierte toda
+    reescritura que pierda una cifra del base, asi que una respuesta fija sin
+    numeros ya no llega al `summary` del paso y este test estaria midiendo el
+    fallback en vez del idioma.
+    """
 
     def __init__(self):
         self.prompts: list[str] = []
@@ -967,7 +975,7 @@ class _RecordingProvider:
 
     def complete(self, prompt: str) -> str:
         self.prompts.append(prompt)
-        return "rewritten summary"
+        return "rewritten summary " + prompt.split(chr(10) * 2, 1)[-1]
 
     def extract(self, prompt: str, schema: dict) -> dict:
         return {}
@@ -981,4 +989,4 @@ def test_package_step_narrative_uses_spec_lang(demo_intake, tmp_path):
     assert any("English" in p for p in rec.prompts)
     assert not any("Spanish" in p for p in rec.prompts)
     executed = [s for s in result.steps if s.status == "ok"]
-    assert all(s.summary == "rewritten summary" for s in executed)
+    assert all(s.summary.startswith("rewritten summary") for s in executed)

@@ -48,6 +48,7 @@ from src.deliverable import DEFAULT_BRANDING, Branding
 
 from . import citation_gate
 from .knowledge import KnowledgeBase
+from .narrative_critic import review_narrative
 from .tools import build_default_registry
 
 STEP_SKIPPED = "skipped"
@@ -518,7 +519,15 @@ def _run_step(
     rewritten = narrative_rewrite(
         provider, produced.summary, tool.title, lang=spec.lang, citations=list(citations),
     )
-    summary = rewritten + (f" [{note}]" if note else "")
+    # Narrative post-check (brecha 8): the rewrite ships only if every figure of
+    # the deterministic summary survived it. Same severity model as the citation
+    # gate right above -- a content filter, not a QA veto: a reverted narrative
+    # still ships the step, it just ships the engine's own prose. This call is
+    # NOT redundant with the Orchestrator's: filter_citations taught the lesson
+    # that a gate wired into only one of the two surfaces leaves the other one
+    # unreviewed, and packages/ is the surface a paying client actually receives.
+    reviewed = review_narrative(produced.summary, rewritten, label=tool.title)
+    summary = reviewed.summary + (f" [{note}]" if note else "")
     return StepOutcome(**base, status=STATUS_OK, summary=summary,
                        report=produced.report, guided=guided, citations=citations)
 
