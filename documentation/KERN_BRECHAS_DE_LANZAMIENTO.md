@@ -32,7 +32,7 @@ de mergear #269 y #258 — que cerraron dos de los cinco items originales.
 |---|--------|--------|---------|
 | L1 | El ledger de leads se borra en cada deploy | CERRADA | — |
 | L2 | Shopify es custom app, no app del App Store | ABIERTA | distribución por Shopify |
-| L3 | El billing es un stub sin webhook de Stripe | ABIERTA | cobro self-serve (L2 y el peldaño Alerts) |
+| L3 | El billing es un stub sin webhook de Stripe | CERRADA | — |
 | L4 | El addon de Odoo está en 17.0 | CERRADA | — |
 | F2 | Odoo Online no acepta módulos de terceros | **FRONTERA** | nada: no se cierra nunca |
 | F1 | El plazo de proveedor es imposible desde Shopify | **FRONTERA** | nada: no se cierra nunca |
@@ -121,28 +121,56 @@ respondiendo 200 con HMAC verificado, y un cargo creado por Billing API.
 
 ---
 
-## L3 — El billing es un stub sin webhook de Stripe
+## L3 — El billing no tenía webhook de pago — **CERRADA**
+
+**Cerrada en esta misma rama.** `POST /webhooks/stripe` verifica la firma de
+Stripe y emite la credencial MCP de la compra, atada al email del comprador y a
+la referencia del pago. Un evento firmado hace que `POST /mcp/` deje de devolver
+401 — que es literalmente el *cerrada cuando* de abajo.
+
+**Sin SDK, y no por ahorro.** La firma es HMAC-SHA256 sobre `"{t}.{cuerpo
+crudo}"`: `hmac` y `hashlib` alcanzan. Meter el SDK agregaría una dependencia con
+acceso a red en la ruta que recibe dinero, y el Dockerfile de producción no la
+instala. La promesa que `billing.py` ya hacía se mantiene.
+
+**Idempotencia por esquema, no por memoria.** Stripe reintenta hasta recibir un
+2xx y reenvía a mano desde su panel. Un índice único parcial sobre `payment_ref`
+hace que el segundo intento **no pueda** acuñar una segunda credencial: lo impide
+SQLite, no el código. Un proceso que recuerda lo ya atendido olvida en cada
+deploy — que es justo el modo de falla que L1 acababa de cerrar.
+
+**Lo que NO se construyó, y por qué no es esta brecha.** `create_checkout_session`
+sigue sin llamar a la API de Stripe, y está bien: con un Payment Link el
+comprador paga y Stripe dispara `checkout.session.completed` igual. La mitad
+saliente sólo hace falta el día que el precio deba calcularse por visitante
+(`src/commercial_pricing.quote_price`), que es una feature de pricing, no de
+cobro. **Lo que sí falta es la entrega**: no hay envío de correo en el repo, así
+que la credencial se emite y queda esperando que un humano la mande. Eso es lo
+que mantiene abierta la brecha de capacidad 7 (onboarding self-serve), no ésta.
 
 **Teoría:** `knowledge::supplier_onboarding_scf` — "SCF Supplier Onboarding"
 (Khan, comunidad 68). Ajuste **moderado**: su racional nombra al onboarding como
 la restricción que ata el tiempo de puesta en marcha, que es exactamente el rol
 que juega acá el alta paga. Arista `conceptually_related_to`.
 
-**Código:** `webapp/billing.py::create_checkout_session`.
+**Código:** `webapp/stripe_webhook.py::verify_signature`.
 
-**Qué falta.** El módulo lo declara en su propio docstring: *"it does NOT call
+**Qué faltaba.** El módulo lo declaraba en su propio docstring: *"it does NOT call
 the Stripe API"*. `create_checkout_session` sólo resuelve una variable
 `STRIPE_LINK_<SLUG>` configurada a mano y degrada a `mailto`. No hay handler de
 webhook en todo `webapp/`, y verificado el 2026-08-24 **ningún `.py` de producto
 menciona `stripe`** — sólo lo hacen cinco tests y las páginas que arman el CTA.
 Sin ese evento no existe el disparador que daría de alta una credencial sola.
 
-**Es el bloqueo aguas arriba de dos cosas a la vez:** de la brecha de capacidad 7
+**Era el bloqueo aguas arriba de dos cosas a la vez:** de la brecha de capacidad 7
 (onboarding self-serve) y de L2, porque la Billing API de Shopify necesita del
-otro lado un cobro que hoy no existe.
+otro lado un cobro. Con esto, L2 deja de estar bloqueada por abajo.
 
-**Sonda:** `webapp/billing.py` sigue declarando que no llama a Stripe, y no hay
-ruta de webhook en `webapp/app.py`.
+**Sonda:** existe una ruta de webhook en `webapp/app.py` Y un módulo que verifica
+la firma. La primera versión de esta sonda también exigía que `billing.py` dejara
+de declarar *"does NOT call the Stripe API"* — y eso medía la cosa equivocada:
+esa frase sigue siendo cierta y correcta con un Payment Link. La brecha era el
+webhook entrante, no la llamada saliente.
 
 **Cerrada cuando** una prueba manda un evento de pago firmado a una ruta de
 webhook, ésta lo verifica y termina llamando a `src/mcp_keys.py::McpKeyStore.issue`,
@@ -256,7 +284,7 @@ de la casa es que la ausencia se declara y nunca se rellena.
 |---|--------|------------------|--------|--------|--------|
 | L1 | Ledger de leads efímero | `knowledge::inventory_record_accuracy` | moderado | `conceptually_related_to` | `webapp/app.py::LEADS_DIR` |
 | L2 | Shopify sin App Store | — *(no existe ancla)* | — | — | `src/connectors/shopify_connect.py::check_connection` |
-| L3 | Billing stub sin webhook | `knowledge::supplier_onboarding_scf` | moderado | `conceptually_related_to` | `webapp/billing.py::create_checkout_session` |
+| L3 | Billing sin webhook de pago | `knowledge::supplier_onboarding_scf` | moderado | `conceptually_related_to` | `webapp/stripe_webhook.py::verify_signature` |
 | L4 | Addon Odoo en 17.0 | `knowledge::enterprise_resource_planning` | moderado | `conceptually_related_to` | `odoo_addon/19.0/kern_dry_run/__manifest__.py` |
 | F2 | Odoo Online sin terceros | `knowledge::erp_data_integration` | moderado | `conceptually_related_to` | `src/connectors/odoo_connect.py::check_connection` |
 | F1 | Plazo imposible desde Shopify | `knowledge::information_sharing_difficulty` | moderado | `conceptually_related_to` | `src/connectors/shopify_connect.py::PLAZO_AUSENTE` |

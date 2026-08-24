@@ -30,9 +30,18 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parents[1]
+
+
+def _leer(ruta: Path) -> str:
+    """El texto del archivo, o vacio si todavia no existe.
+
+    Un archivo ausente ES el estado ABIERTO de su brecha, no un error del
+    medidor: antes de construir el webhook, webapp/stripe_webhook.py no
+    existia."""
+    return ruta.read_text(encoding="utf-8") if ruta.is_file() else ""
 DOC = RAIZ / "documentation" / "KERN_BRECHAS_DE_LANZAMIENTO.md"
 APP = RAIZ / "webapp" / "app.py"
-BILLING = RAIZ / "webapp" / "billing.py"
+WEBHOOK = RAIZ / "webapp" / "stripe_webhook.py"
 SHOPIFY = RAIZ / "src" / "connectors" / "shopify_connect.py"
 MANIFEST = RAIZ / "odoo_addon" / "19.0" / "kern_dry_run" / "__manifest__.py"
 ODOO_CONNECT = RAIZ / "src" / "connectors" / "odoo_connect.py"
@@ -62,23 +71,39 @@ def l1_abierta(texto_app: str) -> bool:
     return "environ" not in sentencia and "getenv" not in sentencia
 
 
-#: Lo que una app del App Store necesita y una custom app no: OAuth, el callback,
-#: los webhooks (incluidos los tres obligatorios de GDPR) y el alta.
-_RUTAS_DE_APP = re.compile(r"@app\.(?:get|post)\(\s*[\"'][^\"']*(oauth|webhook|auth/callback|install)",
-                           re.IGNORECASE)
+#: Los tres webhooks que Shopify EXIGE a toda app del App Store. Se nombran
+#: enteros: son especificos de Shopify y no se los confunde con otra cosa.
+_WEBHOOKS_GDPR = ("customers/data_request", "customers/redact", "shop/redact")
+_OAUTH_SHOPIFY = re.compile(r"@app\.(?:get|post)\([^)]*shopify[^)]*(oauth|callback|install)", re.IGNORECASE)
 
 
 def l2_abierta(texto_app: str) -> bool:
-    """Sin ninguna ruta de OAuth/webhook/instalacion, no hay app del App Store."""
-    return not _RUTAS_DE_APP.search(texto_app)
+    """Hace falta OAuth de Shopify Y los tres webhooks de GDPR.
+
+    La primera version de esta sonda buscaba cualquier ruta con 'webhook' en el
+    path, y se declaro CERRADA sola el dia que entro POST /webhooks/stripe -- que
+    no dice absolutamente nada sobre ser una app del App Store de Shopify. Un
+    medidor que se cierra por una ruta ajena es peor que no tenerlo: da por
+    terminado trabajo que nadie hizo. Ahora exige evidencia especifica de
+    Shopify, que es lo que el "cerrada cuando" de la ficha siempre pidio.
+    """
+    tiene_oauth = bool(_OAUTH_SHOPIFY.search(texto_app))
+    tiene_gdpr = all(w in texto_app for w in _WEBHOOKS_GDPR)
+    return not (tiene_oauth and tiene_gdpr)
 
 
-def l3_abierta(texto_billing: str, texto_app: str) -> bool:
-    """El billing es un stub mientras declare que no llama a Stripe y no exista
-    una ruta de webhook que reciba el evento de pago."""
-    stub = "does NOT call the Stripe API" in texto_billing
-    sin_webhook = "webhook" not in texto_app.lower()
-    return stub or sin_webhook
+def l3_abierta(texto_webhook: str, texto_app: str) -> bool:
+    """Falta el cobro mientras no exista la ruta del webhook Y su verificacion.
+
+    La version original de esta sonda tambien exigia que webapp/billing.py dejara
+    de decir "does NOT call the Stripe API", y eso MEDIA LA COSA EQUIVOCADA: esa
+    frase sigue siendo cierta y correcta con un Payment Link, donde el comprador
+    paga y Stripe dispara el evento sin que nosotros llamemos a su API. La brecha
+    era el webhook entrante, no la llamada saliente. Corregido al construirla.
+    """
+    sin_ruta = "/webhooks/stripe" not in texto_app
+    sin_verificacion = "def verify_signature" not in texto_webhook
+    return sin_ruta or sin_verificacion
 
 
 def l4_abierta(texto_manifest: str, serie_soportada: str = "19.0") -> bool:
@@ -133,7 +158,7 @@ def _medido() -> dict[str, str]:
     return {
         "L1": "ABIERTA" if l1_abierta(app) else "CERRADA",
         "L2": "ABIERTA" if l2_abierta(app) else "CERRADA",
-        "L3": "ABIERTA" if l3_abierta(BILLING.read_text(encoding="utf-8"), app) else "CERRADA",
+        "L3": "ABIERTA" if l3_abierta(_leer(WEBHOOK), app) else "CERRADA",
         "L4": "ABIERTA" if l4_abierta(MANIFEST.read_text(encoding="utf-8")) else "CERRADA",
         "F2": "FRONTERA" if f2_intacta(MANIFEST.read_text(encoding="utf-8"),
                                        ODOO_CONNECT.read_text(encoding="utf-8")) else "ROTA",
@@ -172,16 +197,25 @@ def test_la_sonda_del_ledger_muerde():
 
 
 def test_la_sonda_del_app_store_muerde():
-    assert l2_abierta('@app.get("/api/health")\n@app.post("/api/jobs")')
-    assert not l2_abierta('@app.get("/shopify/oauth/start")')
-    assert not l2_abierta('@app.post("/webhooks/customers/redact")')
+    oauth = '@app.get("/shopify/oauth/callback")'
+    gdpr = ('@app.post("/webhooks/customers/data_request")'
+            '@app.post("/webhooks/customers/redact")'
+            '@app.post("/webhooks/shop/redact")')
+    assert l2_abierta('@app.get("/api/health")')
+    assert not l2_abierta(oauth + gdpr)
+    # Las dos mitades hacen falta.
+    assert l2_abierta(oauth), "OAuth sin los tres webhooks no alcanza"
+    assert l2_abierta(gdpr), "los tres webhooks sin OAuth tampoco"
+    # Y la regresion que motivo el arreglo: un webhook AJENO no cierra nada.
+    assert l2_abierta('@app.post("/webhooks/stripe")'), "un webhook de Stripe no es una app de Shopify"
 
 
 def test_la_sonda_del_billing_muerde():
-    stub, listo = "it does NOT call the Stripe API", "crea una Checkout Session real"
-    assert l3_abierta(stub, "@app.post('/webhooks/stripe')")      # el stub alcanza
-    assert l3_abierta(listo, "@app.get('/api/health')")           # falta el webhook
-    assert not l3_abierta(listo, "@app.post('/webhooks/stripe')")  # las dos mitades
+    verifica, no_verifica = "def verify_signature(payload, header, secret):", "# nada aca"
+    ruta, sin_ruta = '@app.post("/webhooks/stripe")', '@app.get("/api/health")'
+    assert l3_abierta(no_verifica, ruta), "una ruta sin verificacion no cierra nada"
+    assert l3_abierta(verifica, sin_ruta), "verificar sin ruta que lo llame tampoco"
+    assert not l3_abierta(verifica, ruta)
 
 
 def test_la_sonda_del_addon_muerde():
@@ -209,7 +243,7 @@ def test_toda_ficha_del_documento_nombra_su_sitio_de_codigo():
     texto = DOC.read_text(encoding="utf-8")
     for archivo in ("webapp/app.py::LEADS_DIR",
                     "src/connectors/shopify_connect.py::check_connection",
-                    "webapp/billing.py::create_checkout_session",
+                    "webapp/stripe_webhook.py::verify_signature",
                     "odoo_addon/19.0/kern_dry_run/__manifest__.py",
                     "src/connectors/odoo_connect.py::check_connection",
                     "src/connectors/shopify_connect.py::PLAZO_AUSENTE"):

@@ -95,19 +95,21 @@ GAPS: tuple[dict, ...] = (
     {
         "n": "L3",
         "slug": "billing_stub_sin_webhook",
-        "label": "Brecha L3: el billing es un stub sin webhook de Stripe",
+        "label": "Brecha L3: el billing no tenia webhook de pago",
         "rationale": (
-            "create_checkout_session solo resuelve una variable STRIPE_LINK_<SLUG> puesta a "
-            "mano y degrada a mailto; el modulo declara que no llama a la API de Stripe y no "
-            "hay handler de webhook en todo webapp. Sin ese evento no existe el disparador "
-            "que daria de alta una credencial sola. Bloquea aguas arriba a L2 y a la brecha "
-            "de capacidad 7."
+            "CERRADA en la rama del gate de CI. POST /webhooks/stripe verifica la firma "
+            "(HMAC-SHA256 con stdlib, sin SDK) y emite la credencial MCP de la compra, atada "
+            "al email y a la referencia del pago, con idempotencia impuesta por un indice "
+            "unico parcial en la base y no por memoria de proceso. La mitad SALIENTE sigue "
+            "sin llamar a la API de Stripe y esta bien: con un Payment Link el evento llega "
+            "igual. Lo que falta es la ENTREGA de la credencial -- no hay envio de correo en "
+            "el repo -- y eso es lo que mantiene abierta la brecha de capacidad 7."
         ),
         "theory": "knowledge::supplier_onboarding_scf",
         "relation": "conceptually_related_to",
         "theory2": None,
-        "code_label": "webapp/billing.py::create_checkout_session",
-        "code_location": "line 15",
+        "code_label": "webapp/stripe_webhook.py::verify_signature",
+        "code_location": "modulo",
         "doc_location": "Brecha L3",
     },
     {

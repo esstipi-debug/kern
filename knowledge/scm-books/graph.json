@@ -45002,7 +45002,7 @@
       "rationale": "Sitio de codigo de L2, verificado en modulo del commit 69b52d1."
     },
     {
-      "label": "Brecha L3: el billing es un stub sin webhook de Stripe",
+      "label": "Brecha L3: el billing no tenia webhook de pago",
       "file_type": "concept",
       "source_file": "KERN_BRECHAS_DE_LANZAMIENTO.md",
       "source_location": "Brecha L3",
@@ -45012,24 +45012,24 @@
       "contributor": null,
       "id": "kernlanzamiento_billing_stub_sin_webhook",
       "community": 203,
-      "norm_label": "brecha l3: el billing es un stub sin webhook de stripe",
+      "norm_label": "brecha l3: el billing no tenia webhook de pago",
       "repo": "knowledge",
-      "rationale": "create_checkout_session solo resuelve una variable STRIPE_LINK_<SLUG> puesta a mano y degrada a mailto; el modulo declara que no llama a la API de Stripe y no hay handler de webhook en todo webapp. Sin ese evento no existe el disparador que daria de alta una credencial sola. Bloquea aguas arriba a L2 y a la brecha de capacidad 7."
+      "rationale": "CERRADA en la rama del gate de CI. POST /webhooks/stripe verifica la firma (HMAC-SHA256 con stdlib, sin SDK) y emite la credencial MCP de la compra, atada al email y a la referencia del pago, con idempotencia impuesta por un indice unico parcial en la base y no por memoria de proceso. La mitad SALIENTE sigue sin llamar a la API de Stripe y esta bien: con un Payment Link el evento llega igual. Lo que falta es la ENTREGA de la credencial -- no hay envio de correo en el repo -- y eso es lo que mantiene abierta la brecha de capacidad 7."
     },
     {
-      "label": "webapp/billing.py::create_checkout_session",
+      "label": "webapp/stripe_webhook.py::verify_signature",
       "file_type": "code",
       "source_file": "KERN_BRECHAS_DE_LANZAMIENTO.md",
-      "source_location": "Brecha L3 / line 15",
+      "source_location": "Brecha L3 / modulo",
       "source_url": null,
       "captured_at": null,
       "author": null,
       "contributor": null,
       "id": "kernlanzamiento_billing_stub_sin_webhook_codigo",
       "community": 203,
-      "norm_label": "webapp/billing.py::create_checkout_session",
+      "norm_label": "webapp/stripe_webhook.py::verify_signature",
       "repo": "knowledge",
-      "rationale": "Sitio de codigo de L3, verificado en line 15 del commit 69b52d1."
+      "rationale": "Sitio de codigo de L3, verificado en modulo del commit 69b52d1."
     },
     {
       "label": "Brecha L4: el addon de Odoo estaba en 17.0",
