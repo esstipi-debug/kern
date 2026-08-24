@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from jobs.stocky_importer import StockyMigrationBatch
+from jobs.stocky_importer import StockyMigrationBatch, absence_reason
 
 # The single source of truth for every verdict below: whether Shopify's OWN
 # native inventory (no third-party app) covers a given Stocky data category,
@@ -90,7 +90,27 @@ class SkuMasterAudit:
     into one "duplicate" bucket and report a meaningless 0% score. These three
     checks are exactly the defects that actually break a reorder-point
     migration: the same SKU listed twice, a min above its max, and a
-    non-positive reorder point."""
+    non-positive reorder point.
+
+    ``unmeasured_reorder`` is the fourth bucket: the SKUs whose minimum this
+    export did not let us measure. They used to arrive here as
+    ``min_reorder_point=0`` and land in ``nonpositive_reorder``, so a merchant
+    with no minimum column read in a paid report that their entire SKU master
+    was dirty -- a defect that was ours, not theirs.
+
+    ``unmeasured_reasons`` carries WHY, grouped by motive, and it is not
+    decoration. "There is no Min Stock column" is the merchant re-exporting;
+    "the cell says 'por confirmar'" and "the cell says '-5'" are the merchant
+    fixing data. Stating the bucket without the motive would just move the
+    wrong sentence one line down, and CLASSIFYING the motives here would be
+    this module inventing a policy -- the same policy
+    ``jobs.stocky_importer.client_profile_evidence`` explicitly refuses to
+    invent about coverage. So the motive is reported verbatim and the reader
+    decides.
+
+    ``clean`` keeps meaning "no defects were FOUND among the values that were
+    measured", not "everything was measured": the coverage travels in
+    ``summary``, the same split that module uses for values and their notes."""
 
     n_skus: int
     duplicate_skus: tuple[str, ...]
@@ -98,30 +118,73 @@ class SkuMasterAudit:
     nonpositive_reorder: tuple[str, ...]
     clean: bool
     summary: str
+    unmeasured_reorder: tuple[str, ...] = ()
+    unmeasured_reasons: tuple[str, ...] = ()
 
 
 def audit_sku_master(batch: StockyMigrationBatch) -> SkuMasterAudit:
-    """Structural pre-migration audit of the reorder-point master."""
+    """Structural pre-migration audit of the reorder-point master.
+
+    Every check below reads ``is not None`` rather than truthiness, and that is
+    the entire fix: ``if rp.max_reorder_point and ...`` skipped a genuine
+    maximum of zero, and ``rp.min_reorder_point <= 0`` counted an unexported
+    minimum as a defect. Both are the same mistake -- treating "absent" and
+    "zero" as one value -- and both put a wrong sentence in a paid report.
+    """
     seen: dict[str, int] = {}
     for rp in batch.reorder_points:
         seen[rp.sku] = seen.get(rp.sku, 0) + 1
     duplicate = tuple(sorted(sku for sku, n in seen.items() if n > 1))
-    inconsistent = tuple(
-        sorted({rp.sku for rp in batch.reorder_points if rp.max_reorder_point and rp.min_reorder_point > rp.max_reorder_point})
-    )
-    nonpositive = tuple(sorted({rp.sku for rp in batch.reorder_points if rp.min_reorder_point <= 0}))
+    inconsistent = tuple(sorted({
+        rp.sku for rp in batch.reorder_points
+        if rp.min_reorder_point is not None and rp.max_reorder_point is not None
+        and rp.min_reorder_point > rp.max_reorder_point
+    }))
+    nonpositive = tuple(sorted({
+        rp.sku for rp in batch.reorder_points
+        if rp.min_reorder_point is not None and rp.min_reorder_point <= 0
+    }))
+    unmeasured = tuple(sorted({
+        rp.sku for rp in batch.reorder_points if rp.min_reorder_point is None
+    }))
+    # Grouped by motive, never classified: "no hay columna" and "trae un valor
+    # negativo: '-5'" are read by different people doing different work, and
+    # deciding which of them counts as a defect is a policy nobody verified.
+    por_motivo: dict[str, list[str]] = {}
+    for rp in batch.reorder_points:
+        if rp.min_reorder_point is None:
+            motivo = absence_reason(rp, "min_reorder_point") or "motivo no registrado"
+            por_motivo.setdefault(motivo, []).append(rp.sku)
+    razones = tuple(f"{motivo}: {', '.join(sorted(set(skus)))}"
+                    for motivo, skus in sorted(por_motivo.items()))
 
     n_skus = len({rp.sku for rp in batch.reorder_points} | {po.sku for po in batch.purchase_orders})
     n_issues = len(set(duplicate) | set(inconsistent) | set(nonpositive))
     clean = n_issues == 0 and bool(batch.reorder_points)
+    sin_medir = (f" {len(unmeasured)} SKU(s) sin minimo medible en el export: su punto de reorden "
+                 f"no se pudo auditar (el motivo de cada uno, en el detalle)."
+                 if unmeasured else "")
     if not batch.reorder_points:
         summary = "Sin puntos de reorden exportados -- no hay maestro de SKUs para auditar."
+    elif clean and unmeasured:
+        # NOT the sentence below: "reorden positivo" would be claiming something
+        # about SKUs whose reorder point nobody measured. And when NOTHING was
+        # measured there is no clean bill to give at all -- "sin defectos en los
+        # 0 con minimo medido" is technically true and reads as reassurance.
+        medidos = len({rp.sku for rp in batch.reorder_points}) - len(unmeasured)
+        summary = (
+            f"{n_skus} SKUs: ningun minimo se pudo medir en este export, asi que no hay punto "
+            f"de reorden que auditar (el motivo de cada SKU, en el detalle)."
+            if medidos == 0 else
+            f"{n_skus} SKUs: sin defectos en {'el' if medidos == 1 else 'los'} {medidos} "
+            f"con minimo medido.{sin_medir}")
     elif clean:
         summary = f"{n_skus} SKUs: maestro de reorden limpio (sin duplicados, min<=max, reorden positivo)."
     else:
         summary = (
             f"{n_skus} SKUs, {n_issues} con defectos: {len(duplicate)} SKU duplicado(s), "
-            f"{len(inconsistent)} con min>max, {len(nonpositive)} con reorden <=0. Limpiar antes de migrar."
+            f"{len(inconsistent)} con min>max, {len(nonpositive)} con reorden <=0. Limpiar antes "
+            f"de migrar.{sin_medir}"
         )
     return SkuMasterAudit(
         n_skus=n_skus,
@@ -130,6 +193,8 @@ def audit_sku_master(batch: StockyMigrationBatch) -> SkuMasterAudit:
         nonpositive_reorder=nonpositive,
         clean=clean,
         summary=summary,
+        unmeasured_reorder=unmeasured,
+        unmeasured_reasons=razones,
     )
 
 

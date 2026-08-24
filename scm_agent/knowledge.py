@@ -40,7 +40,10 @@ _LOG = logging.getLogger("linchpin.knowledge")
 # Filtered in one place - see ``ground_citations_detailed``, the single
 # chokepoint every citation path funnels through.
 # Matched on the basename of the node's ``source_file``.
-_INTERNAL_SOURCES: frozenset[str] = frozenset({"KERN_ATLAS_SOMBREROS_SCM.md"})
+_INTERNAL_SOURCES: frozenset[str] = frozenset({
+    "KERN_ATLAS_SOMBREROS_SCM.md",
+    "KERN_BRECHAS_DE_CAPACIDAD.md",
+})
 
 
 def _is_internal_source(concept: "Concept") -> bool:

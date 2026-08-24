@@ -97,6 +97,18 @@ class OdooError(RuntimeError):
     """Odoo transport, authentication, or mapping failure."""
 
 
+class OdooTransportError(OdooError):
+    """La conexion se cayo: ni llego, o no volvio la respuesta.
+
+    Subclase para que todo ``except OdooError`` existente la siga atrapando, y
+    separada para que quien tenga que distinguirla no lo haga mirando el texto.
+    La diferencia importa: ``OdooError`` a secas desde ``receipts()`` significa
+    "este Odoo no se puede medir" (falta el modulo de compras) y se le reporta al
+    cliente como dato faltante; esto otro significa "se corto la red" y reportarlo
+    como dato faltante manda a revisar el ERP por un problema que no esta ahi.
+    """
+
+
 @runtime_checkable
 class OdooRPC(Protocol):
     """The single method the connector needs: Odoo's ``execute_kw`` dispatch."""
@@ -133,6 +145,23 @@ class _TimeoutSafeTransport(xmlrpc.client.SafeTransport):
         return conn
 
 
+def server_proxies(url: str, *, timeout: float = _DEFAULT_TIMEOUT_SECONDS) -> tuple[Any, Any]:
+    """Los dos ``ServerProxy`` de Odoo para ``url``, con el timeout de socket acotado.
+
+    Publica porque el validador de conexion de ``odoo_connect.py`` necesita hablar
+    con ``/xmlrpc/2/common`` ANTES de que exista un ``OdooClient`` -- distinguir
+    "el host no contesta" de "la credencial no sirve" exige preguntar la version
+    del servidor sin autenticar. Sin este corte, ese modulo copiaria la eleccion
+    de transporte y el dia que aqui cambie el timeout quedaria una copia atras.
+    """
+    base = url.rstrip("/")
+    transport_cls = _TimeoutSafeTransport if base.startswith("https") else _TimeoutTransport
+    return (
+        xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/common", transport=transport_cls(timeout)),
+        xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/object", transport=transport_cls(timeout)),
+    )
+
+
 class OdooClient:
     """Real XML-RPC transport to an Odoo server (stdlib ``xmlrpc.client``).
 
@@ -162,10 +191,9 @@ class OdooClient:
         backoff_seconds: float = _DEFAULT_BACKOFF_SECONDS,
     ) -> None:
         if common is None or models is None:
-            base = url.rstrip("/")
-            transport_cls = _TimeoutSafeTransport if base.startswith("https") else _TimeoutTransport
-            common = common or xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/common", transport=transport_cls(timeout))
-            models = models or xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/object", transport=transport_cls(timeout))
+            hechos = server_proxies(url, timeout=timeout)
+            common = common or hechos[0]
+            models = models or hechos[1]
         uid = common.authenticate(db, username, api_key, {})
         if not uid:
             raise OdooError(f"Odoo authentication failed for user {username!r} on db {db!r}")
@@ -195,7 +223,7 @@ class OdooClient:
                 if attempt + 1 >= attempts:
                     break
                 time.sleep(self._backoff_seconds * (2**attempt))
-        raise OdooError(
+        raise OdooTransportError(
             f"Odoo transport failed for {model}.{method} after {attempts} attempt(s): {last_exc}"
         ) from last_exc
 
@@ -1169,6 +1197,59 @@ _DEMO_SALE_LINES = {
     **{301 + 2 * i: {"product_id": [3, "Gizmo"], "product_uom_qty": 5.0, "price_unit": 8.0}
        for i in range(len(_DEMO_SALE_DATES))},
 }
+
+
+def demo_odoo_receipts() -> InMemoryOdoo:
+    """Un Odoo offline con recepciones de compra REALES, para medir el plazo.
+
+    ``demo_odoo()`` no sirve para esto: no tiene ``purchase.order`` ni
+    ``stock.move``, asi que ``receipts()`` no encuentra nada que restar. Y sin un
+    fixture asi, el ejemplo de la salida #1 solo correria contra un Odoo vivo --
+    o sea, contra ninguno, hasta que alguien tenga credenciales. Todos los demas
+    ejemplos del repo corren offline; este tambien.
+
+    Acme promete 7 dias en la ficha y entrega en ~20. Esa brecha es el punto: un
+    fixture donde promesa y comportamiento coinciden no muestra nada.
+    """
+    data: dict = {
+        _M_PRODUCT: {
+            1: {"default_code": "SKU-1", "name": "Rodamiento", "list_price": 20.0, "standard_price": 12.0},
+        },
+        _M_PARTNER: {
+            69: {"name": "Acme", "commercial_partner_id": [69, "Acme"]},
+            70: {"name": "Acme Sucursal Santiago", "commercial_partner_id": [69, "Acme"]},
+        },
+        _M_PICKING_TYPE: {10: {"code": "incoming"}, 11: {"code": "outgoing"}},
+        _M_SUPPLIERINFO: {
+            400: {"partner_id": [70, "Acme Sucursal Santiago"], "product_id": [1, "Rodamiento"],
+                  "delay": 7.0, "sequence": 1},
+        },
+        _M_PO: {}, _M_PO_LINE: {},
+        # Un despacho a cliente: existe para que `fields_get` vea el campo aunque
+        # se filtren todas las recepciones, y de paso comprueba que un movimiento
+        # sin linea de OC no entra al calculo.
+        _M_MOVE: {
+            999: {"state": "done", "date": "2026-01-02 09:00:00", "product_id": [1, "Rodamiento"],
+                  "purchase_line_id": False, "picking_id": [999, "WH/OUT/1"],
+                  "picking_type_id": [11, "Entregas"]},
+        },
+    }
+    for i, (orden, recepcion) in enumerate(
+        [("2026-01-05", "2026-01-25"), ("2026-02-02", "2026-02-23"), ("2026-03-02", "2026-03-21")]
+    ):
+        po, pol = 200 + i, 300 + i
+        data[_M_PO][po] = {
+            "name": f"PO-{i:03d}", "date_order": f"{orden} 09:00:00",
+            "date_approve": f"{orden} 11:00:00",
+            "partner_id": [70, "Acme Sucursal Santiago"], "state": "purchase",
+        }
+        data[_M_PO_LINE][pol] = {"order_id": [po, f"PO-{i:03d}"]}
+        data[_M_MOVE][400 + i] = {
+            "state": "done", "date": f"{recepcion} 15:00:00", "product_id": [1, "Rodamiento"],
+            "purchase_line_id": [pol, "linea"], "picking_id": [500 + i, f"WH/IN/{i}"],
+            "picking_type_id": [10, "Recepciones"],
+        }
+    return InMemoryOdoo(data)
 
 
 def demo_odoo() -> InMemoryOdoo:

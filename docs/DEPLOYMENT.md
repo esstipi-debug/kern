@@ -13,7 +13,45 @@ build path resolves it over `git+https`, so every build path needs a credential.
 Without one the build fails at dependency resolution, before any of the rest of
 this document matters.
 
-Create the token once:
+### CI: use a deploy key, not the token
+
+A fine-grained PAT **expires** — a year at most, and GitHub proposes 30 days by
+default. When it does, CI fails at dependency resolution before a single test
+runs, and nothing announces it: the red X looks like any other failing build.
+That is not hypothetical. `NOSILO_CORE_TOKEN` was never set at all, both jobs
+aborted at that step, and **sixteen days of merges went in without a gate**
+before anyone looked.
+
+A deploy key has no expiry, so for GitHub Actions:
+
+1. Generate a keypair. It never leaves your machine except as described below:
+
+       ssh-keygen -t ed25519 -N "" -C "kern CI -> nosilo-core" -f nosilo_core_ci
+
+2. `nosilo_core_ci.pub` → `esstipi-debug/nosilo-core` → Settings → Deploy keys →
+   Add. **Leave "Allow write access" unchecked.**
+3. `nosilo_core_ci` (the private half) → the `kern` repo's Actions secrets, as
+   `NOSILO_CORE_SSH_KEY`. This reads it from stdin, so it never lands in your
+   shell history:
+
+       gh secret set NOSILO_CORE_SSH_KEY --repo esstipi-debug/kern < nosilo_core_ci
+
+4. Delete both local files. The public half is on GitHub, the private half is in
+   the secret, and a copy on disk is one more place it can leak from.
+
+`.github/actions/authenticate-core` prefers the deploy key, falls back to the
+PAT, and fails naming both when neither is set. With the PAT it emits a
+`::warning::` on every run saying that gate has an expiry date — the failure mode
+above does not announce itself, so this does it for us.
+
+**This does not change the published dependency.** `requirements.txt` and
+`pyproject.toml` keep the `git+https://` URL; only the runner rewrites it to SSH
+in its own git config. Docker, Fly, Railway and a plain local `pip install` are
+untouched and still use the token — which is why the token is not going away.
+There is a test (`tests/test_ci_authenticate_core.py`) that fails if someone
+switches the dependency itself to `git+ssh://`.
+
+### The token (still needed for every non-CI path)
 
 1. GitHub → Settings → Developer settings → **Fine-grained personal access token**
 2. Repository access: **only** `esstipi-debug/nosilo-core`
@@ -21,9 +59,9 @@ Create the token once:
 
 Then give it to whichever build path you use:
 
-| Path | How | Where the token lives |
+| Path | How | Where the credential lives |
 |---|---|---|
-| **GitHub Actions** | Actions secret `NOSILO_CORE_TOKEN` | Only in the runner, only for the job |
+| **GitHub Actions** | Actions secret `NOSILO_CORE_SSH_KEY` (preferred) or `NOSILO_CORE_TOKEN` | Only in the runner, only for the job |
 | **Docker / Fly** | `--secret id=nosilo_token,env=NOSILO_CORE_TOKEN` | Only in the RUN that installs; never in a layer |
 | **Railway** | Service variable `NOSILO_CORE_TOKEN` | ⚠️ also present at runtime — see below |
 

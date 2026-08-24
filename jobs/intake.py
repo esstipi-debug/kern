@@ -21,12 +21,21 @@ CANONICAL_REQUIRED = ("date", "product_id", "quantity")
 # unit cost (revenue / quantity) from files that carry money but no cost column.
 CANONICAL_OPTIONAL = ("unit_cost", "lead_time_days", "lead_time_std", "revenue")
 
+# Cuatro alias (`dia`, `producto`, `demanda`, `plazo_de_entrega`) vienen de
+# jobs/column_mapping.py, un segundo normalizador muerto -- sin un solo
+# importador fuera de su propio test -- que se borro en este commit. Eran los
+# unicos que tenia y esta tabla no: encabezados en espanol pelado, que es
+# justo lo que exporta un ERP de LatAm. Dos de los suyos NO se portaron:
+# `entrega` es ambiguo (puede ser una fecha de entrega, no un plazo en dias, y
+# confundirlas es el error que RECEIPT_REQUIRED existe para evitar), y
+# `lead_time_std` estaba listado alli bajo lead_time_days, que es un defecto:
+# aca la dispersion es su propio canonico.
 ALIASES: dict[str, list[str]] = {
-    "date": ["date", "order_date", "orderdate", "invoicedate", "invoice_date", "week", "period", "ds", "day", "timestamp", "datetime", "fecha", "fecha_documento", "fecha_venta", "fecha_factura", "data", "data_emissao"],
-    "product_id": ["product_id", "productid", "sku", "item", "item_id", "itemid", "stockcode", "stock_code", "product", "material", "article", "part_number", "upc", "codigo", "codigo_producto", "cod_producto", "articulo", "codigo_articulo", "referencia", "clave_producto", "produto", "codigo_produto"],
-    "quantity": ["quantity", "qty", "sales", "demand", "units", "unit_sales", "unitsales", "order_qty", "orderqty", "volume", "sold", "units_sold", "cantidad", "cant", "cantidad_vendida", "unidades", "quantidade"],
+    "date": ["date", "order_date", "orderdate", "invoicedate", "invoice_date", "week", "period", "ds", "day", "timestamp", "datetime", "fecha", "fecha_documento", "fecha_venta", "fecha_factura", "data", "data_emissao", "dia"],
+    "product_id": ["product_id", "productid", "sku", "item", "item_id", "itemid", "stockcode", "stock_code", "product", "material", "article", "part_number", "upc", "codigo", "codigo_producto", "cod_producto", "articulo", "codigo_articulo", "referencia", "clave_producto", "produto", "codigo_produto", "producto"],
+    "quantity": ["quantity", "qty", "sales", "demand", "units", "unit_sales", "unitsales", "order_qty", "orderqty", "volume", "sold", "units_sold", "cantidad", "cant", "cantidad_vendida", "unidades", "quantidade", "demanda"],
     "unit_cost": ["unit_cost", "unitcost", "price", "unitprice", "unit_price", "cost", "sell_price", "sellprice", "selling_price", "costo", "costo_unitario", "precio", "precio_unitario", "custo", "preco"],
-    "lead_time_days": ["lead_time_days", "leadtimedays", "lead_time", "leadtime", "lead", "lt_days", "supplier_lead_time", "declared_lead_time_days", "promised_lead_time_days", "planned_lead_time", "plazo", "plazo_dias", "plazo_entrega", "plazo_declarado", "dias_entrega", "prazo", "prazo_entrega"],
+    "lead_time_days": ["lead_time_days", "leadtimedays", "lead_time", "leadtime", "lead", "lt_days", "supplier_lead_time", "declared_lead_time_days", "promised_lead_time_days", "planned_lead_time", "plazo", "plazo_dias", "plazo_entrega", "plazo_de_entrega", "plazo_declarado", "dias_entrega", "prazo", "prazo_entrega"],
     # Lead-time dispersion (sigma_LT). Same alias set jobs/launch_readiness_job.py
     # already accepts, so a file that works there works here too.
     "lead_time_std": ["lead_time_std", "leadtimestd", "lead_std", "sigma_lead", "sigma_l"],
@@ -40,8 +49,11 @@ ALIASES: dict[str, list[str]] = {
     "name": ["name", "product_name", "item_name", "description", "desc", "nombre", "nombre_producto", "descripcion", "detalle", "glosa", "nome", "descricao"],
     "gtin": ["gtin", "ean", "upc_code", "barcode", "gtin_code"],
     "on_hand": ["on_hand", "onhand", "stock_on_hand", "qty_on_hand", "inventory_on_hand", "current_stock", "stock_qty", "stock_quantity", "stock", "stock_actual", "existencia", "existencias", "saldo", "disponible", "estoque"],
-    "daily_demand": ["daily_demand", "avg_daily_demand", "demand_daily", "mean_daily_demand"],
-    "days_since_last_sale": ["days_since_last_sale", "days_since_sale", "last_sale_days", "dsls"],
+    # Spanish added 2026-08-21: a LatAm export ("demanda_diaria") reached
+    # detect_columns and matched product_id/on_hand/unit_cost, then died on this
+    # one field. The table was rich in Spanish everywhere except the two below.
+    "daily_demand": ["daily_demand", "avg_daily_demand", "demand_daily", "mean_daily_demand", "demanda_diaria", "demanda_media_diaria", "consumo_diario", "consumo_medio_diario"],
+    "days_since_last_sale": ["days_since_last_sale", "days_since_sale", "last_sale_days", "dsls", "dias_sin_venta", "dias_sin_movimiento", "dias_sin_rotacion"],
     "cogs": ["cogs", "cost_of_goods_sold", "cost_of_goods"],
     "avg_inventory_value": ["avg_inventory_value", "average_inventory_value", "avg_inv_value", "inventory_value_avg"],
     "gross_margin": ["gross_margin", "grossmargin", "margin"],

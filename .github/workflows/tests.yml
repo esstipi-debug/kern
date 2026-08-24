@@ -47,22 +47,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # nosilo-core is a PRIVATE repo, and a workflow's built-in GITHUB_TOKEN is
-      # scoped to THIS repository only - it cannot read another private one. A
-      # fine-grained PAT with Contents:read on esstipi-debug/nosilo-core must
-      # exist as the NOSILO_CORE_TOKEN secret or every install below fails at
-      # dependency resolution.
-      #
-      # Rewriting the URL in git config rather than embedding the token in
-      # pyproject.toml keeps the dependency a clean, shareable URL and confines
-      # the credential to this runner for the life of the job.
+      # El por que y las dos credenciales posibles viven en la action, no aca:
+      # este paso estaba duplicado en los dos jobs, y una copia que se queda
+      # atras falla en el job que nadie mira.
       - name: Authenticate to the private core
-        run: |
-          if [ -z "${{ secrets.NOSILO_CORE_TOKEN }}" ]; then
-            echo "::error::NOSILO_CORE_TOKEN is not set. nosilo-core is a private dependency; see its CONSUMING.md."
-            exit 1
-          fi
-          git config --global url."https://x-access-token:${{ secrets.NOSILO_CORE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+        uses: ./.github/actions/authenticate-core
+        with:
+          ssh-key: ${{ secrets.NOSILO_CORE_SSH_KEY }}
+          token: ${{ secrets.NOSILO_CORE_TOKEN }}
 
       - name: Install dependencies
         run: |
@@ -120,12 +112,10 @@ jobs:
       # turn "the production import surface is broken" into the reported failure
       # for what is actually a missing secret.
       - name: Authenticate to the private core
-        run: |
-          if [ -z "${{ secrets.NOSILO_CORE_TOKEN }}" ]; then
-            echo "::error::NOSILO_CORE_TOKEN is not set. nosilo-core is a private dependency; see docs/DEPLOYMENT.md section 0."
-            exit 1
-          fi
-          git config --global url."https://x-access-token:${{ secrets.NOSILO_CORE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+        uses: ./.github/actions/authenticate-core
+        with:
+          ssh-key: ${{ secrets.NOSILO_CORE_SSH_KEY }}
+          token: ${{ secrets.NOSILO_CORE_TOKEN }}
 
       - name: Install ONLY the production extras (mirrors the Dockerfile)
         run: |

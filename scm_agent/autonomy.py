@@ -7,7 +7,7 @@ This module is that enforcement -- it turns the label into actual behavior
 for the two shapes a routed tool result can take (plan S5, A3 row):
 
 (a) **Analysis-only tools** (the common case -- most of ``scm_agent/tools.py``'s
-    37 registered tools): a routed run produces a
+    50 registered tools): a routed run produces a
     ``nosilo_core.types.JobResult`` with no system-of-record write attached.
     :func:`enforce_analysis_tier` gates it:
 
