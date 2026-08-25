@@ -7,12 +7,16 @@ AST-only: it never imports the modules under test.
 Python executes every parent package ``__init__.py`` before the leaf module, so
 ``from scm_agent.events import EventLedger`` still runs ``scm_agent/__init__.py``
 (which imports nosilo_core). ``importlib.import_module("examples.run_repricing")``
-is the same as an import for collection purposes. Both have to count, or pytest
-dies during collection on the files the ignore list missed.
+is the same as an import for collection purposes. Subprocess CLIs are the same
+at runtime: a string ``examples/run_package.py`` or a ``python -c`` snippet that
+``import webapp.app`` still loads nosilo_core, even though the test file itself
+does not. All of those have to count, or pytest dies on collection or on the
+first subprocess.
 """
 from __future__ import annotations
 
 import ast
+import textwrap
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[1]
@@ -57,6 +61,10 @@ def _walk(path: Path, visiting: set[Path]) -> bool:
             if _walk(target, visiting):
                 _memo[path] = True
                 return True
+        snippet = _string_value(node)
+        if snippet and _snippet_reaches_nosilo(snippet, visiting):
+            _memo[path] = True
+            return True
     _memo[path] = False
     return False
 
@@ -108,8 +116,61 @@ def _package_init_chain(mod: str) -> list[Path]:
     return found
 
 
+def _string_value(node: ast.AST) -> str | None:
+    """String literals, including f-string constant parts (``python -c`` scripts)."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        parts: list[str] = []
+        for value in node.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+            else:
+                parts.append("0")
+        return "".join(parts)
+    return None
+
+
+def _maybe_local_script(value: str) -> Path | None:
+    """``examples/run_package.py`` as a subprocess argv, not a Python import."""
+    text = value.strip().replace("\\", "/")
+    if not text.endswith(".py") or "\n" in text or text.startswith("/"):
+        return None
+    parts = Path(text).parts
+    if not parts or ".." in parts or parts[0] not in _LOCAL_ROOTS:
+        return None
+    candidate = (_REPO.joinpath(*parts)).resolve()
+    try:
+        candidate.relative_to(_REPO)
+    except ValueError:
+        return None
+    if candidate.is_file() and candidate.suffix == ".py":
+        return candidate
+    return None
+
+
+def _snippet_reaches_nosilo(snippet: str, visiting: set[Path]) -> bool:
+    script = _maybe_local_script(snippet)
+    if script is not None and _walk(script, visiting):
+        return True
+    if "import" not in snippet:
+        return False
+    try:
+        tree = ast.parse(textwrap.dedent(snippet))
+    except SyntaxError:
+        return False
+    dummy = _REPO / "_snippet.py"
+    for node in ast.walk(tree):
+        if _imports_nosilo(node):
+            return True
+        for target in _imported_local_paths(dummy, node):
+            if _walk(target, visiting):
+                return True
+    return False
+
+
 def _import_module_literal(node: ast.AST) -> str | None:
-    """``importlib.import_module("examples.run_repricing")`` — string arg only."""
+    """``importlib.import_module("examples.run_repricing")`` -- string arg only."""
     if not isinstance(node, ast.Call) or not node.args:
         return None
     func = node.func
