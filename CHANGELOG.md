@@ -9,6 +9,9 @@
   with `python scripts/sync_linchpin_odoo_apps.py`. The Cloud Agent cannot create
   `esstipi-debug/linchpin-odoo-apps`; that one `gh repo create` is the operator's.
   Playbook: `documentation/GTM_SUBMISSIONS.md` §5.
+- **CI no-core gate:** when `NOSILO_CORE_SSH_KEY` / `NOSILO_CORE_TOKEN` are
+  empty, GitHub Actions skips `authenticate-core` (instead of aborting before
+  pytest), installs without the private git URL, and runs `KERN_CI_NO_CORE=1`.
 - **The Odoo module now ships for Odoo 19, as `kern_dry_run`** (`odoo_addon/19.0/kern_dry_run/`,
   v19.0.1.0.0) — verified by installing it on a clean Odoo 19.0-20260817 database in Docker, not by
   reading the code. The port itself touches three files (+43/-12); the Python and the wizard/menu/

@@ -50,16 +50,32 @@ jobs:
       # El por que y las dos credenciales posibles viven en la action, no aca:
       # este paso estaba duplicado en los dos jobs, y una copia que se queda
       # atras falla en el job que nadie mira.
+      #
+      # If neither secret is set, skip the action (invoking it with empty
+      # inputs is an intentional hard fail). Install without the private git
+      # URL and run the no-core gate instead of aborting before pytest -- that
+      # was sixteen days of merges with no tests at all.
       - name: Authenticate to the private core
+        if: ${{ secrets.NOSILO_CORE_SSH_KEY != '' || secrets.NOSILO_CORE_TOKEN != '' }}
         uses: ./.github/actions/authenticate-core
         with:
           ssh-key: ${{ secrets.NOSILO_CORE_SSH_KEY }}
           token: ${{ secrets.NOSILO_CORE_TOKEN }}
 
       - name: Install dependencies
+        if: ${{ secrets.NOSILO_CORE_SSH_KEY != '' || secrets.NOSILO_CORE_TOKEN != '' }}
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
+
+      - name: Install dependencies without private core
+        if: ${{ secrets.NOSILO_CORE_SSH_KEY == '' && secrets.NOSILO_CORE_TOKEN == '' }}
+        run: |
+          echo "::warning::NOSILO_CORE_SSH_KEY and NOSILO_CORE_TOKEN are empty. Running the no-core gate (engine + listing). Full suite: docs/DEPLOYMENT.md section 0."
+          python -m pip install --upgrade pip
+          grep -v 'nosilo-core @' requirements.txt > "$RUNNER_TEMP/requirements.txt"
+          sed "s|^-r requirements.txt|-r $RUNNER_TEMP/requirements.txt|" requirements-dev.txt > "$RUNNER_TEMP/requirements-dev.txt"
+          pip install -r "$RUNNER_TEMP/requirements-dev.txt"
 
       # The resolved set is the only record of WHAT this run actually tested.
       # When a nightly goes red with no commits in between, diffing this against
@@ -75,9 +91,17 @@ jobs:
       # this side would report a number neither repo is responsible for -- and
       # would quietly stop gating the code that gates every write.
       - name: Run tests with coverage
+        if: ${{ secrets.NOSILO_CORE_SSH_KEY != '' || secrets.NOSILO_CORE_TOKEN != '' }}
         run: pytest tests/ -q --cov=packs --cov=src --cov-report=term-missing --cov-fail-under=80
         env:
           PYTHONPATH: .
+
+      - name: Run tests without private core
+        if: ${{ secrets.NOSILO_CORE_SSH_KEY == '' && secrets.NOSILO_CORE_TOKEN == '' }}
+        run: pytest tests/ -q --cov=packs --cov=src --cov-report=term-missing
+        env:
+          PYTHONPATH: .
+          KERN_CI_NO_CORE: "1"
 
       - name: Smoke examples
         run: |
@@ -106,19 +130,28 @@ jobs:
         with:
           python-version: "3.12"  # matches Dockerfile `FROM python:3.12-slim`
 
-      # This job installs from pyproject, which is where the private nosilo-core
-      # dependency lives - so it needs the credential exactly as much as the test
-      # job does, even though it never builds an image. Missing it here would
-      # turn "the production import surface is broken" into the reported failure
-      # for what is actually a missing secret.
+      # pyproject keeps nosilo-core on the optional `[core]` extra. With a
+      # credential we install that extra so `import webapp.app` matches a
+      # container that resolved the private git URL. Without one we still
+      # install `.[web,mcp]` (the Dockerfile extras minus `[core]`) so a
+      # missing secret is not reported as a boot-import failure.
       - name: Authenticate to the private core
+        if: ${{ secrets.NOSILO_CORE_SSH_KEY != '' || secrets.NOSILO_CORE_TOKEN != '' }}
         uses: ./.github/actions/authenticate-core
         with:
           ssh-key: ${{ secrets.NOSILO_CORE_SSH_KEY }}
           token: ${{ secrets.NOSILO_CORE_TOKEN }}
 
-      - name: Install ONLY the production extras (mirrors the Dockerfile)
+      - name: Install production extras plus private core
+        if: ${{ secrets.NOSILO_CORE_SSH_KEY != '' || secrets.NOSILO_CORE_TOKEN != '' }}
         run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[core,web,mcp]"
+
+      - name: Install ONLY the production extras (no private core)
+        if: ${{ secrets.NOSILO_CORE_SSH_KEY == '' && secrets.NOSILO_CORE_TOKEN == '' }}
+        run: |
+          echo "::warning::NOSILO_CORE_* empty; installing .[web,mcp] without nosilo-core. Full boot import needs docs/DEPLOYMENT.md section 0."
           python -m pip install --upgrade pip
           pip install -e ".[web,mcp]"
 
@@ -128,6 +161,13 @@ jobs:
         run: pip freeze
 
       - name: Import the app the way uvicorn does (must boot without dev/optional extras)
+        if: ${{ secrets.NOSILO_CORE_SSH_KEY != '' || secrets.NOSILO_CORE_TOKEN != '' }}
         run: python -c "import webapp.app; print('prod boot import OK')"
+        env:
+          PYTHONPATH: .
+
+      - name: Confirm production extras import without private core
+        if: ${{ secrets.NOSILO_CORE_SSH_KEY == '' && secrets.NOSILO_CORE_TOKEN == '' }}
+        run: python -c "import fastapi, uvicorn, webapp.offers; print('prod extras OK without nosilo-core')"
         env:
           PYTHONPATH: .

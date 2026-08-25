@@ -40,7 +40,10 @@ A deploy key has no expiry, so for GitHub Actions:
    the secret, and a copy on disk is one more place it can leak from.
 
 `.github/actions/authenticate-core` prefers the deploy key, falls back to the
-PAT, and fails naming both when neither is set. With the PAT it emits a
+PAT, and fails naming both when neither is set. The workflow **does not invoke**
+that action when both secrets are empty: it installs without the private git
+URL and runs the no-core pytest gate (`KERN_CI_NO_CORE=1`) so listing/engine
+changes still get a check. With the PAT it emits a
 `::warning::` on every run saying that gate has an expiry date — the failure mode
 above does not announce itself, so this does it for us.
 
