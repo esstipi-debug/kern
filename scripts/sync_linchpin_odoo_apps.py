@@ -12,11 +12,16 @@ From the kern repo root:
     python scripts/sync_linchpin_odoo_apps.py
     python scripts/sync_linchpin_odoo_apps.py --push
 
-``--push`` requires ``esstipi-debug/linchpin-odoo-apps`` to already exist
-(empty is fine). This environment's GitHub token is scoped to ``kern`` and
-cannot create a second repo. Create it once with your own GitHub login:
+That repo has existed since 2026-07-04, and on 2026-08-25 both series
+branches were force-pushed from here (``17.0`` = ``72468e7``, ``19.0`` =
+``4defa85``). So ``--push`` needs no repo creation -- only a credential with
+push rights on it. A 404 from one session means *that session's* token is
+scoped to ``kern``, not that the repo is missing::
 
-    gh repo create esstipi-debug/linchpin-odoo-apps --private --disable-issues --disable-wiki
+    gh api repos/esstipi-debug/linchpin-odoo-apps --jq .permissions
+
+Each series branch is rewritten, never merged: ``--push`` force-pushes, so it
+discards whatever that branch held before.
 
 Do not register ``kern#17.0`` / ``kern#19.0`` with apps.odoo.com.
 """
@@ -232,10 +237,12 @@ def main(argv: list[str] | None = None) -> int:
     if not remote_exists(args.remote):
         print(
             f"remote not reachable: {args.remote}\n"
-            "Create the private repo with YOUR GitHub login (this agent cannot):\n"
-            "  gh repo create esstipi-debug/linchpin-odoo-apps "
-            "--private --disable-issues --disable-wiki\n"
-            "Then re-run: python scripts/sync_linchpin_odoo_apps.py --push\n"
+            "That repo exists (since 2026-07-04), so this is almost always a "
+            "credential problem, not a missing repo. Check what your token "
+            "actually sees:\n"
+            "  gh api repos/esstipi-debug/linchpin-odoo-apps --jq .permissions\n"
+            "You need push on it, then re-run: "
+            "python scripts/sync_linchpin_odoo_apps.py --push\n"
             "Do not register esstipi-debug/kern with apps.odoo.com -- that "
             "would expose the private product to online-odoo.",
             file=sys.stderr,

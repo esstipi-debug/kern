@@ -37,28 +37,34 @@ nosilo-core ni la contraseña de apps.odoo.com.
 - Sync del layout que el Store exige (modulo `kern_dry_run/` **en la raiz**,
   ramas llamadas `17.0` y `19.0`): `python scripts/sync_linchpin_odoo_apps.py`.
   Verificado por `tests/test_odoo_addon_listing.py`.
-- `esstipi-debug/linchpin-odoo-apps` **no existe**. Este agente no puede
-  crearlo: el token de GitHub esta scoped a `kern` (`createRepository` → 403).
-  Un Cloud Agent **tampoco debe** pushear ramas `17.0`/`19.0` a `kern` ni
-  registrar `kern#19.0` en apps.odoo.com — el Store pide al usuario
+- `esstipi-debug/linchpin-odoo-apps` **existe y ya esta sincronizado**
+  (2026-08-25): `17.0` = `72468e7`, `19.0` = `4defa85`, las dos con
+  `kern_dry_run/` en la raiz. `online-odoo` ya fue invitado con permiso `read`
+  **sobre ese repo**; la invitacion queda pendiente de aceptacion y caduca a
+  los 7 dias. El 403 de `createRepository` era el token de aquel Cloud Agent,
+  no el estado del mundo: un `gh` logueado como `esstipi-debug` tiene `admin`
+  sobre los dos repos.
+- Sigue en pie lo que **no** hay que hacer: no pushear ramas `17.0`/`19.0` a
+  `kern` ni registrar `kern#19.0` en apps.odoo.com. El Store pide al usuario
   `online-odoo` lectura sobre el repo que registres, y eso filtraria el
   producto entero.
 - CI: si faltan `NOSILO_CORE_*`, el workflow **no aborta** antes de pytest.
   Instala sin la URL privada y corre el gate `KERN_CI_NO_CORE=1` (listing +
   motor). No pedir esos secrets; el operador no los quiere crear ahora.
 
-### Siguiente paso — humano, un comando, tu login de GitHub
+### Siguiente paso — humano, tu login de apps.odoo.com
 
-```
-gh repo create esstipi-debug/linchpin-odoo-apps --private --disable-issues --disable-wiki
-python scripts/sync_linchpin_odoo_apps.py --push
-```
+Lo de GitHub ya esta hecho (repo, ramas, invitacion a `online-odoo`). Queda
+solo lo que no puede hacer un agente, en https://apps.odoo.com (cuenta que ya
+tenes): registrar `ssh://git@github.com/esstipi-debug/linchpin-odoo-apps#19.0`
+(y `#17.0`), pegar la deploy key read-only, scan, publicar **gratis**. Detalle
+en GTM §5 y `documentation/operator/09_checklist_lanzamiento.md`.
 
-Despues, en https://apps.odoo.com (cuenta que ya tenes): registrar
-`ssh://git@github.com/esstipi-debug/linchpin-odoo-apps#19.0` (y `#17.0`),
-pegar la deploy key read-only, dar lectura a `online-odoo` **en ese repo**,
-scan, publicar **gratis**. Detalle en GTM §5 y
-`documentation/operator/09_checklist_lanzamiento.md`.
+Ojo con una consecuencia del rename: el nombre tecnico paso de
+`linchpin_dry_run` a `kern_dry_run`. Si la ficha llego a registrarse alguna vez
+con el nombre viejo, el Store la lee como app **nueva**, no como una version.
+
+Para re-sincronizar tras tocar el modulo: `python scripts/sync_linchpin_odoo_apps.py --push`.
 
 ### NO hacer en el proximo chat
 
