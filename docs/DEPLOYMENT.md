@@ -41,9 +41,11 @@ A deploy key has no expiry, so for GitHub Actions:
 
 `.github/actions/authenticate-core` prefers the deploy key, falls back to the
 PAT, and fails naming both when neither is set. The workflow **does not invoke**
-that action when both secrets are empty: it installs without the private git
-URL and runs the no-core pytest gate (`KERN_CI_NO_CORE=1`) so listing/engine
-changes still get a check. With the PAT it emits a
+that action when both secrets are empty: a detect step reads them as env
+(GitHub rejects `if: ${{ secrets.* }}` at parse time) and emits
+`steps.core.outputs.present`. Empty → install without the private git URL and
+run the no-core pytest gate (`KERN_CI_NO_CORE=1`) so listing/engine changes
+still get a check. With the PAT it emits a
 `::warning::` on every run saying that gate has an expiry date — the failure mode
 above does not announce itself, so this does it for us.
 
