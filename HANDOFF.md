@@ -22,6 +22,39 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-25 — Cierre de ventana: catálogo frío + CI sin core. **Siguiente chat: publicar Odoo.**
+
+**PR:** [#276](https://github.com/esstipi-debug/kern/pull/276) · rama `cursor/odoo-shopify-cold-pricing-2ff7` · **no mergear a ciegas** si el operador sigue tocando la web en otra ventana (rediseño de landing; no pises `/` ni CSS de marketing).
+
+### Qué quedó hecho (no rehacer)
+
+- Catálogo frío en `webapp/offers.py` (`lane`: `self_serve` / `operator` / `upgrade`). `/paquetes` oculta upgrade. `/stocky-alternative` apunta a Alerts $49/99 + Chequeo Stocky $350–400, no al Starter $900.
+- Addon Odoo `kern_dry_run` 17.0 y 19.0: `support` → `/paquetes`, **sin `price`** (Store gratis), cover + screenshots. Código en `odoo_addon/{17.0,19.0}/kern_dry_run/`. El Store **no** lee este repo: lee `esstipi-debug/linchpin-odoo-apps`.
+- CI: si faltan `NOSILO_CORE_SSH_KEY` / `NOSILO_CORE_TOKEN`, **no abortar** antes de pytest. Gate `KERN_CI_NO_CORE=1` (`tests/conftest.py`, `tests/_no_core.py`). El operador **no quiere crear esos secrets ahora** (sistema en pruebas). No insistas. `gh` del Cloud Agent es read-only; no pedir email/password de Odoo.
+
+### NO hacer en el próximo chat
+
+- Rediseñar la web (el operador lo está haciendo en otra ventana).
+- Pedir `NOSILO_CORE_*` ni credenciales de apps.odoo.com.
+- App de Shopify App Store (no existe; CSV + landing).
+
+### Siguiente sesión — montar Kern en el Odoo Apps Store
+
+Playbook: `documentation/GTM_SUBMISSIONS.md` §5 + checklist `documentation/operator/09_checklist_lanzamiento.md`. Resumen operativo:
+
+1. Sincronizar `kern` → repo **`esstipi-debug/linchpin-odoo-apps`**: módulo **`kern_dry_run/` en la raíz**, ramas cuyo nombre es la serie Odoo (`17.0` ya; **crear `19.0`** si falta). Copiar desde `odoo_addon/<serie>/kern_dry_run/`.
+2. Login del operador en https://apps.odoo.com (cuenta que ya tiene). Registrar por SSH:
+   `ssh://git@github.com/esstipi-debug/linchpin-odoo-apps#19.0` (y `#17.0`).
+3. Deploy key read-only que Odoo muestra → GitHub Settings del repo store. Si el repo es privado: colaborador **`online-odoo`** (lectura).
+4. Scan. Ficha: **Kern Inventory AI** / técnico `kern_dry_run`. Precio Store **gratis**. Un manifest roto despublica **todos** los módulos del repo.
+5. El módulo **no corre en Odoo Online SaaS** (Python). Odoo.sh / on-prem sí. Online = API externa de Odoo (plan Custom) + `POST /api/odoo-lead-time` en Fly.
+
+Precios frío (no reabrir debate): Odoo listing $0; Alerts 49/99; Mass 79; Stocky CSV 350–400; LatAm 250–300; API = mismos SKU software (`POST /api/jobs` + `LINCHPIN_API_KEY`), no hay tarifa “API aparte”.
+
+### Pendiente humano (venta), no código
+
+Calendly + un Stripe link + `OPERATOR_*` en Fly. Abogado antes del primer cliente de pago.
+
 ## 2026-08-11 — `pytest tests/ -q` "se cuelga" = **ETS de statsforecast patológicamente lento, NO un deadlock**. Preexistente, ajeno al trabajo de S&OP.
 
 ### Síntoma
