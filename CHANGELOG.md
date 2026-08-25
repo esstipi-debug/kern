@@ -6,9 +6,11 @@
 - **Odoo Apps Store listing packet for `kern_dry_run`** (17.0 and 19.0): `support`
   URL, cover + wizard/result mockups, OPL-1 `LICENSE`/`COPYRIGHT`, Store price
   omitted (free bait). Sync into the dedicated store repo (module at branch root)
-  with `python scripts/sync_linchpin_odoo_apps.py`. The Cloud Agent cannot create
-  `esstipi-debug/linchpin-odoo-apps`; that one `gh repo create` is the operator's.
-  Playbook: `documentation/GTM_SUBMISSIONS.md` §5.
+  with `python scripts/sync_linchpin_odoo_apps.py`. Both series branches of
+  `esstipi-debug/linchpin-odoo-apps` were force-pushed from `kern` on 2026-08-25
+  (`17.0` = `72468e7`, `19.0` = `4defa85`) and `online-odoo` was invited with
+  `read` on that repo -- no `gh repo create` is needed; the repo has existed
+  since 2026-07-04. Playbook: `documentation/GTM_SUBMISSIONS.md` §5.
 - **CI no-core gate:** when `NOSILO_CORE_SSH_KEY` / `NOSILO_CORE_TOKEN` are
   empty, GitHub Actions skips `authenticate-core` (instead of aborting before
   pytest), installs without the private git URL, and runs `KERN_CI_NO_CORE=1`.
