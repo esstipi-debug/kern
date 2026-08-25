@@ -364,18 +364,16 @@ mientras que `-i base` solo no lo produce.
 
 ## 5. Pendiente antes de publicar
 
-Verificado contra las reglas vigentes del Apps Store. Ninguno es codigo; todos son decision
-del duenio:
+Listing assets **hechos 2026-08-25** (ver `documentation/GTM_SUBMISSIONS.md` §5):
+`"support"` → `/paquetes`, cover + dos capturas, OPL-1 `LICENSE`/`COPYRIGHT`,
+precio Store gratis. Lo que queda es login humano:
 
-- **`"support"`** falta en el manifest. Es el mail de reclamos, de facto obligatorio para
-  apps de pago (se muestra solo a compradores). No lo complete por mi cuenta: publicar un
-  mail es una decision, no un default.
-- **Capturas de pantalla.** Una app de pago sin capturas de sus funcionalidades puede ser
-  despublicada. `index.html` hoy no tiene ninguna.
-- **Cover image.** `"images"` apunta al icono; el Store los trata como cosas distintas y el
-  ranking de la ficha penaliza "missing cover image".
+- **Crear** el repo privado `esstipi-debug/linchpin-odoo-apps` (el Cloud Agent
+  no puede) y `python scripts/sync_linchpin_odoo_apps.py --push`.
+- **Publicar** en apps.odoo.com: registrar `#19.0` y `#17.0`, deploy key,
+  colaborador `online-odoo` en *ese* repo. No registrar `kern`.
 - **`"name"`.** "Kern Inventory AI" entra en el limite de 25 caracteres, pero la guia pide
-  evitar el nombre de la empresa en el titulo. Riesgo bajo.
+  evitar el nombre de la empresa en el titulo. Riesgo bajo. No se cambio.
 - **Politica de privacidad.** Las reglas piden enlazarla y a la vez prohiben enlaces
   externos en la descripcion. La salida limpia es un archivo dentro de
   `static/description/`. Hoy la divulgacion de datos esta inline en los tres lugares que el

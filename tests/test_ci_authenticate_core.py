@@ -38,7 +38,11 @@ def _cargar(ruta: Path) -> dict:
 
 
 def _pasos_de_auth(job: dict) -> list[dict]:
-    return [p for p in job.get("steps", []) if "private core" in str(p.get("name", ""))]
+    return [
+        p
+        for p in job.get("steps", [])
+        if "Authenticate to the private core" in str(p.get("name", ""))
+    ]
 
 
 # --- 1. una sola fuente ------------------------------------------------------
@@ -73,6 +77,28 @@ def test_los_dos_jobs_le_pasan_las_dos_credenciales():
             con = paso.get("with") or {}
             assert "NOSILO_CORE_SSH_KEY" in str(con.get("ssh-key", "")), nombre
             assert "NOSILO_CORE_TOKEN" in str(con.get("token", "")), nombre
+
+
+def test_la_action_no_se_invoca_cuando_los_secrets_estan_vacios():
+    """Invocar la action con inputs vacios es un exit 1 a proposito.
+
+    GitHub rechaza `if: ${{ secrets.* }}` al parsear el workflow (run de 0s,
+    sin jobs). Los secrets se leen como env en un paso `id: core` y la action
+    se salta con `steps.core.outputs.present`.
+    """
+    texto = _lineas_ejecutables(WORKFLOW)
+    assert "if: ${{ secrets." not in texto
+    wf = _cargar(WORKFLOW)
+    for nombre, job in wf["jobs"].items():
+        detect = [p for p in job.get("steps", []) if p.get("id") == "core"]
+        assert len(detect) == 1, nombre
+        env = detect[0].get("env") or {}
+        assert "NOSILO_CORE_SSH_KEY" in str(env.get("SSH_KEY", "")), nombre
+        assert "NOSILO_CORE_TOKEN" in str(env.get("TOKEN", "")), nombre
+        for paso in _pasos_de_auth(job):
+            cond = str(paso.get("if") or "")
+            assert "steps.core.outputs.present" in cond, nombre
+            assert "secrets." not in cond, nombre
 
 
 # --- 2. las ramas cubren los cuatro casos, sin solaparse ---------------------
@@ -181,6 +207,14 @@ def test_ninguna_credencial_se_imprime():
     for prohibido in ("echo $TOKEN", "echo $SSH_KEY", "echo ${TOKEN}", "echo ${SSH_KEY}",
                       "cat ~/.ssh/nosilo_core"):
         assert prohibido not in texto, prohibido
+
+
+def test_prod_boot_instala_el_extra_core_cuando_hay_credencial():
+    """`.[web,mcp]` no tira de nosilo-core (esta en el extra `[core]`). Sin
+    ese extra el import de webapp.app falla igual despues de autenticar.
+    """
+    texto = WORKFLOW.read_text(encoding="utf-8")
+    assert 'pip install -e ".[core,web,mcp]"' in texto
 
 
 def test_la_dependencia_publicada_sigue_siendo_https():

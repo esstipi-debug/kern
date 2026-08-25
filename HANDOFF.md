@@ -22,6 +22,51 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-25 — Montar Kern en el Odoo Apps Store (esta sesion)
+
+Playbook: `documentation/GTM_SUBMISSIONS.md` §5. **No se toco landing ni CSS**
+(el operador rediseña la web en otra ventana). **No se pidieron** secrets de
+nosilo-core ni la contraseña de apps.odoo.com.
+
+### Qué quedó hecho (no rehacer)
+
+- Ficha Store en `odoo_addon/{17.0,19.0}/kern_dry_run/`: `support` →
+  `https://linchpin.fly.dev/paquetes`, **sin `price`** (listing gratis), cover +
+  dos capturas mockup, `LICENSE` OPL-1 + `COPYRIGHT`. Regenerar imagenes:
+  `python scripts/gen_odoo_listing_assets.py` (no pisa `icon.png`).
+- Sync del layout que el Store exige (modulo `kern_dry_run/` **en la raiz**,
+  ramas llamadas `17.0` y `19.0`): `python scripts/sync_linchpin_odoo_apps.py`.
+  Verificado por `tests/test_odoo_addon_listing.py`.
+- `esstipi-debug/linchpin-odoo-apps` **no existe**. Este agente no puede
+  crearlo: el token de GitHub esta scoped a `kern` (`createRepository` → 403).
+  Un Cloud Agent **tampoco debe** pushear ramas `17.0`/`19.0` a `kern` ni
+  registrar `kern#19.0` en apps.odoo.com — el Store pide al usuario
+  `online-odoo` lectura sobre el repo que registres, y eso filtraria el
+  producto entero.
+- CI: si faltan `NOSILO_CORE_*`, el workflow **no aborta** antes de pytest.
+  Instala sin la URL privada y corre el gate `KERN_CI_NO_CORE=1` (listing +
+  motor). No pedir esos secrets; el operador no los quiere crear ahora.
+
+### Siguiente paso — humano, un comando, tu login de GitHub
+
+```
+gh repo create esstipi-debug/linchpin-odoo-apps --private --disable-issues --disable-wiki
+python scripts/sync_linchpin_odoo_apps.py --push
+```
+
+Despues, en https://apps.odoo.com (cuenta que ya tenes): registrar
+`ssh://git@github.com/esstipi-debug/linchpin-odoo-apps#19.0` (y `#17.0`),
+pegar la deploy key read-only, dar lectura a `online-odoo` **en ese repo**,
+scan, publicar **gratis**. Detalle en GTM §5 y
+`documentation/operator/09_checklist_lanzamiento.md`.
+
+### NO hacer en el proximo chat
+
+- Rediseñar la web / tocar CSS de marketing.
+- Pedir `NOSILO_CORE_*` ni el password de apps.odoo.com.
+- Registrar el repo `kern` en el Store.
+- App de Shopify App Store.
+
 ## 2026-08-11 — `pytest tests/ -q` "se cuelga" = **ETS de statsforecast patológicamente lento, NO un deadlock**. Preexistente, ajeno al trabajo de S&OP.
 
 ### Síntoma

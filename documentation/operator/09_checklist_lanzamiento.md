@@ -26,10 +26,15 @@
 - [ ] Reclamar/publicar en Glama
 - [ ] Reclamar/publicar en Smithery
 - [ ] Reclamar/publicar en PulseMCP
-- [ ] Publicar el módulo Odoo en el Apps Store (ver
-      `odoo_addon/19.0/kern_dry_run/` y la sección 5 de
-      `documentation/GTM_SUBMISSIONS.md`, que lista lo que todavía falta:
-      `support` en el manifest, capturas y cover image)
+- [x] Ficha Odoo: `support`, cover, capturas, OPL-1 y precio Store **gratis**
+      en `odoo_addon/{17.0,19.0}/kern_dry_run/` (el Store no lee este repo)
+- [ ] Crear el repo privado `esstipi-debug/linchpin-odoo-apps` (un `gh repo
+      create`; el token del Cloud Agent no puede) y correr
+      `python scripts/sync_linchpin_odoo_apps.py --push`
+- [ ] Publicar en apps.odoo.com (tu login): registrar
+      `ssh://git@github.com/esstipi-debug/linchpin-odoo-apps#19.0` y `#17.0`,
+      deploy key read-only, colaborador `online-odoo` **en ese repo**, scan.
+      Ver `documentation/GTM_SUBMISSIONS.md` §5. No registrar `kern`.
 
 ## Funnel demo (E2 — mini-reporte, ya en código)
 
