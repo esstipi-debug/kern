@@ -39,6 +39,7 @@ database. Ask us at https://linchpin.fly.dev.
 """,
     "author": "Kern",
     "website": "https://linchpin.fly.dev",
+    "support": "https://linchpin.fly.dev/paquetes",
     "license": "OPL-1",
     "depends": ["base", "stock", "sale"],
     "data": [
@@ -50,5 +51,9 @@ database. Ask us at https://linchpin.fly.dev.
     ],
     "installable": True,
     "application": True,
-    "images": ["static/description/icon.png"],
+    "images": [
+        "static/description/cover.png",
+        "static/description/screenshot_wizard.png",
+        "static/description/screenshot_result.png",
+    ],
 }

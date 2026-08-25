@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- **Odoo Apps Store listing packet for `kern_dry_run`** (17.0 and 19.0): `support`
+  URL, cover + wizard/result mockups, OPL-1 `LICENSE`/`COPYRIGHT`, Store price
+  omitted (free bait). Sync into the dedicated store repo (module at branch root)
+  with `python scripts/sync_linchpin_odoo_apps.py`. The Cloud Agent cannot create
+  `esstipi-debug/linchpin-odoo-apps`; that one `gh repo create` is the operator's.
+  Playbook: `documentation/GTM_SUBMISSIONS.md` §5.
 - **The Odoo module now ships for Odoo 19, as `kern_dry_run`** (`odoo_addon/19.0/kern_dry_run/`,
   v19.0.1.0.0) — verified by installing it on a clean Odoo 19.0-20260817 database in Docker, not by
   reading the code. The port itself touches three files (+43/-12); the Python and the wizard/menu/
