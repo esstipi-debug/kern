@@ -24,6 +24,7 @@ from datetime import datetime
 from typing import Any
 
 from nosilo_core import writeback
+
 from scm_agent.events import Event, EventLedger
 
 from .scheduler import ScheduledJob
