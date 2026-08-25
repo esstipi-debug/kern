@@ -1,0 +1,259 @@
+# Vedas chilenas vigentes -- dataset curado a mano desde los decretos de
+# SUBPESCA (normativa publica). NO se raspa sernapesca.cl: su robots.txt
+# prohibe a Claude-Web y anthropic-ai. Ver el spec para la matriz completa
+# de licencias.
+#
+# LA DISTINCION QUE MANDA (art. 2 del decreto del loco, leido completo):
+#
+#   extractiva  -> prohibe "la captura, comercializacion, transporte,
+#                  procesamiento, elaboracion y almacenamiento" del recurso
+#                  Y DE SUS PRODUCTOS DERIVADOS (arts. 110/119/139 LGPA).
+#                  Una conserva, una empanada o un congelado elaborado a
+#                  partir de la especie ESTAN dentro del alcance.
+#
+#   biologica   -> cierra la CAPTURA en una ventana estacional. No prohibe
+#                  tener ni vender stock capturado legalmente antes. Su
+#                  efecto es de abastecimiento, no de tenencia: define una
+#                  ventana de compra anticipada, no un retiro de vitrina.
+#
+# Por eso `alcanza_derivados` es explicito por fila y no se deduce del tipo
+# al vuelo: hace la consecuencia auditable, y deja lugar a una excepcion si
+# algun decreto futuro se aparta de la regla general.
+#
+# AMBITO REGIONAL. `ambito` era texto libre ("Arica y Parinacota a Coquimbo")
+# y eso no se puede evaluar: una veda alcanza al recurso extraido en ciertas
+# regiones, y ningun titulo de producto declara de que region vino. Ahora
+# cada fila lleva `regiones` como lista explicita de codigos, y el
+# clasificador aplica la misma disciplina que con origen y variante:
+#
+#   region declarada en el titulo -> se filtra por ella
+#   region sin declarar           -> se reportan TODAS las ventanas que
+#                                    apliquen, salvo el caso siguiente
+#   cerrada en TODAS las regiones -> la region deja de importar y la fila
+#     verificadas simultaneamente    se puede afirmar sin ambiguedad
+#
+# El ultimo caso es el que hace util el modelo: la macha esta cerrada hoy en
+# los tres bloques regionales para los que hay decreto, con tres fechas
+# distintas, asi que no saber de donde vino no cambia la conclusion. Ojo:
+# "todas las regiones verificadas" no es "todo Chile" -- las regiones sin
+# decreto encontrado quedan como desconocidas, nunca como abiertas.
+#
+# Codigos: XV I II III IV V VI VII XVI VIII IX XIV X XI XII (RM no tiene
+# costa y por eso nunca aparece).
+#
+# `verificado_el` es por fila a proposito. Las vedas biologicas viven en
+# decretos viejos que luego se suspenden temporada a temporada con decretos
+# cortos; las extractivas se renuevan con un decreto nuevo y numerado. Una
+# fila con mas de 90 dias sin verificar debe emitir advertencia antes de
+# llegar a un informe de cliente.
+
+vedas:
+
+  - especie: loco
+    tipo: extractiva
+    alcanza_derivados: true
+    prohibe: [captura, comercializacion, transporte, procesamiento, elaboracion, almacenamiento]
+    desde: 2026-01-01
+    hasta: 2028-12-31
+    regiones: [XV, I, II, III, IV, V, VI, VII, XVI, VIII, IX, XIV, X, XI]
+    ambito: "Arica y Parinacota a Aysen (excluye Magallanes)"
+    decreto: DEXE202600007
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    excepcion: >
+      AMERB donde el loco es el recurso principal bajo manejo (art. 3). El
+      comercializador debe portar documentacion que acredite origen legal
+      (arts. 63/65 LGPA). Que la cumpla o no NO es observable desde afuera:
+      el informe reporta la obligacion, nunca una infraccion.
+    verificado_el: 2026-07-24
+
+  - especie: ostion
+    tipo: extractiva
+    alcanza_derivados: true
+    prohibe: [captura, comercializacion, transporte, procesamiento, elaboracion, almacenamiento]
+    desde: 2022-09-01
+    hasta: 2027-08-31
+    regiones: [XV, I, II, III, IV]
+    ambito: "Arica y Parinacota a Coquimbo (ostion del norte)"
+    decreto: DEXE202200104
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    nota: >
+      Ademas, cierre sanitario total de la Bahia de Tongoy por toxina
+      amnesica (VAM) decretado el 2026-01-07 por la SEREMI de Salud de
+      Coquimbo -- Tongoy es la principal area de ostion del norte.
+    verificado_el: 2026-07-24
+
+  - especie: macha
+    tipo: extractiva
+    alcanza_derivados: true
+    prohibe: [captura, comercializacion, transporte, procesamiento, elaboracion, almacenamiento]
+    desde: 2022-08-03
+    hasta: 2026-08-02
+    regiones: [V, VI, VII]
+    ambito: "Valparaiso, O'Higgins y Maule"
+    decreto: D.Ex. 30-2022
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    nota: >
+      VENCE EN DIAS y no hay decreto de renovacion en el registro al
+      2026-07-24. Verificar antes de afirmar cualquier cosa sobre macha de
+      esas tres regiones. Coquimbo sigue cerrada hasta 2031-08-11 y el norte
+      hasta 2030-08-26 por decretos distintos.
+    verificado_el: 2026-07-24
+
+  - especie: macha
+    tipo: extractiva
+    alcanza_derivados: true
+    prohibe: [captura, comercializacion, transporte, procesamiento, elaboracion, almacenamiento]
+    desde: 2021-08-12
+    hasta: 2031-08-11
+    regiones: [IV]
+    ambito: "Coquimbo"
+    decreto: D.Ex. 30-2022 (Coquimbo)
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    verificado_el: 2026-07-24
+
+  - especie: macha
+    tipo: extractiva
+    alcanza_derivados: true
+    prohibe: [captura, comercializacion, transporte, procesamiento, elaboracion, almacenamiento]
+    desde: 2020-08-27
+    hasta: 2030-08-26
+    regiones: [XV, I, II, III]
+    ambito: "Arica y Parinacota a Atacama"
+    decreto: DEXE202000035
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    verificado_el: 2026-07-24
+
+  - especie: centolla
+    tipo: biologica
+    alcanza_derivados: false
+    prohibe: [captura]
+    ventana_anual: "12-15/03-15"
+    regiones: [XIV, X, XI]
+    ambito: "Los Rios a Aysen"
+    decreto: DEXE202500230
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    verificado_el: 2026-07-24
+
+  - especie: chorito
+    tipo: biologica
+    alcanza_derivados: false
+    prohibe: [captura]
+    ventana_anual: "09-01/10-31"
+    regiones: [XIV]
+    ambito: "Los Rios"
+    decreto: D.S. 176-1983 mod. 47-1984 (Los Rios)
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    verificado_el: 2026-07-24
+
+  - especie: erizo
+    tipo: biologica
+    alcanza_derivados: false
+    prohibe: [captura]
+    ventana_anual: "09-01/03-15"
+    regiones: [XII]
+    ambito: "Magallanes"
+    decreto: D.S. 291-1987 (Magallanes)
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    verificado_el: 2026-07-24
+
+  - especie: merluza
+    variante: austral
+    tipo: biologica
+    alcanza_derivados: false
+    prohibe: [captura]
+    ventana_anual: "08-01/08-31"
+    regiones: [X, XI, XII]
+    ambito: "41 28,6' S a 57 S"
+    decreto: D.Ex. 140-1996 mod. 200-2019
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    verificado_el: 2026-07-24
+
+  - especie: merluza
+    variante: comun
+    tipo: biologica
+    alcanza_derivados: false
+    prohibe: [captura]
+    ventana_anual: "09-01/09-30"
+    regiones: [XV, I, II, III, IV, V, VI, VII, XVI, VIII, IX, XIV, X, XI, XII]
+    ambito: "Nacional"
+    decreto: D.Ex. 464-2016
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    nota: >
+      El art. 6 del decreto lo hace caducar despues de 2027. Ademas la cuota
+      2026 se recorto 15% a 29.703 t (DEXE202500260, 17-12-2025), segundo
+      recorte consecutivo: el efecto de abastecimiento es mayor que la sola
+      ventana de veda.
+    verificado_el: 2026-07-24
+
+  - especie: camaron
+    variante: nailon
+    tipo: biologica
+    alcanza_derivados: false
+    prohibe: [captura]
+    ventana_anual: "09-01/09-30"
+    regiones: [XV, I, II, III, IV, V, VI, VII, XVI, VIII, IX, XIV, X, XI, XII]
+    ambito: "Arica y Parinacota a Magallanes"
+    decreto: DEXE202500128
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    nota: >
+      Permanente desde julio de 2025. Las fuentes anteriores a agosto de 2025
+      que dicen "1 ago a 30 sep" estan desactualizadas.
+    verificado_el: 2026-07-24
+
+  - especie: langostino
+    tipo: biologica
+    alcanza_derivados: false
+    prohibe: [captura]
+    ventana_anual: ["01-01/02-28", "09-01/09-30"]
+    regiones: [XV, I, II, III, IV, V, VI, VII, XVI, VIII, IX, XIV, X, XI, XII]
+    ambito: "Arica y Parinacota a Magallanes (colorado y amarillo)"
+    decreto: D.Ex. 323-1996 y 324-1996, mod. 126-2015
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    verificado_el: 2026-07-24
+
+  - especie: chorito
+    tipo: biologica
+    alcanza_derivados: false
+    prohibe: [captura]
+    ventana_anual: "11-01/12-31"
+    regiones: [XV, I, II, III, IV, V, VI, VII, XVI, VIII, IX, X, XI]
+    ambito: "Nacional, excepto Magallanes y Los Rios (Los Rios: 09-01/10-31)"
+    decreto: D.S. 176-1983 mod. 47-1984
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    verificado_el: 2026-07-24
+
+  - especie: centolla
+    tipo: biologica
+    alcanza_derivados: false
+    prohibe: [captura]
+    ventana_anual: "12-15/07-15"
+    regiones: [XII]
+    ambito: "Magallanes (Los Rios a Aysen: 12-15/03-15)"
+    decreto: DEXE202500229
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    verificado_el: 2026-07-24
+
+  - especie: erizo
+    tipo: biologica
+    alcanza_derivados: false
+    prohibe: [captura]
+    ventana_anual: "10-15/01-15"
+    regiones: [XV, I, II, III, IV, V, VI, VII, XVI, VIII, IX, XIV, X, XI]
+    ambito: "Arica y Parinacota a Aysen (Magallanes: 09-01/03-15)"
+    decreto: D.S. 291-1987
+    fuente: https://www.subpesca.cl/portal/normativa/Medidas-de-administracion-y-regimenes-de-acceso/Vedas/
+    verificado_el: 2026-07-24
+
+# Especies verificadas SIN veda vigente. Estan aqui a proposito: "no
+# encontre veda" y "verifique que no tiene" son cosas distintas, y solo la
+# segunda se puede afirmar en un informe.
+sin_veda_vigente:
+  - especie: jibia
+    razon: "Sin veda. Solo cuota (D.Ex. 260/2025) y restriccion de arte de pesca a potera/linea de mano (Ley 21.134)."
+    verificado_el: 2026-07-24
+  - especie: congrio
+    razon: "D.Ex. 36-2013 expiro el 2013-12-31 y nunca se renovo. Sin veda vigente para dorado, negro ni colorado."
+    verificado_el: 2026-07-24
+  - especie: reineta
+    razon: "Sin veda. La cuota si esta periodizada: ene-jul 15.647 t, ago-dic 10.431 t (Res.Ex. 00118/2026 mod. 1772-2026)."
+    verificado_el: 2026-07-24
