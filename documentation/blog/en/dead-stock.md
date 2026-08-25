@@ -72,6 +72,36 @@ Three illustrative rows, in the shape of `documentation/templates/stock_template
 | Hero product, post-spike | 640 | 2 | 40 | $18.00 | 320 d | excess | $8,280 |
 | Core replenishment item | 300 | 6 | 5 | $9.00 | 50 d | healthy | $0 |
 
+```kern-figure
+{
+ "type": "buckets",
+ "items": [
+  {
+   "label": "Excess",
+   "tone": "excess",
+   "units": "460 un.",
+   "cash": "$8,280",
+   "value": 8280
+  },
+  {
+   "label": "Dead",
+   "tone": "dead",
+   "units": "1,240 un.",
+   "cash": "$5,208",
+   "value": 5208
+  },
+  {
+   "label": "Healthy",
+   "tone": "healthy",
+   "units": "0 un.",
+   "cash": "$0",
+   "value": 900
+  }
+ ],
+ "label": "The same three SKUs, ordered by at-risk cash: the excess row outranks the dead one. Illustrative figures, not client data."
+}
+```
+
 Look at which row wins. The apparel is unambiguously dead: no demand, idle for ten months, 1,240 units of it. It is also the pallet anyone walking the warehouse would point at. And it ranks **second**, because 460 excess units of an $18 hero product hold more cash than 1,240 units of $4.20 apparel.
 
 That inversion is the whole argument for computing this instead of eyeballing it. The obvious pile and the expensive pile are different piles, and volume is what your eyes measure while cash is what your bank measures.

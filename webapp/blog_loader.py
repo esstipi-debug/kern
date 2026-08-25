@@ -32,6 +32,8 @@ from typing import Any
 
 import yaml
 
+from webapp.blog_figures import render_figure
+
 BLOG_DIR = Path(__file__).resolve().parent.parent / "documentation" / "blog"
 LANGS = ("es", "en")
 
@@ -240,8 +242,14 @@ def _table(rows: list[str]) -> str:
     return "".join(out)
 
 
-def render_markdown(md: str) -> str:
-    """Render the subset. Anything not recognised becomes a paragraph, escaped."""
+def render_markdown(md: str, lang: str = "en") -> str:
+    """Render the subset. Anything not recognised becomes a paragraph, escaped.
+
+    One fence is special: ``kern-figure`` holds JSON that becomes an inline SVG
+    diagram. It is still not raw HTML -- the payload is parsed as data and the
+    markup is authored by ``webapp.blog_figures``, so an article can ask for a
+    chart without being able to inject a tag.
+    """
     lines = md.replace("\r\n", "\n").split("\n")
     out: list[str] = []
     para: list[str] = []
@@ -277,13 +285,18 @@ def render_markdown(md: str) -> str:
 
         if stripped.startswith("```"):
             flush_all()
+            info = stripped[3:].strip().lower()
             i += 1
             block: list[str] = []
             while i < len(lines) and not lines[i].strip().startswith("```"):
                 block.append(lines[i])
                 i += 1
             i += 1
-            out.append("<pre><code>" + html.escape("\n".join(block), quote=False) + "</code></pre>")
+            payload = "\n".join(block)
+            if info == "kern-figure":
+                out.append(render_figure(payload, lang))
+            else:
+                out.append("<pre><code>" + html.escape(payload, quote=False) + "</code></pre>")
             continue
 
         if not stripped:

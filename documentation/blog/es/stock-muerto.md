@@ -73,6 +73,36 @@ Tres SKU ilustrativos, armados con las filas de ejemplo de `documentation/templa
 | B | 900 | 5 | 12 | $12,50 | 180 d | excedido | $5.625 |
 | C | 150 | 3,5 | 10 | $12,50 | 42,9 d | sano | $0 |
 
+```kern-figure
+{
+ "type": "buckets",
+ "items": [
+  {
+   "label": "Muerto",
+   "tone": "dead",
+   "units": "800 un.",
+   "cash": "$6.400",
+   "value": 6400
+  },
+  {
+   "label": "Excedido",
+   "tone": "excess",
+   "units": "450 un.",
+   "cash": "$5.625",
+   "value": 5625
+  },
+  {
+   "label": "Sano",
+   "tone": "healthy",
+   "units": "0 un.",
+   "cash": "$0",
+   "value": 900
+  }
+ ],
+ "label": "Los mismos tres SKU de la tabla, ordenados por plata en riesgo. Ejemplo trabajado sobre datos de muestra, no es la medicion de ningun cliente."
+}
+```
+
 El SKU A dispara la regla de muerte por partida doble: demanda en cero e inactividad por encima de 180 días. Las 800 unidades quedan en riesgo. El B sí rota, y aun así carga el doble del objetivo de cobertura, así que las 450 unidades por encima quedan en riesgo. El C está dentro del objetivo y no aporta nada.
 
 Fijate en el orden. El B tiene más unidades en mano que el A y queda igual en segundo lugar, porque el ranking es por plata y no por volumen. Es la diferencia entre vaciar el rincón más aparatoso de la bodega y vaciar el más caro.

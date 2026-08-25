@@ -24,6 +24,7 @@ import json
 import os
 from html import escape
 
+from webapp.blog_figures import FIGURE_CSS, render_figure
 from webapp.blog_loader import (
     STOCKY_EN_PATH,
     BlogPost,
@@ -129,7 +130,7 @@ def _shell(*, lang: str, title: str, description: str, head_extra: str, body: st
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 {head_extra}
-<style>{_CSS}</style>
+<style>{_CSS}{FIGURE_CSS}</style>
 </head>
 <body>
 <header><div class="wrap"><a class="brand" href="/">kern<span class="d">.</span></a>{_nav(lang)}</div></header>
@@ -234,6 +235,15 @@ def _sources_block(post: BlogPost) -> str:
     return f'<p class="srcs">{s["sources"]}: {items}</p>'
 
 
+def _index_icons(lang: str) -> str:
+    """A quiet warehouse strip under the lede. The blog is a wall of prose and
+    nothing on the index said "inventory" at a glance; six stroked glyphs on one
+    grid fix that without pretending to be data."""
+    caption = ("Lo que estas paginas miden, y de donde sale cada numero."
+               if lang == "es" else
+               "What these pages measure, and where each number comes from.")
+    return render_figure(json.dumps({"type": "icons", "label": caption}), lang)
+
 def render_blog_article_html(post: BlogPost) -> str:
     s = _STR[post.lang]
     hrefs = hreflang_hrefs(post)
@@ -253,7 +263,7 @@ def render_blog_article_html(post: BlogPost) -> str:
         f'<div class="answer">{escape(post.answer)}</div>'
         f'<p class="meta">{s["answers"]}: “{escape(post.query)}” · '
         f'{s["updated"]} {escape(post.updated)}{other_link}</p>'
-        f"<article>{render_markdown(body_without_h1(post))}</article>"
+        f"<article>{render_markdown(body_without_h1(post), post.lang)}</article>"
         f"{_cta_block(post)}"
         f"{_sources_block(post)}"
     )
@@ -285,6 +295,7 @@ def render_blog_index_html(lang: str, posts: tuple[BlogPost, ...]) -> str:
         f"<h1>{escape(s['index_title'].split(' — ')[0])}</h1>"
         f'<p class="lede">{escape(s["index_lede"])}</p>'
         f'<p class="meta"><a href="{other_path}">{s["other"]}</a></p>'
+        f"{_index_icons(lang)}"
         f'<ul class="posts">{"".join(items)}</ul>'
     )
     return _shell(lang=lang, title=s["index_title"], description=s["index_lede"],

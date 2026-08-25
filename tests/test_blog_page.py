@@ -185,3 +185,69 @@ def test_cta_carries_the_blog_source() -> None:
         html = client.get(post.url_path).text
         if post.cta in ("demo", "both"):
             assert f"/demo?source=blog-{post.slug}" in html
+
+
+# --------------------------------------------------------------------------- #
+# Figures
+# --------------------------------------------------------------------------- #
+
+def test_figure_without_label_is_rejected() -> None:
+    """A chart is the easiest place to smuggle an unlabelled number past
+    section 10, so the label is enforced in code, not by review."""
+    from webapp.blog_figures import FigureError, render_figure
+
+    with pytest.raises(FigureError, match="label"):
+        render_figure(json.dumps({"type": "buckets", "items": [{"label": "x", "value": 1}]}))
+
+
+def test_figure_rejects_unknown_type_and_bad_json() -> None:
+    from webapp.blog_figures import FigureError, render_figure
+
+    with pytest.raises(FigureError):
+        render_figure(json.dumps({"type": "piechart", "label": "x"}))
+    with pytest.raises(FigureError):
+        render_figure("{not json")
+
+
+def test_figure_draws_only_the_numbers_it_was_given() -> None:
+    """The renderer must not derive or round: every value in the spec appears in
+    the SVG, and the caption comes through verbatim."""
+    from webapp.blog_figures import render_figure
+
+    spec = {
+        "type": "bars",
+        "bins": [["tau=3", 71], ["tau=5", 92]],
+        "label": "Illustrative, not client data.",
+    }
+    svg = render_figure(json.dumps(spec))
+    assert "tau=3" in svg and "tau=5" in svg
+    assert "Illustrative, not client data." in svg
+    assert "<script" not in svg.lower()
+
+
+def test_figures_render_inside_real_articles() -> None:
+    """The three articles that carry a kern-figure must show it, and the caption
+    has to survive into the page."""
+    seen = 0
+    for post in INDEXED:
+        if "kern-figure" not in post.body_md:
+            continue
+        seen += 1
+        html = client.get(post.url_path).text
+        assert 'class="fig"' in html, f"{post.slug} lost its figure"
+        assert "<figcaption>" in html
+        # the raw JSON must not leak into the page as a code block
+        assert '"type":' not in html and '"type": ' not in html
+    assert seen >= 3, f"expected at least 3 articles with figures, found {seen}"
+
+
+def test_index_carries_the_icon_strip() -> None:
+    for path in ("/blog", "/blog/en"):
+        assert 'class="iconrow"' in client.get(path).text
+
+
+def test_figures_respect_reduced_motion() -> None:
+    """Animation is opt-in via the media query: a reduced-motion reader gets the
+    finished figure, never a mid-animation one."""
+    html = client.get("/blog/dead-stock").text
+    assert "prefers-reduced-motion: no-preference" in html

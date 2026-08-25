@@ -91,6 +91,33 @@ Illustrative figures, a DTC brand reading weekly units off its sales export, sup
 
 `Ss = 1.6449 x 25 x sqrt(3) = 71 units`.
 
+```kern-figure
+{
+ "type": "bars",
+ "bins": [
+  [
+   "tau=3",
+   71
+  ],
+  [
+   "tau=5",
+   92
+  ],
+  [
+   "a=0.99",
+   101
+  ],
+  [
+   "sales stdev",
+   97
+  ]
+ ],
+ "highlight": "sales stdev",
+ "highlight_label": "the mistake",
+ "label": "Every bar is a figure computed in this section. The last one is the same SKU sized off sales STDEV instead of forecast error. Illustrative, not client data."
+}
+```
+
 Move to a two-week ordering calendar and `tau = R + L = 5`: the buffer becomes 92 units, twenty-one bought by the calendar alone. Push service to 0.99 on the continuous policy and `z_alpha` becomes 2.3263, the buffer 101 units, about 40% more for four points. And if `STDEV` of weekly units read 34 where the forecast error was 25, the same formula returns 97 units: twenty-six extra (e.g.) against a pattern the forecast had already seen.
 
 ## When the SKU sells in bursts
