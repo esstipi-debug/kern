@@ -12,6 +12,9 @@
 - **CI no-core gate:** when `NOSILO_CORE_SSH_KEY` / `NOSILO_CORE_TOKEN` are
   empty, GitHub Actions skips `authenticate-core` (instead of aborting before
   pytest), installs without the private git URL, and runs `KERN_CI_NO_CORE=1`.
+  The collect_ignore scanner follows parent-package `__init__.py` and
+  `importlib.import_module`, so `from scm_agent.events import ...` is skipped
+  instead of dying on `nosilo_core` during collection.
 - **The Odoo module now ships for Odoo 19, as `kern_dry_run`** (`odoo_addon/19.0/kern_dry_run/`,
   v19.0.1.0.0) — verified by installing it on a clean Odoo 19.0-20260817 database in Docker, not by
   reading the code. The port itself touches three files (+43/-12); the Python and the wizard/menu/
