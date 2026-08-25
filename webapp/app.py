@@ -80,6 +80,7 @@ from warehouse.qa import validate as validate_layout  # noqa: E402
 from webapp import (  # noqa: E402
     demo_gap_value,
     demo_gap_workbook,
+    demo_disruption,
     demo_lead_time_scan,
     demo_price_scan,
     demo_scan,
@@ -1513,6 +1514,120 @@ def api_shopify_scan(
         },
         **_pooling(entrada.stock_rows),
         "source_notes": list(entrada.source_notes),
+    }
+
+
+@app.post("/api/demo-disruption", dependencies=[Depends(security.rate_limit)])
+async def api_demo_disruption(
+    email: str = Form(...),
+    consentimiento: bool = Form(False),
+    use_sample: bool = Form(False),
+    file: UploadFile | None = File(None),
+    vertical: str = Form(""),
+) -> dict:
+    """El /demo funnel, salida #6: exposicion a disrupcion por proveedor.
+
+    Sale del MISMO archivo de recepciones que la salida #1: ese export ya trae la
+    columna de proveedor, asi que el visitante no sube nada nuevo.
+
+    ``consentimiento`` es OPT-IN y su default es ``False`` A PROPOSITO. Un cliente
+    que se olvide del campo recibe la negativa, no el escaneo: buscar noticias
+    manda el NOMBRE de cada proveedor a un servicio externo, y esa es la lista de
+    proveedores del visitante. El default tiene que fallar hacia no-enviar.
+
+    Sin consentimiento devuelve 200 con ``status: "omitido"`` y el motivo -- no un
+    4xx: no se rompio nada, el visitante ejercio una opcion legitima y el resto
+    del diagnostico corre igual.
+    """
+    addr = email.strip().lower()
+    if len(addr) > 254 or not EMAIL_RE.match(addr):
+        raise HTTPException(status_code=400, detail="invalid email")
+
+    # La negativa se resuelve ANTES de leer el archivo: sin consentimiento no hay
+    # nada que parsear, nada que agrupar y nada que pueda salir por accidente.
+    if not consentimiento:
+        return {
+            "status": "omitido",
+            "motivo": demo_disruption.SIN_CONSENTIMIENTO,
+            "consent_text": demo_disruption.CONSENT_TEXT,
+        }
+
+    _prune_old_jobs()
+
+    if file is not None and file.filename:
+        data_path, dataset_label = await _stage_table_upload(file)
+    elif use_sample:
+        data_path, dataset_label = SAMPLE_RECEIPTS_FILE, "sample_receipts.csv"
+    else:
+        raise HTTPException(
+            status_code=400, detail="sube un CSV o Excel de recepciones o marca use_sample"
+        )
+
+    try:
+        df = load_table(data_path)
+    except Exception as exc:  # pandas raises several parse/encoding error types
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el archivo: {exc}") from exc
+
+    try:
+        # El MISMO agrupador que la salida #1: las claves son los proveedores.
+        grouped, _dropped = demo_lead_time_scan.to_deliveries(
+            df, aliases=demo_verticals.aliases_for(vertical)
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"columnas requeridas: {demo_lead_time_scan.REQUIRED_COLUMNS_HINT} ({exc})",
+        ) from exc
+
+    scan = demo_disruption.run_disruption_scan(grouped, consentimiento=True)
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    if scan.corrio:
+        lead_dir = _lead_dir_for(addr)
+        (lead_dir / "disrupcion_proveedores.md").write_text(
+            demo_disruption.render_mini_report(scan, ts=ts), encoding="utf-8"
+        )
+
+    record = {
+        "email": addr,
+        "source": "demo-disruption",
+        "ts": ts,
+        "dataset": dataset_label,
+        "status": "ok" if scan.corrio else "omitido",
+        "n_consultados": scan.n_consultados,
+        "n_omitidos": scan.n_omitidos,
+    }
+    with LEADS_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    if not scan.corrio:
+        return {"status": "omitido", "motivo": scan.motivo, "dataset": dataset_label}
+
+    rep = scan.report
+    return {
+        "status": "ok",
+        "dataset": dataset_label,
+        "summary": rep.summary,
+        "n_suppliers": scan.n_consultados,
+        "n_signalled": rep.n_signalled,
+        "n_failed": rep.n_failed,
+        # El tope NUNCA es silencioso: un lector que ve 25 proveedores y no sabe
+        # que habia 300 lee cobertura completa.
+        "n_omitidos": scan.n_omitidos,
+        "window": rep.window,
+        "caveat": demo_disruption.CAVEAT_TAMIZAJE,
+        "signals": [
+            {
+                "supplier": sig.supplier,
+                "articles": sig.article_count,
+                "sources": sig.distinct_sources,
+                "exposure": round(sig.exposure_score, 3),
+                "category": sig.dominant_category,
+                "fetch_failed": sig.fetch_failed,
+            }
+            for sig in rep.signals
+        ],
+        "cta_url": demo_lead_time_scan.CTA_PATH,
     }
 
 
