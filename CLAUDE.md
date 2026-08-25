@@ -44,6 +44,7 @@ consequential result ends in one of four outcomes — and three need a human
 | `tests/` | 1100+ tests (engine vs. book numbers + agent + HTTP guards). `PYTHONPATH=.` |
 | `src/simworld/` | Scoreboard harness: a known-truth simulated world + floor/Kern/oracle runners + KPI scorer, testing whether Kern's inventory decisions are actually good under realistic data dirt (`examples/run_world_sim.py`, see [TESTING_ENVIRONMENT.md](documentation/TESTING_ENVIRONMENT.md) layer 5). **Not an agent capability** — nothing registered in `scm_agent/tools.py` |
 | `documentation/operator/` | Operator Portfolio — the human's role, runbooks, methodologies |
+| `documentation/blog/` | Public GEO blog (ES+EN). Writer OS + briefs; posts land in `es/` and `en/`. Spec: `docs/superpowers/specs/2026-08-25-blog-geo-i18n-design.md`. Renderer is a follow-up; do not treat `marked.js` `/operator` as the pattern. |
 
 ## How the agent works
 
