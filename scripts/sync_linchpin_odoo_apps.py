@@ -188,8 +188,11 @@ def remote_exists(remote: str) -> bool:
 
 
 def push_series(store_dir: Path, series: str, remote: str) -> None:
-    _git(store_dir, "push", "-u", remote, f"{series}:{series}")
-    print(f"{series}: pushed to {remote}")
+    # Mirror: each series branch is rewritten from kern, not merged. The
+    # existing 17.0 on linchpin-odoo-apps still has linchpin_dry_run/; a
+    # fast-forward push would be rejected against that unrelated history.
+    _git(store_dir, "push", "--force", "-u", remote, f"{series}:{series}")
+    print(f"{series}: force-pushed to {remote}")
 
 
 def main(argv: list[str] | None = None) -> int:
