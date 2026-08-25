@@ -78,9 +78,9 @@ from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
 from webapp import (  # noqa: E402
+    demo_disruption,
     demo_gap_value,
     demo_gap_workbook,
-    demo_disruption,
     demo_lead_time_scan,
     demo_price_scan,
     demo_scan,
