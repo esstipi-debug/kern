@@ -2,17 +2,17 @@
 pair: excess-obsolete
 lang: en
 slug: dead-stock
-title: "Dead stock: how to size the cash tied up in inventory that stopped moving"
-description: "Dead, excess and healthy are a classification of on-hand stock with stated thresholds, not a judgement call. The rule, the columns, and the cash ranking."
+title: "Dead stock: the cash ranking your inventory export can already produce"
+description: "Dead, excess and healthy are three buckets with one rule each. The rule, the columns, and why the biggest cash sink is rarely the pallet you stare at."
 date: 2026-08-25
 updated: 2026-08-25
 query: "dead stock cash tied up in inventory"
 answer: >
-  Dead stock is on-hand inventory with zero daily demand, or with a known idle
-  time at or past the dead threshold. Excess stock still moves but holds more
-  days of cover than the target. Healthy is the rest. Each at-risk SKU is sized
-  as at-risk units times unit cost, and the list is ranked by that cash figure,
-  so the answer is an ordered dollar ranking rather than an opinion.
+  Dead stock is on-hand inventory with zero daily demand, or a known idle time
+  at or past the dead threshold. Excess still sells but carries more days of
+  cover than the target. Healthy is the rest. Each bucket sizes its own at-risk
+  units, multiplies them by unit cost, and the output is a list ranked by that
+  cash figure rather than by how much floor space the pile occupies.
 cta: demo
 offer: diagnostico-arranque
 sources:
@@ -21,114 +21,113 @@ sources:
   - kind: code
     ref: documentation/templates/stock_template.csv
 faq:
-  - q: "What is the minimum set of columns?"
-    a: "product_id, on_hand and daily_demand are the minimum. unit_cost is what turns units into a cash ranking, and days_since_last_sale is optional. Those five are the columns in documentation/templates/stock_template.csv."
-  - q: "What is the difference between dead and excess?"
-    a: "Dead has stopped moving: daily demand at or below zero, or a known idle time at or past 180 days. Excess is still moving but carries more than the 90-day cover target. A SKU with zero demand is never classified excess, it is dead."
-  - q: "Does the scan write anything to my ERP or store?"
-    a: "No. The scan reads a CSV you export and returns a classification and a ranking. There is no writeback in the E&O path, and there is no Shopify or Amazon inventory integration."
-  - q: "Are the dollar figures in this article from a real client?"
-    a: "No. Every number here is illustrative and built from the example rows in the repository template. There are no client results, recovery amounts or testimonials in this article."
-  - q: "What is the paid step after the free scan?"
-    a: "The Start-up Diagnostic. The public demo runs the same family of analysis that the diagnostic begins with, so the scan tells you whether the paid step is worth booking before you book it."
+  - q: "Can I run this on a Shopify or Amazon inventory export?"
+    a: "You can run it on any CSV you export yourself, from any system, as long as it carries the columns. There is no Shopify or Amazon inventory integration: you produce the file, the scan reads it."
+  - q: "My demand figures are monthly, not daily. Does that break it?"
+    a: "It breaks the cover number, which is why it matters. Cover is on_hand divided by daily_demand, and the dead threshold is in days. Convert to a per-day rate before you upload, or every cover figure comes out roughly thirty times too long."
+  - q: "Does the SKU with the most units always rank first?"
+    a: "No, and that is the point. Ranking is at-risk units times unit cost. A cheap pallet of 1,200 dead units can rank below 460 excess units of something expensive, which is the opposite of what walking the warehouse suggests."
+  - q: "What happens to rows with no unit cost?"
+    a: "unit_cost defaults to zero in SkuStock, so their at-risk cash computes to zero and they sink to the bottom of the ranking regardless of how bad they are. Supply unit cost or the ranking is meaningless."
+  - q: "Is this the same as an ABC analysis?"
+    a: "No. ABC ranks SKUs by how much value moves through them. This ranks by how much value has stopped moving. A high-turn A item contributes nothing here; a forgotten C item can top the list."
 noindex: false
 ---
 
-# Dead stock: how to size the cash tied up in inventory that stopped moving
+# Dead stock: the cash ranking your inventory export can already produce
 
-Dead stock is on-hand inventory with zero daily demand, or with a known idle time at or past the dead threshold. Excess stock still moves but holds more days of cover than the target. Healthy is the rest. Each at-risk SKU is sized as at-risk units times unit cost, and the list is ranked by that cash figure, so the answer is an ordered dollar ranking rather than an opinion.
+Dead stock is on-hand inventory with zero daily demand, or a known idle time at or past the dead threshold. Excess still sells but carries more days of cover than the target. Healthy is the rest. Each bucket sizes its own at-risk units, multiplies them by unit cost, and the output is a list ranked by that cash figure rather than by how much floor space the pile occupies.
 
-## What you are measuring
+## Three buckets, one rule each
 
-Most inventory conversations stall because "dead stock" is used as a feeling. Someone walks the warehouse, points at a pallet nobody has touched since the last peak, and calls it dead. The next person calls the same pallet safety stock. Neither reading can be checked, so the argument is settled by whoever is more senior.
+The reason dead stock never gets dealt with is that nobody can say where it starts. Ask three people to point at it and you get three different pallets, and the one that wins is whoever argues hardest. There is no way to check any of the three answers, so the conversation repeats next quarter.
 
-The alternative is to make it a classification with stated thresholds. In `src/excess_obsolete.py` every SKU lands in exactly one of three buckets, and the rule that put it there is written down:
+`src/excess_obsolete.py` replaces the argument with three rules you can read:
 
-- **Dead** — `daily_demand <= 0`, **or** a known idle time at or past `dead_threshold_days`, which defaults to 180. All on-hand counts as at-risk.
-- **Excess** — still moving, but days of cover (`on_hand / daily_demand`) is greater than `target_cover_days`, which defaults to 90. At-risk units are the on-hand above that target.
-- **Healthy** — everything else. Zero at-risk units.
+- **Dead** — `daily_demand <= 0`, **or** a known idle time at or past `dead_threshold_days`, default 180. Every unit on hand is at risk.
+- **Excess** — still selling, but `on_hand / daily_demand` exceeds `target_cover_days`, default 90. Only the units above that target are at risk.
+- **Healthy** — everything else, contributing zero.
 
-The important part is not the specific numbers. It is that they are parameters with defaults you can read, argue with and change, rather than a threshold living in one analyst's head.
+Two things follow from writing it this way. A SKU with zero demand can never be classified excess, however healthy the rest of its numbers look, because the demand test runs first. And the thresholds are arguments with defaults, so "should 180 be 120 for us?" becomes a decision somebody makes on the record instead of a habit nobody wrote down.
 
-## How it is calculated
+## Sizing the cash, not the units
 
-Days of cover is `on_hand / daily_demand`. When demand is zero or not finite, cover is infinite, which is the honest representation of a SKU that will never sell through on current behaviour.
+Days of cover is `on_hand / daily_demand`, and it goes to infinity when demand is zero or non-finite. That is the correct answer, not a bug: a SKU with no demand will not sell through on current behaviour, and any finite cover figure would be a polite fiction.
 
-At-risk units differ by bucket. For a dead SKU, every unit on hand is at risk, because there is no demand to consume any of it. For an excess SKU, only the amount above the cover target is at risk:
+At-risk units depend on the bucket, then cost turns them into a ranking:
 
 ```
 cover        = on_hand / daily_demand
 dead         : at_risk_units = on_hand
 excess       : at_risk_units = on_hand - 90 * daily_demand
 at_risk_cash = at_risk_units * unit_cost
+rank by at_risk_cash, descending
 ```
 
-The ranking is `at_risk_cash` descending. That ordering is the deliverable. A list of SKUs sorted alphabetically, or by units, tells you nothing about where to start; sorted by the cash each one is holding, the first five rows are the meeting.
+Three illustrative rows, in the shape of `documentation/templates/stock_template.csv` (e.g. only, not from any client):
 
-Three illustrative SKUs, built from the example rows in `documentation/templates/stock_template.csv` (e.g. only, not client data):
-
-| SKU | On hand | Daily demand | Idle days | Unit cost | Cover | Class | At-risk cash |
+| SKU | On hand | Daily demand | Idle days | Unit cost | Cover | Bucket | At-risk cash |
 |---|---|---|---|---|---|---|---|
-| A | 800 | 0 | 220 | $8.00 | infinite | dead | $6,400 |
-| B | 900 | 5 | 12 | $12.50 | 180 d | excess | $5,625 |
-| C | 150 | 3.5 | 10 | $12.50 | 42.9 d | healthy | $0 |
+| Seasonal apparel, prior run | 1,240 | 0 | 310 | $4.20 | infinite | dead | $5,208 |
+| Hero product, post-spike | 640 | 2 | 40 | $18.00 | 320 d | excess | $8,280 |
+| Core replenishment item | 300 | 6 | 5 | $9.00 | 50 d | healthy | $0 |
 
-SKU A fires the dead rule twice over: demand is zero and idle time is past 180 days. All 800 units are at risk. SKU B is healthy in the sense that it sells, and still holds twice the cover target, so 450 units above the target are at risk. SKU C is inside the target and contributes nothing.
+Look at which row wins. The apparel is unambiguously dead: no demand, idle for ten months, 1,240 units of it. It is also the pallet anyone walking the warehouse would point at. And it ranks **second**, because 460 excess units of an $18 hero product hold more cash than 1,240 units of $4.20 apparel.
 
-Note the ordering. SKU B has more units on hand than SKU A, and it still ranks second, because the ranking is cash and not volume.
+That inversion is the whole argument for computing this instead of eyeballing it. The obvious pile and the expensive pile are different piles, and volume is what your eyes measure while cash is what your bank measures.
 
-## The optional column that changes the answer
+The hero product is also the more uncomfortable finding, because it is still selling. Nobody flags a SKU that ships every day. It bought 320 days of cover during a demand spike that has since ended, and 250 of those days are cash sitting still.
 
-`days_since_last_sale` is optional, and it defaults to `None` rather than `0`. That distinction is doing real work, and the module comment says why:
+## The column most exports leave out
+
+`days_since_last_sale` is optional and defaults to `None`, not to `0`. The module comment explains why that distinction was worth the code:
 
 > It used to default to 0.0, i.e. "sold today" — the reading that most flatters the SKU, and the one that keeps a genuinely dead one out of the count.
 
-If an unknown idle time were read as zero, every SKU with a missing value would look like it sold today, and the idleness rule would never fire for exactly the rows where you have the least information. Unknown now simply does not trigger the rule. A SKU with missing idle time can still be classified dead, but only through the demand test, not by accident.
+Read an unknown idle time as zero and every row missing that field looks like it sold this morning. The idleness rule then never fires precisely where your data is thinnest, which is where dead stock hides. Under the current behaviour, unknown simply does not trigger the rule: such a SKU can still be classified dead, but only by failing the demand test, never by accident.
 
-The practical consequence for your export: if you can supply idle time, supply it. If you cannot, leave it empty rather than filling zeros. A zero is a claim; an empty cell is the truth.
+For your export this means one thing. Supply idle time when you have it, and leave the cell empty when you do not. A zero is a claim about the SKU. An empty cell is the truth about your data.
 
-## Compared with what
+## Why the aging report does not answer this
 
-**A dashboard that charts inventory aging.** Aging buckets show you a distribution: how much sits in 0–30 days, 30–60, 90-plus. That is a picture, not a decision. It does not state a rule that separates dead from excess, and it does not emit a cash ranking, so two people can look at the same chart and disagree about what to liquidate. The classification above commits to a rule and produces an ordered list.
+**Inventory aging dashboards** show a distribution: how much value sits in each age band. That is a picture of the past, not a decision about the present. No stated rule separates dead from excess, no cash ranking comes out the other side, and two people reading the same chart can disagree about what to liquidate without either being wrong.
 
-**A spreadsheet without a cover rule.** Excel can compute days of cover in one column. What it usually does not carry is a stated target, a stated dead threshold, and a consistent treatment of missing idle data across every row and every month. The formula is easy; the discipline of applying the same one twice is what erodes.
+**A spreadsheet with a cover column** gets the arithmetic right. What it rarely keeps is a stated cover target, a stated dead threshold, and one consistent treatment of missing idle data applied to every row this month and again next month. The formula is trivial; running the same one twice is the part that erodes.
 
-**An ERP with min/max thresholds.** Min and max tell the system when to reorder. They do not size the cash already sitting above the target, and they do not classify a zero-demand SKU as anything at all, because a SKU with no demand simply never trips a reorder point. It stays quietly on hand.
+**Stocky, Netstock-class SaaS and similar tools** will classify slow movers. The question worth asking of any of them is which threshold produced the classification and whether you can see it. A rule you can read is a rule you can argue with; a rule you cannot read is a vendor's opinion with a chart around it.
 
-**A chatbot over your inventory export.** It will produce a fluent paragraph about your dead stock. What it will not do is commit to a threshold you can read, or return the same classification twice for the same file.
+**A chatbot pointed at your export** returns a fluent paragraph about your dead stock. It will not commit to a threshold you can inspect, and it will not return the same classification twice for the same file.
 
-## What Kern does not do
+## What the scan does not do
 
-The scan reads the CSV you export. It does not write to your ERP, it does not update your store, and it is not an inventory integration with Shopify or Amazon. The E&O path takes a file, classifies it and returns a deliverable with the ranking and a recommended action per class.
+It reads the CSV you export and returns a classification plus a ranking. It does not write to your ERP, it does not touch your storefront, and it is not an inventory integration with Shopify or Amazon. The E&O path takes a file, classifies it, and hands back a deliverable.
 
-The recommended actions are deliberately blunt and come from the module itself: liquidate, return to vendor or write off for dead; stop buying, redistribute or promote to draw down for excess; monitor and take no action for healthy. They are prompts for a decision, not the decision.
+The recommended action per bucket comes from the module and stays deliberately blunt: liquidate, return to vendor or write off for dead; stop buying, redistribute or promote to draw down for excess; monitor and do nothing for healthy. Those are prompts for a decision. Kern prepares the work and a human signs anything irreversible: of the four possible endings to a guided outcome, three stop on a human by design.
 
-More generally, Kern prepares work and a human signs anything irreversible. Of the four possible endings to a guided outcome, three stop on a human by design.
-
-This article also carries no client results. Every figure above is illustrative and derived from the repository's own example template.
+No client results appear anywhere on this page. Every figure above is illustrative and shaped after the repository's own example template.
 
 ## FAQ
 
-### What is the minimum set of columns?
+### Can I run this on a Shopify or Amazon inventory export?
 
-`product_id`, `on_hand` and `daily_demand` are the minimum. `unit_cost` is what turns units into a cash ranking, and `days_since_last_sale` is optional. Those five are the columns in `documentation/templates/stock_template.csv`.
+You can run it on any CSV you export yourself, from any system, as long as it carries the columns. There is no Shopify or Amazon inventory integration: you produce the file, the scan reads it.
 
-### What is the difference between dead and excess?
+### My demand figures are monthly, not daily. Does that break it?
 
-Dead has stopped moving: daily demand at or below zero, or a known idle time at or past 180 days. Excess is still moving but carries more than the 90-day cover target. A SKU with zero demand is never classified excess, it is dead.
+It breaks the cover number, which is why it matters. Cover is `on_hand` divided by `daily_demand`, and the dead threshold is in days. Convert to a per-day rate before you upload, or every cover figure comes out roughly thirty times too long.
 
-### Does the scan write anything to my ERP or store?
+### Does the SKU with the most units always rank first?
 
-No. The scan reads a CSV you export and returns a classification and a ranking. There is no writeback in the E&O path, and there is no Shopify or Amazon inventory integration.
+No, and that is the point. Ranking is at-risk units times unit cost. A cheap pallet of 1,200 dead units can rank below 460 excess units of something expensive, which is the opposite of what walking the warehouse suggests.
 
-### Are the dollar figures in this article from a real client?
+### What happens to rows with no unit cost?
 
-No. Every number here is illustrative and built from the example rows in the repository template. There are no client results, recovery amounts or testimonials in this article.
+`unit_cost` defaults to zero in `SkuStock`, so their at-risk cash computes to zero and they sink to the bottom of the ranking regardless of how bad they are. Supply unit cost or the ranking is meaningless.
 
-### What is the paid step after the free scan?
+### Is this the same as an ABC analysis?
 
-The Start-up Diagnostic. The public demo runs the same family of analysis that the diagnostic begins with, so the scan tells you whether the paid step is worth booking before you book it.
+No. ABC ranks SKUs by how much value moves through them. This ranks by how much value has stopped moving. A high-turn A item contributes nothing here; a forgotten C item can top the list.
 
 ## Next step
 
-Export the five columns above and [scan your file in the demo](/demo). It returns the classification and the cash ranking for your own SKUs, read-only, and it is the same family of analysis the [Start-up Diagnostic](/paquetes/diagnostico-arranque) begins with.
+Export `product_id`, `on_hand`, `daily_demand`, `unit_cost` and `days_since_last_sale`, then [scan your file in the demo](/demo). It returns the buckets and the cash ranking for your own SKUs, read-only, and it is the same family of analysis the [Start-up Diagnostic](/paquetes/diagnostico-arranque) opens with.
