@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from src.seo.llms_txt import is_valid_llms_txt
 from webapp.app import app
-from webapp.blog_loader import BLOG_DIR, load_posts, post_by_slug
+from webapp.blog_loader import BLOG_DIR, load_posts
 from webapp.blog_page import public_base_url
 
 client = TestClient(app)
