@@ -48,7 +48,41 @@
   /* Alineado arriba, no centrado: una superficie de producto arranca pegada a
      su cromo. Centrada, el tablero flotaba con medio viewport vacio y dejaba de
      leerse como una app. */
-  .stage{min-height:100svh;display:flex;align-items:flex-start;padding:84px 20px 34px}
+  .stage{min-height:100svh;display:flex;align-items:flex-start;padding:84px 20px 34px;
+    position:relative;z-index:1}
+
+  /* ── El suelo fotografico ───────────────────────────────────────────────
+     `live surface` prohibe la fotografia a sangre y los scrims. Se rompe a
+     proposito y acotado: solo el acto de apertura, para que el visitante vea
+     el lugar del que hablan los numeros antes de ver los numeros.
+
+     El movimiento sale de --sc-p, que el motor escribe sobre el acto y que
+     hereda hasta aca. Cero JavaScript.
+
+     El degradado NO es un scrim plano: arranca casi transparente arriba, donde
+     no hay panel, y cierra opaco abajo, donde el tablero necesita contraste.
+     Un rectangulo negro al 60% habria matado la foto entera para proteger
+     texto que solo ocupa la mitad de la pantalla. */
+  .ground{position:absolute;inset:0;overflow:hidden;z-index:0;background:var(--sc-canvas)}
+  .ground img{width:100%;height:100%;object-fit:cover;display:block;
+    transform:scale(calc(1.06 + var(--sc-p, 0) * 0.09))
+              translateY(calc(var(--sc-p, 0) * -3%));
+    transform-origin:50% 42%;
+    filter:saturate(.78) contrast(1.06) brightness(.72);
+    will-change:transform}
+  /* El peso va ARRIBA, que es donde estan los paneles, y se abre en el medio
+     para que el pasillo se vea. Al reves ahogaba justo la parte de la foto que
+     vale y protegia una zona vacia. Cierra al final para empalmar con el acto
+     siguiente sin costura. */
+  .ground::after{content:"";position:absolute;inset:0;
+    background:
+      linear-gradient(180deg, rgba(8,11,17,.88) 0%, rgba(8,11,17,.74) 32%,
+                              rgba(8,11,17,.30) 56%, rgba(8,11,17,.58) 86%,
+                              var(--sc-canvas) 100%),
+      radial-gradient(900px 480px at 12% 8%, rgba(79,209,197,.10), transparent 62%)}
+  @media (prefers-reduced-motion:reduce){
+    .ground img{transform:scale(1.06)}
+  }
   .board{width:100%;max-width:1120px;margin:0 auto}
   .grid{display:grid;gap:14px}
   .grid--2{grid-template-columns:1.35fr .95fr}
@@ -164,9 +198,19 @@
 
 <main id="top">
 
-  <!-- 1 · RECONOCIMIENTO · la superficie ya cargada, poblandose -->
+  <!-- 1 · RECONOCIMIENTO · la superficie ya cargada, poblandose, sobre bodega real -->
   <section data-sc-act="pin" data-sc-span="1.7" data-sc-drift="#080b11">
     <div data-sc-stage>
+      <!-- El suelo fotografico. Solo en el acto de apertura: el resto de la
+           pagina se queda en el instrumento oscuro. El motor publica --sc-p
+           como estilo en linea sobre el acto, y las custom properties heredan,
+           asi que el movimiento sale de CSS puro sin una linea de JS. -->
+      <div class="ground" aria-hidden="true">
+        <picture>
+          <source media="(max-width:760px)" srcset="assets/bodega-m.webp" type="image/webp">
+          <img src="assets/bodega.webp" alt="" width="1920" height="1072" fetchpriority="high" decoding="async">
+        </picture>
+      </div>
       <div class="stage"><div class="board">
         <div class="grid grid--2">
           <div class="panel" data-sc-cue="0 1 0 0">
