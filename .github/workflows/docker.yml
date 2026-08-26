@@ -9,20 +9,35 @@
 name: docker
 
 on:
-  pull_request:
-    branches: ['**']
-    paths:
-      - 'Dockerfile'
-      - '.dockerignore'
-      - 'pyproject.toml'
-      - 'webapp/**'
-      - 'scm_agent/**'
-      - 'nosilo_core/**'
-      - 'src/**'
-      - '.github/workflows/docker.yml'
-  push:
-    branches: [main]
-    tags: ['v*']
+  # Disparadores automaticos DESACTIVADOS al rescatar esta rama (2026-08-26).
+  #
+  # El build hace `pip install` de nosilo-core, que es privado, y para eso
+  # necesita el build secret `nosilo_token`. El repo no tiene ningun secret
+  # configurado -- `gh api repos/esstipi-debug/kern/actions/secrets` devuelve
+  # vacio --, asi que este workflow falla en el paso de instalacion SIEMPRE.
+  #
+  # Con los disparadores originales corria en todo PR que tocara `src/**`,
+  # `webapp/**` o `scm_agent/**` -- es decir, casi todos -- y en cada push a
+  # main. Eso habria dejado un check rojo permanente en una rama que acaba de
+  # volver a verde.
+  #
+  # Para reactivarlo: configurar `NOSILO_CORE_TOKEN` como secret del repo (ver
+  # docs/DEPLOYMENT.md seccion 0) y descomentar el bloque de abajo.
+  #
+  # pull_request:
+  #   branches: ['**']
+  #   paths:
+  #     - 'Dockerfile'
+  #     - '.dockerignore'
+  #     - 'pyproject.toml'
+  #     - 'webapp/**'
+  #     - 'scm_agent/**'
+  #     - 'nosilo_core/**'
+  #     - 'src/**'
+  #     - '.github/workflows/docker.yml'
+  # push:
+  #   branches: [main]
+  #   tags: ['v*']
   workflow_dispatch:
 
 concurrency:
