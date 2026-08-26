@@ -211,7 +211,7 @@ def _bars(spec: dict[str, Any]) -> str:
                 f'<line x1="{x:.1f}" y1="{PAD_T}" x2="{x:.1f}" y2="{PAD_T + plot_h}" '
                 f'stroke="{_WARN}" stroke-width="1.5" stroke-dasharray="3 3"/>'
                 f'<text class="t" x="{x + 6:.1f}" y="{PAD_T + 10}" fill="{_WARN}">'
-                f'{escape(str(spec.get('highlight_label', '')))}</text></g>'
+                f'{escape(str(spec.get("highlight_label", "")))}</text></g>'
             )
     out.append("</svg>")
     return "".join(out)
