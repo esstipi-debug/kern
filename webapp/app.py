@@ -34,7 +34,13 @@ if str(_REPO_ROOT) not in sys.path:
 import pandas as pd  # noqa: E402
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
+from fastapi.responses import (  # noqa: E402
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from jobs import abc_xyz_job, excess_obsolete_job  # noqa: E402
@@ -90,6 +96,9 @@ from webapp import (  # noqa: E402
     security,
 )
 from webapp.decisions import router as decisions_router  # noqa: E402
+from webapp.blog_loader import load_posts, post_by_slug, posts_for_lang  # noqa: E402
+from webapp.blog_page import render_blog_article_html, render_blog_index_html  # noqa: E402
+from webapp.blog_seo import build_llms_txt, build_robots_txt, build_sitemap_xml  # noqa: E402
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
 from webapp.mcp_server import build_mcp_server  # noqa: E402
@@ -2437,6 +2446,71 @@ def stocky_alternative_page() -> HTMLResponse:
         "starter-fundamentos/diagnostico-arranque must exist in webapp.offers.OFFERS"
     )
     return HTMLResponse(render_stocky_alternative_html(offer_starter, offer_diagnostico))
+
+
+# --------------------------------------------------------------------------- #
+# GEO blog. Spec: docs/superpowers/specs/2026-08-25-blog-geo-i18n-design.md
+#
+# Slugs are globally unique and language is a field on the post, never a path
+# prefix -- that is what keeps this from being a site-wide i18n rewrite. The
+# ".md" route exists for AI crawlers that would rather read the source than
+# un-render our HTML.
+# --------------------------------------------------------------------------- #
+
+@app.get("/blog")
+def blog_index_es() -> HTMLResponse:
+    """Spanish index. Default human entry point, matching /paquetes."""
+    return HTMLResponse(render_blog_index_html("es", posts_for_lang("es")))
+
+
+@app.get("/blog/en")
+def blog_index_en() -> HTMLResponse:
+    """English index. Matches the Stocky / one-plan ICP."""
+    return HTMLResponse(render_blog_index_html("en", posts_for_lang("en")))
+
+
+@app.get("/blog/{slug}.md")
+def blog_article_markdown(slug: str) -> Response:
+    """Raw source for AI crawlers. The slug is matched against the loaded set,
+    so a traversal string simply fails to match: no caller-supplied text ever
+    reaches the filesystem."""
+    post = post_by_slug(slug)
+    if post is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return Response(
+        content=post.path.read_bytes(),
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
+@app.get("/blog/{slug}")
+def blog_article(slug: str) -> HTMLResponse:
+    """SSR article: answer block first, JSON-LD, hreflang pair, one CTA."""
+    post = post_by_slug(slug)
+    if post is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return HTMLResponse(render_blog_article_html(post))
+
+
+@app.get("/robots.txt")
+def robots_txt() -> PlainTextResponse:
+    return PlainTextResponse(build_robots_txt())
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml() -> Response:
+    return Response(content=build_sitemap_xml(), media_type="application/xml")
+
+
+@app.get("/llms.txt")
+def llms_txt() -> PlainTextResponse:
+    """English machine index -- the AI default, same reason x-default is EN."""
+    return PlainTextResponse(build_llms_txt("en"))
+
+
+@app.get("/llms.es.txt")
+def llms_txt_es() -> PlainTextResponse:
+    return PlainTextResponse(build_llms_txt("es"))
 
 
 @app.get("/one-plan")
