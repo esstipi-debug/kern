@@ -35,10 +35,88 @@ va a chocar con eso.**
 
 ---
 
-## 3. La tarea inmediata: generar assets con kie.ai
+## 3. Assets: lo que ya se probo, y lo que costo
 
-El fundador pidió la landing **ilustrada y con movimiento**, y decidió
-conectar kie.ai para generar imágenes. **Está bloqueado en un solo paso:**
+**kie.ai quedo descartado en la practica**: nunca se puso la clave. En su
+lugar se uso **OpenArt**, que ya esta conectado como MCP a la sesion.
+
+### Estado de la cuenta, medido el 2026-08-26
+
+```
+plan: Free · saldo: 10 creditos
+```
+
+Se gastaron 30 de los 40 iniciales en dos pruebas con el MISMO prompt:
+
+| Modelo | Creditos | Resultado |
+|---|---|---|
+| Kling 3 Omni · 16:9 1k | 10 | Bodega de catalogo. Todo alineado, sin profundidad de campo |
+| **Nano Banana 2** · 16:9 1K | 20 | **Gana.** Carton reusado, etiquetas descoloridas, poste golpeado, fondo que se disuelve |
+
+**Nano Banana 2 es el modelo a usar.** La primera eleccion fue Kling por
+ser el mas barato, y fue optimizar el numero equivocado.
+
+### Precios verificados (OpenArt, 2026-08-26)
+
+| | Creditos |
+|---|---|
+| Kling 3 Omni imagen | 10 |
+| Nano Banana 2 Lite / Seedream 4.5 | 15 |
+| **Nano Banana 2** (1K, cualquier aspecto) | **20** |
+| Nano Banana Pro / GPT Image 2 | 40 |
+| **PixVerse V6 video** 540p 5s | **50** (el mas barato que existe) |
+| Wan 2.7 video 720p 5s | 125 |
+
+**Con 10 creditos no alcanza para nada util.** Ni una Nano Banana (20) ni
+un video (50). Hay que recargar antes de seguir generando.
+
+Plan sugerido si se recarga: **60 creditos** = 3 stills mas en Nano Banana
+2 (recepcion, detalle de bins, cierre). **110** = eso mas un clip en
+PixVerse por `image2video`, que cuesta lo mismo que `text2video` y arranca
+de una foto ya aprobada.
+
+### Reglas que se aplicaron al prompt, y hay que mantener
+
+Preambulo de estilo unico reusado textual, fotografia documental (el
+diorama de plastilina esta prohibido por defecto), y tres negativos que no
+se negocian: **sin personas, sin texto legible, sin logos**. `taste.md`
+prohibe el texto horneado dentro de la imagen.
+
+El prompt exacto que funciono esta en el commit de `landing/assets`.
+
+---
+
+## 3b. La landing ahora tiene foto
+
+`landing/assets/bodega.webp` (161 KB) y `bodega-m.webp` (59 KB), detras de
+los paneles del acto de apertura, con `<picture>` y corte en 760px.
+
+El movimiento sale de `--sc-p` heredado: escala de 1.06 a 1.15 y sube 3%.
+**Cero JavaScript**, y con `prefers-reduced-motion` queda fija.
+
+**Dos rompimientos deliberados** de `live surface`, que prohibe la
+fotografia a sangre y los scrims. La foto va SOLO en el acto de apertura;
+el resto sigue siendo instrumento oscuro. Y el degradado pesa arriba,
+donde estan los paneles, abriendose en el medio para que el pasillo se
+vea: la primera version lo tenia al reves y ahogaba la parte de la foto
+que vale.
+
+**ESTA COMMITEADO PERO NO DESPLEGADO.** Lo que hay en vivo todavia no
+tiene foto. Para publicarlo:
+
+```bash
+cd C:/Users/Gamer/Music/scm/.wt-landing/landing
+flyctl deploy --now
+```
+
+---
+
+## 3c. Si se vuelve a kie.ai
+
+Es la via que trae el skill de scrollcraft. Se descarto en la practica
+porque nunca se puso la clave, pero es la unica que produce clips
+scrubbeables cuadro a cuadro, que es lo que exigen las gramaticas del
+espectaculo. Para retomarla:
 
 ```bash
 setx KIE_AI_API_KEY "la-clave"      # o un .env en la carpeta del skill
@@ -94,7 +172,8 @@ ffmpeg -y -i out/01.mp4 -frames:v 1 -q:v 2 assets/01-poster.png
 |---|---|---|
 | 1 | `typographic poster` | **Solo en Fly, release v4.** Nunca se versionó |
 | 2 | `live surface` | `landing/index.html`, en vivo, releases v5 y v6 |
-| 3 | por hacer | necesita assets |
+| 2b | `live surface` + suelo fotografico | `landing/index.html`, **commiteado sin desplegar** |
+| 3 | por hacer | necesita clips de video, o sea recargar creditos |
 
 **Build 1 no está en git.** Se desplegó sin versionarse. Si lo quieres de
 vuelta: `flyctl releases -a kern-landing` y rollback a **v4**.
@@ -108,8 +187,9 @@ algo ultra básico"*. `live surface` es la gramática más sobria del
 catálogo — prohíbe cromo de marketing y titulares grandes. Fue mal criterio
 elegirla cuando lo que pedía era espectáculo. **Las gramáticas del
 espectáculo (`continuous world`, `filmic one-shot`) no funcionan sin
-assets**, y hasta hoy no hay ni una imagen. Ese es el cuello de botella
-real, no el criterio de diseño.
+assets.** Ya hay UNA imagen buena (§3b), que alcanzo para darle suelo
+fotografico al acto de apertura pero no para una de esas gramaticas:
+esas piden clips de video, y el saldo no da.
 
 `landing/BRIEF.md` (638 líneas) tiene la entrevista completa, el score, las
 dos filas de fingerprint y la auditoría. **Léelo antes de tocar la página.**
@@ -151,7 +231,7 @@ ahorro**.
 
 ---
 
-## 6. El blog (PR #283)
+## 6. El blog (#283 y #279, YA MERGEADOS)
 
 11 markdown en `documentation/blog/{es,en}/` + renderer SSR + figuras SVG.
 **211 tests pasan, sin regresiones.**
@@ -228,5 +308,9 @@ query distinta.
    arranca.
 2. **Resolver el precio.** Hoy tus dos superficies públicas dirían cifras
    distintas.
-3. **Mergear el #283**, coordinando con la sesión de `.wt-web-kern`. Es lo
-   único entre 11 artículos terminados y que sirvan para algo.
+3. **Desplegar linchpin.** Los #283 y #279 ya estan en `main`, pero este
+   repo NO tiene workflow de despliegue: `linchpin.fly.dev/blog` sigue
+   devolviendo 404 hasta que alguien corra `flyctl deploy -a linchpin`
+   desde la raiz. Ese deploy toca el motor en produccion, que monta un
+   volumen con PII y la traza de autonomia: se hace a ojos abiertos.
+4. **Desplegar la landing con foto** (§3b), que esta commiteada sin salir.
