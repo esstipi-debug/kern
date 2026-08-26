@@ -94,3 +94,12 @@ webapp/_leads/
 # knowledge caches regenerados por scm_agent/knowledge.py y community_summaries.py
 knowledge/embeddings_cache.json
 knowledge/community_summaries.json
+
+# Capturas de trabajo de la landing. Son DERIVADAS: se regeneran corriendo la
+# pagina, y quedan viejas al primer cambio de copy. 2,6 MB de PNG que envejecen
+# no son documentacion, son ruido en el diff.
+#
+# Esto NO es una regla contra versionar capturas. Una captura que documenta un
+# estado que ya no se puede reproducir si vale la pena guardarla; estas se
+# reproducen levantando el servidor.
+landing/shots/
