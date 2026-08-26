@@ -1,0 +1,112 @@
+# .github/workflows/docker.yml
+#
+# Construye la imagen de produccion tal como la construye Fly, verifica que
+# realmente arranque y sirva HTTP, y publica a GHCR solo en tags de version.
+# Cierra el hueco entre "los tests pasan" y "el contenedor bootea": el job
+# `prod-boot` de tests.yml importa webapp.app con los extras de prod, pero no
+# construye la imagen ni prueba que uvicorn levante y responda.
+
+name: docker
+
+on:
+  pull_request:
+    branches: ['**']
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'pyproject.toml'
+      - 'webapp/**'
+      - 'scm_agent/**'
+      - 'nosilo_core/**'
+      - 'src/**'
+      - '.github/workflows/docker.yml'
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-and-smoke:
+    name: build + smoke test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # En PRs solo se construye (load local, sin push). El login y el push solo
+      # ocurren en main y en tags.
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image (load local para el smoke test)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: kern:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # El fallo que este job existe para atrapar: la imagen construye, pero la
+      # app nunca bindea 0.0.0.0:8000 (import de un extra opcional en el boot
+      # chain, config rota, CMD mal). Solo se detecta corriendo el contenedor.
+      - name: Smoke test — el contenedor bootea y sirve HTTP
+        run: |
+          docker run -d --name kern-ci -p 8000:8000 -e PORT=8000 -e WEB_CONCURRENCY=1 kern:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/ >/dev/null 2>&1; then
+              echo "app respondio despues de ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::el contenedor no respondio en 30s"
+          docker logs kern-ci
+          exit 1
+
+      - name: Container logs (siempre)
+        if: always()
+        run: docker logs kern-ci || true
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f kern-ci || true
+
+      - name: Metadata (tags + labels)
+        if: github.event_name != 'pull_request'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - name: Push a GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
