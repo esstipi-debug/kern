@@ -75,3 +75,8 @@ routes:
     tool: price_intelligence
     param_builder: price_intel_refresh_from_event
     autonomy_tier: T2
+
+  shopify_stock_divergence:
+    tool: inventory_optimization
+    param_builder: inventory_from_stock_event
+    autonomy_tier: T2

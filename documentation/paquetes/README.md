@@ -7,6 +7,7 @@ está escrito para **enviarse tal cual a un prospecto**:
 
 | # | Paquete | Precio | Cadencia | One-pager |
 |---|---|---|---|---|
+| 0 | **Radiografía del Congelado (Chile)** | CLP $390.000 único | Informe de 5 días | [radiografia-congelados-cl.md](radiografia-congelados-cl.md) |
 | 1 | **Diagnóstico de Arranque** | USD 1.500–2.500 único | Sprint de 2 semanas | [diagnostico-arranque.md](diagnostico-arranque.md) |
 | 2 | **Starter — Fundamentos de Inventario** | USD 900/mes (piso, techo 1.500) | Mensual, alcance variable por catálogo | [starter-fundamentos.md](starter-fundamentos.md) |
 | 3 | **Growth — Operación Completa de SC** | USD 1.500/mes (piso, techo 3.200) | Mensual + QBR trimestral | [growth-operacion.md](growth-operacion.md) |
@@ -35,6 +36,17 @@ pricing") que hoy ninguna de las otras 8 secciones cubre. No corre por
 (`jobs/price_intelligence.py`) y CLI (`examples/run_price_intel.py --refs
 competitors.csv --client "Acme"`), no una selección de varias herramientas del
 catálogo.
+
+Nota sobre la sección 0: la **Radiografía del Congelado** es peldaño de
+entrada, no un competidor de la sección 9. Ambas leen posición de precios,
+pero la 9 exige que el cliente arme el `competitors.csv` (su mapeo SKU ↔ URL
+*es* la coincidencia confirmada) y dura 2 semanas; la 0 **no le pide un solo
+dato al cliente** — homologa automáticamente contra catálogos públicos y suma
+el calendario de vedas de SUBPESCA. Es específica del mercado chileno de
+congelados y su precio está fijado para ser compra por impulso de un dueño,
+no decisión de comité: convierte un prospecto frío en uno que ya pagó algo.
+Alcance técnico en
+`docs/superpowers/specs/2026-07-24-radiografia-congelados-chile-design.md`.
 
 Nota: [partner-odoo.md](partner-odoo.md) no es un 9no paquete de la escalera
 — es el programa de partners (integradores Odoo / consultoras), con dos
