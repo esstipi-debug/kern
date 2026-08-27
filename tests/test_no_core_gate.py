@@ -60,8 +60,3 @@ def test_subprocess_clis_that_load_core_are_detected() -> None:
     assert depends_on_nosilo_core(_TESTS / "test_run_package_verbose_cli.py") is True
     assert depends_on_nosilo_core(_TESTS / "test_pricing_intel_boot_safety.py") is True
 
-
-def test_no_core_ci_does_not_fail_coverage_on_the_skipped_half() -> None:
-    workflow = (_TESTS.parent / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
-    assert "KERN_CI_NO_CORE" in workflow
-    assert "--cov-fail-under=0" in workflow

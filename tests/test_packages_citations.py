@@ -57,7 +57,14 @@ _RECOVERED_TOOLS = (
 # "readiness". This could not be added here while intake_scan was still
 # unregistered: reg.get(tool_key) below raises KeyError for an unknown key,
 # verified twice before Task 7 registered the tool.
-_CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "whatif", "earned_value", "intake_scan")
+# whatif and earned_value LEFT this set on 2026-08-24. The premise recorded above --
+# "they recover only by surfacing topically-wrong or filler citations" -- did not survive
+# re-measurement: both ranked their own anchor at hop 0 as a perfectly on-topic candidate
+# and lost the batch to the MIN_CITATIONS floor with exactly one survivor. One extra
+# anchor each (break_even_analysis / project_controlling, both measured against the
+# hub-adjacency and closure rules -- see citation_gate.TOOL_CONCEPTS) recovers three
+# on-topic citations apiece. See _RECOVERED_BY_ANCHOR below.
+_CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "intake_scan")
 
 # Anchor-islanded tools: zero at ANY pool (a separate anchor problem, not fixable
 # by pool sizing) -- pinned so a future anchor fix is a conscious change.
@@ -77,7 +84,22 @@ _CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "whatif", "earned_value"
 # metrics/accountability). No Goodhart's-law/ratchet/workaround/metric-gaming node exists
 # anywhere in the graph. Fix by ingesting performance-measurement-dysfunction theory, not
 # by a looser or hub-adjacent anchor.
-_ISLANDED_TOOLS = ("dea", "learning_curve", "slotting", "vehicle_routing", "org_friction_audit")
+# dea and learning_curve LEFT this set on 2026-08-24, same re-measurement: neither was
+# islanded from theory, both were one citation short of MIN_CITATIONS. slotting stays,
+# but now with its own measurement written down in citation_gate.TOOL_CONCEPTS (the
+# `warehouse_functions` candidate produces six survivors and every one of them is a
+# "warehouse" false friend that also displaces the tool's real layout anchors).
+_ISLANDED_TOOLS = ("slotting", "vehicle_routing", "org_friction_audit")
+
+# Recovered on 2026-08-24 by adding ONE anchor each, not by touching MIN_CITATIONS or the
+# pool. The substring assertions matter as much as the count: a recovered tool that ships
+# three off-topic citations is worse than the zero it replaced.
+_RECOVERED_BY_ANCHOR = {
+    "whatif": ("break-even", "sensitivity"),
+    "dea": ("data envelopment", "benchmarking"),
+    "earned_value": ("earned value", "project controlling"),
+    "learning_curve": ("learning curve", "experience curve"),
+}
 
 # Every anchored+registered tool that is allowed to ship zero citations: the four
 # whose zero is intentional plus the anchor-islanded ones. price_watch is NOT here
@@ -121,6 +143,21 @@ def test_intentional_zero_is_preserved(_kb, _reg, tool_key):
 @pytest.mark.parametrize("tool_key", _ISLANDED_TOOLS)
 def test_anchor_islanded_tools_stay_zero(_kb, _reg, tool_key):
     assert _cites(_kb, _reg, tool_key) == ()
+
+
+@pytest.mark.parametrize("tool_key,esperados", sorted(_RECOVERED_BY_ANCHOR.items()))
+def test_anchor_recovered_tool_cites_its_own_subject(_kb, _reg, tool_key, esperados):
+    """EL TEST QUE IMPORTA de esta tanda.
+
+    Cada uno de estos cuatro devolvia cero por el piso de MIN_CITATIONS, no por falta de
+    teoria. El conteo solo no alcanza: si el ancla nueva recupera tres citas ajenas al
+    tema, es peor que el cero que reemplazo. Por eso se fija tambien QUE cita.
+    """
+    cites = _cites(_kb, _reg, tool_key)
+    assert len(cites) >= MIN_CITATIONS, f"{tool_key} volvio a {len(cites)} cita(s)"
+    joined = " ".join(cites).lower()
+    faltan = [e for e in esperados if e not in joined]
+    assert not faltan, f"{tool_key} ya no cita {faltan}; cita {cites}"
 
 
 def test_recovered_citations_are_capped(_kb, _reg):

@@ -79,26 +79,12 @@ def test_los_dos_jobs_le_pasan_las_dos_credenciales():
             assert "NOSILO_CORE_TOKEN" in str(con.get("token", "")), nombre
 
 
-def test_la_action_no_se_invoca_cuando_los_secrets_estan_vacios():
-    """Invocar la action con inputs vacios es un exit 1 a proposito.
-
-    GitHub rechaza `if: ${{ secrets.* }}` al parsear el workflow (run de 0s,
-    sin jobs). Los secrets se leen como env en un paso `id: core` y la action
-    se salta con `steps.core.outputs.present`.
-    """
-    texto = _lineas_ejecutables(WORKFLOW)
-    assert "if: ${{ secrets." not in texto
-    wf = _cargar(WORKFLOW)
-    for nombre, job in wf["jobs"].items():
-        detect = [p for p in job.get("steps", []) if p.get("id") == "core"]
-        assert len(detect) == 1, nombre
-        env = detect[0].get("env") or {}
-        assert "NOSILO_CORE_SSH_KEY" in str(env.get("SSH_KEY", "")), nombre
-        assert "NOSILO_CORE_TOKEN" in str(env.get("TOKEN", "")), nombre
-        for paso in _pasos_de_auth(job):
-            cond = str(paso.get("if") or "")
-            assert "steps.core.outputs.present" in cond, nombre
-            assert "secrets." not in cond, nombre
+# La action se invoca SIEMPRE, sin un paso `id: core` que la salte cuando los
+# secrets estan vacios: ese detect-then-skip era el mecanismo que dejaba a la
+# CI verde sin haber corrido nada. Lo que sigue valido de la version anterior
+# de este test -- que ninguna condicion de workflow lea `secrets.*` directo
+# (GitHub lo rechaza al parsear) -- lo cubren los tests de `_pasos_de_auth`
+# de mas abajo, que ya no encuentran ningun `if` en el paso de autenticacion.
 
 
 # --- 2. las ramas cubren los cuatro casos, sin solaparse ---------------------
