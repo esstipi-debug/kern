@@ -167,6 +167,57 @@ def test_extract_pack_size_returns_none_when_no_pattern_matches() -> None:
     assert extract_pack_size("Acme Widget 3000") is None
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        # A count is never followed by a unit of measure. Found live on
+        # puntomarinochile.cl: this returned 12, but those twelve are KILOS --
+        # the box holds 12 kg in 2 kg units, i.e. 6 units, so unit_price was
+        # dividing by double the right number, silently.
+        "Langostino entero u15 2kg. (caja x 12 kilos)",
+        "Nuggets caja de 6 kg",
+        "Pulpa de fruta pack of 10 kg",
+        # "NxN" with a bare second term is a CUT DIMENSION in millimetres, not
+        # a count. Found live on rapa-nui.cl across its whole prefritos line.
+        "Papas prefritas 11X11 1kg",
+        "Papas prefritas 12x12 2,5kg",
+        "Papas prefritas corte rustico 13x13",
+        # Counts of food items are not pack sizes of sellable units either;
+        # these already returned None and must keep doing so.
+        "48 empanaditas de queso",
+        "Empanada Camaron Queso 10 U",
+        "Machas Media Concha Jumbo 12 u",
+        # Shrimp calibres look like fractions, packaging carries its own
+        # measures, and neither is a pack size.
+        "Camaron 36/40 Crudo Pelado 1 Kg",
+        "Camaron 100/200 Cocido Pelado 500 G",
+        "Bowl craft 500 cc 50 un (12oz)",
+        "Toalla Jumbo 250 mts 2 UN",
+    ],
+)
+def test_extract_pack_size_rejects_measures_and_dimensions(text: str) -> None:
+    """A wrong pack size is worse than no pack size: it silently divides the
+    price by the wrong number instead of leaving the offer un-unit-priced.
+    Every case here was read from a live Chilean frozen-food catalog."""
+    assert extract_pack_size(text) is None
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # "A x B <unit>" IS a pack size -- A boxes of B each. The bare-B form
+        # above is the dimension; the unit is what tells them apart.
+        ("Papas prefritas caja 4x2,5kg", 4),
+        ("Papas prefritas caja 4 x 2,5 kilos", 4),
+        # ...and it must survive a cut dimension appearing EARLIER in the same
+        # title, which used to shadow it and return 13.
+        ("Papas prefritas corte 13x13 caja 4x2,5kg", 4),
+    ],
+)
+def test_extract_pack_size_reads_case_notation_with_units(text: str, expected: int) -> None:
+    assert extract_pack_size(text) == expected
+
+
 def test_extract_pack_size_returns_none_for_empty_text() -> None:
     assert extract_pack_size("") is None
 

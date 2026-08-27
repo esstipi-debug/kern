@@ -3,6 +3,23 @@
 ## [Unreleased]
 
 ### Added
+- **Odoo Apps Store listing packet for `kern_dry_run`** (17.0 and 19.0): `support`
+  URL, cover + wizard/result mockups, OPL-1 `LICENSE`/`COPYRIGHT`, Store price
+  omitted (free bait). Sync into the dedicated store repo (module at branch root)
+  with `python scripts/sync_linchpin_odoo_apps.py`. Both series branches of
+  `esstipi-debug/linchpin-odoo-apps` were force-pushed from `kern` on 2026-08-25
+  (`17.0` = `72468e7`, `19.0` = `4defa85`) and `online-odoo` was invited with
+  `read` on that repo -- no `gh repo create` is needed; the repo has existed
+  since 2026-07-04. Playbook: `documentation/GTM_SUBMISSIONS.md` §5.
+- **CI no-core gate:** when `NOSILO_CORE_SSH_KEY` / `NOSILO_CORE_TOKEN` are
+  empty, GitHub Actions skips `authenticate-core` (instead of aborting before
+  pytest), installs without the private git URL, and runs `KERN_CI_NO_CORE=1`.
+  The collect_ignore scanner follows parent-package `__init__.py`,
+  `importlib.import_module`, and subprocess CLI strings (`examples/*.py`,
+  `python -c` snippets), so `from scm_agent.events import ...` is skipped
+  instead of dying on `nosilo_core`. The no-core job overrides
+  `fail_under=80` (`--cov-fail-under=0`): skipping the core half is not a
+  coverage regression.
 - **The Odoo module now ships for Odoo 19, as `kern_dry_run`** (`odoo_addon/19.0/kern_dry_run/`,
   v19.0.1.0.0) — verified by installing it on a clean Odoo 19.0-20260817 database in Docker, not by
   reading the code. The port itself touches three files (+43/-12); the Python and the wizard/menu/

@@ -165,18 +165,57 @@ def test_el_conteo_muerde_de_verdad(tmp_path):
 # --- 2. el --check completo, cuando la maquina tiene con que ------------------
 
 
+def _graphify_utilizable() -> bool:
+    """Ausente y ROTO son el mismo skip: en ninguno de los dos hay --check que correr.
+
+    `shutil.which` solo mira si HAY un archivo en el PATH, y eso no alcanza para
+    decidir. uv instala `graphify` como un trampoline .exe que hardcodea la ruta
+    del interprete que lo creo; si ese interprete se mueve o se borra, el
+    archivo sigue en su lugar -- `which` contesta que si -- y toda invocacion
+    muere con "uv trampoline failed to canonicalize script path".
+
+    Con la guarda vieja ese caso no se salteaba: se caia. El test daba por
+    presente la herramienta, corria `reflect_lessons.py --check`, el script
+    invocaba el binario roto, y la suite ENTERA quedaba en rojo por el estado
+    del toolchain local del dev -- nada que ver con si GRAPH_LESSONS.md esta al
+    dia. Paso el 2026-08-26, y el unico test rojo del repo era este.
+
+    Y la receta del skip dice `--force`, no `--reinstall`: con los ejecutables
+    huerfanos uv ya no reconoce la herramienta y `--reinstall` aborta con
+    "Executables already exist ... use `--force` to overwrite". Verificado.
+
+    Se prueba entonces que ARRANQUE, no que exista. Se cubren las dos formas de
+    fallar: exit code distinto de cero (el trampoline roto) y la excepcion
+    (binario que desaparece entre el `which` y el `run`, o que cuelga).
+    """
+    if shutil.which("graphify") is None:
+        return False
+    try:
+        return subprocess.run(
+            ["graphify", "--version"],
+            capture_output=True,
+            timeout=30,
+        ).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def test_el_check_completo_cuando_estan_las_herramientas():
     """`reflect_lessons.py --check` de verdad: regenera y compara byte a byte.
 
     Cubre lo que el encabezado no puede -- que el CUERPO del documento siga
-    resolviendo contra el grafo. Necesita el binario `graphify` y el grafo de
-    codigo, que en un runner de GitHub no existen (ver el docstring del modulo).
-    Cuando faltan, se saltea diciendo cual falta: un gate que se calla es peor
-    que no tenerlo, porque se parece a "todo limpio".
+    resolviendo contra el grafo. Necesita el binario `graphify` ARRANCABLE y el
+    grafo de codigo, que en un runner de GitHub no existen (ver el docstring del
+    modulo). Cuando falta -- o esta instalado pero roto -- se saltea diciendo
+    cual falta: un gate que se calla es peor que no tenerlo, porque se parece a
+    "todo limpio". Y un gate que se CAE por una herramienta local rota es peor
+    todavia: pinta de rojo un repo sano.
     """
     faltan = []
-    if shutil.which("graphify") is None:
-        faltan.append("el binario `graphify` (uv tool install graphifyy)")
+    if not _graphify_utilizable():
+        faltan.append(
+            "un `graphify` que arranque (uv tool install --force graphifyy)"
+        )
     if not GRAFO_CODIGO.is_file():
         faltan.append("graphify-out/graph.json (lo reconstruye el hook de SessionStart)")
     if faltan:
