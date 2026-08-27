@@ -14,6 +14,35 @@ from typing import Any
 from src.connectors import InventoryLevel, Order, OrderLine, Product
 
 
+def _number(row: dict, key: str) -> float | None:
+    """A reported quantity, or ``None`` when the backend did not report one.
+
+    A store that says nothing about deliveries and one that says nothing shipped
+    are different facts (``src.order_fulfillment`` counts them in different
+    denominators), and over JSON both arrive as an absent key or a ``null``, never
+    as a number. Coercing either to 0.0 here is what turns a silent gap into a
+    confident 0% fill rate downstream.
+    """
+    value = row.get(key)
+    return None if value is None else float(value)
+
+
+def _text(row: dict, key: str) -> str | None:
+    value = row.get(key)
+    return None if value is None else str(value)
+
+
+def _line(li: dict) -> OrderLine:
+    return OrderLine(
+        li["sku"],
+        float(li["quantity"]),
+        float(li["price"]),
+        delivered_qty=_number(li, "delivered_qty"),
+        promised_date=_text(li, "promised_date"),
+        delivered_date=_text(li, "delivered_date"),
+    )
+
+
 class StoreApiClient:
     """Reads a store over HTTP and maps the responses to canonical connector DTOs."""
 
@@ -35,7 +64,7 @@ class StoreApiClient:
             Order(
                 r["id"],
                 r["created_at"],
-                tuple(OrderLine(li["sku"], float(li["quantity"]), float(li["price"])) for li in r["line_items"]),
+                tuple(_line(li) for li in r["line_items"]),
             )
             for r in rows
         ]

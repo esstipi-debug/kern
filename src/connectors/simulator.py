@@ -11,6 +11,8 @@ offline; a real Shopify/Amazon adapter later implements the same protocol.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 import pandas as pd
 from nosilo_core import writeback
 
@@ -110,19 +112,47 @@ class SimulatedStore:
         self._wb.rollback(idempotency_key)
 
 
+#: Lo que la tienda promete al tomar el pedido, y contra lo que se mide OTIF.
+_PROMISED_LEAD = timedelta(days=3)
+#: Los dos SKU que corren finos: son los que se quedan cortos al final del periodo.
+_THIN = ("SKU-1", "SKU-2")
+
+
 def demo_store() -> SimulatedStore:
-    """A small, deterministic store for demos and tests (no randomness)."""
+    """A small, deterministic store for demos and tests (no randomness).
+
+    Its orders carry the service side too (delivered quantity + promised and actual
+    dates), so the whole realized-service chain - ``orders()`` ->
+    ``src.connectors.realized_service`` -> fill rate / OTIF / lost sales - runs
+    end-to-end offline, with no live backend. The pattern is deliberately mixed and
+    not perfect: the two thin SKUs go 20% short once demand outgrows them, and part
+    of the deliveries land two days past the promise. A demo store that ships
+    everything on time proves the plumbing and hides every number that matters.
+    """
     products = [Product(f"SKU-{i}", f"Item {i}", price=10.0 * i, cost=6.0 * i) for i in range(1, 5)]
     # Mixed on-hand: SKU-1/2 run thin (will need restock), SKU-3/4 are well-stocked.
     _on_hand = {"SKU-1": 10.0, "SKU-2": 30.0, "SKU-3": 200.0, "SKU-4": 300.0}
     levels = [InventoryLevel(p.sku, _on_hand[p.sku]) for p in products]
     dates = ["2026-01-05", "2026-01-20", "2026-02-08", "2026-02-22", "2026-03-10"]
     orders: list[Order] = []
-    for j, date in enumerate(dates):
-        lines = tuple(
-            OrderLine(p.sku, float((i + 1) * (j + 2)), p.price)
-            for i, p in enumerate(products)
-            if (i + j) % 2 == 0
-        )
-        orders.append(Order(f"o{j + 1}", date, lines))
+    for j, day in enumerate(dates):
+        promised = date.fromisoformat(day) + _PROMISED_LEAD
+        lines: list[OrderLine] = []
+        for i, p in enumerate(products):
+            if (i + j) % 2:
+                continue
+            ordered = float((i + 1) * (j + 2))
+            short = 0.2 * ordered if (p.sku in _THIN and j >= 3) else 0.0
+            late = timedelta(days=2 if (i + j) % 4 == 0 else 0)
+            lines.append(
+                OrderLine(
+                    p.sku,
+                    ordered,
+                    p.price,
+                    delivered_qty=ordered - short,
+                    promised_date=promised.isoformat(),
+                    delivered_date=(promised + late).isoformat(),
+                )
+            )
+        orders.append(Order(f"o{j + 1}", day, tuple(lines)))
     return SimulatedStore(products, levels, orders)

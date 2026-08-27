@@ -123,6 +123,23 @@ def _num(row: dict, key: str, *, tool: str, default: float | None = None) -> flo
         raise McpToolError(f"{tool}: field {key!r} is not a number: {row[key]!r}") from exc
 
 
+def _num_opt(row: dict, key: str, *, tool: str) -> float | None:
+    """Un numero que el servidor puede legitimamente no traer.
+
+    Distinto de ``_num``: la ausencia no es un error de contrato sino un dato -
+    nadie lo reporto. Un valor presente pero no numerico si lo es, y se levanta
+    igual que en ``_num``, porque eso es un campo mal mapeado y no un silencio.
+    """
+    if key not in row or row[key] is None:
+        return None
+    return _num(row, key, tool=tool)
+
+
+def _text_opt(row: dict, key: str) -> str | None:
+    value = row.get(key)
+    return None if value is None else str(value)
+
+
 def _text(row: dict, key: str, *, tool: str, default: str | None = None) -> str:
     if key not in row:
         if default is not None:
@@ -191,6 +208,13 @@ class McpInventorySource:
                         sku=_text(line, "sku", tool=tool),
                         quantity=_num(line, "quantity", tool=tool),
                         price=_num(line, "price", tool=tool, default=0.0),
+                        # El lado de servicio es opcional: un ERP que no lo publica
+                        # deja las tres en None y el servicio sale `not_measured`,
+                        # que es lo que efectivamente pasa. Rellenarlas con la
+                        # cantidad pedida daria 100% de fill rate sin medir nada.
+                        delivered_qty=_num_opt(line, "delivered_qty", tool=tool),
+                        promised_date=_text_opt(line, "promised_date"),
+                        delivered_date=_text_opt(line, "delivered_date"),
                     )
                     for line in r.get("lines", [])
                 ),
