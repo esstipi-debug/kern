@@ -96,10 +96,10 @@ from webapp import (  # noqa: E402
     observability,
     security,
 )
-from webapp.decisions import router as decisions_router  # noqa: E402
-from webapp.blog_loader import load_posts, post_by_slug, posts_for_lang  # noqa: E402
+from webapp.blog_loader import post_by_slug, posts_for_lang  # noqa: E402
 from webapp.blog_page import render_blog_article_html, render_blog_index_html  # noqa: E402
 from webapp.blog_seo import build_llms_txt, build_robots_txt, build_sitemap_xml  # noqa: E402
+from webapp.decisions import router as decisions_router  # noqa: E402
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
 from webapp.mcp_server import build_mcp_server  # noqa: E402
