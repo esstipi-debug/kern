@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import date
 from typing import Protocol, runtime_checkable
 
 from src.order_fulfillment import RealizedService, measure_from_order_lines
@@ -78,6 +79,62 @@ class OrderLine:
 
 
 @dataclass(frozen=True)
+class ScheduledReceipt:
+    """Units already bought and not yet received: what is on its way in.
+
+    The forward-looking counterpart of ``OdooConnector.receipts()``, which measures
+    the lead time a supplier ACTUALLY ran by looking backwards. Without this, any
+    date Kern promises a customer can only count stock already on the shelf, which
+    means promising later than reality on every SKU with a purchase order open.
+
+    It carries TWO dates and they are never collapsed into one - the same split
+    ``supplier_scorecard`` draws between ``LEAD_TIME_MEASURED`` and
+    ``LEAD_TIME_DECLARED``, pointed at the future instead of the past:
+
+    ``promised_date``
+        What the ERP says. In Odoo that is ``date_planned``, which is
+        ``date_order + seller.delay`` - the supplier's own datasheet, not their
+        behaviour. Good for reporting what was promised, and nothing else.
+
+    ``expected_date``
+        ``date_order`` plus the lead time that supplier was MEASURED running. The
+        only one of the two that may back a commitment to a customer.
+
+    ``expected_date`` is ``None`` when that supplier has no measured lead time,
+    never the promised one wearing a different label. A supplier that promises 7
+    days and delivers in 20 must produce an empty expected date, because that
+    silence is what later forces the customer promise to come back as a handoff
+    instead of a date that will be missed.
+    """
+
+    sku: str
+    quantity: float
+    promised_date: str | None = None
+    expected_date: str | None = None
+    #: ``"measured"`` when ``expected_date`` was computed, ``None`` when it wasn't.
+    expected_source: str | None = None
+    supplier: str | None = None
+    order_id: str = ""
+
+    @property
+    def slip_days(self) -> int | None:
+        """How far past the promise this receipt is really expected. ``None`` if unknown.
+
+        The number the whole product argues from: promised the 12th, arriving the
+        25th. ``None`` rather than 0 when either date is missing - an unmeasured
+        gap and a supplier who is exactly on time are different facts.
+        """
+        if self.promised_date is None or self.expected_date is None:
+            return None
+        try:
+            promised = date.fromisoformat(self.promised_date[:10])
+            expected = date.fromisoformat(self.expected_date[:10])
+        except ValueError:
+            return None
+        return (expected - promised).days
+
+
+@dataclass(frozen=True)
 class Order:
     """A sales order; ``created_at`` is an ISO date so it sorts/filters lexically."""
 
@@ -95,6 +152,51 @@ class InventorySource(Protocol):
     def inventory_levels(self) -> list[InventoryLevel]: ...
 
     def orders(self, *, since: str | None = None) -> list[Order]: ...
+
+
+@runtime_checkable
+class ReceiptsSource(Protocol):
+    """A backend that can also say what is already bought and on its way in.
+
+    Deliberately NOT folded into ``InventorySource``: that Protocol is
+    ``runtime_checkable`` and satisfied structurally, so adding a method to it
+    would silently un-satisfy every existing adapter (the simulator, the HTTP
+    client, the MCP source) the moment anything ran an ``isinstance``. Incoming
+    purchase orders are an ERP concept anyway - a storefront has no notion of one
+    - so the capability is asked for separately by whoever needs it.
+    """
+
+    def scheduled_receipts(
+        self,
+        *,
+        until: str | None = None,
+        measured_lead_times: Mapping[str, float] | None = None,
+    ) -> list[ScheduledReceipt]: ...
+
+
+def incoming_by_sku(
+    receipts: Iterable[ScheduledReceipt], *, measured_only: bool = False
+) -> dict[str, list[tuple[str, float]]]:
+    """Receipts collapsed to ``sku -> [(date, quantity), ...]``, the shape ATP eats.
+
+    Each receipt lands on the strongest date it carries: ``expected_date`` where the
+    supplier's lead time was measured, otherwise the ERP's ``promised_date``. One
+    carrying neither is left out entirely rather than dated with today.
+
+    ``measured_only=True`` drops every receipt without a measured date. That is the
+    strict mode a customer-facing promise uses: committing a delivery date on top of
+    a supplier's own unverified promise is how their broken promise becomes ours,
+    and that datasheet number is exactly what ``receipts()`` exists to contradict.
+    """
+    incoming: dict[str, list[tuple[str, float]]] = {}
+    for r in receipts:
+        when = r.expected_date if r.expected_source else None
+        if when is None and not measured_only:
+            when = r.promised_date
+        if when is None:
+            continue
+        incoming.setdefault(r.sku, []).append((when, r.quantity))
+    return incoming
 
 
 #: Columns ``jobs.inventory_optimization`` reads off an ``order_lines`` frame:
