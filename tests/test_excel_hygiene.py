@@ -105,6 +105,73 @@ def test_una_coincidencia_de_suma_en_el_medio_no_es_un_total():
     assert limpio.dropped["fila_de_total"] == 0
 
 
+def test_el_total_cuadra_la_cantidad_y_deja_el_precio_en_blanco():
+    """La forma REAL de una fila de total, y la que se escapaba.
+
+    Nadie suma precios unitarios: quien cierra una planilla a mano totaliza la
+    cantidad y el importe, y deja la columna de precio vacia. Exigir que
+    **todas** las columnas numericas cuadren dejaba pasar justo ese caso -- el
+    mas comun de todos -- porque el precio en blanco abortaba la comprobacion
+    antes de llegar a la cantidad, que si cuadraba.
+    """
+    frame = pd.DataFrame(
+        {
+            "fecha": ["2026-01-05", "2026-01-06", ""],
+            "sku": ["SKU-1", "SKU-2", ""],
+            "cantidad": [10.0, 5.0, 15.0],
+            "precio": [3.0, 7.0, None],
+        }
+    )
+
+    limpio = clean_frame(frame, key_column="sku")
+
+    assert limpio.dropped["fila_de_total"] == 1
+    assert len(limpio.frame) == 2
+
+
+def test_una_columna_numerica_que_CONTRADICE_la_suma_salva_a_la_fila():
+    """Saltear los blancos no es saltear los desacuerdos.
+
+    Si una columna numerica trae un numero y ese numero NO es la suma, la fila
+    no es un total: es demanda que casualmente cuadra en otra columna. Este es
+    el limite de la regla de arriba, y sin el, aflojarla descartaria ventas.
+    """
+    frame = pd.DataFrame(
+        {
+            "fecha": ["2026-01-05", "2026-01-06", ""],
+            "sku": ["SKU-1", "SKU-2", ""],
+            "cantidad": [10.0, 5.0, 15.0],
+            "importe": [30.0, 35.0, 999.0],
+        }
+    )
+
+    limpio = clean_frame(frame, key_column="sku")
+
+    assert limpio.dropped["fila_de_total"] == 0
+    assert len(limpio.frame) == 3
+
+
+def test_una_ultima_fila_sin_ningun_numero_no_es_un_total():
+    """Con todas las numericas en blanco no hay NADA que cuadre.
+
+    Sin esta guarda, saltear los blancos volveria la comprobacion vacuamente
+    verdadera y se llevaria puesta cualquier fila final incompleta.
+    """
+    frame = pd.DataFrame(
+        {
+            "fecha": ["2026-01-05", "2026-01-06", "2026-01-07"],
+            "sku": ["SKU-1", "SKU-2", ""],
+            "cantidad": [10.0, 5.0, None],
+            "precio": [3.0, 7.0, None],
+        }
+    )
+
+    limpio = clean_frame(frame, key_column="sku")
+
+    assert limpio.dropped["fila_de_total"] == 0
+    assert len(limpio.frame) == 3
+
+
 def test_una_venta_que_casualmente_cuadra_con_la_suma_pero_tiene_sku_se_conserva():
     """Sin etiqueta de total Y con producto y fecha propios, es una fila de datos."""
     frame = pd.DataFrame(

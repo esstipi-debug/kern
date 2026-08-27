@@ -105,10 +105,16 @@ def _closes_the_block(frame: pd.DataFrame, idx: int, columns: tuple[str, ...]) -
     if idx != len(frame) - 1 or len(frame) < 2:
         return False
     previas = frame.iloc[:idx]
+    cuadran = 0
     for columna in columns:
         valor = frame.iloc[idx][columna]
+        # Una numerica en blanco no opina: se saltea en vez de abortar. Nadie
+        # suma precios unitarios, asi que la forma mas comun de un total real
+        # -- cantidad e importe sumados, precio vacio -- moria aca antes de
+        # llegar a la columna que si cuadraba. Lo que sigue exigiendo la
+        # funcion es que ALGUNA cuadre (``cuadran``) y que NINGUNA contradiga.
         if _is_blank(valor):
-            return False
+            continue
         try:
             objetivo = float(valor)
             suma = float(previas[columna].astype(float).sum())
@@ -116,7 +122,11 @@ def _closes_the_block(frame: pd.DataFrame, idx: int, columns: tuple[str, ...]) -
             return False
         if suma == 0 or abs(objetivo - suma) > _SUM_TOLERANCE * max(abs(suma), 1.0):
             return False
-    return True
+        cuadran += 1
+    # Con todas las numericas en blanco no hay nada que cuadre, y sin este
+    # contador el bucle terminaria en un ``True`` vacuo que se llevaria puesta
+    # cualquier fila final incompleta.
+    return cuadran > 0
 
 
 @dataclass(frozen=True)
