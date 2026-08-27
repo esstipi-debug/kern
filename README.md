@@ -50,7 +50,7 @@ Every one of the **50 registered tools** below is routed the same way — one `r
 | 🧭 `leadership_chain` | a brief / scores | radar chart + report — CHAIN leadership profile + directives |
 | 🏗️ `warehouse_layout` | params / brief | 3D HTML + layout.json + report — navigable warehouse (building, yard, docks, gates, racks) |
 
-Runs **with or without an LLM**: an optional `LLMProvider` (Claude) sharpens routing and the narrative; the deterministic core works on its own. The whole thing is **1100+ tests**.
+Runs **with or without an LLM**: an optional `LLMProvider` (Claude) sharpens routing and the narrative; the deterministic core works on its own. The whole thing is **6300+ tests**.
 
 ---
 
@@ -220,13 +220,13 @@ The analytical core the agent stands on: a chain of small **pure functions**, ea
 ![forecast error](https://img.shields.io/badge/safety_stock-forecast_error_σ-5eead4?style=flat-square&labelColor=0d1219)
 ![shape aware](https://img.shields.io/badge/demand-Croston_and_gamma-3fb950?style=flat-square&labelColor=0d1219)
 ![feasible](https://img.shields.io/badge/plan-MOQ_and_budget_feasible-d4a017?style=flat-square&labelColor=0d1219)
-![tests](https://img.shields.io/badge/1100%2B_tests-passing-4fd1c5?style=flat-square&labelColor=0d1219)
+![tests](https://img.shields.io/badge/6300%2B_tests-passing-4fd1c5?style=flat-square&labelColor=0d1219)
 
 - **Validated, not assumed** — closed-form policies are cross-checked against Monte-Carlo simulation (`simulation.py`, backorders + lost sales).
 - **σ_e, not σ_demand** — safety stock keys off *forecast error*, the only correct dispersion (the #1 inventory mistake in the wild).
 - **Shape-aware** — intermittent (Croston) and skewed (gamma) demand are first-class, where a normal-curve sheet silently stocks out.
 - **Feasible by construction** — MOQ / budget are constraints, so what ships is buildable, not just mathematically optimal.
-- **Pure & composable** — each module is a pure function, the engine validated against reference numeric examples in a 1100+ test suite; the orchestrator chains them without surprises.
+- **Pure & composable** — each module is a pure function, the engine validated against reference numeric examples in a 6300+ test suite; the orchestrator chains them without surprises.
 
 <div align="center">
 <img src="docs/assets/benchmark-savings.png" alt="Bar chart — median cost reduction vs baseline on Online Retail I, Online Retail II, and Superstore, all above the 15% target line" width="520"><br>
@@ -340,7 +340,7 @@ jobs/                 Playbooks (one per tool) + intake/QA/deliverables
 src/                  Core engine (EOQ → simulation optimization → forecasting → pricing → ...)
 webapp/               FastAPI dashboard + POST /api/jobs + live agent console (static/prototype/)
 examples/             CLI workflows (run_agent, parts 1-4, batch, jobs, plots)
-tests/                1100+ tests: engine (reference numeric examples) + agent + HTTP layer (traversal/upload guards)
+tests/                6300+ tests: engine (reference numeric examples) + agent + HTTP layer (traversal/upload guards)
 data/                 Sample demand + pricing
 documentation/        Guides: Getting Started, FAQ, methodology, capability-expansion plan
 docs/                 Design briefs, handoff notes, assets
