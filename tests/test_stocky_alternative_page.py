@@ -81,3 +81,4 @@ def test_page_links_to_free_demo_and_home() -> None:
     body = resp.text
     assert 'href="/demo"' in body
     assert 'href="/paquetes"' in body
+    assert 'href="/blog"' in body

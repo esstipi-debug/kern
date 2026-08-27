@@ -26,6 +26,11 @@ def test_index_lists_all_seven_offers_with_price_and_cadence() -> None:
         assert f"/paquetes/{offer.slug}" in html
 
 
+def test_index_nav_includes_blog() -> None:
+    html = render_index_html(OFFERS, _PROFILE)
+    assert 'href="/blog"' in html
+
+
 def test_index_shows_operator_name_and_bio() -> None:
     html = render_index_html(OFFERS, _PROFILE)
     assert "Jane Doe" in html

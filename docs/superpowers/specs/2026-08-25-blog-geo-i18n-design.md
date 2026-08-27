@@ -1,7 +1,7 @@
 # Blog GEO bilingüe (ES + EN) — design spec
 
 **Date:** 2026-08-25
-**Status:** plan locked; posts authored by a writer agent (Claude); renderer is a follow-up PR
+**Status:** plan locked; posts authored; renderer shipped (PR #283). Visual shell + nav discoverability follow in later PRs. Production Fly deploy is manual.
 **Owner of this spec:** infra / product
 **Owner of post bodies:** Claude, following `documentation/blog/WRITER.md`
 

@@ -233,12 +233,12 @@ def _inline(text: str) -> str:
 def _table(rows: list[str]) -> str:
     cells = [[c.strip() for c in r.strip().strip("|").split("|")] for r in rows]
     head, body = cells[0], cells[2:]  # cells[1] is the --- separator
-    out = ["<table><thead><tr>"]
+    out = ['<div class="table-wrap"><table><thead><tr>']
     out += [f"<th>{_inline(c)}</th>" for c in head]
     out.append("</tr></thead><tbody>")
     for row in body:
         out.append("<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in row) + "</tr>")
-    out.append("</tbody></table>")
+    out.append("</tbody></table></div>")
     return "".join(out)
 
 

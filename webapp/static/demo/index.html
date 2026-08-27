@@ -31,7 +31,9 @@
   header .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
   .brand{display:flex;align-items:center;gap:9px;font:700 17px/1 var(--mono)}
   .brand .d{color:var(--accent)}
-  header a.back{font-size:14px;color:var(--txt-2)}
+  header nav{display:flex;gap:16px;align-items:center;font-size:14px}
+  header nav a{color:var(--txt-2)}
+  header nav a:hover{color:var(--txt);text-decoration:none}
   h1{font-size:clamp(1.7rem,1.2rem+1.8vw,2.4rem);font-weight:800;letter-spacing:-.02em;margin:0}
   h2{font-size:1.05rem;font-weight:700;margin:0 0 4px}
   .eyebrow{font:600 12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent-bright)}
@@ -80,7 +82,7 @@
 <header>
   <div class="wrap">
     <span class="brand"><span class="d">&#9672;</span> Kern</span>
-    <a class="back" href="/paquetes">Paquetes &rarr;</a>
+    <nav><a href="/blog">Blog</a><a href="/paquetes">Paquetes</a></nav>
   </div>
 </header>
 

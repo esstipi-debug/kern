@@ -2,6 +2,19 @@
 
 Crawlable articles on the Kern site. **Not** LinkedIn. **Not** Nosilo.
 
+Live routes (same FastAPI app as `/paquetes` and `/demo`):
+
+| Route | What it is |
+|---|---|
+| `/blog` | Spanish index |
+| `/blog/en` | English index |
+| `/blog/{slug}` | SSR article |
+| `/blog/{slug}.md` | raw markdown for AI crawlers |
+| `/llms.txt` / `/llms.es.txt` | machine indexes |
+| `/sitemap.xml` / `/robots.txt` | crawl surface |
+
+Host today: `https://linchpin.fly.dev` (`PUBLIC_BASE_URL`). A merge to `main` is not a deploy; Fly is a manual `fly deploy --build-secret nosilo_token=...`.
+
 | Path | What it is | Who writes it |
 |---|---|---|
 | `docs/superpowers/specs/2026-08-25-blog-geo-i18n-design.md` | URLs, hreflang, renderer, tests | already written |
@@ -12,9 +25,6 @@ Crawlable articles on the Kern site. **Not** LinkedIn. **Not** Nosilo.
 | `es/*.md` | Spanish posts (published) | **Claude** |
 | `en/*.md` | English posts (published) | **Claude** |
 
-Until the follow-up renderer PR lands, files in `es/` and `en/` are the source of
-truth sitting in git. They are still written as if they were live: valid
-frontmatter, answer-first, cited, §10-clean.
+The renderer reads **only** `es/` and `en/`. Files there are live source: valid frontmatter, answer-first, cited, §10-clean.
 
-**Do not put finished posts in `briefs/`.** Briefs are instructions. Posts are
-articles.
+**Do not put finished posts in `briefs/`.** Briefs are instructions. Posts are articles.

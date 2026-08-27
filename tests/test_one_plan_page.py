@@ -173,6 +173,7 @@ def test_page_links_to_free_demo_and_packages() -> None:
     body = client.get("/one-plan").text
     assert 'href="/demo"' in body
     assert 'href="/paquetes"' in body
+    assert 'href="/blog"' in body
 
 
 def test_faq_contains_the_three_deal_killer_objections() -> None:
