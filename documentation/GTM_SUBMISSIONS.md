@@ -61,55 +61,78 @@ The module lives at `odoo_addon/<serie>/kern_dry_run/` — hoy `17.0/` (v17.0.1.
 install-verified) y `19.0/` (v19.0.1.0.0, el port). **Mismo nombre tecnico en las
 dos series a proposito**: el Store trata un modulo como *la misma app* en varias
 versiones solo si el directorio se llama igual en cada rama. OPL-1, icono +
-`index.html` en las dos.
+`index.html` en las dos. Precio Store **gratis** (sin clave `price` en el
+manifest): el listing es anzuelo; los retainers se venden fuera del Store.
 
 El Store lee de un **repositorio dedicado cuyo nombre de rama coincide con la
 version de Odoo**, con el modulo en la raiz:
-`https://github.com/esstipi-debug/linchpin-odoo-apps` (privado; el nombre del repo
-no importa para la ficha). Rama `17.0` ya preparada; hay que crear la rama `19.0`.
+`https://github.com/esstipi-debug/linchpin-odoo-apps` (privado). **No registrar
+`esstipi-debug/kern`**: para un repo privado el Store pide acceso de lectura al
+usuario GitHub `online-odoo`, y eso expondria el producto entero. El nombre del
+repo no importa para la ficha; el aislamiento si.
 
-1. Log in at `https://apps.odoo.com` (create the free account with your GitHub
-   email if you don't have one).
+**Estado a 2026-08-25: ese repo ya existe y ya esta sincronizado.** Fue creado
+el 2026-07-04, y el 2026-08-25 sus ramas se reescribieron desde `kern`: `17.0`
+(`72468e7`) y `19.0` (`4defa85`, nueva), las dos con `kern_dry_run/` en la raiz.
+La `17.0` traia el nombre viejo `linchpin_dry_run/` y se piso con force-push;
+el estado anterior era `5edf4da`, por si hay que volver.
+
+**No hace falta ningun `gh repo create`.** Un `gh` logueado como
+`esstipi-debug` tiene `admin` sobre los dos repos. Si una sesion reporta 404
+sobre `linchpin-odoo-apps`, es el alcance de *su* token y no un repo faltante:
+
+```
+gh api repos/esstipi-debug/linchpin-odoo-apps --jq .permissions
+```
+
+Para re-sincronizar despues de tocar el modulo, desde la raiz de `kern`:
+
+```
+python scripts/sync_linchpin_odoo_apps.py --push
+```
+
+Eso reescribe `kern_dry_run/` en la raiz de las ramas `17.0` y `19.0`. Regenerar
+imagenes de ficha: `python scripts/gen_odoo_listing_assets.py` (no pisa `icon.png`).
+
+**Listing assets (este repo, ya en el modulo):**
+
+- `"support"`: `https://linchpin.fly.dev/paquetes` en ambos manifests.
+- **Capturas**: `screenshot_wizard.png` + `screenshot_result.png` (mockups del
+  wizard real, no una db live). Tambien incrustadas en `index.html`.
+- **Cover**: `static/description/cover.png` es el primer item de `"images"`;
+  `icon.png` queda como icono del modulo.
+- **OPL-1**: `LICENSE` + `COPYRIGHT` viajan con el modulo.
+
+Publicar sigue siendo tu login en apps.odoo.com:
+
+1. Log in at `https://apps.odoo.com` (cuenta que ya tenes; crear una gratis con
+   el email de GitHub si no).
 2. Top-right menu -> **Upload / your repositories** -> registrar el repo por SSH
    con la rama como fragmento: `ssh://git@github.com/esstipi-debug/linchpin-odoo-apps#19.0`
    (y lo mismo con `#17.0` para la serie vieja).
 3. Odoo shows a deploy/SSH key -> add it in GitHub: repo **Settings -> Deploy
    keys** (read-only) on `linchpin-odoo-apps`. Para repos privados hay que dar
-   acceso de lectura al usuario GitHub `online-odoo`.
+   acceso de lectura al usuario GitHub `online-odoo` **en ese repo**, no en `kern`.
+   **Ya invitado el 2026-08-25** (`online-odoo`, permiso `read`, sobre
+   `linchpin-odoo-apps`). Sigue *pendiente de aceptacion* del lado de Odoo, y
+   las invitaciones de GitHub **caducan a los 7 dias**: si el tramite en
+   apps.odoo.com se pasa de esa ventana, reenviarla. Verificar con
+   `gh api repos/esstipi-debug/linchpin-odoo-apps/invitations`.
 4. Trigger the scan; el Store toma `kern_dry_run` de la rama y usa
    `static/description/index.html` + `icon.png` como ficha.
-5. Set the price (OPL-1 -> de pago es la norma; minimo 9 EUR, y solo se aceptan
-   EUR/USD) y publicar.
-
-**Antes de publicar, lo que todavia falta** (verificado contra las reglas vigentes
-del Store, 2026-08-19):
-
-- `"support"`: falta en el manifest. Es el mail de reclamos, obligatorio de facto
-  para apps de pago (se muestra solo a compradores). Decidir cual usar.
-- **Capturas de pantalla**: una app de pago sin capturas de sus funcionalidades
-  puede ser despublicada. `index.html` hoy no tiene ninguna.
-- **Cover image**: `"images"` apunta al icono. El ranking de la ficha penaliza
-  "missing cover image"; icono y cover son cosas distintas.
-- `"name"`: "Kern Inventory AI" cumple el limite de 25 caracteres, pero la guia
-  pide evitar el nombre de la empresa en el titulo. Riesgo bajo, decision del duenio.
-- Un error de manifest **despublica todos los modulos del repositorio**, no solo
-  el roto. Revisar el scan despues de cada push.
+5. Precio Store: **gratis** (anzuelo). No pongas 9 EUR. Un error de manifest
+   **despublica todos los modulos del repositorio**, no solo el roto. Revisar
+   el scan despues de cada push.
 
 Keeping the store repo in sync after module changes in the main repo:
 
 ```
-# desde la raiz del repo principal, tras un cambio bajo odoo_addon/19.0/kern_dry_run/
-git -C ../linchpin-odoo-apps checkout 19.0
-git -C ../linchpin-odoo-apps pull
-robocopy odoo_addon/19.0/kern_dry_run ../linchpin-odoo-apps/kern_dry_run /MIR /XD __pycache__
-git -C ../linchpin-odoo-apps add -A
-git -C ../linchpin-odoo-apps commit -m "sync from main repo"
-git -C ../linchpin-odoo-apps push
+python scripts/sync_linchpin_odoo_apps.py --push
 ```
-
-(Para la serie 17.0: mismas lineas con `checkout 17.0` y `odoo_addon/17.0/kern_dry_run`.)
 
 ---
 
-After 1-4 are live, add the listing URLs to `README.md` and the fly.io landing
-page so the loop closes (visitors -> keys -> `examples/issue_mcp_key.py`).
+After the listing is live, add the Store URLs to `README.md` and the fly.io
+landing page so the loop closes (visitors -> keys -> `examples/issue_mcp_key.py`).
+That landing edit is **not** this playbook: the operator is redesigning the web
+in another window.
