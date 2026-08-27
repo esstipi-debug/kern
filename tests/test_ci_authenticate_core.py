@@ -38,7 +38,11 @@ def _cargar(ruta: Path) -> dict:
 
 
 def _pasos_de_auth(job: dict) -> list[dict]:
-    return [p for p in job.get("steps", []) if "private core" in str(p.get("name", ""))]
+    return [
+        p
+        for p in job.get("steps", [])
+        if "Authenticate to the private core" in str(p.get("name", ""))
+    ]
 
 
 # --- 1. una sola fuente ------------------------------------------------------
@@ -73,6 +77,14 @@ def test_los_dos_jobs_le_pasan_las_dos_credenciales():
             con = paso.get("with") or {}
             assert "NOSILO_CORE_SSH_KEY" in str(con.get("ssh-key", "")), nombre
             assert "NOSILO_CORE_TOKEN" in str(con.get("token", "")), nombre
+
+
+# La action se invoca SIEMPRE, sin un paso `id: core` que la salte cuando los
+# secrets estan vacios: ese detect-then-skip era el mecanismo que dejaba a la
+# CI verde sin haber corrido nada. Lo que sigue valido de la version anterior
+# de este test -- que ninguna condicion de workflow lea `secrets.*` directo
+# (GitHub lo rechaza al parsear) -- lo cubren los tests de `_pasos_de_auth`
+# de mas abajo, que ya no encuentran ningun `if` en el paso de autenticacion.
 
 
 # --- 2. las ramas cubren los cuatro casos, sin solaparse ---------------------
@@ -181,6 +193,14 @@ def test_ninguna_credencial_se_imprime():
     for prohibido in ("echo $TOKEN", "echo $SSH_KEY", "echo ${TOKEN}", "echo ${SSH_KEY}",
                       "cat ~/.ssh/nosilo_core"):
         assert prohibido not in texto, prohibido
+
+
+def test_prod_boot_instala_el_extra_core_cuando_hay_credencial():
+    """`.[web,mcp]` no tira de nosilo-core (esta en el extra `[core]`). Sin
+    ese extra el import de webapp.app falla igual despues de autenticar.
+    """
+    texto = WORKFLOW.read_text(encoding="utf-8")
+    assert 'pip install -e ".[core,web,mcp]"' in texto
 
 
 def test_la_dependencia_publicada_sigue_siendo_https():
