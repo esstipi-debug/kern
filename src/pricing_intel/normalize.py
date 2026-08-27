@@ -213,21 +213,54 @@ def detect_promo(price: Decimal, list_price: Decimal | None) -> bool:
     return list_price > price
 
 
+# Units of MEASURE (mass/volume/length), as opposed to units of COUNT. A
+# number followed by one of these is a quantity of stuff, never a number of
+# sellable units -- see the three false positives documented on
+# ``extract_pack_size`` below.
+_MEASURE_UNIT = r"(?:kgs?|kilos?|kilogramos?|grs?|gramos?|g|lts?|litros?|l|ml|cc|mts?|metros?|cm|mm|oz|lbs?)"
+_UNIT_SUFFIX_RE = re.compile(rf"\s*{_MEASURE_UNIT}\b", re.IGNORECASE)
+_MEASURE_WORD_RE = re.compile(rf"^{_MEASURE_UNIT}$", re.IGNORECASE)
+
 # Pack-size phrases, EN + ES/PT (the plan's ICP markets -- section 6.2's
-# "ICP LatAm"). Each alternative has exactly one capture group so the first
-# non-None group across the whole match is the pack size.
+# "ICP LatAm"). Named groups so each candidate can be guarded on its own
+# terms; scanned left-to-right, first survivor wins.
 _PACK_SIZE_RE = re.compile(
     r"""
-    pack\s*(?:of)?\s*(\d+)\b        |   # "pack of 6", "pack 6"
-    (\d+)\s*-?\s*pack\b             |   # "6-pack", "6 pack", "6pack"
-    paquete\s*(?:de)?\s*(\d+)\b     |   # "paquete de 6"
-    pacote\s*(?:de)?\s*(\d+)\b      |   # "pacote de 6" (pt-BR)
-    caja\s*(?:de)?\s*(\d+)\b        |   # "caja de 12"
-    (?:^|\s)(\d+)\s*x\b             |   # "6x", "6 x" (unit count prefix)
-    x\s*(\d+)\b                         # "x6"
+    (?:pack\s*(?:of)?|paquete\s*(?:de)?|pacote\s*(?:de)?|caja\s*(?:de)?)
+        \s*(?P<phrase>\d+)\b                        |  # "pack of 6", "caja de 12"
+    (?P<npack>\d+)\s*-?\s*pack\b                    |  # "6-pack", "6 pack"
+    (?P<a>\d+)\s*x\s*(?P<b>\d+(?:[.,]\d+)?)\s*(?P<bunit>[a-z]+)?  |  # "4x2,5kg", "11x11"
+    (?<![\dx])x\s*(?P<xn>\d+)\b                     |  # "x6"
+    (?<!\d)(?P<nx>\d+)\s*x(?![\dx])                    # "6x"
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+
+
+def _pack_size_candidate(match: re.Match[str], text: str) -> int | None:
+    """One regex hit -> a pack size, or None when a guard rejects it."""
+    groups = match.groupdict()
+
+    # The "A x B" shape is ambiguous and the two readings are both common in
+    # real catalogs, so it is decided by whether B carries a unit:
+    #   "caja 4x2,5kg"  -> B has a unit: A boxes of 2,5 kg each -> pack is A
+    #   "papas 11x11"   -> B is bare:    a CUT DIMENSION, not a count at all
+    if groups["a"] is not None:
+        unit = groups["bunit"]
+        if unit and _MEASURE_WORD_RE.match(unit):
+            return int(groups["a"])
+        return None
+
+    for name in ("phrase", "npack", "xn", "nx"):
+        raw = groups[name]
+        if raw is None:
+            continue
+        # A count is never followed by a unit of measure: "caja x 12 kilos"
+        # is twelve KILOS in one box, not twelve boxes.
+        if _UNIT_SUFFIX_RE.match(text, match.end(name)):
+            return None
+        return int(raw)
+    return None  # pragma: no cover -- every alternative has a named group
 
 
 def extract_pack_size(text: str) -> int | None:
@@ -235,17 +268,31 @@ def extract_pack_size(text: str) -> int | None:
     description. Returns ``None`` (never a guessed default of 1) when no
     recognized pattern matches -- callers should treat "unknown pack size"
     as "do not unit-price this offer", not as "assume a single unit".
+
+    Three false positives found against real Chilean frozen-food catalogs
+    (puntomarinochile.cl, rapa-nui.cl), each of which silently produced a
+    wrong ``unit_price`` rather than an honest ``None``:
+
+    1. ``"Langostino entero u15 2kg. (caja x 12 kilos)"`` returned 12. Those
+       twelve are KILOS. The box holds 12 kg in 2 kg units, i.e. 6 units, so
+       ``unit_price`` divided by double the right number.
+    2. ``"Papas prefritas 11X11 1kg"`` returned 11. ``11x11`` is the cut
+       dimension of the fry in millimetres -- it is not a count of anything.
+    3. ``"Papas prefritas corte 13x13 caja 4x2,5kg"`` returned 13, shadowing
+       the real pack size (4) that appears later in the same title.
+
+    The guards are therefore: a candidate followed by a unit of measure is
+    rejected, and an ``A x B`` pair is a pack size only when ``B`` carries a
+    unit -- otherwise it is a dimension. A bare ``"x6"``/``"6x"`` keeps its
+    original meaning.
     """
     if not text:
         return None
-    match = _PACK_SIZE_RE.search(text)
-    if not match:
-        return None
-    for group in match.groups():
-        if group:
-            size = int(group)
-            return size if size > 0 else None
-    return None  # pragma: no cover -- unreachable: a match always has a captured group
+    for match in _PACK_SIZE_RE.finditer(text):
+        size = _pack_size_candidate(match, text)
+        if size is not None and size > 0:
+            return size
+    return None
 
 
 def unit_price(price: Decimal, pack_size: int) -> Decimal:
