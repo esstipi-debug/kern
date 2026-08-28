@@ -104,3 +104,6 @@ knowledge/community_summaries.json
 # estado que ya no se puede reproducir si vale la pena guardarla; estas se
 # reproducen levantando el servidor.
 landing/shots/
+
+# Credenciales generadas para el Odoo de integracion local (docker-compose.odoo.yml).
+.env.odoo
