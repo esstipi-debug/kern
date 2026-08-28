@@ -22,6 +22,71 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-28 (cierre de ventana) — prod DESPLEGADA en v44, MCP listado, CI recortada; **lo que sigue es el piloto, no el motor**
+
+Leer esta entrada antes que la de abajo: aquella se escribio con el fix sin mergear y ya quedo
+superada.
+
+### Lo cerrado, todo verificado y no asumido
+- **Producción en v44**, tras 25 dias congelada en la imagen del 3-ago. `fly releases` v44
+  complete, `/api/health` 200, y **50 tools con `intake_scan` presente dentro del contenedor**
+  (`fly ssh console -C "python -c ..."`). El arranque mismo prueba que la POLICY aterrizo: con
+  `LINCHPIN_REQUIRE_SECURE` activo y politica ausente, la app no bindea el puerto.
+- **PR #300** (POLICY), **#303** (citas), **#304** (recortes de CI), **#301/#302** (ficha del
+  registro MCP). Todos mergeados.
+- **Kern listado en el registro oficial de MCP**: `io.github.esstipi-debug/kern` v2.9.0, active,
+  latest. Publicado 2026-08-28T19:35Z.
+
+### Tres trampas que costaron tiempo y conviene no repetir
+1. **La nota vieja mandaba al lugar equivocado.** Decia "configurar la POLICY en Fly". No habia
+   nada que configurar: `webapp.security.POLICY` es un global que nadie asignaba. Faltaba codigo.
+   Ante un guard que exige un valor, buscar **quien lo asigna** antes de donde configurarlo.
+2. **El deploy "exitoso" que no existio.** Un `fly deploy` corrido en PowerShell con
+   `"$NOSILO_CORE_TOKEN"` (sintaxis bash) mando el secreto **vacio**: build muerto, **ninguna
+   release creada**, y el reporte humano fue "listo, deployé". Solo `fly releases` mostro la
+   verdad. En PowerShell es `$env:NOMBRE`. Verificar siempre en la fuente, nunca por el reporte.
+3. **El token ya estaba a mano.** El build necesita `NOSILO_CORE_TOKEN`, y `gh auth token` da uno
+   con alcance `repo` que lee `esstipi-debug/nosilo-core` — verificado. El deploy final se hizo
+   con `--build-secret nosilo_token="$(gh auth token)"`. No hace falta pedirle el token a nadie.
+
+### Lo que sigue abierto
+- **La CI no arranca por facturacion**, no por el secret (ese esta puesto desde el 27-ago 16:28).
+  Ultima corrida verde real: 2026-08-27T17:56Z. Una corrida cuesta 66 job-minutos y el 27 hubo 9.
+  La mitad que falta es del operador, en `github.com/settings/billing`. **El workflow recortado de
+  #304 nunca corrio**: su primera ejecucion sera la primera corrida despues de destrabar el pago.
+- **La politica esta declarada, no aplicada.** Ninguna ruta llama a `policy_engine()`.
+  `test_the_policy_is_declared_and_not_yet_enforced` avisa el dia que aparezca la primera.
+- **La ficha del registro es vitrina, no uso.** La clave del MCP se emite a mano; quien llegue al
+  listado no puede llamarlo. Republicar exige subir `version` (2.9.0 hoy).
+- Las referencias de linea en `documentation/KERN_BRECHAS_DE_CAPACIDAD.md` quedaron corridas 13
+  lineas y ningun test las cubre.
+
+### **Lo que sigue de verdad: el piloto**
+Kern esta **listo y no probado**. `/api/health` sirve `skus: 8`, cero usuarios externos, ningun
+dato ajeno entro nunca. Nada de lo cerrado hoy mueve eso: son todos la columna del codigo, que ya
+era la fuerte.
+
+**No hay plan nuevo que disenar.** La escalera de friccion de la estrategia de congelados-CL
+(2026-07-24) ya lo define, y su **peldano 0 nunca se produjo**: la radiografia gratis de TodoFrio
+—`price_intelligence` + `data_quality` + `disruption_scan`, las tres unicas tools verificadas que
+no piden datos del cliente— sale de su vidriera publica. Verificado con grep: "TodoFrio" solo
+aparece en los docs de contenido de LinkedIn.
+
+**Estado: nada producido, nadie contactado.** Producir y contactar son dos decisiones distintas;
+la segunda necesita aprobacion explicita del operador.
+
+Antes de producir, dos chequeos:
+1. El escaneo que ordeno los 5 catalogos tiene **cinco semanas**. El 52,2% de quiebre publicado de
+   TodoFrio puede haberse movido, y presentarse con un numero viejo viola la objecion #1 de la
+   propia doctrina ("el quiebre publicado es estado de publicacion, no inventario — se pregunta,
+   no se afirma"). Re-escanear primero.
+2. La **veda** es el cierre natural del peldano 1 y no lo pone el vendedor. Falta mirar cuando cae
+   la proxima para las especies que TodoFrio vende.
+
+**Correccion registrada:** en esta ventana se propuso un "piloto gratis de dos semanas". La
+doctrina previa gana y es mejor: el cliente #1 **paga precio de piloto** a cambio de ser caso de
+referencia **nombrado**. Regalarlo transmite cero.
+
 ## 2026-08-28 — DESBLOQUEADO el deploy: la POLICY de acceso existe (rama `feat/policy-boot`, sin mergear)
 
 Cierra el bloqueante del 2026-08-03 (mas abajo). **Nada deployado todavia** — el
