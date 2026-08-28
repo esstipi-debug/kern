@@ -22,6 +22,67 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-28 — DESBLOQUEADO el deploy: la POLICY de acceso existe (rama `feat/policy-boot`, sin mergear)
+
+Cierra el bloqueante del 2026-08-03 (mas abajo). **Nada deployado todavia** — el
+deploy es una decision del operador y la CI no esta corriendo (ver el punto 3).
+
+### Lo que faltaba, exactamente
+`webapp.security.POLICY` es un global que se publica en `None` y **nadie en todo
+el arbol lo asignaba nunca**. No faltaba configuracion en Fly: faltaba el codigo
+que construye la politica. Reproducido en un worktree de `origin/main` con el
+entorno de produccion (`LINCHPIN_ENV=production`, `LINCHPIN_REQUIRE_SECURE=1`,
+API key, rate limit y approval secret puestos):
+
+```
+RuntimeError: LINCHPIN_REQUIRE_SECURE is set but: webapp.security.POLICY is not set
+```
+
+El mismo comando sobre la rama arranca: `boot OK`, `policy version 2026-08-28.1`,
+1 regla, 6 tipos de entidad clasificados (`sku`, `supplier`, `location`,
+`purchase_order`, `goods_receipt`, `supplier_invoice`).
+
+### Que se agrego
+- **`webapp/access_policy.py`** — una regla (el portador de la API key conserva
+  la autoridad que ya tiene, como principal de servicio) mas las clasificaciones
+  de campo de los dos packs, fusionadas con deteccion de colision en vez de
+  `update()` silencioso. Sin reglas para humanos ni agentes: `principal_from_request`
+  no deriva ninguno de los dos hoy, y una regla que no puede dispararse es config
+  que parece viva.
+- **`webapp/app.py`** — la asignacion, incondicional y **antes** de
+  `production_warnings()`. No `if ENV == production`: una asignacion que solo
+  ocurre en produccion es la asimetria exacta que dejo que este bug llegara al
+  deploy en vez de a la corrida de tests.
+- **`tests/test_webapp_access_policy.py`** — 11 tests.
+- Dos tests de `test_webapp_principal.py` ahora fijan su precondicion
+  (`POLICY = None`) en vez de heredarla del default del modulo. Antes dependian
+  del orden de coleccion.
+
+### El oraculo, corrido
+Con el modulo copiado al arbol de `origin/main` **pero sin la asignacion en
+`app.py`**: 10 tests pasan y `test_importing_the_app_leaves_a_policy_configured`
+falla en su propio assert (`assert None is not None`). O sea, el test que fija el
+arreglo no es vacuo y la asignacion es la que carga el peso. `ruff check .`
+limpio; 439 tests del radio de impacto en verde.
+
+### DEUDA DECLARADA: la politica esta configurada, no aplicada
+**Ninguna ruta de produccion llama a `security.policy_engine()`.** Solo los tests.
+Esto satisface el guard de arranque y le da un `policy_version` a toda decision
+futura; **no cambia lo que recibe ningun request hoy**. Lo honesto es decir que
+esto desbloquea el deploy y compra el vocabulario, y que cablear el primer punto
+de llamada — la aprobacion de writeback, o la descarga de entregables — es el
+cambio que hace que el guard diga toda la verdad.
+
+`test_the_policy_is_declared_and_not_yet_enforced` fija esa afirmacion con un
+recorrido AST (no un grep de texto: los docstrings que *describen* la ausencia de
+call site disparaban el propio tripwire). El dia que aparezca el primer llamado
+real, ese test falla y manda a reescribir el parrafo.
+
+### Criterio de hecho pendiente, cuando se deploye
+`flyctl status` con la version nueva **y** `curl /api/health` en 200 **y** el
+registry con 51 tools e `intake_scan` presente dentro del contenedor. Nunca el
+exit code de `flyctl deploy | tail` — ver la trampa operativa del 2026-08-03.
+
 ## 2026-08-25 — Montar Kern en el Odoo Apps Store (esta sesion)
 
 Playbook: `documentation/GTM_SUBMISSIONS.md` §5. **No se toco landing ni CSS**
