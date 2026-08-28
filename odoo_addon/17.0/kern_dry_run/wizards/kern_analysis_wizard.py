@@ -1,23 +1,18 @@
 import logging
-import os
-import sys
 from datetime import timedelta
 
 from odoo import _, fields, models
 from odoo.exceptions import UserError
 
+# lib/ no importa nada de Odoo por diseno, para que la logica de protocolo se
+# pueda probar fuera de un runtime de Odoo (tests/test_odoo_addon_mcp_client.py).
+# Es un subpaquete de verdad, asi que se importa relativo: Odoo carga cada addon
+# como el paquete odoo.addons.<modulo>, y sus subpaquetes con __init__.py son
+# importables con la sintaxis normal de Python. La version anterior insertaba
+# lib/ en sys.path global, lo que ensombrece cualquier otro modulo llamado
+# mcp_client en la misma instancia -- ver el docstring de lib/__init__.py.
+from ..lib.mcp_client import KernMcpClient, KernMcpError
 from ..models.res_config_settings import DEFAULT_BASE_URL
-
-# This addon's lib/ has zero Odoo imports by design (see its own module
-# docstring) so its wire-protocol logic stays unit-testable outside any Odoo
-# runtime - see tests/test_odoo_addon_mcp_client.py at the repo root. Odoo's
-# own module loader doesn't put addon subpackages on sys.path the way a
-# regular Python package install would, so the bridge is explicit here rather
-# than a package-relative import.
-_LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "lib")
-if _LIB_DIR not in sys.path:
-    sys.path.insert(0, _LIB_DIR)
-from mcp_client import KernMcpClient, KernMcpError  # noqa: E402
 
 _logger = logging.getLogger(__name__)
 
