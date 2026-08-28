@@ -32,7 +32,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import pandas as pd  # noqa: E402
-from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import (  # noqa: E402
     FileResponse,
@@ -45,6 +45,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from jobs import abc_xyz_job, excess_obsolete_job  # noqa: E402
 from jobs.intake import load_table  # noqa: E402
+from jobs.notify import notify  # noqa: E402
 from jobs.price_monitor import accept_observation  # noqa: E402
 from jobs.scheduled_jobs import PRODUCTION_JOB_IDS, production_registry  # noqa: E402
 from scm_agent import Orchestrator  # noqa: E402
@@ -95,10 +96,10 @@ from webapp import (  # noqa: E402
     observability,
     security,
 )
-from webapp.decisions import router as decisions_router  # noqa: E402
-from webapp.blog_loader import load_posts, post_by_slug, posts_for_lang  # noqa: E402
+from webapp.blog_loader import post_by_slug, posts_for_lang  # noqa: E402
 from webapp.blog_page import render_blog_article_html, render_blog_index_html  # noqa: E402
 from webapp.blog_seo import build_llms_txt, build_robots_txt, build_sitemap_xml  # noqa: E402
+from webapp.decisions import router as decisions_router  # noqa: E402
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
 from webapp.mcp_server import build_mcp_server  # noqa: E402
@@ -109,6 +110,9 @@ from webapp.paquetes_page import render_index_html, render_offer_html  # noqa: E
 from webapp.pricing_page import render_pricing_html  # noqa: E402
 from webapp.pricing_quote import router as pricing_quote_router  # noqa: E402
 from webapp.stocky_alternative_page import render_stocky_alternative_html  # noqa: E402
+from webapp.stripe_webhook import SignatureError as StripeSignatureError  # noqa: E402
+from webapp.stripe_webhook import purchase_from_event as purchase_from_stripe_event  # noqa: E402
+from webapp.stripe_webhook import verify_signature as verify_stripe_signature  # noqa: E402
 from webapp.tower_page import T1_DISPLAY_LIMIT, render_tower_html  # noqa: E402
 
 DATA_FILE = Path(
@@ -631,6 +635,71 @@ def api_demo_data() -> dict:
 @app.get("/api/health")
 def api_health() -> dict:
     return {"ok": True, "skus": len(_load_forecasts())}
+
+
+# ---- POST /webhooks/stripe: el pago que emite la credencial ------------------
+# Cierra la brecha L3 (documentation/KERN_BRECHAS_DE_LANZAMIENTO.md). Hasta aca
+# webapp/billing.py declaraba en su propio docstring que "does NOT call the
+# Stripe API": resolvia un STRIPE_LINK_<SLUG> puesto a mano y no existia el
+# evento que diera de alta una credencial sola, asi que cada venta terminaba en
+# un operador emitiendo la key a mano.
+#
+# Se lee el secreto EN CADA LLAMADA, no al importar: mismo patron que
+# security.API_KEY, para que un test lo cambie con monkeypatch sin reconstruir la
+# app -- y para que rotarlo no exija un redeploy.
+#
+# LO QUE ESTA RUTA NO HACE: no llama a la API de Stripe y no mueve dinero. Solo
+# verifica lo que llego y emite la credencial que corresponde.
+def _stripe_webhook_secret() -> str:
+    return os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
+
+
+@app.post("/webhooks/stripe", dependencies=[Depends(security.rate_limit)])
+async def stripe_payment_webhook(request: Request):
+    """Emite la key MCP de una compra pagada, una sola vez por compra.
+
+    Contesta 200 en todo lo que no sea firma invalida -- incluidos los eventos
+    que no son compras y los reintentos -- porque Stripe reintenta hasta recibir
+    un 2xx: contestar error a algo que ya esta atendido convierte un evento en
+    una cadena de reintentos que no termina.
+
+    La respuesta NUNCA lleva la key. Va a Stripe, no al comprador.
+    """
+    log = logging.getLogger("linchpin.billing")
+    cuerpo = await request.body()
+    try:
+        verify_stripe_signature(
+            cuerpo, request.headers.get("stripe-signature", ""), _stripe_webhook_secret()
+        )
+    except StripeSignatureError as exc:
+        # El motivo va al log del operador; la respuesta no lo distingue. Decirle
+        # a quien prueba firmas cual de los cuatro casos fallo le da un oraculo.
+        log.warning("webhook de Stripe rechazado: %s", exc)
+        return JSONResponse({"error": "invalid signature"}, status_code=400)
+
+    compra = purchase_from_stripe_event(cuerpo)
+    if compra is None:
+        return JSONResponse({"status": "ignored"}, status_code=200)
+
+    key = _get_mcp_key_store().issue_for_payment(
+        compra.client_name, compra.payment_ref, email=compra.email
+    )
+    if key is None:
+        # Ya habia una key para esta compra: reintento de Stripe o reenvio manual
+        # desde su panel. El indice unico parcial de McpKeyStore lo impide en la
+        # base, no aca -- esto solo lo reporta.
+        log.info("webhook de Stripe: %s ya tenia credencial", compra.payment_ref)
+        return JSONResponse({"status": "already_issued"}, status_code=200)
+
+    # El aviso al operador NO lleva la key: un webhook de notificacion la dejaria
+    # escrita en el log de un tercero. Lleva a quien hay que entregarsela y por
+    # que compra; la key sale de list_keys() por su hash, nunca en claro.
+    notify(
+        f"Kern: pago recibido de {compra.email} ({compra.payment_ref}). "
+        f"Credencial MCP emitida; falta entregarsela."
+    )
+    log.info("webhook de Stripe: credencial emitida para %s", compra.payment_ref)
+    return JSONResponse({"status": "issued"}, status_code=200)
 
 
 @app.post("/api/leads", dependencies=[Depends(security.rate_limit)])

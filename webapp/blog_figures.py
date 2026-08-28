@@ -135,7 +135,9 @@ def _sawtooth(spec: dict[str, Any]) -> str:
     the cycle. Geometry only: the shape is drawn from those three numbers, so a
     reader can check the picture against the article's own figures.
     """
-    peak = float(spec["peak"]); reorder = float(spec["reorder"]); safety = float(spec["safety"])
+    peak = float(spec["peak"])
+    reorder = float(spec["reorder"])
+    safety = float(spec["safety"])
     if not (peak > reorder >= safety >= 0):
         raise FigureError("sawtooth needs peak > reorder >= safety >= 0")
     W, H, PAD_L, PAD_B, PAD_T = 640, 240, 46, 28, 14

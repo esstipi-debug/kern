@@ -35,6 +35,21 @@ RUN apt-get update \
 
 COPY . .
 
+# [core] = nosilo-core, the private control plane. It is NOT in
+# [project.dependencies] on purpose (so `pip install -e .` works for an external
+# evaluator with no token), which means it only arrives if an install line names
+# this extra -- and between #226 (2026-08-03, which moved nosilo_core out of the
+# repo into that extra) and 2026-08-23 this line did not. The image kept booting
+# only because the last one was built from a tree that still carried
+# nosilo_core/ as source; a build from a clean checkout produced an image that
+# died at `import webapp.app` with ModuleNotFoundError: nosilo_core, because
+# webapp/app.py:40 -> jobs/abc_xyz_job.py:18 hard-imports nosilo_core.guided.
+# Reproduced 2026-08-23 in a fresh py3.12 venv with this exact line, minus
+# [core]. Nothing reported it: the `prod-boot` job below has never once run
+# against a tree where nosilo_core is external -- the last green CI run
+# (2026-08-03T16:14Z) tested a merge ref that predated #226, and the token was
+# never configured, so every run since died at the auth step.
+#
 # [web] = fastapi/uvicorn/python-multipart, [mcp] = the mcp package - both are
 # hard imports of webapp/app.py (it unconditionally mounts /mcp), not optional.
 # [pricing-intel,dataquality] = extruct/lxml/price-parser/chompjs/rapidfuzz/
@@ -63,7 +78,7 @@ RUN --mount=type=secret,id=nosilo_token \
     GIT_CONFIG_COUNT=1 \
     GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/nosilo_token)@github.com/.insteadOf" \
     GIT_CONFIG_VALUE_0="https://github.com/" \
-    pip install -e ".[web,mcp,pricing-intel,dataquality]"
+    pip install -e ".[core,web,mcp,pricing-intel,dataquality]"
 
 EXPOSE 8000
 

@@ -230,13 +230,40 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.coverage.run]
-source = ["packs", "src"]
+# Debe coincidir con los `--cov=` del paso "Run tests with coverage" en
+# .github/workflows/tests.yml. Los dos existen porque miden en momentos
+# distintos -- la CI pasa los flags explicitos, un `pytest --cov` local lee esto
+# -- y cuando se despegan, el numero que ve el dev deja de ser el que bloquea el
+# merge. tests/test_ci_lint_and_coverage_scope.py falla si se desincronizan.
+source = ["packs", "src", "scm_agent", "jobs"]
 omit = ["src/__init__.py", "packs/__init__.py"]
 
 [tool.coverage.report]
 show_missing = true
-# Raise over time; current measured coverage is ~90%.
-fail_under = 80
+# Medido el 2026-08-23 sobre el conjunto de arriba, suite completa, cero fallos:
+#
+#   packs + src                      95.20%   (16216/17033)  <- lo que media antes
+#   packs + src + scm_agent + jobs   94.70%   (28130/29703)  <- al ampliarlo
+#   idem, sin scm_agent/graph_memory.py       95.20%   (28130/29547)  <- hoy
+#
+# Ampliar el conjunto a los dos paquetes del agente costaba 0,50 pp, y esos
+# 0,50 pp eran UN archivo: scm_agent/graph_memory.py, 156 sentencias al 0%, el
+# modulo que PR #186 desconecto y que no importaba nadie. Borrado en la misma
+# tanda, asi que el conjunto ancho vuelve al mismo numero que tenia el angosto.
+#
+# 90, y no 80: 80 era el numero heredado de cuando se median 17.033 sentencias,
+# y con la cobertura real arriba de 95 dejaba ~15 pp para regresar en silencio
+# antes de que esto cortara. Un piso a 15 pp del valor real no es un piso.
+# Queda ~5 pp de margen, que es lo que hace falta para el ruido de abajo.
+#
+# Lo que sigue sin hacerse es bajarlo para que entre un conjunto mas grande:
+# eso es acomodar la prueba al resultado, que es lo contrario de medir.
+#
+# Ruido a tener en cuenta al comparar con una medicion local: si tenes instalado
+# el extra [rag] (fastembed), corren tests que en la CI se saltean, y
+# scm_agent/embeddings.py sale mejor aca de lo que va a salir alla.
+# requirements-dev.txt lo excluye a proposito.
+fail_under = 90
 
 [tool.ruff]
 target-version = "py311"

@@ -165,7 +165,11 @@ See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
 ## Dev conventions
 
 - **Python 3.11+**. Tests: `pytest tests/ -q` with `PYTHONPATH=.` (the hook persists it).
-- **Lint scope** (matches CI): `ruff check src tests examples`.
+- **Lint scope** (matches CI): `ruff check .` — the whole repo, .gitignore
+  respected. Both path lists that preceded it had drifted: this line said
+  `src tests examples` while CI said `packs src tests examples`, and neither
+  named `scm_agent/`, `jobs/`, `webapp/`, `scripts/`, `warehouse/`,
+  `odoo_addon/` or `knowledge/` — nothing linted those at all.
 - The **SessionStart hook** (`.claude/hooks/session-start.sh`) auto-installs
   `requirements-dev.txt` (web only) and refreshes `graphify-out/`. It's idempotent.
 - **Workflow:** feature branch → **draft PR** → CI green (`tests` on py3.11/3.12/3.13)
@@ -176,6 +180,14 @@ See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
 
 ## Gotchas (read before committing)
 
+- **A stray `nosilo_core/` directory at the repo root silently corrupts every
+  local `ruff` run**, the `ruff-on-write.sh` hook included. `nosilo_core` has
+  been an external dependency since #226, so ruff's isort has to see it as
+  third-party — but a directory of that name at the root (e.g. the
+  `__pycache__` shells #226 left behind) makes ruff call it first-party and
+  demand the *opposite* import grouping from the one CI demands. Symptom:
+  dozens of I001 locally that a clean checkout does not have, and a hook that
+  "fixes" files into orderings CI rejects. Fix: `rm -rf nosilo_core`.
 - **ASCII-only in console prints** (Windows cp1252 breaks on em dashes). Markdown
   files written utf-8 are fine.
 - **Gitignored & regenerable:** `graphify-out/`, `data/`, `deliverables/`, `.env`.

@@ -7,6 +7,12 @@ multiple distinct customers). Phase A billing is manual (Stripe Payment Link,
 then the operator issues a key by hand - see ``examples/issue_mcp_key.py``), so
 this store only needs issue/validate/revoke, not usage-based metering.
 
+Desde el webhook de pago (``webapp/stripe_webhook.py``) cada key emitida por
+una compra queda atada al email del comprador y a la referencia del pago, con
+un indice unico parcial sobre esa referencia: un reintento de Stripe no puede
+acuñar una segunda credencial. La emision manual sigue funcionando sin ninguno
+de los dos campos.
+
 Keys are high-entropy random tokens (``secrets.token_urlsafe``); only their
 SHA-256 hash is ever persisted, mirroring how GitHub/Stripe-style tokens work -
 the plaintext is returned once, at ``issue()`` time, and cannot be recovered
@@ -62,25 +68,86 @@ class McpKeyStore:
                 " last_used_at REAL"
                 ")"
             )
+            # Migracion aditiva de las dos columnas que atan una key a la compra
+            # que la pago. Un CREATE TABLE IF NOT EXISTS no toca una tabla que ya
+            # existe, asi que las bases ya emitidas necesitan el ALTER, guardado
+            # por PRAGMA porque sqlite no tiene ADD COLUMN IF NOT EXISTS. Hasta
+            # que existio el webhook, issue() ataba la key a un nombre libre y
+            # nada mas: sin email no hay a quien entregarsela, y sin referencia de
+            # pago no hay forma de saber cual compra la origino ni de resistir un
+            # reintento.
+            columnas = {fila[1] for fila in self._conn.execute("PRAGMA table_info(keys)")}
+            for columna in ("email", "payment_ref"):
+                if columna not in columnas:
+                    self._conn.execute(f"ALTER TABLE keys ADD COLUMN {columna} TEXT")
+            # IDEMPOTENCIA POR ESQUEMA, no por memoria. Stripe reintenta un webhook
+            # hasta recibir un 2xx, y un proceso que recuerda que ya lo atendio
+            # olvida en cada deploy -- justo el modo de falla que L1 acaba de
+            # cerrar. Con este indice, el segundo intento NO PUEDE acuñar una
+            # segunda key: lo impide la base, no el codigo. Parcial (WHERE NOT
+            # NULL) porque las keys emitidas a mano no tienen pago y no deben
+            # chocar entre si.
+            self._conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS keys_payment_ref"
+                " ON keys(payment_ref) WHERE payment_ref IS NOT NULL"
+            )
             self._conn.commit()
 
-    def issue(self, client_name: str, *, now: float | None = None) -> str:
+    def issue(
+        self,
+        client_name: str,
+        *,
+        now: float | None = None,
+        email: str | None = None,
+        payment_ref: str | None = None,
+    ) -> str:
         """Mint a new key for ``client_name`` and return it in PLAINTEXT.
 
-        This is the only time the plaintext is ever available - the caller
-        (a human operator, per Phase A's manual-issuance model) must hand it to
-        the client immediately; it cannot be retrieved from the store again.
+        This is the only time the plaintext is ever available - the caller must
+        hand it to the client immediately; it cannot be retrieved from the store
+        again.
+
+        ``email`` y ``payment_ref`` son opcionales para no romper la emision
+        manual (``examples/issue_mcp_key.py``), pero la ruta de pago los llena
+        siempre: sin email no hay a quien entregarle la key, y sin referencia de
+        pago la key no es trazable a la compra que la origino. Un ``payment_ref``
+        repetido levanta ``sqlite3.IntegrityError`` por el indice unico parcial;
+        usar :meth:`issue_for_payment` si eso es un reintento esperado.
         """
         if now is None:
             now = time.time()
         key = KEY_PREFIX + secrets.token_urlsafe(32)
         with self._lock:
             self._conn.execute(
-                "INSERT INTO keys (key_hash, client_name, issued_at, active, last_used_at) VALUES (?, ?, ?, 1, NULL)",
-                (_hash(key), client_name, now),
+                "INSERT INTO keys (key_hash, client_name, issued_at, active, last_used_at, email, payment_ref)"
+                " VALUES (?, ?, ?, 1, NULL, ?, ?)",
+                (_hash(key), client_name, now, email, payment_ref),
             )
             self._conn.commit()
         return key
+
+    def issue_for_payment(
+        self,
+        client_name: str,
+        payment_ref: str,
+        *,
+        email: str | None = None,
+        now: float | None = None,
+    ) -> str | None:
+        """Como :meth:`issue`, pero devuelve ``None`` si esa compra ya emitio una.
+
+        Stripe reintenta un webhook hasta recibir un 2xx, y tambien reenvia
+        eventos a mano desde su panel. Devolver None (en vez de acuñar otra key o
+        de reventar) deja que el llamador conteste 200 y corte la cadena de
+        reintentos sin duplicar credenciales. No se puede devolver la key
+        original: solo se guarda su hash, que es justamente el punto.
+        """
+        if not payment_ref:
+            raise ValueError("payment_ref vacio: una emision por pago tiene que ser trazable")
+        try:
+            return self.issue(client_name, now=now, email=email, payment_ref=payment_ref)
+        except sqlite3.IntegrityError:
+            return None
 
     def validate(self, presented_key: str, *, now: float | None = None) -> str | None:
         """Return the owning client_name if ``presented_key`` is a live, active key;
@@ -126,10 +193,18 @@ class McpKeyStore:
         """Operator-facing listing. Never includes the plaintext key or its hash."""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT client_name, issued_at, active, last_used_at FROM keys ORDER BY issued_at"
+                "SELECT client_name, issued_at, active, last_used_at, email, payment_ref"
+                " FROM keys ORDER BY issued_at"
             ).fetchall()
+        # `email` es PII y aparece aca porque el operador la necesita para
+        # entregar la key: mientras no exista envio de correo, ese ultimo tramo
+        # es humano. No se expone por ninguna superficie de cliente.
         return [
-            {"client_name": r[0], "issued_at": r[1], "active": bool(r[2]), "last_used_at": r[3]} for r in rows
+            {
+                "client_name": r[0], "issued_at": r[1], "active": bool(r[2]), "last_used_at": r[3],
+                "email": r[4], "payment_ref": r[5],
+            }
+            for r in rows
         ]
 
     def close(self) -> None:

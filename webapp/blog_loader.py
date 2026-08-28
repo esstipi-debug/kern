@@ -277,7 +277,9 @@ def render_markdown(md: str, lang: str = "en") -> str:
             table_rows.clear()
 
     def flush_all() -> None:
-        flush_para(); flush_list(); flush_table()
+        flush_para()
+        flush_list()
+        flush_table()
 
     while i < len(lines):
         line = lines[i]
@@ -313,14 +315,16 @@ def render_markdown(md: str, lang: str = "en") -> str:
             continue
 
         if stripped.startswith("|") and stripped.endswith("|"):
-            flush_para(); flush_list()
+            flush_para()
+            flush_list()
             table_rows.append(stripped)
             i += 1
             continue
         flush_table()
 
         if stripped.startswith("> "):
-            flush_para(); flush_list()
+            flush_para()
+            flush_list()
             quote: list[str] = []
             while i < len(lines) and lines[i].strip().startswith(">"):
                 quote.append(lines[i].strip().lstrip(">").strip())
