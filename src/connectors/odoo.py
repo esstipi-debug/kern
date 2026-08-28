@@ -53,7 +53,7 @@ from typing import Any, Protocol, runtime_checkable
 import pandas as pd
 from nosilo_core import writeback
 
-from src.connectors import InventoryLevel, Order, OrderLine, Product
+from src.connectors import InventoryLevel, Order, OrderLine, Product, ScheduledReceipt
 from src.supplier_scorecard import LEAD_TIME_MEASURED
 
 # Odoo ORM methods that only read: safe to retry on a transient transport error,
@@ -96,6 +96,11 @@ _RECEIPT_TYPE_CODES = ("incoming", "dropship")
 _DELIVERY_TYPE_CODES = ("outgoing", "dropship")
 _MOVE_DONE = "done"
 _PO_REALIZED_STATES = ("purchase", "done")
+
+#: El unico estado en que una OC es una recepcion PROGRAMADA. `done` no: esa ya
+#: se recibio y se cerro. `draft`/`sent`/`to approve` tampoco: nadie las
+#: confirmo, y contarlas es prometerle a un cliente stock que no se compro.
+_PO_CONFIRMED = "purchase"
 
 #: `product.supplierinfo.delay` viene con default=1 en Odoo. Un 1 no es una
 #: promesa, es el campo sin configurar -- y `relative_gap` solo se protege del
@@ -277,6 +282,23 @@ def _as_qty_or_none(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return numero if math.isfinite(numero) else None
+
+
+def _sumar_dias(dia: str | None, plazo: float | None) -> str | None:
+    """``dia`` corrido ``plazo`` dias, o ``None`` si falta cualquiera de los dos.
+
+    La suma se hace sobre la fecha de la ORDEN y con el plazo medido, que es la
+    unica combinacion que no reconstruye la promesa del proveedor: partir de
+    ``date_planned`` y sumarle algo daria ``date_order + seller.delay + algo``,
+    o sea la ficha otra vez, disfrazada de calculo.
+    """
+    if not dia or plazo is None:
+        return None
+    try:
+        base = datetime.strptime(dia[:10], "%Y-%m-%d")
+    except ValueError:
+        return None
+    return f"{base + timedelta(days=float(plazo)):%Y-%m-%d}"
 
 
 def _m2o_name(value: Any) -> str | None:
@@ -490,6 +512,98 @@ class OdooConnector:
             )
             out.append(Order(str(h["name"]), _as_date(h["date_order"]), lines))
         return sorted(out, key=lambda o: o.created_at)
+
+    def scheduled_receipts(
+        self,
+        *,
+        until: str | None = None,
+        measured_lead_times: Any = None,
+    ) -> list[ScheduledReceipt]:
+        """Lo comprado y todavia no recibido: la mirada hacia ADELANTE.
+
+        ``receipts()`` mide el plazo que un proveedor CORRIO, restando fechas de
+        movimientos ya hechos. Esta lee lo que falta llegar, que es lo unico que
+        deja prometerle a un cliente una fecha apoyada en algo mas que el stock
+        que ya esta en el estante.
+
+        Cada recepcion lleva DOS fechas y no se colapsan nunca:
+
+        * ``promised_date`` es ``purchase.order.line.date_planned``. El docstring
+          de ``receipts()`` ya explica que en Odoo eso vale
+          ``date_order + seller.delay``: la ficha del proveedor, no su conducta.
+        * ``expected_date`` es ``date_order`` mas el plazo MEDIDO de ese
+          proveedor, que entra por ``measured_lead_times`` (lo produce
+          ``supplier_scorecard`` sobre las filas de ``receipts()``). Sin plazo
+          medido queda en ``None`` -- jamas la prometida con otro nombre.
+
+        Que se descarta y por que:
+
+        * Toda OC que no este confirmada. Un borrador no es stock comprado, y
+          contarlo es prometer sobre una compra que nadie autorizo.
+        * Toda linea ya servida entera, y el excedente de una sobre-recibida: lo
+          que viene en camino es ``product_qty - qty_received`` y nunca negativo.
+        * Con ``until``, lo que llega despues del horizonte pedido. Una recepcion
+          a noventa dias no le sirve a un pedido de esta semana, y arrastrarla
+          engorda el disponible con unidades que no van a estar.
+        """
+        if not self._has_field(_M_PO_LINE, "product_qty"):
+            # Sin el modulo de compras no hay nada en camino que leer. No es un
+            # error: es una tienda que compra por fuera del ERP.
+            return []
+        pedidos = self._rpc.execute_kw(
+            _M_PO,
+            "search_read",
+            [[["state", "=", _PO_CONFIRMED]]],
+            {"fields": ["name", "date_order", "partner_id", "order_line"]},
+        )
+        if not pedidos:
+            return []
+        cabecera = {}
+        line_ids: list[int] = []
+        for p in pedidos:
+            proveedor = _m2o_name(p.get("partner_id"))
+            for lid in p.get("order_line") or []:
+                cabecera[lid] = (str(p["name"]), _as_date_or_none(p.get("date_order")), proveedor)
+                line_ids.append(lid)
+        if not line_ids:
+            return []
+
+        fields = ["product_id", "product_qty", "qty_received", "date_planned"]
+        filas = self._rpc.execute_kw(_M_PO_LINE, "read", [line_ids], {"fields": fields})
+        plazos = dict(measured_lead_times or {})
+        salida: list[ScheduledReceipt] = []
+        for r in filas:
+            datos = cabecera.get(r["id"])
+            pid = _m2o_id(r.get("product_id"))
+            if datos is None or pid is None:
+                continue
+            sku = self._sku(pid)
+            if sku is None:
+                continue
+            pendiente = (_as_qty_or_none(r.get("product_qty")) or 0.0) - (
+                _as_qty_or_none(r.get("qty_received")) or 0.0
+            )
+            if pendiente <= 0:
+                continue
+            orden, ordenada, proveedor = datos
+            prometida = _as_date_or_none(r.get("date_planned"))
+            plazo = plazos.get(proveedor) if proveedor is not None else None
+            esperada = _sumar_dias(ordenada, plazo)
+            horizonte = esperada or prometida
+            if until is not None and horizonte is not None and horizonte > until:
+                continue
+            salida.append(
+                ScheduledReceipt(
+                    sku=sku,
+                    quantity=pendiente,
+                    promised_date=prometida,
+                    expected_date=esperada,
+                    expected_source=LEAD_TIME_MEASURED if esperada else None,
+                    supplier=proveedor,
+                    order_id=orden,
+                )
+            )
+        return salida
 
     def _delivery_dates(self, line_ids: list[int]) -> dict[int, str]:
         """Cuando quedo servida cada linea: su ULTIMA salida hecha.
