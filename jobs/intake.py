@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from src import excel_hygiene
+
 CANONICAL_REQUIRED = ("date", "product_id", "quantity")
 # ``revenue`` is detected but never emitted: it exists only to recover a real
 # unit cost (revenue / quantity) from files that carry money but no cost column.
@@ -435,6 +437,21 @@ def detect_sheet_and_header(
     return best[1], best[2]
 
 
+#: Donde ``load_table`` deja el informe de higiene de un Excel, para que el
+#: entregable pueda decirle al cliente que le sacaron a su planilla.
+HYGIENE_ATTR = "excel_hygiene"
+
+
+def _key_column(frame: pd.DataFrame, aliases: AliasTable | None) -> str | None:
+    """La columna de producto del archivo, o ``None`` si no se reconoce ninguna."""
+    tabla = aliases if aliases is not None else ALIASES
+    conocidos = {_norm(a) for a in tabla.get("product_id", ())}
+    for columna in frame.columns:
+        if _norm(columna) in conocidos:
+            return str(columna)
+    return None
+
+
 def load_table(path: str | Path, *, aliases: AliasTable | None = None) -> pd.DataFrame:
     """Read a client file (CSV or Excel) into a DataFrame.
 
@@ -444,10 +461,28 @@ def load_table(path: str | Path, *, aliases: AliasTable | None = None) -> pd.Dat
     es otra clase de arreglo.
     """
     p = Path(path)
-    if p.suffix.lower() in _EXCEL_SUFFIXES:
-        sheet, header = detect_sheet_and_header(p, aliases=aliases)
-        return pd.read_excel(p, sheet_name=sheet, header=header)
-    return pd.read_csv(p)
+    if p.suffix.lower() not in _EXCEL_SUFFIXES:
+        return pd.read_csv(p)
+
+    sheet, header = detect_sheet_and_header(p, aliases=aliases)
+    crudo = pd.read_excel(p, sheet_name=sheet, header=header)
+    clave = _key_column(crudo, aliases)
+    if clave is None:
+        # Sin una columna de producto reconocible no hay donde buscar la etiqueta
+        # de total ni que fila es un separador. Se devuelve el crudo: el mapeo va
+        # a fallar mas adelante con un mensaje que nombra las columnas, que es
+        # mejor diagnostico que una limpieza adivinada sobre un archivo ajeno.
+        return crudo
+
+    limpio = excel_hygiene.read_clean_table(p, key_column=clave, sheet=sheet, header_row=header)
+    frame = limpio.frame
+    # El informe viaja en `attrs` y no en el tipo de retorno: `load_table` lo
+    # llaman el intake, pricing y la subida del webapp, y cambiarle la firma
+    # obligaria a tocar los tres. `attrs` lo ignora quien no lo mira y lo
+    # encuentra quien tiene donde mostrarlo -- que es lo que impide que esto sea
+    # una limpieza silenciosa.
+    frame.attrs[HYGIENE_ATTR] = limpio.report
+    return frame
 
 
 def _normalize_core(

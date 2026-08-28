@@ -128,9 +128,20 @@ missing control (no API key, no rate limit). With `LINCHPIN_REQUIRE_SECURE=1` it
 ## 2. Run it
 
 ```bash
-pip install -e ".[web,mcp]"
+pip install -e ".[core,web,mcp]"
 uvicorn webapp.app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
+
+`[core]` is nosilo-core, and it needs the credential from section 0 — this is the
+one command on this page that resolves the private dependency directly rather
+than through a build system. It is not optional: `nosilo-core` is deliberately
+out of `[project.dependencies]` (so `pip install -e .` works for someone with no
+token), so it arrives only when an install line names this extra. Without it
+`uvicorn` dies at import with `ModuleNotFoundError: No module named
+'nosilo_core'` — `webapp/app.py` → `jobs/abc_xyz_job.py` hard-imports
+`nosilo_core.guided`. Same failure mode as the missing `[mcp]` below, same
+cause: a bespoke install command that drifted from what the app actually
+imports. Reproduced in an isolated py3.12 venv on 2026-08-23, before and after.
 
 `[mcp]` is required, not optional, despite the name: `webapp/app.py` unconditionally
 mounts the MCP server (`/mcp`) at import time, so `webapp.mcp_server`'s `from

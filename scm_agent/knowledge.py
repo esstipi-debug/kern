@@ -43,6 +43,7 @@ _LOG = logging.getLogger("linchpin.knowledge")
 _INTERNAL_SOURCES: frozenset[str] = frozenset({
     "KERN_ATLAS_SOMBREROS_SCM.md",
     "KERN_BRECHAS_DE_CAPACIDAD.md",
+    "KERN_BRECHAS_DE_LANZAMIENTO.md",
 })
 
 
