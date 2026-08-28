@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.esstipi-debug/kern",
   "title": "Kern",
-  "description": "AI-powered supply-chain and inventory optimization: forecasting, ABC-XYZ classification, reorder policies, pricing, financial KPIs, and data-quality audits for autonomous agents. Read-only analysis, per-client API key.",
+  "description": "Read-only supply-chain decision support: forecasting, reorder policies, ABC-XYZ, data quality.",
   "version": "2.9.0",
   "websiteUrl": "https://linchpin.fly.dev",
   "remotes": [
