@@ -32,12 +32,37 @@ on:
   # after an upstream release lands) without waiting for the cron.
   workflow_dispatch:
 
+# Three commits pushed to a branch in five minutes used to start three full runs
+# and let all three finish, so 198 job-minutes got spent to learn whether the LAST
+# one was green. Superseded runs are cancelled instead.
+#
+# Deliberately NOT cancelling on `main`: there the run is the only record that a
+# given merge commit was ever green, and a later merge cancelling an earlier one
+# would leave a commit on the default branch with no signal at all -- which is
+# exactly the state the billing outage put this repo in for seven merges.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # Full matrix on `main`, on the nightly and on a manual dispatch; a single
+      # version on pull requests. This is the biggest line on the bill: one run
+      # costs 66 job-minutes (24 + 21 + 19 for the three legs, plus prod-boot),
+      # GitHub charges the SUM and not the wall clock, and nine runs in a day --
+      # 2026-08-27, measured -- burn a Free-tier month in three days.
+      #
+      # 3.12 is not an arbitrary pick: it is what the Dockerfile runs, so it is
+      # the only version any deployment of this repo has ever executed. Nothing
+      # installs this package anywhere else -- it is private and unpublished (the
+      # `kern` on PyPI belongs to somebody else). `requires-python = ">=3.11"`
+      # stays as declared and stays TESTED, just on merge and overnight instead of
+      # on every push to every branch: a 3.11- or 3.13-only break is caught hours
+      # later rather than never.
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ${{ fromJSON(github.event_name == 'pull_request' && '["3.12"]' || '["3.11", "3.12", "3.13"]') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +71,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          # Wheel-download cache, ON PULL REQUESTS ONLY. It does not pin anything:
+          # pip still resolves the declared ranges against PyPI on every run and
+          # only skips re-downloading a wheel it already has, so the nightly's
+          # unconstrained-resolve canary (see the `schedule` comment above) is not
+          # weakened by it. Restricted to PRs anyway, so the run that IS the canary
+          # keeps behaving byte-for-byte as it did when that rule was written --
+          # the conservative side of a deliberate decision somebody else made.
+          cache: ${{ github.event_name == 'pull_request' && 'pip' || '' }}
+          cache-dependency-path: requirements-dev.txt
 
       # El por que y las dos credenciales posibles viven en la action, no aca:
       # este paso estaba duplicado en los dos jobs, y una copia que se queda
@@ -144,6 +178,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"  # matches Dockerfile `FROM python:3.12-slim`
+          # Same rule as the test job: cache wheel downloads on pull requests only,
+          # keyed on pyproject because this job installs the extras from there
+          # rather than from requirements-dev.txt. This job is NOT dropped from
+          # pull requests at any point below -- it is the cheapest one on the bill
+          # and the only one that reproduces the production import surface, which
+          # is the exact failure both the bs4 crash (2026-07-16) and the POLICY
+          # crash (2026-08-03) came through.
+          cache: ${{ github.event_name == 'pull_request' && 'pip' || '' }}
+          cache-dependency-path: pyproject.toml
 
       # This job installs from pyproject, which is where the private nosilo-core
       # dependency lives - so it needs the credential exactly as much as the test
