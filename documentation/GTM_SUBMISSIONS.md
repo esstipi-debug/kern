@@ -13,14 +13,34 @@ MCP registry schema (2025-12-11).
 The canonical registry all aggregators increasingly index. `server.json` at the
 repo root is already schema-valid.
 
-1. Install the publisher CLI (one time):
-   `go install github.com/modelcontextprotocol/registry/cmd/mcp-publisher@latest`
-   (or download a release binary from the modelcontextprotocol/registry repo).
+1. Install the publisher CLI (one time). `go install
+   github.com/modelcontextprotocol/registry/cmd/mcp-publisher@latest` needs a Go
+   toolchain, and **this machine has none** (checked 2026-08-28), so the release
+   binary is the actual path: `mcp-publisher_windows_amd64.tar.gz`, 7.2 MB, from
+   `modelcontextprotocol/registry` release `v1.8.1`. Each asset ships a sigstore
+   bundle and an SBOM next to it — verify the signature rather than trusting the
+   download, since this binary is about to hold a token for your GitHub account.
 2. From the repo root: `mcp-publisher login github` (device-code flow with your
    `esstipi-debug` account — the `io.github.esstipi-debug/*` namespace is proven
    by that login).
 3. `mcp-publisher publish` (reads `./server.json`).
-4. Verify: `https://registry.modelcontextprotocol.io/v0/servers?search=linchpin`.
+4. Verify — **by name, not by the old brand**:
+   `curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=kern"`.
+   The step used to say `search=linchpin`, which the rename left behind: the
+   server is `io.github.esstipi-debug/kern`, so that query returns
+   `{"servers":[],"metadata":{"count":0}}` **whether or not the publish
+   succeeded**. A verification step that cannot fail is worse than none.
+
+Two things about the payload, decided 2026-08-28:
+
+- **No `repository` block.** It pointed at `esstipi-debug/kern`, which is private
+  (`gh repo view` says `isPrivate: true`), so every visitor clicking through from
+  a public listing would have got a 404. The field is optional — live listings
+  publish without it — and "remote server, source not public" is the honest
+  shape. Put it back the day the repo goes public.
+- **Republishing needs a version bump.** `version` is `2.9.0` today. The registry
+  rejects a second publish of the same version, so a listing refreshed after a
+  deploy has to move that number first.
 
 ## 2. Glama (glama.ai)
 
