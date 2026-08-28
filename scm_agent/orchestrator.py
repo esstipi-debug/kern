@@ -24,6 +24,7 @@ from src import client_profile, vertical_profile
 from .guided_bridge import to_guided_outcome
 from .intent import classify
 from .knowledge import KnowledgeBase
+from .narrative_critic import review_narrative
 from .tools import build_default_registry
 
 logger = logging.getLogger(__name__)
@@ -247,8 +248,17 @@ class Orchestrator:
 
         The returned summary is untrusted display text (it echoes the brief and any
         LLM output); escape it at the render site if it is ever shown as HTML.
+
+        Post-checked by ``narrative_critic.review_narrative``: the rewrite only
+        ships if every figure of ``base_summary`` survived it, otherwise the
+        deterministic summary does. ``narrative_rewrite`` asks the model to
+        "Keep every number" and verifies nothing, and it lives in the pinned
+        external ``nosilo_core``, so the check belongs here -- see
+        scm_agent/narrative_critic.py for the full rationale and the severity
+        model (a filter, not a QA veto).
         """
-        return narrative_rewrite(
+        rewritten = narrative_rewrite(
             self.provider, base_summary, tool_title,
             lang=self.lang, citations=citations, persona=self.persona,
         )
+        return review_narrative(base_summary, rewritten, label=tool_title).summary

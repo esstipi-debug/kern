@@ -66,7 +66,31 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "ddmrp": ("demand_driven_supply_chain", "drum_buffer_rope", "vollmann_customer_order_decoupling_point"),
     "landed_cost": ("landed_cost",),
     "warehouse_layout": ("facility_layout", "load_distance_layout"),
-    "whatif": ("sensitivity_analysis",),
+    # --- MIN_CITATIONS starvation, measured 2026-08-24 --------------------------
+    # Four tools below were filed as "anchor-islanded" (zero at any pool). Re-measured
+    # on the committed 3019-node graph, the diagnosis was wrong for all four: each one
+    # ranked its OWN anchor at hop 0 as a perfectly on-topic candidate and then lost
+    # the whole batch to the MIN_CITATIONS=2 floor -- one survivor, degraded to none.
+    # They were one citation short, not starved of theory. Each gained exactly one
+    # extra anchor, picked by the rules this module already follows: keep the 2-hop
+    # closure far under the ~40% book-hub ceiling, prefer the least hub-adjacent
+    # candidate, and let the REPLAYED gate output (not the closure size) break ties.
+    # MIN_CITATIONS itself is untouched -- it is the rule that stops a single
+    # cherry-picked-looking citation from shipping, not the bug.
+
+    # whatif: `sensitivity_analysis` alone kept 1 (itself) -> zeroed. `break_even_analysis`
+    # is what this tool actually computes (packages.py calls its output "the tornado +
+    # break-even study deck"); degree 5, 2-hop closure 206 (6.8%), one book hub
+    # (heizer_render). Combined closure 549 (18.2%). Replayed gate: Break-Even Analysis,
+    # Break-Even Point, Sensitivity Analysis -- all three on topic.
+    # REJECTED, by measurement: `scenario_planning`, despite "What-If Scenario Planning"
+    # being its literal label. It sits 1 hop from TWO hubs (book_palamariu_alicke AND
+    # supply_chain_resilience), closure 785 (26.0%), and its replayed output leads with
+    # "Supply Chain Stress Test" from khan-supply-chain-resilience.txt -- the same
+    # resilience-book false friend documented for intake_scan and flow_map below. Adding
+    # BOTH is worse still (closure 970, 32.1%): the Khan stress test then displaces the
+    # scenario-planning citation that was the only reason to want the anchor.
+    "whatif": ("sensitivity_analysis", "break_even_analysis"),
     "financial_kpis": ("vollmann_inventory_turnover", "working_capital_efficiency"),
     "reconciliation": ("inventory_record_accuracy",),
     "returns": ("reverse_logistics", "returnability", "refurbishing"),
@@ -156,7 +180,11 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # safe outcome (see the module docstring), not a bug to "fix" with a
     # closer-sounding but wrong anchor.
     "data_quality": ("step_product_data_standard",),
-    # intake_scan (tool #49, raw-folder data-readiness audit; registered in
+    # intake_scan (tool #50 -- NOT #49: cross_impact and org_friction_audit went in
+    # between, as HANDOFF.md already recorded on 2026-08-03 and this comment did not;
+    # org_friction_audit above is the real #49, so the file carried two of them.
+    # Verified 2026-08-24 against build_default_registry().list(), which is the only
+    # count that cannot go stale. Raw-folder data-readiness audit; registered in
     # Task 7 of the 2026-07-31 intake-scan plan, scm_agent/tools.py) is a
     # DELIBERATE, measured absence from this map, same discipline as data_quality
     # right above. Candidates checked, in order of preference, against the
@@ -220,10 +248,33 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # exact false-friend class measured and rejected above. Wiring
     # filter_citations into intake_scan's path is a separate, larger-blast-radius
     # change, not made here.
-    "dea": ("data_envelopment_analysis",),
+    # dea: the anchor was a degree-1 near-isolate (23-node closure) and the only
+    # in-radius candidate was itself -> 1 survivor -> zeroed. `capacity_efficiency`:
+    # degree 2, closure 195 (6.5%), one book hub (heizer_render); combined 218 (7.2%).
+    # Replayed gate: Data Envelopment Analysis, Competitive Benchmarking, Capacity
+    # Efficiency.
+    # `benchmarking` produces the IDENTICAL three citations but is 1 hop from TWO book
+    # hubs (christopher + heizer_render) and closes 467 nodes (15.5%) instead of 218.
+    # Same reasoning as `risk` above: when two candidates give the same kept set, the
+    # less hub-adjacent one is strictly better, so `benchmarking` is not used.
+    "dea": ("data_envelopment_analysis", "capacity_efficiency"),
     "acceptance_sampling": ("acceptance_sampling", "single_sampling_plan"),
-    "earned_value": ("earned_value_management",),
-    "learning_curve": ("learning_curve_model",),
+    # earned_value: same shape -- degree-1 anchor, itself the only in-radius candidate.
+    # Earned value IS a project-control technique and the graph carries Heizer's whole
+    # project-management chapter; it just sat 5-6 hops away. `project_controlling`:
+    # degree 2, closure 196 (6.5%), one book hub; combined 219 (7.3%), 8 survivors.
+    # Replayed gate: Earned Value Management (SPI/CPI), Project Controlling, Project
+    # Crashing. `project_management` (degree 10, closure 204) yields the SAME kept set
+    # and is the broader node, so the narrower one is used; adding `project_scheduling`
+    # on top changes nothing at all (same 8 survivors, same 3 shown) and is left out.
+    "earned_value": ("earned_value_management", "project_controlling"),
+    # learning_curve: `experience_curve` is the canonical companion concept (Christopher
+    # Ch.1), degree 3, closure 276 (9.1%), one book hub; combined 299 (9.9%). Replayed
+    # gate keeps EXACTLY MIN_CITATIONS: Learning Curve (Yx = K x^n) + Experience Curve.
+    # Deliberately at the floor -- there is no third on-topic node in the graph, and the
+    # alternative was shipping zero. If either node ever leaves the graph this tool goes
+    # back to zero, which is the correct behaviour, not a regression to chase.
+    "learning_curve": ("learning_curve_model", "experience_curve"),
     "odoo_replenishment": ("continuous_replenishment", "multiple_replenishment_orders"),
     "excel_replenishment": ("continuous_replenishment_program",),
     "newsvendor": ("newsvendor_model", "generalized_newsvendor_problem", "price_setting_newsvendor"),
@@ -231,6 +282,22 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "multi_echelon": ("multiechelon_inventory", "echelon_inventory", "safety_stock"),
     "transportation": ("freight_transport_modes", "intermodal_transport"),
     "fefo": ("perishable_asset", "perishable_assets", "lot_size"),
+    # slotting STAYS ZERO, and now by measurement rather than by omission (2026-08-24).
+    # Both anchors are degree-1 near-isolates (23- and 17-node closures, 40 combined) and
+    # only one candidate lands in radius, so MIN_CITATIONS zeroes the batch. Candidates
+    # checked as a second/third anchor:
+    #   assignment_hungarian -- slotting IS an assignment problem and this node is already
+    #     an in-radius candidate at 2 hops, but it is itself a degree-1 isolate: adding it
+    #     leaves the closure at 40 nodes and the survivor count at 1. No change.
+    #   warehouse_functions  -- degree 5, closure 210 (7.0%), one book hub (grant). It DOES
+    #     produce 6 survivors, and all of them are wrong: Warehouse Location (where to put
+    #     the building, not where to put the SKU), Warehouse Automation (AS/RS) and
+    #     Warehouse Energy Efficiency, all from Grant's "Sustainable Warehousing" chapter,
+    #     riding the bare "warehouse" token. Worse, they DISPLACE the tool's own on-topic
+    #     layout anchors out of the top 3. Textbook false friend -- rejected.
+    # The graph has no cube-per-order-index / slotting / storage-assignment theory. Fix by
+    # ingesting warehouse-design theory (Bartholdi & Hackman, Frazelle), not by a looser
+    # anchor. Pinned by tests/test_packages_citations.py::_ISLANDED_TOOLS.
     "slotting": ("load_distance_layout", "facility_layout"),
     "simulation": ("simulation_optimization", "inventory_simulation", "simulation_inventory_analysis"),
     "digital_twin": ("ch16lee_digital_twins", "bullwhip_effect", "multiechelon_inventory"),

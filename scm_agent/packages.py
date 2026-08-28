@@ -27,6 +27,7 @@ from __future__ import annotations
 import inspect
 import tempfile
 from collections.abc import Callable
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,6 +49,7 @@ from src.deliverable import DEFAULT_BRANDING, Branding
 
 from . import citation_gate
 from .knowledge import KnowledgeBase
+from .narrative_critic import review_narrative
 from .tools import build_default_registry
 
 STEP_SKIPPED = "skipped"
@@ -83,8 +85,22 @@ STEP_SKIPPED = "skipped"
 # Verify with a full 49-tool sweep, NOT just the package tools: the tools that
 # silently regressed here were precisely the ones no test covered. See
 # tests/test_packages_citations.py::test_no_anchored_tool_regressed_to_zero.
-# (dea/learning_curve/slotting/vehicle_routing stay zero at any pool -- an
-# anchor-islanding problem pool sizing can't fix, a separate anchor-tightening item.)
+# Nine of the 49 anchored tools returned zero at this pool. Re-measured on the
+# committed 3019-node graph (2026-08-24), that was ONE problem misfiled as another:
+# four of the nine ranked their own anchor at hop 0 as a perfectly on-topic candidate
+# and then lost the whole batch to the MIN_CITATIONS=2 floor -- one survivor, degraded
+# to none. They were a citation short, not starved of theory, and one extra anchor each
+# recovered them: whatif, dea, earned_value, learning_curve (measurements in
+# citation_gate.TOOL_CONCEPTS).
+# The five that stay zero do so for two DIFFERENT reasons, both written down there and
+# pinned in tests/test_packages_citations.py -- pool sizing fixes neither:
+#   cycle_count / data_quality / intake_scan -- every in-radius candidate is a lexical
+#     false friend (this tool's "Cycle-Count Program" pulls Paycheck Protection Program
+#     and Biological Nutrient Cycle; "SKU Master ... Quality" pulls Master Production
+#     Schedule and Cost of Quality). Zero is the honest output.
+#   slotting / vehicle_routing / org_friction_audit -- the corpus carries no
+#     storage-assignment, VRP or performance-measurement-dysfunction theory at all.
+#     Fixed by ingesting sources, not by a looser anchor.
 _CANDIDATE_POOL = 16  # candidates grounded and offered to the strict gate
 _MAX_CITATIONS = 3    # kept, on-topic survivors ultimately shown (tight display)
 
@@ -154,6 +170,16 @@ class PackageStep:
     # Return {} when the source step didn't run or has nothing to contribute -
     # the step then degrades to its file-only behavior, never a hard error.
     derive_params: Callable[[dict[str, object]], dict] | None = None
+    # The tool_keys this step reads out of `reports`. DECLARED, not inferred:
+    # `derive` and `derive_params` are callables, so their real dependency lives
+    # inside a closure (`_cycle_count_from_abc` reads reports["abc_xyz"]) where
+    # nothing can see it. That was harmless while run_package was strictly
+    # serial and every earlier step had already run; it stops being harmless the
+    # moment steps can run out of order -- a naive fan-out over spec.steps
+    # breaks cycle_count with a KeyError. run_package(workers=N) schedules on
+    # this field, and tests/test_packages_fanout.py fails any step that has a
+    # derive and does not declare where it derives FROM.
+    depends_on: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -279,6 +305,92 @@ def deck_accepts_lang(deck: Callable | None) -> bool:
     return "lang" in inspect.signature(deck).parameters
 
 
+def _truncar_como_el_serial(
+    spec: PackageSpec, hechos: dict[str, StepOutcome],
+) -> tuple[list[StepOutcome], int | None]:
+    """Los outcomes en orden de ``spec.steps``, cortados donde el serial cortaba.
+
+    ES LO QUE HACE EQUIVALENTES A LOS DOS CAMINOS, y por eso lo comparten. El
+    runner serial recorre los pasos en orden y sale en el PRIMER paso requerido
+    que no quedo ok ni salteado, devolviendo los outcomes hasta ese inclusive.
+    Con fan-out no se puede des-ejecutar lo que ya arranco, pero si truncar:
+    aplicando la misma regla sobre lo que haya en ``hechos``, el PackageResult
+    sale identico al serial haya corrido lo que haya corrido. Cancelar lo no
+    arrancado queda entonces como ahorro de tokens, no como requisito de
+    correctitud -- que es un lugar mucho mejor para ponerlo.
+
+    Un paso ausente de ``hechos`` corta la lista igual: es exactamente el caso
+    en que el serial nunca habria llegado a el.
+    """
+    outcomes: list[StepOutcome] = []
+    for step in spec.steps:
+        outcome = hechos.get(step.tool_key)
+        if outcome is None:
+            break
+        outcomes.append(outcome)
+        if step.required and outcome.status not in (STATUS_OK, STEP_SKIPPED):
+            return outcomes, len(outcomes) - 1
+    return outcomes, None
+
+
+def _fan_out(
+    spec: PackageSpec,
+    ejecutar: Callable[[PackageStep, dict[str, object]], StepOutcome],
+    workers: int,
+    reports: dict[str, object],
+) -> dict[str, StepOutcome]:
+    """Corre los pasos en paralelo respetando ``PackageStep.depends_on``.
+
+    Un paso es lanzable cuando sus dependencias TERMINARON, no cuando quedaron
+    ok: si una dependencia no requerida falla, el serial sigue igual y el
+    dependiente corre con ``reports`` sin esa clave -- su ``derive`` revienta y
+    ``_run_step`` lo convierte en STATUS_ERROR. Reproducir eso es parte de la
+    equivalencia, no un bug a arreglar.
+
+    Cada paso recibe una INSTANTANEA de ``reports``, no el dict vivo: sus
+    dependencias ya terminaron, asi que la instantanea trae todo lo que
+    necesita, y de paso desaparece la carrera entre un hilo que lee y el
+    principal que escribe.
+
+    Los CSV de scratch no chocan: ``_resolve_input`` los nombra por tool_key
+    (derived_<key>.csv / fallback_<key>.csv) y test_no_duplicate_steps ya
+    garantiza que esa clave es unica dentro de un spec.
+
+    Al primer paso requerido que falla se deja de LANZAR trabajo nuevo, lo que
+    ahorra tokens de LLM y, en odoo_replenishment, llamadas a un Odoo vivo. Lo
+    que ya estaba en vuelo se drena y despues lo trunca
+    ``_truncar_como_el_serial``.
+    """
+    pendientes = {s.tool_key: s for s in spec.steps}
+    hechos: dict[str, StepOutcome] = {}
+    corte_visto = False
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="kern_pkg") as pool:
+        en_vuelo: dict[Future, PackageStep] = {}
+        while True:
+            if not corte_visto:
+                listos = [k for k, s in pendientes.items()
+                          if all(d in hechos for d in s.depends_on)]
+                for clave in listos:
+                    step = pendientes.pop(clave)
+                    en_vuelo[pool.submit(ejecutar, step, dict(reports))] = step
+            if not en_vuelo:
+                # Ni trabajo en vuelo ni nada lanzable: o terminamos, o quedan
+                # pasos cuyas dependencias no van a llegar nunca (un depends_on
+                # que no existe en el spec). Se sale en vez de colgarse; el test
+                # de tests/test_packages_fanout.py impide que eso llegue a main.
+                break
+            terminados, _ = wait(en_vuelo, return_when=FIRST_COMPLETED)
+            for fut in terminados:
+                step = en_vuelo.pop(fut)
+                outcome = fut.result()
+                hechos[step.tool_key] = outcome
+                if outcome.status == STATUS_OK:
+                    reports[step.tool_key] = outcome.report
+                elif outcome.status != STEP_SKIPPED and step.required:
+                    corte_visto = True
+    return hechos
+
+
 def run_package(
     spec: PackageSpec,
     intake_dir: str | Path | None,
@@ -293,6 +405,7 @@ def run_package(
     strict_params: bool = False,
     prepared: str = "",
     branding: Branding | None = None,
+    workers: int = 1,
 ) -> PackageResult:
     """Run every step of ``spec`` and, only if all executed steps pass QA, write
     the per-tool deliverables plus the consolidated package deck under
@@ -347,28 +460,40 @@ def run_package(
         )
 
     # ---- Phase 1: compute everything; write nothing to out_root. -------------
-    outcomes: list[StepOutcome] = []
     reports: dict[str, object] = {}
     with tempfile.TemporaryDirectory(prefix="linchpin_pkg_") as scratch_str:
         scratch = Path(scratch_str)
-        for step in spec.steps:
+
+        def _ejecutar(step: PackageStep, vistos: dict[str, object]) -> StepOutcome:
             tool = registry.get(step.tool_key)
             merged = client_profile.merge_params({**step.params, **params}, profile, vertical)
             if pack_aliases is not None:
                 merged = {**merged, "column_aliases": pack_aliases}
-            outcome = _run_step(spec, step, tool, intake, scratch, reports,
-                                merged, client, provider, knowledge, strict_params)
-            outcomes.append(outcome)
-            if outcome.status == STATUS_OK:
-                reports[step.tool_key] = outcome.report
-            elif outcome.status != STEP_SKIPPED and step.required:
-                return PackageResult(
-                    status=outcome.status, package=spec.key, client=client,
-                    steps=tuple(outcomes), deliverables={},
-                    qa_issues=tuple(f"{tool.title}: {i}" for i in outcome.qa_issues),
-                    summary=(f"{spec.title}: el paso requerido '{tool.title}' fallo "
-                             f"({outcome.status}); no se escribio ningun entregable."),
-                )
+            return _run_step(spec, step, tool, intake, scratch, vistos,
+                             merged, client, provider, knowledge, strict_params)
+
+        if workers and workers > 1:
+            hechos = _fan_out(spec, _ejecutar, workers, reports)
+        else:
+            hechos = {}
+            for step in spec.steps:
+                outcome = _ejecutar(step, reports)
+                hechos[step.tool_key] = outcome
+                if outcome.status == STATUS_OK:
+                    reports[step.tool_key] = outcome.report
+                elif outcome.status != STEP_SKIPPED and step.required:
+                    break
+
+        outcomes, corte = _truncar_como_el_serial(spec, hechos)
+        if corte is not None:
+            outcome = outcomes[corte]
+            return PackageResult(
+                status=outcome.status, package=spec.key, client=client,
+                steps=tuple(outcomes), deliverables={},
+                qa_issues=tuple(f"{outcome.title}: {i}" for i in outcome.qa_issues),
+                summary=(f"{spec.title}: el paso requerido '{outcome.title}' fallo "
+                         f"({outcome.status}); no se escribio ningun entregable."),
+            )
 
         # ---- Package QA gate: any executed step failing QA blocks everything.
         failed = [o for o in outcomes if o.status == STATUS_QA_FAILED]
@@ -504,7 +629,15 @@ def _run_step(
     rewritten = narrative_rewrite(
         provider, produced.summary, tool.title, lang=spec.lang, citations=list(citations),
     )
-    summary = rewritten + (f" [{note}]" if note else "")
+    # Narrative post-check (brecha 8): the rewrite ships only if every figure of
+    # the deterministic summary survived it. Same severity model as the citation
+    # gate right above -- a content filter, not a QA veto: a reverted narrative
+    # still ships the step, it just ships the engine's own prose. This call is
+    # NOT redundant with the Orchestrator's: filter_citations taught the lesson
+    # that a gate wired into only one of the two surfaces leaves the other one
+    # unreviewed, and packages/ is the surface a paying client actually receives.
+    reviewed = review_narrative(produced.summary, rewritten, label=tool.title)
+    summary = reviewed.summary + (f" [{note}]" if note else "")
     return StepOutcome(**base, status=STATUS_OK, summary=summary,
                        report=produced.report, guided=guided, citations=citations)
 

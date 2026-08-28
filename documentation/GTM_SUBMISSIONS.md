@@ -71,16 +71,27 @@ version de Odoo**, con el modulo en la raiz:
 usuario GitHub `online-odoo`, y eso expondria el producto entero. El nombre del
 repo no importa para la ficha; el aislamiento si.
 
-A 2026-08-25 ese repo **todavia no existe**. El token de un Cloud Agent sobre
-`kern` no puede crearlo. Un solo comando, con *tu* login de GitHub (no la
-contraseña de apps.odoo.com, no secrets de nosilo-core):
+**Estado a 2026-08-25: ese repo ya existe y ya esta sincronizado.** Fue creado
+el 2026-07-04, y el 2026-08-25 sus ramas se reescribieron desde `kern`: `17.0`
+(`72468e7`) y `19.0` (`4defa85`, nueva), las dos con `kern_dry_run/` en la raiz.
+La `17.0` traia el nombre viejo `linchpin_dry_run/` y se piso con force-push;
+el estado anterior era `5edf4da`, por si hay que volver.
+
+**No hace falta ningun `gh repo create`.** Un `gh` logueado como
+`esstipi-debug` tiene `admin` sobre los dos repos. Si una sesion reporta 404
+sobre `linchpin-odoo-apps`, es el alcance de *su* token y no un repo faltante:
 
 ```
-gh repo create esstipi-debug/linchpin-odoo-apps --private --disable-issues --disable-wiki
+gh api repos/esstipi-debug/linchpin-odoo-apps --jq .permissions
+```
+
+Para re-sincronizar despues de tocar el modulo, desde la raiz de `kern`:
+
+```
 python scripts/sync_linchpin_odoo_apps.py --push
 ```
 
-Eso deja `kern_dry_run/` en la raiz de las ramas `17.0` y `19.0`. Regenerar
+Eso reescribe `kern_dry_run/` en la raiz de las ramas `17.0` y `19.0`. Regenerar
 imagenes de ficha: `python scripts/gen_odoo_listing_assets.py` (no pisa `icon.png`).
 
 **Listing assets (este repo, ya en el modulo):**
@@ -102,6 +113,11 @@ Publicar sigue siendo tu login en apps.odoo.com:
 3. Odoo shows a deploy/SSH key -> add it in GitHub: repo **Settings -> Deploy
    keys** (read-only) on `linchpin-odoo-apps`. Para repos privados hay que dar
    acceso de lectura al usuario GitHub `online-odoo` **en ese repo**, no en `kern`.
+   **Ya invitado el 2026-08-25** (`online-odoo`, permiso `read`, sobre
+   `linchpin-odoo-apps`). Sigue *pendiente de aceptacion* del lado de Odoo, y
+   las invitaciones de GitHub **caducan a los 7 dias**: si el tramite en
+   apps.odoo.com se pasa de esa ventana, reenviarla. Verificar con
+   `gh api repos/esstipi-debug/linchpin-odoo-apps/invitations`.
 4. Trigger the scan; el Store toma `kern_dry_run` de la rama y usa
    `static/description/index.html` + `icon.png` como ficha.
 5. Precio Store: **gratis** (anzuelo). No pongas 9 EUR. Un error de manifest
