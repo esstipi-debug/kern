@@ -22,7 +22,12 @@ Odoo model            mapped to
 product.product       default_code -> sku, name, list_price -> price,
                       standard_price -> cost
 stock.quant           internal-location quantity summed per product -> level
-sale.order(.line)     date_order + product_uom_qty + price_unit -> Order/line
+sale.order(.line)     date_order + product_uom_qty + price_unit -> Order/line;
+                      qty_delivered -> lo servido y commitment_date -> lo
+                      prometido, el par que vuelve medible el servicio al
+                      cliente (ver ``orders()``)
+stock.move +          date (state=done, tipo de salida) de la ULTIMA salida que
+sale.order.line       sirvio la linea -> cuando la linea quedo servida
 product.supplierinfo  delay (days) -> el plazo DECLARADO, la promesa de la ficha
                       (NO el observado: ver ``receipts()``)
 stock.move +          date (state=done) menos purchase.order.date_order -> el
@@ -37,11 +42,12 @@ motor dimensiona contra la promesa del ERP y la brecha da cero por construccion.
 
 from __future__ import annotations
 
+import math
 import time
 import xmlrpc.client
 from dataclasses import dataclass
 from dataclasses import replace as _dc_replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
 import pandas as pd
@@ -82,6 +88,12 @@ _SALE_STATES = ("sale", "done")  # confirmed/locked sales count as realized dema
 #: `in` que nombra un valor de seleccion que la base no tiene no matchea nada,
 #: asi que no hace falta sondear si el modulo esta instalado.
 _RECEIPT_TYPE_CODES = ("incoming", "dropship")
+
+#: El espejo de salida de ``_RECEIPT_TYPE_CODES``, y por el mismo motivo incluye
+#: `dropship`: una linea servida por envio directo del proveedor al cliente se
+#: entrego igual, y dejarla fuera la deja sin fecha -- o sea fuera de OTIF -- en
+#: toda cuenta que despacha asi.
+_DELIVERY_TYPE_CODES = ("outgoing", "dropship")
 _MOVE_DONE = "done"
 _PO_REALIZED_STATES = ("purchase", "done")
 
@@ -236,6 +248,37 @@ def _as_date(value: Any) -> str:
     return str(value)[:10] if value else ""
 
 
+def _as_date_or_none(value: Any) -> str | None:
+    """``_as_date``, pero separando "sin fecha" de la cadena vacia.
+
+    Odoo devuelve ``False`` por una fecha en blanco, y ``commitment_date`` viene en
+    blanco en la mayoria de las cuentas: nadie prometio nada. Un ``""`` viajando
+    hasta ``src.order_fulfillment`` no se parsea y da lo mismo que ``None``, pero
+    dice otra cosa a quien lee la linea; el campo es opcional, asi que se declara.
+    """
+    dia = _as_date(value)
+    return dia or None
+
+
+def _as_qty_or_none(value: Any) -> float | None:
+    """Una cantidad reportada, o ``None`` cuando el ERP no reporto ninguna.
+
+    Odoo manda ``False`` por un campo sin valor y ``0.0`` por uno que si midio y
+    dio cero. La diferencia es la de "nadie lo midio" contra "no salio ni una
+    unidad", y ``src.order_fulfillment`` las cuenta en denominadores distintos.
+    Como ``False == 0`` en Python, aplastar el booleano con ``float(...)`` convierte
+    cada linea sin dato en un quiebre total y el fill rate del cliente en cero: de
+    ahi el ``isinstance(value, bool)`` antes de cualquier conversion.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        numero = float(value)
+    except (TypeError, ValueError):
+        return None
+    return numero if math.isfinite(numero) else None
+
+
 def _m2o_name(value: Any) -> str | None:
     """La mitad del nombre de un many2one, que ``_m2o_id`` descarta."""
     if isinstance(value, (list, tuple)) and len(value) > 1 and value[1]:
@@ -343,8 +386,25 @@ class OdooConnector:
         self._rpc = rpc
         self._sku_by_id: dict[int, str] = {}
         self._id_by_sku: dict[str, int] = {}
+        self._field_cache: dict[tuple[str, str], bool] = {}
         self._rules = _ReorderRuleStore(rpc, self._id_by_sku, ledger=ledger)
         self._po_store = _DraftPoStore(rpc, self._id_by_sku, ledger=ledger)
+
+    def _has_field(self, model: str, field: str) -> bool:
+        """Si esta base expone ``field`` en ``model``. Se sondea una vez por conector.
+
+        Pedir en un ``read`` un campo que el modelo no tiene revuelve un error del
+        servidor, y que un campo opcional exista depende de los modulos instalados
+        (``qty_delivered`` y ``sale_line_id`` llegan con el puente de Ventas e
+        Inventario). Mismo sondeo que ``receipts()`` hace con ``purchase_line_id``,
+        con la diferencia de que aqui la ausencia no es un error: el servicio se
+        reporta como no medido, que es lo que efectivamente pasa.
+        """
+        clave = (model, field)
+        if clave not in self._field_cache:
+            campos = self._rpc.execute_kw(model, "fields_get", [[field]], {"attributes": ["type"]})
+            self._field_cache[clave] = field in (campos or {})
+        return self._field_cache[clave]
 
     # -- read side (InventorySource) ------------------------------------------
 
@@ -389,19 +449,89 @@ class OdooConnector:
         return levels
 
     def orders(self, *, since: str | None = None) -> list[Order]:
+        """Las ordenes confirmadas, con lo pedido Y lo servido en cada linea.
+
+        Las tres columnas de servicio (``delivered_qty``, ``promised_date``,
+        ``delivered_date``) son las que ``src.order_fulfillment`` necesita para
+        medir fill rate, OTIF y venta perdida reales. Las tres son opcionales en
+        una base viva, y cada ausencia viaja como ``None`` hasta el entregable:
+
+        * ``commitment_date`` es la promesa, y es de la ORDEN, no de la linea -
+          por eso todas las lineas de una orden llevan la misma. En blanco (lo
+          habitual) significa que no se prometio fecha, y la linea queda fuera de
+          OTIF en vez de medirse contra ``date_order``, que es cuando el cliente
+          compro y no cuando le dijimos que llegaba.
+        * la fecha de entrega sale del movimiento de stock, no de
+          ``sale.order.effective_date``: ese campo es la validacion del PRIMER
+          despacho de la orden entera, asi que en una orden servida en dos
+          camiones le regala a las lineas del segundo la fecha del primero y las
+          declara a tiempo. Se mide por linea y con el ULTIMO movimiento hecho
+          (ver ``_delivery_dates``).
+        """
         domain: list = [["state", "in", list(_SALE_STATES)]]
         if since is not None:
             domain.append(["date_order", ">=", since])
-        heads = self._rpc.execute_kw(
-            _M_SALE, "search_read", [domain], {"fields": ["name", "date_order", "order_line"]}
-        )
+        head_fields = ["name", "date_order", "order_line"]
+        if self._has_field(_M_SALE, "commitment_date"):
+            head_fields.append("commitment_date")
+        heads = self._rpc.execute_kw(_M_SALE, "search_read", [domain], {"fields": head_fields})
         line_ids = [lid for h in heads for lid in h.get("order_line", [])]
         lines_by_id = self._read_sale_lines(line_ids)
+        shipped = self._delivery_dates(line_ids)
         out: list[Order] = []
         for h in heads:
-            lines = tuple(lines_by_id[lid] for lid in h.get("order_line", []) if lid in lines_by_id)
+            promised = _as_date_or_none(h.get("commitment_date"))
+            lines = tuple(
+                _dc_replace(
+                    lines_by_id[lid], promised_date=promised, delivered_date=shipped.get(lid)
+                )
+                for lid in h.get("order_line", [])
+                if lid in lines_by_id
+            )
             out.append(Order(str(h["name"]), _as_date(h["date_order"]), lines))
         return sorted(out, key=lambda o: o.created_at)
+
+    def _delivery_dates(self, line_ids: list[int]) -> dict[int, str]:
+        """Cuando quedo servida cada linea: su ULTIMA salida hecha.
+
+        El ultimo movimiento y no el primero: una linea despachada en dos partes no
+        esta entregada hasta que sale la segunda, y quedarse con la primera fecha es
+        exactamente lo que vuelve puntual a un despacho parcial que llego tarde -
+        el sesgo va en la direccion que le conviene al que reporta.
+
+        Sin ``stock.move.sale_line_id`` (el puente Ventas-Inventario no instalado)
+        no hay con que anclar el movimiento a la linea: se devuelve vacio y las
+        lineas quedan sin fecha, o sea fuera de OTIF. No se sustituye por la fecha
+        de la orden ni por la del picking: seria inventar la medicion que faltaba.
+        """
+        if not line_ids or not self._has_field(_M_MOVE, "sale_line_id"):
+            return {}
+        type_ids = self._rpc.execute_kw(
+            _M_PICKING_TYPE, "search", [[["code", "in", list(_DELIVERY_TYPE_CODES)]]]
+        )
+        if not type_ids:
+            return {}
+        rows = self._rpc.execute_kw(
+            _M_MOVE,
+            "search_read",
+            [
+                [
+                    ["state", "=", _MOVE_DONE],
+                    ["sale_line_id", "in", list(line_ids)],
+                    ["picking_type_id", "in", list(type_ids)],
+                ]
+            ],
+            {"fields": ["sale_line_id", "date"]},
+        )
+        ultima: dict[int, str] = {}
+        for r in rows:
+            lid = _m2o_id(r.get("sale_line_id"))
+            dia = _as_date(r.get("date"))
+            if lid is None or not dia:
+                continue
+            if dia > ultima.get(lid, ""):
+                ultima[lid] = dia
+        return ultima
 
     # -- demand + lead-time bridges into the existing engines ------------------
 
@@ -863,11 +993,13 @@ class OdooConnector:
         return self._sku_by_id[product_id]
 
     def _read_sale_lines(self, line_ids: list[int]) -> dict[int, OrderLine]:
+        """Lo pedido y lo servido en cada linea; las fechas las estampa ``orders()``."""
         if not line_ids:
             return {}
-        rows = self._rpc.execute_kw(
-            _M_SALE_LINE, "read", [line_ids], {"fields": ["product_id", "product_uom_qty", "price_unit"]}
-        )
+        fields = ["product_id", "product_uom_qty", "price_unit"]
+        if self._has_field(_M_SALE_LINE, "qty_delivered"):
+            fields.append("qty_delivered")
+        rows = self._rpc.execute_kw(_M_SALE_LINE, "read", [line_ids], {"fields": fields})
         out: dict[int, OrderLine] = {}
         for r in rows:
             pid = _m2o_id(r.get("product_id"))
@@ -875,7 +1007,12 @@ class OdooConnector:
                 continue
             sku = self._sku(pid)
             if sku is not None:
-                out[r["id"]] = OrderLine(sku, float(r.get("product_uom_qty") or 0.0), float(r.get("price_unit") or 0.0))
+                out[r["id"]] = OrderLine(
+                    sku,
+                    float(r.get("product_uom_qty") or 0.0),
+                    float(r.get("price_unit") or 0.0),
+                    delivered_qty=_as_qty_or_none(r.get("qty_delivered")),
+                )
         return out
 
 
@@ -1250,6 +1387,78 @@ def demo_odoo_receipts() -> InMemoryOdoo:
             "picking_type_id": [10, "Recepciones"],
         }
     return InMemoryOdoo(data)
+
+
+def demo_odoo_deliveries() -> InMemoryOdoo:
+    """Un Odoo offline con el lado de SERVICIO poblado, para medir OTIF y fill rate.
+
+    El espejo de salida de ``demo_odoo_receipts()``, y existe por el mismo motivo:
+    ``demo_odoo()`` no tiene ``commitment_date``, ni ``qty_delivered``, ni
+    ``stock.move``, asi que ``src.connectors.realized_service`` sobre el devuelve
+    ``not_measured`` -- correcto, y no muestra nada. Sin este fixture el unico modo
+    de ver un OTIF real seria contra un Odoo vivo, o sea contra ninguno hasta que
+    haya credenciales.
+
+    Widget promete a 5 dias y se queda corto y tarde en la segunda mitad del
+    periodo; Gizmo se sirve completo y a tiempo. La mezcla es el punto: un fixture
+    donde todo llega perfecto prueba la plomeria y esconde el numero.
+    """
+    ventas: dict = {}
+    lineas: dict = {}
+    movimientos: dict = {}
+    for i, dia in enumerate(_DEMO_SALE_DATES):
+        pedido = datetime.strptime(dia, "%Y-%m-%d")
+        prometido = pedido + timedelta(days=5)
+        tarde = prometido + timedelta(days=3 if i >= 4 else 0)
+        ventas[200 + i] = {
+            "name": f"S{i + 1:04d}",
+            "date_order": f"{dia} 10:00:00",
+            "commitment_date": f"{prometido:%Y-%m-%d} 00:00:00",
+            "state": "done" if i % 3 == 2 else "sale",
+            "order_line": [300 + 2 * i, 301 + 2 * i],
+        }
+        lineas[300 + 2 * i] = {
+            "product_id": [1, "Widget"],
+            "product_uom_qty": 10.0,
+            "price_unit": 20.0,
+            "qty_delivered": 7.0 if i >= 4 else 10.0,
+        }
+        lineas[301 + 2 * i] = {
+            "product_id": [3, "Gizmo"],
+            "product_uom_qty": 5.0,
+            "price_unit": 8.0,
+            "qty_delivered": 5.0,
+        }
+        movimientos[500 + 2 * i] = {
+            "sale_line_id": [300 + 2 * i, f"S{i + 1:04d}"],
+            "state": _MOVE_DONE,
+            "date": f"{tarde:%Y-%m-%d} 14:00:00",
+            "picking_type_id": [11, "Entregas"],
+        }
+        movimientos[501 + 2 * i] = {
+            "sale_line_id": [301 + 2 * i, f"S{i + 1:04d}"],
+            "state": _MOVE_DONE,
+            "date": f"{prometido:%Y-%m-%d} 09:00:00",
+            "picking_type_id": [11, "Entregas"],
+        }
+    return InMemoryOdoo(
+        {
+            _M_PRODUCT: {
+                1: {"default_code": "SKU-1", "name": "Widget", "list_price": 20.0, "standard_price": 12.0},
+                3: {"default_code": "SKU-3", "name": "Gizmo", "list_price": 8.0, "standard_price": 5.0},
+            },
+            _M_LOCATION: {10: {"usage": "internal"}},
+            _M_QUANT: {
+                100: {"product_id": [1, "Widget"], "location_id": [10, "WH/Stock"], "quantity": 12.0},
+            },
+            _M_PICKING_TYPE: {10: {"code": "incoming"}, 11: {"code": "outgoing"}},
+            _M_SALE: ventas,
+            _M_SALE_LINE: lineas,
+            _M_MOVE: movimientos,
+            _M_SUPPLIERINFO: {},
+            _M_ORDERPOINT: {},
+        }
+    )
 
 
 def demo_odoo() -> InMemoryOdoo:
