@@ -98,7 +98,7 @@ from typing import Callable  # noqa: E402
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from src.connectors import Order  # noqa: E402
+from src.connectors import Order, OrderLine  # noqa: E402
 from src.connectors.emulator import create_app  # noqa: E402
 from src.connectors.http_client import StoreApiClient  # noqa: E402
 from src.connectors.mcp_source import McpInventorySource  # noqa: E402
@@ -251,3 +251,101 @@ def test_a_field_declared_reportable_actually_arrives(adapter: AdapterCase):
                 f"{adapter.name} declares {name} {field.status} from {field.source!r}, but "
                 "no line in its own fixture carried one."
             )
+
+
+# -- proof that the contract has teeth ------------------------------------------
+
+#: Every adapter in ADAPTERS today declares all three fields reportable, so the
+#: "declared unavailable" branch above never executes against a real one. A branch that
+#: never runs is a green test that proves nothing. These two run the SAME assertions
+#: against deliberately-lying adapters, so the guard is watched failing before it is
+#: trusted passing.
+
+
+class _LyingAdapter:
+    """An adapter whose lines carry exactly what ``lines`` says, honestly returned.
+    The lie is in the declaration handed alongside it, not in the data."""
+
+    def __init__(self, line: OrderLine) -> None:
+        self._line = line
+
+    def orders(self, *, since: str | None = None) -> list[Order]:
+        return [Order("SO-1", "2026-01-05", (self._line,))]
+
+
+def _assert_declaration_holds(coverage: ServiceCoverage, source) -> None:
+    """The two directional checks above, factored so the lying adapters run the real
+    thing rather than a paraphrase of it."""
+    observed = _observed(source.orders())
+    for name, field in coverage.fields().items():
+        if field.reports:
+            assert observed[name] is True, f"{name} declared {field.status}, never arrived"
+        else:
+            assert observed[name] is False, f"{name} declared {field.status}, arrived anyway"
+
+
+def test_the_guard_catches_an_adapter_filling_a_field_it_declared_absent():
+    """The direction that protects the client: a connector that starts inventing a
+    delivered quantity must not pass while still claiming it cannot measure one."""
+    lying = _LyingAdapter(
+        OrderLine("SKU-1", 10.0, 20.0, delivered_qty=10.0,
+                  promised_date="2026-01-10", delivered_date="2026-01-12")
+    )
+    coverage = ServiceCoverage(
+        backend="a backend that cannot report deliveries",
+        delivered_qty=FieldCoverage(COVERAGE_UNAVAILABLE, "", "no shipped quantity exists"),
+        promised_date=FieldCoverage(COVERAGE_MEASURED, "X.promised", "the promise"),
+        delivered_date=FieldCoverage(COVERAGE_MEASURED, "X.shipped", "the dispatch"),
+    )
+    with pytest.raises(AssertionError, match="arrived anyway"):
+        _assert_declaration_holds(coverage, lying)
+
+
+def test_the_guard_catches_an_adapter_claiming_a_field_it_never_produces():
+    """The direction that protects the differentiator: 'we measure outbound OTIF' is a
+    sales claim, and this is the only thing between it and a slide."""
+    lying = _LyingAdapter(OrderLine("SKU-1", 10.0, 20.0, delivered_qty=8.0))
+    coverage = ServiceCoverage(
+        backend="a backend that promises more than it has",
+        delivered_qty=FieldCoverage(COVERAGE_MEASURED, "X.shipped_qty", "units that left"),
+        promised_date=FieldCoverage(COVERAGE_MEASURED, "X.promised", "the promise"),
+        delivered_date=FieldCoverage(COVERAGE_MEASURED, "X.delivered", "the arrival"),
+    )
+    with pytest.raises(AssertionError, match="never arrived"):
+        _assert_declaration_holds(coverage, lying)
+
+
+# -- the drift guard ------------------------------------------------------------
+
+#: Modules in ``src/connectors/`` that define ``orders()`` and are deliberately NOT held
+#: to a declaration. Each exclusion is a decision on the record, not an oversight.
+_NOT_A_BACKEND = {
+    # A MERGE of other sources, not a system of record: its coverage is the union of its
+    # channels' and cannot be declared statically. Its orders() also takes no ``since``,
+    # so it does not satisfy InventorySource in the first place.
+    "ledger",
+    # A FastAPI app that SERVES a SimulatedStore over HTTP; its orders() is a route
+    # handler, not an adapter method. What it serves is declared by simulator.py, and
+    # what reads it back is declared by http_client.py.
+    "emulator",
+}
+
+
+def test_every_connector_that_reads_orders_declares_its_service_coverage():
+    """Drift guard: a new adapter is one entry in ADAPTERS away from being held to the
+    same assertions. Landing one without a declaration fails HERE, at the moment it
+    lands, rather than the first time a client asks what their OTIF was computed from."""
+    import re
+
+    connectors_dir = _REPO_ROOT / "src" / "connectors"
+    readers = {
+        path.stem
+        for path in sorted(connectors_dir.glob("*.py"))
+        if path.stem != "__init__" and re.search(r"def orders\(", path.read_text(encoding="utf-8"))
+    }
+    covered = {case.module.rsplit(".", 1)[-1] for case in ADAPTERS}
+    assert readers == covered | _NOT_A_BACKEND, (
+        "connector(s) reading orders but absent from both ADAPTERS and _NOT_A_BACKEND: "
+        f"{sorted(readers - covered - _NOT_A_BACKEND)}. Add a SERVICE_COVERAGE and an "
+        "AdapterCase, or record here why this one is not a backend."
+    )
