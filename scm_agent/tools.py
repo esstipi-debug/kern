@@ -47,6 +47,7 @@ from jobs import (
     odoo_job,
     org_friction_job,
     price_watch_deliverable,
+    prospect_diagnostic_job,
     qa,
     queuing_job,
     reconciliation_job,
@@ -2795,6 +2796,60 @@ def intake_scan_tool() -> Tool:
     )
 
 
+# ---- prospect_diagnostic (El Espejo: free local diagnostic on a sales file) --
+
+def _prospect_diagnostic_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a prospect sales CSV/Excel (date, sku, quantity; price optional) is required"
+        ])
+    try:
+        rows = prospect_diagnostic_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=rows)
+
+
+def _prospect_diagnostic_run(payload: object, params: dict) -> Produced:
+    report = prospect_diagnostic_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def prospect_diagnostic_tool() -> Tool:
+    return Tool(
+        key="prospect_diagnostic",
+        title="El Espejo (Prospect Diagnostic)",
+        description="Free local inventory diagnostic on a prospect's sales file: "
+                    "how few SKUs make 80% of sales, how much of the catalog is dead, "
+                    "recoverable lost sales as a RANGE (never a point), and realized "
+                    "OTIF/fill rate when the file carries promised/delivered columns. "
+                    "Runs without a network connection.",
+        intent_keywords=(
+            "el espejo", "espejo diagnostico", "prospect diagnostic",
+            "diagnostico gratuito", "free inventory diagnostic",
+            "catalogo muerto", "dead catalog share",
+            "venta recuperable", "recoverable lost sales range",
+            "diagnostico de inventario del prospecto",
+        ),
+        requires_data=True,
+        required_columns=("date", "product_id", "quantity"),
+        optional_columns=("unit_cost",),
+        prepare=_prospect_diagnostic_prepare,
+        run=_prospect_diagnostic_run,
+        qa=lambda report: prospect_diagnostic_job.verify(report),
+        deliver=lambda report, out_dir, client: prospect_diagnostic_job.write_operational(
+            report, out_dir, client,
+        ),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            prospect_diagnostic_job.build_deck(
+                report, client=client, citations=tuple(citations), confidence=confidence,
+            ),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -2847,4 +2902,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(cross_impact_tool())
     reg.register(org_friction_tool())
     reg.register(intake_scan_tool())
+    reg.register(prospect_diagnostic_tool())
     return reg

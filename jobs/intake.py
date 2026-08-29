@@ -72,6 +72,20 @@ ALIASES: dict[str, list[str]] = {
     "order_date": ["order_date", "orderdate", "po_date", "podate", "issue_date", "date_order", "ordered_at", "fecha_orden", "fecha_pedido", "fecha_oc", "fecha_emision_oc", "data_pedido"],
     "receipt_date": ["receipt_date", "received_date", "receipt_dt", "delivery_date", "actual_delivery_date", "date_done", "fecha_recepcion", "fecha_recibido", "fecha_entrega", "fecha_llegada", "data_recebimento"],
     "po_id": ["po_id", "po", "po_number", "order_id", "purchase_order", "purchase_order_id", "numero_oc", "num_oc", "orden_compra", "folio", "pedido"],
+    # Abajo: el lado de SERVICIO AL CLIENTE (src/order_fulfillment.py), que
+    # `src/prospect_diagnostic.py` pide como `optional`. No los emite
+    # `normalize` -- son campos de linea de pedido, no de demanda agregada.
+    #
+    # Ninguno reusa un alias del bloque de RECEPCIONES de arriba, y la omision
+    # es deliberada: "fecha_entrega"/"delivery_date"/"actual_delivery_date" ya
+    # son del proveedor hacia nosotros. Confundir esa fecha con la que le
+    # prometimos al cliente cambia de que lado del mostrador se mide el
+    # incumplimiento -- el OTIF de entrada y el de salida nunca son el mismo
+    # numero, y el modulo de servicio realizado lo dice en su docstring.
+    "ordered_qty": ["ordered_qty", "orderedqty", "qty_ordered", "ordered_quantity", "order_quantity", "cantidad_pedida", "cantidad_solicitada", "quantidade_pedida"],
+    "delivered_qty": ["delivered_qty", "deliveredqty", "qty_delivered", "delivered_quantity", "shipped_qty", "qty_shipped", "shipped_quantity", "cantidad_entregada", "cantidad_despachada", "cantidad_servida", "quantidade_entregue"],
+    "promised_date": ["promised_date", "promiseddate", "promised_delivery_date", "commit_date", "commitment_date", "date_promised", "due_date", "fecha_prometida", "fecha_comprometida", "fecha_compromiso", "data_prometida"],
+    "delivered_date": ["delivered_date", "delivereddate", "date_delivered", "ship_date", "shipped_date", "date_shipped", "shipping_date", "fecha_entregado", "fecha_despacho", "fecha_embarque", "data_entregue"],
 }
 
 #: La tabla de alias que un mapeo usa. Normalmente ``ALIASES``, o
@@ -441,6 +455,34 @@ def detect_sheet_and_header(
 #: entregable pueda decirle al cliente que le sacaron a su planilla.
 HYGIENE_ATTR = "excel_hygiene"
 
+#: En orden de intento. ``latin-1`` va ultimo a proposito: mapea los 256 bytes
+#: uno a uno, asi que NUNCA falla -- es el unico que garantiza que la funcion
+#: devuelva una tabla en vez de una excepcion. Ponerlo antes que cp1252 seria
+#: peor: se comeria los bytes 0x80-0x9F (comillas tipograficas, guion largo,
+#: euro) como caracteres de control invisibles en vez de leerlos bien.
+_CSV_ENCODINGS = ("utf-8", "utf-8-sig", "cp1252", "latin-1")
+
+
+def _read_csv_any_encoding(path: Path) -> pd.DataFrame:
+    """Lee un CSV sin exigirle al cliente que sepa en que codificacion exporta.
+
+    El archivo real no viene en UTF-8. El Superstore publico esta en latin-1, y
+    un export de Windows en castellano lo esta casi siempre: alcanza una enie,
+    un acento o un espacio duro (0xa0) para que un ``pd.read_csv`` pelado tire
+    un ``UnicodeDecodeError`` crudo. Reventar con un stack trace en la maquina
+    del cliente convierte "tu archivo tiene una enie" en "el programa no
+    funciona", que es una conclusion distinta y mucho mas cara.
+    """
+    ultimo: UnicodeDecodeError | None = None
+    for encoding in _CSV_ENCODINGS:
+        try:
+            return pd.read_csv(path, encoding=encoding)
+        except UnicodeDecodeError as exc:
+            ultimo = exc
+    # Inalcanzable mientras latin-1 siga en la lista, pero si alguien la edita
+    # el error que sale es el de verdad y no un `None` mas adelante.
+    raise ultimo  # type: ignore[misc]
+
 
 def _key_column(frame: pd.DataFrame, aliases: AliasTable | None) -> str | None:
     """La columna de producto del archivo, o ``None`` si no se reconoce ninguna."""
@@ -462,7 +504,7 @@ def load_table(path: str | Path, *, aliases: AliasTable | None = None) -> pd.Dat
     """
     p = Path(path)
     if p.suffix.lower() not in _EXCEL_SUFFIXES:
-        return pd.read_csv(p)
+        return _read_csv_any_encoding(p)
 
     sheet, header = detect_sheet_and_header(p, aliases=aliases)
     crudo = pd.read_excel(p, sheet_name=sheet, header=header)

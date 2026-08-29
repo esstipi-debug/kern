@@ -217,6 +217,7 @@ _SAMPLE: dict[str, Path] = {
     "pricing": _DATA / "sample_pricing.csv",
     "excess_obsolete": _DATA / "sample_stock_snapshot.csv",
     "markdown_liquidation": _DATA / "sample_stock_snapshot.csv",
+    "prospect_diagnostic": _REPO_ROOT / "tests" / "fixtures" / "espejo" / "prospect_sales.csv",
 }
 
 # Brief per tool (routing is bypassed via job_type; the brief still feeds the
@@ -262,6 +263,7 @@ _BRIEF: dict[str, str] = {
     "drp": "build a distribution requirements plan",
     "vehicle_routing": "route the delivery vehicles",
     "launch_readiness": "assess launch readiness",
+    "prospect_diagnostic": "run el espejo prospect diagnostic on this sales file",
 }
 
 _OVERRIDES: dict[str, dict] = {

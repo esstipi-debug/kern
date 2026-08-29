@@ -68,7 +68,7 @@ UNDECLARED_TOOLS = frozenset({
     "whatif",
 })
 
-DECLARED = ("data_quality", "abc_xyz", "excess_obsolete", "financial_kpis")
+DECLARED = ("data_quality", "abc_xyz", "excess_obsolete", "financial_kpis", "prospect_diagnostic")
 
 # One canonical value per column name we know how to synthesize.
 _SAMPLE = {

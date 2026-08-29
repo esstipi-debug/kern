@@ -94,7 +94,13 @@ class _FakeKB:
 # to either not exist or to only surface off-topic citations -- not "we
 # haven't gotten to it yet" (that case is `UNDECLARED_TOOLS` in
 # tests/test_tool_data_contract.py, a different problem with a different list).
-_NO_CONCEPT_MAP_BY_DESIGN = frozenset({"intake_scan"})
+# prospect_diagnostic (El Espejo) is the same shape as intake_scan: a product
+# diagnostic, not a textbook method. Sharing abc_xyz / inventory_optimization
+# anchors would mix two products' decks; no distinct L3 node exists for "free
+# local catalog mirror". Silence (omit every candidate) is the honest gate
+# output, same as intake_scan. Adding a second name here required that
+# measurement, not "we have not gotten to it yet".
+_NO_CONCEPT_MAP_BY_DESIGN = frozenset({"intake_scan", "prospect_diagnostic"})
 
 
 def test_every_registered_tool_has_a_concept_map():

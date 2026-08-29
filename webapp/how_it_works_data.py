@@ -1,7 +1,7 @@
 """Static content data for GET /how-it-works (webapp/how_it_works_page.py).
 
 Every count here is verified against the actual code, not copied from a
-possibly-stale doc: 50 tools = build_default_registry()'s 50 register()
+possibly-stale doc: 51 tools = build_default_registry()'s 51 register()
 calls in scm_agent/tools.py, now enforced by
 tests/test_how_it_works_data.py::test_tools_table_matches_the_registry_exactly
 (set equality against the registry, both directions). That guard exists
@@ -101,7 +101,7 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Live Odoo ERP read plus staged, reversible replenishment writeback."),
     ToolInfo("excel_replenishment", "Excel Replenishment", "Inventory & replenishment", "Plan",
              "Client spreadsheet read plus staged, reversible replenishment writeback."),
-    # -- Inventory control & health (7) --
+    # -- Inventory control & health (8) --
     ToolInfo("cycle_count", "Cycle Count", "Inventory control & health", "Plan",
              "Cycle-counting program design by ABC class, tracking inventory record accuracy."),
     ToolInfo("reconciliation", "Reconciliation", "Inventory control & health", "Plan",
@@ -118,6 +118,9 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Walks a raw client folder, classifies every readable file against the known intake "
              "profiles, and reports which tools can run today -- plus the single highest-value "
              "column to request or file to fix next."),
+    ToolInfo("prospect_diagnostic", "El Espejo", "Inventory control & health", "Orchestrate",
+             "Free local diagnostic on a prospect's sales file: concentration, dead catalog, "
+             "recoverable lost sales as a range, and realized OTIF/fill rate. No network."),
     # -- Procurement & sourcing (4) --
     ToolInfo("sourcing", "Sourcing", "Procurement & sourcing", "Source",
              "Supplier scorecarding via OTIF/DIFOT and defect rate."),
