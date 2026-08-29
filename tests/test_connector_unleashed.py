@@ -144,3 +144,149 @@ def test_paging_stops_at_the_cap_rather_than_looping_forever():
     items = fetch_pages(http, "SalesOrders", {}, _CREDS, max_pages=3)
     assert len(items) == 3
     assert len(http.calls) == 3
+
+
+# -- catalogo, stock y el lado de demanda ---------------------------------------
+
+from src.connectors import InventorySource  # noqa: E402
+from src.connectors.unleashed import UnleashedConnector  # noqa: E402
+
+
+class RoutedHttp:
+    """Un transporte que sirve payloads distintos segun el recurso pedido."""
+
+    class _Response:
+        def __init__(self, payload: dict) -> None:
+            self._payload = payload
+            self.status_code = 200
+
+        def json(self) -> dict:
+            return self._payload
+
+    def __init__(self, by_resource: dict[str, list[dict]]) -> None:
+        self._by_resource = by_resource
+        self.calls: list[tuple[str, dict]] = []
+
+    def get(self, path, *, params=None, headers=None):
+        self.calls.append((path, dict(params or {})))
+        recurso = path.strip("/").split("/")[0]
+        items = self._by_resource.get(recurso, [])
+        return RoutedHttp._Response(
+            {"Pagination": {"NumberOfPages": 1, "PageNumber": 1}, "Items": items}
+        )
+
+
+_PRODUCTS = [
+    {"ProductCode": "SKU-1", "ProductDescription": "Widget",
+     "DefaultSellPrice": 20.0, "LastCost": 12.0},
+    {"ProductCode": "SKU-2", "ProductDescription": "Gadget",
+     "DefaultSellPrice": 50.0, "LastCost": 30.0},
+]
+
+_STOCK = [
+    {"ProductCode": "SKU-1", "QtyOnHand": 40.0, "AvailableQty": 35.0, "WarehouseCode": "MAIN"},
+    {"ProductCode": "SKU-2", "QtyOnHand": 5.0, "AvailableQty": 5.0, "WarehouseCode": "MAIN"},
+]
+
+#: Una orden pedida el 5, prometida para el 10, cerrada el 12. Una sin promesa. Y una
+#: borrada con 999 unidades, que no es demanda.
+_ORDERS = [
+    {
+        "OrderNumber": "SO-1", "OrderDate": "2026-01-05T00:00:00",
+        "RequiredDate": "2026-01-10T00:00:00", "CompletedDate": "2026-01-12T00:00:00",
+        "OrderStatus": "Completed",
+        "SalesOrderLines": [
+            {"LineNumber": 1, "Product": {"ProductCode": "SKU-1"},
+             "OrderQuantity": 10.0, "UnitPrice": 20.0},
+            {"LineNumber": 2, "Product": {"ProductCode": "SKU-2"},
+             "OrderQuantity": 4.0, "UnitPrice": 50.0},
+        ],
+    },
+    {
+        "OrderNumber": "SO-2", "OrderDate": "2026-01-06T00:00:00",
+        "RequiredDate": None, "CompletedDate": None, "OrderStatus": "Backordered",
+        "SalesOrderLines": [
+            {"LineNumber": 1, "Product": {"ProductCode": "SKU-1"},
+             "OrderQuantity": 5.0, "UnitPrice": 20.0},
+        ],
+    },
+    {
+        "OrderNumber": "SO-3", "OrderDate": "2026-01-07T00:00:00",
+        "OrderStatus": "Deleted",
+        "SalesOrderLines": [
+            {"LineNumber": 1, "Product": {"ProductCode": "SKU-1"},
+             "OrderQuantity": 999.0, "UnitPrice": 20.0},
+        ],
+    },
+]
+
+
+def _connector(**extra) -> UnleashedConnector:
+    http = RoutedHttp({"Products": _PRODUCTS, "StockOnHand": _STOCK,
+                       "SalesOrders": _ORDERS, **extra})
+    return UnleashedConnector(http, _CREDS)
+
+
+def test_the_connector_satisfies_the_inventory_source_protocol():
+    assert isinstance(_connector(), InventorySource)
+
+
+def test_products_map_code_description_price_and_cost():
+    productos = {p.sku: p for p in _connector().list_products()}
+    assert productos["SKU-1"].title == "Widget"
+    assert productos["SKU-1"].price == 20.0
+    assert productos["SKU-1"].cost == 12.0
+
+
+def test_stock_uses_available_not_on_hand():
+    """``QtyOnHand`` incluye lo ya comprometido a otras ordenes. Planificar sobre el
+    fisico promete unidades que ya tienen dueno."""
+    niveles = {lvl.sku: lvl for lvl in _connector().inventory_levels()}
+    assert niveles["SKU-1"].available == 35.0
+    assert niveles["SKU-1"].location == "MAIN"
+
+
+def test_orders_carry_the_demand_side_and_sort_by_date():
+    pedidos = _connector().orders()
+    assert [o.order_id for o in pedidos] == ["SO-1", "SO-2"]
+    primera = pedidos[0]
+    assert primera.created_at == "2026-01-05"
+    assert [(ln.sku, ln.quantity, ln.price) for ln in primera.lines] == [
+        ("SKU-1", 10.0, 20.0), ("SKU-2", 4.0, 50.0),
+    ]
+
+
+def test_a_deleted_order_is_not_demand():
+    """Una orden borrada con 999 unidades deformaria el pronostico de SKU-1 sola."""
+    cantidades = [ln.quantity for o in _connector().orders() for ln in o.lines]
+    assert 999.0 not in cantidades
+
+
+def test_since_travels_as_the_start_date_filter():
+    """Se filtra en el SERVIDOR. Traer el historico entero para descartarlo en memoria es
+    lo que hace que la primera corrida contra una cuenta viva tarde minutos y pague rate
+    limit por nada."""
+    conector = _connector()
+    conector.orders(since="2026-01-06")
+    llamadas = [params for path, params in conector._http.calls if "SalesOrders" in path]
+    assert llamadas and llamadas[0].get("startDate") == "2026-01-06"
+
+
+def test_an_order_with_no_required_date_leaves_the_promise_empty():
+    """Ausente, y no ``OrderDate``: la fecha en que el cliente compro no es una promesa, y
+    medir contra ella declara tarde a todo lo que no salio el mismo dia."""
+    so2 = next(o for o in _connector().orders() if o.order_id == "SO-2")
+    assert all(ln.promised_date is None for ln in so2.lines)
+
+
+def test_the_promised_date_is_the_required_date_truncated_to_a_day():
+    so1 = next(o for o in _connector().orders() if o.order_id == "SO-1")
+    assert all(ln.promised_date == "2026-01-10" for ln in so1.lines)
+
+
+def test_without_shipments_the_delivered_quantity_is_none_not_zero():
+    """El ``None`` que sostiene el producto entero. ``/SalesOrders`` no trae cantidad
+    despachada: rellenarla con 0.0 le regala al cliente un 0% de fill rate sobre lineas
+    que nadie midio, y rellenarla con lo pedido le regala un 100%."""
+    lineas = [ln for o in _connector().orders() for ln in o.lines]
+    assert lineas and all(ln.delivered_qty is None for ln in lineas)

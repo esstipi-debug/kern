@@ -59,6 +59,8 @@ import hmac
 from dataclasses import dataclass
 from typing import Any
 
+from src.connectors import InventoryLevel, Order, OrderLine, Product
+
 
 class UnleashedError(RuntimeError):
     """Unleashed contesto algo que no es una lectura. Nunca se degrada a una lista vacia.
@@ -147,3 +149,191 @@ def fetch_pages(
             break
         pagina += 1
     return items
+
+
+#: El maximo que acepta Unleashed. Menos paginas es menos rate limit y menos latencia en
+#: la primera corrida, que es la unica que un prospecto mira.
+_PAGE_SIZE = 200
+
+#: Los estados que SON demanda. ``Deleted`` no es una venta y ``Parked`` es un borrador
+#: que nadie confirmo; contarlos mete quiebres que ningun cliente sufrio.
+SALE_STATES_COUNTED = ("Placed", "Backordered", "Completed")
+
+
+def _text(value: Any) -> str | None:
+    """Texto no vacio, o ``None``. Unleashed manda ``null`` y tambien cadenas vacias."""
+    if value is None:
+        return None
+    texto = str(value).strip()
+    return texto or None
+
+
+def _iso_date(value: Any) -> str | None:
+    """La fecha ISO de un instante de Unleashed, o ``None`` si no vino ninguno.
+
+    Unleashed manda ``2026-01-10T00:00:00``. Solo se acepta esa forma, y cualquier otra se
+    rechaza en vez de adivinarse: una fecha mal parseada saca la linea de OTIF, que es
+    mejor que ordenarla contra otra que no significa lo mismo.
+    """
+    texto = _text(value)
+    if texto is None or len(texto) < 10:
+        return None
+    fecha = texto[:10]
+    if fecha[4] != "-" or fecha[7] != "-":
+        return None
+    try:
+        int(fecha[0:4]), int(fecha[5:7]), int(fecha[8:10])
+    except ValueError:
+        return None
+    return fecha
+
+
+def _number(value: Any) -> float | None:
+    """Un numero reportado, o ``None`` cuando el backend no reporto ninguno."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+class UnleashedConnector:
+    """``InventorySource`` sobre Unleashed. Ver el docstring del modulo para el mapeo.
+
+    ``http`` es cualquier objeto con ``.get(path, params=..., headers=...)`` estilo httpx:
+    ``live_http(creds)`` arma el real y los tests inyectan uno de mentira. El adaptador no
+    arma su propio transporte a proposito -- un secreto que se ensambla en la capa HTTP hay
+    que auditarlo en cada ruta que lo use.
+    """
+
+    def __init__(self, http: Any, creds: UnleashedCredentials, *, max_pages: int = 100) -> None:
+        self._http = http
+        self._creds = creds
+        self._max_pages = max_pages
+
+    def _read(self, resource: str, params: dict[str, Any] | None = None) -> list[dict]:
+        return fetch_pages(
+            self._http, resource, params or {}, self._creds, max_pages=self._max_pages
+        )
+
+    # -- read side (InventorySource) ------------------------------------------
+
+    def list_products(self) -> list[Product]:
+        productos: list[Product] = []
+        for row in self._read("Products", {"pageSize": _PAGE_SIZE}):
+            sku = _text(row.get("ProductCode"))
+            if sku is None:
+                continue
+            productos.append(
+                Product(
+                    sku,
+                    _text(row.get("ProductDescription")) or sku,
+                    _number(row.get("DefaultSellPrice")) or 0.0,
+                    _number(row.get("LastCost")) or 0.0,
+                )
+            )
+        return productos
+
+    def inventory_levels(self) -> list[InventoryLevel]:
+        """El DISPONIBLE, no el fisico.
+
+        ``AvailableQty`` descuenta lo ya comprometido a otras ordenes; ``QtyOnHand`` no.
+        Planificar sobre el fisico promete unidades que ya tienen dueno. Sin
+        ``AvailableQty`` se cae al fisico, que es lo unico que queda y se sabe optimista.
+        """
+        niveles: list[InventoryLevel] = []
+        for row in self._read("StockOnHand", {"pageSize": _PAGE_SIZE}):
+            sku = _text(row.get("ProductCode"))
+            if sku is None:
+                continue
+            disponible = _number(row.get("AvailableQty"))
+            if disponible is None:
+                disponible = _number(row.get("QtyOnHand")) or 0.0
+            niveles.append(
+                InventoryLevel(sku, disponible, _text(row.get("WarehouseCode")) or "default")
+            )
+        return niveles
+
+    def orders(self, *, since: str | None = None) -> list[Order]:
+        """Las ordenes que son demanda, con lo pedido en cada linea.
+
+        ``since`` se filtra en el SERVIDOR (``startDate``): traer el historico entero para
+        descartarlo en memoria es lo que hace que la primera corrida contra una cuenta viva
+        tarde minutos y pague rate limit por nada.
+
+        La promesa es ``RequiredDate``, que es de la ORDEN, y por eso todas sus lineas
+        llevan la misma. Vacia es lo habitual y significa que no se prometio fecha: la
+        linea sale de OTIF en vez de medirse contra ``OrderDate``, que es cuando el cliente
+        compro y no cuando le dijimos que llegaba.
+
+        ``delivered_qty`` queda ``None`` aca SIEMPRE: ``/SalesOrders`` no trae cantidad
+        despachada. La llena ``orders_with_shipments()``, empalmando ``/SalesShipments``.
+        """
+        return self._to_orders(self._read("SalesOrders", self._order_params(since)))
+
+    def _order_params(self, since: str | None) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "pageSize": _PAGE_SIZE,
+            "orderStatus": ",".join(SALE_STATES_COUNTED),
+        }
+        if since is not None:
+            params["startDate"] = since
+        return params
+
+    def _to_orders(
+        self, filas: list[dict], despachos: dict | None = None
+    ) -> list[Order]:
+        """Las filas crudas -> ``Order`` canonicos, ordenados por fecha.
+
+        ``despachos`` es lo que ``/SalesShipments`` reporto, indexado por
+        ``(OrderNumber, SalesOrderLineNumber)``. En ``None`` -- el camino de ``orders()`` --
+        la cantidad servida queda sin llenar, y la fecha de salida es ``CompletedDate``,
+        que es lo unico que ``/SalesOrders`` sabe del cierre.
+        """
+        salida: list[Order] = []
+        for fila in filas:
+            estado = _text(fila.get("OrderStatus")) or ""
+            if estado not in SALE_STATES_COUNTED:
+                continue
+            numero = _text(fila.get("OrderNumber"))
+            creada = _iso_date(fila.get("OrderDate"))
+            if numero is None or creada is None:
+                continue
+            prometida = _iso_date(fila.get("RequiredDate"))
+            completada = _iso_date(fila.get("CompletedDate"))
+            lineas: list[OrderLine] = []
+            for ln in fila.get("SalesOrderLines") or []:
+                sku = _text((ln.get("Product") or {}).get("ProductCode"))
+                pedidas = _number(ln.get("OrderQuantity"))
+                if sku is None or pedidas is None:
+                    continue
+                enviado = (
+                    despachos.get((numero, int(ln.get("LineNumber") or 0)))
+                    if despachos is not None
+                    else None
+                )
+                if enviado is not None:
+                    servidas, salio = enviado.qty, enviado.dispatched
+                elif despachos is not None:
+                    # Se leyeron despachos y ESTA linea no tuvo ninguno. None y no 0.0: la
+                    # orden puede salir manana, y un cero aca es un quiebre total inventado
+                    # sobre una linea que todavia no vencio.
+                    servidas, salio = None, None
+                else:
+                    # Sin leer despachos: la cantidad no existe en /SalesOrders, y lo unico
+                    # que se sabe del cierre es CompletedDate, de la orden entera.
+                    servidas, salio = None, completada
+                lineas.append(
+                    OrderLine(
+                        sku,
+                        pedidas,
+                        _number(ln.get("UnitPrice")) or 0.0,
+                        delivered_qty=servidas,
+                        promised_date=prometida,
+                        delivered_date=salio,
+                    )
+                )
+            if lineas:
+                salida.append(Order(numero, creada, tuple(lineas)))
+        return sorted(salida, key=lambda o: o.created_at)
