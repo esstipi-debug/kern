@@ -104,6 +104,11 @@ from src.connectors.http_client import StoreApiClient  # noqa: E402
 from src.connectors.mcp_source import McpInventorySource  # noqa: E402
 from src.connectors.odoo import InMemoryOdoo, OdooConnector  # noqa: E402
 from src.connectors.simulator import demo_store  # noqa: E402
+from src.connectors.unleashed import UnleashedConnector  # noqa: E402
+from tests.test_connector_unleashed import _CREDS as _UNLEASHED_CREDS  # noqa: E402
+from tests.test_connector_unleashed import _ORDERS as _UNLEASHED_ORDERS  # noqa: E402
+from tests.test_connector_unleashed import _SHIPMENTS as _UNLEASHED_SHIPMENTS  # noqa: E402
+from tests.test_connector_unleashed import RoutedHttp as _UnleashedHttp  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -179,11 +184,36 @@ def _odoo():
     )
 
 
+class _UnleashedAdapter:
+    """Unleashed leido ENTERO: ordenes mas despachos.
+
+    ``orders()`` sola deja ``delivered_qty`` en ``None`` a proposito -- ``/SalesOrders`` no
+    la trae -- y la declaracion describe el techo del ADAPTADOR, no el de su lectura mas
+    barata. Envolver ``orders_with_shipments`` es lo que hace que el guard verifique la
+    afirmacion que efectivamente se le hace a un cliente.
+    """
+
+    def __init__(self) -> None:
+        self._conector = UnleashedConnector(
+            _UnleashedHttp({"SalesOrders": _UNLEASHED_ORDERS,
+                            "SalesShipments": _UNLEASHED_SHIPMENTS}),
+            _UNLEASHED_CREDS,
+        )
+
+    def orders(self, *, since: str | None = None):
+        return self._conector.orders_with_shipments(since=since)
+
+
+def _unleashed():
+    return _UnleashedAdapter()
+
+
 ADAPTERS: tuple[AdapterCase, ...] = (
     AdapterCase("simulator", "src.connectors.simulator", _simulator),
     AdapterCase("http_client", "src.connectors.http_client", _http_client),
     AdapterCase("mcp_source", "src.connectors.mcp_source", _mcp),
     AdapterCase("odoo", "src.connectors.odoo", _odoo),
+    AdapterCase("unleashed", "src.connectors.unleashed", _unleashed),
 )
 
 
@@ -349,3 +379,33 @@ def test_every_connector_that_reads_orders_declares_its_service_coverage():
         f"{sorted(readers - covered - _NOT_A_BACKEND)}. Add a SERVICE_COVERAGE and an "
         "AdapterCase, or record here why this one is not a backend."
     )
+
+
+# -- el hallazgo de Unleashed, fijado ------------------------------------------
+
+
+def test_unleashed_declares_its_delivery_date_as_a_dispatch_and_not_an_arrival():
+    """El hallazgo que sostiene el argumento de venta, fijado en un test para que no se
+    pierda cuando alguien "mejore" el docstring.
+
+    Unleashed no registra ninguna fecha de llegada: ni ``CompletedDate`` ni
+    ``DispatchDate`` son la recepcion del cliente, y el indice de endpoints no tiene un
+    recurso de entrega. Entonces el OTIF que sale de aca mide DESPACHAR antes de la fecha
+    pedida. Un adaptador que lo declare como llegada convierte cada demora de transporte
+    en puntualidad, y se lo dice a un cliente que puede verificarlo.
+    """
+    from src.connectors.unleashed import SERVICE_COVERAGE
+
+    entrega = SERVICE_COVERAGE.delivered_date
+    assert entrega.reports is True
+    assert "despacho" in entrega.means.lower()
+    assert "llegada" in entrega.means.lower()
+
+
+def test_unleashed_derives_the_delivered_quantity_from_a_second_endpoint():
+    """No es MEASURED: ``/SalesOrders`` no la trae. Que sea DERIVED y que la fuente nombre
+    ``/SalesShipments`` es lo que le explica al que lea esto por que hay dos lecturas."""
+    from src.connectors.unleashed import SERVICE_COVERAGE
+
+    assert SERVICE_COVERAGE.delivered_qty.status == COVERAGE_DERIVED
+    assert "SalesShipment" in SERVICE_COVERAGE.delivered_qty.source

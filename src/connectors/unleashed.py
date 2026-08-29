@@ -59,7 +59,20 @@ import hmac
 from dataclasses import dataclass
 from typing import Any
 
-from src.connectors import InventoryLevel, Order, OrderLine, Product
+from src.connectors import (
+    COVERAGE_DERIVED,
+    COVERAGE_MEASURED,
+    FieldCoverage,
+    InventoryLevel,
+    Order,
+    OrderLine,
+    Product,
+    ServiceCoverage,
+)
+
+#: La base de la API v1. Se fija aca y no en cada llamada para que ``live_http`` sea el
+#: unico lugar del proyecto que la conoce.
+API_BASE = "https://api.unleashedsoftware.com"
 
 
 class UnleashedError(RuntimeError):
@@ -414,3 +427,50 @@ def shipments_by_line(filas: list[dict]) -> dict[tuple[str, int], _Shipped]:
                 max([d for d in (previo.dispatched, salida) if d], default=None),
             )
     return acumulado
+
+
+def live_http(creds: UnleashedCredentials, *, timeout: float = 30.0) -> Any:
+    """El cliente httpx apuntado a la API de Unleashed.
+
+    ``creds`` no se consume aca: la firma se calcula por request en ``fetch_pages``, porque
+    depende de la query string de ESE request. Aqui solo se fija la base y el timeout --
+    acotado y no infinito, porque esta lectura puede correr dentro de un request web y una
+    cuenta que no contesta tiene que soltar el hilo en vez de quedarselo.
+    """
+    try:
+        import httpx
+    except ImportError as exc:  # pragma: no cover - depende del extra instalado
+        raise UnleashedError(
+            "httpx es necesario para hablar con Unleashed -- instala el extra que lo trae, "
+            "o inyecta un transporte con http= (los tests lo hacen)"
+        ) from exc
+    return httpx.Client(base_url=API_BASE, timeout=timeout, headers={"client-type": creds.client_type})
+
+
+#: Lo que Unleashed puede y no puede medir del servicio al cliente. Verificado contra la
+#: doc del vendor el 2026-08-29; ``tests/test_connector_service_contract.py`` lo CORRE
+#: contra este adaptador en vez de leerlo.
+SERVICE_COVERAGE = ServiceCoverage(
+    backend="Unleashed (API v1: /SalesOrders + /SalesShipments)",
+    delivered_qty=FieldCoverage(
+        COVERAGE_DERIVED,
+        "SalesShipmentLine.ShipmentQty, sumada por (OrderNumber, SalesOrderLineNumber)",
+        "unidades que SALIERON de la linea, sumando despachos parciales. No esta en "
+        "/SalesOrders: sin leer /SalesShipments queda en None, que es 'no lo medimos' y no "
+        "un 0% de fill rate",
+    ),
+    promised_date=FieldCoverage(
+        COVERAGE_MEASURED,
+        "SalesOrder.RequiredDate",
+        "la fecha que el cliente pidio, a nivel ORDEN y replicada a sus lineas. Vacia es lo "
+        "habitual, y saca la linea de OTIF en vez de medirla contra OrderDate",
+    ),
+    delivered_date=FieldCoverage(
+        COVERAGE_DERIVED,
+        "SalesShipment.DispatchDate del ultimo despacho de la linea "
+        "(SalesOrder.CompletedDate cuando no se leyeron despachos)",
+        "la fecha de DESPACHO, no de llegada. Unleashed no registra ninguna llegada: no "
+        "tiene recurso de entrega y sus dos fechas son salidas. El OTIF que sale de aca "
+        "mide despachar antes de la fecha pedida, no llegar antes de ella",
+    ),
+)
