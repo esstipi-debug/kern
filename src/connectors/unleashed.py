@@ -272,6 +272,29 @@ class UnleashedConnector:
         """
         return self._to_orders(self._read("SalesOrders", self._order_params(since)))
 
+    def orders_with_shipments(self, *, since: str | None = None) -> list[Order]:
+        """Las ordenes CON lo que realmente salio: la lectura completa del servicio.
+
+        Dos llamadas en vez de una, y es la unica forma: ``/SalesOrders`` no tiene cantidad
+        despachada y ``/SalesShipments`` no tiene lo pedido. Con las dos, este adaptador
+        mide fill rate y OTIF de salida -- que es exactamente lo que la competencia del
+        anillo 2 verificada el 2026-08-29 (Netstock, StockTrim) no puede medir.
+
+        La MISMA ventana ``since`` filtra las dos lecturas, a proposito: dos ventanas
+        distintas dan un fill rate calculado sobre un universo de ordenes y unos despachos
+        sobre otro, y esa diferencia no se ve en ninguna de las dos salidas por separado.
+
+        Una linea sin despacho queda en ``None``, no en 0.0, incluso dentro de una lectura
+        donde otras si lo tienen: esa orden puede salir manana.
+        """
+        envios: dict[str, Any] = {"pageSize": _PAGE_SIZE}
+        if since is not None:
+            envios["startDate"] = since
+        despachos = shipments_by_line(self._read("SalesShipments", envios))
+        return self._to_orders(
+            self._read("SalesOrders", self._order_params(since)), despachos=despachos
+        )
+
     def _order_params(self, since: str | None) -> dict[str, Any]:
         params: dict[str, Any] = {
             "pageSize": _PAGE_SIZE,
@@ -282,7 +305,7 @@ class UnleashedConnector:
         return params
 
     def _to_orders(
-        self, filas: list[dict], despachos: dict | None = None
+        self, filas: list[dict], despachos: dict[tuple[str, int], _Shipped] | None = None
     ) -> list[Order]:
         """Las filas crudas -> ``Order`` canonicos, ordenados por fecha.
 
@@ -337,3 +360,57 @@ class UnleashedConnector:
             if lineas:
                 salida.append(Order(numero, creada, tuple(lineas)))
         return sorted(salida, key=lambda o: o.created_at)
+
+
+#: Los estados de despacho que efectivamente sacaron mercaderia. Uno borrado trae cantidad
+#: igual, y sumarlo da un fill rate mayor a uno sobre unidades que nunca salieron.
+_SHIPPED_STATUSES = ("Completed", "Dispatched", "Shipped", "Placed")
+
+
+@dataclass(frozen=True)
+class _Shipped:
+    """Lo que salio de UNA linea de orden, sumado sobre todos sus despachos."""
+
+    qty: float
+    #: La fecha del ULTIMO despacho que la sirvio. Es DESPACHO, no llegada.
+    dispatched: str | None
+
+
+def shipments_by_line(filas: list[dict]) -> dict[tuple[str, int], _Shipped]:
+    """``/SalesShipments`` -> ``{(OrderNumber, SalesOrderLineNumber): _Shipped}``.
+
+    Se SUMA por linea porque Unleashed admite despachos parciales: una linea servida en dos
+    camiones tiene dos ``SalesShipmentLine``, y quedarse con el ultimo reporta como quiebre
+    lo que si se sirvio. La fecha, en cambio, es la del ULTIMO: la linea no termino de
+    salir hasta ese camion, y usar la del primero declara a tiempo una orden que se
+    completo tres dias despues.
+
+    El empalme es por ``SalesOrderLineNumber`` y no por ``ProductCode``: una orden puede
+    llevar el mismo SKU en dos lineas (precios o depositos distintos), y empalmar por
+    producto le adjudicaria a una lo que salio de la otra.
+    """
+    acumulado: dict[tuple[str, int], _Shipped] = {}
+    for envio in filas:
+        if (_text(envio.get("ShipmentStatus")) or "") not in _SHIPPED_STATUSES:
+            continue
+        numero = _text(envio.get("OrderNumber"))
+        if numero is None:
+            continue
+        salida = _iso_date(envio.get("DispatchDate"))
+        for ln in envio.get("SalesShipmentLines") or []:
+            linea = ln.get("SalesOrderLineNumber")
+            cantidad = _number(ln.get("ShipmentQty"))
+            if linea is None or cantidad is None:
+                continue
+            clave = (numero, int(linea))
+            previo = acumulado.get(clave)
+            if previo is None:
+                acumulado[clave] = _Shipped(cantidad, salida)
+                continue
+            acumulado[clave] = _Shipped(
+                previo.qty + cantidad,
+                # ``max`` sobre las que existen: un despacho sin fecha no borra la del otro
+                # camion, y tampoco se le inventa una al que no la trajo.
+                max([d for d in (previo.dispatched, salida) if d], default=None),
+            )
+    return acumulado

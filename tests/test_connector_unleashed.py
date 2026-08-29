@@ -290,3 +290,126 @@ def test_without_shipments_the_delivered_quantity_is_none_not_zero():
     que nadie midio, y rellenarla con lo pedido le regala un 100%."""
     lineas = [ln for o in _connector().orders() for ln in o.lines]
     assert lineas and all(ln.delivered_qty is None for ln in lineas)
+
+
+# -- el empalme de despachos ----------------------------------------------------
+
+from src.connectors import realized_service  # noqa: E402
+from src.connectors.unleashed import shipments_by_line  # noqa: E402
+
+#: SO-1 linea 1 salio en DOS camiones (6 + 2 de 10 pedidas), el ultimo el 12.
+#: SO-1 linea 2 salio entera el 9. SO-2 no tiene ningun despacho.
+#: SH-3 esta BORRADA y trae 99 unidades que nunca salieron.
+_SHIPMENTS = [
+    {
+        "ShipmentNumber": "SH-1", "OrderNumber": "SO-1", "ShipmentStatus": "Completed",
+        "DispatchDate": "2026-01-09T00:00:00",
+        "SalesShipmentLines": [
+            {"LineNumber": 1, "SalesOrderLineNumber": 1,
+             "Product": {"ProductCode": "SKU-1"}, "ShipmentQty": 6.0},
+            {"LineNumber": 2, "SalesOrderLineNumber": 2,
+             "Product": {"ProductCode": "SKU-2"}, "ShipmentQty": 4.0},
+        ],
+    },
+    {
+        "ShipmentNumber": "SH-2", "OrderNumber": "SO-1", "ShipmentStatus": "Completed",
+        "DispatchDate": "2026-01-12T00:00:00",
+        "SalesShipmentLines": [
+            {"LineNumber": 1, "SalesOrderLineNumber": 1,
+             "Product": {"ProductCode": "SKU-1"}, "ShipmentQty": 2.0},
+        ],
+    },
+    {
+        "ShipmentNumber": "SH-3", "OrderNumber": "SO-1", "ShipmentStatus": "Deleted",
+        "DispatchDate": "2026-01-08T00:00:00",
+        "SalesShipmentLines": [
+            {"LineNumber": 1, "SalesOrderLineNumber": 1,
+             "Product": {"ProductCode": "SKU-1"}, "ShipmentQty": 99.0},
+        ],
+    },
+]
+
+
+def _connector_con_despachos() -> UnleashedConnector:
+    return _connector(SalesShipments=_SHIPMENTS)
+
+
+def test_partial_shipments_of_one_line_are_summed():
+    """Seis mas dos, no dos. Quedarse con el ultimo despacho reporta un quiebre de ocho
+    unidades sobre una linea que se sirvio en dos camiones."""
+    porlinea = shipments_by_line(_SHIPMENTS)
+    assert porlinea[("SO-1", 1)].qty == 8.0
+
+
+def test_the_dispatch_date_of_a_line_is_the_last_one_that_served_it():
+    """Con la del PRIMER camion, una orden partida declara a tiempo lo que termino de
+    salir tres dias despues."""
+    assert shipments_by_line(_SHIPMENTS)[("SO-1", 1)].dispatched == "2026-01-12"
+
+
+def test_a_deleted_shipment_never_shipped_anything():
+    """SH-3 trae 99 unidades y esta borrada. Sumarla da un fill rate mayor a uno."""
+    assert shipments_by_line(_SHIPMENTS)[("SO-1", 1)].qty == 8.0
+
+
+def test_the_join_is_by_order_line_number_not_by_product_code():
+    """Una orden puede llevar el mismo SKU en dos lineas (precios o depositos distintos).
+    Empalmar por producto le adjudica a una lo que salio de la otra."""
+    porlinea = shipments_by_line(_SHIPMENTS)
+    assert set(porlinea) == {("SO-1", 1), ("SO-1", 2)}
+    assert porlinea[("SO-1", 2)].qty == 4.0
+
+
+def test_the_delivered_quantity_arrives_on_the_line():
+    so1 = next(o for o in _connector_con_despachos().orders_with_shipments()
+               if o.order_id == "SO-1")
+    porsku = {ln.sku: ln for ln in so1.lines}
+    assert porsku["SKU-1"].delivered_qty == 8.0
+    assert porsku["SKU-2"].delivered_qty == 4.0
+
+
+def test_a_line_with_no_shipment_stays_none_even_when_others_shipped():
+    """El caso que separa este adaptador de uno que miente: SO-2 no tiene despacho, y
+    dentro de la MISMA lectura donde SO-1 si lo tiene. Un 0.0 aca es un quiebre total
+    inventado sobre una orden que quiza salga manana."""
+    so2 = next(o for o in _connector_con_despachos().orders_with_shipments()
+               if o.order_id == "SO-2")
+    assert all(ln.delivered_qty is None for ln in so2.lines)
+    assert all(ln.delivered_date is None for ln in so2.lines)
+
+
+def test_the_delivered_date_is_the_dispatch_not_the_order_completion():
+    """``CompletedDate`` cierra la ORDEN entera; el despacho es por linea. Con despachos
+    leidos gana el despacho, o una linea que salio el 9 hereda el 12 de su vecina."""
+    so1 = next(o for o in _connector_con_despachos().orders_with_shipments()
+               if o.order_id == "SO-1")
+    porsku = {ln.sku: ln for ln in so1.lines}
+    assert porsku["SKU-1"].delivered_date == "2026-01-12"
+    assert porsku["SKU-2"].delivered_date == "2026-01-09"
+
+
+def test_the_shipment_read_is_filtered_by_the_same_window_as_the_orders():
+    """Dos ventanas distintas dan un fill rate calculado sobre un universo de ordenes y
+    unos despachos sobre otro, y esa diferencia no se ve en ninguna de las dos salidas."""
+    conector = _connector_con_despachos()
+    conector.orders_with_shipments(since="2026-01-06")
+    despachos = [params for path, params in conector._http.calls if "SalesShipments" in path]
+    assert despachos and despachos[0].get("startDate") == "2026-01-06"
+
+
+def test_the_whole_chain_produces_a_measured_fill_rate_and_otif():
+    """La prueba de que esto sirve para algo: adaptador -> realized_service -> numeros.
+
+    SKU-1 aparece en dos ordenes: 10 pedidas en SO-1 (8 servidas, salidas el 12 contra
+    una promesa del 10) y 5 en SO-2 (sin despacho, y por eso FUERA del denominador). El
+    fill rate es 8/10, no 8/15: la linea que nadie midio no puntua cero.
+    SKU-2 sirvio 4 de 4 y salio el 9, antes del 10: OTIF 1.
+    """
+    registros = {r.product_id: r
+                 for r in realized_service(_connector_con_despachos().orders_with_shipments())}
+    assert registros["SKU-1"].fill_rate == pytest.approx(0.8)
+    assert registros["SKU-1"].lines_scored == 1
+    assert registros["SKU-1"].otif == 0.0
+    assert registros["SKU-2"].fill_rate == 1.0
+    assert registros["SKU-2"].otif == 1.0
+    assert registros["SKU-1"].provenance == "observed"
