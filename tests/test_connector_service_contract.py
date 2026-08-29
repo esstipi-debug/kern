@@ -104,11 +104,7 @@ from src.connectors.http_client import StoreApiClient  # noqa: E402
 from src.connectors.mcp_source import McpInventorySource  # noqa: E402
 from src.connectors.odoo import InMemoryOdoo, OdooConnector  # noqa: E402
 from src.connectors.simulator import demo_store  # noqa: E402
-from src.connectors.unleashed import UnleashedConnector  # noqa: E402
-from tests.test_connector_unleashed import _CREDS as _UNLEASHED_CREDS  # noqa: E402
-from tests.test_connector_unleashed import _ORDERS as _UNLEASHED_ORDERS  # noqa: E402
-from tests.test_connector_unleashed import _SHIPMENTS as _UNLEASHED_SHIPMENTS  # noqa: E402
-from tests.test_connector_unleashed import RoutedHttp as _UnleashedHttp  # noqa: E402
+from src.connectors.unleashed import UnleashedConnector, UnleashedCredentials  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -184,6 +180,60 @@ def _odoo():
     )
 
 
+class _UnleashedHttp:
+    """El transporte de mentira de Unleashed: sirve un payload por recurso pedido.
+
+    Local a este archivo, igual que el fixture de Odoo y por la misma razon: un fixture
+    editado en ``tests/test_connector_unleashed.py`` no debe poder debilitar este guard en
+    silencio. Los dos archivos describen la misma cuenta a proposito; si divergen, es este
+    el que manda, porque es el que verifica la afirmacion que se le hace a un cliente.
+    """
+
+    class _Response:
+        def __init__(self, payload: dict) -> None:
+            self._payload = payload
+            self.status_code = 200
+
+        def json(self) -> dict:
+            return self._payload
+
+    def __init__(self, by_resource: dict[str, list[dict]]) -> None:
+        self._by_resource = by_resource
+
+    def get(self, path, *, params=None, headers=None):
+        items = self._by_resource.get(path.strip("/").split("/")[0], [])
+        return _UnleashedHttp._Response(
+            {"Pagination": {"NumberOfPages": 1, "PageNumber": 1}, "Items": items}
+        )
+
+
+#: Una orden pedida el 5, prometida para el 10, servida corta (8 de 10) en dos despachos,
+#: el ultimo el 12. Alcanza el techo que la declaracion de Unleashed reclama: las tres
+#: columnas llegan con valor en al menos una linea.
+_UNLEASHED_ORDERS = [
+    {
+        "OrderNumber": "SO-1", "OrderDate": "2026-01-05T00:00:00",
+        "RequiredDate": "2026-01-10T00:00:00", "CompletedDate": "2026-01-12T00:00:00",
+        "OrderStatus": "Completed",
+        "SalesOrderLines": [
+            {"LineNumber": 1, "Product": {"ProductCode": "SKU-1"},
+             "OrderQuantity": 10.0, "UnitPrice": 20.0},
+        ],
+    },
+]
+
+_UNLEASHED_SHIPMENTS = [
+    {
+        "ShipmentNumber": "SH-1", "OrderNumber": "SO-1", "ShipmentStatus": "Completed",
+        "DispatchDate": "2026-01-12T00:00:00",
+        "SalesShipmentLines": [
+            {"LineNumber": 1, "SalesOrderLineNumber": 1,
+             "Product": {"ProductCode": "SKU-1"}, "ShipmentQty": 8.0},
+        ],
+    },
+]
+
+
 class _UnleashedAdapter:
     """Unleashed leido ENTERO: ordenes mas despachos.
 
@@ -197,7 +247,7 @@ class _UnleashedAdapter:
         self._conector = UnleashedConnector(
             _UnleashedHttp({"SalesOrders": _UNLEASHED_ORDERS,
                             "SalesShipments": _UNLEASHED_SHIPMENTS}),
-            _UNLEASHED_CREDS,
+            UnleashedCredentials(api_id="guard", api_key="guard"),
         )
 
     def orders(self, *, since: str | None = None):
