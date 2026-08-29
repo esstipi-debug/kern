@@ -78,6 +78,84 @@ class OrderLine:
     delivered_date: str | None = None
 
 
+#: The backend reports this field directly, as its own column.
+COVERAGE_MEASURED = "measured"
+#: The backend has no such column, but the value is computable from ones it does have
+#: (Shopify's ordered-minus-unfulfilled, Unleashed's shipment join). Still a number and
+#: still a measurement - the deduction is named in ``FieldCoverage.source``.
+COVERAGE_DERIVED = "derived"
+#: The backend has nothing that can produce this field. It is always ``None``, every line,
+#: forever - not a gap in this adapter but a gap in the system of record.
+COVERAGE_UNAVAILABLE = "unavailable"
+
+_COVERAGE_STATUSES = (COVERAGE_MEASURED, COVERAGE_DERIVED, COVERAGE_UNAVAILABLE)
+
+
+@dataclass(frozen=True)
+class FieldCoverage:
+    """What one adapter can say about one service field, and what the number MEANS.
+
+    ``means`` is not decoration. Odoo's delivery date is a stock move, Unleashed's is a
+    dispatch, Shopify's is a carrier-confirmed arrival: three different facts arriving in
+    the same attribute. A client reconciling an OTIF against their own numbers needs that
+    sentence, and whoever adds the fourth backend needs it more.
+    """
+
+    #: One of the ``COVERAGE_*`` constants.
+    status: str
+    #: The backend field(s) this comes from, spelled as the vendor spells them.
+    source: str
+    #: What the value actually is, in a sentence. Required even when nothing is reported -
+    #: especially then, because that sentence is the finding.
+    means: str
+
+    def __post_init__(self) -> None:
+        if self.status not in _COVERAGE_STATUSES:
+            raise ValueError(
+                f"status {self.status!r} is not one of {_COVERAGE_STATUSES}: a field is "
+                "either reported by the backend, deduced from it, or absent from it."
+            )
+        if not self.means.strip():
+            raise ValueError(
+                "means must say what the number is, or - for an unavailable field - what "
+                "the backend has instead. That sentence is the point of the declaration."
+            )
+        if self.reports and not self.source.strip():
+            raise ValueError(
+                "source must name the backend field a reported value comes from: a number "
+                "a client cannot trace back to their own system is one they cannot check."
+            )
+
+    @property
+    def reports(self) -> bool:
+        """Whether a line from this adapter may carry a value here at all."""
+        return self.status in (COVERAGE_MEASURED, COVERAGE_DERIVED)
+
+
+@dataclass(frozen=True)
+class ServiceCoverage:
+    """An adapter's field-by-field answer to "what customer service can you measure?".
+
+    Every adapter exports one as a module-level ``SERVICE_COVERAGE``, and
+    ``tests/test_connector_service_contract.py`` RUNS it against the adapter rather than
+    reading it. The three fields are the three optional ones on ``OrderLine``; there is no
+    default and none may be omitted, because the omission is exactly the claim being made.
+    """
+
+    backend: str
+    delivered_qty: FieldCoverage
+    promised_date: FieldCoverage
+    delivered_date: FieldCoverage
+
+    def fields(self) -> dict[str, FieldCoverage]:
+        """Keyed by ``OrderLine`` attribute name, so a caller can zip the two together."""
+        return {
+            "delivered_qty": self.delivered_qty,
+            "promised_date": self.promised_date,
+            "delivered_date": self.delivered_date,
+        }
+
+
 @dataclass(frozen=True)
 class ScheduledReceipt:
     """Units already bought and not yet received: what is on its way in.
