@@ -88,3 +88,166 @@ def test_coverage_exposes_exactly_the_three_service_fields_by_name():
     )
     assert set(coverage.fields()) == {"delivered_qty", "promised_date", "delivered_date"}
     assert coverage.fields()["delivered_date"].reports is False
+
+
+# -- the adapters under test ----------------------------------------------------
+
+import importlib  # noqa: E402
+from dataclasses import dataclass  # noqa: E402
+from typing import Callable  # noqa: E402
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from src.connectors import Order  # noqa: E402
+from src.connectors.emulator import create_app  # noqa: E402
+from src.connectors.http_client import StoreApiClient  # noqa: E402
+from src.connectors.mcp_source import McpInventorySource  # noqa: E402
+from src.connectors.odoo import InMemoryOdoo, OdooConnector  # noqa: E402
+from src.connectors.simulator import demo_store  # noqa: E402
+
+
+@dataclass(frozen=True)
+class AdapterCase:
+    """An adapter, the module that declares its coverage, and a fixture rich enough to
+    exercise every field the declaration claims.
+
+    A thin fixture is how a TRUE declaration fails here: the guard cannot tell "this
+    backend cannot report it" from "this fixture forgot to". Each ``build`` below
+    therefore produces at least one line carrying every field its adapter claims.
+    """
+
+    name: str
+    module: str
+    build: Callable[[], object]
+
+
+def _simulator():
+    return demo_store()
+
+
+def _http_client():
+    return StoreApiClient(TestClient(create_app(demo_store())))
+
+
+#: One order the way an MCP server publishes it, with all three service keys present so
+#: the fixture reaches the ceiling the declaration claims.
+_MCP_ORDERS = [
+    {
+        "order_id": "SO-1",
+        "created_at": "2026-01-05",
+        "lines": [
+            {"sku": "SKU-1", "quantity": 10.0, "price": 20.0, "delivered_qty": 8.0,
+             "promised_date": "2026-01-10", "delivered_date": "2026-01-12"},
+        ],
+    }
+]
+
+
+def _mcp():
+    return McpInventorySource(lambda name, args: _MCP_ORDERS)
+
+
+def _odoo():
+    """A confirmed order promised for the 10th, served short, shipped on the 12th.
+
+    Same shape as ``tests/test_connector_odoo_service.py`` and kept local on purpose: a
+    fixture edited over there must not be able to silently weaken this guard.
+    """
+    return OdooConnector(
+        InMemoryOdoo(
+            {
+                "product.product": {
+                    1: {"default_code": "SKU-1", "name": "Widget",
+                        "list_price": 20.0, "standard_price": 12.0},
+                },
+                "sale.order": {
+                    200: {"name": "S0001", "date_order": "2026-01-05 10:00:00",
+                          "commitment_date": "2026-01-10 00:00:00", "state": "sale",
+                          "order_line": [300]},
+                },
+                "sale.order.line": {
+                    300: {"product_id": [1, "Widget"], "product_uom_qty": 10.0,
+                          "price_unit": 20.0, "qty_delivered": 8.0},
+                },
+                "stock.picking.type": {50: {"code": "outgoing"}},
+                "stock.move": {
+                    600: {"sale_line_id": [300, "S0001"], "state": "done",
+                          "date": "2026-01-12 11:00:00", "picking_type_id": [50, "Delivery"]},
+                },
+            }
+        )
+    )
+
+
+ADAPTERS: tuple[AdapterCase, ...] = (
+    AdapterCase("simulator", "src.connectors.simulator", _simulator),
+    AdapterCase("http_client", "src.connectors.http_client", _http_client),
+    AdapterCase("mcp_source", "src.connectors.mcp_source", _mcp),
+    AdapterCase("odoo", "src.connectors.odoo", _odoo),
+)
+
+
+@pytest.fixture(params=ADAPTERS, ids=lambda case: case.name)
+def adapter(request) -> AdapterCase:
+    return request.param
+
+
+def _coverage(module_name: str) -> ServiceCoverage:
+    module = importlib.import_module(module_name)
+    declared = getattr(module, "SERVICE_COVERAGE", None)
+    assert isinstance(declared, ServiceCoverage), (
+        f"{module_name} implements orders() but declares no SERVICE_COVERAGE. Every "
+        "adapter says field by field what service it can measure; silence reads as a "
+        "capability nobody checked."
+    )
+    return declared
+
+
+def _observed(orders: list[Order]) -> dict[str, bool]:
+    """Per service field: did ANY line come back carrying a value?
+
+    ``any``, not ``all``: a real backend leaves the promise blank on the orders nobody
+    promised a date for, and that is correct behaviour rather than a broken claim. The
+    declaration describes the adapter's ceiling, so one line reaching it is proof.
+    """
+    lines = [line for order in orders for line in order.lines]
+    return {
+        field: any(getattr(line, field) is not None for line in lines)
+        for field in ("delivered_qty", "promised_date", "delivered_date")
+    }
+
+
+# -- the contract ---------------------------------------------------------------
+
+
+def test_every_adapter_declares_all_three_service_fields(adapter: AdapterCase):
+    coverage = _coverage(adapter.module)
+    assert set(coverage.fields()) == {"delivered_qty", "promised_date", "delivered_date"}
+    assert coverage.backend.strip(), "a declaration must name the backend it describes"
+
+
+def test_a_field_declared_unavailable_never_comes_back_with_a_value(adapter: AdapterCase):
+    """The direction that protects the client. An adapter that quietly starts filling a
+    field it declared absent is filling it with something, and the something is a guess."""
+    coverage = _coverage(adapter.module)
+    observed = _observed(adapter.build().orders())
+    for name, field in coverage.fields().items():
+        if not field.reports:
+            assert observed[name] is False, (
+                f"{adapter.name} declares {name} {field.status} ({field.means}) but a line "
+                "came back carrying one. Either the backend gained the field - update the "
+                "declaration - or the adapter is inventing it."
+            )
+
+
+def test_a_field_declared_reportable_actually_arrives(adapter: AdapterCase):
+    """The direction that protects the differentiator. A declaration is a sales claim, and
+    this is the only thing standing between it and a slide."""
+    coverage = _coverage(adapter.module)
+    observed = _observed(adapter.build().orders())
+    for name, field in coverage.fields().items():
+        if field.reports:
+            assert observed[name] is True, (
+                f"{adapter.name} declares {name} {field.status} from {field.source!r}, but "
+                "no line in its own fixture carried one."
+            )

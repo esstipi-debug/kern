@@ -53,7 +53,17 @@ from typing import Any, Protocol, runtime_checkable
 import pandas as pd
 from nosilo_core import writeback
 
-from src.connectors import InventoryLevel, Order, OrderLine, Product, ScheduledReceipt
+from src.connectors import (
+    COVERAGE_DERIVED,
+    COVERAGE_MEASURED,
+    FieldCoverage,
+    InventoryLevel,
+    Order,
+    OrderLine,
+    Product,
+    ScheduledReceipt,
+    ServiceCoverage,
+)
 from src.supplier_scorecard import LEAD_TIME_MEASURED
 
 # Odoo ORM methods that only read: safe to retry on a transient transport error,
@@ -1600,3 +1610,30 @@ def demo_odoo() -> InMemoryOdoo:
             _M_ORDERPOINT: {},
         }
     )
+
+
+#: Lo que un Odoo estandar puede medir del servicio AL CLIENTE. Las tres columnas
+#: existen y las tres son opcionales en una base viva -- por eso ``OdooConnector`` sondea
+#: cada campo antes de pedirlo (``_has_field``) y cada ausencia viaja como ``None``.
+SERVICE_COVERAGE = ServiceCoverage(
+    backend="Odoo (XML-RPC, modelos estandar de Ventas e Inventario)",
+    delivered_qty=FieldCoverage(
+        COVERAGE_MEASURED,
+        "sale.order.line.qty_delivered",
+        "unidades entregadas de la linea; el campo llega con el puente Ventas-Inventario, "
+        "y sin ese puente el servicio sale no medido en vez de cero",
+    ),
+    promised_date=FieldCoverage(
+        COVERAGE_MEASURED,
+        "sale.order.commitment_date",
+        "la fecha comprometida de la ORDEN, replicada a sus lineas. En blanco es lo "
+        "habitual, y saca la linea de OTIF en vez de medirla contra date_order",
+    ),
+    delivered_date=FieldCoverage(
+        COVERAGE_DERIVED,
+        "stock.move (state=done, picking_type=outgoing) -> max(date) por linea",
+        "la fecha del ULTIMO despacho que sirvio la linea. Es DESPACHO, no llegada: Odoo "
+        "no registra la recepcion del cliente, asi que este OTIF mide salir a tiempo del "
+        "deposito y no llegar a tiempo",
+    ),
+)
