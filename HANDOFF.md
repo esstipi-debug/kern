@@ -61,31 +61,42 @@ superada.
 - Las referencias de linea en `documentation/KERN_BRECHAS_DE_CAPACIDAD.md` quedaron corridas 13
   lineas y ningun test las cubre.
 
-### **Lo que sigue de verdad: el piloto**
+### **Lo que sigue de verdad: el piloto — AU/NZ self-serve, NO congelados-CL**
+
+> **CORRECCION del 2026-08-28, misma ventana.** La version original de esta seccion mandaba a
+> producir el peldano 0 de la escalera de congelados-CL (radiografia de TodoFrio). **Estaba mal**,
+> y el usuario lo corrigio: la decision del **2026-08-05** ya habia descartado ese vertical **por
+> nombre**. Se ejecuto una hora sobre una estrategia cancelada porque se leyo la memoria del 24-jul
+> como vigente sin buscar una posterior que la mencionara. **Regla: antes de ejecutar sobre una
+> memoria de estrategia, buscar una posterior que la nombre.** Las memorias no se invalidan solas.
+
 Kern esta **listo y no probado**. `/api/health` sirve `skus: 8`, cero usuarios externos, ningun
-dato ajeno entro nunca. Nada de lo cerrado hoy mueve eso: son todos la columna del codigo, que ya
-era la fuerte.
+dato ajeno entro nunca.
 
-**No hay plan nuevo que disenar.** La escalera de friccion de la estrategia de congelados-CL
-(2026-07-24) ya lo define, y su **peldano 0 nunca se produjo**: la radiografia gratis de TodoFrio
-—`price_intelligence` + `data_quality` + `disruption_scan`, las tres unicas tools verificadas que
-no piden datos del cliente— sale de su vidriera publica. Verificado con grep: "TodoFrio" solo
-aparece en los docs de contenido de LinkedIn.
+**La via correcta** (decision 2026-08-05): producto = software que el cliente corre solo, beachhead
+**AU/NZ via Cin7/Unleashed**. El piloto es alguien alla que ya usa Cin7 o Unleashed haciendo
+`docker run` de una imagen prebuilt de GHCR contra sus propios datos. `pull`, nunca `build`, para
+que no necesite el token del core privado. Contrato del cliente = `KERN_DATA_DIR` + `PORT` +
+`KERN_API_KEY`.
 
-**Estado: nada producido, nadie contactado.** Producir y contactar son dos decisiones distintas;
-la segunda necesita aprobacion explicita del operador.
+**Estado real de esa via, verificado hoy — casi nada existe:**
+- Sin imagen publicada: `ghcr.io/v2/esstipi-debug/kern/tags/list` -> 403, y no hay workflow que la
+  publique (`.github/workflows/` tiene solo `tests.yml` y `price-watch-cron.yml`).
+- La spec `docs/superpowers/specs/2026-08-05-self-hosted-image-packaging.md` que la decision cita
+  **no esta en el arbol**. Buscada por nombre y por patron.
+- **32 variables `LINCHPIN_*`** contra las 3 del contrato prometido.
+- `docs/positioning-self-serve` sigue pusheada y sin PR desde el 5-ago.
+- Lo unico desplegado es hosted single-tenant, que esa misma decision descarto como via self-serve.
 
-Antes de producir, dos chequeos:
-1. El escaneo que ordeno los 5 catalogos tiene **cinco semanas**. El 52,2% de quiebre publicado de
-   TodoFrio puede haberse movido, y presentarse con un numero viejo viola la objecion #1 de la
-   propia doctrina ("el quiebre publicado es estado de publicacion, no inventario — se pregunta,
-   no se afirma"). Re-escanear primero.
-2. La **veda** es el cierre natural del peldano 1 y no lo pone el vendedor. Falta mirar cuando cae
-   la proxima para las especies que TodoFrio vende.
+**El primer paso no es buscar cliente: es que exista algo que un cliente pueda correr.** Imagen,
+contrato de 3 variables, camino de onboarding. Recien despues, el canal.
 
-**Correccion registrada:** en esta ventana se propuso un "piloto gratis de dos semanas". La
-doctrina previa gana y es mejor: el cliente #1 **paga precio de piloto** a cambio de ser caso de
-referencia **nombrado**. Regalarlo transmite cero.
+**Del desvio quedo material utilizable, para no rehacerlo:** la radiografia de Mariscos De La Concha
+quedo en `Music/scm/radiografia-mdlc-2026-08-28.md` con su catalogo crudo al lado. Los datos son
+correctos y reproducibles (29,2% de variantes agotadas, 26,4% sin SKU, el SKU `MAFI` compartido por
+las variantes de 0,5 y 1 kg del mismo producto); el objetivo es el equivocado, y ademas con 170
+productos es demasiado chico. Hay una tarea programada `todofrio-vigilancia` 2x/dia que conviene
+apagar salvo que congelados-CL vuelva a estar en juego.
 
 ## 2026-08-28 — DESBLOQUEADO el deploy: la POLICY de acceso existe (rama `feat/policy-boot`, sin mergear)
 
