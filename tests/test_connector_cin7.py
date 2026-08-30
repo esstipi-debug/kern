@@ -128,3 +128,130 @@ def test_un_401_levanta_en_vez_de_devolver_una_lectura_vacia():
 
 def test_el_rate_limited_es_un_cin7_error_para_que_un_solo_except_alcance():
     assert issubclass(Cin7RateLimited, Cin7Error)
+
+
+# -- el empalme de dos saltos: SKU -> caja -> fecha de despacho ------------------
+
+from src.connectors.cin7 import shipped_by_sku  # noqa: E402
+
+
+def _venta(fulfilments: list[dict], *, shipping_status: str = "SHIPPED") -> dict:
+    return {
+        "ID": "sale-1",
+        "CombinedShippingStatus": shipping_status,
+        "Order": {"Lines": []},
+        "Fulfilments": fulfilments,
+    }
+
+
+def _fulfilment(pack: list[dict], ship: list[dict]) -> dict:
+    return {
+        "TaskID": "task-1",
+        "Pack": {"Status": "AUTHORISED", "Lines": pack},
+        "Ship": {"Status": "AUTHORISED", "Lines": ship},
+    }
+
+
+def test_una_caja_empacada_y_enviada_da_cantidad_y_fecha():
+    venta = _venta([
+        _fulfilment(
+            pack=[{"SKU": "SKU-1", "Box": "Box 1", "Quantity": 6}],
+            ship=[{"Boxes": "Box 1", "ShipmentDate": "2026-01-12T00:00:00", "IsShipped": True}],
+        )
+    ])
+    servido = shipped_by_sku(venta)
+    assert servido["SKU-1"].qty == 6.0
+    assert servido["SKU-1"].dispatched == "2026-01-12"
+
+
+def test_empacar_no_es_despachar():
+    """La caja esta armada y sigue en el deposito. Contarla adelanta el servicio a un
+    momento en que el cliente todavia no recibio nada."""
+    venta = _venta([
+        _fulfilment(
+            pack=[{"SKU": "SKU-1", "Box": "Box 1", "Quantity": 6}],
+            ship=[{"Boxes": "Box 1", "ShipmentDate": "2026-01-12T00:00:00", "IsShipped": False}],
+        )
+    ])
+    assert shipped_by_sku(venta) == {}
+
+
+def test_una_caja_empacada_que_no_aparece_en_ningun_ship_queda_afuera():
+    venta = _venta([
+        _fulfilment(
+            pack=[{"SKU": "SKU-1", "Box": "Box 9", "Quantity": 6}],
+            ship=[{"Boxes": "Box 1", "ShipmentDate": "2026-01-12T00:00:00", "IsShipped": True}],
+        )
+    ])
+    assert shipped_by_sku(venta) == {}
+
+
+def test_dos_fulfilments_parciales_del_mismo_sku_se_suman():
+    """El despacho multiple es la razon por la que el handoff eligio mirar Cin7. Quedarse
+    con el ultimo fulfilment reporta como quiebre lo que si se sirvio."""
+    venta = _venta([
+        _fulfilment(
+            pack=[{"SKU": "SKU-1", "Box": "Box 1", "Quantity": 6}],
+            ship=[{"Boxes": "Box 1", "ShipmentDate": "2026-01-09T00:00:00", "IsShipped": True}],
+        ),
+        _fulfilment(
+            pack=[{"SKU": "SKU-1", "Box": "Box 2", "Quantity": 2}],
+            ship=[{"Boxes": "Box 2", "ShipmentDate": "2026-01-12T00:00:00", "IsShipped": True}],
+        ),
+    ])
+    servido = shipped_by_sku(venta)
+    assert servido["SKU-1"].qty == 8.0
+    # La fecha es la del ULTIMO: la linea no termino de salir hasta ese camion, y usar la
+    # del primero declara a tiempo una orden que se completo tres dias despues.
+    assert servido["SKU-1"].dispatched == "2026-01-12"
+
+
+def test_un_ship_con_varias_cajas_en_un_solo_texto_empalma_con_todas():
+    """``Boxes`` es un STRING, no una lista, y puede llevar varias etiquetas separadas por
+    coma. Un empalme por igualdad exacta pierde las lineas de todo envio multi-caja, en
+    silencio, y el sintoma es un fill rate que baja sin motivo aparente."""
+    venta = _venta([
+        _fulfilment(
+            pack=[
+                {"SKU": "SKU-1", "Box": "Box 1", "Quantity": 6},
+                {"SKU": "SKU-2", "Box": "Box 2", "Quantity": 3},
+            ],
+            ship=[{"Boxes": "Box 1, Box 2", "ShipmentDate": "2026-01-12T00:00:00",
+                   "IsShipped": True}],
+        )
+    ])
+    servido = shipped_by_sku(venta)
+    assert servido["SKU-1"].qty == 6.0
+    assert servido["SKU-2"].qty == 3.0
+
+
+def test_dos_lineas_de_pack_del_mismo_sku_en_la_misma_caja_se_suman():
+    """Un mismo SKU puede ir partido en dos lotes (batch/serie) dentro de una caja."""
+    venta = _venta([
+        _fulfilment(
+            pack=[
+                {"SKU": "SKU-1", "Box": "Box 1", "Quantity": 4, "BatchSN": "L1"},
+                {"SKU": "SKU-1", "Box": "Box 1", "Quantity": 3, "BatchSN": "L2"},
+            ],
+            ship=[{"Boxes": "Box 1", "ShipmentDate": "2026-01-12T00:00:00", "IsShipped": True}],
+        )
+    ])
+    assert shipped_by_sku(venta)["SKU-1"].qty == 7.0
+
+
+def test_una_venta_sin_fulfilments_no_reporta_nada():
+    assert shipped_by_sku(_venta([])) == {}
+
+
+def test_una_cantidad_ausente_o_no_numerica_no_se_cuenta_como_cero():
+    """Un ``null`` en la cantidad empacada es un dato que falta, no cero unidades."""
+    venta = _venta([
+        _fulfilment(
+            pack=[{"SKU": "SKU-1", "Box": "Box 1", "Quantity": None},
+                  {"SKU": "SKU-2", "Box": "Box 1", "Quantity": 2}],
+            ship=[{"Boxes": "Box 1", "ShipmentDate": "2026-01-12T00:00:00", "IsShipped": True}],
+        )
+    ])
+    servido = shipped_by_sku(venta)
+    assert "SKU-1" not in servido
+    assert servido["SKU-2"].qty == 2.0
