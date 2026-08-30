@@ -255,3 +255,222 @@ def test_una_cantidad_ausente_o_no_numerica_no_se_cuenta_como_cero():
     servido = shipped_by_sku(venta)
     assert "SKU-1" not in servido
     assert servido["SKU-2"].qty == 2.0
+
+
+# -- el conector: catalogo, stock y ordenes -------------------------------------
+
+from src.connectors import InventorySource  # noqa: E402
+from src.connectors.cin7 import Cin7Connector  # noqa: E402
+
+
+class RoutedHttp:
+    """Sirve payloads distintos por recurso; ``/sale`` responde segun el ID pedido."""
+
+    class _Response:
+        def __init__(self, payload: dict) -> None:
+            self._payload = payload
+            self.status_code = 200
+
+        def json(self) -> dict:
+            return self._payload
+
+    def __init__(self, listas: dict[str, tuple[str, list[dict]]],
+                 ventas: dict[str, dict] | None = None) -> None:
+        self._listas = listas
+        self._ventas = ventas or {}
+        self.calls: list[tuple[str, dict]] = []
+
+    def get(self, path, *, params=None, headers=None):
+        params = dict(params or {})
+        self.calls.append((path, params))
+        recurso = path.strip("/")
+        if recurso == "sale":
+            return RoutedHttp._Response(self._ventas.get(params.get("ID"), {}))
+        clave, items = self._listas.get(recurso, ("X", []))
+        return RoutedHttp._Response({"Total": len(items), "Page": params.get("Page", 1),
+                                     clave: items})
+
+
+_CIN7_PRODUCTS = [
+    {"SKU": "SKU-1", "Name": "Widget", "PriceTier1": 20.0, "AverageCost": 12.0},
+    {"SKU": "SKU-2", "Name": "Gadget", "PriceTier1": 50.0, "AverageCost": 30.0},
+]
+
+_CIN7_STOCK = [
+    {"SKU": "SKU-1", "Location": "Main", "OnHand": 40.0, "Allocated": 5.0, "Available": 35.0},
+]
+
+#: SO-1 cerrada y despachada entera menos dos unidades de SKU-2, que nunca salieron.
+#: SO-2 a medio despachar. SO-3 anulada. SO-4 con la orden sin autorizar.
+_SALE_LIST = [
+    {"SaleID": "s1", "OrderNumber": "SO-1", "OrderDate": "2026-01-05T00:00:00",
+     "ShipBy": "2026-01-10T00:00:00", "Status": "COMPLETED", "OrderStatus": "AUTHORISED",
+     "CombinedShippingStatus": "SHIPPED"},
+    {"SaleID": "s2", "OrderNumber": "SO-2", "OrderDate": "2026-01-06T00:00:00",
+     "ShipBy": None, "Status": "BACKORDERED", "OrderStatus": "AUTHORISED",
+     "CombinedShippingStatus": "PARTIALLY SHIPPED"},
+    {"SaleID": "s3", "OrderNumber": "SO-3", "OrderDate": "2026-01-07T00:00:00",
+     "Status": "VOIDED", "OrderStatus": "AUTHORISED", "CombinedShippingStatus": "VOIDED"},
+    {"SaleID": "s4", "OrderNumber": "SO-4", "OrderDate": "2026-01-08T00:00:00",
+     "Status": "ORDERING", "OrderStatus": "DRAFT", "CombinedShippingStatus": "NOT SHIPPED"},
+]
+
+_SALES = {
+    "s1": {
+        "ID": "s1", "SaleOrderNumber": "SO-1", "SaleOrderDate": "2026-01-05T00:00:00",
+        "ShipBy": "2026-01-10T00:00:00", "Status": "COMPLETED",
+        "CombinedShippingStatus": "SHIPPED",
+        "Order": {"Status": "AUTHORISED", "Lines": [
+            {"SKU": "SKU-1", "Name": "Widget", "Quantity": 10, "Price": 20.0},
+            {"SKU": "SKU-2", "Name": "Gadget", "Quantity": 2, "Price": 50.0},
+        ]},
+        "Fulfilments": [{
+            "TaskID": "t1",
+            "Pack": {"Status": "AUTHORISED",
+                     "Lines": [{"SKU": "SKU-1", "Box": "Box 1", "Quantity": 8}]},
+            "Ship": {"Status": "AUTHORISED",
+                     "Lines": [{"Boxes": "Box 1", "ShipmentDate": "2026-01-12T00:00:00",
+                                "IsShipped": True}]},
+        }],
+    },
+    "s2": {
+        "ID": "s2", "SaleOrderNumber": "SO-2", "SaleOrderDate": "2026-01-06T00:00:00",
+        "ShipBy": None, "Status": "BACKORDERED",
+        "CombinedShippingStatus": "PARTIALLY SHIPPED",
+        "Order": {"Status": "AUTHORISED", "Lines": [
+            {"SKU": "SKU-1", "Name": "Widget", "Quantity": 5, "Price": 20.0},
+            {"SKU": "SKU-2", "Name": "Gadget", "Quantity": 4, "Price": 50.0},
+        ]},
+        "Fulfilments": [{
+            "TaskID": "t2",
+            "Pack": {"Status": "AUTHORISED",
+                     "Lines": [{"SKU": "SKU-1", "Box": "Box 7", "Quantity": 5}]},
+            "Ship": {"Status": "AUTHORISED",
+                     "Lines": [{"Boxes": "Box 7", "ShipmentDate": "2026-01-09T00:00:00",
+                                "IsShipped": True}]},
+        }],
+    },
+}
+
+
+def _conector(**kw) -> Cin7Connector:
+    http = RoutedHttp(
+        {"product": ("Products", _CIN7_PRODUCTS),
+         "ref/productavailability": ("ProductAvailabilityList", _CIN7_STOCK),
+         "saleList": ("SaleList", _SALE_LIST)},
+        _SALES,
+    )
+    return Cin7Connector(http, _CREDS, **kw)
+
+
+def test_el_conector_satisface_el_protocolo_inventory_source():
+    assert isinstance(_conector(), InventorySource)
+
+
+def test_los_productos_mapean_sku_nombre_precio_y_costo():
+    productos = {p.sku: p for p in _conector().list_products()}
+    assert productos["SKU-1"].title == "Widget"
+    assert productos["SKU-1"].price == 20.0
+    assert productos["SKU-1"].cost == 12.0
+
+
+def test_el_stock_usa_available_y_no_onhand():
+    """``OnHand`` incluye lo ya asignado a otras ordenes (``Allocated``). Planificar sobre
+    el fisico promete unidades que ya tienen dueno."""
+    niveles = {lvl.sku: lvl for lvl in _conector().inventory_levels()}
+    assert niveles["SKU-1"].available == 35.0
+    assert niveles["SKU-1"].location == "Main"
+
+
+def test_una_venta_anulada_o_sin_orden_autorizada_no_es_demanda():
+    """SO-3 esta anulada y SO-4 tiene la orden en borrador. Ninguna de las dos es un
+    compromiso con un cliente, y contarlas mete quiebres que nadie sufrio."""
+    pedidos = _conector().orders()
+    assert [o.order_id for o in pedidos] == ["SO-1", "SO-2"]
+
+
+def test_since_viaja_como_createdsince_al_servidor():
+    conector = _conector()
+    conector.orders(since="2026-01-06")
+    listas = [p for path, p in conector._http.calls if path.strip("/") == "saleList"]
+    assert listas and listas[0].get("CreatedSince") == "2026-01-06"
+
+
+def test_cada_venta_se_pide_entera_porque_la_lista_no_trae_lineas():
+    """``/saleList`` no tiene lineas de pedido: hay que pedir ``/sale?ID=`` por venta. Es el
+    costo que Cin7 impone y que Unleashed no, y se paga a 60 llamadas por minuto."""
+    conector = _conector()
+    conector.orders()
+    ids = [p.get("ID") for path, p in conector._http.calls if path.strip("/") == "sale"]
+    assert ids == ["s1", "s2"]
+
+
+def test_orders_solo_ya_trae_las_tres_columnas_de_servicio():
+    """La diferencia estructural con Unleashed, y la prueba de que ``scan_service`` no fue
+    escrito a la medida del primer adaptador: Cin7 trae el fulfilment INLINE en la venta,
+    asi que no necesita un ``orders_with_shipments()`` y ``orders()`` sola mide todo."""
+    conector = _conector()
+    assert not hasattr(conector, "orders_with_shipments")
+    so1 = next(o for o in conector.orders() if o.order_id == "SO-1")
+    porsku = {ln.sku: ln for ln in so1.lines}
+    assert porsku["SKU-1"].delivered_qty == 8.0
+    assert porsku["SKU-1"].promised_date == "2026-01-10"
+    assert porsku["SKU-1"].delivered_date == "2026-01-12"
+
+
+def test_sobre_una_venta_ya_cerrada_una_linea_sin_despacho_es_un_cero_MEDIDO():
+    """El unico lugar de los dos adaptadores donde un 0.0 es honesto.
+    ``CombinedShippingStatus == "SHIPPED"`` es terminal: la venta se cerro, y SKU-2 no salio.
+    Eso es un quiebre total que SI se midio, y devolverlo como ``None`` lo escondaria --
+    el error simetrico del que persigue el resto de este codigo."""
+    so1 = next(o for o in _conector().orders() if o.order_id == "SO-1")
+    porsku = {ln.sku: ln for ln in so1.lines}
+    assert porsku["SKU-2"].delivered_qty == 0.0
+
+
+def test_sobre_una_venta_a_medio_despachar_la_linea_sin_servir_sigue_en_none():
+    """SO-2 esta PARTIALLY SHIPPED: SKU-2 puede salir manana. Un 0.0 aca inventa un quiebre
+    sobre una orden que todavia no vencio."""
+    so2 = next(o for o in _conector().orders() if o.order_id == "SO-2")
+    porsku = {ln.sku: ln for ln in so2.lines}
+    assert porsku["SKU-2"].delivered_qty is None
+    assert porsku["SKU-2"].delivered_date is None
+
+
+def test_una_venta_sin_shipby_deja_la_promesa_vacia():
+    """Ausente, y no ``SaleOrderDate``: la fecha en que el cliente compro no es una promesa,
+    y medir contra ella declara tarde a todo lo que no salio el mismo dia."""
+    so2 = next(o for o in _conector().orders() if o.order_id == "SO-2")
+    assert all(ln.promised_date is None for ln in so2.lines)
+
+
+def test_el_tope_de_ventas_corta_y_lo_dice_en_las_notas():
+    """Un tope silencioso se lee como cobertura completa. A 60 llamadas por minuto este
+    adaptador VA a toparse en una cuenta real, y el operador tiene que ver cuanto quedo
+    afuera antes de leer el fill rate como si fuera de toda la cartera."""
+    conector = _conector(max_sales=1)
+    pedidos = conector.orders()
+    assert len(pedidos) == 1
+    assert any("1" in n and "tope" in n.lower() for n in conector.notes)
+
+
+def test_sin_tope_alcanzado_no_hay_ruido_en_las_notas():
+    conector = _conector()
+    conector.orders()
+    assert conector.notes == ()
+
+
+def test_la_cadena_entera_da_fill_rate_y_otif_medidos():
+    """adaptador -> realized_service -> numeros.
+
+    SKU-1: 8 de 10 en SO-1 (salio el 12 contra una promesa del 10) y 5 de 5 en SO-2 (sin
+    promesa, o sea fuera de OTIF). Fill rate 13/15.
+    SKU-2: 0 de 2 medido en SO-1; la linea de SO-2 no se midio y queda fuera del denominador.
+    """
+    from src.connectors import realized_service
+
+    registros = {r.product_id: r for r in realized_service(_conector().orders())}
+    assert registros["SKU-1"].fill_rate == pytest.approx(13 / 15)
+    assert registros["SKU-1"].otif == 0.0
+    assert registros["SKU-2"].fill_rate == 0.0
+    assert registros["SKU-2"].lines_scored == 1

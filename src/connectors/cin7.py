@@ -70,6 +70,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from src.connectors import InventoryLevel, Order, OrderLine, Product
+
 #: La base de la API v2. Se fija aca para que ``live_http`` sea el unico lugar que la sabe.
 API_BASE = "https://inventory.dearsystems.com/ExternalApi/v2"
 
@@ -284,3 +286,198 @@ def shipped_by_sku(sale: dict) -> dict[str, _Shipped]:
                 max([d for d in (previo.dispatched, cuando) if d], default=None),
             )
     return acumulado
+
+
+#: El maximo por pagina que acepta Cin7 sin quejarse. Menos paginas es menos consumo del
+#: presupuesto de 60 llamadas por minuto, que aca es un recurso escaso de verdad.
+_PAGE_SIZE = 100
+
+#: Cuantas ventas se leen enteras por defecto. NO es una optimizacion: cada una cuesta una
+#: llamada, y 500 ya son mas de ocho minutos de reloj contra el limite del vendor.
+_MAX_SALES = 500
+
+#: La venta es un compromiso con un cliente cuando su ORDEN esta autorizada. Se mira eso y
+#: no la lista de once estados de venta: ``Status`` mezcla el avance de facturacion y
+#: despacho con el del pedido, y enumerarlo entero envejece con cada estado que agregue el
+#: vendor.
+_ORDER_AUTHORISED = "AUTHORISED"
+_VOIDED = "VOIDED"
+
+#: El unico estado de despacho TERMINAL. Sobre una venta asi, lo que no salio ya no va a
+#: salir -- y por eso ahi, y solo ahi, un cero es una medicion y no una ausencia.
+_SHIPPING_DONE = "SHIPPED"
+
+_NOTA_TOPE = (
+    "Se leyeron {leidas} de {total} ventas (tope max_sales={tope}). Cin7 no tiene lectura "
+    "masiva de fulfilments: cada venta cuesta una llamada y la API corta a {limite} por "
+    "minuto. El servicio reportado cubre SOLO esas ventas, no la cartera entera."
+)
+
+
+class Cin7Connector:
+    """``InventorySource`` sobre Cin7 Core. Ver el docstring del modulo para el mapeo.
+
+    ``http`` es cualquier objeto con ``.get(path, params=..., headers=...)`` estilo httpx:
+    ``live_http(creds)`` arma el real y los tests inyectan uno de mentira.
+
+    A diferencia de ``UnleashedConnector``, este NO expone ``orders_with_shipments()``: Cin7
+    devuelve el fulfilment INLINE dentro de la venta, asi que ``orders()`` sola ya trae las
+    tres columnas de servicio. Esa asimetria es a proposito -- ``service_scan`` elige la
+    lectura mas completa que cada adaptador ofrezca, y aca la mas completa es la unica.
+    """
+
+    def __init__(
+        self,
+        http: Any,
+        creds: Cin7Credentials,
+        *,
+        max_pages: int = 100,
+        max_sales: int = _MAX_SALES,
+    ) -> None:
+        self._http = http
+        self._creds = creds
+        self._max_pages = max_pages
+        self._max_sales = max_sales
+        #: Lo que el operador tiene que saber de ESTA lectura. Hoy: si se corto por el tope.
+        self.notes: tuple[str, ...] = ()
+
+    def _read(self, resource: str, params: dict[str, Any], *, list_key: str) -> list[dict]:
+        return fetch_pages(
+            self._http, resource, params, self._creds,
+            list_key=list_key, max_pages=self._max_pages,
+        )
+
+    # -- read side (InventorySource) ------------------------------------------
+
+    def list_products(self) -> list[Product]:
+        productos: list[Product] = []
+        for row in self._read("product", {"Limit": _PAGE_SIZE}, list_key="Products"):
+            sku = _text(row.get("SKU"))
+            if sku is None:
+                continue
+            productos.append(
+                Product(
+                    sku,
+                    _text(row.get("Name")) or sku,
+                    _number(row.get("PriceTier1")) or 0.0,
+                    _number(row.get("AverageCost")) or 0.0,
+                )
+            )
+        return productos
+
+    def inventory_levels(self) -> list[InventoryLevel]:
+        """El DISPONIBLE, no el fisico.
+
+        ``Available`` = ``OnHand`` menos ``Allocated``, o sea descontado lo ya comprometido
+        a otras ordenes. Planificar sobre el fisico promete unidades que ya tienen dueno.
+        Sin ``Available`` se cae a ``OnHand``, que es lo unico que queda y se sabe optimista.
+        """
+        niveles: list[InventoryLevel] = []
+        filas = self._read(
+            "ref/productavailability", {"Limit": _PAGE_SIZE}, list_key="ProductAvailabilityList"
+        )
+        for row in filas:
+            sku = _text(row.get("SKU"))
+            if sku is None:
+                continue
+            disponible = _number(row.get("Available"))
+            if disponible is None:
+                disponible = _number(row.get("OnHand")) or 0.0
+            niveles.append(
+                InventoryLevel(sku, disponible, _text(row.get("Location")) or "default")
+            )
+        return niveles
+
+    def orders(self, *, since: str | None = None) -> list[Order]:
+        """Las ventas que son demanda, con lo pedido Y lo servido en cada linea.
+
+        Dos fases, y la segunda es la cara: ``/saleList`` filtra la ventana en el SERVIDOR
+        (``CreatedSince``) pero no trae lineas de pedido, asi que cada venta se vuelve a
+        pedir entera con ``/sale?ID=``. Ese es el costo que Cin7 impone y Unleashed no, y se
+        paga contra un limite de 60 llamadas por minuto: por eso hay un tope, y por eso el
+        tope se declara en ``notes`` en vez de recortar en silencio.
+
+        Se descarta toda venta anulada o cuya ORDEN no este autorizada: un borrador no es un
+        compromiso con un cliente, y contarlo mete quiebres que nadie sufrio.
+        """
+        params: dict[str, Any] = {"Limit": _PAGE_SIZE}
+        if since is not None:
+            params["CreatedSince"] = since
+        lista = [
+            fila
+            for fila in self._read("saleList", params, list_key="SaleList")
+            if _text(fila.get("Status")) != _VOIDED
+            and _text(fila.get("OrderStatus")) == _ORDER_AUTHORISED
+        ]
+        elegibles = len(lista)
+        recortada = lista[: self._max_sales]
+        self.notes = (
+            ()
+            if len(recortada) == elegibles
+            else (
+                _NOTA_TOPE.format(
+                    leidas=len(recortada), total=elegibles,
+                    tope=self._max_sales, limite=RATE_LIMIT_PER_MINUTE,
+                ),
+            )
+        )
+        salida: list[Order] = []
+        for fila in recortada:
+            sale_id = _text(fila.get("SaleID"))
+            if sale_id is None:
+                continue
+            resp = self._http.get("/sale", params={"ID": sale_id}, headers=auth_headers(self._creds))
+            _check(resp, "sale", 1)
+            pedido = self._to_order(resp.json() or {}, fila)
+            if pedido is not None:
+                salida.append(pedido)
+        return sorted(salida, key=lambda o: o.created_at)
+
+    def _to_order(self, sale: dict, cabecera: dict) -> Order | None:
+        """Una venta entera -> un ``Order`` canonico, o ``None`` si no tiene con que.
+
+        ``cabecera`` es la fila de ``/saleList``, que se usa para el numero y las fechas: la
+        lista y el detalle nombran los mismos campos distinto en algunos casos, y la lista
+        es la que ya se filtro.
+        """
+        numero = _text(cabecera.get("OrderNumber")) or _text(sale.get("SaleOrderNumber"))
+        creada = _iso_date(cabecera.get("OrderDate")) or _iso_date(sale.get("SaleOrderDate"))
+        if numero is None or creada is None:
+            return None
+        prometida = _iso_date(cabecera.get("ShipBy")) or _iso_date(sale.get("ShipBy"))
+        # El estado de despacho sale del detalle si esta, y si no de la lista: los dos lo
+        # publican, y en una venta leida hace un segundo el detalle es el mas fresco.
+        estado_envio = (
+            _text(sale.get("CombinedShippingStatus"))
+            or _text(cabecera.get("CombinedShippingStatus"))
+            or ""
+        )
+        cerrada = estado_envio.upper() == _SHIPPING_DONE
+        servido = shipped_by_sku(sale)
+        lineas: list[OrderLine] = []
+        for ln in (sale.get("Order") or {}).get("Lines") or []:
+            sku = _text(ln.get("SKU"))
+            pedidas = _number(ln.get("Quantity"))
+            if sku is None or pedidas is None:
+                continue
+            enviado = servido.get(sku)
+            if enviado is not None:
+                servidas, salio = enviado.qty, enviado.dispatched
+            elif cerrada:
+                # La venta se cerro y esta linea no salio. Cero MEDIDO, no ausencia: es el
+                # unico punto de los dos adaptadores donde hay evidencia terminal para
+                # afirmarlo, y esconderlo detras de un None taparia un quiebre total.
+                servidas, salio = 0.0, None
+            else:
+                servidas, salio = None, None
+            lineas.append(
+                OrderLine(
+                    sku,
+                    pedidas,
+                    _number(ln.get("Price")) or 0.0,
+                    delivered_qty=servidas,
+                    promised_date=prometida,
+                    delivered_date=salio,
+                )
+            )
+        return Order(numero, creada, tuple(lineas)) if lineas else None
