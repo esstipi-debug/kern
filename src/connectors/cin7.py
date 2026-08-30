@@ -70,7 +70,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from src.connectors import InventoryLevel, Order, OrderLine, Product
+from src.connectors import (
+    COVERAGE_DERIVED,
+    COVERAGE_MEASURED,
+    FieldCoverage,
+    InventoryLevel,
+    Order,
+    OrderLine,
+    Product,
+    ServiceCoverage,
+)
 
 #: La base de la API v2. Se fija aca para que ``live_http`` sea el unico lugar que la sabe.
 API_BASE = "https://inventory.dearsystems.com/ExternalApi/v2"
@@ -481,3 +490,55 @@ class Cin7Connector:
                 )
             )
         return Order(numero, creada, tuple(lineas)) if lineas else None
+
+
+def live_http(creds: Cin7Credentials, *, timeout: float = 30.0) -> Any:
+    """El cliente httpx apuntado a la API de Cin7 Core.
+
+    Las cabeceras de auth se arman por request en ``fetch_pages``, no aca: ponerlas en el
+    cliente las dejaria pegadas a cualquier llamada que alguien le haga despues a ese mismo
+    objeto, incluida una a otro host.
+
+    ``timeout`` acotado y no infinito: esta lectura puede correr dentro de un request web y
+    una cuenta que no contesta tiene que soltar el hilo en vez de quedarselo.
+    """
+    try:
+        import httpx
+    except ImportError as exc:  # pragma: no cover - depende del extra instalado
+        raise Cin7Error(
+            "httpx es necesario para hablar con Cin7 Core -- instala el extra que lo trae, "
+            "o inyecta un transporte con http= (los tests lo hacen)"
+        ) from exc
+    return httpx.Client(base_url=API_BASE, timeout=timeout)
+
+
+#: Lo que Cin7 Core puede y no puede medir del servicio al cliente. Verificado contra el
+#: blueprint oficial de la API el 2026-08-29; ``tests/test_connector_service_contract.py``
+#: lo CORRE contra este adaptador en vez de leerlo.
+SERVICE_COVERAGE = ServiceCoverage(
+    backend="Cin7 Core (API v2: /saleList + /sale, fulfilments inline)",
+    delivered_qty=FieldCoverage(
+        COVERAGE_DERIVED,
+        "empalme Fulfilments[].Pack.Lines[] (SKU->Box->Quantity) contra "
+        "Fulfilments[].Ship.Lines[] (Boxes->IsShipped)",
+        "unidades que SALIERON de la linea. NINGUN endpoint la devuelve: Cin7 empaca y "
+        "despacha por caja, y la etiqueta de la caja es la unica llave entre el SKU y la "
+        "fecha. Se suman los despachos parciales y no se cuenta lo solo empacado. Sobre una "
+        "venta con el despacho ya cerrado (CombinedShippingStatus=SHIPPED) una linea sin "
+        "despachar es un CERO medido, no una ausencia -- el unico backend de este repo con "
+        "evidencia terminal para afirmarlo",
+    ),
+    promised_date=FieldCoverage(
+        COVERAGE_MEASURED,
+        "Sale.ShipBy",
+        "la fecha en que el despacho vence, a nivel ORDEN y replicada a sus lineas. Vacia "
+        "es lo habitual, y saca la linea de OTIF en vez de medirla contra SaleOrderDate",
+    ),
+    delivered_date=FieldCoverage(
+        COVERAGE_DERIVED,
+        "Fulfilments[].Ship.Lines[].ShipmentDate de la ultima caja que llevo el SKU",
+        "la fecha de DESPACHO, no de llegada. Cin7 Core tiene TrackingNumber y TrackingURL "
+        "pero ningun campo de entrega confirmada, asi que el OTIF que sale de aca mide "
+        "despachar antes de la fecha pedida, no llegar antes de ella",
+    ),
+)

@@ -19,11 +19,18 @@ The drift guard at the end is what keeps that true past today: a NEW module in
 the moment it lands, rather than the first time a client asks what their OTIF was computed
 from. Same stance as ``tests/test_connector_contract.py`` takes on the write side.
 
-Scope, stated rather than implied: the fixtures here exercise the four offline-runnable
-adapters (simulator, HTTP client, MCP source, Unleashed) plus Odoo through its
+Scope, stated rather than implied: the fixtures here exercise the five offline-runnable
+adapters (simulator, HTTP client, MCP source, Unleashed, Cin7 Core) plus Odoo through its
 ``InMemoryOdoo`` stand-in. ``ledger.CanonicalLedger`` is a MERGE of sources rather than a
 backend, and ``emulator`` is a FastAPI app that serves one -- both are named in
 ``_NOT_A_BACKEND`` rather than left to be forgotten.
+
+Cin7 Core is what turned this file from a claim into evidence. It reaches the same three
+service fields by a completely different route -- a two-hop join through box labels instead
+of a second endpoint -- and needs no ``orders_with_shipments()`` at all, because its
+fulfilments arrive inline. It passes the same six assertions with no special case, which is
+the cheapest available answer to "does this abstraction describe backends, or did it
+describe the first one someone wrote".
 """
 
 from __future__ import annotations
@@ -99,6 +106,7 @@ from typing import Callable  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from src.connectors import Order, OrderLine  # noqa: E402
+from src.connectors.cin7 import Cin7Connector, Cin7Credentials  # noqa: E402
 from src.connectors.emulator import create_app  # noqa: E402
 from src.connectors.http_client import StoreApiClient  # noqa: E402
 from src.connectors.mcp_source import McpInventorySource  # noqa: E402
@@ -258,12 +266,71 @@ def _unleashed():
     return _UnleashedAdapter()
 
 
+class _Cin7Http:
+    """Transporte de mentira de Cin7: la lista de ventas, y la venta entera por ID.
+
+    Local a este archivo, como el de Odoo y el de Unleashed y por la misma razon: un
+    fixture editado en ``tests/test_connector_cin7.py`` no debe poder debilitar este guard
+    en silencio.
+    """
+
+    class _Response:
+        def __init__(self, payload: dict) -> None:
+            self._payload = payload
+            self.status_code = 200
+
+        def json(self) -> dict:
+            return self._payload
+
+    def get(self, path, *, params=None, headers=None):
+        params = dict(params or {})
+        if path.strip("/") == "sale":
+            return _Cin7Http._Response(_CIN7_SALE)
+        return _Cin7Http._Response({"Total": 1, "Page": 1, "SaleList": [_CIN7_SALE_ROW]})
+
+
+#: Una venta cerrada, prometida para el 10, empacada en una caja y despachada el 12.
+#: Alcanza el techo que la declaracion de Cin7 reclama: las tres columnas con valor.
+_CIN7_SALE_ROW = {
+    "SaleID": "s1", "OrderNumber": "SO-1", "OrderDate": "2026-01-05T00:00:00",
+    "ShipBy": "2026-01-10T00:00:00", "Status": "COMPLETED", "OrderStatus": "AUTHORISED",
+    "CombinedShippingStatus": "SHIPPED",
+}
+
+_CIN7_SALE = {
+    "ID": "s1", "SaleOrderNumber": "SO-1", "SaleOrderDate": "2026-01-05T00:00:00",
+    "ShipBy": "2026-01-10T00:00:00", "CombinedShippingStatus": "SHIPPED",
+    "Order": {"Status": "AUTHORISED",
+              "Lines": [{"SKU": "SKU-1", "Quantity": 10, "Price": 20.0}]},
+    "Fulfilments": [{
+        "TaskID": "t1",
+        "Pack": {"Status": "AUTHORISED",
+                 "Lines": [{"SKU": "SKU-1", "Box": "Box 1", "Quantity": 8}]},
+        "Ship": {"Status": "AUTHORISED",
+                 "Lines": [{"Boxes": "Box 1", "ShipmentDate": "2026-01-12T00:00:00",
+                            "IsShipped": True}]},
+    }],
+}
+
+
+def _cin7():
+    """Cin7 se pasa TAL CUAL, sin envoltorio.
+
+    Es la diferencia estructural con Unleashed y por eso vale la pena decirla: Cin7 devuelve
+    el fulfilment inline dentro de la venta, asi que su ``orders()`` sola ya llena las tres
+    columnas y no hay una lectura mas completa que envolver. Que el mismo guard acepte los
+    dos, sin caso especial, es la prueba de que describe backends y no describia al primero.
+    """
+    return Cin7Connector(_Cin7Http(), Cin7Credentials(account_id="g", application_key="g"))
+
+
 ADAPTERS: tuple[AdapterCase, ...] = (
     AdapterCase("simulator", "src.connectors.simulator", _simulator),
     AdapterCase("http_client", "src.connectors.http_client", _http_client),
     AdapterCase("mcp_source", "src.connectors.mcp_source", _mcp),
     AdapterCase("odoo", "src.connectors.odoo", _odoo),
     AdapterCase("unleashed", "src.connectors.unleashed", _unleashed),
+    AdapterCase("cin7", "src.connectors.cin7", _cin7),
 )
 
 
@@ -459,3 +526,43 @@ def test_unleashed_derives_the_delivered_quantity_from_a_second_endpoint():
 
     assert SERVICE_COVERAGE.delivered_qty.status == COVERAGE_DERIVED
     assert "SalesShipment" in SERVICE_COVERAGE.delivered_qty.source
+
+
+# -- Cin7 Core: la segunda prueba de que el guard describe backends ---------------
+
+
+def test_cin7_declara_su_fecha_de_entrega_como_despacho_y_no_como_llegada():
+    """Tercer backend seguido sin fecha de llegada, y el tercero que tiene que decirlo.
+
+    Cin7 Core tiene TrackingNumber y TrackingURL, pero ningun campo de entrega confirmada:
+    ``ShipmentDate`` es cuando la caja SALIO. Que Unleashed, Odoo y Cin7 compartan este
+    limite no lo vuelve inocuo -- lo vuelve la norma del segmento, y el unico OTIF de
+    llegada verificado en este repo sigue siendo el de Shopify.
+    """
+    from src.connectors.cin7 import SERVICE_COVERAGE
+
+    entrega = SERVICE_COVERAGE.delivered_date
+    assert entrega.reports is True
+    assert "despacho" in entrega.means.lower()
+    assert "llegada" in entrega.means.lower()
+
+
+def test_cin7_declara_la_cantidad_servida_como_empalme_y_no_como_un_campo():
+    """El error que este PR corrige respecto de la nota previa: no hay ningun endpoint que
+    devuelva la cantidad despachada. La fuente declarada tiene que nombrar los DOS lados del
+    empalme, o el proximo que lea esto va a buscar un campo que no existe."""
+    from src.connectors import COVERAGE_DERIVED
+    from src.connectors.cin7 import SERVICE_COVERAGE
+
+    fuente = SERVICE_COVERAGE.delivered_qty
+    assert fuente.status == COVERAGE_DERIVED
+    assert "Pack" in fuente.source and "Ship" in fuente.source
+
+
+def test_cin7_es_el_unico_que_declara_poder_medir_un_cero():
+    """La diferencia real con Unleashed, y la unica ventaja que el handoff le atribuia que
+    resulto cierta. El ``means`` tiene que decirlo, porque es lo que le explica a un cliente
+    por que su informe de Cin7 muestra quiebres totales y el de Unleashed no."""
+    from src.connectors.cin7 import SERVICE_COVERAGE
+
+    assert "cero" in SERVICE_COVERAGE.delivered_qty.means.lower()

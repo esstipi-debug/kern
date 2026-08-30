@@ -309,3 +309,60 @@ def test_el_mismo_reporte_sin_order_lines_no_mide_nada():
     servicio = _servicio_del_reporte(report, "SKU-1")
     assert servicio is None or servicio.provenance == "not_measured"
     assert servicio is None or servicio.fill_rate is None
+
+
+# -- generalidad: el mismo scan sobre un adaptador de forma distinta -------------
+
+
+def test_scan_service_mide_cin7_sin_orders_with_shipments():
+    """La prueba de que la eleccion de lectura de ``scan_service`` no se hizo a la medida
+    de Unleashed.
+
+    Cin7 devuelve el fulfilment INLINE dentro de la venta, asi que no tiene -- ni necesita
+    -- un ``orders_with_shipments()``. ``scan_service`` cae a ``orders()`` y aun asi obtiene
+    las tres columnas. Si alguien "simplifica" el getattr y pasa a exigir el metodo
+    completo, este test cae y Cin7 deja de medir nada.
+    """
+    from src.connectors.cin7 import Cin7Connector, Cin7Credentials
+
+    venta = {
+        "ID": "s1", "SaleOrderNumber": "SO-1", "SaleOrderDate": "2026-01-05T00:00:00",
+        "ShipBy": "2026-01-10T00:00:00", "CombinedShippingStatus": "SHIPPED",
+        "Order": {"Status": "AUTHORISED",
+                  "Lines": [{"SKU": "SKU-1", "Quantity": 10, "Price": 20.0}]},
+        "Fulfilments": [{
+            "TaskID": "t1",
+            "Pack": {"Status": "AUTHORISED",
+                     "Lines": [{"SKU": "SKU-1", "Box": "Box 1", "Quantity": 8}]},
+            "Ship": {"Status": "AUTHORISED",
+                     "Lines": [{"Boxes": "Box 1", "ShipmentDate": "2026-01-12T00:00:00",
+                                "IsShipped": True}]},
+        }],
+    }
+    fila = {"SaleID": "s1", "OrderNumber": "SO-1", "OrderDate": "2026-01-05T00:00:00",
+            "ShipBy": "2026-01-10T00:00:00", "Status": "COMPLETED",
+            "OrderStatus": "AUTHORISED", "CombinedShippingStatus": "SHIPPED"}
+
+    class _Http:
+        class _R:
+            def __init__(self, p):
+                self._p, self.status_code = p, 200
+
+            def json(self):
+                return self._p
+
+        def get(self, path, *, params=None, headers=None):
+            if path.strip("/") == "sale":
+                return _Http._R(venta)
+            return _Http._R({"Total": 1, "Page": 1, "SaleList": [fila]})
+
+    conector = Cin7Connector(_Http(), Cin7Credentials(account_id="a", application_key="k"))
+    assert not hasattr(conector, "orders_with_shipments")
+
+    scan = scan_service(conector)
+    registro = {r.product_id: r for r in scan.records}["SKU-1"]
+    assert registro.fill_rate == pytest.approx(0.8)
+    assert registro.otif == 0.0
+    assert registro.provenance == "observed"
+    # Y su nota de despacho llega igual que la de Unleashed, por el mismo camino.
+    assert any("despacho" in n.lower() and "llegada" in n.lower() for n in scan.notes)
