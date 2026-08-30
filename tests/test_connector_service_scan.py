@@ -231,3 +231,81 @@ def test_un_conector_sin_ordenes_devuelve_un_scan_vacio_y_no_revienta():
     assert scan.records == ()
     assert scan.order_lines.empty
     assert scan.portfolio.provenance == "not_measured"
+
+
+# -- la cadena entera: conector -> job -> reporte -------------------------------
+
+from jobs.inventory_optimization import run as run_inventory  # noqa: E402
+
+#: Suficientes ordenes para que el job tenga historia con la que trabajar. Es el mismo SKU
+#: servido corto una vez y completo el resto, para que el fill rate no sea ni 0 ni 1 -- un
+#: extremo se puede producir por accidente, un 90% no.
+_ORDERS_LARGAS = [
+    {
+        "OrderNumber": f"SO-{i}", "OrderDate": f"2026-01-{i:02d}T00:00:00",
+        "RequiredDate": f"2026-01-{i + 3:02d}T00:00:00",
+        "CompletedDate": f"2026-01-{i + 3:02d}T00:00:00",
+        "OrderStatus": "Completed",
+        "SalesOrderLines": [
+            {"LineNumber": 1, "Product": {"ProductCode": "SKU-1"},
+             "OrderQuantity": 10.0, "UnitPrice": 20.0},
+        ],
+    }
+    for i in range(1, 11)
+]
+
+#: Nueve despachos completos y uno corto: 98 de 100.
+_SHIPMENTS_LARGOS = [
+    {
+        "ShipmentNumber": f"SH-{i}", "OrderNumber": f"SO-{i}", "ShipmentStatus": "Completed",
+        "DispatchDate": f"2026-01-{i + 3:02d}T00:00:00",
+        "SalesShipmentLines": [
+            {"LineNumber": 1, "SalesOrderLineNumber": 1,
+             "Product": {"ProductCode": "SKU-1"}, "ShipmentQty": 8.0 if i == 1 else 10.0},
+        ],
+    }
+    for i in range(1, 11)
+]
+
+
+def _unleashed_largo() -> UnleashedConnector:
+    return UnleashedConnector(
+        _Http({"Products": _PRODUCTS, "SalesOrders": _ORDERS_LARGAS,
+               "SalesShipments": _SHIPMENTS_LARGOS}),
+        _CREDS,
+    )
+
+
+def _servicio_del_reporte(report, sku: str):
+    rec = next(r for r in report.recommendations if r.product_id == sku)
+    return rec.realized_service
+
+
+def test_el_servicio_medido_llega_al_reporte_del_job():
+    """La prueba de que los eslabones encajan. Sin esto el adaptador mide bien y nadie lo
+    llama, que es exactamente como quedo ``bwm_weights``: seis tests y cero llamadores."""
+    scan = scan_service(_unleashed_largo())
+    report = run_inventory(scan.demand, order_lines=scan.order_lines, period_freq="D")
+    servicio = _servicio_del_reporte(report, "SKU-1")
+    assert servicio is not None
+    assert servicio.provenance == "observed"
+    assert servicio.fill_rate == pytest.approx(0.98)
+    # OTIF 0.9 y no 1.0 aunque las diez ordenes salieron el dia prometido: SCOR RL.1.1
+    # cuenta una linea solo si llego COMPLETA **Y** a tiempo, y la primera salio 8 de 10.
+    # Las dos condiciones se ven distinto en los dos numeros -- 98% de unidades servidas,
+    # 90% de pedidos perfectos -- y esa brecha es justamente lo que un cliente que solo
+    # mira fill rate no ve.
+    assert servicio.otif == pytest.approx(0.9)
+    assert servicio.lost_sales_units == pytest.approx(2.0)
+    assert servicio.lost_sales_value == pytest.approx(40.0)
+
+
+def test_el_mismo_reporte_sin_order_lines_no_mide_nada():
+    """El control negativo, y es lo que prueba que el test de arriba no es casualidad: la
+    MISMA demanda sin el frame de lineas es la corrida que este proyecto venia haciendo en
+    cada llamada -- ``order_lines=None`` y todos los SKU en ``not_measured``."""
+    scan = scan_service(_unleashed_largo())
+    report = run_inventory(scan.demand, period_freq="D")
+    servicio = _servicio_del_reporte(report, "SKU-1")
+    assert servicio is None or servicio.provenance == "not_measured"
+    assert servicio is None or servicio.fill_rate is None
