@@ -20,7 +20,14 @@ prevent, and both look identical to a green test suite that never asserts on it.
 import pytest
 
 from src import order_fulfillment as of
-from src.connectors import Order, OrderLine, realized_service, service_frame, service_lines
+from src.connectors import (
+    Order,
+    OrderLine,
+    observation_window_end,
+    realized_service,
+    service_frame,
+    service_lines,
+)
 
 
 def _order(order_id: str, created_at: str, *lines: OrderLine) -> Order:
@@ -256,3 +263,85 @@ def test_the_demo_store_reaches_the_inventory_job_with_real_service():
 
     assert records and all(r.provenance == of.PROVENANCE_OBSERVED for r in records)
     assert any(r.otif is not None and r.otif < 1.0 for r in records)
+
+
+# -- la ventana de observacion, derivada de los propios datos --------------------
+
+
+def test_realized_service_deriva_la_ventana_y_puntua_la_promesa_vencida():
+    """El paso que hace que el arreglo del motor llegue a produccion.
+
+    ``measure_from_order_lines`` sabe puntuar una promesa vencida sin despacho desde que
+    acepta ``as_of``, pero un parametro que nadie pasa es codigo muerto -- el patron que ya
+    dejo a ``bwm_weights`` con seis tests y cero llamadores. Aca la ventana se deriva de
+    las ordenes mismas: su fin es la ultima fecha que los datos mencionan, que es lo ultimo
+    sobre lo que pueden hablar.
+
+    o1 salio a tiempo. o2 se prometio para el 10 y nunca despacho nada; la ventana llega
+    hasta el 20, asi que esa promesa esta vencida y cuenta como incumplimiento.
+    """
+    orders = [
+        _order("o1", "2026-01-05", OrderLine("SKU-1", 5.0, 20.0, 5.0, "2026-01-07", "2026-01-07")),
+        _order("o2", "2026-01-06", OrderLine("SKU-1", 5.0, 20.0, 0.0, "2026-01-10", None)),
+        _order("o3", "2026-01-20", OrderLine("SKU-2", 1.0, 9.0, 1.0, "2026-01-20", "2026-01-20")),
+    ]
+
+    registros = {r.product_id: r for r in realized_service(orders)}
+
+    assert registros["SKU-1"].otif == pytest.approx(0.5)
+    assert registros["SKU-1"].fill_rate == pytest.approx(0.5)
+
+
+def test_una_promesa_posterior_a_la_ventana_no_cuenta_como_incumplida():
+    """La ventana es lo ultimo que los datos pueden afirmar. Una promesa MAS TARDIA que
+    eso no vencio: todavia puede cumplirse, y contarla seria condenar por adelantado toda
+    orden abierta del cliente."""
+    orders = [
+        _order("o1", "2026-01-05", OrderLine("SKU-1", 5.0, 20.0, 5.0, "2026-01-07", "2026-01-07")),
+        _order("o2", "2026-01-06", OrderLine("SKU-1", 5.0, 20.0, 0.0, "2026-03-30", None)),
+    ]
+
+    (registro,) = realized_service(orders)
+
+    assert registro.otif == pytest.approx(1.0)  # una linea puntuada, un acierto
+
+
+def test_un_as_of_explicito_le_gana_a_la_ventana_derivada():
+    """Quien sabe de verdad cuando se corto la extraccion puede decirlo. La derivada es un
+    default razonable, no una imposicion: una extraccion que termino el 31 pero cuya ultima
+    fecha es el 10 tiene una ventana mas larga que la que los datos dejan ver."""
+    orders = [
+        _order("o1", "2026-01-05", OrderLine("SKU-1", 5.0, 20.0, 0.0, "2026-01-10", None)),
+    ]
+
+    sin_corte = realized_service(orders)[0]
+    con_corte = realized_service(orders, as_of="2026-01-31")[0]
+
+    # Sin corte explicito la ventana termina en la propia promesa, que por eso no vencio.
+    assert sin_corte.otif is None
+    assert con_corte.otif == 0.0
+
+
+def test_una_promesa_a_futuro_no_estira_la_ventana_de_observacion():
+    """La ventana la fijan los HECHOS, no las promesas.
+
+    Una fecha prometida es una afirmacion SOBRE el futuro; no es evidencia de tiempo
+    transcurrido. Si contara, un pedido prometido para 2027 estiraria la ventana hasta
+    2027 y haria "vencer" todas las promesas de 2026 que todavia estan vigentes -- o sea
+    que una sola orden a largo plazo condenaria la cartera entera del cliente.
+
+    Solo cuentan la fecha de la orden y la de entrega: las dos son cosas que YA pasaron.
+    """
+    orders = [
+        _order("o1", "2026-01-05", OrderLine("SKU-1", 5.0, 20.0, 5.0, "2026-01-07", "2026-01-07")),
+        _order("o2", "2026-01-06", OrderLine("SKU-1", 5.0, 20.0, 0.0, "2026-02-10", None)),
+        # La promesa lejana que NO debe mover la ventana.
+        _order("o3", "2026-01-06", OrderLine("SKU-2", 1.0, 9.0, 0.0, "2027-12-31", None)),
+    ]
+
+    assert observation_window_end(orders) == "2026-01-07"
+
+    registros = {r.product_id: r for r in realized_service(orders)}
+    # La promesa de febrero NO vencio: la evidencia solo llega al 7 de enero.
+    assert registros["SKU-1"].otif == pytest.approx(1.0)
+    assert registros["SKU-2"].otif is None

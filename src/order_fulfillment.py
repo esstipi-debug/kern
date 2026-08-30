@@ -182,8 +182,17 @@ class _LineScan:
     dated: int = 0
 
 
-def _scan_lines(lines: Sequence[dict]) -> _LineScan:
-    """Walk the order lines once, counting each criterion over its own evidence."""
+def _scan_lines(lines: Sequence[dict], *, as_of: date | None = None) -> _LineScan:
+    """Walk the order lines once, counting each criterion over its own evidence.
+
+    ``as_of`` is the end of the observation window: the last date the data can speak
+    about. It exists for exactly one case - a line that carried a promise, delivered a
+    MEASURED zero, and has no delivery date because there was no delivery. Without a
+    cut-off there is no way to tell that line ("the promise came due and nothing came")
+    from one still in flight ("promised for next month, not shipped yet"), and Odoo
+    reports ``qty_delivered = 0.0`` on every confirmed order that has not shipped, so
+    guessing would turn each of them into an OTIF failure the day this landed.
+    """
     scored = priced = otif_hits = otif_scored = dated = 0
     ordered = delivered = short_units = short_value = 0.0
     short_dates: set[date] = set()
@@ -206,6 +215,24 @@ def _scan_lines(lines: Sequence[dict]) -> _LineScan:
         if promised is not None and shipped is not None:
             otif_scored += 1
             otif_hits += int(short <= 0 and shipped <= promised)
+        elif promised is not None and got == 0.0 and as_of is not None and promised < as_of:
+            # Promised, overdue, and NOTHING was delivered. The worst case there is, and
+            # until this branch existed it was the one case OTIF could not see: with no
+            # shipment there is no shipment date, so the line fell out of the denominator
+            # for lacking the second date. It was already counted as a total shortfall in
+            # fill rate and lost sales two lines above - excluding it from OTIF alone was
+            # an inconsistency, not caution.
+            #
+            # Three conditions, and each one refuses a different wrong answer.
+            # ``got == 0.0`` and not ``short > 0``: a PARTIAL delivery with no date did
+            # ship something, at a time nobody recorded, and scoring its timing either way
+            # would be invention. Only zero is unambiguous - no shipment, so no date to
+            # look for. ``got`` is never None here (``_number`` already filtered those
+            # out), so an unreported quantity cannot reach this branch and a backend that
+            # publishes no delivered quantities cannot manufacture OTIF failures out of
+            # old promises. And ``promised < as_of``, strictly: a promise falling due on
+            # the window's last day gets the benefit of the doubt.
+            otif_scored += 1
         if promised is not None or shipped is not None:
             dated += 1
         if short > 0 and (promised or shipped) is not None:
@@ -233,6 +260,7 @@ def measure_from_order_lines(
     *,
     stockout_days: int | None = None,
     periods_covered: int = 0,
+    as_of: date | str | None = None,
 ) -> RealizedService:
     """Service measured from the client's own order lines.
 
@@ -250,8 +278,16 @@ def measure_from_order_lines(
     short dates over undated lines is the module docstring's own failure mode -
     counting over rows that never carried the data, and turning "we never
     measured this" into a confident zero next to a shortfall we did measure.
+
+    ``as_of`` is the end of the observation window, and it unlocks one case OTIF
+    could not otherwise see: a line promised for a date that has PASSED, whose
+    delivered quantity is a measured zero. That line has no delivery date because
+    there was no delivery, so it used to fall out of the denominator for lacking a
+    second date - while the very same line was already counted as a total shortfall
+    in fill rate and lost sales. Without ``as_of`` the behaviour is unchanged: a
+    promise cannot be called overdue against a window whose end nobody stated.
     """
-    scan = _scan_lines(lines)
+    scan = _scan_lines(lines, as_of=_as_date(as_of))
     if scan.scored == 0:
         return not_measured(product_id, order_lines=scan.lines)
     measured_days = stockout_days is not None

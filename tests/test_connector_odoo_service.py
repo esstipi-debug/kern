@@ -248,3 +248,54 @@ def test_the_plain_demo_odoo_reports_no_service_rather_than_a_zero():
     records = realized_service(OdooConnector(demo_odoo()).orders())
 
     assert records and all(r.provenance == of.PROVENANCE_NOT_MEASURED for r in records)
+
+
+def test_una_orden_odoo_prometida_y_nunca_despachada_puntua_como_incumplimiento():
+    """Que el arreglo del OTIF llegue POR UN ADAPTADOR REAL, y no solo por dicts a mano.
+
+    Guard escrito DESPUES del arreglo (el ciclo TDD vive en tests/test_order_fulfillment.py
+    y tests/test_connector_service_lines.py). Existe porque el camino que importa es este:
+    Odoo pone ``qty_delivered = 0.0`` en toda orden confirmada, asi que es el backend donde
+    el caso aparece solo, sin que nadie lo construya.
+
+    S0002 se prometio para el 12 y nunca despacho nada. La ventana de observacion llega al
+    2026-02-01 -- la fecha de S0003 -- asi que esa promesa vencio. S0003, prometida para
+    junio, NO vencio y queda afuera: una orden abierta no es un incumplimiento.
+    """
+    odoo = InMemoryOdoo(
+        {
+            "product.product": dict(_PRODUCTS),
+            "sale.order": {
+                200: {"name": "S0001", "date_order": "2026-01-05 10:00:00",
+                      "commitment_date": "2026-01-10 00:00:00", "state": "sale",
+                      "order_line": [300]},
+                201: {"name": "S0002", "date_order": "2026-01-08 09:00:00",
+                      "commitment_date": "2026-01-12 00:00:00", "state": "sale",
+                      "order_line": [301]},
+                202: {"name": "S0003", "date_order": "2026-02-01 09:00:00",
+                      "commitment_date": "2026-06-30 00:00:00", "state": "sale",
+                      "order_line": [302]},
+            },
+            "sale.order.line": {
+                300: {"product_id": [1, "Widget"], "product_uom_qty": 10.0,
+                      "price_unit": 20.0, "qty_delivered": 10.0},
+                301: {"product_id": [1, "Widget"], "product_uom_qty": 10.0,
+                      "price_unit": 20.0, "qty_delivered": 0.0},
+                302: {"product_id": [1, "Widget"], "product_uom_qty": 4.0,
+                      "price_unit": 20.0, "qty_delivered": 0.0},
+            },
+            "stock.picking.type": {50: {"code": "outgoing"}},
+            "stock.move": {
+                600: {"sale_line_id": [300, "S0001"], "state": "done",
+                      "date": "2026-01-09 15:00:00", "picking_type_id": [50, "Delivery"]},
+            },
+        }
+    )
+
+    (registro,) = realized_service(OdooConnector(odoo).orders())
+
+    # Una de dos promesas vencidas se cumplio. Antes de este arreglo daba 100%, porque la
+    # unica que fallo no tenia fecha de despacho -- no hubo despacho -- y se caia del
+    # denominador.
+    assert registro.otif == pytest.approx(0.5)
+    assert registro.provenance == of.PROVENANCE_OBSERVED

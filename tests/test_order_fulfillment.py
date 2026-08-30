@@ -317,3 +317,89 @@ def test_the_method_field_is_not_named_after_any_metric():
     metric_words = ("fill_rate", "otif", "days_out", "stockout_day", "lost_sale", "quiebre")
     assert not any(w in "method" for w in metric_words)
     assert isinstance(of.not_measured("A").days_out_of_stock, type(None))
+
+
+# -- la promesa que vencio sin que saliera nada ---------------------------------
+
+
+def test_una_promesa_vencida_sin_nada_despachado_es_un_fallo_de_otif():
+    """El peor caso posible tiene que puntuar, y hasta ahora no puntuaba.
+
+    Una linea prometida para el 5 que nunca despacho nada no tiene fecha de entrega -- no
+    hubo entrega -- asi que caia fuera del denominador de OTIF por falta de la segunda
+    fecha. Resultado: el escenario mas grave (prometimos y no entregamos NADA) se reportaba
+    como "no medido" y el OTIF salia mejor de lo que fue.
+
+    La incoherencia es visible dentro del mismo registro: esa linea YA cuenta como faltante
+    total en fill rate y en venta perdida. Excluirla solo de OTIF no era prudencia, era una
+    inconsistencia.
+    """
+    lines = [
+        _line(10, 10, promised=date(2026, 1, 5), shipped=date(2026, 1, 5)),  # OTIF
+        _line(10, 0, promised=date(2026, 1, 5)),                             # nunca salio
+    ]
+
+    got = of.measure_from_order_lines("SKU-A", lines, as_of=date(2026, 2, 1))
+
+    assert got.otif == pytest.approx(0.5)
+    assert got.fill_rate == pytest.approx(0.5)
+    assert got.lost_sales_units == pytest.approx(10.0)
+
+
+def test_una_promesa_que_todavia_no_vencio_no_es_un_fallo():
+    """La trampa que hace falta el ``as_of``. Odoo reporta ``qty_delivered = 0.0`` en toda
+    orden CONFIRMADA que todavia no salio, con su fecha comprometida a futuro. Sin este
+    corte, cada orden abierta de cada cliente de Odoo pasaria a contar como incumplimiento
+    el dia que se mergea este cambio."""
+    lines = [_line(10, 0, promised=date(2026, 3, 20))]
+
+    got = of.measure_from_order_lines("SKU-A", lines, as_of=date(2026, 2, 1))
+
+    assert got.otif is None
+    assert got.lines_scored == 1  # sigue contando para fill rate, que es lo correcto
+
+
+def test_sin_as_of_no_se_puede_saber_si_vencio_y_la_linea_queda_afuera():
+    """Sin fecha de corte no hay forma de saber si la promesa esta vencida o pendiente, y
+    adivinar en cualquiera de las dos direcciones inventa un numero. El comportamiento por
+    defecto no cambia."""
+    got = of.measure_from_order_lines("SKU-A", [_line(10, 0, promised=date(2026, 1, 5))])
+
+    assert got.otif is None
+
+
+def test_una_promesa_que_vence_exactamente_hoy_recibe_el_beneficio_de_la_duda():
+    """El dia todavia no termino. Se compara estrictamente contra la fecha de corte."""
+    got = of.measure_from_order_lines(
+        "SKU-A", [_line(10, 0, promised=date(2026, 2, 1))], as_of=date(2026, 2, 1)
+    )
+
+    assert got.otif is None
+
+
+def test_una_cantidad_servida_NO_MEDIDA_no_puntua_aunque_la_promesa_haya_vencido():
+    """El discriminante entero. ``delivered_qty=0.0`` es una medicion -- no salio nada --
+    y ``None`` es una ausencia: nadie lo reporto. Un backend que no publica cantidades
+    servidas no puede producir fallos de OTIF de la nada solo porque sus promesas sean
+    viejas."""
+    got = of.measure_from_order_lines(
+        "SKU-A",
+        [{"ordered_qty": 10, "delivered_qty": None, "promised_date": date(2026, 1, 5)}],
+        as_of=date(2026, 2, 1),
+    )
+
+    assert got.otif is None
+
+
+def test_una_entrega_parcial_sin_fecha_sigue_afuera_de_otif():
+    """Salio algo pero no se sabe cuando. Puntuarlo como fallo seria correcto por lo
+    incompleto y arbitrario por lo temporal; puntuarlo como acierto seria falso. La unica
+    lectura honesta de ``salio algo, no se cuando`` es que el tiempo no se midio.
+
+    Solo el CERO es inequivoco: no hay envio, entonces no hay fecha que buscar."""
+    got = of.measure_from_order_lines(
+        "SKU-A", [_line(10, 4, promised=date(2026, 1, 5))], as_of=date(2026, 2, 1)
+    )
+
+    assert got.otif is None
+    assert got.fill_rate == pytest.approx(0.4)
