@@ -41,7 +41,15 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from . import InventoryLevel, Order, OrderLine, Product
+from . import (
+    COVERAGE_MEASURED,
+    FieldCoverage,
+    InventoryLevel,
+    Order,
+    OrderLine,
+    Product,
+    ServiceCoverage,
+)
 
 #: The three read tools a remote server must expose. Names are overridable
 #: because a third-party server names its tools for its own domain, not ours.
@@ -221,3 +229,28 @@ class McpInventorySource:
             )
             for r in rows
         ]
+
+
+#: El techo del servidor MCP remoto, que no controlamos. Las tres son opcionales en el
+#: esquema de la tool y llegan como ``None`` cuando el servidor las omite (ver
+#: ``_num_opt`` / ``_text_opt``); se declaran MEASURED porque un servidor que las publica
+#: es el caso para el que existe este adaptador, y uno que no lo hace sale no medido.
+SERVICE_COVERAGE = ServiceCoverage(
+    backend="servidor MCP remoto (esquema de tool, no un vendor fijo)",
+    delivered_qty=FieldCoverage(
+        COVERAGE_MEASURED,
+        "tool de ordenes -> lines[].delivered_qty",
+        "unidades que el servidor dice haber servido; ausente -> None, nunca rellenada "
+        "con la cantidad pedida",
+    ),
+    promised_date=FieldCoverage(
+        COVERAGE_MEASURED,
+        "tool de ordenes -> lines[].promised_date",
+        "la fecha de entrega que el servidor dice haber prometido",
+    ),
+    delivered_date=FieldCoverage(
+        COVERAGE_MEASURED,
+        "tool de ordenes -> lines[].delivered_date",
+        "la fecha en que el servidor dice que la linea se sirvio",
+    ),
+)

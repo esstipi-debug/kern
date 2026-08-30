@@ -16,7 +16,15 @@ from datetime import date, timedelta
 import pandas as pd
 from nosilo_core import writeback
 
-from src.connectors import InventoryLevel, Order, OrderLine, Product
+from src.connectors import (
+    COVERAGE_MEASURED,
+    FieldCoverage,
+    InventoryLevel,
+    Order,
+    OrderLine,
+    Product,
+    ServiceCoverage,
+)
 
 _TARGET = "simulated-store"
 
@@ -156,3 +164,27 @@ def demo_store() -> SimulatedStore:
             )
         orders.append(Order(f"o{j + 1}", day, tuple(lines)))
     return SimulatedStore(products, levels, orders)
+
+
+#: What a simulated store can measure: everything, by construction - it is the only
+#: "backend" here whose schema we chose. That is exactly why it is declared. The demo
+#: store is the fixture every other test reaches for, and a stand-in that reports
+#: perfectly is how "we measure service" gets believed without a real backend behind it.
+SERVICE_COVERAGE = ServiceCoverage(
+    backend="simulator (offline stand-in, NOT a system of record)",
+    delivered_qty=FieldCoverage(
+        COVERAGE_MEASURED,
+        "OrderLine.delivered_qty",
+        "units the simulated store shipped; invented by demo_store(), never observed",
+    ),
+    promised_date=FieldCoverage(
+        COVERAGE_MEASURED,
+        "OrderLine.promised_date",
+        "order date + 3 days, the lead time demo_store() pretends to have promised",
+    ),
+    delivered_date=FieldCoverage(
+        COVERAGE_MEASURED,
+        "OrderLine.delivered_date",
+        "the promise, plus two days on part of the lines so the demo is not perfect",
+    ),
+)

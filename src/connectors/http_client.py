@@ -11,7 +11,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.connectors import InventoryLevel, Order, OrderLine, Product
+from src.connectors import (
+    COVERAGE_MEASURED,
+    FieldCoverage,
+    InventoryLevel,
+    Order,
+    OrderLine,
+    Product,
+    ServiceCoverage,
+)
 
 
 def _number(row: dict, key: str) -> float | None:
@@ -76,3 +84,28 @@ class StoreApiClient:
             json={"restock": restock, "idempotency_key": idempotency_key, "reason": reason},
         )
         return resp.json()
+
+
+#: Whatever the store on the other end reports. This adapter is a TRANSPORT, not a
+#: backend: it maps JSON to DTOs and its ceiling is the ceiling of the API it points at.
+#: Declared MEASURED because the emulator (``connectors.emulator``) serves all three, and
+#: a live store that omits one produces ``None`` through ``_number``/``_text`` - the
+#: correct answer for that store, not a violation of this claim.
+SERVICE_COVERAGE = ServiceCoverage(
+    backend="commerce HTTP store API (offline: connectors.emulator)",
+    delivered_qty=FieldCoverage(
+        COVERAGE_MEASURED,
+        "GET /admin/orders -> line_items[].delivered_qty",
+        "units the store reported shipping; JSON null round-trips to None, never to 0.0",
+    ),
+    promised_date=FieldCoverage(
+        COVERAGE_MEASURED,
+        "GET /admin/orders -> line_items[].promised_date",
+        "the delivery date the store says it promised the customer",
+    ),
+    delivered_date=FieldCoverage(
+        COVERAGE_MEASURED,
+        "GET /admin/orders -> line_items[].delivered_date",
+        "the date the store says the line reached the customer",
+    ),
+)
