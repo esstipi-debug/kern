@@ -492,12 +492,17 @@ class Cin7Connector:
         return Order(numero, creada, tuple(lineas)) if lineas else None
 
 
-def live_http(creds: Cin7Credentials, *, timeout: float = 30.0) -> Any:
-    """El cliente httpx apuntado a la API de Cin7 Core.
+def live_http(*, timeout: float = 30.0) -> Any:
+    """El cliente httpx apuntado a la API de Cin7 Core. **No lleva credenciales.**
 
-    Las cabeceras de auth se arman por request en ``fetch_pages``, no aca: ponerlas en el
-    cliente las dejaria pegadas a cualquier llamada que alguien le haga despues a ese mismo
-    objeto, incluida una a otro host.
+    Y la firma lo dice, que es el punto: no toma ``creds``. Las cabeceras de auth se arman
+    por request en ``fetch_pages``, porque pegarlas al cliente las dejaria viajando en
+    cualquier llamada que alguien le haga despues a ese mismo objeto -- incluida una a otro
+    host. Un ``live_http(creds)`` que guardara el parametro sin usarlo seria peor que
+    inutil: le haria creer al llamador que el cliente ya esta autenticado.
+
+    Es la diferencia con ``unleashed.live_http(creds)``, que SI lo usa: alli el
+    ``client-type`` es constante por app y no es un secreto.
 
     ``timeout`` acotado y no infinito: esta lectura puede correr dentro de un request web y
     una cuenta que no contesta tiene que soltar el hilo en vez de quedarselo.
