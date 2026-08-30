@@ -263,8 +263,37 @@ def service_frame(orders: Iterable[Order]):
     return pd.DataFrame(rows, columns=_SERVICE_FRAME_COLUMNS)
 
 
+def observation_window_end(orders: Iterable[Order]) -> str | None:
+    """The last date these orders can prove already happened. Facts only, never promises.
+
+    Two kinds of date count: when an order was TAKEN and when a line was DELIVERED. Both
+    are events that occurred. A ``promised_date`` is deliberately excluded - it is a
+    statement ABOUT the future, not evidence that time has passed. Letting it in means one
+    order promised for 2027 stretches the window to 2027 and marks every still-pending
+    2026 promise as overdue, condemning a client's whole open book on the strength of a
+    single long-dated commitment.
+
+    An extract whose newest shipment is the 12th but whose newest order was taken on the
+    20th still knows something about the 20th, which is why the order date counts too.
+
+    Derived from the data rather than read off a clock, on purpose: this feeds an OTIF
+    number, and a metric that moves because a test ran on a different day is a metric
+    nobody can reconcile twice.
+    """
+    dates = [
+        d
+        for order in orders
+        for d in (order.created_at, *(line.delivered_date for line in order.lines))
+        if d
+    ]
+    return max(dates)[:10] if dates else None
+
+
 def realized_service(
-    orders: Iterable[Order], *, stockout_days: Mapping[str, int] | None = None
+    orders: Iterable[Order],
+    *,
+    stockout_days: Mapping[str, int] | None = None,
+    as_of: str | None = None,
 ) -> list[RealizedService]:
     """Measured customer service per SKU, straight off any ``InventorySource``.
 
@@ -275,9 +304,20 @@ def realized_service(
 
     ``stockout_days`` is the client's own stock-zero count per SKU where they have
     one; without it the engine falls back to a declared lower bound.
+
+    ``as_of`` is the end of the observation window, and it decides one thing: whether a
+    line that was promised and delivered a measured ZERO counts as an OTIF failure or as
+    a promise still pending. Left unset it is DERIVED from the orders themselves
+    (``observation_window_end``), because the alternative is an argument nobody passes -
+    and an unpassed argument is how ``measure_from_order_lines`` came to accept ``as_of``
+    without a single caller supplying it. Pass it explicitly when the extraction ran past
+    its own last row: an export that closed on the 31st knows something the dates in it
+    do not show.
     """
+    orders = list(orders)
     days = dict(stockout_days or {})
+    ventana = as_of if as_of is not None else observation_window_end(orders)
     return [
-        measure_from_order_lines(sku, lines, stockout_days=days.get(sku))
+        measure_from_order_lines(sku, lines, stockout_days=days.get(sku), as_of=ventana)
         for sku, lines in sorted(service_lines(orders).items())
     ]
