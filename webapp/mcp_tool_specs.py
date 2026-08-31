@@ -342,7 +342,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Size DDMRP red/yellow/green buffers per part and compute the net-flow "
             "planning signal (which parts to reorder now, and how much).\n\n"
-            "Rows need columns: part_id, adu (average daily usage), dlt (decoupled lead "
+            "Rows need columns: product_id (part_id also accepted), adu (average daily "
+            "usage), dlt (decoupled lead "
             "time, days). Optional: ltf, vf, moq, order_cycle_days, on_hand, on_order, "
             'qualified_demand. E.g. {"part_id": "P-9", "adu": 14, "dlt": 12, "on_hand": 220, '
             '"on_order": 100}.\n\n'
@@ -360,7 +361,7 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "the naive hold-at-every-stage baseline.\n\n"
             "Rows: one per stage in sequence, columns stage, lead_time, holding_cost (per "
             "unit per period). Optional: order (explicit stage sequence). End-customer "
-            "demand comes from mean_demand and demand_std columns (first row) or from "
+            "demand comes from mean_demand and std_demand columns (first row) or from "
             'params. E.g. {"stage": "DC", "lead_time": 5, "holding_cost": 1.2}.\n\n'
             "Useful params: service_level (default 0.95), mean_demand, demand_std (required "
             "if not present as columns), review_period.\n\n" + _RETURNS
@@ -374,7 +375,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Build the time-phased DRP grid per branch/DC (projected on-hand, planned "
             "orders per period) and roll branches up into the central DC's gross "
             "requirements.\n\n"
-            "Rows: long format, one per branch-period, columns branch, period, demand. "
+            "Rows: long format, one per branch-period, columns branch, period, quantity "
+            "(demand also accepted). "
             'Optional: on_hand, lead_time, safety_stock, lot_size. E.g. {"branch": "North", '
             '"period": 1, "demand": 120, "on_hand": 300, "lead_time": 2}.\n\n' + _RETURNS
         ),
@@ -504,7 +506,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Pick the cheapest feasible transport mode (parcel / LTL / FTL / intermodal) "
             "per shipment from a configurable rate card, and rank lanes by freight spend.\n\n"
             "Rows need columns: weight_kg, distance_km (one row per shipment). Optional: "
-            'shipment_id, lane, units, order_value. E.g. {"shipment_id": "SH-9", '
+            'shipment_id, lane, quantity (units also accepted), order_value. '
+            'E.g. {"shipment_id": "SH-9", '
             '"weight_kg": 4200, "distance_km": 850, "lane": "MAD->BCN"}.\n\n'
             "Useful params: rate-card overrides (advanced; defaults model typical "
             "parcel/LTL/FTL/intermodal rates).\n\n" + _RETURNS
@@ -518,8 +521,11 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Place one facility (DC, plant, cross-dock) to minimize demand-weighted "
             "travel: center-of-gravity plus the exact 1-median (Weiszfeld), compared "
             "against the nearest existing point.\n\n"
-            "Rows: one per demand point, columns x, y (or lon/lat). Optional: name, weight "
-            '(demand/volume per point - defaults to 1). E.g. {"name": "Store-12", '
+            "Rows: one per demand point, columns longitude, latitude (x/y and lon/lat "
+            "also accepted). Optional: name, weight (demand/volume per point - defaults "
+            "to 1); the tool reads both, though neither is part of the declared data "
+            "contract -- `weight` is spelled the same as transportation's weight_kg "
+            'header. E.g. {"name": "Store-12", '
             '"lon": -3.7, "lat": 40.4, "weight": 1200}.\n\n' + _RETURNS
         ),
     ),

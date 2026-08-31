@@ -66,13 +66,67 @@
   port is written up in `odoo_addon/PORT_17_A_19.md`.
 
 ### Changed
-- **Nine of the 45 data tools now declare their data contract, up from four**
-  (batch 1, the per-SKU demand-history family: `forecast`,
-  `inventory_optimization`, `markdown_liquidation`, `pricing`, `sop`). This is a
+- **Twenty-two of the 45 data tools now declare their data contract, up from four.**
+  Batch 1, the per-SKU demand-history family: `forecast`,
+  `inventory_optimization`, `markdown_liquidation`, `pricing`, `sop`. Batch 2,
+  inventory and replenishment policy: `ddmrp`, `drp`, `fefo`, `multi_echelon`,
+  `newsvendor`, `simulation`. Batch 3, warehouse, count and audit:
+  `reconciliation`, `returns`, `slotting`. Batch 4, network, geometry and flow:
+  `facility_location`, `flow_map`, `network_design`, `transportation`. This is a
   product change, not housekeeping: `src/intake_scan.py` derives its verdict from
   `required_columns`, so an undeclared tool answers `no_declarado` -- "I cannot
   tell you whether your folder can run this". On the repo's own sample folder
-  those five went from silence to four greens and one honest yellow.
+  those five went from silence to four greens and one honest yellow. Batch 2 was
+  proved the same way, against a folder whose headers are an ERP's and not
+  Kern's -- `sku`, `avg_daily_usage`, `decoupled_lead_time`, `On Hand`,
+  `open_po`, `batch_id`, `shelf_life_days` -- where `ddmrp` and `fefo` both
+  resolve every required column through the alias table and ask only for
+  optionals.
+  Batch 2 added 24 canonical column names, each alias taken from the declaring
+  job's own `_*_COLS` tuple and never invented, under three rules written into
+  `jobs/intake.py`: a term already owned by an earlier canonical is not repeated
+  (`lead_time` stays with `lead_time_days`, `period` with `date`, `demand` with
+  `quantity` -- the exact canonical name still resolves, since exact names are
+  claimed before aliases); no one- or two-character aliases (`h`, `R`, `lt`), which
+  match too much to be evidence; and a term two NEW canonicals both want is
+  arbitrated explicitly rather than by iteration order (`lot` to `lot_id`, `moq`
+  to `moq`, and `location`/`node` to neither `stage` nor `branch`, because
+  picking one would green a network tool on the other's file).
+  Two declarations were deliberately narrowed: `multi_echelon` does not declare
+  `name` even though its sniffer accepts it (it already means product name
+  everywhere else, so declaring it would turn any master file into a false green
+  for a network model), and `fefo` does not declare `expiry_date` even as
+  optional (`jobs/fefo_job.py:166` raises when it is present without
+  `params.as_of`, so declaring it would make a complete file refuse).
+  Batch 3 was proved against WMS-shaped headers (`book_qty`, `counted`, `returns`,
+  `return_reason`, `resale`, `invoice`, `cube`): `reconciliation` and `slotting`
+  green, `returns` yellow on one missing optional.
+  **`cycle_count` was deliberately NOT declared**, and the reason is written into
+  `tests/test_tool_data_contract.py` rather than left as a pending item. Its
+  contract is a disjunction -- a product column plus ANY ONE of an `abc` class
+  column, a value column, or demand + unit_cost -- and `required_columns` is a
+  conjunction. Declaring the demand+cost branch is provable and would pass the
+  guard test, and would then tell a client holding a perfectly good ABC file that
+  they are missing two columns they do not need. `no_declarado` says "I cannot
+  tell"; that would say something false. Same category as `dea`, whose contract is
+  a column-name prefix.
+  Batch 4 carried the programme's one real vocabulary decision. `flow_map` keeps
+  its contract in Spanish (`fecha_salida`, `origen`, `producto`, `cantidad`),
+  and two of those names are already ALIASES of `product_id` and `quantity`.
+  Declaring them as canonicals would have created rival owners for columns the
+  rest of the registry needs, so a movements file would have fed `flow_map` and
+  nothing else. Instead the contract is restated in the shared vocabulary --
+  `departure_date`, `arrival_date`, `origin`, `destination`, `product_id`,
+  `quantity` -- which that job's own alias table already accepts, and the Spanish
+  spellings enter as aliases. Proved on a fully Spanish movements export:
+  `flow_map` green, and `facility_location`/`network_design` green off a node
+  file using `lon`/`lat`/`node_type`/`open_cost`/`throughput`.
+  Two more declarations were narrowed for the same reason: the p-median tools
+  declare `longitude`/`latitude` rather than their own `x`/`y` (a one-letter
+  column is not something to ask a client for), and neither declares `weight`,
+  because `transportation`'s `weight_kg` already accepts a header spelled
+  `weight` and two canonicals wanting one header would be settled by iteration
+  order.
   Three things had to be fixed before any declaration was safe or provable:
   - **`jobs/intake_scan_job.py` could only ever SEE 15 column names.**
     `_canonical_order()` was built from the four demo `PROFILES`, not from the
@@ -102,8 +156,13 @@
   coverage. Relatedly, the evaluated/total ratio counted all 50 registered tools,
   five of which never read a file: the summary said "9 of 50" while the finding
   printed beside it said "of 45". Both now say 45.
-- **`webapp/mcp_tool_specs.py`** described `forecast` as needing a period column.
-  It does not -- verified by running it -- and the declared contract now says so.
+- **`webapp/mcp_tool_specs.py` drifted from the code in four places**, all found by
+  comparing its prose against the tuples it claims to copy. It described
+  `forecast` as needing a period column -- it does not, verified by running the
+  tool without one -- and named `part_id` for `ddmrp`, `demand` for `drp` and
+  `demand_std` for `multi_echelon` where the declared contract uses the shared
+  canonical -- plus `x, y` for `facility_location` and `units` for
+  `transportation`. The prose now names the declared column and notes the alias.
 - **`linchpin_dry_run` renamed to `kern_dry_run`**, executing item 3 of the HANDOFF external checklist,
   which gated the rename on "the next functional version" — this port is it. No migration hook: the
   module was never actually published, so there are no installations to break. `linchpin.fly.dev`, the

@@ -24,45 +24,44 @@ from scm_agent import tools
 #   python -c "from scm_agent import tools; r=tools.build_default_registry(); \
 #   print(sorted(t.key for t in r.list() if t.requires_data and not t.required_columns))"
 #
-# "intake_scan" is a PERMANENT entry here, not a pending one: it consumes a
-# raw FOLDER of client files, not one canonical table, so it has no
-# `required_columns` to ever declare -- there is nothing to "fix" by moving it
-# out of this set in a future batch.
+# Some entries are PERMANENT, not pending. Each one says why, because "still on
+# the list" and "cannot be on any list" are different facts and collapsing them
+# is how a batch programme ends up chasing a tool that was never declarable.
+#
+# "intake_scan" -- consumes a raw FOLDER of client files, not one canonical
+# table, so it has no `required_columns` to ever declare.
+#
+# "cycle_count" -- its contract is a DISJUNCTION and `required_columns` is a
+# conjunction. jobs/cycle_count_job.py needs a product column plus ANY ONE of:
+# an `abc` class column, a value column, or demand + unit_cost together (see its
+# refusal text, "need an 'abc' column, or a value column, or demand + unit_cost
+# to classify"). Declaring the demand+cost branch is provable and would pass
+# this file's drop test -- and would then tell a client who sent a perfectly
+# good ABC file that they are missing two columns they do not need. That is not
+# a cautious over-declaration, it is a wrong answer; `no_declarado` at least
+# says "I cannot tell" instead of misdirecting the data request.
 UNDECLARED_TOOLS = frozenset({
     "acceptance_sampling",
     "cost_to_serve",
     "cross_impact",
     "cycle_count",
-    "ddmrp",
     "dea",
     "disruption_scan",
-    "drp",
     "earned_value",
     "excel_replenishment",
-    "facility_location",
-    "fefo",
-    "flow_map",
     "hat_settlement",
     "hat_tension",
     "intake_scan",
     "landed_cost",
     "launch_readiness",
     "learning_curve",
-    "multi_echelon",
-    "network_design",
     "org_friction_audit",
-    "newsvendor",
     "price_intelligence",
     "queuing",
-    "reconciliation",
-    "returns",
     "risk",
     "scheduling",
-    "simulation",
-    "slotting",
     "sourcing",
     "supplier_management",
-    "transportation",
     "vehicle_routing",
     "whatif",
 })
@@ -71,6 +70,12 @@ DECLARED = (
     "data_quality", "abc_xyz", "excess_obsolete", "financial_kpis",
     # batch 1 -- the per-SKU demand-history family
     "forecast", "inventory_optimization", "markdown_liquidation", "pricing", "sop",
+    # batch 2 -- inventory and replenishment policy
+    "ddmrp", "drp", "fefo", "multi_echelon", "newsvendor", "simulation",
+    # batch 3 -- warehouse, count and audit
+    "reconciliation", "returns", "slotting",
+    # batch 4 -- network, geometry and flow
+    "facility_location", "flow_map", "network_design", "transportation",
 )
 
 _DAY_ZERO = date(2026, 1, 1)
@@ -89,6 +94,24 @@ _SAMPLE = {
     # confuses the two still look correct.
     "price": "12.5", "lead_time_days": "14", "lead_time_std": "3.0",
     "revenue": "125.0",
+    # -- batch 2: inventory and replenishment policy ------------------------
+    "mean_demand": "100.0", "std_demand": "20.0", "salvage_value": "2.0",
+    "goodwill": "4.0", "lead_time": "3", "holding_cost": "1.5",
+    "order_cost": "75.0", "backorder_cost": "9.0", "review_period": "4",
+    "safety_stock": "25", "lot_size": "50", "adu": "12.0", "dlt": "10",
+    "ltf": "0.5", "vf": "0.5", "moq": "40", "order_cycle_days": "7",
+    "on_order": "30", "qualified_demand": "15", "supplier": "PROV-1",
+    "days_to_expiry": "45",
+    # -- batch 3: warehouse, count and audit --------------------------------
+    "system_qty": "100", "physical_qty": "97", "returned_units": "5",
+    "reason": "damaged", "resale_value": "8.0", "sellable": "1",
+    "unit_volume": "0.02",
+    # -- batch 4: network, geometry and flow --------------------------------
+    "longitude": "-70.65", "latitude": "-33.45", "role": "dc",
+    "fixed_cost": "50000", "capacity": "9000", "weight_kg": "120.0",
+    "distance_km": "340.0", "shipment_id": "ENV-1", "lane": "SCL-ANF",
+    "order_value": "1500.0", "departure_date": "2026-01-01",
+    "arrival_date": "2026-01-04", "origin": "SCL", "destination": "ANF",
 }
 
 # Columns whose value must VARY, and along which axis. A constant column is not
@@ -106,6 +129,26 @@ _VARYING = {
     # on fifteen consecutive January days, and that refusal is about the fixture,
     # not about the declaration under test.
     "date": ("row", lambda k, r: (_DAY_ZERO + timedelta(days=10 * r)).isoformat()),
+    # Batch 2 brought jobs that group by something other than the SKU. A drp
+    # file with one constant (branch, period) pair is twelve rows of the same
+    # cell, and a multi-echelon chain with one stage is not a chain.
+    "branch": ("key", lambda k, r: f"SUC-{k}"),
+    "stage": ("key", lambda k, r: f"ETAPA-{k}"),
+    "period": ("row", lambda k, r: str(1 + r)),
+    "lot_id": ("row", lambda k, r: f"LOTE-{r}"),
+    # slotting mines order-product affinity: one repeated basket is no affinity.
+    "order_id": ("row", lambda k, r: f"OC-{r}"),
+    # Coordinates and endpoints must differ per node or there is no network to
+    # design, and the arrival must follow the departure or transit is negative.
+    "longitude": ("key", lambda k, r: str(-70.65 + k)),
+    "latitude": ("key", lambda k, r: str(-33.45 + k)),
+    "origin": ("key", lambda k, r: f"O-{k}"),
+    "destination": ("key", lambda k, r: f"D-{k}"),
+    "departure_date": ("row", lambda k, r: (_DAY_ZERO + timedelta(days=2 * r)).isoformat()),
+    "arrival_date": ("row", lambda k, r: (_DAY_ZERO + timedelta(days=2 * r + 1)).isoformat()),
+    # network_design splits rows into demand points and candidate sites by role;
+    # one constant role means one of the two sets is empty and it refuses.
+    "role": ("key", lambda k, r: "dc" if k == 0 else "customer"),
 }
 
 # Rows per key, and keys per file. Several jobs refuse a SKU with too few
@@ -174,6 +217,27 @@ def test_undeclared_list_has_no_stale_entries():
 _REFUSAL_LABELS = {
     ("abc_xyz", "quantity"): ("demand",),
     ("sop", "quantity"): ("demand",),
+    ("drp", "quantity"): ("demand",),
+    # ddmrp is the one tool declaring the shared `product_id` while its own
+    # sniffer calls the field part_id. Both names live in its _PART_COLS, and
+    # declaring the shared one is what keeps the scan from asking a client for
+    # `product_id` and `part_id` as if they were two different columns.
+    ("ddmrp", "product_id"): ("part_id",),
+    # The p-median jobs name their coordinates x and y. The label carries the
+    # surrounding words on purpose: a bare "x" would match almost any message and
+    # turn this assertion back into the status-only check it replaced.
+    ("facility_location", "longitude"): ("could not find x",),
+    ("facility_location", "latitude"): ("could not find y",),
+    ("network_design", "longitude"): ("could not find x",),
+    ("network_design", "latitude"): ("could not find y",),
+    # flow_map keeps its contract in Spanish; the declaration uses the shared
+    # canonical, and its own alias table resolves both.
+    ("flow_map", "departure_date"): ("fecha_salida",),
+    ("flow_map", "arrival_date"): ("fecha_llegada",),
+    ("flow_map", "origin"): ("origen",),
+    ("flow_map", "destination"): ("destino",),
+    ("flow_map", "product_id"): ("producto",),
+    ("flow_map", "quantity"): ("cantidad",),
 }
 
 

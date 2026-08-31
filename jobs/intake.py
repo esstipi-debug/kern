@@ -80,6 +80,93 @@ ALIASES: dict[str, list[str]] = {
     "order_date": ["order_date", "orderdate", "po_date", "podate", "issue_date", "date_order", "ordered_at", "fecha_orden", "fecha_pedido", "fecha_oc", "fecha_emision_oc", "data_pedido"],
     "receipt_date": ["receipt_date", "received_date", "receipt_dt", "delivery_date", "actual_delivery_date", "date_done", "fecha_recepcion", "fecha_recibido", "fecha_entrega", "fecha_llegada", "data_recebimento"],
     "po_id": ["po_id", "po", "po_number", "order_id", "purchase_order", "purchase_order_id", "numero_oc", "num_oc", "orden_compra", "folio", "pedido"],
+    # -- Lote 2: inventario y politica de reposicion --------------------------
+    # Cada alias de aca sale de la tupla `_*_COLS` del job que declara la columna,
+    # nunca inventado. Tres reglas al portarlas, porque una tabla de alias mal
+    # armada produce el falso VERDE que el scan existe para evitar:
+    #
+    #  1. Un termino que ya pertenece a un canonico de arriba no se repite: en
+    #     `_map_headers` gana el canonico que aparece primero, asi que repetirlo
+    #     no se lo quita, solo pone dos duenos para el mismo encabezado. Por eso
+    #     `lead_time`/`lead` quedan con `lead_time_days`, `period`/`week` con
+    #     `date`, y `demand` con `quantity`. El nombre canonico exacto igual
+    #     resuelve: los nombres exactos se reclaman antes que los alias.
+    #  2. Nada de alias de una o dos letras (`h`, `R`, `lt`, `ss`, `vf`). Una
+    #     columna llamada "h" en un archivo de cliente es casi seguro otra cosa.
+    #     El sniffer del job los sigue aceptando cuando la tool corre de verdad;
+    #     esta tabla solo gobierna el scan.
+    #  3. Los terminos que se disputan DOS canonicos nuevos se arbitran aca, no
+    #     por orden de iteracion: `lot` es de `lot_id` y `moq` es de `moq`. Y
+    #     `location`/`node` no van a ninguno -- los reclamaban `stage` y `branch`
+    #     por igual, y elegir uno haria que una tool salga verde con el archivo
+    #     de la otra.
+    "mean_demand": ["mean_demand", "mean", "avg_demand", "demand_mean", "expected_demand", "forecast"],
+    "std_demand": ["std_demand", "std", "sigma", "demand_std", "stdev", "demand_sigma"],
+    "salvage_value": ["salvage_value", "salvage"],
+    "goodwill": ["goodwill", "shortage_penalty", "stockout_penalty"],
+    "lead_time": ["lead_time", "lead_time_periods"],
+    "holding_cost": ["holding_cost", "holding_cost_per_period", "holding"],
+    "order_cost": ["order_cost", "fixed_order_cost", "ordering_cost", "setup_cost"],
+    "backorder_cost": ["backorder_cost", "shortage_cost", "stockout_cost", "penalty"],
+    "review_period": ["review_period", "review"],
+    "stage": ["stage", "echelon"],
+    "branch": ["branch", "warehouse", "site"],
+    "period": ["period", "month", "bucket"],
+    "safety_stock": ["safety_stock", "safety"],
+    "lot_size": ["lot_size"],
+    "adu": ["adu", "avg_daily_usage", "average_daily_usage", "daily_usage"],
+    "dlt": ["dlt", "decoupled_lead_time"],
+    "ltf": ["ltf", "lead_time_factor"],
+    "vf": ["vf", "variability_factor"],
+    "moq": ["moq", "min_order_qty"],
+    "order_cycle_days": ["order_cycle_days", "order_cycle", "order_cycle_period"],
+    "on_order": ["on_order", "open_po", "open_orders"],
+    "qualified_demand": ["qualified_demand", "qualified", "open_demand", "sales_orders"],
+    "lot_id": ["lot_id", "lot", "batch", "batch_id"],
+    # "days" a secas queda afuera a proposito: es de la tupla de fefo, pero un
+    # encabezado llamado "days" en una carpeta cualquiera no es evidencia de nada.
+    "days_to_expiry": ["days_to_expiry", "shelf_life_days", "days_left", "ttl_days"],
+    # -- Lote 3: deposito, conteo y auditoria ---------------------------------
+    # Mismas tres reglas del lote 2. Ademas se podan los terminos genericos de una
+    # palabra que en un archivo de cliente pueden ser cualquier cosa: "count" (puede
+    # ser un conteo de filas), "actual", "system", "book", "order". Y "category"
+    # queda AFUERA de `reason` aunque este en la tupla de returns: en un maestro de
+    # productos una columna `category` es la categoria del producto, no el motivo de
+    # una devolucion, y aceptarla es exactamente el falso verde que el scan evita.
+    "system_qty": ["system_qty", "book_qty", "on_hand_system"],
+    "physical_qty": ["physical_qty", "physical", "counted"],
+    "returned_units": ["returned_units", "returns"],
+    "reason": ["reason", "return_reason"],
+    "resale_value": ["resale_value", "resale"],
+    "sellable": ["sellable", "resellable"],
+    "order_id": ["order_id", "invoice", "basket"],
+    "unit_volume": ["unit_volume", "required_space", "cube"],
+    # -- Lote 4: red, geometria y flujo ---------------------------------------
+    # Un matiz de la regla 1 que aparecio aca: un canonico que figura en esta tabla
+    # pero que NINGUNA tool declara no participa de `_map_headers` -- el juego
+    # canonico del scan son los perfiles mas lo declarado por el registry, y hoy
+    # `receipt_date`, `order_date` y `po_id` quedan afuera (los usa
+    # `detect_columns` con una lista explicita, otro camino). Por eso `fecha_llegada`
+    # puede darse a `arrival_date` sin conflicto vivo, aunque `receipt_date` tambien
+    # lo liste. Si alguna vez una tool declara `receipt_date`, ESTE es el par a
+    # resolver: en un export de recepciones esa fecha es la del PO, y en uno de
+    # movimientos es la llegada de la pierna. Queda anotado, no escondido.
+    "longitude": ["longitude", "lon", "x_coord", "easting"],
+    "latitude": ["latitude", "lat", "y_coord", "northing"],
+    "role": ["role", "node_type"],
+    "fixed_cost": ["fixed_cost", "open_cost", "annual_cost"],
+    "capacity": ["capacity", "throughput", "max_load"],
+    "weight_kg": ["weight_kg", "weight", "gross_weight"],
+    "distance_km": ["distance_km", "distance", "lane_km"],
+    "shipment_id": ["shipment_id", "shipment"],
+    # `destination` se lo lleva el canonico de flow_map, no el `lane` de
+    # transportation: un destino es un lugar y una lane es un par origen-destino.
+    "lane": ["lane", "route", "origin_dest"],
+    "order_value": ["order_value"],
+    "departure_date": ["departure_date", "fecha_salida", "fecha_despacho", "dispatch_date", "ship_date"],
+    "arrival_date": ["arrival_date", "fecha_llegada"],
+    "origin": ["origin", "origen", "desde", "from_location"],
+    "destination": ["destination", "destino", "hacia", "to_location"],
 }
 
 #: La tabla de alias que un mapeo usa. Normalmente ``ALIASES``, o
