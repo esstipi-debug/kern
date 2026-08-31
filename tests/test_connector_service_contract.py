@@ -15,9 +15,16 @@ claiming to measure something its own fixture never produces. A declaration nobo
 a comment, and a comment is what the previous version of this argument was.
 
 The drift guard at the end is what keeps that true past today: a NEW module in
-``src/connectors/`` that defines ``orders()`` and does not declare its coverage fails, at
-the moment it lands, rather than the first time a client asks what their OTIF was computed
-from. Same stance as ``tests/test_connector_contract.py`` takes on the write side.
+``src/connectors/`` that defines ``orders()`` OR ``arrivals()`` and does not declare its
+coverage fails, at the moment it lands, rather than the first time a client asks what their
+OTIF was computed from. Same stance as ``tests/test_connector_contract.py`` takes on the
+write side.
+
+That second verb was added the day the first carrier landed, and the reason is worth
+keeping: an ``ArrivalSource`` reads no orders, but it WRITES ``delivered_date`` -- it feeds
+a service field like any adapter, and can turn a dispatch OTIF into an arrival one or ruin
+it. Guarding "implements this Protocol" would have let it through; guarding "fills these
+three fields" does not.
 
 Scope, stated rather than implied: the fixtures here exercise the six offline-runnable
 sources (simulator, HTTP client, MCP source, Unleashed, Cin7 Core, Olist) plus Odoo through
@@ -520,6 +527,10 @@ _NOT_A_BACKEND = {
     # handler, not an adapter method. What it serves is declared by simulator.py, and
     # what reads it back is declared by http_client.py.
     "emulator",
+    # El Protocol de las fuentes de llegada y el helper que las empalma, no una fuente:
+    # define ``arrivals()`` en un ``Protocol``, no en un adaptador. Lo que empalma se
+    # declara en el modulo del transportista, y lo compuesto en ``coverage_of_arrivals``.
+    "arrivals",
 }
 
 
@@ -530,12 +541,19 @@ def test_every_connector_that_reads_orders_declares_its_service_coverage():
     import re
 
     connectors_dir = _REPO_ROOT / "src" / "connectors"
+    # ``orders()`` O ``arrivals()``. La segunda se agrego cuando aterrizo el primer
+    # transportista: un ArrivalSource no lee ordenes, pero ESCRIBE ``delivered_date`` -- o
+    # sea que alimenta un campo de servicio igual que cualquier adaptador, y sin esta
+    # alternancia se habria colado sin declarar nada. El guard cubre lo que llena los tres
+    # campos, no lo que implementa un Protocol en particular.
     readers = {
         path.stem
         for path in sorted(connectors_dir.glob("*.py"))
-        if path.stem != "__init__" and re.search(r"def orders\(", path.read_text(encoding="utf-8"))
+        if path.stem != "__init__"
+        and re.search(r"def (orders|arrivals)\(", path.read_text(encoding="utf-8"))
     }
     covered = {case.module.rsplit(".", 1)[-1] for case in ADAPTERS}
+    covered |= {modulo.rsplit(".", 1)[-1] for _, modulo, _ in ARRIVAL_SOURCES}
     assert readers == covered | _NOT_A_BACKEND, (
         "connector(s) reading orders but absent from both ADAPTERS and _NOT_A_BACKEND: "
         f"{sorted(readers - covered - _NOT_A_BACKEND)}. Add a SERVICE_COVERAGE and an "
@@ -611,3 +629,107 @@ def test_cin7_es_el_unico_que_declara_poder_medir_un_cero():
     from src.connectors.cin7 import SERVICE_COVERAGE
 
     assert "cero" in SERVICE_COVERAGE.delivered_qty.means.lower()
+
+
+# -- las fuentes de LLEGADA, que no leen ordenes pero llenan un campo de servicio ---
+
+#: Un transportista no tiene ``orders()``: no sabe que se pidio. Pero SI escribe
+#: ``delivered_date``, asi que esta tan sujeto a declarar su cobertura como cualquier
+#: adaptador -- y mas, porque es el unico que puede convertir un OTIF de despacho en uno de
+#: llegada, o arruinarlo. Por eso el drift guard de arriba busca ``orders`` O ``arrivals``.
+#:
+#: Se prueban con sus propias aserciones y no con ``AdapterCase``: ese caso corre
+#: ``.orders()`` y compara los tres campos, y aca dos de los tres los tiene que poner el
+#: ERP. Meterlo a la fuerza en la misma maquinaria exigiria un caso especial, que es
+#: justamente lo que este archivo dice no tener.
+
+
+def _starshipit():
+    """Un envio entregado el 22, con un evento posterior que NO debe correr la fecha."""
+    from src.connectors.starshipit import StarshipitArrivals, StarshipitCredentials
+
+    class _Http:
+        class _R:
+            def __init__(self, p, s=200):
+                self._p, self.status_code = p, s
+
+            def json(self):
+                return self._p
+
+        def get(self, path, *, params=None, headers=None):
+            return _Http._R({
+                "results": {
+                    "order_number": "SO-1",
+                    "tracking_status": "Delivered",
+                    "last_updated_date": "2024-04-30T08:00:00",
+                    "tracking_events": [
+                        {"event_datetime": "2024-04-19T09:15:00", "status": "InTransit"},
+                        {"event_datetime": "2024-04-22T14:03:11", "status": "Delivered"},
+                        {"event_datetime": "2024-04-30T08:00:00", "status": "Exception"},
+                    ],
+                },
+                "success": True,
+            })
+
+    return StarshipitArrivals(
+        _Http(), StarshipitCredentials(api_key="g", subscription_key="g"), ["SO-1"]
+    )
+
+
+ARRIVAL_SOURCES: tuple[tuple[str, str, Callable[[], object]], ...] = (
+    ("starshipit", "src.connectors.starshipit", _starshipit),
+)
+
+
+@pytest.fixture(params=ARRIVAL_SOURCES, ids=lambda caso: caso[0])
+def arrival_source(request):
+    return request.param
+
+
+def test_toda_fuente_de_llegada_declara_los_tres_campos(arrival_source):
+    nombre, modulo, _ = arrival_source
+    coverage = _coverage(modulo)
+    assert set(coverage.fields()) == {"delivered_qty", "promised_date", "delivered_date"}
+
+
+def test_una_fuente_de_llegada_declara_ausente_lo_que_un_transportista_no_sabe(arrival_source):
+    """La rama que hasta este adaptador solo se probaba contra dobles de test.
+
+    Ninguna de las fuentes anteriores declaraba un campo UNAVAILABLE -- todas podian medir
+    los tres -- asi que la mitad del guard corria en vacio y hubo que escribir mutantes
+    para probarla. Un transportista es el primer caso REAL: mueve bultos, no lineas de
+    pedido, y no puede saber ni cuanto se pidio ni que fecha se prometio.
+    """
+    _, modulo, _ = arrival_source
+    coverage = _coverage(modulo)
+    assert coverage.delivered_qty.reports is False
+    assert coverage.promised_date.reports is False
+    # Y la que si reporta, reporta. Un transportista que no sepa la fecha de entrega no
+    # tiene ningun motivo para existir en este repo.
+    assert coverage.delivered_date.reports is True
+
+
+def test_la_fecha_que_declara_medir_efectivamente_llega(arrival_source):
+    """Misma direccion que ``test_a_field_declared_reportable_actually_arrives``: una
+    declaracion es una afirmacion de venta, y esto es lo unico entre ella y una slide."""
+    nombre, _, build = arrival_source
+    llegadas = build().arrivals()
+    assert llegadas, f"{nombre} no reporto ninguna llegada sobre su propio fixture"
+    assert all(a.arrived_on for a in llegadas)
+
+
+def test_empalmar_un_transportista_cambia_de_donde_sale_la_fecha_de_entrega(arrival_source):
+    """La composicion, verificada: el ERP pone lo pedido y la promesa, el transportista
+    pone la llegada, y la declaracion resultante lo dice. Publicar la del ERP a secas
+    despues del empalme afirmaria una llegada que el ERP no puede dar."""
+    from src.connectors.arrivals import coverage_of_arrivals
+    from src.connectors.unleashed import SERVICE_COVERAGE as ERP
+
+    _, modulo, _ = arrival_source
+    compuesta = coverage_of_arrivals(ERP, _coverage(modulo))
+
+    assert compuesta.delivered_qty == ERP.delivered_qty
+    assert compuesta.promised_date == ERP.promised_date
+    assert compuesta.delivered_date.reports is True
+    assert "despacho" in ERP.delivered_date.means.lower()
+    assert "llego al cliente" in compuesta.delivered_date.means
