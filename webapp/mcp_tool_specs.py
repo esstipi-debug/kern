@@ -165,7 +165,7 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "(a tornado chart's underlying data) and bounding the optimistic/pessimistic case.\n\n"
             "Rows need columns: a driver-name column, low and high band columns, plus a "
             'base-value/unit column, e.g. {"driver": "demand", "low": -0.15, "high": 0.20, '
-            '"base_value": 100, "unit": "units/period"}.\n\n'
+            '"base": 100, "unit": "units/period"}.\n\n'
             "Useful params: metric (default \"annual_cost\"), budget_pct (default 0.10), "
             "maximize (default false).\n\n" + _RETURNS
         ),
@@ -178,7 +178,9 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Allocate the true cost to serve each customer segment / channel, flag "
             "loss-making segments, and size the working-capital cash-release opportunity.\n\n"
-            "Rows need columns: segment (or channel), sales (revenue). Optional: quantity, "
+            "Rows need columns: segment (or channel), revenue (sales), and a freight column "
+            "-- without an activity cost driver the tool refuses, and freight is the only "
+            "driver that can arrive as data rather than params. Optional: quantity, "
             "order_id (order-level cost allocation), cogs, returns_units, shipping/freight "
             'cost. One row per order line or aggregate, e.g. {"segment": "Retail", '
             '"sales": 1200.0, "cogs": 700.0, "order_id": "SO-77"}.\n\n'
@@ -208,8 +210,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Roll up project cost/schedule control: SV, CV, SPI, CPI per task and for the "
             "whole project, flagging the worst work packages.\n\n"
-            "Rows need columns: task, planned (PV / budgeted cost of work scheduled), "
-            "earned (EV / budgeted cost of work performed), actual (AC / actual cost). "
+            "Rows need columns: task, planned_value (PV / budgeted cost of work scheduled), "
+            "earned_value (EV / budgeted cost of work performed), actual_cost (AC). "
             'E.g. {"task": "Rack install", "planned": 10000, "earned": 8000, "actual": 9500}.\n\n'
             + _RETURNS
         ),
@@ -221,7 +223,7 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Project unit and cumulative cost at volume from a first-unit cost and a "
             "learning rate (Yx = K * x^n cost-down curve), per product.\n\n"
-            "Rows need columns: product, first_unit_cost, learning_rate (e.g. 0.85 for an "
+            "Rows need columns: product_id, first_unit_cost, learning_rate (e.g. 0.85 for an "
             '85% curve), planned_volume. E.g. {"product": "Assembly-X", '
             '"first_unit_cost": 1200, "learning_rate": 0.85, "planned_volume": 250}.\n\n'
             + _RETURNS
@@ -447,8 +449,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Score a supply-chain risk register (likelihood x impact), rank by expected "
             "monetary value and FMEA-style priority, and lay out the 5x5 heatmap plus a "
             "mitigation plan.\n\n"
-            "Rows need columns: name, likelihood (0-1 annual probability), impact_value "
-            "(currency loss if it hits). Optional: category, exposure, time_to_recover, "
+            "Rows need columns: risk_name, likelihood (0-1 annual probability), impact_value "
+            "(currency loss if it hits). Optional: risk_category, exposure, time_to_recover, "
             'time_to_survive, owner. E.g. {"name": "Port strike", "likelihood": 0.15, '
             '"impact_value": 250000, "category": "logistics"}.\n\n'
             "Useful params: severity_thresholds, mitigations (dict keyed by risk name).\n\n"

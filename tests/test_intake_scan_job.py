@@ -317,7 +317,18 @@ def test_healthy_folder_passes_the_gate_and_evaluates_the_declared_tools(tmp_pat
     assert states["data_quality"] == YELLOW
     assert states["abc_xyz"] == RED
     assert states["excess_obsolete"] == RED  # no stock file in this folder
-    assert states["risk"] == UNDECLARED
+    # An undeclared tool reads as no_declarado, never as runnable. Which tool that
+    # is comes from the registry, not from a name typed here: this line used to say
+    # `risk`, and it broke the moment `risk` declared its columns -- for the right
+    # reason at the wrong time, which teaches whoever hits it to swap in another
+    # name rather than check the property.
+    from scm_agent.tools import build_default_registry as _reg
+
+    undeclared = [
+        t.key for t in _reg().list() if t.requires_data and not t.required_columns
+    ]
+    if undeclared:
+        assert states[undeclared[0]] == UNDECLARED
     # Derived, not pinned: this number is exactly the count of data tools that have
     # declared their columns, and that count is designed to grow as the contracts
     # land batch by batch. A literal here would fail on the first batch and teach

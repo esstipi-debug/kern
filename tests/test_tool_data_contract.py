@@ -40,25 +40,45 @@ from scm_agent import tools
 # good ABC file that they are missing two columns they do not need. That is not
 # a cautious over-declaration, it is a wrong answer; `no_declarado` at least
 # says "I cannot tell" instead of misdirecting the data request.
+#
+# "cross_impact" -- its contract is a PARAMS contract, not a column one: it wants
+# a sku and two decision points, and scm_agent/tools.py:1269 maps ValueError to
+# `needs_clarification`, not `needs_data`, so it sits outside every assertion
+# below by construction. The file it reads is hat_tension's, declared there.
+#
+# "dea" -- its contract is a column-name PREFIX. jobs/dea_job.py:51 takes every
+# header starting with `input_`/`in_` and `output_`/`out_`; there is no fixed
+# name to declare. Declaring ("input_1", "output_1") would pass the drop test
+# and be a lie to intake_scan, since no client file carries those headers.
+#
+# "excel_replenishment" -- reads .xlsx/.xlsm through openpyxl, scanning the first
+# rows of every sheet for a fuzzy Spanish header. There is no CSV contract to
+# declare, and it is a writeback tool held off the anonymous surfaces anyway.
+#
+# "launch_readiness" -- consumes TWO files (a campaigns CSV plus an inventory CSV
+# via params["inventory_path"], scm_agent/tools.py:1119). `required_columns` is a
+# single-table concept, and src/intake_scan.py assumes prepare() reads exactly
+# one file. Same category as intake_scan itself.
+#
+# "org_friction_audit" -- jobs/org_friction_job.py:63 sets _REQUIRED = ("name",),
+# a single column, and `name` already means PRODUCT NAME everywhere else in this
+# codebase. Declaring it would turn any product master into a green verdict for
+# an organisational-friction audit: the textbook false green. Declarable only
+# after that job asks for something of its own.
+#
+# "vehicle_routing" -- jobs/vehicle_routing_job.py:69 refuses without
+# params.capacity, which is not a column, so a file carrying every declared
+# column still cannot prepare and the "complete fixture prepares cleanly"
+# assertion could never hold. Declarable the day that refusal moves into run().
 UNDECLARED_TOOLS = frozenset({
-    "cost_to_serve",
     "cross_impact",
     "cycle_count",
     "dea",
-    "earned_value",
     "excel_replenishment",
-    "hat_settlement",
-    "hat_tension",
     "intake_scan",
     "launch_readiness",
-    "learning_curve",
     "org_friction_audit",
-    "price_intelligence",
-    "queuing",
-    "risk",
-    "scheduling",
     "vehicle_routing",
-    "whatif",
 })
 
 DECLARED = (
@@ -73,6 +93,10 @@ DECLARED = (
     "facility_location", "flow_map", "network_design", "transportation",
     # batch 5 -- suppliers and procurement
     "acceptance_sampling", "disruption_scan", "landed_cost", "sourcing", "supplier_management",
+    # batch 6 -- ops, project, risk and analysis
+    "cost_to_serve", "earned_value", "learning_curve", "queuing", "risk", "scheduling", "whatif",
+    # batch 7 -- hats and competitor pricing
+    "hat_settlement", "hat_tension", "price_intelligence",
 )
 
 _DAY_ZERO = date(2026, 1, 1)
@@ -115,6 +139,23 @@ _SAMPLE = {
     "insurance": "50", "duty_rate": "0.06", "handling": "40",
     "broker_fee": "80", "incoterm": "FOB", "single_source": "0",
     "defect_ppm": "120", "financial_risk": "0.3", "geo_risk": "0.2",
+    # -- batch 6: ops, project, risk and analysis ---------------------------
+    "task": "T-1", "planned_value": "1000", "earned_value": "900",
+    "actual_cost": "950", "first_unit_cost": "100", "learning_rate": "0.85",
+    "planned_volume": "500", "station": "EST-1", "arrival_rate": "8.0",
+    "service_rate": "10.0", "wait_cost": "50", "server_cost": "30",
+    "job": "J-1", "processing_time": "4.0",
+    # due_date is a NUMBER of days here, not a date: jobs/scheduling_job.py
+    # floats it, and "2026-02-01" makes the whole fixture refuse.
+    "due_date": "12",
+    "risk_name": "R-1", "likelihood": "0.2", "impact_value": "50000",
+    "risk_category": "supply", "exposure": "120000", "velocity_days": "5",
+    "detectability_days": "3", "time_to_recover": "12",
+    "low": "0.8", "high": "1.2", "base": "1.0", "unit": "x",
+    "segment": "Retail",
+    # -- batch 7: competitor pricing ----------------------------------------
+    "competitor_url": "https://competidor.cl/p/1",
+    "competitor_site": "competidor.cl", "our_price": "13.9",
 }
 
 # Columns whose value must VARY, and along which axis. A constant column is not
@@ -162,6 +203,18 @@ _VARYING = {
     "in_full": ("row", lambda k, r: "1" if r % 5 else "0"),
     "defect_ppm": ("key", lambda k, r: str(80 + 60 * k)),
     "lead_time_days": ("key", lambda k, r: str(10 + 4 * k)),
+    "task": ("row", lambda k, r: f"T-{r}"),
+    "station": ("key", lambda k, r: f"EST-{k}"),
+    "job": ("row", lambda k, r: f"J-{r}"),
+    "risk_name": ("row", lambda k, r: f"R-{r}"),
+    "segment": ("key", lambda k, r: f"SEG-{k}"),
+    "processing_time": ("row", lambda k, r: str(2.0 + r)),
+    "likelihood": ("row", lambda k, r: str(round(0.05 + 0.05 * r, 2))),
+    "impact_value": ("row", lambda k, r: str(10000 * (r + 1))),
+    # whatif does not take free text here: a driver has to name one of the
+    # model inputs it knows, or the job refuses with "unknown driver(s)".
+    "driver": ("row", lambda k, r: _WHATIF_DRIVERS[r % len(_WHATIF_DRIVERS)]),
+    "competitor_url": ("key", lambda k, r: f"https://competidor.cl/p/{k}"),
 }
 
 # Rows per key, and keys per file. Several jobs refuse a SKU with too few
@@ -169,6 +222,11 @@ _VARYING = {
 # MIN_OBS = 5 -- so a fixture of 12 rows with 12 distinct SKUs prepares to
 # "no usable SKUs" and reads as a wrong declaration when the declaration is fine.
 # Three keys is also the minimum that makes a ranking or a panel meaningful.
+_WHATIF_DRIVERS = (
+    "annual_demand", "holding_cost", "fixed_order_cost",
+    "demand_std", "service_level", "lead_time",
+)
+
 _KEYS = 3
 _ROWS_PER_KEY = 5
 

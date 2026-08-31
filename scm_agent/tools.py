@@ -352,6 +352,13 @@ def cost_to_serve_tool() -> Tool:
             "net to serve", "loss-making", "whale curve", "profitability by",
         ),
         requires_data=True,
+        # jobs/cost_to_serve_job.py:98 for segment/revenue, plus `freight`: without an
+        # activity cost driver the tool refuses outright, and freight is the ONLY driver
+        # that can arrive as a column -- the other three (cost_per_order,
+        # cost_per_unit_shipped, return_handling_per_unit) are params. Under the default
+        # params intake_scan speaks for, freight is therefore required, not optional.
+        required_columns=("segment", "revenue", "freight"),
+        optional_columns=("quantity", "order_id", "cogs"),
         options=tool_options.cost_to_serve_options,
         prepare=_cost_to_serve_prepare,
         run=_cost_to_serve_run,
@@ -802,6 +809,13 @@ def whatif_tool() -> Tool:
             "how sensitive", "downside", "best case", "worst case",
         ),
         requires_data=True,
+        # jobs/whatif_job.py:106. Note the `driver` column is not free text: its values
+        # must name model inputs the job knows (annual_demand, holding_cost,
+        # fixed_order_cost, demand_std, service_level, lead_time) or it refuses with
+        # "unknown driver(s)". `required_columns` cannot express a value contract, only
+        # a column one, so the scan can say the column is there and not that it is right.
+        required_columns=("driver", "low", "high"),
+        optional_columns=("base", "unit"),
         options=tool_options.whatif_options,
         prepare=_whatif_prepare,
         run=_whatif_run,
@@ -1028,6 +1042,11 @@ def queuing_tool() -> Tool:
             "checkout lanes", "call center staffing", "service desk",
         ),
         requires_data=True,
+        # jobs/queuing_job.py:59. `station` and not its _STATION_COLS' `name`/`node`:
+        # `name` already means product name, and `node` was left unclaimed when two
+        # network tools wanted it.
+        required_columns=("station", "arrival_rate", "service_rate"),
+        optional_columns=("wait_cost", "server_cost"),
         options=tool_options.queuing_options,
         prepare=_queuing_prepare,
         run=_queuing_run,
@@ -1075,6 +1094,10 @@ def scheduling_tool() -> Tool:
             "shop floor schedule",
         ),
         requires_data=True,
+        # jobs/scheduling_job.py:49. `due_date` is a NUMBER of days, not a date: the job
+        # floats it, and a real date string makes the whole file refuse.
+        required_columns=("job", "processing_time"),
+        optional_columns=("due_date",),
         options=tool_options.scheduling_options,
         prepare=_scheduling_prepare,
         run=_scheduling_run,
@@ -1180,6 +1203,11 @@ def hat_tension_tool() -> Tool:
             "cuanto pedir segun cada area",
         ),
         requires_data=True,
+        # jobs/hats_job.py:123. Both hats share `_hats_prepare`, so both declare the
+        # same contract. Note MIN_OBS = 5: a SKU with fewer weekly rows is skipped, and
+        # a file where every SKU is skipped refuses -- the column contract is met and
+        # the tool still cannot run. `required_columns` says nothing about row counts.
+        required_columns=("product_id", "quantity", "unit_cost", "lead_time_days"),
         prepare=_hats_prepare,
         run=_hat_tension_run,
         qa=lambda report: hats_job.verify_tension(report),
@@ -1207,6 +1235,8 @@ def hat_settlement_tool() -> Tool:
             "decision unica ponderada", "reconciled order plan", "consenso ponderado de compra",
         ),
         requires_data=True,
+        # Same contract as hat_tension by construction: one shared `_hats_prepare`.
+        required_columns=("product_id", "quantity", "unit_cost", "lead_time_days"),
         prepare=_hats_prepare,
         run=_hat_settlement_run,
         qa=lambda report: hats_job.verify_settlement(report),
@@ -1311,6 +1341,14 @@ def risk_tool() -> Tool:
             "risk exposure", "value at risk", "resilience",
         ),
         requires_data=True,
+        # jobs/risk_job.py:184. `risk_name`, not the module's first alias `name`: a
+        # canonical called `name` would go green on any product master, which is the
+        # false green this whole contract exists to prevent.
+        required_columns=("risk_name", "likelihood", "impact_value"),
+        optional_columns=(
+            "risk_category", "exposure", "velocity_days", "detectability_days",
+            "time_to_recover",
+        ),
         prepare=_risk_prepare,
         run=_risk_run,
         qa=lambda report: risk_job.verify(report),
@@ -1745,6 +1783,11 @@ def earned_value_tool() -> Tool:
             "cost variance", "cost performance index", "project performance", "bcwp",
         ),
         requires_data=True,
+        # jobs/earned_value_job.py:54. Declared as planned_value/earned_value/actual_cost
+        # rather than that module's bare `planned`/`earned`/`actual`: those single words
+        # mean nothing on their own in a client's folder, and all three long spellings
+        # are inside its own alias tuples.
+        required_columns=("task", "planned_value", "earned_value", "actual_cost"),
         options=tool_options.earned_value_options,
         prepare=_earned_value_prepare,
         run=_earned_value_run,
@@ -1790,6 +1833,12 @@ def learning_curve_tool() -> Tool:
             "cost reduction with volume", "quote at volume", "learning rate",
         ),
         requires_data=True,
+        # jobs/learning_curve_job.py:56. Declaring this contract is what surfaced that
+        # its _PRODUCT_COLS did not accept `product_id` -- the second tool with that
+        # gap, fixed in the same change.
+        required_columns=(
+            "product_id", "first_unit_cost", "learning_rate", "planned_volume",
+        ),
         options=tool_options.learning_curve_options,
         prepare=_learning_curve_prepare,
         run=_learning_curve_run,
@@ -2709,6 +2758,12 @@ def price_intelligence_tool() -> Tool:
             "precio de la competencia", "inteligencia de precios",
         ),
         requires_data=True,
+        # jobs/price_intelligence.py:162. The refs file is a SKU-to-competitor-URL map,
+        # so the URL is as required as the SKU. Its own tuple also accepts bare `url`
+        # and `link`; those are deliberately not aliases of the canonical, because in a
+        # product master a `url` column is the client's own page, not a competitor's.
+        required_columns=("product_id", "competitor_url"),
+        optional_columns=("competitor_site", "our_price"),
         options=tool_options.price_intelligence_options,
         prepare=_price_intelligence_prepare,
         run=_price_intelligence_run,

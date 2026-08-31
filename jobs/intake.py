@@ -196,6 +196,51 @@ ALIASES: dict[str, list[str]] = {
     "defect_ppm": ["defect_ppm", "defect_rate", "reject_rate"],
     "financial_risk": ["financial_risk", "credit_risk", "supplier_financial_risk"],
     "geo_risk": ["geo_risk", "country_risk", "geopolitical_risk"],
+    # -- Lote 6: ops, proyecto, riesgo y analisis -----------------------------
+    # Este lote es el que mas terminos genericos trae en sus tuplas, y casi
+    # ninguno sobrevive: "value" lo querian `impact_value` y `base`, "rate" lo
+    # querian `learning_rate` y `service_rate`, "time" lo queria
+    # `processing_time`, y "min"/"max" los querian `low`/`high`. Un encabezado
+    # llamado `value` o `rate` en la carpeta de un cliente no es evidencia de
+    # nada, y darselo a uno de los dos seria decidirlo por orden de iteracion.
+    # "task" queda con `task` y no con `job`, y "name" no va a ninguno: lo
+    # reclamaban cuatro tuplas distintas y ya significa nombre de producto.
+    "task": ["task", "work_package", "activity"],
+    "planned_value": ["planned_value", "planned", "bcws", "budget"],
+    "earned_value": ["earned_value", "earned", "bcwp"],
+    "actual_cost": ["actual_cost", "actual", "acwp", "spent"],
+    "first_unit_cost": ["first_unit_cost", "first_unit", "first_cost"],
+    "learning_rate": ["learning_rate", "curve"],
+    "planned_volume": ["planned_volume"],
+    "station": ["station", "resource"],
+    "arrival_rate": ["arrival_rate", "arrivals", "lambda", "demand_rate"],
+    "service_rate": ["service_rate", "service"],
+    "wait_cost": ["wait_cost", "waiting_cost", "downtime_cost"],
+    "server_cost": ["server_cost", "labor_cost", "staffing_cost"],
+    "job": ["job", "job_id"],
+    "processing_time": ["processing_time", "processing", "duration"],
+    "due_date": ["due_date", "due", "deadline", "due_in"],
+    "risk_name": ["risk_name", "risk", "factor"],
+    "likelihood": ["likelihood", "probability", "prob", "annual_probability"],
+    "impact_value": ["impact_value", "impact", "impact_usd", "loss"],
+    "risk_category": ["risk_category"],
+    "exposure": ["exposure", "exposed_value"],
+    "velocity_days": ["velocity_days", "velocity"],
+    "detectability_days": ["detectability_days", "detectability", "detection_days"],
+    "time_to_recover": ["time_to_recover", "ttr", "recovery_days"],
+    "driver": ["driver", "parameter", "assumption"],
+    "low": ["low", "lower"],
+    "high": ["high", "upper"],
+    "base": ["base", "baseline", "expected"],
+    "unit": ["unit"],
+    "segment": ["segment", "customer_segment", "channel"],
+    # -- Lote 7: precios de competencia ---------------------------------------
+    # "url" y "link" pelados quedan afuera: en un maestro de productos una columna
+    # `url` es la ficha propia, no la del competidor, y confundirlas haria que
+    # price_intelligence salga verde sobre el catalogo del propio cliente.
+    "competitor_url": ["competitor_url", "competitor_ref", "competitor_link"],
+    "competitor_site": ["competitor_site", "domain"],
+    "our_price": ["our_price", "client_price", "current_price"],
 }
 
 #: La tabla de alias que un mapeo usa. Normalmente ``ALIASES``, o

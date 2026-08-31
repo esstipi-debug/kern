@@ -66,7 +66,7 @@
   port is written up in `odoo_addon/PORT_17_A_19.md`.
 
 ### Changed
-- **Twenty-seven of the 45 data tools now declare their data contract, up from four.**
+- **Thirty-seven of the 45 data tools now declare their data contract, up from four.**
   Batch 1, the per-SKU demand-history family: `forecast`,
   `inventory_optimization`, `markdown_liquidation`, `pricing`, `sop`. Batch 2,
   inventory and replenishment policy: `ddmrp`, `drp`, `fefo`, `multi_echelon`,
@@ -74,7 +74,10 @@
   `reconciliation`, `returns`, `slotting`. Batch 4, network, geometry and flow:
   `facility_location`, `flow_map`, `network_design`, `transportation`. Batch 5,
   suppliers and procurement: `acceptance_sampling`, `disruption_scan`,
-  `landed_cost`, `sourcing`, `supplier_management`. This is a
+  `landed_cost`, `sourcing`, `supplier_management`. Batch 6, ops, project, risk
+  and analysis: `cost_to_serve`, `earned_value`, `learning_curve`, `queuing`,
+  `risk`, `scheduling`, `whatif`. Batch 7, hats and competitor pricing:
+  `hat_settlement`, `hat_tension`, `price_intelligence`. This is a
   product change, not housekeeping: `src/intake_scan.py` derives its verdict from
   `required_columns`, so an undeclared tool answers `no_declarado` -- "I cannot
   tell you whether your folder can run this". On the repo's own sample folder
@@ -150,6 +153,18 @@
   header. `multi_echelon` moved to `lead_time_days` (its own sniffer already
   accepted that spelling) and `drp` dropped its optional lead-time column
   entirely rather than reintroduce the collision.
+  **The eight tools that remain undeclared are permanent, and each says why**
+  next to its entry rather than sitting on the list as a pending item -- "still
+  on the list" and "cannot be on any list" are different facts, and collapsing
+  them is how a programme like this ends up chasing a tool that was never
+  declarable. `intake_scan` and `launch_readiness` read more than one file;
+  `cycle_count` and (in part) `supplier_management` have disjunctive contracts;
+  `dea`'s contract is a column-name PREFIX; `excel_replenishment` reads .xlsx
+  with a fuzzy Spanish header; `cross_impact` has a params contract and maps
+  its refusal to `needs_clarification`; `org_friction_audit` requires only
+  `name`, which already means product name and would green any master file;
+  and `vehicle_routing` refuses without `params.capacity`, which is not a
+  column. Two of them name the exact change that would make them declarable.
   Three things had to be fixed before any declaration was safe or provable:
   - **`jobs/intake_scan_job.py` could only ever SEE 15 column names.**
     `_canonical_order()` was built from the four demo `PROFILES`, not from the
@@ -179,14 +194,19 @@
   coverage. Relatedly, the evaluated/total ratio counted all 50 registered tools,
   five of which never read a file: the summary said "9 of 50" while the finding
   printed beside it said "of 45". Both now say 45.
-- **`acceptance_sampling` refused the repo's own canonical product column.**
+- **Two tools refused the repo's own canonical product column.**
   `jobs/acceptance_sampling_job.py`'s `_PART_COLS` accepted `part`, `component`,
   `sku`, `item` and `id` but not `product_id`, so a client file spelled the way
   every other tool in the registry spells it got `needs_data` from this one --
-  which reads as "your data is wrong" when the data was fine. Found while
-  declaring its contract; fixed with its own regression test.
-- **`webapp/mcp_tool_specs.py` drifted from the code in four places**, all found by
-  comparing its prose against the tuples it claims to copy. It described
+  which reads as "your data is wrong" when the data was fine.
+  `jobs/learning_curve_job.py` had the identical gap. Both were found while
+  declaring their contracts, neither by reading the code; `acceptance_sampling`
+  carries its own regression test.
+- **`webapp/mcp_tool_specs.py` drifted from the code in fifteen places**, all found
+  by comparing its prose against the tuples it claims to copy -- including one
+  outright wrong example: the `whatif` spec showed a `base_value` key that its
+  own sniffer does not accept, so a caller following the documentation would have
+  been refused. It described
   `forecast` as needing a period column -- it does not, verified by running the
   tool without one -- and named `part_id` for `ddmrp`, `demand` for `drp` and
   `demand_std` for `multi_echelon` where the declared contract uses the shared
