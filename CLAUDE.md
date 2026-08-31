@@ -75,6 +75,26 @@ explicit approval. Real connectors implementing the store surface: Odoo
 backup, cell-exact rollback; `.xlsm` macros preserved via `keep_vba`, never
 executed).
 
+### Service coverage (`src/connectors/__init__.py`, read side)
+The mirror of writeback safety, on the way in. `src/order_fulfillment.py` measures
+fill rate, outbound OTIF (SCOR RL.1.1) and lost sales from three OPTIONAL fields on
+`OrderLine`; which of the three a backend can fill is the competitive question the
+AU/NZ channel work rests on. So **every module in `src/connectors/` that defines
+`orders()` or `arrivals()` must export a `SERVICE_COVERAGE`** declaring, field by
+field, `status` (measured / derived / unavailable), `source` (the vendor's own field
+name) and `means` (what the number IS, in a sentence).
+`tests/test_connector_service_contract.py` does not read it — it **runs** it against
+the adapter and fails in both directions, and a new module without one breaks the
+build.
+
+The `means` sentence is the load-bearing part, not decoration: Unleashed, Cin7 Core
+and Odoo all fill `delivered_date` with a **departure**, Olist and Shopify with an
+**arrival**. Same field, same type, opposite meaning. Measured on 98.666 real orders
+(`examples/run_service_report.py`), the gap is 6.2 points of OTIF — the last leg no
+ERP in the channel can see. `arrivals.ArrivalSource` is the separate Protocol for
+carriers (Starshipit), which know when a shipment landed and nothing else: an ERP and
+a carrier together can measure arrival OTIF, and neither can alone.
+
 ### Discovery-assisted price watch (`jobs/price_watch.py`, read-only)
 Auto-onboard a never-seen competitor site, homologate its product pages against
 your catalog, then re-acquire and monitor the confirmed pairs on a recurring
