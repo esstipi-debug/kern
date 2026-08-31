@@ -22,6 +22,143 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-28 (cierre de ventana) — prod DESPLEGADA en v44, MCP listado, CI recortada; **lo que sigue es el piloto, no el motor**
+
+Leer esta entrada antes que la de abajo: aquella se escribio con el fix sin mergear y ya quedo
+superada.
+
+### Lo cerrado, todo verificado y no asumido
+- **Producción en v44**, tras 25 dias congelada en la imagen del 3-ago. `fly releases` v44
+  complete, `/api/health` 200, y **50 tools con `intake_scan` presente dentro del contenedor**
+  (`fly ssh console -C "python -c ..."`). El arranque mismo prueba que la POLICY aterrizo: con
+  `LINCHPIN_REQUIRE_SECURE` activo y politica ausente, la app no bindea el puerto.
+- **PR #300** (POLICY), **#303** (citas), **#304** (recortes de CI), **#301/#302** (ficha del
+  registro MCP). Todos mergeados.
+- **Kern listado en el registro oficial de MCP**: `io.github.esstipi-debug/kern` v2.9.0, active,
+  latest. Publicado 2026-08-28T19:35Z.
+
+### Tres trampas que costaron tiempo y conviene no repetir
+1. **La nota vieja mandaba al lugar equivocado.** Decia "configurar la POLICY en Fly". No habia
+   nada que configurar: `webapp.security.POLICY` es un global que nadie asignaba. Faltaba codigo.
+   Ante un guard que exige un valor, buscar **quien lo asigna** antes de donde configurarlo.
+2. **El deploy "exitoso" que no existio.** Un `fly deploy` corrido en PowerShell con
+   `"$NOSILO_CORE_TOKEN"` (sintaxis bash) mando el secreto **vacio**: build muerto, **ninguna
+   release creada**, y el reporte humano fue "listo, deployé". Solo `fly releases` mostro la
+   verdad. En PowerShell es `$env:NOMBRE`. Verificar siempre en la fuente, nunca por el reporte.
+3. **El token ya estaba a mano.** El build necesita `NOSILO_CORE_TOKEN`, y `gh auth token` da uno
+   con alcance `repo` que lee `esstipi-debug/nosilo-core` — verificado. El deploy final se hizo
+   con `--build-secret nosilo_token="$(gh auth token)"`. No hace falta pedirle el token a nadie.
+
+### Lo que sigue abierto
+- **La CI no arranca por facturacion**, no por el secret (ese esta puesto desde el 27-ago 16:28).
+  Ultima corrida verde real: 2026-08-27T17:56Z. Una corrida cuesta 66 job-minutos y el 27 hubo 9.
+  La mitad que falta es del operador, en `github.com/settings/billing`. **El workflow recortado de
+  #304 nunca corrio**: su primera ejecucion sera la primera corrida despues de destrabar el pago.
+- **La politica esta declarada, no aplicada.** Ninguna ruta llama a `policy_engine()`.
+  `test_the_policy_is_declared_and_not_yet_enforced` avisa el dia que aparezca la primera.
+- **La ficha del registro es vitrina, no uso.** La clave del MCP se emite a mano; quien llegue al
+  listado no puede llamarlo. Republicar exige subir `version` (2.9.0 hoy).
+- Las referencias de linea en `documentation/KERN_BRECHAS_DE_CAPACIDAD.md` quedaron corridas 13
+  lineas y ningun test las cubre.
+
+### **Lo que sigue de verdad: el piloto — AU/NZ self-serve, NO congelados-CL**
+
+> **CORRECCION del 2026-08-28, misma ventana.** La version original de esta seccion mandaba a
+> producir el peldano 0 de la escalera de congelados-CL (radiografia de TodoFrio). **Estaba mal**,
+> y el usuario lo corrigio: la decision del **2026-08-05** ya habia descartado ese vertical **por
+> nombre**. Se ejecuto una hora sobre una estrategia cancelada porque se leyo la memoria del 24-jul
+> como vigente sin buscar una posterior que la mencionara. **Regla: antes de ejecutar sobre una
+> memoria de estrategia, buscar una posterior que la nombre.** Las memorias no se invalidan solas.
+
+Kern esta **listo y no probado**. `/api/health` sirve `skus: 8`, cero usuarios externos, ningun
+dato ajeno entro nunca.
+
+**La via correcta** (decision 2026-08-05): producto = software que el cliente corre solo, beachhead
+**AU/NZ via Cin7/Unleashed**. El piloto es alguien alla que ya usa Cin7 o Unleashed haciendo
+`docker run` de una imagen prebuilt de GHCR contra sus propios datos. `pull`, nunca `build`, para
+que no necesite el token del core privado. Contrato del cliente = `KERN_DATA_DIR` + `PORT` +
+`KERN_API_KEY`.
+
+**Estado real de esa via, verificado hoy — casi nada existe:**
+- Sin imagen publicada: `ghcr.io/v2/esstipi-debug/kern/tags/list` -> 403, y no hay workflow que la
+  publique (`.github/workflows/` tiene solo `tests.yml` y `price-watch-cron.yml`).
+- La spec `docs/superpowers/specs/2026-08-05-self-hosted-image-packaging.md` que la decision cita
+  **no esta en el arbol**. Buscada por nombre y por patron.
+- **32 variables `LINCHPIN_*`** contra las 3 del contrato prometido.
+- `docs/positioning-self-serve` sigue pusheada y sin PR desde el 5-ago.
+- Lo unico desplegado es hosted single-tenant, que esa misma decision descarto como via self-serve.
+
+**El primer paso no es buscar cliente: es que exista algo que un cliente pueda correr.** Imagen,
+contrato de 3 variables, camino de onboarding. Recien despues, el canal.
+
+**Del desvio quedo material utilizable, para no rehacerlo:** la radiografia de Mariscos De La Concha
+quedo en `Music/scm/radiografia-mdlc-2026-08-28.md` con su catalogo crudo al lado. Los datos son
+correctos y reproducibles (29,2% de variantes agotadas, 26,4% sin SKU, el SKU `MAFI` compartido por
+las variantes de 0,5 y 1 kg del mismo producto); el objetivo es el equivocado, y ademas con 170
+productos es demasiado chico. Hay una tarea programada `todofrio-vigilancia` 2x/dia que conviene
+apagar salvo que congelados-CL vuelva a estar en juego.
+
+## 2026-08-28 — DESBLOQUEADO el deploy: la POLICY de acceso existe (rama `feat/policy-boot`, sin mergear)
+
+Cierra el bloqueante del 2026-08-03 (mas abajo). **Nada deployado todavia** — el
+deploy es una decision del operador y la CI no esta corriendo (ver el punto 3).
+
+### Lo que faltaba, exactamente
+`webapp.security.POLICY` es un global que se publica en `None` y **nadie en todo
+el arbol lo asignaba nunca**. No faltaba configuracion en Fly: faltaba el codigo
+que construye la politica. Reproducido en un worktree de `origin/main` con el
+entorno de produccion (`LINCHPIN_ENV=production`, `LINCHPIN_REQUIRE_SECURE=1`,
+API key, rate limit y approval secret puestos):
+
+```
+RuntimeError: LINCHPIN_REQUIRE_SECURE is set but: webapp.security.POLICY is not set
+```
+
+El mismo comando sobre la rama arranca: `boot OK`, `policy version 2026-08-28.1`,
+1 regla, 6 tipos de entidad clasificados (`sku`, `supplier`, `location`,
+`purchase_order`, `goods_receipt`, `supplier_invoice`).
+
+### Que se agrego
+- **`webapp/access_policy.py`** — una regla (el portador de la API key conserva
+  la autoridad que ya tiene, como principal de servicio) mas las clasificaciones
+  de campo de los dos packs, fusionadas con deteccion de colision en vez de
+  `update()` silencioso. Sin reglas para humanos ni agentes: `principal_from_request`
+  no deriva ninguno de los dos hoy, y una regla que no puede dispararse es config
+  que parece viva.
+- **`webapp/app.py`** — la asignacion, incondicional y **antes** de
+  `production_warnings()`. No `if ENV == production`: una asignacion que solo
+  ocurre en produccion es la asimetria exacta que dejo que este bug llegara al
+  deploy en vez de a la corrida de tests.
+- **`tests/test_webapp_access_policy.py`** — 11 tests.
+- Dos tests de `test_webapp_principal.py` ahora fijan su precondicion
+  (`POLICY = None`) en vez de heredarla del default del modulo. Antes dependian
+  del orden de coleccion.
+
+### El oraculo, corrido
+Con el modulo copiado al arbol de `origin/main` **pero sin la asignacion en
+`app.py`**: 10 tests pasan y `test_importing_the_app_leaves_a_policy_configured`
+falla en su propio assert (`assert None is not None`). O sea, el test que fija el
+arreglo no es vacuo y la asignacion es la que carga el peso. `ruff check .`
+limpio; 439 tests del radio de impacto en verde.
+
+### DEUDA DECLARADA: la politica esta configurada, no aplicada
+**Ninguna ruta de produccion llama a `security.policy_engine()`.** Solo los tests.
+Esto satisface el guard de arranque y le da un `policy_version` a toda decision
+futura; **no cambia lo que recibe ningun request hoy**. Lo honesto es decir que
+esto desbloquea el deploy y compra el vocabulario, y que cablear el primer punto
+de llamada — la aprobacion de writeback, o la descarga de entregables — es el
+cambio que hace que el guard diga toda la verdad.
+
+`test_the_policy_is_declared_and_not_yet_enforced` fija esa afirmacion con un
+recorrido AST (no un grep de texto: los docstrings que *describen* la ausencia de
+call site disparaban el propio tripwire). El dia que aparezca el primer llamado
+real, ese test falla y manda a reescribir el parrafo.
+
+### Criterio de hecho pendiente, cuando se deploye
+`flyctl status` con la version nueva **y** `curl /api/health` en 200 **y** el
+registry con 51 tools e `intake_scan` presente dentro del contenedor. Nunca el
+exit code de `flyctl deploy | tail` — ver la trampa operativa del 2026-08-03.
+
 ## 2026-08-25 — Montar Kern en el Odoo Apps Store (esta sesion)
 
 Playbook: `documentation/GTM_SUBMISSIONS.md` §5. **No se toco landing ni CSS**

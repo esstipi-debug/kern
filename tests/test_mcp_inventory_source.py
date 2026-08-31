@@ -218,3 +218,62 @@ def test_los_campos_opcionales_tienen_default():
     fuente = McpInventorySource(lambda name, args: [{"sku": "A-1"}])
     (p,) = fuente.list_products()
     assert (p.title, p.price, p.cost) == ("", 0.0, 0.0)
+
+
+# -- el lado de servicio -------------------------------------------------------
+
+
+SERVIDO = [
+    {
+        "order_id": "SO-9",
+        "created_at": "2026-08-01",
+        "lines": [
+            {
+                "sku": "A-1",
+                "quantity": 12.0,
+                "price": 10.5,
+                "delivered_qty": 9.0,
+                "promised_date": "2026-08-05",
+                "delivered_date": "2026-08-07",
+            }
+        ],
+    }
+]
+
+
+class _FuenteServicio(_Fuente):
+    """Igual que `_Fuente`, con un servidor que si reporta lo entregado."""
+
+    def __enter__(self):
+        srv = FastMCP("erp-servicio")
+
+        @srv.tool()
+        def orders() -> list[dict]:
+            return SERVIDO
+
+        self._portal_cm = start_blocking_portal()
+        portal = self._portal_cm.__enter__()
+        self._ses_cm = portal.wrap_async_context_manager(_conectar(srv))
+        ses = self._ses_cm.__enter__()
+        return McpInventorySource(sync_tool_caller(ses, portal))
+
+
+def test_las_lineas_traen_lo_servido_cuando_el_servidor_lo_reporta():
+    """Los tres campos opcionales viajan; sin ellos no hay OTIF que medir."""
+    with _FuenteServicio() as fuente:
+        (pedido,) = fuente.orders()
+
+    (linea,) = pedido.lines
+    assert linea.delivered_qty == 9.0
+    assert (linea.promised_date, linea.delivered_date) == ("2026-08-05", "2026-08-07")
+
+
+def test_un_servidor_que_no_reporta_entregas_deja_el_servicio_sin_medir():
+    """`PEDIDOS` no trae ninguno de los tres: no se rellenan con la cantidad pedida."""
+    with _Fuente() as (fuente, _vistos):
+        pedidos = fuente.orders()
+
+    linea = pedidos[0].lines[0]
+    assert linea.delivered_qty is None
+    assert linea.promised_date is None
+    assert linea.delivered_date is None

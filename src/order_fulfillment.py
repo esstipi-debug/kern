@@ -72,6 +72,11 @@ METHOD_REPORTED_FILL_RATE_ZERO = (
     "reconstructed from it"
 )
 METHOD_NOT_MEASURED = "not measured: no order lines and no fill rate reported by the client"
+#: Distinto de no medir: el backend SI publica servicio y todavia no hay nada que juzgar.
+METHOD_ALL_IN_FLIGHT = (
+    "sin resultado todavia: las {n} linea(s) de este SKU estan en curso -- prometidas "
+    "despues del cierre de la ventana. No es que no se midio, es que ninguna vencio"
+)
 METHOD_AGGREGATE = (
     "portfolio roll-up: fill rate weighted by units, OTIF weighted by scored lines, "
     "stockout days and lost sales summed"
@@ -79,6 +84,12 @@ METHOD_AGGREGATE = (
 #: Appended when the caller supplied a real stock-zero history for a record whose
 #: other numbers came from somewhere else.
 _METHOD_STOCK_HISTORY_SUFFIX = "; stockout days = client stock-zero history"
+#: Appended when lines were left out for not having come due. Says so in the record's
+#: own prose, because a denominator that shrank without explanation is not auditable.
+_METHOD_IN_FLIGHT_SUFFIX = (
+    "; {n} linea(s) en curso excluidas (prometidas despues del cierre de la ventana): "
+    "una orden que no vencio no es ni un acierto ni un faltante"
+)
 
 
 @dataclass(frozen=True)
@@ -117,6 +128,11 @@ class RealizedService:
     order_lines: int = 0
     lines_scored: int = 0
     lines_priced: int = 0
+    #: Lines left out of every criterion because their promise had not come due when
+    #: the window closed. A shrinking denominator that a client cannot explain is a
+    #: number they cannot reconcile against their own ERP, so the count is published
+    #: rather than absorbed: scored + in_flight + unmeasurable = order_lines.
+    lines_in_flight: int = 0
     units_ordered: float | None = None
     units_delivered: float | None = None
     periods_covered: int = 0
@@ -180,16 +196,63 @@ class _LineScan:
     #: rests on: with none of them there is no window to count days over, and an
     #: empty ``short_dates`` means "never measured", not "never broke".
     dated: int = 0
+    #: Lines whose promise had not come due yet, left out of every criterion. Work
+    #: in progress is not a service outcome, in either direction.
+    in_flight: int = 0
 
 
-def _scan_lines(lines: Sequence[dict]) -> _LineScan:
-    """Walk the order lines once, counting each criterion over its own evidence."""
-    scored = priced = otif_hits = otif_scored = dated = 0
+def _scan_lines(lines: Sequence[dict], *, as_of: date | None = None) -> _LineScan:
+    """Walk the order lines once, counting each criterion over its own evidence.
+
+    ``as_of`` is the end of the observation window: the last date the data can speak
+    about. It exists for exactly one case - a line that carried a promise, delivered a
+    MEASURED zero, and has no delivery date because there was no delivery. Without a
+    cut-off there is no way to tell that line ("the promise came due and nothing came")
+    from one still in flight ("promised for next month, not shipped yet"), and Odoo
+    reports ``qty_delivered = 0.0`` on every confirmed order that has not shipped, so
+    guessing would turn each of them into an OTIF failure the day this landed.
+    """
+    scored = priced = otif_hits = otif_scored = dated = in_flight = 0
     ordered = delivered = short_units = short_value = 0.0
     short_dates: set[date] = set()
     for line in lines:
         want, got = _number(line, "ordered_qty"), _number(line, "delivered_qty")
         if want is None or got is None or want <= 0 or got < 0:
+            continue
+        promised, shipped = _as_date(line.get("promised_date")), _as_date(line.get("delivered_date"))
+        if (
+            as_of is not None
+            and promised is not None
+            and promised > as_of
+            and shipped is None
+            and got < want
+        ):
+            # An OPEN order: not enough has arrived, no shipment was ever recorded, and
+            # the promise is still in the future. There is no outcome yet, and a line
+            # with no outcome belongs in no criterion - least of all the failing side of
+            # one. Odoo reports ``qty_delivered = 0.0`` on every confirmed order that has
+            # not shipped, so without this a client's whole open book was being read as
+            # stockout, and its money as lost sales.
+            #
+            # All four conditions carry weight, and two of them are corrections of a
+            # simpler rule that looked right and was not:
+            #
+            # ``shipped is None`` and ``got < want``. The first draft excluded EVERY line
+            # promised past the window, delivered or not, reaching for symmetry: drop
+            # only the pending failures and keep the early successes, and the fill rate
+            # rises by construction - textbook survivorship bias. Running it disproved
+            # it. A line delivered on the 10th against a promise for the 12th is a fact
+            # that already happened; discarding an observed delivery to protect against
+            # a bias is the larger error, and it silently threw away real service data.
+            # So evidence wins: any line with a shipment, or already served in full, is
+            # RESOLVED and gets counted. The residual asymmetry is real and is the price
+            # of not discarding facts - the excluded count is published in
+            # ``lines_in_flight`` and named in ``method`` so a reader can see its size.
+            #
+            # ``promised > as_of``, strictly. The window end is INCLUSIVE - it is the
+            # last date covered - so a promise falling ON it has come due inside the
+            # window and must be judged, not deferred.
+            in_flight += 1
             continue
         scored += 1
         ordered += want
@@ -202,10 +265,30 @@ def _scan_lines(lines: Sequence[dict]) -> _LineScan:
         if price is not None and price >= 0:
             priced += 1
             short_value += short * price
-        promised, shipped = _as_date(line.get("promised_date")), _as_date(line.get("delivered_date"))
         if promised is not None and shipped is not None:
             otif_scored += 1
             otif_hits += int(short <= 0 and shipped <= promised)
+        elif promised is not None and got == 0.0 and as_of is not None:
+            # Promised, overdue, and NOTHING was delivered. The worst case there is, and
+            # until this branch existed it was the one case OTIF could not see: with no
+            # shipment there is no shipment date, so the line fell out of the denominator
+            # for lacking the second date. It was already counted as a total shortfall in
+            # fill rate and lost sales two lines above - excluding it from OTIF alone was
+            # an inconsistency, not caution.
+            #
+            # "Overdue" is not tested here any more, and does not need to be: the
+            # in-flight guard at the top of the loop already sent every line with
+            # ``promised >= as_of`` away, so anything still holding a promise down here
+            # has one that came due. Re-checking it would be a second spelling of the
+            # same rule, and two spellings drift.
+            #
+            # What IS tested: ``got == 0.0`` rather than ``short > 0``. A PARTIAL
+            # delivery with no date did ship something, at a time nobody recorded, and
+            # scoring its timing either way would be invention. Only zero is unambiguous
+            # - no shipment, so no date to look for. And ``got`` is never None here
+            # (``_number`` filtered those out), so a backend that publishes no delivered
+            # quantities cannot manufacture OTIF failures out of old promises.
+            otif_scored += 1
         if promised is not None or shipped is not None:
             dated += 1
         if short > 0 and (promised or shipped) is not None:
@@ -214,16 +297,28 @@ def _scan_lines(lines: Sequence[dict]) -> _LineScan:
         lines=len(lines), scored=scored, priced=priced, ordered=ordered, delivered=delivered,
         short_units=short_units, short_value=short_value, otif_hits=otif_hits,
         otif_scored=otif_scored, short_dates=frozenset(short_dates), dated=dated,
+        in_flight=in_flight,
     )
 
 
-def not_measured(product_id: str, *, order_lines: int = 0) -> RealizedService:
-    """Nobody measured this SKU's service. Every metric ``None``, and it says so."""
+def not_measured(
+    product_id: str, *, order_lines: int = 0, in_flight: int = 0
+) -> RealizedService:
+    """Nobody measured this SKU's service. Every metric ``None``, and it says so.
+
+    ``in_flight`` splits a case that used to collapse into this one. Zero scored lines is
+    the trigger, and it has two very different causes: the backend publishes no service
+    data at all, or it publishes it and not one order has come due. The metrics are
+    ``None`` either way - there is genuinely nothing to report - but the ``method`` says
+    which, because a client who just connected their ERP and reads "not measured" over a
+    fresh order book deserves to know it is a calendar problem and not a wiring one.
+    """
     return RealizedService(
         product_id=product_id, fill_rate=None, otif=None, days_out_of_stock=None,
         lost_sales_units=None, lost_sales_value=None,
-        provenance=PROVENANCE_NOT_MEASURED, method=METHOD_NOT_MEASURED,
-        order_lines=order_lines,
+        provenance=PROVENANCE_NOT_MEASURED,
+        method=(METHOD_ALL_IN_FLIGHT.format(n=in_flight) if in_flight else METHOD_NOT_MEASURED),
+        order_lines=order_lines, lines_in_flight=in_flight,
     )
 
 
@@ -233,6 +328,7 @@ def measure_from_order_lines(
     *,
     stockout_days: int | None = None,
     periods_covered: int = 0,
+    as_of: date | str | None = None,
 ) -> RealizedService:
     """Service measured from the client's own order lines.
 
@@ -250,10 +346,18 @@ def measure_from_order_lines(
     short dates over undated lines is the module docstring's own failure mode -
     counting over rows that never carried the data, and turning "we never
     measured this" into a confident zero next to a shortfall we did measure.
+
+    ``as_of`` is the end of the observation window, and it unlocks one case OTIF
+    could not otherwise see: a line promised for a date that has PASSED, whose
+    delivered quantity is a measured zero. That line has no delivery date because
+    there was no delivery, so it used to fall out of the denominator for lacking a
+    second date - while the very same line was already counted as a total shortfall
+    in fill rate and lost sales. Without ``as_of`` the behaviour is unchanged: a
+    promise cannot be called overdue against a window whose end nobody stated.
     """
-    scan = _scan_lines(lines)
+    scan = _scan_lines(lines, as_of=_as_date(as_of))
     if scan.scored == 0:
-        return not_measured(product_id, order_lines=scan.lines)
+        return not_measured(product_id, order_lines=scan.lines, in_flight=scan.in_flight)
     measured_days = stockout_days is not None
     if measured_days:
         days, method = int(stockout_days), METHOD_ORDER_LINES_STOCK_HISTORY
@@ -261,6 +365,8 @@ def measure_from_order_lines(
         days, method = len(scan.short_dates), METHOD_ORDER_LINES
     else:
         days, method = None, METHOD_ORDER_LINES_UNDATED
+    if scan.in_flight:
+        method += _METHOD_IN_FLIGHT_SUFFIX.format(n=scan.in_flight)
     return RealizedService(
         product_id=product_id,
         fill_rate=scan.delivered / scan.ordered,
@@ -271,6 +377,7 @@ def measure_from_order_lines(
         provenance=PROVENANCE_OBSERVED,
         method=method,
         order_lines=scan.lines, lines_scored=scan.scored, lines_priced=scan.priced,
+        lines_in_flight=scan.in_flight,
         units_ordered=scan.ordered, units_delivered=scan.delivered,
         periods_covered=periods_covered,
     )

@@ -85,6 +85,7 @@ from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
 from webapp import (  # noqa: E402
+    access_policy,
     demo_gap_value,
     demo_gap_workbook,
     demo_lead_time_scan,
@@ -335,6 +336,18 @@ if security.CORS_ORIGINS:
 app.middleware("http")(observability.request_log_middleware)
 if observability.should_configure_logging():
     observability.configure_logging()
+
+# The deployment's access policy, assigned before the warnings below read it.
+# `security.POLICY` ships as None and nothing in the tree ever set it, so a
+# production boot with LINCHPIN_REQUIRE_SECURE could not start at all - that is
+# the crash that has kept production on a pre-2026-08-03 image. See
+# webapp/access_policy.py for the rule, and for the debt: the policy is
+# configured here, not yet enforced anywhere.
+#
+# Unconditional, NOT `if security.ENV == "production"`. An assignment that only
+# happens in production is the exact asymmetry that lets a boot failure reach the
+# deployment instead of the test run, which is the family this bug came from.
+security.POLICY = access_policy.build_policy()
 
 # Fail loud on an unsecured production boot; refuse outright if REQUIRE_SECURE.
 _PROD_WARNINGS = security.production_warnings()

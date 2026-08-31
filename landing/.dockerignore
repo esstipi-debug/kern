@@ -1,0 +1,7 @@
+# Solo salen los tres archivos que la pagina necesita. Todo lo demas de esta
+# carpeta es material de trabajo y no debe viajar a un host publico.
+BRIEF.md
+shots/
+fly.toml
+Dockerfile
+.dockerignore

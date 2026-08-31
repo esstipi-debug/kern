@@ -41,7 +41,15 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from . import InventoryLevel, Order, OrderLine, Product
+from . import (
+    COVERAGE_MEASURED,
+    FieldCoverage,
+    InventoryLevel,
+    Order,
+    OrderLine,
+    Product,
+    ServiceCoverage,
+)
 
 #: The three read tools a remote server must expose. Names are overridable
 #: because a third-party server names its tools for its own domain, not ours.
@@ -123,6 +131,23 @@ def _num(row: dict, key: str, *, tool: str, default: float | None = None) -> flo
         raise McpToolError(f"{tool}: field {key!r} is not a number: {row[key]!r}") from exc
 
 
+def _num_opt(row: dict, key: str, *, tool: str) -> float | None:
+    """Un numero que el servidor puede legitimamente no traer.
+
+    Distinto de ``_num``: la ausencia no es un error de contrato sino un dato -
+    nadie lo reporto. Un valor presente pero no numerico si lo es, y se levanta
+    igual que en ``_num``, porque eso es un campo mal mapeado y no un silencio.
+    """
+    if key not in row or row[key] is None:
+        return None
+    return _num(row, key, tool=tool)
+
+
+def _text_opt(row: dict, key: str) -> str | None:
+    value = row.get(key)
+    return None if value is None else str(value)
+
+
 def _text(row: dict, key: str, *, tool: str, default: str | None = None) -> str:
     if key not in row:
         if default is not None:
@@ -191,9 +216,41 @@ class McpInventorySource:
                         sku=_text(line, "sku", tool=tool),
                         quantity=_num(line, "quantity", tool=tool),
                         price=_num(line, "price", tool=tool, default=0.0),
+                        # El lado de servicio es opcional: un ERP que no lo publica
+                        # deja las tres en None y el servicio sale `not_measured`,
+                        # que es lo que efectivamente pasa. Rellenarlas con la
+                        # cantidad pedida daria 100% de fill rate sin medir nada.
+                        delivered_qty=_num_opt(line, "delivered_qty", tool=tool),
+                        promised_date=_text_opt(line, "promised_date"),
+                        delivered_date=_text_opt(line, "delivered_date"),
                     )
                     for line in r.get("lines", [])
                 ),
             )
             for r in rows
         ]
+
+
+#: El techo del servidor MCP remoto, que no controlamos. Las tres son opcionales en el
+#: esquema de la tool y llegan como ``None`` cuando el servidor las omite (ver
+#: ``_num_opt`` / ``_text_opt``); se declaran MEASURED porque un servidor que las publica
+#: es el caso para el que existe este adaptador, y uno que no lo hace sale no medido.
+SERVICE_COVERAGE = ServiceCoverage(
+    backend="servidor MCP remoto (esquema de tool, no un vendor fijo)",
+    delivered_qty=FieldCoverage(
+        COVERAGE_MEASURED,
+        "tool de ordenes -> lines[].delivered_qty",
+        "unidades que el servidor dice haber servido; ausente -> None, nunca rellenada "
+        "con la cantidad pedida",
+    ),
+    promised_date=FieldCoverage(
+        COVERAGE_MEASURED,
+        "tool de ordenes -> lines[].promised_date",
+        "la fecha de entrega que el servidor dice haber prometido",
+    ),
+    delivered_date=FieldCoverage(
+        COVERAGE_MEASURED,
+        "tool de ordenes -> lines[].delivered_date",
+        "la fecha en que el servidor dice que la linea se sirvio",
+    ),
+)
