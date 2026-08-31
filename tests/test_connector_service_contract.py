@@ -19,11 +19,17 @@ The drift guard at the end is what keeps that true past today: a NEW module in
 the moment it lands, rather than the first time a client asks what their OTIF was computed
 from. Same stance as ``tests/test_connector_contract.py`` takes on the write side.
 
-Scope, stated rather than implied: the fixtures here exercise the five offline-runnable
-adapters (simulator, HTTP client, MCP source, Unleashed, Cin7 Core) plus Odoo through its
-``InMemoryOdoo`` stand-in. ``ledger.CanonicalLedger`` is a MERGE of sources rather than a
-backend, and ``emulator`` is a FastAPI app that serves one -- both are named in
+Scope, stated rather than implied: the fixtures here exercise the six offline-runnable
+sources (simulator, HTTP client, MCP source, Unleashed, Cin7 Core, Olist) plus Odoo through
+its ``InMemoryOdoo`` stand-in. ``ledger.CanonicalLedger`` is a MERGE of sources rather than
+a backend, and ``emulator`` is a FastAPI app that serves one -- both are named in
 ``_NOT_A_BACKEND`` rather than left to be forgotten.
+
+Olist is where the declaration stops being bookkeeping and starts being the finding. Three
+of these sources -- Unleashed, Cin7 Core, Odoo -- report a ``delivered_date`` that is a
+DEPARTURE, and Olist reports one that is an ARRIVAL. Same field name, same type, opposite
+meaning; only the ``means`` sentence separates them. That is the difference the whole
+outbound-service argument rests on, and it lives here because here it is executed.
 
 Cin7 Core is what turned this file from a claim into evidence. It reaches the same three
 service fields by a completely different route -- a two-hop join through box labels instead
@@ -111,6 +117,7 @@ from src.connectors.emulator import create_app  # noqa: E402
 from src.connectors.http_client import StoreApiClient  # noqa: E402
 from src.connectors.mcp_source import McpInventorySource  # noqa: E402
 from src.connectors.odoo import InMemoryOdoo, OdooConnector  # noqa: E402
+from src.connectors.olist import OlistSource  # noqa: E402
 from src.connectors.simulator import demo_store  # noqa: E402
 from src.connectors.unleashed import UnleashedConnector, UnleashedCredentials  # noqa: E402
 
@@ -313,6 +320,43 @@ _CIN7_SALE = {
 }
 
 
+#: Olist en dos archivos minimos. El fixture vive aca, como el de Odoo, Unleashed y Cin7:
+#: un fixture editado en tests/test_connector_olist.py no debe poder debilitar este guard.
+_OLIST_ORDERS = "\n".join(
+    [
+        '"order_id","customer_id","order_status","order_purchase_timestamp",'
+        '"order_approved_at","order_delivered_carrier_date",'
+        '"order_delivered_customer_date","order_estimated_delivery_date"',
+        "o1,c1,delivered,2017-10-02 10:56:33,2017-10-02 11:07:15,"
+        "2017-10-04 19:55:00,2017-10-20 21:25:13,2017-10-18 00:00:00",
+        "",
+    ]
+)
+_OLIST_ITEMS = "\n".join(
+    [
+        '"order_id","order_item_id","product_id","seller_id","shipping_limit_date",'
+        '"price","freight_value"',
+        '"o1",1,"P-1","s1",2017-09-19 09:45:35,58.90,13.29',
+        "",
+    ]
+)
+
+
+def _olist():
+    """Olist es la unica fuente del repo cuya fecha de entrega es una LLEGADA.
+
+    Que pase el mismo guard que tres ERP que solo ven la salida es el punto: la
+    declaracion no dice "mide la entrega", dice DE DONDE sale y QUE significa, y por eso
+    puede distinguir dos cosas que se llaman igual.
+    """
+    import tempfile
+
+    carpeta = Path(tempfile.mkdtemp())
+    (carpeta / "orders.csv").write_text(_OLIST_ORDERS, encoding="utf-8")
+    (carpeta / "items.csv").write_text(_OLIST_ITEMS, encoding="utf-8")
+    return OlistSource(carpeta / "orders.csv", carpeta / "items.csv")
+
+
 def _cin7():
     """Cin7 se pasa TAL CUAL, sin envoltorio.
 
@@ -331,6 +375,7 @@ ADAPTERS: tuple[AdapterCase, ...] = (
     AdapterCase("odoo", "src.connectors.odoo", _odoo),
     AdapterCase("unleashed", "src.connectors.unleashed", _unleashed),
     AdapterCase("cin7", "src.connectors.cin7", _cin7),
+    AdapterCase("olist", "src.connectors.olist", _olist),
 )
 
 
