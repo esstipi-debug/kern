@@ -711,12 +711,23 @@ def build_report(
     split_fixes = rank_split_fixes(verdicts)
     undercovered_fixes = rank_undercovered_fixes(verdicts)
     evaluated = sum(1 for v in verdicts if v.state != UNDECLARED)
-    total = len(verdicts)
+    # Denominator = tools that could EVER be judged from a folder, not every tool
+    # in the registry. A tool registered with requires_data=False has no column
+    # contract to declare, so counting it as unevaluated states a category
+    # mismatch as a shortfall. The deck's "Declared limit of this scan" finding
+    # already scopes itself this way (jobs/intake_scan_job.py); this is the same
+    # correction applied to the ratio it is quoted next to, which had kept saying
+    # "9 of 50" while the finding beside it said "of 45".
+    #
+    # Every verdict row survives -- the client still sees the whole catalogue.
+    # Only the fraction changes, and only so that full coverage of the judgeable
+    # tools can actually read as full coverage.
+    total = sum(1 for t in tools if getattr(t, "requires_data", True))
     counts = {state: sum(1 for v in verdicts if v.state == state) for state in (GREEN, YELLOW, RED)}
     top = _top_ask(gaps, fixes, split_fixes, undercovered_fixes)
     summary = (
         f"Read {n_files_read} file(s), {n_unclassified} unclassified; evaluated "
-        f"{evaluated} of {total} registered tool(s): {counts[GREEN]} green, "
+        f"{evaluated} of {total} data tool(s): {counts[GREEN]} green, "
         f"{counts[YELLOW]} yellow, {counts[RED]} red; {top}."
     )
     return ScanReport(

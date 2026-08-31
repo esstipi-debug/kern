@@ -40,6 +40,16 @@ ALIASES: dict[str, list[str]] = {
     # already accepts, so a file that works there works here too.
     "lead_time_std": ["lead_time_std", "leadtimestd", "lead_std", "sigma_lead", "sigma_l"],
     "revenue": ["revenue", "sales", "sales_amount", "amount", "net_sales", "line_total", "total"],
+    # Precio de VENTA, canonico propio desde que `pricing` declaro su contrato.
+    # La lista es corta a proposito: `unit_cost` de arriba ya reclama "price",
+    # "unit_price", "sell_price", "precio" y "preco", y en `_map_headers` gana
+    # el canonico que aparece primero en el juego (los perfiles van antes que el
+    # registry). Repetir esos alias aca no se los quitaria, solo pondria dos
+    # duenos para el mismo encabezado. Quedan entonces los terminos que NO son
+    # ambiguos entre costo y precio; un archivo cuya unica columna de dinero se
+    # llama `precio` sigue resolviendo a unit_cost, y `pricing` sale rojo. Eso es
+    # una deuda del par costo/precio en la tabla de arriba, no de esta entrada.
+    "price": ["price", "sale_price", "saleprice", "sales_price", "retail_price", "list_price", "precio_venta", "preco_venda", "pvp"],
     # Below: added for jobs/intake_scan_job.py (the intake_scan folder-audit job),
     # which maps headers against a wider canonical set (src.intake_scan.PROFILES)
     # than the demand-normalization set above. "sku" is NOT one of these entries:

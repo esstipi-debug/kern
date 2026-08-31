@@ -152,6 +152,13 @@ def inventory_tool() -> Tool:
             "eoq", "service level", "reorder point", "order quantity",
         ),
         requires_data=True,
+        # Straight from jobs/intake.py's CANONICAL_REQUIRED / CANONICAL_OPTIONAL:
+        # this tool does not sniff its own columns, it hands the file to the shared
+        # normalizer. `revenue` is optional here for the same reason it is optional
+        # there -- detected but never emitted, it exists only to recover a real unit
+        # cost from a file that carries money but no cost column.
+        required_columns=("date", "product_id", "quantity"),
+        optional_columns=("unit_cost", "lead_time_days", "lead_time_std", "revenue"),
         options=tool_options.inventory_options,
         prepare=_inventory_prepare,
         run=_inventory_run,
@@ -196,6 +203,15 @@ def pricing_tool() -> Tool:
             "optimal price", "what price", "profit",
         ),
         requires_data=True,
+        # jobs/pricing.py::_REQUIRED. `price` is the SELLING price, and it is the one
+        # name here that is not already canonical elsewhere in the repo. Known edge:
+        # jobs/intake.py lists "price" among unit_cost's aliases, so a header named
+        # exactly `price` resolves here (exact names are claimed before aliases) but a
+        # file whose only money column is `precio` or `unit_price` still resolves to
+        # unit_cost, and this tool reads RED. Untangling cost-vs-price in that alias
+        # table is a change of its own, not a side effect of declaring a contract.
+        required_columns=("date", "product_id", "quantity", "price"),
+        optional_columns=("unit_cost",),
         options=tool_options.pricing_options,
         prepare=_pricing_prepare,
         run=_pricing_run,
@@ -394,6 +410,12 @@ def sop_tool() -> Tool:
             "monthly demand plan",
         ),
         requires_data=True,
+        # jobs/sop_job.py sniffs _DATE_COLS and _DEMAND_COLS. Declared under the repo's
+        # shared vocabulary (`date`, `quantity`) rather than that module's first alias
+        # ("Order Date", "Quantity"): both are inside its own alias tuples, and asking a
+        # client for three different names for one concept is how a data request becomes
+        # unanswerable.
+        required_columns=("date", "quantity"),
         options=lambda report: report.outcome,
         prepare=_sop_prepare,
         run=_sop_run,
@@ -1358,6 +1380,11 @@ def forecast_tool() -> Tool:
             "which forecast method", "lumpy demand", "demand pattern", "predict demand",
         ),
         requires_data=True,
+        # jobs/forecast_job.py:128 -- product and quantity are what it refuses over.
+        # The period column is optional: with no date the series falls back to row
+        # order, which still forecasts.
+        required_columns=("product_id", "quantity"),
+        optional_columns=("date",),
         prepare=_forecast_prepare,
         run=_forecast_run,
         qa=lambda report: forecast_job.verify(report),
@@ -2258,6 +2285,11 @@ def markdown_liquidation_tool() -> Tool:
             "liquidate excess stock", "liquidate dead stock", "disposition plan", "clear excess inventory",
         ),
         requires_data=True,
+        # Identical to excess_obsolete's by construction: this job imports that one's
+        # prepare_records as its stock reader (jobs/markdown_liquidation_job.py:29). If
+        # the two ever diverge, this declaration is what should break first.
+        required_columns=("product_id", "on_hand", "daily_demand"),
+        optional_columns=("unit_cost", "days_since_last_sale"),
         options=tool_options.markdown_liquidation_options,
         prepare=_markdown_liquidation_prepare,
         run=_markdown_liquidation_run,

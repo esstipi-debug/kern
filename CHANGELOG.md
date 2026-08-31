@@ -3,6 +3,26 @@
 ## [Unreleased]
 
 ### Added
+- **Spec-driven development, with a written constitution.** `specify init --here
+  --integration claude` (spec-kit v1.0.2) installs `.specify/` and ten
+  `speckit-*` project skills. The piece that is not scaffolding is
+  `.specify/memory/constitution.md`: it writes down, for the first time, **the
+  eight fixed places a new capability touches** (`jobs/<x>_job.py`, the `from
+  jobs import (` block, the three `_<x>_prepare`/`_<x>_run`/`<x>_tool()`
+  functions, the `reg.register()` line, `TOOL_CONCEPTS`, `TOOL_TITLES`, and the
+  two pinned counts in `tests/`), plus the QA-gate, loud-degradation,
+  data-contract, no-module-level-optional-import, ASCII-only and derived-counts
+  rules. That list previously existed nowhere: it was reconstructed from git
+  archaeology per feature, and reconstructed **wrong** at least once -- a handoff
+  called them "the 7 fixed places" and a later plan corrected it to 8.
+  `tests/test_constitution_anchors.py` keeps it honest in both directions (a path
+  that moves, or a principle deleted while its anchor stays, both fail).
+  `.gitignore` had `.claude/*`, so the installed skills were invisible to git,
+  CI and every other worktree until `!.claude/skills/` was added.
+  `CLAUDE.md`, `README.md` and `scm_agent/README.md` all promised "adding a
+  capability = one `register()` call"; the "no routing edits" half is true and
+  kept, the count was not.
+
 - **Odoo Apps Store listing packet for `kern_dry_run`** (17.0 and 19.0): `support`
   URL, cover + wizard/result mockups, OPL-1 `LICENSE`/`COPYRIGHT`, Store price
   omitted (free bait). Sync into the dedicated store repo (module at branch root)
@@ -46,6 +66,44 @@
   port is written up in `odoo_addon/PORT_17_A_19.md`.
 
 ### Changed
+- **Nine of the 45 data tools now declare their data contract, up from four**
+  (batch 1, the per-SKU demand-history family: `forecast`,
+  `inventory_optimization`, `markdown_liquidation`, `pricing`, `sop`). This is a
+  product change, not housekeeping: `src/intake_scan.py` derives its verdict from
+  `required_columns`, so an undeclared tool answers `no_declarado` -- "I cannot
+  tell you whether your folder can run this". On the repo's own sample folder
+  those five went from silence to four greens and one honest yellow.
+  Three things had to be fixed before any declaration was safe or provable:
+  - **`jobs/intake_scan_job.py` could only ever SEE 15 column names.**
+    `_canonical_order()` was built from the four demo `PROFILES`, not from the
+    registry, and `_map_headers` only walks that set. Declaring anything outside
+    it (`adu`, `price`, `weight_kg`, `mean_demand`, ...) would have dropped the
+    client's header and reported the tool RED on a folder that carried the
+    column -- a permanent false red produced by declaring the contract
+    correctly. It now unions the profiles with every column the registry
+    declares, lazily (the registry imports this module).
+  - **The guard test only checked that `prepare()` refused, never why.** A job
+    that rejected the fixture for an unrelated reason -- a numeric coercion, a
+    negative quantity, "no SKUs found in the data" -- returned the same
+    `needs_data` and the test went green over a false declaration. It now
+    requires the refusal to NAME the dropped column, with a declared translation
+    table for jobs that use their own vocabulary (`abc_xyz` and `sop` call
+    `quantity` "demand").
+  - **The fixture wrote 12 rows with 12 distinct SKUs**, so any job with a
+    minimum-observations rule (`jobs/hats_job.py` sets `MIN_OBS = 5`) could never
+    have been declared, and any job that resamples to months saw a single
+    period. It is now 3 keys x 5 rows with dates spread across months.
+- **The intake-scan deck's confidence was a cliff, not a derivation.** It applied
+  one flat penalty gated on `n_tools_evaluated * 2 < n_tools_total`, which
+  vanishes the instant half the registry declares -- so a scan covering 24 of 45
+  tools would have claimed exactly the same certainty as one covering all 45,
+  starting midway through this very programme. The penalty is now proportional to
+  the unevaluated share and rounded up, so the base is reachable only at full
+  coverage. Relatedly, the evaluated/total ratio counted all 50 registered tools,
+  five of which never read a file: the summary said "9 of 50" while the finding
+  printed beside it said "of 45". Both now say 45.
+- **`webapp/mcp_tool_specs.py`** described `forecast` as needing a period column.
+  It does not -- verified by running it -- and the declared contract now says so.
 - **`linchpin_dry_run` renamed to `kern_dry_run`**, executing item 3 of the HANDOFF external checklist,
   which gated the rename on "the next functional version" — this port is it. No migration hook: the
   module was never actually published, so there are no installations to break. `linchpin.fly.dev`, the

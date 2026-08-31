@@ -103,9 +103,11 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Segment SKUs by forecastability, auto-select and backtest the matching "
             "forecasting method (SES/Croston, or AutoETS/TSB when installed), and quantify "
             "forecast value-add versus a naive baseline.\n\n"
-            "Rows need columns: product_id, a quantity column, and a period column (date "
-            'or sequential period index). One row per SKU-period, e.g. {"product_id": '
-            '"SKU-A", "period": "2026-W01", "quantity": 42}.\n\n'
+            "Rows need columns: product_id and a quantity column. A period column is "
+            "optional -- canonically `date`, also accepted as period/week/month/t -- and "
+            "without one the series is read in row order, which still forecasts. One row "
+            'per SKU-period, e.g. {"product_id": "SKU-A", "date": "2026-01-01", '
+            '"quantity": 42}.\n\n'
             "Useful params: holdout_fraction (default 0.25, share of history held out for "
             "backtesting), min_backtest_periods (default 4).\n\n" + _RETURNS
         ),
