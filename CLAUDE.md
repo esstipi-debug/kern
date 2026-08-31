@@ -52,7 +52,11 @@ consequential result ends in one of four outcomes — and three need a human
 
 - **"QA fails ⇒ no deliverable"** is enforced in one place (the orchestrator).
 - Statuses: `ok` · `needs_clarification` · `needs_data` · `qa_failed` · `error`.
-- Adding a capability = one `register()` call + a `jobs/<x>_job.py`; no routing edits.
+- Adding a capability needs **no routing edits** -- the orchestrator never
+  special-cases a tool. It is not one `register()` call, though: a new tool
+  touches eight fixed places, listed in
+  [`.specify/memory/constitution.md`](.specify/memory/constitution.md) so nobody
+  has to re-derive them from git again.
 
 ### Never-unprotected (`nosilo_core.guided`)
 Every consequential result is a `GuidedOutcome` with status:
@@ -164,6 +168,11 @@ See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
 
 ## Dev conventions
 
+- **The rules live in [`.specify/memory/constitution.md`](.specify/memory/constitution.md)**,
+  which supersedes this file where they disagree. It is where the eight fixed
+  places a new capability touches are finally written down instead of being
+  re-derived from git each time. `tests/test_constitution_anchors.py` fails if
+  any path it names stops existing.
 - **Python 3.11+**. Tests: `pytest tests/ -q` with `PYTHONPATH=.` (the hook persists it).
 - **Lint scope** (matches CI): `ruff check .` — the whole repo, .gitignore
   respected. Both path lists that preceded it had drifted: this line said
