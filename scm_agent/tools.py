@@ -108,13 +108,36 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
         )
     except (ValueError, FileNotFoundError, TypeError) as exc:
         return Prepared(status="needs_data", messages=[str(exc)])
+    # El servicio realizado, si el archivo lo trae. Es el productor que le faltaba a
+    # `run_inventory(order_lines=...)`: ese argumento existe desde que aterrizo el motor de
+    # servicio y ningun llamador lo pasaba, asi que cada corrida reportaba `not_measured`
+    # sobre archivos que a veces SI traian con que medirse.
+    #
+    # Se lee el archivo una segunda vez a proposito, y no sale de `demand`: la demanda se
+    # AGREGA a periodos y el servicio no. Dos pedidos del mismo SKU en la misma semana son
+    # dos resultados distintos, y sumarlos borra justamente el que fallo.
+    #
+    # Y va envuelto: el servicio es un extra sobre lo que el cliente pidio. Si su deteccion
+    # falla, la politica de inventario tiene que salir igual -- un adorno que rompe el
+    # entregable es peor que no tenerlo.
+    try:
+        order_lines = intake.service_lines(
+            request.data_path, aliases=request.params.get("column_aliases")
+        )
+    except (ValueError, KeyError, TypeError, FileNotFoundError):
+        order_lines = None
     # `period` rides along: src/sources.py needs it to rebuild the COMPLETE period
     # grid per SKU. Without it a SKU's series is only the periods it sold in, which
     # makes every real export look like regular demand (ADI == 1.0) and overstates
     # annual demand by the SKU's true demand interval.
     return Prepared(
         status="ok",
-        payload={"demand": demand, "intake_quality": quality, "period": period},
+        payload={
+            "demand": demand,
+            "intake_quality": quality,
+            "period": period,
+            "order_lines": order_lines,
+        },
     )
 
 
@@ -134,11 +157,20 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         intake_quality=payload["intake_quality"],
         intake_quality_threshold=params.get("intake_quality_threshold", 0.20),
         period_freq=payload.get("period"),
+        order_lines=payload.get("order_lines"),
+        stockout_days=params.get("stockout_days"),
     )
     summary = (
         f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
         f"${report.final_investment:,.0f} at {report.params['service_level'] * 100:.0f}% service level."
     )
+    # La nota del servicio viaja en el resumen, que es lo que el operador lee ANTES de
+    # abrir el entregable. Sin ella el fill rate aparece sin decir de que columna del
+    # cliente salio, y un numero que no se puede reconciliar contra el ERP no se usa.
+    order_lines = payload.get("order_lines")
+    nota = getattr(order_lines, "attrs", {}).get("service_note") if order_lines is not None else None
+    if nota:
+        summary = f"{summary} {nota}"
     return Produced(report=report, summary=summary)
 
 
