@@ -23,6 +23,23 @@
   capability = one `register()` call"; the "no routing edits" half is true and
   kept, the count was not.
 
+- **`make lint` and `make test` are now guarded, not just fixed.** Both had
+  drifted into promising a WEAKER check than CI: `make test` measured
+  `--cov=nosilo_core --cov=packs --cov=src` at a floor of 80 -- a package that
+  left this repo at #226, no `scm_agent/` or `jobs/` (where the agent lives),
+  and 80 against the 90 that blocks a merge -- while `make lint` used the narrow
+  ruff path list CI itself abandoned for leaving seven packages unlinted, and
+  named a directory that does not exist so it failed before linting anything.
+  Someone running `make test` before opening a PR saw green on something CI
+  rejects. `tests/test_ci_lint_and_coverage_scope.py` now fails when the Makefile
+  and the workflow disagree, which is why this could drift unnoticed: that file
+  checked pyproject and CI, never the Makefile.
+- **`CONTRIBUTING.md` rewritten.** It described a repo that no longer exists:
+  `pip install -r requirements.txt; pytest`, "pure functions in `src/`; CLI in
+  `examples/`", and no mention of `jobs/`, `scm_agent/`, `packs/`, the registry,
+  the coverage gate, the private-core token, or the stray-`nosilo_core/` trap
+  that corrupts every local ruff run. It now opens by pointing at the
+  constitution and carries a checklist of the rules that actually block a merge.
 - **Odoo Apps Store listing packet for `kern_dry_run`** (17.0 and 19.0): `support`
   URL, cover + wizard/result mockups, OPL-1 `LICENSE`/`COPYRIGHT`, Store price
   omitted (free bait). Sync into the dedicated store repo (module at branch root)
