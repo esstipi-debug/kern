@@ -66,13 +66,15 @@
   port is written up in `odoo_addon/PORT_17_A_19.md`.
 
 ### Changed
-- **Twenty-two of the 45 data tools now declare their data contract, up from four.**
+- **Twenty-seven of the 45 data tools now declare their data contract, up from four.**
   Batch 1, the per-SKU demand-history family: `forecast`,
   `inventory_optimization`, `markdown_liquidation`, `pricing`, `sop`. Batch 2,
   inventory and replenishment policy: `ddmrp`, `drp`, `fefo`, `multi_echelon`,
   `newsvendor`, `simulation`. Batch 3, warehouse, count and audit:
   `reconciliation`, `returns`, `slotting`. Batch 4, network, geometry and flow:
-  `facility_location`, `flow_map`, `network_design`, `transportation`. This is a
+  `facility_location`, `flow_map`, `network_design`, `transportation`. Batch 5,
+  suppliers and procurement: `acceptance_sampling`, `disruption_scan`,
+  `landed_cost`, `sourcing`, `supplier_management`. This is a
   product change, not housekeeping: `src/intake_scan.py` derives its verdict from
   `required_columns`, so an undeclared tool answers `no_declarado` -- "I cannot
   tell you whether your folder can run this". On the repo's own sample folder
@@ -127,6 +129,27 @@
   because `transportation`'s `weight_kg` already accepts a header spelled
   `weight` and two canonicals wanting one header would be settled by iteration
   order.
+  **Batch 5 also found two under-declarations and a regression in batches 1-4**,
+  and the guard that catches the whole class. The suite only ever checked that a
+  declared REQUIRED column was really required; nothing checked that a declared
+  OPTIONAL one was really optional, and the complete fixture carries every
+  optional, so an over-generous optional was invisible. The mirror check
+  (`test_every_declared_optional_column_is_really_optional`) found two on its
+  first run: `multi_echelon` shipped `mean_demand`/`std_demand` as optional when
+  the job refuses without them ("end-customer demand is required"), and `fefo`
+  shipped `days_to_expiry` as optional when it is the only workable path under
+  default params. Both were under-declarations, which is the direction that
+  produces a false GREEN -- the scan telling a client a tool will run when it
+  will not. Both are now required.
+  The regression: batch 2 gave `simulation` a canonical named `lead_time`, and a
+  canonical exact-matches before any alias, so a client column headed
+  `Lead Time` stopped reaching `lead_time_days` -- the spelling nearly every
+  other tool needs. Simulation's lead time is measured in PERIODS, not days, so
+  merging the two would have silently reinterpreted a client's days; it is now
+  `lead_time_periods`, a name that states its unit and cannot capture the generic
+  header. `multi_echelon` moved to `lead_time_days` (its own sniffer already
+  accepted that spelling) and `drp` dropped its optional lead-time column
+  entirely rather than reintroduce the collision.
   Three things had to be fixed before any declaration was safe or provable:
   - **`jobs/intake_scan_job.py` could only ever SEE 15 column names.**
     `_canonical_order()` was built from the four demo `PROFILES`, not from the
@@ -156,6 +179,12 @@
   coverage. Relatedly, the evaluated/total ratio counted all 50 registered tools,
   five of which never read a file: the summary said "9 of 50" while the finding
   printed beside it said "of 45". Both now say 45.
+- **`acceptance_sampling` refused the repo's own canonical product column.**
+  `jobs/acceptance_sampling_job.py`'s `_PART_COLS` accepted `part`, `component`,
+  `sku`, `item` and `id` but not `product_id`, so a client file spelled the way
+  every other tool in the registry spells it got `needs_data` from this one --
+  which reads as "your data is wrong" when the data was fine. Found while
+  declaring its contract; fixed with its own regression test.
 - **`webapp/mcp_tool_specs.py` drifted from the code in four places**, all found by
   comparing its prose against the tuples it claims to copy. It described
   `forecast` as needing a period column -- it does not, verified by running the

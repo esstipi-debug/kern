@@ -41,18 +41,15 @@ from scm_agent import tools
 # a cautious over-declaration, it is a wrong answer; `no_declarado` at least
 # says "I cannot tell" instead of misdirecting the data request.
 UNDECLARED_TOOLS = frozenset({
-    "acceptance_sampling",
     "cost_to_serve",
     "cross_impact",
     "cycle_count",
     "dea",
-    "disruption_scan",
     "earned_value",
     "excel_replenishment",
     "hat_settlement",
     "hat_tension",
     "intake_scan",
-    "landed_cost",
     "launch_readiness",
     "learning_curve",
     "org_friction_audit",
@@ -60,8 +57,6 @@ UNDECLARED_TOOLS = frozenset({
     "queuing",
     "risk",
     "scheduling",
-    "sourcing",
-    "supplier_management",
     "vehicle_routing",
     "whatif",
 })
@@ -76,6 +71,8 @@ DECLARED = (
     "reconciliation", "returns", "slotting",
     # batch 4 -- network, geometry and flow
     "facility_location", "flow_map", "network_design", "transportation",
+    # batch 5 -- suppliers and procurement
+    "acceptance_sampling", "disruption_scan", "landed_cost", "sourcing", "supplier_management",
 )
 
 _DAY_ZERO = date(2026, 1, 1)
@@ -96,7 +93,7 @@ _SAMPLE = {
     "revenue": "125.0",
     # -- batch 2: inventory and replenishment policy ------------------------
     "mean_demand": "100.0", "std_demand": "20.0", "salvage_value": "2.0",
-    "goodwill": "4.0", "lead_time": "3", "holding_cost": "1.5",
+    "goodwill": "4.0", "lead_time_periods": "3", "holding_cost": "1.5",
     "order_cost": "75.0", "backorder_cost": "9.0", "review_period": "4",
     "safety_stock": "25", "lot_size": "50", "adu": "12.0", "dlt": "10",
     "ltf": "0.5", "vf": "0.5", "moq": "40", "order_cycle_days": "7",
@@ -112,6 +109,12 @@ _SAMPLE = {
     "distance_km": "340.0", "shipment_id": "ENV-1", "lane": "SCL-ANF",
     "order_value": "1500.0", "departure_date": "2026-01-01",
     "arrival_date": "2026-01-04", "origin": "SCL", "destination": "ANF",
+    # -- batch 5: suppliers and procurement ---------------------------------
+    "country": "CL", "annual_value": "250000", "on_time": "1", "in_full": "1",
+    "defects": "2", "aql": "0.01", "ltpd": "0.05", "freight": "300",
+    "insurance": "50", "duty_rate": "0.06", "handling": "40",
+    "broker_fee": "80", "incoterm": "FOB", "single_source": "0",
+    "defect_ppm": "120", "financial_risk": "0.3", "geo_risk": "0.2",
 }
 
 # Columns whose value must VARY, and along which axis. A constant column is not
@@ -149,6 +152,16 @@ _VARYING = {
     # network_design splits rows into demand points and candidate sites by role;
     # one constant role means one of the two sets is empty and it refuses.
     "role": ("key", lambda k, r: "dc" if k == 0 else "customer"),
+    # A one-supplier panel is not a panel, and an OTIF column that is all 1s
+    # measures nothing. supplier_management refuses outright when every risk
+    # driver holds the same value for every supplier -- "the risk axis is flat
+    # and the Kraljic matrix collapses to a spend ranking" -- so at least one
+    # driver has to move.
+    "supplier": ("key", lambda k, r: f"PROV-{k}"),
+    "on_time": ("row", lambda k, r: "1" if r % 4 else "0"),
+    "in_full": ("row", lambda k, r: "1" if r % 5 else "0"),
+    "defect_ppm": ("key", lambda k, r: str(80 + 60 * k)),
+    "lead_time_days": ("key", lambda k, r: str(10 + 4 * k)),
 }
 
 # Rows per key, and keys per file. Several jobs refuse a SKU with too few
@@ -238,6 +251,10 @@ _REFUSAL_LABELS = {
     ("flow_map", "destination"): ("destino",),
     ("flow_map", "product_id"): ("producto",),
     ("flow_map", "quantity"): ("cantidad",),
+    # Batch 5 keeps its own nouns for the product column.
+    ("landed_cost", "product_id"): ("sku",),
+    ("landed_cost", "quantity"): ("qty",),
+    ("acceptance_sampling", "product_id"): ("part",),
 }
 
 
@@ -250,6 +267,39 @@ def _names_the_column(messages, key, column):
     candidates |= {tok for tok in column.lower().split("_") if len(tok) >= 4}
     candidates |= set(_REFUSAL_LABELS.get((key, column), ()))
     return any(c in said for c in candidates)
+
+
+@pytest.mark.parametrize("key", DECLARED)
+def test_every_declared_optional_column_is_really_optional(key, tmp_path):
+    """Drop one optional column at a time; the tool must still prepare.
+
+    The mirror of the required check, and the half that was missing. Marking a
+    column optional when the tool actually refuses without it is UNDER-declaring,
+    and under-declaring is the dangerous direction: src/intake_scan.py reports a
+    tool GREEN when every required column is present, so a client whose folder
+    lacks a wrongly-optional column is told the tool will run, and it will not.
+    A false red costs a pointless data request; a false green costs a wrong
+    answer.
+
+    This is not hypothetical. multi_echelon shipped with `mean_demand` and
+    `std_demand` marked optional; both are refusals under default params
+    ("end-customer demand is required"). The required-only check could never
+    have caught it, because the complete fixture carries every optional too.
+    """
+    reg = _registry()
+    tool = reg.get(key)
+    provider = llm.RulesFallback()
+    full = list(tool.required_columns) + list(tool.optional_columns)
+
+    for column in tool.optional_columns:
+        reduced = [c for c in full if c != column]
+        path = _write_csv(tmp_path / f"{key}_opt_{column}.csv", reduced)
+        result = tool.prepare(JobRequest(brief="scan", data_path=str(path)), provider)
+        assert result.status == "ok", (
+            f"{key} declares '{column}' as OPTIONAL but prepare() refused a file without "
+            f"it: {result.messages}. Either it belongs in required_columns, or the tool "
+            f"should stop needing it."
+        )
 
 
 @pytest.mark.parametrize("key", DECLARED)

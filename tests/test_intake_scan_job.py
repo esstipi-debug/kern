@@ -351,8 +351,14 @@ def test_a_master_plus_sales_folder_where_abc_xyz_columns_are_split_across_files
     # not necessarily make the top-3 menu -- but it must be RANKED, never
     # silently dropped from the report).
     (split_fix,) = report.split_fixes
-    assert split_fix.tools == ("abc_xyz",)
-    assert split_fix.unlocks == 1
+    # Which tools the one fix unlocks is derived, not pinned. `landed_cost` declares
+    # the same three columns as abc_xyz, so the same split blocks both and moving
+    # them into one file unlocks both -- and every later data contract over this
+    # column set joins the list. Pinning the membership would have read as a
+    # regression when the number went up, which is the direction we want it to go.
+    assert "abc_xyz" in split_fix.tools
+    assert split_fix.unlocks == len(split_fix.tools)
+    assert tuple(sorted(split_fix.tools)) == split_fix.tools, "ranked output must be stable"
 
 
 def test_a_single_file_that_carries_every_required_column_is_still_green(tmp_path):

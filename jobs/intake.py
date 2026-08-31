@@ -104,7 +104,14 @@ ALIASES: dict[str, list[str]] = {
     "std_demand": ["std_demand", "std", "sigma", "demand_std", "stdev", "demand_sigma"],
     "salvage_value": ["salvage_value", "salvage"],
     "goodwill": ["goodwill", "shortage_penalty", "stockout_penalty"],
-    "lead_time": ["lead_time", "lead_time_periods"],
+    # Simulation measures its lead time in PERIODS, not days, so it gets its own
+    # canonical rather than sharing `lead_time_days`: the two are different
+    # quantities and merging them would silently reinterpret a client's days as
+    # periods. It is deliberately NOT called `lead_time`: a canonical by that name
+    # exact-matches the generic header "Lead Time" and takes it away from
+    # `lead_time_days`, which is what almost every other tool needs -- a regression
+    # this table shipped for exactly one commit.
+    "lead_time_periods": ["lead_time_periods"],
     "holding_cost": ["holding_cost", "holding_cost_per_period", "holding"],
     "order_cost": ["order_cost", "fixed_order_cost", "ordering_cost", "setup_cost"],
     "backorder_cost": ["backorder_cost", "shortage_cost", "stockout_cost", "penalty"],
@@ -167,6 +174,28 @@ ALIASES: dict[str, list[str]] = {
     "arrival_date": ["arrival_date", "fecha_llegada"],
     "origin": ["origin", "origen", "desde", "from_location"],
     "destination": ["destination", "destino", "hacia", "to_location"],
+    # -- Lote 5: proveedores y abastecimiento ---------------------------------
+    # `origin` queda con el canonico de flow_map (un origen es un punto de una
+    # pierna, no el pais de un proveedor), y de `annual_value` se poda "value" y
+    # "spend" pelados: en un maestro cualquiera una columna `value` puede ser
+    # cualquier plata.
+    "country": ["country", "pais", "hq_country", "region"],
+    "annual_value": ["annual_value", "annual_spend", "spend_usd", "annual_value_usd", "purchase_value", "gasto_anual"],
+    "on_time": ["on_time", "on_time_delivery", "ontime"],
+    "in_full": ["in_full", "infull"],
+    "defects": ["defects", "rejects", "ppm_defects", "defective_units"],
+    "aql": ["aql", "acceptable_quality"],
+    "ltpd": ["ltpd", "rejectable_quality", "rql"],
+    "freight": ["freight", "shipping", "shipping_cost"],
+    "insurance": ["insurance"],
+    "duty_rate": ["duty_rate", "duty", "tariff_rate"],
+    "handling": ["handling"],
+    "broker_fee": ["broker_fee", "broker", "customs_fee"],
+    "incoterm": ["incoterm"],
+    "single_source": ["single_source", "sole_source", "single_sourced", "sole_sourced"],
+    "defect_ppm": ["defect_ppm", "defect_rate", "reject_rate"],
+    "financial_risk": ["financial_risk", "credit_risk", "supplier_financial_risk"],
+    "geo_risk": ["geo_risk", "country_risk", "geopolitical_risk"],
 }
 
 #: La tabla de alias que un mapeo usa. Normalmente ``ALIASES``, o

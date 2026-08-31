@@ -52,3 +52,29 @@ def test_routes_and_runs_end_to_end(tmp_path):
     assert res.status == "ok" and res.tool == "acceptance_sampling"
     assert Path(res.deliverables["deck_report"]).exists()
     assert res.guided is not None and res.guided.status == OPTIONS
+
+
+def test_the_canonical_product_id_header_is_accepted(tmp_path):
+    """Every other tool takes `product_id`; this one used to refuse it.
+
+    Not a cosmetic alias: a client whose part column is spelled the way the rest of
+    the registry spells it got `needs_data` from this tool alone, which reads as
+    "your data is wrong" when the data was fine.
+    """
+    import csv
+
+    from nosilo_core import llm
+    from nosilo_core.types import JobRequest
+
+    from scm_agent import tools
+
+    path = tmp_path / "partes.csv"
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["product_id", "aql", "ltpd"])
+        for i in range(6):
+            writer.writerow([f"P-{i}", 0.01, 0.05])
+
+    tool = tools.build_default_registry().get("acceptance_sampling")
+    result = tool.prepare(JobRequest(brief="scan", data_path=str(path)), llm.RulesFallback())
+    assert result.status == "ok", result.messages

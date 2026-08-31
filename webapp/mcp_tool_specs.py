@@ -194,7 +194,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Compute the Incoterm-aware fully landed cost per SKU (goods + freight + "
             "insurance + duty + handling + broker) and each component's share.\n\n"
-            "Rows need columns: sku, unit_cost, qty. Optional: freight, insurance, "
+            "Rows need columns: product_id (sku also accepted), unit_cost, quantity (qty "
+            "also accepted). Optional: freight, insurance, "
             'duty_rate, handling, broker_fee, incoterm. E.g. {"sku": "SKU-A", '
             '"unit_cost": 8.4, "qty": 500, "freight": 420, "duty_rate": 0.06, '
             '"incoterm": "FOB"}.\n\n' + _RETURNS
@@ -359,9 +360,10 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Place safety stock across a serial supply chain (e.g. factory -> DC -> store) "
             "with the Guaranteed-Service Model: where to hold buffer and how much, versus "
             "the naive hold-at-every-stage baseline.\n\n"
-            "Rows: one per stage in sequence, columns stage, lead_time, holding_cost (per "
+            "Rows: one per stage in sequence, columns stage, lead_time_days, holding_cost (per "
             "unit per period). Optional: order (explicit stage sequence). End-customer "
-            "demand comes from mean_demand and std_demand columns (first row) or from "
+            "demand comes from mean_demand and std_demand columns, which are REQUIRED "
+            "unless passed as params, from "
             'params. E.g. {"stage": "DC", "lead_time": 5, "holding_cost": 1.2}.\n\n'
             "Useful params: service_level (default 0.95), mean_demand, demand_std (required "
             "if not present as columns), review_period.\n\n" + _RETURNS
@@ -377,7 +379,7 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "requirements.\n\n"
             "Rows: long format, one per branch-period, columns branch, period, quantity "
             "(demand also accepted). "
-            'Optional: on_hand, lead_time, safety_stock, lot_size. E.g. {"branch": "North", '
+            'Optional: on_hand, safety_stock, lot_size. E.g. {"branch": "North", '
             '"period": 1, "demand": 120, "on_hand": 300, "lead_time": 2}.\n\n' + _RETURNS
         ),
     ),
@@ -390,7 +392,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "that minimizes simulated total cost (holding + ordering + backorder), via "
             "Monte-Carlo simulation per SKU - useful when demand is too lumpy for "
             "closed-form formulas.\n\n"
-            "Rows need columns: product_id, mean_demand, std_demand, lead_time (periods). "
+            "Rows need columns: product_id, mean_demand, std_demand, lead_time_periods "
+            "(lead_time also accepted; the unit is periods, not days). "
             "Optional per-row: holding_cost, order_cost, backorder_cost, review_period. "
             'E.g. {"product_id": "SKU-A", "mean_demand": 40, "std_demand": 18, "lead_time": 2}.\n\n'
             "Useful params: periods (simulation horizon), holding_cost, order_cost, "
@@ -429,7 +432,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Design the smallest receiving-inspection sampling plan (inspect n units, "
             "accept at most c defects) per part from AQL/LTPD quality targets, plus the "
             "inspect-vs-skip break-even.\n\n"
-            "Rows need columns: part, aql, ltpd (fractions - e.g. AQL 0.01, LTPD 0.05). "
+            "Rows need columns: product_id (part/component/sku also accepted), aql, ltpd "
+            "(fractions - e.g. AQL 0.01, LTPD 0.05). "
             'E.g. {"part": "Casting-7", "aql": 0.01, "ltpd": 0.05}.\n\n'
             "Useful params: producer_risk (default 0.05), consumer_risk (default 0.10).\n\n"
             + _RETURNS
