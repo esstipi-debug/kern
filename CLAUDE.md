@@ -17,12 +17,13 @@
 An **agentic supply-chain engine**: a plain-language brief becomes a finished,
 QA-gated deliverable (Excel + report + chart), grounded in a knowledge graph of
 25 SCM sources (24 books + an AI-in-SC source) and the codebase itself. A deterministic Python **engine** across
-**50 agent-routable tools** (EOQ, safety stock, `(s,Q)`/`(R,S)`, simulation,
+**51 agent-routable tools** (EOQ, safety stock, `(s,Q)`/`(R,S)`, simulation,
 a network digital twin, forecasting, pricing, price intelligence,
 discovery-assisted price watch, DDMRP, ABC-XYZ, sourcing, supplier segmentation (Kraljic),
 landed cost, cost-to-serve, S&OP, facility location, multi-facility network design (p-median),
 DRP, transportation, FEFO, launch readiness, vehicle routing, hat tension/settlement,
-flow map, cross-area impact/objection verdict, intake scan…) sits under an
+flow map, cross-area impact/objection verdict, intake scan, realized customer
+service…) sits under an
 **orchestrator agent** that classifies → runs → validates → delivers. Runs
 with or without an LLM.
 
@@ -258,6 +259,6 @@ See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
 `scm_agent/README.md` (agent reference) · `documentation/METHODOLOGY.md` (models) ·
 `documentation/operator/` (the human operator's portfolio) ·
 [`documentation/TESTING_ENVIRONMENT.md`](documentation/TESTING_ENVIRONMENT.md)
-(stand up a clean env + `examples/run_capability_smoke.py` to exercise all 50
+(stand up a clean env + `examples/run_capability_smoke.py` to exercise all 51
 tools and see where each fails; `scripts/setup-test-env.sh` for the reproducible
 full install the `SessionStart` hook now delegates to).

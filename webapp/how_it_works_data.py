@@ -1,7 +1,7 @@
 """Static content data for GET /how-it-works (webapp/how_it_works_page.py).
 
 Every count here is verified against the actual code, not copied from a
-possibly-stale doc: 50 tools = build_default_registry()'s 50 register()
+possibly-stale doc: 51 tools = build_default_registry()'s 51 register()
 calls in scm_agent/tools.py, now enforced by
 tests/test_how_it_works_data.py::test_tools_table_matches_the_registry_exactly
 (set equality against the registry, both directions). That guard exists
@@ -118,6 +118,10 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Walks a raw client folder, classifies every readable file against the known intake "
              "profiles, and reports which tools can run today -- plus the single highest-value "
              "column to request or file to fix next."),
+    ToolInfo("service_scan", "Realized Customer Service", "Inventory control & health", "Order/Fulfill",
+             "Reads a live commerce backend (Unleashed, Cin7 Core) and measures the service "
+             "customers actually received -- fill rate, outbound OTIF, lost sales -- plus a "
+             "field-by-field statement of what that backend cannot measure."),
     # -- Procurement & sourcing (4) --
     ToolInfo("sourcing", "Sourcing", "Procurement & sourcing", "Source",
              "Supplier scorecarding via OTIF/DIFOT and defect rate."),
