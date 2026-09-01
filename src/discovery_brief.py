@@ -38,6 +38,15 @@ class ParamSpec:
     # tiene distinto default según quién lo lea (order_cost vale 100.0 en
     # simulation_job y 75 según el docstring de client_profile). Un default único
     # mentiría en `moves`.
+    #
+    # El sitio se ancla al SIMBOLO, nunca al número de línea:
+    # "archivo.py::funcion.parametro" (también ::Clase.campo y ::CONSTANTE). Una
+    # cita por línea se rompía con cualquier inserción arriba del punto citado
+    # aunque el valor no hubiera cambiado -- pasó tres veces (PRs #160/#162/#164,
+    # #200, y `service_note` el 2026-08-31). `tests/_citation_anchor.py` las
+    # resuelve por AST y `tests/test_discovery_brief.py` falla si el valor citado
+    # ya no está. Un sitio SIN "::" (hoy los dos "(docstring)") cita prosa, no
+    # código, y queda declarado como no verificable.
     defaults: tuple[tuple[str, float, str], ...] = ()
     # Sub-claves de un parámetro granular (hoy solo objection_thresholds). Vacío
     # => el parámetro es escalar y "presente" sí es un booleano.
@@ -55,9 +64,9 @@ CATALOG: tuple[ParamSpec, ...] = (
         low=0.05, high=0.60,
         moves="El costo de mantener y, con él, el ahorro anual de la portada.",
         defaults=(
-            ("inventory_optimization", 0.25, "jobs/inventory_optimization.py:229"),
+            ("inventory_optimization", 0.25, "jobs/inventory_optimization.py::run.holding_rate"),
             ("inventory_optimization", 0.25, "src/client_profile.py (docstring)"),
-            ("webapp", 0.22, "webapp/app.py:575"),
+            ("webapp", 0.22, "webapp/app.py::api_portfolio.holding_rate"),
         ),
     ),
     ParamSpec(
@@ -68,10 +77,10 @@ CATALOG: tuple[ParamSpec, ...] = (
         low=0.50, high=0.999,
         moves="El z del stock de seguridad: mueve el inventario objetivo de toda la red.",
         defaults=(
-            ("flow_map", 0.95, "jobs/flow_map_job.py:159"),
-            ("inventory_optimization", 0.95, "jobs/inventory_optimization.py:228"),
+            ("flow_map", 0.95, "jobs/flow_map_job.py::run.cycle_service_level"),
+            ("inventory_optimization", 0.95, "jobs/inventory_optimization.py::run.service_level"),
             ("inventory_optimization", 0.95, "src/client_profile.py (docstring)"),
-            ("multi_echelon", 0.95, "jobs/multi_echelon_job.py:31"),
+            ("multi_echelon", 0.95, "jobs/multi_echelon_job.py::_DEFAULT_SERVICE_LEVEL"),
         ),
     ),
     ParamSpec(
@@ -81,13 +90,13 @@ CATALOG: tuple[ParamSpec, ...] = (
         low=1.0, high=5000.0,
         moves="El lote económico y la frecuencia de reposición de toda la red.",
         defaults=(
-            ("batch", 1000.0, "src/batch.py:28"),
-            ("hats", 75.0, "src/hats.py:90"),
-            ("inventory_optimization", 75.0, "jobs/inventory_optimization.py:230"),
-            ("powerbi_export", 1000.0, "src/powerbi_export.py:56"),
-            ("powerbi_export", 1000.0, "src/powerbi_export.py:249"),
-            ("simulation", 100.0, "jobs/simulation_job.py:31"),
-            ("webapp", 80.0, "webapp/app.py:574"),
+            ("batch", 1000.0, "src/batch.py::BatchConfig.fixed_order_cost"),
+            ("hats", 75.0, "src/hats.py::HatConfig.order_cost"),
+            ("inventory_optimization", 75.0, "jobs/inventory_optimization.py::run.order_cost"),
+            ("powerbi_export", 1000.0, "src/powerbi_export.py::analyze_product.order_cost"),
+            ("powerbi_export", 1000.0, "src/powerbi_export.py::build_powerbi_dataset.order_cost"),
+            ("simulation", 100.0, "jobs/simulation_job.py::_DEFAULT_ORDER"),
+            ("webapp", 80.0, "webapp/app.py::api_portfolio.order_cost"),
         ),
     ),
     ParamSpec(
@@ -98,7 +107,7 @@ CATALOG: tuple[ParamSpec, ...] = (
         low=0.0, high=10000.0,
         moves="El ratio crítico del newsvendor: un cero asumido baja la cantidad "
               "óptima de TODOS los SKUs a la vez.",
-        defaults=(("newsvendor", 0.0, "jobs/newsvendor_job.py:93"),),
+        defaults=(("newsvendor", 0.0, "jobs/newsvendor_job.py::prepare_records.goodwill"),),
     ),
     ParamSpec(
         name="objection_thresholds",
@@ -125,8 +134,8 @@ UNDECLARED_USE: tuple[ParamSpec, ...] = (
         moves="El horizonte de riesgo del (R,S): un período asumido de 1 día "
               "subestima el stock de seguridad.",
         defaults=(
-            ("multi_echelon", 1.0, "jobs/multi_echelon_job.py:32"),
-            ("simulation", 1, "jobs/simulation_job.py:33"),
+            ("multi_echelon", 1.0, "jobs/multi_echelon_job.py::_DEFAULT_REVIEW_PERIOD"),
+            ("simulation", 1, "jobs/simulation_job.py::_DEFAULT_REVIEW"),
         ),
     ),
     ParamSpec(
@@ -136,10 +145,10 @@ UNDECLARED_USE: tuple[ParamSpec, ...] = (
         low=0.0, high=10000.0,
         moves="El balance faltante-vs-exceso: impacto de costo de escasez vs exceso.",
         defaults=(
-            ("batch", 50.0, "src/batch.py:29"),
-            ("powerbi_export", 50.0, "src/powerbi_export.py:57"),
-            ("powerbi_export", 50.0, "src/powerbi_export.py:250"),
-            ("simulation", 5.0, "jobs/simulation_job.py:32"),
+            ("batch", 50.0, "src/batch.py::BatchConfig.backorder_cost"),
+            ("powerbi_export", 50.0, "src/powerbi_export.py::analyze_product.backorder_cost"),
+            ("powerbi_export", 50.0, "src/powerbi_export.py::build_powerbi_dataset.backorder_cost"),
+            ("simulation", 5.0, "jobs/simulation_job.py::_DEFAULT_BACKORDER"),
         ),
     ),
     ParamSpec(
