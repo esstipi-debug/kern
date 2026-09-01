@@ -193,6 +193,20 @@ def build(
                    "engagement parameter, tuned toward the observed fill rate - a policy "
                    "setting, never a measurement of service", "per run"),
     )
+    # El caveat de la fecha de entrega, cuando la fuente lo declaro. Va en el mapa de
+    # FUENTES y no entre los hallazgos: un finding es un problema del negocio del cliente, y
+    # esto es un limite de la medicion. Meterlo entre los hallazgos lo haria leer como un
+    # defecto de su operacion.
+    #
+    # Y va al entregable y no solo al resumen del agente porque el resumen lo lee el
+    # operador y el Excel lo abre el cliente. El OTIF es el numero mas delicado del informe
+    # -- de un archivo no se puede saber si su fecha es el despacho o la llegada, y entre
+    # las dos lecturas hay 6,2 puntos medidos -- asi que llegarle sin el caveat es darle un
+    # numero que no puede reconciliar contra su propio sistema.
+    if report.service_note:
+        data_sources += (
+            DataSource("Where the service columns came from", report.service_note, "per run"),
+        )
 
     recs: list[str] = []
     if report.n_at_risk:
