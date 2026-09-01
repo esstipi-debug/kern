@@ -94,9 +94,33 @@ Suite completa sobre `main` @ `201ff1d`: **6782 passed, 0 failed**. `ruff check 
   "medime el servicio de mi cuenta de Unleashed" no es pedible en lenguaje natural. Exige
   decidir sobre el registry, cuyo refactor sigue pendiente e intacto (ver
   `kern-registry-refactor-pending-plan` en memoria).
-- (C) **Shippit y Sendle**, los otros dos transportistas del canal AU/NZ. Ahora es un
-  adaptador cada uno y no un rediseno: `ArrivalSource` ya existe. Amplia la cobertura de
-  prospectos que pueden medirse.
+- ~~(C) **Shippit y Sendle**~~ **HECHO el 2026-09-01** (`b3aadc1`, `d3f2c5c`). Un
+  adaptador cada uno contra el `ArrivalSource` que ya existia; el Protocol no se toco.
+  Plan en `docs/superpowers/plans/2026-09-01-adaptadores-llegada-shippit-sendle.md`.
+  Los dos entraron a `ARRIVAL_SOURCES`, asi que heredan los cuatro tests parametrizados
+  del guard (46 -> 48 casos).
+
+  **Lo que destapo, y es lo que importa mas que los dos adaptadores:** los tres
+  transportistas NO se consultan igual. Starshipit acepta la referencia del ERP
+  (`/api/track?order_number=`); Shippit y Sendle se consultan por su llave propia
+  (`tracking_number` y `sendle_reference`), asi que necesitan un mapa
+  `order_id -> llave` que alguien tiene que armar desde el ERP. Cin7 Core guarda un
+  `TrackingNumber`; Unleashed no expone ninguno.
+
+  De ahi sale un guard transversal nuevo: **una orden sin llave produce el mismo
+  silencio que una que el transportista dio por no entregada**, y `with_arrivals` saca a
+  las dos del denominador de OTIF. Mismo output, significados opuestos. La nota tiene que
+  distinguirlos, no solo contar.
+- (E) **Cablear la capa de transportistas** *(recomendada ahora)*. `with_arrivals()` no
+  tiene NINGUN llamador de produccion: verificado repo-wide, solo lo llama
+  `tests/test_connector_arrivals.py`. `scan_service()` no toma un carrier -- su firma es
+  `(source, *, since, stockout_days)` -- y `_notes()` arma las notas desde la declaracion
+  de cobertura sin leer `source.notes`, asi que la nota de tope de Starshipit tampoco
+  llega a ningun informe. Los tres adaptadores estan correctos, testeados y conectados a
+  nada. Es una firma de funcion de distancia: `scan_service(source, *, carrier=None)` que
+  empalme, componga la cobertura con `coverage_of_arrivals` y propague las notas del
+  transportista. Sin esto, los 6,2 puntos de OTIF medidos sobre Olist no son alcanzables
+  por un cliente.
 - (D) **Onboarding self-serve**: que un cliente conecte su cuenta Unleashed/Cin7 solo. Es
   lo que pide la decision de self-serve AU/NZ (2026-08-05) y hoy no existe nada.
 
