@@ -1,7 +1,7 @@
 # Handshake: el servicio al cliente, medido de punta a punta
 
 Fecha: 2026-08-31 | Worktree: `C:\Users\Gamer\Music\scm\supply-chain-optimization` |
-Rama: `main` @ `287fb72`
+Rama: `main` @ `7753398` | Actualizado: 2026-08-31 (tras #314 y #315)
 
 Sucesor de `docs/handoffs/HANDOFF-adaptadores-canal-2026-08-29.md`, cuyo objetivo esta
 cumplido. Ese documento tiene una seccion 8 con lo que se cerro de el.
@@ -11,9 +11,21 @@ cumplido. Ese documento tiene una seccion 8 con lo que se cerro de el.
 Decidir y ejecutar UNA de las tres de la seccion 4. Todo lo de este hilo esta mergeado y
 verde; no queda nada a medias.
 
+**Lo que cambio desde la primera version de este documento**, y es una correccion al
+propio documento: la recomendacion decia que la ruta del orquestador exigia elegir entre
+una tool nueva sobre un registry con refactor pendiente, o "leer las columnas de servicio
+del CSV del cliente". Al mirarlo se vio que la segunda no era lo que parecia --
+`jobs/intake.py` no tenia NINGUNA columna de servicio en su esquema canonico, asi que un
+export que si las traia las perdia en silencio antes de llegar al motor. **Ni tool nueva ni
+refactor: faltaba un productor, y estaba en el archivo del cliente.** Cerrado en #315.
+
+O sea que de la ruta del orquestador queda **solo la mitad del conector**: "medime el
+servicio de mi cuenta de Unleashed" sigue sin ser pedible en lenguaje natural. La mitad del
+archivo -- "corre mi CSV y decime mi fill rate" -- ya funciona.
+
 ## 2. Estado de juego
 
-**Hecho y verificado.** Siete PRs mergeados a `main`, en este orden:
+**Hecho y verificado.** Nueve PRs mergeados a `main`, en este orden:
 
 | PR | Que dejo |
 |---|---|
@@ -24,6 +36,8 @@ verde; no queda nada a medias.
 | #311 | Fill rate: una orden abierta no es un faltante ni una venta perdida |
 | #312 | Olist + el informe de servicio contra datos reales |
 | #313 | Starshipit: la fecha de llegada que el ERP no tiene |
+| #314 | Este handoff + la invariante de cobertura en `CLAUDE.md` |
+| #315 | **El servicio sale del archivo del cliente y llega al agente** |
 
 **La invariante nueva del repo, y es la pieza que hay que entender antes de tocar nada:**
 todo modulo de `src/connectors/` que defina `orders()` **o** `arrivals()` debe exportar un
@@ -63,22 +77,25 @@ escrito y testeado contra la referencia OpenAPI oficial; falta la corrida real.
 cd C:/Users/Gamer/Music/scm/supply-chain-optimization && .venv/Scripts/python.exe -m pytest tests/ -q -k "connector or fulfillment or example" && .venv/Scripts/python.exe examples/run_service_report.py --data data/kaggle/olist --top 5
 ```
 
-Suite completa sobre `main` @ `287fb72`: **6754 passed, 0 failed**. `ruff check .` limpio.
+Suite completa sobre `main` @ `7753398`: **6771 passed, 0 failed**. `ruff check .` limpio.
 
 ## 4. Decisiones abiertas
 
 **D1 - Que sigue.** Las tres son continuaciones reales; ninguna es obligatoria.
 
-- (A) **La ruta del orquestador** *(recomendada)*. Es el limite que #308 declaro y sigue
-  abierto: nada de esto se puede pedir en lenguaje natural. `_inventory_run` en
-  `scm_agent/tools.py` no reenvia `order_lines`, y darle un productor exige elegir entre
-  una tool nueva (#51) sobre un registry con refactor pendiente, o leer las columnas de
-  servicio del CSV del cliente (hilo de intake). Sin esto la capacidad existe y ni el
-  usuario la alcanza en una demo sin escribir Python.
-- (B) **Shippit y Sendle**, los otros dos transportistas del canal AU/NZ. Ahora es un
+- (A) **Que la nota de servicio llegue al ENTREGABLE** *(recomendada: es la mas barata y
+  cierra un agujero real)*. #315 pone el `service_note` en el resumen que lee el operador,
+  y el cliente que abre el Excel/deck no lo ve. O sea que el numero mas delicado del
+  informe -- un OTIF cuya fecha puede ser despacho o llegada -- llega al cliente sin el
+  caveat. Toca `jobs/inventory_deliverable.py` y `src/deliverable.py`.
+- (B) **La tool #51, el camino del conector.** Lo unico que queda del limite original:
+  "medime el servicio de mi cuenta de Unleashed" no es pedible en lenguaje natural. Exige
+  decidir sobre el registry, cuyo refactor sigue pendiente e intacto (ver
+  `kern-registry-refactor-pending-plan` en memoria).
+- (C) **Shippit y Sendle**, los otros dos transportistas del canal AU/NZ. Ahora es un
   adaptador cada uno y no un rediseno: `ArrivalSource` ya existe. Amplia la cobertura de
   prospectos que pueden medirse.
-- (C) **Onboarding self-serve**: que un cliente conecte su cuenta Unleashed/Cin7 solo. Es
+- (D) **Onboarding self-serve**: que un cliente conecte su cuenta Unleashed/Cin7 solo. Es
   lo que pide la decision de self-serve AU/NZ (2026-08-05) y hoy no existe nada.
 
 **D2 - Precio de entrada AU/NZ.** Sigue abierta desde el handoff anterior y no se toco.
@@ -125,6 +142,20 @@ del evento `Delivered` en `tracking_events[]`.
   `promised_date` deja que un pedido a 2027 estire la ventana y haga "vencer" toda promesa
   vigente.
 
+**De #315, y son de la misma familia que las de arriba:**
+
+- **Un esquema canonico que no menciona un dato lo DESCARTA en silencio.** `jobs/intake.py`
+  normalizaba demanda y no tenia columnas de servicio, asi que el archivo del cliente podia
+  traer el dato y se perdia antes del motor. Antes de concluir "el dato no esta", chequear
+  si el normalizador lo esta tirando.
+- **El servicio NO se agrega por periodo.** La demanda si. Dos pedidos del mismo SKU en la
+  misma semana son dos resultados de servicio distintos, y sumarlos borra el que fallo. Por
+  eso `service_lines` lee el archivo una segunda vez en vez de derivar del frame de demanda.
+- **Una fecha de entrega en un ARCHIVO es de tipo desconocido.** De un ERP sabemos que
+  significa porque leimos la doc del vendor; de un CSV no. `fecha_despacho` y
+  `fecha_entrega` dan el mismo campo con sentidos opuestos, y entre los dos hay 6,2 puntos
+  medidos. Por eso el frame lleva `.attrs["service_headers"]` con la columna que matcheo.
+
 **De proceso:**
 
 - El guard del repo `test_no_inert_parameters_outside_the_allowlist` atrapo un
@@ -137,7 +168,13 @@ del evento `Delivered` en `tracking_events[]`.
 - Un `grep -r` sobre todo `C:\Users\Gamer\Music\scm` supera los 120s y se va a background.
 - venv por worktree: `.venv/Scripts/python.exe` del worktree.
 - pandas convierte `None` en `NaN` en columnas de float. La cadena de servicio sobrevive
-  SOLO porque `order_fulfillment._number` filtra por `math.isfinite`.
+  SOLO porque `order_fulfillment._number` filtra por `math.isfinite`. **Se piso dos veces
+  en esta sesion**: en un test se afirma el SIGNIFICADO (no es 0.0, y el motor la deja
+  afuera), nunca `v is None`.
+- **Un test que falla puede tener la fixture equivocada y la conducta buena.** Paso tres
+  veces: un OTIF esperado en 1.0 que era 0.9 por SCOR, una regla de exclusion que descartaba
+  entregas observadas, y una fixture "ilegible" que se detectaba bien. Antes de tocar el
+  codigo, verificar cual de los dos esta mal.
 - La suite completa tarda ~30 min. Lanzarla en background y seguir trabajando.
 
 ## 6. Skills a usar
@@ -155,10 +192,12 @@ del evento `Delivered` en `tracking_events[]`.
 - Motor: `src/order_fulfillment.py` · puente: `src/connectors/__init__.py`
   (`realized_service`, `observation_window_end`, `service_frame`)
 - Lectura de servicio: `src/connectors/service_scan.py`
+- Servicio desde el archivo del cliente: `jobs/intake.py::service_lines` (alias en
+  `SERVICE_ALIASES`), cableado en `scm_agent/tools.py::_inventory_prepare/_inventory_run`
 - Corribles: `examples/run_service_report.py`, `examples/run_service_scan.py`
 - Planes: `docs/superpowers/plans/2026-08-29-{unleashed-y-cobertura-de-servicio,
   servicio-medido-al-entregable,cin7-core-adaptador}.md`
-- PRs: https://github.com/esstipi-debug/kern/pull/307 .. /313
+- PRs: https://github.com/esstipi-debug/kern/pull/307 .. /315
 - Fuentes externas verificadas en esta sesion:
   - https://apidocs.unleashedsoftware.com/SalesShipments
   - https://dearinventory.docs.apiary.io/api-description-document
@@ -168,8 +207,9 @@ del evento `Delivered` en `tracking_events[]`.
 
 - Precios: `webapp/pricing_quote.py`, `webapp/billing.py`, `scm_agent/package_specs.py`.
 - BWM: `src/mcdm.py`, `jobs/sourcing_job.py`.
-- `CLAUDE.md`: **pendiente reconocido**. El repo exige actualizarlo en el mismo PR que
-  cambia el hecho, y en siete PRs no se hizo. Documenta la invariante del lado de ESCRITURA
-  (writeback) y no tiene nada de la de LECTURA (cobertura de servicio), que ahora rompe el
-  build. Es un arreglo de diez lineas y conviene hacerlo antes de que alguien re-derive la
-  regla leyendo el guard.
+- `CLAUDE.md`: **ya no es pendiente**. Se cerro en #314 (la invariante de cobertura del
+  lado de lectura) y #315 (el productor desde el archivo del cliente). Habia estado sin
+  actualizar durante siete PRs, contra la regla del propio repo.
+- El **refactor del registry** sigue pendiente e intacto. #315 no lo toco: no agrego una
+  capacidad nueva, hizo que la tool de inventario -- ya registrada y ruteada -- reporte
+  servicio cuando el archivo lo permite.
