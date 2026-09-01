@@ -206,3 +206,94 @@ def test_el_reporte_sabe_de_donde_y_desde_cuando(campo: str):
     reporte = service_scan_job.run(_prep(source=demo_store()), since="2026-01-01")
 
     assert getattr(reporte, campo) is not None
+
+
+# -- el entregable -------------------------------------------------------------
+
+from pathlib import Path  # noqa: E402
+
+from jobs import service_scan_deliverable  # noqa: E402
+
+
+def _deck():
+    reporte = service_scan_job.run(_prep(source=demo_store()))
+    return reporte, service_scan_deliverable.build(reporte, client="ACME")
+
+
+def test_el_resumen_dice_el_servicio_y_de_que_cuenta():
+    _, deck = _deck()
+
+    assert "fill rate" in deck.summary.lower()
+    assert "simulad" in deck.summary.lower() or "demostraci" in deck.summary.lower()
+
+
+def test_un_servicio_no_medido_no_se_imprime_como_cero():
+    """La regla de todo el paquete, en la superficie que ve el cliente."""
+
+    class _Vacia:
+        def list_products(self):
+            return []
+
+        def inventory_levels(self):
+            return []
+
+        def orders(self, *, since=None):
+            return []
+
+    reporte = service_scan_job.run(_prep(source=_Vacia()))
+    deck = service_scan_deliverable.build(reporte, client="ACME")
+
+    # Ningun porcentaje: sin ordenes no hay ninguna tasa que reportar, ni siquiera "0%".
+    assert "%" not in deck.summary
+    # Y dice POR QUE, que es lo que separa "no medimos" de "medimos y dio mal".
+    assert "not a service failure" in deck.summary.lower()
+
+
+def test_los_hallazgos_son_los_sku_peor_servidos_valorizados():
+    _, deck = _deck()
+
+    assert deck.findings
+    assert any("$" in f.impact for f in deck.findings)
+
+
+def test_la_cobertura_va_en_data_sources_y_NO_en_findings():
+    """Mismo criterio que #318: un finding es un problema del negocio del cliente, y una
+    declaracion de cobertura es un limite de la MEDICION. Entre los hallazgos leeria como
+    un defecto de su operacion."""
+    _, deck = _deck()
+
+    fuentes = " ".join(d.source for d in deck.data_sources)
+    hallazgos = " ".join(f.detail for f in deck.findings)
+
+    assert "delivered_date" in fuentes or "entrega" in fuentes.lower()
+    assert "delivered_date" not in hallazgos
+
+
+def test_el_deck_dice_si_la_fecha_de_entrega_es_DESPACHO():
+    """El hallazgo de 6,2 puntos, en la superficie que lo necesita. Sin esto el cliente lee
+    "OTIF" y entiende "llego a tiempo", cuando el simulador -- como Unleashed, Cin7 y Odoo
+    -- solo puede hablar de la salida."""
+    _, deck = _deck()
+
+    todo = " ".join(d.source for d in deck.data_sources).lower()
+    assert "despacho" in todo or "dispatch" in todo or "promise" in todo
+
+
+def test_el_caveat_llega_al_ARCHIVO_que_abre_el_cliente(tmp_path: Path):
+    _, deck = _deck()
+
+    escritos = deck.write_all(tmp_path)
+
+    markdown = Path(escritos["report"]).read_text(encoding="utf-8")
+    assert "OrderLine.delivered_date" in markdown or "delivered_date" in markdown
+
+
+def test_la_salida_operativa_es_un_archivo_por_sku(tmp_path: Path):
+    reporte, _ = _deck()
+
+    escritos = service_scan_deliverable.write_operational(reporte, tmp_path, "ACME")
+
+    assert escritos
+    ruta = Path(next(iter(escritos.values())))
+    assert ruta.exists()
+    assert "SKU-1" in ruta.read_text(encoding="utf-8")
