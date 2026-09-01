@@ -87,6 +87,13 @@ name) and `means` (what the number IS, in a sentence).
 the adapter and fails in both directions, and a new module without one breaks the
 build.
 
+The client's own file is the other producer: `jobs.intake.service_lines(path)` returns
+the `order_lines` frame when the export carries any of the three (aliases in en/es/pt),
+and `inventory_optimization` forwards it — so a plain CSV run reports measured service
+without any connector. That frame's `.attrs["service_note"]` carries the caveat a
+vendor doc makes unnecessary: from a file you cannot know whether `fecha_entrega` is a
+dispatch or an arrival, so the summary names the matched column and says so.
+
 The `means` sentence is the load-bearing part, not decoration: Unleashed, Cin7 Core
 and Odoo all fill `delivered_date` with a **departure**, Olist and Shopify with an
 **arrival**. Same field, same type, opposite meaning. Measured on 98.666 real orders

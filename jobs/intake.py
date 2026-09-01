@@ -8,6 +8,7 @@ product per period (weekly by default) ready for the engine.
 
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
@@ -659,3 +660,177 @@ def prepare_tracked(
         raw, mapping, period=period, default_lead_days=default_lead_days,
         default_unit_cost=default_unit_cost,
     )
+
+
+# -- servicio realizado desde el archivo del cliente ----------------------------
+
+#: Las tres columnas de servicio, que NO estan en ``CANONICAL_OPTIONAL``.
+#:
+#: Y no lo estan a proposito: ``normalize_tracked`` agrega la demanda a periodos, y el
+#: servicio no se agrega -- dos pedidos del mismo SKU en la misma semana son dos resultados
+#: distintos, y sumarlos borra el que fallo. Viven en su propio canonico, los detecta
+#: ``service_lines`` y no tocan el camino de la demanda.
+SERVICE_OPTIONAL = ("delivered_qty", "promised_date", "delivered_date")
+
+#: Alias de las tres. Ricos en espanol y portugues por el mismo motivo que el resto de la
+#: tabla: es lo que exporta un ERP de LatAm.
+#:
+#: ``entrega`` pelado NO esta, y sigue sin estar: el comentario de arriba explica que es
+#: ambiguo entre una fecha y un plazo en dias. ``fecha_entrega`` si, porque el prefijo lo
+#: desambigua.
+SERVICE_ALIASES: dict[str, list[str]] = {
+    "delivered_qty": [
+        "delivered_qty", "qty_delivered", "delivered_quantity", "quantity_delivered",
+        "shipped_qty", "qty_shipped", "shipped_quantity", "fulfilled_qty", "served_qty",
+        "cantidad_entregada", "cant_entregada", "unidades_entregadas", "entregado",
+        "entregadas", "cantidad_despachada", "cant_despachada", "unidades_despachadas",
+        "despachado", "despachadas", "cantidad_servida", "servido",
+        "quantidade_entregue", "entregue",
+    ],
+    "promised_date": [
+        "promised_date", "promise_date", "due_date", "required_date", "requested_date",
+        "commitment_date", "committed_date", "requested_delivery_date", "eta",
+        "expected_delivery_date", "fecha_prometida", "fecha_comprometida",
+        "fecha_requerida", "fecha_pactada", "fecha_compromiso", "fecha_solicitada",
+        "fecha_pedida", "data_prometida", "data_prevista",
+    ],
+    "delivered_date": [
+        "delivered_date", "delivery_date", "actual_delivery_date", "date_delivered",
+        "ship_date", "shipped_date", "dispatch_date", "date_shipped", "fulfilled_date",
+        "fecha_entrega", "fecha_de_entrega", "fecha_real_entrega", "fecha_entregado",
+        "fecha_despacho", "fecha_de_despacho", "fecha_envio", "fecha_embarque",
+        "data_entrega", "data_envio",
+    ],
+}
+
+#: Las columnas que ``jobs.inventory_optimization.run(order_lines=...)`` lee. Se escriben
+#: aca con el mismo orden y los mismos nombres que ``src.connectors._SERVICE_FRAME_COLUMNS``:
+#: un renombre no rompe, hace que el job descarte la linea en silencio.
+_SERVICE_FRAME_COLUMNS = (
+    "product_id", "ordered_qty", "delivered_qty",
+    "promised_date", "delivered_date", "unit_price",
+)
+
+_NOTA_SERVICIO = (
+    "Servicio medido con las columnas del propio archivo: {columnas}. IMPORTANTE sobre "
+    "'{entrega}': de un archivo no se puede saber si esa fecha es el DESPACHO del deposito "
+    "o la LLEGADA al cliente, y no significan lo mismo -- medido sobre 98.666 pedidos "
+    "reales, la diferencia entre las dos lecturas es de 6,2 puntos de OTIF. Confirmar con "
+    "el cliente que registra esa columna."
+)
+_NOTA_SIN_ENTREGA = (
+    "Servicio medido con las columnas del propio archivo: {columnas}. Sin fecha de entrega "
+    "no se puede medir OTIF; el fill rate si."
+)
+
+
+def _texto_o_none(valor: object) -> str | None:
+    """Una fecha ISO como texto, o ``None`` cuando la celda estaba vacia.
+
+    ``None`` y nunca cadena vacia ni ``NaT``: el motor distingue una ausencia de un cero, y
+    una cadena vacia que llega como fecha se descarta igual pero sin decir por que.
+    """
+    if valor is None:
+        return None
+    texto = str(valor).strip()
+    if not texto or texto.lower() in ("nan", "nat", "none"):
+        return None
+    return texto[:10]
+
+
+def _numero_o_none(valor: object) -> float | None:
+    """Una cantidad reportada, o ``None``. Una celda vacia NO es cero unidades servidas."""
+    if valor is None:
+        return None
+    if isinstance(valor, str) and not valor.strip():
+        return None
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return None
+    return numero if math.isfinite(numero) else None
+
+
+def service_lines(
+    path: str | Path,
+    *,
+    overrides: dict[str, str] | None = None,
+    aliases: AliasTable | None = None,
+):
+    """Las lineas de servicio del archivo del cliente, o ``None`` si no trae ninguna.
+
+    El productor que le faltaba a ``jobs.inventory_optimization.run(order_lines=...)``. Ese
+    argumento acepta un frame de lineas salientes desde que aterrizo el trabajo de servicio
+    realizado, y ningun llamador lo pasaba -- asi que cada corrida reportaba ``not_measured``
+    sobre archivos que a veces SI traian con que medirse.
+
+    ``None`` y no un frame vacio: "este cliente no manda servicio" y "manda servicio y esta
+    todo en cero" son cosas distintas, y el job las trata distinto.
+
+    NO agrega por periodo. La demanda se agrega a semanas y el servicio no: dos pedidos del
+    mismo SKU en la misma semana son dos resultados distintos -- uno pudo servirse entero y
+    el otro no -- y sumarlos borra justamente el que fallo.
+
+    El frame trae dos cosas en ``.attrs`` que el entregable necesita:
+
+    ``service_headers``
+        Que columna del cliente matcheo cada campo. Es lo que hace auditable al numero: de
+        un adaptador sabemos que significa ``delivered_date`` porque leimos la doc del
+        vendor, y de un archivo no.
+
+    ``service_note``
+        La advertencia de que una fecha de entrega en un archivo puede ser un despacho o una
+        llegada. No es un detalle: ninguno de los tres ERP del canal registra la llegada, y
+        entre las dos lecturas hay 6,2 puntos de OTIF medidos.
+    """
+    raw = load_table(path, aliases=aliases)
+    mapeo = detect_columns(
+        raw, overrides, optional=CANONICAL_OPTIONAL + SERVICE_OPTIONAL,
+        aliases={**(aliases or ALIASES), **SERVICE_ALIASES},
+    )
+    if not mapeo.ok:
+        # Sin las columnas obligatorias de demanda no hay a que SKU atribuirle el servicio.
+        return None
+    presentes = {c: mapeo.mapping[c] for c in SERVICE_OPTIONAL if c in mapeo.mapping}
+    if not presentes:
+        return None
+
+    import pandas as pd
+
+    col_sku = mapeo.mapping["product_id"]
+    col_qty = mapeo.mapping["quantity"]
+    col_precio = mapeo.mapping.get("unit_cost")
+    filas = []
+    for fila in raw.to_dict("records"):
+        sku = _texto_o_none(fila.get(col_sku))
+        pedidas = _numero_o_none(fila.get(col_qty))
+        if sku is None or pedidas is None:
+            continue
+        filas.append(
+            {
+                "product_id": sku,
+                "ordered_qty": pedidas,
+                "delivered_qty": (
+                    _numero_o_none(fila.get(presentes["delivered_qty"]))
+                    if "delivered_qty" in presentes else None
+                ),
+                "promised_date": (
+                    _texto_o_none(fila.get(presentes["promised_date"]))
+                    if "promised_date" in presentes else None
+                ),
+                "delivered_date": (
+                    _texto_o_none(fila.get(presentes["delivered_date"]))
+                    if "delivered_date" in presentes else None
+                ),
+                "unit_price": _numero_o_none(fila.get(col_precio)) if col_precio else None,
+            }
+        )
+    frame = pd.DataFrame(filas, columns=list(_SERVICE_FRAME_COLUMNS))
+    columnas = ", ".join(f"{k} <- '{v}'" for k, v in sorted(presentes.items()))
+    frame.attrs["service_headers"] = dict(presentes)
+    frame.attrs["service_note"] = (
+        _NOTA_SERVICIO.format(columnas=columnas, entrega=presentes["delivered_date"])
+        if "delivered_date" in presentes
+        else _NOTA_SIN_ENTREGA.format(columnas=columnas)
+    )
+    return frame
