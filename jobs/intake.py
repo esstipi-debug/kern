@@ -711,16 +711,21 @@ _SERVICE_FRAME_COLUMNS = (
     "promised_date", "delivered_date", "unit_price",
 )
 
+#: En INGLES, y no por gusto: esta frase viaja al ``summary`` del agente y al mapa de
+#: fuentes del entregable, que son en ingles por defecto. El deck tiene i18n
+#: (``src/i18n.py``) para producir una version en espanol ENTERA; mezclar los dos idiomas
+#: dentro de un mismo entregable no es eso. La primera version de esta constante estaba en
+#: espanol e inyectaba castellano en un deck ingles.
 _NOTA_SERVICIO = (
-    "Servicio medido con las columnas del propio archivo: {columnas}. IMPORTANTE sobre "
-    "'{entrega}': de un archivo no se puede saber si esa fecha es el DESPACHO del deposito "
-    "o la LLEGADA al cliente, y no significan lo mismo -- medido sobre 98.666 pedidos "
-    "reales, la diferencia entre las dos lecturas es de 6,2 puntos de OTIF. Confirmar con "
-    "el cliente que registra esa columna."
+    "Service measured from the file's own columns: {columnas}. IMPORTANT about "
+    "'{entrega}': from a file there is no way to know whether that date is the DISPATCH "
+    "from the warehouse or the ARRIVAL at the customer, and they are not the same thing -- "
+    "measured over 98,666 real orders the two readings differ by 6.2 points of OTIF. "
+    "Confirm with the client what that column records."
 )
 _NOTA_SIN_ENTREGA = (
-    "Servicio medido con las columnas del propio archivo: {columnas}. Sin fecha de entrega "
-    "no se puede medir OTIF; el fill rate si."
+    "Service measured from the file's own columns: {columnas}. Without a delivery date "
+    "OTIF cannot be measured; fill rate can."
 )
 
 

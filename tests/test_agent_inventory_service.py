@@ -66,7 +66,7 @@ def test_el_resumen_del_agente_dice_que_midio_servicio_y_de_que_columnas(tmp_pat
     aparece sin decir de donde salio, no lo puede reconciliar contra el ERP del cliente."""
     producido = _correr(tmp_path, _CON_SERVICIO)
 
-    assert "servicio" in producido.summary.lower()
+    assert "service measured" in producido.summary.lower()
     assert "delivered_qty" in producido.summary
 
 
@@ -76,14 +76,14 @@ def test_el_resumen_advierte_que_la_fecha_puede_ser_despacho_o_llegada(tmp_path:
     producido = _correr(tmp_path, _CON_SERVICIO)
 
     resumen = producido.summary.lower()
-    assert "despacho" in resumen and "llegada" in resumen
+    assert "dispatch" in resumen and "arrival" in resumen
 
 
 def test_sin_servicio_el_resumen_no_habla_de_servicio(tmp_path: Path):
     """Ruido en el resumen de cada corrida es como se deja de leer el resumen."""
     producido = _correr(tmp_path, _SIN_SERVICIO)
 
-    assert "servicio" not in producido.summary.lower()
+    assert "service measured" not in producido.summary.lower()
 
 
 def test_dos_columnas_de_servicio_de_tres_ya_alcanzan(tmp_path: Path):
@@ -115,4 +115,4 @@ def test_si_la_deteccion_de_servicio_revienta_la_corrida_sigue(tmp_path: Path, m
     producido = _correr(tmp_path, _CON_SERVICIO)
 
     assert producido.report.n_skus == 1
-    assert "servicio" not in producido.summary.lower()
+    assert "service measured" not in producido.summary.lower()

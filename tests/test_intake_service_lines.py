@@ -174,7 +174,7 @@ def test_la_nota_advierte_que_no_se_sabe_si_es_despacho_o_llegada(tmp_path: Path
 
     nota = service_lines(ruta).attrs["service_note"]
 
-    assert "despacho" in nota.lower() and "llegada" in nota.lower()
+    assert "dispatch" in nota.lower() and "arrival" in nota.lower()
 
 
 def test_un_archivo_sin_las_columnas_obligatorias_de_demanda_no_produce_servicio(tmp_path: Path):
