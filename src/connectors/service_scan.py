@@ -75,6 +75,11 @@ class ServiceScan:
     order_lines: object
     #: ``(date, product_id, quantity, unit_cost)``, lo que come ``DataFrameDemandSource``.
     demand: object
+    #: Cuantas ORDENES sostienen todo lo de arriba. Se publica porque de las lineas no se
+    #: puede deducir -- dos pedidos del mismo dia son una sola fecha -- y un llamador que
+    #: la necesite tendria que releer la fuente. Contra Cin7 eso es una segunda pasada
+    #: entera a 60 llamadas por minuto.
+    n_orders: int = 0
     #: La declaracion del adaptador, o ``None`` si no publica una.
     coverage: ServiceCoverage | None = None
     #: Lo que hay que decirle al operador sobre lo que NO se pudo medir, y sobre lo que se
@@ -181,6 +186,7 @@ def scan_service(
     return ServiceScan(
         source_name=coverage.backend if coverage else "desconocido",
         records=registros,
+        n_orders=len(orders),
         portfolio=of.aggregate(registros),
         order_lines=service_frame(orders),
         demand=_demand_frame(orders, source),
