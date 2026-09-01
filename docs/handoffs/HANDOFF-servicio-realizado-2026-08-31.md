@@ -1,7 +1,7 @@
 # Handshake: el servicio al cliente, medido de punta a punta
 
 Fecha: 2026-08-31 | Worktree: `C:\Users\Gamer\Music\scm\supply-chain-optimization` |
-Rama: `main` @ `7753398` | Actualizado: 2026-08-31 (tras #314 y #315)
+Rama: `main` @ `201ff1d` | Actualizado: 2026-08-31 (tras #317 y #318)
 
 Sucesor de `docs/handoffs/HANDOFF-adaptadores-canal-2026-08-29.md`, cuyo objetivo esta
 cumplido. Ese documento tiene una seccion 8 con lo que se cerro de el.
@@ -25,7 +25,7 @@ archivo -- "corre mi CSV y decime mi fill rate" -- ya funciona.
 
 ## 2. Estado de juego
 
-**Hecho y verificado.** Nueve PRs mergeados a `main`, en este orden:
+**Hecho y verificado.** Once PRs mergeados a `main`, en este orden:
 
 | PR | Que dejo |
 |---|---|
@@ -37,7 +37,9 @@ archivo -- "corre mi CSV y decime mi fill rate" -- ya funciona.
 | #312 | Olist + el informe de servicio contra datos reales |
 | #313 | Starshipit: la fecha de llegada que el ERP no tiene |
 | #314 | Este handoff + la invariante de cobertura en `CLAUDE.md` |
-| #315 | **El servicio sale del archivo del cliente y llega al agente** |
+| #315 | El servicio sale del archivo del cliente y llega al agente |
+| #317 | Actualizacion de este handoff |
+| #318 | **El caveat de la fecha de entrega llega al archivo que abre el cliente** |
 
 **La invariante nueva del repo, y es la pieza que hay que entender antes de tocar nada:**
 todo modulo de `src/connectors/` que defina `orders()` **o** `arrivals()` debe exportar un
@@ -77,18 +79,18 @@ escrito y testeado contra la referencia OpenAPI oficial; falta la corrida real.
 cd C:/Users/Gamer/Music/scm/supply-chain-optimization && .venv/Scripts/python.exe -m pytest tests/ -q -k "connector or fulfillment or example" && .venv/Scripts/python.exe examples/run_service_report.py --data data/kaggle/olist --top 5
 ```
 
-Suite completa sobre `main` @ `7753398`: **6771 passed, 0 failed**. `ruff check .` limpio.
+Suite completa sobre `main` @ `201ff1d`: **6782 passed, 0 failed**. `ruff check .` limpio.
 
 ## 4. Decisiones abiertas
 
-**D1 - Que sigue.** Las tres son continuaciones reales; ninguna es obligatoria.
+**D1 - Que sigue.** Continuaciones reales; ninguna es obligatoria. (A) quedo hecha.
 
-- (A) **Que la nota de servicio llegue al ENTREGABLE** *(recomendada: es la mas barata y
-  cierra un agujero real)*. #315 pone el `service_note` en el resumen que lee el operador,
-  y el cliente que abre el Excel/deck no lo ve. O sea que el numero mas delicado del
-  informe -- un OTIF cuya fecha puede ser despacho o llegada -- llega al cliente sin el
-  caveat. Toca `jobs/inventory_deliverable.py` y `src/deliverable.py`.
-- (B) **La tool #51, el camino del conector.** Lo unico que queda del limite original:
+- ~~(A) Que la nota de servicio llegue al ENTREGABLE~~ **HECHO en #318.** El caveat viaja
+  ahora al markdown y a la hoja *Data Sources* del `.xlsx`, en `data_sources` y no entre
+  los `findings` -- un finding es un problema del negocio del cliente y esto es un limite
+  de la medicion.
+- (B) **La tool #51, el camino del conector** *(recomendada ahora)*. Lo unico que queda del
+  limite original:
   "medime el servicio de mi cuenta de Unleashed" no es pedible en lenguaje natural. Exige
   decidir sobre el registry, cuyo refactor sigue pendiente e intacto (ver
   `kern-registry-refactor-pending-plan` en memoria).
@@ -156,6 +158,19 @@ del evento `Delivered` en `tracking_events[]`.
   `fecha_entrega` dan el mismo campo con sentidos opuestos, y entre los dos hay 6,2 puntos
   medidos. Por eso el frame lleva `.attrs["service_headers"]` con la columna que matcheo.
 
+**De #318:**
+
+- **Las citas de `src/discovery_brief.py` estan ancladas a NUMERO DE LINEA** (19 de ellas).
+  Agregar un campo a un dataclass corrio 6 lineas tres de ellas y rompio
+  `test_todas_las_citas_de_linea_son_exactas`. El guard funciona -- atrapo una rotura real
+  -- pero el mecanismo se rompe con cualquier insercion arriba aunque el valor no cambie.
+  **Es la tercera vez que este repo pelea con citas que derivan** (#160/#162/#164, #200).
+  Al tocar cualquier archivo citado, correr ese test. Anclarlas a simbolo esta pendiente.
+- **El texto de cara al cliente va en INGLES.** El deck es en ingles por defecto y tiene
+  i18n (`src/i18n.py`) para una version en espanol ENTERA. #315 escribio la nota en espanol
+  y la inyectaba en un deck ingles; corregido en #318. Mezclar idiomas dentro de un mismo
+  entregable no es i18n, es un descuido.
+
 **De proceso:**
 
 - El guard del repo `test_no_inert_parameters_outside_the_allowlist` atrapo un
@@ -194,10 +209,12 @@ del evento `Delivered` en `tracking_events[]`.
 - Lectura de servicio: `src/connectors/service_scan.py`
 - Servicio desde el archivo del cliente: `jobs/intake.py::service_lines` (alias en
   `SERVICE_ALIASES`), cableado en `scm_agent/tools.py::_inventory_prepare/_inventory_run`
+- El caveat al entregable: `JobReport.service_note` ->
+  `jobs/inventory_deliverable.py::build` -> `Deliverable.data_sources`
 - Corribles: `examples/run_service_report.py`, `examples/run_service_scan.py`
 - Planes: `docs/superpowers/plans/2026-08-29-{unleashed-y-cobertura-de-servicio,
   servicio-medido-al-entregable,cin7-core-adaptador}.md`
-- PRs: https://github.com/esstipi-debug/kern/pull/307 .. /315
+- PRs: https://github.com/esstipi-debug/kern/pull/307 .. /318
 - Fuentes externas verificadas en esta sesion:
   - https://apidocs.unleashedsoftware.com/SalesShipments
   - https://dearinventory.docs.apiary.io/api-description-document
