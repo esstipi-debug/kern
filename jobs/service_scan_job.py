@@ -30,6 +30,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from nosilo_core.guided import GuidedOutcome, HandoffPacket, Residual, as_handoff
+
 from src import order_fulfillment as of
 from src.connectors import ServiceCoverage
 from src.connectors.service_scan import scan_service
@@ -72,6 +74,56 @@ class ServiceScanReport:
     coverage: ServiceCoverage | None = None
     #: Lo que hay que decirle al operador sobre lo que NO se pudo medir. Va al entregable.
     notes: tuple[str, ...] = field(default_factory=tuple)
+    #: El desenlace never-unprotected. Siempre un HANDOFF: un scan MIDE, no arregla nada.
+    outcome: GuidedOutcome | None = None
+
+
+def _outcome(report_records, peores, source_name: str) -> GuidedOutcome:
+    """El desenlace. Siempre HANDOFF, y eso es una afirmacion sobre lo que esta tool hace.
+
+    El contrato never-unprotected del repo pide que ningun resultado consecuente quede sin
+    salida (``nosilo_core.guided``). Para un scan de servicio la salida honesta es un paso
+    HUMANO: esta tool cuenta quiebres, no los arregla, y devolverla como EXECUTED diria que
+    el agente ya hizo algo con ellos.
+
+    El primer paso es siempre el mismo y no es una formalidad: confirmar que registra la
+    fecha de entrega del backend. De uno que solo ve la salida, "OTIF" significa despachar
+    a tiempo, y entre esa lectura y la llegada real hay 6,2 puntos medidos.
+    """
+    pasos = [
+        "Confirmar con el cliente que registra la fecha de entrega de su sistema: un "
+        "despacho del deposito y una llegada al cliente no son el mismo numero, y el "
+        "OTIF de arriba mide lo que su backend pueda ver.",
+    ]
+    if peores:
+        nombres = ", ".join(r.product_id for r in peores[:5])
+        pasos.append(
+            f"Revisar los SKU peor servidos antes de mover ninguna politica: {nombres}. "
+            "Una politica no arregla un quiebre que la politica no causo."
+        )
+    if not report_records:
+        pasos.append(
+            "No hubo ordenes en la ventana leida: conectar la cuenta o ampliar el rango "
+            "antes de concluir nada sobre el servicio."
+        )
+    paquete = HandoffPacket(
+        title="Revisar el servicio medido y confirmar que significa la fecha de entrega",
+        steps=pasos,
+        risk_if_skipped=(
+            "Un OTIF de despacho leido como si fuera de llegada le muestra al cliente un "
+            "servicio mejor que el que sus compradores vivieron."
+        ),
+    )
+    return as_handoff(
+        f"Servicio medido sobre {source_name}. Requiere revision humana antes de actuar.",
+        [paquete],
+        residuals=[
+            Residual(
+                description="Decidir que hacer con los SKU peor servidos.",
+                risk_if_skipped="Los quiebres siguen, medidos y sin corregir.",
+            )
+        ],
+    )
 
 
 def _resolve_source(params: dict) -> tuple[Any, str]:
@@ -129,6 +181,11 @@ def run(payload: dict, *, since: str | None = None, stockout_days: dict | None =
     # minuto. Lo detecto un test que espiaba cuantas veces se llamaba al adaptador.
     n_ordenes = scan.n_orders
     n_lineas = int(len(scan.order_lines))
+    peores = sorted(
+        (r for r in scan.records if (r.lost_sales_value or 0) > 0),
+        key=lambda r: r.lost_sales_value or 0,
+        reverse=True,
+    )
     return ServiceScanReport(
         source_name=payload["source_name"],
         records=tuple(scan.records),
@@ -138,6 +195,7 @@ def run(payload: dict, *, since: str | None = None, stockout_days: dict | None =
         since=ventana,
         coverage=scan.coverage,
         notes=tuple(scan.notes),
+        outcome=_outcome(scan.records, peores, payload["source_name"]),
     )
 
 

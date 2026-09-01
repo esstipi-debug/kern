@@ -2861,6 +2861,7 @@ def service_scan_tool() -> Tool:
         prepare=_service_scan_prepare,
         run=_service_scan_run,
         qa=lambda report: service_scan_job.verify(report),
+        options=lambda report: report.outcome,
         deliver=lambda report, out_dir, client: service_scan_deliverable.write_operational(
             report, out_dir, client
         ),

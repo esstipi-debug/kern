@@ -297,3 +297,52 @@ def test_la_salida_operativa_es_un_archivo_por_sku(tmp_path: Path):
     ruta = Path(next(iter(escritos.values())))
     assert ruta.exists()
     assert "SKU-1" in ruta.read_text(encoding="utf-8")
+
+
+# -- el contrato never-unprotected ---------------------------------------------
+
+
+def test_el_reporte_termina_en_un_HANDOFF_y_no_en_una_ejecucion():
+    """El contrato que exige ``tests/test_tool_options.py`` a las 51 tools: ningun
+    resultado consecuente queda sin desenlace.
+
+    Y HANDOFF y no EXECUTED, que es la parte que importa: un scan de servicio MIDE, no
+    arregla nada. Devolverlo como ejecutado diria que el agente ya hizo algo con esos
+    quiebres, y no hizo nada -- los conto.
+    """
+    reporte = service_scan_job.run(_prep(source=demo_store()))
+
+    assert reporte.outcome is not None
+    assert reporte.outcome.status == "handoff"
+
+
+def test_el_handoff_dice_confirmar_que_registra_la_fecha_de_entrega():
+    """El paso humano numero uno, y no es una formalidad: de un backend que solo ve la
+    salida, "OTIF" significa despachar a tiempo. Entre esa lectura y la llegada real hay
+    6,2 puntos medidos, y la unica forma de saber cual es cual es preguntar."""
+    reporte = service_scan_job.run(_prep(source=demo_store()))
+
+    texto = " ".join(
+        p.title + " " + " ".join(p.steps) for p in reporte.outcome.handoffs
+    ).lower()
+    assert "entrega" in texto or "delivery" in texto
+
+
+def test_una_cuenta_sin_ordenes_igual_termina_en_un_desenlace():
+    """Sin ordenes tampoco se queda sin salida: el paso humano es conectar o ampliar la
+    ventana, no quedarse mirando un informe vacio."""
+
+    class _Vacia:
+        def list_products(self):
+            return []
+
+        def inventory_levels(self):
+            return []
+
+        def orders(self, *, since=None):
+            return []
+
+    reporte = service_scan_job.run(_prep(source=_Vacia()))
+
+    assert reporte.outcome is not None
+    assert reporte.outcome.handoffs
