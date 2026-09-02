@@ -106,6 +106,19 @@ Suite completa sobre `main` @ `201ff1d`: **6782 passed, 0 failed**. `ruff check 
   prendida** -- inspeccionar un `TrackingNumber` real y compararlo contra la doc de
   Shippit es la unica forma de saber que numero es.
 
+  Segunda pasada (2026-09-02), intentando cerrarlo sin cuenta: el schema real de
+  `sale/fulfilment/ship` -- no el generico, uno con ejemplo -- trae ademas un campo
+  `Carrier` por linea, junto a `TrackingNumber` (`{"Carrier": "UPS", "TrackingNumber":
+  "ABCDEF123", ...}`). Eso empuja la hipotesis hacia que Cin7 guarda el numero del
+  COURIER real (UPS, Australia Post, lo que Shippit haya elegido), no la referencia
+  interna de Shippit -- un campo `Carrier: "UPS"` solo tiene sentido si el numero de al
+  lado es de UPS. Un articulo de ayuda de Shippit para clientes finales (no de
+  integracion) SI distingue las dos referencias como cosas distintas -- "tu tracking
+  empieza con PP, usa la pagina de Shippit; si no, es del courier" -- pero no dice cual
+  de las dos escribe de vuelta en un ERP. Sin mas confirmacion posible por esta via: el
+  centro de ayuda de Cin7 y developer.shippit.com/api_guide/order.html devuelven 403
+  (requieren sesion). **Sigue siendo empirico-o-nada.**
+
   **Sendle -- sigue bloqueado, sin salida encontrada.** No hay integracion nativa
   Cin7<->Sendle (se busco explicitamente). Se reviso ademas si la propia API de Sendle
   permite buscar por `customer_reference` en vez de por `sendle_reference` -- tampoco:
