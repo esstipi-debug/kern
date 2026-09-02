@@ -89,6 +89,33 @@ Suite completa sobre `main` @ `201ff1d`: **6782 passed, 0 failed**. `ruff check 
   ahora al markdown y a la hoja *Data Sources* del `.xlsx`, en `data_sources` y no entre
   los `findings` -- un finding es un problema del negocio del cliente y esto es un limite
   de la medicion.
+- **(F) Investigado el 2026-09-01: si Cin7 puede proveer el mapa que le falta a Shippit y
+  Sendle. Resultado mixto, sin codigo escrito.** Ver `_NAME_STARSHIPIT`/`_resolve_carrier`
+  en `jobs/service_scan_job.py` para el estado actual (solo Starshipit resuelto).
+
+  **Shippit -- parcial, sin confirmar.** Existe integracion nativa Cin7<->Shippit (AU/NZ):
+  "tracking data flows back into Cin7 Core... entered into the Ship tab" -- exactamente el
+  campo `TrackingNumber` que `cin7.py:58` ya menciona en prosa. Pero ninguna doc de
+  marketing dice si ese valor es el `tracking_number` PROPIO de Shippit (formato `PP...`,
+  lo que pide `GET /orders/{tracking_number}/tracking`) o el numero de guia del courier
+  que Shippit orquesta por debajo -- son campos distintos en la propia API de Shippit
+  (`tracking_number` vs `courier_job_id`). Ni el centro de ayuda de Cin7 (403, requiere
+  sesion) ni Apiary (SPA sin renderizar) dieron el schema a nivel de campo. Ademas es
+  condicional: pide *"Shippit Fulfilment Sync"* activado + webhook configurado, no es el
+  comportamiento por defecto. **No se puede cerrar sin una cuenta Cin7 con la integracion
+  prendida** -- inspeccionar un `TrackingNumber` real y compararlo contra la doc de
+  Shippit es la unica forma de saber que numero es.
+
+  **Sendle -- sigue bloqueado, sin salida encontrada.** No hay integracion nativa
+  Cin7<->Sendle (se busco explicitamente). Se reviso ademas si la propia API de Sendle
+  permite buscar por `customer_reference` en vez de por `sendle_reference` -- tampoco:
+  `create/get/cancel` toman solo el ID que asigna Sendle. Sin mapa por ningun lado.
+
+  **Por que no se escribio codigo:** parsear `TrackingNumber` sin saber que numero es
+  repetiria el patron que este hilo entero vino corrigiendo -- un campo con cara de medido
+  que en realidad es una apuesta. Si en algun momento hay una cuenta Cin7 con Shippit
+  Fulfilment Sync activo, el primer paso es leer un `TrackingNumber` real y pegarlo contra
+  `GET /orders/{esa_referencia}/tracking` de Shippit: si contesta 200, el mapa existe.
 - (B) **La tool #51, el camino del conector** *(recomendada ahora)*. Lo unico que queda del
   limite original:
   "medime el servicio de mi cuenta de Unleashed" no es pedible en lenguaje natural. Exige
