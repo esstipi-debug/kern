@@ -89,14 +89,100 @@ Suite completa sobre `main` @ `201ff1d`: **6782 passed, 0 failed**. `ruff check 
   ahora al markdown y a la hoja *Data Sources* del `.xlsx`, en `data_sources` y no entre
   los `findings` -- un finding es un problema del negocio del cliente y esto es un limite
   de la medicion.
+- **(F) Investigado el 2026-09-01: si Cin7 puede proveer el mapa que le falta a Shippit y
+  Sendle. Resultado mixto, sin codigo escrito.** Ver `_NAME_STARSHIPIT`/`_resolve_carrier`
+  en `jobs/service_scan_job.py` para el estado actual (solo Starshipit resuelto).
+
+  **Shippit -- parcial, sin confirmar.** Existe integracion nativa Cin7<->Shippit (AU/NZ):
+  "tracking data flows back into Cin7 Core... entered into the Ship tab" -- exactamente el
+  campo `TrackingNumber` que `cin7.py:58` ya menciona en prosa. Pero ninguna doc de
+  marketing dice si ese valor es el `tracking_number` PROPIO de Shippit (formato `PP...`,
+  lo que pide `GET /orders/{tracking_number}/tracking`) o el numero de guia del courier
+  que Shippit orquesta por debajo -- son campos distintos en la propia API de Shippit
+  (`tracking_number` vs `courier_job_id`). Ni el centro de ayuda de Cin7 (403, requiere
+  sesion) ni Apiary (SPA sin renderizar) dieron el schema a nivel de campo. Ademas es
+  condicional: pide *"Shippit Fulfilment Sync"* activado + webhook configurado, no es el
+  comportamiento por defecto. **No se puede cerrar sin una cuenta Cin7 con la integracion
+  prendida** -- inspeccionar un `TrackingNumber` real y compararlo contra la doc de
+  Shippit es la unica forma de saber que numero es.
+
+  Segunda pasada (2026-09-02), intentando cerrarlo sin cuenta: el schema real de
+  `sale/fulfilment/ship` -- no el generico, uno con ejemplo -- trae ademas un campo
+  `Carrier` por linea, junto a `TrackingNumber` (`{"Carrier": "UPS", "TrackingNumber":
+  "ABCDEF123", ...}`). Eso empuja la hipotesis hacia que Cin7 guarda el numero del
+  COURIER real (UPS, Australia Post, lo que Shippit haya elegido), no la referencia
+  interna de Shippit -- un campo `Carrier: "UPS"` solo tiene sentido si el numero de al
+  lado es de UPS. Un articulo de ayuda de Shippit para clientes finales (no de
+  integracion) SI distingue las dos referencias como cosas distintas -- "tu tracking
+  empieza con PP, usa la pagina de Shippit; si no, es del courier" -- pero no dice cual
+  de las dos escribe de vuelta en un ERP. Sin mas confirmacion posible por esta via: el
+  centro de ayuda de Cin7 y developer.shippit.com/api_guide/order.html devuelven 403
+  (requieren sesion). **Sigue siendo empirico-o-nada.**
+
+  **Sendle -- sigue bloqueado, sin salida encontrada.** No hay integracion nativa
+  Cin7<->Sendle (se busco explicitamente). Se reviso ademas si la propia API de Sendle
+  permite buscar por `customer_reference` en vez de por `sendle_reference` -- tampoco:
+  `create/get/cancel` toman solo el ID que asigna Sendle. Sin mapa por ningun lado.
+
+  **Por que no se escribio codigo:** parsear `TrackingNumber` sin saber que numero es
+  repetiria el patron que este hilo entero vino corrigiendo -- un campo con cara de medido
+  que en realidad es una apuesta. Si en algun momento hay una cuenta Cin7 con Shippit
+  Fulfilment Sync activo, el primer paso es leer un `TrackingNumber` real y pegarlo contra
+  `GET /orders/{esa_referencia}/tracking` de Shippit: si contesta 200, el mapa existe.
 - (B) **La tool #51, el camino del conector** *(recomendada ahora)*. Lo unico que queda del
   limite original:
   "medime el servicio de mi cuenta de Unleashed" no es pedible en lenguaje natural. Exige
   decidir sobre el registry, cuyo refactor sigue pendiente e intacto (ver
   `kern-registry-refactor-pending-plan` en memoria).
-- (C) **Shippit y Sendle**, los otros dos transportistas del canal AU/NZ. Ahora es un
-  adaptador cada uno y no un rediseno: `ArrivalSource` ya existe. Amplia la cobertura de
-  prospectos que pueden medirse.
+- ~~(C) **Shippit y Sendle**~~ **HECHO el 2026-09-01** (`b3aadc1`, `d3f2c5c`). Un
+  adaptador cada uno contra el `ArrivalSource` que ya existia; el Protocol no se toco.
+  Plan en `docs/superpowers/plans/2026-09-01-adaptadores-llegada-shippit-sendle.md`.
+  Los dos entraron a `ARRIVAL_SOURCES`, asi que heredan los cuatro tests parametrizados
+  del guard (46 -> 48 casos).
+
+  **Lo que destapo, y es lo que importa mas que los dos adaptadores:** los tres
+  transportistas NO se consultan igual. Starshipit acepta la referencia del ERP
+  (`/api/track?order_number=`); Shippit y Sendle se consultan por su llave propia
+  (`tracking_number` y `sendle_reference`), asi que necesitan un mapa
+  `order_id -> llave` que alguien tiene que armar desde el ERP. Cin7 Core guarda un
+  `TrackingNumber`; Unleashed no expone ninguno.
+
+  De ahi sale un guard transversal nuevo: **una orden sin llave produce el mismo
+  silencio que una que el transportista dio por no entregada**, y `with_arrivals` saca a
+  las dos del denominador de OTIF. Mismo output, significados opuestos. La nota tiene que
+  distinguirlos, no solo contar.
+- ~~(E) **Cablear la capa de transportistas**~~ **HECHO el 2026-09-01.** `scan_service(source, *, carrier=None)`
+  acepta un `ArrivalSource` o una `CarrierFactory` (recibe los `order_id` ya leidos, para
+  no releer la fuente -- 60 llamadas/min contra Cin7). Empalma, compone la cobertura con
+  `coverage_of_arrivals`, publica `arrival_coverage` y propaga `source.notes` +
+  `join.note` + `carrier.notes`. Solo Starshipit se puede resolver por credenciales hoy
+  (`jobs/service_scan_job.py::_resolve_carrier`): Shippit y Sendle exigen un mapa
+  `order_id -> llave del transportista` que ninguna linea del repo produce -- Unleashed no
+  expone tracking y Cin7 lo menciona en prosa sin parsearlo.
+
+  **Tres correcciones al motor, sin las cuales el empalme degradaba en silencio:**
+  1. `RealizedService.lines_otif_scored` (nuevo) -- `aggregate()` ponderaba el OTIF de
+     cartera por `lines_scored` (el denominador del FILL RATE), no por las lineas que
+     realmente puntuaron OTIF. Coincidian mientras el ERP fechaba todo lo que entregaba;
+     un transportista con cobertura parcial los divorcia.
+  2. `aggregate()` ahora propaga `lines_in_flight` -- antes la exclusion se veia por SKU y
+     se perdia en el portfolio, que es lo unico que consume el entregable.
+  3. La ventana de observacion se fija con `max(pre-empalme, post-empalme)`, no solo
+     pre-empalme. Un revisor adversarial (workflow de 17 agentes, 6 hallazgos, 1
+     sobrevivio a dos escepticos independientes) encontro que fijarla SOLO pre-empalme
+     tapaba un lado y destapaba el otro: con cobertura parcial, una llegada tardia
+     reportada en una orden prueba que el reloj avanzo para TODA la cartera, y sin esa
+     evidencia un stockout total sin reportar (en otra orden) se leia como que no habia
+     pasado nada -- fill rate y ventas perdidas de esa orden desaparecian a la vez, no
+     solo el OTIF. Reproducido y corregido; test en
+     `tests/test_connector_service_scan_carrier.py::test_una_llegada_tardia_en_cobertura_parcial_no_esconde_un_stockout`.
+
+  De paso, un defecto preexistente del PR #313: `jobs/service_scan_deliverable.py` pasaba
+  la explicacion de cada KPI como tercer POSICIONAL, que cae en `target` (la columna
+  "Target" de la tabla) y no en `rationale` ("Why it matters", que quedaba vacia en las
+  cuatro filas de TODO deck de esta tool, con o sin transportista). Corregido de paso.
+
+  6889 tests, 0 fallas, 0 regresiones sobre las 6849 preexistentes. PR pendiente de abrir.
 - (D) **Onboarding self-serve**: que un cliente conecte su cuenta Unleashed/Cin7 solo. Es
   lo que pide la decision de self-serve AU/NZ (2026-08-05) y hoy no existe nada.
 

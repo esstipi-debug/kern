@@ -676,8 +676,71 @@ def _starshipit():
     )
 
 
+def _shippit():
+    """Entregado el 22, con un evento posterior y con la trampa de esta API adentro.
+
+    El fixture trae ``expected_delivery_date`` doce dias ANTES de la entrega real: si el
+    adaptador alguna vez empezara a leerlo, este caso lo delata en vez de dar un OTIF mejor.
+    """
+    from src.connectors.shippit import ShippitArrivals, ShippitCredentials
+
+    class _Http:
+        class _R:
+            def __init__(self, p, s=200):
+                self._p, self.status_code = p, s
+
+            def json(self):
+                return self._p
+
+        def get(self, path, *, params=None, headers=None):
+            return _Http._R({"response": {
+                "tracking_number": "PPxyz",
+                "success": True,
+                "expected_delivery_date": "2024-04-10T09:00:00+10:00",
+                "track": [
+                    {"status": "In Transit", "date": "2024-04-20T08:00:00+10:00"},
+                    {"status": "Completed", "date": "2024-04-22T14:03:11+10:00"},
+                    {"status": "Completed", "date": "2024-04-30T08:00:00+10:00"},
+                ],
+            }})
+
+    return ShippitArrivals(_Http(), ShippitCredentials(api_key="g"), {"SO-1": "PPxyz"})
+
+
+def _sendle():
+    """Entregado el 22. ``state`` dice Delivered y la fecha igual tiene que salir del evento.
+
+    Es la trampa propia de Sendle metida en el fixture del guard: el estado es correcto y no
+    trae hora, asi que un adaptador que se apoye en el se queda sin fecha o se la inventa.
+    """
+    from src.connectors.sendle import SendleArrivals, SendleCredentials
+
+    class _Http:
+        class _R:
+            def __init__(self, p, s=200):
+                self._p, self.status_code = p, s
+
+            def json(self):
+                return self._p
+
+        def get(self, path, *, params=None, headers=None):
+            return _Http._R({
+                "state": "Delivered",
+                "tracking_events": [
+                    {"event_type": "In Transit", "scan_time": "2024-04-20T08:00:00+10:00"},
+                    {"event_type": "Delivered", "scan_time": "2024-04-22T14:03:11+10:00"},
+                ],
+            })
+
+    return SendleArrivals(
+        _Http(), SendleCredentials(sendle_id="g", api_key="g"), {"SO-1": "S3ND1E"}
+    )
+
+
 ARRIVAL_SOURCES: tuple[tuple[str, str, Callable[[], object]], ...] = (
     ("starshipit", "src.connectors.starshipit", _starshipit),
+    ("shippit", "src.connectors.shippit", _shippit),
+    ("sendle", "src.connectors.sendle", _sendle),
 )
 
 
@@ -733,3 +796,64 @@ def test_empalmar_un_transportista_cambia_de_donde_sale_la_fecha_de_entrega(arri
     assert compuesta.delivered_date.reports is True
     assert "despacho" in ERP.delivered_date.means.lower()
     assert "llego al cliente" in compuesta.delivered_date.means
+
+
+#: Los transportistas que NO se pueden consultar por la referencia del ERP y necesitan un
+#: mapa. Starshipit no esta aca: ``/api/track?order_number=`` acepta la referencia del ERP
+#: directo, asi que no tiene mapa que le pueda faltar.
+_CARRIERS_CON_MAPA = (
+    ("shippit", "src.connectors.shippit", "ShippitArrivals", "ShippitCredentials",
+     {"api_key": "g"}),
+    ("sendle", "src.connectors.sendle", "SendleArrivals", "SendleCredentials",
+     {"sendle_id": "g", "api_key": "g"}),
+)
+
+
+class _HttpMudo:
+    """Contesta 404 a todo. Lo que se prueba abajo es lo que NO se consulto."""
+
+    class _R:
+        status_code = 404
+
+        def json(self):
+            return {}
+
+    def get(self, path, *, params=None, headers=None):
+        return _HttpMudo._R()
+
+
+@pytest.mark.parametrize(
+    "caso", _CARRIERS_CON_MAPA, ids=lambda caso: caso[0]
+)
+def test_una_orden_sin_llave_de_transportista_se_declara(caso):
+    """Dos silencios que se ven identicos y significan cosas opuestas.
+
+    ``with_arrivals`` saca del denominador de OTIF a toda orden sin llegada. Para Starshipit
+    eso es honesto: se pregunto por la referencia del ERP y el transportista contesto 404 --
+    "no la conozco". Para estos dos, una orden sin llave produce EL MISMO silencio porque
+    nunca se pregunto por ella, y un OTIF calculado sobre "las ordenes que casualmente
+    tenian el tracking cargado en el ERP" no es el OTIF de la cartera: es el de la muestra
+    mejor documentada, que ademas suele ser la mejor servida.
+
+    El guard vive aca y no en los tests de cada adaptador porque es una propiedad del
+    CONJUNTO: cualquier transportista futuro que se consulte por su llave propia -- y son
+    mayoria -- hereda el mismo problema, y este archivo es donde el repo declara lo que
+    todo adaptador tiene que cumplir.
+    """
+    import importlib
+
+    nombre, modulo, clase, clase_creds, kwargs_creds = caso
+    mod = importlib.import_module(modulo)
+    creds = getattr(mod, clase_creds)(**kwargs_creds)
+
+    fuente = getattr(mod, clase)(
+        _HttpMudo(), creds, {"SO-1": "REF-1"}, order_ids=["SO-1", "SO-2", "SO-3"]
+    )
+    fuente.arrivals()
+
+    assert fuente.notes, f"{nombre} se comio 2 ordenes sin llave y no dijo nada"
+    nota = " ".join(fuente.notes)
+    assert "2 de 3" in nota, nota
+    # Y la nota tiene que distinguir los dos silencios, no solo contar. Una que dijera
+    # "2 ordenes sin llegada" seria indistinguible de dos entregas que no ocurrieron.
+    assert "nunca se pregunto" in nota, nota

@@ -14,7 +14,7 @@ from pathlib import Path
 from examples.run_capability_smoke import _NETWORK, main
 from scm_agent.tools import build_default_registry
 
-# Expected bucket per tool for the default (offline, non-stress) run. 49 registered tools.
+# Expected bucket per tool for the default (offline, non-stress) run. 51 registered tools.
 #
 # This replaces a `passes >= 35` numeric floor. A floor erodes silently: gating one tool
 # just spends slack, and the suite stays green while a capability quietly stops producing
@@ -55,6 +55,10 @@ EXPECTED_OFFLINE_BUCKETS: dict[str, str] = {
     "financial_kpis":         "PASS",
     "forecast":               "PASS",
     "inventory_optimization": "PASS",
+    # PASS y no GATED: requires_data=False y sin credenciales cae al simulador, asi que
+    # produce un entregable entero sin fixture. Anunciarse como demo es parte del contrato
+    # de la tool (jobs/service_scan_job.py), no un atajo del harness.
+    "service_scan":           "PASS",
     "landed_cost":            "PASS",
     "launch_readiness":       "PASS",
     "leadership_chain":       "PASS",

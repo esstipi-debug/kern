@@ -53,6 +53,8 @@ from jobs import (
     returns_job,
     risk_job,
     scheduling_job,
+    service_scan_deliverable,
+    service_scan_job,
     simulation_job,
     slotting_job,
     sop_deliverable,
@@ -2800,6 +2802,76 @@ def _intake_scan_run(payload: object, params: dict) -> Produced:
     return Produced(report=report, summary=report.summary)
 
 
+
+# ---- service_scan (servicio realizado, desde una cuenta viva) -----------------
+
+def _service_scan_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    """Resuelve el backend. No pide archivo: esta tool lee una CUENTA.
+
+    Un fallo de conexion sale como ``needs_data`` y no como ``error``: lo que falta es el
+    acceso al sistema del cliente, que se arregla con credenciales, no con un parche.
+    """
+    try:
+        payload = service_scan_job.prepare(request.data_path, request.params)
+    except (ValueError, KeyError, RuntimeError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _service_scan_run(payload: object, params: dict) -> Produced:
+    report = service_scan_job.run(
+        payload, since=params.get("since"), stockout_days=params.get("stockout_days")
+    )
+    fill = report.portfolio.fill_rate
+    otif = report.portfolio.otif
+    resumen = (
+        f"Read {report.n_orders:,} orders ({report.n_lines:,} lines) from "
+        f"{report.source_name}. Fill rate "
+        f"{'not measured' if fill is None else f'{fill * 100:.1f}%'}; OTIF "
+        f"{'not measured' if otif is None else f'{otif * 100:.1f}%'}."
+    )
+    # Las notas de cobertura entran al resumen porque es lo que el operador lee ANTES de
+    # abrir el entregable, y porque un OTIF sin decir de que campo salio -- ni si esa fecha
+    # es un despacho o una llegada -- no se puede reconciliar contra el ERP del cliente.
+    if report.notes:
+        resumen = f"{resumen} {' '.join(report.notes)}"
+    return Produced(report=report, summary=resumen)
+
+
+def service_scan_tool() -> Tool:
+    return Tool(
+        key="service_scan",
+        title="Realized Customer Service",
+        description="Read a live commerce backend (Unleashed, Cin7 Core, or an offline "
+                    "stand-in) and measure the service customers actually received: "
+                    "order-line fill rate, outbound OTIF (SCOR RL.1.1) and lost sales -- "
+                    "plus a field-by-field statement of what that backend CANNOT measure. "
+                    "Never a policy's implied beta presented as service.",
+        intent_keywords=(
+            "service scan", "realized service", "servicio realizado", "fill rate",
+            "otif", "on time in full", "perfect order", "pedido perfecto",
+            "servicio al cliente", "customer service level", "cuanto entregue",
+            "que servicio di", "lost sales", "venta perdida",
+            # Frases multi-palabra y no verbos sueltos: "entregar" o "servicio" a secas
+            # le robarian el ruteo a media docena de tools. Estas dos salieron de escribir
+            # el brief como lo escribiria un cliente y ver que no matcheaba nada.
+            "llegue a entregar", "que tan bien entregue",
+        ),
+        requires_data=False,
+        prepare=_service_scan_prepare,
+        run=_service_scan_run,
+        qa=lambda report: service_scan_job.verify(report),
+        options=lambda report: report.outcome,
+        deliver=lambda report, out_dir, client: service_scan_deliverable.write_operational(
+            report, out_dir, client
+        ),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            service_scan_deliverable.build(report, client=client, citations=tuple(citations),
+                                           confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
 def intake_scan_tool() -> Tool:
     return Tool(
         key="intake_scan",
@@ -2879,4 +2951,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(cross_impact_tool())
     reg.register(org_friction_tool())
     reg.register(intake_scan_tool())
+    reg.register(service_scan_tool())
     return reg

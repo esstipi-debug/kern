@@ -53,6 +53,12 @@ MAX_HOPS = 2
 # silently-empty degrade that looks identical to "everything resolved".
 TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "inventory_optimization": ("safety_stock", "service_level", "cycle_service_level"),
+    # Servicio SALIENTE medido, que no es lo mismo que el service level de una politica:
+    # "perfect_order" es el pedido perfecto de SCOR (Christopher cap. 2) y es el ancla
+    # exacta de esta tool. Las tres se verificaron con KnowledgeBase.node_exists antes de
+    # escribirlas -- "otif", "on_time_in_full" y "order_fulfillment" NO existen en el
+    # grafo, y anclar a un id inventado rompe el gate en la corrida siguiente.
+    "service_scan": ("perfect_order", "fill_rate", "customer_service"),
     "pricing": ("basic_pricing_theory", "price_sensitivity_measurement", "markdown_pricing"),
     "leadership_chain": ("chain_model", "collaborative_leadership", "authentic_leadership"),
     "cost_to_serve": ("cost_to_serve", "activity_based_costing"),
