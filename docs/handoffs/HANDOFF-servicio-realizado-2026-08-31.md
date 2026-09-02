@@ -111,16 +111,38 @@ Suite completa sobre `main` @ `201ff1d`: **6782 passed, 0 failed**. `ruff check 
   silencio que una que el transportista dio por no entregada**, y `with_arrivals` saca a
   las dos del denominador de OTIF. Mismo output, significados opuestos. La nota tiene que
   distinguirlos, no solo contar.
-- (E) **Cablear la capa de transportistas** *(recomendada ahora)*. `with_arrivals()` no
-  tiene NINGUN llamador de produccion: verificado repo-wide, solo lo llama
-  `tests/test_connector_arrivals.py`. `scan_service()` no toma un carrier -- su firma es
-  `(source, *, since, stockout_days)` -- y `_notes()` arma las notas desde la declaracion
-  de cobertura sin leer `source.notes`, asi que la nota de tope de Starshipit tampoco
-  llega a ningun informe. Los tres adaptadores estan correctos, testeados y conectados a
-  nada. Es una firma de funcion de distancia: `scan_service(source, *, carrier=None)` que
-  empalme, componga la cobertura con `coverage_of_arrivals` y propague las notas del
-  transportista. Sin esto, los 6,2 puntos de OTIF medidos sobre Olist no son alcanzables
-  por un cliente.
+- ~~(E) **Cablear la capa de transportistas**~~ **HECHO el 2026-09-01.** `scan_service(source, *, carrier=None)`
+  acepta un `ArrivalSource` o una `CarrierFactory` (recibe los `order_id` ya leidos, para
+  no releer la fuente -- 60 llamadas/min contra Cin7). Empalma, compone la cobertura con
+  `coverage_of_arrivals`, publica `arrival_coverage` y propaga `source.notes` +
+  `join.note` + `carrier.notes`. Solo Starshipit se puede resolver por credenciales hoy
+  (`jobs/service_scan_job.py::_resolve_carrier`): Shippit y Sendle exigen un mapa
+  `order_id -> llave del transportista` que ninguna linea del repo produce -- Unleashed no
+  expone tracking y Cin7 lo menciona en prosa sin parsearlo.
+
+  **Tres correcciones al motor, sin las cuales el empalme degradaba en silencio:**
+  1. `RealizedService.lines_otif_scored` (nuevo) -- `aggregate()` ponderaba el OTIF de
+     cartera por `lines_scored` (el denominador del FILL RATE), no por las lineas que
+     realmente puntuaron OTIF. Coincidian mientras el ERP fechaba todo lo que entregaba;
+     un transportista con cobertura parcial los divorcia.
+  2. `aggregate()` ahora propaga `lines_in_flight` -- antes la exclusion se veia por SKU y
+     se perdia en el portfolio, que es lo unico que consume el entregable.
+  3. La ventana de observacion se fija con `max(pre-empalme, post-empalme)`, no solo
+     pre-empalme. Un revisor adversarial (workflow de 17 agentes, 6 hallazgos, 1
+     sobrevivio a dos escepticos independientes) encontro que fijarla SOLO pre-empalme
+     tapaba un lado y destapaba el otro: con cobertura parcial, una llegada tardia
+     reportada en una orden prueba que el reloj avanzo para TODA la cartera, y sin esa
+     evidencia un stockout total sin reportar (en otra orden) se leia como que no habia
+     pasado nada -- fill rate y ventas perdidas de esa orden desaparecian a la vez, no
+     solo el OTIF. Reproducido y corregido; test en
+     `tests/test_connector_service_scan_carrier.py::test_una_llegada_tardia_en_cobertura_parcial_no_esconde_un_stockout`.
+
+  De paso, un defecto preexistente del PR #313: `jobs/service_scan_deliverable.py` pasaba
+  la explicacion de cada KPI como tercer POSICIONAL, que cae en `target` (la columna
+  "Target" de la tabla) y no en `rationale` ("Why it matters", que quedaba vacia en las
+  cuatro filas de TODO deck de esta tool, con o sin transportista). Corregido de paso.
+
+  6889 tests, 0 fallas, 0 regresiones sobre las 6849 preexistentes. PR pendiente de abrir.
 - (D) **Onboarding self-serve**: que un cliente conecte su cuenta Unleashed/Cin7 solo. Es
   lo que pide la decision de self-serve AU/NZ (2026-08-05) y hoy no existe nada.
 

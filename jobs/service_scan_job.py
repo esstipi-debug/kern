@@ -46,6 +46,29 @@ _NAME_DEMO = (
     "registro. No se encontraron credenciales de Unleashed ni de Cin7 Core"
 )
 
+#: El unico transportista que se puede resolver con solo sus credenciales. Starshipit se
+#: consulta por la referencia del ERP, que es exactamente lo que la lectura acaba de
+#: producir. Shippit y Sendle tienen adaptador construido y testeado y NO se pueden
+#: encender: los dos se consultan por su llave interna y exigen un mapa
+#: ``order_id -> llave`` que ninguna linea de este repo produce -- Unleashed no expone
+#: numero de seguimiento y Cin7 lo menciona en prosa sin parsearlo. Enchufarlos igual
+#: empalmaria contra un mapa vacio, y un OTIF de llegada sobre cero llegadas se lee igual
+#: que uno sobre mil.
+_NAME_STARSHIPIT = "Starshipit (transportista, cuenta viva)"
+_NAME_CARRIER_INJECTED = "transportista inyectado (simulador o doble de test)"
+
+_PROBLEMA_OTIF_SIN_PUNTUALIDAD = (
+    "el reporte publica un OTIF de {otif:.0%} sobre CERO lineas con evidencia de "
+    "puntualidad. No es lo mismo que un fill rate sin lineas: una cartera puede tener cien "
+    "lineas servidas y ninguna con fecha de entrega, y entonces el fill rate descansa en "
+    "cien y el OTIF en nada. No se entrega."
+)
+_PROBLEMA_COBERTURA_CERO = (
+    "se empalmo un transportista y no reporto la llegada de NINGUNA orden. El informe diria "
+    "'OTIF de llegada' sobre cero llegadas conocidas: no es un OTIF parcial, es ninguno. "
+    "Revisar credenciales, ventana y mapeo de referencias antes de entregar."
+)
+
 _PROBLEMA_SIN_EVIDENCIA = (
     "el reporte publica un fill rate de {fill:.0%} y no tiene ni una linea puntuada: un "
     "numero medido sobre cero evidencia se lee igual que uno medido sobre mil. No se "
@@ -70,15 +93,22 @@ class ServiceScanReport:
     n_lines: int = 0
     #: Desde cuando se leyo. ``None`` es "todo el historico", y no es lo mismo.
     since: str | None = None
-    #: La declaracion de cobertura del adaptador, cuando publica una.
+    #: La declaracion de cobertura del adaptador, cuando publica una. Con transportista
+    #: empalmado es la COMPUESTA: lo servido y la promesa siguen siendo del sistema de
+    #: registro, la fecha de entrega pasa a ser del transportista.
     coverage: ServiceCoverage | None = None
+    #: Fraccion de ordenes con fecha de llegada. ``None`` = no se empalmo transportista, y
+    #: no es lo mismo que ``0.0``, que es "se empalmo y no conocia ninguna".
+    arrival_coverage: float | None = None
     #: Lo que hay que decirle al operador sobre lo que NO se pudo medir. Va al entregable.
     notes: tuple[str, ...] = field(default_factory=tuple)
     #: El desenlace never-unprotected. Siempre un HANDOFF: un scan MIDE, no arregla nada.
     outcome: GuidedOutcome | None = None
 
 
-def _outcome(report_records, peores, source_name: str) -> GuidedOutcome:
+def _outcome(
+    report_records, peores, source_name: str, arrival_coverage: float | None = None
+) -> GuidedOutcome:
     """El desenlace. Siempre HANDOFF, y eso es una afirmacion sobre lo que esta tool hace.
 
     El contrato never-unprotected del repo pide que ningun resultado consecuente quede sin
@@ -90,11 +120,24 @@ def _outcome(report_records, peores, source_name: str) -> GuidedOutcome:
     fecha de entrega del backend. De uno que solo ve la salida, "OTIF" significa despachar
     a tiempo, y entre esa lectura y la llegada real hay 6,2 puntos medidos.
     """
-    pasos = [
-        "Confirmar con el cliente que registra la fecha de entrega de su sistema: un "
-        "despacho del deposito y una llegada al cliente no son el mismo numero, y el "
-        "OTIF de arriba mide lo que su backend pueda ver.",
-    ]
+    # El primer paso depende de si hubo transportista, y no es cosmetica. Sin empalme la
+    # pregunta abierta es QUE significa la fecha; con empalme ya esta contestada -- sale del
+    # transportista -- y la que queda abierta es CUANTO del libro se pudo empalmar. Dejar la
+    # primera cuando el empalme ocurrio gasta el unico paso humano que alguien va a leer en
+    # una pregunta resuelta, y esconde la que si importa.
+    if arrival_coverage is None:
+        pasos = [
+            "Confirmar con el cliente que registra la fecha de entrega de su sistema: un "
+            "despacho del deposito y una llegada al cliente no son el mismo numero, y el "
+            "OTIF de arriba mide lo que su backend pueda ver.",
+        ]
+    else:
+        pasos = [
+            f"El OTIF de arriba es de LLEGADA, no de despacho, y descansa en una cobertura "
+            f"de empalme del {arrival_coverage:.0%} de las ordenes. Revisar con el cliente "
+            "las ordenes que quedaron sin empalmar antes de leer el numero como el de la "
+            "cartera entera: salen del denominador de puntualidad, no del de fill rate.",
+        ]
     if peores:
         nombres = ", ".join(r.product_id for r in peores[:5])
         pasos.append(
@@ -160,6 +203,41 @@ def _resolve_source(params: dict) -> tuple[Any, str]:
     return demo_store(), _NAME_DEMO
 
 
+def _resolve_carrier(params: dict) -> tuple[object | None, str | None]:
+    """El transportista a empalmar, y como se lo anuncia. ``(None, None)`` = ninguno.
+
+    Devuelve una FABRICA y no un conector armado, y el motivo es de costo: los tres
+    adaptadores de transportista se construyen sabiendo que ordenes van a consultar, y
+    ``prepare`` todavia no leyo la fuente -- a proposito, porque contra Cin7 una lectura son
+    60 llamadas por minuto. ``scan_service`` llama a la fabrica con los identificadores de
+    la lectura que ya hizo. Ver ``src.connectors.service_scan.CarrierFactory``.
+
+    **Sin credenciales no se arma nada, y eso es deliberado**: el camino offline de esta
+    tool tiene que quedar byte-identico al de antes de existir este resolvedor.
+    """
+    inyectado = params.get("carrier")
+    if inyectado is not None:
+        return inyectado, _NAME_CARRIER_INJECTED
+
+    api_key = params.get("starshipit_api_key") or os.environ.get("STARSHIPIT_API_KEY")
+    sub_key = (
+        params.get("starshipit_subscription_key")
+        or os.environ.get("STARSHIPIT_SUBSCRIPTION_KEY")
+    )
+    if api_key and sub_key:
+        from src.connectors.starshipit import (
+            StarshipitArrivals,
+            StarshipitCredentials,
+            live_http,
+        )
+
+        creds = StarshipitCredentials(api_key=api_key, subscription_key=sub_key)
+        http = params.get("carrier_http") or live_http()
+        return (lambda ids: StarshipitArrivals(http, creds, list(ids))), _NAME_STARSHIPIT
+
+    return None, None
+
+
 def prepare(data_path: str | None = None, params: dict | None = None) -> dict:
     """Resuelve la fuente. ``data_path`` no se usa: esta tool lee una cuenta, no un archivo.
 
@@ -169,13 +247,32 @@ def prepare(data_path: str | None = None, params: dict | None = None) -> dict:
     """
     params = params or {}
     fuente, nombre = _resolve_source(params)
-    return {"source": fuente, "source_name": nombre, "since": params.get("since")}
+    transportista, nombre_transportista = _resolve_carrier(params)
+    return {
+        "source": fuente,
+        "source_name": nombre,
+        "since": params.get("since"),
+        "carrier": transportista,
+        "carrier_name": nombre_transportista,
+    }
 
 
 def run(payload: dict, *, since: str | None = None, stockout_days: dict | None = None):
     """Mide el servicio de la fuente resuelta. Delega en ``scan_service``, no lo repite."""
     ventana = since if since is not None else payload.get("since")
-    scan = scan_service(payload["source"], since=ventana, stockout_days=stockout_days)
+    transportista = payload.get("carrier")
+    # UNA SOLA LLAMADA, con o sin transportista. La alternativa -- intentar el empalme y
+    # recaer en un scan sin transportista si el transportista falla -- exige releer la
+    # fuente entera, que es exactamente lo que el comentario de abajo documenta haber
+    # pagado por evitar. Y la degradacion tampoco seria gratis: un OTIF de despacho
+    # entregado bajo un pedido de OTIF de llegada es el numero equivocado con cara de
+    # correcto. Un transportista caido revienta la corrida, a proposito y declarado.
+    scan = scan_service(
+        payload["source"],
+        since=ventana,
+        stockout_days=stockout_days,
+        carrier=transportista,
+    )
     # ``scan.n_orders`` y no un segundo ``orders()``: la primera version releia la fuente
     # para contar pedidos, y contra Cin7 eso es una pasada entera de mas a 60 llamadas por
     # minuto. Lo detecto un test que espiaba cuantas veces se llamaba al adaptador.
@@ -186,16 +283,25 @@ def run(payload: dict, *, since: str | None = None, stockout_days: dict | None =
         key=lambda r: r.lost_sales_value or 0,
         reverse=True,
     )
+    # El nombre COMPUESTO cuando hubo empalme. Publicar solo el del sistema de registro
+    # arriba de una fecha que salio del transportista es la ultima forma del error que
+    # ``coverage_of_arrivals`` existe para impedir: el cliente lee "Unleashed" en la fila de
+    # fuentes de un informe cuya fecha de entrega Unleashed no registra. No se usa
+    # ``scan.source_name`` porque perderia la invariante de que el simulador se anuncia.
+    nombre = payload["source_name"]
+    if transportista is not None and payload.get("carrier_name"):
+        nombre = f"{nombre} + {payload['carrier_name']}"
     return ServiceScanReport(
-        source_name=payload["source_name"],
+        source_name=nombre,
         records=tuple(scan.records),
         portfolio=scan.portfolio,
         n_orders=n_ordenes,
         n_lines=n_lineas,
         since=ventana,
         coverage=scan.coverage,
+        arrival_coverage=scan.arrival_coverage,
         notes=tuple(scan.notes),
-        outcome=_outcome(scan.records, peores, payload["source_name"]),
+        outcome=_outcome(scan.records, peores, nombre, scan.arrival_coverage),
     )
 
 
@@ -214,4 +320,12 @@ def verify(report: ServiceScanReport) -> list[str]:
             problemas.append(_PROBLEMA_SIN_EVIDENCIA.format(fill=p.fill_rate))
         if p.otif is not None:
             problemas.append(_PROBLEMA_OTIF_SIN_EVIDENCIA.format(otif=p.otif))
+    # El gate de arriba mira ``lines_scored``, que es el denominador del FILL RATE. Mientras
+    # el sistema de registro fecha todo lo que despacha los dos coinciden; un transportista
+    # con cobertura parcial los divorcia, y entonces ese gate deja pasar un OTIF construido
+    # sobre cero evidencia de puntualidad.
+    elif p.otif is not None and p.lines_otif_scored <= 0:
+        problemas.append(_PROBLEMA_OTIF_SIN_PUNTUALIDAD.format(otif=p.otif))
+    if report.arrival_coverage == 0.0:
+        problemas.append(_PROBLEMA_COBERTURA_CERO)
     return problemas

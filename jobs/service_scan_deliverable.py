@@ -86,9 +86,89 @@ def _data_sources(report: ServiceScanReport) -> tuple[DataSource, ...]:
                 DataSource(f"{campo} ({cobertura.status})", f"{fuente} -- {cobertura.means}",
                            "per run")
             )
+    if report.arrival_coverage is not None:
+        filas.append(
+            DataSource(
+                "Arrival-date coverage",
+                f"the carrier reported an arrival for {report.arrival_coverage:.0%} of the "
+                "orders read; the rest leave the OTIF denominator",
+                "per run",
+            )
+        )
     for nota in report.notes:
         filas.append(DataSource("What this backend cannot measure", nota, "per run"))
     return tuple(filas)
+
+
+#: Como se enuncia la evidencia del fill rate cuando ES la de todo, y cuando no lo es. La
+#: segunda version existe porque la primera se vuelve FALSA en cuanto un transportista
+#: aporta la fecha de llegada de solo una parte del libro: el fill rate sigue descansando en
+#: todas las lineas servidas y el OTIF pasa a descansar en las que ademas tienen llegada.
+_POR_QUE_LINEAS = "how much evidence every number above rests on"
+_POR_QUE_LINEAS_FILL = (
+    "how much evidence the fill rate and lost demand rest on. OTIF rests on fewer lines -- "
+    "see the row below"
+)
+_POR_QUE_LINEAS_OTIF = (
+    "lines carrying BOTH a promise and a delivery date: the only ones punctuality can be "
+    "judged on. Lower than the row above because the carrier did not report every order"
+)
+
+_REC_CONFIRMAR_FECHA = (
+    "Confirm with the operator what the backend's delivery date records: a warehouse "
+    "dispatch and a customer arrival are not the same number."
+)
+_REC_COBERTURA = (
+    "The OTIF above is measured on ARRIVAL, not dispatch, over the {cobertura:.0%} of "
+    "orders the carrier reported. Review the unmatched orders before reading it as the "
+    "whole book: they leave the punctuality denominator, not the fill-rate one."
+)
+_REC_SKUS = (
+    "Work the worst-served SKUs above before raising any service-level target: a policy "
+    "cannot fix a gap the policy did not cause."
+)
+
+
+def _kpis(report: ServiceScanReport) -> tuple[Kpi, ...]:
+    """Los KPI de cartera. La explicacion va en ``rationale``, que es la columna que el
+    renderizador titula "Why it matters" -- pasarla como tercer posicional la mandaba a
+    "Target", donde se leia como una meta, y dejaba "Why it matters" vacia en las cuatro
+    filas.
+
+    La quinta fila solo aparece cuando los dos denominadores DIVERGEN. Agregarla siempre
+    seria una fila que repite a la anterior y compite por la atencion con las cuatro que
+    importan; no agregarla nunca deja al lector creyendo que el OTIF pesa lo mismo que el
+    fill rate cuando puede descansar en la quinta parte de la evidencia.
+    """
+    p = report.portfolio
+    divergen = p.lines_otif_scored != p.lines_scored
+    filas = [
+        Kpi("Fill rate", pct(p.fill_rate),
+            rationale="units delivered / units ordered, over the lines that carried both"),
+        Kpi("OTIF (perfect order)", pct(p.otif),
+            rationale="lines delivered complete AND by the promised date (SCOR RL.1.1)"),
+        Kpi("Demand not served", money(p.lost_sales_value),
+            rationale="short units valued at the line's own price"),
+        Kpi("Lines scored", f"{p.lines_scored:,}",
+            rationale=_POR_QUE_LINEAS_FILL if divergen else _POR_QUE_LINEAS),
+    ]
+    if divergen:
+        filas.append(
+            Kpi("Lines scored for OTIF", f"{p.lines_otif_scored:,}",
+                rationale=_POR_QUE_LINEAS_OTIF)
+        )
+    return tuple(filas)
+
+
+def _recommendations(report: ServiceScanReport) -> tuple[str, ...]:
+    """Que hacer. La primera cambia segun haya habido empalme, y no es cosmetica: sin
+    transportista la pregunta abierta es QUE significa la fecha de entrega del backend, y
+    con transportista esa ya esta contestada -- la que queda abierta es CUANTO del libro se
+    pudo empalmar. Dejar la primera cuando el empalme ocurrio gasta la recomendacion que el
+    cliente lee primero en una pregunta resuelta."""
+    if report.arrival_coverage is None:
+        return (_REC_CONFIRMAR_FECHA, _REC_SKUS)
+    return (_REC_COBERTURA.format(cobertura=report.arrival_coverage), _REC_SKUS)
 
 
 def build(
@@ -101,30 +181,14 @@ def build(
     confidence: float | None = None,
 ) -> Deliverable:
     """Arma el Deliverable del scan de servicio."""
-    p = report.portfolio
-    kpis = [
-        Kpi("Fill rate", pct(p.fill_rate),
-            "units delivered / units ordered, over the lines that carried both"),
-        Kpi("OTIF (perfect order)", pct(p.otif),
-            "lines delivered complete AND by the promised date (SCOR RL.1.1)"),
-        Kpi("Demand not served", money(p.lost_sales_value),
-            "short units valued at the line's own price"),
-        Kpi("Lines scored", f"{p.lines_scored:,}",
-            "how much evidence every number above rests on"),
-    ]
     return Deliverable(
         title="Realized Customer Service",
         client=client,
         summary=_resumen(report),
         findings=tuple(_findings(report)),
-        kpis=tuple(kpis),
+        kpis=_kpis(report),
         data_sources=_data_sources(report),
-        recommendations=(
-            "Confirm with the operator what the backend's delivery date records: a "
-            "warehouse dispatch and a customer arrival are not the same number.",
-            "Work the worst-served SKUs above before raising any service-level target: "
-            "a policy cannot fix a gap the policy did not cause.",
-        ),
+        recommendations=_recommendations(report),
         citations=tuple(citations),
         confidence=confidence,
         residual=residual,

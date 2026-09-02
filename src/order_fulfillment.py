@@ -133,6 +133,14 @@ class RealizedService:
     #: number they cannot reconcile against their own ERP, so the count is published
     #: rather than absorbed: scored + in_flight + unmeasurable = order_lines.
     lines_in_flight: int = 0
+    #: Scored lines that carried BOTH dates, or that were promised, overdue and never
+    #: delivered - the denominator ``otif`` was actually computed over. It is not
+    #: ``lines_scored``: a line can be served in full and still carry no delivery date,
+    #: which counts for fill rate and cannot count for punctuality. The two coincide
+    #: while the system of record dates everything it ships, and diverge the moment a
+    #: carrier supplies the dates for only part of the book - which is exactly when the
+    #: portfolio roll-up must not weight one SKU's OTIF by another criterion's evidence.
+    lines_otif_scored: int = 0
     units_ordered: float | None = None
     units_delivered: float | None = None
     periods_covered: int = 0
@@ -377,7 +385,7 @@ def measure_from_order_lines(
         provenance=PROVENANCE_OBSERVED,
         method=method,
         order_lines=scan.lines, lines_scored=scan.scored, lines_priced=scan.priced,
-        lines_in_flight=scan.in_flight,
+        lines_in_flight=scan.in_flight, lines_otif_scored=scan.otif_scored,
         units_ordered=scan.ordered, units_delivered=scan.delivered,
         periods_covered=periods_covered,
     )
@@ -476,8 +484,14 @@ def aggregate(
     """
     units = [(r.units_delivered, r.units_ordered) for r in records
              if r.units_ordered and r.units_delivered is not None]
-    otifs = [(r.otif, float(r.lines_scored)) for r in records
-             if r.otif is not None and r.lines_scored > 0]
+    # Ponderado por ``lines_otif_scored`` y NO por ``lines_scored``: el segundo es el
+    # denominador del fill rate. Mientras el sistema de registro fecha todo lo que
+    # despacha los dos coinciden y la diferencia no se ve; un transportista que aporta la
+    # fecha de llegada de solo una parte del libro los divorcia, y con el peso viejo un
+    # SKU con diez lineas servidas y una sola fechada pesaba diez veces lo que su
+    # evidencia de puntualidad justifica.
+    otifs = [(r.otif, float(r.lines_otif_scored)) for r in records
+             if r.otif is not None and r.lines_otif_scored > 0]
     origins = {r.provenance for r in records if r.provenance != PROVENANCE_NOT_MEASURED}
     # Resolved BEFORE the constructor call, and without consuming ``origins``.
     # ``origins.pop()`` inline emptied the set, and Python evaluates keyword
@@ -506,6 +520,12 @@ def aggregate(
         order_lines=sum(r.order_lines for r in records),
         lines_scored=sum(r.lines_scored for r in records),
         lines_priced=sum(r.lines_priced for r in records),
+        # Se propagan porque el entregable consume el PORTFOLIO, no los registros por SKU.
+        # Sin ``lines_in_flight`` aca, una cartera a la que se le descarto evidencia se lee
+        # identica a una donde no se descarto nada -- la exclusion se veia por SKU y se
+        # perdia justo en el numero que llega al cliente.
+        lines_in_flight=sum(r.lines_in_flight for r in records),
+        lines_otif_scored=sum(r.lines_otif_scored for r in records),
         units_ordered=ordered_total if units else None,
         units_delivered=sum(d for d, _ in units) if units else None,
         periods_covered=max((r.periods_covered for r in records), default=0),
