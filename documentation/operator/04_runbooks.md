@@ -13,13 +13,23 @@
 - [RB-6 · Enrutar una ESCALACIÓN](#rb-6--enrutar-una-escalación)
 - [RB-7 · Facilitar un ciclo S&OP](#rb-7--facilitar-un-ciclo-sop)
 - [RB-8 · Cubrir un residuo](#rb-8--cubrir-un-residuo)
-- [RB-9 · Correr un paquete comercial](#rb-9--correr-un-paquete-comercial)
+- [RB-9 · Correr un ciclo bundlado (varias tools de una)](#rb-9--correr-un-ciclo-bundlado-varias-tools-de-una)
+- [RB-10 · Escanear qué se puede correr con estos datos](#rb-10--escanear-qué-se-puede-correr-con-estos-datos)
+- [RB-11 · Mapear la tensión entre áreas y reconciliar una decisión de reposición](#rb-11--mapear-la-tensión-entre-áreas-y-reconciliar-una-decisión-de-reposición)
+- [RB-12 · Medir el costo de coordinación antes de convocar una reunión](#rb-12--medir-el-costo-de-coordinación-antes-de-convocar-una-reunión)
+- [RB-13 · Auditar la fricción organizacional en tus propios controles](#rb-13--auditar-la-fricción-organizacional-en-tus-propios-controles)
+- [RB-14 · Verificar el gate de disponibilidad antes de un lanzamiento](#rb-14--verificar-el-gate-de-disponibilidad-antes-de-un-lanzamiento)
+- [RB-15 · Medir el servicio que realmente entregaste](#rb-15--medir-el-servicio-que-realmente-entregaste)
 
 ---
 
 ## RB-1 · Onboarding de un cliente / dataset
 
 **Objetivo:** pasar de "cliente nuevo" a "dato listo para correr un job".
+
+> Si todavía no sabés qué archivos pedir ni qué tools van a correr con lo que
+> tenés, empezá por [RB-10](#rb-10--escanear-qué-se-puede-correr-con-estos-datos)
+> — ese escaneo te devuelve exactamente esa lista antes de prometer nada.
 
 1. **Califica el problema** y elige el **modo** (Inventory vs. SCM) y el
    **entregable** del [catálogo (05)](05_deliverable_catalog.md).
@@ -188,10 +198,13 @@ de registro.
 
 ---
 
-## RB-9 · Correr un paquete comercial
+## RB-9 · Correr un ciclo bundlado (varias tools de una)
 
-**Disparador:** un cliente contrató alguna de las [8 secciones de la escalera
-comercial](../paquetes/README.md) y toca producir el ciclo.
+**Disparador:** te toca un ciclo recurrente que junta varias tools en un solo
+entregable consolidado (por ejemplo, uno de los [8 bundles del catálogo
+comercial](../paquetes/README.md), si operás Kern como agencia — pero el
+mecanismo sirve igual para correr tu propio ciclo interno mensual sin bundle
+comercial de por medio).
 
 1. **Pide el intake con el checklist del paquete**:
    `python examples/run_package.py --package <clave> --checklist` imprime
@@ -220,12 +233,184 @@ comercial](../paquetes/README.md) y toca producir el ciclo.
    exactitud de inventario").
 5. **Atiende los desenlaces por herramienta** como siempre: OPTIONS → RB-4,
    planilla/Odoo staged → RB-5, residuos → RB-8.
-6. **Presenta y factura la cadencia.** Los pasos con cadencia "QBR trimestral"
-   (proveedores, riesgos, DEA) se corren igual que el ciclo mensual, agregando
-   sus archivos al intake ese trimestre.
+6. **Presenta el deck y fija la cadencia del próximo ciclo.** Los pasos con
+   cadencia "QBR trimestral" (proveedores, riesgos, DEA) se corren igual que el
+   ciclo mensual, agregando sus archivos al intake ese trimestre. Si operás
+   Kern como agencia, esta es también la instancia en la que facturás el ciclo
+   (ver [07 · Setup de Venta](07_setup_venta.md)); si operás tu propia cadena,
+   es la instancia en la que reportás a quien decide.
+
+---
+
+## RB-10 · Escanear qué se puede correr con estos datos
+
+**Disparador:** te llegó una carpeta de archivos (propios o de un dataset
+nuevo) y no sabés todavía qué tools de Kern van a poder correr con lo que hay
+adentro, ni qué falta para desbloquear el resto.
+
+**Objetivo:** convertir "no sé qué tengo" en una lista accionable: qué corre
+hoy, qué falta, y cuál es el único archivo o columna que más rápido destraba
+más cosas.
+
+1. **Apuntá la tool a la carpeta, no a un archivo suelto**: `intake_scan` toma
+   `request.data_path` como directorio y clasifica cada archivo legible contra
+   los perfiles conocidos (`maestro`, `ventas`, `stock`, `finanzas`).
+2. **Corré el escaneo** (`examples/run_agent.py --brief "que puedo correr con
+   esta carpeta" --data <carpeta>/`, o el intent en español "escanear la
+   carpeta" / "qué datos necesito").
+3. **Leé el semáforo por tool**: verde (corre hoy), amarillo (corre con
+   huecos — el reporte dice cuáles), rojo (falta el archivo base), o
+   no-declarada (esa tool todavía no expone su perfil de intake).
+4. **Priorizá por el campo de mayor apalancamiento**, no por orden alfabético.
+   El reporte ya rankea "la única columna o archivo que más tools desbloquea" —
+   pedí ese primero, no la lista completa de una.
+5. **Volvé a RB-1** con la lista en mano: ahora el paso "pide el dato mínimo"
+   tiene respuesta concreta en vez de una plantilla genérica.
+
+---
+
+## RB-11 · Mapear la tensión entre áreas y reconciliar una decisión de reposición
+
+**Disparador:** una decisión de orden de compra (cantidad + nivel de
+servicio) genera desacuerdo visible entre compras, finanzas, planeación y
+comercial, y necesitás una sola cifra para avanzar — no cuatro opiniones.
+
+**Objetivo:** dejar explícito el costo en dólares de cada postura, elegir con
+una política de pesos declarada, y dejar un acta de las concesiones.
+
+1. **Corré `hat_tension`** sobre la demanda semanal del SKU en disputa
+   (`product_id, quantity, unit_cost, lead_time_days`). Devuelve la misma
+   decisión vista a través de 4 "sombreros" (comprador / planner / cfo /
+   comercial), con el gap en $ entre posturas — **nada se reconcilia todavía**,
+   solo se hace visible el desacuerdo.
+2. **Llevá el mapa a la conversación** con las áreas en tensión — esto
+   reemplaza la reunión de "cada uno defiende su número" por una tabla que ya
+   las tiene todas puestas una al lado de la otra.
+3. **Corré `hat_settlement`** con tu política de pesos explícita (cuánto pesa
+   cada sombrero) para obtener UN plan reconciliado (Q*, SL*), con el acta de
+   concesiones y el valor firmado vs. la línea base de hoy.
+4. **`hat_settlement` termina en HANDOFF, nunca en EXECUTED** — el resultado es
+   un paquete humano para vos: pasa a **RB-3** para ejecutarlo (emitir la
+   orden, comunicar la decisión).
+5. **Archivá el acta.** Es la prueba de que la decisión no fue arbitraria
+   cuando alguien pregunte, tres meses después, por qué se pidió esa cantidad.
+
+---
+
+## RB-12 · Medir el costo de coordinación antes de convocar una reunión
+
+**Disparador:** una de las áreas YA propuso una decisión de reposición y
+estás por convocar a las otras tres a validarla — antes de agendar, querés
+saber si hace falta la reunión.
+
+**Objetivo:** no convocar cuando nadie va a objetar, y llegar con el
+argumento cuantificado cuando alguien sí va a hacerlo.
+
+1. **Corré `cross_impact`** con la decisión ya propuesta por el área de
+   origen (`current`, el parámetro que vos completás — la tool nunca lo
+   asume por defecto) sobre la misma demanda semanal.
+2. **Leé el veredicto por área**: para cada una de las otras tres, ¿objetaría
+   contra el umbral que vos declaraste, o no?
+3. **Cero objeciones → no convocás la reunión.** Es el resultado explícito de
+   esta tool, no una lectura tuya del reporte.
+4. **Alguna objeción → convocás con el número en la mano**, no con "creo que a
+   finanzas no le va a gustar". El reporte trae el $ y el motivo por área.
+5. **Si el resultado empuja hacia una decisión reconciliada**, pasá a
+   **RB-11** para llegar a UN plan en vez de quedarte en el diagnóstico.
+
+---
+
+## RB-13 · Auditar la fricción organizacional en tus propios controles
+
+**Disparador:** cadencia trimestral, o cuando dos reportes del mismo período
+no coinciden entre sí y sospechás que el problema no es el dato sino cómo se
+gobierna.
+
+**Objetivo:** sacar a la luz la capa política que ninguna herramienta de
+calidad de datos ve — números que no cierran entre canales, metas que suben
+apenas se cumplen, puntos de control sin dueño, workarounds informales nunca
+clasificados.
+
+1. **Juntá tus propios puntos de control** en un CSV/Excel: una fila por
+   KPI o checkpoint, con las columnas que ya tengas de
+   `official_value`, `shadow_value`, `owner`, `workaround_present` y
+   `workaround_classification` (ninguna es obligatoria de arranque — la tool
+   trabaja con las que existan). Un segundo archivo opcional de histórico
+   target-vs-actual (`params['history_path']`) habilita la detección de metas
+   que se ajustan ("ratchet") apenas se cumplen.
+2. **Corré `org_friction_audit`.**
+3. **Leé cada hallazgo como una pregunta rankeada, nunca como un veredicto.**
+   La tool está diseñada para NO acusar a una persona — si el reporte suena a
+   señalar a alguien, la pregunta a hacerte es qué tan bien se completaron las
+   columnas de `owner`, no a quién citar.
+4. **Llevá los hallazgos de mayor rango a la conversación 1:1 con el dueño del
+   control**, no a un canal grupal — es una auditoría de gobierno, no una
+   denuncia pública.
+5. **Los controles sin dueño se convierten en un residuo** (RB-8): decidís
+   quién los asume o los asumís conscientemente vos.
+
+---
+
+## RB-14 · Verificar el gate de disponibilidad antes de un lanzamiento
+
+**Disparador:** marketing (o quien programe campañas) tiene una fecha de
+lanzamiento fija y necesitás confirmar, con los tiempos de proveedor reales,
+si el SKU va a estar en stock a tiempo.
+
+**Objetivo:** un veredicto verde/amarillo/rojo por SKU, con la acción
+concreta para cada uno que no llega a verde.
+
+1. **Juntá dos archivos**: el calendario de campaña
+   (`product_id, launch_date`) y el inventario/lead time real
+   (`params['inventory_path']`) — sin el segundo, la tool no tiene con qué
+   comparar el calendario y devuelve `needs_data`.
+2. **Corré `launch_readiness`.**
+3. **Leé el veredicto por SKU**: verde (cubierto), amarillo (ajustado, con la
+   acción que lo destraba — expedite, PO adelantada), rojo (no va a llegar con
+   el lead time actual).
+4. **Reenviá el reporte a quien programa el calendario** — la tool está
+   pensada para eso, no para integrarse sola al calendario de marketing
+   ("no marketing-tool integration" es explícito en su diseño).
+5. **Cada SKU en rojo o amarillo es una decisión** (adelantar PO, correr
+   `sourcing` con un proveedor más rápido, o mover la fecha) — pasa a **RB-4**
+   si `launch_readiness` ya te dejó opciones rankeadas, o a **RB-5** si la
+   acción es emitir una orden.
+
+---
+
+## RB-15 · Medir el servicio que realmente entregaste
+
+**Disparador:** necesitás fill rate y OTIF reales — no el nivel de servicio
+que asume tu política de inventario — para un reporte, una revisión semanal,
+o para confirmar si un transportista está cumpliendo.
+
+**Objetivo:** un número medido, con la fuente y el hueco de medición
+declarados — nunca un OTIF presentado sin decir de qué campo salió.
+
+1. **Corré `service_scan`** (no pide archivo: lee una cuenta conectada —
+   Unleashed o Cin7 Core por credenciales de entorno, con el stand-in offline
+   como último recurso si no hay ninguna configurada; Shopify no está cableado
+   a esta tool todavía, aunque el conector existe en el repo). Parámetros
+   opcionales: `since` (ventana) y `stockout_days`.
+2. **Leé fill rate y OTIF por separado** — pueden divergir, y el reporte los
+   separa a propósito cuando lo hacen.
+3. **Leé las notas de cobertura antes de citar el número.** El reporte declara,
+   campo por campo, si algo es medido, derivado o no medible — y si tenés un
+   transportista conectado (hoy, Starshipit es el único auto-resoluble por
+   credenciales), si el OTIF es de **despacho** o de **llegada**. La brecha
+   entre ambos, medida sobre 98.666 pedidos reales, es de 6,2 puntos — no es
+   un detalle menor.
+4. **Nunca repitas el número sin la nota de cobertura al lado** — es la
+   diferencia entre un OTIF defendible y uno que un cliente o tu propio CFO
+   puede desarmar con una pregunta.
+5. **Si el número sorprende, cruzalo con `disruption_scan` o `reconciliation`**
+   antes de escalarlo — un servicio que cae de golpe suele tener una causa
+   rastreable, no solo un número que reportar.
 
 ---
 
 > Con estos runbooks cubres el 100% de las situaciones humano-únicas que Kern
-> puede producir. El siguiente documento, [05 · Catálogo de Entregables](05_deliverable_catalog.md),
-> lista qué puedes **producir y vender**, con tu valor agregado en cada uno.
+> puede producir, sea que operes tu propia cadena o la de un cliente. El
+> siguiente documento, [05 · Catálogo de Entregables](05_deliverable_catalog.md),
+> lista qué puedes **producir** con cada tool — y, si operás como agencia, qué
+> puedes vender — con tu valor agregado humano en cada uno.
