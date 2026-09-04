@@ -53,25 +53,42 @@ def _is_internal_source(concept: "Concept") -> bool:
     return src in _INTERNAL_SOURCES
 
 
-# Directory names and filename shapes that mark a module as test code.
-_TEST_DIRS: frozenset[str] = frozenset({"tests", "test", "testing"})
+# Directory names and filename shapes that mark a module as something other than
+# an implementation. Three families, one rule: none of them is where a concept
+# actually lives, so none may be offered to a client as the code behind it.
+_NON_IMPL_DIRS: frozenset[str] = frozenset({
+    "tests", "test", "testing",                        # verify a concept
+    "examples", "example", "demos", "demo",            # illustrate a concept
+    "samples", "sample",
+    "scripts", "script",                               # one-off tooling around it
+})
+_NON_IMPL_PREFIXES: tuple[str, ...] = ("test_", "demo_", "example_", "sample_")
+_NON_IMPL_SUFFIXES: tuple[str, ...] = (
+    "_test.py", "_demo.py", "_example.py", "_sample.py",
+)
 
 
-def _is_test_path(source_file: str) -> bool:
-    """True if this path is test code rather than an implementation.
+def _is_non_implementation_path(source_file: str) -> bool:
+    """True if this path is test, demo, example or script code, not an implementation.
 
-    A test module *verifies* a concept, it never *implements* one, so citing
-    ``tests/test_pricing.py`` as the code behind "Competitive Reference Price"
-    is a false claim in front of a client. Matches a ``tests/`` (or ``test/``,
-    ``testing/``) directory anywhere in the path, plus the pytest filename
-    conventions (``test_*.py``, ``*_test.py``, ``conftest.py``).
+    Three kinds of false claim this shuts off, all of them client-facing:
+    a test module *verifies* a concept (``tests/test_pricing.py`` as the code
+    behind "Competitive Reference Price"); a demo *illustrates* one for a
+    prospect (``webapp/demo_lead_time_scan.py`` as "Replenishment Lead Time");
+    and an ingest script is circular (``scripts/merge_khan_resilience.py`` as
+    the code behind a Khan concept is the script that *read* that book).
+
+    Matches one of ``_NON_IMPL_DIRS`` anywhere in the path, plus the filename
+    conventions — pytest's (``test_*.py``, ``*_test.py``, ``conftest.py``) and
+    the demo/example/sample prefixes and suffixes. Anchored on prefix and
+    suffix, never a substring, so ``src/order_demo_history.py`` stays citable.
     """
     parts = (source_file or "").replace("\\", "/").split("/")
     name = parts[-1]
     return (
-        any(part in _TEST_DIRS for part in parts[:-1])
-        or name.startswith("test_")
-        or name.endswith("_test.py")
+        any(part in _NON_IMPL_DIRS for part in parts[:-1])
+        or name.startswith(_NON_IMPL_PREFIXES)
+        or name.endswith(_NON_IMPL_SUFFIXES)
         or name == "conftest.py"
     )
 
@@ -612,9 +629,10 @@ class KnowledgeBase:
 
         The precise half of bridge() for grounding: requires at least `min_overlap`
         shared tokens between the concept and a `.py` code node, so a single common
-        word (e.g. "price") can't forge a spurious link. Test modules are excluded
-        outright (see ``_is_test_path``) — they verify a concept, they don't
-        implement it, and they outnumber src/ nodes ~2:1 in the code graph.
+        word (e.g. "price") can't forge a spurious link. Tests, demos, examples
+        and one-off scripts are excluded outright (see
+        ``_is_non_implementation_path``) — none of them is where a concept lives,
+        and together they outnumber src/ nodes better than 2:1 in the code graph.
         Prefers real src/ modules. Returns None when the code graph is absent or
         nothing clears the bar — the caller then cites theory only.
         """
@@ -625,7 +643,7 @@ class KnowledgeBase:
         best: tuple[int, int, Concept] | None = None
         for nid, n in self._index.get("code", {}).items():
             src = n.get("source_file") or ""
-            if not src.endswith(".py") or _is_test_path(src):
+            if not src.endswith(".py") or _is_non_implementation_path(src):
                 continue
             stem = Path(src).stem
             have = titles.get(nid, set()) | _tokens(stem)
