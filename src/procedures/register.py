@@ -64,6 +64,27 @@ DUE_SOON_DAYS = 30
 _SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
 
 
+def _evidence_date(value: date | None) -> str:
+    """A date rendered for a human-readable ``evidence`` string -- ISO format, or the
+    literal ``"sin dato"`` rather than Python's own ``str(None) == "None"``, which
+    reads as code inside an otherwise-prose evidence sentence. Does not touch the
+    three-state semantics (``sin_dato`` the STATE, vs. this being only how a missing
+    date is spelled inside ``evidence``) -- the value columns in
+    ``jobs/procedure_audit_job.py::write_operational`` were already blank for a
+    missing date; this only fixes the sentence describing it."""
+    return value.isoformat() if value is not None else "sin dato"
+
+
+def _is_retired(record: ProcedureRecord) -> bool:
+    """Case/whitespace-insensitive ``status == "retired"`` -- matches every
+    neighbouring comparison in this module (``_no_approval``, ``_owner_is_approver``,
+    both ``.strip().lower()``). Safe today only because
+    ``jobs/procedure_audit_job.py::_normalize_status`` already lowercases ``status``
+    before the engine ever sees it, but a direct engine caller passing ``"Retired"``
+    must get the same result, not eight checks firing on a retired SOP."""
+    return record.status.strip().lower() == RETIRED_STATUS
+
+
 def _effective_cadence(record: ProcedureRecord, default_cadence_days: int) -> int:
     """The row's own cadence when it is a positive int, else the caller's default."""
     if record.review_cadence_days is not None and record.review_cadence_days > 0:
@@ -103,7 +124,10 @@ def _vigencia_finding(
             severity="low",
             state=STATE_SIN_DATO,
             detail="no tiene fecha de ultima revision registrada",
-            evidence=(f"last_reviewed_at=None, raw_last_reviewed_at='{record.raw_last_reviewed_at}'",),
+            evidence=(
+                f"last_reviewed_at={_evidence_date(None)}, "
+                f"raw_last_reviewed_at='{record.raw_last_reviewed_at}'",
+            ),
             owner=record.owner,
             due_date=None,
             days_overdue=None,
@@ -200,7 +224,7 @@ def _no_approval(record: ProcedureRecord) -> ProcedureFinding | None:
         detail="figura como 'approved' pero falta aprobador o fecha de aprobacion",
         evidence=(
             f"status='{record.status}', approver='{record.approver}', "
-            f"approved_at={record.approved_at}",
+            f"approved_at={_evidence_date(record.approved_at)}",
         ),
         owner=record.owner,
         due_date=None,
@@ -261,7 +285,7 @@ def detect(
     """Run every check over every non-retired row; rank by severity, then overdue, then name."""
     findings: list[ProcedureFinding] = []
     for record in records:
-        if record.status == RETIRED_STATUS:
+        if _is_retired(record):
             continue
         vigencia = _vigencia_finding(
             record, as_of=as_of, default_cadence_days=default_cadence_days, due_soon_days=due_soon_days
@@ -406,7 +430,7 @@ def audit_register(
     )
 
     n_procedures = len(records)
-    n_retired = sum(1 for r in records if r.status == RETIRED_STATUS)
+    n_retired = sum(1 for r in records if _is_retired(r))
     n_overdue = sum(1 for f in findings if f.code == OVERDUE_REVIEW)
     n_due_soon = sum(1 for f in findings if f.code == REVIEW_DUE_SOON)
     n_without_owner = sum(1 for f in findings if f.code == NO_OWNER)
@@ -414,7 +438,7 @@ def audit_register(
     days_since_review = [
         (as_of - r.last_reviewed_at).days
         for r in records
-        if r.status != RETIRED_STATUS and r.last_reviewed_at is not None
+        if not _is_retired(r) and r.last_reviewed_at is not None
     ]
     median_days_since_review = float(median(days_since_review)) if days_since_review else None
 

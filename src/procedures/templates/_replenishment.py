@@ -14,16 +14,23 @@ TEMPLATE = ProcedureTemplate(
     key="replenishment",
     title={"es": "SOP - Reposicion de inventario", "en": "SOP - Inventory Replenishment"},
     purpose={
+        # Minor finding 1: the old wording asserted "({service_level}) ... declarados
+        # por el cliente" ("declared BY THE CLIENT") in the same clause where
+        # {service_level}/{lead_time_days} substitute to "(no declarado)" on the
+        # default/no-params path (the capability-smoke path, and any first run
+        # before a client profile exists) -- self-contradictory in the very first
+        # sentence of the client-facing SOP. Dropping the trailing "declared by the
+        # client" clause keeps the sentence coherent whether the values are real
+        # numbers or the _NOT_DECLARED placeholder.
         "es": (
             "Mantener el nivel de servicio objetivo revisando la posicion de inventario "
             "cada {review_period_days} dias, con el service level ({service_level}) y el "
-            "lead time ({lead_time_days}) declarados por el cliente, sin quiebres de stock "
-            "ni exceso de inventario."
+            "lead time ({lead_time_days}), sin quiebres de stock ni exceso de inventario."
         ),
         "en": (
             "Maintain the target service level by reviewing the inventory position every "
-            "{review_period_days} days, using the declared service level ({service_level}) "
-            "and lead time ({lead_time_days}), without stockouts or excess inventory."
+            "{review_period_days} days, using the service level ({service_level}) and lead "
+            "time ({lead_time_days}), without stockouts or excess inventory."
         ),
     },
     scope={

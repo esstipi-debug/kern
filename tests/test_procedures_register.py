@@ -151,6 +151,27 @@ def test_no_approval_fires_only_for_status_approved():
     assert not any(f.code == NO_APPROVAL for f in detect([draft_missing_data], as_of=AS_OF))
 
 
+def test_no_approval_evidence_reads_sin_dato_not_the_python_none_literal():
+    """Minor 8: the value COLUMNS stay correctly blank (never '0'/'None'/'nan'
+    printed -- that constraint is unchanged), but the human-readable evidence STRING
+    used to interpolate a bare Python None via f"approved_at={record.approved_at}",
+    which reads as code, not data. 'sin dato' is the same vocabulary the module
+    already uses for an unevaluable value (the sin_dato state itself)."""
+    record = _record(status="approved", approver="", approved_at=None)
+    (finding,) = [f for f in detect([record], as_of=AS_OF) if f.code == NO_APPROVAL]
+    evidence = " ".join(finding.evidence)
+    assert "None" not in evidence
+    assert "approved_at=sin dato" in evidence
+
+
+def test_no_review_date_evidence_reads_sin_dato_not_the_python_none_literal():
+    record = _record(last_reviewed_at=None)
+    (finding,) = [f for f in detect([record], as_of=AS_OF) if f.code == NO_REVIEW_DATE]
+    evidence = " ".join(finding.evidence)
+    assert "last_reviewed_at=None" not in evidence
+    assert "last_reviewed_at=sin dato" in evidence
+
+
 def test_unversioned_and_no_kpi_link_are_low():
     findings = detect([_record(version="", linked_kpi="")], as_of=AS_OF)
     by_code = {f.code: f for f in findings}
@@ -174,6 +195,32 @@ def test_retired_procedures_skip_vigencia_checks():
         last_reviewed_at=AS_OF - timedelta(days=1000),  # would be badly overdue if active
     )
     assert detect([retired], as_of=AS_OF) == ()
+
+
+def test_retired_status_check_is_case_and_whitespace_insensitive():
+    """Minor 4: jobs/procedure_audit_job.py::_normalize_status lowercases status
+    before the engine ever sees it, so 'Retired' never reaches detect() through the
+    job -- but the engine itself must not rely on that upstream normalization: a
+    direct caller passing status='Retired' (or ' retired ') must skip every check
+    the exact same way status='retired' does, matching every neighbouring comparison
+    in this module (_no_approval, _owner_is_approver), which already normalize."""
+    for raw_status in ("Retired", " retired ", "RETIRED"):
+        retired = ProcedureRecord(
+            name="Viejo proceso",
+            status=raw_status,
+            owner="",
+            approver="",
+            version="",
+            linked_kpi="",
+            last_reviewed_at=AS_OF - timedelta(days=1000),
+        )
+        assert detect([retired], as_of=AS_OF) == (), f"status={raw_status!r} still fired checks"
+
+        audit = audit_register([retired], as_of=AS_OF)
+        assert audit.n_retired == 1, f"status={raw_status!r} not counted as retired"
+        assert audit.median_days_since_review is None, (
+            f"status={raw_status!r} leaked into the active median_days_since_review"
+        )
 
 
 # ---- ranking / evidence -----------------------------------------------------------

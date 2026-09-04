@@ -325,6 +325,11 @@ def test_healthy_folder_passes_the_gate_and_evaluates_the_declared_tools(tmp_pat
     # maestro.csv and is honestly evaluated RED for the missing last_reviewed_at, same
     # as any other tool whose data contract this folder doesn't satisfy.
     assert report.n_tools_evaluated == 5
+    # Pin the fifth tool's identity, not just the count -- a future tool that also
+    # declares required_columns on this folder shape would keep n_tools_evaluated at
+    # 5 (one verdict swapped for another) without this failing, and silently drop
+    # procedure_audit's own coverage out of the count this test guards.
+    assert states["procedure_audit"] == RED
 
 
 def test_a_master_plus_sales_folder_where_abc_xyz_columns_are_split_across_files(tmp_path):

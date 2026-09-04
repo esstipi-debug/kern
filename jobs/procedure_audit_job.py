@@ -254,30 +254,72 @@ def prepare(data_path: str, params: dict | None = None) -> PreparedRegister:
     )
 
 
+def _parse_as_of(params: dict) -> tuple[date, str]:
+    """``params['as_of']`` -> ``(as_of, source)``; the clock when absent (``source ==
+    "clock"``). Shared by ``run()`` and ``validate_params()`` so both raise the exact
+    same ``ValueError`` for the exact same bad input -- see that function's own
+    docstring for why two callers need the identical guard."""
+    if "as_of" not in params:
+        return date.today(), "clock"
+    raw_as_of = params["as_of"]
+    try:
+        return date.fromisoformat(str(raw_as_of)), "param"
+    except ValueError as exc:
+        raise ValueError(
+            f"params['as_of'] debe ser una fecha ISO (YYYY-MM-DD): recibido {raw_as_of!r}"
+        ) from exc
+
+
+def _parse_positive_int(params: dict, key: str, default: int, default_source: str) -> tuple[int, str]:
+    """``params[key]`` -> ``(value, "param")`` when present and a positive integer,
+    else ``(default, default_source)``. ``ValueError`` naming ``key`` when the value is
+    present but not parseable, or parses to zero or a negative number -- an unchecked
+    ``review_cadence_days=0`` used to be accepted silently and made
+    ``days_overdue >= 2 * cadence`` trivially true for every overdue row, flipping the
+    severity mix on a nonsense parameter instead of refusing it."""
+    if key not in params:
+        return default, default_source
+    raw = params[key]
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"params['{key}'] debe ser un numero entero: recibido {raw!r}") from exc
+    if value <= 0:
+        raise ValueError(f"params['{key}'] debe ser mayor que 0: recibido {value}")
+    return value, "param"
+
+
+def validate_params(params: dict | None) -> None:
+    """Validate ``as_of``/``review_cadence_days``/``due_soon_days`` at the tool
+    boundary, before any file is read or ``run()`` is called.
+
+    ``scm_agent/tools.py::_procedure_audit_prepare`` calls this so a malformed value
+    (a non-ISO ``as_of``, a non-numeric or non-positive ``review_cadence_days`` or
+    ``due_soon_days``) surfaces as ``Prepared(status="needs_data", ...)`` with this
+    job's own message, instead of escaping ``run()`` as an uncaught ``ValueError`` that
+    the orchestrator's blanket exception handler can only report as "An internal error
+    occurred." (``scm_agent/orchestrator.py``). ``run()`` below calls the same two
+    helpers itself and does not skip its own check just because this function exists --
+    a caller that invokes the job directly, bypassing ``prepare()``, still gets the
+    identical guard.
+    """
+    params = params or {}
+    _parse_as_of(params)
+    _parse_positive_int(params, "review_cadence_days", DEFAULT_REVIEW_CADENCE_DAYS, "convention")
+    _parse_positive_int(params, "due_soon_days", DUE_SOON_DAYS, "convention")
+
+
 def run(prepared: PreparedRegister, params: dict | None = None) -> RegisterAudit:
     """Resolve ``as_of``/cadence from params (or their labelled defaults) and audit."""
     params = params or {}
 
-    if "as_of" in params:
-        raw_as_of = params["as_of"]
-        try:
-            as_of = date.fromisoformat(str(raw_as_of))
-        except ValueError as exc:
-            raise ValueError(
-                f"params['as_of'] debe ser una fecha ISO (YYYY-MM-DD): recibido {raw_as_of!r}"
-            ) from exc
-        as_of_source = "param"
-    else:
-        as_of = date.today()
-        as_of_source = "clock"
-
-    if "review_cadence_days" in params:
-        default_cadence_days = int(params["review_cadence_days"])
-        cadence_source = "param"
-    else:
-        default_cadence_days = DEFAULT_REVIEW_CADENCE_DAYS
-        cadence_source = "convention"
-    due_soon_days = int(params.get("due_soon_days", DUE_SOON_DAYS))
+    as_of, as_of_source = _parse_as_of(params)
+    default_cadence_days, cadence_source = _parse_positive_int(
+        params, "review_cadence_days", DEFAULT_REVIEW_CADENCE_DAYS, "convention"
+    )
+    due_soon_days, _due_soon_source = _parse_positive_int(
+        params, "due_soon_days", DUE_SOON_DAYS, "convention"
+    )
 
     audit = audit_register(
         prepared.records,

@@ -3,8 +3,8 @@
 Guarantees under test:
 - exactly the intended 36 analysis tools are exposed, all annotated read-only/
   non-destructive - the writeback pair (`odoo_replenishment`,
-  `excel_replenishment`) and the two non-tabular tools (`leadership_chain`,
-  `warehouse_layout`) stay off this surface;
+  `excel_replenishment`) and the three non-tabular tools (`leadership_chain`,
+  `warehouse_layout`, `procedure_draft`) stay off this surface;
 - a real call bridges rows -> temp CSV -> Orchestrator.run() -> a structured
   JSON response carrying the same client-ready report the webapp already builds
   - including for loop-registered (spec-table) tools;

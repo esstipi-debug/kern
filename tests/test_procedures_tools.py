@@ -217,6 +217,73 @@ def test_audit_prepare_without_data_asks_for_the_register(registry):
     assert "as_of" in joined
 
 
+def test_audit_prepare_rejects_a_malformed_as_of(registry):
+    """Reproduces the whole-branch review's finding: as_of='03/09/2026' used to reach
+    run() unvalidated and surface through the orchestrator as a generic "An internal
+    error occurred." instead of the job's own clear message. Validating here, at the
+    prepare() boundary, means the orchestrator's tool.prepare() short-circuits with
+    needs_data before tool.run() is ever called -- see scm_agent/orchestrator.py's
+    prepare/run split."""
+    tool = registry.get("procedure_audit")
+    prepared = tool.prepare(
+        JobRequest(
+            brief="auditar el registro de procedimientos",
+            data_path="data/sample_procedure_register.csv",
+            params={"as_of": "03/09/2026"},
+        ),
+        llm.RulesFallback(),
+    )
+    assert prepared.status == "needs_data"
+    joined = " ".join(prepared.messages)
+    assert "as_of" in joined
+    assert "03/09/2026" in joined
+
+
+def test_audit_prepare_rejects_a_non_numeric_review_cadence_days(registry):
+    tool = registry.get("procedure_audit")
+    prepared = tool.prepare(
+        JobRequest(
+            brief="auditar el registro de procedimientos",
+            data_path="data/sample_procedure_register.csv",
+            params={"as_of": "2026-09-03", "review_cadence_days": "abc"},
+        ),
+        llm.RulesFallback(),
+    )
+    assert prepared.status == "needs_data"
+    assert "review_cadence_days" in " ".join(prepared.messages)
+
+
+def test_audit_prepare_rejects_a_non_positive_review_cadence_days(registry):
+    """Minor 3: cadence <= 0 must be refused here too -- a silently accepted 0 flips
+    OVERDUE_REVIEW's severity mix on a nonsense parameter (see
+    jobs/procedure_audit_job.py::_parse_positive_int)."""
+    tool = registry.get("procedure_audit")
+    prepared = tool.prepare(
+        JobRequest(
+            brief="auditar el registro de procedimientos",
+            data_path="data/sample_procedure_register.csv",
+            params={"as_of": "2026-09-03", "review_cadence_days": 0},
+        ),
+        llm.RulesFallback(),
+    )
+    assert prepared.status == "needs_data"
+    assert "review_cadence_days" in " ".join(prepared.messages)
+
+
+def test_audit_prepare_rejects_a_negative_due_soon_days(registry):
+    tool = registry.get("procedure_audit")
+    prepared = tool.prepare(
+        JobRequest(
+            brief="auditar el registro de procedimientos",
+            data_path="data/sample_procedure_register.csv",
+            params={"as_of": "2026-09-03", "due_soon_days": -5},
+        ),
+        llm.RulesFallback(),
+    )
+    assert prepared.status == "needs_data"
+    assert "due_soon_days" in " ".join(prepared.messages)
+
+
 def test_draft_prepare_without_process_asks_which_of_three(registry):
     tool = registry.get("procedure_draft")
     prepared = tool.prepare(JobRequest(brief="redacta el sop", params={}), llm.RulesFallback())

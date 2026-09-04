@@ -2946,6 +2946,17 @@ def _procedure_audit_prepare(request: JobRequest, provider: LLMProvider) -> Prep
             "at least name/procedimiento and last_reviewed_at/ultima_revision as columns "
             "(pass params['as_of'] as an ISO date, e.g. '2026-09-03', to make the audit reproducible)"
         ])
+    # Validate as_of/review_cadence_days/due_soon_days here, at the tool boundary,
+    # before run() ever sees them -- request.params is the same merged dict run()
+    # will receive (scm_agent/orchestrator.py replaces request.params before calling
+    # prepare()). Without this, a malformed value (e.g. as_of='03/09/2026', a
+    # non-numeric review_cadence_days) raised a ValueError inside tool.run(), which
+    # is not guarded per-tool and so escaped to the orchestrator's blanket except
+    # Exception -> "An internal error occurred.", losing the job's own clear message.
+    try:
+        procedure_audit_job.validate_params(request.params)
+    except ValueError as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
     try:
         prepared = procedure_audit_job.prepare(request.data_path, request.params)
     except (ValueError, FileNotFoundError) as exc:

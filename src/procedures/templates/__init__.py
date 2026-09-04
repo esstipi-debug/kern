@@ -369,10 +369,18 @@ def _label(key: str, lang: str) -> str:
     return _LABELS[key][lang]
 
 
+def _escape_cell(value: object) -> str:
+    """A literal ``|`` in a cell value would otherwise be read as a column separator
+    and split one row into extra cells -- e.g. ``--owner "Ops | Bodega"`` or a
+    free-text ``policy_source`` containing a ``|``. Escaped exactly as GitHub-flavored
+    markdown expects, ``\\|``."""
+    return str(value).replace("|", "\\|")
+
+
 def _markdown_table(headers: tuple[str, ...], rows: list[tuple[object, ...]]) -> list[str]:
     lines = ["| " + " | ".join(headers) + " |", "| " + " | ".join("---" for _ in headers) + " |"]
     for row in rows:
-        lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
+        lines.append("| " + " | ".join(_escape_cell(cell) for cell in row) + " |")
     return lines
 
 

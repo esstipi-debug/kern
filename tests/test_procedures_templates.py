@@ -114,6 +114,38 @@ def test_render_defaults_are_labelled_convention():
     assert used["policy_source"] == ("hoja de politica vigente (inventory_optimization)", "convention")
 
 
+def test_replenishment_purpose_is_coherent_when_service_level_and_lead_time_are_undeclared():
+    """Minor 1: the default/no-params render (the capability-smoke path, and any
+    first run before a client profile exists) used to render the Purpose sentence
+    as 'con el service level (no declarado) y el lead time (no declarado)
+    declarados por el cliente' -- claiming in the same clause that the values were
+    declared BY THE CLIENT and that they are NOT declared. Same contradiction in
+    English: 'using the declared service level (not declared)'. It is the first
+    sentence of the client-facing SOP."""
+    template = get_template("replenishment")
+    draft_es = render_draft(template, control=_control(), params={}, lang="es")
+    draft_en = render_draft(template, control=_control(), params={}, lang="en")
+
+    assert "no declarado" in draft_es.purpose  # the substitution itself still works
+    assert "declarados por el cliente" not in draft_es.purpose
+    assert "no declarado) declarados" not in draft_es.purpose  # the literal old contradiction
+
+    assert "not declared" in draft_en.purpose
+    assert "using the declared service level" not in draft_en.purpose
+    assert "declared service level (not declared)" not in draft_en.purpose
+
+
+def test_replenishment_purpose_still_substitutes_real_service_level_and_lead_time():
+    """The Minor 1 rewrite must not break substitution for the normal case where the
+    caller (or a client profile) actually supplies these two params."""
+    template = get_template("replenishment")
+    draft = render_draft(
+        template, control=_control(), params={"service_level": "98%", "lead_time_days": 10}, lang="es"
+    )
+    assert "98%" in draft.purpose
+    assert "10" in draft.purpose
+
+
 def test_render_draft_rejects_unknown_lang():
     template = get_template("replenishment")
     control = _control()
@@ -222,6 +254,33 @@ def test_markdown_carries_the_iso_sentence_per_lang():
     draft_en = render_draft(template, control=control, params={}, lang="en")
     assert ISO_SENTENCE_ES in draft_to_markdown(draft_es)
     assert ISO_SENTENCE_EN in draft_to_markdown(draft_en)
+
+
+def test_markdown_table_escapes_pipes_in_control_header_cells():
+    """A free-text owner/approver containing a literal '|' (e.g. --owner "Ops | Bodega")
+    must not split a markdown table row into an extra cell -- reproduces the
+    whole-branch review's Minor 2."""
+    template = get_template("replenishment")
+    control = _control(owner="Ops | Bodega")
+    draft = render_draft(template, control=control, params={}, lang="es")
+    md = draft_to_markdown(draft)
+    owner_line = next(line for line in md.splitlines() if line.startswith("| Dueno "))
+    assert owner_line == "| Dueno | Ops \\| Bodega |"
+
+
+def test_markdown_table_escapes_pipes_in_a_free_text_parameter_value():
+    """Same bug, different table: a free-text params['policy_source'] with a pipe must
+    not corrupt the 'Parametros usados' table -- prose sections (Proposito/Alcance)
+    substitute the same value unescaped on purpose, since they are not markdown
+    tables, so this checks only the parameters table itself."""
+    template = get_template("replenishment")
+    draft = render_draft(
+        template, control=_control(), params={"policy_source": "hoja | politica.xlsx"}, lang="es"
+    )
+    md = draft_to_markdown(draft)
+    params_section = md.split("## Parametros usados")[1]
+    assert "hoja | politica.xlsx" not in params_section
+    assert "hoja \\| politica.xlsx" in params_section
 
 
 def test_unknown_process_raises_value_error_listing_the_three():

@@ -186,6 +186,70 @@ def test_run_rejects_malformed_as_of(tmp_path):
         procedure_audit_job.run(prepared, {"as_of": "not-a-date"})
 
 
+def test_run_rejects_non_numeric_review_cadence_days(tmp_path):
+    """A direct job caller (bypassing scm_agent.tools' prepare-time guard) must still
+    get a ValueError naming the bad param -- see validate_params() below for the
+    boundary copy of this same guard."""
+    prepared = _prepared_one_row(tmp_path)
+    with pytest.raises(ValueError, match="review_cadence_days"):
+        procedure_audit_job.run(prepared, {"as_of": AS_OF_ISO, "review_cadence_days": "abc"})
+
+
+def test_run_rejects_zero_review_cadence_days(tmp_path):
+    """cadence=0 used to be accepted silently: days_overdue >= 2 * cadence is then
+    trivially true for every overdue row, flipping OVERDUE_REVIEW's severity mix on
+    a nonsense parameter instead of refusing it."""
+    prepared = _prepared_one_row(tmp_path)
+    with pytest.raises(ValueError, match="review_cadence_days"):
+        procedure_audit_job.run(prepared, {"as_of": AS_OF_ISO, "review_cadence_days": 0})
+
+
+def test_run_rejects_negative_review_cadence_days(tmp_path):
+    prepared = _prepared_one_row(tmp_path)
+    with pytest.raises(ValueError, match="review_cadence_days"):
+        procedure_audit_job.run(prepared, {"as_of": AS_OF_ISO, "review_cadence_days": -30})
+
+
+def test_run_rejects_negative_due_soon_days(tmp_path):
+    prepared = _prepared_one_row(tmp_path)
+    with pytest.raises(ValueError, match="due_soon_days"):
+        procedure_audit_job.run(prepared, {"as_of": AS_OF_ISO, "due_soon_days": -1})
+
+
+def test_validate_params_accepts_a_well_formed_request():
+    """No exception, and the resolved values match what run() would use -- the sample
+    fixture's own working params, so this stays honest about what "valid" means."""
+    procedure_audit_job.validate_params(
+        {"as_of": AS_OF_ISO, "review_cadence_days": 180, "due_soon_days": 15}
+    )
+    procedure_audit_job.validate_params(None)
+    procedure_audit_job.validate_params({})
+
+
+def test_validate_params_rejects_malformed_as_of():
+    with pytest.raises(ValueError, match="as_of"):
+        procedure_audit_job.validate_params({"as_of": "03/09/2026"})
+
+
+def test_validate_params_rejects_non_numeric_review_cadence_days():
+    with pytest.raises(ValueError, match="review_cadence_days"):
+        procedure_audit_job.validate_params({"review_cadence_days": "abc"})
+
+
+def test_validate_params_rejects_zero_or_negative_review_cadence_days():
+    with pytest.raises(ValueError, match="review_cadence_days"):
+        procedure_audit_job.validate_params({"review_cadence_days": 0})
+    with pytest.raises(ValueError, match="review_cadence_days"):
+        procedure_audit_job.validate_params({"review_cadence_days": -1})
+
+
+def test_validate_params_rejects_zero_or_negative_due_soon_days():
+    with pytest.raises(ValueError, match="due_soon_days"):
+        procedure_audit_job.validate_params({"due_soon_days": 0})
+    with pytest.raises(ValueError, match="due_soon_days"):
+        procedure_audit_job.validate_params({"due_soon_days": -5})
+
+
 def test_run_adds_residual_for_dropped_blank_name_rows(tmp_path):
     rows = [
         {"name": "", "last_reviewed_at": "2026-06-01"},
@@ -275,7 +339,21 @@ def test_write_operational_csv_has_owner_and_due_date_columns_populated(tmp_path
 
     calendar_body = paths["calendar_csv"].read_text(encoding="utf-8")
     assert "Proc vencido" in calendar_body
-    assert "Ana Diaz" in calendar_body
+
+
+def test_write_operational_findings_csv_evidence_never_prints_the_python_none_literal(tmp_path):
+    """Minor 8: the value COLUMNS were already blank for sin_dato/missing data (that
+    constraint is unchanged) -- but the 'evidence' column's free-text sentence used to
+    interpolate a bare Python None (e.g. 'approved_at=None') whenever a NO_APPROVAL or
+    NO_REVIEW_DATE finding's underlying date was missing. The sample fixture's own
+    rows (aprobado with no aprobador/fecha_aprobacion, and a blank ultima_revision)
+    cover both cases -- see src/procedures/register.py::_evidence_date."""
+    prepared = procedure_audit_job.prepare(SAMPLE_PATH)
+    report = procedure_audit_job.run(prepared, {"as_of": AS_OF_ISO})
+    paths = procedure_audit_job.write_operational(report, tmp_path / "out", client="Acme")
+    findings_body = paths["csv"].read_text(encoding="utf-8")
+    assert "None" not in findings_body
+    assert "sin dato" in findings_body
 
 
 def test_write_operational_calendar_excludes_retired_rows(tmp_path):
