@@ -20,6 +20,8 @@
 - [RB-13 · Auditar la fricción organizacional en tus propios controles](#rb-13--auditar-la-fricción-organizacional-en-tus-propios-controles)
 - [RB-14 · Verificar el gate de disponibilidad antes de un lanzamiento](#rb-14--verificar-el-gate-de-disponibilidad-antes-de-un-lanzamiento)
 - [RB-15 · Medir el servicio que realmente entregaste](#rb-15--medir-el-servicio-que-realmente-entregaste)
+- [RB-16 · Auditar el registro de procedimientos (SOP)](#rb-16--auditar-el-registro-de-procedimientos-sop)
+- [RB-17 · Redactar un SOP con control documental](#rb-17--redactar-un-sop-con-control-documental)
 
 ---
 
@@ -406,6 +408,90 @@ declarados — nunca un OTIF presentado sin decir de qué campo salió.
 5. **Si el número sorprende, cruzalo con `disruption_scan` o `reconciliation`**
    antes de escalarlo — un servicio que cae de golpe suele tener una causa
    rastreable, no solo un número que reportar.
+
+---
+
+## RB-16 · Auditar el registro de procedimientos (SOP)
+
+**Disparador:** cadencia trimestral, cuando un cliente o una auditoría ISO
+9001 piden evidencia de que el registro de SOPs está al día, o cuando
+sospechás que un procedimiento vencido sigue guiando el trabajo diario sin
+que nadie lo haya confirmado.
+
+**Objetivo:** un veredicto por procedimiento — vencido, sin dueño, sin
+segregación de funciones, sin KPI vinculado, sin versión — con un HANDOFF
+que ya trae dueño y fecha límite por cada uno, nunca una planilla entera que
+alguien tiene que releer.
+
+1. **Exportá el registro** desde Notion/SweetProcess/Drive (o el sistema que
+   use el cliente) con columnas mínimas: `procedimiento` (o `name`),
+   `ultima_revision` (o `last_reviewed_at`); idealmente también
+   `responsable`, `aprobador`, `version`, `estado`, `cadencia_dias`.
+2. **Corré con `--as-of` fijo**:
+   `examples/run_procedure_audit.py <registro.csv> --as-of AAAA-MM-DD`.
+   Nunca dejes que el reloj del servidor decida la fecha de un acta — sin un
+   `as_of` fijo, dos corridas en días distintos pueden marcar el mismo
+   procedimiento como vencido o vigente según cuándo se corrió.
+3. **Leé el HANDOFF** → **RB-3** por cada procedimiento vencido — el dueño y
+   la fecha límite ya vienen resueltos en cada paso del paquete, no hace
+   falta ir a buscarlos al CSV.
+4. **Un hallazgo `NO_OWNER` es un residuo** → **RB-8**: alguien tiene que
+   asumir el procedimiento, delegarlo, o asumir conscientemente que queda
+   sin dueño.
+5. **Un hallazgo `OWNER_IS_APPROVER`** significa que quien redacta también
+   aprueba — nombrá un segundo firmante distinto antes de la próxima
+   aprobación; la segregación de funciones es lo que le da valor de control
+   a la firma.
+6. **Leé las Fuentes L3 del deck con cautela**: el camino de una sola tool
+   (`examples/run_agent.py`, o `POST /api/jobs` para una tool suelta) no
+   filtra las citas por la compuerta de citas — a diferencia del camino de
+   paquetes — así que esta tool puede traer ruido léxico en sus Fuentes. No
+   las repitas frente al cliente sin revisarlas primero.
+7. **Si el procedimiento vencido es el que gobierna el ciclo S&OP**, cruzalo
+   con **RB-7** — un SOP de S&OP vencido puede estar sosteniendo una
+   cadencia mensual con reglas que ya nadie confirmó.
+
+> Kern audita el registro; no lo guarda. El sistema del cliente (Notion,
+> SweetProcess, Drive, o lo que use) sigue siendo el sistema de registro del
+> SOP — esta tool nunca lo reemplaza, solo lo audita.
+
+---
+
+## RB-17 · Redactar un SOP con control documental
+
+**Disparador:** un procedimiento no tiene una versión escrita, o la que
+existe no trae dueño, aprobador ni cadencia de revisión — necesitás partir
+de un borrador estructurado (Hoja de Desglose de Trabajo + plan de control +
+cronograma de entrenamiento) en vez de un documento en blanco.
+
+**Objetivo:** un borrador listo para revisar y aprobar — nunca un documento
+que se hace pasar por aprobado — con cada paso, punto clave y razón ya
+redactados, y un HANDOFF que deja claro quién tiene que firmarlo y cuándo.
+
+1. **Elegí `process`**: `replenishment`, `cycle_count` o `sop_cycle` — los
+   tres templates disponibles hoy.
+2. **Pasá `--owner` y `--approver` distintos**: la aprobación pierde su
+   valor de control si la misma persona redacta y aprueba (la tool lo
+   reporta como residuo si no lo hacés, nunca lo bloquea en silencio).
+3. **Fijá la cadencia de revisión** (`--cadence-days`) — 365 días es la
+   convención que usa esta tool (GDI, SweetProcess) cuando no le das una, no
+   una norma: ISO 9001 no fija un intervalo. Confirmala por área de proceso
+   antes de adoptarla como política.
+4. **Corré**
+   `examples/run_procedure_draft.py --process ... --owner ... --approver ... --as-of ...`
+   (agregá `--lang en` para inglés, `--location` para dónde se va a publicar
+   el borrador aprobado).
+5. **Revisá el borrador por adecuación y suficiencia** (ISO 9001:2015
+   §7.5.2c) — no solo que esté completo, sino que describa cómo se trabaja
+   de verdad hoy.
+6. **Aprobá y publicá** el borrador en el sistema del cliente, registrando
+   `approved_at` y `version` ahí mismo → **RB-3** (el HANDOFF que trae esta
+   tool es exactamente esos pasos, ya redactados).
+7. **Volvé a RB-16** con el registro actualizado — el SOP recién aprobado
+   ahora tiene una fecha de última revisión real para la próxima auditoría.
+
+> Kern redacta el borrador; no lo guarda ni lo aprueba. El sistema del
+> cliente es —y sigue siendo— el sistema de registro del SOP aprobado.
 
 ---
 
