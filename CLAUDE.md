@@ -177,9 +177,18 @@ doesn't re-derive it, then regenerate the lessons and commit both in your PR:
 ```bash
 graphify save-result --memory-dir knowledge/graph-memory --type query --outcome useful \
   --question "..." --answer "..." --nodes "NodeA" "NodeB"
-graphify reflect --memory-dir knowledge/graph-memory \
-  --out documentation/GRAPH_LESSONS.md --graph graphify-out/graph.json
+python scripts/reflect_lessons.py    # NOT bare `graphify reflect` -- see below
 ```
+
+Regenerate with `scripts/reflect_lessons.py`, never with `graphify reflect` directly:
+the memory store spans **two** graphs, and bare `reflect` silently drops every
+`--nodes` label it cannot resolve in the single `--graph` it was handed — pointing it
+at `graphify-out/graph.json` prunes the 14 capacity/launch-gap lessons that live in the
+books graph, and pointing it at the books graph prunes every code lesson. The script
+merges both first. Run it from the **main checkout**: it resolves `graphify-out/` next
+to itself, so from a worktree (where that directory does not exist) it quietly writes a
+pruned document instead of failing. Cite nodes by **label**, never by id — `merge-graphs`
+re-namespaces ids but leaves labels intact.
 
 See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
 
