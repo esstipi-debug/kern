@@ -316,7 +316,20 @@ def test_healthy_folder_passes_the_gate_and_evaluates_the_declared_tools(tmp_pat
     assert states["abc_xyz"] == RED
     assert states["excess_obsolete"] == RED  # no stock file in this folder
     assert states["risk"] == UNDECLARED
-    assert report.n_tools_evaluated == 4
+    # n_tools_evaluated counts every verdict that isn't UNDECLARED -- any tool that
+    # declares required_columns at all (src/intake_scan.py's verdicts_for marks a
+    # tool UNDECLARED only when it declares none). On this folder that's abc_xyz,
+    # data_quality, excess_obsolete, financial_kpis (the pre-existing 4) plus, since
+    # procedure_audit (tool #52) declares required_columns=("name", "last_reviewed_at"),
+    # procedure_audit itself -- it shares this folder's generic "name" column with
+    # maestro.csv and is honestly evaluated RED for the missing last_reviewed_at, same
+    # as any other tool whose data contract this folder doesn't satisfy.
+    assert report.n_tools_evaluated == 5
+    # Pin the fifth tool's identity, not just the count -- a future tool that also
+    # declares required_columns on this folder shape would keep n_tools_evaluated at
+    # 5 (one verdict swapped for another) without this failing, and silently drop
+    # procedure_audit's own coverage out of the count this test guards.
+    assert states["procedure_audit"] == RED
 
 
 def test_a_master_plus_sales_folder_where_abc_xyz_columns_are_split_across_files(tmp_path):

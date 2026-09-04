@@ -4,7 +4,7 @@
 > genera y tu **valor agregado humano** en cada uno. Kern produce el artefacto;
 > tú lo enmarcas, lo defiendes y cierras el paso humano.
 
-Catálogo basado en `scm_agent/modes.py` (entregables por modo) y las **35
+Catálogo basado en `scm_agent/modes.py` (entregables por modo) y las **53
 herramientas de agente** ya cableadas en `scm_agent/tools.py` (la fuente de
 verdad es el registry: `build_default_registry()`).
 
@@ -44,6 +44,8 @@ inventory turns, DIO, costo de mantener, sell-through, valor de excedente/obsole
 | **Mapa de riesgo y resiliencia** (single-source, TTR/TTS) | motor `risk` | Priorizar mitigaciones y dueños |
 | **Evaluación de sostenibilidad / logística inversa** | motor `reverse_logistics` | Traducir a cumplimiento y costo |
 | **Diagnóstico de liderazgo (modelo CHAIN)** | `leadership_chain` | Coaching y plan de desarrollo del equipo |
+| **Auditoría del registro de procedimientos** (SOP vencidos, sin dueño, sin segregación de funciones) | `procedure_audit` | Priorizar los vencidos con dueño ya asignado (RB-16); cerrar la segregación donde falte |
+| **Borrador de SOP con control documental** (Job Breakdown Sheet + plan de control + entrenamiento) | `procedure_draft` | Revisar por adecuación y suficiencia, aprobar y publicar en el sistema del cliente (RB-17) |
 | **Política + dashboard de inventario** (heredado de Inventory) | (ver tabla anterior) | (ídem) |
 
 **KPIs del cliente que reportas en este modo:** OTIF/DIFOT, perfect order rate,
@@ -61,7 +63,7 @@ entregable:
 | Área | Módulos |
 |---|---|
 | **Planeación** | ABC-XYZ · buffers DDMRP + net-flow · métricas de exactitud (MAPE/WAPE/RMSSE/MASE) |
-| **Control** | reconciliación / IRA + plan de conteo cíclico · alertas de stockout/excedente/reorden |
+| **Control** | reconciliación / IRA + plan de conteo cíclico · alertas de stockout/excedente/reorden · auditoría del registro de SOPs + borrador con control documental (ISO 9001:2015 §7.5.2c) |
 | **Procurement** | *landed cost* (consciente de Incoterm) · supplier scorecards (OTIF/PPM) · máquina de estados de PO |
 | **Almacén** | dimensionamiento cube/m³ + slotting COI · *twin* espacial 3D del almacén |
 | **Finanzas** | inventory turns · DIO · GMROI · cash-to-cash · sell-through |

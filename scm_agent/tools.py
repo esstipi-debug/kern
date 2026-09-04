@@ -47,6 +47,8 @@ from jobs import (
     odoo_job,
     org_friction_job,
     price_watch_deliverable,
+    procedure_audit_job,
+    procedure_draft_job,
     qa,
     queuing_job,
     reconciliation_job,
@@ -2899,6 +2901,138 @@ def intake_scan_tool() -> Tool:
     )
 
 
+# ---- procedure_audit (SOP document-control audit) ------------------------------
+# ---- procedure_draft (bilingual SOP draft: Job Breakdown Sheet + control plan) --
+#
+# "sop" elsewhere in this file (see sop_tool() above) means Sales & Operations
+# Planning -- a different discipline from a Standard Operating Procedure. Every
+# keyword below was checked against scm_agent/intent.py's strict keyword win
+# (top_score >= 1 AND top_score > second_score, scm_agent/intent.py:59): a tie with
+# sop, cycle_count, org_friction_audit, inventory_optimization, acceptance_sampling
+# or data_quality sends the brief to needs_clarification instead of either tool
+# below. Do not add a bare "sop", "draft", "procedure" or "revision" -- each one
+# ties against another registered tool (see tests/test_procedures_tools.py).
+
+PROCEDURE_AUDIT_KEYWORDS = (
+    "procedure register", "registro de procedimientos", "procedure audit", "auditoria de procedimientos",
+    "auditar los procedimientos", "audit our procedures", "audit the procedures", "audit our sops",
+    "audit the sops", "sop register", "registro de sops", "procedimientos operativos", "overdue sop",
+    "sops overdue", "sop vencido", "sops vencidos", "procedimientos vencidos", "procedimiento vencido",
+    "overdue for review", "revision vencida", "revisiones vencidas", "document control",
+    "control de documentos", "control documental", "documented information", "informacion documentada",
+    "iso 9001", "procedure owner", "dueno del procedimiento", "procedures without an owner",
+    "sops without an owner", "procedimientos sin dueno", "sops sin dueno", "which sops", "que sops",
+    "cuales sops", "who owns each procedure", "quien es dueno de cada procedimiento",
+)
+PROCEDURE_DRAFT_KEYWORDS = (
+    "procedure draft", "sop draft", "draft a procedure", "draft the procedure", "draft a sop", "draft an sop",
+    "draft the sop", "draft a standard operating procedure", "write a procedure", "write the procedure",
+    "write a sop", "write an sop", "write the sop", "write a standard operating procedure",
+    "borrador de procedimiento", "borrador de sop", "borrador del sop", "borrador del procedimiento",
+    "redacta el procedimiento", "redactar el procedimiento", "redacta el sop", "redactar el sop",
+    "redactame el sop", "escribe el sop", "escribir el sop", "arma el sop", "armar el sop", "genera el sop",
+    "generar el sop", "sop template", "plantilla de sop", "plantilla de procedimiento", "procedure template",
+    "job breakdown sheet", "hoja de desglose", "control plan", "plan de control", "work instruction",
+    "instructivo de trabajo", "standard work", "trabajo estandar", "training timetable",
+    "cronograma de entrenamiento", "document control header", "encabezado de control documental",
+    "cadencia de revision", "review cadence",
+)
+
+
+def _procedure_audit_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a procedure register CSV/Excel export is required: one row per procedure, with "
+            "at least name/procedimiento and last_reviewed_at/ultima_revision as columns "
+            "(pass params['as_of'] as an ISO date, e.g. '2026-09-03', to make the audit reproducible)"
+        ])
+    # Validate as_of/review_cadence_days/due_soon_days here, at the tool boundary,
+    # before run() ever sees them -- request.params is the same merged dict run()
+    # will receive (scm_agent/orchestrator.py replaces request.params before calling
+    # prepare()). Without this, a malformed value (e.g. as_of='03/09/2026', a
+    # non-numeric review_cadence_days) raised a ValueError inside tool.run(), which
+    # is not guarded per-tool and so escaped to the orchestrator's blanket except
+    # Exception -> "An internal error occurred.", losing the job's own clear message.
+    try:
+        procedure_audit_job.validate_params(request.params)
+    except ValueError as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    try:
+        prepared = procedure_audit_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=prepared)
+
+
+def _procedure_audit_run(payload: object, params: dict) -> Produced:
+    report = procedure_audit_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def procedure_audit_tool() -> Tool:
+    return Tool(
+        key="procedure_audit",
+        title="Procedure Register Audit (SOP document control)",
+        description="Audit a client's exported procedure register for overdue reviews, "
+                    "missing owners, an owner who is also the approver, procedures marked "
+                    "approved with no approver on file, procedures with no linked KPI, and "
+                    "unversioned documents. Always ends in a HANDOFF naming the owner and the "
+                    "due date -- and never stores the SOPs themselves.",
+        intent_keywords=PROCEDURE_AUDIT_KEYWORDS,
+        requires_data=True,
+        required_columns=("name", "last_reviewed_at"),
+        optional_columns=(
+            "procedure_id", "process_area", "owner", "approver", "version", "approved_at",
+            "review_cadence_days", "location", "linked_kpi", "reaction_plan", "status",
+        ),
+        prepare=_procedure_audit_prepare,
+        run=_procedure_audit_run,
+        qa=lambda r: procedure_audit_job.verify(r),
+        deliver=lambda report, out_dir, client: procedure_audit_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            procedure_audit_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
+def _procedure_draft_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    try:
+        draft_request = procedure_draft_job.prepare(request.params)
+    except ValueError as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    return Prepared(status="ok", payload=draft_request)
+
+
+def _procedure_draft_run(payload: object, params: dict) -> Produced:
+    draft = procedure_draft_job.run(payload, params)
+    return Produced(report=draft, summary=draft.outcome.summary)
+
+
+def procedure_draft_tool() -> Tool:
+    return Tool(
+        key="procedure_draft",
+        title="SOP Draft with Document Control (Job Breakdown Sheet + Control Plan)",
+        description="Draft a bilingual Standard Operating Procedure -- Job Breakdown Sheet, "
+                    "control plan and training timetable -- from one of three templates "
+                    "(replenishment, cycle count, or the S&OP cycle), stamped with a "
+                    "document-control header. Always born unapproved: the outcome is a "
+                    "HANDOFF asking a human to review, approve and publish it before use.",
+        intent_keywords=PROCEDURE_DRAFT_KEYWORDS,
+        requires_data=False,
+        prepare=_procedure_draft_prepare,
+        run=_procedure_draft_run,
+        qa=lambda d: procedure_draft_job.verify(d),
+        deliver=lambda draft, out_dir, client: procedure_draft_job.write_operational(draft, out_dir, client),
+        deck=lambda draft, out_dir, client, citations, confidence, options: replace(
+            procedure_draft_job.build_deck(draft, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda draft: draft.outcome,
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -2952,4 +3086,6 @@ def build_default_registry() -> ToolRegistry:
     reg.register(org_friction_tool())
     reg.register(intake_scan_tool())
     reg.register(service_scan_tool())
+    reg.register(procedure_audit_tool())
+    reg.register(procedure_draft_tool())
     return reg

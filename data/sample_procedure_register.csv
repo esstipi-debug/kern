@@ -1,0 +1,16 @@
+codigo,procedimiento,area,responsable,aprobador,version,fecha_aprobacion,ultima_revision,cadencia_dias,ubicacion,kpi,plan_de_reaccion,estado
+PROC-001,Recepcion de mercaderia,Bodega,Jefe de Bodega,Gerente de Operaciones,1.0,2026-05-20,2026-06-01,365,https://drive.example.com/recepcion-mercaderia,fill_rate,Escalar a Jefe de Bodega si el fill rate cae bajo 95%,aprobado
+PROC-002,Despacho de pedidos,Logistica,Encargado de Logistica,Gerente de Operaciones,2.1,2025-01-05,2025-01-10,,https://drive.example.com/despacho-pedidos,otif,Reasignar rutas si el OTIF cae bajo 90%,aprobado
+PROC-003,Control de calidad de recepcion,Calidad,,Jefe de Calidad,1.2,2024-10-15,2024-11-01,,https://drive.example.com/control-calidad,tasa_rechazo,Detener la recepcion si la tasa de rechazo supera 5%,aprobado
+PROC-004,Conteo ciclico de inventario,Inventario,Analista de Inventario,Jefe de Bodega,1.0,2025-09-20,2025-09-23,365,https://drive.example.com/conteo-ciclico,exactitud_inventario,Reconteo si la exactitud cae bajo 98%,aprobado
+PROC-005,Devoluciones de clientes,Servicio al Cliente,Jefe de Bodega,Jefe de Bodega,1.0,,2026-06-01,365,https://drive.example.com/devoluciones,tasa_devolucion,Revisar causa raiz si las devoluciones superan 3%,
+PROC-006,Cierre de caja diario,Finanzas,Analista de Compras,,1.0,,2026-07-01,365,https://drive.example.com/cierre-caja,diferencia_caja,Reportar a Finanzas si la diferencia supera 10000,aprobado
+PROC-007,Mantenimiento preventivo de montacargas,Bodega,Jefe de Bodega,Gerente de Operaciones,1.1,2026-04-10,2026-04-15,365,https://drive.example.com/mantenimiento-montacargas,,Detener el equipo si falla una revision de seguridad,aprobado
+PROC-008,Ingreso de nuevos proveedores,Compras,Analista de Compras,Gerente de Operaciones,,2026-03-01,2026-03-05,365,https://drive.example.com/nuevos-proveedores,lead_time_proveedor,Rechazar el alta si falta documentacion tributaria,aprobado
+PROC-009,Empaque para despacho internacional,Logistica,Encargado de Logistica,Gerente de Operaciones,1.0,,,365,https://drive.example.com/empaque-internacional,danos_en_transito,Reforzar el embalaje si los danos superan 1%,
+PROC-010,Etiquetado de producto perecible,Calidad,Jefe de Calidad,Gerente de Operaciones,1.0,,pendiente,365,https://drive.example.com/etiquetado-perecible,vida_util_promedio,Retirar el lote si falta fecha de vencimiento,
+PROC-011,Picking manual con lista de papel,Bodega,,,0.9,,2019-05-01,,,,,retirado
+PROC-012,Verificacion de temperatura en camara fria,Calidad,Jefe de Calidad,Gerente de Operaciones,1.3,2026-04-25,2026-05-01,90,https://drive.example.com/temperatura-camara-fria,desviaciones_temperatura,Trasladar el producto si la temperatura se desvia por 2 horas,aprobado
+PROC-013,,Bodega,Jefe de Bodega,Gerente de Operaciones,1.0,2026-01-10,2026-01-15,365,,,,aprobado
+PROC-014,Reposicion de estanteria en piso de venta,Tienda,Supervisor de Turno,,1.0,,2026-08-01,365,https://drive.example.com/reposicion-estanteria,quiebre_stock_gondola,Reponer dentro de 2 horas si hay quiebre visible,borrador
+PROC-015,Auditoria interna de seguridad,Seguridad,Jefe de Calidad,Gerente de Operaciones,1.0,2026-02-01,15/02/2026,200,https://drive.example.com/auditoria-seguridad,incidentes_reportados,Suspender la operacion del area si hay un incidente grave,aprobado

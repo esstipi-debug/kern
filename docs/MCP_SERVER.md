@@ -1,6 +1,6 @@
 # MCP server (Phase A go-to-market)
 
-Kern exposes 35 of its 50 registered tools to other AI agents over MCP
+Kern exposes 36 of its 53 registered tools to other AI agents over MCP
 (Model Context Protocol), mounted at `/mcp` on the same FastAPI app as the
 dashboard. This is **read-only analysis only** — no tool that mutates a
 client's system of record (e.g. `odoo_replenishment`, or any writeback path
@@ -47,6 +47,7 @@ this is Phase A of.
 | `linchpin_vehicle_routing` | `vehicle_routing` |
 | `linchpin_flow_map` | `flow_map` |
 | `linchpin_org_friction_audit` | `org_friction_audit` |
+| `linchpin_procedure_audit` | `procedure_audit` |
 
 `org_friction_audit` runs here with three of its four detectors: the fourth
 (Goodhart / target-ratcheting) needs a second target-vs-actual history file,
@@ -64,7 +65,10 @@ Deliberately not exposed: `odoo_replenishment` and `excel_replenishment`
 direct-client safety plane), `leadership_chain` (no tabular input — the
 rows→CSV bridge has nothing to feed it), `warehouse_layout` (a
 params-driven 3D layout generator that ignores rows entirely; its
-deliverable is an HTML viewer, not a data analysis). `flow_map`'s own
+deliverable is an HTML viewer, not a data analysis), `procedure_draft`
+(same rule as `warehouse_layout` — params-driven, requires_data=False,
+ignores rows; `procedure_audit` IS exposed above, since it reads a
+client's tabular procedure register). `flow_map`'s own
 deliverable also includes a self-contained HTML sankey map alongside the
 CSV, but unlike `warehouse_layout`, its *input* is tabular movement rows
 and its primary output is a data analysis (measured transit per lane),

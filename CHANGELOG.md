@@ -3,6 +3,25 @@
 ## [Unreleased]
 
 ### Added
+- **`procedure_audit` + `procedure_draft` agent tools (`jobs/procedure_audit_job.py`,
+  `jobs/procedure_draft_job.py`, `src/procedures/`)** -- registry now 53 tools.
+  `procedure_audit` audits a client's exported procedure register for overdue
+  reviews, missing owners, an owner who is also the approver, procedures marked
+  approved with no approver on file, procedures with no linked KPI, and
+  unversioned documents -- always ends in a HANDOFF naming the owner and the due
+  date, and never stores the SOPs themselves (`requires_data=True`, declares
+  `required_columns`). `procedure_draft` drafts a bilingual Standard Operating
+  Procedure (Job Breakdown Sheet + control plan + training timetable) from one
+  of three templates (replenishment, cycle count, S&OP cycle), stamped with a
+  document-control header -- always born unapproved, ending in a HANDOFF asking
+  a human to review, approve and publish it (`requires_data=False`, params-driven).
+  `procedure_audit` is exposed on the MCP surface (`linchpin_procedure_audit`,
+  36th MCP tool); `procedure_draft` is not, same rule as `warehouse_layout`.
+  Every hand-maintained registry mirror updated in the same change: i18n titles,
+  the pinned test sets, capability-smoke fixtures/buckets, `how-it-works` page
+  data (new "Procedures & standard work" domain area), the tool-data contract,
+  and every stale tool-count in README.md/CLAUDE.md/scm_agent/README.md/
+  docs/MCP_SERVER.md.
 - **Odoo Apps Store listing packet for `kern_dry_run`** (17.0 and 19.0): `support`
   URL, cover + wizard/result mockups, OPL-1 `LICENSE`/`COPYRIGHT`, Store price
   omitted (free bait). Sync into the dedicated store repo (module at branch root)
