@@ -351,25 +351,48 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # itself enforces (overdue reviews, missing owners, unversioned documents).
     # All three anchors verified to exist via kb.node_exists() before use.
     # REAL measurement, replaying the actual _step_citations call (KnowledgeBase()
-    # + build_default_registry(), 2026-09-04) -- not a prediction: kept 2
-    # citations, "Control Chart" (Heizer & Render, Supplement 6: Statistical
-    # Process Control) and "ISO 9000" (Heizer & Render, Ch.6 Managing Quality).
-    # No ISO 14000 citation was among the candidates at all (top-8 pool); the
-    # other 3 candidates (risk_monitoring, document_processing_automation, emas
-    # -- all Khan/Grant resilience-book content) were correctly omitted as more
-    # than MAX_HOPS from every anchor.
+    # + build_default_registry()) -- not a prediction. It was re-run either side of
+    # the L3 source #30 merge because this tool sat at EXACTLY MIN_CITATIONS, the
+    # position from which one displaced candidate means zero:
+    #
+    #   graph @3032: kept 2 -- "Control Chart" (Heizer & Render, Supplement 6:
+    #     Statistical Process Control) and "ISO 9000" (Heizer & Render, Ch.6
+    #     Managing Quality). No ISO 14000 citation was among the candidates at all
+    #     (top-8 pool); the other 3 (risk_monitoring, document_processing_
+    #     automation, emas -- all Khan/Grant resilience-book content) were
+    #     correctly omitted as more than MAX_HOPS from every anchor.
+    #   graph @3044: kept 3 -- Documented Information (ISO 9001:2015 clause 7.5),
+    #     ISO 10013:2021, Document Review Cadence.
+    #
+    # The feared failure mode DID happen and landed the good way: the new nodes
+    # displaced BOTH old citations. Off the MIN_CITATIONS edge, and now citing the
+    # clause instead of a generic quality chapter. Pinned by content, not count, in
+    # tests/test_packages_citations.py::_RECOVERED_BY_INGESTION -- a count-only
+    # guard would not notice this swap reversing.
     "procedure_audit": ("iso_9000", "checklist", "total_quality_management"),
     # procedure_draft (tool #53) shares the checklist/quality-system anchors --
     # a Job Breakdown Sheet + control plan IS a documented-work-instruction
     # checklist -- plus poka_yoke (mistake-proofing, what a control plan
     # enforces) and pdca_cycle (the review-cadence loop the draft's document
-    # control header stamps). REAL measurement (same replay, 2026-09-04): ZERO
-    # candidates resolved in-radius at all -- work_breakdown_structure was
-    # explicitly excluded (see EXCLUDED_CONCEPTS below) and the remaining two
-    # candidates (risk_monitoring, document_processing_automation) were more
-    # than MAX_HOPS from every anchor. The batch never even reached the
-    # MIN_CITATIONS floor with a lone survivor to degrade -- see its own entry
-    # in tests/test_packages_citations.py::_CORRECTLY_ZERO_TOOLS.
+    # control header stamps). The anchors below are UNCHANGED since that zero --
+    # what changed is the graph, and the replay is worth keeping side by side:
+    #
+    #   2026-09-04, graph @3032 nodes: ZERO candidates resolved in-radius at all.
+    #     work_breakdown_structure was explicitly excluded (EXCLUDED_CONCEPTS
+    #     below); risk_monitoring and document_processing_automation sat more than
+    #     MAX_HOPS from every anchor. The batch never reached the MIN_CITATIONS
+    #     floor with a lone survivor to degrade -- it had nothing at all.
+    #   2026-09-04, graph @3044 nodes (L3 source #30 ingested): THREE survivors --
+    #     Job Breakdown Sheet, Document Review Cadence, JI Training Timetable.
+    #
+    # The delta is twelve nodes of document-control/standard-work theory, hung off
+    # checklist and pdca_cycle at hop 1. That is the fix packages.py:100-104
+    # prescribes for a zero of this shape: the anchors were never wrong, the corpus
+    # was empty. MIN_CITATIONS, the pool size and these anchors were all untouched.
+    # See tests/test_packages_citations.py::_RECOVERED_BY_INGESTION, which pins
+    # WHICH three it cites, and documentation/SOP_DOCUMENT_CONTROL_SOURCES.md for
+    # what was read to write each node (and the three concepts cut for thin
+    # provenance).
     # `procedure_model` (also verified to exist) was considered and rejected as
     # an anchor: it is Kuhn's organizational-reconfiguration model, not a
     # procedure document -- a lexical false friend for this tool's own name,

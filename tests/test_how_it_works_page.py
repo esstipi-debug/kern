@@ -115,7 +115,7 @@ def test_page_mentions_49_tools_and_26_sources_not_stale_numbers() -> None:
     assert "49" in html
     assert "26 curated external sources" in html
     # Every superseded source count this page has carried or been tempted by.
-    for stale in ("33 curated", "25 curated", "35 curated", "27 curated"):
+    for stale in ("33 curated", "25 curated", "35 curated", "27 curated", "41 curated"):
         assert stale not in html, stale
 
 
@@ -133,6 +133,21 @@ def test_source_count_claim_still_matches_the_books_graph() -> None:
     documents the mapping. Add a book and this fails, forcing whoever adds it
     to re-derive the works count instead of letting the page quietly drift,
     which is exactly how it got stuck at a stale 33.
+
+    The gap widened on 2026-09-04 and the page did NOT move. L3 source #30
+    (document control and standard work) added 7 source files while the works
+    count stayed at 26, because not one of the 7 is a curated work: 6 are web
+    artifacts (a product page, a catalogue page, two vendor articles, a training
+    provider's learning-center page, a podcast interview) and the 7th is a body-of-
+    knowledge map, not a book. Reading AIAG's product page for CQI-8 is not having
+    read CQI-8, and the filenames say so on purpose -- see
+    documentation/SOP_DOCUMENT_CONTROL_SOURCES.md, which records the evidence tier
+    of each and the three concepts CUT because their provenance did not hold up.
+
+    So of the 41 external files, 34 are book/chapter PDFs and 7 are secondary web
+    artifacts. If you are here because this assert failed: the number below tracks
+    FILES. Moving "26 curated external sources" is a separate, deliberate decision
+    that requires the new source to actually be a curated work.
     """
     import json
     from pathlib import Path
@@ -147,7 +162,7 @@ def test_source_count_claim_still_matches_the_books_graph() -> None:
     }
     external = {f for f in files if not f.startswith("KERN_")}
 
-    assert len(external) == 34, sorted(external)
+    assert len(external) == 41, sorted(external)
     assert "KERN_ATLAS_SOMBREROS_SCM.md" in files  # the internal doc is in the graph...
     assert "KERN_ATLAS_SOMBREROS_SCM.md" not in external  # ...and excluded from the claim
 
