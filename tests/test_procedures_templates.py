@@ -9,6 +9,8 @@ from src.procedures.models import DocumentControl
 from src.procedures.templates import (
     PROCESS_KEYS,
     TEMPLATES,
+    JobBreakdownStep,
+    ProcedureTemplate,
     draft_to_markdown,
     get_template,
     render_draft,
@@ -72,7 +74,9 @@ def test_cycle_count_template_imports_default_policy_not_a_copy():
     assert template.parameters["counts_per_year"] == DEFAULT_POLICY.counts_per_year
     assert template.parameters["counts_per_year"] is DEFAULT_POLICY.counts_per_year
 
-    source = Path(__file__).resolve().parent.parent / "src" / "procedures" / "templates.py"
+    # cycle_count's own template module, not the package's __init__ -- the literal
+    # counts must never be retyped anywhere in the templates package.
+    source = Path(__file__).resolve().parent.parent / "src" / "procedures" / "templates" / "_cycle_count.py"
     text = source.read_text(encoding="utf-8")
     assert '{"A": 12' not in text
 
@@ -115,6 +119,35 @@ def test_render_draft_rejects_unknown_lang():
     control = _control()
     with pytest.raises(ValueError):
         render_draft(template, control=control, params={}, lang="fr")
+
+
+# Review finding 1: an `en` draft rendered with no `params` override was shipping the
+# Spanish convention-default text verbatim (plain-string defaults are not per-language).
+_SPANISH_ONLY_MARKERS = ("no declarado", "hoja de politica vigente", "/anio")
+
+
+def test_english_render_never_leaks_spanish_convention_defaults():
+    for key in PROCESS_KEYS:
+        template = get_template(key)
+        draft = render_draft(template, control=_control(), params={}, lang="en")
+        md = draft_to_markdown(draft)
+        for marker in _SPANISH_ONLY_MARKERS:
+            assert marker not in md, f"{key}: found Spanish marker {marker!r} in an English render"
+
+
+def test_english_render_shows_the_english_convention_defaults():
+    template = get_template("replenishment")
+    draft = render_draft(template, control=_control(), params={}, lang="en")
+    used = {name: (value, source) for name, value, source in draft.parameters_used}
+    assert used["service_level"] == ("not declared", "convention")
+    assert used["lead_time_days"] == ("not declared", "convention")
+    assert used["policy_source"] == ("current inventory policy sheet (inventory_optimization)", "convention")
+
+    cc_template = get_template("cycle_count")
+    cc_draft = render_draft(cc_template, control=_control(), params={}, lang="en")
+    cc_used = {name: (value, source) for name, value, source in cc_draft.parameters_used}
+    assert cc_used["counts_per_year"][1] == "convention"
+    assert "/yr" in cc_used["counts_per_year"][0]
 
 
 # ---- render_draft: document control / warnings / dates -----------------------------
@@ -197,3 +230,32 @@ def test_unknown_process_raises_value_error_listing_the_three():
     message = str(exc.value)
     for key in ("replenishment", "cycle_count", "sop_cycle"):
         assert key in message
+
+
+# Minor finding 4: _SafeDict.__missing__ must leave an unresolved {placeholder} in
+# place instead of raising KeyError -- proven here via render_draft's public surface,
+# not by reaching into the private _SafeDict class directly.
+def test_unresolved_placeholder_survives_instead_of_raising():
+    fake_template = ProcedureTemplate(
+        key="_test_only",
+        title={"es": "t", "en": "t"},
+        purpose={"es": "p", "en": "p"},
+        scope={"es": "s", "en": "s"},
+        steps=(
+            JobBreakdownStep(
+                n=1,
+                important_step={
+                    "es": "Paso con {clave_inexistente}",
+                    "en": "Step with {clave_inexistente}",
+                },
+                key_points={"es": ("kp",), "en": ("kp",)},
+                reasons={"es": ("r",), "en": ("r",)},
+            ),
+        ),
+        control_plan=(),
+        training=(),
+        controlled_inputs={"es": (), "en": ()},
+        parameters={},
+    )
+    draft = render_draft(fake_template, control=_control(), params={}, lang="es")
+    assert draft.steps[0].important_step == "Paso con {clave_inexistente}"
