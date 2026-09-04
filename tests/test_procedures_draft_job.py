@@ -240,9 +240,7 @@ def test_build_deck_reports_control_kpis_and_step_findings():
 
     kpi_names = {k.name for k in deck.kpis}
     assert {"Dueno", "Aprobador", "Version", "Proxima revision", "Cadencia de revision"} <= kpi_names
-
-    written = deck.write_all if hasattr(deck, "write_all") else None
-    assert written is not None
+    assert deck.residual.strip()
 
 
 def test_build_deck_writes_md_and_xlsx(tmp_path):
