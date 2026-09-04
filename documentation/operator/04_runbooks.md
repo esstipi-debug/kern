@@ -435,9 +435,12 @@ alguien tiene que releer.
 3. **Leé el HANDOFF** → **RB-3** por cada procedimiento vencido — el dueño y
    la fecha límite ya vienen resueltos en cada paso del paquete, no hace
    falta ir a buscarlos al CSV.
-4. **Un hallazgo `NO_OWNER` es un residuo** → **RB-8**: alguien tiene que
-   asumir el procedimiento, delegarlo, o asumir conscientemente que queda
-   sin dueño.
+4. **Un hallazgo `NO_OWNER` no es un residuo aparte**: el mismo HANDOFF que
+   leíste en el paso 3 trae un segundo `HandoffPacket`, titulado
+   `Asignar dueno`, con un paso por cada procedimiento sin dueño — no hay
+   que buscarlo entre los residuales. Aplicale la misma disciplina de
+   **RB-8** a cada uno: cubrilo vos, delegalo, o asumí conscientemente que
+   el procedimiento queda sin dueño.
 5. **Un hallazgo `OWNER_IS_APPROVER`** significa que quien redacta también
    aprueba — nombrá un segundo firmante distinto antes de la próxima
    aprobación; la segregación de funciones es lo que le da valor de control

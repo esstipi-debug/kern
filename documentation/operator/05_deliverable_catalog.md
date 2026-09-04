@@ -4,7 +4,7 @@
 > genera y tu **valor agregado humano** en cada uno. Kern produce el artefacto;
 > tú lo enmarcas, lo defiendes y cierras el paso humano.
 
-Catálogo basado en `scm_agent/modes.py` (entregables por modo) y las **35
+Catálogo basado en `scm_agent/modes.py` (entregables por modo) y las **53
 herramientas de agente** ya cableadas en `scm_agent/tools.py` (la fuente de
 verdad es el registry: `build_default_registry()`).
 
