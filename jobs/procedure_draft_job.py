@@ -95,6 +95,9 @@ def prepare(params: dict | None) -> DraftRequest:
     listing ``PROCESS_KEYS``. ``as_of`` is read from ``params["as_of"]`` or
     ``params["effective_date"]`` (ISO ``YYYY-MM-DD``); absent, it defaults to
     ``date.today()`` with ``as_of_source="clock"`` (a ``run()`` residual follows).
+    ``lang`` defaults to ``"es"`` and is validated against ``_VALID_LANGS`` right
+    here at the tool boundary -- the same place ``process`` and ``as_of`` are
+    validated -- rather than left to surface later inside ``render_draft``.
     """
     params = params or {}
 
@@ -129,6 +132,8 @@ def prepare(params: dict | None) -> DraftRequest:
         as_of_source = "clock"
 
     lang = params.get("lang", "es")
+    if lang not in _VALID_LANGS:
+        raise ValueError(f"lang desconocido '{lang}': elija uno de {', '.join(_VALID_LANGS)}")
     location = str(params.get("location", "") or "").strip()
 
     return DraftRequest(

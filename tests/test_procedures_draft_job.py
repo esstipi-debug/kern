@@ -71,6 +71,11 @@ def test_prepare_reads_service_level_and_lead_time_from_params():
     assert used["lead_time_days"] == ("10", "param")
 
 
+def test_prepare_rejects_an_unknown_lang():
+    with pytest.raises(ValueError, match="fr"):
+        procedure_draft_job.prepare({"process": "sop_cycle", "owner": "Ana", "approver": "Beto", "lang": "fr"})
+
+
 # ---- run() ------------------------------------------------------------------------
 
 
@@ -82,9 +87,15 @@ def test_run_outcome_is_handoff_with_approver_step_and_next_review_deadline():
     (packet,) = draft.outcome.handoffs
     assert packet.title == "Aprobar el borrador"
     assert len(packet.steps) == 5
-    assert any("Ana" in step for step in packet.steps)
-    assert any("Beto" in step and "aprob" in step.lower() for step in packet.steps)
-    assert any("sistema donde viven los sop" in step.lower() for step in packet.steps)
+
+    # Positional, not "any(...)": the brief requires these five steps "en orden"
+    # (revisar -> aprobar -> publicar -> registrar -> agendar) -- a future reorder
+    # of _approval_handoff's step list must fail this test.
+    assert "revisar" in packet.steps[0].lower() and "Ana" in packet.steps[0]
+    assert "aprob" in packet.steps[1].lower() and "Beto" in packet.steps[1]
+    assert "publicar" in packet.steps[2].lower() and "sistema donde viven los sop" in packet.steps[2].lower()
+    assert "registrar" in packet.steps[3].lower() and "approved_at" in packet.steps[3]
+    assert "agendar" in packet.steps[4].lower() and draft.control.next_review.isoformat() in packet.steps[4]
 
     assert packet.deadline == draft.control.next_review.isoformat()
     assert packet.data["owner"] == "Ana"
