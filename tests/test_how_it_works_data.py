@@ -50,14 +50,14 @@ def test_tools_table_matches_the_registry_exactly() -> None:
     assert set(listed) == registered
 
 
-def test_exactly_51_tools_with_unique_keys() -> None:
-    assert len(TOOLS) == 51
-    assert len({t.key for t in TOOLS}) == 51
+def test_exactly_53_tools_with_unique_keys() -> None:
+    assert len(TOOLS) == 53
+    assert len({t.key for t in TOOLS}) == 53
 
 
-def test_domain_area_tally_sums_to_51_and_matches_spec() -> None:
+def test_domain_area_tally_sums_to_53_and_matches_spec() -> None:
     tally = tally_by_domain_area()
-    assert sum(tally.values()) == 51
+    assert sum(tally.values()) == 53
     assert tally == {
         "Inventory & replenishment": 9,
         "Network & logistics": 9,
@@ -68,18 +68,19 @@ def test_domain_area_tally_sums_to_51_and_matches_spec() -> None:
         "Returns, risk & benchmarking": 4,
         "Planning cadence & projects": 3,
         "Decision alignment": 3,
+        "Procedures & standard work": 2,
         "Leadership": 2,
     }
     assert set(tally) == set(DOMAIN_AREA_ORDER)
 
 
-def test_scor_bucket_tally_sums_to_51_and_matches_spec() -> None:
+def test_scor_bucket_tally_sums_to_53_and_matches_spec() -> None:
     tally = tally_by_scor_bucket()
-    assert sum(tally.values()) == 51
+    assert sum(tally.values()) == 53
     assert tally == {
         "Plan": 17,
         "Order/Fulfill": 9,
-        "Orchestrate": 14,
+        "Orchestrate": 16,
         "Transform": 4,
         "Source": 4,
         "Return": 2,

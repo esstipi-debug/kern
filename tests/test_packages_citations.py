@@ -64,7 +64,16 @@ _RECOVERED_TOOLS = (
 # anchor each (break_even_analysis / project_controlling, both measured against the
 # hub-adjacency and closure rules -- see citation_gate.TOOL_CONCEPTS) recovers three
 # on-topic citations apiece. See _RECOVERED_BY_ANCHOR below.
-_CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "intake_scan")
+# procedure_draft (tool #53) is a documented zero, not an unmeasured gap: it HAS anchors
+# (citation_gate.TOOL_CONCEPTS's checklist/poka_yoke/pdca_cycle) but every real candidate
+# in its pool either got explicitly excluded (work_breakdown_structure -- Heizer & Render's
+# project-scheduling WBS, a "Job Breakdown Sheet" lexical false friend, not this tool's
+# document-control checklist) or sat more than MAX_HOPS from every anchor -- ZERO survivors,
+# not one degraded by the MIN_CITATIONS floor. See the full replay in
+# citation_gate.TOOL_CONCEPTS's own comment (which also covers the separately-rejected
+# `procedure_model` anchor candidate -- Kuhn's organizational-reconfiguration model, unrelated
+# to WBS).
+_CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "intake_scan", "procedure_draft")
 
 # Anchor-islanded tools: zero at ANY pool (a separate anchor problem, not fixable
 # by pool sizing) -- pinned so a future anchor fix is a conscious change.

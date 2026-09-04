@@ -208,9 +208,9 @@ def test_both_donut_lenses_have_a_named_clickable_legend() -> None:
         assert f'data-donut="donut-domain" data-bucket="{escape(area)}"' in html
     for bucket in SCOR_BUCKET_ORDER:
         assert f'data-donut="donut-scor" data-bucket="{escape(bucket)}"' in html
-    # 10 domain entries + 7 SCOR entries = 17 legend rows total
+    # 11 domain entries + 7 SCOR entries = 18 legend rows total
     assert html.count('class="legend-item"') == len(DOMAIN_AREA_ORDER) + len(SCOR_BUCKET_ORDER)
-    assert html.count('class="legend-item"') == 17
+    assert html.count('class="legend-item"') == 18
 
 
 def test_every_registered_tool_is_rendered_on_the_page() -> None:

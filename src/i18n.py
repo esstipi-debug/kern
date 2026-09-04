@@ -5,11 +5,11 @@ sin dependencias nuevas"):
 
 1. The CONSOLIDATED package deck's own generated prose (``jobs/package_deliverable.py``
    headers, KPI names, coverage/handoff text).
-2. The 50 registered tools' TITLES (short labels, e.g. "Data Quality & SKU
+2. The 53 registered tools' TITLES (short labels, e.g. "Data Quality & SKU
    Master (MDM)" -> "Calidad de Datos y Maestro de SKUs (MDM)").
 3. ``src.deliverable.Deliverable``'s own structural scaffolding (section
    headers, table column names, Excel sheet names) -- ``Deliverable.lang``
-   defaults to ``"en"`` (unchanged for the ~50 individual tool decks below,
+   defaults to ``"en"`` (unchanged for the ~53 individual tool decks below,
    which never pass it), and only ``package_deliverable.py::build()`` passes
    the package's ``lang`` explicitly, so translating the CONSOLIDATED deck's
    scaffolding never touches an individual tool's own (English) deck.
@@ -274,6 +274,10 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
                       "en": "Cross-Area Impact of a Proposed Decision"},
     "intake_scan": {"es": "Escaneo de Aptitud del Dato", "en": "Data Readiness Scan"},
     "service_scan": {"es": "Servicio Realizado al Cliente", "en": "Realized Customer Service"},
+    "procedure_audit": {"es": "Auditoria del Registro de Procedimientos (SOP)",
+                         "en": "Procedure Register Audit (SOP)"},
+    "procedure_draft": {"es": "Borrador de SOP con Control Documental",
+                         "en": "SOP Draft with Document Control"},
 }
 
 

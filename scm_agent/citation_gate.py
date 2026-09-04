@@ -346,6 +346,35 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # by measurement, not intuition.
     "cross_impact": ("safety_stock", "service_level", "cycle_service_level",
                      "cross_functional_integration"),
+    # procedure_audit (tool #52) grounds on ISO 9001 document-control theory (7.5
+    # Documented information) and the quality-management discipline the audit
+    # itself enforces (overdue reviews, missing owners, unversioned documents).
+    # All three anchors verified to exist via kb.node_exists() before use.
+    # REAL measurement, replaying the actual _step_citations call (KnowledgeBase()
+    # + build_default_registry(), 2026-09-04) -- not a prediction: kept 2
+    # citations, "Control Chart" (Heizer & Render, Supplement 6: Statistical
+    # Process Control) and "ISO 9000" (Heizer & Render, Ch.6 Managing Quality).
+    # No ISO 14000 citation was among the candidates at all (top-8 pool); the
+    # other 3 candidates (risk_monitoring, document_processing_automation, emas
+    # -- all Khan/Grant resilience-book content) were correctly omitted as more
+    # than MAX_HOPS from every anchor.
+    "procedure_audit": ("iso_9000", "checklist", "total_quality_management"),
+    # procedure_draft (tool #53) shares the checklist/quality-system anchors --
+    # a Job Breakdown Sheet + control plan IS a documented-work-instruction
+    # checklist -- plus poka_yoke (mistake-proofing, what a control plan
+    # enforces) and pdca_cycle (the review-cadence loop the draft's document
+    # control header stamps). REAL measurement (same replay, 2026-09-04): ZERO
+    # candidates resolved in-radius at all -- work_breakdown_structure was
+    # explicitly excluded (see EXCLUDED_CONCEPTS below) and the remaining two
+    # candidates (risk_monitoring, document_processing_automation) were more
+    # than MAX_HOPS from every anchor. The batch never even reached the
+    # MIN_CITATIONS floor with a lone survivor to degrade -- see its own entry
+    # in tests/test_packages_citations.py::_CORRECTLY_ZERO_TOOLS.
+    # `procedure_model` (also verified to exist) was considered and rejected as
+    # an anchor: it is Kuhn's organizational-reconfiguration model, not a
+    # procedure document -- a lexical false friend for this tool's own name,
+    # same class as the false friends documented elsewhere in this module.
+    "procedure_draft": ("checklist", "poka_yoke", "pdca_cycle"),
 }
 
 # tool_key -> concept ids that must NEVER be cited for this tool, even when
@@ -405,6 +434,12 @@ EXCLUDED_CONCEPTS: dict[str, tuple[str, ...]] = {
     # source, so degrading to zero citations is the honest outcome here - pinned
     # by test_data_quality_step_degrades_to_no_citations_on_the_demo_intake.
     "data_quality": ("cost_of_quality", "house_of_quality"),
+    # work_breakdown_structure rides the "breakdown" lexical overlap with this
+    # tool's own "Job Breakdown Sheet" keyword and sits within MAX_HOPS of the
+    # checklist/pdca_cycle anchors via a shared book hub -- a project-schedule
+    # decomposition technique, unrelated to a procedure's document-control
+    # checklist. Same false-friend class as PR #164.
+    "procedure_draft": ("work_breakdown_structure",),
 }
 
 

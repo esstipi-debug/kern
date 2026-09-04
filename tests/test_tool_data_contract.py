@@ -15,8 +15,12 @@ from scm_agent import tools
 # Tools with requires_data=True that have NOT yet declared their columns.
 # This list starts long and shrinks; it never grows. Removing a name here without
 # adding a declaration makes test_every_data_tool_declares_its_columns fail.
-# Count: 40 (44 requires_data tools total, 4 declared -- data_quality, abc_xyz,
-# excess_obsolete, financial_kpis). Derived via:
+# Count: 41 (46 requires_data tools total, 5 declared -- data_quality, abc_xyz,
+# excess_obsolete, financial_kpis, procedure_audit). Verified against the real
+# registry 2026-09-04 -- this header's prior "40 (44 total, 4 declared)" was
+# already stale before this task touched it: the list below already had 41
+# entries, not 40. procedure_audit (declared, so it does NOT appear below) is
+# the only entry this task's own change adds to the true count. Derived via:
 #   python -c "from scm_agent import tools; r=tools.build_default_registry(); \
 #   print(sorted(t.key for t in r.list() if t.requires_data and not t.required_columns))"
 #
@@ -68,7 +72,7 @@ UNDECLARED_TOOLS = frozenset({
     "whatif",
 })
 
-DECLARED = ("data_quality", "abc_xyz", "excess_obsolete", "financial_kpis")
+DECLARED = ("data_quality", "abc_xyz", "excess_obsolete", "financial_kpis", "procedure_audit")
 
 # One canonical value per column name we know how to synthesize.
 _SAMPLE = {
@@ -78,6 +82,10 @@ _SAMPLE = {
     "cogs": "1000.0", "avg_inventory_value": "500.0", "gross_margin": "0.3",
     "units_sold": "80", "units_on_hand": "20", "net_sales": "1500.0",
     "date": "2026-01-01",
+    "last_reviewed_at": "2026-01-15", "procedure_id": "PROC-1", "process_area": "Bodega",
+    "owner": "Jefe de Operaciones", "approver": "Gerente General", "version": "1.0",
+    "approved_at": "2026-01-01", "review_cadence_days": "365", "location": "https://example.com/proc",
+    "linked_kpi": "fill_rate", "reaction_plan": "escalate to owner", "status": "approved",
 }
 
 
