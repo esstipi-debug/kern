@@ -363,6 +363,7 @@ def write_operational(report: RegisterAudit, out_dir: str | Path, client: str = 
     finding_rows = []
     for f in report.findings:
         record = by_key.get((f.procedure_id, f.name))
+        next_review = next_review_date(record, report.default_cadence_days) if record else None
         finding_rows.append({
             "procedure_id": f.procedure_id,
             "name": f.name,
@@ -373,10 +374,7 @@ def write_operational(report: RegisterAudit, out_dir: str | Path, client: str = 
             "owner": f.owner,
             "approver": record.approver if record else "",
             "last_reviewed_at": _cell(record.last_reviewed_at.isoformat() if record and record.last_reviewed_at else None),
-            "next_review_date": _cell(
-                next_review_date(record, report.default_cadence_days).isoformat()
-                if record and next_review_date(record, report.default_cadence_days) else None
-            ),
+            "next_review_date": _cell(next_review.isoformat() if next_review else None),
             "due_date": _cell(f.due_date.isoformat() if f.due_date else None),
             "days_overdue": _cell(f.days_overdue),
             "detail": f.detail,
