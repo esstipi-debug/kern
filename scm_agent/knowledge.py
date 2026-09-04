@@ -53,6 +53,29 @@ def _is_internal_source(concept: "Concept") -> bool:
     return src in _INTERNAL_SOURCES
 
 
+# Directory names and filename shapes that mark a module as test code.
+_TEST_DIRS: frozenset[str] = frozenset({"tests", "test", "testing"})
+
+
+def _is_test_path(source_file: str) -> bool:
+    """True if this path is test code rather than an implementation.
+
+    A test module *verifies* a concept, it never *implements* one, so citing
+    ``tests/test_pricing.py`` as the code behind "Competitive Reference Price"
+    is a false claim in front of a client. Matches a ``tests/`` (or ``test/``,
+    ``testing/``) directory anywhere in the path, plus the pytest filename
+    conventions (``test_*.py``, ``*_test.py``, ``conftest.py``).
+    """
+    parts = (source_file or "").replace("\\", "/").split("/")
+    name = parts[-1]
+    return (
+        any(part in _TEST_DIRS for part in parts[:-1])
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name == "conftest.py"
+    )
+
+
 _TOKEN = re.compile(r"[a-z0-9]{3,}")
 
 
@@ -589,9 +612,11 @@ class KnowledgeBase:
 
         The precise half of bridge() for grounding: requires at least `min_overlap`
         shared tokens between the concept and a `.py` code node, so a single common
-        word (e.g. "price") can't forge a spurious link. Prefers real src/ modules.
-        Returns None when the code graph is absent or nothing clears the bar — the
-        caller then cites theory only.
+        word (e.g. "price") can't forge a spurious link. Test modules are excluded
+        outright (see ``_is_test_path``) — they verify a concept, they don't
+        implement it, and they outnumber src/ nodes ~2:1 in the code graph.
+        Prefers real src/ modules. Returns None when the code graph is absent or
+        nothing clears the bar — the caller then cites theory only.
         """
         want = _tokens(f"{concept.label} {concept.id}")
         if not want:
@@ -600,7 +625,7 @@ class KnowledgeBase:
         best: tuple[int, int, Concept] | None = None
         for nid, n in self._index.get("code", {}).items():
             src = n.get("source_file") or ""
-            if not src.endswith(".py"):
+            if not src.endswith(".py") or _is_test_path(src):
                 continue
             stem = Path(src).stem
             have = titles.get(nid, set()) | _tokens(stem)
