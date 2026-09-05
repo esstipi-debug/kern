@@ -15,8 +15,16 @@ inputs:
   token:
     description: >
       PAT de grano fino con Contents:read sobre esstipi-debug/nosilo-core. Sigue
-      soportado porque Docker, Fly y Railway lo necesitan igual: el mount de
-      BuildKit no tiene equivalente para una clave SSH.
+      soportado porque Fly y Railway lo necesitan: construyen sin un agente SSH
+      que reenviar.
+
+      CORRECCION 2026-09-05: esta descripcion decia que "el mount de BuildKit no
+      tiene equivalente para una clave SSH". Es falso -- `RUN --mount=type=ssh`
+      reenvia el socket del agente y define SSH_AUTH_SOCK, y build-push-action
+      lo expone como `ssh: default`. Sobre esa premisa
+      .github/workflows/docker.yml tuvo los disparadores apagados del 26-ago al
+      5-sep esperando un PAT que nunca existio, y la imagen nunca se publico.
+      El Dockerfile ahora acepta las dos vias.
     required: false
     default: ""
 
