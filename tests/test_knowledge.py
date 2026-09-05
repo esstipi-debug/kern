@@ -416,7 +416,7 @@ def test_internal_sources_stay_searchable(kb: KnowledgeBase) -> None:
     )
 
 
-# -- implements() must never cite a test file as an implementation ----------
+# -- implements() must cite implementations, not tests / demos / one-off scripts --
 
 
 def _looks_like_a_test_file(source: str) -> bool:
@@ -428,6 +428,20 @@ def _looks_like_a_test_file(source: str) -> bool:
         or name.startswith("test_")
         or name.endswith("_test.py")
         or name == "conftest.py"
+    )
+
+
+def _looks_like_a_non_implementation(source: str) -> bool:
+    """Test, demo, example or one-off script — written independently of the fix."""
+    parts = source.replace("\\", "/").split("/")
+    name = parts[-1]
+    dirs = {"examples", "example", "demos", "demo", "scripts", "script",
+            "samples", "sample"}
+    return (
+        _looks_like_a_test_file(source)
+        or any(p in dirs for p in parts[:-1])
+        or name.startswith(("demo_", "example_", "sample_"))
+        or name.endswith(("_demo.py", "_example.py", "_sample.py"))
     )
 
 
@@ -514,4 +528,122 @@ def test_implements_cites_no_test_file_on_the_real_code_graph(
     if impl is not None:
         assert not _looks_like_a_test_file(impl.source or ""), (
             f"{label} resolved to test file {impl.source}"
+        )
+
+
+def test_implements_skips_a_demo_and_falls_back_to_theory_only(tmp_path: Path) -> None:
+    """A demo illustrates a concept for a prospect; it is not where it lives.
+
+    ``webapp/demo_lead_time_scan.py`` is a sales demo, so citing it as the code
+    behind "Replenishment Lead Time" oversells what is actually built.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("d", "demo replenishment lead time scan",
+                   "webapp/demo_lead_time_scan.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="replenishment_lead_time", label="Replenishment Lead Time",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+def test_implements_skips_the_ingest_script_that_read_the_book(tmp_path: Path) -> None:
+    """The graph-ingest script is the most circular citation of all.
+
+    ``scripts/merge_khan_resilience.py`` is the script that loaded Khan's book
+    into the books graph. Offering it as the implementation of a Khan concept
+    says "the code behind this idea is the code that read the idea".
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("m", "merge khan efficiency resilience trade off",
+                   "scripts/merge_khan_resilience.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="efficiency_vs_resilience_trade_off",
+                      label="Efficiency-vs-Resilience Trade-off",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+def test_implements_prefers_source_over_a_better_scoring_demo(tmp_path: Path) -> None:
+    """As with tests, excluding a demo promotes the real runner-up.
+
+    The demo node shares four tokens with the concept and the src module three,
+    so the demo wins on score and the src/ tiebreak cannot rescue it.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("d", "demo replenishment lead time gap", "webapp/demo_lead_time.py"),
+        _code_node("s", "replenishment lead time", "src/lead_time.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="replenishment_lead_time_gap",
+                      label="Replenishment Lead Time Gap",
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    assert impl is not None
+    assert impl.source == "src/lead_time.py"
+
+
+@pytest.mark.parametrize("source", [
+    "examples/run_disruption_scan.py",
+    "scripts/merge_khan_resilience.py",
+    "webapp/demo_lead_time_scan.py",
+    "src/demos/lead_time.py",
+    "src/lead_time_demo.py",
+    "docs/example/lead_time.py",
+])
+def test_implements_rejects_every_shape_of_illustrative_path(
+    tmp_path: Path, source: str
+) -> None:
+    """Illustrative-ness is a path property too: the directory OR the filename."""
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("d", "replenishment lead time", source),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="replenishment_lead_time", label="Replenishment Lead Time",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+def test_implements_keeps_a_real_module_whose_name_merely_contains_demo(
+    tmp_path: Path,
+) -> None:
+    """The filename rule anchors on prefix/suffix, so real modules survive.
+
+    ``src/demand_planning.py`` starts with "dem" and ``src/order_demo_history.py``
+    contains "demo" mid-name; neither is a demo module and both must stay citable.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("s", "replenishment lead time", "src/order_demo_history.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="replenishment_lead_time", label="Replenishment Lead Time",
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    assert impl is not None
+    assert impl.source == "src/order_demo_history.py"
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("label", [
+    "Efficiency-vs-Resilience Trade-off",
+    "End-to-End Lead-Time Variability",
+    "Lead-Time Gap",
+    "Replenishment Lead Time",
+    "Tiger Team (Cross-Functional Disruption Response Team)",
+])
+def test_implements_cites_no_demo_or_script_on_the_real_code_graph(
+    kb: KnowledgeBase, label: str
+) -> None:
+    """Regression pin: these five each resolved to a demo, example or script.
+
+    Measured 2026-09-04 on the 52 anchored tools over pools 16/8/6, after the
+    tests/ exclusion had already landed — these were what was left.
+    """
+    concept = Concept(id=label.lower().replace(" ", "_"), label=label,
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    if impl is not None:
+        assert not _looks_like_a_non_implementation(impl.source or ""), (
+            f"{label} resolved to non-implementation {impl.source}"
         )
