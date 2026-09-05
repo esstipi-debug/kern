@@ -662,8 +662,9 @@ class KnowledgeBase:
         shared *domain* tokens between the concept and a `.py` code node, so a
         single common word (e.g. "price") can't forge a spurious link, and neither
         can a handful of function words - "Meeting the Team Where They Are" used
-        to resolve to jobs/reconciliation_job.py on ``are the they where``. Tests, demos, examples
-        and one-off scripts are excluded outright (see
+        to resolve to jobs/reconciliation_job.py on ``are the they where``.
+
+        Tests, demos, examples and one-off scripts are excluded outright (see
         ``_is_non_implementation_path``) — none of them is where a concept lives,
         and together they outnumber src/ nodes better than 2:1 in the code graph.
         Prefers real src/ modules. Returns None when the code graph is absent or
