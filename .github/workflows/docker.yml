@@ -157,10 +157,28 @@ jobs:
             nosilo_token=${{ secrets.NOSILO_CORE_TOKEN }}
           cache-from: type=gha
 
+      # Por env y entre comillas: `steps.meta.outputs.tags` es MULTILINEA, y sin
+      # comillas la segunda linea se sustituye como si fuera un comando propio
+      # ("kern:sha-xxxx: No such file or directory", exit 127). Mismo motivo por
+      # el que las credenciales de arriba tampoco se interpolan en el script.
       - name: Que se publico
         if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          IMAGE: ${{ env.IMAGE_NAME }}
         run: |
-          echo "Publicado en:"
-          printf '  %s\n' ${{ steps.meta.outputs.tags }}
-          echo ""
-          echo "El cliente corre:  docker run -p 8000:8000 ${{ env.IMAGE_NAME }}:main"
+          set -euo pipefail
+          {
+            echo "### Imagen publicada"
+            echo ""
+            echo '```'
+            printf '%s\n' "$TAGS"
+            echo '```'
+            echo ""
+            echo "El cliente corre, sin ninguna variable:"
+            echo ""
+            echo '```bash'
+            echo "docker run -p 8000:8000 ${IMAGE}:main"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$TAGS"
