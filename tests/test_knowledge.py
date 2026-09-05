@@ -414,3 +414,104 @@ def test_internal_sources_stay_searchable(kb: KnowledgeBase) -> None:
     assert any(_is_internal_source(h) for h in hits), (
         "the Atlas should still be reachable via search; only citations are filtered"
     )
+
+
+# -- implements() must never cite a test file as an implementation ----------
+
+
+def _looks_like_a_test_file(source: str) -> bool:
+    """Independent read of the path, so the assertion does not borrow the fix."""
+    parts = source.replace("\\", "/").split("/")
+    name = parts[-1]
+    return (
+        any(p in {"tests", "test", "testing"} for p in parts[:-1])
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name == "conftest.py"
+    )
+
+
+def _code_node(nid: str, label: str, source: str) -> dict:
+    """A code-graph node shaped like graphify's output."""
+    return {"id": nid, "label": label, "norm_label": label.lower(),
+            "rationale": "", "source_file": source, "location": "L1"}
+
+
+def test_implements_skips_a_test_file_and_falls_back_to_theory_only(tmp_path: Path) -> None:
+    """A test file verifies a concept, it does not implement it.
+
+    With the test module as the only candidate, implements() must return None so
+    the caller cites theory alone rather than pointing a client at tests/.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("t", "test economic order quantity",
+                   "tests/test_economic_order_quantity.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="economic_order_quantity", label="Economic Order Quantity",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+def test_implements_prefers_source_over_a_better_scoring_test_file(tmp_path: Path) -> None:
+    """Excluding tests promotes the runner-up in src/ rather than dropping the link.
+
+    The test node shares four tokens with the concept and the src module only
+    three, so on score alone the test file wins outright — the src/ tiebreak
+    cannot save it. Only skipping test paths gets src/eoq.py cited.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("t", "test economic order quantity model", "tests/test_eoq_model.py"),
+        _code_node("s", "economic order quantity", "src/eoq.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="economic_order_quantity_model",
+                      label="Economic Order Quantity Model",
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    assert impl is not None
+    assert impl.source == "src/eoq.py"
+
+
+@pytest.mark.parametrize("source", [
+    "tests/test_pricing.py",
+    "tests/helpers/fixtures.py",
+    "odoo_addon/test/verify_install.py",
+    "src/pricing_test.py",
+    "src/conftest.py",
+])
+def test_implements_rejects_every_shape_of_test_path(tmp_path: Path, source: str) -> None:
+    """Test-ness is a path property: a tests/ directory OR a test-named module."""
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("t", "economic order quantity", source),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="economic_order_quantity", label="Economic Order Quantity",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("label", [
+    "Perfect Order (OTIF)",
+    "Reorder Point",
+    "Salvage Value",
+    "Replenishment Lead Time",
+    "Competitive Reference Price",
+    "Earliest Due Date (EDD)",
+])
+def test_implements_cites_no_test_file_on_the_real_code_graph(
+    kb: KnowledgeBase, label: str
+) -> None:
+    """Regression pin: these concepts each used to resolve to a tests/ module.
+
+    Measured 2026-09-04 across the 52 anchored tools on pools 16/8/6, every one of
+    these surfaced ``-> tests/test_*.py`` in the client-facing citation text.
+    """
+    concept = Concept(id=label.lower().replace(" ", "_"), label=label,
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    if impl is not None:
+        assert not _looks_like_a_test_file(impl.source or ""), (
+            f"{label} resolved to test file {impl.source}"
+        )
