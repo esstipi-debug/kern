@@ -67,7 +67,7 @@ Then give it to whichever build path you use:
 | Path | How | Where the credential lives |
 |---|---|---|
 | **GitHub Actions** | Actions secret `NOSILO_CORE_SSH_KEY` (preferred) or `NOSILO_CORE_TOKEN` | Only in the runner, only for the job |
-| **Docker / Fly** | `--secret id=nosilo_token,env=NOSILO_CORE_TOKEN` | Only in the RUN that installs; never in a layer |
+| **Docker / Fly** | `--secret id=nosilo_token,env=NOSILO_CORE_TOKEN`, **or** `--ssh default` with the deploy key in your agent | Only in the RUN that installs; never in a layer |
 | **Railway** | Service variable `NOSILO_CORE_TOKEN` | ⚠️ also present at runtime — see below |
 
 ```bash
@@ -83,6 +83,21 @@ fly deploy --build-secret nosilo_token="$NOSILO_CORE_TOKEN"
 # Railway reads it as a build-time variable
 railway variables set NOSILO_CORE_TOKEN="$NOSILO_CORE_TOKEN"
 ```
+
+**No PAT? Build with the deploy key instead.** BuildKit forwards an SSH agent
+socket into the build, so the same key that authenticates CI also builds the
+image - and unlike a PAT it does not expire:
+
+```bash
+ssh-add ~/.ssh/nosilo_core          # the private half of the deploy key
+docker build --ssh default -t kern .
+```
+
+The Dockerfile takes the token when one is mounted and falls back to the agent
+otherwise, so Fly and Railway keep working exactly as above. This is what
+`.github/workflows/docker.yml` uses: the repo has `NOSILO_CORE_SSH_KEY` and no
+PAT, and that mismatch is why the image workflow sat with its triggers off from
+2026-08-26 until 2026-09-05 and no image was ever published.
 
 **Why the token is never written with `git config --global`.** That command
 writes it into `/root/.gitconfig`, which is part of the committed image layer and
