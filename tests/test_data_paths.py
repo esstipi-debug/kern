@@ -171,12 +171,44 @@ def test_registry_env_vars_are_unique() -> None:
 
 
 def test_kern_data_dir_is_not_read_outside_the_registry() -> None:
-    """One reader, so the contract cannot drift into a second interpretation."""
+    """One reader, so the contract cannot drift into a second interpretation.
+
+    Naming the variable is fine and often useful - `webapp/security.py` cites it
+    to explain why the API-key precedence follows the same conservative rule.
+    What must stay unique is the *read*, so the check is "this line pulls it out
+    of the environment", not "this file mentions it". The first version flagged a
+    comment and would have pushed the next person to delete a good explanation.
+    """
     import subprocess
 
     tracked = subprocess.run(
         ["git", "ls-files", "*.py"], capture_output=True, text=True, cwd=REPO
     ).stdout.split()
+    readers = _lineas_que_leen_la_raiz(tracked)
+    assert not readers, (
+        "KERN_DATA_DIR must be read only by src/data_paths.py; also read in: "
+        + ", ".join(readers)
+    )
+
+
+def test_el_guard_de_la_raiz_muerde() -> None:
+    """Un gate solo acredita si su salida cambia entre dos insumos.
+
+    Sin esto, el chequeo de arriba pasaria igual con un escaner que no
+    encontrara nada nunca -- que es exactamente lo que casi pasa al aflojarlo
+    para dejar de marcar comentarios.
+    """
+    assert _lee_la_raiz('root = os.environ.get("KERN_DATA_DIR", "")')
+    assert _lee_la_raiz('root = os.getenv("KERN_DATA_DIR")')
+    assert not _lee_la_raiz("#: mismo criterio conservador que KERN_DATA_DIR")
+    assert not _lee_la_raiz('otra = os.environ.get("KERN_OTRA_COSA", "")')
+
+
+def _lee_la_raiz(linea: str) -> bool:
+    return "KERN_DATA_DIR" in linea and ("environ" in linea or "getenv" in linea)
+
+
+def _lineas_que_leen_la_raiz(tracked: list[str]) -> list[str]:
     readers = []
     for rel in tracked:
         if rel.startswith("tests/") or rel == "src/data_paths.py":
@@ -185,9 +217,7 @@ def test_kern_data_dir_is_not_read_outside_the_registry() -> None:
             body = (REPO / rel).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        if "KERN_DATA_DIR" in body:
-            readers.append(rel)
-    assert not readers, (
-        "KERN_DATA_DIR must be read only by src/data_paths.py; also read in: "
-        + ", ".join(readers)
-    )
+        for lineno, line in enumerate(body.splitlines(), 1):
+            if _lee_la_raiz(line):
+                readers.append(f"{rel}:{lineno}")
+    return readers

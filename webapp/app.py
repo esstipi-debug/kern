@@ -344,6 +344,13 @@ if observability.should_configure_logging():
 security.POLICY = access_policy.build_policy()
 
 # Fail loud on an unsecured production boot; refuse outright if REQUIRE_SECURE.
+# El gate de auth queda sin llave mucho mas seguido que en produccion: un
+# cliente self-serve corre `docker run` sin setear LINCHPIN_ENV, asi que
+# production_warnings() -- que arranca con `if ENV != "production": return []` --
+# no dice nada justo en el caso que importa. Precondicion 4 de la spec de
+# empaquetado: "arranque sin API key = banner explicito, no silencio ni crash".
+security.emitir_banner_de_arranque()
+
 _PROD_WARNINGS = security.production_warnings()
 for _w in _PROD_WARNINGS:
     logging.getLogger("linchpin.security").warning("production hardening: %s", _w)
