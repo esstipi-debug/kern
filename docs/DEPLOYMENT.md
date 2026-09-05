@@ -113,6 +113,43 @@ scope above is one repository, read-only: it is the difference between a leak
 that exposes source and one that exposes an account. Rotate it if the deploy
 environment is ever compromised, and prefer the Fly path when the choice is open.
 
+## 0b. Where Kern writes: `KERN_DATA_DIR`
+
+Everything Kern persists — the events ledger, the autonomy store, the scheduler
+jobstore, the state store, the pricing ledger, the SKU map, the MCP key store and
+the two lead directories — lives under **one** root:
+
+```bash
+docker run -p 8000:8000 -e KERN_DATA_DIR=/data -v kern_data:/data   ghcr.io/esstipi-debug/kern:main
+```
+
+That is the whole contract. Without it, Kern still runs — it writes into `data/`
+inside the container, which is the image's ephemeral rootfs and is wiped on every
+restart. **A client who wants to keep anything sets this one variable.**
+
+Three levels of precedence, most specific first:
+
+| Level | Wins when | Used by |
+|---|---|---|
+| the store's own `LINCHPIN_*_PATH` / `_DIR` | it is set | this deploy's `fly.toml`, which sets eight of them by hand |
+| `KERN_DATA_DIR` | no per-store variable | a self-serve client, and anyone who wants one knob |
+| the store's historical default | neither | local development, unchanged |
+
+With `KERN_DATA_DIR` unset nothing moves, so adding it to an existing deploy is a
+no-op until you set it. `KERN_DATA_DIR=/data` reproduces exactly the layout the
+eight `fly.toml` lines already produce — `tests/test_data_paths.py` reads
+`fly.toml` and asserts that equivalence, so the two cannot drift apart.
+
+The registry lives in [`src/data_paths.py`](../src/data_paths.py). **A new durable
+store goes in it**, not in a fresh `"data/..."` literal; a guard test fails the
+build otherwise. That guard is also what caught `LINCHPIN_SCHEDULER_PATH`, the one
+durable store PR #188 missed when it re-rooted the other five.
+
+Read-only configuration (`config/markets`, `config/sites`, `config/verticals`,
+`config/monitors.yaml`, `config/retention.yaml`, `config/autonomy.yaml`,
+`config/event_routing.yaml`) is deliberately **not** under this root: it ships
+inside the image, and pointing it at a client's empty volume would break the app.
+
 ## 1. Production checklist
 
 ```bash

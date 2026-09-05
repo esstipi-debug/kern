@@ -69,8 +69,8 @@ from scm_agent.events import Event, EventLedger  # noqa: E402
 from scm_agent.monitors import EVENT_COMPETITOR_PRICE_MOVE, run_all_monitors  # noqa: E402
 from src.connectors import odoo_connect, shopify_connect  # noqa: E402
 from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
+from src.data_paths import resolve_state_path  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
-from src.mcp_keys import DEFAULT_PATH as MCP_KEYS_DEFAULT_PATH  # noqa: E402
 from src.mcp_keys import McpKeyStore  # noqa: E402
 from src.policies import continuous_review_sq, periodic_review_rs  # noqa: E402
 from src.pricing_intel.acquire.watcher import ChangeDetectionWebhookError, parse_changedetection_webhook  # noqa: E402
@@ -128,10 +128,7 @@ SAMPLE_RECEIPTS_PORTFOLIO_FILE = _REPO_ROOT / "data" / "sample_receipts_portfoli
 SAMPLE_DEMAND_PORTFOLIO_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
 # Lead mini-reports + follow-up drafts (operator-facing; gitignored). On a cloud
 # deploy point this at the persistent volume (e.g. /data/leads) or it is ephemeral.
-LEAD_REPORTS_DIR = Path(
-    os.environ.get("LINCHPIN_LEAD_REPORTS_DIR", "").strip()
-    or (_REPO_ROOT / "deliverables" / "leads")
-)
+LEAD_REPORTS_DIR = Path(resolve_state_path("lead_reports"))
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 OPERATOR_DOCS_DIR = _REPO_ROOT / "documentation" / "operator"
 PAQUETES_DOCS_DIR = _REPO_ROOT / "documentation" / "paquetes"
@@ -143,10 +140,7 @@ JOBS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # single time. That is the exact failure fly.toml's [env] block already
 # documents fixing for events, autonomy, state and the pricing ledger -- this
 # was the one durable store left with no way to point it at the volume.
-LEADS_DIR = Path(
-    os.environ.get("LINCHPIN_LEADS_DIR", "").strip()
-    or (_REPO_ROOT / "webapp" / "_leads")
-)
+LEADS_DIR = Path(resolve_state_path("leads"))
 LEADS_DIR.mkdir(parents=True, exist_ok=True)
 LEADS_FILE = LEADS_DIR / "leads.jsonl"  # one JSON object per captured demo lead (PII; gitignored)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -168,7 +162,7 @@ MAX_LEAD_PERIODS = 52.0
 
 _ORCHESTRATOR: Orchestrator | None = None
 _MCP_KEY_STORE: McpKeyStore | None = None
-MCP_KEYS_PATH = os.environ.get("LINCHPIN_MCP_KEYS_PATH", "").strip() or MCP_KEYS_DEFAULT_PATH
+MCP_KEYS_PATH = resolve_state_path("mcp_keys")
 # Both already honor their own LINCHPIN_EVENTS_PATH/LINCHPIN_AUTONOMY_PATH env
 # vars via scm_agent.events.DEFAULT_PATH / scm_agent.autonomy.DEFAULT_PATH -
 # referenced here (not re-read from os.environ) so there is one source of

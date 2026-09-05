@@ -29,7 +29,9 @@ import threading
 import time
 from pathlib import Path
 
-DEFAULT_PATH = "data/mcp_keys.sqlite3"
+from src.data_paths import resolve_state_path
+
+DEFAULT_PATH = resolve_state_path("mcp_keys")
 KEY_PREFIX = "lpk_"  # legacy "Linchpin key" prefix, kept stable so issued keys keep working - recognizable in logs/support tickets without being guessable
 
 
