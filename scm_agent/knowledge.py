@@ -181,6 +181,37 @@ def _tokens(text: str) -> set[str]:
     return set(_TOKEN.findall(text.lower()))
 
 
+# Function words that carry no domain meaning. ``_TOKEN`` already drops anything
+# under three characters, so this only needs the 3+ ones, in both languages the
+# graph is written in.
+#
+# Why a hand-written list and not IDF, which ``search`` uses: measured on this
+# repo's graphs, neither IDF table separates function words from domain terms.
+# In the code graph "they" and "just" both score 6.65, above "newsvendor" (5.70)
+# and every other domain term; in the books graph "just" (4.20) ties "safety"
+# and dwarfs "supply" (1.62). An IDF floor set high enough to cut "they" would
+# cut "pricing", "demand" and "supply" first. Re-check before swapping this out.
+_STOPWORDS: frozenset[str] = frozenset({
+    # English
+    "the", "and", "for", "with", "from", "that", "this", "not", "are", "was",
+    "were", "been", "being", "has", "have", "had", "does", "did", "but", "its",
+    "their", "them", "they", "you", "your", "our", "his", "her", "who", "how",
+    "what", "when", "where", "why", "which", "while", "into", "over", "under",
+    "than", "then", "each", "such", "only", "also", "must", "may", "should",
+    "will", "can", "just", "more", "most", "some", "any", "all", "one", "two",
+    "new", "out", "per", "via", "use", "about", "after", "before", "between",
+    "through",
+    # Spanish - the books graph carries Spanish concept labels too
+    "del", "los", "las", "por", "con", "para", "que", "una", "como", "sobre",
+    "entre", "desde", "hasta", "este", "esta", "son", "mas", "sus",
+})
+
+
+def _content_tokens(tokens: set[str]) -> set[str]:
+    """Drop function words, leaving only tokens that carry domain meaning."""
+    return tokens - _STOPWORDS
+
+
 def _load(path: Path) -> tuple[dict, str | None]:
     """Load a node-link graph JSON.
 
@@ -628,15 +659,18 @@ class KnowledgeBase:
         """Best code node that implements a books concept (theory -> code), or None.
 
         The precise half of bridge() for grounding: requires at least `min_overlap`
-        shared tokens between the concept and a `.py` code node, so a single common
-        word (e.g. "price") can't forge a spurious link. Tests, demos, examples
-        and one-off scripts are excluded outright (see
+        shared *domain* tokens between the concept and a `.py` code node, so a
+        single common word (e.g. "price") can't forge a spurious link, and neither
+        can a handful of function words - "Meeting the Team Where They Are" used
+        to resolve to jobs/reconciliation_job.py on ``are the they where``.
+
+        Tests, demos, examples and one-off scripts are excluded outright (see
         ``_is_non_implementation_path``) — none of them is where a concept lives,
         and together they outnumber src/ nodes better than 2:1 in the code graph.
         Prefers real src/ modules. Returns None when the code graph is absent or
         nothing clears the bar — the caller then cites theory only.
         """
-        want = _tokens(f"{concept.label} {concept.id}")
+        want = _content_tokens(_tokens(f"{concept.label} {concept.id}"))
         if not want:
             return None
         titles = self._title_tokens.get("code", {})
@@ -647,12 +681,16 @@ class KnowledgeBase:
                 continue
             stem = Path(src).stem
             have = titles.get(nid, set()) | _tokens(stem)
+            # ``want`` is already content-only, so the intersection is too: a node
+            # cannot buy its way over the bar with "and", "the" and "for".
             score = len(want & have)
             # A 2-token hit is only trustworthy when the file is named after the
             # concept (eoq.py for "Economic Order Quantity"); otherwise a pair of
             # common domain words ("dynamic", "pricing") forges a link, so require
-            # 3+. Keeps the strong bridges, drops the coincidental ones.
-            named_after = bool(_tokens(stem) & want)
+            # 3+. Keeps the strong bridges, drops the coincidental ones. The stem
+            # has to share a *domain* word to earn that discount - src/how_it_works.py
+            # sharing "how" with a concept is not "named after" it.
+            named_after = bool(_content_tokens(_tokens(stem)) & want)
             if score < (min_overlap if named_after else min_overlap + 1):
                 continue
             rank = (score, 1 if src.startswith("src/") else 0, self._to_concept(n, "code"))

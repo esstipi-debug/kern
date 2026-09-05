@@ -647,3 +647,118 @@ def test_implements_cites_no_demo_or_script_on_the_real_code_graph(
         assert not _looks_like_a_non_implementation(impl.source or ""), (
             f"{label} resolved to non-implementation {impl.source}"
         )
+
+
+# -- implements() scores information, not word count -------------------------
+
+
+def test_implements_ignores_a_match_made_only_of_stopwords(tmp_path: Path) -> None:
+    """"Meeting the Team Where They Are" -> jobs/reconciliation_job.py was real.
+
+    It matched on ``are the they where`` — four tokens, zero of them domain
+    words. Counting raw token overlap makes function words worth as much as
+    "newsvendor", so a node can clear a 3-token bar carrying no information.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("n", "where they are", "src/reconciliation.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="meeting_the_team_where_they_are",
+                      label="Meeting the Team Where They Are",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+def test_implements_ranks_information_above_token_count(tmp_path: Path) -> None:
+    """A three-token match padded with stopwords must lose to two real terms.
+
+    ``src/misc_report.py`` matches {and, for, demand} and ``src/forecast_accuracy.py``
+    matches {forecast, accuracy}. On raw count 3 > 2 and the padded one wins;
+    on content the padded one carries a single domain word and drops out.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("a", "and for the demand", "src/misc_report.py"),
+        _code_node("b", "forecast accuracy", "src/forecast_accuracy.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="demand_and_forecast_accuracy_for_planning",
+                      label="Demand and Forecast Accuracy for Planning",
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    assert impl is not None
+    assert impl.source == "src/forecast_accuracy.py"
+
+
+def test_implements_does_not_treat_a_stopword_in_a_filename_as_named_after(
+    tmp_path: Path,
+) -> None:
+    """The 2-token discount is for files named after the concept, not for "how".
+
+    ``src/how_it_works.py`` shares only the word "how" with the concept. That
+    is not "the file is named after this idea", so it must not buy the lowered
+    bar that ``src/safety_stock.py`` earns for "Safety Stock".
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("n", "buffers", "src/how_it_works.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="how_buffers_absorb_variability",
+                      label="How Buffers Absorb Variability",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+def test_implements_ignores_spanish_stopwords_too(tmp_path: Path) -> None:
+    """The graph is bilingual: ~16 concept labels carry Spanish function words."""
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("n", "", "src/reglas_del_sistema.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="reglas_del_negocio", label="Reglas del Negocio",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("label,forbidden", [
+    ("Meeting the Team Where They Are", "jobs/reconciliation_job.py"),
+    ("Rethinking the US Strategic National Stockpile for Future Pandemics"
+     " with Inventory, Capacity, and Capability", "src/deliverable.py"),
+    ("Deloitte (2020) - COVID-19: Managing Supply Chain Risk and Disruption",
+     "src/queuing.py"),
+])
+def test_implements_drops_the_stopword_matches_on_the_real_graph(
+    kb: KnowledgeBase, label: str, forbidden: str
+) -> None:
+    """Regression pin: each of these was decided by function words.
+
+    Measured 2026-09-04 over the whole books graph — 177 of 756 backlinks had
+    fewer than two domain words behind them; these three are the starkest.
+    """
+    concept = Concept(id=label.lower().replace(" ", "_"), label=label,
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    assert impl is None or impl.source != forbidden
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("label,expected", [
+    ("Safety Stock", "src/safety_stock.py"),
+    ("Fill Rate", "src/fill_rate.py"),
+    ("Newsvendor Model", "src/newsvendor.py"),
+    ("Digital Twin", "src/digital_twin.py"),
+])
+def test_implements_keeps_the_bridges_the_filename_discount_earns(
+    kb: KnowledgeBase, label: str, expected: str
+) -> None:
+    """Guard, green on both sides: the 2-token discount is the feature, not the bug.
+
+    27 of the 68 backlinks a client sees clear the bar only because the module
+    is named after the concept, and they are the best citations in the set.
+    Scoring on content must not cost us a single one of them.
+    """
+    concept = Concept(id=label.lower().replace(" ", "_"), label=label,
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    assert impl is not None
+    assert impl.source == expected
