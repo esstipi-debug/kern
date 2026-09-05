@@ -150,6 +150,44 @@ Read-only configuration (`config/markets`, `config/sites`, `config/verticals`,
 `config/event_routing.yaml`) is deliberately **not** under this root: it ships
 inside the image, and pointing it at a client's empty volume would break the app.
 
+## 0c. Auth: `KERN_API_KEY`, y por que grita si falta
+
+`POST /api/jobs` corre trabajos contra tus datos y `GET /jobs-output/*` sirve los
+entregables. La key los cierra:
+
+```bash
+docker run -p 8000:8000 -e KERN_API_KEY=<una-clave-larga>   ghcr.io/esstipi-debug/kern:main
+```
+
+`LINCHPIN_API_KEY` sigue funcionando y **gana si estan las dos** — es la que este
+deploy tiene como secret de Fly, y no se toca. `KERN_API_KEY` es el nombre del
+contrato self-serve.
+
+Tres estados, no dos:
+
+| Estado | Cuando | Que pasa al arrancar |
+|---|---|---|
+| **configurada** | la variable trae valor | silencio; el gate esta puesto |
+| **apagada a proposito** | la variable esta declarada y vacia | dos lineas en INFO: sigue abierto, pero fue una decision |
+| **sin configurar** | ninguna de las dos existe | banner en WARNING de diez lineas, con el comando para cerrarlo |
+
+La distincion entre las dos ultimas es deliberada: un duenno-operador solo en su
+LAN que apaga la auth no tiene que recibir la misma alarma que alguien que se la
+olvido y expuso el puerto. Repetir un WARNING que el operador ya decidio ignorar
+entrena a ignorar los WARNING.
+
+**El banner NO mira `LINCHPIN_ENV`.** El aviso que existia antes,
+`security.production_warnings()`, arranca con `if ENV != "production": return []`,
+y un cliente que corre `docker run` no setea `LINCHPIN_ENV` — asi que el unico
+aviso que habia estaba apagado justo en el caso que importa. Medido antes de este
+cambio, importando `webapp.app` con el entorno limpio: `API_KEY=''`,
+`RATE_LIMIT=0` y **cero lineas de log sobre seguridad**.
+
+`production_warnings()` queda igual: `LINCHPIN_REQUIRE_SECURE` se niega a bootear
+cuando esa lista trae algo, y volverla no vacia en development habria roto el
+arranque de cualquiera que la tuviera puesta. El banner es un canal nuevo, no un
+reemplazo.
+
 ## 1. Production checklist
 
 ```bash
