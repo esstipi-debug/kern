@@ -64,16 +64,18 @@ _RECOVERED_TOOLS = (
 # anchor each (break_even_analysis / project_controlling, both measured against the
 # hub-adjacency and closure rules -- see citation_gate.TOOL_CONCEPTS) recovers three
 # on-topic citations apiece. See _RECOVERED_BY_ANCHOR below.
-# procedure_draft (tool #53) is a documented zero, not an unmeasured gap: it HAS anchors
-# (citation_gate.TOOL_CONCEPTS's checklist/poka_yoke/pdca_cycle) but every real candidate
-# in its pool either got explicitly excluded (work_breakdown_structure -- Heizer & Render's
-# project-scheduling WBS, a "Job Breakdown Sheet" lexical false friend, not this tool's
-# document-control checklist) or sat more than MAX_HOPS from every anchor -- ZERO survivors,
-# not one degraded by the MIN_CITATIONS floor. See the full replay in
-# citation_gate.TOOL_CONCEPTS's own comment (which also covers the separately-rejected
-# `procedure_model` anchor candidate -- Kuhn's organizational-reconfiguration model, unrelated
-# to WBS).
-_CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "intake_scan", "procedure_draft")
+# procedure_draft LEFT this set on 2026-09-04. Its zero was never an anchor problem: the
+# anchors (checklist/poka_yoke/pdca_cycle) were right, the graph simply held no
+# document-control or standard-work theory for them to reach -- so the pool resolved ZERO
+# candidates in-radius and there was never a lone survivor for the MIN_CITATIONS floor to
+# degrade. The fix was the one packages.py:100-104 prescribes for exactly this shape:
+# ingest the missing theory (L3 source #30, twelve nodes -- see
+# documentation/SOP_DOCUMENT_CONTROL_SOURCES.md), NOT a looser anchor and NOT a bigger pool.
+# Neither TOOL_CONCEPTS nor the pool changed; the new nodes hang off checklist and
+# pdca_cycle at hop 1, so the anchors that resolved nothing now resolve three. The
+# work_breakdown_structure exclusion STAYS: a real "Job Breakdown Sheet" node now competes
+# for the same lexical tokens, and it is the one that wins. See _RECOVERED_BY_INGESTION.
+_CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "intake_scan")
 
 # Anchor-islanded tools: zero at ANY pool (a separate anchor problem, not fixable
 # by pool sizing) -- pinned so a future anchor fix is a conscious change.
@@ -108,6 +110,23 @@ _RECOVERED_BY_ANCHOR = {
     "dea": ("data envelopment", "benchmarking"),
     "earned_value": ("earned value", "project controlling"),
     "learning_curve": ("learning curve", "experience curve"),
+}
+
+# Recovered on 2026-09-04 by INGESTING the missing theory (L3 source #30: document control
+# and standard work), with TOOL_CONCEPTS, EXCLUDED_CONCEPTS, MIN_CITATIONS and the pool all
+# untouched. A separate registry from _RECOVERED_BY_ANCHOR on purpose: that one records
+# tools whose theory existed and whose anchors couldn't reach it; this one records tools
+# whose anchors were right and whose theory was absent. Conflating them would lose the only
+# fact that tells a future reader which lever to pull.
+#
+# procedure_audit is here despite never having been zero -- it sat at exactly MIN_CITATIONS
+# (2) before the merge, the closest thing to a zero the gate has, and the merge REPLACED
+# both of its citations ("Control Chart" and "ISO 9000", generic quality-chapter content)
+# with three that name the actual clause. That swap is the whole point of the ingest, and a
+# count-only assertion would not have caught it going the other way.
+_RECOVERED_BY_INGESTION = {
+    "procedure_audit": ("documented information", "iso 10013", "review cadence"),
+    "procedure_draft": ("job breakdown sheet", "training timetable", "review cadence"),
 }
 
 # Every anchored+registered tool that is allowed to ship zero citations: the four
@@ -161,6 +180,22 @@ def test_anchor_recovered_tool_cites_its_own_subject(_kb, _reg, tool_key, espera
     Cada uno de estos cuatro devolvia cero por el piso de MIN_CITATIONS, no por falta de
     teoria. El conteo solo no alcanza: si el ancla nueva recupera tres citas ajenas al
     tema, es peor que el cero que reemplazo. Por eso se fija tambien QUE cita.
+    """
+    cites = _cites(_kb, _reg, tool_key)
+    assert len(cites) >= MIN_CITATIONS, f"{tool_key} volvio a {len(cites)} cita(s)"
+    joined = " ".join(cites).lower()
+    faltan = [e for e in esperados if e not in joined]
+    assert not faltan, f"{tool_key} ya no cita {faltan}; cita {cites}"
+
+
+@pytest.mark.parametrize("tool_key,esperados", sorted(_RECOVERED_BY_INGESTION.items()))
+def test_ingestion_recovered_tool_cites_the_ingested_theory(_kb, _reg, tool_key, esperados):
+    """El test que separa "ingerimos una fuente" de "la fuente sirvio".
+
+    Un merge que sube el conteo citando cualquier cosa es peor que el cero que reemplaza:
+    la tool queda "grounded" ante los guardias y le muestra al cliente teoria ajena. Por eso
+    se fija el contenido. Los tres substrings de cada tool son los conceptos que la fuente
+    #30 aporto -- si un merge futuro los desplaza, esto falla aunque el conteo aguante.
     """
     cites = _cites(_kb, _reg, tool_key)
     assert len(cites) >= MIN_CITATIONS, f"{tool_key} volvio a {len(cites)} cita(s)"

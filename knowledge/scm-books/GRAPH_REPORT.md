@@ -1,12 +1,12 @@
-# Graph Report - C:\Users\Gamer\Music\scm\supply-chain-optimization  (2026-07-24)
+# Graph Report - supply-chain-optimization  (2026-09-04)
 
 ## Corpus Check
-- 36 files · ~0 words
+- 45 files · ~0 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3001 nodes · 6113 edges · 202 communities (177 shown, 25 thin omitted)
-- Extraction: 72% EXTRACTED · 28% INFERRED · 0% AMBIGUOUS · INFERRED: 1695 edges (avg confidence: 0.82)
+- 3043 nodes · 6170 edges · 205 communities (180 shown, 25 thin omitted)
+- Extraction: 72% EXTRACTED · 28% INFERRED · 0% AMBIGUOUS · INFERRED: 1697 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -212,6 +212,9 @@
 - Human Dimension of Digital Transformation
 - Industry 4.0
 - What Is New vs What Is Not New in Pandemic Risk Management (Table 13.1)
+- Brechas de capacidad de Kern
+- Brechas de lanzamiento de Kern
+- Control Plan (Six Sigma Control phase)
 
 ## God Nodes (most connected - your core abstractions)
 1. `Chopra & Meindl: Supply Chain Management` - 356 edges
@@ -240,7 +243,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (202 total, 25 thin omitted)
+## Communities (205 total, 25 thin omitted)
 
 ### Community 4 - "Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications)"
 Cohesion: 0.07
@@ -950,6 +953,18 @@ Nodes (4): Immersive Training, Human Dimension of Digital Transformation, Workfo
 Cohesion: 0.14
 Nodes (22): Fixing the Supply Chain (Structural Change vs Reversion), Pandemic: Once-in-a-Lifetime Nightmare or Turning Point?, Strategic Inertia and Change Resistance, Structural vs Temporary Improvement, Knowing-Doing Gap in Risk Management, Reversion to Pre-Pandemic Comfort Zone, What Is New vs What Is Not New in Pandemic Risk Management (Table 13.1), Supply Chain Risk Types (Supply, Demand, Transportation, Financial, Manufacturing) (+14 more)
 
+### Community 202 - "Brechas de capacidad de Kern"
+Cohesion: 0.12
+Nodes (17): Brechas de capacidad de Kern, Brecha 1: bucle ReAct para encadenar las 50 herramientas, scm_agent/orchestrator.py::Orchestrator.run, Brecha 2: reranker en la recuperacion de citas, scm_agent/knowledge.py::KnowledgeBase.ground_citations_detailed, Brecha 3: MCP de escritura con tiers de autonomia, webapp/mcp_server.py::build_mcp_server, Brecha 4: corpus por cliente, no solo el corpus del oficio (+9 more)
+
+### Community 203 - "Brechas de lanzamiento de Kern"
+Cohesion: 0.15
+Nodes (13): Brechas de lanzamiento de Kern, Brecha L1: el ledger de leads se borra en cada deploy, webapp/app.py::LEADS_DIR, Brecha L2: Shopify es custom app, no app del App Store, src/connectors/shopify_connect.py::check_connection, Brecha L3: el billing no tenia webhook de pago, webapp/stripe_webhook.py::verify_signature, Brecha L4: el addon de Odoo estaba en 17.0 (+5 more)
+
+### Community 204 - "Control Plan (Six Sigma Control phase)"
+Cohesion: 0.08
+Nodes (12): Documented Information (ISO 9001:2015 clause 7.5), Document Review Cadence (organization-determined, not ISO-fixed), ISO 10013:2021 (Guidance for Documented Information), Document Owner vs Approver Segregation, Control Plan (Six Sigma Control phase), Reaction Plan (control plan field), Leader Standard Work, Layered Process Audit (LPA) (+4 more)
+
 ## Ambiguous Edges - Review These
 - `Employee Empowerment` → `Specialization`  [AMBIGUOUS]
   khan-supply-chain-resilience.txt · relation: conceptually_related_to
@@ -987,7 +1002,7 @@ Nodes (22): Fixing the Supply Chain (Structural Change vs Reversion), Pandemic: 
   khan-supply-chain-resilience.txt · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **555 isolated node(s):** `Box & Jenkins: Time Series Analysis: Forecasting and Control`, `Erratic Demand`, `Hyperbolic Exponential Smoothing (HES)`, `Cross-Sectional Aggregation`, `Mean Square Error (MSE / RMSE)` (+550 more)
+- **569 isolated node(s):** `Box & Jenkins: Time Series Analysis: Forecasting and Control`, `Erratic Demand`, `Hyperbolic Exponential Smoothing (HES)`, `Cross-Sectional Aggregation`, `Mean Square Error (MSE / RMSE)` (+564 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **25 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
