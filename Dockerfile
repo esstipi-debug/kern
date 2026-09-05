@@ -92,29 +92,29 @@ COPY . .
 #
 # openssh-client is installed and purged inside this single RUN so the SSH branch
 # adds nothing to the published image, and the token branch never installs it.
+# The branches decide only HOW git authenticates; the install line itself is
+# single and literal. That is not cosmetic: tests/test_ci_prod_boot_extras.py
+# scans this file for exactly ONE editable-install line carrying an extras list,
+# and compares those extras against the other three install paths - an image
+# that silently lost the `core` extra is a boot crash nobody sees until
+# production. Hiding the extras behind a shell variable broke that guard, and so
+# does writing a second example of the line anywhere in this file, comments
+# included: the scanner reads the whole Dockerfile, not just its RUN steps.
 RUN --mount=type=secret,id=nosilo_token --mount=type=ssh \
     set -e; \
-    EXTRAS=".[core,web,mcp,pricing-intel,dataquality]"; \
+    SSH_INSTALLED=0; \
     if [ -s /run/secrets/nosilo_token ]; then \
-        GIT_CONFIG_COUNT=1 \
-        GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/nosilo_token)@github.com/.insteadOf" \
-        GIT_CONFIG_VALUE_0="https://github.com/" \
-        pip install -e "$EXTRAS"; \
+        GIT_URL_KEY="url.https://x-access-token:$(cat /run/secrets/nosilo_token)@github.com/.insteadOf"; \
     elif [ -n "${SSH_AUTH_SOCK:-}" ]; then \
         apt-get update \
         && apt-get install -y --no-install-recommends openssh-client; \
+        SSH_INSTALLED=1; \
         mkdir -p ~/.ssh && chmod 700 ~/.ssh; \
         printf '%s\n' \
           'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
           > ~/.ssh/known_hosts; \
         chmod 600 ~/.ssh/known_hosts; \
-        GIT_CONFIG_COUNT=1 \
-        GIT_CONFIG_KEY_0="url.git@github.com:.insteadOf" \
-        GIT_CONFIG_VALUE_0="https://github.com/" \
-        pip install -e "$EXTRAS"; \
-        apt-get purge -y openssh-client \
-        && apt-get autoremove -y \
-        && rm -rf /var/lib/apt/lists/* ~/.ssh; \
+        GIT_URL_KEY="url.git@github.com:.insteadOf"; \
     else \
         echo "ERROR: no credential for the private nosilo-core dependency." >&2; \
         echo "Build with ONE of:" >&2; \
@@ -122,6 +122,15 @@ RUN --mount=type=secret,id=nosilo_token --mount=type=ssh \
         echo "  docker build --ssh default ...   (deploy key already in the agent)" >&2; \
         echo "See docs/DEPLOYMENT.md." >&2; \
         exit 1; \
+    fi; \
+    export GIT_CONFIG_COUNT=1 \
+    && export GIT_CONFIG_KEY_0="$GIT_URL_KEY" \
+    && export GIT_CONFIG_VALUE_0="https://github.com/"; \
+    pip install -e ".[core,web,mcp,pricing-intel,dataquality]"; \
+    if [ "$SSH_INSTALLED" = "1" ]; then \
+        apt-get purge -y openssh-client \
+        && apt-get autoremove -y \
+        && rm -rf /var/lib/apt/lists/* ~/.ssh; \
     fi
 
 EXPOSE 8000
