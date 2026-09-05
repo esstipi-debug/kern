@@ -25,9 +25,12 @@ cambia entre dos insumos.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+
+from src.data_paths import resolve_state_path
 
 RAIZ = Path(__file__).resolve().parents[1]
 
@@ -50,25 +53,43 @@ ODOO_CONNECT = RAIZ / "src" / "connectors" / "odoo_connect.py"
 # --- las sondas, puras sobre texto -------------------------------------------
 
 
-def l1_abierta(texto_app: str) -> bool:
+def l1_abierta(texto_app: str, resolver: Callable[[str], str] | None = None) -> bool:
     """El ledger de leads se pierde si LEADS_DIR no acepta override de entorno.
 
     En la imagen de Fly la ruta por defecto cae sobre el filesystem efimero de
     la Machine, que se borra en cada deploy; sin variable de entorno no hay
     forma de apuntarla al volumen /data.
+
+    La sonda es FUNCIONAL: pone la variable y mira si la ruta la sigue. La
+    version anterior leia el texto de la sentencia buscando "environ"/"getenv",
+    y ya habia fallado una vez por eso -- PR #269 movio el `os.environ.get` a
+    una linea de continuacion y la sonda, que solo miraba la primera, reporto
+    ABIERTA una brecha ya cerrada. Volvio a fallar cuando la lectura paso a
+    `src.data_paths.resolve_state_path`, que honra `LINCHPIN_LEADS_DIR` igual
+    que antes y ademas `KERN_DATA_DIR`. Dos falsos positivos por la misma causa
+    alcanzan: lo que importa es si la ruta se puede mover, no como esta escrito
+    que se mueve. ``texto_app`` se conserva en la firma para que las seis sondas
+    se llamen igual desde ``_medido``.
     """
-    lineas = texto_app.splitlines()
-    i = next((n for n, x in enumerate(lineas) if x.startswith("LEADS_DIR =")), None)
-    assert i is not None, "webapp/app.py ya no asigna LEADS_DIR; esta sonda quedo vieja"
-    # La SENTENCIA, no la primera linea. La version original de esta sonda miraba
-    # solo `lineas[i]` y el arreglo real (PR #269) puso el os.environ.get en una
-    # CONTINUACION -- habria seguido reportando ABIERTA sobre una brecha ya
-    # cerrada. Un falso negativo en un medidor de estado es peor que no tenerlo.
-    sentencia = lineas[i]
-    while sentencia.count("(") > sentencia.count(")") and i + 1 < len(lineas):
-        i += 1
-        sentencia += lineas[i]
-    return "environ" not in sentencia and "getenv" not in sentencia
+    del texto_app  # la sonda ya no lee el fuente; ver docstring
+    resolver = resolver or _ruta_de_leads
+    destino = "/tmp/kern-sonda-l1"
+    return Path(resolver(destino)) != Path(destino)
+
+
+def _ruta_de_leads(destino: str) -> str:
+    """Donde cae el ledger de leads cuando el entorno pide `destino`."""
+    import os
+
+    anterior = os.environ.get("LINCHPIN_LEADS_DIR")
+    try:
+        os.environ["LINCHPIN_LEADS_DIR"] = destino
+        return resolve_state_path("leads")
+    finally:
+        if anterior is None:
+            os.environ.pop("LINCHPIN_LEADS_DIR", None)
+        else:
+            os.environ["LINCHPIN_LEADS_DIR"] = anterior
 
 
 #: Los tres webhooks que Shopify EXIGE a toda app del App Store. Se nombran
@@ -191,9 +212,17 @@ def test_la_frontera_no_esta_declarada_como_brecha():
 
 
 def test_la_sonda_del_ledger_muerde():
-    assert l1_abierta('LEADS_DIR = _REPO_ROOT / "webapp" / "_leads"')
-    assert not l1_abierta('LEADS_DIR = Path(os.environ.get("KERN_LEADS_DIR", _DEFECTO))')
-    assert not l1_abierta('LEADS_DIR = Path(os.getenv("KERN_LEADS_DIR", _DEFECTO))')
+    """Un medidor solo acredita si su salida cambia entre dos insumos.
+
+    Con la sonda ya funcional el insumo no es texto sino el comportamiento: una
+    ruta que ignora el entorno tiene que salir ABIERTA, y una que lo sigue,
+    CERRADA. Sin esta contraprueba, un `l1_abierta` que devolviera siempre False
+    dejaria pasar la regresion que la brecha existe para vigilar.
+    """
+    assert l1_abierta("", resolver=lambda _destino: "/ruta/fija/que/ignora/el/entorno")
+    assert not l1_abierta("", resolver=lambda destino: destino)
+    # Y contra el codigo real, que es lo que la tabla del documento afirma.
+    assert not l1_abierta("")
 
 
 def test_la_sonda_del_app_store_muerde():
