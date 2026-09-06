@@ -13,12 +13,14 @@ from typing import Any
 
 from src.connectors import (
     COVERAGE_MEASURED,
+    WRITE_NONE,
     FieldCoverage,
     InventoryLevel,
     Order,
     OrderLine,
     Product,
     ServiceCoverage,
+    WriteSurface,
 )
 
 
@@ -107,5 +109,14 @@ SERVICE_COVERAGE = ServiceCoverage(
         COVERAGE_MEASURED,
         "GET /admin/orders -> line_items[].delivered_date",
         "the date the store says the line reached the customer",
+    ),
+)
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_NONE,
+    means=(
+        'solo lectura: adaptador generico sobre una API REST de tienda; el lado de escritura de un backend nuevo se declara en su propio modulo, no aca.'
     ),
 )

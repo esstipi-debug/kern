@@ -56,6 +56,7 @@ from nosilo_core import writeback
 from src.connectors import (
     COVERAGE_DERIVED,
     COVERAGE_MEASURED,
+    WRITE_APPROVAL_GATED,
     FieldCoverage,
     InventoryLevel,
     Order,
@@ -63,6 +64,7 @@ from src.connectors import (
     Product,
     ScheduledReceipt,
     ServiceCoverage,
+    WriteSurface,
 )
 from src.supplier_scorecard import LEAD_TIME_MEASURED
 
@@ -1635,5 +1637,18 @@ SERVICE_COVERAGE = ServiceCoverage(
         "la fecha del ULTIMO despacho que sirvio la linea. Es DESPACHO, no llegada: Odoo "
         "no registra la recepcion del cliente, asi que este OTIF mide salir a tiempo del "
         "deposito y no llegar a tiempo",
+    ),
+)
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_APPROVAL_GATED,
+    objects=(
+        'stock.warehouse.orderpoint.product_min_qty',
+        'purchase.order (estado borrador, con sus purchase.order.line)',
+    ),
+    means=(
+        'los reorder points se escriben con aprobacion firmada, idempotencia y rollback (reversibles); las ordenes de compra quedan EN BORRADOR y las confirma un comprador en Odoo (irreversibles: aprobacion con nombre obligatoria). Cada escritura deja fila en el ledger.'
     ),
 )

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from nosilo_core import writeback
 
+from src.connectors import WRITE_APPROVAL_GATED, WriteSurface
 from src.connectors.odoo import InMemoryOdoo, OdooError, OdooRPC, demo_odoo  # noqa: F401  (re-exported)
 
 _M_PRODUCT = "product.product"
@@ -107,3 +108,15 @@ class OdooPriceStore:
             if pid is None:
                 raise OdooError(f"cannot restore: SKU {entity_id!r} no longer exists in Odoo")
             self._rpc.execute_kw(_M_PRODUCT, "write", [[pid], {"list_price": float(original)}])
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_APPROVAL_GATED,
+    objects=(
+        'product.template.list_price',
+    ),
+    means=(
+        'cambio de precio con dry-run, aprobacion firmada y rollback; lo consume el playbook de repricing, que ademas exige >=2 citas del grafo antes de escribir (gate de precios).'
+    ),
+)
