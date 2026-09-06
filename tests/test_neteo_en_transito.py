@@ -348,3 +348,70 @@ def test_odoo_el_mapa_enchufa_directo_en_el_plan_de_reposicion():
     conn = plan_replenishment(_Fuente(20.0), cover_periods=8.0, on_order_by_sku=mapa)
     assert conn.lines[0].restock_qty == pytest.approx(
         max(0.0, sin.lines[0].restock_qty - 35.0))
+
+
+# -- el job de Odoo netea solo, o dice por que no --------------------------------
+
+
+def _reporte_con(monkeypatch, lector):
+    from jobs import odoo_job
+    from src.connectors.odoo import OdooConnector
+    monkeypatch.setattr(OdooConnector, "open_purchase_qty_by_sku", lector)
+    return odoo_job.run(odoo_job.prepare(None, {}), cover_periods=8.0)
+
+
+def test_el_job_de_odoo_descuenta_lo_que_viene_en_camino(monkeypatch):
+    """La ruta del job era la que faltaba: el conector ya sabia leer las OC abiertas
+    y el plan ya sabia restarlas, pero nadie los presentaba. Con un SKU en camino la
+    cantidad baja exactamente eso, y el reporte lo dice en palabras."""
+    from jobs import odoo_job
+    from src.connectors.odoo import OdooOpenPurchases
+
+    base = odoo_job.run(odoo_job.prepare(None, {}), cover_periods=8.0)
+    corto = max(base.restock, key=base.restock.get)
+    q_base = base.restock[corto]
+    en_camino = min(5.0, q_base / 2)
+
+    reporte = _reporte_con(
+        monkeypatch,
+        lambda self, **kw: OdooOpenPurchases({corto: en_camino}, {"uom_distinta": 0}, False),
+    )
+    assert reporte.restock[corto] == pytest.approx(q_base - en_camino, abs=0.11)
+    assert reporte.on_order_by_sku == {corto: en_camino}
+    assert "descontado" in reporte.netting_note
+    linea = next(ln for ln in reporte.lines if ln.sku == corto)
+    assert linea.on_order == en_camino
+    assert linea.position == pytest.approx(linea.on_hand + en_camino)
+
+
+def test_el_job_de_odoo_dice_que_no_pudo_netear_y_no_finge_un_cero(monkeypatch):
+    """Sin modulo de Compras el conector levanta; el job NO convierte eso en un mapa
+    vacio: ``on_order`` queda en None en cada linea y el deck lo dice arriba."""
+    from jobs import odoo_job
+    from src.connectors.odoo import OdooError
+
+    def _levanta(self, **kw):
+        raise OdooError("sin modulo de Compras")
+
+    reporte = _reporte_con(monkeypatch, _levanta)
+    assert reporte.on_order_by_sku is None
+    assert all(ln.on_order is None for ln in reporte.lines)
+    assert "no se desconto" in reporte.netting_note
+    deck = odoo_job.build_deck(reporte)
+    titulos = [f.title for f in deck.findings]
+    assert any("NO descuentan" in t for t in titulos)
+
+
+def test_el_csv_del_job_deja_en_blanco_lo_que_no_midio(monkeypatch, tmp_path):
+    from jobs import odoo_job
+    from src.connectors.odoo import OdooError
+
+    def _levanta(self, **kw):
+        raise OdooError("sin modulo de Compras")
+
+    reporte = _reporte_con(monkeypatch, _levanta)
+    ruta = odoo_job.write_operational(reporte, tmp_path)["csv"]
+    contenido = ruta.read_text(encoding="utf-8").splitlines()
+    assert "on_order" in contenido[0] and "position" in contenido[0]
+    primera = dict(zip(contenido[0].split(","), contenido[1].split(",")))
+    assert primera["on_order"] == ""

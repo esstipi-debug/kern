@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from jobs.odoo_job import read_on_order  # noqa: E402
 from src.connectors.odoo import OdooConnector, OdooRPC, demo_odoo  # noqa: E402
 from src.connectors.replenish import plan_replenishment  # noqa: E402
 
@@ -66,7 +67,14 @@ def main() -> None:
     print(f"  products : {', '.join(p.sku for p in products)}")
     print(f"  orders   : {len(connector.orders())} confirmed sales order(s)")
 
-    plan = plan_replenishment(connector, cover_periods=args.cover, store=connector)
+    # Contra la POSICION (stock + lo que ya viene), no contra el estante: sin esto
+    # la corrida volvia a comprar lo que ya estaba pedido. Si no se puede leer, se
+    # dice y las cantidades salen sin descontar (nunca "descontado: cero").
+    on_order, netting_note = read_on_order(connector)
+    print(f"  En camino: {netting_note}")
+    plan = plan_replenishment(
+        connector, cover_periods=args.cover, store=connector, on_order_by_sku=on_order
+    )
 
     print("\n  SKU      on-hand  lead(d)  restock-to-target")
     restock = plan.restock
