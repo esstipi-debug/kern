@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Added
+- **ISO operations/supply-chain catalog (53 norms)** committed at
+  `knowledge/iso/catalogo.json`, read by `src/iso_catalog.py`
+  (`evidencia_nativa`, `buscar_norma`, `de_modulo`, `detectar`,
+  `evidencia_de_orden`). HTTP: `GET /api/iso`, `POST /api/detectar` (body =
+  `contratoPost` from `tests/fixtures/iso/detectar.ejemplo.json`),
+  `GET /api/iso/orden`. MONITOR-style panel at `GET /iso` lists native floor
+  evidence for 9001 / 50001 / 14067 (process stretch) when the order has
+  cycle, scrap and kg, and names the 14083 gap (t·km from the 3PL). Claims
+  allowed: "KERN tiene evidencia de piso…"; never "cumple ISO".
+
 - **`procedure_audit` + `procedure_draft` agent tools (`jobs/procedure_audit_job.py`,
   `jobs/procedure_draft_job.py`, `src/procedures/`)** -- registry now 53 tools.
   `procedure_audit` audits a client's exported procedure register for overdue

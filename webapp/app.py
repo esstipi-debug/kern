@@ -102,6 +102,7 @@ from webapp.blog_page import render_blog_article_html, render_blog_index_html  #
 from webapp.blog_seo import build_llms_txt, build_robots_txt, build_sitemap_xml  # noqa: E402
 from webapp.decisions import router as decisions_router  # noqa: E402
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
+from webapp.iso import router as iso_router  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
 from webapp.mcp_server import build_mcp_server  # noqa: E402
 from webapp.offers import OFFERS, get_offer  # noqa: E402
@@ -365,6 +366,11 @@ app.include_router(decisions_router)
 # src/commercial_pricing.py. Stateless, no auth required (same public-read
 # posture as GET /paquetes; nothing here is sensitive or mutating).
 app.include_router(pricing_quote_router)
+
+# ISO operations/supply-chain catalog (knowledge/iso/catalogo.json): GET /api/iso,
+# POST /api/detectar, GET /api/iso/orden, GET /iso. Read-only floor evidence —
+# never a conformity ruling. Stdlib JSON + FastAPI only (prod-boot safe).
+app.include_router(iso_router)
 
 # Read-only MCP server (Phase A go-to-market: sell analysis-only access to other
 # AI agents). Shares this process's orchestrator (avoids loading the knowledge
