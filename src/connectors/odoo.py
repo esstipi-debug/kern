@@ -46,6 +46,7 @@ import math
 import time
 import xmlrpc.client
 from dataclasses import dataclass
+from dataclasses import field as _dc_field
 from dataclasses import replace as _dc_replace
 from datetime import datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
@@ -64,6 +65,7 @@ from src.connectors import (
     ScheduledReceipt,
     ServiceCoverage,
 )
+from src.constraints import apply_order_rules
 from src.supplier_scorecard import LEAD_TIME_MEASURED
 
 # Odoo ORM methods that only read: safe to retry on a transient transport error,
@@ -412,6 +414,9 @@ class DraftPOResult:
 
     purchase_orders: dict[int, tuple[str, ...]]   # new PO id -> the SKUs on it
     unsourced: tuple[str, ...]                     # SKUs with no supplier in Odoo (skipped, not dropped)
+    #: sku -> (lo que pedia el plan, lo que se pidio al proveedor) cuando el minimo
+    #: de pedido del proveedor (product.supplierinfo.min_qty) obligo a subir.
+    raised_to_min: dict[str, tuple[float, float]] = _dc_field(default_factory=dict)
 
     @property
     def n_orders(self) -> int:
@@ -468,6 +473,14 @@ class OdooConnector:
         # vienen en otra unidad en vez de sumarlas como si fueran la misma.
         self._uom_by_product: dict[int, int | None] = {}
         self._field_cache: dict[tuple[str, str], bool] = {}
+        # sku -> minimo de pedido del proveedor primario (product.supplierinfo.min_qty).
+        # Se llena en primary_supplier_by_sku(); lo usa el borrador de PO para no
+        # pedirle 37 unidades a un proveedor que vende de a 100.
+        self._min_qty_by_sku: dict[str, float] = {}
+        #: sku -> (pedido por el plan, pedido al proveedor) de la ultima puesta en
+        #: escena de PO, solo para los SKU que subieron al minimo. Lo lee el
+        #: entregable para decirlo; el numero del plan no se toca.
+        self.last_moq_adjustments: dict[str, tuple[float, float]] = {}
         self._rules = _ReorderRuleStore(rpc, self._id_by_sku, ledger=ledger)
         self._po_store = _DraftPoStore(rpc, self._id_by_sku, ledger=ledger)
 
@@ -1132,8 +1145,13 @@ class OdooConnector:
     # -- write side (draft purchase orders) -----------------------------------
 
     def primary_supplier_by_sku(self, skus: list[str]) -> dict[str, int]:
-        """Map each SKU to its primary supplier's partner id (lowest-sequence product.supplierinfo)."""
-        self._ensure_catalog()
+        """Map each SKU to its primary supplier's partner id (lowest-sequence product.supplierinfo).
+
+        De paso guarda el minimo de pedido de ese proveedor (``min_qty``) en
+        ``_min_qty_by_sku``: es la regla del proveedor que la PO borrador tiene que
+        respetar, y vive en la misma fila que el proveedor, asi que se lee una vez.
+        """
+        self._ensure_catalog(skus)
         out: dict[str, int] = {}
         for sku in skus:
             pid = self._id_by_sku.get(sku)
@@ -1141,7 +1159,7 @@ class OdooConnector:
                 continue
             rows = self._rpc.execute_kw(
                 _M_SUPPLIERINFO, "search_read", [[["product_id", "=", pid]]],
-                {"fields": ["partner_id", "sequence"]},
+                {"fields": ["partner_id", "sequence", "min_qty"]},
             )
             if not rows:
                 continue
@@ -1149,6 +1167,7 @@ class OdooConnector:
             partner = _m2o_id(best.get("partner_id"))
             if partner is not None:
                 out[sku] = partner
+                self._min_qty_by_sku[sku] = float(best.get("min_qty") or 0.0)
         return out
 
     def stage_draft_purchase_orders(
@@ -1161,7 +1180,7 @@ class OdooConnector:
         the SAME restock+prices twice (e.g. a client retry) always resolves to the same
         key - a retry can idempotent-skip instead of raising a duplicate RFQ.
         """
-        self._ensure_catalog()
+        self._ensure_catalog(list(restock))
         prices = prices or {}
         suppliers = self.primary_supplier_by_sku(list(restock))
         by_supplier: dict[int, list[str]] = {}
@@ -1173,12 +1192,25 @@ class OdooConnector:
             else:
                 by_supplier.setdefault(partner, []).append(sku)
 
+        # La regla del proveedor manda sobre el numero del plan: 37 unidades a un
+        # proveedor con minimo 100 es una PO que nadie va a aceptar. Se sube al
+        # minimo y se deja anotado en last_moq_adjustments para que el entregable
+        # lo diga; el plan sigue diciendo 37, que es lo que la demanda pide.
+        self.last_moq_adjustments = {}
+        ordered: dict[str, float] = {}
+        for sku in restock:
+            asked = float(restock[sku])
+            qty = apply_order_rules(asked, minimum_order_quantity=self._min_qty_by_sku.get(sku, 0.0))
+            ordered[sku] = qty
+            if qty > asked:
+                self.last_moq_adjustments[sku] = (asked, qty)
+
         changes = tuple(
             writeback.Change(
                 f"supplier:{partner}",
                 "draft_po_lines",
                 None,  # nothing existed before (a create, not an edit) - matches stage()'s convention
-                tuple(sorted((sku, float(restock[sku]), float(prices.get(sku, 0.0))) for sku in skus)),
+                tuple(sorted((sku, ordered[sku], float(prices.get(sku, 0.0))) for sku in skus)),
             )
             for partner, skus in sorted(by_supplier.items())
         )
@@ -1261,12 +1293,25 @@ class OdooConnector:
             po_id = created_by_entity.get(c.entity_id)
             if po_id is not None:
                 purchase_orders[po_id] = tuple(sku for sku, _qty, _price in c.after)
-        return DraftPOResult(purchase_orders=purchase_orders, unsourced=unsourced)
+        return DraftPOResult(
+            purchase_orders=purchase_orders,
+            unsourced=unsourced,
+            raised_to_min=dict(self.last_moq_adjustments),
+        )
 
     # -- internals ------------------------------------------------------------
 
-    def _ensure_catalog(self) -> None:
-        if not self._id_by_sku:
+    def _ensure_catalog(self, skus: list[str] | None = None) -> None:
+        """Carga el catalogo si esta vacio, y lo REFRESCA si le piden un SKU que no conoce.
+
+        Antes solo cargaba cuando el mapa estaba vacio, asi que un conector de vida
+        larga (el de un job programado) nunca veia un producto dado de alta despues
+        de su primer uso. Lo peor era como lo reportaba: el SKU caia en ``unsourced``
+        ("sin proveedor en Odoo"), el cliente iba a darle un proveedor que ya tenia,
+        y volvia a fallar igual. Un refresco por SKU desconocido cuesta una lectura
+        y evita mandar a un humano a arreglar lo que no estaba roto.
+        """
+        if not self._id_by_sku or (skus and any(sku not in self._id_by_sku for sku in skus)):
             self.list_products()
 
     def _sku(self, product_id: int) -> str | None:
