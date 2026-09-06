@@ -61,6 +61,43 @@ _LOST_VALUE_BASIS = {
 _UNRECOGNIZED = "provenance {0!r}, which this deck carries no wording for"
 
 
+def _reading_sources(report: JobReport) -> tuple[DataSource, ...]:
+    """How Kern read the client's file, as source-map rows. Empty when untracked.
+
+    Findings are problems of the client's business; this is where a number came
+    from. Same placement as the delivery-date caveat: the Excel the client opens,
+    not only the operator summary.
+    """
+    quality = report.intake_quality
+    if quality is None or quality.reading is None:
+        return ()
+    reading = quality.reading
+    rows: list[DataSource] = [
+        DataSource("How Kern read the file", reading.location_text(), "per run"),
+        DataSource("Column mapping", reading.mapping_text(), "per run"),
+    ]
+    if reading.noteworthy_hygiene():
+        rows.append(DataSource(
+            "What was taken off the spreadsheet", reading.hygiene_text(), "per run",
+        ))
+    if quality.n_dropped:
+        rows.append(DataSource(
+            "Rows dropped after mapping",
+            f"{quality.n_dropped} of {quality.n_raw} source row(s) "
+            f"({quality.dropped_fraction:.0%}): "
+            f"{quality.n_dropped_bad_date} bad date, "
+            f"{quality.n_dropped_bad_quantity} unreadable quantity, "
+            f"{quality.n_dropped_negative_quantity} negative quantity",
+            "per run",
+        ))
+    if quality.synthesized:
+        filled = "; ".join(f"{name}: {n} cell(s)" for name, n in quality.synthesized)
+        rows.append(DataSource(
+            "Columns filled from defaults", filled, "per run",
+        ))
+    return tuple(rows)
+
+
 def _origin_text(provenance: str) -> str:
     """Where this number came from, in a client's words. Never raises."""
     return _ORIGIN_TEXT.get(provenance, _UNRECOGNIZED.format(provenance))
@@ -207,6 +244,8 @@ def build(
         data_sources += (
             DataSource("Where the service columns came from", report.service_note, "per run"),
         )
+
+    data_sources += _reading_sources(report)
 
     recs: list[str] = []
     if report.n_at_risk:

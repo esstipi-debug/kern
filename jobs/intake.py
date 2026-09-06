@@ -235,6 +235,12 @@ class IntakeQuality:
     # wholesale, and counting rows alone reports that as perfect quality.
     synthesized: tuple[tuple[str, int], ...] = ()
     n_canonical_rows: int = 0
+    # What Kern took the file to MEAN (mapping, sheet, hygiene). Distinct from
+    # the drop counts above: those are how much survived. This is the decisions
+    # that happened before a row could even be counted. None on the untracked
+    # ``normalize()`` path and on hand-built records; ``normalize_tracked``
+    # always fills it.
+    reading: IntakeReading | None = None
 
     @property
     def n_dropped(self) -> int:
@@ -252,6 +258,99 @@ class IntakeQuality:
         return tuple(
             name for name, count in self.synthesized if count >= self.n_canonical_rows
         )
+
+
+@dataclass(frozen=True)
+class IntakeReading:
+    """What Kern took the client's file to MEAN.
+
+    Distinct from :class:`IntakeQuality`: quality is how much survived
+    cleaning; this is the mapping, the sheet, and the hygiene -- the
+    decisions that happened before a row could even be counted as survived
+    or dropped. It exists so the deliverable can tell the client how their
+    own file was read, the same reason :class:`excel_hygiene.HygieneReport`
+    is not allowed to be silent.
+
+    English on purpose: this text lands in the inventory deck, which is
+    English by default. The Spanish demo workbook writes its own labels
+    from the same fields.
+    """
+
+    mapping: tuple[tuple[str, str], ...] = ()
+    sheet: str | None = None
+    header_row: int | None = None
+    source_kind: str = "csv"
+    hygiene: excel_hygiene.HygieneReport | None = None
+
+    def mapping_text(self) -> str:
+        """``date <- 'Fecha'; product_id <- 'SKU'`` -- auditable against the file."""
+        return "; ".join(f"{canon} <- '{src}'" for canon, src in self.mapping)
+
+    def location_text(self) -> str:
+        """Where in the file the header was found, in the client's own terms.
+
+        Excel rows are 1-based here: the client opens the workbook, not pandas.
+        """
+        if self.source_kind != "excel":
+            return "CSV, first row as header"
+        sheet = self.sheet if self.sheet is not None else "(first sheet)"
+        excel_row = (self.header_row + 1) if self.header_row is not None else 1
+        return f"Excel sheet {sheet!s}, header on row {excel_row}"
+
+    def hygiene_text(self) -> str:
+        """What was taken off the spreadsheet, or that nothing was."""
+        h = self.hygiene
+        if h is None:
+            return "spreadsheet hygiene did not run (CSV, or no product column recognised)"
+        parts: list[str] = []
+        n_total = int(h.dropped.get("fila_de_total") or 0)
+        n_blank = int(h.dropped.get("fila_vacia") or 0)
+        if n_total:
+            parts.append(f"{n_total} total/summary row(s) excluded")
+        if n_blank:
+            parts.append(f"{n_blank} blank separator row(s) excluded")
+        if h.dropped_columns:
+            parts.append(
+                f"{len(h.dropped_columns)} empty unnamed column(s) dropped"
+            )
+        n_filled = sum(h.filled.values()) if h.filled else 0
+        if n_filled:
+            cols = ", ".join(f"'{c}'" for c in h.filled)
+            parts.append(
+                f"{n_filled} cell(s) filled from merged cells ({cols})"
+            )
+        if not parts:
+            return (
+                f"no rows or columns removed; {h.rows_in} row(s) in the sheet after the header"
+            )
+        return "; ".join(parts)
+
+    def noteworthy_hygiene(self) -> bool:
+        """Whether the deliverable should spend a row on hygiene.
+
+        A silent cleaner is the defect this report exists to prevent, but a
+        row that always says "nothing happened" is how the map of sources
+        stops being read. Merged-cell fills count even when ``HygieneReport.clean``
+        is True -- that flag ignores fills.
+        """
+        h = self.hygiene
+        if h is None:
+            return False
+        return (not h.clean) or bool(h.filled)
+
+
+def reading_from(raw: pd.DataFrame, mapping: ColumnMapping) -> IntakeReading:
+    """Build the reading off the frame ``load_table`` returned and the mapping it produced."""
+    kind = "excel" if SHEET_ATTR in raw.attrs else "csv"
+    sheet = raw.attrs.get(SHEET_ATTR)
+    header = raw.attrs.get(HEADER_ATTR)
+    return IntakeReading(
+        mapping=tuple(sorted(mapping.mapping.items())),
+        sheet=None if sheet is None else str(sheet),
+        header_row=None if header is None else int(header),
+        source_kind=kind,
+        hygiene=raw.attrs.get(HYGIENE_ATTR),
+    )
 
 
 @dataclass(frozen=True)
@@ -441,6 +540,12 @@ def detect_sheet_and_header(
 #: Donde ``load_table`` deja el informe de higiene de un Excel, para que el
 #: entregable pueda decirle al cliente que le sacaron a su planilla.
 HYGIENE_ATTR = "excel_hygiene"
+#: Hoja y fila de encabezado (0-based) que gano ``detect_sheet_and_header``.
+#: Viajan en ``attrs`` por el mismo motivo que la higiene: ``load_table`` no
+#: puede cambiar de firma, y el entregable tiene que poder decir "lei la hoja
+#: X, fila Y" en vez de dejar que el cliente adivine.
+SHEET_ATTR = "excel_sheet"
+HEADER_ATTR = "excel_header_row"
 
 
 def _key_column(frame: pd.DataFrame, aliases: AliasTable | None) -> str | None:
@@ -467,6 +572,10 @@ def load_table(path: str | Path, *, aliases: AliasTable | None = None) -> pd.Dat
 
     sheet, header = detect_sheet_and_header(p, aliases=aliases)
     crudo = pd.read_excel(p, sheet_name=sheet, header=header)
+    # Hoja y fila viajan siempre, incluso cuando no hay columna de producto:
+    # el entregable tiene que poder decir donde miro, no solo que no limpio.
+    crudo.attrs[SHEET_ATTR] = sheet
+    crudo.attrs[HEADER_ATTR] = header
     clave = _key_column(crudo, aliases)
     if clave is None:
         # Sin una columna de producto reconocible no hay donde buscar la etiqueta
@@ -483,6 +592,8 @@ def load_table(path: str | Path, *, aliases: AliasTable | None = None) -> pd.Dat
     # encuentra quien tiene donde mostrarlo -- que es lo que impide que esto sea
     # una limpieza silenciosa.
     frame.attrs[HYGIENE_ATTR] = limpio.report
+    frame.attrs[SHEET_ATTR] = sheet
+    frame.attrs[HEADER_ATTR] = header
     return frame
 
 
@@ -614,9 +725,10 @@ def normalize_tracked(
     """Same cleaning + aggregation as ``normalize``, plus the ``IntakeQuality``
     signal (rows dropped, and why) a caller needs to decide whether the result
     is trustworthy enough to hand back with unqualified confidence."""
-    return _normalize_core(
+    frame, quality = _normalize_core(
         df, mapping, period=period, default_lead_days=default_lead_days, default_unit_cost=default_unit_cost
     )
+    return frame, replace(quality, reading=reading_from(df, mapping))
 
 
 def prepare(
