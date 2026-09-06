@@ -153,3 +153,34 @@ def test_la_po_borrador_sigue_exigiendo_approved_by(monkeypatch, tmp_path, argv)
     monkeypatch.setattr(sys, "argv", ["run_odoo.py", *argv])
     with pytest.raises(SystemExit):
         run_odoo.main()
+
+
+# -- unidad de la linea no verificable a nivel de esquema ------------------------
+
+
+def test_sin_product_uom_en_la_linea_no_se_suma_nada_y_se_dice():
+    """Misma doctrina que la linea en otra unidad: en la duda se descarta. Si la base
+    no expone product_uom en purchase.order.line, ninguna linea entra al mapa (sub-
+    estimar compra de mas; sobre-estimar deja sin stock) y el conteo llega en palabras
+    al reporte del job."""
+    from jobs.odoo_job import read_on_order
+
+    rpc = _odoo_con_proveedor()
+    rpc.records("purchase.order.line")[600] = {
+        "product_id": [1, "Widget"], "product_qty": 50.0, "qty_received": 0.0, "state": "purchase",
+    }
+    con = OdooConnector(rpc)
+
+    abiertas = con.open_purchase_qty_by_sku()
+    assert abiertas.by_sku == {}
+    assert abiertas.dropped["uom_no_verificable"] == 1
+    assert con.scheduled_receipts() == []
+
+    mapa, nota = read_on_order(con)
+    assert mapa == {}
+    assert "product_uom" in nota and "sub-estimado" in nota
+
+
+def test_sin_approved_by_no_se_crea_ningun_ledger_en_disco(monkeypatch, tmp_path):
+    _correr(monkeypatch, tmp_path, [])
+    assert not (tmp_path / "odoo_writeback.sqlite").exists()

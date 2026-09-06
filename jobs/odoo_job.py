@@ -65,6 +65,12 @@ def read_on_order(connector: OdooConnector) -> tuple[dict[str, float] | None, st
     descartadas = abiertas.dropped.get("uom_distinta", 0)
     if descartadas:
         partes.append(f"{descartadas} linea(s) de OC en otra unidad de medida quedaron sin contar")
+    no_verificables = abiertas.dropped.get("uom_no_verificable", 0)
+    if no_verificables:
+        partes.append(
+            f"{no_verificables} linea(s) de OC quedaron sin contar porque esta base no expone "
+            "la unidad de la linea (product_uom): el en-camino esta sub-estimado"
+        )
     if abiertas.truncated:
         partes.append("lectura truncada: el en-camino esta sub-estimado y el plan compra de mas")
     return abiertas.by_sku, "; ".join(partes)

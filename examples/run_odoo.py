@@ -66,11 +66,16 @@ def main() -> None:
     # Every write leaves a row in a ledger ON DISK (KERN_DATA_DIR, else <repo>/data):
     # who approved, when, and the idempotency key. Process memory would forget it on
     # the next run, and "who touched the client's Odoo" is the first question a
-    # partner asks when something looks off.
-    root = data_root()
-    root.mkdir(parents=True, exist_ok=True)
-    ledger_path = root / "odoo_writeback.sqlite"
-    connector = OdooConnector(_rpc(), ledger=SqliteAuditLedger(ledger_path))
+    # partner asks when something looks off. Without --approved-by nothing can be
+    # written, so no ledger is opened and a dry run leaves no file behind.
+    ledger_path: Path | None = None
+    if args.approved_by:
+        root = data_root()
+        root.mkdir(parents=True, exist_ok=True)
+        ledger_path = root / "odoo_writeback.sqlite"
+    connector = OdooConnector(
+        _rpc(), ledger=SqliteAuditLedger(ledger_path) if ledger_path else None
+    )
 
     products = connector.list_products()
     on_hand = {lvl.sku: lvl.available for lvl in connector.inventory_levels()}

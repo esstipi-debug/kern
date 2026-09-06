@@ -32,9 +32,12 @@ from src.connectors import ReceiptsSource, ScheduledReceipt
 from src.connectors.odoo import InMemoryOdoo, OdooConnector
 
 _PRODUCTS = {
-    1: {"default_code": "SKU-1", "name": "Widget", "list_price": 20.0, "standard_price": 12.0},
-    2: {"default_code": "SKU-2", "name": "Gadget", "list_price": 50.0, "standard_price": 30.0},
+    1: {"default_code": "SKU-1", "name": "Widget", "list_price": 20.0, "standard_price": 12.0,
+        "uom_id": [1, "Units"]},
+    2: {"default_code": "SKU-2", "name": "Gadget", "list_price": 50.0, "standard_price": 30.0,
+        "uom_id": [1, "Units"]},
 }
+_UNITS = [1, "Units"]
 
 
 def _odoo_con_ocs(**extra) -> InMemoryOdoo:
@@ -76,17 +79,17 @@ def _odoo_con_ocs(**extra) -> InMemoryOdoo:
             # 40 pedidas, 15 ya recibidas -> quedan 25 en camino
             300: {"product_id": [1, "Widget"], "product_qty": 40.0, "qty_received": 15.0,
                   "date_planned": "2026-01-12 00:00:00", "order_id": [200, "PO-001"],
-                  "state": "purchase"},
+                  "state": "purchase", "product_uom": _UNITS},
             # completamente recibida: ya no viene nada
             301: {"product_id": [2, "Gadget"], "product_qty": 10.0, "qty_received": 10.0,
                   "date_planned": "2026-01-12 00:00:00", "order_id": [200, "PO-001"],
-                  "state": "purchase"},
+                  "state": "purchase", "product_uom": _UNITS},
             302: {"product_id": [1, "Widget"], "product_qty": 30.0, "qty_received": 0.0,
                   "date_planned": "2026-01-22 00:00:00", "order_id": [201, "PO-002"],
-                  "state": "purchase"},
+                  "state": "purchase", "product_uom": _UNITS},
             303: {"product_id": [1, "Widget"], "product_qty": 99.0, "qty_received": 0.0,
                   "date_planned": "2026-01-15 00:00:00", "order_id": [202, "PO-BORRADOR"],
-                  "state": "draft"},
+                  "state": "draft", "product_uom": _UNITS},
         },
         "stock.location": {},
         "stock.quant": {},
@@ -342,7 +345,7 @@ def test_una_orden_bloqueada_con_pendiente_sigue_estando_en_camino():
     rpc.records("purchase.order.line")[304] = {
         "product_id": [2, "Gadget"], "product_qty": 12.0, "qty_received": 2.0,
         "date_planned": "2026-01-20 00:00:00", "order_id": [203, "PO-BLOQUEADA"],
-        "state": "done",
+        "state": "done", "product_uom": _UNITS,
     }
     por_sku = _por_sku(OdooConnector(rpc).scheduled_receipts())
     assert [r.quantity for r in por_sku["SKU-2"]] == [10.0]

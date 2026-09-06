@@ -112,10 +112,12 @@ _DELIVERY_TYPE_CODES = ("outgoing", "dropship")
 _MOVE_DONE = "done"
 _PO_REALIZED_STATES = ("purchase", "done")
 
-#: El unico estado en que una OC es una recepcion PROGRAMADA. `done` no: esa ya
-#: se recibio y se cerro. `draft`/`sent`/`to approve` tampoco: nadie las
-#: confirmo, y contarlas es prometerle a un cliente stock que no se compro.
-_PO_CONFIRMED = "purchase"
+#: Lo que cuenta como OC ABIERTA (lo comprado y no recibido) es _PO_OPEN_STATES:
+#: `purchase` y `done`. `done` SI: con "Bloquear ordenes confirmadas" activado,
+#: Odoo pasa la OC a `done` apenas se confirma, sin relacion con si ya llego; lo
+#: que ya se recibio lo descarta el pendiente <= 0, no el estado.
+#: `draft`/`sent`/`to approve` no: nadie las confirmo, y contarlas es prometerle
+#: a un cliente stock que no se compro.
 
 #: `product.supplierinfo.delay` viene con default=1 en Odoo. Un 1 no es una
 #: promesa, es el campo sin configurar -- y `relative_gap` solo se protege del
@@ -416,6 +418,8 @@ class DraftPOResult:
     unsourced: tuple[str, ...]                     # SKUs with no supplier in Odoo (skipped, not dropped)
     #: sku -> (lo que pedia el plan, lo que se pidio al proveedor) cuando el minimo
     #: de pedido del proveedor (product.supplierinfo.min_qty) obligo a subir.
+    #: Solo el minimo: el multiplo de caja no se lee de Odoo (no es campo estandar
+    #: de supplierinfo); esa correccion la hace el comprador al confirmar.
     raised_to_min: dict[str, tuple[float, float]] = _dc_field(default_factory=dict)
 
     @property
@@ -609,8 +613,9 @@ class OdooConnector:
           con 480 recibidas aporta 20, no 500.
         * Una linea en otra unidad que la del producto se DESCARTA y se cuenta en
           ``dropped['uom_distinta']`` en vez de sumar cajas como unidades. Si la
-          base no expone ``product_uom`` en la linea no hay con que comparar: la
-          regla no aplica y se declara en ``dropped['uom_no_verificable']``.
+          base no expone ``product_uom`` en la linea no hay con que comparar y
+          se aplica la misma doctrina (en la duda se descarta): las lineas se
+          cuentan en ``dropped['uom_no_verificable']`` y no suman.
         * Se filtra por estado de la LINEA, no por ``date_planned``: filtrar por la
           promesa dejaria fuera justo las OC atrasadas, que son las que mas importan.
         """
@@ -666,12 +671,16 @@ class OdooConnector:
             if sku is None:
                 dropped["sin_sku"] += 1
                 continue
-            if uom_verificable:
-                if not self._uom_matches_product(pid, _m2o_id(r.get("product_uom"))):
-                    dropped["uom_distinta"] += 1
-                    continue
-            else:
+            if not uom_verificable:
+                # Misma doctrina que _uom_matches_product: en la duda se descarta.
+                # Sub-estimar el en-transito compra de mas; sobre-estimarlo deja al
+                # cliente sin stock y el numero sigue pareciendo razonable. El
+                # conteo viaja en dropped para que read_on_order lo diga en palabras.
                 dropped["uom_no_verificable"] += 1
+                continue
+            if not self._uom_matches_product(pid, _m2o_id(r.get("product_uom"))):
+                dropped["uom_distinta"] += 1
+                continue
             oid = _m2o_id(r.get("order_id"))
             orden, ordenada, proveedor = cabecera.get(oid if oid is not None else -1, ("", None, None))
             lines.append(
@@ -1180,8 +1189,9 @@ class OdooConnector:
         the SAME restock+prices twice (e.g. a client retry) always resolves to the same
         key - a retry can idempotent-skip instead of raising a duplicate RFQ.
         """
-        self._ensure_catalog(list(restock))
         prices = prices or {}
+        # primary_supplier_by_sku refresca el catalogo si le piden un SKU que no
+        # conoce; llamarlo aca tambien releia el catalogo entero dos veces.
         suppliers = self.primary_supplier_by_sku(list(restock))
         by_supplier: dict[int, list[str]] = {}
         unsourced: list[str] = []
@@ -1196,6 +1206,10 @@ class OdooConnector:
         # proveedor con minimo 100 es una PO que nadie va a aceptar. Se sube al
         # minimo y se deja anotado en last_moq_adjustments para que el entregable
         # lo diga; el plan sigue diciendo 37, que es lo que la demanda pide.
+        # Solo el MINIMO: el multiplo de caja/pack no se lee de Odoo porque
+        # product.supplierinfo no lo tiene como campo estandar (vive en
+        # product.packaging, que no todos usan). Si un proveedor vende por cajas,
+        # hoy el comprador lo redondea en Odoo al confirmar la PO borrador.
         self.last_moq_adjustments = {}
         ordered: dict[str, float] = {}
         for sku in restock:
