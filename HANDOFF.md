@@ -22,6 +22,194 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-08-28 (cierre de ventana) — prod DESPLEGADA en v44, MCP listado, CI recortada; **lo que sigue es el piloto, no el motor**
+
+Leer esta entrada antes que la de abajo: aquella se escribio con el fix sin mergear y ya quedo
+superada.
+
+### Lo cerrado, todo verificado y no asumido
+- **Producción en v44**, tras 25 dias congelada en la imagen del 3-ago. `fly releases` v44
+  complete, `/api/health` 200, y **50 tools con `intake_scan` presente dentro del contenedor**
+  (`fly ssh console -C "python -c ..."`). El arranque mismo prueba que la POLICY aterrizo: con
+  `LINCHPIN_REQUIRE_SECURE` activo y politica ausente, la app no bindea el puerto.
+- **PR #300** (POLICY), **#303** (citas), **#304** (recortes de CI), **#301/#302** (ficha del
+  registro MCP). Todos mergeados.
+- **Kern listado en el registro oficial de MCP**: `io.github.esstipi-debug/kern` v2.9.0, active,
+  latest. Publicado 2026-08-28T19:35Z.
+
+### Tres trampas que costaron tiempo y conviene no repetir
+1. **La nota vieja mandaba al lugar equivocado.** Decia "configurar la POLICY en Fly". No habia
+   nada que configurar: `webapp.security.POLICY` es un global que nadie asignaba. Faltaba codigo.
+   Ante un guard que exige un valor, buscar **quien lo asigna** antes de donde configurarlo.
+2. **El deploy "exitoso" que no existio.** Un `fly deploy` corrido en PowerShell con
+   `"$NOSILO_CORE_TOKEN"` (sintaxis bash) mando el secreto **vacio**: build muerto, **ninguna
+   release creada**, y el reporte humano fue "listo, deployé". Solo `fly releases` mostro la
+   verdad. En PowerShell es `$env:NOMBRE`. Verificar siempre en la fuente, nunca por el reporte.
+3. **El token ya estaba a mano.** El build necesita `NOSILO_CORE_TOKEN`, y `gh auth token` da uno
+   con alcance `repo` que lee `esstipi-debug/nosilo-core` — verificado. El deploy final se hizo
+   con `--build-secret nosilo_token="$(gh auth token)"`. No hace falta pedirle el token a nadie.
+
+### Lo que sigue abierto
+- **La CI no arranca por facturacion**, no por el secret (ese esta puesto desde el 27-ago 16:28).
+  Ultima corrida verde real: 2026-08-27T17:56Z. Una corrida cuesta 66 job-minutos y el 27 hubo 9.
+  La mitad que falta es del operador, en `github.com/settings/billing`. **El workflow recortado de
+  #304 nunca corrio**: su primera ejecucion sera la primera corrida despues de destrabar el pago.
+- **La politica esta declarada, no aplicada.** Ninguna ruta llama a `policy_engine()`.
+  `test_the_policy_is_declared_and_not_yet_enforced` avisa el dia que aparezca la primera.
+- **La ficha del registro es vitrina, no uso.** La clave del MCP se emite a mano; quien llegue al
+  listado no puede llamarlo. Republicar exige subir `version` (2.9.0 hoy).
+- Las referencias de linea en `documentation/KERN_BRECHAS_DE_CAPACIDAD.md` quedaron corridas 13
+  lineas y ningun test las cubre.
+
+### **Lo que sigue de verdad: el piloto — AU/NZ self-serve, NO congelados-CL**
+
+> **CORRECCION del 2026-08-28, misma ventana.** La version original de esta seccion mandaba a
+> producir el peldano 0 de la escalera de congelados-CL (radiografia de TodoFrio). **Estaba mal**,
+> y el usuario lo corrigio: la decision del **2026-08-05** ya habia descartado ese vertical **por
+> nombre**. Se ejecuto una hora sobre una estrategia cancelada porque se leyo la memoria del 24-jul
+> como vigente sin buscar una posterior que la mencionara. **Regla: antes de ejecutar sobre una
+> memoria de estrategia, buscar una posterior que la nombre.** Las memorias no se invalidan solas.
+
+Kern esta **listo y no probado**. `/api/health` sirve `skus: 8`, cero usuarios externos, ningun
+dato ajeno entro nunca.
+
+**La via correcta** (decision 2026-08-05): producto = software que el cliente corre solo, beachhead
+**AU/NZ via Cin7/Unleashed**. El piloto es alguien alla que ya usa Cin7 o Unleashed haciendo
+`docker run` de una imagen prebuilt de GHCR contra sus propios datos. `pull`, nunca `build`, para
+que no necesite el token del core privado. Contrato del cliente = `KERN_DATA_DIR` + `PORT` +
+`KERN_API_KEY`.
+
+**Estado real de esa via, verificado hoy — casi nada existe:**
+- Sin imagen publicada: `ghcr.io/v2/esstipi-debug/kern/tags/list` -> 403, y no hay workflow que la
+  publique (`.github/workflows/` tiene solo `tests.yml` y `price-watch-cron.yml`).
+- La spec `docs/superpowers/specs/2026-08-05-self-hosted-image-packaging.md` que la decision cita
+  **no esta en el arbol**. Buscada por nombre y por patron.
+- **32 variables `LINCHPIN_*`** contra las 3 del contrato prometido.
+- `docs/positioning-self-serve` sigue pusheada y sin PR desde el 5-ago.
+- Lo unico desplegado es hosted single-tenant, que esa misma decision descarto como via self-serve.
+
+**El primer paso no es buscar cliente: es que exista algo que un cliente pueda correr.** Imagen,
+contrato de 3 variables, camino de onboarding. Recien despues, el canal.
+
+**Del desvio quedo material utilizable, para no rehacerlo:** la radiografia de Mariscos De La Concha
+quedo en `Music/scm/radiografia-mdlc-2026-08-28.md` con su catalogo crudo al lado. Los datos son
+correctos y reproducibles (29,2% de variantes agotadas, 26,4% sin SKU, el SKU `MAFI` compartido por
+las variantes de 0,5 y 1 kg del mismo producto); el objetivo es el equivocado, y ademas con 170
+productos es demasiado chico. Hay una tarea programada `todofrio-vigilancia` 2x/dia que conviene
+apagar salvo que congelados-CL vuelva a estar en juego.
+
+## 2026-08-28 — DESBLOQUEADO el deploy: la POLICY de acceso existe (rama `feat/policy-boot`, sin mergear)
+
+Cierra el bloqueante del 2026-08-03 (mas abajo). **Nada deployado todavia** — el
+deploy es una decision del operador y la CI no esta corriendo (ver el punto 3).
+
+### Lo que faltaba, exactamente
+`webapp.security.POLICY` es un global que se publica en `None` y **nadie en todo
+el arbol lo asignaba nunca**. No faltaba configuracion en Fly: faltaba el codigo
+que construye la politica. Reproducido en un worktree de `origin/main` con el
+entorno de produccion (`LINCHPIN_ENV=production`, `LINCHPIN_REQUIRE_SECURE=1`,
+API key, rate limit y approval secret puestos):
+
+```
+RuntimeError: LINCHPIN_REQUIRE_SECURE is set but: webapp.security.POLICY is not set
+```
+
+El mismo comando sobre la rama arranca: `boot OK`, `policy version 2026-08-28.1`,
+1 regla, 6 tipos de entidad clasificados (`sku`, `supplier`, `location`,
+`purchase_order`, `goods_receipt`, `supplier_invoice`).
+
+### Que se agrego
+- **`webapp/access_policy.py`** — una regla (el portador de la API key conserva
+  la autoridad que ya tiene, como principal de servicio) mas las clasificaciones
+  de campo de los dos packs, fusionadas con deteccion de colision en vez de
+  `update()` silencioso. Sin reglas para humanos ni agentes: `principal_from_request`
+  no deriva ninguno de los dos hoy, y una regla que no puede dispararse es config
+  que parece viva.
+- **`webapp/app.py`** — la asignacion, incondicional y **antes** de
+  `production_warnings()`. No `if ENV == production`: una asignacion que solo
+  ocurre en produccion es la asimetria exacta que dejo que este bug llegara al
+  deploy en vez de a la corrida de tests.
+- **`tests/test_webapp_access_policy.py`** — 11 tests.
+- Dos tests de `test_webapp_principal.py` ahora fijan su precondicion
+  (`POLICY = None`) en vez de heredarla del default del modulo. Antes dependian
+  del orden de coleccion.
+
+### El oraculo, corrido
+Con el modulo copiado al arbol de `origin/main` **pero sin la asignacion en
+`app.py`**: 10 tests pasan y `test_importing_the_app_leaves_a_policy_configured`
+falla en su propio assert (`assert None is not None`). O sea, el test que fija el
+arreglo no es vacuo y la asignacion es la que carga el peso. `ruff check .`
+limpio; 439 tests del radio de impacto en verde.
+
+### DEUDA DECLARADA: la politica esta configurada, no aplicada
+**Ninguna ruta de produccion llama a `security.policy_engine()`.** Solo los tests.
+Esto satisface el guard de arranque y le da un `policy_version` a toda decision
+futura; **no cambia lo que recibe ningun request hoy**. Lo honesto es decir que
+esto desbloquea el deploy y compra el vocabulario, y que cablear el primer punto
+de llamada — la aprobacion de writeback, o la descarga de entregables — es el
+cambio que hace que el guard diga toda la verdad.
+
+`test_the_policy_is_declared_and_not_yet_enforced` fija esa afirmacion con un
+recorrido AST (no un grep de texto: los docstrings que *describen* la ausencia de
+call site disparaban el propio tripwire). El dia que aparezca el primer llamado
+real, ese test falla y manda a reescribir el parrafo.
+
+### Criterio de hecho pendiente, cuando se deploye
+`flyctl status` con la version nueva **y** `curl /api/health` en 200 **y** el
+registry con 51 tools e `intake_scan` presente dentro del contenedor. Nunca el
+exit code de `flyctl deploy | tail` — ver la trampa operativa del 2026-08-03.
+
+## 2026-08-25 — Montar Kern en el Odoo Apps Store (esta sesion)
+
+Playbook: `documentation/GTM_SUBMISSIONS.md` §5. **No se toco landing ni CSS**
+(el operador rediseña la web en otra ventana). **No se pidieron** secrets de
+nosilo-core ni la contraseña de apps.odoo.com.
+
+### Qué quedó hecho (no rehacer)
+
+- Ficha Store en `odoo_addon/{17.0,19.0}/kern_dry_run/`: `support` →
+  `https://linchpin.fly.dev/paquetes`, **sin `price`** (listing gratis), cover +
+  dos capturas mockup, `LICENSE` OPL-1 + `COPYRIGHT`. Regenerar imagenes:
+  `python scripts/gen_odoo_listing_assets.py` (no pisa `icon.png`).
+- Sync del layout que el Store exige (modulo `kern_dry_run/` **en la raiz**,
+  ramas llamadas `17.0` y `19.0`): `python scripts/sync_linchpin_odoo_apps.py`.
+  Verificado por `tests/test_odoo_addon_listing.py`.
+- `esstipi-debug/linchpin-odoo-apps` **existe y ya esta sincronizado**
+  (2026-08-25): `17.0` = `72468e7`, `19.0` = `4defa85`, las dos con
+  `kern_dry_run/` en la raiz. `online-odoo` ya fue invitado con permiso `read`
+  **sobre ese repo**; la invitacion queda pendiente de aceptacion y caduca a
+  los 7 dias. El 403 de `createRepository` era el token de aquel Cloud Agent,
+  no el estado del mundo: un `gh` logueado como `esstipi-debug` tiene `admin`
+  sobre los dos repos.
+- Sigue en pie lo que **no** hay que hacer: no pushear ramas `17.0`/`19.0` a
+  `kern` ni registrar `kern#19.0` en apps.odoo.com. El Store pide al usuario
+  `online-odoo` lectura sobre el repo que registres, y eso filtraria el
+  producto entero.
+- CI: si faltan `NOSILO_CORE_*`, el workflow **no aborta** antes de pytest.
+  Instala sin la URL privada y corre el gate `KERN_CI_NO_CORE=1` (listing +
+  motor). No pedir esos secrets; el operador no los quiere crear ahora.
+
+### Siguiente paso — humano, tu login de apps.odoo.com
+
+Lo de GitHub ya esta hecho (repo, ramas, invitacion a `online-odoo`). Queda
+solo lo que no puede hacer un agente, en https://apps.odoo.com (cuenta que ya
+tenes): registrar `ssh://git@github.com/esstipi-debug/linchpin-odoo-apps#19.0`
+(y `#17.0`), pegar la deploy key read-only, scan, publicar **gratis**. Detalle
+en GTM §5 y `documentation/operator/09_checklist_lanzamiento.md`.
+
+Ojo con una consecuencia del rename: el nombre tecnico paso de
+`linchpin_dry_run` a `kern_dry_run`. Si la ficha llego a registrarse alguna vez
+con el nombre viejo, el Store la lee como app **nueva**, no como una version.
+
+Para re-sincronizar tras tocar el modulo: `python scripts/sync_linchpin_odoo_apps.py --push`.
+
+### NO hacer en el proximo chat
+
+- Rediseñar la web / tocar CSS de marketing.
+- Pedir `NOSILO_CORE_*` ni el password de apps.odoo.com.
+- Registrar el repo `kern` en el Store.
+- App de Shopify App Store.
+
 ## 2026-08-11 — `pytest tests/ -q` "se cuelga" = **ETS de statsforecast patológicamente lento, NO un deadlock**. Preexistente, ajeno al trabajo de S&OP.
 
 ### Síntoma
@@ -117,6 +305,132 @@ como **el espejo de `intake_scan` sobre parametros**: `intake_scan` audita si el
 (`inventory_optimization`, `cross_impact`), y solo se hace cumplir con `strict_params`
 (`orchestrator.py:135`). Mismo riesgo que `intake_scan`: arranca con poca cobertura, asi que el
 reporte debe mostrar numerador y denominador siempre.
+
+## 2026-08-24 — El gate de CI restaurado, 3 brechas de capacidad y 3 de lanzamiento cerradas; **L2 (app de Shopify) A MEDIO HACER**
+
+**Rama:** `fix/ci-gate-alcance-lint-y-cobertura`, **PR #273 abierta como draft**, 16 commits.
+**`main`** quedo en `69b52d1` (se mergearon #269 y #258 en esta sesion).
+**Working tree limpio** salvo `.mcp.json` (modificado por OTRA sesion: pin de serena a `@v1.7.0`) y `data/bateria/` sin trackear, que ya estaban.
+
+### LO PRIMERO, Y NO CAMBIO EN TODA LA SESION
+
+**La CI de este repo no ejercita un solo test y no lo hace desde el 2026-08-03.**
+`gh api repos/esstipi-debug/kern/actions/secrets` devuelve `{"total_count":0}` y
+`nosilo-core` tiene **cero deploy keys**. Los 4 jobs mueren en 6-8 s en
+`Authenticate to the private core`. Todo lo de esta sesion —incluidos dos merges
+a `main`— esta verificado **solo a mano, en esta maquina**.
+
+Los pasos exactos estan en `docs/DEPLOYMENT.md` seccion 0. En corto: `ssh-keygen
+-t ed25519 -N "" -f nosilo_core_ci`; la mitad publica como deploy key **por la UI
+web** de `nosilo-core`, sin marcar "Allow write access"; `gh secret set
+NOSILO_CORE_SSH_KEY --repo esstipi-debug/kern < nosilo_core_ci`; borrar los dos
+archivos. **No** usar `gh repo deploy-key add`: su propio `--help` avisa que la
+key queda atada al token del CLI y se borra si se de-autoriza, que es justo el
+modo de falla que el deploy key vino a evitar.
+
+Falta tambien `KERN_JOBS_API_KEY` (el cron de precios lleva 6 corridas rojas por dia).
+
+### DONDE QUEDO L2, QUE ES LO QUE SIGUE
+
+Commit `a8f015e`, **incompleto a proposito**. Entran, lintean y funcionan aisladas:
+
+* **`webapp/shopify_app.py`** — `shop_valido`, `install_url`, `verify_oauth_callback`,
+  `verify_webhook`, `exchange_code`, `create_subscription`.
+* **`src/shopify_installs.py`** — `ShopifyInstallStore` (dominio -> token, `forget()` borra de verdad).
+
+**Falta, en este orden:**
+
+1. **Las rutas en `webapp/app.py`**: `GET /shopify/install`, `GET /shopify/oauth/callback`,
+   y los tres webhooks `POST /webhooks/customers/data_request`, `/customers/redact`, `/shop/redact`.
+   Los tres de GDPR tienen que devolver **200 con HMAC verificado** o Shopify desaprueba la app entera.
+2. **El `state` de OAuth**: hay que emitirlo, guardarlo y compararlo. `verify_oauth_callback`
+   ya lo exige, pero nadie lo emite todavia. Sin eso el callback no es atribuible.
+3. **Un lazy singleton del store** en `app.py`, con la MISMA forma que `_get_mcp_key_store()`
+   (mirado fresco en cada request, para que un test lo cambie con `monkeypatch`), y su ruta
+   apuntada al volumen `/data` por variable de entorno — no al filesystem efimero, que es la
+   falla que costo el ledger de leads (L1, ya cerrada).
+4. **Los tests**, que son el "cerrada cuando" de la ficha: alta de punta a punta contra un stub
+   — redireccion OAuth, callback que persiste el token, los tres webhooks respondiendo 200 con
+   HMAC verificado, y un cargo creado por Billing API.
+5. **Actualizar la ficha L2 y la tabla** de `documentation/KERN_BRECHAS_DE_LANZAMIENTO.md`, y el
+   nodo del grafo via `scripts/merge_launch_gaps.py`. La sonda de L2 ya exige la evidencia
+   correcta (OAuth de Shopify **Y** los tres webhooks de GDPR), asi que va a pasar sola cuando
+   este de verdad.
+
+**Trampa ya pagada, no volver a pisarla:** `normalize_shop_domain` deja pasar un dominio publico
+personalizado TAL CUAL. Es correcto para leer una tienda y es un **open redirect** en la ruta de
+instalacion, porque el `shop` llega por query string y termina dentro de una URL a la que se
+redirige al comerciante. Por eso `shop_valido()` normaliza y **despues** exige `*.myshopify.com`.
+
+**Segunda trampa:** los dos HMAC de Shopify no se parecen — OAuth es **hex sobre la query
+ordenada**, los webhooks son **base64 sobre el cuerpo crudo**. Confundirlos no falla
+ruidosamente: falla como "firma invalida" para todo, y el paso siguiente natural es aflojar la
+verificacion.
+
+**Y una advertencia de estrategia, que sigue en pie:** `documentation/MONETIZATION_BRIEF.md` pone
+la app real de Shopify en **Fase 2**, con decision aparte y **solo con los numeros de Fase 1 en
+mano**. La Fase 0 es el Chequeo Stocky manual, cuyo criterio de kill es *0 ventas con >=300
+contactos*. Al 2026-08-24 el embudo no tiene evidencia de trafico real (ver abajo). Construir L2
+antes de eso contradice la estrategia escrita del propio repo; se avanzo porque se pidio
+explicitamente.
+
+### EL EMBUDO NO TIENE EVIDENCIA DE USO REAL
+
+Medido sobre el ledger LOCAL el 2026-08-24 (el de produccion era irrecuperable hasta #269):
+**249 filas** entre el 12-jul y ese dia, pero **6 dominios distintos y uno solo explica 149** —
+casi todo autotesteo — y **162 de 249 (65%) terminaron en `qa_failed`**. Desde #269 eso **si** se
+puede medir en produccion. Vale la pena mirarlo antes de construir mas canal.
+
+**Stocky:** la ventana muere el **31-ago-2026** segun el research del propio repo (fecha NO
+verificada contra Shopify). La capacidad esta entera, `/stocky-alternative` responde 200, el
+precio esta fijado. **No falta codigo: falta outreach.**
+
+### QUE SE CERRO EN ESTA SESION
+
+| Punto | Estado |
+|---|---|
+| Alcance de lint (`ruff check .`) y cobertura (+`scm_agent`, +`jobs`) | cerrado, gate a 90 |
+| `reflect_lessons --check` | cerrado como TEST, no como paso suelto (ver abajo) |
+| `knowledge/semantica/` (15 MB huerfanos) | borrado |
+| Anclas de `TOOL_CONCEPTS` | 9 herramientas en cero -> 5 |
+| Cosmeticos (`graphify-out` viejo, conteo de tools) | cerrados |
+| Brechas de capacidad **8** (critico del narrativo), **6** (MCP como cliente), **5** (fan-out) | cerradas |
+| Brechas de lanzamiento **L1**, **L3**, **L4** | cerradas |
+
+**Por que `reflect_lessons --check` no es un paso de la CI:** medido, no supuesto. El script
+invoca el binario `graphify` (paquete `graphifyy`), que **no** esta declarado en
+`requirements-dev.txt` ni en `pyproject.toml` —lo instala el hook de SessionStart— y resuelve
+contra `graphify-out/graph.json`, 17 MB **gitignoreados**. Sin las dos cosas el documento se
+regenera podado: **69 lineas con la union contra 41 solo con el grafo de libros**. Un paso ahi
+devolveria 1 SIEMPRE. Lo que si es verificable con lo commiteado —que el encabezado resuma las
+memorias que hay— lo chequea `tests/test_graph_lessons_no_deriva.py`.
+
+### INVARIANTES QUE COSTARON CARO Y NO HAY QUE REDESCUBRIR
+
+* **Tocar `knowledge/scm-books/graph.json` obliga suite completa.** ~35-47 min, 5900+ tests.
+  Mueve el IDF de TODAS las citas. `-p no:randomly` si; `--timeout` **no existe** como plugin y
+  pasarlo aborta sin correr nada, pareciendo que paso.
+* **Un `nosilo_core/` suelto en la raiz envenena todo `ruff` local** (y el hook `ruff-on-write`):
+  lo clasifica como first-party y exige el orden de imports CONTRARIO al de la CI. 80 `I001`
+  fantasma. Se arregla con `rm -rf nosilo_core`. Ya esta escrito en `CLAUDE.md`.
+* **`webapp/app.py` no tiene `logger` de modulo ni importa `Request`** por defecto: usa
+  `logging.getLogger("linchpin.<x>")` inline.
+* **Dos `TestClient` con lifespan sobre el sub-app de MCP revientan** (es un singleton de modulo).
+  Por eso el e2e de L3 vive en `tests/test_mcp_mount.py` y no en `tests/test_stripe_webhook.py`.
+* **`merge_launch_gaps.py` se niega a re-correr.** Para actualizar la fuente #29:
+  `git checkout origin/main -- knowledge/scm-books/graph.json` y re-correr. **No** `--force`.
+
+### FALTA CONFIGURAR (humano, no codigo)
+
+* `NOSILO_CORE_SSH_KEY` — sin esto nada de lo de arriba lo verifico otra maquina.
+* `KERN_JOBS_API_KEY` — el cron de precios.
+* `STRIPE_WEBHOOK_SECRET` + registrar `https://linchpin.fly.dev/webhooks/stripe` en Stripe,
+  suscripto a `checkout.session.completed`. **L3 no cobra hasta eso.**
+* **La entrega de la credencial no existe**: no hay envio de correo en el repo. La key se emite,
+  queda atada al pago, y espera que un humano la mande. Eso es lo que mantiene abierta la brecha
+  de capacidad **7**, no L3.
+
+---
 
 ## 2026-08-03 — `intake_scan` (tool #50) MERGEADO Y PUSHEADO; **DEPLOY BLOQUEADO** por la POLICY de acceso
 
@@ -967,7 +1281,9 @@ repo GitHub + `linchpin.fly.dev` + `cd linchpin` en docs (hasta ejecutar la
 checklist externa) · env vars `LINCHPIN_*` · tool names MCP `linchpin_*` +
 server name `linchpin_mcp` (contrato con clientes MCP conectados) · prefijo de
 keys `lpk_` (keys emitidas siguen funcionando) · logger `linchpin.access` ·
-`odoo_addon/linchpin_dry_run/` (identidad del modulo en el Store) · slugs
+~~`odoo_addon/linchpin_dry_run/`~~ (renombrado a `kern_dry_run` el 2026-08-19
+junto con el port a Odoo 19; el modulo nunca se publico, no habia identidad que
+preservar en el Store) · slugs
 `linchpin-*` en CAPABILITY_EXPANSION_PLAN · historicos (graph-memory,
 docs/superpowers, CHANGELOG viejo, books graph generado) · `server.json`
 `name`/URLs (atados al repo name para validacion del registry MCP — se
@@ -996,12 +1312,17 @@ actualizan JUNTO con el repo rename, ver checklist).
    flyctl apps create kern && flyctl deploy -a kern && flyctl secrets set ... -a kern
    # migrar keys MCP de clientes, avisar, y recien despues: flyctl apps destroy linchpin
    ```
-3. **Modulo Odoo `linchpin_dry_run`** — recomendacion: **renombrar en la
-   PROXIMA version funcional, no ahora.** Un rename de modulo tecnico
-   (directorio + manifest + XML ids) es re-submission completa al Store y
-   rompe upgrades de instalaciones existentes; hacerlo sin cambios
-   funcionales es puro costo. Cuando toque: nuevo modulo `kern_dry_run` con
-   hook de migracion desde `linchpin_dry_run`.
+3. **Modulo Odoo `linchpin_dry_run`** — **HECHO 2026-08-19**, en la primera
+   version funcional siguiente (el port a Odoo 19), que es exactamente la
+   condicion que pedia esta linea. Ahora `odoo_addon/17.0/kern_dry_run` y
+   `odoo_addon/19.0/kern_dry_run`: mismo nombre tecnico en las dos series, que
+   es lo que el Store exige para que sean la misma app. Sin hook de migracion:
+   el modulo nunca llego a publicarse, asi que no hay instalaciones que romper.
+   Razonamiento original, que sigue valiendo para el caso general: un rename de
+   modulo tecnico (directorio + manifest + XML ids) es re-submission completa al
+   Store y rompe upgrades de instalaciones existentes, asi que hacerlo sin
+   cambios funcionales es puro costo — y si hubiera habido instalaciones, esto
+   habria necesitado un hook de migracion desde `linchpin_dry_run`.
 4. **Listings MCP** — donde figure Linchpin (directorios MCP, cuando se
    ejecute el plan de listings de [linchpin-monetization-plan]): usar nombre
    Kern + descripcion nueva de `server.json`; requiere logins del operador.

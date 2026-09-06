@@ -30,7 +30,6 @@ files together, and it never touches a row inside its window.
 
 from __future__ import annotations
 
-import os
 import re
 import sqlite3
 import uuid
@@ -39,6 +38,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+
+from src.data_paths import resolve_state_path
 
 try:  # optional fast/columnar path
     import pyarrow  # noqa: F401
@@ -56,7 +57,7 @@ except ImportError:
 # volumen"). Empty env var falls back to the repo-relative default, matching
 # the "LINCHPIN_*" env-override convention already used by webapp/security.py
 # and nosilo_core/writeback.py.
-DEFAULT_BASE_PATH = os.environ.get("LINCHPIN_STATE_PATH", "").strip() or "data/state"
+DEFAULT_BASE_PATH = resolve_state_path("state")
 
 _SAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")
 

@@ -39,6 +39,10 @@ splink>=4
 statsmodels>=0.14
 # jobs/seo_audit.py's real site crawl (S1, PR-22) — mirrors pyproject [seo]
 advertools>=0.14
+# src/connectors/browser/cdp.py — mirrors pyproject [browser] (the setup
+# agent's CDP transport). websockets>=13 is the floor for websockets.asyncio;
+# httpx is already pinned above for tower/pricing-intel/repricing.
+websockets>=13
 # NOTE: pyproject [rag] (fastembed, semantic discovery) is DELIBERATELY excluded
 # here. Installing it makes every KnowledgeBase() init embed all books nodes
 # (model download + compute) — a per-run CI cost for a purely opt-in operator

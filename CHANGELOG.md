@@ -3,6 +3,117 @@
 ## [Unreleased]
 
 ### Added
+- **`procedure_audit` + `procedure_draft` agent tools (`jobs/procedure_audit_job.py`,
+  `jobs/procedure_draft_job.py`, `src/procedures/`)** -- registry now 53 tools.
+  `procedure_audit` audits a client's exported procedure register for overdue
+  reviews, missing owners, an owner who is also the approver, procedures marked
+  approved with no approver on file, procedures with no linked KPI, and
+  unversioned documents -- always ends in a HANDOFF naming the owner and the due
+  date, and never stores the SOPs themselves (`requires_data=True`, declares
+  `required_columns`). `procedure_draft` drafts a bilingual Standard Operating
+  Procedure (Job Breakdown Sheet + control plan + training timetable) from one
+  of three templates (replenishment, cycle count, S&OP cycle), stamped with a
+  document-control header -- always born unapproved, ending in a HANDOFF asking
+  a human to review, approve and publish it (`requires_data=False`, params-driven).
+  `procedure_audit` is exposed on the MCP surface (`linchpin_procedure_audit`,
+  36th MCP tool); `procedure_draft` is not, same rule as `warehouse_layout`.
+  Every hand-maintained registry mirror updated in the same change: i18n titles,
+  the pinned test sets, capability-smoke fixtures/buckets, `how-it-works` page
+  data (new "Procedures & standard work" domain area), the tool-data contract,
+  and every stale tool-count in README.md/CLAUDE.md/scm_agent/README.md/
+  docs/MCP_SERVER.md.
+- **Odoo Apps Store listing packet for `kern_dry_run`** (17.0 and 19.0): `support`
+  URL, cover + wizard/result mockups, OPL-1 `LICENSE`/`COPYRIGHT`, Store price
+  omitted (free bait). Sync into the dedicated store repo (module at branch root)
+  with `python scripts/sync_linchpin_odoo_apps.py`. Both series branches of
+  `esstipi-debug/linchpin-odoo-apps` were force-pushed from `kern` on 2026-08-25
+  (`17.0` = `72468e7`, `19.0` = `4defa85`) and `online-odoo` was invited with
+  `read` on that repo -- no `gh repo create` is needed; the repo has existed
+  since 2026-07-04. Playbook: `documentation/GTM_SUBMISSIONS.md` §5.
+- **CI no-core gate:** when `NOSILO_CORE_SSH_KEY` / `NOSILO_CORE_TOKEN` are
+  empty, GitHub Actions skips `authenticate-core` (instead of aborting before
+  pytest), installs without the private git URL, and runs `KERN_CI_NO_CORE=1`.
+  The collect_ignore scanner follows parent-package `__init__.py`,
+  `importlib.import_module`, and subprocess CLI strings (`examples/*.py`,
+  `python -c` snippets), so `from scm_agent.events import ...` is skipped
+  instead of dying on `nosilo_core`. The no-core job overrides
+  `fail_under=80` (`--cov-fail-under=0`): skipping the core half is not a
+  coverage regression.
+- **The Odoo module now ships for Odoo 19, as `kern_dry_run`** (`odoo_addon/19.0/kern_dry_run/`,
+  v19.0.1.0.0) — verified by installing it on a clean Odoo 19.0-20260817 database in Docker, not by
+  reading the code. The port itself touches three files (+43/-12); the Python and the wizard/menu/
+  settings views are byte-identical to the 17.0 tree, checkable with a single `diff -rq`. What actually
+  broke: Odoo 19 **removed `res.groups.category_id`** and replaced it with `privilege_id`, pointing at a
+  new `res.groups.privilege` model, so the module's one security record failed to install. Odoo's own
+  19.0 security documentation is stale here — it still documents `category_id` and never mentions
+  `res.groups.privilege` — so verifying against the prose rather than the source would have missed it.
+  The group hangs off a Kern-owned privilege rather than stock's, because a privilege renders as a
+  single select on the user form: sharing stock's would have made "may run an external analysis"
+  mutually exclusive with Inventory User/Administrator, the opposite of what that group exists to say.
+  Two further changes fail *silently* if skipped — a manifest `version` that does not start with the
+  running series is forced to `installable=False` with only a log warning (`odoo/modules/module.py`),
+  and `category` generates the `ir.module.category` xmlid, which moved from `Inventory/Inventory` to
+  `Supply Chain/Inventory` in 19. Odoo 18.0 contributes no change that touches this module. Field
+  semantics were checked against a fixture with known values rather than demo data (the official image
+  creates databases without demo), including two vendors at different sequences to prove
+  `seller_ids[:1]` still resolves the primary one; `product.supplierinfo.delay` changed label
+  (`Delivery Lead Time` -> `Lead Time`) but not meaning. `_assert_safe_base_url` is untouched and still
+  blocks localhost, private ranges and the cloud-metadata address. The module still writes nothing.
+- **17.0 kept in parallel** (`odoo_addon/17.0/kern_dry_run/`, v17.0.1.0.0, re-verified on `odoo:17`)
+  under the *same* technical name, which is what the Apps Store requires for two series to be the same
+  app. A reproducible install harness lives in `odoo_addon/test/` (`ODOO_SERIES=17|19`) and the whole
+  port is written up in `odoo_addon/PORT_17_A_19.md`.
+
+### Changed
+- **`linchpin_dry_run` renamed to `kern_dry_run`**, executing item 3 of the HANDOFF external checklist,
+  which gated the rename on "the next functional version" — this port is it. No migration hook: the
+  module was never actually published, so there are no installations to break. `linchpin.fly.dev`, the
+  `linchpin_inventory_optimize` tool name and the `lpk_` key prefix deliberately keep the old name;
+  they are wire and infrastructure identifiers, not branding.
+
+### Fixed
+- **Two Apps Store rule violations in the Odoo module's description page**, present since 17.0 and
+  corrected in both series: an external link (the description may only link inside
+  `static/description`) and a promotional block quoting revenue-share and white-label pricing. A
+  manifest or listing error unpublishes *every* module in the repository, not just the offending one.
+- **Stale cross-references left by the rename**, in `documentation/legal/dpa-lite.md`,
+  `documentation/operator/09_checklist_lanzamiento.md` and `documentation/ICP_Y_DIMENSIONAMIENTO.md`.
+  The launch checklist also claimed the module's "For partners" section still linked to the partner
+  one-pager, which stopped being true when that link was removed for the Store rule above.
+
+### Added
+- **Onboarding autoservicio de Odoo Online, en solo lectura** (`src/connectors/odoo_connect.py`,
+  `POST /api/odoo-lead-time`) — Odoo Online no admite código Python de terceros, así que
+  `odoo_addon/linchpin_dry_run` nunca fue una opción para el SaaS de odoo.com; la única puerta es la
+  External API que `odoo.py` ya hablaba. Lo que faltaba no era el conector sino el tramo de **cuatro
+  campos** (url, base, usuario, clave de API) hasta el mismo `scan_from_deliveries` que consume un CSV
+  subido — el motor de la salida #1 no se entera de dónde vinieron las filas.
+  `check_connection()` **clasifica** la falla en vez de devolver un "no se pudo conectar" genérico, que
+  en un embudo sin humano al otro lado no le sirve a nadie: host inalcanzable / base inexistente /
+  credencial inválida / permisos insuficientes mandan a cuatro pantallas distintas del Odoo del cliente.
+  La separación base-vs-credencial es determinista y no por texto (`authenticate` no *puede* devolver
+  `False` contra una base que no existe: no logra abrir el cursor, levanta), y la de permisos-vs-módulo
+  se resuelve consultando `ir.model` antes de probar lectura — un `"AccessError" in fault` funciona en
+  inglés y falla en el Odoo en español del cliente, que es exactamente donde tiene que funcionar. Se
+  agregó un quinto motivo, `modulo_ausente`: sin la app de Compras instalada el remedio está en
+  Aplicaciones, no en permisos de usuario, y confundirlos es media hora perdida del cliente.
+  `preflight()` es **pura sobre lo ya leído** (cero RPC extra: una segunda pasada por el ERP se paga en
+  latencia y puede contar sobre un estado distinto del que después se mide) y reporta recepciones,
+  proveedores, rango de fechas y qué falta. **Sin fechas de recepción se niega a correr nombrando lo que
+  falta, y nunca cae a `product.supplierinfo.delay`** — usar la promesa como observación la compara
+  consigo misma y devuelve brecha cero sobre el defecto exacto que el escaneo viene a mostrar; es la
+  misma regla que el camino del CSV defiende con un test dedicado, replicada aquí.
+  La ruta va **autenticada** (`require_api_key` + `rate_limit`, igual que `POST /api/jobs`): una
+  credencial del ERP de un cliente no se pide en un formulario anónimo por más que el alcance sea de
+  solo lectura. Los cuatro campos llegan con default `""` para que un campo faltante lo rechace el
+  handler con su propio mensaje y no un 422 de pydantic, cuyo cuerpo puede arrastrar el resto del
+  formulario —con la clave dentro— a la respuesta. Cero writeback, cero persistencia de la credencial,
+  cero línea en `leads.jsonl`; `_scrub()` borra la clave de todo texto que venga del servidor.
+  57 tests offline contra `InMemoryOdooServer` (nuevo doble del **transporte**: `InMemoryOdoo` dobla el
+  ORM, y los cuatro modos de falla viven una capa más abajo). Bajo la regla del gate endurecido: los que
+  afirman que algo se mide corren **dos** Odoo con plazos distintos y exigen que la brecha publicada se
+  mueva —y por los dos ejes, observado y declarado—, porque `assert "lead_time_days" in fila` pasa igual
+  de verde sobre un número correcto que sobre una constante.
 - **Shopify Admin API version drift detection** (`src/connectors/shopify_api_version.py`) — Shopify
   does not error when the pinned API version falls out of support; it silently *falls forward* and
   serves the request with the oldest version it still accepts, so a stale pin looks healthy while the

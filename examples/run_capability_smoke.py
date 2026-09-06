@@ -217,6 +217,7 @@ _SAMPLE: dict[str, Path] = {
     "pricing": _DATA / "sample_pricing.csv",
     "excess_obsolete": _DATA / "sample_stock_snapshot.csv",
     "markdown_liquidation": _DATA / "sample_stock_snapshot.csv",
+    "procedure_audit": _DATA / "sample_procedure_register.csv",
 }
 
 # Brief per tool (routing is bypassed via job_type; the brief still feeds the
@@ -262,6 +263,8 @@ _BRIEF: dict[str, str] = {
     "drp": "build a distribution requirements plan",
     "vehicle_routing": "route the delivery vehicles",
     "launch_readiness": "assess launch readiness",
+    "procedure_audit": "auditar el registro de procedimientos: cuales SOPs estan vencidos y sin dueno",
+    "procedure_draft": "borrador de procedimiento operativo estandar para reposicion con hoja de desglose de tarea",
 }
 
 _OVERRIDES: dict[str, dict] = {
@@ -271,6 +274,9 @@ _OVERRIDES: dict[str, dict] = {
     # refuses to score on-time against an undeclared default rather than invent one.
     "sourcing": {"sla_days": 14, "in_full_status_col": "Order_Status",
                  "in_full_ok_values": ["Delivered"]},
+    "procedure_audit": {"as_of": "2026-09-03"},
+    "procedure_draft": {"process": "replenishment", "owner": "Jefe de Operaciones",
+                         "approver": "Gerente General", "as_of": "2026-09-03"},
 }
 
 # Tools that reach the network. Reported SKIP offline; a network error under

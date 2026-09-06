@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form_kern" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.kern</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="stock.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//app[@name='stock']" position="inside">
+                <block title="Kern" name="kern_dry_run_setting_container">
+                    <setting id="kern_dry_run_setting" string="Kern" help="AI inventory policy recommendations, dry run only">
+                        <field name="kern_base_url" placeholder="https://linchpin.fly.dev"/>
+                        <div class="content-group">
+                            <field name="kern_api_key" password="True" placeholder="lpk_..."/>
+                        </div>
+                    </setting>
+                </block>
+            </xpath>
+        </field>
+    </record>
+</odoo>

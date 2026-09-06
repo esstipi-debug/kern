@@ -40,13 +40,57 @@ _LOG = logging.getLogger("linchpin.knowledge")
 # Filtered in one place - see ``ground_citations_detailed``, the single
 # chokepoint every citation path funnels through.
 # Matched on the basename of the node's ``source_file``.
-_INTERNAL_SOURCES: frozenset[str] = frozenset({"KERN_ATLAS_SOMBREROS_SCM.md"})
+_INTERNAL_SOURCES: frozenset[str] = frozenset({
+    "KERN_ATLAS_SOMBREROS_SCM.md",
+    "KERN_BRECHAS_DE_CAPACIDAD.md",
+    "KERN_BRECHAS_DE_LANZAMIENTO.md",
+})
 
 
 def _is_internal_source(concept: "Concept") -> bool:
     """True if this node comes from one of Kern's own documents (never citable)."""
     src = (concept.source or "").replace("\\", "/").rsplit("/", 1)[-1]
     return src in _INTERNAL_SOURCES
+
+
+# Directory names and filename shapes that mark a module as something other than
+# an implementation. Three families, one rule: none of them is where a concept
+# actually lives, so none may be offered to a client as the code behind it.
+_NON_IMPL_DIRS: frozenset[str] = frozenset({
+    "tests", "test", "testing",                        # verify a concept
+    "examples", "example", "demos", "demo",            # illustrate a concept
+    "samples", "sample",
+    "scripts", "script",                               # one-off tooling around it
+})
+_NON_IMPL_PREFIXES: tuple[str, ...] = ("test_", "demo_", "example_", "sample_")
+_NON_IMPL_SUFFIXES: tuple[str, ...] = (
+    "_test.py", "_demo.py", "_example.py", "_sample.py",
+)
+
+
+def _is_non_implementation_path(source_file: str) -> bool:
+    """True if this path is test, demo, example or script code, not an implementation.
+
+    Three kinds of false claim this shuts off, all of them client-facing:
+    a test module *verifies* a concept (``tests/test_pricing.py`` as the code
+    behind "Competitive Reference Price"); a demo *illustrates* one for a
+    prospect (``webapp/demo_lead_time_scan.py`` as "Replenishment Lead Time");
+    and an ingest script is circular (``scripts/merge_khan_resilience.py`` as
+    the code behind a Khan concept is the script that *read* that book).
+
+    Matches one of ``_NON_IMPL_DIRS`` anywhere in the path, plus the filename
+    conventions — pytest's (``test_*.py``, ``*_test.py``, ``conftest.py``) and
+    the demo/example/sample prefixes and suffixes. Anchored on prefix and
+    suffix, never a substring, so ``src/order_demo_history.py`` stays citable.
+    """
+    parts = (source_file or "").replace("\\", "/").split("/")
+    name = parts[-1]
+    return (
+        any(part in _NON_IMPL_DIRS for part in parts[:-1])
+        or name.startswith(_NON_IMPL_PREFIXES)
+        or name.endswith(_NON_IMPL_SUFFIXES)
+        or name == "conftest.py"
+    )
 
 
 _TOKEN = re.compile(r"[a-z0-9]{3,}")
@@ -135,6 +179,37 @@ _MIN_INFERRED_CONFIDENCE = 0.75
 
 def _tokens(text: str) -> set[str]:
     return set(_TOKEN.findall(text.lower()))
+
+
+# Function words that carry no domain meaning. ``_TOKEN`` already drops anything
+# under three characters, so this only needs the 3+ ones, in both languages the
+# graph is written in.
+#
+# Why a hand-written list and not IDF, which ``search`` uses: measured on this
+# repo's graphs, neither IDF table separates function words from domain terms.
+# In the code graph "they" and "just" both score 6.65, above "newsvendor" (5.70)
+# and every other domain term; in the books graph "just" (4.20) ties "safety"
+# and dwarfs "supply" (1.62). An IDF floor set high enough to cut "they" would
+# cut "pricing", "demand" and "supply" first. Re-check before swapping this out.
+_STOPWORDS: frozenset[str] = frozenset({
+    # English
+    "the", "and", "for", "with", "from", "that", "this", "not", "are", "was",
+    "were", "been", "being", "has", "have", "had", "does", "did", "but", "its",
+    "their", "them", "they", "you", "your", "our", "his", "her", "who", "how",
+    "what", "when", "where", "why", "which", "while", "into", "over", "under",
+    "than", "then", "each", "such", "only", "also", "must", "may", "should",
+    "will", "can", "just", "more", "most", "some", "any", "all", "one", "two",
+    "new", "out", "per", "via", "use", "about", "after", "before", "between",
+    "through",
+    # Spanish - the books graph carries Spanish concept labels too
+    "del", "los", "las", "por", "con", "para", "que", "una", "como", "sobre",
+    "entre", "desde", "hasta", "este", "esta", "son", "mas", "sus",
+})
+
+
+def _content_tokens(tokens: set[str]) -> set[str]:
+    """Drop function words, leaving only tokens that carry domain meaning."""
+    return tokens - _STOPWORDS
 
 
 def _load(path: Path) -> tuple[dict, str | None]:
@@ -584,28 +659,38 @@ class KnowledgeBase:
         """Best code node that implements a books concept (theory -> code), or None.
 
         The precise half of bridge() for grounding: requires at least `min_overlap`
-        shared tokens between the concept and a `.py` code node, so a single common
-        word (e.g. "price") can't forge a spurious link. Prefers real src/ modules.
-        Returns None when the code graph is absent or nothing clears the bar — the
-        caller then cites theory only.
+        shared *domain* tokens between the concept and a `.py` code node, so a
+        single common word (e.g. "price") can't forge a spurious link, and neither
+        can a handful of function words - "Meeting the Team Where They Are" used
+        to resolve to jobs/reconciliation_job.py on ``are the they where``.
+
+        Tests, demos, examples and one-off scripts are excluded outright (see
+        ``_is_non_implementation_path``) — none of them is where a concept lives,
+        and together they outnumber src/ nodes better than 2:1 in the code graph.
+        Prefers real src/ modules. Returns None when the code graph is absent or
+        nothing clears the bar — the caller then cites theory only.
         """
-        want = _tokens(f"{concept.label} {concept.id}")
+        want = _content_tokens(_tokens(f"{concept.label} {concept.id}"))
         if not want:
             return None
         titles = self._title_tokens.get("code", {})
         best: tuple[int, int, Concept] | None = None
         for nid, n in self._index.get("code", {}).items():
             src = n.get("source_file") or ""
-            if not src.endswith(".py"):
+            if not src.endswith(".py") or _is_non_implementation_path(src):
                 continue
             stem = Path(src).stem
             have = titles.get(nid, set()) | _tokens(stem)
+            # ``want`` is already content-only, so the intersection is too: a node
+            # cannot buy its way over the bar with "and", "the" and "for".
             score = len(want & have)
             # A 2-token hit is only trustworthy when the file is named after the
             # concept (eoq.py for "Economic Order Quantity"); otherwise a pair of
             # common domain words ("dynamic", "pricing") forges a link, so require
-            # 3+. Keeps the strong bridges, drops the coincidental ones.
-            named_after = bool(_tokens(stem) & want)
+            # 3+. Keeps the strong bridges, drops the coincidental ones. The stem
+            # has to share a *domain* word to earn that discount - src/how_it_works.py
+            # sharing "how" with a concept is not "named after" it.
+            named_after = bool(_content_tokens(_tokens(stem)) & want)
             if score < (min_overlap if named_after else min_overlap + 1):
                 continue
             rank = (score, 1 if src.startswith("src/") else 0, self._to_concept(n, "code"))

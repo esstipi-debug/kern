@@ -296,7 +296,12 @@
     gateErr.textContent = "";
     if (!validEmail(email)) { gateErr.textContent = "Ingresa un email válido."; return; }
     gateBtn.disabled = true; gateBtn.innerHTML = '<span class="spin"></span> Guardando…';
-    var fd = new FormData(); fd.append("email", email); fd.append("source", "demo");
+    // ?source= lets a blog article say which page sent the lead. Sanitised to the
+    // same charset api_leads accepts ([\w.-], 40 chars) so a crafted query string
+    // cannot write junk into the ledger; empty falls back to "demo".
+    var qs = new URLSearchParams(location.search).get("source") || "";
+    var src = qs.replace(/[^\w.\-]/g, "").slice(0, 40) || "demo";
+    var fd = new FormData(); fd.append("email", email); fd.append("source", src);
     fetch("/api/leads", { method:"POST", body:fd })
       .then(function(r){ if(!r.ok) throw new Error("no se pudo guardar"); return r.json(); })
       .then(function(){ localStorage.setItem(LS_KEY, email); unlock(); })

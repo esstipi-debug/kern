@@ -9,13 +9,50 @@ capability↔role atlas**, and a **27th source, supply chain risk & resilience**
 (see below). This is the **domain knowledge** layer for the agent — distinct
 from the repo's `graphify-out/`, which graphs the *code*.
 
-- `graph.json` — 3002 nodes · 6141 links · 202 communities (GraphRAG-ready).
-  `GRAPH_REPORT.md` says 3001 nodes / 6113 edges / 201 communities: graphify builds
+A **28th source, Kern's own capacity gaps**
+(`documentation/KERN_BRECHAS_DE_CAPACIDAD.md`), was added the same way as #26: eight
+capabilities Kern does *not* have, each bridged to a theory concept that already
+existed here and to the code site where it would land. Like #26 it is an internal
+document listed in `scm_agent/knowledge.py::_INTERNAL_SOURCES`, so it can be searched
+but can never be cited to a client — `tests/test_capacity_gaps_graph.py` enforces that
+adversarially. Ingest it with `python scripts/merge_capacity_gaps.py`.
+
+A **29th source, Kern's own launch gaps** (`documentation/KERN_BRECHAS_DE_LANZAMIENTO.md`),
+follows the same internal pattern as #26 and #28 — searchable, never citable, guarded by
+`tests/test_launch_gaps_graph.py`. Ingest it with `python scripts/merge_launch_gaps.py`.
+(It shipped without a README entry; this line is the backfill.)
+
+A **30th source, document control and standard work**, is the first one in a while that is
+**citable**, and the only reason it exists: `procedure_draft` (tool #53) shipped zero
+citations because this corpus held no document-control or standard-work theory at all — the
+exact failure `scm_agent/packages.py:100-104` says to fix by ingesting sources, not by
+loosening an anchor. Twelve nodes (ten concepts + two *contradiction* nodes that preserve
+disagreeing sources instead of flattening them to a fake number), hung off durable Heizer &
+Render anchors, with **no hub** — a hub touching all twelve would put any pair within
+`MAX_HOPS`, which is the self-validation loophole `EXCLUDED_CONCEPTS` exists to close.
+
+Every node carries its *own* `source_file` naming **the artifact actually read**: six web
+artifacts and one body-of-knowledge PDF, never the standard behind them. Reading BSI's
+catalogue page for ISO 10013 is not reading ISO 10013, and `bsi-iso-10013-2021-catalogue-page.html`
+says so to the client, who sees nothing but `label — source_file source_location`.
+`documentation/SOP_DOCUMENT_CONTROL_SOURCES.md` is the working paper: one card per concept
+with evidence tier, plus the **three concepts cut** because their provenance did not survive
+re-verification. Ingest it with `python scripts/merge_sop_document_control.py` (`--dry-run`
+first; six guards, all `return 1`). Measured effect, both directions checked across pools
+16/8/6: `procedure_draft` 0 → 3, `procedure_audit` 2 → 3, **and no other tool moved at all**.
+
+- `graph.json` — 3044 nodes · 6198 links · 205 communities (GraphRAG-ready).
+  `GRAPH_REPORT.md` says 3043 nodes / 6170 edges / 205 communities: graphify builds
   a simple undirected graph, which drops one malformed pre-existing node (a
   `reminder::` node with no `source_file`) and collapses 28 links that share
   endpoints but carry a different `relation`. Both numbers are correct for what
-  they describe.
-- `graph.html` — interactive visual (open in a browser)
+  they describe. The community counts happen to agree right now — they are still
+  two independently derived figures, so do not assume a future merge keeps them equal.
+- `graph.html` — interactive visual (open in a browser). **Stale since 2026-07-20**, i.e.
+  it predates sources #28, #29 and #30. Left that way on purpose: the only way to rebuild it
+  is `graphify cluster-only`, which re-runs Louvain and would reassign thousands of nodes to
+  different communities — invalidating every citation measurement recorded against this
+  graph. A stale picture is cheaper than a graph nobody can compare to yesterday's.
 - `GRAPH_REPORT.md` — communities, god nodes, surprising cross-book connections
 
 ## What's inside

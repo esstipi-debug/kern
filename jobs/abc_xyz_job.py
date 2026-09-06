@@ -70,10 +70,44 @@ class AbcXyzReport:
         )
 
 
-def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
+def _pick_column(
+    df: pd.DataFrame,
+    override: object,
+    candidates: tuple[str, ...],
+    canonical: str | None = None,
+) -> str | None:
+    """Pick the client's column for a canonical field.
+
+    Order, and it matters: an explicit override wins, then this job's own short
+    list, then -- only if both came up empty -- the wide alias table in
+    jobs/intake.py.
+
+    The fallback is strictly additive: it fires exactly where this function used
+    to return None, which is where the caller used to raise. No export that works
+    today changes behaviour, because for those the short list already matched.
+
+    It exists because the short lists here are English-only while intake's table
+    is rich in Spanish. A Defontana or Bsale export ("codigo", "existencia",
+    "costo_unitario") went through intake and then died in the two jobs that
+    produce what the client actually sees. 05-GTM-KERN.md declares the unfair
+    advantage in LatAm to be the language; this was the code contradicting it on
+    the first file a client uploads.
+    """
     if override:
         return str(override) if str(override) in df.columns else None
-    return next((c for c in candidates if c in df.columns), None)
+    directo = next((c for c in candidates if c in df.columns), None)
+    if directo is not None or canonical is None:
+        return directo
+
+    # Lazy: keeps the import cost off every caller that never needs the fallback.
+    from jobs.intake import ALIASES
+
+    conocidas = {str(c).strip().lower(): str(c) for c in df.columns}
+    for alias in ALIASES.get(canonical, ()):
+        encontrada = conocidas.get(alias.strip().lower())
+        if encontrada is not None:
+            return encontrada
+    return None
 
 
 def aggregate_skus(
@@ -94,9 +128,9 @@ def prepare(data_path: str, params: dict | None = None) -> list[dict]:
     """Read a per-SKU demand CSV and aggregate it to classifier items."""
     params = params or {}
     df = pd.read_csv(data_path)
-    product = _pick_column(df, params.get("product_col"), _PRODUCT_COLS)
-    demand = _pick_column(df, params.get("demand_col"), _DEMAND_COLS)
-    cost = _pick_column(df, params.get("cost_col"), _COST_COLS)
+    product = _pick_column(df, params.get("product_col"), _PRODUCT_COLS, "product_id")
+    demand = _pick_column(df, params.get("demand_col"), _DEMAND_COLS, "quantity")
+    cost = _pick_column(df, params.get("cost_col"), _COST_COLS, "unit_cost")
     missing = [n for n, c in (("product_col", product), ("demand_col", demand), ("cost_col", cost)) if c is None]
     if missing:
         cols = list(df.columns)[:10]

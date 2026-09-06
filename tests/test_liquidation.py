@@ -333,3 +333,50 @@ def test_un_remate_sin_precio_de_referencia_no_inventa_un_descuento():
     assert linea.discount_pct is None
     assert linea.cover_days_released is None      # sin demanda no libera cobertura, libera caja
     assert linea.gross_margin_value < 0           # se recupera 30% del costo: es perdida
+
+
+def test_un_sku_muerto_con_historial_elastico_se_remata_igual():
+    """La rama de elasticidad no puede pisar la doctrina que la rama de al lado escribe.
+
+    ``default_discount`` excluye a los muertos con su motivo redactado: "it stopped
+    moving - a nominal markdown will not clear it, so it falls through to salvage
+    instead". La rama de elasticidad corria ANTES y no miraba la clasificacion, asi
+    que un muerto con historial ajustable salia por ``elasticity`` -- y con eso el
+    entregable le prometia al cliente despachar el stock en semanas finitas a una
+    tasa extrapolada de una curva, sobre un SKU cuya demanda es CERO. La cuenta
+    ``units / demand_at(fit, price)`` no sabe que el SKU dejo de venderse: se lo dice
+    la clasificacion, o no se entera.
+
+    Peor que el numero: ``announces_discount(ELASTICITY)`` es True, o sea que la
+    linea sale rotulada como rebaja ANUNCIABLE. Un remate no anuncia nada.
+    """
+    muerto = SkuStock(product_id="DEAD", on_hand=100.0, daily_demand=0.0, unit_cost=10.0,
+                      days_since_last_sale=400)
+
+    linea = plan_liquidation([muerto], {"DEAD": _ELASTIC_HISTORY}).lines[0]
+
+    assert linea.classification == "dead"
+    assert linea.method == SALVAGE                 # no elasticity, aunque el ajuste exista
+    assert not announces_discount(linea.method)    # un remate no anuncia rebaja
+    assert linea.discount_pct is None              # la invariante del docstring, ahora cierta
+    assert math.isinf(linea.weeks_to_clear)        # sin demanda no hay plazo que prometer
+    assert linea.current_price == pytest.approx(_ELASTIC_MEDIAN_PRICE)  # la observacion no se borra
+
+
+def test_el_mismo_historial_elastico_sobre_stock_en_exceso_si_da_elasticidad():
+    """La contracara, para que el arreglo no se lea como "apagamos la elasticidad".
+
+    Mismo historial, misma curva, misma cantidad: lo unico que cambia es que este SKU
+    todavia se vende. Ahi la elasticidad es exactamente la herramienta correcta y el
+    plazo que calcula significa algo.
+    """
+    en_exceso = SkuStock(product_id="EXC", on_hand=100.0, daily_demand=1.0, unit_cost=10.0,
+                         days_since_last_sale=10)
+
+    linea = plan_liquidation([en_exceso], {"EXC": _ELASTIC_HISTORY}).lines[0]
+
+    assert linea.classification == "excess"
+    assert linea.method == ELASTICITY
+    assert announces_discount(linea.method)
+    assert linea.discount_pct is not None
+    assert math.isfinite(linea.weeks_to_clear)

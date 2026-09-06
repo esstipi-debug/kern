@@ -1,7 +1,7 @@
 """Static content data for GET /how-it-works (webapp/how_it_works_page.py).
 
 Every count here is verified against the actual code, not copied from a
-possibly-stale doc: 50 tools = build_default_registry()'s 50 register()
+possibly-stale doc: 53 tools = build_default_registry()'s 53 register()
 calls in scm_agent/tools.py, now enforced by
 tests/test_how_it_works_data.py::test_tools_table_matches_the_registry_exactly
 (set equality against the registry, both directions). That guard exists
@@ -68,6 +68,7 @@ DOMAIN_AREA_ORDER: tuple[str, ...] = (
     "Returns, risk & benchmarking",
     "Planning cadence & projects",
     "Decision alignment",
+    "Procedures & standard work",
     "Leadership",
 )
 
@@ -118,6 +119,10 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Walks a raw client folder, classifies every readable file against the known intake "
              "profiles, and reports which tools can run today -- plus the single highest-value "
              "column to request or file to fix next."),
+    ToolInfo("service_scan", "Realized Customer Service", "Inventory control & health", "Order/Fulfill",
+             "Reads a live commerce backend (Unleashed, Cin7 Core) and measures the service "
+             "customers actually received -- fill rate, outbound OTIF, lost sales -- plus a "
+             "field-by-field statement of what that backend cannot measure."),
     # -- Procurement & sourcing (4) --
     ToolInfo("sourcing", "Sourcing", "Procurement & sourcing", "Source",
              "Supplier scorecarding via OTIF/DIFOT and defect rate."),
@@ -197,6 +202,15 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Measures what one area's proposed replenishment decision does to the other three "
              "and emits an objection verdict. An area with no declared threshold is reported as "
              "not evaluable -- never as nobody objects."),
+    # -- Procedures & standard work (2) --
+    ToolInfo("procedure_audit", "Procedure Register Audit", "Procedures & standard work", "Orchestrate",
+             "Audits a client's exported procedure register for overdue reviews, missing owners, "
+             "an owner who is also the approver, and unversioned or unlinked-KPI documents. Ends "
+             "in a HANDOFF naming the owner and the due date -- never stores the SOPs themselves."),
+    ToolInfo("procedure_draft", "SOP Draft with Document Control", "Procedures & standard work", "Orchestrate",
+             "Drafts a bilingual Standard Operating Procedure -- Job Breakdown Sheet, control plan "
+             "and training timetable -- from a template, stamped with a document-control header. "
+             "Always born unapproved: ends in a HANDOFF asking a human to review and publish it."),
     # -- Leadership (2) --
     ToolInfo("org_friction_audit", "Organizational Friction Audit", "Leadership", "Orchestrate",
              "Audits the client's own control points (KPIs, data-load checkpoints) for gamed "
@@ -334,11 +348,13 @@ class IsoClause:
 ISO_9001_CLAUSES: tuple[IsoClause, ...] = (
     IsoClause("4.4 / 8.1 Process approach",
               "A fixed, self-describing pipeline: every capability is a Tool with "
-              "prepare/run/qa/deliver -- the same sequence for all 49."),
+              "prepare/run/qa/deliver -- the same sequence for all 53."),
     IsoClause("7.5 Documented information",
               "An EvidenceRecord (SHA-256 of inputs, control totals, formula versions, QA "
               "attestations); a writeback AuditEntry; a Keep-a-Changelog CHANGELOG; L3 "
-              "citations on every deliverable, gated by citation_gate on the package path."),
+              "citations on every deliverable, gated by citation_gate on the package path. "
+              "procedure_audit/procedure_draft: review and approval for suitability and "
+              "adequacy (7.5.2c), control of changes (7.5.3.2c)."),
     IsoClause("8.5.1 Control of production",
               "Grounding, confidence, and guided options on every deliverable; personas/KPIs "
               "per mode."),

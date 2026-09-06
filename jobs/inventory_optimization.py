@@ -106,6 +106,12 @@ class JobReport:
     # inventory_options() reads this to decide whether to escalate.
     intake_quality: IntakeQuality | None = None
     intake_quality_threshold: float = 0.20
+    # De donde salieron las columnas de servicio y que significan, cuando el frame de
+    # order_lines lo declaro (jobs/intake.py::service_lines lo pone en .attrs). Viaja hasta
+    # el mapa de fuentes del entregable: el deck no ve el frame de entrada, ve este reporte,
+    # asi que sin este campo el caveat se queda en el resumen del operador y el cliente que
+    # abre el Excel lee un OTIF sin saber si su fecha es un despacho o una llegada.
+    service_note: str = ""
     # SKUs skipped because their aggregate demand was zero (see run()'s per-SKU
     # loop) - a real new/seasonal SKU with no activity, or a data-quality split
     # that zeroed one spelling's demand. Isolated, not fatal to the batch.
@@ -462,6 +468,10 @@ def run(
 
     return JobReport(
         recommendations=recs,
+        # ``getattr`` sobre ``.attrs``: un DataFrame siempre lo tiene, pero un llamador
+        # puede pasar cualquier cosa con forma de frame y esto es un extra, no un
+        # requisito. Un entregable no se cae por una nota que falta.
+        service_note=str(getattr(order_lines, "attrs", {}).get("service_note", "") or ""),
         params={"service_level": service_level, "holding_rate": holding_rate, "order_cost": order_cost, "periods_per_year": periods_per_year},
         requested_investment=requested, cycle_floor=cycle_floor, final_investment=final,
         safety_stock_scale=scale, feasible=feasible, budget=budget,

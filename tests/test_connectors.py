@@ -8,7 +8,15 @@ the whole pipeline run end-to-end offline; swapping in a real adapter later only
 the backend, not the chain.
 """
 
-from src.connectors import InventoryLevel, InventorySource, Order, OrderLine, Product
+from src import order_fulfillment as of
+from src.connectors import (
+    InventoryLevel,
+    InventorySource,
+    Order,
+    OrderLine,
+    Product,
+    realized_service,
+)
 from src.connectors.simulator import SimulatedStore, demo_store
 from src.sources import DataFrameDemandSource
 
@@ -117,3 +125,15 @@ def test_demo_store_is_a_consistent_non_empty_store():
     skus = {p.sku for p in products}
     assert all(lvl.sku in skus for lvl in levels)
     assert not store.demand_frame().empty
+
+
+def test_demo_store_is_measurable_end_to_end_offline():
+    """The whole point: a store with no API key still yields real, mixed service."""
+    records = {r.product_id: r for r in realized_service(demo_store().orders())}
+
+    assert set(records) == {"SKU-1", "SKU-2", "SKU-3", "SKU-4"}
+    assert all(r.provenance == of.PROVENANCE_OBSERVED for r in records.values())
+    # a demo that ships everything on time and in full proves nothing
+    assert any(r.fill_rate < 1.0 for r in records.values())
+    assert any(r.otif < 1.0 for r in records.values())
+    assert any(r.lost_sales_value > 0 for r in records.values())

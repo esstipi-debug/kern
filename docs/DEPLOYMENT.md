@@ -13,7 +13,50 @@ build path resolves it over `git+https`, so every build path needs a credential.
 Without one the build fails at dependency resolution, before any of the rest of
 this document matters.
 
-Create the token once:
+### CI: use a deploy key, not the token
+
+A fine-grained PAT **expires** — a year at most, and GitHub proposes 30 days by
+default. When it does, CI fails at dependency resolution before a single test
+runs, and nothing announces it: the red X looks like any other failing build.
+That is not hypothetical. `NOSILO_CORE_TOKEN` was never set at all, both jobs
+aborted at that step, and **sixteen days of merges went in without a gate**
+before anyone looked.
+
+A deploy key has no expiry, so for GitHub Actions:
+
+1. Generate a keypair. It never leaves your machine except as described below:
+
+       ssh-keygen -t ed25519 -N "" -C "kern CI -> nosilo-core" -f nosilo_core_ci
+
+2. `nosilo_core_ci.pub` → `esstipi-debug/nosilo-core` → Settings → Deploy keys →
+   Add. **Leave "Allow write access" unchecked.**
+3. `nosilo_core_ci` (the private half) → the `kern` repo's Actions secrets, as
+   `NOSILO_CORE_SSH_KEY`. This reads it from stdin, so it never lands in your
+   shell history:
+
+       gh secret set NOSILO_CORE_SSH_KEY --repo esstipi-debug/kern < nosilo_core_ci
+
+4. Delete both local files. The public half is on GitHub, the private half is in
+   the secret, and a copy on disk is one more place it can leak from.
+
+`.github/actions/authenticate-core` prefers the deploy key, falls back to the
+PAT, and fails naming both when neither is set. The workflow **does not invoke**
+that action when both secrets are empty: a detect step reads them as env
+(GitHub rejects `if: ${{ secrets.* }}` at parse time) and emits
+`steps.core.outputs.present`. Empty → install without the private git URL and
+run the no-core pytest gate (`KERN_CI_NO_CORE=1`) so listing/engine changes
+still get a check. With the PAT it emits a
+`::warning::` on every run saying that gate has an expiry date — the failure mode
+above does not announce itself, so this does it for us.
+
+**This does not change the published dependency.** `requirements.txt` and
+`pyproject.toml` keep the `git+https://` URL; only the runner rewrites it to SSH
+in its own git config. Docker, Fly, Railway and a plain local `pip install` are
+untouched and still use the token — which is why the token is not going away.
+There is a test (`tests/test_ci_authenticate_core.py`) that fails if someone
+switches the dependency itself to `git+ssh://`.
+
+### The token (still needed for every non-CI path)
 
 1. GitHub → Settings → Developer settings → **Fine-grained personal access token**
 2. Repository access: **only** `esstipi-debug/nosilo-core`
@@ -21,10 +64,10 @@ Create the token once:
 
 Then give it to whichever build path you use:
 
-| Path | How | Where the token lives |
+| Path | How | Where the credential lives |
 |---|---|---|
-| **GitHub Actions** | Actions secret `NOSILO_CORE_TOKEN` | Only in the runner, only for the job |
-| **Docker / Fly** | `--secret id=nosilo_token,env=NOSILO_CORE_TOKEN` | Only in the RUN that installs; never in a layer |
+| **GitHub Actions** | Actions secret `NOSILO_CORE_SSH_KEY` (preferred) or `NOSILO_CORE_TOKEN` | Only in the runner, only for the job |
+| **Docker / Fly** | `--secret id=nosilo_token,env=NOSILO_CORE_TOKEN`, **or** `--ssh default` with the deploy key in your agent | Only in the RUN that installs; never in a layer |
 | **Railway** | Service variable `NOSILO_CORE_TOKEN` | ⚠️ also present at runtime — see below |
 
 ```bash
@@ -41,6 +84,21 @@ fly deploy --build-secret nosilo_token="$NOSILO_CORE_TOKEN"
 railway variables set NOSILO_CORE_TOKEN="$NOSILO_CORE_TOKEN"
 ```
 
+**No PAT? Build with the deploy key instead.** BuildKit forwards an SSH agent
+socket into the build, so the same key that authenticates CI also builds the
+image - and unlike a PAT it does not expire:
+
+```bash
+ssh-add ~/.ssh/nosilo_core          # the private half of the deploy key
+docker build --ssh default -t kern .
+```
+
+The Dockerfile takes the token when one is mounted and falls back to the agent
+otherwise, so Fly and Railway keep working exactly as above. This is what
+`.github/workflows/docker.yml` uses: the repo has `NOSILO_CORE_SSH_KEY` and no
+PAT, and that mismatch is why the image workflow sat with its triggers off from
+2026-08-26 until 2026-09-05 and no image was ever published.
+
 **Why the token is never written with `git config --global`.** That command
 writes it into `/root/.gitconfig`, which is part of the committed image layer and
 readable by anyone who pulls it. Every path here passes the credential through
@@ -54,6 +112,81 @@ Anything that can read the app's environment can read the token. That is why the
 scope above is one repository, read-only: it is the difference between a leak
 that exposes source and one that exposes an account. Rotate it if the deploy
 environment is ever compromised, and prefer the Fly path when the choice is open.
+
+## 0b. Where Kern writes: `KERN_DATA_DIR`
+
+Everything Kern persists — the events ledger, the autonomy store, the scheduler
+jobstore, the state store, the pricing ledger, the SKU map, the MCP key store and
+the two lead directories — lives under **one** root:
+
+```bash
+docker run -p 8000:8000 -e KERN_DATA_DIR=/data -v kern_data:/data   ghcr.io/esstipi-debug/kern:main
+```
+
+That is the whole contract. Without it, Kern still runs — it writes into `data/`
+inside the container, which is the image's ephemeral rootfs and is wiped on every
+restart. **A client who wants to keep anything sets this one variable.**
+
+Three levels of precedence, most specific first:
+
+| Level | Wins when | Used by |
+|---|---|---|
+| the store's own `LINCHPIN_*_PATH` / `_DIR` | it is set | this deploy's `fly.toml`, which sets eight of them by hand |
+| `KERN_DATA_DIR` | no per-store variable | a self-serve client, and anyone who wants one knob |
+| the store's historical default | neither | local development, unchanged |
+
+With `KERN_DATA_DIR` unset nothing moves, so adding it to an existing deploy is a
+no-op until you set it. `KERN_DATA_DIR=/data` reproduces exactly the layout the
+eight `fly.toml` lines already produce — `tests/test_data_paths.py` reads
+`fly.toml` and asserts that equivalence, so the two cannot drift apart.
+
+The registry lives in [`src/data_paths.py`](../src/data_paths.py). **A new durable
+store goes in it**, not in a fresh `"data/..."` literal; a guard test fails the
+build otherwise. That guard is also what caught `LINCHPIN_SCHEDULER_PATH`, the one
+durable store PR #188 missed when it re-rooted the other five.
+
+Read-only configuration (`config/markets`, `config/sites`, `config/verticals`,
+`config/monitors.yaml`, `config/retention.yaml`, `config/autonomy.yaml`,
+`config/event_routing.yaml`) is deliberately **not** under this root: it ships
+inside the image, and pointing it at a client's empty volume would break the app.
+
+## 0c. Auth: `KERN_API_KEY`, y por que grita si falta
+
+`POST /api/jobs` corre trabajos contra tus datos y `GET /jobs-output/*` sirve los
+entregables. La key los cierra:
+
+```bash
+docker run -p 8000:8000 -e KERN_API_KEY=<una-clave-larga>   ghcr.io/esstipi-debug/kern:main
+```
+
+`LINCHPIN_API_KEY` sigue funcionando y **gana si estan las dos** — es la que este
+deploy tiene como secret de Fly, y no se toca. `KERN_API_KEY` es el nombre del
+contrato self-serve.
+
+Tres estados, no dos:
+
+| Estado | Cuando | Que pasa al arrancar |
+|---|---|---|
+| **configurada** | la variable trae valor | silencio; el gate esta puesto |
+| **apagada a proposito** | la variable esta declarada y vacia | dos lineas en INFO: sigue abierto, pero fue una decision |
+| **sin configurar** | ninguna de las dos existe | banner en WARNING de diez lineas, con el comando para cerrarlo |
+
+La distincion entre las dos ultimas es deliberada: un duenno-operador solo en su
+LAN que apaga la auth no tiene que recibir la misma alarma que alguien que se la
+olvido y expuso el puerto. Repetir un WARNING que el operador ya decidio ignorar
+entrena a ignorar los WARNING.
+
+**El banner NO mira `LINCHPIN_ENV`.** El aviso que existia antes,
+`security.production_warnings()`, arranca con `if ENV != "production": return []`,
+y un cliente que corre `docker run` no setea `LINCHPIN_ENV` — asi que el unico
+aviso que habia estaba apagado justo en el caso que importa. Medido antes de este
+cambio, importando `webapp.app` con el entorno limpio: `API_KEY=''`,
+`RATE_LIMIT=0` y **cero lineas de log sobre seguridad**.
+
+`production_warnings()` queda igual: `LINCHPIN_REQUIRE_SECURE` se niega a bootear
+cuando esa lista trae algo, y volverla no vacia en development habria roto el
+arranque de cualquiera que la tuviera puesta. El banner es un canal nuevo, no un
+reemplazo.
 
 ## 1. Production checklist
 
@@ -85,9 +218,20 @@ missing control (no API key, no rate limit). With `LINCHPIN_REQUIRE_SECURE=1` it
 ## 2. Run it
 
 ```bash
-pip install -e ".[web,mcp]"
+pip install -e ".[core,web,mcp]"
 uvicorn webapp.app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
+
+`[core]` is nosilo-core, and it needs the credential from section 0 — this is the
+one command on this page that resolves the private dependency directly rather
+than through a build system. It is not optional: `nosilo-core` is deliberately
+out of `[project.dependencies]` (so `pip install -e .` works for someone with no
+token), so it arrives only when an install line names this extra. Without it
+`uvicorn` dies at import with `ModuleNotFoundError: No module named
+'nosilo_core'` — `webapp/app.py` → `jobs/abc_xyz_job.py` hard-imports
+`nosilo_core.guided`. Same failure mode as the missing `[mcp]` below, same
+cause: a bespoke install command that drifted from what the app actually
+imports. Reproduced in an isolated py3.12 venv on 2026-08-23, before and after.
 
 `[mcp]` is required, not optional, despite the name: `webapp/app.py` unconditionally
 mounts the MCP server (`/mcp`) at import time, so `webapp.mcp_server`'s `from

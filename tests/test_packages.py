@@ -823,7 +823,13 @@ def test_liquidacion_markdown_liquidation_uses_real_price_history_when_present(d
     result = _run(LIQUIDACION, demo_intake, out)
     liq = next(s for s in result.steps if s.tool_key == "markdown_liquidation")
     assert liq.report.n_elasticity > 0
-    assert liq.report.total_recovered > 40_000  # elasticity-priced, not the ~9.5k salvage-only figure
+    # Measured on this intake: 35,188 wired (2 elasticity + 1 salvage) vs 9,566 unwired
+    # (0 elasticity + 3 salvage). The threshold was 40_000 while _choose_disposition let
+    # the DEAD SKU take the elasticity branch; excluding it there moved the third line to
+    # salvage and took ~5k of projected recovery off the total -- cash the plan was
+    # booking against demand that SKU no longer has. What this test guards is the wiring,
+    # and a 3.7x gap still separates wired from fallback.
+    assert liq.report.total_recovered > 30_000  # elasticity-priced, not the 9.5k salvage-only figure
 
 
 def test_liquidacion_markdown_liquidation_degrades_without_ventas_csv(demo_intake, tmp_path):
@@ -951,7 +957,15 @@ def test_malformed_liderazgo_csv_blocks_with_an_actionable_message(demo_intake, 
 # ---- E4: lang threads into the LLM narrative rewrite --------------------------
 
 class _RecordingProvider:
-    """Available provider that records every prompt and returns a fixed reply."""
+    """Available provider that records every prompt and returns a marked reply.
+
+    La respuesta ECHOA el bloque del prompt posterior a la linea en blanco -- que
+    es donde `narrative_rewrite` pone el resumen deterministico -- para conservar
+    sus cifras. Desde la brecha 8, `scm_agent/narrative_critic.py` revierte toda
+    reescritura que pierda una cifra del base, asi que una respuesta fija sin
+    numeros ya no llega al `summary` del paso y este test estaria midiendo el
+    fallback en vez del idioma.
+    """
 
     def __init__(self):
         self.prompts: list[str] = []
@@ -961,7 +975,7 @@ class _RecordingProvider:
 
     def complete(self, prompt: str) -> str:
         self.prompts.append(prompt)
-        return "rewritten summary"
+        return "rewritten summary " + prompt.split(chr(10) * 2, 1)[-1]
 
     def extract(self, prompt: str, schema: dict) -> dict:
         return {}
@@ -975,4 +989,4 @@ def test_package_step_narrative_uses_spec_lang(demo_intake, tmp_path):
     assert any("English" in p for p in rec.prompts)
     assert not any("Spanish" in p for p in rec.prompts)
     executed = [s for s in result.steps if s.status == "ok"]
-    assert all(s.summary == "rewritten summary" for s in executed)
+    assert all(s.summary.startswith("rewritten summary") for s in executed)

@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
-
 from nosilo_core.guided import GuidedOutcome, verify_guided
+
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 from src.supplier_management import (

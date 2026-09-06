@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from nosilo_core.llm import LLMProvider
+from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
+from nosilo_core.types import JobRequest
+
 from jobs import (
     abc_xyz_job,
     acceptance_sampling_job,
@@ -43,12 +47,16 @@ from jobs import (
     odoo_job,
     org_friction_job,
     price_watch_deliverable,
+    procedure_audit_job,
+    procedure_draft_job,
     qa,
     queuing_job,
     reconciliation_job,
     returns_job,
     risk_job,
     scheduling_job,
+    service_scan_deliverable,
+    service_scan_job,
     simulation_job,
     slotting_job,
     sop_deliverable,
@@ -62,9 +70,6 @@ from jobs import (
 from jobs.inventory_optimization import run as run_inventory
 from jobs.pricing import prepare_pricing
 from jobs.pricing import run as run_pricing
-from nosilo_core.llm import LLMProvider
-from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
-from nosilo_core.types import JobRequest
 
 from . import tool_options
 
@@ -107,13 +112,36 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
         )
     except (ValueError, FileNotFoundError, TypeError) as exc:
         return Prepared(status="needs_data", messages=[str(exc)])
+    # El servicio realizado, si el archivo lo trae. Es el productor que le faltaba a
+    # `run_inventory(order_lines=...)`: ese argumento existe desde que aterrizo el motor de
+    # servicio y ningun llamador lo pasaba, asi que cada corrida reportaba `not_measured`
+    # sobre archivos que a veces SI traian con que medirse.
+    #
+    # Se lee el archivo una segunda vez a proposito, y no sale de `demand`: la demanda se
+    # AGREGA a periodos y el servicio no. Dos pedidos del mismo SKU en la misma semana son
+    # dos resultados distintos, y sumarlos borra justamente el que fallo.
+    #
+    # Y va envuelto: el servicio es un extra sobre lo que el cliente pidio. Si su deteccion
+    # falla, la politica de inventario tiene que salir igual -- un adorno que rompe el
+    # entregable es peor que no tenerlo.
+    try:
+        order_lines = intake.service_lines(
+            request.data_path, aliases=request.params.get("column_aliases")
+        )
+    except (ValueError, KeyError, TypeError, FileNotFoundError):
+        order_lines = None
     # `period` rides along: src/sources.py needs it to rebuild the COMPLETE period
     # grid per SKU. Without it a SKU's series is only the periods it sold in, which
     # makes every real export look like regular demand (ADI == 1.0) and overstates
     # annual demand by the SKU's true demand interval.
     return Prepared(
         status="ok",
-        payload={"demand": demand, "intake_quality": quality, "period": period},
+        payload={
+            "demand": demand,
+            "intake_quality": quality,
+            "period": period,
+            "order_lines": order_lines,
+        },
     )
 
 
@@ -133,11 +161,20 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         intake_quality=payload["intake_quality"],
         intake_quality_threshold=params.get("intake_quality_threshold", 0.20),
         period_freq=payload.get("period"),
+        order_lines=payload.get("order_lines"),
+        stockout_days=params.get("stockout_days"),
     )
     summary = (
         f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
         f"${report.final_investment:,.0f} at {report.params['service_level'] * 100:.0f}% service level."
     )
+    # La nota del servicio viaja en el resumen, que es lo que el operador lee ANTES de
+    # abrir el entregable. Sin ella el fill rate aparece sin decir de que columna del
+    # cliente salio, y un numero que no se puede reconciliar contra el ERP no se usa.
+    order_lines = payload.get("order_lines")
+    nota = getattr(order_lines, "attrs", {}).get("service_note") if order_lines is not None else None
+    if nota:
+        summary = f"{summary} {nota}"
     return Produced(report=report, summary=summary)
 
 
@@ -2767,6 +2804,76 @@ def _intake_scan_run(payload: object, params: dict) -> Produced:
     return Produced(report=report, summary=report.summary)
 
 
+
+# ---- service_scan (servicio realizado, desde una cuenta viva) -----------------
+
+def _service_scan_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    """Resuelve el backend. No pide archivo: esta tool lee una CUENTA.
+
+    Un fallo de conexion sale como ``needs_data`` y no como ``error``: lo que falta es el
+    acceso al sistema del cliente, que se arregla con credenciales, no con un parche.
+    """
+    try:
+        payload = service_scan_job.prepare(request.data_path, request.params)
+    except (ValueError, KeyError, RuntimeError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _service_scan_run(payload: object, params: dict) -> Produced:
+    report = service_scan_job.run(
+        payload, since=params.get("since"), stockout_days=params.get("stockout_days")
+    )
+    fill = report.portfolio.fill_rate
+    otif = report.portfolio.otif
+    resumen = (
+        f"Read {report.n_orders:,} orders ({report.n_lines:,} lines) from "
+        f"{report.source_name}. Fill rate "
+        f"{'not measured' if fill is None else f'{fill * 100:.1f}%'}; OTIF "
+        f"{'not measured' if otif is None else f'{otif * 100:.1f}%'}."
+    )
+    # Las notas de cobertura entran al resumen porque es lo que el operador lee ANTES de
+    # abrir el entregable, y porque un OTIF sin decir de que campo salio -- ni si esa fecha
+    # es un despacho o una llegada -- no se puede reconciliar contra el ERP del cliente.
+    if report.notes:
+        resumen = f"{resumen} {' '.join(report.notes)}"
+    return Produced(report=report, summary=resumen)
+
+
+def service_scan_tool() -> Tool:
+    return Tool(
+        key="service_scan",
+        title="Realized Customer Service",
+        description="Read a live commerce backend (Unleashed, Cin7 Core, or an offline "
+                    "stand-in) and measure the service customers actually received: "
+                    "order-line fill rate, outbound OTIF (SCOR RL.1.1) and lost sales -- "
+                    "plus a field-by-field statement of what that backend CANNOT measure. "
+                    "Never a policy's implied beta presented as service.",
+        intent_keywords=(
+            "service scan", "realized service", "servicio realizado", "fill rate",
+            "otif", "on time in full", "perfect order", "pedido perfecto",
+            "servicio al cliente", "customer service level", "cuanto entregue",
+            "que servicio di", "lost sales", "venta perdida",
+            # Frases multi-palabra y no verbos sueltos: "entregar" o "servicio" a secas
+            # le robarian el ruteo a media docena de tools. Estas dos salieron de escribir
+            # el brief como lo escribiria un cliente y ver que no matcheaba nada.
+            "llegue a entregar", "que tan bien entregue",
+        ),
+        requires_data=False,
+        prepare=_service_scan_prepare,
+        run=_service_scan_run,
+        qa=lambda report: service_scan_job.verify(report),
+        options=lambda report: report.outcome,
+        deliver=lambda report, out_dir, client: service_scan_deliverable.write_operational(
+            report, out_dir, client
+        ),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            service_scan_deliverable.build(report, client=client, citations=tuple(citations),
+                                           confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
+
 def intake_scan_tool() -> Tool:
     return Tool(
         key="intake_scan",
@@ -2791,6 +2898,138 @@ def intake_scan_tool() -> Tool:
             options=tuple(options),
         ).write_all(out_dir),
         options=lambda report: report.outcome,
+    )
+
+
+# ---- procedure_audit (SOP document-control audit) ------------------------------
+# ---- procedure_draft (bilingual SOP draft: Job Breakdown Sheet + control plan) --
+#
+# "sop" elsewhere in this file (see sop_tool() above) means Sales & Operations
+# Planning -- a different discipline from a Standard Operating Procedure. Every
+# keyword below was checked against scm_agent/intent.py's strict keyword win
+# (top_score >= 1 AND top_score > second_score, scm_agent/intent.py:59): a tie with
+# sop, cycle_count, org_friction_audit, inventory_optimization, acceptance_sampling
+# or data_quality sends the brief to needs_clarification instead of either tool
+# below. Do not add a bare "sop", "draft", "procedure" or "revision" -- each one
+# ties against another registered tool (see tests/test_procedures_tools.py).
+
+PROCEDURE_AUDIT_KEYWORDS = (
+    "procedure register", "registro de procedimientos", "procedure audit", "auditoria de procedimientos",
+    "auditar los procedimientos", "audit our procedures", "audit the procedures", "audit our sops",
+    "audit the sops", "sop register", "registro de sops", "procedimientos operativos", "overdue sop",
+    "sops overdue", "sop vencido", "sops vencidos", "procedimientos vencidos", "procedimiento vencido",
+    "overdue for review", "revision vencida", "revisiones vencidas", "document control",
+    "control de documentos", "control documental", "documented information", "informacion documentada",
+    "iso 9001", "procedure owner", "dueno del procedimiento", "procedures without an owner",
+    "sops without an owner", "procedimientos sin dueno", "sops sin dueno", "which sops", "que sops",
+    "cuales sops", "who owns each procedure", "quien es dueno de cada procedimiento",
+)
+PROCEDURE_DRAFT_KEYWORDS = (
+    "procedure draft", "sop draft", "draft a procedure", "draft the procedure", "draft a sop", "draft an sop",
+    "draft the sop", "draft a standard operating procedure", "write a procedure", "write the procedure",
+    "write a sop", "write an sop", "write the sop", "write a standard operating procedure",
+    "borrador de procedimiento", "borrador de sop", "borrador del sop", "borrador del procedimiento",
+    "redacta el procedimiento", "redactar el procedimiento", "redacta el sop", "redactar el sop",
+    "redactame el sop", "escribe el sop", "escribir el sop", "arma el sop", "armar el sop", "genera el sop",
+    "generar el sop", "sop template", "plantilla de sop", "plantilla de procedimiento", "procedure template",
+    "job breakdown sheet", "hoja de desglose", "control plan", "plan de control", "work instruction",
+    "instructivo de trabajo", "standard work", "trabajo estandar", "training timetable",
+    "cronograma de entrenamiento", "document control header", "encabezado de control documental",
+    "cadencia de revision", "review cadence",
+)
+
+
+def _procedure_audit_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a procedure register CSV/Excel export is required: one row per procedure, with "
+            "at least name/procedimiento and last_reviewed_at/ultima_revision as columns "
+            "(pass params['as_of'] as an ISO date, e.g. '2026-09-03', to make the audit reproducible)"
+        ])
+    # Validate as_of/review_cadence_days/due_soon_days here, at the tool boundary,
+    # before run() ever sees them -- request.params is the same merged dict run()
+    # will receive (scm_agent/orchestrator.py replaces request.params before calling
+    # prepare()). Without this, a malformed value (e.g. as_of='03/09/2026', a
+    # non-numeric review_cadence_days) raised a ValueError inside tool.run(), which
+    # is not guarded per-tool and so escaped to the orchestrator's blanket except
+    # Exception -> "An internal error occurred.", losing the job's own clear message.
+    try:
+        procedure_audit_job.validate_params(request.params)
+    except ValueError as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    try:
+        prepared = procedure_audit_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=prepared)
+
+
+def _procedure_audit_run(payload: object, params: dict) -> Produced:
+    report = procedure_audit_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def procedure_audit_tool() -> Tool:
+    return Tool(
+        key="procedure_audit",
+        title="Procedure Register Audit (SOP document control)",
+        description="Audit a client's exported procedure register for overdue reviews, "
+                    "missing owners, an owner who is also the approver, procedures marked "
+                    "approved with no approver on file, procedures with no linked KPI, and "
+                    "unversioned documents. Always ends in a HANDOFF naming the owner and the "
+                    "due date -- and never stores the SOPs themselves.",
+        intent_keywords=PROCEDURE_AUDIT_KEYWORDS,
+        requires_data=True,
+        required_columns=("name", "last_reviewed_at"),
+        optional_columns=(
+            "procedure_id", "process_area", "owner", "approver", "version", "approved_at",
+            "review_cadence_days", "location", "linked_kpi", "reaction_plan", "status",
+        ),
+        prepare=_procedure_audit_prepare,
+        run=_procedure_audit_run,
+        qa=lambda r: procedure_audit_job.verify(r),
+        deliver=lambda report, out_dir, client: procedure_audit_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            procedure_audit_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
+def _procedure_draft_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    try:
+        draft_request = procedure_draft_job.prepare(request.params)
+    except ValueError as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    return Prepared(status="ok", payload=draft_request)
+
+
+def _procedure_draft_run(payload: object, params: dict) -> Produced:
+    draft = procedure_draft_job.run(payload, params)
+    return Produced(report=draft, summary=draft.outcome.summary)
+
+
+def procedure_draft_tool() -> Tool:
+    return Tool(
+        key="procedure_draft",
+        title="SOP Draft with Document Control (Job Breakdown Sheet + Control Plan)",
+        description="Draft a bilingual Standard Operating Procedure -- Job Breakdown Sheet, "
+                    "control plan and training timetable -- from one of three templates "
+                    "(replenishment, cycle count, or the S&OP cycle), stamped with a "
+                    "document-control header. Always born unapproved: the outcome is a "
+                    "HANDOFF asking a human to review, approve and publish it before use.",
+        intent_keywords=PROCEDURE_DRAFT_KEYWORDS,
+        requires_data=False,
+        prepare=_procedure_draft_prepare,
+        run=_procedure_draft_run,
+        qa=lambda d: procedure_draft_job.verify(d),
+        deliver=lambda draft, out_dir, client: procedure_draft_job.write_operational(draft, out_dir, client),
+        deck=lambda draft, out_dir, client, citations, confidence, options: replace(
+            procedure_draft_job.build_deck(draft, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda draft: draft.outcome,
     )
 
 
@@ -2846,4 +3085,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(cross_impact_tool())
     reg.register(org_friction_tool())
     reg.register(intake_scan_tool())
+    reg.register(service_scan_tool())
+    reg.register(procedure_audit_tool())
+    reg.register(procedure_draft_tool())
     return reg

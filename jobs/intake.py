@@ -8,6 +8,7 @@ product per period (weekly by default) ready for the engine.
 
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
@@ -16,17 +17,28 @@ from pathlib import Path
 
 import pandas as pd
 
+from src import excel_hygiene
+
 CANONICAL_REQUIRED = ("date", "product_id", "quantity")
 # ``revenue`` is detected but never emitted: it exists only to recover a real
 # unit cost (revenue / quantity) from files that carry money but no cost column.
 CANONICAL_OPTIONAL = ("unit_cost", "lead_time_days", "lead_time_std", "revenue")
 
+# Cuatro alias (`dia`, `producto`, `demanda`, `plazo_de_entrega`) vienen de
+# jobs/column_mapping.py, un segundo normalizador muerto -- sin un solo
+# importador fuera de su propio test -- que se borro en este commit. Eran los
+# unicos que tenia y esta tabla no: encabezados en espanol pelado, que es
+# justo lo que exporta un ERP de LatAm. Dos de los suyos NO se portaron:
+# `entrega` es ambiguo (puede ser una fecha de entrega, no un plazo en dias, y
+# confundirlas es el error que RECEIPT_REQUIRED existe para evitar), y
+# `lead_time_std` estaba listado alli bajo lead_time_days, que es un defecto:
+# aca la dispersion es su propio canonico.
 ALIASES: dict[str, list[str]] = {
-    "date": ["date", "order_date", "orderdate", "invoicedate", "invoice_date", "week", "period", "ds", "day", "timestamp", "datetime", "fecha", "fecha_documento", "fecha_venta", "fecha_factura", "data", "data_emissao"],
-    "product_id": ["product_id", "productid", "sku", "item", "item_id", "itemid", "stockcode", "stock_code", "product", "material", "article", "part_number", "upc", "codigo", "codigo_producto", "cod_producto", "articulo", "codigo_articulo", "referencia", "clave_producto", "produto", "codigo_produto"],
-    "quantity": ["quantity", "qty", "sales", "demand", "units", "unit_sales", "unitsales", "order_qty", "orderqty", "volume", "sold", "units_sold", "cantidad", "cant", "cantidad_vendida", "unidades", "quantidade"],
+    "date": ["date", "order_date", "orderdate", "invoicedate", "invoice_date", "week", "period", "ds", "day", "timestamp", "datetime", "fecha", "fecha_documento", "fecha_venta", "fecha_factura", "data", "data_emissao", "dia"],
+    "product_id": ["product_id", "productid", "sku", "item", "item_id", "itemid", "stockcode", "stock_code", "product", "material", "article", "part_number", "upc", "codigo", "codigo_producto", "cod_producto", "articulo", "codigo_articulo", "referencia", "clave_producto", "produto", "codigo_produto", "producto"],
+    "quantity": ["quantity", "qty", "sales", "demand", "units", "unit_sales", "unitsales", "order_qty", "orderqty", "volume", "sold", "units_sold", "cantidad", "cant", "cantidad_vendida", "unidades", "quantidade", "demanda"],
     "unit_cost": ["unit_cost", "unitcost", "price", "unitprice", "unit_price", "cost", "sell_price", "sellprice", "selling_price", "costo", "costo_unitario", "precio", "precio_unitario", "custo", "preco"],
-    "lead_time_days": ["lead_time_days", "leadtimedays", "lead_time", "leadtime", "lead", "lt_days", "supplier_lead_time", "declared_lead_time_days", "promised_lead_time_days", "planned_lead_time", "plazo", "plazo_dias", "plazo_entrega", "plazo_declarado", "dias_entrega", "prazo", "prazo_entrega"],
+    "lead_time_days": ["lead_time_days", "leadtimedays", "lead_time", "leadtime", "lead", "lt_days", "supplier_lead_time", "declared_lead_time_days", "promised_lead_time_days", "planned_lead_time", "plazo", "plazo_dias", "plazo_entrega", "plazo_de_entrega", "plazo_declarado", "dias_entrega", "prazo", "prazo_entrega"],
     # Lead-time dispersion (sigma_LT). Same alias set jobs/launch_readiness_job.py
     # already accepts, so a file that works there works here too.
     "lead_time_std": ["lead_time_std", "leadtimestd", "lead_std", "sigma_lead", "sigma_l"],
@@ -40,8 +52,11 @@ ALIASES: dict[str, list[str]] = {
     "name": ["name", "product_name", "item_name", "description", "desc", "nombre", "nombre_producto", "descripcion", "detalle", "glosa", "nome", "descricao"],
     "gtin": ["gtin", "ean", "upc_code", "barcode", "gtin_code"],
     "on_hand": ["on_hand", "onhand", "stock_on_hand", "qty_on_hand", "inventory_on_hand", "current_stock", "stock_qty", "stock_quantity", "stock", "stock_actual", "existencia", "existencias", "saldo", "disponible", "estoque"],
-    "daily_demand": ["daily_demand", "avg_daily_demand", "demand_daily", "mean_daily_demand"],
-    "days_since_last_sale": ["days_since_last_sale", "days_since_sale", "last_sale_days", "dsls"],
+    # Spanish added 2026-08-21: a LatAm export ("demanda_diaria") reached
+    # detect_columns and matched product_id/on_hand/unit_cost, then died on this
+    # one field. The table was rich in Spanish everywhere except the two below.
+    "daily_demand": ["daily_demand", "avg_daily_demand", "demand_daily", "mean_daily_demand", "demanda_diaria", "demanda_media_diaria", "consumo_diario", "consumo_medio_diario"],
+    "days_since_last_sale": ["days_since_last_sale", "days_since_sale", "last_sale_days", "dsls", "dias_sin_venta", "dias_sin_movimiento", "dias_sin_rotacion"],
     "cogs": ["cogs", "cost_of_goods_sold", "cost_of_goods"],
     "avg_inventory_value": ["avg_inventory_value", "average_inventory_value", "avg_inv_value", "inventory_value_avg"],
     "gross_margin": ["gross_margin", "grossmargin", "margin"],
@@ -423,6 +438,21 @@ def detect_sheet_and_header(
     return best[1], best[2]
 
 
+#: Donde ``load_table`` deja el informe de higiene de un Excel, para que el
+#: entregable pueda decirle al cliente que le sacaron a su planilla.
+HYGIENE_ATTR = "excel_hygiene"
+
+
+def _key_column(frame: pd.DataFrame, aliases: AliasTable | None) -> str | None:
+    """La columna de producto del archivo, o ``None`` si no se reconoce ninguna."""
+    tabla = aliases if aliases is not None else ALIASES
+    conocidos = {_norm(a) for a in tabla.get("product_id", ())}
+    for columna in frame.columns:
+        if _norm(columna) in conocidos:
+            return str(columna)
+    return None
+
+
 def load_table(path: str | Path, *, aliases: AliasTable | None = None) -> pd.DataFrame:
     """Read a client file (CSV or Excel) into a DataFrame.
 
@@ -432,10 +462,28 @@ def load_table(path: str | Path, *, aliases: AliasTable | None = None) -> pd.Dat
     es otra clase de arreglo.
     """
     p = Path(path)
-    if p.suffix.lower() in _EXCEL_SUFFIXES:
-        sheet, header = detect_sheet_and_header(p, aliases=aliases)
-        return pd.read_excel(p, sheet_name=sheet, header=header)
-    return pd.read_csv(p)
+    if p.suffix.lower() not in _EXCEL_SUFFIXES:
+        return pd.read_csv(p)
+
+    sheet, header = detect_sheet_and_header(p, aliases=aliases)
+    crudo = pd.read_excel(p, sheet_name=sheet, header=header)
+    clave = _key_column(crudo, aliases)
+    if clave is None:
+        # Sin una columna de producto reconocible no hay donde buscar la etiqueta
+        # de total ni que fila es un separador. Se devuelve el crudo: el mapeo va
+        # a fallar mas adelante con un mensaje que nombra las columnas, que es
+        # mejor diagnostico que una limpieza adivinada sobre un archivo ajeno.
+        return crudo
+
+    limpio = excel_hygiene.read_clean_table(p, key_column=clave, sheet=sheet, header_row=header)
+    frame = limpio.frame
+    # El informe viaja en `attrs` y no en el tipo de retorno: `load_table` lo
+    # llaman el intake, pricing y la subida del webapp, y cambiarle la firma
+    # obligaria a tocar los tres. `attrs` lo ignora quien no lo mira y lo
+    # encuentra quien tiene donde mostrarlo -- que es lo que impide que esto sea
+    # una limpieza silenciosa.
+    frame.attrs[HYGIENE_ATTR] = limpio.report
+    return frame
 
 
 def _normalize_core(
@@ -612,3 +660,182 @@ def prepare_tracked(
         raw, mapping, period=period, default_lead_days=default_lead_days,
         default_unit_cost=default_unit_cost,
     )
+
+
+# -- servicio realizado desde el archivo del cliente ----------------------------
+
+#: Las tres columnas de servicio, que NO estan en ``CANONICAL_OPTIONAL``.
+#:
+#: Y no lo estan a proposito: ``normalize_tracked`` agrega la demanda a periodos, y el
+#: servicio no se agrega -- dos pedidos del mismo SKU en la misma semana son dos resultados
+#: distintos, y sumarlos borra el que fallo. Viven en su propio canonico, los detecta
+#: ``service_lines`` y no tocan el camino de la demanda.
+SERVICE_OPTIONAL = ("delivered_qty", "promised_date", "delivered_date")
+
+#: Alias de las tres. Ricos en espanol y portugues por el mismo motivo que el resto de la
+#: tabla: es lo que exporta un ERP de LatAm.
+#:
+#: ``entrega`` pelado NO esta, y sigue sin estar: el comentario de arriba explica que es
+#: ambiguo entre una fecha y un plazo en dias. ``fecha_entrega`` si, porque el prefijo lo
+#: desambigua.
+SERVICE_ALIASES: dict[str, list[str]] = {
+    "delivered_qty": [
+        "delivered_qty", "qty_delivered", "delivered_quantity", "quantity_delivered",
+        "shipped_qty", "qty_shipped", "shipped_quantity", "fulfilled_qty", "served_qty",
+        "cantidad_entregada", "cant_entregada", "unidades_entregadas", "entregado",
+        "entregadas", "cantidad_despachada", "cant_despachada", "unidades_despachadas",
+        "despachado", "despachadas", "cantidad_servida", "servido",
+        "quantidade_entregue", "entregue",
+    ],
+    "promised_date": [
+        "promised_date", "promise_date", "due_date", "required_date", "requested_date",
+        "commitment_date", "committed_date", "requested_delivery_date", "eta",
+        "expected_delivery_date", "fecha_prometida", "fecha_comprometida",
+        "fecha_requerida", "fecha_pactada", "fecha_compromiso", "fecha_solicitada",
+        "fecha_pedida", "data_prometida", "data_prevista",
+    ],
+    "delivered_date": [
+        "delivered_date", "delivery_date", "actual_delivery_date", "date_delivered",
+        "ship_date", "shipped_date", "dispatch_date", "date_shipped", "fulfilled_date",
+        "fecha_entrega", "fecha_de_entrega", "fecha_real_entrega", "fecha_entregado",
+        "fecha_despacho", "fecha_de_despacho", "fecha_envio", "fecha_embarque",
+        "data_entrega", "data_envio",
+    ],
+}
+
+#: Las columnas que ``jobs.inventory_optimization.run(order_lines=...)`` lee. Se escriben
+#: aca con el mismo orden y los mismos nombres que ``src.connectors._SERVICE_FRAME_COLUMNS``:
+#: un renombre no rompe, hace que el job descarte la linea en silencio.
+_SERVICE_FRAME_COLUMNS = (
+    "product_id", "ordered_qty", "delivered_qty",
+    "promised_date", "delivered_date", "unit_price",
+)
+
+#: En INGLES, y no por gusto: esta frase viaja al ``summary`` del agente y al mapa de
+#: fuentes del entregable, que son en ingles por defecto. El deck tiene i18n
+#: (``src/i18n.py``) para producir una version en espanol ENTERA; mezclar los dos idiomas
+#: dentro de un mismo entregable no es eso. La primera version de esta constante estaba en
+#: espanol e inyectaba castellano en un deck ingles.
+_NOTA_SERVICIO = (
+    "Service measured from the file's own columns: {columnas}. IMPORTANT about "
+    "'{entrega}': from a file there is no way to know whether that date is the DISPATCH "
+    "from the warehouse or the ARRIVAL at the customer, and they are not the same thing -- "
+    "measured over 98,666 real orders the two readings differ by 6.2 points of OTIF. "
+    "Confirm with the client what that column records."
+)
+_NOTA_SIN_ENTREGA = (
+    "Service measured from the file's own columns: {columnas}. Without a delivery date "
+    "OTIF cannot be measured; fill rate can."
+)
+
+
+def _texto_o_none(valor: object) -> str | None:
+    """Una fecha ISO como texto, o ``None`` cuando la celda estaba vacia.
+
+    ``None`` y nunca cadena vacia ni ``NaT``: el motor distingue una ausencia de un cero, y
+    una cadena vacia que llega como fecha se descarta igual pero sin decir por que.
+    """
+    if valor is None:
+        return None
+    texto = str(valor).strip()
+    if not texto or texto.lower() in ("nan", "nat", "none"):
+        return None
+    return texto[:10]
+
+
+def _numero_o_none(valor: object) -> float | None:
+    """Una cantidad reportada, o ``None``. Una celda vacia NO es cero unidades servidas."""
+    if valor is None:
+        return None
+    if isinstance(valor, str) and not valor.strip():
+        return None
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return None
+    return numero if math.isfinite(numero) else None
+
+
+def service_lines(
+    path: str | Path,
+    *,
+    overrides: dict[str, str] | None = None,
+    aliases: AliasTable | None = None,
+):
+    """Las lineas de servicio del archivo del cliente, o ``None`` si no trae ninguna.
+
+    El productor que le faltaba a ``jobs.inventory_optimization.run(order_lines=...)``. Ese
+    argumento acepta un frame de lineas salientes desde que aterrizo el trabajo de servicio
+    realizado, y ningun llamador lo pasaba -- asi que cada corrida reportaba ``not_measured``
+    sobre archivos que a veces SI traian con que medirse.
+
+    ``None`` y no un frame vacio: "este cliente no manda servicio" y "manda servicio y esta
+    todo en cero" son cosas distintas, y el job las trata distinto.
+
+    NO agrega por periodo. La demanda se agrega a semanas y el servicio no: dos pedidos del
+    mismo SKU en la misma semana son dos resultados distintos -- uno pudo servirse entero y
+    el otro no -- y sumarlos borra justamente el que fallo.
+
+    El frame trae dos cosas en ``.attrs`` que el entregable necesita:
+
+    ``service_headers``
+        Que columna del cliente matcheo cada campo. Es lo que hace auditable al numero: de
+        un adaptador sabemos que significa ``delivered_date`` porque leimos la doc del
+        vendor, y de un archivo no.
+
+    ``service_note``
+        La advertencia de que una fecha de entrega en un archivo puede ser un despacho o una
+        llegada. No es un detalle: ninguno de los tres ERP del canal registra la llegada, y
+        entre las dos lecturas hay 6,2 puntos de OTIF medidos.
+    """
+    raw = load_table(path, aliases=aliases)
+    mapeo = detect_columns(
+        raw, overrides, optional=CANONICAL_OPTIONAL + SERVICE_OPTIONAL,
+        aliases={**(aliases or ALIASES), **SERVICE_ALIASES},
+    )
+    if not mapeo.ok:
+        # Sin las columnas obligatorias de demanda no hay a que SKU atribuirle el servicio.
+        return None
+    presentes = {c: mapeo.mapping[c] for c in SERVICE_OPTIONAL if c in mapeo.mapping}
+    if not presentes:
+        return None
+
+    import pandas as pd
+
+    col_sku = mapeo.mapping["product_id"]
+    col_qty = mapeo.mapping["quantity"]
+    col_precio = mapeo.mapping.get("unit_cost")
+    filas = []
+    for fila in raw.to_dict("records"):
+        sku = _texto_o_none(fila.get(col_sku))
+        pedidas = _numero_o_none(fila.get(col_qty))
+        if sku is None or pedidas is None:
+            continue
+        filas.append(
+            {
+                "product_id": sku,
+                "ordered_qty": pedidas,
+                "delivered_qty": (
+                    _numero_o_none(fila.get(presentes["delivered_qty"]))
+                    if "delivered_qty" in presentes else None
+                ),
+                "promised_date": (
+                    _texto_o_none(fila.get(presentes["promised_date"]))
+                    if "promised_date" in presentes else None
+                ),
+                "delivered_date": (
+                    _texto_o_none(fila.get(presentes["delivered_date"]))
+                    if "delivered_date" in presentes else None
+                ),
+                "unit_price": _numero_o_none(fila.get(col_precio)) if col_precio else None,
+            }
+        )
+    frame = pd.DataFrame(filas, columns=list(_SERVICE_FRAME_COLUMNS))
+    columnas = ", ".join(f"{k} <- '{v}'" for k, v in sorted(presentes.items()))
+    frame.attrs["service_headers"] = dict(presentes)
+    frame.attrs["service_note"] = (
+        _NOTA_SERVICIO.format(columnas=columnas, entrega=presentes["delivered_date"])
+        if "delivered_date" in presentes
+        else _NOTA_SIN_ENTREGA.format(columnas=columnas)
+    )
+    return frame

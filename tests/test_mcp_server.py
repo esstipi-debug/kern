@@ -1,10 +1,10 @@
 """Tests for the read-only MCP server (Phase A go-to-market).
 
 Guarantees under test:
-- exactly the intended 35 analysis tools are exposed, all annotated read-only/
+- exactly the intended 36 analysis tools are exposed, all annotated read-only/
   non-destructive - the writeback pair (`odoo_replenishment`,
-  `excel_replenishment`) and the two non-tabular tools (`leadership_chain`,
-  `warehouse_layout`) stay off this surface;
+  `excel_replenishment`) and the three non-tabular tools (`leadership_chain`,
+  `warehouse_layout`, `procedure_draft`) stay off this surface;
 - a real call bridges rows -> temp CSV -> Orchestrator.run() -> a structured
   JSON response carrying the same client-ready report the webapp already builds
   - including for loop-registered (spec-table) tools;
@@ -59,6 +59,7 @@ EXPECTED_TOOL_NAMES = {
     "linchpin_vehicle_routing",
     "linchpin_flow_map",
     "linchpin_org_friction_audit",
+    "linchpin_procedure_audit",
 }
 
 _ABC_XYZ_ROWS = [
@@ -81,7 +82,7 @@ async def _call(mcp, tool_name: str, **params) -> dict:
     return json.loads(content[0].text)
 
 
-# -- surface: exactly the intended 35, all read-only ----------------------------
+# -- surface: exactly the intended 36, all read-only ----------------------------
 
 
 async def test_server_name():
@@ -103,7 +104,7 @@ async def test_odoo_replenishment_and_writeback_tools_are_never_exposed(mcp):
 
 async def test_every_tool_is_annotated_read_only_and_non_destructive(mcp):
     tools = await mcp.list_tools()
-    assert len(tools) == len(EXPECTED_TOOL_NAMES) == 35
+    assert len(tools) == len(EXPECTED_TOOL_NAMES) == 36
     for tool in tools:
         assert tool.annotations is not None, f"{tool.name} has no annotations"
         assert tool.annotations.readOnlyHint is True, f"{tool.name} must be readOnlyHint=True"

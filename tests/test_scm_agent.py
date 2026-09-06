@@ -121,13 +121,15 @@ _CODE_GRAPH = Path(__file__).resolve().parent.parent / "graphify-out" / "graph.j
 def test_build_default_registry_tools():
     reg = tools.build_default_registry()
     keys = {t.key for t in reg.list()}
-    assert keys == {"abc_xyz", "acceptance_sampling", "cost_to_serve", "cross_impact", "cycle_count", "data_quality", "ddmrp", "dea", "digital_twin", "disruption_scan", "drp", "earned_value", "excel_replenishment", "excess_obsolete", "facility_location", "fefo", "financial_kpis", "flow_map", "forecast", "hat_settlement", "hat_tension", "intake_scan", "inventory_optimization", "landed_cost", "launch_readiness", "leadership_chain", "learning_curve", "markdown_liquidation", "multi_echelon", "network_design", "newsvendor", "odoo_replenishment", "org_friction_audit", "price_intelligence", "price_watch", "pricing", "queuing", "reconciliation", "returns", "risk", "scheduling", "simulation", "slotting", "sop", "sourcing", "supplier_management", "transportation", "vehicle_routing", "warehouse_layout", "whatif"}
+    assert keys == {"abc_xyz", "acceptance_sampling", "cost_to_serve", "cross_impact", "cycle_count", "data_quality", "ddmrp", "dea", "digital_twin", "disruption_scan", "drp", "earned_value", "excel_replenishment", "excess_obsolete", "facility_location", "fefo", "financial_kpis", "flow_map", "forecast", "hat_settlement", "hat_tension", "intake_scan", "inventory_optimization", "landed_cost", "launch_readiness", "leadership_chain", "learning_curve", "markdown_liquidation", "multi_echelon", "network_design", "newsvendor", "odoo_replenishment", "org_friction_audit", "price_intelligence", "price_watch", "pricing", "procedure_audit", "procedure_draft", "queuing", "reconciliation", "returns", "risk", "scheduling", "service_scan", "simulation", "slotting", "sop", "sourcing", "supplier_management", "transportation", "vehicle_routing", "warehouse_layout", "whatif"}
     assert reg.get("leadership_chain").requires_data is False
     assert reg.get("odoo_replenishment").requires_data is False
     assert reg.get("inventory_optimization").requires_data is True
     assert reg.get("cost_to_serve").requires_data is True
     assert reg.get("sop").requires_data is True
     assert reg.get("abc_xyz").requires_data is True
+    assert reg.get("procedure_draft").requires_data is False
+    assert reg.get("procedure_audit").requires_data is True
 
 
 def test_inventory_tool_pipeline_on_sample(tmp_path):
@@ -198,7 +200,11 @@ class _FakeProvider:
         return self._available
 
     def complete(self, prompt):
-        return self._complete
+        # `complete_text` acepta un callable para los tests que necesitan que la
+        # reescritura CONSERVE las cifras del prompt: desde la brecha 8,
+        # scm_agent/narrative_critic.py revierte toda prosa que las pierda, asi
+        # que un texto fijo sin numeros ya no sobrevive hasta el resumen.
+        return self._complete(prompt) if callable(self._complete) else self._complete
 
     def extract(self, prompt, schema):
         return dict(self._extract)
@@ -583,13 +589,40 @@ def test_orchestrator_qa_failed_writes_no_deliverables(tmp_path):
     assert res.deliverables == {}
 
 
-def test_orchestrator_narrative_upgrade_with_provider(tmp_path):
-    prov = _FakeProvider(complete_text="Upgraded narrative.", available=True)
+#: El resumen deterministico de este brief, el que el LLM tiene que respetar.
+_BASE_LEADERSHIP = "CHAIN 2.0/4"
+
+
+def _run_leadership(tmp_path, complete_text):
+    prov = _FakeProvider(complete_text=complete_text, available=True)
     orch = Orchestrator(registry=tools.build_default_registry(), provider=prov)
-    res = orch.run("evaluate leadership", overrides={"scores": "3 2 3 1 1"}, job_type="leadership_chain",
-                   out_dir=tmp_path)
+    return orch.run("evaluate leadership", overrides={"scores": "3 2 3 1 1"},
+                    job_type="leadership_chain", out_dir=tmp_path)
+
+
+def test_orchestrator_narrative_upgrade_with_provider(tmp_path):
+    """La reescritura se aplica cuando conserva las cifras del resumen base.
+
+    Este test pedia antes `res.summary == "Upgraded narrative."` -- una cadena
+    sin una sola cifra sobre un base que dice "CHAIN 2.0/4" -- y pasaba en verde.
+    Era la prueba de la brecha 8, no de la mejora: mantiene su intencion original
+    (con provider, la prosa se mejora) con un texto que respeta el contrato.
+    """
+    res = _run_leadership(tmp_path, "Diagnostico CHAIN: 2.0 de 4, arquetipo Operador invisible.")
     assert res.status == "ok"
-    assert res.summary == "Upgraded narrative."
+    assert res.summary == "Diagnostico CHAIN: 2.0 de 4, arquetipo Operador invisible."
+
+
+def test_orchestrator_narrative_that_drops_a_figure_reverts(tmp_path):
+    """Cierra la brecha 8 en el orquestador: la prosa sin cifras no llega al cliente.
+
+    Ver scm_agent/narrative_critic.py. El paso sigue siendo `ok` -- el critico es
+    un filtro, no un veto -- pero lo que se entrega es el resumen deterministico.
+    """
+    res = _run_leadership(tmp_path, "Upgraded narrative.")
+    assert res.status == "ok"
+    assert res.summary != "Upgraded narrative."
+    assert _BASE_LEADERSHIP in res.summary
 
 
 def test_package_exports():
@@ -633,12 +666,23 @@ def test_orchestrator_degrades_without_knowledge_graph(tmp_path):
     assert res.citations == []  # no graph -> no citations, job still succeeds
 
 
+def _echo_keeping_figures(prompt):
+    """Una reescritura que respeta el contrato "Keep every number".
+
+    `narrative_rewrite` arma el prompt como instruccion, linea en blanco, y
+    despues el resumen base mas las citas. Devolver el bloque posterior a esa
+    linea en blanco conserva por construccion todas las cifras del resumen
+    deterministico -- que es exactamente lo que el critico exige.
+    """
+    return "Grounded narrative. " + prompt.split(chr(10) * 2, 1)[-1]
+
+
 def test_orchestrator_narrative_weaves_citations_when_llm_present(tmp_path):
-    prov = _FakeProvider(complete_text="Grounded narrative.", available=True)
+    prov = _FakeProvider(complete_text=_echo_keeping_figures, available=True)
     orch = Orchestrator(registry=tools.build_default_registry(), provider=prov)
     res = orch.run("reorder points and safety stock", data_path=PORTFOLIO, out_dir=tmp_path)
     assert res.status == "ok"
-    assert res.summary == "Grounded narrative."
+    assert res.summary.startswith("Grounded narrative.")  # el texto del LLM se usa
     assert res.citations  # citations still attached alongside the LLM summary
 
 

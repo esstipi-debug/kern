@@ -22,6 +22,10 @@ Deliberately NOT here (see docs/MCP_SERVER.md "What's NOT here yet"):
   anonymous remote MCP surface that is an arbitrary-file-read primitive, not a
   data-analysis input. See docs/MCP_SERVER.md's "What's NOT here yet" for the
   full reasoning (same class of risk the `org_friction` `*_path` guard closes).
+- `procedure_draft` - a params-driven SOP-template generator (requires_data=False,
+  ignores rows), same rule as `warehouse_layout` above: nothing for the rows->CSV
+  bridge to feed it. `procedure_audit` IS exposed below; it reads a client's
+  tabular procedure register.
 
 Each description is the user-facing MCP contract: what the tool does, the
 canonical columns its job's `prepare()` matches (aliases are tolerated -
@@ -590,6 +594,23 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "params['history_path'], and this remote surface drops every *_path override on "
             "purpose (see `strip_filesystem_params` in webapp/mcp_server.py) - so a call "
             "here runs three of the four detectors, never four.\n\n" + _RETURNS
+        ),
+    ),
+    MCPToolSpec(
+        name="linchpin_procedure_audit",
+        job_type="procedure_audit",
+        title="Audit the Procedure Register (SOP Document Control)",
+        description=(
+            "Audit a client's exported procedure register for overdue reviews, missing "
+            "owners, an owner who is also the approver, procedures marked approved with "
+            "no approver on file, procedures with no linked KPI, and unversioned "
+            "documents. Always ends in a HANDOFF naming the owner and the due date.\n\n"
+            "Rows need columns: name, last_reviewed_at. Optional: owner, approver, "
+            "version, approved_at, review_cadence_days, status, linked_kpi. E.g. "
+            '{"name": "Receiving Inspection", "last_reviewed_at": "2025-06-01", '
+            '"owner": "Warehouse Lead", "review_cadence_days": 365}.\n\n'
+            'Useful params: as_of ("YYYY-MM-DD" - without it the server clock is used, '
+            "and the report declares that).\n\n" + _RETURNS
         ),
     ),
 )

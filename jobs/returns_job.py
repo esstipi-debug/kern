@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
-
 from nosilo_core.guided import GuidedOutcome, recommend, verify_guided
+
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
@@ -26,9 +26,9 @@ from src.reverse_logistics import (
     ReturnLine,
     best_disposition,
     reason_pareto,
-    return_rate_by_reason,
     recovered_value,
     recovery_rate,
+    return_rate_by_reason,
     returns_value_at_cost,
     supplier_claim_base,
     units_by_reason_kind,
