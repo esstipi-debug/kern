@@ -164,7 +164,9 @@ def cost_is_synthesized(report: JobReport) -> bool:
     ``IntakeQuality.synthesized`` lo cuenta; el aviso interno moria antes del deck).
     Aca se decide con que unidad se escribe cada monto de inversion del entregable.
     """
-    quality = report.intake_quality
+    # getattr: solo el JobReport de inventario lleva intake_quality; un reporte de
+    # otro job (precios) no tiene costo inventado que declarar.
+    quality = getattr(report, "intake_quality", None)
     return quality is not None and "unit_cost" in quality.fully_synthesized_columns
 
 
@@ -472,7 +474,7 @@ def _price_row(r: PricingRec) -> dict:
 
 
 def write_pricing_csv(report: PricingReport, path: str | Path) -> Path:
-    return write_summary_csv([_price_row(r, units=cost_is_synthesized(report)) for r in report.recommendations], path)
+    return write_summary_csv([_price_row(r) for r in report.recommendations], path)
 
 
 def write_pricing_report_md(report: PricingReport, path: str | Path, *, client: str = "Client") -> Path:
@@ -530,7 +532,7 @@ def write_pricing_excel(report: PricingReport, path: str | Path) -> Path:
     wb = Workbook()
     ws = wb.active
     ws.title = "Price recommendations"
-    rows = [_price_row(r, units=cost_is_synthesized(report)) for r in report.recommendations]
+    rows = [_price_row(r) for r in report.recommendations]
     headers = list(rows[0].keys()) if rows else ["product_id"]
     fill = PatternFill("solid", fgColor="1F2A44")
     for c, h in enumerate(headers, 1):
