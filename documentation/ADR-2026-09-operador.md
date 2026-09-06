@@ -1,0 +1,31 @@
+# ADR 2026-09 — Pivot #11: Odoo primero por partners, operador AU/NZ como rama de fracaso
+
+**Estado:** vigente desde el 2026-09-05 · **Revisión:** semana 6 (puerta) y semana 15 (corte) · **Plan completo:** `~/.claude/plans/lee-todo-el-proyecto-enchanted-orbit.md` (fuera del repo a propósito).
+
+## 1. Qué es esto y por qué se escribe
+
+1. Es el pivot número 11 en seis meses y se nombra así para que no se repita sin que se note.
+2. Revierte la decisión del 2026-08-05 (software self-serve, beachhead AU/NZ vía Cin7/Unleashed, imagen Docker como puerta), que ya había revertido el pivot a agencia de julio.
+3. Lo motiva un diagnóstico verificado el 2026-09-05 (53 tools, 0 clientes, 0 mails, 108 prospectos sin contactar) más el norte declarado ese día: Kern es un gerente de operaciones que conecta y unifica sistemas y escribe con aprobación.
+4. Carril E (semanas 1-6): Odoo primero, en español, por partners, porque es el único circuito leer → decidir → escribir con aprobación que existe en código y tiene laboratorio verde.
+5. Carril A (desde la semana 7, sólo si la puerta no abre): operador AU/NZ con el marcador de servicio realizado como gancho. No se rediscute.
+6. Puerta de la semana 6, con la tabla delante: ≥1 partner presentó un cliente conectable (Odoo.sh / on-prem / Custom, con Compras activo). Si sí, fase 2-E. Si no, A.
+7. Frenos mecánicos en las dos ramas: `tests/test_registry_frozen.py` (53 tools y contrato de packs), un PR abierto a la vez, ≤4 h/semana de supervisión de agentes, `offers.py` intacto hasta el primer pago.
+8. Congelado hasta el primer pago: MCP como canal, LATAM masivo, Kern Alerts, videos, Shopify OAuth, grafo nuevo, cualquier tool #54. Amazon FBA entra sólo por conteo (≥3 pedidos en 30 contactos).
+9. Corte de la semana 15: <120 toques ⇒ el repo se congela 90 días. ≥120 toques sin pago ⇒ el motivo dominante de no-compra decide qué cambia (gancho o ICP), no el producto.
+
+## 2. Decisión del usuario del 2026-09-05 (registrada una vez)
+
+Objeción presentada: "mails antes que commits" (la fase 0 pedía `git log` vacío hasta 15 mails). El usuario la escuchó y decidió arrancar el código igual, más una evaluación de `nosilo_core` antes del PR-3. Orden de PRs: PR-1 (este freno) → PR-0 (circuito Odoo: aprobación en reorder points, neteo en tránsito con un solo lector, MOQ del proveedor, refresco de catálogo) → PR-2 → PR-A → PR-4 → PR-3. Los mails siguen siendo del usuario y `kern-fase0/contar.ps1` sigue siendo la vara.
+
+## 3. Cómo se levanta el freno (y registro de cada vez que se levantó)
+
+Sumar o quitar una tool, o un campo del contrato de packs, es un diff sobre las tuplas de `tests/test_registry_frozen.py` en el mismo PR, con el motivo en el commit y una fila acá. La tool #54 no existe hasta que un cliente pago la pida; las columnas del entregable sí pueden crecer sin tocar esto.
+
+| Fecha | Qué cambió | Motivo | PR |
+|---|---|---|---|
+| 2026-09-05 | Se congela el conjunto de 53 tools y el contrato de packs | Freno mecánico #1 del plan | #330 |
+
+## 4. Hallazgos que esperan su puerta (aparcados con fecha)
+
+Ver sección 8 del plan: libros → doctrina (columna "regla aplicada y por qué" tras el primer pago), Khan/Palamariu (tabla de OC en camino y conteo de proveedores por SKU tras el primer pago), adaptación a cadenas con distinto poder (perfil de posición de 5 preguntas), Amazon FBA (peldaño 2 por conteo).

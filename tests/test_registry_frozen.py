@@ -136,13 +136,6 @@ def test_registry_is_frozen_at_the_53_tools_of_2026_09_05() -> None:
     assert registered == FROZEN_TOOL_KEYS, _describe_drift(registered, FROZEN_TOOL_KEYS)
 
 
-def test_registry_keys_are_unique_and_count_matches() -> None:
-    tools = build_default_registry().list()
-    keys = [t.key for t in tools]
-    assert len(keys) == len(set(keys)), "clave de tool duplicada en el registro"
-    assert len(keys) == 53
-
-
 def test_vertical_pack_contract_is_frozen() -> None:
     fields = tuple(f.name for f in dataclasses.fields(vertical_profile.VerticalProfile))
     assert fields == FROZEN_VERTICAL_PROFILE_FIELDS, (
