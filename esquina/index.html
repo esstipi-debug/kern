@@ -152,6 +152,15 @@
       border-top: 1px solid var(--line);
     }
     .gloss b { color: var(--ink); font-weight: 600; }
+    .steps { margin: 10px 0 0; padding: 0; list-style: none; }
+    .steps li {
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--muted);
+      padding: 8px 0;
+      border-top: 1px solid var(--line);
+    }
+    .steps b { color: var(--ink); }
     .card {
       background: #fffdf8;
       border-radius: 16px;
@@ -370,14 +379,21 @@
             <p>Un family office (oficina de una familia inversionista: H2V Magallanes) busca inquilinos de la parada. Sin ellos cobras solo la estación (~68). Con la parada llena llegas a ~159. Cobran 10% el primer año y 4% de lo que entre en la parada (~4 UF). Cero de la estación y del ripio. Si en 18 meses no cobran renta, se acaba el mandato.</p>
           </article>
           <article class="card">
-            <div class="n">3 · Ripio · cobro de una vez</div>
-            <h2>No es renta mensual. Es grava, por metro cúbico.</h2>
-            <p>3.000 pesos chilenos por m³ cargado. 7.143 m³ por hectárea ocupada. Parada ≈ 15.000 m³. El vecino I-A2 ≈ 18.571 m³. No los 250.000 del certificado de la estancia.</p>
+            <div class="n">3 · Ripio · una vez, no cada mes</div>
+            <h2>Es la grava del patio. No es el arriendo.</h2>
+            <p>Los camiones no estacionan sobre el campo. Hay que echar ripio y compactarlo. Vilicic lo carga. Quien ocupa el patio lo paga. Tú no lo mezclas con los 159 UF/mes.</p>
+            <ul class="steps">
+              <li><b>Precio.</b> 3.000 pesos por cada m³ que se carga. Nada de “un tanto al mes”.</li>
+              <li><b>Cuánto.</b> Una capa de ~71 cm. Eso son 7.143 m³ por hectárea que se ocupa. Si ocupan menos, pagan menos.</li>
+              <li><b>Parada (~2,1 ha).</b> ≈ 15.000 m³ → ~1.100 UF, una vez.</li>
+              <li><b>Vecino I-A2 (2,6 ha).</b> ≈ 18.571 m³ → ~1.363 UF, una vez. Ese patio ya está ocupado.</li>
+              <li><b>No son 250.000 m³.</b> Ese número es el certificado de ripio de toda la estancia, no de este paño.</li>
+            </ul>
           </article>
           <article class="card">
             <div class="n">4 · I-A2 · 2,6 ha</div>
             <h2>Ya ocupado. No se ofrece a Enex.</h2>
-            <p>Transporte portuario. Cliente de diésel y AdBlue. El patio de atrás (I-A3) es otra mesa, después.</p>
+            <p>Transporte portuario. Cliente de diésel y AdBlue. El ripio de I-A2 lo paga ese ocupante, por las hectáreas que cerca. El patio de atrás (I-A3) es otra mesa, después.</p>
           </article>
           <div class="split">
             <article class="card ok">
@@ -394,6 +410,7 @@
             <li><b>EDS</b> — estación de servicio (el surtidor).</li>
             <li><b>Family office</b> — no es dueño ni opera. Caza inquilinos de la parada a cambio de un %.</li>
             <li><b>Pides / cierras / te paras</b> — techo, firma y piso de la negociación del arriendo, en UF/mes.</li>
+            <li><b>Ripio</b> — grava compactada del patio. Se cobra una vez, por m³, a quien ocupa. No entra al arriendo mensual.</li>
           </ul>
         </section>
 
@@ -438,7 +455,7 @@
 
         <section class="panel" id="renta" hidden>
           <p class="lead">La renta mensual llega cuando abre la estación.</p>
-          <p class="sub">Hoy el arriendo es cero. El ripio es un cobro aparte, una sola vez, no se suma al 159.</p>
+          <p class="sub">Hoy el arriendo es cero. El ripio no se suma a esos 159: es grava del patio, se paga una vez, aparte.</p>
           <div class="unit" role="group" aria-label="Unidad">
             <button type="button" class="on" data-unit="uf">UF</button>
             <button type="button" data-unit="clp">CLP</button>
@@ -454,9 +471,9 @@
             <p>El family office no opera ni es dueño. Busca quién pague parking y comida. Tú cobras el arriendo; ellos se llevan el 4% de esa parada.</p>
           </article>
           <article class="card">
-            <div class="n">Ripio · una vez</div>
+            <div class="n">Ripio · no es arriendo</div>
             <h2>Parada ~1.100 UF · I-A2 ~1.363 UF</h2>
-            <p>Una vez. 3.000 CLP/m³. Solo el m³ que se carga. El family office no lleva nada de esto.</p>
+            <p>Grava compactada. 3.000 CLP por m³ cargado. Capa de ~71 cm → 7.143 m³ por hectárea ocupada. Lo paga quien usa el patio. El family office no lleva nada de esto. No son los 250.000 m³ del certificado de la estancia.</p>
           </article>
         </section>
 
@@ -466,7 +483,7 @@
           <ul class="dont">
             <li><strong>No pongas los estanques tú</strong>Shell y Aramco se van. Queda franquicia o independiente. Cuota ≈ 115 UF/mes contra ~68 de arriendo.</li>
             <li><strong>No vendas a Copec</strong>Ellos compran el suelo. Esto se arrienda, no se vende. Precio de disuasión del pad: 28.000 UF.</li>
-            <li><strong>No des 250.000 m³ en I-A2</strong>Ripio = hectáreas ocupadas. 2,6 ha ≈ 18.571 m³.</li>
+            <li><strong>No cobres 250.000 m³ en I-A2</strong>Eso es el certificado de toda la estancia. En I-A2 solo las 2,6 ha ocupadas: ≈ 18.571 m³.</li>
             <li><strong>No metas I-A3 a Enex</strong>Es otra mesa. Después, no ahora.</li>
             <li><strong>No 5 pesos por litro</strong>Van 12–15. Tampoco 90 días de exclusiva a una sola marca.</li>
             <li><strong>No 90 UF de campo a I-A2</strong>I-A2 ya está ocupado. Patio, no campo.</li>
@@ -499,13 +516,13 @@
     const Z = {
       eds: { n: "Estación · hasta 1 ha", h: "Ellos construyen", p: "Pides 90, cierras 60–75, te paras en 40. UF/mes. Estanques de la marca. Tú no financias la estación.", orbit: "55deg 72deg 70%" },
       park: { n: "Parada · ~2,1 ha", h: "~95 UF/mes si llenan", p: "Otro contrato. El family office caza inquilinos. 10% año 1, 4% después. 0% de la estación.", orbit: "180deg 68deg 95%" },
-      ia2: { n: "I-A2 · 2,6 ha", h: "Ocupado", p: "Ripio 7.143 m³/ha ≈ 18.571 m³. No se ofrece a Enex.", orbit: "0deg 22deg 160%" },
+      ia2: { n: "I-A2 · 2,6 ha", h: "Ocupado", p: "Pagan ripio por las 2,6 ha que ocupan: ≈ 18.571 m³ una vez. No se ofrece a Enex.", orbit: "0deg 22deg 160%" },
       ia3: { n: "I-A3 · 4,28 ha", h: "Después", p: "No entra hoy. No va en el correo de Enex ni Esmax.", orbit: "0deg 22deg 160%" }
     };
     const bars = {
       trato: ["El trato", "Suelo mío. Estación de ellos.", "I-A1 · Ruta 9 Norte × Y-50"],
       pano: ["El paño", "Un pin. Un uso.", "Solo el pad se ofrece a Enex"],
-      renta: ["El arriendo", "0 hoy. 159 UF/mes cuando esté lleno.", "Ripio aparte, una vez"],
+      renta: ["El arriendo", "0 hoy. 159 UF/mes cuando esté lleno.", "Ripio es grava, una vez"],
       no: ["Fuera", "Esto rompe el arriendo.", "Estanques, Copec, I-A3"]
     };
     let unit = "uf";
