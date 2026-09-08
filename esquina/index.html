@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#1a140e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Esquina 950" />
+  <title>Esquina 950</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;700&family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0f0d0b;
+      --surface: #f4eadb;
+      --surface-2: #ebe1d0;
+      --ink: #1a140e;
+      --muted: #5c5348;
+      --line: #d8ccb8;
+      --accent: #c4491d;
+      --ok: #1f6b4a;
+      --ok-bg: #e4f0e8;
+      --bad-bg: #f8e8e1;
+      --bar: #1a140e;
+      --nav: #fffaf3;
+      --uf: 40884;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bot: env(safe-area-inset-bottom, 0px);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: Roboto, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .shell {
+      min-height: 100dvh;
+      display: flex;
+      justify-content: center;
+      background:
+        radial-gradient(1200px 600px at 50% -10%, #2a2218, var(--bg));
+    }
+    .phone {
+      width: min(430px, 100%);
+      min-height: 100dvh;
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      box-shadow: 0 0 0 1px #0008;
+    }
+    .status {
+      height: calc(28px + var(--safe-top));
+      padding-top: var(--safe-top);
+      background: var(--bar);
+      color: #f4eadb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-left: 18px;
+      padding-right: 18px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+    }
+    .appbar {
+      background: var(--bar);
+      color: #f4eadb;
+      padding: 4px 20px 16px;
+    }
+    .appbar .k {
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      opacity: 0.55;
+      font-weight: 500;
+    }
+    .appbar h1 {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 28px;
+      margin: 4px 0 0;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+    }
+    .appbar p { margin: 6px 0 0; font-size: 13px; opacity: 0.7; }
+    main {
+      flex: 1;
+      overflow: auto;
+      padding: 16px;
+    }
+    .panel { display: none; }
+    .panel.on { display: block; }
+    .panel[hidden] { display: none !important; }
+    .lead {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 22px;
+      line-height: 1.25;
+      margin: 0 0 6px;
+    }
+    .sub { margin: 0 0 16px; color: var(--muted); font-size: 14px; line-height: 1.45; }
+    .card {
+      background: #fffdf8;
+      border-radius: 16px;
+      padding: 16px;
+      margin: 0 0 10px;
+      border: 1px solid var(--line);
+    }
+    .card button.hit {
+      all: unset;
+      display: block;
+      width: 100%;
+      cursor: pointer;
+    }
+    .n {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .card h2 { font-size: 17px; margin: 6px 0 6px; font-weight: 600; }
+    .card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
+    .card .amt {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 22px;
+      color: var(--ink);
+      margin-top: 8px;
+    }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .ok { background: var(--ok-bg); border-color: #b7d4c4; }
+    .bad { background: var(--bad-bg); border-color: #e8c4b4; }
+    .ok h2 { color: var(--ok); }
+    .bad h2 { color: var(--accent); }
+    .money { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    .money div {
+      background: var(--bar);
+      color: #f4eadb;
+      border-radius: 14px;
+      padding: 12px 10px;
+      text-align: center;
+    }
+    .money span { display: block; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55; }
+    .money b {
+      display: block;
+      font-family: Fraunces, Georgia, serif;
+      font-size: 22px;
+      margin-top: 4px;
+    }
+    .map {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #14110e;
+      margin-bottom: 10px;
+    }
+    .map img { display: block; width: 100%; height: auto; }
+    .pin {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      background: none;
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+      color: #fff;
+      font: 600 11px Roboto, sans-serif;
+      text-align: center;
+    }
+    .pin i {
+      display: block;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      margin: 0 auto 4px;
+      box-shadow: 0 0 0 6px rgba(255,255,255,.18);
+    }
+    .pin.eds i { background: #c4922a; }
+    .pin.park i { background: #c4491d; }
+    .pin.ia2 i { background: #5a8f78; }
+    .pin.ia3 i { background: #8a7a68; }
+    .pin.on i { box-shadow: 0 0 0 7px rgba(196,73,29,.35); }
+    .sheet {
+      background: #fffdf8;
+      border-radius: 16px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      min-height: 108px;
+    }
+    .sheet h2 { margin: 4px 0 6px; font-size: 18px; }
+    .dont { list-style: none; margin: 0; padding: 0; }
+    .dont li {
+      background: #fffdf8;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin: 0 0 8px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .dont li strong { display: block; font-size: 15px; margin-bottom: 2px; }
+    .nav {
+      flex-shrink: 0;
+      background: var(--nav);
+      border-top: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      padding: 6px 4px calc(8px + var(--safe-bot));
+    }
+    .nav button {
+      appearance: none;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: 500 11px Roboto, sans-serif;
+      padding: 8px 0 4px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .nav button.on { color: var(--accent); }
+    .nav svg { width: 24px; height: 24px; }
+    .unit {
+      display: flex;
+      gap: 6px;
+      margin: 0 0 12px;
+    }
+    .unit button {
+      flex: 1;
+      border: 1px solid var(--line);
+      background: #fffdf8;
+      border-radius: 999px;
+      padding: 8px;
+      font: 500 13px Roboto, sans-serif;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .unit button.on { background: var(--bar); color: #f4eadb; border-color: var(--bar); }
+    @media (min-width: 560px) {
+      .phone { min-height: 100dvh; max-height: 100dvh; overflow: hidden; }
+      main { overflow: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="phone">
+      <div class="status"><span>Esquina 950</span><span>Magallanes</span></div>
+      <header class="appbar">
+        <div class="k" id="bar-k">El trato</div>
+        <h1 id="bar-h">Suelo mío. Bomba de ellos.</h1>
+        <p id="bar-p">I-A1 · Ruta 9 Norte × Y-50 · Cabeza de Mar</p>
+      </header>
+      <main>
+        <section class="panel on" id="trato">
+          <p class="lead">Tú arriendas 1 ha. Shell o Aramco construyen la bomba.</p>
+          <p class="sub">La misma semana a Enex y Esmax. Copec no entra: compran suelo, y esto no se vende.</p>
+          <article class="card">
+            <div class="n">1 · Pad EDS · ≤1 ha</div>
+            <h2>Ellos estanques, canopy y turnos</h2>
+            <p>Pedir 90 · cerrar 60–75 · salir 40. Más 12–15 pesos por litro. 12 a 15 años.</p>
+            <div class="amt" data-uf-min="60" data-uf-max="75" data-unit="/mes">60–75 UF/mes</div>
+          </article>
+          <article class="card">
+            <div class="n">2 · Parada · ~2,1 ha</div>
+            <h2>Otro contrato. No va con la bomba.</h2>
+            <p>Parking, báscula, comida, duchas, taller. El FO cobra 10% el año 1 y 4% de lo que entre. Cero de la EDS y del ripio.</p>
+            <div class="amt" data-uf="95" data-unit="/mes">95 UF/mes</div>
+          </article>
+          <article class="card">
+            <div class="n">3 · Ripio</div>
+            <h2>Se paga lo que ocupan</h2>
+            <p>3.000 CLP por m³. 7.143 m³ por hectárea. Parada ≈ 15.000 m³. I-A2 ≈ 18.571 m³. No los 250.000 del certificado.</p>
+          </article>
+          <article class="card">
+            <div class="n">4 · I-A2 · 2,6 ha</div>
+            <h2>Ya ocupado. No se ofrece a Enex.</h2>
+            <p>Transporte portuario. Cliente de diésel y AdBlue. I-A3 se ve después.</p>
+          </article>
+          <div class="split">
+            <article class="card ok">
+              <h2>Sí</h2>
+              <p>Suelo tuyo. Ellos los estanques. Sigues con Shell y Aramco.</p>
+            </article>
+            <article class="card bad">
+              <h2>No</h2>
+              <p>Si pones estanques tú, el arriendo se cae. Pierdes.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="pano" hidden>
+          <p class="lead">Cuatro paños. Uno se ofrece a la marca.</p>
+          <p class="sub">Toca un pin. El resto del lote no va en el contrato de la bomba.</p>
+          <div class="map">
+            <img src="nodo-ia1-plano.jpg" alt="Plano de Esquina 950" width="965" height="1024" />
+            <button type="button" class="pin eds on" style="left:71%;top:74%" data-z="eds"><i></i>EDS</button>
+            <button type="button" class="pin park" style="left:60%;top:61%" data-z="park"><i></i>Parada</button>
+            <button type="button" class="pin ia2" style="left:56%;top:47%" data-z="ia2"><i></i>I-A2</button>
+            <button type="button" class="pin ia3" style="left:39%;top:34%" data-z="ia3"><i></i>I-A3</button>
+          </div>
+          <div class="sheet" id="sheet">
+            <div class="n" id="sh-n">Pad EDS · ≤1 ha</div>
+            <h2 id="sh-h">Ellos construyen</h2>
+            <p id="sh-p">90 / 60–75 / 40. Estanques de la marca. 0 CAPEX tuyo.</p>
+          </div>
+        </section>
+
+        <section class="panel" id="plata" hidden>
+          <p class="lead">La renta llega cuando abre la bomba.</p>
+          <p class="sub">Hoy no hay canon. El ripio es una vez, aparte.</p>
+          <div class="unit" role="group" aria-label="Unidad">
+            <button type="button" class="on" data-unit="uf">UF</button>
+            <button type="button" data-unit="clp">CLP</button>
+          </div>
+          <div class="money">
+            <div><span>Hoy</span><b data-money="0">0</b></div>
+            <div><span>Abre</span><b data-money="68">60–75</b></div>
+            <div><span>Régimen</span><b data-money="159">159</b></div>
+          </div>
+          <article class="card">
+            <div class="n">Cómo se arma el 159</div>
+            <h2>68 de la bomba + 95 de la parada − 4 del FO</h2>
+            <p>Día 1 la parada está vacía. Solo cobras el pad. El FO llena parking y comida después.</p>
+          </article>
+          <article class="card">
+            <div class="n">Ripio · una vez</div>
+            <h2>Parada ~1.100 UF · I-A2 ~1.363 UF</h2>
+            <p>3.000 CLP/m³. Solo el m³ cargado. FO 0%.</p>
+          </article>
+        </section>
+
+        <section class="panel" id="no" hidden>
+          <p class="lead">Si haces esto, el trato se rompe.</p>
+          <p class="sub">La marca oye suelo + ellos construyen. Nada más.</p>
+          <ul class="dont">
+            <li><strong>No pongas los estanques tú</strong>Shell y Aramco se caen. Franquicia o independiente. Cuota ≈ 115 UF contra 68 de arriendo.</li>
+            <li><strong>No vendas a Copec</strong>Compran el suelo. Esto no se vende. Disuasión del pad: 28.000 UF.</li>
+            <li><strong>No des 250.000 m³ en I-A2</strong>Ripio = hectáreas ocupadas. 2,6 ha ≈ 18.571 m³.</li>
+            <li><strong>No metas I-A3 a Enex</strong>Es otra mesa. 90 días al vecino cuando se abra, no ahora.</li>
+            <li><strong>No 5 pesos por litro</strong>Van 12–15. No 90 días a una sola marca.</li>
+            <li><strong>No 90 UF de campo a I-A2</strong>I-A2 ya está ocupado. Patio, no campo.</li>
+          </ul>
+        </section>
+      </main>
+      <nav class="nav" aria-label="Pantallas">
+        <button type="button" class="on" data-go="trato">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h10v2H4v-2z"/></svg>
+          Trato
+        </button>
+        <button type="button" data-go="pano">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z"/></svg>
+          Paño
+        </button>
+        <button type="button" data-go="plata">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm.5 15.5v1h-1v-1c-1.7-.1-3.1-1-3.4-2.5h1.6c.2.7 1 1.2 2.1 1.2 1.1 0 1.8-.5 1.8-1.2 0-.8-.7-1.1-2.2-1.5-2-.5-3.3-1.3-3.3-3 0-1.5 1.2-2.5 3-2.7V6.5h1v1c1.5.2 2.7 1.1 2.9 2.5h-1.6c-.2-.7-.8-1.2-1.8-1.2s-1.7.5-1.7 1.2c0 .7.6 1 2.1 1.4 2.1.6 3.4 1.4 3.4 3.1 0 1.6-1.3 2.6-3.2 2.8z"/></svg>
+          Plata
+        </button>
+        <button type="button" data-go="no">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm5 13.6L13.4 12 17 8.4 15.6 7 12 10.6 8.4 7 7 8.4 10.6 12 7 15.6 8.4 17 12 13.4 15.6 17 17 15.6z"/></svg>
+          No
+        </button>
+      </nav>
+    </div>
+  </div>
+  <script>
+    const UF = 40884;
+    const Z = {
+      eds: { n: "Pad EDS · ≤1 ha", h: "Ellos construyen", p: "90 / 60–75 / 40. Estanques de la marca. 0 CAPEX tuyo." },
+      park: { n: "Parada · ~2,1 ha", h: "~95 UF si llenan", p: "Otro contrato. FO 10% / 4%. Ripio ~15.000 m³." },
+      ia2: { n: "I-A2 · 2,6 ha", h: "Ocupado", p: "Ripio 7.143 m³/ha ≈ 18.571 m³. No se ofrece a Enex." },
+      ia3: { n: "I-A3 · 4,28 ha", h: "Después", p: "No entra hoy. No va en el correo de la marca." }
+    };
+    const bars = {
+      trato: ["El trato", "Suelo mío. Bomba de ellos.", "I-A1 · Ruta 9 Norte × Y-50"],
+      pano: ["El paño", "Un pin. Un uso.", "Solo el pad se ofrece a Enex"],
+      plata: ["La plata", "0 hoy. 159 en régimen.", "Ripio aparte, una vez"],
+      no: ["Fuera", "Esto rompe el trato.", "Estanques, Copec, I-A3"]
+    };
+    let unit = "uf";
+    function money(n) {
+      if (unit === "clp") {
+        const m = n * UF / 1e6;
+        return "$" + m.toFixed(1).replace(".", ",") + " M";
+      }
+      return String(n);
+    }
+    function paintMoney() {
+      document.querySelector('[data-money="0"]').textContent = unit === "clp" ? "$0" : "0";
+      document.querySelector('[data-money="68"]').textContent =
+        unit === "clp" ? "$2,5–3,1 M" : "60–75";
+      document.querySelector('[data-money="159"]').textContent = unit === "clp" ? money(159) : "159";
+    }
+    function show(id) {
+      document.querySelectorAll(".panel").forEach((p) => {
+        const on = p.id === id;
+        p.classList.toggle("on", on);
+        p.hidden = !on;
+      });
+      document.querySelectorAll(".nav button").forEach((b) => b.classList.toggle("on", b.dataset.go === id));
+      const t = bars[id];
+      document.getElementById("bar-k").textContent = t[0];
+      document.getElementById("bar-h").textContent = t[1];
+      document.getElementById("bar-p").textContent = t[2];
+      document.querySelector("main").scrollTop = 0;
+    }
+    function pin(z) {
+      document.querySelectorAll(".pin").forEach((p) => p.classList.toggle("on", p.dataset.z === z));
+      const d = Z[z];
+      document.getElementById("sh-n").textContent = d.n;
+      document.getElementById("sh-h").textContent = d.h;
+      document.getElementById("sh-p").textContent = d.p;
+    }
+    document.querySelectorAll(".nav button").forEach((b) => {
+      b.addEventListener("click", () => show(b.dataset.go));
+    });
+    document.querySelectorAll(".pin").forEach((b) => {
+      b.addEventListener("click", () => pin(b.dataset.z));
+    });
+    document.querySelectorAll(".unit button").forEach((b) => {
+      b.addEventListener("click", () => {
+        unit = b.dataset.unit;
+        document.querySelectorAll(".unit button").forEach((x) => x.classList.toggle("on", x === b));
+        paintMoney();
+      });
+    });
+  </script>
+</body>
+</html>

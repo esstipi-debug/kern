@@ -1,0 +1,18 @@
+# App SEPARADA a proposito. NO se despliega sobre `linchpin` (motor Kern)
+# ni sobre `kern-landing`. Misma org de Fly, otra maquina.
+app = "esquina-950"
+# Santiago (`scl`) esta deprecada. Sao Paulo es la mas cercana que acepta.
+primary_region = "gru"
+
+[build]
+
+[http_service]
+  internal_port = 80
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

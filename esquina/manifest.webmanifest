@@ -1,0 +1,12 @@
+{
+  "name": "Esquina 950",
+  "short_name": "Esquina 950",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a140e",
+  "theme_color": "#1a140e",
+  "lang": "es-CL",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
