@@ -213,9 +213,14 @@ def claim_permitido(norma: Mapping[str, Any]) -> str:
             claim = f"{codigo} aplica; la evidencia de piso es parcial."
     else:
         claim = f"{codigo} queda fuera de este tramo."
-    if _CLAIM_FORBIDDEN.search(claim):
+    if texto_prohibido(claim):
         raise RuntimeError("claim_permitido produced a forbidden conformity sentence")
     return claim
+
+
+def texto_prohibido(text: str) -> bool:
+    """True when ``text`` would read as a plant-certification ruling."""
+    return bool(_CLAIM_FORBIDDEN.search(text or ""))
 
 
 def parse_perfil(body: object) -> PerfilIso:
@@ -324,7 +329,7 @@ def evidencia_de_orden(
 
     resumen = _resumen_orden(nativas, senales.tiene_tkm)
     for card in nativas:
-        if _CLAIM_FORBIDDEN.search(str(card.get("claimPermitido", ""))):
+        if texto_prohibido(str(card.get("claimPermitido", ""))):
             raise RuntimeError("orden card produced a forbidden conformity sentence")
     return {
         "aviso": AVISO_ORDEN,

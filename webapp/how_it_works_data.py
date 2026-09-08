@@ -1,7 +1,7 @@
 """Static content data for GET /how-it-works (webapp/how_it_works_page.py).
 
 Every count here is verified against the actual code, not copied from a
-possibly-stale doc: 53 tools = build_default_registry()'s 53 register()
+possibly-stale doc: 56 tools = build_default_registry()'s 56 register()
 calls in scm_agent/tools.py, now enforced by
 tests/test_how_it_works_data.py::test_tools_table_matches_the_registry_exactly
 (set equality against the registry, both directions). That guard exists
@@ -69,6 +69,7 @@ DOMAIN_AREA_ORDER: tuple[str, ...] = (
     "Planning cadence & projects",
     "Decision alignment",
     "Procedures & standard work",
+    "ISO operations & evidence",
     "Leadership",
 )
 
@@ -211,6 +212,18 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Drafts a bilingual Standard Operating Procedure -- Job Breakdown Sheet, control plan "
              "and training timetable -- from a template, stamped with a document-control header. "
              "Always born unapproved: ends in a HANDOFF asking a human to review and publish it."),
+    # -- ISO operations & evidence (3) --
+    ToolInfo("iso_ops", "ISO Operations Floor Evidence", "ISO operations & evidence", "Orchestrate",
+             "Detects which operations/supply-chain ISO (and IATF) norms apply to a plant "
+             "profile, proposes catalog floor tasks, and evaluates order evidence. Never a "
+             "certificate: claims allowed are floor evidence and named gaps only."),
+    ToolInfo("audit_evidence", "Audit Evidence Workpaper", "ISO operations & evidence", "Orchestrate",
+             "MUS sampling + optional GL tie-out + IPE attestation wrapped in an EvidenceRecord. "
+             "Always HANDOFF: Reviewed-by stays blank. Not a signed audit opinion."),
+    ToolInfo("scor_iso_audit", "SCOR/ISO Evidence Pack", "ISO operations & evidence", "Orchestrate",
+             "Composes cash-to-cash, cost-to-serve, Perfect Order / OTIF, procedure-register "
+             "gaps and TTR/TTS into one EvidenceRecord and Lineage sheet. Always HANDOFF. "
+             "Prepares evidence for a registrar's auditor; does not certify ISO or SCOR."),
     # -- Leadership (2) --
     ToolInfo("org_friction_audit", "Organizational Friction Audit", "Leadership", "Orchestrate",
              "Audits the client's own control points (KPIs, data-load checkpoints) for gamed "
@@ -348,13 +361,15 @@ class IsoClause:
 ISO_9001_CLAUSES: tuple[IsoClause, ...] = (
     IsoClause("4.4 / 8.1 Process approach",
               "A fixed, self-describing pipeline: every capability is a Tool with "
-              "prepare/run/qa/deliver -- the same sequence for all 53."),
+              "prepare/run/qa/deliver -- the same sequence for all 56."),
     IsoClause("7.5 Documented information",
               "An EvidenceRecord (SHA-256 of inputs, control totals, formula versions, QA "
               "attestations); a writeback AuditEntry; a Keep-a-Changelog CHANGELOG; L3 "
               "citations on every deliverable, gated by citation_gate on the package path. "
               "procedure_audit/procedure_draft: review and approval for suitability and "
-              "adequacy (7.5.2c), control of changes (7.5.3.2c)."),
+              "adequacy (7.5.2c), control of changes (7.5.3.2c). iso_ops: floor evidence "
+              "for 9001 (cycle/scrap) is not a 7.5 certificate. audit_evidence / "
+              "scor_iso_audit: hash-verifiable EvidenceRecord + Lineage; Reviewed-by blank."),
     IsoClause("8.5.1 Control of production",
               "Grounding, confidence, and guided options on every deliverable; personas/KPIs "
               "per mode."),
@@ -370,7 +385,8 @@ ISO_9001_CLAUSES: tuple[IsoClause, ...] = (
               "Writeback stage -> signed, time-boxed approval -> apply -> rollback. Autonomy "
               "config changes only via a signed Changeset."),
     IsoClause("9.1 Monitoring and measurement",
-              "forecast_metrics, financial_kpis, dea, reliability.py."),
+              "forecast_metrics, financial_kpis, dea, reliability.py; scor_iso_audit "
+              "composes those measurements into one scorecard (observed / no_evaluable)."),
     IsoClause("10 Continual improvement",
               "A verify/backtest loop feeding a ToolReliabilityReport, which drives "
               "evidence-based autonomy promotion."),

@@ -8,10 +8,30 @@
   (`evidencia_nativa`, `buscar_norma`, `de_modulo`, `detectar`,
   `evidencia_de_orden`). HTTP: `GET /api/iso`, `POST /api/detectar` (body =
   `contratoPost` from `tests/fixtures/iso/detectar.ejemplo.json`),
-  `GET /api/iso/orden`. MONITOR-style panel at `GET /iso` lists native floor
-  evidence for 9001 / 50001 / 14067 (process stretch) when the order has
-  cycle, scrap and kg, and names the 14083 gap (t·km from the 3PL). Claims
-  allowed: "KERN tiene evidencia de piso…"; never "cumple ISO".
+  `GET /api/iso/orden`. `GET /iso` is the PARA-KERN catalog browser (search,
+  SMARTPRO/MONITOR/ENERGY filter, SCM domain including inventory) plus the
+  plant detector (cards, not JSON-only) and the MONITOR order panel: native
+  floor evidence for 9001 / 50001 / 14067 (process stretch) when the order has
+  cycle, scrap and kg, and the   14083 gap (t·km from the 3PL). Claims allowed:
+  "KERN tiene evidencia de piso…"; never "cumple ISO".
+
+- **`iso_ops` agent tool (`jobs/iso_ops_job.py`)** -- registry now 54 tools.
+  Detects which operations/supply-chain ISO (and IATF) norms apply to a plant
+  ficha (JSON or one-row CSV), attaches catalog floor tasks, and evaluates
+  order signals (cycle, scrap, kg, t·km). Always OPTIONS or HANDOFF; never
+  EXECUTED and never a "la planta cumple ISO" sentence. Empty ficha => zero
+  detections. Not exposed on MCP (HTTP `POST /api/detectar` already covers
+  the same contract). CLI: `examples/run_iso_ops.py`.
+
+- **ISO evidence MCP family + two agent tools (54 -> 56 registry; 36 -> 39
+  MCP).** `audit_evidence` (`jobs/audit_evidence_job.py`) prepares a MUS + GL
+  tie-out + IPE workpaper wrapped in `EvidenceRecord`; always HANDOFF
+  (Reviewed-by blank) or ESCALATED; never a signed opinion. `scor_iso_audit`
+  is E4 as a dedicated job (not a `PackageSpec`): one EvidenceRecord + Lineage
+  sheet from existing measurements. MCP: `kern_iso_sop_audit` (alias of
+  `procedure_audit`), `kern_audit_evidence`, `kern_iso_scor_audit`. `iso_ops`
+  stays off MCP. Q7: no append-only evidence ledger (artifacts + firm DMS).
+  CLIs: `examples/run_audit_evidence.py`, `examples/run_scor_audit.py`.
 
 - **`procedure_audit` + `procedure_draft` agent tools (`jobs/procedure_audit_job.py`,
   `jobs/procedure_draft_job.py`, `src/procedures/`)** -- registry now 53 tools.

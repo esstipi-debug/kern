@@ -1,6 +1,6 @@
 # MCP server (Phase A go-to-market)
 
-Kern exposes 36 of its 53 registered tools to other AI agents over MCP
+Kern exposes 39 of its 56 registered tools to other AI agents over MCP
 (Model Context Protocol), mounted at `/mcp` on the same FastAPI app as the
 dashboard. This is **read-only analysis only** — no tool that mutates a
 client's system of record (e.g. `odoo_replenishment`, or any writeback path
@@ -48,6 +48,9 @@ this is Phase A of.
 | `linchpin_flow_map` | `flow_map` |
 | `linchpin_org_friction_audit` | `org_friction_audit` |
 | `linchpin_procedure_audit` | `procedure_audit` |
+| `kern_iso_sop_audit` | `procedure_audit` (alias; ISO SOP-register observation) |
+| `kern_audit_evidence` | `audit_evidence` (MUS + GL tie-out workpaper) |
+| `kern_iso_scor_audit` | `scor_iso_audit` (SCOR/ISO evidence pack; not a certificate) |
 
 `org_friction_audit` runs here with three of its four detectors: the fourth
 (Goodhart / target-ratcheting) needs a second target-vs-actual history file,
@@ -68,7 +71,10 @@ params-driven 3D layout generator that ignores rows entirely; its
 deliverable is an HTML viewer, not a data analysis), `procedure_draft`
 (same rule as `warehouse_layout` — params-driven, requires_data=False,
 ignores rows; `procedure_audit` IS exposed above, since it reads a
-client's tabular procedure register). `flow_map`'s own
+client's tabular procedure register). `iso_ops` is also off this surface:
+the plant ficha is JSON/params (HTTP `POST /api/detectar` already covers
+it) and a conformity-adjacent claim does not belong on the anonymous MCP
+rows→CSV bridge. `flow_map`'s own
 deliverable also includes a self-contained HTML sankey map alongside the
 CSV, but unlike `warehouse_layout`, its *input* is tabular movement rows
 and its primary output is a data analysis (measured transit per lane),
@@ -89,7 +95,9 @@ objects, like CSV rows), `params` (optional tool-specific overrides), and
 `tools/list`) for its exact expected columns — they're also documented in
 `webapp/mcp_tool_specs.py`, which is the source of truth for the exposed
 surface. A few tools have calling nuances worth knowing up front:
-`linchpin_vehicle_routing` requires `params.capacity`; `linchpin_fefo_expiry`
+`linchpin_vehicle_routing` requires `params.capacity`; `kern_audit_evidence`
+requires `params.tolerable_misstatement` (auditor judgment; never derived);
+`linchpin_fefo_expiry`
 needs a `days_to_expiry` column or `expiry_date` + `params.as_of`;
 `linchpin_efficiency_benchmark` expects `input_*`/`output_*`-prefixed columns
 (or explicit `input_cols`/`output_cols` params); `linchpin_markdown_liquidation`

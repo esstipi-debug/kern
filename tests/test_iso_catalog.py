@@ -22,6 +22,7 @@ from src.iso_catalog import (
     load_catalog,
     parse_perfil,
     tarjeta_evidencia,
+    texto_prohibido,
 )
 
 _FIXTURE = Path(__file__).resolve().parent / "fixtures" / "iso" / "detectar.ejemplo.json"
@@ -91,9 +92,12 @@ def test_claim_permitido_never_says_cumple(catalog):
         low = claim.lower()
         assert "cumple" not in low
         assert "certificad" not in low
+        assert not texto_prohibido(claim)
         card = tarjeta_evidencia(norma)
         assert card["claimPermitido"] == claim
         assert card["limite"] == norma["kern"]["limite"]
+    assert texto_prohibido("la planta cumple ISO 9001")
+    assert not texto_prohibido("KERN tiene evidencia de piso para ISO 9001.")
 
 
 def test_14083_claim_names_the_tkm_gap(catalog):

@@ -14,7 +14,7 @@ from pathlib import Path
 from examples.run_capability_smoke import _NETWORK, main
 from scm_agent.tools import build_default_registry
 
-# Expected bucket per tool for the default (offline, non-stress) run. 51 registered tools.
+# Expected bucket per tool for the default (offline, non-stress) run. 56 registered tools.
 #
 # This replaces a `passes >= 35` numeric floor. A floor erodes silently: gating one tool
 # just spends slack, and the suite stays green while a capability quietly stops producing
@@ -70,6 +70,9 @@ EXPECTED_OFFLINE_BUCKETS: dict[str, str] = {
     "pricing":                "PASS",
     "procedure_audit":        "PASS",
     "procedure_draft":        "PASS",
+    "iso_ops":                "PASS",
+    "audit_evidence":         "PASS",
+    "scor_iso_audit":         "PASS",
     "queuing":                "PASS",
     "reconciliation":         "PASS",
     "returns":                "PASS",

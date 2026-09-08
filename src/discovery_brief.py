@@ -57,7 +57,7 @@ CATALOG: tuple[ParamSpec, ...] = (
         defaults=(
             ("inventory_optimization", 0.25, "jobs/inventory_optimization.py:229"),
             ("inventory_optimization", 0.25, "src/client_profile.py (docstring)"),
-            ("webapp", 0.22, "webapp/app.py:576"),
+            ("webapp", 0.22, "webapp/app.py:583"),
         ),
     ),
     ParamSpec(
@@ -87,7 +87,7 @@ CATALOG: tuple[ParamSpec, ...] = (
             ("powerbi_export", 1000.0, "src/powerbi_export.py:56"),
             ("powerbi_export", 1000.0, "src/powerbi_export.py:249"),
             ("simulation", 100.0, "jobs/simulation_job.py:31"),
-            ("webapp", 80.0, "webapp/app.py:575"),
+            ("webapp", 80.0, "webapp/app.py:582"),
         ),
     ),
     ParamSpec(

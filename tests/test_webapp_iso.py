@@ -98,3 +98,17 @@ def test_iso_page_shows_native_evidence_and_14083_gap():
     assert "Evidencia ISO de esta orden" in page.text
     assert "ISO 9001" in page.text
     assert HUECO_14083_TKM in page.text
+
+
+def test_iso_page_is_catalog_browser_not_only_order_panel():
+    page = client.get("/iso")
+    html = page.text
+    assert page.status_code == 200
+    assert "Catalogo ISO de operaciones y cadena" in html
+    assert 'id="iso-q"' in html
+    assert 'id="iso-dominio"' in html
+    assert "Inventario" in html
+    assert "Detectar aplicabilidad para una planta" in html
+    assert "POST /api/detectar" in html
+    assert "cumple ISO" not in html
+    assert "la planta cumple" not in html.lower()

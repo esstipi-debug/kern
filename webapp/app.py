@@ -368,7 +368,8 @@ app.include_router(decisions_router)
 app.include_router(pricing_quote_router)
 
 # ISO operations/supply-chain catalog (knowledge/iso/catalogo.json): GET /api/iso,
-# POST /api/detectar, GET /api/iso/orden, GET /iso. Read-only floor evidence —
+# POST /api/detectar, GET /api/iso/orden, GET /iso (catalog + detector + order).
+# Read-only floor evidence —
 # never a conformity ruling. Stdlib JSON + FastAPI only (prod-boot safe).
 app.include_router(iso_router)
 

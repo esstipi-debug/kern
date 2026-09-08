@@ -75,7 +75,13 @@ _RECOVERED_TOOLS = (
 # pdca_cycle at hop 1, so the anchors that resolved nothing now resolve three. The
 # work_breakdown_structure exclusion STAYS: a real "Job Breakdown Sheet" node now competes
 # for the same lexical tokens, and it is the one that wins. See _RECOVERED_BY_INGESTION.
-_CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "intake_scan")
+# audit_evidence (tool #55) joined as a measured zero, 2026-09-07: AU-C 530 / MUS
+# theory is not in the books graph. Anchors inventory_record_accuracy +
+# acceptance_sampling exist and ground *other* tools, but this tool's keywords
+# (MUS, workpaper, trial balance) never rank those nodes into the candidate
+# pool, so the gate correctly ships zero rather than IRA/AQL false friends.
+# Fix by ingesting audit-sampling theory, not by a looser or hub-adjacent anchor.
+_CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "intake_scan", "audit_evidence")
 
 # Anchor-islanded tools: zero at ANY pool (a separate anchor problem, not fixable
 # by pool sizing) -- pinned so a future anchor fix is a conscious change.

@@ -5,7 +5,7 @@ deliverable, routing to the right capability.
 
 ## Capabilities
 
-**53 registered tools** — source of truth is `build_default_registry()` in
+**56 registered tools** — source of truth is `build_default_registry()` in
 [`tools.py`](tools.py); run it yourself rather than trusting a static count here,
 since it changes with every new `feat: wire ... as an agent tool` PR. Every tool
 follows the exact same `prepare → run → qa → deliver` contract; adding one is a
@@ -22,6 +22,7 @@ single `register()` call, no routing edits.
 | Returns, risk & benchmarking | `returns` · `risk` · `dea` · `disruption_scan` |
 | Planning cadence & projects | `sop` · `earned_value` · `launch_readiness` · `cross_impact` |
 | Procedures & standard work | `procedure_audit` · `procedure_draft` |
+| ISO operations & evidence | `iso_ops` · `audit_evidence` · `scor_iso_audit` |
 | Leadership | `leadership_chain` |
 
 Three worked examples, one per input/deliverable shape:

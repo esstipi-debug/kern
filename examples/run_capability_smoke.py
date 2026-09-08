@@ -207,6 +207,34 @@ S5,6,6,12
 P1,2026-09-01,0.30,20,17,-1.5,500,30,10,8,2
 P2,2026-09-15,0.20,45,40,-1.2,300,15,14,5,3
 """,
+    "audit_evidence": """unit_id,book_value,source
+SKU-A,25000,gl
+SKU-B,18000,gl
+SKU-C,12000,gl
+SKU-D,8000,gl
+SKU-E,5000,gl
+SKU-F,3000,gl
+SKU-G,1500,gl
+SKU-H,900,gl
+SKU-I,400,gl
+SKU-J,200,gl
+SKU-A,25000,subledger
+SKU-B,18000,subledger
+SKU-C,12000,subledger
+SKU-D,8000,subledger
+SKU-E,5000,subledger
+SKU-F,3000,subledger
+SKU-G,1500,subledger
+SKU-H,900,subledger
+SKU-I,400,subledger
+SKU-J,200,subledger
+""",
+    "scor_iso_audit": """dataset,product_id,cogs,avg_inventory_value,ordered_qty,delivered_qty,promised_date,delivered_date
+financial,P1,50000,12000,,,,
+financial,P2,30000,9000,,,,
+orders,P1,,,40,40,2026-08-01,2026-08-02
+orders,P1,,,20,20,2026-08-03,2026-08-04
+""",
 }
 
 # Tools satisfied by a committed sample dataset (data/ is gitignored but these
@@ -265,6 +293,9 @@ _BRIEF: dict[str, str] = {
     "launch_readiness": "assess launch readiness",
     "procedure_audit": "auditar el registro de procedimientos: cuales SOPs estan vencidos y sin dueno",
     "procedure_draft": "borrador de procedimiento operativo estandar para reposicion con hoja de desglose de tarea",
+    "iso_ops": "detectar normas iso de operaciones para la planta de inyeccion",
+    "audit_evidence": "prepare a monetary unit sampling workpaper for the inventory audit",
+    "scor_iso_audit": "run the scor iso audit pack for the plant scorecard",
 }
 
 _OVERRIDES: dict[str, dict] = {
@@ -277,6 +308,30 @@ _OVERRIDES: dict[str, dict] = {
     "procedure_audit": {"as_of": "2026-09-03"},
     "procedure_draft": {"process": "replenishment", "owner": "Jefe de Operaciones",
                          "approver": "Gerente General", "as_of": "2026-09-03"},
+    "iso_ops": {
+        "sectores": ["automotriz"],
+        "clientePide": ["iatf", "pcf"],
+        "logistica": ["3pl"],
+        "kern": ["smartpro", "monitor", "energy", "huella"],
+        "texto": "El OEM pide IATF y PCF.",
+        "ciclo": True,
+        "scrap": True,
+        "kg": True,
+        "tkm": False,
+    },
+    "audit_evidence": {
+        "tolerable_misstatement": 20000,
+        "selection_seed": 0,
+        "produced_at": "2026-09-07T12:00:00Z",
+        "run_id": "smoke-audit-evidence",
+    },
+    "scor_iso_audit": {
+        "as_of": "2026-09-03",
+        "dso_days": 45,
+        "dpo_days": 30,
+        "produced_at": "2026-09-07T12:00:00Z",
+        "run_id": "smoke-scor-iso",
+    },
 }
 
 # Tools that reach the network. Reported SKIP offline; a network error under

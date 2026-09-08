@@ -12,6 +12,7 @@ from nosilo_core.types import JobRequest
 from jobs import (
     abc_xyz_job,
     acceptance_sampling_job,
+    audit_evidence_job,
     cost_to_serve_deliverable,
     cost_to_serve_job,
     cross_impact_job,
@@ -36,6 +37,7 @@ from jobs import (
     intake,
     intake_scan_job,
     inventory_deliverable,
+    iso_ops_job,
     landed_cost_job,
     launch_readiness_job,
     leadership,
@@ -55,6 +57,7 @@ from jobs import (
     returns_job,
     risk_job,
     scheduling_job,
+    scor_audit_job,
     service_scan_deliverable,
     service_scan_job,
     simulation_job,
@@ -3033,6 +3036,186 @@ def procedure_draft_tool() -> Tool:
     )
 
 
+# ---- iso_ops (plant ISO applicability + floor evidence; never a certificate) ----
+#
+# Distinctive multi-word phrases only. Do NOT add a bare "iso 9001": that keyword
+# already belongs to procedure_audit (SOP document control) and a tie with it
+# would send mixed briefs to needs_clarification instead of either tool.
+
+ISO_OPS_KEYWORDS = (
+    "catalogo iso", "catálogo iso", "iso operations catalog", "iso operations",
+    "detectar normas iso", "detector de normas iso", "normas iso de operaciones",
+    "normas iso de cadena", "evidencia de piso", "evidencia de piso iso",
+    "iso floor evidence", "which iso standards apply", "que normas iso aplican",
+    "qué normas iso aplican", "iso 14067", "iso 50001", "iso 14083", "iso 14001",
+    "iatf 16949", "product carbon footprint", "huella de producto",
+    "cobertura iso", "iso coverage kern",
+)
+
+
+def _iso_ops_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not iso_ops_job.perfil_presente(request.params, request.data_path):
+        return Prepared(status="needs_clarification", messages=[
+            "hace falta una ficha de planta (JSON/CSV) o params con sectores, "
+            "clientePide, logistica, planta, kern, texto, y/o senales de orden "
+            "ciclo/scrap/kg/tkm. Ficha vacia no inventa normas; sin ficha no se corre."
+        ])
+    try:
+        prepared = iso_ops_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    return Prepared(status="ok", payload=prepared)
+
+
+def _iso_ops_run(payload: object, params: dict) -> Produced:
+    report = iso_ops_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def iso_ops_tool() -> Tool:
+    return Tool(
+        key="iso_ops",
+        title="ISO Operations Floor Evidence (not a certificate)",
+        description="Detect which operations/supply-chain ISO (and IATF) norms apply to "
+                    "a plant profile, propose floor tasks already in the catalog, and "
+                    "evaluate order evidence (cycle, scrap, kg, t·km). Always OPTIONS "
+                    "or HANDOFF. Never says the plant is ISO-certified.",
+        intent_keywords=ISO_OPS_KEYWORDS,
+        requires_data=False,
+        prepare=_iso_ops_prepare,
+        run=_iso_ops_run,
+        qa=lambda r: iso_ops_job.verify(r),
+        deliver=lambda report, out_dir, client: iso_ops_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            iso_ops_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
+# ---- audit_evidence (MUS + GL tie-out workpaper; never a signed opinion) ------
+#
+# Distinctive multi-word phrases. Do NOT add bare "reconciliation" / "reconcile"
+# (IRA tool) or "acceptance sampling" / "aql" / "sampling plan".
+
+AUDIT_EVIDENCE_KEYWORDS = (
+    "audit sampling", "inventory audit sampling", "audit sample size",
+    "monetary unit sampling", "mus sample", "mus workpaper",
+    "gl reconciliation", "general ledger", "trial balance", "tie-out", "tie out",
+    "audit workpaper", "audit evidence", "substantive testing", "test of details",
+    "papel de trabajo mus", "evidencia de auditoria", "muestreo mus",
+    "prepare a monetary unit sampling",
+)
+
+
+def _audit_evidence_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a GL/inventory listing CSV is required (unit_id + book_value). "
+            "Optional source=gl|subledger puts both ledgers in one table. "
+            "params.tolerable_misstatement is auditor judgment and is required at run."
+        ])
+    try:
+        audit_evidence_job.validate_params(request.params)
+    except ValueError as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    try:
+        prepared = audit_evidence_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=prepared)
+
+
+def _audit_evidence_run(payload: object, params: dict) -> Produced:
+    report = audit_evidence_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def audit_evidence_tool() -> Tool:
+    return Tool(
+        key="audit_evidence",
+        title="Audit Evidence Workpaper (MUS + GL tie-out; not an opinion)",
+        description="Prepare a re-performable inventory/COGS workpaper: MUS sample, optional "
+                    "GL tie-out, IPE attestation, EvidenceRecord lineage. Always HANDOFF "
+                    "(or ESCALATED if UML exceeds TM or the tie-out is off tolerance). "
+                    "Never a signed audit opinion. Reviewed-by stays blank by design.",
+        intent_keywords=AUDIT_EVIDENCE_KEYWORDS,
+        requires_data=True,
+        required_columns=("unit_id", "book_value"),
+        optional_columns=("source", "audited_value"),
+        required_client_params=("tolerable_misstatement",),
+        prepare=_audit_evidence_prepare,
+        run=_audit_evidence_run,
+        qa=lambda r: audit_evidence_job.verify(r),
+        deliver=lambda report, out_dir, client: audit_evidence_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            audit_evidence_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
+# ---- scor_iso_audit (E4 SCOR + ISO checklist; dedicated job, not PackageSpec) -
+#
+# Do NOT add bare "iso 9001" (procedure_audit) or iso_ops catalog/floor phrases.
+
+SCOR_ISO_AUDIT_KEYWORDS = (
+    "scor iso audit", "scor scorecard", "iso 28000 checklist",
+    "pack de preparacion para auditoria", "scor level 1 scorecard",
+    "perfect order scor", "cash-to-cash scor",
+    "preparacion para auditoria scor", "scor iso pack",
+    "scor iso audit evidence", "registrar auditor scorecard",
+)
+
+
+def _scor_iso_audit_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a tagged CSV is required: add a dataset column with values "
+            "financial / cost_to_serve / sourcing / orders / procedures / risk"
+        ])
+    try:
+        prepared = scor_audit_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=prepared)
+
+
+def _scor_iso_audit_run(payload: object, params: dict) -> Produced:
+    report = scor_audit_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def scor_iso_audit_tool() -> Tool:
+    return Tool(
+        key="scor_iso_audit",
+        title="SCOR/ISO Evidence Pack (not a certificate)",
+        description="Compose existing measurements (cash-to-cash, cost-to-serve, Perfect Order "
+                    "RL.1.1, procedure register, TTR/TTS) into one EvidenceRecord plus a "
+                    "Lineage sheet. Checklist statuses are observed / gap / no_evaluable. "
+                    "Always HANDOFF. Kern prepares evidence for a registrar's auditor; it "
+                    "does not certify ISO or SCOR.",
+        intent_keywords=SCOR_ISO_AUDIT_KEYWORDS,
+        requires_data=True,
+        required_columns=("dataset",),
+        optional_columns=(
+            "product_id", "name", "cogs", "avg_inventory_value",
+            "last_reviewed_at", "owner", "approver", "version",
+        ),
+        prepare=_scor_iso_audit_prepare,
+        run=_scor_iso_audit_run,
+        qa=lambda r: scor_audit_job.verify(r),
+        deliver=lambda report, out_dir, client: scor_audit_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+            scor_audit_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -3088,4 +3271,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(service_scan_tool())
     reg.register(procedure_audit_tool())
     reg.register(procedure_draft_tool())
+    reg.register(iso_ops_tool())
+    reg.register(audit_evidence_tool())
+    reg.register(scor_iso_audit_tool())
     return reg
