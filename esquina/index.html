@@ -104,7 +104,54 @@
       line-height: 1.25;
       margin: 0 0 6px;
     }
-    .sub { margin: 0 0 16px; color: var(--muted); font-size: 14px; line-height: 1.45; }
+    .sub { margin: 0 0 12px; color: var(--muted); font-size: 14px; line-height: 1.45; }
+    .brief {
+      background: var(--bar);
+      color: #f4eadb;
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin: 0 0 12px;
+    }
+    .brief p { margin: 0; font-size: 14px; line-height: 1.45; opacity: 0.92; }
+    .brief strong { color: #e8c36a; font-weight: 600; }
+    .ladder {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      margin: 10px 0 8px;
+    }
+    .ladder div {
+      background: var(--surface-2);
+      border-radius: 10px;
+      padding: 8px 6px;
+      text-align: center;
+    }
+    .ladder span {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .ladder b {
+      display: block;
+      font-family: Fraunces, Georgia, serif;
+      font-size: 18px;
+      margin-top: 2px;
+    }
+    .gloss {
+      margin: 12px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .gloss li {
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--muted);
+      padding: 6px 0;
+      border-top: 1px solid var(--line);
+    }
+    .gloss b { color: var(--ink); font-weight: 600; }
     .card {
       background: #fffdf8;
       border-radius: 16px;
@@ -289,55 +336,70 @@
       <div class="status"><span>Esquina 950</span><span>Magallanes</span></div>
       <header class="appbar">
         <div class="k" id="bar-k">El trato</div>
-        <h1 id="bar-h">Suelo mío. Bomba de ellos.</h1>
+        <h1 id="bar-h">Suelo mío. Estación de ellos.</h1>
         <p id="bar-p">I-A1 · Ruta 9 Norte × Y-50 · Cabeza de Mar</p>
       </header>
       <main>
         <section class="panel on" id="trato">
-          <p class="lead">Tú arriendas 1 ha. Shell o Aramco construyen la bomba.</p>
-          <p class="sub">La misma semana a Enex y Esmax. Copec no entra: compran suelo, y esto no se vende.</p>
+          <p class="lead">Tú arriendas el suelo. Shell o Aramco construyen y operan la estación.</p>
+          <p class="sub">No vendes el terreno. Copec compra tierra: por eso no entran.</p>
+          <div class="brief">
+            <p>Resumen: cuatro papeles en un paño. Arriendo potencial ~<strong>159 UF/mes</strong>. Ellos ponen la estación. Tú no pones plata de construcción.</p>
+          </div>
           <article class="card">
-            <div class="n">1 · Pad EDS · ≤1 ha</div>
-            <h2>Ellos estanques, canopy y turnos</h2>
-            <p>Pedir 90 · cerrar 60–75 · salir 40. Más 12–15 pesos por litro. 12 a 15 años.</p>
-            <div class="amt" data-uf-min="60" data-uf-max="75" data-unit="/mes">60–75 UF/mes</div>
+            <div class="n">1 · Estación · hasta 1 ha</div>
+            <h2>Arriendo mensual del suelo del surtidor</h2>
+            <p>La misma semana mandas la misma oferta de arriendo a Enex (Shell) y a Esmax (Aramco). Contrato 12 a 15 años. Extra: 12 a 15 pesos por cada litro vendido.</p>
+            <div class="ladder" aria-label="Negociación del arriendo mensual en UF">
+              <div><span>Pides</span><b>90</b></div>
+              <div><span>Cierras</span><b>60–75</b></div>
+              <div><span>Te paras</span><b>40</b></div>
+            </div>
+            <p>Eso es UF al mes, no el precio del terreno. Si bajan de 40, no firmas.</p>
+            <div class="amt">60–75 UF/mes</div>
           </article>
           <article class="card">
-            <div class="n">2 · Parada · ~2,1 ha</div>
-            <h2>Otro contrato. No va con la bomba.</h2>
-            <p>Parking, báscula, comida, duchas, taller. Eso es lo que puede llegar a ~95 UF. Día 1 está vacío.</p>
-            <div class="amt" data-uf="95" data-unit="/mes">95 UF/mes</div>
+            <div class="n">2 · Parada de camiones · ~2,1 ha</div>
+            <h2>Otro contrato. No va con la estación.</h2>
+            <p>Parking, báscula, comida, duchas, taller. Si se llena: ~95 UF/mes. El día que abre la estación, esto está vacío.</p>
+            <div class="amt">~95 UF/mes</div>
           </article>
           <article class="card">
-            <div class="n">Para qué el FO</div>
-            <h2>Cazan inquilinos. Tú te quedas la bomba.</h2>
-            <p>Sin ellos, cobras solo el pad (~68). Con ellos, la parada se llena y pasas a ~159. Entrada 0 UF. 10% el año 1 y 4% de lo cobrado en la parada (~4 UF). Cero de la EDS y del ripio. Si en 18 meses no entra renta, se acaba el mandato.</p>
+            <div class="n">Family office · Sánchez Doberti</div>
+            <h2>Cazan quién arrienda la parada. No se quedan la estación.</h2>
+            <p>Un family office (oficina de una familia inversionista: H2V Magallanes) busca inquilinos de la parada. Sin ellos cobras solo la estación (~68). Con la parada llena llegas a ~159. Cobran 10% el primer año y 4% de lo que entre en la parada (~4 UF). Cero de la estación y del ripio. Si en 18 meses no cobran renta, se acaba el mandato.</p>
           </article>
           <article class="card">
-            <div class="n">3 · Ripio</div>
-            <h2>Se paga lo que ocupan</h2>
-            <p>3.000 CLP por m³. 7.143 m³ por hectárea. Parada ≈ 15.000 m³. I-A2 ≈ 18.571 m³. No los 250.000 del certificado.</p>
+            <div class="n">3 · Ripio · cobro de una vez</div>
+            <h2>No es renta mensual. Es grava, por metro cúbico.</h2>
+            <p>3.000 pesos chilenos por m³ cargado. 7.143 m³ por hectárea ocupada. Parada ≈ 15.000 m³. El vecino I-A2 ≈ 18.571 m³. No los 250.000 del certificado de la estancia.</p>
           </article>
           <article class="card">
             <div class="n">4 · I-A2 · 2,6 ha</div>
             <h2>Ya ocupado. No se ofrece a Enex.</h2>
-            <p>Transporte portuario. Cliente de diésel y AdBlue. I-A3 se ve después.</p>
+            <p>Transporte portuario. Cliente de diésel y AdBlue. El patio de atrás (I-A3) es otra mesa, después.</p>
           </article>
           <div class="split">
             <article class="card ok">
               <h2>Sí</h2>
-              <p>Suelo tuyo. Ellos los estanques. Sigues con Shell y Aramco.</p>
+              <p>Suelo tuyo. Estanques, marca y turnos de ellos.</p>
             </article>
             <article class="card bad">
               <h2>No</h2>
-              <p>Si pones estanques tú, el arriendo se cae. Pierdes.</p>
+              <p>Si pones los estanques tú, Enex y Esmax se caen. Pierdes.</p>
             </article>
           </div>
+          <ul class="gloss">
+            <li><b>UF</b> — unidad de fomento. Así se cotiza el arriendo. Hoy ~$40.884.</li>
+            <li><b>EDS</b> — estación de servicio (el surtidor).</li>
+            <li><b>Family office</b> — no es dueño ni opera. Caza inquilinos de la parada a cambio de un %.</li>
+            <li><b>Pides / cierras / te paras</b> — techo, firma y piso de la negociación del arriendo, en UF/mes.</li>
+          </ul>
         </section>
 
         <section class="panel" id="pano" hidden>
-          <p class="lead">Cuatro paños. Uno se ofrece a la marca.</p>
-          <p class="sub">El lote gira. Toca un pin: la cámara va a ese uso. El resto no va en el contrato de la bomba.</p>
+          <p class="lead">Cuatro paños. Solo uno se ofrece a Shell o Aramco.</p>
+          <p class="sub">El lote gira. Toca un pin: la cámara va a ese uso. El resto no va en el contrato de la estación.</p>
           <div class="viewer">
             <model-viewer
               id="lote3d"
@@ -368,15 +430,15 @@
             <button type="button" class="pin ia3" style="left:39%;top:34%" data-z="ia3"><i></i>I-A3</button>
           </div>
           <div class="sheet" id="sheet">
-            <div class="n" id="sh-n">Pad EDS · ≤1 ha</div>
+            <div class="n" id="sh-n">Estación · hasta 1 ha</div>
             <h2 id="sh-h">Ellos construyen</h2>
-            <p id="sh-p">90 / 60–75 / 40. Estanques de la marca. 0 CAPEX tuyo.</p>
+            <p id="sh-p">Pides 90, cierras 60–75, te paras en 40 (UF/mes). Estanques de la marca. Cero plata tuya de construcción.</p>
           </div>
         </section>
 
         <section class="panel" id="plata" hidden>
-          <p class="lead">La renta llega cuando abre la bomba.</p>
-          <p class="sub">Hoy no hay canon. El ripio es una vez, aparte.</p>
+          <p class="lead">La renta mensual llega cuando abre la estación.</p>
+          <p class="sub">Hoy el arriendo es cero. El ripio es un cobro aparte, una sola vez, no se suma al 159.</p>
           <div class="unit" role="group" aria-label="Unidad">
             <button type="button" class="on" data-unit="uf">UF</button>
             <button type="button" data-unit="clp">CLP</button>
@@ -387,28 +449,28 @@
             <div><span>Régimen</span><b data-money="159">159</b></div>
           </div>
           <article class="card">
-            <div class="n">Cómo se arma el 159</div>
-            <h2>68 de la bomba + 95 de la parada − 4 del FO</h2>
-            <p>El FO no opera ni es dueño. Busca quien pague el parking y la comida. Tú cobras; ellos se llevan el 4% de esa parada.</p>
+            <div class="n">Cómo se arma el 159 UF/mes</div>
+            <h2>68 de la estación + 95 de la parada − 4 del family office</h2>
+            <p>El family office no opera ni es dueño. Busca quién pague parking y comida. Tú cobras el arriendo; ellos se llevan el 4% de esa parada.</p>
           </article>
           <article class="card">
             <div class="n">Ripio · una vez</div>
             <h2>Parada ~1.100 UF · I-A2 ~1.363 UF</h2>
-            <p>3.000 CLP/m³. Solo el m³ cargado. FO 0%.</p>
+            <p>Una vez. 3.000 CLP/m³. Solo el m³ que se carga. El family office no lleva nada de esto.</p>
           </article>
         </section>
 
         <section class="panel" id="no" hidden>
-          <p class="lead">Si haces esto, el trato se rompe.</p>
-          <p class="sub">La marca oye suelo + ellos construyen. Nada más.</p>
+          <p class="lead">Si haces esto, el trato de arriendo se cae.</p>
+          <p class="sub">La marca oye: suelo + ellos construyen. Nada más.</p>
           <ul class="dont">
-            <li><strong>No pongas los estanques tú</strong>Shell y Aramco se caen. Franquicia o independiente. Cuota ≈ 115 UF contra 68 de arriendo.</li>
-            <li><strong>No vendas a Copec</strong>Compran el suelo. Esto no se vende. Disuasión del pad: 28.000 UF.</li>
+            <li><strong>No pongas los estanques tú</strong>Shell y Aramco se van. Queda franquicia o independiente. Cuota ≈ 115 UF/mes contra ~68 de arriendo.</li>
+            <li><strong>No vendas a Copec</strong>Ellos compran el suelo. Esto se arrienda, no se vende. Precio de disuasión del pad: 28.000 UF.</li>
             <li><strong>No des 250.000 m³ en I-A2</strong>Ripio = hectáreas ocupadas. 2,6 ha ≈ 18.571 m³.</li>
-            <li><strong>No metas I-A3 a Enex</strong>Es otra mesa. 90 días al vecino cuando se abra, no ahora.</li>
-            <li><strong>No 5 pesos por litro</strong>Van 12–15. No 90 días a una sola marca.</li>
+            <li><strong>No metas I-A3 a Enex</strong>Es otra mesa. Después, no ahora.</li>
+            <li><strong>No 5 pesos por litro</strong>Van 12–15. Tampoco 90 días de exclusiva a una sola marca.</li>
             <li><strong>No 90 UF de campo a I-A2</strong>I-A2 ya está ocupado. Patio, no campo.</li>
-            <li><strong>No le des la bomba al FO</strong>Mandato solo de la parada. Si se llevan las 3,12 ha, es otra mesa: 130, no 159.</li>
+            <li><strong>No le des la estación al family office</strong>Mandato solo de la parada. Si se llevan las 3,12 ha, es otra mesa: ~130 UF/mes, no 159.</li>
           </ul>
         </section>
       </main>
@@ -435,16 +497,16 @@
   <script>
     const UF = 40884;
     const Z = {
-      eds: { n: "Pad EDS · ≤1 ha", h: "Ellos construyen", p: "90 / 60–75 / 40. Estanques de la marca. 0 CAPEX tuyo.", orbit: "55deg 72deg 70%" },
-      park: { n: "Parada · ~2,1 ha", h: "~95 UF si llenan", p: "El FO caza inquilinos. 10% año 1, 4% después. 0% de la bomba.", orbit: "180deg 68deg 95%" },
+      eds: { n: "Estación · hasta 1 ha", h: "Ellos construyen", p: "Pides 90, cierras 60–75, te paras en 40. UF/mes. Estanques de la marca. Cero plata tuya de construcción.", orbit: "55deg 72deg 70%" },
+      park: { n: "Parada · ~2,1 ha", h: "~95 UF/mes si llenan", p: "Otro contrato. El family office caza inquilinos. 10% año 1, 4% después. 0% de la estación.", orbit: "180deg 68deg 95%" },
       ia2: { n: "I-A2 · 2,6 ha", h: "Ocupado", p: "Ripio 7.143 m³/ha ≈ 18.571 m³. No se ofrece a Enex.", orbit: "0deg 22deg 160%" },
-      ia3: { n: "I-A3 · 4,28 ha", h: "Después", p: "No entra hoy. No va en el correo de la marca.", orbit: "0deg 22deg 160%" }
+      ia3: { n: "I-A3 · 4,28 ha", h: "Después", p: "No entra hoy. No va en el correo de Enex ni Esmax.", orbit: "0deg 22deg 160%" }
     };
     const bars = {
-      trato: ["El trato", "Suelo mío. Bomba de ellos.", "I-A1 · Ruta 9 Norte × Y-50"],
+      trato: ["El trato", "Suelo mío. Estación de ellos.", "I-A1 · Ruta 9 Norte × Y-50"],
       pano: ["El paño", "Un pin. Un uso.", "Solo el pad se ofrece a Enex"],
-      plata: ["La plata", "0 hoy. 159 en régimen.", "Ripio aparte, una vez"],
-      no: ["Fuera", "Esto rompe el trato.", "Estanques, Copec, I-A3"]
+      plata: ["La plata", "0 hoy. 159 UF/mes en régimen.", "Ripio aparte, una vez"],
+      no: ["Fuera", "Esto rompe el arriendo.", "Estanques, Copec, I-A3"]
     };
     let unit = "uf";
     function money(n) {
