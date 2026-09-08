@@ -11,6 +11,7 @@
   <title>Esquina 950</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;700&family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -152,6 +153,21 @@
       font-size: 22px;
       margin-top: 4px;
     }
+    .viewer {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #2a241c;
+      margin-bottom: 10px;
+    }
+    model-viewer.lote {
+      width: 100%;
+      height: 280px;
+      display: block;
+      background: #2a241c;
+      --progress-bar-color: #c4491d;
+      --poster-color: #2a241c;
+    }
     .map {
       position: relative;
       border-radius: 16px;
@@ -159,7 +175,22 @@
       background: #14110e;
       margin-bottom: 10px;
     }
-    .map img { display: block; width: 100%; height: auto; }
+    .map img {
+      display: block;
+      width: 100%;
+      height: auto;
+      transform-origin: 58% 62%;
+      animation: ken 36s linear infinite alternate;
+    }
+    @keyframes ken {
+      from { transform: scale(1); }
+      to { transform: scale(1.08); }
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(196, 73, 29, 0.45); }
+      70% { box-shadow: 0 0 0 12px rgba(196, 73, 29, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(196, 73, 29, 0); }
+    }
     .pin {
       position: absolute;
       transform: translate(-50%, -100%);
@@ -170,6 +201,7 @@
       color: #fff;
       font: 600 11px Roboto, sans-serif;
       text-align: center;
+      z-index: 2;
     }
     .pin i {
       display: block;
@@ -179,11 +211,14 @@
       margin: 0 auto 4px;
       box-shadow: 0 0 0 6px rgba(255,255,255,.18);
     }
-    .pin.eds i { background: #c4922a; }
-    .pin.park i { background: #c4491d; }
+    .pin.eds i { background: #c4922a; animation: pulse 2.4s ease-out infinite; }
+    .pin.park i { background: #c4491d; animation: pulse 2.4s ease-out infinite; }
     .pin.ia2 i { background: #5a8f78; }
     .pin.ia3 i { background: #8a7a68; }
     .pin.on i { box-shadow: 0 0 0 7px rgba(196,73,29,.35); }
+    @media (prefers-reduced-motion: reduce) {
+      .map img, .pin.eds i, .pin.park i { animation: none; }
+    }
     .sheet {
       background: #fffdf8;
       border-radius: 16px;
@@ -302,7 +337,29 @@
 
         <section class="panel" id="pano" hidden>
           <p class="lead">Cuatro paños. Uno se ofrece a la marca.</p>
-          <p class="sub">Toca un pin. El resto del lote no va en el contrato de la bomba.</p>
+          <p class="sub">El lote gira. Toca un pin: la cámara va a ese uso. El resto no va en el contrato de la bomba.</p>
+          <div class="viewer">
+            <model-viewer
+              id="lote3d"
+              class="lote"
+              src="estacion-servicio-lote-I-A1.glb"
+              poster="nodo-ia1-plano.jpg"
+              alt="Modelo 3D del lote I-A1."
+              camera-controls
+              touch-action="none"
+              shadow-intensity="0.7"
+              exposure="1.05"
+              environment-image="neutral"
+              auto-rotate
+              auto-rotate-delay="0"
+              rotation-per-second="12deg"
+              min-camera-orbit="auto 8deg auto"
+              max-camera-orbit="auto 89deg auto"
+              camera-orbit="40deg 58deg 105%"
+              interpolation-decay="90"
+              loading="eager"
+            ></model-viewer>
+          </div>
           <div class="map">
             <img src="nodo-ia1-plano.jpg" alt="Plano de Esquina 950" width="965" height="1024" />
             <button type="button" class="pin eds on" style="left:71%;top:74%" data-z="eds"><i></i>EDS</button>
@@ -378,10 +435,10 @@
   <script>
     const UF = 40884;
     const Z = {
-      eds: { n: "Pad EDS · ≤1 ha", h: "Ellos construyen", p: "90 / 60–75 / 40. Estanques de la marca. 0 CAPEX tuyo." },
-      park: { n: "Parada · ~2,1 ha", h: "~95 UF si llenan", p: "El FO caza inquilinos. 10% año 1, 4% después. 0% de la bomba." },
-      ia2: { n: "I-A2 · 2,6 ha", h: "Ocupado", p: "Ripio 7.143 m³/ha ≈ 18.571 m³. No se ofrece a Enex." },
-      ia3: { n: "I-A3 · 4,28 ha", h: "Después", p: "No entra hoy. No va en el correo de la marca." }
+      eds: { n: "Pad EDS · ≤1 ha", h: "Ellos construyen", p: "90 / 60–75 / 40. Estanques de la marca. 0 CAPEX tuyo.", orbit: "55deg 72deg 70%" },
+      park: { n: "Parada · ~2,1 ha", h: "~95 UF si llenan", p: "El FO caza inquilinos. 10% año 1, 4% después. 0% de la bomba.", orbit: "180deg 68deg 95%" },
+      ia2: { n: "I-A2 · 2,6 ha", h: "Ocupado", p: "Ripio 7.143 m³/ha ≈ 18.571 m³. No se ofrece a Enex.", orbit: "0deg 22deg 160%" },
+      ia3: { n: "I-A3 · 4,28 ha", h: "Después", p: "No entra hoy. No va en el correo de la marca.", orbit: "0deg 22deg 160%" }
     };
     const bars = {
       trato: ["El trato", "Suelo mío. Bomba de ellos.", "I-A1 · Ruta 9 Norte × Y-50"],
@@ -422,6 +479,8 @@
       document.getElementById("sh-n").textContent = d.n;
       document.getElementById("sh-h").textContent = d.h;
       document.getElementById("sh-p").textContent = d.p;
+      const mv = document.getElementById("lote3d");
+      if (mv && d.orbit) mv.cameraOrbit = d.orbit;
     }
     document.querySelectorAll(".nav button").forEach((b) => {
       b.addEventListener("click", () => show(b.dataset.go));
@@ -429,6 +488,13 @@
     document.querySelectorAll(".pin").forEach((b) => {
       b.addEventListener("click", () => pin(b.dataset.z));
     });
+    const lote3d = document.getElementById("lote3d");
+    if (lote3d) {
+      lote3d.addEventListener("pointerdown", () => { lote3d.autoRotate = false; });
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        lote3d.removeAttribute("auto-rotate");
+      }
+    }
     document.querySelectorAll(".unit button").forEach((b) => {
       b.addEventListener("click", () => {
         unit = b.dataset.unit;
