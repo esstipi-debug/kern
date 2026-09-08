@@ -344,7 +344,7 @@
           <p class="lead">Tú arriendas el suelo. Shell o Aramco construyen y operan la estación.</p>
           <p class="sub">No vendes el terreno. Copec compra tierra: por eso no entran.</p>
           <div class="brief">
-            <p>Resumen: cuatro papeles en un paño. Arriendo potencial ~<strong>159 UF/mes</strong>. Ellos ponen la estación. Tú no pones plata de construcción.</p>
+            <p>Resumen: cuatro papeles en un paño. Arriendo potencial ~<strong>159 UF/mes</strong>. Ellos construyen la estación. Tú no la financias.</p>
           </div>
           <article class="card">
             <div class="n">1 · Estación · hasta 1 ha</div>
@@ -432,11 +432,11 @@
           <div class="sheet" id="sheet">
             <div class="n" id="sh-n">Estación · hasta 1 ha</div>
             <h2 id="sh-h">Ellos construyen</h2>
-            <p id="sh-p">Pides 90, cierras 60–75, te paras en 40 (UF/mes). Estanques de la marca. Cero plata tuya de construcción.</p>
+            <p id="sh-p">Pides 90, cierras 60–75, te paras en 40 (UF/mes). Estanques de la marca. Tú no financias la estación.</p>
           </div>
         </section>
 
-        <section class="panel" id="plata" hidden>
+        <section class="panel" id="renta" hidden>
           <p class="lead">La renta mensual llega cuando abre la estación.</p>
           <p class="sub">Hoy el arriendo es cero. El ripio es un cobro aparte, una sola vez, no se suma al 159.</p>
           <div class="unit" role="group" aria-label="Unidad">
@@ -483,9 +483,9 @@
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z"/></svg>
           Paño
         </button>
-        <button type="button" data-go="plata">
+        <button type="button" data-go="renta">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm.5 15.5v1h-1v-1c-1.7-.1-3.1-1-3.4-2.5h1.6c.2.7 1 1.2 2.1 1.2 1.1 0 1.8-.5 1.8-1.2 0-.8-.7-1.1-2.2-1.5-2-.5-3.3-1.3-3.3-3 0-1.5 1.2-2.5 3-2.7V6.5h1v1c1.5.2 2.7 1.1 2.9 2.5h-1.6c-.2-.7-.8-1.2-1.8-1.2s-1.7.5-1.7 1.2c0 .7.6 1 2.1 1.4 2.1.6 3.4 1.4 3.4 3.1 0 1.6-1.3 2.6-3.2 2.8z"/></svg>
-          Plata
+          Renta
         </button>
         <button type="button" data-go="no">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm5 13.6L13.4 12 17 8.4 15.6 7 12 10.6 8.4 7 7 8.4 10.6 12 7 15.6 8.4 17 12 13.4 15.6 17 17 15.6z"/></svg>
@@ -497,7 +497,7 @@
   <script>
     const UF = 40884;
     const Z = {
-      eds: { n: "Estación · hasta 1 ha", h: "Ellos construyen", p: "Pides 90, cierras 60–75, te paras en 40. UF/mes. Estanques de la marca. Cero plata tuya de construcción.", orbit: "55deg 72deg 70%" },
+      eds: { n: "Estación · hasta 1 ha", h: "Ellos construyen", p: "Pides 90, cierras 60–75, te paras en 40. UF/mes. Estanques de la marca. Tú no financias la estación.", orbit: "55deg 72deg 70%" },
       park: { n: "Parada · ~2,1 ha", h: "~95 UF/mes si llenan", p: "Otro contrato. El family office caza inquilinos. 10% año 1, 4% después. 0% de la estación.", orbit: "180deg 68deg 95%" },
       ia2: { n: "I-A2 · 2,6 ha", h: "Ocupado", p: "Ripio 7.143 m³/ha ≈ 18.571 m³. No se ofrece a Enex.", orbit: "0deg 22deg 160%" },
       ia3: { n: "I-A3 · 4,28 ha", h: "Después", p: "No entra hoy. No va en el correo de Enex ni Esmax.", orbit: "0deg 22deg 160%" }
@@ -505,7 +505,7 @@
     const bars = {
       trato: ["El trato", "Suelo mío. Estación de ellos.", "I-A1 · Ruta 9 Norte × Y-50"],
       pano: ["El paño", "Un pin. Un uso.", "Solo el pad se ofrece a Enex"],
-      plata: ["La plata", "0 hoy. 159 UF/mes en régimen.", "Ripio aparte, una vez"],
+      renta: ["El arriendo", "0 hoy. 159 UF/mes cuando esté lleno.", "Ripio aparte, una vez"],
       no: ["Fuera", "Esto rompe el arriendo.", "Estanques, Copec, I-A3"]
     };
     let unit = "uf";
