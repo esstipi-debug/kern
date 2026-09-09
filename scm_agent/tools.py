@@ -34,6 +34,7 @@ from jobs import (
     forecast_cycle,
     forecast_job,
     hats_job,
+    import_case_job,
     intake,
     intake_scan_job,
     inventory_deliverable,
@@ -664,6 +665,57 @@ def _landed_cost_run(payload: object, params: dict) -> Produced:
         f"Landed cost for {report.n_lines} SKU(s): {report.total_landed:,.0f} total, "
         f"{report.landed_uplift_pct * 100:.0f}% over goods value."
     ))
+
+
+def _import_case_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "an extracted-document folder or documents.json is required "
+            "(commercial_invoice / packing_list / bill_of_lading JSON slices)",
+        ])
+    try:
+        payload = import_case_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _import_case_run(payload: object, params: dict) -> Produced:
+    report = import_case_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def import_case_tool() -> Tool:
+    return Tool(
+        key="import_case",
+        title="Import Case / Document Pack",
+        description="Unify extracted logistics documents (invoice, packing list, B/L or AWB) "
+                    "into one shipment case, flag conflicts, and emit a Chile DIN field pack "
+                    "for the licensed broker. Does not file a declaration or advise HS legally.",
+        intent_keywords=(
+            "import case", "expediente de importacion", "unify import documents",
+            "unificar documentos de importacion", "document pack chile",
+            "chile din pack", "cruzar factura packing", "packing vs invoice",
+            "shipping document discrepancies", "discrepancias de documentos",
+            "import document pack", "pack documental de importacion",
+            "rellenar din", "campo din chile",
+        ),
+        requires_data=True,
+        options=tool_options.import_case_options,
+        prepare=_import_case_prepare,
+        run=_import_case_run,
+        qa=lambda report: import_case_job.verify(report),
+        deliver=lambda report, out_dir, client: import_case_job.write_operational(
+            report, out_dir, client,
+        ),
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+            import_case_job.build_deck(
+                report, client=client, citations=tuple(citations),
+                confidence=confidence, lang=lang,
+            ),
+            options=tuple(options),
+        ).write_all(out_dir),
+    )
 
 
 def landed_cost_tool() -> Tool:
@@ -3228,6 +3280,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(supplier_management_tool())
     reg.register(ddmrp_tool())
     reg.register(landed_cost_tool())
+    reg.register(import_case_tool())
     reg.register(whatif_tool())
     reg.register(financial_kpis_tool())
     reg.register(reconciliation_tool())

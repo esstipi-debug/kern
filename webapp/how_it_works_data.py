@@ -1,7 +1,7 @@
 """Static content data for GET /how-it-works (webapp/how_it_works_page.py).
 
 Every count here is verified against the actual code, not copied from a
-possibly-stale doc: 56 tools = build_default_registry()'s 56 register()
+possibly-stale doc: 57 tools = build_default_registry()'s 57 register()
 calls in scm_agent/tools.py, now enforced by
 tests/test_how_it_works_data.py::test_tools_table_matches_the_registry_exactly
 (set equality against the registry, both directions). That guard exists
@@ -124,7 +124,7 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Reads a live commerce backend (Unleashed, Cin7 Core) and measures the service "
              "customers actually received -- fill rate, outbound OTIF, lost sales -- plus a "
              "field-by-field statement of what that backend cannot measure."),
-    # -- Procurement & sourcing (4) --
+    # -- Procurement & sourcing (5) --
     ToolInfo("sourcing", "Sourcing", "Procurement & sourcing", "Source",
              "Supplier scorecarding via OTIF/DIFOT and defect rate."),
     ToolInfo("supplier_management", "Supplier Segmentation", "Procurement & sourcing", "Source",
@@ -132,6 +132,9 @@ TOOLS: tuple[ToolInfo, ...] = (
              "each mapped to a strategic-SRM playbook."),
     ToolInfo("landed_cost", "Landed Cost", "Procurement & sourcing", "Source",
              "Total cost to destination, Incoterm-aware."),
+    ToolInfo("import_case", "Import Case", "Procurement & sourcing", "Source",
+             "Unifies extracted invoice/packing/B-L fields into one shipment case and a Chile "
+             "DIN field pack for the broker. Does not file a declaration."),
     ToolInfo("acceptance_sampling", "Acceptance Sampling", "Procurement & sourcing", "Source",
              "Incoming-quality sampling plan by AQL/LTPD."),
     # -- Network & logistics (9) --
@@ -293,7 +296,7 @@ CERTIFICATIONS: tuple[CertCoverage, ...] = (
             "Reverse logistics",
         ),
         gaps=(
-            "Customs / international trade compliance beyond Incoterm + tariff",
+            "Customs filing / HS legal advice (import_case unifies papers; it does not file)",
             "Operational WMS/TMS",
             "Multi-facility network optimization (only single-facility siting today)",
             "Global trade compliance",

@@ -38,6 +38,7 @@ UNDECLARED_TOOLS = frozenset({
     "forecast",
     "hat_settlement",
     "hat_tension",
+    "import_case",
     "intake_scan",
     "inventory_optimization",
     "landed_cost",

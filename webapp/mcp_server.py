@@ -1,7 +1,7 @@
 """Kern's read-only MCP server (Phase A go-to-market — see linchpin-monetization-plan).
 
 Exposes the read-only analysis tools in `webapp/mcp_tool_specs.py` (39 tools:
-36 linchpin_* plus the kern_iso_* observation family) of the 56 registered
+36 linchpin_* plus the kern_iso_* observation family) of the 57 registered
 agent tools to remote MCP clients (other AI agents, via Streamable HTTP):
 analysis only, no writeback. `odoo_replenishment`
 and `excel_replenishment` mutate a client's system of record and are

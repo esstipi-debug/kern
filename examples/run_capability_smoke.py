@@ -267,6 +267,7 @@ _BRIEF: dict[str, str] = {
     "sourcing": "score and rank our suppliers",
     "ddmrp": "size DDMRP buffers and planning signals",
     "landed_cost": "compute total landed cost by SKU",
+    "import_case": "unify import documents into a chile din pack",
     "whatif": "run a what-if sensitivity on the plan",
     "financial_kpis": "compute inventory financial KPIs",
     "reconciliation": "reconcile system vs physical inventory",
@@ -387,6 +388,35 @@ def _write_excel_replenishment_xlsx(path: Path) -> None:
     wb.save(path)
 
 
+_IMPORT_CASE_JSON = """{
+  "regime": "chile_import",
+  "documents": [
+    {
+      "doc_type": "commercial_invoice",
+      "fields": {
+        "invoice_no": "F-1", "invoice_date": "2026-01-01",
+        "incoterm": "FOB", "currency": "USD", "total_value": "1000",
+        "hs_code": "8481.80", "country_of_origin": "CN", "total_qty": "10",
+        "seller": "Ex Co", "buyer": "Im SpA"
+      }
+    },
+    {
+      "doc_type": "packing_list",
+      "fields": {"total_qty": "10", "gross_weight": "100", "carton_count": "2", "country_of_origin": "CN"}
+    },
+    {
+      "doc_type": "bill_of_lading",
+      "fields": {
+        "bl_no": "BL1", "container_no": "MSKU1234567", "vessel_voyage": "V1",
+        "pol": "CNSHA", "pod": "CLVAP", "incoterm": "FOB",
+        "shipper": "Ex Co", "consignee": "Im SpA", "gross_weight": "100"
+      }
+    }
+  ]
+}
+"""
+
+
 def _write_price_intelligence_csv(path: Path) -> None:
     import pandas as pd
 
@@ -418,6 +448,10 @@ def _fixture_path(key: str, fixtures_dir: Path) -> Path | None:
     if key == "price_intelligence":
         p = fixtures_dir / "price_intel_refs.csv"
         _write_price_intelligence_csv(p)
+        return p
+    if key == "import_case":
+        p = fixtures_dir / "import_case.json"
+        p.write_text(_IMPORT_CASE_JSON, encoding="utf-8")
         return p
     return None  # no-data tools
 

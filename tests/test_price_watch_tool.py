@@ -167,9 +167,13 @@ def test_registry_tool_count_matches_the_pinned_list():
     # procedure_audit_tool() and procedure_draft_tool() both added (51 -> 53).
     # iso_ops_tool() added (53 -> 54).
     # audit_evidence_tool() + scor_iso_audit_tool() added (54 -> 56).
+    # import_case_tool() added (56 -> 57).
     # bump this count again the next time a tool is registered, same as every prior update.
     reg = tools.build_default_registry()
-    assert len(reg.list()) == 56
+    # import_case_tool() added (56 -> 57).
+    # bump this count again the next time a tool is registered, same as every prior update.
+    reg = tools.build_default_registry()
+    assert len(reg.list()) == 57
 
 
 def test_scm_agent_tools_module_imports_without_circular_import():

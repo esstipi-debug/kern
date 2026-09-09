@@ -81,7 +81,14 @@ _RECOVERED_TOOLS = (
 # (MUS, workpaper, trial balance) never rank those nodes into the candidate
 # pool, so the gate correctly ships zero rather than IRA/AQL false friends.
 # Fix by ingesting audit-sampling theory, not by a looser or hub-adjacent anchor.
-_CORRECTLY_ZERO_TOOLS = ("data_quality", "cycle_count", "intake_scan", "audit_evidence")
+# import_case (tool #57) joined as a measured zero, 2026-09-09: the wedge unifies
+# shipment documents; L3 has TCO/Incoterm theory (the landed_cost anchor) but
+# this tool's keywords (DIN pack, packing vs invoice, expediente) never rank
+# those nodes into the candidate pool. Shipping zero is honest until a trade-
+# documentation source is ingested. Do not hang it off a book hub.
+_CORRECTLY_ZERO_TOOLS = (
+    "data_quality", "cycle_count", "intake_scan", "audit_evidence", "import_case",
+)
 
 # Anchor-islanded tools: zero at ANY pool (a separate anchor problem, not fixable
 # by pool sizing) -- pinned so a future anchor fix is a conscious change.

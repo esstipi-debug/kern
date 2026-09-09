@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- **`import_case` agent tool** (`src/import_case.py`, `jobs/import_case_job.py`) --
+  registry 56 -> 57. Unifies extracted logistics JSON (invoice, packing list,
+  B/L or AWB) into one shipment case, flags quantity/weight/Incoterm/origin
+  conflicts, and writes a Chile DIN *field pack* CSV for the licensed broker.
+  Does not file a declaration or give HS legal advice. Off MCP (folder/JSON
+  path, same class as `intake_scan`). CLI: `examples/run_import_case.py`.
 - **ISO operations/supply-chain catalog (53 norms)** committed at
   `knowledge/iso/catalogo.json`, read by `src/iso_catalog.py`
   (`evidencia_nativa`, `buscar_norma`, `de_modulo`, `detectar`,

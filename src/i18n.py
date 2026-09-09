@@ -5,11 +5,11 @@ sin dependencias nuevas"):
 
 1. The CONSOLIDATED package deck's own generated prose (``jobs/package_deliverable.py``
    headers, KPI names, coverage/handoff text).
-2. The 56 registered tools' TITLES (short labels, e.g. "Data Quality & SKU
+2. The 57 registered tools' TITLES (short labels, e.g. "Data Quality & SKU
    Master (MDM)" -> "Calidad de Datos y Maestro de SKUs (MDM)").
 3. ``src.deliverable.Deliverable``'s own structural scaffolding (section
    headers, table column names, Excel sheet names) -- ``Deliverable.lang``
-   defaults to ``"en"`` (unchanged for the ~56 individual tool decks below,
+   defaults to ``"en"`` (unchanged for the ~57 individual tool decks below,
    which never pass it), and only ``package_deliverable.py::build()`` passes
    the package's ``lang`` explicitly, so translating the CONSOLIDATED deck's
    scaffolding never touches an individual tool's own (English) deck.
@@ -215,6 +215,8 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
                              "en": "Supplier Portfolio Segmentation (Kraljic)"},
     "ddmrp": {"es": "Plan de Buffers DDMRP", "en": "DDMRP Buffer Plan"},
     "landed_cost": {"es": "Estudio de Costo en Destino", "en": "Landed-Cost Study"},
+    "import_case": {"es": "Expediente de Importacion / Pack Documental",
+                    "en": "Import Case / Document Pack"},
     "warehouse_layout": {"es": "Layout de Bodega (3D)", "en": "Warehouse Layout (3D)"},
     "whatif": {"es": "Estudio What-If / Sensibilidad", "en": "What-If / Sensitivity Study"},
     "financial_kpis": {"es": "KPIs Financieros de Inventario", "en": "Inventory Financial KPIs"},

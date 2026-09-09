@@ -1,6 +1,6 @@
 # MCP server (Phase A go-to-market)
 
-Kern exposes 39 of its 56 registered tools to other AI agents over MCP
+Kern exposes 39 of its 57 registered tools to other AI agents over MCP
 (Model Context Protocol), mounted at `/mcp` on the same FastAPI app as the
 dashboard. This is **read-only analysis only** — no tool that mutates a
 client's system of record (e.g. `odoo_replenishment`, or any writeback path
@@ -166,3 +166,7 @@ ledger already relies on.
   is a path-traversal surface until it is explicitly scoped and validated,
   which this tool has not been. Adding `intake_scan` here would need that
   guard first, not just an `MCPToolSpec` entry.
+- `import_case` — same class as `intake_scan`: it reads a caller-supplied
+  folder or JSON bundle of extracted shipment documents. Keep it off MCP
+  until the path is scoped the same way. The Chile DIN pack is a broker
+  handoff, not a remote filing API.

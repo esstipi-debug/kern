@@ -71,6 +71,11 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     ),
     "ddmrp": ("demand_driven_supply_chain", "drum_buffer_rope", "vollmann_customer_order_decoupling_point"),
     "landed_cost": ("landed_cost",),
+    # import_case (wedge on proyecto sourcing): same TCO/Incoterm neighborhood as
+    # landed_cost. The pack is a document projection, not a filed declaration —
+    # Incoterms still govern which costs and which papers attach. Verified via
+    # kb.node_exists for both ids (same anchors landed_cost already uses).
+    "import_case": ("landed_cost",),
     "warehouse_layout": ("facility_layout", "load_distance_layout"),
     # --- MIN_CITATIONS starvation, measured 2026-08-24 --------------------------
     # Four tools below were filed as "anchor-islanded" (zero at any pool). Re-measured

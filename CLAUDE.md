@@ -17,10 +17,10 @@
 An **agentic supply-chain engine**: a plain-language brief becomes a finished,
 QA-gated deliverable (Excel + report + chart), grounded in a knowledge graph of
 25 SCM sources (24 books + an AI-in-SC source) and the codebase itself. A deterministic Python **engine** across
-**56 agent-routable tools** (EOQ, safety stock, `(s,Q)`/`(R,S)`, simulation,
+**57 agent-routable tools** (EOQ, safety stock, `(s,Q)`/`(R,S)`, simulation,
 a network digital twin, forecasting, pricing, price intelligence,
 discovery-assisted price watch, DDMRP, ABC-XYZ, sourcing, supplier segmentation (Kraljic),
-landed cost, cost-to-serve, S&OP, facility location, multi-facility network design (p-median),
+landed cost, import case / document pack, cost-to-serve, S&OP, facility location, multi-facility network design (p-median),
 DRP, transportation, FEFO, launch readiness, vehicle routing, hat tension/settlement,
 flow map, cross-area impact/objection verdict, intake scan, realized customer
 service, ISO operations floor evidence, MUS audit-evidence workpaper, SCOR/ISO

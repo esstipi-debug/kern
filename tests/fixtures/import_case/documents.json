@@ -1,0 +1,48 @@
+{
+  "regime": "chile_import",
+  "documents": [
+    {
+      "doc_type": "commercial_invoice",
+      "source": "fixture-invoice",
+      "fields": {
+        "invoice_no": "F-1001",
+        "invoice_date": "2026-08-01",
+        "seller": "Shanghai Widgets Ltd",
+        "buyer": "Importadora Andes SpA",
+        "incoterm": "FOB",
+        "currency": "USD",
+        "total_value": "12000",
+        "hs_code": "8481.80",
+        "country_of_origin": "CN",
+        "total_qty": "1000"
+      }
+    },
+    {
+      "doc_type": "packing_list",
+      "source": "fixture-packing",
+      "fields": {
+        "linked_invoice": "F-1001",
+        "carton_count": "20",
+        "total_qty": "1000",
+        "gross_weight": "2400",
+        "country_of_origin": "CN"
+      }
+    },
+    {
+      "doc_type": "bill_of_lading",
+      "source": "fixture-bl",
+      "fields": {
+        "bl_no": "EGLV123456789012",
+        "container_no": "MSKU1234567",
+        "vessel_voyage": "EVER GIVEN 0501E",
+        "pol": "Shanghai",
+        "pod": "Valparaiso",
+        "shipper": "Shanghai Widgets Ltd",
+        "consignee": "Importadora Andes SpA",
+        "incoterm": "FOB",
+        "hs_code": "8481.80",
+        "gross_weight": "2400"
+      }
+    }
+  ]
+}

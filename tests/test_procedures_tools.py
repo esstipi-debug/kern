@@ -44,7 +44,7 @@ def registry():
 def test_both_tools_are_registered_and_count_is_56(registry):
     assert registry.get("procedure_audit") is not None
     assert registry.get("procedure_draft") is not None
-    assert len(registry.list()) == 56
+    assert len(registry.list()) == 57
 
 
 @pytest.mark.parametrize(
