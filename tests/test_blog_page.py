@@ -147,7 +147,7 @@ def test_sitemap_lists_every_indexed_slug() -> None:
     ET.fromstring(r.text)  # well-formed or raises
     for p in INDEXED:
         assert f"{public_base_url()}{p.url_path}" in r.text
-    for path in ("/stocky-alternative", "/demo", "/paquetes", "/one-plan", "/how-it-works"):
+    for path in ("/stocky-alternative", "/demo", "/demo/en", "/paquetes", "/one-plan", "/how-it-works"):
         assert f"{public_base_url()}{path}" in r.text
 
 

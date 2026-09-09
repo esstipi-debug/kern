@@ -23,7 +23,7 @@ AI_AGENTS = ("GPTBot", "PerplexityBot", "Google-Extended", "ClaudeBot", "CCBot")
 
 #: Static pages that belong in the sitemap alongside the articles.
 STATIC_PATHS = (
-    "/", "/blog", "/blog/en", "/demo", "/paquetes",
+    "/", "/blog", "/blog/en", "/demo", "/demo/en", "/paquetes",
     "/stocky-alternative", "/one-plan", "/how-it-works",
 )
 

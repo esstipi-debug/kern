@@ -984,6 +984,7 @@ async def api_demo_scan(
     email: str = Form(...),
     use_sample: bool = Form(False),
     file: UploadFile | None = File(None),
+    lang: str = Form("es"),
 ) -> dict:
     """The /demo funnel: one stock CSV -> the Diagnostico's teaser numbers.
 
@@ -1016,9 +1017,9 @@ async def api_demo_scan(
     # es la puerta. `load_table` no acepta `nrows` -- tiene que elegir hoja y fila
     # de encabezado antes de saber cuantas filas hay -- asi que se mide despues.
     if len(df) > 10000:
-        raise HTTPException(status_code=413, detail="archivo demasiado grande para demo gratis, usa Starter Mass")
+        raise HTTPException(status_code=413, detail="archivo demasiado grande para el diagnóstico gratis, usa Starter Mass")
     try:
-        result = demo_scan.run_demo_scan(df)
+        result = demo_scan.run_demo_scan(df, lang="en" if lang.strip().lower() == "en" else "es")
     except ValueError as exc:
         raise HTTPException(
             status_code=400,
@@ -2490,6 +2491,12 @@ def console() -> FileResponse:
 def demo_page() -> FileResponse:
     """Lead-gated self-serve demo: capture an email, then upload data or use the
     bundled sample dataset and see what the engine recommends."""
+    return FileResponse(STATIC_DIR / "demo" / "index.html")
+
+
+@app.get("/demo/en")
+def demo_page_en() -> FileResponse:
+    """English locale of /demo. Same HTML; the page reads the path and switches copy."""
     return FileResponse(STATIC_DIR / "demo" / "index.html")
 
 
