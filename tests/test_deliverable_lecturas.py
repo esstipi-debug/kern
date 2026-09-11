@@ -418,3 +418,74 @@ def test_lo_que_el_conector_produce_siempre_se_puede_renderizar(tmp_path):
     d = _poblado("en", readings=lecturas)
     assert lecturas[0].excerpt in d.to_markdown()
     d.to_excel(tmp_path / "d.xlsx")
+
+
+# ---- 7. el xlsx no puede COMERSE el pasaje ------------------------------------------
+#
+# El requisito es que el extracto llegue igual a los dos formatos. openpyxl rompe eso en
+# silencio para una clase de extracto: todo str que arranca con "=" se escribe como
+# FORMULA (`data_type='f'`), asi que el markdown conserva el texto y en Excel el cliente
+# ve `#NAME?` donde tenia que ver el pasaje. Y es alcanzable desde el productor real: un
+# libro de inventario esta lleno de renglones que sobreviven `_sanear` arrancando con
+# "=" o "-" ("= 1.65 x sigma x raiz L"). La casa ya contesta esto en todos los demas
+# escritores de Excel con `src.sanitize.defuse_formula`; esta era la primera celda de
+# `to_excel` alimentada por texto de otro proceso.
+
+_PELIGROSOS = ("=SUM(A1:A9)+cita del libro", "= 1.65 x sigma x raiz L",
+               "+1 vuelta de inventario", "-30% de sobrestock", "@sku critico")
+
+
+def _hoja_lecturas(d, tmp_path, nombre="d.xlsx"):
+    wb = load_workbook(d.to_excel(tmp_path / nombre))
+    return [tuple(r) for r in wb[i18n.label("sheet_readings", "en")].iter_rows(values_only=True)]
+
+
+@pytest.mark.parametrize("texto", _PELIGROSOS)
+def test_un_extracto_que_arranca_como_formula_sigue_siendo_texto_en_el_xlsx(texto, tmp_path):
+    d = _poblado("en", readings=(Reading("vandeput", "PDF p.9", texto),))
+    wb = load_workbook(d.to_excel(tmp_path / "d.xlsx"))
+    celda = wb[i18n.label("sheet_readings", "en")]["C3"]
+    assert celda.data_type == "s", "el pasaje se escribio como formula: el cliente ve #NAME?"
+    assert texto in str(celda.value)
+
+
+@pytest.mark.parametrize("texto", _PELIGROSOS)
+def test_el_libro_y_la_pagina_tampoco_se_evaporan_como_formula(texto, tmp_path):
+    """Las tres celdas vienen del mismo texto ajeno; una sola defendida no alcanza."""
+    d = _poblado("en", readings=(Reading(texto[:120], texto, "cuerpo"),))
+    wb = load_workbook(d.to_excel(tmp_path / "d.xlsx"))
+    hoja = wb[i18n.label("sheet_readings", "en")]
+    assert hoja["A3"].data_type == "s" and hoja["B3"].data_type == "s"
+    assert texto in str(hoja["B3"].value)
+
+
+def test_el_pasaje_sigue_entero_en_el_markdown_sin_apostrofe(tmp_path):
+    """El precio del arreglo se paga SOLO en el xlsx, no en el markdown.
+
+    `defuse_formula` antepone un apostrofe, y openpyxl lo escribe como texto literal (no
+    como el estilo `quotePrefix`), asi que en Excel se ve. Es el costo aceptado: un
+    apostrofe al lado del pasaje es mejor que el pasaje ausente. Lo que NO se acepta es
+    que ese apostrofe se filtre al markdown, que no tiene el problema que lo motiva.
+    """
+    texto = "= 1.65 x sigma x raiz L"
+    d = _poblado("en", readings=(Reading("vandeput", "PDF p.9", texto),))
+    assert f'- **vandeput** PDF p.9 - "{texto}"' in d.to_markdown()
+    assert "'=" not in d.to_markdown()
+
+
+def test_un_extracto_inocente_llega_identico_a_las_dos_caras(tmp_path):
+    """El defuse no puede cobrarle nada al 99% de los pasajes, que no arrancan con eso."""
+    d = _poblado("en", readings=_LECTURAS)
+    filas = _hoja_lecturas(d, tmp_path)
+    assert filas[2] == ("vandeput-inventory-optimization", "PDF p.83-84", _LECTURAS[0].excerpt)
+    assert filas[3] == ("liu-supply-chain-analytics", "PDF p.12", _LECTURAS[1].excerpt)
+
+
+def test_lo_que_el_conector_produce_arrancando_con_formula_sobrevive(tmp_path):
+    """La misma invariante, pero entrando por el productor real en vez de a mano."""
+    crudo = "1. **vandeput** PDF p.9\n   = 1.65 x sigma x raiz de L dias\n"
+    (leida,) = lectura.parse_readings(crudo)
+    assert leida.excerpt.startswith("=")  # el saneo no toca el primer caracter
+    d = _poblado("en", readings=(leida,))
+    assert leida.excerpt in d.to_markdown()
+    assert leida.excerpt in str(_hoja_lecturas(d, tmp_path)[2][2])
