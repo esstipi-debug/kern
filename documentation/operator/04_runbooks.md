@@ -22,7 +22,7 @@
 - [RB-15 · Medir el servicio que realmente entregaste](#rb-15--medir-el-servicio-que-realmente-entregaste)
 - [RB-16 · Auditar el registro de procedimientos (SOP)](#rb-16--auditar-el-registro-de-procedimientos-sop)
 - [RB-17 · Redactar un SOP con control documental](#rb-17--redactar-un-sop-con-control-documental)
-- [RB-18 · Detectar normas ISO de operaciones y evaluar evidencia de piso](#rb-18--detectar-normas-iso-de-operaciones-y-evaluar-evidencia-de-piso)
+- [RB-18 · Detectar normas ISO de operaciones y evaluar la evidencia de cadena](#rb-18--detectar-normas-iso-de-operaciones-y-evaluar-la-evidencia-de-cadena)
 - [RB-19 · Preparar el papel de trabajo MUS / conciliación GL](#rb-19--preparar-el-papel-de-trabajo-mus--conciliación-gl)
 - [RB-20 · Emitir el pack de evidencia SCOR/ISO](#rb-20--emitir-el-pack-de-evidencia-scoriso)
 
@@ -501,7 +501,7 @@ redactados, y un HANDOFF que deja claro quién tiene que firmarlo y cuándo.
 
 ---
 
-## RB-18 · Detectar normas ISO de operaciones y evaluar evidencia de piso
+## RB-18 · Detectar normas ISO de operaciones y evaluar la evidencia de cadena
 
 **Objetivo:** saber qué normas del paquete `iso-operaciones-cadena` aplican a
 esta planta, qué tareas de piso ya están en el catálogo, y qué evidencia de
@@ -517,14 +517,18 @@ orden existe. **No** obtener ni afirmar un certificado.
    de `POST /api/detectar`). También: brief "detectar normas iso de
    operaciones…" por el agente (`iso_ops`).
 4. **Leé las tarjetas**: `claimPermitido` + `limite` + huecos. El claim
-   permitido es "KERN tiene evidencia de piso para…" o "14083 aplica; falta
-   t·km". Nunca "la planta cumple ISO…".
+   permitido es "KERN tiene evidencia para…" (solo en las 6 normas de cadena
+   marcadas `nativo`), "…aplica; la evidencia de KERN es parcial" o "14083
+   aplica; falta t·km". Nunca "la planta cumple ISO…", y nunca "evidencia de
+   piso": KERN no lee sensores de maquina.
 5. **Elegí sobre OPTIONS** (RB-4) la norma a trabajar primero, o atendé el
    HANDOFF si la ficha estaba vacía (RB-3).
 6. **Odoo y Excel no pintan un sello ISO.** El entregable es CSV/Excel de
    detectadas + tareas. La política de inventario sigue en esos sistemas.
 
-> Kern detecta, propone y evalúa evidencia de piso. El organismo certifica.
+> Kern detecta, propone y evalúa la evidencia de cadena que él mismo produce.
+> Las magnitudes de planta (kWh, ciclo, scrap, molde) quedan fuera de alcance.
+> El organismo certifica.
 
 ---
 

@@ -1,4 +1,4 @@
-"""ISO operations / supply-chain catalog: floor evidence, never a conformity ruling.
+"""ISO operations / supply-chain catalog: applicability, never a conformity ruling.
 
 Loads the committed ``knowledge/iso/catalogo.json`` pack (53 norms) and answers
 three questions MONITOR (or any caller) is allowed to ask:
@@ -10,7 +10,13 @@ three questions MONITOR (or any caller) is allowed to ask:
 
 Hard rule, enforced in one place (``claim_permitido`` / ``AVISO_DETECCION``):
 Kern never says the plant *cumple* or is *certificada*. Coverage is native
-floor evidence, a named gap, or out of scope.
+evidence, a named gap, or out of scope.
+
+The pack was authored for KERN IoP, a plant-floor product whose modules are
+sensors and kWh meters. This engine reads none of that: no connector or
+column contract carries kWh, cycle time, scrap quantity, mould or operator.
+So ``cobertura`` is classified against what THIS engine measures -- service,
+master data, suppliers, sampling -- and the shop-floor norms are out of scope.
 """
 
 from __future__ import annotations
@@ -32,7 +38,8 @@ AVISO_DETECCION = (
     "No es un dictamen de conformidad ni una certificación."
 )
 AVISO_ORDEN = (
-    "Evidencia de piso para esta orden. No es un dictamen de conformidad "
+    "Normas aplicables a esta orden segun las senales que declaraste. KERN no "
+    "lee la planta: no es una medicion propia, ni un dictamen de conformidad, "
     "ni una certificación."
 )
 
@@ -202,7 +209,10 @@ def claim_permitido(norma: Mapping[str, Any]) -> str:
     cobertura = _cobertura(norma)
     detalle = _detalle_evidencia(kern.get("evidenciasKern") or [])
     if cobertura == COBERTURA_NATIVO:
-        claim = f"KERN tiene evidencia de piso para {codigo}"
+        # "de piso" salio de la frase a proposito: la evidencia que KERN produce
+        # es de cadena (servicio, maestro, proveedores, muestreo), no de planta.
+        # Ninguna magnitud de piso -- kWh, ciclo, scrap, molde -- entra al motor.
+        claim = f"KERN tiene evidencia para {codigo}"
         if detalle:
             claim += f" ({detalle})"
         claim += "."
@@ -210,7 +220,7 @@ def claim_permitido(norma: Mapping[str, Any]) -> str:
         if str(norma.get("id")) == "iso-14083":
             claim = f"{codigo} aplica; falta t·km."
         else:
-            claim = f"{codigo} aplica; la evidencia de piso es parcial."
+            claim = f"{codigo} aplica; la evidencia de KERN es parcial."
     else:
         claim = f"{codigo} queda fuera de este tramo."
     if texto_prohibido(claim):
@@ -302,6 +312,11 @@ def evidencia_de_orden(
     Native floor evidence is listed only when the order already carries the
     signal that feeds it (cycle / scrap / kg). 14083 is named as a gap unless
     t·km is present — OEE never stands in for tonne-kilometres.
+
+    Energy and carbon used to light a card here. They no longer can: KERN
+    ingests no kWh and no emission factor through any connector or column
+    contract, so 50001 and 14067 are out of scope and ``_add`` would drop them
+    anyway. The rules are gone rather than left unreachable.
     """
     packed = catalog or load_catalog()
     mods = tuple(m.lower() for m in senales.modulos if m)
@@ -318,8 +333,6 @@ def evidencia_de_orden(
         nativas.append(tarjeta_evidencia(norma))
 
     _add("iso-9001", ("smartpro", "monitor"), senales.tiene_ciclo or senales.tiene_scrap)
-    _add("iso-50001", ("energy", "monitor"), senales.tiene_kg)
-    _add("iso-14067", ("huella", "energy"), senales.tiene_kg and (senales.tiene_ciclo or senales.tiene_scrap))
 
     huecos: list[str] = []
     iso_14083 = buscar_norma("iso-14083", packed)
@@ -454,17 +467,16 @@ def _fold(value: str) -> str:
 
 def _resumen_orden(nativas: Sequence[Mapping[str, Any]], tiene_tkm: bool) -> str:
     chips: list[str] = []
-    labels = {
-        "iso-9001": "ISO 9001 (piezas buenas / no conformes)",
-        "iso-50001": "ISO 50001 (kWh/kg)",
-        "iso-14067": "ISO 14067 (tramo de proceso)",
-    }
+    # La senal de piso la declara el cliente sobre SU sistema de planta; KERN no la
+    # mide. Por eso el chip nombra la norma y nunca el numero: decir "piezas buenas /
+    # no conformes" o "kWh/kg" seria atribuirle a KERN una medicion que no hace.
+    labels = {"iso-9001": "ISO 9001 (control de proceso declarado en planta)"}
     for card in nativas:
         chips.append(labels.get(str(card.get("id")), str(card.get("codigo"))))
     if chips:
-        head = "Evidencia nativa: " + ", ".join(chips) + "."
+        head = "Normas aplicables segun las senales que declaraste: " + ", ".join(chips) + "."
     else:
-        head = "Sin evidencia nativa en esta orden: faltan ciclo, scrap o kg."
+        head = "Sin senales de piso declaradas en esta orden: faltan ciclo, scrap o kg."
     if tiene_tkm:
         tail = "14083: hay t·km en la orden; el well-to-wheel del 3PL sigue fuera."
     else:

@@ -38,7 +38,9 @@ def test_prepare_csv_matches_json_triggers():
     from_json = iso_ops_job.run(iso_ops_job.prepare(str(_JSON), {}))
     from_csv = iso_ops_job.run(iso_ops_job.prepare(str(_CSV), {}))
     assert {r["id"] for r in from_csv.detectadas} == {r["id"] for r in from_json.detectadas}
-    assert from_csv.n_nativas_orden == 3  # ciclo+scrap+kg with SMARTPRO/MONITOR/ENERGY/huella
+    # Solo 9001 puede encender una tarjeta: 50001 y 14067 quedaron fuera de alcance
+    # cuando se verifico que KERN no ingesta kWh ni factores de emision.
+    assert from_csv.n_nativas_orden == 1
     assert from_json.n_nativas_orden == 0  # ejemplo JSON has no order signals
 
 

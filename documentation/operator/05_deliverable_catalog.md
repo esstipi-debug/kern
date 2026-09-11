@@ -46,7 +46,7 @@ inventory turns, DIO, costo de mantener, sell-through, valor de excedente/obsole
 | **Diagnóstico de liderazgo (modelo CHAIN)** | `leadership_chain` | Coaching y plan de desarrollo del equipo |
 | **Auditoría del registro de procedimientos** (SOP vencidos, sin dueño, sin segregación de funciones) | `procedure_audit` | Priorizar los vencidos con dueño ya asignado (RB-16); cerrar la segregación donde falte |
 | **Borrador de SOP con control documental** (Job Breakdown Sheet + plan de control + entrenamiento) | `procedure_draft` | Revisar por adecuación y suficiencia, aprobar y publicar en el sistema del cliente (RB-17) |
-| **Evidencia de piso ISO / IATF** (aplicabilidad, tareas, huecos nombrados; nunca un certificado) | `iso_ops` | Cerrar huecos (p.ej. t·km para 14083); no vender el entregable como sello (RB-18) |
+| **Aplicabilidad ISO / IATF** (normas que aplican, tareas, huecos nombrados; la evidencia es de cadena, nunca de planta, y nunca un certificado) | `iso_ops` | Cerrar huecos (p.ej. t·km para 14083); no vender el entregable como sello (RB-18) |
 | **Papel de trabajo MUS / conciliación GL** (selección re-ejecutable; nunca un dictamen) | `audit_evidence` | Fieldwork W-3 y firma Reviewed-by (RB-19); TM lo pone el auditor |
 | **Pack de evidencia SCOR/ISO** (scorecard + checklist `observed`/`gap`/`no_evaluable`; nunca un certificado) | `scor_iso_audit` | Cerrar `no_evaluable` y gaps nombrados antes de la visita (RB-20) |
 | **Política + dashboard de inventario** (heredado de Inventory) | (ver tabla anterior) | (ídem) |

@@ -6,7 +6,7 @@ committed JSON) and FastAPI. No optional-extra deps.
 Routes:
   GET  /api/iso          — { stats, normas, ... } same pack as catalogo.json
   POST /api/detectar     — contratoPost from tests/fixtures/iso/detectar.ejemplo.json
-  GET  /api/iso/orden    — native floor evidence for the open order's signals
+  GET  /api/iso/orden    — norms applicable to the order's DECLARED signals
   GET  /iso              — catalog (PARA-KERN style) + detector + order evidence
 """
 
@@ -111,8 +111,9 @@ def render_iso_html(panel: Mapping[str, Any], catalog: Mapping[str, Any] | None 
         if isinstance(d, Mapping)
     )
     total = escape(str(stats.get("total") or "53"))
-    nativo = escape(str(stats.get("nativo") or "18"))
-    parcial = escape(str(stats.get("evidenciaParcial") or "31"))
+    nativo = escape(str(stats.get("nativo") or "6"))
+    parcial = escape(str(stats.get("evidenciaParcial") or "12"))
+    fuera = escape(str(stats.get("fueraDeAlcance") or "35"))
     cadena = escape(str(stats.get("supplyChain") or "46"))
     inventario = escape(str(stats.get("cadenasProductivas") or "38"))
     return _PAGE.replace("%%CARDS%%", cards).replace("%%GAP%%", gap).replace(
@@ -123,9 +124,9 @@ def render_iso_html(panel: Mapping[str, Any], catalog: Mapping[str, Any] | None 
         "%%MOD_OPTS%%", mod_opts
     ).replace("%%DOM_OPTS%%", dom_opts).replace("%%TOTAL%%", total).replace(
         "%%NATIVO%%", nativo
-    ).replace("%%PARCIAL%%", parcial).replace("%%CADENA%%", cadena).replace(
-        "%%PRODUCTIVAS%%", inventario
-    )
+    ).replace("%%PARCIAL%%", parcial).replace("%%FUERA%%", fuera).replace(
+        "%%CADENA%%", cadena
+    ).replace("%%PRODUCTIVAS%%", inventario)
 
 
 def _card(card: Mapping[str, Any], *, native: bool) -> str:
@@ -149,7 +150,7 @@ _PAGE = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Catalogo ISO · Kern</title>
-<meta name="description" content="Catalogo ISO de operaciones y cadena. Evidencia de piso, no un dictamen de conformidad.">
+<meta name="description" content="Catalogo ISO de operaciones y cadena. Declara que puede sostener Kern con datos de cadena; no es un dictamen de conformidad.">
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -232,13 +233,13 @@ _PAGE = """<!DOCTYPE html>
 <section id="catalogo">
   <div class="eyebrow">paquete iso-operaciones-cadena · 1.0.0</div>
   <h1>Catalogo ISO de operaciones y cadena</h1>
-  <p class="muted">53 normas mapeadas a SMARTPRO, MONITOR, ENERGY, huella, CMMS y CEI. Kern carga este catalogo y cruza lo que ya mide. No certifica.</p>
+  <p class="muted">El catalogo mapea cada norma a modulos de piso (SMARTPRO, MONITOR, ENERGY, huella, CMMS, CEI), que son instrumentacion de planta, no de Kern. Lo que Kern aporta lo declara cada ficha: evidencia nativa solo donde un motor de Kern produce el numero desde datos de cadena. Energia, huella, OEE y tiempo de ciclo quedan fuera de alcance: Kern no ingesta datos de maquina. No certifica.</p>
   <div class="stats">
     <span class="stat"><b>%%TOTAL%%</b> normas</span>
     <span class="stat"><b>%%NATIVO%%</b> evidencia nativa</span>
     <span class="stat"><b>%%PARCIAL%%</b> parcial</span>
+    <span class="stat"><b>%%FUERA%%</b> fuera de alcance</span>
     <span class="stat"><b>%%CADENA%%</b> supply chain</span>
-    <span class="stat"><b>%%PRODUCTIVAS%%</b> cadena productiva</span>
   </div>
   <div class="filters">
     <div>

@@ -70,7 +70,9 @@ def test_get_iso_orden_monitor_signals():
     assert r.status_code == 200
     body = r.json()
     ids = [e["id"] for e in body["evidencias"]]
-    assert ids == ["iso-9001", "iso-50001", "iso-14067"]
+    # Energia y huella salieron del panel: KERN no ingesta kWh ni factores de
+    # emision, asi que 50001 y 14067 quedaron fuera de alcance.
+    assert ids == ["iso-9001"]
     assert body["huecos"] == [HUECO_14083_TKM]
     assert "falta t·km" in body["resumen"]
     assert "cumple" not in body["resumen"].lower()
@@ -81,15 +83,15 @@ def test_get_iso_orden_rejects_unknown_module():
     assert r.status_code == 400
 
 
-def test_iso_page_shows_native_evidence_and_14083_gap():
+def test_iso_page_shows_the_order_panel_and_the_14083_gap():
     panel = evidencia_de_orden(
         SenalesOrden(tiene_ciclo=True, tiene_scrap=True, tiene_kg=True, tiene_tkm=False)
     )
     html = render_iso_html(panel)
     assert "Evidencia ISO de esta orden" in html
     assert "ISO 9001" in html
-    assert "ISO 50001" in html
-    assert "ISO 14067" in html
+    assert "ISO 50001" not in html
+    assert "ISO 14067" not in html
     assert "t·km" in html
     assert "cumple ISO" not in html
     assert "la planta cumple" not in html.lower()

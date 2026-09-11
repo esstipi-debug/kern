@@ -49,9 +49,43 @@ def test_catalog_loads_53_norms(catalog):
     assert catalog["estado"] == "integrado"
     assert catalog["stats"]["total"] == 53
     assert len(catalog["normas"]) == 53
-    assert catalog["stats"]["nativo"] == 18
+    assert catalog["stats"]["nativo"] == 6
     coberturas = [n["kern"]["cobertura"] for n in catalog["normas"]]
-    assert coberturas.count("nativo") == 18
+    assert coberturas.count("nativo") == 6
+    assert coberturas.count("fuera-de-alcance") == catalog["stats"]["fueraDeAlcance"]
+
+
+# Magnitudes que salen de instrumentacion de piso. Ningun conector ni contrato de
+# columnas de KERN las ingesta -- ver la auditoria de `src/connectors/__init__.py`.
+# El catalogo nacio marcando 18 normas como "nativo" porque describia a KERN IoP,
+# un producto de hardware de planta, no a este motor. Este trinquete existe para
+# que una ficha no vuelva a prometer un numero que no tenemos de donde sacar.
+MAGNITUDES_SIN_FUENTE = ("kwh", "oee", "co2", "molde", "operario", "sensor", "cavidad")
+
+
+def test_no_native_norm_promises_shop_floor_data(catalog):
+    ofensores = []
+    for norma in catalog["normas"]:
+        kern = norma["kern"]
+        if kern["cobertura"] != "nativo":
+            continue
+        texto = " ".join(kern.get("evidenciasKern") or []).lower()
+        for magnitud in MAGNITUDES_SIN_FUENTE:
+            if magnitud in texto:
+                ofensores.append(f"{norma['codigo']}: {magnitud}")
+    assert not ofensores, (
+        "una norma marcada 'nativo' promete evidencia que KERN no puede producir:\n"
+        + "\n".join(ofensores)
+    )
+
+
+def test_every_native_norm_states_what_it_does_not_cover(catalog):
+    for norma in catalog["normas"]:
+        kern = norma["kern"]
+        if kern["cobertura"] != "nativo":
+            continue
+        assert kern.get("evidenciasKern"), f"{norma['codigo']} sin evidencia declarada"
+        assert str(kern.get("limite", "")).strip(), f"{norma['codigo']} sin limite"
 
 
 def test_aviso_is_not_official_iso_text(catalog):
@@ -68,22 +102,25 @@ def test_buscar_norma_by_id_and_codigo(catalog):
     assert buscar_norma("no-existe", catalog) is None
 
 
-def test_de_modulo_and_evidencia_nativa_energy(catalog):
+def test_de_modulo_energy_lists_norms_but_kern_backs_none_of_them(catalog):
+    """El modulo ENERGY sigue existiendo en el catalogo; la evidencia no.
+
+    ENERGY es un medidor de kWh por maquina. KERN no ingesta kWh por ningun
+    conector, asi que 50001 y 14067 quedaron fuera de alcance y el filtro de
+    evidencia nativa sobre ese modulo tiene que salir vacio.
+    """
     energy = de_modulo("energy", catalog)
     assert energy
     assert all("energy" in n["kern"]["modulos"] for n in energy)
-    nativas = evidencia_nativa("energy", catalog)
-    ids = {n["id"] for n in nativas}
-    assert "iso-50001" in ids
-    assert "iso-14067" in ids
-    assert all(n["kern"]["cobertura"] == "nativo" for n in nativas)
+    assert evidencia_nativa("energy", catalog) == []
 
 
-def test_de_modulo_smartpro_lists_native_9001(catalog):
-    nativas = evidencia_nativa("smartpro", catalog)
-    ids = {n["id"] for n in nativas}
-    assert "iso-9001" in ids
-    assert "iatf-16949" in ids
+def test_native_evidence_is_never_about_the_machine(catalog):
+    """Las normas de piso perdieron la marca de nativo; ninguna vuelve por modulo."""
+    for norm_id in ("iso-9001", "iatf-16949", "iso-50001", "iso-14067", "iso-22400-2"):
+        norma = buscar_norma(norm_id, catalog)
+        assert norma is not None, norm_id
+        assert norma["kern"]["cobertura"] != "nativo", norm_id
 
 
 def test_claim_permitido_never_says_cumple(catalog):
@@ -161,10 +198,11 @@ def test_evidencia_de_orden_monitor_proof(catalog):
         catalog,
     )
     ids = [e["id"] for e in panel["evidencias"]]
-    assert ids == ["iso-9001", "iso-50001", "iso-14067"]
-    assert "Evidencia nativa" in panel["resumen"]
+    # 50001 y 14067 ya no pueden encender una tarjeta: sin kWh ni factor de
+    # emision quedaron fuera de alcance y sus reglas se borraron con ellas.
+    assert ids == ["iso-9001"]
     assert "ISO 9001" in panel["resumen"]
-    assert "ISO 50001" in panel["resumen"]
+    assert "ISO 50001" not in panel["resumen"]
     assert "14083" in panel["resumen"]
     assert "falta t·km" in panel["resumen"]
     assert panel["huecos"] == [HUECO_14083_TKM]
@@ -177,5 +215,5 @@ def test_evidencia_de_orden_monitor_proof(catalog):
 def test_evidencia_de_orden_without_signals_is_empty():
     panel = evidencia_de_orden(SenalesOrden())
     assert panel["evidencias"] == []
-    assert "Sin evidencia nativa" in panel["resumen"]
+    assert "Sin senales de piso declaradas" in panel["resumen"]
     assert panel["huecos"] == [HUECO_14083_TKM]
