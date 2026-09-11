@@ -3,9 +3,9 @@ gate, and deliverables."""
 
 import pandas as pd
 import pytest
-from nosilo_core.guided import HANDOFF, OPTIONS, ExecutionOption, as_options
 
 from jobs import org_friction_job
+from nosilo_core.guided import HANDOFF, OPTIONS, ExecutionOption, as_options
 from src.org_friction import GOODHART_RATCHET, FrictionFinding, FrictionReport
 
 

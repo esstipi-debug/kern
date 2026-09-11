@@ -14,8 +14,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import pandas as pd
-from nosilo_core import writeback
 
+from nosilo_core import writeback
 from src.connectors import (
     COVERAGE_MEASURED,
     FieldCoverage,

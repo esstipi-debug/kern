@@ -6,6 +6,7 @@ import logging
 from dataclasses import replace
 from pathlib import Path
 
+from jobs import intake
 from nosilo_core.llm import LLMProvider, get_provider, narrative_rewrite
 from nosilo_core.registry import Tool, ToolRegistry
 from nosilo_core.types import (
@@ -17,8 +18,6 @@ from nosilo_core.types import (
     JobRequest,
     JobResult,
 )
-
-from jobs import intake
 from src import client_profile, vertical_profile
 
 from .guided_bridge import to_guided_outcome

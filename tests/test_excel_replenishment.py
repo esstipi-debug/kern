@@ -12,11 +12,11 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from nosilo_core import llm, writeback
-from nosilo_core.guided import ESCALATED, OPTIONS, passed_guided
 from openpyxl import Workbook, load_workbook
 
 from jobs import excel_replenishment_job as job
+from nosilo_core import llm, writeback
+from nosilo_core.guided import ESCALATED, OPTIONS, passed_guided
 from scm_agent import tools
 from scm_agent.orchestrator import Orchestrator
 

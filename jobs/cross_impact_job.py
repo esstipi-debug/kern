@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from nosilo_core.guided import GuidedOutcome, Residual, verify_guided
-
 from src.cross_impact import CrossImpact, measure
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import Deliverable, Finding, Kpi

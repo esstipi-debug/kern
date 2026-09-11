@@ -304,7 +304,6 @@ def test_el_pack_llega_hasta_el_job_por_el_orquestador(tmp_path):
     """
     pytest.importorskip("nosilo_core")
     from nosilo_core import llm
-
     from scm_agent import tools
     from scm_agent.orchestrator import Orchestrator
     from src import client_profile
@@ -337,7 +336,6 @@ def test_el_orquestador_no_deja_que_el_llamador_pise_la_tabla_del_rubro(tmp_path
     """
     pytest.importorskip("nosilo_core")
     from nosilo_core import llm
-
     from scm_agent import tools
     from scm_agent.orchestrator import Orchestrator
     from src import client_profile

@@ -67,7 +67,6 @@ from nosilo_core import escalation, writeback
 from nosilo_core.escalation import escalate
 from nosilo_core.guided import GuidedOutcome, HandoffPacket, as_executed, as_handoff
 from nosilo_core.types import STATUS_OK
-
 from src.data_paths import resolve_state_path
 
 from .event_intent import (

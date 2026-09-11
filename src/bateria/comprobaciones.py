@@ -2197,7 +2197,6 @@ def t13_exposicion_a_disrupcion(_: Contexto) -> ResultadoTarea:
     from datetime import datetime, timezone
 
     from nosilo_core.guided import ExecutionOption
-
     from src.disruption import DisruptionArticle, score_supplier
     from src.risk import MitigationOption, RiskFactor
     from src.risk import assess_portfolio as _assess

@@ -8,8 +8,8 @@ a dead end and nothing is mutated until a human approves.
 """
 
 from fastapi.testclient import TestClient
-from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
 
+from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
 from src.connectors import InventoryLevel, Order, OrderLine, Product
 from src.connectors.emulator import create_app
 from src.connectors.http_client import StoreApiClient

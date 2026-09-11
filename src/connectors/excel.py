@@ -52,8 +52,9 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from nosilo_core import writeback
 from openpyxl import load_workbook
+
+from nosilo_core import writeback
 
 # How deep to scan for a client's header row (planillas often stack title/blank
 # rows above the real table; 20 covers every layout seen in client files so far).

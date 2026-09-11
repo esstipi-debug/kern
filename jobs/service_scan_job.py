@@ -31,7 +31,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from nosilo_core.guided import GuidedOutcome, HandoffPacket, Residual, as_handoff
-
 from src import order_fulfillment as of
 from src.connectors import ServiceCoverage
 from src.connectors.service_scan import scan_service

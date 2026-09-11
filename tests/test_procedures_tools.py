@@ -17,10 +17,10 @@ instead of the right tool -- never runs it at all.
 from __future__ import annotations
 
 import pytest
+
 from nosilo_core import llm
 from nosilo_core.guided import HANDOFF
 from nosilo_core.types import JobRequest
-
 from scm_agent import intent, tools
 
 

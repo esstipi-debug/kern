@@ -19,7 +19,6 @@ from nosilo_core.guided import (
     as_handoff,
     as_options,
 )
-
 from src.meli_presale import PRESALE_READY, PresaleScan
 
 

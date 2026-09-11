@@ -16,8 +16,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from nosilo_core.registry import JobRequest
 
+from nosilo_core.registry import JobRequest
 from scm_agent.tools import inventory_tool
 
 _CON_SERVICIO = "date,sku,quantity,delivered_qty,promised_date,delivered_date,price\n" + "".join(
