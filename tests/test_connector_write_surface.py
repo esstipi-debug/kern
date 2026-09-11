@@ -39,6 +39,13 @@ NOT_CONNECTORS = {
     "__init__": "el paquete: define los contratos, no habla con ningun sistema",
     "arrivals": "el Protocol que implementan los transportistas, no un backend",
     "emulator": "servidor HTTP de juguete para probar el cliente REST, no un sistema real",
+    "lectura": (
+        "el indice de lectura de Kern (44 libros de supply chain partidos en pasajes con "
+        "su pagina), no un sistema del cliente: es nuestra propia biblioteca, servida por "
+        "un MCP local y solo de lectura. Declarar un WRITE_SURFACE aca lo publicaria en "
+        "CONNECTED_SYSTEMS.md como si Kern se conectara a algo del cliente, que es "
+        "exactamente lo contrario de lo que pasa"
+    ),
     "ledger": "registro local de lo que Kern leyo y escribio; no habla con el cliente",
     "replenish": "el planificador que consume conectores; no habla con ningun sistema",
     "service_scan": "orquesta conectores para medir servicio; no habla con un sistema",
