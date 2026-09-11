@@ -166,6 +166,7 @@ def _realized_service(
     lines: list[dict],
     observed_fill_rates: dict[str, float] | None,
     stockout_days: dict[str, int] | None,
+    promise_days: dict[str, float] | float | None = None,
     *,
     shipped_units: float,
     unit_cost: float,
@@ -182,7 +183,8 @@ def _realized_service(
     days = (stockout_days or {}).get(pid)
     if lines:
         return order_fulfillment.measure_from_order_lines(
-            pid, lines, stockout_days=days, periods_covered=n_periods
+            pid, lines, stockout_days=days, periods_covered=n_periods,
+            promise_days=promise_days,
         )
     reported = (observed_fill_rates or {}).get(pid)
     if reported is None:
@@ -238,6 +240,7 @@ def run(
     target_fill_rate: float = 0.95,
     order_lines: pd.DataFrame | None = None,
     stockout_days: dict[str, int] | None = None,
+    delivery_promise_days: dict[str, float] | float | None = None,
     intake_quality: IntakeQuality | None = None,
     intake_quality_threshold: float = 0.20,
     min_periods: int = MIN_PERIODS_FOR_POLICY,
@@ -313,6 +316,7 @@ def run(
         # little history to size a buffer from, or no usable cost on file.
         realized = _realized_service(
             pid, lines_by_sku.get(pid, []), observed_fill_rates, stockout_days,
+            delivery_promise_days,
             shipped_units=float(np.sum(series)),
             unit_cost=meta.mean_unit_cost,
             n_periods=n_periods,

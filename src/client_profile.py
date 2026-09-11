@@ -131,6 +131,18 @@ class ClientProfile:
     # warehouse_capacity this IS included in as_params() - it is a plain dict of
     # floats, so it does not break JSON-serializing the merged params.
     objection_thresholds: dict[str, float] | None = None
+    # La promesa de entrega que el CLIENTE declara, en dias habiles desde la fecha de
+    # orden: canal -> dias, con "*" como canal por defecto. Existe porque Unleashed y
+    # Cin7 Core dejan la fecha pactada vacia en casi todo el libro, y sin fecha
+    # prometida no hay OTIF -- justo el numero que el producto dice medir. Se pregunta
+    # UNA vez, en la llamada ("¿en cuanto se comprometen a despachar?"), y queda aca.
+    #
+    # Es `client_reported`, no medido, y el motor lo trata asi: solo se usa donde el
+    # sistema no dato la linea, nunca pisa una fecha del ERP, y cada linea puntuada con
+    # ella se cuenta aparte (`RealizedService.lines_otif_from_promise`) para que el
+    # entregable diga contra que vara se juzgo la puntualidad. Es un dict plano de
+    # floats, asi que SI viaja en as_params() sin romper la serializacion.
+    delivery_promise_days: dict[str, float] | None = None
     # A partner reselling under the white-label/rev-share model (E6) - see
     # src/deliverable.py's Branding docstring. Deliberately NOT an engine
     # param (no Tool reads it), so excluded from as_params(); only
@@ -181,6 +193,26 @@ class ClientProfile:
                     raise ValueError(
                         f"objection_thresholds[{key!r}] must be a finite number > 0, "
                         f"got {value!r}")
+        if self.delivery_promise_days is not None:
+            if not self.delivery_promise_days:
+                raise ValueError(
+                    "delivery_promise_days vacio significa 'no declaro ninguna promesa': "
+                    "usa None en vez de un mapa sin canales, o el OTIF queda pareciendo "
+                    "no medible por una razon distinta de la real")
+            for canal, dias in self.delivery_promise_days.items():
+                if not str(canal).strip():
+                    raise ValueError("delivery_promise_days: el canal no puede ser vacio")
+                if (isinstance(dias, bool)
+                        or not (isinstance(dias, (int, float)) and math.isfinite(dias) and dias >= 0)):
+                    raise ValueError(
+                        f"delivery_promise_days[{canal!r}] debe ser un numero finito >= 0 "
+                        f"de dias habiles, got {dias!r}")
+                if dias > 90:
+                    raise ValueError(
+                        f"delivery_promise_days[{canal!r}] = {dias}: mas de 90 dias habiles "
+                        "de promesa de DESPACHO es casi siempre un plazo de importacion "
+                        "cargado en el lugar equivocado; el plazo de proveedor es "
+                        "lead_time_days")
         if self.contingent_fee_pct is not None and not 0.10 <= self.contingent_fee_pct <= 0.20:
             raise ValueError("contingent_fee_pct must be in [0.10, 0.20]")
         if self.lang not in ("es", "en"):
@@ -200,7 +232,7 @@ class ClientProfile:
         included: it is a plain dict of floats, so it serializes fine.
         """
         fields = ("service_level", "holding_rate", "order_cost", "lead_time_days",
-                  "objection_thresholds")
+                  "objection_thresholds", "delivery_promise_days")
         return {k: v for k in fields if (v := getattr(self, k)) is not None}
 
 
@@ -242,6 +274,7 @@ def load_profile(client_id: str, *, root: Path | str = DEFAULT_CLIENTS_ROOT) -> 
             warehouse_capacity=WarehouseCapacity(**capacity_raw) if capacity_raw else None,
             branding=Branding(**branding_raw) if branding_raw else None,
             objection_thresholds=raw.get("objection_thresholds"),
+            delivery_promise_days=raw.get("delivery_promise_days"),
             contingent_fee_pct=raw.get("contingent_fee_pct"),
             vertical=raw.get("vertical"),
             lang=raw.get("lang", "es"),
