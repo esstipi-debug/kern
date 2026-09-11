@@ -28,6 +28,7 @@ from pathlib import Path
 
 from src import i18n
 from src.connectors.lectura import Reading
+from src.sanitize import defuse_formula
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
@@ -345,15 +346,30 @@ class Deliverable:
         # row: a "Page (PDF)" column that travels alone in a spreadsheet (sorted,
         # filtered, pasted into a mail) is exactly how a client ends up opening the
         # printed book at the physical page and falsifying the citation themselves.
-        # The excerpt is written as it arrives: the copyright cap is the connector's
-        # (``lectura.MAX_EXCERPT_CHARS``), enforced by ``Reading.__post_init__`` when the
-        # value is built - a second cap here would be a second truth about the same text.
+        # The excerpt keeps its LENGTH as it arrives: the copyright cap is the
+        # connector's (``lectura.MAX_EXCERPT_CHARS``), enforced by
+        # ``Reading.__post_init__`` when the value is built - a second cap here would be
+        # a second truth about the same text.
+        #
+        # But it does NOT reach the cell raw. These are the first cells in this workbook
+        # fed by text from another process (a third-party PDF), and openpyxl turns any
+        # string starting with "=" into a live formula: the client then opens Excel and
+        # sees ``#NAME?`` where the passage should be, i.e. the Markdown keeps the text
+        # and the XLSX silently loses it. A book on inventory is full of lines that
+        # survive ``_sanear`` starting with "=" or "-" ("= 1.65 x sigma x raiz L"), so
+        # this is reachable from the real producer, not a contrived payload.
+        # ``defuse_formula`` is the same single answer every other Excel writer in the
+        # house already gives (``src/excel_export.py``, ``jobs/deliverables.py``,
+        # ``jobs/price_intelligence.py``). Its cost is one visible leading apostrophe in
+        # the cell - openpyxl writes it as literal text, not as the ``quotePrefix``
+        # style - and one apostrophe next to the passage beats the passage being gone.
         if self.readings:
             r = wb.create_sheet(L("sheet_readings"))
             r.append([L("readings_intro")])
             r.append([L("readings_col_book"), L("readings_col_page"), L("readings_col_excerpt")])
             for reading in self.readings:
-                r.append([reading.source, reading.page_label, reading.excerpt])
+                r.append([defuse_formula(reading.source), defuse_formula(reading.page_label),
+                          defuse_formula(reading.excerpt)])
 
         wb.save(out)
         return out
