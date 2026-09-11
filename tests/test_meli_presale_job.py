@@ -161,9 +161,8 @@ def test_las_consultas_sin_match_bajan_la_confianza_en_proporcion():
 def test_la_confianza_nunca_baja_del_piso_del_contrato():
     """El piso vive duplicado en el job (no importado) porque este camino no puede
     tocar nosilo_core; el test si puede, asi que compara los dos y falla si divergen."""
-    from nosilo_core.guided import CONFIDENCE_FLOOR
-
     from jobs.meli_presale_job import _CONFIDENCE_FLOOR, deck_confidence
+    from nosilo_core.guided import CONFIDENCE_FLOOR
 
     assert _CONFIDENCE_FLOOR == CONFIDENCE_FLOOR, (
         "el piso del job se separo del contrato: nosilo_core dice "

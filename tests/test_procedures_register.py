@@ -3,8 +3,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
-from nosilo_core.guided import HANDOFF, verify_guided
 
+from nosilo_core.guided import HANDOFF, verify_guided
 from src.procedures.models import ProcedureRecord
 from src.procedures.register import (
     DEFAULT_REVIEW_CADENCE_DAYS,

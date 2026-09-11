@@ -10,10 +10,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-from nosilo_core.guided import ESCALATED, HANDOFF
 from openpyxl import load_workbook
 
 from jobs import audit_evidence_job
+from nosilo_core.guided import ESCALATED, HANDOFF
 
 _FIX = Path(__file__).resolve().parent / "fixtures" / "audit" / "population.csv"
 

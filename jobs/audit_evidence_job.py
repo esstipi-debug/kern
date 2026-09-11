@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+
 from nosilo_core.escalation import FINANCIAL, escalate
 from nosilo_core.guided import (
     EXECUTED,
@@ -26,7 +27,6 @@ from nosilo_core.guided import (
     confidence_from_coverage,
     verify_guided,
 )
-
 from src.audit_evidence import (
     FORMULA_VERSION,
     EvidenceRecord,

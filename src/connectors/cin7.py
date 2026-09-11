@@ -73,12 +73,14 @@ from typing import Any
 from src.connectors import (
     COVERAGE_DERIVED,
     COVERAGE_MEASURED,
+    WRITE_NONE,
     FieldCoverage,
     InventoryLevel,
     Order,
     OrderLine,
     Product,
     ServiceCoverage,
+    WriteSurface,
 )
 
 #: La base de la API v2. Se fija aca para que ``live_http`` sea el unico lugar que la sabe.
@@ -545,5 +547,14 @@ SERVICE_COVERAGE = ServiceCoverage(
         "la fecha de DESPACHO, no de llegada. Cin7 Core tiene TrackingNumber y TrackingURL "
         "pero ningun campo de entrega confirmada, asi que el OTIF que sale de aca mide "
         "despachar antes de la fecha pedida, no llegar antes de ella",
+    ),
+)
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_NONE,
+    means=(
+        'solo lectura. La API de Cin7 Core permite crear ordenes de compra, pero Kern no escribe ahi hasta que un cliente pago lo pida (peldano 2 del plan): hoy la PO sale como CSV/mail y se dice.'
     ),
 )

@@ -37,7 +37,6 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from nosilo_core.guided import GuidedOutcome
-
 from src.procedures.models import DocumentControl
 
 TEMPLATE_VERSION = "1"

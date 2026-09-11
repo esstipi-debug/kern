@@ -17,11 +17,11 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
+
+from jobs.intake import IntakeQuality
 from nosilo_core import guided as guided_mod
 from nosilo_core.escalation import OPERATIONAL, build_escalation
 from nosilo_core.types import STATUS_NEEDS_DATA, STATUS_OK, JobResult
-
-from jobs.intake import IntakeQuality
 from scm_agent.orchestrator import Orchestrator
 from src.simworld.runners import (
     Policy,

@@ -1,9 +1,9 @@
 """Tests for the intake_scan job: folder walk, coverage, the QA gate."""
 import pandas as pd
 import pytest
-from nosilo_core.guided import ExecutionOption, as_options
 
 from jobs import intake_scan_job
+from nosilo_core.guided import ExecutionOption, as_options
 from src.intake_scan import (
     GREEN,
     RED,

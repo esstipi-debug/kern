@@ -14,8 +14,8 @@ import dataclasses
 from pathlib import Path
 
 import pytest
-from nosilo_core.guided import EXECUTED, HANDOFF, OPTIONS, passed_guided, verify_guided
 
+from nosilo_core.guided import EXECUTED, HANDOFF, OPTIONS, passed_guided, verify_guided
 from src.pricing_intel.models import SiteConfig
 from src.pricing_intel.watch_policy import (
     APPROVED_WITHIN_CEILING,

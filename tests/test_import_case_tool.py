@@ -4,9 +4,8 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from nosilo_core import llm
-
 from jobs import import_case_job as icj
+from nosilo_core import llm
 from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.import_case import Conflict, DocumentSlice, merge_case

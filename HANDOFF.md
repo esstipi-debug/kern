@@ -243,9 +243,10 @@ nosilo-core ni la contraseña de apps.odoo.com.
   `kern` ni registrar `kern#19.0` en apps.odoo.com. El Store pide al usuario
   `online-odoo` lectura sobre el repo que registres, y eso filtraria el
   producto entero.
-- CI: si faltan `NOSILO_CORE_*`, el workflow **no aborta** antes de pytest.
-  Instala sin la URL privada y corre el gate `KERN_CI_NO_CORE=1` (listing +
-  motor). No pedir esos secrets; el operador no los quiere crear ahora.
+- CI: ya no hay `NOSILO_CORE_*` que pedir. Desde el PR-3 (2026-09-11) el core
+  vive en `nosilo_core/` de este repo, el gate `KERN_CI_NO_CORE` se borro por
+  quedarse sin objeto, y la suite entera corre en cualquier checkout sin
+  credenciales.
 
 ### Siguiente paso — humano, tu login de apps.odoo.com
 

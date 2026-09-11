@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nosilo_core.guided import HANDOFF, OPTIONS
-
 from jobs import iso_ops_job
+from nosilo_core.guided import HANDOFF, OPTIONS
 from src.iso_catalog import HUECO_14083_TKM, texto_prohibido
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures" / "iso"

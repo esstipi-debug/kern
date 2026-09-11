@@ -7,7 +7,6 @@ import pytest
 pytest.importorskip("nosilo_core")
 
 from nosilo_core.guided import HANDOFF, OPTIONS, verify_guided  # noqa: E402
-
 from src.connectors.meli_catalog import demo_meli_catalog  # noqa: E402
 from src.meli_presale import PresaleQuery, classify_presale  # noqa: E402
 from src.meli_presale_guided import outcome_for  # noqa: E402

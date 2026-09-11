@@ -8,10 +8,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from nosilo_core import llm
 from nosilo_core.guided import HANDOFF
 from nosilo_core.types import JobRequest
-
 from scm_agent import intent, tools
 
 _CSV = Path(__file__).resolve().parent / "fixtures" / "audit" / "population.csv"

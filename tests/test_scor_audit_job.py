@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nosilo_core.guided import HANDOFF
 from openpyxl import load_workbook
 
 from jobs import scor_audit_job
+from nosilo_core.guided import HANDOFF
 from src.iso_catalog import texto_prohibido
 
 _FIX = Path(__file__).resolve().parent / "fixtures" / "audit" / "scor_pack.csv"

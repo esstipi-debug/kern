@@ -7,9 +7,9 @@ is actually required -- remove it and the tool's own prepare() must refuse.
 import csv
 
 import pytest
+
 from nosilo_core import llm
 from nosilo_core.types import JobRequest
-
 from scm_agent import tools
 
 # Tools with requires_data=True that have NOT yet declared their columns.

@@ -119,10 +119,10 @@ from pathlib import Path
 
 import httpx
 import pandas as pd
-from nosilo_core.guided import GuidedOutcome
 
 from jobs.price_monitor import PairOutcome, accept_observation
 from jobs.seo_audit import AdvertoolsUnavailableError, _ensure_scripts_on_path, pages_from_crawl_dataframe
+from nosilo_core.guided import GuidedOutcome
 from scm_agent.events import Event, EventLedger
 from src.export import write_summary_csv
 from src.pricing_intel.acquire import base

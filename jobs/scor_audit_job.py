@@ -24,14 +24,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-from nosilo_core.guided import (
-    EXECUTED,
-    HandoffPacket,
-    Residual,
-    as_handoff,
-    confidence_from_coverage,
-    verify_guided,
-)
 
 from jobs import (
     cost_to_serve_job,
@@ -39,6 +31,14 @@ from jobs import (
     procedure_audit_job,
     risk_job,
     sourcing_job,
+)
+from nosilo_core.guided import (
+    EXECUTED,
+    HandoffPacket,
+    Residual,
+    as_handoff,
+    confidence_from_coverage,
+    verify_guided,
 )
 from src.audit_evidence import (
     FORMULA_VERSION,

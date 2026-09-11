@@ -35,8 +35,6 @@ from pathlib import Path
 import httpx
 import pandas as pd
 import pytest
-from nosilo_core import llm
-from nosilo_core.guided import EXECUTED, HANDOFF, OPTIONS, as_executed, passed_guided
 
 from jobs import price_watch_deliverable, qa
 from jobs.price_intelligence import PriceIntelReport
@@ -44,6 +42,8 @@ from jobs.price_monitor import PairOutcome
 from jobs.price_priority import ExcludedSku, PricePriorityReport, SkuPriceAction
 from jobs.price_watch import PriceWatchCycleReport
 from jobs.price_watch_position import PriceWatchToolReport
+from nosilo_core import llm
+from nosilo_core.guided import EXECUTED, HANDOFF, OPTIONS, as_executed, passed_guided
 from scm_agent import intent, tool_options, tools
 from scm_agent.events import EventLedger
 from scm_agent.orchestrator import Orchestrator

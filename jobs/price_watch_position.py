@@ -43,11 +43,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from nosilo_core.guided import GuidedOutcome
-
 from jobs.price_intelligence import PriceIntelReport, RowOutcome
 from jobs.price_priority import PricePriorityReport
 from jobs.price_watch import PriceWatchCycleReport
+from nosilo_core.guided import GuidedOutcome
 from scm_agent.events import Event
 from src.pricing_intel.homologate import HomologationReport
 from src.pricing_intel.ledger import PriceLedger

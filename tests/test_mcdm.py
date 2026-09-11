@@ -6,8 +6,8 @@ result maps to a protected, never-dead-end options outcome (Guided Execution Lay
 """
 
 import pytest
-from nosilo_core.guided import OPTIONS, passed_guided, recommend
 
+from nosilo_core.guided import OPTIONS, passed_guided, recommend
 from src.mcdm import (
     BWMResult,
     Criterion,

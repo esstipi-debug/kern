@@ -29,11 +29,11 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from nosilo_core.types import JobRequest
 
 from jobs import forecast_cycle as fc
 from jobs import integrated_plan as ip
 from jobs import seo_priority as sp
+from nosilo_core.types import JobRequest
 from scm_agent import tools as agent_tools
 from src.state.store import ClientIdError, StateStore, store_for
 

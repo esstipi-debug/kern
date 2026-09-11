@@ -19,6 +19,11 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import pandas as pd
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
+
+from jobs.intake import _norm
 from nosilo_core.guided import (
     EXECUTED,
     ExecutionOption,
@@ -29,11 +34,6 @@ from nosilo_core.guided import (
     confidence_from_coverage,
     verify_guided,
 )
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
-from openpyxl.utils import get_column_letter
-
-from jobs.intake import _norm
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 from src.iso_catalog import (

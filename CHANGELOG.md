@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+### Changed
+- **`nosilo_core` vuelve a este repo; se acabaron los secretos de build (PR-3).**
+  El control plane (16 archivos, 3.569 lineas: `registry`, `guided`, `writeback`,
+  `escalation`, `entities`, `access`) vivio en un repo privado del 2026-08-03 al
+  2026-09-11 y se resolvia por `git+https` en cada camino de build. Eso costo un
+  secreto repartido en seis lugares con una sola persona capaz de rotarlo, 24 dias
+  de CI corriendo ciega sobre un PAT que nunca existio, 10 dias sin imagen
+  publicada sobre la premisa falsa de que BuildKit no reenvia SSH, y un `pip
+  install` que un evaluador externo no podia correr. Tenia un solo consumidor real:
+  este repo. Ahora `docker build -t kern .` alcanza, sin `--secret` ni `--ssh`, y
+  la suite entera corre en cualquier checkout.
+
+  El arbol se restauro desde la propia historia (`3e47b43^`), byte a byte identico
+  al `v0.1.0` que corria en produccion, mas el unico cambio posterior del core: 19
+  lineas en `guided.py` que rechazan un status inventado que pasaba el control de
+  calidad sin decir nada, con sus 4 tests. Vuelven los 8 archivos de test del core
+  (233 tests) que #226 se habia llevado.
+
+  **La frontera no se toco.** `nosilo_core` sigue sin saber nada de SKUs,
+  proveedores ni stock de seguridad, y `src`/`packs` dependen de el y nunca al
+  reves: `tests/test_core_boundary.py` vuelve del mismo commit y
+  `tests/test_pack_boundary.py` sigue donde estaba. Lo que se fue es la credencial.
+
+  Efectos colaterales, todos en este PR: ruff pasa a tratar `nosilo_core` como
+  paquete propio y reordena imports en 169 archivos; el gotcha de `CLAUDE.md` que
+  mandaba a `rm -rf nosilo_core` queda invertido (borrarlo ahora rompe 231
+  archivos); `tests/test_ci_authenticate_core.py` y el gate `KERN_CI_NO_CORE`
+  (`tests/_no_core.py`, 254 lineas) se borran por quedarse sin objeto -- un gate
+  que saltea 5.000 tests deja de ser un gate; y `tests/test_ci_prod_boot_extras.py`
+  invierte su test central: antes exigia que las cuatro rutas de instalacion
+  NOMBRARAN el extra que traia el core, ahora exige que **ninguna pida una
+  credencial**. El extra `[core]` se conserva vacio a proposito: es el comando
+  escrito en la documentacion y en varias sesiones.
+
 ### Added
 - **`import_case` agent tool** (`src/import_case.py`, `jobs/import_case_job.py`) --
   registry 56 -> 57. Unifies extracted logistics JSON (invoice, packing list,

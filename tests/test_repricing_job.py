@@ -11,7 +11,6 @@ verification behaviors that do not depend on which channel is underneath.
 from __future__ import annotations
 
 import pytest
-from nosilo_core import writeback
 
 from jobs.repricing import (
     ChannelRepricingResult,
@@ -23,6 +22,7 @@ from jobs.repricing import (
     stage_repricing,
     verify_applied,
 )
+from nosilo_core import writeback
 from src.connectors.meli_prices import InMemoryMeli, MeliPriceStore
 from src.connectors.odoo import demo_odoo
 from src.connectors.odoo_prices import OdooPriceStore
