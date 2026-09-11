@@ -53,6 +53,20 @@ def _is_internal_source(concept: "Concept") -> bool:
     return src in _INTERNAL_SOURCES
 
 
+def _is_citable(concept: "Concept") -> bool:
+    """True if this node may be offered to a client as a citation.
+
+    Two ways to fail, same consequence. The node can come from one of Kern's own
+    documents (``_INTERNAL_SOURCES`` above), or it can name no source at all: the
+    books graph also carries Kern's internal notes, and a node with no
+    ``source_file`` renders - see ``ground_citations_detailed`` - as a citation
+    whose provenance reads literally ``None`` ("Reminder: ... - None" shipped that
+    way). A citation that cannot say where it comes from is not a citation, so the
+    rule is on the field itself, not on a denylist of offending ids.
+    """
+    return bool((concept.source or "").strip()) and not _is_internal_source(concept)
+
+
 # Directory names and filename shapes that mark a module as something other than
 # an implementation. Three families, one rule: none of them is where a concept
 # actually lives, so none may be offered to a client as the code behind it.
@@ -441,7 +455,7 @@ class KnowledgeBase:
         for qi, query in enumerate(queries):
             weight = 2.0 if qi == 0 else 3.0  # brief matches weigh more
             for hit in self.search(query, graph="books", limit=limit + 2):
-                if _is_internal_source(hit):
+                if not _is_citable(hit):
                     continue
                 loc_bonus = 1 if hit.location else 0
                 shared = _tokens(query) & _tokens(f"{hit.label} {hit.id}")
@@ -452,7 +466,7 @@ class KnowledgeBase:
                 if prev is None or rank[:2] > prev[:2]:
                     scored[key] = rank
         for advice in self.advise(brief, limit=2, domain_terms=domain_terms):
-            if _is_internal_source(advice.concept):
+            if not _is_citable(advice.concept):
                 continue
             key = advice.concept.qualified_id
             # Score by the trigger's own specificity (highest IDF among its trigger
