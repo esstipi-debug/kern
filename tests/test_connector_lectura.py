@@ -141,12 +141,17 @@ def test_un_fallo_al_abrir_la_sesion_no_tira_el_entregable(monkeypatch, tmp_path
 
 
 def test_una_excepcion_de_la_tool_no_se_propaga():
-    """El servidor contesta isError: se traduce a estado, no a traceback."""
+    """El servidor contesta isError: se traduce a estado, no a traceback.
+
+    La nota tiene que NOMBRAR el fallo. `assert r.note` lo satisface cualquier string
+    no vacio, incluso uno que no diga que paso: una nota asi no le sirve al humano que
+    tiene que ir a arreglar el indice, que es la unica razon por la que la nota existe.
+    """
     srv = _Servidor(revienta=True)
     with srv as call:
         r = read_with_caller(call, ["safety stock"])
     assert r.available is False and r.readings == ()
-    assert r.note
+    assert "el indice no arranco" in r.note
 
 
 def test_un_call_tool_que_levanta_se_traduce_a_estado():
@@ -173,6 +178,41 @@ def test_un_error_del_servidor_jamas_se_convierte_en_cita():
     r, _ = _leer("error: storage 'kv_store_full_docs.json' esta corrupto")
     assert r.available is False and r.readings == ()
     assert r.note.startswith("error:")
+
+
+def test_un_error_pegado_a_pasajes_buenos_tampoco_viaja_al_cliente():
+    """La puerta de al lado del test anterior, y la falla que este PR tenia abierta.
+
+    `lookup_from_text` solo miraba la respuesta ENTERA, asi que una respuesta PARCIAL
+    (pasajes + error) pasaba el control, y el parser mandaba toda linea que no fuera
+    una entrada al cuerpo de la ultima: `error: interno revento` terminaba dentro de un
+    excerpt, con nombre de libro y numero de pagina. El lote se corta en esa linea.
+    """
+    r, _ = _leer("1. **slug-x** PDF p.5\n   texto\nerror: interno revento")
+    assert r.available is True
+    assert [dataclasses.astuple(x) for x in r.readings] == [("slug-x", "PDF p.5", "texto")]
+    assert not any("interno revento" in x.excerpt for x in r.readings)
+
+
+def test_un_error_indentado_tampoco_entra_al_extracto():
+    """Indentado tiene forma de extracto; sigue siendo el mensaje interno del servidor."""
+    r, _ = _leer("1. **slug-x** PDF p.5\n   texto\n   error: storage corrupto")
+    assert [x.excerpt for x in r.readings] == ["texto"]
+
+
+def test_un_pie_de_pagina_del_servidor_no_se_atribuye_a_un_libro():
+    """No hace falta que sea un 'error:'. Cualquier linea suelta es texto que el
+    servidor no saco de ningun libro, y firmarla con un libro y una pagina es peor que
+    perderla: el cliente no tiene como saber que esa parte no es del libro."""
+    payload = (
+        "1. **slug-x** PDF p.5\n"
+        "   texto del libro\n"
+        "RESUMEN INTERNO DEL SERVIDOR: no mostrar"
+    )
+    r, _ = _leer(payload)
+    assert [dataclasses.astuple(x) for x in r.readings] == [
+        ("slug-x", "PDF p.5", "texto del libro")
+    ]
 
 
 def test_una_respuesta_vacia_tampoco_es_una_lectura():
@@ -229,7 +269,13 @@ def test_una_entrada_sin_extracto_sigue_siendo_procedencia():
 
 
 def test_una_entrada_rota_se_descarta_sin_tirar_el_lote():
-    """Media cita no se inventa, pero una linea rota no se lleva puestas las buenas."""
+    """Media cita no se inventa, pero una linea rota no se lleva puestas las buenas.
+
+    Se afirma la TERNA completa y no solo los slugs: mirar `[x.source ...]` deja pasar
+    el bug de verdad, que es el ruido del servidor ("ruido suelto que no es una
+    entrada") colandose DENTRO del excerpt de la entrada de al lado, firmado con un
+    libro y una pagina. Un assert que no mira el excerpt no cubre el excerpt.
+    """
     payload = (
         "1. ** ** \n"
         "   huerfano\n"
@@ -240,9 +286,52 @@ def test_una_entrada_rota_se_descarta_sin_tirar_el_lote():
         "   Y el otro."
     )
     r, _ = _leer(payload)
-    assert [x.source for x in r.readings] == [
-        "liu-supply-chain-analytics",
-        "vandeput-inventory-optimization-models-simulations",
+    assert [dataclasses.astuple(x) for x in r.readings] == [
+        ("liu-supply-chain-analytics", "PDF p.7", "El que si sirve."),
+        ("vandeput-inventory-optimization-models-simulations", "PDF p.81-82", "Y el otro."),
+    ]
+    assert not any("huerfano" in x.excerpt or "ruido suelto" in x.excerpt for x in r.readings)
+
+
+def test_una_etiqueta_que_no_es_una_pagina_descarta_la_entrada():
+    """Procedencia fabricada es peor que ninguna: si la cabecera no trae una pagina
+    verificable, no hay entrada. Antes, el resto de la linea entraba tal cual como
+    `page_label` y el cliente leia una pagina que no existe en ningun PDF."""
+    r, _ = _leer("1. **slug-x** esto no es una pagina, es texto del libro")
+    assert r.available is False and r.readings == ()
+
+
+def test_una_etiqueta_larga_no_es_una_puerta_para_saltear_el_tope():
+    """`page_label` era el unico campo que no pasaba por ningun tope de longitud: 900
+    caracteres de texto del servidor salian intactos por ahi, sin recorte y con el
+    excerpt vacio."""
+    r, _ = _leer("1. **slug-x** PDF p.5 " + "a" * 900)
+    assert r.available is False and r.readings == ()
+
+
+def test_un_slug_desmedido_tampoco_pasa():
+    """Misma puerta, otro campo: el slug mas largo del indice mide 50 caracteres."""
+    r, _ = _leer("1. **" + "b" * 900 + "** PDF p.5\n   texto")
+    assert r.available is False and r.readings == ()
+
+
+def test_un_pasaje_sin_libro_no_es_procedencia():
+    """`format_chunks` del otro repo rotula `?` cuando el chunk no trae `file_path`.
+    Pagina sin libro no se puede verificar: no se publica."""
+    r, _ = _leer("1. **?** PDF p.12\n   texto de un libro que no sabemos cual es")
+    assert r.available is False and r.readings == ()
+
+
+def test_una_etiqueta_rota_no_se_lleva_puestas_las_entradas_buenas():
+    payload = (
+        "1. **slug-x** pagina cualquiera inventada\n"
+        "   texto que no se publica\n"
+        "2. **liu-supply-chain-analytics** PDF p.7\n"
+        "   El que si sirve."
+    )
+    r, _ = _leer(payload)
+    assert [dataclasses.astuple(x) for x in r.readings] == [
+        ("liu-supply-chain-analytics", "PDF p.7", "El que si sirve.")
     ]
 
 

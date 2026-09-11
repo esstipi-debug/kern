@@ -50,6 +50,18 @@ from .mcp_source import sync_tool_caller
 #: este (Kern no tiene ningun tope de longitud sobre lo que renderiza).
 MAX_EXCERPT_CHARS = 320
 
+#: Tope del slug de la fuente. Misma razon que el de arriba, otra puerta: el slug sale
+#: de la cabecera que manda el servidor y nadie lo recorta, asi que sin un maximo
+#: ``1. **<900 caracteres>** PDF p.5`` publica 900 caracteres de texto ajeno como si
+#: fueran el nombre de un libro. El slug mas largo del indice mide 50.
+MAX_SOURCE_CHARS = 120
+
+#: Lo que el emisor pone cuando NO sabe de que libro salio el pasaje
+#: (``format_chunks``: ``c.get("file_path", "?")``). Una entrada asi trae pagina pero
+#: no trae libro: es procedencia que el cliente no puede verificar, asi que se descarta
+#: igual que una etiqueta invalida.
+FUENTE_DESCONOCIDA = "?"
+
 #: Variable de entorno con la ruta ABSOLUTA al interprete del repo de lectura, p. ej.
 #: ``C:\\Users\\...\\kern-lectura\\.venv\\Scripts\\python.exe``. Sin ella no se intenta
 #: levantar nada: es el caso normal en produccion.
@@ -77,9 +89,15 @@ _MIN_FRACCION_PALABRA = 0.6
 #: de una frase es peor que no tener marca, porque parece parte del texto del libro.
 _CENTINELA_RE = re.compile("\u27e6p\\.\\d+\u27e7")
 
-#: Entrada del markdown: ``N. **slug** ETIQUETA``. La etiqueta se toma tal cual y
-#: despues se valida: "PDF p.83", "PDF p.397-399" o "sin pagina".
+#: Entrada del markdown: ``N. **slug** ETIQUETA``.
 _ENTRADA_RE = re.compile(r"^\s*\d+\.\s+\*\*(?P<source>.*?)\*\*(?P<label>.*)$")
+
+#: Las UNICAS etiquetas que el servidor produce (``kern_lectura.format``): "PDF p.83",
+#: "PDF p.397-399" o "sin pagina". Se valida en vez de tomarse tal cual porque la
+#: etiqueta es resto-de-linea: sin este filtro ``1. **slug** esto es texto del libro``
+#: sale como procedencia FABRICADA -- una pagina que el cliente no puede verificar --
+#: y ademas es la unica parte de la entrada que no pasa por ningun tope de longitud.
+_ETIQUETA_RE = re.compile(r"^(?:PDF p\.\d{1,6}(?:-\d{1,6})?|sin pagina)$")
 
 #: No-ASCII que llega en los extractos, con su equivalente legible. Va ANTES de la
 #: normalizacion Unicode porque ninguno de estos se descompone solo: NFKD deja la raya
@@ -173,31 +191,50 @@ def _cortar(texto: str) -> str:
     return cabeza.rstrip(" ,;:.") + _ELIPSIS
 
 
+def _es_linea_de_error(texto: str) -> bool:
+    """El servidor reporta sus fallos como texto plano con este prefijo, no como isError."""
+    return texto.lstrip().lower().startswith(PREFIJO_ERROR)
+
+
 # --- parser del markdown -------------------------------------------------------------
 
 
 def parse_readings(crudo: str) -> tuple[Reading, ...]:
     """Las entradas ``N. **slug** ETIQUETA`` + extracto indentado que trae el markdown.
 
-    Tolerante por diseno: el extracto puede faltar (libro + pagina ya es procedencia
-    completa; el fragmento es el extra) o venir partido en varias lineas. Una entrada
-    que no matchea -- sin slug, o sin etiqueta -- se DESCARTA en silencio en vez de
-    fabricar media cita, y el resto del lote sigue.
+    Tolerante con lo que FALTA, cerrado con lo que SOBRA. El extracto puede no estar
+    (libro + pagina ya es procedencia completa; el fragmento es el extra) o venir
+    partido en varias lineas, y una entrada rota se descarta sola sin llevarse el lote.
+    Pero una linea que no es una entrada NI un extracto indentado se tira: pegarla al
+    cuerpo de la entrada anterior -- que es lo que hacia la primera version -- le
+    atribuye a un libro y a una pagina texto que el servidor no saco de ningun libro
+    (un pie de pagina interno, o directamente ``error: <mensaje interno>``).
+
+    Por eso el cuerpo exige indentacion, que es lo que usa el formato real (tres
+    espacios), y por eso el lote se CORTA en la primera linea que empieza con
+    ``error:``, indentada o no: preferimos perder la cola de un extracto antes que
+    embarcarle al cliente el mensaje interno del servidor como si fuera un libro.
     """
     entradas: list[tuple[str, str, list[str]]] = []
     for linea in crudo.splitlines():
+        pelada = linea.strip()
+        if _es_linea_de_error(pelada):
+            break
         m = _ENTRADA_RE.match(linea)
         if m:
             entradas.append((m.group("source"), m.group("label"), []))
-        elif entradas:
-            entradas[-1][2].append(linea)
+        elif pelada and entradas and linea[:1].isspace():
+            entradas[-1][2].append(pelada)
+        # Cualquier otra linea es texto suelto del servidor: se descarta. NUNCA se pega
+        # al cuerpo de la entrada anterior.
 
     lecturas = []
     for source, label, cuerpo in entradas:
         slug = _sanear(source)
         etiqueta = _sanear(label)
-        if not slug or not etiqueta:
-            continue
+        sin_libro = not slug or slug == FUENTE_DESCONOCIDA or len(slug) > MAX_SOURCE_CHARS
+        if sin_libro or not _ETIQUETA_RE.match(etiqueta):
+            continue  # media cita no se inventa: sin slug creible o sin pagina creible, no hay entrada
         lecturas.append(
             Reading(source=slug, page_label=etiqueta, excerpt=_cortar(_sanear(" ".join(cuerpo))))
         )
@@ -246,7 +283,7 @@ def lookup_from_text(crudo: str) -> ReadingLookup:
     texto = (crudo or "").strip()
     if not texto:
         return _no_disponible("el servidor de lectura contesto vacio")
-    if texto == SIN_PASAJES or texto.startswith(PREFIJO_ERROR):
+    if texto == SIN_PASAJES or _es_linea_de_error(texto):
         return _no_disponible(_sanear(texto))
     lecturas = parse_readings(crudo)
     if not lecturas:
