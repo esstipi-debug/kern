@@ -2,8 +2,11 @@
 
 Unifies fields extracted from logistics documents (invoice, packing list, B/L, ...)
 into a single ``ImportCase``. Conflicts stay first-class — the engine never silently
-picks a winner on quantity, weight, value, Incoterm, or origin. Chile import is the
-first regime: a DIN field pack is a *projection* of the case, not a filed declaration.
+picks a winner on quantity, weight, value, Incoterm, or origin. A conflict has three
+sources: documents that disagree, a number whose decimal convention the text cannot
+settle, and an identifier that fails its own check digit (the last one needs no
+second document — see ``src/doc_identifiers.py``). Chile import is the first regime:
+a DIN field pack is a *projection* of the case, not a filed declaration.
 
 Pure functions. No I/O, no LLM. Reference: ICC Incoterms 2020; Ellram TCO; WCO
 idea of one data set, many views. Filing remains a licensed-broker HANDOFF.
@@ -11,8 +14,11 @@ idea of one data set, many views. Filing remains a licensed-broker HANDOFF.
 
 from __future__ import annotations
 
+import math
+import re
 from dataclasses import dataclass
 
+from src.doc_identifiers import identifier_fault
 from src.voice.doc_schemas import DOC_TYPES, get_doc_schema, required_fields
 
 # Canonical keys that should agree across documents. Values are source-field names
@@ -61,6 +67,20 @@ _TRANSPORT_DOCS = frozenset({"bill_of_lading", "air_waybill"})
 
 REGIME_CHILE_IMPORT = "chile_import"
 
+# A number whose decimal convention cannot be recovered from the text alone gets
+# this token prefix. The comparison token is the only thing that decides whether
+# documents conflict, so an unreadable number must never produce a silent tie.
+_AMBIGUOUS = "~ambiguous~"
+_NUMERIC = re.compile(r"^([+-]?)(\d[\d.,]*)$")
+_NON_FINITE = re.compile(r"^[+-]?(nan|inf(inity)?)$", re.IGNORECASE)
+
+REASON_MISMATCH = "documents state different values for the same fact"
+REASON_AMBIGUOUS = (
+    "number format is ambiguous: a decimal comma cannot be told from a thousands "
+    "separator ('1.234' is 1234 in Chile, 1.234 in the US) - confirm with the issuer"
+)
+REASON_BAD_IDENTIFIER = "identifier fails its own standard:"
+
 
 @dataclass(frozen=True)
 class DocumentSlice:
@@ -73,10 +93,11 @@ class DocumentSlice:
 
 @dataclass(frozen=True)
 class Conflict:
-    """The same canonical fact disagrees across two or more documents."""
+    """The same canonical fact cannot be settled from the documents alone."""
 
     field: str
     values: tuple[tuple[str, str], ...]  # (doc_type_or_source, raw_value)
+    reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -115,20 +136,70 @@ class ImportCase:
         return not any(m.kind == "document" for m in self.missing)
 
 
+def _grouped(parts: list[str]) -> bool:
+    """True when parts read as thousands groups: 1-3 digits, then blocks of 3."""
+    return (
+        len(parts) > 1
+        and all(p.isdigit() for p in parts)
+        and 1 <= len(parts[0]) <= 3
+        and all(len(p) == 3 for p in parts[1:])
+    )
+
+
+def _decimal_token(text: str) -> str | None:
+    """Token for a plain ``123.45`` string, or None when it is not usable."""
+    number = float(text)
+    if not math.isfinite(number):  # NaN/overflow is not a fact
+        return None
+    return f"{number:.6f}".rstrip("0").rstrip(".")
+
+
+def _number_token(text: str) -> str | None:
+    """Comparison token for a numeric string, or None when it is not a number.
+
+    Both conventions are read, never assumed. With both separators present the
+    LAST one is the decimal mark under either convention; a repeated separator
+    can only be thousands grouping. What neither convention settles ('1.234' is
+    1234 in Chile and 1.234 in the US) returns an ``_AMBIGUOUS`` token rather
+    than a number, so it can never tie with a value that IS determined.
+    """
+    match = _NUMERIC.match(text.replace(" ", ""))
+    if match is None:
+        return None
+    sign, body = match.groups()
+    dots, commas = body.count("."), body.count(",")
+    if not dots and not commas:
+        return _decimal_token(sign + body)
+    if dots and commas:
+        decimal = "." if body.rfind(".") > body.rfind(",") else ","
+        thousands = "," if decimal == "." else "."
+        head, _, tail = body.rpartition(decimal)
+        if not tail.isdigit() or not _grouped(head.split(thousands)):
+            return None  # a grouping neither convention writes: compare as text
+        return _decimal_token(sign + head.replace(thousands, "") + "." + tail)
+    separator = "." if dots else ","
+    parts = body.split(separator)
+    if len(parts) > 2:
+        return _decimal_token(sign + body.replace(separator, "")) if _grouped(parts) else None
+    head, tail = parts
+    if len(tail) == 3 and len(head) <= 3 and not head.startswith("0"):
+        return _AMBIGUOUS + sign + body  # '1.234' / '12,500': both readings legal
+    return _decimal_token(sign + head + "." + tail)
+
+
 def _norm_token(raw: object) -> str | None:
+    """Token that decides whether two documents state the same fact."""
     if raw is None:
         return None
     text = str(raw).strip()
     if not text:
         return None
-    compact = text.replace(",", "")
-    try:
-        number = float(compact)
-    except ValueError:
-        return " ".join(text.casefold().split())
-    if number != number:  # NaN
+    if _NON_FINITE.match(text.replace(" ", "")):
         return None
-    return f"{number:.6f}".rstrip("0").rstrip(".")
+    token = _number_token(text)
+    if token is not None:
+        return token
+    return " ".join(text.casefold().split())
 
 
 def _pick(fields: dict, aliases: tuple[str, ...]) -> str | None:
@@ -206,7 +277,7 @@ def merge_case(
     conflicts: list[Conflict] = []
 
     for key, aliases in _CROSSWALK.items():
-        seen: dict[str, list[str]] = {}
+        tokens: set[str] = set()
         raw_by_doc: list[tuple[str, str]] = []
         for sl in docs:
             raw = _pick(sl.fields, aliases)
@@ -215,18 +286,30 @@ def merge_case(
             token = _norm_token(raw)
             if token is None:
                 continue
-            seen.setdefault(token, []).append(sl.doc_type)
+            tokens.add(token)
             raw_by_doc.append((sl.doc_type, raw))
         if not raw_by_doc:
             continue
-        tokens = list(seen)
-        if len(tokens) == 1:
-            unified[key] = raw_by_doc[0][1]
-            sources[key] = tuple(d for d, _ in raw_by_doc)
-        else:
-            conflicts.append(Conflict(key, tuple(raw_by_doc)))
-            unified[key] = raw_by_doc[0][1]
-            sources[key] = tuple(d for d, _ in raw_by_doc)
+        unified[key] = raw_by_doc[0][1]
+        sources[key] = tuple(d for d, _ in raw_by_doc)
+        reasons: list[str] = []
+        if len(tokens) > 1:
+            reasons.append(REASON_MISMATCH)
+        elif any(t.startswith(_AMBIGUOUS) for t in tokens):
+            # One text, two legal readings: agreeing here would be an accident.
+            reasons.append(REASON_AMBIGUOUS)
+        faults: dict[str, list[str]] = {}
+        for doc_type, raw in raw_by_doc:
+            fault = identifier_fault(key, raw)
+            if fault is not None:
+                faults.setdefault(fault, []).append(doc_type)
+        if faults:
+            # Detectable from one document alone - no second opinion needed.
+            reasons.append(REASON_BAD_IDENTIFIER + " " + "; ".join(
+                f"{fault} [{', '.join(docs)}]" for fault, docs in faults.items()
+            ))
+        if reasons:
+            conflicts.append(Conflict(key, tuple(raw_by_doc), " | ".join(reasons)))
 
     pack = tuple(
         PackRow(

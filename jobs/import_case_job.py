@@ -2,7 +2,8 @@
 
 Reads structured extractions (JSON), not PDFs — the voice doc-reader can fill
 those JSON files first. Pandas is not used: the input is a case graph, not a
-demand table. QA fails only when nothing was ingested.
+demand table. QA checks the report's internal consistency, never the
+completeness of the client's paperwork: an incomplete case IS the deliverable.
 """
 
 from __future__ import annotations
@@ -107,9 +108,46 @@ def run(payload: object, params: dict | None = None) -> ImportCase:
 
 
 def verify(report: ImportCase) -> list[str]:
+    """QA: the report has to describe itself honestly.
+
+    Deliberately NOT a completeness gate. A QA issue wipes every deliverable
+    (``scm_agent/orchestrator.py``), and a case missing its B/L is exactly when
+    the client needs ``missing_items.csv`` and a pack marked contested. Gaps
+    travel inside the deliverable; only a self-contradicting report fails QA.
+    """
     issues: list[str] = []
     if report.n_documents < 1:
         issues.append("no documents in the import case")
+    if report.n_documents != len(report.documents):
+        issues.append(
+            f"n_documents says {report.n_documents}, case holds {len(report.documents)} document(s)",
+        )
+    if report.n_conflicts != len(report.conflicts):
+        issues.append(
+            f"n_conflicts says {report.n_conflicts}, case holds {len(report.conflicts)} conflict(s)",
+        )
+    if report.n_missing != len(report.missing):
+        issues.append(
+            f"n_missing says {report.n_missing}, case holds {len(report.missing)} missing item(s)",
+        )
+    if not 0.0 <= report.copy_reduction_pct <= 100.0:
+        issues.append(f"copy_reduction_pct out of range: {report.copy_reduction_pct}")
+
+    # The contested flag is the only conflict signal the broker sees on the pack
+    # CSV, so a conflict that does not reach its row is a silent clean number.
+    contested = {row.canonical for row in report.pack if row.contested}
+    packed = {row.canonical for row in report.pack}
+    conflicted = {c.field for c in report.conflicts}
+    for conflict in report.conflicts:
+        if conflict.field in packed and conflict.field not in contested:
+            issues.append(f"conflict on '{conflict.field}' is not marked contested in the pack")
+        if not conflict.reason.strip():
+            issues.append(f"conflict on '{conflict.field}' carries no reason")
+    for row in report.pack:
+        if row.value and not row.sources:
+            issues.append(f"pack row '{row.canonical}' has a value with no source document")
+        if row.contested and row.canonical not in conflicted:
+            issues.append(f"pack row '{row.canonical}' is marked contested without a conflict")
     return issues
 
 
@@ -130,6 +168,7 @@ def write_operational(report: ImportCase, out_dir: str | Path, client: str = "Cl
         {
             "field": c.field,
             "values": " | ".join(f"{src}={val}" for src, val in c.values),
+            "reason": c.reason,
         }
         for c in report.conflicts
     ]
@@ -145,6 +184,7 @@ def write_operational(report: ImportCase, out_dir: str | Path, client: str = "Cl
         "copy_reduction_pct": report.copy_reduction_pct,
         "n_conflicts": report.n_conflicts,
         "n_missing": report.n_missing,
+        "complete_enough": report.complete_enough,
         "disclaimer": (
             "Field pack is a draft for the broker/importer. Not a filed customs "
             "declaration. HS codes are proposed, not legal advice."
@@ -163,15 +203,55 @@ def write_operational(report: ImportCase, out_dir: str | Path, client: str = "Cl
     return out
 
 
+#: Un expediente completo y sin disputas: los seis documentos presentes o
+#: proyectados y ninguna fila contestada. Nunca 1.0 -- el pack sigue siendo una
+#: proyeccion para el despachante, no una DIN presentada.
+_DECK_BASE_CONFIDENCE = 0.80
+#: Escala con la porcion del set de seis que falta (``copy_reduction_pct``).
+_MISSING_DOC_PENALTY = 0.25
+#: El conflicto se castiga en dos partes porque es un fenomeno de conteo chico
+#: (~16 campos), no de volumen: puramente proporcional, UN peso peleado entre
+#: packing y B/L movia la confianza 0,01 -- y ese es exactamente el hecho que
+#: impide presentar. El escalon dice "hay algo sin resolver"; la cola dice
+#: "cuanto". El denominador de la cola son las filas CON VALOR, no las 16
+#: ranuras del pack: una ranura vacia no es un hecho en disputa y ya la castiga
+#: _MISSING_DOC_PENALTY.
+_CONFLICT_BASE_PENALTY = 0.12
+_CONFLICT_SHARE_PENALTY = 0.13
+_CONFIDENCE_FLOOR = 0.10
+
+
+def deck_confidence(report: ImportCase) -> float:
+    """La confianza del deck, derivada de lo que este expediente pudo reunir.
+
+    ``verify()`` deliberadamente NO es una puerta de completitud: un caso al que
+    le falta el B/L es exactamente cuando el cliente necesita el pack. Pero ese
+    hueco tiene que verse en algun lado, y la confianza es ese lugar -- un
+    literal en la firma decia lo mismo para un expediente de seis documentos sin
+    disputas que para uno de dos con la factura y el packing peleados. Espejo de
+    ``jobs/meli_presale_job.py::deck_confidence``.
+    """
+    confianza = _DECK_BASE_CONFIDENCE
+    confianza -= _MISSING_DOC_PENALTY * (1.0 - report.copy_reduction_pct / 100.0)
+    populated = [row for row in report.pack if row.value or row.contested]
+    contested = sum(1 for row in populated if row.contested)
+    if contested:
+        confianza -= _CONFLICT_BASE_PENALTY
+        confianza -= _CONFLICT_SHARE_PENALTY * (contested / len(populated))
+    return max(_CONFIDENCE_FLOOR, round(confianza, 4))
+
+
 def build_deck(
     report: ImportCase,
     *,
     client: str = "Client",
     prepared: str = "",
     citations: tuple[str, ...] = (),
-    confidence: float = 0.8,
+    confidence: float | None = None,
     lang: str = "en",
 ) -> Deliverable:
+    if confidence is None:
+        confidence = deck_confidence(report)
     findings = [
         Finding(
             "One case, many projections",
@@ -181,9 +261,10 @@ def build_deck(
     ]
     if report.conflicts:
         names = ", ".join(sorted({c.field for c in report.conflicts}))
+        why = " ".join(sorted({c.reason for c in report.conflicts if c.reason}))
         findings.append(Finding(
             "Document conflicts need a human pick",
-            f"Disagreeing fields: {names}. Pack rows stay marked contested.",
+            f"Contested fields: {names}. Pack rows stay marked contested. {why}".strip(),
             impact="choose packing vs invoice before the broker files",
         ))
     if report.missing:
@@ -203,7 +284,11 @@ def build_deck(
 
     kpis = (
         Kpi("Documents ingested", str(report.n_documents), rationale="Extracted slices in the case"),
-        Kpi("Conflicts", str(report.n_conflicts), target="0", rationale="Same fact, different documents"),
+        Kpi(
+            "Conflicts", str(report.n_conflicts), target="0",
+            rationale="Facts the documents cannot settle: disagreement, ambiguous "
+            "number format, or an identifier that fails its own check digit",
+        ),
         Kpi("Missing items", str(report.n_missing), target="0", rationale="Required docs/fields still empty"),
         Kpi(
             "Copy-reduction (est.)",
