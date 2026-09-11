@@ -90,3 +90,103 @@ def test_copy_reduction_is_not_one_hundred_without_the_full_six():
     case = merge_case([_invoice(), _packing(), _bl()])
     # invoice + packing + transport + projected customs pack = 4/6
     assert case.copy_reduction_pct == 66.7
+
+
+# --- number conventions -----------------------------------------------------
+# The pack is "DIN Chile": the local convention is decimal comma / thousands dot,
+# which is exactly the one a US-only parser silently corrupts. The comparison
+# token decides whether a conflict exists, so a wrong token suppresses conflicts.
+
+
+def test_chilean_decimal_comma_is_not_a_thousands_separator():
+    # '0,5' is half a unit in Chile. Stripping the comma made it '5' -> same
+    # token as the packing list's '5' -> zero conflicts on a factor-10 gap.
+    case = merge_case([
+        _invoice(total_qty="0,5"),
+        _packing(total_qty="5"),
+        _bl(),
+    ])
+
+    assert case.n_conflicts == 1
+    qty = next(c for c in case.conflicts if c.field == "total_qty")
+    assert dict(qty.values)["commercial_invoice"] == "0,5"
+    assert next(r for r in case.pack if r.canonical == "total_qty").contested is True
+
+
+def test_decimal_comma_and_decimal_point_are_the_same_number():
+    case = merge_case([_invoice(total_qty="0,5"), _packing(total_qty="0.5"), _bl()])
+
+    assert case.n_conflicts == 0
+    assert case.unified["total_qty"] == "0,5"  # raw text survives for the broker
+
+
+def test_mixed_separators_agree_across_conventions():
+    # '1.234,56' (CL) and '1,234.56' (US) are the same number: the LAST
+    # separator is the decimal mark under either convention.
+    case = merge_case([
+        _invoice(total_value="1.234,56"),
+        _packing(total_value="1,234.56"),
+        _bl(),
+    ])
+
+    assert case.n_conflicts == 0
+    assert case.unified["total_value"] == "1.234,56"
+
+
+def test_repeated_separator_can_only_be_thousands():
+    case = merge_case([
+        _invoice(total_value="1.234.567"),
+        _packing(total_value="1234567"),
+        _bl(),
+    ])
+
+    assert case.n_conflicts == 0
+
+
+def test_ambiguous_number_is_a_conflict_even_when_the_documents_match():
+    # '12.500' is 12500 in Chile and 12.5 in the US. The convention cannot be
+    # recovered from the text, so it is a human pick, never a silent tie.
+    case = merge_case([
+        _invoice(total_value="12.500"),
+        _packing(total_value="12.500"),
+        _bl(),
+    ])
+
+    conflict = next(c for c in case.conflicts if c.field == "total_value")
+    assert "ambiguous" in conflict.reason
+    assert next(r for r in case.pack if r.canonical == "total_value").contested is True
+    assert case.unified["total_value"] == "12.500"  # value still shown, just contested
+
+
+def test_ambiguous_number_conflicts_with_its_own_resolution():
+    case = merge_case([
+        _invoice(total_value="12.500"),
+        _packing(total_value="12500"),
+        _bl(),
+    ])
+
+    assert any(c.field == "total_value" for c in case.conflicts)
+
+
+def test_plain_numbers_keep_agreeing():
+    case = merge_case([_invoice(total_value="1000"), _packing(total_value="1000.00"), _bl()])
+
+    assert case.n_conflicts == 0
+
+
+def test_hs_code_segments_are_compared_as_text_not_as_a_number():
+    # '8481.80.00' is not a number with an invalid thousands grouping; it is an
+    # identifier. It must compare to itself and differ from the 6-digit form.
+    same = merge_case([_invoice(hs_code="8481.80.00"), _packing(hs_code="8481.80.00"), _bl()])
+    assert not any(c.field == "hs_code" for c in same.conflicts)
+
+    other = merge_case([_invoice(hs_code="8481.80.00"), _packing(hs_code="8481.80"), _bl()])
+    assert any(c.field == "hs_code" for c in other.conflicts)
+
+
+def test_value_mismatch_still_names_the_plain_reason():
+    case = merge_case([_invoice(total_qty="1000"), _packing(total_qty="1200"), _bl()])
+
+    qty = next(c for c in case.conflicts if c.field == "total_qty")
+    assert "ambiguous" not in qty.reason
+    assert qty.reason

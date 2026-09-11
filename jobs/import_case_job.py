@@ -2,7 +2,8 @@
 
 Reads structured extractions (JSON), not PDFs — the voice doc-reader can fill
 those JSON files first. Pandas is not used: the input is a case graph, not a
-demand table. QA fails only when nothing was ingested.
+demand table. QA checks the report's internal consistency, never the
+completeness of the client's paperwork: an incomplete case IS the deliverable.
 """
 
 from __future__ import annotations
@@ -107,9 +108,46 @@ def run(payload: object, params: dict | None = None) -> ImportCase:
 
 
 def verify(report: ImportCase) -> list[str]:
+    """QA: the report has to describe itself honestly.
+
+    Deliberately NOT a completeness gate. A QA issue wipes every deliverable
+    (``scm_agent/orchestrator.py``), and a case missing its B/L is exactly when
+    the client needs ``missing_items.csv`` and a pack marked contested. Gaps
+    travel inside the deliverable; only a self-contradicting report fails QA.
+    """
     issues: list[str] = []
     if report.n_documents < 1:
         issues.append("no documents in the import case")
+    if report.n_documents != len(report.documents):
+        issues.append(
+            f"n_documents says {report.n_documents}, case holds {len(report.documents)} document(s)",
+        )
+    if report.n_conflicts != len(report.conflicts):
+        issues.append(
+            f"n_conflicts says {report.n_conflicts}, case holds {len(report.conflicts)} conflict(s)",
+        )
+    if report.n_missing != len(report.missing):
+        issues.append(
+            f"n_missing says {report.n_missing}, case holds {len(report.missing)} missing item(s)",
+        )
+    if not 0.0 <= report.copy_reduction_pct <= 100.0:
+        issues.append(f"copy_reduction_pct out of range: {report.copy_reduction_pct}")
+
+    # The contested flag is the only conflict signal the broker sees on the pack
+    # CSV, so a conflict that does not reach its row is a silent clean number.
+    contested = {row.canonical for row in report.pack if row.contested}
+    packed = {row.canonical for row in report.pack}
+    conflicted = {c.field for c in report.conflicts}
+    for conflict in report.conflicts:
+        if conflict.field in packed and conflict.field not in contested:
+            issues.append(f"conflict on '{conflict.field}' is not marked contested in the pack")
+        if not conflict.reason.strip():
+            issues.append(f"conflict on '{conflict.field}' carries no reason")
+    for row in report.pack:
+        if row.value and not row.sources:
+            issues.append(f"pack row '{row.canonical}' has a value with no source document")
+        if row.contested and row.canonical not in conflicted:
+            issues.append(f"pack row '{row.canonical}' is marked contested without a conflict")
     return issues
 
 
@@ -130,6 +168,7 @@ def write_operational(report: ImportCase, out_dir: str | Path, client: str = "Cl
         {
             "field": c.field,
             "values": " | ".join(f"{src}={val}" for src, val in c.values),
+            "reason": c.reason,
         }
         for c in report.conflicts
     ]
@@ -145,6 +184,7 @@ def write_operational(report: ImportCase, out_dir: str | Path, client: str = "Cl
         "copy_reduction_pct": report.copy_reduction_pct,
         "n_conflicts": report.n_conflicts,
         "n_missing": report.n_missing,
+        "complete_enough": report.complete_enough,
         "disclaimer": (
             "Field pack is a draft for the broker/importer. Not a filed customs "
             "declaration. HS codes are proposed, not legal advice."
@@ -181,9 +221,10 @@ def build_deck(
     ]
     if report.conflicts:
         names = ", ".join(sorted({c.field for c in report.conflicts}))
+        why = " ".join(sorted({c.reason for c in report.conflicts if c.reason}))
         findings.append(Finding(
             "Document conflicts need a human pick",
-            f"Disagreeing fields: {names}. Pack rows stay marked contested.",
+            f"Contested fields: {names}. Pack rows stay marked contested. {why}".strip(),
             impact="choose packing vs invoice before the broker files",
         ))
     if report.missing:
