@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from src import order_fulfillment as of
 from src.deliverable import DataSource, Deliverable, Finding, Kpi, money, pct
 
+from .deliverables import amount, cost_is_synthesized
 from .inventory_optimization import JobReport
 
 #: How each provenance reads on a client page. The deck must never print a service
@@ -160,7 +161,9 @@ def build(
     origin = _origin_text(service.provenance)
     kpis = (
         Kpi("SKUs analyzed", str(report.n_skus), rationale="Catalog coverage of the analysis"),
-        Kpi("Recommended investment", f"${report.final_investment:,.0f}",
+        Kpi(
+            "Recommended investment" + (" (units, no unit cost loaded)" if cost_is_synthesized(report) else ""),
+            amount(report, report.final_investment),
             target=(f"<= ${report.budget:,.0f}" if report.budget is not None else ""),
             rationale="Capital tied up in cycle + safety stock"),
         # The two realized KPIs come FIRST among the service numbers, and the model's
