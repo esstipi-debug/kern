@@ -198,14 +198,51 @@ def write_report_csv(report: MeliPresaleReport, path: Path | str) -> Path:
     return write_summary_csv(rows_for_csv(report), path)
 
 
+#: De donde arranca la confianza de este deck, antes de descontar. No es 1,0: el
+#: catalogo oficial de MercadoLibre es la fuente, pero lo que el deck propone
+#: -- publicar en preventa -- depende de terminos de categoria que MELI cambia sin
+#: aviso, asi que una lectura de hoy no garantiza una publicacion de manana.
+_DECK_BASE_CONFIDENCE = 0.8
+#: Un deck armado sobre el catalogo de demostracion no habla de la cuenta de nadie.
+#: El residual ya lo dice en palabras; esto hace que el NUMERO tampoco mienta.
+_DEMO_PENALTY = 0.5
+#: Consultas que no encontraron nada en el catalogo: el escaneo cubrio menos de lo
+#: que el cliente pidio, y la conclusion descansa sobre esa fraccion.
+_NO_MATCH_PENALTY = 0.3
+#: El piso de confianza del contrato (``nosilo_core.guided.CONFIDENCE_FLOOR``),
+#: repetido aca a proposito y no importado: este job y su CLI NO pueden tocar
+#: ``nosilo_core`` -- es un camino de solo lectura y ahi vive la escritura, y un
+#: test lo vigila (``test_job_and_cli_never_import_writeback``). Un numero
+#: duplicado es mas barato que una puerta abierta hacia el plano de escritura.
+_CONFIDENCE_FLOOR = 0.10
+
+
+def deck_confidence(report: MeliPresaleReport) -> float:
+    """La confianza del deck, derivada de lo que este escaneo pudo ver.
+
+    Un literal en la firma decia lo mismo para una corrida de demostracion que para
+    una cuenta viva, y para un escaneo que encontro todo que para uno que no
+    encontro nada. Espejo de ``jobs/abc_xyz_job.py``, que deriva la suya de si el
+    ABC ranquea sobre valor o se degrada a unidades.
+    """
+    confianza = _DECK_BASE_CONFIDENCE
+    if report.demo:
+        confianza -= _DEMO_PENALTY
+    if report.n_queries:
+        confianza -= _NO_MATCH_PENALTY * (report.n_no_match / report.n_queries)
+    return max(_CONFIDENCE_FLOOR, round(confianza, 4))
+
+
 def build_deliverable(
     report: MeliPresaleReport,
     *,
     client: str = "Client",
     prepared: str = "",
     citations: tuple[str, ...] = (),
-    confidence: float = 0.8,
+    confidence: float | None = None,
 ) -> Deliverable:
+    if confidence is None:
+        confidence = deck_confidence(report)
     findings = [
         Finding(
             "Preventa-ready catalog products",
