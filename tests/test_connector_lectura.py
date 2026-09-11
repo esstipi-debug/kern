@@ -38,6 +38,7 @@ from src.connectors.lectura import (
     MAX_EXCERPT_CHARS,
     Reading,
     ReadingLookup,
+    lookup_from_text,
     read_passages,
     read_with_caller,
 )
@@ -529,6 +530,13 @@ def test_sin_keywords_no_se_molesta_al_indice():
     assert r.available is False and r.note
 
 
+#: Los cortes de linea por nombre: el archivo se mantiene ASCII y el test dice cual
+#: caracter esta probando en vez de esconderlo en un literal invisible.
+NL, CR, VT, FF = chr(10), chr(13), chr(11), chr(12)
+LS = chr(0x2028)  # separador de linea Unicode
+EM = chr(0x2014)  # em dash: no-ASCII que `_sanear` tiene que bajar a un guion
+
+
 # --- el contrato de los tipos -------------------------------------------------------
 
 
@@ -539,6 +547,73 @@ def test_los_dos_tipos_son_inmutables():
     lookup = ReadingLookup(available=False, readings=(), note="porque si")
     with pytest.raises(dataclasses.FrozenInstanceError):
         lookup.available = True  # type: ignore[misc]
+
+
+def test_un_reading_no_se_puede_construir_por_encima_del_tope_de_copyright():
+    """El tope es del TIPO, no del parser: `src/deliverable.py` renderiza lo que reciba.
+
+    Sin esto, `Reading("libro", "PDF p.1", "x" * 5000)` renderizaba 5.000 caracteres de
+    un PDF de libgen entre comillas en el entregable del cliente -- el tope existia pero
+    solo lo aplicaba `_cortar`, adentro de `parse_readings`. El render NO agrega un
+    segundo recorte a proposito (seria una segunda verdad sobre cuanto se puede copiar),
+    asi que la unica verdad se hace cumplir donde el valor se construye.
+    """
+    with pytest.raises(ValueError, match=str(MAX_EXCERPT_CHARS)):
+        Reading(source="libro", page_label="PDF p.1", excerpt="x" * (MAX_EXCERPT_CHARS + 1))
+    justo = Reading(source="libro", page_label="PDF p.1", excerpt="x" * MAX_EXCERPT_CHARS)
+    assert len(justo.excerpt) == MAX_EXCERPT_CHARS
+
+
+def test_un_reading_no_se_puede_construir_con_un_salto_de_linea():
+    """Una entrada de procedencia es UNA linea del markdown.
+
+    Un salto la parte en dos: la cola sale como prosa suelta que ya no cuelga de ningun
+    libro ni de ninguna pagina, con la comilla de cierre colgando en otro renglon. Se
+    prueban los tres campos y tambien el salto PEGADO AL FINAL, que es el que una
+    busqueda casera del caracter suele dejar pasar por venir de un ``readlines()``.
+    """
+    for campo in ("source", "page_label", "excerpt"):
+        args = {"source": "libro", "page_label": "PDF p.1", "excerpt": "x"}
+        args[campo] = args[campo] + NL + "cola desprendida"
+        with pytest.raises(ValueError, match="salto de linea"):
+            Reading(**args)
+    for corte in (NL, CR, VT, FF, LS):  # LF, CR, tab vertical, salto de pagina, LS
+        with pytest.raises(ValueError, match="salto de linea"):
+            Reading(source="libro", page_label="PDF p.1", excerpt="cuerpo" + corte)
+
+
+def test_un_reading_sin_libro_o_sin_pagina_no_existe():
+    """Media procedencia no se cita: sin libro no hay que verificar, sin pagina no hay
+    donde. El extracto SI es opcional -- libro + pagina ya es procedencia completa."""
+    for source, page in (("", "PDF p.1"), ("   ", "PDF p.1"), ("libro", ""), ("libro", "  ")):
+        with pytest.raises(ValueError, match="media procedencia"):
+            Reading(source=source, page_label=page, excerpt="x")
+    assert Reading(source="libro", page_label="PDF p.5", excerpt="").excerpt == ""
+
+
+def test_un_reading_no_publica_texto_ajeno_como_nombre_de_libro():
+    """Misma puerta que el tope del extracto, otro campo: el slug sale de la cabecera
+    que manda el servidor. `1. **<900 caracteres>** PDF p.5` publica 900 caracteres de
+    texto ajeno en negrita como si fueran el titulo de un libro."""
+    with pytest.raises(ValueError, match=str(lectura.MAX_SOURCE_CHARS)):
+        Reading(source="L" * (lectura.MAX_SOURCE_CHARS + 1), page_label="PDF p.1", excerpt="x")
+
+
+def test_el_parser_nunca_construye_un_reading_invalido_por_mas_sucio_que_venga_el_cable():
+    """La validacion del tipo NO rompe el "nunca levanta" del modulo.
+
+    El unico productor vivo es `parse_readings`, que corta, sanea y descarta ANTES de
+    construir. Se le tira encima lo peor que puede llegar del cable -- un pasaje enorme,
+    partido en varias lineas, con centinelas y no-ASCII -- y tiene que salir un lote
+    valido, sin excepcion.
+    """
+    cuerpo = (("palabra " + EM + " larguisima ") * 300).strip()
+    crudo = NL.join(["1. **vandeput** PDF p.9", "   " + cuerpo,
+                     "   segunda linea del cuerpo", ""])
+    (leida,) = lectura.parse_readings(crudo)
+    assert len(leida.excerpt) <= MAX_EXCERPT_CHARS
+    assert leida.excerpt.splitlines() == [leida.excerpt]
+    assert lookup_from_text(crudo).available is True
 
 
 def test_no_disponible_nunca_trae_lecturas(monkeypatch):
