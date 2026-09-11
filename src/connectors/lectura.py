@@ -431,13 +431,21 @@ def read_passages(
         return _no_disponible(
             f"{ENV_INTERPRETE} apunta a {interprete}, que no existe: no se levanto ningun servidor de lectura"
         )
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as errlog:
-        try:
-            with _stdio_caller(interprete, timeout_s, errlog) as call_tool:
-                return read_with_caller(call_tool, keywords, k=k, sources=sources)
-        except Exception as exc:  # no arranca, se colgo, o la libreria levanto: es un estado
-            grito = _ultimo_grito(errlog)
-            dijo = f"; el servidor dijo: {grito}" if grito else ""
-            return _no_disponible(
-                f"no se pudo hablar con el servidor de lectura: {_una_linea(exc)}{dijo}"
-            )
+    # El try de afuera cubre la captura del stderr del servidor, que es una comodidad y no
+    # una precondicion: un TMP no escribible no puede tirar abajo un entregable. El de
+    # adentro necesita a `errlog` vivo para contar lo que grito el servidor antes de morir.
+    try:
+        with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as errlog:
+            try:
+                with _stdio_caller(interprete, timeout_s, errlog) as call_tool:
+                    return read_with_caller(call_tool, keywords, k=k, sources=sources)
+            except Exception as exc:  # no arranca, se colgo, o la libreria levanto: es un estado
+                grito = _ultimo_grito(errlog)
+                dijo = f"; el servidor dijo: {grito}" if grito else ""
+                return _no_disponible(
+                    f"no se pudo hablar con el servidor de lectura: {_una_linea(exc)}{dijo}"
+                )
+    except Exception as exc:
+        return _no_disponible(
+            f"no se pudo preparar la lectura: {_una_linea(exc)}"
+        )

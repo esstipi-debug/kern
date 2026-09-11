@@ -141,6 +141,27 @@ def test_un_fallo_al_abrir_la_sesion_no_tira_el_entregable(monkeypatch, tmp_path
     assert "el proceso no arranco" in r.note
 
 
+def test_ni_siquiera_un_disco_lleno_tira_el_entregable(monkeypatch, tmp_path):
+    """La captura del stderr del servidor es una comodidad, no una precondicion.
+
+    Antes de este test el `with tempfile.TemporaryFile(...)` quedaba FUERA del try, asi que
+    un TMP no escribible o un disco lleno hacian que `read_passages` levantara OSError y se
+    cayera el entregable entero -- justo lo contrario de lo que promete su docstring.
+    """
+    falso_python = tmp_path / "python.exe"
+    falso_python.write_text("no soy un interprete", encoding="utf-8")
+    monkeypatch.setenv(ENV_INTERPRETE, str(falso_python))
+
+    def _sin_disco(*a, **k):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(lectura.tempfile, "TemporaryFile", _sin_disco)
+
+    r = read_passages(["safety stock"])
+    assert r.available is False and r.readings == ()
+    assert "No space left on device" in r.note
+
+
 def test_una_excepcion_de_la_tool_no_se_propaga():
     """El servidor contesta isError: se traduce a estado, no a traceback.
 
