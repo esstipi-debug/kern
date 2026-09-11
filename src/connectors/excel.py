@@ -55,6 +55,8 @@ from pathlib import Path
 from nosilo_core import writeback
 from openpyxl import load_workbook
 
+from src.connectors import WRITE_APPROVAL_GATED, WriteSurface
+
 # How deep to scan for a client's header row (planillas often stack title/blank
 # rows above the real table; 20 covers every layout seen in client files so far).
 _HEADER_SCAN_ROWS = 20
@@ -304,3 +306,15 @@ class ExcelWorkbookStore:
                     )
                 cells[f"{letter}{row}"] = value
         return cells
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_APPROVAL_GATED,
+    objects=(
+        'celdas de reorder point del libro del cliente (.xlsx/.xlsm)',
+    ),
+    means=(
+        'escribe celda a celda con chequeo de deriva contra el archivo vivo, escritura atomica, respaldo por commit y rollback celda a celda; las macros de un .xlsm se conservan y nunca se ejecutan.'
+    ),
+)

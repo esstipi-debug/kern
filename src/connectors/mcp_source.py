@@ -43,12 +43,14 @@ from typing import Any
 
 from . import (
     COVERAGE_MEASURED,
+    WRITE_NONE,
     FieldCoverage,
     InventoryLevel,
     Order,
     OrderLine,
     Product,
     ServiceCoverage,
+    WriteSurface,
 )
 
 #: The three read tools a remote server must expose. Names are overridable
@@ -252,5 +254,14 @@ SERVICE_COVERAGE = ServiceCoverage(
         COVERAGE_MEASURED,
         "tool de ordenes -> lines[].delivered_date",
         "la fecha en que el servidor dice que la linea se sirvio",
+    ),
+)
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_NONE,
+    means=(
+        'solo lectura: otro servidor MCP como fuente de productos, stock y pedidos. Kern nunca invoca herramientas de escritura de un MCP ajeno.'
     ),
 )

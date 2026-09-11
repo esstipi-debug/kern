@@ -53,8 +53,10 @@ from typing import Any
 from src.connectors import (
     COVERAGE_MEASURED,
     COVERAGE_UNAVAILABLE,
+    WRITE_NONE,
     FieldCoverage,
     ServiceCoverage,
+    WriteSurface,
 )
 from src.connectors.arrivals import Arrival
 
@@ -240,3 +242,12 @@ def live_http(*, timeout: float = 30.0, sandbox: bool = False) -> Any:
     import httpx
 
     return httpx.Client(base_url=SANDBOX_BASE if sandbox else API_BASE, timeout=timeout)
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_NONE,
+    means=(
+        'solo lectura: transportista; Kern lee llegadas y no crea ni modifica envios.'
+    ),
+)
