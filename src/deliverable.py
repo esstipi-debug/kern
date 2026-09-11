@@ -8,6 +8,10 @@ output into a professional, sectioned deliverable:
 - a KPI table with selection rationale (why each KPI, what it tells the client)
 - a data-source map (where every number came from + refresh cadence)
 - L3 citations (book/chapter grounding)
+- reading passages (optional, empty by default): book + PHYSICAL PDF page +
+  a short excerpt from the separate reading index. A weaker, UNGATED kind of
+  grounding that renders downstream of `scm_agent.citation_gate` and never
+  mixes with `citations` - see the `readings` field's own comment.
 - a coverage & handoff block (confidence + "what I could NOT do, what you must do")
   honoring the never-unprotected contract of the Guided Execution Layer.
 
@@ -23,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src import i18n
+from src.connectors.lectura import Reading
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
@@ -153,6 +158,14 @@ class Deliverable:
     recommendations: tuple[str, ...] = ()
     options: tuple = ()   # ranked ExecutionOptions (recommended first) - the action menu
     citations: tuple[str, ...] = ()
+    # Book passages from the separate reading index (``src/connectors/lectura.py``),
+    # rendered as their OWN section. They are NOT citations and must never be merged
+    # into the field above: a passage has no ``node_id``, so ``filter_citations``
+    # would reject it with reason - this field lives strictly DOWNSTREAM of that
+    # gate, and nothing here ever enters the candidate pool. Empty by default, so
+    # every deck that never populates it renders byte-for-byte as before
+    # (``tests/test_deliverable_lecturas.py`` holds the two golden renders).
+    readings: tuple[Reading, ...] = ()
     confidence: float | None = None
     residual: str = ""
     prepared: str = ""
@@ -235,6 +248,20 @@ class Deliverable:
             out += [f"- {c}" for c in self.citations]
             out.append("")
 
+        # Reading passages: after the citations section (they are a weaker, ungated
+        # kind of grounding and must not be read as an extension of it) and before
+        # the coverage block, which closes the document. The excerpt is quoted only
+        # when there IS one - the connector allows a passage with a page but no body,
+        # and an empty pair of quotes would assert a quotation nobody read.
+        if self.readings:
+            out += [f"## {L('hdr_readings')}", "", L("readings_intro"), ""]
+            for r in self.readings:
+                line = f"- **{r.source}** {r.page_label}"
+                if r.excerpt:
+                    line += f' - "{r.excerpt}"'
+                out.append(line)
+            out.append("")
+
         # Coverage & handoff is always shown: it states confidence and the residual
         # human action, so no deliverable ever reads as "fully autonomous" when it isn't.
         out += [f"## {L('hdr_coverage_handoff')}", ""]
@@ -307,6 +334,20 @@ class Deliverable:
             c.append([L("col_source")])
             for cite in self.citations:
                 c.append([cite])
+
+        # Its own sheet, never extra rows on "Citations" - the same separation the
+        # Markdown keeps. Row 1 carries ``readings_intro`` verbatim, above the header
+        # row: a "Page (PDF)" column that travels alone in a spreadsheet (sorted,
+        # filtered, pasted into a mail) is exactly how a client ends up opening the
+        # printed book at the physical page and falsifying the citation themselves.
+        # The excerpt is written as it arrives: the copyright cap is the connector's
+        # (``lectura.MAX_EXCERPT_CHARS``) and a second one here would be a second truth.
+        if self.readings:
+            r = wb.create_sheet(L("sheet_readings"))
+            r.append([L("readings_intro")])
+            r.append([L("readings_col_book"), L("readings_col_page"), L("readings_col_excerpt")])
+            for reading in self.readings:
+                r.append([reading.source, reading.page_label, reading.excerpt])
 
         wb.save(out)
         return out
