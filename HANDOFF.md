@@ -22,6 +22,64 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-09-08 — Preventa / busqueda de productos Mercado Libre (catalogo oficial, solo lectura)
+
+**Leer esto primero si se retoma el hilo ML.** No es reposicion de canal
+(eso sigue en PR #238, `feat/shopify-replenishment-tool`, sin mergear y
+ya desfasado de `main`). Este paso es **busqueda de producto de catalogo
++ elegibilidad de preventa**, que era el hueco declarado en
+`src/pricing_intel/acquire/meli_api.py` ("`/sites/{site}/search` y
+`/products/search` NO estan cableados") y en HANDOFF 2026-07-13
+("todavia no es integracion de inventario/listings").
+
+### Que habia, y por que no alcanzaba
+- `meli_api.py` — `GET /items/{id}` publico. `robots.txt` = `Disallow: /`
+  (2026-07-12). `config/sites/api.mercadolibre.com.yaml` sigue
+  `prohibited`. No se toco: no se evaden robots.
+- `meli_prices.py` — writeback de **precio** del vendedor (`[CRED]`).
+- PR #238 — `src/connectors/meli.py` como `InventorySource` (lectura de
+  stock/ordenes). Util para reposicion; **no** busca productos ni
+  clasifica preventa. No se mergeo aqui: el PR es grande, choca con
+  Unleashed/Cin7/53 tools ya en `main`, y no era el pedido.
+
+### Que se agrego (rama `cursor/meli-presale-search-f0cd`)
+- `src/connectors/meli_catalog.py` — transporte autenticado
+  `GET /products/search` (q o GTIN), `GET /categories/{id}/sale_terms`,
+  `GET /sites/{site}/domain_discovery/search`. El cliente live **exige
+  Bearer**; sin token no hay red (el host publico sigue prohibido).
+  `InMemoryMeliCatalog` + `demo_meli_catalog()` para offline.
+- `src/meli_presale.py` — clasifica cada query:
+  `presale_ready` / `catalog_only` / `already_listed` / `inactive` /
+  `no_category` / `no_match`. Preventa = sale term oficial
+  `MANUFACTURING_TIME` (ML no tiene flag `preorder`). El draft es el
+  JSON que un humano POSTEARIA a `/items`; **este codigo no lo envia**.
+- `jobs/meli_presale_job.py` + `examples/run_meli_presale.py --demo`.
+- `src/meli_presale_guided.py` — OPTIONS/HANDOFF, nunca EXECUTED.
+  Separado para que clasificacion + CLI corran sin `nosilo-core`.
+
+### Auth / scopes (bloqueante externo, no de codigo)
+Para apuntar a una cuenta real hace falta, del lado del operador:
+1. App en [developers.mercadolibre.com](https://developers.mercadolibre.com)
+   con redirect URI.
+2. Token de **usuario** (no solo app token) con lectura de catalogo y,
+   para marcar `already_listed`, `GET /users/{id}/items/search`.
+   Grant tipico: `offline_access` + el scope de lectura de la app.
+3. `user_id` del vendedor y `site_id` (MLA/MLB/MLM/MLC/MCO/MLU).
+4. Cablear `httpx.Client(base_url="https://api.mercadolibre.com",
+   headers={"Authorization": "Bearer ..."})` en
+   `MeliCatalogClient`. Este repo **no** implementa el exchange OAuth
+   ni pide secrets.
+
+Hasta que eso exista: `python examples/run_meli_presale.py --demo`.
+
+### Que falta (siguiente paso concreto)
+- No hay tool de agente (el registro esta en 53; PR #330 lo congela).
+  Receta: `meli_presale_tool()` + espejos, cuando se descongele.
+- No hay POST de listing, a proposito. Publicar exige instruccion
+  humana explicita y la app OAuth de arriba.
+- PR #238 sigue siendo el camino de **inventario/reposicion** ML.
+  No mezclarlo con este.
+
 ## 2026-08-28 (cierre de ventana) — prod DESPLEGADA en v44, MCP listado, CI recortada; **lo que sigue es el piloto, no el motor**
 
 Leer esta entrada antes que la de abajo: aquella se escribio con el fix sin mergear y ya quedo

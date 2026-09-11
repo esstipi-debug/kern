@@ -3,6 +3,19 @@
 ## [Unreleased]
 
 ### Added
+- **MercadoLibre preventa / catalog product search (read-only).**
+  `src/connectors/meli_catalog.py` searches the official catalog
+  (`GET /products/search` by `q` or GTIN, `GET /categories/{id}/sale_terms`,
+  domain discovery) behind a Bearer token -- unauthenticated calls against
+  `api.mercadolibre.com` stay robots-prohibited. `src/meli_presale.py`
+  classifies each hit as `presale_ready` (category allows
+  `MANUFACTURING_TIME`, MercadoLibre's documented preventa term),
+  `catalog_only`, `already_listed`, `inactive`, `no_category`, or `no_match`,
+  and builds a listing *draft* that is never POSTed. Job + CLI:
+  `jobs/meli_presale_job.py`, `examples/run_meli_presale.py --demo`.
+  GuidedOutcome wrapper (`src/meli_presale_guided.py`) is optional and
+  never `EXECUTED`. Not an agent tool (registry stays at 53). Not the
+  unmerged inventory connector on PR #238.
 - **`procedure_audit` + `procedure_draft` agent tools (`jobs/procedure_audit_job.py`,
   `jobs/procedure_draft_job.py`, `src/procedures/`)** -- registry now 53 tools.
   `procedure_audit` audits a client's exported procedure register for overdue
