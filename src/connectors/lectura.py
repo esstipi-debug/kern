@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 import unicodedata
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -83,6 +84,15 @@ _ELIPSIS = "..."
 #: Un corte por palabra solo vale si no deja el extracto mucho mas corto que el tope;
 #: un pasaje sin espacios (formulas, tablas) se corta duro antes que devolver migajas.
 _MIN_FRACCION_PALABRA = 0.6
+
+#: Cuantos eslabones de la cadena de causas entran a la nota. Tres alcanzan para decir
+#: que fallo sin convertir la nota en un traceback: la nota es una linea para un humano.
+_MAX_CAUSAS = 3
+
+#: Cuanto del stderr del subproceso entra a la nota. El interprete equivocado escribe
+#: ahi una sola linea util ("No module named 'kern_lectura'"); un traceback entero no
+#: entra en una nota, y el resto del stderr no es de nadie.
+_MAX_STDERR_CHARS = 300
 
 #: Centinelas de pagina del otro repo (``kern_lectura.content.PAGE_MARK``). El servidor
 #: ya los saca, pero si alguno sobrevive se va ENTERO: dejar "p.83" suelto en el medio
@@ -248,8 +258,61 @@ def _no_disponible(motivo: str) -> ReadingLookup:
     return ReadingLookup(available=False, readings=(), note=motivo)
 
 
+def _causas(exc: BaseException) -> list[BaseException]:
+    """Del envoltorio a la hoja: las excepciones que de verdad explican el fallo.
+
+    Existe por el modo de falla REAL de este conector. Cuando el interprete de
+    :data:`ENV_INTERPRETE` es valido pero no tiene el modulo del servidor -- la
+    variable mal seteada, que es el unico modo de falla que existe fuera de produccion
+    -- lo que sube no es la causa sino un ``ExceptionGroup`` de anyio cuyo texto es
+    "unhandled errors in a TaskGroup (1 sub-exception)". Eso no le dice NADA al humano
+    que tiene que ir a arreglar el indice, que es la unica razon por la que la nota
+    existe. Los grupos son plomeria y no se renderizan: se baja por ``exceptions[0]``
+    hasta una hoja, y de ahi por ``__cause__`` (el ``raise ... from`` explicito).
+
+    No se sigue ``__context__``: eso encadena la excepcion que estaba en vuelo cuando
+    se levanto esta, que muchas veces no tiene nada que ver, y la nota pasaria a
+    nombrar un culpable equivocado.
+    """
+    cadena: list[BaseException] = []
+    vistos: set[int] = set()
+    actual: BaseException | None = exc
+    while actual is not None and id(actual) not in vistos and len(cadena) < _MAX_CAUSAS:
+        vistos.add(id(actual))
+        sub = tuple(getattr(actual, "exceptions", ()) or ())
+        if sub:
+            actual = sub[0]
+            continue
+        cadena.append(actual)
+        actual = actual.__cause__
+    return cadena or [exc]
+
+
 def _una_linea(exc: BaseException) -> str:
-    return _sanear(f"{type(exc).__name__}: {exc}")
+    """La cadena de causas en una sola linea, sin repetir el mismo eslabon dos veces."""
+    partes: list[str] = []
+    for e in _causas(exc):
+        parte = f"{type(e).__name__}: {e}"
+        if parte not in partes:
+            partes.append(parte)
+    return _sanear(" <- ".join(partes))
+
+
+def _ultimo_grito(errlog: Any) -> str:
+    """La ultima linea que el subproceso del servidor escribio por stderr.
+
+    Es el otro eslabon que faltaba. La causa de verdad del modo de falla real
+    (``No module named 'kern_lectura'``) no viaja por la excepcion -- del lado del
+    cliente solo llega "Connection closed" -- sino por el stderr del subproceso, que
+    por defecto va a parar a la consola de Kern y se pierde. Se captura y se pega a la
+    nota. Nunca levanta: esto corre dentro del manejo de un fallo.
+    """
+    try:
+        errlog.seek(0)
+        lineas = [ln.strip() for ln in errlog.read().splitlines() if ln.strip()]
+    except Exception:  # noqa: BLE001 - un stderr ilegible no puede tapar el fallo real
+        return ""
+    return _sanear(lineas[-1])[:_MAX_STDERR_CHARS] if lineas else ""
 
 
 def _bloques_de_texto(result: Any) -> str | None:
@@ -322,20 +385,25 @@ def read_with_caller(
 
 
 @contextmanager
-def _stdio_caller(interprete: str, timeout_s: float):
+def _stdio_caller(interprete: str, timeout_s: float, errlog: Any):
     """Abre el servidor de lectura por stdio y devuelve un ``call_tool`` sincronico.
 
     Mismo patron que ``mcp_source``: un portal bloqueante de anyio sirve una sesion
     async desde codigo sincronico, y la sesion queda viva mientras dure el ``with`` en
     vez de un loop por llamada. Los imports son perezosos por el gotcha de arranque en
     produccion (nada de `mcp` a nivel de modulo en la cadena de boot).
+
+    ``errlog`` es un archivo real (hace falta un descriptor: va como ``stderr`` del
+    subproceso). Redirigirlo no es cosmetica -- por defecto ``stdio_client`` manda el
+    stderr del servidor a ``sys.stderr``, donde ademas de perderse para la nota puede
+    romper una consola cp1252 -- y es el unico lugar donde aparece por que no arranco.
     """
     from anyio.from_thread import start_blocking_portal
     from mcp import ClientSession, StdioServerParameters, stdio_client
 
     parametros = StdioServerParameters(command=interprete, args=["-m", SERVIDOR_MODULO])
     with start_blocking_portal() as portal:
-        with portal.wrap_async_context_manager(stdio_client(parametros)) as (leer, escribir):
+        with portal.wrap_async_context_manager(stdio_client(parametros, errlog=errlog)) as (leer, escribir):
             sesion_cm = ClientSession(leer, escribir, read_timeout_seconds=timedelta(seconds=timeout_s))
             with portal.wrap_async_context_manager(sesion_cm) as sesion:
                 portal.call(sesion.initialize)
@@ -363,8 +431,13 @@ def read_passages(
         return _no_disponible(
             f"{ENV_INTERPRETE} apunta a {interprete}, que no existe: no se levanto ningun servidor de lectura"
         )
-    try:
-        with _stdio_caller(interprete, timeout_s) as call_tool:
-            return read_with_caller(call_tool, keywords, k=k, sources=sources)
-    except Exception as exc:  # no arranca, se colgo, o la libreria levanto: es un estado
-        return _no_disponible(f"no se pudo hablar con el servidor de lectura: {_una_linea(exc)}")
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as errlog:
+        try:
+            with _stdio_caller(interprete, timeout_s, errlog) as call_tool:
+                return read_with_caller(call_tool, keywords, k=k, sources=sources)
+        except Exception as exc:  # no arranca, se colgo, o la libreria levanto: es un estado
+            grito = _ultimo_grito(errlog)
+            dijo = f"; el servidor dijo: {grito}" if grito else ""
+            return _no_disponible(
+                f"no se pudo hablar con el servidor de lectura: {_una_linea(exc)}{dijo}"
+            )

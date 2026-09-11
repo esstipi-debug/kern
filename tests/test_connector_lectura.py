@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import sys
 from pathlib import Path
 
 import pytest
@@ -161,6 +162,61 @@ def test_un_call_tool_que_levanta_se_traduce_a_estado():
     r = read_with_caller(_revienta, ["safety stock"])
     assert r.available is False and r.readings == ()
     assert "se acabo el tiempo" in r.note
+
+
+def test_una_causa_envuelta_en_exceptiongroup_llega_nombrada():
+    """Lo que sube de anyio NO es la causa: es un `ExceptionGroup` que dice "unhandled
+    errors in a TaskGroup (1 sub-exception)" y nada mas. Una nota asi no le sirve al
+    humano que tiene que ir a arreglar el indice, que es la unica razon por la que la
+    nota existe: el grupo es plomeria y lo que se nombra es la hoja."""
+
+    def _revienta(name, arguments):
+        raise ExceptionGroup(
+            "unhandled errors in a TaskGroup (1 sub-exception)",
+            [ExceptionGroup("unhandled errors in a TaskGroup (1 sub-exception)", [RuntimeError("el socket se cerro")])],
+        )
+
+    r = read_with_caller(_revienta, ["safety stock"])
+    assert r.available is False and r.readings == ()
+    assert "el socket se cerro" in r.note
+    assert "TaskGroup" not in r.note  # el envoltorio no ocupa la linea
+
+
+def test_una_causa_encadenada_con_from_tambien_se_nombra():
+    def _revienta(name, arguments):
+        try:
+            raise ModuleNotFoundError("No module named 'kern_lectura'")
+        except ModuleNotFoundError as raiz:
+            raise RuntimeError("no se pudo importar el servidor") from raiz
+
+    r = read_with_caller(_revienta, ["safety stock"])
+    assert "no se pudo importar el servidor" in r.note  # el eslabon de arriba no se pierde
+    assert "kern_lectura" in r.note  # y la causa de verdad tampoco
+
+
+def test_el_transporte_real_dice_por_que_no_arranco(monkeypatch):
+    """El UNICO modo de falla que existe fuera de produccion, sin monkeypatch.
+
+    Los dos tests de arriba reemplazan el transporte por una excepcion sintetica, asi
+    que ninguno ejercita `_stdio_caller`. Este lo corre de verdad: la variable apunta a
+    un interprete VALIDO que no tiene el modulo del servidor -- la variable mal seteada,
+    que es como esto se rompe en una maquina de desarrollo. Del lado del cliente solo
+    llega "Connection closed"; la causa (`No module named 'kern_lectura'`) sale por el
+    stderr del subproceso, que este conector captura en vez de tirarlo a la consola.
+
+    Cuesta ~3 s porque levanta un subproceso real. No levanta el indice: el modulo no
+    existe y el interprete muere en el arranque, asi que no pide 1,6 GB de nada.
+    """
+    monkeypatch.setenv(ENV_INTERPRETE, sys.executable)
+
+    r = read_passages(["safety stock"], timeout_s=20.0)
+
+    assert r.available is False and r.readings == ()
+    assert "kern_lectura" in r.note  # la nota NOMBRA el fallo, no lo insinua
+    assert "ModuleNotFoundError" in r.note
+    assert "TaskGroup" not in r.note
+    assert r.note.isascii() and r.note.count(chr(10)) == 0  # una linea, imprimible en cp1252
+    r.note.encode("cp1252")
 
 
 # --- 3. '(sin pasajes)' y 'error:' NO son citas ------------------------------------
