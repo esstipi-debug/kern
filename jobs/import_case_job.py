@@ -203,15 +203,55 @@ def write_operational(report: ImportCase, out_dir: str | Path, client: str = "Cl
     return out
 
 
+#: Un expediente completo y sin disputas: los seis documentos presentes o
+#: proyectados y ninguna fila contestada. Nunca 1.0 -- el pack sigue siendo una
+#: proyeccion para el despachante, no una DIN presentada.
+_DECK_BASE_CONFIDENCE = 0.80
+#: Escala con la porcion del set de seis que falta (``copy_reduction_pct``).
+_MISSING_DOC_PENALTY = 0.25
+#: El conflicto se castiga en dos partes porque es un fenomeno de conteo chico
+#: (~16 campos), no de volumen: puramente proporcional, UN peso peleado entre
+#: packing y B/L movia la confianza 0,01 -- y ese es exactamente el hecho que
+#: impide presentar. El escalon dice "hay algo sin resolver"; la cola dice
+#: "cuanto". El denominador de la cola son las filas CON VALOR, no las 16
+#: ranuras del pack: una ranura vacia no es un hecho en disputa y ya la castiga
+#: _MISSING_DOC_PENALTY.
+_CONFLICT_BASE_PENALTY = 0.12
+_CONFLICT_SHARE_PENALTY = 0.13
+_CONFIDENCE_FLOOR = 0.10
+
+
+def deck_confidence(report: ImportCase) -> float:
+    """La confianza del deck, derivada de lo que este expediente pudo reunir.
+
+    ``verify()`` deliberadamente NO es una puerta de completitud: un caso al que
+    le falta el B/L es exactamente cuando el cliente necesita el pack. Pero ese
+    hueco tiene que verse en algun lado, y la confianza es ese lugar -- un
+    literal en la firma decia lo mismo para un expediente de seis documentos sin
+    disputas que para uno de dos con la factura y el packing peleados. Espejo de
+    ``jobs/meli_presale_job.py::deck_confidence``.
+    """
+    confianza = _DECK_BASE_CONFIDENCE
+    confianza -= _MISSING_DOC_PENALTY * (1.0 - report.copy_reduction_pct / 100.0)
+    populated = [row for row in report.pack if row.value or row.contested]
+    contested = sum(1 for row in populated if row.contested)
+    if contested:
+        confianza -= _CONFLICT_BASE_PENALTY
+        confianza -= _CONFLICT_SHARE_PENALTY * (contested / len(populated))
+    return max(_CONFIDENCE_FLOOR, round(confianza, 4))
+
+
 def build_deck(
     report: ImportCase,
     *,
     client: str = "Client",
     prepared: str = "",
     citations: tuple[str, ...] = (),
-    confidence: float = 0.8,
+    confidence: float | None = None,
     lang: str = "en",
 ) -> Deliverable:
+    if confidence is None:
+        confidence = deck_confidence(report)
     findings = [
         Finding(
             "One case, many projections",

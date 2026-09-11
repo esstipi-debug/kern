@@ -128,3 +128,37 @@ def test_case_json_records_whether_the_case_is_presentable(tmp_path):
     payload = json.loads(paths["json"].read_text(encoding="utf-8"))
 
     assert payload["complete_enough"] is report.complete_enough
+
+
+def test_deck_confidence_rises_with_the_documents_the_case_actually_holds():
+    thin = merge_case([DocumentSlice("commercial_invoice", {"invoice_no": "F-1"}, "inv")])
+    fat = icj.run(icj.prepare(str(FIXTURE), {}))
+
+    assert icj.deck_confidence(fat) > icj.deck_confidence(thin)
+    assert icj.deck_confidence(thin) >= 0.10  # the floor holds, never a negative
+
+
+def test_a_contested_fact_costs_real_confidence_not_a_rounding_error():
+    """A disputed weight is what stops the broker filing; it has to be visible.
+
+    Scaled purely by share of pack rows, one conflict out of ~16 fields moved the
+    number by 0.01 - a blocking fact rendered as noise. Hence the step.
+    """
+    clean = icj.run(icj.prepare(str(FIXTURE), {}))
+    slices = [
+        DocumentSlice(row["doc_type"], dict(row["fields"]), row["source"])
+        for row in icj.prepare(str(FIXTURE), {})["slices"]
+    ]
+    disputed = merge_case(
+        slices + [DocumentSlice("customs_declaration", {"entered_value": "99999.00"}, "din")],
+    )
+
+    assert disputed.n_conflicts > 0, "fixture did not actually produce a conflict"
+    assert icj.deck_confidence(clean) - icj.deck_confidence(disputed) > 0.05
+
+
+def test_the_deck_derives_its_confidence_but_an_explicit_one_still_wins():
+    report = icj.run(icj.prepare(str(FIXTURE), {}))
+
+    assert icj.build_deck(report).confidence == icj.deck_confidence(report)
+    assert icj.build_deck(report, confidence=0.42).confidence == 0.42
