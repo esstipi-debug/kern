@@ -18,7 +18,6 @@ from dataclasses import dataclass
 
 from nosilo_core.guided import GuidedOutcome, HandoffPacket, Residual, as_executed, as_handoff
 from nosilo_core.writeback import Changeset
-
 from src.connectors import InventorySource, Order
 from src.ddmrp import net_flow_position
 from src.forecasting import MIN_PERIODS_FOR_POLICY, forecast_demand

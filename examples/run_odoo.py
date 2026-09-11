@@ -25,10 +25,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from jobs.odoo_job import read_on_order  # noqa: E402
 from nosilo_core import writeback  # noqa: E402
 from nosilo_core.writeback_store import SqliteAuditLedger  # noqa: E402
-
-from jobs.odoo_job import read_on_order  # noqa: E402
 from src.connectors.odoo import OdooConnector, OdooRPC, demo_odoo  # noqa: E402
 from src.connectors.replenish import plan_replenishment  # noqa: E402
 from src.data_paths import data_root  # noqa: E402

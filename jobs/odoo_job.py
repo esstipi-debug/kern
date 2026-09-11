@@ -20,7 +20,6 @@ from pathlib import Path
 
 from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
 from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
-
 from src.connectors.odoo import OdooClient, OdooConnector, OdooError, OdooRPC, demo_odoo
 from src.connectors.replenish import ReplenishmentLine, plan_replenishment
 from src.deliverable import DataSource, Deliverable, Finding, Kpi

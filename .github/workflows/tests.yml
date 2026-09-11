@@ -85,15 +85,6 @@ jobs:
           cache: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'pip' || '' }}
           cache-dependency-path: requirements-dev.txt
 
-      # El por que y las dos credenciales posibles viven en la action, no aca:
-      # este paso estaba duplicado en los dos jobs, y una copia que se queda
-      # atras falla en el job que nadie mira.
-      - name: Authenticate to the private core
-        uses: ./.github/actions/authenticate-core
-        with:
-          ssh-key: ${{ secrets.NOSILO_CORE_SSH_KEY }}
-          token: ${{ secrets.NOSILO_CORE_TOKEN }}
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -191,21 +182,6 @@ jobs:
           # crash (2026-08-03) came through.
           cache: ${{ github.event_name == 'pull_request' && 'pip' || '' }}
           cache-dependency-path: pyproject.toml
-
-      # This job installs from pyproject, which is where the private nosilo-core
-      # dependency lives - so it needs the credential exactly as much as the test
-      # job does, even though it never builds an image. Missing it here would
-      # turn "the production import surface is broken" into the reported failure
-      # for what is actually a missing secret.
-      #
-      # That was aspirational until 2026-08-23: nosilo-core lives in the [core]
-      # extra, the install line below did not name it, and so this job needed no
-      # credential at all -- it just could not boot the app. See that step.
-      - name: Authenticate to the private core
-        uses: ./.github/actions/authenticate-core
-        with:
-          ssh-key: ${{ secrets.NOSILO_CORE_SSH_KEY }}
-          token: ${{ secrets.NOSILO_CORE_TOKEN }}
 
       # [core] is NOT decoration. nosilo-core is deliberately out of
       # [project.dependencies] (so `pip install -e .` works with no token), so it

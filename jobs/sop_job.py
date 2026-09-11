@@ -14,8 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-from nosilo_core.guided import verify_guided
 
+from nosilo_core.guided import verify_guided
 from src.export import write_summary_csv
 from src.sop import CostModel, SopReview, run_sop_cycle
 

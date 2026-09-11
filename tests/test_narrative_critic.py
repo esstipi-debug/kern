@@ -29,8 +29,8 @@ extiende el que ya existe a un caso que no estaba cubierto.
 from __future__ import annotations
 
 import pytest
-from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
 
+from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
 from scm_agent.narrative_critic import figures, review_narrative
 from scm_agent.packages import PackageSpec, PackageStep, run_package
 

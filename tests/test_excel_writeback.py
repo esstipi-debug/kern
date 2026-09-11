@@ -8,10 +8,10 @@ safety plane (tiers, signed approval, idempotency, audit) is reused unchanged.
 from __future__ import annotations
 
 import pytest
-from nosilo_core import writeback
-from nosilo_core.writeback_store import SqliteAuditLedger
 from openpyxl import Workbook, load_workbook
 
+from nosilo_core import writeback
+from nosilo_core.writeback_store import SqliteAuditLedger
 from src.connectors.excel import ExcelWorkbookStore, ExcelWritebackError
 
 SHEET = "Stock Bodega"

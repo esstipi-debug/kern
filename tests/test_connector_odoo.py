@@ -11,8 +11,8 @@ transport) is exercised with injected proxies, so its auth + dispatch are covere
 import threading
 
 import pytest
-from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
 
+from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
 from src.connectors import InventorySource, OrderLine, Product
 from src.connectors.odoo import (
     InMemoryOdoo,

@@ -52,8 +52,8 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
 import pandas as pd
-from nosilo_core import writeback
 
+from nosilo_core import writeback
 from src.connectors import (
     COVERAGE_DERIVED,
     COVERAGE_MEASURED,

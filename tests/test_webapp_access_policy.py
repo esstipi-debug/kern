@@ -12,6 +12,7 @@ import ast
 from pathlib import Path
 
 import pytest
+
 from nosilo_core.access import (
     ALLOW,
     DENY,
@@ -22,7 +23,6 @@ from nosilo_core.access import (
     FieldPolicy,
     PolicyEngine,
 )
-
 from webapp import access_policy, principal, security
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

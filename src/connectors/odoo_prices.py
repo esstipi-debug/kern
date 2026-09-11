@@ -23,7 +23,6 @@ safety plane (risk tiers, signed Approval, idempotency, audit, rollback) is
 from __future__ import annotations
 
 from nosilo_core import writeback
-
 from src.connectors import WRITE_APPROVAL_GATED, WriteSurface
 from src.connectors.odoo import InMemoryOdoo, OdooError, OdooRPC, demo_odoo  # noqa: F401  (re-exported)
 

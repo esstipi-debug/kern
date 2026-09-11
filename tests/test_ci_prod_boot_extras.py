@@ -113,85 +113,55 @@ def _extras(fuente: str) -> set[str]:
     return {e.strip() for e in encontrados[0].split(",") if e.strip()}
 
 
-# --- lo que pyproject dice sobre nosilo-core ---------------------------------
+# --- 1. ninguna ruta de instalacion necesita una credencial ------------------
+#
+# El espejo exacto del test que vivia aca hasta el 2026-09-11. Hasta entonces
+# `nosilo_core` era un repo privado y lo que habia que vigilar era lo contrario:
+# que las cuatro rutas NOMBRARAN el extra que lo traia, porque una que lo perdiera
+# desplegaba una imagen que no bindea el puerto. Ahora el core vive en este repo
+# y lo que hay que vigilar es que ninguna ruta vuelva a pedir un secreto: eso
+# costo diez dias sin imagen publicada y dejaba a un partner pidiendo credenciales
+# para correr Kern.
+
+_CREDENCIAL = re.compile(
+    r"NOSILO_CORE_TOKEN|NOSILO_CORE_SSH_KEY|nosilo_token|x-access-token|"
+    r"git\+https://github\.com/esstipi-debug/nosilo-core",
+    re.I,
+)
+
+
+@pytest.mark.parametrize("fuente", list(FUENTES))
+def test_ninguna_ruta_de_instalacion_pide_una_credencial(fuente):
+    """EL TEST QUE IMPORTA, dado vuelta.
+
+    `import webapp.app` recorre jobs/ y scm_agent/, que importan `nosilo_core` en
+    el top level. Eso no cambio: lo que cambio es de donde sale el modulo. Vive en
+    `nosilo_core/` de este mismo repo, asi que cualquier reaparicion de un token,
+    de una deploy key o de la URL git del repo privado en una ruta de instalacion
+    es una regresion al estado que este PR cerro.
+    """
+    encontrado = _CREDENCIAL.findall(FUENTES[fuente]())
+    assert not encontrado, (
+        f"{fuente} volvio a pedir una credencial para el core: {sorted(set(encontrado))}. "
+        "nosilo_core vive en el repo (nosilo_core/); no hay nada que autenticar."
+    )
+
+
+def test_el_core_esta_en_el_repo_y_en_el_wheel():
+    """Que este en el arbol no alcanza: si el wheel no lo lleva, `pip install .`
+    produce un paquete que muere en el primer import. Ese error ya paso una vez
+    con doce subpaquetes de src/ y nadie lo vio, porque ningun deploy instala el
+    wheel -- todos hacen `pip install -e .` y resuelven por PYTHONPATH."""
+    assert (RAIZ / "nosilo_core" / "__init__.py").exists()
+    incluidos = _pyproject()["tool"]["setuptools"]["packages"]["find"]["include"]
+    assert any(patron.startswith("nosilo_core") for patron in incluidos), (
+        f"nosilo_core no esta en packages.find.include ({incluidos}): el wheel "
+        "saldria sin el control plane"
+    )
 
 
 def _pyproject() -> dict:
     return tomllib.loads((RAIZ / "pyproject.toml").read_text(encoding="utf-8"))
-
-
-def _nombre_pedido(requisito: str) -> str:
-    """`nosilo-core @ git+https://...` -> `nosilo-core`."""
-    return re.split(r"[\s@\[<>=!;]", requisito.strip(), maxsplit=1)[0].lower()
-
-
-def _extras_que_traen(paquete: str) -> set[str]:
-    opcionales = _pyproject()["project"].get("optional-dependencies", {})
-    return {
-        nombre
-        for nombre, reqs in opcionales.items()
-        if any(_nombre_pedido(r) == paquete for r in reqs)
-    }
-
-
-def _es_dependencia_dura(paquete: str) -> bool:
-    return any(
-        _nombre_pedido(r) == paquete for r in _pyproject()["project"].get("dependencies", [])
-    )
-
-
-def _falta_el_core(extras_instalados: set[str]) -> bool:
-    """True si esa linea de instalacion NO va a traer nosilo-core."""
-    if _es_dependencia_dura("nosilo-core"):
-        return False
-    return not (_extras_que_traen("nosilo-core") & extras_instalados)
-
-
-# --- 1. el control plane llega a las cuatro rutas ----------------------------
-
-
-def test_pyproject_sigue_teniendo_una_via_para_traer_el_core():
-    """Si nosilo-core deja de ser alcanzable desde pyproject, los tests de abajo
-    pasarian por vacuidad en vez de por estar bien."""
-    assert _es_dependencia_dura("nosilo-core") or _extras_que_traen("nosilo-core"), (
-        "nosilo-core no esta ni en [project.dependencies] ni en ningun extra de "
-        "pyproject.toml: ninguna linea de instalacion puede traerlo"
-    )
-
-
-@pytest.mark.parametrize("fuente", list(FUENTES))
-def test_cada_ruta_de_instalacion_trae_el_core(fuente):
-    """EL TEST QUE IMPORTA.
-
-    `import webapp.app` recorre jobs/ y scm_agent/, que importan nosilo_core en
-    el top level. Sin el extra, ninguna de estas rutas produce algo que arranque:
-    prod-boot no prueba el arranque de produccion sino un ModuleNotFoundError, y
-    las otras tres despliegan una imagen que no bindea el puerto.
-    """
-    extras = _extras(fuente)
-    assert not _falta_el_core(extras), (
-        f"{fuente} instala {sorted(extras)} y ninguno trae nosilo-core "
-        f"(lo traen: {sorted(_extras_que_traen('nosilo-core'))})"
-    )
-
-
-def test_el_chequeo_del_core_muerde_de_verdad():
-    """Un gate solo acredita si la salida cambia entre dos insumos.
-
-    Con los extras reales no falta nada; con los de antes del 2026-08-23 falta
-    justo lo que tiraba el arranque. Sin esta contraprueba, el test de arriba
-    pasaria igual con un `_falta_el_core` que devolviera siempre False.
-    """
-    for fuente in FUENTES:
-        assert not _falta_el_core(_extras(fuente)), fuente
-
-    assert _falta_el_core({"web", "mcp"}), "la linea vieja de prod-boot/railway/docs tenia que faltar"
-    assert _falta_el_core({"web", "mcp", "pricing-intel", "dataquality"}), (
-        "la linea vieja del Dockerfile tenia que faltar"
-    )
-
-
-# --- 2. prod-boot nunca es MAS permisivo que la imagen -----------------------
 
 
 def test_prod_boot_no_instala_mas_extras_que_la_imagen():

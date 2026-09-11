@@ -5,9 +5,9 @@ from datetime import date
 
 import pandas as pd
 import pytest
-from nosilo_core.guided import HANDOFF, HandoffPacket, Residual, as_executed, as_handoff
 
 from jobs import procedure_audit_job
+from nosilo_core.guided import HANDOFF, HandoffPacket, Residual, as_executed, as_handoff
 from src.procedures.models import ProcedureFinding, RegisterAudit
 from src.procedures.register import (
     ALL_CODES,

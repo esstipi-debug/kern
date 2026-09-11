@@ -7,7 +7,6 @@ arrives as an executable handoff, never a bare warning.
 """
 
 from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
-
 from src.alerting import InventoryEvent, alerts_outcome, detect_events
 
 
