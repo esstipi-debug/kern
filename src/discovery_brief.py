@@ -55,7 +55,7 @@ CATALOG: tuple[ParamSpec, ...] = (
         low=0.05, high=0.60,
         moves="El costo de mantener y, con él, el ahorro anual de la portada.",
         defaults=(
-            ("inventory_optimization", 0.25, "jobs/inventory_optimization.py:229"),
+            ("inventory_optimization", 0.25, "jobs/inventory_optimization.py:231"),
             ("inventory_optimization", 0.25, "src/client_profile.py (docstring)"),
             ("webapp", 0.22, "webapp/app.py:576"),
         ),
@@ -69,7 +69,7 @@ CATALOG: tuple[ParamSpec, ...] = (
         moves="El z del stock de seguridad: mueve el inventario objetivo de toda la red.",
         defaults=(
             ("flow_map", 0.95, "jobs/flow_map_job.py:159"),
-            ("inventory_optimization", 0.95, "jobs/inventory_optimization.py:228"),
+            ("inventory_optimization", 0.95, "jobs/inventory_optimization.py:230"),
             ("inventory_optimization", 0.95, "src/client_profile.py (docstring)"),
             ("multi_echelon", 0.95, "jobs/multi_echelon_job.py:31"),
         ),
@@ -83,7 +83,7 @@ CATALOG: tuple[ParamSpec, ...] = (
         defaults=(
             ("batch", 1000.0, "src/batch.py:28"),
             ("hats", 75.0, "src/hats.py:90"),
-            ("inventory_optimization", 75.0, "jobs/inventory_optimization.py:230"),
+            ("inventory_optimization", 75.0, "jobs/inventory_optimization.py:232"),
             ("powerbi_export", 1000.0, "src/powerbi_export.py:56"),
             ("powerbi_export", 1000.0, "src/powerbi_export.py:249"),
             ("simulation", 100.0, "jobs/simulation_job.py:31"),

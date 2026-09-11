@@ -73,6 +73,33 @@ def _lost_value_basis(provenance: str) -> str:
                                              f"({_UNRECOGNIZED.format(provenance)})")
 
 
+def _otif_label(service: of.RealizedService) -> str:
+    """El rotulo del KPI dice contra QUE vara se midio la puntualidad.
+
+    Un OTIF contra la promesa que el cliente declaro es un numero real sobre una vara
+    dicha: se publica, y no puede llegarle con el mismo rotulo que uno que su sistema
+    registro. El rotulo es lo primero que se lee, asi que la distincion va ahi y no en
+    una nota al pie.
+    """
+    if service.otif_basis == of.OTIF_BASIS_CLIENT_PROMISE:
+        return "Realized OTIF (vs your declared promise)"
+    if service.otif_basis == of.OTIF_BASIS_MIXED:
+        return "Realized OTIF (partly vs your declared promise)"
+    return "Realized OTIF (observed)"
+
+
+def _otif_basis_clause(service: of.RealizedService) -> str:
+    """La frase que explica la vara, cuando no fue la del sistema."""
+    if not service.lines_scored_against_declared_promise:
+        return ""
+    total = service.lines_otif_scored or service.lines_scored_against_declared_promise
+    return (
+        f"; {service.lines_scored_against_declared_promise} of {total} scored lines carried no promised "
+        f"date in the source system and were judged against the delivery promise you "
+        f"declared, not against a date your system recorded"
+    )
+
+
 def _realized(report: JobReport) -> of.RealizedService:
     """Portfolio realized service, or a not-measured record when nothing came in.
 
@@ -172,9 +199,9 @@ def build(
         Kpi("Realized fill rate (observed)", pct(service.fill_rate), target="95%+",
             rationale=f"Units delivered over units ordered on real customer orders - "
                       f"what was actually served ({origin})"),
-        Kpi("Realized OTIF (observed)", pct(service.otif), target="95%+",
+        Kpi(_otif_label(service), pct(service.otif), target="95%+",
             rationale=f"Order lines delivered complete AND by the promised date, SCOR "
-                      f"RL.1.1 ({origin})"),
+                      f"RL.1.1 ({origin}{_otif_basis_clause(service)})"),
         Kpi("Cycle service level (model target)", f"{sl * 100:.0f}%", target="95%+",
             rationale="The probability of not stocking out that the POLICY is sized for. "
                       "A target, not an outcome - read it against the realized fill rate above"),
