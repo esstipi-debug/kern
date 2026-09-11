@@ -90,11 +90,11 @@ def _otif_label(service: of.RealizedService) -> str:
 
 def _otif_basis_clause(service: of.RealizedService) -> str:
     """La frase que explica la vara, cuando no fue la del sistema."""
-    if not service.lines_otif_from_promise:
+    if not service.lines_scored_against_declared_promise:
         return ""
-    total = service.lines_otif_scored or service.lines_otif_from_promise
+    total = service.lines_otif_scored or service.lines_scored_against_declared_promise
     return (
-        f"; {service.lines_otif_from_promise} of {total} scored lines carried no promised "
+        f"; {service.lines_scored_against_declared_promise} of {total} scored lines carried no promised "
         f"date in the source system and were judged against the delivery promise you "
         f"declared, not against a date your system recorded"
     )

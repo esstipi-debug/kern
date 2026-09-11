@@ -148,8 +148,17 @@ class RealizedService:
     #: numero real sobre una vara dicha: se puede publicar, y no se puede presentar
     #: como si el ERP la hubiera registrado.
     otif_basis: str | None = None
-    #: Cuantas de ``lines_otif_scored`` usaron la promesa declarada.
-    lines_otif_from_promise: int = 0
+    #: Cuantas de ``lines_otif_scored`` se juzgaron contra la promesa declarada.
+    #:
+    #: El nombre evita a proposito las palabras "otif" y "fill rate": el corrector de
+    #: la bateria (``src/bateria/comprobaciones.py``) audita todo campo cuyo NOMBRE
+    #: suene a metrica de servicio y cuyo valor salga vacio, y su regla de vacio
+    #: incluye el cero -- deliberadamente, porque desde afuera un cero medido y uno
+    #: fabricado son el mismo byte. Este es un contador de PROCEDENCIA, no una
+    #: metrica: un cero aca significa "ninguna linea necesito la promesa", que es la
+    #: respuesta correcta cuando el ERP data todo. Llamarlo por lo que cuenta, y no
+    #: por la metrica que acompania, es lo que lo saca de esa auditoria con razon.
+    lines_scored_against_declared_promise: int = 0
     units_ordered: float | None = None
     units_delivered: float | None = None
     periods_covered: int = 0
@@ -467,7 +476,7 @@ def measure_from_order_lines(
     OTIF del canal que el producto dice medir sale "no medido" para casi todos.
     Lo que NO hace: pisar una fecha del ERP, ni inventar una promesa donde el cliente no
     declaro ninguna, ni contar dias sin servir sobre una fecha derivada. Cada linea asi
-    puntuada se cuenta en ``lines_otif_from_promise``, mueve ``otif_basis`` y aparece en
+    puntuada se cuenta en ``lines_scored_against_declared_promise``, mueve ``otif_basis`` y aparece en
     ``method``, para que un OTIF contra una vara dicha nunca se lea como uno registrado.
 
     Each line may carry ``ordered_qty``, ``delivered_qty``, ``promised_date``,
@@ -521,7 +530,7 @@ def measure_from_order_lines(
         method=method,
         order_lines=scan.lines, lines_scored=scan.scored, lines_priced=scan.priced,
         lines_in_flight=scan.in_flight, lines_otif_scored=scan.otif_scored,
-        otif_basis=basis, lines_otif_from_promise=scan.otif_from_promise,
+        otif_basis=basis, lines_scored_against_declared_promise=scan.otif_from_promise,
         units_ordered=scan.ordered, units_delivered=scan.delivered,
         periods_covered=periods_covered,
     )
@@ -670,10 +679,10 @@ def aggregate(
                 short_value=0.0, otif_hits=0,
                 otif_scored=sum(r.lines_otif_scored for r in records),
                 short_dates=frozenset(),
-                otif_from_promise=sum(r.lines_otif_from_promise for r in records),
+                otif_from_promise=sum(r.lines_scored_against_declared_promise for r in records),
             )
         ),
-        lines_otif_from_promise=sum(r.lines_otif_from_promise for r in records),
+        lines_scored_against_declared_promise=sum(r.lines_scored_against_declared_promise for r in records),
         units_ordered=ordered_total if units else None,
         units_delivered=sum(d for d, _ in units) if units else None,
         periods_covered=max((r.periods_covered for r in records), default=0),

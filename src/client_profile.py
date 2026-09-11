@@ -139,7 +139,7 @@ class ClientProfile:
     #
     # Es `client_reported`, no medido, y el motor lo trata asi: solo se usa donde el
     # sistema no dato la linea, nunca pisa una fecha del ERP, y cada linea puntuada con
-    # ella se cuenta aparte (`RealizedService.lines_otif_from_promise`) para que el
+    # ella se cuenta aparte (`RealizedService.lines_scored_against_declared_promise`) para que el
     # entregable diga contra que vara se juzgo la puntualidad. Es un dict plano de
     # floats, asi que SI viaja en as_params() sin romper la serializacion.
     delivery_promise_days: dict[str, float] | None = None

@@ -11,7 +11,7 @@ Lo que estos tests fijan, y que es todo lo que separa esto de fabricar un numero
 1. La promesa solo rellena donde el sistema NO dato la linea. Jamas pisa una fecha del ERP.
 2. Sin promesa declarada, nada cambia: el OTIF sigue saliendo ``None``.
 3. El fill rate no se toca: no depende de ninguna fecha.
-4. Cada linea asi puntuada se cuenta (``lines_otif_from_promise``), mueve
+4. Cada linea asi puntuada se cuenta (``lines_scored_against_declared_promise``), mueve
    ``otif_basis`` y se nombra en ``method``.
 5. Los dias sin servir NO se cuentan sobre una fecha derivada: esa cuenta necesita una
    fecha que alguien registro.
@@ -74,7 +74,7 @@ def test_sin_promesa_declarada_el_otif_no_es_medible():
 
     assert servicio.otif is None
     assert servicio.otif_basis is None
-    assert servicio.lines_otif_from_promise == 0
+    assert servicio.lines_scored_against_declared_promise == 0
     assert servicio.fill_rate == 1.0  # el fill rate nunca dependio de una fecha
 
 
@@ -88,7 +88,7 @@ def test_con_promesa_declarada_el_otif_se_puede_medir_y_dice_contra_que():
     # 1-sep + 2 habiles = 3-sep. La primera llego el 3 (a tiempo), la segunda el 9.
     assert servicio.otif == 0.5
     assert servicio.otif_basis == OTIF_BASIS_CLIENT_PROMISE
-    assert servicio.lines_otif_from_promise == 2
+    assert servicio.lines_scored_against_declared_promise == 2
     assert servicio.lines_otif_scored == 2
     assert "promesa declarada por el cliente" in servicio.method
     assert "2 dias habiles" in servicio.method
@@ -103,7 +103,7 @@ def test_la_promesa_declarada_nunca_pisa_la_fecha_del_erp():
 
     assert sin_promesa.otif == con_promesa.otif == 1.0  # entrego el 9, prometio el 10
     assert con_promesa.otif_basis == OTIF_BASIS_ERP
-    assert con_promesa.lines_otif_from_promise == 0
+    assert con_promesa.lines_scored_against_declared_promise == 0
     assert "promesa declarada" not in con_promesa.method
 
 
@@ -119,7 +119,7 @@ def test_un_libro_mezclado_lo_declara_como_mezclado():
 
     assert servicio.otif_basis == OTIF_BASIS_MIXED
     assert servicio.lines_otif_scored == 2
-    assert servicio.lines_otif_from_promise == 1
+    assert servicio.lines_scored_against_declared_promise == 1
 
 
 def test_el_fill_rate_es_el_mismo_con_y_sin_promesa():
@@ -166,7 +166,7 @@ def test_cada_canal_se_juzga_contra_su_propia_promesa():
 
     # 1-sep + 2 habiles = 3-sep (tarde); 1-sep + 5 habiles = 8-sep (a tiempo)
     assert servicio.otif == 0.5
-    assert servicio.lines_otif_from_promise == 2
+    assert servicio.lines_scored_against_declared_promise == 2
 
 
 def test_un_canal_sin_promesa_declarada_no_toma_prestada_la_de_otro():
@@ -179,7 +179,7 @@ def test_un_canal_sin_promesa_declarada_no_toma_prestada_la_de_otro():
     )
 
     assert servicio.otif is None
-    assert servicio.lines_otif_from_promise == 0
+    assert servicio.lines_scored_against_declared_promise == 0
 
 
 def test_el_canal_comodin_cubre_lo_que_el_cliente_no_separo():
@@ -300,5 +300,5 @@ def test_el_portafolio_declara_la_vara_cuando_un_solo_sku_la_uso():
     total = aggregate([con_promesa, del_erp])
 
     assert total.otif_basis == OTIF_BASIS_MIXED
-    assert total.lines_otif_from_promise == 1
+    assert total.lines_scored_against_declared_promise == 1
     assert total.lines_otif_scored == 2
