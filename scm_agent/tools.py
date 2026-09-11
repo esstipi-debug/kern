@@ -163,6 +163,11 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         period_freq=payload.get("period"),
         order_lines=payload.get("order_lines"),
         stockout_days=params.get("stockout_days"),
+        # La promesa que el cliente declaro (client_profile.delivery_promise_days,
+        # via as_params). Sin ella, el OTIF de un ERP que no data sus lineas sale
+        # "no medido"; con ella sale medido contra una vara dicha, y el entregable
+        # lo declara. Nunca pisa una fecha del sistema.
+        delivery_promise_days=params.get("delivery_promise_days"),
     )
     summary = (
         f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
