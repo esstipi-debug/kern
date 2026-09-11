@@ -19,6 +19,7 @@ Tres cosas se fijan aca, y las tres son de producto antes que de codigo:
 """
 from __future__ import annotations
 
+import pytest
 from openpyxl import load_workbook
 
 from nosilo_core.guided import ExecutionOption
@@ -373,3 +374,47 @@ def test_el_tope_del_conector_es_el_que_llega_a_la_pagina_y_al_xlsx(tmp_path):
     assert lectura_larga.excerpt in d.to_markdown()
     hoja = load_workbook(d.to_excel(tmp_path / "d.xlsx"))[i18n.label("sheet_readings", "en")]
     assert [tuple(r) for r in hoja.iter_rows(values_only=True)][2][2] == lectura_larga.excerpt
+
+
+def test_el_render_no_puede_recibir_un_extracto_por_encima_del_tope():
+    """El render no recorta, y no hace falta: el valor invalido no se puede construir.
+
+    Este es el agujero que tenia la primera version. `to_markdown()` imprime el extracto
+    tal como llega, asi que `Reading("libro", "PDF p.1", "x" * 5000)` publicaba 5.000
+    caracteres de un PDF ajeno entre comillas en el entregable del cliente. El arreglo NO
+    es un segundo recorte aca -- eso serian dos verdades sobre cuanto se puede copiar --
+    sino que el tipo rechace el valor en el borde donde se construye.
+    """
+    with pytest.raises(ValueError):
+        Reading("vandeput", "PDF p.1", "x" * (MAX_EXCERPT_CHARS + 1))
+
+
+def test_el_render_no_puede_recibir_un_extracto_partido_en_dos_lineas():
+    """Un salto de linea desprende la cola del extracto del libro que la respalda.
+
+    La vinneta es `- **libro** PDF p.83 - "texto"`: con un salto adentro, la segunda
+    mitad sale como un renglon suelto de prosa que ya no cuelga de ningun libro ni de
+    ninguna pagina, y con la comilla de cierre colgando. Tampoco se sanea aca, por la
+    misma razon: el valor no llega a existir.
+    """
+    for campo in range(3):
+        args = ["vandeput", "PDF p.83", "cuerpo"]
+        args[campo] = args[campo] + chr(10) + "cola desprendida"
+        with pytest.raises(ValueError):
+            Reading(*args)
+
+
+def test_lo_que_el_conector_produce_siempre_se_puede_renderizar(tmp_path):
+    """La cara util de la misma invariante: el productor real nunca queda del lado malo.
+
+    Si la validacion del tipo fuera mas estricta que lo que `parse_readings` produce,
+    esto seria un entregable caido en vez de una seccion de procedencia. Se le pasa el
+    peor cable posible y el entregable tiene que salir en los dos formatos.
+    """
+    largo = ("palabra " * 400).strip()
+    crudo = chr(10).join(["1. **vandeput** PDF p.9", "   " + largo,
+                          "   segunda linea del cuerpo", ""])
+    lecturas = lectura.parse_readings(crudo)
+    d = _poblado("en", readings=lecturas)
+    assert lecturas[0].excerpt in d.to_markdown()
+    d.to_excel(tmp_path / "d.xlsx")

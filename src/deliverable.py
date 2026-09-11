@@ -253,6 +253,11 @@ class Deliverable:
         # the coverage block, which closes the document. The excerpt is quoted only
         # when there IS one - the connector allows a passage with a page but no body,
         # and an empty pair of quotes would assert a quotation nobody read.
+        #
+        # One line per passage, and nothing here re-checks that: `Reading.__post_init__`
+        # refuses a line break and an over-cap excerpt at construction time, so the cap
+        # (``lectura.MAX_EXCERPT_CHARS``) stays a single truth instead of being applied
+        # twice with two different answers.
         if self.readings:
             out += [f"## {L('hdr_readings')}", "", L("readings_intro"), ""]
             for r in self.readings:
@@ -341,7 +346,8 @@ class Deliverable:
         # filtered, pasted into a mail) is exactly how a client ends up opening the
         # printed book at the physical page and falsifying the citation themselves.
         # The excerpt is written as it arrives: the copyright cap is the connector's
-        # (``lectura.MAX_EXCERPT_CHARS``) and a second one here would be a second truth.
+        # (``lectura.MAX_EXCERPT_CHARS``), enforced by ``Reading.__post_init__`` when the
+        # value is built - a second cap here would be a second truth about the same text.
         if self.readings:
             r = wb.create_sheet(L("sheet_readings"))
             r.append([L("readings_intro")])

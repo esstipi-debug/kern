@@ -10,7 +10,10 @@ candidatas ni al campo `citations`. El grafo L3 sigue siendo la unica fuente de 
 POR QUE EL TOPE DE LONGITUD VIVE DE ESTE LADO. Los PDF del indice son copias de libgen,
 y lo que Kern renderiza es lo que llega al cliente. Kern hoy no tiene ningun tope de
 longitud sobre lo que renderiza, asi que el tope lo pone este codigo y no el otro repo:
-:data:`MAX_EXCERPT_CHARS`.
+:data:`MAX_EXCERPT_CHARS`. Y lo pone en el TIPO, no solo en el parser: :class:`Reading`
+valida en `__post_init__`, porque el render (``src/deliverable.py``) confia en lo que se
+construyo aca y un tope que solo existe en el camino del parser no es una invariante,
+es una costumbre.
 
 EL CABLE, MEDIDO A MANO, NO ASUMIDO. La tool contesta un STRING de markdown envuelto en
 ``structuredContent = {"result": <str>}``, no filas -- por eso `decode_tool_result` de
@@ -130,6 +133,19 @@ _REEMPLAZOS = {
 }
 
 
+def _es_una_sola_linea(valor: str) -> bool:
+    """True si el texto entra en UNA sola linea.
+
+    Se compara contra ``splitlines`` en vez de buscar un caracter concreto porque ese
+    metodo ya conoce TODOS los cortes que Python -- y los renderers de markdown --
+    tratan como fin de linea (LF, CR, CRLF, tabulador vertical, salto de pagina, NEL,
+    separador de linea Unicode), incluido el que viene pegado al final: un texto
+    terminado en salto se parte igual, y ``splitlines`` lo delata porque devuelve la
+    lista ya sin ese salto.
+    """
+    return not valor or valor.splitlines() == [valor]
+
+
 @dataclass(frozen=True)
 class Reading:
     """Un pasaje de libro como PROCEDENCIA, no como cita gateada.
@@ -138,11 +154,59 @@ class Reading:
     convierte en "p.83" pelado: es la pagina FISICA del archivo PDF y el folio impreso
     del libro difiere por obra (Vandeput: 26 paginas de corrimiento). Una cita que el
     cliente falsea al abrir el libro impreso es peor que no citar.
+
+    POR QUE VALIDA EN VEZ DE CONFIAR. Este tipo es publico y lo renderiza
+    ``src/deliverable.py``, que es la ultima milla antes de que texto de un PDF ajeno
+    llegue al cliente, y que NO aplica ningun tope propio -- a proposito: un segundo
+    recorte del lado del render seria una segunda verdad sobre cuanto se puede copiar.
+    Entonces la unica verdad, :data:`MAX_EXCERPT_CHARS`, se hace cumplir aca, en el
+    borde donde el valor se construye. Hoy el unico productor es :func:`parse_readings`,
+    que ya corta y sanea, asi que esto no cambia ninguna conducta viva: fija la
+    invariante para el proximo productor. Sin esto,
+    ``Reading("libro", "PDF p.1", "x" * 5000)`` publica 5.000 caracteres entre comillas.
+
+    Las tres reglas son las que :func:`parse_readings` ya garantiza, y cada una tapa una
+    forma distinta de mentir:
+
+    * **una sola linea** en los tres campos -- un salto parte la vinneta del markdown y
+      deja prosa suelta que ya no cuelga de ningun libro ni de ninguna pagina, con la
+      comilla de cierre colgando en otro renglon;
+    * **libro y pagina no vacios** -- media procedencia no se inventa (el extracto SI es
+      opcional: libro + pagina ya es procedencia completa, el fragmento es el extra);
+    * **los dos topes de copyright** -- el del extracto y el del slug, que son los que
+      evitan publicar texto ajeno largo como cita o como nombre de libro.
+
+    Levanta ``ValueError``. No rompe el "nunca levanta" del modulo: lo que se construye
+    del cable pasa por :func:`parse_readings`, que corta, sanea y descarta antes de
+    llegar hasta aca.
     """
 
     source: str
     page_label: str
     excerpt: str
+
+    def __post_init__(self) -> None:
+        for campo, valor in (("source", self.source), ("page_label", self.page_label),
+                             ("excerpt", self.excerpt)):
+            if not isinstance(valor, str):
+                raise ValueError(f"Reading.{campo} tiene que ser str, llego {type(valor).__name__}")
+            if not _es_una_sola_linea(valor):
+                raise ValueError(
+                    f"Reading.{campo} trae un salto de linea: una entrada de procedencia "
+                    "es UNA linea, o el texto se desprende del libro que lo respalda"
+                )
+        if not self.source.strip() or not self.page_label.strip():
+            raise ValueError("Reading sin libro o sin pagina: media procedencia no se cita")
+        if len(self.excerpt) > MAX_EXCERPT_CHARS:
+            raise ValueError(
+                f"Reading.excerpt mide {len(self.excerpt)} y el tope de copyright es "
+                f"{MAX_EXCERPT_CHARS}: hay que cortarlo antes de construirlo (ver `_cortar`)"
+            )
+        if len(self.source) > MAX_SOURCE_CHARS:
+            raise ValueError(
+                f"Reading.source mide {len(self.source)} y el tope es {MAX_SOURCE_CHARS}: "
+                f"eso no es el nombre de un libro, es texto ajeno publicado como si lo fuera"
+            )
 
 
 @dataclass(frozen=True)
