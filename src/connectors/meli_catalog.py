@@ -38,6 +38,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
+from src.connectors import WRITE_NONE, WriteSurface
+
 try:
     import httpx  # noqa: F401  -- availability only; the caller builds the client
 
@@ -440,6 +442,18 @@ def demo_meli_catalog() -> InMemoryMeliCatalog:
         domain_categories={"auriculares inalambricos demo": "MLA1055"},
     )
 
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_NONE,
+    means=(
+        "solo lectura del catalogo oficial de MercadoLibre (/products/search, "
+        "/categories). La mitad de ESCRITURA de preventa (publicar o modificar una "
+        "publicacion) no vive aca: los cambios de precio van por meli_prices.py, con "
+        "dry-run y aprobacion firmada. Buscar un producto en el catalogo ajeno no "
+        "cambia nada en ningun sistema."
+    ),
+)
 
 __all__ = [
     "CATALOG_SITES",
