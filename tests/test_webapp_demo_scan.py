@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -263,22 +264,62 @@ def test_demo_scan_is_rate_limited(isolated_stores, monkeypatch):
     assert blocked.status_code == 429
 
 
+#: Cuanto esperar a un Python nuevo que importa TODA la app (FastAPI + pandas +
+#: el motor + el registro de 53 tools). En una maquina ociosa ese arranque tarda
+#: ~4,5 s medidos; el tope no cubre el caso normal sino la cola de una suite de
+#: 7.400 tests con cobertura, que es donde estos dos corren.
+#:
+#: Estaba en 60 s y los dos tests murieron por ``subprocess.TimeoutExpired`` en
+#: una corrida completa -- mientras ``tests/test_pricing_intel_boot_safety.py``,
+#: que levanta el MISMO subproceso (importa ``webapp.app`` con el mismo
+#: ``{**os.environ}``) en la MISMA corrida, pasaba. Su tope es 120 s. Asi que el
+#: numero no se elige aca: se copia del test que ya habia aprendido la leccion.
+_BOOT_TIMEOUT_S = 120
+
+
+def _resolve_en_proceso_nuevo(nombre: str, variable: str, valor: str) -> str:
+    """El path que ``webapp.app`` resuelve para ``nombre`` con ``variable=valor``.
+
+    Va en un subproceso y no en este proceso porque los dos paths se resuelven UNA
+    vez, al importar el modulo: la fixture ``isolated_stores`` parchea el atributo
+    ya resuelto y por eso NO prueba la caneria de la variable de entorno, que es
+    justo de lo que depende que el almacen caiga en el volumen de Fly.
+    """
+    env = {**os.environ, variable: valor, "PYTHONPATH": "."}
+    inicio = time.monotonic()
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", f"from webapp.app import {nombre}; print({nombre})"],
+            cwd=str(appmod._REPO_ROOT),
+            env=env,
+            capture_output=True, text=True, timeout=_BOOT_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # Sin esto el resumen de pytest dice "subprocess.TimeoutExpired: Command
+        # [...]" truncado a "su...", que no distingue "la app se colgo al
+        # arrancar" de "la maquina estaba saturada". El mensaje lo dice.
+        raise AssertionError(
+            f"importar webapp.app en un proceso nuevo no termino en "
+            f"{_BOOT_TIMEOUT_S} s (esperado ~4,5 s en una maquina ociosa). "
+            f"Si falla tambien aislado, la app gano un import que bloquea al "
+            f"arrancar; si solo falla dentro de la suite completa, la maquina "
+            f"no daba abasto al final de la corrida."
+        ) from exc
+    assert result.returncode == 0, result.stderr
+    assert time.monotonic() - inicio < _BOOT_TIMEOUT_S
+    return result.stdout.strip().replace("\\", "/")
+
+
 def test_lead_reports_dir_env_var_is_honored():
     # LEAD_REPORTS_DIR is resolved once at import time from
     # LINCHPIN_LEAD_REPORTS_DIR -- the isolated_stores fixture bypasses that by
     # monkeypatching the attribute directly, so exercise the real env plumbing
     # in a fresh subprocess (the operator checklist's Fly-volume persistence
     # depends on exactly this).
-    code = "from webapp.app import LEAD_REPORTS_DIR; print(LEAD_REPORTS_DIR)"
-    env = {**os.environ, "LINCHPIN_LEAD_REPORTS_DIR": "/tmp/custom-leads-dir", "PYTHONPATH": "."}
-    result = subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=str(appmod._REPO_ROOT),
-        env=env,
-        capture_output=True, text=True, timeout=60,
+    resuelto = _resolve_en_proceso_nuevo(
+        "LEAD_REPORTS_DIR", "LINCHPIN_LEAD_REPORTS_DIR", "/tmp/custom-leads-dir"
     )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip().replace("\\", "/").endswith("/tmp/custom-leads-dir")
+    assert resuelto.endswith("/tmp/custom-leads-dir")
 
 
 def test_leads_dir_env_var_is_honored():
@@ -286,13 +327,7 @@ def test_leads_dir_env_var_is_honored():
     # override y por tanto el ledger de leads -- que es PII y es la unica prueba
     # de que alguien uso el embudo -- vivia en el filesystem efimero de la
     # Machine y se perdia en cada deploy, sin forma de apuntarlo al volumen.
-    code = "from webapp.app import LEADS_DIR; print(LEADS_DIR)"
-    env = {**os.environ, "LINCHPIN_LEADS_DIR": "/tmp/custom-leads-ledger", "PYTHONPATH": "."}
-    result = subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=str(appmod._REPO_ROOT),
-        env=env,
-        capture_output=True, text=True, timeout=60,
+    resuelto = _resolve_en_proceso_nuevo(
+        "LEADS_DIR", "LINCHPIN_LEADS_DIR", "/tmp/custom-leads-ledger"
     )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip().replace("\\", "/").endswith("/tmp/custom-leads-ledger")
+    assert resuelto.endswith("/tmp/custom-leads-ledger")
