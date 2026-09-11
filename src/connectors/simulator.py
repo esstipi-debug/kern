@@ -18,12 +18,14 @@ import pandas as pd
 from nosilo_core import writeback
 from src.connectors import (
     COVERAGE_MEASURED,
+    WRITE_APPROVAL_GATED,
     FieldCoverage,
     InventoryLevel,
     Order,
     OrderLine,
     Product,
     ServiceCoverage,
+    WriteSurface,
 )
 
 _TARGET = "simulated-store"
@@ -186,5 +188,17 @@ SERVICE_COVERAGE = ServiceCoverage(
         COVERAGE_MEASURED,
         "OrderLine.delivered_date",
         "the promise, plus two days on part of the lines so the demo is not perfect",
+    ),
+)
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_APPROVAL_GATED,
+    objects=(
+        'reorder points del almacen simulado',
+    ),
+    means=(
+        'banco de pruebas sin credenciales: escribe reorder points en memoria por el mismo camino de dry-run + aprobacion + rollback que un backend real, para que el circuito se pueda demostrar sin un sistema vivo.'
     ),
 )

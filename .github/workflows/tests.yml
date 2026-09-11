@@ -48,21 +48,26 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
-      # Full matrix on `main`, on the nightly and on a manual dispatch; a single
-      # version on pull requests. This is the biggest line on the bill: one run
-      # costs 66 job-minutes (24 + 21 + 19 for the three legs, plus prod-boot),
-      # GitHub charges the SUM and not the wall clock, and nine runs in a day --
-      # 2026-08-27, measured -- burn a Free-tier month in three days.
+      # Full matrix ONLY on the nightly and on a manual dispatch; a single version
+      # on pull requests AND on push to `main`. Push-to-main used to also run the
+      # full 3-leg matrix, on the theory that a merge deserved the strongest
+      # signal immediately -- but with the Free-tier Actions budget capped at $0
+      # (2026-09-11), that merge-time matrix was the single biggest line on the
+      # bill: ~20 full-matrix runs in 6 days, ~1260 of the ~1930 job-minutes spent.
+      # Deploy to Fly is a separate manual `flyctl deploy`, never automatic on
+      # merge, so a 3.11- or 3.13-only break introduced by a merge is still caught
+      # by the next nightly run (worst case ~24h later) before it can reach
+      # production -- the same "an email within 24h beats never" tradeoff this
+      # workflow already makes for the nightly's unconstrained-resolve canary.
       #
       # 3.12 is not an arbitrary pick: it is what the Dockerfile runs, so it is
       # the only version any deployment of this repo has ever executed. Nothing
       # installs this package anywhere else -- it is private and unpublished (the
       # `kern` on PyPI belongs to somebody else). `requires-python = ">=3.11"`
-      # stays as declared and stays TESTED, just on merge and overnight instead of
-      # on every push to every branch: a 3.11- or 3.13-only break is caught hours
-      # later rather than never.
+      # stays as declared and stays TESTED, just overnight instead of on every
+      # push to every branch.
       matrix:
-        python-version: ${{ fromJSON(github.event_name == 'pull_request' && '["3.12"]' || '["3.11", "3.12", "3.13"]') }}
+        python-version: ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'push') && '["3.12"]' || '["3.11", "3.12", "3.13"]') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -71,14 +76,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          # Wheel-download cache, ON PULL REQUESTS ONLY. It does not pin anything:
-          # pip still resolves the declared ranges against PyPI on every run and
-          # only skips re-downloading a wheel it already has, so the nightly's
-          # unconstrained-resolve canary (see the `schedule` comment above) is not
-          # weakened by it. Restricted to PRs anyway, so the run that IS the canary
-          # keeps behaving byte-for-byte as it did when that rule was written --
-          # the conservative side of a deliberate decision somebody else made.
-          cache: ${{ github.event_name == 'pull_request' && 'pip' || '' }}
+          # Wheel-download cache on PRs and push-to-main, the two single-version
+          # triggers -- NOT on the nightly/dispatch full matrix. It does not pin
+          # anything: pip still resolves the declared ranges against PyPI on every
+          # run and only skips re-downloading a wheel it already has, so the
+          # nightly's unconstrained-resolve canary (see the `schedule` comment
+          # above) stays uncached and keeps behaving byte-for-byte.
+          cache: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'pip' || '' }}
           cache-dependency-path: requirements-dev.txt
 
       - name: Install dependencies

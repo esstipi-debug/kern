@@ -119,3 +119,67 @@ def test_cli_without_demo_or_csv_exits_2():
     cli = importlib.import_module("examples.run_meli_presale")
     rc = cli.main([])
     assert rc == 2
+
+
+# -- la confianza del deck se deriva, no se declara -----------------------------
+
+
+def _reporte(*, demo: bool, n_queries: int, n_no_match: int):
+    from jobs.meli_presale_job import MeliPresaleReport
+
+    return MeliPresaleReport(
+        scan=None, n_queries=n_queries, n_presale_ready=0, n_catalog_only=0,
+        n_already_listed=0, n_no_match=n_no_match, summary="", demo=demo,
+    )
+
+
+def test_un_deck_de_demostracion_no_puede_sonar_igual_de_seguro_que_uno_real():
+    """El residual ya decia "DEMO -- numbers are fixtures" en palabras, y el numero
+    de al lado decia 0,8 en los dos casos. Un lector que mira el numero primero --
+    que es como se lee un deck -- no tenia como distinguirlos."""
+    from jobs.meli_presale_job import deck_confidence
+
+    vivo = deck_confidence(_reporte(demo=False, n_queries=10, n_no_match=0))
+    demo = deck_confidence(_reporte(demo=True, n_queries=10, n_no_match=0))
+
+    assert demo < vivo
+    assert vivo == 0.8
+
+
+def test_las_consultas_sin_match_bajan_la_confianza_en_proporcion():
+    """El escaneo cubrio menos de lo que el cliente pidio; la conclusion descansa
+    sobre esa fraccion y el numero tiene que moverse con ella."""
+    from jobs.meli_presale_job import deck_confidence
+
+    todo = deck_confidence(_reporte(demo=False, n_queries=10, n_no_match=0))
+    mitad = deck_confidence(_reporte(demo=False, n_queries=10, n_no_match=5))
+    nada = deck_confidence(_reporte(demo=False, n_queries=10, n_no_match=10))
+
+    assert todo > mitad > nada
+
+
+def test_la_confianza_nunca_baja_del_piso_del_contrato():
+    """El piso vive duplicado en el job (no importado) porque este camino no puede
+    tocar nosilo_core; el test si puede, asi que compara los dos y falla si divergen."""
+    from jobs.meli_presale_job import _CONFIDENCE_FLOOR, deck_confidence
+    from nosilo_core.guided import CONFIDENCE_FLOOR
+
+    assert _CONFIDENCE_FLOOR == CONFIDENCE_FLOOR, (
+        "el piso del job se separo del contrato: nosilo_core dice "
+        f"{CONFIDENCE_FLOOR}, el job dice {_CONFIDENCE_FLOOR}"
+    )
+    assert deck_confidence(_reporte(demo=True, n_queries=10, n_no_match=10)) >= CONFIDENCE_FLOOR
+
+
+def test_un_escaneo_sin_consultas_no_divide_por_cero():
+    from jobs.meli_presale_job import deck_confidence
+
+    assert deck_confidence(_reporte(demo=False, n_queries=0, n_no_match=0)) == 0.8
+
+
+def test_quien_pasa_una_confianza_explicita_sigue_mandando():
+    from jobs.meli_presale_job import build_deliverable
+
+    deck = build_deliverable(_reporte(demo=True, n_queries=1, n_no_match=0), confidence=0.99)
+
+    assert deck.confidence == 0.99
