@@ -330,12 +330,16 @@ def test_ground_citations_detailed_disambiguates_a_bare_id_collision(tmp_path: P
     GroundedCitation.node_id must identify the EXACT node that was ranked -
     not a bare slug that citation_gate's re-resolution could later map to a
     different node than the one actually scored."""
+    # Every node carries a source_file: a citation must name where it comes from
+    # (see _is_citable), and 3043 of the 3044 committed books nodes do.
     g = _write_graph(tmp_path / "b.json", [
-        {"id": "anchor", "label": "Anchor Widget Topic", "norm_label": "anchor widget topic"},
+        {"id": "anchor", "label": "Anchor Widget Topic", "norm_label": "anchor widget topic",
+         "source_file": "anchor-book.pdf"},
         {"id": "vendorx::widget", "label": "On-Topic Widget", "norm_label": "widget topic",
-         "rationale": "genuinely connected to the anchor"},
+         "rationale": "genuinely connected to the anchor", "source_file": "vendorx-book.pdf"},
         {"id": "knowledge::widget", "label": "Isolated Widget", "norm_label": "widget",
-         "rationale": "an unrelated decoy sharing the same bare id, no edge to anything"},
+         "rationale": "an unrelated decoy sharing the same bare id, no edge to anything",
+         "source_file": "decoy-book.pdf"},
     ])
     data = json.loads(g.read_text(encoding="utf-8"))
     data["links"] = [{"source": "anchor", "target": "vendorx::widget", "relation": "related"}]
@@ -414,6 +418,69 @@ def test_internal_sources_stay_searchable(kb: KnowledgeBase) -> None:
     assert any(_is_internal_source(h) for h in hits), (
         "the Atlas should still be reachable via search; only citations are filtered"
     )
+
+
+# -- a citation must name where it comes from ---------------------------------
+
+
+def test_nodes_without_a_source_file_are_never_cited(tmp_path: Path) -> None:
+    """A node that cannot say where it comes from is not a citation.
+
+    ``ground_citations_detailed`` renders each hit as ``f"{label} - {source}{loc}"``,
+    so a node whose ``source_file`` is missing ships to the client as a citation
+    whose provenance reads literally ``None``. The invariant under test is the
+    *field*, not any one offending id: whatever the node is, if it cannot name a
+    source it is dropped from the ranking.
+    """
+    g = _write_graph(tmp_path / "b.json", [
+        {"id": "note::reminder", "label": "Reminder: evaluate embedding models",
+         "norm_label": "reminder evaluate embedding models", "rationale": ""},
+        {"id": "book::embeddings", "label": "Evaluating Embedding Models",
+         "norm_label": "evaluating embedding models", "rationale": "",
+         "source_file": "retrieval-handbook.pdf", "source_location": "p. 10"},
+    ])
+    kb = KnowledgeBase(books_path=g, code_path=tmp_path / "none.json")
+
+    cites = kb.ground_citations_detailed(("reminder", "evaluate", "embedding"), "", limit=5)
+
+    assert cites, "the properly sourced node must still be cited"
+    rendered = "; ".join(c.text for c in cites)
+    assert all(c.node_id != "note::reminder" for c in cites), (
+        "a source-less node reached a citation: " + rendered
+    )
+    assert not any("None" in c.text for c in cites)
+
+
+def test_source_less_nodes_in_the_books_graph_are_never_cited(kb: KnowledgeBase) -> None:
+    """Same invariant, against the committed product graph: query every source-less
+    node by its own label - the friendliest possible query for it - and assert none
+    comes back as a citation.
+
+    Regression guard for the real defect found on 2026-09-11: the books graph carried
+    one node without ``source_file`` (``reminder::evaluar_embeddings_con_modelos_...``,
+    an internal Kern note, not a source), and it shipped the citation
+    ``"Reminder: Evaluar embeddings con modelos mas actualizados: ... - None"``.
+    ``filter_citations`` never caught it because that gate is topological (node id +
+    hops), and the path the web/MCP/CLI actually use - ``Orchestrator._ground`` -
+    calls ``ground_citations`` with no gate at all.
+    """
+    nodes = json.loads(BOOKS.read_text(encoding="utf-8"))["nodes"]
+    source_less = [n for n in nodes if not (n.get("source_file") or "").strip()]
+
+    offenders: list[str] = []
+    for node in source_less:
+        keywords = tuple(str(node.get("label", "")).split())
+        for cite in kb.ground_citations_detailed(keywords, "", limit=8):
+            if cite.node_id == node["id"]:
+                offenders.append(f"{node['id']}: {cite.text}")
+    assert not offenders, "source-less nodes leaked into citations: " + "; ".join(offenders)
+
+
+def test_reported_embeddings_query_grounds_nothing_without_a_source(kb: KnowledgeBase) -> None:
+    """The exact reproduction from the defect report: this query used to return a
+    single citation ending in ``- None``."""
+    cites = kb.ground_citations(["embeddings", "modelos", "evaluar"], "", limit=5)
+    assert not [c for c in cites if c.rstrip().endswith("None")], cites
 
 
 # -- implements() must cite implementations, not tests / demos / one-off scripts --
