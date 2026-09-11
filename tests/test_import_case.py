@@ -29,7 +29,7 @@ def _packing(**fields):
 def _bl(**fields):
     base = {
         "bl_no": "BL1",
-        "container_no": "MSKU1234567",
+        "container_no": "MSCU5285725",
         "vessel_voyage": "V1",
         "pol": "CNSHA",
         "pod": "CLVAP",
@@ -190,3 +190,70 @@ def test_value_mismatch_still_names_the_plain_reason():
     qty = next(c for c in case.conflicts if c.field == "total_qty")
     assert "ambiguous" not in qty.reason
     assert qty.reason
+
+
+# --- self-verifying identifiers ---------------------------------------------
+# A container number carries its own check digit, so a typo is detectable from
+# the value alone - no second document needed. Until this landed, both fixtures
+# in this repo carried MSKU1234567, which fails that check: nobody had ever
+# looked. See src/doc_identifiers.py for why the arithmetic is hand-rolled.
+
+
+def test_a_container_number_that_fails_its_check_digit_is_contested():
+    case = merge_case([_invoice(), _packing(), _bl(container_no="MSKU1234567")])
+
+    conflict = next(c for c in case.conflicts if c.field == "container_no")
+    assert "check digit" in conflict.reason
+    assert "bill_of_lading" in conflict.reason
+    assert next(r for r in case.pack if r.canonical == "container_no").contested is True
+    assert case.unified["container_no"] == "MSKU1234567"  # still shown, just flagged
+
+
+def test_a_valid_container_number_raises_nothing():
+    case = merge_case([_invoice(), _packing(), _bl()])
+
+    assert not any(c.field == "container_no" for c in case.conflicts)
+
+
+def test_an_air_waybill_check_digit_is_verified_too():
+    case = merge_case([
+        _invoice(),
+        _packing(),
+        DocumentSlice("air_waybill", {"awb_no": "020-12345670"}, "awb"),
+    ])
+
+    conflict = next(c for c in case.conflicts if c.field == "awb_no")
+    assert "IATA check digit" in conflict.reason
+
+
+def test_a_valid_air_waybill_raises_nothing():
+    case = merge_case([
+        _invoice(),
+        _packing(),
+        DocumentSlice("air_waybill", {"awb_no": "020-12345675"}, "awb"),
+    ])
+
+    assert not any(c.field == "awb_no" for c in case.conflicts)
+
+
+def test_an_identifier_fault_and_a_mismatch_travel_in_ONE_conflict():
+    # Two different container numbers, one of them also malformed: the broker
+    # gets a single row to resolve, carrying both reasons.
+    case = merge_case([
+        _invoice(),
+        _packing(container_no="MSKU1234567"),
+        _bl(),  # MSCU5285725, valid
+    ])
+
+    matching = [c for c in case.conflicts if c.field == "container_no"]
+    assert len(matching) == 1
+    assert "different values" in matching[0].reason
+    assert "check digit" in matching[0].reason
+
+
+def test_identifiers_without_a_standard_are_left_alone():
+    # A B/L number's format belongs to the carrier; there is nothing to verify,
+    # so an odd-looking one must not manufacture a conflict.
+    case = merge_case([_invoice(), _packing(), _bl(bl_no="ZZ//9-QQ")])
+
+    assert not any(c.field == "bl_no" for c in case.conflicts)

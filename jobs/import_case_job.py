@@ -284,7 +284,11 @@ def build_deck(
 
     kpis = (
         Kpi("Documents ingested", str(report.n_documents), rationale="Extracted slices in the case"),
-        Kpi("Conflicts", str(report.n_conflicts), target="0", rationale="Same fact, different documents"),
+        Kpi(
+            "Conflicts", str(report.n_conflicts), target="0",
+            rationale="Facts the documents cannot settle: disagreement, ambiguous "
+            "number format, or an identifier that fails its own check digit",
+        ),
         Kpi("Missing items", str(report.n_missing), target="0", rationale="Required docs/fields still empty"),
         Kpi(
             "Copy-reduction (est.)",

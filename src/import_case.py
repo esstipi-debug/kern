@@ -2,8 +2,11 @@
 
 Unifies fields extracted from logistics documents (invoice, packing list, B/L, ...)
 into a single ``ImportCase``. Conflicts stay first-class — the engine never silently
-picks a winner on quantity, weight, value, Incoterm, or origin. Chile import is the
-first regime: a DIN field pack is a *projection* of the case, not a filed declaration.
+picks a winner on quantity, weight, value, Incoterm, or origin. A conflict has three
+sources: documents that disagree, a number whose decimal convention the text cannot
+settle, and an identifier that fails its own check digit (the last one needs no
+second document — see ``src/doc_identifiers.py``). Chile import is the first regime:
+a DIN field pack is a *projection* of the case, not a filed declaration.
 
 Pure functions. No I/O, no LLM. Reference: ICC Incoterms 2020; Ellram TCO; WCO
 idea of one data set, many views. Filing remains a licensed-broker HANDOFF.
@@ -15,6 +18,7 @@ import math
 import re
 from dataclasses import dataclass
 
+from src.doc_identifiers import identifier_fault
 from src.voice.doc_schemas import DOC_TYPES, get_doc_schema, required_fields
 
 # Canonical keys that should agree across documents. Values are source-field names
@@ -75,6 +79,7 @@ REASON_AMBIGUOUS = (
     "number format is ambiguous: a decimal comma cannot be told from a thousands "
     "separator ('1.234' is 1234 in Chile, 1.234 in the US) - confirm with the issuer"
 )
+REASON_BAD_IDENTIFIER = "identifier fails its own standard:"
 
 
 @dataclass(frozen=True)
@@ -287,11 +292,24 @@ def merge_case(
             continue
         unified[key] = raw_by_doc[0][1]
         sources[key] = tuple(d for d, _ in raw_by_doc)
+        reasons: list[str] = []
         if len(tokens) > 1:
-            conflicts.append(Conflict(key, tuple(raw_by_doc), REASON_MISMATCH))
+            reasons.append(REASON_MISMATCH)
         elif any(t.startswith(_AMBIGUOUS) for t in tokens):
             # One text, two legal readings: agreeing here would be an accident.
-            conflicts.append(Conflict(key, tuple(raw_by_doc), REASON_AMBIGUOUS))
+            reasons.append(REASON_AMBIGUOUS)
+        faults: dict[str, list[str]] = {}
+        for doc_type, raw in raw_by_doc:
+            fault = identifier_fault(key, raw)
+            if fault is not None:
+                faults.setdefault(fault, []).append(doc_type)
+        if faults:
+            # Detectable from one document alone - no second opinion needed.
+            reasons.append(REASON_BAD_IDENTIFIER + " " + "; ".join(
+                f"{fault} [{', '.join(docs)}]" for fault, docs in faults.items()
+            ))
+        if reasons:
+            conflicts.append(Conflict(key, tuple(raw_by_doc), " | ".join(reasons)))
 
     pack = tuple(
         PackRow(
