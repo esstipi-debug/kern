@@ -1,4 +1,9 @@
-"""Unify extracted import documents into one case and a Chile field pack.
+"""Unify import documents into one case and a Chile field pack.
+
+The folder may hold PDFs named after their document type, per-type JSON slices,
+or a documents.json bundle. Reading a PDF needs the ``doc-reading`` extra
+(``pip install -e ".[doc-reading]"``) and a document model - without an
+ANTHROPIC_API_KEY the PDF is reported as unread rather than silently skipped.
 
     python examples/run_import_case.py tests/fixtures/import_case --out output/import_case
 """
@@ -12,6 +17,8 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+from nosilo_core import llm  # noqa: E402
 
 from jobs import import_case_job  # noqa: E402
 
@@ -29,7 +36,8 @@ def main(argv: list[str] | None = None) -> int:
     params = {}
     if args.regime:
         params["regime"] = args.regime
-    payload = import_case_job.prepare(args.data, params)
+    provider = llm.get_provider()
+    payload = import_case_job.prepare(args.data, params, provider=provider)
     report = import_case_job.run(payload, params)
     issues = import_case_job.verify(report)
     if issues:

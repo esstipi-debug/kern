@@ -1,5 +1,5 @@
 # Development dependencies (tests, coverage, linting, web UI test client).
-# Canonical source is pyproject.toml — equivalent to: pip install -e ".[dev,web,mcp,dataquality,state,tower,pricing-intel,matching,elasticity,repricing,seo]"
+# Canonical source is pyproject.toml — equivalent to: pip install -e ".[dev,web,mcp,dataquality,doc-reading,state,tower,pricing-intel,matching,elasticity,repricing,seo]"
 # Kept for `pip install -r requirements-dev.txt` workflows (incl. CI's tests.yml).
 -r requirements.txt
 pytest>=7.0
@@ -23,6 +23,8 @@ mcp>=1.0,<2
 # data-quality dedup + matching primitives (src/sku_dedup.py, pricing_intel/match/) — mirrors pyproject [dataquality]
 rapidfuzz>=3.0
 python-stdnum>=1.19
+# doc-reading extra: PDF -> text for src/voice/doc_text.py
+pdfplumber>=0.11.10
 # src/state snapshot store (F0, PR-1) — mirrors pyproject [state]
 pandera>=0.32
 pyarrow>=15

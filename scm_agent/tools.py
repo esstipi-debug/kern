@@ -670,11 +670,14 @@ def _landed_cost_run(payload: object, params: dict) -> Produced:
 def _import_case_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
     if not request.data_path:
         return Prepared(status="needs_data", messages=[
-            "an extracted-document folder or documents.json is required "
-            "(commercial_invoice / packing_list / bill_of_lading JSON slices)",
+            "a folder of shipment documents is required: PDFs named after their "
+            "document type (commercial_invoice.pdf, packing_list.pdf, "
+            "bill_of_lading.pdf), per-type JSON slices, or a documents.json bundle",
         ])
     try:
-        payload = import_case_job.prepare(request.data_path, request.params)
+        payload = import_case_job.prepare(
+            request.data_path, request.params, provider=provider,
+        )
     except (ValueError, FileNotFoundError, OSError) as exc:
         return Prepared(status="needs_data", messages=[str(exc)])
     return Prepared(status="ok", payload=payload)

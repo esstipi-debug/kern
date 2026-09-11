@@ -261,12 +261,21 @@ def merge_case(
     slices: list[DocumentSlice] | tuple[DocumentSlice, ...],
     *,
     regime: str = REGIME_CHILE_IMPORT,
+    unread: tuple[tuple[str, str], ...] = (),
 ) -> ImportCase:
-    """Merge document slices into one case. Conflicts are listed, never auto-resolved."""
+    """Merge document slices into one case. Conflicts are listed, never auto-resolved.
+
+    ``unread`` carries ``(file_name, reason)`` for documents the caller HAD but
+    could not turn into fields - an unplaceable file name, a scan, no model. They
+    become missing documents: a file nobody read is a hole in the case, and
+    leaving it out would let the pack look complete.
+    """
     docs = tuple(slices)
     types_present = {d.doc_type for d in docs}
 
-    missing: list[MissingItem] = []
+    missing: list[MissingItem] = [
+        MissingItem("document", name, reason) for name, reason in unread
+    ]
     for sl in docs:
         missing.extend(_required_gaps(sl))
     if regime == REGIME_CHILE_IMPORT:

@@ -63,6 +63,18 @@ dataquality = [
     "rapidfuzz>=3.0",
     "python-stdnum>=1.19",
 ]
+# src/voice/doc_text.py -- PDF -> text with layout preserved, which is what
+# src/voice/doc_reader.py::read_document(document_text=...) consumes. pdfplumber
+# is the only candidate that returns a laid-out STRING *and* tables while
+# shipping as three pure wheels (pdfminer.six, Pillow, pypdfium2) with no
+# apt-get binary: tesseract/ghostscript/poppler/java were all rejected for that
+# reason, and PyMuPDF is AGPL (Kern is SaaS). Scanned PDFs are deliberately NOT
+# covered -- doc_text raises instead of returning "" so a scan never becomes a
+# silently empty case. OCR (RapidOCR, Apache-2.0 code and models) waits for a
+# real scanned document to justify its ~85 MB.
+doc-reading = [
+    "pdfplumber>=0.11.10",
+]
 mcdm = [
     "pymcdm>=1.3",
 ]

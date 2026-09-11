@@ -1,14 +1,21 @@
-"""Import-case job: a folder (or JSON bundle) of extracted docs -> unified pack.
+"""Import-case job: a folder of documents (PDF and/or JSON) -> unified pack.
 
-Reads structured extractions (JSON), not PDFs — the voice doc-reader can fill
-those JSON files first. Pandas is not used: the input is a case graph, not a
-demand table. QA checks the report's internal consistency, never the
-completeness of the client's paperwork: an incomplete case IS the deliverable.
+Two ways in. A JSON slice is fields somebody already extracted. A **PDF** goes
+through ``src/voice/doc_text.py`` (text with layout preserved, needs the
+``doc-reading`` extra) and then ``src/voice/doc_reader.py`` (fields, needs a
+document model) - the half of the chain that was written and called by nobody.
+The document type comes from the file name or ``params['doc_types']`` and is
+never guessed: the wrong schema fills the pack with plausible garbage.
+
+Pandas is not used: the input is a case graph, not a demand table. QA checks the
+report's internal consistency, never the completeness of the client's paperwork:
+an incomplete case IS the deliverable.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
@@ -19,7 +26,9 @@ from src.import_case import (
     ImportCase,
     merge_case,
 )
+from src.voice.doc_reader import read_document
 from src.voice.doc_schemas import DOC_TYPES
+from src.voice.doc_text import UnreadableDocument, document_text
 
 
 def _load_json(path: Path) -> dict | list:
@@ -68,12 +77,81 @@ def _slices_from_folder(folder: Path) -> tuple[list[DocumentSlice], str]:
     return slices, REGIME_CHILE_IMPORT
 
 
-def prepare(data_path: str, params: dict | None = None) -> dict:
-    """Load extracted documents from a folder or a documents.json file."""
+def _resolve_doc_type(path: Path, overrides: dict) -> tuple[str | None, str]:
+    """Which of the 12 schemas applies to this file, or why it cannot be told.
+
+    Never guesses: applying the wrong schema fills the pack with plausible
+    garbage, which is worse than not reading the file at all.
+    """
+    for key in (path.name, path.stem):
+        if key in overrides:
+            return str(overrides[key]), ""
+    stem = re.sub(r"[^a-z0-9]+", "_", path.stem.casefold()).strip("_")
+    if stem in DOC_TYPES:
+        return stem, ""
+    hits = [name for name in DOC_TYPES if name in stem]
+    if len(hits) == 1:
+        return hits[0], ""
+    if len(hits) > 1:
+        return None, (
+            f"the file name names more than one document type ({', '.join(hits)}); "
+            "say which one in params['doc_types']"
+        )
+    return None, (
+        "cannot tell which document type this is from the file name; rename it to "
+        "one of " + ", ".join(DOC_TYPES) + ", or map it in params['doc_types']"
+    )
+
+
+def _slices_from_pdfs(
+    folder: Path, overrides: dict, provider: object | None,
+) -> tuple[list[DocumentSlice], list[tuple[str, str]]]:
+    """Read every PDF in the folder. Returns (slices, [(file_name, why_unread)])."""
+    slices: list[DocumentSlice] = []
+    unread: list[tuple[str, str]] = []
+    for path in sorted(folder.glob("*.pdf")):
+        doc_type, why = _resolve_doc_type(path, overrides)
+        if doc_type is None:
+            unread.append((path.name, why))
+            continue
+        if doc_type not in DOC_TYPES:
+            unread.append((path.name, f"'{doc_type}' is not one of the known document types"))
+            continue
+        try:
+            text = document_text(path)
+        except (UnreadableDocument, OSError) as exc:
+            unread.append((path.name, str(exc)))
+            continue
+        extraction = read_document(doc_type, text, provider=provider)
+        if not extraction.fields:
+            reason = (
+                "no document model available, so nothing was extracted (set an "
+                "ANTHROPIC_API_KEY, or hand-fill a JSON slice for this document)"
+                if not extraction.from_model
+                else "the document model returned no fields for this schema"
+            )
+            unread.append((path.name, f"{doc_type}: {reason}"))
+            continue
+        slices.append(DocumentSlice(doc_type, dict(extraction.fields), str(path)))
+    return slices, unread
+
+
+def prepare(
+    data_path: str, params: dict | None = None, *, provider: object | None = None,
+) -> dict:
+    """Load documents from a folder (JSON slices and/or PDFs) or a documents.json.
+
+    PDFs go through ``doc_text`` -> ``doc_reader.read_document``, which needs the
+    ``doc-reading`` extra and a document model. Anything that cannot be placed or
+    cannot be read is returned in ``unread`` and becomes a missing document; when
+    NOTHING could be read this raises with the reasons, so the orchestrator
+    answers ``needs_data`` naming the files instead of delivering an empty case.
+    """
     params = params or {}
     path = Path(data_path)
     if not path.exists():
         raise FileNotFoundError(str(path))
+    unread: list[tuple[str, str]] = []
     if path.is_file():
         data = _load_json(path)
         if not isinstance(data, dict):
@@ -83,8 +161,17 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
     else:
         slices, folder_regime = _slices_from_folder(path)
         regime = str(params.get("regime") or folder_regime)
+        overrides = params.get("doc_types")
+        from_pdf, unread = _slices_from_pdfs(
+            path, overrides if isinstance(overrides, dict) else {}, provider,
+        )
+        slices = slices + from_pdf
     if not slices:
-        raise ValueError("no extracted documents found (need documents.json or per-type JSON)")
+        detail = "; ".join(f"{name}: {why}" for name, why in unread)
+        raise ValueError(
+            "no documents could be read (need documents.json, per-type JSON, or PDFs)"
+            + (f" -- {detail}" if detail else "")
+        )
     unknown = sorted({s.doc_type for s in slices if s.doc_type not in DOC_TYPES})
     return {
         "regime": regime,
@@ -93,6 +180,7 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
             for s in slices
         ],
         "unknown_types": unknown,
+        "unread": [list(item) for item in unread],
     }
 
 
@@ -104,7 +192,10 @@ def run(payload: object, params: dict | None = None) -> ImportCase:
         DocumentSlice(str(row["doc_type"]), dict(row["fields"]), str(row.get("source") or ""))
         for row in data.get("slices") or []
     ]
-    return merge_case(slices, regime=regime)
+    unread = tuple(
+        (str(name), str(reason)) for name, reason in (data.get("unread") or [])
+    )
+    return merge_case(slices, regime=regime, unread=unread)
 
 
 def verify(report: ImportCase) -> list[str]:
