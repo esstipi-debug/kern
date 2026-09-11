@@ -26,12 +26,32 @@ import src.connectors as connectors_pkg
 from src.connectors import WRITE_APPROVAL_GATED, WRITE_NONE, WriteSurface
 
 REPO = Path(__file__).resolve().parents[1]
-READ_METHODS = ("orders", "arrivals", "inventory_levels")
 WRITE_METHODS = ("commit", "apply_restock", "stage_restock", "apply_draft_purchase_orders")
-#: Modulos del paquete que no son un conector: protocolos, utilidades, el emulador HTTP.
+
+#: Modulos del paquete que NO son un conector a un sistema del cliente, con el motivo.
+#: Esta lista es parte del freno: sumar un modulo aca es una decision visible en el
+#: diff, igual que declarar un WRITE_SURFACE. El criterio deliberadamente NO mira que
+#: metodos tiene el modulo -- una lista de metodos de lectura ("orders", "arrivals",
+#: "inventory_levels") dejaba pasar cualquier conector nuevo que llamara distinto a lo
+#: suyo, y eso paso: ``meli_catalog`` (#337) entro sin declarar nada porque sus metodos
+#: se llaman ``search_products`` y ``discover_category``.
 NOT_CONNECTORS = {
-    "__init__", "arrivals", "emulator", "ledger", "replenish", "service_scan",
-    "shopify_api_version", "shopify_connect", "shopify_service", "odoo_connect",
+    "__init__": "el paquete: define los contratos, no habla con ningun sistema",
+    "arrivals": "el Protocol que implementan los transportistas, no un backend",
+    "emulator": "servidor HTTP de juguete para probar el cliente REST, no un sistema real",
+    "ledger": "registro local de lo que Kern leyo y escribio; no habla con el cliente",
+    "replenish": "el planificador que consume conectores; no habla con ningun sistema",
+    "service_scan": "orquesta conectores para medir servicio; no habla con un sistema",
+    "shopify_api_version": "una constante de version de API",
+    "shopify_connect": "flujo de credenciales de Shopify, sin lado de datos",
+    "shopify_service": "lee servicio DESDE el conector de Shopify, no del sistema",
+    "odoo_connect": "flujo de credenciales de Odoo, sin lado de datos",
+    "browser": (
+        "driver de navegador del agente de setup (computer-use con allowlist de "
+        "dominios): actua en la PANTALLA del cliente durante el onboarding, no en un "
+        "sistema por API, y no pasa por el contrato de writeback. Sus guardas son otras "
+        "(scope.DomainAllowlist, redact.redact_snapshot) y viven en su propio paquete"
+    ),
 }
 
 
@@ -55,20 +75,26 @@ MODULES = dict(_modules())
 
 
 def test_hay_conectores_que_revisar():
-    assert len(MODULES) >= 15, sorted(MODULES)
+    assert len(MODULES) >= 16, sorted(MODULES)
+
+
+def test_cada_exclusion_dice_por_que():
+    """Excluir un modulo es una decision, no un olvido: sin motivo no entra."""
+    assert all(motivo.strip() for motivo in NOT_CONNECTORS.values())
+    paquete = {i.name for i in pkgutil.iter_modules(connectors_pkg.__path__)}
+    huerfanas = set(NOT_CONNECTORS) - paquete - {"__init__"}
+    assert not huerfanas, f"NOT_CONNECTORS nombra modulos que ya no existen: {sorted(huerfanas)}"
 
 
 @pytest.mark.parametrize("name", sorted(MODULES))
 def test_todo_conector_declara_que_escribe(name):
     mod = MODULES[name]
-    methods = _methods(mod)
-    lee = bool(methods & set(READ_METHODS))
-    escribe = bool(methods & set(WRITE_METHODS))
-    if not (lee or escribe):
-        pytest.skip(f"{name} no lee ni escribe un sistema")
+    escribe = bool(_methods(mod) & set(WRITE_METHODS))
     ws = getattr(mod, "WRITE_SURFACE", None)
     assert isinstance(ws, WriteSurface), (
-        f"src/connectors/{name}.py lee o escribe un sistema y no exporta WRITE_SURFACE"
+        f"src/connectors/{name}.py es un conector y no exporta WRITE_SURFACE. O lo declara "
+        f"(solo lectura con su motivo, o con aprobacion nombrando lo que escribe), o entra a "
+        f"NOT_CONNECTORS de este archivo con el motivo por el que no habla con un sistema."
     )
     if escribe:
         assert ws.mode == WRITE_APPROVAL_GATED, f"{name} tiene metodos de escritura y se declara {ws.mode}"

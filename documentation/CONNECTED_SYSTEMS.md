@@ -11,6 +11,12 @@ Leer con esta clave. **Medido** es un dato que el sistema del cliente registra;
 lugar. Del lado de escritura no hay medias tintas: o **solo lectura**, o **escribe
 con aprobacion** (dry-run, aprobacion firmada, idempotencia y rollback).
 
+Una aclaracion que esta tabla no cubre: durante el onboarding asistido, el agente
+de setup puede mirar y operar la PANTALLA del cliente (`src/connectors/browser/`),
+acotado a una lista de dominios permitidos y con los datos sensibles tachados. Eso
+no pasa por el contrato de escritura de abajo porque no habla con ninguna API: es
+una persona-maquina usando la interfaz, con el cliente presente.
+
 ## Resumen
 
 | Sistema | Fill rate | OTIF: prometida | OTIF: entrega | Escribe |
@@ -29,6 +35,7 @@ con aprobacion** (dry-run, aprobacion firmada, idempotencia y rollback).
 | Odoo (precios) | no lee pedidos | no lee pedidos | no lee pedidos | con aprobacion |
 | Shopify (precios) | no lee pedidos | no lee pedidos | no lee pedidos | con aprobacion |
 | MercadoLibre (precios) | no lee pedidos | no lee pedidos | no lee pedidos | con aprobacion |
+| MercadoLibre (catalogo oficial) | no lee pedidos | no lee pedidos | no lee pedidos | solo lectura |
 | Tienda simulada (banco de pruebas) | medido | medido | medido | con aprobacion |
 
 ## Odoo (ERP)
@@ -177,6 +184,10 @@ cambio de precio por variante con dry-run, aprobacion firmada y rollback; mismo 
 - `items/{id}.price`
 
 cambio de precio de publicacion con dry-run, aprobacion firmada y rollback; mismo gate de precios. Nunca se escribe un precio a un competidor ni a un marketplace ajeno.
+
+## MercadoLibre (catalogo oficial)
+
+**Solo lectura.** solo lectura del catalogo oficial de MercadoLibre (/products/search, /categories). La mitad de ESCRITURA de preventa (publicar o modificar una publicacion) no vive aca: los cambios de precio van por meli_prices.py, con dry-run y aprobacion firmada. Buscar un producto en el catalogo ajeno no cambia nada en ningun sistema.
 
 ## Tienda simulada (banco de pruebas)
 

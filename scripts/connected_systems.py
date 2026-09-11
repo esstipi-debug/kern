@@ -43,6 +43,7 @@ MODULES = (
     ("odoo_prices", "Odoo (precios)"),
     ("shopify_prices", "Shopify (precios)"),
     ("meli_prices", "MercadoLibre (precios)"),
+    ("meli_catalog", "MercadoLibre (catalogo oficial)"),
     ("simulator", "Tienda simulada (banco de pruebas)"),
 )
 
@@ -72,6 +73,12 @@ def render() -> str:
         "**no disponible** es lo que ese sistema no tiene, y la frase dice que tiene en su",
         "lugar. Del lado de escritura no hay medias tintas: o **solo lectura**, o **escribe",
         "con aprobacion** (dry-run, aprobacion firmada, idempotencia y rollback).",
+        "",
+        "Una aclaracion que esta tabla no cubre: durante el onboarding asistido, el agente",
+        "de setup puede mirar y operar la PANTALLA del cliente (`src/connectors/browser/`),",
+        "acotado a una lista de dominios permitidos y con los datos sensibles tachados. Eso",
+        "no pasa por el contrato de escritura de abajo porque no habla con ninguna API: es",
+        "una persona-maquina usando la interfaz, con el cliente presente.",
         "",
         "## Resumen",
         "",
