@@ -4,9 +4,9 @@
 
 ### The agentic brain for supply-chain decisions — grounded in the field's best models and sources.
 
-**Kern** (German for *core*) is the evolution of **Linchpin** — from a tool that analyzes to the core the agency's service runs on. The name changed because the role changed: not reports on demand, but the decision kernel every engagement executes through — the QA gate that vetoes bad deliverables, citations to 25 curated sources on every result, staged writeback with rollback, and guided outcomes that always end in a safe human step. [Why Kern →](documentation/KERN_IDENTIDAD_Y_FILOSOFIA.md)
+**Kern** (German for *core*) is the evolution of **Linchpin** — from a tool that analyzes to the core the agency's service runs on. The name changed because the role changed: not reports on demand, but the decision kernel every engagement executes through — the QA gate that vetoes bad deliverables, citations to 26 curated external sources on every result, staged writeback with rollback, and guided outcomes that always end in a safe human step. [Why Kern →](documentation/KERN_IDENTIDAD_Y_FILOSOFIA.md)
 
-**Kern** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models across **57 agent-routable capabilities** — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, a network digital twin, forecasting, pricing, price intelligence (competitor position), DDMRP, ABC-XYZ, sourcing, supplier segmentation (Kraljic), landed cost, import-case document pack, cost-to-serve, S&OP, facility location, multi-facility network design (p-median), DRP, transportation, FEFO, reconciliation, slotting, warehouse layout, vehicle routing, decision tension map (4 sombreros), reconciled replenishment plan, flow map, cross-area impact/objection verdict, intake scan (raw-folder data-readiness audit), ISO operations floor evidence, MUS audit-evidence workpaper, SCOR/ISO evidence pack and more — and an **orchestrator agent** drives every one of them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **25 curated SCM sources and the codebase itself**.
+**Kern** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models across **57 agent-routable capabilities** — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, a network digital twin, forecasting, pricing, price intelligence (competitor position), DDMRP, ABC-XYZ, sourcing, supplier segmentation (Kraljic), landed cost, import-case document pack, cost-to-serve, S&OP, facility location, multi-facility network design (p-median), DRP, transportation, FEFO, reconciliation, slotting, warehouse layout, vehicle routing, decision tension map (4 sombreros), reconciled replenishment plan, flow map, cross-area impact/objection verdict, intake scan (raw-folder data-readiness audit), ISO operations floor evidence, MUS audit-evidence workpaper, SCOR/ISO evidence pack and more — and an **orchestrator agent** drives every one of them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **26 curated external sources and the codebase itself**.
 
 [![version](https://img.shields.io/badge/version-2.9.0-5eead4)](CHANGELOG.md)
 [![python](https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
@@ -177,7 +177,7 @@ Other statuses return the same envelope with `status` one of
 
 Every job is **grounded**: the orchestrator queries a knowledge graph and attaches citations to each result (the **Fuentes** shown in the console). Two graphs, one read-only query surface — [`scm_agent/knowledge.py`](scm_agent/knowledge.py):
 
-- **Domain knowledge graph** ([`knowledge/scm-books/`](knowledge/scm-books/README.md)) — **25 curated SCM sources** (forecasting, pricing, revenue management, inventory, operations, logistics, sustainability, leadership, AI in supply chains): ~1,950 concept nodes with source citations. Committed.
+- **Domain knowledge graph** ([`knowledge/scm-books/`](knowledge/scm-books/README.md)) — **26 curated external sources** (forecasting, pricing, revenue management, inventory, operations, logistics, sustainability, leadership, risk & resilience, AI in supply chains): ~3,040 concept nodes with source citations, 2,913 of them from external works. Committed.
 - **Code graph** (`graphify-out/`) — the codebase itself, built with `/graphify`. Gitignored (regenerable).
 
 The **bridge** ties them together: for each cited concept it resolves the `src/` module that implements it, so a deliverable cites the concept **and** the function behind it.
@@ -255,7 +255,7 @@ Sliders **recompute the policy live**; the **agent console** (`/console`) adds t
 <details>
 <summary><b>📖 Module reference — coverage by topic</b></summary>
 
-> Deliverables are grounded across all **25 curated sources** in the knowledge graph, not a single reference.
+> Deliverables are grounded across all **26 curated external sources** in the knowledge graph, not a single reference.
 
 | Topic | Module | Status |
 |--------------|--------|--------|
