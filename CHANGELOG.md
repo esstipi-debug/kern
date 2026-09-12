@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+### Added
+- **`GET /api/price-position/{sku}` — la ultima ruta sin construir de la seccion 9
+  del plan 3.0.** La marco abierta la auditoria de brechas del 2026-07-13 y seguia
+  faltando al re-verificarla el 2026-09-12. Lee el MISMO `PriceLedger` de produccion
+  al que escriben `POST /api/watch` y el ciclo L0 programado, y devuelve el panel de
+  competidores de un SKU (min / promedio / max, mas cada oferta con su procedencia,
+  disponibilidad y antiguedad en horas). No adquiere nada: cero HTTP saliente, cero
+  superficie de cumplimiento de sitios. Gateada por `LINCHPIN_API_KEY` y con limite
+  de tasa, porque el panel competitivo de un cliente es dato comercial suyo; el
+  teaser publico sigue siendo `POST /api/demo-price-scan`, otra superficie con su
+  propio ledger aislado por request.
+
+  `our_price` es un parametro de query a proposito y es una restriccion real: Kern
+  persiste observaciones de competidores y matches producto↔competidor, pero **no
+  persiste ningun catalogo de precios propios** (`PriceIntelReport.our_prices` se
+  arma del catalogo de entrada en tiempo de job). Sin ese dato el indice de posicion
+  no es derivable, asi que el panel vuelve igual y el indice sale `null` con
+  `competitor_read: "insufficient_signal"` — nunca un 1.0 inventado. El indice es
+  `jobs.price_intelligence._position_index` usado verbatim, la MISMA funcion detras
+  de `price_position_matrix.xlsx` y de `jobs.price_priority`, con un test que
+  compara contra ella para que esta ruta no pueda derivar (regla de oro 1).
+
+  Un SKU sin observaciones responde 200, no 404: el ledger indexa lo observado y no
+  tiene catalogo de SKUs validos, asi que genuinamente no distingue "nunca vigilado"
+  de "error de tipeo" — contestar 404 afirmaria algo que el dato no sostiene. Declara
+  el hueco (`observed_offers: 0`, `insufficient_signal`) en vez de fabricar un cero.
+
 ### Changed
 - **`nosilo_core` vuelve a este repo; se acabaron los secretos de build (PR-3).**
   El control plane (16 archivos, 3.569 lineas: `registry`, `guided`, `writeback`,

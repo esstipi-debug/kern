@@ -1884,6 +1884,112 @@ async def api_watch(payload: dict = Body(...)) -> dict:
     }
 
 
+@app.get(
+    "/api/price-position/{sku}",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+async def api_price_position(
+    sku: str,
+    our_price: float | None = Query(default=None, gt=0.0),
+) -> dict:
+    """Where one of our SKUs sits against the competitor prices already
+    observed for it (Linchpin 3.0 plan section 9's last unbuilt route).
+
+    Reads the SAME production ``PriceLedger`` every acquisition tier writes
+    to -- ``PRICE_LEDGER_PATH``, the one ``POST /api/watch`` and the
+    scheduled L0 cycle land observations in -- via
+    ``PriceLedger.latest_for_product``. It never acquires anything: no
+    outbound HTTP, no scraping, no site-compliance surface. Purely a read of
+    what is already ledgered, which is why it can be a plain synchronous
+    handler instead of following ``POST /api/jobs``'s to_thread pattern.
+
+    Gated behind ``LINCHPIN_API_KEY`` and rate-limited: a client's competitor
+    panel is their commercial data, not a public teaser. The public teaser is
+    ``POST /api/demo-price-scan``, which is deliberately a different surface
+    with its own per-request isolated ledger.
+
+    **``our_price`` is a query parameter on purpose, and that is a real
+    constraint, not an oversight.** Kern persists competitor observations
+    (``PriceLedger``) and product<->competitor matches (``SkuMap``), but it
+    persists no catalogue of OUR prices anywhere -- ``PriceIntelReport.
+    our_prices`` is built from the caller's input catalogue at job time. So
+    the position index is only derivable when the caller supplies today's
+    price. Omit it and the competitor panel still comes back in full, with
+    ``position_index: null`` and ``competitor_read: "insufficient_signal"``.
+    The index itself is ``jobs.price_intelligence._position_index`` used
+    verbatim -- the SAME function behind ``price_position_matrix.xlsx`` and
+    ``jobs.price_priority`` -- so the our_price/avg(competitor) math lives in
+    exactly one place (golden rule 1) and keeps its refusal to invent a 1.0.
+
+    **A SKU with no observations is 200, not 404, and that is deliberate.**
+    The ledger indexes what has been observed; it holds no catalogue of valid
+    SKUs, so it genuinely cannot tell "never watched" from "typo". Answering
+    404 would assert a distinction the data does not support. It answers
+    ``observed_offers: 0`` with ``insufficient_signal`` instead -- the gap
+    declared, never a fabricated zero (golden rule 14).
+    """
+    from datetime import datetime, timezone
+    from decimal import Decimal
+
+    from jobs.price_intelligence import _position_index
+    from jobs.price_priority import CONFIRMED, INSUFFICIENT_SIGNAL
+
+    ledger = _get_price_ledger()
+    try:
+        records = ledger.latest_for_product(sku)
+    finally:
+        ledger.close()
+
+    now = datetime.now(timezone.utc)
+    offers = []
+    normalized_prices: list[Decimal] = []
+    for record in records:
+        offer = record.offer
+        observed_at = offer.observed_at
+        if observed_at.tzinfo is None:
+            observed_at = observed_at.replace(tzinfo=timezone.utc)
+        normalized_prices.append(offer.price_normalized)
+        offers.append({
+            "site": offer.site,
+            "competitor_sku_ref": offer.competitor_sku_ref,
+            "price_normalized": float(offer.price_normalized),
+            "currency": offer.currency,
+            "availability": offer.availability,
+            "promo_flag": offer.promo_flag,
+            "observed_at": observed_at.isoformat(),
+            "age_hours": round((now - observed_at).total_seconds() / 3600.0, 2),
+            "acquisition_tier": offer.acquisition_tier,
+            "extractor": offer.extractor,
+            "match_confidence": offer.match_confidence,
+        })
+
+    panel = None
+    if normalized_prices:
+        panel = {
+            "min": float(min(normalized_prices)),
+            "avg": float(sum(normalized_prices) / Decimal(len(normalized_prices))),
+            "max": float(max(normalized_prices)),
+            "observations": len(normalized_prices),
+        }
+
+    index = _position_index(
+        Decimal(str(our_price)) if our_price is not None else None,
+        normalized_prices,
+    )
+    ages = [o["age_hours"] for o in offers]
+    return {
+        "product_id": sku,
+        "observed_offers": len(offers),
+        "our_price": our_price,
+        "position_index": float(index) if index is not None else None,
+        "competitor_read": CONFIRMED if index is not None else INSUFFICIENT_SIGNAL,
+        "competitor_panel": panel,
+        "freshest_age_hours": min(ages) if ages else None,
+        "stalest_age_hours": max(ages) if ages else None,
+        "offers": offers,
+    }
+
+
 # ---- POST /api/jobs/run-scheduled: cron-triggered scheduler wiring ----------
 #
 # jobs.scheduler.JobRegistry.run_once() is Golden Rule 9's ("todo componente
