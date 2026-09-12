@@ -1,7 +1,7 @@
 """Static content data for GET /how-it-works (webapp/how_it_works_page.py).
 
 Every count here is verified against the actual code, not copied from a
-possibly-stale doc: 57 tools = build_default_registry()'s 57 register()
+possibly-stale doc: 58 tools = build_default_registry()'s 58 register()
 calls in scm_agent/tools.py, now enforced by
 tests/test_how_it_works_data.py::test_tools_table_matches_the_registry_exactly
 (set equality against the registry, both directions). That guard exists
@@ -165,6 +165,8 @@ TOOLS: tuple[ToolInfo, ...] = (
              "One-shot competitor price position analysis."),
     ToolInfo("price_watch", "Price Watch", "Pricing & finance", "Orchestrate",
              "Recurring, read-only competitor price monitoring with auto-onboarding."),
+    ToolInfo("repricing", "Repricing (staged)", "Pricing & finance", "Orchestrate",
+             "Gate a proposed price list and stage the diff; a human applies it."),
     ToolInfo("financial_kpis", "Financial KPIs", "Pricing & finance", "Orchestrate",
              "Inventory turns, DIO, GMROI, cash-to-cash."),
     ToolInfo("cost_to_serve", "Cost to Serve", "Pricing & finance", "Order/Fulfill",

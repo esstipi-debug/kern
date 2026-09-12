@@ -51,6 +51,7 @@ from jobs import (
     qa,
     queuing_job,
     reconciliation_job,
+    repricing_job,
     returns_job,
     risk_job,
     scheduling_job,
@@ -3272,6 +3273,71 @@ def scor_iso_audit_tool() -> Tool:
     )
 
 
+REPRICING_KEYWORDS = (
+    # Action-anchored and multi-word on purpose: a bare "precio"/"price" would
+    # hijack every pricing brief away from the `pricing` and `price_intelligence`
+    # tools. intent.classify needs a STRICT win, so these phrases name the ACT of
+    # pushing a new price list to a channel, which neither of those two does.
+    "reprice", "repricing", "repricing playbook", "push new prices",
+    "update prices on", "stage price changes", "price changeset",
+    "multichannel repricing", "reprice my channel", "reprice shopify",
+    "repreciar", "repreciado", "cambiar precios en", "actualizar precios en",
+    "subir precios al canal", "lista de precios nueva", "cambio de precios masivo",
+)
+
+
+def _repricing_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(
+            status="needs_data",
+            messages=["a price list is required: one row per SKU with current_price and proposed_price"],
+        )
+    try:
+        plan = repricing_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=plan)
+
+
+def _repricing_run(payload: object, params: dict) -> Produced:
+    report = repricing_job.run(payload, max_move_pct=params.get("max_move_pct"))
+    return Produced(report=report, summary=report.summary)
+
+
+def repricing_tool() -> Tool:
+    """The multichannel repricing playbook, as a STAGING-ONLY tool.
+
+    ``jobs/repricing.py`` was fully built and tested in Linchpin 3.0 PR-18 and
+    reachable by nobody but a test and a CLI (gap audit finding #6). This makes
+    it routable -- without making a live price write routable.
+
+    ``jobs.repricing_job`` never imports ``apply_repricing`` or
+    ``run_channel_repricing``, stages against an in-memory copy of the client's
+    own current prices, and always returns HANDOFF. There is no path from a
+    brief to a channel write. Deliberately absent from
+    ``webapp/mcp_tool_specs.py``: that surface is opt-in, and a tool about
+    changing live prices does not belong on an anonymously reachable one.
+    """
+    return Tool(
+        key="repricing",
+        title="Multichannel Repricing (staged, never applied)",
+        description="Take a proposed price list, run it through the central pricing guardrail "
+                    "(max move per change, below-landed-cost block, a readable reason and L3 "
+                    "citations), and stage the resulting per-SKU diff for a human to approve. "
+                    "It never writes to Shopify/MercadoLibre/Odoo and never applies: the outcome "
+                    "is always a handoff naming the exact steps the operator runs to apply it.",
+        intent_keywords=REPRICING_KEYWORDS,
+        requires_data=True,
+        required_columns=repricing_job.REQUIRED_COLUMNS,
+        optional_columns=repricing_job.OPTIONAL_COLUMNS,
+        options=lambda report: report.outcome,
+        prepare=_repricing_prepare,
+        run=_repricing_run,
+        qa=lambda report: repricing_job.verify(report),
+        deliver=lambda report, out_dir, client: repricing_job.write_operational(report, out_dir, client),
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(inventory_tool())
@@ -3331,4 +3397,5 @@ def build_default_registry() -> ToolRegistry:
     reg.register(iso_ops_tool())
     reg.register(audit_evidence_tool())
     reg.register(scor_iso_audit_tool())
+    reg.register(repricing_tool())
     return reg

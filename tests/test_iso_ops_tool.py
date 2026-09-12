@@ -28,10 +28,10 @@ def registry():
     return tools.build_default_registry()
 
 
-def test_iso_ops_is_registered_and_count_is_56(registry):
+def test_iso_ops_is_registered_and_count_is_58(registry):
     assert registry.get("iso_ops") is not None
     assert registry.get("iso_ops").requires_data is False
-    assert len(registry.list()) == 57
+    assert len(registry.list()) == 58
 
 
 @pytest.mark.parametrize(

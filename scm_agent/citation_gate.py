@@ -60,6 +60,16 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # grafo, y anclar a un id inventado rompe el gate en la corrida siguiente.
     "service_scan": ("perfect_order", "fill_rate", "customer_service"),
     "pricing": ("basic_pricing_theory", "price_sensitivity_measurement", "markdown_pricing"),
+    # DELIBERATELY identical to "pricing" above, and they must stay in sync.
+    # jobs/repricing.py::_TOOL_KEY is the string "pricing": the playbook gates its
+    # changesets through src.pricing_guardrails with that key, so the citations a
+    # repricing changeset actually ships are resolved against "pricing"'s anchors.
+    # Declaring a DIFFERENT set here would split the tool in two -- the orchestrator
+    # citing one neighbourhood and the gate another -- which is exactly the
+    # "measuring anchors against the gate does not predict what the client sees"
+    # failure. Verified on this graph 2026-09-12: these three resolve 4 citations
+    # for the playbook's fixed keyword set, well clear of MIN_CITATIONS.
+    "repricing": ("basic_pricing_theory", "price_sensitivity_measurement", "markdown_pricing"),
     "leadership_chain": ("chain_model", "collaborative_leadership", "authentic_leadership"),
     "cost_to_serve": ("cost_to_serve", "activity_based_costing"),
     "sop": ("vollmann_sop", "aggregate_planning"),

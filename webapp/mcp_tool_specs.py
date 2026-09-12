@@ -10,6 +10,15 @@ Deliberately NOT here (see docs/MCP_SERVER.md "What's NOT here yet"):
 - `odoo_replenishment`, `excel_replenishment` - writeback tools; they mutate a
   client's system of record and stay behind the direct-client safety plane
   (`nosilo_core/writeback.py`), never on this anonymous-remote surface.
+- `repricing` - same rule, one step earlier. The tool itself only STAGES (it
+  never imports `apply_repricing`, stages against an in-memory copy of the
+  client's own current prices, and always returns HANDOFF), so nothing it does
+  writes anywhere. It is still off this surface on purpose: its entire subject
+  is a proposed change to a client's live prices, its output is a changeset
+  shaped to be applied, and an anonymous caller has no business composing one
+  against someone else's catalogue. Autonomy over a brand-new external write
+  surface is earned with A4 evidence (`jobs/repricing.py`'s own Golden Rule 11
+  note); a remote surface is not where that starts.
 - `leadership_chain` - takes a CHAIN scores dict / LLM-scored brief, not
   tabular rows; the rows->CSV bridge feeds it nothing usable.
 - `warehouse_layout` - a params-driven 3D layout generator (requires_data=False,

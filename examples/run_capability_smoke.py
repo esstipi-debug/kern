@@ -53,6 +53,13 @@ _DATA = _REPO_ROOT / "data"
 # --------------------------------------------------------------------------- #
 
 _CSV: dict[str, str] = {
+    # Moves stay inside the gate's 50% max-move band and above landed cost, so the
+    # smoke run exercises the APPROVED path; the blocked path has its own unit test.
+    "repricing": """product_id,current_price,proposed_price,landed_cost
+R1,100.00,110.00,60.00
+R2,250.00,235.00,140.00
+R3,80.00,80.00,50.00
+""",
     "cost_to_serve": """Customer Segment,Sales,Quantity,Order ID,COGS,Shipping Cost,returns_units
 Retail,1200,40,O1,700,60,2
 Retail,800,30,O2,500,45,1
@@ -268,6 +275,7 @@ _BRIEF: dict[str, str] = {
     "ddmrp": "size DDMRP buffers and planning signals",
     "landed_cost": "compute total landed cost by SKU",
     "import_case": "unify import documents into a chile din pack",
+    "repricing": "stage price changes for the shopify channel",
     "whatif": "run a what-if sensitivity on the plan",
     "financial_kpis": "compute inventory financial KPIs",
     "reconciliation": "reconcile system vs physical inventory",
@@ -307,6 +315,10 @@ _OVERRIDES: dict[str, dict] = {
     "sourcing": {"sla_days": 14, "in_full_status_col": "Order_Status",
                  "in_full_ok_values": ["Delivered"]},
     "procedure_audit": {"as_of": "2026-09-03"},
+    # Both are REQUIRED by jobs/repricing_job.prepare and have no defaults: the gate
+    # blocks a changeset with a blank reason, and guessing a channel would mean
+    # guessing which storefront to reprice.
+    "repricing": {"channel": "shopify", "reason": "smoke: apply the reviewed price list"},
     "procedure_draft": {"process": "replenishment", "owner": "Jefe de Operaciones",
                          "approver": "Gerente General", "as_of": "2026-09-03"},
     "iso_ops": {
