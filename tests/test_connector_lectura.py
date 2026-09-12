@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import sys
 from pathlib import Path
 
 import pytest
@@ -140,13 +141,39 @@ def test_un_fallo_al_abrir_la_sesion_no_tira_el_entregable(monkeypatch, tmp_path
     assert "el proceso no arranco" in r.note
 
 
+def test_ni_siquiera_un_disco_lleno_tira_el_entregable(monkeypatch, tmp_path):
+    """La captura del stderr del servidor es una comodidad, no una precondicion.
+
+    Antes de este test el `with tempfile.TemporaryFile(...)` quedaba FUERA del try, asi que
+    un TMP no escribible o un disco lleno hacian que `read_passages` levantara OSError y se
+    cayera el entregable entero -- justo lo contrario de lo que promete su docstring.
+    """
+    falso_python = tmp_path / "python.exe"
+    falso_python.write_text("no soy un interprete", encoding="utf-8")
+    monkeypatch.setenv(ENV_INTERPRETE, str(falso_python))
+
+    def _sin_disco(*a, **k):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(lectura.tempfile, "TemporaryFile", _sin_disco)
+
+    r = read_passages(["safety stock"])
+    assert r.available is False and r.readings == ()
+    assert "No space left on device" in r.note
+
+
 def test_una_excepcion_de_la_tool_no_se_propaga():
-    """El servidor contesta isError: se traduce a estado, no a traceback."""
+    """El servidor contesta isError: se traduce a estado, no a traceback.
+
+    La nota tiene que NOMBRAR el fallo. `assert r.note` lo satisface cualquier string
+    no vacio, incluso uno que no diga que paso: una nota asi no le sirve al humano que
+    tiene que ir a arreglar el indice, que es la unica razon por la que la nota existe.
+    """
     srv = _Servidor(revienta=True)
     with srv as call:
         r = read_with_caller(call, ["safety stock"])
     assert r.available is False and r.readings == ()
-    assert r.note
+    assert "el indice no arranco" in r.note
 
 
 def test_un_call_tool_que_levanta_se_traduce_a_estado():
@@ -156,6 +183,61 @@ def test_un_call_tool_que_levanta_se_traduce_a_estado():
     r = read_with_caller(_revienta, ["safety stock"])
     assert r.available is False and r.readings == ()
     assert "se acabo el tiempo" in r.note
+
+
+def test_una_causa_envuelta_en_exceptiongroup_llega_nombrada():
+    """Lo que sube de anyio NO es la causa: es un `ExceptionGroup` que dice "unhandled
+    errors in a TaskGroup (1 sub-exception)" y nada mas. Una nota asi no le sirve al
+    humano que tiene que ir a arreglar el indice, que es la unica razon por la que la
+    nota existe: el grupo es plomeria y lo que se nombra es la hoja."""
+
+    def _revienta(name, arguments):
+        raise ExceptionGroup(
+            "unhandled errors in a TaskGroup (1 sub-exception)",
+            [ExceptionGroup("unhandled errors in a TaskGroup (1 sub-exception)", [RuntimeError("el socket se cerro")])],
+        )
+
+    r = read_with_caller(_revienta, ["safety stock"])
+    assert r.available is False and r.readings == ()
+    assert "el socket se cerro" in r.note
+    assert "TaskGroup" not in r.note  # el envoltorio no ocupa la linea
+
+
+def test_una_causa_encadenada_con_from_tambien_se_nombra():
+    def _revienta(name, arguments):
+        try:
+            raise ModuleNotFoundError("No module named 'kern_lectura'")
+        except ModuleNotFoundError as raiz:
+            raise RuntimeError("no se pudo importar el servidor") from raiz
+
+    r = read_with_caller(_revienta, ["safety stock"])
+    assert "no se pudo importar el servidor" in r.note  # el eslabon de arriba no se pierde
+    assert "kern_lectura" in r.note  # y la causa de verdad tampoco
+
+
+def test_el_transporte_real_dice_por_que_no_arranco(monkeypatch):
+    """El UNICO modo de falla que existe fuera de produccion, sin monkeypatch.
+
+    Los dos tests de arriba reemplazan el transporte por una excepcion sintetica, asi
+    que ninguno ejercita `_stdio_caller`. Este lo corre de verdad: la variable apunta a
+    un interprete VALIDO que no tiene el modulo del servidor -- la variable mal seteada,
+    que es como esto se rompe en una maquina de desarrollo. Del lado del cliente solo
+    llega "Connection closed"; la causa (`No module named 'kern_lectura'`) sale por el
+    stderr del subproceso, que este conector captura en vez de tirarlo a la consola.
+
+    Cuesta ~3 s porque levanta un subproceso real. No levanta el indice: el modulo no
+    existe y el interprete muere en el arranque, asi que no pide 1,6 GB de nada.
+    """
+    monkeypatch.setenv(ENV_INTERPRETE, sys.executable)
+
+    r = read_passages(["safety stock"], timeout_s=20.0)
+
+    assert r.available is False and r.readings == ()
+    assert "kern_lectura" in r.note  # la nota NOMBRA el fallo, no lo insinua
+    assert "ModuleNotFoundError" in r.note
+    assert "TaskGroup" not in r.note
+    assert r.note.isascii() and r.note.count(chr(10)) == 0  # una linea, imprimible en cp1252
+    r.note.encode("cp1252")
 
 
 # --- 3. '(sin pasajes)' y 'error:' NO son citas ------------------------------------
@@ -173,6 +255,41 @@ def test_un_error_del_servidor_jamas_se_convierte_en_cita():
     r, _ = _leer("error: storage 'kv_store_full_docs.json' esta corrupto")
     assert r.available is False and r.readings == ()
     assert r.note.startswith("error:")
+
+
+def test_un_error_pegado_a_pasajes_buenos_tampoco_viaja_al_cliente():
+    """La puerta de al lado del test anterior, y la falla que este PR tenia abierta.
+
+    `lookup_from_text` solo miraba la respuesta ENTERA, asi que una respuesta PARCIAL
+    (pasajes + error) pasaba el control, y el parser mandaba toda linea que no fuera
+    una entrada al cuerpo de la ultima: `error: interno revento` terminaba dentro de un
+    excerpt, con nombre de libro y numero de pagina. El lote se corta en esa linea.
+    """
+    r, _ = _leer("1. **slug-x** PDF p.5\n   texto\nerror: interno revento")
+    assert r.available is True
+    assert [dataclasses.astuple(x) for x in r.readings] == [("slug-x", "PDF p.5", "texto")]
+    assert not any("interno revento" in x.excerpt for x in r.readings)
+
+
+def test_un_error_indentado_tampoco_entra_al_extracto():
+    """Indentado tiene forma de extracto; sigue siendo el mensaje interno del servidor."""
+    r, _ = _leer("1. **slug-x** PDF p.5\n   texto\n   error: storage corrupto")
+    assert [x.excerpt for x in r.readings] == ["texto"]
+
+
+def test_un_pie_de_pagina_del_servidor_no_se_atribuye_a_un_libro():
+    """No hace falta que sea un 'error:'. Cualquier linea suelta es texto que el
+    servidor no saco de ningun libro, y firmarla con un libro y una pagina es peor que
+    perderla: el cliente no tiene como saber que esa parte no es del libro."""
+    payload = (
+        "1. **slug-x** PDF p.5\n"
+        "   texto del libro\n"
+        "RESUMEN INTERNO DEL SERVIDOR: no mostrar"
+    )
+    r, _ = _leer(payload)
+    assert [dataclasses.astuple(x) for x in r.readings] == [
+        ("slug-x", "PDF p.5", "texto del libro")
+    ]
 
 
 def test_una_respuesta_vacia_tampoco_es_una_lectura():
@@ -229,7 +346,13 @@ def test_una_entrada_sin_extracto_sigue_siendo_procedencia():
 
 
 def test_una_entrada_rota_se_descarta_sin_tirar_el_lote():
-    """Media cita no se inventa, pero una linea rota no se lleva puestas las buenas."""
+    """Media cita no se inventa, pero una linea rota no se lleva puestas las buenas.
+
+    Se afirma la TERNA completa y no solo los slugs: mirar `[x.source ...]` deja pasar
+    el bug de verdad, que es el ruido del servidor ("ruido suelto que no es una
+    entrada") colandose DENTRO del excerpt de la entrada de al lado, firmado con un
+    libro y una pagina. Un assert que no mira el excerpt no cubre el excerpt.
+    """
     payload = (
         "1. ** ** \n"
         "   huerfano\n"
@@ -240,9 +363,52 @@ def test_una_entrada_rota_se_descarta_sin_tirar_el_lote():
         "   Y el otro."
     )
     r, _ = _leer(payload)
-    assert [x.source for x in r.readings] == [
-        "liu-supply-chain-analytics",
-        "vandeput-inventory-optimization-models-simulations",
+    assert [dataclasses.astuple(x) for x in r.readings] == [
+        ("liu-supply-chain-analytics", "PDF p.7", "El que si sirve."),
+        ("vandeput-inventory-optimization-models-simulations", "PDF p.81-82", "Y el otro."),
+    ]
+    assert not any("huerfano" in x.excerpt or "ruido suelto" in x.excerpt for x in r.readings)
+
+
+def test_una_etiqueta_que_no_es_una_pagina_descarta_la_entrada():
+    """Procedencia fabricada es peor que ninguna: si la cabecera no trae una pagina
+    verificable, no hay entrada. Antes, el resto de la linea entraba tal cual como
+    `page_label` y el cliente leia una pagina que no existe en ningun PDF."""
+    r, _ = _leer("1. **slug-x** esto no es una pagina, es texto del libro")
+    assert r.available is False and r.readings == ()
+
+
+def test_una_etiqueta_larga_no_es_una_puerta_para_saltear_el_tope():
+    """`page_label` era el unico campo que no pasaba por ningun tope de longitud: 900
+    caracteres de texto del servidor salian intactos por ahi, sin recorte y con el
+    excerpt vacio."""
+    r, _ = _leer("1. **slug-x** PDF p.5 " + "a" * 900)
+    assert r.available is False and r.readings == ()
+
+
+def test_un_slug_desmedido_tampoco_pasa():
+    """Misma puerta, otro campo: el slug mas largo del indice mide 50 caracteres."""
+    r, _ = _leer("1. **" + "b" * 900 + "** PDF p.5\n   texto")
+    assert r.available is False and r.readings == ()
+
+
+def test_un_pasaje_sin_libro_no_es_procedencia():
+    """`format_chunks` del otro repo rotula `?` cuando el chunk no trae `file_path`.
+    Pagina sin libro no se puede verificar: no se publica."""
+    r, _ = _leer("1. **?** PDF p.12\n   texto de un libro que no sabemos cual es")
+    assert r.available is False and r.readings == ()
+
+
+def test_una_etiqueta_rota_no_se_lleva_puestas_las_entradas_buenas():
+    payload = (
+        "1. **slug-x** pagina cualquiera inventada\n"
+        "   texto que no se publica\n"
+        "2. **liu-supply-chain-analytics** PDF p.7\n"
+        "   El que si sirve."
+    )
+    r, _ = _leer(payload)
+    assert [dataclasses.astuple(x) for x in r.readings] == [
+        ("liu-supply-chain-analytics", "PDF p.7", "El que si sirve.")
     ]
 
 
