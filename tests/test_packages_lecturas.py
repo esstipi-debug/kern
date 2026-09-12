@@ -20,11 +20,13 @@ QUE SE FIJA ACA, y por que cada cosa es de producto antes que de codigo.
 4. **No puede colgar la corrida.** Un servidor que no contesta nunca degrada a
    `available=False` en segundos, y el paquete se entrega igual.
 
-Los dos tests de la seccion 5 son los unicos que hablan con el indice de verdad: van
+Los tres tests de la seccion 5 son los unicos que hablan con el indice de verdad: van
 marcados `integracion`, que `pyproject.toml` deselecciona por defecto
 (`addopts = "-m 'not integracion'"`). El segundo consulta a proposito el libro con el
 glyph-mapping del PDF destruido, que es lo que motivo el piso de legibilidad del
-conector.
+conector. El tercero es el banco de medicion del cupo de palabras clave: re-corre contra
+el indice vivo la evidencia de que ensanchar la unica consulta trae indices de libro en
+vez de texto, que es lo que sostiene que 12 sea 12.
 """
 
 from __future__ import annotations
@@ -198,10 +200,16 @@ def test_una_sola_consulta_por_corrida_aunque_el_paquete_tenga_muchos_pasos(tmp_
     assert len(llamadas) == 1
 
 
-def test_la_consulta_cubre_todos_los_pasos_y_no_se_desborda(tmp_path, monkeypatch):
-    """Ronda a ronda: la primera palabra de CADA paso entra antes que la segunda de
-    ninguno. Sin eso, un paquete de 26 pasos gastaria el cupo en los tres primeros y
-    las lecturas hablarian de un tercio del entregable."""
+def test_con_menos_pasos_que_cupo_todos_hablan_y_el_cupo_igual_corta(tmp_path, monkeypatch):
+    """El regimen POR DEBAJO del cupo (8 pasos, cupo 12): ronda a ronda, la primera
+    palabra de CADA paso entra antes que la segunda de ninguno, y recien despues el
+    sobrante se reparte hasta llenar el cupo.
+
+    El 12 va LITERAL, no como ``packages._MAX_KEYWORDS_LECTURA``. Esa es la correccion:
+    escrito contra la constante, el test se mueve solo con ella y no puede fallar --
+    bajarla a 8 lo dejaba igual de verde, que es exactamente el test que pasa con el
+    codigo roto. El cupo es una MEDICION contra el indice vivo (ver el comentario de la
+    constante), asi que tocarlo tiene que romper un test y obligar a volver a medir."""
     llamadas: list[tuple] = []
     monkeypatch.setattr(lectura, "read_passages",
                         lambda keywords, **kw: (llamadas.append(tuple(keywords))
@@ -213,10 +221,41 @@ def test_la_consulta_cubre_todos_los_pasos_y_no_se_desborda(tmp_path, monkeypatc
                 clients_root=None, out_dir=tmp_path, params={})
 
     pedidas = llamadas[0]
-    assert len(pedidas) <= packages._MAX_KEYWORDS_LECTURA
-    assert all(f"primera t{i}" in pedidas for i in range(8))
-    # y ningun paso mete mas de lo que le toca
+    assert len(pedidas) == 12                                   # el cupo, literal
+    assert all(f"primera t{i}" in pedidas for i in range(8))     # los 8 pasos, con voz
     assert sum(1 for p in pedidas if p.startswith("primera t")) == 8
+    # y el sobrante del cupo son segundas palabras, no un noveno paso inventado
+    assert sum(1 for p in pedidas if p.startswith("segunda t")) == 4
+
+
+def test_con_mas_pasos_que_cupo_los_ultimos_quedan_mudos(tmp_path, monkeypatch):
+    """El regimen POR ENCIMA del cupo, que es el de TODOS los paquetes que se venden:
+    starter tiene 15 pasos, growth 26, scale y retainer_ejecutivo 35, contra un cupo de
+    12. Este es el caso que ningun test cubria, y el que decide que ven las lecturas.
+
+    Lo que se afirma no es que "esta bien" sino QUE PASA, exactamente: entran 12 palabras,
+    una canonica por cada uno de los primeros 12 pasos, y del paso 13 en adelante no
+    entra nada -- ni su canonica, ni sus sinonimos. Ese silencio es el precio declarado de
+    gastar un solo arranque de servidor por corrida, y subir el cupo para levantarlo esta
+    REFUTADO por medicion (a 26 terminos los 5 pasajes que vuelven son 5 indices de libro;
+    ver la constante). Que este escrito aca es lo que lo vuelve una decision y no un
+    descuido."""
+    llamadas: list[tuple] = []
+    monkeypatch.setattr(lectura, "read_passages",
+                        lambda keywords, **kw: (llamadas.append(tuple(keywords))
+                                                or _disponible(keywords, **kw)))
+    claves = [f"t{i:02d}" for i in range(20)]
+    reg = _registry(*[_tool(k, f"primera {k}", f"segunda {k}", f"tercera {k}")
+                      for k in claves])
+
+    run_package(_spec(*claves), None, registry=reg, knowledge=_NoKnowledge(),
+                clients_root=None, out_dir=tmp_path, params={})
+
+    pedidas = list(llamadas[0])
+    assert pedidas == [f"primera t{i:02d}" for i in range(12)]
+    # los 8 pasos de la cola no aportan NADA, ni siquiera su termino canonico
+    mudos = claves[12:]
+    assert not [p for p in pedidas if any(k in p for k in mudos)]
 
 
 def test_un_solo_paso_manda_sus_canonicas_y_no_doce_sinonimos(monkeypatch):
@@ -429,3 +468,59 @@ def test_integracion_el_libro_con_el_glyph_mapping_roto_no_publica_sus_extractos
         assert lec.page_label.startswith("PDF p.") or lec.page_label == "sin pagina"
     # y hoy, con el PDF como esta, la mayoria queda sin extracto en vez de con basura
     assert sum(1 for lec in r.readings if not lec.excerpt) >= len(r.readings) // 2
+
+
+@pytest.mark.integracion
+@pytest.mark.skipif(not INDICE_REAL.is_file(),
+                    reason=f"el indice de lectura no esta instalado en {INDICE_REAL}")
+def test_integracion_ensanchar_la_consulta_trae_indices_de_libro_en_vez_de_texto(monkeypatch):
+    """El banco de medicion del cupo ``_MAX_KEYWORDS_LECTURA``, re-corrible.
+
+    El cupo deja mudos a 23 de los 35 pasos de ``scale``, y el arreglo que parece obvio
+    -- subirlo hasta que entren todos -- esta refutado. Esto es la refutacion, contra el
+    indice DE VERDAD: mandando los terminos canonicos de los primeros N pasos de scale se
+    cuenta cuantos de los 5 pasajes que vuelven son back-matter (indice alfabetico, tabla
+    de contenidos, lista de simbolos) en vez de texto del libro. Medido 2026-09-11:
+
+        n=4 -> 0/5,  n=8 -> 1/5,  n=12 -> 1/5,  n=20 -> 3/5,  n=26 -> 5/5,  n=35 -> 5/5
+
+    La causa es mecanica: la busqueda es por vector, asi que una consulta de 35 temas es
+    un centroide sin tema, y la pagina del corpus que mas se le parece es la que menciona
+    muchos temas sin desarrollar ninguno. A 26 terminos, las "lecturas de referencia" del
+    cliente son 5 indices de libro con su numero de pagina.
+
+    Se afirma la DIRECCION, no los numeros exactos: el indice puede crecer y el ranking
+    moverse, pero si ensanchar la consulta dejara de degradar, el cupo habria que
+    re-discutirlo y este test es el que lo avisa.
+
+        PYTHONPATH=. ./.venv/Scripts/python.exe -m pytest tests/test_packages_lecturas.py -m integracion -q
+    """
+    from scm_agent.package_specs import SCALE
+
+    monkeypatch.setenv(ENV_INTERPRETE, str(INDICE_REAL))
+    reg = build_default_registry()
+    canonicas: list[str] = []
+    for paso in SCALE.steps:
+        palabras = [str(k).strip() for k in (reg.get(paso.tool_key).intent_keywords or ())
+                    if str(k).strip()]
+        if palabras and palabras[0] not in canonicas:
+            canonicas.append(palabras[0])
+    assert len(canonicas) > packages._MAX_KEYWORDS_LECTURA  # si no, no hay nada que medir
+
+    marcas = ("index", "table of contents", "list of symbols", "contents")
+
+    def _back_matter(n: int) -> int:
+        r = lectura.read_passages(canonicas[:n], k=5, timeout_s=180.0)
+        assert r.available is True, r.note
+        assert r.readings
+        return sum(1 for lec in r.readings
+                   if any(m in lec.excerpt.lower()[:90] for m in marcas))
+
+    en_el_cupo = _back_matter(packages._MAX_KEYWORDS_LECTURA)
+    con_todos = _back_matter(len(canonicas))
+
+    assert con_todos > en_el_cupo, (
+        f"ensanchar la consulta de {packages._MAX_KEYWORDS_LECTURA} a {len(canonicas)} "
+        f"terminos ya no degrada ({en_el_cupo} -> {con_todos} pasajes de back-matter "
+        "sobre 5): re-medir el cupo antes de darlo por bueno")
+    assert con_todos >= 3   # y la degradacion es grosera, no marginal
