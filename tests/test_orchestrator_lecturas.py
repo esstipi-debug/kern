@@ -16,10 +16,15 @@ afirma abajo sea una forma de "no cambia nada" y no una funcionalidad nueva.
    pide ~1,6 GB, y sin ``KERN_LECTURA_PYTHON`` el conector contesta ``available=False``
    sin intentar levantar nada). El JobResult y los archivos escritos salen exactamente
    como hoy, byte a byte.
-2. **Inerte HOY tambien con indice**, porque el cableado le PREGUNTA al deck si sabe
-   recibir lecturas y ningun deck registrado sabe todavia. La constante de este archivo
-   que lo fija es ``_DECKS_CON_LECTURAS``, que hoy es el conjunto vacio; el dia que un
-   deck gane el parametro, este test lo dice.
+2. **Ya NO es inerte cuando el indice ESTA**: los 53 decks registrados aceptan
+   ``readings`` y el entregable sale con su seccion de lecturas, con el rotulo ``PDF
+   p.N`` textual adentro del archivo escrito. Lo que sigue intacto es la PREGUNTA al
+   deck -- el gate de costo --, solo que ahora la contesta que si; un deck futuro
+   escrito con la firma vieja apaga su tool en silencio, y el que lo impide es
+   ``tests/test_tools_threads_readings_to_decks.py``. Sobre produccion no cambia nada:
+   se consulta, ``read_passages`` ve que ``KERN_LECTURA_PYTHON`` no esta y contesta
+   ``available=False`` sin levantar ningun servidor, asi que el costo de despertarlo es
+   una lectura de variable de entorno por corrida y el punto 1 sigue mandando.
 3. **UNA sola consulta por corrida**, con las palabras canonicas del tool, y los dos
    topes (cuantas palabras salen, cuantos pasajes entran) puestos de este lado.
 4. **La guarda va ANTES de escribir nada.** ``read_passages`` promete no levantar pero
@@ -48,13 +53,6 @@ from scm_agent.orchestrator import Orchestrator
 from scm_agent.tools import build_default_registry
 from src.connectors import lectura
 from src.connectors.lectura import ENV_INTERPRETE, Reading, ReadingLookup
-
-#: Los decks REGISTRADOS que hoy saben recibir lecturas. Inventario, no contrato: es el
-#: gemelo de ``_EXPECTED_LANG_AWARE`` en
-#: ``tests/test_package_threads_lang_to_tool_decks.py``. Vacio a proposito -- este commit
-#: deja el cableado puesto y dormido; el dia que un ``build_deck`` gane ``readings``,
-#: este test avisa que ya quedo enchufado.
-_DECKS_CON_LECTURAS: set[str] = set()
 
 _LECTURAS = (
     Reading(source="vandeput-inventory-optimization",
@@ -188,21 +186,39 @@ def test_la_generalizacion_no_confunde_un_parametro_con_el_otro():
 
 
 def test_los_decks_con_lecturas_son_los_que_creemos_que_son():
-    cableados = {
-        tool.key for tool in build_default_registry().list()
-        if packages.deck_accepts_readings(tool.deck)
-    }
+    """EL MISMO INVARIANTE QUE ANTES, con el valor dado vuelta.
 
-    assert cableados == _DECKS_CON_LECTURAS
+    Este test afirmaba ``cableados == _DECKS_CON_LECTURAS`` con la constante en el
+    conjunto vacio: el inventario de decks enchufados es el que creemos que es, y
+    entonces eran cero porque el cableado estaba dormido. Ahora son TODOS, y escribirlo
+    contra una lista literal de 53 claves seria peor que antes -- se desactualiza sola y
+    lo que hay que fijar no es "estos 53" sino "ninguno se quedo afuera". De ahi la
+    igualdad contra los tools que TIENEN deck: un deck nuevo nacido con la firma vieja
+    cae aca sin que nadie tenga que acordarse de tocar una constante.
+
+    El ``assert con_deck`` de abajo es la guarda contra el test vacuo que la constante
+    daba gratis: con un registry que no devuelve nada, dos conjuntos vacios son iguales.
+    El inventario nominal -- las excepciones con su motivo, el piso de 53 y el default
+    del parametro -- vive en ``tests/test_tools_threads_readings_to_decks.py``.
+    """
+    tools = build_default_registry().list()
+    con_deck = {tool.key for tool in tools if tool.deck is not None}
+    cableados = {tool.key for tool in tools if packages.deck_accepts_readings(tool.deck)}
+
+    assert con_deck                      # si el registry viene vacio, esto no prueba nada
+    assert cableados == con_deck
 
 
-# --- 2. inerte: en produccion no pasa absolutamente nada ------------------------------
+# --- 2. inerte en produccion; vivo donde el indice esta --------------------------------
 
 
-def test_con_el_registry_real_el_indice_ni_se_consulta_y_el_entregable_no_se_mueve(
+def test_con_el_registry_real_la_lectura_llega_al_archivo_y_sin_indice_sale_como_antes(
     tmp_path, monkeypatch,
 ):
-    """El caso de PRODUCCION, sobre un tool REAL que SI tiene deck.
+    """DE PUNTA A PUNTA, sobre un tool REAL: el Orchestrator, su deck registrado y los
+    archivos escritos en disco. Reemplaza al test que fijaba el estado dormido
+    (``llamadas == []``, ``kwargs_del_deck == [{}, {}]``) y conserva sus dos invariantes,
+    que no eran "no pasa nada" sino estos dos.
 
     EL TOOL IMPORTA, y es la mitad del test. Con uno sin ``deck`` -- ``leadership_chain``,
     por ejemplo -- ``_lecturas`` sale por su primer ``return ()`` y nunca se le pregunta
@@ -211,53 +227,101 @@ def test_con_el_registry_real_el_indice_ni_se_consulta_y_el_entregable_no_se_mue
     archivo de datos y es byte-determinista entre corridas, asi que la llamada al deck
     real pasa de verdad por el ``**deck_readings`` del orquestador.
 
-    LAS DOS COSAS QUE PODRIAN DIFERENCIAR ESTA CORRIDA DE LA DE ANTES DEL CABLEADO, y
-    por eso son las dos que se fijan: que el indice NO se consulto (el gate de costo: los
-    16,8 s y ~1,6 GB por arranque no se pagan por algo que nadie iba a renderizar), y que
-    el deck real recibio la MISMA llamada de siempre, sin un ``readings`` de mas. Los
-    bytes iguales con el indice arriba y abajo van encima de eso, no en lugar de eso.
+    INVARIANTE 1, EL GATE DE COSTO: el indice se consulta SOLO si hay quien renderice. Lo
+    que cambio es la respuesta, no la regla, asi que se sigue midiendo igual -- con un
+    tercer sujeto, ``_deck_de_antes``, que es el deck real envuelto en la firma de antes
+    del cableado. Con el indice ARRIBA no se consulta ni una vez: los 16,8 s y ~1,6 GB
+    por arranque se siguen sin pagar cuando nadie va a renderizar nada.
+
+    INVARIANTE 2, EL ENTREGABLE NO SE MUEVE: antes se median los bytes con el indice
+    arriba contra los bytes con el indice abajo, y daban iguales porque el deck nunca
+    recibia nada. Ahora con indice SI se mueve -- para eso es todo esto --, asi que la
+    comparacion correcta es contra la corrida de la firma vieja, que es literalmente el
+    codigo de antes de este commit. Sin indice (SIEMPRE en produccion) el archivo tiene
+    que salir byte a byte igual a eso.
+
+    Y LO NUEVO: con indice, el rotulo ``PDF p.83-84`` viaja TEXTUAL hasta adentro del
+    .md y del .xlsx. Se chequea el archivo escrito y no el ``Deliverable``, porque es el
+    archivo lo que abre el cliente, y porque ``PDF p.N`` es la pagina FISICA del PDF: el
+    dia que alguien "normalice" ese rotulo a ``p.83``, el cliente abre el libro impreso
+    26 paginas mas atras y falsea la cita el solo.
     """
+    from openpyxl import load_workbook
+
     reg_real = build_default_registry()
     real = reg_real.get(_TOOL_REAL_CON_DECK)
     assert real.deck is not None                    # si lo pierde, el test deja de probar
-    assert packages.deck_accepts_readings(real.deck) is False
+    assert packages.deck_accepts_readings(real.deck) is True   # despierto
 
     llamadas: list[tuple] = []
     kwargs_del_deck: list[dict] = []
+    indice = {"responde": _disponible}
 
     def _espia_indice(keywords, **kwargs):
         llamadas.append((tuple(keywords), kwargs))
-        return _disponible(keywords, **kwargs)
+        return indice["responde"](keywords, **kwargs)
 
     @functools.wraps(real.deck)   # asi `inspect.signature` sigue viendo la firma REAL
     def _espia_deck(*args, **kwargs):
         kwargs_del_deck.append(dict(kwargs))
         return real.deck(*args, **kwargs)
 
-    reg = ToolRegistry()
-    for t in reg_real.list():
-        reg.register(replace(t, deck=_espia_deck) if t.key == _TOOL_REAL_CON_DECK else t)
-    assert packages.deck_accepts_readings(reg.get(_TOOL_REAL_CON_DECK).deck) is False
+    def _deck_de_antes(report, out_dir, client, citations, confidence, options):
+        """El deck real con la firma de ANTES del cableado: el codigo de la base."""
+        return real.deck(report, out_dir, client, citations, confidence, options)
 
-    def _corrida(destino: Path):
+    assert packages.deck_accepts_readings(_deck_de_antes) is False   # si no, no es "antes"
+
+    def _corrida(deck, destino: Path):
+        reg = ToolRegistry()
+        for t in reg_real.list():
+            reg.register(replace(t, deck=deck) if t.key == _TOOL_REAL_CON_DECK else t)
         return _orq(reg).run("realized service", job_type=_TOOL_REAL_CON_DECK,
                              out_dir=destino, client="Client")
 
     monkeypatch.setattr(lectura, "read_passages", _espia_indice)
-    con = _corrida(tmp_path / "con")
-    monkeypatch.setattr(lectura, "read_passages", _no_disponible)
-    sin = _corrida(tmp_path / "sin")
+    con = _corrida(_espia_deck, tmp_path / "con")
+    indice["responde"] = _no_disponible
+    sin = _corrida(_espia_deck, tmp_path / "sin")
+    indice["responde"] = _disponible          # el indice esta ARRIBA en la de "antes"
+    consultas_antes_del_deck_viejo = len(llamadas)
+    antes = _corrida(_deck_de_antes, tmp_path / "antes")
 
-    assert con.status == sin.status == "ok"
-    assert llamadas == []                      # no se consulto NADA
-    assert kwargs_del_deck == [{}, {}]         # el deck REAL, llamado como siempre
+    assert con.status == sin.status == antes.status == "ok"
     assert "deck_report" in con.deliverables   # y corrio de verdad, no fue un no-op
+    # Las lecturas no tocan ni el resumen ni las citas: el pasaje no entra al prompt del
+    # modelo y no es una cita. Los dos invariantes viven completos mas abajo; aca se
+    # miden sobre la corrida de un tool REAL, que es donde el cliente los recibiria.
     assert con.summary == sin.summary
     assert con.citations == sin.citations
-    assert sorted(con.deliverables) == sorted(sin.deliverables)
-    for nombre, ruta in con.deliverables.items():
-        otro = Path(sin.deliverables[nombre])
+
+    # Invariante 1, el gate de costo: una consulta por corrida cuyo deck renderiza...
+    assert consultas_antes_del_deck_viejo == 2
+    # ...y CERO por la de la firma vieja, con el indice arriba y disponible.
+    assert len(llamadas) == 2
+    # Invariante 2 (la mitad de arriba): el deck real, llamado como siempre cuando no hay
+    # nada que mandarle -- ni un kwarg de mas -- y con las lecturas cuando si.
+    assert kwargs_del_deck == [{"readings": _LECTURAS}, {}]
+
+    texto = Path(con.deliverables["deck_report"]).read_text(encoding="utf-8")
+    assert "PDF p.83-84" in texto                       # el rotulo, TEXTUAL
+    assert "vandeput-inventory-optimization" in texto
+    assert "Safety stock sizing depends on the risk period." in texto
+    libro = load_workbook(Path(con.deliverables["deck_workbook"]))
+    celdas = [str(c.value) for h in libro.worksheets for fila in h.iter_rows() for c in fila]
+    assert "PDF p.83-84" in celdas                      # y en su propia celda, sin tocar
+
+    # Invariante 2: sin indice, el archivo es el de antes del cableado, byte a byte.
+    assert sin.summary == antes.summary
+    assert sin.citations == antes.citations
+    assert sorted(sin.deliverables) == sorted(antes.deliverables)
+    for nombre, ruta in sin.deliverables.items():
+        otro = Path(antes.deliverables[nombre])
         assert _bytes_estables(Path(ruta)) == _bytes_estables(otro), nombre
+    # Y el caso con indice SI se movio, que es lo unico que hace honesto al bloque de
+    # arriba: sin esto, un cableado que no enhebrara nada pasaria los tres asserts.
+    assert _bytes_estables(Path(con.deliverables["deck_report"])) != _bytes_estables(
+        Path(sin.deliverables["deck_report"]))
 
 
 #: Miembro del xlsx que openpyxl estampa con el reloj de pared, a resolucion de UN segundo.

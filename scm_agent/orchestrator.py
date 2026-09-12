@@ -296,9 +296,13 @@ class Orchestrator:
         SOLO SI HAY QUIEN LOS RENDERICE. Se le pregunta al deck (ver
         ``packages.deck_accepts_readings``) antes de consultar nada, porque la consulta
         no es gratis: levanta y baja el servidor de lectura entero -- 16,8 s con el
-        indice frio, ~1,6 GB de RSS. Hoy ningun deck registrado acepta ``readings``, asi
-        que en produccion esta rama no corre NUNCA y la corrida sale byte a byte como
-        antes; el dia que un deck gane el parametro, queda enchufado sin tocar esto.
+        indice frio, ~1,6 GB de RSS. Los 53 decks registrados hoy contestan que si
+        (``tests/test_tools_threads_readings_to_decks.py`` lo mantiene asi), asi que la
+        pregunta ya no apaga esta rama; la sigue apagando para un tool sin deck, y volveria
+        a apagar un tool cuyo deck naciera con la firma vieja. En produccion igual no se
+        paga nada: sin ``KERN_LECTURA_PYTHON``, ``read_passages`` contesta
+        ``available=False`` sin levantar ningun proceso y el entregable sale byte a byte
+        como antes de este cableado.
 
         UNA SOLA CONSULTA POR CORRIDA, que es todo lo que hace falta: una corrida
         single-tool produce un solo deck. Con las palabras canonicas del tool -- las

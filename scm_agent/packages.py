@@ -504,7 +504,12 @@ def deck_accepts_readings(deck: Callable | None) -> bool:
 
     Vive al lado de su hermana a proposito: los 53 decks registrados tienen UNA forma
     (``scm_agent/tools.py``), y las preguntas sobre esa forma se hacen todas desde el
-    mismo lugar. ``tests/test_orchestrator_lecturas.py`` mantiene el inventario a la vista.
+    mismo lugar. Hoy los 53 contestan True -- el parametro se enhebra en el mismo
+    ``replace(...)`` que ya armaba ``options``, sin tocar ningun ``build_deck`` --, asi
+    que el unico False vivo es el de un tool sin deck. Eso NO vuelve inutil la pregunta:
+    es lo que hace que el deck 54, si naciera con la firma vieja, no arrastre un arranque
+    de servidor por corrida. ``tests/test_tools_threads_readings_to_decks.py`` mantiene el
+    inventario a la vista y falla si alguno se queda mudo.
     """
     return _deck_accepts(deck, "readings")
 
