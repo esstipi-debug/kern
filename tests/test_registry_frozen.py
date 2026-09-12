@@ -15,10 +15,11 @@ puede tocar. No congela el codigo de cada tool ni sus parametros.
 Levantado por primera vez el 2026-09-12 (ver seccion 3 del ADR): 53 -> 57,
 sumando audit_evidence, import_case, iso_ops y scor_iso_audit.
 
-Segundo levantamiento propuesto el mismo dia (57 -> 58, `repricing`): PENDIENTE
-de la decision del operador. Ver la fila correspondiente en la seccion 3 del ADR,
-que esta escrita como PENDIENTE a proposito -- este diff existe para que la
-decision sea revisable, no para darla por tomada.
+Levantado por SEGUNDA vez el mismo dia: 57 -> 58, sumando `repricing`. Decision
+del operador, motivo textual "es motor que ya existe" -- el playbook estaba
+construido y probado desde el PR-18 del plan 3.0 y sin ningun punto de entrada;
+lo que entra al registro es exposicion, no motor nuevo. Sigue sin haber cliente
+pago que lo pida, y la fila del ADR lo dice. Ver seccion 3 del ADR.
 
 Como se levanta el freno, cuando corresponda. Se edita la tupla en el mismo PR
 que registra o borra la tool, con el motivo en el mensaje de commit y una linea
