@@ -20,8 +20,11 @@ QUE SE FIJA ACA, y por que cada cosa es de producto antes que de codigo.
 4. **No puede colgar la corrida.** Un servidor que no contesta nunca degrada a
    `available=False` en segundos, y el paquete se entrega igual.
 
-El test 5 es el unico que habla con el indice de verdad: va marcado `integracion`,
-que `pyproject.toml` deselecciona por defecto (`addopts = "-m 'not integracion'"`).
+Los dos tests de la seccion 5 son los unicos que hablan con el indice de verdad: van
+marcados `integracion`, que `pyproject.toml` deselecciona por defecto
+(`addopts = "-m 'not integracion'"`). El segundo consulta a proposito el libro con el
+glyph-mapping del PDF destruido, que es lo que motivo el piso de legibilidad del
+conector.
 """
 
 from __future__ import annotations
@@ -45,6 +48,10 @@ from src.connectors.lectura import ENV_INTERPRETE, Reading, ReadingLookup
 
 # La ruta del indice real, que vive en OTRO repo. Solo la usa el test de integracion.
 INDICE_REAL = Path("C:/Users/Gamer/Music/scm/kern-lectura/.venv/Scripts/python.exe")
+
+#: El libro del indice con el glyph-mapping del PDF destruido, que es lo que motivo el
+#: piso de legibilidad del conector (`lectura.MAX_RELLENO_EXCERPT`).
+_LIBRO_ROTO = "vandeput-data-science-supply-chain-forecasting"
 
 
 class _NoKnowledge:
@@ -391,3 +398,34 @@ def test_integracion_el_indice_real_devuelve_pasajes_con_pagina(monkeypatch):
         assert lec.source and lec.source != "?"
         assert lec.page_label.startswith("PDF p.") or lec.page_label == "sin pagina"
         assert lec.source.isascii() and "\n" not in lec.excerpt
+@pytest.mark.integracion
+@pytest.mark.skipif(not INDICE_REAL.is_file(),
+                    reason=f"el indice de lectura no esta instalado en {INDICE_REAL}")
+def test_integracion_el_libro_con_el_glyph_mapping_roto_no_publica_sus_extractos(monkeypatch):
+    """El piso de legibilidad, contra el indice DE VERDAD y contra el libro que lo motivo.
+
+    `vandeput-data-science-supply-chain-forecasting` tiene el glyph-mapping del PDF
+    destruido: medido sobre 25 de sus pasajes, el relleno que `_sanear` fabrica va de
+    0,028 a 0,206, contra un p95 de 0,019 en los otros 14 libros. Lo que se afirma aca no
+    es un numero sino la conducta: de ese libro sale procedencia (libro + pagina) y no
+    salen extractos ilegibles. Un test con un cable fabricado no puede probar esto,
+    porque el cable fabricado lo escribi yo.
+
+        PYTHONPATH=. ./.venv/Scripts/python.exe -m pytest tests/test_packages_lecturas.py -m integracion -q
+    """
+    monkeypatch.setenv(ENV_INTERPRETE, str(INDICE_REAL))
+
+    r = lectura.read_passages(["python pandas dataframe", "machine learning forecast"],
+                              k=8, sources=[_LIBRO_ROTO], timeout_s=120.0)
+
+    assert r.available is True, r.note
+    assert r.readings
+    assert all(lec.source == _LIBRO_ROTO for lec in r.readings)
+    # La invariante, sobre TODO lo que el indice real devuelva: nada de lo que se publica
+    # puede estar por encima del piso. Si alguna vez ese libro se re-extrae bien, esto
+    # sigue pasando -- mide la regla, no el estado del PDF.
+    for lec in r.readings:
+        assert not lectura._es_ilegible(lec.excerpt), (lec.page_label, lec.excerpt)
+        assert lec.page_label.startswith("PDF p.") or lec.page_label == "sin pagina"
+    # y hoy, con el PDF como esta, la mayoria queda sin extracto en vez de con basura
+    assert sum(1 for lec in r.readings if not lec.excerpt) >= len(r.readings) // 2

@@ -537,6 +537,174 @@ LS = chr(0x2028)  # separador de linea Unicode
 EM = chr(0x2014)  # em dash: no-ASCII que `_sanear` tiene que bajar a un guion
 
 
+# --- 8. el piso de legibilidad: se cae el EXTRACTO, nunca el libro ni la pagina ------
+#
+# El agujero que tapa esta seccion. Un pasaje con el glyph-mapping del PDF destruido pasa
+# TODAS las demas puertas -- slug valido, etiqueta que matchea, una sola linea, bajo el
+# tope -- y se publica textual entre comillas bajo un libro y una pagina REALES. Peor: el
+# propio `_sanear` lo disfraza de prosa, porque el caracter que manda el indice roto es
+# U+00B7 (middle dot, 159 veces en una sola respuesta medida) y `_REEMPLAZOS` lo pasa a
+# "-". O sea que Kern convierte texto irrecuperable en algo con forma de prosa en vez de
+# descartarlo, y el cliente que abre Vandeput en la p.298 no encuentra nada de eso.
+#
+# Los cuatro cuerpos de abajo son TEXTUALES del indice vivo (recortados, no editados).
+# Son la frontera del umbral medido sobre 400 pasajes de 15 libros, y por eso estan los
+# sanos tambien: un piso que solo se prueba con basura no prueba nada sobre lo que tiene
+# que dejar pasar.
+
+_MEDIO = "\u00b7"  # U+00B7: el glyph que el indice roto manda donde iba una letra
+
+# vandeput-data-science-supply-chain-forecasting, PDF p.298-299. El caso del hallazgo.
+CUERPO_GLYPH_ROTO = (
+    "y\u00b7 \u00b7 \u00b7 \u00b7up\u00b7lk \u00b7h\u00b7l\u00b7m\u00b7k\u00b7gbl "
+    "\u00b7f\u00b7j is one of the most used libraries in \u00b7ython (it was created by "
+    "\u00b7es \u00b7c\u00b7inney in 2008). \u00b7he name comes from h\u00b7f el \u00b7 ta, "
+    "because it helps to order data into ta\u00b7 bles.\u00b7hink\u00b7xcel\u00b7meets"
+    "\u00b7databasesin\u00b7ython."
+)
+
+# vandeput-inventory-optimization-models-simulations, PDF p.271-272. El pasaje SANO mas
+# denso en rayas que se midio (0,030): un listado de codigo, legible y citable.
+CUERPO_CODIGO = (
+    "13.1 Safety Stock Optimization | 245 unit_shorts[t] = max(0,d[t] - max(0,hand[t-1] "
+    "+ transit[t -1,0])) hand[t] = hand[t-1] - d[t] + transit[t-1,0] "
+    "stockout_period[t] = hand[t] < 0 transit[t,:-1] = transit[t-1,1:] if t%R==0: "
+    "actual_L = np.random.choice(L_x, 1, p=L_pmf) net = hand[t] + transit[t].sum()"
+)
+
+# heizer-render-operations-management, PDF p.519. Prosa REAL cargada de "?" -- la puerta
+# que se abre al contar el "?" como relleno, porque `_sanear` lo fabrica para todo lo que
+# no pudo mapear. Si el umbral se comiera esto, se estaria comiendo prosa de verdad.
+CUERPO_PREGUNTAS = (
+    "480 PART 3 | MANAGING OPERATIONS Discussion Questions 1. What is the difference "
+    "between \u201cunique-event\u201d risk and \u201csuper-event\u201d risk? 2. If the "
+    "probability of a \u201csuper-event\u201d increases, does the \u201cunique-event\u201d "
+    "risk increase or decrease in importance? Why?"
+)
+
+# vollmann-manufacturing-planning-control, PDF p.412-413. No esta roto: es el volcado de
+# una FIGURA (un reporte con rayas de cuadricula). Tampoco es una cita que alguien pueda
+# leer, y el mismo piso lo saca.
+CUERPO_FIGURA = (
+    "FIGURE 10.18 Abbott Short-Term Shipping Information MPDR0030 DISTRIBUTION "
+    "REQUIREMENTS PLAN PAGE 206 DC 21 - MONTREAL DIVISION 2 LIST/SIZE QUANTITY PALLET "
+    "WEIGHT CUBE --------------- PAST DUE --------------- WEEK 1 --------------- "
+    "XYZ-200 0 0.0 0.0 0.0 0 0.0 0.0 0.0"
+)
+
+
+def _una(source: str, etiqueta: str, cuerpo: str) -> Reading:
+    """Una sola entrada leida del cable, con el cuerpo indentado como lo manda el server."""
+    (leida,) = lectura.parse_readings(f"1. **{source}** {etiqueta}{NL}   {cuerpo}{NL}")
+    return leida
+
+
+def test_un_pasaje_con_el_glyph_mapping_roto_no_se_publica_entre_comillas():
+    """El hallazgo, textual. Lo que se cae es el EXTRACTO; la procedencia queda entera."""
+    leida = _una("vandeput-data-science-supply-chain-forecasting", "PDF p.298-299",
+                 CUERPO_GLYPH_ROTO)
+
+    assert leida.excerpt == ""
+    assert leida.source == "vandeput-data-science-supply-chain-forecasting"
+    assert leida.page_label == "PDF p.298-299"
+
+
+def test_la_entrada_ilegible_sigue_siendo_procedencia_y_no_se_descarta():
+    """Media procedencia no se inventa, pero libro + pagina YA es procedencia completa:
+    tirar la entrada entera le sacaria al cliente una referencia que si puede abrir."""
+    r = lookup_from_text(
+        f"1. **vandeput-data-science-supply-chain-forecasting** PDF p.298-299{NL}"
+        f"   {CUERPO_GLYPH_ROTO}{NL}"
+    )
+    assert r.available is True
+    assert len(r.readings) == 1
+    assert r.readings[0].page_label == "PDF p.298-299"
+
+
+def test_el_piso_no_se_come_el_listado_de_codigo_mas_denso_que_se_midio():
+    """El pasaje sano con MAS rayas de los 400 medidos (0,030 contra un umbral de 0,04).
+    Es la frontera de verdad del umbral: si alguien lo baja, esto se rompe primero."""
+    leida = _una("vandeput-inventory-optimization-models-simulations", "PDF p.271-272",
+                 CUERPO_CODIGO)
+    assert leida.excerpt.startswith("13.1 Safety Stock Optimization")
+    assert "unit_shorts[t]" in leida.excerpt
+
+
+def test_una_pagina_de_preguntas_no_es_ilegible_por_tener_signos_de_pregunta():
+    """El "?" cuenta como relleno porque `_sanear` lo FABRICA, no porque sea sospechoso.
+    Prosa real llena de preguntas tiene que pasar, y esta es prosa real."""
+    leida = _una("heizer-render-operations-management", "PDF p.519", CUERPO_PREGUNTAS)
+    assert "Discussion Questions" in leida.excerpt
+    assert leida.excerpt.count("?") >= 3  # y sigue siendo legible con todos ellos
+
+
+def test_un_volcado_de_figura_pierde_el_extracto_pero_no_el_libro():
+    """No esta roto, pero tampoco es una frase que alguien pueda leer y verificar."""
+    leida = _una("vollmann-manufacturing-planning-control", "PDF p.412-413", CUERPO_FIGURA)
+    assert leida.excerpt == ""
+    assert leida.page_label == "PDF p.412-413"
+
+
+def test_la_metrica_obvia_no_habria_servido():
+    """Por que el piso cuenta relleno FABRICADO y no "letras contra todo lo demas".
+
+    Medido, no argumentado: el pasaje roto tiene MAS proporcion de letras que el listado
+    de codigo sano. Ningun umbral sobre esa metrica los separa, porque estan del reves:
+    o deja pasar la basura, o se come el codigo.
+    """
+    def letras(texto: str) -> float:
+        sin_blanco = [c for c in texto if not c.isspace()]
+        return sum(c.isalpha() for c in sin_blanco) / len(sin_blanco)
+
+    roto = _una("vandeput-data-science-supply-chain-forecasting", "PDF p.1",
+                CUERPO_GLYPH_ROTO)
+    sano = _una("vandeput-inventory-optimization-models-simulations", "PDF p.1",
+                CUERPO_CODIGO)
+    assert roto.excerpt == "" and sano.excerpt  # el piso SI los separa
+    # y la metrica obvia los habria ordenado al reves:
+    assert letras(lectura._sanear(CUERPO_GLYPH_ROTO)) > letras(lectura._sanear(CUERPO_CODIGO))
+
+
+def test_el_umbral_es_el_que_se_midio():
+    """El numero sale de 400 pasajes del indice vivo (p90 sano = 0,012, p95 = 0,019;
+    el libro roto arranca en 0,028). Cambiarlo es una decision, no un ajuste."""
+    assert lectura.MAX_RELLENO_EXCERPT == 0.04
+
+
+def test_el_umbral_corta_donde_dice_y_no_un_caracter_antes():
+    """La frontera exacta, sin depender de ningun pasaje real: 4 de 100 pasa, 5 no."""
+    justo = "a" * 96 + "-" * 4
+    pasado = "a" * 95 + "-" * 5
+    assert _una("liu-supply-chain-analytics", "PDF p.7", justo).excerpt == justo
+    assert _una("liu-supply-chain-analytics", "PDF p.7", pasado).excerpt == ""
+
+
+def test_un_extracto_que_es_puro_relleno_jamas_llega_al_cliente():
+    assert _una("liu-supply-chain-analytics", "PDF p.7", "- - ? - ? -").excerpt == ""
+
+
+def test_una_entrada_sin_cuerpo_no_es_ilegible_sino_ausente():
+    """El caso vacio no puede caerse por una division por cero ni cambiar de conducta:
+    ya era una entrada valida sin extracto antes de que este piso existiera."""
+    (leida,) = lectura.parse_readings("1. **liu-supply-chain-analytics** PDF p.7")
+    assert leida.excerpt == ""
+    assert leida.source == "liu-supply-chain-analytics"
+
+
+def test_el_piso_corre_sobre_el_texto_que_se_publica_no_sobre_el_crudo():
+    """Se mide despues del saneo y del corte, que es lo unico que el cliente ve.
+
+    No es un detalle: en el crudo el relleno todavia es U+00B7 y no una raya, asi que
+    medir antes contaria CERO rayas sobre el pasaje mas roto del indice. Y medir despues
+    del corte ayuda, porque el encabezado destruido de un PDF roto esta al principio:
+    aca entra una cabeza ilegible con una cola larga y sana, se publica la cabeza, y la
+    cabeza es la que no se puede leer.
+    """
+    cabeza = _MEDIO.join("abcdefghij") * 4
+    cola = " " + "palabra sana de relleno " * 60
+    assert _una("liu-supply-chain-analytics", "PDF p.7", cabeza + cola).excerpt == ""
+
+
 # --- el contrato de los tipos -------------------------------------------------------
 
 
@@ -606,8 +774,14 @@ def test_el_parser_nunca_construye_un_reading_invalido_por_mas_sucio_que_venga_e
     construir. Se le tira encima lo peor que puede llegar del cable -- un pasaje enorme,
     partido en varias lineas, con centinelas y no-ASCII -- y tiene que salir un lote
     valido, sin excepcion.
+
+    La densidad de rayas del cuerpo es REALISTA a proposito (una en 320 caracteres; el
+    p95 medido del indice vivo es 0,019). La version anterior repetia "palabra EM
+    larguisima", o sea 5% de rayas, y con el piso de legibilidad
+    (`MAX_RELLENO_EXCERPT`) ese cuerpo ya no llega al extracto: el test dejaba de probar
+    el corte por longitud, que es para lo que existe.
     """
-    cuerpo = (("palabra " + EM + " larguisima ") * 300).strip()
+    cuerpo = ("El margen " + EM + " medido " + "palabra larguisima de relleno " * 300).strip()
     crudo = NL.join(["1. **vandeput** PDF p.9", "   " + cuerpo,
                      "   segunda linea del cuerpo", ""])
     (leida,) = lectura.parse_readings(crudo)

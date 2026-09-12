@@ -253,7 +253,10 @@ class Deliverable:
         # kind of grounding and must not be read as an extension of it) and before
         # the coverage block, which closes the document. The excerpt is quoted only
         # when there IS one - the connector allows a passage with a page but no body,
-        # and an empty pair of quotes would assert a quotation nobody read.
+        # and an empty pair of quotes would assert a quotation nobody read. That case is
+        # not rare: the connector also DROPS an excerpt it measured as unreadable
+        # (`lectura.MAX_RELLENO_EXCERPT` - one book in the index has a destroyed PDF
+        # glyph map), keeping book + page, which is complete provenance on its own.
         #
         # One line per passage, and nothing here re-checks that: `Reading.__post_init__`
         # refuses a line break and an over-cap excerpt at construction time, so the cap
