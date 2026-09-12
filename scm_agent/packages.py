@@ -28,7 +28,8 @@ import inspect
 import tempfile
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from itertools import zip_longest
 from pathlib import Path
 
 import pandas as pd
@@ -45,7 +46,8 @@ from nosilo_core.types import (
     JobRequest,
 )
 from src import client_profile, vertical_profile
-from src.deliverable import DEFAULT_BRANDING, Branding
+from src.connectors import lectura
+from src.deliverable import DEFAULT_BRANDING, Branding, Deliverable
 
 from . import citation_gate
 from .knowledge import KnowledgeBase
@@ -117,6 +119,124 @@ def _step_citations(knowledge: KnowledgeBase, tool, tool_key: str) -> tuple[str,
     MIN_CITATIONS) is untouched."""
     candidates = knowledge.ground_citations_detailed(tool.intent_keywords, tool.title, limit=_CANDIDATE_POOL)
     return citation_gate.filter_citations(knowledge, tool_key, candidates).kept[:_MAX_CITATIONS]
+
+
+# --- procedencia de libro: RIO ABAJO del gate de citas -------------------------------
+#
+# QUE ES ESTO Y DONDE ENGANCHA. El indice de lectura (``src/connectors/lectura.py``:
+# 44 libros de supply chain partidos en 6.929 pasajes con su pagina) acompania el deck
+# CONSOLIDADO del paquete con una seccion propia. No es una cita: un pasaje no tiene
+# ``node_id`` y ``filter_citations`` lo rechazaria con razon, asi que nada de esto entra
+# al pool de candidatas de ``_step_citations`` ni al campo ``citations``. El grafo L3
+# sigue siendo la unica fuente de citas; esto es una segunda clase de respaldo, mas
+# debil y declarada como tal (``tests/test_packages_lecturas.py`` lo fija corriendo un
+# paso real dos veces y comparando las citas).
+#
+# POR QUE UNA SOLA CONSULTA, Y POR QUE EN EL DECK DEL PAQUETE. Esta medido: cada
+# ``read_passages`` levanta y baja el servidor entero -- 16,8 s con el indice frio, y el
+# proceso pide ~1,6 GB de RSS. Las dos alternativas se descartaron por eso:
+#
+#   * una consulta POR PASO -- un paquete Growth son 26 pasos, o sea 26 arranques del
+#     servidor para llenar una seccion de a lo sumo cinco lineas;
+#   * una sesion abierta reusada entre pasos -- un solo arranque, si, pero exige sacar
+#     la sesion afuera del conector (hoy ``read_passages`` la abre y la cierra adentro,
+#     que es lo que le permite no levantar NUNCA) y, sobre todo, no tendria a donde
+#     dejar cada resultado: los ~37 decks por tool se arman y se escriben dentro de
+#     ``tool.deck``, que devuelve rutas, no un ``Deliverable``. El unico Deliverable que
+#     una corrida tiene ARMADO en la mano es el del paquete, y es uno solo.
+#
+# Se paga entonces un unico arranque por corrida, y el precio de esa eleccion se declara:
+# la consulta es un promedio del paquete, no del paso, asi que en un paquete ancho las
+# lecturas hablan del tema comun y no del detalle de cada tool.
+
+#: Cuantas palabras clave entran a esa unica consulta, y cuantas puede aportar UN paso.
+#: Los dos numeros salen de medir contra el indice vivo (k=4, familia abc/inventario),
+#: no de estimar. El servidor busca por VECTOR (``search_passages`` -> LightRAG en modo
+#: naive), asi que la consulta es un centroide y los extremos fallan de los dos lados:
+#:
+#:   1 termino  ("abc-xyz")                       -> 0 de 4 utiles: un token corto y
+#:                                                   guionado cae en paginas de OCR roto
+#:                                                   que contienen literalmente "-xyz";
+#:   3 canonicos ("abc-xyz, abc analysis, pareto") -> 4 de 4 utiles, el mejor medido;
+#:   12 sinonimos del MISMO tema                   -> 1 de 4: "classify"/"classification"
+#:                                                   arrastran capitulos de clustering y
+#:                                                   de Python, no de inventario;
+#:   8 terminos de 4 temas (DIAGNOSTICO)           -> 3 de 4 utiles.
+#:
+#: De ahi el tope POR PASO: un paquete de un solo tool manda 3 terminos canonicos (el
+#: mejor caso medido) en vez de 12 variantes del mismo, y uno de cuatro pasos llena los
+#: 12 con vocabulario de cuatro temas (el caso decente). Lo que NINGUN numero arregla es
+#: un paquete ancho: con 26 pasos el centroide es el terreno comun del paquete y los
+#: pasajes hablan de eso, no del detalle de cada tool. Ese es el precio declarado de
+#: gastar un solo arranque de servidor por corrida.
+_MAX_KEYWORDS_LECTURA = 12
+_MAX_KEYWORDS_POR_PASO = 3
+
+#: Cuantos pasajes se piden. Es una seccion de respaldo al pie de un deck, no un capitulo.
+_LECTURAS_POR_PAQUETE = 5
+
+#: Segundos por request del conector (initialize y tool call cuentan por separado, ver
+#: ``lectura._stdio_caller``). Acotado a proposito: una corrida de paquete puede durar
+#: minutos y esto es lo ULTIMO que hace antes de escribir, asi que un indice que no
+#: contesta tiene que degradar a "sin lecturas" y dejar salir el entregable.
+_TIMEOUT_LECTURA_S = 20.0
+
+
+def _keywords_de_lectura(registry: ToolRegistry, outcomes) -> list[str]:
+    """Las palabras clave de los pasos EJECUTADOS, una ronda por vez.
+
+    Ronda a ronda -- la primera palabra de cada paso antes que la segunda de ninguno --
+    porque ``intent_keywords`` es una lista de sinonimos de intencion ordenada de mas a
+    menos canonica (``"abc-xyz", "abc xyz", "abc analysis", ...``). Tomandolas en orden
+    plano, un paquete de 26 pasos gastaria el cupo entero en variantes del primer tool y
+    las lecturas hablarian de un tercio del entregable que acompanan. Y cada paso aporta
+    a lo sumo :data:`_MAX_KEYWORDS_POR_PASO`, que es lo que la medicion contra el indice
+    vivo dejo claro: pasada la tercera, lo que entra son sinonimos genericos
+    ("classify", "classification") que traen capitulos de otra cosa.
+
+    Solo los pasos ``ok``: un paso salteado no aporta nada al deck, y una lectura sobre
+    un analisis que no se entrego es procedencia de algo que el cliente no recibio.
+    """
+    por_paso = [
+        [p for p in (str(k).strip() for k in (registry.get(o.tool_key).intent_keywords or ())) if p
+         ][:_MAX_KEYWORDS_POR_PASO]
+        for o in outcomes if o.status == STATUS_OK
+    ]
+    elegidas: list[str] = []
+    vistas: set[str] = set()
+    for ronda in zip_longest(*por_paso):
+        for palabra in ronda:
+            if palabra is None or palabra.lower() in vistas:
+                continue
+            vistas.add(palabra.lower())
+            elegidas.append(palabra)
+            if len(elegidas) >= _MAX_KEYWORDS_LECTURA:
+                return elegidas
+    return elegidas
+
+
+def _con_lecturas(deck: Deliverable, registry: ToolRegistry, outcomes) -> Deliverable:
+    """El deck del paquete con su seccion de lecturas, si hubo indice que consultar.
+
+    INERTE cuando no lo hay, que es SIEMPRE en produccion: la VM tiene 512 MB y el
+    indice pide 1,6 GB, asi que ``KERN_LECTURA_PYTHON`` no esta seteada y el conector
+    contesta ``available=False`` sin intentar levantar nada. En ese caso vuelve el MISMO
+    objeto, no una copia equivalente: el entregable sale byte a byte como lo arma
+    ``jobs/package_deliverable.py``, sin seccion vacia y sin una nota contandole al
+    cliente que falto algo que nunca se le prometio.
+
+    ``Deliverable`` es frozen: ``dataclasses.replace``, nunca mutacion. Y nada de lo que
+    vuelve puede tirar la corrida -- ``read_passages`` no levanta, por contrato propio.
+    """
+    keywords = _keywords_de_lectura(registry, outcomes)
+    if not keywords:
+        return deck
+    lecturas = lectura.read_passages(
+        keywords, k=_LECTURAS_POR_PAQUETE, timeout_s=_TIMEOUT_LECTURA_S
+    )
+    if not lecturas.available or not lecturas.readings:
+        return deck
+    return replace(deck, readings=lecturas.readings)
 
 
 @dataclass(frozen=True)
@@ -537,6 +657,10 @@ def run_package(
     if resolved_branding is None:
         resolved_branding = profile.branding if profile is not None and profile.branding is not None else DEFAULT_BRANDING
     deck = package_deliverable.build(spec, outcomes, client=client, prepared=prepared, branding=resolved_branding)
+    # Lo ULTIMO antes de escribir, y a proposito: la procedencia de libro va rio abajo de
+    # todo -- del gate de QA, del gate de citas y del deck ya compuesto -- asi que no
+    # puede cambiar nada de lo que se decidio arriba. Ver `_con_lecturas`.
+    deck = _con_lecturas(deck, registry, outcomes)
     package_files = deck.write_all(out_root)
     written.update({f"paquete_{name}": str(path) for name, path in package_files.items()})
 
