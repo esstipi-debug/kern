@@ -32,6 +32,9 @@ afirma abajo sea una forma de "no cambia nada" y no una funcionalidad nueva.
 
 from __future__ import annotations
 
+import asyncio
+import functools
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -63,6 +66,13 @@ _LECTURAS = (
 
 #: Que el deck NO recibio el parametro, distinto de recibirlo vacio.
 _NO_PASADO = object()
+
+#: El tool REGISTRADO sobre el que se corre el caso de produccion. Tiene que tener
+#: ``deck``: con uno que no lo tiene, ``_lecturas`` sale por su primer ``return ()`` y la
+#: corrida no ejercita NADA del cableado -- ni el gate de costo ni el ``**deck_readings``.
+#: Ademas corre sin archivo de datos y es byte-determinista entre dos corridas, que es lo
+#: que permite comparar los bytes de los entregables.
+_TOOL_REAL_CON_DECK = "service_scan"
 
 
 class _NoKnowledge:
@@ -191,30 +201,56 @@ def test_los_decks_con_lecturas_son_los_que_creemos_que_son():
 def test_con_el_registry_real_el_indice_ni_se_consulta_y_el_entregable_no_se_mueve(
     tmp_path, monkeypatch,
 ):
-    """El caso de PRODUCCION, comparado contra el comportamiento de HOY.
+    """El caso de PRODUCCION, sobre un tool REAL que SI tiene deck.
 
-    Se corre un tool REAL del registry dos veces -- con el indice arriba y con el indice
-    abajo -- y se comparan el JobResult y los BYTES de cada archivo escrito. Ningun deck
-    registrado acepta lecturas todavia, asi que ni siquiera se consulta: el costo (16,8 s
-    y ~1,6 GB por arranque) no se paga por un resultado que nadie iba a renderizar.
+    EL TOOL IMPORTA, y es la mitad del test. Con uno sin ``deck`` -- ``leadership_chain``,
+    por ejemplo -- ``_lecturas`` sale por su primer ``return ()`` y nunca se le pregunta
+    nada a ninguno de los 53 decks reales: la corrida pasaria igual con el gate de costo
+    roto, porque nada del cableado llego a correr. ``service_scan`` tiene deck, corre sin
+    archivo de datos y es byte-determinista entre corridas, asi que la llamada al deck
+    real pasa de verdad por el ``**deck_readings`` del orquestador.
+
+    LAS DOS COSAS QUE PODRIAN DIFERENCIAR ESTA CORRIDA DE LA DE ANTES DEL CABLEADO, y
+    por eso son las dos que se fijan: que el indice NO se consulto (el gate de costo: los
+    16,8 s y ~1,6 GB por arranque no se pagan por algo que nadie iba a renderizar), y que
+    el deck real recibio la MISMA llamada de siempre, sin un ``readings`` de mas. Los
+    bytes iguales con el indice arriba y abajo van encima de eso, no en lugar de eso.
     """
-    llamadas: list[tuple] = []
+    reg_real = build_default_registry()
+    real = reg_real.get(_TOOL_REAL_CON_DECK)
+    assert real.deck is not None                    # si lo pierde, el test deja de probar
+    assert packages.deck_accepts_readings(real.deck) is False
 
-    def _espia(keywords, **kwargs):
+    llamadas: list[tuple] = []
+    kwargs_del_deck: list[dict] = []
+
+    def _espia_indice(keywords, **kwargs):
         llamadas.append((tuple(keywords), kwargs))
         return _disponible(keywords, **kwargs)
 
-    reg = build_default_registry()
-    brief = "evaluate our SC leadership"
-    params = {"overrides": {"scores": "3 2 3 1 1", "name": "T"}}
+    @functools.wraps(real.deck)   # asi `inspect.signature` sigue viendo la firma REAL
+    def _espia_deck(*args, **kwargs):
+        kwargs_del_deck.append(dict(kwargs))
+        return real.deck(*args, **kwargs)
 
-    monkeypatch.setattr(lectura, "read_passages", _espia)
-    con = _orq(reg).run(brief, out_dir=tmp_path / "con", **params)
+    reg = ToolRegistry()
+    for t in reg_real.list():
+        reg.register(replace(t, deck=_espia_deck) if t.key == _TOOL_REAL_CON_DECK else t)
+    assert packages.deck_accepts_readings(reg.get(_TOOL_REAL_CON_DECK).deck) is False
+
+    def _corrida(destino: Path):
+        return _orq(reg).run("realized service", job_type=_TOOL_REAL_CON_DECK,
+                             out_dir=destino, client="Client")
+
+    monkeypatch.setattr(lectura, "read_passages", _espia_indice)
+    con = _corrida(tmp_path / "con")
     monkeypatch.setattr(lectura, "read_passages", _no_disponible)
-    sin = _orq(reg).run(brief, out_dir=tmp_path / "sin", **params)
+    sin = _corrida(tmp_path / "sin")
 
     assert con.status == sin.status == "ok"
     assert llamadas == []                      # no se consulto NADA
+    assert kwargs_del_deck == [{}, {}]         # el deck REAL, llamado como siempre
+    assert "deck_report" in con.deliverables   # y corrio de verdad, no fue un no-op
     assert con.summary == sin.summary
     assert con.citations == sin.citations
     assert sorted(con.deliverables) == sorted(sin.deliverables)
@@ -358,9 +394,28 @@ def test_el_tope_de_cantidad_lo_pone_kern_y_no_el_otro_repo(tmp_path, monkeypatc
 def test_ni_un_grupo_de_excepciones_tira_la_corrida(tmp_path, monkeypatch):
     """``read_passages`` promete no levantar, pero su guarda es ``except Exception`` y
     anyio levanta ``BaseExceptionGroup``, que esa clausula NO ve. El invariante lo
-    sostiene este lado."""
+    sostiene este lado.
+
+    QUE EL HIJO SEA UNA ``CancelledError`` ES TODO EL TEST. Python elige la clase del
+    grupo por sus hijos: con hijos que son todos ``Exception`` construye un
+    ``ExceptionGroup``, cuyo MRO pasa por ``Exception`` y que por lo tanto un
+    ``except Exception`` atrapa perfecto -- un grupo asi no ejercita el agujero y la
+    guarda pasaria igual escrita ``except Exception``. El grupo que anyio levanta cuando
+    adentro hubo una cancelacion lleva una ``asyncio.CancelledError``, que es
+    ``BaseException`` y NO ``Exception``: ese es el que se escapa, y ese es el unico que
+    prueba algo. La asercion de abajo lo deja clavado para que nadie lo "simplifique".
+
+    Y se lo traga a proposito, aunque la guarda re-lance ``KeyboardInterrupt``: una
+    cancelacion de adentro del task group del conector es asunto del conector, no una
+    interrupcion de esta corrida. Un Ctrl-C de verdad llega como ``KeyboardInterrupt``
+    pelado y SI corta -- lo fija el test de abajo.
+    """
+    grupo = BaseExceptionGroup("unhandled errors in a TaskGroup",
+                               [asyncio.CancelledError()])
+    assert not isinstance(grupo, Exception)   # si esto falla, el test no prueba nada
+
     def _grupo(*a, **kw):
-        raise BaseExceptionGroup("unhandled errors in a TaskGroup", [OSError("boom")])
+        raise grupo
 
     monkeypatch.setattr(lectura, "read_passages", _grupo)
     registro: list = []
