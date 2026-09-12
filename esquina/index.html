@@ -27,9 +27,10 @@
       --ok: #1f6b4a;
       --ok-bg: #e4f0e8;
       --bad-bg: #f8e8e1;
+      --warn: #8a6410;
+      --warn-bg: #f6eeda;
       --bar: #1a140e;
       --nav: #fffaf3;
-      --uf: 40884;
       --safe-top: env(safe-area-inset-top, 0px);
       --safe-bot: env(safe-area-inset-bottom, 0px);
     }
@@ -45,8 +46,7 @@
       min-height: 100dvh;
       display: flex;
       justify-content: center;
-      background:
-        radial-gradient(1200px 600px at 50% -10%, #2a2218, var(--bg));
+      background: radial-gradient(1200px 600px at 50% -10%, #2a2218, var(--bg));
     }
     .phone {
       width: min(430px, 100%);
@@ -84,95 +84,30 @@
     }
     .appbar h1 {
       font-family: Fraunces, Georgia, serif;
-      font-size: 28px;
+      font-size: 27px;
       margin: 4px 0 0;
       font-weight: 600;
       letter-spacing: -0.03em;
+      line-height: 1.1;
     }
     .appbar p { margin: 6px 0 0; font-size: 13px; opacity: 0.7; }
-    main {
-      flex: 1;
-      overflow: auto;
-      padding: 16px;
-    }
+    main { flex: 1; overflow: auto; padding: 16px; }
     .panel { display: none; }
     .panel.on { display: block; }
     .panel[hidden] { display: none !important; }
     .lead {
       font-family: Fraunces, Georgia, serif;
-      font-size: 22px;
+      font-size: 21px;
       line-height: 1.25;
       margin: 0 0 6px;
     }
-    .sub { margin: 0 0 12px; color: var(--muted); font-size: 14px; line-height: 1.45; }
-    .brief {
-      background: var(--bar);
-      color: #f4eadb;
-      border-radius: 16px;
-      padding: 14px 16px;
-      margin: 0 0 12px;
-    }
-    .brief p { margin: 0; font-size: 14px; line-height: 1.45; opacity: 0.92; }
-    .brief strong { color: #e8c36a; font-weight: 600; }
-    .ladder {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 6px;
-      margin: 10px 0 8px;
-    }
-    .ladder div {
-      background: var(--surface-2);
-      border-radius: 10px;
-      padding: 8px 6px;
-      text-align: center;
-    }
-    .ladder span {
-      display: block;
-      font-size: 10px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-    .ladder b {
-      display: block;
-      font-family: Fraunces, Georgia, serif;
-      font-size: 18px;
-      margin-top: 2px;
-    }
-    .gloss {
-      margin: 12px 0 0;
-      padding: 0;
-      list-style: none;
-    }
-    .gloss li {
-      font-size: 12px;
-      line-height: 1.4;
-      color: var(--muted);
-      padding: 6px 0;
-      border-top: 1px solid var(--line);
-    }
-    .gloss b { color: var(--ink); font-weight: 600; }
-    .steps { margin: 10px 0 0; padding: 0; list-style: none; }
-    .steps li {
-      font-size: 14px;
-      line-height: 1.45;
-      color: var(--muted);
-      padding: 8px 0;
-      border-top: 1px solid var(--line);
-    }
-    .steps b { color: var(--ink); }
+    .sub { margin: 0 0 14px; color: var(--muted); font-size: 14px; line-height: 1.45; }
     .card {
       background: #fffdf8;
       border-radius: 16px;
       padding: 16px;
       margin: 0 0 10px;
       border: 1px solid var(--line);
-    }
-    .card button.hit {
-      all: unset;
-      display: block;
-      width: 100%;
-      cursor: pointer;
     }
     .n {
       font-size: 11px;
@@ -181,157 +116,185 @@
       text-transform: uppercase;
       color: var(--muted);
     }
-    .card h2 { font-size: 17px; margin: 6px 0 6px; font-weight: 600; }
+    .card h2 { font-size: 17px; margin: 6px 0 8px; font-weight: 600; line-height: 1.3; }
     .card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
-    .card .amt {
+    .card p + p { margin-top: 8px; }
+    .amt {
       font-family: Fraunces, Georgia, serif;
       font-size: 22px;
       color: var(--ink);
-      margin-top: 8px;
+      margin-top: 10px;
     }
-    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .ok { background: var(--ok-bg); border-color: #b7d4c4; }
-    .bad { background: var(--bad-bg); border-color: #e8c4b4; }
-    .ok h2 { color: var(--ok); }
-    .bad h2 { color: var(--accent); }
+    .steps { margin: 10px 0 0; padding: 0; list-style: none; }
+    .steps li {
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--muted);
+      padding: 9px 0;
+      border-top: 1px solid var(--line);
+    }
+    .steps b { color: var(--ink); }
+    .gloss { margin: 14px 0 0; padding: 0; list-style: none; }
+    .gloss li {
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--muted);
+      padding: 6px 0;
+      border-top: 1px solid var(--line);
+    }
+    .gloss b { color: var(--ink); font-weight: 600; }
+
+    /* marcas de origen del dato */
+    .src {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 2px 5px;
+      border-radius: 4px;
+      vertical-align: 1px;
+      margin-left: 4px;
+      white-space: nowrap;
+    }
+    .src.f { background: #dfeee6; color: #1f6b4a; }
+    .src.d { background: #e2e6f2; color: #37457a; }
+    .src.s { background: #f6eeda; color: #8a6410; }
+
+    /* tabla comparativa */
+    .tbl { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+    .tbl th, .tbl td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); }
+    .tbl th { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; border-top: 0; }
+    .tbl td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .tbl tr.hi td { background: var(--surface-2); font-weight: 600; }
+    .tbl tr.dim td { opacity: 0.6; }
+
+    /* barra de superficie */
+    .sbar { display: flex; border-radius: 10px; overflow: hidden; margin: 12px 0 8px; height: 46px; }
+    .sbar div {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 600; text-align: center; line-height: 1.2; padding: 0 6px;
+    }
+    .sb-no { background: var(--bad-bg); color: var(--accent); border: 1px solid #e8c4b4; }
+    .sb-si { background: var(--ok-bg); color: var(--ok); border: 1px solid #b7d4c4; }
+
+    /* escenarios */
+    .scn { border-radius: 14px; padding: 14px 16px; margin: 0 0 8px; border: 1px solid var(--line); background: #fffdf8; }
+    .scn.no { background: var(--bad-bg); border-color: #e8c4b4; }
+    .scn.si { background: var(--ok-bg); border-color: #b7d4c4; }
+    .scn h3 { margin: 0; font-size: 15px; font-weight: 600; }
+    .scn .val { font-family: Fraunces, Georgia, serif; font-size: 21px; margin: 6px 0 4px; }
+    .scn p { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
+
+    /* riesgos */
+    .risk { list-style: none; margin: 0; padding: 0; }
+    .risk li {
+      background: #fffdf8; border: 1px solid var(--line); border-radius: 14px;
+      padding: 14px 16px; margin: 0 0 8px; font-size: 14px; line-height: 1.45; color: var(--muted);
+    }
+    .risk strong { display: block; font-size: 15px; margin-bottom: 4px; color: var(--ink); }
+    .chip {
+      display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+      padding: 3px 8px; border-radius: 999px; margin-bottom: 8px; text-transform: uppercase;
+    }
+    .chip.hot { background: var(--bad-bg); color: var(--accent); }
+    .chip.mid { background: var(--warn-bg); color: var(--warn); }
+    .chip.low { background: var(--ok-bg); color: var(--ok); }
+
+    /* acciones */
+    .act { list-style: none; margin: 10px 0 0; padding: 0; counter-reset: a; }
+    .act li {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 12px 0; border-top: 1px solid var(--line);
+      font-size: 14px; line-height: 1.45; color: var(--muted);
+    }
+    .act li::before {
+      counter-increment: a; content: counter(a);
+      flex: 0 0 24px; height: 24px; border-radius: 50%;
+      background: var(--bar); color: #f4eadb;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700;
+    }
+    .act b { color: var(--ink); }
+    .cost {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      padding: 2px 7px; border-radius: 999px; margin-left: 6px;
+      background: var(--ok-bg); color: var(--ok); white-space: nowrap;
+    }
+    .cost.pay { background: var(--warn-bg); color: var(--warn); }
+
+    /* dinero */
     .money { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     .money div {
-      background: var(--bar);
-      color: #f4eadb;
-      border-radius: 14px;
-      padding: 12px 10px;
-      text-align: center;
+      background: var(--bar); color: #f4eadb; border-radius: 14px;
+      padding: 12px 8px; text-align: center;
     }
-    .money span { display: block; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.55; }
+    .money span { display: block; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.55; }
     .money b {
-      display: block;
-      font-family: Fraunces, Georgia, serif;
-      font-size: 22px;
-      margin-top: 4px;
+      display: block; font-family: Fraunces, Georgia, serif;
+      font-size: 17px; margin-top: 4px; line-height: 1.15;
     }
-    .viewer {
-      position: relative;
-      flex-shrink: 0;
-      background: #2a241c;
-      border-bottom: 1px solid #3a3228;
+    .unit { display: flex; gap: 6px; margin: 0 0 12px; }
+    .unit button {
+      flex: 1; border: 1px solid var(--line); background: #fffdf8; border-radius: 999px;
+      padding: 8px; font: 500 13px Roboto, sans-serif; color: var(--ink); cursor: pointer;
     }
+    .unit button.on { background: var(--bar); color: #f4eadb; border-color: var(--bar); }
+
+    /* visor + mapa */
+    .viewer { position: relative; flex-shrink: 0; background: #2a241c; border-bottom: 1px solid #3a3228; }
     model-viewer.lote {
-      width: 100%;
-      height: 240px;
-      display: block;
-      background: #2a241c;
-      --progress-bar-color: #c4491d;
-      --poster-color: #2a241c;
+      width: 100%; height: 220px; display: block; background: #2a241c;
+      --progress-bar-color: #c4491d; --poster-color: #2a241c;
     }
-    .map {
-      position: relative;
-      border-radius: 16px;
-      overflow: hidden;
-      background: #14110e;
-      margin-bottom: 10px;
-    }
+    .map { position: relative; border-radius: 16px; overflow: hidden; background: #14110e; margin-bottom: 10px; }
     .map img {
-      display: block;
-      width: 100%;
-      height: auto;
-      transform-origin: 58% 62%;
-      animation: ken 36s linear infinite alternate;
+      display: block; width: 100%; height: auto;
+      transform-origin: 58% 62%; animation: ken 36s linear infinite alternate;
     }
-    @keyframes ken {
-      from { transform: scale(1); }
-      to { transform: scale(1.08); }
-    }
+    @keyframes ken { from { transform: scale(1); } to { transform: scale(1.07); } }
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(196, 73, 29, 0.45); }
       70% { box-shadow: 0 0 0 12px rgba(196, 73, 29, 0); }
       100% { box-shadow: 0 0 0 0 rgba(196, 73, 29, 0); }
     }
     .pin {
-      position: absolute;
-      transform: translate(-50%, -100%);
-      background: none;
-      border: 0;
-      padding: 0;
-      cursor: pointer;
-      color: #fff;
-      font: 600 11px Roboto, sans-serif;
-      text-align: center;
-      z-index: 2;
+      position: absolute; transform: translate(-50%, -100%);
+      background: none; border: 0; padding: 0; cursor: pointer;
+      color: #fff; font: 600 11px Roboto, sans-serif; text-align: center; z-index: 2;
+      text-shadow: 0 1px 3px rgba(0,0,0,.8);
     }
     .pin i {
-      display: block;
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      margin: 0 auto 4px;
-      box-shadow: 0 0 0 6px rgba(255,255,255,.18);
+      display: block; width: 14px; height: 14px; border-radius: 50%;
+      margin: 0 auto 4px; box-shadow: 0 0 0 6px rgba(255,255,255,.18);
     }
     .pin.eds i { background: #c4922a; animation: pulse 2.4s ease-out infinite; }
-    .pin.park i { background: #c4491d; animation: pulse 2.4s ease-out infinite; }
+    .pin.resto i { background: #c4491d; animation: pulse 2.4s ease-out infinite; }
     .pin.ia2 i { background: #5a8f78; }
-    .pin.ia3 i { background: #8a7a68; }
+    .pin.ia3 i { background: #6f8fb8; animation: pulse 2.4s ease-out infinite; }
     .pin.on i { box-shadow: 0 0 0 7px rgba(196,73,29,.35); }
     @media (prefers-reduced-motion: reduce) {
-      .map img, .pin.eds i, .pin.park i { animation: none; }
+      .map img, .pin i { animation: none; }
     }
     .sheet {
-      background: #fffdf8;
-      border-radius: 16px;
-      padding: 16px;
-      border: 1px solid var(--line);
-      min-height: 108px;
+      background: #fffdf8; border-radius: 16px; padding: 16px;
+      border: 1px solid var(--line); min-height: 120px;
     }
     .sheet h2 { margin: 4px 0 6px; font-size: 18px; }
-    .dont { list-style: none; margin: 0; padding: 0; }
-    .dont li {
-      background: #fffdf8;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 14px 16px;
-      margin: 0 0 8px;
-      font-size: 14px;
-      line-height: 1.4;
-    }
-    .dont li strong { display: block; font-size: 15px; margin-bottom: 2px; }
+
+    /* nav */
     .nav {
-      flex-shrink: 0;
-      background: var(--nav);
-      border-top: 1px solid var(--line);
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      padding: 6px 4px calc(8px + var(--safe-bot));
+      flex-shrink: 0; background: var(--nav); border-top: 1px solid var(--line);
+      display: grid; grid-template-columns: repeat(5, 1fr);
+      padding: 6px 2px calc(8px + var(--safe-bot));
     }
     .nav button {
-      appearance: none;
-      border: 0;
-      background: none;
-      color: var(--muted);
-      font: 500 11px Roboto, sans-serif;
-      padding: 8px 0 4px;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
+      appearance: none; border: 0; background: none; color: var(--muted);
+      font: 500 10px Roboto, sans-serif; padding: 8px 0 4px; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
     }
     .nav button.on { color: var(--accent); }
-    .nav svg { width: 24px; height: 24px; }
-    .unit {
-      display: flex;
-      gap: 6px;
-      margin: 0 0 12px;
-    }
-    .unit button {
-      flex: 1;
-      border: 1px solid var(--line);
-      background: #fffdf8;
-      border-radius: 999px;
-      padding: 8px;
-      font: 500 13px Roboto, sans-serif;
-      color: var(--ink);
-      cursor: pointer;
-    }
-    .unit button.on { background: var(--bar); color: #f4eadb; border-color: var(--bar); }
+    .nav svg { width: 22px; height: 22px; }
+
     @media (min-width: 560px) {
       .phone { min-height: 100dvh; max-height: 100dvh; overflow: hidden; }
       main { overflow: auto; }
@@ -344,8 +307,8 @@
       <div class="status"><span>Esquina 950</span><span>Magallanes</span></div>
       <header class="appbar">
         <div class="k" id="bar-k">El trato</div>
-        <h1 id="bar-h">No te haces socio. Arriendas.</h1>
-        <p id="bar-p">I-A1 · Ruta 9 Norte × Y-50 · Cabeza de Mar</p>
+        <h1 id="bar-h">Arrendamos. Nunca vendemos.</h1>
+        <p id="bar-p">Lote I-A1 · Ruta 9 Norte × Y-50 · Cabeza del Mar</p>
       </header>
       <div class="viewer">
         <model-viewer
@@ -370,163 +333,330 @@
         ></model-viewer>
       </div>
       <main>
+
+        <!-- ============ TRATO ============ -->
         <section class="panel on" id="trato">
-          <p class="lead">No hay sociedad. Tú eres el dueño del suelo. Los demás pagan o construyen.</p>
-          <p class="sub">No vendes. Copec compra tierra: por eso no entran.</p>
+          <p class="lead">Somos dueños del suelo. No construimos, no operamos y no vendemos.</p>
+          <p class="sub">Toda la captura de valor es por arriendo. El título no se transfiere en ningún escenario.</p>
+
           <article class="card">
-            <div class="n">Con quién (y con quién no)</div>
-            <h2>Arrendador. No socio de Shell, ni de Aramco, ni del family office.</h2>
+            <div class="n">Quién es quién</div>
+            <h2>Cuatro contrapartes. Ninguna es socia nuestra.</h2>
             <ul class="steps">
-              <li><b>Tú.</b> Dueño. Firmas arriendo de suelo. No pones la estación. No entras al capital de la marca.</li>
-              <li><b>Enex (Shell) o Esmax (Aramco).</b> Arrendatarios. Una sola marca cierra. La otra se va. Te pagan arriendo. Ellos son dueños de estanques, canopy y turnos.</li>
-              <li><b>Family office (Sánchez Doberti / H2V).</b> No son socios ni dueños. Mandato: buscan inquilinos de la parada. Comisión, no participación.</li>
-              <li><b>Vilicic.</b> Constructora. Compacta el ripio. Cobra por m³. No es socia del nodo.</li>
+              <li><b>Nosotros.</b> Dueños del suelo. Aportamos terreno y grava. Cero capital líquido.</li>
+              <li><b>Operador de marca — Enex (Shell) o Esmax (Aramco).</b> Arrendatario. Construye y opera la estación con su bandera. Nos paga canon mensual en UF. Se contactan las dos la misma semana: la competencia entre marcas es la única palanca de precio real.</li>
+              <li><b>Vilicic.</b> Constructora que puede entrar como <b>financista</b>, no como socia. Ver la decisión abierta más abajo.</li>
+              <li><b>Family office.</b> Mandato acotado: buscar inquilinos para el resto del paño. Comisión sobre lo que efectivamente cobre, nada de la estación.</li>
             </ul>
           </article>
+
           <article class="card">
-            <div class="n">De dónde sale el capital</div>
-            <h2>La estación la financia la marca. El suelo ya es tuyo.</h2>
+            <div class="n">Decisión abierta · la más importante</div>
+            <h2>¿Ground lease puro o estructura con Vilicic?</h2>
+            <p>Como no ponemos capital, alguien tiene que financiar la construcción. Hay dos caminos y hay que elegir uno.</p>
+            <table class="tbl">
+              <tr>
+                <th></th>
+                <th>Ground lease</th>
+                <th>Con Vilicic</th>
+              </tr>
+              <tr>
+                <td>Construye</td>
+                <td>La marca, todo</td>
+                <td>Vilicic la cáscara</td>
+              </tr>
+              <tr>
+                <td>Canon</td>
+                <td class="num">70–120<span class="src f">DATO</span></td>
+                <td class="num">100–160<span class="src f">DATO</span></td>
+              </tr>
+              <tr>
+                <td>Nos llega</td>
+                <td class="num">100%</td>
+                <td class="num">30%</td>
+              </tr>
+              <tr class="hi">
+                <td>Años 1–5</td>
+                <td class="num">70–120</td>
+                <td class="num">30–48</td>
+              </tr>
+              <tr>
+                <td>Años 5–20</td>
+                <td class="num">70–120</td>
+                <td class="num">100–160*</td>
+              </tr>
+            </table>
+            <p style="margin-top:10px">*Solo si Vilicic terminó de cobrarse. Ahí está el problema.</p>
+          </article>
+
+          <article class="card">
+            <div class="n">El problema del repago</div>
+            <h2>La estructura de Vilicic se dimensionó con un canon que ya no existe.</h2>
+            <p>El plan original: Vilicic pone 10.000–12.000 UF, se cobra con el 70% del canon a UF+8%, y termina en 2 a 5 años. Ese cálculo usaba un canon de <b>360 UF/mes</b>, cifra que después descartamos por indefendible al tráfico actual.</p>
+            <p>Con el canon real, el 70% de Vilicic baja de 252 a ~91 UF/mes. El interés anual sobre 10.000 UF ya es 800 UF: amortiza apenas ~292 UF de capital al año.</p>
+            <table class="tbl">
+              <tr>
+                <th>Canon</th>
+                <th class="num">70% Vilicic</th>
+                <th class="num">Años para repagar 10.000 UF</th>
+              </tr>
+              <tr class="dim">
+                <td>360 <i>(viejo)</i></td>
+                <td class="num">252</td>
+                <td class="num">~4</td>
+              </tr>
+              <tr>
+                <td>160 <i>(techo)</i></td>
+                <td class="num">112</td>
+                <td class="num">~12</td>
+              </tr>
+              <tr class="hi">
+                <td>130 <i>(medio)</i></td>
+                <td class="num">91</td>
+                <td class="num">~17</td>
+              </tr>
+              <tr>
+                <td>100 <i>(piso)</i></td>
+                <td class="num">70</td>
+                <td class="num">~40</td>
+              </tr>
+            </table>
+            <p style="margin-top:10px"><span class="src d">CÁLCULO</span> Anualidad a UF+8%. Vilicic deja de ser un puente de 4 años y pasa a llevarse el 70% durante casi todo el contrato.</p>
+            <div class="amt">Máximo repagable en 5 años: ~4.400 UF</div>
+          </article>
+
+          <article class="card">
+            <div class="n">Tres salidas</div>
+            <h2>Si queremos que la estructura con Vilicic funcione.</h2>
             <ul class="steps">
-              <li><b>Estanques, canopy, SEC, turnos.</b> Plata de Shell o Aramco. Cero de tu bolsillo.</li>
-              <li><b>Terreno.</b> Ya lo tienes. No hay ronda, no hay aporte, no hay “entrar con capital”.</li>
-              <li><b>Ripio.</b> Lo paga quien usa el patio, una vez. Vilicic lo carga. Tú no financias la grava para regalársela.</li>
-              <li><b>Si pones tú los estanques.</b> Se acaba el arriendo. Quedas tú financiando la estación. Ese no es este trato.</li>
+              <li><b>Bajar el principal a ~4.400 UF.</b> Cáscara más chica, o que la grava propia cubra mucho más CAPEX del previsto.</li>
+              <li><b>Ceder también parte del canon del resto del paño</b> al repago, no solo el de la estación.</li>
+              <li><b>Ir por ground lease puro</b> y dejar a Vilicic como contratista pagado por obra, sin participación en el canon.</li>
             </ul>
           </article>
+
           <article class="card">
-            <div class="n">Cómo te pagan</div>
-            <h2>Tres platitas distintas. No se mezclan.</h2>
-            <ul class="steps">
-              <li><b>1 · Cada mes, la marca → tú.</b> Arriendo del suelo de la estación, en UF. Pides 90, cierras 60–75, si bajan de 40 no firmas. Contrato 12–15 años. Más 12–15 pesos por cada litro que vendan. Empieza cuando abre el surtidor. Hoy: 0.</li>
-              <li><b>2 · Cada mes, inquilinos de la parada → tú.</b> Otro contrato. ~95 UF si se llena. El día que abre la estación, la parada está vacía. Al family office le pagas 10% el año 1 y 4% después, solo de esta parada (~4 UF). Nada de la estación.</li>
-              <li><b>3 · Una vez, quien ocupa el patio → ripio.</b> 3.000 pesos por m³ cargado. Parada ~1.100 UF. I-A2 ~1.363 UF. No es cuota mensual.</li>
-            </ul>
-            <div class="amt">En régimen: ~159 UF/mes (68 + 95 − 4)</div>
+            <div class="n">Por qué no vendemos</div>
+            <h2>Copec compra suelo. Y Copec es la competencia.</h2>
+            <p>Copec opera comprando el bien raíz: entrar con ellos destruye la posición de arrendador. Además, Transpetrol —que abandera Copec— es nuestro competidor directo a 10–20 km sobre el mismo corredor.</p>
+            <p>Excluidos como operador: <b>Copec, Transpetrol, HIF</b>.<span class="src f">DATO</span></p>
           </article>
-          <article class="card">
-            <div class="n">1 · Estación · hasta 1 ha</div>
-            <h2>Arriendo mensual del suelo del surtidor</h2>
-            <p>La misma semana mandas la misma oferta de arriendo a Enex (Shell) y a Esmax (Aramco). Contrato 12 a 15 años. Extra: 12 a 15 pesos por cada litro vendido.</p>
-            <div class="ladder" aria-label="Negociación del arriendo mensual en UF">
-              <div><span>Pides</span><b>90</b></div>
-              <div><span>Cierras</span><b>60–75</b></div>
-              <div><span>Te paras</span><b>40</b></div>
-            </div>
-            <p>Eso es UF al mes, no el precio del terreno. Si bajan de 40, no firmas.</p>
-            <div class="amt">60–75 UF/mes</div>
-          </article>
-          <article class="card">
-            <div class="n">2 · Parada de camiones · ~2,1 ha</div>
-            <h2>Otro contrato. No va con la estación.</h2>
-            <p>Parking, báscula, comida, duchas, taller. Si se llena: ~95 UF/mes. El día que abre la estación, esto está vacío.</p>
-            <div class="amt">~95 UF/mes</div>
-          </article>
-          <article class="card">
-            <div class="n">Family office · Sánchez Doberti</div>
-            <h2>Cazan quién arrienda la parada. No se quedan la estación.</h2>
-            <p>Un family office (oficina de una familia inversionista: H2V Magallanes) busca inquilinos de la parada. Sin ellos cobras solo la estación (~68). Con la parada llena llegas a ~159. Cobran 10% el primer año y 4% de lo que entre en la parada (~4 UF). Cero de la estación y del ripio. Si en 18 meses no cobran renta, se acaba el mandato.</p>
-          </article>
-          <article class="card">
-            <div class="n">3 · Ripio · una vez, no cada mes</div>
-            <h2>Es la grava del patio. No es el arriendo.</h2>
-            <p>Los camiones no estacionan sobre el campo. Hay que echar ripio y compactarlo. Vilicic lo carga. Quien ocupa el patio lo paga. Tú no lo mezclas con los 159 UF/mes.</p>
-            <ul class="steps">
-              <li><b>Precio.</b> 3.000 pesos por cada m³ que se carga. Nada de “un tanto al mes”.</li>
-              <li><b>Cuánto.</b> Una capa de ~71 cm. Eso son 7.143 m³ por hectárea que se ocupa. Si ocupan menos, pagan menos.</li>
-              <li><b>Parada (~2,1 ha).</b> ≈ 15.000 m³ → ~1.100 UF, una vez.</li>
-              <li><b>Vecino I-A2 (2,6 ha).</b> ≈ 18.571 m³ → ~1.363 UF, una vez. Ese patio ya está ocupado.</li>
-              <li><b>No son 250.000 m³.</b> Ese número es el certificado de ripio de toda la estancia, no de este paño.</li>
-            </ul>
-          </article>
-          <article class="card">
-            <div class="n">4 · I-A2 · 2,6 ha</div>
-            <h2>Ya ocupado. No se ofrece a Enex.</h2>
-            <p>Transporte portuario. Cliente de diésel y AdBlue. El ripio de I-A2 lo paga ese ocupante, por las hectáreas que cerca. El patio de atrás (I-A3) es otra mesa, después.</p>
-          </article>
-          <div class="split">
-            <article class="card ok">
-              <h2>Sí</h2>
-              <p>Suelo tuyo. Estanques, marca y turnos de ellos.</p>
-            </article>
-            <article class="card bad">
-              <h2>No</h2>
-              <p>Si pones los estanques tú, Enex y Esmax se caen. Pierdes.</p>
-            </article>
-          </div>
-          <ul class="gloss">
-            <li><b>UF</b> — unidad de fomento. Así se cotiza el arriendo. Hoy ~$40.884.</li>
-            <li><b>EDS</b> — estación de servicio (el surtidor).</li>
-            <li><b>Family office</b> — no es dueño ni opera. Caza inquilinos de la parada a cambio de un %.</li>
-            <li><b>Pides / cierras / te paras</b> — techo, firma y piso de la negociación del arriendo, en UF/mes.</li>
-            <li><b>Ripio</b> — grava compactada del patio. Se cobra una vez, por m³, a quien ocupa. No entra al arriendo mensual.</li>
-            <li><b>Socio</b> — este trato no es sociedad. Es arriendo de suelo + comisión por cazar inquilinos.</li>
-          </ul>
         </section>
 
+        <!-- ============ PAÑO ============ -->
         <section class="panel" id="pano" hidden>
-          <p class="lead">Cuatro paños. Solo uno se ofrece a Shell o Aramco.</p>
-          <p class="sub">Toca un pin: la cámara del lote de arriba va a ese uso. El resto no va en el contrato de la estación.</p>
+          <p class="lead">Diez hectáreas subdivididas. Dos lotes son nuestros para jugar.</p>
+          <p class="sub">Tocá un pin para ver cada lote. La cámara del modelo de arriba acompaña.</p>
+
           <div class="map">
-            <img src="nodo-ia1-plano.jpg" alt="Plano de Esquina 950" width="965" height="1024" />
-            <button type="button" class="pin eds on" style="left:71%;top:74%" data-z="eds"><i></i>EDS</button>
-            <button type="button" class="pin park" style="left:60%;top:61%" data-z="park"><i></i>Parada</button>
-            <button type="button" class="pin ia2" style="left:56%;top:47%" data-z="ia2"><i></i>I-A2</button>
-            <button type="button" class="pin ia3" style="left:39%;top:34%" data-z="ia3"><i></i>I-A3</button>
+            <img src="nodo-ia1-plano.jpg" alt="Plano del nodo Cabeza del Mar" width="965" height="1024" />
+            <button type="button" class="pin eds on" style="left:71%;top:72%" data-z="eds"><i></i>EDS</button>
+            <button type="button" class="pin resto" style="left:57%;top:74%" data-z="resto"><i></i>Resto A1</button>
+            <button type="button" class="pin ia2" style="left:55%;top:50%" data-z="ia2"><i></i>I-A2</button>
+            <button type="button" class="pin ia3" style="left:38%;top:32%" data-z="ia3"><i></i>I-A3</button>
           </div>
           <div class="sheet" id="sheet">
-            <div class="n" id="sh-n">Estación · hasta 1 ha</div>
-            <h2 id="sh-h">Ellos construyen</h2>
-            <p id="sh-p">Pides 90, cierras 60–75, te paras en 40 (UF/mes). Estanques de la marca. Tú no financias la estación.</p>
+            <div class="n" id="sh-n">Pad de la estación</div>
+            <h2 id="sh-h">3.000 a 8.000 m²</h2>
+            <p id="sh-p">Lo que efectivamente se le arrienda a la marca. El tamaño exacto es término de contrato, no decisión nuestra a ciegas.</p>
           </div>
+
+          <article class="card" style="margin-top:10px">
+            <div class="n">La restricción que define el layout</div>
+            <h2>El 45% de I-A1 no se puede construir.</h2>
+            <p>El DFL 850 fija una franja de 35 m desde el eje de calzada donde no se levanta nada definitivo. I-A1 tiene <b>doble frente</b> —218 m a Ruta 9 Norte y 222 m a la Y-50— así que la franja entra por los dos lados.<span class="src f">DATO</span></p>
+            <div class="sbar">
+              <div class="sb-no" style="width:45%">1,42 ha<br>no edificable</div>
+              <div class="sb-si" style="width:55%">1,70 ha<br>edificable</div>
+            </div>
+            <p><span class="src d">CÁLCULO</span> 218×35 + 222×35 − 35² = 14.175 m² sobre 31.200 m² totales.</p>
+            <p>No es tierra muerta: la franja sirve para accesos, pistas de aceleración, maniobra de camiones y patio, con permiso de Vialidad de <b>costo cero</b>. Lo que no admite es canopy ni tienda. El pad edificable real son las 1,70 ha de atrás.</p>
+          </article>
+
+          <article class="card">
+            <div class="n">Superficies · Lámina A1, agosto 2026</div>
+            <h2>Qué es cada lote</h2>
+            <table class="tbl">
+              <tr><th>Lote</th><th class="num">ha</th><th>Estado</th></tr>
+              <tr class="hi"><td>I-A1</td><td class="num">3,12</td><td>EDS + asociados</td></tr>
+              <tr><td>I-A2</td><td class="num">2,60</td><td>Comprometido</td></tr>
+              <tr class="hi"><td>I-A3</td><td class="num">4,28</td><td>Por definir</td></tr>
+              <tr class="dim"><td>Remanente</td><td class="num">1.850,8</td><td>Contrato eólico</td></tr>
+            </table>
+            <p style="margin-top:10px"><span class="src f">DATO</span> Plano topográfico Lámina A1, Leica TS 06 Plus. Reemplaza la estimación vieja de 3,50 ha para I-A1.</p>
+          </article>
         </section>
 
-        <section class="panel" id="renta" hidden>
-          <p class="lead">Quién te paga, cuándo, y qué no es arriendo.</p>
-          <p class="sub">Hoy nadie te transfiere. El 159 UF/mes es cuando la estación está abierta y la parada llena.</p>
+        <!-- ============ NÚMEROS ============ -->
+        <section class="panel" id="num" hidden>
+          <p class="lead">Hoy no entra nada. El canon empieza cuando abre el surtidor.</p>
+          <p class="sub">Todo lo que sigue asume que sale el permiso de acceso. Sin eso, el número es cero.</p>
+
           <div class="unit" role="group" aria-label="Unidad">
             <button type="button" class="on" data-unit="uf">UF</button>
             <button type="button" data-unit="clp">CLP</button>
           </div>
           <div class="money">
-            <div><span>Hoy</span><b data-money="0">0</b></div>
-            <div><span>Abre</span><b data-money="68">60–75</b></div>
-            <div><span>Régimen</span><b data-money="159">159</b></div>
+            <div><span>Hoy</span><b data-k="hoy">0</b></div>
+            <div><span>Solo EDS</span><b data-k="eds">70–120</b></div>
+            <div><span>A1 repartido</span><b data-k="rep">183–402</b></div>
           </div>
+
           <article class="card">
-            <div class="n">Flujo de pagos</div>
-            <h2>Marca e inquilinos te pagan a ti. Tú le pagas comisión al family office.</h2>
+            <div class="n">La regla que manda todo</div>
+            <h2>El canon se paga por flujo, no por metro cuadrado.</h2>
+            <p>A 1.900 vehículos por día, la marca paga lo mismo por 3.000 m² que por 31.200 m². El canon está atado al tráfico que pasa por la Ruta 9, no a la superficie que le entregamos.</p>
+            <p><b>Cada metro que le demos arriba del mínimo operativo rinde cero.</b></p>
+          </article>
+
+          <article class="card">
+            <div class="n">Escenarios de asignación · I-A1</div>
+            <h2>Cuánto espacio le damos a la estación</h2>
+
+            <div class="scn no" style="margin-top:12px">
+              <h3>A · Entregar las 3,12 ha completas</h3>
+              <div class="val">70–120 UF/mes</div>
+              <p>El contraejemplo. Entregamos 28.000 m² a cambio de cero pesos adicionales, porque el canon no sube con la superficie. Estaríamos arrendando la mejor esquina del corredor a <b>0,0038 UF/m²/mes</b> — tarifa de patio vacío.</p>
+            </div>
+
+            <div class="scn si">
+              <h3>B · Pad mínimo · 3.000–4.000 m²</h3>
+              <div class="val">183–402 UF/mes</div>
+              <p>La estación se queda con lo justo y las ~2,8 ha restantes se negocian aparte. Máximo techo, pero exige colocar inquilinos reales. Si no aparecen, colapsa a 70–120 igual que A.</p>
+            </div>
+
+            <div class="scn si">
+              <h3>C · EDS operativa · ~8.000 m²</h3>
+              <div class="val">163–352 UF/mes</div>
+              <p>La estación se lleva pad + conveniencia + estacionamiento de camiones, y quedan ~2,3 ha para terceros. Resignamos ~40 UF/mes de arriendo a cambio de más litros despachados, que es lo único que empuja el componente variable. Más robusto, menos techo.</p>
+            </div>
+
+            <p style="margin-top:12px"><span class="src d">CÁLCULO</span> Canon de terceros = superficie × 0,004–0,010 UF/m²/mes, menos comisión del family office. <span class="src s">SUPUESTO</span> Los 8.000 m² del escenario C.</p>
+          </article>
+
+          <article class="card">
+            <div class="n">Escalera de tarifas</div>
+            <h2>Cuánto rinde cada m² según el uso</h2>
+            <table class="tbl">
+              <tr><th>Uso</th><th class="num">UF/m²/mes</th></tr>
+              <tr class="hi"><td>Pad de estación</td><td class="num">0,018–0,060</td></tr>
+              <tr><td>Campamento / uso intensivo</td><td class="num">0,010–0,020</td></tr>
+              <tr><td>Patio / laydown compactado</td><td class="num">0,004–0,010</td></tr>
+            </table>
+            <p style="margin-top:10px">El pad de la estación rinde <b>unas 4 veces más por metro</b> que un patio. Ese es el argumento para no regalarle superficie de más: cada metro que pasa de pad a patio pierde tres cuartas partes de su valor.</p>
+          </article>
+
+          <article class="card">
+            <div class="n">Qué mueve el número</div>
+            <h2>Sensibilidades, ordenadas por impacto</h2>
             <ul class="steps">
-              <li><b>Enex o Esmax → tú.</b> 60–75 UF/mes + 12–15 CLP/L. Mensual, desde que abre.</li>
-              <li><b>Inquilinos parada → tú.</b> ~95 UF/mes cuando hay contrato cobrado.</li>
-              <li><b>Tú → family office.</b> 10% año 1, 4% después, solo de lo cobrado en la parada.</li>
-              <li><b>Ocupante del patio → ripio.</b> 3.000 CLP/m³, una vez. No mensual.</li>
+              <li><b>Tarifa real de patio</b> (0,004 → 0,010) · <b>±169 UF/mes</b>. La variable más sensible de todo el modelo, y hoy es una banda estimada, no un precio cotizado.</li>
+              <li><b>Ocupación del patio</b> (vacío → lleno) · <b>0 → +282 UF/mes</b>. El día que abre la estación, el patio está vacío.</li>
+              <li><b>Estructura</b> (ground lease vs Vilicic en repago) · <b>−40 a −72 UF/mes</b>.</li>
+              <li><b>Canon de la estación</b> (70 → 120) · ±50 UF/mes.</li>
+              <li><b>Escalamiento por túnel o H2V</b> · +80 a +150 UF/mes, pero solo con inicio de obra verificable. No es caso base.</li>
+              <li><b>Variable por litro</b> (12–15 CLP/L) · recién muerde sobre ~190.000 L/mes. Hoy manda el piso fijo.</li>
             </ul>
           </article>
-          <article class="card">
-            <div class="n">Cómo se arma el 159 UF/mes</div>
-            <h2>68 de la estación + 95 de la parada − 4 de comisión</h2>
-            <p>Eso es arriendo. El ripio no se suma aquí.</p>
+
+          <ul class="gloss">
+            <li><b>UF</b> — unidad de fomento. Referencia usada acá: ~$40.870 (ago-2026). Cambia a diario.</li>
+            <li><b>Canon</b> — el arriendo mensual que paga el operador, en UF.</li>
+            <li><b>Ground lease</b> — arriendo de suelo pelado: ellos construyen todo.</li>
+            <li><b>Setback</b> — franja obligatoria sin construcción junto a la ruta (DFL 850).</li>
+            <li><b>TMDA</b> — tránsito medio diario anual. Acá: ~1.900 vehículos/día.</li>
+            <li><span class="src f">DATO</span> sale de documento o medición · <span class="src d">CÁLCULO</span> derivado de esos datos · <span class="src s">SUPUESTO</span> estimación nuestra, sin fuente todavía.</li>
+          </ul>
+        </section>
+
+        <!-- ============ RIESGOS ============ -->
+        <section class="panel" id="riesgo" hidden>
+          <p class="lead">Lo que puede dejar todo el modelo en cero.</p>
+          <p class="sub">Ordenado por lo que más duele, no por lo más probable.</p>
+
+          <ul class="risk">
+            <li>
+              <span class="chip hot">50–65% de aprobación</span>
+              <strong>Permiso de acceso a Ruta 9 (DFL 850)</strong>
+              Es el riesgo mayor de todo el proyecto. Sin acceso autorizado no hay estación, y el canon es <b>0</b>. Cuesta hacer calzar las pistas de aceleración y desaceleración con la separación mínima de la intersección, y hay conflicto potencial con la doble calzada proyectada al km 50. Todo lo que muestra esta página asume que este permiso sale.<span class="src f">DATO</span>
+            </li>
+            <li>
+              <span class="chip hot">Sin confirmar</span>
+              <strong>Acceso real de I-A3</strong>
+              La Lámina A1 le asigna una servidumbre de tránsito de <b>5 metros</b>. Eso es un carril angosto: no alcanza para acopio de contratistas, laydown de aspas de 67 m ni campamento. Y hay contradicción sin resolver — el render lo muestra como lote interior, el plano habla de un frente "aparente" a la Y-50. Define si I-A3 vale 300 UF/mes o cero.
+            </li>
+            <li>
+              <span class="chip mid">Estructural</span>
+              <strong>El repago de Vilicic no cierra</strong>
+              Al canon defendible actual, el 70% cedido no alcanza a amortizar el principal dentro del plazo del contrato. O baja el principal a ~4.400 UF, o Vilicic se lleva el 70% durante veinte años.
+            </li>
+            <li>
+              <span class="chip mid">No probada</span>
+              <strong>La demanda de patio</strong>
+              Los escenarios B y C dependen de colocar 2,3–2,8 ha con terceros a una tarifa que <b>nunca cotizamos</b>. En Magallanes no hay precio público de patios ni de áridos. Si no hay inquilino, B y C rinden lo mismo que A.
+            </li>
+            <li>
+              <span class="chip mid">Pendiente</span>
+              <strong>Subdivisión sin inscribir</strong>
+              I-A1 todavía no tiene rol SII propio: se genera al inscribir la subdivisión en el Conservador. No bloquea salir a conversar con las marcas, pero sí bloquea la firma.<span class="src f">DATO</span>
+            </li>
+            <li>
+              <span class="chip low">Contexto</span>
+              <strong>El tráfico es modesto y hay que decirlo</strong>
+              1.900 vehículos/día es un sitio chico — el umbral "favorable" de la industria ronda los 4.000. Esto no se vende por volumen: se vende por necesidad del tramo, por el 21,5% de carga pesada y por la obra vial en ejecución. Si lo presentamos como sitio de alto tráfico, el operador lo desarma en la primera reunión.<span class="src f">DATO</span>
+            </li>
+          </ul>
+        </section>
+
+        <!-- ============ AHORA ============ -->
+        <section class="panel" id="ahora" hidden>
+          <p class="lead">Cuatro de las cinco cosas que faltan no cuestan un peso.</p>
+          <p class="sub">Y una tiene fecha de vencimiento el mes que viene.</p>
+
+          <article class="card" style="background:var(--warn-bg); border-color:#e0cfa4">
+            <div class="n" style="color:var(--warn)">Urgente · octubre 2026</div>
+            <h2>La ventana de los contratos MOP se abre ya.</h2>
+            <p>Se adjudican <b>6 contratos globales de conservación vial</b> sobre ~1.700 km de red regional. Los que ganen van a necesitar patio sobre su propio frente de obra — la alternativa para ellos es acarrear 50 km diarios.<span class="src f">DATO</span></p>
+            <p><b>I-A3 es la única pieza que puede generar ingreso antes de que abra la estación.</b> Se puede activar en paralelo al contacto con las marcas: son contrapartes y canales distintos, no se pisan. Si no estamos posicionados antes de la adjudicación, la ventana 2026–2028 se cierra sola.</p>
+            <div class="amt">Hoy ingresamos: 0 UF/mes</div>
           </article>
+
           <article class="card">
-            <div class="n">Ripio · no es arriendo</div>
-            <h2>Parada ~1.100 UF · I-A2 ~1.363 UF</h2>
-            <p>Grava compactada. 3.000 CLP por m³ cargado. Capa de ~71 cm → 7.143 m³ por hectárea ocupada. Lo paga quien usa el patio. El family office no lleva nada de esto. No son los 250.000 m³ del certificado de la estancia.</p>
+            <div class="n">Secuencia</div>
+            <h2>En este orden y por esta razón</h2>
+            <ol class="act">
+              <li><span><b>Pedir el plan de tramo a Vialidad.</b> Es lo primero porque es lo que más tarda y lo único que puede poner todo en cero. Se pide antes de diseñar nada.<span class="cost">$0</span></span></li>
+              <li><span><b>Llamar a 2–3 contratistas con obra MOP en Ruta 9 e Y-50</b> y preguntar qué pagarían por una hectárea de patio compactado. Es la variable de mayor impacto del modelo y hoy no existe el dato. No es una búsqueda, es un teléfono.<span class="cost">$0</span></span></li>
+              <li><span><b>Posicionar I-A3 con los adjudicatarios</b> antes de octubre.<span class="cost">$0</span></span></li>
+              <li><span><b>Cubicar la cantera con dron.</b> Define cuánta grava podemos aportar al CAPEX, que es la palanca directa para bajar el principal de Vilicic a los ~4.400 UF que sí cierran.<span class="cost pay">15–30 UF</span></span></li>
+              <li><span><b>Pedir el CAPEX de la cáscara a Vilicic</b> — recién con el punto 4 hecho, para no negociar a ciegas.<span class="cost">$0</span></span></li>
+            </ol>
+          </article>
+
+          <article class="card">
+            <div class="n">Preguntas que contesta el operador, no nosotros</div>
+            <h2>No hay que adivinarlas.</h2>
+            <ul class="steps">
+              <li><b>¿Cuál es su superficie de pad estándar</b> para estación de carretera con camiones? Define si vamos por el escenario B o el C.</li>
+              <li><b>¿Trabajan con terreno propio, arrendado o ambos?</b> ¿Qué plazo típico?</li>
+              <li><b>¿Qué volumen mínimo en litros</b> necesitan para que un sitio entre a comité de inversión?</li>
+              <li><b>¿Cómo estructuran el canon:</b> fijo, por litro, o mixto?</li>
+            </ul>
+            <p style="margin-top:10px">Regla: <b>el operador propone primero.</b> No cotizamos nosotros.</p>
+          </article>
+
+          <article class="card">
+            <div class="n">Datos que faltan en carpeta</div>
+            <h2>Pendientes de completar</h2>
+            <ul class="steps">
+              <li><b>Lámina A1 en digital</b> — para fijar frentes exactos y el setback preciso, y resolver el acceso de I-A3.</li>
+              <li><b>Certificado de informaciones previas (CIP)</b> de la DOM con uso de suelo compatible con estación.</li>
+              <li><b>Inscripción de la subdivisión</b> en el Conservador → habilita rol SII propio de I-A1.</li>
+              <li><b>Porcentaje de pesados</b> desde los informes regionales, para afinar el argumento de mezcla de carga.</li>
+            </ul>
           </article>
         </section>
 
-        <section class="panel" id="no" hidden>
-          <p class="lead">Si haces esto, el trato de arriendo se cae.</p>
-          <p class="sub">La marca oye: suelo + ellos construyen. Nada más.</p>
-          <ul class="dont">
-            <li><strong>No pongas los estanques tú</strong>Shell y Aramco se van. Queda franquicia o independiente. Cuota ≈ 115 UF/mes contra ~68 de arriendo.</li>
-            <li><strong>No vendas a Copec</strong>Ellos compran el suelo. Esto se arrienda, no se vende. Precio de disuasión del pad: 28.000 UF.</li>
-            <li><strong>No cobres 250.000 m³ en I-A2</strong>Eso es el certificado de toda la estancia. En I-A2 solo las 2,6 ha ocupadas: ≈ 18.571 m³.</li>
-            <li><strong>No metas I-A3 a Enex</strong>Es otra mesa. Después, no ahora.</li>
-            <li><strong>No 5 pesos por litro</strong>Van 12–15. Tampoco 90 días de exclusiva a una sola marca.</li>
-            <li><strong>No 90 UF de campo a I-A2</strong>I-A2 ya está ocupado. Patio, no campo.</li>
-            <li><strong>No le des la estación al family office</strong>Mandato solo de la parada. Si se llevan las 3,12 ha, es otra mesa: ~130 UF/mes, no 159.</li>
-          </ul>
-        </section>
       </main>
       <nav class="nav" aria-label="Pantallas">
         <button type="button" class="on" data-go="trato">
@@ -537,45 +667,73 @@
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z"/></svg>
           Paño
         </button>
-        <button type="button" data-go="renta">
+        <button type="button" data-go="num">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm.5 15.5v1h-1v-1c-1.7-.1-3.1-1-3.4-2.5h1.6c.2.7 1 1.2 2.1 1.2 1.1 0 1.8-.5 1.8-1.2 0-.8-.7-1.1-2.2-1.5-2-.5-3.3-1.3-3.3-3 0-1.5 1.2-2.5 3-2.7V6.5h1v1c1.5.2 2.7 1.1 2.9 2.5h-1.6c-.2-.7-.8-1.2-1.8-1.2s-1.7.5-1.7 1.2c0 .7.6 1 2.1 1.4 2.1.6 3.4 1.4 3.4 3.1 0 1.6-1.3 2.6-3.2 2.8z"/></svg>
-          Pagos
+          Números
         </button>
-        <button type="button" data-go="no">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm5 13.6L13.4 12 17 8.4 15.6 7 12 10.6 8.4 7 7 8.4 10.6 12 7 15.6 8.4 17 12 13.4 15.6 17 17 15.6z"/></svg>
-          No
+        <button type="button" data-go="riesgo">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 1 21h22L12 2zm1 15h-2v-2h2v2zm0-4h-2V9h2v4z"/></svg>
+          Riesgos
+        </button>
+        <button type="button" data-go="ahora">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 10.6 4.2 2.5-.8 1.3L11 13.2V6.5h2v6.1z"/></svg>
+          Ahora
         </button>
       </nav>
     </div>
   </div>
   <script>
-    const UF = 40884;
+    const UF = 40870;
+
     const Z = {
-      eds: { n: "Estación · hasta 1 ha", h: "Ellos construyen", p: "Pides 90, cierras 60–75, te paras en 40. UF/mes. Estanques de la marca. Tú no financias la estación.", orbit: "55deg 72deg 70%" },
-      park: { n: "Parada · ~2,1 ha", h: "~95 UF/mes si llenan", p: "Otro contrato. El family office caza inquilinos. 10% año 1, 4% después. 0% de la estación.", orbit: "180deg 68deg 95%" },
-      ia2: { n: "I-A2 · 2,6 ha", h: "Ocupado", p: "Pagan ripio por las 2,6 ha que ocupan: ≈ 18.571 m³ una vez. No se ofrece a Enex.", orbit: "0deg 22deg 160%" },
-      ia3: { n: "I-A3 · 4,28 ha", h: "Después", p: "No entra hoy. No va en el correo de Enex ni Esmax.", orbit: "0deg 22deg 160%" }
-    };
-    const bars = {
-      trato: ["El trato", "No te haces socio. Arriendas.", "Quién paga, quién construye"],
-      pano: ["El paño", "Un pin. Un uso.", "Solo el pad se ofrece a Enex"],
-      renta: ["Los pagos", "Marca e inquilinos → tú.", "Ripio una vez, aparte"],
-      no: ["Fuera", "Esto rompe el arriendo.", "Estanques, Copec, I-A3"]
-    };
-    let unit = "uf";
-    function money(n) {
-      if (unit === "clp") {
-        const m = n * UF / 1e6;
-        return "$" + m.toFixed(1).replace(".", ",") + " M";
+      eds: {
+        n: "Pad de la estación",
+        h: "3.000 a 8.000 m²",
+        p: "Lo que efectivamente se le arrienda a la marca. El tamaño exacto es término de contrato, no decisión nuestra a ciegas. Rinde 0,018–0,060 UF/m²/mes: cuatro veces más que un patio.",
+        orbit: "55deg 72deg 70%"
+      },
+      resto: {
+        n: "Resto de I-A1 · 2,3 a 2,8 ha",
+        h: "Se negocia aparte",
+        p: "Superficie que no le suma nada al canon de la estación pero sí rinde con otros inquilinos: patio, báscula, servicios a contratistas. Acá entra el mandato del family office, acotado y con corte por desempeño.",
+        orbit: "180deg 68deg 95%"
+      },
+      ia2: {
+        n: "I-A2 · 2,60 ha",
+        h: "Comprometido con terceros",
+        p: "Ya tiene destino: zona de apoyo logístico para carga sobredimensionada. No entra en la conversación con las marcas de combustible, pero sí genera tráfico pesado cautivo justo al lado nuestro.",
+        orbit: "0deg 30deg 140%"
+      },
+      ia3: {
+        n: "I-A3 · 4,28 ha",
+        h: "La pieza de ingreso temprano",
+        p: "Frente a la Y-50, que mueve solo ~215 vehículos/día: no se vende por flujo, se vende por capacidad. Laydown, báscula, campamento. Bien fraccionado rinde 175–345 UF/mes. Riesgo abierto: el acceso no está confirmado.",
+        orbit: "0deg 22deg 165%"
       }
-      return String(n);
-    }
+    };
+
+    const bars = {
+      trato:  ["El trato", "Arrendamos. Nunca vendemos.", "Quién pone qué y quién cobra qué"],
+      pano:   ["El paño", "Diez hectáreas, dos en juego.", "I-A1 para la estación · I-A3 por definir"],
+      num:    ["Los números", "El canon se paga por flujo.", "Escenarios de asignación de I-A1"],
+      riesgo: ["Los riesgos", "Qué puede dejarlo en cero.", "Acceso vial, acceso a I-A3, repago"],
+      ahora:  ["Ahora", "Cuatro acciones cuestan cero.", "La ventana MOP cierra en octubre"]
+    };
+
+    const MONEY = {
+      hoy: { uf: "0", clp: "$0" },
+      eds: { uf: "70–120", clp: "$2,9–4,9 M" },
+      rep: { uf: "183–402", clp: "$7,5–16,4 M" }
+    };
+
+    let unit = "uf";
+
     function paintMoney() {
-      document.querySelector('[data-money="0"]').textContent = unit === "clp" ? "$0" : "0";
-      document.querySelector('[data-money="68"]').textContent =
-        unit === "clp" ? "$2,5–3,1 M" : "60–75";
-      document.querySelector('[data-money="159"]').textContent = unit === "clp" ? money(159) : "159";
+      document.querySelectorAll("[data-k]").forEach((el) => {
+        el.textContent = MONEY[el.dataset.k][unit];
+      });
     }
+
     function show(id) {
       document.querySelectorAll(".panel").forEach((p) => {
         const on = p.id === id;
@@ -589,6 +747,7 @@
       document.getElementById("bar-p").textContent = t[2];
       document.querySelector("main").scrollTop = 0;
     }
+
     function pin(z) {
       document.querySelectorAll(".pin").forEach((p) => p.classList.toggle("on", p.dataset.z === z));
       const d = Z[z];
@@ -598,19 +757,13 @@
       const mv = document.getElementById("lote3d");
       if (mv && d.orbit) mv.cameraOrbit = d.orbit;
     }
+
     document.querySelectorAll(".nav button").forEach((b) => {
       b.addEventListener("click", () => show(b.dataset.go));
     });
     document.querySelectorAll(".pin").forEach((b) => {
       b.addEventListener("click", () => pin(b.dataset.z));
     });
-    const lote3d = document.getElementById("lote3d");
-    if (lote3d) {
-      lote3d.addEventListener("pointerdown", () => { lote3d.autoRotate = false; });
-      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        lote3d.removeAttribute("auto-rotate");
-      }
-    }
     document.querySelectorAll(".unit button").forEach((b) => {
       b.addEventListener("click", () => {
         unit = b.dataset.unit;
@@ -618,6 +771,16 @@
         paintMoney();
       });
     });
+
+    const lote3d = document.getElementById("lote3d");
+    if (lote3d) {
+      lote3d.addEventListener("pointerdown", () => { lote3d.autoRotate = false; });
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        lote3d.removeAttribute("auto-rotate");
+      }
+    }
+
+    paintMoney();
   </script>
 </body>
 </html>
