@@ -310,16 +310,18 @@ def test_un_error_pegado_a_pasajes_buenos_tampoco_viaja_al_cliente():
     una entrada al cuerpo de la ultima: `error: interno revento` terminaba dentro de un
     excerpt, con nombre de libro y numero de pagina. El lote se corta en esa linea.
     """
-    r, _ = _leer("1. **slug-x** PDF p.5\n   texto\nerror: interno revento")
+    r, _ = _leer("1. **slug-x** PDF p.5\n   texto del libro\nerror: interno revento")
     assert r.available is True
-    assert [dataclasses.astuple(x) for x in r.readings] == [("slug-x", "PDF p.5", "texto")]
+    assert [dataclasses.astuple(x) for x in r.readings] == [
+        ("slug-x", "PDF p.5", "texto del libro")
+    ]
     assert not any("interno revento" in x.excerpt for x in r.readings)
 
 
 def test_un_error_indentado_tampoco_entra_al_extracto():
     """Indentado tiene forma de extracto; sigue siendo el mensaje interno del servidor."""
-    r, _ = _leer("1. **slug-x** PDF p.5\n   texto\n   error: storage corrupto")
-    assert [x.excerpt for x in r.readings] == ["texto"]
+    r, _ = _leer("1. **slug-x** PDF p.5\n   texto del libro\n   error: storage corrupto")
+    assert [x.excerpt for x in r.readings] == ["texto del libro"]
 
 
 def test_un_pie_de_pagina_del_servidor_no_se_atribuye_a_un_libro():
@@ -381,12 +383,12 @@ def test_una_entrada_sin_extracto_sigue_siendo_procedencia():
     payload = (
         "1. **ivanov-global-supply-chain-operations** PDF p.12\n"
         "2. **liu-supply-chain-analytics** PDF p.7\n"
-        "   Con extracto."
+        "   Con un extracto."
     )
     r, _ = _leer(payload)
     assert [(x.source, x.excerpt) for x in r.readings] == [
         ("ivanov-global-supply-chain-operations", ""),
-        ("liu-supply-chain-analytics", "Con extracto."),
+        ("liu-supply-chain-analytics", "Con un extracto."),
     ]
 
 
@@ -541,8 +543,14 @@ def test_un_extracto_corto_no_se_toca():
 
 def test_el_corte_va_despues_del_saneo():
     """Si se cortara antes, el tope quedaria mentiroso: el reemplazo puede ALARGAR el
-    texto (un solo caracter sigma pasa a cinco)."""
-    sigma = "\u03c3" * 200  # 200 caracteres que al sanear pasan a 1000
+    texto (un solo caracter sigma pasa a cinco).
+
+    Los sigmas van SEPARADOS por espacio, no pegados: pegados el extracto entero seria un
+    unico token y caeria por el piso de palabras (`MIN_PALABRAS_CITABLES`) antes de
+    llegar al corte, que es lo que este test mide. Un extracto de un solo token de 1.000
+    caracteres tampoco era representativo de nada que mande el indice.
+    """
+    sigma = ("\u03c3 " * 200).strip()  # 200 caracteres que al sanear pasan a 1000
     r, _ = _leer(f"1. **liu-supply-chain-analytics** PDF p.7\n   {sigma}")
     assert len(r.readings[0].excerpt) <= MAX_EXCERPT_CHARS
 
@@ -551,10 +559,14 @@ def test_el_corte_va_despues_del_saneo():
 
 
 def test_las_keywords_viajan_unidas_por_espacio():
+    """El `k` que viaja NO es el que se pidio: es `k + HOLGURA_PEDIDO`, porque el piso de
+    calidad descarta mobiliario y sin holgura cada descarte seria un pasaje menos (ver
+    la seccion 9). Lo que se queda el llamador sigue siendo `k`."""
     srv = _Servidor(CABLE_REAL)
     with srv as call:
         read_with_caller(call, ["safety", "stock", "alpha service level"], k=5)
-    assert srv.vistos == [{"query": "safety stock alpha service level", "k": 5, "sources": None}]
+    assert srv.vistos == [{"query": "safety stock alpha service level",
+                           "k": 5 + lectura.HOLGURA_PEDIDO, "sources": None}]
 
 
 def test_sources_viaja_tal_cual_cuando_viene():
@@ -716,9 +728,16 @@ def test_el_umbral_es_el_que_se_midio():
 
 
 def test_el_umbral_corta_donde_dice_y_no_un_caracter_antes():
-    """La frontera exacta, sin depender de ningun pasaje real: 4 de 100 pasa, 5 no."""
-    justo = "a" * 96 + "-" * 4
-    pasado = "a" * 95 + "-" * 5
+    """La frontera exacta, sin depender de ningun pasaje real: 4 de 100 pasa, 5 no.
+
+    Los cuerpos son VARIAS palabras a proposito: uno solo de 100 caracteres cae antes por
+    el piso de palabras (`MIN_PALABRAS_CITABLES`) y este test dejaria de medir la
+    frontera del relleno, que es para lo que existe. Los espacios no cuentan como
+    caracteres: `_es_ilegible` mide solo sobre los no-blancos, asi que la razon sigue
+    siendo exactamente 4/100 y 5/100.
+    """
+    justo = " ".join(["a" * 12] * 8) + "-" * 4          # 96 letras + 4 rayas = 0,04
+    pasado = " ".join(["a" * 12] * 7 + ["a" * 11]) + "-" * 5   # 95 + 5 = 0,05
     assert _una("liu-supply-chain-analytics", "PDF p.7", justo).excerpt == justo
     assert _una("liu-supply-chain-analytics", "PDF p.7", pasado).excerpt == ""
 
@@ -867,3 +886,319 @@ def test_el_modulo_no_toca_el_gate_de_citas():
         if isinstance(n, ast.Call)
     }
     assert "filter_citations" not in llamadas
+
+
+# --- 9. el piso de calidad: mobiliario del libro y del sitio -------------------------
+#
+# POR QUE EXISTE ESTA SECCION. Una corrida REAL contra el indice devolvio 3 pasajes y
+# los 3 eran mobiliario: una barra lateral de blog, un extracto con el pie de imprenta
+# del maquetador adentro, y un indice onomastico del final de un libro. El repo del
+# indice (`kern-lectura`) ya limpia lo suyo; esto es el CINTURON de este lado, para que
+# Kern no dependa de que el otro repo este limpio. Defensa en profundidad, no duplicacion.
+#
+# TODOS los cuerpos de abajo son TEXTUALES del indice vivo (recortados, no editados),
+# tirados con `search_passages` el 2026-09-12. Los tres primeros son los CONTROLES
+# NEGATIVOS -- tablas densas en numeros que tienen que SOBREVIVIR --, y estan aca porque
+# un piso que solo se prueba con basura no prueba nada sobre lo que tiene que dejar pasar.
+
+# vollmann-manufacturing-planning-control, PDF p.262. Un MPS de planificacion de
+# capacidad: 26 numeros sueltos en dos renglones y ninguna coma. Contenido citable.
+TABLA_MPS = (
+    "246 Chapter 7 Capacity Planning and Management Master production schedule "
+    "(in units): Period End Product 1 2 3 4 5 6 7 8 9 10 11 12 13 Total "
+    "A 33 33 33 40 40 40 30 30 30 37 37 37 37 457 "
+    "B 17 17 17 13 13 13 25 25 25 27 27 27 27 273"
+)
+
+# jacobs-chase-operations-supply-chain-management, PDF p.625. La solucion de un problema
+# de programacion de centros de trabajo -- y trae el pie de imprenta del maquetador
+# ADENTRO, que es exactamente el hallazgo que motivo esta tarea.
+TABLA_SCHEDULING = (
+    "596 Section 4 Supply and Demand Planning and Control "
+    "jac66107_ch22_590-621.indd 596 12/16/16 02:08 PM "
+    "SOLUTION FCFS RULE: The FCFS rule results in the following flow times: "
+    "FCFS Schedule Job Sequence Processing Time (Days) Due Date (Days Hence) "
+    "Flow Time (Days) A 3 5 0 + 3 = 3 B 4 6 3 + 4 = 7 C 2 7 7 + 2 = 9"
+)
+
+# vollmann-manufacturing-planning-control, PDF p.192. Una serie de ordenes de cliente.
+# La ligadura fi va escapada para que este archivo siga siendo ASCII (ver seccion 5).
+TABLA_ORDENES = (
+    "Booked customer orders (already con\ufb01rmed): 95 units in week 1. "
+    "105 units in week 2. 70 units in week 3. 10 units in week 5. "
+    "Master production schedule: 200 units to be completed at the start of week 1. "
+    "200 units to be completed at the start of week 3."
+)
+
+# liu-supply-chain-analytics, PDF p.383. El indice onomastico del final del libro: un
+# termino y despues la lista de paginas donde aparece. Las rayas son en-dash (U+2013).
+INDICE_ONOMASTICO = (
+    "372 Collaboration, 5, 6, 23, 24, 113\u2013115, 159, 164, 167, 168, 173, 179 "
+    "Combination, 25, 26, 54, 56\u201361, 72, 74, 78, 79, 89, 108, 176, 209, 212, 252 "
+    "Competitive advantage, 6, 8, 9, 12, 13, 17, 119, 165, 179"
+)
+
+# sop-isotracker-iso-9001-document-review, PDF p.2. La barra lateral del blog. Ojo: NO
+# arranca con el marcador -- arranca con la cola de un parrafo de verdad y la navegacion
+# empieza en el medio. Una regla que solo mire el principio del extracto no la ve.
+BARRA_LATERAL = (
+    "advice on how often to review documents for ISO 9001. Recent posts "
+    "Improving Quality Management Reviews: A Practical Guide for ISO 9001 Compliance "
+    "7 Quality Metrics Every Manufacturer Should Track in 2026 "
+    "What Types Of Businesses Need a QMS? GFSI Requirements for Root Cause Analysis"
+)
+
+# Una formula, escrita como la escriben los libros: simbolos espaciados y la sustitucion
+# numerica al lado. El control negativo del piso de palabras.
+FORMULA = "EOQ = raiz(2 x D x S / H) = raiz(2 x 1200 x 75 / 3.6) = 223.6 units per order"
+
+PROSA = (
+    "Safety stock is extra inventory that is carried for protection in case the demand "
+    "for an item is greater than expected during the replenishment lead time."
+)
+
+
+def _cable(cuerpo: str, source: str = "liu-supply-chain-analytics",
+           etiqueta: str = "PDF p.7") -> str:
+    """Una entrada con su cuerpo indentado, como la manda el servidor."""
+    return f"1. **{source}** {etiqueta}{NL}   {cuerpo}{NL}"
+
+
+# -- (a) la firma del indice onomastico ----------------------------------------------
+
+
+def test_un_indice_onomastico_real_no_ocupa_un_slot():
+    """El hallazgo, textual. Un indice del final del libro no es una cita: es una lista
+    de numeros de pagina, y el cliente que abre la p.383 de Liu no encuentra teoria."""
+    assert lectura.parse_readings(_cable(INDICE_ONOMASTICO)) == ()
+
+
+def test_la_firma_del_indice_es_cuatro_numeros_y_no_tres():
+    """La frontera medida, sin depender de ningun pasaje real: con tres numeros separados
+    por coma todavia hay prosa normal (Jacobs & Chase: "late by 1, 2, 6, and 14 days"),
+    con cuatro ya es la forma del indice."""
+    assert lectura.es_inutilizable_como_cita("Collaboration, 5, 6, 23, 24 y algo mas")
+    assert not lectura.es_inutilizable_como_cita("Jobs B, C y D llegaron tarde 1, 2, 6 dias")
+
+
+def test_la_prosa_de_jacobs_con_tres_numeros_seguidos_sobrevive():
+    """El caso que casi se rompe, textual del indice vivo: la frase que cierra la
+    solucion FCFS enumera tres numeros con coma y el cuarto viene detras de un "and"."""
+    cuerpo = ("Comparing the due date of each job with its flow time, we observe that "
+              "only Job A will be on time. Jobs B, C, D, and E will be late by "
+              "1, 2, 6, and 14 days, respectively.")
+    assert not lectura.es_inutilizable_como_cita(cuerpo)
+    assert lectura.parse_readings(_cable(cuerpo))[0].excerpt.startswith("Comparing")
+
+
+# -- (b) mobiliario: navegacion de sitio y pie de imprenta ---------------------------
+
+
+def test_la_barra_lateral_de_un_blog_no_ocupa_un_slot():
+    """El otro hallazgo, textual. El marcador cae en el MEDIO del extracto, no al
+    principio: la regla tiene que mirar todo el extracto."""
+    assert lectura.parse_readings(_cable(BARRA_LATERAL,
+                                         "sop-isotracker-iso-9001-document-review",
+                                         "PDF p.2")) == ()
+
+
+def test_la_cabecera_de_una_pagina_raspada_tampoco_ocupa_un_slot():
+    """Textual de una corrida real de `read_passages` contra el indice vivo (2026-09-12).
+
+    Con la lista de marcadores original -- la que sale del hallazgo -- esta consulta
+    (`["iso 9001 document review", "document control", "quality manual"]`, k=3) devolvia
+    DOS pasajes asi sobre tres: el encabezado de la pagina web, no el articulo. Ninguno
+    de los seis marcadores de blog lo tocaba. El enlace de salto ("skip to main content")
+    es lo que si esta siempre, y no existe en la prosa de ningun libro.
+    """
+    cabecera = (
+        "Managing Controlled Documents ISO 9001 Skip to main content Skip to footer "
+        "info@compliantltd.com Call: 0333 456 5000 Search About Us Services ISO Services"
+    )
+    assert lectura.parse_readings(_cable(
+        cabecera, "sop-compliant-controlled-documents-iso-9001", "PDF p.1")) == ()
+
+
+def test_cada_marcador_de_navegacion_descarta_por_su_cuenta():
+    """Los seis, uno por uno: si alguien saca uno de la lista, se rompe aca."""
+    for marcador in lectura.NAVEGACION_DE_SITIO:
+        cuerpo = f"Texto de la nota que si es del articulo. {marcador} y lo que sigue."
+        assert lectura.parse_readings(_cable(cuerpo)) == (), marcador
+
+
+def test_el_pie_de_imprenta_se_saca_del_extracto_pero_no_se_lleva_el_pasaje():
+    """La correccion medida, y el motivo por el que el pie de imprenta NO descarta.
+
+    Medido contra el indice vivo el 2026-09-12: de 11 pasajes de
+    `jacobs-chase-operations-supply-chain-management` tirados con dos consultas
+    distintas, 10 traian el pie de imprenta completo -- esta impreso en CASI TODAS las
+    paginas de ese libro. Tratarlo como motivo de descarte borraria un manual entero del
+    corpus, incluida ESTA tabla, que es uno de los tres controles negativos que tienen
+    que sobrevivir. El mobiliario se SACA del extracto (igual que los centinelas de
+    pagina), no se usa como veredicto sobre el pasaje.
+    """
+    (leida,) = lectura.parse_readings(_cable(
+        TABLA_SCHEDULING, "jacobs-chase-operations-supply-chain-management", "PDF p.625"))
+
+    assert ".indd" not in leida.excerpt
+    assert "12/16/16" not in leida.excerpt and "02:08 PM" not in leida.excerpt
+    assert "SOLUTION FCFS RULE" in leida.excerpt      # y el contenido sigue entero
+    assert leida.page_label == "PDF p.625"
+
+
+def test_un_pasaje_que_es_solo_el_pie_de_imprenta_queda_como_libro_y_pagina():
+    """Sacar el mobiliario nunca CREA un descarte: deja la entrada sin extracto.
+
+    La pagina existe y tiene texto -- el chunker corto mal, nada mas --, asi que libro y
+    pagina siguen siendo una referencia que el cliente puede abrir. Es la misma regla que
+    ya tenia el modulo para el PDF con el glyph-mapping roto: vacio es AUSENTE, no basura.
+    """
+    (leida,) = lectura.parse_readings(_cable(
+        "jac66107_ch22_590-621.indd 609 12/16/16 02:08 PM",
+        "jacobs-chase-operations-supply-chain-management", "PDF p.638"))
+    assert leida.excerpt == ""
+    assert leida.page_label == "PDF p.638"
+
+
+def test_un_pie_de_imprenta_a_medias_no_se_toca():
+    """Las cuatro partes juntas son las que dan cero falsos positivos. Una fecha suelta o
+    un nombre de archivo suelto pueden ser texto del libro, y no se tocan."""
+    cuerpo = "El archivo maestro se llama pedidos.indd y se reviso el 12/16/16 sin falta."
+    assert ".indd" in lectura.parse_readings(_cable(cuerpo))[0].excerpt
+
+
+# -- (c) lo que queda despues de todo eso -------------------------------------------
+
+
+def test_un_extracto_de_dos_palabras_no_es_una_cita():
+    """Lo que se publica es el extracto ENTRE COMILLAS con el libro y la pagina al lado:
+    un par de comillas alrededor de "FIGURE 10.18" afirma una cita que no dice nada."""
+    for resto in ("FIGURE 10.18", "480 PART 3", "Chapter 7 133", "206 21 2"):
+        assert lectura.parse_readings(_cable(resto)) == (), resto
+
+
+def test_tres_palabras_ya_son_una_cita():
+    assert lectura.parse_readings(_cable("Corto y entero."))[0].excerpt == "Corto y entero."
+
+
+def test_el_minimo_de_palabras_es_el_que_se_escribio():
+    """Sujeto, verbo y complemento: abajo de tres no hay afirmacion, hay rotulo."""
+    assert lectura.MIN_PALABRAS_CITABLES == 3
+
+
+def test_un_extracto_vacio_no_cae_por_el_piso_de_palabras():
+    """Cero palabras NO es "muy pocas palabras": es ausencia, y ya era una entrada valida
+    antes de que este piso existiera. Un extracto vacio no afirma nada y deja en pie una
+    referencia que el cliente puede abrir; uno de dos palabras afirma entre comillas."""
+    assert not lectura.es_inutilizable_como_cita("")
+    assert not lectura.es_inutilizable_como_cita("   ")
+    (leida,) = lectura.parse_readings("1. **liu-supply-chain-analytics** PDF p.7")
+    assert leida.excerpt == ""
+
+
+# -- los controles negativos, todos juntos -------------------------------------------
+
+
+def test_los_controles_negativos_sobreviven_al_piso_entero():
+    """Prosa, una formula y las TRES tablas reales densas en numeros. Si alguien endurece
+    cualquiera de las tres razones, lo primero que se rompe es esto."""
+    casos = {
+        "prosa": PROSA,
+        "formula": FORMULA,
+        "mps de vollmann": TABLA_MPS,
+        "scheduling de jacobs & chase": TABLA_SCHEDULING,
+        "ordenes de cliente de vollmann": TABLA_ORDENES,
+    }
+    for nombre, cuerpo in casos.items():
+        assert not lectura.es_inutilizable_como_cita(lectura._sanear(cuerpo)), nombre
+        lecturas = lectura.parse_readings(_cable(cuerpo))
+        assert len(lecturas) == 1 and lecturas[0].excerpt, nombre
+
+
+# -- se descarta, no se degrada ------------------------------------------------------
+
+
+def test_el_mobiliario_no_deja_procedencia_huerfana():
+    """Un pasaje que no pasa el piso NO puede ocupar un slot, ni siquiera como libro +
+    pagina sin extracto. La diferencia con el piso de legibilidad es cual es el defecto:
+    alla la PAGINA tiene texto de verdad y el PDF lo destruyo (la referencia sirve), aca
+    la pagina ES el mobiliario -- el indice del final, la barra lateral del sitio -- y
+    mandarlo como referencia es mandar al cliente a una pagina que no habla del tema.
+    """
+    crudo = NL.join([
+        f"1. **liu-supply-chain-analytics** PDF p.383{NL}   {INDICE_ONOMASTICO}",
+        f"2. **vollmann-manufacturing-planning-control** PDF p.262{NL}   {TABLA_MPS}",
+    ])
+    r = lookup_from_text(crudo)
+
+    assert r.available is True
+    assert [x.page_label for x in r.readings] == ["PDF p.262"]
+    assert "PDF p.383" not in str(r.readings)
+
+
+def test_un_lote_entero_de_mobiliario_no_queda_disponible_y_no_levanta():
+    """El caso de la corrida real: 3 de 3 eran mobiliario. Se contesta un estado, no una
+    excepcion y tampoco tres citas vacias."""
+    crudo = NL.join([
+        f"1. **liu-supply-chain-analytics** PDF p.383{NL}   {INDICE_ONOMASTICO}",
+        f"2. **sop-isotracker-iso-9001-document-review** PDF p.2{NL}   {BARRA_LATERAL}",
+        f"3. **vollmann-manufacturing-planning-control** PDF p.1{NL}   FIGURE 10.18",
+    ])
+    r = lookup_from_text(crudo)
+    assert r.available is False and r.readings == ()
+    assert r.note
+
+
+# -- pedir de mas, en UNA sola llamada -----------------------------------------------
+
+
+def _lote(*cuerpos: str) -> str:
+    return NL.join(f"{i}. **libro-{i}** PDF p.{i}{NL}   {c}"
+                   for i, c in enumerate(cuerpos, start=1))
+
+
+def test_se_pide_de_mas_para_que_el_descarte_no_cueste_un_pasaje_bueno():
+    """El punto entero de la holgura: con 3 pedidos y 3 de mobiliario en el medio, el
+    cliente igual recibe 3 pasajes buenos en vez de quedarse sin ninguno."""
+    payload = _lote(INDICE_ONOMASTICO, PROSA, BARRA_LATERAL, TABLA_MPS,
+                    "FIGURE 10.18", TABLA_ORDENES)
+    r, _ = _leer(payload, k=3)
+
+    assert r.available is True
+    assert len(r.readings) == 3
+    assert [x.page_label for x in r.readings] == ["PDF p.2", "PDF p.4", "PDF p.6"]
+
+
+def test_la_holgura_viaja_en_la_misma_unica_llamada():
+    """La holgura no puede convertirse en un costo escondido. Cada consulta al indice
+    levanta y baja el servidor entero (16,8 s en frio, ~1,6 GB de RSS): una segunda
+    llamada para reponer lo descartado costaria mas que todo lo que esto ahorra."""
+    srv = _Servidor(_lote(PROSA, TABLA_MPS, TABLA_ORDENES))
+    with srv as call:
+        read_with_caller(call, ["safety stock"], k=3)
+
+    assert len(srv.vistos) == 1
+    assert srv.vistos[0]["k"] == 3 + lectura.HOLGURA_PEDIDO
+
+
+def test_el_tope_se_respeta_aunque_el_servidor_mande_la_holgura_entera():
+    """Lo que se pide de mas es para DESCARTAR, no para publicar: si vuelven seis buenos
+    con k=3, salen tres."""
+    payload = _lote(*([PROSA] * 6))
+    r, _ = _leer(payload, k=3)
+    assert len(r.readings) == 3
+    assert r.note.startswith("3 pasaje")
+
+
+def test_menos_de_k_no_es_un_error():
+    """El servidor puede devolver menos de lo pedido (un `sources` acotado, un corpus
+    chico). Dos pasajes son dos pasajes, no un fallo."""
+    r, _ = _leer(_lote(PROSA, TABLA_MPS), k=3)
+    assert r.available is True and len(r.readings) == 2
+
+
+def test_la_holgura_es_la_que_se_escribio():
+    """Va literal: escrito contra la constante el assert es una tautologia. El numero es
+    el tamanio de UN pedido del orchestrator (`_LECTURAS_POR_DECK` = 3), que es lo que la
+    corrida real perdio entero."""
+    assert lectura.HOLGURA_PEDIDO == 3

@@ -24,6 +24,17 @@ y sus fallos como ``"error: <mensaje interno>"``. Traducir esos strings a estado
 mitad del trabajo: un adaptador ingenuo le embarcaria al cliente ``"error: storage ...
 esta corrupto"`` como si fuera un pasaje de libro.
 
+EL PISO DE CALIDAD ES UN CINTURON, NO UNA DUPLICACION. Una corrida real contra el indice
+devolvio 3 pasajes y los 3 eran MOBILIARIO: la barra lateral de un blog, un extracto con
+el pie de imprenta del maquetador adentro, y un indice onomastico del final de un libro.
+El repo del indice ya limpia lo suyo; esto lo vuelve a hacer de este lado porque lo que
+Kern renderiza llega al cliente con el nombre de un libro al lado, y esa ultima milla no
+puede depender de que otro proceso, en otro repo y en otra maquina, este limpio hoy. Dos
+piezas: :func:`_sanear` SACA el mobiliario que viene incrustado en texto bueno (el pie de
+imprenta, :data:`_PIE_DE_IMPRENTA_RE`), y :func:`es_inutilizable_como_cita` DESCARTA el
+pasaje cuyo contenido ES mobiliario. Que descartar no cueste un pasaje bueno es lo que
+paga :data:`HOLGURA_PEDIDO`: se pide de mas en la misma unica llamada.
+
 DISPONIBLE ES LA EXCEPCION, NO LA REGLA. El indice pide ~1,6 GB de RSS y la VM de
 produccion tiene 512 MB (``fly.toml``, ``[[vm]] memory = "512mb"``), asi que en prod
 esto nunca esta disponible -- y eso NO es un error: se contesta ``available=False`` con
@@ -158,6 +169,123 @@ _MAX_STDERR_CHARS = 300
 #: de una frase es peor que no tener marca, porque parece parte del texto del libro.
 _CENTINELA_RE = re.compile("\u27e6p\\.\\d+\u27e7")
 
+#: Pie de imprenta del maquetador, tal como lo imprime InDesign al pie de cada pagina:
+#: ``<archivo>.indd   <pagina> <dd/mm/aa>   <h:mm> AM|PM``, p. ej.
+#: ``jac66107_ch22_590-621.indd 596 12/16/16 02:08 PM``. Se SACA del extracto, igual que
+#: los centinelas de pagina, en vez de usarse como veredicto sobre el pasaje.
+#:
+#: POR QUE SE SACA Y NO DESCARTA, MEDIDO. La primera version de este piso lo trataba como
+#: motivo de descarte. Contra el indice vivo (2026-09-12, dos consultas distintas sobre
+#: ``jacobs-chase-operations-supply-chain-management``), 10 de 11 pasajes de ese libro
+#: traen el pie completo: esta impreso en casi todas sus paginas, asi que descartar por
+#: el pie borraria un manual entero del corpus -- incluida la solucion de programacion de
+#: centros de trabajo de la p.625, que es justamente uno de los pasajes que hay que
+#: conservar. El pie no dice NADA sobre si el pasaje sirve; solo ensucia el extracto.
+#:
+#: LAS CUATRO PARTES VAN JUNTAS a proposito: sobre el corpus entero, exigirlas todas da
+#: cero falsos positivos, mientras que un ``.indd`` suelto o una fecha suelta pueden ser
+#: texto del libro. Y se saca ANTES de :func:`_cortar`, o el pie se comeria presupuesto
+#: del tope de copyright y el cliente leeria menos libro por la misma cantidad de letras.
+_PIE_DE_IMPRENTA_RE = re.compile(
+    r"\S+\.indd\s+\d{1,5}\s+\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}\s*[AaPp]\.?[Mm]\.?"
+)
+
+#: Un numero de pagina de un indice onomastico: entero corto, o rango ("113-115").
+_NUMERO_DE_INDICE = r"\d{1,4}(?:-\d{1,4})?"
+
+#: La firma del indice onomastico del final del libro (back-of-book index): un termino y
+#: DESPUES cuatro o mas numeros separados por coma, del estilo
+#: ``Collaboration, 5, 6, 23, 24, 113-115, 159`` o ``Machine learning, 11-13, 27, 32, 33``.
+#:
+#: POR QUE ESTA METRICA Y NO LA OBVIA. La obvia -- densidad de numeros sueltos por
+#: palabra -- esta REFUTADA con datos: entre los extractos con mas numeros por palabra del
+#: corpus hay tres que son contenido valioso (un MPS de planificacion de capacidad de
+#: Vollmann, una solucion de programacion de centros de trabajo de Jacobs & Chase y una
+#: serie de ordenes de cliente), y un umbral por densidad los tiraria a los tres. Lo que
+#: SI discrimina es la forma: un indice separa sus paginas con COMA, una tabla no.
+#:
+#: MEDIDO SOBRE EL CORPUS REAL (6.929 pasajes): esto marca 8 de 6.903 extractos (0,12%),
+#: las tres tablas legitimas sobreviven y los tres indices reales quedan marcados.
+#:
+#: EL CUATRO ES LA FRONTERA, y esta apoyada en prosa real: "Jobs B, C, D, and E will be
+#: late by 1, 2, 6, and 14 days" (Jacobs & Chase, PDF p.625) enumera TRES numeros con coma
+#: seguidos antes de que aparezca una palabra. Con tres todavia hay prosa; con cuatro
+#: seguidos ya no queda prosa en el corpus.
+_INDICE_ONOMASTICO_RE = re.compile(
+    rf"[A-Za-z][^,\n]{{0,60}},\s*(?:{_NUMERO_DE_INDICE}\s*,\s*){{3,}}{_NUMERO_DE_INDICE}"
+)
+
+#: Donde ARRANCA la navegacion de un sitio web. El corpus no es solo PDF de libros: trae
+#: paginas raspadas (guias ISO, normas de industria), y un chunk que toca el cromo de la
+#: pagina trae la barra lateral entera. El hallazgo real fue exactamente eso: uno de los
+#: tres pasajes de una corrida era la barra lateral de un blog.
+#:
+#: SE BUSCA EN TODO EL EXTRACTO, no al principio: en el caso real
+#: (``sop-isotracker-iso-9001-document-review`` PDF p.2) el extracto ARRANCA con la cola
+#: de un parrafo de verdad ("advice on how often to review documents for ISO 9001.") y la
+#: navegacion empieza recien en el medio. Una regla que solo mire el comienzo no lo ve.
+#:
+#: QUE LO MEDIRIA: buscar cada marcador sobre los 6.929 extractos y mirar cuantos de los
+#: marcados son prosa de libro. Todos son frases de cromo de varias palabras; el unico
+#: con riesgo real en un corpus de calidad y cumplimiento es "privacy policy", y la
+#: consulta que mas directamente lo busca en prosa ("the organization shall maintain a
+#: privacy policy...") no devolvio ni un pasaje de libro que lo contenga.
+#:
+#: LOS DOS ULTIMOS SALEN DE UNA CORRIDA REAL, no de la lista original: con solo los seis
+#: primeros, ``read_passages(["iso 9001 document review", "document control", "quality
+#: manual"], k=3)`` contra el indice vivo seguia devolviendo dos pasajes que son el
+#: encabezado de una pagina web ("Skip to main content Skip to footer info@... Call: 0333
+#: ... Search About Us Services"). Un enlace de salto es una ayuda de accesibilidad del
+#: HTML: no existe en la prosa de ningun libro, asi que su riesgo de falso positivo es
+#: nulo y su cobertura es toda la cabecera de una pagina raspada, que es donde el cromo
+#: empieza de verdad.
+NAVEGACION_DE_SITIO = (
+    "recent posts",
+    "related posts",
+    "share this post",
+    "subscribe to our",
+    "privacy policy",
+    "cookie policy",
+    "skip to main content",
+    "skip to content",
+)
+
+#: Un token cuenta como palabra si trae al menos una letra. Un numero suelto, un simbolo
+#: o una raya de cuadricula no son palabras, y son justo lo que sobra en el mobiliario.
+_TIENE_LETRA_RE = re.compile(r"[A-Za-z]")
+
+#: Cuantas palabras necesita un extracto para poder ser una cita.
+#:
+#: DE DONDE SALE EL TRES. Lo que se publica es el extracto ENTRE COMILLAS con el libro y
+#: la pagina al lado, o sea una AFIRMACION atribuida. La afirmacion mas corta posible
+#: necesita sujeto, verbo y complemento: tres palabras. Con dos o menos lo que queda
+#: entre comillas no es una frase sino un rotulo, y los rotulos que de verdad sobreviven
+#: al saneo en este corpus puntuan todos uno o cero: "FIGURE 10.18", "480 PART 3",
+#: "Chapter 7 133", "206 21 2". El pie de imprenta, ya sacado, puntua dos.
+#:
+#: HACIA DONDE FALLA, A PROPOSITO: bajo. Tres palabras es un piso de forma, no de
+#: contenido -- no pretende juzgar si la frase dice algo, solo que sea una frase. Subirlo
+#: empezaria a comerse citas cortas legitimas ("Corto y entero." puntua tres).
+MIN_PALABRAS_CITABLES = 3
+
+#: Cuantos pasajes de mas se le piden al servidor para que descartar no cueste un slot.
+#:
+#: POR QUE EXISTE. Sin holgura, el piso de calidad convierte un pasaje de mobiliario en un
+#: pasaje MENOS: la corrida real que motivo todo esto pidio 3 y los 3 eran mobiliario, asi
+#: que el cliente se habria quedado con cero en vez de con tres.
+#:
+#: POR QUE ESTE NUMERO. Es el tamanio de UN pedido del orchestrator
+#: (``scm_agent/orchestrator.py``, ``_LECTURAS_POR_DECK`` = 3): la holgura repone un
+#: pedido entero, que es exactamente lo que esa corrida perdio.
+#:
+#: POR QUE NO MAS. Bajar en el ranking del vector no es gratis y esta medido en
+#: ``scm_agent/packages.py``: cuanto mas se estira una consulta sin tema, mas back-matter
+#: aparece. Duplicar ``k`` para "asegurarse" traeria justo la cola del ranking, que es
+#: donde vive el mobiliario. La holgura compra margen contra un par de piezas de
+#: mobiliario y NO intenta rescatar una consulta entera que apunto mal: ese caso tiene que
+#: volver corto, y corto es una respuesta honesta.
+HOLGURA_PEDIDO = 3
+
 #: Entrada del markdown: ``N. **slug** ETIQUETA``.
 _ENTRADA_RE = re.compile(r"^\s*\d+\.\s+\*\*(?P<source>.*?)\*\*(?P<label>.*)$")
 
@@ -289,13 +417,20 @@ class _RespuestaIlegible(RuntimeError):
 def _sanear(texto: str) -> str:
     """Texto imprimible en una consola cp1252, sin centinelas y en una sola linea.
 
-    Cuatro pasos, en este orden: sacar los centinelas; reemplazar lo que no se
-    descompone solo (comillas, rayas, griegas); normalizar (ligaduras fl/fi/ff y
-    acentos caen aca); y como ULTIMO recurso ``ascii``/``replace``, que degrada a "?"
-    en vez de romper. Al final se colapsa el espacio en blanco, lo que ademas junta un
-    extracto que venia partido en varias lineas.
+    Cinco pasos, en este orden: sacar los centinelas; sacar el pie de imprenta del
+    maquetador (:data:`_PIE_DE_IMPRENTA_RE`, mobiliario del libro que el otro repo ya
+    limpia y este vuelve a limpiar por su cuenta); reemplazar lo que no se descompone
+    solo (comillas, rayas, griegas); normalizar (ligaduras fl/fi/ff y acentos caen aca);
+    y como ULTIMO recurso ``ascii``/``replace``, que degrada a "?" en vez de romper. Al
+    final se colapsa el espacio en blanco, lo que ademas junta un extracto que venia
+    partido en varias lineas.
+
+    El mobiliario se saca ACA, antes de :func:`_cortar`, para que no se coma presupuesto
+    del tope de copyright: un pie de imprenta son ~45 de los 320 caracteres que el
+    cliente tiene derecho a leer del libro.
     """
     t = _CENTINELA_RE.sub(" ", texto)
+    t = _PIE_DE_IMPRENTA_RE.sub(" ", t)
     for malo, bueno in _REEMPLAZOS.items():
         if malo in t:
             t = t.replace(malo, bueno)
@@ -336,6 +471,54 @@ def _es_ilegible(texto: str) -> bool:
         return False
     relleno = sum(1 for c in sin_blanco if c in _RELLENO_FABRICADO)
     return relleno / len(sin_blanco) > MAX_RELLENO_EXCERPT
+
+
+def _palabras_citables(texto: str) -> int:
+    """Cuantos tokens del extracto son palabras (traen al menos una letra)."""
+    return sum(1 for token in texto.split() if _TIENE_LETRA_RE.search(token))
+
+
+def es_inutilizable_como_cita(excerpt: str) -> bool:
+    """True si el extracto es MOBILIARIO y no contenido: no se puede citar, ni con pagina.
+
+    EL PISO DE CALIDAD, Y EN QUE SE DIFERENCIA DEL DE LEGIBILIDAD. El otro piso
+    (:func:`_es_ilegible`, :data:`MAX_RELLENO_EXCERPT`) contesta "este fragmento, se
+    puede LEER?", y cuando la respuesta es no degrada: la pagina SI tiene texto de verdad
+    -- lo que fallo es el glyph-mapping del PDF --, asi que el libro y la pagina quedan en
+    pie y el cliente todavia tiene una referencia que puede abrir. Este contesta otra
+    cosa: "este pasaje, ES contenido del libro, o es el mobiliario alrededor del
+    contenido?". Cuando es mobiliario no hay nada que salvar -- mandar "Liu, PDF p.383"
+    es mandar al cliente al indice alfabetico del final, y "isotracker, PDF p.2" a la
+    barra lateral de un blog --, asi que quien llama DESCARTA la entrada entera. Por eso
+    corre DESPUES del piso de legibilidad en :func:`parse_readings`: un fragmento que ya
+    quedo vacio por ilegible es una ausencia, no mobiliario, y no se puede descartar por
+    tener cero palabras algo que nunca ofrecio ninguna.
+
+    TRES RAZONES, cada una con su patron medido arriba:
+
+    1. :data:`_INDICE_ONOMASTICO_RE` -- la firma del indice del final del libro;
+    2. :data:`NAVEGACION_DE_SITIO` -- el cromo de una pagina web raspada;
+    3. :data:`MIN_PALABRAS_CITABLES` -- lo que queda despues de todo eso (incluido el pie
+       de imprenta, que :func:`_sanear` ya saco) no alcanza para ser una frase.
+
+    UN EXTRACTO VACIO NO ES INUTILIZABLE, ES AUSENTE -- misma regla que el otro piso. Un
+    extracto vacio no afirma nada y deja una referencia abrible; uno de dos palabras sale
+    ENTRE COMILLAS afirmando una cita que no dice nada.
+
+    POR QUE ESTO VIVE DE ESTE LADO. El repo del indice ya limpia el mobiliario antes de
+    servirlo. Esto no es duplicacion sino defensa en profundidad: lo que Kern renderiza
+    llega al cliente con el nombre de un libro al lado, y esa ultima milla no puede
+    depender de que otro proceso, en otro repo y en otra maquina, este limpio hoy.
+    """
+    texto = (excerpt or "").strip()
+    if not texto:
+        return False
+    if _INDICE_ONOMASTICO_RE.search(texto):
+        return True
+    bajo = texto.lower()
+    if any(marcador in bajo for marcador in NAVEGACION_DE_SITIO):
+        return True
+    return _palabras_citables(texto) < MIN_PALABRAS_CITABLES
 
 
 def _es_linea_de_error(texto: str) -> bool:
@@ -389,6 +572,15 @@ def parse_readings(crudo: str) -> tuple[Reading, ...]:
             # solos. Lo que se tira es el fragmento, que es el extra -- y publicarlo
             # seria ponerle comillas a algo que el cliente no puede verificar.
             extracto = ""
+        if es_inutilizable_como_cita(extracto):
+            # MOBILIARIO, no contenido: no ocupa un slot ni como libro + pagina. La
+            # diferencia con el piso de arriba es cual es el defecto -- alla la pagina
+            # tiene texto de verdad y el PDF lo destruyo (la referencia sigue sirviendo),
+            # aca la pagina ES el mobiliario (el indice del final, la barra lateral del
+            # sitio) y mandarla como referencia es mandar al cliente a una pagina que no
+            # habla del tema. Que descartar no cueste un pasaje bueno es lo que resuelve
+            # :data:`HOLGURA_PEDIDO` en `read_with_caller`, pidiendo de mas.
+            continue
         lecturas.append(Reading(source=slug, page_label=etiqueta, excerpt=extracto))
     return tuple(lecturas)
 
@@ -481,16 +673,24 @@ def _texto_del_resultado(result: Any) -> str:
     raise _RespuestaIlegible(f"la respuesta no trae texto: {type(result).__name__}")
 
 
-def lookup_from_text(crudo: str) -> ReadingLookup:
+def lookup_from_text(crudo: str, *, tope: int | None = None) -> ReadingLookup:
     """Traduce el string del servidor a un estado. Los dos strings que NO son pasajes
     (``"(sin pasajes)"`` y ``"error: ..."``) salen como no disponible con ese mismo
-    texto de motivo: jamas se convierten en un `Reading`."""
+    texto de motivo: jamas se convierten en un `Reading`.
+
+    ``tope`` es cuantos pasajes se queda quien llamo. Existe porque al servidor se le
+    piden ``k + HOLGURA_PEDIDO`` (ver :func:`read_with_caller`) y lo que sobrevive al
+    piso de calidad puede ser mas que ``k``; recortar ACA y no afuera mantiene UNA sola
+    verdad sobre cuantos pasajes hay, porque es el mismo lugar que escribe la nota.
+    """
     texto = (crudo or "").strip()
     if not texto:
         return _no_disponible("el servidor de lectura contesto vacio")
     if texto == SIN_PASAJES or _es_linea_de_error(texto):
         return _no_disponible(_sanear(texto))
     lecturas = parse_readings(crudo)
+    if tope is not None:
+        lecturas = lecturas[:max(tope, 0)]
     if not lecturas:
         return _no_disponible("el servidor contesto algo sin forma de pasaje; no se cita lo que no se pudo leer")
     return ReadingLookup(
@@ -512,18 +712,34 @@ def read_with_caller(
     Separado de :func:`read_passages` para que el transporte sea reemplazable (un test
     con un servidor en memoria, o un llamador que ya tiene una sesion abierta) sin
     tocar la traduccion del cable, que es donde estan las trampas.
+
+    SE PIDE DE MAS, EN UNA SOLA LLAMADA. Al servidor se le piden ``k +
+    HOLGURA_PEDIDO`` pasajes y se devuelven los primeros ``k`` que pasan el piso de
+    calidad (:func:`es_inutilizable_como_cita`). Sin esa holgura, cada pieza de
+    mobiliario que el piso descarta seria un pasaje MENOS para el cliente -- la corrida
+    real que motivo el piso pidio 3 y los 3 eran mobiliario.
+
+    La holgura viaja en la MISMA unica llamada, no en una segunda: cada consulta levanta
+    y baja el servidor de lectura entero (16,8 s con el indice frio, ~1,6 GB de RSS), asi
+    que reponer lo descartado con otra llamada costaria mas que todo lo que el piso
+    ahorra. Pedir mas filas de un ranking que el servidor ya calculo es gratis.
+
+    EL RESULTADO PUEDE TRAER MENOS DE ``k``, Y ESO NO ES UN ERROR: el servidor devuelve
+    lo que tiene (un ``sources`` acotado, un corpus chico, una consulta rara), y el piso
+    puede descartar mas que la holgura. Dos pasajes son dos pasajes; la alternativa
+    -- rellenar con mobiliario para llegar a ``k`` -- es exactamente el bug que se cierra.
     """
     consulta = " ".join(p for p in (str(x).strip() for x in keywords) if p)
     if not consulta:
         return _no_disponible("no se pidio ninguna palabra clave: no se consulto el indice de lectura")
-    argumentos: dict[str, Any] = {"query": consulta, "k": k}
+    argumentos: dict[str, Any] = {"query": consulta, "k": k + HOLGURA_PEDIDO}
     if sources is not None:
         argumentos["sources"] = sources
     try:
         crudo = _texto_del_resultado(call_tool(TOOL_SEARCH, argumentos))
     except Exception as exc:  # ningun fallo de lectura tira el entregable
         return _no_disponible(f"no se pudo leer el indice: {_una_linea(exc)}")
-    return lookup_from_text(crudo)
+    return lookup_from_text(crudo, tope=k)
 
 
 @contextmanager
