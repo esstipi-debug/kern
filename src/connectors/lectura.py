@@ -201,25 +201,53 @@ _PIE_DE_IMPRENTA_RE = re.compile(
 #: que se vio apunta a la 903.
 _PAGINA_DE_INDICE = r"(?!(?:1[5-9]|20)\d{2}(?!\d))\d{1,4}(?:\s*-\s*\d{1,4})?"
 
+#: LA COMA DE UN INDICE LLEVA ESPACIO DETRAS, y esa exigencia no es cosmetica: es lo
+#: unico que separa una pagina de indice de un SEPARADOR DE MILES. Sin ella, "$25,240,000
+#: Total sales 24,324,000 Total credit sales 18,785,000" es una lista de paginas
+#: perfecta ("25, 240, 000"), y eso NO es hipotetico: es
+#: ``jacobs-chase-operations-supply-chain-management`` PDF p.50 -- el enunciado de un
+#: ejercicio de finanzas, contenido real del libro --, que puntuaba 6 marcas y se
+#: descartaba entero. Medido sobre 521 pasajes distintos del indice vivo (2026-09-12, 74
+#: consultas): exigir el espacio cambia el veredicto de ESE pasaje y de ningun otro, y
+#: deja las 16 paginas de indice reales con exactamente el mismo puntaje que antes.
+_COMA_DE_INDICE = r"\s*,\s+"
+
 #: MARCA 1 de indice: una ENTRADA, o sea un termino y su pagina ("Abbott, 510",
 #: "Vendor-managed inventory (VMI), 21"). El caracter de antes de la coma tiene que ser
-#: una letra o un parentesis de cierre: es lo unico que separa un indice de una tabla o
-#: de una enumeracion, porque en "Period 1, 2, 3, 4" y en "95, 105, 70, 10" lo que viene
-#: antes de la coma es un NUMERO. Esa sola condicion es la que evita tirar el MPS de
-#: Vollmann, la grilla de horarios y la serie de ordenes de cliente.
-_ENTRADA_DE_INDICE_RE = re.compile(rf"[A-Za-z)]\s*,\s*{_PAGINA_DE_INDICE}")
+#: una letra o un parentesis de cierre, porque en "Period 1, 2, 3, 4" y en
+#: "95, 105, 70, 10" lo que viene antes de la coma es un NUMERO.
+#:
+#: ESTA MARCA, SOLA, NO DISTINGUE UN INDICE DE UNA ENUMERACION EN PROSA, y conviene
+#: decirlo aca en vez de descubrirlo con un pasaje perdido: "ocean, 35 days; air, 5 days;
+#: rail, 12 days; truck, 3 days" tiene la misma forma exacta que "Abbott, 510 Accenture,
+#: 22". La diferencia no es local -- no esta en ningun caracter alrededor de la coma --,
+#: asi que quien decide no es esta marca sino :func:`_marcas_de_indice`, que la cuenta
+#: por clausula y contra un umbral con hueco medido a los dos lados.
+_ENTRADA_DE_INDICE_RE = re.compile(rf"[A-Za-z)]{_COMA_DE_INDICE}{_PAGINA_DE_INDICE}")
 
 #: MARCA 2 de indice: la LISTA de paginas de un mismo termino, tres o mas separadas por
 #: coma ("5, 6, 23, 24, 113-115, 159"). Hace falta ademas de la marca 1 porque hay
 #: indices que ponen muchas paginas por termino y pocos terminos por pasaje (Liu PDF
 #: p.383): ahi las entradas son pocas y lo que abunda son las listas.
 _LISTA_DE_PAGINAS_RE = re.compile(
-    rf"(?<!\d){_PAGINA_DE_INDICE}(?:\s*,\s*{_PAGINA_DE_INDICE}){{2,}}"
+    rf"(?<!\d){_PAGINA_DE_INDICE}(?:{_COMA_DE_INDICE}{_PAGINA_DE_INDICE}){{2,}}"
 )
+
+#: Donde TERMINA una clausula en prosa y no puede seguir una entrada de indice.
+#:
+#: POR QUE EL PUNTO Y COMA Y NO EL PUNTO. Un indice SI tiene puntos ("Disney World. See
+#: Walt Disney Parks and Resorts", "A. T. Kearney, 673"), asi que cortar por punto
+#: partiria indices reales al medio. Punto y coma no tiene ninguno: medido sobre las 16
+#: paginas de indice que hay en los 521 pasajes, CERO traen uno, mientras que 25 de los
+#: 521 pasajes del corpus si -- o sea que la condicion no es vacua, simplemente no se
+#: cumple nunca dentro de un indice. Una enumeracion en prosa, en cambio, es justo donde
+#: vive: "material, 12 dollars; labor, 8 dollars; overhead, 4 dollars; freight, 2
+#: dollars" son cuatro marcas de indice repartidas en cuatro clausulas de una sola frase.
+_SEPARADOR_DE_CLAUSULA_RE = re.compile(r";")
 
 #: Cuantas marcas convierten un extracto en el indice del final de un libro.
 #:
-#: POR QUE SE CUENTAN MARCAS Y NO SE BUSCA UNA FIRMA. La version anterior de este piso
+#: POR QUE SE CUENTAN MARCAS Y NO SE BUSCA UNA FIRMA. La PRIMERA version de este piso
 #: buscaba UNA firma -- un termino seguido de cuatro o mas paginas con coma -- y estaba
 #: calibrada contra un solo pasaje. Medido contra el indice vivo, esa firma fallaba por
 #: los dos lados: no reconocia el estilo DOMINANTE del corpus ("termino, pagina termino,
@@ -235,38 +263,72 @@ _LISTA_DE_PAGINAS_RE = re.compile(
 #: de ordenes de cliente) y un umbral por densidad los tiraria a los tres. Lo que
 #: discrimina es la FORMA de la coma, no cuantos numeros hay.
 #:
-#: EL CUATRO ESTA MEDIDO Y CAE EN UN HUECO VACIO. 360 pasajes distintos del indice vivo
-#: (42 consultas, 2026-09-12; 14 buscando back-matter y 28 de contenido normal):
+#: LA MARCA SOLA NO ALCANZA, Y ESTE ES EL ERROR QUE COSTO LA RONDA 2. Contar marcas sin
+#: mirar nada mas TIRA PROSA DE LIBRO: cuatro pares "<palabra>, <numero>" en cualquier
+#: parte del extracto llegaban al umbral y el pasaje se descartaba ENTERO, en silencio.
+#: Corrido contra el codigo de la ronda 1, se iban estos seis, todos contenido legitimo:
 #:
-#:   * de las 29 paginas de back-matter que hay ahi adentro, 21 puntuan de 5 a 12;
-#:   * los otros 331 pasajes puntuan de 0 a 3, y el UNICO que llega a 3 es contenido
-#:     real: la tabla de evaluacion de consultoria de Jacobs & Chase PDF p.718-719, que
-#:     lista las preguntas de cada categoria ("Customer focus 1, 2, 20 Safety,
-#:     cleanliness, and order 3, 4, 5, 20"). Los otros 330 puntuan 0, 1 o 2.
+#:   * "ocean, 35 days; air, 5 days; rail, 12 days; truck, 3 days" dentro de un parrafo
+#:     de 312 caracteres sobre seleccion de modo de transporte -- los otros 250
+#:     caracteres de prosa buena no lo rescataban, porque la cuenta era absoluta;
+#:   * "material, 12 dollars; labor, 8 dollars; overhead, 4 dollars; freight, 2 dollars";
+#:   * "8 pallets, 2 cases, 3 totes, 5 drums, 7 bags of raw material";
+#:   * "3 shifts, 12 lines, 48 workstations, 96 operators, 200 changeovers per week";
+#:   * "8 CUMPLE, 2 PARCIAL, 3 NO_CUMPLE, 2 SIN_DATO, 5 FUERA_DE_ALCANCE";
+#:   * "X12 856 (ASN), 214 (estado), 990 (tender), 850 (PO), 810 (factura)".
 #:
-#: No hay NADA entre 3 y 5, asi que el corte se apoya en aire por los dos lados.
+#: Y NO ES UN PROBLEMA DE REGEX: "Abbott, 510 Accenture, 22" y "8 pallets, 2 cases" son
+#: la MISMA cadena de simbolos. Lo que sigue a la coma es un numero en los dos casos, y
+#: lo que sigue al numero es una palabra en los dos casos. No hay ningun caracter
+#: alrededor de la coma que los separe, asi que ninguna marca mas afilada arregla esto:
+#: la unica evidencia disponible es GLOBAL -- cuantas hay, y si conviven con prosa.
+#: (Se midieron dos candidatas globales mas y las dos se descartaron: el orden alfabetico
+#: de los terminos, que es la propiedad que DEFINE un indice, no separa -- los indices
+#: reales van de 0,50 a 0,89 de pares ordenados y la prosa llega a 0,67, porque un indice
+#: con subentradas reinicia el abecedario y una enumeracion corta se ordena de casualidad
+#: --, y la dispersion de las marcas a lo largo del extracto tampoco, por lo mismo.)
 #:
-#: LO QUE ESTE PISO NO VE, dicho antes de que sorprenda: el indice que NO pone coma entre
-#: el termino y su primera pagina -- "reorder points (ROP) 104, 106" (Christopher PDF
-#: p.288-289), "Rolex 28-9, 40, 68" (Nagle PDF p.349) -- puntua 0 a 2 y pasa entero. Son
-#: las 8 de las 29 que se escapan: cinco paginas de Nagle, una de Christopher, el indice
-#: de NOMBRES de Heizer (PDF p.884-885, casi sin numeros por entrada) y la lista de
-#: simbolos de Vandeput PDF p.316-318.
+#: LAS DOS CONDICIONES QUE SI SE AGREGARON, cada una medida aparte: el espacio obligatorio
+#: despues de la coma (:data:`_COMA_DE_INDICE`, que separa una pagina de un separador de
+#: miles) y el conteo POR CLAUSULA (:data:`_SEPARADOR_DE_CLAUSULA_RE`, que es lo que
+#: desarma las dos primeras de la lista de arriba: un indice no tiene punto y coma, una
+#: enumeracion en prosa casi siempre si).
 #:
-#: Y SE DEJA PASAR A PROPOSITO, porque la marca que las atraparia esta MEDIDA y sale
-#: cara. Se probo una tercera marca, "termino <pagina>, <pagina>" (la misma entrada pero
-#: sin la coma del termino): sobre los mismos 360 pasajes recupera 2 de esas 8 -- Nagle
-#: PDF p.347 y p.349 -- y al mismo tiempo empuja la tabla de Jacobs & Chase PDF p.718-719
-#: de 3 marcas a 6, o sea DESCARTA contenido verificado. Cambiar una tabla real de un
-#: libro por dos paginas de indice de otro es un peor negocio que dejar pasar el indice:
-#: el indice le hace perder al cliente un pasaje, la tabla le hace perder el pasaje que
-#: SI queria. La otra candidata, densidad de numeros por palabra, ya esta refutada arriba.
+#: EL CINCO ESTA MEDIDO Y CAE EN UN HUECO VACIO DE DOS ENTEROS. 521 pasajes distintos del
+#: indice vivo (74 consultas, 2026-09-12; 34 buscando back-matter y 40 de contenido
+#: normal), con las dos condiciones de arriba ya puestas:
+#:
+#:   * 16 pasajes puntuan de 5 a 12, y los 16 son paginas de indice de verdad, repartidas
+#:     en cinco libros: Fleisher x7, Vollmann x4, Jacobs x2, Heizer x2, Ivanov x1;
+#:   * los otros 505 puntuan 0, 1 o 2;
+#:   * NADIE puntua 3 ni 4.
+#:
+#: El 3 lo tiene un solo pasaje conocido, y es contenido: la tabla de evaluacion de
+#: consultoria de Jacobs & Chase PDF p.718-719 ("Customer focus 1, 2, 20 Safety,
+#: cleanliness, and order 3, 4, 5, 20"). El 4 lo tienen las seis prosas de arriba. O sea
+#: que el umbral viejo estaba apoyado EXACTAMENTE sobre el puntaje de la prosa que tiraba;
+#: el nuevo se apoya en aire por los dos lados, a un entero de la tabla y a un entero del
+#: indice mas pobre que se midio.
+#:
+#: LO QUE ESTE PISO SIGUE SIN VER, dicho antes de que sorprenda:
+#:
+#:   * el indice que NO pone coma entre el termino y su primera pagina -- "reorder points
+#:     (ROP) 104, 106" (Christopher PDF p.288-289), "Rolex 28-9, 40, 68" (Nagle PDF
+#:     p.349) -- puntua 0 a 2 y pasa entero. Se deja pasar MEDIDO: la marca que lo
+#:     atraparia ("termino <pagina>, <pagina>", sin la coma) recupera 2 de las 8 paginas
+#:     que se escapan y al mismo tiempo empuja la tabla de Jacobs & Chase de 3 marcas a 6,
+#:     o sea DESCARTA contenido verificado. Perder un indice le cuesta al cliente un
+#:     pasaje; perder la tabla le cuesta el pasaje que SI queria;
+#:   * y, por el otro lado, una enumeracion en prosa de CINCO items o mas metida en una
+#:     sola clausula sigue cayendo. No esta arreglado, esta corrido: cinco items sin un
+#:     punto y coma en 320 caracteres es mas raro que cuatro, y ninguno de los 521 pasajes
+#:     medidos lo tiene, pero la forma existe y este piso no la distingue de un indice.
 #:
 #: HACIA DONDE FALLA: un descarte cuesta el pasaje ENTERO (libro y pagina incluidos, ver
 #: :func:`es_inutilizable_como_cita`), no solo el fragmento -- por eso el umbral se
 #: eligio con hueco y no pegado al maximo del contenido, y por eso existe
 #: :data:`HOLGURA_PEDIDO`, que repone lo descartado en la misma unica llamada.
-MIN_MARCAS_DE_INDICE = 4
+MIN_MARCAS_DE_INDICE = 5
 
 #: Donde ARRANCA la navegacion de un sitio web. El corpus no es solo PDF de libros: trae
 #: paginas raspadas (guias ISO, normas de industria), y un chunk que toca el cromo de la
@@ -531,8 +593,8 @@ def _palabras_citables(texto: str) -> int:
     return sum(1 for token in texto.split() if _TIENE_LETRA_RE.search(token))
 
 
-def _marcas_de_indice(texto: str) -> int:
-    """Cuantas marcas de indice del final del libro trae el extracto.
+def _marcas_en_una_clausula(texto: str) -> int:
+    """Las marcas de indice de UN tramo, sin cruzar un punto y coma.
 
     Las dos marcas se cuentan JUNTAS y por separado del texto (no en una sola pasada
     alternada) porque son evidencia del mismo hecho vista de dos formas: los indices de
@@ -540,9 +602,26 @@ def _marcas_de_indice(texto: str) -> int:
     muchas paginas por termino casi todo en :data:`_LISTA_DE_PAGINAS_RE`. Sumarlas es lo
     que hace que un solo umbral (:data:`MIN_MARCAS_DE_INDICE`) sirva para los dos
     estilos; separarlas obligaria a dos umbrales, cada uno calibrado con la mitad de los
-    datos -- que es exactamente como se rompio la version anterior de este piso.
+    datos -- que es exactamente como se rompio la primera version de este piso.
     """
     return len(_ENTRADA_DE_INDICE_RE.findall(texto)) + len(_LISTA_DE_PAGINAS_RE.findall(texto))
+
+
+def _marcas_de_indice(texto: str) -> int:
+    """El puntaje de indice del extracto: las marcas de la clausula que mas junta.
+
+    POR QUE EL MAXIMO POR CLAUSULA Y NO EL TOTAL. Un indice es un bloque continuo de
+    entradas: no tiene punto y coma adentro (0 de las 16 paginas de indice medidas), asi
+    que para el todo el extracto es UNA clausula y el maximo es el total de siempre. Una
+    enumeracion en prosa es lo contrario: las marcas estan repartidas una por clausula
+    ("material, 12 dollars; labor, 8 dollars; overhead, 4 dollars"), y ahi el maximo es 1
+    donde el total era 4. Sumar de un lado y del otro de un punto y coma es sumar
+    evidencia de dos frases distintas como si fuera de una sola lista.
+    """
+    return max(
+        (_marcas_en_una_clausula(tramo) for tramo in _SEPARADOR_DE_CLAUSULA_RE.split(texto)),
+        default=0,
+    )
 
 
 def es_inutilizable_como_cita(excerpt: str) -> bool:
@@ -565,8 +644,11 @@ def es_inutilizable_como_cita(excerpt: str) -> bool:
 
     1. :data:`MIN_MARCAS_DE_INDICE` sobre :func:`_marcas_de_indice` -- el indice del
        final del libro, reconocido por REPETICION de sus dos formas (una entrada
-       "termino, pagina" y una lista "pagina, pagina, pagina") y no por una firma unica,
-       que es lo que fallaba antes por los dos lados;
+       "termino, pagina" y una lista "pagina, pagina, pagina") DENTRO DE UNA MISMA
+       CLAUSULA, y no por una firma unica ni por una cuenta suelta: las dos versiones
+       anteriores de este piso fallaron, la primera por buscar una firma que solo tenia
+       un libro y la segunda por contar marcas sueltas, que es como se descartaba
+       "ocean, 35 days; air, 5 days; rail, 12 days; truck, 3 days";
     2. :data:`NAVEGACION_DE_SITIO` -- el cromo de una pagina web raspada;
     3. :data:`MIN_PALABRAS_CITABLES` -- lo que queda despues de todo eso (incluido el pie
        de imprenta, que :func:`_sanear` ya saco) no alcanza para ser una frase.
@@ -574,6 +656,20 @@ def es_inutilizable_como_cita(excerpt: str) -> bool:
     UN EXTRACTO VACIO NO ES INUTILIZABLE, ES AUSENTE -- misma regla que el otro piso. Un
     extracto vacio no afirma nada y deja una referencia abrible; uno de dos palabras sale
     ENTRE COMILLAS afirmando una cita que no dice nada.
+
+    EL ARGUMENTO DEL OTRO LADO, PARA QUE ESTE ESCRITO. Se podria conservar libro + pagina
+    con el extracto vacio, que es lo que hace el piso de legibilidad y que el render ya
+    soporta. A favor: un descarte es SILENCIOSO -- no deja nota ni rastro --, asi que
+    cuando el piso se equivoca (y se equivoco: ver la regresion de la ronda 1 en
+    :data:`MIN_MARCAS_DE_INDICE`) el cliente pierde un pasaje bueno entero y nadie se
+    entera. Conservar la procedencia acotaria ese dano a perder el fragmento.
+    Se descarta igual, y por una razon que el otro piso no tiene: alla el defecto esta en
+    el ARCHIVO (la pagina tiene texto de verdad, el PDF lo destruyo) y la referencia sigue
+    sirviendo; aca el defecto esta en la PAGINA MISMA, que es el mobiliario. "Liu, PDF
+    p.383" no es una referencia degradada, es una referencia EQUIVOCADA: manda al cliente
+    al indice alfabetico del final a buscar una teoria que ahi no esta. Publicar media
+    procedencia que apunta a ningun lado le cuesta al cliente mas que no publicar nada, y
+    ademas ocupa el slot igual, que es justo lo que este piso existe para evitar.
 
     POR QUE ESTO VIVE DE ESTE LADO. El repo del indice ya limpia el mobiliario antes de
     servirlo. Esto no es duplicacion sino defensa en profundidad: lo que Kern renderiza

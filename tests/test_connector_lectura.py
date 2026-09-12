@@ -986,6 +986,30 @@ INDICE_IVANOV = (
     "store, 37 Visibility, 46, 47 W Wagner\u2013Whitin, 397 Waiting time, 440, 441"
 )
 
+# heizer-render-operations-management, PDF p.891. LA PAGINA DE INDICE MAS POBRE de los
+# 521 pasajes medidos: 5 marcas, una sola por encima del corte. Textual del indice vivo
+# (2026-09-12), y es el pin de ARRIBA de la frontera: puntua poco porque la mitad del
+# extracto son remisiones ("See Walt Disney Parks and Resorts") sin numero de pagina.
+INDICE_HEIZER_MAS_POBRE = (
+    "I12 GENERAL INDEX Diseconomies of scale, 311 Disney Parks and Resorts. See Walt "
+    "Disney Parks and Resorts Disney World. See Walt Disney Parks and Resorts "
+    "Disneyland, 375 Dispatching jobs, priority rules and, 611 - 612 Distance "
+    "reduction, JIT layout and, 643 Distribution management, supply chain management "
+    "and, 459"
+)
+
+# jacobs-chase-operations-supply-chain-management, PDF p.50. CONTENIDO real -- el
+# enunciado de un ejercicio de finanzas -- y el falso positivo que encontro la revision
+# de la ronda 2 sobre el corpus vivo: los separadores de MILES ("$25,240,000") tienen la
+# forma exacta de una lista de paginas de indice ("25, 240, 000"), y el pasaje puntuaba 6
+# marcas. Lo que lo salva es que un separador de miles NO lleva espacio detras de la coma.
+PROSA_CON_IMPORTES = (
+    "Introduction Chapter 1 21 9. Consider the following financial data from the past "
+    "year for Midwest Outdoor Equipment Corporation. (Answers in Appendix D) LO1-4 "
+    "Gross income $25,240,000 Total sales 24,324,000 Total credit sales 18,785,000 "
+    "Net income 2,975,000 Cost of goods sold 12,600,000 Total assets 10,550,000"
+)
+
 # nagle-strategy-tactics-pricing, PDF p.349. El OTRO estilo de indice: la pagina va
 # pegada al termino SIN coma ("Rolex 28-9, 40, 68"). Es el hueco conocido del piso.
 INDICE_SIN_COMA = (
@@ -1077,12 +1101,12 @@ def test_los_tres_indices_del_estilo_dominante_tampoco_ocupan_un_slot():
 
 
 def test_una_enumeracion_de_numeros_con_coma_no_es_un_indice():
-    """El otro lado de la misma regresion: la primera version DESCARTABA contenido bueno.
+    """La primera version de este piso DESCARTABA contenido bueno por el lado del numero.
 
     Su "termino" admitia numeros adentro, asi que "Period 1, 2, 3, 4" era un termino con
     su lista de paginas y el MPS se iba en silencio -- sin nota y sin rastro, porque un
-    descarte no deja marca. Lo que separa a un indice de una enumeracion es QUE HAY ANTES
-    DE LA COMA: en un indice una letra ("Abbott, 510"), en una tabla un numero ("95, 105").
+    descarte no deja marca. Lo que separa a un indice de una tabla es QUE HAY ANTES DE LA
+    COMA: en un indice una letra ("Abbott, 510"), en una tabla un numero ("95, 105").
     """
     casos = {
         "periodos de un MPS": "Master production schedule. Period 1, 2, 3, 4, 5, 6, 7, 8 in units",
@@ -1097,29 +1121,130 @@ def test_una_enumeracion_de_numeros_con_coma_no_es_un_indice():
         assert lectura.parse_readings(_cable(cuerpo))[0].excerpt, nombre
 
 
+def test_la_prosa_que_enumera_palabra_y_numero_no_es_un_indice():
+    """LA REGRESION DE LA RONDA 1, cerrada con los seis pasajes que la delataron.
+
+    Esa version contaba marcas SUELTAS contra un umbral de cuatro, asi que cuatro pares
+    "<palabra>, <numero>" en cualquier parte del extracto descartaban el pasaje ENTERO
+    -- libro y pagina incluidos, y en silencio, porque un descarte no deja nota. Los seis
+    de abajo puntuaban exactamente 4 con esa regla y los seis son contenido legitimo. Los
+    dos ultimos no son fabricados: salen textuales de este mismo repo
+    (`documentation/NO_SILO_KERN_LOOP.md:347` y
+    `documentation/CAPABILITY_EXPANSION_PLAN.md:427`).
+
+    Y NO SE ARREGLA CON UNA MARCA MAS AFILADA: "Abbott, 510 Accenture, 22" y "8 pallets,
+    2 cases" son la misma cadena de simbolos. Lo que los separa es global -- el conteo
+    por clausula y el umbral con hueco --, no un caracter alrededor de la coma.
+    """
+    casos = {
+        "modos de transporte": (
+            "Mode selection is a trade-off between cost and speed for every lane in the "
+            "network, and the planner has to weigh the landed cost against the service "
+            "promise before committing: ocean, 35 days; air, 5 days; rail, 12 days; "
+            "truck, 3 days. The cheapest mode is rarely the one that keeps the promise."
+        ),
+        "costos por unidad": (
+            "Costs per unit: material, 12 dollars; labor, 8 dollars; overhead, "
+            "4 dollars; freight, 2 dollars."
+        ),
+        "contenido de un embarque": (
+            "The shipment contained 8 pallets, 2 cases, 3 totes, 5 drums, 7 bags of raw "
+            "material."
+        ),
+        "capacidad de una planta": (
+            "The plant runs 3 shifts, 12 lines, 48 workstations, 96 operators, "
+            "200 changeovers per week."
+        ),
+        "conteo de un checklist": (
+            "El resultado del loop: 8 CUMPLE, 2 PARCIAL, 3 NO_CUMPLE, 2 SIN_DATO, "
+            "5 FUERA_DE_ALCANCE sobre el total."
+        ),
+        "mensajes EDI": (
+            "Los mensajes X12 856 (ASN), 214 (estado), 990 (tender), 850 (PO), "
+            "810 (factura) cubren el ciclo de la orden."
+        ),
+    }
+    for nombre, cuerpo in casos.items():
+        assert lectura._marcas_de_indice(cuerpo) < lectura.MIN_MARCAS_DE_INDICE, nombre
+        assert not lectura.es_inutilizable_como_cita(cuerpo), nombre
+        assert lectura.parse_readings(_cable(cuerpo))[0].excerpt, nombre
+
+
+def test_las_marcas_no_se_suman_de_los_dos_lados_de_un_punto_y_coma():
+    """Por que el conteo es POR CLAUSULA y no total, con el caso que lo obliga.
+
+    Un indice es un bloque continuo de entradas y no tiene punto y coma adentro: medido,
+    0 de las 16 paginas de indice que hay en los 521 pasajes del indice vivo trae uno,
+    mientras que 25 de esos 521 pasajes si -- o sea que la condicion no es vacua, es que
+    dentro de un indice no pasa nunca. Una enumeracion en prosa es al reves: las marcas
+    estan repartidas una por clausula, y sumarlas es sumar evidencia de cuatro frases
+    distintas como si fuera una sola lista.
+    """
+    enumeracion = ("Costs per unit: material, 12 dollars; labor, 8 dollars; "
+                   "overhead, 4 dollars; freight, 2 dollars.")
+    sin_punto_y_coma = enumeracion.replace(";", " ")
+
+    assert lectura._marcas_en_una_clausula(enumeracion) == 4   # lo que contaba la ronda 1
+    assert lectura._marcas_de_indice(enumeracion) == 1         # una por clausula
+    # Y la condicion no es vacua ni al reves: sin los punto y coma vuelven a sumar.
+    assert lectura._marcas_de_indice(sin_punto_y_coma) == 4
+
+    for indice in (INDICE_ONOMASTICO, INDICE_CHOPRA, INDICE_HEIZER, INDICE_IVANOV,
+                   INDICE_HEIZER_MAS_POBRE):
+        texto = lectura._sanear(indice)
+        assert ";" not in texto
+        assert lectura._marcas_de_indice(texto) == lectura._marcas_en_una_clausula(texto)
+
+
+def test_un_separador_de_miles_no_es_una_lista_de_paginas():
+    """El otro falso positivo, encontrado sobre el corpus VIVO y no fabricado.
+
+    "$25,240,000" tiene la forma exacta de una lista de paginas de indice ("25, 240, 000")
+    y el enunciado del ejercicio de finanzas de Jacobs & Chase PDF p.50 -- contenido real
+    del libro, con seis importes -- puntuaba 6 marcas y se descartaba entero. Lo unico que
+    los distingue es el ESPACIO: un indice escribe "5, 6, 23", un importe "25,240,000".
+
+    Medido sobre los 521 pasajes: exigir el espacio cambia el veredicto de ese pasaje y de
+    ningun otro, y deja las 16 paginas de indice con el mismo puntaje que tenian.
+    """
+    texto = lectura._cortar(lectura._sanear(PROSA_CON_IMPORTES))
+    assert lectura._marcas_de_indice(texto) == 0
+    assert not lectura.es_inutilizable_como_cita(texto)
+    assert lectura.parse_readings(_cable(
+        texto, "jacobs-chase-operations-supply-chain-management", "PDF p.50"))[0].excerpt
+
+    # Y el espacio no le saca nada a un indice de verdad: los cinco siguen cayendo.
+    for indice in (INDICE_ONOMASTICO, INDICE_CHOPRA, INDICE_HEIZER, INDICE_IVANOV,
+                   INDICE_HEIZER_MAS_POBRE):
+        assert lectura.es_inutilizable_como_cita(lectura._sanear(indice))
+
+
 def test_la_frontera_de_marcas_esta_pinchada_por_los_dos_lados():
     """El umbral no se puede mover ni para arriba ni para abajo sin romper esto.
 
     Los dos casos estan a UNA marca del corte, que es lo que un test de frontera tiene que
-    demostrar. Con cuatro marcas (dos entradas con sus dos listas de paginas) ya es un
-    indice; con tres todavia es la tabla de evaluacion de Jacobs & Chase, que es contenido
-    real del libro y el pasaje que mas marcas junta sin serlo en los 360 medidos.
+    demostrar, y los dos son TEXTUALES del indice vivo -- ya no una construccion:
 
-    El "See also Coordination" del final no es relleno: sin el, el fragmento de indice
-    tiene DOS palabras y lo descarta el piso de palabras, no el de marcas -- y entonces
-    este test seguiria verde con el umbral de marcas puesto en cualquier cosa. Con el, la
-    unica razon que puede estar descartandolo es la que se quiere probar, y por eso el
-    piso de palabras se chequea aparte aca abajo.
+    * arriba, Heizer PDF p.891 con 5 marcas, que es la pagina de indice MAS POBRE de los
+      521 pasajes medidos: si el umbral sube a 6, este indice pasa entero;
+    * abajo, la tabla de evaluacion de Jacobs & Chase con 3, que es el contenido que mas
+      marcas junta sin ser un indice: si el umbral baja a 3, se descarta contenido real.
+
+    En el medio queda el 4, que es donde puntuaba la prosa que la ronda 1 tiraba (ver
+    `test_la_prosa_que_enumera_palabra_y_numero_no_es_un_indice`) y donde no puntua ningun
+    pasaje de los 521 medidos. El corte se apoya en aire por los dos lados.
     """
-    indice_minimo = "Collaboration, 5, 6, 23, 24 Combination, 25, 26, 54 See also Coordination"
+    indice_mas_pobre = lectura._cortar(lectura._sanear(INDICE_HEIZER_MAS_POBRE))
     tabla = lectura._cortar(lectura._sanear(TABLA_EVALUACION))
 
-    assert lectura._marcas_de_indice(indice_minimo) == 4
+    assert lectura._marcas_de_indice(indice_mas_pobre) == 5
     assert lectura._marcas_de_indice(tabla) == 3
-    assert lectura._palabras_citables(indice_minimo) >= lectura.MIN_PALABRAS_CITABLES
+    # Sin esto el test seguiria verde con el umbral en cualquier cosa: lo que descarta al
+    # indice tiene que ser el piso de marcas y no el de palabras.
+    assert lectura._palabras_citables(indice_mas_pobre) >= lectura.MIN_PALABRAS_CITABLES
 
-    assert lectura.es_inutilizable_como_cita(indice_minimo)   # muere si el umbral sube
-    assert not lectura.es_inutilizable_como_cita(tabla)       # muere si el umbral baja
+    assert lectura.es_inutilizable_como_cita(indice_mas_pobre)  # muere si el umbral sube
+    assert not lectura.es_inutilizable_como_cita(tabla)         # muere si el umbral baja
 
 
 def test_las_citas_autor_anio_no_son_entradas_de_indice():
@@ -1140,9 +1265,9 @@ def test_las_citas_autor_anio_no_son_entradas_de_indice():
 
 
 def test_el_minimo_de_marcas_es_el_que_se_midio():
-    """Va literal: 360 pasajes del indice vivo, las paginas de indice puntuan 5 a 12 y
-    todo lo demas 0 a 3. El cuatro cae en un hueco donde no hay nada medido."""
-    assert lectura.MIN_MARCAS_DE_INDICE == 4
+    """Va literal: 521 pasajes del indice vivo (74 consultas, 2026-09-12), las 16 paginas
+    de indice puntuan 5 a 12 y los otros 505 puntuan 0, 1 o 2. Nadie puntua 3 ni 4."""
+    assert lectura.MIN_MARCAS_DE_INDICE == 5
 
 
 def test_el_indice_sin_coma_despues_del_termino_es_un_hueco_conocido():
@@ -1197,8 +1322,33 @@ def test_la_cabecera_de_una_pagina_raspada_tampoco_ocupa_un_slot():
 
 
 def test_cada_marcador_de_navegacion_descarta_por_su_cuenta():
-    """Los seis, uno por uno: si alguien saca uno de la lista, se rompe aca."""
-    for marcador in lectura.NAVEGACION_DE_SITIO:
+    """Los OCHO, uno por uno, escritos ACA y no leidos de la constante que custodian.
+
+    POR QUE LA LISTA VA LITERAL. La version anterior iteraba sobre
+    `lectura.NAVEGACION_DE_SITIO`, o sea sobre lo mismo que decia proteger, y entonces
+    borrar un marcador borraba tambien su caso: mutado marcador por marcador, sacar
+    'related posts', 'share this post', 'subscribe to our', 'privacy policy' o 'cookie
+    policy' no rompia NADA -- 5 de los 8 eran borrables con el modulo entero en verde --,
+    y con la tupla vacia el test pasaba vacuo. Un test que lee la constante no la fija.
+
+    Las dos mitades hacen falta: la igualdad de CONJUNTOS avisa cuando alguien agrega o
+    saca un marcador (que es una decision, no un detalle, porque cada uno descarta
+    pasajes), y el caso por marcador prueba que cada uno alcanza SOLO para descartar,
+    incluso pegado a prosa de verdad.
+    """
+    marcadores = [
+        "recent posts",
+        "related posts",
+        "share this post",
+        "subscribe to our",
+        "privacy policy",
+        "cookie policy",
+        "skip to main content",
+        "skip to content",
+    ]
+    assert sorted(marcadores) == sorted(lectura.NAVEGACION_DE_SITIO)
+
+    for marcador in marcadores:
         cuerpo = f"Texto de la nota que si es del articulo. {marcador} y lo que sigue."
         assert lectura.parse_readings(_cable(cuerpo)) == (), marcador
 
