@@ -190,30 +190,83 @@ _PIE_DE_IMPRENTA_RE = re.compile(
     r"\S+\.indd\s+\d{1,5}\s+\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}\s*[AaPp]\.?[Mm]\.?"
 )
 
-#: Un numero de pagina de un indice onomastico: entero corto, o rango ("113-115").
-_NUMERO_DE_INDICE = r"\d{1,4}(?:-\d{1,4})?"
+#: Un numero de pagina de un indice: entero corto, o rango ("113-115"), y NUNCA un anio.
+#:
+#: EL ANIO QUEDA AFUERA POR MEDICION, no por prolijidad: "(Coyle, 1977)" tiene
+#: exactamente la forma "termino, pagina". Medido: el parrafo de
+#: ``operations-supply-chain-management-arxiv`` PDF p.89, que cita tres veces autor-anio
+#: entre parentesis, puntua 3 marcas sin la exclusion y 0 con ella -- o sea que sin esto
+#: un parrafo academico con cuatro citas entre parentesis llega al umbral solo. El costo
+#: es la pagina 1500-2099 de un libro, que en este corpus no existe: el indice mas alto
+#: que se vio apunta a la 903.
+_PAGINA_DE_INDICE = r"(?!(?:1[5-9]|20)\d{2}(?!\d))\d{1,4}(?:\s*-\s*\d{1,4})?"
 
-#: La firma del indice onomastico del final del libro (back-of-book index): un termino y
-#: DESPUES cuatro o mas numeros separados por coma, del estilo
-#: ``Collaboration, 5, 6, 23, 24, 113-115, 159`` o ``Machine learning, 11-13, 27, 32, 33``.
-#:
-#: POR QUE ESTA METRICA Y NO LA OBVIA. La obvia -- densidad de numeros sueltos por
-#: palabra -- esta REFUTADA con datos: entre los extractos con mas numeros por palabra del
-#: corpus hay tres que son contenido valioso (un MPS de planificacion de capacidad de
-#: Vollmann, una solucion de programacion de centros de trabajo de Jacobs & Chase y una
-#: serie de ordenes de cliente), y un umbral por densidad los tiraria a los tres. Lo que
-#: SI discrimina es la forma: un indice separa sus paginas con COMA, una tabla no.
-#:
-#: MEDIDO SOBRE EL CORPUS REAL (6.929 pasajes): esto marca 8 de 6.903 extractos (0,12%),
-#: las tres tablas legitimas sobreviven y los tres indices reales quedan marcados.
-#:
-#: EL CUATRO ES LA FRONTERA, y esta apoyada en prosa real: "Jobs B, C, D, and E will be
-#: late by 1, 2, 6, and 14 days" (Jacobs & Chase, PDF p.625) enumera TRES numeros con coma
-#: seguidos antes de que aparezca una palabra. Con tres todavia hay prosa; con cuatro
-#: seguidos ya no queda prosa en el corpus.
-_INDICE_ONOMASTICO_RE = re.compile(
-    rf"[A-Za-z][^,\n]{{0,60}},\s*(?:{_NUMERO_DE_INDICE}\s*,\s*){{3,}}{_NUMERO_DE_INDICE}"
+#: MARCA 1 de indice: una ENTRADA, o sea un termino y su pagina ("Abbott, 510",
+#: "Vendor-managed inventory (VMI), 21"). El caracter de antes de la coma tiene que ser
+#: una letra o un parentesis de cierre: es lo unico que separa un indice de una tabla o
+#: de una enumeracion, porque en "Period 1, 2, 3, 4" y en "95, 105, 70, 10" lo que viene
+#: antes de la coma es un NUMERO. Esa sola condicion es la que evita tirar el MPS de
+#: Vollmann, la grilla de horarios y la serie de ordenes de cliente.
+_ENTRADA_DE_INDICE_RE = re.compile(rf"[A-Za-z)]\s*,\s*{_PAGINA_DE_INDICE}")
+
+#: MARCA 2 de indice: la LISTA de paginas de un mismo termino, tres o mas separadas por
+#: coma ("5, 6, 23, 24, 113-115, 159"). Hace falta ademas de la marca 1 porque hay
+#: indices que ponen muchas paginas por termino y pocos terminos por pasaje (Liu PDF
+#: p.383): ahi las entradas son pocas y lo que abunda son las listas.
+_LISTA_DE_PAGINAS_RE = re.compile(
+    rf"(?<!\d){_PAGINA_DE_INDICE}(?:\s*,\s*{_PAGINA_DE_INDICE}){{2,}}"
 )
+
+#: Cuantas marcas convierten un extracto en el indice del final de un libro.
+#:
+#: POR QUE SE CUENTAN MARCAS Y NO SE BUSCA UNA FIRMA. La version anterior de este piso
+#: buscaba UNA firma -- un termino seguido de cuatro o mas paginas con coma -- y estaba
+#: calibrada contra un solo pasaje. Medido contra el indice vivo, esa firma fallaba por
+#: los dos lados: no reconocia el estilo DOMINANTE del corpus ("termino, pagina termino,
+#: pagina", una pagina por termino, que es como indexan Heizer, Chopra, Ivanov, Vollmann,
+#: Fleisher y Jacobs), y en cambio marcaba contenido real, porque su "termino" admitia
+#: numeros adentro y entonces "Period 1, 2, 3, 4" era un termino con su lista de paginas.
+#: Lo que de verdad distingue a un indice no es una firma sino la REPETICION: una entrada
+#: suelta o una lista suelta aparecen en prosa normal, veinte no.
+#:
+#: LA OBVIA SIGUE REFUTADA. Densidad de numeros sueltos por palabra NO sirve: los tres
+#: extractos con mas numeros por palabra del corpus son contenido valioso (el MPS de
+#: capacidad de Vollmann, la solucion de centros de trabajo de Jacobs & Chase y una serie
+#: de ordenes de cliente) y un umbral por densidad los tiraria a los tres. Lo que
+#: discrimina es la FORMA de la coma, no cuantos numeros hay.
+#:
+#: EL CUATRO ESTA MEDIDO Y CAE EN UN HUECO VACIO. 360 pasajes distintos del indice vivo
+#: (42 consultas, 2026-09-12; 14 buscando back-matter y 28 de contenido normal):
+#:
+#:   * de las 29 paginas de back-matter que hay ahi adentro, 21 puntuan de 5 a 12;
+#:   * los otros 331 pasajes puntuan de 0 a 3, y el UNICO que llega a 3 es contenido
+#:     real: la tabla de evaluacion de consultoria de Jacobs & Chase PDF p.718-719, que
+#:     lista las preguntas de cada categoria ("Customer focus 1, 2, 20 Safety,
+#:     cleanliness, and order 3, 4, 5, 20"). Los otros 330 puntuan 0, 1 o 2.
+#:
+#: No hay NADA entre 3 y 5, asi que el corte se apoya en aire por los dos lados.
+#:
+#: LO QUE ESTE PISO NO VE, dicho antes de que sorprenda: el indice que NO pone coma entre
+#: el termino y su primera pagina -- "reorder points (ROP) 104, 106" (Christopher PDF
+#: p.288-289), "Rolex 28-9, 40, 68" (Nagle PDF p.349) -- puntua 0 a 2 y pasa entero. Son
+#: las 8 de las 29 que se escapan: cinco paginas de Nagle, una de Christopher, el indice
+#: de NOMBRES de Heizer (PDF p.884-885, casi sin numeros por entrada) y la lista de
+#: simbolos de Vandeput PDF p.316-318.
+#:
+#: Y SE DEJA PASAR A PROPOSITO, porque la marca que las atraparia esta MEDIDA y sale
+#: cara. Se probo una tercera marca, "termino <pagina>, <pagina>" (la misma entrada pero
+#: sin la coma del termino): sobre los mismos 360 pasajes recupera 2 de esas 8 -- Nagle
+#: PDF p.347 y p.349 -- y al mismo tiempo empuja la tabla de Jacobs & Chase PDF p.718-719
+#: de 3 marcas a 6, o sea DESCARTA contenido verificado. Cambiar una tabla real de un
+#: libro por dos paginas de indice de otro es un peor negocio que dejar pasar el indice:
+#: el indice le hace perder al cliente un pasaje, la tabla le hace perder el pasaje que
+#: SI queria. La otra candidata, densidad de numeros por palabra, ya esta refutada arriba.
+#:
+#: HACIA DONDE FALLA: un descarte cuesta el pasaje ENTERO (libro y pagina incluidos, ver
+#: :func:`es_inutilizable_como_cita`), no solo el fragmento -- por eso el umbral se
+#: eligio con hueco y no pegado al maximo del contenido, y por eso existe
+#: :data:`HOLGURA_PEDIDO`, que repone lo descartado en la misma unica llamada.
+MIN_MARCAS_DE_INDICE = 4
 
 #: Donde ARRANCA la navegacion de un sitio web. El corpus no es solo PDF de libros: trae
 #: paginas raspadas (guias ISO, normas de industria), y un chunk que toca el cromo de la
@@ -478,6 +531,20 @@ def _palabras_citables(texto: str) -> int:
     return sum(1 for token in texto.split() if _TIENE_LETRA_RE.search(token))
 
 
+def _marcas_de_indice(texto: str) -> int:
+    """Cuantas marcas de indice del final del libro trae el extracto.
+
+    Las dos marcas se cuentan JUNTAS y por separado del texto (no en una sola pasada
+    alternada) porque son evidencia del mismo hecho vista de dos formas: los indices de
+    una pagina por termino puntuan casi todo en :data:`_ENTRADA_DE_INDICE_RE`, y los de
+    muchas paginas por termino casi todo en :data:`_LISTA_DE_PAGINAS_RE`. Sumarlas es lo
+    que hace que un solo umbral (:data:`MIN_MARCAS_DE_INDICE`) sirva para los dos
+    estilos; separarlas obligaria a dos umbrales, cada uno calibrado con la mitad de los
+    datos -- que es exactamente como se rompio la version anterior de este piso.
+    """
+    return len(_ENTRADA_DE_INDICE_RE.findall(texto)) + len(_LISTA_DE_PAGINAS_RE.findall(texto))
+
+
 def es_inutilizable_como_cita(excerpt: str) -> bool:
     """True si el extracto es MOBILIARIO y no contenido: no se puede citar, ni con pagina.
 
@@ -496,7 +563,10 @@ def es_inutilizable_como_cita(excerpt: str) -> bool:
 
     TRES RAZONES, cada una con su patron medido arriba:
 
-    1. :data:`_INDICE_ONOMASTICO_RE` -- la firma del indice del final del libro;
+    1. :data:`MIN_MARCAS_DE_INDICE` sobre :func:`_marcas_de_indice` -- el indice del
+       final del libro, reconocido por REPETICION de sus dos formas (una entrada
+       "termino, pagina" y una lista "pagina, pagina, pagina") y no por una firma unica,
+       que es lo que fallaba antes por los dos lados;
     2. :data:`NAVEGACION_DE_SITIO` -- el cromo de una pagina web raspada;
     3. :data:`MIN_PALABRAS_CITABLES` -- lo que queda despues de todo eso (incluido el pie
        de imprenta, que :func:`_sanear` ya saco) no alcanza para ser una frase.
@@ -513,7 +583,7 @@ def es_inutilizable_como_cita(excerpt: str) -> bool:
     texto = (excerpt or "").strip()
     if not texto:
         return False
-    if _INDICE_ONOMASTICO_RE.search(texto):
+    if _marcas_de_indice(texto) >= MIN_MARCAS_DE_INDICE:
         return True
     bajo = texto.lower()
     if any(marcador in bajo for marcador in NAVEGACION_DE_SITIO):
