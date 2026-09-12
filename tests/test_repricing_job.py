@@ -87,11 +87,22 @@ def test_the_outcome_is_always_a_handoff(tmp_path, csv_text):
 
 
 def test_the_registered_tool_is_not_on_the_mcp_surface():
+    """The collection is TOOL_SPECS. The first version of this test read a
+    non-existent ``SPECS`` attribute, so it iterated an empty tuple and passed
+    for free -- a vacuous assertion that would have stayed green the day
+    someone DID expose repricing on the anonymous MCP surface. Caught by
+    verifying the live container after deploy, not by the green suite.
+
+    So this asserts against the real surface AND asserts the surface is
+    non-empty, which is what makes the negative meaningful."""
+    from webapp.mcp_tool_specs import TOOL_SPECS
+
+    exposed = {spec.job_type for spec in TOOL_SPECS}
+    assert len(exposed) > 30, "the MCP surface came back suspiciously small -- is this reading the right collection?"
+    assert "repricing" not in exposed
+    # the exclusion is also documented where the surface is defined
     from webapp import mcp_tool_specs
 
-    exposed = {getattr(spec, "job_type", None) for spec in vars(mcp_tool_specs).get("SPECS", ())}
-    assert "repricing" not in exposed
-    # and the exclusion is documented where the surface is defined
     assert "`repricing`" in mcp_tool_specs.__doc__
 
 
