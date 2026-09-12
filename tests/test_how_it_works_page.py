@@ -268,3 +268,40 @@ def test_how_it_works_route_body_matches_direct_render() -> None:
     the HTTP layer."""
     resp = client.get("/how-it-works")
     assert resp.text == render_how_it_works_html()
+
+
+# -- the same claim, made outside the page ------------------------------------
+
+_SOURCE_COUNT_DOCS = ("pyproject.toml", "README.md", "CLAUDE.md")
+
+# Every source count these three files have carried, or could be tempted back to.
+# "25" is the one that actually rotted here: it was right in July 2026 and stayed
+# in all three long after the page had moved to 26.
+_SUPERSEDED_SOURCE_CLAIMS = (
+    "25 SCM sources",
+    "25 curated",
+    "25 sources",
+    "27 curated",
+    "33 curated",
+    "35 curated",
+    "41 curated",
+)
+
+
+def test_the_source_count_claim_is_the_same_everywhere_it_is_made() -> None:
+    """The page has a tripwire; the three docs that repeat its claim had none.
+
+    That asymmetry is exactly how pyproject.toml, README.md and CLAUDE.md sat on
+    a stale 25 while ``test_source_count_claim_still_matches_the_books_graph``
+    kept the client-facing page honest at 26 -- a count written into prose cannot
+    fail a build, so it drifts silently and nothing complains.
+
+    knowledge/scm-books/README.md is deliberately NOT in this list: its numbers
+    are a running log anchored to when each source was added ("added as the 25th
+    source", "the other 24 sources are..."), which stay true as the total moves.
+    """
+    for name in _SOURCE_COUNT_DOCS:
+        text = (_REPO_ROOT / name).read_text(encoding="utf-8")
+        assert "26 curated external" in text, name
+        for stale in _SUPERSEDED_SOURCE_CLAIMS:
+            assert stale not in text, f"{name} carries a superseded claim: {stale}"
