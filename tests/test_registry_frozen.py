@@ -7,10 +7,13 @@ documento no frena; un test rojo si. Este archivo hace que sumar o quitar una
 tool sea un diff explicito sobre ``FROZEN_TOOL_KEYS``, revisado a proposito, y
 no un ``register()`` mas que nadie ve.
 
-Que congela y que no. Congela el CONJUNTO de claves (no solo la cuenta: 53
-tools distintas de las 53 de hoy tambien fallan) y el contrato de los packs por
+Que congela y que no. Congela el CONJUNTO de claves (no solo la cuenta: N
+tools distintas de las de hoy tambien fallan) y el contrato de los packs por
 rubro (``config/verticals``): sus campos y las cinco llaves de motor que un pack
 puede tocar. No congela el codigo de cada tool ni sus parametros.
+
+Levantado por primera vez el 2026-09-12 (ver seccion 3 del ADR): 53 -> 57,
+sumando audit_evidence, import_case, iso_ops y scor_iso_audit.
 
 Como se levanta el freno, cuando corresponda. Se edita la tupla en el mismo PR
 que registra o borra la tool, con el motivo en el mensaje de commit y una linea
@@ -30,11 +33,14 @@ import dataclasses
 from scm_agent.tools import build_default_registry
 from src import vertical_profile
 
-# Las 53 tools registradas en main @ 1aa5098 (2026-09-05), en orden alfabetico.
+# Las 57 tools registradas en main tras el PR-1 original mas el freno levantado
+# el 2026-09-12 (ver documentation/ADR-2026-09-operador.md, seccion 3), en orden
+# alfabetico.
 FROZEN_TOOL_KEYS: frozenset[str] = frozenset(
     {
         "abc_xyz",
         "acceptance_sampling",
+        "audit_evidence",
         "cost_to_serve",
         "cross_impact",
         "cycle_count",
@@ -54,8 +60,10 @@ FROZEN_TOOL_KEYS: frozenset[str] = frozenset(
         "forecast",
         "hat_settlement",
         "hat_tension",
+        "import_case",
         "intake_scan",
         "inventory_optimization",
+        "iso_ops",
         "landed_cost",
         "launch_readiness",
         "leadership_chain",
@@ -76,6 +84,7 @@ FROZEN_TOOL_KEYS: frozenset[str] = frozenset(
         "returns",
         "risk",
         "scheduling",
+        "scor_iso_audit",
         "service_scan",
         "simulation",
         "slotting",
@@ -131,7 +140,7 @@ def _describe_drift(actual: set[str], frozen: frozenset[str]) -> str:
     )
 
 
-def test_registry_is_frozen_at_the_53_tools_of_2026_09_05() -> None:
+def test_registry_is_frozen_at_the_57_tools_of_2026_09_12() -> None:
     registered = {t.key for t in build_default_registry().list()}
     assert registered == FROZEN_TOOL_KEYS, _describe_drift(registered, FROZEN_TOOL_KEYS)
 
