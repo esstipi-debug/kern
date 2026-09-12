@@ -165,10 +165,45 @@ def _step_citations(knowledge: KnowledgeBase, tool, tool_key: str) -> tuple[str,
 #:
 #: De ahi el tope POR PASO: un paquete de un solo tool manda 3 terminos canonicos (el
 #: mejor caso medido) en vez de 12 variantes del mismo, y uno de cuatro pasos llena los
-#: 12 con vocabulario de cuatro temas (el caso decente). Lo que NINGUN numero arregla es
-#: un paquete ancho: con 26 pasos el centroide es el terreno comun del paquete y los
-#: pasajes hablan de eso, no del detalle de cada tool. Ese es el precio declarado de
-#: gastar un solo arranque de servidor por corrida.
+#: 12 con vocabulario de cuatro temas (el caso decente).
+#:
+#: QUE PASA EN UN PAQUETE ANCHO, Y POR QUE EL CUPO NO SE SUBE. Medido con el registry
+#: real: starter tiene 15 pasos, growth 26, scale y retainer_ejecutivo 35, y el cupo de
+#: 12 deja con voz a 12 de ellos. En scale eso son 23 tools que no aportan NI UNA palabra
+#: (landed_cost, returns, risk, cost_to_serve, fefo, multi_echelon, ddmrp, simulation,
+#: drp, odoo_replenishment, sourcing, acceptance_sampling, learning_curve, dea, sop,
+#: facility_location, transportation, warehouse_layout, slotting, queuing, scheduling,
+#: earned_value, leadership_chain). Suena a que el arreglo es subir el cupo hasta que
+#: entren todos. Esta REFUTADO, y se refuto midiendo contra el indice vivo, no discutiendo:
+#: mandando los terminos canonicos de los primeros N pasos de scale (k=5 pasajes por
+#: consulta) se cuenta cuantos de los 5 pasajes que vuelven son BACK-MATTER -- indice
+#: alfabetico, tabla de contenidos, lista de simbolos -- en vez de texto del libro:
+#:
+#:      n=4  -> 0 de 5      n=12 -> 1 de 5      n=26 -> 5 de 5
+#:      n=6  -> 0 de 5      n=15 -> 2 de 5      n=35 -> 5 de 5
+#:      n=8  -> 1 de 5      n=20 -> 3 de 5
+#:
+#: La curva tiene una explicacion mecanica, no es ruido: la busqueda es por VECTOR, asi
+#: que una consulta de 35 temas distintos es un centroide sin tema, y las paginas del
+#: corpus que mas se le parecen son exactamente las que mencionan muchos temas sin
+#: desarrollar ninguno -- el indice del final del libro. A 26 terminos, los 5 pasajes que
+#: acompanan el deck del cliente son 5 indices de libro con su numero de pagina: peor que
+#: no citar. De 8 a 12 el ruido es el MISMO (1 de 5), asi que 12 domina a 8 -- misma
+#: precision, el doble de tools con voz -- y arriba de 12 degrada monotono. El cupo esta
+#: en el ultimo escalon de la meseta, medido de los dos lados.
+#:
+#: Bajar :data:`_MAX_KEYWORDS_POR_PASO` a 1 cuando hay mas pasos que cupo NO cambia nada:
+#: la seleccion es ronda a ronda, asi que con 12 pasos o mas la primera ronda ya llena el
+#: cupo sola y ningun paso llega a aportar su segundo termino. Verificado sobre scale: los
+#: 12 terminos que salen hoy son un canonico de cada uno de los primeros 12 pasos.
+#:
+#: Queda entonces un precio, y se declara en vez de disimularse: en un paquete ancho las
+#: lecturas respaldan la espina del paquete (los primeros pasos del spec, que es donde
+#: package_specs pone el nucleo de inventario del que cuelga el resto) y no el detalle de
+#: cada tool. Lo fija `tests/test_packages_lecturas.py`, que corre un paquete con MAS
+#: pasos que cupo y afirma cuales quedan mudos; los dos numeros de abajo estan escritos
+#: literales en ese test a proposito, para que moverlos rompa un test y obligue a volver
+#: a medir contra el indice en vez de estimar.
 _MAX_KEYWORDS_LECTURA = 12
 _MAX_KEYWORDS_POR_PASO = 3
 
@@ -188,11 +223,15 @@ def _keywords_de_lectura(registry: ToolRegistry, outcomes) -> list[str]:
     Ronda a ronda -- la primera palabra de cada paso antes que la segunda de ninguno --
     porque ``intent_keywords`` es una lista de sinonimos de intencion ordenada de mas a
     menos canonica (``"abc-xyz", "abc xyz", "abc analysis", ...``). Tomandolas en orden
-    plano, un paquete de 26 pasos gastaria el cupo entero en variantes del primer tool y
-    las lecturas hablarian de un tercio del entregable que acompanan. Y cada paso aporta
-    a lo sumo :data:`_MAX_KEYWORDS_POR_PASO`, que es lo que la medicion contra el indice
-    vivo dejo claro: pasada la tercera, lo que entra son sinonimos genericos
-    ("classify", "classification") que traen capitulos de otra cosa.
+    plano, un paquete de 26 pasos gastaria el cupo entero en variantes del primer tool.
+    Ojo con lo que esto SI y NO arregla: cambia QUE pasos entran al cupo, no CUANTOS. Con
+    mas pasos que cupo siguen entrando :data:`_MAX_KEYWORDS_LECTURA` y el resto queda
+    mudo; lo que se gana es que el cupo se gaste en un tool distinto por palabra en vez
+    de en cuatro sinonimos del primero. Por que el cupo no sube para que entren todos
+    esta medido arriba, en el comentario de la constante. Y cada paso aporta a lo sumo
+    :data:`_MAX_KEYWORDS_POR_PASO`, que es lo que la medicion contra el indice vivo dejo
+    claro: pasada la tercera, lo que entra son sinonimos genericos ("classify",
+    "classification") que traen capitulos de otra cosa.
 
     Solo los pasos ``ok``: un paso salteado no aporta nada al deck, y una lectura sobre
     un analisis que no se entrego es procedencia de algo que el cliente no recibio.
