@@ -38,7 +38,6 @@ import pytest
 
 from nosilo_core import llm
 from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
-from scm_agent import orchestrator as orq
 from scm_agent import packages
 from scm_agent.knowledge import KnowledgeBase
 from scm_agent.orchestrator import Orchestrator
@@ -284,6 +283,14 @@ def test_sin_palabras_clave_no_se_consulta_nada(tmp_path, monkeypatch):
 
 
 def test_una_sola_consulta_por_corrida(tmp_path, monkeypatch):
+    """Los dos numeros que viajan en la consulta van LITERALES, por el mismo motivo que
+    el 3 de ``test_manda_sus_canonicas_y_no_diez_sinonimos`` y que los dos cupos del
+    archivo hermano (ver ``scm_agent/packages.py``, "escritos literales en ese test a
+    proposito"): escritos contra la constante los asserts son tautologias y la constante
+    se puede mover a cualquier valor sin romper nada. En el camino SIN GATE el precio del
+    drift es concreto -- ``k`` es lo unico que evita que el deck del cliente salga con
+    cincuenta extractos de PDF, y ``timeout_s`` lo unico que acota cuanto se cuelga un
+    request de la web esperando un indice que no contesta."""
     llamadas: list[tuple] = []
 
     def _espia(keywords, **kwargs):
@@ -298,8 +305,8 @@ def test_una_sola_consulta_por_corrida(tmp_path, monkeypatch):
 
     assert len(llamadas) == 1
     _, kwargs = llamadas[0]
-    assert kwargs["k"] == orq._LECTURAS_POR_DECK
-    assert kwargs["timeout_s"] == orq._TIMEOUT_LECTURA_S
+    assert kwargs["k"] == 3                                # el tope, literal
+    assert kwargs["timeout_s"] == 20.0                     # el timeout, literal
     assert registro[0]["readings"] == _LECTURAS
 
 
@@ -326,10 +333,14 @@ def test_manda_sus_canonicas_y_no_diez_sinonimos(tmp_path, monkeypatch):
 def test_el_tope_de_cantidad_lo_pone_kern_y_no_el_otro_repo(tmp_path, monkeypatch):
     """``k`` viaja como PEDIDO y nadie garantiza que se respete. Mismo argumento que el
     tope de extracto (320) y el del slug: es texto ajeno y el render no tiene tope
-    propio."""
+    propio.
+
+    La entrada y la salida van las dos LITERALES. Construida como
+    ``_LECTURAS_POR_DECK + 6`` la entrada se mueve con la constante y el test no puede
+    fallar: subir el tope a 50 hace que entren 56 y salgan 56, y pasa igual."""
     de_mas = tuple(
         Reading(f"libro-{i}", f"PDF p.{i}", "texto")
-        for i in range(orq._LECTURAS_POR_DECK + 6)
+        for i in range(9)                                  # nueve fijos, no "el tope + 6"
     )
     monkeypatch.setattr(lectura, "read_passages",
                         lambda keywords, **kw: ReadingLookup(True, de_mas, ""))
@@ -338,7 +349,7 @@ def test_el_tope_de_cantidad_lo_pone_kern_y_no_el_otro_repo(tmp_path, monkeypatc
 
     _correr(reg, tmp_path)
 
-    assert len(registro[0]["readings"]) == orq._LECTURAS_POR_DECK
+    assert len(registro[0]["readings"]) == 3                # el tope, literal
 
 
 # --- 4. la guarda, y el lugar donde va -----------------------------------------------
