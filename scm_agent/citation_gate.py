@@ -71,6 +71,11 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     ),
     "ddmrp": ("demand_driven_supply_chain", "drum_buffer_rope", "vollmann_customer_order_decoupling_point"),
     "landed_cost": ("landed_cost",),
+    # import_case (wedge on proyecto sourcing): same TCO/Incoterm neighborhood as
+    # landed_cost. The pack is a document projection, not a filed declaration —
+    # Incoterms still govern which costs and which papers attach. Verified via
+    # kb.node_exists for both ids (same anchors landed_cost already uses).
+    "import_case": ("landed_cost",),
     "warehouse_layout": ("facility_layout", "load_distance_layout"),
     # --- MIN_CITATIONS starvation, measured 2026-08-24 --------------------------
     # Four tools below were filed as "anchor-islanded" (zero at any pool). Re-measured
@@ -398,6 +403,26 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # procedure document -- a lexical false friend for this tool's own name,
     # same class as the false friends documented elsewhere in this module.
     "procedure_draft": ("checklist", "poka_yoke", "pdca_cycle"),
+    # iso_ops (tool #54) maps the operations/supply-chain ISO pack to floor
+    # evidence. Anchors are the quality-system node the pack hangs 9001 off,
+    # the EMS node for 14001, and carbon_footprint for 14067 PCF -- all three
+    # verified to exist via kb.node_exists() (iso_50001 does not). This is not
+    # a certification ruling; the job forbids "cumple ISO" in verify().
+    "iso_ops": ("iso_9000", "iso_14001", "carbon_footprint"),
+    # audit_evidence (tool #55) is the MUS/GL workpaper. Anchors are the IRA
+    # sampling neighborhood already used by reconciliation, plus the receiving
+    # sampling node -- MUS is a sampling plan for dollar units, not AQL lots.
+    # Verified to exist via kb.node_exists. Not a signed opinion.
+    # Measured 2026-09-07: the package citation gate ships ZERO for this tool
+    # (pinned in tests/test_packages_citations.py::_CORRECTLY_ZERO_TOOLS). The
+    # anchors ground other tools; this tool's keywords never rank those nodes
+    # into the candidate pool. Do not "fix" with a book-hub anchor.
+    "audit_evidence": ("inventory_record_accuracy", "acceptance_sampling"),
+    # scor_iso_audit (tool #56, E4 pack) composes Perfect Order / cost-to-serve
+    # / ISO 9000 document-control into one EvidenceRecord. Same iso_9000 node
+    # as procedure_audit; perfect_order is the SCOR RL.1.1 anchor used by
+    # service_scan; cost_to_serve is the CO metric. Not a certificate.
+    "scor_iso_audit": ("iso_9000", "perfect_order", "cost_to_serve"),
 }
 
 # tool_key -> concept ids that must NEVER be cited for this tool, even when

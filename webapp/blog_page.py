@@ -40,14 +40,14 @@ _STR = {
         "kicker": "Blog", "index_title": "Blog — Kern",
         "index_lede": "Metodo de inventario explicado contra el codigo que lo corre. Sin precios, sin casos de exito inventados.",
         "read": "Leer", "other": "English", "answers": "Responde a",
-        "cta_demo": "Escanea tu CSV", "cta_diag": "Diagnostico de Arranque",
+        "cta_demo": "Diagnóstico gratis", "cta_diag": "Diagnostico de Arranque",
         "updated": "Actualizado", "sources": "Fuentes", "faq": "Preguntas frecuentes",
     },
     "en": {
         "kicker": "Blog", "index_title": "Blog — Kern",
         "index_lede": "Inventory method explained against the code that runs it. No prices, no invented case studies.",
         "read": "Read", "other": "Espanol", "answers": "Answers",
-        "cta_demo": "Scan your CSV", "cta_diag": "Start-up Diagnostic",
+        "cta_demo": "Free diagnostic", "cta_diag": "Start-up Diagnostic",
         "updated": "Updated", "sources": "Sources", "faq": "FAQ",
     },
 }
@@ -111,8 +111,13 @@ def public_base_url() -> str:
 
 
 def _nav(lang: str) -> str:
+    if lang == "en":
+        return (
+            '<nav><a href="/blog/en">Blog</a><a href="/demo/en">Diagnostic</a>'
+            '<a href="/paquetes">Packages</a><a href="/stocky-alternative">Stocky</a></nav>'
+        )
     return (
-        '<nav><a href="/blog">Blog</a><a href="/demo">Demo</a>'
+        '<nav><a href="/blog">Blog</a><a href="/demo">Diagnóstico</a>'
         '<a href="/paquetes">Paquetes</a><a href="/stocky-alternative">Stocky</a></nav>'
     )
 

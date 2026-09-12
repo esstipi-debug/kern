@@ -26,7 +26,7 @@ AI_AGENTS = ("GPTBot", "PerplexityBot", "Google-Extended", "ClaudeBot", "CCBot")
 #: plan): son landings de ofertas y canales congelados hasta el primer pago. Las
 #: rutas siguen respondiendo para quien tenga el link; solo dejan de anunciarse.
 STATIC_PATHS = (
-    "/", "/blog", "/blog/en", "/demo", "/how-it-works",
+    "/", "/blog", "/blog/en", "/demo", "/demo/en", "/how-it-works",
 )
 #: Lo que ya no se anuncia, para que el test lo vigile en vez de un comentario.
 UNLISTED_PATHS = ("/paquetes", "/stocky-alternative", "/one-plan", "/console", "/tower")

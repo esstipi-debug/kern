@@ -37,6 +37,46 @@
   escrito en la documentacion y en varias sesiones.
 
 ### Added
+- **`import_case` agent tool** (`src/import_case.py`, `jobs/import_case_job.py`) --
+  registry 56 -> 57. Unifies extracted logistics JSON (invoice, packing list,
+  B/L or AWB) into one shipment case, flags quantity/weight/Incoterm/origin
+  conflicts, and writes a Chile DIN *field pack* CSV for the licensed broker.
+  Does not file a declaration or give HS legal advice. Off MCP (folder/JSON
+  path, same class as `intake_scan`). CLI: `examples/run_import_case.py`.
+- **ISO operations/supply-chain catalog (53 norms)** committed at
+  `knowledge/iso/catalogo.json`, read by `src/iso_catalog.py`
+  (`evidencia_nativa`, `buscar_norma`, `de_modulo`, `detectar`,
+  `evidencia_de_orden`). HTTP: `GET /api/iso`, `POST /api/detectar` (body =
+  `contratoPost` from `tests/fixtures/iso/detectar.ejemplo.json`),
+  `GET /api/iso/orden`. `GET /iso` is the PARA-KERN catalog browser (search,
+  SMARTPRO/MONITOR/ENERGY filter, SCM domain including inventory) plus the
+  plant detector (cards, not JSON-only) and the MONITOR order panel. `kern.cobertura`
+  is classified against what THIS engine measures, not against the KERN IoP plant
+  hardware the pack was written for: 6 norms native (8000-1, 10004, 2859-1, 37500,
+  22316, 31000), 12 partial, 35 out of scope. Energy, carbon, OEE and cycle time are
+  out of scope -- no connector or column contract carries kWh, CO2e, cycle or scrap,
+  so 50001 and 14067 can no longer light an order card. Claims allowed: "KERN tiene
+  evidencia para…"; never "evidencia de piso" and never "cumple ISO". Ratchet in
+  `tests/test_iso_catalog.py`.
+
+- **`iso_ops` agent tool (`jobs/iso_ops_job.py`)** -- registry now 54 tools.
+  Detects which operations/supply-chain ISO (and IATF) norms apply to a plant
+  ficha (JSON or one-row CSV), attaches catalog floor tasks, and evaluates
+  order signals (cycle, scrap, kg, t·km). Always OPTIONS or HANDOFF; never
+  EXECUTED and never a "la planta cumple ISO" sentence. Empty ficha => zero
+  detections. Not exposed on MCP (HTTP `POST /api/detectar` already covers
+  the same contract). CLI: `examples/run_iso_ops.py`.
+
+- **ISO evidence MCP family + two agent tools (54 -> 56 registry; 36 -> 39
+  MCP).** `audit_evidence` (`jobs/audit_evidence_job.py`) prepares a MUS + GL
+  tie-out + IPE workpaper wrapped in `EvidenceRecord`; always HANDOFF
+  (Reviewed-by blank) or ESCALATED; never a signed opinion. `scor_iso_audit`
+  is E4 as a dedicated job (not a `PackageSpec`): one EvidenceRecord + Lineage
+  sheet from existing measurements. MCP: `kern_iso_sop_audit` (alias of
+  `procedure_audit`), `kern_audit_evidence`, `kern_iso_scor_audit`. `iso_ops`
+  stays off MCP. Q7: no append-only evidence ledger (artifacts + firm DMS).
+  CLIs: `examples/run_audit_evidence.py`, `examples/run_scor_audit.py`.
+
 - **MercadoLibre preventa / catalog product search (read-only).**
   `src/connectors/meli_catalog.py` searches the official catalog
   (`GET /products/search` by `q` or GTIN, `GET /categories/{id}/sale_terms`,

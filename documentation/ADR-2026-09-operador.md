@@ -25,6 +25,7 @@ Sumar o quitar una tool, o un campo del contrato de packs, es un diff sobre las 
 | Fecha | Qué cambió | Motivo | PR |
 |---|---|---|---|
 | 2026-09-05 | Se congela el conjunto de 53 tools y el contrato de packs | Freno mecánico #1 del plan | #330 |
+| 2026-09-12 | Se suman `audit_evidence`, `import_case`, `iso_ops`, `scor_iso_audit` (53 → 57) | **Excepción explícita a la regla de este documento** ("la tool #54 no existe hasta que un cliente pago la pida"). Decisión directa del operador el 2026-09-12, sin cliente pago asociado — no hay señal de mercado que la motive. El trabajo (catálogo ISO reclasificado contra lo que el motor mide de verdad, papel de trabajo MUS, y el pack de importación con el bug de convención decimal corregido) ya estaba construido, corregido y verificado antes de esta fila; la excepción es solo dejarlo entrar al registro en vez de mantenerlo en ramas verdes sin mergear. No cambia el diagnóstico del 5-sep (0 clientes, 0 mails) ni resuelve el cuello de botella de outreach que ese diagnóstico señaló. | #336, #342, #343 |
 
 ## 4. Hallazgos que esperan su puerta (aparcados con fecha)
 

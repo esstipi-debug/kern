@@ -249,7 +249,16 @@ def test_demo_page_still_serves_and_sells_the_diagnostico():
     assert r.status_code == 200
     assert "Kern" in r.text
     assert "diagnostico-arranque" in r.text
+    assert "Diagnóstico gratis" in r.text or "Diagnostico gratis" in r.text
     assert "plantilla_stock.csv" in r.text
+    assert 'data-lang="en"' in r.text
+
+
+def test_demo_english_route_serves_the_same_page():
+    r = client.get("/demo/en")
+    assert r.status_code == 200
+    assert "How much capital is tied up" in r.text
+    assert "Cuánto capital está inmovilizado" in r.text
 
 
 def test_demo_scan_is_rate_limited(isolated_stores, monkeypatch):
