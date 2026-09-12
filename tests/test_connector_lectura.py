@@ -1219,6 +1219,22 @@ def test_un_separador_de_miles_no_es_una_lista_de_paginas():
         assert lectura.es_inutilizable_como_cita(lectura._sanear(indice))
 
 
+def test_una_lista_de_numeros_sin_termino_indexado_no_es_un_indice():
+    """Una serie de datos en prosa NO puede costar el pasaje entero.
+
+    Las listas de paginas puntuaban solas, sin exigir una sola entrada "termino, pagina".
+    Un enunciado de problema resuelto -- el genero que mas abunda en estos manuales --
+    llega al umbral por acumular series separadas por coma, y se pierde libro, pagina y
+    extracto en silencio. Ademas contradice la tesis declarada del modulo: lo que
+    discrimina es la FORMA de la coma, no cuantos numeros hay.
+    """
+    prosa = ("The demand series is 200, 220, 180, 250. The forecast is 210, 215, 220. "
+             "The on-hand is 40, 35, 20. Safety stock is 12, 14, 16. "
+             "Reorder point is 60, 65, 70.")
+    assert lectura._marcas_de_indice(prosa) == 0
+    assert not lectura.es_inutilizable_como_cita(prosa)
+
+
 def test_la_frontera_de_marcas_esta_pinchada_por_los_dos_lados():
     """El umbral no se puede mover ni para arriba ni para abajo sin romper esto.
 
@@ -1238,7 +1254,10 @@ def test_la_frontera_de_marcas_esta_pinchada_por_los_dos_lados():
     tabla = lectura._cortar(lectura._sanear(TABLA_EVALUACION))
 
     assert lectura._marcas_de_indice(indice_mas_pobre) == 5
-    assert lectura._marcas_de_indice(tabla) == 3
+    # Con el arreglo de "las listas no puntuan solas" la tabla baja de 3 marcas a 0:
+    # sobrevive con MAS margen que antes, no con menos. Lo que sostiene la frontera de
+    # abajo pasa a ser el indice de Chopra, que es el que puntua justo por encima.
+    assert lectura._marcas_de_indice(tabla) == 0
     # Sin esto el test seguiria verde con el umbral en cualquier cosa: lo que descarta al
     # indice tiene que ser el piso de marcas y no el de palabras.
     assert lectura._palabras_citables(indice_mas_pobre) >= lectura.MIN_PALABRAS_CITABLES

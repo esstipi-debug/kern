@@ -604,7 +604,18 @@ def _marcas_en_una_clausula(texto: str) -> int:
     estilos; separarlas obligaria a dos umbrales, cada uno calibrado con la mitad de los
     datos -- que es exactamente como se rompio la primera version de este piso.
     """
-    return len(_ENTRADA_DE_INDICE_RE.findall(texto)) + len(_LISTA_DE_PAGINAS_RE.findall(texto))
+    entradas = len(_ENTRADA_DE_INDICE_RE.findall(texto))
+    if not entradas:
+        # Las listas NO puntuan solas. Sin esta guarda, un enunciado de problema resuelto
+        # -- "The demand series is 200, 220, 180, 250. The forecast is 210, 215, 220. ..." --
+        # llega al umbral acumulando series y se pierde el pasaje entero, en silencio; es
+        # el genero que mas abunda en estos manuales. Y contradice la tesis de arriba: lo
+        # que discrimina es la FORMA de la coma (un termino indexado y su pagina), no
+        # cuantos numeros con coma hay, que es la metrica que ya se refuto una vez.
+        # Medido: los cinco indices reales del corpus traen entradas (Liu 3, Chopra 8,
+        # Heizer 8, Ivanov 9, Heizer-mas-pobre 5), asi que ninguno se escapa por esto.
+        return 0
+    return entradas + len(_LISTA_DE_PAGINAS_RE.findall(texto))
 
 
 def _marcas_de_indice(texto: str) -> int:
