@@ -270,12 +270,25 @@ def _con_lecturas(deck: Deliverable, registry: ToolRegistry, outcomes) -> Delive
     keywords = _keywords_de_lectura(registry, outcomes)
     if not keywords:
         return deck
-    lecturas = lectura.read_passages(
-        keywords, k=_LECTURAS_POR_PAQUETE, timeout_s=_TIMEOUT_LECTURA_S
-    )
+    try:
+        lecturas = lectura.read_passages(
+            keywords, k=_LECTURAS_POR_PAQUETE, timeout_s=_TIMEOUT_LECTURA_S
+        )
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException:  # noqa: BLE001 - ver abajo: el invariante lo sostiene este lado
+        # `read_passages` promete no levantar, pero su guarda es `except Exception` y
+        # anyio levanta `BaseExceptionGroup`, que esa clausula NO ve. Este punto corre
+        # DESPUES de que los entregables por tool ya se escribieron, asi que lo que se
+        # escape deja la carpeta de resultados parciales que el docstring de este modulo
+        # promete que nunca ocurre. Una lectura que falta no puede costar el paquete.
+        return deck
     if not lecturas.available or not lecturas.readings:
         return deck
-    return replace(deck, readings=lecturas.readings)
+    # El tope de CANTIDAD lo pone Kern, no el otro repo: `k` viaja como pedido y nadie
+    # garantiza que se respete. Mismo argumento que el tope de extracto y el del slug --
+    # es texto ajeno y aca no hay ningun tope propio sobre lo que se renderiza.
+    return replace(deck, readings=lecturas.readings[:_LECTURAS_POR_PAQUETE])
 
 
 @dataclass(frozen=True)

@@ -166,6 +166,66 @@ def test_un_indice_disponible_pero_vacio_tambien_es_inerte(monkeypatch):
     assert packages._con_lecturas(deck, reg, outcomes) is deck
 
 
+def test_ni_un_grupo_de_excepciones_deja_la_carpeta_a_medias(monkeypatch):
+    """El paquete es UN entregable coherente, no una carpeta de resultados parciales.
+
+    `_con_lecturas` corre DESPUES de que los entregables por tool ya se escribieron a
+    disco, asi que lo que se escape de aca aborta la corrida con los archivos por tool
+    puestos y sin el deck del paquete. `read_passages` promete no levantar, pero su
+    guarda es `except Exception` y anyio levanta `BaseExceptionGroup`, que esa clausula
+    NO ve. El invariante lo tiene que sostener este lado, no la promesa del otro.
+    """
+    def _grupo(*a, **kw):
+        raise BaseExceptionGroup("unhandled errors in a TaskGroup", [OSError("boom")])
+
+    monkeypatch.setattr(lectura, "read_passages", _grupo)
+    spec = _spec("uno")
+    reg = _registry(_tool("uno", "safety stock"))
+    outcomes = (packages.StepOutcome(tool_key="uno", title="uno", status="ok",
+                                     cadence="mensual", source="x", required=True),)
+    deck = package_deliverable.build(spec, outcomes, client="Client")
+
+    assert packages._con_lecturas(deck, reg, outcomes) is deck
+
+
+def test_un_ctrl_c_durante_la_lectura_sigue_cortando_la_corrida(monkeypatch):
+    """La guarda de arriba no puede convertirse en un tragador de Ctrl-C."""
+    def _interrumpido(*a, **kw):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(lectura, "read_passages", _interrumpido)
+    spec = _spec("uno")
+    reg = _registry(_tool("uno", "safety stock"))
+    outcomes = (packages.StepOutcome(tool_key="uno", title="uno", status="ok",
+                                     cadence="mensual", source="x", required=True),)
+    deck = package_deliverable.build(spec, outcomes, client="Client")
+
+    with pytest.raises(KeyboardInterrupt):
+        packages._con_lecturas(deck, reg, outcomes)
+
+
+def test_el_tope_de_cantidad_lo_pone_kern_y_no_el_otro_repo(monkeypatch):
+    """`k` es un PEDIDO, no un contrato: el tope de lo que se publica es de este lado.
+
+    Es el mismo argumento que ya sostiene el tope de extracto (320) y el del slug: son
+    texto ajeno y Kern no tiene ningun tope propio sobre lo que renderiza. La cantidad
+    era el unico eje sin tope local, y el builder hermano ya capea las citas a 10.
+    """
+    de_mas = tuple(
+        Reading(f"libro-{i}", f"PDF p.{i}", "texto") for i in range(packages._LECTURAS_POR_PAQUETE + 7)
+    )
+    monkeypatch.setattr(lectura, "read_passages",
+                        lambda keywords, **kw: ReadingLookup(True, de_mas, ""))
+    spec = _spec("uno")
+    reg = _registry(_tool("uno", "safety stock"))
+    outcomes = (packages.StepOutcome(tool_key="uno", title="uno", status="ok",
+                                     cadence="mensual", source="x", required=True),)
+    deck = package_deliverable.build(spec, outcomes, client="Client")
+
+    salida = packages._con_lecturas(deck, reg, outcomes)
+    assert len(salida.readings) == packages._LECTURAS_POR_PAQUETE
+
+
 def test_con_lecturas_el_deck_las_lleva_en_su_propio_campo(tmp_path, monkeypatch):
     monkeypatch.setattr(lectura, "read_passages", _disponible)
     spec = _spec("uno")
