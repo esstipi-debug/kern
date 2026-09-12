@@ -117,6 +117,16 @@ FUENTE_DESCONOCIDA = "?"
 #: levantar nada: es el caso normal en produccion.
 ENV_INTERPRETE = "KERN_LECTURA_PYTHON"
 
+#: Donde escucha el indice cuando corre como app propia, p.ej.
+#: ``http://kern-lectura.flycast:8080/mcp``. Gana sobre :data:`ENV_INTERPRETE`.
+#:
+#: POR QUE HAY DOS CAMINOS. Medido: una consulta al indice pica en 1.595 MB de RSS y
+#: Kern en reposo usa 377 MB. Meterlos en la misma VM obliga a pagar 4 GB las 24 horas
+#: por un pico que solo ocurre mientras corre un entregable, asi que en produccion el
+#: indice vive en su PROPIA app de Fly, que se enciende al primer pedido y se apaga
+#: sola. En tu maquina no hay nada que encender: ahi sigue siendo un subproceso.
+ENV_URL = "KERN_LECTURA_URL"
+
 #: Como arranca el servidor de lectura: ``<interprete> -m kern_lectura.mcp_server``.
 SERVIDOR_MODULO = "kern_lectura.mcp_server"
 
@@ -517,6 +527,38 @@ def read_with_caller(
 
 
 @contextmanager
+def _http_caller(url: str, timeout_s: float):
+    """Abre la sesion contra el indice servido por HTTP y devuelve un ``call_tool``.
+
+    Mismo patron y mismo portal que :func:`_stdio_caller` -- de hecho ``sync_tool_caller``
+    ya estaba escrito para los dos casos -- y los imports siguen siendo perezosos por el
+    gotcha de arranque en produccion: nada de ``mcp`` a nivel de modulo en la cadena de boot.
+
+    No hay ``errlog`` aca: el servidor es un proceso ajeno y remoto, sus gritos van a sus
+    propios logs (``fly logs -a kern-lectura``), no a un descriptor nuestro.
+    """
+    import httpx
+    from anyio.from_thread import start_blocking_portal
+    from mcp import ClientSession
+    from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
+
+    # El timeout se pone en el cliente HTTP, no en la llamada: el API nuevo no lo toma.
+    # `connect` va holgado a proposito -- la app del indice se APAGA cuando nadie la usa,
+    # asi que el primer pedido despues de un rato paga el arranque de la maquina antes de
+    # que haya con quien hablar.
+    with start_blocking_portal() as portal:
+        http = create_mcp_http_client(
+            timeout=httpx.Timeout(timeout_s, connect=min(timeout_s, 15.0))
+        )
+        cliente = streamable_http_client(url, http_client=http)
+        with portal.wrap_async_context_manager(cliente) as (leer, escribir, _):
+            sesion_cm = ClientSession(leer, escribir, read_timeout_seconds=timedelta(seconds=timeout_s))
+            with portal.wrap_async_context_manager(sesion_cm) as sesion:
+                portal.call(sesion.initialize)
+                yield sync_tool_caller(sesion, portal)
+
+
+@contextmanager
 def _stdio_caller(interprete: str, timeout_s: float, errlog: Any):
     """Abre el servidor de lectura por stdio y devuelve un ``call_tool`` sincronico.
 
@@ -553,11 +595,23 @@ def read_passages(
     Sin :data:`ENV_INTERPRETE` -- el caso normal en produccion -- contesta
     ``available=False`` sin intentar levantar nada.
     """
+    url = (os.environ.get(ENV_URL) or "").strip().strip('"')
+    if url:
+        # El indice corre aparte: no hay subproceso que levantar ni stderr que capturar.
+        try:
+            with _http_caller(url, timeout_s) as call_tool:
+                return read_with_caller(call_tool, keywords, k=k, sources=sources)
+        except Exception as exc:  # apagado, arrancando, o la red se corto: es un estado
+            return _no_disponible(
+                f"no se pudo hablar con el indice en {url}: {_una_linea(exc)}"
+            )
+
     interprete = (os.environ.get(ENV_INTERPRETE) or "").strip().strip('"')
     if not interprete:
         return _no_disponible(
-            f"{ENV_INTERPRETE} no esta seteada: Kern corre sin indice de lectura. Es lo normal en "
-            f"produccion (el indice pide ~1,6 GB de RSS y la VM tiene 512 MB)"
+            f"ni {ENV_URL} ni {ENV_INTERPRETE} estan seteadas: Kern corre sin indice de "
+            f"lectura. La primera apunta al indice servido como app propia; la segunda lo "
+            f"levanta como subproceso local"
         )
     if not Path(interprete).is_file():
         return _no_disponible(
