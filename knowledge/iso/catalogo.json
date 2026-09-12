@@ -10,11 +10,12 @@
     "esenciales": 15,
     "recomendadas": 31,
     "sectoriales": 7,
-    "nativo": 18,
-    "evidenciaParcial": 31,
+    "nativo": 6,
+    "evidenciaParcial": 12,
     "certificables": 17,
     "cadenasProductivas": 38,
-    "supplyChain": 46
+    "supplyChain": 46,
+    "fueraDeAlcance": 35
   },
   "modulos": [
     {
@@ -306,7 +307,7 @@
         "Tiempo de cierre de no conformes"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "evidencia-parcial",
         "modulos": [
           "smartpro",
           "monitor",
@@ -314,13 +315,10 @@
         ],
         "comoAyuda": "SMARTPRO captura el ciclo, la orden, el operario, el molde y la calidad a pie de máquina. MONITOR convierte eso en histórico auditable y en KPI que un auditor puede seguir hasta el turno.",
         "evidenciasKern": [
-          "OEE desglosado: disponibilidad, desempeño, calidad",
-          "Avance de orden de producción",
-          "Piezas buenas / malas ingresadas en piso o por sensor",
-          "Trazabilidad de operario, molde y cavidades",
-          "Exportación hacia MES/ERP del cliente"
+          "% de procedimientos vencidos, sin dueno y sin version sobre tu registro exportado (clausula 7.5)",
+          "Fill rate y OTIF por linea de pedido (clausula 8.5.1, salida de proceso)"
         ],
-        "limite": "KERN no redacta el manual de calidad ni reemplaza la auditoría de certificación. Aporta la evidencia operativa del proceso; el sistema documental y el alcance legal siguen en el SIG."
+        "limite": "KERN no mide OEE, scrap ni no conformes de piso: no ingesta datos de maquina. Cubre el control documental y el desempeno de entrega. El manual, el alcance y la auditoria de certificacion son ajenos."
       },
       "tareas": [
         {
@@ -430,19 +428,14 @@
         "Cambios de proceso sin autorización (debe ser cero)"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "SMARTPRO amarra orden, molde, cavidades, operario y calidad. MONITOR conserva el histórico que IATF pide cuando el auditor pregunta «¿qué pasó el martes en la 280 ton?»",
-        "evidenciasKern": [
-          "Trazabilidad de orden + molde + operario",
-          "Histórico de ciclo y de paradas",
-          "Registro de piezas no conformes por orden",
-          "Integración con MES/ERP para lote y expedición"
-        ],
-        "limite": "KERN no sustituye APQP, FMEA, control plan ni PPAP. Da la evidencia de proceso; el paquete automotriz documental sigue en Calidad e Ingeniería."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -539,7 +532,7 @@
         "Incidentes ambientales"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "energy",
           "monitor",
@@ -547,13 +540,8 @@
           "smartpro"
         ],
         "comoAyuda": "ENERGY y MONITOR dan kWh y kWh/kg. SMARTPRO da merma implícita (ciclos vs piezas buenas). La huella de proceso conecta eso con el relato ambiental que 14001 pide.",
-        "evidenciasKern": [
-          "Consumo energético por máquina y por orden",
-          "kWh/kg",
-          "Tiempos muertos que consumen energía",
-          "Piezas no conformes como proxy de merma de proceso"
-        ],
-        "limite": "KERN no gestiona permisos ambientales, manifiestos de residuo peligroso ni el legal de vertimientos. Eso sigue en EHS y en el responsable ambiental."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
       },
       "tareas": [
         {
@@ -649,7 +637,7 @@
         "Horas de capacitación SST de piso"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor",
@@ -657,12 +645,8 @@
           "cei"
         ],
         "comoAyuda": "SMARTPRO registra paradas y estados de máquina; eso arma la línea de tiempo de un incidente. El CEI cubre competencia. El CMMS recibe horas reales del activo.",
-        "evidenciasKern": [
-          "Estados y razones de parada en el momento del incidente",
-          "Quién estaba asignado a la orden/máquina",
-          "Horas de máquina para cruzar con mantenimiento"
-        ],
-        "limite": "KERN no es un sistema SST: no reemplaza matriz de peligros, exámenes médicos, comités ni investigación legal. Aporta contexto operacional."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma son de personas, incidentes y horas trabajadas. KERN no ingesta datos de EHS ni de recursos humanos."
       },
       "tareas": [
         {
@@ -750,20 +734,15 @@
         "Desvío vs línea base"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "energy",
           "monitor",
           "smartpro"
         ],
         "comoAyuda": "ENERGY mide; SMARTPRO da el denominador (kg, ciclos, órdenes); MONITOR es el EnPI vivo. Es el caso de uso más directo de KERN después del OEE.",
-        "evidenciasKern": [
-          "kWh por máquina, turno y orden",
-          "kWh/kg en tiempo real",
-          "Consumos ocultos en tiempos muertos",
-          "Reportes de costo energético"
-        ],
-        "limite": "KERN no certifica 50001 ni modela la factura completa de la planta (oficinas, alumbrado) salvo que se instrumente. El alcance del SEU hay que declararlo."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
       },
       "tareas": [
         {
@@ -855,7 +834,7 @@
         "Merma %"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "huella",
           "energy",
@@ -863,12 +842,8 @@
           "monitor"
         ],
         "comoAyuda": "La huella de proceso de KERN IoP usa energía del ciclo, merma y flujo de material. Es el dato primario que un estudio 14067 necesita de manufactura; no el LCA de cuna a tumba completo.",
-        "evidenciasKern": [
-          "Energía por fase del ciclo de inyección",
-          "kWh/kg y desperdicio de material",
-          "Puntos calientes de proceso"
-        ],
-        "limite": "14067 cubre cuna a tumba. KERN cubre con rigor el tramo de proceso. Extracción de resina, transporte y fin de vida salen de factores de base de datos y de compras/logística."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
       },
       "tareas": [
         {
@@ -964,7 +939,7 @@
         "Horas de paro de causa «único punto de falla»"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "nativo",
         "modulos": [
           "monitor",
           "smartpro",
@@ -972,10 +947,11 @@
         ],
         "comoAyuda": "MONITOR muestra dónde el riesgo ya está ocurriendo (paradas, scrap, energía). No calcula el riesgo inherente; alimenta el monitoreo.",
         "evidenciasKern": [
-          "Pareto de paradas y de no conformes",
-          "Horas y ciclos del activo para riesgo de falla"
+          "Perdida esperada en $ (EMV) y RPN por riesgo declarado",
+          "Matriz 5x5 de probabilidad e impacto",
+          "Brecha entre tiempo de recuperacion y de supervivencia (TTR vs TTS)"
         ],
-        "limite": "El apetito de riesgo, la matriz y las decisiones de tratar/transferir son del comité. KERN no es un GRC."
+        "limite": "KERN evalua los riesgos que le declaras y los de cadena que puede leer. No mantiene el registro de riesgos ni el seguimiento del tratamiento: eso vive en tu sistema de gestion."
       },
       "tareas": [
         {
@@ -1237,18 +1213,14 @@
         "Incidentes de seguridad en planta"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "monitor",
           "smartpro"
         ],
         "comoAyuda": "MONITOR centraliza datos con almacenamiento seguro y acceso web. SMARTPRO identifica operario. Eso cubre integridad y trazabilidad de dato; no el SGSI completo.",
-        "evidenciasKern": [
-          "Acceso web a dashboards (quién puede ver qué, si se configura)",
-          "Identidad de operario en la orden",
-          "Integridad del histórico de producción"
-        ],
-        "limite": "La certificación 27001, el SoA y los controles de nube/contrato con KERN los lidera TI/seguridad. Hay que revisar el tratamiento de datos en MONITOR (ubicación, cifrado, cuentas)."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma son de cuentas, accesos y controles de TI. KERN no ingesta ese dato."
       },
       "tareas": [
         {
@@ -1321,19 +1293,15 @@
         "Mantenimiento preventivo vencido"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "cmms",
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "KERN alimenta el CMMS con horas, ciclos, estados y fallas reales. Deja de ser «el técnico dijo que la máquina corrió 6 horas».",
-        "evidenciasKern": [
-          "Horas efectivas de trabajo",
-          "Ciclos acumulados",
-          "Estados y fallas del activo"
-        ],
-        "limite": "KERN no es el CMMS: no despacha órdenes de trabajo ni gestiona bodega de refacciones. Es la fuente operacional que el CMMS suele mentir."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -1405,18 +1373,15 @@
         "tCO2e / t inyectada"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "energy",
           "monitor",
           "huella"
         ],
         "comoAyuda": "ENERGY desagrega el alcance 2 de proceso. El denominador de intensidad sale de producción SMARTPRO.",
-        "evidenciasKern": [
-          "kWh de máquinas instrumentadas",
-          "kg o piezas del período"
-        ],
-        "limite": "Alcance 3 (resina, fletes, residuos) no lo resuelve KERN. El inventario corporativo sigue necesitando factores y datos de compras."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
       },
       "tareas": [
         {
@@ -1478,18 +1443,14 @@
         "Reincidencias por molde"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "La trazabilidad de orden/molde/operario/calidad acorta la investigación de la queja de días a minutos.",
-        "evidenciasKern": [
-          "Órdenes del SKU en la ventana reclamada",
-          "No conformes registrados en esas órdenes",
-          "Operario y molde asociados"
-        ],
-        "limite": "KERN no es el CRM ni el buzón de quejas. El flujo 10002 vive en calidad/servicio; KERN es la evidencia de proceso."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -1690,16 +1651,14 @@
         "Incidentes de cuerpo extraño"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "Trazabilidad de orden, material y operario para un recall. No cubre HACCP ni higiene.",
-        "evidenciasKern": [
-          "Cadena orden–material–operario–cantidad"
-        ],
-        "limite": "KERN no es un sistema de inocuidad. No gestiona análisis de peligros ni laboratorios."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige genealogia de lote y reconstruccion aguas arriba y abajo. KERN identifica lote y vencimiento, pero no construye la genealogia ni el eslabon previo, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -1766,18 +1725,14 @@
         "Desvíos de receta validada"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "El histórico de ciclo, orden y operario es evidencia de que se corrió la receta validada. Las desviaciones se ven.",
-        "evidenciasKern": [
-          "Histórico de órdenes y ciclos",
-          "Identidad de operario y molde",
-          "No conformes por orden"
-        ],
-        "limite": "KERN no sustituye el expediente del dispositivo, la validación IQ/OQ/PQ ni el sistema de vigilancia. Calidad regulatoria manda."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -1841,17 +1796,14 @@
         "Tiempo de cambio de color"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "Órdenes con material y molde identificados; historial de no conformes estéticos.",
-        "evidenciasKern": [
-          "Orden + material + molde",
-          "No conformes de la corrida"
-        ],
-        "limite": "KERN no cubre BPM de higiene ni el expediente cosmético del cliente."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige genealogia de lote y reconstruccion aguas arriba y abajo. KERN identifica lote y vencimiento, pero no construye la genealogia ni el eslabon previo, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -1921,19 +1873,15 @@
         "Regrind cruzado entre lotes (debe ser cero en identidad preservada)"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor",
           "huella"
         ],
         "comoAyuda": "SMARTPRO amarra orden, material, molde y cantidad. MONITOR permite el balance del periodo. En identity preserved, esa traza es el eslabón de transformación.",
-        "evidenciasKern": [
-          "Orden + material + molde + piezas buenas",
-          "Histórico para reconstruir un lote",
-          "Merma / no conformes como salida del balance"
-        ],
-        "limite": "KERN no certifica la cadena ni cubre origen de la resina ni el book & claim. ISO 22095-2 (2026) detalla mass balance; aquí solo se opera el tramo de planta."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -2016,7 +1964,7 @@
         "kWh/kg y merma % usados en el ACV"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "huella",
           "energy",
@@ -2024,12 +1972,8 @@
           "monitor"
         ],
         "comoAyuda": "Huella de proceso + ENERGY + órdenes: el inventario LCI del tramo de manufactura.",
-        "evidenciasKern": [
-          "kWh y kWh/kg por orden o familia",
-          "Balance de masa de proceso",
-          "Puntos calientes de ciclo"
-        ],
-        "limite": "Origen de resina, flete y fin de vida salen de bases de datos y de compras/logística. KERN no sustituye el software de ACV ni la revisión crítica."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
       },
       "tareas": [
         {
@@ -2102,18 +2046,15 @@
         "% de merma recuperada"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor",
           "huella"
         ],
         "comoAyuda": "El dato de qué material corrió y cuánta merma salió es el veredicto circular de la planta. La red (recuperador, marca) vive fuera de KERN.",
-        "evidenciasKern": [
-          "Órdenes con material identificado",
-          "Merma y no conformes del periodo"
-        ],
-        "limite": "KERN no diseña el modelo de negocio circular ni audita al recuperador. 59004 da el vocabulario; 59020 mide circularidad."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
       },
       "tareas": [
         {
@@ -2188,18 +2129,15 @@
         "Pérdidas de proceso / entrada"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor",
           "huella"
         ],
         "comoAyuda": "Cantidades y merma de proceso para los indicadores de circularidad del eslabón de transformación.",
-        "evidenciasKern": [
-          "Kg / piezas por material",
-          "Merma de proceso"
-        ],
-        "limite": "La metodología y el resto de la red (recuperación post-consumo) no salen de KERN."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
       },
       "tareas": [
         {
@@ -2259,18 +2197,15 @@
         "Familias con paquete PCDS listo"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "monitor",
           "huella",
           "energy"
         ],
         "comoAyuda": "Serie temporal de material, merma y kWh para rellenar la ficha sin inventar.",
-        "evidenciasKern": [
-          "Material y cantidades por familia",
-          "kWh/kg y merma"
-        ],
-        "limite": "KERN no es el repositorio PCDS ni cubre composición química certificada del proveedor."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
       },
       "tareas": [
         {
@@ -2332,18 +2267,15 @@
         "Desvío entre EPD y kWh/kg real del año siguiente"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "energy",
           "huella",
           "monitor"
         ],
         "comoAyuda": "Serie anual de kWh, kg y merma para el inventario que la PCR pide del transformador.",
-        "evidenciasKern": [
-          "kWh y producción del periodo",
-          "Merma de proceso"
-        ],
-        "limite": "KERN no emite la EPD ni elige la PCR. Verificación y programa (environdec, etc.) son ajenos."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
       },
       "tareas": [
         {
@@ -2409,10 +2341,8 @@
           "monitor"
         ],
         "comoAyuda": "MONITOR puede mostrar un KPI si se carga el dato. ENERGY no mide agua.",
-        "evidenciasKern": [
-          "Producción (denominador) si el agua se carga a mano"
-        ],
-        "limite": "KERN no instrumenta agua. Hay que medidor o lecturas de torre/chiller."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
       },
       "tareas": [
         {
@@ -2470,7 +2400,7 @@
         "Cambios de pieza con dato KERN de soporte"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "energy",
@@ -2478,11 +2408,8 @@
           "monitor"
         ],
         "comoAyuda": "Comparar dos revisiones de la misma pieza: ciclo, scrap, kWh/kg.",
-        "evidenciasKern": [
-          "Órdenes piloto identificadas",
-          "kWh/kg y merma antes/después"
-        ],
-        "limite": "KERN no es CAD ni un software de ecodiseño."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
       },
       "tareas": [
         {
@@ -2615,16 +2542,14 @@
         "Incidentes de contratistas"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "cei"
         ],
         "comoAyuda": "Identidad de operario y horas de máquina dan contexto laboral; no sustituyen nómina ni comité.",
-        "evidenciasKern": [
-          "Operario asignado por orden"
-        ],
-        "limite": "26000 no se certifica. KERN no es un sistema de cumplimiento laboral."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma son de personas, incidentes y horas trabajadas. KERN no ingesta datos de EHS ni de recursos humanos."
       },
       "tareas": [
         {
@@ -2691,10 +2616,8 @@
           "monitor"
         ],
         "comoAyuda": "El urgente de línea se ve en las órdenes paradas. No es un control antisoborno.",
-        "evidenciasKern": [
-          "Paradas por falta de material (contexto, no evidencia legal)"
-        ],
-        "limite": "KERN no es el sistema 37001. Compliance y compras son dueños."
+        "evidenciasKern": [],
+        "limite": "Los datos que esta norma pide no entran a KERN por ningun conector ni contrato de columnas."
       },
       "tareas": [
         {
@@ -2825,17 +2748,17 @@
         "% de expediciones con ID único ligado a orden"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "evidencia-parcial",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "SMARTPRO ya lee código de barras y QR. El ID único se ficha en la orden.",
         "evidenciasKern": [
-          "Lectura de código en piso",
-          "Orden ligada al identificador"
+          "Validacion de GTIN con digito verificador GS1 sobre tu maestro",
+          "Duplicados de identificador"
         ],
-        "limite": "KERN no emite GTINs ni administra el prefijo GS1 de la empresa."
+        "limite": "KERN valida el identificador en el maestro. No emite GTINs, no administra tu prefijo GS1 y no lee codigos en piso."
       },
       "tareas": [
         {
@@ -2898,15 +2821,13 @@
         "Cuentas de cliente/proveedor activas vs contratos vigentes"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "monitor"
         ],
         "comoAyuda": "El perímetro de quién ve volúmenes en MONITOR es un control de 27036.",
-        "evidenciasKern": [
-          "Accesos a dashboards"
-        ],
-        "limite": "La serie 27036 y el contrato de confidencialidad los lideran TI y legal."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma son de cuentas, accesos y controles de TI. KERN no ingesta ese dato."
       },
       "tareas": [
         {
@@ -2967,16 +2888,14 @@
         "Tiempo de recall simulado"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "La liga material–orden–cantidad es el eslabón de transformación que 22005 pide.",
-        "evidenciasKern": [
-          "Cadena material–orden–operario–cantidad"
-        ],
-        "limite": "KERN no cubre el eslabón agrícola ni el del envasador de alimento."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige genealogia de lote y reconstruccion aguas arriba y abajo. KERN identifica lote y vencimiento, pero no construye la genealogia ni el eslabon previo, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -3046,10 +2965,8 @@
           "smartpro"
         ],
         "comoAyuda": "Se puede fichar el tipo de pallet en la orden si se acuerda. No es nativo.",
-        "evidenciasKern": [
-          "Campo de empaque en la orden, si se configura"
-        ],
-        "limite": "KERN no es un sistema PEFC/FSC ni 38200."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige genealogia de lote y reconstruccion aguas arriba y abajo. KERN identifica lote y vencimiento, pero no construye la genealogia ni el eslabon previo, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -3111,17 +3028,14 @@
         "Cambios de proceso sin autorización"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "Histórico de orden, material y ciclo como evidencia de que se corrió lo aprobado.",
-        "evidenciasKern": [
-          "Orden + material + ciclo",
-          "No conformes por orden"
-        ],
-        "limite": "KERN no sustituye el expediente BPF ni la validación del envase."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -3200,10 +3114,9 @@
         ],
         "comoAyuda": "SMARTPRO da kg y destino de la orden; la huella de proceso cubre el tramo de planta. El flete se pega encima, no se inventa dentro de ENERGY.",
         "evidenciasKern": [
-          "Kg buenos por orden / cliente para armar t·km",
-          "Separación proceso vs logística en el PCF"
+          "Peso y distancia por envio, cuando el cliente los carga en la planilla de transporte"
         ],
-        "limite": "KERN no calcula el well-to-wheel del camión ni certifica al 3PL. Sin TMS o declaración del transportista no hay 14083."
+        "limite": "KERN no calcula huella de transporte. El peso y la distancia entran solo por un CSV del cliente hacia la herramienta de transporte, nunca por conector; no se exponen como t.km y no hay factor de emision en el motor. El dato primario del transportista sigue siendo del 3PL."
       },
       "tareas": [
         {
@@ -3280,10 +3193,8 @@
           "cei"
         ],
         "comoAyuda": "KERN no gestiona flota. El CEI puede entrenar disciplina de muelle; el sistema RTS vive en EHS + logística.",
-        "evidenciasKern": [
-          "Volumen de expedición para normalizar incidentes"
-        ],
-        "limite": "Ni SMARTPRO ni ENERGY sustituyen bitácora de conductor, alcoholimetría o inspección de unidad."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma son de personas, incidentes y horas trabajadas. KERN no ingesta datos de EHS ni de recursos humanos."
       },
       "tareas": [
         {
@@ -3342,15 +3253,13 @@
         "% de SKUs fríos con especificación de servicio"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro"
         ],
         "comoAyuda": "La orden identifica el SKU; si el maestro marca «frío», la expedición no puede ir por el muelle genérico.",
-        "evidenciasKern": [
-          "Órdenes de SKU frío vs fecha/hora de cierre"
-        ],
-        "limite": "KERN no es datalogger ni TMS de frío. El servicio lo opera el 3PL bajo 23412."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige genealogia de lote y reconstruccion aguas arriba y abajo. KERN identifica lote y vencimiento, pero no construye la genealogia ni el eslabon previo, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -3418,16 +3327,14 @@
         "% de expediciones con RTI identificado"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "La orden y la cantidad se amarran al tote si el ID entra en el cierre de orden. MONITOR ve el faltante de empaque retornable.",
-        "evidenciasKern": [
-          "Órdenes con ID de RTI vs piezas buenas"
-        ],
-        "limite": "KERN no es el middleware RFID ni el pool de totes del OEM."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige genealogia de lote y reconstruccion aguas arriba y abajo. KERN identifica lote y vencimiento, pero no construye la genealogia ni el eslabon previo, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -3492,16 +3399,14 @@
         "Discrepancias sello / remisión"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "La reconciliación de piezas buenas vs remisionado es evidencia de que no salió producto no declarado.",
-        "evidenciasKern": [
-          "Piezas buenas por orden vs cantidad remisionada"
-        ],
-        "limite": "KERN no sustituye C-TPAT, cámaras, sellos ni la evaluación documental."
+        "evidenciasKern": [],
+        "limite": "Los datos que esta norma pide no entran a KERN por ningun conector ni contrato de columnas."
       },
       "tareas": [
         {
@@ -3571,17 +3476,18 @@
         "Score OEM vs periodo anterior"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "nativo",
         "modulos": [
           "monitor",
           "smartpro"
         ],
         "comoAyuda": "OEE, scrap y cierre de orden explican una caída de OTIF o de PPM. No sustituyen el portal del OEM.",
         "evidenciasKern": [
-          "Órdenes tardías vs plan",
-          "No conformes por cliente"
+          "Fill rate y OTIF por linea de pedido (SCOR RL.1.1)",
+          "Venta perdida en $ por quiebre",
+          "Declaracion campo por campo de lo que no se pudo medir"
         ],
-        "limite": "KERN no lee el scorecard del OEM ni envía la encuesta. Eso es comercial + calidad + SCM."
+        "limite": "KERN mide el servicio realizado, que es un insumo de la satisfaccion, no la satisfaccion. Encuestas, NPS y el tratamiento de la queja siguen en Comercial."
       },
       "tareas": [
         {
@@ -3719,17 +3625,18 @@
         "% de liberaciones sin plan de muestreo (cero)"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "nativo",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "El lote de resina que entra a la orden debe ser un lote liberado. MONITOR ve scrap de un lote mal recibido.",
         "evidenciasKern": [
-          "Scrap por lote de material",
-          "Órdenes amarradas a lote"
+          "Plan de muestreo (n, c) por parte a partir de AQL y LTPD",
+          "Riesgo del productor y del consumidor del plan",
+          "Unidades a inspeccionar por lote"
         ],
-        "limite": "KERN no calcula la tabla AQL ni sustituye el laboratorio de recepción."
+        "limite": "KERN calcula el plan. La inspeccion, el registro del resultado y la disposicion del lote rechazado son de Calidad."
       },
       "tareas": [
         {
@@ -3800,7 +3707,7 @@
         "Días de inventario de resina y de PT"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "evidencia-parcial",
         "modulos": [
           "monitor",
           "smartpro",
@@ -3809,10 +3716,11 @@
         ],
         "comoAyuda": "Ciclo, OEE, scrap y kWh son el tramo de transformación del VSM. El resto (colas de QC, flete) se pega con dato de SCM.",
         "evidenciasKern": [
-          "Tiempo de ciclo y OEE por célula",
-          "Scrap y kWh/kg del tramo de moldeo"
+          "Tiempo de transito real por lane: media, desviacion, p50 y p90 en dias",
+          "Dias de inventario (DIO) y ciclo cash-to-cash",
+          "Capital inmovilizado en excedente y obsoleto"
         ],
-        "limite": "KERN no dibuja el VSM ni mide la cola del 3PL. El mapa lo arma el SCM."
+        "limite": "KERN mide los tramos de espera y de inventario del flujo. El tiempo de ciclo de proceso y la eficiencia del ciclo (PCE) necesitan datos de maquina que KERN no ingesta."
       },
       "tareas": [
         {
@@ -3881,17 +3789,15 @@
         "Delta de la métrica vs baseline"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "monitor",
           "smartpro",
           "energy"
         ],
         "comoAyuda": "Measure y Control viven en MONITOR: scrap, ciclo, OEE, kWh. Sin eso el DMAIC mide a mano una semana y se olvida.",
-        "evidenciasKern": [
-          "Series de scrap / OEE / ciclo del periodo del proyecto"
-        ],
-        "limite": "KERN no es el software estadístico ni certifica cinturones."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -3953,16 +3859,14 @@
         "Proyectos cerrados con control"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "cei",
           "monitor"
         ],
         "comoAyuda": "El CEI forma gente de inyección; MONITOR da el dato del proyecto. La competencia Lean/SS se evalúa fuera.",
-        "evidenciasKern": [
-          "Dato de proceso para el portafolio de proyectos"
-        ],
-        "limite": "KERN no certifica belts ni sustituye el esquema 18404."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -4023,16 +3927,19 @@
         "Órdenes bloqueadas por maestro incompleto"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "nativo",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "La orden obliga a molde, material y cantidad. Eso disciplina el maestro de proceso. El maestro de cliente/ruta vive en el ERP.",
         "evidenciasKern": [
-          "Órdenes que no arrancan por material / molde / receta faltante"
+          "Score de calidad del maestro: completitud por campo",
+          "GTIN invalidos por digito verificador GS1",
+          "Duplicados por GTIN y por nombre",
+          "La columna faltante de mayor valor sobre la carpeta cruda del cliente"
         ],
-        "limite": "KERN no es el MDM ni limpia el ERP. 8000-61 (proceso de calidad de datos) se opera con TI + SCM."
+        "limite": "KERN mide la calidad del maestro que le entregas. No gobierna el dato ni sustituye un MDM: la correccion y el dueno del campo siguen en tu organizacion."
       },
       "tareas": [
         {
@@ -4100,17 +4007,15 @@
         "Inventario en proceso / PT"
       ],
       "kern": {
-        "cobertura": "nativo",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "monitor",
           "smartpro",
           "energy"
         ],
         "comoAyuda": "MONITOR ya expone OEE, scrap y ritmo. El trabajo es no tener un Excel paralelo con otra fórmula.",
-        "evidenciasKern": [
-          "OEE, scrap, ciclos, kWh por célula / orden"
-        ],
-        "limite": "KERN no cubre todos los KPI 22400 (p. ej. algunos de mantenimiento avanzado viven en el CMMS)."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -4174,16 +4079,18 @@
         "Incidentes de traza atribuibles al tercero"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "nativo",
         "modulos": [
           "smartpro",
           "monitor"
         ],
         "comoAyuda": "Las órdenes y las cantidades permiten auditar al 3PL: lo que salió de planta vs lo que llegó al cliente.",
         "evidenciasKern": [
-          "Cierre de orden vs reclamo / faltante de cliente"
+          "OTIF del transportista contra el compromiso, por linea de pedido",
+          "Cobertura de la evidencia de llegada, declarada por transportista",
+          "Fill rate separado del OTIF cuando divergen"
         ],
-        "limite": "KERN no gestiona el contrato ni el SLA jurídico del 3PL."
+        "limite": "KERN mide el desempeno del tercero cuando hay evidencia de llegada. El contrato, la gobernanza de la relacion y la salida del acuerdo no los cubre."
       },
       "tareas": [
         {
@@ -4248,17 +4155,18 @@
         "Tiempo de switch a 3PL alterno (ensayo)"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "nativo",
         "modulos": [
           "monitor",
           "smartpro"
         ],
         "comoAyuda": "El historial de paradas y de material muestra qué tan concentrada está la planta. No diseña la red.",
         "evidenciasKern": [
-          "Paradas por falta de material",
-          "Familias amarradas a un solo grado"
+          "SKUs con un solo origen viable",
+          "Cuadrante Kraljic por proveedor (impacto x riesgo de suministro)",
+          "Exposicion a disrupcion por proveedor"
         ],
-        "limite": "KERN no modela la red ni el dual sourcing. Eso es SCM + compras."
+        "limite": "KERN nombra la concentracion y la exposicion. El ensayo de recuperacion, el liderazgo y la cultura de resiliencia no se miden con datos de cadena."
       },
       "tareas": [
         {
@@ -4323,18 +4231,15 @@
         "Ocupación de PT vs plan"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "cmms",
           "energy",
           "monitor"
         ],
         "comoAyuda": "ENERGY y paradas muestran cuando el predio (agua, clima, aire) tumba la célula. El CMMS lleva los activos de facility.",
-        "evidenciasKern": [
-          "Paradas atribuibles a servicios del predio",
-          "kWh de naves"
-        ],
-        "limite": "KERN no es el CAFM ni el plano de posiciones de almacén."
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
       },
       "tareas": [
         {
@@ -4397,16 +4302,14 @@
         "% de expediciones en RTI vs desechable"
       ],
       "kern": {
-        "cobertura": "evidencia-parcial",
+        "cobertura": "fuera-de-alcance",
         "modulos": [
           "smartpro",
           "huella"
         ],
         "comoAyuda": "La orden sabe cuántas piezas salieron; el empaque se puede atribuir por familia. La huella debe incluir el empaque si el cliente lo pide.",
-        "evidenciasKern": [
-          "Piezas por orden para atribuir empaque"
-        ],
-        "limite": "KERN no diseña el empaque ni hace el test de reciclabilidad."
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
       },
       "tareas": [
         {

@@ -50,10 +50,14 @@
   `contratoPost` from `tests/fixtures/iso/detectar.ejemplo.json`),
   `GET /api/iso/orden`. `GET /iso` is the PARA-KERN catalog browser (search,
   SMARTPRO/MONITOR/ENERGY filter, SCM domain including inventory) plus the
-  plant detector (cards, not JSON-only) and the MONITOR order panel: native
-  floor evidence for 9001 / 50001 / 14067 (process stretch) when the order has
-  cycle, scrap and kg, and the   14083 gap (t·km from the 3PL). Claims allowed:
-  "KERN tiene evidencia de piso…"; never "cumple ISO".
+  plant detector (cards, not JSON-only) and the MONITOR order panel. `kern.cobertura`
+  is classified against what THIS engine measures, not against the KERN IoP plant
+  hardware the pack was written for: 6 norms native (8000-1, 10004, 2859-1, 37500,
+  22316, 31000), 12 partial, 35 out of scope. Energy, carbon, OEE and cycle time are
+  out of scope -- no connector or column contract carries kWh, CO2e, cycle or scrap,
+  so 50001 and 14067 can no longer light an order card. Claims allowed: "KERN tiene
+  evidencia para…"; never "evidencia de piso" and never "cumple ISO". Ratchet in
+  `tests/test_iso_catalog.py`.
 
 - **`iso_ops` agent tool (`jobs/iso_ops_job.py`)** -- registry now 54 tools.
   Detects which operations/supply-chain ISO (and IATF) norms apply to a plant

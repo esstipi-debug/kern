@@ -70,7 +70,7 @@ _DECK_BASE_CONFIDENCE = 0.6
 
 _CERTIFY_RESIDUAL = Residual(
     description=(
-        "Esto detecta aplicabilidad y potencial de evidencia de piso. "
+        "Esto detecta aplicabilidad y potencial de evidencia. "
         "No es un dictamen de conformidad ni una certificacion."
     ),
     risk_if_skipped=(
@@ -210,7 +210,7 @@ def run(prepared: PreparedIso, params: dict | None = None) -> IsoOpsReport:
             summary = (
                 f"{detection.get('aviso', AVISO_DETECCION)} "
                 f"{len(detectadas)} norma(s) aplicables; "
-                f"{n_nativas} evidencia(s) nativa(s) de orden; {n_huecos} hueco(s)."
+                f"{n_nativas} norma(s) de orden con senal declarada; {n_huecos} hueco(s)."
             )
             outcome = as_options(summary, options, confidence=0.7, residuals=[residual])
         else:
@@ -381,8 +381,8 @@ def build_deck(
     kpis = (
         Kpi("normas detectadas", str(report.n_detectadas),
             rationale="Aplicabilidad >= 0.55 sobre el catalogo iso-operaciones-cadena"),
-        Kpi("evidencias nativas de orden", str(report.n_nativas_orden),
-            rationale="9001 / 50001 / 14067 solo cuando hay ciclo, scrap o kg"),
+        Kpi("normas de orden con senal declarada", str(report.n_nativas_orden),
+            rationale="9001 solo cuando declaras ciclo o scrap; la senal es de tu planta, no la mide KERN"),
         Kpi("huecos nombrados", str(report.n_huecos),
             rationale="Un hueco (p.ej. 14083 sin t·km) se nombra; no se tapa con OEE"),
     )
@@ -390,7 +390,7 @@ def build_deck(
         "Usar el claimPermitido de cada tarjeta; no sustituir al organismo de certificacion.",
         "Cerrar primero los huecos nombrados (t·km del 3PL para 14083 si aplica).",
         "Las tareas de piso salen de norma.tareas del catalogo: son trabajo operativo, no auditoria de certificacion.",
-        "Odoo y Excel siguen siendo politica de inventario; este entregable es evidencia de piso, no un sello.",
+        "Odoo y Excel siguen siendo politica de inventario; este entregable es evidencia, no un sello.",
     ]
     residual = " ".join(
         f"{r.description} {r.risk_if_skipped}".strip() for r in report.outcome.residuals
@@ -448,7 +448,7 @@ def _options(detectadas: tuple[dict[str, Any], ...], orden: dict[str, Any] | Non
         elif first:
             action = f"Tarea de piso: {first.get('titulo')}"
         else:
-            action = f"Revisar evidencia de piso para {row.get('codigo')} sin emitir certificado."
+            action = f"Revisar la evidencia de KERN para {row.get('codigo')} sin emitir certificado."
         score = round(float(row.get("aplicabilidad") or 0) * 0.6 + float(row.get("potencial") or 0) * 0.4, 4)
         options.append(ExecutionOption(
             label=str(row.get("codigo") or row.get("id")),
@@ -530,7 +530,9 @@ def _write_xlsx(
     aviso = wb.active
     aviso.title = "Aviso"
     aviso["A1"] = report.aviso
-    aviso["A2"] = "Kern no certifica. Odoo/Excel no llevan un sello ISO; este libro es evidencia de piso."
+    aviso["A2"] = ("Kern no certifica. Odoo/Excel no llevan un sello ISO. Lo que KERN aporta es evidencia de "
+                   "cadena: servicio, maestro, proveedores y muestreo. Las magnitudes de planta -- kWh, "
+                   "tiempo de ciclo, scrap, molde -- no entran al motor y quedan fuera de alcance.")
     aviso["A3"] = report.summary
     aviso.column_dimensions["A"].width = 88
 
