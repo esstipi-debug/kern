@@ -157,6 +157,15 @@ ledger already relies on.
 - No writeback tools. If a client needs `odoo_replenishment` or any other
   tool that touches their live systems, that's a direct-client relationship
   outside this MCP surface, not something to add here.
+- `repricing` — deliberately excluded, and not because it writes: it does not.
+  The tool stages a proposed price changeset against an in-memory copy of the
+  client's own current prices, runs it through the central pricing guardrail,
+  and always hands back a HANDOFF for a human to apply out-of-band; it never
+  imports `apply_repricing`. It stays off this surface because its subject is a
+  change to a client's live prices and its output is a changeset shaped to be
+  applied — not something an anonymous caller should compose against someone
+  else's catalogue. Use `examples/run_repricing.py`, or `POST /api/jobs` with
+  `job_type=repricing` behind `LINCHPIN_API_KEY`.
 - `intake_scan` — deliberately excluded, not just not-yet-added. It takes a
   directory path and reads every readable file inside it; exposing that on
   the anonymous remote MCP surface would hand any caller an arbitrary-file-read

@@ -15,6 +15,11 @@ puede tocar. No congela el codigo de cada tool ni sus parametros.
 Levantado por primera vez el 2026-09-12 (ver seccion 3 del ADR): 53 -> 57,
 sumando audit_evidence, import_case, iso_ops y scor_iso_audit.
 
+Segundo levantamiento propuesto el mismo dia (57 -> 58, `repricing`): PENDIENTE
+de la decision del operador. Ver la fila correspondiente en la seccion 3 del ADR,
+que esta escrita como PENDIENTE a proposito -- este diff existe para que la
+decision sea revisable, no para darla por tomada.
+
 Como se levanta el freno, cuando corresponda. Se edita la tupla en el mismo PR
 que registra o borra la tool, con el motivo en el mensaje de commit y una linea
 en el ADR (``documentation/ADR-2026-09-operador.md``). Regla del plan: la tool
@@ -81,6 +86,7 @@ FROZEN_TOOL_KEYS: frozenset[str] = frozenset(
         "procedure_draft",
         "queuing",
         "reconciliation",
+        "repricing",
         "returns",
         "risk",
         "scheduling",
@@ -140,7 +146,7 @@ def _describe_drift(actual: set[str], frozen: frozenset[str]) -> str:
     )
 
 
-def test_registry_is_frozen_at_the_57_tools_of_2026_09_12() -> None:
+def test_registry_is_frozen_at_the_58_tools_of_2026_09_12() -> None:
     registered = {t.key for t in build_default_registry().list()}
     assert registered == FROZEN_TOOL_KEYS, _describe_drift(registered, FROZEN_TOOL_KEYS)
 

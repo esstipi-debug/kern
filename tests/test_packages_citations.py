@@ -146,7 +146,33 @@ _RECOVERED_BY_INGESTION = {
 # whose zero is intentional plus the anchor-islanded ones. price_watch is NOT here
 # -- it was a zero before source #27 and the widened pool recovered it, so it is
 # now held to the same >= MIN_CITATIONS bar as everything else.
-_EXPECTED_ZERO_TOOLS = frozenset(_CORRECTLY_ZERO_TOOLS + _ISLANDED_TOOLS)
+# Tools whose real citations come from a DIFFERENT gate, so the number
+# `_step_citations` produces for them is not a measurement of anything a client
+# sees. A separate registry from the three above on purpose: those record a tool
+# that genuinely ships zero citations. These ship citations -- just not down this
+# path -- and conflating the two would lose the fact a future reader needs.
+#
+# repricing (tool #58) is the first. It is not a package step, has no deck, and
+# its citations are resolved inside src.pricing_guardrails.gate_price_changeset,
+# which grounds the playbook's own fixed _CITATION_KEYWORDS (brief deliberately
+# empty -- the #160/#162/#164 fix) and gates them under tool_key "pricing".
+# Measured on this graph 2026-09-12: that path resolves FOUR citations (Markdown
+# Pricing, Price Elasticity of Demand, Phillips, the MIT omnichannel paper), the
+# same four for every reason line, and a zero there would HARD-BLOCK the whole
+# changeset -- so it is the most-guarded citation path in the repo, not the least.
+#
+# _step_citations returns zero for it because it grounds on
+# `tool.intent_keywords` + `tool.title`, and repricing's keywords are action
+# phrases ("reprice", "push new prices", "repreciar") on purpose: intent.classify
+# requires a STRICT win, so giving it generic pricing vocabulary would tie it with
+# `pricing`/`price_intelligence` and break briefs that route correctly today.
+# Measured: seven candidate titles, including `pricing`'s own "Price Optimization",
+# all return zero under this key; a title stuffed with "markdown / price
+# sensitivity" reaches three, which is grounder-pleasing copy in a client-facing
+# field. Keeping the honest title and recording the real path is the better trade.
+_GATE_CITED_TOOLS = ("repricing",)
+
+_EXPECTED_ZERO_TOOLS = frozenset(_CORRECTLY_ZERO_TOOLS + _ISLANDED_TOOLS + _GATE_CITED_TOOLS)
 
 _OFF_TOPIC_TERMS = (
     "cost of quality", "house of quality", "cash-to-cash", "quality circle", "tqm",

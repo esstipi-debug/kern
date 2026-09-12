@@ -171,9 +171,11 @@ def test_registry_tool_count_matches_the_pinned_list():
     # bump this count again the next time a tool is registered, same as every prior update.
     reg = tools.build_default_registry()
     # import_case_tool() added (56 -> 57).
+    # repricing_tool() added (57 -> 58) -- the 3.0 playbook made routable,
+    # staging-only: it never applies and is deliberately off the MCP surface.
     # bump this count again the next time a tool is registered, same as every prior update.
     reg = tools.build_default_registry()
-    assert len(reg.list()) == 57
+    assert len(reg.list()) == 58
 
 
 def test_scm_agent_tools_module_imports_without_circular_import():

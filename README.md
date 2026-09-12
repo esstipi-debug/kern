@@ -6,7 +6,7 @@
 
 **Kern** (German for *core*) is the evolution of **Linchpin** — from a tool that analyzes to the core the agency's service runs on. The name changed because the role changed: not reports on demand, but the decision kernel every engagement executes through — the QA gate that vetoes bad deliverables, citations to 25 curated sources on every result, staged writeback with rollback, and guided outcomes that always end in a safe human step. [Why Kern →](documentation/KERN_IDENTIDAD_Y_FILOSOFIA.md)
 
-**Kern** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models across **57 agent-routable capabilities** — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, a network digital twin, forecasting, pricing, price intelligence (competitor position), DDMRP, ABC-XYZ, sourcing, supplier segmentation (Kraljic), landed cost, import-case document pack, cost-to-serve, S&OP, facility location, multi-facility network design (p-median), DRP, transportation, FEFO, reconciliation, slotting, warehouse layout, vehicle routing, decision tension map (4 sombreros), reconciled replenishment plan, flow map, cross-area impact/objection verdict, intake scan (raw-folder data-readiness audit), ISO operations floor evidence, MUS audit-evidence workpaper, SCOR/ISO evidence pack and more — and an **orchestrator agent** drives every one of them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **25 curated SCM sources and the codebase itself**.
+**Kern** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models across **58 agent-routable capabilities** — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, a network digital twin, forecasting, pricing, price intelligence (competitor position), DDMRP, ABC-XYZ, sourcing, supplier segmentation (Kraljic), landed cost, import-case document pack, cost-to-serve, S&OP, facility location, multi-facility network design (p-median), DRP, transportation, FEFO, reconciliation, slotting, warehouse layout, vehicle routing, decision tension map (4 sombreros), reconciled replenishment plan, flow map, cross-area impact/objection verdict, intake scan (raw-folder data-readiness audit), ISO operations floor evidence, MUS audit-evidence workpaper, SCOR/ISO evidence pack and more — and an **orchestrator agent** drives every one of them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **25 curated SCM sources and the codebase itself**.
 
 [![version](https://img.shields.io/badge/version-2.9.0-5eead4)](CHANGELOG.md)
 [![python](https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
@@ -63,7 +63,7 @@ Every capability below is agent-routable — a brief in, a QA-gated deliverable 
 </div>
 
 <details>
-<summary><b>📋 The full list, by area (57 tools)</b></summary>
+<summary><b>📋 The full list, by area (58 tools)</b></summary>
 
 | Area | Tools |
 |---|---|

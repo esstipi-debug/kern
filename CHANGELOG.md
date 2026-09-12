@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+### Added
+- **`repricing` es la tool #58: el playbook multicanal por fin ruteable, y SOLO
+  en modo staging.** El hallazgo #6 de la auditoria del 2026-07-13 decia que
+  `jobs/repricing.py` estaba "fully engineered, fully tested, currently
+  unreachable by anyone but a test"; al re-verificarlo el 2026-09-12 seguia sin
+  registrar. La misma auditoria advertia que exponer una superficie de escritura
+  externa como tool completa era "larger, riskier than fits one run" — asi que
+  esto shipea la mitad segura y deja la otra escrita.
+
+  **Nunca aplica y nunca toca un canal vivo.** `jobs/repricing_job.py` no importa
+  `apply_repricing` ni `run_channel_repricing` (lo fija un guard de AST, no un
+  grep), arma el changeset contra una copia en memoria de los precios actuales
+  que declara el propio cliente, y **siempre** devuelve HANDOFF: jamas OPTIONS,
+  jamas EXECUTED. No hay camino desde un brief en lenguaje natural hasta una
+  escritura de precios. Golden Rule 11: la autonomia sobre una superficie de
+  escritura nueva se gana con evidencia A4, y una tool que no existia hasta hoy
+  no tiene ninguna.
+
+  Fuera de la superficie MCP a proposito, y no porque escriba —no escribe—, sino
+  porque su tema es un cambio a los precios vivos de un cliente y su salida es un
+  changeset con forma de ser aplicado. Declarado en `webapp/mcp_tool_specs.py` y
+  en `docs/MCP_SERVER.md`.
+
+  Las citas se fundan sobre el keyword set FIJO del playbook con brief vacio (el
+  fix de la trilogia #160/#162/#164) en vez del `reason` libre del operador: es el
+  unico gate del repo donde un cero **bloquea duro** el changeset entero, asi que
+  la redaccion de una linea no puede cambiar el veredicto. Medido: 4 citas,
+  siempre las mismas.
+
+### Fixed
+- **Un SKU vacio se colaba como el SKU literal `"nan"`.** Aparecio al escribir los
+  tests de `repricing_job`: pandas lee la celda en blanco como NaN y `str(nan)` es
+  `"nan"`, que es no-vacio y pasa un `if not sku`. Habria quedado una fila de
+  cambio de precio para un producto llamado "nan". Se chequea `pd.isna` primero.
+- **Import circular introducido y cerrado en el mismo PR.** Registrar la tool puso
+  `jobs.repricing_job` en la cadena de `scm_agent/__init__`, y como
+  `jobs.repricing` importa `scm_agent.knowledge`, un `import jobs.repricing` plano
+  —el que hacen `examples/run_repricing.py` y los tests del playbook— moria con un
+  modulo a medio inicializar. El import quedo perezoso dentro de `run()`, con un
+  test que lo corre en un subproceso para que los modulos ya cargados de la sesion
+  no lo tapen.
+
 ### Changed
 - **`nosilo_core` vuelve a este repo; se acabaron los secretos de build (PR-3).**
   El control plane (16 archivos, 3.569 lineas: `registry`, `guided`, `writeback`,

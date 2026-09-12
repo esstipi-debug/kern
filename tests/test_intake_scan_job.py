@@ -321,8 +321,9 @@ def test_healthy_folder_passes_the_gate_and_evaluates_the_declared_tools(tmp_pat
     # tool UNDECLARED only when it declares none). On this folder that's abc_xyz,
     # data_quality, excess_obsolete, financial_kpis (the pre-existing 4) plus
     # procedure_audit (name without last_reviewed_at -> RED) plus audit_evidence
-    # (unit_id/book_value missing -> RED) plus scor_iso_audit (dataset missing -> RED).
-    assert report.n_tools_evaluated == 7
+    # (unit_id/book_value missing -> RED) plus scor_iso_audit (dataset missing -> RED)
+    # plus repricing (current_price/proposed_price missing on a sales folder -> RED).
+    assert report.n_tools_evaluated == 8
     # Pin the extra tools' identity, not just the count -- a future tool that also
     # declares required_columns on this folder shape would keep n_tools_evaluated
     # from moving if one verdict swapped for another without this failing.
