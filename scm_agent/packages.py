@@ -463,6 +463,21 @@ def missing_required_inputs(spec: PackageSpec, intake_dir: str | Path | None) ->
     return missing
 
 
+def _deck_accepts(deck: Callable | None, parametro: str) -> bool:
+    """Whether this tool's deck takes ``parametro``, asked of the callable itself.
+
+    The shared mechanism behind :func:`deck_accepts_lang` and
+    :func:`deck_accepts_readings`. Generalised rather than copied because it is literally
+    the same question twice, and a second hand-written ``inspect.signature`` is a second
+    place to get the ``None`` case wrong. The two public wrappers stay separate: each one
+    documents *why its own* parameter is asked instead of declared, which is the part a
+    reader needs and the part a shared docstring could not carry.
+    """
+    if deck is None:
+        return False
+    return parametro in inspect.signature(deck).parameters
+
+
 def deck_accepts_lang(deck: Callable | None) -> bool:
     """True when this tool's deck can be told which language the package sells in.
 
@@ -472,9 +487,31 @@ def deck_accepts_lang(deck: Callable | None) -> bool:
     shape of silent default the rest of this work has been removing. Introspection cannot
     drift; ``tests/test_package_threads_lang_to_tool_decks.py`` keeps the inventory visible.
     """
-    if deck is None:
-        return False
-    return "lang" in inspect.signature(deck).parameters
+    return _deck_accepts(deck, "lang")
+
+
+def deck_accepts_readings(deck: Callable | None) -> bool:
+    """True when this tool's deck knows how to carry book passages (``Deliverable.readings``).
+
+    Misma pregunta que :func:`deck_accepts_lang` y por la misma razon: se le pregunta al
+    callable en vez de declararlo, porque un flag hay que acordarse de actualizarlo el dia
+    que un ``build_deck`` GANA el parametro. Aca ademas la respuesta decide un COSTO, no
+    solo un render: el Orchestrator solo consulta el indice cuando hay quien renderice lo
+    que vuelva, y cada consulta levanta y baja el servidor de lectura entero (16,8 s con
+    el indice frio, ~1,6 GB de RSS). Un flag desactualizado falla de los dos lados -- en
+    False sobre un deck que ya sabe recibirlas es una seccion que nunca aparece, en True
+    sobre uno que no, un arranque de servidor por corrida que nadie mira.
+
+    Vive al lado de su hermana a proposito: los 53 decks registrados tienen UNA forma
+    (``scm_agent/tools.py``), y las preguntas sobre esa forma se hacen todas desde el
+    mismo lugar. Hoy los 53 contestan True -- el parametro se enhebra en el mismo
+    ``replace(...)`` que ya armaba ``options``, sin tocar ningun ``build_deck`` --, asi
+    que el unico False vivo es el de un tool sin deck. Eso NO vuelve inutil la pregunta:
+    es lo que hace que el deck 54, si naciera con la firma vieja, no arrastre un arranque
+    de servidor por corrida. ``tests/test_tools_threads_readings_to_decks.py`` mantiene el
+    inventario a la vista y falla si alguno se queda mudo.
+    """
+    return _deck_accepts(deck, "readings")
 
 
 def _truncar_como_el_serial(

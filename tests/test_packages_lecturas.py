@@ -31,6 +31,7 @@ vez de texto, que es lo que sostiene que 12 sea 12.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -174,9 +175,20 @@ def test_ni_un_grupo_de_excepciones_deja_la_carpeta_a_medias(monkeypatch):
     puestos y sin el deck del paquete. `read_passages` promete no levantar, pero su
     guarda es `except Exception` y anyio levanta `BaseExceptionGroup`, que esa clausula
     NO ve. El invariante lo tiene que sostener este lado, no la promesa del otro.
+
+    QUE EL HIJO SEA UNA `CancelledError` ES TODO EL TEST. Python elige la clase del grupo
+    por sus hijos: con hijos que son todos `Exception` construye un `ExceptionGroup`, que
+    `except Exception` atrapa perfecto -- o sea que un grupo asi no ejercita el agujero y
+    esta guarda pasaria igual escrita `except Exception`. El grupo que anyio levanta
+    cuando adentro hubo una cancelacion lleva una `asyncio.CancelledError`, que es
+    `BaseException` y NO `Exception`: ese es el que se escapa.
     """
+    grupo = BaseExceptionGroup("unhandled errors in a TaskGroup",
+                               [asyncio.CancelledError()])
+    assert not isinstance(grupo, Exception)   # si esto falla, el test no prueba nada
+
     def _grupo(*a, **kw):
-        raise BaseExceptionGroup("unhandled errors in a TaskGroup", [OSError("boom")])
+        raise grupo
 
     monkeypatch.setattr(lectura, "read_passages", _grupo)
     spec = _spec("uno")
