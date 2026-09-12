@@ -489,3 +489,41 @@ def test_lo_que_el_conector_produce_arrancando_con_formula_sobrevive(tmp_path):
     d = _poblado("en", readings=(leida,))
     assert leida.excerpt in d.to_markdown()
     assert leida.excerpt in str(_hoja_lecturas(d, tmp_path)[2][2])
+# ---- 8. lo ilegible no llega a la pagina del cliente, por ninguna de las dos caras ---
+#
+# El piso de legibilidad vive en el conector (`lectura.MAX_RELLENO_EXCERPT`), pero la
+# unica razon por la que existe es esta: `to_markdown` y `to_excel` imprimen el extracto
+# SIN filtro, y son la ultima milla antes del cliente. Estos dos tests entran por el
+# productor real, no construyendo `Reading` a mano, porque lo que se afirma es que el
+# camino COMPLETO -- cable, parser, deck, render -- no publica un pasaje que nadie puede
+# leer bajo un libro y una pagina que si son reales.
+
+# Textual del indice vivo: vandeput-data-science-supply-chain-forecasting, PDF p.298-299.
+# El U+00B7 es lo que manda el PDF con el glyph-mapping roto donde iba una letra.
+_CABLE_ILEGIBLE = (
+    "1. **vandeput-data-science-supply-chain-forecasting** PDF p.298-299\n"
+    "   y\u00b7 \u00b7 \u00b7 \u00b7up\u00b7lk \u00b7h\u00b7l\u00b7m\u00b7k\u00b7gbl \u00b7f\u00b7j is one of the most used "
+    "libraries in \u00b7ython (it was created by \u00b7es \u00b7c\u00b7inney in 2008). \u00b7he name "
+    "comes from h\u00b7f el \u00b7 ta, because it helps to order data into ta\u00b7 bles.\n"
+)
+
+
+def test_un_pasaje_ilegible_llega_al_markdown_como_libro_y_pagina_sin_comillas():
+    (leida,) = lectura.parse_readings(_CABLE_ILEGIBLE)
+    md = _poblado("en", readings=(leida,)).to_markdown()
+
+    assert "vandeput-data-science-supply-chain-forecasting" in md
+    assert "PDF p.298-299" in md
+    assert "-ython" not in md and "-c-inney" not in md  # la basura no viaja
+    linea = next(ln for ln in md.splitlines() if "PDF p.298-299" in ln)
+    assert '"' not in linea  # y no queda un par de comillas afirmando una cita
+
+
+def test_un_pasaje_ilegible_tampoco_entra_al_xlsx(tmp_path):
+    """La otra cara. El xlsx es la que el cliente filtra, ordena y pega en un mail."""
+    (leida,) = lectura.parse_readings(_CABLE_ILEGIBLE)
+    filas = _hoja_lecturas(_poblado("en", readings=(leida,)), tmp_path, "ilegible.xlsx")
+
+    assert filas[2][:2] == ("vandeput-data-science-supply-chain-forecasting",
+                            "PDF p.298-299")
+    assert not (filas[2][2] or "")

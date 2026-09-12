@@ -60,6 +60,52 @@ MAX_EXCERPT_CHARS = 320
 #: fueran el nombre de un libro. El slug mas largo del indice mide 50.
 MAX_SOURCE_CHARS = 120
 
+#: Los dos caracteres que :func:`_sanear` FABRICA cuando no pudo recuperar el original:
+#: el ``?`` de ``encode("ascii", "replace")`` y el ``-`` al que colapsa toda la familia
+#: de rayas de :data:`_REEMPLAZOS`. Un PDF con el glyph-mapping roto no llega con
+#: caracteres raros, llega con ESTOS DOS -- por eso el piso de legibilidad los cuenta a
+#: ellos y no "todo lo que no es una letra": ver :data:`MAX_RELLENO_EXCERPT`.
+_RELLENO_FABRICADO = frozenset("-?")
+
+#: Piso de legibilidad del extracto: que fraccion de sus caracteres no-blancos puede ser
+#: relleno fabricado antes de que el extracto se TIRE (libro y pagina quedan: este modulo
+#: ya declara que eso solo es procedencia completa, y el fragmento es el extra).
+#:
+#: POR QUE EXISTE. El indice tiene al menos un libro con el glyph-mapping destruido, y lo
+#: que sale de ahi pasa todas las otras puertas -- slug valido, etiqueta que matchea
+#: :data:`_ETIQUETA_RE`, una sola linea, bajo el tope -- y se publica TEXTUAL entre
+#: comillas bajo un libro y una pagina REALES: ``"y- - - -up-lk -h-l-m-k-gbl -f-j is one
+#: of the most used libraries in -ython (it was created by -es -c-inney in 2008)"``. Una
+#: cita que el cliente no puede verificar es peor que no citar, y esta es la peor clase:
+#: el propio saneo convierte texto irrecuperable en algo con forma de prosa.
+#:
+#: EL NUMERO ESTA MEDIDO, NO ESTIMADO: 400 pasajes distintos del indice vivo (15 libros,
+#: 22 consultas). Y refuta la metrica obvia -- "proporcion de letras vs relleno" NO
+#: separa: el pasaje roto de arriba tiene 82,7% de letras y un listado de codigo
+#: perfectamente legible tiene 61,4%. Contando SOLO el relleno fabricado, en cambio:
+#:
+#:   * los 375 pasajes de los otros 14 libros: p50 = 0,004  p90 = 0,012  p95 = 0,019;
+#:   * los 25 del libro roto: min = 0,028, mediana = 0,067, max = 0,206.
+#:
+#: Con 0,04 se descarta el 92% del libro roto (los tres casos de la muestra puntuan
+#: 0,112, 0,117 y 0,136) y el 2,1% del resto -- y de esos 8, 5 son volcados de figuras y
+#: formulas ya ilegibles ("suma i?M fi(xi)-R?suma i?M gi(xi)", una tabla de reporte con
+#: rayas de cuadricula), no prosa. El corte queda 3,3x arriba del p90 sano y por encima
+#: del listado de codigo mas denso que se midio (0,030).
+#:
+#: HACIA DONDE SE FALLA, A PROPOSITO: tirar de mas cuesta un fragmento y deja libro +
+#: pagina; tirar de menos publica basura atribuida a una pagina real. Lo que este umbral
+#: NO arregla es el pasaje medio roto (un encabezado destruido pegado a un cuerpo
+#: legible, 0,028-0,038): un promedio sobre todo el extracto no lo ve.
+#:
+#: Y POR QUE ESTO NO VA EN ``Reading.__post_init__``, donde SI vive el tope de longitud:
+#: el tope es una invariante del valor y su respuesta correcta es negarse a existir. Esto
+#: es un umbral heuristico y su respuesta correcta es DEGRADAR -- tirar el fragmento y
+#: dejar la entrada en pie. Un tipo que levanta no puede degradar por su productor: lo
+#: obligaria a medir primero con este mismo helper para no comerse la excepcion, o sea la
+#: regla viviria igual del lado del parser, mas una trampa.
+MAX_RELLENO_EXCERPT = 0.04
+
 #: Lo que el emisor pone cuando NO sabe de que libro salio el pasaje
 #: (``format_chunks``: ``c.get("file_path", "?")``). Una entrada asi trae pagina pero
 #: no trae libro: es procedencia que el cliente no puede verificar, asi que se descarta
@@ -265,6 +311,23 @@ def _cortar(texto: str) -> str:
     return cabeza.rstrip(" ,;:.") + _ELIPSIS
 
 
+def _es_ilegible(texto: str) -> bool:
+    """True si el extracto es mas relleno fabricado que texto, y no se puede publicar.
+
+    Se mide sobre el extracto YA saneado y cortado, que es exactamente lo que veria el
+    cliente: medirlo sobre el crudo seria medir un texto que nadie va a leer. El corte
+    ademas ayuda, porque el encabezado destruido de un PDF roto suele estar al principio.
+
+    Un extracto vacio no es ilegible, es ausente: la entrada sigue siendo procedencia
+    valida con libro y pagina, y no hay nada que tirar.
+    """
+    sin_blanco = [c for c in texto if not c.isspace()]
+    if not sin_blanco:
+        return False
+    relleno = sum(1 for c in sin_blanco if c in _RELLENO_FABRICADO)
+    return relleno / len(sin_blanco) > MAX_RELLENO_EXCERPT
+
+
 def _es_linea_de_error(texto: str) -> bool:
     """El servidor reporta sus fallos como texto plano con este prefijo, no como isError."""
     return texto.lstrip().lower().startswith(PREFIJO_ERROR)
@@ -277,8 +340,9 @@ def parse_readings(crudo: str) -> tuple[Reading, ...]:
     """Las entradas ``N. **slug** ETIQUETA`` + extracto indentado que trae el markdown.
 
     Tolerante con lo que FALTA, cerrado con lo que SOBRA. El extracto puede no estar
-    (libro + pagina ya es procedencia completa; el fragmento es el extra) o venir
-    partido en varias lineas, y una entrada rota se descarta sola sin llevarse el lote.
+    (libro + pagina ya es procedencia completa; el fragmento es el extra), venir partido
+    en varias lineas o quedarse en el camino por ilegible (:data:`MAX_RELLENO_EXCERPT`),
+    y una entrada rota se descarta sola sin llevarse el lote.
     Pero una linea que no es una entrada NI un extracto indentado se tira: pegarla al
     cuerpo de la entrada anterior -- que es lo que hacia la primera version -- le
     atribuye a un libro y a una pagina texto que el servidor no saco de ningun libro
@@ -309,9 +373,13 @@ def parse_readings(crudo: str) -> tuple[Reading, ...]:
         sin_libro = not slug or slug == FUENTE_DESCONOCIDA or len(slug) > MAX_SOURCE_CHARS
         if sin_libro or not _ETIQUETA_RE.match(etiqueta):
             continue  # media cita no se inventa: sin slug creible o sin pagina creible, no hay entrada
-        lecturas.append(
-            Reading(source=slug, page_label=etiqueta, excerpt=_cortar(_sanear(" ".join(cuerpo))))
-        )
+        extracto = _cortar(_sanear(" ".join(cuerpo)))
+        if _es_ilegible(extracto):
+            # El libro y la pagina SI se conservan: son procedencia completa por si
+            # solos. Lo que se tira es el fragmento, que es el extra -- y publicarlo
+            # seria ponerle comillas a algo que el cliente no puede verificar.
+            extracto = ""
+        lecturas.append(Reading(source=slug, page_label=etiqueta, excerpt=extracto))
     return tuple(lecturas)
 
 
