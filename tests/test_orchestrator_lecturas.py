@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import zipfile
 from dataclasses import replace
 from pathlib import Path
 
@@ -256,7 +257,22 @@ def test_con_el_registry_real_el_indice_ni_se_consulta_y_el_entregable_no_se_mue
     assert sorted(con.deliverables) == sorted(sin.deliverables)
     for nombre, ruta in con.deliverables.items():
         otro = Path(sin.deliverables[nombre])
-        assert Path(ruta).read_bytes() == otro.read_bytes(), nombre
+        assert _bytes_estables(Path(ruta)) == _bytes_estables(otro), nombre
+
+
+#: Miembro del xlsx que openpyxl estampa con el reloj de pared, a resolucion de UN segundo.
+#: Dos corridas que caen en segundos distintos dan bytes distintos aunque el contenido sea
+#: identico: medido, ~6% de las veces, y pasa igual comparando el arbol base contra si mismo.
+#: O sea que es el formato, no el cableado. Saltarlo es lo que vuelve honesto al assert.
+_XLSX_NO_DETERMINISTA = "docProps/core.xml"
+
+
+def _bytes_estables(path: Path):
+    """Los bytes del archivo, sin la marca de tiempo que el formato agrega sola."""
+    if path.suffix != ".xlsx":
+        return path.read_bytes()
+    with zipfile.ZipFile(path) as z:
+        return {n: z.read(n) for n in sorted(z.namelist()) if n != _XLSX_NO_DETERMINISTA}
 
 
 def test_sin_indice_el_deck_se_llama_exactamente_como_hoy(tmp_path, monkeypatch):
