@@ -100,6 +100,50 @@ def _leer(payload: str, **kwargs) -> tuple[ReadingLookup, list[dict]]:
 # --- 1. configuracion por entorno: en produccion NO esta, y eso no es un error ------
 
 
+# -- el indice por RED: su propia app, encendida a pedido ---------------------
+
+
+def test_la_url_por_red_se_usa_y_no_se_mira_el_interprete_local(monkeypatch):
+    """Con ``KERN_LECTURA_URL`` el conector habla por red y ni mira el interprete.
+
+    En produccion el indice NO vive adentro de Kern: una consulta pica en 1.595 MB
+    medidos y Kern usa 377 MB, asi que co-locarlos obligaria a una VM de 4 GB las 24
+    horas por un pico que solo ocurre mientras corre un entregable. El indice tiene su
+    propia app, que se apaga sola. El puerto 9 (descarte) nunca escucha: lo que se
+    afirma es cual de los dos caminos se tomo, no que el servidor conteste.
+    """
+    monkeypatch.delenv(lectura.ENV_INTERPRETE, raising=False)
+    monkeypatch.setenv(lectura.ENV_URL, "http://127.0.0.1:9/mcp")
+
+    r = lectura.read_passages(["safety", "stock"], timeout_s=5.0)
+
+    assert r.available is False
+    assert r.readings == ()
+    assert lectura.ENV_INTERPRETE not in r.note, (
+        "se quejo del interprete local teniendo URL de red: " + r.note
+    )
+    # Sin esto el test pasa igual con el caller ROTO: un TypeError por construir mal el
+    # cliente HTTP tambien termina en available=False, y se ve identico a un servidor
+    # apagado. Paso de verdad al migrar al API nuevo de `streamable_http_client`, que
+    # cambio `timeout=` por `http_client=`. La nota tiene que hablar de la CONEXION.
+    for defecto in ("TypeError", "AttributeError", "NameError", "ImportError"):
+        assert defecto not in r.note, (
+            f"el camino por red no fallo por conexion sino por codigo ({defecto}): {r.note}"
+        )
+
+
+def test_sin_url_ni_interprete_la_nota_nombra_los_dos_caminos(monkeypatch):
+    """La nota tiene que decirle a un humano COMO se configura, y hay dos formas."""
+    monkeypatch.delenv(lectura.ENV_INTERPRETE, raising=False)
+    monkeypatch.delenv(lectura.ENV_URL, raising=False)
+
+    r = lectura.read_passages(["safety", "stock"])
+
+    assert r.available is False
+    assert lectura.ENV_URL in r.note
+    assert lectura.ENV_INTERPRETE in r.note
+
+
 def test_sin_la_variable_de_entorno_no_hay_lectura(monkeypatch):
     """El camino de PRODUCCION. El indice pide 1,6 GB y la VM tiene 512 MB
     (`fly.toml`), asi que alla nunca esta disponible: la ausencia es el default."""
