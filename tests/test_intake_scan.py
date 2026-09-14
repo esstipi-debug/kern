@@ -1,6 +1,5 @@
 """Tests for the pure intake_scan engine: profiles, circuit breakers, verdict."""
 from nosilo_core.guided import EXECUTED, OPTIONS
-
 from src.intake_scan import (
     GREEN,
     RED,

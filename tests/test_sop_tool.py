@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from nosilo_core import llm
 
 from jobs import sop_job as sopj
+from nosilo_core import llm
 from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 
@@ -63,6 +63,45 @@ def test_run_produces_a_protected_review_that_passes_qa():
     assert review.outcome.status == "options"
     assert review.recommended.name in {"Chase", "Level", "Hybrid"}
     assert sopj.verify(review) == []
+
+
+# -- demand-shaping: the promotion calendar reaches the engine ------------------
+
+
+def test_run_applies_the_promo_lift_before_planning():
+    payload = {"demand": [100.0, 120.0, 80.0, 100.0], "labels": ["M1", "M2", "M3", "M4"]}
+
+    review = sopj.run(payload, opening_inventory=50.0, target=20.0, promo_lift={1: 2.0})
+
+    assert review.promo_lift == {1: 2.0}
+    assert review.adjusted_demand == pytest.approx([100.0, 240.0, 80.0, 100.0])
+    assert review.recommended.total_demand == pytest.approx(520.0)
+    assert sopj.verify(review) == []
+
+
+@pytest.mark.parametrize("raw", [None, {}])
+def test_parse_promo_lift_absent_is_noop(raw):
+    assert sopj.parse_promo_lift(raw) is None
+
+
+def test_parse_promo_lift_reads_json_style_string_keys():
+    assert sopj.parse_promo_lift({"1": 1.5, "3": 0.8}) == {1: 1.5, 3: 0.8}
+
+
+@pytest.mark.parametrize("bad", ["x", "1.5"])
+def test_parse_promo_lift_rejects_a_bad_index(bad):
+    with pytest.raises(ValueError, match="not a period index"):
+        sopj.parse_promo_lift({bad: 1.5})
+
+
+def test_parse_promo_lift_rejects_a_bad_multiplier():
+    with pytest.raises(ValueError, match="not a number"):
+        sopj.parse_promo_lift({"1": "two"})
+
+
+def test_parse_promo_lift_rejects_a_non_dict():
+    with pytest.raises(ValueError, match="must be a dict"):
+        sopj.parse_promo_lift([1.5])
 
 
 # -- routing ------------------------------------------------------------------

@@ -7,7 +7,7 @@ This module is that enforcement -- it turns the label into actual behavior
 for the two shapes a routed tool result can take (plan S5, A3 row):
 
 (a) **Analysis-only tools** (the common case -- most of ``scm_agent/tools.py``'s
-    37 registered tools): a routed run produces a
+    50 registered tools): a routed run produces a
     ``nosilo_core.types.JobResult`` with no system-of-record write attached.
     :func:`enforce_analysis_tier` gates it:
 
@@ -67,6 +67,7 @@ from nosilo_core import escalation, writeback
 from nosilo_core.escalation import escalate
 from nosilo_core.guided import GuidedOutcome, HandoffPacket, as_executed, as_handoff
 from nosilo_core.types import STATUS_OK
+from src.data_paths import resolve_state_path
 
 from .event_intent import (
     DEFAULT_ROUTING_PATH,
@@ -94,7 +95,7 @@ STATUS_EXPIRED = "expired"               # T2: the approval window lapsed, unact
 
 # Env-override convention matching scm_agent/events.py's DEFAULT_PATH and
 # src/state/store.py's LINCHPIN_STATE_PATH.
-DEFAULT_PATH = os.environ.get("LINCHPIN_AUTONOMY_PATH", "").strip() or "data/autonomy.sqlite3"
+DEFAULT_PATH = resolve_state_path("autonomy")
 
 
 def _default_ttl_seconds() -> float:

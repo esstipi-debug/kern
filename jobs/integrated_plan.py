@@ -44,7 +44,13 @@ multi-file intake and its own ``write_deliverable``.
 
 1. Forecast: ``jobs.forecast_job.prepare`` + ``run`` over the demand-history
    CSV -- v1's "reconciliation" is exactly reading this latest run (plan
-   section 5's own scoping; no hierarchical reconciliation machinery).
+   section 5's own scoping; no hierarchical reconciliation machinery). Its
+   cycle memory -- did accuracy improve or worsen since the last plan -- is
+   opt-in and NAMED: ``params['state_client_id']`` selects ONE client's state
+   partition (``jobs.forecast_cycle.store_from_params``), and omitting it
+   leaves the memory off, with the deliverable saying so in words. Omission
+   never falls back to a partition shared with another client: that fallback
+   is what made client B's deck quote client A's MAPE as B's own baseline.
 2. Demand shaping (P2): if ``params['price_history_path']`` is given, batch-
    fits elasticity (``src.elasticity_batch``) and optimizes prices
    (``src.price_optimizer``) -- PR-16's P2, reused directly (no dedicated P2
@@ -59,11 +65,46 @@ multi-file intake and its own ``write_deliverable``.
    liquidation'] = False`` or missing ``daily_demand``.
 4. Purchase plan (step 3): ``src.sop_engine.purchase_plan`` against the
    stock CSV's on_hand/unit_cost/reorder_point/incoming_po/MOQ/order_multiple.
-5. Coherence checks (step 4): ``src.sop_engine.coherence`` -- the >=3 citable
+5. Cash calendar (step 5): ``src.sop_engine.cash_plan`` dates each purchase
+   line by the supplier's payment terms and adds the disbursements up per
+   week, against ``params['cash_cap_per_week']`` when one is given. A purchase
+   TOTAL is not a cash decision -- the question a buyer answers is whether the
+   money fits the week it leaves. The terms column is optional like the rest;
+   what is NOT optional is that a line planned on
+   ``cash_plan.DEFAULT_PAYMENT_TERMS`` says so (``payment_terms_source``), so
+   the calendar can never be read as if the plazo had been looked up.
+6. Coherence checks (step 4): ``src.sop_engine.coherence`` -- the >=3 citable
    checks.
-6. ONE deliverable (:func:`write_deliverable`): E4 (lang)/E5 (citation
+7. ONE deliverable (:func:`write_deliverable`): E4 (lang)/E5 (citation
    gate)/E6 (branding), per Golden Rule 13 -- not four tool reports stapled
    together.
+
+**Where the code lives.** This file is the pipeline and the job's contract
+(``prepare`` -> ``run`` -> ``verify`` -> ``write_deliverable``). Each axis it
+composes is a sibling module, the way ``src/sop_engine/`` is split by axis:
+
+* ``jobs/integrated_plan_inputs.py``    -- the OPTIONAL inputs (P2 price history,
+  P4 liquidation, the ``as_of`` anchor) and the rule each degrades by. The
+  REQUIRED stock file's own column sniffing stays here: it is the layer that
+  records which optional purchase inputs went unstated, which is what the
+  silent-zero fix below rests on.
+* ``jobs/integrated_plan_coherence.py`` -- the tally: which of the engine's
+  results is a reading and which is an absence, and the verdict that follows.
+* ``jobs/integrated_plan_cash.py``      -- step 5's rendering: the weekly
+  disbursement rows, the purchase rows they are dated from, cash findings/KPIs.
+* ``jobs/integrated_plan_deck.py``      -- the demand/coherence CSV row shapes
+  and the deck's findings, KPIs and recommendations.
+
+An earlier round of this split stopped halfway: it moved step 5 out and then put
+more back, so the file GREW 130 net lines while the extraction read as done. It
+sat 251 lines past the repo's 800-line ceiling when that was first written up and
+319 past it by the time it was closed, with this docstring DOCUMENTING the overrun
+instead of resolving it. A violation a comment admits to is not a smaller
+violation -- it is the same one, harder to notice.
+Every module named above is under the ceiling and no function in any of them runs
+past 50 lines; ``tests/test_integrated_plan_techo_de_archivo.py`` is what keeps
+it that way, and it measures the siblings too so the next axis cannot simply
+fatten on the other side of the cut.
 
 QA (``jobs.qa.verify_integrated_plan``/``integrated_plan_passed``) checks
 structural soundness (finite numbers, all 3 required check kinds present,
@@ -98,37 +139,53 @@ the mirror-image dishonesty.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
 
-from jobs import forecast_job
-from jobs import markdown_liquidation_job as mlq
+from jobs import forecast_cycle, forecast_job
 from jobs.forecast_job import ForecastJobReport
-from jobs.pricing import prepare_pricing
+from jobs.integrated_plan_cash import cash_rows, purchase_rows
+from jobs.integrated_plan_coherence import (
+    COHERENT,
+    INCOHERENT,  # noqa: F401  -- re-export, see the note below
+    INDETERMINATE,  # noqa: F401  -- re-export, see the note below
+    VERDICTS,
+    CoherenceTally,
+    _grounding_column,  # noqa: F401  -- re-export, see the note below
+    _tally,
+    _unsupplied_grounding,
+    _verdict,
+)
+from jobs.integrated_plan_deck import (
+    _DATA_SOURCES,
+    _RESIDUAL,
+    _deck_findings,
+    _deck_kpis,
+    _deck_recommendations,
+    check_rows,
+    demand_rows,
+)
+from jobs.integrated_plan_inputs import _as_of, _build_liquidation_lines, _build_price_shifts
 from scm_agent.citation_gate import filter_citations
 from scm_agent.knowledge import KnowledgeBase
 from src import i18n
-from src.deliverable import DEFAULT_BRANDING, Branding, DataSource, Deliverable, Finding, Kpi
-from src.elasticity_batch import estimate_portfolio_elasticities
+from src.deliverable import DEFAULT_BRANDING, Branding, Deliverable
 from src.export import write_summary_csv
-from src.liquidation import LiquidationLine
-from src.price_optimizer import PriceOptimizationResult, optimize_portfolio_prices
-from src.sop_engine.coherence import (
-    CHECK_BUDGET_FEASIBILITY,
-    CHECK_PROMO_COVERAGE,
-    CHECK_SERVICE_LEVEL,
-    NOT_EVALUABLE,
-    STATUS_FAILED,
-    STATUS_PASSED,
-    CoherenceResult,
-    UnevaluableCheck,
-)
+from src.sop_engine.cash_plan import DEFAULT_PAYMENT_TERMS, parse_payment_terms
+from src.sop_engine.coherence import NOT_EVALUABLE, UnevaluableCheck  # noqa: F401  -- re-export, see below
 from src.sop_engine.demand_plan import NO_SHIFT_SOURCE
 from src.sop_engine.engine import IntegratedPlanReport, run_integrated_plan
 from src.sop_engine.purchase_plan import SkuPurchaseInputs
+
+# The names marked ``noqa: F401`` above are RE-EXPORTS, not leftovers. They moved
+# out with the coherence and deck axes and this file no longer calls them, but it
+# is still the playbook's single import for a caller -- ``jobs.qa``, the CLI in
+# ``examples/`` and the tests all read the verdict vocabulary, the check-kind
+# classifier and the CSV status vocabulary from ``jobs.integrated_plan``. Dropping
+# them would charge every call site for an extraction it did not ask for. The
+# marker says the import IS the point, so a later reader does not "clean it up".
 
 TOOL_KEY = "sop"  # A5 is S&OP-flavored demand/supply reconciliation; reuses the already-verified
 # "sop" anchor concepts (vollmann_sop, aggregate_planning) in scm_agent/citation_gate.py's
@@ -141,26 +198,19 @@ _REORDER_COLS = ("reorder_point", "rop", "reorder_pt", "reorder_level")
 _INCOMING_PO_COLS = ("incoming_po", "po_incoming", "on_order", "in_transit", "open_po")
 _MOQ_COLS = ("minimum_order_quantity", "moq", "min_order_qty")
 _MULTIPLE_COLS = ("order_multiple", "case_pack", "pack_size")
-
-# -- coherence verdict vocabulary ---------------------------------------------
-# Named like jobs/cross_impact_job.py's: INDETERMINATE is a first-class outcome,
-# not an error, and it outranks the clean verdict on purpose.
-COHERENT = "coherent"
-INCOHERENT = "incoherent"
-INDETERMINATE = "indeterminate"
-VERDICTS = (COHERENT, INCOHERENT, INDETERMINATE)
-
-# Which purchase input each coherence check's PER-SKU verdict rests on. ``None``
-# means the check reads no per-SKU purchase input at all (the budget check is
-# portfolio-level by construction). A check kind absent from this map has no
-# declared grounding and :func:`_grounding_column` raises rather than assume it
-# is safe -- packs/source_to_pay/recovery.py's ``_unquantified`` rule: a code
-# nobody classified must not fall through as zero.
-_GROUNDING_COLUMN: dict[str, str | None] = {
-    CHECK_SERVICE_LEVEL: "reorder_point",
-    CHECK_PROMO_COVERAGE: "incoming_po",
-    CHECK_BUDGET_FEASIBILITY: None,
-}
+# The supplier's payment condition -- TEXT, not a number, so it never goes
+# through _cell(). It is the only input here that dates the money: without it
+# every line falls back to cash_plan.DEFAULT_PAYMENT_TERMS and says so.
+#
+# NO GENERIC "terms" ALIAS, on purpose. In a procurement export "terms" names
+# INCOTERMS (FOB / CIF / DDP / EXW) at least as often as it names a plazo -- so
+# often that jobs/landed_cost_job.py, in this same repo, already reads that exact
+# column name as an Incoterm (its _INCOTERM_COLS). Sniffing it here turned a
+# COLLISION OF NAMES into a hard contract: SkuPurchaseInputs refuses "FOB" as an
+# unreadable plazo, so one Incoterms column killed prepare() for the WHOLE
+# portfolio. The spellings kept below all carry the word the concept is named
+# after; none of them can mean a delivery term.
+_PAYMENT_TERMS_COLS = ("payment_terms", "payment_term", "supplier_terms", "payment_condition")
 
 # What one NOT-EVALUABLE check costs the deck's confidence. Deliberately local
 # rather than imported, for the reason jobs/cross_impact_job.py states for its
@@ -205,76 +255,6 @@ _CITATION_KEYWORDS = (
 # The gate itself (anchors, MAX_HOPS, MIN_CITATIONS) is untouched.
 _CANDIDATE_POOL = 6   # candidates grounded and offered to the strict gate
 _MAX_CITATIONS = 3    # kept, on-topic survivors ultimately shown (tight display)
-
-
-@dataclass(frozen=True)
-class CoherenceTally:
-    """The coherence checks split into the three answers they can have: a pass,
-    a fail, and the absence of either.
-
-    The count that used to ship read "N/M passed" with M = every check RUN. A
-    check nobody could evaluate inflated both sides of that fraction, so the
-    fraction certified itself. Here M is what was EVALUATED, and the checks that
-    were not are counted apart, named, and carried with the input whose absence
-    cost them their verdict. The counts are derived, never stored, so no caller
-    can hand this object a total that its own contents contradict.
-    """
-
-    passed: tuple[CoherenceResult, ...]
-    failed: tuple[CoherenceResult, ...]
-    unevaluable: tuple[UnevaluableCheck, ...]
-
-    @property
-    def n_passed(self) -> int:
-        return len(self.passed)
-
-    @property
-    def n_failed(self) -> int:
-        return len(self.failed)
-
-    @property
-    def n_evaluated(self) -> int:
-        return len(self.passed) + len(self.failed)
-
-    @property
-    def n_unevaluable(self) -> int:
-        return len(self.unevaluable)
-
-    @property
-    def n_total(self) -> int:
-        return self.n_evaluated + self.n_unevaluable
-
-    @property
-    def missing_columns(self) -> tuple[str, ...]:
-        """The distinct inputs whose absence cost a check its verdict, for the ask."""
-        return tuple(sorted({u.column for u in self.unevaluable}))
-
-    @property
-    def headline(self) -> str:
-        """The one line every summary, deck and KPI derives from, so the gap cannot
-        survive in one rendering and vanish in another."""
-        head = (
-            "no coherence check could be evaluated" if not self.n_evaluated
-            else f"{self.n_passed}/{self.n_evaluated} evaluated coherence check(s) passed"
-        )
-        if self.n_failed:
-            head += f", {self.n_failed} FAILED"
-        if self.unevaluable:
-            head += (f", {self.n_unevaluable} NOT EVALUABLE "
-                     f"({', '.join(self.missing_columns)} not supplied)")
-        return head
-
-
-def _verdict(tally: CoherenceTally) -> str:
-    """First match wins. INDETERMINATE outranks INCOHERENT and COHERENT alike: a
-    plan with an unmeasured check has not been found coherent OR incoherent, and
-    a declared gap must never be reported as either (jobs/cross_impact_job.py's
-    ``_global_verdict``)."""
-    if tally.unevaluable:
-        return INDETERMINATE
-    if tally.failed:
-        return INCOHERENT
-    return COHERENT
 
 
 @dataclass(frozen=True)
@@ -327,11 +307,109 @@ def _cell(row: pd.Series, col: str | None) -> float | None:
     return float(row[col])
 
 
+def _text_cell(row: pd.Series, col: str | None) -> str:
+    """The TEXT the stock file held, or the empty string when it held nothing.
+
+    Payment terms are the one purchase input that is not a number, so ``_cell``
+    (which casts to float) cannot read them. The empty string is the value
+    ``SkuPurchaseInputs.payment_terms`` treats as "nobody wrote this down" --
+    the only case allowed to fall back to the declared default.
+
+    An INTEGRAL FLOAT is written back as the integer the client typed. A
+    payment-terms column holding plain day counts with a single blank cell is
+    read by pandas as ``float64`` (the blank forces it), so ``30`` arrives here
+    as ``30.0`` and a bare ``str()`` would hand ``parse_payment_terms`` a
+    ``"30.0"`` nobody wrote -- which it rejected, killing :func:`prepare` for
+    the whole portfolio over one empty cell in an OPTIONAL column. Only the
+    all-zero fraction is dropped: ``30.5`` still travels as-is and is still
+    refused downstream.
+    """
+    return "" if not col else _text_value(row[col])
+
+
+def _text_value(value: object) -> str:
+    """:func:`_text_cell`'s body, reachable without a row.
+
+    Split out so :func:`_payment_terms_column` can read a whole column through
+    exactly the same normalisation the rows will get. Reading it any other way
+    would judge a float64 plazo column by the ``"30.0"`` pandas renders rather
+    than by the ``30`` the client typed, and reject the very column this
+    function exists to rescue.
+    """
+    if not pd.notna(value):
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
 def _or_placeholder(value: float | None) -> float:
     """The arithmetic value ``SkuPurchaseInputs``' float field demands when nothing
     was stated -- NOT a reading. ``unsupplied_inputs``, built alongside it, is what
     every claim about this SKU is judged against."""
     return _PLACEHOLDER if value is None else value
+
+
+def _payment_terms_column(df: pd.DataFrame, params: dict) -> str | None:
+    """The column holding the supplier plazo, or ``None`` when the file has none.
+
+    Two callers, two contracts. A column named in ``params['payment_terms_col']``
+    is taken at its word: the caller ASSERTED that column is the payment
+    condition, so an unreadable value in it is a real data error and must still
+    stop the run (fail fast at the boundary) -- degrading it quietly would turn
+    the caller's assertion into our assumption.
+
+    A column found by NAME is different: nobody declared it, this module GUESSED
+    it, and a guess must not be able to kill a portfolio. So the guess is checked
+    against the column's CONTENT, and a column whose stated values do not read as
+    plazos is treated as never having been found. That is the general form of the
+    "terms"/Incoterms defect (see :data:`_PAYMENT_TERMS_COLS`): dropping the one
+    ambiguous alias fixes the case that was reported, but any name-based sniff
+    can still meet a column that happens to be spelled like ours, and the failure
+    mode must be "nobody stated the plazo", never a dead run.
+
+    ALL-OR-NOTHING on purpose. The question a sniffer answers is "is this the
+    payment-terms column", which is a property of the COLUMN. Reading the plazos
+    out of a column only partly made of plazos would date real money from a
+    column this module is not sure about -- strictly worse than declaring the
+    plazo unstated, which ``resolve_payment_terms`` stamps ``TERMS_ASSUMED`` and
+    the cash summary names SKU by SKU.
+    """
+    if params.get("payment_terms_col"):
+        return _pick_column(df, params["payment_terms_col"], _PAYMENT_TERMS_COLS)
+    col = _pick_column(df, None, _PAYMENT_TERMS_COLS)
+    if col is None:
+        return None
+    for value in df[col]:
+        text = _text_value(value)
+        if not text:
+            continue  # a blank cell is "nobody wrote this down", not a wrong guess
+        try:
+            parse_payment_terms(text)
+        except ValueError:
+            return None
+    return col
+
+
+def _required_columns(df: pd.DataFrame, params: dict) -> tuple[str, str, str]:
+    """``(product_id, on_hand, unit_cost)`` column names, or ``ValueError`` naming
+    the ones it could not find and the columns it did see.
+
+    Fail fast at the boundary: without these three there is no purchase line at
+    all, so a partial plan built from whatever the file happened to carry would
+    be worse than no plan (repo convention: validate at the system boundary).
+    """
+    product = _pick_column(df, params.get("product_col"), _PRODUCT_COLS)
+    on_hand = _pick_column(df, params.get("on_hand_col"), _ONHAND_COLS)
+    cost = _pick_column(df, params.get("cost_col"), _COST_COLS)
+    missing = [n for n, c in (("product_id", product), ("on_hand", on_hand), ("unit_cost", cost)) if c is None]
+    if missing:
+        cols = list(df.columns)[:10]
+        raise ValueError(
+            f"could not find {', '.join(missing)} for the purchase-plan inputs; pass them in params "
+            f"(columns seen: {cols})"
+        )
+    return product, on_hand, cost
 
 
 def _prepare_sku_inputs(
@@ -349,23 +427,18 @@ def _prepare_sku_inputs(
     HERE, at the boundary that saw the cell, rather than teaching the shared
     coherence engine about absence (``jobs/risk_job.py``'s split, verbatim).
     """
-    product = _pick_column(df, params.get("product_col"), _PRODUCT_COLS)
-    on_hand = _pick_column(df, params.get("on_hand_col"), _ONHAND_COLS)
-    cost = _pick_column(df, params.get("cost_col"), _COST_COLS)
-    missing = [n for n, c in (("product_id", product), ("on_hand", on_hand), ("unit_cost", cost)) if c is None]
-    if missing:
-        cols = list(df.columns)[:10]
-        raise ValueError(
-            f"could not find {', '.join(missing)} for the purchase-plan inputs; pass them in params "
-            f"(columns seen: {cols})"
-        )
-
+    product, on_hand, cost = _required_columns(df, params)
     optional_cols = {
         "reorder_point": _pick_column(df, params.get("reorder_col"), _REORDER_COLS),
         "incoming_po": _pick_column(df, params.get("incoming_po_col"), _INCOMING_PO_COLS),
         "minimum_order_quantity": _pick_column(df, params.get("moq_col"), _MOQ_COLS),
         "order_multiple": _pick_column(df, params.get("order_multiple_col"), _MULTIPLE_COLS),
     }
+    # Deliberately NOT in optional_cols/unsupplied_inputs: that structure feeds
+    # the coherence-gap machinery, and no coherence check reads a payment term
+    # (_GROUNDING_COLUMN would have nothing to map it to). The provenance of the
+    # plazo travels PER LINE instead, in PurchasePlanLine.payment_terms_source.
+    terms_col = _payment_terms_column(df, params)
 
     out: dict[str, SkuPurchaseInputs] = {}
     unsupplied: dict[str, frozenset[str]] = {}
@@ -381,130 +454,16 @@ def _prepare_sku_inputs(
             incoming_po=_or_placeholder(stated["incoming_po"]),
             minimum_order_quantity=_or_placeholder(stated["minimum_order_quantity"]),
             order_multiple=_or_placeholder(stated["order_multiple"]),
+            payment_terms=_text_cell(row, terms_col),
         )
     return out, unsupplied
-
-
-def _build_price_shifts(params: dict, unit_costs: dict[str, float]) -> dict[str, PriceOptimizationResult]:
-    """PR-16's P2 (batch elasticity + price optimizer), reused directly for
-    demand shaping -- ``None``/empty when no ``price_history_path`` is given
-    or it can't be turned into usable history (an OPTIONAL enhancement, same
-    graceful-degradation contract ``markdown_liquidation_job._load_price_
-    history`` already established: a broken optional file must not abort a
-    plan that would otherwise succeed)."""
-    path = params.get("price_history_path")
-    if not path:
-        return {}
-    try:
-        demand = prepare_pricing(path, period=str(params.get("price_period", "W")))
-    except (ValueError, FileNotFoundError):
-        return {}
-    fits = estimate_portfolio_elasticities(demand)
-    current_prices = {
-        str(pid): float(grp["price"].median()) for pid, grp in demand.groupby("product_id")
-    }
-    landed_costs = {pid: cost for pid, cost in unit_costs.items() if pid in fits}
-    if not landed_costs:
-        return {}
-    return optimize_portfolio_prices(
-        fits, landed_costs=landed_costs, current_prices=current_prices,
-        min_margin_pct=float(params.get("min_margin_pct", 0.0)),
-        price_increment=float(params.get("price_increment", 0.0)),
-    )
-
-
-def _build_liquidation_lines(stock_df: pd.DataFrame, params: dict) -> dict[str, LiquidationLine]:
-    """PR-19's P4 liquidation report, reused directly for demand shaping --
-    best-effort against the SAME stock CSV: skipped (empty dict, never a
-    hard failure) when ``params['include_liquidation']`` is explicitly
-    ``False`` or the stock CSV lacks E&O's own required columns (product_id/
-    on_hand/daily_demand)."""
-    if params.get("include_liquidation", True) is False:
-        return {}
-    try:
-        payload = mlq.prepare_records(stock_df, params)
-    except ValueError:
-        return {}
-    report = mlq.run(payload)
-    return {line.product_id: line for line in report.lines}
-
-
-def _grounding_column(result: CoherenceResult) -> str | None:
-    """Which purchase input this check's per-SKU verdict RESTS ON, or ``None``
-    when it rests on no per-SKU purchase input at all.
-
-    Raises for a check kind nobody classified. A fourth check added to the engine
-    must not default to "evaluable": that default is precisely how a verdict built
-    on a filled-in number ships unnoticed, so the cost of adding a check is one
-    line in ``_GROUNDING_COLUMN`` (the rule ``packs/source_to_pay/recovery.py``'s
-    ``_unquantified`` already enforces for exception codes).
-    """
-    try:
-        return _GROUNDING_COLUMN[result.check]
-    except KeyError:
-        raise KeyError(
-            f"{result.check!r} has no declared grounding column: classify it explicitly "
-            "in _GROUNDING_COLUMN (the purchase input its verdict reads, or None if it "
-            "reads none) rather than letting it pass as evaluable by default"
-        ) from None
-
-
-def _unsupplied_grounding(
-    result: CoherenceResult, unsupplied: dict[str, frozenset[str]]
-) -> str | None:
-    """The input this result's verdict rests on AND nobody supplied, or ``None``
-    when the verdict stands on numbers that were actually stated.
-
-    A PORTFOLIO-level result (``product_id is None``) reads no SKU's purchase
-    inputs -- the promo check's "no SKU carries a demand lift, check not
-    applicable" is a real, self-declared verdict about the demand plan, and the
-    budget check is portfolio-level by construction -- so neither can be voided
-    by a column some SKU happens to be missing.
-    """
-    column = _grounding_column(result)
-    if column is None or result.product_id is None:
-        return None
-    return column if column in unsupplied.get(result.product_id, frozenset()) else None
-
-
-def _absence_reason(result: CoherenceResult, column: str) -> str:
-    return (
-        f"{result.product_id}: the stock file states no {column}, so this check has no "
-        f"number to compare against -- neither a pass nor a fail can be stated from an "
-        f"unsupplied {column} (supply it, or the 0 you actually mean by it)."
-    )
-
-
-def _tally(
-    checks: tuple[CoherenceResult, ...], unsupplied: dict[str, frozenset[str]]
-) -> CoherenceTally:
-    """Split the engine's results into verdicts and declared absences.
-
-    Every result the engine produced is accounted for exactly once: a check whose
-    grounding input was never supplied is not dropped, it is re-declared as the
-    absence it always was, with the column named.
-    """
-    passed: list[CoherenceResult] = []
-    failed: list[CoherenceResult] = []
-    unevaluable: list[UnevaluableCheck] = []
-    for c in checks:
-        column = _unsupplied_grounding(c, unsupplied)
-        if column is not None:
-            unevaluable.append(
-                UnevaluableCheck(c.check, c.product_id, column, _absence_reason(c, column))
-            )
-        elif c.passed:
-            passed.append(c)
-        else:
-            failed.append(c)
-    return CoherenceTally(tuple(passed), tuple(failed), tuple(unevaluable))
 
 
 def prepare(data_path: str, params: dict | None = None) -> dict:
     """Read the demand-history CSV (forecast, step 1) and the required
     ``params['stock_path']`` CSV (purchase inputs, step 3 -- optionally also
     P4's liquidation input, step 2), plus the optional
-    ``params['price_history_path']`` (P2, step 2)."""
+    ``params['price_history_path']`` (P2, step 2). Cycle memory: see step 1."""
     params = params or {}
     stock_path = params.get("stock_path")
     if not stock_path:
@@ -518,6 +477,7 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
         series_by_name,
         holdout_fraction=params.get("holdout_fraction", 0.25),
         min_backtest_periods=params.get("min_backtest_periods", 4),
+        store=forecast_cycle.store_from_params(params),  # cycle memory: see step 1
     )
     forecast = {s.name: s.forecast for s in forecast_report.skus}
 
@@ -529,6 +489,7 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
     liquidation_lines = _build_liquidation_lines(stock_df, params)
 
     budget = params.get("budget")
+    cash_cap = params.get("cash_cap_per_week")
     return {
         "forecast_report": forecast_report,
         "forecast": forecast,
@@ -540,7 +501,34 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
         "price_shifts": price_shifts,
         "liquidation_lines": liquidation_lines,
         "budget": float(budget) if budget is not None else None,
+        # The two cash inputs: what a SKU with no stated plazo is planned on, and
+        # the money that may leave in any ONE week (distinct from `budget`, which
+        # caps the investment HELD). Both optional; an absent weekly cap yields a
+        # calendar with no verdict rather than a fabricated one.
+        "default_payment_terms": str(params.get("default_payment_terms") or DEFAULT_PAYMENT_TERMS),
+        "cash_cap_per_week": float(cash_cap) if cash_cap is not None else None,
+        "as_of": _as_of(params.get("as_of")),
     }
+
+
+def _bundle_summary(
+    payload: dict, plan: IntegratedPlanReport, tally: CoherenceTally, dropped: tuple[str, ...]
+) -> str:
+    """The one line a caller is guaranteed to read.
+
+    NOT ``plan.summary``: that sentence counts every check the engine RAN as a
+    verdict, including the ones it resolved against a placeholder. The gap is
+    declared here instead (``jobs/risk_job.py:363``'s rule), and :func:`verify`
+    refuses a summary that drops it.
+    """
+    summary = (
+        f"{payload['forecast_report'].summary} "
+        f"Integrated plan over {plan.n_skus} SKU(s): {tally.headline}."
+    )
+    if dropped:
+        shown = ", ".join(dropped[:5]) + ("..." if len(dropped) > 5 else "")
+        summary += f" {len(dropped)} forecast SKU(s) excluded for lack of purchase-plan data: {shown}."
+    return summary
 
 
 def run(payload: dict) -> IntegratedPlanBundle:
@@ -572,25 +560,19 @@ def run(payload: dict) -> IntegratedPlanBundle:
         restricted_forecast, sku_inputs,
         price_shifts=payload["price_shifts"], liquidation_lines=payload["liquidation_lines"],
         budget=payload["budget"],
+        # .get() on purpose, unlike unsupplied_inputs above: a payload built
+        # before these existed still produces a correct plan (the engine's own
+        # declared defaults), whereas a missing unsupplied_inputs would produce
+        # a WRONG verdict. Absence is only fatal where it can forge a claim.
+        default_payment_terms=payload.get("default_payment_terms", DEFAULT_PAYMENT_TERMS),
+        cash_cap_per_week=payload.get("cash_cap_per_week"),
+        as_of=payload.get("as_of"),
     )
     tally = _tally(plan.checks, unsupplied_inputs)
-
-    # NOT plan.summary: that sentence counts every check the engine RAN as a
-    # verdict, including the ones it resolved against a placeholder. The summary
-    # is the one line a caller is guaranteed to read, so the gap is declared in
-    # it (jobs/risk_job.py:363's rule) and verify() below refuses a summary that
-    # drops it.
-    summary = (
-        f"{payload['forecast_report'].summary} "
-        f"Integrated plan over {plan.n_skus} SKU(s): {tally.headline}."
-    )
-    if dropped:
-        shown = ", ".join(dropped[:5]) + ("..." if len(dropped) > 5 else "")
-        summary += f" {len(dropped)} forecast SKU(s) excluded for lack of purchase-plan data: {shown}."
-
     return IntegratedPlanBundle(
         forecast_report=payload["forecast_report"], plan=plan,
-        dropped_no_purchase_data=dropped, summary=summary,
+        dropped_no_purchase_data=dropped,
+        summary=_bundle_summary(payload, plan, tally, dropped),
         tally=tally, verdict=_verdict(tally), unsupplied_inputs=unsupplied_inputs,
     )
 
@@ -647,66 +629,21 @@ def verify(bundle: IntegratedPlanBundle) -> list[str]:
 
 def write_operational(bundle: IntegratedPlanBundle, out_dir: str | Path, client: str = "Client") -> dict[str, Path]:
     """The machine-readable deliverable: one CSV per pipeline step (demand
-    plan, purchase plan, coherence checks) -- distinct schemas, so distinct
-    files, all under the SAME output directory (never four separate tool
-    reports; see the module docstring for what "one deliverable" means)."""
+    plan, purchase plan, coherence checks, cash commitment) -- distinct schemas,
+    so distinct files, all under the SAME output directory (never four separate
+    tool reports; see the module docstring for what "one deliverable" means)."""
     d = Path(out_dir)
     d.mkdir(parents=True, exist_ok=True)
     plan = bundle.plan
-
-    demand_rows = [
-        {
-            "product_id": line.product_id,
-            "base_forecast": round(line.base_forecast, 2),
-            "demand_shift_pct": ("inf" if math.isinf(line.demand_shift_pct) else round(line.demand_shift_pct, 1)),
-            "shaped_demand": round(line.shaped_demand, 2),
-            "source": line.source,
-            "reason": line.reason,
-        }
-        for line in plan.demand_plan
-    ]
-    purchase_rows = [
-        {
-            "product_id": line.product_id,
-            "shaped_demand": round(line.shaped_demand, 2),
-            "on_hand": round(line.on_hand, 2),
-            "incoming_po": round(line.incoming_po, 2),
-            "recommended_order": round(line.recommended_order, 2),
-            "constraint_extra_units": round(line.constraint_extra_units, 2),
-            "constraint_cost_delta": round(line.constraint_cost_delta, 2),
-            "constraint_extra_cover_periods": round(line.constraint_extra_cover_periods, 2),
-            "constraint_verdict": line.constraint_verdict,
-            "reorder_buffer": round(line.reorder_buffer, 2),
-            "projected_position": round(line.projected_position, 2),
-            "order_value": round(line.order_value, 2),
-        }
-        for line in plan.purchase_plan
-    ]
-    # A check with no verdict gets an EMPTY passed cell and says why in its message
-    # (jobs/cross_impact_job.write's rule): a spreadsheet reader scanning the column
-    # must see a blank, because True and False are both claims here and "False" would
-    # read as a measured incoherence nobody measured.
+    # The only thing this function still decides: which checks lost their verdict.
+    # That reading belongs to the bundle's tally, not to the row shape, so it is
+    # resolved here and handed to the renderer already decided.
     gaps = {(u.check, u.product_id): u for u in bundle.tally.unevaluable}
-    check_rows = [
-        {
-            "check": c.check,
-            "passed": "" if (c.check, c.product_id) in gaps else c.passed,
-            "status": (
-                NOT_EVALUABLE if (c.check, c.product_id) in gaps
-                else (STATUS_PASSED if c.passed else STATUS_FAILED)
-            ),
-            "product_id": c.product_id or "",
-            "message": (
-                gaps[(c.check, c.product_id)].reason if (c.check, c.product_id) in gaps
-                else c.message
-            ),
-        }
-        for c in plan.checks
-    ]
     return {
-        "demand_plan": write_summary_csv(demand_rows, d / "demand_plan.csv"),
-        "purchase_plan": write_summary_csv(purchase_rows, d / "purchase_plan.csv"),
-        "coherence_checks": write_summary_csv(check_rows, d / "coherence_checks.csv"),
+        "demand_plan": write_summary_csv(demand_rows(plan), d / "demand_plan.csv"),
+        "purchase_plan": write_summary_csv(purchase_rows(plan), d / "purchase_plan.csv"),
+        "coherence_checks": write_summary_csv(check_rows(plan, gaps), d / "coherence_checks.csv"),
+        "cash_commitment": write_summary_csv(cash_rows(plan), d / "cash_commitment.csv"),
     }
 
 
@@ -754,115 +691,17 @@ def build_deck(
         + "."
     )
 
-    findings = [
-        Finding(
-            "Forecast (step 1)",
-            bundle.forecast_report.summary,
-            impact="the reconciled forecast this plan's purchase quantities are sized against",
-        ),
-    ]
-    if shaped:
-        names = ", ".join(f"{line.product_id} ({line.source}, {line.demand_shift_pct:+.0f}%)" for line in shaped[:5])
-        findings.append(Finding(
-            "SKUs with a demand-shaping signal (step 2)",
-            f"{len(shaped)} SKU(s) carry a price-cut/markdown-implied demand shift: {names}"
-            + ("..." if len(shaped) > 5 else ""),
-            impact="these SKUs' purchase quantities (step 3) are sized off the SHAPED demand, not the raw forecast",
-        ))
-    else:
-        findings.append(Finding(
-            "SKUs with a demand-shaping signal (step 2)",
-            "none this cycle -- every SKU's purchase plan is sized off its raw forecast.",
-            impact="supply a price_history_path (P2) or a liquidation-shaped stock file (P4) to activate this step",
-        ))
-
-    for c in tally.failed[:5]:
-        findings.append(Finding(f"Coherence check FAILED: {c.check}", c.message,
-                                 impact="needs a human decision before this plan executes"))
-    # The gap, its motive, and the ask -- one finding per check that lost its
-    # verdict, never folded into the pass/fail count above.
-    for gap in tally.unevaluable[:5]:
-        findings.append(Finding(
-            f"Coherence check NOT EVALUABLE: {gap.check}",
-            gap.reason,
-            impact=f"supply {gap.column} for {gap.product_id} and re-run -- until then this "
-                   f"plan carries no {gap.check} verdict for it, in either direction",
-        ))
-    if not tally.failed and not tally.unevaluable:
-        findings.append(Finding("Coherence checks (step 4)", f"{tally.headline}.",
-                                 impact="no cross-domain conflict detected this cycle"))
-
-    if bundle.dropped_no_purchase_data:
-        shown = ", ".join(bundle.dropped_no_purchase_data[:10])
-        findings.append(Finding(
-            "SKUs excluded for lack of purchase data",
-            f"{len(bundle.dropped_no_purchase_data)} forecasted SKU(s) have no matching stock-file row "
-            f"and were excluded from the purchase/coherence steps: {shown}"
-            + ("..." if len(bundle.dropped_no_purchase_data) > 10 else ""),
-            impact="never silently dropped -- supply the missing SKUs' on_hand/unit_cost to include them",
-        ))
-
-    total_order_value = sum(line.order_value for line in plan.purchase_plan)
-    kpis = [
-        Kpi("SKUs planned", f"{plan.n_skus}", rationale="Forecasted SKUs with matching purchase-plan data"),
-        Kpi("Coherence checks passed", f"{tally.n_passed}/{tally.n_evaluated}",
-            target=f"{tally.n_total}/{tally.n_total}",
-            rationale="Cross-domain checks between the demand plan and the purchase plan, "
-                      "counted over the ones that could be EVALUATED"),
-        Kpi("Coherence checks NOT EVALUABLE", f"{tally.n_unevaluable}", target="0",
-            rationale="Checks whose grounding purchase input the stock file never supplied: "
-                      "no verdict was issued for them, in either direction"),
-        Kpi("SKUs demand-shaped", f"{len(shaped)}", rationale="Carry a price-cut/markdown-implied demand shift"),
-        Kpi("Recommended purchase value", f"{total_order_value:,.0f}",
-            rationale="Sum of recommended_order * unit_cost across the portfolio"),
-    ]
-    if plan.budget is not None:
-        kpis.append(Kpi("Budget cap", f"{plan.budget:,.0f}", target="fit", rationale="Portfolio inventory-investment cap"))
-
-    data_sources = (
-        DataSource("Demand history (sku/period/quantity)", "ERP / sales history", "weekly"),
-        DataSource("On-hand, unit cost, reorder point, incoming PO, MOQ/case pack", "WMS / procurement", "weekly"),
-        DataSource("Price/quantity history (optional, P2 demand shaping)", "POS / order history", "weekly"),
-        DataSource("Liquidation/E&O stock (optional, P4 demand shaping)", "WMS / E&O", "weekly"),
-    )
-
-    recommendations = (
-        "Resolve every FAILED coherence check before executing this plan -- each cites the exact SKU "
-        "and shortfall.",
-        "Place the recommended_order quantities for SKUs whose promo-coverage check failed first -- "
-        "they carry the nearest-term stockout risk.",
-        "Re-run after the next forecast/price/liquidation cycle -- this is a single-pass v1 pipeline, "
-        "not a continuously reconciled plan.",
-    )
-    if tally.unevaluable:
-        recommendations = (
-            f"Supply {', '.join(tally.missing_columns)} in the stock file and re-run: "
-            f"{tally.n_unevaluable} coherence check(s) have no verdict without it, and this plan "
-            "cannot be called coherent or incoherent until they do.",
-        ) + recommendations
-
-    residual = (
-        "This is A5 v1: a strictly SEQUENTIAL pipeline (forecast -> demand shaping -> purchase plan -> "
-        "coherence checks), not a joint/global optimization -- no simultaneous multi-step solve "
-        "reconciles the steps against each other beyond the citable checks above (plan section 5's own "
-        "anti-pattern warning: the joint solver is v2, gated on evidence this v1 pipeline does not have "
-        "yet). A FAILED coherence check is a finding for a human to resolve (adjust the purchase plan, "
-        "the promo timing, or the budget), never an auto-corrected plan. Executing any purchase order, "
-        "price change, or liquidation step stays a separate, human-approved action in its own tool -- "
-        "this plan does not write back to any system."
-    )
-
     return Deliverable(
         title="Integrated Plan (Forecast -> Demand -> Purchase, S&OP-style)",
         client=client,
         summary=summary,
-        findings=tuple(findings),
-        kpis=tuple(kpis),
-        data_sources=data_sources,
-        recommendations=recommendations,
+        findings=tuple(_deck_findings(bundle, shaped)),
+        kpis=tuple(_deck_kpis(bundle, shaped)),
+        data_sources=_DATA_SOURCES,
+        recommendations=_deck_recommendations(tally),
         citations=tuple(citations),
         confidence=_degrade(_DECK_BASE_CONFIDENCE if confidence is None else confidence, tally),
-        residual=residual,
+        residual=_RESIDUAL,
         prepared=prepared,
         lang=lang,
         branding=branding if branding is not None else DEFAULT_BRANDING,

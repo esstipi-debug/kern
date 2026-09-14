@@ -8,9 +8,9 @@ choices to act, not only a dashboard.
 from pathlib import Path
 
 import pandas as pd
+
 from nosilo_core import llm
 from nosilo_core.guided import ExecutionOption
-
 from scm_agent import tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable

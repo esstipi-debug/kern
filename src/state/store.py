@@ -30,7 +30,6 @@ files together, and it never touches a row inside its window.
 
 from __future__ import annotations
 
-import os
 import re
 import sqlite3
 import uuid
@@ -39,6 +38,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+
+from src.data_paths import resolve_state_path
 
 try:  # optional fast/columnar path
     import pyarrow  # noqa: F401
@@ -56,7 +57,7 @@ except ImportError:
 # volumen"). Empty env var falls back to the repo-relative default, matching
 # the "LINCHPIN_*" env-override convention already used by webapp/security.py
 # and nosilo_core/writeback.py.
-DEFAULT_BASE_PATH = os.environ.get("LINCHPIN_STATE_PATH", "").strip() or "data/state"
+DEFAULT_BASE_PATH = resolve_state_path("state")
 
 _SAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")
 
@@ -149,6 +150,35 @@ def _row_to_record(row: tuple) -> StoredRecord:
     return StoredRecord(seq, domain, cycle_id, created_at, file_path, file_format, row_count)
 
 
+class MissingPayloadError(FileNotFoundError):
+    """The index row is still here; the payload file it points at is gone.
+
+    A state this module's own contract reaches on purpose, not a corruption: a
+    crash between the two halves of :meth:`StateStore.prune_before` leaves
+    exactly this, and that method commits to converging on "a store someone has
+    hand-cleaned". So it stays LOUD -- a read that quietly returned an empty
+    frame would say "this client has no history" when the truth is "this
+    client's history was deleted", and those are different sentences.
+
+    Naming it is what lets a BEST-EFFORT reader degrade on this condition alone.
+    ``jobs/forecast_cycle.read_previous`` gives up the comparison here and keeps
+    the forecast; before there was a name for it, the only way to survive a
+    hand-deleted parquet was ``except OSError``, which also swallows a disk that
+    failed a second ago and would have read fine on retry. Subclassing
+    ``FileNotFoundError`` keeps every ``except OSError`` already written against
+    this path working unchanged.
+    """
+
+    def __init__(self, record: StoredRecord, path: Path) -> None:
+        self.record = record
+        self.path = path
+        super().__init__(
+            f"payload file for domain '{record.domain}' cycle '{record.cycle_id}' is gone"
+            f" ({record.file_path}): the index row outlived its file -- a prune that crashed"
+            " between unlink and DELETE, or a store cleaned by hand (see prune_before)"
+        )
+
+
 class StateStore:
     """SQLite index of append-only snapshot files, partitioned by domain/date.
 
@@ -237,7 +267,18 @@ class StateStore:
         return [_row_to_record(r) for r in rows]
 
     def load_payload(self, record: StoredRecord) -> pd.DataFrame:
+        """Read one snapshot's payload back.
+
+        Raises ``MissingPayloadError`` when the indexed file is gone, checked
+        before the read engine gets a look so the error names the ROW that
+        outlived its file instead of the path pandas happened to open. The
+        engines disagree on what they raise for an absent file -- pyarrow can
+        surface it as its own ``FileNotFoundError`` and a bare path string --
+        and a caller cannot degrade on a condition it cannot recognize.
+        """
         path = self._base / record.file_path
+        if not path.is_file():
+            raise MissingPayloadError(record, path)
         if record.file_format == "parquet":
             return pd.read_parquet(path)
         return pd.read_csv(path)
@@ -276,9 +317,9 @@ class StateStore:
         Deleting the row without the file would protect nothing: the file is
         where the client's actual dataset lives; the row is only metadata. The
         file goes first, so a crash between the two leaves an indexed row
-        pointing at a missing file (loud, and ``load_payload`` raises) rather
-        than an orphaned file no index knows about (silent, and invisible to
-        the next retention run).
+        pointing at a missing file (loud, and ``load_payload`` raises
+        ``MissingPayloadError``) rather than an orphaned file no index knows
+        about (silent, and invisible to the next retention run).
 
         A file already gone is not an error -- retention must converge on a
         store someone has hand-cleaned. A resolved path landing outside

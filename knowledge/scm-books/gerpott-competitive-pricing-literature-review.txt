@@ -1,0 +1,3430 @@
+Competitive pricing on online markets: a literature review - PMC
+Skip to main content
+An official website of the United States government
+Here's how you know
+Here's how you know
+Official websites use .gov
+A
+.gov
+website belongs to an official
+government organization in the United States.
+Secure .gov websites use HTTPS
+A
+lock
+(
+Lock
+Locked padlock icon
+) or
+https://
+means you've safely
+connected to the .gov website. Share sensitive
+information only on official, secure websites.
+Search
+Log in
+Dashboard
+Publications
+Account settings
+Log out
+Search…
+Search NCBI
+Primary site navigation
+Search
+Logged in as:
+Dashboard
+Publications
+Account settings
+Log in
+Search PMC Full-Text Archive
+Search in PMC
+Journal List
+User Guide
+PERMALINK
+Copy
+As a library, NLM provides access to scientific literature. Inclusion in an NLM database does not imply endorsement of, or agreement with,
+the contents by NLM or the National Institutes of Health.
+Learn more:
+PMC Disclaimer
+|
+PMC Copyright Notice
+J Revenue Pricing Manag
+. 2022 Jun 14;21(6):596–622. doi:
+10.1057/s41272-022-00390-x
+Search in PMC
+Search in PubMed
+View in NLM Catalog
+Add to search
+Competitive pricing on online markets: a literature review
+Torsten J Gerpott
+Torsten J Gerpott
+1
+University of Duisburg-Essen, Duisburg, Germany
+Find articles by
+Torsten J Gerpott
+1,
+✉
+,
+Jan Berends
+Jan Berends
+1
+University of Duisburg-Essen, Duisburg, Germany
+Find articles by
+Jan Berends
+1
+Author information
+Article notes
+Copyright and License information
+1
+University of Duisburg-Essen, Duisburg, Germany
+✉
+Corresponding author.
+Received 2022 Mar 15; Accepted 2022 May 1; Issue date 2022.
+© The Author(s) 2022
+Open Access
+This article is licensed under a Creative Commons Attribution 4.0 International License, which permits use, sharing, adaptation, distribution and reproduction in any medium or format, as long as you give appropriate credit to the original author(s) and the source, provide a link to the Creative Commons licence, and indicate if changes were made. The images or other third party material in this article are included in the article's Creative Commons licence, unless indicated otherwise in a credit line to the material. If material is not included in the article's Creative Commons licence and your intended use is not permitted by statutory regulation or exceeds the permitted use, you will need to obtain permission directly from the copyright holder. To view a copy of this licence, visit
+http://creativecommons.org/licenses/by/4.0/
+.
+PMC Copyright notice
+PMCID: PMC9194889
+Abstract
+Past reviews of studies concerning competitive pricing strategies lack a unifying approach to interdisciplinarily structure research across economics, marketing management, and operations. This academic void is especially unfortunate for online markets as they show much higher competitive dynamics compared to their offline counterparts. We review 132 articles on competitive posted goods pricing on either e-tail markets or markets in general. Our main contributions are (1) to develop an interdisciplinary framework structuring scholarly work on competitive pricing models and (2) to analyze in how far research on offline markets applies to online retail markets.
+Keywords:
+Competition, Competitive pricing, Dynamic pricing, e-commerce, e-tail, Online markets
+Introduction
+Setting prices relative to competitors, i.e., competitive pricing,
+1
+is a classical marketing problem which has been studied extensively before the emergence of e-commerce (Talluri and van Ryzin
+2004
+; Vives
+2001
+). Although literature on online pricing has been reviewed in the past (Ratchford
+2009
+), interrelations between pricing and competition were rarely considered systematically (Li et al.
+2017
+). As less than 2% of high-impact journal articles address pricing issues (Toni et al.
+2017
+), pricing strategies do not receive proper research attention according to their practical relevance. This research gap holds even more for competitive pricing. In the past, the monopolistic assumption that demand for homogeneous goods mostly depends on prices set by a single firm may have been a viable simplification since price comparisons were difficult. Today, consumer search costs
+2
+shrink as the prices of most goods can be compared on relatively transparent online markets. Therefore, demand is increasingly influenced by prices of competitors which therefore should not be ignored (Lin and Sibdari
+2009
+).
+In the early 1990s, few people anticipated that business-to-consumer (B2C) online goods retail markets
+3
+would develop from a dubious alternative to conventional “brick-and-mortar” retail stores to an omnipresent distribution channel for all kinds of products in less than two decades (Balasubramanian
+1998
+; Boardman and McCormick
+2018
+). In 2000, e-commerce accounted for a mere 1% of overall retail sales. In 2025, e-retail sales are projected to account for nearly 25% of global retail sales (Lebow
+2019
+). Traditional offline channels are nowadays typically complemented by online technologies (Gao and Su
+2018
+). With digitization of various societal sectors in general and the COVID-19 pandemic in particular, the shift toward online channels is unlikely to stop in the future. Besides direct online shops, two-thirds of e-commerce sales are sold through online marketplaces/platforms like Alibaba, Amazon or eBay (Young
+2022
+). The marketplace operator acts as an intermediary (two-sided platform) who matches demand (online consumers) with supply (retailers). Whereas the retailer retains control over product assortment and prices, he has to pay a commission to the marketplace operator (Hagiu
+2007
+). However, these intermediaries often act as sellers themselves, thereby posing direct competition to retailers who have to decide between direct or marketplace channels (Ryan et al.
+2012
+).
+Online consumer markets fundamentally differ from offline settings (Chintagunta et al.
+2012
+; Lee and Tan
+2003
+; Scarpi et al.
+2014
+; Smith and Brynjolfsson
+2001
+). Factors which make competition even more prevalent for online than for offline markets are summarized in Table
+1
+.
+Table 1.
+Differences of online and offline markets with relevance for the intensity of market competition
+Consumer-related peculiarities (demand side)
+Firm-related peculiarities (supply side)
+Online
+No possibility to physically inspect products before buying
+Easy comparison of products from various sellers
+Lowered search costs
+Increased price transparency
+Intensified competition (Balakrishnan et al.
+2014
+; Cao and Gruca
+2003
+; Dzyabura et al.
+2019
+; Fisher et al.
+2018
+; Frambach et al.
+2007
+; Yang and Xia
+2013
+)
+Possibility to extensively monitor prices of competitors
+Little menu costs to change prices swiftly and repeatedly to respond to price actions of competitors
+Increased availability of price and demand data
+Higher impact of competitor pricing on demand for own product offerings (Brynjolfsson and Smith
+2000
+; Elmaghraby and Keskinocak
+2003
+)
+Offline
+Offline brick-and-mortar store experience
+Travel and inconvenience costs
+High barriers for consumers to acquire information about other sellers’ prices
+Lower impact of competitor pricing on buying decision (Devaraj et al.
+2002
+; Zhang et al.
+2018a
+)
+Offline brick-and-mortar store experience as lever to build more personal relationships with consumers
+Differentiation through loyalty
+Lower impact of competitor pricing on demand for own product offerings (Penz and Hogg
+2011
+)
+Open in a new tab
+To date, a number of scholarly articles reviews various aspects of pricing under competition or online pricing (Boer
+2015a
+; Chen and Chen
+2015
+; Cheng
+2017
+; Kopalle et al.
+2009
+; Ratchford
+2009
+; Vives
+2001
+). Vives (
+2001
+) provides an overview of the history of pricing theory and its evolution from the early work of Bertrand (
+1883
+) who studied a duopoly with unconstrained capacity and identical products to Dudey (
+1992
+) who set the foundation for today’s dynamic pricing
+4
+research with constrained capacities and a finite sales horizon. Ratchford (
+2009
+) reviews the influence of online markets on pricing strategies. Although he depicts factors shaping the competitive environment of online markets and compares online versus offline channels, he does not include competitive strategies specifically. This also holds for review papers on dynamic pricing which treat competition rather novercally (Boer
+2015a
+; Gönsch et al.
+2009
+). With emphasis on mobility barriers, multimarket contact and mutual forbearance, Cheng (
+2017
+) studies competition mechanisms across strategic groups. Kopalle et al. (
+2009
+) discuss competitive effects in retail focusing on different aspects such as manufacturer interaction and cross-channel competition. To the best of our knowledge, Chen and Chen (
+2015
+) are the only scholars who review existing competitive pricing research by classifying model characteristics along product uniqueness (identical vs. differentiated), type of customer (myopic vs. strategic), pricing policy (contingent vs. preannounced) and number of competitors (duopoly vs. oligopoly). However, competition is only one of three pricing problems they analyze forcing them to reduce scope and depth and to exclude online peculiarities. In addition, significant competitive pricing contributions were published since 2015 (chapter 2.2). Overall, given the limitations of previous reviews of the pricing literature makes revisiting the current state of research a worthwhile undertaking.
+Most often, competitive pricing literature uses simplifying assumptions limiting the applicability of presented models. The simplifications are required to circumvent challenges like the
+curse of dimensionality
+(Harsha et al.
+2019
+; Kastius and Schlosser
+2022
+; Li et al.
+2017
+; Schlosser and Boissier
+2018
+),
+endogeneity problems
+(Cebollada et al.
+2019
+; Chu et al.
+2008
+; Fisher et al.
+2018
+; Villas-Boas and Winer
+1999
+),
+uncertain information
+(Adida and Perakis
+2010
+; e.g., Bertsimas and Perakis
+2006
+; Chung et al.
+2012
+; Ferreira et al.
+2016
+; Keskin and Zeevi
+2017
+; Shugan
+2002
+) and
+simultaneity bias
+(Li et al.
+2017
+). As a consequence, early work on pricing strategies with competition was restricted to theoretical discussions (Caplin and Nalebuff
+1991
+; Mizuno
+2003
+; Perloff and Salop
+1985
+). This holds especially true in combination with other practical circumstances such as capacity constraints, time-varying demand or a finite selling horizon (Gallego and Hu
+2014
+).
+Armstrong and Green (
+2007
+) find empirical evidence that competitive pricing, especially for the sake of gaining market share, harms profitability. Similarly, some researchers cursorily ascribe competitor-based pricing as a sign of a poor management because it signals a lack of capabilities to set prices independently (Larson
+2019
+). Revenue management researchers therefore often assume that monopoly pricing models implicitly capture the dynamic effects of competition. The so-called
+market response hypothesis
+is the key rationale to neglect the effects of competition altogether (Phillips
+2021
+; Talluri and van Ryzin
+2004
+). According to this reasoning, competition does not have to be considered as all relevant effects are already included in historical sales data. However, this intuitive argument can be easily rebutted as Simon (
+1979
+) already showed that price elasticities change over time. Furthermore, Cooper et al. (
+2015
+) study the validity of the
+market response hypothesis
+and conclude that this monopolistic view is rarely adequate. Monopolistic pricing models can only be applied to stable markets with little time-varying demand and little expected competitive reactions.
+Detrimental outcomes of ignoring competition in pricing strategies are shown by Anufriev et al. (
+2013
+), Bischi et al. (
+2004
+), Isler and Imhof (
+2008
+), Schinkel et al. (
+2002
+), and Tuinstra (2004). The negative effects are even more harmful in fierce competitive settings such as situations with a high number of competitors or price sensitive customers (van de Geer et al.
+2019
+). Empirical evidence on the influence of competition on pricing decisions is provided by Richards and Hamilton (
+2006
+) who find that retailers compete on price and variety for market share. Li et al. (
+2017
+) observe that competition-based variables explained 30.2% of hotel price variations in New York—compared to 22.3% attributed to demand-side variables. Similarly, Hinterhuber (
+2008
+) assesses competitor-based pricing as a dominant strategy from a practical perspective. Li et al. (
+2008
+) argue that because of its relevance, competition should be considered in operational revenue management and not be treated stepmotherly as an abstract strategic constraint.
+Although striving to simplify pricing models is desirable, researchers should thus not simply ignore effects of competition on price setting in a non-monopolistic (online) world. Blindly pegging pricing strategies to competitors or undercutting competitors to gain market share may favor detrimental price wars and not profit-maximizing market structures. Nevertheless, no significant market player can operate isolated on online markets—decisions made always affect competing firms and consumer demand (Chiang et al.
+2007
+). In such dynamic markets (chapter 3.3), competition must be considered with time-varying attributes (Schlosser et al.
+2016
+).
+Against this background, we suggest a conceptual framework to structure research covering competitive online pricing. It can serve scholars as a map to direct future research on the one hand and provide practicing managers with a guide to locate relevant pricing contributions on the other hand. Although the framework can be applied to a variety of markets with competitive dynamics, we concentrate our review on research covering B2C online goods retail markets. Thus, related research with a focus on auction pricing, multichannel peculiarities, behavioral pricing and multi-dimensional pricing approaches such as Everything-as-a-Service (XaaS) or bundle pricing is only assessed when findings are crucial to the competition-related discussion. In the remainder, we proceed as follows. The next chapter provides a descriptive overview of the competitive pricing literature for the subsequent discussion. Chapter 3 puts the identified literature into the perspective of online retail markets considering product and environmental characteristics. Section 4 concludes with practical implications and directions for future research.
+Overview of competitive pricing research
+Initially, properties of the reviewed literature are briefly summarized. Besides (a) the journal representation, (b) the historical development of online market considerations and (c) research domains, we classify research according to (d) the geographical and industry context as well as (e) research design and empirical foundation.
+We identified relevant references through a semi-structured multi-pronged search strategy. Following Tranfield et al. (
+2003
+), we firstly screened the literature reviews mentioned in chapter 1 to obtain an overview of existing research streams. Second, we created a set of potentially relevant contributions by searching multiple keywords in the journal databases EBSCO, Scopus and Web of Science (c.f. Baloglu and Assante
+1999
+).
+5
+Third, high-impact journals (see Appendix 1) in the academic fields economics, marketing management, and operations were screened. With focus on highly cited (> 10 citations in Scopus), recent (published later than 2000) research, we identified an initial sample of 996 unique papers. Fourth, we studied the abstract and skimmed the text of all papers for relevance to competitive online pricing, reducing our initial set to 174 papers. Fifth, we screened the references of the papers and identified literature cited which we not already included in our set. Sixth, especially for research areas with limited coverage in peer-reviewed journals, we uncovered
+gray literature
+through searches with Google Scholar. As a result, this study concentrates on papers published between 2000 and 2022 and only sparsely utilizes literature from the pre-internet era. The final sample of the papers with relevance to competitive B2C online pricing encompasses 132 entries. A complete list of the papers reviewed in great depth is provided in Appendix 2. 94% are peer-reviewed articles. Book chapters, conference papers and preprint/working papers each account for 2%.
+Journal representation
+Competitive pricing literature is widely dispersed over a broad range of journals as roughly half of the articles considered are from journals with less than three articles in our review. Notably, journals with a higher density of competitive pricing contributions are from the fields of operations, economics or are interdisciplinary. Table
+2
+reports the distribution of articles among the journals with the highest representation. In addition, it provides the considered articles subject to a content analysis in chapter 3.
+Table 2.
+Overview of most significant journals for competitive pricing research by number of publications and articles from these journals
+Journal
+a
+# of articles
+Articles reviewed
+Management Science
+18
+Abhishek et al. (
+2016
+), Aksoy-Pierson et al. (
+2013
+), Anand and Girotra (
+2007
+), Bernstein and Federgruen (
+2005
+), Cachon and Harker (
+2002
+), Campbell et al. (
+2005
+), Chioveanu and Zhou (
+2013
+), Gallego and Hu (
+2014
+), Jerath et al. (
+2010
+), Levin et al. (
+2009
+) Li et al. (
+2017
+), Liu and Zhang (
+2013
+), Martínez-de-Albéniz and Talluri (
+2011
+), Miklós-Thal and Tucker (
+2019
+), Netessine and Shumsky (
+2005
+), Olivares and Cachon (
+2009
+), van Mieghem and Dada (
+1999
+), Viswanathan (
+2005
+)
+Production and Operations Management
+10
+Balakrishnan et al. (
+2014
+), Besbes and Sauré (
+2016
+), Dong et al. (
+2019
+), Kachani et al. (
+2010
+), Lin et al. (
+2014
+), Mookherjee and Friesz (
+2008
+), Ryan et al. (
+2012
+), Sun and Gilbert (
+2019
+), Wang and Hu (2014), Yang and Xia (
+2013
+)
+Marketing Science
+9
+Balasubramanian (
+1998
+), Blattberg and Wisniewski (
+1989
+), Caillaud and Nijs (
+2014
+), Lal and Sarvary (
+1999
+), Moorthy (
+1988
+), Netzer et al. (
+2012
+), Ringel and Skiera (
+2016
+), Thomadsen (
+2007
+), Villas-Boas (
+2004
+)
+European Journal of Operational Research
+7
+Bernstein et al. (
+2008
+), Dasci and Karakul (
+2009
+), Geng and Mallik (
+2007
+) Lin and Sibdari (
+2009
+), Matsubayashi and Yamada (
+2008
+), Wang et al. (
+2017
+), Zhao et al. (
+2017
+)
+Operations Research
+6
+Adida and Perakis (
+2010
+), Bernstein and Federgruen (
+2004
+), Cooper et al. (
+2015
+), Federgruen and Hu (2015), Gallego and Wang (
+2014
+), Lippman and McCardle (
+1997
+)
+RAND Journal of Economics
+5
+Chen et al. (
+2018
+), Chioveanu (
+2012
+), Dana and Petruzzi (
+2001
+), Farias et al. (
+2012
+), Villas-Boas (
+1999
+)
+American Economic Review
+4
+Calvano et al. (
+2020
+), Dinerstein et al. (
+2018
+), Salop (
+1976
+), Stiglitz (
+1979
+)
+Journal of Revenue and Pricing Management
+4
+Isler and Imhof (
+2008
+), Kastius and Schlosser (
+2022
+), Schlosser and Richly (
+2019
+), van de Geer et al. (
+2019
+)
+Econometrica
+3
+Caplin and Nalebuff (
+1991
+), Maskin and Tirole (
+1988
+), Weintraub et al. (
+2008
+)
+Journal of Economics and Management Strategy
+3
+Chen (
+1997
+), Loginova (
+2021
+), Villas-Boas (
+2006
+)
+Journal of Retailing
+3
+Choi (
+1996
+), Dickson and Urbany (
+1994
+), Fay (
+2008
+)
+Open in a new tab
+a
+Journals with more than 2 contributions account for 56.8% of articles subjected to an in-depth content analysis
+Online pricing contributions over time
+Between 1976 and the end of the second millennium, the number of papers on competitive pricing in an internet context is naturally limited (Fig.
+1
+). Parallel to the dissemination of online use among residential households, interest of researchers in online pricing in a competitive environment started to take off. 71.8% of the papers published from 2015 to 2022 consider online settings specifically. The corresponding statistic from 2000 to 2005 amounts to 43.8%.
+Fig. 1.
+Open in a new tab
+Competitive pricing literature and its consideration of online peculiarities accumulated by year
+Development of research domains
+Competitive pricing literature typically can be assigned to one of the following research domains:
+The
+economics domain
+takes a market perspective across individual firms. It elaborates on the existence and uniqueness of competitive equilibria also including all subjects regarding econometrics.
+The
+marketing management domain
+analyzes competitive pricing problems from the perspective of a single firm with a focus on customer reactions to pricing decisions. It includes all subjects linked to marketing, strategy, business, international, technology, innovation, and general management.
+The
+operations domain
+considers quantitative pricing solutions for, among others, quantity planning, choice of distribution channels, and detection of algorithm driven price collusion. It includes all subjects regarding computer science, industrial and manufacturing engineering, and mathematics.
+Separating the last 47 years of competitive pricing research into three intervals, all reviewed papers are assigned to their most affiliated research domain. Although the domains are similarly represented in our review (see Fig.
+2
+), we see differences in their temporal change. Whereas rather theoretical economic subjects are covered relatively constant over time, more practice-oriented marketing management and operations subjects gained momentum since 2000. This suggests a shift from model conceptualization toward applicable research, frequently based on empirical data.
+Fig. 2.
+Open in a new tab
+Distribution of competitive pricing literature over research domain and time interval
+Geographical and industry context
+As the origin of revenue management lies in transportation and hospitality optimization problems, one could expect that competitive pricing research also originates in these dynamic sectors. However, our analysis reveals a different picture: Almost half of the papers in our review do not concentrate on a specific industry. Besides, most industry-specific competitive pricing articles focus on retail, with 38% concentrating on the retail industry versus 8% and 4% on transportation and hospitality, respectively (see Fig.
+3
+). This supports our proposition in chapter 1 that effects of competition on industry-specific pricing are particularly relevant for online markets.
+Fig. 3.
+Open in a new tab
+Competitive pricing research by focal industry and location of lead authors’ institution
+Competitive pricing literature is predominantly driven by researchers employed by U.S. institutions (60%). The remaining 40% consist of Europe (19%), Asia (17%) and Canada (4%).
+Research approach
+A lack of empirical testing is an issue that hampers competitive pricing research. Liozu (
+2015
+) reported that only 15% of general pricing literature include empirical data. For competitive pricing, the situation appears even more aggravated. In addition to parameters such as price elasticities and stock levels of the company under study, comprehensive, real-time information of other market participants is crucial to add practical value.
+For instance, to solve a simple Bertrand equilibrium,
+6
+full information of all competitors is needed, which is rarely available in real-life settings. Therefore, many problems covered in the literature are of a theoretical nature. In accordance with Liozu (
+2015
+), we find that only 18% of reviewed articles use empirical evidence to validate hypotheses. An additional 23% strive to ameliorate this shortage through simulation data and numerical examples. The remaining 59% fail to bring any empirical evidence or numerical examples.
+As can be taken from Fig.
+4
+, missing empirical support is particularly prevalent for equilibrium models which use empirical data in only 7% of all papers.
+Fig. 4.
+Open in a new tab
+Competitive pricing research by research design and empirical validation
+Competitive pricing on online markets
+In this chapter, we assess the applicability of competitive pricing work to online markets. Typical characteristics of competitive B2C pricing models were derived from literature described in chapter 2. Competitive pricing literature can be classified along four characteristics depicted in Table
+3
+that form the market environment in which firms compete for consumer demand.
+Table 3.
+Key questions and classification parameters of competitive model characteristics
+Model characteristic
+Key question
+Attributes
+Product similarity
+How similar are product characteristics across firms?
+Identical / quality differentiated goods
+Product durability
+Are products to be considered durable and how can this affect pricing objectives?
+Perishable / durable goods
+Time dependence
+Should competitive pricing problems be considered dynamically?
+Time-dependent / time-independent setting
+Market structure
+How far does the market structure of interacting firms influence the nature of price competition?
+Monopolistic / duopolistic / oligopolistic / perfect competition
+Open in a new tab
+In the remainder of chapter 3, we discuss the four key questions in more depth and elaborate on their applicability to online retail markets.
+Product similarity
+In general, products in competitive pricing models are either identical (homogeneous) or differentiated by at least one quality parameter (heterogeneous). In case of homogeneous products, pricing is the only purchase decision variable—a perfectly competitive setting (Chen and Chen
+2015
+). However, many firms strive to differentiate their products as this shifts the focus from the price as competitive lever to other product-related features (Afeche et al.
+2011
+; Boyd and Bilegan
+2003
+; Thomadsen
+2007
+). According to Lancaster (
+1979
+), there are two types of product differentiation: vertical and horizontal differentiation. Vertical differentiation
+7
+encompasses all product distinctions which are objectively measurable and quantifiable regarding their quality level. Horizontal differentiation
+8
+can manifest in many variants and includes all product-related aspects which cannot be quantified according to their quality levels.
+9
+A key difference in the modeling of substitutable yet differentiated versus identical goods is that customers have heterogenous preferences among products.
+10
+A recent stream of literature approaches unknown differentiation criteria by assessing online consumer-generated content (DeSarbo and Grewal
+2007
+; Lee and Bradlow
+2011
+; Netzer et al.
+2012
+; Ringel and Skiera
+2016
+; Won et al.
+2022
+).
+Besides the chosen price level, Cachon and Harker (
+2002
+) argue that firms compete with the operational performance level offered and perceived, i.e., service level in online retail, to differentiate an otherwise homogenous offering. In situations, where resellers with comparable service and shipping policies offer similar products, price is a major decision variable for potential buyers (Yang et al.
+2020
+). Often, e-tailers do not possess the right to exclusively distribute a certain product. For example, Samsung’s Galaxy S21 5G was offered by 69 resellers on the German price comparison website Idealo.de.
+11
+As some products in e-tail can be differentiated and others cannot, both identical and differentiated product research have their
+raison d’être
+for competitive online pricing.
+Most competitive pricing models only address the effects of single-product settings. This simplification is reasonable if there is no interdependence between products of an e-tailer (Gönsch et al.
+2009
+). Taking up on the smartphone example, the prices of close substitutes, such as Huawei’s P30 Pro, nonetheless have an impact on the demand of Samsung’s Galaxy S21 5G. To further extent product differentiation, price models have to incorporate multi-product pricing problems in non-cooperative settings (Chen and Chen
+2015
+). Such models have to account not only for demand impact of directly competing products but also for synergies, cannibalization/substitution effects of (own) differentiated goods. Although there is a recent research stream regarding product assortment (Besbes and Sauré
+2016
+; Federgruen and Hu
+2015
+; Heese and Martínez-de-Albéniz
+2018
+; Nip et al.
+2020
+; Sun and Gilbert
+2019
+), multi-product work is still underdeveloped. Thus, competitive multi-product pricing constitutes an area which should be addressed in future research.
+Product durability
+The durability of products is an important feature to differentiate between competitive pricing model types. Durable (non-perishable) products do not have an expiration date, for example consumer durables such as household appliances. Perishable products can only be sold for a limited time interval and have a finite sales horizon. After expiration date, unused capacity is lost or significantly devalued to a salvage value.
+12
+Combined with limited capacities, the firm objective is thus most often to maximize turnover under capacity constraints and finite sales horizon (Gallego and van Ryzin
+1997
+; McGill and van Ryzin
+1999
+; Weatherford and Bodily
+1992
+).
+Perishability can be of relevance for products with seasonality effects or short product life cycles (i.e., finite selling horizon) such as apparel, food groceries or winter sports equipment. This is especially relevant because online retailers of perishable products are severely restricted in their shipment, return handle policies and supply chain length (Cattani et al.
+2007
+). Sellers cannot replenish their inventory after the planning phase and cannot retain goods for future sales periods (Perakis and Sood
+2006
+). Some products like apparel—albeit reducing in value after a selling season—still have a certain salvage value and can be sold at reduced prices (Anand and Girotra
+2007
+).
+It depends on the type of product to decide whether perishability should be included in competitive pricing models. There is a fundamental distinction in the underlying optimization objective for models with or without perishability. Whereas models with perishable products tend to focus on revenue maximization over a definite
+short-term
+time horizon, models with durable products tend to focus on profit maximization over an indefinite or at least
+long-term
+time horizon by balancing current revenues of existing and future revenues of new customers. To account for this trade-off, models with durable products need to discount future cash flows incorporating time value of money, stock-keeping, opportunity and other costs related to prolonged sales (Farias et al.
+2012
+). To conclude, perishability cannot be treated as an extension to durable models but rather as a separate class of pricing models. Depending on the product and/or setting in focus, both are relevant for online retailing. Further research could investigate the performance of models with and without consideration of perishability in various (online) settings to determine when it is appropriate to use which class of pricing models. Also, an interesting field of future studies arises around the question which instruments (e.g., service differentiations or price diffusion) are used by online retailers to differentiate otherwise homogeneous offerings.
+Time dependence
+A key differentiator of competitive pricing models is the consideration of either a static (time-independent) setup with definite equilibrium or a dynamic (time-dependent) constellation with changing environmental factors and equilibria. Albeit static pricing models have no time component, many consist of multiple stages to investigate the interplay of different factors.
+13
+In contrast, dynamic models allow for varying competitive (re-)actions over time.
+14
+Within the latter category, there are models with a finite (Afeche et al.
+2011
+; Levin et al.
+2008
+; Liu and Zhang
+2013
+; Yang and Xia
+2013
+) and an infinite (Anderson and Kumar
+2007
+; Li et al.
+2017
+; Schlosser and Richly
+2019
+; Villas-Boas and Winer
+1999
+; Weintraub et al.
+2008
+) time horizon.
+Historically, competitive pricing models assumed fixed prices over the considered time horizon. Limited computational power made it impossible to appropriately estimate models dynamically due to dimensionality issues (Schlosser and Boissier
+2018
+). A lack of reliable demand information, high menu and investment costs to implement dynamic approaches were additional reasons why pricing models remained inherently static without incorporating changing competitive responses (Ferreira et al.
+2016
+). The focus in retail has conventionally rather been on long-term profit optimization and to a lesser degree on dynamically changing price optimizations (Elmaghraby and Keskinocak
+2003
+).
+The literature disagrees on whether firms should opt for static or dynamic pricing strategies. A static environment allows to simplify and concentrate on a specific topic such as equilibrium discussions. For instance, Lal and Rao (
+1997
+) study success factors of everyday low pricing and derive conditions for a perfect Nash equilibrium between an everyday low price retailer and a retailer with promotional pricing. With Zara as an example for a company with a successful static pricing strategy, Liu and Zhang (
+2013
+) argue that with the presence of strategic customers who prolong sales in anticipation of price decreases, firms might even be better off to deploy static over dynamic price setting processes. Studying the time-variant pricing plans in electricity markets, Schlereth et al. (
+2018
+) suggest that consumers might prefer static over dynamic pricing because of factors like choice confusion, lack of trust in price fairness, perceived economical risk or perceived additional effort. Further support for a static pricing strategy is found in Cachon and Feldman (
+2010
+) and Hall et al. (
+2009
+).
+Nevertheless, to generalize that static should strictly be preferred over dynamic pricing models could be short-sighted. Firms cannot generally infer future behavior of competitors from past observations to assess how competitive (re-) actions may influence the optimal pricing policy (Boer
+2015b
+). Corresponding to the surge of revenue management systems in the airline industry during the 70s and 80s, increased price and demand transparency, low menu costs and an abundance of decision support software created fierce competition among online retailers (Fisher et al.
+2018
+). Taking up on the above mentioned example by Liu and Zhang (
+2013
+), Caro and Gallien (
+2012
+) show that even Zara does not solely rely on static pricing. They supported Zara’s pricing team in designing and implementing a dynamic clearance pricing optimization system—to generate a competitive advantage in addition to the fast-fashion retail model Zara mainly pursues (Caro
+2012
+). Zhang et al. (
+2017
+) discuss various duopoly pricing models with static and dynamic pricing under advertising. They find that market surplus is highest when one firm prices dynamically, profiting from the static behavior of the other. Chung et al. (
+2012
+) provide numerical evidence that a dynamic pricing model with an appropriately specified demand estimation always outperforms static pricing strategies—also in settings with incomplete information. Xu and Hopp (
+2006
+) show that dynamic pricing outperforms preannounced pricing, especially with effective inventory management and elastic demand. Further support for advantages of dynamic pricing can be found by Popescu (
+2015
+), Wang and Sun (
+2019
+), and Zhang et al. (
+2018b
+). Empirical evidence of the negative consequences of sticking to a static strategy in a changing environment is found in the cases of Nokia, Kodak, and Xerox.
+While some scholars distinguish between discrete and continuous dynamic pricing systems (Vinod
+2020
+), we suggest to classify dynamic pricing models according to their level of sophistication into two evolutionary stages: the (in e-commerce widely applied) manual rule-based pricing approach and the data-driven algorithmic optimization approach (Popescu
+2015
+; Le Chen et al.
+2016
+).
+15
+For the rule-based approach, “if-then-else rules” are defined and updated manually.
+16
+However, the mere number of stock-keeping units (SKUs) in today’s retailer offerings aggravate the initial setup and handling of rule-based pricing and make real-time adjustments unmanageable (Schlosser and Boissier
+2018
+). In addition, rule-based approaches are rather subjective than sufficiently data-driven. Faced with a large range of SKUs, competitor responses and heterogeneous demand elasticities, canceling out the human decision-making process on an operational level is the next evolutionary step for competitive pricing systems (Calvano et al.
+2020
+). Data-driven algorithmic pricing strategies use observable market
+17
+data to predict sales probabilities based on consumer demand and competitive responses (Schlosser and Richly
+2019
+).
+As online marketplaces benefit from an increased number of retailers on their platforms, they typically support sellers to establish automated dynamic pricing systems (Kachani et al.
+2010
+).
+18
+However, Schlosser and Richly (
+2019
+) claim that current dynamic pricing systems are not able to deal with the complexity of competitor-based pricing and therefore most often ignore competition altogether or solely rely on manually adjusted rule-based mechanics. Challenges include the indefinite spectrum of changing competitor strategies, asymmetric access to competitor knowledge, a large solution space under limited information and the black-box character of dynamic systems, which exacerbates an intervention in case of a pricing system malfunction. Besides, researchers did not yet identify an algorithm which consistently outperforms other methodologies in competitive situations. Instead, it depends on the specific setting and other competitors’ pricing behavior to assess which pricing algorithm is optimal (van de Geer et al.
+2019
+) exacerbating the application of such systems.
+Reflecting the literature findings for both static and dynamic pricing strategies, we conclude that pricing managers should develop dynamic pricing models in most e-commerce situations. As long as demand and competitor price responses vary over time on online markets, dynamic models are naturally superior to time-independent approaches. Static models on the other hand are only appropriate in market constellations with little time-varying demand and competitor behavior. As static research can be expected to remain a vivid field of literature, further research with regard to the transferability of static models to dynamic settings is desirable. In addition, more research is needed that helps to better understand the implications of widely applied rule-based dynamic pricing methods and their transition toward algorithmic approaches (Boer
+2015a
+; van de Geer et al.
+2019
+; Kastius and Schlosser
+2022
+; Könönen
+2006
+).
+Market structure
+The market structure describes the number of competing firms such as duopoly or oligopoly in a demand setting with an indefinite number of consumers. 60% of the reviewed papers studied duopolies, 49% oligopolies, 7% monopolistic competition, and 3% perfect competition.
+19
+Especially for research in the economics stream, many papers assume a perfectly competitive market. Pricing research with perfectly competitive markets (e.g., van Mieghem and Dada
+1999
+or Yang and Xia
+2013
+) is likely to be of very limited value to online retailers. Building on the notion of Diamond (
+1971
+), Salop (
+1976
+) argues that if customers have positive information gathering costs, no perfect competition can occur as firms have room to slightly increase prices without losing demand. Christen (
+2005
+) found evidence that even with strong competition and low information costs, cost uncertainty could decrease the detrimental effect of competition for sellers and could increase prices above Bertrand levels. Similarly, Bryant (
+1980
+) showed that perfect competition is not possible in a market with uncertain demand, even if the number of firms is large and customers have no search costs. Rather, price dispersion reflects uncertain demand (Borenstein and Rose Nancy L.
+1994
+; Cavallo
+2018
+; Clemons et al.
+2002
+; Obermeyer et al.
+2013
+; Wang et al.
+2021
+). Israeli et al. (
+2022
+) empirically show that the market power of individual firms does not only depend on the number and intensity of competitors but also on the firm’s ability to adjust prices in response to varying inventory levels of product substitutes, especially with low consumer search costs. This is of relevance for e-commerce as e-tailers could exploit this dependence by incorporating competitors’ stock levels into pricing decisions (Fisher et al.
+2018
+).
+Some papers discuss (quasi) monopolistic competition (e.g., Xu and Hopp
+2006
+) in which small firms charge the (higher) monopoly price rather than the (lower) competitive price. From an empirical study in the U.S. airline industry, Chen (2018) concludes that, as firms can price discriminate late-arriving consumers, competition is softened, profits are increased, and the only single-price equilibrium could be at the monopoly price. This supports Lal and Sarvary (
+1999
+) who show that online retailers enjoy a certain amount of monopoly power in cases where buyers cannot switch suppliers for repeated purchases (e.g., technical incompatibility reasons). In such cases, switching costs could increase online prices (Chen and Riordan
+2008
+). However, this contradicts Deck and Gu (
+2012
+) who empirically show that, although the distribution of buyer values of competing products might theoretically lead to higher prices through competition, intensity of competition rarely allows for an occurrence of this phenomenon in e-tail settings.
+Although duopoly settings can serve to assess the relevant strength of pricing strategies, which is not directly possible for oligopoly markets due to the
+curse of dimensionality
+(Kastius and Schlosser
+2022
+), they cannot be transferred to more competitive environments (van de Geer et al.
+2019
+). In online retail, a duopoly market structure is a rare exemption. Like for perfectly competitive markets, findings of duopoly research must be carefully assessed in terms of their applicability to online retail oligopolies.
+Bresnahan and Reiss (
+1991
+) found empirical evidence that markets with an increasing number of dealers have lower prices than in less competitive market structures such as monopolies or duopolies. Although applicable to many online retail markets, where retailers face dozens, if not hundreds of thousands of competitors (Schlosser and Boissier
+2018
+), few research attention is currently given toward a structure with a large number of competitors in an imperfect market (cf. Li et al.
+2017
+). A way to assess the current competitive structure of markets is the utilization of online consumer-generated content such as forum entries (Netzer et al.
+2012
+; Won et al.
+2022
+) or clickstream data (Ringel and Skiera
+2016
+) and actual sales data (Kim et al.
+2011
+).
+In many countries with well-developed B2C online markets, one or few major retailers dominate on an oligopolistic market. For example, the top three online retailers in the United States accounted for over 50% of the revenue generated on the national e-commerce market in 2021.
+20
+Due to lower locational limitations in conjunction with substantial economies of scale and scope, online markets tend to become more concentrated than their offline counterparts (Borsenberger
+2015
+). Although one could expect that increased market transparency leads to a higher intensity of competition (Cao and Gruca
+2003
+), limiting the market power of established firms and leaving growth potential for smaller firms (Zhao et al.
+2017
+), it appears reasonable to predict that most online markets will ultimately resemble an oligopoly setting with a with a relatively small number of players—enabling increased tacit pricing algorithm collusion in the future (Calvano et al.
+2020
+). With few exceptions (e.g., Noel
+2007
+), there is little research (Brown and Goolsbee
+2002
+; Wang et al.
+2021
+; Cavallo
+2018
+) exploring what type of competitor-based pricing strategies are used and what competitive dynamics are found on e-tail markets. Thus, more research is needed to investigate the current state of market structure and intensity of competition in today’s e-commerce markets as drivers of the selection and the outcomes of pricing approaches.
+Implications and directions
+We contribute to the literature by providing an interdisciplinary review of competitive online retail research. Competitive pricing problems can most often be assigned to one of the academic fields of economics, marketing management or operations. In a first step, this review offered a descriptive portrayal of the relevant literature. Motivated by practical issues and common features in competitive pricing research, we then structured competitive pricing contributions along four properties of pricing models. First, do firms compete with identical or quality differentiated products? Second, are products to be considered as perishable or durable goods? Third, is the market setting to be regarded time-independent or not? Fourth, which market structure prevails on e-tail markets? The framework is derived from an analysis of pricing research not exclusively restricted to online retail settings. Therefore, it could be extended to other online or offline markets, with little loss of generalizability.
+We focused on e-tail markets because the relevance of competition for pricing strategies is disproportionally higher in such environments. On e-tail online markets, products are rarely offered exclusively so that the likelihood of substitutive competition is high. Nevertheless, products can be differentiated through other factors than prices such as generous shipping, customer retention (e.g., loyalty reward programs) or return and issue handling policies. With a look on product similarities, accounting for product interdependencies and multi-product situations are important improvements of prevailing pricing models. Second, pricing models with both a focus on perishable and/or durable products are relevant on e-tail markets. However, further research is needed exploring which of the respective perishability considerations are appropriate for different settings. Third, we conclude that, albeit time-independent static models may occasionally serve to simplify pricing issues, dynamic models outperform their static counterparts in constantly changing market environments such as in e-commerce. Fourth, we show that in most practical settings, online markets resemble either an oligopolistic market structure or a structure with many firms under imperfect competition. Thus, future research should consider these two “real” competitive settings instead of further looking at simplifying market structures such as monopolistic or duopolistic competition. This should ease a transfer of theoretical insights into practical applications. To sum, firms should be able to improve their competitive position by developing a profit optimizing dynamic pricing strategy for identical products in an oligopolistic setting with a varying number and relevance of competitors.
+Due to space limitations, we had to focus on competitive pricing model characteristics related to four overall product and market attributes. Thus, more work is needed on other characteristics of competitive pricing models, particularly firm- and consumer-related characteristics. Firm-related characteristics encompass various additional properties of interacting firms (e.g., similarity or capacity constraints). Similarly, consumer-related characteristics entail further properties of interacting buyers (e.g., certainty, discreteness, sophistication, and homogeneity of demand).
+In the selection process of literature, this study only considered papers in peer-reviewed journals and conference proceedings in English. Subsequent research could complement our findings by including industry-funded, unpublished and non-peer-reviewed articles, also in other languages. In addition, we do not claim that our research captures all competitive pricing publications of the considered field. As our study spans almost 50 years of a frequently discussed topic in the domains of economics, marketing management, and operations, we had to constrain the scope to the most influential work. Although we mutually evaluated our selection decisions and consulted outside peers for validation and further input, we cannot eliminate the element of subjectivity. Consequently, other authors could have selected slightly different papers. However, this shortcoming is unlikely to significantly affect our results as our literature selection was derived from a broad array of competitive pricing research and would therefore be only marginally influenced by a few omitted articles.
+Biographies
+Torsten J. Gerpott
+holds the Chair of Corporate and Technology Planning with focus on electronic communication industries at the Mercator School of Management, University of Duisburg-Essen, Germany. He is member of the supervisory and advisory boards of several tech companies. Until March 1994, he was member of the management team of an American top management consulting company. He received his doctorate and habilitation in 1987 and 1993, respectively, from the Helmut-Schmidt-University Hamburg and Prof. Gerpott is author of more than 550 professional publications.
+Jan Berends
+is research associate at the Chair of Corporate and Technology Planning at the Mercator School of Management, University of Duisburg-Essen, Germany. He obtained his industrial engineering bachelor (B.Sc.) degree (ET/IT) at the Cooperative State University of Baden-Württemberg and his master in management (M.Sc.) degree at the Leipzig Graduate School of Management. Until 2017, Mr. Berends worked as Strategic Alliances Manager EMEA of Bosch’s Security Systems. From 2019 to 2020, he worked as a consultant for the Boston Consulting Group.
+Appendix 1
+See Table
+4
+.
+Table 4.
+Selection of systematically reviewed journals and classification of scientific relevance
+Journal name
+Percentile in discipline
+SJR
+2020
+a
+VHB-JQ3
+rating 2021
+b
+Interdisciplinary journals
+Journal of Marketing
+Q1
+7.8
+A +
+Marketing Science
+Q1
+5.9
+A +
+Management Science
+Q1
+5.0
+A +
+Information Systems Research
+Q1
+3.5
+A +
+Quantitative Marketing and Economics
+Q1
+2.1
+B
+Decision Sciences
+Q1
+1.2
+B
+Journal of the Operational Research Society
+Q1
+0.8
+B
+Journal of Revenue and Pricing Management
+Q3
+0.3
+C
+Economics journals
+American Economic Review
+Q1
+17.0
+A +
+Econometrica
+Q1
+16.7
+A +
+RAND Journal of Economics
+Q1
+3.7
+A
+International Journal of Production Economics
+Q1
+2.4
+B
+Journal of Economics and Management Strategy
+Q1
+1.7
+A
+Journal of Industrial Economics
+Q1
+0.9
+A
+Marketing management journals
+Journal of Service Research
+Q1
+4.4
+A
+Journal of Retailing
+Q1
+3.2
+A
+Omega
+Q1
+2.5
+B
+International Journal of Electronic Commerce
+Q1
+1.2
+B
+Journal of Product and Brand Management
+Q1
+1.0
+C
+Operations journals
+Manufacturing and Service Operations Management
+Q1
+7.4
+A
+Operations Research
+Q1
+3.8
+A +
+Production and Operations Management
+Q1
+3.3
+A
+IEEE Transactions on Industrial Informatics
+Q1
+2.5
+A
+Mathematical Programming
+Q1
+2.4
+A
+European Journal of Operational Research
+Q1
+2.2
+A
+Computers and Operations Research
+Q1
+1.5
+B
+Central European Journal of Operations Research
+Q2
+0.7
+C
+Open in a new tab
+a
+SJR: SCImago Journal Rank
+b
+The Association of University Teachers of Business Administration e.V. (VHB) is made up of over 2,800 business administration (BA) academics. Founded in 1921, VHB is the leading scientific institution of BA in German-speaking countries. JOURQUAL3 is a rating of journals relevant to business administration based on the judgments of VHB members. The rating categories are: A + : outstanding and world leading scientific journals in BA (= 3.4%); A: leading scientific BA journals (11.1%); B: important and respected scientific BA journals (33.3%); C: recognized scientific business journals (41.9%); D: scientific business administration journals (9.1%). The remaining 1.2% consist of in between categories
+Appendix 2
+See Table
+5
+.
+Table 5.
+List of papers reviewed in-depth by research design
+Research design
+Empirical data
+Online specified
+Industry
+Product Similarity
+Durability
+Time dependence
+Time horizon
+Market form
+Author (Year)
+Equilibrium model
+Yes
+Yes
+Retail
+Identical
+Durable
+Independent
+1-stage
+Duopolistic
+Ba et al. (
+2012
+)
+Differentiated
+Durable
+Dependent
+Finite horizon
+Oligopolistic
+Dinerstein et al. (
+2018
+)
+Transportation
+Differentiated
+Perishable
+Dependent
+Finite horizon
+Duopolistic
+Chen (2018)
+Oligopolistic
+Chen (2018)
+No
+Hospitality
+Differentiated
+Durable
+Independent
+2-stage
+Duopolistic
+Thomadsen (
+2007
+)
+Retail
+Both
+Durable
+Dependent
+3-stage
+Oligopolistic
+Dana and Williams (2020)
+Multi
+Perishable
+Dependent
+Finite horizon
+Oligopolistic
+Richards and Hamilton (
+2006
+)
+Simulation
+Yes
+General
+Identical
+Durable
+Both
+Finite horizon
+Duopolistic
+Zhang et al. (
+2017
+)
+Dependent
+Finite horizon
+Duopolistic
+Kastius and Schlosser (
+2022
+)
+Kutschinski et al. (
+2003
+)
+Oligopolistic
+Kastius and Schlosser (
+2022
+)
+Kutschinski et al. (
+2003
+)
+Independent
+1-stage
+Duopolistic
+Li et al. (2019)
+Perishable
+Dependent
+Finite horizon
+Monopolistic
+Lin and Sibdari (
+2009
+)
+Oligopolistic
+Lin and Sibdari (
+2009
+)
+Differentiated
+Durable
+Dependent
+Infinite horizon
+Oligopolistic
+Calvano et al. (
+2020
+)
+Retail
+Identical
+Durable
+Both
+Infinite horizon
+Duopolistic
+Campbell et al (
+2005
+)
+Social Media
+Differentiated
+Durable
+Independent
+2-stage
+Duopolistic
+Chen et al. (
+2018
+)
+No
+General
+Identical
+Durable
+Dependent
+Infinite horizon
+Duopolistic
+Könönen (
+2006
+)
+Oligopolistic
+Farias et al. (
+2012
+)
+Independent
+2-stage
+Duopolistic
+Van Mieghem and Dada (
+1999
+)
+Oligopolistic
+Van Mieghem and Dada (
+1999
+)
+Perfect comp
+Van Mieghem and Dada (
+1999
+)
+Perishable
+Both
+2-stage
+Duopolistic
+Dasci and Karakul (
+2009
+)
+Equilibrium model
+Simulation
+No
+General
+Identical
+Perishable
+Dependent
+Finite horizon
+Oligopolistic
+Perakis and Sood (
+2006
+)
+Differentiated
+Durable
+Dependent
+Finite horizon
+Duopolistic
+Adida and Perakis (
+2010
+)
+Multi
+Durable
+Both
+1-stage
+Duopolistic
+Dong et al. (
+2019
+)
+1-stage
+Oligopolistic
+Dong et al. (
+2019
+)
+Infinite horizon
+Duopolistic
+Dong et al. (
+2019
+)
+Infinite horizon
+Oligopolistic
+Dong et al. (
+2019
+)
+Transportation
+Identical
+Perishable
+Independent
+3-stage
+Duopolistic
+Netessine and Shumsky (
+2005
+)
+Transportation
+Differentiated
+Perishable
+Dependent
+Finite horizon
+Oligopolistic
+Mookherjee and Friesz (
+2008
+)
+Independent
+3-stage
+Duopolistic
+Netessine and Shumsky (
+2005
+)
+Independent
+Infinite horizon
+Duopolistic
+Isler and Imhof (
+2008
+)
+No
+Yes
+General
+Identical
+Durable
+Independent
+1-stage
+Oligopolistic
+Janssen and Moraga-González (
+2004
+)
+Duopolistic
+Yano and Komatsubara (2017)
+2-stage
+Duopolistic
+Yano and Komatsubara (
+2006
+)
+Duopolistic
+Yano and Komatsubara (
+2018
+)
+Differentiated
+Durable
+Independent
+1-stage
+Duopolistic
+Fay (
+2008
+)
+Lal and Sarvary (
+1999
+)
+n.a
+n.a
+n.a
+Finite horizon
+Duopolistic
+Ittoo and Petit (
+2017
+)
+Hospitality
+Identical
+Durable
+Independent
+4-stage
+Oligopolistic
+Guo and Zheng (2017)
+Hospitality
+Differentiated
+Perishable
+Independent
+2-stage
+Duopolistic
+Jerath et al. (
+2010
+)
+Retail
+Identical
+Durable
+Dependent
+Finite horizon
+Duopolistic
+Babaioff et al. (
+2015
+)
+Independent
+1-stage
+Duopolistic
+Balakrishnan et al. (
+2014
+)
+Mitra (
+2021
+)
+Yao et al. (2005)
+Equilibrium model
+No
+Yes
+Retail
+Identical
+Durable
+Indepent
+1-stage
+Oligopolistic
+Balasubramanian (
+1998
+)
+Bernstein et al. (
+2008
+)
+Koçaş (2005)
+2-stage
+Duopolistic
+Mitra (
+2021
+)
+Viswanathan (
+2005
+)
+Yao et al. (2005)
+Independent
+3-stage
+Duopolistic
+Sarkar and Pal (
+2021
+)
+n.a
+Independent
+2-stage
+Duopolistic
+Wang et al. (
+2020
+)
+Differentiated
+Durable
+Independent
+1-stage
+Oligopolistic
+Oksana (2021)
+Both
+Independent
+1-stage
+Monopolistic
+Cattani et al. (
+2007
+)
+Duopolistic
+Cattani et al. (
+2007
+)
+Transportation
+Identical
+Durable
+Dependent
+Finite horizon
+Duopolistic
+Babaioff et al. (
+2015
+)
+No
+General
+Both
+Durable
+Both
+n.a
+Oligopolistic
+Stiglitz (
+1979
+)
+Dependent
+3-stage
+Oligopolistic
+Dana and Williams (
+2022
+)
+Infinite horizon
+Oligopolistic
+Weintraub et al. (
+2008
+)
+Independent
+1-stage
+Duopolistic
+Hamilton and Slutsky (
+1990
+)
+Identical
+Durable
+Dependent
+2-stage
+Oligopolistic
+Anton et al. (
+2014
+)
+Finite horizon
+Duopolistic
+Dudey (
+1992
+)
+Infinite horizon
+Duopolistic
+Maskin and Tirole (
+1988
+)
+Independent
+1-stage
+Duopolistic
+Matsubayashi and Yamada (
+2008
+)
+Oligopolistic
+Salop (
+1976
+)
+2-stage
+Duopolistic
+Chen (
+1997
+)
+Chioveanu and Zhou (
+2013
+)
+Oligopolistic
+Boccard and Wauthy (
+2000
+)
+Chioveanu and Zhou (
+2013
+)
+Differentiated
+Durable
+Independent
+1-stage
+Monopolistic
+Chen and Riordan (2007)
+Equilibrium model
+No
+No
+General
+Differentiated
+Durable
+Independent
+1-stage
+Oligopolistic
+Chen and Riordan (2007)
+Chioveanu (
+2012
+)
+Gallego et al. (
+2006
+)
+2-stage
+Duopolistic
+Motta (
+1993
+)
+Perishable
+Dependent
+Infinite horizon
+Duopolistic
+Villas-Boas (
+1999
+)
+Villas-Boas (
+2006
+)
+Independent
+2-stage
+Duopolistic
+Lin et al. (
+2014
+)
+Villas-Boas (
+2004
+)
+3-stage
+Duopolistic
+Anand and Giotra (2007)
+n.a
+Independent
+1-stage
+Oligopolistic
+Aksoy-Pierson et al. (
+2013
+)
+n.a
+Independent
+2-stage
+Duopolistic
+Moorthy (
+1988
+)
+Newsvendor
+Identical
+Perishable
+Independent
+1-stage
+Duopolistic
+Lippman and McCardle (
+1997
+)
+Oligopolistic
+Lippman and McCardle (
+1997
+)
+2-stage
+Duopolistic
+Lippman and McCardle (
+1997
+)
+Oligopolistic
+Lippman and McCardle (
+1997
+)
+Retail
+Identical
+Durable
+Dependent
+3-stage
+Duopolistic
+Geng and Mallik (
+2007
+)
+Independent
+1-stage
+Duopolistic
+Cachon and Harker (
+2002
+)
+Oligopolistic
+Bernstein and Federgruen (
+2005
+)
+2-stage
+Duopolistic
+Cachon and Harker (
+2002
+)
+3-stage
+Duopolistic
+Wang et al. (
+2017
+)
+Infinite horizon
+Oligopolistic
+Bernstein and Federgruen (
+2004
+)
+Perishable
+Independent
+1-stage
+Duopolistic
+Parlar (
+1988
+)
+Differentiated
+Durable
+Dependent
+3-stage
+Duopolistic
+Afèche et al. (2011)
+Equilibrium model
+No
+No
+Retail
+Differentiated
+Durable
+Independent
+1-stage
+Duopolistic
+Choi et al. (1996)
+2-stage
+Duopolistic
+Gupta et al. (2020)
+Sun and Gilbert (
+2019
+)
+3-stage
+Duopolistic
+Gupta et al. (2020)
+Perishable
+Independent
+1-stage
+Duopolistic
+Wang and Hu (2014)
+2-stage
+Duopolistic
+Wang and Hu (2014)
+Multi
+Durable
+Independent
+1-stage
+Duopolistic
+Besbes and Sauré (
+2016
+)
+Nip et al. (2021)
+Oligopolistic
+Besbes and Sauré (
+2016
+)
+Federgruen and Hu (2015)
+Nip et al. (2021)
+Transportation
+Differentiated
+Perishable
+Independent
+2-stage
+Duopolistic
+Zhao et al. (
+2017
+)
+Pricing model
+Yes
+Yes
+Hospitality
+Differentiated
+Perishable
+Dependent
+Infinite horizon
+Oligopolistic
+Li et al. (
+2017
+)
+Retail
+Identical
+Durable
+Dependent
+Finite horizon
+Oligopolistic
+Cao and Gruca (
+2003
+)
+No
+General
+Differentiated
+Durable
+Dependent
+Infinite horizon
+Monopolistic
+Kachani and Shmatov (2010)
+Oligopolistic
+Kachani and Shmatov (2010)
+Multi
+Durable
+Dependent
+Infinite horizon
+Monopolistic
+Kachani and Shmatov (2010)
+General
+Multi
+Durable
+Dependent
+Infinite horizon
+Oligopolistic
+Kachani and Shmatov (2010)
+n.a
+Independent
+Finite horizon
+Duopolistic
+Blattberg and Wisniewski (
+1989
+)
+Retail
+Identical
+Perishable
+Dependent
+Finite horizon
+Oligopolistic
+Schlosser and Boissier (
+2018
+)
+Differentiated
+Durable
+n.a
+Finite horizon
+Duopolistic
+Aggarwal and Cha (
+1998
+)
+Multi
+Durable
+Independent
+2-stage
+Oligopolistic
+Dickson and Urbany (
+1994
+)
+Simulation
+Yes
+Retail
+Identical
+Durable
+Both
+Infinite horizon
+Duopolistic
+Wang and Sun (2020)
+Pricing model
+Simulation
+Yes
+Retail
+Identical
+Durable
+Dependent
+Finite horizon
+Duopolistic
+Van de Geer et al. (
+2019
+)
+Oligopolistic
+Van de Geer et al. (
+2019
+)
+Infinite horizon
+Duopolistic
+Schlosser and Richly (
+2019
+)
+Differentiated
+Perishable
+Dependent
+Finite horizon
+Oligopolistic
+Levin et al. (
+2009
+)
+No
+General
+Differentiated
+n.a
+Dependent
+Finite horizon
+Oligopolistic
+Serth et al. (2017)
+Identical
+n.a
+Dependent
+Finite horizon
+Duopolistic
+Cooper et al. (
+2015
+)
+Differentiated
+Durable
+Dependent
+Infinite horizon
+Monopolistic
+Tuinstra (2004)
+Differentiated
+Durable
+Dependent
+Infinite horizon
+Oligopolistic
+Tuinstra (2004)
+n.a
+Dependent
+Infinite horizon
+Oligopolistic
+Chung et al. (
+2012
+)
+Retail
+Identical
+Durable
+Dependent
+Finite horizon
+Duopolistic
+Anderson et al. (
+2005
+)
+Differentiated
+Durable
+Dependent
+Finite horizon
+Duopolistic
+Liu and Zhang (
+2013
+)
+Monopolistic
+Liu and Zhang (
+2013
+)
+Transportation
+Identical
+Perishable
+Dependent
+Finite horizon
+Duopolistic
+Currie et al. (
+2008
+)
+No
+Yes
+General
+Identical
+Durable
+Dependent
+1-stage
+Duopolistic
+Popescu (
+2015
+)
+Oligopolistic
+Popescu (
+2015
+)
+Identical
+Durable
+Dependent
+2-stage
+Duopolistic
+Anderson and Kumar (
+2007
+)
+Infinite horizon
+Duopolistic
+Anderson and Kumar (
+2007
+)
+Miklós-Thal and Tucker (
+2019
+)
+Popescu (
+2015
+)
+Oligopolistic
+Popescu (
+2015
+)
+Finite horizon
+Duopolistic
+Talluri and Martinez-de-Albeniz (2011)
+Oligopolistic
+Talluri and Martinez-de-Albeniz (2011)
+Perfect comp
+Yang and Xia (
+2013
+)
+Pricing model
+No
+Yes
+General
+Differentiated
+Perishable
+Dependent
+Finite horizon
+Duopolistic
+Talluri and Martinez-de-Albeniz (2011)
+Oligopolistic
+Talluri and Martinez-de-Albeniz (2011)
+Hospitality
+Differentiated
+Perishable
+Dependent
+Finite horizon
+Duopolistic
+Gallego and Hu (2014)
+Oligopolistic
+Gallego and Hu (2014)
+Retail
+Identical
+Durable
+Independent
+1-stage
+Oligopolistic
+Ryan et al. (
+2012
+)
+Differentiated
+Durable
+Independent
+1-stage
+Duopolistic
+Abhishek et al. (
+2016
+)
+No
+General
+Identical
+Both
+Dependent
+Infinite horizon
+Duopolistic
+Schlosser and Boissier (2017)
+Durable
+Dependent
+Finite horizon
+Duopolistic
+Wenzelburger (
+2004
+)
+Oligopolistic
+Yang et al. (
+2020
+)
+Independent
+2-stage
+Duopolistic
+Caillaud and De Nijs (
+2014
+)
+Infinite horizon
+Duopolistic
+Caillaud and De Nijs (
+2014
+)
+Perishable
+Dependent
+Finite horizon
+Duopolistic
+Mantin et al. (
+2011
+)
+Bertsimas and Perakis (
+2006
+)
+Perishable
+Dependent
+Finite horizon
+Oligopolistic
+Bertsimas and Perakis (
+2006
+)
+n.a
+Independent
+1-stage
+Monopolistic
+Allen and Hellwig (
+1986
+)
+n.a
+Independent
+1-stage
+Oligopolistic
+Allen and Hellwig (
+1986
+)
+Perfect comp
+Allen and Hellwig (
+1986
+)
+Differentiated
+Durable
+Independent
+2-stage
+Duopolistic
+Caplin and Nalebuff (
+1991
+)
+Oligopolistic
+Caplin and Nalebuff (
+1991
+)
+n.a
+Dependent
+2-stage
+Oligopolistic
+Gallego and Wang (
+2014
+)
+Pricing model
+No
+No
+General
+n.a
+n.a
+Dependent
+Infinite horizon
+Duopolistic
+Wu and Wu (2016)
+Retail
+Identical
+Durable
+Independent
+1-stage
+Duopolistic
+Nalca et al. (
+2010
+)
+Empirical study
+Yes
+Yes
+Automotive
+Differentiated
+Durable
+Dependent
+Finite horizon
+Oligopolistic
+Won et al. (
+2022
+)
+Differentiated
+Durable
+Independent
+Finite horizon
+Oligopolistic
+Netzer et al. (
+2012
+)
+Pharmaceutical
+Differentiated
+Durable
+Independent
+Finite horizon
+Oligopolistic
+Netzer et al. (
+2012
+)
+Retail
+Identical
+Durable
+Dependent
+Finite horizon
+Oligopolistic
+Wang et al. (
+2021
+)
+Differentiated
+Durable
+Independent
+Finite horizon
+Oligopolistic
+Ringel and Skiera (
+2016
+)
+Multi
+Both
+Dependent
+Finite horizon
+Oligopolistic
+Cavallo (
+2018
+)
+No
+Airline
+Identical
+Perishable
+Dependent
+Finite horizon
+Oligopolistic
+Siegart and Ulbricht (2020)
+Differentiated
+Perishable
+Dependent
+Finite horizon
+Duopolistic
+Borenstein and Rose (
+1994
+)
+Monopolistic
+Borenstein and Rose (
+1994
+)
+Automotive
+Differentiated
+Durable
+Dependent
+Finite horizon
+Oligopolistic
+Olivares and Cachon (
+2009
+)
+Independent
+Finite horizon
+Oligopolistic
+DeSarbo and Grewal (
+2007
+)
+Gasoline
+Identical
+Durable
+Dependent
+Finite horizon
+Oligopolistic
+Noel (
+2007
+)
+Retail
+Multi
+Perishable
+Dependent
+Finite horizon
+Oligopolistic
+Putsis and Dhar (
+1998
+)
+Open in a new tab
+Funding
+Open Access funding enabled and organized by Projekt DEAL.
+Footnotes
+1
+Competitive pricing includes all activities and processes to price products with the consideration of competitors. This does not only include rigidly pegging prices to competitor prices but rather a comprehensive consideration of current and expected price (re-)actions of competing firms to sustainably ensure profit maximization. In this article, the terms competitive pricing, competitor-oriented pricing and competitor-based pricing are used synonymously.
+2
+Search costs are defined as the costs of time and resources to acquire information with respect to price, assortment, and quality characteristics of the goods provided by different sellers. The internet dramatically reduces search costs through price comparison websites such as Google Shopping, Shopzilla (USA) or Idealo (Germany).
+3
+Business-to-consumer (B2C) online retail sales encompass all forms of electronic commerce markets in which residential end customers can directly buy goods from a seller over the internet through a web browser or a mobile app. In this paper, the terms business-to-consumer (B2C) online goods retail, online retail, e-tail, e-retail and e-commerce markets are used synonymously.
+4
+In contrast to classical quantity-based revenue management, dynamic pricing, also known as surge pricing, is the practice of adjusting prices according to current market demand (Boer
+2015a
+). Revenue management, also known as yield management, is a type of price discrimination which originates from the airline and hospitality industries. Typically, revenue management models assume fixed capacities, low marginal cost, varying demand and highly perishable inventory (Talluri and van Ryzin
+2004
+).
+5
+Keywords used for abstract, title and keyword screening were “competitive pricing”, “competitor-based pricing”, “competition” AND “pricing”. To find literature for online pricing in particular, the search was combined with the keywords “online”, “e-retail”, “ecommerce” and “e-commerce”. Whereas the combination was scanned in great depths, the three competitive keywords were screened for influential papers with implications for online markets.
+6
+Bertrand competition is a simplified model of competition to explain price competition among (at least) two firms for an identical product at equal unit cost of production. Prices are set simultaneously, and consumers buy without search costs from the firm with the lowest price. When all firms charge the same price, consumer demand is split evenly between firms. A firm is willing to supply unlimited amounts of quantities above the unit cost of production and is indifferent to supply at unit cost as it will earn zero profit. The only Bertrand equilibrium exists when prices are equal to unit cost (i.e., competitive price) as each firm otherwise would have an incentive to undercut all other competitors and thereby rake in the entire market demand. Therefore, there can be no equilibrium at prices above the competitive price and price dispersion cannot occur.
+7
+In vertical differentiation, consumer choice depends on specific quality levels of product attributes. At the same price, all consumers prefer one product over other products, for example because of superior design. In the simplest form, products differ in one attribute and customers are willing to pay marginal increments of this attribute.
+8
+In horizontal differentiation, consumer choice depends on preferences for products. At the same price, some customers would buy one product and others other products.
+9
+We consider product differentiation only to product-related differentiation attributes. However, in competitive pricing literature firm-related differences such as firm loyalty or distribution channels are occasionally attributed to differentiation. For example, Abhishek et al. (
+2016
+) differentiate online distribution channels of otherwise homogeneous products and firms.
+10
+Heterogeneous customer preferences are a key requirement for product differentiation, otherwise price constitutes the only driver of the buying decision (Li et al.
+2017
+). Without heterogeneity in consumers’ marginal willingness to pay for different levels of product quality, there can be no product differentiation (Pigou
+1920
+).
+11
+Accessed 14–03-2022.
+12
+Salvage value is defined as the residual cash-flow of a good after its expiration date.
+13
+For example, game settings on the foundation of Stackelberg games necessarily comprise ≥ 2 stages (Geng and Mallik
+2007
+; Gupta et al.; Wang et al.
+2020
+; Yao and Liu
+2005
+). Another example would be Anand and Girotra (
+2007
+) who propose a 3-stage model in which they include the supply chain configuration and determination of production quantities in addition to the actual price setting.
+14
+As such, we classify n-stage models as dynamic models when not all individual stages serve a specific time-independent purpose.
+15
+For instance, the Brandenburg consumer advice center (Verbraucherzentrale Brandenburg) examined dynamic price differentiation in online retail and found that 15 of the 16 observed German online shops dynamically changed their prices in 2018 (Dautzenberg et al.
+2018
+).
+16
+A typical rule would be to set prices always x% lower than competitor prices up to a certain profit threshold.
+17
+Observable market data include price and stock levels of competitors (Fisher et al.
+2018
+) or clickstream and keyword data of customers (Li et al.
+2017
+).
+18
+Examples for support programs by online marketplaces are Amazon’s Seller Central (
+https://sellercentral.amazon.com/gp/help/external/G201994820?language=en_US&ref=efph_G201994820_cont_43381
+; Accessed 14–03-2022), eBay’s Seller Tools (
+https://pages.ebay.com/sell/automation.html
+; Accessed 14–03-2022) or Idealo’s Partner Program (
+https://partner.idealo.com/de
+; Accessed 14–03-2022).
+19
+Cumulatively, these values exceed 100% as some articles discussed more than one kind of market structure. Applied by economists to simplify real markets as the foundation of price theory, perfect competition relates to a market structure which is controlled entirely by market forces and not by individual firms. Instead, individual firms only act as price takers and cannot earn any economic profit. The conditions for a perfect competition, such as full information, homogeneous products, fully rational buyers, no scale, network or externality effects, no entry barriers, and no transaction costs, are rarely attainable in practical settings (Stigler
+1957
+). If not all conditions for perfect competition are fulfilled, the market structure is imperfect which applies to most practical settings. Besides a monopoly with only one seller on the market, three market structures with competing firms exist: Monopolistic, duopolistic, and oligopolistic competition. An oligopoly is characterized by a small number of firms in which the behavior of one firm drives the actions of other firms. A duopoly is a particular case of an oligopoly in which two firms control the market. An extreme case of imperfect competition is (quasi) monopolistic competition in which products are differentiated and firms maintain a certain spare capacity giving them a certain degree of pricing power to maximize their (short-term) profits. In consequence, prices can be higher than corresponding the competitive (Bertrand) price (Vives
+2001
+).
+20
+For an overview of the top 15 online shops in the United States in 2021, see Davidkhanian (
+2021
+).
+Publisher's Note
+Springer Nature remains neutral with regard to jurisdictional claims in published maps and institutional affiliations.
+Contributor Information
+Torsten J. Gerpott, Email: torsten.gerpott@uni-due.de
+Jan Berends, Email: jan.berends@uni-due.de.
+References
+Abhishek Vibhanshu, Jerath Kinshuk, John Zhang Z. Agency selling or reselling? Channel structures in electronic retailing. Management Science. 2016;62(8):2259–2280. doi: 10.1287/mnsc.2015.2230.
+[
+DOI
+] [
+Google Scholar
+]
+Adida Elodie, Perakis Georgia. Dynamic pricing and inventory control: Uncertainty and competition. Operations Research. 2010;58(2):289–302. doi: 10.1287/opre.1090.0718?journalCode=opre.
+[
+DOI
+] [
+Google Scholar
+]
+Afeche Philipp, Ming Hu, Li Yang. Reorder flexibility and price competition for differentiated seasonal products with market size uncertainty. SSRN Electronic Journal. 2011 doi: 10.2139/ssrn.1976886.
+[
+DOI
+] [
+Google Scholar
+]
+Aggarwal Praveen, Cha Taihoon. Asymmetric price competition and store vs. national brand choice. Journal of Product & Brand Management. 1998;7(3):244–253. doi: 10.1108/10610429810222877.
+[
+DOI
+] [
+Google Scholar
+]
+Aksoy-Pierson Margaret, Allon Gad, Federgruen Awi. Price competition under mixed multinomial logit demand functions. Management Science. 2013;59(8):1817–1835. doi: 10.1287/mnsc.1120.1664.
+[
+DOI
+] [
+Google Scholar
+]
+Allen Beth, Hellwig Martin. Bertrand-Edgeworth oligopoly in large markets. Review of Economic Studies. 1986;53(2):175–204. doi: 10.2307/2297646.
+[
+DOI
+] [
+Google Scholar
+]
+Anand Krishnan S, Girotra Karan. The strategic perils of delayed differentiation. Management Science. 2007;53(5):697–712. doi: 10.1287/mnsc.1060.0655.
+[
+DOI
+] [
+Google Scholar
+]
+Anderson Eric T, Kumar Nanda. Price competition with repeat, loyal buyers. Quantitative Marketing and Economics. 2007;5(4):333–359. doi: 10.1007/s11129-007-9023-7.
+[
+DOI
+] [
+Google Scholar
+]
+Anderson Chris K, Rasmussen Henning, MacDonald Leo. Competitive pricing with dynamic asymmetric price effects. International Transactions in Operational Research. 2005;12(5):509–525. doi: 10.1111/j.1475-3995.2005.00522.x.
+[
+DOI
+] [
+Google Scholar
+]
+Anton James J, Biglaiser Gary, Vettas Nikolaos. Dynamic price competition with capacity constraints and a strategic buyer. International Economic Review. 2014;55(3):943–958. doi: 10.1111/iere.12077.
+[
+DOI
+] [
+Google Scholar
+]
+Anufriev Mikhail, Kopányi Dávid, Tuinstra Jan. Learning cycles in bertrand competition with differentiated commodities and competing learning rules. Journal of Economic Dynamics and Control. 2013;37(12):2562–2581. doi: 10.1016/j.jedc.2013.06.010.
+[
+DOI
+] [
+Google Scholar
+]
+Armstrong J. Scott, Green Kesten C. Competitor-oriented objectives: Myth of market share. International Journal of Business. 2007;12(1):117–136.
+[
+Google Scholar
+]
+Ba Sulin, Stallaert Jan, Zhang Zhongju. Research note—Online price dispersion: A game-theoretic perspective and empirical evidence. Information Systems Research. 2012;23(2):575–592. doi: 10.1287/isre.1110.0353.
+[
+DOI
+] [
+Google Scholar
+]
+Babaioff, Moshe, Renato Paes Leme, and Balasubramanian Sivan. 2015. Price competition, fluctuations, and welfare guarantees. In
+EC '15: Proceedings of the Sixteenth ACM Conference on Economics and Computation,
+Portland, USA. 15-Jun-15 - 19-Jun-15. 10.48550/arXiv.1411.2036
+Balakrishnan Anantaram, Sundaresan Shankar, Zhang Bo. Browse-and-switch: Retail-online competition under value uncertainty. Production and Operations Management. 2014;23(7):1129–1145. doi: 10.1111/poms.12165.
+[
+DOI
+] [
+Google Scholar
+]
+Balasubramanian Sridhar. Mail versus mall: A strategic analysis of competition between direct marketers and conventional retailers. Marketing Science. 1998;17(3):181–195. doi: 10.1287/mksc.17.3.181.
+[
+DOI
+] [
+Google Scholar
+]
+Baloglu Seyhmus, Assante Lisa Marie. A content analysis of subject areas and research methods used in five hospitality management journals. Journal of Hospitality & Tourism Research. 1999;23(1):53–70. doi: 10.1177/109634809902300105.
+[
+DOI
+] [
+Google Scholar
+]
+Bernstein Fernando, Federgruen Awi. A general equilibrium model for industries with price and service competition. Operations Research. 2004;52(6):868–886. doi: 10.1287/opre.1040.0149.
+[
+DOI
+] [
+Google Scholar
+]
+Bernstein Fernando, Federgruen Awi. Decentralized supply chains with competing retailers under demand uncertainty. Management Science. 2005;51(1):18–29. doi: 10.1287/mnsc.1040.0218.
+[
+DOI
+] [
+Google Scholar
+]
+Bernstein Fernando, Song Jing-Sheng, Zheng Xiaona. “Bricks-and-mortar” vs. “clicks-and-mortar”: An equilibrium analysis. European Journal of Operational Research. 2008;187(3):671–690. doi: 10.1016/j.ejor.2006.04.047.
+[
+DOI
+] [
+Google Scholar
+]
+Bertrand, Joseph Louis François. 1883. Thèorie mathèmatique de la richesse sociale.
+Journal des Savants
+499–508.
+Bertsimas Dimitris, Perakis Georgia.  Dynamic pricing: A learning approach. In: Lawphongpanich Siriphong, Hearn Donald W, Smith Michael J., editors. Mathematical and computational models for congestion charging. Boston: Kluwer Academic Publishers; 2006. pp. 45–79.
+[
+Google Scholar
+]
+Besbes Omar, Sauré Denis. Product assortment and price competition under multinomial logit demand. Production and Operations Management. 2016;25(1):114–127. doi: 10.1111/poms.12402.
+[
+DOI
+] [
+Google Scholar
+]
+Bischi Gian-Italo, Chiarella Carl, Kopel Michael. The long run outcomes and global dynamics of a duopoly game with misspecified demand functions. International Game Theory Review. 2004;6(3):343–379. doi: 10.1142/S0219198904000253.
+[
+DOI
+] [
+Google Scholar
+]
+Blattberg Robert C, Wisniewski Kenneth J. Price-induced patterns of competition. Marketing Science. 1989;8(4):291–309. doi: 10.1287/mksc.8.4.291.
+[
+DOI
+] [
+Google Scholar
+]
+Boardman Rosy, McCormick Helen. Shopping channel preference and usage motivations. Journal of Fashion Marketing and Management: An International Journal. 2018;22(2):270–284. doi: 10.1108/JFMM-04-2017-0036.
+[
+DOI
+] [
+Google Scholar
+]
+Boccard Nicolas, Wauthy Xavier. Bertrand competition and Cournot outcomes: Further results. Economics Letters. 2000;68(3):279–285. doi: 10.1016/S0165-1765(00)00256-1.
+[
+DOI
+] [
+Google Scholar
+]
+Borenstein Severin, Rose Nancy L. Competition and price dispersion in the U.S. airline industry. Journal of Political Economy. 1994;102(4):653–683. doi: 10.1086/261950.
+[
+DOI
+] [
+Google Scholar
+]
+Borsenberger Claire.  The concentration phenomenon in e-commerce. In: Crew Michael A, Brennan Timothy J., editors. Postal and delivery innovation in the digital economy. Cham: Springer International Publishing; 2015. pp. 31–41.
+[
+Google Scholar
+]
+Boyd E. Andrew, Bilegan Ioana C. Revenue management and e-commerce. Management Science. 2003;49(10):1363–1386. doi: 10.1287/mnsc.49.10.1363.17316.
+[
+DOI
+] [
+Google Scholar
+]
+Bresnahan Timothy F, Reiss Peter C. Entry and competition in concentrated markets. Journal of Political Economy. 1991;99(5):977–1009. doi: 10.1086/261786.
+[
+DOI
+] [
+Google Scholar
+]
+Brown Jeffrey R, Goolsbee Austan. Does the internet make markets more competitive? Evidence from the life insurance industry. Journal of Political Economy. 2002;110(3):481–507. doi: 10.1086/339714.
+[
+DOI
+] [
+Google Scholar
+]
+Bryant John. Competitive equilibrium with price setting firms and stochastic demand. International Economic Review. 1980;21(3):619–626. doi: 10.2307/2526357.
+[
+DOI
+] [
+Google Scholar
+]
+Brynjolfsson Erik, Smith Michael D. Frictionless commerce? A comparison of internet and conventional retailers. Management Science. 2000;46(4):563–585. doi: 10.1287/mnsc.46.4.563.12061.
+[
+DOI
+] [
+Google Scholar
+]
+Cachon, Gérard P., and Pnina Feldman. 2010. Dynamic versus static pricing in the presence of strategic consumers.
+The Wharton School, University of Pennsylvania
+(Working Paper).
+Cachon Gérard P, Harker Patrick T. Competition and outsourcing with scale economies. Management Science. 2002;48(10):1314–1333. doi: 10.1287/mnsc.48.10.1314.271.
+[
+DOI
+] [
+Google Scholar
+]
+Caillaud Bernard, de Nijs Romain. Strategic loyalty reward in dynamic price discrimination. Marketing Science. 2014;33(5):725–742. doi: 10.1287/mksc.2013.0840.
+[
+DOI
+] [
+Google Scholar
+]
+Calvano Emilio, Calzolari Giacomo, Denicolò Vincenzo, Pastorello Sergio. Artificial intelligence, algorithmic pricing, and collusion. American Economic Review. 2020;110(10):3267–3297. doi: 10.1257/aer.20190623.
+[
+DOI
+] [
+Google Scholar
+]
+Campbell Colin, Ray Gautam, Muhanna Waleed A. Search and collusion in electronic markets. Management Science. 2005;51(3):497–507. doi: 10.1287/mnsc.1040.0327.
+[
+DOI
+] [
+Google Scholar
+]
+Cao Yong, Gruca Thomas S. The effect of stock market dynamics on internet price competition. Journal of Service Research. 2003;6(1):24–36. doi: 10.1177/1094670503254272.
+[
+DOI
+] [
+Google Scholar
+]
+Caplin Andrew, Nalebuff Barry. Aggregation and imperfect competition: On the existence of equilibrium. Econometrica. 1991;59(1):25–59. doi: 10.2307/2938239.
+[
+DOI
+] [
+Google Scholar
+]
+Caro, Felipe. 2012. Zara: Staying fast and fresh.
+The European Case Clearing House.
+ECCH Case study 612-006-1.
+Caro Felipe, Gallien Jérémie. Clearance pricing optimization for a fast-fashion retailer. Operations Research. 2012;60(6):1404–1422. doi: 10.2139/ssrn.1731402.
+[
+DOI
+] [
+Google Scholar
+]
+Cattani Kyle, Perdikaki Olga, Marucheck Ann. The perishability of online grocers. Decision Sciences. 2007;38(2):329–355. doi: 10.1111/j.1540-5915.2007.00161.x.
+[
+DOI
+] [
+Google Scholar
+]
+Cavallo, Alberto. 2018. More Amazon effects: online competition and pricing behaviors. National Bureau of Economic Research (Working Papers 25138).
+Cebollada Javier, Chu Yanlai, Jiang Zhiying. Online category pricing at a multichannel grocery retailer. Journal of Interactive Marketing. 2019;46(1):52–69. doi: 10.1016/j.intmar.2018.12.004.
+[
+DOI
+] [
+Google Scholar
+]
+Chen Yongmin. Paying customers to switch. Journal of Economics Management Strategy. 1997;6(4):877–897. doi: 10.1111/j.1430-9134.1997.00877.x.
+[
+DOI
+] [
+Google Scholar
+]
+Chen Ming, Chen Zhi-Long. Recent developments in dynamic pricing research: Multiple products, competition, and limited demand information. Production and Operations Management. 2015;24(5):704–731. doi: 10.1111/poms.12295.
+[
+DOI
+] [
+Google Scholar
+]
+Chen Yongmin, Riordan Michael H. Price-increasing competition. RAND Journal of Economics. 2008;39(4):1042–1058. doi: 10.1111/j.1756-2171.2008.00049.x.
+[
+DOI
+] [
+Google Scholar
+]
+Chen Ying-Ju, Zenou Yves, Zhou Junjie. Competitive pricing strategies in social networks. RAND Journal of Economics. 2018;49(3):672–705. doi: 10.1111/1756-2171.12249.
+[
+DOI
+] [
+Google Scholar
+]
+Cheng Kuangnen. Competitive dynamics across strategic groups: A literature review and validation by quantitative evidence of operation data. International Journal of Business Environment. 2017;9(4):301–323. doi: 10.1504/IJBE.2017.092223.
+[
+DOI
+] [
+Google Scholar
+]
+Chiang Wen Chyuan, Chen Jason C.H., Xiaojing Xu. An overview of research on revenue management: Current issues and future research. International Journal of Revenue Management. 2007;1(1):97–128. doi: 10.1504/IJRM.2007.011196.
+[
+DOI
+] [
+Google Scholar
+]
+Chintagunta Pradeep K, Chu Junhong, Cebollada Javier. Quantifying transaction costs in online/offline grocery channel choice. Marketing Science. 2012;31(1):96–114. doi: 10.1287/mksc.1110.0678.
+[
+DOI
+] [
+Google Scholar
+]
+Chioveanu Ioana. Price and quality competition. Journal of Economics. 2012;107(1):23–44. doi: 10.1007/s00712-011-0259-z.
+[
+DOI
+] [
+Google Scholar
+]
+Chioveanu Ioana, Zhou Jidong. Price competition with consumer confusion. Management Science. 2013;59(11):2450–2469. doi: 10.1287/mnsc.2013.1716.
+[
+DOI
+] [
+Google Scholar
+]
+Choi S. Chan. Price competition in a duopoly common retailer channel. Journal of Retailing. 1996;72(2):117–134. doi: 10.1016/S0022-4359(96)90010-X.
+[
+DOI
+] [
+Google Scholar
+]
+Christen Markus. Research note: Cost uncertainty is bliss: The effect of competition on the acquisition of cost information for pricing new products. Management Science. 2005;51(4):668–676. doi: 10.1287/mnsc.1040.0320.
+[
+DOI
+] [
+Google Scholar
+]
+Chu Junhong, Chintagunta Pradeep, Cebollada Javier. Research note: A comparison of within-household price sensitivity across online and offline channels. Marketing Science. 2008;27(2):283–299. doi: 10.1287/mksc.1070.0288.
+[
+DOI
+] [
+Google Scholar
+]
+Chung Byung Sun, Li Jiahan, Yao Tao, Kwon Changhyun, Friesz Terry L. Demand learning and dynamic pricing under competition in a state-space framework. IEEE Transactions on Engineering Management. 2012;59(2):240–249. doi: 10.1109/TEM.2011.2140323.
+[
+DOI
+] [
+Google Scholar
+]
+Clemons Eric K, Hann Il-Horn, Hitt Lorin M. Price dispersion and differentiation in online travel: An empirical investigation. Management Science. 2002;48(4):534–549. doi: 10.1287/mnsc.48.4.534.
+[
+DOI
+] [
+Google Scholar
+]
+Cooper William L, Homem-de-Mello Tito, Kleywegt Anton J. Learning and pricing with models that do not explicitly incorporate competition. Operations Research. 2015;63(1):86–103. doi: 10.1287/opre.2014.1341.
+[
+DOI
+] [
+Google Scholar
+]
+Currie Christine S. M, Cheng Russell C. H, Smith Honora K. Dynamic pricing of airline tickets with competition. Journal of the Operational Research Society. 2008;59(8):1026–1037. doi: 10.1057/palgrave.jors.2602425.
+[
+DOI
+] [
+Google Scholar
+]
+Dana James D, Petruzzi Nicholas C. Note: The newsvendor model with endogenous demand. Management Science. 2001;47(11):1488–1497. doi: 10.1287/mnsc.47.11.1488.10252.
+[
+DOI
+] [
+Google Scholar
+]
+Dana James D, Williams Kevin R. Intertemporal price discrimination in sequential quantity-price games. Marketing Science. 2022 doi: 10.1287/mksc.2021.1345.
+[
+DOI
+] [
+Google Scholar
+]
+Dasci Abdullah, Karakul Mustafa. Two-period dynamic versus fixed-ratio pricing in a capacity constrained duopoly. European Journal of Operational Research. 2009;197(3):945–968. doi: 10.1016/j.ejor.2007.12.039.
+[
+DOI
+] [
+Google Scholar
+]
+Dautzenberg, Kirsti, Constanze Gaßmann, and Britta Groß. 2018. Online-Handel: Das Spiel mit dem dynamischen Preis.
+https://www.verbraucherzentrale-brandenburg.de/sites/default/files/2018-08/marktwaechter-untersuchung-dynamische-preisdifferenzierung.pdf
+. Accessed 14 March 2022.
+Davidkhanian, Suzy. 2021. US retail spending jumped nearly 16% this year despite inflation, supply chain woes.
+https://www.emarketer.com/content/us-retail-spending-jumped-this-year-despite-inflation-supply-chain-woes
+. Accessed 14 March 2022.
+de Toni Deonir, Milan Gabriel Sperandio, Saciloto Evandro Busata, Larentis Fabiano. Pricing strategies and levels and their impact on corporate profitability. Revista de Administração. 2017;52(2):120–133. doi: 10.1016/j.rausp.2016.12.004.
+[
+DOI
+] [
+Google Scholar
+]
+Deck Cary, Jingping Gu. Price increasing competition? Experimental evidence. Journal of Economic Behavior &amp; Organization. 2012;84(3):730–740. doi: 10.1016/j.jebo.2012.09.015.
+[
+DOI
+] [
+Google Scholar
+]
+den Boer Arnoud V. Dynamic pricing and learning: Historical origins, current research, and new directions. Surveys in Operations Research and Management Science. 2015;20(1):1–18. doi: 10.1016/j.sorms.2015.03.001.
+[
+DOI
+] [
+Google Scholar
+]
+Boer Arnoud V, den.  Tracking the market: Dynamic pricing and learning in a changing environment. European Journal of Operational Research. 2015;247(3):914–927. doi: 10.1016/j.ejor.2015.06.059.
+[
+DOI
+] [
+Google Scholar
+]
+DeSarbo Wayne S, Grewal Rajdeep. An alternative efficient representation of demand-based competitive asymmetry. Strategic Management Journal. 2007;28(7):755–766. doi: 10.1002/smj.601.
+[
+DOI
+] [
+Google Scholar
+]
+Devaraj Sarv, Fan Ming, Kohli Rajiv. Antecedents of B2C channel satisfaction and preference: Validating e-commerce metrics. Information Systems Research. 2002;13(3):316–333. doi: 10.1287/isre.13.3.316.77.
+[
+DOI
+] [
+Google Scholar
+]
+Diamond Peter A. A model of price adjustment. Journal of Economic Theory. 1971;3(2):156–168. doi: 10.1016/0022-0531(71)90013-5.
+[
+DOI
+] [
+Google Scholar
+]
+Dickson Peter R, Urbany Joel E. Retailer reactions to competitive price changes. Journal of Retailing. 1994;70(1):1–21. doi: 10.1016/0022-4359(94)90025-6.
+[
+DOI
+] [
+Google Scholar
+]
+Dinerstein Michael, Einav Liran, Levin Jonathan, Sundaresan Neel. Consumer price search and platform design in internet commerce. American Economic Review. 2018;108(7):1820–1859. doi: 10.1257/aer.20171218.
+[
+DOI
+] [
+Google Scholar
+]
+Dong James, Serdar Simsek A, Topaloglu Huseyin. Pricing problems under the Markov chain choice model. Production and Operations Management. 2019;28(1):157–175. doi: 10.1111/poms.12903.
+[
+DOI
+] [
+Google Scholar
+]
+Dudey Marc. Dynamic Edgeworth-Bertrand competition. Quarterly Journal of Economics. 1992;107(4):1461–1477. doi: 10.2307/2118397.
+[
+DOI
+] [
+Google Scholar
+]
+Dzyabura Daria, Jagabathula Srikanth, Muller Eitan. Accounting for discrepancies between online and offline product evaluations. Marketing Science. 2019;38(1):88–106. doi: 10.1287/mksc.2018.1124.
+[
+DOI
+] [
+Google Scholar
+]
+Elmaghraby Wedad, Keskinocak Pınar. Dynamic pricing in the presence of inventory considerations: Research overview, current practices, and future directions. Management Science. 2003;49(10):1287–1309. doi: 10.1287/mnsc.49.10.1287.17315.
+[
+DOI
+] [
+Google Scholar
+]
+Farias Vivek, Saure Denis, Weintraub Gabriel Y. An approximate dynamic programming approach to solving dynamic oligopoly models. RAND Journal of Economics. 2012;43(2):253–282. doi: 10.1111/j.1756-2171.2012.00165.x.
+[
+DOI
+] [
+Google Scholar
+]
+Fay Scott. Selling an opaque product through an intermediary: The case of disguising one’s product. Journal of Retailing. 2008;84(1):59–75. doi: 10.1016/j.jretai.2008.01.005.
+[
+DOI
+] [
+Google Scholar
+]
+Federgruen Awi, Ming Hu. Multi-product price and assortment competition. Operations Research. 2015;63(3):572–584. doi: 10.1287/opre.2015.1380.
+[
+DOI
+] [
+Google Scholar
+]
+Ferreira Kris Johnson, Lee Bin Hong Alex, Simchi-Levi David. Analytics for an online retailer: Demand forecasting and price optimization. Manufacturing Service Operations Management. 2016;18(1):69–88. doi: 10.1287/msom.2015.0561.
+[
+DOI
+] [
+Google Scholar
+]
+Fisher Marshall, Gallino Santiago, Li Jun. Competition-based dynamic pricing in online retailing: A methodology validated with field experiments. Management Science. 2018;64(6):2473–2972. doi: 10.1287/mnsc.2017.2753.
+[
+DOI
+] [
+Google Scholar
+]
+Frambach Ruud T, Roest Henk CA, Krishnan Trichy V. The impact of consumer internet experience on channel preference and usage intentions across the different stages of the buying process. Journal of Interactive Marketing. 2007;21(2):26–41. doi: 10.1002/dir.20079.
+[
+DOI
+] [
+Google Scholar
+]
+Gallego Guillermo, Ming Hu. Dynamic pricing of perishable assets under competition. Management Science. 2014;60(5):1241–1259. doi: 10.1287/mnsc.2013.1821.
+[
+DOI
+] [
+Google Scholar
+]
+Gallego Guillermo, Huh Woonghee Tim, Kang Wanmo, Phillips Robert. Price competition with the attraction demand model: Existence of unique equilibrium and its stability. Manufacturing & Service Operations Management. 2006;8(4):359–375. doi: 10.1287/msom.1060.0115.
+[
+DOI
+] [
+Google Scholar
+]
+Gallego Guillermo, van Ryzin Garrett J. A multiproduct dynamic pricing problem and its applications to network yield management. Operations Research. 1997;45(1):24–41. doi: 10.1287/opre.45.1.24.
+[
+DOI
+] [
+Google Scholar
+]
+Gallego Guillermo, Wang Ruxian. Multi-product optimization and competition under the nested logit model with product-differentiated price sensitivities. Operations Research. 2014;62(2):450–461. doi: 10.1287/opre.2013.1249.
+[
+DOI
+] [
+Google Scholar
+]
+Gao Fei, Xuanming Su. Omnichannel service operations with online and offline self-order technologies. Management Science. 2018;64(8):3595–3608. doi: 10.1287/mnsc.2017.2787.
+[
+DOI
+] [
+Google Scholar
+]
+Geng Qin, Mallik Suman. Inventory competition and allocation in a multi-channel distribution system. European Journal of Operational Research. 2007;182(2):704–729. doi: 10.1016/j.ejor.2006.08.041.
+[
+DOI
+] [
+Google Scholar
+]
+Gönsch Jochen, Klein Robert, Steinhardt Claudius. Dynamic pricing - State-of-the-art. Journal of Business Economics. 2009;3(2):1–40.
+[
+Google Scholar
+]
+Gupta Varun, Ivanov Dmitry, Choi Tsan-Ming. Competitive pricing of substitute products under supply disruption. Omega. 2021 doi: 10.1016/j.omega.2020.102279.
+[
+DOI
+] [
+PMC free article
+] [
+PubMed
+] [
+Google Scholar
+]
+Hagiu Andrei. Merchant or two-sided platform? Review of Network Economics. 2007;6(2):115–133. doi: 10.2202/1446-9022.1113.
+[
+DOI
+] [
+Google Scholar
+]
+Hall Joseph M, Kopalle Praveen K, Pyke David F. Static and dynamic pricing of excess capacity in a make-to-order environment. Production and Operations Management. 2009;18(4):411–425. doi: 10.1111/j.1937-5956.2009.01044.x.
+[
+DOI
+] [
+Google Scholar
+]
+Hamilton Jonathan H, Slutsky Steven M. Endogenous timing in duopoly games: Stackelberg or cournot equilibria. Games and Economic Behavior. 1990;2(1):29–46. doi: 10.1016/0899-8256(90)90012-J.
+[
+DOI
+] [
+Google Scholar
+]
+Harsha Pavithra, Subramanian Shivaram, Uichanco Joline. Dynamic pricing of omnichannel inventories. Manufacturing & Service Operations Management. 2019;21(1):47–65. doi: 10.1287/msom.2018.0737.
+[
+DOI
+] [
+Google Scholar
+]
+Heese H. Sebastian, Martínez-de-Albéniz Victor. Effects of assortment breadth announcements on manufacturer competition. Manufacturing and Service Operations Management. 2018;20(2):302–316. doi: 10.1287/msom.2017.0643.
+[
+DOI
+] [
+Google Scholar
+]
+Hinterhuber Andreas. Customer value-based pricing strategies: Why companies resist. Journal of Business Strategy. 2008;29(4):41–50. doi: 10.1108/02756660810887079.
+[
+DOI
+] [
+Google Scholar
+]
+Isler Karl, Imhof Henrik. A game theoretic model for airline revenue management and competitive pricing. Journal of Revenue and Pricing Management. 2008;7(4):384–396. doi: 10.1057/rpm.2008.30.
+[
+DOI
+] [
+Google Scholar
+]
+Israeli Ayelet, Scott-Morton Fiona, Silva-Risso Jorge, Zettelmeyer Florian. How market power affects dynamic pricing: Evidence from inventory fluctuations at car dealerships. Management Science. 2022;68(2):895–916. doi: 10.1287/mnsc.2021.3967.
+[
+DOI
+] [
+Google Scholar
+]
+Ittoo Ashwin, Petit Nicolas. Algorithmic pricing agents and tacit collusion: A technological perspective. SSRN Electronic Journal. 2017 doi: 10.2139/ssrn.3046405.
+[
+DOI
+] [
+Google Scholar
+]
+Janssen Maarten C. W, Moraga-González José Luis. Strategic pricing, consumer search and the number of firms. Review of Economic Studies. 2004;71(4):1089–1118. doi: 10.1111/0034-6527.00315.
+[
+DOI
+] [
+Google Scholar
+]
+Jerath Kinshuk, Netessine Serguei, Veeraraghavan Senthil K. Revenue management with strategic customers: Last-minute selling and opaque selling. Management Science. 2010;56(3):430–448. doi: 10.1287/mnsc.1090.1125.
+[
+DOI
+] [
+Google Scholar
+]
+Kachani Shmatov, Kachani Soulaymane, Shmatov Kyrylo. Competitive pricing in a multi-product multi-attribute environment. Production and Operations Management. 2010;20(5):668–680. doi: 10.1111/j.1937-5956.2010.01195.x.
+[
+DOI
+] [
+Google Scholar
+]
+Kastius Alexander, Schlosser Rainer. Dynamic pricing under competition using reinforcement learning. Journal of Revenue and Pricing Management. 2022;21(1):50–63. doi: 10.1057/s41272-021-00285-3.
+[
+DOI
+] [
+Google Scholar
+]
+Keskin N. Bora, Zeevi Assaf. Chasing demand: Learning and earning in a changing environment. Mathematics of Operations Research. 2017;42(2):277–307. doi: 10.1287/moor.2016.0807.
+[
+DOI
+] [
+Google Scholar
+]
+Kim Jun B, Albuquerque Paulo, Bronnenberg Bart J. Mapping online consumer search. Journal of Marketing Research. 2011;48(1):13–27. doi: 10.1509/jmkr.48.1.13.
+[
+DOI
+] [
+Google Scholar
+]
+Koças Cenk. A model of internet pricing under price-comparison shopping. International Journal of Electronic Commerce. 2005;10(1):111–134. doi: 10.1080/10864415.2005.11043959.
+[
+DOI
+] [
+Google Scholar
+]
+Könönen Ville. Dynamic pricing based on asymmetric multiagent reinforcement learning. International Journal of Intelligent Systems. 2006;21(1):73–98. doi: 10.1002/int.20121.
+[
+DOI
+] [
+Google Scholar
+]
+Kopalle Praveen, Biswas Dipayan, Chintagunta Pradeep K, Fan Jia, Pauwels Koen, Ratchford Brian T, Sills James A. Retailer pricing and competitive effects. Journal of Retailing. 2009;85(1):56–70. doi: 10.1016/j.jretai.2008.11.005.
+[
+DOI
+] [
+Google Scholar
+]
+Kutschinski Erich, Uthmann Thomas, Polani Daniel. Learning competitive pricing strategies by multi-agent reinforcement learning. Journal of Economic Dynamics and Control. 2003;27(11):2207–2218. doi: 10.1016/S0165-1889(02)00122-7.
+[
+DOI
+] [
+Google Scholar
+]
+Lal Rajiv, Rao Ram. Supermarket competition: The case of every day low pricing. Marketing Science. 1997;16(1):60–80. doi: 10.1287/mksc.16.1.60.
+[
+DOI
+] [
+Google Scholar
+]
+Lal Rajiv, Sarvary Miklos. When and how is the internet likely to decrease price competition? Marketing Science. 1999;18(4):485–503. doi: 10.1287/mksc.18.4.485.
+[
+DOI
+] [
+Google Scholar
+]
+Lancaster Kelvin.  Variety, equity, and efficiency: Product variety in an industrial society. New York: Columbia University Press; 1979.
+[
+Google Scholar
+]
+Larson Ronald B. Promoting demand-based pricing. Journal of Revenue and Pricing Management. 2019;18(1):42–51. doi: 10.1057/s41272-017-0126-9.
+[
+DOI
+] [
+Google Scholar
+]
+Le Chen, Alan Mislove, and Christo Wilson. 2016. An empirical analysis of algorithmic pricing on Amazon Marketplace. In
+Proceedings of the 25th International Conference on World Wide Web - WWW '16
+, 1339–1349, Montreal. 11-Apr-16 - 15-Apr-16. New York: ACM Press. 10.1145/2872427.2883089
+Lebow, Sara. 2019. Worldwide ecommerce continues double-digit growth following pandemic push to online.
+https://www.emarketer.com/content/worldwide-ecommerce-continues-double-digit-growth-following-pandemic-push-online
+. Accessed 14 March 2022.
+Lee Khai Sheang, Tan Soo Jiuan. E-retailing versus physical retailing. A theoretical model and empirical test of consumer choice. Journal of Business Research. 2003;56(11):877–885. doi: 10.1016/S0148-2963(01)00274-0.
+[
+DOI
+] [
+Google Scholar
+]
+Lee Thomas Y, Bradlow Eric T. Automated marketing research using online customer reviews. Journal of Marketing Research. 2011;48(5):881–894. doi: 10.1509/jmkr.48.5.881.
+[
+DOI
+] [
+Google Scholar
+]
+Levin Yuri, McGill Jeff, Nediak Mikhail. Risk in revenue management and dynamic pricing. Operations Research. 2008;56(2):326–343. doi: 10.1287/opre.1070.0438.
+[
+DOI
+] [
+Google Scholar
+]
+Levin Yuri, McGill Jeff, Nediak Mikhail. Dynamic pricing in the presence of strategic consumers and oligopolistic competition. Management Science. 2009;55:32–46. doi: 10.1287/mnsc.1080.0936.
+[
+DOI
+] [
+Google Scholar
+]
+Li Jun, Netessine Serguei, Koulayev Sergei. Price to compete… with many: How to identify price competition in high-dimensional space. Management Science. 2017;64(9):4118–4136. doi: 10.1287/mnsc.2017.2820.
+[
+DOI
+] [
+Google Scholar
+]
+Li Michael Z. F, Zhang Anming, Zhang Yimin. Airline seat allocation competition. International Transactions in Operational Research. 2008;15(4):439–459. doi: 10.1111/j.1475-3995.2008.00642.x.
+[
+DOI
+] [
+Google Scholar
+]
+Lin Yen-Ting, Parlaktürk Ali K, Swaminathan Jayashankar M. Vertical integration under competition: Forward, backward, or no integration? Production and Operations Management. 2014;23(1):19–35. doi: 10.1111/poms.12030.
+[
+DOI
+] [
+Google Scholar
+]
+Lin Kyle Y, Sibdari Soheil Y. Dynamic price competition with discrete customer choices. European Journal of Operational Research. 2009;197(3):969–980. doi: 10.1016/j.ejor.2007.12.040.
+[
+DOI
+] [
+Google Scholar
+]
+Liozu Stephan.  The pricing journey: The organizational transformation toward pricing excellence. Stanford: Stanford Business Books; 2015.
+[
+Google Scholar
+]
+Lippman Steven A, McCardle Kevin F. The competitive newsboy. Operations Research. 1997;45(1):54–65. doi: 10.1287/opre.45.1.54.
+[
+DOI
+] [
+Google Scholar
+]
+Liu Qian, Zhang Dan. Dynamic pricing competition with strategic customers under vertical product differentiation. Management Science. 2013;59(1):84–101. doi: 10.1287/mnsc.1120.1564.
+[
+DOI
+] [
+Google Scholar
+]
+Loginova Oksana. Price competition online: Platforms versus branded websites. Journal of Economics and Management Strategy. 2021 doi: 10.1111/jems.12461.
+[
+DOI
+] [
+Google Scholar
+]
+Mantin Benny, Granot Daniel, Granot Frieda. Dynamic pricing under first order Markovian competition. Naval Research Logistics. 2011;58(6):608–617. doi: 10.1002/nav.20470.
+[
+DOI
+] [
+Google Scholar
+]
+Martínez-de-Albéniz Victor, Talluri Kalyan. Dynamic price competition with fixed capacities. Management Science. 2011;57(6):1078–1093. doi: 10.1287/mnsc.1110.1337.
+[
+DOI
+] [
+Google Scholar
+]
+Maskin Eric, Tirole Jean. A theory of dynamic oligopoly, II: Price competition, kinked demand curves, and edgeworth cycles. Econometrica. 1988;56(3):571–599. doi: 10.2307/1911701.
+[
+DOI
+] [
+Google Scholar
+]
+Matsubayashi Nobuo, Yamada Yoshiyasu. A note on price and quality competition between asymmetric firms. European Journal of Operational Research. 2008;187(2):571–581. doi: 10.1016/j.ejor.2007.03.021.
+[
+DOI
+] [
+Google Scholar
+]
+McGill Jeffrey I, van Ryzin Garrett J. Revenue management: Research overview and prospects. Transportation Science. 1999;33(2):233–256. doi: 10.1287/trsc.33.2.233.
+[
+DOI
+] [
+Google Scholar
+]
+Miklós-Thal Jeanine, Tucker Catherine. Collusion by algorithm: Does better demand prediction facilitate coordination between sellers? Management Science. 2019;65(4):1552–1561. doi: 10.1287/mnsc.2019.3287.
+[
+DOI
+] [
+Google Scholar
+]
+Mitra Subrata. Economic models of price competition between traditional and online retailing under showrooming. Decision. 2021 doi: 10.1007/s40622-021-00293-7.
+[
+DOI
+] [
+Google Scholar
+]
+Mizuno Toshihide. On the existence of a unique price equilibrium for models of product differentiation. International Journal of Industrial Organization. 2003;21(6):761–793. doi: 10.1016/S0167-7187(03)00017-1.
+[
+DOI
+] [
+Google Scholar
+]
+Mookherjee Reetabrata, Friesz Terry L. Pricing, allocation, and overbooking in dynamic service network competition when demand is uncertain. Production and Operations Management. 2008;17(4):455–474. doi: 10.3401/poms.1080.0042.
+[
+DOI
+] [
+Google Scholar
+]
+Moorthy K. Sridhar. Product and price competition in a duopoly. Marketing Science. 1988;7(2):141–168. doi: 10.1287/mksc.7.2.141.
+[
+DOI
+] [
+Google Scholar
+]
+Motta Massimo. Endogenous quality choice: Price vs. quantity competition. The Journal of Industrial Economics. 1993;41(2):113–131. doi: 10.2307/2950431.
+[
+DOI
+] [
+Google Scholar
+]
+Nalca Arcan, Boyaci Tamer, Ray Saibal. Competitive price-matching guarantees under imperfect store availability. Quantitative Marketing and Economics. 2010;8(3):275–300. doi: 10.1007/s11129-010-9080-1.
+[
+DOI
+] [
+Google Scholar
+]
+Netessine Serguei, Shumsky Robert A. Revenue management games: Horizontal and vertical competition. Management Science. 2005;51(5):813–831. doi: 10.1287/mnsc.1040.0356.
+[
+DOI
+] [
+Google Scholar
+]
+Netzer Oded, Feldman Ronen, Goldenberg Jacob, Fresko Moshe. Mine your own business: Market-structure surveillance through text mining. Marketing Science. 2012;31(3):521–543. doi: 10.1287/mksc.1120.0713.
+[
+DOI
+] [
+Google Scholar
+]
+Nip Kameng, Wang Changjun, Wang Zizhuo. Competitive and cooperative assortment games under Markov chain choice model. SSRN Electronic Journal. 2020 doi: 10.2139/ssrn.3607722.
+[
+DOI
+] [
+Google Scholar
+]
+Noel Michael D. Edgeworth price cycles, cost-based pricing, and sticky pricing in retail gasoline markets. Review of Economics and Statistics. 2007;89(2):324–334. doi: 10.1162/rest.89.2.324.
+[
+DOI
+] [
+Google Scholar
+]
+Obermeyer Andy, Evangelinos Christos, Püschel Ronny. Price dispersion and competition in European airline markets. Journal of Air Transport Management. 2013;26(1):31–34. doi: 10.1016/j.jairtraman.2012.08.014.
+[
+DOI
+] [
+Google Scholar
+]
+Olivares Marcelo, Cachon Gérard P. Competing retailers and inventory: An empirical investigation of General Motors' dealerships in isolated U.S. markets. Management Science. 2009;55(9):1586–1604. doi: 10.1287/mnsc.1090.1050.
+[
+DOI
+] [
+Google Scholar
+]
+Parlar Mahmut. Game theoretic analysis of the substitutable product inventory problem with random demands. Naval Research Logistics. 1988;35(3):397–409. doi: 10.1002/1520-6750(198806)35:3<397:AID-NAV3220350308>3.0.CO;2-Z.
+[
+DOI
+] [
+Google Scholar
+]
+Penz Elfriede, Hogg Margaret K. The role of mixed emotions in consumer behaviour. European Journal of Marketing. 2011;45(1):104–132. doi: 10.1108/03090561111095612.
+[
+DOI
+] [
+Google Scholar
+]
+Perakis Georgia, Sood Anshul. Competitive multi-period pricing for perishable products: A robust optimization approach. Mathematical Programming. 2006;107(1–2):295–335. doi: 10.1007/s10107-005-0688-y.
+[
+DOI
+] [
+Google Scholar
+]
+Perloff Jeffrey M, Salop Steven C. Equilibrium with product differentiation. Review of Economic Studies. 1985;52(1):107. doi: 10.2307/2297473.
+[
+DOI
+] [
+Google Scholar
+]
+Phillips Robert L.  Pricing and revenue optimization. 2. Stanford: Stanford Business Books; 2021.
+[
+Google Scholar
+]
+Pigou Arthur Cecil.  The economics of welfare. London: Macmillan & co; 1920.
+[
+Google Scholar
+]
+Popescu, Dana. 2015. Repricing algorithms in e-commerce.
+Technology and Operations Management
+(Working Paper No. 2015/75/TOM). 10.2139/ssrn.2669997.
+Putsis William, Dhar Ravi. The many faces of competition. Marketing Letters. 1998;9(3):269–284. doi: 10.1023/A:1008072222645.
+[
+DOI
+] [
+Google Scholar
+]
+Ratchford Brian T. Online pricing: Review and directions for research. Journal of Interactive Marketing. 2009;23(1):82–90. doi: 10.1016/j.intmar.2008.11.001.
+[
+DOI
+] [
+Google Scholar
+]
+Richards Timothy J, Hamilton Stephen F. Rivalry in price and variety among supermarket retailers. American Journal of Agricultural Economics. 2006;88(3):710–726. doi: 10.1111/j.1467-8276.2006.00890.x.
+[
+DOI
+] [
+Google Scholar
+]
+Ringel Daniel M, Skiera Bernd. Visualizing asymmetric competition among more than 1,000 products using big search data. Marketing Science. 2016;35(3):511–534. doi: 10.1287/mksc.2015.0950.
+[
+DOI
+] [
+Google Scholar
+]
+Ryan Jennifer K, Sun Daewon, Zhao Xuying. Competition and coordination in online marketplaces. Production and Operations Management. 2012;21(6):997–1014. doi: 10.1111/j.1937-5956.2012.01332.x.
+[
+DOI
+] [
+Google Scholar
+]
+Salop Steven C. Information and monopolistic competition. American Economic Review. 1976;66(2):240–245.
+[
+Google Scholar
+]
+Sarkar Amit, Pal Brojeswar. Competitive pricing strategies of multi channel supply chain under direct servicing by the manufacturer. RAIRO Operations Research. 2021;55(1):1849–1873. doi: 10.1051/ro/2020063.
+[
+DOI
+] [
+Google Scholar
+]
+Scarpi Daniele, Pizzi Gabriele, Visentin Marco. Shopping for fun or shopping to buy: Is it different online and offline? Journal of Retailing and Consumer Services. 2014;21(3):258–267. doi: 10.1016/j.jretconser.2014.02.007.
+[
+DOI
+] [
+Google Scholar
+]
+Schinkel Maarten Pieter, Tuinstra Jan, Vermeulen Dries. Convergence of Bayesian learning to general equilibrium in mis-specified models. Journal of Mathematical Economics. 2002;38(4):483–508. doi: 10.1016/S0304-4068(02)00062-9.
+[
+DOI
+] [
+Google Scholar
+]
+Schlereth Christian, Skiera Bernd, Schulz Fabian. Why do consumers prefer static instead of dynamic pricing plans? An empirical study for a better understanding of the low preferences for time-variant pricing plans. European Journal of Operational Research. 2018;269(3):1165–1179. doi: 10.1016/j.ejor.2018.03.033.
+[
+DOI
+] [
+Google Scholar
+]
+Schlosser Rainer, Boissier Martin. Dealing with the dimensionality curse in dynamic pricing competition: Using frequent repricing to compensate imperfect market anticipations. Computers and Operations Research. 2018;100:26–42. doi: 10.1016/j.cor.2018.07.011.
+[
+DOI
+] [
+Google Scholar
+]
+Schlosser, Rainer, Martin Boissier, Andre Schober, and Matthias Uflacker. 2016. How to survive dynamic pricing competition in e-commerce. In
+Proceedings of the 10th ACM conference on recommender systems,
+Boston. 15-Sept-16 to 19-Sept-16. New York: Association for Computing Machinery.
+Schlosser Rainer, Richly Keven. Dynamic pricing under competition with data-driven price anticipations and endogenous reference price effects. Journal of Revenue and Pricing Management. 2019;18:451–464. doi: 10.1057/s41272-019-00206-5.
+[
+DOI
+] [
+Google Scholar
+]
+Serth, Sebastian, Nikolai Podlesney, Marvin Bornstein, Jan Lindemann, Johanna Lattt, Jan Selke, Rainer Schlosser, Martin Boissier, and Matthias Uflacker. 2017. An interactive platform to simulate dynamic pricing competition on online marketplaces. In
+IEEE 21st International Enterprise Distributed Object Computing Conference
+, 61–66, Quebec City, Canada. 10-Oct-17 to 13-Oct-17. 10.1109/EDOC.2017.17.
+Shugan Steven M. Editorial: Marketing science, models, monopoly models, and why we need them. Marketing Science. 2002;21(3):223–228. doi: 10.1287/mksc.21.3.223.145.
+[
+DOI
+] [
+Google Scholar
+]
+Siegert Caspar, Ulbricht Robert. Dynamic oligopoly pricing: Evidence from the airline industry. International Journal of Industrial Organization. 2020;71:102639. doi: 10.1016/j.ijindorg.2020.102639.
+[
+DOI
+] [
+Google Scholar
+]
+Simon Hermann. Dynamics of price elasticity and brand life cycles: An empirical study. Journal of Marketing Research. 1979;16(4):439–452. doi: 10.1177/002224377901600401.
+[
+DOI
+] [
+Google Scholar
+]
+Smith Michael D, Brynjolfsson Erik. Consumer decision-making at an internet shopbot: Brand still matters. The Journal of Industrial Economics. 2001;49(4):541–558. doi: 10.1111/1467-6451.00162.
+[
+DOI
+] [
+Google Scholar
+]
+Stigler George J. Perfect competition, historically contemplated. Journal of Political Economy. 1957;65(1):1–17. doi: 10.1086/257878.
+[
+DOI
+] [
+Google Scholar
+]
+Stiglitz Joseph E. Equilibrium in product markets with imperfect information. American Economic Review. 1979;69(2):339–345.
+[
+Google Scholar
+]
+Sun Haoying, Gilbert Stephen M. Retail price competition with product fit uncertainty and assortment selection. Production and Operations Management. 2019;28(7):1658–1673. doi: 10.1111/poms.13005.
+[
+DOI
+] [
+Google Scholar
+]
+Talluri Kalyan T, van Ryzin Garrett J.  The theory and practice of revenue management. Boston: Springer; 2004.
+[
+Google Scholar
+]
+Thomadsen Raphael. Product positioning and competition: The role of location in the fast food industry. Marketing Science. 2007;26(6):792–804. doi: 10.1287/mksc.1070.0296.
+[
+DOI
+] [
+Google Scholar
+]
+Tranfield David, Denyer David, Smart Palminder. Towards a methodology for developing evidence-informed management knowledge by means of systematic review. British Journal of Management. 2003;14(3):207–222. doi: 10.1111/1467-8551.00375.
+[
+DOI
+] [
+Google Scholar
+]
+Tuinstra A price adjustment process in a model of monopolistic competition. International Game Theory Review. 2004;6(3):417–442. doi: 10.1142/S0219198904000289.
+[
+DOI
+] [
+Google Scholar
+]
+van de Geer Ruben, den Boer Arnoud V, Bayliss Christopher, Currie Christine S. M, Ellina Andria, Esders Malte, Haensel Alwin, Lei Xiao, Maclean Kyle D. S, Martinez-Sykora Antonio, Riseth Asbjørn Nilsen, Ødegaard Fredrik, Zachariades Simos. Dynamic pricing and learning with competition: Insights from the dynamic pricing challenge at the 2017 INFORMS RM and pricing conference. Journal of Revenue and Pricing Management. 2019;18(3):185–203. doi: 10.1057/s41272-018-00164-4.
+[
+DOI
+] [
+Google Scholar
+]
+van Mieghem Jan A, Dada Maqbool. Price versus production postponement: Capacity and competition. Management Science. 1999;45(12):1639–1649. doi: 10.1287/mnsc.45.12.1631.
+[
+DOI
+] [
+Google Scholar
+]
+Villas-Boas J. Miguel. Dynamic competition with customer recognition. RAND Journal of Economics. 1999;30(4):604–631. doi: 10.2307/2556067.
+[
+DOI
+] [
+Google Scholar
+]
+Villas-Boas J. Miguel. Consumer learning, brand loyalty, and competition. Marketing Science. 2004;23(1):134–145. doi: 10.1287/mksc.1030.0044.
+[
+DOI
+] [
+Google Scholar
+]
+Villas-Boas J. Miguel. Dynamic competition with experience goods. Journal of Economics and Management Strategy. 2006;15(1):37–66. doi: 10.1111/j.1530-9134.2006.00091.x.
+[
+DOI
+] [
+Google Scholar
+]
+Villas-Boas J. Miguel, Winer Russell S. Endogeneity in brand choice models. Management Science. 1999;45(10):1324–1338. doi: 10.1287/mnsc.45.10.1324.
+[
+DOI
+] [
+Google Scholar
+]
+Vinod Balakrishna. Advances in revenue management: The last frontier. Journal of Revenue and Pricing Management. 2020;20:15–20. doi: 10.1057/s41272-020-00264-0.
+[
+DOI
+] [
+Google Scholar
+]
+Viswanathan Siva. Competing across technology-differentiated channels: The impact of network externalities and switching costs. Management Science. 2005;51(3):483–496. doi: 10.1287/mnsc.1040.0338.
+[
+DOI
+] [
+Google Scholar
+]
+Vives Xavier.  Oligopoly pricing: Old ideas and new tools. London: MIT Press; 2001.
+[
+Google Scholar
+]
+von Stackelberg Heinrich.  Market structure and equilibrium. Berlin: Springer; 2011.
+[
+Google Scholar
+]
+Wang Zizhuo, Ming Hu. Committed versus contingent pricing under competition. Production and Operations Management. 2014;23(11):1919–1936. doi: 10.1111/poms.12202.
+[
+DOI
+] [
+Google Scholar
+]
+Wang Sujuan, Qiying Hu, Weiqi Liu. Price and quality-based competition and channel structure with consumer loyalty. European Journal of Operational Research. 2017;262(2):563–574. doi: 10.1016/j.ejor.2017.03.052.
+[
+DOI
+] [
+Google Scholar
+]
+Wang Yongzhao, Sun Xiaojie. Dynamic vs. static wholesale pricing strategies in a dual-channel green supply chain. Complexity. 2019;13:1–14. doi: 10.1155/2019/8497070.
+[
+DOI
+] [
+Google Scholar
+]
+Wang Ningning, Zhang Ting, Zhu Xiaowei, Li Peimiao. Online-offline competitive pricing with reference price effect. Journal of the Operational Research Society. 2020;72(3):642–653. doi: 10.1080/01605682.2019.1696154.
+[
+DOI
+] [
+Google Scholar
+]
+Wang Wenche, Li Fan, Zhang Yujia. Price discount and price dispersion in online market: Do more firms still lead to more competition? Journal of Theoretical and Applied Electronic Commerce Research. 2021;16(2):164–178. doi: 10.4067/S0718-18762021000200111.
+[
+DOI
+] [
+Google Scholar
+]
+Weatherford Lawrence R, Bodily Samuel E. A taxonomy and research overview of perishable-asset revenue management: Yield management, overbooking, and pricing. Operations Research. 1992;40(5):831–844. doi: 10.1287/opre.40.5.831.
+[
+DOI
+] [
+Google Scholar
+]
+Weintraub Gabriel Y, Lanier Benkard C, van Roy Benjamin. Markov perfect industry dynamics with many firms. Econometrica. 2008;76(6):1375–1411. doi: 10.3982/ECTA6158.
+[
+DOI
+] [
+Google Scholar
+]
+Wenzelburger J. Learning to play best response in duopoly games. International Game Theory Review. 2004;6(3):443–459. doi: 10.1142/S0219198904000290.
+[
+DOI
+] [
+Google Scholar
+]
+Won Eugene J. S, Yun Kyung Oh, Choeh Joon Yeon. Analyzing competitive market structures based on online consumer-generated content and sales data. Asia Pacific Journal of Marketing and Logistics Advance Online Publication. 2022 doi: 10.1108/APJML-08-2021-0616.
+[
+DOI
+] [
+Google Scholar
+]
+Wu Lin-Liang Bill, Wu Desheng. Dynamic pricing and risk analytics under competition and stochastic reference price effects. IEEE Transactions on Industrial Informatics. 2016;12(3):1282–1293. doi: 10.1109/TII.2015.2507141.
+[
+DOI
+] [
+Google Scholar
+]
+Xu Xiaowei, Hopp Wallace J. A monopolistic and oligopolistic stochastic flow revenue management model. Operations Research. 2006;54(6):1098–1109. doi: 10.1287/opre.1060.0336.
+[
+DOI
+] [
+Google Scholar
+]
+Yang Jian, Xia Yusen. A nonatomic-game approach to dynamic pricing under competition. Production and Operations Management. 2013;22(1):88–103. doi: 10.1111/j.1937-5956.2012.01334.x.
+[
+DOI
+] [
+Google Scholar
+]
+Yang, Yongge, Yu-Ching Lee, and Po-An Chen. 2020. Competitive demand learning: a data-driven pricing algorithm. Cornell University (Working Paper). 10.48550/arxiv.2008.05195.
+Yano Makoto, Komatsubara Takashi. Endogenous price leadership and technological differences. International Journal of Economic Theory. 2006;2(3–4):365–383. doi: 10.1111/j.1742-7363.2006.0041.x.
+[
+DOI
+] [
+Google Scholar
+]
+Yano Makoto, Komatsubara Takashi. Price competition or price leadership. Economic Theory. 2018;66(4):1023–1057. doi: 10.1007/s00199-017-1080-x.
+[
+DOI
+] [
+Google Scholar
+]
+Yao Dong-Qing, Liu John J. Competitive pricing of mixed retail and e-tail distribution channels. Omega. 2005;33(3):235–247. doi: 10.1016/j.omega.2004.04.007.
+[
+DOI
+] [
+Google Scholar
+]
+Young, Jessica. 2022. US ecommerce grows 14.2% in 2021.
+https://www.digitalcommerce360.com/article/us-ecommerce-sales/
+. Accessed 14 March 2022.
+Zhang Jianxiong, Lei Liyan, Zhang Shichen, Song Lijun. Dynamic vs. static pricing in a supply chain with advertising. Computers & Industrial Engineering. 2017;109(1):266–279. doi: 10.1016/j.cie.2017.05.006.
+[
+DOI
+] [
+Google Scholar
+]
+Zhang Ting, Ge Ling, Gou Qinglong, Chen Li-Wen. Consumer showrooming, the sunk cost effect and online-offline competition. Journal of Electronic Commerce Research. 2018;19(1):55–74.
+[
+Google Scholar
+]
+Zhang Zhichao, Zhang Qing, Liu Zhi, Zheng Xiaoxue. Static and dynamic pricing strategies in a closed-loop supply chain with reference quality effects. Sustainability. 2018;10(1):157. doi: 10.3390/su10010157.
+[
+DOI
+] [
+Google Scholar
+]
+Zhao Xuan, Atkins Derek, Ming Hu, Zhang Wensi. Revenue management under joint pricing and capacity allocation competition. European Journal of Operational Research. 2017;257(3):957–970. doi: 10.1016/j.ejor.2016.08.025.
+[
+DOI
+] [
+Google Scholar
+]
+Articles from Journal of Revenue and Pricing Management are provided here courtesy of
+Nature Publishing Group
+ACTIONS
+View on publisher site
+PDF (1.4 MB)
+Cite
+Collections
+Permalink
+PERMALINK
+Copy
+RESOURCES
+Similar articles
+Cited by other articles
+Links to NCBI Databases
+Cite
+Copy
+Download .nbib
+.nbib
+Format:
+AMA
+APA
+MLA
+NLM
+Add to Collections
+Create a new collection
+Add to an existing collection
+Name your collection
+*
+Choose a collection
+Unable to load your collection due to an error
+Please try again
+Add
+Cancel
+Follow NCBI
+NCBI on X (formerly known as Twitter)
+NCBI on Facebook
+NCBI on LinkedIn
+NCBI on GitHub
+NCBI RSS feed
+Connect with NLM
+NLM on X (formerly known as Twitter)
+NLM on Facebook
+NLM on YouTube
+National Library of Medicine
+8600 Rockville Pike
+Bethesda, MD 20894
+Web Policies
+FOIA
+HHS Vulnerability Disclosure
+Help
+Accessibility
+Careers
+NLM
+NIH
+HHS
+USA.gov
+Back to Top

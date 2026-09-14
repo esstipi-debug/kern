@@ -40,6 +40,41 @@ set and **verifies the optional extras actually import** — so a half-install
 surfaces immediately instead of as a capability that silently degrades later.
 The hook now delegates to this script, so future web sessions boot complete.
 
+### On Windows: a deep checkout path fails tests that look like real bugs
+
+`tests/test_price_monitor_job.py` fails two tests with
+
+```
+FileNotFoundError: [Errno 2] No such file or directory:
+  'data\pricing_intel\ledger\example-retailer.test\date=.../<uuid>-<uuid>.parquet'
+```
+
+**when the checkout sits under a long path.** It is not a bug in the ledger, and
+not missing local state — `PriceLedger._write_batch` does call
+`site_dir.mkdir(parents=True, exist_ok=True)`. It is Windows' **260-character
+`MAX_PATH`**: `mkdir` succeeds on the shorter directory path, and then `open()`
+on the file blows past the limit and reports the classic misleading
+`FileNotFoundError`.
+
+Measured 2026-08-18: from a checkout at 150 chars the full path reached **275**
+and the two tests failed; from `C:\Users\Gamer\Music\scm\kern-main` (34 chars)
+**all 14 pass**.
+
+The partition path is long by construction — site + `date=YYYY-MM-DD` + a
+`<uuid>-<uuid>.parquet` filename is ~110 characters before the repo root. So:
+
+- **Keep the checkout shallow.** The repo's own `Music/scm/.wt-*` worktrees are
+  the right pattern; a temp/scratch directory usually is not.
+- Before filing a bug on a `FileNotFoundError` under `data/`, **measure the
+  path**. If it is near 260, that is the answer.
+- Enabling long paths (`HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`
+  `LongPathsEnabled=1`) also removes it, but it is a machine-wide change and is
+  not required to work on Kern.
+
+This matters beyond the annoyance: a run from a deep path reports two failures
+that are indistinguishable, at a glance, from a real regression — and with CI
+red for `NOSILO_CORE_TOKEN`, a hand-run suite is the only signal there is.
+
 ---
 
 ## 1. Reproducible install — `scripts/setup-test-env.sh`

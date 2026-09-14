@@ -236,7 +236,27 @@ def test_la_reconciliacion_de_recepciones_cuadra(libro_gap):
     assert v["Total fuera de los numeros"] + v["Recepciones usadas"] == v["Filas del archivo"]
 
 
-def test_ninguna_cifra_del_libro_esta_en_semanas(libro_gap):
+def test_calidad_nombra_como_lo_leyo_kern(libro_gap):
+    """El mapeo vive en Calidad de los datos, no en los hallazgos: no es un defecto."""
+    ws = libro_gap["Calidad de los datos"]
+    etiquetas = [ws.cell(r, 1).value for r in range(1, ws.max_row + 1)]
+    assert "Como lo leyo Kern" in etiquetas
+    assert "Donde miro" in etiquetas
+    assert "Mapeo de columnas" in etiquetas
+    mapeo = next(
+        ws.cell(r, 2).value
+        for r in range(1, ws.max_row + 1)
+        if ws.cell(r, 1).value == "Mapeo de columnas"
+    )
+    assert "product_id <- 'product_id'" in mapeo
+    assert "date <- 'date'" in mapeo
+    lugar = next(
+        ws.cell(r, 2).value
+        for r in range(1, ws.max_row + 1)
+        if ws.cell(r, 1).value == "Donde miro"
+    )
+    assert "CSV" in lugar
+
     """`_days_to_periods` convierte adentro; exponer un periodo es el error de x7."""
     ws = libro_gap["Como leer esto"]
     texto = " ".join(str(c.value) for row in ws.iter_rows() for c in row if c.value)

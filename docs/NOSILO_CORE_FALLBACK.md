@@ -1,60 +1,54 @@
-# nosilo-core — due diligence & fallback install
+# nosilo-core: por que estuvo afuera, y por que volvio
 
-`nosilo-core` is a **private** repo (`esstipi-debug/nosilo-core.git@v0.1.0`), pinned to a **tag** (never a branch — a branch makes a build pass Monday and fail Tuesday with no commit).
+> **Este documento describe algo que ya no pasa.** Se conserva como registro: era
+> la guia de "como correr Kern sin la credencial del core privado", y la receta de
+> vendorizado que proponia tenia cuatro errores que solo se vieron al ejecutarla.
+> Fecha de cierre: **2026-09-11** (PR-3).
 
-## Why this matters for pricing $290/month SaaS
+## Lo que pasaba
 
-A buyer's technical due diligence will run `pip install -e .` and see zero tests run. Today CI **requires** `NOSILO_CORE_TOKEN`. That is a red flag for "vendor locked to one author's PAT."
+`nosilo_core` salio de este repo el 2026-08-03 (#226) hacia un repo privado,
+pinneado por tag. Cada camino de build lo resolvia por `git+https`, asi que cada
+camino de build necesitaba una credencial: la CI, el Dockerfile, Fly, Railway y
+el `pip install` de cualquiera que quisiera evaluar el motor.
 
-## How to let an external evaluator run the engine tests without a token
+La pregunta que este documento contestaba era real: *un comprador que corre
+`pip install -e .` y ve cero tests es una senal de alarma*. La respuesta que daba
+-- instalar con `--no-deps` y correr solo los tests del motor puro -- funcionaba,
+pero dejaba fuera el 70% de la suite.
 
-The **pure engine** (the 90-module core: `src/eoq.py, safety_stock.py, policies.py, forecasting.py, simulation.py...`) imports `nosilo_core` **only in the guided/writeback layer**, never in the math path. So:
+## Lo que costo, medido
 
-```bash
-# 1. Install without the private core
-pip install -e . --no-deps          # 1 line in README, documented in pyproject
+- Un secreto repartido en seis lugares de build y **una sola cuenta** que podia rotarlo.
+- 24 dias de CI corriendo ciega (3-ago a 27-ago) sobre un PAT que **nunca existio**.
+- 10 dias sin imagen publicada (26-ago a 5-sep) sobre una premisa falsa: que BuildKit
+  no reenviaba SSH. Si lo reenvia; #327 lo demostro con el deploy key que el repo ya tenia.
+- Un consumidor real: **este repo**. `cobra-kobra` es TypeScript y no puede importarlo;
+  el pack `source_to_pay` vive adentro de Kern.
 
-# 2. Run the pure-engine tests (these never touch nosilo_core at import time)
-python -m pytest tests/test_eoq.py \
-                  tests/test_safety_stock.py \
-                  tests/test_policies.py \
-                  tests/test_forecasting.py \
-                  tests/test_simulation.py \
-                  tests/test_distributions.py \
-                  tests/test_risk_period.py \
-                  tests/test_fill_rate.py \
-                  tests/test_cost_optimization.py \
-                  -q
-# => 100% pass, proving the math is real, not smoke
+## La receta que este documento proponia, y sus cuatro errores
 
-# 3. To run the orchestrator/agent HTTP layer, the core is required:
-pip install -e ".[core]"          # needs token, see CI secret setup below
-```
+`git subtree add --prefix=nosilo_core ...` sonaba bien y no lo era:
 
-## Two permanent paths (pick one before selling)
+1. **Prefijo anidado.** El repo remoto ya tiene `nosilo_core/` como subdirectorio, asi
+   que `--prefix=nosilo_core` produce `nosilo_core/nosilo_core/`.
+2. **`rm .git` no hace nada** en un subtree: no hay `.git` que borrar.
+3. **`file://` relativo** no resuelve como el documento asumia.
+4. **Subestimaba el tamano 20 veces**: hablaba de "~180 lineas". Son **3.569** en 16
+   archivos, con `access/` (915) y `entities/` (1.246) como subpaquetes completos.
 
-### Option A — Vendor the core (recommended for open-sourcing the sellable surface)
-```bash
-git subtree add --prefix=nosilo_core/ \
-  git@github.com:esstipi-debug/nosilo-core.git v0.1.0 --squash
-rm nosilo_core/.git  # keep it vendored, not as a sub-repo
-# then change pyproject.toml dependency to:
-#   "nosilo-core @ file://./nosilo_core"
-```
-Removes the private git dependency entirely. Adds ~180 LOC to your repo audit surface.
+Lo que se hizo en su lugar: restaurar el arbol desde la **propia historia de este
+repo** (`git checkout 3e47b43^ -- nosilo_core`), que es byte a byte identico al
+`v0.1.0` que corria en produccion, mas el unico cambio posterior del core (19 lineas
+en `guided.py`: rechazar un status inventado que pasaba el control de calidad sin
+decir nada) y sus cuatro tests.
 
-### Option B — Keep private, ship a public shim
-If `nosilo_core` stays private, create `src/_nosilo_fallback.py` with stubs so `import nosilo_core` resolves to a no-op shim when the real package is absent. `pytest --collect` then succeeds, and only the tests that exercise writeback/guided fail (expected, documented). **This is what makes `$290 SaaS` survivable due diligence.**
+## Lo que NO volvio atras
 
-## CI secret setup (one-time, repo admin)
+La **frontera** entre el control plane y el dominio. `nosilo_core` sigue sin saber
+nada de SKUs, proveedores ni stock de seguridad; `src/` y `packs/` dependen de el y
+nunca al reves. Lo guardan `tests/test_core_boundary.py` y `tests/test_pack_boundary.py`.
+Lo que se fue es la credencial, no la separacion -- y por eso el dia que exista un
+segundo pack en Python, sacarlo de nuevo cuesta un `git subtree split`.
 
-GitHub repo → Settings → Secrets and variables → Actions → New repository secret:
-- Name: `NOSILO_CORE_TOKEN`
-- Value: GitHub PAT (fine-grained, `Contents: Read` on `esstipi-debug/nosilo-core`)
-
-```bash
-# Verify locally (replace TOKEN)
-GIT_TOKEN=ghp_xxx git clone https://$GIT_TOKEN@github.com/esstipi-debug/nosilo-core.git
-```
-
-If the token expires or the PAT scope is wrong, **every build fails** — not just prod. This is the `#1 deployment risk`.
+Ver `docs/DEPLOYMENT.md` seccion 0.

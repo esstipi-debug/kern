@@ -5,11 +5,11 @@ sin dependencias nuevas"):
 
 1. The CONSOLIDATED package deck's own generated prose (``jobs/package_deliverable.py``
    headers, KPI names, coverage/handoff text).
-2. The 37 registered tools' TITLES (short labels, e.g. "Data Quality & SKU
+2. The 57 registered tools' TITLES (short labels, e.g. "Data Quality & SKU
    Master (MDM)" -> "Calidad de Datos y Maestro de SKUs (MDM)").
 3. ``src.deliverable.Deliverable``'s own structural scaffolding (section
    headers, table column names, Excel sheet names) -- ``Deliverable.lang``
-   defaults to ``"en"`` (unchanged for the ~37 individual tool decks below,
+   defaults to ``"en"`` (unchanged for the ~57 individual tool decks below,
    which never pass it), and only ``package_deliverable.py::build()`` passes
    the package's ``lang`` explicitly, so translating the CONSOLIDATED deck's
    scaffolding never touches an individual tool's own (English) deck.
@@ -136,6 +136,26 @@ LABELS: dict[str, dict[Lang, str]] = {
         "es": "Fundamentado en la base de conocimiento L3 de cadena de suministro:",
         "en": "Grounded in the L3 supply-chain knowledge base:",
     },
+    # ---- reading passages (src/connectors/lectura.py) -----------------------
+    # A DIFFERENT section from "Methodology & grounding" above, and deliberately
+    # so: those are L3 citations that survived `scm_agent.citation_gate`; these
+    # are passages from the separate reading index, which carry no `node_id` and
+    # would be rejected by that gate with reason. They render downstream of it.
+    "hdr_readings": {"es": "Lecturas de referencia", "en": "Reference readings"},
+    # One line saying the two things a reader needs before trusting the page
+    # number. The second half is the load-bearing one: `page_label` is the
+    # PHYSICAL page of the PDF file, and the book's printed folio starts later
+    # (Vandeput: 26 pages of offset; Liu: 12). A client who reads "p.83", opens
+    # the printed book at 83 and finds nothing has falsified the citation
+    # themselves - worse than not citing at all.
+    "readings_intro": {
+        "es": "Pasajes de los libros leidos - no son las fuentes citadas del metodo; la "
+              "pagina indicada es la pagina FISICA del archivo PDF, no el folio impreso "
+              "del libro.",
+        "en": "Passages from the books read - not the method's cited sources above; the "
+              "page shown is the PHYSICAL page of the PDF file, not the book's printed "
+              "page number.",
+    },
     "hdr_coverage_handoff": {"es": "Cobertura y transferencia", "en": "Coverage & handoff"},
     "no_residual": {
         "es": "Sin acciones residuales: el analisis de arriba esta listo para usar.",
@@ -154,6 +174,14 @@ LABELS: dict[str, dict[Lang, str]] = {
     "sheet_data_sources": {"es": "Fuentes de Datos", "en": "Data Sources"},
     "sheet_options": {"es": "Opciones", "en": "Options"},
     "sheet_citations": {"es": "Citas", "en": "Citations"},
+    # A sheet of its own, never rows appended to "Citations": same separation the
+    # Markdown keeps. The page column is spelled "(PDF)" in BOTH languages so the
+    # header itself repeats what `readings_intro` says - a spreadsheet gets sorted,
+    # filtered and copied into a mail, and the warning has to survive that.
+    "sheet_readings": {"es": "Lecturas", "en": "Readings"},
+    "readings_col_book": {"es": "Libro", "en": "Book"},
+    "readings_col_page": {"es": "Pagina (PDF)", "en": "Page (PDF)"},
+    "readings_col_excerpt": {"es": "Extracto", "en": "Excerpt"},
     "col_finding": {"es": "Hallazgo", "en": "Finding"},
     "col_detail": {"es": "Detalle", "en": "Detail"},
     "col_impact": {"es": "Impacto", "en": "Impact"},
@@ -215,6 +243,8 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
                              "en": "Supplier Portfolio Segmentation (Kraljic)"},
     "ddmrp": {"es": "Plan de Buffers DDMRP", "en": "DDMRP Buffer Plan"},
     "landed_cost": {"es": "Estudio de Costo en Destino", "en": "Landed-Cost Study"},
+    "import_case": {"es": "Expediente de Importacion / Pack Documental",
+                    "en": "Import Case / Document Pack"},
     "warehouse_layout": {"es": "Layout de Bodega (3D)", "en": "Warehouse Layout (3D)"},
     "whatif": {"es": "Estudio What-If / Sensibilidad", "en": "What-If / Sensitivity Study"},
     "financial_kpis": {"es": "KPIs Financieros de Inventario", "en": "Inventory Financial KPIs"},
@@ -266,6 +296,8 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
     "price_watch": {"es": "Vigilancia de Precios Asistida por Descubrimiento",
                      "en": "Discovery-Assisted Price Watch"},
     "launch_readiness": {"es": "Preparacion para el Lanzamiento", "en": "Launch Readiness"},
+    "repricing": {"es": "Repreciado Multicanal (preparado, no aplicado)",
+                  "en": "Multichannel Repricing (staged, not applied)"},
     "hat_tension": {"es": "Mapa de Tension de Decision (Reabastecimiento)",
                      "en": "Decision Tension Map (Replenishment)"},
     "hat_settlement": {"es": "Plan de Reabastecimiento Reconciliado",
@@ -273,6 +305,17 @@ TOOL_TITLES: dict[str, dict[Lang, str]] = {
     "cross_impact": {"es": "Impacto Cruzado de una Decision Propuesta",
                       "en": "Cross-Area Impact of a Proposed Decision"},
     "intake_scan": {"es": "Escaneo de Aptitud del Dato", "en": "Data Readiness Scan"},
+    "service_scan": {"es": "Servicio Realizado al Cliente", "en": "Realized Customer Service"},
+    "procedure_audit": {"es": "Auditoria del Registro de Procedimientos (SOP)",
+                         "en": "Procedure Register Audit (SOP)"},
+    "procedure_draft": {"es": "Borrador de SOP con Control Documental",
+                         "en": "SOP Draft with Document Control"},
+    "iso_ops": {"es": "Aplicabilidad ISO y evidencia de cadena (no es certificado)",
+                "en": "ISO Applicability and Supply-Chain Evidence (not a certificate)"},
+    "audit_evidence": {"es": "Papel de trabajo de evidencia (MUS + conciliación GL; no es dictamen)",
+                       "en": "Audit Evidence Workpaper (MUS + GL tie-out; not an opinion)"},
+    "scor_iso_audit": {"es": "Paquete de evidencia SCOR/ISO (no es certificado)",
+                       "en": "SCOR/ISO Evidence Pack (not a certificate)"},
 }
 
 

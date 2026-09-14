@@ -12,14 +12,32 @@
 # El dia que un vertical necesita un `if` en src/, es personalizacion con otro
 # nombre: se borra o se gradua a capacidad del core.
 #
-# ESTADO: hoy este archivo es DATO INERTE. Nada lo carga todavia. Falta, en este
-# orden (seccion 8.4 del mismo documento):
-#   1. dataclass VerticalProfile con __post_init__ que valide los rangos
-#   2. load_vertical_profile() con fallo duro al estilo MarketNotConfiguredError
-#      -- un rubro sin perfil NO cae al generico en silencio, se niega a correr
-#   3. tercer diccionario en src/client_profile.py::merge_params (linea 314):
-#        hoy  {**profile.as_params(), **params}
-#        con  {**vertical.as_params(), **profile.as_params(), **params}
+# ESTADO (2026-08-20): este archivo ESTA VIVO. Los tres pasos que esta cabecera
+# listaba como pendientes se construyeron; el comentario que decia "DATO INERTE,
+# nada lo carga todavia" quedo mintiendo, que es el defecto que este repo viene
+# cazando -- doc que da por pendiente algo que existe.
+#
+# Verificado por sitio de llamada, no por lectura:
+#   engine_params      -> as_params() -> merge_params()
+#                         scm_agent/orchestrator.py, scm_agent/packages.py
+#   aliases            -> merged_aliases(), 6 sitios (jobs/intake.py y el embudo)
+#   forbidden_methods  -> forbids(), y el veto se hace cumplir en los DOS
+#                         caminos de despacho: scm_agent/orchestrator.py (una
+#                         capacidad suelta) y scm_agent/packages.py (un paquete
+#                         completo). Es incondicional: no depende de
+#                         strict_params.
+#   classification     -> jobs/abc_xyz_job.py -> src/classification.py
+#   diagnostic_outputs -> webapp/demo_verticals.py -> GET de /demo
+#   demo_question_label-> webapp/demo_verticals.py
+#
+# LO QUE SIGUE SIN CONSUMIDOR, y por que importa decirlo aca: un campo que se
+# valida al cargar pero que nadie lee se ve exactamente igual que uno cableado.
+#   stockout_prompt / stockout_cost_usd -- la pregunta del bloque 2 no aparece en
+#     ningun entregable ni pantalla, asi que hoy sigue dependiendo de que el
+#     operador se acuerde, que es justo lo que el bloque dice querer evitar.
+#   vocabulary  -- ningun renderer lo lee todavia: los informes siguen diciendo
+#     "local" y no "bodega".
+#   objections  -- viajan con el pack y no las sirve ninguna superficie.
 #
 # CONFIANZA: los numeros economicos son ESTIMACIONES DE ESCRITORIO, no
 # mediciones, y van marcados uno por uno. Ninguno se ha contrastado con un
@@ -148,9 +166,10 @@ demand:
 # El orden canonico de 05-GTM-KERN seccion 5. Este rubro es el unico para el
 # que ese orden se escribio, asi que aqui va tal cual.
 #
-# Los ids son PROPUESTOS: hoy /demo elige el modo por pestana fija
-# (webapp/demo_scan.py y webapp/demo_lead_time_scan.py). Leerlos de aqui es el
-# paso 5 de la tarea 8.4.
+# Ya NO son propuestos: webapp/demo_verticals.py los mapea a los modos de /demo
+# y app.py los sirve. Un output sin modo se omite de la pregunta en vez de caer
+# al orden por defecto -- ofrecer el orden de OTRO rubro con la etiqueta de este
+# seria peor que no ofrecer nada.
 diagnostic_outputs:
   - lead_time_gap          # se gana el derecho a seguir hablando; la mas barata de calcular
   - overstock_valued       # el dinero visible
@@ -272,10 +291,11 @@ objections:
 # ---------------------------------------------------------------------------
 # 8. CLASIFICACION -- servicio por clase
 # ---------------------------------------------------------------------------
-# Sobrescribe _SERVICE_LEVEL de src/classification.py:30, que hoy es una
-# constante a nivel de modulo: {A: 0,98, B: 0,95, C: 0,90}. Hacer que lea del
-# perfil es parte del paso 2 y es la unica pieza de este pack que toca src/ --
-# una vez, no una vez por vertical.
+# Sobrescribe _SERVICE_LEVEL de src/classification.py, que era una constante de
+# modulo: {A: 0,98, B: 0,95, C: 0,90}. YA LEE DE AQUI: jobs/abc_xyz_job.py lo
+# reenvia a src/classification.py. La matematica existia desde siempre y el job
+# no la reenviaba, asi que ningun entregable podia alcanzarla -- un repuesto A
+# que detiene un equipo se servia al default de distribucion.
 #
 # ESTIMADO. El A sube a 0,99 porque en este rubro el A no es "lo que mas
 # factura" sino "lo que detiene el equipo". Y esto sigue siendo un parche: el

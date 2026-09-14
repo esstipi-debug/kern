@@ -39,8 +39,19 @@ def create_app(store: SimulatedStore) -> FastAPI:
             {
                 "id": o.order_id,
                 "created_at": o.created_at,
+                # The three service fields travel as null when the store did not
+                # report them: JSON `null` round-trips back to `None`, while
+                # omitting them would too, and a 0.0 would invent a stockout.
                 "line_items": [
-                    {"sku": ln.sku, "quantity": ln.quantity, "price": ln.price} for ln in o.lines
+                    {
+                        "sku": ln.sku,
+                        "quantity": ln.quantity,
+                        "price": ln.price,
+                        "delivered_qty": ln.delivered_qty,
+                        "promised_date": ln.promised_date,
+                        "delivered_date": ln.delivered_date,
+                    }
+                    for ln in o.lines
                 ],
             }
             for o in store.orders(since=since)

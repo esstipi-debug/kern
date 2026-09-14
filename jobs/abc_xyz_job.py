@@ -10,12 +10,13 @@ Pure-ish: ``aggregate_skus`` / ``run`` / ``verify`` / ``build_deck`` are determi
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
-from nosilo_core.guided import confidence_from_coverage
 
+from nosilo_core.guided import confidence_from_coverage
 from src.classification import (
     SkuClassification,
     ValueBasis,
@@ -69,10 +70,44 @@ class AbcXyzReport:
         )
 
 
-def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
+def _pick_column(
+    df: pd.DataFrame,
+    override: object,
+    candidates: tuple[str, ...],
+    canonical: str | None = None,
+) -> str | None:
+    """Pick the client's column for a canonical field.
+
+    Order, and it matters: an explicit override wins, then this job's own short
+    list, then -- only if both came up empty -- the wide alias table in
+    jobs/intake.py.
+
+    The fallback is strictly additive: it fires exactly where this function used
+    to return None, which is where the caller used to raise. No export that works
+    today changes behaviour, because for those the short list already matched.
+
+    It exists because the short lists here are English-only while intake's table
+    is rich in Spanish. A Defontana or Bsale export ("codigo", "existencia",
+    "costo_unitario") went through intake and then died in the two jobs that
+    produce what the client actually sees. 05-GTM-KERN.md declares the unfair
+    advantage in LatAm to be the language; this was the code contradicting it on
+    the first file a client uploads.
+    """
     if override:
         return str(override) if str(override) in df.columns else None
-    return next((c for c in candidates if c in df.columns), None)
+    directo = next((c for c in candidates if c in df.columns), None)
+    if directo is not None or canonical is None:
+        return directo
+
+    # Lazy: keeps the import cost off every caller that never needs the fallback.
+    from jobs.intake import ALIASES
+
+    conocidas = {str(c).strip().lower(): str(c) for c in df.columns}
+    for alias in ALIASES.get(canonical, ()):
+        encontrada = conocidas.get(alias.strip().lower())
+        if encontrada is not None:
+            return encontrada
+    return None
 
 
 def aggregate_skus(
@@ -93,9 +128,9 @@ def prepare(data_path: str, params: dict | None = None) -> list[dict]:
     """Read a per-SKU demand CSV and aggregate it to classifier items."""
     params = params or {}
     df = pd.read_csv(data_path)
-    product = _pick_column(df, params.get("product_col"), _PRODUCT_COLS)
-    demand = _pick_column(df, params.get("demand_col"), _DEMAND_COLS)
-    cost = _pick_column(df, params.get("cost_col"), _COST_COLS)
+    product = _pick_column(df, params.get("product_col"), _PRODUCT_COLS, "product_id")
+    demand = _pick_column(df, params.get("demand_col"), _DEMAND_COLS, "quantity")
+    cost = _pick_column(df, params.get("cost_col"), _COST_COLS, "unit_cost")
     missing = [n for n, c in (("product_col", product), ("demand_col", demand), ("cost_col", cost)) if c is None]
     if missing:
         cols = list(df.columns)[:10]
@@ -108,9 +143,23 @@ def run(
     *,
     abc_thresholds: tuple[float, float] = (0.80, 0.95),
     cv_cuts: tuple[float, float] = (0.5, 1.0),
+    service_level_by_class: Mapping[str, float] | None = None,
 ) -> AbcXyzReport:
-    """Classify the portfolio into the ABC-XYZ matrix and roll up the headline counts."""
-    classifications = classify_portfolio(items, abc_thresholds=abc_thresholds, cv_cuts=cv_cuts)
+    """Classify the portfolio into the ABC-XYZ matrix and roll up the headline counts.
+
+    ``service_level_by_class`` is the industry pack's override
+    (``VerticalProfile.classification.service_level_by_class``, declared today by
+    config/verticals/repuestos-industriales.yaml, alimentos.yaml and distribucion-b2b.yaml).
+    ``src.classification`` has supported it all along; the job did not forward it, so the
+    maths existed and no deliverable could reach it - an A-class spare that stops a machine
+    was still served at the distribution default.
+    """
+    classifications = classify_portfolio(
+        items,
+        abc_thresholds=abc_thresholds,
+        cv_cuts=cv_cuts,
+        service_level_by_class=service_level_by_class,
+    )
     summary = portfolio_summary(classifications)
     total_value = sum(c.annual_value for c in classifications) or 1.0
     a_value = sum(c.annual_value for c in classifications if c.abc == "A")
@@ -139,9 +188,18 @@ def verify(report: AbcXyzReport) -> list[str]:
 
 
 def write_operational(report: AbcXyzReport, out_dir: str | Path, client: str = "Client") -> dict[str, Path]:
-    """The machine-readable deliverable: one row per SKU with its class + policy."""
+    """The machine-readable deliverable: one row per SKU with its class + policy.
+
+    Each row carries the cut that produced its class. The letter travels to whoever
+    reopens this file months later; the criterion behind it used to stay in the
+    dataclass, so the row said "A" and nothing said what A means. Repeated per row on
+    purpose - a CSV has no header block, and a cut stated once in a note nobody keeps
+    is a cut nobody can check. ``cut_criterion`` is read directly, never through a
+    default: a run that did not record its cuts writes the empty string.
+    """
     d = Path(out_dir)
     d.mkdir(parents=True, exist_ok=True)
+    cut = report.cut_criterion or ""
     rows = [
         {
             "product_id": c.product_id,
@@ -153,10 +211,24 @@ def write_operational(report: AbcXyzReport, out_dir: str | Path, client: str = "
             "cell": c.cell,
             "service_level": c.service_level,
             "policy": c.policy,
+            "cut_criterion": cut,
         }
         for c in report.classifications
     ]
     return {"csv": write_summary_csv(rows, d / "abc_xyz_classification.csv")}
+
+
+def _a_class_service_level(report: AbcXyzReport) -> float | None:
+    """The service level the A class actually got, or None when there is no A class.
+
+    Read off the classifications instead of restated as a literal. The deck used to
+    print "A ... at 98%" hardcoded; that matched the default map by coincidence, so an
+    industry pack raising A to 99% (config/verticals/repuestos-industriales.yaml) would
+    have left the page quoting a number no SKU was served at - fabricated, and
+    indistinguishable from a measured one.
+    """
+    levels = {c.service_level for c in report.classifications if c.abc == "A"}
+    return max(levels) if levels else None
 
 
 def build_deck(
@@ -172,6 +244,12 @@ def build_deck(
     ``confidence`` is derived when not supplied: an ABC that reduces to a units
     ranking because unit cost is flat is worth less than one ranked on real value
     (see src/guided.py::confidence_from_coverage).
+
+    The deck states the cut it segmented on. ``AbcXyzReport.cut_criterion`` existed but
+    never left the dataclass, so the page named every SKU's class and never said what a
+    class was - and the reader who cannot see the cut cannot disagree with the
+    segmentation (Silver/Pyke/Thomas state the criterion with the classes, not apart
+    from them).
     """
     if confidence is None:
         confidence = confidence_from_coverage(
@@ -181,6 +259,7 @@ def build_deck(
     a_share = report.a_value_share * 100
     a_pct_skus = (report.n_a / report.n_skus * 100) if report.n_skus else 0.0
     n_z = sum(1 for c in report.classifications if c.xyz == "Z")
+    cut = report.cut_criterion or ""
 
     summary = (
         f"Classified {report.n_skus} SKUs into the ABC-XYZ matrix: the {report.n_a} A-items "
@@ -220,15 +299,23 @@ def build_deck(
         Kpi("Erratic (Z) SKUs", str(n_z), rationale="Lumpy demand needing buffered policies"),
         Kpi("Discontinuation candidates", str(report.n_cz), target="review",
             rationale="Low-value, erratic SKUs to cull or make-to-order"),
+        # "not recorded" and never the usual 80/15/5: a run whose cuts were not carried
+        # has to say so. Printing the customary cut over a run that cut elsewhere is a
+        # fabricated criterion the reader cannot tell from a real one.
+        Kpi("ABC / XYZ cut", cut or "not recorded",
+            rationale="The class label is not falsifiable without the cut that produced it"),
     )
 
     data_sources = (
         DataSource("Per-SKU demand history & unit cost", "order/sales data", "monthly"),
-        DataSource("ABC thresholds / CV cuts", "engagement parameters", "per run"),
+        DataSource(f"ABC thresholds / CV cuts ({cut or 'not recorded'})",
+                   "engagement parameters", "per run"),
     )
 
+    a_level = _a_class_service_level(report)
+    a_target = f" (A {report.n_a} SKUs at {a_level:.0%})" if a_level is not None else ""
     recommendations = [
-        f"Apply each cell's service-level target and review policy (A {report.n_a} SKUs at 98%).",
+        f"Apply each cell's service-level target and review policy{a_target}.",
         "Concentrate cycle counts and forecast effort on the A class.",
     ]
     if report.n_cz:

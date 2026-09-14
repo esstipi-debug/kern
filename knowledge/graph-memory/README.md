@@ -22,8 +22,7 @@ graphify save-result --memory-dir knowledge/graph-memory \
   --nodes   "Orchestrator" "Tool" "build_default_registry()"
 
 # 2. Regenerate the lessons doc from all committed memories (deterministic, no LLM).
-graphify reflect --memory-dir knowledge/graph-memory \
-  --out documentation/GRAPH_LESSONS.md --graph graphify-out/graph.json
+python scripts/reflect_lessons.py
 
 # 3. Commit the new entry + the regenerated lessons in your PR.
 ```
@@ -31,6 +30,28 @@ graphify reflect --memory-dir knowledge/graph-memory \
 `--outcome dead_end` (the path didn't lead anywhere) and `--outcome corrected`
 (`--correction "what was actually true"`) are as valuable as `useful`: they stop
 the next session from repeating a wrong turn.
+
+## Which graph `reflect` is given
+
+**Use `scripts/reflect_lessons.py`, not `graphify reflect` directly.** `reflect` drops
+any `--nodes` entry it cannot resolve in the graph you pass it — that is how it prunes
+lessons about code that no longer exists, and it is correct. But since the
+capacity-gaps source (#28) landed, the memory store spans *two* graphs, so neither one
+alone is right:
+
+| `--graph` | kept | dropped |
+|---|---|---|
+| `graphify-out/graph.json` | code lessons | all 8 capacity gaps |
+| `knowledge/scm-books/graph.json` | the capacity gaps | code lessons |
+
+The script merges the two and reflects against the union, so nothing is lost. Its
+`--check` mode fails if the committed `GRAPH_LESSONS.md` has drifted from the memories
+it claims to summarize.
+
+One consequence for how you write an entry: **reference nodes by LABEL, not by id.**
+`graphify merge-graphs` re-namespaces ids (`kernbrechas_x` becomes
+`knowledge::kernbrechas_x`) but leaves labels untouched, so a label resolves in both
+the raw graph and the merged one.
 
 ## Conventions
 

@@ -36,6 +36,14 @@ primary_region = "iad"          # CHANGE ME if deploying your own copy elsewhere
   LINCHPIN_STATE_PATH = "/data/state"
   LINCHPIN_PRICING_LEDGER_PATH = "/data/pricing_intel/ledger"
   LINCHPIN_SKU_MAP_PATH = "/data/pricing_intel/sku_map"
+  # Los dos almacenes de leads, que son PII y son la unica prueba de que alguien
+  # uso el embudo. El de reportes ya era configurable pero dependia de que
+  # alguien se acordara del paso 34 del checklist de lanzamiento
+  # (`fly secrets set ...`); el ledger no tenia override ninguno. Van aqui para
+  # que sean durables por defecto y no por memoria: una regla que hay que
+  # recordar no protege nada.
+  LINCHPIN_LEADS_DIR = "/data/leads_ledger"
+  LINCHPIN_LEAD_REPORTS_DIR = "/data/leads"
   # Prod hardening defaults: rate limiting ON at 60 req/min (no longer 0/disabled);
   # LINCHPIN_REQUIRE_SECURE stays 0 until POLICY is configured - prod debe poner 1
   # cuando tenga POLICY para fail-closed, pero rate limit ya no es 0 desde el arranque.

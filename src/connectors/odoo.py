@@ -22,7 +22,12 @@ Odoo model            mapped to
 product.product       default_code -> sku, name, list_price -> price,
                       standard_price -> cost
 stock.quant           internal-location quantity summed per product -> level
-sale.order(.line)     date_order + product_uom_qty + price_unit -> Order/line
+sale.order(.line)     date_order + product_uom_qty + price_unit -> Order/line;
+                      qty_delivered -> lo servido y commitment_date -> lo
+                      prometido, el par que vuelve medible el servicio al
+                      cliente (ver ``orders()``)
+stock.move +          date (state=done, tipo de salida) de la ULTIMA salida que
+sale.order.line       sirvio la linea -> cuando la linea quedo servida
 product.supplierinfo  delay (days) -> el plazo DECLARADO, la promesa de la ficha
                       (NO el observado: ver ``receipts()``)
 stock.move +          date (state=done) menos purchase.order.date_order -> el
@@ -37,17 +42,32 @@ motor dimensiona contra la promesa del ERP y la brecha da cero por construccion.
 
 from __future__ import annotations
 
+import math
 import time
 import xmlrpc.client
 from dataclasses import dataclass
+from dataclasses import field as _dc_field
 from dataclasses import replace as _dc_replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
 import pandas as pd
-from nosilo_core import writeback
 
-from src.connectors import InventoryLevel, Order, OrderLine, Product
+from nosilo_core import writeback
+from src.connectors import (
+    COVERAGE_DERIVED,
+    COVERAGE_MEASURED,
+    WRITE_APPROVAL_GATED,
+    FieldCoverage,
+    InventoryLevel,
+    Order,
+    OrderLine,
+    Product,
+    ScheduledReceipt,
+    ServiceCoverage,
+    WriteSurface,
+)
+from src.constraints import apply_order_rules
 from src.supplier_scorecard import LEAD_TIME_MEASURED
 
 # Odoo ORM methods that only read: safe to retry on a transient transport error,
@@ -74,6 +94,9 @@ _M_PICKING_TYPE = "stock.picking.type"
 _M_PARTNER = "res.partner"
 
 _SALE_STATES = ("sale", "done")  # confirmed/locked sales count as realized demand
+# Ordenes de compra COMPROMETIDAS. `draft`/`sent` son cotizaciones: contarlas
+# como suministro asume mercaderia que ningun proveedor prometio todavia.
+_PO_OPEN_STATES = ("purchase", "done")
 
 #: Tipos de operacion que son una recepcion de compra. `dropship` va incluido a
 #: proposito: filtrar solo por `incoming` descarta cada envio directo, lo que
@@ -82,8 +105,21 @@ _SALE_STATES = ("sale", "done")  # confirmed/locked sales count as realized dema
 #: `in` que nombra un valor de seleccion que la base no tiene no matchea nada,
 #: asi que no hace falta sondear si el modulo esta instalado.
 _RECEIPT_TYPE_CODES = ("incoming", "dropship")
+
+#: El espejo de salida de ``_RECEIPT_TYPE_CODES``, y por el mismo motivo incluye
+#: `dropship`: una linea servida por envio directo del proveedor al cliente se
+#: entrego igual, y dejarla fuera la deja sin fecha -- o sea fuera de OTIF -- en
+#: toda cuenta que despacha asi.
+_DELIVERY_TYPE_CODES = ("outgoing", "dropship")
 _MOVE_DONE = "done"
 _PO_REALIZED_STATES = ("purchase", "done")
+
+#: Lo que cuenta como OC ABIERTA (lo comprado y no recibido) es _PO_OPEN_STATES:
+#: `purchase` y `done`. `done` SI: con "Bloquear ordenes confirmadas" activado,
+#: Odoo pasa la OC a `done` apenas se confirma, sin relacion con si ya llego; lo
+#: que ya se recibio lo descarta el pendiente <= 0, no el estado.
+#: `draft`/`sent`/`to approve` no: nadie las confirmo, y contarlas es prometerle
+#: a un cliente stock que no se compro.
 
 #: `product.supplierinfo.delay` viene con default=1 en Odoo. Un 1 no es una
 #: promesa, es el campo sin configurar -- y `relative_gap` solo se protege del
@@ -95,6 +131,18 @@ _WB_TARGET = "odoo"
 
 class OdooError(RuntimeError):
     """Odoo transport, authentication, or mapping failure."""
+
+
+class OdooTransportError(OdooError):
+    """La conexion se cayo: ni llego, o no volvio la respuesta.
+
+    Subclase para que todo ``except OdooError`` existente la siga atrapando, y
+    separada para que quien tenga que distinguirla no lo haga mirando el texto.
+    La diferencia importa: ``OdooError`` a secas desde ``receipts()`` significa
+    "este Odoo no se puede medir" (falta el modulo de compras) y se le reporta al
+    cliente como dato faltante; esto otro significa "se corto la red" y reportarlo
+    como dato faltante manda a revisar el ERP por un problema que no esta ahi.
+    """
 
 
 @runtime_checkable
@@ -133,6 +181,23 @@ class _TimeoutSafeTransport(xmlrpc.client.SafeTransport):
         return conn
 
 
+def server_proxies(url: str, *, timeout: float = _DEFAULT_TIMEOUT_SECONDS) -> tuple[Any, Any]:
+    """Los dos ``ServerProxy`` de Odoo para ``url``, con el timeout de socket acotado.
+
+    Publica porque el validador de conexion de ``odoo_connect.py`` necesita hablar
+    con ``/xmlrpc/2/common`` ANTES de que exista un ``OdooClient`` -- distinguir
+    "el host no contesta" de "la credencial no sirve" exige preguntar la version
+    del servidor sin autenticar. Sin este corte, ese modulo copiaria la eleccion
+    de transporte y el dia que aqui cambie el timeout quedaria una copia atras.
+    """
+    base = url.rstrip("/")
+    transport_cls = _TimeoutSafeTransport if base.startswith("https") else _TimeoutTransport
+    return (
+        xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/common", transport=transport_cls(timeout)),
+        xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/object", transport=transport_cls(timeout)),
+    )
+
+
 class OdooClient:
     """Real XML-RPC transport to an Odoo server (stdlib ``xmlrpc.client``).
 
@@ -162,10 +227,9 @@ class OdooClient:
         backoff_seconds: float = _DEFAULT_BACKOFF_SECONDS,
     ) -> None:
         if common is None or models is None:
-            base = url.rstrip("/")
-            transport_cls = _TimeoutSafeTransport if base.startswith("https") else _TimeoutTransport
-            common = common or xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/common", transport=transport_cls(timeout))
-            models = models or xmlrpc.client.ServerProxy(f"{base}/xmlrpc/2/object", transport=transport_cls(timeout))
+            hechos = server_proxies(url, timeout=timeout)
+            common = common or hechos[0]
+            models = models or hechos[1]
         uid = common.authenticate(db, username, api_key, {})
         if not uid:
             raise OdooError(f"Odoo authentication failed for user {username!r} on db {db!r}")
@@ -195,7 +259,7 @@ class OdooClient:
                 if attempt + 1 >= attempts:
                     break
                 time.sleep(self._backoff_seconds * (2**attempt))
-        raise OdooError(
+        raise OdooTransportError(
             f"Odoo transport failed for {model}.{method} after {attempts} attempt(s): {last_exc}"
         ) from last_exc
 
@@ -206,6 +270,54 @@ class OdooClient:
 def _as_date(value: Any) -> str:
     """Odoo datetimes arrive as 'YYYY-MM-DD HH:MM:SS'; keep the ISO date so it sorts."""
     return str(value)[:10] if value else ""
+
+
+def _as_date_or_none(value: Any) -> str | None:
+    """``_as_date``, pero separando "sin fecha" de la cadena vacia.
+
+    Odoo devuelve ``False`` por una fecha en blanco, y ``commitment_date`` viene en
+    blanco en la mayoria de las cuentas: nadie prometio nada. Un ``""`` viajando
+    hasta ``src.order_fulfillment`` no se parsea y da lo mismo que ``None``, pero
+    dice otra cosa a quien lee la linea; el campo es opcional, asi que se declara.
+    """
+    dia = _as_date(value)
+    return dia or None
+
+
+def _as_qty_or_none(value: Any) -> float | None:
+    """Una cantidad reportada, o ``None`` cuando el ERP no reporto ninguna.
+
+    Odoo manda ``False`` por un campo sin valor y ``0.0`` por uno que si midio y
+    dio cero. La diferencia es la de "nadie lo midio" contra "no salio ni una
+    unidad", y ``src.order_fulfillment`` las cuenta en denominadores distintos.
+    Como ``False == 0`` en Python, aplastar el booleano con ``float(...)`` convierte
+    cada linea sin dato en un quiebre total y el fill rate del cliente en cero: de
+    ahi el ``isinstance(value, bool)`` antes de cualquier conversion.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        numero = float(value)
+    except (TypeError, ValueError):
+        return None
+    return numero if math.isfinite(numero) else None
+
+
+def _sumar_dias(dia: str | None, plazo: float | None) -> str | None:
+    """``dia`` corrido ``plazo`` dias, o ``None`` si falta cualquiera de los dos.
+
+    La suma se hace sobre la fecha de la ORDEN y con el plazo medido, que es la
+    unica combinacion que no reconstruye la promesa del proveedor: partir de
+    ``date_planned`` y sumarle algo daria ``date_order + seller.delay + algo``,
+    o sea la ficha otra vez, disfrazada de calculo.
+    """
+    if not dia or plazo is None:
+        return None
+    try:
+        base = datetime.strptime(dia[:10], "%Y-%m-%d")
+    except ValueError:
+        return None
+    return f"{base + timedelta(days=float(plazo)):%Y-%m-%d}"
 
 
 def _m2o_name(value: Any) -> str | None:
@@ -258,11 +370,82 @@ class OdooReceipts:
 
 
 @dataclass(frozen=True)
+class OdooLeadTimes:
+    """Lo que `OdooConnector.declared_lead_times()` devuelve: la promesa del ERP,
+    y los SKU sobre los que el ERP no promete nada.
+
+    Misma forma que :class:`OdooReceipts` a proposito -- un hueco que no viaja
+    junto al dato no llega a ninguna pantalla, y ese fue el defecto original.
+    """
+
+    #: SKU -> plazo declarado en dias. Solo los que traen uno utilizable.
+    declared: dict[str, float]
+    #: SKU con linea de proveedor pero sin plazo cargado, ordenados para que el
+    #: aviso no cambie entre corridas.
+    missing: tuple[str, ...]
+    #: Lo que el lector tiene que saber para no sobre-leer el numero.
+    qa_issues: tuple[str, ...]
+
+
+#: Cuantos SKU se nombran en el aviso antes de resumir el resto. Un aviso con
+#: cinco mil codigos no se lee, y uno sin ninguno no es accionable.
+_MAX_SKU_EN_AVISO = 10
+
+
+@dataclass(frozen=True)
+class OdooOpenPurchases:
+    """Lo que `OdooConnector.open_purchase_qty_by_sku()` devuelve.
+
+    Se devuelve un objeto y no un `dict` pelado a proposito: un mapa sin las
+    bajas se lee como "esto es todo lo que hay en camino", y una linea descartada
+    por unidad de medida distinta es exactamente lo que el lector necesita saber
+    antes de creerle al numero.
+    """
+
+    #: SKU -> unidades pendientes de recibir, sumadas sobre sus lineas de OC.
+    #: Un SKU AUSENTE significa "sin OC abiertas"; el consumidor no debe
+    #: convertirlo en 0.0 sin decirlo.
+    by_sku: dict[str, float]
+    #: Lineas descartadas y por que. `uom_distinta` es la que importa: son
+    #: compromisos reales que no se pudieron contar sin inventar una conversion.
+    dropped: dict[str, int]
+    #: True cuando se alcanzo `max_lines` y la lectura quedo corta: el mapa
+    #: sub-estima el en-transito, o sea que el plan compra de mas, no de menos.
+    truncated: bool = False
+
+
+@dataclass(frozen=True)
+class _OpenPoLine:
+    """Una linea de OC confirmada con algo pendiente de recibir, ya en unidades del producto."""
+
+    sku: str
+    pending: float
+    promised_date: str | None
+    ordered_date: str | None
+    supplier: str | None
+    order_name: str
+
+
+@dataclass(frozen=True)
+class _OpenPoScan:
+    """Lo que devuelve el lector unico: las lineas que cuentan y las que no, con motivo."""
+
+    lines: tuple[_OpenPoLine, ...]
+    dropped: dict[str, int]
+    truncated: bool
+
+
+@dataclass(frozen=True)
 class DraftPOResult:
     """Outcome of staging draft purchase orders: what was created and what couldn't be sourced."""
 
     purchase_orders: dict[int, tuple[str, ...]]   # new PO id -> the SKUs on it
     unsourced: tuple[str, ...]                     # SKUs with no supplier in Odoo (skipped, not dropped)
+    #: sku -> (lo que pedia el plan, lo que se pidio al proveedor) cuando el minimo
+    #: de pedido del proveedor (product.supplierinfo.min_qty) obligo a subir.
+    #: Solo el minimo: el multiplo de caja no se lee de Odoo (no es campo estandar
+    #: de supplierinfo); esa correccion la hace el comprador al confirmar.
+    raised_to_min: dict[str, tuple[float, float]] = _dc_field(default_factory=dict)
 
     @property
     def n_orders(self) -> int:
@@ -274,6 +457,28 @@ def _cuenta(valores) -> dict:
     for v in valores:
         salida[v] = salida.get(v, 0) + 1
     return salida
+
+
+def _aviso_plazos(missing: tuple[str, ...], n_con_linea: int) -> tuple[str, ...]:
+    """El aviso de plazos declarados ausentes, o nada si no falta ninguno.
+
+    Vacio cuando no hay SKU sin plazo -- incluido el caso de un Odoo sin ninguna
+    linea de proveedor, que no tiene plazos ausentes sino que no tiene plazos. Un
+    aviso que aparece siempre deja de leerse, que es como se pierde el unico
+    que importaba.
+    """
+    if not missing:
+        return ()
+    nombrados = ", ".join(missing[:_MAX_SKU_EN_AVISO])
+    resto = len(missing) - _MAX_SKU_EN_AVISO
+    if resto > 0:
+        nombrados += f" y {resto} mas"
+    return (
+        f"plazo declarado ausente en {len(missing)} de {n_con_linea} SKU con linea de "
+        f"proveedor ({nombrados}): el ERP no registra cuanto promete el proveedor, asi "
+        "que no se reporta plazo para esos SKU en vez de reportar cero. El plazo "
+        "observado se mide aparte, con receipts().",
+    )
 
 
 def _collapse_shipments(filas: list[dict]) -> list[dict]:
@@ -315,8 +520,36 @@ class OdooConnector:
         self._rpc = rpc
         self._sku_by_id: dict[int, str] = {}
         self._id_by_sku: dict[str, int] = {}
+        # product_id -> uom_id del producto, para descartar lineas de OC que
+        # vienen en otra unidad en vez de sumarlas como si fueran la misma.
+        self._uom_by_product: dict[int, int | None] = {}
+        self._field_cache: dict[tuple[str, str], bool] = {}
+        # sku -> minimo de pedido del proveedor primario (product.supplierinfo.min_qty).
+        # Se llena en primary_supplier_by_sku(); lo usa el borrador de PO para no
+        # pedirle 37 unidades a un proveedor que vende de a 100.
+        self._min_qty_by_sku: dict[str, float] = {}
+        #: sku -> (pedido por el plan, pedido al proveedor) de la ultima puesta en
+        #: escena de PO, solo para los SKU que subieron al minimo. Lo lee el
+        #: entregable para decirlo; el numero del plan no se toca.
+        self.last_moq_adjustments: dict[str, tuple[float, float]] = {}
         self._rules = _ReorderRuleStore(rpc, self._id_by_sku, ledger=ledger)
         self._po_store = _DraftPoStore(rpc, self._id_by_sku, ledger=ledger)
+
+    def _has_field(self, model: str, field: str) -> bool:
+        """Si esta base expone ``field`` en ``model``. Se sondea una vez por conector.
+
+        Pedir en un ``read`` un campo que el modelo no tiene revuelve un error del
+        servidor, y que un campo opcional exista depende de los modulos instalados
+        (``qty_delivered`` y ``sale_line_id`` llegan con el puente de Ventas e
+        Inventario). Mismo sondeo que ``receipts()`` hace con ``purchase_line_id``,
+        con la diferencia de que aqui la ausencia no es un error: el servicio se
+        reporta como no medido, que es lo que efectivamente pasa.
+        """
+        clave = (model, field)
+        if clave not in self._field_cache:
+            campos = self._rpc.execute_kw(model, "fields_get", [[field]], {"attributes": ["type"]})
+            self._field_cache[clave] = field in (campos or {})
+        return self._field_cache[clave]
 
     # -- read side (InventorySource) ------------------------------------------
 
@@ -361,19 +594,250 @@ class OdooConnector:
         return levels
 
     def orders(self, *, since: str | None = None) -> list[Order]:
+        """Las ordenes confirmadas, con lo pedido Y lo servido en cada linea.
+
+        Las tres columnas de servicio (``delivered_qty``, ``promised_date``,
+        ``delivered_date``) son las que ``src.order_fulfillment`` necesita para
+        medir fill rate, OTIF y venta perdida reales. Las tres son opcionales en
+        una base viva, y cada ausencia viaja como ``None`` hasta el entregable:
+
+        * ``commitment_date`` es la promesa, y es de la ORDEN, no de la linea -
+          por eso todas las lineas de una orden llevan la misma. En blanco (lo
+          habitual) significa que no se prometio fecha, y la linea queda fuera de
+          OTIF en vez de medirse contra ``date_order``, que es cuando el cliente
+          compro y no cuando le dijimos que llegaba.
+        * la fecha de entrega sale del movimiento de stock, no de
+          ``sale.order.effective_date``: ese campo es la validacion del PRIMER
+          despacho de la orden entera, asi que en una orden servida en dos
+          camiones le regala a las lineas del segundo la fecha del primero y las
+          declara a tiempo. Se mide por linea y con el ULTIMO movimiento hecho
+          (ver ``_delivery_dates``).
+        """
         domain: list = [["state", "in", list(_SALE_STATES)]]
         if since is not None:
             domain.append(["date_order", ">=", since])
-        heads = self._rpc.execute_kw(
-            _M_SALE, "search_read", [domain], {"fields": ["name", "date_order", "order_line"]}
-        )
+        head_fields = ["name", "date_order", "order_line"]
+        if self._has_field(_M_SALE, "commitment_date"):
+            head_fields.append("commitment_date")
+        heads = self._rpc.execute_kw(_M_SALE, "search_read", [domain], {"fields": head_fields})
         line_ids = [lid for h in heads for lid in h.get("order_line", [])]
         lines_by_id = self._read_sale_lines(line_ids)
+        shipped = self._delivery_dates(line_ids)
         out: list[Order] = []
         for h in heads:
-            lines = tuple(lines_by_id[lid] for lid in h.get("order_line", []) if lid in lines_by_id)
+            promised = _as_date_or_none(h.get("commitment_date"))
+            lines = tuple(
+                _dc_replace(
+                    lines_by_id[lid], promised_date=promised, delivered_date=shipped.get(lid)
+                )
+                for lid in h.get("order_line", [])
+                if lid in lines_by_id
+            )
             out.append(Order(str(h["name"]), _as_date(h["date_order"]), lines))
         return sorted(out, key=lambda o: o.created_at)
+
+    def _open_po_lines(self, *, max_lines: int = 20_000) -> _OpenPoScan | None:
+        """El UNICO lector de lineas de OC abiertas: lo comprado y todavia no recibido.
+
+        ``scheduled_receipts()`` (fechas por linea, para prometer) y
+        ``open_purchase_qty_by_sku()`` (unidades por SKU, para no comprar dos veces
+        lo mismo) son dos vistas de ESTA lectura. Antes eran dos lectores con dos
+        filtros de estado y dos reglas de unidad de medida: un cliente con "Bloquear
+        ordenes confirmadas" activado (toda OC confirmada pasa a ``done``) veia su
+        en-transito en una vista y no en la otra.
+
+        Devuelve ``None`` cuando la base no tiene modulo de Compras: no es un error,
+        es una tienda que compra por fuera del ERP, y cada vista decide que hacer con
+        esa ausencia. Levanta ``OdooError`` cuando el modulo existe pero no expone
+        ``qty_received``: sin eso no se sabe cuanto llego, y devolver lo ordenado
+        como pendiente sobre-estima el suministro y deja al cliente sin stock.
+
+        Reglas compartidas, y por que cada una:
+
+        * Solo ``state in ('purchase', 'done')``: una cotizacion (``draft``/``sent``)
+          no es suministro, nadie la prometio todavia.
+        * Pendiente = ``product_qty - qty_received`` con piso en cero. Una OC de 500
+          con 480 recibidas aporta 20, no 500.
+        * Una linea en otra unidad que la del producto se DESCARTA y se cuenta en
+          ``dropped['uom_distinta']`` en vez de sumar cajas como unidades. Si la
+          base no expone ``product_uom`` en la linea no hay con que comparar y
+          se aplica la misma doctrina (en la duda se descarta): las lineas se
+          cuentan en ``dropped['uom_no_verificable']`` y no suman.
+        * Se filtra por estado de la LINEA, no por ``date_planned``: filtrar por la
+          promesa dejaria fuera justo las OC atrasadas, que son las que mas importan.
+        """
+        if not self._has_field(_M_PO_LINE, "product_qty"):
+            return None
+        if not self._has_field(_M_PO_LINE, "qty_received"):
+            raise OdooError(
+                "este Odoo no expone purchase.order.line.qty_received, asi que no hay "
+                "forma de saber cuanto de cada OC ya llego. Devolver lo ordenado como "
+                "si estuviera pendiente sobre-estimaria el suministro y dejaria al "
+                "cliente sin stock: se levanta en vez de adivinar."
+            )
+        self._ensure_catalog()
+        uom_verificable = self._has_field(_M_PO_LINE, "product_uom")
+        fields = ["product_id", "product_qty", "qty_received", "date_planned", "order_id"]
+        if uom_verificable:
+            fields.append("product_uom")
+        filas = self._rpc.execute_kw(
+            _M_PO_LINE,
+            "search_read",
+            [[["state", "in", list(_PO_OPEN_STATES)]]],
+            {"fields": fields, "limit": max_lines},
+        )
+        truncated = len(filas) >= max_lines
+        dropped = {"sin_sku": 0, "uom_distinta": 0, "sin_pendiente": 0, "uom_no_verificable": 0}
+
+        order_ids = sorted({oid for oid in (_m2o_id(r.get("order_id")) for r in filas) if oid is not None})
+        cabecera: dict[int, tuple[str, str | None, str | None]] = {}
+        if order_ids:
+            pedidos = self._rpc.execute_kw(
+                _M_PO, "read", [order_ids], {"fields": ["name", "date_order", "partner_id"]}
+            )
+            for p in pedidos or []:
+                cabecera[int(p["id"])] = (
+                    str(p.get("name") or ""),
+                    _as_date_or_none(p.get("date_order")),
+                    _m2o_name(p.get("partner_id")),
+                )
+
+        lines: list[_OpenPoLine] = []
+        for r in filas:
+            pid = _m2o_id(r.get("product_id"))
+            if pid is None:
+                dropped["sin_sku"] += 1
+                continue
+            pendiente = (_as_qty_or_none(r.get("product_qty")) or 0.0) - (
+                _as_qty_or_none(r.get("qty_received")) or 0.0
+            )
+            if pendiente <= 0:
+                dropped["sin_pendiente"] += 1
+                continue
+            sku = self._sku(pid)
+            if sku is None:
+                dropped["sin_sku"] += 1
+                continue
+            if not uom_verificable:
+                # Misma doctrina que _uom_matches_product: en la duda se descarta.
+                # Sub-estimar el en-transito compra de mas; sobre-estimarlo deja al
+                # cliente sin stock y el numero sigue pareciendo razonable. El
+                # conteo viaja en dropped para que read_on_order lo diga en palabras.
+                dropped["uom_no_verificable"] += 1
+                continue
+            if not self._uom_matches_product(pid, _m2o_id(r.get("product_uom"))):
+                dropped["uom_distinta"] += 1
+                continue
+            oid = _m2o_id(r.get("order_id"))
+            orden, ordenada, proveedor = cabecera.get(oid if oid is not None else -1, ("", None, None))
+            lines.append(
+                _OpenPoLine(
+                    sku=sku,
+                    pending=pendiente,
+                    promised_date=_as_date_or_none(r.get("date_planned")),
+                    ordered_date=ordenada,
+                    supplier=proveedor,
+                    order_name=orden,
+                )
+            )
+        return _OpenPoScan(tuple(lines), dropped, truncated)
+
+    def scheduled_receipts(
+        self,
+        *,
+        until: str | None = None,
+        measured_lead_times: Any = None,
+    ) -> list[ScheduledReceipt]:
+        """Lo comprado y todavia no recibido: la mirada hacia ADELANTE.
+
+        Vista con fechas del lector unico ``_open_po_lines()`` (ahi viven el filtro
+        de estado, la regla de pendiente y la de unidad de medida, compartidas con
+        ``open_purchase_qty_by_sku()``). ``receipts()`` mide el plazo que un
+        proveedor CORRIO, restando fechas de movimientos ya hechos. Esta lee lo que
+        falta llegar, que es lo unico que deja prometerle a un cliente una fecha
+        apoyada en algo mas que el stock que ya esta en el estante.
+
+        Cada recepcion lleva DOS fechas y no se colapsan nunca:
+
+        * ``promised_date`` es ``purchase.order.line.date_planned``. El docstring
+          de ``receipts()`` ya explica que en Odoo eso vale
+          ``date_order + seller.delay``: la ficha del proveedor, no su conducta.
+        * ``expected_date`` es ``date_order`` mas el plazo MEDIDO de ese
+          proveedor, que entra por ``measured_lead_times`` (lo produce
+          ``supplier_scorecard`` sobre las filas de ``receipts()``). Sin plazo
+          medido queda en ``None`` -- jamas la prometida con otro nombre.
+
+        Con ``until``, se descarta lo que llega despues del horizonte pedido. Una
+        recepcion a noventa dias no le sirve a un pedido de esta semana, y
+        arrastrarla engorda el disponible con unidades que no van a estar. Sin
+        modulo de Compras devuelve vacio: una tienda que compra por fuera del ERP
+        no tiene nada en camino que leer, y eso no es un error.
+        """
+        scan = self._open_po_lines()
+        if scan is None:
+            return []
+        plazos = dict(measured_lead_times or {})
+        salida: list[ScheduledReceipt] = []
+        for ln in scan.lines:
+            plazo = plazos.get(ln.supplier) if ln.supplier is not None else None
+            esperada = _sumar_dias(ln.ordered_date, plazo)
+            horizonte = esperada or ln.promised_date
+            if until is not None and horizonte is not None and horizonte > until:
+                continue
+            salida.append(
+                ScheduledReceipt(
+                    sku=ln.sku,
+                    quantity=ln.pending,
+                    promised_date=ln.promised_date,
+                    expected_date=esperada,
+                    expected_source=LEAD_TIME_MEASURED if esperada else None,
+                    supplier=ln.supplier,
+                    order_id=ln.order_name,
+                )
+            )
+        return salida
+
+    def _delivery_dates(self, line_ids: list[int]) -> dict[int, str]:
+        """Cuando quedo servida cada linea: su ULTIMA salida hecha.
+
+        El ultimo movimiento y no el primero: una linea despachada en dos partes no
+        esta entregada hasta que sale la segunda, y quedarse con la primera fecha es
+        exactamente lo que vuelve puntual a un despacho parcial que llego tarde -
+        el sesgo va en la direccion que le conviene al que reporta.
+
+        Sin ``stock.move.sale_line_id`` (el puente Ventas-Inventario no instalado)
+        no hay con que anclar el movimiento a la linea: se devuelve vacio y las
+        lineas quedan sin fecha, o sea fuera de OTIF. No se sustituye por la fecha
+        de la orden ni por la del picking: seria inventar la medicion que faltaba.
+        """
+        if not line_ids or not self._has_field(_M_MOVE, "sale_line_id"):
+            return {}
+        type_ids = self._rpc.execute_kw(
+            _M_PICKING_TYPE, "search", [[["code", "in", list(_DELIVERY_TYPE_CODES)]]]
+        )
+        if not type_ids:
+            return {}
+        rows = self._rpc.execute_kw(
+            _M_MOVE,
+            "search_read",
+            [
+                [
+                    ["state", "=", _MOVE_DONE],
+                    ["sale_line_id", "in", list(line_ids)],
+                    ["picking_type_id", "in", list(type_ids)],
+                ]
+            ],
+            {"fields": ["sale_line_id", "date"]},
+        )
+        ultima: dict[int, str] = {}
+        for r in rows:
+            lid = _m2o_id(r.get("sale_line_id"))
+            dia = _as_date(r.get("date"))
+            if lid is None or not dia:
+                continue
+            if dia > ultima.get(lid, ""):
+                ultima[lid] = dia
+        return ultima
 
     # -- demand + lead-time bridges into the existing engines ------------------
 
@@ -396,24 +860,119 @@ class OdooConnector:
             quantity=("quantity", "sum"), unit_cost=("unit_cost", "first")
         )
 
-    def lead_times(self) -> dict[str, float]:
-        """Per-SKU purchasing lead time (days) from ``product.supplierinfo.delay``.
+    def declared_lead_times(self) -> OdooLeadTimes:
+        """El plazo DECLARADO por SKU, con los que no lo traen nombrados aparte.
 
-        Feeds the canonical ``lead_time_days`` the inventory engines and the risk-period
-        differentiation already consume. Only variant-scoped supplier lines are mapped.
+        ``product.supplierinfo.delay`` es la **promesa** del proveedor, no una
+        observacion; la contraparte medida es :meth:`receipts`. Alimenta el
+        ``lead_time_days`` canonico que consumen los motores de inventario y la
+        diferenciacion del periodo de riesgo. Solo se mapean las lineas con
+        variante.
+
+        **Un ``delay`` que no supera ``_DECLARED_DELAY_FLOOR`` no se convierte en
+        un plazo.** La conversion original era ``float(r.get("delay") or 0.0)``, y
+        es el mismo defecto que ``src/order_fulfillment.py`` y
+        ``src/supplier_scorecard.py`` ya nombran: una ausencia renderizada como
+        medicion. Duele mas aca que en una tasa, porque un plazo de compra corto
+        no es una lectura neutra sino la mas favorable que existe -- dice que el
+        proveedor entrega casi en el acto, y de ahi sale un buffer que no cubre
+        nada.
+
+        El piso es el mismo que aplica :meth:`receipts` sobre el mismo campo, y
+        por la misma razon: ``delay`` viene con ``default=1`` en Odoo, asi que un
+        1 no es una promesa sino el campo sin configurar, y desde XML-RPC no se
+        distingue del 1 que alguien escribio a mano. Ante dos lecturas posibles
+        se toma la que no baja la proteccion recomendada. Que las dos lecturas
+        del campo compartan la constante es deliberado: dos umbrales distintos
+        para el mismo hecho, en el mismo archivo, es como empiezan a divergir.
+
+        Una segunda linea del mismo SKU con plazo utilizable le gana a una
+        primera sin plazo: una linea que no promete nada no tiene por que tapar
+        a una que si. Antes ganaba siempre la primera que llegara.
         """
         rows = self._rpc.execute_kw(
             _M_SUPPLIERINFO, "search_read", [[]], {"fields": ["product_id", "delay"]}
         )
-        out: dict[str, float] = {}
+        declared: dict[str, float] = {}
+        con_linea: list[str] = []          # orden de aparicion, sin repetir
         for r in rows:
             pid = _m2o_id(r.get("product_id"))
             if pid is None:
                 continue
             sku = self._sku(pid)
-            if sku is not None and sku not in out:
-                out[sku] = float(r.get("delay") or 0.0)
-        return out
+            if sku is None:
+                continue
+            if sku not in con_linea:
+                con_linea.append(sku)
+            if sku in declared:
+                continue
+            dias = float(r.get("delay") or 0.0)
+            if dias > _DECLARED_DELAY_FLOOR:
+                declared[sku] = dias
+        missing = tuple(sorted(s for s in con_linea if s not in declared))
+        return OdooLeadTimes(
+            declared=declared, missing=missing, qa_issues=_aviso_plazos(missing, len(con_linea))
+        )
+
+    def lead_times(self) -> dict[str, float]:
+        """Plazo declarado por SKU, solo para los que el ERP lo trae.
+
+        Accesorio de :meth:`declared_lead_times` para el llamador que solo quiere
+        el diccionario. Un SKU sin plazo cargado **no aparece** en vez de aparecer
+        con cero; el porque, y el hueco que hay que mostrar en su lugar, estan en
+        ese metodo.
+        """
+        return self.declared_lead_times().declared
+
+    def open_purchase_qty_by_sku(self, *, max_lines: int = 20_000) -> OdooOpenPurchases:
+        """Unidades ya compradas y aun no recibidas, por SKU.
+
+        Vista agregada del lector unico ``_open_po_lines()``: mismas lineas, mismo
+        filtro de estado y misma regla de unidad que ``scheduled_receipts()``, sumadas
+        por SKU. Es la entrada que le falta a la reposicion para no comprar dos veces
+        lo mismo: ``src.connectors.replenish.plan_replenishment(on_order_by_sku=...)``
+        consume este mapa. Sin el, la cantidad se dimensiona contra el stock en
+        estante y una OC en camino se vuelve a pedir entera.
+
+        Sin modulo de Compras LEVANTA ``OdooError`` en vez de devolver un mapa vacio:
+        ``{}`` se leeria aguas abajo como "medido, y no viene nada", y lo cierto es que
+        no se pudo medir. El que llama decide (``jobs.odoo_job.read_on_order`` pasa
+        ``None`` y lo dice en palabras).
+
+        Un SKU AUSENTE del mapa significa "sin OC abiertas"; el consumidor no debe
+        convertirlo en 0.0 sin decirlo. Las lineas descartadas viajan en
+        ``dropped`` (``uom_distinta`` es la que importa: compromisos reales que no
+        se pudieron contar sin inventar una conversion) y ``truncated`` avisa que la
+        lectura quedo corta y el mapa sub-estima el en-transito.
+        """
+        scan = self._open_po_lines(max_lines=max_lines)
+        if scan is None:
+            raise OdooError(
+                "este Odoo no tiene modulo de Compras (purchase.order.line sin "
+                "product_qty): no hay OC abiertas que leer. Un mapa vacio se leeria "
+                "como 'medido: nada en camino', asi que se levanta para que el plan "
+                "diga que no pudo netear."
+            )
+        out: dict[str, float] = {}
+        for ln in scan.lines:
+            out[ln.sku] = out.get(ln.sku, 0.0) + ln.pending
+        return OdooOpenPurchases(out, scan.dropped, scan.truncated)
+
+    def _uom_matches_product(self, product_id: int, line_uom_id: int | None) -> bool:
+        """True cuando la linea esta en la unidad de stock del producto.
+
+        Una linea sin ``product_uom`` legible se trata como NO coincidente: en la
+        duda se descarta, porque el costo de sumar cajas como unidades lo paga el
+        cliente en quiebre y no se ve en ningun lado.
+        """
+        if line_uom_id is None:
+            return False
+        if product_id not in self._uom_by_product:
+            rows = self._rpc.execute_kw(
+                _M_PRODUCT, "read", [[product_id]], {"fields": ["uom_id"]}
+            )
+            self._uom_by_product[product_id] = _m2o_id(rows[0].get("uom_id")) if rows else None
+        return self._uom_by_product[product_id] == line_uom_id
 
     def receipts(
         self, *, since: str | None = None, unit: str = "shipment", max_moves: int = 20_000
@@ -687,8 +1246,13 @@ class OdooConnector:
     # -- write side (draft purchase orders) -----------------------------------
 
     def primary_supplier_by_sku(self, skus: list[str]) -> dict[str, int]:
-        """Map each SKU to its primary supplier's partner id (lowest-sequence product.supplierinfo)."""
-        self._ensure_catalog()
+        """Map each SKU to its primary supplier's partner id (lowest-sequence product.supplierinfo).
+
+        De paso guarda el minimo de pedido de ese proveedor (``min_qty``) en
+        ``_min_qty_by_sku``: es la regla del proveedor que la PO borrador tiene que
+        respetar, y vive en la misma fila que el proveedor, asi que se lee una vez.
+        """
+        self._ensure_catalog(skus)
         out: dict[str, int] = {}
         for sku in skus:
             pid = self._id_by_sku.get(sku)
@@ -696,7 +1260,7 @@ class OdooConnector:
                 continue
             rows = self._rpc.execute_kw(
                 _M_SUPPLIERINFO, "search_read", [[["product_id", "=", pid]]],
-                {"fields": ["partner_id", "sequence"]},
+                {"fields": ["partner_id", "sequence", "min_qty"]},
             )
             if not rows:
                 continue
@@ -704,6 +1268,7 @@ class OdooConnector:
             partner = _m2o_id(best.get("partner_id"))
             if partner is not None:
                 out[sku] = partner
+                self._min_qty_by_sku[sku] = float(best.get("min_qty") or 0.0)
         return out
 
     def stage_draft_purchase_orders(
@@ -716,8 +1281,9 @@ class OdooConnector:
         the SAME restock+prices twice (e.g. a client retry) always resolves to the same
         key - a retry can idempotent-skip instead of raising a duplicate RFQ.
         """
-        self._ensure_catalog()
         prices = prices or {}
+        # primary_supplier_by_sku refresca el catalogo si le piden un SKU que no
+        # conoce; llamarlo aca tambien releia el catalogo entero dos veces.
         suppliers = self.primary_supplier_by_sku(list(restock))
         by_supplier: dict[int, list[str]] = {}
         unsourced: list[str] = []
@@ -728,12 +1294,29 @@ class OdooConnector:
             else:
                 by_supplier.setdefault(partner, []).append(sku)
 
+        # La regla del proveedor manda sobre el numero del plan: 37 unidades a un
+        # proveedor con minimo 100 es una PO que nadie va a aceptar. Se sube al
+        # minimo y se deja anotado en last_moq_adjustments para que el entregable
+        # lo diga; el plan sigue diciendo 37, que es lo que la demanda pide.
+        # Solo el MINIMO: el multiplo de caja/pack no se lee de Odoo porque
+        # product.supplierinfo no lo tiene como campo estandar (vive en
+        # product.packaging, que no todos usan). Si un proveedor vende por cajas,
+        # hoy el comprador lo redondea en Odoo al confirmar la PO borrador.
+        self.last_moq_adjustments = {}
+        ordered: dict[str, float] = {}
+        for sku in restock:
+            asked = float(restock[sku])
+            qty = apply_order_rules(asked, minimum_order_quantity=self._min_qty_by_sku.get(sku, 0.0))
+            ordered[sku] = qty
+            if qty > asked:
+                self.last_moq_adjustments[sku] = (asked, qty)
+
         changes = tuple(
             writeback.Change(
                 f"supplier:{partner}",
                 "draft_po_lines",
                 None,  # nothing existed before (a create, not an edit) - matches stage()'s convention
-                tuple(sorted((sku, float(restock[sku]), float(prices.get(sku, 0.0))) for sku in skus)),
+                tuple(sorted((sku, ordered[sku], float(prices.get(sku, 0.0))) for sku in skus)),
             )
             for partner, skus in sorted(by_supplier.items())
         )
@@ -816,12 +1399,25 @@ class OdooConnector:
             po_id = created_by_entity.get(c.entity_id)
             if po_id is not None:
                 purchase_orders[po_id] = tuple(sku for sku, _qty, _price in c.after)
-        return DraftPOResult(purchase_orders=purchase_orders, unsourced=unsourced)
+        return DraftPOResult(
+            purchase_orders=purchase_orders,
+            unsourced=unsourced,
+            raised_to_min=dict(self.last_moq_adjustments),
+        )
 
     # -- internals ------------------------------------------------------------
 
-    def _ensure_catalog(self) -> None:
-        if not self._id_by_sku:
+    def _ensure_catalog(self, skus: list[str] | None = None) -> None:
+        """Carga el catalogo si esta vacio, y lo REFRESCA si le piden un SKU que no conoce.
+
+        Antes solo cargaba cuando el mapa estaba vacio, asi que un conector de vida
+        larga (el de un job programado) nunca veia un producto dado de alta despues
+        de su primer uso. Lo peor era como lo reportaba: el SKU caia en ``unsourced``
+        ("sin proveedor en Odoo"), el cliente iba a darle un proveedor que ya tenia,
+        y volvia a fallar igual. Un refresco por SKU desconocido cuesta una lectura
+        y evita mandar a un humano a arreglar lo que no estaba roto.
+        """
+        if not self._id_by_sku or (skus and any(sku not in self._id_by_sku for sku in skus)):
             self.list_products()
 
     def _sku(self, product_id: int) -> str | None:
@@ -835,11 +1431,13 @@ class OdooConnector:
         return self._sku_by_id[product_id]
 
     def _read_sale_lines(self, line_ids: list[int]) -> dict[int, OrderLine]:
+        """Lo pedido y lo servido en cada linea; las fechas las estampa ``orders()``."""
         if not line_ids:
             return {}
-        rows = self._rpc.execute_kw(
-            _M_SALE_LINE, "read", [line_ids], {"fields": ["product_id", "product_uom_qty", "price_unit"]}
-        )
+        fields = ["product_id", "product_uom_qty", "price_unit"]
+        if self._has_field(_M_SALE_LINE, "qty_delivered"):
+            fields.append("qty_delivered")
+        rows = self._rpc.execute_kw(_M_SALE_LINE, "read", [line_ids], {"fields": fields})
         out: dict[int, OrderLine] = {}
         for r in rows:
             pid = _m2o_id(r.get("product_id"))
@@ -847,7 +1445,12 @@ class OdooConnector:
                 continue
             sku = self._sku(pid)
             if sku is not None:
-                out[r["id"]] = OrderLine(sku, float(r.get("product_uom_qty") or 0.0), float(r.get("price_unit") or 0.0))
+                out[r["id"]] = OrderLine(
+                    sku,
+                    float(r.get("product_uom_qty") or 0.0),
+                    float(r.get("price_unit") or 0.0),
+                    delivered_qty=_as_qty_or_none(r.get("qty_delivered")),
+                )
         return out
 
 
@@ -1171,6 +1774,131 @@ _DEMO_SALE_LINES = {
 }
 
 
+def demo_odoo_receipts() -> InMemoryOdoo:
+    """Un Odoo offline con recepciones de compra REALES, para medir el plazo.
+
+    ``demo_odoo()`` no sirve para esto: no tiene ``purchase.order`` ni
+    ``stock.move``, asi que ``receipts()`` no encuentra nada que restar. Y sin un
+    fixture asi, el ejemplo de la salida #1 solo correria contra un Odoo vivo --
+    o sea, contra ninguno, hasta que alguien tenga credenciales. Todos los demas
+    ejemplos del repo corren offline; este tambien.
+
+    Acme promete 7 dias en la ficha y entrega en ~20. Esa brecha es el punto: un
+    fixture donde promesa y comportamiento coinciden no muestra nada.
+    """
+    data: dict = {
+        _M_PRODUCT: {
+            1: {"default_code": "SKU-1", "name": "Rodamiento", "list_price": 20.0, "standard_price": 12.0},
+        },
+        _M_PARTNER: {
+            69: {"name": "Acme", "commercial_partner_id": [69, "Acme"]},
+            70: {"name": "Acme Sucursal Santiago", "commercial_partner_id": [69, "Acme"]},
+        },
+        _M_PICKING_TYPE: {10: {"code": "incoming"}, 11: {"code": "outgoing"}},
+        _M_SUPPLIERINFO: {
+            400: {"partner_id": [70, "Acme Sucursal Santiago"], "product_id": [1, "Rodamiento"],
+                  "delay": 7.0, "sequence": 1},
+        },
+        _M_PO: {}, _M_PO_LINE: {},
+        # Un despacho a cliente: existe para que `fields_get` vea el campo aunque
+        # se filtren todas las recepciones, y de paso comprueba que un movimiento
+        # sin linea de OC no entra al calculo.
+        _M_MOVE: {
+            999: {"state": "done", "date": "2026-01-02 09:00:00", "product_id": [1, "Rodamiento"],
+                  "purchase_line_id": False, "picking_id": [999, "WH/OUT/1"],
+                  "picking_type_id": [11, "Entregas"]},
+        },
+    }
+    for i, (orden, recepcion) in enumerate(
+        [("2026-01-05", "2026-01-25"), ("2026-02-02", "2026-02-23"), ("2026-03-02", "2026-03-21")]
+    ):
+        po, pol = 200 + i, 300 + i
+        data[_M_PO][po] = {
+            "name": f"PO-{i:03d}", "date_order": f"{orden} 09:00:00",
+            "date_approve": f"{orden} 11:00:00",
+            "partner_id": [70, "Acme Sucursal Santiago"], "state": "purchase",
+        }
+        data[_M_PO_LINE][pol] = {"order_id": [po, f"PO-{i:03d}"]}
+        data[_M_MOVE][400 + i] = {
+            "state": "done", "date": f"{recepcion} 15:00:00", "product_id": [1, "Rodamiento"],
+            "purchase_line_id": [pol, "linea"], "picking_id": [500 + i, f"WH/IN/{i}"],
+            "picking_type_id": [10, "Recepciones"],
+        }
+    return InMemoryOdoo(data)
+
+
+def demo_odoo_deliveries() -> InMemoryOdoo:
+    """Un Odoo offline con el lado de SERVICIO poblado, para medir OTIF y fill rate.
+
+    El espejo de salida de ``demo_odoo_receipts()``, y existe por el mismo motivo:
+    ``demo_odoo()`` no tiene ``commitment_date``, ni ``qty_delivered``, ni
+    ``stock.move``, asi que ``src.connectors.realized_service`` sobre el devuelve
+    ``not_measured`` -- correcto, y no muestra nada. Sin este fixture el unico modo
+    de ver un OTIF real seria contra un Odoo vivo, o sea contra ninguno hasta que
+    haya credenciales.
+
+    Widget promete a 5 dias y se queda corto y tarde en la segunda mitad del
+    periodo; Gizmo se sirve completo y a tiempo. La mezcla es el punto: un fixture
+    donde todo llega perfecto prueba la plomeria y esconde el numero.
+    """
+    ventas: dict = {}
+    lineas: dict = {}
+    movimientos: dict = {}
+    for i, dia in enumerate(_DEMO_SALE_DATES):
+        pedido = datetime.strptime(dia, "%Y-%m-%d")
+        prometido = pedido + timedelta(days=5)
+        tarde = prometido + timedelta(days=3 if i >= 4 else 0)
+        ventas[200 + i] = {
+            "name": f"S{i + 1:04d}",
+            "date_order": f"{dia} 10:00:00",
+            "commitment_date": f"{prometido:%Y-%m-%d} 00:00:00",
+            "state": "done" if i % 3 == 2 else "sale",
+            "order_line": [300 + 2 * i, 301 + 2 * i],
+        }
+        lineas[300 + 2 * i] = {
+            "product_id": [1, "Widget"],
+            "product_uom_qty": 10.0,
+            "price_unit": 20.0,
+            "qty_delivered": 7.0 if i >= 4 else 10.0,
+        }
+        lineas[301 + 2 * i] = {
+            "product_id": [3, "Gizmo"],
+            "product_uom_qty": 5.0,
+            "price_unit": 8.0,
+            "qty_delivered": 5.0,
+        }
+        movimientos[500 + 2 * i] = {
+            "sale_line_id": [300 + 2 * i, f"S{i + 1:04d}"],
+            "state": _MOVE_DONE,
+            "date": f"{tarde:%Y-%m-%d} 14:00:00",
+            "picking_type_id": [11, "Entregas"],
+        }
+        movimientos[501 + 2 * i] = {
+            "sale_line_id": [301 + 2 * i, f"S{i + 1:04d}"],
+            "state": _MOVE_DONE,
+            "date": f"{prometido:%Y-%m-%d} 09:00:00",
+            "picking_type_id": [11, "Entregas"],
+        }
+    return InMemoryOdoo(
+        {
+            _M_PRODUCT: {
+                1: {"default_code": "SKU-1", "name": "Widget", "list_price": 20.0, "standard_price": 12.0},
+                3: {"default_code": "SKU-3", "name": "Gizmo", "list_price": 8.0, "standard_price": 5.0},
+            },
+            _M_LOCATION: {10: {"usage": "internal"}},
+            _M_QUANT: {
+                100: {"product_id": [1, "Widget"], "location_id": [10, "WH/Stock"], "quantity": 12.0},
+            },
+            _M_PICKING_TYPE: {10: {"code": "incoming"}, 11: {"code": "outgoing"}},
+            _M_SALE: ventas,
+            _M_SALE_LINE: lineas,
+            _M_MOVE: movimientos,
+            _M_SUPPLIERINFO: {},
+            _M_ORDERPOINT: {},
+        }
+    )
+
+
 def demo_odoo() -> InMemoryOdoo:
     """A small, deterministic in-memory Odoo for demos and tests (no randomness)."""
     return InMemoryOdoo(
@@ -1196,3 +1924,43 @@ def demo_odoo() -> InMemoryOdoo:
             _M_ORDERPOINT: {},
         }
     )
+
+
+#: Lo que un Odoo estandar puede medir del servicio AL CLIENTE. Las tres columnas
+#: existen y las tres son opcionales en una base viva -- por eso ``OdooConnector`` sondea
+#: cada campo antes de pedirlo (``_has_field``) y cada ausencia viaja como ``None``.
+SERVICE_COVERAGE = ServiceCoverage(
+    backend="Odoo (XML-RPC, modelos estandar de Ventas e Inventario)",
+    delivered_qty=FieldCoverage(
+        COVERAGE_MEASURED,
+        "sale.order.line.qty_delivered",
+        "unidades entregadas de la linea; el campo llega con el puente Ventas-Inventario, "
+        "y sin ese puente el servicio sale no medido en vez de cero",
+    ),
+    promised_date=FieldCoverage(
+        COVERAGE_MEASURED,
+        "sale.order.commitment_date",
+        "la fecha comprometida de la ORDEN, replicada a sus lineas. En blanco es lo "
+        "habitual, y saca la linea de OTIF en vez de medirla contra date_order",
+    ),
+    delivered_date=FieldCoverage(
+        COVERAGE_DERIVED,
+        "stock.move (state=done, picking_type=outgoing) -> max(date) por linea",
+        "la fecha del ULTIMO despacho que sirvio la linea. Es DESPACHO, no llegada: Odoo "
+        "no registra la recepcion del cliente, asi que este OTIF mide salir a tiempo del "
+        "deposito y no llegar a tiempo",
+    ),
+)
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_APPROVAL_GATED,
+    objects=(
+        'stock.warehouse.orderpoint.product_min_qty',
+        'purchase.order (estado borrador, con sus purchase.order.line)',
+    ),
+    means=(
+        'los reorder points se escriben con aprobacion firmada, idempotencia y rollback (reversibles); las ordenes de compra quedan EN BORRADOR y las confirma un comprador en Odoo (irreversibles: aprobacion con nombre obligatoria). Cada escritura deja fila en el ledger.'
+    ),
+)

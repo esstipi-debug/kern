@@ -19,9 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from nosilo_core.guided import passed_guided  # noqa: E402
-
 from jobs.financial_kpis_job import fmt  # noqa: E402
+from nosilo_core.guided import passed_guided  # noqa: E402
 from scm_agent.orchestrator import Orchestrator  # noqa: E402
 from src.alerting import alerts_outcome, detect_events  # noqa: E402
 from src.classification import classify_portfolio, portfolio_summary  # noqa: E402

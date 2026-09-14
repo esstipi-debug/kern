@@ -12,13 +12,14 @@ Planning"; Heizer & Render, "Aggregate Planning and S&OP"; Oliver Wight 5-step c
 """
 
 import pytest
-from nosilo_core.guided import OPTIONS, OWNER_HUMAN, passed_guided, recommend
 
+from nosilo_core.guided import OPTIONS, OWNER_HUMAN, passed_guided, recommend
 from src.decision_options import Objective
 from src.sop import (
     DEFAULT_OBJECTIVES,
     CostModel,
     SopReview,
+    apply_promo_lift,
     build_scenarios,
     chase_plan,
     hybrid_plan,
@@ -225,3 +226,64 @@ def test_default_objectives_balance_cost_inventory_and_service():
     metrics = {o.metric for o in DEFAULT_OBJECTIVES}
 
     assert metrics == {"total_cost", "peak_inventory", "fill_rate"}
+
+
+# -- demand-shaping: the promotion calendar (demand review) --------------------
+
+
+def test_promo_lift_absent_or_empty_returns_the_horizon_unchanged():
+    # ``None`` and an empty calendar must be exact no-ops: every pre-existing
+    # caller of run_sop_cycle keeps its old numbers.
+    assert apply_promo_lift(_DEMAND) == pytest.approx(_DEMAND)
+    assert apply_promo_lift(_DEMAND, {}) == pytest.approx(_DEMAND)
+
+
+def test_promo_lift_multiplies_only_the_listed_periods():
+    # {1: 1.5} lifts the second period by 50%; every other period is untouched.
+    assert apply_promo_lift([100.0, 100.0, 100.0], {1: 1.5}) == pytest.approx([100.0, 150.0, 100.0])
+    assert apply_promo_lift([100.0, 100.0, 100.0], {0: 1.2, 2: 0.5}) == pytest.approx([120.0, 100.0, 50.0])
+
+
+def test_promo_lift_rejects_an_index_outside_the_horizon():
+    # An out-of-range promo is an error, never a silently ignored one: the supply
+    # plan would otherwise be dated against demand that was never adjusted.
+    with pytest.raises(ValueError):
+        apply_promo_lift(_DEMAND, {4: 1.5})
+    with pytest.raises(ValueError):
+        apply_promo_lift(_DEMAND, {-1: 1.5})
+
+
+@pytest.mark.parametrize("bad", [0.0, -1.0, float("nan"), float("inf"), "two"])
+def test_promo_lift_rejects_an_invalid_multiplier(bad):
+    with pytest.raises(ValueError):
+        apply_promo_lift(_DEMAND, {1: bad})
+
+
+def test_promo_lift_rejects_a_non_int_index():
+    with pytest.raises(TypeError):
+        apply_promo_lift(_DEMAND, {1.0: 1.5})
+
+
+def test_run_sop_cycle_promo_lift_replans_against_the_adjusted_demand():
+    # A promo lifting one period must move the plans' demand (and the review's
+    # audited horizon), proving the calendar is applied BEFORE the strategies.
+    base = run_sop_cycle(_DEMAND, opening_inventory=_OPENING, target=_TARGET)
+    promo = run_sop_cycle(_DEMAND, opening_inventory=_OPENING, target=_TARGET, promo_lift={1: 2.0})
+
+    assert promo.promo_lift == {1: 2.0}
+    assert promo.adjusted_demand == pytest.approx([100.0, 240.0, 80.0, 100.0])
+    assert promo.recommended.total_demand == pytest.approx(520.0)          # 100+240+80+100
+    assert base.recommended.total_demand == pytest.approx(400.0)
+    assert "promotion calendar" in promo.summary
+    assert "promotion calendar" not in base.summary
+    # Same horizon shape, same options -- the calendar only reshaped demand.
+    assert {o.label for o in promo.outcome.options} == {"Chase", "Level", "Hybrid"}
+
+
+def test_run_sop_cycle_without_promo_lift_keeps_the_historical_review():
+    # The new fields exist but carry no calendar and the baseline horizon, so the
+    # QA gate can tell "no demand-shaping" from "shaped and visible".
+    review = run_sop_cycle(_DEMAND, opening_inventory=_OPENING, target=_TARGET)
+
+    assert review.promo_lift is None
+    assert review.adjusted_demand == pytest.approx(_DEMAND)
