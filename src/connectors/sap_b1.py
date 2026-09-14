@@ -58,6 +58,7 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from nosilo_core import writeback
+from src.connectors import WRITE_APPROVAL_GATED, WriteSurface
 
 try:  # optional: the 'repricing' extra
     import httpx  # noqa: F401  (imported to prove availability; the caller builds the client)
@@ -294,3 +295,19 @@ def demo_sap_b1() -> InMemorySapB1:
             "SKU-3": {1: 8.0, 2: 6.5},
         }
     )
+
+
+#: Lo unico que este conector escribe en el sistema del cliente. El `POST /Login`
+#: de arriba no cuenta: es la sesion propia del Service Layer, no un dato del ERP.
+WRITE_SURFACE = WriteSurface(
+    WRITE_APPROVAL_GATED,
+    objects=(
+        "Items.ItemPrices[PriceList].Price (PATCH /Items('<ItemCode>'))",
+    ),
+    means=(
+        'cambio de precio por item y lista, sobre el mismo plano de writeback que Odoo y '
+        'Shopify: aprobacion firmada, reclamo de idempotencia, fila en el ledger y rollback '
+        'exacto al valor anterior. Reversible. `price_list` se declara explicito a proposito: '
+        'escribir el numero correcto en la lista equivocada se ve igual que un exito.'
+    ),
+)
