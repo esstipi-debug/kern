@@ -100,21 +100,38 @@ def test_stepper_renders_all_stages() -> None:
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
 
 
-def test_page_mentions_49_tools_and_26_sources_not_stale_numbers() -> None:
-    """La pagina no puede inflar el conteo de fuentes.
+def test_page_reports_the_real_tool_count_and_26_sources() -> None:
+    """La pagina no puede inflar el conteo de fuentes ni reportar tools viejas.
 
-    Esta aserto estuvo invertida: fijaba "33" y prohibia "25 curated" como si
-    fuera el numero viejo del README. Un recuento de knowledge/scm-books/graph.json
-    (2026-07-24) mostro lo contrario: el grafo tiene 35 source_file distintos, pero
-    9 son capitulos de un mismo volumen editado (Cohen & Dai) y 1 era el propio
-    KERN_ATLAS_SOMBREROS_SCM.md de Kern -- o sea que 33 contaba capitulos como
-    obras enteras y contaba un documento interno como literatura del campo. La
-    cifra externa honesta es 26. 33 no lo es.
+    Este test combina las dos correcciones, una de cada lado del rescate de
+    `feat/pattern-scan`, porque cada lado tenia razon en una mitad.
+
+    **El conteo de tools se deriva, no se escribe.** Fijar el literal era
+    fragil por construccion: los tokens de color hex del propio <style> de la
+    pagina pueden contener la cifra (documentado en fe372d9 con "41" y
+    ``#283341``), asi que la asercion podia pasar pasara lo que pasara. Y de
+    hecho paso algo peor: ``assert "49" in html`` seguia verde mientras el
+    registry tenia **50** tools, porque la meta description conservaba un 49
+    escrito a mano que nunca se sustituia. El cuerpo de la pagina decia 50 y
+    su propia meta decia 49. Anclar a las frases que reportan el numero, con
+    ``len(TOOLS)`` interpolado, es lo que hace que esto se rompa cuando el
+    registry se mueve y la copia no.
+
+    **La cifra de fuentes es 26, no 33.** Un recuento de
+    ``knowledge/scm-books/graph.json`` (2026-07-24) mostro que el grafo tiene
+    35 ``source_file`` distintos, pero 9 son capitulos de un mismo volumen
+    editado (Cohen & Dai) y 1 era el propio ``KERN_ATLAS_SOMBREROS_SCM.md`` de
+    Kern: 33 contaba capitulos como obras enteras y contaba un documento
+    interno como literatura del campo.
     """
+    from webapp.how_it_works_data import TOOLS
+
     html = render_how_it_works_html()
-    assert "49" in html
+    tool_count = str(len(TOOLS))
+    assert f"Kern's {tool_count} supply-chain capabilities" in html
+    assert f"{tool_count} agent-routable capabilities" in html
     assert "26 curated external sources" in html
-    # Every superseded source count this page has carried or been tempted by.
+    # Todo conteo de fuentes superado que esta pagina llevo o estuvo tentada de llevar.
     for stale in ("33 curated", "25 curated", "35 curated", "27 curated", "41 curated"):
         assert stale not in html, stale
 

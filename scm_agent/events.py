@@ -68,6 +68,13 @@ class Event:
     against, not wall-clock "now" at ``emit()`` time -- so a caller in a test
     (or a backfill/replay) can pass an explicit ``ts`` and get deterministic
     dedup behavior.
+
+    ``payload_corrupt`` defaults to False for every freshly constructed Event --
+    every existing call site in ``jobs/`` and ``webapp/`` keeps working unchanged.
+    It is set True only by ``_row_to_event``, when the row's ``payload_json``
+    could not be parsed and ``payload`` was substituted with ``{}``: the flag is
+    what makes that substitution visible instead of indistinguishable from a row
+    that legitimately has no payload.
     """
 
     type: str
@@ -78,19 +85,30 @@ class Event:
     payload: dict = field(default_factory=dict)
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
     ts: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    payload_corrupt: bool = False
 
 
 def _row_to_event(row: tuple) -> Event:
     id_, type_, severity, sku, source, payload_json, dedup_key, ts = row
+    payload_corrupt = False
+    try:
+        payload = json.loads(payload_json)
+    except (ValueError, TypeError):
+        # Una fila con payload ilegible sigue siendo una ocurrencia valida: el
+        # analisis de patrones solo necesita (entidad, tipo, ts). Perder la fila
+        # entera por un payload corrupto seria un cap silencioso -- pero devolverla
+        # sin marca tambien lo seria: la fila queda indistinguible de una que
+        # legitimamente no tiene payload. Por eso se conserva Y se marca
+        # (``payload_corrupt=True``) en vez de solo conservarse en silencio.
+        payload = {}
+        payload_corrupt = True
+    if not isinstance(payload, dict):
+        payload = {}
+        payload_corrupt = True
     return Event(
-        type=type_,
-        severity=severity,
-        source=source,
-        dedup_key=dedup_key,
-        sku=sku,
-        payload=json.loads(payload_json),
-        id=id_,
-        ts=datetime.fromisoformat(ts),
+        type=type_, severity=severity, source=source, dedup_key=dedup_key,
+        sku=sku, payload=payload, id=id_, ts=datetime.fromisoformat(ts),
+        payload_corrupt=payload_corrupt,
     )
 
 
@@ -131,6 +149,7 @@ class EventLedger:
         )
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_events_dedup_key ON events(dedup_key)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON events(type)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts)")
         self._conn.commit()
 
     @property
@@ -270,6 +289,70 @@ class EventLedger:
             self._conn.execute(f"DELETE FROM events WHERE seq IN ({placeholders})", chunk)
         self._conn.commit()
         return len(seqs)
+    def list_between(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        types: tuple[str, ...] | None = None,
+        limit: int | None = None,
+    ) -> list[Event]:
+        """Eventos con ``start <= ts < end``, mas viejo primero POR ``ts``.
+
+        Deliberadamente distinto de ``list_all()`` (tabla entera, orden por ``seq``):
+        una ventana de 90 dias no puede costar una lectura completa, y ``seq`` es el
+        orden de INSERCION, que no coincide con el cronologico -- ``price_move`` se
+        emite con ``ts=offer.observed_at`` mientras ``competitor_price_move``, emitido
+        despues en el mismo ciclo, usa ``datetime.now()``.
+
+        Los limites se comparan como texto ISO-8601. Es seguro porque TODA escritura
+        pasa por ``emit()``, que normaliza con ``_ensure_utc(...).isoformat()`` y por lo
+        tanto produce siempre el mismo offset fijo ``+00:00``: para ese formato el
+        orden lexicografico y el cronologico coinciden. Un ``start``/``end`` naive se
+        trata como UTC, igual que en ``emit()``.
+        """
+        query = (
+            "SELECT id, type, severity, sku, source, payload_json, dedup_key, ts"
+            " FROM events WHERE ts >= ? AND ts < ?"
+        )
+        params: list = [_ensure_utc(start).isoformat(), _ensure_utc(end).isoformat()]
+        if types:
+            query += " AND type IN (" + ",".join("?" * len(types)) + ")"
+            params.extend(types)
+        query += " ORDER BY ts ASC"
+        if limit is not None:
+            if limit < 1:
+                raise ValueError(f"limit must be >= 1, got {limit}")
+            query += " LIMIT ?"
+            params.append(limit)
+        rows = self._conn.execute(query, params).fetchall()
+        return [_row_to_event(r) for r in rows]
+
+    def count_between(
+        self, start: datetime, end: datetime, *, types: tuple[str, ...] | None = None
+    ) -> int:
+        """Cuantas filas devolveria ``list_between`` con los mismos limites (sin ``limit``).
+
+        Existe para poder decidir ``needs_clarification`` por tamano ANTES de
+        materializar la ventana entera en memoria.
+        """
+        query = "SELECT COUNT(*) FROM events WHERE ts >= ? AND ts < ?"
+        params: list = [_ensure_utc(start).isoformat(), _ensure_utc(end).isoformat()]
+        if types:
+            query += " AND type IN (" + ",".join("?" * len(types)) + ")"
+            params.extend(types)
+        return int(self._conn.execute(query, params).fetchone()[0])
+
+    def epoch(self) -> datetime | None:
+        """El ``ts`` mas viejo registrado, o ``None`` si el ledger esta vacio.
+
+        Es lo que permite decir "la historia arranca el X" en vez de dejar creer que
+        una ventana de 90 dias vio 90 dias.
+        """
+        row = self._conn.execute("SELECT MIN(ts) FROM events").fetchone()
+        if row is None or row[0] is None:
+            return None
+        return _ensure_utc(datetime.fromisoformat(row[0]))
 
     def close(self) -> None:
         self._conn.close()
