@@ -16,7 +16,4 @@ PyYAML>=6.0
 # while the Dockerfile runs `pip install -e .` and never reads this file. Listing
 # it in only one place installs it in only one of them.
 #
-# Private repo: the install needs a credential. CI configures a git URL rewrite
-# from the NOSILO_CORE_TOKEN secret; see .github/workflows/tests.yml and the
-# core's CONSUMING.md.
-nosilo-core @ git+https://github.com/esstipi-debug/nosilo-core.git@v0.1.0
+# nosilo_core vive en este repo (nosilo_core/), no se instala.

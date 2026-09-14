@@ -1,9 +1,9 @@
 """Tests for the intake_scan job: folder walk, coverage, the QA gate."""
 import pandas as pd
 import pytest
-from nosilo_core.guided import ExecutionOption, as_options
 
 from jobs import intake_scan_job
+from nosilo_core.guided import ExecutionOption, as_options
 from src.intake_scan import (
     GREEN,
     RED,
@@ -316,7 +316,20 @@ def test_healthy_folder_passes_the_gate_and_evaluates_the_declared_tools(tmp_pat
     assert states["abc_xyz"] == RED
     assert states["excess_obsolete"] == RED  # no stock file in this folder
     assert states["risk"] == UNDECLARED
-    assert report.n_tools_evaluated == 4
+    # n_tools_evaluated counts every verdict that isn't UNDECLARED -- any tool that
+    # declares required_columns at all (src/intake_scan.py's verdicts_for marks a
+    # tool UNDECLARED only when it declares none). On this folder that's abc_xyz,
+    # data_quality, excess_obsolete, financial_kpis (the pre-existing 4) plus
+    # procedure_audit (name without last_reviewed_at -> RED) plus audit_evidence
+    # (unit_id/book_value missing -> RED) plus scor_iso_audit (dataset missing -> RED)
+    # plus repricing (current_price/proposed_price missing on a sales folder -> RED).
+    assert report.n_tools_evaluated == 8
+    # Pin the extra tools' identity, not just the count -- a future tool that also
+    # declares required_columns on this folder shape would keep n_tools_evaluated
+    # from moving if one verdict swapped for another without this failing.
+    assert states["procedure_audit"] == RED
+    assert states["audit_evidence"] == RED
+    assert states["scor_iso_audit"] == RED
 
 
 def test_a_master_plus_sales_folder_where_abc_xyz_columns_are_split_across_files(tmp_path):

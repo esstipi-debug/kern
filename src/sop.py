@@ -31,7 +31,6 @@ import math
 from dataclasses import dataclass
 
 from nosilo_core.guided import OWNER_HUMAN, GuidedOutcome, Residual, recommend
-
 from src.decision_options import Objective, Scenario, decide
 
 

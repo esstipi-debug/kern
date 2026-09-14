@@ -213,3 +213,73 @@ def test_the_recommendations_do_not_prescribe_a_target_on_an_unmeasured_criterio
 
     assert "OTIF target" not in recs
     assert "lead" in recs.lower()
+
+
+# --- the confidence has to MOVE when the coverage moves -------------------------------
+#
+# Everything above asserts that an unmeasured criterion is dropped, named, and printed
+# as "no medido". None of it asserted the number the client reads at the top of the
+# deck. So the deck disclosed the hole in prose and reported the SAME confidence either
+# way: 0.85 on three of five criteria and 0.85 on all five, verify() clean both times.
+# Measured 2026-08-22 against 47b7e1a, on the 777-PO Kaggle export and on the fixtures
+# below alike.
+#
+# A single-input test cannot catch that. A classifier that always returns 0.85 and a
+# correct one are indistinguishable from one observation, which is why both cases below
+# run the same panel through the same call and compare.
+
+
+def _report(df, **cols):
+    cards, prices = _cards(df, **cols)
+    return srcj.run(cards, prices)
+
+
+def test_the_award_confidence_drops_when_criteria_were_never_measured():
+    full = _report(_FULL, on_time_col="on_time", in_full_col="in_full",
+                   lead_col="lead_time_days", units_col="units", defects_col="defects")
+    partial = _report(_FULL, units_col="units", defects_col="defects")
+
+    assert not full.unmeasured, "the full panel is the control: it must measure everything"
+    assert partial.unmeasured, "the degraded panel must actually leave something unmeasured"
+    # Neither side may have a tie doing the work: that is the OTHER coverage hole, and if
+    # it appeared here the comparison would be measuring two things at once.
+    assert not full.ranking.ignored_criteria
+    assert not partial.ranking.ignored_criteria
+
+    assert partial.outcome.confidence < full.outcome.confidence
+
+
+def test_the_deck_confidence_drops_when_criteria_were_never_measured():
+    full = _report(_FULL, on_time_col="on_time", in_full_col="in_full",
+                   lead_col="lead_time_days", units_col="units", defects_col="defects")
+    partial = _report(_FULL, units_col="units", defects_col="defects")
+
+    full_deck = srcj.build_deck(full, client="Acme")
+    partial_deck = srcj.build_deck(partial, client="Acme")
+
+    assert partial_deck.confidence < full_deck.confidence
+
+
+def test_each_unmeasured_criterion_costs_again():
+    """Two holes cost more than one -- otherwise the penalty is a flag, not a measure."""
+    one = _report(_FULL, on_time_col="on_time", in_full_col="in_full",
+                  units_col="units", defects_col="defects")     # lead_time missing
+    two = _report(_FULL, units_col="units", defects_col="defects")  # + otif missing
+
+    assert len(two.unmeasured) > len(one.unmeasured)
+    assert two.outcome.confidence < one.outcome.confidence
+
+
+def test_full_coverage_is_left_exactly_where_it_was():
+    """The fix must not quietly move the honest case: no hole, no penalty."""
+    full = _report(_FULL, on_time_col="on_time", in_full_col="in_full",
+                   lead_col="lead_time_days", units_col="units", defects_col="defects")
+
+    assert full.outcome.confidence == 1.0
+    assert srcj.build_deck(full, client="Acme").confidence == srcj._DECK_BASE_CONFIDENCE
+
+
+def test_an_explicit_confidence_still_wins_over_the_derived_one():
+    partial = _report(_FULL, units_col="units", defects_col="defects")
+
+    assert srcj.build_deck(partial, client="Acme", confidence=0.42).confidence == 0.42

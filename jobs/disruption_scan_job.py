@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
+
 from nosilo_core.guided import (
     ExecutionOption,
     GuidedOutcome,
@@ -30,7 +31,6 @@ from nosilo_core.guided import (
     as_options,
     verify_guided,
 )
-
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.disruption import (
     GDELT_ATTRIBUTION,

@@ -28,7 +28,9 @@ ACTION_LABEL = {
 }
 
 
-def _row(r: SkuRecommendation) -> dict:
+def _row(r: SkuRecommendation, *, units: bool = False) -> dict:
+    # ``units=True`` cuando el costo unitario se invento (1,0): la columna de valor
+    # cambia de nombre para que la planilla diga lo que contiene, no lo que quisiera.
     return {
         "product_id": r.product_id,
         "method": r.method,
@@ -49,7 +51,7 @@ def _row(r: SkuRecommendation) -> dict:
         "bias": round(r.bias, 2),
         "mae": round(r.mae, 2),
         "unit_cost": round(r.unit_cost, 2),
-        "inventory_value": round(r.investment, 2),
+        ("inventory_units_no_cost" if units else "inventory_value"): round(r.investment, 2),
         "status": STATUS_LABEL[r.status],
         # Service, with the model's number and the client's kept in separate columns.
         # `service_level_target` is what the policy above is sized for; the
@@ -89,7 +91,7 @@ def _service_columns(service) -> dict:
 
 def write_csv(report: JobReport, path: str | Path) -> Path:
     """One row per SKU — the machine-readable deliverable."""
-    return write_summary_csv([_row(r) for r in report.recommendations], path)
+    return write_summary_csv([_row(r, units=cost_is_synthesized(report)) for r in report.recommendations], path)
 
 
 def write_excel(report: JobReport, path: str | Path) -> Path:
@@ -100,7 +102,7 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
 
     ws = wb.active
     ws.title = "Recommendations"
-    rows = [_row(r) for r in report.recommendations]
+    rows = [_row(r, units=cost_is_synthesized(report)) for r in report.recommendations]
     headers = list(rows[0].keys()) if rows else ["product_id"]
     header_fill = PatternFill("solid", fgColor="1F2A44")
     for c, h in enumerate(headers, 1):
@@ -117,15 +119,20 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
 
     s = wb.create_sheet("Summary & Assumptions")
     p = report.params
+    # Misma regla que el .md: sin costo cargado, la unidad de los montos es
+    # "unidades", y el rotulo lo dice en la misma celda para que no haya que
+    # leer una nota aparte.
+    inv = " (units, no unit cost loaded)" if cost_is_synthesized(report) else " ($)"
     summary = [
         ("Inventory Optimization — Summary", ""),
+        *([("Note", UNITS_NOTE)] if cost_is_synthesized(report) else []),
         ("SKUs analyzed", report.n_skus),
         ("SKUs flagged (high bias)", report.n_at_risk),
         ("Intermittent SKUs", report.n_intermittent),
         ("Forecast methods used", _methods_used(report) or "none"),
-        ("Requested investment", round(report.requested_investment, 2)),
-        ("Cycle-stock floor", round(report.cycle_floor, 2)),
-        ("Final investment", round(report.final_investment, 2)),
+        (f"Requested investment{inv}", round(report.requested_investment, 2)),
+        (f"Cycle-stock floor{inv}", round(report.cycle_floor, 2)),
+        (f"Final investment{inv}", round(report.final_investment, 2)),
         ("Budget cap", report.budget if report.budget is not None else "none"),
         ("Safety-stock scale applied", f"{report.safety_stock_scale * 100:.0f}%"),
         ("Plan feasible", "yes" if report.feasible else "no"),
@@ -144,8 +151,37 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
     s.column_dimensions["A"].width = 40
     s.column_dimensions["B"].width = 22
 
+    _write_reading_sheet(wb, report)
+
     wb.save(out)
     return out
+
+
+def cost_is_synthesized(report: JobReport) -> bool:
+    """True cuando NINGUNA fila trajo costo unitario y el motor corrio con 1,0 por defecto.
+
+    Con costo 1,0, "inversion" es literalmente unidades: 244 unidades salian impresas
+    como "$244" y un contador lo desarma en una pregunta. Es la grieta de honestidad
+    #1 del diagnostico del 2026-09-05 (``jobs/intake.py`` rellena ``unit_cost`` y
+    ``IntakeQuality.synthesized`` lo cuenta; el aviso interno moria antes del deck).
+    Aca se decide con que unidad se escribe cada monto de inversion del entregable.
+    """
+    # getattr: solo el JobReport de inventario lleva intake_quality; un reporte de
+    # otro job (precios) no tiene costo inventado que declarar.
+    quality = getattr(report, "intake_quality", None)
+    return quality is not None and "unit_cost" in quality.fully_synthesized_columns
+
+
+def amount(report: JobReport, value: float) -> str:
+    """``$1,234`` si el costo vino del archivo; ``1,234 u.`` si se invento (ver arriba)."""
+    return f"{_fmt(value)} u." if cost_is_synthesized(report) else f"${_fmt(value)}"
+
+
+UNITS_NOTE = (
+    "Sin columna de costo unitario en el archivo: los montos de inversion de este "
+    "informe estan en UNIDADES (el motor corrio con costo 1,0 por defecto), no en "
+    "dinero. Carga `unit_cost` por SKU para verlos en plata."
+)
 
 
 def _fmt(n: float) -> str:
@@ -349,6 +385,74 @@ def _assumption_lines(report: JobReport) -> list[str]:
     return lines
 
 
+def _reading_lines(report: JobReport) -> list[str]:
+    """How Kern read the source file. Empty when the untracked path ran.
+
+    Lives after Assumptions on purpose: those are the parameters the client
+    chose; this is what we took their file to mean. A mapping that stays in
+    the operator's head is how a TOTAL row becomes a sale.
+    """
+    quality = report.intake_quality
+    if quality is None or quality.reading is None:
+        return []
+    reading = quality.reading
+    lines = ["## How Kern read this file\n"]
+    lines.append(f"- **Location:** {reading.location_text()}")
+    lines.append(f"- **Column mapping:** {reading.mapping_text()}")
+    if reading.noteworthy_hygiene():
+        lines.append(f"- **Spreadsheet hygiene:** {reading.hygiene_text()}")
+    if quality.n_dropped:
+        lines.append(
+            f"- **Rows dropped after mapping:** {quality.n_dropped} of {quality.n_raw} "
+            f"({quality.dropped_fraction:.0%}) -- "
+            f"{quality.n_dropped_bad_date} bad date, "
+            f"{quality.n_dropped_bad_quantity} unreadable quantity, "
+            f"{quality.n_dropped_negative_quantity} negative quantity."
+        )
+    if quality.synthesized:
+        filled = "; ".join(f"{name}: {n} cell(s)" for name, n in quality.synthesized)
+        lines.append(f"- **Columns filled from defaults:** {filled}")
+    lines.append("")
+    return lines
+
+
+def _write_reading_sheet(wb: Workbook, report: JobReport) -> None:
+    """A sheet the client can audit against their own file. Skipped if untracked."""
+    quality = report.intake_quality
+    if quality is None or quality.reading is None:
+        return
+    reading = quality.reading
+    ws = wb.create_sheet("How Kern read this")
+    header_fill = PatternFill("solid", fgColor="1F2A44")
+    ws.cell(row=1, column=1, value="What").font = Font(bold=True, color="FFFFFF")
+    ws.cell(row=1, column=2, value="Kern's reading").font = Font(bold=True, color="FFFFFF")
+    ws.cell(row=1, column=1).fill = header_fill
+    ws.cell(row=1, column=2).fill = header_fill
+    rows = [
+        ("Location", reading.location_text()),
+        ("Column mapping", reading.mapping_text()),
+    ]
+    if reading.noteworthy_hygiene():
+        rows.append(("Spreadsheet hygiene", reading.hygiene_text()))
+    if quality.n_dropped:
+        rows.append((
+            "Rows dropped after mapping",
+            f"{quality.n_dropped} of {quality.n_raw} ({quality.dropped_fraction:.0%}): "
+            f"{quality.n_dropped_bad_date} bad date, "
+            f"{quality.n_dropped_bad_quantity} unreadable quantity, "
+            f"{quality.n_dropped_negative_quantity} negative quantity",
+        ))
+    if quality.synthesized:
+        filled = "; ".join(f"{name}: {n} cell(s)" for name, n in quality.synthesized)
+        rows.append(("Columns filled from defaults", filled))
+    for ri, (k, v) in enumerate(rows, 2):
+        ws.cell(row=ri, column=1, value=defuse_formula(k))
+        ws.cell(row=ri, column=2, value=defuse_formula(v))
+    ws.column_dimensions["A"].width = 32
+    ws.column_dimensions["B"].width = 88
+    ws.freeze_panes = "A2"
+
+
 def write_report_md(report: JobReport, path: str | Path, *, client: str = "Client") -> Path:
     """A written report: summary, recommendations, findings, methodology."""
     out = Path(path)
@@ -358,10 +462,12 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
     lines: list[str] = []
     lines.append(f"# Inventory Optimization — {client}\n")
     lines.append("## Executive summary\n")
+    if cost_is_synthesized(report):
+        lines.append(f"> {UNITS_NOTE}\n")
     lines.append(
         f"Analyzed **{report.n_skus} SKUs**. Recommended inventory investment is "
-        f"**${_fmt(report.final_investment)}**"
-        + (f" against a budget of **${_fmt(report.budget)}**" if report.budget is not None else "")
+        f"**{amount(report, report.final_investment)}**"
+        + (f" against a budget of **{amount(report, report.budget)}**" if report.budget is not None else "")
         + _service_level_clause(report)
         + (f"{report.n_at_risk} SKU(s) show high forecast bias and {report.n_intermittent} are intermittent (review recommended)."
            if (report.n_at_risk or report.n_intermittent) else "All SKUs are on track.")
@@ -369,9 +475,9 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
     lines.append("")
     if report.budget is not None:
         if not report.feasible:
-            lines.append(f"> ⚠️ **Infeasible at this budget.** The cycle-stock floor alone is ${_fmt(report.cycle_floor)}; raise the cap above it to fund any safety stock.\n")
+            lines.append(f"> ⚠️ **Infeasible at this budget.** The cycle-stock floor alone is {amount(report, report.cycle_floor)}; raise the cap above it to fund any safety stock.\n")
         elif report.safety_stock_scale < 1:
-            lines.append(f"> Safety stock scaled to **{report.safety_stock_scale * 100:.0f}%** to fit the budget. Raise the cap to ${_fmt(report.requested_investment)} to fund it fully.\n")
+            lines.append(f"> Safety stock scaled to **{report.safety_stock_scale * 100:.0f}%** to fit the budget. Raise the cap to {amount(report, report.requested_investment)} to fund it fully.\n")
         elif over:
             lines.append("")
 
@@ -383,7 +489,7 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
         s_up = f"{r.order_up_to:,.0f}" if r.order_up_to is not None else "—"
         lines.append(
             f"| {r.product_id} | {r.method} | {r.policy_kind} | {r.forecast:,.1f} | {q} | {s_up} | "
-            f"{r.reorder_point:,.0f} | {r.safety_stock:,.1f} | ${_fmt(r.investment)} | {STATUS_LABEL[r.status]} |"
+            f"{r.reorder_point:,.0f} | {r.safety_stock:,.1f} | {amount(report, r.investment)} | {STATUS_LABEL[r.status]} |"
         )
     lines.append("")
 
@@ -403,6 +509,7 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
 
     lines.extend(_methodology_lines(report))
     lines.extend(_assumption_lines(report))
+    lines.extend(_reading_lines(report))
     lines.append("_Generated from the client's demand data. Figures are decision support; validate cost and lead-time inputs against your systems before ordering._")
 
     out.write_text("\n".join(lines), encoding="utf-8")

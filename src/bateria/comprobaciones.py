@@ -515,6 +515,10 @@ _CAMPOS_EN_TRANSITO = ("transit", "transito", "on_order", "onorder", "incoming",
 
 #: Ordenes ya emitidas con las que se sondea el neteo en T05.
 _ON_ORDER_SONDA = 80.0
+#: Para la planilla el valor es chico a proposito: 42 en estante + 5 en camino = 47,
+#: todavia bajo el punto de reorden de 50. Asi la sonda mide que baja la CANTIDAD y no
+#: que se apago el disparador, que seria cierto pero probaria menos.
+_ON_ORDER_SONDA_PLANILLA = 5.0
 
 
 @dataclass(frozen=True)
@@ -583,49 +587,110 @@ class _CandidatoOC:
 def _candidato_excel() -> _CandidatoOC:
     """``excel_replenishment``: el tool de reposicion sobre la planilla del cliente.
 
-    El neteo se juzga estructuralmente porque el hueco es de entrada, no de
-    calculo: ni la fila leida ni la linea emitida tienen donde recibir una OC
-    abierta, asi que ningun dataset del cliente lo arregla. El propio docstring
-    de ``run()`` lo declara como limitacion conocida.
-    """
-    from jobs.excel_replenishment_job import PlanillaRow, ReplenishmentLine
+    El neteo se prueba CORRIENDO el job, no leyendo sus campos. Hasta que la
+    planilla tuvo columna de en-transito el juicio era estructural y devolvia
+    ``False`` con razon; cuando el campo aparecio, este candidato paso a ``None``
+    -- "hay nombre, falta sonda" -- y esa es la sonda. Un campo que se agrega sin
+    ella no acredita nada: es el defecto que costo 17,5 puntos porcentuales.
 
-    entrada = _campos_del_registro(PlanillaRow)
-    salida = _campos_del_registro(ReplenishmentLine)
-    en_transito = _alguno_contiene(entrada | salida, _CAMPOS_EN_TRANSITO)
+    Dos corridas sobre la MISMA planilla, cambiando solo la columna de
+    en-transito. El valor sondeado se elige para que el disparador siga activo en
+    las dos: con 42 en estante contra un punto de reorden de 50, una posicion de
+    47 sigue bajo el punto y lo que cambia es la CANTIDAD. Un valor mas grande
+    apagaria el disparador y la cantidad caeria a cero por otra razon -- cierto,
+    pero probaria menos.
+    """
+    import tempfile
+
+    from openpyxl import Workbook
+
+    from jobs import excel_replenishment_job as job
+
+    def _correr(en_transito: float, carpeta: str) -> list[float]:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Hoja"
+        for col, encabezado in enumerate(("Codigo", "Stock", "Punto Reorden", "En Transito"), 1):
+            ws.cell(row=1, column=col, value=encabezado)
+        for fila, (sku, stock, rop) in enumerate((("P1", 42, 50), ("P2", 30, 40)), 2):
+            for col, valor in enumerate((sku, stock, rop, en_transito), 1):
+                ws.cell(row=fila, column=col, value=valor)
+        ruta = f"{carpeta}/planilla-{en_transito:g}.xlsx"
+        wb.save(ruta)
+        return [ln.restock_qty for ln in job.run(job.prepare(ruta)).lines]
+
+    with tempfile.TemporaryDirectory() as carpeta:
+        qty_sin = _correr(0.0, carpeta)
+        qty_con = _correr(_ON_ORDER_SONDA_PLANILLA, carpeta)
+    netea = all(b < a for a, b in zip(qty_sin, qty_con, strict=True))
+
+    salida = _campos_del_registro(job.ReplenishmentLine)
     return _CandidatoOC(
         tool="excel_replenishment",
         entregable="jobs.excel_replenishment_job.ReplenishmentLine",
         muestra=_Muestra.de_nombres(salida),
-        descuenta_en_transito=None if en_transito else False,
+        descuenta_en_transito=netea,
         prueba_en_transito=(
-            f"campos de en-transito hallados ({', '.join(en_transito)}) pero sin sonda de "
-            "comportamiento: no se acredita hasta escribirla"
-            if en_transito
-            else f"la fila leida ({', '.join(sorted(entrada))}) y la linea emitida no tienen "
-            "campo de en-transito: el job no tiene por donde recibir las OC ya emitidas"
+            f"con {_ON_ORDER_SONDA_PLANILLA:g} unidades ya emitidas en la columna de la "
+            f"planilla la cantidad a pedir {'baja' if netea else 'NO baja'}: "
+            f"{qty_sin} -> {qty_con}"
         ),
     )
 
 
 def _candidato_odoo() -> _CandidatoOC:
-    """``odoo_replenishment``: reposicion contra el ERP, misma linea que el conector."""
-    from src.connectors.replenish import ReplenishmentLine
+    """``odoo_replenishment``: reposicion contra el ERP, misma linea que el conector.
 
-    salida = _campos_del_registro(ReplenishmentLine)
-    en_transito = _alguno_contiene(salida, _CAMPOS_EN_TRANSITO)
+    Misma disciplina que ``_candidato_excel``: dos corridas sobre la MISMA fuente,
+    cambiando solo el mapa de OC abiertas que ``plan_replenishment`` recibe. El
+    campo existe desde que se cerro kern#251; que exista no lo acredita.
+    """
+    from src.connectors import InventoryLevel, Order, OrderLine, Product
+    from src.connectors.replenish import ReplenishmentLine, plan_replenishment
+
+    class _Fuente:
+        """Fuente minima y determinista, con historial suficiente para pronosticar.
+
+        No se usa ``simulator.demo_store()`` a proposito: su catalogo no llega al
+        minimo de observaciones, asi que las dos corridas salen vacias y la sonda
+        reportaria "NO baja" cuando en realidad no midio nada. Un falso negativo
+        con cara de medicion es peor que una sonda ausente.
+        """
+
+        def list_products(self):
+            return [Product(sku="P1", title="A", price=10.0, cost=6.0)]
+
+        def inventory_levels(self):
+            return [InventoryLevel(sku="P1", available=20.0)]
+
+        def orders(self):
+            return [
+                Order(order_id=f"O{i}", created_at=f"2026-01-{i:02d}",
+                      lines=(OrderLine(sku="P1", quantity=10.0, price=10.0),))
+                for i in range(1, 13)
+            ]
+
+    def _qty(on_order: dict[str, float] | None) -> list[float]:
+        plan = plan_replenishment(_Fuente(), on_order_by_sku=on_order)
+        return [ln.restock_qty for ln in plan.lines if ln.status == "ok"]
+
+    qty_sin = _qty(None)
+    qty_con = _qty({"P1": _ON_ORDER_SONDA})
+    if not qty_sin:
+        netea: bool | None = None
+        prueba = ("la sonda no produjo ninguna linea dimensionada: no se midio nada, "
+                  "asi que no se acredita ni se niega")
+    else:
+        netea = all(b < a for a, b in zip(qty_sin, qty_con, strict=True))
+        prueba = (f"con {_ON_ORDER_SONDA:g} unidades ya emitidas por SKU la cantidad a pedir "
+                  f"{'baja' if netea else 'NO baja'}: {qty_sin} -> {qty_con}")
+
     return _CandidatoOC(
         tool="odoo_replenishment",
         entregable="src.connectors.replenish.ReplenishmentLine",
-        muestra=_Muestra.de_nombres(salida),
-        descuenta_en_transito=None if en_transito else False,
-        prueba_en_transito=(
-            f"campos de en-transito hallados ({', '.join(en_transito)}) pero sin sonda de "
-            "comportamiento: no se acredita hasta escribirla"
-            if en_transito
-            else "la linea se arma sobre el on-hand disponible y no expone ningun campo de "
-            "en-transito: las OC abiertas no entran al calculo"
-        ),
+        muestra=_Muestra.de_nombres(_campos_del_registro(ReplenishmentLine)),
+        descuenta_en_transito=netea,
+        prueba_en_transito=prueba,
     )
 
 
@@ -2132,7 +2197,6 @@ def t13_exposicion_a_disrupcion(_: Contexto) -> ResultadoTarea:
     from datetime import datetime, timezone
 
     from nosilo_core.guided import ExecutionOption
-
     from src.disruption import DisruptionArticle, score_supplier
     from src.risk import MitigationOption, RiskFactor
     from src.risk import assess_portfolio as _assess

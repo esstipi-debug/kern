@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from src import order_fulfillment as of
 from src.deliverable import DataSource, Deliverable, Finding, Kpi, money, pct
 
+from .deliverables import amount, cost_is_synthesized
 from .inventory_optimization import JobReport
 
 #: How each provenance reads on a client page. The deck must never print a service
@@ -61,6 +62,43 @@ _LOST_VALUE_BASIS = {
 _UNRECOGNIZED = "provenance {0!r}, which this deck carries no wording for"
 
 
+def _reading_sources(report: JobReport) -> tuple[DataSource, ...]:
+    """How Kern read the client's file, as source-map rows. Empty when untracked.
+
+    Findings are problems of the client's business; this is where a number came
+    from. Same placement as the delivery-date caveat: the Excel the client opens,
+    not only the operator summary.
+    """
+    quality = report.intake_quality
+    if quality is None or quality.reading is None:
+        return ()
+    reading = quality.reading
+    rows: list[DataSource] = [
+        DataSource("How Kern read the file", reading.location_text(), "per run"),
+        DataSource("Column mapping", reading.mapping_text(), "per run"),
+    ]
+    if reading.noteworthy_hygiene():
+        rows.append(DataSource(
+            "What was taken off the spreadsheet", reading.hygiene_text(), "per run",
+        ))
+    if quality.n_dropped:
+        rows.append(DataSource(
+            "Rows dropped after mapping",
+            f"{quality.n_dropped} of {quality.n_raw} source row(s) "
+            f"({quality.dropped_fraction:.0%}): "
+            f"{quality.n_dropped_bad_date} bad date, "
+            f"{quality.n_dropped_bad_quantity} unreadable quantity, "
+            f"{quality.n_dropped_negative_quantity} negative quantity",
+            "per run",
+        ))
+    if quality.synthesized:
+        filled = "; ".join(f"{name}: {n} cell(s)" for name, n in quality.synthesized)
+        rows.append(DataSource(
+            "Columns filled from defaults", filled, "per run",
+        ))
+    return tuple(rows)
+
+
 def _origin_text(provenance: str) -> str:
     """Where this number came from, in a client's words. Never raises."""
     return _ORIGIN_TEXT.get(provenance, _UNRECOGNIZED.format(provenance))
@@ -70,6 +108,33 @@ def _lost_value_basis(provenance: str) -> str:
     """What the lost-sales money was valued AT. Never raises."""
     return _LOST_VALUE_BASIS.get(provenance, f"of unserved demand, valued under an unstated basis "
                                              f"({_UNRECOGNIZED.format(provenance)})")
+
+
+def _otif_label(service: of.RealizedService) -> str:
+    """El rotulo del KPI dice contra QUE vara se midio la puntualidad.
+
+    Un OTIF contra la promesa que el cliente declaro es un numero real sobre una vara
+    dicha: se publica, y no puede llegarle con el mismo rotulo que uno que su sistema
+    registro. El rotulo es lo primero que se lee, asi que la distincion va ahi y no en
+    una nota al pie.
+    """
+    if service.otif_basis == of.OTIF_BASIS_CLIENT_PROMISE:
+        return "Realized OTIF (vs your declared promise)"
+    if service.otif_basis == of.OTIF_BASIS_MIXED:
+        return "Realized OTIF (partly vs your declared promise)"
+    return "Realized OTIF (observed)"
+
+
+def _otif_basis_clause(service: of.RealizedService) -> str:
+    """La frase que explica la vara, cuando no fue la del sistema."""
+    if not service.lines_scored_against_declared_promise:
+        return ""
+    total = service.lines_otif_scored or service.lines_scored_against_declared_promise
+    return (
+        f"; {service.lines_scored_against_declared_promise} of {total} scored lines carried no promised "
+        f"date in the source system and were judged against the delivery promise you "
+        f"declared, not against a date your system recorded"
+    )
 
 
 def _realized(report: JobReport) -> of.RealizedService:
@@ -160,7 +225,9 @@ def build(
     origin = _origin_text(service.provenance)
     kpis = (
         Kpi("SKUs analyzed", str(report.n_skus), rationale="Catalog coverage of the analysis"),
-        Kpi("Recommended investment", f"${report.final_investment:,.0f}",
+        Kpi(
+            "Recommended investment" + (" (units, no unit cost loaded)" if cost_is_synthesized(report) else ""),
+            amount(report, report.final_investment),
             target=(f"<= ${report.budget:,.0f}" if report.budget is not None else ""),
             rationale="Capital tied up in cycle + safety stock"),
         # The two realized KPIs come FIRST among the service numbers, and the model's
@@ -169,9 +236,9 @@ def build(
         Kpi("Realized fill rate (observed)", pct(service.fill_rate), target="95%+",
             rationale=f"Units delivered over units ordered on real customer orders - "
                       f"what was actually served ({origin})"),
-        Kpi("Realized OTIF (observed)", pct(service.otif), target="95%+",
+        Kpi(_otif_label(service), pct(service.otif), target="95%+",
             rationale=f"Order lines delivered complete AND by the promised date, SCOR "
-                      f"RL.1.1 ({origin})"),
+                      f"RL.1.1 ({origin}{_otif_basis_clause(service)})"),
         Kpi("Cycle service level (model target)", f"{sl * 100:.0f}%", target="95%+",
             rationale="The probability of not stocking out that the POLICY is sized for. "
                       "A target, not an outcome - read it against the realized fill rate above"),
@@ -193,6 +260,22 @@ def build(
                    "engagement parameter, tuned toward the observed fill rate - a policy "
                    "setting, never a measurement of service", "per run"),
     )
+    # El caveat de la fecha de entrega, cuando la fuente lo declaro. Va en el mapa de
+    # FUENTES y no entre los hallazgos: un finding es un problema del negocio del cliente, y
+    # esto es un limite de la medicion. Meterlo entre los hallazgos lo haria leer como un
+    # defecto de su operacion.
+    #
+    # Y va al entregable y no solo al resumen del agente porque el resumen lo lee el
+    # operador y el Excel lo abre el cliente. El OTIF es el numero mas delicado del informe
+    # -- de un archivo no se puede saber si su fecha es el despacho o la llegada, y entre
+    # las dos lecturas hay 6,2 puntos medidos -- asi que llegarle sin el caveat es darle un
+    # numero que no puede reconciliar contra su propio sistema.
+    if report.service_note:
+        data_sources += (
+            DataSource("Where the service columns came from", report.service_note, "per run"),
+        )
+
+    data_sources += _reading_sources(report)
 
     recs: list[str] = []
     if report.n_at_risk:

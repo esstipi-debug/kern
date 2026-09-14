@@ -330,12 +330,16 @@ def test_ground_citations_detailed_disambiguates_a_bare_id_collision(tmp_path: P
     GroundedCitation.node_id must identify the EXACT node that was ranked -
     not a bare slug that citation_gate's re-resolution could later map to a
     different node than the one actually scored."""
+    # Every node carries a source_file: a citation must name where it comes from
+    # (see _is_citable), and 3043 of the 3044 committed books nodes do.
     g = _write_graph(tmp_path / "b.json", [
-        {"id": "anchor", "label": "Anchor Widget Topic", "norm_label": "anchor widget topic"},
+        {"id": "anchor", "label": "Anchor Widget Topic", "norm_label": "anchor widget topic",
+         "source_file": "anchor-book.pdf"},
         {"id": "vendorx::widget", "label": "On-Topic Widget", "norm_label": "widget topic",
-         "rationale": "genuinely connected to the anchor"},
+         "rationale": "genuinely connected to the anchor", "source_file": "vendorx-book.pdf"},
         {"id": "knowledge::widget", "label": "Isolated Widget", "norm_label": "widget",
-         "rationale": "an unrelated decoy sharing the same bare id, no edge to anything"},
+         "rationale": "an unrelated decoy sharing the same bare id, no edge to anything",
+         "source_file": "decoy-book.pdf"},
     ])
     data = json.loads(g.read_text(encoding="utf-8"))
     data["links"] = [{"source": "anchor", "target": "vendorx::widget", "relation": "related"}]
@@ -414,3 +418,414 @@ def test_internal_sources_stay_searchable(kb: KnowledgeBase) -> None:
     assert any(_is_internal_source(h) for h in hits), (
         "the Atlas should still be reachable via search; only citations are filtered"
     )
+
+
+# -- a citation must name where it comes from ---------------------------------
+
+
+def test_nodes_without_a_source_file_are_never_cited(tmp_path: Path) -> None:
+    """A node that cannot say where it comes from is not a citation.
+
+    ``ground_citations_detailed`` renders each hit as ``f"{label} - {source}{loc}"``,
+    so a node whose ``source_file`` is missing ships to the client as a citation
+    whose provenance reads literally ``None``. The invariant under test is the
+    *field*, not any one offending id: whatever the node is, if it cannot name a
+    source it is dropped from the ranking.
+    """
+    g = _write_graph(tmp_path / "b.json", [
+        {"id": "note::reminder", "label": "Reminder: evaluate embedding models",
+         "norm_label": "reminder evaluate embedding models", "rationale": ""},
+        {"id": "book::embeddings", "label": "Evaluating Embedding Models",
+         "norm_label": "evaluating embedding models", "rationale": "",
+         "source_file": "retrieval-handbook.pdf", "source_location": "p. 10"},
+    ])
+    kb = KnowledgeBase(books_path=g, code_path=tmp_path / "none.json")
+
+    cites = kb.ground_citations_detailed(("reminder", "evaluate", "embedding"), "", limit=5)
+
+    assert cites, "the properly sourced node must still be cited"
+    rendered = "; ".join(c.text for c in cites)
+    assert all(c.node_id != "note::reminder" for c in cites), (
+        "a source-less node reached a citation: " + rendered
+    )
+    assert not any("None" in c.text for c in cites)
+
+
+def test_source_less_nodes_in_the_books_graph_are_never_cited(kb: KnowledgeBase) -> None:
+    """Same invariant, against the committed product graph: query every source-less
+    node by its own label - the friendliest possible query for it - and assert none
+    comes back as a citation.
+
+    Regression guard for the real defect found on 2026-09-11: the books graph carried
+    one node without ``source_file`` (``reminder::evaluar_embeddings_con_modelos_...``,
+    an internal Kern note, not a source), and it shipped the citation
+    ``"Reminder: Evaluar embeddings con modelos mas actualizados: ... - None"``.
+    ``filter_citations`` never caught it because that gate is topological (node id +
+    hops), and the path the web/MCP/CLI actually use - ``Orchestrator._ground`` -
+    calls ``ground_citations`` with no gate at all.
+    """
+    nodes = json.loads(BOOKS.read_text(encoding="utf-8"))["nodes"]
+    source_less = [n for n in nodes if not (n.get("source_file") or "").strip()]
+
+    offenders: list[str] = []
+    for node in source_less:
+        keywords = tuple(str(node.get("label", "")).split())
+        for cite in kb.ground_citations_detailed(keywords, "", limit=8):
+            if cite.node_id == node["id"]:
+                offenders.append(f"{node['id']}: {cite.text}")
+    assert not offenders, "source-less nodes leaked into citations: " + "; ".join(offenders)
+
+
+def test_reported_embeddings_query_grounds_nothing_without_a_source(kb: KnowledgeBase) -> None:
+    """The exact reproduction from the defect report: this query used to return a
+    single citation ending in ``- None``."""
+    cites = kb.ground_citations(["embeddings", "modelos", "evaluar"], "", limit=5)
+    assert not [c for c in cites if c.rstrip().endswith("None")], cites
+
+
+# -- implements() must cite implementations, not tests / demos / one-off scripts --
+
+
+def _looks_like_a_test_file(source: str) -> bool:
+    """Independent read of the path, so the assertion does not borrow the fix."""
+    parts = source.replace("\\", "/").split("/")
+    name = parts[-1]
+    return (
+        any(p in {"tests", "test", "testing"} for p in parts[:-1])
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name == "conftest.py"
+    )
+
+
+def _looks_like_a_non_implementation(source: str) -> bool:
+    """Test, demo, example or one-off script — written independently of the fix."""
+    parts = source.replace("\\", "/").split("/")
+    name = parts[-1]
+    dirs = {"examples", "example", "demos", "demo", "scripts", "script",
+            "samples", "sample"}
+    return (
+        _looks_like_a_test_file(source)
+        or any(p in dirs for p in parts[:-1])
+        or name.startswith(("demo_", "example_", "sample_"))
+        or name.endswith(("_demo.py", "_example.py", "_sample.py"))
+    )
+
+
+def _code_node(nid: str, label: str, source: str) -> dict:
+    """A code-graph node shaped like graphify's output."""
+    return {"id": nid, "label": label, "norm_label": label.lower(),
+            "rationale": "", "source_file": source, "location": "L1"}
+
+
+def test_implements_skips_a_test_file_and_falls_back_to_theory_only(tmp_path: Path) -> None:
+    """A test file verifies a concept, it does not implement it.
+
+    With the test module as the only candidate, implements() must return None so
+    the caller cites theory alone rather than pointing a client at tests/.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("t", "test economic order quantity",
+                   "tests/test_economic_order_quantity.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="economic_order_quantity", label="Economic Order Quantity",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+def test_implements_prefers_source_over_a_better_scoring_test_file(tmp_path: Path) -> None:
+    """Excluding tests promotes the runner-up in src/ rather than dropping the link.
+
+    The test node shares four tokens with the concept and the src module only
+    three, so on score alone the test file wins outright — the src/ tiebreak
+    cannot save it. Only skipping test paths gets src/eoq.py cited.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("t", "test economic order quantity model", "tests/test_eoq_model.py"),
+        _code_node("s", "economic order quantity", "src/eoq.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="economic_order_quantity_model",
+                      label="Economic Order Quantity Model",
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    assert impl is not None
+    assert impl.source == "src/eoq.py"
+
+
+@pytest.mark.parametrize("source", [
+    "tests/test_pricing.py",
+    "tests/helpers/fixtures.py",
+    "odoo_addon/test/verify_install.py",
+    "src/pricing_test.py",
+    "src/conftest.py",
+])
+def test_implements_rejects_every_shape_of_test_path(tmp_path: Path, source: str) -> None:
+    """Test-ness is a path property: a tests/ directory OR a test-named module."""
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("t", "economic order quantity", source),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="economic_order_quantity", label="Economic Order Quantity",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("label", [
+    "Perfect Order (OTIF)",
+    "Reorder Point",
+    "Salvage Value",
+    "Replenishment Lead Time",
+    "Competitive Reference Price",
+    "Earliest Due Date (EDD)",
+])
+def test_implements_cites_no_test_file_on_the_real_code_graph(
+    kb: KnowledgeBase, label: str
+) -> None:
+    """Regression pin: these concepts each used to resolve to a tests/ module.
+
+    Measured 2026-09-04 across the 52 anchored tools on pools 16/8/6, every one of
+    these surfaced ``-> tests/test_*.py`` in the client-facing citation text.
+    """
+    concept = Concept(id=label.lower().replace(" ", "_"), label=label,
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    if impl is not None:
+        assert not _looks_like_a_test_file(impl.source or ""), (
+            f"{label} resolved to test file {impl.source}"
+        )
+
+
+def test_implements_skips_a_demo_and_falls_back_to_theory_only(tmp_path: Path) -> None:
+    """A demo illustrates a concept for a prospect; it is not where it lives.
+
+    ``webapp/demo_lead_time_scan.py`` is a sales demo, so citing it as the code
+    behind "Replenishment Lead Time" oversells what is actually built.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("d", "demo replenishment lead time scan",
+                   "webapp/demo_lead_time_scan.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="replenishment_lead_time", label="Replenishment Lead Time",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+def test_implements_skips_the_ingest_script_that_read_the_book(tmp_path: Path) -> None:
+    """The graph-ingest script is the most circular citation of all.
+
+    ``scripts/merge_khan_resilience.py`` is the script that loaded Khan's book
+    into the books graph. Offering it as the implementation of a Khan concept
+    says "the code behind this idea is the code that read the idea".
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("m", "merge khan efficiency resilience trade off",
+                   "scripts/merge_khan_resilience.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="efficiency_vs_resilience_trade_off",
+                      label="Efficiency-vs-Resilience Trade-off",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+def test_implements_prefers_source_over_a_better_scoring_demo(tmp_path: Path) -> None:
+    """As with tests, excluding a demo promotes the real runner-up.
+
+    The demo node shares four tokens with the concept and the src module three,
+    so the demo wins on score and the src/ tiebreak cannot rescue it.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("d", "demo replenishment lead time gap", "webapp/demo_lead_time.py"),
+        _code_node("s", "replenishment lead time", "src/lead_time.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="replenishment_lead_time_gap",
+                      label="Replenishment Lead Time Gap",
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    assert impl is not None
+    assert impl.source == "src/lead_time.py"
+
+
+@pytest.mark.parametrize("source", [
+    "examples/run_disruption_scan.py",
+    "scripts/merge_khan_resilience.py",
+    "webapp/demo_lead_time_scan.py",
+    "src/demos/lead_time.py",
+    "src/lead_time_demo.py",
+    "docs/example/lead_time.py",
+])
+def test_implements_rejects_every_shape_of_illustrative_path(
+    tmp_path: Path, source: str
+) -> None:
+    """Illustrative-ness is a path property too: the directory OR the filename."""
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("d", "replenishment lead time", source),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="replenishment_lead_time", label="Replenishment Lead Time",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+def test_implements_keeps_a_real_module_whose_name_merely_contains_demo(
+    tmp_path: Path,
+) -> None:
+    """The filename rule anchors on prefix/suffix, so real modules survive.
+
+    ``src/demand_planning.py`` starts with "dem" and ``src/order_demo_history.py``
+    contains "demo" mid-name; neither is a demo module and both must stay citable.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("s", "replenishment lead time", "src/order_demo_history.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="replenishment_lead_time", label="Replenishment Lead Time",
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    assert impl is not None
+    assert impl.source == "src/order_demo_history.py"
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("label", [
+    "Efficiency-vs-Resilience Trade-off",
+    "End-to-End Lead-Time Variability",
+    "Lead-Time Gap",
+    "Replenishment Lead Time",
+    "Tiger Team (Cross-Functional Disruption Response Team)",
+])
+def test_implements_cites_no_demo_or_script_on_the_real_code_graph(
+    kb: KnowledgeBase, label: str
+) -> None:
+    """Regression pin: these five each resolved to a demo, example or script.
+
+    Measured 2026-09-04 on the 52 anchored tools over pools 16/8/6, after the
+    tests/ exclusion had already landed — these were what was left.
+    """
+    concept = Concept(id=label.lower().replace(" ", "_"), label=label,
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    if impl is not None:
+        assert not _looks_like_a_non_implementation(impl.source or ""), (
+            f"{label} resolved to non-implementation {impl.source}"
+        )
+
+
+# -- implements() scores information, not word count -------------------------
+
+
+def test_implements_ignores_a_match_made_only_of_stopwords(tmp_path: Path) -> None:
+    """"Meeting the Team Where They Are" -> jobs/reconciliation_job.py was real.
+
+    It matched on ``are the they where`` — four tokens, zero of them domain
+    words. Counting raw token overlap makes function words worth as much as
+    "newsvendor", so a node can clear a 3-token bar carrying no information.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("n", "where they are", "src/reconciliation.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="meeting_the_team_where_they_are",
+                      label="Meeting the Team Where They Are",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+def test_implements_ranks_information_above_token_count(tmp_path: Path) -> None:
+    """A three-token match padded with stopwords must lose to two real terms.
+
+    ``src/misc_report.py`` matches {and, for, demand} and ``src/forecast_accuracy.py``
+    matches {forecast, accuracy}. On raw count 3 > 2 and the padded one wins;
+    on content the padded one carries a single domain word and drops out.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("a", "and for the demand", "src/misc_report.py"),
+        _code_node("b", "forecast accuracy", "src/forecast_accuracy.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="demand_and_forecast_accuracy_for_planning",
+                      label="Demand and Forecast Accuracy for Planning",
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    assert impl is not None
+    assert impl.source == "src/forecast_accuracy.py"
+
+
+def test_implements_does_not_treat_a_stopword_in_a_filename_as_named_after(
+    tmp_path: Path,
+) -> None:
+    """The 2-token discount is for files named after the concept, not for "how".
+
+    ``src/how_it_works.py`` shares only the word "how" with the concept. That
+    is not "the file is named after this idea", so it must not buy the lowered
+    bar that ``src/safety_stock.py`` earns for "Safety Stock".
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("n", "buffers", "src/how_it_works.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="how_buffers_absorb_variability",
+                      label="How Buffers Absorb Variability",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+def test_implements_ignores_spanish_stopwords_too(tmp_path: Path) -> None:
+    """The graph is bilingual: ~16 concept labels carry Spanish function words."""
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("n", "", "src/reglas_del_sistema.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="reglas_del_negocio", label="Reglas del Negocio",
+                      source=None, location=None, graph="books")
+    assert kb.implements(concept) is None
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("label,forbidden", [
+    ("Meeting the Team Where They Are", "jobs/reconciliation_job.py"),
+    ("Rethinking the US Strategic National Stockpile for Future Pandemics"
+     " with Inventory, Capacity, and Capability", "src/deliverable.py"),
+    ("Deloitte (2020) - COVID-19: Managing Supply Chain Risk and Disruption",
+     "src/queuing.py"),
+])
+def test_implements_drops_the_stopword_matches_on_the_real_graph(
+    kb: KnowledgeBase, label: str, forbidden: str
+) -> None:
+    """Regression pin: each of these was decided by function words.
+
+    Measured 2026-09-04 over the whole books graph — 177 of 756 backlinks had
+    fewer than two domain words behind them; these three are the starkest.
+    """
+    concept = Concept(id=label.lower().replace(" ", "_"), label=label,
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    assert impl is None or impl.source != forbidden
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("label,expected", [
+    ("Safety Stock", "src/safety_stock.py"),
+    ("Fill Rate", "src/fill_rate.py"),
+    ("Newsvendor Model", "src/newsvendor.py"),
+    ("Digital Twin", "src/digital_twin.py"),
+])
+def test_implements_keeps_the_bridges_the_filename_discount_earns(
+    kb: KnowledgeBase, label: str, expected: str
+) -> None:
+    """Guard, green on both sides: the 2-token discount is the feature, not the bug.
+
+    27 of the 68 backlinks a client sees clear the bar only because the module
+    is named after the concept, and they are the best citations in the set.
+    Scoring on content must not cost us a single one of them.
+    """
+    concept = Concept(id=label.lower().replace(" ", "_"), label=label,
+                      source=None, location=None, graph="books")
+    impl = kb.implements(concept)
+    assert impl is not None
+    assert impl.source == expected

@@ -8,6 +8,7 @@ product per period (weekly by default) ready for the engine.
 
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
@@ -15,6 +16,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pandas as pd
+
+from src import excel_hygiene
 
 CANONICAL_REQUIRED = ("date", "product_id", "quantity")
 # ``revenue`` is detected but never emitted: it exists only to recover a real
@@ -232,6 +235,12 @@ class IntakeQuality:
     # wholesale, and counting rows alone reports that as perfect quality.
     synthesized: tuple[tuple[str, int], ...] = ()
     n_canonical_rows: int = 0
+    # What Kern took the file to MEAN (mapping, sheet, hygiene). Distinct from
+    # the drop counts above: those are how much survived. This is the decisions
+    # that happened before a row could even be counted. None on the untracked
+    # ``normalize()`` path and on hand-built records; ``normalize_tracked``
+    # always fills it.
+    reading: IntakeReading | None = None
 
     @property
     def n_dropped(self) -> int:
@@ -249,6 +258,99 @@ class IntakeQuality:
         return tuple(
             name for name, count in self.synthesized if count >= self.n_canonical_rows
         )
+
+
+@dataclass(frozen=True)
+class IntakeReading:
+    """What Kern took the client's file to MEAN.
+
+    Distinct from :class:`IntakeQuality`: quality is how much survived
+    cleaning; this is the mapping, the sheet, and the hygiene -- the
+    decisions that happened before a row could even be counted as survived
+    or dropped. It exists so the deliverable can tell the client how their
+    own file was read, the same reason :class:`excel_hygiene.HygieneReport`
+    is not allowed to be silent.
+
+    English on purpose: this text lands in the inventory deck, which is
+    English by default. The Spanish demo workbook writes its own labels
+    from the same fields.
+    """
+
+    mapping: tuple[tuple[str, str], ...] = ()
+    sheet: str | None = None
+    header_row: int | None = None
+    source_kind: str = "csv"
+    hygiene: excel_hygiene.HygieneReport | None = None
+
+    def mapping_text(self) -> str:
+        """``date <- 'Fecha'; product_id <- 'SKU'`` -- auditable against the file."""
+        return "; ".join(f"{canon} <- '{src}'" for canon, src in self.mapping)
+
+    def location_text(self) -> str:
+        """Where in the file the header was found, in the client's own terms.
+
+        Excel rows are 1-based here: the client opens the workbook, not pandas.
+        """
+        if self.source_kind != "excel":
+            return "CSV, first row as header"
+        sheet = self.sheet if self.sheet is not None else "(first sheet)"
+        excel_row = (self.header_row + 1) if self.header_row is not None else 1
+        return f"Excel sheet {sheet!s}, header on row {excel_row}"
+
+    def hygiene_text(self) -> str:
+        """What was taken off the spreadsheet, or that nothing was."""
+        h = self.hygiene
+        if h is None:
+            return "spreadsheet hygiene did not run (CSV, or no product column recognised)"
+        parts: list[str] = []
+        n_total = int(h.dropped.get("fila_de_total") or 0)
+        n_blank = int(h.dropped.get("fila_vacia") or 0)
+        if n_total:
+            parts.append(f"{n_total} total/summary row(s) excluded")
+        if n_blank:
+            parts.append(f"{n_blank} blank separator row(s) excluded")
+        if h.dropped_columns:
+            parts.append(
+                f"{len(h.dropped_columns)} empty unnamed column(s) dropped"
+            )
+        n_filled = sum(h.filled.values()) if h.filled else 0
+        if n_filled:
+            cols = ", ".join(f"'{c}'" for c in h.filled)
+            parts.append(
+                f"{n_filled} cell(s) filled from merged cells ({cols})"
+            )
+        if not parts:
+            return (
+                f"no rows or columns removed; {h.rows_in} row(s) in the sheet after the header"
+            )
+        return "; ".join(parts)
+
+    def noteworthy_hygiene(self) -> bool:
+        """Whether the deliverable should spend a row on hygiene.
+
+        A silent cleaner is the defect this report exists to prevent, but a
+        row that always says "nothing happened" is how the map of sources
+        stops being read. Merged-cell fills count even when ``HygieneReport.clean``
+        is True -- that flag ignores fills.
+        """
+        h = self.hygiene
+        if h is None:
+            return False
+        return (not h.clean) or bool(h.filled)
+
+
+def reading_from(raw: pd.DataFrame, mapping: ColumnMapping) -> IntakeReading:
+    """Build the reading off the frame ``load_table`` returned and the mapping it produced."""
+    kind = "excel" if SHEET_ATTR in raw.attrs else "csv"
+    sheet = raw.attrs.get(SHEET_ATTR)
+    header = raw.attrs.get(HEADER_ATTR)
+    return IntakeReading(
+        mapping=tuple(sorted(mapping.mapping.items())),
+        sheet=None if sheet is None else str(sheet),
+        header_row=None if header is None else int(header),
+        source_kind=kind,
+        hygiene=raw.attrs.get(HYGIENE_ATTR),
+    )
 
 
 @dataclass(frozen=True)
@@ -435,6 +537,27 @@ def detect_sheet_and_header(
     return best[1], best[2]
 
 
+#: Donde ``load_table`` deja el informe de higiene de un Excel, para que el
+#: entregable pueda decirle al cliente que le sacaron a su planilla.
+HYGIENE_ATTR = "excel_hygiene"
+#: Hoja y fila de encabezado (0-based) que gano ``detect_sheet_and_header``.
+#: Viajan en ``attrs`` por el mismo motivo que la higiene: ``load_table`` no
+#: puede cambiar de firma, y el entregable tiene que poder decir "lei la hoja
+#: X, fila Y" en vez de dejar que el cliente adivine.
+SHEET_ATTR = "excel_sheet"
+HEADER_ATTR = "excel_header_row"
+
+
+def _key_column(frame: pd.DataFrame, aliases: AliasTable | None) -> str | None:
+    """La columna de producto del archivo, o ``None`` si no se reconoce ninguna."""
+    tabla = aliases if aliases is not None else ALIASES
+    conocidos = {_norm(a) for a in tabla.get("product_id", ())}
+    for columna in frame.columns:
+        if _norm(columna) in conocidos:
+            return str(columna)
+    return None
+
+
 def load_table(path: str | Path, *, aliases: AliasTable | None = None) -> pd.DataFrame:
     """Read a client file (CSV or Excel) into a DataFrame.
 
@@ -444,10 +567,34 @@ def load_table(path: str | Path, *, aliases: AliasTable | None = None) -> pd.Dat
     es otra clase de arreglo.
     """
     p = Path(path)
-    if p.suffix.lower() in _EXCEL_SUFFIXES:
-        sheet, header = detect_sheet_and_header(p, aliases=aliases)
-        return pd.read_excel(p, sheet_name=sheet, header=header)
-    return pd.read_csv(p)
+    if p.suffix.lower() not in _EXCEL_SUFFIXES:
+        return pd.read_csv(p)
+
+    sheet, header = detect_sheet_and_header(p, aliases=aliases)
+    crudo = pd.read_excel(p, sheet_name=sheet, header=header)
+    # Hoja y fila viajan siempre, incluso cuando no hay columna de producto:
+    # el entregable tiene que poder decir donde miro, no solo que no limpio.
+    crudo.attrs[SHEET_ATTR] = sheet
+    crudo.attrs[HEADER_ATTR] = header
+    clave = _key_column(crudo, aliases)
+    if clave is None:
+        # Sin una columna de producto reconocible no hay donde buscar la etiqueta
+        # de total ni que fila es un separador. Se devuelve el crudo: el mapeo va
+        # a fallar mas adelante con un mensaje que nombra las columnas, que es
+        # mejor diagnostico que una limpieza adivinada sobre un archivo ajeno.
+        return crudo
+
+    limpio = excel_hygiene.read_clean_table(p, key_column=clave, sheet=sheet, header_row=header)
+    frame = limpio.frame
+    # El informe viaja en `attrs` y no en el tipo de retorno: `load_table` lo
+    # llaman el intake, pricing y la subida del webapp, y cambiarle la firma
+    # obligaria a tocar los tres. `attrs` lo ignora quien no lo mira y lo
+    # encuentra quien tiene donde mostrarlo -- que es lo que impide que esto sea
+    # una limpieza silenciosa.
+    frame.attrs[HYGIENE_ATTR] = limpio.report
+    frame.attrs[SHEET_ATTR] = sheet
+    frame.attrs[HEADER_ATTR] = header
+    return frame
 
 
 def _normalize_core(
@@ -578,9 +725,10 @@ def normalize_tracked(
     """Same cleaning + aggregation as ``normalize``, plus the ``IntakeQuality``
     signal (rows dropped, and why) a caller needs to decide whether the result
     is trustworthy enough to hand back with unqualified confidence."""
-    return _normalize_core(
+    frame, quality = _normalize_core(
         df, mapping, period=period, default_lead_days=default_lead_days, default_unit_cost=default_unit_cost
     )
+    return frame, replace(quality, reading=reading_from(df, mapping))
 
 
 def prepare(
@@ -624,3 +772,182 @@ def prepare_tracked(
         raw, mapping, period=period, default_lead_days=default_lead_days,
         default_unit_cost=default_unit_cost,
     )
+
+
+# -- servicio realizado desde el archivo del cliente ----------------------------
+
+#: Las tres columnas de servicio, que NO estan en ``CANONICAL_OPTIONAL``.
+#:
+#: Y no lo estan a proposito: ``normalize_tracked`` agrega la demanda a periodos, y el
+#: servicio no se agrega -- dos pedidos del mismo SKU en la misma semana son dos resultados
+#: distintos, y sumarlos borra el que fallo. Viven en su propio canonico, los detecta
+#: ``service_lines`` y no tocan el camino de la demanda.
+SERVICE_OPTIONAL = ("delivered_qty", "promised_date", "delivered_date")
+
+#: Alias de las tres. Ricos en espanol y portugues por el mismo motivo que el resto de la
+#: tabla: es lo que exporta un ERP de LatAm.
+#:
+#: ``entrega`` pelado NO esta, y sigue sin estar: el comentario de arriba explica que es
+#: ambiguo entre una fecha y un plazo en dias. ``fecha_entrega`` si, porque el prefijo lo
+#: desambigua.
+SERVICE_ALIASES: dict[str, list[str]] = {
+    "delivered_qty": [
+        "delivered_qty", "qty_delivered", "delivered_quantity", "quantity_delivered",
+        "shipped_qty", "qty_shipped", "shipped_quantity", "fulfilled_qty", "served_qty",
+        "cantidad_entregada", "cant_entregada", "unidades_entregadas", "entregado",
+        "entregadas", "cantidad_despachada", "cant_despachada", "unidades_despachadas",
+        "despachado", "despachadas", "cantidad_servida", "servido",
+        "quantidade_entregue", "entregue",
+    ],
+    "promised_date": [
+        "promised_date", "promise_date", "due_date", "required_date", "requested_date",
+        "commitment_date", "committed_date", "requested_delivery_date", "eta",
+        "expected_delivery_date", "fecha_prometida", "fecha_comprometida",
+        "fecha_requerida", "fecha_pactada", "fecha_compromiso", "fecha_solicitada",
+        "fecha_pedida", "data_prometida", "data_prevista",
+    ],
+    "delivered_date": [
+        "delivered_date", "delivery_date", "actual_delivery_date", "date_delivered",
+        "ship_date", "shipped_date", "dispatch_date", "date_shipped", "fulfilled_date",
+        "fecha_entrega", "fecha_de_entrega", "fecha_real_entrega", "fecha_entregado",
+        "fecha_despacho", "fecha_de_despacho", "fecha_envio", "fecha_embarque",
+        "data_entrega", "data_envio",
+    ],
+}
+
+#: Las columnas que ``jobs.inventory_optimization.run(order_lines=...)`` lee. Se escriben
+#: aca con el mismo orden y los mismos nombres que ``src.connectors._SERVICE_FRAME_COLUMNS``:
+#: un renombre no rompe, hace que el job descarte la linea en silencio.
+_SERVICE_FRAME_COLUMNS = (
+    "product_id", "ordered_qty", "delivered_qty",
+    "promised_date", "delivered_date", "unit_price",
+)
+
+#: En INGLES, y no por gusto: esta frase viaja al ``summary`` del agente y al mapa de
+#: fuentes del entregable, que son en ingles por defecto. El deck tiene i18n
+#: (``src/i18n.py``) para producir una version en espanol ENTERA; mezclar los dos idiomas
+#: dentro de un mismo entregable no es eso. La primera version de esta constante estaba en
+#: espanol e inyectaba castellano en un deck ingles.
+_NOTA_SERVICIO = (
+    "Service measured from the file's own columns: {columnas}. IMPORTANT about "
+    "'{entrega}': from a file there is no way to know whether that date is the DISPATCH "
+    "from the warehouse or the ARRIVAL at the customer, and they are not the same thing -- "
+    "measured over 98,666 real orders the two readings differ by 6.2 points of OTIF. "
+    "Confirm with the client what that column records."
+)
+_NOTA_SIN_ENTREGA = (
+    "Service measured from the file's own columns: {columnas}. Without a delivery date "
+    "OTIF cannot be measured; fill rate can."
+)
+
+
+def _texto_o_none(valor: object) -> str | None:
+    """Una fecha ISO como texto, o ``None`` cuando la celda estaba vacia.
+
+    ``None`` y nunca cadena vacia ni ``NaT``: el motor distingue una ausencia de un cero, y
+    una cadena vacia que llega como fecha se descarta igual pero sin decir por que.
+    """
+    if valor is None:
+        return None
+    texto = str(valor).strip()
+    if not texto or texto.lower() in ("nan", "nat", "none"):
+        return None
+    return texto[:10]
+
+
+def _numero_o_none(valor: object) -> float | None:
+    """Una cantidad reportada, o ``None``. Una celda vacia NO es cero unidades servidas."""
+    if valor is None:
+        return None
+    if isinstance(valor, str) and not valor.strip():
+        return None
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return None
+    return numero if math.isfinite(numero) else None
+
+
+def service_lines(
+    path: str | Path,
+    *,
+    overrides: dict[str, str] | None = None,
+    aliases: AliasTable | None = None,
+):
+    """Las lineas de servicio del archivo del cliente, o ``None`` si no trae ninguna.
+
+    El productor que le faltaba a ``jobs.inventory_optimization.run(order_lines=...)``. Ese
+    argumento acepta un frame de lineas salientes desde que aterrizo el trabajo de servicio
+    realizado, y ningun llamador lo pasaba -- asi que cada corrida reportaba ``not_measured``
+    sobre archivos que a veces SI traian con que medirse.
+
+    ``None`` y no un frame vacio: "este cliente no manda servicio" y "manda servicio y esta
+    todo en cero" son cosas distintas, y el job las trata distinto.
+
+    NO agrega por periodo. La demanda se agrega a semanas y el servicio no: dos pedidos del
+    mismo SKU en la misma semana son dos resultados distintos -- uno pudo servirse entero y
+    el otro no -- y sumarlos borra justamente el que fallo.
+
+    El frame trae dos cosas en ``.attrs`` que el entregable necesita:
+
+    ``service_headers``
+        Que columna del cliente matcheo cada campo. Es lo que hace auditable al numero: de
+        un adaptador sabemos que significa ``delivered_date`` porque leimos la doc del
+        vendor, y de un archivo no.
+
+    ``service_note``
+        La advertencia de que una fecha de entrega en un archivo puede ser un despacho o una
+        llegada. No es un detalle: ninguno de los tres ERP del canal registra la llegada, y
+        entre las dos lecturas hay 6,2 puntos de OTIF medidos.
+    """
+    raw = load_table(path, aliases=aliases)
+    mapeo = detect_columns(
+        raw, overrides, optional=CANONICAL_OPTIONAL + SERVICE_OPTIONAL,
+        aliases={**(aliases or ALIASES), **SERVICE_ALIASES},
+    )
+    if not mapeo.ok:
+        # Sin las columnas obligatorias de demanda no hay a que SKU atribuirle el servicio.
+        return None
+    presentes = {c: mapeo.mapping[c] for c in SERVICE_OPTIONAL if c in mapeo.mapping}
+    if not presentes:
+        return None
+
+    import pandas as pd
+
+    col_sku = mapeo.mapping["product_id"]
+    col_qty = mapeo.mapping["quantity"]
+    col_precio = mapeo.mapping.get("unit_cost")
+    filas = []
+    for fila in raw.to_dict("records"):
+        sku = _texto_o_none(fila.get(col_sku))
+        pedidas = _numero_o_none(fila.get(col_qty))
+        if sku is None or pedidas is None:
+            continue
+        filas.append(
+            {
+                "product_id": sku,
+                "ordered_qty": pedidas,
+                "delivered_qty": (
+                    _numero_o_none(fila.get(presentes["delivered_qty"]))
+                    if "delivered_qty" in presentes else None
+                ),
+                "promised_date": (
+                    _texto_o_none(fila.get(presentes["promised_date"]))
+                    if "promised_date" in presentes else None
+                ),
+                "delivered_date": (
+                    _texto_o_none(fila.get(presentes["delivered_date"]))
+                    if "delivered_date" in presentes else None
+                ),
+                "unit_price": _numero_o_none(fila.get(col_precio)) if col_precio else None,
+            }
+        )
+    frame = pd.DataFrame(filas, columns=list(_SERVICE_FRAME_COLUMNS))
+    columnas = ", ".join(f"{k} <- '{v}'" for k, v in sorted(presentes.items()))
+    frame.attrs["service_headers"] = dict(presentes)
+    frame.attrs["service_note"] = (
+        _NOTA_SERVICIO.format(columnas=columnas, entrega=presentes["delivered_date"])
+        if "delivered_date" in presentes
+        else _NOTA_SIN_ENTREGA.format(columnas=columnas)
+    )
+    return frame

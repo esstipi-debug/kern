@@ -26,7 +26,6 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from nosilo_core.guided import GuidedOutcome
-
 from src.pricing_intel import watch_policy
 from src.pricing_intel.match.sku_map import SkuMapEntry
 from src.pricing_intel.models import SiteConfig

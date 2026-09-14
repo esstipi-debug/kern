@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from nosilo_core import llm
-from nosilo_core.guided import OPTIONS
 
 from jobs import digital_twin_job as dt
 from jobs import forecast_job
+from nosilo_core import llm
+from nosilo_core.guided import OPTIONS
 from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable

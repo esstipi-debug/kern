@@ -11,8 +11,8 @@ from __future__ import annotations
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from nosilo_core.access import ANY, PRINCIPAL_HUMAN, PRINCIPAL_SERVICE, PolicySet
 
+from nosilo_core.access import ANY, PRINCIPAL_HUMAN, PRINCIPAL_SERVICE, PolicySet
 from webapp import principal, security
 from webapp.app import app
 
@@ -211,7 +211,15 @@ def test_a_handler_without_the_middleware_degrades_to_anonymous() -> None:
 # ---- the policy seam ---------------------------------------------------------
 
 
-def test_the_engine_is_ungoverned_by_default() -> None:
+def test_the_engine_is_ungoverned_by_default(monkeypatch) -> None:
+    """The precondition is stated, not inherited.
+
+    This used to rely on `security.POLICY` still being the module default. Since
+    `webapp/app.py` assigns it at import, whether that held depended on which
+    test imported the app first - a passing test whose reason was the collection
+    order. The property under test is the module's default, so the test sets it.
+    """
+    monkeypatch.setattr(security, "POLICY", None)
     assert not security.policy_engine().is_governed
 
 
@@ -225,10 +233,14 @@ def test_setting_a_policy_governs_the_engine(monkeypatch) -> None:
 
 
 def test_production_warns_when_no_policy_is_configured(monkeypatch) -> None:
+    # POLICY set explicitly to None for the same reason as the test above: the
+    # app now assigns one at import, so "no policy" has to be arranged rather
+    # than assumed.
     monkeypatch.setattr(security, "ENV", "production")
     monkeypatch.setattr(security, "API_KEY", "k")
     monkeypatch.setattr(security, "RATE_LIMIT", 120)
     monkeypatch.setattr(security, "APPROVAL_SECRET", "s")
+    monkeypatch.setattr(security, "POLICY", None)
     warnings = security.production_warnings()
     assert any("no access policy is configured" in w for w in warnings)
 
