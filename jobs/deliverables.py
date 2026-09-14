@@ -151,6 +151,8 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
     s.column_dimensions["A"].width = 40
     s.column_dimensions["B"].width = 22
 
+    _write_reading_sheet(wb, report)
+
     wb.save(out)
     return out
 
@@ -383,6 +385,74 @@ def _assumption_lines(report: JobReport) -> list[str]:
     return lines
 
 
+def _reading_lines(report: JobReport) -> list[str]:
+    """How Kern read the source file. Empty when the untracked path ran.
+
+    Lives after Assumptions on purpose: those are the parameters the client
+    chose; this is what we took their file to mean. A mapping that stays in
+    the operator's head is how a TOTAL row becomes a sale.
+    """
+    quality = report.intake_quality
+    if quality is None or quality.reading is None:
+        return []
+    reading = quality.reading
+    lines = ["## How Kern read this file\n"]
+    lines.append(f"- **Location:** {reading.location_text()}")
+    lines.append(f"- **Column mapping:** {reading.mapping_text()}")
+    if reading.noteworthy_hygiene():
+        lines.append(f"- **Spreadsheet hygiene:** {reading.hygiene_text()}")
+    if quality.n_dropped:
+        lines.append(
+            f"- **Rows dropped after mapping:** {quality.n_dropped} of {quality.n_raw} "
+            f"({quality.dropped_fraction:.0%}) -- "
+            f"{quality.n_dropped_bad_date} bad date, "
+            f"{quality.n_dropped_bad_quantity} unreadable quantity, "
+            f"{quality.n_dropped_negative_quantity} negative quantity."
+        )
+    if quality.synthesized:
+        filled = "; ".join(f"{name}: {n} cell(s)" for name, n in quality.synthesized)
+        lines.append(f"- **Columns filled from defaults:** {filled}")
+    lines.append("")
+    return lines
+
+
+def _write_reading_sheet(wb: Workbook, report: JobReport) -> None:
+    """A sheet the client can audit against their own file. Skipped if untracked."""
+    quality = report.intake_quality
+    if quality is None or quality.reading is None:
+        return
+    reading = quality.reading
+    ws = wb.create_sheet("How Kern read this")
+    header_fill = PatternFill("solid", fgColor="1F2A44")
+    ws.cell(row=1, column=1, value="What").font = Font(bold=True, color="FFFFFF")
+    ws.cell(row=1, column=2, value="Kern's reading").font = Font(bold=True, color="FFFFFF")
+    ws.cell(row=1, column=1).fill = header_fill
+    ws.cell(row=1, column=2).fill = header_fill
+    rows = [
+        ("Location", reading.location_text()),
+        ("Column mapping", reading.mapping_text()),
+    ]
+    if reading.noteworthy_hygiene():
+        rows.append(("Spreadsheet hygiene", reading.hygiene_text()))
+    if quality.n_dropped:
+        rows.append((
+            "Rows dropped after mapping",
+            f"{quality.n_dropped} of {quality.n_raw} ({quality.dropped_fraction:.0%}): "
+            f"{quality.n_dropped_bad_date} bad date, "
+            f"{quality.n_dropped_bad_quantity} unreadable quantity, "
+            f"{quality.n_dropped_negative_quantity} negative quantity",
+        ))
+    if quality.synthesized:
+        filled = "; ".join(f"{name}: {n} cell(s)" for name, n in quality.synthesized)
+        rows.append(("Columns filled from defaults", filled))
+    for ri, (k, v) in enumerate(rows, 2):
+        ws.cell(row=ri, column=1, value=defuse_formula(k))
+        ws.cell(row=ri, column=2, value=defuse_formula(v))
+    ws.column_dimensions["A"].width = 32
+    ws.column_dimensions["B"].width = 88
+    ws.freeze_panes = "A2"
+
+
 def write_report_md(report: JobReport, path: str | Path, *, client: str = "Client") -> Path:
     """A written report: summary, recommendations, findings, methodology."""
     out = Path(path)
@@ -439,6 +509,7 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
 
     lines.extend(_methodology_lines(report))
     lines.extend(_assumption_lines(report))
+    lines.extend(_reading_lines(report))
     lines.append("_Generated from the client's demand data. Figures are decision support; validate cost and lead-time inputs against your systems before ordering._")
 
     out.write_text("\n".join(lines), encoding="utf-8")

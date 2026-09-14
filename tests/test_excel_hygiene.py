@@ -369,6 +369,8 @@ def test_load_table_limpia_el_excel_del_cliente_y_deja_el_informe(tmp_path):
     assert informe.dropped["fila_vacia"] == 1
     assert informe.filled["sku"] == 1
     assert informe.clean is False
+    assert frame.attrs["excel_sheet"]
+    assert frame.attrs["excel_header_row"] == 1
 
 
 def test_un_csv_no_pasa_por_la_higiene_de_excel(tmp_path):

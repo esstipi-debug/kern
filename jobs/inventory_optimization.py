@@ -102,8 +102,9 @@ class JobReport:
     n_intermittent: int
     # How much of the source file survived intake, and why the rest didn't
     # (jobs/intake.py) — None when the caller used the untracked intake.prepare()
-    # path (e.g. examples/run_inventory_job.py). scm_agent/tool_options.py's
-    # inventory_options() reads this to decide whether to escalate.
+    # path. scm_agent/tool_options.py's inventory_options() reads this to decide
+    # whether to escalate. ``IntakeQuality.reading`` (mapping / sheet / hygiene)
+    # rides along so the deliverable can tell the client how their file was read.
     intake_quality: IntakeQuality | None = None
     intake_quality_threshold: float = 0.20
     # De donde salieron las columnas de servicio y que significan, cuando el frame de

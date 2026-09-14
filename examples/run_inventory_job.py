@@ -30,8 +30,13 @@ def main() -> int:
     parser.add_argument("--periods-per-year", type=float, default=52.0)
     args = parser.parse_args()
 
-    demand = intake.prepare(args.data, period=args.period)
+    demand, quality = intake.prepare_tracked(args.data, period=args.period)
     print(f"Intake: {demand['product_id'].nunique()} SKUs · {len(demand)} period-rows from {args.data}")
+    if quality.reading is not None:
+        print(f"Reading: {quality.reading.location_text()}")
+        print(f"  mapping: {quality.reading.mapping_text()}")
+        if quality.reading.noteworthy_hygiene():
+            print(f"  hygiene: {quality.reading.hygiene_text()}")
 
     report = run(
         demand,
@@ -40,6 +45,7 @@ def main() -> int:
         order_cost=args.order_cost,
         budget=args.budget,
         periods_per_year=args.periods_per_year,
+        intake_quality=quality,
     )
 
     issues = qa.verify(report)

@@ -226,6 +226,17 @@
   they are wire and infrastructure identifiers, not branding.
 
 ### Fixed
+- **How Kern read the file now reaches the client.** `excel_hygiene` already
+  counted every discarded TOTAL / blank / merged cell, and `load_table` left the
+  report in `DataFrame.attrs` so the deliverable could tell the client. Nothing
+  consumed it; column mapping died inside `prepare_tracked`. `IntakeReading`
+  (sheet, 1-based header row, canonical <- source mapping, hygiene) now rides
+  on `IntakeQuality` from `normalize_tracked`, and lands in the inventory deck's
+  data-source map, in `inventory_plan.xlsx` / `report.md` (sheet/section
+  "How Kern read this"), and in the `/demo` gap workbook ("Como lo leyo Kern").
+  `examples/run_inventory_job.py` uses `prepare_tracked` so the operator CLI
+  carries the same signal. Findings stay clean: this is how we read, not a
+  defect of their operation.
 - **Two Apps Store rule violations in the Odoo module's description page**, present since 17.0 and
   corrected in both series: an external link (the description may only link inside
   `static/description`) and a promotional block quoting revenue-share and white-label pricing. A
