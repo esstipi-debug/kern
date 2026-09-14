@@ -41,6 +41,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from src.connectors import health  # noqa: E402
+from src.connectors.meli_catalog import MeliCatalogClient  # noqa: E402
 from src.connectors.meli_prices import MeliClient  # noqa: E402
 from src.connectors.odoo import OdooClient  # noqa: E402
 from src.connectors.shopify_inventory import ShopifyInventoryClient  # noqa: E402
@@ -169,6 +170,22 @@ def _meli() -> MeliClient:
     return MeliClient(FakeHttp(), user_id="123")
 
 
+
+class _BearerHttp(FakeHttp):
+    """``FakeHttp`` con un Authorization visible.
+
+    ``MeliCatalogClient`` se niega a construirse sin Bearer -- el host publico de
+    MercadoLibre es robots-prohibited sin token del Developers Program -- asi que
+    el doble tiene que mostrar uno para poder ejercitar el contrato de salud.
+    """
+
+    headers = {"Authorization": "Bearer test-token"}
+
+
+def _meli_catalog() -> MeliCatalogClient:
+    return MeliCatalogClient(_BearerHttp(), user_id="123")
+
+
 def _odoo() -> OdooClient:
     proxy = FakeOdooProxy()
     return OdooClient("http://odoo.test", "db", "user", "key", common=proxy, models=proxy)
@@ -178,6 +195,7 @@ CASES: tuple[HealthCase, ...] = (
     HealthCase("shopify_prices", _shopify_prices, lambda c: c._http, False, True),
     HealthCase("shopify_inventory", _shopify_inventory, lambda c: c._http, False, True),
     HealthCase("meli_prices", _meli, lambda c: c._http, False, True),
+    HealthCase("meli_catalog", _meli_catalog, lambda c: c._http, False, True),
     # throttles=True for Odoo is not about XML-RPC, which has no such signal: a
     # production Odoo usually sits behind nginx or Cloudflare, and those answer a
     # rate limit with a genuine 429 + Retry-After that reaches the client.
@@ -376,7 +394,20 @@ def test_every_networked_client_is_covered_by_this_suite():
         if re.search(r"raise_for_status\(\)|xmlrpc\.client\.ServerProxy", source):
             networked.add(path.stem)
 
-    covered = {"shopify_prices", "shopify_inventory", "meli_prices", "odoo"}
+    # El detector mira el TEXTO del modulo, asi que una mencion dentro de un
+    # docstring lo activa igual. Se nombra la excepcion en vez de afinar el regex:
+    # un detector mas listo falla en silencio el dia que no reconoce un transporte
+    # nuevo, y este, al ser tosco, falla ruidoso -- que es el lado correcto.
+    #
+    # "shopify_connect" -- NO tiene transporte: ni clase cliente, ni `self._http`,
+    # ni credencial propia. Es un modulo de funciones que reciben una respuesta ya
+    # hecha. Aparece aca porque su helper `_status()` explica EN SU DOCSTRING que
+    # lee `status_code` del atributo "en vez de via raise_for_status()", para que
+    # el clasificador separe 401 de 403 de 404 sin depender de la jerarquia de
+    # excepciones de httpx. Lo unico que lo delata es la frase que dice que no lo usa.
+    networked -= {"shopify_connect"}
+
+    covered = {"shopify_prices", "shopify_inventory", "meli_prices", "meli_catalog", "odoo"}
     # Every module owning a live transport is covered, so there is nothing to
     # exempt. Two near-misses, named so a later reader does not "fix" their
     # absence: odoo_prices.py drives an injected OdooRPC (in production an
