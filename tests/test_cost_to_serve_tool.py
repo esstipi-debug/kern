@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from nosilo_core import llm
 
 from jobs import cost_to_serve_job as ctj
+from nosilo_core import llm
 from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.cost_to_serve import ServiceCostRates

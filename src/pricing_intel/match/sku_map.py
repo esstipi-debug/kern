@@ -35,15 +35,16 @@ place, a need sku_map does not share.
 
 from __future__ import annotations
 
-import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from src.data_paths import resolve_state_path
+
 from ..models import MatchCandidate
 
-DEFAULT_BASE_PATH = os.environ.get("LINCHPIN_SKU_MAP_PATH", "").strip() or "data/pricing_intel/sku_map"
+DEFAULT_BASE_PATH = resolve_state_path("sku_map")
 
 AUTO_CONFIRMED_BY = "auto"
 LLM_CONFIRMED_BY = "llm"

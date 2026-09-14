@@ -69,8 +69,8 @@ from scm_agent.events import Event, EventLedger  # noqa: E402
 from scm_agent.monitors import EVENT_COMPETITOR_PRICE_MOVE, run_all_monitors  # noqa: E402
 from src.connectors import odoo_connect, shopify_connect  # noqa: E402
 from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
+from src.data_paths import resolve_state_path  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
-from src.mcp_keys import DEFAULT_PATH as MCP_KEYS_DEFAULT_PATH  # noqa: E402
 from src.mcp_keys import McpKeyStore  # noqa: E402
 from src.policies import continuous_review_sq, periodic_review_rs  # noqa: E402
 from src.pricing_intel.acquire.watcher import ChangeDetectionWebhookError, parse_changedetection_webhook  # noqa: E402
@@ -102,6 +102,7 @@ from webapp.blog_page import render_blog_article_html, render_blog_index_html  #
 from webapp.blog_seo import build_llms_txt, build_robots_txt, build_sitemap_xml  # noqa: E402
 from webapp.decisions import router as decisions_router  # noqa: E402
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
+from webapp.iso import router as iso_router  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
 from webapp.mcp_server import build_mcp_server  # noqa: E402
 from webapp.offers import OFFERS, get_offer  # noqa: E402
@@ -128,10 +129,7 @@ SAMPLE_RECEIPTS_PORTFOLIO_FILE = _REPO_ROOT / "data" / "sample_receipts_portfoli
 SAMPLE_DEMAND_PORTFOLIO_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
 # Lead mini-reports + follow-up drafts (operator-facing; gitignored). On a cloud
 # deploy point this at the persistent volume (e.g. /data/leads) or it is ephemeral.
-LEAD_REPORTS_DIR = Path(
-    os.environ.get("LINCHPIN_LEAD_REPORTS_DIR", "").strip()
-    or (_REPO_ROOT / "deliverables" / "leads")
-)
+LEAD_REPORTS_DIR = Path(resolve_state_path("lead_reports"))
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 OPERATOR_DOCS_DIR = _REPO_ROOT / "documentation" / "operator"
 PAQUETES_DOCS_DIR = _REPO_ROOT / "documentation" / "paquetes"
@@ -143,10 +141,7 @@ JOBS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # single time. That is the exact failure fly.toml's [env] block already
 # documents fixing for events, autonomy, state and the pricing ledger -- this
 # was the one durable store left with no way to point it at the volume.
-LEADS_DIR = Path(
-    os.environ.get("LINCHPIN_LEADS_DIR", "").strip()
-    or (_REPO_ROOT / "webapp" / "_leads")
-)
+LEADS_DIR = Path(resolve_state_path("leads"))
 LEADS_DIR.mkdir(parents=True, exist_ok=True)
 LEADS_FILE = LEADS_DIR / "leads.jsonl"  # one JSON object per captured demo lead (PII; gitignored)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -168,7 +163,7 @@ MAX_LEAD_PERIODS = 52.0
 
 _ORCHESTRATOR: Orchestrator | None = None
 _MCP_KEY_STORE: McpKeyStore | None = None
-MCP_KEYS_PATH = os.environ.get("LINCHPIN_MCP_KEYS_PATH", "").strip() or MCP_KEYS_DEFAULT_PATH
+MCP_KEYS_PATH = resolve_state_path("mcp_keys")
 # Both already honor their own LINCHPIN_EVENTS_PATH/LINCHPIN_AUTONOMY_PATH env
 # vars via scm_agent.events.DEFAULT_PATH / scm_agent.autonomy.DEFAULT_PATH -
 # referenced here (not re-read from os.environ) so there is one source of
@@ -350,6 +345,13 @@ if observability.should_configure_logging():
 security.POLICY = access_policy.build_policy()
 
 # Fail loud on an unsecured production boot; refuse outright if REQUIRE_SECURE.
+# El gate de auth queda sin llave mucho mas seguido que en produccion: un
+# cliente self-serve corre `docker run` sin setear LINCHPIN_ENV, asi que
+# production_warnings() -- que arranca con `if ENV != "production": return []` --
+# no dice nada justo en el caso que importa. Precondicion 4 de la spec de
+# empaquetado: "arranque sin API key = banner explicito, no silencio ni crash".
+security.emitir_banner_de_arranque()
+
 _PROD_WARNINGS = security.production_warnings()
 for _w in _PROD_WARNINGS:
     logging.getLogger("linchpin.security").warning("production hardening: %s", _w)
@@ -364,6 +366,12 @@ app.include_router(decisions_router)
 # src/commercial_pricing.py. Stateless, no auth required (same public-read
 # posture as GET /paquetes; nothing here is sensitive or mutating).
 app.include_router(pricing_quote_router)
+
+# ISO operations/supply-chain catalog (knowledge/iso/catalogo.json): GET /api/iso,
+# POST /api/detectar, GET /api/iso/orden, GET /iso (catalog + detector + order).
+# Read-only floor evidence —
+# never a conformity ruling. Stdlib JSON + FastAPI only (prod-boot safe).
+app.include_router(iso_router)
 
 # Read-only MCP server (Phase A go-to-market: sell analysis-only access to other
 # AI agents). Shares this process's orchestrator (avoids loading the knowledge
@@ -976,6 +984,7 @@ async def api_demo_scan(
     email: str = Form(...),
     use_sample: bool = Form(False),
     file: UploadFile | None = File(None),
+    lang: str = Form("es"),
 ) -> dict:
     """The /demo funnel: one stock CSV -> the Diagnostico's teaser numbers.
 
@@ -1008,9 +1017,9 @@ async def api_demo_scan(
     # es la puerta. `load_table` no acepta `nrows` -- tiene que elegir hoja y fila
     # de encabezado antes de saber cuantas filas hay -- asi que se mide despues.
     if len(df) > 10000:
-        raise HTTPException(status_code=413, detail="archivo demasiado grande para demo gratis, usa Starter Mass")
+        raise HTTPException(status_code=413, detail="archivo demasiado grande para el diagnóstico gratis, usa Starter Mass")
     try:
-        result = demo_scan.run_demo_scan(df)
+        result = demo_scan.run_demo_scan(df, lang="en" if lang.strip().lower() == "en" else "es")
     except ValueError as exc:
         raise HTTPException(
             status_code=400,
@@ -1875,6 +1884,112 @@ async def api_watch(payload: dict = Body(...)) -> dict:
     }
 
 
+@app.get(
+    "/api/price-position/{sku}",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+async def api_price_position(
+    sku: str,
+    our_price: float | None = Query(default=None, gt=0.0),
+) -> dict:
+    """Where one of our SKUs sits against the competitor prices already
+    observed for it (Linchpin 3.0 plan section 9's last unbuilt route).
+
+    Reads the SAME production ``PriceLedger`` every acquisition tier writes
+    to -- ``PRICE_LEDGER_PATH``, the one ``POST /api/watch`` and the
+    scheduled L0 cycle land observations in -- via
+    ``PriceLedger.latest_for_product``. It never acquires anything: no
+    outbound HTTP, no scraping, no site-compliance surface. Purely a read of
+    what is already ledgered, which is why it can be a plain synchronous
+    handler instead of following ``POST /api/jobs``'s to_thread pattern.
+
+    Gated behind ``LINCHPIN_API_KEY`` and rate-limited: a client's competitor
+    panel is their commercial data, not a public teaser. The public teaser is
+    ``POST /api/demo-price-scan``, which is deliberately a different surface
+    with its own per-request isolated ledger.
+
+    **``our_price`` is a query parameter on purpose, and that is a real
+    constraint, not an oversight.** Kern persists competitor observations
+    (``PriceLedger``) and product<->competitor matches (``SkuMap``), but it
+    persists no catalogue of OUR prices anywhere -- ``PriceIntelReport.
+    our_prices`` is built from the caller's input catalogue at job time. So
+    the position index is only derivable when the caller supplies today's
+    price. Omit it and the competitor panel still comes back in full, with
+    ``position_index: null`` and ``competitor_read: "insufficient_signal"``.
+    The index itself is ``jobs.price_intelligence._position_index`` used
+    verbatim -- the SAME function behind ``price_position_matrix.xlsx`` and
+    ``jobs.price_priority`` -- so the our_price/avg(competitor) math lives in
+    exactly one place (golden rule 1) and keeps its refusal to invent a 1.0.
+
+    **A SKU with no observations is 200, not 404, and that is deliberate.**
+    The ledger indexes what has been observed; it holds no catalogue of valid
+    SKUs, so it genuinely cannot tell "never watched" from "typo". Answering
+    404 would assert a distinction the data does not support. It answers
+    ``observed_offers: 0`` with ``insufficient_signal`` instead -- the gap
+    declared, never a fabricated zero (golden rule 14).
+    """
+    from datetime import datetime, timezone
+    from decimal import Decimal
+
+    from jobs.price_intelligence import _position_index
+    from jobs.price_priority import CONFIRMED, INSUFFICIENT_SIGNAL
+
+    ledger = _get_price_ledger()
+    try:
+        records = ledger.latest_for_product(sku)
+    finally:
+        ledger.close()
+
+    now = datetime.now(timezone.utc)
+    offers = []
+    normalized_prices: list[Decimal] = []
+    for record in records:
+        offer = record.offer
+        observed_at = offer.observed_at
+        if observed_at.tzinfo is None:
+            observed_at = observed_at.replace(tzinfo=timezone.utc)
+        normalized_prices.append(offer.price_normalized)
+        offers.append({
+            "site": offer.site,
+            "competitor_sku_ref": offer.competitor_sku_ref,
+            "price_normalized": float(offer.price_normalized),
+            "currency": offer.currency,
+            "availability": offer.availability,
+            "promo_flag": offer.promo_flag,
+            "observed_at": observed_at.isoformat(),
+            "age_hours": round((now - observed_at).total_seconds() / 3600.0, 2),
+            "acquisition_tier": offer.acquisition_tier,
+            "extractor": offer.extractor,
+            "match_confidence": offer.match_confidence,
+        })
+
+    panel = None
+    if normalized_prices:
+        panel = {
+            "min": float(min(normalized_prices)),
+            "avg": float(sum(normalized_prices) / Decimal(len(normalized_prices))),
+            "max": float(max(normalized_prices)),
+            "observations": len(normalized_prices),
+        }
+
+    index = _position_index(
+        Decimal(str(our_price)) if our_price is not None else None,
+        normalized_prices,
+    )
+    ages = [o["age_hours"] for o in offers]
+    return {
+        "product_id": sku,
+        "observed_offers": len(offers),
+        "our_price": our_price,
+        "position_index": float(index) if index is not None else None,
+        "competitor_read": CONFIRMED if index is not None else INSUFFICIENT_SIGNAL,
+        "competitor_panel": panel,
+        "freshest_age_hours": min(ages) if ages else None,
+        "stalest_age_hours": max(ages) if ages else None,
+        "offers": offers,
+    }
+
+
 # ---- POST /api/jobs/run-scheduled: cron-triggered scheduler wiring ----------
 #
 # jobs.scheduler.JobRegistry.run_once() is Golden Rule 9's ("todo componente
@@ -2482,6 +2597,12 @@ def console() -> FileResponse:
 def demo_page() -> FileResponse:
     """Lead-gated self-serve demo: capture an email, then upload data or use the
     bundled sample dataset and see what the engine recommends."""
+    return FileResponse(STATIC_DIR / "demo" / "index.html")
+
+
+@app.get("/demo/en")
+def demo_page_en() -> FileResponse:
+    """English locale of /demo. Same HTML; the page reads the path and switches copy."""
     return FileResponse(STATIC_DIR / "demo" / "index.html")
 
 

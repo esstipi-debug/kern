@@ -72,6 +72,12 @@ DEFAULT_SLA_HOURS = 48.0
 MAD_WINDOW_DAYS = 30
 DEFAULT_BREAKER_KWARGS: dict = {}
 
+# Piso de confianza del match para que una observación entre en la *pricing
+# pair* (ver `eligible_competitor_prices`). El match ya decidió antes si la
+# fila entra al ledger; esto es una segunda pregunta, distinta: con cuánta
+# confianza esa fila puede mover el número que se le muestra al cliente.
+DEFAULT_MIN_MATCH_CONFIDENCE = 0.7
+
 _PRODUCT_COLS = ("product_id", "sku", "SKU", "Product", "product")
 _URL_COLS = ("competitor_url", "url", "competitor_id", "competitor_ref", "link", "URL")
 _SITE_COLS = ("competitor_site", "site", "domain")
@@ -364,10 +370,87 @@ def run(
 # -- deliverable: price_position_matrix.xlsx + ledger_export.csv --------------
 
 
+@dataclass(frozen=True)
+class PricingPair:
+    """Las observaciones de competencia que sí restringen nuestro precio, más
+    el recuento de las que quedaron afuera y por qué.
+
+    ``excluded`` nunca se omite aunque esté vacío, y la suma de sus valores más
+    ``n_eligible`` siempre da la cantidad de ofertas de entrada (golden rule 14:
+    ningún recorte silencioso). Sin ese recuento, un índice calculado sobre una
+    sola observación es indistinguible de uno calculado sobre diez.
+    """
+
+    prices: tuple[Decimal, ...]
+    excluded: dict[str, int]
+
+    @property
+    def n_eligible(self) -> int:
+        return len(self.prices)
+
+
+def eligible_competitor_prices(
+    offers: list[CompetitorOffer],
+    *,
+    sla_hours: float,
+    now: datetime,
+    min_match_confidence: float = DEFAULT_MIN_MATCH_CONFIDENCE,
+) -> PricingPair:
+    """El gate de la *pricing pair*: un competidor solo restringe nuestro precio
+    si tiene precio **y** stock, la lectura sigue vigente, y el match que la ató
+    a nuestro SKU es confiable.
+
+    Sin este filtro, ``_position_index`` promediaba todo lo observado, y el
+    sesgo que eso produce **tiene signo**: un listing agotado conserva su último
+    precio, que suele ser viejo y bajo, así que el promedio baja y el índice
+    sube. El sistema le dice al cliente que está caro cuando no lo está — y
+    ``jobs.price_priority`` traduce eso a ``igualar_precio``, o sea a bajar el
+    precio contra un competidor que no le está vendiendo a nadie.
+
+    ``Preorder`` se excluye junto con ``OutOfStock``: no se puede comprar hoy,
+    así que no restringe nuestro precio hoy. Por eso el motivo se llama
+    ``not_in_stock`` y no ``out_of_stock`` — nombra la condición, no el valor
+    del campo.
+
+    Las razones se atribuyen en orden fijo (stock, frescura, confianza) y una
+    oferta se cuenta **una sola vez**, bajo la primera que la excluye. Es una
+    elección, no una casualidad: un recuento donde los motivos se solapan no
+    suma con ``n_eligible`` y por lo tanto no se puede leer.
+
+    El borde del SLA es inclusivo: exactamente en el plazo la lectura todavía
+    cuenta, porque el SLA es el lapso dentro del cual sirve, no el instante en
+    que deja de servir.
+    """
+    prices: list[Decimal] = []
+    excluded: dict[str, int] = {}
+
+    def _drop(reason: str) -> None:
+        excluded[reason] = excluded.get(reason, 0) + 1
+
+    for offer in offers:
+        if offer.availability != "InStock":
+            _drop("not_in_stock")
+            continue
+        if (now - offer.observed_at).total_seconds() / 3600.0 > sla_hours:
+            _drop("stale")
+            continue
+        if offer.match_confidence < min_match_confidence:
+            _drop("low_match_confidence")
+            continue
+        prices.append(offer.price_normalized)
+
+    return PricingPair(prices=tuple(prices), excluded=excluded)
+
+
 def _position_index(our_price: Decimal | None, competitor_prices: list[Decimal]) -> Decimal | None:
     """Our price / average competitor price -- <1 means we're cheaper, >1
     means we're pricier. ``None`` when either side is unknown (never a
-    fabricated 1.0)."""
+    fabricated 1.0).
+
+    Es matemática pura y sigue siéndolo: **quién entra en la lista es decisión
+    de quien llama**, y para eso está :func:`eligible_competitor_prices`. Pasarle
+    ``report.offers`` crudo produce un número sesgado, no un error.
+    """
     if our_price is None or not competitor_prices:
         return None
     avg = sum(competitor_prices) / Decimal(len(competitor_prices))
@@ -395,17 +478,29 @@ def write_operational(report: PriceIntelReport, out_dir: str | Path, client: str
     wb = Workbook()
     ws = wb.active
     ws.title = "Position Matrix"
+    # `in_pair` y `excluded_from_pair` viajan en la matriz porque el índice se
+    # calcula ahora sobre un subconjunto: sin esas dos columnas, una fila con
+    # un precio visible y un índice que no lo refleja parece un error de cálculo.
     ws.append(["product_id", "our_price", "competitor_site", "competitor_price_normalized",
-               "position_index", "acquisition_tier", "extractor", "confidence", "observed_at"])
+               "position_index", "n_competitors_in_pair", "in_pair", "excluded_from_pair",
+               "acquisition_tier", "extractor", "confidence", "observed_at"])
     for product_id in sorted(by_product):
         offers = by_product[product_id]
         our_price = report.our_prices.get(product_id)
-        idx = _position_index(our_price, [o.price_normalized for o in offers])
+        pair = eligible_competitor_prices(offers, sla_hours=report.sla_hours, now=report.now)
+        idx = _position_index(our_price, list(pair.prices))
+        # Se recalcula por oferta con la MISMA función, en vez de recordar
+        # cuáles entraron: una segunda forma de decidir elegibilidad es una
+        # segunda implementación que puede derivar de la primera.
         for offer in offers:
+            one = eligible_competitor_prices([offer], sla_hours=report.sla_hours, now=report.now)
+            in_pair = one.n_eligible == 1
             ws.append([
                 defuse_formula(product_id), float(our_price) if our_price is not None else None,
                 defuse_formula(offer.site), float(offer.price_normalized),
-                float(idx) if idx is not None else None, offer.acquisition_tier,
+                float(idx) if idx is not None else None, pair.n_eligible,
+                in_pair, "" if in_pair else next(iter(one.excluded)),
+                offer.acquisition_tier,
                 defuse_formula(offer.extractor), offer.extraction_confidence,
                 offer.observed_at.isoformat(),
             ])

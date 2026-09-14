@@ -23,10 +23,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
-from nosilo_core.guided import GuidedOutcome, Residual, recommend, verify_guided
 
 from jobs import forecast_cycle
 from jobs.forecast_cycle import CycleMemory, mean_finite
+from nosilo_core.guided import GuidedOutcome, Residual, recommend, verify_guided
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv

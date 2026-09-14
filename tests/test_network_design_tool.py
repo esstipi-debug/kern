@@ -3,10 +3,10 @@ from pathlib import Path  # noqa: F401  (used by the routing/orchestrator tests 
 
 import pandas as pd
 import pytest
-from nosilo_core import llm
-from nosilo_core.guided import OPTIONS  # noqa: F401  (Task 3 orchestrator tests)
 
 from jobs import network_design_job as ndj
+from nosilo_core import llm
+from nosilo_core.guided import OPTIONS  # noqa: F401  (Task 3 orchestrator tests)
 from scm_agent import intent, tools  # noqa: F401  (Task 3 routing tests)
 from scm_agent.orchestrator import Orchestrator  # noqa: F401  (Task 3 orchestrator tests)
 from src.deliverable import Deliverable

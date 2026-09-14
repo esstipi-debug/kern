@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kern"
 version = "2.9.0"
-description = "Kern — an agentic supply-chain engine: inventory optimization, pricing and leadership analysis from a plain-language brief, grounded in a knowledge graph of 25 SCM sources."
+description = "Kern — an agentic supply-chain engine: inventory optimization, pricing and leadership analysis from a plain-language brief, grounded in a knowledge graph of 26 curated external sources."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
@@ -22,24 +22,22 @@ dependencies = [
     # degrade without (unlike the optional-extra heavy deps below, there is no
     # meaningful fallback for "the routing table failed to parse").
     "PyYAML>=6.0",
-    # nosilo-core (private control plane, esstipi-debug/nosilo-core@v0.1.0) is
-    # intentionally NOT a hard dependency so `pip install -e .` works without a
-    # token (external evaluators / demos). Full install:
-    #   pip install -e ".[core]"              # just the core
-    #   pip install -e ".[core,web,mcp]"      # prod parity (mirrors Dockerfile)
-    # Demo shortcut when core is expected but token is absent:
-    #   pip install -e . --no-deps
-    # Vendoring alternative: `git subtree add --prefix=nosilo_core ...` -> remove
-    # the git URL entirely (see docs/NOSILO_CORE_FALLBACK.md). Pin is to a TAG,
-    # never a branch (branch = build that passes Mon fails Tue with no commit).
-    # Private repo -> CI needs NOSILO_CORE_TOKEN, see .github/workflows/tests.yml
-    # and the core's CONSUMING.md.
+    # nosilo_core NO es una dependencia: vive en este repo, en nosilo_core/.
+    # Fue un repo privado aparte entre el 2026-08-03 y el 2026-09-11, y el
+    # empaquetado no rindio: 3.569 lineas con un solo consumidor real (este repo),
+    # un secreto repartido en seis lugares de build, una sola cuenta que podia
+    # rotarlo, y agentes en la nube sin poder correr el 70% de los tests. La
+    # frontera core/dominio sigue viva y la siguen guardando dos tests
+    # (tests/test_core_boundary.py y tests/test_pack_boundary.py): lo que se fue
+    # es la credencial, no la separacion.
 ]
 
 [project.optional-dependencies]
-core = [
-    "nosilo-core @ git+https://github.com/esstipi-debug/nosilo-core.git@v0.1.0",
-]
+# Sigue existiendo y vacio A PROPOSITO: `pip install -e ".[core,web,mcp]"` es el
+# comando que estan escritos en el Dockerfile, en docs/DEPLOYMENT.md y en la
+# memoria de varias sesiones. Un extra vacio los deja funcionar; borrarlo los
+# rompe con un error que no dice que paso.
+core = []
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -222,7 +220,7 @@ Homepage = "https://github.com/esstipi-debug/kern"
 # nosilo_core is the domain-agnostic control plane (see nosilo_core/__init__.py);
 # packs/ and src/ are the domain packs that depend on it. That direction is
 # enforced by tests/test_core_boundary.py and tests/test_pack_boundary.py.
-include = ["packs*", "src*"]
+include = ["nosilo_core*", "packs*", "src*"]
 
 [tool.pytest.ini_options]
 pythonpath = "."

@@ -96,8 +96,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 import yaml
-from nosilo_core.writeback import Changeset
 
+from nosilo_core.writeback import Changeset
 from scm_agent.citation_gate import filter_citations
 from scm_agent.knowledge import GroundedCitation, KnowledgeBase
 from src.state.store import StateStore, default_store

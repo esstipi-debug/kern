@@ -17,14 +17,15 @@ flip it with ``monkeypatch.setattr(security, "API_KEY", ...)``.
 from __future__ import annotations
 
 import hmac
+import logging
 import os
 import time
 from collections import defaultdict, deque
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
-from nosilo_core.access import PolicyEngine, PolicySet
 
+from nosilo_core.access import PolicyEngine, PolicySet
 from webapp import principal
 
 
@@ -38,7 +39,39 @@ def _int_env(name: str, default: int) -> int:
 # ---- configuration (module-level so it stays monkeypatchable) -----------------
 RATE_LIMIT = _int_env("LINCHPIN_RATE_LIMIT", 0)  # max requests per window; 0 disables
 RATE_WINDOW = _int_env("LINCHPIN_RATE_WINDOW", 60)  # window length, seconds
-API_KEY = os.environ.get("LINCHPIN_API_KEY", "").strip()  # empty disables the gate
+#: La variable del contrato self-serve, y la que este deploy ya tiene como
+#: secret. La legada gana si estan las dos: solo puede pasar en el deploy del
+#: operador, y ahi la vieja es la configurada. Mismo criterio conservador que
+#: KERN_DATA_DIR -- lo que produccion ya setea sigue mandando.
+API_KEY_ENV_CONTRATO = "KERN_API_KEY"
+API_KEY_ENV_LEGADO = "LINCHPIN_API_KEY"
+
+
+def leer_api_key() -> str:
+    """El valor de la key, mire donde mire. Vacio = sin gate."""
+    for nombre in (API_KEY_ENV_LEGADO, API_KEY_ENV_CONTRATO):
+        if nombre in os.environ:
+            valor = os.environ[nombre].strip()
+            if valor:
+                return valor
+    return ""
+
+
+def estado_api_key() -> str:
+    """``configurada`` | ``apagada_a_proposito`` | ``sin_configurar``.
+
+    Los tres, no dos, porque la spec de empaquetado lo pide asi: *"la diferencia
+    entre 'no configuraste' y 'configuraste vacio' es explicita"*. Un
+    duenno-operador solo en su LAN que apaga la auth a proposito no tiene que
+    recibir la misma alarma que alguien que se la olvido y expuso el puerto.
+    """
+    if leer_api_key():
+        return "configurada"
+    declarada = any(n in os.environ for n in (API_KEY_ENV_LEGADO, API_KEY_ENV_CONTRATO))
+    return "apagada_a_proposito" if declarada else "sin_configurar"
+
+
+API_KEY = leer_api_key()  # empty disables the gate
 CORS_ORIGINS = [o.strip() for o in os.environ.get("LINCHPIN_CORS_ORIGINS", "").split(",") if o.strip()]
 ENV = os.environ.get("LINCHPIN_ENV", "development").strip().lower()  # "production" tightens checks
 REQUIRE_SECURE = os.environ.get("LINCHPIN_REQUIRE_SECURE", "").strip().lower() in ("1", "true", "yes")
@@ -100,6 +133,70 @@ def production_warnings() -> list[str]:
             "and can be forged by any code with access to nosilo_core.writeback"
         )
     return out
+
+
+def banner_de_arranque() -> list[str]:
+    """Lo que se grita al arrancar cuando `POST /api/jobs` queda sin gate.
+
+    Precondicion 4 de la spec de empaquetado: *arranque sin API key = banner
+    explicito, no silencio ni crash*.
+
+    Por que no alcanzaba `production_warnings()`: esa lista arranca con
+    ``if ENV != "production": return []``, y un cliente que corre `docker run`
+    no setea `LINCHPIN_ENV`. O sea que el unico aviso que existia estaba apagado
+    justo en el caso que importa. Medido antes de esto, importando `webapp.app`
+    con el entorno limpio: cero lineas de log sobre seguridad.
+
+    Este banner NO mira `ENV`, y no reemplaza a `production_warnings()` -- que
+    sigue igual porque `LINCHPIN_REQUIRE_SECURE` se niega a bootear cuando esa
+    lista trae algo, y volverla no vacia en development habria roto el arranque
+    de cualquiera que la tuviera puesta.
+
+    Devuelve [] cuando hay key. Nunca levanta: la spec pide banner, no crash.
+    """
+    estado = estado_api_key()
+    if estado == "configurada":
+        return []
+
+    if estado == "apagada_a_proposito":
+        return [
+            "Kern arranca SIN AUTENTICACION, por configuracion explicita "
+            f"({API_KEY_ENV_CONTRATO} esta declarada y vacia).",
+            "POST /api/jobs y las descargas de deliverables quedan abiertos a "
+            "cualquiera que alcance este puerto.",
+        ]
+
+    return [
+        "=" * 72,
+        "Kern arranca SIN AUTENTICACION: no hay API key configurada.",
+        "",
+        "POST /api/jobs corre trabajos contra tus datos y GET /jobs-output/* "
+        "sirve los entregables. Ahora mismo los dos estan abiertos a cualquiera "
+        "que alcance este puerto.",
+        "",
+        "Para cerrarlo:",
+        f"    docker run -p 8000:8000 -e {API_KEY_ENV_CONTRATO}=<una-clave-larga> ...",
+        "",
+        f"Para dejarlo abierto a proposito, declara {API_KEY_ENV_CONTRATO} vacia "
+        "y este aviso baja a una linea.",
+        "=" * 72,
+    ]
+
+
+def emitir_banner_de_arranque() -> None:
+    """Manda el banner al log. Lo llama `webapp/app.py` al importar.
+
+    WARNING cuando falta la key (es un olvido posible), INFO cuando esta apagada
+    a proposito (es una decision, y repetirla en WARNING entrena a ignorar los
+    warnings).
+    """
+    lineas = banner_de_arranque()
+    if not lineas:
+        return
+    log = logging.getLogger("linchpin.security")
+    nivel = logging.WARNING if estado_api_key() == "sin_configurar" else logging.INFO
+    for linea in lineas:
+        log.log(nivel, "%s", linea)
 
 
 # ---- rate-limiter state -------------------------------------------------------

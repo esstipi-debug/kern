@@ -1,0 +1,3094 @@
+
+Praise for the Second Edition of
+Business and Competitive Analysis
+“Business and Competitive Analysis should be part of every CI practitioner’s professional
+library. The methods presented provide valuable guidance to all levels, from novice to expert.
+The latest edition contains key updates, including new methods, updated case studies and
+applications, and a guide to help analysts choose the proper method from among the many
+presented in the text.”
+—Timothy J. Kindler, Associate Director, Competitive Intelligence, Ernst & Young LLP and
+Former SCIP President
+“Craig Fleisher and Babette Bensoussan’s second edition of the best-selling Business and
+Competitive Analysis raises the bar once again in the definitive ‘how to’ must-have texts
+for any business executive undertaking competitive analysis in a continually changing
+commercial environment. New stand-out features in this edition provide strong directional
+guidance to all seasoned and beginning executives, including how the questions that
+executives pose relate to the appropriate analytical technique, some new frameworks like
+the Actionable SWOT and Blended Industry Analysis, up-to-date examples of 24 techniques
+to use in order to confidently position that approach, walk-through worksheets, as well as
+authoritative context outlining all facets to ensure that the analysis lands successfully and the
+business takes action. The tried-and-tested FAROUT methodology again helps readers work
+out which of the techniques to apply first given their own unique position, and continues
+to provide that development framework to seek out opportunities to apply the rest. The
+combination of new and existing features continues to ensure that the text will never be
+far from a business’s problems, their analyses, and proposed recommendations. Like the
+previous authoritative titles from Fleisher and Bensoussan, without comparison, this second
+edition will become the next most sought-after installment in defining competitive analysis’
+role and value for business executives in a continually changing environment.”
+—Andrew Beurschgens, Head, Market and Competitive Intelligence, Everything Everywhere
+(EE) Ltd.
+“In this second edition, a great book gets even better. The inclusion of business case studies,
+sample intelligence questions for each analysis technique, and worksheets could make this
+the only book beginning and experienced business practitioners need to improve the depth
+and relevance of their analyses. Even a quick skim through this book provides inspiration for
+new ways to think about and structure one’s analysis.”
+—Bill Fiora, Principal, CSC ResearchNetwork (Computer Sciences Corporation)
+9780133086409_Book 1.indb i 12/23/14 10:04 AM
+“I was impressed with the clarity, insight, and rigor contained in the first edition of this text.
+This second edition confirms Fleisher and Bensoussan’s position as #1 experts in the field
+of competitive analysis with updated chapters, new methods, direct links to key questions
+typically faced by decision makers, and the addition of worksheets to aid the application of
+concepts to real situations. Once again, they have produced the means, and set the standards,
+for practitioners to achieve excellence in the analysis task. I would not consider the outcome
+of a decision-making process without being assured that the methods contained in this text
+had been consulted.”
+—Dr. Sheila Wright, Director, Strategic Partnerships Ltd., UK, and Former Editor, Journal
+of CI and Management
+“MBA students in both my Competitive Intelligence and Marketing Strategy courses
+have benefited for years from the first edition of Business and Competitive Analysis. This
+second edition builds on the solid foundation of the first edition by adding new business
+analysis methods and new case examples that demonstrate when, why, and how each of the
+diverse techniques can be effectively utilized as inputs to strategic decision making. Each
+method is linked to typical questions that executives ask, and the inclusion of worksheets
+facilitates the analytical methods being tailored to an individual organization’s particular
+situation. This book is a comprehensive compilation of which methods to use, why, how, and
+communicating the results to the appropriate stakeholders.”
+—Dr. David L. Blenkhorn, Professor of Marketing, Wilfrid Laurier University, Waterloo,
+Ontario, Canada
+9780133086409_Book 1.indb ii 12/23/14 10:04 AM
+Praise for the First Edition of
+Business and Competitive Analysis
+“Baruch’s Law reminds us that, ‘when all you have is a hammer, everything looks like a
+nail,’ a condition describing the single most difficult challenge facing both business analysts
+and consultants, novice and veteran alike. In 2003, Fleisher and Bensoussan delivered what all
+leading intelligence thinkers agree was THE definitive guide to analytics and interpretation
+for the first half-decade of the new millennium. With their latest collaboration, this expert
+duo has defined the second-half of this decade as one guided by knowing the tools appropriate
+for the cognitive task at hand while expanding the toolkit available to be even more complete,
+valuable, and useful through the actionable detailing of 24 all-new techniques. Plus, the
+unique FAROUT approach to tool selection equips analysts to quickly and easily apply the
+right techniques more reliably and scientifically to the range of outcomes anticipated in every
+business-decision support situation.”
+—Arik Johnson, Managing Director, Aurora WDC
+“The realm of competitive intelligence has, in recent years, benefited from a profusion of
+books, handbooks, and essays, most of which deal with issues in intelligence collection:
+emerging techniques and technologies and general overviews of the business intelligence
+discipline. Fleisher and Bensoussan offer a choice of analytical models destined to narrow
+corporate course charting uncertainties and present a convincing case for matching science
+and art in the analysis process. This new book is an important addition to the definitive pro-
+fessional library on the art and science of business intelligence.”
+—Michael Belkine, Managing Director, Splendour Ltd
+“Having been involved in information analysis and strategic information support to
+companies for many years, I found this book very helpful and full of insights addressed
+not only to the newcomer, but also to an experienced person. The in-depth review of
+each analysis technique actually brings new ways of looking at problems: Information
+analysis becomes an instrument in the hands of a thinking person; it’s not an academic
+exercise or just a conceptual framework. Furthermore, in my experience usually some of the
+analysis techniques are known and used almost only by people working in a few functions
+inside a company. This book enters you in a fascinating multi-stage and multi-face analysis
+world: Everyone needs a way of organizing thoughts, and here you can find what you require
+to perform a good analysis and give insightful meanings to the information you manage,
+wherever you work in your company, whatever the problem you face is. Every day everyone
+needs to analyze information to understand phenomena and then act to achieve the best
+performance: hence you need to keep this book on your desk.”
+—Milena Motta, Managing Director, Strategie & Innovazione, Italy
+9780133086409_Book 1.indb iii 12/23/14 10:04 AM
+“There are very few books I recommend as a must-read to the managers who come to us
+from all over the world for professional training in competitive intelligence. Porter, Fuld,
+Gilad (of course), and Fleisher and Bensoussan.”
+—Dr. Benjamin Gilad, President, The Fuld-Gilad-Herring Academy of Competitive
+Intelligence, www.academyci.com
+“At last a comprehensive manual of tools and techniques for the business and competitive
+analysis professional! Fleisher and Bensoussan’s second collaborative work builds beautifully
+on their first. It provides the specific guidance desperately needed by company analysts to
+ensure that decision makers receive the right information at the right time to make the right
+decisions.”
+—Kirk W. M. Tyson, CEO, Perpetual Strategist Ltd., Chicago, USA
+“The dynamic collaborative team of Bensoussan and Fleisher has done it again. Expanding
+on their earlier text, Strategic and Competitive Analysis, the refined perspectives offered
+in their latest work, Business and Competitive Analysis, have raised the bar for essential
+literature in the profession of decision support. By artfully interweaving both pragmatic
+and theoretic principles, this book couples frameworks for critical thinking with practical
+operational guidance for the successful analyst. They never lose sight of the ultimate end
+game—sustainable competitive advantage through sound, evidence-based decision making.
+Very few enterprises seem capable of achieving this elusive objective in the hypercompetitive
+business environment of the 21st century. These thought leaders have built another pillar
+in the foundation of the business intelligence literature base that should be required
+reading in both academic and corporate settings.”
+—Clifford Kalb, Vice President, Life Sciences, Wood Mackenzie, Inc.
+“Bravo! Bensoussan and Fleisher have returned for an encore performance as your instructive
+desktop guides to thoughtfully assist analysts of all stripes in selecting and applying a wide-
+ranging array of frameworks, all designed to enhance analytical thinking, insight, and
+decision-making. This second volume, following their wildly successful first book, delivers
+exactly what it promises—to assist analysts in developing high value insights, to aid them in
+making sense of the competitive environment confronting their organizations, and to guide
+them in advising decision-makers—all contributing integrally to organizational performance.
+This book joins their first volume as a ‘must have’ addition to an analyst’s toolkit. I highly
+recommend it.”
+—Cyndi Allgaier, Director, Strategic Analysis, AARP
+9780133086409_Book 1.indb iv 12/23/14 10:04 AM
+“Business and Competitive Analysis by Fleisher and Bensoussan is an excellent complement to
+their earlier volume, Strategic and Competitive Analysis. Both books provide a comprehensive
+resource on analytical methods for the business and competitive analyst. I have found this
+book to be an excellent summary of many analytical tools commonly used by competitive
+intelligence, strategic planning, and marketing professionals, including some techniques
+that have not been well documented in the past. The standardized approach to describing
+methods is a welcome approach to showing how the methods work, as well as their history,
+applications, and strengths and limitations. Excellent references are also included. The
+detailed step-by-step descriptions of how to use the methods with realistic examples is
+especially valuable. I highly recommend this book for business analysis professionals seeking
+a basic reference on important tools or a readable source for learning about new methods.”
+—Dr. Brad Ashton, Concurrent Technologies Corporation
+“Governments and businesses, whether the emphasis is on product or service development,
+are all looking for the same thing, that next great new idea that will help them position
+themselves effectively and successfully in the marketplace with consumers or with the voting
+public. Through technology development in the last 15 years, more data is available to and
+within organizations than ever before to help achieve this goal. The struggle, and indeed
+it is, is for organizations to mine this data in a meaningful way and find that ‘insight’ that
+will give them the strategic advantage over a competitor. In Business and Competitive
+Analysis, Fleisher and Bensoussan have provided the pathway for data to be taken and mined
+and to be combined to find those insights. They have also cleverly aided the reader and
+the practitioners of competitive analysis by giving strong definitions for clarity around
+the data mining area. Anyone who is charged with competitive strategic analysis and
+intelligence must read this book.”
+—Louise McCann, Chief Executive Officer, Research International, Australia and New
+Zealand
+9780133086409_Book 1.indb v 12/23/14 10:04 AM
+This page intentionally left blank
+9780133086409_Book 1.indb vi 12/23/14 10:04 AM
+Business and
+Competitive Analysis,
+Second Edition
+EFFECTIVE APPLICATION OF NEW
+AND CLASSIC METHODS
+Craig S. Fleisher
+Babette E. Bensoussan
+9780133086409_Book 1.indb vii 12/23/14 10:04 AM
+Publisher: Paul Boger
+Editor-in-Chief: Amy Neidlinger
+Executive Editor: Jeanne Glasser Levine
+Operations Specialist: Jodi Kemper
+Cover Designer: Chuti Prasertsith
+Managing Editor: Kristy Hart
+Senior Project Editor: Lori Lyons
+Copy Editor: Paula Lowell
+Proofreader: Kathy Ruiz
+Indexer: Erika Millen
+Compositor: Nonie Ratcliff
+Manufacturing Buyer: Dan Uhrig
+© 2015 by Pearson Education, Inc.
+Upper Saddle River, New Jersey 07458
+For information about buying this title in bulk quantities, or for special sales opportunities (which may include electronic ver-
+sions; custom cover designs; and content particular to your business, training goals, marketing focus, or branding interests),
+please contact our corporate sales department at corpsales@pearsoned.com or (800) 382-3419.
+For government sales inquiries, please contact governmentsales@pearsoned.com.
+For questions about sales outside the U.S., please contact international@pearsoned.com.
+Company and product names mentioned herein are the trademarks or registered trademarks of their respective owners.
+All rights reserved. No part of this book may be reproduced, in any form or by any means, without permission in writing from
+the publisher.
+Printed in the United States of America
+First Printing January 2015
+ISBN-10: 0-13-308640-2
+ISBN-13: 978-0-13-308640-9
+Pearson Education LTD.
+Pearson Education Australia PTY, Limited.
+Pearson Education Singapore, Pte. Ltd.
+Pearson Education Asia, Ltd.
+Pearson Education Canada, Ltd.
+Pearson Educación de Mexico, S.A. de C.V.
+Pearson Education—Japan
+Pearson Education Malaysia, Pte. Ltd.
+Library of Congress Control Number: 2014952250
+9780133086409_Book 1.indb viii 12/23/14 10:04 AM
+This book is dedicated to my family, my wonderful wife Angela,
+and three awesome boys Zachary, Austin, and Kieren.
+They have contributed love, patience, time, and understanding.
+I couldn’t have done it without you and the support of my friends.
+—Craig S. Fleisher
+I dedicate this book to Garry Johnston, my husband and best friend.
+His encouragement, patience, and love throughout the countless days, weeks,
+and months involved were instrumental in me emerging with some semblance of sanity.
+Garry, you have been a tower of strength. Thank you.
+—Babette E. Bensoussan
+9780133086409_Book 1.indb ix 12/23/14 10:04 AM
+Contents
+Preface . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .xxix
+How to Use the Book . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . xxxi
+Section 1 Essentials of Performing Business and Competitive Analysis
+Chapter 1 Business and Competitive Analysis: Definition, Context,
+and Benefits . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 3
+Understanding the Terminology . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+Competitive. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+Strategic. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+Intelligence . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+Analysis as a Component in the Intelligence Cycle. . . . . . . . . . . . . . . . . . . . .10
+Competitive Analysis and Decision Making. . . . . . . . . . . . . . . . . . . . . . . . . . .11
+The Competitive Context Facing Contemporary Enterprises . . . . . . . . .13
+Contemporary Context Facing the Analyst. . . . . . . . . . . . . . . . . . . . . . . . .14
+Shifting Organizational Priorities for Analysts and Analysis. . . . . . . . . . . . .16
+Summary. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .17
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .18
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .20
+Chapter 2 Performing the Analysis Process. . . . . . . . . . . . . . . . . . . . . . . 22
+Understanding the “Customers” of Your Analysis Work. . . . . . . . . . . . . . . .23
+Defining the Analysis Problem. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .25
+Identifying the Scope of the Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .26
+Intelligence Analysis at Differing Organizational Levels . . . . . . . . . . . . . . . .31
+Strategic Intelligence Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .32
+Tactical Intelligence Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .32
+Operational Intelligence Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .33
+Micro Intelligence Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .33
+Evaluating the Inputs to Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .34
+Making Sense of the Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .37
+Facts . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .37
+Perceptions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .38
+Beliefs. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .38
+Assumptions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .38
+Projections. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .38
+Synthesis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .39
+9780133086409_Book 1.indb x 12/23/14 10:04 AM
+Infrastructure to Support the Analysis Process . . . . . . . . . . . . . . . . . . . . . . . .39
+Intelligence Solutions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .40
+Limitations of Intelligence Solutions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .40
+Managing the Internal Network. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .41
+Developing and Managing the External Network . . . . . . . . . . . . . . . . . . .42
+Proactivity, Efficiency, and Perpetual Learning. . . . . . . . . . . . . . . . . . . . .43
+Summary. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .44
+Fleisher and Bensoussan’s 10 Commandments for Business
+and Competitive Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .45
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .46
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .47
+Chapter 3 Avoiding Analysis Pitfalls by Developing
+Analytical Fitness. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 48
+Trade-Offs Made by Analysts. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .48
+Analysis of Failure . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .49
+Failure Location . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .49
+Sources of Failure. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .50
+Four-Level Hierarchical Model of Analysis Failures. . . . . . . . . . . . . . . . . . . .51
+Individual Analyst-Level Failures . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .53
+Analysis Task-Level Failures. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .55
+Internal Organizational-Level Failures . . . . . . . . . . . . . . . . . . . . . . . . . . . .57
+External Environment-Level Failures . . . . . . . . . . . . . . . . . . . . . . . . . . . . .59
+The Movement to a New Generation of Analysis . . . . . . . . . . . . . . . . . . . . . .62
+Overcoming the Barriers and Improving Performance through
+Developing Analytical Fitness. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .63
+Summary. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .65
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .66
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .68
+Chapter 4 Communicating Analysis Results . . . . . . . . . . . . . . . . . . . . . . 69
+The Art of Effective Communication. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .69
+Packaging the Results of Your Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .71
+Delivering the Message . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .71
+Face-to-Face Briefings . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .72
+Written Reports and Briefings . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .72
+Presentations in Meetings, Seminars, and Workshops. . . . . . . . . . . . . . .72
+E-Mail/Instant Messaging. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .73
+Web-Based Intelligence Solutions and Systems. . . . . . . . . . . . . . . . . . . . .73
+Exercises and Planning Sessions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .74
+Contents xi
+9780133086409_Book 1.indb xi 12/23/14 10:04 AM
+Common Products and Reports Used by Analysts . . . . . . . . . . . . . . . . . . . . .74
+News Bulletins and Newsletters . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .74
+Assessments . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .76
+Competitor Profiles . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .76
+Battlecards. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .76
+Strategic Impact Worksheets . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .77
+Intelligence Briefings . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .77
+Situation Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .78
+Special Intelligence Summaries . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .78
+Creating the Report . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .78
+Communication Difficulties Faced by Analysts. . . . . . . . . . . . . . . . . . . . . . . .79
+Effective Listening and Answering the Questions
+of Decision Makers. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .86
+Conduct Communication Follow-Up and Gather Feedback . . . . . . . . . . . . .87
+Pragmatic Considerations. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .87
+Summary. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .89
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .90
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .91
+Chapter 5 Applying the FAROUT Method . . . . . . . . . . . . . . . . . . . . . . . . 92
+Applying the Techniques. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .94
+An Evaluation Scheme for Assessing the Adequacy of Tools and
+Techniques: FAROUT . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .95
+Using the FAROUT Rating System . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .98
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .101
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .102
+Section II New and Classic Methods of Business and
+Competitive Analysis
+Chapter 6 A Better SWOT Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . 105
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .105
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .107
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .110
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .111
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .112
+Process for Applying the SWOT Technique. . . . . . . . . . . . . . . . . . . . . . . . . .113
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .119
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .120
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .122
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .122
+xii Contents
+9780133086409_Book 1.indb xii 12/23/14 10:04 AM
+Chapter 7 Analysis of Competing Hypotheses. . . . . . . . . . . . . . . . . . . . 123
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .123
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .124
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .125
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .126
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .127
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .128
+Step 1: Identify the Possible Hypotheses to Be Considered . . . . . . . . . .128
+Step 2: List the Significant Evidence in Support of and Against
+Each Hypothesis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .128
+Step 3: Prepare a Matrix with Hypotheses Across the Top
+and Evidence Down the Side. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .129
+Step 4: Refine the Matrix. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .130
+Step 5: Draw Tentative Conclusions About the Relative
+Likelihood of Each Hypothesis by Trying to Disprove It . . . . . . . . .131
+Step 6: Analyze How Sensitive Your Conclusion Is to a Few
+Critical Pieces of Evidence. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .132
+Step 7: Report Conclusions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .132
+Step 8: Identify Milestones for Future Observation That May
+Indicate Events Are Taking a Different Course Than Expected. . . .133
+Summary. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .133
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .133
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .134
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .136
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .136
+Chapter 8 Benchmarking Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 137
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .137
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .138
+Taxonomy of Benchmarking . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .139
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .143
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .144
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .145
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .147
+Step 1: Identify the Processes That Need to Be Benchmarked. . . . . . . .147
+Step 2: Identify Performance Measures. . . . . . . . . . . . . . . . . . . . . . . . . . .148
+Step 3: Evaluate Your Own Firm’s Capabilities . . . . . . . . . . . . . . . . . . . .150
+Step 4: Identify Firms to Be Benchmarked . . . . . . . . . . . . . . . . . . . . . . . .150
+Step 5: Conduct Research of Selected Firms. . . . . . . . . . . . . . . . . . . . . . .151
+Step 6: Analyze the Collected Data and Develop an Action Plan. . . . . .152
+Contents xiii
+9780133086409_Book 1.indb xiii 12/23/14 10:04 AM
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .155
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .156
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .157
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .157
+Chapter 9 Business Model Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . 159
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .160
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .161
+The Business Model. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .162
+Classification of Business Models. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .164
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .167
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .167
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .168
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .168
+Step 1: Articulate the Value Proposition. . . . . . . . . . . . . . . . . . . . . . . . . .168
+Step 2: Specify the Target Segment . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .170
+Step 3: Determine Competitors . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .170
+Step 4: Evaluate the Value Chain and the Cost Model. . . . . . . . . . . . . . .171
+Step 5: Evaluate the Value Network. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .173
+Step 6: Determine the Revenue Model for the Firm . . . . . . . . . . . . . . . .174
+Step 7: Determine the Critical Success Factors for the Industry . . . . . .175
+Step 8: Complete an Analysis Grid Detailing Each Element
+of the Business Model. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .175
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .179
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .179
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .181
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .181
+Chapter 10 Competitive Positioning Analysis . . . . . . . . . . . . . . . . . . . . . 183
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .183
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .184
+Develop and Build on the Firm’s Position. . . . . . . . . . . . . . . . . . . . . . . . .185
+Maintain and Hold the Firm’s Strong Market Position. . . . . . . . . . . . . .186
+Defend a Dominant Position. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .186
+Withdraw from a Market. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .186
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .187
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .187
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .188
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .189
+Step 1: Identify Current Strategy and Market/Product/Project
+Parameters. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .190
+xiv Contents
+9780133086409_Book 1.indb xiv 12/23/14 10:04 AM
+Step 2: Conduct Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .192
+Step 3: Review Results and Formulate Positioning Strategy. . . . . . . . . .193
+Summary. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .195
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .197
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .198
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .200
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .200
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .201
+Chapter 11 Competitor Cash Flow Analysis. . . . . . . . . . . . . . . . . . . . . . . 202
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .202
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .204
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .206
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .207
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .208
+Processes for Applying The Technique. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .209
+Future Cash Flow Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .210
+Tip Sheet on Cash Flow Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .211
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .218
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .219
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .220
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .221
+Chapter 12 Critical Success Factors Analysis. . . . . . . . . . . . . . . . . . . . . . 222
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .222
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .224
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .229
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .229
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .230
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .231
+Leidecker and Bruno’s Identification Techniques. . . . . . . . . . . . . . . . . .232
+Determining Critical Success Factor Importance . . . . . . . . . . . . . . . . . .236
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .238
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .239
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .240
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .241
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .242
+Contents xv
+9780133086409_Book 1.indb xv 12/23/14 10:04 AM
+Chapter 13 Driving Forces Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 243
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .243
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .244
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .244
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .245
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .246
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .246
+Step 1: Identifying an Industry’s DFs. . . . . . . . . . . . . . . . . . . . . . . . . . . . .247
+Step 2: Assessing the Impact of the DFs . . . . . . . . . . . . . . . . . . . . . . . . . .250
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .258
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .259
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .260
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .261
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .262
+Chapter 14 Event and Timeline Analysis . . . . . . . . . . . . . . . . . . . . . . . . . 263
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .263
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .264
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .265
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .265
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .266
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .267
+Plot the Target Firm’s History of Key Events on a Line . . . . . . . . . . . . .267
+Develop a Chronological Table of Events . . . . . . . . . . . . . . . . . . . . . . . . .269
+Develop an Events Matrix. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .270
+Event and Causal Factors Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .270
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .278
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .278
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .280
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .280
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .281
+Chapter 15 Historiographical Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . 282
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .282
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .283
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .285
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .286
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .287
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .288
+Step 1: Develop a General Proposition About the Analytical
+Target . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .288
+xvi Contents
+9780133086409_Book 1.indb xvi 12/23/14 10:04 AM
+Step 2: Collect Primary Information . . . . . . . . . . . . . . . . . . . . . . . . . . . . .289
+Step 3: Collect and Relate Secondary Information. . . . . . . . . . . . . . . . . .289
+Step 4: Cross-Referen e and Select the Best Sources for the
+Third Draft. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .290
+Step 5: Analysis, Validation, and Reporting . . . . . . . . . . . . . . . . . . . . . . .290
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .292
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .293
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .294
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .295
+Chapter 16 Indications and Warning Analysis . . . . . . . . . . . . . . . . . . . . 296
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .296
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .298
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .299
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .299
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .300
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .302
+Step 1: Establish a Set of Indicators . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .302
+Step 2: Establish Meaning Behind Indicators. . . . . . . . . . . . . . . . . . . . . .304
+Step 3: Validate and Rank Indicators Against Threshold Levels
+to Determine When Warnings Need to Be Issued . . . . . . . . . . . . . . .306
+Step 4: Determine and Recommend Appropriate Firm Responses
+to the Warning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .307
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .308
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .309
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .311
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .311
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .312
+Chapter 17 Industry Fusion Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . 313
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .313
+General Environment. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .314
+Operating Environment/Industry Analysis . . . . . . . . . . . . . . . . . . . . . . .317
+Internal Environment . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .318
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .318
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .320
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .321
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .322
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .323
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .330
+Contents xvii
+9780133086409_Book 1.indb xvii 12/23/14 10:04 AM
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .331
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .332
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .332
+Chapter 18 Interpretation of Statistical Analysis . . . . . . . . . . . . . . . . . . 335
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .335
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .336
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .337
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .338
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .338
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .339
+Percentage Changes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .339
+Percentiles and Quartiles. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .341
+Normal Distribution and Bell Curve . . . . . . . . . . . . . . . . . . . . . . . . . . . . .341
+Summarizing Data with One Value—Central Tendency . . . . . . . . . . . .342
+Standard Deviation. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .344
+Comparing Data . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .345
+Regression Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .346
+Correlation. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .350
+P-Values. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .351
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .351
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .352
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .353
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .354
+Chapter 19 Linchpin Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 355
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .355
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .356
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .359
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .360
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .360
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .361
+Linchpin Assumption Sensitivity Analysis. . . . . . . . . . . . . . . . . . . . . . . .362
+Process for Using Linchpin Analysis in Assessing Risk . . . . . . . . . . . . .363
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .364
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .365
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .366
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .367
+Chapter 20 McKinsey 7S Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 368
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .368
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .371
+xviii Contents
+9780133086409_Book 1.indb xviii 12/23/14 10:04 AM
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .372
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .373
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .374
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .375
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .381
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .381
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .383
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .383
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .384
+Chapter 21 Product Line Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 385
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .385
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .386
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .386
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .387
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .388
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .389
+Step 1: Initial Product Audit . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .389
+Step 2: Assess the Product Relative to Its Position in the
+Product Life Cycle. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .390
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .401
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .403
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .404
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .405
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .406
+Chapter 22 Scenario Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 407
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .407
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .408
+Methods for Generating Scenarios. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .408
+Quantitative Method: Computer-Generated Econometric Model. . . . .409
+Qualitative Methods. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .409
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .411
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .412
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .413
+Processes for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .413
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .421
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .422
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .424
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .424
+Contents xix
+9780133086409_Book 1.indb xix 12/23/14 10:04 AM
+Chapter 23 SERVO Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 425
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .425
+Strategy . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .426
+Environment. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .427
+Resources. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .428
+Values. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .430
+Organization . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .431
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .432
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .433
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .434
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .434
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .435
+Step 1: Evaluate the Current Performance of the Firm . . . . . . . . . . . . . .435
+Step 2: Assess the Current Strategy and Discern Whether Change
+Is Necessary. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .436
+Step 3: Develop and Evaluate Strategic Options and Programs. . . . . . .439
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .442
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .443
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .444
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .445
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .446
+Chapter 24 Shadowing. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 447
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .447
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .450
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .451
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .451
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .452
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .454
+Team Composition. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .454
+Team Structure. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .455
+Performance Goals. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .455
+Shadowing. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .456
+Developing a Shadow Market Plan . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .458
+Mini Case Studies. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .461
+Case 1: Deregulating Utility. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .461
+Case 2: Packaged-Food Multinational. . . . . . . . . . . . . . . . . . . . . . . . . . . .461
+Case 3: Ready-to-Eat Foods. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .461
+Case 4: Pharmaceutical Firm. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .462
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .462
+xx Contents
+9780133086409_Book 1.indb xx 12/23/14 10:04 AM
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .463
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .464
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .465
+Chapter 25 Strategic Relationship Analysis . . . . . . . . . . . . . . . . . . . . . . . 466
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .466
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .469
+Purposes Served by SRs. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .469
+Two Key Strategic Relationship Processes . . . . . . . . . . . . . . . . . . . . . . . .472
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .473
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .474
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .475
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .475
+Studying Your Own Firm’s Relationship Formation Readiness . . . . . .475
+Studying a Rival’s Relationships. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .478
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .485
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .486
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .487
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .488
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .490
+Chapter 26 Supply Chain Management (SCM) Analysis. . . . . . . . . . . . . 492
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .493
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .494
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .496
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .497
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .498
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .499
+Rules and Tools . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 501
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .507
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .508
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .510
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .510
+Endnotes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .511
+Chapter 27 Technology Forecasting . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 513
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .513
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .515
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .518
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .518
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .519
+Contents xxi
+9780133086409_Book 1.indb xxi 12/23/14 10:04 AM
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .521
+1. Expert Opinion . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .522
+2. Trend Extrapolation. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .523
+3. Growth Curves . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .525
+4. Historical Analogy . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .526
+5. Scenarios . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .526
+6. Modelling, Simulations, and Gaming . . . . . . . . . . . . . . . . . . . . . . . . . .526
+7. Morphological Analysis. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .527
+8. Relevance Trees . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .527
+9. Monitoring . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .528
+10. Creativity Stimulators . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .529
+Using the Information. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .531
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .535
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .535
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .537
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .537
+Chapter 28 War Gaming . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 539
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .539
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .540
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .541
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .542
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .543
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .544
+Step 1: Is a War Game the Way to Go? . . . . . . . . . . . . . . . . . . . . . . . . . . .545
+Step 2: Getting a Business War Game Off the Ground . . . . . . . . . . . . . .546
+Step 3: Who Should Play? . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .548
+Step 4: Preparing for Your War Game. . . . . . . . . . . . . . . . . . . . . . . . . . . .548
+Step 5: Playing the Game. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .549
+Step 6: After the Game. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .550
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .552
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .553
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .554
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .555
+Chapter 29 Win/Loss Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 556
+Background. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .556
+Strategic Rationale and Implications. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .557
+Key Intelligence Topics and Questions. . . . . . . . . . . . . . . . . . . . . . . . . . . . . .559
+Strengths and Advantages. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .560
+Weaknesses and Limitations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .561
+xxii Contents
+9780133086409_Book 1.indb xxii 12/23/14 10:04 AM
+Process for Applying the Technique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .562
+Step 1: Determine the Target Segments and Identify Prospects . . . . . .562
+Step 2: Understand Internal Cultural Issues. . . . . . . . . . . . . . . . . . . . . . .563
+Step 3: Develop the Questionnaire. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .563
+Step 4: Prepare for the Interviews . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .564
+Step 5: Conduct Interviews . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .564
+Step 6: Analyze and Interpret . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .565
+Step 7: Disseminate . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .565
+Worksheet. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .568
+FAROUT Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .570
+Related Tools and Techniques . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .571
+References. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .571
+Index . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 573
+Contents xxiii
+9780133086409_Book 1.indb xxiii 12/23/14 10:04 AM
+Acknowledgments
+I, Craig Fleisher, want to express my gratitude and thanks to a number of friends and
+colleagues without whose help this second edition of B&CA could not be written. Mega-
+thanks go out again to my co-author Babette Bensoussan, who has worked alongside me
+for nearly 20 years in developing the ideas behind our analysis books. Second, a heaping
+dose of thanks goes out to Dr. Sheila Wright, my long-time research colleague and for-
+mer SCIP Board member who for many years led the intelligence program efforts while
+researching and teaching competitive intelligence and marketing courses at Leicester
+Business School (De Montfort University, UK). She was a magnificent and timely help in
+polishing Section 1, as well as being a particularly helpful sounding board for my ideas.
+Go Tigers!
+My highly capable research assistants have also made this task far less onerous. Special
+gratitude for this second edition goes out to Austin Fleisher, who helped immensely
+with research assistance and the last chapter edits in between his studies in international
+business and economics at the University of Florida. The effort also got a major boost
+from Albert Carter, who was instrumental in helping me develop several of this edition’s
+new cases while completing his MS in Operations Management from the University of
+Arkansas. The materials were also helped through the strong efforts of former assistants
+Jennifer White, Sanjay Gupta, Darby Chancey, Chris Giansante, and Victor Knip, all
+of whom variously assisted in reviewing and commenting upon some of the original
+chapters. Last but certainly not least, these materials were also informed and improved by
+the work of several highly talented graduate students I was fortunate enough to supervise,
+serve on their dissertation committees, and/or otherwise contribute to including Laura
+Zanotta (Catholic University, Milano, Italy), Dr. Nisha Sewdass (Pretoria, S. Africa),
+Dr. Marianne Kukko (TUT, Finland), Dr. Vilma Vuori (TUT, Finland), Dr. Marie Luce-
+Kuhn (North-West U, South Africa), Derek Lundberg (Macquarie, Australia), and Carles
+Ortega Bosca (Brunel University).
+I also want to thank the many individuals who helped review these chapters and
+provided valuable advice. I’d particularly like to thank long-time competitive intelligence
+and related professionals Zena Applebaum, Dr. Brad Ashton, Michel Bernaiche, Heather
+Bjella, Esq., Nan Bulger, Claudia Clayton, Albert Cruywagen, Bill Fiora, Jan Herring,
+Greg Irvin, August Jackson, Arik and Derek Johnson, Cliff Kalb, Terry Kerby, Timothy
+Kindler, Scott Leeb, Rich Loomis, Dan Mulligan, Dr. Martha Matteo, John McGonagle,
+Rainer Michaeli, Ellen Naylor, Dr. John Prescott, JP Rataczak, Dr. Pascal Savioz, Pat
+Shaw, Tim Smith, Tim Stone, John Thompson, Fred Wergeles, and Melanie Wing.
+Thanks to many excellent graduate students in my various analysis courses at the
+University of South Florida, Tampere University of Technology and special appreciation
+9780133086409_Book 1.indb xxiv 12/23/14 10:04 AM
+out to TUT’s Vice President (and Prof.) Mika Hannula with whom I have worked on
+research for more than a dozen years, Universidad Carlos III de Madrid, Universidad
+of Rey Juan Carlos (Madrid), Odette School of Business at the University of Windsor,
+University of New Brunswick, and the School of Business & Economics at Wilfrid
+Laurier University. The book also benefited from feedback from students and workshop
+attendees at the University of Sydney and Sydney Graduate School of Management
+(Australia), Nihon University (Japan—special thanks to my friend and colleague Yoshio
+Sugasawa), Stellenbosch University, UNISA (gratitude to Prof. Peet Venter and Prof.
+Nisha Sewdass), University of Pretoria, and North-West University in South Africa
+(special thanks as well to Prof. Wilma Viviers). They offered me a wonderful sounding
+board for discussing many of the book’s ideas. Additionally, I also want to specifically
+acknowledge Prof. David Blenkhorn, who co-taught CI courses at WLU with me and
+still offers them, where I also benefited from teaching related strategy courses with my
+colleague Prof. Kenneth Harling, Dr. Jonathan Calof (University of Ottawa), Dr. Paul
+Dishman (Utah Valley University), and Prof. Conor Vibert of Acadia University, with
+whom I have discussed these concepts over many years.
+Additionally, several valuable workshops and conferences held under the auspices of
+Aurora WDC, Altamont Group, Conference Board, Paul Rogers group, ReConverge:G2,
+Strategic and Competitive Intelligence Professionals (SCIP), CBIA (South Africa) and
+its long-time leader Steve Whitehead, my friends Mike Kuhn and Marie Luce-Muller
+of IBIS South Africa, Frost & Sullivan, ICI led by my former SCIP colleague Rainer
+Michaeli (Germany), KMWorld, and Marcus Evans Conferences, in particular, have also
+allowed me many opportunities to hone these ideas. I want to express my appreciation
+to various agencies that provided funding and other forms of support along the way
+in originally developing this book, including the Canadian Council for Public Affairs
+Advancement, National Research Council (Canada), National Research Foundation
+(South Africa), Odette School of Business, Deans Roger Hussey and Allan Conway, and
+both the Windsor Research Leadership Chair and Odette Research Chairs—University
+of Windsor.
+Since the first edition of this book was released in 2007, I, Babette Bensoussan,
+acknowledge that I am still somewhat on the cutting edge of the competitive intelligence
+market in Australia. This positioning has not only presented me with a multiplicity
+of challenges when updating this book, but it has also kept me in a somewhat unique
+professional situation.
+While I have been privileged to witness and indeed help develop the emergence of
+this field in Australia and Asia over the past two decades, the fact remains that relevant
+expertise is still very thin on the ground locally. In today’s environment where most
+executives are drowning in information, and have little insights, the importance of
+delivering better decisions and minimizing risks is without a doubt one of the key
+imperatives of the future for management.
+Acknowledgments xxv
+9780133086409_Book 1.indb xxv 12/23/14 10:04 AM
+As always, putting this book together in these market circumstances has been
+personally fulfilling and challenging at the same time. However, this would not have
+happened without the knowledge that colleagues, clients, and friends who knew about
+my efforts added a dimension and fully supported me—even with just a few words of
+encouragement to keep me focused during the tougher times.
+There are several people and groups of people to whom I owe a note of thanks for
+their contribution—whether direct or indirect—to the existence of this book. Firstly I
+want to acknowledge and express my deepest thanks to my co-author Dr. Craig Fleisher,
+who has shared my vision so completely through all of our books. Craig has been truly a
+wonderful sounding board, mentor, and guide for nearly 20 years. It has been a privilege
+to work with him and I could not have asked for a better co-author.
+In addition, my continuing appreciation to all my undergraduate and postgraduate
+students—possibly unknowingly—who have given me additional impetus to commit
+analytical tools and techniques to paper; to all my work colleagues who continually
+asked how and why; to the SCIP organization for helping to build and consolidate my
+international professional profile and allowing me to test my analytical ideas in practical
+situations, and to the Australasian business community, who continue to provide the
+clay with which I work.
+As with everything in life, you do it all with a little help from your friends—and there
+are several who stand out. To my dearest friends—Cyndi Allgaier, Ellen Naylor, Seena
+Sharp, Christine Bull, and my wonderful work colleague, Giselle Barlow—ladies, without
+your ongoing encouragement, where would I be!
+Last, but certainly not least, we thank the publishing professionals at Pearson and FT
+Press who helped us all along the way, particularly Jeanne Levine and Lori Lyons, who
+both kept us on track. It was a genuine pleasure to work with each of you.
+xxvi Acknowledgments
+9780133086409_Book 1.indb xxvi 12/23/14 10:04 AM
+About the Authors
+Authors Fleisher and Bensoussan are uniquely placed as experts in the field of
+business and competitive analysis. They have extensive corporate consulting, research,
+and teaching experience in both strategy and intelligence fields, and have both published
+and spoken internationally. Their collaboration also brings the book a healthy balance
+of both theory and application.
+Craig S. Fleisher is the Chief Learning Officer and Director of Professional Development,
+Aurora WDC, Madison, Wisconsin, USA. Craig was President of the Board of Directors
+of the international Strategic and Competitive Intelligence Professionals (SCIP), Chair
+of the Board of Trustees of the Competitive Intelligence Foundation (Washington, DC),
+founding Editor of the Journal of the Competitive Intelligence and Management, and is
+a SCIP Meritorious Award winner and Fellow. Author or editor of a dozen books and
+scores of scholarly articles and chapters, Craig is among the top-cited Google Scholars
+in several fields, and contributes on several scholarly journals’ editorial boards. He was
+recognized as one of Canada’s top MBA professors by Canadian Business magazine, is
+named in the Canadian Who’s Who, and has taught university and executive courses in
+the strategy, analysis, and competitive intelligence areas for nearly three decades.
+He was formerly a Professor, endowed research Chair, dean, MBA director and/or
+Institute Chair at the Universities of Calgary, New Brunswick, Windsor, and Wilfrid
+Laurier in Canada, as well as the College of Coastal Georgia. Craig holds a PhD in
+Business from the Katz Graduate School of Business, University of Pittsburgh, MBA
+in Human Resources Management and Marketing from the Owen Graduate School
+of Management at Vanderbilt University, and his BSBA (Finance, Insurance, and Real
+Estate) from the University of Florida.
+A well-traveled speaker, he regularly advises leading corporations, associations, and
+public sector agencies on analysis processes and insight development. Craig holds a
+Docent appointment in the Dept. of Business Information Mgmt. at Tampere University
+of Technology (FI), graduate faculty status at the Università della Svizzera italiana (CH),
+and visiting positions at universities in eight countries.
+Babette E. Bensoussan is an internationally esteemed leader in the field of Competitive
+Intelligence (CI) and Strategy. Her credentials are built upon a long-standing series of
+outstanding achievements, both business and academic. She is Australia’s only awarded
+CI professional and is one of the most published business authors. Throughout her
+career Babette has excelled as an entrepreneur, a consultant, a company director, a board
+member, an author, an academic and a business coach.
+9780133086409_Book 1.indb xxvii 12/23/14 10:04 AM
+In 1992 Babette founded the MindShifts Group, a leading consulting company
+specializing in Competitive Intelligence and Strategy. As company director Babette has
+led the MindShifts Group through more than 350 projects with Australian and Fortune
+500 companies. Her skills and expertise have been successfully applied to a huge range of
+industries, and her clients have included (but are not limited to) aerospace, information
+technology, pharmaceutical, manufacturing, and financial services companies. In 2006
+Babette was the recipient of the SCIP Meritorious Award, the world’s most prestigious
+award in the field of Competitive Intelligence.
+In addition to providing her talent and experience to her clients, Babette has a strong
+passion for sharing her uniquely honed expertise with others through mentoring
+and coaching. Author of six books and scores of articles and chapters, she has taught
+executive courses and held teaching positions at many of Australia’s leading universities
+and business schools. She is currently an Adjunct Professor in the School of Business at
+the University of Technology, Sydney.
+xxviii About the Authors
+9780133086409_Book 1.indb xxviii 12/23/14 10:04 AM
+Preface
+This is a book about how individuals in organizations can turn data and information into
+insights that decision makers cannot, and will not, ignore. This book uniquely provides
+its readers with 24 demonstrated and commonly applied methods for helping generate
+actionable recommendations for decision makers, as well as a handful of detailed chap-
+ters that address the process of business and competitive analysis itself.
+Given the priority of competitiveness in firms today, business managers need to have
+a benchmark defining what business and competitive analysis is and how it works. More
+importantly, they need to be able to convert the wealth of available data and information
+into a valuable form for decision-making and subsequent actions. What is collected must
+be converted into intelligence. This is accomplished through analysis.
+Business and Competitive Analysis is a book about analysis. Analysis is one of the
+more difficult and critical roles a manager, consultant, functional specialist, strategist, or
+intelligence provider is called upon to perform. Although great strides have been made
+in recent years in terms of planning strategy and intelligence projects and executing or
+managing the collection of data, the same cannot be said for analysis.
+Most of the background research we performed in developing this book was derived
+from practice and research in the larger field of business, competitive and market
+intelligence (hereafter, CI). This field is not one most of our readers will have encountered
+during their formal education, and their current employers may not have anybody with
+that discipline in their job titles. Nevertheless, nearly every firm performs some of the
+CI functions, and most of them perform it on a regular basis in advance of making
+key decisions. Analysis is one of the key roles performed by individuals in the CI field,
+and it is the one that arguably generates the highest value for executives. In our view,
+business and competitive analysis can and should be a key weapon in the firm’s arsenal
+for achieving competitive advantage.
+Despite many advances and steady growth in the CI field, some areas of this
+growing field have received more or less attention than others. The growth of digital
+communication and information technology, and especially social media and the
+Internet, has led to much attention being given to processes and techniques of data
+collection, as well as information and knowledge management. Planning competitive
+intelligence projects has also received a boost from the ever-present attention given more
+broadly to strategic planning and strategy development. Despite these areas of popular
+interest, two areas that have received disproportionately less attention are analysis and its
+communication. In fact, our own observations, experiences, and several studies support
+our contention that many practitioners have limited understanding of the breadth and
+depth of the challenge underlying these areas.
+9780133086409_Book 1.indb xxix 12/23/14 10:04 AM
+We seek to remedy this situation by offering this needed book, which is devoted
+entirely to the process and methods for conducting business and competitive analysis.
+Our first book in this subject matter area was Strategic and Competitive Analysis:
+Methods and Techniques for Analyzing Business Competition, published by Pearson/
+Prentice Hall in 2003 and subsequently translated into numerous languages. We received
+a lot of constructive feedback on that effort, particularly from managers and analysts who
+were using the techniques described in that book. Based on the feedback and reviews,
+readers typically found it to be an excellent, one-stop source for reminding and guiding
+them on the key steps of a particular tool to address a particular problem they were
+facing, as well as providing them with an enhanced idea of what was supposed to be
+accomplished by applying the tool. That book was used in many well-known enterprises
+to help train newly hired analysts and consultants. Finally, the book was used in business
+school courses in scores of countries to help students learn and apply these techniques to
+decision-oriented case studies and “real-world” projects.
+We incorporated more than 10 years of rich feedback on all our prior books into this
+edition in the form of a wider range of proven techniques and a better background on
+the process and context of business and competitive analysis. This book is absolutely
+not merely a second edition—it contains a rich amount of completely new content.
+Combined with our other books Strategic and Competitive Analysis (2003, Pearson/
+Prentice Hall) and two editions of Analysis without Paralysis (2008, Second Edition in
+2013), we provide lengthy coverage of over 50 different techniques, which is surely the
+most detailed coverage of business and competitive analysis methods ever produced.
+We recognize that there are literally hundreds of business and competitive analysis
+techniques that we could have included in this book. It was not our intention to offer
+an exhaustive list and detailed description of all these techniques. Instead, we have
+extensively reviewed the literature in the field, considered survey research, and used our
+own experiences in determining those techniques we view as potentially being the most
+applicable across a broad range of decision-making contexts supported by the business
+and competitive analysis process.
+Although we have tried to include both “classic” and evolving techniques, we recognize
+that some techniques being used in consulting and industry might not be included here.
+One reason for this is that some of these tools are—and remain—proprietary to the
+consultancies employing them. Another part of the reason we may not have included a
+useful tool here is that analysis is a process that requires both technical knowledge and
+creativity. We recognize and hope that managers and analysts will creatively develop
+techniques not included in this book that provide for better outcomes in their specific
+contexts. We find we are frequently having to creatively develop and apply unique
+analysis methods for clients in our own consultancy work.
+The reader should also be alert to the fact that any listing of techniques is bound to run
+into a variety of problems of semantics and definitional confusion. Some of the techniques
+xxx Preface
+9780133086409_Book 1.indb xxx 12/23/14 10:04 AM
+included in this book are known by multiple names. This may have occurred because the
+technique came to be associated with a particular originating organization or particular
+company’s use (such as McKinsey 7S), a particular author (Porter’s Five Forces Model),
+or has retained a generic name (for example, benchmarking analysis). We recognize that
+some of the techniques included in this book have seen modifications in use over the
+years or are derivatives of other closely related techniques. In all cases, we have tried to
+include and describe the most popularly utilized versions of the techniques, as opposed
+to all of a technique’s possible derivatives. Throughout our methods chapters, we have
+tried to alert the reader to where there is overlap between techniques by suggesting that
+the reader refer to the overlapping constructs elsewhere in the text.
+Many of the techniques included in this book were created by leading economists,
+financial and cost accountants, futurists, sociologists, anthropologists, intelligence
+agencies, business professors, consultants, and other insightful practitioners or
+theoreticians. They often developed their ideas in an effort to solve pressing analytical
+problems that they faced. We are grateful to these individuals for enlightening our
+understanding of business and competitive analysis. We make a sincere attempt to
+acknowledge the originators of these techniques in the book.
+We must also note to our readers that it was not our primary intention to “invent a
+new wheel” when it comes to analytical techniques. The techniques we have included all
+have a history, with some having been applied in various contexts for several decades
+or longer. This book’s techniques have been and are in use in real organizations and do
+not exist just in concept or theory. However, we have included several methods that are
+likely to be unfamiliar or novel to many readers—even those who have gone through
+graduate business, management, or marketing courses—as well as individuals who have
+been performing analysis in their enterprises for many years. We believe strongly that
+unfamiliarity is a particularly bad indicator of a method’s value. We believe our readers
+will find that even some of the new techniques (to them at least) will be of high potential
+value in helping them make sense of their firm’s business and competitive contexts.
+How to Use the Book
+To assist our readers, the majority of this book is self-contained, with the array of analyti-
+cal techniques being supported by references for further reading for those individuals
+who want lengthier treatments. The book is organized into two main sections: the first
+provides the reader with an understanding of what the evolving body of knowledge in
+the field has revealed about analysis in its real-world context, and the second section
+discusses how analysis methods actually are supposed to work.
+This book includes five detailed chapters that describe, define, and discuss the basic
+facts about analysis, how analysis can ideally be performed, avoiding analytical pitfalls,
+and communicating analysis results. The last chapter in the opening section describes
+Preface xxxi
+9780133086409_Book 1.indb xxxi 12/23/14 10:04 AM
+our unique FAROUT method for understanding the application of the various tools.
+We strongly recommend that readers thoroughly review that particular chapter before
+progressing into the remaining chapters of the book that contain coverage of the
+analytical techniques themselves.
+We have tried to make the book easy for the reader to use. Several changes have been
+made to this new edition as a result of feedback we received from readers of the earlier
+volume. These new sections within the chapters are noted in italic below. The basic
+structure of the chapters containing the analytical techniques is common throughout the
+second part of the book and contains the following format:
+■ Short Description: A brief definition of the purpose and objective of the analyti-
+cal model to provide an analyst with a quick and handy reference guide.
+■ Background: To place the model in context of management, this section outlines a
+broad description of the history behind the development of the analytical technique.
+■ Strategic Rationale and Implications: Understanding the strategic thinking and
+implications associated with a particular analytical technique is important in
+order to evaluate the appropriateness of a particular tool. This section reviews the
+strategic issues inherent in each technique.
+■ Key Intelligence Topics and Questions: New to this edition, this section provides
+an “at a glance” listing of the common questions executives ask that would war-
+rant the application of the method described in the chapter.
+■ Strengths and Advantages: Each model has its own strengths and advantages
+that need to be weighed in light of the purpose of the analysis. This section briefly
+reviews those strengths and advantages.
+■ Weaknesses and Limitations: Likewise, each model has its own inherent weak-
+nesses and limitations. The weaknesses/limitations identified in this section need
+to be taken into account when performing the analysis.
+■ Process for Applying the Technique: This is the “how to” of the analytical tech-
+nique and identifies the necessary steps required to use this tool. Case studies,
+figures, and tables are also provided to guide the analyst through the strategic
+thinking required for each model.
+■ Sample Worksheet: New to this edition, this is a sample template you can use in
+organizing the data for which to populate and apply the method. These are usu-
+ally built out in one of the common Office software formats like spreadsheets,
+databases, or presentation decks. Many of our client companies further embed
+these within their intelligence solutions/systems to automate selected parts of the
+process.
+■ FAROUT Summary: Unique to this book, the FAROUT Summary allows ana-
+lysts, at a quick glance, to identify the ease of use, practicality, and usefulness of
+each model.
+xxxii Preface
+9780133086409_Book 1.indb xxxii 12/23/14 10:04 AM
+■ Related Tools and Techniques: Each model of analysis is related to or supported
+by a number of other techniques that may aid or enhance the analyst’s task. This
+section provides a useful guide of related tools and techniques that support the
+objective and purpose of each analytical model.
+■ References: For those analysts wanting to delve further into a particular tech-
+nique, references for additional readings are provided at the end of each chapter.
+Readers will benefit by becoming familiar with this template. This is a handbook and
+was not designed to be read in one sitting—if nothing else, its length would probably
+make that an extremely tiring task and practically impossible for most individuals.
+Instead, we have designed it as a comparison and reference source. In this respect, it can
+be most effectively applied in a “just in time” fashion so as to proactively or concurrently
+meet an organization’s analytical needs as they arise.
+The book features conceptual ideas about business and competitive analysis, along
+with a strong bias toward practical application. Among the unique aspects of this book
+that readers should find valuable are the following:
+■ It provides in one easy location two dozen of the most common and popular
+models of analysis used in business. Normally, executives and students would
+have to go to multiple sources to locate each model. Here, the most commonly
+used models are defined and explained in one book.
+■ E very model is also uniquely evaluated using FAROUT—an evaluation process for
+identifying the ease of use, practicality, and usefulness of each model. FAROUT
+allows analysts or decision-makers to understand the strengths and weaknesses
+of the techniques.
+■ An easy-to-use, consistent format (template) is utilized to provide the reader with
+a faster understanding of how to apply the techniques.
+■ It offers applications of the techniques through the use of case studies. The vast
+majority of these case studies are recent and of recognizable companies, indus-
+tries, or contexts. All of them further reinforce how the technique can drive the
+development of options for executives and assist their decision making.
+■ The book covers both the so-called “classic” strategy methods, such as our treat-
+ment of industry analysis, along with some newer techniques, such as business
+model analysis. Several of these models, such as win/loss analysis, strategic rela-
+tionship analysis, driving forces analysis, and event and timeline analysis, among
+others, have never been treated this comprehensively in any other publication.
+■ It provides external techniques addressing the environments and industry that the
+organization competes in, along with the techniques for focusing internally on the
+organization.
+Preface xxxiii
+9780133086409_Book 1.indb xxxiii 12/23/14 10:04 AM
+■ It provides references to more comprehensive treatments of the techniques for
+those who want to investigate them in greater depth.
+We expect to stimulate others to begin closing some of the many knowledge gaps
+in business and competitive analysis that we have explicitly and implicitly identified
+throughout this book’s chapters. We also hope that this book encourages practitioners
+to further share their experiences and observations with researchers and teachers like us
+in the field. We anticipate that the book will compel our readers to question some, if not
+a large number, of their current analysis practices and understanding. Our ultimate aim
+is that this book be viewed as a valuable contribution to the knowledge and practice of
+business and competitive analysis, as well as improving the development and execution
+of intelligence analysis in organizations. Whether or not we achieve our aim is left in
+your hands, our readers, as it should be. Please feel free to contact either of us if you
+would care to share your views.
+Babette E. Bensoussan Craig S. Fleisher
+The Mindshifts Group Pty. Ltd. Aurora WDC
+PO Box 5002 8401 Greenway Blvd.
+West Chatswood Suite 210
+New South Wales, 1515 Middleton, Wisconsin 53562
+Australia USA
+telephone: +(61-2) 9411-3900 telephone: +1-608-630-5869
+Twitter: @babetteben Twitter: @craigfleisher
+email: babette@mindshifts.com.au email: craig.fleisher@aurorawdc.com
+xxxiv Preface
+9780133086409_Book 1.indb xxxiv 12/23/14 10:04 AM
+1
+Business and Competitive Analysis:
+Definition, Context, and Benefits
+“In business, the competition will bite you if you keep running; they will swallow
+you if you stand still.”
+—Victor Kiam, Former President and CEO of Remington Products
+B
+usiness competition has always been a prominent element in the landscape of
+analysts, directors, entrepreneurs, executives, founders, managers, and planners,
+among others. The challenges it presents remain dynamic, creating uncertainty
+and sometimes its corresponding cousins of fear and doubt in business executives as they
+seek to achieve their aims. Successfully positioning the enterprise, properly deciding on
+the correct allocation of resources, and deciding what an acceptable level of performance
+might be in such a competitive environment are key tasks of senior decision makers.
+Consequently, skillful business and competitive analysis (BCA) is critically important in
+determining how an enterprise can more effectively compete and deliver better value to
+its stakeholders. Without effective BCA, companies are like a blind and deaf deer that is
+about to wander onto a crowded highway—the results are seldom pretty!
+T his book is designed to assist analysts at all levels to develop better and more action-
+able insights, to aid them in gaining an enhanced grasp of the competitive environment
+confronting their organizations, and to guide them in advising their decision makers.
+Our underlying premise throughout this second edition, just as it was in our original
+volume, is that a good analyst must have a robust and healthy repertoire of conceptual
+methods, models, tools, and/or techniques to help answer vital questions on the enter-
+prise’s ability to compete not only in the present, but also the future. For the most part,
+the end users of an analyst’s output are decision makers, and as such, they will be the
+clients or customers taking action based on those results.
+U niquely, this book focuses specifically on analysis, analysis methods/techniques,
+and the analysis process. It is not designed to be another strategic management or stra-
+tegic planning text. Plenty of good titles of those genres are available 1 although the
+processes and techniques described herein will certainly benefit strategic planners and
+3
+9780133086409_Book 1.indb 3 12/23/14 10:04 AM
+managers. We have decades of experience advising, consulting, instructing, practicing,
+and researching how BCA is used in all types of enterprises. More importantly, we have
+hundreds of examples of where analysts used the methods described in the book to gain
+advantage, make a positive difference, enhance profitability, and increase stakeholder
+satisfaction.
+Nevertheless, what surprises us about business, competitive, market, and/or most
+strategic analysis we see is the relatively limited number of tools and techniques used by
+most practitioners; unsurprisingly, it is not a surprise about how little genuine insight
+emanates from them! These adverse results occur not only because some tools are badly
+chosen, outdated, or incorrectly used, but also because they are often misunderstood
+and/or misapplied. This book provides comprehensive instruction on a range of con-
+structive methods that are available; direction on how the method was developed; the
+kinds of questions asked by executives that lend themselves to methodological scrutiny;
+analysis of its strengths and weaknesses; an outline of the process used to actually employ
+the technique; as well as sample applications, sample worksheets, and identification of
+complementary techniques, resulting overall in that vital ingredient—insight.
+Our first text in this subject area called Strategic and Competitive Analysis identified
+24 different techniques. After the first book was published, we saw many instances and
+heard countless anecdotes from practitioners who wished to have an “analyst’s manual”
+of BCA tools and techniques. That was the genesis of the original edition of this hand-
+book. This new, second edition goes even further than the prior ones toward meeting
+that desire.
+Understanding the Terminology
+This book emphasizes a handful of key words: c ompetitive , strategic , analysis , and i ntel-
+ligence . These are all part of the normal business and management lexicon. 2 Because we
+use these words repeatedly, clearly identifying what we mean when we use them is useful.
+Competitive
+In this book, we look at businesses that are in competitive markets, have competitive
+mindsets, and that try to achieve success, or win, in their markets. We address the pro-
+cesses and means by which firms position themselves and their products or services
+against their rivals to win market share.
+Competitive in a business or commercial sense means that a contest is occurring
+between two or more parties. The sources of this can be multifaceted, originating in
+product or service offerings, shelf-space negotiations, supplier contracts, and investor
+relations, or access to key capital or resources, to name just a few. Usually, competitive
+bouts end up with a winner, and no further contest is needed.
+4 Business and Competitive Analysis
+9780133086409_Book 1.indb 4 12/23/14 10:04 AM
+The focus of this book is on the marketplace, though, and this is quite a different
+proposition. Competition here is about achieving a sustainable winning performance,
+not delivering one action that simply wounds, but consistently beating the rest who are
+working, most likely, toward the same or similar goals as your enterprise.
+Strategic
+Strategic is a word used today to describe almost every decision and/or action taken,
+when in reality there is a clear mix of the no less valuable, tactical decision making taking
+place. The generic use of a word such as “strategic” can diminish its real role and mask
+the impact that a true strategic decision has.
+Strategic matters are a key focus of this book. Strategic decisions, as opposed to tacti-
+cal, operational, or instantaneous decisions, have a unique set of characteristics to dif-
+ferentiate them. These distinctions occur along the dimensions of time, frequency, effort
+required, consequences, and impact. Strategic decisions typically do the following:
+■ Address at least a medium-term time horizon, at best long-term (time)
+■ Occur infrequently or emerge from a formalized planning cycle (frequency)
+■ Require significant input from key people (effort)
+■ Require significant information input from and across key functions (effort)
+■ Require substantial resources to formulate and implement (effort)
+■ Affect the long-term direction of the organization (consequences)
+■ Affect many, if not all, of the organization’s key activities (consequences)
+■ Affect competitive dynamics (impact)
+■ Involve major change to the firm’s activities (impact)
+■ Become the over-arching blueprint for subsequent decisions (impact)
+If all or a significant number of the preceding elements are present, the greater the
+likelihood that the decision is indeed strategic. We want to make it clear that just because
+a decision is not strategic does not make it unimportant. 3 Many non-strategic decisions
+help to determine the performance of an enterprise in a marketplace, particularly in
+the shorter term. Decisions such as seasonal price discounting, direct mail campaigns,
+product enhancements, advertising channels, and ambush marketing are all examples
+of non-strategic decisions. They have a short-term lifespan and a shorter-term effect.
+T he key to our identification of a strategic decision is that they are the ones typi-
+cally made by senior executives, managing directors, and/or the senior management
+team, those individuals often working out of the so-called “C-suite.” Consequently, the
+enterprise that gets the strategic decisions “right” has a greater chance of also getting the
+non-strategic decisions right.
+Chapter 1 Business and Competitive Analysis: Definition, Context, and Benefits 5
+9780133086409_Book 1.indb 5 12/23/14 10:04 AM
+Analysis
+“ If you do not know how to ask the right question, you discover nothing .”
+—W. Edwards Deming, U.S. father of the “quality” movement
+Where does analysis fit in with competitive understanding? Competitive analysis is
+a cornerstone of effective strategy formulation and execution. 4 Valuable analysis helps
+decision makers to understand and predict critical market-changing actions that may
+be taken by competitors and other competition-impacting stakeholders. These decision
+makers are charged with answering a small number of very powerful questions about
+their organization, including the following:
+1. What is our current status or situation?
+2. What are our options?
+3. In which direction(s) do we want to go?
+4. Which direction can and should we go?
+5. How can we effectively get to where we have decided we are going?
+6. How will we know that we have reached our desired goal(s)?
+Many of the analysis tools in this book will be beneficial to strategic decision makers
+in their effort to address those critically important questions. Properly conceived analy-
+sis aids decision makers in generating, choosing, and validating appropriate strategic
+responses.
+Analysis is a term that generates much controversy and disagreement. Before we pro-
+vide our definition of it, examining definitions put forth by others that are in common
+usage might be helpful. These can be found in Table 1.1 .
+Table 1.1 Common Definitions of Analysis as Used in Intelligence Contexts
+Definition Source
+Apply substantive expertise, all-source information, and tough-minded Davis, 2003
+tradecraft to produce assessments that provide distinctive value-add.
+A critical evaluation, usually made by breaking down a subject (either mate- Dictionary
+rial or intellectual) into its constituent parts, then describing the parts and definition
+their relationship to the whole.
+A process where one does many of the following, in any order: observe, Halliman, 2003
+classify, count, compare, ask questions, role play (engage in war games, do
+scenarios, run simulations, etc.), and take action.
+6 Business and Competitive Analysis
+9780133086409_Book 1.indb 6 12/23/14 10:04 AM
+Definition Source
+The use of some methodology or technique to, first, find relationships Halliman, 2003
+between different pieces of information and then draw inferences from the
+relationships.
+A process where one converts information into actionable intelligence. Halliman, 2003
+A process where one asks, or answers, the “So What?” question. Halliman, 2003
+The application of individual and collective cognitive methods to weigh data Johnston, 2005
+and test hypotheses within a secret socio-cultural context.
+The process of evaluating data for reliability, validity, and relevance; inte- Johnston, 2005
+grating and analyzing it; and converting the product of this effort into a
+meaningful whole, which includes assessment of events and implications of
+the information collected.
+The heart of the intelligence process whereby meaning is derived from data. IALEA, 2001
+Intelligence as a process is characterized by the different functions it Pruncken, 2010
+performs.
+A lthough there is some value in these definitions, we find each of them to be lacking
+in some aspect. As such, in this book, analysis is defined as “ The skilled application of
+scientific and non-scientific methods and processes by which individuals interpret data and
+information to produce insightful intelligence findings and actionable recommendations
+for decision makers.”
+Like many developing fields of inquiry, business and competitive analysis is NOT
+purely art or science, but a combination of substantial portions of both in its effective
+application. As with the type of research formally taught to scientists, the analysis pro-
+cess can be viewed as holding much in common with the scientific method. Analysts
+will observe certain events, persons, or actions; develop a proposition or hypothesis
+that describes/explains what they have observed; and then use the hypothesis to make
+predictions about what may subsequently occur. These predictions can then be further
+assessed through additional observations or data, and the hypotheses can be modified
+based on the results. 5
+T his process, which analysts can apply in theory, gets muddled very quickly by fac-
+tors present in the real world of business and marketplace competition. It gets further
+complicated as well by the politics and social nature of decision makers and enterprises.
+Analysts frequently work in groups or teams and benefit from the pooling of expertise.
+Hypotheses aren’t always developed, tested, or reformulated, but are frequently modi-
+fied in real time by the evidence that is acquired. Many factors being analyzed do not
+act or will not behave according to history, logic, or certainty. The nature and range of
+Chapter 1 Business and Competitive Analysis: Definition, Context, and Benefits 7
+9780133086409_Book 1.indb 7 12/23/14 10:04 AM
+variances underlying these factors suggest business and competitive analysis is more of
+a social scientific pursuit than a physical or pure science one.
+T he “real world” of organizations and their environments tends to bring out the “art”
+aspect of analysis. When conducting an experiment using control groups, we know that
+some percentage of a treatment group’s analyses will not confirm the control group’s
+analyses. Analysts in these two groups will weigh the same data or information differ-
+ently, based on schemes that may be hard for others to accurately replicate. Even when
+analysts do substantively agree about the nature of the problems being addressed, they
+can still subsequently disagree about the proposed course of action. Consequently, ana-
+lysts may never be able to “prove” they were right. These kinds of experiences point to
+why analysis can sometimes be viewed as more akin to art than science.
+B usiness and competitive analysts are tasked with making sense out of often ambigu-
+ous, complex, and challenging matters that decision makers care about. They, too, have
+to weigh up the odds, work through the scenarios, work out what they know as opposed
+to their competition, and take action. They have to use sound judgment, make sense of,
+or create meaning from a typically constrained sample of data and information. In an
+often-confused and rapidly moving competitive landscape, they try to answer the three
+critical questions commonly asked of them:
+1. “What?”
+2. “So What?”
+3. “Now What?”
+S ome of the most seasoned analysts will seek to provide an answer to a fourth
+question that is often not asked of or expected by their clients, that being the contingency
+scenario of:
+4. “What Then?”
+A ny of these questions may be answered in a variety of constructive ways using rep-
+licable procedures and methods (science), as well as intuitive or creative ones (art). And
+although the core of this book primarily focuses on methods of business and competi-
+tive analysis, methods are neither black boxes nor panaceas. They must always be com-
+bined with other factors, including business, industry, and market knowledge; cognitive
+sense-making and thinking skills; analytical traits and abilities; and thoughtful, practical
+experience (craft).
+Intelligence
+“A point of view can be a dangerous luxury when substituted for insight and
+understanding.”
+—Marshall McLuhan, well-known Canadian communication professor
+8 Business and Competitive Analysis
+9780133086409_Book 1.indb 8 12/23/14 10:04 AM
+It is important to understand the place of intelligence within the larger context of
+an enterprise. The need to generate competitive intelligence (CI) is certainly not new.
+Sun Tzu plainly stated the rationale for intelligence more than two thousand years
+ago. He wrote, “ Now the reason the enlightened prince and the wise general conquer the
+enemy whenever they move, and their achievements surpass those of ordinary men, is
+foreknowledge.”
+Intelligence processes in business organizations have received significant attention
+in recent decades. The benefits gained by successfully anticipating a competitor’s future
+plans and strategies are generally self-evident. The consequences of making decisions
+based on information that is incomplete, inaccurate, or late are as severe.
+CI often engenders images of fictional secret agents such as James Bond using an
+impressive array of sophisticated gadgetry to eavesdrop on their business competition.
+In reality, CI can be exhilarating, but not because of illegal skullduggery. Modern CI
+practitioners are stimulated by using their unique set of skills, knowledge, abilities, and
+instincts to uncover relationships that enable their organizations to compete more effec-
+tively. Most CI practice includes a heavy dose of analytical capabilities. Analysts are
+prominent, central members of CI functions in today’s successful, global enterprises.
+N umerous definitions of CI exist in contemporary practice and scholarship. Our cur-
+rent sense is that no single definition of CI is likely to be precise and universally accepted.
+As such, we view CI in this book as t he process by which organizations gather actionable
+information about competitors and the competitive environment and, ideally, apply it to
+their planning processes and decision-making in order to improve their enterprise’s perfor-
+mance. CI links signals, events, perceptions, and data into discernible patterns and trends
+concerning the business and competitive environment. CI can be simple scanning, such
+as analyzing a company’s annual report and other public documents, or elaborate, such
+as performing a fully digitized, multi-day, war-gaming exercise. 6
+CI is not business espionage; it is ethical, legal, legitimate, and essential. Business espi-
+onage develops intelligence by illegal or cloak-and-dagger means such as breaking and
+entering, bribery, coercion, deliberate deception or advertising “phantom” job vacancies,
+electronic eavesdropping, bugging or tapping, network infiltration, or systems hacking. 7
+CI practitioners use public, but not necessarily published, information. In other words,
+the information the CI practitioner seeks is readily available and identified through legal
+means of open sources such as public documents, interviews, and in-house expertise. It
+does not involve the theft of trade secrets.
+O ne way to understand CI is to view it as a progression from raw inputs to finished
+outputs. In this perspective, CI begins with scattered bits of raw, basic data. This raw
+material is then organized by CI practitioners and becomes information. Information
+becomes intelligence when it is placed into a format useful to a decision-maker’s unique
+or critical intelligence needs (CINs). Intelligence is therefore information that is ana-
+lyzed, interpreted, and infused with developed implications—the basic focus of this
+Chapter 1 Business and Competitive Analysis: Definition, Context, and Benefits 9
+9780133086409_Book 1.indb 9 12/23/14 10:04 AM
+book. Using this lens, CI is the refined intelligence product produced by an analyst that
+meets a decision-maker’s unique needs for understanding a competitive aspect of the
+internal and/or external environment. Effective CI helps the decision-maker make a
+better decision!
+C I can also be viewed as an organizational function ranging in scope between the
+broader area of business intelligence (BI) and the narrower version practiced as competi-
+tor analysis (CA). A CI function provides the foundation on which strategy and tactics
+are built, assessed, and modified. As a mostly staff-oriented function, CI will cut across
+and overlap other functions, in particular, those associated with marketing, planning,
+and strategy.
+Competitive intelligence programs (CIPs) have goals such as proactively detecting
+opportunities or threats; eliminating or reducing blind-spots, risks, and/or surprises;
+and reducing reaction time to competitor and marketplace changes. CIPs attempt to
+ensure that decision makers have accurate, current information about the organization’s
+competitive environment, and a plan for using that information. 8
+Analysis as a Component in the Intelligence Cycle
+“The goal is to turn data into information, and information into insight.”
+—Carly Fiorina, former CEO of Hewlett-Packard
+A nalysis is arguably that portion of the larger intelligence process in which the greatest
+value is generated. 9 Much organizational experience suggests it can also be more difficult
+to do than the resource-draining data and information collection efforts that most orga-
+nizations have emphasized in recent years. Nevertheless, a long series of research and
+publications suggests that business and competitive analysis serves a variety of impor-
+tant, longstanding needs for organizations. 1 0 Although we intend to explore this context
+in much greater detail in other parts of this section, here we will briefly describe how
+analysis fits within the intelligence process.
+A nalysis is just one step of a larger process for developing intelligence for an organiza-
+tion. Most depictions of the so-called “intelligence cycle” show a series of four to six steps
+in a stripped-down form. These steps describe the functions of an intelligence operation
+in an enterprise and are illustrated in Figure 1.1 .
+The analysis step in this cycle involves its own set of sub-tasks that need to be con-
+ducted to generate effective outputs and outcomes. Analysis works interactively with all
+the subprocesses of data classification and synthesis to produce a finished product such
+as a chart, graph, table, text, summary, visual, or other communicative aids appropriate
+for dissemination.
+10 Business and Competitive Analysis
+9780133086409_Book 1.indb 10 12/23/14 10:04 AM
+1. Plan/Task
+(Determining Client Needs,
+Establishing Requirements, 2. Collect and Process Data
+and Developing a Plan) (Collecting Data from within
+and outside the Firm, Initial
+Classification of the Collected
+Data, and Data Reduction)
+5. Evaluate and Control
+(Gathering Feedback and
+Assessing Whether the
+Process Satisfied the Client's
+Needs, Ongoing Needs, 3. Analyze
+and Possibly Restarting it (The Subject of This Book)
+if It Failed to Do So)
+4. Disseminate Intelligence
+(Presenting or Providing the
+Insights Generated to the
+Customer/Client)
+Figure 1.1 A generic intelligence cycle
+A nalysis involves the skillful application of a variety of techniques. We are sharing
+many good ones in the upcoming chapters of this book. All of these will help decision
+makers make sense of intelligence.
+Intelligence analysis is always context-specific in that it does not occur within a vac-
+uum, a static condition, or under experimental conditions. Because analysis is performed
+by practitioners in active organizational and competitive conditions, identifying the
+nature of competition that analysts examine as a part of their work task is important.
+Competitive Analysis and Decision Making
+“I never guess. It is a capital mistake to theorize before one has data. Insensibly one
+begins to twist facts to suit theories, instead of theories to suit facts.”
+—Sir Arthur Conan Doyle, author of Sherlock Holmes stories
+M ost organizations today are not structured or organized properly to make good deci-
+sions that will help them outperform their competition in the marketplace. 1 1
+Chapter 1 Business and Competitive Analysis: Definition, Context, and Benefits 11
+9780133086409_Book 1.indb 11 12/23/14 10:04 AM
+I t is commonplace for this book’s authors to hear from decisions makers who lament
+in retrospect: “I f only I’d known that, I’d never have made that decision or taken that
+action. ” Such comments reflect an absence of intelligence supporting the decision maker
+and the lack of greater insight behind their decisions and subsequent actions.
+T here is no shortage of examples where poor decisions have adversely affected many
+stakeholders. Read the business section of your local paper, and you will hear of bank-
+ruptcies, down-sizing because of poor sales, over-optimistic new product revenue/vol-
+ume predictions, wasted research and development (R&D) efforts, or plant closures due
+to outdated technology or cheap imports. Intelligence failures relative to national deci-
+sion making are also well publicized and again point to decision makers who were not
+properly prepared to make optimal decisions. 1 2
+Although finding decision makers who will publicly take the responsibility for hav-
+ing made poor choices is often difficult, we all know of individuals who, with hindsight,
+would have done things differently. Unfortunately, we are unaware of anyone who has
+figured out how to either roll back the clock or to reverse time! Making better choices
+and decisions the first time creates a greater need for effective analysis and intelligence.
+T oday’s managers face an abundance of information in their decision-making con-
+texts, and sometimes this information abundance causes them to be paralyzed. Much
+information arriving to top managers is biased, distorted, subjective, filtered, and/or late.
+Analysts have the means for helping reduce both the volume and rate of this information
+flow while simultaneously assuring the quality of the product being delivered. They can
+then greatly enhance the executive’s actual ability and confidence in effective decision
+making.
+Analysis has been revitalized in the “knowledge” era, or the era of intellectual capital.
+Whatever we should call it, knowledge is increasingly recognized as a key organizational
+asset that can distinguish between the winners and losers in many competitive market-
+places. 13 Organizations that can effectively generate, capture, disseminate, and apply
+knowledge better and faster than their competitors stand a higher probability of achiev-
+ing successful performance. Analysts are a critical part of this process as they are among
+the primary directors of knowledge in an organization. One thing we hope to emphasize
+in this book is that analysts must provide direction and guidance to those individuals
+responsible for collecting data and information. They are the link to gathered data and
+the organization’s key decisions.
+A nalysis is just as important because of the increased recognition and value on good
+thinking skills. Analysis cannot be conducted in the absence of thinking. 1 4 Without it,
+we would have random choice and luck. This is not the best foundation for a considered
+outcome and is increasingly likely to suffer from “extinction by instinct.” The other end
+of the continuum is from “paralysis by analysis.” That is not to summarily discount the
+value of instinct, but it has to be measured alongside more reliable and tested methods
+of analysis.
+12 Business and Competitive Analysis
+9780133086409_Book 1.indb 12 12/23/14 10:04 AM
+As access to data or information has increased, the highest value is now placed on not
+just obtaining appropriate data, but more importantly, to making good sense of it and
+then communicating that sense to others who need to know it. That is analysis!
+The Competitive Context Facing Contemporary Enterprises
+“War is ninety percent information.”
+—Napoleon Bonaparte
+Beating competitors, in many industries, has become a necessity rather than a desir-
+able goal. More insightful strategy development and execution has been needed since
+even a decade ago. We would suggest the following reasons are among the most critical
+ones underlying increased competition, all of which produce a greater need for improved
+business and competitive analysis.
+Explosion of access to cheap and fast information: Whether it is employee mobility,
+greater access to higher education in both traditional and online formats, companies
+showing less loyalty to their employees, or those same employees showing less loyalty to
+their employers, the window on competition and competitive opportunities has grown
+wider and more transparent. Keeping key competitive information proprietary and out
+of the sight or hands of competitors has become more difficult than ever before. This is
+because of ever-improving information and communication technology, the use of “big
+data,” enhanced analytic modeling, as well as changing socio-cultural value systems,
+among other factors.
+Maturation of industries and businesses: Many industries that were prominent in the
+twentieth century were resource-based industries, such as forest products, manufactur-
+ing, steel, and so on. These have rapidly matured or have seen a dramatic slowdown
+compared to past rates of growth. Many have struggled to institutionalize innovation
+capabilities, resources, strategies, new resource inputs, new production processes, new
+product development challenges, new employee skill recruitment and integration, new
+distribution channels, and/or understanding new customer needs. These are quite dif-
+ferent challenges to simply trying to build market share in an existing static and simple
+market space, and the potential for them to miss the disruptive forms of activity that may
+be occurring on the fringes of their still-lucrative markets is high. 1 5
+Loss of traditional means of competitive structuring and advantage: Traditionally, com-
+panies could achieve competitive advantage through scale economies, segment entrench-
+ment, first-mover advantages, and other such industry level gains. While still present in
+some sectors, these approaches are now so quickly and easily imitated that they no longer
+deliver sustainable advantage. Many of the new strategy experts suggest that there may
+not be such a thing as “sustainable competitive advantage”; instead, many of them are
+converging on concepts around being able to consistently achieve temporary advantages
+Chapter 1 Business and Competitive Analysis: Definition, Context, and Benefits 13
+9780133086409_Book 1.indb 13 12/23/14 10:04 AM
+and staying ahead of the competition. While the generic strategies of cost, differentiation,
+and f ocus originally described so cogently by Michael Porter are still conceptually fruit-
+ful, they are hard to achieve and sustain in practice. And much debate continues about
+whether the achievement of advantage is from positioning, is resource-based, or comes
+from some other source(s).
+Sophisticated and better-informed consumers: Customers are better informed than
+ever before and have access to significantly more information from point-of-purchase
+sources and social media on which to base their purchasing decisions. As with business-
+to-business (B2B) markets, buying habits are less ingrained, and purchases are increas-
+ingly based on specification, cost, and value. Today’s consumer is less likely to be swayed
+by an emotional appeal and will do hard-nosed research before striking a deal, especially
+with big ticket items.
+C ompanies that still think they can sell anything they like, at any price, to a gullible
+customer may well do so once, but not again. Bad news travels fast, and the presence of
+social media, customer pressure groups, protest blogs and sites, and vociferous word-of-
+mouth channels will quickly damage a brand.
+Dynamic and rapidly evolving technology: Physical strengths are being replaced by
+intangible assets such as intellectual property, knowledge, intelligence, brands, R&D
+teams, and market position, resulting in volume-based advantages being less promi-
+nent. 1 6 Even in industries where scale-based advantages still exist, typically manufactur-
+ing, the continual push by businesses across the globe to improve operational efficiency
+has made it harder to sustain such advantages. 17 This has made the development of
+effectiveness-based strategy and execution more critical than ever.
+T here is little doubt that competition compels organizations to respond, preferably
+in a proactive manner. Designing these responses and assessing their impact are the pri-
+mary task of the business and competitive analyst. The context within which the analysis
+is undertaken and the organization within which the analyst is working, will, inevitably,
+produce unique demands. The following section elaborates on the unique contextual
+factors impacting business and competitive analysts.
+Contemporary Context Facing the Analyst
+“He who would search for pearls—must dive below.”
+—John Dryden, historic author
+B eing an analyst in an enterprise facing a high degree of competitive rivalry is difficult,
+especially when inexperienced and/or lacking appreciation of analysis science. Analysts
+have always had to satisfy decision makers who want and need their assistance. If any-
+thing, the challenge for the analyst today is more daunting than in the past. We think
+there are several prominent reasons why this state of affairs exists, such as the following:
+14 Business and Competitive Analysis
+9780133086409_Book 1.indb 14 12/23/14 10:04 AM
+Lack of recognition that analysts are mission-critical: It is rare to find a student com-
+ing onto a business degree program who claims that he or she wants to be a competitive
+analyst. In contrast, hundreds, if not thousands, will say that they want to be a manage-
+ment accountant, financial analyst, sales specialist, or brand manager. Similarly, it is rare
+to hear CEOs or CFOs claim that their competitive advantage came from their analytical
+team or their capabilities. We know that analysis underlies many companies’ competitive
+advantages, but it is often called something else, or the process is embedded among other
+functional activities. Enlightened organizations recognize the unique value that analysis
+generates, and as a result, then put significant resources behind it to ensure that they
+continue to derive competitive advantage.
+Decision makers cannot always articulate their decision needs: Analysis requires proper
+direction at the outset for the process to produce a satisfactory output. Unfortunately,
+decision makers may not ask the right questions of the analyst. They may not even
+know what the questions are. So it is up to the analyst to focus their decision-maker on
+the “must know,” as opposed to the ubiquitous “like to know” style that we frequently
+witness.
+Pressure for a quick judgment: Competitors are moving fast, investors and sharehold-
+ers want the quarterly performance targets on time, customers want solutions yesterday,
+and nobody is willing to wait. Time is the most precious resource for an analyst; con-
+sequently, time will always be in short supply. Decisions are often made on the basis of
+“what we know now” because the situation simply will not allow for more delay. As such,
+analysts need to constantly seek established data collection and classification solutions
+and systems that can provide reliable outputs quickly. They need to provide intelligence
+despite that being at a lower level of confidence than usually expected. Analysts and
+decision makers need to address the increasingly time-starved context within which they
+both work and assess its ramifications.
+Highly ambiguous situations: Ambiguity comes in many forms for both the decision
+itself and the analyst. It can emanate from the nature of competition, the range of com-
+petitive tactics employed, key stakeholders’ responses in a competitive arena, product
+and/or process enhancements, consumer responses to competitive tactics, and so on.
+These types of interjections have been studied by researchers who have recognized that
+ambiguity can be a potent barrier to competitive imitation 18 and allow for a competitor
+to sustain their advantage for a longer period.
+Incrementally received/processed information: Rarely will an analyst get the informa-
+tion he or she needs, on time and in the required format. The inability of traditional
+executive information systems to capture, classify, and rank rumors, gossip, grapevine
+data, and knowledge held by employees out in the field means that analysts lack the kind
+of primary source information that has always been the “jewel in the crown” element that
+makes analysis so valuable. 19
+Chapter 1 Business and Competitive Analysis: Definition, Context, and Benefits 15
+9780133086409_Book 1.indb 15 12/23/14 10:04 AM
+Shifting Organizational Priorities for Analysts and Analysis
+“The alchemists in their search for gold discovered many things of greater value.”
+—Arthur Schopenhauer, German philosopher
+We know there has been a fundamental shift in the nature and sequence of organiza-
+tional priorities for analysts. Though change is not uniform across sectors, decipher-
+ing the outline of a transformation toward improved analytical capabilities is possible
+through the following principles.
+Adding Value to Intelligence: A priority for analysts is to deliver a product that adds
+context and meaning to raw data and information. In today’s information-overloaded
+environment, intelligence competes for the attention of the decision maker. John Gan-
+non, former Deputy Director of the Central Intelligence Agency, commented, “ It is our
+challenging but rewarding job to keep telling these smart but overworked folks, decision or
+policy makers, what’s happening in a complicated world.” Keeping ahead of the competi-
+tion and keeping the attention of intelligence users cannot be taken for granted. Some
+commentators consider that the insufficient and poor training of analysts has been a
+primary reason for the low effectiveness of intelligence programs. 2 0
+One of the ways to stay relevant is to build and maintain subject matter expertise,
+continuity, and depth within the organization’s analytical ranks. Information alone will
+not be useful to the consumer if it is not interpreted correctly and presented in a cred-
+ible way by a recognized expert. This issue has been addressed in some organizations
+through the creation of a senior-level council that is responsible for strategic planning
+and addresses the areas of CI recruitment, assignments, core skills, standards, and train-
+ing. Others have relied upon the continuous delivery of learning opportunities, through
+apprenticeships, traditional classroom, and virtual means, by which analysts can upgrade
+their capabilities. Finally, some organizations have outsourced to specialist companies
+that they believe can provide the needed services better than internal resources. The
+variety of ways that best practice CI organizations have attempted to address this need
+has been catalogued in several studies. 2 1
+Answering Questions in Real Time: Analysts have traditionally met intelligence needs
+through regular briefings and overviews, usually tailored to the client’s needs. These
+deliveries can also be supplemented with personalized digital, instant messages or
+memos that respond to incidental or supplementary questions. Using highly developed
+specialized software and solutions, analysts may provide daily or, when a crisis erupts,
+minute-by-minute support. While the vast majority of an organization’s analytical tasks
+will be carried out in response to specific questions, over the course of a typical year, an
+analyst or analytical team will provide hundreds of ad-hoc briefings on virtually every
+aspect of the enterprise, thousands if one factors in the insights delivered by today’s
+information solutions. 22
+16 Business and Competitive Analysis
+9780133086409_Book 1.indb 16 12/23/14 10:04 AM
+Concentrating Resources: Analysts must be vigilant about prioritization, and they are
+expected to use all the latest technology to stay ahead of the competition without wast-
+ing scarce resources. Consequently, a need exists to continually press for clarification of
+a critical intelligence need. Organizations have to find innovative ways to build in flex-
+ibility within their collection and analysis efforts so that new priorities can be addressed
+on an as-needed basis. This flexibility is seldom considered when devising a competitive
+analysis or intelligence system, but has become increasingly important in a resource-
+constrained context.
+Forging Partnerships: Another priority is how the organization, its data collectors, and
+analysts relate with the broader community. Partnership is a concept that has taken hold
+as organizations seek to take advantage of others’ specialized expertise and resources.
+Co-operative efforts between CI and other departments have built formal and informal
+networks of functional and subject experts throughout the organization. Rarely does
+all the expertise on any particular issue reside in one part of an organization or a single
+unit. Tapping into analytic expertise across the firm is important to overcome commonly
+experienced budget and personnel constraints.
+Looking Over the Horizon: The focus on decision-tailored support helps make analysis
+more relevant and useful to the client. It also ensures that intelligence resources are going
+where they need to be. Providing such high-level support makes an enormous claim on
+resources, particularly staffing and time. At worst, analysts risk becoming prisoners of
+their inboxes and unable to put daily events in a broader context—which is essential if
+they are to provide timely warning of emerging opportunities or threats. The challenge
+is to step back and consider what the organization might face tomorrow, next week, or
+next year. Analysts have to look beyond the immediate and the obvious, toward those
+forces that might be moving slowly but inexorably toward their organization. Giving
+decision makers a sense of the possible, rather than the probable, must be a key priority
+for analysts, and it is precisely this that sets them apart from others in the organization.
+Providing Timely Support: Analysis is most relevant when it is provided directly to the
+decision maker. Analysts are at their best when deployed on-site and in regular contact
+with the organization’s managers, negotiating teams, and front-line decision makers.
+This ensures a better understanding of shifting agendas, prime movers, and quick feed-
+back on their outputs. This all helps to better target the intelligence effort. As mentioned
+already in this section, time is a luxury that few decision makers enjoy, so anything that
+puts the analyst closer to the problem can only speed up the solution identification
+process.
+Summary
+Excellent analysis is the key to successful insights and/or intelligence and can pro-
+vide high-value strategic decision support capability in contemporary enterprises.
+Chapter 1 Business and Competitive Analysis: Definition, Context, and Benefits 17
+9780133086409_Book 1.indb 17 12/23/14 10:04 AM
+Intelligence about customers, competitors, potential partners, suppliers, and other
+influential stakeholders is a company’s first, and often only, line of offense/defense.
+Maintaining this capability into the future requires analysts and competitive intelligence
+practitioners to exploit every opportunity to provide their decision makers with analysis
+that is persuasive, relevant, timely, perceptive, and actionable. Analysts must provide
+their decision makers with the essential insight needed to preserve their organization’s
+competitiveness and provide early warnings of market changes.
+Contemporary analysts are expected to offer direct and immediate support to resolve dif-
+ferent types of queries, work more closely with their counterparts responsible for human
+and technical collection, package their analyses in a variety of new forms, and deliver
+them through whatever means are best suited to the recipient.
+In fulfilling this mission for the future, competitive intelligence-driven organizations
+and members of the analytical community face many fresh challenges. Success will be
+determined, at least in part, by how well these individuals and functions manage their
+scarce resources, balance frequently conflicting demands, produce longer-term analysis,
+continue to develop both broad and deep analytic expertise, and forge new relationships
+with others both inside and outside their organizations. This is not the time for analysts
+to be resting on their laurels. New ways of working and critical issues are appearing at
+a far greater pace than in the past. Analysts need all the help they can get to rise to the
+challenge of tomorrow’s demands.
+References
+A merican Productivity and Quality Council (APQC) (2000). D eveloping a Successful CI Program:
+Enabling Action, Realizing Results . Houston, TX: APQC.
+B outhillier, F. and K. Shearer (2013). “Comparative Analysis of Competitive Intelligence Software
+Applications: An Examination of Some Value-added Processes,” in P roceedings of the Annual
+Conference of the Canadian Association for Information Science , October.
+C hender, M. (2006). Comments from his speech given to the K MWorld webinar, “Creating a
+Predictable Advantage,” January 19; available at www.kmworld.com .
+Christensen, C., Raynor, M., Dyer, J. and H. Gregersen (2013). Disruptive Innovation: T he Chris-
+tensen Collection (The Innovator’s Dilemma, The Innovator’s Solution, The Innovator’s DNA,
+and H arvard Business Review article “How Will You Measure Your Life?”). Harvard Business
+Press.
+C lark, R.M. (2004). Intelligence Analysis: A Target-Centric Approach. Washington, DC: CQ Press.
+D avis, J. (2003). “Occasional Papers,” 2,2 (January). The Sherman Kent Center for Intelligence
+Analysis.
+D ierickx, I. and K. Cool (1989). “Asset stock accumulation and sustainability of competitive
+advantage,” M anagement Science, 35, pp. 1504–1511.
+18 Business and Competitive Analysis
+9780133086409_Book 1.indb 18 12/23/14 10:04 AM
+D ishman, P., Fleisher, C.S., and V. Knip (2003). “A chronological and categorized bibliography of
+key competitive intelligence scholarship: Part 1 1996–2003,” Journal of Competitive Intelligence
+and Management, 1(1), pp. 13–79.
+E l-Nasri, W. (2012). “Conceptual Model of Strategic Benefits of Competitive Intelligence
+Process,” International Journal of Business and Commerce, 1(6), pp. 25–35.
+F leisher, C.S., and B. Bensoussan (2003). S trategic and Competitive Analysis: Methods and Tech-
+niques for Analyzing Business Competition . Upper Saddle River, NJ: Prentice Hall.
+Fleisher, C.S. and S. Wright (2013). “Competitive Intelligence Analysis Failure: Diagnosing
+Individual-Level Causes and Implementing Organizational Level Remedies,” Ch. 8 in Wright,
+S [Ed.], Competitive Intelligence, Analysis and Strategy: Creating Organizational Agility. Abing-
+don, UK: Routledge.
+F leisher, C.S., Knip, V., and P. Dishman (2003). “A chronological and categorized bibliography of
+key competitive intelligence scholarship: Part 2 1990–1996,” Journal of Competitive Intelligence
+and Management, 1(2), pp. 11–86.
+F leisher, C.S. (2001). “An introduction to the management and practice of competitive intelli-
+gence,” pp. 3–18 in Fleisher, C.S. and D.L. Blenkhorn [Eds.], M anaging Frontiers in Competi-
+tive Intelligence. Westport, CT: Quorum Books.
+Gilad, B. (2009). Business War Games. Franklin Lakes, NJ: The Career Press.
+H alliman, C. (2003). “A Look at How a Number of Business and Competitive Intelligence Pro-
+fessionals View or Define the Analysis Process,” accessed April 28, 2003 from http://www.
+InformationUncover.com/new.htm .
+H erring, J.P. and J.A. Leavitt (2011). “The Roadmap to a World-Class Competitive Intelligence
+Program,” Competitive Intelligence Magazine, 14(1), pp. 9–28
+H orowitz, R. (2011). “Competitive Intelligence, Law and Ethics: The Economic Espionage Act
+Revisited Again (And Hopefully for the Last Time),” C ompetitive Intelligence Magazine , 14(3),
+pp. 41–47.
+I ALEA (2001). Starting an Analytic Unit for Intelligence Led Policing. Lawrenceville, NJ: Interna-
+tional Association of Law Enforcement Intelligence Analysts, Inc.
+Johnston, R. (2005). Analytic Culture in the U.S. Intelligence Community. Washington, DC: Cen-
+ter for the Study of Intelligence.
+Kahneman, D. (2011). T hinking Fast and Slow. New York: Farrar, Straus and Giroux.
+K nip, V., Dishman, P., and C.S. Fleisher (2003). “A chronological and categorized bibliography of
+key competitive intelligence scholarship: Part 3 pre-1990,” J ournal of Competitive Intelligence
+and Management, 1(3), pp. 11–80.
+Lackman, C., Saban, K., and J. Lanasa (2000). “Organizing the competitive intelligence function:
+A benchmarking study,” Competitive Intelligence Review, 11(1), pp. 17–27.
+M cGonagle, J.J. and C.M. Vella (2012). “Competitive Intelligence Lingo,” pp. 1–8 in P roactive
+Intelligence . London: Springer.
+Chapter 1 Business and Competitive Analysis: Definition, Context, and Benefits 19
+9780133086409_Book 1.indb 19 12/23/14 10:04 AM
+McGrath, R.G. (2013). “Transient advantage,” H arvard Business Review, 91(6), pp. 62–70.
+Porter, M.E. (1996). “What is strategy?” H arvard Business Review, 74(6), pp. 61–78.
+Porter, M.E. (1980). C ompetitive Strategy: Techniques for Analyzing Industries and Competitors.
+New York: Free Press.
+P rescott, J.E. and P.T. Gibbons (1993). “Global competitive intelligence: An overview,” pp. 1–27
+in Prescott, J.E., and P.T. Gibbons [Eds.], G lobal Perspective on Competitive Intelligence, Alex-
+andria, VA: Society of Competitive Intelligence Professionals.
+Prescott, J.E., Herring, J., and P. Panefly (1998). “Leveraging information for action: A look into
+the competitive and business intelligence consortium benchmarking study,” C ompetitive Intel-
+ligence Review, 9(1), pp. 4–12.
+Prunckun, H. (2010). H andbook of Scientific Methods of Inquiry for Intelligence Analysis. Lanham,
+MD: Scarecrow Press.
+R ogers, P. and M. Blenko (2005). “The decision-driven organization: Making good decisions and
+making them happen,” a white paper produced for Bain and Company accessed at www.bain.
+com .
+S haker, S. and M. Gembicki (1999). The WarRoom Guide to Competitive Intelligence. New York:
+McGraw Hill.
+Steele, R. D. (2002). The New Craft of Intelligence: Personal, Public & Political, Oakton, VA: OSS
+International Press.
+Tzu, S. (1988). T he Art of War. Oxford, UK: Oxford University Press.
+Waltz, E. (2003). K nowledge Management in the Intelligence Enterprise. Boston: Artech House.
+Werther, G. (2001). “Building an ‘Analysis Age’ for Competitive Intelligence in the 21st Century,”
+Competitive Intelligence Review, 12(1), pp. 41–47.
+Wright, S. [ed.] (2013). Competitive Intelligence, Analysis and Strategy: Creating Organizational
+Agility. Abingdon, UK: Routledge.
+Z ahra, S. and S. Chaples (1993). “Blind spots in competitive analysis,” A cademy of Management
+Executive, 7(2), pp. 7–28.
+Ziegler, C.N. (2012). “Competitive Intelligence Capturing Systems,” pp. 51–62 in Mining for
+Strategic Competitive Intelligence. Springer Berlin Heidelberg.
+Endnotes
+1. The field of strategy and strategic management is frequently covered in most university
+business or management curricula. The books used in these courses do a fine job in cov-
+ering the processes and content of strategy. This book assumes some knowledge of these
+concepts, but does not require high levels of prior strategy knowledge to be applicable.
+2. A good source for business and management terminology is McGonagle and Vella, 2012.
+20 Business and Competitive Analysis
+9780133086409_Book 1.indb 20 12/23/14 10:04 AM
+3. We will distinguish between strategic, tactical, operational, and micro decision types in
+later chapters. This book’s methods will be at least somewhat applicable to all these types,
+although we designed it to be mainly focused on strategic decisions.
+4. Zahra and Chaples, 1993.
+5. Clark, 2004.
+6. Gilad, 2009; Shaker and Gembicki, 1999.
+7. Horowitz, 2011.
+8. El-Nasri, 2012; Prescott and Gibbons, 1993.
+9. We recognize that there are likely key conceptual if not practical differences between
+the kinds of analysis done within “business” and “competitive” intelligence. As explain-
+ing these differences would require far more detail than we can provide here, we refer
+readers to Fleisher’s discussion of these terms in greater depth in Chapter 5 of the edited
+book (with D. Blenkhorn) entitled Controversies in Competitive Intelligence: The Enduring
+Issues , Westport, CT: Praeger Publishers (2003).
+10. Clark, 2004; Dishman, Fleisher, and Knip, 2003; Fleisher, Knip, and Dishman, 2003; Her-
+ring and Leavitt, 2011; Johnston, 2005; Knip, Fleisher, and Dishman, 2003.
+11. Rogers and Blenko, 2005; Wright, 2013.
+12. F or a poignant example of these, Robert Steele does a nice job of identifying the vary-
+ing nature of the failures that occurred associated with the 9-11 events that dramatically
+affected the United States. See “What went wrong and why,” pp. 3–10 in Steele, Robert
+David (2002). T he New Craft of Intelligence: Personal, Public & Political , Oakton, VA: OSS
+International Press.
+13. Waltz, 2003.
+14. T his is best exemplified by understanding the difference between Systems 1 and 2 thinking
+so fully elaborated by Nobel Prize winner Daniel Kahneman in his 2011 book.
+15. Christensen, Raynor, Dyer, and Gregersen, 2013.
+16. McGrath, 2013.
+17. Porter, 1996, 1980.
+18. Dierickx and Cool, 1989.
+19. Wright, 2013; Chender, 2006.
+20. Fleisher and Wright, 2013; Werther, 2001.
+21. Namely, APQC, 2000; Lackman et al, 2000, Prescott et al, 1998; Wight, 2013.
+22. Bouthillier and Shearer, 2013; Ziegler, 2012.
+Chapter 1 Business and Competitive Analysis: Definition, Context, and Benefits 21
+9780133086409_Book 1.indb 21 12/23/14 10:04 AM
+Index
+A hierarchical model, 51 - 61
+analysis task-level failures, 55 - 57
+accuracy, FAROUT method, 96
+external environment-level failures, 59 - 61
+ACH (analysis of competing hypotheses)
+individual analyst-level failures, 53 - 55
+applying, 128 - 133
+internal organizational-level failures, 57 - 59
+compared to conventional intuitive
+overview, 51 - 53
+analysis, 133
+levels of failure, 49 - 50
+explained, 123
+overcoming, 63 - 65
+FAROUT summary, 134
+shift from traditional BCA to Analysis 2.0, 62
+history of, 123 - 124
+sources of failure, 50 - 51
+hypotheses
+trade-offs, 48 - 49
+disproving, 131
+analysis of competing hypotheses. See ACH
+identifying, 128
+(analysis of competing hypotheses)
+matrix of, 129 - 130
+analysis process
+questioning assumptions in, 131
+briefings, 16
+supporting evidence, 128 - 129
+characteristics of successful analysts, 44- 45
+illustration of generic ACH process, 124
+customers of, 23 - 24
+KIQs (Key Intelligence Questions), 125 - 126
+problem definition, 25 - 26
+KITs (Key Intelligence Topics), 125 - 126
+scope identification, 26 - 31
+strategic rationale and implications, 124 - 125
+in decision making, 11 - 15
+strengths, 126 - 127
+competition within industries, 13 - 14
+weaknesses, 127 - 128
+contextual factors impacting analysis, 14 - 15
+actionable recommendations, 83
+defined, 6 - 8
+Advanced Manufacturing Research (AMR), 493
+infrastructure support, 39 - 40
+alliance groups, 467
+efficiency, 43 - 44
+Amazon, 160
+external networks, 42 - 43
+Amazon Auctions, 4 00
+intelligence solutions, 40 - 41
+ambiguity, 15
+internal networks, 41 - 42
+American Quality and Productivity Center, 143
+perpetual learning, 43 - 44
+amiable communication style, 85
+proactivity, 43 - 44
+AMR (Advanced Manufacturing Research), 493
+input evaluation, 34 - 35
+analogy, reasoning by, 54
+primary sources, 34 - 35
+Analysis 2.0, shift to, 62
+SCRAPE model, 35 -37
+analysis failures, 49
+secondary sources, 35
+analytical fitness and, 63 - 65
+tertiary sources, 35
+failure location, 49 - 50
+573
+9780133086409_Book 1.indb 573 12/23/14 10:05 AM
+intelligence analysis levels, 31 B
+MIA (micro intelligence analysis), 33 - 34
+background checks, 457
+OIA (operational intelligence analysis), 33
+Baldwin, Jerry, 376
+SIA (strategic intelligence analysis), 32
+Balsillie, Jim, 441
+TIA (tactical intelligence analysis), 32 - 33
+bargaining power
+in intelligence cycle, 10 - 11
+of channels/buyers, 319
+knowledge, elements of, 36
+of suppliers, 319
+assumptions, 38
+Basic Intelligence reports, 78
+beliefs, 38
+battlecards, 76 - 77
+facts, 36 - 38
+BCG (Boston Consult Group) growth-share
+perceptions, 38
+matrix, 191 , 204
+projections, 38 - 39
+Beaver, William, 203
+synthesis, 39
+beliefs, 38
+organizational priorities and, 16 - 17
+bell curve, 341
+10 commandments for business and
+benchmarking analysis
+competitive analysis, 45
+applying, 147 - 153
+as value-added intelligence, 16
+codes of conduct, 143
+analysts
+competitive/external benchmarking, 140
+analytical fitness, 63 - 65
+explained, 137
+challenges facing, 14 - 15
+FAROUT rating system, 156 - 157
+characteristics of successful analysts, 44- 45
+FedEx case study, 153 - 155
+communication. See communication
+global best demonstrated practice
+individual analyst-level failures, 53 - 55
+benchmarking, 140 - 141
+organizational priorities and, 16 - 17
+history of, 137 - 138
+trade-offs made by, 48 - 49
+internal benchmarking, 139 - 140
+analytical communication style, 85
+KIQs (Key Intelligence Questions), 143 - 144
+analytical fitness, 63 - 65
+KITs (Key Intelligence Topics), 143 - 144
+Andrews, Kenneth R., 105
+other industry benchmarking, 140
+anomaly detection, 32
+strategic rationale and implications, 138 - 143
+answering questions, 86 - 87
+strengths, 144 - 145
+Apple, 176 - 178
+weaknesses, 145 - 147
+articulating the value proposition, 168 - 170
+worksheet, 155
+assessments, 76
+BHP, 204
+OR&T (Opportunity, Risk and Threat)
+BI (business intelligence systems), 39
+assessments, 32
+biases
+impact assessment, 32
+bias in data, 338
+relationship assessments, 479 - 482
+cognitive biases, 53 - 54
+risk assessment, 363 - 364
+Blackberry (RIM) case study, 440 - 442
+strategy assessment, 436 - 439
+BMA (business model analysis)
+assumptions, 38
+applying, 168 - 176
+explicit versus implicit, 356 - 359
+competitors, identifying, 170 - 171
+false assumptions, 357 - 358
+revenue models, 174
+LASA (linchpin assumption sensitivity
+target segment, 169 - 170
+analysis), 362 - 363
+value chain and cost models, 171 - 174
+questioning, 132
+value networks, 174
+audits, initial product audit, 389 - 390
+value proposition, 168 - 170
+averages, 342 - 344
+business model analysis grid, 175 - 176
+business model classification, 164 - 167
+574 Index
+9780133086409_Book 1.indb 574 12/23/14 10:05 AM
+business model elements, 162 - 163 CFA (cash flow analysis)
+explained, 159 - 160 applying, 209 - 213
+FAROUT rating system, 179 - 181 future cash flow analysis, 210 - 213
+history of, 160 - 161 historic cash flow analysis, 211 - 216
+KIQs (Key Intelligence Questions), 167 Burns Philp case study, 213 - 216
+KITs (Key Intelligence Topics), 167 DCF (discounted cash flow), 203 - 204
+Lenovo case study, 176 - 178 explained, 202
+strategic rationale and implications, 161 - 162 FAROUT rating system, 219 - 220
+strengths, 167 - 168 KIQs (Key Intelligence Questions), 206 - 207
+weaknesses, 168 KITs (Key Intelligence Topics), 206 - 207
+worksheet, 179 Power Brewing case study, 216 - 218
+Bond, Alan, 216 strategic rationale and implications, 204 - 206
+Boston Consult Group (BCG) growth-share strengths, 207
+matrix, 191 , 204 weaknesses, 208 - 209
+Bowker, Gordon, 376 worksheet, 218
+Boynton, Anthony, 223 Chandler, Alfred duPont, 282 , 368
+brand level competition, 27 CI (competitive intelligence), 8 - 10
+brands, 430 CIA (Central Intelligence Agency), 355
+Brash Holdings, 206 CINs (critical intelligence needs), 9 , 30
+“bricks and clicks” model, 161 CIPs (competitive intelligence programs), 10
+briefings, 16 cluster analysis, 33
+face-to-face briefings, 72 cognitive biases, 53 - 54
+intelligence briefings, 77 color, cultural meanings of, 88
+written reports and briefings, 72 common SWOT model, 107 - 108
+Brown, Linden, 183 communication, 69
+Buffett, Warren, 203 communication difficulties, 79 - 86
+Bullen, Christine, 223 communication styles, 84 - 85
+bull-whip effect, 495 communication transmission model, 80
+Burns Philp case study, 213 - 216 cultural awareness, 87 - 88
+business failure, 49 - 50 effective communication, 69 - 72
+business intelligence systems (BI), 39 e-mail, 73
+business model analysis. See BMA (business exercises and planning sessions, 74
+model analysis) face-to-face briefings, 72
+follow-up and feedback, 87
+instant messaging, 73
+C listening, 86 - 87
+packaging analysis results, 71
+cannibalization in sales, 389 - 390
+presentations, 72 - 73
+capability-related CSFs (critical success factors),
+products and reports
+225 - 226
+assessments, 76
+cash flow analysis. See CFA (cash flow analysis)
+Basic Intelligence reports, 78
+causal factors analysis, 270 - 274
+battlecards, 76 - 77
+Central Intelligence Agency (CIA), 355
+competitor profiles, 76
+central tendency in statistical analysis, 3 42 - 344
+Counterintelligence reports, 79
+creating, 78 - 79
+Current Intelligence reports, 78
+Index 575
+9780133086409_Book 1.indb 575 12/23/14 10:05 AM
+Early Warning Intelligence reports, 79 positioning strategy, formulating, 193 - 195
+Estimated Intelligence reports, 79 strategy and parameters, identifying,
+Foreign Intelligence reports, 79 190 - 191
+intelligence briefings, 77 explained, 183
+news bulletins and newsletters, 74 - 75 FAROUT rating, 198-199
+situation analysis, 78 financial services case study, 196 - 197
+special intelligence summaries, 78 history of, 183 - 184
+strategic impact worksheets, 77 KIQs (Key Intelligence Questions), 187
+Targeted Intelligence reports, 79 KITs (Key Intelligence Topics), 187
+Technical Intelligence reports, 78 - 79 strategic rationale and implications, 184 - 187
+Work Group Intelligence reports, 79 strengths, 187 - 188 , 195 - 196
+questions, answering, 86 - 87 worksheet, 197
+web-based intelligence solutions and weaknesses, 188 - 189
+systems, 73 competitive strategy, 163
+written reports and briefings, 72 Competitive Technology Intelligence (CTI), 29
+communication reception errors, 51 competitor cash flow analysis. See CFA (cash
+communication transmission errors, 51 flow analysis)
+competition . See also CFA (cash flow analysis) competitors
+in analysis scope, 27 - 28 CFA (cash flow analysis)
+competition analysis, 234 applying, 209 - 213
+competitive positioning analysis Burns Philp case study, 213 - 216
+applying, 189 - 195 DCF (discounted cash flow), 203 - 204
+explained, 183 explained, 202
+financial services case study, 196 - 197 FAROUT rating system, 219 - 220
+history of, 183 - 184 history of, 202 - 204
+KIQs (Key Intelligence Questions), 187 KITs (Key Intelligence Topics), 206 - 207
+KITs (Key Intelligence Topics), 187 Power Brewing case study, 216 - 218
+strategic rationale and implications, 184 - 187 strategic rationale and implications, 204 - 206
+strengths, 187 - 188 , 195 - 196 strengths, 207
+weaknesses, 188 - 189 weaknesses, 208 - 209
+definition of, 4 - 5 worksheet, 218
+within industries, 13 - 14 competitor profiles, 76
+multi-point competition, 31 identifying, 170 - 171
+needs-based/generic-level, 28 Porter’s Five Forces model, 319 - 320
+Porter’s Five Forces model, 319 - 320 rivalry among, 320
+product category level, 27 - 28 in scope analysis, 27 - 28
+product/brand level, 27 sector/competitor assessments, 32
+share of wallet level, 28 complexity, 60
+competitive, defined, 4 - 5 computer-generated econometric model, 409
+competitive benchmarking, 140 concentrating resources, 16 - 17
+competitive financial ratio comparison, 137 conclusions (ACH), 132
+competitive intelligence (CI), 9 - 10 consortia, 467
+competitive intelligence programs (CIPs), 10 constellations, 467
+competitive positioning analysis consumer access to information, 14
+applying, 189 - 195 contextual factors impacting analysis, 14 - 15
+industry analysis, 193 control, illusion of, 54
+market research, 193 convenience-based data gathering, 55 - 56
+market segmentation, 192
+576 Index
+9780133086409_Book 1.indb 576 12/23/14 10:05 AM
+corporate literature, 457 Current Intelligence reports, 78
+correlation, 338 - 339 , 350 - 351 curves in regression analysis, 349 - 350
+cost focus, 395 customers of analysis, 23 - 24
+cost leadership, 393 - 394 problem definition, 25 - 26
+cost models, 162 , 171 - 174 scope identification, 26 - 31
+Counterintelligence reports, 79 competitors, 27 - 28
+creativity simulators, 529 - 531 decision location, 30- 31
+critical intelligence needs (CINs), 9 , 30 decision makers, 30 - 31
+critical success factors. See CSFs (critical success environment, 28 - 29
+factors) analysis technology, 29 - 30
+cross-impact analysis, 410
+crude oil refining case study, 325 - 329
+CSFs (critical success factors) analysis, 175 D
+applying, 231 - 237
+Daniel, J. Ronald, 222
+competition analysis, 234
+data comparisons, 345 - 346
+CSF importance, 236 - 237
+data overload, 60
+industry leader analysis, 235
+data-gathering errors, 51
+industry/business experts, 234
+David Jones, 205
+Porter’s Five Forces model, 233 - 234
+DCF (discounted cash flow), 203 - 204
+socio-political/environmental analysis,
+debriefing, 457
+232 - 233
+decision location, 30 - 31
+distribution-related CSFs (critical success
+decision makers, 30 - 31
+factors), 225
+decision making
+explained, 222
+analysis in, 11 - 15
+Farm Fresh Produce case study, 237 - 238
+competition within industries, 13 - 14
+FAROUT rating system, 239 - 240
+contextual factors impacting analysis, 14 - 15
+history of, 222 - 224
+decision location, 30 - 31
+key processes, 226 - 227
+decision makers, 30 - 31
+KIQs (Key Intelligence Questions), 229
+decision-tailored support, 17
+KITs (Key Intelligence Topics), 229
+disconnects from, 56
+Leidecker and Bruno, 232
+failures, 50
+manufacturing-related CSFs (critical success
+micro decisions, 30
+factors), 225
+operational decisions, 30
+marketing-related CSFs (critical success
+strategic decisions, 5 , 30
+factors), 225 - 226
+tactical decisions, 30
+skill- and capability-related CSFs (critical
+decision support systems (DSS), 39
+success factors), 225 - 226
+decision-tailored support, 17
+strategic rationale and implications, 224 - 229
+defining problems, 25 - 26
+strengths, 229 - 230
+delayed fit (SERVO analysis), 438
+technology-related CSFs (critical success
+delivering messages. See communication
+factors), 225
+Dell, 160
+weaknesses, 230 - 231
+Delphi method of scenario development, 409 ,
+worksheet, 238
+515 , 519 , 520
+CTI (Competitive Technology Intelligence), 29
+demand, DFA (driving forces analysis), 256 - 257
+cultural awareness, 87 - 88
+design for postponement strategies, 386
+currency, cultural awareness of, 88
+Design for Supply, 497 - 498
+Index 577
+9780133086409_Book 1.indb 577 12/23/14 10:05 AM
+detecting anomalies, 32 E
+developing scenarios. See generating scenarios
+E&T (event and timeline) analysis
+DFA (driving forces analysis)
+applying, 267 - 274
+applying, 246 - 257
+chronological table of events, 269
+common types of DFs, 247 - 250
+event and causal factors analysis, 270 - 274
+impact assessment, 250 - 254
+events matrix, 270
+digital music industry case study, 254 - 256
+explained, 263
+drivers, 243
+FAROUT rating system, 278 - 280
+explained, 243
+history of, 263 - 264
+FAROUT rating system, 259 - 260
+KIQs (Key Intelligence Questions), 265
+history of, 243 - 244
+KITs (Key Intelligence Topics), 265
+impact assessment
+pharmaceutical company case study, 274 - 277
+demand, profitability, and market
+strategic rationale and implications, 264
+attractiveness, 256 - 257
+strengths, 265 - 266
+matrix system, 252 - 254
+weaknesses, 266 - 267
+score system, 251
+worksheet, 278
+structured ranking, 251
+early fit (SERVO analysis), 438
+KIQs (Key Intelligence Questions), 244 - 245
+Early Warning Intelligence reports, 79
+KITs (Key Intelligence Topics), 244 - 245
+eBay, Inc., 160 , 397 - 401
+strategic rationale, 244
+e-business models, 1 64
+strengths, 245 - 246
+economic trends, 61
+weaknesses, 246
+educational deficiencies, 60 - 61
+worksheet, 258
+efficiency, 43 - 44
+differentiation, 394
+EIS (enterprise information systems), 39
+differentiation focus, 395 - 396
+e-mail, 73
+digital music industry case study (DFA), 254 - 256
+cultural awareness, 87 - 88
+discontinuity of tasks, 55
+e-mail marketing solutions case study
+discounted cash flow (DCF), 203 - 204
+(WLA), 566 - 568
+disproving hypotheses, 131
+enterprise information systems (EIS), 39
+distribution, normal, 341
+enterprise resource planning systems (ERP), 39
+distribution-related CSFs (critical success
+environment
+factors), 225
+in analysis scope, 28 - 29
+diversification scenario, 411
+environmental analysis, 109
+DJIA (Dow Jones Industrial Average), 166
+environmental scanning, 528 - 529
+dot-com bust, 161
+environment-level failures, 59 - 61
+Dow Jones Industrial Average (DJIA), 1 66
+industry fusion analysis
+driver communication style, 85
+general environment, 314 - 317
+drivers, 243 . See also DFA (driving forces
+internal environment, 318
+analysis)
+operating environment, 317 - 318
+driving forces analysis. See DFA (driving forces
+macro-environment, 108 - 109
+analysis)
+in SERVO analysis, 427 - 428
+DSS (decision support systems), 39
+ERP (enterprise resource planning systems), 39
+escalating commitment, 54
+Estimated Intelligence reports, 79
+estimation bias, 54
+578 Index
+9780133086409_Book 1.indb 578 12/23/14 10:05 AM
+evaluating industry fusion analysis, 331 - 332
+firm performance, 435 interpretation of statistical analysis, 352 - 353
+inputs, 34 - 35 linchpin analysis, 365 - 366
+primary sources, 34 - 35 McKinsey 7S analysis, 381 - 383
+SCRAPE model, 35-37 PLA (product line analysis), 403 - 404
+secondary sources, 35 scenario analysis, 422 - 423
+tertiary sources, 35 SCM (supply chain management)
+event and causal factors analysis, 270 - 274 analysis, 508 - 509
+event and timeline analysis. See E&T (event and SERVO analysis, 443 - 444
+timeline) analysis shadowing, 463 - 464
+Evolution Fresh, 377 SRA (strategic relationship analysis), 486 - 487
+executive information systems (ExIS), 39 summary of methods, 100
+exercises and planning sessions, 74 SWOT analysis, 105- 121
+ExIS (executive information systems), 39 technology forecasting, 535 - 537
+expert opinion, 522 - 523 war gaming, 553 - 554
+explicit assumptions, 357 WLA (win/loss analysis), 570 - 571
+expressive communication style, 85 FedEx, 139 , 153 - 155
+external benchmarking, 140 feedback on communication, 87
+external environment-level failures, 59 - 61 The Fifth Discipline ( Senge), 323
+external networks, 42 - 43 financial resources, 429
+financial services case study (competitive
+positioning analysis), 196 - 197
+F financial statement analysis, 457
+firm performance, evaluating, 435
+Facebook, 160
+firm’s environment, 313 - 318
+face-to-face briefings, 72
+general environment, 314 - 317
+facts, 36 - 38
+generic framework, 314
+failures. See analysis failures
+operating environment, 317 - 318
+false assumptions, 357 - 358
+“fit” concept (SERVO analysis), 426 , 437 - 439
+Farm Fresh Produce case study, 237 - 238
+Flannagan, John, 222
+FAROUT rating system, 45, 98
+focus
+ACH (analysis of competing hypotheses), 134
+cost focus, 395
+applying, 94 - 95
+differentiation focus, 395 - 396
+benchmarking analysis, 156 - 157
+follow-up to communication, 87
+benefits of, 92 - 94
+Ford, Henry, 494
+BMA (business model analysis), 179 - 181
+forecasting. See technology forecasting
+CFA (cash flow analysis), 219 - 220
+Foreign Intelligence reports, 79
+competitive positioning analysis, 198
+foresight studies, 515
+CSFs (critical success factors) analysis, 239 - 240
+forest products case study, 417 - 421
+DFA (driving forces analysis), 259 - 260
+forging partnerships, 17
+E&T (event and timeline) analysis, 278 - 280
+formulation of conclusions, 284
+explained, 95 - 98
+future cash flow analysis, 212 - 213 , 216 - 218
+five-point scale, 98 - 99
+future orientation, FAROUT method, 96
+historiographical analysis, 293 - 294
+I&W (indications and warning)
+analysis, 309 - 310
+Index 579
+9780133086409_Book 1.indb 579 12/23/14 10:05 AM
+G FAROUT rating system, 293 - 294
+Gowing Brothers case study, 291 - 292
+garbage-in, garbage-out (GIGO), 208
+history of, 282 - 283
+GE/McKinsey attractiveness-competitive
+KIQs (Key Intelligence Questions), 285 - 286
+position matrix, 191
+KITs (Key Intelligence Topics), 285 - 286
+generating scenarios, 408 - 411
+strategic rationale and implications, 283 - 285
+computer-generated econometric model, 409
+strengths, 286
+cross-impact analysis, 410
+weaknesses, 287 - 288
+Delphi method, 409
+worksheet, 291 - 293
+intuitive method, 409
+hometown media, 456
+generic-level competition, 28
+house brands, 393
+geographical complexities, 30
+human resources, 429
+Ghemawat, Pankaj, 230
+hyperbolic curves, 349 - 350
+GIGO (garbage-in, garbage-out), 208
+hypotheses . See also ACH (analysis of competing
+Gillette, King C., 160
+hypotheses)
+global airline alliances case study, 482 - 485
+disproving, 131
+global alliances case study, 482 - 485
+hypothesis generation, 284
+global best demonstrated practice
+matrix of, 129 - 130
+benchmarking, 140 - 141
+questioning assumptions in, 132
+globalization, 60
+supporting evidence, 128 - 129
+Gomes-Casseres, Benjamin, 469
+Goodman, R. S. 283
+goodness-of-fit, 348 - 349
+I
+goodwill, 430
+Gowing Brothers, 291 - 292 I&W (indications and warning) analysis
+groupthink, 53 - 54 applying, 302 - 308
+growth curves, 519 , 520 - 521 , 525 determining appropriate firm response,
+307 - 308
+establishing indicators, 302 - 304
+H establishing meaning behind indicators,
+304 - 306
+Half.com, 397
+validating and ranking indicators, 306 - 307
+Herring, Jan P., 25
+explained, 296
+Heuer, J.R., 50
+FAROUT rating system, 309 - 310
+Heuer, Richard, 123
+history of, 296 - 297
+hierarchical model of analysis failures
+KIQs (Key Intelligence Questions), 299
+analysis task-level failures, 55 - 57
+KITs (Key Intelligence Topics), 299
+external environment-level failures, 59 - 61
+strategic rationale and implications, 298 - 299
+individual analyst-level failures, 53 - 55
+strengths, 299 - 300
+internal organizational-level failures, 57 - 59
+weaknesses, 300 - 302
+overview, 51 - 53
+worksheet, 308 - 309
+hierarchical sensitivities, 88
+identifying
+Higgins, Robert, 206
+competitors, 170 - 171
+historic cash flow analysis, 211 - 216
+hypotheses, 128
+historiographical analysis
+innovation, 29
+applying, 288 - 290
+milestones, 133
+explained, 282
+relationships, 478
+580 Index
+9780133086409_Book 1.indb 580 12/23/14 10:05 AM
+scope of analysis, 26 - 31 industry leader analysis, 235
+competitors, 27 - 28 industry scenario, 410
+decision location, 30 - 31 information technology, 429
+decision makers, 30 - 31 infrastructure support for analysis, 39 - 40
+environment, 28 - 29 efficiency, 43 - 44
+technology, 29 - 30 external networks, 42 - 43
+target segment, 169 - 170 intelligence solutions, 40 - 41
+idiomatic expressions, 88 internal networks, 41 - 42
+illusion of control, 54 perpetual learning, 43 - 44
+impact assessment proactivity, 43 - 44
+DFA (driving forces analysis), 250 - 254 Ingham, Harry, 529
+demand, profitability, and market initial product audit, 389 - 390
+attractiveness, 256 - 257 innovation, identifying, 29
+matrix system, 252 - 254 input evaluation, 34 - 35
+score system, 251 primary sources, 34 - 35
+structured ranking, 251 SCRAPE model, 35 -37
+explained, 32 secondary sources, 35
+implementation failure, 50 tertiary sources, 35
+implicit assumptions, 357 instant messaging, 73
+In Search of Excellence ( Peters and insurance firm case study (shadowing), 459 - 461
+Waterman), 374 intangible resources, 430
+indications and warning analysis. See I&W Intel, 160
+(indications and warning) analysis intellectual assets, 430
+indicators intelligence, 143 - 144
+establishing, 302 - 304 CINs (critical intelligence needs), 30
+meaning behind indicators, 304 - 306 defined, 8 - 10
+validating and ranking, 306 - 307 failures, 50
+individual analyst-level failures, 53 - 55 intelligence analysis levels, 31
+industry analysis, 193 MIA (micro intelligence analysis), 33 - 34
+industry fusion analysis OIA (operational intelligence analysis), 33
+applying, 323 - 325 SIA (strategic intelligence analysis), 32
+crude oil refining case study, 325 - 329 TIA (tactical intelligence analysis), 32 - 33
+explained, 313 intelligence briefings, 77
+FAROUT rating system, 331 - 332 intelligence cycle, 10 - 11 , 22 - 23
+firm’s environment, 313 - 315 intelligence solutions, 40 - 41
+general environment, 314 - 317 KIQs (Key Intelligence Questions). See KIQs
+generic framework, 314 (Key Intelligence Questions)
+internal environment, 318 KITs (Key Intelligence Topics). See KITs (Key
+operating environment, 317 - 318 Intelligence Topics)
+Industry Fusion Analysis model, 318 - 319 reports. See reports
+KIQs (Key Intelligence Questions), 320 - 321 special intelligence summaries, 78
+KITs (Key Intelligence Topics), 320 - 321 value-added intelligence, 16
+Porter’s Five Forces model, 319 - 320 web-based intelligence solutions and
+STEEP/PEST analysis, 314-316 systems, 73
+strategic rationale and implications, 318 - 320 intelligence analysis levels, 31
+strengths, 321 - 322 MIA (micro intelligence analysis), 33 - 34
+weaknesses, 322 - 323 OIA (operational intelligence analysis), 33
+worksheet, 330 SIA (strategic intelligence analysis), 32
+TIA (tactical intelligence analysis), 32 - 33
+Index 581
+9780133086409_Book 1.indb 581 12/23/14 10:05 AM
+intelligence briefings, 77 KIQs (Key Intelligence Questions), 25
+intelligence cycle, 10 - 11 , 22 - 23 ACH (analysis of competing hypotheses),
+interfirm relationships, 467 - 469 . See also SRA 125 - 126
+(strategic relationship analysis) benchmarking analysis, 143 - 144
+internal benchmarking, 139 - 140 BMA (business model analysis), 167
+internal environment, 318 CFA (cash flow analysis), 206 - 207
+internal networks, 41 - 42 competitive positioning analysis, 187
+internal organizational-level failures, 57 - 59 CSFs (critical success factors) analysis, 229
+interpretation of statistical analysis DFA (driving forces analysis), 244 - 245
+applying, 339 - 351 E&T (event and timeline) analysis, 265
+bell curve, 341 historiographical analysis, 285 - 286
+correlation, 350 - 351 I&W (indications and warning) analysis, 299
+data comparisons, 345 - 346 industry fusion analysis, 320 - 321
+mean, 342 - 343 interpretation of statistical analysis, 337
+median, 343 linchpin analysis, 359 - 360
+mode, 343 - 344 McKinsey 7S analysis, 372 - 373
+normal distribution, 341 PLA (product line analysis), 386 - 387
+null hypothesis, 346 scenario analysis, 411 - 412
+percentage change, 339 - 341 SCM (supply chain management) analysis, 496
+percentiles, 341 SERVO analysis, 433
+p-values, 351 shadowing, 451
+quartiles, 3 41 SRA (strategic relationship analysis), 473 - 474
+regression analysis, 346 - 350 SWOT analysis, 110 - 111
+standard deviation, 344 - 345 technology forecasting, 518
+explained, 335 - 336 war gaming, 541 - 542
+FAROUT rating system, 352 - 353 WLA (win/loss analysis), 559
+KIQs (Key Intelligence Questions), 337 KITs (Key Intelligence Topics), 25 - 26
+KITs (Key Intelligence Topics), 337 ACH (analysis of competing hypotheses),
+strategic rationale and implications, 336 - 337 125 - 126
+strengths, 338 benchmarking analysis, 143 - 144
+weaknesses, 338 - 339 BMA (business model analysis), 167
+worksheet, 351 - 352 CFA (cash flow analysis), 206 - 207
+interviews, win/loss, 560 , 564 - 565 competitive positioning analysis, 187
+intuitive method of scenario development, 409 CSFs (critical success factors) analysis, 229
+DFA (driving forces analysis), 244 - 245
+E&T (event and timeline) analysis, 265
+J historiographical analysis, 285 - 286
+I&W (indications and warning) analysis, 299
+Johari window, 529 - 531
+industry fusion analysis, 320 - 321
+joint ventures (JVs), 467 - 468
+interpretation of statistical analysis, 337
+just-in-time delivery systems, 386
+KITs+1 concept, 63 - 65
+linchpin analysis, 359 - 360
+McKinsey 7S analysis, 372 - 373
+K
+PLA (product line analysis), 386 - 387
+scenario analysis, 411 - 412
+Key Intelligence Questions. See KIQs (Key
+SCM (supply chain management) analysis, 496
+Intelligence Questions)
+SERVO analysis, 433
+Key Intelligence Topics. See KITs (Key
+Intelligence Topics)
+582 Index
+9780133086409_Book 1.indb 582 12/23/14 10:05 AM
+shadowing, 451 listening, 86 - 87
+SRA (strategic relationship analysis), 473 - 474 Little Wars (Wells), 539
+SWOT analysis, 110 - 111 local currency, 88
+technology forecasting, 518 location of analysis failures, 49 - 50
+war gaming, 541 - 542 Lockheed Martin Corporation case study,
+WLA (win/loss analysis), 559 117 - 119
+KM (knowledge management systems), 39 loose fit (SERVO analysis), 437 - 438
+knowledge, elements of, 36 Luft, Joseph, 529
+assumptions, 38
+beliefs, 38
+facts, 36 - 38 M
+perceptions, 38
+M&A (mergers and acquisitions), 468
+projections, 38 - 39
+macro-environment, 108 - 109
+synthesis, 39
+Magma Copper, 204
+knowledge management systems (KM), 39
+Malcolm Baldrige National Quality Award, 145
+Kriegspiel, 539
+management information systems (MIS), 39
+Kruger, E. V., 283
+management personality profiling, 457
+manner of communication, 88
+manufacturing-related CSFs (critical success
+L
+factors), 225
+La Boulange, 377 mapping relationships, 478 - 479
+LASA (linchpin assumption sensitivity analysis), maps, perceptual, 193 - 194
+362 - 363 market attractiveness, 256 - 257
+Lasswell, Harold, 80 market research, 193
+learning, 43 - 44 market segmentation, 162 , 192
+Leidecker and Bruno, 232, 236 product market segmentation, 392 - 393
+Lehmann, Donald, 27 product/market matrix, 191
+Lenovo case study, 176 - 178 marketing information systems (MkIS), 39
+levels of analysis failure, 49 - 50 marketing-related CSFs (critical success
+Lewin, Kurt, 243 factors), 225 - 226
+licensing agreements, 468 Marktplaats.nl, 397
+life cycle (product), 390 - 391 Martino, Joseph, 513
+linchpin analysis matrix, 129 - 130
+applying, 361 - 364 maturation of industries, 13
+LASA (linchpin assumption sensitivity McCormick Foods, 213
+analysis), 362 - 363 McDonald’s, 160
+risk assessment, 363- 364 McKinsey 7S analysis
+explained, 355 - 356 applying, 375
+FAROUT rating system, 365 - 366 explained, 368
+history of, 355 - 356 FAROUT rating system, 381 - 383
+KIQs (Key Intelligence Questions), 359 - 360 framework model, 371
+KITs (Key Intelligence Topics), 359 - 360 history of, 368 - 372
+strategic rationale and implications, 356 - 359 KIQs (Key Intelligence Questions), 372 - 373
+strengths, 360 KITs (Key Intelligence Topics), 372 - 373
+weaknesses, 360 - 361 Starbucks case study, 376 - 381
+worksheet, 364 - 365 strengths, 373 - 374
+weaknesses, 374
+worksheet, 376
+Index 583
+9780133086409_Book 1.indb 583 12/23/14 10:05 AM
+mean, 342 - 343 O
+measurement units, 88
+objectivity, FAROUT method, 97
+median, 343
+Occam’s Razor, 84
+medium fit (SERVO analysis), 438
+OIA (operational intelligence analysis), 33
+meetings
+oil refining case study, 329 - 325
+cultural awareness, 88
+Omidyar, Pierre, 397
+presentations in, 72 - 73
+oneworld, 482 - 485
+Meier, Sid, 539
+online databases, 457
+mergers and acquisitions (M&As), 468
+operating environment, 317 - 318
+MIA (micro intelligence analysis), 33 - 34
+operating model framework, 165 - 166
+micro decisions, 30
+operational decisions, 30
+micro intelligence analysis (MIA), 33 - 34
+operational intelligence analysis (OIA), 33
+milestones, identifying, 133
+opportunities. See SWOT analysis
+Miller, G. A., 53
+Opportunity, Risk and Threat (OR&T)
+minority investments, 468
+assessments, 32
+MIS (management information systems), 39
+organization in SERVO analysis, 431 - 433
+MkIS (marketing information systems), 39
+organizational priorities, analysis and, 16 - 17
+mobile.de, 397
+organizational-level failures, 57 - 59
+mode, 343 - 344
+OR&T (Opportunity, Risk and Threat)
+models, 526 - 527
+assessments, 32
+monitoring
+outsourcing
+explained, 528 - 529
+explained, 468 - 469
+patents, 519
+shadowing, 458
+Montgomery, David, 28
+overcoming analysis failures, 63 - 65
+morphological analysis, 519 , 521 , 527
+motivation, 53
+multinational packaged-food case study
+P
+(shadowing), 461
+multi-point competition, 31 pace of speech, 88
+partnerships, 17
+patents, monitoring, 519
+N pattern analysis, 33
+PayPal, 397
+nanotechnology case study, 532 - 534
+per capita rates, 340
+needs-based competition, 28
+percentage change, 339 - 341
+networks, 468
+percentiles, 341
+external networks, 42 - 43
+perceptions, 38
+internal networks, 41 - 42
+perceptual distortion, 53 - 54
+new entrants, threat of, 319
+perceptual maps, 193 - 194
+news bulletins, 74 - 75
+performance goals, shadowing, 455 - 456
+newsletters, 74 - 75
+perpetual learning, 43 - 44
+Nillson, Sten, 417
+personality profiling, 457
+Nordstrom, 388
+personnel departures, 456
+normal distribution, 341
+personnel hiring, 456
+normal fit (SERVO analysis), 438 - 439
+PEST analysis, 232 - 233 , 315 - 317
+null hypothesis, 346
+pharmaceutical firm case study (shadowing), 462
+584 Index
+9780133086409_Book 1.indb 584 12/23/14 10:05 AM
+physical resources, 429 product category level competition, 27 - 28
+PIMS database, 189 product life cycle (PLC), 387
+Pittiglio Rabin Todd & McGrath (PRTM), 493 product line analysis. See PLA (product line
+PLA (product line analysis) analysis)
+applying, 389 - 397 product market segmentation, 392 - 393
+cost focus, 395 product/brand level competition, 27
+cost leadership, 393 - 394 production facilities, 429
+differentiation, 394 product/market matrix, 191
+differentiation focus, 395 - 396 profiles (competitor), 76
+initial product audit, 389 - 390 profitability, 256 - 257
+positioning, 393 projections, 38 - 39
+product market segmentation, 392 - 393 PRTM (Pittiglio Rabin Todd & McGrath), 493
+resource allocation, 396 - 397 The Psychology of Intelligence Analysis
+traditional product life cycle framework, (Heuer), 50 , 123
+390 - 391 public issue scenario, 411
+eBay, Inc. case study, 397 - 401 punctuation, 88
+explained, 385 p-values, 351
+FAROUT rating system, 403 - 404
+history of, 385
+KIQs (Key Intelligence Questions), 386 - 387 Q
+KITs (Key Intelligence Topics), 386 - 387
+quartiles, 341
+strategic rationale and implications, 386
+questioning assumptions, 132
+strengths, 387
+questionnaires (WLA), 563 - 564
+weaknesses, 388 - 389
+questions
+worksheet, 401 - 402
+answering, 86 - 87
+planning failure, 50
+KITs (Key Intelligence Topics). See KITs
+planning sessions, 74
+(Key Intelligence Topics)
+PLC (product life cycle), 387
+population in statistical analysis, 336
+Porter, Michael, 14 , 314
+R
+Porter’s Five Forces model, 233 - 234 , 319 - 320
+positioning
+R&D (research & development), 29
+analysis. See competitive positioning analysis
+RAND Corporation, 515
+in PLA (product line analysis), 393
+ranking indicators, 306 - 307
+post-mortem analysis, 356
+ready-to-eat foods case study (shadowing),
+Power, Bernie, 216 - 218
+461 - 462
+Power Brewing case study, 216 - 218
+reasoning by analogy, 54
+presentations, 72 - 73
+regression analysis, 346 - 350
+price wars, 216 - 218
+curves, 349 - 350
+primary sources, 34 - 35 , 289
+goodness-of-fit, 348 - 349
+prior hypothesis bias, 54 , 287
+relationships, 350
+priorities, analysis and, 16 - 17
+straight lines, 346 - 348
+proactivity, 43 - 44
+regulatory tracking, 457
+probability, 339 , 520
+relationships
+problem definition, 25 - 26
+assessing and analyzing, 479 - 482
+process improvements, 29
+identifying, 478
+Proctor & Gamble, 394
+mapping, 478 - 479
+Index 585
+9780133086409_Book 1.indb 585 12/23/14 10:05 AM
+in regression analysis, 350 rivalry among existing competitors, 320
+relationship formation readiness, 475 - 478 Roberts, Don, 417
+SRA (strategic relationship analysis) Rockart, John F., 175, 222 - 223
+explained, 466 - 469 role-playing games, 539
+history of, 466
+relevance trees, 519, 521 , 527 - 528
+reports S
+ACH (analysis of competing hypotheses), 132
+SABMiller, 503 - 507
+assessments, 76
+sales automation systems, 39
+Basic Intelligence reports, 78
+Samsung, 176 - 178
+battlecards, 76 - 77
+SAs (strategic alliances), 469
+competitor profiles, 76
+SCC (Supply Chain Council), 493
+Counterintelligence reports, 79
+scenario analysis
+creating, 78 - 79
+applying, 413 - 417
+Current Intelligence reports, 78
+explained, 407
+Early Warning Intelligence reports, 79
+FAROUT rating system, 422 - 423
+Estimated Intelligence reports, 79
+forest products case study, 417 - 421
+Foreign Intelligence reports, 79
+history of, 407 - 408
+historiographical analysis, 290
+KIQs (Key Intelligence Questions), 411 - 412
+intelligence briefings, 77
+KITs (Key Intelligence Topics), 411 - 412
+news bulletins and newsletters, 74 - 75
+methods for generating scenarios, 408 - 411
+situation analysis, 78
+computer-generated econometric model, 409
+special intelligence summaries, 78
+cross-impact analysis, 410
+strategic impact worksheets, 77
+Delphi method, 409
+Targeted Intelligence reports, 79
+intuitive method, 409
+Technical Intelligence reports, 78 - 79
+scenario matrix, 416
+Work Group Intelligence reports, 79
+scenario types, 410 - 411
+written reports and briefings, 72
+strategic rationale and implications, 408
+representativeness, 54
+strengths, 412 - 413
+reputation, 430
+weaknesses, 413
+research & development (R&D), 29
+worksheet, 421 - 422
+Research In Motion (RIM), 440 - 442
+scenario matrix, 416
+research question development, 284
+scenarios . See also scenario analysis
+residuals, 344
+generating, 408 - 411
+resources
+computer-generated econometric model, 409
+resource allocation in PLA (product line
+cross-impact analysis, 410
+analysis), 396 - 397
+Delphi method, 409
+resource efficiency, FAROUT method, 97
+intuitive method, 409
+resource management, 16 - 17
+types of, 410 - 411
+in SERVO analysis, 4 28 - 430
+Schultz, Howard, 375
+financial resources, 429
+SCIP (Strategic and Competitive Intelligence
+human resources, 429
+Professionals), 61
+intangible resources, 430
+SCM (supply chain management) analysis
+physical resources, 429
+applying, 499 - 503
+revenue models, 162 , 174
+explained, 492
+RIM (Research In Motion), 440 - 442
+FAROUT rating system, 508 - 509
+risk assessment, 363 - 364
+586 Index
+9780133086409_Book 1.indb 586 12/23/14 10:05 AM
+history of, strengths, 434
+KIQs (Key Intelligence Questions), 496 values element, 430 - 431
+KITs (Key Intelligence Topics), 496 weaknesses, 434 - 435
+SABMiller case study, 503 - 507 worksheet, 442 - 443
+SCOR model, 499 7S model. See McKinsey 7S analysis
+strategic rationale and implications, 494 - 496 shadow cabinets, 447 - 448
+strengths, 497 - 498 shadow market plans, 449 , 458 - 459
+weaknesses, 498 - 499 shadow planning, 449
+worksheet, 507 shadow teams. See shadowing
+scope ambiguity, 61 shadowing
+scope identification, 26 - 31 applying, 454 - 459
+competitors, 27 - 28 outsourcing issues, 458
+decision location, 30 - 31 performance goals, 455 - 456
+decision makers, 30 - 31 shadow market plans, 458 - 459
+environment, 28 - 29 shadowing process, 456 - 458
+technology, 29 - 30 team composition, 454 - 455
+SCOR (Supply Chain Operations Research team structure, 455
+model), 493 , 499 - 501 explained, 447
+SCRAPE model for input evaluation, 35 -37 FAROUT rating system, 463 - 464
+Seattle’s Best Coffee, 377 history of, 447 - 448
+secondary sources, 3 5 , 289 insurance firm case study, 459 - 461
+sector/competitor assessments, 32 KIQs (Key Intelligence Questions), 451
+segments. See market segmentation KITs (Key Intelligence Topics), 451
+seminars, presentations in, 72 - 73 multinational packaged-food case study, 461
+Senge, Peter, 323 pharmaceutical firm case study, 462
+sensitivity scenario, 410 ready-to-eat foods case study, 461 - 462
+SERVO analysis shadow market plans, 449
+applying, 435 - 439 shadow planning, 449
+assessing current strategy, 436 - 439 strategic rationale and implications, 450 - 451
+developing strategic options, 439 strengths, 451 - 452
+evaluating firm performance, 435 utility case study, 461
+fit types, 437 - 439 weaknesses, 452 - 454
+Blackberry (RIM) case study, 440 - 442 worksheet, 462 - 463
+environment element, 427 - 428 Shannon, C. E., 80
+explained, 425 - 433 share of wallet level competition, 28
+FAROUT rating system, 443 - 444 shared values
+“fit” concept, 426, 437 in McKinsey 7S analysis, 370 - 371
+KIQs (Key Intelligence Questions), 433 Starbucks case study, 380
+KITs (Key Intelligence Topics), 433 shift from traditional BCA to Analysis 2.0, 62
+organization element, 431 - 433 shifting organizational priorities, 16 - 17
+resources element, 428 - 430 Shumadine, John, 43
+financial resources, 429 SIA (strategic intelligence analysis), 32
+human resources, 429 Siegl, Ziv, 376
+intangible resources, 430 simulations, 526 - 527 . See also war gaming
+physical resources, 429 situation analysis, 78
+SERVO modeling diagram, 432 - 433 skepticism, historiographical analysis and, 286
+strategy element, 426 - 427
+Index 587
+9780133086409_Book 1.indb 587 12/23/14 10:05 AM
+skill-related CSFs (critical success factors), strategic rationale and implications, 336 - 337
+225 - 226 strengths, 338
+skills weaknesses, 338 - 339
+in McKinsey 7S analysis, 370 worksheet, 351 - 352
+Starbucks case study, 379 STEEP analysis, 232 - 233 , 315 - 317 , 410
+SkyTeam, 482 - 485 stimulus-response analysis, 33
+socio-political/environmental analysis, 232 - 233 straight lines in regression analysis, 346 - 348
+sources of analysis failure, 50 - 51 strategic alliances (SAs), 469
+special intelligence summaries, 78 Strategic and Competitive Intelligence
+SRA (strategic relationship analysis) Professionals (SCIP), 61
+applying, 475 - 482 strategic decisions, 5 , 30
+explained, 466 - 469 strategic impact worksheets, 77
+FAROUT rating system, 486 - 487 strategic intelligence analysis (SIA), 32
+global airline alliances case study, 482 - 485 strategic networks, 467
+history of, 466 strategic relationship analysis. See SRA (strategic
+KIQs (Key Intelligence Questions), 473 - 474 relationship analysis)
+KITs (Key Intelligence Topics), 473 - 474 strategy
+rival’s relationships, 478-482 in McKinsey 7S analysis, 369
+strategic rationale and implications, 469 - 473 in SERVO analysis, 426 - 427 , 436 - 439
+strengths, 474 Starbucks case study, 378
+weaknesses, 475 Strengths, Weaknesses, Opportunities, and
+worksheet, 485 - 486 Threats. See SWOT analysis
+staff strength/weakness evaluation matrix, 195
+in McKinsey 7S analysis, 370 structure
+Starbucks case study, 380 in McKinsey 7S analysis, 369
+standard deviation, 344 - 345 Starbucks case study, 378 - 379
+Star Alliance, 482 - 485 StubHub, 397
+Starbucks, McKinsey 7S analysis, 376 - 381 style
+statement of cash flows, 202 in McKinsey 7S analysis, 370
+statistical analysis, interpretation of Starbucks case study, 379
+applying, 339 - 351 substitute products/services, threat of, 319
+bell curve, 341 success factors. See CSFs (critical success factors)
+correlation, 350 - 351 analysis
+data comparisons, 345 - 346 Supply Chain Council (SCC), 493
+mean, 342 - 343 supply chain management analysis. See SCM
+median, 343 (supply chain management) analysis
+mode, 343 - 344 Supply Chain Operations Research model
+normal distribution, 341 (SCOR), 493 , 499 - 501
+null hypothesis, 346 support
+percentage change, 339 - 341 decision-tailored support, 17
+percentiles, 341 timeliness, 17
+p-values, 351 SWOT analysis, 105
+quartiles, 3 41 common SWOT model, 107 - 108
+regression analysis, 346 - 350 explained, 105
+standard deviation, 344 - 345 FAROUT rating system, 120- 121
+explained, 335 - 336 history of, 105 - 107
+FAROUT rating system, 352 - 353 KIQs (Key Intelligence Questions), 110 - 111
+KIQs (Key Intelligence Questions), 337 KITs (Key Intelligence Topics), 110 - 111
+KITs (Key Intelligence Topics), 337
+588 Index
+9780133086409_Book 1.indb 588 12/23/14 10:05 AM
+Lockheed Martin Corporation case explained, 513
+study, 117 - 118 FAROUT rating system, 535 - 537
+strategic rationale and implications, 107 - 110 history of, 539 - 541
+strengths, 111 - 112 KIQs (Key Intelligence Questions), 518
+techniques, applying, 113 - 117 KITs (Key Intelligence Topics), 518
+weaknesses, 112 - 113 nanotechnology case study, 532 - 534
+worksheet, 119 - 120 strategic rationale and implications, 515 - 517
+syndicates, 469 strengths, 518 - 519
+synthesis, 39 utilizing information from, 531 - 532
+synthesis errors, 51 weaknesses, 519 - 521
+systems worksheet, 535
+in McKinsey 7S analysis, 369 technology in analysis scope, 29 - 30
+Starbucks case study, 379 - 380 technology road-mapping, 515
+technology watch, 528 - 529
+technology-related CSFs (critical success
+T factors), 225
+10 commandments for business and competitive
+tactical decisions, 30
+analysis, 45
+tactical intelligence analysis (TIA), 32 - 33
+tertiary sources, 35
+target segment, specifying, 169 - 170
+theory construction, 284
+Targeted Intelligence reports, 79
+“third draft of history” 290
+task discontinuity, 55
+threats. See SWOT analysis
+task-level failures, 55 - 57
+TIA (tactical intelligence analysis), 32 - 33
+taxonomy of benchmarking
+Tide, 394
+competitive/external benchmarking, 140
+tight fit (SERVO analysis), 437
+global best demonstrated practice
+timeline analysis. See E&T (event and timeline)
+benchmarking, 140 - 141
+analysis
+internal benchmarking, 139 - 140
+timeliness, FAROUT method, 17 , 97 - 98
+other industry benchmarking, 140
+tool-related errors, 51
+Tazo, 377
+TOWS analysis. See SWOT analysis
+Teavana, 377
+Toyota, 137 , 160
+Technical Intelligence reports, 78 - 79
+Toys “R” Us, 160
+technique-related errors, 51
+trade shows, 456
+technological tracking, 457
+trade-offs made by analysts, 48 - 49
+technology forecasting
+traditional product life cycle framework, 390 - 391
+applying, 521 - 531
+trend analyses, 32
+creativity simulators, 529 - 531
+trend extrapolation, 519 , 520 - 521 , 523 - 524
+expert opinion, 522 - 523
+Trout, Jack, 183
+growth curves, 525
+t-scores, 346
+historical analogy, 526
+t-tests, 346
+models, simulations, and gaming, 526 - 527
+Twitter, 160
+monitoring, 528 - 529
+morphological analysis, 527
+relevance trees, 527 - 528
+U
+scenarios, 526
+trend extrapolation, 523 - 524 unsystematic development errors, 51
+usefulness, FAROUT method, 97
+utility case study (shadowing), 461
+Index 589
+9780133086409_Book 1.indb 589 12/23/14 10:05 AM
+V strategic rationale and implications, 557 - 559
+strengths, 560 - 561
+validating indicators, 306 - 307
+weaknesses, 561
+value chain, 162 , 171 - 174
+worksheet, 568 - 569
+value constellation analysis, 33
+Work Group Intelligence reports, 79
+value networks, 162 , 174
+worksheets
+value proposition, 162 , 168 - 170
+benchmarking analysis, 155
+values in SERVO analysis, 430 - 431
+BMA (business model analysis), 179
+variable selection and evaluation, 284
+CFA (cash flow analysis), 218
+Verismo, 377
+CSFs (critical success factors) analysis, 238
+vulnerability analysis, 33
+DFA (driving forces analysis), 258
+E&T (event and timeline) analysis, 278
+historiographical analysis, 291 - 293
+W
+I&W (indications and warning)
+Wal-Mart, 160 analysis, 308 - 309
+war gaming industry fusion analysis, 330
+applying, 544 - 550 interpretation of statistical analysis, 351 - 352
+case studies, 551 - 552 linchpin analysis, 364 - 365
+explained, 539 McKinsey 7S analysis, 376
+FAROUT rating system, 553 - 554 PLA (product line analysis), 401 - 402
+history of, 539 - 540 scenario analysis, 421 - 422
+KIQs (Key Intelligence Questions), 541 - 542 SCM (supply chain management)
+KITs (Key Intelligence Topics), 541 - 542 analysis, 507
+strategic rationale and implications, 540 - 541 SERVO analysis, 442 - 443
+strengths, 542 - 543 shadowing, 462 - 463
+weaknesses, 543 - 544 SRA (strategic relationship analysis), 485 - 486
+worksheet, 552 - 553 SWOT analysis, 119 - 120
+warning analysis. See I&W (indications and technology forecasting, 535
+warning) analysis war gaming, 552 - 553
+weaknesses. See SWOT analysis WLA (win/loss analysis), 568 - 569
+Weaver, W., 80 workshops, presentations in, 72 - 73
+web-based intelligence solutions and systems, 73 written language structure, 88
+Weinberg, Charles, 28 written reports and briefings, 72
+Wells, H. G., 539
+Whitman, Meg, 398
+Winer, Russell, 27 X-Y-Z
+win/loss analysis. See WLA (win/loss analysis)
+Xerox, 138
+withdrawal from market, 186 - 187
+Yahoo! Auctions, 400
+WLA (win/loss analysis)
+Zmud, Robert, 223
+applying, 562 - 566
+Zwicky, Fritz, 515
+e-mail marketing solutions case study, 566 - 568
+explained, 556 - 557
+FAROUT rating system, 570 - 571
+KIQs (Key Intelligence Questions), 559
+KITs (Key Intelligence Topics), 559
+590 Index
+9780133086409_Book 1.indb 590 12/23/14 10:05 AM

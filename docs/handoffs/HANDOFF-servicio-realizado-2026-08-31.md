@@ -1,7 +1,7 @@
 # Handshake: el servicio al cliente, medido de punta a punta
 
 Fecha: 2026-08-31 | Worktree: `C:\Users\Gamer\Music\scm\supply-chain-optimization` |
-Rama: `main` @ `7753398` | Actualizado: 2026-08-31 (tras #314 y #315)
+Rama: `main` @ `201ff1d` | Actualizado: 2026-08-31 (tras #317 y #318)
 
 Sucesor de `docs/handoffs/HANDOFF-adaptadores-canal-2026-08-29.md`, cuyo objetivo esta
 cumplido. Ese documento tiene una seccion 8 con lo que se cerro de el.
@@ -25,7 +25,7 @@ archivo -- "corre mi CSV y decime mi fill rate" -- ya funciona.
 
 ## 2. Estado de juego
 
-**Hecho y verificado.** Nueve PRs mergeados a `main`, en este orden:
+**Hecho y verificado.** Once PRs mergeados a `main`, en este orden:
 
 | PR | Que dejo |
 |---|---|
@@ -37,7 +37,9 @@ archivo -- "corre mi CSV y decime mi fill rate" -- ya funciona.
 | #312 | Olist + el informe de servicio contra datos reales |
 | #313 | Starshipit: la fecha de llegada que el ERP no tiene |
 | #314 | Este handoff + la invariante de cobertura en `CLAUDE.md` |
-| #315 | **El servicio sale del archivo del cliente y llega al agente** |
+| #315 | El servicio sale del archivo del cliente y llega al agente |
+| #317 | Actualizacion de este handoff |
+| #318 | **El caveat de la fecha de entrega llega al archivo que abre el cliente** |
 
 **La invariante nueva del repo, y es la pieza que hay que entender antes de tocar nada:**
 todo modulo de `src/connectors/` que defina `orders()` **o** `arrivals()` debe exportar un
@@ -77,24 +79,110 @@ escrito y testeado contra la referencia OpenAPI oficial; falta la corrida real.
 cd C:/Users/Gamer/Music/scm/supply-chain-optimization && .venv/Scripts/python.exe -m pytest tests/ -q -k "connector or fulfillment or example" && .venv/Scripts/python.exe examples/run_service_report.py --data data/kaggle/olist --top 5
 ```
 
-Suite completa sobre `main` @ `7753398`: **6771 passed, 0 failed**. `ruff check .` limpio.
+Suite completa sobre `main` @ `201ff1d`: **6782 passed, 0 failed**. `ruff check .` limpio.
 
 ## 4. Decisiones abiertas
 
-**D1 - Que sigue.** Las tres son continuaciones reales; ninguna es obligatoria.
+**D1 - Que sigue.** Continuaciones reales; ninguna es obligatoria. (A) quedo hecha.
 
-- (A) **Que la nota de servicio llegue al ENTREGABLE** *(recomendada: es la mas barata y
-  cierra un agujero real)*. #315 pone el `service_note` en el resumen que lee el operador,
-  y el cliente que abre el Excel/deck no lo ve. O sea que el numero mas delicado del
-  informe -- un OTIF cuya fecha puede ser despacho o llegada -- llega al cliente sin el
-  caveat. Toca `jobs/inventory_deliverable.py` y `src/deliverable.py`.
-- (B) **La tool #51, el camino del conector.** Lo unico que queda del limite original:
+- ~~(A) Que la nota de servicio llegue al ENTREGABLE~~ **HECHO en #318.** El caveat viaja
+  ahora al markdown y a la hoja *Data Sources* del `.xlsx`, en `data_sources` y no entre
+  los `findings` -- un finding es un problema del negocio del cliente y esto es un limite
+  de la medicion.
+- **(F) Investigado el 2026-09-01: si Cin7 puede proveer el mapa que le falta a Shippit y
+  Sendle. Resultado mixto, sin codigo escrito.** Ver `_NAME_STARSHIPIT`/`_resolve_carrier`
+  en `jobs/service_scan_job.py` para el estado actual (solo Starshipit resuelto).
+
+  **Shippit -- parcial, sin confirmar.** Existe integracion nativa Cin7<->Shippit (AU/NZ):
+  "tracking data flows back into Cin7 Core... entered into the Ship tab" -- exactamente el
+  campo `TrackingNumber` que `cin7.py:58` ya menciona en prosa. Pero ninguna doc de
+  marketing dice si ese valor es el `tracking_number` PROPIO de Shippit (formato `PP...`,
+  lo que pide `GET /orders/{tracking_number}/tracking`) o el numero de guia del courier
+  que Shippit orquesta por debajo -- son campos distintos en la propia API de Shippit
+  (`tracking_number` vs `courier_job_id`). Ni el centro de ayuda de Cin7 (403, requiere
+  sesion) ni Apiary (SPA sin renderizar) dieron el schema a nivel de campo. Ademas es
+  condicional: pide *"Shippit Fulfilment Sync"* activado + webhook configurado, no es el
+  comportamiento por defecto. **No se puede cerrar sin una cuenta Cin7 con la integracion
+  prendida** -- inspeccionar un `TrackingNumber` real y compararlo contra la doc de
+  Shippit es la unica forma de saber que numero es.
+
+  Segunda pasada (2026-09-02), intentando cerrarlo sin cuenta: el schema real de
+  `sale/fulfilment/ship` -- no el generico, uno con ejemplo -- trae ademas un campo
+  `Carrier` por linea, junto a `TrackingNumber` (`{"Carrier": "UPS", "TrackingNumber":
+  "ABCDEF123", ...}`). Eso empuja la hipotesis hacia que Cin7 guarda el numero del
+  COURIER real (UPS, Australia Post, lo que Shippit haya elegido), no la referencia
+  interna de Shippit -- un campo `Carrier: "UPS"` solo tiene sentido si el numero de al
+  lado es de UPS. Un articulo de ayuda de Shippit para clientes finales (no de
+  integracion) SI distingue las dos referencias como cosas distintas -- "tu tracking
+  empieza con PP, usa la pagina de Shippit; si no, es del courier" -- pero no dice cual
+  de las dos escribe de vuelta en un ERP. Sin mas confirmacion posible por esta via: el
+  centro de ayuda de Cin7 y developer.shippit.com/api_guide/order.html devuelven 403
+  (requieren sesion). **Sigue siendo empirico-o-nada.**
+
+  **Sendle -- sigue bloqueado, sin salida encontrada.** No hay integracion nativa
+  Cin7<->Sendle (se busco explicitamente). Se reviso ademas si la propia API de Sendle
+  permite buscar por `customer_reference` en vez de por `sendle_reference` -- tampoco:
+  `create/get/cancel` toman solo el ID que asigna Sendle. Sin mapa por ningun lado.
+
+  **Por que no se escribio codigo:** parsear `TrackingNumber` sin saber que numero es
+  repetiria el patron que este hilo entero vino corrigiendo -- un campo con cara de medido
+  que en realidad es una apuesta. Si en algun momento hay una cuenta Cin7 con Shippit
+  Fulfilment Sync activo, el primer paso es leer un `TrackingNumber` real y pegarlo contra
+  `GET /orders/{esa_referencia}/tracking` de Shippit: si contesta 200, el mapa existe.
+- (B) **La tool #51, el camino del conector** *(recomendada ahora)*. Lo unico que queda del
+  limite original:
   "medime el servicio de mi cuenta de Unleashed" no es pedible en lenguaje natural. Exige
   decidir sobre el registry, cuyo refactor sigue pendiente e intacto (ver
   `kern-registry-refactor-pending-plan` en memoria).
-- (C) **Shippit y Sendle**, los otros dos transportistas del canal AU/NZ. Ahora es un
-  adaptador cada uno y no un rediseno: `ArrivalSource` ya existe. Amplia la cobertura de
-  prospectos que pueden medirse.
+- ~~(C) **Shippit y Sendle**~~ **HECHO el 2026-09-01** (`b3aadc1`, `d3f2c5c`). Un
+  adaptador cada uno contra el `ArrivalSource` que ya existia; el Protocol no se toco.
+  Plan en `docs/superpowers/plans/2026-09-01-adaptadores-llegada-shippit-sendle.md`.
+  Los dos entraron a `ARRIVAL_SOURCES`, asi que heredan los cuatro tests parametrizados
+  del guard (46 -> 48 casos).
+
+  **Lo que destapo, y es lo que importa mas que los dos adaptadores:** los tres
+  transportistas NO se consultan igual. Starshipit acepta la referencia del ERP
+  (`/api/track?order_number=`); Shippit y Sendle se consultan por su llave propia
+  (`tracking_number` y `sendle_reference`), asi que necesitan un mapa
+  `order_id -> llave` que alguien tiene que armar desde el ERP. Cin7 Core guarda un
+  `TrackingNumber`; Unleashed no expone ninguno.
+
+  De ahi sale un guard transversal nuevo: **una orden sin llave produce el mismo
+  silencio que una que el transportista dio por no entregada**, y `with_arrivals` saca a
+  las dos del denominador de OTIF. Mismo output, significados opuestos. La nota tiene que
+  distinguirlos, no solo contar.
+- ~~(E) **Cablear la capa de transportistas**~~ **HECHO el 2026-09-01.** `scan_service(source, *, carrier=None)`
+  acepta un `ArrivalSource` o una `CarrierFactory` (recibe los `order_id` ya leidos, para
+  no releer la fuente -- 60 llamadas/min contra Cin7). Empalma, compone la cobertura con
+  `coverage_of_arrivals`, publica `arrival_coverage` y propaga `source.notes` +
+  `join.note` + `carrier.notes`. Solo Starshipit se puede resolver por credenciales hoy
+  (`jobs/service_scan_job.py::_resolve_carrier`): Shippit y Sendle exigen un mapa
+  `order_id -> llave del transportista` que ninguna linea del repo produce -- Unleashed no
+  expone tracking y Cin7 lo menciona en prosa sin parsearlo.
+
+  **Tres correcciones al motor, sin las cuales el empalme degradaba en silencio:**
+  1. `RealizedService.lines_otif_scored` (nuevo) -- `aggregate()` ponderaba el OTIF de
+     cartera por `lines_scored` (el denominador del FILL RATE), no por las lineas que
+     realmente puntuaron OTIF. Coincidian mientras el ERP fechaba todo lo que entregaba;
+     un transportista con cobertura parcial los divorcia.
+  2. `aggregate()` ahora propaga `lines_in_flight` -- antes la exclusion se veia por SKU y
+     se perdia en el portfolio, que es lo unico que consume el entregable.
+  3. La ventana de observacion se fija con `max(pre-empalme, post-empalme)`, no solo
+     pre-empalme. Un revisor adversarial (workflow de 17 agentes, 6 hallazgos, 1
+     sobrevivio a dos escepticos independientes) encontro que fijarla SOLO pre-empalme
+     tapaba un lado y destapaba el otro: con cobertura parcial, una llegada tardia
+     reportada en una orden prueba que el reloj avanzo para TODA la cartera, y sin esa
+     evidencia un stockout total sin reportar (en otra orden) se leia como que no habia
+     pasado nada -- fill rate y ventas perdidas de esa orden desaparecian a la vez, no
+     solo el OTIF. Reproducido y corregido; test en
+     `tests/test_connector_service_scan_carrier.py::test_una_llegada_tardia_en_cobertura_parcial_no_esconde_un_stockout`.
+
+  De paso, un defecto preexistente del PR #313: `jobs/service_scan_deliverable.py` pasaba
+  la explicacion de cada KPI como tercer POSICIONAL, que cae en `target` (la columna
+  "Target" de la tabla) y no en `rationale` ("Why it matters", que quedaba vacia en las
+  cuatro filas de TODO deck de esta tool, con o sin transportista). Corregido de paso.
+
+  6889 tests, 0 fallas, 0 regresiones sobre las 6849 preexistentes. PR pendiente de abrir.
 - (D) **Onboarding self-serve**: que un cliente conecte su cuenta Unleashed/Cin7 solo. Es
   lo que pide la decision de self-serve AU/NZ (2026-08-05) y hoy no existe nada.
 
@@ -156,6 +244,19 @@ del evento `Delivered` en `tracking_events[]`.
   `fecha_entrega` dan el mismo campo con sentidos opuestos, y entre los dos hay 6,2 puntos
   medidos. Por eso el frame lleva `.attrs["service_headers"]` con la columna que matcheo.
 
+**De #318:**
+
+- **Las citas de `src/discovery_brief.py` estan ancladas a NUMERO DE LINEA** (19 de ellas).
+  Agregar un campo a un dataclass corrio 6 lineas tres de ellas y rompio
+  `test_todas_las_citas_de_linea_son_exactas`. El guard funciona -- atrapo una rotura real
+  -- pero el mecanismo se rompe con cualquier insercion arriba aunque el valor no cambie.
+  **Es la tercera vez que este repo pelea con citas que derivan** (#160/#162/#164, #200).
+  Al tocar cualquier archivo citado, correr ese test. Anclarlas a simbolo esta pendiente.
+- **El texto de cara al cliente va en INGLES.** El deck es en ingles por defecto y tiene
+  i18n (`src/i18n.py`) para una version en espanol ENTERA. #315 escribio la nota en espanol
+  y la inyectaba en un deck ingles; corregido en #318. Mezclar idiomas dentro de un mismo
+  entregable no es i18n, es un descuido.
+
 **De proceso:**
 
 - El guard del repo `test_no_inert_parameters_outside_the_allowlist` atrapo un
@@ -194,10 +295,12 @@ del evento `Delivered` en `tracking_events[]`.
 - Lectura de servicio: `src/connectors/service_scan.py`
 - Servicio desde el archivo del cliente: `jobs/intake.py::service_lines` (alias en
   `SERVICE_ALIASES`), cableado en `scm_agent/tools.py::_inventory_prepare/_inventory_run`
+- El caveat al entregable: `JobReport.service_note` ->
+  `jobs/inventory_deliverable.py::build` -> `Deliverable.data_sources`
 - Corribles: `examples/run_service_report.py`, `examples/run_service_scan.py`
 - Planes: `docs/superpowers/plans/2026-08-29-{unleashed-y-cobertura-de-servicio,
   servicio-medido-al-entregable,cin7-core-adaptador}.md`
-- PRs: https://github.com/esstipi-debug/kern/pull/307 .. /315
+- PRs: https://github.com/esstipi-debug/kern/pull/307 .. /318
 - Fuentes externas verificadas en esta sesion:
   - https://apidocs.unleashedsoftware.com/SalesShipments
   - https://dearinventory.docs.apiary.io/api-description-document

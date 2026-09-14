@@ -488,10 +488,23 @@ def test_t05_cumple_la_oc_sale_por_proveedor_con_fechas_y_razon():
     assert por_tool["ddmrp"]["campos_solo_de_nombre"] == []
     assert "po_line.supplier" in por_tool["ddmrp"]["campos"]
     assert "po_line.expected_arrival" in por_tool["ddmrp"]["campos"]
-    # Los otros dos entregables de reposicion siguen sin netear: el veredicto se
-    # gano con uno, no con los tres.
-    assert por_tool["excel_replenishment"]["descuenta_en_transito"] is False
-    assert por_tool["odoo_replenishment"]["descuenta_en_transito"] is False
+    # Los otros dos entregables NETEAN desde kern#251, y cada uno lo prueba
+    # corriendo el job dos veces, no exponiendo un campo. El docstring anterior
+    # decia "los otros dos siguen sin netear": ese dia paso, se edita por la razon
+    # correcta y queda escrito cual fue.
+    #
+    # El veredicto sigue ganandose con ddmrp: es el unico que ademas agrupa la OC
+    # por proveedor con fechas. Que los tres neteen no mueve el puntaje -- T05 se
+    # puntua con el MEJOR candidato -- y por eso este cambio no inflo nada.
+    assert por_tool["excel_replenishment"]["descuenta_en_transito"] is True
+    assert por_tool["odoo_replenishment"]["descuenta_en_transito"] is True
+    # Y lo prueban por VALOR QUE SE MUEVE, no por nombre de campo: la evidencia de
+    # cada uno tiene que mostrar las dos corridas.
+    for tool in ("excel_replenishment", "odoo_replenishment", "ddmrp"):
+        assert "->" in por_tool[tool]["prueba_en_transito"], (
+            f"{tool} acredita el neteo sin mostrar dos corridas: "
+            f"{por_tool[tool]['prueba_en_transito']}"
+        )
 
 
 def test_t05_cumple_con_oc_completa_que_netea_el_en_transito():
