@@ -51,6 +51,15 @@ deliverables/
 # large external datasets (Kaggle / M5 etc. — fetched locally, not versioned)
 data/kaggle/
 
+# raw price_watch crawl dumps. Each record carries page_html (~475 KB of a third
+# party's verbatim page), body_text, the full request/response headers INCLUDING
+# session cookies, and the origin IP. This repo is public and git history is
+# forever, so a raw dump must never be committed - it would republish sites we
+# ourselves classify as tos_decision=limited (see config/sites/*.yaml) and leak
+# session tokens. The crawl is regenerable by jobs/price_watch.py; commit a
+# sanitised signal-only extract instead (data/price_watch_signal.jsonl).
+data/*.jl
+
 # local SQLite state (writeback audit ledger, MCP client keys) - never versioned;
 # the latter would otherwise leak paying-client names into git history.
 data/*.sqlite3
