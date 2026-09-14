@@ -25,6 +25,8 @@ see ``tests/test_intake_scan_job.py::test_a_master_only_folder_does_not_false_re
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+from math import ceil
 from pathlib import Path
 
 import pandas as pd
@@ -91,17 +93,60 @@ class FolderIntake:
     skipped_subdirs: tuple[str, ...]
 
 
-def _canonical_order() -> tuple[str, ...]:
-    """Every canonical name any profile cares about, in first-seen order."""
+def _registry_columns() -> tuple[str, ...]:
+    """Every column any registered tool declares, in registry order.
+
+    Imported inside the function on purpose: `scm_agent.tools` does
+    ``from jobs import ...`` on this module, so a module-level import would be
+    circular. Same dance as `_undeclared_tool_keys` further down.
+    """
+    from scm_agent.tools import build_default_registry
+
     seen: list[str] = []
-    for profile in PROFILES:
-        for col in (*profile.required, *profile.optional):
+    for tool in build_default_registry().list():
+        for col in (*tool.required_columns, *tool.optional_columns):
             if col not in seen:
                 seen.append(col)
     return tuple(seen)
 
 
-_CANONICAL_COLUMNS = _canonical_order()
+def _canonical_order(registry_columns: tuple[str, ...] | None = None) -> tuple[str, ...]:
+    """Every canonical name the scan can see, in first-seen order.
+
+    Two sources, and the second one is not optional. The demo `PROFILES` cover
+    the 15 columns of a master+sales folder; the registry covers whatever the 50
+    tools actually declare. A column present only in the registry -- `adu`,
+    `weight_kg`, `mean_demand` -- used to be invisible here, which meant
+    `_map_headers` dropped the header and the tool went RED on a folder that
+    carried the column. Declaring a data contract made the verdict worse instead
+    of better; see tests/test_intake_scan_canonical_columns.py.
+
+    Profiles stay FIRST: this order is what breaks ties when one header could be
+    claimed by two canonical names, so appending is safe and reordering is not.
+
+    `registry_columns` is injectable for tests; production passes None.
+    """
+    seen: list[str] = []
+    for profile in PROFILES:
+        for col in (*profile.required, *profile.optional):
+            if col not in seen:
+                seen.append(col)
+    extra = _registry_columns() if registry_columns is None else registry_columns
+    for col in extra:
+        if col not in seen:
+            seen.append(col)
+    return tuple(seen)
+
+
+@lru_cache(maxsize=1)
+def _canonical_columns() -> tuple[str, ...]:
+    """Cached `_canonical_order()`.
+
+    Lazy rather than a module constant: computing it needs the registry, and the
+    registry imports this module. Building it at import time is the circular
+    import. Every caller is on the scan path, long after imports settle.
+    """
+    return _canonical_order()
 
 
 def _map_headers(columns, aliases=None) -> dict[str, str]:
@@ -110,22 +155,24 @@ def _map_headers(columns, aliases=None) -> dict[str, str]:
 
     ``aliases`` es la tabla del pack por vertical, ya fusionada; ``None`` usa la
     del modulo. Este camino importa mas de lo que parece: recorre el juego
-    canonico ANCHO de ``src.intake_scan.PROFILES``, asi que es el unico
-    alcanzable desde el orquestador que llega a mirar los grupos `on_hand` y
-    `name` del pack -- ``detect_columns`` con los defaults de demanda nunca lo hace.
+    canonico ANCHO de ``_canonical_columns()`` -- los perfiles de
+    ``src.intake_scan.PROFILES`` MAS todo lo que declaran las tools del registry
+    --, asi que es el unico alcanzable desde el orquestador que llega a mirar los
+    grupos `on_hand` y `name` del pack; ``detect_columns`` con los defaults de
+    demanda nunca lo hace.
     """
     table = ALIASES if aliases is None else aliases
     by_norm = {_norm(c): c for c in columns}
     consumed: set[str] = set()
     mapping: dict[str, str] = {}
 
-    for canon in _CANONICAL_COLUMNS:
+    for canon in _canonical_columns():
         hit = by_norm.get(_norm(canon))
         if hit is not None and hit not in consumed:
             mapping[canon] = hit
             consumed.add(hit)
 
-    for canon in _CANONICAL_COLUMNS:
+    for canon in _canonical_columns():
         if canon in mapping:
             continue
         for alias in table.get(canon, (canon,)):
@@ -135,7 +182,7 @@ def _map_headers(columns, aliases=None) -> dict[str, str]:
                 consumed.add(hit)
                 break
 
-    return {canon: mapping[canon] for canon in _CANONICAL_COLUMNS if canon in mapping}
+    return {canon: mapping[canon] for canon in _canonical_columns() if canon in mapping}
 
 
 def _read_table(path: Path) -> pd.DataFrame:
@@ -537,11 +584,24 @@ def build_deck(
     that evaluated all of them. The verdict it does give is sound -- its COVERAGE of
     the registry is not, and that is what the penalty prices in (see
     nosilo_core.guided.confidence_from_coverage).
+
+    The penalty is PROPORTIONAL to the unevaluated share, one occurrence per whole
+    quarter of the registry the scan could not speak for, rounded UP so that the
+    full base is reachable only at full coverage: 44 of 45 is not 45 of 45, and
+    the deck should not say it is. It used to be a single
+    flat penalty gated on ``evaluated * 2 < total``, which is a cliff, not a
+    derivation: it vanished the instant half the registry declared its columns, so
+    a scan covering 24 of 45 tools would have claimed exactly the same certainty as
+    one covering all 45. As the data contracts get declared batch by batch that
+    threshold gets crossed, and the deck would have started overstating itself at
+    the very moment the numbers moved -- a fabricated metric, which the QA
+    discipline here treats as a defect, not a rounding choice.
     """
     if confidence is None:
         gaps: list[str] = []
-        if report.n_tools_total and report.n_tools_evaluated * 2 < report.n_tools_total:
-            gaps.append("undeclared_tools_dominate")
+        if report.n_tools_total:
+            unevaluated = 1.0 - (report.n_tools_evaluated / report.n_tools_total)
+            gaps += ["undeclared_tools_dominate"] * ceil(unevaluated / 0.25)
         confidence = confidence_from_coverage(gaps, base=_DECK_BASE_CONFIDENCE)
     findings: list[Finding] = []
 

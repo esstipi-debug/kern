@@ -15,7 +15,12 @@ from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 from src.learning_curve import cumulative_time, unit_time
 
-_PRODUCT_COLS = ("product", "part", "sku", "item", "id", "Product")
+# "product_id" leads the tuple for the same reason it does in
+# jobs/acceptance_sampling_job.py: it is the name the rest of the registry uses,
+# and this job refused it outright. Both gaps surfaced while declaring data
+# contracts -- a tool that rejects the canonical spelling reads to the client as
+# "your data is wrong" when the data was fine.
+_PRODUCT_COLS = ("product_id", "product", "part", "sku", "item", "id", "Product")
 _FIRST_COLS = ("first_unit_cost", "first_unit", "first_cost", "unit_cost", "k", "First Unit Cost")
 _RATE_COLS = ("learning_rate", "rate", "curve", "Learning Rate")
 _VOLUME_COLS = ("planned_volume", "volume", "quantity", "units", "qty", "Planned Volume")

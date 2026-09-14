@@ -197,6 +197,13 @@ def inventory_tool() -> Tool:
             "eoq", "service level", "reorder point", "order quantity",
         ),
         requires_data=True,
+        # Straight from jobs/intake.py's CANONICAL_REQUIRED / CANONICAL_OPTIONAL:
+        # this tool does not sniff its own columns, it hands the file to the shared
+        # normalizer. `revenue` is optional here for the same reason it is optional
+        # there -- detected but never emitted, it exists only to recover a real unit
+        # cost from a file that carries money but no cost column.
+        required_columns=("date", "product_id", "quantity"),
+        optional_columns=("unit_cost", "lead_time_days", "lead_time_std", "revenue"),
         options=tool_options.inventory_options,
         prepare=_inventory_prepare,
         run=_inventory_run,
@@ -241,6 +248,15 @@ def pricing_tool() -> Tool:
             "optimal price", "what price", "profit",
         ),
         requires_data=True,
+        # jobs/pricing.py::_REQUIRED. `price` is the SELLING price, and it is the one
+        # name here that is not already canonical elsewhere in the repo. Known edge:
+        # jobs/intake.py lists "price" among unit_cost's aliases, so a header named
+        # exactly `price` resolves here (exact names are claimed before aliases) but a
+        # file whose only money column is `precio` or `unit_price` still resolves to
+        # unit_cost, and this tool reads RED. Untangling cost-vs-price in that alias
+        # table is a change of its own, not a side effect of declaring a contract.
+        required_columns=("date", "product_id", "quantity", "price"),
+        optional_columns=("unit_cost",),
         options=tool_options.pricing_options,
         prepare=_pricing_prepare,
         run=_pricing_run,
@@ -381,6 +397,13 @@ def cost_to_serve_tool() -> Tool:
             "net to serve", "loss-making", "whale curve", "profitability by",
         ),
         requires_data=True,
+        # jobs/cost_to_serve_job.py:98 for segment/revenue, plus `freight`: without an
+        # activity cost driver the tool refuses outright, and freight is the ONLY driver
+        # that can arrive as a column -- the other three (cost_per_order,
+        # cost_per_unit_shipped, return_handling_per_unit) are params. Under the default
+        # params intake_scan speaks for, freight is therefore required, not optional.
+        required_columns=("segment", "revenue", "freight"),
+        optional_columns=("quantity", "order_id", "cogs"),
         options=tool_options.cost_to_serve_options,
         prepare=_cost_to_serve_prepare,
         run=_cost_to_serve_run,
@@ -439,6 +462,12 @@ def sop_tool() -> Tool:
             "monthly demand plan",
         ),
         requires_data=True,
+        # jobs/sop_job.py sniffs _DATE_COLS and _DEMAND_COLS. Declared under the repo's
+        # shared vocabulary (`date`, `quantity`) rather than that module's first alias
+        # ("Order Date", "Quantity"): both are inside its own alias tuples, and asking a
+        # client for three different names for one concept is how a data request becomes
+        # unanswerable.
+        required_columns=("date", "quantity"),
         options=lambda report: report.outcome,
         prepare=_sop_prepare,
         run=_sop_run,
@@ -536,6 +565,17 @@ def sourcing_tool() -> Tool:
             "otif", "difot", "best supplier",
         ),
         requires_data=True,
+        # jobs/sourcing_job.py:396-449. This one does not use the shared sniffer idiom:
+        # it DERIVES OTIF from alternative input shapes, refusing at five separate
+        # points. Every column below is provably required UNDER DEFAULT PARAMS, which
+        # is the only case intake_scan can speak for -- it never passes params. With
+        # params the tool also accepts order/delivery date pairs instead of
+        # `lead_time_days`, a `promised_date` instead of `on_time`, and
+        # received-vs-ordered quantities instead of `in_full`.
+        required_columns=(
+            "supplier", "on_time", "in_full", "lead_time_days", "quantity", "defects",
+        ),
+        optional_columns=("unit_cost",),
         options=lambda report: report.outcome,
         prepare=_sourcing_prepare,
         run=_sourcing_run,
@@ -589,6 +629,17 @@ def supplier_management_tool() -> Tool:
             "srm", "supply risk segmentation", "supplier quadrant", "categorize suppliers",
         ),
         requires_data=True,
+        # jobs/supplier_management_job.py:121. Only supplier and annual_value are hard.
+        # The five risk drivers are a ONE-OF disjunction (the job refuses when none is
+        # present), and a disjunction cannot live in `required_columns` without lying:
+        # declaring one driver would tell a client carrying `defect_ppm` and no lead
+        # time that their file is short two columns. They go in `optional_columns`,
+        # which under-declares -- yellow instead of red -- and that is the safe
+        # direction when the two errors are not symmetric.
+        required_columns=("supplier", "annual_value"),
+        optional_columns=(
+            "lead_time_days", "single_source", "defect_ppm", "financial_risk", "geo_risk",
+        ),
         options=lambda report: report.outcome,
         prepare=_supplier_management_prepare,
         run=_supplier_management_run,
@@ -638,6 +689,14 @@ def ddmrp_tool() -> Tool:
             "buffer profile", "net flow", "decoupling point", "red yellow green",
         ),
         requires_data=True,
+        # jobs/ddmrp_job.py:112. Its _PART_COLS carries BOTH `part_id` and
+        # `product_id`; only one may be declared or dropping it would leave the other
+        # standing in and the guard test would never fire. The shared canonical wins.
+        required_columns=("product_id", "adu", "dlt"),
+        optional_columns=(
+            "ltf", "vf", "moq", "order_cycle_days", "on_hand", "on_order",
+            "qualified_demand", "supplier",
+        ),
         options=tool_options.ddmrp_options,
         prepare=_ddmrp_prepare,
         run=_ddmrp_run,
@@ -734,6 +793,12 @@ def landed_cost_tool() -> Tool:
             "tariff", "freight cost", "import cost", "total landed",
         ),
         requires_data=True,
+        # jobs/landed_cost_job.py:63. That module spells them `sku` and `qty`; declared
+        # under the shared canonical, which its own alias tuples already accept.
+        required_columns=("product_id", "unit_cost", "quantity"),
+        optional_columns=(
+            "freight", "insurance", "duty_rate", "handling", "broker_fee", "incoterm",
+        ),
         options=tool_options.landed_cost_options,
         prepare=_landed_cost_prepare,
         run=_landed_cost_run,
@@ -840,6 +905,13 @@ def whatif_tool() -> Tool:
             "how sensitive", "downside", "best case", "worst case",
         ),
         requires_data=True,
+        # jobs/whatif_job.py:106. Note the `driver` column is not free text: its values
+        # must name model inputs the job knows (annual_demand, holding_cost,
+        # fixed_order_cost, demand_std, service_level, lead_time) or it refuses with
+        # "unknown driver(s)". `required_columns` cannot express a value contract, only
+        # a column one, so the scan can say the column is there and not that it is right.
+        required_columns=("driver", "low", "high"),
+        optional_columns=("base", "unit"),
         options=tool_options.whatif_options,
         prepare=_whatif_prepare,
         run=_whatif_run,
@@ -948,6 +1020,10 @@ def reconciliation_tool() -> Tool:
             "book vs physical", "system vs physical", "shrinkage", "stock discrepancy",
         ),
         requires_data=True,
+        # jobs/reconciliation_job.py:118 -- the whole point of the tool is the gap
+        # between what the system says and what was counted, so both sides are hard.
+        required_columns=("product_id", "system_qty", "physical_qty"),
+        optional_columns=("unit_cost",),
         options=tool_options.reconciliation_options,
         prepare=_reconciliation_prepare,
         run=_reconciliation_run,
@@ -1002,6 +1078,12 @@ def returns_tool() -> Tool:
             "refurbish", "salvage value", "returns recovery", "returned goods",
         ),
         requires_data=True,
+        # jobs/returns_job.py:89. Declared as `returned_units`, not the shared
+        # `quantity`: its _UNITS_COLS accepts both, but a returns file's unit count is
+        # not the sales quantity, and collapsing them would let a plain sales export
+        # read as a returns analysis.
+        required_columns=("product_id", "returned_units", "unit_cost"),
+        optional_columns=("reason", "resale_value", "sellable"),
         prepare=_returns_prepare,
         run=_returns_run,
         qa=lambda report: returns_job.verify(report),
@@ -1056,6 +1138,11 @@ def queuing_tool() -> Tool:
             "checkout lanes", "call center staffing", "service desk",
         ),
         requires_data=True,
+        # jobs/queuing_job.py:59. `station` and not its _STATION_COLS' `name`/`node`:
+        # `name` already means product name, and `node` was left unclaimed when two
+        # network tools wanted it.
+        required_columns=("station", "arrival_rate", "service_rate"),
+        optional_columns=("wait_cost", "server_cost"),
         options=tool_options.queuing_options,
         prepare=_queuing_prepare,
         run=_queuing_run,
@@ -1103,6 +1190,10 @@ def scheduling_tool() -> Tool:
             "shop floor schedule",
         ),
         requires_data=True,
+        # jobs/scheduling_job.py:49. `due_date` is a NUMBER of days, not a date: the job
+        # floats it, and a real date string makes the whole file refuse.
+        required_columns=("job", "processing_time"),
+        optional_columns=("due_date",),
         options=tool_options.scheduling_options,
         prepare=_scheduling_prepare,
         run=_scheduling_run,
@@ -1208,6 +1299,11 @@ def hat_tension_tool() -> Tool:
             "cuanto pedir segun cada area",
         ),
         requires_data=True,
+        # jobs/hats_job.py:123. Both hats share `_hats_prepare`, so both declare the
+        # same contract. Note MIN_OBS = 5: a SKU with fewer weekly rows is skipped, and
+        # a file where every SKU is skipped refuses -- the column contract is met and
+        # the tool still cannot run. `required_columns` says nothing about row counts.
+        required_columns=("product_id", "quantity", "unit_cost", "lead_time_days"),
         prepare=_hats_prepare,
         run=_hat_tension_run,
         qa=lambda report: hats_job.verify_tension(report),
@@ -1235,6 +1331,8 @@ def hat_settlement_tool() -> Tool:
             "decision unica ponderada", "reconciled order plan", "consenso ponderado de compra",
         ),
         requires_data=True,
+        # Same contract as hat_tension by construction: one shared `_hats_prepare`.
+        required_columns=("product_id", "quantity", "unit_cost", "lead_time_days"),
         prepare=_hats_prepare,
         run=_hat_settlement_run,
         qa=lambda report: hats_job.verify_settlement(report),
@@ -1339,6 +1437,14 @@ def risk_tool() -> Tool:
             "risk exposure", "value at risk", "resilience",
         ),
         requires_data=True,
+        # jobs/risk_job.py:184. `risk_name`, not the module's first alias `name`: a
+        # canonical called `name` would go green on any product master, which is the
+        # false green this whole contract exists to prevent.
+        required_columns=("risk_name", "likelihood", "impact_value"),
+        optional_columns=(
+            "risk_category", "exposure", "velocity_days", "detectability_days",
+            "time_to_recover",
+        ),
         prepare=_risk_prepare,
         run=_risk_run,
         qa=lambda report: risk_job.verify(report),
@@ -1397,6 +1503,12 @@ def disruption_scan_tool() -> Tool:
             "exposicion a disrupcion", "disrupcion de proveedores",
         ),
         requires_data=True,
+        # jobs/disruption_scan_job.py:85 -- a list of supplier names is genuinely
+        # enough to run this: country and spend only sharpen the ranking. A single
+        # required column would be a false-green risk if the name meant something
+        # else, but `supplier` means exactly one thing across this registry.
+        required_columns=("supplier",),
+        optional_columns=("country", "annual_value"),
         prepare=_disruption_scan_prepare,
         run=_disruption_scan_run,
         qa=lambda report: disruption_scan_job.verify(report),
@@ -1454,6 +1566,11 @@ def forecast_tool() -> Tool:
             "which forecast method", "lumpy demand", "demand pattern", "predict demand",
         ),
         requires_data=True,
+        # jobs/forecast_job.py:128 -- product and quantity are what it refuses over.
+        # The period column is optional: with no date the series falls back to row
+        # order, which still forecasts.
+        required_columns=("product_id", "quantity"),
+        optional_columns=("date",),
         prepare=_forecast_prepare,
         run=_forecast_run,
         qa=lambda report: forecast_job.verify(report),
@@ -1551,6 +1668,17 @@ def flow_map_tool() -> Tool:
             "lead time by lane", "sankey", "material flow", "where is the bottleneck",
         ),
         requires_data=True,
+        # jobs/flow_map_job.py's _REQUIRED, restated in the shared vocabulary. That
+        # module keeps its canonical names in Spanish (fecha_salida, origen, producto,
+        # cantidad...) and its own alias table already accepts the English and the
+        # product_id/quantity spellings, so declaring `producto` and `cantidad` here
+        # would have created two rival canonicals for columns the rest of the registry
+        # already owns -- a movements file would then feed flow_map and nothing else.
+        required_columns=(
+            "departure_date", "arrival_date", "origin", "destination",
+            "product_id", "quantity",
+        ),
+        optional_columns=("unit_cost",),
         prepare=_flow_map_prepare,
         run=_flow_map_run,
         qa=lambda report: flow_map_job.verify(report),
@@ -1701,6 +1829,10 @@ def acceptance_sampling_tool() -> Tool:
             "aql", "ltpd", "inspect how many", "lot acceptance", "quality sampling",
         ),
         requires_data=True,
+        # jobs/acceptance_sampling_job.py:54. Declaring this contract is what surfaced
+        # that its _PART_COLS did not accept `product_id` at all -- fixed in the same
+        # change, with its own regression test.
+        required_columns=("product_id", "aql", "ltpd"),
         options=tool_options.acceptance_sampling_options,
         prepare=_acceptance_sampling_prepare,
         run=_acceptance_sampling_run,
@@ -1747,6 +1879,11 @@ def earned_value_tool() -> Tool:
             "cost variance", "cost performance index", "project performance", "bcwp",
         ),
         requires_data=True,
+        # jobs/earned_value_job.py:54. Declared as planned_value/earned_value/actual_cost
+        # rather than that module's bare `planned`/`earned`/`actual`: those single words
+        # mean nothing on their own in a client's folder, and all three long spellings
+        # are inside its own alias tuples.
+        required_columns=("task", "planned_value", "earned_value", "actual_cost"),
         options=tool_options.earned_value_options,
         prepare=_earned_value_prepare,
         run=_earned_value_run,
@@ -1792,6 +1929,12 @@ def learning_curve_tool() -> Tool:
             "cost reduction with volume", "quote at volume", "learning rate",
         ),
         requires_data=True,
+        # jobs/learning_curve_job.py:56. Declaring this contract is what surfaced that
+        # its _PRODUCT_COLS did not accept `product_id` -- the second tool with that
+        # gap, fixed in the same change.
+        required_columns=(
+            "product_id", "first_unit_cost", "learning_rate", "planned_volume",
+        ),
         options=tool_options.learning_curve_options,
         prepare=_learning_curve_prepare,
         run=_learning_curve_run,
@@ -1946,6 +2089,11 @@ def newsvendor_tool() -> Tool:
             "critical ratio",
         ),
         requires_data=True,
+        # jobs/newsvendor_job.py:76 -- product, mean demand, price and unit cost are
+        # what it refuses over. `price` and `unit_cost` are separate concepts here and
+        # their alias tuples do not overlap, so declaring both is safe.
+        required_columns=("product_id", "mean_demand", "price", "unit_cost"),
+        optional_columns=("std_demand", "salvage_value", "goodwill"),
         options=tool_options.newsvendor_options,
         prepare=_newsvendor_prepare,
         run=_newsvendor_run,
@@ -2036,6 +2184,17 @@ def multi_echelon_tool() -> Tool:
             "safety stock placement", "multi-tier inventory", "risk pooling",
         ),
         requires_data=True,
+        # jobs/multi_echelon_job.py:81. Per-stage, not per-SKU: the key is the echelon.
+        # Its _STAGE_COLS also accepts `name`, which is deliberately NOT declared --
+        # `name` already means product name everywhere else, and declaring it would
+        # turn any master file into a false green for a network model.
+        # `mean_demand`/`std_demand` are REQUIRED, not optional: without params the job
+        # refuses with "end-customer demand is required". They shipped as optional and
+        # the required-only guard could not see it -- the complete fixture carries every
+        # optional too. That is what the optional-is-really-optional check now closes.
+        required_columns=(
+            "stage", "lead_time_days", "holding_cost", "mean_demand", "std_demand",
+        ),
         options=tool_options.multi_echelon_options,
         prepare=_multi_echelon_prepare,
         run=_multi_echelon_run,
@@ -2081,6 +2240,10 @@ def transportation_tool() -> Tool:
             "how to ship", "cheapest way to ship", "freight optimization", "carrier mode",
         ),
         requires_data=True,
+        # jobs/transportation_job.py:81 -- weight and distance are the whole cost model.
+        # No product column at all: the unit here is a shipment, not a SKU.
+        required_columns=("weight_kg", "distance_km"),
+        optional_columns=("shipment_id", "lane", "quantity", "order_value"),
         options=tool_options.transportation_options,
         prepare=_transportation_prepare,
         run=_transportation_run,
@@ -2126,6 +2289,15 @@ def fefo_tool() -> Tool:
             "best before", "use by date", "expiry risk", "markdown before expiry", "aging stock",
         ),
         requires_data=True,
+        # jobs/fefo_job.py:156. `expiry_date` is deliberately NOT declared even as
+        # optional: jobs/fefo_job.py:166 raises when it is present without
+        # params.as_of, so declaring it would make the complete fixture refuse and
+        # read as a broken declaration. Dates come in through params, not the contract.
+        # `days_to_expiry` is REQUIRED, not optional: the job takes it OR `expiry_date`,
+        # and `expiry_date` alone raises without params.as_of, so under the default
+        # params intake_scan speaks for there is exactly one workable path.
+        required_columns=("product_id", "lot_id", "quantity", "days_to_expiry"),
+        optional_columns=("unit_cost", "daily_demand"),
         options=tool_options.fefo_options,
         prepare=_fefo_prepare,
         run=_fefo_run,
@@ -2171,6 +2343,12 @@ def slotting_tool() -> Tool:
             "co-location", "re-slot", "slot the skus",
         ),
         requires_data=True,
+        # jobs/slotting_job.py:61 -- affinity is mined from order-product pairs, so the
+        # basket id is as required as the product. `order_id` is its own canonical even
+        # though jobs/intake.py lists that spelling among po_id's aliases: a picking
+        # basket is not a purchase order, and exact names resolve before aliases.
+        required_columns=("order_id", "product_id"),
+        optional_columns=("unit_volume",),
         options=tool_options.slotting_options,
         prepare=_slotting_prepare,
         run=_slotting_run,
@@ -2216,6 +2394,11 @@ def simulation_tool() -> Tool:
             "simulation-based",
         ),
         requires_data=True,
+        # jobs/simulation_job.py:77. The lead time is declared as `lead_time`, not the
+        # repo-wide `lead_time_days`, because that name is not in this job's _LEAD_COLS
+        # -- declaring it would make the tool refuse a file it can actually read.
+        required_columns=("product_id", "mean_demand", "std_demand", "lead_time_periods"),
+        optional_columns=("holding_cost", "order_cost", "backorder_cost", "review_period"),
         options=tool_options.simulation_options,
         prepare=_simulation_prepare,
         run=_simulation_run,
@@ -2354,6 +2537,11 @@ def markdown_liquidation_tool() -> Tool:
             "liquidate excess stock", "liquidate dead stock", "disposition plan", "clear excess inventory",
         ),
         requires_data=True,
+        # Identical to excess_obsolete's by construction: this job imports that one's
+        # prepare_records as its stock reader (jobs/markdown_liquidation_job.py:29). If
+        # the two ever diverge, this declaration is what should break first.
+        required_columns=("product_id", "on_hand", "daily_demand"),
+        optional_columns=("unit_cost", "days_since_last_sale"),
         options=tool_options.markdown_liquidation_options,
         prepare=_markdown_liquidation_prepare,
         run=_markdown_liquidation_run,
@@ -2399,6 +2587,14 @@ def facility_location_tool() -> Tool:
             "site selection", "where to locate", "optimal location", "greenfield site",
         ),
         requires_data=True,
+        # jobs/facility_location_job.py:61 -- only the coordinates are hard. Declared
+        # as longitude/latitude rather than the job's own `x`/`y`: both spellings are
+        # in its alias tuples, and a one-letter column name is not something to ask a
+        # client for. `weight` is NOT declared even though it is a real optional --
+        # transportation's `weight_kg` already accepts a header called `weight`, and
+        # two canonicals wanting the same header is decided by iteration order, which
+        # is no way to decide it.
+        required_columns=("longitude", "latitude"),
         options=tool_options.facility_location_options,
         prepare=_facility_location_prepare,
         run=_facility_location_run,
@@ -2451,6 +2647,11 @@ def network_design_tool() -> Tool:
             "open facilities", "consolidate distribution centers",
         ),
         requires_data=True,
+        # jobs/network_design_job.py:100. Same coordinate contract as
+        # facility_location; `role` splits the rows into demand points and candidate
+        # sites, and with no role column every row is both, which is why it is optional.
+        required_columns=("longitude", "latitude"),
+        optional_columns=("role", "fixed_cost", "capacity"),
         options=tool_options.network_design_options,
         prepare=_network_design_prepare,
         run=_network_design_run,
@@ -2496,6 +2697,16 @@ def drp_tool() -> Tool:
             "branch replenishment", "network replenishment", "drp grid", "push distribution",
         ),
         requires_data=True,
+        # jobs/drp_job.py:64. Declared as `quantity`, not the job's own first alias
+        # `demand`: both are in its _DEMAND_COLS, and `quantity` is already the shared
+        # canonical, so the client is asked for one name instead of two.
+        required_columns=("branch", "period", "quantity"),
+        # No lead-time column is declared here on purpose. This job spells it
+        # `lead_time` and accepts no other spelling, and a canonical by that name
+        # captures the generic header "Lead Time" ahead of `lead_time_days`, which is
+        # what almost every other tool in the registry needs. Optional columns are not
+        # worth breaking the shared vocabulary for.
+        optional_columns=("on_hand", "safety_stock", "lot_size"),
         options=tool_options.drp_options,
         prepare=_drp_prepare,
         run=_drp_run,
@@ -2649,6 +2860,12 @@ def price_intelligence_tool() -> Tool:
             "precio de la competencia", "inteligencia de precios",
         ),
         requires_data=True,
+        # jobs/price_intelligence.py:162. The refs file is a SKU-to-competitor-URL map,
+        # so the URL is as required as the SKU. Its own tuple also accepts bare `url`
+        # and `link`; those are deliberately not aliases of the canonical, because in a
+        # product master a `url` column is the client's own page, not a competitor's.
+        required_columns=("product_id", "competitor_url"),
+        optional_columns=("competitor_site", "our_price"),
         options=tool_options.price_intelligence_options,
         prepare=_price_intelligence_prepare,
         run=_price_intelligence_run,

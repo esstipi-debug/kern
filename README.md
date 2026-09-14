@@ -97,7 +97,7 @@ Three cross-cutting guarantees keep the agent safe in production:
 
 ## 🧠 The agent (`scm_agent/`)
 
-A **registry-based orchestrator**: every capability is a `Tool` with four stages — `prepare → run → qa → deliver` — that the orchestrator drives, enforcing **"QA fails ⇒ no deliverable"** in one place. Adding a capability is one `register()` call; no routing edits.
+A **registry-based orchestrator**: every capability is a `Tool` with four stages — `prepare → run → qa → deliver` — that the orchestrator drives, enforcing **"QA fails ⇒ no deliverable"** in one place. Adding a capability needs no routing edits; the wiring itself touches eight fixed places, listed in [`.specify/memory/constitution.md`](.specify/memory/constitution.md).
 
 ```
 brief ─▶ intent.classify ─▶ registry.get(tool) ─▶ prepare ─▶ run ─▶ QA ─▶ deliver ─▶ JobResult

@@ -262,3 +262,63 @@ def test_el_repo_pasa_el_mismo_lint_que_corre_la_ci():
         + ("\n\nSin rastrear por git (local tuyo, no llega a la CI): "
            f"{sueltos}" if sueltos else "")
     )
+
+
+# -- El Makefile no puede prometer un chequeo mas debil que el de la CI --------
+
+
+def _makefile_target(nombre: str) -> str:
+    """La linea de comando de un target del Makefile, sin el tabulador."""
+    texto = (RAIZ / "Makefile").read_text(encoding="utf-8")
+    patron = "^" + re.escape(nombre) + r":.*?\n\t(.+)$"
+    m = re.search(patron, texto, flags=re.MULTILINE)
+    assert m, f"el Makefile ya no tiene un target `{nombre}`"
+    return m.group(1)
+
+
+def _ci_yaml() -> str:
+    return (RAIZ / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+
+
+def test_make_test_mide_lo_mismo_que_la_ci():
+    """Un alias de conveniencia que corre MENOS que la CI es peor que no tenerlo.
+
+    Medido, no hipotetico: hasta este commit `make test` pasaba
+    ``--cov=nosilo_core --cov=packs --cov=src --cov-fail-under=80``. Tres cosas
+    mal a la vez -- `nosilo_core` dejo de vivir en este repo en #226 y es una
+    dependencia externa, faltaban `scm_agent/` y `jobs/` (donde vive el agente),
+    y el piso era 80 contra los 90 que bloquean el merge. Quien corriera
+    `make test` antes de abrir el PR veia verde sobre algo que la CI rechaza.
+    Nadie lo noto porque este archivo miraba pyproject y la CI, nunca el Makefile.
+    """
+    make = _makefile_target("test")
+    ci = _ci_yaml()
+
+    paquetes_ci = set(re.findall(r"--cov=([A-Za-z_]+)", ci))
+    paquetes_make = set(re.findall(r"--cov=([A-Za-z_]+)", make))
+    assert paquetes_make == paquetes_ci, (
+        f"`make test` mide {sorted(paquetes_make)} y la CI mide {sorted(paquetes_ci)}"
+    )
+
+    piso_ci = set(re.findall(r"--cov-fail-under=(\d+)", ci))
+    piso_make = set(re.findall(r"--cov-fail-under=(\d+)", make))
+    assert piso_make == piso_ci, (
+        f"`make test` exige {piso_make or 'nada'} de cobertura y la CI exige {piso_ci}"
+    )
+
+
+def test_make_lint_tiene_el_mismo_alcance_que_la_ci():
+    """El mismo problema del lado del lint.
+
+    ``ruff check <lista de rutas>`` es exactamente el bug que la CI ya abandono
+    -- dejaba siete paquetes sin lintear, ver el encabezado de este archivo -- y
+    el Makefile seguia repitiendolo, ademas apuntando a `nosilo_core`, que ni
+    existe en el arbol: el comando fallaba antes de lintear nada.
+    """
+    make = _makefile_target("lint")
+    assert "ruff check ." in make, (
+        f"`make lint` corre `{make}`; la CI corre `ruff check .` sobre todo el repo"
+    )
+    assert "nosilo_core" not in make, (
+        "`make lint` apunta a nosilo_core, dependencia externa desde #226"
+    )

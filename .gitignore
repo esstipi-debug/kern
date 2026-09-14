@@ -77,6 +77,11 @@ clients/
 .claude/*
 !.claude/settings.json
 !.claude/hooks/
+# spec-kit instala sus comandos como skills de proyecto. Sin este un-ignore
+# quedan solo en el disco de quien corrio `specify init`: invisibles para CI,
+# para las otras worktrees y para el proximo clon, o sea una adopcion a medias
+# que nadie ve fallar.
+!.claude/skills/
 .claude/settings.local.json
 .secrets/
 *.log

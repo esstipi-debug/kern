@@ -122,9 +122,11 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Segment SKUs by forecastability, auto-select and backtest the matching "
             "forecasting method (SES/Croston, or AutoETS/TSB when installed), and quantify "
             "forecast value-add versus a naive baseline.\n\n"
-            "Rows need columns: product_id, a quantity column, and a period column (date "
-            'or sequential period index). One row per SKU-period, e.g. {"product_id": '
-            '"SKU-A", "period": "2026-W01", "quantity": 42}.\n\n'
+            "Rows need columns: product_id and a quantity column. A period column is "
+            "optional -- canonically `date`, also accepted as period/week/month/t -- and "
+            "without one the series is read in row order, which still forecasts. One row "
+            'per SKU-period, e.g. {"product_id": "SKU-A", "date": "2026-01-01", '
+            '"quantity": 42}.\n\n'
             "Useful params: holdout_fraction (default 0.25, share of history held out for "
             "backtesting), min_backtest_periods (default 4).\n\n" + _RETURNS
         ),
@@ -182,7 +184,7 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "(a tornado chart's underlying data) and bounding the optimistic/pessimistic case.\n\n"
             "Rows need columns: a driver-name column, low and high band columns, plus a "
             'base-value/unit column, e.g. {"driver": "demand", "low": -0.15, "high": 0.20, '
-            '"base_value": 100, "unit": "units/period"}.\n\n'
+            '"base": 100, "unit": "units/period"}.\n\n'
             "Useful params: metric (default \"annual_cost\"), budget_pct (default 0.10), "
             "maximize (default false).\n\n" + _RETURNS
         ),
@@ -195,7 +197,9 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Allocate the true cost to serve each customer segment / channel, flag "
             "loss-making segments, and size the working-capital cash-release opportunity.\n\n"
-            "Rows need columns: segment (or channel), sales (revenue). Optional: quantity, "
+            "Rows need columns: segment (or channel), revenue (sales), and a freight column "
+            "-- without an activity cost driver the tool refuses, and freight is the only "
+            "driver that can arrive as data rather than params. Optional: quantity, "
             "order_id (order-level cost allocation), cogs, returns_units, shipping/freight "
             'cost. One row per order line or aggregate, e.g. {"segment": "Retail", '
             '"sales": 1200.0, "cogs": 700.0, "order_id": "SO-77"}.\n\n'
@@ -211,7 +215,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Compute the Incoterm-aware fully landed cost per SKU (goods + freight + "
             "insurance + duty + handling + broker) and each component's share.\n\n"
-            "Rows need columns: sku, unit_cost, qty. Optional: freight, insurance, "
+            "Rows need columns: product_id (sku also accepted), unit_cost, quantity (qty "
+            "also accepted). Optional: freight, insurance, "
             'duty_rate, handling, broker_fee, incoterm. E.g. {"sku": "SKU-A", '
             '"unit_cost": 8.4, "qty": 500, "freight": 420, "duty_rate": 0.06, '
             '"incoterm": "FOB"}.\n\n' + _RETURNS
@@ -224,8 +229,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Roll up project cost/schedule control: SV, CV, SPI, CPI per task and for the "
             "whole project, flagging the worst work packages.\n\n"
-            "Rows need columns: task, planned (PV / budgeted cost of work scheduled), "
-            "earned (EV / budgeted cost of work performed), actual (AC / actual cost). "
+            "Rows need columns: task, planned_value (PV / budgeted cost of work scheduled), "
+            "earned_value (EV / budgeted cost of work performed), actual_cost (AC). "
             'E.g. {"task": "Rack install", "planned": 10000, "earned": 8000, "actual": 9500}.\n\n'
             + _RETURNS
         ),
@@ -237,7 +242,7 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Project unit and cumulative cost at volume from a first-unit cost and a "
             "learning rate (Yx = K * x^n cost-down curve), per product.\n\n"
-            "Rows need columns: product, first_unit_cost, learning_rate (e.g. 0.85 for an "
+            "Rows need columns: product_id, first_unit_cost, learning_rate (e.g. 0.85 for an "
             '85% curve), planned_volume. E.g. {"product": "Assembly-X", '
             '"first_unit_cost": 1200, "learning_rate": 0.85, "planned_volume": 250}.\n\n'
             + _RETURNS
@@ -359,7 +364,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Size DDMRP red/yellow/green buffers per part and compute the net-flow "
             "planning signal (which parts to reorder now, and how much).\n\n"
-            "Rows need columns: part_id, adu (average daily usage), dlt (decoupled lead "
+            "Rows need columns: product_id (part_id also accepted), adu (average daily "
+            "usage), dlt (decoupled lead "
             "time, days). Optional: ltf, vf, moq, order_cycle_days, on_hand, on_order, "
             'qualified_demand. E.g. {"part_id": "P-9", "adu": 14, "dlt": 12, "on_hand": 220, '
             '"on_order": 100}.\n\n'
@@ -375,9 +381,10 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Place safety stock across a serial supply chain (e.g. factory -> DC -> store) "
             "with the Guaranteed-Service Model: where to hold buffer and how much, versus "
             "the naive hold-at-every-stage baseline.\n\n"
-            "Rows: one per stage in sequence, columns stage, lead_time, holding_cost (per "
+            "Rows: one per stage in sequence, columns stage, lead_time_days, holding_cost (per "
             "unit per period). Optional: order (explicit stage sequence). End-customer "
-            "demand comes from mean_demand and demand_std columns (first row) or from "
+            "demand comes from mean_demand and std_demand columns, which are REQUIRED "
+            "unless passed as params, from "
             'params. E.g. {"stage": "DC", "lead_time": 5, "holding_cost": 1.2}.\n\n'
             "Useful params: service_level (default 0.95), mean_demand, demand_std (required "
             "if not present as columns), review_period.\n\n" + _RETURNS
@@ -391,8 +398,9 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Build the time-phased DRP grid per branch/DC (projected on-hand, planned "
             "orders per period) and roll branches up into the central DC's gross "
             "requirements.\n\n"
-            "Rows: long format, one per branch-period, columns branch, period, demand. "
-            'Optional: on_hand, lead_time, safety_stock, lot_size. E.g. {"branch": "North", '
+            "Rows: long format, one per branch-period, columns branch, period, quantity "
+            "(demand also accepted). "
+            'Optional: on_hand, safety_stock, lot_size. E.g. {"branch": "North", '
             '"period": 1, "demand": 120, "on_hand": 300, "lead_time": 2}.\n\n' + _RETURNS
         ),
     ),
@@ -405,7 +413,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "that minimizes simulated total cost (holding + ordering + backorder), via "
             "Monte-Carlo simulation per SKU - useful when demand is too lumpy for "
             "closed-form formulas.\n\n"
-            "Rows need columns: product_id, mean_demand, std_demand, lead_time (periods). "
+            "Rows need columns: product_id, mean_demand, std_demand, lead_time_periods "
+            "(lead_time also accepted; the unit is periods, not days). "
             "Optional per-row: holding_cost, order_cost, backorder_cost, review_period. "
             'E.g. {"product_id": "SKU-A", "mean_demand": 40, "std_demand": 18, "lead_time": 2}.\n\n'
             "Useful params: periods (simulation horizon), holding_cost, order_cost, "
@@ -444,7 +453,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Design the smallest receiving-inspection sampling plan (inspect n units, "
             "accept at most c defects) per part from AQL/LTPD quality targets, plus the "
             "inspect-vs-skip break-even.\n\n"
-            "Rows need columns: part, aql, ltpd (fractions - e.g. AQL 0.01, LTPD 0.05). "
+            "Rows need columns: product_id (part/component/sku also accepted), aql, ltpd "
+            "(fractions - e.g. AQL 0.01, LTPD 0.05). "
             'E.g. {"part": "Casting-7", "aql": 0.01, "ltpd": 0.05}.\n\n'
             "Useful params: producer_risk (default 0.05), consumer_risk (default 0.10).\n\n"
             + _RETURNS
@@ -458,8 +468,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Score a supply-chain risk register (likelihood x impact), rank by expected "
             "monetary value and FMEA-style priority, and lay out the 5x5 heatmap plus a "
             "mitigation plan.\n\n"
-            "Rows need columns: name, likelihood (0-1 annual probability), impact_value "
-            "(currency loss if it hits). Optional: category, exposure, time_to_recover, "
+            "Rows need columns: risk_name, likelihood (0-1 annual probability), impact_value "
+            "(currency loss if it hits). Optional: risk_category, exposure, time_to_recover, "
             'time_to_survive, owner. E.g. {"name": "Port strike", "likelihood": 0.15, '
             '"impact_value": 250000, "category": "logistics"}.\n\n'
             "Useful params: severity_thresholds, mitigations (dict keyed by risk name).\n\n"
@@ -521,7 +531,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Pick the cheapest feasible transport mode (parcel / LTL / FTL / intermodal) "
             "per shipment from a configurable rate card, and rank lanes by freight spend.\n\n"
             "Rows need columns: weight_kg, distance_km (one row per shipment). Optional: "
-            'shipment_id, lane, units, order_value. E.g. {"shipment_id": "SH-9", '
+            'shipment_id, lane, quantity (units also accepted), order_value. '
+            'E.g. {"shipment_id": "SH-9", '
             '"weight_kg": 4200, "distance_km": 850, "lane": "MAD->BCN"}.\n\n'
             "Useful params: rate-card overrides (advanced; defaults model typical "
             "parcel/LTL/FTL/intermodal rates).\n\n" + _RETURNS
@@ -535,8 +546,11 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Place one facility (DC, plant, cross-dock) to minimize demand-weighted "
             "travel: center-of-gravity plus the exact 1-median (Weiszfeld), compared "
             "against the nearest existing point.\n\n"
-            "Rows: one per demand point, columns x, y (or lon/lat). Optional: name, weight "
-            '(demand/volume per point - defaults to 1). E.g. {"name": "Store-12", '
+            "Rows: one per demand point, columns longitude, latitude (x/y and lon/lat "
+            "also accepted). Optional: name, weight (demand/volume per point - defaults "
+            "to 1); the tool reads both, though neither is part of the declared data "
+            "contract -- `weight` is spelled the same as transportation's weight_kg "
+            'header. E.g. {"name": "Store-12", '
             '"lon": -3.7, "lat": 40.4, "weight": 1200}.\n\n' + _RETURNS
         ),
     ),

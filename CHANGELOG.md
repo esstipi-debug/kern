@@ -3,6 +3,43 @@
 ## [Unreleased]
 
 ### Added
+- **Spec-driven development, with a written constitution.** `specify init --here
+  --integration claude` (spec-kit v1.0.2) installs `.specify/` and ten
+  `speckit-*` project skills. The piece that is not scaffolding is
+  `.specify/memory/constitution.md`: it writes down, for the first time, **the
+  eight fixed places a new capability touches** (`jobs/<x>_job.py`, the `from
+  jobs import (` block, the three `_<x>_prepare`/`_<x>_run`/`<x>_tool()`
+  functions, the `reg.register()` line, `TOOL_CONCEPTS`, `TOOL_TITLES`, and the
+  two pinned counts in `tests/`), plus the QA-gate, loud-degradation,
+  data-contract, no-module-level-optional-import, ASCII-only and derived-counts
+  rules. That list previously existed nowhere: it was reconstructed from git
+  archaeology per feature, and reconstructed **wrong** at least once -- a handoff
+  called them "the 7 fixed places" and a later plan corrected it to 8.
+  `tests/test_constitution_anchors.py` keeps it honest in both directions (a path
+  that moves, or a principle deleted while its anchor stays, both fail).
+  `.gitignore` had `.claude/*`, so the installed skills were invisible to git,
+  CI and every other worktree until `!.claude/skills/` was added.
+  `CLAUDE.md`, `README.md` and `scm_agent/README.md` all promised "adding a
+  capability = one `register()` call"; the "no routing edits" half is true and
+  kept, the count was not.
+
+- **`make lint` and `make test` are now guarded, not just fixed.** Both had
+  drifted into promising a WEAKER check than CI: `make test` measured
+  `--cov=nosilo_core --cov=packs --cov=src` at a floor of 80 -- a package that
+  left this repo at #226, no `scm_agent/` or `jobs/` (where the agent lives),
+  and 80 against the 90 that blocks a merge -- while `make lint` used the narrow
+  ruff path list CI itself abandoned for leaving seven packages unlinted, and
+  named a directory that does not exist so it failed before linting anything.
+  Someone running `make test` before opening a PR saw green on something CI
+  rejects. `tests/test_ci_lint_and_coverage_scope.py` now fails when the Makefile
+  and the workflow disagree, which is why this could drift unnoticed: that file
+  checked pyproject and CI, never the Makefile.
+- **`CONTRIBUTING.md` rewritten.** It described a repo that no longer exists:
+  `pip install -r requirements.txt; pytest`, "pure functions in `src/`; CLI in
+  `examples/`", and no mention of `jobs/`, `scm_agent/`, `packs/`, the registry,
+  the coverage gate, the private-core token, or the stray-`nosilo_core/` trap
+  that corrupts every local ruff run. It now opens by pointing at the
+  constitution and carries a checklist of the rules that actually block a merge.
 - **`GET /api/price-position/{sku}` — la ultima ruta sin construir de la seccion 9
   del plan 3.0.** La marco abierta la auditoria de brechas del 2026-07-13 y seguia
   faltando al re-verificarla el 2026-09-12. Lee el MISMO `PriceLedger` de produccion
@@ -219,6 +256,152 @@
   port is written up in `odoo_addon/PORT_17_A_19.md`.
 
 ### Changed
+- **Thirty-seven of the 45 data tools now declare their data contract, up from four.**
+  Batch 1, the per-SKU demand-history family: `forecast`,
+  `inventory_optimization`, `markdown_liquidation`, `pricing`, `sop`. Batch 2,
+  inventory and replenishment policy: `ddmrp`, `drp`, `fefo`, `multi_echelon`,
+  `newsvendor`, `simulation`. Batch 3, warehouse, count and audit:
+  `reconciliation`, `returns`, `slotting`. Batch 4, network, geometry and flow:
+  `facility_location`, `flow_map`, `network_design`, `transportation`. Batch 5,
+  suppliers and procurement: `acceptance_sampling`, `disruption_scan`,
+  `landed_cost`, `sourcing`, `supplier_management`. Batch 6, ops, project, risk
+  and analysis: `cost_to_serve`, `earned_value`, `learning_curve`, `queuing`,
+  `risk`, `scheduling`, `whatif`. Batch 7, hats and competitor pricing:
+  `hat_settlement`, `hat_tension`, `price_intelligence`. This is a
+  product change, not housekeeping: `src/intake_scan.py` derives its verdict from
+  `required_columns`, so an undeclared tool answers `no_declarado` -- "I cannot
+  tell you whether your folder can run this". On the repo's own sample folder
+  those five went from silence to four greens and one honest yellow. Batch 2 was
+  proved the same way, against a folder whose headers are an ERP's and not
+  Kern's -- `sku`, `avg_daily_usage`, `decoupled_lead_time`, `On Hand`,
+  `open_po`, `batch_id`, `shelf_life_days` -- where `ddmrp` and `fefo` both
+  resolve every required column through the alias table and ask only for
+  optionals.
+  Batch 2 added 24 canonical column names, each alias taken from the declaring
+  job's own `_*_COLS` tuple and never invented, under three rules written into
+  `jobs/intake.py`: a term already owned by an earlier canonical is not repeated
+  (`lead_time` stays with `lead_time_days`, `period` with `date`, `demand` with
+  `quantity` -- the exact canonical name still resolves, since exact names are
+  claimed before aliases); no one- or two-character aliases (`h`, `R`, `lt`), which
+  match too much to be evidence; and a term two NEW canonicals both want is
+  arbitrated explicitly rather than by iteration order (`lot` to `lot_id`, `moq`
+  to `moq`, and `location`/`node` to neither `stage` nor `branch`, because
+  picking one would green a network tool on the other's file).
+  Two declarations were deliberately narrowed: `multi_echelon` does not declare
+  `name` even though its sniffer accepts it (it already means product name
+  everywhere else, so declaring it would turn any master file into a false green
+  for a network model), and `fefo` does not declare `expiry_date` even as
+  optional (`jobs/fefo_job.py:166` raises when it is present without
+  `params.as_of`, so declaring it would make a complete file refuse).
+  Batch 3 was proved against WMS-shaped headers (`book_qty`, `counted`, `returns`,
+  `return_reason`, `resale`, `invoice`, `cube`): `reconciliation` and `slotting`
+  green, `returns` yellow on one missing optional.
+  **`cycle_count` was deliberately NOT declared**, and the reason is written into
+  `tests/test_tool_data_contract.py` rather than left as a pending item. Its
+  contract is a disjunction -- a product column plus ANY ONE of an `abc` class
+  column, a value column, or demand + unit_cost -- and `required_columns` is a
+  conjunction. Declaring the demand+cost branch is provable and would pass the
+  guard test, and would then tell a client holding a perfectly good ABC file that
+  they are missing two columns they do not need. `no_declarado` says "I cannot
+  tell"; that would say something false. Same category as `dea`, whose contract is
+  a column-name prefix.
+  Batch 4 carried the programme's one real vocabulary decision. `flow_map` keeps
+  its contract in Spanish (`fecha_salida`, `origen`, `producto`, `cantidad`),
+  and two of those names are already ALIASES of `product_id` and `quantity`.
+  Declaring them as canonicals would have created rival owners for columns the
+  rest of the registry needs, so a movements file would have fed `flow_map` and
+  nothing else. Instead the contract is restated in the shared vocabulary --
+  `departure_date`, `arrival_date`, `origin`, `destination`, `product_id`,
+  `quantity` -- which that job's own alias table already accepts, and the Spanish
+  spellings enter as aliases. Proved on a fully Spanish movements export:
+  `flow_map` green, and `facility_location`/`network_design` green off a node
+  file using `lon`/`lat`/`node_type`/`open_cost`/`throughput`.
+  Two more declarations were narrowed for the same reason: the p-median tools
+  declare `longitude`/`latitude` rather than their own `x`/`y` (a one-letter
+  column is not something to ask a client for), and neither declares `weight`,
+  because `transportation`'s `weight_kg` already accepts a header spelled
+  `weight` and two canonicals wanting one header would be settled by iteration
+  order.
+  **Batch 5 also found two under-declarations and a regression in batches 1-4**,
+  and the guard that catches the whole class. The suite only ever checked that a
+  declared REQUIRED column was really required; nothing checked that a declared
+  OPTIONAL one was really optional, and the complete fixture carries every
+  optional, so an over-generous optional was invisible. The mirror check
+  (`test_every_declared_optional_column_is_really_optional`) found two on its
+  first run: `multi_echelon` shipped `mean_demand`/`std_demand` as optional when
+  the job refuses without them ("end-customer demand is required"), and `fefo`
+  shipped `days_to_expiry` as optional when it is the only workable path under
+  default params. Both were under-declarations, which is the direction that
+  produces a false GREEN -- the scan telling a client a tool will run when it
+  will not. Both are now required.
+  The regression: batch 2 gave `simulation` a canonical named `lead_time`, and a
+  canonical exact-matches before any alias, so a client column headed
+  `Lead Time` stopped reaching `lead_time_days` -- the spelling nearly every
+  other tool needs. Simulation's lead time is measured in PERIODS, not days, so
+  merging the two would have silently reinterpreted a client's days; it is now
+  `lead_time_periods`, a name that states its unit and cannot capture the generic
+  header. `multi_echelon` moved to `lead_time_days` (its own sniffer already
+  accepted that spelling) and `drp` dropped its optional lead-time column
+  entirely rather than reintroduce the collision.
+  **The eight tools that remain undeclared are permanent, and each says why**
+  next to its entry rather than sitting on the list as a pending item -- "still
+  on the list" and "cannot be on any list" are different facts, and collapsing
+  them is how a programme like this ends up chasing a tool that was never
+  declarable. `intake_scan` and `launch_readiness` read more than one file;
+  `cycle_count` and (in part) `supplier_management` have disjunctive contracts;
+  `dea`'s contract is a column-name PREFIX; `excel_replenishment` reads .xlsx
+  with a fuzzy Spanish header; `cross_impact` has a params contract and maps
+  its refusal to `needs_clarification`; `org_friction_audit` requires only
+  `name`, which already means product name and would green any master file;
+  and `vehicle_routing` refuses without `params.capacity`, which is not a
+  column. Two of them name the exact change that would make them declarable.
+  Three things had to be fixed before any declaration was safe or provable:
+  - **`jobs/intake_scan_job.py` could only ever SEE 15 column names.**
+    `_canonical_order()` was built from the four demo `PROFILES`, not from the
+    registry, and `_map_headers` only walks that set. Declaring anything outside
+    it (`adu`, `price`, `weight_kg`, `mean_demand`, ...) would have dropped the
+    client's header and reported the tool RED on a folder that carried the
+    column -- a permanent false red produced by declaring the contract
+    correctly. It now unions the profiles with every column the registry
+    declares, lazily (the registry imports this module).
+  - **The guard test only checked that `prepare()` refused, never why.** A job
+    that rejected the fixture for an unrelated reason -- a numeric coercion, a
+    negative quantity, "no SKUs found in the data" -- returned the same
+    `needs_data` and the test went green over a false declaration. It now
+    requires the refusal to NAME the dropped column, with a declared translation
+    table for jobs that use their own vocabulary (`abc_xyz` and `sop` call
+    `quantity` "demand").
+  - **The fixture wrote 12 rows with 12 distinct SKUs**, so any job with a
+    minimum-observations rule (`jobs/hats_job.py` sets `MIN_OBS = 5`) could never
+    have been declared, and any job that resamples to months saw a single
+    period. It is now 3 keys x 5 rows with dates spread across months.
+- **The intake-scan deck's confidence was a cliff, not a derivation.** It applied
+  one flat penalty gated on `n_tools_evaluated * 2 < n_tools_total`, which
+  vanishes the instant half the registry declares -- so a scan covering 24 of 45
+  tools would have claimed exactly the same certainty as one covering all 45,
+  starting midway through this very programme. The penalty is now proportional to
+  the unevaluated share and rounded up, so the base is reachable only at full
+  coverage. Relatedly, the evaluated/total ratio counted all 50 registered tools,
+  five of which never read a file: the summary said "9 of 50" while the finding
+  printed beside it said "of 45". Both now say 45.
+- **Two tools refused the repo's own canonical product column.**
+  `jobs/acceptance_sampling_job.py`'s `_PART_COLS` accepted `part`, `component`,
+  `sku`, `item` and `id` but not `product_id`, so a client file spelled the way
+  every other tool in the registry spells it got `needs_data` from this one --
+  which reads as "your data is wrong" when the data was fine.
+  `jobs/learning_curve_job.py` had the identical gap. Both were found while
+  declaring their contracts, neither by reading the code; `acceptance_sampling`
+  carries its own regression test.
+- **`webapp/mcp_tool_specs.py` drifted from the code in fifteen places**, all found
+  by comparing its prose against the tuples it claims to copy -- including one
+  outright wrong example: the `whatif` spec showed a `base_value` key that its
+  own sniffer does not accept, so a caller following the documentation would have
+  been refused. It described
+  `forecast` as needing a period column -- it does not, verified by running the
+  tool without one -- and named `part_id` for `ddmrp`, `demand` for `drp` and
+  `demand_std` for `multi_echelon` where the declared contract uses the shared
+  canonical -- plus `x, y` for `facility_location` and `units` for
+  `transportation`. The prose now names the declared column and notes the alias.
 - **`linchpin_dry_run` renamed to `kern_dry_run`**, executing item 3 of the HANDOFF external checklist,
   which gated the rename on "the next functional version" — this port is it. No migration hook: the
   module was never actually published, so there are no installations to break. `linchpin.fly.dev`, the

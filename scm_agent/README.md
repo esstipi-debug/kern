@@ -9,7 +9,8 @@ deliverable, routing to the right capability.
 [`tools.py`](tools.py); run it yourself rather than trusting a static count here,
 since it changes with every new `feat: wire ... as an agent tool` PR. Every tool
 follows the exact same `prepare → run → qa → deliver` contract; adding one is a
-single `register()` call, no routing edits.
+single `register()` call at the routing layer -- no special-casing -- though the
+full wiring touches eight fixed places (see `.specify/memory/constitution.md`).
 
 | Area | Tools |
 |---|---|
