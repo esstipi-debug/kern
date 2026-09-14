@@ -49,20 +49,55 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from scm_agent.events import EventLedger
 from scm_agent.merchant_alerts import MerchantAlert, render_merchant_alert
-from scm_agent.monitors import run_all_monitors
+from scm_agent.monitors import MonitorConfigError, load_monitor_config, run_all_monitors
 
 from .notify import notify
 from .scheduler import ScheduledJob
 
-# One combined "sense" tick per hour: matches config/monitors.yaml's tightest
-# per-monitor cadence (rop_breach / stockout_projected = 60 min). The slower
-# monitors (excess_growing / forecast / lead-time at 1440 min) are naturally
-# idempotent under the EventLedger's 1h dedup window, so running them hourly
-# re-records nothing until their underlying condition actually changes.
-MONITORS_CADENCE_MINUTES = 60
+#: Cadencia por defecto cuando el config no se puede leer. NO es "la cadencia":
+#: es el piso al que caer si `config/monitors.yaml` falta o esta roto, para que
+#: importar este modulo nunca explote por un archivo ausente.
+_CADENCE_FALLBACK_MINUTES = 60
+
+
+def monitors_cadence_minutes(path: str | Path | None = None) -> int:
+    """Un tick combinado de "sentido" a la cadencia MAS AJUSTADA que pida el config.
+
+    Antes esto era `MONITORS_CADENCE_MINUTES = 60`, una constante escrita a mano
+    cuyo comentario decia "matches config/monitors.yaml's tightest per-monitor
+    cadence". Eran DOS COPIAS del mismo numero sincronizadas por memoria: editar
+    `cadence_minutes` en el YAML no movia nada y ningun test fallaba. La
+    configuracion parecia viva y no lo estaba -- el docstring de
+    `load_monitor_config` lo admitia en voz alta ("data only in this PR, no
+    scheduler job reads it yet").
+
+    Ahora el YAML manda. Se toma el minimo sobre los monitores HABILITADOS: los
+    lentos (1440 min) son idempotentes bajo la ventana de dedup de 1h del
+    EventLedger, asi que correrlos a la cadencia del mas rapido no re-registra
+    nada hasta que su condicion cambie de verdad.
+
+    Un config ilegible NO tumba el import: cae a `_CADENCE_FALLBACK_MINUTES`. Un
+    config legible con cadencias invalidas tampoco inventa un numero -- las ignora
+    y cae al mismo piso.
+    """
+    try:
+        cfg = load_monitor_config(path) if path is not None else load_monitor_config()
+    except (MonitorConfigError, OSError):
+        return _CADENCE_FALLBACK_MINUTES
+    cadencias = [
+        int(s["cadence_minutes"])
+        for s in cfg.values()
+        if s.get("enabled", True) and isinstance(s.get("cadence_minutes"), (int, float))
+        and int(s["cadence_minutes"]) > 0
+    ]
+    return min(cadencias) if cadencias else _CADENCE_FALLBACK_MINUTES
+
+
+MONITORS_CADENCE_MINUTES = monitors_cadence_minutes()
 
 # Opt-in operator Slack ping (off by default -- see module docstring).
 NOTIFY_ENV = "LINCHPIN_MONITORS_NOTIFY"

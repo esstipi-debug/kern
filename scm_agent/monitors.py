@@ -123,9 +123,13 @@ def load_monitor_config(path: str | Path = DEFAULT_MONITORS_CONFIG_PATH) -> dict
     """Parse ``config/monitors.yaml`` into ``monitor_name -> its settings dict``
     (``enabled``, ``cadence_minutes``, plus whichever threshold keys that
     monitor reads -- see the module docstring's per-monitor list).
-    ``cadence_minutes`` is data only in this PR (no scheduler job reads it
-    yet); it documents the production cadence a later PR's
-    ``jobs.scheduler.ScheduledJob`` is expected to use.
+    ``cadence_minutes`` YA NO es dato decorativo: desde 2026-09-14 lo lee
+    ``jobs.monitors_job.monitors_cadence_minutes()``, que toma el minimo sobre
+    los monitores habilitados y con eso arma el ``trigger_args`` de
+    ``MONITORS_JOB``. Editar este numero mueve el reloj del job. Antes convivia
+    con una constante ``MONITORS_CADENCE_MINUTES = 60`` escrita a mano que
+    prometia "coincidir" con este archivo: dos copias sincronizadas por memoria,
+    y ningun test fallaba cuando se separaban.
     """
     text = Path(path).read_text(encoding="utf-8")
     try:
