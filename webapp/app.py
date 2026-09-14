@@ -47,9 +47,11 @@ from jobs import abc_xyz_job, excess_obsolete_job  # noqa: E402
 from jobs.intake import load_table  # noqa: E402
 from jobs.notify import notify  # noqa: E402
 from jobs.price_monitor import accept_observation  # noqa: E402
-from scm_agent import metrics  # noqa: E402
 from jobs.scheduled_jobs import PRODUCTION_JOB_IDS, production_registry  # noqa: E402
-from scm_agent import Orchestrator  # noqa: E402
+from scm_agent import (
+    Orchestrator,  # noqa: E402
+    metrics,  # noqa: E402
+)
 from scm_agent.autonomy import DEFAULT_PATH as AUTONOMY_DEFAULT_PATH  # noqa: E402
 from scm_agent.autonomy import (  # noqa: E402
     STATUS_AUTO_EXECUTED,
