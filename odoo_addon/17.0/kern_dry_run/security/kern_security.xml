@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="group_kern_user" model="res.groups">
+        <field name="name">Kern User</field>
+        <field name="category_id" ref="base.module_category_inventory_inventory"/>
+        <field name="comment">Can run Kern's external inventory analysis, which sends product identifiers, cost, supplier lead times, and confirmed sales history to Kern's cloud service. Deliberately separate from Inventory Administrator: managing warehouses/stock should not automatically grant permission to share data with a third-party service - grant this explicitly, per user, via Settings &gt; Users.</field>
+    </record>
+</odoo>

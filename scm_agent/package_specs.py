@@ -346,8 +346,9 @@ _STARTER_STEPS = (
     PackageStep("whatif", "supuestos", fallback=_default_whatif_drivers,
                 fallback_note="rangos estandar +/-20%; personalizar supuestos.csv"),
     PackageStep("newsvendor", "estacional", required=False, cadence="por temporada"),
-    PackageStep("excel_replenishment", "planilla", derive_params=_optimized_targets_from_inventory),
-    PackageStep("cycle_count", None, derive=_cycle_count_from_abc),
+    PackageStep("excel_replenishment", "planilla", derive_params=_optimized_targets_from_inventory,
+                depends_on=("inventory_optimization",)),
+    PackageStep("cycle_count", None, derive=_cycle_count_from_abc, depends_on=("abc_xyz",)),
     # Moved down from Growth 2026-07-18 - "universal" tools that apply to any
     # business regardless of size/structure. pricing keeps required=True (see
     # module docstring: Starter's ventas slot now carries the price column it

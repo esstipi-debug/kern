@@ -35,11 +35,11 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import httpx
-from nosilo_core.guided import passed_guided, verify_guided
 
 from jobs import price_watch as pw
 from jobs import price_watch_scaling as pws
 from jobs.price_watch import SkuScalingRequest
+from nosilo_core.guided import passed_guided, verify_guided
 from scm_agent.events import EventLedger
 from src.pricing_intel.acquire import base
 from src.pricing_intel.ledger import PriceLedger

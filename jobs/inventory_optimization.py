@@ -102,10 +102,17 @@ class JobReport:
     n_intermittent: int
     # How much of the source file survived intake, and why the rest didn't
     # (jobs/intake.py) — None when the caller used the untracked intake.prepare()
-    # path (e.g. examples/run_inventory_job.py). scm_agent/tool_options.py's
-    # inventory_options() reads this to decide whether to escalate.
+    # path. scm_agent/tool_options.py's inventory_options() reads this to decide
+    # whether to escalate. ``IntakeQuality.reading`` (mapping / sheet / hygiene)
+    # rides along so the deliverable can tell the client how their file was read.
     intake_quality: IntakeQuality | None = None
     intake_quality_threshold: float = 0.20
+    # De donde salieron las columnas de servicio y que significan, cuando el frame de
+    # order_lines lo declaro (jobs/intake.py::service_lines lo pone en .attrs). Viaja hasta
+    # el mapa de fuentes del entregable: el deck no ve el frame de entrada, ve este reporte,
+    # asi que sin este campo el caveat se queda en el resumen del operador y el cliente que
+    # abre el Excel lee un OTIF sin saber si su fecha es un despacho o una llegada.
+    service_note: str = ""
     # SKUs skipped because their aggregate demand was zero (see run()'s per-SKU
     # loop) - a real new/seasonal SKU with no activity, or a data-quality split
     # that zeroed one spelling's demand. Isolated, not fatal to the batch.
@@ -160,6 +167,7 @@ def _realized_service(
     lines: list[dict],
     observed_fill_rates: dict[str, float] | None,
     stockout_days: dict[str, int] | None,
+    promise_days: dict[str, float] | float | None = None,
     *,
     shipped_units: float,
     unit_cost: float,
@@ -176,7 +184,8 @@ def _realized_service(
     days = (stockout_days or {}).get(pid)
     if lines:
         return order_fulfillment.measure_from_order_lines(
-            pid, lines, stockout_days=days, periods_covered=n_periods
+            pid, lines, stockout_days=days, periods_covered=n_periods,
+            promise_days=promise_days,
         )
     reported = (observed_fill_rates or {}).get(pid)
     if reported is None:
@@ -232,6 +241,7 @@ def run(
     target_fill_rate: float = 0.95,
     order_lines: pd.DataFrame | None = None,
     stockout_days: dict[str, int] | None = None,
+    delivery_promise_days: dict[str, float] | float | None = None,
     intake_quality: IntakeQuality | None = None,
     intake_quality_threshold: float = 0.20,
     min_periods: int = MIN_PERIODS_FOR_POLICY,
@@ -307,6 +317,7 @@ def run(
         # little history to size a buffer from, or no usable cost on file.
         realized = _realized_service(
             pid, lines_by_sku.get(pid, []), observed_fill_rates, stockout_days,
+            delivery_promise_days,
             shipped_units=float(np.sum(series)),
             unit_cost=meta.mean_unit_cost,
             n_periods=n_periods,
@@ -462,6 +473,10 @@ def run(
 
     return JobReport(
         recommendations=recs,
+        # ``getattr`` sobre ``.attrs``: un DataFrame siempre lo tiene, pero un llamador
+        # puede pasar cualquier cosa con forma de frame y esto es un extra, no un
+        # requisito. Un entregable no se cae por una nota que falta.
+        service_note=str(getattr(order_lines, "attrs", {}).get("service_note", "") or ""),
         params={"service_level": service_level, "holding_rate": holding_rate, "order_cost": order_cost, "periods_per_year": periods_per_year},
         requested_investment=requested, cycle_floor=cycle_floor, final_investment=final,
         safety_stock_scale=scale, feasible=feasible, budget=budget,

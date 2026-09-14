@@ -53,9 +53,18 @@ def test_scan_ok_with_money_figure_and_three_findings():
 def test_findings_quote_the_money_and_the_cta_numbers():
     result = run_demo_scan(_stock_df())
     f1, f2, f3 = result.findings
-    assert "$" in f1 and "atrapados" in f1
+    assert "$" in f1 and "inmovilizados" in f1
     assert "clase A" in f2
     assert "DIO" in f3 or "dias" in f3
+
+
+def test_english_findings_use_tied_up_not_spanish_copy():
+    result = run_demo_scan(_stock_df(), lang="en")
+    f1, f2, f3 = result.findings
+    assert "tied up" in f1
+    assert "atrapados" not in f1
+    assert "A-class" in f2
+    assert "working capital" in f3
 
 
 def test_derive_abc_items_annualizes_demand():

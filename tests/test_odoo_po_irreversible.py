@@ -25,8 +25,8 @@ undo works, and it should only be claimed where it does.
 from __future__ import annotations
 
 import pytest
-from nosilo_core import writeback
 
+from nosilo_core import writeback
 from src.connectors.odoo import OdooConnector, OdooError, demo_odoo
 
 

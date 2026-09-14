@@ -28,7 +28,7 @@ comerciales que el Cliente suministra, típicamente:
   inventario, plazos de reposición)
 - Si el paquete incluye *writeback* Odoo: los mismos campos que lee el
   módulo de Odoo (ver la sección "What data is sent, and where" de
-  `odoo_addon/linchpin_dry_run/static/description/index.html`) — SKU,
+  `odoo_addon/19.0/kern_dry_run/static/description/index.html`) — SKU,
   fecha, cantidad, costo unitario, plazo de entrega del proveedor principal,
   y el nombre de la empresa del Cliente. **El stock a mano nunca se lee ni
   se envía a través de ese módulo específico** (dry-run).
@@ -69,7 +69,7 @@ usan para entrenar modelos de terceros.
 
 | Subencargado | Qué recibe | Cuándo |
 |---|---|---|
-| **Anthropic (API de Claude)** | Tres usos distintos, ninguno recibe jamás las filas crudas del CSV del Cliente: **(1)** un resumen ya calculado de los resultados del análisis (texto narrativo + título de herramienta + citas bibliográficas), para pulir la redacción o traducir al idioma del paquete (`scm_agent/llm.py::narrative_rewrite`); **(2)** si el enrutamiento automático por palabras clave no encuentra una única herramienta clara para el pedido, el **texto libre del brief que escribió el Cliente/operador** (no datos del CSV), para elegir qué herramienta correr (`scm_agent/intent.py`) — esto es parte del flujo normal, no un caso de error; **(3)** para la herramienta de diagnóstico de liderazgo (`leadership_chain`) específicamente, el **texto libre del brief**, para puntuar las dimensiones del modelo CHAIN (`scm_agent/tools.py`). | Solo si el operador configuró `ANTHROPIC_API_KEY`. Sin esa clave, ninguno de los tres usos se activa — el paquete se genera igual con plantillas de texto determinísticas, sin ningún llamado externo. |
+| **Anthropic (API de Claude)** | Tres usos distintos, ninguno recibe jamás las filas crudas del CSV del Cliente: **(1)** un resumen ya calculado de los resultados del análisis (texto narrativo + título de herramienta + citas bibliográficas), para pulir la redacción o traducir al idioma del paquete (`nosilo_core.llm::narrative_rewrite`, invocada desde `scm_agent/orchestrator.py` y `scm_agent/packages.py`); **(2)** si el enrutamiento automático por palabras clave no encuentra una única herramienta clara para el pedido, el **texto libre del brief que escribió el Cliente/operador** (no datos del CSV), para elegir qué herramienta correr (`scm_agent/intent.py`) — esto es parte del flujo normal, no un caso de error; **(3)** para la herramienta de diagnóstico de liderazgo (`leadership_chain`) específicamente, el **texto libre del brief**, para puntuar las dimensiones del modelo CHAIN (`scm_agent/tools.py`). | Solo si el operador configuró `ANTHROPIC_API_KEY`. Sin esa clave, ninguno de los tres usos se activa — el paquete se genera igual con plantillas de texto determinísticas, sin ningún llamado externo. |
 | **Fly.io (hosting)** | La infraestructura donde corre la aplicación web y donde se almacenan temporalmente los entregables generados, si el operador la usa para alojar Linchpin. | Siempre que el despliegue use `linchpin.fly.dev` u otra infraestructura de Fly.io — no aplica a una instalación autoalojada por el Cliente/operador. |
 
 `[REVISAR CON ABOGADO: verificar los términos de tratamiento de datos de

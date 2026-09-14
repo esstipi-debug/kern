@@ -1,0 +1,152 @@
+# .github/workflows/docker.yml
+#
+# Construye la imagen de produccion tal como la construye Fly, verifica que
+# realmente arranque y sirva HTTP, y la publica a GHCR. Cierra el hueco entre
+# "los tests pasan" y "el contenedor bootea": el job `prod-boot` de tests.yml
+# importa webapp.app con los extras de prod, pero no construye la imagen ni
+# prueba que uvicorn levante y responda.
+#
+# Los disparadores estuvieron APAGADOS del 2026-08-26 al 2026-09-05 sobre una
+# premisa que resulto falsa: que el build necesitaba si o si un PAT
+# (`NOSILO_CORE_TOKEN`) que el repo nunca tuvo, porque -- decia
+# .github/actions/authenticate-core -- "el mount de BuildKit no tiene
+# equivalente para una clave SSH". Si lo tiene: `--mount=type=ssh` reenvia el
+# socket del agente. El repo si tiene `NOSILO_CORE_SSH_KEY` (deploy key de solo
+# lectura, no vence) desde el 2026-08-27, que es lo que usa este workflow.
+
+name: docker
+
+on:
+  pull_request:
+    branches: ['**']
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'pyproject.toml'
+      - 'webapp/**'
+      - 'scm_agent/**'
+      - 'src/**'
+      - '.github/workflows/docker.yml'
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-and-smoke:
+    name: build + smoke test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Sin paso de credencial: nosilo_core vive en el repo desde el 2026-09-11,
+      # asi que la imagen se construye sola. Lo que habia aca -- cargar un deploy
+      # key en un ssh-agent para que BuildKit reenviara el socket -- era la unica
+      # razon por la que este workflow necesitaba un secreto.
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image (load local para el smoke test)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: kern:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # El fallo que este job existe para atrapar: la imagen construye, pero la
+      # app nunca bindea 0.0.0.0:8000 (import de un extra opcional en el boot
+      # chain, config rota, CMD mal). Solo se detecta corriendo el contenedor.
+      #
+      # Sin variables a proposito: el contrato prometido al cliente self-serve
+      # es `docker run` contra sus datos, y PORT/WEB_CONCURRENCY tienen default
+      # en el CMD. Si algun dia hace falta una variable para arrancar, este paso
+      # tiene que ser el que lo grite.
+      - name: Smoke test — el contenedor bootea y sirve HTTP sin variables
+        run: |
+          docker run -d --name kern-ci -p 8000:8000 kern:ci
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8000/ >/dev/null 2>&1; then
+              echo "app respondio despues de ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::el contenedor no respondio en 60s"
+          docker logs kern-ci
+          exit 1
+
+      - name: Container logs (siempre)
+        if: always()
+        run: docker logs kern-ci || true
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f kern-ci || true
+
+      - name: Metadata (tags + labels)
+        if: github.event_name != 'pull_request'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - name: Push a GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+
+      # Por env y entre comillas: `steps.meta.outputs.tags` es MULTILINEA, y sin
+      # comillas la segunda linea se sustituye como si fuera un comando propio
+      # ("kern:sha-xxxx: No such file or directory", exit 127). Mismo motivo por
+      # el que las credenciales de arriba tampoco se interpolan en el script.
+      - name: Que se publico
+        if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          IMAGE: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Imagen publicada"
+            echo ""
+            echo '```'
+            printf '%s\n' "$TAGS"
+            echo '```'
+            echo ""
+            echo "El cliente corre, sin ninguna variable:"
+            echo ""
+            echo '```bash'
+            echo "docker run -p 8000:8000 ${IMAGE}:main"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$TAGS"

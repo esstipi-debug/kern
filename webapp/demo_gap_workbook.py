@@ -458,6 +458,50 @@ def _sheet_calidad(ws, value: GapValue) -> None:
             row += 1
         row += 1
 
+        reading = q.reading
+        if reading is not None:
+            _cell(ws, row, 1, "Como lo leyo Kern", font=bold)
+            row += 1
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+            _cell(ws, row, 1,
+                  "El mapeo y lo que se le saco a tu planilla, para que puedas abrir tu archivo "
+                  "y confirmar. No es un hallazgo de tu operacion: es como se leyo el dato.",
+                  font=_NOTE, align=_WRAP)
+            row += 1
+            if reading.source_kind == "excel":
+                lugar = (
+                    f"Excel, hoja {reading.sheet}, encabezado en la fila "
+                    f"{(reading.header_row or 0) + 1}"
+                )
+            else:
+                lugar = "CSV, primera fila como encabezado"
+            for etiqueta, valor in (
+                ("Donde miro", lugar),
+                ("Mapeo de columnas", reading.mapping_text()),
+            ):
+                _cell(ws, row, 1, etiqueta)
+                _cell(ws, row, 2, valor, align=_WRAP)
+                ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=4)
+                row += 1
+            if reading.noteworthy_hygiene() and reading.hygiene is not None:
+                h = reading.hygiene
+                n_total = int(h.dropped.get("fila_de_total") or 0)
+                n_blank = int(h.dropped.get("fila_vacia") or 0)
+                n_filled = sum(h.filled.values()) if h.filled else 0
+                for etiqueta, n, texto in (
+                    ("Filas de TOTAL excluidas", n_total,
+                     "Una fila de cierre no es una venta. Dejarla entrar infla el desvio."),
+                    ("Filas en blanco excluidas", n_blank, "Separadores, no demanda."),
+                    ("Celdas completadas desde combinadas", n_filled,
+                     "Solo donde el libro declara una combinacion, nunca un ffill a ciegas."),
+                ):
+                    if n:
+                        _cell(ws, row, 1, etiqueta)
+                        _cell(ws, row, 2, n, fmt=FMT_COUNT)
+                        _cell(ws, row, 3, texto, align=_WRAP)
+                        row += 1
+            row += 1
+
     _cell(ws, row, 1, "Archivo de recepciones", font=bold)
     row += 1
     _headers(ws, row, ["Motivo del descarte", "Filas", "Que significa"])

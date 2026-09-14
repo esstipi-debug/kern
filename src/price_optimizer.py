@@ -66,6 +66,26 @@ MAX_MOVE_PCT_DEFAULT = 0.2
 
 STATUS_OK = "ok"
 STATUS_NEEDS_DATA = "needs_data"
+# El precio actual ya cae dentro de la banda: la evidencia no lo distingue del
+# optimo. Es un estado propio y no un "ok" con el precio actual, porque
+# `jobs.repricing` filtra por `ok` para armar el changeset, y un no-cambio no
+# tiene que llegar ahi.
+STATUS_NO_CHANGE = "no_change"
+
+# La salvedad que ningun dato adicional angosta. El IC mide precision bajo el
+# supuesto de que el modelo es correcto; no dice nada sobre endogeneidad. El
+# precio lo fija alguien que condiciona sobre informacion de demanda que el
+# modelo no observa, asi que el scatter precio-cantidad es un lugar de
+# equilibrios y no una curva de demanda. `identified` aca significa "hubo
+# variacion de precio", que es necesaria y no suficiente.
+IDENTIFICATION_CAVEAT = (
+    "La elasticidad esta estimada sobre datos observacionales, sin instrumento ni "
+    "control de endogeneidad: los precios los fijo alguien que condicionaba sobre "
+    "informacion de demanda que el modelo no observa. El intervalo mide precision "
+    "bajo el supuesto de que el modelo es correcto, no identificacion causal. La "
+    "banda puede ser angosta y estar centrada en el lugar equivocado; solo un "
+    "experimento de precio aleatorizado la corrige."
+)
 
 
 @dataclass(frozen=True)
@@ -121,6 +141,15 @@ class PriceOptimizationResult:
     # must be able to say "this number was clamped, not the raw optimum".
     move_clamped: bool = False  # +/-max_move_pct band vs current_price engaged
     range_clamped: bool = False  # ~1.3x observed-price-range band engaged
+    # La banda: el IC de la elasticidad propagado por la MISMA formula
+    # p* = c*eps/(eps+1) -- que es monotona creciente en eps -- y pasado por las
+    # MISMAS restricciones que acotan el punto, para que el punto nunca pueda
+    # caer fuera de su propia banda. `None` en un `needs_data`.
+    proposed_price_low: float | None = None
+    proposed_price_high: float | None = None
+    # Siempre presente cuando hay propuesta, siempre vacia cuando no la hay.
+    # Es lo unico del resultado que ningun dato adicional puede angostar.
+    identification_caveat: str = ""
 
 
 def _needs_data(
@@ -222,33 +251,65 @@ def optimize_sku_price(
     p_star = optimal_price_constant_elasticity(landed_cost, elasticity)
     assert p_star is not None  # elasticity < -1 guaranteed above
 
-    # Sanity clamps (audit fix 2), tightest-last so the operational band vs
-    # the live price binds when the two conflict; the cost floor below still
-    # wins over both. Each clamp is disclosed on the result.
-    target = p_star
-    range_clamped = False
-    if sku_fit.price_low is not None and sku_fit.price_high is not None and sku_fit.price_low > 0:
-        range_bound = min(max(target, sku_fit.price_low / MAX_RANGE_EXTRAPOLATION),
-                          sku_fit.price_high * MAX_RANGE_EXTRAPOLATION)
-        range_clamped = range_bound != target
-        target = range_bound
-    move_clamped = False
-    if current_price is not None and current_price > 0 and max_move_pct is not None:
-        move_bound = min(max(target, current_price * (1.0 - max_move_pct)),
-                         current_price * (1.0 + max_move_pct))
-        move_clamped = move_bound != target
-        target = move_bound
+    def _constrain(raw: float) -> tuple[float, bool, bool, bool]:
+        """Las mismas restricciones, en el mismo orden, para el punto y para
+        los dos extremos de la banda. Aplicarlas por separado a cada uno es lo
+        que garantiza que el punto no pueda quedar fuera de su propia banda.
 
-    floor_price = landed_cost * (1.0 + min_margin_pct)
-    floor_applied = target < floor_price
-    pre_cap = apply_order_rules(target, minimum_order_quantity=floor_price, order_multiple=price_increment)
-    proposed = pre_cap if max_price is None else min(pre_cap, max_price)
-    price_capped = max_price is not None and pre_cap > max_price
+        Sanity clamps (audit fix 2), tightest-last so the operational band vs
+        the live price binds when the two conflict; the cost floor below still
+        wins over both. Each clamp is disclosed on the result.
+        """
+        target = raw
+        rng = False
+        if sku_fit.price_low is not None and sku_fit.price_high is not None and sku_fit.price_low > 0:
+            range_bound = min(max(target, sku_fit.price_low / MAX_RANGE_EXTRAPOLATION),
+                              sku_fit.price_high * MAX_RANGE_EXTRAPOLATION)
+            rng = range_bound != target
+            target = range_bound
+        mv = False
+        if current_price is not None and current_price > 0 and max_move_pct is not None:
+            move_bound = min(max(target, current_price * (1.0 - max_move_pct)),
+                             current_price * (1.0 + max_move_pct))
+            mv = move_bound != target
+            target = move_bound
+
+        floor_price = landed_cost * (1.0 + min_margin_pct)
+        floored = target < floor_price
+        pre_cap = apply_order_rules(target, minimum_order_quantity=floor_price, order_multiple=price_increment)
+        out = pre_cap if max_price is None else min(pre_cap, max_price)
+        capped = max_price is not None and pre_cap > max_price
+        return float(out), floored, capped, mv, rng
+
+    proposed, floor_applied, price_capped, move_clamped, range_clamped = _constrain(p_star)
+
+    # La banda. p*(eps) = c*eps/(eps+1) es monotona CRECIENTE en eps -- su
+    # derivada es 1/(eps+1)^2, siempre positiva -- asi que el extremo bajo sale
+    # de `ci_low` (el mas elastico) y el alto de `ci_high`. Las compuertas de
+    # arriba ya garantizaron ci_high < -1, asi que los dos extremos estan en la
+    # region elastica y ninguno explota.
+    band_low, *_ = _constrain(optimal_price_constant_elasticity(landed_cost, sku_fit.ci_low))
+    band_high, *_ = _constrain(optimal_price_constant_elasticity(landed_cost, sku_fit.ci_high))
+    # Con un piso alto los dos extremos colapsan al mismo valor; ordenarlos
+    # evita una banda invertida cuando una restriccion muerde asimetricamente.
+    band_low, band_high = min(band_low, band_high), max(band_low, band_high)
+
+    # Si el precio actual ya cae dentro de la banda, la evidencia no lo
+    # distingue del optimo. Proponer un movimiento ahi seria leerle al intervalo
+    # una precision que no tiene.
+    status, reason = STATUS_OK, None
+    if current_price is not None and band_low <= current_price <= band_high:
+        status = STATUS_NO_CHANGE
+        reason = (
+            f"el precio actual ({current_price:.2f}) cae dentro de la banda "
+            f"[{band_low:.2f}, {band_high:.2f}] derivada del IC de la elasticidad: "
+            "no dominado por la evidencia disponible, sin cambio este ciclo"
+        )
 
     return PriceOptimizationResult(
         product_id=sku_fit.product_id,
-        status=STATUS_OK,
-        reason=None,
+        status=status,
+        reason=reason,
         current_price=current_price,
         proposed_price=float(proposed),
         landed_cost=landed_cost,
@@ -260,6 +321,9 @@ def optimize_sku_price(
         competitor_context=competitor_context,
         move_clamped=move_clamped,
         range_clamped=range_clamped,
+        proposed_price_low=band_low,
+        proposed_price_high=band_high,
+        identification_caveat=IDENTIFICATION_CAVEAT,
     )
 
 

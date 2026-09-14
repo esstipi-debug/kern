@@ -27,11 +27,14 @@ from __future__ import annotations
 import inspect
 import tempfile
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass, field, replace
+from itertools import zip_longest
 from pathlib import Path
 
 import pandas as pd
 
+from jobs.intake import ALIASES as BASE_ALIASES
 from nosilo_core.llm import LLMProvider, get_provider, narrative_rewrite
 from nosilo_core.registry import ToolRegistry
 from nosilo_core.types import (
@@ -42,12 +45,13 @@ from nosilo_core.types import (
     STATUS_QA_FAILED,
     JobRequest,
 )
-from jobs.intake import ALIASES as BASE_ALIASES
 from src import client_profile, vertical_profile
-from src.deliverable import DEFAULT_BRANDING, Branding
+from src.connectors import lectura
+from src.deliverable import DEFAULT_BRANDING, Branding, Deliverable
 
 from . import citation_gate
 from .knowledge import KnowledgeBase
+from .narrative_critic import review_narrative
 from .tools import build_default_registry
 
 STEP_SKIPPED = "skipped"
@@ -66,14 +70,39 @@ STEP_SKIPPED = "skipped"
 # so the pool was pinned at 8. Adding Khan et al. (2022) as source #27 shifted the
 # ranking enough that pool 8 now STARVES four tools that previously had citations
 # (odoo_replenishment, risk, digital_twin, launch_readiness), while the noise
-# threshold rose: measured across all 45 anchored tools on the 3002-node graph,
-# 16 is the exact ceiling -- at 17 data_quality re-admits "Cost of Quality" and
-# "House of Quality". 16 also recovers price_watch, a pre-existing zero.
-# Verify with a full 45-tool sweep, NOT just the package tools: the tools that
+# threshold rose: measured across all 49 anchored tools (citation_gate.TOOL_CONCEPTS
+# -- every registered tool except intake_scan) on the then-3002-node graph, 16 is the
+# exact ceiling -- at 17 data_quality re-admitted "Cost of Quality" and "House of
+# Quality". 16 also recovers price_watch, a pre-existing zero.
+# RE-MEASURED at source #28 (KERN_BRECHAS_DE_CAPACIDAD.md, 3002 -> 3019 nodes): the
+# ceiling did NOT move and nothing regressed. Sweeping all 49 anchored tools at pool
+# 16 on both graphs gives the SAME nine zeros (whatif, org_friction_audit,
+# data_quality, dea, earned_value, learning_curve, cycle_count, slotting,
+# vehicle_routing -- all pre-existing), and one tool gains: abc_xyz 3 -> 4. The
+# pool-17 noise probe no longer reproduces because data_quality now keeps nothing at
+# any pool 15-18, so its two hub citations are not the canary they were. Source #28
+# is internal (_INTERNAL_SOURCES) and filtered inside ground_citations_detailed, but
+# it is filtered AFTER search() ranks, so its nodes can still consume pool slots --
+# which is why this was measured rather than assumed.
+# Verify with a full 49-tool sweep, NOT just the package tools: the tools that
 # silently regressed here were precisely the ones no test covered. See
 # tests/test_packages_citations.py::test_no_anchored_tool_regressed_to_zero.
-# (dea/learning_curve/slotting/vehicle_routing stay zero at any pool -- an
-# anchor-islanding problem pool sizing can't fix, a separate anchor-tightening item.)
+# Nine of the 49 anchored tools returned zero at this pool. Re-measured on the
+# committed 3019-node graph (2026-08-24), that was ONE problem misfiled as another:
+# four of the nine ranked their own anchor at hop 0 as a perfectly on-topic candidate
+# and then lost the whole batch to the MIN_CITATIONS=2 floor -- one survivor, degraded
+# to none. They were a citation short, not starved of theory, and one extra anchor each
+# recovered them: whatif, dea, earned_value, learning_curve (measurements in
+# citation_gate.TOOL_CONCEPTS).
+# The five that stay zero do so for two DIFFERENT reasons, both written down there and
+# pinned in tests/test_packages_citations.py -- pool sizing fixes neither:
+#   cycle_count / data_quality / intake_scan -- every in-radius candidate is a lexical
+#     false friend (this tool's "Cycle-Count Program" pulls Paycheck Protection Program
+#     and Biological Nutrient Cycle; "SKU Master ... Quality" pulls Master Production
+#     Schedule and Cost of Quality). Zero is the honest output.
+#   slotting / vehicle_routing / org_friction_audit -- the corpus carries no
+#     storage-assignment, VRP or performance-measurement-dysfunction theory at all.
+#     Fixed by ingesting sources, not by a looser anchor.
 _CANDIDATE_POOL = 16  # candidates grounded and offered to the strict gate
 _MAX_CITATIONS = 3    # kept, on-topic survivors ultimately shown (tight display)
 
@@ -90,6 +119,176 @@ def _step_citations(knowledge: KnowledgeBase, tool, tool_key: str) -> tuple[str,
     MIN_CITATIONS) is untouched."""
     candidates = knowledge.ground_citations_detailed(tool.intent_keywords, tool.title, limit=_CANDIDATE_POOL)
     return citation_gate.filter_citations(knowledge, tool_key, candidates).kept[:_MAX_CITATIONS]
+
+
+# --- procedencia de libro: RIO ABAJO del gate de citas -------------------------------
+#
+# QUE ES ESTO Y DONDE ENGANCHA. El indice de lectura (``src/connectors/lectura.py``:
+# 44 libros de supply chain partidos en 6.929 pasajes con su pagina) acompania el deck
+# CONSOLIDADO del paquete con una seccion propia. No es una cita: un pasaje no tiene
+# ``node_id`` y ``filter_citations`` lo rechazaria con razon, asi que nada de esto entra
+# al pool de candidatas de ``_step_citations`` ni al campo ``citations``. El grafo L3
+# sigue siendo la unica fuente de citas; esto es una segunda clase de respaldo, mas
+# debil y declarada como tal (``tests/test_packages_lecturas.py`` lo fija corriendo un
+# paso real dos veces y comparando las citas).
+#
+# POR QUE UNA SOLA CONSULTA, Y POR QUE EN EL DECK DEL PAQUETE. Esta medido: cada
+# ``read_passages`` levanta y baja el servidor entero -- 16,8 s con el indice frio, y el
+# proceso pide ~1,6 GB de RSS. Las dos alternativas se descartaron por eso:
+#
+#   * una consulta POR PASO -- un paquete Growth son 26 pasos, o sea 26 arranques del
+#     servidor para llenar una seccion de a lo sumo cinco lineas;
+#   * una sesion abierta reusada entre pasos -- un solo arranque, si, pero exige sacar
+#     la sesion afuera del conector (hoy ``read_passages`` la abre y la cierra adentro,
+#     que es lo que le permite no levantar NUNCA) y, sobre todo, no tendria a donde
+#     dejar cada resultado: los ~37 decks por tool se arman y se escriben dentro de
+#     ``tool.deck``, que devuelve rutas, no un ``Deliverable``. El unico Deliverable que
+#     una corrida tiene ARMADO en la mano es el del paquete, y es uno solo.
+#
+# Se paga entonces un unico arranque por corrida, y el precio de esa eleccion se declara:
+# la consulta es un promedio del paquete, no del paso, asi que en un paquete ancho las
+# lecturas hablan del tema comun y no del detalle de cada tool.
+
+#: Cuantas palabras clave entran a esa unica consulta, y cuantas puede aportar UN paso.
+#: Los dos numeros salen de medir contra el indice vivo (k=4, familia abc/inventario),
+#: no de estimar. El servidor busca por VECTOR (``search_passages`` -> LightRAG en modo
+#: naive), asi que la consulta es un centroide y los extremos fallan de los dos lados:
+#:
+#:   1 termino  ("abc-xyz")                       -> 0 de 4 utiles: un token corto y
+#:                                                   guionado cae en paginas de OCR roto
+#:                                                   que contienen literalmente "-xyz";
+#:   3 canonicos ("abc-xyz, abc analysis, pareto") -> 4 de 4 utiles, el mejor medido;
+#:   12 sinonimos del MISMO tema                   -> 1 de 4: "classify"/"classification"
+#:                                                   arrastran capitulos de clustering y
+#:                                                   de Python, no de inventario;
+#:   8 terminos de 4 temas (DIAGNOSTICO)           -> 3 de 4 utiles.
+#:
+#: De ahi el tope POR PASO: un paquete de un solo tool manda 3 terminos canonicos (el
+#: mejor caso medido) en vez de 12 variantes del mismo, y uno de cuatro pasos llena los
+#: 12 con vocabulario de cuatro temas (el caso decente).
+#:
+#: QUE PASA EN UN PAQUETE ANCHO, Y POR QUE EL CUPO NO SE SUBE. Medido con el registry
+#: real: starter tiene 15 pasos, growth 26, scale y retainer_ejecutivo 35, y el cupo de
+#: 12 deja con voz a 12 de ellos. En scale eso son 23 tools que no aportan NI UNA palabra
+#: (landed_cost, returns, risk, cost_to_serve, fefo, multi_echelon, ddmrp, simulation,
+#: drp, odoo_replenishment, sourcing, acceptance_sampling, learning_curve, dea, sop,
+#: facility_location, transportation, warehouse_layout, slotting, queuing, scheduling,
+#: earned_value, leadership_chain). Suena a que el arreglo es subir el cupo hasta que
+#: entren todos. Esta REFUTADO, y se refuto midiendo contra el indice vivo, no discutiendo:
+#: mandando los terminos canonicos de los primeros N pasos de scale (k=5 pasajes por
+#: consulta) se cuenta cuantos de los 5 pasajes que vuelven son BACK-MATTER -- indice
+#: alfabetico, tabla de contenidos, lista de simbolos -- en vez de texto del libro:
+#:
+#:      n=4  -> 0 de 5      n=12 -> 1 de 5      n=26 -> 5 de 5
+#:      n=6  -> 0 de 5      n=15 -> 2 de 5      n=35 -> 5 de 5
+#:      n=8  -> 1 de 5      n=20 -> 3 de 5
+#:
+#: La curva tiene una explicacion mecanica, no es ruido: la busqueda es por VECTOR, asi
+#: que una consulta de 35 temas distintos es un centroide sin tema, y las paginas del
+#: corpus que mas se le parecen son exactamente las que mencionan muchos temas sin
+#: desarrollar ninguno -- el indice del final del libro. A 26 terminos, los 5 pasajes que
+#: acompanan el deck del cliente son 5 indices de libro con su numero de pagina: peor que
+#: no citar. De 8 a 12 el ruido es el MISMO (1 de 5), asi que 12 domina a 8 -- misma
+#: precision, el doble de tools con voz -- y arriba de 12 degrada monotono. El cupo esta
+#: en el ultimo escalon de la meseta, medido de los dos lados.
+#:
+#: Bajar :data:`_MAX_KEYWORDS_POR_PASO` a 1 cuando hay mas pasos que cupo NO cambia nada:
+#: la seleccion es ronda a ronda, asi que con 12 pasos o mas la primera ronda ya llena el
+#: cupo sola y ningun paso llega a aportar su segundo termino. Verificado sobre scale: los
+#: 12 terminos que salen hoy son un canonico de cada uno de los primeros 12 pasos.
+#:
+#: Queda entonces un precio, y se declara en vez de disimularse: en un paquete ancho las
+#: lecturas respaldan la espina del paquete (los primeros pasos del spec, que es donde
+#: package_specs pone el nucleo de inventario del que cuelga el resto) y no el detalle de
+#: cada tool. Lo fija `tests/test_packages_lecturas.py`, que corre un paquete con MAS
+#: pasos que cupo y afirma cuales quedan mudos; los dos numeros de abajo estan escritos
+#: literales en ese test a proposito, para que moverlos rompa un test y obligue a volver
+#: a medir contra el indice en vez de estimar.
+_MAX_KEYWORDS_LECTURA = 12
+_MAX_KEYWORDS_POR_PASO = 3
+
+#: Cuantos pasajes se piden. Es una seccion de respaldo al pie de un deck, no un capitulo.
+_LECTURAS_POR_PAQUETE = 5
+
+#: Segundos por request del conector (initialize y tool call cuentan por separado, ver
+#: ``lectura._stdio_caller``). Acotado a proposito: una corrida de paquete puede durar
+#: minutos y esto es lo ULTIMO que hace antes de escribir, asi que un indice que no
+#: contesta tiene que degradar a "sin lecturas" y dejar salir el entregable.
+_TIMEOUT_LECTURA_S = 20.0
+
+
+def _keywords_de_lectura(registry: ToolRegistry, outcomes) -> list[str]:
+    """Las palabras clave de los pasos EJECUTADOS, una ronda por vez.
+
+    Ronda a ronda -- la primera palabra de cada paso antes que la segunda de ninguno --
+    porque ``intent_keywords`` es una lista de sinonimos de intencion ordenada de mas a
+    menos canonica (``"abc-xyz", "abc xyz", "abc analysis", ...``). Tomandolas en orden
+    plano, un paquete de 26 pasos gastaria el cupo entero en variantes del primer tool.
+    Ojo con lo que esto SI y NO arregla: cambia QUE pasos entran al cupo, no CUANTOS. Con
+    mas pasos que cupo siguen entrando :data:`_MAX_KEYWORDS_LECTURA` y el resto queda
+    mudo; lo que se gana es que el cupo se gaste en un tool distinto por palabra en vez
+    de en cuatro sinonimos del primero. Por que el cupo no sube para que entren todos
+    esta medido arriba, en el comentario de la constante. Y cada paso aporta a lo sumo
+    :data:`_MAX_KEYWORDS_POR_PASO`, que es lo que la medicion contra el indice vivo dejo
+    claro: pasada la tercera, lo que entra son sinonimos genericos ("classify",
+    "classification") que traen capitulos de otra cosa.
+
+    Solo los pasos ``ok``: un paso salteado no aporta nada al deck, y una lectura sobre
+    un analisis que no se entrego es procedencia de algo que el cliente no recibio.
+    """
+    por_paso = [
+        [p for p in (str(k).strip() for k in (registry.get(o.tool_key).intent_keywords or ())) if p
+         ][:_MAX_KEYWORDS_POR_PASO]
+        for o in outcomes if o.status == STATUS_OK
+    ]
+    elegidas: list[str] = []
+    vistas: set[str] = set()
+    for ronda in zip_longest(*por_paso):
+        for palabra in ronda:
+            if palabra is None or palabra.lower() in vistas:
+                continue
+            vistas.add(palabra.lower())
+            elegidas.append(palabra)
+            if len(elegidas) >= _MAX_KEYWORDS_LECTURA:
+                return elegidas
+    return elegidas
+
+
+def _con_lecturas(deck: Deliverable, registry: ToolRegistry, outcomes) -> Deliverable:
+    """El deck del paquete con su seccion de lecturas, si hubo indice que consultar.
+
+    INERTE cuando no lo hay, que es SIEMPRE en produccion: la VM tiene 512 MB y el
+    indice pide 1,6 GB, asi que ``KERN_LECTURA_PYTHON`` no esta seteada y el conector
+    contesta ``available=False`` sin intentar levantar nada. En ese caso vuelve el MISMO
+    objeto, no una copia equivalente: el entregable sale byte a byte como lo arma
+    ``jobs/package_deliverable.py``, sin seccion vacia y sin una nota contandole al
+    cliente que falto algo que nunca se le prometio.
+
+    ``Deliverable`` es frozen: ``dataclasses.replace``, nunca mutacion. Y nada de lo que
+    vuelve puede tirar la corrida -- ``read_passages`` no levanta, por contrato propio.
+    """
+    keywords = _keywords_de_lectura(registry, outcomes)
+    if not keywords:
+        return deck
+    try:
+        lecturas = lectura.read_passages(
+            keywords, k=_LECTURAS_POR_PAQUETE, timeout_s=_TIMEOUT_LECTURA_S
+        )
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException:  # noqa: BLE001 - ver abajo: el invariante lo sostiene este lado
+        # `read_passages` promete no levantar, pero su guarda es `except Exception` y
+        # anyio levanta `BaseExceptionGroup`, que esa clausula NO ve. Este punto corre
+        # DESPUES de que los entregables por tool ya se escribieron, asi que lo que se
+        # escape deja la carpeta de resultados parciales que el docstring de este modulo
+        # promete que nunca ocurre. Una lectura que falta no puede costar el paquete.
+        return deck
+    if not lecturas.available or not lecturas.readings:
+        return deck
+    # El tope de CANTIDAD lo pone Kern, no el otro repo: `k` viaja como pedido y nadie
+    # garantiza que se respete. Mismo argumento que el tope de extracto y el del slug --
+    # es texto ajeno y aca no hay ningun tope propio sobre lo que se renderiza.
+    return replace(deck, readings=lecturas.readings[:_LECTURAS_POR_PAQUETE])
 
 
 @dataclass(frozen=True)
@@ -143,6 +342,16 @@ class PackageStep:
     # Return {} when the source step didn't run or has nothing to contribute -
     # the step then degrades to its file-only behavior, never a hard error.
     derive_params: Callable[[dict[str, object]], dict] | None = None
+    # The tool_keys this step reads out of `reports`. DECLARED, not inferred:
+    # `derive` and `derive_params` are callables, so their real dependency lives
+    # inside a closure (`_cycle_count_from_abc` reads reports["abc_xyz"]) where
+    # nothing can see it. That was harmless while run_package was strictly
+    # serial and every earlier step had already run; it stops being harmless the
+    # moment steps can run out of order -- a naive fan-out over spec.steps
+    # breaks cycle_count with a KeyError. run_package(workers=N) schedules on
+    # this field, and tests/test_packages_fanout.py fails any step that has a
+    # derive and does not declare where it derives FROM.
+    depends_on: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -254,6 +463,21 @@ def missing_required_inputs(spec: PackageSpec, intake_dir: str | Path | None) ->
     return missing
 
 
+def _deck_accepts(deck: Callable | None, parametro: str) -> bool:
+    """Whether this tool's deck takes ``parametro``, asked of the callable itself.
+
+    The shared mechanism behind :func:`deck_accepts_lang` and
+    :func:`deck_accepts_readings`. Generalised rather than copied because it is literally
+    the same question twice, and a second hand-written ``inspect.signature`` is a second
+    place to get the ``None`` case wrong. The two public wrappers stay separate: each one
+    documents *why its own* parameter is asked instead of declared, which is the part a
+    reader needs and the part a shared docstring could not carry.
+    """
+    if deck is None:
+        return False
+    return parametro in inspect.signature(deck).parameters
+
+
 def deck_accepts_lang(deck: Callable | None) -> bool:
     """True when this tool's deck can be told which language the package sells in.
 
@@ -263,9 +487,117 @@ def deck_accepts_lang(deck: Callable | None) -> bool:
     shape of silent default the rest of this work has been removing. Introspection cannot
     drift; ``tests/test_package_threads_lang_to_tool_decks.py`` keeps the inventory visible.
     """
-    if deck is None:
-        return False
-    return "lang" in inspect.signature(deck).parameters
+    return _deck_accepts(deck, "lang")
+
+
+def deck_accepts_readings(deck: Callable | None) -> bool:
+    """True when this tool's deck knows how to carry book passages (``Deliverable.readings``).
+
+    Misma pregunta que :func:`deck_accepts_lang` y por la misma razon: se le pregunta al
+    callable en vez de declararlo, porque un flag hay que acordarse de actualizarlo el dia
+    que un ``build_deck`` GANA el parametro. Aca ademas la respuesta decide un COSTO, no
+    solo un render: el Orchestrator solo consulta el indice cuando hay quien renderice lo
+    que vuelva, y cada consulta levanta y baja el servidor de lectura entero (16,8 s con
+    el indice frio, ~1,6 GB de RSS). Un flag desactualizado falla de los dos lados -- en
+    False sobre un deck que ya sabe recibirlas es una seccion que nunca aparece, en True
+    sobre uno que no, un arranque de servidor por corrida que nadie mira.
+
+    Vive al lado de su hermana a proposito: los 53 decks registrados tienen UNA forma
+    (``scm_agent/tools.py``), y las preguntas sobre esa forma se hacen todas desde el
+    mismo lugar. Hoy los 53 contestan True -- el parametro se enhebra en el mismo
+    ``replace(...)`` que ya armaba ``options``, sin tocar ningun ``build_deck`` --, asi
+    que el unico False vivo es el de un tool sin deck. Eso NO vuelve inutil la pregunta:
+    es lo que hace que el deck 54, si naciera con la firma vieja, no arrastre un arranque
+    de servidor por corrida. ``tests/test_tools_threads_readings_to_decks.py`` mantiene el
+    inventario a la vista y falla si alguno se queda mudo.
+    """
+    return _deck_accepts(deck, "readings")
+
+
+def _truncar_como_el_serial(
+    spec: PackageSpec, hechos: dict[str, StepOutcome],
+) -> tuple[list[StepOutcome], int | None]:
+    """Los outcomes en orden de ``spec.steps``, cortados donde el serial cortaba.
+
+    ES LO QUE HACE EQUIVALENTES A LOS DOS CAMINOS, y por eso lo comparten. El
+    runner serial recorre los pasos en orden y sale en el PRIMER paso requerido
+    que no quedo ok ni salteado, devolviendo los outcomes hasta ese inclusive.
+    Con fan-out no se puede des-ejecutar lo que ya arranco, pero si truncar:
+    aplicando la misma regla sobre lo que haya en ``hechos``, el PackageResult
+    sale identico al serial haya corrido lo que haya corrido. Cancelar lo no
+    arrancado queda entonces como ahorro de tokens, no como requisito de
+    correctitud -- que es un lugar mucho mejor para ponerlo.
+
+    Un paso ausente de ``hechos`` corta la lista igual: es exactamente el caso
+    en que el serial nunca habria llegado a el.
+    """
+    outcomes: list[StepOutcome] = []
+    for step in spec.steps:
+        outcome = hechos.get(step.tool_key)
+        if outcome is None:
+            break
+        outcomes.append(outcome)
+        if step.required and outcome.status not in (STATUS_OK, STEP_SKIPPED):
+            return outcomes, len(outcomes) - 1
+    return outcomes, None
+
+
+def _fan_out(
+    spec: PackageSpec,
+    ejecutar: Callable[[PackageStep, dict[str, object]], StepOutcome],
+    workers: int,
+    reports: dict[str, object],
+) -> dict[str, StepOutcome]:
+    """Corre los pasos en paralelo respetando ``PackageStep.depends_on``.
+
+    Un paso es lanzable cuando sus dependencias TERMINARON, no cuando quedaron
+    ok: si una dependencia no requerida falla, el serial sigue igual y el
+    dependiente corre con ``reports`` sin esa clave -- su ``derive`` revienta y
+    ``_run_step`` lo convierte en STATUS_ERROR. Reproducir eso es parte de la
+    equivalencia, no un bug a arreglar.
+
+    Cada paso recibe una INSTANTANEA de ``reports``, no el dict vivo: sus
+    dependencias ya terminaron, asi que la instantanea trae todo lo que
+    necesita, y de paso desaparece la carrera entre un hilo que lee y el
+    principal que escribe.
+
+    Los CSV de scratch no chocan: ``_resolve_input`` los nombra por tool_key
+    (derived_<key>.csv / fallback_<key>.csv) y test_no_duplicate_steps ya
+    garantiza que esa clave es unica dentro de un spec.
+
+    Al primer paso requerido que falla se deja de LANZAR trabajo nuevo, lo que
+    ahorra tokens de LLM y, en odoo_replenishment, llamadas a un Odoo vivo. Lo
+    que ya estaba en vuelo se drena y despues lo trunca
+    ``_truncar_como_el_serial``.
+    """
+    pendientes = {s.tool_key: s for s in spec.steps}
+    hechos: dict[str, StepOutcome] = {}
+    corte_visto = False
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="kern_pkg") as pool:
+        en_vuelo: dict[Future, PackageStep] = {}
+        while True:
+            if not corte_visto:
+                listos = [k for k, s in pendientes.items()
+                          if all(d in hechos for d in s.depends_on)]
+                for clave in listos:
+                    step = pendientes.pop(clave)
+                    en_vuelo[pool.submit(ejecutar, step, dict(reports))] = step
+            if not en_vuelo:
+                # Ni trabajo en vuelo ni nada lanzable: o terminamos, o quedan
+                # pasos cuyas dependencias no van a llegar nunca (un depends_on
+                # que no existe en el spec). Se sale en vez de colgarse; el test
+                # de tests/test_packages_fanout.py impide que eso llegue a main.
+                break
+            terminados, _ = wait(en_vuelo, return_when=FIRST_COMPLETED)
+            for fut in terminados:
+                step = en_vuelo.pop(fut)
+                outcome = fut.result()
+                hechos[step.tool_key] = outcome
+                if outcome.status == STATUS_OK:
+                    reports[step.tool_key] = outcome.report
+                elif outcome.status != STEP_SKIPPED and step.required:
+                    corte_visto = True
+    return hechos
 
 
 def run_package(
@@ -282,6 +614,7 @@ def run_package(
     strict_params: bool = False,
     prepared: str = "",
     branding: Branding | None = None,
+    workers: int = 1,
 ) -> PackageResult:
     """Run every step of ``spec`` and, only if all executed steps pass QA, write
     the per-tool deliverables plus the consolidated package deck under
@@ -336,11 +669,11 @@ def run_package(
         )
 
     # ---- Phase 1: compute everything; write nothing to out_root. -------------
-    outcomes: list[StepOutcome] = []
     reports: dict[str, object] = {}
     with tempfile.TemporaryDirectory(prefix="linchpin_pkg_") as scratch_str:
         scratch = Path(scratch_str)
-        for step in spec.steps:
+
+        def _ejecutar(step: PackageStep, vistos: dict[str, object]) -> StepOutcome:
             tool = registry.get(step.tool_key)
             # El veto del rubro, con la misma semantica que el orquestador
             # (scm_agent/orchestrator.py::_dispatch): NEEDS_CLARIFICATION y no
@@ -383,19 +716,31 @@ def run_package(
             merged = client_profile.merge_params({**step.params, **params}, profile, vertical)
             if pack_aliases is not None:
                 merged = {**merged, "column_aliases": pack_aliases}
-            outcome = _run_step(spec, step, tool, intake, scratch, reports,
-                                merged, client, provider, knowledge, strict_params)
-            outcomes.append(outcome)
-            if outcome.status == STATUS_OK:
-                reports[step.tool_key] = outcome.report
-            elif outcome.status != STEP_SKIPPED and step.required:
-                return PackageResult(
-                    status=outcome.status, package=spec.key, client=client,
-                    steps=tuple(outcomes), deliverables={},
-                    qa_issues=tuple(f"{tool.title}: {i}" for i in outcome.qa_issues),
-                    summary=(f"{spec.title}: el paso requerido '{tool.title}' fallo "
-                             f"({outcome.status}); no se escribio ningun entregable."),
-                )
+            return _run_step(spec, step, tool, intake, scratch, vistos,
+                             merged, client, provider, knowledge, strict_params)
+
+        if workers and workers > 1:
+            hechos = _fan_out(spec, _ejecutar, workers, reports)
+        else:
+            hechos = {}
+            for step in spec.steps:
+                outcome = _ejecutar(step, reports)
+                hechos[step.tool_key] = outcome
+                if outcome.status == STATUS_OK:
+                    reports[step.tool_key] = outcome.report
+                elif outcome.status != STEP_SKIPPED and step.required:
+                    break
+
+        outcomes, corte = _truncar_como_el_serial(spec, hechos)
+        if corte is not None:
+            outcome = outcomes[corte]
+            return PackageResult(
+                status=outcome.status, package=spec.key, client=client,
+                steps=tuple(outcomes), deliverables={},
+                qa_issues=tuple(f"{outcome.title}: {i}" for i in outcome.qa_issues),
+                summary=(f"{spec.title}: el paso requerido '{outcome.title}' fallo "
+                         f"({outcome.status}); no se escribio ningun entregable."),
+            )
 
         # ---- Package QA gate: any executed step failing QA blocks everything.
         failed = [o for o in outcomes if o.status == STATUS_QA_FAILED]
@@ -439,6 +784,10 @@ def run_package(
     if resolved_branding is None:
         resolved_branding = profile.branding if profile is not None and profile.branding is not None else DEFAULT_BRANDING
     deck = package_deliverable.build(spec, outcomes, client=client, prepared=prepared, branding=resolved_branding)
+    # Lo ULTIMO antes de escribir, y a proposito: la procedencia de libro va rio abajo de
+    # todo -- del gate de QA, del gate de citas y del deck ya compuesto -- asi que no
+    # puede cambiar nada de lo que se decidio arriba. Ver `_con_lecturas`.
+    deck = _con_lecturas(deck, registry, outcomes)
     package_files = deck.write_all(out_root)
     written.update({f"paquete_{name}": str(path) for name, path in package_files.items()})
 
@@ -531,7 +880,15 @@ def _run_step(
     rewritten = narrative_rewrite(
         provider, produced.summary, tool.title, lang=spec.lang, citations=list(citations),
     )
-    summary = rewritten + (f" [{note}]" if note else "")
+    # Narrative post-check (brecha 8): the rewrite ships only if every figure of
+    # the deterministic summary survived it. Same severity model as the citation
+    # gate right above -- a content filter, not a QA veto: a reverted narrative
+    # still ships the step, it just ships the engine's own prose. This call is
+    # NOT redundant with the Orchestrator's: filter_citations taught the lesson
+    # that a gate wired into only one of the two surfaces leaves the other one
+    # unreviewed, and packages/ is the surface a paying client actually receives.
+    reviewed = review_narrative(produced.summary, rewritten, label=tool.title)
+    summary = reviewed.summary + (f" [{note}]" if note else "")
     return StepOutcome(**base, status=STATUS_OK, summary=summary,
                        report=produced.report, guided=guided, citations=citations)
 
