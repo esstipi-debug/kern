@@ -163,7 +163,7 @@ _HEAD = """<!DOCTYPE html>
 <header>
   <div class="wrap">
     <span class="brand"><span class="d">&#9672;</span> Kern</span>
-    <nav><a href="/demo">Free scan</a><a href="/paquetes">Packages</a><a href="/">Home</a></nav>
+    <nav><a href="/demo">Free diagnostic</a><a href="/paquetes">Packages</a><a href="/">Home</a></nav>
   </div>
 </header>
 <main class="wrap">
@@ -339,7 +339,7 @@ def render_one_plan_html(offer_starter: Offer, offer_diagnostico: Offer) -> str:
   </div>
   <p class="sub" style="margin-top:10px;font-size:13px">Priced and billed in USD via Stripe.</p>
   <p class="sub" style="margin-top:16px">
-    Not ready for either? Run the <a href="{demo_scan_href}">free self-serve scan</a> on
+    Not ready for either? Run the <a href="{demo_scan_href}">free diagnostic</a> on
     your own data first &mdash; no commitment, no card required.
   </p>
 </section>

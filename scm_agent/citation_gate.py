@@ -53,7 +53,23 @@ MAX_HOPS = 2
 # silently-empty degrade that looks identical to "everything resolved".
 TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "inventory_optimization": ("safety_stock", "service_level", "cycle_service_level"),
+    # Servicio SALIENTE medido, que no es lo mismo que el service level de una politica:
+    # "perfect_order" es el pedido perfecto de SCOR (Christopher cap. 2) y es el ancla
+    # exacta de esta tool. Las tres se verificaron con KnowledgeBase.node_exists antes de
+    # escribirlas -- "otif", "on_time_in_full" y "order_fulfillment" NO existen en el
+    # grafo, y anclar a un id inventado rompe el gate en la corrida siguiente.
+    "service_scan": ("perfect_order", "fill_rate", "customer_service"),
     "pricing": ("basic_pricing_theory", "price_sensitivity_measurement", "markdown_pricing"),
+    # DELIBERATELY identical to "pricing" above, and they must stay in sync.
+    # jobs/repricing.py::_TOOL_KEY is the string "pricing": the playbook gates its
+    # changesets through src.pricing_guardrails with that key, so the citations a
+    # repricing changeset actually ships are resolved against "pricing"'s anchors.
+    # Declaring a DIFFERENT set here would split the tool in two -- the orchestrator
+    # citing one neighbourhood and the gate another -- which is exactly the
+    # "measuring anchors against the gate does not predict what the client sees"
+    # failure. Verified on this graph 2026-09-12: these three resolve 4 citations
+    # for the playbook's fixed keyword set, well clear of MIN_CITATIONS.
+    "repricing": ("basic_pricing_theory", "price_sensitivity_measurement", "markdown_pricing"),
     "leadership_chain": ("chain_model", "collaborative_leadership", "authentic_leadership"),
     "cost_to_serve": ("cost_to_serve", "activity_based_costing"),
     "sop": ("vollmann_sop", "aggregate_planning"),
@@ -65,8 +81,37 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     ),
     "ddmrp": ("demand_driven_supply_chain", "drum_buffer_rope", "vollmann_customer_order_decoupling_point"),
     "landed_cost": ("landed_cost",),
+    # import_case (wedge on proyecto sourcing): same TCO/Incoterm neighborhood as
+    # landed_cost. The pack is a document projection, not a filed declaration —
+    # Incoterms still govern which costs and which papers attach. Verified via
+    # kb.node_exists for both ids (same anchors landed_cost already uses).
+    "import_case": ("landed_cost",),
     "warehouse_layout": ("facility_layout", "load_distance_layout"),
-    "whatif": ("sensitivity_analysis",),
+    # --- MIN_CITATIONS starvation, measured 2026-08-24 --------------------------
+    # Four tools below were filed as "anchor-islanded" (zero at any pool). Re-measured
+    # on the committed 3019-node graph, the diagnosis was wrong for all four: each one
+    # ranked its OWN anchor at hop 0 as a perfectly on-topic candidate and then lost
+    # the whole batch to the MIN_CITATIONS=2 floor -- one survivor, degraded to none.
+    # They were one citation short, not starved of theory. Each gained exactly one
+    # extra anchor, picked by the rules this module already follows: keep the 2-hop
+    # closure far under the ~40% book-hub ceiling, prefer the least hub-adjacent
+    # candidate, and let the REPLAYED gate output (not the closure size) break ties.
+    # MIN_CITATIONS itself is untouched -- it is the rule that stops a single
+    # cherry-picked-looking citation from shipping, not the bug.
+
+    # whatif: `sensitivity_analysis` alone kept 1 (itself) -> zeroed. `break_even_analysis`
+    # is what this tool actually computes (packages.py calls its output "the tornado +
+    # break-even study deck"); degree 5, 2-hop closure 206 (6.8%), one book hub
+    # (heizer_render). Combined closure 549 (18.2%). Replayed gate: Break-Even Analysis,
+    # Break-Even Point, Sensitivity Analysis -- all three on topic.
+    # REJECTED, by measurement: `scenario_planning`, despite "What-If Scenario Planning"
+    # being its literal label. It sits 1 hop from TWO hubs (book_palamariu_alicke AND
+    # supply_chain_resilience), closure 785 (26.0%), and its replayed output leads with
+    # "Supply Chain Stress Test" from khan-supply-chain-resilience.txt -- the same
+    # resilience-book false friend documented for intake_scan and flow_map below. Adding
+    # BOTH is worse still (closure 970, 32.1%): the Khan stress test then displaces the
+    # scenario-planning citation that was the only reason to want the anchor.
+    "whatif": ("sensitivity_analysis", "break_even_analysis"),
     "financial_kpis": ("vollmann_inventory_turnover", "working_capital_efficiency"),
     "reconciliation": ("inventory_record_accuracy",),
     "returns": ("reverse_logistics", "returnability", "refurbishing"),
@@ -156,7 +201,11 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # safe outcome (see the module docstring), not a bug to "fix" with a
     # closer-sounding but wrong anchor.
     "data_quality": ("step_product_data_standard",),
-    # intake_scan (tool #49, raw-folder data-readiness audit; registered in
+    # intake_scan (tool #50 -- NOT #49: cross_impact and org_friction_audit went in
+    # between, as HANDOFF.md already recorded on 2026-08-03 and this comment did not;
+    # org_friction_audit above is the real #49, so the file carried two of them.
+    # Verified 2026-08-24 against build_default_registry().list(), which is the only
+    # count that cannot go stale. Raw-folder data-readiness audit; registered in
     # Task 7 of the 2026-07-31 intake-scan plan, scm_agent/tools.py) is a
     # DELIBERATE, measured absence from this map, same discipline as data_quality
     # right above. Candidates checked, in order of preference, against the
@@ -220,10 +269,33 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # exact false-friend class measured and rejected above. Wiring
     # filter_citations into intake_scan's path is a separate, larger-blast-radius
     # change, not made here.
-    "dea": ("data_envelopment_analysis",),
+    # dea: the anchor was a degree-1 near-isolate (23-node closure) and the only
+    # in-radius candidate was itself -> 1 survivor -> zeroed. `capacity_efficiency`:
+    # degree 2, closure 195 (6.5%), one book hub (heizer_render); combined 218 (7.2%).
+    # Replayed gate: Data Envelopment Analysis, Competitive Benchmarking, Capacity
+    # Efficiency.
+    # `benchmarking` produces the IDENTICAL three citations but is 1 hop from TWO book
+    # hubs (christopher + heizer_render) and closes 467 nodes (15.5%) instead of 218.
+    # Same reasoning as `risk` above: when two candidates give the same kept set, the
+    # less hub-adjacent one is strictly better, so `benchmarking` is not used.
+    "dea": ("data_envelopment_analysis", "capacity_efficiency"),
     "acceptance_sampling": ("acceptance_sampling", "single_sampling_plan"),
-    "earned_value": ("earned_value_management",),
-    "learning_curve": ("learning_curve_model",),
+    # earned_value: same shape -- degree-1 anchor, itself the only in-radius candidate.
+    # Earned value IS a project-control technique and the graph carries Heizer's whole
+    # project-management chapter; it just sat 5-6 hops away. `project_controlling`:
+    # degree 2, closure 196 (6.5%), one book hub; combined 219 (7.3%), 8 survivors.
+    # Replayed gate: Earned Value Management (SPI/CPI), Project Controlling, Project
+    # Crashing. `project_management` (degree 10, closure 204) yields the SAME kept set
+    # and is the broader node, so the narrower one is used; adding `project_scheduling`
+    # on top changes nothing at all (same 8 survivors, same 3 shown) and is left out.
+    "earned_value": ("earned_value_management", "project_controlling"),
+    # learning_curve: `experience_curve` is the canonical companion concept (Christopher
+    # Ch.1), degree 3, closure 276 (9.1%), one book hub; combined 299 (9.9%). Replayed
+    # gate keeps EXACTLY MIN_CITATIONS: Learning Curve (Yx = K x^n) + Experience Curve.
+    # Deliberately at the floor -- there is no third on-topic node in the graph, and the
+    # alternative was shipping zero. If either node ever leaves the graph this tool goes
+    # back to zero, which is the correct behaviour, not a regression to chase.
+    "learning_curve": ("learning_curve_model", "experience_curve"),
     "odoo_replenishment": ("continuous_replenishment", "multiple_replenishment_orders"),
     "excel_replenishment": ("continuous_replenishment_program",),
     "newsvendor": ("newsvendor_model", "generalized_newsvendor_problem", "price_setting_newsvendor"),
@@ -231,6 +303,22 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "multi_echelon": ("multiechelon_inventory", "echelon_inventory", "safety_stock"),
     "transportation": ("freight_transport_modes", "intermodal_transport"),
     "fefo": ("perishable_asset", "perishable_assets", "lot_size"),
+    # slotting STAYS ZERO, and now by measurement rather than by omission (2026-08-24).
+    # Both anchors are degree-1 near-isolates (23- and 17-node closures, 40 combined) and
+    # only one candidate lands in radius, so MIN_CITATIONS zeroes the batch. Candidates
+    # checked as a second/third anchor:
+    #   assignment_hungarian -- slotting IS an assignment problem and this node is already
+    #     an in-radius candidate at 2 hops, but it is itself a degree-1 isolate: adding it
+    #     leaves the closure at 40 nodes and the survivor count at 1. No change.
+    #   warehouse_functions  -- degree 5, closure 210 (7.0%), one book hub (grant). It DOES
+    #     produce 6 survivors, and all of them are wrong: Warehouse Location (where to put
+    #     the building, not where to put the SKU), Warehouse Automation (AS/RS) and
+    #     Warehouse Energy Efficiency, all from Grant's "Sustainable Warehousing" chapter,
+    #     riding the bare "warehouse" token. Worse, they DISPLACE the tool's own on-topic
+    #     layout anchors out of the top 3. Textbook false friend -- rejected.
+    # The graph has no cube-per-order-index / slotting / storage-assignment theory. Fix by
+    # ingesting warehouse-design theory (Bartholdi & Hackman, Frazelle), not by a looser
+    # anchor. Pinned by tests/test_packages_citations.py::_ISLANDED_TOOLS.
     "slotting": ("load_distance_layout", "facility_layout"),
     "simulation": ("simulation_optimization", "inventory_simulation", "simulation_inventory_analysis"),
     "digital_twin": ("ch16lee_digital_twins", "bullwhip_effect", "multiechelon_inventory"),
@@ -273,6 +361,78 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # by measurement, not intuition.
     "cross_impact": ("safety_stock", "service_level", "cycle_service_level",
                      "cross_functional_integration"),
+    # procedure_audit (tool #52) grounds on ISO 9001 document-control theory (7.5
+    # Documented information) and the quality-management discipline the audit
+    # itself enforces (overdue reviews, missing owners, unversioned documents).
+    # All three anchors verified to exist via kb.node_exists() before use.
+    # REAL measurement, replaying the actual _step_citations call (KnowledgeBase()
+    # + build_default_registry()) -- not a prediction. It was re-run either side of
+    # the L3 source #30 merge because this tool sat at EXACTLY MIN_CITATIONS, the
+    # position from which one displaced candidate means zero:
+    #
+    #   graph @3032: kept 2 -- "Control Chart" (Heizer & Render, Supplement 6:
+    #     Statistical Process Control) and "ISO 9000" (Heizer & Render, Ch.6
+    #     Managing Quality). No ISO 14000 citation was among the candidates at all
+    #     (top-8 pool); the other 3 (risk_monitoring, document_processing_
+    #     automation, emas -- all Khan/Grant resilience-book content) were
+    #     correctly omitted as more than MAX_HOPS from every anchor.
+    #   graph @3044: kept 3 -- Documented Information (ISO 9001:2015 clause 7.5),
+    #     ISO 10013:2021, Document Review Cadence.
+    #
+    # The feared failure mode DID happen and landed the good way: the new nodes
+    # displaced BOTH old citations. Off the MIN_CITATIONS edge, and now citing the
+    # clause instead of a generic quality chapter. Pinned by content, not count, in
+    # tests/test_packages_citations.py::_RECOVERED_BY_INGESTION -- a count-only
+    # guard would not notice this swap reversing.
+    "procedure_audit": ("iso_9000", "checklist", "total_quality_management"),
+    # procedure_draft (tool #53) shares the checklist/quality-system anchors --
+    # a Job Breakdown Sheet + control plan IS a documented-work-instruction
+    # checklist -- plus poka_yoke (mistake-proofing, what a control plan
+    # enforces) and pdca_cycle (the review-cadence loop the draft's document
+    # control header stamps). The anchors below are UNCHANGED since that zero --
+    # what changed is the graph, and the replay is worth keeping side by side:
+    #
+    #   2026-09-04, graph @3032 nodes: ZERO candidates resolved in-radius at all.
+    #     work_breakdown_structure was explicitly excluded (EXCLUDED_CONCEPTS
+    #     below); risk_monitoring and document_processing_automation sat more than
+    #     MAX_HOPS from every anchor. The batch never reached the MIN_CITATIONS
+    #     floor with a lone survivor to degrade -- it had nothing at all.
+    #   2026-09-04, graph @3044 nodes (L3 source #30 ingested): THREE survivors --
+    #     Job Breakdown Sheet, Document Review Cadence, JI Training Timetable.
+    #
+    # The delta is twelve nodes of document-control/standard-work theory, hung off
+    # checklist and pdca_cycle at hop 1. That is the fix packages.py:100-104
+    # prescribes for a zero of this shape: the anchors were never wrong, the corpus
+    # was empty. MIN_CITATIONS, the pool size and these anchors were all untouched.
+    # See tests/test_packages_citations.py::_RECOVERED_BY_INGESTION, which pins
+    # WHICH three it cites, and documentation/SOP_DOCUMENT_CONTROL_SOURCES.md for
+    # what was read to write each node (and the three concepts cut for thin
+    # provenance).
+    # `procedure_model` (also verified to exist) was considered and rejected as
+    # an anchor: it is Kuhn's organizational-reconfiguration model, not a
+    # procedure document -- a lexical false friend for this tool's own name,
+    # same class as the false friends documented elsewhere in this module.
+    "procedure_draft": ("checklist", "poka_yoke", "pdca_cycle"),
+    # iso_ops (tool #54) maps the operations/supply-chain ISO pack to floor
+    # evidence. Anchors are the quality-system node the pack hangs 9001 off,
+    # the EMS node for 14001, and carbon_footprint for 14067 PCF -- all three
+    # verified to exist via kb.node_exists() (iso_50001 does not). This is not
+    # a certification ruling; the job forbids "cumple ISO" in verify().
+    "iso_ops": ("iso_9000", "iso_14001", "carbon_footprint"),
+    # audit_evidence (tool #55) is the MUS/GL workpaper. Anchors are the IRA
+    # sampling neighborhood already used by reconciliation, plus the receiving
+    # sampling node -- MUS is a sampling plan for dollar units, not AQL lots.
+    # Verified to exist via kb.node_exists. Not a signed opinion.
+    # Measured 2026-09-07: the package citation gate ships ZERO for this tool
+    # (pinned in tests/test_packages_citations.py::_CORRECTLY_ZERO_TOOLS). The
+    # anchors ground other tools; this tool's keywords never rank those nodes
+    # into the candidate pool. Do not "fix" with a book-hub anchor.
+    "audit_evidence": ("inventory_record_accuracy", "acceptance_sampling"),
+    # scor_iso_audit (tool #56, E4 pack) composes Perfect Order / cost-to-serve
+    # / ISO 9000 document-control into one EvidenceRecord. Same iso_9000 node
+    # as procedure_audit; perfect_order is the SCOR RL.1.1 anchor used by
+    # service_scan; cost_to_serve is the CO metric. Not a certificate.
+    "scor_iso_audit": ("iso_9000", "perfect_order", "cost_to_serve"),
 }
 
 # tool_key -> concept ids that must NEVER be cited for this tool, even when
@@ -332,6 +492,12 @@ EXCLUDED_CONCEPTS: dict[str, tuple[str, ...]] = {
     # source, so degrading to zero citations is the honest outcome here - pinned
     # by test_data_quality_step_degrades_to_no_citations_on_the_demo_intake.
     "data_quality": ("cost_of_quality", "house_of_quality"),
+    # work_breakdown_structure rides the "breakdown" lexical overlap with this
+    # tool's own "Job Breakdown Sheet" keyword and sits within MAX_HOPS of the
+    # checklist/pdca_cycle anchors via a shared book hub -- a project-schedule
+    # decomposition technique, unrelated to a procedure's document-control
+    # checklist. Same false-friend class as PR #164.
+    "procedure_draft": ("work_breakdown_structure",),
 }
 
 

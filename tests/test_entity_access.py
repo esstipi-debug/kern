@@ -14,6 +14,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+
 from nosilo_core.access import (
     ALLOW,
     CONFIDENTIAL,
@@ -30,7 +31,6 @@ from nosilo_core.access import (
     Rule,
 )
 from nosilo_core.entities import SourceRef, SqliteEntityStore
-
 from src.entities import (
     SKU,
     SOURCE_ODOO,

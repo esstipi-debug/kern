@@ -23,11 +23,12 @@ raises a clear error instead of an ``ImportError`` deep in a call stack.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from src.data_paths import resolve_state_path
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -44,7 +45,7 @@ except ImportError:
 
 # Same env-override + "data/" base-dir convention as src/state/store.py's
 # LINCHPIN_STATE_PATH and scm_agent/events.py's DEFAULT_PATH.
-DEFAULT_JOBSTORE_PATH = os.environ.get("LINCHPIN_SCHEDULER_PATH", "").strip() or "data/scheduler.sqlite3"
+DEFAULT_JOBSTORE_PATH = resolve_state_path("scheduler")
 
 
 class SchedulerUnavailableError(RuntimeError):

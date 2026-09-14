@@ -51,6 +51,7 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from nosilo_core import writeback
+from src.connectors import WRITE_APPROVAL_GATED, WriteSurface
 
 try:  # optional: the 'repricing' extra (httpx already pinned by tower/pricing-intel)
     import httpx  # noqa: F401  (imported to prove availability; the caller builds the client)
@@ -218,3 +219,15 @@ def demo_meli() -> InMemoryMeli:
             "SKU-3": {"item_id": "MLA100000003", "price": 8.0},
         }
     )
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_APPROVAL_GATED,
+    objects=(
+        'items/{id}.price',
+    ),
+    means=(
+        'cambio de precio de publicacion con dry-run, aprobacion firmada y rollback; mismo gate de precios. Nunca se escribe un precio a un competidor ni a un marketplace ajeno.'
+    ),
+)

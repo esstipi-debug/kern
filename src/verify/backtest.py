@@ -38,7 +38,7 @@ import pandas as pd
 from src.forecast_metrics import bias as signed_bias
 from src.forecast_metrics import mape, wape
 from src.safety_stock import service_level_factor, tune_service_level
-from src.state.store import StateStore
+from src.state.store import StateStore, default_store
 from src.state.system_state import StateSnapshot, history
 
 # The metric name a realized/actual observation is recorded under in the
@@ -206,11 +206,19 @@ def match_decision_actuals(
 
 def run_forecast_backtest(window: int | None = None, *, store: StateStore | None = None) -> list[SkuBacktestResult]:
     """Convenience wrapper: read ``forecast``+``outcomes`` history via
-    ``src.state.system_state.history`` and backtest them.  ``window`` and
-    ``store`` are forwarded to ``history()`` unchanged (``store=None`` uses the
-    process-wide default store; tests should pass an isolated
-    ``StateStore(tmp_path / "state")`` instead, per ``src/state``'s own test
-    convention)."""
+    ``src.state.system_state.history`` and backtest them.  ``window`` is
+    forwarded to ``history()`` unchanged; tests should pass an isolated
+    ``StateStore(tmp_path / "state")`` as ``store``, per ``src/state``'s own
+    test convention.
+
+    ``store=None`` resolves to the shared unnamed partition HERE, at the entry
+    point, instead of three layers down inside ``history()``. This function is
+    why that matters: it reads a forecast-error history and feeds
+    ``recalibration_suggestions``, so a dropped client identity would not just
+    show one client another's numbers -- it would recalibrate one client's
+    safety stock from another's forecast errors. Naming the partition at the
+    edge keeps that a decision someone made, not a default nobody saw."""
+    store = store if store is not None else default_store()
     forecast_snapshots = history("forecast", window, store=store)
     outcome_snapshots = history("outcomes", window, store=store)
     observations = match_forecast_actuals(forecast_snapshots, outcome_snapshots)

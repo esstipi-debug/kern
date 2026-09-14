@@ -254,6 +254,34 @@ def test_missing_price_history_excludes_priced_lines_with_a_clear_reason(tmp_pat
     assert calendar.n_omnibus_blocked == 2
 
 
+def test_salvage_steps_ship_even_though_they_now_quote_a_price(tmp_path) -> None:
+    """C and D are salvage and DO carry a per-unit price (``salvage_recovery_pct *
+    unit_cost`` -- see src/liquidation.py). The Omnibus gate must keep skipping them
+    on the strength of the METHOD, not on the absence of a number: a disposal is not
+    an announced markdown. Gating on ``clearance_price is None`` instead would drop
+    both from the shippable calendar the moment the price is published, silently
+    taking their recovery with it."""
+    report = _report()
+    calendar = build_liquidation_calendar(
+        report, market="eu", as_of=AS_OF, store=_store(tmp_path),
+        markets_dir=MARKETS_DIR, steps_per_week=10,
+    )
+    c, d = _step(calendar, "C"), _step(calendar, "D")
+
+    for step in (c, d):
+        assert step.method == "salvage_heuristic"
+        assert step.clearance_price is not None
+        assert step.compliance is None       # Omnibus N/A: nothing is being announced
+        assert step.competitor_check is None  # no shelf price to undercut either
+        assert step.included is True
+        assert step.exclusion_reason is None
+    # only the two ANNOUNCED lines (A, B) are blocked for a missing reference.
+    assert calendar.n_omnibus_blocked == 2
+    assert calendar.total_recovered_excluded == pytest.approx(
+        report.total_recovered - 99.0 - 60.0
+    )
+
+
 # -- competitive floor (PR-10/PR-14) ---------------------------------------------
 
 

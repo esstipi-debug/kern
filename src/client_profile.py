@@ -10,8 +10,9 @@ for that. This is Kern's own local operating data about a client, so it
 carries none of the risk-tier/approval ceremony writeback does.
 
 Resolution priority (highest first), enforced by the caller via
-``merge_params``: explicit per-call ``params`` > this profile > the engine's
-own hardcoded default.
+``merge_params``: explicit per-call ``params`` > this profile > the client's
+industry pack (``src.vertical_profile``, keyed on this profile's ``vertical``
+field) > the engine's own hardcoded default.
 """
 
 from __future__ import annotations
@@ -25,6 +26,12 @@ import time
 import unicodedata
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # import-only: src.vertical_profile imports THIS module at
+    # runtime (for _require_positive_finite), so a runtime import back would
+    # be a cycle. `from __future__ import annotations` keeps the hint a string.
+    from src.vertical_profile import VerticalProfile
 
 from src.deliverable import Branding
 from src.hats import HAT_KEYS
@@ -113,6 +120,11 @@ class ClientProfile:
     holding_rate: float | None = None
     order_cost: float | None = None
     lead_time_days: float | None = None
+    # Price floor as a MARKUP fraction over landed cost (not a gross margin):
+    # src/price_optimizer.py computes floor_price = landed_cost * (1 + this).
+    # Beats the vertical pack's value, per merge_params' asymmetry -- a number an
+    # operator recorded for THIS client outranks an industry default.
+    min_margin_pct: float | None = None
     warehouse_capacity: WarehouseCapacity | None = None
     # Per-area tolerance for the cross_impact tool (spec 2026-07-31, sec 5.2).
     # Keys are exactly src.hats.HAT_KEYS; values are the maximum tolerated
@@ -124,6 +136,18 @@ class ClientProfile:
     # warehouse_capacity this IS included in as_params() - it is a plain dict of
     # floats, so it does not break JSON-serializing the merged params.
     objection_thresholds: dict[str, float] | None = None
+    # La promesa de entrega que el CLIENTE declara, en dias habiles desde la fecha de
+    # orden: canal -> dias, con "*" como canal por defecto. Existe porque Unleashed y
+    # Cin7 Core dejan la fecha pactada vacia en casi todo el libro, y sin fecha
+    # prometida no hay OTIF -- justo el numero que el producto dice medir. Se pregunta
+    # UNA vez, en la llamada ("¿en cuanto se comprometen a despachar?"), y queda aca.
+    #
+    # Es `client_reported`, no medido, y el motor lo trata asi: solo se usa donde el
+    # sistema no dato la linea, nunca pisa una fecha del ERP, y cada linea puntuada con
+    # ella se cuenta aparte (`RealizedService.lines_scored_against_declared_promise`) para que el
+    # entregable diga contra que vara se juzgo la puntualidad. Es un dict plano de
+    # floats, asi que SI viaja en as_params() sin romper la serializacion.
+    delivery_promise_days: dict[str, float] | None = None
     # A partner reselling under the white-label/rev-share model (E6) - see
     # src/deliverable.py's Branding docstring. Deliberately NOT an engine
     # param (no Tool reads it), so excluded from as_params(); only
@@ -143,6 +167,17 @@ class ClientProfile:
     # (no Tool reads it), so excluded from as_params(); the package CLI reads
     # it directly off the loaded profile, same as contingent_fee_pct.
     lang: str = "es"
+    # The client's industry -- the key into config/verticals/<vertical>.yaml,
+    # which supplies the defaults BELOW this profile (see
+    # src.vertical_profile). Deliberately NOT an engine param (no Tool reads
+    # the slug itself), so it is excluded from as_params(); the caller resolves
+    # it to a VerticalProfile and passes that to merge_params.
+    #
+    # Not validated here beyond "a string if present": the only place the value
+    # can do harm is when it becomes a path, and _vertical_config_path()
+    # validates it there. One regex, one home -- see that module's note on the
+    # three copies of _norm this repo already paid for.
+    vertical: str | None = None
     source: str = "manual"
     updated_at: str | None = None  # ISO date; caller-supplied (module stays pure)
 
@@ -152,6 +187,14 @@ class ClientProfile:
         _require_positive_finite(self.holding_rate, "holding_rate")
         _require_positive_finite(self.order_cost, "order_cost")
         _require_positive_finite(self.lead_time_days, "lead_time_days")
+        if self.min_margin_pct is not None:
+            # Mirrors optimize_sku_price's own [0, 1) check so a profile can
+            # never store a value the engine rejects at call time. 0.0 is legal:
+            # "this client sets no floor" is a decision, not a missing value.
+            if isinstance(self.min_margin_pct, bool) or not isinstance(self.min_margin_pct, (int, float)):
+                raise ValueError(f"min_margin_pct must be a number, got {self.min_margin_pct!r}")
+            if not math.isfinite(self.min_margin_pct) or not 0 <= self.min_margin_pct < 1:
+                raise ValueError(f"min_margin_pct must be in [0, 1), got {self.min_margin_pct!r}")
         if self.objection_thresholds is not None:
             for key, value in self.objection_thresholds.items():
                 if key not in HAT_KEYS:
@@ -163,6 +206,26 @@ class ClientProfile:
                     raise ValueError(
                         f"objection_thresholds[{key!r}] must be a finite number > 0, "
                         f"got {value!r}")
+        if self.delivery_promise_days is not None:
+            if not self.delivery_promise_days:
+                raise ValueError(
+                    "delivery_promise_days vacio significa 'no declaro ninguna promesa': "
+                    "usa None en vez de un mapa sin canales, o el OTIF queda pareciendo "
+                    "no medible por una razon distinta de la real")
+            for canal, dias in self.delivery_promise_days.items():
+                if not str(canal).strip():
+                    raise ValueError("delivery_promise_days: el canal no puede ser vacio")
+                if (isinstance(dias, bool)
+                        or not (isinstance(dias, (int, float)) and math.isfinite(dias) and dias >= 0)):
+                    raise ValueError(
+                        f"delivery_promise_days[{canal!r}] debe ser un numero finito >= 0 "
+                        f"de dias habiles, got {dias!r}")
+                if dias > 90:
+                    raise ValueError(
+                        f"delivery_promise_days[{canal!r}] = {dias}: mas de 90 dias habiles "
+                        "de promesa de DESPACHO es casi siempre un plazo de importacion "
+                        "cargado en el lugar equivocado; el plazo de proveedor es "
+                        "lead_time_days")
         if self.contingent_fee_pct is not None and not 0.10 <= self.contingent_fee_pct <= 0.20:
             raise ValueError("contingent_fee_pct must be in [0.10, 0.20]")
         if self.lang not in ("es", "en"):
@@ -182,7 +245,8 @@ class ClientProfile:
         included: it is a plain dict of floats, so it serializes fine.
         """
         fields = ("service_level", "holding_rate", "order_cost", "lead_time_days",
-                  "objection_thresholds")
+                  "objection_thresholds", "min_margin_pct",
+                  "delivery_promise_days")
         return {k: v for k in fields if (v := getattr(self, k)) is not None}
 
 
@@ -221,10 +285,13 @@ def load_profile(client_id: str, *, root: Path | str = DEFAULT_CLIENTS_ROOT) -> 
             holding_rate=raw.get("holding_rate"),
             order_cost=raw.get("order_cost"),
             lead_time_days=raw.get("lead_time_days"),
+            min_margin_pct=raw.get("min_margin_pct"),
             warehouse_capacity=WarehouseCapacity(**capacity_raw) if capacity_raw else None,
             branding=Branding(**branding_raw) if branding_raw else None,
             objection_thresholds=raw.get("objection_thresholds"),
+            delivery_promise_days=raw.get("delivery_promise_days"),
             contingent_fee_pct=raw.get("contingent_fee_pct"),
+            vertical=raw.get("vertical"),
             lang=raw.get("lang", "es"),
             source=raw.get("source", "manual"),
             updated_at=raw.get("updated_at"),
@@ -311,8 +378,31 @@ def upsert_profile(
     return updated
 
 
-def merge_params(params: dict, profile: ClientProfile | None) -> dict:
-    """Client profile fills gaps only — any key already in ``params`` always wins."""
-    if profile is None:
-        return dict(params)
-    return {**profile.as_params(), **params}
+def merge_params(
+    params: dict,
+    profile: ClientProfile | None,
+    vertical: VerticalProfile | None = None,
+) -> dict:
+    """Layer the parameter sources, lowest precedence first::
+
+        vertical pack  <  client profile  <  explicit per-call params
+
+    Both lower layers fill gaps only: any key already in ``params`` always
+    wins, and any number the client's own profile records beats the industry
+    default. An industry default is a better starting point than the engine's
+    textbook constants (0.95 service level, 0.25 holding rate) but a worse one
+    than a number an operator actually recorded for this client.
+
+    ``vertical`` is a plain argument rather than something resolved from
+    ``profile.vertical`` in here on purpose: this function never touches disk,
+    so it stays pure and trivially testable. The caller resolves the slug via
+    ``src.vertical_profile.load_vertical_profile``.
+    """
+    merged: dict = {}
+    for layer in (
+        vertical.as_params() if vertical is not None else {},
+        profile.as_params() if profile is not None else {},
+        params,
+    ):
+        merged.update(layer)
+    return merged

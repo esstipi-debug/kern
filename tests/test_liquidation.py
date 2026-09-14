@@ -19,6 +19,7 @@ from src.liquidation import (
     SALVAGE,
     LiquidationLine,
     LiquidationReport,
+    announces_discount,
     plan_liquidation,
 )
 
@@ -81,11 +82,13 @@ def test_default_discount_line_uses_the_documented_markdown_pct() -> None:
     assert b.weeks_to_clear == pytest.approx(410.0 / 7.0)
 
 
-def test_salvage_line_recovers_a_fraction_of_cost_basis_without_a_price() -> None:
+def test_salvage_line_prices_a_fraction_of_cost_basis_per_unit() -> None:
+    """No demand curve to solve against is a reason to price off the OTHER side of
+    the economics (cost), not a reason to hand back an empty price column."""
     report = plan_liquidation(_mixed_stocks(), _mixed_history(), salvage_recovery_pct=0.30)
     c = _line(report, "C")
     assert c.method == SALVAGE
-    assert c.clearance_price is None
+    assert c.clearance_price == pytest.approx(0.30 * 3.0)  # salvage_recovery_pct * unit_cost
     assert c.at_risk_value == pytest.approx(110.0 * 3.0)  # (200 - 90) * 3
     assert c.recovered_value == pytest.approx(0.30 * 110.0 * 3.0)
     assert math.isinf(c.weeks_to_clear)
@@ -96,7 +99,7 @@ def test_dead_stock_without_elasticity_falls_back_to_salvage() -> None:
     d = _line(report, "D")
     assert d.classification == "dead"
     assert d.method == SALVAGE
-    assert d.clearance_price is None
+    assert d.clearance_price == pytest.approx(0.30 * 2.0)  # default salvage pct * unit_cost
     assert d.units_to_clear == pytest.approx(100.0)  # whole on-hand for dead stock
     assert math.isinf(d.weeks_to_clear)
 
@@ -131,12 +134,17 @@ def test_report_rollups_and_method_counts() -> None:
     )
 
 
-def test_no_price_history_makes_every_line_salvage() -> None:
-    report = plan_liquidation(_mixed_stocks(), price_history=None)
+def test_no_price_history_makes_every_line_salvage_but_still_priced() -> None:
+    """The degraded path is still a priced plan: every line names its method AND
+    quotes a per-unit number. "We could not fit an elasticity" must never reach the
+    client as a blank price column."""
+    report = plan_liquidation(_mixed_stocks(), price_history=None, salvage_recovery_pct=0.30)
     assessed = [line for line in report.lines]
     assert assessed  # excess + dead still assessed
     assert all(line.method == SALVAGE for line in assessed)
-    assert all(line.clearance_price is None for line in assessed)
+    assert all(line.clearance_price is not None for line in assessed)
+    assert all(line.current_price is None for line in assessed)  # nothing to discount FROM
+    assert all(line.discount_pct is None for line in assessed)
 
 
 def test_recovered_never_negative_and_recovery_pct_zero_when_nothing_at_risk() -> None:
@@ -230,6 +238,91 @@ def test_el_markdown_reporta_descuento_margen_y_cobertura_liberada():
     assert linea.cover_days_released == pytest.approx(810.0)
 
 
+def test_un_remate_con_historial_de_precios_igual_reporta_el_precio_de_gondola():
+    """La invariante REAL de current_price/discount_pct.
+
+    El docstring afirmo dos veces "both None on a salvage recovery" y el codigo
+    nunca lo cumplio: este SKU muerto trae historial, sale por salvage_heuristic
+    con clearance_price 3.00, y current_price vale 12.00. Los dos campos no van
+    juntos y no responden a la misma pregunta.
+
+    discount_pct se calla en TODO remate porque es la AFIRMACION de que el precio
+    es una rebaja de algo, y un remate no la hace. current_price es una
+    OBSERVACION del historial que el cliente entrego: borrarla porque la
+    disposicion resulto ser un remate tira el unico dato que hace legible un
+    margen de -700 al lado de una "recuperacion del 30%".
+    """
+    muerto = SkuStock(product_id="DEAD", on_hand=100.0, daily_demand=0.0, unit_cost=10.0,
+                      days_since_last_sale=400)
+    historial = {"DEAD": ([12.0] * 6, [5.0] * 6)}
+
+    linea = plan_liquidation([muerto], historial, salvage_recovery_pct=0.30).lines[0]
+
+    assert linea.method == SALVAGE
+    assert linea.clearance_price == pytest.approx(3.0)
+    assert linea.current_price == pytest.approx(12.0)   # el dato observado NO se borra
+    assert linea.discount_pct is None                   # la inferencia que nadie hizo, si
+    assert linea.gross_margin_value == pytest.approx(-700.0)
+
+
+def test_el_descuento_lo_decide_el_metodo_no_si_hubo_precio_observado():
+    """El "si y solo si" que el docstring ahora escribe, sobre los tres metodos a la
+    vez: discount_pct es None exactamente en los remates. Un anuncio sin su
+    porcentaje no se puede auditar contra Omnibus, y un remate con porcentaje
+    anuncia una rebaja que nadie va a publicar."""
+    report = plan_liquidation(_mixed_stocks(), _mixed_history(), salvage_recovery_pct=0.30)
+    assert {line.method for line in report.lines} == {ELASTICITY, DEFAULT_DISCOUNT, SALVAGE}
+
+    for line in report.lines:
+        assert (line.discount_pct is None) == (not announces_discount(line.method)), line.product_id
+        if announces_discount(line.method):
+            # El ancla es precondicion de las dos ramas anunciadas, no un accidente.
+            assert line.current_price is not None and line.current_price > 0, line.product_id
+
+
+def test_los_tres_metodos_cierran_la_misma_identidad_precio_por_unidades():
+    """El precio propuesto y la caja recuperada tienen que cerrar entre si en los
+    TRES metodos. Mientras el remate no publicaba precio, la identidad solo valia
+    para los dos anunciados y nadie podia auditar el tercero."""
+    report = plan_liquidation(_mixed_stocks(), _mixed_history(), salvage_recovery_pct=0.30)
+    metodos = {line.method for line in report.lines}
+    assert metodos == {ELASTICITY, DEFAULT_DISCOUNT, SALVAGE}
+    for line in report.lines:
+        assert line.clearance_price is not None, line.product_id
+        assert line.recovered_value == pytest.approx(
+            line.clearance_price * line.units_to_clear
+        ), line.product_id
+
+
+def test_sin_ancla_de_costo_el_remate_se_queda_sin_precio_a_proposito():
+    """El unico caso sin precio propuesto: no hay costo al que anclarlo. Ahi tampoco
+    hay caja en riesgo, asi que no hay economia que precificar - y un cero inventado
+    seria peor que la ausencia declarada."""
+    sin_costo = [SkuStock(product_id="Z", on_hand=100.0, daily_demand=0.0, unit_cost=0.0)]
+    linea = plan_liquidation(sin_costo).lines[0]
+    assert linea.method == SALVAGE
+    assert linea.clearance_price is None
+    assert linea.at_risk_value == 0.0
+    assert linea.recovered_value == 0.0
+
+
+def test_un_remate_con_historial_de_precios_no_anuncia_un_descuento():
+    """Un muerto con historial plano SI tiene precio de referencia observado, pero
+    sigue siendo una disposicion (jobber / write-down), no un markdown anunciado:
+    reportarle un % de descuento lo convertiria en una promocion regulada que nadie
+    penso publicar."""
+    muerto = SkuStock(product_id="M", on_hand=100.0, daily_demand=0.0, unit_cost=4.0,
+                      days_since_last_sale=400)
+    plano = {"M": ([10.0, 10.0, 10.0, 10.0], [5.0, 6.0, 4.0, 5.0])}
+    linea = plan_liquidation([muerto], plano, salvage_recovery_pct=0.30).lines[0]
+
+    assert linea.method == SALVAGE
+    assert linea.current_price == pytest.approx(10.0)   # la referencia SI existe
+    assert linea.clearance_price == pytest.approx(1.2)  # 0.30 * 4.0, anclado al costo
+    assert linea.discount_pct is None                   # y aun asi no anuncia un corte
+    assert not announces_discount(linea.method)
+
+
 def test_un_remate_sin_precio_de_referencia_no_inventa_un_descuento():
     """Sin historial no hay precio contra el cual medir el corte: None, no 0%."""
     muerto = SkuStock(product_id="SKU-MUERTO", on_hand=500.0, daily_demand=0.0, unit_cost=12.5,
@@ -240,3 +333,50 @@ def test_un_remate_sin_precio_de_referencia_no_inventa_un_descuento():
     assert linea.discount_pct is None
     assert linea.cover_days_released is None      # sin demanda no libera cobertura, libera caja
     assert linea.gross_margin_value < 0           # se recupera 30% del costo: es perdida
+
+
+def test_un_sku_muerto_con_historial_elastico_se_remata_igual():
+    """La rama de elasticidad no puede pisar la doctrina que la rama de al lado escribe.
+
+    ``default_discount`` excluye a los muertos con su motivo redactado: "it stopped
+    moving - a nominal markdown will not clear it, so it falls through to salvage
+    instead". La rama de elasticidad corria ANTES y no miraba la clasificacion, asi
+    que un muerto con historial ajustable salia por ``elasticity`` -- y con eso el
+    entregable le prometia al cliente despachar el stock en semanas finitas a una
+    tasa extrapolada de una curva, sobre un SKU cuya demanda es CERO. La cuenta
+    ``units / demand_at(fit, price)`` no sabe que el SKU dejo de venderse: se lo dice
+    la clasificacion, o no se entera.
+
+    Peor que el numero: ``announces_discount(ELASTICITY)`` es True, o sea que la
+    linea sale rotulada como rebaja ANUNCIABLE. Un remate no anuncia nada.
+    """
+    muerto = SkuStock(product_id="DEAD", on_hand=100.0, daily_demand=0.0, unit_cost=10.0,
+                      days_since_last_sale=400)
+
+    linea = plan_liquidation([muerto], {"DEAD": _ELASTIC_HISTORY}).lines[0]
+
+    assert linea.classification == "dead"
+    assert linea.method == SALVAGE                 # no elasticity, aunque el ajuste exista
+    assert not announces_discount(linea.method)    # un remate no anuncia rebaja
+    assert linea.discount_pct is None              # la invariante del docstring, ahora cierta
+    assert math.isinf(linea.weeks_to_clear)        # sin demanda no hay plazo que prometer
+    assert linea.current_price == pytest.approx(_ELASTIC_MEDIAN_PRICE)  # la observacion no se borra
+
+
+def test_el_mismo_historial_elastico_sobre_stock_en_exceso_si_da_elasticidad():
+    """La contracara, para que el arreglo no se lea como "apagamos la elasticidad".
+
+    Mismo historial, misma curva, misma cantidad: lo unico que cambia es que este SKU
+    todavia se vende. Ahi la elasticidad es exactamente la herramienta correcta y el
+    plazo que calcula significa algo.
+    """
+    en_exceso = SkuStock(product_id="EXC", on_hand=100.0, daily_demand=1.0, unit_cost=10.0,
+                         days_since_last_sale=10)
+
+    linea = plan_liquidation([en_exceso], {"EXC": _ELASTIC_HISTORY}).lines[0]
+
+    assert linea.classification == "excess"
+    assert linea.method == ELASTICITY
+    assert announces_discount(linea.method)
+    assert linea.discount_pct is not None
+    assert math.isfinite(linea.weeks_to_clear)

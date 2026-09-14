@@ -1,0 +1,4426 @@
+{
+  "producto": "KERN IoP",
+  "paquete": "iso-operaciones-cadena",
+  "version": "1.0.0",
+  "fecha": "2026-09-06",
+  "aviso": "Resúmenes operativos. No es el texto oficial ISO ni un dictamen de conformidad.",
+  "estado": "integrado",
+  "stats": {
+    "total": 53,
+    "esenciales": 15,
+    "recomendadas": 31,
+    "sectoriales": 7,
+    "nativo": 6,
+    "evidenciaParcial": 12,
+    "certificables": 17,
+    "cadenasProductivas": 38,
+    "supplyChain": 46,
+    "fueraDeAlcance": 35
+  },
+  "modulos": [
+    {
+      "id": "smartpro",
+      "nombre": "SMARTPRO",
+      "marca": "KERN IoP | SMARTPRO",
+      "tipo": "hardware",
+      "resumen": "Captura en piso de máquina: sensores, PLC, táctil, código de barras y QR. Ciclos, órdenes, paradas, calidad y trazabilidad de operario y molde.",
+      "aportaA": [
+        "OEE (disponibilidad, desempeño, calidad)",
+        "Órdenes de producción y avance",
+        "Razones de parada",
+        "Piezas buenas / no conformes",
+        "Trazabilidad de molde, cavidades y operario"
+      ]
+    },
+    {
+      "id": "monitor",
+      "nombre": "MONITOR",
+      "marca": "KERN IoP | MONITOR",
+      "tipo": "software",
+      "resumen": "Almacena, visualiza y analiza la operación desde cualquier dispositivo. Dashboards de planta, máquina y orden; exportación a MES o ERP.",
+      "aportaA": [
+        "KPIs de productividad, costo y energía",
+        "Históricos auditables",
+        "Jerarquía planta / proceso / equipo",
+        "Alertas y reportes gerenciales"
+      ]
+    },
+    {
+      "id": "energy",
+      "nombre": "ENERGY",
+      "marca": "KERN IoP | ENERGY",
+      "tipo": "hardware",
+      "resumen": "Módulo de consumo energético por máquina y área. kWh, costo y consumo específico (kWh/kg) alineados al ciclo de inyección.",
+      "aportaA": [
+        "kWh por máquina, turno y orden",
+        "kWh/kg en tiempo real",
+        "Consumos ocultos en tiempos muertos"
+      ]
+    },
+    {
+      "id": "huella",
+      "nombre": "Huella de proceso",
+      "marca": "KERN IoP · Huella de proceso",
+      "tipo": "analisis",
+      "resumen": "Cruza energía, material y ciclo de inyección para estimar la huella de la fase de producción (insumo de ISO 14067 / PCF).",
+      "aportaA": [
+        "Energía del ciclo de inyección",
+        "Desperdicio de material",
+        "Puntos calientes de emisión en proceso"
+      ]
+    },
+    {
+      "id": "cmms",
+      "nombre": "Complemento CMMS",
+      "marca": "KERN IoP · datos de activo",
+      "tipo": "integracion",
+      "resumen": "Alimenta el CMMS con horas reales, ciclos, estados y fallas tomadas de la máquina, no del parte manuscrito.",
+      "aportaA": [
+        "Horas efectivas de trabajo",
+        "Ciclos acumulados",
+        "Estados y fallas del activo"
+      ]
+    },
+    {
+      "id": "cei",
+      "nombre": "CEI",
+      "marca": "Centro de Excelencia en Inyección",
+      "tipo": "capacitacion",
+      "resumen": "Formación aplicada en polímeros, proceso, molde y producto. Cierra la brecha de competencia que las normas exigen y el hardware no cubre.",
+      "aportaA": [
+        "Competencia de operarios y técnicos",
+        "Estandarización de parámetros",
+        "Diseño de molde y producto"
+      ]
+    }
+  ],
+  "dominiosScm": [
+    {
+      "dominio": "planificacion",
+      "nombre": "Planificación",
+      "ids": [
+        "iso-9001",
+        "iso-22301",
+        "iso-59010",
+        "iso-10004",
+        "iso-10005",
+        "iso-22468",
+        "iso-8000-1",
+        "iso-22400-2",
+        "iso-37500",
+        "iso-22316",
+        "iso-10006"
+      ]
+    },
+    {
+      "dominio": "compras",
+      "nombre": "Compras / sourcing",
+      "ids": [
+        "iso-20400",
+        "iso-22095",
+        "iso-59040",
+        "iso-44001",
+        "iso-26000",
+        "iso-37001",
+        "iso-37301",
+        "iso-27036",
+        "iso-38200",
+        "iso-10005",
+        "iso-2859-1",
+        "iso-37500",
+        "iso-18601",
+        "iso-10006"
+      ]
+    },
+    {
+      "dominio": "transporte",
+      "nombre": "Transporte",
+      "ids": [
+        "iso-28000",
+        "iso-15459",
+        "iso-14083",
+        "iso-39001",
+        "iso-23412",
+        "iso-17364",
+        "iso-28001",
+        "iso-18601"
+      ]
+    },
+    {
+      "dominio": "almacen",
+      "nombre": "Almacén",
+      "ids": [
+        "iso-55001",
+        "iso-41001"
+      ]
+    },
+    {
+      "dominio": "inventario",
+      "nombre": "Inventario",
+      "ids": [
+        "iso-17364",
+        "iso-2859-1",
+        "iso-22468",
+        "iso-8000-1",
+        "iso-22400-2"
+      ]
+    },
+    {
+      "dominio": "calidad",
+      "nombre": "Calidad de cadena",
+      "ids": [
+        "iso-9001",
+        "iatf-16949",
+        "iso-19011",
+        "iso-10002",
+        "iso-22000",
+        "iso-13485",
+        "iso-22716",
+        "iso-22005",
+        "iso-15378",
+        "iso-23412",
+        "iso-10004",
+        "iso-10005",
+        "iso-2859-1",
+        "iso-13053-1",
+        "iso-10006"
+      ]
+    },
+    {
+      "dominio": "optimizacion",
+      "nombre": "Optimización",
+      "ids": [
+        "iso-22468",
+        "iso-13053-1",
+        "iso-18404",
+        "iso-22400-2"
+      ]
+    },
+    {
+      "dominio": "riesgo",
+      "nombre": "Riesgo y continuidad",
+      "ids": [
+        "iso-45001",
+        "iso-31000",
+        "iso-22301",
+        "iso-28000",
+        "iso-37001",
+        "iso-37301",
+        "iso-39001",
+        "iso-28001",
+        "iso-37500",
+        "iso-22316",
+        "iso-41001"
+      ]
+    },
+    {
+      "dominio": "sostenibilidad",
+      "nombre": "Sostenibilidad SC",
+      "ids": [
+        "iso-14001",
+        "iso-50001",
+        "iso-14067",
+        "iso-14064-1",
+        "iso-20400",
+        "iso-22095",
+        "iso-14040",
+        "iso-59010",
+        "iso-59020",
+        "iso-59040",
+        "iso-14025",
+        "iso-14046",
+        "iso-14006",
+        "iso-26000",
+        "iso-38200",
+        "iso-14083",
+        "iso-18601"
+      ]
+    },
+    {
+      "dominio": "datos",
+      "nombre": "Datos y visibilidad",
+      "ids": [
+        "iso-27001",
+        "iso-15459",
+        "iso-27036",
+        "iso-17364",
+        "iso-8000-1"
+      ]
+    }
+  ],
+  "normas": [
+    {
+      "id": "iso-9001",
+      "codigo": "ISO 9001",
+      "edicion": "2015",
+      "nombre": "Sistemas de gestión de la calidad",
+      "familia": "calidad",
+      "prioridad": "esencial",
+      "tipo": "certificable",
+      "resumen": "La columna vertebral del SIG. Exige procesos controlados, evidencia de conformidad y mejora. En inyección eso es orden, parámetro, molde, material, pieza y no conforme — no un manual en un estante.",
+      "porQueElGerente": "El gerente de operaciones es dueño del proceso de realización (cláusula 8). Calidad diseña el sistema; operaciones lo hace vivir en cada ciclo de máquina.",
+      "rolOperaciones": [
+        "Mantener el mapa de procesos de planta: recepción de resina, secado, inyección, post-proceso, empaque y expedición.",
+        "Asegurar que cada orden arranque con molde, cavidades, receta y material identificados.",
+        "Contener y disponer salidas no conformes antes de que salgan de planta.",
+        "Entregar a la revisión por la dirección datos reales de OEE, scrap, reclamos y capacidad.",
+        "Cerrar acciones correctivas con causa en el piso, no con un párrafo genérico."
+      ],
+      "clausulas": [
+        {
+          "codigo": "4",
+          "titulo": "Contexto y procesos",
+          "queHaceOperaciones": "Define procesos de planta, interacciones (secado → inyección → calidad) y partes interesadas de piso: cliente, operario, mantenimiento."
+        },
+        {
+          "codigo": "6",
+          "titulo": "Planificación",
+          "queHaceOperaciones": "Objetivos de scrap, OEE y OTIF; riesgos de cambio de molde, material y turno."
+        },
+        {
+          "codigo": "7.1",
+          "titulo": "Infraestructura y ambiente",
+          "queHaceOperaciones": "Máquinas, moldes, agua de molde, silos y condiciones de piso que afectan la pieza."
+        },
+        {
+          "codigo": "8",
+          "titulo": "Operación",
+          "queHaceOperaciones": "Planificación de órdenes, control de cambios, proveedores de resina/masterbatch, producción y control de no conformes."
+        },
+        {
+          "codigo": "9–10",
+          "titulo": "Evaluación y mejora",
+          "queHaceOperaciones": "Indicadores de proceso, reclamos, auditorías de piso y acciones sobre causas de parada y defecto."
+        }
+      ],
+      "evidencias": [
+        "Órdenes de producción con molde, material y receta.",
+        "Registros de piezas buenas / no conformes por turno.",
+        "Control de cambios de parámetro y de molde.",
+        "Disposición de no conformes y retrabajo.",
+        "Revisión gerencial con datos de planta, no de opinion."
+      ],
+      "indicadores": [
+        "OEE de celda y de planta",
+        "PPM / scrap por molde y por resina",
+        "OTIF de órdenes",
+        "Tiempo de cierre de no conformes"
+      ],
+      "kern": {
+        "cobertura": "evidencia-parcial",
+        "modulos": [
+          "smartpro",
+          "monitor",
+          "cei"
+        ],
+        "comoAyuda": "SMARTPRO captura el ciclo, la orden, el operario, el molde y la calidad a pie de máquina. MONITOR convierte eso en histórico auditable y en KPI que un auditor puede seguir hasta el turno.",
+        "evidenciasKern": [
+          "% de procedimientos vencidos, sin dueno y sin version sobre tu registro exportado (clausula 7.5)",
+          "Fill rate y OTIF por linea de pedido (clausula 8.5.1, salida de proceso)"
+        ],
+        "limite": "KERN no mide OEE, scrap ni no conformes de piso: no ingesta datos de maquina. Cubre el control documental y el desempeno de entrega. El manual, el alcance y la auditoria de certificacion son ajenos."
+      },
+      "tareas": [
+        {
+          "id": "iso-9001-t1",
+          "titulo": "Fichar cada orden con molde, material y operario",
+          "detalle": "Ningún arranque sin identificación en SMARTPRO (QR/código o táctil).",
+          "kern": [
+            "smartpro"
+          ]
+        },
+        {
+          "id": "iso-9001-t2",
+          "titulo": "Registrar no conformes en la misma orden",
+          "detalle": "Calidad de OEE sale del piso, no de una planilla al final del turno.",
+          "kern": [
+            "smartpro",
+            "monitor"
+          ]
+        },
+        {
+          "id": "iso-9001-t3",
+          "titulo": "Revisar semanalmente scrap y paradas por molde",
+          "detalle": "Usar MONITOR para elegir las tres causas que cierran acción.",
+          "kern": [
+            "monitor"
+          ]
+        },
+        {
+          "id": "iso-9001-t4",
+          "titulo": "Estandarizar recetas de proceso con el CEI",
+          "detalle": "Competencia y parámetros estables: sin eso el OEE no es un sistema de calidad.",
+          "kern": [
+            "cei"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iatf-16949",
+        "iso-14001",
+        "iso-45001",
+        "iso-19011"
+      ],
+      "erroresComunes": [
+        "Certificar 9001 con registros de papel mientras la máquina ya tiene datos que nadie usa.",
+        "Dejar la cláusula 8 en Calidad y no en Operaciones.",
+        "Medir OEE sin criterio de pieza buena alineado a la inspección."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [
+        "transformacion"
+      ],
+      "scm": [
+        "calidad",
+        "planificacion"
+      ]
+    },
+    {
+      "id": "iatf-16949",
+      "codigo": "IATF 16949",
+      "edicion": "2016",
+      "nombre": "Sistemas de gestión de la calidad — automoción",
+      "familia": "automotriz",
+      "prioridad": "esencial",
+      "tipo": "certificable",
+      "resumen": "El 9001 del mundo auto. Añade control de características especiales, trazabilidad de lote, gestión de proveedores y reacción ante no conformes. Si la planta inyecta para OEM o Tier 1, el gerente de operaciones vive aquí.",
+      "porQueElGerente": "IATF no se sostiene con un coordinador de calidad: exige control del proceso de moldeo, cambio de molde, lote de resina y contención en minutos, no en días.",
+      "rolOperaciones": [
+        "Garantizar trazabilidad de lote de resina → molde → cavidad → pieza → contenedor.",
+        "Controlar características especiales del proceso (presión, temperatura, tiempo de ciclo) dentro de ventana.",
+        "Ejecutar contención, selección y FIFO cuando hay un no conforme de cliente.",
+        "Mantener el control de cambios de herramental y de parámetro con autorización.",
+        "Alimentar PPAP / control plan con datos reales de capacidad, no con una foto de arranque."
+      ],
+      "clausulas": [
+        {
+          "codigo": "8.5.2",
+          "titulo": "Identificación y trazabilidad",
+          "queHaceOperaciones": "Lote, orden, molde, cavidades y operario ligados a cada contenedor que sale."
+        },
+        {
+          "codigo": "8.5.6",
+          "titulo": "Control de cambios",
+          "queHaceOperaciones": "Todo cambio de receta, molde o material queda registrado y autorizado antes de producir."
+        },
+        {
+          "codigo": "8.6 / 8.7",
+          "titulo": "Liberación y no conformes",
+          "queHaceOperaciones": "Pieza no sale sin criterio de conformidad; el no conforme se identifica y se detiene."
+        },
+        {
+          "codigo": "9.1.1.1",
+          "titulo": "Monitoreo del proceso de manufactura",
+          "queHaceOperaciones": "Variables de proceso y de producto en tiempo real, no al cierre de mes."
+        }
+      ],
+      "evidencias": [
+        "Trazabilidad de lote a contenedor.",
+        "Registros de características especiales de proceso.",
+        "Control plan vivo (no un PDF de hace tres años).",
+        "Tiempos de contención y de selección."
+      ],
+      "indicadores": [
+        "PPM de cliente",
+        "Tiempo de contención",
+        "Cpk / Ppk de características especiales",
+        "Cambios de proceso sin autorización (debe ser cero)"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "SMARTPRO amarra orden, molde, cavidades, operario y calidad. MONITOR conserva el histórico que IATF pide cuando el auditor pregunta «¿qué pasó el martes en la 280 ton?»",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iatf-16949-t1",
+          "titulo": "Cerrar el eslabón lote–orden–molde–operario",
+          "detalle": "Escanear o fichar en SMARTPRO antes del primer ciclo bueno.",
+          "kern": [
+            "smartpro"
+          ]
+        },
+        {
+          "id": "iatf-16949-t2",
+          "titulo": "Definir la ventana de ciclo para piezas especiales",
+          "detalle": "Si el ciclo se sale de ventana, la orden debe verse en MONITOR el mismo turno.",
+          "kern": [
+            "smartpro",
+            "monitor"
+          ]
+        },
+        {
+          "id": "iatf-16949-t3",
+          "titulo": "Ensayar contención con datos de las últimas 24 h",
+          "detalle": "El gerente debe poder listar qué órdenes y qué cavidades están en riesgo en minutos.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-9001",
+        "iso-31000",
+        "iso-28000"
+      ],
+      "erroresComunes": [
+        "Trazabilidad solo de etiqueta de caja, sin vínculo al ciclo real.",
+        "Características especiales en el control plan y no en el set de máquina."
+      ],
+      "sectores": [
+        "Automotriz",
+        "Tier 1 / Tier 2"
+      ],
+      "cadenaProductiva": false,
+      "eslabones": [
+        "transformacion",
+        "cliente"
+      ],
+      "scm": [
+        "calidad"
+      ]
+    },
+    {
+      "id": "iso-14001",
+      "codigo": "ISO 14001",
+      "edicion": "2015",
+      "nombre": "Sistemas de gestión ambiental",
+      "familia": "ambiente",
+      "prioridad": "esencial",
+      "tipo": "certificable",
+      "resumen": "Aspectos ambientales significativos de la planta: energía, merma de polímero, agua de molde, empaque y residuos. El gerente de operaciones controla casi todos en el día a día.",
+      "porQueElGerente": "El aspecto ambiental no ocurre en el informe anual: ocurre en el secador que corre vacío, en la merma de arranque y en el purín mal clasificado.",
+      "rolOperaciones": [
+        "Identificar aspectos: consumo eléctrico de inyectoras, merma, aceite hidráulico, agua y empaque.",
+        "Operar controles: apagado de máquinas, reciclo de colada, separación de residuos.",
+        "Preparar respuesta a derrames y a fallas de servicios (agua, aire, energía).",
+        "Entregar datos de consumo y de residuo a la revisión ambiental."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6.1.2",
+          "titulo": "Aspectos ambientales",
+          "queHaceOperaciones": "Lista viva de aspectos de piso, con criterio de significancia (kWh, kg merma, litros aceite)."
+        },
+        {
+          "codigo": "8.1",
+          "titulo": "Planificación y control operacional",
+          "queHaceOperaciones": "Arranque/paro, purga, reciclo, disposición de merma y de aceite."
+        },
+        {
+          "codigo": "8.2",
+          "titulo": "Preparación ante emergencias",
+          "queHaceOperaciones": "Derrame de hidráulico, incendio de polímero, corte de agua de molde."
+        }
+      ],
+      "evidencias": [
+        "Matriz de aspectos actualizada con datos de planta.",
+        "Kg de merma y destino (reproceso / vendedor / disposición).",
+        "Consumo energético por máquina o por kg.",
+        "Registros de simulacro y de incidente ambiental."
+      ],
+      "indicadores": [
+        "kWh/kg inyectado",
+        "Merma % sobre resina alimentada",
+        "% de merma recuperada",
+        "Incidentes ambientales"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "energy",
+          "monitor",
+          "huella",
+          "smartpro"
+        ],
+        "comoAyuda": "ENERGY y MONITOR dan kWh y kWh/kg. SMARTPRO da merma implícita (ciclos vs piezas buenas). La huella de proceso conecta eso con el relato ambiental que 14001 pide.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
+      },
+      "tareas": [
+        {
+          "id": "iso-14001-t1",
+          "titulo": "Medir kWh/kg por celda crítica",
+          "detalle": "Instalar o activar ENERGY en las inyectoras de mayor tonelaje.",
+          "kern": [
+            "energy",
+            "monitor"
+          ]
+        },
+        {
+          "id": "iso-14001-t2",
+          "titulo": "Cruzar merma de arranque con órdenes reales",
+          "detalle": "Usar SMARTPRO para no estimar merma «a ojo de pájaro» en el informe ISO.",
+          "kern": [
+            "smartpro",
+            "monitor"
+          ]
+        },
+        {
+          "id": "iso-14001-t3",
+          "titulo": "Incluir energía y merma en la revisión ambiental",
+          "detalle": "Un gráfico de MONITOR, no una foto del contenedor.",
+          "kern": [
+            "monitor",
+            "huella"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-50001",
+        "iso-14067",
+        "iso-14064-1",
+        "iso-9001"
+      ],
+      "erroresComunes": [
+        "Declarar aspecto significativo «energía» sin medidor por máquina.",
+        "Hablar de economía circular y no rastrear la colada."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [
+        "transformacion",
+        "fin-de-vida"
+      ],
+      "scm": [
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-45001",
+      "codigo": "ISO 45001",
+      "edicion": "2018",
+      "nombre": "Seguridad y salud en el trabajo",
+      "familia": "sst",
+      "prioridad": "esencial",
+      "tipo": "certificable",
+      "resumen": "Peligros del piso de inyección: atrapamiento en molde, quemaduras, hidráulico, ruido, carga de cajas, montacargas y contratistas de mantenimiento.",
+      "porQueElGerente": "Operaciones es dueño de las condiciones de trabajo. SST asesora; el gerente no puede delegar el control operacional de la prensa.",
+      "rolOperaciones": [
+        "Mantener LOTO, protecciones de molde y reglas de cambio de molde.",
+        "Controlar contratistas y personal de mantenimiento en máquina.",
+        "Investigar incidentes con datos de estado de máquina (qué hacía el equipo).",
+        "Asegurar competencia de operarios en arranque, purga y atascos."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6.1.2",
+          "titulo": "Identificación de peligros",
+          "queHaceOperaciones": "Peligros por celda: molde, robot, hopper, estibas, pasillos."
+        },
+        {
+          "codigo": "8.1.2",
+          "titulo": "Eliminar peligros y reducir riesgos",
+          "queHaceOperaciones": "Protecciones, procedimientos de atasco, ayudas de izaje de molde."
+        },
+        {
+          "codigo": "8.1.3",
+          "titulo": "Gestión del cambio",
+          "queHaceOperaciones": "Nuevo molde, nuevo robot o nuevo layout no entran sin evaluación SST."
+        }
+      ],
+      "evidencias": [
+        "Permisos de trabajo y LOTO en cambio de molde.",
+        "Inducción de contratistas.",
+        "Investigaciones de incidente con línea de tiempo.",
+        "Inspecciones de protecciones de máquina."
+      ],
+      "indicadores": [
+        "Incidentes y casi accidentes",
+        "Cumplimiento de LOTO en cambios de molde",
+        "Horas de capacitación SST de piso"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor",
+          "cmms",
+          "cei"
+        ],
+        "comoAyuda": "SMARTPRO registra paradas y estados de máquina; eso arma la línea de tiempo de un incidente. El CEI cubre competencia. El CMMS recibe horas reales del activo.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma son de personas, incidentes y horas trabajadas. KERN no ingesta datos de EHS ni de recursos humanos."
+      },
+      "tareas": [
+        {
+          "id": "iso-45001-t1",
+          "titulo": "Usar razones de parada que distingan atasco / LOTO / falla",
+          "detalle": "Si todas las paradas son «otros», 45001 no tiene nada que auditar en KERN.",
+          "kern": [
+            "smartpro"
+          ]
+        },
+        {
+          "id": "iso-45001-t2",
+          "titulo": "En cada incidente grave, bajar el log de MONITOR de esa hora",
+          "detalle": "Estado de máquina y operario asignado antes de tomar declaraciones.",
+          "kern": [
+            "monitor"
+          ]
+        },
+        {
+          "id": "iso-45001-t3",
+          "titulo": "Formar cambio de molde y atascos en el CEI",
+          "detalle": "Competencia demostrable, no solo firma de reglamento.",
+          "kern": [
+            "cei"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-9001",
+        "iso-55001",
+        "iso-31000"
+      ],
+      "erroresComunes": [
+        "Matriz de peligros genérica de «industria manufacturera» sin el molde.",
+        "Investigar el incidente sin mirar qué hacía la máquina."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [],
+      "scm": [
+        "riesgo"
+      ]
+    },
+    {
+      "id": "iso-50001",
+      "codigo": "ISO 50001",
+      "edicion": "2018",
+      "nombre": "Sistemas de gestión de la energía",
+      "familia": "energia",
+      "prioridad": "esencial",
+      "tipo": "certificable",
+      "resumen": "La energía es el segundo o tercer costo de una planta de inyección. 50001 pide usos significativos, línea base, indicadores (EnPI) y control operacional — exactamente lo que ENERGY fue diseñado para medir.",
+      "porQueElGerente": "Sin medición por máquina, el «ahorro energético» es un lema. El gerente de operaciones es el dueño de los usos significativos: inyectoras, chillers, compresores, secadores.",
+      "rolOperaciones": [
+        "Identificar usos significativos de energía (SEUs) en planta.",
+        "Fijar EnPI: kWh/kg, kWh/hora de máquina, kWh de chiller por tonelada.",
+        "Operar ventanas: no dejar resistencias y secadores en vacío.",
+        "Priorizar mantenimiento que recupera eficiencia (fugas de aire, agua de molde, tornillo)."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6.3",
+          "titulo": "Revisión energética",
+          "queHaceOperaciones": "Consumos por equipo, no una sola factura de la comercializadora."
+        },
+        {
+          "codigo": "6.4–6.6",
+          "titulo": "Indicadores, línea base y objetivos",
+          "queHaceOperaciones": "Línea base de kWh/kg por familia de pieza y por tonelaje."
+        },
+        {
+          "codigo": "8.1",
+          "titulo": "Control operacional",
+          "queHaceOperaciones": "Paros de fin de semana, set points de agua, recetas que no sobrecalientan."
+        }
+      ],
+      "evidencias": [
+        "Revisión energética con desglose por SEU.",
+        "Línea base y EnPI por celda.",
+        "Planes de acción con kWh ahorrados, no con «se sensibilizó al personal»."
+      ],
+      "indicadores": [
+        "kWh/kg por celda",
+        "kWh en idle / setup",
+        "Desvío vs línea base"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "energy",
+          "monitor",
+          "smartpro"
+        ],
+        "comoAyuda": "ENERGY mide; SMARTPRO da el denominador (kg, ciclos, órdenes); MONITOR es el EnPI vivo. Es el caso de uso más directo de KERN después del OEE.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
+      },
+      "tareas": [
+        {
+          "id": "iso-50001-t1",
+          "titulo": "Instrumentar las inyectoras que concentran el 80% del kWh",
+          "detalle": "ENERGY en las SEU, no en la máquina de prototipos.",
+          "kern": [
+            "energy"
+          ]
+        },
+        {
+          "id": "iso-50001-t2",
+          "titulo": "Publicar kWh/kg en el dashboard de planta",
+          "detalle": "El turno debe ver el EnPI, no solo el OEE.",
+          "kern": [
+            "monitor"
+          ]
+        },
+        {
+          "id": "iso-50001-t3",
+          "titulo": "Atacar idle energético con razones de parada",
+          "detalle": "Cruzar ENERGY con paradas SMARTPRO: calentamiento vs espera de molde.",
+          "kern": [
+            "energy",
+            "smartpro",
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-14001",
+        "iso-14067",
+        "iso-55001"
+      ],
+      "erroresComunes": [
+        "Usar solo la factura mensual como EnPI.",
+        "Optimizar ciclo para OEE y empeorar kWh/kg sin darse cuenta."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [
+        "transformacion"
+      ],
+      "scm": [
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-14067",
+      "codigo": "ISO 14067",
+      "edicion": "2018",
+      "nombre": "Huella de carbono de productos (PCF)",
+      "familia": "ambiente",
+      "prioridad": "esencial",
+      "tipo": "especificacion",
+      "resumen": "Método para cuantificar GEI de un producto a lo largo del ciclo de vida. En inyección, la fase de proceso (energía + merma + utilidades) es medible en planta y es el tramo donde KERN aporta dato primario.",
+      "porQueElGerente": "Los clientes de empaque y auto ya piden PCF. Operaciones no calcula el LCA completo, pero es dueño de la energía y el material del moldeo — la parte que más se distorsiona si se estima con promedios de catálogo.",
+      "rolOperaciones": [
+        "Entregar energía real por pieza o por kg, no un factor genérico de «planta promedio».",
+        "Separar merma de proceso de merma de logística.",
+        "Identificar recetas y máquinas que inflan la huella (ciclo largo, rechazos, secado excesivo).",
+        "Coordinar con compras el dato de resina (virgen vs reciclado) que entra al PCF."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6",
+          "titulo": "Unidad funcional y límites",
+          "queHaceOperaciones": "Acordar si el PCF es por pieza, por kg o por contenedor, y qué entra de planta."
+        },
+        {
+          "codigo": "6.3",
+          "titulo": "Inventario del ciclo de vida",
+          "queHaceOperaciones": "Dato primario: kWh, kg de resina, merma, agua/aire atribuibles al proceso."
+        },
+        {
+          "codigo": "7",
+          "titulo": "Impacto e interpretación",
+          "queHaceOperaciones": "Priorizar acciones de planta que mueven el PCF: energía, scrap, material."
+        }
+      ],
+      "evidencias": [
+        "kWh atribuible a la familia de pieza.",
+        "Balance de masa: resina in – piezas out – merma.",
+        "Reglas de asignación cuando una máquina corre varias órdenes."
+      ],
+      "indicadores": [
+        "kg CO2e / kg de pieza (tramo de proceso)",
+        "kWh/kg",
+        "Merma %"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "huella",
+          "energy",
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "La huella de proceso de KERN IoP usa energía del ciclo, merma y flujo de material. Es el dato primario que un estudio 14067 necesita de manufactura; no el LCA de cuna a tumba completo.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
+      },
+      "tareas": [
+        {
+          "id": "iso-14067-t1",
+          "titulo": "Elegir 3 familias de pieza para PCF piloto",
+          "detalle": "Las de mayor volumen o las que el cliente ya pidió huella.",
+          "kern": [
+            "huella",
+            "monitor"
+          ]
+        },
+        {
+          "id": "iso-14067-t2",
+          "titulo": "Atribuir energía y merma a esas órdenes",
+          "detalle": "ENERGY + SMARTPRO, sin promediar toda la planta en un solo factor.",
+          "kern": [
+            "energy",
+            "smartpro",
+            "huella"
+          ]
+        },
+        {
+          "id": "iso-14067-t3",
+          "titulo": "Documentar qué queda fuera del dato KERN",
+          "detalle": "Resina, flete y fin de vida: para no vender un PCF de proceso como LCA completo.",
+          "kern": [
+            "huella"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-14001",
+        "iso-50001",
+        "iso-14064-1",
+        "iso-20400"
+      ],
+      "erroresComunes": [
+        "Publicar un PCF con factor genérico de electricidad y scrap inventado.",
+        "Confundir huella de proceso con huella de producto completa."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica",
+        "cliente",
+        "fin-de-vida"
+      ],
+      "scm": [
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-31000",
+      "codigo": "ISO 31000",
+      "edicion": "2018",
+      "nombre": "Gestión del riesgo — directrices",
+      "familia": "riesgo",
+      "prioridad": "esencial",
+      "tipo": "guia",
+      "resumen": "No se certifica. Es el método para tratar riesgo operacional: máquina crítica, único molde, único proveedor de resina, corte eléctrico, ciberincidente en el piso.",
+      "porQueElGerente": "El registro de riesgos de operaciones no puede ser una copia del de corporativo. El gerente nombra dueños, controles y disparadores en planta.",
+      "rolOperaciones": [
+        "Mantener el registro de riesgos de planta con dueño y control.",
+        "Usar paradas, scrap y OEE como evidencia de que el riesgo se materializa.",
+        "Escalar riesgos de único punto de falla (molde, chiller, transformador)."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6.4.2",
+          "titulo": "Identificación",
+          "queHaceOperaciones": "Riesgos de proceso, suministro, personas y activos de piso."
+        },
+        {
+          "codigo": "6.4.3–6.5",
+          "titulo": "Análisis, evaluación y tratamiento",
+          "queHaceOperaciones": "Controles: backup de molde, segundo secador, buffer de resina, mantenimiento."
+        },
+        {
+          "codigo": "6.6",
+          "titulo": "Monitoreo y revisión",
+          "queHaceOperaciones": "Los KPI de KERN son el monitoreo continuo del riesgo de proceso."
+        }
+      ],
+      "evidencias": [
+        "Registro de riesgos de operaciones con dueño.",
+        "Controles ligados a equipos y a indicadores.",
+        "Revisión tras un incidente o un mes malo de OEE."
+      ],
+      "indicadores": [
+        "Riesgos vencidos sin tratamiento",
+        "Horas de paro de causa «único punto de falla»"
+      ],
+      "kern": {
+        "cobertura": "nativo",
+        "modulos": [
+          "monitor",
+          "smartpro",
+          "cmms"
+        ],
+        "comoAyuda": "MONITOR muestra dónde el riesgo ya está ocurriendo (paradas, scrap, energía). No calcula el riesgo inherente; alimenta el monitoreo.",
+        "evidenciasKern": [
+          "Perdida esperada en $ (EMV) y RPN por riesgo declarado",
+          "Matriz 5x5 de probabilidad e impacto",
+          "Brecha entre tiempo de recuperacion y de supervivencia (TTR vs TTS)"
+        ],
+        "limite": "KERN evalua los riesgos que le declaras y los de cadena que puede leer. No mantiene el registro de riesgos ni el seguimiento del tratamiento: eso vive en tu sistema de gestion."
+      },
+      "tareas": [
+        {
+          "id": "iso-31000-t1",
+          "titulo": "Armar el top 10 de riesgos de planta con dueño",
+          "detalle": "Cada riesgo debe tener un KPI en MONITOR o una razón de parada.",
+          "kern": [
+            "monitor"
+          ]
+        },
+        {
+          "id": "iso-31000-t2",
+          "titulo": "Revisar mensualmente riesgos vs Pareto real",
+          "detalle": "Si el Pareto no aparece en el registro, el registro es teatro.",
+          "kern": [
+            "monitor",
+            "smartpro"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-22301",
+        "iso-9001",
+        "iso-55001",
+        "iso-27001"
+      ],
+      "erroresComunes": [
+        "Matriz de riesgos de oficina aplicada a una planta de 40 inyectoras.",
+        "Tratar el riesgo una vez al año."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica"
+      ],
+      "scm": [
+        "riesgo"
+      ]
+    },
+    {
+      "id": "iso-22301",
+      "codigo": "ISO 22301",
+      "edicion": "2019",
+      "nombre": "Gestión de la continuidad del negocio",
+      "familia": "continuidad",
+      "prioridad": "esencial",
+      "tipo": "certificable",
+      "resumen": "Qué hace la planta cuando cae el transformador, el chiller, el ERP o el molde de la pieza A. Operaciones define RTO de celdas críticas y el plan de recuperación de producción.",
+      "porQueElGerente": "Continuidad no es un PDF de TI. Es qué órdenes se salvan, qué moldes se mudan y con qué resina se sigue inyectando.",
+      "rolOperaciones": [
+        "Hacer el BIA de procesos de moldeo y de utilidades.",
+        "Definir RTO/RPO de celdas que alimentan clientes auto o de empaque crítico.",
+        "Ensayar cambio de molde de contingencia y segundo turno de emergencia.",
+        "Coordinar con KERN el acceso a datos si cae la red local."
+      ],
+      "clausulas": [
+        {
+          "codigo": "8.2",
+          "titulo": "Análisis de impacto (BIA)",
+          "queHaceOperaciones": "Procesos críticos: inyección de SKU A, agua de molde, aire, resina."
+        },
+        {
+          "codigo": "8.4–8.6",
+          "titulo": "Estrategias y planes",
+          "queHaceOperaciones": "Máquina alterna, molde espejo, stock de seguridad, proveedores alternos."
+        },
+        {
+          "codigo": "8.5",
+          "titulo": "Ejercicios",
+          "queHaceOperaciones": "Simulacro de pérdida de chiller o de la inyectora más cargada."
+        }
+      ],
+      "evidencias": [
+        "BIA de planta con RTO por proceso.",
+        "Plan de recuperación de producción.",
+        "Actas de simulacro."
+      ],
+      "indicadores": [
+        "RTO real vs objetivo en el último incidente",
+        "SKUs sin máquina/molde alterno"
+      ],
+      "kern": {
+        "cobertura": "evidencia-parcial",
+        "modulos": [
+          "monitor",
+          "smartpro",
+          "cmms"
+        ],
+        "comoAyuda": "El histórico de MONITOR dice qué máquina puede absorber qué orden (capacidad real, no la de catálogo). Los ciclos y fallas alimentan el BIA.",
+        "evidenciasKern": [
+          "Capacidad real por máquina",
+          "Historial de fallas largas",
+          "Órdenes en curso al momento de la crisis"
+        ],
+        "limite": "KERN no es el plan de continuidad ni el sitio alterno. Si MONITOR está en nube, hay que declarar la dependencia y el modo degradado en piso."
+      },
+      "tareas": [
+        {
+          "id": "iso-22301-t1",
+          "titulo": "Listar SKUs sin máquina o molde alterno",
+          "detalle": "Salen del cruce de órdenes históricas en MONITOR vs parque de máquinas.",
+          "kern": [
+            "monitor"
+          ]
+        },
+        {
+          "id": "iso-22301-t2",
+          "titulo": "Definir RTO de las tres celdas que más facturan",
+          "detalle": "Con datos de falla real, no con un número copiado de un template.",
+          "kern": [
+            "cmms",
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-31000",
+        "iso-55001",
+        "iso-27001"
+      ],
+      "erroresComunes": [
+        "Plan de continuidad que solo cubre el data center.",
+        "RTO de 4 horas con un solo molde de 16 semanas de lead time."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [
+        "transformacion",
+        "logistica"
+      ],
+      "scm": [
+        "riesgo",
+        "planificacion"
+      ]
+    },
+    {
+      "id": "iso-19011",
+      "codigo": "ISO 19011",
+      "edicion": "2018",
+      "nombre": "Directrices para la auditoría de sistemas de gestión",
+      "familia": "auditoria",
+      "prioridad": "recomendada",
+      "tipo": "guia",
+      "resumen": "Cómo auditar 9001, 14001, 45001 y 50001 sin pelearse con cada norma por separado. El gerente de operaciones es auditado y, en plantas maduras, audita procesos de piso.",
+      "porQueElGerente": "Una auditoría de piso con datos de KERN dura menos y encuentra causas. Una auditoría de carpeta encuentra adjetivos.",
+      "rolOperaciones": [
+        "Preparar evidencias de proceso (órdenes, OEE, energía, no conformes) antes del auditor.",
+        "Acompañar auditorías internas de operación.",
+        "Cerrar hallazgos con acción en máquina, no solo en el procedimiento."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5",
+          "titulo": "Gestión del programa de auditoría",
+          "queHaceOperaciones": "Asegurar que el programa cubre celdas críticas y turnos, no solo la oficina de calidad."
+        },
+        {
+          "codigo": "6",
+          "titulo": "Realización de la auditoría",
+          "queHaceOperaciones": "Muestreo basado en datos: las peores órdenes y las peores máquinas, no las vitrina."
+        }
+      ],
+      "evidencias": [
+        "Programa de auditorías internas de piso.",
+        "Hallazgos con evidencia objetiva (captura de MONITOR, no foto de cartel).",
+        "Eficacia de acciones verificada en un segundo muestreo."
+      ],
+      "indicadores": [
+        "Hallazgos reabiertos",
+        "Días de cierre de no conformidad de auditoría"
+      ],
+      "kern": {
+        "cobertura": "evidencia-parcial",
+        "modulos": [
+          "monitor",
+          "smartpro",
+          "energy"
+        ],
+        "comoAyuda": "MONITOR es la pista de auditoría: el auditor sigue una orden hasta el ciclo. Reduce el «muéstreme el registro del 12».",
+        "evidenciasKern": [
+          "Histórico de una orden / máquina / turno",
+          "OEE, scrap y energía del período auditado"
+        ],
+        "limite": "KERN no programa auditorías ni califica auditores. El método sigue 19011; la herramienta es evidencia."
+      },
+      "tareas": [
+        {
+          "id": "iso-19011-t1",
+          "titulo": "Armar el paquete de evidencia KERN para la próxima auditoría",
+          "detalle": "OEE, scrap, energía y tres órdenes trazadas de punta a punta.",
+          "kern": [
+            "monitor"
+          ]
+        },
+        {
+          "id": "iso-19011-t2",
+          "titulo": "Auditar una celda usando solo datos de piso",
+          "detalle": "Sin abrir el procedimiento: ¿el dato cuenta la misma historia?",
+          "kern": [
+            "smartpro",
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-9001",
+        "iso-14001",
+        "iso-45001",
+        "iso-50001"
+      ],
+      "erroresComunes": [
+        "Auditar el SIG en la sala de juntas.",
+        "Cerrar hallazgos con «se capacitó» y el OEE igual."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [],
+      "scm": [
+        "calidad"
+      ]
+    },
+    {
+      "id": "iso-27001",
+      "codigo": "ISO/IEC 27001",
+      "edicion": "2022",
+      "nombre": "Seguridad de la información",
+      "familia": "seguridad-info",
+      "prioridad": "recomendada",
+      "tipo": "certificable",
+      "resumen": "La planta ya es un sistema de información: recetas, OEE, identidad de operarios, órdenes de cliente. 27001 cubre el SGSI; operaciones cubre el piso (accesos físicos a HMI, USB, red de máquina).",
+      "porQueElGerente": "Un USB en la inyectora o un HMI sin usuario son incidentes de operaciones, no solo de TI.",
+      "rolOperaciones": [
+        "Controlar acceso físico a SMARTPRO, HMI y gabinetes.",
+        "No improvisar redes entre máquina e internet.",
+        "Definir qué datos de producción son confidenciales (receta, volúmenes de cliente).",
+        "Participar en el inventario de activos de información de piso."
+      ],
+      "clausulas": [
+        {
+          "codigo": "A.7",
+          "titulo": "Controles físicos",
+          "queHaceOperaciones": "Acceso a sala de máquinas, gabinetes y pantallas de piso."
+        },
+        {
+          "codigo": "A.8",
+          "titulo": "Tecnológicos",
+          "queHaceOperaciones": "Cuentas en HMI/SMARTPRO, backups de receta, malware en PCs de piso."
+        }
+      ],
+      "evidencias": [
+        "Inventario de HMI, PCs de piso y SMARTPRO.",
+        "Altas/bajas de usuarios de operario.",
+        "Incidentes de USB / acceso no autorizado."
+      ],
+      "indicadores": [
+        "Cuentas de piso activas vs personas activas",
+        "Incidentes de seguridad en planta"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "monitor",
+          "smartpro"
+        ],
+        "comoAyuda": "MONITOR centraliza datos con almacenamiento seguro y acceso web. SMARTPRO identifica operario. Eso cubre integridad y trazabilidad de dato; no el SGSI completo.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma son de cuentas, accesos y controles de TI. KERN no ingesta ese dato."
+      },
+      "tareas": [
+        {
+          "id": "iso-27001-t1",
+          "titulo": "Inventariar pantallas SMARTPRO y usuarios de piso",
+          "detalle": "Nadie comparte el mismo login de «operario».",
+          "kern": [
+            "smartpro"
+          ]
+        },
+        {
+          "id": "iso-27001-t2",
+          "titulo": "Acordar con TI el perímetro de MONITOR",
+          "detalle": "Quién ve volúmenes de cliente y desde qué redes.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-22301",
+        "iso-9001"
+      ],
+      "erroresComunes": [
+        "Dejar 27001 solo en el área de sistemas.",
+        "Recetas de moldeo en un USB sin control."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [],
+      "scm": [
+        "datos"
+      ]
+    },
+    {
+      "id": "iso-55001",
+      "codigo": "ISO 55001",
+      "edicion": "2024",
+      "nombre": "Gestión de activos",
+      "familia": "activos",
+      "prioridad": "recomendada",
+      "tipo": "certificable",
+      "resumen": "Inyectoras, moldes, robots, chillers y secadores son activos que producen (o destruyen) el OEE. 55001 pide ciclo de vida, criticidad y decisiones con costo/riesgo/desempeño.",
+      "porQueElGerente": "Operaciones convive con el activo 24/7. Mantenimiento ejecuta; el gerente decide criticidad, overhaul y cuándo un molde ya no es confiable.",
+      "rolOperaciones": [
+        "Clasificar activos críticos (máquina + molde de SKU A).",
+        "Exigir mantenimiento basado en ciclos y horas reales, no en el calendario solo.",
+        "Incluir moldes como activos, no como «herramientas de calidad»."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6",
+          "titulo": "Planificación",
+          "queHaceOperaciones": "Objetivos de disponibilidad y de vida útil de molde/máquina."
+        },
+        {
+          "codigo": "8",
+          "titulo": "Operación",
+          "queHaceOperaciones": "Uso dentro de ventana, cambio de molde, bloqueo de activo degradado."
+        }
+      ],
+      "evidencias": [
+        "Registro de activos críticos (máquina y molde).",
+        "Planes de mantenimiento con disparador en ciclos/horas.",
+        "Decisiones de reemplazo con datos de falla y de OEE."
+      ],
+      "indicadores": [
+        "MTBF / MTTR de celdas críticas",
+        "Disponibilidad de molde vs plan",
+        "Mantenimiento preventivo vencido"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "cmms",
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "KERN alimenta el CMMS con horas, ciclos, estados y fallas reales. Deja de ser «el técnico dijo que la máquina corrió 6 horas».",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-55001-t1",
+          "titulo": "Conectar ciclos/horas KERN al plan preventivo",
+          "detalle": "Al menos en las 5 inyectoras y 5 moldes más críticos.",
+          "kern": [
+            "cmms",
+            "smartpro"
+          ]
+        },
+        {
+          "id": "iso-55001-t2",
+          "titulo": "Revisar moldes con OEE de calidad en caída",
+          "detalle": "El molde es un activo; MONITOR lo demuestra.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-50001",
+        "iso-9001",
+        "iso-22301",
+        "iso-45001"
+      ],
+      "erroresComunes": [
+        "Gestionar la máquina y olvidar el molde.",
+        "Preventivo por calendario en un activo que corre 3 turnos vs uno que corre 1."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [
+        "transformacion",
+        "logistica"
+      ],
+      "scm": [
+        "almacen"
+      ]
+    },
+    {
+      "id": "iso-14064-1",
+      "codigo": "ISO 14064-1",
+      "edicion": "2018",
+      "nombre": "GEI a nivel de organización",
+      "familia": "ambiente",
+      "prioridad": "recomendada",
+      "tipo": "especificacion",
+      "resumen": "Inventario de gases de efecto invernadero de la organización (alcances 1 y 2, y 3 si se declara). Complementa el PCF de 14067: uno es la planta, el otro es la pieza.",
+      "porQueElGerente": "El alcance 2 (electricidad) y buena parte del 1 (combustibles de montacargas, fugas) se operan en planta. Sin desglose, el inventario es un Excel de tesorería.",
+      "rolOperaciones": [
+        "Proveer electricidad de proceso vs servicios.",
+        "Reportar combustibles y fugas relevantes de piso.",
+        "Separar producción (denominador) para intensidad de emisiones."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5–6",
+          "titulo": "Límites e inventario",
+          "queHaceOperaciones": "Qué instalaciones y qué fuentes de piso entran al inventario."
+        }
+      ],
+      "evidencias": [
+        "kWh de proceso vs resto.",
+        "Kg producidos del período del inventario."
+      ],
+      "indicadores": [
+        "tCO2e alcance 2 de proceso",
+        "tCO2e / t inyectada"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "energy",
+          "monitor",
+          "huella"
+        ],
+        "comoAyuda": "ENERGY desagrega el alcance 2 de proceso. El denominador de intensidad sale de producción SMARTPRO.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
+      },
+      "tareas": [
+        {
+          "id": "iso-14064-1-t1",
+          "titulo": "Separar kWh de proceso para el inventario anual",
+          "detalle": "No mezclar oficinas y alumbrado con inyectoras.",
+          "kern": [
+            "energy",
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-14067",
+        "iso-14001",
+        "iso-50001"
+      ],
+      "erroresComunes": [
+        "Un solo factor de emisión para toda la factura, sin proceso."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "transformacion",
+        "logistica"
+      ],
+      "scm": [
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-10002",
+      "codigo": "ISO 10002",
+      "edicion": "2018",
+      "nombre": "Gestión de quejas en las organizaciones",
+      "familia": "calidad",
+      "prioridad": "recomendada",
+      "tipo": "guia",
+      "resumen": "Cómo tratar quejas de cliente de forma sistemática. En inyección, la queja casi siempre aterriza en una orden, un molde y un turno — territorio de operaciones.",
+      "porQueElGerente": "Si la queja no se puede trazar a la orden en horas, el cliente auto o de empaque no espera al comité de calidad.",
+      "rolOperaciones": [
+        "Trazar la queja a órdenes, cavidades y lotes.",
+        "Contener producto hermano en piso y en tránsito.",
+        "Corregir la causa de proceso (no solo clasificar el defecto)."
+      ],
+      "clausulas": [
+        {
+          "codigo": "8",
+          "titulo": "Operación del proceso de quejas",
+          "queHaceOperaciones": "Recepción, trazabilidad, contención, corrección y cierre con el cliente."
+        }
+      ],
+      "evidencias": [
+        "Expediente de queja con órdenes KERN ligadas.",
+        "Contención ejecutada y cantidades."
+      ],
+      "indicadores": [
+        "Tiempo de trazabilidad de queja",
+        "Reincidencias por molde"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "La trazabilidad de orden/molde/operario/calidad acorta la investigación de la queja de días a minutos.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-10002-t1",
+          "titulo": "Ensayar una queja simulada: de SKU a órdenes en 30 minutos",
+          "detalle": "Si no se puede, IATF y el cliente lo van a notar.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-9001",
+        "iatf-16949"
+      ],
+      "erroresComunes": [
+        "Investigar la queja en el laboratorio y no en el histórico de máquina."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [],
+      "scm": [
+        "calidad"
+      ]
+    },
+    {
+      "id": "iso-20400",
+      "codigo": "ISO 20400",
+      "edicion": "2017",
+      "nombre": "Compras sostenibles — directrices",
+      "familia": "cadena",
+      "prioridad": "recomendada",
+      "tipo": "guia",
+      "resumen": "Cómo comprar resina, masterbatch, empaque y servicios de molde con criterio ambiental y social, no solo precio. Operaciones define el uso; compras negocia; el PCF depende de los dos.",
+      "porQueElGerente": "El reciclado post-industrial o el grado de resina cambian merma, ciclo y huella. Operaciones tiene que poner requisitos de proceso en la compra.",
+      "rolOperaciones": [
+        "Especificar resina y reciclado que el proceso realmente corre.",
+        "Exigir datos de PCF de resina a proveedores.",
+        "No aceptar cambios de origen de material sin prueba de moldeo."
+      ],
+      "clausulas": [
+        {
+          "codigo": "7",
+          "titulo": "Integrar la sostenibilidad en el proceso de compra",
+          "queHaceOperaciones": "Criterios de proceso (secado, índice de fluidez, % reciclado) en la especificación."
+        }
+      ],
+      "evidencias": [
+        "Especificaciones de resina con criterio de proceso y de huella.",
+        "Pruebas de cambio de proveedor registradas en órdenes KERN."
+      ],
+      "indicadores": [
+        "% de resina con dato de PCF",
+        "Cambios de material sin prueba de moldeo"
+      ],
+      "kern": {
+        "cobertura": "evidencia-parcial",
+        "modulos": [
+          "smartpro",
+          "huella",
+          "monitor"
+        ],
+        "comoAyuda": "Al cambiar de resina, SMARTPRO muestra si el ciclo, el scrap y el kWh/kg se movieron. Eso es el veredicto sostenible real.",
+        "evidenciasKern": [
+          "Comparativo de scrap y ciclo entre lotes de resina",
+          "Huella de proceso antes/después del cambio de material"
+        ],
+        "limite": "KERN no audita la cadena de suministro ni el due diligence social del proveedor."
+      },
+      "tareas": [
+        {
+          "id": "iso-20400-t1",
+          "titulo": "Toda resina nueva corre orden piloto identificada en SMARTPRO",
+          "detalle": "Sin piloto, no hay compra sostenible: hay ruleta.",
+          "kern": [
+            "smartpro",
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-14067",
+        "iso-14001",
+        "iso-9001"
+      ],
+      "erroresComunes": [
+        "Comprar reciclado «para el informe» que el proceso no puede correr."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen"
+      ],
+      "scm": [
+        "compras",
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-28000",
+      "codigo": "ISO 28000",
+      "edicion": "2022",
+      "nombre": "Seguridad y resiliencia en la cadena de suministro",
+      "familia": "cadena",
+      "prioridad": "recomendada",
+      "tipo": "certificable",
+      "resumen": "Seguridad de la cadena: acceso a planta, sello de contenedor, almacén de resina y expedición. Relevante si se exporta o se sirve a auto/aero.",
+      "porQueElGerente": "El patio, el almacén y el muelle son operación. Un hueco ahí es un hallazgo de cliente y a veces de aduana.",
+      "rolOperaciones": [
+        "Controlar acceso a almacén de resina y a producto terminado.",
+        "Asegurar identificación de contenedores y de lotes en expedición.",
+        "Coordinar con seguridad física los turnos de muelle."
+      ],
+      "clausulas": [
+        {
+          "codigo": "8",
+          "titulo": "Operación",
+          "queHaceOperaciones": "Controles de acceso, precintos, reconciliación de inventario de piso."
+        }
+      ],
+      "evidencias": [
+        "Registros de muelle y de acceso.",
+        "Reconciliación de órdenes expedidas vs KERN."
+      ],
+      "indicadores": [
+        "Discrepancias de expedición",
+        "Incidentes de acceso a almacén"
+      ],
+      "kern": {
+        "cobertura": "evidencia-parcial",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "La trazabilidad de orden y de cantidad producida permite reconciliar lo que salió del muelle con lo que se inyectó.",
+        "evidenciasKern": [
+          "Cantidades buenas por orden vs remisionado"
+        ],
+        "limite": "KERN no es control de acceso ni C-TPAT. Seguridad física y aduana siguen aparte."
+      },
+      "tareas": [
+        {
+          "id": "iso-28000-t1",
+          "titulo": "Reconciliar semanalmente piezas buenas KERN vs remisiones",
+          "detalle": "Las diferencias son merma oculta o un hueco de cadena.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iatf-16949",
+        "iso-22301",
+        "iso-9001"
+      ],
+      "erroresComunes": [
+        "Certificar seguridad de la cadena y no poder explicar un faltante de cajas."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "logistica"
+      ],
+      "scm": [
+        "transporte",
+        "riesgo"
+      ]
+    },
+    {
+      "id": "iso-22000",
+      "codigo": "ISO 22000",
+      "edicion": "2018",
+      "nombre": "Gestión de la inocuidad alimentaria",
+      "familia": "alimentos",
+      "prioridad": "sectorial",
+      "tipo": "certificable",
+      "resumen": "Si se inyecta empaque o componente en contacto con alimento, operaciones hereda higiene, trazabilidad y control de cuerpo extraño. FSSC 22000 y BRCGS Packaging suelen montarse encima.",
+      "porQueElGerente": "Un pelo, un granulo de color o un aceite de máquina en el empaque no son «un tema de calidad»: paran la línea del cliente de alimentos.",
+      "rolOperaciones": [
+        "Zonificar higiene (cambio de ropa, control de vidrio y plástico quebradizo).",
+        "Trazar lote de resina grado alimentario hasta el contenedor.",
+        "Controlar lubricantes y fugas de hidráulico cerca de la pieza."
+      ],
+      "clausulas": [
+        {
+          "codigo": "8",
+          "titulo": "PPR y control de peligros",
+          "queHaceOperaciones": "Programas prerrequisito de piso y trazabilidad de lote."
+        }
+      ],
+      "evidencias": [
+        "Trazabilidad de lote alimentario.",
+        "Controles de higiene de celda.",
+        "Lubricantes food-grade donde aplique."
+      ],
+      "indicadores": [
+        "Tiempo de recall simulado",
+        "Incidentes de cuerpo extraño"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "Trazabilidad de orden, material y operario para un recall. No cubre HACCP ni higiene.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige genealogia de lote y reconstruccion aguas arriba y abajo. KERN identifica lote y vencimiento, pero no construye la genealogia ni el eslabon previo, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-22000-t1",
+          "titulo": "Simular un recall: de lote de resina a órdenes y cantidades",
+          "detalle": "Objetivo: lista en menos de 4 horas con MONITOR.",
+          "kern": [
+            "monitor",
+            "smartpro"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-9001",
+        "iso-10002"
+      ],
+      "erroresComunes": [
+        "Aplicar 9001 de pieza técnica a un empaque alimentario."
+      ],
+      "sectores": [
+        "Empaque alimentario",
+        "Contacto con alimento"
+      ],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica",
+        "cliente"
+      ],
+      "scm": [
+        "calidad"
+      ]
+    },
+    {
+      "id": "iso-13485",
+      "codigo": "ISO 13485",
+      "edicion": "2016",
+      "nombre": "Dispositivos médicos — sistemas de gestión de la calidad",
+      "familia": "salud",
+      "prioridad": "sectorial",
+      "tipo": "certificable",
+      "resumen": "Si se inyectan componentes de dispositivo médico, hay control de cambios estricto, validación de proceso (IQ/OQ/PQ) y trazabilidad regulatoria. Operaciones no «ajusta el ciclo» como en commodity.",
+      "porQueElGerente": "Un cambio de parámetro no autorizado es un evento regulatorio. El gerente de operaciones es el freno.",
+      "rolOperaciones": [
+        "Congelar recetas validadas; todo cambio pasa por control de cambios.",
+        "Mantener trazabilidad UDI/lote según el cliente.",
+        "Separar merma y retrabajo con reglas del expediente del dispositivo."
+      ],
+      "clausulas": [
+        {
+          "codigo": "7.5",
+          "titulo": "Producción y prestación del servicio",
+          "queHaceOperaciones": "Proceso validado, identificación, trazabilidad y control de no conformes."
+        }
+      ],
+      "evidencias": [
+        "Recetas validadas vs recetas corridas.",
+        "Trazabilidad de lote a dispositivo.",
+        "Control de cambios de proceso."
+      ],
+      "indicadores": [
+        "Cambios de proceso sin autorización",
+        "Desvíos de receta validada"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "El histórico de ciclo, orden y operario es evidencia de que se corrió la receta validada. Las desviaciones se ven.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-13485-t1",
+          "titulo": "Alertar en MONITOR cualquier orden fuera de ventana de ciclo validada",
+          "detalle": "La receta no se «mejora» en el turno.",
+          "kern": [
+            "smartpro",
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-9001",
+        "iso-27001"
+      ],
+      "erroresComunes": [
+        "Tratar un componente médico como una tapa commodity."
+      ],
+      "sectores": [
+        "Dispositivos médicos",
+        "IVD"
+      ],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "transformacion",
+        "cliente"
+      ],
+      "scm": [
+        "calidad"
+      ]
+    },
+    {
+      "id": "iso-22716",
+      "codigo": "ISO 22716",
+      "edicion": "2007",
+      "nombre": "Cosméticos — buenas prácticas de fabricación (BPM)",
+      "familia": "cosmetica",
+      "prioridad": "sectorial",
+      "tipo": "guia",
+      "resumen": "Empaque cosmético: higiene, identificación de lotes, reclamos y cambios. Menos regulado que 13485, más exigente que un 9001 genérico.",
+      "porQueElGerente": "El cliente de cosmética audita piso: polvo, color cruzado, lotes mezclados. Eso lo opera el gerente, no el dossier de marketing.",
+      "rolOperaciones": [
+        "Evitar contaminación cruzada de color y de fragancia en hoppers y moldes.",
+        "Identificar lotes de masterbatch y de resina.",
+        "Controlar retrabajo de regrind en empaque estético."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6–8",
+          "titulo": "Locales, equipos y producción",
+          "queHaceOperaciones": "Limpieza de molde/hopper, identificación, manejo de rechazos."
+        }
+      ],
+      "evidencias": [
+        "Limpieza de cambio de color.",
+        "Trazabilidad de masterbatch."
+      ],
+      "indicadores": [
+        "Reclamos por color / cuerpo extraño",
+        "Tiempo de cambio de color"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "Órdenes con material y molde identificados; historial de no conformes estéticos.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige genealogia de lote y reconstruccion aguas arriba y abajo. KERN identifica lote y vencimiento, pero no construye la genealogia ni el eslabon previo, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-22716-t1",
+          "titulo": "Registrar todo cambio de color/masterbatch en la orden",
+          "detalle": "Sin eso el reclamo estético no se traza.",
+          "kern": [
+            "smartpro"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-9001",
+        "iso-10002"
+      ],
+      "erroresComunes": [
+        "Regrind estético sin regla y sin registro."
+      ],
+      "sectores": [
+        "Empaque cosmético"
+      ],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "transformacion",
+        "cliente"
+      ],
+      "scm": [
+        "calidad"
+      ]
+    },
+    {
+      "id": "iso-22095",
+      "codigo": "ISO 22095",
+      "edicion": "2020",
+      "nombre": "Cadena de custodia — terminología y modelos",
+      "familia": "custodia",
+      "prioridad": "esencial",
+      "tipo": "especificacion",
+      "resumen": "La norma paraguas de cualquier cadena productiva de producto. Define los modelos de custodia: identidad preservada, segregado, mezcla controlada, balance de masas y book & claim. Sin este marco, «contenido reciclado» o «lote trazable» son eslóganes.",
+      "porQueElGerente": "La planta de inyección es un eslabón, no la cadena. El gerente elige qué modelo puede sostener de verdad: si promete identidad preservada y mezcla regrind de otro lote, rompe la custodia.",
+      "rolOperaciones": [
+        "Declarar el modelo de custodia que la planta puede operar (no el que marketing quiere).",
+        "Separar flujos cuando el modelo es identidad preservada o segregado.",
+        "Llevar el balance de masas (kg resina in / piezas + merma out) si el modelo es mass balance.",
+        "No mezclar claims: book & claim no se vende como «esta pieza es reciclada»."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5",
+          "titulo": "Modelos de cadena de custodia",
+          "queHaceOperaciones": "Elegir el modelo por familia de producto: auto suele pedir identidad o segregado; empaque a veces acepta mass balance."
+        },
+        {
+          "codigo": "6",
+          "titulo": "Requisitos generales del sistema",
+          "queHaceOperaciones": "Identificación, registros, periodo de crédito y conversión (kg → piezas)."
+        }
+      ],
+      "evidencias": [
+        "Declaración del modelo por SKU o por cliente.",
+        "Balance de masa del periodo (resina, masterbatch, regrind, piezas, merma).",
+        "Reglas de mezcla de regrind publicadas en piso."
+      ],
+      "indicadores": [
+        "% de órdenes con modelo de custodia declarado",
+        "Desvío del balance de masa (kg no explicados)",
+        "Regrind cruzado entre lotes (debe ser cero en identidad preservada)"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor",
+          "huella"
+        ],
+        "comoAyuda": "SMARTPRO amarra orden, material, molde y cantidad. MONITOR permite el balance del periodo. En identity preserved, esa traza es el eslabón de transformación.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-22095-t1",
+          "titulo": "Clasificar SKUs por modelo de custodia",
+          "detalle": "Identidad, segregado o mass balance. Lo que no se clasifica, no se puede reclamar.",
+          "kern": [
+            "monitor"
+          ]
+        },
+        {
+          "id": "iso-22095-t2",
+          "titulo": "Cerrar el balance de masa mensual de las celdas piloto",
+          "detalle": "Kg alimentados vs piezas + merma, con órdenes KERN.",
+          "kern": [
+            "smartpro",
+            "monitor",
+            "huella"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-9001",
+        "iso-14067",
+        "iso-59010",
+        "iso-22000",
+        "iso-15459",
+        "iso-20400"
+      ],
+      "erroresComunes": [
+        "Vender mass balance como si cada pieza fuera reciclada.",
+        "Permitir regrind libre en un cliente que pidió identidad preservada."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica",
+        "cliente"
+      ],
+      "scm": [
+        "compras",
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-14040",
+      "codigo": "ISO 14040/14044",
+      "edicion": "2006",
+      "nombre": "Análisis de ciclo de vida (ACV) — principios y requisitos",
+      "familia": "acv",
+      "prioridad": "esencial",
+      "tipo": "especificacion",
+      "resumen": "El método para mirar el producto de cuna a tumba (o cuna a puerta): objetivo, inventario, impacto, interpretación. 14067 (PCF) y las DAP (14025) se apoyan aquí. Operaciones no hace el ACV; entrega el inventario del eslabón de transformación.",
+      "porQueElGerente": "Sin dato primario de planta, el ACV usa un promedio de «inyección genérica» que suele perjudicar o maquillar la pieza. El gerente es dueño de energía, merma y material del moldeo.",
+      "rolOperaciones": [
+        "Acordar unidad funcional y qué entra del proceso (cuna a puerta vs cuna a tumba).",
+        "Entregar inventario: kWh, kg de resina, merma, utilidades atribuibles.",
+        "Separar familias de pieza; no un solo factor para toda la planta."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5–6",
+          "titulo": "Definición de objetivo e inventario",
+          "queHaceOperaciones": "Límites del sistema y dato primario del eslabón de moldeo."
+        },
+        {
+          "codigo": "7–8",
+          "titulo": "Impacto e interpretación",
+          "queHaceOperaciones": "Priorizar acciones de planta que mueven el ACV: scrap, energía, material."
+        }
+      ],
+      "evidencias": [
+        "Inventario de proceso por familia de pieza.",
+        "Reglas de asignación cuando una máquina corre varios SKUs."
+      ],
+      "indicadores": [
+        "Familias con inventario primario vs factor genérico",
+        "kWh/kg y merma % usados en el ACV"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "huella",
+          "energy",
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "Huella de proceso + ENERGY + órdenes: el inventario LCI del tramo de manufactura.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
+      },
+      "tareas": [
+        {
+          "id": "iso-14040-t1",
+          "titulo": "Armar el inventario de 3 familias piloto",
+          "detalle": "Las de mayor volumen o las que el cliente pidió ACV/PCF.",
+          "kern": [
+            "huella",
+            "energy",
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-14067",
+        "iso-14025",
+        "iso-14046",
+        "iso-14001",
+        "iso-59020"
+      ],
+      "erroresComunes": [
+        "Publicar un ACV con scrap inventado y electricidad de factura única."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica",
+        "cliente",
+        "fin-de-vida"
+      ],
+      "scm": [
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-59010",
+      "codigo": "ISO 59010",
+      "edicion": "2024",
+      "nombre": "Economía circular — transición de modelos y redes de valor",
+      "familia": "circularidad",
+      "prioridad": "esencial",
+      "tipo": "guia",
+      "resumen": "La ISO de la cadena de valor circular: mapear la red (proveedor de resina, transformador, marca, recuperador) y pasar de lineal a circular. Complementa 59004 (principios) con la red, no solo con la planta.",
+      "porQueElGerente": "Circularidad en inyección es regrind, diseño de molde, merma y acuerdo con el cliente sobre contenido reciclado. Eso se opera en piso y se negocia en la red.",
+      "rolOperaciones": [
+        "Mapear la red de valor de las familias críticas: quién entrega resina, quién recupera.",
+        "Medir bucles reales: regrind interno, post-industrial, post-consumo que el proceso aguanta.",
+        "No declarar economía circular si la merma se va a relleno sanitario."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6",
+          "titulo": "Mapa de la red de valor",
+          "queHaceOperaciones": "Eslabones y flujos de material de las piezas de mayor volumen."
+        },
+        {
+          "codigo": "7",
+          "titulo": "Estrategia de transición",
+          "queHaceOperaciones": "Metas de contenido reciclado y de merma recuperada que el proceso puede correr."
+        }
+      ],
+      "evidencias": [
+        "Mapa de red por familia de producto.",
+        "Kg de regrind / reciclado realmente procesados."
+      ],
+      "indicadores": [
+        "% de resina reciclada que el proceso corrió (no la comprada y apartada)",
+        "% de merma recuperada"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor",
+          "huella"
+        ],
+        "comoAyuda": "El dato de qué material corrió y cuánta merma salió es el veredicto circular de la planta. La red (recuperador, marca) vive fuera de KERN.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
+      },
+      "tareas": [
+        {
+          "id": "iso-59010-t1",
+          "titulo": "Mapear la red de valor de la familia de mayor volumen",
+          "detalle": "Resina → planta → cliente → recuperador. Un dibujo con dueños.",
+          "kern": [
+            "monitor"
+          ]
+        },
+        {
+          "id": "iso-59010-t2",
+          "titulo": "Medir regrind real vs regrind declarado",
+          "detalle": "Si no está en la orden SMARTPRO, no está en la red circular.",
+          "kern": [
+            "smartpro",
+            "huella"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-59020",
+        "iso-59040",
+        "iso-22095",
+        "iso-20400",
+        "iso-14067"
+      ],
+      "erroresComunes": [
+        "Colgar un poster de economía circular y seguir mandando la colada al mixto."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica",
+        "cliente",
+        "fin-de-vida"
+      ],
+      "scm": [
+        "sostenibilidad",
+        "planificacion"
+      ]
+    },
+    {
+      "id": "iso-59020",
+      "codigo": "ISO 59020",
+      "edicion": "2024",
+      "nombre": "Economía circular — medición y evaluación de la circularidad",
+      "familia": "circularidad",
+      "prioridad": "recomendada",
+      "tipo": "especificacion",
+      "resumen": "Cómo medir circularidad con sistema, no con un % inventado. En planta: entradas circulares, salidas recuperadas y pérdidas del proceso.",
+      "porQueElGerente": "Si el KPI circular no se puede reconstruir con órdenes y kg, no es un indicador: es un comunicado.",
+      "rolOperaciones": [
+        "Definir el sistema a medir (familia de pieza o planta).",
+        "Proveer flujos de material medidos, no estimados."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6–7",
+          "titulo": "Límites e indicadores",
+          "queHaceOperaciones": "Qué entra, qué sale y qué se pierde en el moldeo."
+        }
+      ],
+      "evidencias": [
+        "Flujos de material del periodo de reporte.",
+        "Definición del sistema medida."
+      ],
+      "indicadores": [
+        "Entrada circular / entrada total",
+        "Pérdidas de proceso / entrada"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor",
+          "huella"
+        ],
+        "comoAyuda": "Cantidades y merma de proceso para los indicadores de circularidad del eslabón de transformación.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
+      },
+      "tareas": [
+        {
+          "id": "iso-59020-t1",
+          "titulo": "Fijar el sistema de medición (una familia, no toda la planta)",
+          "detalle": "Un perímetro chico y medible vale más que un % corporativo.",
+          "kern": [
+            "monitor",
+            "huella"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-59010",
+        "iso-59040",
+        "iso-22095"
+      ],
+      "erroresComunes": [
+        "Usar «reciclable» como métrica de circularidad."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "fin-de-vida"
+      ],
+      "scm": [
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-59040",
+      "codigo": "ISO 59040",
+      "edicion": "2025",
+      "nombre": "Economía circular — ficha de datos de circularidad del producto (PCDS)",
+      "familia": "circularidad",
+      "prioridad": "recomendada",
+      "tipo": "especificacion",
+      "resumen": "Formato para intercambiar datos de circularidad del producto entre eslabones (B2B). La planta aporta lo que sabe del moldeo y del material que corrió; la marca arma la ficha.",
+      "porQueElGerente": "Cuando el cliente pida la PCDS, operaciones tiene que soltar dato de proceso, no un PDF de sostenibilidad.",
+      "rolOperaciones": [
+        "Identificar qué campos de la ficha salen de planta (material, merma, energía).",
+        "Versionar el dato por familia / periodo."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5",
+          "titulo": "Datos del producto",
+          "queHaceOperaciones": "Qué se inyectó, con qué material y con qué pérdidas."
+        }
+      ],
+      "evidencias": [
+        "Paquete de datos de proceso para la PCDS."
+      ],
+      "indicadores": [
+        "Familias con paquete PCDS listo"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "monitor",
+          "huella",
+          "energy"
+        ],
+        "comoAyuda": "Serie temporal de material, merma y kWh para rellenar la ficha sin inventar.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
+      },
+      "tareas": [
+        {
+          "id": "iso-59040-t1",
+          "titulo": "Listar los campos PCDS que planta puede firmar",
+          "detalle": "Si no se puede firmar, no va a la ficha.",
+          "kern": [
+            "monitor",
+            "huella"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-59010",
+        "iso-59020",
+        "iso-14067",
+        "iso-14025"
+      ],
+      "erroresComunes": [
+        "Copiar la ficha del proveedor de resina y firmarla como dato de pieza."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "cliente"
+      ],
+      "scm": [
+        "sostenibilidad",
+        "compras"
+      ]
+    },
+    {
+      "id": "iso-14025",
+      "codigo": "ISO 14025",
+      "edicion": "2006",
+      "nombre": "Etiquetas ambientales Tipo III — declaraciones ambientales de producto (DAP/EPD)",
+      "familia": "acv",
+      "prioridad": "recomendada",
+      "tipo": "especificacion",
+      "resumen": "Reglas para publicar una DAP/EPD verificada, basada en ACV y en una PCR. El cliente de construcción, auto o empaque la pide. Operaciones aporta el inventario de manufactura.",
+      "porQueElGerente": "La EPD se cae en la auditoría si el kWh y el scrap no coinciden con la planta real.",
+      "rolOperaciones": [
+        "Entregar el inventario del año de referencia.",
+        "Congelar recetas y merma del periodo declarado."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6–7",
+          "titulo": "Contenido y verificación",
+          "queHaceOperaciones": "Dato de proceso verificable, no un promedio de catálogo."
+        }
+      ],
+      "evidencias": [
+        "Inventario de manufactura del periodo de la EPD."
+      ],
+      "indicadores": [
+        "Desvío entre EPD y kWh/kg real del año siguiente"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "energy",
+          "huella",
+          "monitor"
+        ],
+        "comoAyuda": "Serie anual de kWh, kg y merma para el inventario que la PCR pide del transformador.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
+      },
+      "tareas": [
+        {
+          "id": "iso-14025-t1",
+          "titulo": "Congelar el año de referencia y extraer kWh/kg y merma",
+          "detalle": "Sin año congelado no hay EPD, hay un Excel móvil.",
+          "kern": [
+            "energy",
+            "monitor",
+            "huella"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-14040",
+        "iso-14067",
+        "iso-59040"
+      ],
+      "erroresComunes": [
+        "Usar un factor de otra planta del grupo."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "cliente"
+      ],
+      "scm": [
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-14046",
+      "codigo": "ISO 14046",
+      "edicion": "2014",
+      "nombre": "Huella de agua — principios, requisitos y directrices",
+      "familia": "ambiente",
+      "prioridad": "recomendada",
+      "tipo": "especificacion",
+      "resumen": "Cuantifica impactos relacionados con el agua a lo largo del ciclo de vida. En inyección el agua de molde y de enfriamiento es el tramo de planta; el de la resina suele ser mayor y vive en el origen.",
+      "porQueElGerente": "Si no se mide agua de proceso, la huella de agua de la pieza se inventa en el ACV.",
+      "rolOperaciones": [
+        "Medir o estimar con criterio el agua de chillers, torres y lavado de molde.",
+        "Separar agua de proceso de sanitarios y riego."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5",
+          "titulo": "Inventario hídrico",
+          "queHaceOperaciones": "Volúmenes de agua de proceso atribuibles a la pieza o al kg."
+        }
+      ],
+      "evidencias": [
+        "m³ de agua de proceso del periodo."
+      ],
+      "indicadores": [
+        "m³ / t inyectada (proceso)"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "monitor"
+        ],
+        "comoAyuda": "MONITOR puede mostrar un KPI si se carga el dato. ENERGY no mide agua.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
+      },
+      "tareas": [
+        {
+          "id": "iso-14046-t1",
+          "titulo": "Separar lecturas de agua de proceso vs resto",
+          "detalle": "Sin eso la huella de agua de la pieza es un adorno.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-14040",
+        "iso-14001",
+        "iso-14067"
+      ],
+      "erroresComunes": [
+        "Usar la factura de agua de todo el predio como huella de la pieza."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion"
+      ],
+      "scm": [
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-14006",
+      "codigo": "ISO 14006",
+      "edicion": "2020",
+      "nombre": "Sistemas de gestión ambiental — directrices para el ecodiseño",
+      "familia": "ambiente",
+      "prioridad": "recomendada",
+      "tipo": "guia",
+      "resumen": "Cómo meter el ecodiseño en un 14001: espesor, material, reciclabilidad, tiempo de ciclo. Operaciones devuelve al diseño lo que el molde y la máquina realmente consumen.",
+      "porQueElGerente": "El diseñador no ve el kWh/kg ni el scrap de arranque. El gerente sí. Sin ese retorno, el ecodiseño es una lámina.",
+      "rolOperaciones": [
+        "Devolver a ingeniería kWh/kg, scrap y ciclo por revisión de pieza.",
+        "Probar cambios de espesor o de material con orden piloto identificada."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6",
+          "titulo": "Integrar ecodiseño al SGA",
+          "queHaceOperaciones": "El dato de proceso entra a la revisión de diseño."
+        }
+      ],
+      "evidencias": [
+        "Comparativo antes/después de un cambio de diseño o material."
+      ],
+      "indicadores": [
+        "Cambios de pieza con dato KERN de soporte"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "energy",
+          "huella",
+          "monitor"
+        ],
+        "comoAyuda": "Comparar dos revisiones de la misma pieza: ciclo, scrap, kWh/kg.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
+      },
+      "tareas": [
+        {
+          "id": "iso-14006-t1",
+          "titulo": "Toda prueba de material o espesor corre como orden piloto",
+          "detalle": "Si no está en SMARTPRO, el ecodiseño no tiene evidencia.",
+          "kern": [
+            "smartpro",
+            "energy"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-14001",
+        "iso-14040",
+        "iso-59010",
+        "iso-9001"
+      ],
+      "erroresComunes": [
+        "Cambiar el molde «para aligerar» y no medir si el scrap subió."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "fin-de-vida"
+      ],
+      "scm": [
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-44001",
+      "codigo": "ISO 44001",
+      "edicion": "2017",
+      "nombre": "Sistemas de gestión de relaciones de negocio colaborativas",
+      "familia": "cadena",
+      "prioridad": "recomendada",
+      "tipo": "certificable",
+      "resumen": "Cómo gobernar la relación con el proveedor de resina, el moldeador espejo o el cliente OEM cuando la cadena no se puede mandar por orden de compra suelta.",
+      "porQueElGerente": "Un único proveedor de resina o un molde en consignación es una relación, no una compra. Operaciones sufre cuando esa relación no tiene dueño ni reglas.",
+      "rolOperaciones": [
+        "Nombrar dueño operativo de las relaciones críticas (resina, molde, maquila).",
+        "Compartir indicadores reales (OEE, scrap, OTIF) con el socio, no solo el reclamo."
+      ],
+      "clausulas": [
+        {
+          "codigo": "8",
+          "titulo": "Operación de la relación",
+          "queHaceOperaciones": "Objetivos compartidos, escalamiento y salida ordenada."
+        }
+      ],
+      "evidencias": [
+        "Lista de relaciones colaborativas con dueño.",
+        "Tablero compartido de OTIF y scrap."
+      ],
+      "indicadores": [
+        "Relaciones críticas sin dueño",
+        "Paros por único proveedor"
+      ],
+      "kern": {
+        "cobertura": "evidencia-parcial",
+        "modulos": [
+          "monitor"
+        ],
+        "comoAyuda": "OTIF, scrap y capacidad real para sentarse con el socio con números, no con ánimo.",
+        "evidenciasKern": [
+          "Scrap y avance de órdenes del socio o del material"
+        ],
+        "limite": "KERN no es el contrato ni el gobierno de la joint relationship."
+      },
+      "tareas": [
+        {
+          "id": "iso-44001-t1",
+          "titulo": "Listar las 5 relaciones de las que la planta no puede prescindir",
+          "detalle": "Cada una con dueño y un KPI en MONITOR.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-20400",
+        "iso-22301",
+        "iso-28000",
+        "iso-37001"
+      ],
+      "erroresComunes": [
+        "Llamar «alianza estratégica» a un proveedor al que se le paga a 120 días y no se le comparte el forecast."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "cliente"
+      ],
+      "scm": [
+        "compras"
+      ]
+    },
+    {
+      "id": "iso-26000",
+      "codigo": "ISO 26000",
+      "edicion": "2010",
+      "nombre": "Responsabilidad social — directrices",
+      "familia": "gobernanza",
+      "prioridad": "recomendada",
+      "tipo": "guia",
+      "resumen": "Guía (no certificable) de responsabilidad social: derechos laborales, medio ambiente, consumidores, comunidad. En la cadena productiva cubre lo que 9001 no mira: jornada, contratistas, comunidad del corredor industrial.",
+      "porQueElGerente": "La cadena del cliente auto o de empaque ya pregunta por SST y laboral del transformador. Operaciones es el dueño de turno, contratista y piso.",
+      "rolOperaciones": [
+        "Asegurar que turnos, horas extra y contratistas de molde no contradigan lo que se declara.",
+        "Dar dato real de incidentes y de condiciones de piso."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6",
+          "titulo": "Materias fundamentales",
+          "queHaceOperaciones": "Prácticas laborales y ambientales de la planta como eslabón."
+        }
+      ],
+      "evidencias": [
+        "Turnos reales vs política declarada.",
+        "Gestión de contratistas de mantenimiento y de molde."
+      ],
+      "indicadores": [
+        "Horas extra por encima de la política",
+        "Incidentes de contratistas"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "cei"
+        ],
+        "comoAyuda": "Identidad de operario y horas de máquina dan contexto laboral; no sustituyen nómina ni comité.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma son de personas, incidentes y horas trabajadas. KERN no ingesta datos de EHS ni de recursos humanos."
+      },
+      "tareas": [
+        {
+          "id": "iso-26000-t1",
+          "titulo": "Cruzar horas de máquina de tres turnos con la política de jornada",
+          "detalle": "Si la máquina corre 24/7, la declaración laboral tiene que aguantar esa foto.",
+          "kern": [
+            "smartpro"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-45001",
+        "iso-20400",
+        "iso-37001",
+        "iso-14001"
+      ],
+      "erroresComunes": [
+        "Un informe GRI y un piso de 12 horas sin registro."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "cliente"
+      ],
+      "scm": [
+        "sostenibilidad",
+        "compras"
+      ]
+    },
+    {
+      "id": "iso-37001",
+      "codigo": "ISO 37001",
+      "edicion": "2016",
+      "nombre": "Sistemas de gestión antisoborno",
+      "familia": "gobernanza",
+      "prioridad": "recomendada",
+      "tipo": "certificable",
+      "resumen": "Controles antisoborno en compras, contratistas y aduanas. En una cadena productiva el riesgo está en resina, flete, molde y «agilizar» un permiso.",
+      "porQueElGerente": "Operaciones pide urgente una resina o un flete. Ese urgente es el escenario clásico de soborno. El gerente fija el canal, no lo improvisan en el muelle.",
+      "rolOperaciones": [
+        "No saltarse el alta de proveedor por urgencia de línea.",
+        "Registrar regalos, atenciones y gestiones de despacho."
+      ],
+      "clausulas": [
+        {
+          "codigo": "8",
+          "titulo": "Controles operativos",
+          "queHaceOperaciones": "Due diligence de proveedores críticos y de gestores de aduana."
+        }
+      ],
+      "evidencias": [
+        "Altas de proveedor con due diligence.",
+        "Registro de atenciones."
+      ],
+      "indicadores": [
+        "Compras de emergencia sin alta"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "monitor"
+        ],
+        "comoAyuda": "El urgente de línea se ve en las órdenes paradas. No es un control antisoborno.",
+        "evidenciasKern": [],
+        "limite": "Los datos que esta norma pide no entran a KERN por ningun conector ni contrato de columnas."
+      },
+      "tareas": [
+        {
+          "id": "iso-37001-t1",
+          "titulo": "Prohibir en piso la compra de resina «por fuera» sin alta",
+          "detalle": "La urgencia se escala; no se resuelve con un proveedor de WhatsApp.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-20400",
+        "iso-37301",
+        "iso-44001"
+      ],
+      "erroresComunes": [
+        "Tener 37001 en corporativo y pagar despachos en efectivo en planta."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion"
+      ],
+      "scm": [
+        "compras",
+        "riesgo"
+      ]
+    },
+    {
+      "id": "iso-37301",
+      "codigo": "ISO 37301",
+      "edicion": "2021",
+      "nombre": "Sistemas de gestión de compliance",
+      "familia": "gobernanza",
+      "prioridad": "recomendada",
+      "tipo": "certificable",
+      "resumen": "El sistema que ordena obligaciones de la cadena: aduana, ambiental, laboral, producto, privacidad. Operaciones es dueño de varias obligaciones de piso y de expedición.",
+      "porQueElGerente": "El mapa de obligaciones no puede vivir solo en legal. Hay obligaciones que se incumplen en el muelle o en el hopper.",
+      "rolOperaciones": [
+        "Identificar obligaciones de piso (residuos, etiquetado, trazabilidad, aduana).",
+        "Dar evidencia cuando el compliance officer pregunte por un lote."
+      ],
+      "clausulas": [
+        {
+          "codigo": "8",
+          "titulo": "Controles de compliance",
+          "queHaceOperaciones": "Controles embebidos en despacho, etiquetado y disposición de merma."
+        }
+      ],
+      "evidencias": [
+        "Lista de obligaciones de operaciones con control."
+      ],
+      "indicadores": [
+        "Obligaciones de piso sin evidencia del último trimestre"
+      ],
+      "kern": {
+        "cobertura": "evidencia-parcial",
+        "modulos": [
+          "monitor",
+          "smartpro"
+        ],
+        "comoAyuda": "Trazabilidad de órdenes para responder un requerimiento de lote.",
+        "evidenciasKern": [
+          "Histórico de orden / material / cantidad"
+        ],
+        "limite": "KERN no es el GRC ni el registro de obligaciones."
+      },
+      "tareas": [
+        {
+          "id": "iso-37301-t1",
+          "titulo": "Listar las 10 obligaciones de piso que un inspector puede pedir mañana",
+          "detalle": "Cada una con un dato o un registro. Si no hay dato, no hay control.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-37001",
+        "iso-14001",
+        "iso-45001",
+        "iso-28000"
+      ],
+      "erroresComunes": [
+        "Un officer de compliance que nunca entra a planta."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica",
+        "cliente"
+      ],
+      "scm": [
+        "compras",
+        "riesgo"
+      ]
+    },
+    {
+      "id": "iso-15459",
+      "codigo": "ISO/IEC 15459",
+      "edicion": "2014",
+      "nombre": "Identificación única — identificadores únicos para la cadena",
+      "familia": "cadena",
+      "prioridad": "recomendada",
+      "tipo": "especificacion",
+      "resumen": "Serie para identificar de forma única artículos, transportes y agrupaciones (la base de muchos esquemas GS1). Sin ID único, la cadena productiva no se puede digitalizar ni auditar.",
+      "porQueElGerente": "Si la caja sale sin un ID que KERN y el cliente puedan seguir, la trazabilidad se acaba en el muelle.",
+      "rolOperaciones": [
+        "Asegurar que cada contenedor/lote que sale tiene un ID único acordado con el cliente.",
+        "Ligar ese ID a la orden de inyección."
+      ],
+      "clausulas": [
+        {
+          "codigo": "serie",
+          "titulo": "Identificadores únicos",
+          "queHaceOperaciones": "Reglas de ID de artículo, de agrupación y de transporte."
+        }
+      ],
+      "evidencias": [
+        "Esquema de ID por cliente / SKU.",
+        "Liga orden KERN → etiqueta de caja."
+      ],
+      "indicadores": [
+        "% de expediciones con ID único ligado a orden"
+      ],
+      "kern": {
+        "cobertura": "evidencia-parcial",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "SMARTPRO ya lee código de barras y QR. El ID único se ficha en la orden.",
+        "evidenciasKern": [
+          "Validacion de GTIN con digito verificador GS1 sobre tu maestro",
+          "Duplicados de identificador"
+        ],
+        "limite": "KERN valida el identificador en el maestro. No emite GTINs, no administra tu prefijo GS1 y no lee codigos en piso."
+      },
+      "tareas": [
+        {
+          "id": "iso-15459-t1",
+          "titulo": "Ligar el ID de caja a la orden en las tres familias de mayor volumen",
+          "detalle": "Si el código no entra a SMARTPRO, no hay cadena digital.",
+          "kern": [
+            "smartpro"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-22095",
+        "iso-9001",
+        "iso-28000",
+        "iso-22000"
+      ],
+      "erroresComunes": [
+        "Etiqueta bonita que no se puede buscar en MONITOR."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica",
+        "cliente"
+      ],
+      "scm": [
+        "transporte",
+        "datos"
+      ]
+    },
+    {
+      "id": "iso-27036",
+      "codigo": "ISO/IEC 27036",
+      "edicion": "2021",
+      "nombre": "Seguridad de la información para las relaciones con proveedores",
+      "familia": "seguridad-info",
+      "prioridad": "recomendada",
+      "tipo": "especificacion",
+      "resumen": "Cómo tratar la información que se comparte con proveedores y clientes: recetas, volúmenes, planos, forecasts. La cadena productiva intercambia dato sensible en cada eslabón.",
+      "porQueElGerente": "Una receta de moldeo o el volumen de un OEM en un USB o en un WhatsApp es un incidente de cadena, no solo de TI.",
+      "rolOperaciones": [
+        "Clasificar recetas, volúmenes y planos como información de la relación.",
+        "No compartir dashboards de MONITOR con un alcance más amplio que el contrato."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5–6",
+          "titulo": "Acuerdos y controles del ciclo de vida del proveedor",
+          "queHaceOperaciones": "Qué dato se comparte, con quién y hasta cuándo."
+        }
+      ],
+      "evidencias": [
+        "Inventario de datos compartidos con clientes y proveedores.",
+        "Altas/bajas de acceso a MONITOR."
+      ],
+      "indicadores": [
+        "Cuentas de cliente/proveedor activas vs contratos vigentes"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "monitor"
+        ],
+        "comoAyuda": "El perímetro de quién ve volúmenes en MONITOR es un control de 27036.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma son de cuentas, accesos y controles de TI. KERN no ingesta ese dato."
+      },
+      "tareas": [
+        {
+          "id": "iso-27036-t1",
+          "titulo": "Revisar quién fuera de planta ve MONITOR",
+          "detalle": "Cliente, corporativo, proveedor de resina: cada uno con un porqué.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-27001",
+        "iso-44001",
+        "iso-22301"
+      ],
+      "erroresComunes": [
+        "Mandar el export de MONITOR con todas las plantas al cliente de una sola."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "cliente"
+      ],
+      "scm": [
+        "datos",
+        "compras"
+      ]
+    },
+    {
+      "id": "iso-22005",
+      "codigo": "ISO 22005",
+      "edicion": "2007",
+      "nombre": "Trazabilidad en la cadena alimentaria — diseño y principios",
+      "familia": "alimentos",
+      "prioridad": "sectorial",
+      "tipo": "especificacion",
+      "resumen": "Principios para diseñar la trazabilidad a lo largo de la cadena alimentaria (un paso atrás, un paso adelante, y a menudo más). El empaque inyectado es un eslabón si hay contacto con alimento.",
+      "porQueElGerente": "Un recall de alimento llega a la tapa o al envase. Si no se puede listar órdenes y lotes de resina en horas, la planta es el cuello de botella de toda la cadena.",
+      "rolOperaciones": [
+        "Diseñar el eslabón: lote de resina → orden → contenedor → cliente.",
+        "Ensayar el recall desde ambos extremos (resina y caja)."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5",
+          "titulo": "Diseño del sistema de trazabilidad",
+          "queHaceOperaciones": "Objetivos, lote, registros y tiempos de respuesta."
+        }
+      ],
+      "evidencias": [
+        "Diagrama un paso atrás / un paso adelante.",
+        "Acta de simulacro de recall."
+      ],
+      "indicadores": [
+        "Tiempo de recall simulado"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "La liga material–orden–cantidad es el eslabón de transformación que 22005 pide.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige genealogia de lote y reconstruccion aguas arriba y abajo. KERN identifica lote y vencimiento, pero no construye la genealogia ni el eslabon previo, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-22005-t1",
+          "titulo": "Simular recall: de lote de resina a cajas y de caja a lote",
+          "detalle": "Los dos sentidos. Objetivo: lista en menos de 4 horas.",
+          "kern": [
+            "monitor",
+            "smartpro"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-22000",
+        "iso-22095",
+        "iso-15459",
+        "iso-9001"
+      ],
+      "erroresComunes": [
+        "Trazar solo hacia adelante (la caja) y no hacia atrás (la resina)."
+      ],
+      "sectores": [
+        "Empaque alimentario",
+        "Contacto con alimento"
+      ],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica",
+        "cliente"
+      ],
+      "scm": [
+        "calidad"
+      ]
+    },
+    {
+      "id": "iso-38200",
+      "codigo": "ISO 38200",
+      "edicion": "2018",
+      "nombre": "Cadena de custodia de madera y productos a base de madera",
+      "familia": "custodia",
+      "prioridad": "sectorial",
+      "tipo": "especificacion",
+      "resumen": "Custodia específica de madera y derivados. Aplica si la cadena usa pallets, cajas o inserto de fibra y se declara origen legal o certificado.",
+      "porQueElGerente": "El pallet no es «logística ajena» cuando el cliente pide cadena de custodia de la madera. Operaciones recibe, usa y expide esa madera.",
+      "rolOperaciones": [
+        "Separar pallets/cajas con claim de origen de los que no lo tienen.",
+        "No reutilizar un pallet certificado como si el claim se heredara solo."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6",
+          "titulo": "Sistema de cadena de custodia",
+          "queHaceOperaciones": "Identificación y control de material de madera en planta."
+        }
+      ],
+      "evidencias": [
+        "Registro de entrada de pallets/cajas con claim."
+      ],
+      "indicadores": [
+        "Mezcla de pallets certificados y no certificados en el mismo muelle"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro"
+        ],
+        "comoAyuda": "Se puede fichar el tipo de pallet en la orden si se acuerda. No es nativo.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige genealogia de lote y reconstruccion aguas arriba y abajo. KERN identifica lote y vencimiento, pero no construye la genealogia ni el eslabon previo, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-38200-t1",
+          "titulo": "Si hay claim de madera, zonificar el patio de pallets",
+          "detalle": "Sin zona, no hay custodia.",
+          "kern": []
+        }
+      ],
+      "integraCon": [
+        "iso-22095",
+        "iso-20400",
+        "iso-14001"
+      ],
+      "erroresComunes": [
+        "Declarar pallet certificado y rearmar con tablas sueltas."
+      ],
+      "sectores": [
+        "Empaque de madera / papel",
+        "Pallets y jaulas"
+      ],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica"
+      ],
+      "scm": [
+        "compras",
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-15378",
+      "codigo": "ISO 15378",
+      "edicion": "2017",
+      "nombre": "Materiales de envase primario para medicamentos — BPF + ISO 9001",
+      "familia": "salud",
+      "prioridad": "sectorial",
+      "tipo": "certificable",
+      "resumen": "Buenas prácticas de fabricación para el envase que toca el medicamento, montadas sobre 9001. La cadena productiva farmacéutica trata el empaque como parte del producto.",
+      "porQueElGerente": "Un cambio de masterbatch o de regrind en un frasco farmacéutico no es una mejora de costo: es un cambio regulado.",
+      "rolOperaciones": [
+        "Congelar recetas y material; todo cambio pasa por control de cambios.",
+        "Trazar lote de resina grado farmacéutico hasta el contenedor."
+      ],
+      "clausulas": [
+        {
+          "codigo": "7",
+          "titulo": "Realización del producto",
+          "queHaceOperaciones": "Proceso controlado, identificación, BPF de piso."
+        }
+      ],
+      "evidencias": [
+        "Recetas congeladas vs recetas corridas.",
+        "Trazabilidad de lote de envase."
+      ],
+      "indicadores": [
+        "Cambios de proceso sin autorización"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "Histórico de orden, material y ciclo como evidencia de que se corrió lo aprobado.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-15378-t1",
+          "titulo": "Alertar cualquier orden fuera de la receta validada",
+          "detalle": "El turno no «mejora» un envase primario.",
+          "kern": [
+            "smartpro",
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-9001",
+        "iso-13485",
+        "iso-22095",
+        "iso-15459"
+      ],
+      "erroresComunes": [
+        "Tratar un frasco farmacéutico como una tapa commodity."
+      ],
+      "sectores": [
+        "Envase primario farmacéutico"
+      ],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "cliente"
+      ],
+      "scm": [
+        "calidad"
+      ]
+    },
+    {
+      "id": "iso-14083",
+      "codigo": "ISO 14083",
+      "edicion": "2023",
+      "nombre": "GEI de la cadena de transporte — cuantificación y reporte",
+      "familia": "ambiente",
+      "prioridad": "esencial",
+      "tipo": "especificacion",
+      "resumen": "Metodología común para cuantificar GEI de cadenas de transporte (carga y pasajeros, todos los modos). Es la base que alinean GLEC y CountEmissionsEU. El flete de resina y el de piezas dejan de ser un factor genérico.",
+      "porQueElGerente": "El supply chain manager es dueño del inbound y el outbound. Si el PCF de la pieza usa un flete inventado, el cliente lo va a contrastar. Operaciones entrega toneladas-km reales; logística/3PL entrega el factor.",
+      "rolOperaciones": [
+        "Separar flete inbound (resina, insertos, empaque) de outbound (piezas, devoluciones, RTI).",
+        "Pedir al 3PL o a la flota propia t·km, modo y factor well-to-wheel, no solo el costo del viaje.",
+        "No mezclar el kWh de planta (ENERGY) con el diésel del camión: son inventarios distintos."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5–6",
+          "titulo": "Límites de la cadena de transporte",
+          "queHaceOperaciones": "Definir tramos: planta proveedora → silo; planta → cliente; retornos de totes. Cada tramo tiene un dueño de dato."
+        },
+        {
+          "codigo": "7",
+          "titulo": "Cuantificación",
+          "queHaceOperaciones": "Usar dato primario de embarques cuando existe; factor por defecto solo si el 3PL no entrega nada."
+        }
+      ],
+      "evidencias": [
+        "T·km por modo y por familia de producto (periodo).",
+        "Declaración del 3PL o de la flota con metodología citada (14083 / GLEC)."
+      ],
+      "indicadores": [
+        "kg CO2e / t·km inbound y outbound",
+        "% de embarques con dato primario vs factor genérico"
+      ],
+      "kern": {
+        "cobertura": "evidencia-parcial",
+        "modulos": [
+          "huella",
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "SMARTPRO da kg y destino de la orden; la huella de proceso cubre el tramo de planta. El flete se pega encima, no se inventa dentro de ENERGY.",
+        "evidenciasKern": [
+          "Peso y distancia por envio, cuando el cliente los carga en la planilla de transporte"
+        ],
+        "limite": "KERN no calcula huella de transporte. El peso y la distancia entran solo por un CSV del cliente hacia la herramienta de transporte, nunca por conector; no se exponen como t.km y no hay factor de emision en el motor. El dato primario del transportista sigue siendo del 3PL."
+      },
+      "tareas": [
+        {
+          "id": "iso-14083-t1",
+          "titulo": "Cerrar t·km del mes de las tres rutas más pesadas",
+          "detalle": "Una inbound de resina, una outbound auto, una de export. Sin esas tres, el PCF sigue ciego.",
+          "kern": [
+            "smartpro",
+            "huella"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-14067",
+        "iso-14040",
+        "iso-14064-1",
+        "iso-20400",
+        "iso-28000"
+      ],
+      "erroresComunes": [
+        "Meter la factura de diésel de la planta en el PCF y llamarlo «logística».",
+        "Usar un único factor de camión para marítimo y last mile."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "logistica",
+        "cliente"
+      ],
+      "scm": [
+        "transporte",
+        "sostenibilidad"
+      ]
+    },
+    {
+      "id": "iso-39001",
+      "codigo": "ISO 39001",
+      "edicion": "2012",
+      "nombre": "Gestión de la seguridad vial (RTS)",
+      "familia": "sst",
+      "prioridad": "recomendada",
+      "tipo": "certificable",
+      "resumen": "Sistema para bajar muertos y heridos graves en el sistema vial que la organización influye: flota propia, contratistas, acceso al predio, last mile. Enmienda 2024 suma clima. No es SST de piso; es la calle.",
+      "porQueElGerente": "El camión que entra al muelle, el montacargas que cruza el patio y el 3PL que lleva piezas a la ensambladora son cadena. Un siniestro corta OTIF igual que una máquina caída.",
+      "rolOperaciones": [
+        "Mapear interacciones viales: acceso de trailers, peatones de patio, horarios de muelle.",
+        "Exigir al 3PL política RTS y conductores identificados; no solo tarifa.",
+        "Separar flujos de montacargas y de camiones en el predio."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6",
+          "titulo": "Factores de desempeño RTS",
+          "queHaceOperaciones": "Elegir factores que sí controla: velocidad en predio, alcohol cero, ventanas de cita, estado de rampas."
+        },
+        {
+          "codigo": "8",
+          "titulo": "Operación",
+          "queHaceOperaciones": "Citas de muelle, inspección de unidad, reglas de acoplamiento y de peatones."
+        }
+      ],
+      "evidencias": [
+        "Reglas de patio y de cita publicadas.",
+        "Incidentes / near miss viales del predio y de flota/3PL."
+      ],
+      "indicadores": [
+        "Incidentes viales en predio por 1.000 embarques",
+        "% de unidades con cita respetada"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "cei"
+        ],
+        "comoAyuda": "KERN no gestiona flota. El CEI puede entrenar disciplina de muelle; el sistema RTS vive en EHS + logística.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma son de personas, incidentes y horas trabajadas. KERN no ingesta datos de EHS ni de recursos humanos."
+      },
+      "tareas": [
+        {
+          "id": "iso-39001-t1",
+          "titulo": "Publicar reglas de patio y cita de muelle",
+          "detalle": "Velocidad, peatones, acoplamiento, alcohol cero, ventanas. Sin reglas no hay RTS.",
+          "kern": []
+        }
+      ],
+      "integraCon": [
+        "iso-45001",
+        "iso-28000",
+        "iso-22301"
+      ],
+      "erroresComunes": [
+        "Tratar 39001 como un anexo de 45001 y no hablar con el 3PL."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "logistica"
+      ],
+      "scm": [
+        "transporte",
+        "riesgo"
+      ]
+    },
+    {
+      "id": "iso-23412",
+      "codigo": "ISO 23412",
+      "edicion": "2020",
+      "nombre": "Servicio de entrega refrigerada indirecta de paquetes",
+      "familia": "cadena",
+      "prioridad": "sectorial",
+      "tipo": "especificacion",
+      "resumen": "Requisitos del servicio de paquetería con temperatura controlada e intercambio intermedio (hubs). Aplica cuando la planta o el 3PL mueve empaque alimentario, dispositivo o cosmética que no puede romper cadena de frío.",
+      "porQueElGerente": "Si el cliente pide 2–8 °C y el muelle deja el pallet dos horas al sol, la ISO de planta no salva el lote. El SCM define la especificación del servicio; operaciones no rompe la cadena en el predio.",
+      "rolOperaciones": [
+        "Declarar qué SKUs son temperatura-controlada y cuál es la ventana.",
+        "No expedir un pallet refrigerado por el muelle seco.",
+        "Pedir al 3PL evidencia de temperatura del tramo, no solo el POD."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5–7",
+          "titulo": "Servicio, transferencia e información",
+          "queHaceOperaciones": "Acordar rangos, tiempos máximos de transfer y qué se informa si se rompe la cadena."
+        }
+      ],
+      "evidencias": [
+        "Lista de SKUs con rango térmico.",
+        "Registros de temperatura del 3PL / datalogger del tramo."
+      ],
+      "indicadores": [
+        "Rupturas de cadena de frío por 1.000 embarques",
+        "% de SKUs fríos con especificación de servicio"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro"
+        ],
+        "comoAyuda": "La orden identifica el SKU; si el maestro marca «frío», la expedición no puede ir por el muelle genérico.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige genealogia de lote y reconstruccion aguas arriba y abajo. KERN identifica lote y vencimiento, pero no construye la genealogia ni el eslabon previo, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-23412-t1",
+          "titulo": "Marcar SKUs de temperatura controlada en el maestro",
+          "detalle": "Sin flag, el muelle los trata como caja seca.",
+          "kern": [
+            "smartpro"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-22000",
+        "iso-13485",
+        "iso-22716",
+        "iso-9001",
+        "iso-28000"
+      ],
+      "erroresComunes": [
+        "Aplicar 23412 a toda la planta cuando solo tres SKUs van fríos."
+      ],
+      "sectores": [
+        "alimentos",
+        "salud",
+        "cosmetica"
+      ],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "logistica",
+        "cliente"
+      ],
+      "scm": [
+        "transporte",
+        "calidad"
+      ]
+    },
+    {
+      "id": "iso-17364",
+      "codigo": "ISO 17364",
+      "edicion": "2013",
+      "nombre": "RFID en cadena de suministro — envases y transportadores retornables (RTI)",
+      "familia": "cadena",
+      "prioridad": "recomendada",
+      "tipo": "especificacion",
+      "resumen": "Cómo identificar con RFID los RTI: totes, racks, pallets retornables. En automotriz el tote es parte del contrato. Sin ID no hay inventario de empaque ni custodia del lote.",
+      "porQueElGerente": "Los totes perdidos son costo, y un tote sin ID rompe la traza del lote que viaja dentro. El SCM opera el pool; operaciones no despacha un rack anónimo.",
+      "rolOperaciones": [
+        "Inventariar RTI propios vs del cliente vs del pool.",
+        "No mezclar totes de dos OEM en el mismo flujo sin ID.",
+        "Reconciliar totes expedidos vs totes de vuelta."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6–7",
+          "titulo": "Datos de identificación del RTI",
+          "queHaceOperaciones": "Qué se graba en el tag: dueño, tipo, ID único. El lote de piezas va amarrado al ID del tote."
+        }
+      ],
+      "evidencias": [
+        "Padrón de RTI con dueño y estado (planta / cliente / perdido).",
+        "Lecturas de expedición y retorno."
+      ],
+      "indicadores": [
+        "RTI perdidos / mes",
+        "% de expediciones con RTI identificado"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "La orden y la cantidad se amarran al tote si el ID entra en el cierre de orden. MONITOR ve el faltante de empaque retornable.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige genealogia de lote y reconstruccion aguas arriba y abajo. KERN identifica lote y vencimiento, pero no construye la genealogia ni el eslabon previo, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-17364-t1",
+          "titulo": "Padrón de RTI de los tres clientes que imponen tote",
+          "detalle": "Dueño, tipo, cantidad teórica, cantidad en planta.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-15459",
+        "iso-28000",
+        "iatf-16949",
+        "iso-22095"
+      ],
+      "erroresComunes": [
+        "Comprar tags y no definir quién es dueño del tote."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "transformacion",
+        "logistica",
+        "cliente"
+      ],
+      "scm": [
+        "transporte",
+        "inventario",
+        "datos"
+      ]
+    },
+    {
+      "id": "iso-28001",
+      "codigo": "ISO 28001",
+      "edicion": "2007",
+      "nombre": "Mejores prácticas de seguridad de la cadena — evaluaciones y planes",
+      "familia": "cadena",
+      "prioridad": "recomendada",
+      "tipo": "especificacion",
+      "resumen": "Cómo hacer la evaluación y el plan de seguridad de la cadena que 28000 exige: alcance, amenazas, controles, evidencia. Es el puente operativo hacia C-TPAT / OEA / AEO.",
+      "porQueElGerente": "28000 dice «haya un sistema». 28001 dice cómo evaluar el muelle, el almacén y el 3PL. El SCM arma el plan; operaciones ejecuta los controles de piso.",
+      "rolOperaciones": [
+        "Completar la evaluación del predio: cercos, sellos, iluminación, visitantes, patio de trailers.",
+        "Definir qué se sella, quién tiene sello y cómo se reconcilia.",
+        "Incluir al 3PL y al almacén externo en el mismo plan, no solo la planta."
+      ],
+      "clausulas": [
+        {
+          "codigo": "4–5",
+          "titulo": "Evaluación y plan de seguridad",
+          "queHaceOperaciones": "Amenazas (robo, contaminación, acceso), controles actuales, huecos, responsables."
+        }
+      ],
+      "evidencias": [
+        "Evaluación de seguridad de cadena vigente.",
+        "Plan con controles de muelle y de sello."
+      ],
+      "indicadores": [
+        "Hallazgos de evaluación abiertos > 90 días",
+        "Discrepancias sello / remisión"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "La reconciliación de piezas buenas vs remisionado es evidencia de que no salió producto no declarado.",
+        "evidenciasKern": [],
+        "limite": "Los datos que esta norma pide no entran a KERN por ningun conector ni contrato de columnas."
+      },
+      "tareas": [
+        {
+          "id": "iso-28001-t1",
+          "titulo": "Cerrar la evaluación de seguridad del muelle y el almacén PT",
+          "detalle": "Con 28000 como marco y 28001 como método. Un dueño, una fecha.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-28000",
+        "iso-22301",
+        "iso-27001",
+        "iso-9001"
+      ],
+      "erroresComunes": [
+        "Copiar un checklist C-TPAT y no evaluar el almacén externo."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "logistica",
+        "cliente"
+      ],
+      "scm": [
+        "transporte",
+        "riesgo"
+      ]
+    },
+    {
+      "id": "iso-10004",
+      "codigo": "ISO 10004",
+      "edicion": "2018",
+      "nombre": "Calidad — seguimiento y medición de la satisfacción del cliente",
+      "familia": "calidad",
+      "prioridad": "recomendada",
+      "tipo": "guia",
+      "resumen": "Cómo escuchar al cliente más allá del reclamo: indicadores, encuestas, quejas, OTIF percibido. Complementa 10002 (tratamiento de quejas) y alimenta la revisión por la dirección y el S&OP.",
+      "porQueElGerente": "El SCM vive de OTIF, PPM y scorecards de OEM. 10004 obliga a medir lo que el cliente siente, no solo lo que calidad cierra en 8D.",
+      "rolOperaciones": [
+        "Definir qué se mide: OTIF, PPM, demoras de cita, calidad de empaque, respuesta a cambios.",
+        "Separar ruido de un mes de una tendencia de célula o de ruta.",
+        "Llevar el scorecard del cliente a la reunión de S&OP, no solo a calidad."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6–7",
+          "titulo": "Identificar y recoger datos de satisfacción",
+          "queHaceOperaciones": "Fuentes: portal OEM, reclamos, OTIF, visitas. Frecuencia y dueño por fuente."
+        },
+        {
+          "codigo": "8",
+          "titulo": "Análisis y uso",
+          "queHaceOperaciones": "Qué dispara acción de planta vs acción de logística vs acción comercial."
+        }
+      ],
+      "evidencias": [
+        "Tablero de satisfacción / scorecard por cliente clave.",
+        "Acciones abiertas ligadas a una caída de score."
+      ],
+      "indicadores": [
+        "OTIF por cliente",
+        "PPM / reclamos por millón",
+        "Score OEM vs periodo anterior"
+      ],
+      "kern": {
+        "cobertura": "nativo",
+        "modulos": [
+          "monitor",
+          "smartpro"
+        ],
+        "comoAyuda": "OEE, scrap y cierre de orden explican una caída de OTIF o de PPM. No sustituyen el portal del OEM.",
+        "evidenciasKern": [
+          "Fill rate y OTIF por linea de pedido (SCOR RL.1.1)",
+          "Venta perdida en $ por quiebre",
+          "Declaracion campo por campo de lo que no se pudo medir"
+        ],
+        "limite": "KERN mide el servicio realizado, que es un insumo de la satisfaccion, no la satisfaccion. Encuestas, NPS y el tratamiento de la queja siguen en Comercial."
+      },
+      "tareas": [
+        {
+          "id": "iso-10004-t1",
+          "titulo": "Armar el scorecard mensual de los 5 clientes que mueven el 80 %",
+          "detalle": "OTIF, PPM, reclamos, demoras de cita. Una hoja, un dueño.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-10002",
+        "iso-9001",
+        "iso-10005",
+        "iatf-16949"
+      ],
+      "erroresComunes": [
+        "Medir solo reclamos formales y declarar «el cliente está feliz»."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "cliente"
+      ],
+      "scm": [
+        "calidad",
+        "planificacion"
+      ]
+    },
+    {
+      "id": "iso-10005",
+      "codigo": "ISO 10005",
+      "edicion": "2018",
+      "nombre": "Calidad — directrices para planes de la calidad",
+      "familia": "calidad",
+      "prioridad": "recomendada",
+      "tipo": "guia",
+      "resumen": "Cómo escribir el plan de calidad de un producto, proyecto o contrato: qué se controla, quién, con qué evidencia. En cadena es el puente entre el APQP/PPAP del cliente y lo que hace el proveedor de resina o el 3PL.",
+      "porQueElGerente": "Cada lanzamiento y cada cliente especial necesita un plan, no «ya tenemos 9001». El SCM asegura que compras, moldeo y expedición aparezcan en el mismo plan.",
+      "rolOperaciones": [
+        "Hacer un plan por familia / contrato, no un plan genérico de planta.",
+        "Incluir entradas de proveedor (resina, inserto) y salidas logísticas (empaque, etiqueta, tote).",
+        "Congelar el plan antes del arranque en serie; el cambio va por control de cambios."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6",
+          "titulo": "Desarrollo del plan de la calidad",
+          "queHaceOperaciones": "Alcance, procesos, recursos, controles, registros. Quién firma por moldeo, calidad y logística."
+        }
+      ],
+      "evidencias": [
+        "Plan de calidad por familia o por contrato de cliente.",
+        "Lista de controles de entrada, proceso y expedición."
+      ],
+      "indicadores": [
+        "% de SKUs de cliente especial con plan vigente",
+        "Arranques en serie sin plan (debe ser cero)"
+      ],
+      "kern": {
+        "cobertura": "evidencia-parcial",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "La receta, el molde y la orden son la ejecución del plan. Si el plan pide 100 % visión y la orden corre sin ella, queda el hueco.",
+        "evidenciasKern": [
+          "Órdenes de la familia vs receta / molde del plan"
+        ],
+        "limite": "KERN no redacta el plan ni sustituye el APQP del cliente."
+      },
+      "tareas": [
+        {
+          "id": "iso-10005-t1",
+          "titulo": "Plan de calidad de la próxima familia a lanzar",
+          "detalle": "Entrada de resina, proceso, inspección, empaque, expedición, dueños.",
+          "kern": [
+            "smartpro"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-9001",
+        "iatf-16949",
+        "iso-10006",
+        "iso-20400",
+        "iso-2859-1"
+      ],
+      "erroresComunes": [
+        "Copiar el manual 9001 y llamarlo plan de calidad del cliente X."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica",
+        "cliente"
+      ],
+      "scm": [
+        "calidad",
+        "planificacion",
+        "compras"
+      ]
+    },
+    {
+      "id": "iso-2859-1",
+      "codigo": "ISO 2859-1",
+      "edicion": "1999",
+      "nombre": "Muestreo por atributos — planes de muestreo indexados por NCA",
+      "familia": "calidad",
+      "prioridad": "recomendada",
+      "tipo": "especificacion",
+      "resumen": "Tablas AQL / NCA para inspección por atributos. Es la lengua común entre el SCM y el proveedor: cuántas cajas se abren, con qué NCA, qué se rechaza. Sigue vigente (confirmada).",
+      "porQueElGerente": "Sin plan de muestreo, recepción de resina o de insertos es «a ojo» o es 100 % eterno. El SCM negocia el NCA; calidad ejecuta; operaciones no libera un lote saltándose la tabla.",
+      "rolOperaciones": [
+        "Declarar NCA por característica crítica (humedad, contaminación, cota de inserto).",
+        "No «flexibilizar» el muestreo un viernes para no parar la célula.",
+        "Registrar lote aceptado / rechazado / desviado y quién autorizó."
+      ],
+      "clausulas": [
+        {
+          "codigo": "8–10",
+          "titulo": "Elección del plan y operación",
+          "queHaceOperaciones": "Nivel de inspección, NCA, conmutación normal/estricta/reducida según historial del proveedor."
+        }
+      ],
+      "evidencias": [
+        "Planes de muestreo por familia de compra.",
+        "Registros de lotes rechazados y de conmutación."
+      ],
+      "indicadores": [
+        "Lotes rechazados en recepción / mes",
+        "% de liberaciones sin plan de muestreo (cero)"
+      ],
+      "kern": {
+        "cobertura": "nativo",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "El lote de resina que entra a la orden debe ser un lote liberado. MONITOR ve scrap de un lote mal recibido.",
+        "evidenciasKern": [
+          "Plan de muestreo (n, c) por parte a partir de AQL y LTPD",
+          "Riesgo del productor y del consumidor del plan",
+          "Unidades a inspeccionar por lote"
+        ],
+        "limite": "KERN calcula el plan. La inspeccion, el registro del resultado y la disposicion del lote rechazado son de Calidad."
+      },
+      "tareas": [
+        {
+          "id": "iso-2859-1-t1",
+          "titulo": "Publicar NCA de resina, masterbatch e insertos críticos",
+          "detalle": "Una tabla, un dueño, visible en recepción.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-9001",
+        "iso-20400",
+        "iso-10005",
+        "iatf-16949"
+      ],
+      "erroresComunes": [
+        "Usar un NCA de catálogo que el cliente no acepta, o saltárselo «porque el proveedor es de confianza»."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "cliente"
+      ],
+      "scm": [
+        "calidad",
+        "compras",
+        "inventario"
+      ]
+    },
+    {
+      "id": "iso-22468",
+      "codigo": "ISO 22468",
+      "edicion": "2020",
+      "nombre": "Gestión del flujo de valor (VSM)",
+      "familia": "calidad",
+      "prioridad": "esencial",
+      "tipo": "guia",
+      "resumen": "Método normalizado para recolectar, evaluar y mejorar datos del flujo de valor (material, energía o datos) y medirlo con KPI. El VSM deja de ser un dibujo de un taller lean y pasa a ser un estándar de cadena.",
+      "porQueElGerente": "El mapa que el SCM necesita no termina en la última máquina: empieza en el proveedor de resina y termina en el muelle del cliente. 22468 da el método y los KPI para no discutir el dibujo.",
+      "rolOperaciones": [
+        "Levantar el VSM de una familia completa: lead time, inventario, esperas, scrap, kWh.",
+        "Separar tiempo que agrega valor de cola de silo, cola de QC y cola de muelle.",
+        "Elegir un futuro estado con dueño y fecha; el mapa sin kaizen es decoración."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5–6",
+          "titulo": "Recolección y evaluación del flujo",
+          "queHaceOperaciones": "Dato primario de ciclo, colas e inventarios. No estimar «más o menos dos días»."
+        },
+        {
+          "codigo": "7",
+          "titulo": "KPI del flujo de valor",
+          "queHaceOperaciones": "Lead time, PCE, inventario en días, scrap, energía del tramo."
+        }
+      ],
+      "evidencias": [
+        "VSM actual y futuro de la familia piloto, con fecha.",
+        "KPI del flujo con fuente de dato."
+      ],
+      "indicadores": [
+        "Lead time puerta a puerta",
+        "Process cycle efficiency",
+        "Días de inventario de resina y de PT"
+      ],
+      "kern": {
+        "cobertura": "evidencia-parcial",
+        "modulos": [
+          "monitor",
+          "smartpro",
+          "energy",
+          "huella"
+        ],
+        "comoAyuda": "Ciclo, OEE, scrap y kWh son el tramo de transformación del VSM. El resto (colas de QC, flete) se pega con dato de SCM.",
+        "evidenciasKern": [
+          "Tiempo de transito real por lane: media, desviacion, p50 y p90 en dias",
+          "Dias de inventario (DIO) y ciclo cash-to-cash",
+          "Capital inmovilizado en excedente y obsoleto"
+        ],
+        "limite": "KERN mide los tramos de espera y de inventario del flujo. El tiempo de ciclo de proceso y la eficiencia del ciclo (PCE) necesitan datos de maquina que KERN no ingesta."
+      },
+      "tareas": [
+        {
+          "id": "iso-22468-t1",
+          "titulo": "VSM puerta a puerta de una familia piloto",
+          "detalle": "Resina → silo → secado → inyección → QC → PT → muelle → cliente.",
+          "kern": [
+            "monitor",
+            "smartpro",
+            "energy"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-22400-2",
+        "iso-13053-1",
+        "iso-18404",
+        "iso-9001",
+        "iso-50001"
+      ],
+      "erroresComunes": [
+        "Hacer el VSM solo de la célula y declarar la cadena «optimizada»."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica",
+        "cliente"
+      ],
+      "scm": [
+        "optimizacion",
+        "planificacion",
+        "inventario"
+      ]
+    },
+    {
+      "id": "iso-13053-1",
+      "codigo": "ISO 13053-1",
+      "edicion": "2011",
+      "nombre": "Seis Sigma — metodología DMAIC",
+      "familia": "calidad",
+      "prioridad": "recomendada",
+      "tipo": "guia",
+      "resumen": "El esqueleto DMAIC: definir, medir, analizar, mejorar, controlar. Es la forma de atacar un OTIF roto, un PPM alto o un lead time inflado sin el teatro del «proyecto lean» sin dato.",
+      "porQueElGerente": "El SCM no puede vivir de firefighting. 13053-1 obliga a un problema, una métrica, una causa y un control. Operaciones aporta el dato de piso; el cinturón facilita.",
+      "rolOperaciones": [
+        "Elegir problemas de cadena con impacto (OTIF, PPM, días de inventario), no proyectos decorativos.",
+        "Congelar la métrica baseline antes de tocar el proceso.",
+        "Dejar un control (quién mira qué, con qué umbral) cuando el proyecto cierra."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6–10",
+          "titulo": "Fases DMAIC",
+          "queHaceOperaciones": "Charter, dato, causa, piloto, control. Cada fase tiene salida; no se salta a Improve."
+        }
+      ],
+      "evidencias": [
+        "Charter con métrica y dueño de proceso.",
+        "Baseline y resultado, con control residual."
+      ],
+      "indicadores": [
+        "Proyectos DMAIC cerrados con control vigente",
+        "Delta de la métrica vs baseline"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "monitor",
+          "smartpro",
+          "energy"
+        ],
+        "comoAyuda": "Measure y Control viven en MONITOR: scrap, ciclo, OEE, kWh. Sin eso el DMAIC mide a mano una semana y se olvida.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-13053-1-t1",
+          "titulo": "Abrir un DMAIC de OTIF o de PPM de un cliente",
+          "detalle": "Charter, baseline KERN, dueño de cadena y de planta.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-18404",
+        "iso-22468",
+        "iso-9001",
+        "iso-22400-2"
+      ],
+      "erroresComunes": [
+        "Llamar DMAIC a un 8D que nunca midió el baseline."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [
+        "transformacion"
+      ],
+      "scm": [
+        "optimizacion",
+        "calidad"
+      ]
+    },
+    {
+      "id": "iso-18404",
+      "codigo": "ISO 18404",
+      "edicion": "2015",
+      "nombre": "Competencias Lean y Seis Sigma de personas y de la organización",
+      "familia": "calidad",
+      "prioridad": "recomendada",
+      "tipo": "especificacion",
+      "resumen": "Define competencias de Green Belt, Black Belt y practicantes Lean (no Yellow Belt; no DFSS). Evita el cinturón de PowerPoint: la organización también tiene que ser competente, no solo la persona.",
+      "porQueElGerente": "Si el SCM lanza kaizens y nadie está competente, el mapa 22468 se pudre. 18404 dice qué tiene que saber la gente y qué tiene que sostener la empresa (coaching, proyectos, dato).",
+      "rolOperaciones": [
+        "No comprar una oleada de cinturones sin pipeline de proyectos de cadena.",
+        "Exigir que cada belt tenga un proyecto con métrica de planta o de OTIF.",
+        "Separar facilitador de dueño de proceso: el belt no «se queda» con la célula."
+      ],
+      "clausulas": [
+        {
+          "codigo": "4–5",
+          "titulo": "Competencias individuales y organizacionales",
+          "queHaceOperaciones": "Qué debe demostrar un belt y qué debe tener la planta (dato, coaching, selección de proyectos)."
+        }
+      ],
+      "evidencias": [
+        "Matriz de belts vs proyectos activos.",
+        "Criterio de selección de proyectos (impacto × dato disponible)."
+      ],
+      "indicadores": [
+        "Belts con proyecto activo vs belts «de diploma»",
+        "Proyectos cerrados con control"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "cei",
+          "monitor"
+        ],
+        "comoAyuda": "El CEI forma gente de inyección; MONITOR da el dato del proyecto. La competencia Lean/SS se evalúa fuera.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-18404-t1",
+          "titulo": "Inventariar belts y amarrar cada uno a un proyecto vivo",
+          "detalle": "Sin proyecto, el cinturón no cuenta para esta planta.",
+          "kern": [
+            "cei",
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-13053-1",
+        "iso-22468",
+        "iso-9001"
+      ],
+      "erroresComunes": [
+        "Pagar certificaciones masivas y no tener un solo control residual."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [
+        "transformacion"
+      ],
+      "scm": [
+        "optimizacion"
+      ]
+    },
+    {
+      "id": "iso-8000-1",
+      "codigo": "ISO 8000-1",
+      "edicion": "2022",
+      "nombre": "Calidad de datos — panorama y principios",
+      "familia": "seguridad-info",
+      "prioridad": "esencial",
+      "tipo": "guia",
+      "resumen": "La puerta de la familia 8000: sin dato maestro limpio no hay planificación, ni OTIF, ni PCF. El SCM opera con SKU, cliente, ruta, lote y RTI. Si el maestro miente, el tablero miente.",
+      "porQueElGerente": "S&OP, MRP y scorecards mueren por un SKU duplicado o un lead time de proveedor inventado. 8000-1 pone la calidad del dato como proceso, no como ticket a TI.",
+      "rolOperaciones": [
+        "Nombrar dueños de maestro: SKU, cliente, proveedor, ruta, RTI, receta.",
+        "Definir qué es un registro completo (campos mínimos para planificar y expedir).",
+        "No crear SKUs «temporales» que viven años."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5–6",
+          "titulo": "Principios y calidad del dato",
+          "queHaceOperaciones": "Exactitud, completitud, actualidad, consistencia. Cada maestro tiene umbral y dueño."
+        }
+      ],
+      "evidencias": [
+        "Diccionario de maestros con dueño y campos mínimos.",
+        "Backlog de SKUs / proveedores incompletos."
+      ],
+      "indicadores": [
+        "% de SKUs con lead time y peso logístico cargados",
+        "Órdenes bloqueadas por maestro incompleto"
+      ],
+      "kern": {
+        "cobertura": "nativo",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "La orden obliga a molde, material y cantidad. Eso disciplina el maestro de proceso. El maestro de cliente/ruta vive en el ERP.",
+        "evidenciasKern": [
+          "Score de calidad del maestro: completitud por campo",
+          "GTIN invalidos por digito verificador GS1",
+          "Duplicados por GTIN y por nombre",
+          "La columna faltante de mayor valor sobre la carpeta cruda del cliente"
+        ],
+        "limite": "KERN mide la calidad del maestro que le entregas. No gobierna el dato ni sustituye un MDM: la correccion y el dueno del campo siguen en tu organizacion."
+      },
+      "tareas": [
+        {
+          "id": "iso-8000-1-t1",
+          "titulo": "Campos mínimos del maestro SKU para planificar y expedir",
+          "detalle": "Peso, cliente, empaque, lead time, flag de frío, modelo de custodia.",
+          "kern": [
+            "smartpro"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-27001",
+        "iso-15459",
+        "iso-22400-2",
+        "iso-9001",
+        "iso-22095"
+      ],
+      "erroresComunes": [
+        "Comprar un tablero de cadena sobre un maestro podrido."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica",
+        "cliente"
+      ],
+      "scm": [
+        "datos",
+        "planificacion",
+        "inventario"
+      ]
+    },
+    {
+      "id": "iso-22400-2",
+      "codigo": "ISO 22400-2",
+      "edicion": "2014",
+      "nombre": "KPI de gestión de operaciones de manufactura (MOM)",
+      "familia": "calidad",
+      "prioridad": "esencial",
+      "tipo": "especificacion",
+      "resumen": "Define KPI de operaciones de manufactura: disponibilidad, calidad, OEE, inventario, throughput. Es el diccionario para que planta, SCM y dirección no usen tres «OEE» distintos.",
+      "porQueElGerente": "El S&OP se cae cuando planta reporta OEE de máquina y el SCM reporta fill rate con otra aritmética. 22400-2 fija fórmulas. KERN ya mide varias; hay que alinear nombres.",
+      "rolOperaciones": [
+        "Publicar el diccionario: qué es OEE, scrap, throughput, inventario en esta planta.",
+        "Separar KPI de célula de KPI de cadena (OTIF, días de inventario).",
+        "No cambiar la fórmula a mitad de año para «mejorar» el tablero."
+      ],
+      "clausulas": [
+        {
+          "codigo": "5",
+          "titulo": "Definiciones de KPI",
+          "queHaceOperaciones": "Fórmula, unidad, fuente, responsable. OEE y calidad no se improvisan."
+        }
+      ],
+      "evidencias": [
+        "Diccionario de KPI MOM + cadena, con fórmula y fuente.",
+        "Tablero alineado al diccionario."
+      ],
+      "indicadores": [
+        "OEE (definición 22400)",
+        "Throughput",
+        "Inventario en proceso / PT"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "monitor",
+          "smartpro",
+          "energy"
+        ],
+        "comoAyuda": "MONITOR ya expone OEE, scrap y ritmo. El trabajo es no tener un Excel paralelo con otra fórmula.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-22400-2-t1",
+          "titulo": "Congelar el diccionario OEE / scrap / OTIF / inventario",
+          "detalle": "Una fórmula, una fuente, un dueño. Publicarlo en la reunion de S&OP.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-9001",
+        "iso-22468",
+        "iso-55001",
+        "iso-50001"
+      ],
+      "erroresComunes": [
+        "Tener OEE de KERN, OEE de Excel y OEE del corporativo, los tres distintos."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [
+        "transformacion",
+        "logistica"
+      ],
+      "scm": [
+        "optimizacion",
+        "planificacion",
+        "inventario"
+      ]
+    },
+    {
+      "id": "iso-37500",
+      "codigo": "ISO 37500",
+      "edicion": "2014",
+      "nombre": "Orientación sobre outsourcing",
+      "familia": "cadena",
+      "prioridad": "recomendada",
+      "tipo": "guia",
+      "resumen": "Ciclo de vida del outsourcing: estrategia, selección, contrato, transición, gobernanza y salida. Cubre 3PL, maquila, almacén externo, mantenimiento y toolshop — no solo «el de TI».",
+      "porQueElGerente": "El SCM es el dueño de lo que se saca de casa. Un 3PL o una maquila mal contratada rompe OTIF y custodia. 37500 obliga a gobernar al tercero como proceso, no como factura.",
+      "rolOperaciones": [
+        "Declarar qué se puede outsourcear sin romper custodia ni conocimiento de proceso.",
+        "Poner SLAs de OTIF, daño, temperatura y traza — no solo precio por viaje.",
+        "Tener un plan de salida: cómo se recupera el inventario y el dato el día que el 3PL se va."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6–8",
+          "titulo": "Estrategia, selección y gobernanza",
+          "queHaceOperaciones": "Por qué se saca, con qué criterios, quién sienta al 3PL en el S&OP."
+        }
+      ],
+      "evidencias": [
+        "Matriz de make-or-buy de logística / maquila / toolshop.",
+        "SLA y tablero del 3PL vigentes."
+      ],
+      "indicadores": [
+        "OTIF del 3PL vs SLA",
+        "Incidentes de traza atribuibles al tercero"
+      ],
+      "kern": {
+        "cobertura": "nativo",
+        "modulos": [
+          "smartpro",
+          "monitor"
+        ],
+        "comoAyuda": "Las órdenes y las cantidades permiten auditar al 3PL: lo que salió de planta vs lo que llegó al cliente.",
+        "evidenciasKern": [
+          "OTIF del transportista contra el compromiso, por linea de pedido",
+          "Cobertura de la evidencia de llegada, declarada por transportista",
+          "Fill rate separado del OTIF cuando divergen"
+        ],
+        "limite": "KERN mide el desempeno del tercero cuando hay evidencia de llegada. El contrato, la gobernanza de la relacion y la salida del acuerdo no los cubre."
+      },
+      "tareas": [
+        {
+          "id": "iso-37500-t1",
+          "titulo": "SLA escrito del 3PL principal (OTIF, daño, traza, temperatura)",
+          "detalle": "Si no está escrito, no hay outsourcing: hay esperanza.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-20400",
+        "iso-44001",
+        "iso-28000",
+        "iso-27036",
+        "iso-22301"
+      ],
+      "erroresComunes": [
+        "Outsourcear el muelle y seguir midiendo OTIF como si la planta lo controlara sola."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "logistica"
+      ],
+      "scm": [
+        "compras",
+        "riesgo",
+        "planificacion"
+      ]
+    },
+    {
+      "id": "iso-22316",
+      "codigo": "ISO 22316",
+      "edicion": "2017",
+      "nombre": "Seguridad y resiliencia — resiliencia organizacional",
+      "familia": "continuidad",
+      "prioridad": "recomendada",
+      "tipo": "guia",
+      "resumen": "Principios de resiliencia: no solo el plan de continuidad (22301), sino la capacidad de absorber un proveedor caído, un puerto cerrado o un pico de demanda. Es la capa de gobierno del SCM ante disrupción.",
+      "porQueElGerente": "22301 cubre la célula crítica. 22316 pregunta si la cadena entera puede absorber el golpe: segundo origen de resina, 3PL alterno, inventario estratégico. Eso es trabajo del SCM.",
+      "rolOperaciones": [
+        "Identificar concentraciones: un solo puerto, un solo grado de resina, un solo 3PL.",
+        "Acordar con compras el segundo origen antes de que el primero falle.",
+        "Ensayar el failover de logística, no solo el de la máquina."
+      ],
+      "clausulas": [
+        {
+          "codigo": "6",
+          "titulo": "Atributos de una organización resiliente",
+          "queHaceOperaciones": "Visión compartida, recursos, silos rotos entre planta, compras y logística."
+        }
+      ],
+      "evidencias": [
+        "Mapa de concentraciones de cadena.",
+        "Playbook de segundo origen / 3PL alterno."
+      ],
+      "indicadores": [
+        "SKUs con un solo origen viable",
+        "Tiempo de switch a 3PL alterno (ensayo)"
+      ],
+      "kern": {
+        "cobertura": "nativo",
+        "modulos": [
+          "monitor",
+          "smartpro"
+        ],
+        "comoAyuda": "El historial de paradas y de material muestra qué tan concentrada está la planta. No diseña la red.",
+        "evidenciasKern": [
+          "SKUs con un solo origen viable",
+          "Cuadrante Kraljic por proveedor (impacto x riesgo de suministro)",
+          "Exposicion a disrupcion por proveedor"
+        ],
+        "limite": "KERN nombra la concentracion y la exposicion. El ensayo de recuperacion, el liderazgo y la cultura de resiliencia no se miden con datos de cadena."
+      },
+      "tareas": [
+        {
+          "id": "iso-22316-t1",
+          "titulo": "Lista de concentraciones: resina, 3PL, puerto, toolshop",
+          "detalle": "Las que no tienen plan B son el riesgo real, no el sismo genérico.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-22301",
+        "iso-31000",
+        "iso-28000",
+        "iso-20400",
+        "iso-37500"
+      ],
+      "erroresComunes": [
+        "Tener BCP de planta y un solo barco para el 70 % de la resina."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "logistica"
+      ],
+      "scm": [
+        "riesgo",
+        "planificacion"
+      ]
+    },
+    {
+      "id": "iso-41001",
+      "codigo": "ISO 41001",
+      "edicion": "2018",
+      "nombre": "Facility management — sistemas de gestión",
+      "familia": "activos",
+      "prioridad": "recomendada",
+      "tipo": "certificable",
+      "resumen": "Sistema de gestión del facility: predio, naves, muelles, clima, seguridad física, servicios. El almacén y el patio no son «de mantenimiento»: son capacidad de cadena.",
+      "porQueElGerente": "Un muelle sin rampa, un silo sin capacidad o un PT sin temperatura controlada recortan el plan igual que una máquina. El SCM dimensiona; facility opera.",
+      "rolOperaciones": [
+        "Traducir el plan de demanda a capacidad de almacén, muelle y patio.",
+        "Acordar SLAs internos: disponibilidad de muelle, clima de PT, limpieza de silos.",
+        "No tratar el facility como costo fijo invisible en el S&OP."
+      ],
+      "clausulas": [
+        {
+          "codigo": "8",
+          "titulo": "Operación del facility",
+          "queHaceOperaciones": "Servicios que sostienen la cadena: muelle, clima, acceso, residuos, energía del predio."
+        }
+      ],
+      "evidencias": [
+        "SLA de facility vs necesidades de almacén y muelle.",
+        "Capacidad de posiciones de PT y de silo vs plan."
+      ],
+      "indicadores": [
+        "Horas de muelle perdido por facility",
+        "Ocupación de PT vs plan"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "cmms",
+          "energy",
+          "monitor"
+        ],
+        "comoAyuda": "ENERGY y paradas muestran cuando el predio (agua, clima, aire) tumba la célula. El CMMS lleva los activos de facility.",
+        "evidenciasKern": [],
+        "limite": "Los indicadores de esta norma (OEE, kWh, tiempo de ciclo, scrap por lote, molde u operario) salen de sensores de piso. KERN no ingesta datos de maquina por ningun conector, asi que no puede sostener evidencia aqui."
+      },
+      "tareas": [
+        {
+          "id": "iso-41001-t1",
+          "titulo": "Capacidad de silo, PT y muelle vs el plan de 12 semanas",
+          "detalle": "Si el plan no cabe, no es un plan: es un deseo.",
+          "kern": [
+            "monitor"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-55001",
+        "iso-45001",
+        "iso-50001",
+        "iso-28000"
+      ],
+      "erroresComunes": [
+        "Certificar 41001 y seguir planeando producción como si el almacén fuera infinito."
+      ],
+      "sectores": [],
+      "cadenaProductiva": false,
+      "eslabones": [
+        "transformacion",
+        "logistica"
+      ],
+      "scm": [
+        "almacen",
+        "riesgo"
+      ]
+    },
+    {
+      "id": "iso-18601",
+      "codigo": "ISO 18601",
+      "edicion": "2013",
+      "nombre": "Envase y medio ambiente — marco para usar las normas de empaque",
+      "familia": "circularidad",
+      "prioridad": "recomendada",
+      "tipo": "especificacion",
+      "resumen": "Puerta de la serie 18600 (reuso, reciclado, recuperación energética, etc.). El empaque de la pieza —caja, bolsa, tote, etiqueta— es decisión de cadena, no de «el de gráfico».",
+      "porQueElGerente": "Un overpack que el cliente tira y un tote que vuelve son dos cadenas distintas. El SCM elige el sistema de empaque; operaciones no improvisa cartón en el muelle.",
+      "rolOperaciones": [
+        "Clasificar empaque: primario de pieza, secundario, terciario, RTI.",
+        "No cambiar cartón o bolsa «porque no había» sin avisar al cliente y al PCF.",
+        "Medir kg de empaque / 1.000 piezas y % retornable."
+      ],
+      "clausulas": [
+        {
+          "codigo": "4–5",
+          "titulo": "Uso de la serie 18600",
+          "queHaceOperaciones": "Elegir la norma hija (reuso, reciclado…) según el sistema de empaque real, no según el brochure."
+        }
+      ],
+      "evidencias": [
+        "Especificación de empaque por familia / cliente.",
+        "Balance de empaque (kg comprados vs expedidos vs retornados)."
+      ],
+      "indicadores": [
+        "kg empaque / 1.000 piezas",
+        "% de expediciones en RTI vs desechable"
+      ],
+      "kern": {
+        "cobertura": "fuera-de-alcance",
+        "modulos": [
+          "smartpro",
+          "huella"
+        ],
+        "comoAyuda": "La orden sabe cuántas piezas salieron; el empaque se puede atribuir por familia. La huella debe incluir el empaque si el cliente lo pide.",
+        "evidenciasKern": [],
+        "limite": "Esta norma exige magnitudes ambientales (kWh, CO2e, agua, factores de emision) que no existen en ningun contrato de datos de KERN. No hay motor de huella."
+      },
+      "tareas": [
+        {
+          "id": "iso-18601-t1",
+          "titulo": "Especificar empaque de las tres familias de mayor volumen",
+          "detalle": "Tipo, kg, retornable sí/no, dueño del pool.",
+          "kern": [
+            "smartpro",
+            "huella"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-14001",
+        "iso-14067",
+        "iso-59010",
+        "iso-17364",
+        "iso-20400"
+      ],
+      "erroresComunes": [
+        "Declarar empaque «reciclable» y expedir film mixto que el cliente no puede separar."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "logistica",
+        "cliente",
+        "fin-de-vida"
+      ],
+      "scm": [
+        "sostenibilidad",
+        "transporte",
+        "compras"
+      ]
+    },
+    {
+      "id": "iso-10006",
+      "codigo": "ISO 10006",
+      "edicion": "2017",
+      "nombre": "Calidad en proyectos — directrices",
+      "familia": "calidad",
+      "prioridad": "recomendada",
+      "tipo": "guia",
+      "resumen": "Calidad aplicada a proyectos: lanzamientos, transferencias, dual sourcing, mudanza de molde, arranque de 3PL. El S&OP opera el run; 10006 opera el change.",
+      "porQueElGerente": "Cada SOP, cada nuevo origen y cada tool move es un proyecto de cadena. Si se gestiona como «la orden de siempre», el cliente come el prototipo.",
+      "rolOperaciones": [
+        "Tratar lanzamientos y transferencias como proyecto: alcance, riesgos, hitos, dueños.",
+        "Congelar criterios de salida a serie (calidad, OTIF de pre-serie, empaque).",
+        "No mezclar la célula de prototipo con la de serie sin un gate."
+      ],
+      "clausulas": [
+        {
+          "codigo": "7–8",
+          "titulo": "Procesos de recurso, realización y compra del proyecto",
+          "queHaceOperaciones": "Resina de pre-serie, molde, 3PL de lanzamiento y plan de calidad (10005) van en el mismo charter."
+        }
+      ],
+      "evidencias": [
+        "Charter de lanzamiento / transfer con gates.",
+        "Criterios de salida a serie firmados."
+      ],
+      "indicadores": [
+        "Lanzamientos que entraron a serie sin gate (cero)",
+        "Desvío de fecha de SOP vs plan"
+      ],
+      "kern": {
+        "cobertura": "evidencia-parcial",
+        "modulos": [
+          "smartpro",
+          "monitor",
+          "cei"
+        ],
+        "comoAyuda": "Las órdenes de pre-serie quedan identificadas. El CEI sostiene la curva de aprendizaje. El charter vive fuera.",
+        "evidenciasKern": [
+          "Órdenes de pre-serie vs scrap / ciclo vs serie"
+        ],
+        "limite": "KERN no es el PMO ni el stage-gate del corporativo."
+      },
+      "tareas": [
+        {
+          "id": "iso-10006-t1",
+          "titulo": "Charter del próximo SOP / tool move / dual source",
+          "detalle": "Alcance, riesgos, gates, dueños de planta, compras y 3PL.",
+          "kern": [
+            "smartpro",
+            "cei"
+          ]
+        }
+      ],
+      "integraCon": [
+        "iso-10005",
+        "iso-9001",
+        "iso-37500",
+        "iatf-16949",
+        "iso-31000"
+      ],
+      "erroresComunes": [
+        "Meter el SOP en el plan semanal como si fuera una orden más."
+      ],
+      "sectores": [],
+      "cadenaProductiva": true,
+      "eslabones": [
+        "origen",
+        "transformacion",
+        "cliente"
+      ],
+      "scm": [
+        "planificacion",
+        "calidad",
+        "compras"
+      ]
+    }
+  ]
+}

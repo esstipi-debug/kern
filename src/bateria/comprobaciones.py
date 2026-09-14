@@ -9,6 +9,8 @@ Importar este modulo registra las comprobaciones en el scorer.
 
 from __future__ import annotations
 
+import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from src.bateria.scorer import Contexto, Estado, ResultadoTarea, comprobacion
@@ -54,19 +56,143 @@ def _cerrar_veredicto(
     return ResultadoTarea(tarea_id, estado, evidencia_falta, detalle)
 
 
-def _campos_planos(obj: object) -> set[str]:
-    """Campos que el cliente ve por linea, aplanando UN nivel de anidamiento.
+def _valores_planos(obj: object) -> dict[str, object]:
+    """Nombre de campo -> VALOR emitido, aplanando UN nivel de anidamiento.
 
     ``DdmrpPart`` guarda lo interesante adentro de ``zones``/``signal``; mirar
     solo el nivel de arriba diria que la linea tiene tres campos y perderia el
     ``order_qty``. Devuelve ``signal.order_qty`` para que quede a la vista de
     donde sale cada requisito.
     """
-    campos: set[str] = set()
+    valores: dict[str, object] = {}
     for nombre in _campos_del_registro(type(obj)):
-        anidados = _campos_del_registro(type(getattr(obj, nombre)))
-        campos |= {f"{nombre}.{c}" for c in anidados} if anidados else {nombre}
-    return campos
+        valor = getattr(obj, nombre)
+        anidados = _campos_del_registro(type(valor))
+        if anidados:
+            valores.update({f"{nombre}.{c}": getattr(valor, c) for c in anidados})
+        else:
+            valores[nombre] = valor
+    return valores
+
+
+def _campos_planos(obj: object) -> set[str]:
+    """Solo los nombres de :func:`_valores_planos`, para la evidencia."""
+    return set(_valores_planos(obj))
+
+
+def _vacio(valor: object) -> bool:
+    """Un valor que no dice nada: ``None``, blanco, cero, ``NaN`` o coleccion vacia.
+
+    El cero entra a proposito y es la decision mas discutible del modulo. Desde
+    afuera del entregable un ``0.0`` que nadie calculo y un ``0.0`` medido son
+    el mismo byte, y la casa ya fallo ese pleito para el mismo lado en
+    ``packs/source_to_pay/recovery.py``: lo que nadie clasifico revienta en vez
+    de caer como cero. Aca no puede reventar -- esto es el corrector, no el
+    producto -- asi que no acredita.
+    """
+    if valor is None:
+        return True
+    if isinstance(valor, str):
+        return not valor.strip()
+    if isinstance(valor, bool):
+        return not valor
+    if isinstance(valor, (int, float)):
+        return valor == 0 or valor != valor  # NaN nunca es igual a si mismo
+    if isinstance(valor, (list, tuple, set, dict)):
+        return not valor
+    return False
+
+
+def _clave(valor: object) -> str:
+    """Clave estable para contar valores distintos (en la muestra hay dicts y tuplas)."""
+    return repr(valor)
+
+
+@dataclass(frozen=True)
+class _Muestra:
+    """Lo que DOS corridas del entregable emitieron, campo por campo.
+
+    Es la pieza que separa "el campo existe" de "el campo esta cableado". Un
+    nombre en ``__dataclass_fields__`` se agrega en una linea y ningun check que
+    mire solo nombres puede distinguirlo de una capacidad real; un valor que
+    ademas cambia entre dos corridas de entradas distintas hay que calcularlo.
+
+    La regla con la que se elige el filo, y que vale para todas las tareas:
+    **si la sonda puede mover el dato que el campo dice reflejar, se exige que
+    el valor se mueva** (:meth:`se_mueve`); **si no hay canal de entrada por
+    donde moverlo, se exige al menos que el valor este** (:meth:`poblado`).
+    Exigir movimiento sobre un dato que el arnes no puede variar es el error de
+    T10: un gate que ningun entregable puede pasar. El nombre solo nunca alcanza.
+    """
+
+    valores: dict[str, tuple[object, ...]]
+
+    @classmethod
+    def de_corridas(cls, *corridas: Iterable[object]) -> _Muestra:
+        """Muestrea los objetos que emitieron dos (o mas) corridas del entregable."""
+        acumulado: dict[str, list[object]] = {}
+        for corrida in corridas:
+            for emitido in corrida:
+                for nombre, valor in _valores_planos(emitido).items():
+                    acumulado.setdefault(nombre, []).append(valor)
+        return cls({nombre: tuple(vs) for nombre, vs in acumulado.items()})
+
+    @classmethod
+    def de_nombres(cls, campos: Iterable[str]) -> _Muestra:
+        """Un entregable declarado pero NO sondeado: se conocen campos y ningun valor.
+
+        Nunca acredita. Es la misma convencion que ``descuenta_en_transito=None``
+        en T05: hay campo pero nadie probo que lleve algo, y eso no se regala --
+        hay que escribir la sonda.
+        """
+        return cls(dict.fromkeys(campos, ()))
+
+    def __or__(self, otra: _Muestra) -> _Muestra:
+        unidos = dict(self.valores)
+        for nombre, vs in otra.valores.items():
+            unidos[nombre] = unidos.get(nombre, ()) + vs
+        return _Muestra(unidos)
+
+    @property
+    def campos(self) -> set[str]:
+        return set(self.valores)
+
+    @property
+    def sondeada(self) -> bool:
+        """``False`` si viene de :meth:`de_nombres`: hay campos y ningun valor.
+
+        Sirve para no confundir en la evidencia las dos razones por las que un
+        requisito no se acredita: "el campo esta vacio" y "nadie escribio la
+        sonda". Las dos niegan el punto; solo la primera acusa al entregable.
+        """
+        return any(self.valores.values())
+
+    def poblado(self, agujas: tuple[str, ...]) -> list[str]:
+        """Campos que ademas de existir traen ALGO. Mata el nombre inyectado vacio."""
+        return [
+            c
+            for c in _alguno_contiene(self.campos, agujas)
+            if any(not _vacio(v) for v in self.valores[c])
+        ]
+
+    def se_mueve(self, agujas: tuple[str, ...]) -> list[str]:
+        """Campos poblados cuyo valor CAMBIA en la muestra. Mata tambien la constante."""
+        return [
+            c for c in self.poblado(agujas) if len({_clave(v) for v in self.valores[c]}) > 1
+        ]
+
+    def solo_de_nombre(self, agujas: tuple[str, ...]) -> list[str]:
+        """Campos SONDEADOS cuyo valor emitido esta siempre vacio: el ataque, a la vista.
+
+        Distinto de un campo sin sondear: aca el entregable corrio, emitio la
+        linea, y en ese lugar no habia nada. Eso es lo que hay que poder nombrar
+        en la evidencia para que el veredicto sea defendible.
+        """
+        return [
+            c
+            for c in _alguno_contiene(self.campos, agujas)
+            if self.valores[c] and all(_vacio(v) for v in self.valores[c])
+        ]
 
 
 @comprobacion("T01")
@@ -109,6 +235,50 @@ def t01_pronostico_con_banda(_: Contexto) -> ResultadoTarea:
     )
 
 
+#: Dos ciclos con error muy distinto: la sonda de T02 corre el job sobre los dos
+#: y exige que lo que dice medir el ciclo se mueva entre ellos.
+_SERIE_ESTABLE = (100.0, 102.0, 98.0, 101.0, 99.0, 103.0, 97.0, 100.0,
+                  101.0, 99.0, 102.0, 98.0, 100.0, 101.0, 99.0, 100.0)
+_SERIE_VOLATIL = (60.0, 140.0, 55.0, 150.0, 70.0, 130.0, 45.0, 160.0,
+                  80.0, 120.0, 50.0, 155.0, 65.0, 145.0, 75.0, 125.0)
+
+#: Nombres con los que la comparacion contra el ciclo anterior podria llegar.
+_CAMPOS_CICLO_PREVIO = ("previo", "anterior", "previous", "delta", "vs_")
+
+#: Periodos del primer ciclo de la sonda de T02. El segundo corre sobre la serie
+#: entera, asi que los dos ciclos tienen error distinto y el ciclo PREVIO tambien
+#: se mueve entre las dos corridas -- que es el endurecimiento que el docstring
+#: viejo de esta comprobacion dejo pedido para el dia que existiera el canal.
+_CORTE_CICLO_PREVIO = 12
+
+#: Tolerancia con la que se acepta que un campo REPRODUCE un MAPE congelado. El
+#: numero viaja a disco y vuelve, asi que no se exige identidad de bits.
+_TOLERANCIA_MAPE = 1e-6
+
+
+def _dos_ciclos(nombre: str, serie: tuple[float, ...], carpeta: str):
+    """Corre el job DOS veces sobre la misma partición: el primero congela, el segundo compara.
+
+    Devuelve ``(mape_congelado, informe_del_segundo_ciclo)``. El MAPE del primer
+    ciclo es el hecho contra el que se mide: la comprobacion no lo escribe a mano,
+    lo lee de la corrida que lo produjo.
+    """
+    from jobs import forecast_job as job
+    from src.state.store import store_for
+
+    tienda = store_for(nombre.lower(), base_path=carpeta)
+    try:
+        primero = job.run(
+            {nombre: list(serie[:_CORTE_CICLO_PREVIO])}, store=tienda, cycle_id="2026-01"
+        )
+        segundo = job.run({nombre: list(serie)}, store=tienda, cycle_id="2026-02")
+    finally:
+        # Sin esto SQLite deja el fichero abierto y en Windows el temporal no se
+        # borra. Un corrector que ensucia el disco de quien lo corre no es gratis.
+        tienda.close()
+    return primero.skus[0].mape, segundo
+
+
 @comprobacion("T02")
 def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
     """T02 — medir precision **y sesgo firmado**, comparando contra el ciclo previo.
@@ -116,52 +286,125 @@ def t02_sesgo_y_precision(_: Contexto) -> ResultadoTarea:
     El criterio exige tres cosas: MAPE, bias con signo, y comparacion contra el
     ciclo anterior (mejora o empeora). Un grafico de ventas explicitamente no
     cuenta.
+
+    **Por que cambio la sonda.** La version anterior corria el job una sola vez
+    por serie, sin ``store``, y anotaba el motivo: *"la sonda mueve el ciclo
+    ACTUAL, no el anterior, porque el job no tiene parametro por donde recibir un
+    pronostico congelado. El dia que exista ese canal de entrada, el
+    endurecimiento natural es variar tambien el ciclo previo"*. Ese canal existe:
+    ``forecast_job.run`` toma ``store`` y ``cycle_id``, y ``jobs/forecast_cycle``
+    congela el ciclo y lo lee de vuelta. Sin pasarlos, el job responde
+    ``NO_STORE_MEMORY`` -- que es la conducta correcta, no un fallo -- y la
+    comparacion salia vacia por construccion, dejando T02 clavada en PARCIAL
+    contra un entregable que ya sabia hacerla.
+
+    Ahora la sonda corre DOS ciclos por serie sobre una particion propia: el
+    primero congela, el segundo lee. Y **es endurecimiento**, no ablandamiento:
+
+    - el ciclo PREVIO se mueve entre las dos corridas (no solo el actual), que es
+      exactamente lo que el docstring viejo pedia;
+    - la comparacion pasa de ``se_mueve`` -- cualquier ``delta_*`` que cambie --
+      a REPRODUCIR el MAPE que el primer ciclo emitio de verdad, y el cambio a
+      reproducir la resta contra el. Un numero plausible que no salga del ciclo
+      congelado ya no acredita.
+
+    El gate viejo ya habia cerrado el ataque de nombres (``previo|anterior|
+    previous|delta|vs_`` acreditaba con cualquier campo que se moviera); esto
+    cierra el escalon siguiente, que es el campo que se mueve por su cuenta.
     """
-    from jobs.forecast_job import ForecastJobReport, SkuForecast
+    import tempfile
+    from pathlib import Path
 
-    por_sku = _campos_del_registro(SkuForecast)
-    del_reporte = _campos_del_registro(ForecastJobReport)
+    from jobs.forecast_job import SkuForecast
 
-    tiene_mape = bool(_alguno_contiene(por_sku, ("mape",)))
-    sesgo = _alguno_contiene(por_sku | del_reporte, _CAMPOS_SESGO)
-    ciclo_previo = _alguno_contiene(
-        por_sku | del_reporte, ("previo", "anterior", "previous", "delta", "vs_")
+    carpeta = tempfile.mkdtemp(prefix="bateria-t02-")
+    try:
+        mape_previo_est, estable = _dos_ciclos(
+            "SKU-EST", _SERIE_ESTABLE, str(Path(carpeta) / "est")
+        )
+        mape_previo_vol, volatil = _dos_ciclos(
+            "SKU-VOL", _SERIE_VOLATIL, str(Path(carpeta) / "vol")
+        )
+    finally:
+        shutil.rmtree(carpeta, ignore_errors=True)
+
+    muestra = _Muestra.de_corridas(estable.skus, volatil.skus, (estable,), (volatil,))
+    valores_est = _valores_planos(estable.skus[0])
+    valores_vol = _valores_planos(volatil.skus[0])
+    mapes = {s.name: round(s.mape, 4) for s in (*estable.skus, *volatil.skus)}
+    sesgos = {s.name: round(s.bias, 4) for s in (*estable.skus, *volatil.skus)}
+    congelados = {"SKU-EST": round(mape_previo_est, 4), "SKU-VOL": round(mape_previo_vol, 4)}
+
+    def _reproducen(hecho_est: float, hecho_vol: float) -> list[str]:
+        return sorted(
+            c for c in valores_est
+            if _reproduce_el_hecho(
+                valores_est.get(c), valores_vol.get(c), hecho_est, hecho_vol, _TOLERANCIA_MAPE
+            )
+        )
+
+    tiene_mape = bool(muestra.se_mueve(("mape",)))
+    sesgo = muestra.poblado(_CAMPOS_SESGO)
+    # El ciclo previo, tal como lo emitio la corrida que lo congelo.
+    reporta_el_previo = _reproducen(mape_previo_est, mape_previo_vol)
+    # Y el cambio, que tiene que ser la resta contra ESE numero, no cualquier delta.
+    reporta_el_cambio = _reproducen(
+        estable.skus[0].mape - mape_previo_est, volatil.skus[0].mape - mape_previo_vol
     )
+    ciclo_previo = bool(reporta_el_previo) and bool(reporta_el_cambio)
 
     faltantes = [
         nombre
         for nombre, ok in (
             ("MAPE por SKU", tiene_mape),
             ("sesgo firmado", bool(sesgo)),
-            ("comparacion contra el ciclo previo", bool(ciclo_previo)),
+            ("comparacion contra el ciclo previo", ciclo_previo),
         )
         if not ok
     ]
     detalle = {
         "entregable": "jobs.forecast_job.ForecastJobReport",
-        "campos_por_sku": sorted(por_sku),
+        "campos_por_sku": sorted(_campos_del_registro(SkuForecast)),
         "faltantes": faltantes,
+        "sonda_mape": mapes,
+        "sonda_sesgo": sesgos,
+        "sonda_mape_congelado": congelados,
+        "campos_que_reproducen_el_ciclo_previo": reporta_el_previo,
+        "campos_que_reproducen_el_cambio": reporta_el_cambio,
+        "campos_de_ciclo_previo_por_nombre": _alguno_contiene(
+            muestra.campos, _CAMPOS_CICLO_PREVIO
+        ),
     }
 
     if not faltantes:
         return ResultadoTarea(
             tarea_id="T02",
             estado=Estado.CUMPLE,
-            evidencia="el entregable trae MAPE, sesgo firmado y comparacion contra el ciclo previo",
+            evidencia=(
+                f"el entregable mide de verdad y contra el ciclo que congelo: el MAPE se mueve "
+                f"entre los dos ciclos ({mapes}), el sesgo firmado sale con valor ({sesgos}) y "
+                f"la comparacion reproduce el MAPE congelado ({congelados}) en "
+                f"{', '.join(reporta_el_previo)}, con el cambio en "
+                f"{', '.join(reporta_el_cambio)}"
+            ),
             detalle=detalle,
         )
 
+    nominales = _alguno_contiene(muestra.campos, _CAMPOS_CICLO_PREVIO)
     estado = Estado.PARCIAL if tiene_mape else Estado.NO_CUMPLE
     return ResultadoTarea(
         tarea_id="T02",
         estado=estado,
         evidencia=(
-            f"el entregable sale sin: {', '.join(faltantes)}"
+            f"el entregable sale sin: {', '.join(faltantes)}. El MAPE se mueve entre los dos "
+            f"ciclos ({mapes}) y el sesgo firmado viaja por SKU con valor ({sesgos}); lo que "
+            f"falta es que la comparacion salga del ciclo congelado ({congelados}): "
+            f"reproducen el previo {reporta_el_previo or 'ninguno'} y el cambio "
+            f"{reporta_el_cambio or 'ninguno'}"
             + (
-                ". El sesgo firmado ya viaja por SKU; lo que falta es el ciclo anterior "
-                "congelado: sin el no hay contra que comparar"
-                if tiene_mape and sesgo else
-                ". src.forecasting.ForecastResult calcula bias y el job lo descarta"
+                f". Hay campos con nombre de comparacion ({', '.join(nominales)}) que no "
+                "reproducen ese numero: un nombre no es una comparacion"
+                if nominales else ""
             )
         ),
         detalle=detalle,
@@ -272,6 +515,10 @@ _CAMPOS_EN_TRANSITO = ("transit", "transito", "on_order", "onorder", "incoming",
 
 #: Ordenes ya emitidas con las que se sondea el neteo en T05.
 _ON_ORDER_SONDA = 80.0
+#: Para la planilla el valor es chico a proposito: 42 en estante + 5 en camino = 47,
+#: todavia bajo el punto de reorden de 50. Asi la sonda mide que baja la CANTIDAD y no
+#: que se apago el disparador, que seria cierto pero probaria menos.
+_ON_ORDER_SONDA_PLANILLA = 5.0
 
 
 @dataclass(frozen=True)
@@ -281,23 +528,32 @@ class _CandidatoOC:
     ``descuenta_en_transito`` es ``None`` cuando el entregable TIENE un campo de
     en-transito pero esta comprobacion no probo que lo netee: ahi no se acredita
     y la evidencia lo dice: hay que escribir la sonda, no asumir.
+
+    Los cinco requisitos de forma siguen la misma regla, por la misma razon. La
+    sonda corre el job con DOS proveedores distintos y DOS lead times distintos,
+    asi que cada uno de los cinco datos tiene por donde moverse: si el valor no
+    se mueve, el campo no lo lleva, tenga el nombre que tenga. Un entregable sin
+    sonda escrita (``_Muestra.de_nombres``) no acredita ninguno.
     """
 
     tool: str
     entregable: str
-    campos: tuple[str, ...]
+    muestra: _Muestra
     descuenta_en_transito: bool | None
     prueba_en_transito: str
 
     @property
+    def campos(self) -> tuple[str, ...]:
+        return tuple(sorted(self.muestra.campos))
+
+    @property
     def requisitos(self) -> dict[str, list[str]]:
-        campos = set(self.campos)
         return {
-            "OC agrupada por proveedor": _alguno_contiene(campos, _CAMPOS_PROVEEDOR),
-            "SKU por linea": _alguno_contiene(campos, _CAMPOS_SKU),
-            "cantidad por linea": _alguno_contiene(campos, _CAMPOS_CANTIDAD),
-            "fecha de pedido / llegada esperada": _alguno_contiene(campos, _CAMPOS_FECHA),
-            "razon de la linea": _alguno_contiene(campos, _CAMPOS_RAZON),
+            "OC agrupada por proveedor": self.muestra.se_mueve(_CAMPOS_PROVEEDOR),
+            "SKU por linea": self.muestra.se_mueve(_CAMPOS_SKU),
+            "cantidad por linea": self.muestra.se_mueve(_CAMPOS_CANTIDAD),
+            "fecha de pedido / llegada esperada": self.muestra.se_mueve(_CAMPOS_FECHA),
+            "razon de la linea": self.muestra.se_mueve(_CAMPOS_RAZON),
         }
 
     @property
@@ -308,12 +564,21 @@ class _CandidatoOC:
     def cumplidos(self) -> int:
         return len(self.requisitos) - len(self.faltantes)
 
+    @property
+    def solo_de_nombre(self) -> list[str]:
+        """Campos con el nombre correcto y sin valor que lo respalde: el ataque."""
+        return self.muestra.solo_de_nombre(
+            _CAMPOS_PROVEEDOR + _CAMPOS_SKU + _CAMPOS_CANTIDAD + _CAMPOS_FECHA
+        )
+
     def como_detalle(self) -> dict[str, object]:
         return {
             "tool": self.tool,
             "entregable": self.entregable,
             "campos": sorted(self.campos),
             "faltantes": self.faltantes,
+            "sondeado_por_valor": self.muestra.sondeada,
+            "campos_solo_de_nombre": self.solo_de_nombre,
             "descuenta_en_transito": self.descuenta_en_transito,
             "prueba_en_transito": self.prueba_en_transito,
         }
@@ -322,82 +587,165 @@ class _CandidatoOC:
 def _candidato_excel() -> _CandidatoOC:
     """``excel_replenishment``: el tool de reposicion sobre la planilla del cliente.
 
-    El neteo se juzga estructuralmente porque el hueco es de entrada, no de
-    calculo: ni la fila leida ni la linea emitida tienen donde recibir una OC
-    abierta, asi que ningun dataset del cliente lo arregla. El propio docstring
-    de ``run()`` lo declara como limitacion conocida.
-    """
-    from jobs.excel_replenishment_job import PlanillaRow, ReplenishmentLine
+    El neteo se prueba CORRIENDO el job, no leyendo sus campos. Hasta que la
+    planilla tuvo columna de en-transito el juicio era estructural y devolvia
+    ``False`` con razon; cuando el campo aparecio, este candidato paso a ``None``
+    -- "hay nombre, falta sonda" -- y esa es la sonda. Un campo que se agrega sin
+    ella no acredita nada: es el defecto que costo 17,5 puntos porcentuales.
 
-    entrada = _campos_del_registro(PlanillaRow)
-    salida = _campos_del_registro(ReplenishmentLine)
-    en_transito = _alguno_contiene(entrada | salida, _CAMPOS_EN_TRANSITO)
+    Dos corridas sobre la MISMA planilla, cambiando solo la columna de
+    en-transito. El valor sondeado se elige para que el disparador siga activo en
+    las dos: con 42 en estante contra un punto de reorden de 50, una posicion de
+    47 sigue bajo el punto y lo que cambia es la CANTIDAD. Un valor mas grande
+    apagaria el disparador y la cantidad caeria a cero por otra razon -- cierto,
+    pero probaria menos.
+    """
+    import tempfile
+
+    from openpyxl import Workbook
+
+    from jobs import excel_replenishment_job as job
+
+    def _correr(en_transito: float, carpeta: str) -> list[float]:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Hoja"
+        for col, encabezado in enumerate(("Codigo", "Stock", "Punto Reorden", "En Transito"), 1):
+            ws.cell(row=1, column=col, value=encabezado)
+        for fila, (sku, stock, rop) in enumerate((("P1", 42, 50), ("P2", 30, 40)), 2):
+            for col, valor in enumerate((sku, stock, rop, en_transito), 1):
+                ws.cell(row=fila, column=col, value=valor)
+        ruta = f"{carpeta}/planilla-{en_transito:g}.xlsx"
+        wb.save(ruta)
+        return [ln.restock_qty for ln in job.run(job.prepare(ruta)).lines]
+
+    with tempfile.TemporaryDirectory() as carpeta:
+        qty_sin = _correr(0.0, carpeta)
+        qty_con = _correr(_ON_ORDER_SONDA_PLANILLA, carpeta)
+    netea = all(b < a for a, b in zip(qty_sin, qty_con, strict=True))
+
+    salida = _campos_del_registro(job.ReplenishmentLine)
     return _CandidatoOC(
         tool="excel_replenishment",
         entregable="jobs.excel_replenishment_job.ReplenishmentLine",
-        campos=tuple(sorted(salida)),
-        descuenta_en_transito=None if en_transito else False,
+        muestra=_Muestra.de_nombres(salida),
+        descuenta_en_transito=netea,
         prueba_en_transito=(
-            f"campos de en-transito hallados ({', '.join(en_transito)}) pero sin sonda de "
-            "comportamiento: no se acredita hasta escribirla"
-            if en_transito
-            else f"la fila leida ({', '.join(sorted(entrada))}) y la linea emitida no tienen "
-            "campo de en-transito: el job no tiene por donde recibir las OC ya emitidas"
+            f"con {_ON_ORDER_SONDA_PLANILLA:g} unidades ya emitidas en la columna de la "
+            f"planilla la cantidad a pedir {'baja' if netea else 'NO baja'}: "
+            f"{qty_sin} -> {qty_con}"
         ),
     )
 
 
 def _candidato_odoo() -> _CandidatoOC:
-    """``odoo_replenishment``: reposicion contra el ERP, misma linea que el conector."""
-    from src.connectors.replenish import ReplenishmentLine
+    """``odoo_replenishment``: reposicion contra el ERP, misma linea que el conector.
 
-    salida = _campos_del_registro(ReplenishmentLine)
-    en_transito = _alguno_contiene(salida, _CAMPOS_EN_TRANSITO)
+    Misma disciplina que ``_candidato_excel``: dos corridas sobre la MISMA fuente,
+    cambiando solo el mapa de OC abiertas que ``plan_replenishment`` recibe. El
+    campo existe desde que se cerro kern#251; que exista no lo acredita.
+    """
+    from src.connectors import InventoryLevel, Order, OrderLine, Product
+    from src.connectors.replenish import ReplenishmentLine, plan_replenishment
+
+    class _Fuente:
+        """Fuente minima y determinista, con historial suficiente para pronosticar.
+
+        No se usa ``simulator.demo_store()`` a proposito: su catalogo no llega al
+        minimo de observaciones, asi que las dos corridas salen vacias y la sonda
+        reportaria "NO baja" cuando en realidad no midio nada. Un falso negativo
+        con cara de medicion es peor que una sonda ausente.
+        """
+
+        def list_products(self):
+            return [Product(sku="P1", title="A", price=10.0, cost=6.0)]
+
+        def inventory_levels(self):
+            return [InventoryLevel(sku="P1", available=20.0)]
+
+        def orders(self):
+            return [
+                Order(order_id=f"O{i}", created_at=f"2026-01-{i:02d}",
+                      lines=(OrderLine(sku="P1", quantity=10.0, price=10.0),))
+                for i in range(1, 13)
+            ]
+
+    def _qty(on_order: dict[str, float] | None) -> list[float]:
+        plan = plan_replenishment(_Fuente(), on_order_by_sku=on_order)
+        return [ln.restock_qty for ln in plan.lines if ln.status == "ok"]
+
+    qty_sin = _qty(None)
+    qty_con = _qty({"P1": _ON_ORDER_SONDA})
+    if not qty_sin:
+        netea: bool | None = None
+        prueba = ("la sonda no produjo ninguna linea dimensionada: no se midio nada, "
+                  "asi que no se acredita ni se niega")
+    else:
+        netea = all(b < a for a, b in zip(qty_sin, qty_con, strict=True))
+        prueba = (f"con {_ON_ORDER_SONDA:g} unidades ya emitidas por SKU la cantidad a pedir "
+                  f"{'baja' if netea else 'NO baja'}: {qty_sin} -> {qty_con}")
+
     return _CandidatoOC(
         tool="odoo_replenishment",
         entregable="src.connectors.replenish.ReplenishmentLine",
-        campos=tuple(sorted(salida)),
-        descuenta_en_transito=None if en_transito else False,
-        prueba_en_transito=(
-            f"campos de en-transito hallados ({', '.join(en_transito)}) pero sin sonda de "
-            "comportamiento: no se acredita hasta escribirla"
-            if en_transito
-            else "la linea se arma sobre el on-hand disponible y no expone ningun campo de "
-            "en-transito: las OC abiertas no entran al calculo"
-        ),
+        muestra=_Muestra.de_nombres(_campos_del_registro(ReplenishmentLine)),
+        descuenta_en_transito=netea,
+        prueba_en_transito=prueba,
     )
+
+
+#: Proveedores y lead times con los que se sondea si la OC lleva de verdad el
+#: proveedor y la fecha. Cuatro proveedores distintos y dos lead times distintos:
+#: un campo que los transporte no puede salir constante.
+_PROVEEDORES_SONDA = (("S-NORTE", "S-SUR"), ("S-ESTE", "S-OESTE"))
+_DLT_SONDA = (7.0, 21.0)
 
 
 def _candidato_ddmrp() -> _CandidatoOC:
     """``ddmrp``: el unico que sí netea, y se prueba corriendolo.
 
-    Se corre dos veces sobre las MISMAS partes, con y sin ordenes ya emitidas: la
-    cantidad a pedir tiene que bajar. Es la propiedad que el criterio marca como
-    eliminatoria ("si se ignoran las ordenes ya emitidas, sobre-compra y no cuenta").
+    Dos sondas distintas, las dos de comportamiento:
+
+    1. **En-transito** (eliminatoria). Se corre dos veces sobre las MISMAS partes,
+       con y sin ordenes ya emitidas: la cantidad a pedir tiene que bajar. Es lo
+       que el criterio marca como eliminatorio ("si se ignoran las ordenes ya
+       emitidas, sobre-compra y no cuenta").
+    2. **Forma de la OC**. Se corre dos veces mas, con proveedores distintos y
+       lead times distintos, y se mira el VALOR de cada campo. El gate viejo
+       preguntaba si algun nombre contenia ``supplier|vendor|proveedor`` -- dos
+       campos vacios con esos nombres pasaban la tarea de NO_CUMPLE a CUMPLE sin
+       que el job supiera que existe un proveedor. Y de hecho no lo sabe:
+       ``prepare_records`` descarta la columna, asi que no hay valor que mover.
     """
     import pandas as pd
 
     from jobs import ddmrp_job as job
 
-    partes = pd.DataFrame(
-        {
-            "part_id": ["P1", "P2"],
-            "adu": [10.0, 10.0],
-            "dlt": [7.0, 7.0],
-            "on_hand": [20.0, 20.0],
-            "on_order": [0.0, 0.0],
-            "qualified_demand": [5.0, 5.0],
-        }
-    )
-    sin_oc = job.run(job.prepare_records(partes))
+    def _correr(proveedores: tuple[str, str], dlt: float):
+        partes = pd.DataFrame(
+            {
+                "part_id": ["P1", "P2"],
+                "adu": [10.0, 10.0],
+                "dlt": [dlt, dlt],
+                "on_hand": [20.0, 20.0],
+                "on_order": [0.0, 0.0],
+                "qualified_demand": [5.0, 5.0],
+                "supplier": list(proveedores),
+            }
+        )
+        return partes, job.run(job.prepare_records(partes))
+
+    partes, sin_oc = _correr(_PROVEEDORES_SONDA[0], _DLT_SONDA[0])
     con_oc = job.run(job.prepare_records(partes.assign(on_order=_ON_ORDER_SONDA)))
     qty_sin = [p.signal.order_qty for p in sin_oc.parts]
     qty_con = [p.signal.order_qty for p in con_oc.parts]
     netea = all(b < a for a, b in zip(qty_sin, qty_con, strict=True))
+
+    _, otro_proveedor = _correr(_PROVEEDORES_SONDA[1], _DLT_SONDA[1])
     return _CandidatoOC(
         tool="ddmrp",
         entregable="jobs.ddmrp_job.DdmrpPart",
-        campos=tuple(sorted(_campos_planos(sin_oc.parts[0]))),
+        muestra=_Muestra.de_corridas(sin_oc.parts, otro_proveedor.parts),
         descuenta_en_transito=netea,
         prueba_en_transito=(
             f"con {_ON_ORDER_SONDA:g} unidades ya emitidas la cantidad a pedir "
@@ -437,6 +785,11 @@ def _veredicto_oc(candidatos: tuple[_CandidatoOC, ...]) -> ResultadoTarea:
             f"{mejor.tool} descuenta el en-transito ({mejor.prueba_en_transito}) pero su "
             f"entregable sale sin: {', '.join(mejor.faltantes)}. Lo que llega es una lista de "
             f"reposicion por SKU ({', '.join(mejor.campos)}), no una OC por proveedor"
+            + (
+                f". Hay campos con el nombre correcto y sin valor detras: "
+                f"{', '.join(mejor.solo_de_nombre)}"
+                if mejor.solo_de_nombre else ""
+            )
         ),
         detalle=detalle,
     )
@@ -726,14 +1079,32 @@ _TOPE_SONDA = 1000.0
 
 @dataclass(frozen=True)
 class _CandidatoCaja:
-    """El plan de compra enfrentado a un tope de caja (T07)."""
+    """El plan de compra enfrentado a un tope de caja (T07).
+
+    Los dos requisitos que el gate viejo resolvia por nombre se miden ahora sobre
+    el valor emitido, y cada uno con el filo que la sonda puede sostener:
+
+    - **fecha de pago**: ``poblado``. La sonda no tiene canal para variar las
+      condiciones de pago -- ``build_purchase_plan`` no recibe plazos -- y una
+      fecha honesta puede ser la misma en las dos corridas. Exigirle movimiento
+      seria repetir el error de T10: un gate que ningun entregable puede pasar.
+      Lo que el criterio prohibe es el total SIN fecha, y eso es exactamente lo
+      que un campo vacio es.
+    - **impacto en quiebre**: ``se_mueve``. Aca la sonda si mueve el dato: corre
+      con y sin tope. Sin recorte no hay impacto, con recorte lo hay; un numero
+      que no cambia entre las dos corridas no esta midiendo ningun recorte.
+    """
 
     entregable: str
-    campos: tuple[str, ...]
+    muestra: _Muestra
     pedido_usd: float
     tope_usd: float
     prioriza: bool
     prueba_recorte: str
+
+    @property
+    def campos(self) -> tuple[str, ...]:
+        return tuple(sorted(self.muestra.campos))
 
     @property
     def deficit_usd(self) -> float:
@@ -741,25 +1112,30 @@ class _CandidatoCaja:
 
     @property
     def requisitos(self) -> dict[str, bool]:
-        campos = set(self.campos)
         return {
             "calendario de egresos por semana (fecha de pago)": bool(
-                _alguno_contiene(campos, _CAMPOS_FECHA_PAGO)
+                self.muestra.poblado(_CAMPOS_FECHA_PAGO)
             ),
-            "excedente/deficit contra el tope": bool(_alguno_contiene(campos, _CAMPOS_TOPE)),
+            "excedente/deficit contra el tope": bool(self.muestra.poblado(_CAMPOS_TOPE)),
             "lista ordenada de lineas a recortar": self.prioriza,
-            "impacto en quiebre de cada recorte": bool(_alguno_contiene(campos, _CAMPOS_QUIEBRE)),
+            "impacto en quiebre de cada recorte": bool(self.muestra.se_mueve(_CAMPOS_QUIEBRE)),
         }
 
     @property
     def faltantes(self) -> list[str]:
         return [nombre for nombre, ok in self.requisitos.items() if not ok]
 
+    @property
+    def solo_de_nombre(self) -> list[str]:
+        """Campos de fecha de pago o de quiebre que existen y no llevan valor."""
+        return self.muestra.solo_de_nombre(_CAMPOS_FECHA_PAGO + _CAMPOS_QUIEBRE)
+
     def como_detalle(self) -> dict[str, object]:
         return {
             "entregable": self.entregable,
             "campos": sorted(self.campos),
             "faltantes": self.faltantes,
+            "campos_solo_de_nombre": self.solo_de_nombre,
             "deficit_usd": self.deficit_usd,
             "prioriza_el_recorte": self.prioriza,
             "prueba_recorte": self.prueba_recorte,
@@ -778,9 +1154,14 @@ def _veredicto_caja(cand: _CandidatoCaja) -> ResultadoTarea:
             evidencia=(
                 f"el plan de compra devuelve un total ({cand.pedido_usd:,.0f} usd) sin ninguna "
                 f"fecha de pago: ningun campo del entregable ({', '.join(sorted(cand.campos))}) "
-                f"lleva semana ni vencimiento, y el criterio dice que asi no cuenta. Contra el "
-                f"tope si compara ({cand.deficit_usd:,.0f} usd de deficit), pero "
-                f"{cand.prueba_recorte}"
+                f"lleva semana ni vencimiento con un valor adentro, y el criterio dice que asi "
+                f"no cuenta. Contra el tope si compara ({cand.deficit_usd:,.0f} usd de "
+                f"deficit), pero {cand.prueba_recorte}"
+                + (
+                    f". Campos con nombre de fecha o de quiebre y sin valor detras: "
+                    f"{', '.join(cand.solo_de_nombre)}"
+                    if cand.solo_de_nombre else ""
+                )
             ),
             detalle=detalle,
         )
@@ -844,16 +1225,19 @@ def t07_calendario_de_caja_contra_el_tope(_: Contexto) -> ResultadoTarea:
     }
     prioriza = len(set(round(f, 9) for f in fracciones.values())) > 1
 
-    campos = (
-        _campos_del_registro(type(lineas_topadas[0]))
-        | _campos_del_registro(BudgetAllocation)
-        | _campos_del_registro(IntegratedPlanReport)
+    # Las DOS corridas ya estaban: libre y topada. Lo que faltaba era mirarles el
+    # valor en vez del nombre. ``IntegratedPlanReport`` entra por nombre porque
+    # esta comprobacion no lo corre; asi no acredita nada por si solo.
+    muestra = (
+        _Muestra.de_corridas(lineas_libres, lineas_topadas, (asignacion,))
+        | _Muestra.de_nombres(_campos_del_registro(IntegratedPlanReport))
+        | _Muestra.de_nombres(_campos_del_registro(BudgetAllocation))
     )
     return _veredicto_caja(_CandidatoCaja(
         entregable=(
             "src.sop_engine.purchase_plan.PurchasePlanLine + src.constraints.BudgetAllocation"
         ),
-        campos=tuple(sorted(campos)),
+        muestra=muestra,
         pedido_usd=asignacion.requested_investment,
         tope_usd=_TOPE_SONDA,
         prioriza=prioriza,
@@ -1178,51 +1562,219 @@ _CAMPOS_DIAS_QUIEBRE = ("stockout_day", "dias_quiebre", "days_out", "oos_days", 
 #: Nombres con los que la venta perdida podria llegar al entregable.
 _CAMPOS_VENTA_PERDIDA = ("lost_sale", "venta_perdida", "perdida", "foregone", "unmet_value")
 
-#: Politica sintetica con la que se muestra que el fill rate sale sin pedidos (T10).
+#: Politica sintetica con la que se ILUSTRA (ya no se puntua) que el motor puede
+#: emitir un fill rate sin ver un pedido. Ver la nota de _CandidatoServicio.
 _SS_SONDA = 50.0
 _DEMANDA_CICLO_SONDA = 500.0
 _SIGMA_CICLO_SONDA = 40.0
 
+#: Las dos corridas de la sonda, como mezcla de lineas de pedido de cliente:
+#: (completas y a tiempo, completas pero TARDE, cortas). Las tres cifras se
+#: eligen para que los cuatro numeros del criterio salgan DISTINTOS entre si
+#: dentro de cada corrida -- un entregable que publica el mismo numero dos veces
+#: no puede acreditar con el el fill rate Y el OTIF -- y para que ninguno caiga
+#: sobre el objetivo por defecto de la politica (0,95), que es lo que el criterio
+#: descalifica.
+_CORRIDA_BAJA = (60, 20, 20)   # fill 80%, OTIF 60%, 20 dias, 200 u perdidas
+_CORRIDA_ALTA = (94, 5, 1)     # fill 99%, OTIF 94%,  1 dia,   10 u perdidas
+
+#: Unidades por linea y precio unitario con los que se arma cada linea sondeada.
+_UNIDADES_POR_LINEA = 10.0
+_PRECIO_SONDA = 12.0
+
+#: Dias que una linea tarde llega despues de lo prometido. Cualquier valor > 0
+#: sirve: lo que importa es que la linea entregue COMPLETO y aun asi falle OTIF,
+#: que es lo que separa los dos numeros.
+_ATRASO_SONDA = 3
+
+#: Tolerancia con la que se acepta que un campo REPRODUCE una razon de servicio.
+_TOLERANCIA_SERVICIO = 0.005
+
+#: Tolerancia con la que se acepta que un campo REPRODUCE un conteo (dias, unidades).
+_TOLERANCIA_CONTEO = 0.5
+
+
+@dataclass(frozen=True)
+class _SondaPedidos:
+    """Las lineas de pedido que se le inyectan al job, y el hecho que implican.
+
+    El hecho se DERIVA de las mismas lineas que se entregan; no se escribe al
+    lado como constante. Si alguien cambia la mezcla, el numero contra el que se
+    compara cambia con ella y la sonda no puede quedar afirmando un hecho que ya
+    no inyecta -- que es exactamente como T10 llego a ser imposible la primera
+    vez, con un umbral escrito a mano contra una funcion pura de libreria.
+    """
+
+    a_tiempo: int
+    tarde: int
+    cortas: int
+
+    @property
+    def lineas(self) -> int:
+        return self.a_tiempo + self.tarde + self.cortas
+
+    @property
+    def fill_rate(self) -> float:
+        """Unidades entregadas / pedidas. Las TARDE entregaron completo: cuentan."""
+        return (self.a_tiempo + self.tarde) / self.lineas
+
+    @property
+    def otif(self) -> float:
+        """Completas Y a tiempo. Nunca igual al fill rate mientras haya lineas tarde."""
+        return self.a_tiempo / self.lineas
+
+    @property
+    def unidades_perdidas(self) -> float:
+        return self.cortas * _UNIDADES_POR_LINEA
+
+    @property
+    def valor_perdido(self) -> float:
+        return self.unidades_perdidas * _PRECIO_SONDA
+
+    @property
+    def dias_quiebre(self) -> int:
+        """Fechas distintas con una linea corta. Una linea por dia: son las cortas."""
+        return self.cortas
+
+    def como_dataframe(self):
+        """Una linea por dia, para que las fechas cortas sean distintas entre si."""
+        import pandas as pd
+
+        origen = pd.Timestamp("2024-01-01")
+        completas = self.a_tiempo + self.tarde
+        return pd.DataFrame([
+            {
+                "product_id": "SKU-1",
+                "ordered_qty": _UNIDADES_POR_LINEA,
+                "delivered_qty": _UNIDADES_POR_LINEA if i < completas else 0.0,
+                "promised_date": origen + pd.Timedelta(days=i),
+                "delivered_date": origen + pd.Timedelta(
+                    days=i + (0 if i < self.a_tiempo else _ATRASO_SONDA)
+                ),
+                "unit_price": _PRECIO_SONDA,
+            }
+            for i in range(self.lineas)
+        ])
+
+
+def _reproduce_el_hecho(
+    emitido_bajo: object, emitido_alto: object,
+    hecho_bajo: float, hecho_alto: float, tolerancia: float,
+) -> bool:
+    """El campo devuelve, en las DOS corridas, el hecho que se inyecto en cada una.
+
+    Reproducir los dos es lo que separa medir de apuntar: una constante acierta
+    una corrida por casualidad y falla la otra, y un objetivo tironeado hacia lo
+    observado se mueve sin igualar ninguna. ``bool`` se excluye antes que
+    ``int`` porque en Python ``True`` es ``1`` y un flag no es una medicion.
+    """
+    if isinstance(emitido_bajo, bool) or isinstance(emitido_alto, bool):
+        return False
+    if not (isinstance(emitido_bajo, (int, float)) and isinstance(emitido_alto, (int, float))):
+        return False
+    return (
+        abs(emitido_bajo - hecho_bajo) <= tolerancia
+        and abs(emitido_alto - hecho_alto) <= tolerancia
+    )
+
 
 @dataclass(frozen=True)
 class _CandidatoServicio:
-    """Los numeros de servicio que Kern emite, medidos contra el criterio de T10."""
+    """Los numeros de servicio que Kern emite, medidos contra el criterio de T10.
+
+    El gate de esta tarea estuvo mal escrito y esto es la correccion del arnes,
+    no un ablandamiento. Decia ``fill_rate_sin_pedidos <= 0.0``, y ese numero
+    salia de ``src.fill_rate.fill_rate_from_safety_stock(50, 500, 40)``: una
+    funcion PURA de libreria, que no lee absolutamente nada del entregable. Con
+    ese gate T10 era imposible por construccion -- se podia construir el OTIF de
+    salida perfecto y seguia fallando -- y la unica forma de pasarlo era BORRAR
+    ``src/fill_rate.py``. Un check que premia eliminar matematica correcta no
+    esta midiendo el entregable.
+
+    Ademas es una mala lectura de la fuente. El criterio dice que reportar el
+    objetivo del modelo EN LUGAR del realizado no cuenta; el check lo leyo como
+    "si el motor sabe calcular un teorico, fallas". Son cosas distintas: un
+    entregable honesto puede perfectamente tener una funcion de beta teorico en
+    la libreria y reportar, aparte, el fill rate que salio de los pedidos.
+
+    El gate corregido pregunta lo que el criterio pregunta: **el numero que el
+    entregable REPORTA, ¿viene de los hechos?** Se le entrega al job el servicio
+    realmente observado por su unico canal de entrada de hechos del cliente
+    (``observed_fill_rates``), dos veces con valores muy distintos, y se busca un
+    campo emitido que lo REPRODUZCA. Reproducirlo es lo que separa medir de
+    apuntar: un objetivo tironeado hacia lo observado se mueve pero no lo iguala.
+    """
 
     entregable: str
-    campos: tuple[str, ...]
+    muestra: _Muestra
+    #: Campos que reproducen el FILL RATE realizado que se inyecto. Eliminatorio.
+    reporta_lo_medido: tuple[str, ...]
+    #: Beta teorico de la libreria. Se reporta y NO descalifica: ver el docstring.
     fill_rate_sin_pedidos: float
     prueba_origen: str
+    #: Campos que reproducen el OTIF de salida inyectado. Numero distinto del fill
+    #: rate a proposito: las lineas que llegaron completas pero TARDE cuentan en uno
+    #: y no en el otro, asi que un entregable que publica el mismo numero con dos
+    #: nombres no puede acreditar los dos criterios.
+    reporta_otif: tuple[str, ...] = ()
+    #: Campos que reproducen los dias con linea corta inyectados.
+    reporta_dias: tuple[str, ...] = ()
+    #: Campos que reproducen las unidades no vendidas inyectadas.
+    reporta_venta_perdida: tuple[str, ...] = ()
+
+    @property
+    def campos(self) -> tuple[str, ...]:
+        return tuple(sorted(self.muestra.campos))
 
     @property
     def mide_lo_realizado(self) -> bool:
-        """Gate: el numero tiene que venir de pedidos reales, no del modelo.
-
-        Se prueba al reves, que es lo unico demostrable de una sola corrida: si el
-        entregable puede emitir un fill rate SIN una sola linea de pedido, ese
-        numero es el objetivo del modelo. El criterio lo descalifica por nombre.
-        """
-        return self.fill_rate_sin_pedidos <= 0.0
+        """Gate: algun campo CON NOMBRE DE SERVICIO reproduce el fill rate observado."""
+        return bool(_alguno_contiene(set(self.reporta_lo_medido), _CAMPOS_SERVICIO_REALIZADO))
 
     @property
     def requisitos(self) -> dict[str, bool]:
-        campos = set(self.campos)
+        """Cada criterio contra SU PROPIO hecho, y bajo un nombre que el cliente ubique.
+
+        Antes los dos primeros colgaban del mismo booleano: el fill rate acreditaba
+        tambien el OTIF, que nunca se verificaba por separado. Y los dos ultimos se
+        conformaban con ``poblado`` porque la sonda vieja -- un beta escalar por
+        ``observed_fill_rates`` -- no tenia con que moverlos. Con lineas de pedido
+        el arnes mueve los cuatro, asi que se les exige a los cuatro lo mismo:
+        devolver el numero que se inyecto, en las dos corridas.
+        """
         return {
-            "OTIF de salida sobre pedidos reales": self.mide_lo_realizado,
-            "fill rate de linea sobre pedidos reales": self.mide_lo_realizado
-            and bool(_alguno_contiene(campos, _CAMPOS_SERVICIO_REALIZADO)),
-            "dias con quiebre por SKU": bool(_alguno_contiene(campos, _CAMPOS_DIAS_QUIEBRE)),
-            "venta perdida estimada": bool(_alguno_contiene(campos, _CAMPOS_VENTA_PERDIDA)),
+            "OTIF de salida sobre pedidos reales": bool(
+                _alguno_contiene(set(self.reporta_otif), _CAMPOS_SERVICIO_REALIZADO)
+            ),
+            "fill rate de linea sobre pedidos reales": self.mide_lo_realizado,
+            "dias con quiebre por SKU": bool(
+                _alguno_contiene(set(self.reporta_dias), _CAMPOS_DIAS_QUIEBRE)
+            ),
+            "venta perdida estimada": bool(
+                _alguno_contiene(set(self.reporta_venta_perdida), _CAMPOS_VENTA_PERDIDA)
+            ),
         }
 
     @property
     def faltantes(self) -> list[str]:
         return [nombre for nombre, ok in self.requisitos.items() if not ok]
 
+    @property
+    def solo_de_nombre(self) -> list[str]:
+        return self.muestra.solo_de_nombre(
+            _CAMPOS_SERVICIO_REALIZADO + _CAMPOS_DIAS_QUIEBRE + _CAMPOS_VENTA_PERDIDA
+        )
+
     def como_detalle(self) -> dict[str, object]:
         return {
             "entregable": self.entregable,
             "campos": sorted(self.campos),
             "faltantes": self.faltantes,
+            "campos_solo_de_nombre": self.solo_de_nombre,
+            "campos_que_reproducen_lo_medido": list(self.reporta_lo_medido),
+            "campos_que_reproducen_el_otif": list(self.reporta_otif),
+            "campos_que_reproducen_los_dias": list(self.reporta_dias),
+            "campos_que_reproducen_la_venta_perdida": list(self.reporta_venta_perdida),
             "fill_rate_sin_pedidos": self.fill_rate_sin_pedidos,
             "mide_lo_realizado": self.mide_lo_realizado,
             "prueba_origen": self.prueba_origen,
@@ -1241,6 +1793,11 @@ def _veredicto_servicio(cand: _CandidatoServicio) -> ResultadoTarea:
                 f"el servicio que Kern reporta es el del modelo, no el realizado: "
                 f"{cand.prueba_origen}. El criterio lo descalifica por nombre. Tambien falta: "
                 f"{', '.join(cand.faltantes)}"
+                + (
+                    f". Campos de servicio con nombre y sin valor: "
+                    f"{', '.join(cand.solo_de_nombre)}"
+                    if cand.solo_de_nombre else ""
+                )
             ),
             detalle=detalle,
         )
@@ -1260,33 +1817,107 @@ def _veredicto_servicio(cand: _CandidatoServicio) -> ResultadoTarea:
     )
 
 
+def _demanda_sonda(periodos: int = 60):
+    """Una serie de demanda semanal estable para un solo SKU.
+
+    Un solo SKU a proposito: el gate compara el numero reportado contra el
+    servicio que se inyecto para ESE SKU, y con dos filas habria que alinearlas.
+    """
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.default_rng(7)
+    return pd.DataFrame([
+        {
+            "product_id": "SKU-1",
+            "date": pd.Timestamp("2024-01-01") + pd.Timedelta(weeks=t),
+            "quantity": float(max(0.0, 100 + 10 * rng.standard_normal())),
+            "unit_cost": 12.0,
+            "lead_time_days": 14.0,
+        }
+        for t in range(periodos)
+    ])
+
+
 @comprobacion("T10")
 def t10_servicio_realizado_al_cliente(_: Contexto) -> ResultadoTarea:
     """T10 — medir el servicio REALIZADO: OTIF de salida, fill rate, quiebres, venta perdida.
 
-    El sondeo es una demostracion al reves: se le pide un fill rate al motor sin
-    entregarle una sola linea de pedido de cliente. Si sale un numero, ese numero
-    no puede ser lo realizado -- es la beta que implica la politica. Y eso es
-    exactamente lo que el criterio descalifica.
+    La sonda le entrega al job LINEAS DE PEDIDO de cliente -- pedidas contra
+    despachadas, prometida contra entregada, con precio -- dos veces con mezclas
+    muy distintas, y despues busca en lo emitido los campos que devuelvan los
+    cuatro numeros que esas lineas implican. El hecho se deriva de las mismas
+    lineas que se inyectan (:class:`_SondaPedidos`), asi que la vara no puede
+    quedar comparando contra un numero que ya no entra.
 
-    Vale registrar el corte de cableado, que es el mismo patron que sigma_L en
-    T08: ``jobs.inventory_optimization.run`` acepta ``observed_fill_rates`` para
-    realimentar la politica con el servicio medido, pero nadie en ``jobs/`` lo
-    calcula. El unico OTIF que Kern computa es de ENTRADA (proveedor -> nosotros,
-    ``SupplierScore.otif``, ver T09), no de salida al cliente.
+    **Por que cambio la sonda.** La version anterior alimentaba el unico canal
+    que existia entonces, ``observed_fill_rates``: un beta escalar. Con eso solo
+    el fill rate podia reproducirse, el OTIF se acreditaba de arrastre y los dias
+    a stock cero eran INDERIVABLES por construccion -- un quiebre largo y muchos
+    cortos dan el mismo beta, y ``order_fulfillment.from_reported_fill_rate`` se
+    niega, con razon, a inventarlos. Esa sonda dejaba a T10 clavada en PARCIAL
+    contra un entregable que ya sabia calcular las cuatro cosas. El propio
+    docstring viejo dejo escrito el disparador: "si algun dia el job recibe las
+    lineas de pedido crudas y calcula el OTIF de ellas, hay que reescribir la
+    sonda para alimentarlo por ahi". Ese dia llego.
+
+    **Es endurecimiento, no ablandamiento**, y en los cuatro criterios a la vez:
+
+    - el OTIF pasa a verificarse contra SU propio hecho, no contra el fill rate;
+    - los dias de quiebre y la venta perdida pasan de ``poblado`` -- que solo pedia
+      que hubiera algo -- a reproducir el numero inyectado en las dos corridas;
+    - la mezcla se elige para que fill rate y OTIF NUNCA coincidan (las lineas
+      completas-pero-tarde cuentan en uno y no en el otro), asi que publicar el
+      mismo numero con dos nombres ya no acredita dos criterios;
+    - y ninguno de los cuatro cae sobre 0,95, el objetivo por defecto de la
+      politica, que es lo que el criterio descalifica.
+
+    Lo eliminatorio no se movio: reportar el objetivo del modelo en lugar del
+    realizado sigue valiendo cero. Ahora ademas el contraste es mas limpio, porque
+    alimentado por lineas el job no tironea ``service_level``: el objetivo se queda
+    quieto mientras los cuatro numeros medidos se mueven.
     """
-    from jobs.inventory_optimization import SkuRecommendation
+    from jobs import inventory_optimization as job
     from src.fill_rate import fill_rate_from_safety_stock
 
+    demanda = _demanda_sonda()
+    baja, alta = _SondaPedidos(*_CORRIDA_BAJA), _SondaPedidos(*_CORRIDA_ALTA)
+    bajo = job.run(demanda, order_lines=baja.como_dataframe())
+    alto = job.run(demanda, order_lines=alta.como_dataframe())
+    valores_bajo = _valores_planos(bajo.recommendations[0])
+    valores_alto = _valores_planos(alto.recommendations[0])
+
+    def _reproducen(hecho, tolerancia: float) -> tuple[str, ...]:
+        """Campos que devuelven ese hecho en las dos corridas."""
+        return tuple(sorted(
+            c for c in valores_bajo
+            if _reproduce_el_hecho(
+                valores_bajo.get(c), valores_alto.get(c),
+                hecho(baja), hecho(alta), tolerancia,
+            )
+        ))
+
     beta = fill_rate_from_safety_stock(_SS_SONDA, _DEMANDA_CICLO_SONDA, _SIGMA_CICLO_SONDA)
+    objetivo = (valores_bajo.get("service_level"), valores_alto.get("service_level"))
     return _veredicto_servicio(_CandidatoServicio(
-        entregable="jobs.inventory_optimization.SkuRecommendation + src.fill_rate",
-        campos=tuple(sorted(_campos_del_registro(SkuRecommendation))),
+        entregable="jobs.inventory_optimization.SkuRecommendation",
+        muestra=_Muestra.de_corridas(bajo.recommendations, alto.recommendations),
+        reporta_lo_medido=_reproducen(lambda s: s.fill_rate, _TOLERANCIA_SERVICIO),
+        reporta_otif=_reproducen(lambda s: s.otif, _TOLERANCIA_SERVICIO),
+        reporta_dias=_reproducen(lambda s: float(s.dias_quiebre), _TOLERANCIA_CONTEO),
+        reporta_venta_perdida=_reproducen(lambda s: s.unidades_perdidas, _TOLERANCIA_CONTEO),
         fill_rate_sin_pedidos=beta,
         prueba_origen=(
-            f"sin una sola linea de pedido, con SS={_SS_SONDA:g} y sigma={_SIGMA_CICLO_SONDA:g} "
-            f"sobre una demanda de ciclo de {_DEMANDA_CICLO_SONDA:g}, "
-            f"fill_rate_from_safety_stock ya devuelve {beta:.1%}"
+            f"se le inyectan {baja.lineas} lineas de pedido con cantidad pedida, despachada "
+            f"y fechas prometida/entregada: fill rate {baja.fill_rate:.0%} -> "
+            f"{alta.fill_rate:.0%}, OTIF {baja.otif:.0%} -> {alta.otif:.0%}, "
+            f"{baja.dias_quiebre} -> {alta.dias_quiebre} dias con linea corta y "
+            f"{baja.unidades_perdidas:,.0f} -> {alta.unidades_perdidas:,.0f} unidades no "
+            f"vendidas. El objetivo de la politica no se mueve con nada de eso "
+            f"({objetivo[0]} -> {objetivo[1]}), que es lo que el criterio descalifica. "
+            f"En paralelo, sin una sola linea de pedido fill_rate_from_safety_stock ya "
+            f"devuelve {beta:.1%}: la beta que implica la politica esta disponible y el "
+            f"servicio realizado es otra cosa"
         ),
     ))
 
@@ -1436,21 +2067,32 @@ _CAMPOS_FECHA_ACCION = ("due", "deadline", "fecha", "date", "sla", "by_when", "v
 
 @dataclass(frozen=True)
 class _CandidatoExposicion:
-    """El scan de disrupcion + el registro de riesgo, medidos contra T13."""
+    """El scan de disrupcion + el registro de riesgo, medidos contra T13.
+
+    ``accion fechada`` usa ``se_mueve`` y no ``poblado`` porque aca la sonda si
+    tiene con que mover el dato: corre el registro con dos urgencias distintas
+    (probabilidad, velocidad, ventana de supervivencia). Una fecha que no se
+    corre cuando el riesgo se vuelve inminente no esta fechando la accion, esta
+    estampando una constante -- y el criterio pide comprometer un cuando, que es
+    justamente lo que cambia con la urgencia.
+    """
 
     entregable: str
-    campos: tuple[str, ...]
+    muestra: _Muestra
     ranking_por_puntaje: bool
     prueba_ranking: str
 
     @property
+    def campos(self) -> tuple[str, ...]:
+        return tuple(sorted(self.muestra.campos))
+
+    @property
     def requisitos(self) -> dict[str, bool]:
-        campos = set(self.campos)
         return {
             "ranking por exposicion con criterio de puntaje explicito": self.ranking_por_puntaje,
-            "anclado a un proveedor o SKU concreto": bool(_alguno_contiene(campos, _CAMPOS_ANCLA)),
-            "accion concreta para el top N": bool(_alguno_contiene(campos, _CAMPOS_ACCION)),
-            "accion fechada": bool(_alguno_contiene(campos, _CAMPOS_FECHA_ACCION)),
+            "anclado a un proveedor o SKU concreto": bool(self.muestra.poblado(_CAMPOS_ANCLA)),
+            "accion concreta para el top N": bool(self.muestra.poblado(_CAMPOS_ACCION)),
+            "accion fechada": bool(self.muestra.se_mueve(_CAMPOS_FECHA_ACCION)),
         }
 
     @property
@@ -1463,11 +2105,17 @@ class _CandidatoExposicion:
     def faltantes(self) -> list[str]:
         return [nombre for nombre, ok in self.requisitos.items() if not ok]
 
+    @property
+    def solo_de_nombre(self) -> list[str]:
+        """Campos de fecha que existen y no llevan un cuando adentro."""
+        return self.muestra.solo_de_nombre(_CAMPOS_FECHA_ACCION)
+
     def como_detalle(self) -> dict[str, object]:
         return {
             "entregable": self.entregable,
             "campos": sorted(self.campos),
             "faltantes": self.faltantes,
+            "campos_solo_de_nombre": self.solo_de_nombre,
             "anclado_y_accionable": self.anclado_y_accionable,
             "prueba_ranking": self.prueba_ranking,
         }
@@ -1499,53 +2147,101 @@ def _veredicto_exposicion(cand: _CandidatoExposicion) -> ResultadoTarea:
             f"el ranking sale por exposicion con puntaje explicito ({cand.prueba_ranking}) y "
             f"anclado a proveedor, con mitigaciones rankeadas por beneficio neto, pero sale sin: "
             f"{', '.join(cand.faltantes)} -- ninguna mitigacion lleva cuando"
+            + (
+                f". Campos con nombre de fecha y sin un cuando que se mueva con la urgencia: "
+                f"{', '.join(cand.solo_de_nombre)}"
+                if cand.solo_de_nombre else ""
+            )
         ),
         detalle=detalle,
     )
+
+
+#: Dos escenarios de urgencia con los que se sondea si la accion lleva un cuando.
+#: El segundo es el mismo riesgo vuelto inminente: mas probable, mas rapido y con
+#: menos ventana para aguantarlo. Cualquier fecha comprometida se corre; una
+#: constante no.
+_URGENCIA_SONDA = (
+    {"likelihood": 0.10, "velocity_days": 90.0, "time_to_survive": 60.0},
+    {"likelihood": 0.85, "velocity_days": 3.0, "time_to_survive": 2.0},
+)
+
+#: Proveedores con los que se corre el scan de disrupcion (sin red: los articulos
+#: se pasan a mano, ``score_supplier`` es puro).
+_PROVEEDORES_DISRUPCION = (("ACME", "AR", 250_000.0), ("BOREAL", "CL", 40_000.0))
 
 
 @comprobacion("T13")
 def t13_exposicion_a_disrupcion(_: Contexto) -> ResultadoTarea:
     """T13 — exposicion a disrupcion de abastecimiento y mitigacion.
 
-    Se corre el registro de riesgo sobre dos hazards con impacto x probabilidad
-    distintos para verificar que el ranking sale de un puntaje explicito y no de
-    un orden de entrada. El ancla y la accion se miden sobre los campos del
-    entregable: ``SupplierDisruption`` rankea PROVEEDORES (no riesgos genericos) y
-    ``RiskAssessment`` trae mitigaciones rankeadas por beneficio neto.
+    Tres sondas, todas de comportamiento:
 
-    Lo que no existe en ninguna capa es el "cuando": ni ``MitigationOption``, ni
-    ``RankedMitigation``, ni ``ExecutionOption`` tienen fecha. La accion queda
+    - **Ranking**: se corre el registro sobre dos hazards con impacto x
+      probabilidad distintos y se verifica que el orden salga del puntaje y no
+      del orden de entrada.
+    - **Ancla y accion**: se corre el scan de disrupcion de verdad
+      (``score_supplier`` es puro, no toca la red) y se miran los VALORES: el
+      proveedor tiene que venir con nombre adentro y las mitigaciones rankeadas
+      tienen que existir como objetos, no como nombre de campo.
+    - **Fecha**: se corre el registro DOS veces, con el riesgo remoto y con el
+      mismo riesgo vuelto inminente. El gate viejo aceptaba cualquier campo con
+      ``due|deadline|fecha|date|sla`` en el nombre: un ``due_date`` vacio en
+      ``RankedMitigation`` pasaba la tarea de PARCIAL a CUMPLE. Hoy hay que
+      emitir un cuando que se mueva con la urgencia.
+
+    Lo que sigue sin existir en ninguna capa es ese cuando: ni ``MitigationOption``,
+    ni ``RankedMitigation``, ni ``ExecutionOption`` tienen fecha. La accion queda
     recomendada pero sin comprometer, que es la mitad de lo que pide el criterio.
     """
-    from nosilo_core.guided import ExecutionOption
+    from datetime import datetime, timezone
 
-    from src.disruption import SupplierDisruption
-    from src.risk import MitigationOption, RankedMitigation, RiskAssessment, RiskFactor
+    from nosilo_core.guided import ExecutionOption
+    from src.disruption import DisruptionArticle, score_supplier
+    from src.risk import MitigationOption, RiskFactor
     from src.risk import assess_portfolio as _assess
 
-    chico = RiskFactor(
-        name="corte de ruta", category="logistics", likelihood=0.10, impact_value=50_000.0,
-        mitigations=(MitigationOption("segundo transportista", "redundancy", 5_000.0, 0.0, 0.4),),
-    )
-    grande = RiskFactor(
-        name="quiebre del proveedor unico", category="supplier", likelihood=0.30,
-        impact_value=400_000.0,
-        mitigations=(MitigationOption("calificar segundo proveedor", "redundancy", 20_000.0, 0.5),),
-    )
-    reporte = _assess([chico, grande])
-    orden = [a.name for a in reporte.assessments]
-    emvs = [round(a.emv, 1) for a in reporte.assessments]
+    def _registro(urgencia: dict[str, float]):
+        chico = RiskFactor(
+            name="corte de ruta", category="logistics", impact_value=50_000.0,
+            mitigations=(
+                MitigationOption("segundo transportista", "redundancy", 5_000.0, 0.0, 0.4),
+            ),
+            **urgencia,
+        )
+        grande = RiskFactor(
+            name="quiebre del proveedor unico", category="supplier", impact_value=400_000.0,
+            mitigations=(
+                MitigationOption("calificar segundo proveedor", "redundancy", 20_000.0, 0.5),
+            ),
+            **{**urgencia, "likelihood": min(1.0, urgencia["likelihood"] * 3)},
+        )
+        return _assess([chico, grande])
 
-    campos = (
-        _campos_del_registro(SupplierDisruption)
-        | _campos_del_registro(RiskAssessment)
-        | _campos_del_registro(RankedMitigation)
-        | _campos_del_registro(ExecutionOption)
+    remoto, inminente = (_registro(u) for u in _URGENCIA_SONDA)
+    orden = [a.name for a in remoto.assessments]
+    emvs = [round(a.emv, 1) for a in remoto.assessments]
+
+    ahora = datetime(2026, 7, 20, tzinfo=timezone.utc)
+    articulo = DisruptionArticle(
+        "https://ejemplo/1", "port strike halts shipments", datetime(2026, 7, 1, tzinfo=timezone.utc),
+        "ejemplo.com", "es", "AR", "strike",
+    )
+    senales = [
+        score_supplier(nombre, pais, gasto, [articulo], now=ahora)
+        for nombre, pais, gasto in _PROVEEDORES_DISRUPCION
+    ]
+
+    # Solo el nivel de arriba de cada objeto emitido: los articulos de GDELT traen
+    # un ``seendate`` que acreditaria "accion fechada" con la fecha de una noticia.
+    mitigaciones = [m for r in (remoto, inminente) for a in r.assessments for m in a.mitigations]
+    muestra = (
+        _Muestra.de_corridas(senales, remoto.assessments, inminente.assessments, mitigaciones)
+        | _Muestra.de_nombres(_campos_del_registro(ExecutionOption))
     )
     return _veredicto_exposicion(_CandidatoExposicion(
         entregable="src.disruption.SupplierDisruption + src.risk.RiskAssessment",
-        campos=tuple(sorted(campos)),
+        muestra=muestra,
         ranking_por_puntaje=emvs == sorted(emvs, reverse=True) and len(set(emvs)) > 1,
         prueba_ranking=f"EMV desc {dict(zip(orden, emvs, strict=True))}, con occurrence/severity/rpn por riesgo",
     ))
@@ -1700,26 +2396,41 @@ _CAMPOS_RESPONSABLE = ("owner", "responsable", "asignado", "assignee")
 
 @dataclass(frozen=True)
 class _CandidatoActa:
-    """Un entregable de S&OP medido contra el criterio de T14."""
+    """Un entregable de S&OP medido contra el criterio de T14.
+
+    Filos distintos segun lo que la sonda puede mover. La demanda y el suministro
+    se sondean con DOS planes de demanda distintos, asi que se les exige que el
+    numero cambie: un acta cuyo numero de demanda no se entera de que la demanda
+    cambio no esta llevando el numero acordado. El responsable y la fecha se
+    exigen solo ``poblado``: el arnes no tiene por donde inyectar un dueno ni un
+    vencimiento en la negociacion de sombreros, y pedirle movimiento a un dato
+    que la sonda no puede variar es fabricar otro T10. Alcanza con que el acta
+    nombre a alguien de verdad: cuatro campos vacios no cierran una reunion.
+    """
 
     tool: str
     entregable: str
-    campos: tuple[str, ...]
+    muestra: _Muestra
     registra_desacuerdo: bool
     prueba_desacuerdo: str
 
     @property
+    def campos(self) -> tuple[str, ...]:
+        return tuple(sorted(self.muestra.campos))
+
+    @property
     def requisitos(self) -> dict[str, bool]:
-        campos = set(self.campos)
         return {
             "numero de demanda acordado": bool(
-                _alguno_contiene(campos, _CAMPOS_DEMANDA_ACORDADA)
+                self.muestra.se_mueve(_CAMPOS_DEMANDA_ACORDADA)
             ),
-            "plan de suministro que lo soporta": bool(_alguno_contiene(campos, _CAMPOS_SUMINISTRO)),
-            "brechas sin resolver declaradas": bool(_alguno_contiene(campos, _CAMPOS_BRECHAS)),
+            "plan de suministro que lo soporta": bool(
+                self.muestra.se_mueve(_CAMPOS_SUMINISTRO)
+            ),
+            "brechas sin resolver declaradas": bool(self.muestra.poblado(_CAMPOS_BRECHAS)),
             "una decision con nombre y fecha": bool(
-                _alguno_contiene(campos, _CAMPOS_RESPONSABLE)
-            ) and bool(_alguno_contiene(campos, _CAMPOS_FECHA_ACCION)),
+                self.muestra.poblado(_CAMPOS_RESPONSABLE)
+            ) and bool(self.muestra.poblado(_CAMPOS_FECHA_ACCION)),
         }
 
     @property
@@ -1730,12 +2441,22 @@ class _CandidatoActa:
     def cumplidos(self) -> int:
         return len(self.requisitos) - len(self.faltantes)
 
+    @property
+    def solo_de_nombre(self) -> list[str]:
+        """Campos del acta con el nombre correcto y sin nada adentro."""
+        return self.muestra.solo_de_nombre(
+            _CAMPOS_DEMANDA_ACORDADA + _CAMPOS_SUMINISTRO + _CAMPOS_BRECHAS
+            + _CAMPOS_RESPONSABLE + _CAMPOS_FECHA_ACCION
+        )
+
     def como_detalle(self) -> dict[str, object]:
         return {
             "tool": self.tool,
             "entregable": self.entregable,
             "campos": sorted(self.campos),
             "faltantes": self.faltantes,
+            "sondeado_por_valor": self.muestra.sondeada,
+            "campos_solo_de_nombre": self.solo_de_nombre,
             "registra_desacuerdo": self.registra_desacuerdo,
             "prueba_desacuerdo": self.prueba_desacuerdo,
         }
@@ -1772,6 +2493,11 @@ def _veredicto_acta(candidatos: tuple[_CandidatoActa, ...]) -> ResultadoTarea:
         evidencia_falta=(
             f"{mejor.tool} registra el desacuerdo ({mejor.prueba_desacuerdo}) pero el acta sale "
             f"sin: {', '.join(mejor.faltantes)}"
+            + (
+                f". Campos del acta con el nombre correcto y sin nada adentro: "
+                f"{', '.join(mejor.solo_de_nombre)}"
+                if mejor.solo_de_nombre else ""
+            )
         ),
         detalle=detalle,
     )
@@ -1790,50 +2516,73 @@ def t14_acta_de_sop(_: Contexto) -> ResultadoTarea:
 
     Y lo que falta en los dos es el cierre: ninguna capa tiene responsable ni
     fecha, asi que no hay "una decision con nombre y fecha" en ningun lado.
+
+    Los dos entregables se corren DOS veces con demandas distintas. El gate viejo
+    leia nombres de campo: cuatro campos vacios en ``SettlementReport``
+    (``demand_plan``, ``gap``, ``owner``, ``due_date``) llevaban la tarea de
+    NO_CUMPLE a CUMPLE sin agregar una linea de acta.
     """
     from jobs.hats_job import SettlementReport, run_settlement
     from src.eoq import PriceBreak
     from src.hat_council import ActaEntry, Settlement
-    from src.hats import HatConfig, build_inputs
-    from src.sop_engine.demand_plan import DemandPlanLine
-    from src.sop_engine.engine import IntegratedPlanReport
-    from src.sop_engine.purchase_plan import PurchasePlanLine
+    from src.hats import DEFAULT_WEIGHTS, HatConfig, build_inputs
+    from src.sop_engine.engine import run_integrated_plan
+    from src.sop_engine.purchase_plan import SkuPurchaseInputs
 
-    entrada = build_inputs(
-        sku="A", annual_demand=5200.0, mean_weekly=100.0, std_weekly=20.0,
-        lead_time_weeks=2.0, unit_cost=10.0, config=HatConfig(),
-        price_breaks=(PriceBreak(0.0, 10.0),),
-    )
-    from src.hats import DEFAULT_WEIGHTS
+    def _acordar(anual: float, semanal: float, desvio: float):
+        entrada = build_inputs(
+            sku="A", annual_demand=anual, mean_weekly=semanal, std_weekly=desvio,
+            lead_time_weeks=2.0, unit_cost=10.0, config=HatConfig(),
+            price_breaks=(PriceBreak(0.0, 10.0),),
+        )
+        return run_settlement({"inputs": (entrada,), "weights": dict(DEFAULT_WEIGHTS)})
 
-    acuerdo = run_settlement(
-        {"inputs": (entrada,), "weights": dict(DEFAULT_WEIGHTS)}
-    ).settlements[0]
+    flojo, cargado = _acordar(5_200.0, 100.0, 20.0), _acordar(26_000.0, 500.0, 120.0)
+    acuerdo = flojo.settlements[0]
     concesiones = {e.hat_key: round(e.concesion, 3) for e in acuerdo.acta}
 
+    def _integrado(demanda: float):
+        return run_integrated_plan(
+            {"A": demanda, "B": demanda * 2},
+            {
+                "A": SkuPurchaseInputs("A", on_hand=0.0, unit_cost=10.0, reorder_point=60.0),
+                "B": SkuPurchaseInputs("B", on_hand=0.0, unit_cost=4.0, reorder_point=90.0),
+            },
+            budget=_TOPE_SONDA,
+        )
+
+    plan_chico, plan_grande = _integrado(100.0), _integrado(700.0)
     plan = _CandidatoActa(
         tool="integrated_plan",
         entregable="src.sop_engine.engine.IntegratedPlanReport",
-        campos=tuple(sorted(
-            _campos_del_registro(IntegratedPlanReport)
-            | _campos_del_registro(DemandPlanLine)
-            | _campos_del_registro(PurchasePlanLine)
-        )),
+        muestra=_Muestra.de_corridas(
+            (plan_chico,), (plan_grande,),
+            plan_chico.demand_plan, plan_grande.demand_plan,
+            plan_chico.purchase_plan, plan_grande.purchase_plan,
+        ),
         registra_desacuerdo=False,
         prueba_desacuerdo=(
             "el plan integrado no tiene donde anotar que pidio cada area: sus checks son "
             "incoherencias tecnicas del plan, no posiciones de ventas, compras o finanzas"
         ),
     )
+    # ``SettlementReport`` entra por nombre a proposito: su campo ``outcome`` es un
+    # GuidedOutcome cuyo ``residuals`` acreditaria "brechas sin resolver" con los
+    # residuos del motor guiado, que no son las brechas del S&OP.
     settlement = _CandidatoActa(
         tool="hat_settlement",
         entregable="src.hat_council.Settlement",
-        campos=tuple(sorted(
-            _campos_planos(acuerdo)
-            | _campos_del_registro(ActaEntry)
-            | _campos_del_registro(Settlement)
-            | _campos_del_registro(SettlementReport)
-        )),
+        muestra=(
+            _Muestra.de_corridas(
+                flojo.settlements, cargado.settlements,
+                acuerdo.acta, cargado.settlements[0].acta,
+            )
+            | _Muestra.de_nombres(
+                _campos_del_registro(ActaEntry)
+                | _campos_del_registro(Settlement)
+                | _campos_del_registro(SettlementReport)
+            )
+        ),
         registra_desacuerdo=any(c > 0 for c in concesiones.values()),
         prueba_desacuerdo=(
             f"el acta anota cuanto cede cada sombrero respecto de su ideal: {concesiones}"
@@ -1929,13 +2678,46 @@ def t03_segmentacion_con_servicio_diferenciado(ctx: Contexto) -> ResultadoTarea:
             detalle=detalle,
         )
 
+    # "y el criterio de corte usado (ej. 80/15/5 de facturacion)" es una clausula literal
+    # de la fuente que este check nunca miro. Sin ella la etiqueta "A" no es falsable: el
+    # lector no puede estar en desacuerdo con una segmentacion cuyo corte no ve. Se exige
+    # el corte REAL del reporte, no el nombre de un campo: si la propiedad devuelve algo
+    # que no menciona los tres tramos, no cuenta.
+    # Y se comprueba por VALOR, no por presencia: se vuelve a correr con un corte
+    # DISTINTO del habitual y se exige que el criterio declarado lo siga. Comparar el
+    # texto contra el propio campo del reporte seria circular -- medido: con los campos
+    # defaulteados a 80/95, borrar el cableado de run() dejaba el reporte declarando
+    # 80/15/5 sobre una corrida que corto en otro sitio, y el check no lo veia.
+    _CORTE_SONDA = (0.70, 0.90)
+    sondeo = job.run(job.prepare(str(ruta)), abc_thresholds=_CORTE_SONDA)
+    corte_sonda = str(getattr(sondeo, "cut_criterion", "") or "")
+    corte = str(getattr(reporte, "cut_criterion", "") or "")
+    detalle["criterio_de_corte"] = corte or None
+    detalle["criterio_de_corte_sondeado"] = corte_sonda or None
+    declara_el_corte = (
+        bool(corte) and all(t in corte for t in ("80", "15", "5"))
+        and bool(corte_sonda) and all(t in corte_sonda for t in ("70", "20", "10"))
+    )
+    if not declara_el_corte:
+        return ResultadoTarea(
+            tarea_id="T03",
+            estado=Estado.PARCIAL,
+            evidencia=(
+                f"hay {len(celdas)} celdas con {len(niveles)} niveles de servicio y el ABC "
+                f"ordena por valor, pero el entregable no declara el criterio de corte "
+                "(80/15/5 de facturacion): la fuente lo pide con esas palabras y "
+                "sin el la clase de cada SKU no es discutible"
+            ),
+            detalle=detalle,
+        )
+
     return ResultadoTarea(
         tarea_id="T03",
         estado=Estado.CUMPLE,
         evidencia=(
             f"{reporte.n_skus} SKU en {len(celdas)} celdas ABC-XYZ con {len(niveles)} "
-            f"niveles de servicio distintos (min {min(niveles):.0%}, max {max(niveles):.0%}) "
-            f"y el ABC ordena por valor, no por unidades"
+            f"niveles de servicio distintos (min {min(niveles):.0%}, max {max(niveles):.0%}), "
+            f"el ABC ordena por valor y el entregable declara su corte: {corte}"
         ),
         detalle=detalle,
     )

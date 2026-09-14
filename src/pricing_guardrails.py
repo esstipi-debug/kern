@@ -96,11 +96,11 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 import yaml
-from nosilo_core.writeback import Changeset
 
+from nosilo_core.writeback import Changeset
 from scm_agent.citation_gate import filter_citations
 from scm_agent.knowledge import GroundedCitation, KnowledgeBase
-from src.state.store import StateStore
+from src.state.store import StateStore, default_store
 from src.state.system_state import history as state_history
 
 # -- market profile loading (Golden Rule 12: declarative config, not `if`) ---
@@ -258,6 +258,10 @@ def _product_price_series(
     requested, rather than ambiguously matching every row.
     """
     points: list[tuple[datetime, Decimal]] = []
+    # The one place in this module that reaches src.state, so it is where a
+    # None becomes an explicit choice of the shared partition instead of an
+    # invisible one made inside history().
+    store = store if store is not None else default_store()
     for snap in state_history("prices_own", store=store):
         payload = snap.payload
         if "product_id" not in payload.columns or "price" not in payload.columns:

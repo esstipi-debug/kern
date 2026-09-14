@@ -2,7 +2,7 @@
 
 An internal/onboarding page (not a sales page -- see
 docs/superpowers/specs/2026-07-19-how-it-works-page-design.md): what Kern
-does, its 49 capabilities under two donut-chart lenses (domain area / SCOR
+does, its registered capabilities under two donut-chart lenses (domain area / SCOR
 Digital Standard process), how it's grounded and adapted per client, and its
 alignment with SCOR/CPIM/CLTD/CSCP/SCPro/CPSM/ISO 9001/28000.
 
@@ -173,7 +173,7 @@ _HEAD = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How Kern Works | Kern</title>
-<meta name="description" content="How Kern's 49 supply-chain capabilities work: what feeds them, how they adapt to a client's context, and how they align with SCOR, CPIM, CLTD, CSCP, SCPro, CPSM, and ISO 9001/28000.">
+<meta name="description" content="How Kern's __TOOL_COUNT__ supply-chain capabilities work: what feeds them, how they adapt to a client's context, and how they align with SCOR, CPIM, CLTD, CSCP, SCPro, CPSM, and ISO 9001/28000.">
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -366,9 +366,12 @@ def render_how_it_works_html() -> str:
     grounding_cards = "".join([
         _expandable_card(
             "Knowledge graph", "26 curated external sources + the codebase itself",
-            "<p>Every deliverable carries L3 citations, gated by <code>citation_gate</code> "
-            "(minimum 2 citations, max 2 hops, an EXCLUDED_CONCEPTS false-friend filter) so a "
-            "result is never grounded in an off-topic source.</p>",
+            "<p>Every deliverable carries L3 citations. On the package path they also pass "
+            "<code>citation_gate</code> (minimum 2 citations, max 2 hops, an EXCLUDED_CONCEPTS "
+            "false-friend filter): a candidate that does not resolve to a graph node near the "
+            "tool's own anchor concepts is dropped, never substituted, and a batch below the "
+            "minimum degrades to no citations at all rather than shipping one weak hit. "
+            "Single-tool runs through the orchestrator are grounded but not gated.</p>",
             card_id="card-knowledge",
         ),
         _expandable_card(
@@ -412,8 +415,10 @@ def render_how_it_works_html() -> str:
         for gap in HONEST_GAPS
     )
 
+    head = _HEAD.replace("__TOOL_COUNT__", tool_count)
+
     return (
-        _HEAD
+        head
         + f"""
 <section style="padding-top:44px">
   <span class="eyebrow">How Kern Works</span>

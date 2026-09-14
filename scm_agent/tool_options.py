@@ -115,7 +115,10 @@ def inventory_options(report: object) -> GuidedOutcome:
     n_zero_cost = sum(
         1 for r in report.recommendations if getattr(r, "policy_kind", None) == "skipped_zero_cost"
     )
-    n_deferrable = n_review - n_zero_demand - n_zero_cost
+    n_thin = sum(
+        1 for r in report.recommendations if getattr(r, "policy_kind", None) == "insufficient_history"
+    )
+    n_deferrable = n_review - n_zero_demand - n_zero_cost - n_thin
     defer_summary = f"Trim or defer the {n_deferrable} flagged-for-review SKU(s) to release budget."
     if n_zero_demand:
         defer_summary += (
@@ -126,6 +129,11 @@ def inventory_options(report: object) -> GuidedOutcome:
         defer_summary += (
             f" ({n_zero_cost} more have no usable unit cost to compute a policy from - "
             "a data gap, not a deferral candidate.)"
+        )
+    if n_thin:
+        defer_summary += (
+            f" ({n_thin} more have too little demand history to size a policy from - "
+            "a knowledge gap, not a deferral candidate.)"
         )
     items: list[_Item] = [
         ("Adopt the recommended policy",
@@ -141,7 +149,35 @@ def inventory_options(report: object) -> GuidedOutcome:
     outcome = _ranked(f"Inventory policy for {len(report.recommendations)} SKU(s): choose how to act.", items)
     outcome = _apply_intake_quality(outcome, report)
     outcome = _apply_zero_demand_skips(outcome, report)
-    return _apply_zero_cost_skips(outcome, report)
+    outcome = _apply_zero_cost_skips(outcome, report)
+    return _apply_insufficient_history(outcome, report)
+
+
+def _apply_insufficient_history(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
+    """State a residual whenever run() refused to size a SKU for too little demand
+    history (``jobs/inventory_optimization.py``'s ``JobReport.n_insufficient_history``).
+
+    Same "transparency first" reasoning as the two skip residuals above, but the
+    failure it guards against is the inverse of theirs. Zero demand and zero cost
+    are LOUD in the deliverable - the SKU obviously has nothing. A thin history is
+    QUIET: the SKU looks ordinary, it has real sales, and before the gate existed it
+    came back with a confident quantity and a cleaner status than the SKUs the
+    engine actually understood. Without this residual the refusal is equally quiet
+    in the other direction: the SKU simply vanishes from the investment total with
+    nothing saying why.
+    """
+    n_thin = getattr(report, "n_insufficient_history", 0)
+    if not n_thin:
+        return outcome
+    return replace(outcome, residuals=[*outcome.residuals, Residual(
+        description=f"{n_thin} SKU(s) had too few demand periods to size a policy and were "
+                    "refused - no quantity, no buffer, and no investment was computed for "
+                    "them (see the 'insufficient_history' recommendations).",
+        risk_if_skipped="these SKUs are unplanned, not adequately stocked. A slow mover with "
+                        "a real gap and a SKU that simply started selling last month look "
+                        "identical here; set an opening buy by hand, or wait for enough "
+                        "history, before assuming no action is needed.",
+    )])
 
 
 def _apply_zero_demand_skips(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
@@ -282,6 +318,48 @@ def ddmrp_options(report: object) -> GuidedOutcome:
         items = [("Hold - buffers healthy", "No parts below buffer; monitor.",
                   "monitor; no action needed", "no cost"), reprofile]
     return _ranked(f"DDMRP over {report.n_parts} part(s): choose the execution move.", items)
+
+
+def import_case_options(report: object) -> GuidedOutcome:
+    """Never EXECUTED: the pack is a broker handoff even when the case is clean."""
+    n_conf = int(getattr(report, "n_conflicts", 0) or 0)
+    n_miss = int(getattr(report, "n_missing", 0) or 0)
+    send: _Item = (
+        "Send the field pack to the licensed broker",
+        "chile_din_field_pack.csv is a draft map, not a filed DIN/SICEX entry.",
+        "email the pack to the customs broker; importer remains importer of record",
+        "stops re-typing; filing stays human",
+    )
+    resolve: _Item = (
+        "Resolve contested fields first",
+        f"{n_conf} conflict(s) — pick packing vs invoice before anyone files.",
+        "choose a winner per contested row and re-run the case",
+        "prevents a false declaration",
+    )
+    fill: _Item = (
+        "Fill missing documents or required fields",
+        f"{n_miss} gap(s) in the Chile import core set or schema required fields.",
+        "add the missing JSON slices (invoice, packing, B/L or AWB) and re-run",
+        "incomplete pack must not be presented",
+    )
+    landed: _Item = (
+        "Run landed-cost on the same shipment",
+        "The pack is identity and quantity; landed_cost is the money view.",
+        "run the landed_cost tool on the shipment lines",
+        "separates paperwork from TCO",
+    )
+    if n_miss:
+        items = [fill, resolve, send]
+    elif n_conf:
+        items = [resolve, send, landed]
+    else:
+        items = [send, landed, fill]
+    return _ranked(
+        f"Import case: {getattr(report, 'n_documents', 0)} doc(s), "
+        f"{n_conf} conflict(s), {n_miss} gap(s) — choose the human step.",
+        items,
+        confidence=0.8,
+    )
 
 
 def landed_cost_options(report: object) -> GuidedOutcome:

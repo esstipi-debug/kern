@@ -44,8 +44,10 @@ class DigestResult:
 
 
 def _recent_events(ledger: EventLedger, *, window_hours: float, now: datetime) -> list[Event]:
+    # list_between (no list_all) para no cargar la tabla entera en cada digest:
+    # con un ledger de meses, filtrar en Python 24h de eventos costaba leer todo.
     cutoff = now - timedelta(hours=window_hours)
-    return [e for e in ledger.list_all() if e.ts >= cutoff]
+    return ledger.list_between(cutoff, now + timedelta(seconds=1))
 
 
 def _counts_by_type(events: list[Event]) -> dict:

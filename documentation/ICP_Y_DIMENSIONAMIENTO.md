@@ -93,16 +93,52 @@ el operador. Ver más en la sección 3.3 (¿herramienta para CEO?).
 
 ### 1.4 Cobertura del motor y correcciones a supuestos previos
 
-VERIFICADO por conteo directo (`scm_agent/tools.py`, `webapp/mcp_tool_specs.py`):
+RE-VERIFICADO por conteo directo sobre `main` @ `c6dc63a` (v2.9.0, 07-ago-2026)
+en `scm_agent/tools.py`, `webapp/mcp_tool_specs.py` y `scm_agent/citation_gate.py`:
 
-- **37 tools** registradas en el motor (no 38 — la cifra de 38 no aparece en
-  ningún archivo de esta rama; `CLAUDE.md` local dice 37 y el conteo por
-  `grep -c 'key="'` lo confirma exacto).
-- **33 de 37** expuestas vía MCP. Las 4 no expuestas: `excel_replenishment`,
-  `leadership_chain`, `odoo_replenishment`, `warehouse_layout` — mismo gap que
-  reportaba la auditoría previa (`linchpin-verified-audit`), sin cambios.
-- `citation_gate.py`'s `TOOL_CONCEPTS` mapea las 37 tools 1:1 (confirmado por
-  conteo de claves).
+- **50 tools** registradas en el motor — 50 llamadas a `.register()` en
+  `build_default_registry()`, 50 nombres únicos. Coincide con las "50
+  agent-routable capabilities" del README.
+- **35 de 50** expuestas vía MCP (35 instancias de `MCPToolSpec` en
+  `webapp/mcp_tool_specs.py`, 35 `job_type` únicos). Las 5 no expuestas y su
+  razón, documentadas en el docstring de ese archivo: `odoo_replenishment` y
+  `excel_replenishment` (escriben en el sistema del cliente y quedan detrás
+  del plano de seguridad de cliente directo), `leadership_chain` (no toma
+  filas tabulares), `warehouse_layout` (su entregable es un visor 3D, no un
+  análisis de datos) e `intake_scan` (lee un directorio entero: en una
+  superficie remota anónima sería una primitiva de lectura arbitraria de
+  archivos).
+- `citation_gate.py`'s `TOOL_CONCEPTS` tiene **49 claves para 50 tools**, y el
+  mapeo es correcto: la única tool sin concepto es `intake_scan`, omitida
+  **por diseño** (`_NO_CONCEPT_MAP_BY_DESIGN`, con `_CORRECTLY_ZERO_TOOLS` en
+  `tests/test_packages_citations.py`). No hay claves huérfanas ni desfase de
+  nombres. El gate es fail-closed: una tool sin anclas omite *todas* sus
+  citas, nunca inventa un sustituto.
+
+**Límite de alcance del gate — relevante para lo que se puede prometer.**
+`filter_citations` está cableado en `scm_agent/packages.py::_run_step`,
+`jobs/integrated_plan.py`, `jobs/price_intelligence.py`, `jobs/repricing.py` y
+`src/pricing_guardrails.py`. **El camino de tool única del orquestador no pasa
+por el gate:** `scm_agent/orchestrator.py::_ground` llama al `ground_citations`
+sin filtrar, y ese es el camino de la webapp, del servidor MCP y de
+`examples/run_agent.py`.
+
+El propio código mide la consecuencia y la deja escrita (nota IMPORTANT-4 del
+31-jul-2026): replicando la llamada real del orquestador para `flow_map` e
+`intake_scan`, **3 de las 5 citas entregadas son ruido del libro de
+resiliencia de Khan** — que pesa el 32% del grafo. El gate existe justamente
+para vetar eso, pero no corre en ese camino.
+
+**Consecuencia comercial:** el claim defendible es *"los entregables de
+paquete comercial pasan por un gate de citación"*, no *"todo resultado cita su
+fuente"*. Cablear el gate al camino de tool única está señalado en el código
+como un cambio de radio de impacto mayor, no hecho todavía.
+
+> **Nota de vigencia.** La versión anterior de esta sección decía 37 tools y
+> 33 expuestas vía MCP. Era correcto en su momento (commit `62844c3`) y quedó
+> obsoleto al crecer el registro. El número **35** sigue siendo real, pero mide
+> la superficie MCP, no el motor. Confundir ambos subvende el producto en 15
+> herramientas.
 
 **Corrección importante — conectores reales (VERIFICADO por grep en
 `src/connectors/`, `scm_agent/`, `jobs/`, `webapp/`, case-insensitive):**
@@ -308,9 +344,10 @@ fuente externa:
 - **Odoo en LATAM (footprint):** se buscó explícitamente. **NO RELIABLE
   SOURCE FOUND** — Odoo no publica cifras públicas de partners/clientes por
   país LATAM. No usar un número inventado aquí; el canal Odoo App Store sigue
-  siendo la apuesta de `GTM_SUBMISSIONS.md` (módulo `linchpin_dry_run`,
-  listo para publicar), pero su alcance real es desconocido hasta que se
-  publique y se mida.
+  siendo la apuesta de `GTM_SUBMISSIONS.md` (módulo `kern_dry_run`, portado a
+  Odoo 19 y verificado en instalación limpia, pendiente de los ítems de ficha
+  listados en `GTM_SUBMISSIONS.md` §5), pero su alcance real es desconocido
+  hasta que se publique y se mida.
 - **Conversión lead→cierre en ads B2B (ESTIMADO, benchmark general no
   LATAM-específico):** profesional services en LinkedIn Ads cierra
   aproximadamente 2-5% de los leads generados por formulario (fuente:
@@ -600,7 +637,7 @@ más alto, ciclo de venta más largo (consistente con el benchmark de §2.3).
 - Micro-empresas (bajo el piso Micro de AR/MX, §2.2) — sin presupuesto real
   para ningún paquete, ni siquiera el Diagnóstico.
 - Empresas sin inventario físico (servicios puros, software) — cero
-  encaje con las 37 tools del motor.
+  encaje con las 50 tools del motor.
 - Empresas que ya tienen SAP IBP/Blue Yonder u otro suite enterprise
   desplegado — resuelto el problema que Kern ataca, ciclo de venta
   desperdiciado.
@@ -834,7 +871,7 @@ seguimiento y alertas de inventario; ninguno de los tres, por lo que se
 encontró en esta investigación, ofrece el paquete completo de Kern de
 forecasting econométrico + DDMRP + S&OP + pricing por elasticidad +
 citas a literatura + QA-gate — son herramientas de *tracking*, no el motor
-analítico de 37 tools que vende Kern). No se encontró (ni se esperaba
+analítico de 50 tools que vende Kern). No se encontró (ni se esperaba
 encontrar) una cifra de "% de mercado ya cubierto por estas herramientas"
 — con 8.500 clientes de contra ~400.000 empresas calificadas, la
 penetración de categoría sigue siendo baja en términos absolutos.

@@ -142,11 +142,13 @@ def _scan_issues(eo: EOReport, fin: FinancialReport) -> list[str]:
     return issues
 
 
-def _findings(eo: EOReport, abc: AbcXyzReport, fin: FinancialReport) -> tuple[str, ...]:
-    """The 3 executive findings, Spanish neutral, numbers already formatted."""
+def _findings(eo: EOReport, abc: AbcXyzReport, fin: FinancialReport, *, lang: str = "es") -> tuple[str, ...]:
+    """The 3 executive findings, numbers already formatted."""
+    if lang == "en":
+        return _findings_en(eo, abc, fin)
     worst = next((e for e in eo.lines if e.excess_value > 0), None)
     f1 = (
-        f"${eo.eo_value:,.0f} atrapados en stock muerto o excedente: "
+        f"${eo.eo_value:,.0f} inmovilizados en stock muerto o excedente: "
         f"{eo.n_dead} SKU(s) sin venta hace {eo.dead_threshold_days:.0f}+ dias y "
         f"{eo.n_excess} por encima de {eo.target_cover_days:.0f} dias de cobertura "
         f"({eo.eo_pct_of_value * 100:.0f}% del valor en stock)."
@@ -171,12 +173,63 @@ def _findings(eo: EOReport, abc: AbcXyzReport, fin: FinancialReport) -> tuple[st
     return (f1, f2, f3)
 
 
-def run_demo_scan(df: pd.DataFrame, params: dict | None = None) -> DemoScanResult:
+def _findings_en(eo: EOReport, abc: AbcXyzReport, fin: FinancialReport) -> tuple[str, ...]:
+    worst = next((e for e in eo.lines if e.excess_value > 0), None)
+    f1 = (
+        f"${eo.eo_value:,.0f} tied up in dead or excess stock: "
+        f"{eo.n_dead} SKU(s) with no sale for {eo.dead_threshold_days:.0f}+ days and "
+        f"{eo.n_excess} above {eo.target_cover_days:.0f} days of cover "
+        f"({eo.eo_pct_of_value * 100:.0f}% of on-hand value)."
+    )
+    if worst is not None:
+        f1 += (
+            f" The largest single exposure is {_md_safe(worst.product_id)} "
+            f"(${worst.excess_value:,.0f} at risk)."
+        )
+    f2 = (
+        f"{abc.n_a} A-class SKU(s) hold {abc.a_value_share * 100:.0f}% of annual "
+        f"value: they need a different service and inventory policy from the rest "
+        f"of the catalogue."
+    )
+    if abc.n_cz:
+        f2 += f" {abc.n_cz} CZ SKU(s) are discontinue candidates."
+    f3 = (
+        f"Inventory takes {fin.dio:.0f} days to convert to cash (DIO), "
+        f"{fin.turns:.1f}x turns a year: each point of improvement releases "
+        f"working capital."
+    )
+    return (f1, f2, f3)
+
+
+# El umbral de stock muerto del escaneo gratis es 365 dias, no el default de
+# 180 del motor. Dos razones, y la segunda pesa mas que la primera:
+#
+# 1. Es lo que promete la doc. 05-GTM-KERN §5 salida #4 dice "sin movimiento
+#    12+ meses" y los packs de config/verticals la llaman dead_stock_12m. Con
+#    180 el visitante leia "sin venta hace 180+ dias" bajo una salida que dos
+#    documentos definen como anual.
+# 2. A 180 dias, cualquier negocio estacional entrega falsos positivos. Un
+#    articulo de temporada lleva seis meses quieto y esta sano. En el escaneo
+#    gratis no hay humano que filtre eso, y es primer contacto: un "stock
+#    muerto" mal llamado cuesta la conversacion entera. El §5 dice que esta
+#    salida "casi siempre sorprende" -- solo sirve si la sorpresa es real.
+#
+# El default de 180 del motor NO se toca: lo comparten markdown_liquidation_job
+# y seo_priority, donde la decision la revisa un humano y donde bajar el umbral
+# a la mitad cambia recomendaciones de precio. Es un default de motor, no una
+# promesa al visitante.
+_DEMO_DEAD_THRESHOLD_DAYS = 365.0
+
+
+def run_demo_scan(
+    df: pd.DataFrame, params: dict | None = None, *, lang: str = "es"
+) -> DemoScanResult:
     """The whole scan: sniff columns, run the 3 jobs, QA-gate, compose findings.
 
     Raises ValueError (from the E&O prepare) when the required columns are
     missing -- the endpoint maps that to an actionable 400.
     """
+    params = {"dead_threshold_days": _DEMO_DEAD_THRESHOLD_DAYS, **(params or {})}
     payload = excess_obsolete_job.prepare_records(df, params)
     stocks: list[SkuStock] = payload["stocks"]
 
@@ -190,7 +243,7 @@ def run_demo_scan(df: pd.DataFrame, params: dict | None = None) -> DemoScanResul
         + financial_kpis_job.verify(fin)
         + _scan_issues(eo, fin)
     )
-    findings = _findings(eo, abc, fin) if not qa_issues else ()
+    findings = _findings(eo, abc, fin, lang=lang) if not qa_issues else ()
     return DemoScanResult(
         eo=eo, abc=abc, fin=fin, qa_issues=tuple(qa_issues), findings=findings
     )
@@ -291,7 +344,7 @@ def render_followup_email(
             "[FIRMA-OPERADOR]",
             "",
             "--",
-            "BORRADOR generado por el escaneo del demo. Revisar y enviar a mano; "
+            "BORRADOR generado por el diagnóstico gratis. Revisar y enviar a mano; "
             "Kern nunca envia correo automaticamente.",
         ]
     ) + "\n"

@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<odoo>
-    <menuitem id="menu_linchpin_analysis"
-              name="Linchpin Inventory Analysis"
-              parent="stock.menu_stock_inventory_control"
-              action="linchpin_analysis_wizard_action"
-              groups="group_linchpin_user"
-              sequence="99"/>
-</odoo>

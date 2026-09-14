@@ -9,7 +9,7 @@ against the emulator. Swap the TestClient for a live ``httpx.Client`` later, unc
 
 from fastapi.testclient import TestClient
 
-from src.connectors import InventoryLevel, InventorySource, Product
+from src.connectors import InventoryLevel, InventorySource, Order, OrderLine, Product
 from src.connectors.emulator import create_app
 from src.connectors.http_client import StoreApiClient
 from src.connectors.simulator import SimulatedStore, demo_store
@@ -63,3 +63,35 @@ def test_emulator_endpoints_are_commerce_shaped():
 
     orders = raw.get("/admin/orders").json()["orders"]
     assert "line_items" in orders[0] and "created_at" in orders[0]
+
+
+# -- the service side survives the transport ----------------------------------
+
+
+def test_service_fields_round_trip_over_http():
+    """A connector that drops them over the wire reports ``not_measured`` instead."""
+    store = SimulatedStore(
+        [Product("S1", "x", 10.0, 6.0)],
+        [InventoryLevel("S1", 5.0)],
+        [Order("o1", "2026-01-05", (OrderLine("S1", 10.0, 10.0, 7.0, "2026-01-08", "2026-01-09"),))],
+    )
+    client = StoreApiClient(TestClient(create_app(store)))
+
+    (order,) = client.orders()
+
+    (line,) = order.lines
+    assert line.delivered_qty == 7.0
+    assert (line.promised_date, line.delivered_date) == ("2026-01-08", "2026-01-09")
+
+
+def test_a_store_that_reports_no_deliveries_stays_unmeasured_over_http():
+    store = SimulatedStore(
+        [Product("S1", "x", 10.0, 6.0)],
+        [InventoryLevel("S1", 5.0)],
+        [Order("o1", "2026-01-05", (OrderLine("S1", 10.0, 10.0),))],
+    )
+    client = StoreApiClient(TestClient(create_app(store)))
+
+    (line,) = client.orders()[0].lines
+    assert line.delivered_qty is None  # not 0.0: nobody reported a shipment
+    assert line.promised_date is None

@@ -4,9 +4,9 @@
 
 ### The agentic brain for supply-chain decisions — grounded in the field's best models and sources.
 
-**Kern** (German for *core*) is the evolution of **Linchpin** — from a tool that analyzes to the core the agency's service runs on. The name changed because the role changed: not reports on demand, but the decision kernel every engagement executes through — the QA gate that vetoes bad deliverables, citations to 25 curated sources on every result, staged writeback with rollback, and guided outcomes that always end in a safe human step. [Why Kern →](documentation/KERN_IDENTIDAD_Y_FILOSOFIA.md)
+**Kern** (German for *core*) is the evolution of **Linchpin** — from a tool that analyzes to the core the agency's service runs on. The name changed because the role changed: not reports on demand, but the decision kernel every engagement executes through — the QA gate that vetoes bad deliverables, citations to 26 curated external sources on every result, staged writeback with rollback, and guided outcomes that always end in a safe human step. [Why Kern →](documentation/KERN_IDENTIDAD_Y_FILOSOFIA.md)
 
-**Kern** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models across **50 agent-routable capabilities** — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, a network digital twin, forecasting, pricing, price intelligence (competitor position), DDMRP, ABC-XYZ, sourcing, supplier segmentation (Kraljic), landed cost, cost-to-serve, S&OP, facility location, multi-facility network design (p-median), DRP, transportation, FEFO, reconciliation, slotting, warehouse layout, vehicle routing, decision tension map (4 sombreros), reconciled replenishment plan, flow map, cross-area impact/objection verdict, intake scan (raw-folder data-readiness audit) and more — and an **orchestrator agent** drives every one of them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **25 curated SCM sources and the codebase itself**.
+**Kern** turns a plain-language brief into finished, QA-gated supply-chain deliverables. A Python **engine** implements the field's established models across **58 agent-routable capabilities** — EOQ, safety stock, `(s,Q)`/`(R,S)` policies, multi-echelon, simulation, a network digital twin, forecasting, pricing, price intelligence (competitor position), DDMRP, ABC-XYZ, sourcing, supplier segmentation (Kraljic), landed cost, import-case document pack, cost-to-serve, S&OP, facility location, multi-facility network design (p-median), DRP, transportation, FEFO, reconciliation, slotting, warehouse layout, vehicle routing, decision tension map (4 sombreros), reconciled replenishment plan, flow map, cross-area impact/objection verdict, intake scan (raw-folder data-readiness audit), ISO operations floor evidence, MUS audit-evidence workpaper, SCOR/ISO evidence pack and more — and an **orchestrator agent** drives every one of them end to end with a **never-unprotected guarantee** (every result is executed *or* hands you a ready, safe next step) and **safe-staging writeback**. Each result is **grounded** in a knowledge graph of **26 curated external sources and the codebase itself**.
 
 [![version](https://img.shields.io/badge/version-2.9.0-5eead4)](CHANGELOG.md)
 [![python](https://img.shields.io/badge/python-3.11--3.13-3776AB?logo=python&logoColor=white)](pyproject.toml)
@@ -41,7 +41,7 @@ flowchart LR
   Q -->|fail| N["no deliverable"]
 ```
 
-Every one of the **50 registered tools** below is routed the same way — one `register()` call wires a capability into the same `classify → prepare → run → QA → deliver` pipeline, no special-casing. A few, as a sample:
+Every one of the **58 registered tools** below is routed the same way — one `register()` call wires a capability into the same `classify → prepare → run → QA → deliver` pipeline, no special-casing. A few, as a sample:
 
 | Capability | Input | Deliverable |
 |---|---|---|
@@ -50,31 +50,33 @@ Every one of the **50 registered tools** below is routed the same way — one `r
 | 🧭 `leadership_chain` | a brief / scores | radar chart + report — CHAIN leadership profile + directives |
 | 🏗️ `warehouse_layout` | params / brief | 3D HTML + layout.json + report — navigable warehouse (building, yard, docks, gates, racks) |
 
-Runs **with or without an LLM**: an optional `LLMProvider` (Claude) sharpens routing and the narrative; the deterministic core works on its own. The whole thing is **1100+ tests**.
+Runs **with or without an LLM**: an optional `LLMProvider` (Claude) sharpens routing and the narrative; the deterministic core works on its own. The whole thing is **6493+ tests**.
 
 ---
 
-## 🧰 All 50 capabilities, one router
+## 🧰 All 58 capabilities, one router
 
 Every capability below is agent-routable — a brief in, a QA-gated deliverable out — through the exact same pipeline as the four examples above. Source of truth: `build_default_registry()` in [`scm_agent/tools.py`](scm_agent/tools.py); this table is regenerated by hand from it, so if the two ever disagree, trust the code. See the [Capability Expansion Plan](documentation/CAPABILITY_EXPANSION_PLAN.md) for what's still credential-gated (Shopify/Amazon/ERP connectors, voice) rather than agent-routable today.
 
 <div align="center">
-<img src="docs/assets/capabilities-by-area.png" alt="Donut chart — the 50 registered tools grouped by domain area: inventory & replenishment 11, network & logistics 9, inventory control & health 8, pricing & finance 6, procurement & sourcing 4, returns/risk/benchmarking 4, demand & classification 3, planning cadence 4, leadership 1 (chart image itself pending regeneration; text kept accurate to the current registry)" width="620">
+<img src="docs/assets/capabilities-by-area.png" alt="Donut chart — the 58 registered tools grouped by domain area: inventory & replenishment 11, network & logistics 9, inventory control & health 9, pricing & finance 7, procurement & sourcing 5, returns/risk/benchmarking 4, demand & classification 3, planning cadence 4, procedures & standard work 2, ISO operations & evidence 3, leadership 1 (chart image itself pending regeneration; text kept accurate to the current registry)" width="620">
 </div>
 
 <details>
-<summary><b>📋 The full list, by area (50 tools)</b></summary>
+<summary><b>📋 The full list, by area (58 tools)</b></summary>
 
 | Area | Tools |
 |---|---|
 | **Demand & classification** | `abc_xyz` · `forecast` · `whatif` |
 | **Inventory & replenishment** | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` (live Odoo ERP read + writeback) · `excel_replenishment` (client planilla read + writeback) · `hat_tension` (Decision Tension Map, 4 sombreros) · `hat_settlement` (Reconciled Replenishment Plan) |
-| **Inventory control & health** | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` · `org_friction_audit` (hidden factory, ratchet, accountability vacuum — audits the politics behind the numbers, not the numbers) · `intake_scan` (raw-folder data-readiness audit) |
-| **Procurement & sourcing** | `sourcing` · `supplier_management` (Kraljic segmentation) · `landed_cost` · `acceptance_sampling` |
+| **Inventory control & health** | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` · `org_friction_audit` (hidden factory, ratchet, accountability vacuum — audits the politics behind the numbers, not the numbers) · `intake_scan` (raw-folder data-readiness audit) · `service_scan` (realized customer service from a live commerce backend) |
+| **Procurement & sourcing** | `sourcing` · `supplier_management` (Kraljic segmentation) · `landed_cost` · `import_case` (unified import document pack) · `acceptance_sampling` |
 | **Network & logistics** | `facility_location` · `network_design` (multi-facility p-median) · `transportation` · `vehicle_routing` · `warehouse_layout` · `slotting` · `queuing` · `scheduling` · `flow_map` (observed network + measured transit per lane) |
-| **Pricing & finance** | `pricing` · `price_intelligence` (competitor price position, one-shot) · `price_watch` (discovery-assisted, recurring, read-only) · `financial_kpis` · `cost_to_serve` · `learning_curve` |
+| **Pricing & finance** | `pricing` · `price_intelligence` (competitor price position, one-shot) · `price_watch` (discovery-assisted, recurring, read-only) · `repricing` (staged price changeset, approval-gated) · `financial_kpis` · `cost_to_serve` · `learning_curve` |
 | **Returns, risk & benchmarking** | `returns` · `risk` · `dea` · `disruption_scan` (supplier disruption exposure scan, GDELT-fed) |
 | **Planning cadence & projects** | `sop` · `earned_value` · `launch_readiness` (campaign launch-date vs lead-time & coverage) · `cross_impact` (cross-area impact of a proposed decision, objection verdict) |
+| **Procedures & standard work** | `procedure_audit` (SOP register audit: overdue reviews, missing owners, unversioned documents) · `procedure_draft` (bilingual SOP draft with document control) |
+| **ISO operations & evidence** | `iso_ops` (detect applicable ops/SC ISO + IATF, propose floor tasks, evaluate order evidence — never a certificate) · `audit_evidence` (MUS + GL tie-out workpaper, not an opinion) · `scor_iso_audit` (SCOR scorecard + ISO 9001/28000 checklist in one EvidenceRecord — never a certificate) |
 | **Leadership** | `leadership_chain` |
 
 </details>
@@ -99,7 +101,7 @@ A **registry-based orchestrator**: every capability is a `Tool` with four stages
 
 ```
 brief ─▶ intent.classify ─▶ registry.get(tool) ─▶ prepare ─▶ run ─▶ QA ─▶ deliver ─▶ JobResult
-              (rules + optional LLM)              any of the 50 registered tools
+              (rules + optional LLM)              any of the 58 registered tools
 ```
 
 - **`scm_agent/`** — `types` · `llm` (Claude / rules fallback) · `registry` · `tools` · `intent` · `orchestrator` · `knowledge` (L3 grounding) · `guided_bridge` (never-unprotected contract via `nosilo_core.guided`)
@@ -175,7 +177,7 @@ Other statuses return the same envelope with `status` one of
 
 Every job is **grounded**: the orchestrator queries a knowledge graph and attaches citations to each result (the **Fuentes** shown in the console). Two graphs, one read-only query surface — [`scm_agent/knowledge.py`](scm_agent/knowledge.py):
 
-- **Domain knowledge graph** ([`knowledge/scm-books/`](knowledge/scm-books/README.md)) — **25 curated SCM sources** (forecasting, pricing, revenue management, inventory, operations, logistics, sustainability, leadership, AI in supply chains): ~1,950 concept nodes with source citations. Committed.
+- **Domain knowledge graph** ([`knowledge/scm-books/`](knowledge/scm-books/README.md)) — **26 curated external sources** (forecasting, pricing, revenue management, inventory, operations, logistics, sustainability, leadership, risk & resilience, AI in supply chains): ~3,040 concept nodes with source citations, 2,913 of them from external works. Committed.
 - **Code graph** (`graphify-out/`) — the codebase itself, built with `/graphify`. Gitignored (regenerable).
 
 The **bridge** ties them together: for each cited concept it resolves the `src/` module that implements it, so a deliverable cites the concept **and** the function behind it.
@@ -220,13 +222,13 @@ The analytical core the agent stands on: a chain of small **pure functions**, ea
 ![forecast error](https://img.shields.io/badge/safety_stock-forecast_error_σ-5eead4?style=flat-square&labelColor=0d1219)
 ![shape aware](https://img.shields.io/badge/demand-Croston_and_gamma-3fb950?style=flat-square&labelColor=0d1219)
 ![feasible](https://img.shields.io/badge/plan-MOQ_and_budget_feasible-d4a017?style=flat-square&labelColor=0d1219)
-![tests](https://img.shields.io/badge/1100%2B_tests-passing-4fd1c5?style=flat-square&labelColor=0d1219)
+![tests](https://img.shields.io/badge/6493%2B_tests-passing-4fd1c5?style=flat-square&labelColor=0d1219)
 
 - **Validated, not assumed** — closed-form policies are cross-checked against Monte-Carlo simulation (`simulation.py`, backorders + lost sales).
 - **σ_e, not σ_demand** — safety stock keys off *forecast error*, the only correct dispersion (the #1 inventory mistake in the wild).
 - **Shape-aware** — intermittent (Croston) and skewed (gamma) demand are first-class, where a normal-curve sheet silently stocks out.
 - **Feasible by construction** — MOQ / budget are constraints, so what ships is buildable, not just mathematically optimal.
-- **Pure & composable** — each module is a pure function, the engine validated against reference numeric examples in a 1100+ test suite; the orchestrator chains them without surprises.
+- **Pure & composable** — each module is a pure function, the engine validated against reference numeric examples in a 6493+ test suite; the orchestrator chains them without surprises.
 
 <div align="center">
 <img src="docs/assets/benchmark-savings.png" alt="Bar chart — median cost reduction vs baseline on Online Retail I, Online Retail II, and Superstore, all above the 15% target line" width="520"><br>
@@ -253,7 +255,7 @@ Sliders **recompute the policy live**; the **agent console** (`/console`) adds t
 <details>
 <summary><b>📖 Module reference — coverage by topic</b></summary>
 
-> Deliverables are grounded across all **25 curated sources** in the knowledge graph, not a single reference.
+> Deliverables are grounded across all **26 curated external sources** in the knowledge graph, not a single reference.
 
 | Topic | Module | Status |
 |--------------|--------|--------|
@@ -335,12 +337,12 @@ src/sources.py   src/forecasting.py   src/policies.py   src/constraints.py
 <summary><b>Project layout</b></summary>
 
 ```
-scm_agent/            Orchestrator: brief → classify → tool (50 registered) → QA → deliver
+scm_agent/            Orchestrator: brief → classify → tool (58 registered) → QA → deliver
 jobs/                 Playbooks (one per tool) + intake/QA/deliverables
 src/                  Core engine (EOQ → simulation optimization → forecasting → pricing → ...)
 webapp/               FastAPI dashboard + POST /api/jobs + live agent console (static/prototype/)
 examples/             CLI workflows (run_agent, parts 1-4, batch, jobs, plots)
-tests/                1100+ tests: engine (reference numeric examples) + agent + HTTP layer (traversal/upload guards)
+tests/                6493+ tests: engine (reference numeric examples) + agent + HTTP layer (traversal/upload guards)
 data/                 Sample demand + pricing
 documentation/        Guides: Getting Started, FAQ, methodology, capability-expansion plan
 docs/                 Design briefs, handoff notes, assets

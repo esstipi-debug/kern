@@ -61,7 +61,7 @@
 - 61 jobs en `jobs/`
 - Knowledge graph en `knowledge/`
 - Conectores en `src/connectors/`
-- **Estado**: Maduro, bien testeado (1100+ tests en CI, py 3.11–3.13)
+- **Estado**: Maduro, bien testeado (6493+ tests en CI, py 3.11–3.13)
 
 ### Capa 2: Agent Engine (ya existe — extender)
 
