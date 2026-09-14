@@ -40,10 +40,10 @@ from pathlib import Path
 
 import httpx
 import pandas as pd
-from nosilo_core.guided import EXECUTED, HANDOFF
 
 from examples import run_price_watch as cli
 from jobs.price_watch_scaling import SkuScalingRequest
+from nosilo_core.guided import EXECUTED, HANDOFF
 from scm_agent.events import EventLedger
 from src.pricing_intel.ledger import PriceLedger
 from src.pricing_intel.match.sku_map import SkuMap

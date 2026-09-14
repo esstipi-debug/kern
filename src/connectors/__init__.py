@@ -156,6 +156,53 @@ class ServiceCoverage:
         }
 
 
+WRITE_NONE = "none"
+WRITE_APPROVAL_GATED = "approval_gated"
+_WRITE_MODES = (WRITE_NONE, WRITE_APPROVAL_GATED)
+
+
+@dataclass(frozen=True)
+class WriteSurface:
+    """Que escribe un conector en el sistema del cliente, y con que compuerta.
+
+    El espejo de ``ServiceCoverage`` del lado de salida. Cada modulo de
+    ``src/connectors/`` que lee o escribe un sistema exporta un ``WRITE_SURFACE``;
+    ``tests/test_connector_write_surface.py`` lo exige y comprueba que diga la verdad
+    (un modulo con ``commit``/``apply_*`` no puede declararse ``none``). De esas
+    declaraciones se GENERA ``documentation/CONNECTED_SYSTEMS.md``: "Kern lee X de
+    Unleashed, no puede dar Z, escribe en Odoo con aprobacion" nunca se escribe a mano,
+    porque a mano envejece (el diagnostico del 2026-09-05 conto 11 conteos distintos
+    de tools en los documentos).
+
+    Es tambien el freno mecanico de la regla del norte: un conector nuevo no entra sin
+    declarar que escribe, y "escribe" siempre significa dry-run + aprobacion firmada +
+    idempotencia + rollback (``nosilo_core.writeback``); no hay un modo "escribe solo".
+    """
+
+    #: ``WRITE_NONE`` (solo lectura) o ``WRITE_APPROVAL_GATED``.
+    mode: str
+    #: Los objetos que se escriben, con el nombre que les da el vendor
+    #: (``stock.warehouse.orderpoint``, ``productVariant.price``). Vacio si no escribe.
+    objects: tuple[str, ...] = ()
+    #: En una frase: que pasa en el sistema del cliente cuando Kern escribe (queda en
+    #: borrador? es reversible? esta deshabilitado por politica?), o por que no escribe.
+    means: str = ""
+
+    def __post_init__(self) -> None:
+        if self.mode not in _WRITE_MODES:
+            raise ValueError(f"mode {self.mode!r} is not one of {_WRITE_MODES}")
+        if not self.means.strip():
+            raise ValueError("means must say what a write does in the client's system, or why there is none")
+        if self.mode == WRITE_APPROVAL_GATED and not self.objects:
+            raise ValueError("an approval-gated surface must name the objects it writes")
+        if self.mode == WRITE_NONE and self.objects:
+            raise ValueError("a read-only surface cannot list objects it writes")
+
+    @property
+    def writes(self) -> bool:
+        return self.mode == WRITE_APPROVAL_GATED
+
+
 @dataclass(frozen=True)
 class ScheduledReceipt:
     """Units already bought and not yet received: what is on its way in.

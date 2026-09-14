@@ -57,12 +57,14 @@ from pathlib import Path
 from src.connectors import (
     COVERAGE_DERIVED,
     COVERAGE_MEASURED,
+    WRITE_NONE,
     FieldCoverage,
     InventoryLevel,
     Order,
     OrderLine,
     Product,
     ServiceCoverage,
+    WriteSurface,
 )
 
 #: Los estados en que la orden LLEGO. Uno solo, y por eso la cantidad servida es binaria.
@@ -247,5 +249,14 @@ SERVICE_COVERAGE = ServiceCoverage(
         "la fecha en que el pedido LLEGO al cliente. Es la unica llegada real de este "
         "repo fuera de Shopify: Unleashed, Cin7 Core y Odoo solo registran la salida del "
         "deposito, y por eso su OTIF mide despacho y no entrega",
+    ),
+)
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_NONE,
+    means=(
+        'solo lectura: es un dataset publico (Olist, Brasil 2016-2018), no un sistema vivo; sirve para medir OTIF de llegada contra despacho, nunca para escribir.'
     ),
 )

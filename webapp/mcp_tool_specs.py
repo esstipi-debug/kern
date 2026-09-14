@@ -10,6 +10,15 @@ Deliberately NOT here (see docs/MCP_SERVER.md "What's NOT here yet"):
 - `odoo_replenishment`, `excel_replenishment` - writeback tools; they mutate a
   client's system of record and stay behind the direct-client safety plane
   (`nosilo_core/writeback.py`), never on this anonymous-remote surface.
+- `repricing` - same rule, one step earlier. The tool itself only STAGES (it
+  never imports `apply_repricing`, stages against an in-memory copy of the
+  client's own current prices, and always returns HANDOFF), so nothing it does
+  writes anywhere. It is still off this surface on purpose: its entire subject
+  is a proposed change to a client's live prices, its output is a changeset
+  shaped to be applied, and an anonymous caller has no business composing one
+  against someone else's catalogue. Autonomy over a brand-new external write
+  surface is earned with A4 evidence (`jobs/repricing.py`'s own Golden Rule 11
+  note); a remote surface is not where that starts.
 - `leadership_chain` - takes a CHAIN scores dict / LLM-scored brief, not
   tabular rows; the rows->CSV bridge feeds it nothing usable.
 - `warehouse_layout` - a params-driven 3D layout generator (requires_data=False,
@@ -22,6 +31,16 @@ Deliberately NOT here (see docs/MCP_SERVER.md "What's NOT here yet"):
   anonymous remote MCP surface that is an arbitrary-file-read primitive, not a
   data-analysis input. See docs/MCP_SERVER.md's "What's NOT here yet" for the
   full reasoning (same class of risk the `org_friction` `*_path` guard closes).
+- `procedure_draft` - a params-driven SOP-template generator (requires_data=False,
+  ignores rows), same rule as `warehouse_layout` above: nothing for the rows->CSV
+  bridge to feed it. `procedure_audit` IS exposed below; it reads a client's
+  tabular procedure register.
+- `iso_ops` - plant-profile JSON/params (detect, propose floor tasks, evaluate
+  order evidence). HTTP `POST /api/detectar` already covers the same contract;
+  the rows->CSV bridge has nothing to feed a ficha, and this surface must not
+  look like a certification API. Floor evidence stays on HTTP; the MCP family
+  below is observation of tabular evidence (`kern_iso_sop_audit`,
+  `kern_audit_evidence`, `kern_iso_scor_audit`).
 
 Each description is the user-facing MCP contract: what the tool does, the
 canonical columns its job's `prepare()` matches (aliases are tolerated -
@@ -604,6 +623,74 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "params['history_path'], and this remote surface drops every *_path override on "
             "purpose (see `strip_filesystem_params` in webapp/mcp_server.py) - so a call "
             "here runs three of the four detectors, never four.\n\n" + _RETURNS
+        ),
+    ),
+    MCPToolSpec(
+        name="linchpin_procedure_audit",
+        job_type="procedure_audit",
+        title="Audit the Procedure Register (SOP Document Control)",
+        description=(
+            "Audit a client's exported procedure register for overdue reviews, missing "
+            "owners, an owner who is also the approver, procedures marked approved with "
+            "no approver on file, procedures with no linked KPI, and unversioned "
+            "documents. Always ends in a HANDOFF naming the owner and the due date. "
+            "Prepares evidence for a registrar's auditor; does not certify ISO.\n\n"
+            "Rows need columns: name, last_reviewed_at. Optional: owner, approver, "
+            "version, approved_at, review_cadence_days, status, linked_kpi. E.g. "
+            '{"name": "Receiving Inspection", "last_reviewed_at": "2025-06-01", '
+            '"owner": "Warehouse Lead", "review_cadence_days": 365}.\n\n'
+            'Useful params: as_of ("YYYY-MM-DD" - without it the server clock is used, '
+            "and the report declares that).\n\n" + _RETURNS
+        ),
+    ),
+    MCPToolSpec(
+        name="kern_iso_sop_audit",
+        job_type="procedure_audit",
+        title="ISO SOP Register Audit (alias of procedure_audit)",
+        description=(
+            "Kern alias of linchpin_procedure_audit: audit a client's exported SOP "
+            "register (ISO 9001 documented-information metadata). Always HANDOFF. "
+            "Prepares evidence for a registrar's auditor; Kern does not certify ISO.\n\n"
+            "Rows need columns: name, last_reviewed_at. Optional: owner, approver, "
+            "version, approved_at, review_cadence_days, status, linked_kpi.\n\n"
+            'Useful params: as_of ("YYYY-MM-DD").\n\n' + _RETURNS
+        ),
+    ),
+    MCPToolSpec(
+        name="kern_audit_evidence",
+        job_type="audit_evidence",
+        title="Audit Evidence Workpaper (MUS + GL tie-out)",
+        description=(
+            "Prepare a re-performable inventory/COGS workpaper: Monetary Unit Sampling, "
+            "optional GL vs subledger tie-out, IPE attestation, EvidenceRecord lineage. "
+            "Always HANDOFF (fieldwork + sign-off remain) or ESCALATED. Not a signed "
+            "audit opinion. Reviewed-by stays blank.\n\n"
+            "Rows need columns: unit_id, book_value. Optional source (gl / subledger) "
+            "puts both ledgers in one table -- this surface drops *_path, so do not "
+            "send a separate subledger file. Optional audited_value keys fieldwork. "
+            'E.g. {"unit_id": "SKU-A", "book_value": 25000, "source": "gl"}.\n\n'
+            "Required params: tolerable_misstatement (auditor judgment; Kern never "
+            "derives it). Useful: risk_of_incorrect_acceptance (default 0.05), "
+            "expected_misstatement (default 0), selection_seed (default 0), tolerance "
+            "(GL tie-out, default 0).\n\n" + _RETURNS
+        ),
+    ),
+    MCPToolSpec(
+        name="kern_iso_scor_audit",
+        job_type="scor_iso_audit",
+        title="SCOR/ISO Evidence Pack (not a certificate)",
+        description=(
+            "Compose existing measurements into one EvidenceRecord: SCOR scorecard "
+            "(Perfect Order / OTIF RL.1.1, cost-to-serve, cash-to-cash) plus an "
+            "ISO 9001/28000 checklist (observed / gap / no_evaluable) and a Lineage "
+            "sheet. Always HANDOFF. Kern prepares evidence for a registrar's auditor; "
+            "it does not certify ISO or SCOR.\n\n"
+            "Rows need a dataset column tagging each block: financial / "
+            "cost_to_serve / sourcing / orders / procedures / risk. Include at least "
+            "one recognised panel. E.g. {\"dataset\": \"financial\", \"product_id\": "
+            "\"P1\", \"cogs\": 50000, \"avg_inventory_value\": 12000}.\n\n"
+            "Useful params: as_of (YYYY-MM-DD, for OTIF), dso_days, dpo_days "
+            "(cash-to-cash; without them C2C is reported no_evaluable).\n\n" + _RETURNS
         ),
     ),
 )

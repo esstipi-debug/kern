@@ -147,8 +147,26 @@ def test_sitemap_lists_every_indexed_slug() -> None:
     ET.fromstring(r.text)  # well-formed or raises
     for p in INDEXED:
         assert f"{public_base_url()}{p.url_path}" in r.text
-    for path in ("/stocky-alternative", "/demo", "/paquetes", "/one-plan", "/how-it-works"):
+    for path in ("/demo", "/demo/en", "/how-it-works"):
         assert f"{public_base_url()}{path}" in r.text
+
+
+def test_sitemap_no_anuncia_las_paginas_congeladas() -> None:
+    """PR-A del plan del 2026-09-05: /paquetes, /stocky-alternative y /one-plan
+    (ofertas y canales congelados hasta el primer pago) y /console y /tower (entrada
+    del operador, no del cliente) siguen respondiendo pero no se anuncian."""
+    from webapp.blog_seo import UNLISTED_PATHS
+
+    body = client.get("/sitemap.xml").text
+    for path in UNLISTED_PATHS:
+        assert f"{public_base_url()}{path}<" not in body, path
+
+
+def test_la_portada_no_enlaza_a_las_paginas_congeladas() -> None:
+    html = client.get("/").text
+    assert 'href="/console"' not in html
+    assert 'href="/paquetes"' not in html
+    assert 'href="/how-it-works"' in html and 'href="/demo"' in html
 
 
 def test_sitemap_omits_noindex_posts() -> None:

@@ -13,13 +13,28 @@
 - [RB-6 · Enrutar una ESCALACIÓN](#rb-6--enrutar-una-escalación)
 - [RB-7 · Facilitar un ciclo S&OP](#rb-7--facilitar-un-ciclo-sop)
 - [RB-8 · Cubrir un residuo](#rb-8--cubrir-un-residuo)
-- [RB-9 · Correr un paquete comercial](#rb-9--correr-un-paquete-comercial)
+- [RB-9 · Correr un ciclo bundlado (varias tools de una)](#rb-9--correr-un-ciclo-bundlado-varias-tools-de-una)
+- [RB-10 · Escanear qué se puede correr con estos datos](#rb-10--escanear-qué-se-puede-correr-con-estos-datos)
+- [RB-11 · Mapear la tensión entre áreas y reconciliar una decisión de reposición](#rb-11--mapear-la-tensión-entre-áreas-y-reconciliar-una-decisión-de-reposición)
+- [RB-12 · Medir el costo de coordinación antes de convocar una reunión](#rb-12--medir-el-costo-de-coordinación-antes-de-convocar-una-reunión)
+- [RB-13 · Auditar la fricción organizacional en tus propios controles](#rb-13--auditar-la-fricción-organizacional-en-tus-propios-controles)
+- [RB-14 · Verificar el gate de disponibilidad antes de un lanzamiento](#rb-14--verificar-el-gate-de-disponibilidad-antes-de-un-lanzamiento)
+- [RB-15 · Medir el servicio que realmente entregaste](#rb-15--medir-el-servicio-que-realmente-entregaste)
+- [RB-16 · Auditar el registro de procedimientos (SOP)](#rb-16--auditar-el-registro-de-procedimientos-sop)
+- [RB-17 · Redactar un SOP con control documental](#rb-17--redactar-un-sop-con-control-documental)
+- [RB-18 · Detectar normas ISO de operaciones y evaluar la evidencia de cadena](#rb-18--detectar-normas-iso-de-operaciones-y-evaluar-la-evidencia-de-cadena)
+- [RB-19 · Preparar el papel de trabajo MUS / conciliación GL](#rb-19--preparar-el-papel-de-trabajo-mus--conciliación-gl)
+- [RB-20 · Emitir el pack de evidencia SCOR/ISO](#rb-20--emitir-el-pack-de-evidencia-scoriso)
 
 ---
 
 ## RB-1 · Onboarding de un cliente / dataset
 
 **Objetivo:** pasar de "cliente nuevo" a "dato listo para correr un job".
+
+> Si todavía no sabés qué archivos pedir ni qué tools van a correr con lo que
+> tenés, empezá por [RB-10](#rb-10--escanear-qué-se-puede-correr-con-estos-datos)
+> — ese escaneo te devuelve exactamente esa lista antes de prometer nada.
 
 1. **Califica el problema** y elige el **modo** (Inventory vs. SCM) y el
    **entregable** del [catálogo (05)](05_deliverable_catalog.md).
@@ -188,10 +203,13 @@ de registro.
 
 ---
 
-## RB-9 · Correr un paquete comercial
+## RB-9 · Correr un ciclo bundlado (varias tools de una)
 
-**Disparador:** un cliente contrató alguna de las [8 secciones de la escalera
-comercial](../paquetes/README.md) y toca producir el ciclo.
+**Disparador:** te toca un ciclo recurrente que junta varias tools en un solo
+entregable consolidado (por ejemplo, uno de los [8 bundles del catálogo
+comercial](../paquetes/README.md), si operás Kern como agencia — pero el
+mecanismo sirve igual para correr tu propio ciclo interno mensual sin bundle
+comercial de por medio).
 
 1. **Pide el intake con el checklist del paquete**:
    `python examples/run_package.py --package <clave> --checklist` imprime
@@ -220,12 +238,345 @@ comercial](../paquetes/README.md) y toca producir el ciclo.
    exactitud de inventario").
 5. **Atiende los desenlaces por herramienta** como siempre: OPTIONS → RB-4,
    planilla/Odoo staged → RB-5, residuos → RB-8.
-6. **Presenta y factura la cadencia.** Los pasos con cadencia "QBR trimestral"
-   (proveedores, riesgos, DEA) se corren igual que el ciclo mensual, agregando
-   sus archivos al intake ese trimestre.
+6. **Presenta el deck y fija la cadencia del próximo ciclo.** Los pasos con
+   cadencia "QBR trimestral" (proveedores, riesgos, DEA) se corren igual que el
+   ciclo mensual, agregando sus archivos al intake ese trimestre. Si operás
+   Kern como agencia, esta es también la instancia en la que facturás el ciclo
+   (ver [07 · Setup de Venta](07_setup_venta.md)); si operás tu propia cadena,
+   es la instancia en la que reportás a quien decide.
+
+---
+
+## RB-10 · Escanear qué se puede correr con estos datos
+
+**Disparador:** te llegó una carpeta de archivos (propios o de un dataset
+nuevo) y no sabés todavía qué tools de Kern van a poder correr con lo que hay
+adentro, ni qué falta para desbloquear el resto.
+
+**Objetivo:** convertir "no sé qué tengo" en una lista accionable: qué corre
+hoy, qué falta, y cuál es el único archivo o columna que más rápido destraba
+más cosas.
+
+1. **Apuntá la tool a la carpeta, no a un archivo suelto**: `intake_scan` toma
+   `request.data_path` como directorio y clasifica cada archivo legible contra
+   los perfiles conocidos (`maestro`, `ventas`, `stock`, `finanzas`).
+2. **Corré el escaneo** (`examples/run_agent.py --brief "que puedo correr con
+   esta carpeta" --data <carpeta>/`, o el intent en español "escanear la
+   carpeta" / "qué datos necesito").
+3. **Leé el semáforo por tool**: verde (corre hoy), amarillo (corre con
+   huecos — el reporte dice cuáles), rojo (falta el archivo base), o
+   no-declarada (esa tool todavía no expone su perfil de intake).
+4. **Priorizá por el campo de mayor apalancamiento**, no por orden alfabético.
+   El reporte ya rankea "la única columna o archivo que más tools desbloquea" —
+   pedí ese primero, no la lista completa de una.
+5. **Volvé a RB-1** con la lista en mano: ahora el paso "pide el dato mínimo"
+   tiene respuesta concreta en vez de una plantilla genérica.
+
+---
+
+## RB-11 · Mapear la tensión entre áreas y reconciliar una decisión de reposición
+
+**Disparador:** una decisión de orden de compra (cantidad + nivel de
+servicio) genera desacuerdo visible entre compras, finanzas, planeación y
+comercial, y necesitás una sola cifra para avanzar — no cuatro opiniones.
+
+**Objetivo:** dejar explícito el costo en dólares de cada postura, elegir con
+una política de pesos declarada, y dejar un acta de las concesiones.
+
+1. **Corré `hat_tension`** sobre la demanda semanal del SKU en disputa
+   (`product_id, quantity, unit_cost, lead_time_days`). Devuelve la misma
+   decisión vista a través de 4 "sombreros" (comprador / planner / cfo /
+   comercial), con el gap en $ entre posturas — **nada se reconcilia todavía**,
+   solo se hace visible el desacuerdo.
+2. **Llevá el mapa a la conversación** con las áreas en tensión — esto
+   reemplaza la reunión de "cada uno defiende su número" por una tabla que ya
+   las tiene todas puestas una al lado de la otra.
+3. **Corré `hat_settlement`** con tu política de pesos explícita (cuánto pesa
+   cada sombrero) para obtener UN plan reconciliado (Q*, SL*), con el acta de
+   concesiones y el valor firmado vs. la línea base de hoy.
+4. **`hat_settlement` termina en HANDOFF, nunca en EXECUTED** — el resultado es
+   un paquete humano para vos: pasa a **RB-3** para ejecutarlo (emitir la
+   orden, comunicar la decisión).
+5. **Archivá el acta.** Es la prueba de que la decisión no fue arbitraria
+   cuando alguien pregunte, tres meses después, por qué se pidió esa cantidad.
+
+---
+
+## RB-12 · Medir el costo de coordinación antes de convocar una reunión
+
+**Disparador:** una de las áreas YA propuso una decisión de reposición y
+estás por convocar a las otras tres a validarla — antes de agendar, querés
+saber si hace falta la reunión.
+
+**Objetivo:** no convocar cuando nadie va a objetar, y llegar con el
+argumento cuantificado cuando alguien sí va a hacerlo.
+
+1. **Corré `cross_impact`** con la decisión ya propuesta por el área de
+   origen (`current`, el parámetro que vos completás — la tool nunca lo
+   asume por defecto) sobre la misma demanda semanal.
+2. **Leé el veredicto por área**: para cada una de las otras tres, ¿objetaría
+   contra el umbral que vos declaraste, o no?
+3. **Cero objeciones → no convocás la reunión.** Es el resultado explícito de
+   esta tool, no una lectura tuya del reporte.
+4. **Alguna objeción → convocás con el número en la mano**, no con "creo que a
+   finanzas no le va a gustar". El reporte trae el $ y el motivo por área.
+5. **Si el resultado empuja hacia una decisión reconciliada**, pasá a
+   **RB-11** para llegar a UN plan en vez de quedarte en el diagnóstico.
+
+---
+
+## RB-13 · Auditar la fricción organizacional en tus propios controles
+
+**Disparador:** cadencia trimestral, o cuando dos reportes del mismo período
+no coinciden entre sí y sospechás que el problema no es el dato sino cómo se
+gobierna.
+
+**Objetivo:** sacar a la luz la capa política que ninguna herramienta de
+calidad de datos ve — números que no cierran entre canales, metas que suben
+apenas se cumplen, puntos de control sin dueño, workarounds informales nunca
+clasificados.
+
+1. **Juntá tus propios puntos de control** en un CSV/Excel: una fila por
+   KPI o checkpoint, con las columnas que ya tengas de
+   `official_value`, `shadow_value`, `owner`, `workaround_present` y
+   `workaround_classification` (ninguna es obligatoria de arranque — la tool
+   trabaja con las que existan). Un segundo archivo opcional de histórico
+   target-vs-actual (`params['history_path']`) habilita la detección de metas
+   que se ajustan ("ratchet") apenas se cumplen.
+2. **Corré `org_friction_audit`.**
+3. **Leé cada hallazgo como una pregunta rankeada, nunca como un veredicto.**
+   La tool está diseñada para NO acusar a una persona — si el reporte suena a
+   señalar a alguien, la pregunta a hacerte es qué tan bien se completaron las
+   columnas de `owner`, no a quién citar.
+4. **Llevá los hallazgos de mayor rango a la conversación 1:1 con el dueño del
+   control**, no a un canal grupal — es una auditoría de gobierno, no una
+   denuncia pública.
+5. **Los controles sin dueño se convierten en un residuo** (RB-8): decidís
+   quién los asume o los asumís conscientemente vos.
+
+---
+
+## RB-14 · Verificar el gate de disponibilidad antes de un lanzamiento
+
+**Disparador:** marketing (o quien programe campañas) tiene una fecha de
+lanzamiento fija y necesitás confirmar, con los tiempos de proveedor reales,
+si el SKU va a estar en stock a tiempo.
+
+**Objetivo:** un veredicto verde/amarillo/rojo por SKU, con la acción
+concreta para cada uno que no llega a verde.
+
+1. **Juntá dos archivos**: el calendario de campaña
+   (`product_id, launch_date`) y el inventario/lead time real
+   (`params['inventory_path']`) — sin el segundo, la tool no tiene con qué
+   comparar el calendario y devuelve `needs_data`.
+2. **Corré `launch_readiness`.**
+3. **Leé el veredicto por SKU**: verde (cubierto), amarillo (ajustado, con la
+   acción que lo destraba — expedite, PO adelantada), rojo (no va a llegar con
+   el lead time actual).
+4. **Reenviá el reporte a quien programa el calendario** — la tool está
+   pensada para eso, no para integrarse sola al calendario de marketing
+   ("no marketing-tool integration" es explícito en su diseño).
+5. **Cada SKU en rojo o amarillo es una decisión** (adelantar PO, correr
+   `sourcing` con un proveedor más rápido, o mover la fecha) — pasa a **RB-4**
+   si `launch_readiness` ya te dejó opciones rankeadas, o a **RB-5** si la
+   acción es emitir una orden.
+
+---
+
+## RB-15 · Medir el servicio que realmente entregaste
+
+**Disparador:** necesitás fill rate y OTIF reales — no el nivel de servicio
+que asume tu política de inventario — para un reporte, una revisión semanal,
+o para confirmar si un transportista está cumpliendo.
+
+**Objetivo:** un número medido, con la fuente y el hueco de medición
+declarados — nunca un OTIF presentado sin decir de qué campo salió.
+
+1. **Corré `service_scan`** (no pide archivo: lee una cuenta conectada —
+   Unleashed o Cin7 Core por credenciales de entorno, con el stand-in offline
+   como último recurso si no hay ninguna configurada; Shopify no está cableado
+   a esta tool todavía, aunque el conector existe en el repo). Parámetros
+   opcionales: `since` (ventana) y `stockout_days`.
+2. **Leé fill rate y OTIF por separado** — pueden divergir, y el reporte los
+   separa a propósito cuando lo hacen.
+3. **Leé las notas de cobertura antes de citar el número.** El reporte declara,
+   campo por campo, si algo es medido, derivado o no medible — y si tenés un
+   transportista conectado (hoy, Starshipit es el único auto-resoluble por
+   credenciales), si el OTIF es de **despacho** o de **llegada**. La brecha
+   entre ambos, medida sobre 98.666 pedidos reales, es de 6,2 puntos — no es
+   un detalle menor.
+4. **Nunca repitas el número sin la nota de cobertura al lado** — es la
+   diferencia entre un OTIF defendible y uno que un cliente o tu propio CFO
+   puede desarmar con una pregunta.
+5. **Si el número sorprende, cruzalo con `disruption_scan` o `reconciliation`**
+   antes de escalarlo — un servicio que cae de golpe suele tener una causa
+   rastreable, no solo un número que reportar.
+
+---
+
+## RB-16 · Auditar el registro de procedimientos (SOP)
+
+**Disparador:** cadencia trimestral, cuando un cliente o una auditoría ISO
+9001 piden evidencia de que el registro de SOPs está al día, o cuando
+sospechás que un procedimiento vencido sigue guiando el trabajo diario sin
+que nadie lo haya confirmado.
+
+**Objetivo:** un veredicto por procedimiento — vencido, sin dueño, sin
+segregación de funciones, sin KPI vinculado, sin versión — con un HANDOFF
+que ya trae dueño y fecha límite por cada uno, nunca una planilla entera que
+alguien tiene que releer.
+
+1. **Exportá el registro** desde Notion/SweetProcess/Drive (o el sistema que
+   use el cliente) con columnas mínimas: `procedimiento` (o `name`),
+   `ultima_revision` (o `last_reviewed_at`); idealmente también
+   `responsable`, `aprobador`, `version`, `estado`, `cadencia_dias`.
+2. **Corré con `--as-of` fijo**:
+   `examples/run_procedure_audit.py <registro.csv> --as-of AAAA-MM-DD`.
+   Nunca dejes que el reloj del servidor decida la fecha de un acta — sin un
+   `as_of` fijo, dos corridas en días distintos pueden marcar el mismo
+   procedimiento como vencido o vigente según cuándo se corrió.
+3. **Leé el HANDOFF** → **RB-3** por cada procedimiento vencido — el dueño y
+   la fecha límite ya vienen resueltos en cada paso del paquete, no hace
+   falta ir a buscarlos al CSV.
+4. **Un hallazgo `NO_OWNER` no es un residuo aparte**: el mismo HANDOFF que
+   leíste en el paso 3 trae un segundo `HandoffPacket`, titulado
+   `Asignar dueno`, con un paso por cada procedimiento sin dueño — no hay
+   que buscarlo entre los residuales. Aplicale la misma disciplina de
+   **RB-8** a cada uno: cubrilo vos, delegalo, o asumí conscientemente que
+   el procedimiento queda sin dueño.
+5. **Un hallazgo `OWNER_IS_APPROVER`** significa que quien redacta también
+   aprueba — nombrá un segundo firmante distinto antes de la próxima
+   aprobación; la segregación de funciones es lo que le da valor de control
+   a la firma.
+6. **Leé las Fuentes L3 del deck con cautela**: el camino de una sola tool
+   (`examples/run_agent.py`, o `POST /api/jobs` para una tool suelta) no
+   filtra las citas por la compuerta de citas — a diferencia del camino de
+   paquetes — así que esta tool puede traer ruido léxico en sus Fuentes. No
+   las repitas frente al cliente sin revisarlas primero.
+7. **Si el procedimiento vencido es el que gobierna el ciclo S&OP**, cruzalo
+   con **RB-7** — un SOP de S&OP vencido puede estar sosteniendo una
+   cadencia mensual con reglas que ya nadie confirmó.
+
+> Kern audita el registro; no lo guarda. El sistema del cliente (Notion,
+> SweetProcess, Drive, o lo que use) sigue siendo el sistema de registro del
+> SOP — esta tool nunca lo reemplaza, solo lo audita.
+
+---
+
+## RB-17 · Redactar un SOP con control documental
+
+**Disparador:** un procedimiento no tiene una versión escrita, o la que
+existe no trae dueño, aprobador ni cadencia de revisión — necesitás partir
+de un borrador estructurado (Hoja de Desglose de Trabajo + plan de control +
+cronograma de entrenamiento) en vez de un documento en blanco.
+
+**Objetivo:** un borrador listo para revisar y aprobar — nunca un documento
+que se hace pasar por aprobado — con cada paso, punto clave y razón ya
+redactados, y un HANDOFF que deja claro quién tiene que firmarlo y cuándo.
+
+1. **Elegí `process`**: `replenishment`, `cycle_count` o `sop_cycle` — los
+   tres templates disponibles hoy.
+2. **Pasá `--owner` y `--approver` distintos**: la aprobación pierde su
+   valor de control si la misma persona redacta y aprueba (la tool lo
+   reporta como residuo si no lo hacés, nunca lo bloquea en silencio).
+3. **Fijá la cadencia de revisión** (`--cadence-days`) — 365 días es la
+   convención que usa esta tool (GDI, SweetProcess) cuando no le das una, no
+   una norma: ISO 9001 no fija un intervalo. Confirmala por área de proceso
+   antes de adoptarla como política.
+4. **Corré**
+   `examples/run_procedure_draft.py --process ... --owner ... --approver ... --as-of ...`
+   (agregá `--lang en` para inglés, `--location` para dónde se va a publicar
+   el borrador aprobado).
+5. **Revisá el borrador por adecuación y suficiencia** (ISO 9001:2015
+   §7.5.2c) — no solo que esté completo, sino que describa cómo se trabaja
+   de verdad hoy.
+6. **Aprobá y publicá** el borrador en el sistema del cliente, registrando
+   `approved_at` y `version` ahí mismo → **RB-3** (el HANDOFF que trae esta
+   tool es exactamente esos pasos, ya redactados).
+7. **Volvé a RB-16** con el registro actualizado — el SOP recién aprobado
+   ahora tiene una fecha de última revisión real para la próxima auditoría.
+
+> Kern redacta el borrador; no lo guarda ni lo aprueba. El sistema del
+> cliente es —y sigue siendo— el sistema de registro del SOP aprobado.
+
+---
+
+## RB-18 · Detectar normas ISO de operaciones y evaluar la evidencia de cadena
+
+**Objetivo:** saber qué normas del paquete `iso-operaciones-cadena` aplican a
+esta planta, qué tareas de piso ya están en el catálogo, y qué evidencia de
+orden existe. **No** obtener ni afirmar un certificado.
+
+1. **Junta la ficha** — sector, lo que pide el cliente (IATF, PCF, OTIF…),
+   logística (3PL, RTI, export), planta (muestreo, maestro SKU, BCP) y módulos
+   KERN (SMARTPRO, MONITOR, ENERGY, huella). Una ficha vacía produce **cero**
+   normas: eso es correcto, no un bug.
+2. **Si hay una orden abierta**, anotá si hay ciclo, scrap, kg y t·km. Sin
+   t·km, 14083 queda en hueco; OEE no lo sustituye.
+3. **Corré** `examples/run_iso_ops.py tests/fixtures/iso/planta.csv` (o el JSON
+   de `POST /api/detectar`). También: brief "detectar normas iso de
+   operaciones…" por el agente (`iso_ops`).
+4. **Leé las tarjetas**: `claimPermitido` + `limite` + huecos. El claim
+   permitido es "KERN tiene evidencia para…" (solo en las 6 normas de cadena
+   marcadas `nativo`), "…aplica; la evidencia de KERN es parcial" o "14083
+   aplica; falta t·km". Nunca "la planta cumple ISO…", y nunca "evidencia de
+   piso": KERN no lee sensores de maquina.
+5. **Elegí sobre OPTIONS** (RB-4) la norma a trabajar primero, o atendé el
+   HANDOFF si la ficha estaba vacía (RB-3).
+6. **Odoo y Excel no pintan un sello ISO.** El entregable es CSV/Excel de
+   detectadas + tareas. La política de inventario sigue en esos sistemas.
+
+> Kern detecta, propone y evalúa la evidencia de cadena que él mismo produce.
+> Las magnitudes de planta (kWh, ciclo, scrap, molde) quedan fuera de alcance.
+> El organismo certifica.
+
+---
+
+## RB-19 · Preparar el papel de trabajo MUS / conciliación GL
+
+**Objetivo:** entregar un workpaper re-ejecutable (W-1..W-6 + `evidence.json`)
+para que el auditor de registro haga fieldwork y firme. **No** un dictamen.
+
+1. **Junta el listing** con `unit_id` y `book_value`. Si hay libro mayor y
+   subledger, etiquetá ambas caras con `source=gl` / `source=subledger` en la
+   misma tabla (MCP no acepta un segundo archivo).
+2. **Pedí TM al auditor** (`tolerable_misstatement`). Kern no lo inventa.
+3. **Corré** `examples/run_audit_evidence.py <listing.csv> --tm N` o el brief
+   "prepare a monetary unit sampling workpaper…" (`audit_evidence`). MCP:
+   `kern_audit_evidence` con `params.tolerable_misstatement`.
+4. **Leé el HANDOFF**: testear selecciones W-3, refrescar UML, firmar
+   Reviewed-by. Prepared-by queda como identidad del motor.
+5. **Si sale ESCALATED** (UML > TM o tie-out fuera de tolerancia) → **RB-6**.
+6. **No archivar esto como evidencia firmada.** El expediente del estudio (DMS)
+   es el sistema de registro; Kern no lleva un ledger append-only de evidencia
+   (Q7).
+
+---
+
+## RB-20 · Emitir el pack de evidencia SCOR/ISO
+
+**Objetivo:** un scorecard SCOR + checklist ISO 9001/28000 envuelto en un
+`EvidenceRecord` y hoja Lineage, para el auditor del organismo. **No** un
+certificado.
+
+1. **Armá un CSV con columna `dataset`**: `financial`, `cost_to_serve`,
+   `sourcing`, `orders`, `procedures`, `risk`. Un panel reconocido alcanza;
+   los ausentes salen `no_evaluable`, nunca "cumple por silencio".
+2. **Corré** `examples/run_scor_audit.py <pack.csv> --as-of AAAA-MM-DD`
+   (pasá `--dso` / `--dpo` si querés medir cash-to-cash). MCP:
+   `kern_iso_scor_audit`. Brief: "run the scor iso audit pack…".
+3. **Leé Scorecard + ISO checklist + Coverage + Lineage.** Statuses legales:
+   `observed` / `gap` / `no_evaluable`.
+4. **Cerrá gaps** (p.ej. SOPs vencidos → **RB-16**) antes de una visita
+   externa. El HANDOFF nombra esos pasos.
+5. **Nunca presentes el pack como sello ISO o certificación SCOR.**
+
+> Kern prepara evidencia re-ejecutable. El auditor de registro concluye.
 
 ---
 
 > Con estos runbooks cubres el 100% de las situaciones humano-únicas que Kern
-> puede producir. El siguiente documento, [05 · Catálogo de Entregables](05_deliverable_catalog.md),
-> lista qué puedes **producir y vender**, con tu valor agregado en cada uno.
+> puede producir, sea que operes tu propia cadena o la de un cliente. El
+> siguiente documento, [05 · Catálogo de Entregables](05_deliverable_catalog.md),
+> lista qué puedes **producir** con cada tool — y, si operás como agencia, qué
+> puedes vender — con tu valor agregado humano en cada uno.

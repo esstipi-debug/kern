@@ -1,6 +1,6 @@
 # MCP server (Phase A go-to-market)
 
-Kern exposes 35 of its 50 registered tools to other AI agents over MCP
+Kern exposes 39 of its 57 registered tools to other AI agents over MCP
 (Model Context Protocol), mounted at `/mcp` on the same FastAPI app as the
 dashboard. This is **read-only analysis only** — no tool that mutates a
 client's system of record (e.g. `odoo_replenishment`, or any writeback path
@@ -47,6 +47,10 @@ this is Phase A of.
 | `linchpin_vehicle_routing` | `vehicle_routing` |
 | `linchpin_flow_map` | `flow_map` |
 | `linchpin_org_friction_audit` | `org_friction_audit` |
+| `linchpin_procedure_audit` | `procedure_audit` |
+| `kern_iso_sop_audit` | `procedure_audit` (alias; ISO SOP-register observation) |
+| `kern_audit_evidence` | `audit_evidence` (MUS + GL tie-out workpaper) |
+| `kern_iso_scor_audit` | `scor_iso_audit` (SCOR/ISO evidence pack; not a certificate) |
 
 `org_friction_audit` runs here with three of its four detectors: the fourth
 (Goodhart / target-ratcheting) needs a second target-vs-actual history file,
@@ -64,7 +68,13 @@ Deliberately not exposed: `odoo_replenishment` and `excel_replenishment`
 direct-client safety plane), `leadership_chain` (no tabular input — the
 rows→CSV bridge has nothing to feed it), `warehouse_layout` (a
 params-driven 3D layout generator that ignores rows entirely; its
-deliverable is an HTML viewer, not a data analysis). `flow_map`'s own
+deliverable is an HTML viewer, not a data analysis), `procedure_draft`
+(same rule as `warehouse_layout` — params-driven, requires_data=False,
+ignores rows; `procedure_audit` IS exposed above, since it reads a
+client's tabular procedure register). `iso_ops` is also off this surface:
+the plant ficha is JSON/params (HTTP `POST /api/detectar` already covers
+it) and a conformity-adjacent claim does not belong on the anonymous MCP
+rows→CSV bridge. `flow_map`'s own
 deliverable also includes a self-contained HTML sankey map alongside the
 CSV, but unlike `warehouse_layout`, its *input* is tabular movement rows
 and its primary output is a data analysis (measured transit per lane),
@@ -85,7 +95,9 @@ objects, like CSV rows), `params` (optional tool-specific overrides), and
 `tools/list`) for its exact expected columns — they're also documented in
 `webapp/mcp_tool_specs.py`, which is the source of truth for the exposed
 surface. A few tools have calling nuances worth knowing up front:
-`linchpin_vehicle_routing` requires `params.capacity`; `linchpin_fefo_expiry`
+`linchpin_vehicle_routing` requires `params.capacity`; `kern_audit_evidence`
+requires `params.tolerable_misstatement` (auditor judgment; never derived);
+`linchpin_fefo_expiry`
 needs a `days_to_expiry` column or `expiry_date` + `params.as_of`;
 `linchpin_efficiency_benchmark` expects `input_*`/`output_*`-prefixed columns
 (or explicit `input_cols`/`output_cols` params); `linchpin_markdown_liquidation`
@@ -145,6 +157,15 @@ ledger already relies on.
 - No writeback tools. If a client needs `odoo_replenishment` or any other
   tool that touches their live systems, that's a direct-client relationship
   outside this MCP surface, not something to add here.
+- `repricing` — deliberately excluded, and not because it writes: it does not.
+  The tool stages a proposed price changeset against an in-memory copy of the
+  client's own current prices, runs it through the central pricing guardrail,
+  and always hands back a HANDOFF for a human to apply out-of-band; it never
+  imports `apply_repricing`. It stays off this surface because its subject is a
+  change to a client's live prices and its output is a changeset shaped to be
+  applied — not something an anonymous caller should compose against someone
+  else's catalogue. Use `examples/run_repricing.py`, or `POST /api/jobs` with
+  `job_type=repricing` behind `LINCHPIN_API_KEY`.
 - `intake_scan` — deliberately excluded, not just not-yet-added. It takes a
   directory path and reads every readable file inside it; exposing that on
   the anonymous remote MCP surface would hand any caller an arbitrary-file-read
@@ -154,3 +175,7 @@ ledger already relies on.
   is a path-traversal surface until it is explicitly scoped and validated,
   which this tool has not been. Adding `intake_scan` here would need that
   guard first, not just an `MCPToolSpec` entry.
+- `import_case` — same class as `intake_scan`: it reads a caller-supplied
+  folder or JSON bundle of extracted shipment documents. Keep it off MCP
+  until the path is scoped the same way. The Chile DIN pack is a broker
+  handoff, not a remote filing API.

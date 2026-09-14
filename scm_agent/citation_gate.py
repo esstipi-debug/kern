@@ -53,7 +53,23 @@ MAX_HOPS = 2
 # silently-empty degrade that looks identical to "everything resolved".
 TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     "inventory_optimization": ("safety_stock", "service_level", "cycle_service_level"),
+    # Servicio SALIENTE medido, que no es lo mismo que el service level de una politica:
+    # "perfect_order" es el pedido perfecto de SCOR (Christopher cap. 2) y es el ancla
+    # exacta de esta tool. Las tres se verificaron con KnowledgeBase.node_exists antes de
+    # escribirlas -- "otif", "on_time_in_full" y "order_fulfillment" NO existen en el
+    # grafo, y anclar a un id inventado rompe el gate en la corrida siguiente.
+    "service_scan": ("perfect_order", "fill_rate", "customer_service"),
     "pricing": ("basic_pricing_theory", "price_sensitivity_measurement", "markdown_pricing"),
+    # DELIBERATELY identical to "pricing" above, and they must stay in sync.
+    # jobs/repricing.py::_TOOL_KEY is the string "pricing": the playbook gates its
+    # changesets through src.pricing_guardrails with that key, so the citations a
+    # repricing changeset actually ships are resolved against "pricing"'s anchors.
+    # Declaring a DIFFERENT set here would split the tool in two -- the orchestrator
+    # citing one neighbourhood and the gate another -- which is exactly the
+    # "measuring anchors against the gate does not predict what the client sees"
+    # failure. Verified on this graph 2026-09-12: these three resolve 4 citations
+    # for the playbook's fixed keyword set, well clear of MIN_CITATIONS.
+    "repricing": ("basic_pricing_theory", "price_sensitivity_measurement", "markdown_pricing"),
     "leadership_chain": ("chain_model", "collaborative_leadership", "authentic_leadership"),
     "cost_to_serve": ("cost_to_serve", "activity_based_costing"),
     "sop": ("vollmann_sop", "aggregate_planning"),
@@ -65,6 +81,11 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     ),
     "ddmrp": ("demand_driven_supply_chain", "drum_buffer_rope", "vollmann_customer_order_decoupling_point"),
     "landed_cost": ("landed_cost",),
+    # import_case (wedge on proyecto sourcing): same TCO/Incoterm neighborhood as
+    # landed_cost. The pack is a document projection, not a filed declaration —
+    # Incoterms still govern which costs and which papers attach. Verified via
+    # kb.node_exists for both ids (same anchors landed_cost already uses).
+    "import_case": ("landed_cost",),
     "warehouse_layout": ("facility_layout", "load_distance_layout"),
     # --- MIN_CITATIONS starvation, measured 2026-08-24 --------------------------
     # Four tools below were filed as "anchor-islanded" (zero at any pool). Re-measured
@@ -340,6 +361,78 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # by measurement, not intuition.
     "cross_impact": ("safety_stock", "service_level", "cycle_service_level",
                      "cross_functional_integration"),
+    # procedure_audit (tool #52) grounds on ISO 9001 document-control theory (7.5
+    # Documented information) and the quality-management discipline the audit
+    # itself enforces (overdue reviews, missing owners, unversioned documents).
+    # All three anchors verified to exist via kb.node_exists() before use.
+    # REAL measurement, replaying the actual _step_citations call (KnowledgeBase()
+    # + build_default_registry()) -- not a prediction. It was re-run either side of
+    # the L3 source #30 merge because this tool sat at EXACTLY MIN_CITATIONS, the
+    # position from which one displaced candidate means zero:
+    #
+    #   graph @3032: kept 2 -- "Control Chart" (Heizer & Render, Supplement 6:
+    #     Statistical Process Control) and "ISO 9000" (Heizer & Render, Ch.6
+    #     Managing Quality). No ISO 14000 citation was among the candidates at all
+    #     (top-8 pool); the other 3 (risk_monitoring, document_processing_
+    #     automation, emas -- all Khan/Grant resilience-book content) were
+    #     correctly omitted as more than MAX_HOPS from every anchor.
+    #   graph @3044: kept 3 -- Documented Information (ISO 9001:2015 clause 7.5),
+    #     ISO 10013:2021, Document Review Cadence.
+    #
+    # The feared failure mode DID happen and landed the good way: the new nodes
+    # displaced BOTH old citations. Off the MIN_CITATIONS edge, and now citing the
+    # clause instead of a generic quality chapter. Pinned by content, not count, in
+    # tests/test_packages_citations.py::_RECOVERED_BY_INGESTION -- a count-only
+    # guard would not notice this swap reversing.
+    "procedure_audit": ("iso_9000", "checklist", "total_quality_management"),
+    # procedure_draft (tool #53) shares the checklist/quality-system anchors --
+    # a Job Breakdown Sheet + control plan IS a documented-work-instruction
+    # checklist -- plus poka_yoke (mistake-proofing, what a control plan
+    # enforces) and pdca_cycle (the review-cadence loop the draft's document
+    # control header stamps). The anchors below are UNCHANGED since that zero --
+    # what changed is the graph, and the replay is worth keeping side by side:
+    #
+    #   2026-09-04, graph @3032 nodes: ZERO candidates resolved in-radius at all.
+    #     work_breakdown_structure was explicitly excluded (EXCLUDED_CONCEPTS
+    #     below); risk_monitoring and document_processing_automation sat more than
+    #     MAX_HOPS from every anchor. The batch never reached the MIN_CITATIONS
+    #     floor with a lone survivor to degrade -- it had nothing at all.
+    #   2026-09-04, graph @3044 nodes (L3 source #30 ingested): THREE survivors --
+    #     Job Breakdown Sheet, Document Review Cadence, JI Training Timetable.
+    #
+    # The delta is twelve nodes of document-control/standard-work theory, hung off
+    # checklist and pdca_cycle at hop 1. That is the fix packages.py:100-104
+    # prescribes for a zero of this shape: the anchors were never wrong, the corpus
+    # was empty. MIN_CITATIONS, the pool size and these anchors were all untouched.
+    # See tests/test_packages_citations.py::_RECOVERED_BY_INGESTION, which pins
+    # WHICH three it cites, and documentation/SOP_DOCUMENT_CONTROL_SOURCES.md for
+    # what was read to write each node (and the three concepts cut for thin
+    # provenance).
+    # `procedure_model` (also verified to exist) was considered and rejected as
+    # an anchor: it is Kuhn's organizational-reconfiguration model, not a
+    # procedure document -- a lexical false friend for this tool's own name,
+    # same class as the false friends documented elsewhere in this module.
+    "procedure_draft": ("checklist", "poka_yoke", "pdca_cycle"),
+    # iso_ops (tool #54) maps the operations/supply-chain ISO pack to floor
+    # evidence. Anchors are the quality-system node the pack hangs 9001 off,
+    # the EMS node for 14001, and carbon_footprint for 14067 PCF -- all three
+    # verified to exist via kb.node_exists() (iso_50001 does not). This is not
+    # a certification ruling; the job forbids "cumple ISO" in verify().
+    "iso_ops": ("iso_9000", "iso_14001", "carbon_footprint"),
+    # audit_evidence (tool #55) is the MUS/GL workpaper. Anchors are the IRA
+    # sampling neighborhood already used by reconciliation, plus the receiving
+    # sampling node -- MUS is a sampling plan for dollar units, not AQL lots.
+    # Verified to exist via kb.node_exists. Not a signed opinion.
+    # Measured 2026-09-07: the package citation gate ships ZERO for this tool
+    # (pinned in tests/test_packages_citations.py::_CORRECTLY_ZERO_TOOLS). The
+    # anchors ground other tools; this tool's keywords never rank those nodes
+    # into the candidate pool. Do not "fix" with a book-hub anchor.
+    "audit_evidence": ("inventory_record_accuracy", "acceptance_sampling"),
+    # scor_iso_audit (tool #56, E4 pack) composes Perfect Order / cost-to-serve
+    # / ISO 9000 document-control into one EvidenceRecord. Same iso_9000 node
+    # as procedure_audit; perfect_order is the SCOR RL.1.1 anchor used by
+    # service_scan; cost_to_serve is the CO metric. Not a certificate.
+    "scor_iso_audit": ("iso_9000", "perfect_order", "cost_to_serve"),
 }
 
 # tool_key -> concept ids that must NEVER be cited for this tool, even when
@@ -399,6 +492,12 @@ EXCLUDED_CONCEPTS: dict[str, tuple[str, ...]] = {
     # source, so degrading to zero citations is the honest outcome here - pinned
     # by test_data_quality_step_degrades_to_no_citations_on_the_demo_intake.
     "data_quality": ("cost_of_quality", "house_of_quality"),
+    # work_breakdown_structure rides the "breakdown" lexical overlap with this
+    # tool's own "Job Breakdown Sheet" keyword and sits within MAX_HOPS of the
+    # checklist/pdca_cycle anchors via a shared book hub -- a project-schedule
+    # decomposition technique, unrelated to a procedure's document-control
+    # checklist. Same false-friend class as PR #164.
+    "procedure_draft": ("work_breakdown_structure",),
 }
 
 

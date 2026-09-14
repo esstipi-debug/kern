@@ -1,0 +1,16 @@
+{
+  "name": "Kern",
+  "install": "sudo apt-get update && sudo apt-get install -y --no-install-recommends python-is-python3 && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=\"url.https://x-access-token:${NOSILO_CORE_TOKEN}@github.com/.insteadOf\" GIT_CONFIG_VALUE_0=\"https://github.com/\" bash scripts/setup-test-env.sh",
+  "terminals": [
+    {
+      "name": "webapp",
+      "command": "PYTHONPATH=. python -m uvicorn webapp.app:app --host 0.0.0.0 --port 8000"
+    }
+  ],
+  "ports": [
+    {
+      "name": "webapp",
+      "port": 8000
+    }
+  ]
+}

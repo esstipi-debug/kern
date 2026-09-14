@@ -1,5 +1,14 @@
-"""Tests del motor puro de discovery_brief. Nada aquí toca disco."""
+"""Tests del motor puro de discovery_brief. Nada aquí toca disco.
+
+La excepción es el guard de citas, que por definición tiene que leer los
+archivos citados: vive en ``tests/_citation_anchor.py`` para que el módulo puro
+no gane un importador que toque disco.
+"""
+import re
 from dataclasses import dataclass
+
+# ``tests/`` está en sys.path via conftest (misma convención que _no_core).
+from _citation_anchor import AnchorError, holds_value, is_anchor, resolve_constants
 
 from src.discovery_brief import (
     CATALOG,
@@ -70,110 +79,81 @@ def test_las_areas_copiadas_no_derivaron_de_hats():
     assert spec_for("objection_thresholds").subkeys == HAT_KEYS
 
 
-def test_todas_las_citas_de_linea_son_exactas():
-    """Verifica que cada cita 'archivo:línea' en defaults apunta al valor correcto.
+_CITA_POR_LINEA = re.compile(r"\.py:\d+")
 
-    Este test PREVIENE la regresión de citas off-by-one (como las que ocurrieron
-    en webapp/app.py:509/510). Para cada entrada en defaults con formato
-    'path/to/file.py:NNN', lee esa línea (1-indexada) y verifica que contenga
-    una representación del número citado con límites de palabra.
 
-    No hay excepción silenciosa: un sitio que contiene '.py:' pero no se deja
-    parsear a un número de línea usable es un FALLO del test, no un `continue`.
-    Solo los sitios legítimamente sin línea (ej. "(docstring)", sin ".py:") se
-    cuentan como saltados a propósito, y se nombran si el conteo verificado
-    queda corto."""
-    import re
+def test_ninguna_cita_quedo_anclada_a_un_numero_de_linea():
+    """El formato viejo no puede volver por la puerta de atras.
 
-    checked_count = 0
-    skipped_sites: list[str] = []
+    Sin este test una cita reintroducida como 'archivo.py:229' caeria en la
+    rama de "sitio sin anclar" del test de abajo y quedaria SIN VERIFICAR, en
+    verde -- el mismo hueco de salto silencioso que el Fix Round 4 cerro para
+    los sitios que no parseaban.
+
+    El anclaje por linea se abandono porque se rompia sin que el valor citado
+    cambiara: agregar `service_note` a JobReport el 2026-08-31 corrio seis
+    lineas las tres citas a jobs/inventory_optimization.py. Es la tercera vez
+    (ver PRs #160/#162/#164 y #200).
+    """
+    ofensores = [
+        f"{spec.name}: {site}"
+        for spec in CATALOG + UNDECLARED_USE
+        for _tool_key, _valor, site in spec.defaults
+        if _CITA_POR_LINEA.search(site)
+    ]
+    assert not ofensores, (
+        "Estas citas volvieron al numero de linea; anclarlas al simbolo "
+        f"(archivo.py::funcion.parametro): {ofensores}"
+    )
+
+
+def test_todas_las_citas_de_simbolo_apuntan_al_valor_real():
+    """Cada cita 'archivo.py::simbolo' resuelve al valor que el codigo tiene hoy.
+
+    LA PROPIEDAD: el test falla cuando el valor citado ya no esta en el codigo
+    -- porque cambio, porque renombraron el simbolo, o porque borraron la
+    funcion entera. Lo que ya NO lo hace fallar es insertar lineas arriba del
+    punto citado ni reformatear la linea, que era la fragilidad del anclaje por
+    numero.
+
+    El anclaje por simbolo ademas distingue cosas que el texto no podia:
+    src/powerbi_export.py declara `order_cost: float = 1000.0,` en DOS lugares
+    byte-identicos (analyze_product y build_powerbi_dataset). Con una busqueda
+    por texto, borrar una de las dos dejaba el guard en verde.
+
+    No hay excepcion silenciosa: un sitio que no se deja resolver es un FALLO,
+    nunca un `continue`. Solo los sitios legitimamente sin simbolo (hoy los dos
+    "(docstring)" de client_profile, que citan prosa y no codigo) se cuentan
+    como saltados, y se nombran en el mensaje.
+    """
+    verificadas = 0
+    sin_anclar: list[str] = []
 
     for spec in CATALOG + UNDECLARED_USE:
-        for tool_key, value, site in spec.defaults:
-            if ".py:" not in site:
-                # Sitio legítimamente sin línea (ej. "src/client_profile.py (docstring)").
-                skipped_sites.append(f"{spec.name}: {site}")
+        for _tool_key, valor, site in spec.defaults:
+            if not is_anchor(site):
+                sin_anclar.append(f"{spec.name}: {site}")
                 continue
-
-            # Parsear archivo:línea. Cualquier fallo de parseo es un FALLO del
-            # test -- no un `continue` silencioso -- porque un sitio con ".py:"
-            # que no parsea es exactamente el hueco que dejaba pasar citas
-            # sin verificar (ver Fix Round 4 en task-1-report.md).
-            parts = site.split(":")
-            if len(parts) < 2:
-                raise AssertionError(
-                    f"{spec.name}: {site} — contiene '.py:' pero no se pudo "
-                    f"separar en archivo:línea"
-                )
-
-            filepath = ":".join(parts[:-1])  # Manejar rutas con ":"
             try:
-                line_num = int(parts[-1])
-            except ValueError:
+                constantes = resolve_constants(site)
+            except AnchorError as exc:
+                raise AssertionError(f"{spec.name}: {exc}") from None
+            if not holds_value(constantes, valor):
                 raise AssertionError(
-                    f"{spec.name}: {site} — el segmento final {parts[-1]!r} "
-                    f"no es un número de línea entero"
+                    f"{spec.name}: {site} cita el valor {valor!r}, pero el "
+                    f"simbolo hoy tiene {list(constantes)!r}"
                 )
+            verificadas += 1
 
-            # Leer el archivo
-            try:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-            except FileNotFoundError:
-                raise AssertionError(
-                    f"{spec.name}: {site} — archivo no encontrado"
-                )
-
-            # Verificar línea (1-indexada)
-            if line_num < 1 or line_num > len(lines):
-                raise AssertionError(
-                    f"{spec.name}: {site} — línea {line_num} fuera de rango "
-                    f"(archivo tiene {len(lines)} líneas)"
-                )
-
-            line_text = lines[line_num - 1]
-
-            # Verificar que la línea contiene el valor con límites de palabra
-            # Normalizar el valor: 100.0 → r"\b100\.0\b", 0.22 → r"\b0\.22\b"
-            # También permitir representación sin decimal: 1.0 también matchea 1
-            value_str = str(value)
-            # Escapar puntos en la expresión regular
-            value_pattern = re.escape(value_str)
-            # Usar límites de palabra
-            pattern = r"\b" + value_pattern + r"\b"
-
-            # Si es un float que termina en .0, también probar sin el .0
-            alternative_pattern = None
-            if isinstance(value, float) and value == int(value):
-                # 1.0 → también probar r"\b1\b"
-                int_str = str(int(value))
-                alternative_pattern = r"\b" + re.escape(int_str) + r"\b"
-
-            found = re.search(pattern, line_text)
-            if not found and alternative_pattern:
-                found = re.search(alternative_pattern, line_text)
-
-            if not found:
-                raise AssertionError(
-                    f"{spec.name}: {site} cita valor {value}, "
-                    f"pero línea {line_num} no contiene ese valor.\n"
-                    f"Línea actual: {line_text.rstrip()}\n"
-                    f"Patrón esperado: {pattern}"
-                    + (f" o {alternative_pattern}" if alternative_pattern else "")
-                )
-
-            checked_count += 1
-
-    # Con la excepción silenciosa eliminada, toda cita "archivo.py:línea" es
-    # verificable -- el unico salto legitimo es la ausencia de ".py:" en el
-    # sitio. El piso ahora es 100% de las citas parseables, no un 70% que
-    # dejaba espacio para que un hueco de parseo pasara desapercibido.
-    total_defaults = sum(len(s.defaults) for s in CATALOG + UNDECLARED_USE)
-    expected_checked = total_defaults - len(skipped_sites)
-    assert checked_count == expected_checked, (
-        f"Se verificaron {checked_count} citas mecanicas de "
-        f"{expected_checked} esperadas ({total_defaults} citas totales, "
-        f"{len(skipped_sites)} saltadas a proposito: {skipped_sites})"
+    # El unico salto legitimo es citar PROSA en vez de codigo. Cualquier otro
+    # sitio sin anclar seria una cita que se cuenta como saltada y queda sin
+    # verificar -- el hueco que este test existe para no tener.
+    assert all(s.endswith("(docstring)") for s in sin_anclar), (
+        f"Sitios sin anclar que no citan un docstring: {sin_anclar}"
+    )
+    assert verificadas, (
+        "Ninguna cita quedo anclada a un simbolo: el guard estaria pasando en "
+        f"vacio. Sitios sin anclar: {sin_anclar}"
     )
 
 

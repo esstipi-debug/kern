@@ -3,9 +3,9 @@ from dataclasses import replace
 
 import pandas as pd
 import pytest
-from nosilo_core.guided import ExecutionOption, as_options
 
 from jobs import intake_scan_job
+from nosilo_core.guided import ExecutionOption, as_options
 from src.intake_scan import (
     GREEN,
     RED,

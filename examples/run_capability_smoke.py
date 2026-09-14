@@ -53,6 +53,13 @@ _DATA = _REPO_ROOT / "data"
 # --------------------------------------------------------------------------- #
 
 _CSV: dict[str, str] = {
+    # Moves stay inside the gate's 50% max-move band and above landed cost, so the
+    # smoke run exercises the APPROVED path; the blocked path has its own unit test.
+    "repricing": """product_id,current_price,proposed_price,landed_cost
+R1,100.00,110.00,60.00
+R2,250.00,235.00,140.00
+R3,80.00,80.00,50.00
+""",
     "cost_to_serve": """Customer Segment,Sales,Quantity,Order ID,COGS,Shipping Cost,returns_units
 Retail,1200,40,O1,700,60,2
 Retail,800,30,O2,500,45,1
@@ -207,6 +214,34 @@ S5,6,6,12
 P1,2026-09-01,0.30,20,17,-1.5,500,30,10,8,2
 P2,2026-09-15,0.20,45,40,-1.2,300,15,14,5,3
 """,
+    "audit_evidence": """unit_id,book_value,source
+SKU-A,25000,gl
+SKU-B,18000,gl
+SKU-C,12000,gl
+SKU-D,8000,gl
+SKU-E,5000,gl
+SKU-F,3000,gl
+SKU-G,1500,gl
+SKU-H,900,gl
+SKU-I,400,gl
+SKU-J,200,gl
+SKU-A,25000,subledger
+SKU-B,18000,subledger
+SKU-C,12000,subledger
+SKU-D,8000,subledger
+SKU-E,5000,subledger
+SKU-F,3000,subledger
+SKU-G,1500,subledger
+SKU-H,900,subledger
+SKU-I,400,subledger
+SKU-J,200,subledger
+""",
+    "scor_iso_audit": """dataset,product_id,cogs,avg_inventory_value,ordered_qty,delivered_qty,promised_date,delivered_date
+financial,P1,50000,12000,,,,
+financial,P2,30000,9000,,,,
+orders,P1,,,40,40,2026-08-01,2026-08-02
+orders,P1,,,20,20,2026-08-03,2026-08-04
+""",
 }
 
 # Tools satisfied by a committed sample dataset (data/ is gitignored but these
@@ -217,6 +252,7 @@ _SAMPLE: dict[str, Path] = {
     "pricing": _DATA / "sample_pricing.csv",
     "excess_obsolete": _DATA / "sample_stock_snapshot.csv",
     "markdown_liquidation": _DATA / "sample_stock_snapshot.csv",
+    "procedure_audit": _DATA / "sample_procedure_register.csv",
 }
 
 # Brief per tool (routing is bypassed via job_type; the brief still feeds the
@@ -238,6 +274,8 @@ _BRIEF: dict[str, str] = {
     "sourcing": "score and rank our suppliers",
     "ddmrp": "size DDMRP buffers and planning signals",
     "landed_cost": "compute total landed cost by SKU",
+    "import_case": "unify import documents into a chile din pack",
+    "repricing": "stage price changes for the shopify channel",
     "whatif": "run a what-if sensitivity on the plan",
     "financial_kpis": "compute inventory financial KPIs",
     "reconciliation": "reconcile system vs physical inventory",
@@ -262,6 +300,11 @@ _BRIEF: dict[str, str] = {
     "drp": "build a distribution requirements plan",
     "vehicle_routing": "route the delivery vehicles",
     "launch_readiness": "assess launch readiness",
+    "procedure_audit": "auditar el registro de procedimientos: cuales SOPs estan vencidos y sin dueno",
+    "procedure_draft": "borrador de procedimiento operativo estandar para reposicion con hoja de desglose de tarea",
+    "iso_ops": "detectar normas iso de operaciones para la planta de inyeccion",
+    "audit_evidence": "prepare a monetary unit sampling workpaper for the inventory audit",
+    "scor_iso_audit": "run the scor iso audit pack for the plant scorecard",
 }
 
 _OVERRIDES: dict[str, dict] = {
@@ -271,6 +314,37 @@ _OVERRIDES: dict[str, dict] = {
     # refuses to score on-time against an undeclared default rather than invent one.
     "sourcing": {"sla_days": 14, "in_full_status_col": "Order_Status",
                  "in_full_ok_values": ["Delivered"]},
+    "procedure_audit": {"as_of": "2026-09-03"},
+    # Both are REQUIRED by jobs/repricing_job.prepare and have no defaults: the gate
+    # blocks a changeset with a blank reason, and guessing a channel would mean
+    # guessing which storefront to reprice.
+    "repricing": {"channel": "shopify", "reason": "smoke: apply the reviewed price list"},
+    "procedure_draft": {"process": "replenishment", "owner": "Jefe de Operaciones",
+                         "approver": "Gerente General", "as_of": "2026-09-03"},
+    "iso_ops": {
+        "sectores": ["automotriz"],
+        "clientePide": ["iatf", "pcf"],
+        "logistica": ["3pl"],
+        "kern": ["smartpro", "monitor", "energy", "huella"],
+        "texto": "El OEM pide IATF y PCF.",
+        "ciclo": True,
+        "scrap": True,
+        "kg": True,
+        "tkm": False,
+    },
+    "audit_evidence": {
+        "tolerable_misstatement": 20000,
+        "selection_seed": 0,
+        "produced_at": "2026-09-07T12:00:00Z",
+        "run_id": "smoke-audit-evidence",
+    },
+    "scor_iso_audit": {
+        "as_of": "2026-09-03",
+        "dso_days": 45,
+        "dpo_days": 30,
+        "produced_at": "2026-09-07T12:00:00Z",
+        "run_id": "smoke-scor-iso",
+    },
 }
 
 # Tools that reach the network. Reported SKIP offline; a network error under
@@ -326,6 +400,35 @@ def _write_excel_replenishment_xlsx(path: Path) -> None:
     wb.save(path)
 
 
+_IMPORT_CASE_JSON = """{
+  "regime": "chile_import",
+  "documents": [
+    {
+      "doc_type": "commercial_invoice",
+      "fields": {
+        "invoice_no": "F-1", "invoice_date": "2026-01-01",
+        "incoterm": "FOB", "currency": "USD", "total_value": "1000",
+        "hs_code": "8481.80", "country_of_origin": "CN", "total_qty": "10",
+        "seller": "Ex Co", "buyer": "Im SpA"
+      }
+    },
+    {
+      "doc_type": "packing_list",
+      "fields": {"total_qty": "10", "gross_weight": "100", "carton_count": "2", "country_of_origin": "CN"}
+    },
+    {
+      "doc_type": "bill_of_lading",
+      "fields": {
+        "bl_no": "BL1", "container_no": "MSKU1234567", "vessel_voyage": "V1",
+        "pol": "CNSHA", "pod": "CLVAP", "incoterm": "FOB",
+        "shipper": "Ex Co", "consignee": "Im SpA", "gross_weight": "100"
+      }
+    }
+  ]
+}
+"""
+
+
 def _write_price_intelligence_csv(path: Path) -> None:
     import pandas as pd
 
@@ -357,6 +460,10 @@ def _fixture_path(key: str, fixtures_dir: Path) -> Path | None:
     if key == "price_intelligence":
         p = fixtures_dir / "price_intel_refs.csv"
         _write_price_intelligence_csv(p)
+        return p
+    if key == "import_case":
+        p = fixtures_dir / "import_case.json"
+        p.write_text(_IMPORT_CASE_JSON, encoding="utf-8")
         return p
     return None  # no-data tools
 

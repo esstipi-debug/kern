@@ -62,12 +62,14 @@ from typing import Any
 from src.connectors import (
     COVERAGE_DERIVED,
     COVERAGE_MEASURED,
+    WRITE_NONE,
     FieldCoverage,
     InventoryLevel,
     Order,
     OrderLine,
     Product,
     ServiceCoverage,
+    WriteSurface,
 )
 
 #: La base de la API v1. Se fija aca y no en cada llamada para que ``live_http`` sea el
@@ -472,5 +474,14 @@ SERVICE_COVERAGE = ServiceCoverage(
         "la fecha de DESPACHO, no de llegada. Unleashed no registra ninguna llegada: no "
         "tiene recurso de entrega y sus dos fechas son salidas. El OTIF que sale de aca "
         "mide despachar antes de la fecha pedida, no llegar antes de ella",
+    ),
+)
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_NONE,
+    means=(
+        'solo lectura. Unleashed expone /PurchaseOrders para escribir, pero Kern no lo usa hasta que un cliente pago lo pida (peldano 2 del plan): hoy la PO sale como CSV/mail y se dice.'
     ),
 )

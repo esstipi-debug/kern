@@ -8,9 +8,9 @@ import csv
 from datetime import date, timedelta
 
 import pytest
+
 from nosilo_core import llm
 from nosilo_core.types import JobRequest
-
 from scm_agent import tools
 
 # Tools with requires_data=True that have NOT yet declared their columns.
@@ -70,11 +70,18 @@ from scm_agent import tools
 # params.capacity, which is not a column, so a file carrying every declared
 # column still cannot prepare and the "complete fixture prepares cleanly"
 # assertion could never hold. Declarable the day that refusal moves into run().
+#
+# "import_case" -- PERMANENTE. jobs/import_case_job.py:71 consume un BUNDLE JSON
+# (`documents.json`, o un JSON por tipo de documento: factura, packing list, B/L o
+# AWB) y falla con "expected a JSON object with a documents list". No es un archivo
+# tabular, asi que `required_columns` no le aplica: declararle columnas describiria
+# una forma de entrada que la tool no acepta. Misma categoria que "intake_scan".
 UNDECLARED_TOOLS = frozenset({
     "cross_impact",
     "cycle_count",
     "dea",
     "excel_replenishment",
+    "import_case",
     "intake_scan",
     "launch_readiness",
     "org_friction_audit",

@@ -32,9 +32,12 @@ from src.connectors import ReceiptsSource, ScheduledReceipt
 from src.connectors.odoo import InMemoryOdoo, OdooConnector
 
 _PRODUCTS = {
-    1: {"default_code": "SKU-1", "name": "Widget", "list_price": 20.0, "standard_price": 12.0},
-    2: {"default_code": "SKU-2", "name": "Gadget", "list_price": 50.0, "standard_price": 30.0},
+    1: {"default_code": "SKU-1", "name": "Widget", "list_price": 20.0, "standard_price": 12.0,
+        "uom_id": [1, "Units"]},
+    2: {"default_code": "SKU-2", "name": "Gadget", "list_price": 50.0, "standard_price": 30.0,
+        "uom_id": [1, "Units"]},
 }
+_UNITS = [1, "Units"]
 
 
 def _odoo_con_ocs(**extra) -> InMemoryOdoo:
@@ -69,17 +72,24 @@ def _odoo_con_ocs(**extra) -> InMemoryOdoo:
                 "order_line": [303],
             },
         },
+        # ``state`` en la linea es el campo relacionado real de Odoo
+        # (purchase.order.line.state = order_id.state): el lector unico filtra por
+        # el, igual que la vista de unidades por SKU.
         "purchase.order.line": {
             # 40 pedidas, 15 ya recibidas -> quedan 25 en camino
             300: {"product_id": [1, "Widget"], "product_qty": 40.0, "qty_received": 15.0,
-                  "date_planned": "2026-01-12 00:00:00", "order_id": [200, "PO-001"]},
+                  "date_planned": "2026-01-12 00:00:00", "order_id": [200, "PO-001"],
+                  "state": "purchase", "product_uom": _UNITS},
             # completamente recibida: ya no viene nada
             301: {"product_id": [2, "Gadget"], "product_qty": 10.0, "qty_received": 10.0,
-                  "date_planned": "2026-01-12 00:00:00", "order_id": [200, "PO-001"]},
+                  "date_planned": "2026-01-12 00:00:00", "order_id": [200, "PO-001"],
+                  "state": "purchase", "product_uom": _UNITS},
             302: {"product_id": [1, "Widget"], "product_qty": 30.0, "qty_received": 0.0,
-                  "date_planned": "2026-01-22 00:00:00", "order_id": [201, "PO-002"]},
+                  "date_planned": "2026-01-22 00:00:00", "order_id": [201, "PO-002"],
+                  "state": "purchase", "product_uom": _UNITS},
             303: {"product_id": [1, "Widget"], "product_qty": 99.0, "qty_received": 0.0,
-                  "date_planned": "2026-01-15 00:00:00", "order_id": [202, "PO-BORRADOR"]},
+                  "date_planned": "2026-01-15 00:00:00", "order_id": [202, "PO-BORRADOR"],
+                  "state": "draft", "product_uom": _UNITS},
         },
         "stock.location": {},
         "stock.quant": {},
@@ -317,3 +327,36 @@ def test_sin_las_dos_fechas_no_hay_brecha(prometida, esperada):
     )
 
     assert r.slip_days is None
+
+
+# -- un solo lector para las dos vistas -----------------------------------------
+
+
+def test_una_orden_bloqueada_con_pendiente_sigue_estando_en_camino():
+    """Con "Bloquear ordenes confirmadas" activado, toda OC confirmada pasa a
+    ``done``. Antes esta vista solo miraba ``purchase`` y esas OC desaparecian del
+    en-camino mientras la vista por SKU si las contaba: dos numeros para un mismo
+    pendiente. Ahora las dos vistas salen del mismo lector y del mismo filtro."""
+    rpc = _odoo_con_ocs()
+    rpc.records("purchase.order")[203] = {
+        "name": "PO-BLOQUEADA", "date_order": "2026-01-10 09:00:00",
+        "partner_id": [71, "Globex"], "state": "done", "order_line": [304],
+    }
+    rpc.records("purchase.order.line")[304] = {
+        "product_id": [2, "Gadget"], "product_qty": 12.0, "qty_received": 2.0,
+        "date_planned": "2026-01-20 00:00:00", "order_id": [203, "PO-BLOQUEADA"],
+        "state": "done", "product_uom": _UNITS,
+    }
+    por_sku = _por_sku(OdooConnector(rpc).scheduled_receipts())
+    assert [r.quantity for r in por_sku["SKU-2"]] == [10.0]
+    assert por_sku["SKU-2"][0].order_id == "PO-BLOQUEADA"
+
+
+def test_las_dos_vistas_cuentan_el_mismo_pendiente():
+    """Fechas por linea y unidades por SKU son dos lecturas del mismo lector: la
+    suma de una tiene que ser exactamente el mapa de la otra."""
+    con = OdooConnector(_odoo_con_ocs())
+    suma: dict = {}
+    for r in con.scheduled_receipts():
+        suma[r.sku] = suma.get(r.sku, 0.0) + r.quantity
+    assert suma == con.open_purchase_qty_by_sku().by_sku == {"SKU-1": 55.0}

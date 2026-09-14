@@ -251,7 +251,10 @@ def test_el_catalogo_cacheado_no_ve_un_sku_creado_despues(cliente):
                        [{"partner_id": partner, "product_id": producto,
                          "price": 10.0, "sequence": 1}])
 
-    pytest.xfail("catalogo cacheado: el conector no refresca _id_by_sku")
+    # Arreglado el 2026-09-05 (PR-0): _ensure_catalog() refresca cuando le piden un
+    # SKU que no conoce. El test paso de xfail(strict=True) a afirmar lo contrario.
+    _cs, unsourced = conector.stage_draft_purchase_orders({sku: 5.0})
+    assert sku not in unsourced, "el SKU nuevo tiene proveedor: no puede salir como unsourced"
 
 
 # --------------------------------------------------------------------------

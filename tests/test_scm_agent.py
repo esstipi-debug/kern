@@ -4,10 +4,10 @@ import importlib
 from pathlib import Path
 
 import pytest
+
 from nosilo_core import llm
 from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
 from nosilo_core.types import JobRequest, JobResult
-
 from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src import client_profile
@@ -121,13 +121,15 @@ _CODE_GRAPH = Path(__file__).resolve().parent.parent / "graphify-out" / "graph.j
 def test_build_default_registry_tools():
     reg = tools.build_default_registry()
     keys = {t.key for t in reg.list()}
-    assert keys == {"abc_xyz", "acceptance_sampling", "cost_to_serve", "cross_impact", "cycle_count", "data_quality", "ddmrp", "dea", "digital_twin", "disruption_scan", "drp", "earned_value", "excel_replenishment", "excess_obsolete", "facility_location", "fefo", "financial_kpis", "flow_map", "forecast", "hat_settlement", "hat_tension", "intake_scan", "inventory_optimization", "landed_cost", "launch_readiness", "leadership_chain", "learning_curve", "markdown_liquidation", "multi_echelon", "network_design", "newsvendor", "odoo_replenishment", "org_friction_audit", "price_intelligence", "price_watch", "pricing", "queuing", "reconciliation", "returns", "risk", "scheduling", "simulation", "slotting", "sop", "sourcing", "supplier_management", "transportation", "vehicle_routing", "warehouse_layout", "whatif"}
+    assert keys == {"abc_xyz", "acceptance_sampling", "audit_evidence", "cost_to_serve", "cross_impact", "cycle_count", "data_quality", "ddmrp", "dea", "digital_twin", "disruption_scan", "drp", "earned_value", "excel_replenishment", "excess_obsolete", "facility_location", "fefo", "financial_kpis", "flow_map", "forecast", "hat_settlement", "hat_tension", "import_case", "intake_scan", "inventory_optimization", "iso_ops", "landed_cost", "launch_readiness", "leadership_chain", "learning_curve", "markdown_liquidation", "multi_echelon", "network_design", "newsvendor", "odoo_replenishment", "org_friction_audit", "price_intelligence", "price_watch", "pricing", "procedure_audit", "procedure_draft", "queuing", "reconciliation", "repricing", "returns", "risk", "scheduling", "scor_iso_audit", "service_scan", "simulation", "slotting", "sop", "sourcing", "supplier_management", "transportation", "vehicle_routing", "warehouse_layout", "whatif"}
     assert reg.get("leadership_chain").requires_data is False
     assert reg.get("odoo_replenishment").requires_data is False
     assert reg.get("inventory_optimization").requires_data is True
     assert reg.get("cost_to_serve").requires_data is True
     assert reg.get("sop").requires_data is True
     assert reg.get("abc_xyz").requires_data is True
+    assert reg.get("procedure_draft").requires_data is False
+    assert reg.get("procedure_audit").requires_data is True
 
 
 def test_inventory_tool_pipeline_on_sample(tmp_path):
@@ -654,7 +656,6 @@ def test_orchestrator_grounds_inventory_job_with_citations(tmp_path):
 
 def test_orchestrator_degrades_without_knowledge_graph(tmp_path):
     from nosilo_core import llm
-
     from scm_agent.knowledge import KnowledgeBase
     empty_kb = KnowledgeBase(books_path=tmp_path / "no.json", code_path=tmp_path / "no2.json")
     orch = Orchestrator(registry=tools.build_default_registry(),
