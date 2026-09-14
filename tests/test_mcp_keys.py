@@ -115,7 +115,29 @@ def test_list_keys_never_exposes_the_plaintext_or_the_hash():
     assert key not in repr(entry)
     assert "key_hash" not in entry
     assert "key" not in entry
-    assert set(entry) == {"client_name", "issued_at", "active", "last_used_at"}
+    # Conjunto EXACTO, no un subconjunto: el punto de este test es que agregar un
+    # campo a esta salida sea una decision consciente y no un descuido. `email` y
+    # `payment_ref` se sumaron al cablear el webhook de pago (brecha L3) porque el
+    # operador necesita saber A QUIEN entregarle la credencial y por que compra se
+    # emitio. `email` es PII y por eso importa donde vive: list_keys() lo lee solo
+    # examples/issue_mcp_key.py, una CLI de operador -- ninguna ruta de webapp lo
+    # devuelve, verificado al agregarlo.
+    assert set(entry) == {
+        "client_name", "issued_at", "active", "last_used_at", "email", "payment_ref",
+    }
+
+
+def test_list_keys_no_filtra_la_key_de_una_compra():
+    """La emision por pago pasa por el mismo colador: se guarda el hash, nunca el
+    plaintext, tambien cuando la key nace de un webhook."""
+    store = _mem_store()
+    key = store.issue_for_payment("Acme Co", "cs_123", email="compra@cliente.com")
+
+    [entry] = store.list_keys()
+
+    assert key not in repr(entry)
+    assert entry["payment_ref"] == "cs_123"
+    assert entry["email"] == "compra@cliente.com"
 
 
 def test_keys_survive_a_simulated_process_restart(tmp_path):

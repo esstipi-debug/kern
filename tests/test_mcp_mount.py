@@ -161,3 +161,67 @@ def test_rate_limit_quota_is_per_client_not_per_shared_ip(client, monkeypatch, _
     assert a_first.status_code != 429  # Acme's first call: fine
     assert b_first.status_code != 429  # Globex's first call: fine too, not throttled by Acme's usage
     assert a_second.status_code == 429  # Acme's OWN second call within the window: throttled
+
+
+# ---- brecha L3: la credencial que emite un pago abre esta misma puerta -------
+
+
+def _firmar_evento(cuerpo: bytes, secreto: str) -> str:
+    """Firma Stripe (HMAC-SHA256 sobre "{t}.{cuerpo}") replicada en seis lineas.
+
+    Duplicada a proposito en vez de importarla de tests/test_stripe_webhook.py:
+    `tests/` no es un paquete importable y acoplar dos archivos de test por un
+    helper de seis lineas cuesta mas que reescribirlo.
+    """
+    import hashlib
+    import hmac
+    import time
+
+    ts = int(time.time())
+    v1 = hmac.new(secreto.encode("utf-8"),
+                  str(ts).encode("ascii") + b"." + cuerpo, hashlib.sha256).hexdigest()
+    return f"t={ts},v1={v1}"
+
+
+def test_una_key_emitida_por_un_pago_pasa_el_gate(client, _isolated_key_store, monkeypatch):
+    """LA OTRA MITAD DEL "CERRADA CUANDO" DE L3.
+
+    Un evento de pago firmado llega a POST /webhooks/stripe, la ruta lo verifica
+    y emite la credencial; esa credencial abre /mcp/, donde sin ella hay 401.
+    Es el tramo que convierte "se emitio una key" en "la compra da acceso".
+    """
+    secreto = "whsec_de_prueba_no_es_real"
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", secreto)
+
+    # El plaintext solo existe en el retorno de issue_for_payment -- el store
+    # guarda su hash. Envolverlo es la unica forma de ver lo mismo que vera el
+    # comprador el dia que exista la entrega.
+    capturadas: list[str] = []
+    original = _isolated_key_store.issue_for_payment
+
+    def espia(*a, **k):
+        key = original(*a, **k)
+        if key:
+            capturadas.append(key)
+        return key
+
+    monkeypatch.setattr(_isolated_key_store, "issue_for_payment", espia)
+
+    cuerpo = json.dumps({
+        "id": "evt_l3", "type": "checkout.session.completed",
+        "data": {"object": {"id": "cs_l3", "payment_status": "paid",
+                            "customer_details": {"email": "compra@cliente.com"}}},
+    }).encode("utf-8")
+
+    r = client.post("/webhooks/stripe", content=cuerpo,
+                    headers={"Stripe-Signature": _firmar_evento(cuerpo, secreto),
+                             "Content-Type": "application/json"})
+    assert r.status_code == 200 and r.json()["status"] == "issued"
+    assert capturadas, "el webhook no emitio ninguna credencial"
+
+    sin_key = client.post("/mcp/", json=_MCP_RPC_BODY, headers=_MCP_HEADERS)
+    assert sin_key.status_code == 401
+
+    con_key = client.post("/mcp/", json=_MCP_RPC_BODY,
+                          headers={**_MCP_HEADERS, "X-API-Key": capturadas[0]})
+    assert con_key.status_code != 401

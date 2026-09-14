@@ -38,6 +38,12 @@ from src.vertical_profile import (
 )
 
 QUESTION = "¿Qué mueves?"
+QUESTION_EN = "What do you move?"
+
+LABEL_EN: dict[str, str] = {
+    "distribucion-b2b": "products I buy and resell to other businesses",
+    "repuestos-industriales": "spare parts, supplies and components for equipment",
+}
 
 # Cual de las cinco salidas de 05-GTM-KERN §5 tiene motor en el embudo, y que
 # modo del /demo la entrega. DOS DE CINCO, y se dice en vez de disimularse:
@@ -59,11 +65,9 @@ DEMO_MODE_BY_OUTPUT: dict[str, str] = {
     "dead_stock_12m": "stock",
 }
 
-# El orden canonico del §5 para el visitante que no declara rubro -- que es el
-# caso por defecto y seguira siendolo para la mayoria. Plazos primero: es un
-# hecho sobre sus datos, es lo mas barato de calcular y es lo que se gana el
-# derecho a seguir hablando.
-DEFAULT_MODES: tuple[str, ...] = ("lead", "stock")
+# Visitante anonimo: el diagnostico gratis es stock (plata quieta). Plazos
+# quedan como medicion extra, no como la puerta de entrada.
+DEFAULT_MODES: tuple[str, ...] = ("stock", "lead")
 
 
 def demo_modes_for(profile: VerticalProfile | None) -> tuple[str, ...]:
@@ -102,11 +106,13 @@ def verticals_payload(*, config_dir: Path | str = DEFAULT_VERTICALS_CONFIG_DIR) 
         options.append({
             "slug": profile.vertical,
             "label": profile.demo_question_label or profile.display_name,
+            "label_en": LABEL_EN.get(profile.vertical, profile.display_name),
             "display_name": profile.display_name,
             "modes": list(modes),
         })
     return {
         "question": QUESTION,
+        "question_en": QUESTION_EN,
         "options": options,
         "default_modes": list(DEFAULT_MODES),
     }

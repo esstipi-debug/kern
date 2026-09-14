@@ -1,0 +1,22 @@
+# App SEPARADA a proposito. NO se despliega sobre `linchpin`: ahi vive el
+# motor de Kern y la webapp, y el 2026-08-24 habia trabajo sin commitear de
+# otra sesion en `.wt-web-kern`. Una landing no comparte maquina con el
+# servicio que le responde calculos a los clientes.
+app = "kern-landing"
+# Santiago (`scl`) seria lo natural para un mercado chileno, pero Fly la
+# deprecio y rechaza recursos nuevos ahi (comprobado en el deploy del
+# 2026-08-24). Sao Paulo es la mas cercana que si acepta.
+primary_region = "gru"
+
+[build]
+
+[http_service]
+  internal_port = 80            # nginx:alpine por defecto
+  force_https = true
+  auto_stop_machines = "stop"   # una landing sin trafico no debe costar
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"              # sirve tres archivos estaticos

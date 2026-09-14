@@ -22,18 +22,19 @@ and ``src/state/store.StateStore``: stdlib ``sqlite3``, an injectable path
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from src.data_paths import resolve_state_path
+
 # Env-override convention matching src/state/store.py's LINCHPIN_STATE_PATH /
 # webapp/security.py's LINCHPIN_* variables (and scm_agent/autonomy.py's own
 # LINCHPIN_AUTONOMY_PATH, added alongside it) -- this module's own DEFAULT_PATH
 # previously named the convention in this comment without implementing it.
-DEFAULT_PATH = os.environ.get("LINCHPIN_EVENTS_PATH", "").strip() or "data/events.sqlite3"
+DEFAULT_PATH = resolve_state_path("events")
 
 # A repeat of the same dedup_key inside this many seconds is treated as the
 # same occurrence, not a new one -- e.g. an hourly monitor cycle re-detecting

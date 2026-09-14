@@ -1,0 +1,203 @@
+# Lexico es-CL de congelados -- atributos decisivos para homologacion y para
+# el cruce contra vedas. Ver
+# docs/superpowers/specs/2026-07-24-radiografia-congelados-chile-design.md
+#
+# REGLA DE ORIGEN (agregada 2026-07-25 tras una corrida real sobre
+# puntomarinochile.cl que marco "Ostion Sin Coral Importado" y "Merluza
+# importada" como expuestos a veda chilena -- lo cual es falso: la veda
+# alcanza al recurso extraido en aguas chilenas, no al producto importado).
+#
+# Tres estados, nunca dos. El tercero existe porque la mayoria de los
+# titulos NO declaran origen, y tratar "no se" como "nacional" inventa una
+# exposicion regulatoria que no consta -- exactamente el error que esta
+# regla corrige. Un titulo sin origen se reporta como "requiere confirmar
+# origen", no como expuesto.
+#
+#   nacional     -> la veda chilena aplica
+#   importado    -> la veda chilena NO aplica, se suprime la bandera
+#   no_declarado -> no se afirma nada; se pide confirmacion al cliente
+
+origen:
+  # Marcadores de producto extraido en Chile.
+  nacional:
+    - nacional
+    - chileno
+    - chilena
+    - austral          # merluza austral: pesqueria chilena
+    - del norte        # ostion del norte
+    - magallanes
+    - chiloe
+    - patagonia
+    - patagonico
+    - araucana
+
+  # Marcadores de producto importado.
+  importado:
+    - importado
+    - importada
+    - ecuatoriano
+    - ecuatoriana
+    - ecuador
+    - argentino
+    - argentina
+    - hubbsi           # Merluccius hubbsi: merluza argentina
+    - pangasius        # Vietnam
+    - tilapia
+    - vietnam
+    - vietnamita
+    - peruano
+    - peruana
+    - china
+    - chino
+    # "asiatico" salio de una corrida real: 8 SKUs de Punto Marino lo
+    # declaran en el titulo ("Camaron 36/40 Asiatico Crudo pelado") y solo
+    # los atrapaba la regla de formato. Un marcador explicito nunca debe
+    # depender de una heuristica de respaldo.
+    - asiatico
+    - asiatica
+    - basa
+    - kanikama         # surimi, producto elaborado importado
+
+  # Convenciones de formato que implican origen sin nombrarlo.
+  #
+  # El calibre por conteo-por-libra (16/20, 21/25, 36/40, 71/90, 100/200) es
+  # la convencion estadounidense/ecuatoriana con que se vende el camaron de
+  # cultivo importado. El camaron nacional (camaron nailon, Heterocarpus
+  # reedi) se vende por grado -- "primera", "extra", "segunda" -- nunca por
+  # conteo. Verificado en los catalogos de Rapa-Nui y Punto Marino, donde
+  # ambas convenciones conviven en el mismo catalogo sin ambiguedad.
+  reglas_de_formato:
+    - patron: '\d{2,3}\s*/\s*\d{2,3}'
+      aplica_a: [camaron, langostino]
+      implica: importado
+      razon: >
+        Calibre por conteo por libra: convencion de camaron de cultivo
+        importado. El camaron nailon nacional se vende por grado, no por
+        conteo.
+    - patron: '\b(primera|extra|segunda)\b'
+      aplica_a: [camaron]
+      implica: nacional
+      razon: >
+        Grado comercial del camaron nailon chileno. No se usa para el
+        camaron de cultivo importado.
+
+# Especies, con el nombre canonico al que se normalizan las variantes de
+# titulo. Es la llave contra config/regulatory/cl_vedas.yaml.
+especie:
+  camaron:     [camaron, camarones, camaron nailon]
+  langostino:  [langostino, langostinos]
+  merluza:     [merluza, merluza comun, merluza austral, merluza hubbsi, pescada]
+  reineta:     [reineta]
+  congrio:     [congrio, congrio dorado, congrio negro, congrio colorado]
+  salmon:      [salmon, salmon salar, salar]
+  trucha:      [trucha, trucha arcoiris]
+  albacora:    [albacora, pez espada]
+  atun:        [atun]
+  jibia:       [jibia, calamar gigante]
+  calamar:     [calamar, calamares, anillas, anillos de calamar]
+  pulpo:       [pulpo]
+  chorito:     [chorito, choritos, mejillon, choro, choro zapato]
+  almeja:      [almeja, almejas]
+  ostion:      [ostion, ostiones, ostion del norte]
+  macha:       [macha, machas]
+  navajuela:   [navajuela, navajuelas]
+  loco:        [loco, locos]
+  centolla:    [centolla]
+  centollon:   [centollon]
+  erizo:       [erizo, erizos]
+  jaiba:       [jaiba, jaibas]
+
+# VARIANTES dentro de una especie. Importan porque dos variantes de la misma
+# especie pueden tener vedas distintas: la merluza austral cierra del 1 al 31
+# de agosto y la comun del 1 al 30 de septiembre, con decretos distintos.
+#
+# Cuando el titulo NO declara variante, la respuesta correcta no es elegir
+# una: es reportar TODAS las ventanas aplicables y dejar que el cliente
+# confirme cual es. Elegir la primera de la lista fue exactamente el error
+# que "Merluza Apanada 1 Kg" destapo -- salio como austral (7 dias) cuando
+# igual de bien podia ser comun (38 dias).
+variante:
+  merluza:
+    austral: [austral]
+    comun:   [comun, pescada]
+    hubbsi:  [hubbsi]        # argentina; el filtro de origen ya la suprime
+  camaron:
+    nailon:  [nailon, nacional, primera, extra]
+  langostino:
+    colorado: [colorado]
+    amarillo: [amarillo]
+  ostion:
+    del_norte: [del norte]
+
+# REGIONES. Una veda alcanza al recurso extraido en ciertas regiones, y casi
+# ningun titulo declara de donde vino -- pero algunos si nombran el puerto o
+# la zona, y cuando lo hacen desambiguan la fila entera. Los codigos son los
+# de config/regulatory/cl_vedas.yaml.
+#
+# Deliberadamente NO se listan aqui "austral", "del norte" ni "patagonia":
+# ya son marcadores de variante o de origen, y reusarlos como region haria
+# que un mismo token decidiera dos cosas distintas.
+region:
+  XV:   [arica, parinacota]
+  I:    [iquique, tarapaca, pisagua]
+  II:   [antofagasta, mejillones, tocopilla, taltal]
+  III:  [atacama, caldera, huasco, chanaral]
+  IV:   [coquimbo, tongoy, guanaqueros, la serena, los vilos]
+  V:    [valparaiso, san antonio, quintero, concon, algarrobo]
+  VI:   [ohiggins, o'higgins, pichilemu, navidad]
+  VII:  [maule, constitucion, pelluhue, curanipe]
+  XVI:  [nuble, cobquecura, buchupureo]
+  VIII: [biobio, talcahuano, coronel, lota, concepcion, lebu, tome]
+  IX:   [araucania, queule, puerto saavedra, tolten]
+  XIV:  [valdivia, los rios, corral, niebla, mehuin]
+  X:    [chiloe, puerto montt, calbuco, ancud, quellon, los lagos, reloncavi, dalcahue, castro]
+  XI:   [aysen, chonos, puerto cisnes, melinka]
+  XII:  [magallanes, punta arenas, porvenir, puerto natales, tierra del fuego]
+
+# Marcadores de producto ELABORADO -- decisivos solo para vedas extractivas.
+#
+# Una veda extractiva alcanza "procesamiento, elaboracion" y los productos
+# derivados del recurso: una conserva de loco esta dentro de su alcance
+# igual que el loco vivo. Una veda biologica cierra la captura, asi que un
+# elaborado no cambia nada para ella (su efecto es de abastecimiento, aguas
+# arriba). Sin esta lista, "Locos Cocidos Conserva" -- el SKU de mayor
+# riesgo de un catalogo -- se clasifica igual que una empanada de camaron,
+# que no tiene ningun riesgo de tenencia.
+elaborado:
+  - conserva
+  - conservas
+  - al natural
+  - empanada
+  - empanadas
+  - gyoza
+  - gyozas
+  - croqueta
+  - croquetas
+  - nugget
+  - nuggets
+  - apanado
+  - apanada
+  - rebosado
+  - rebosada
+  - paté
+  - pate
+  - terrina
+  - pastel
+  - chupe
+  - ceviche
+  - relleno
+  - rellena
+  - hamburguesa
+  - albondiga
+  - albondigas
+  - ahumado
+  - ahumada
+  - en aceite
+  - marinado
+  - marinada
+
+# Atributos que separan productos que de otro modo colisionan al homologar.
+estado:   [crudo, cocido]
+proceso:  [pelado, desvenado, con caparazon, con cascara, sin cascara, apanado,
+           rebosado, iqf, porcionado, entero, filete, trozos, medallon,
+           granel, sin concha, media concha, con coral, sin coral]

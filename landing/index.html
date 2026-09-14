@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kern · el escaneo, corriendo sobre datos de muestra</title>
+<meta name="description" content="Prácticamente ningún ERP incluye la variabilidad del lead time al dimensionar el stock de seguridad. Mirá el cálculo corriendo, con datos de muestra y la fórmula a la vista.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23080b11'/%3E%3Cpath d='M7 22V10M7 16l7-6M7 16l7 6' stroke='%234fd1c5' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="scrollcraft.css">
+<style>
+  /* ── Superficie ───────────────────────────────────────────────────────
+     Gramatica: live surface. La pagina se comporta como el producto, asi
+     que no hay cromo de marketing: el cromo de la app ES la navegacion, y
+     la copia vive en el idioma de la superficie (etiquetas, estados,
+     lineas de log). Paleta compartida con el blog para que las dos
+     superficies sean una sola identidad. */
+  :root {
+    --sc-canvas:#080b11; --sc-surface:#111722; --sc-ink:#e7eef6; --sc-ink-soft:#9aa7b6;
+    --sc-accent:#4fd1c5; --sc-accent-ink:#04231f;
+    --k-panel:#0f141d; --k-line:#1e2733; --k-line-2:#283341;
+    --k-txt-2:#c4cfdb; --k-faint:#5e6b7a;
+    --k-bright:#5eead4; --k-warn:#f5b942; --k-danger:#f97362;
+    --sc-font-display:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --sc-font-text:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --k-mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --k-r:11px;
+  }
+  body{background:var(--sc-canvas);color:var(--sc-ink);font-family:var(--sc-font-text);
+    font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+
+  /* ── Cromo de app. Esto es la navegacion: no hay barra de marca. ────── */
+  .chrome{position:fixed;inset:0 0 auto;z-index:60;background:rgba(8,11,17,.86);
+    backdrop-filter:blur(10px);border-bottom:1px solid var(--k-line)}
+  .chrome__in{max-width:1120px;margin:0 auto;padding:0 20px;height:52px;
+    display:flex;align-items:center;gap:22px}
+  .chrome__mark{font:700 15px/1 var(--k-mono);color:var(--sc-ink)}
+  .chrome__mark i{color:var(--sc-accent);font-style:normal}
+  .tabs{display:flex;gap:2px;margin-left:4px}
+  .tab{font:500 12px/1 var(--k-mono);color:var(--k-faint);padding:7px 11px;border-radius:7px;
+    border:1px solid transparent;white-space:nowrap}
+  .tab[aria-current="true"]{color:var(--sc-accent);border-color:var(--k-line-2);background:var(--k-panel)}
+  .chrome__status{margin-left:auto;display:flex;align-items:center;gap:9px;
+    font:500 11px/1 var(--k-mono);color:var(--k-faint)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--sc-accent);
+    box-shadow:0 0 0 0 rgba(79,209,197,.55);animation:pulse 2.4s ease-out infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 7px rgba(79,209,197,0)}100%{box-shadow:0 0 0 0 rgba(79,209,197,0)}}
+
+  /* Alineado arriba, no centrado: una superficie de producto arranca pegada a
+     su cromo. Centrada, el tablero flotaba con medio viewport vacio y dejaba de
+     leerse como una app. */
+  .stage{min-height:100svh;display:flex;align-items:flex-start;padding:84px 20px 34px;
+    position:relative;z-index:1}
+
+  /* ── El suelo fotografico ───────────────────────────────────────────────
+     `live surface` prohibe la fotografia a sangre y los scrims. Se rompe a
+     proposito y acotado: solo el acto de apertura, para que el visitante vea
+     el lugar del que hablan los numeros antes de ver los numeros.
+
+     El movimiento sale de --sc-p, que el motor escribe sobre el acto y que
+     hereda hasta aca. Cero JavaScript.
+
+     El degradado NO es un scrim plano: arranca casi transparente arriba, donde
+     no hay panel, y cierra opaco abajo, donde el tablero necesita contraste.
+     Un rectangulo negro al 60% habria matado la foto entera para proteger
+     texto que solo ocupa la mitad de la pantalla. */
+  .ground{position:absolute;inset:0;overflow:hidden;z-index:0;background:var(--sc-canvas)}
+  .ground img{width:100%;height:100%;object-fit:cover;display:block;
+    transform:scale(calc(1.06 + var(--sc-p, 0) * 0.09))
+              translateY(calc(var(--sc-p, 0) * -3%));
+    transform-origin:50% 42%;
+    filter:saturate(.78) contrast(1.06) brightness(.72);
+    will-change:transform}
+  /* El peso va ARRIBA, que es donde estan los paneles, y se abre en el medio
+     para que el pasillo se vea. Al reves ahogaba justo la parte de la foto que
+     vale y protegia una zona vacia. Cierra al final para empalmar con el acto
+     siguiente sin costura. */
+  .ground::after{content:"";position:absolute;inset:0;
+    background:
+      linear-gradient(180deg, rgba(8,11,17,.88) 0%, rgba(8,11,17,.74) 32%,
+                              rgba(8,11,17,.30) 56%, rgba(8,11,17,.58) 86%,
+                              var(--sc-canvas) 100%),
+      radial-gradient(900px 480px at 12% 8%, rgba(79,209,197,.10), transparent 62%)}
+  @media (prefers-reduced-motion:reduce){
+    .ground img{transform:scale(1.06)}
+  }
+  .board{width:100%;max-width:1120px;margin:0 auto}
+  .grid{display:grid;gap:14px}
+  .grid--2{grid-template-columns:1.35fr .95fr}
+
+  /* ── Panel: la unidad de la superficie ─────────────────────────────── */
+  .panel{background:var(--k-panel);border:1px solid var(--k-line);border-radius:var(--k-r);overflow:hidden}
+  .panel__hd{display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--k-line);
+    font:600 11px/1 var(--k-mono);letter-spacing:.09em;text-transform:uppercase;color:var(--k-faint)}
+  .panel__hd svg{width:15px;height:15px;stroke:var(--sc-accent);fill:none;stroke-width:1.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .panel__hd .rt{margin-left:auto;text-transform:none;letter-spacing:0;color:var(--k-faint)}
+  .panel__bd{padding:14px}
+
+  /* ── Log / estado: el idioma de la superficie, no titulares ────────── */
+  .log{font:500 12.5px/1.85 var(--k-mono);color:var(--k-txt-2);margin:0}
+  .log b{color:var(--sc-ink);font-weight:600}
+  .log .ok{color:var(--sc-accent)}
+  .log .wn{color:var(--k-warn)}
+  .log .dg{color:var(--k-danger)}
+  .log li{list-style:none;opacity:0;transform:translateY(4px);
+    animation:logIn .34s ease forwards}
+  @keyframes logIn{to{opacity:1;transform:none}}
+  .note{font:500 11px/1.6 var(--k-mono);color:var(--k-faint);margin:10px 0 0}
+
+  /* ── Tabla de SKU ──────────────────────────────────────────────────── */
+  table.sku{width:100%;border-collapse:collapse;font:500 12.5px/1.5 var(--k-mono)}
+  table.sku th{text-align:left;color:var(--k-faint);font-weight:600;font-size:10.5px;
+    letter-spacing:.07em;text-transform:uppercase;padding:0 9px 8px;border-bottom:1px solid var(--k-line)}
+  table.sku td{padding:8px 9px;border-bottom:1px solid rgba(30,39,51,.6);color:var(--k-txt-2)}
+  table.sku td.n{text-align:right;font-variant-numeric:tabular-nums;color:var(--sc-ink)}
+  table.sku tr{opacity:0;animation:logIn .3s ease forwards}
+  .pill{display:inline-block;padding:2px 7px;border-radius:5px;font-size:10.5px;font-weight:700;letter-spacing:.03em}
+  .pill--dead{background:rgba(249,115,98,.16);color:var(--k-danger)}
+  .pill--exc{background:rgba(245,185,66,.15);color:var(--k-warn)}
+  .pill--ok{background:rgba(79,209,197,.14);color:var(--sc-accent)}
+
+  /* ── Formula: el pico ──────────────────────────────────────────────── */
+  .formula{font:500 clamp(13px,1.9vw,19px)/1.8 var(--k-mono);color:var(--k-faint);
+    display:flex;flex-wrap:wrap;align-items:center;gap:.34em;margin:0 0 16px}
+  .formula .lit{color:var(--sc-ink)}
+  .term{display:inline-block;color:var(--sc-ink);font-weight:700;
+    font-size:calc(1em + var(--k-t,0)*.34em);transition:color .15s linear}
+  .term--live{color:var(--k-danger)}
+  .readout{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin:4px 0 0}
+  .readout__n{font:800 clamp(44px,8vw,86px)/.85 var(--sc-font-display);letter-spacing:-.04em;
+    font-variant-numeric:tabular-nums;color:var(--k-danger)}
+  .readout__u{font:500 11px/1.55 var(--k-mono);color:var(--k-faint);max-width:20ch;
+    letter-spacing:.05em;text-transform:uppercase}
+  .gauge{margin:16px 0 0;height:9px;border-radius:5px;background:rgba(30,39,51,.9);overflow:hidden}
+  .gauge i{display:block;height:100%;background:linear-gradient(90deg,var(--sc-accent),var(--k-danger));
+    width:var(--k-fill,8%);border-radius:5px}
+  .kv{display:grid;grid-template-columns:1fr max-content;gap:5px 14px;margin:0;
+    font:500 12.5px/1.6 var(--k-mono)}
+  .kv dt{color:var(--k-faint)}
+  .kv dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;color:var(--sc-ink)}
+
+  /* ── Ruta: donde vive el camion, dentro del idioma del producto ────── */
+  .route{position:relative;height:64px;margin:2px 0 0}
+  .route__ln{position:absolute;left:0;right:0;top:34px;height:1px;background:var(--k-line-2)}
+  .route__tick{position:absolute;top:28px;width:1px;height:13px;background:var(--k-line-2)}
+  .route__lb{position:absolute;top:46px;transform:translateX(-50%);
+    font:600 10px/1 var(--k-mono);color:var(--k-faint)}
+  .route__truck{position:absolute;top:8px;transform:translateX(-50%);width:26px;height:26px}
+  .route__truck svg{width:26px;height:26px;stroke:var(--k-warn);fill:none;stroke-width:1.5;
+    stroke-linecap:round;stroke-linejoin:round}
+  .route__band{position:absolute;top:31px;height:7px;border-radius:4px;
+    background:rgba(245,185,66,.28);border:1px solid rgba(245,185,66,.5)}
+  .route__erp{position:absolute;top:24px;width:2px;height:21px;background:var(--sc-accent)}
+
+  /* ── Barra de clasificacion ────────────────────────────────────────── */
+  .stack{display:flex;height:38px;border-radius:7px;overflow:hidden;margin:0 0 9px}
+  .stack i{display:block;height:100%;transition:flex-grow .7s cubic-bezier(.2,.7,.3,1)}
+  .stack__k{display:flex;gap:16px;flex-wrap:wrap;font:500 11px/1.5 var(--k-mono);color:var(--k-faint)}
+  .stack__k b{display:block;color:var(--sc-ink);font-size:13px;font-weight:700}
+
+  /* ── Cierre: un input, no un boton ─────────────────────────────────── */
+  .run{display:flex;align-items:center;gap:0;border:1px solid var(--k-line-2);border-radius:9px;
+    background:var(--sc-canvas);overflow:hidden;max-width:520px}
+  .run__p{font:600 12px/1 var(--k-mono);color:var(--sc-accent);padding:0 0 0 13px}
+  .run input{flex:1;min-width:0;background:transparent;border:0;color:var(--sc-ink);
+    font:500 13px/1 var(--k-mono);padding:13px 11px;caret-color:var(--sc-accent)}
+  .run input:focus{outline:none}
+  .run:focus-within{border-color:var(--sc-accent)}
+  .run button{background:var(--sc-accent);border:0;color:var(--sc-accent-ink);cursor:pointer;
+    font:700 12px/1 var(--k-mono);padding:13px 16px;white-space:nowrap}
+
+  .foot{border-top:1px solid var(--k-line);margin-top:26px;padding:14px 0 0;
+    display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between;
+    font:500 10.5px/1.6 var(--k-mono);color:var(--k-faint)}
+
+  @media (max-width:900px){ .grid--2{grid-template-columns:1fr} .stage{padding-top:70px} }
+  @media (prefers-reduced-motion:reduce){
+    .log li,table.sku tr{opacity:1;transform:none;animation:none}
+    .dot{animation:none}
+  }
+</style>
+</head>
+<body>
+
+<span data-sc-progress></span>
+
+<div class="chrome">
+  <div class="chrome__in">
+    <span class="chrome__mark">kern<i>.</i></span>
+    <nav class="tabs">
+      <span class="tab" aria-current="true">escaneo</span>
+      <span class="tab">politica</span>
+      <span class="tab">entregable</span>
+    </nav>
+    <span class="chrome__status"><span class="dot"></span> muestra.csv · solo lectura</span>
+  </div>
+</div>
+
+<main id="top">
+
+  <!-- 1 · RECONOCIMIENTO · la superficie ya cargada, poblandose, sobre bodega real -->
+  <section data-sc-act="pin" data-sc-span="1.7" data-sc-drift="#080b11">
+    <div data-sc-stage>
+      <!-- El suelo fotografico. Solo en el acto de apertura: el resto de la
+           pagina se queda en el instrumento oscuro. El motor publica --sc-p
+           como estilo en linea sobre el acto, y las custom properties heredan,
+           asi que el movimiento sale de CSS puro sin una linea de JS. -->
+      <div class="ground" aria-hidden="true">
+        <picture>
+          <source media="(max-width:760px)" srcset="assets/bodega-m.webp" type="image/webp">
+          <img src="assets/bodega.webp" alt="" width="1920" height="1072" fetchpriority="high" decoding="async">
+        </picture>
+      </div>
+      <div class="stage"><div class="board">
+        <div class="grid grid--2">
+          <div class="panel" data-sc-cue="0 1 0 0">
+            <div class="panel__hd">
+              <svg viewBox="0 0 24 24"><path d="M3 4h18v16H3z"/><path d="M3 9.3h18M3 14.6h18"/><path d="M7.5 4v5.3M14 9.3v5.3"/></svg>
+              existencias
+              <span class="rt" id="rt-rows">5 SKU</span>
+            </div>
+            <div class="panel__bd" style="padding:14px 5px 6px">
+              <table class="sku"><thead><tr>
+                <th>SKU</th><th style="text-align:right">En mano</th><th style="text-align:right">Un/día</th>
+                <th style="text-align:right">Cobertura</th><th>Clase</th>
+              </tr></thead><tbody id="tb"></tbody></table>
+            </div>
+          </div>
+          <!-- greet and hold, igual que la tabla: en live surface el hero es la
+               superficie YA en un estado, y un tablero a medias en el aterrizaje
+               es un hero a medias. -->
+          <div class="panel" data-sc-cue="0 1 0 0">
+            <div class="panel__hd">
+              <svg viewBox="0 0 24 24"><g><path d="M2 6h11v9H2z"/><path d="M13 9h4l3 3v3h-7z"/><circle cx="6" cy="17.5" r="1.8"/><circle cx="16.5" cy="17.5" r="1.8"/></g></svg>
+              plazo del proveedor
+            </div>
+            <div class="panel__bd">
+              <div class="route" id="route"></div>
+              <dl class="kv" style="margin-top:12px">
+                <dt>Campo del ERP</dt><dd id="k-erp">21 d</dd>
+                <dt>Últimos 40 despachos</dt><dd id="k-obs">34 d</dd>
+                <dt>Desviación observada</dt><dd id="k-sd">11 d</dd>
+              </dl>
+              <p class="note">Ejemplo trabajado sobre datos de muestra. No es la medición de ningún cliente.</p>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 2 · DUDA · una linea de estado. En esta gramatica el silencio es un log, no un titular. -->
+  <section class="sc-section" data-sc-act="flow" data-sc-drift="#0b0f16">
+    <div class="stage" style="min-height:120svh"><div class="board" style="max-width:760px">
+      <div class="panel" data-sc-in data-sc-stagger="220">
+        <div class="panel__hd">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5.3l3.4 2"/></svg>
+          diagnóstico
+        </div>
+        <div class="panel__bd">
+          <ul class="log" style="padding:0;margin:0">
+            <li style="animation-delay:.05s">→ leyendo <b>muestra.csv</b> … 5 SKU, 40 recepciones</li>
+            <li style="animation-delay:.35s">→ comparando plazo declarado contra recepciones</li>
+            <li style="animation-delay:.7s" class="wn">! el campo de plazo no se actualiza desde 2019</li>
+            <li style="animation-delay:1.05s">→ <b>no tenés mucho inventario.</b> <span class="dg">tenés el inventario equivocado.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- 3 · VERTIGO · PICO · el panel de politica recalculando -->
+  <section id="pico" data-sc-act="pin" data-sc-span="3.4" data-sc-dwell="0.36" data-sc-drift="#0d0f14">
+    <div data-sc-stage>
+      <div class="stage"><div class="board">
+        <div class="grid grid--2">
+          <div class="panel">
+            <div class="panel__hd">
+              <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l3.5-4 3 2.5L20 7"/></svg>
+              política · stock de seguridad
+              <span class="rt" id="rt-src">σ del error medido</span>
+            </div>
+            <div class="panel__bd">
+              <p class="formula" data-sc-cue="0 1 0 0">
+                <span class="lit">SS</span><span>=</span><span class="lit">z</span><span>&middot;</span><span>&radic;(</span>
+                <span>LT &middot; &sigma;d&sup2;</span><span>+</span>
+                <span class="term" id="k-term">d&#772;&sup2; &middot; &sigma;LT&sup2;</span><span>)</span>
+              </p>
+              <div class="readout" data-sc-cue="0.1">
+                <output class="readout__n" id="k-ss">30</output>
+                <p class="readout__u">unidades al 95%<br>SKU de 10 un/día</p>
+              </div>
+              <div class="gauge" id="k-gauge"><i></i></div>
+              <p class="note">Ejemplo numérico de la documentación, recalculado en vivo con la fórmula de arriba. No es la medición de ningún cliente.</p>
+            </div>
+          </div>
+          <div class="panel" data-sc-cue="0.06">
+            <div class="panel__hd">
+              <svg viewBox="0 0 24 24"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg>
+              insumos
+            </div>
+            <div class="panel__bd">
+              <dl class="kv">
+                <dt>Lead time</dt><dd id="k-lt">21 d</dd>
+                <dt>σ del lead time</dt><dd id="k-slt">0,0</dd>
+                <dt>Varianza por lead time</dt><dd id="k-var">0</dd>
+                <dt>σ de la demanda</dt><dd>4,0</dd>
+                <dt>z (95%)</dt><dd>1,65</dd>
+              </dl>
+              <p class="note" id="k-verdict">El ERP dimensiona con σLT = 0. Es el único valor que la fórmula no admite medir mal sin castigo.</p>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 4 · ALIVIO · la clasificacion, ordenada por plata -->
+  <section class="sc-section" data-sc-act="flow" data-sc-drift="#080b11">
+    <div class="stage"><div class="board" style="max-width:880px">
+      <div class="panel" data-sc-in data-sc-stagger="120">
+        <div class="panel__hd">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16v6H4z"/><path d="M8 6v6M16 6v6"/><path d="M3 16h18M5 16v3M12 16v3M19 16v3"/></svg>
+          clasificación · ordenada por plata en riesgo
+        </div>
+        <div class="panel__bd">
+          <div class="stack" id="stack"></div>
+          <div class="stack__k" id="stackk"></div>
+          <p class="log" style="margin-top:16px">La plata detenida no está donde la vista la busca. Sobre esta muestra el <span class="wn">excedido</span> pesa más que el <span class="dg">muerto</span>, y el excedido todavía rota: nadie marca un SKU que despacha todos los días.</p>
+          <p class="note">La caja del excedido se libera sola, sin tocar los demás. Y el riesgo de los demás deja de ser una pregunta.</p>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- 5 · COMPETENCIA · que devuelve, en el idioma del entregable -->
+  <section data-sc-act="pin" data-sc-span="1.3" data-sc-drift="#0b0f16">
+    <div data-sc-stage>
+      <div class="stage"><div class="board" style="max-width:880px">
+        <div class="panel" data-sc-cue="0.06">
+          <div class="panel__hd">
+            <svg viewBox="0 0 24 24"><path d="M3 4h18v16H3z"/><path d="M3 9.3h18M3 14.6h18"/><path d="M7.5 4v5.3M14 9.3v5.3"/></svg>
+            entregable
+          </div>
+          <div class="panel__bd">
+            <ul class="log" style="padding:0;margin:0">
+              <li style="animation-delay:.05s">→ <b>Los SKU con plazo inflado:</b> caja que se libera, y se ejecuta sola.</li>
+              <li style="animation-delay:.3s">→ <b>Los demás:</b> buffer que falta, y el quiebre que corrías sin tenerlo medido.</li>
+              <li style="animation-delay:.55s">→ Van por separado porque son cuentas distintas.</li>
+              <li style="animation-delay:.8s" class="ok">✓ diagnóstico gratis · en solo lectura · sin escribir en tu ERP</li>
+            </ul>
+            <p class="note">El precio de Kern operando se publica cuando esté cerrado.</p>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 6 · DISPOSICION · el cierre es un input, dentro de la superficie -->
+  <section id="prueba" class="sc-section" data-sc-act="flow" data-sc-drift="#080b11">
+    <div class="stage"><div class="board" style="max-width:880px">
+      <div class="panel">
+        <div class="panel__hd">
+          <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l3.5-4 3 2.5L20 7"/></svg>
+          primer paso
+          <span class="rt">1 de 2</span>
+        </div>
+        <div class="panel__bd">
+          <p class="log" style="margin:0 0 14px">Dame dos archivos en solo lectura y en 30 minutos te muestro los SKU con nombre, y el monto si tus datos traen costo unitario.</p>
+          <!-- POST clasico: la lista CORS de linchpin esta vacia y su CSP declara
+               connect-src 'self', asi que un fetch entre origenes falla. Una
+               navegacion de formulario no pasa por CORS. Campos segun api_leads. -->
+          <form class="run" method="post" action="https://linchpin.fly.dev/api/leads">
+            <span class="run__p">$</span>
+            <label class="sc-label" for="k-mail">Correo</label>
+            <input id="k-mail" name="email" type="email" autocomplete="email" placeholder="tu@empresa.cl" required>
+            <input type="hidden" name="source" value="kern-landing">
+            <button type="submit">empezar</button>
+          </form>
+          <p class="note">Tu correo queda en el mismo registro que el del demo. Te respondemos a esa dirección con cómo mandar los dos archivos.</p>
+          <div class="foot">
+            <span>kern.</span>
+            <span>Escenario de demostración. Todas las cifras son un ejemplo trabajado, no la medición de un cliente.</span>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+</main>
+
+<script src="scrollcraft.js"></script>
+<script>
+ScrollCraft.mount(document.body);
+
+/* ─────────────────────────────────────────────────────────────────────────
+   La gramatica live surface exige que los paneles CALCULEN, no que esten
+   pintados: "si los paneles no pueden calcular, la gramatica no esta
+   disponible". Asi que todo lo que se ve abajo sale de estas dos tablas y
+   de las reglas reales del producto, corriendo en el navegador.
+
+   Los datos son de MUESTRA y la pagina lo dice en su cara. Salen de la
+   documentacion: la plantilla de stock y el ejemplo numerico del plazo.
+───────────────────────────────────────────────────────────────────────── */
+var MUESTRA = [
+  { id: 'ROD-6204', hand: 800, daily: 0,   idle: 220, cost: 8.00  },
+  { id: 'SEL-1120', hand: 900, daily: 5,   idle: 12,  cost: 12.50 },
+  { id: 'FIL-0480', hand: 150, daily: 3.5, idle: 10,  cost: 12.50 },
+  { id: 'COR-3310', hand: 640, daily: 2,   idle: 40,  cost: 18.00 },
+  { id: 'VAL-8802', hand: 300, daily: 6,   idle: 5,   cost: 9.00  }
+];
+var COBERTURA_OBJ = 90, UMBRAL_MUERTO = 180;
+
+/* Las reglas de src/excess_obsolete.py, sin adornos. */
+function clasificar(s) {
+  var cover = s.daily > 0 ? s.hand / s.daily : Infinity;
+  var clase, riesgo;
+  if (s.daily <= 0 || (s.idle !== null && s.idle >= UMBRAL_MUERTO)) {
+    clase = 'muerto'; riesgo = s.hand;
+  } else if (cover > COBERTURA_OBJ) {
+    clase = 'excedido'; riesgo = Math.max(0, s.hand - COBERTURA_OBJ * s.daily);
+  } else {
+    clase = 'sano'; riesgo = 0;
+  }
+  return { cover: cover, clase: clase, riesgo: riesgo, plata: riesgo * s.cost };
+}
+
+var nf = new Intl.NumberFormat('es-CL');
+var money = function (v) { return '$' + nf.format(Math.round(v)); };
+
+/* ── Panel 1: la tabla se puebla con lo calculado ─────────────────────── */
+(function () {
+  var tb = document.getElementById('tb');
+  if (!tb) return;
+  MUESTRA.forEach(function (s, i) {
+    var c = clasificar(s);
+    var cls = c.clase === 'muerto' ? 'dead' : (c.clase === 'excedido' ? 'exc' : 'ok');
+    var tr = document.createElement('tr');
+    tr.style.animationDelay = (0.12 + i * 0.12) + 's';
+    tr.innerHTML =
+      '<td>' + s.id + '</td>' +
+      '<td class="n">' + nf.format(s.hand) + '</td>' +
+      '<td class="n">' + String(s.daily).replace('.', ',') + '</td>' +
+      '<td class="n">' + (isFinite(c.cover) ? Math.round(c.cover) + ' d' : '∞') + '</td>' +
+      '<td><span class="pill pill--' + cls + '">' + c.clase + '</span></td>';
+    tb.appendChild(tr);
+  });
+  document.getElementById('rt-rows').textContent = MUESTRA.length + ' SKU';
+})();
+
+/* ── Panel 2: la ruta. El camion vive aca, dentro del idioma del producto:
+      marca donde cae el plazo declarado contra la banda observada. ────── */
+(function () {
+  var r = document.getElementById('route');
+  if (!r) return;
+  var MAXD = 48, ERP = 21, OBS = 34, SD = 11;
+  var pc = function (d) { return (d / MAXD) * 100; };
+  var h = '<div class="route__ln"></div>';
+  [0, 12, 24, 36, 48].forEach(function (d) {
+    h += '<div class="route__tick" style="left:' + pc(d) + '%"></div>' +
+         '<div class="route__lb" style="left:' + pc(d) + '%">' + d + 'd</div>';
+  });
+  h += '<div class="route__band" style="left:' + pc(OBS - SD) + '%;width:' + pc(2 * SD) + '%"></div>';
+  h += '<div class="route__erp" style="left:' + pc(ERP) + '%"></div>';
+  h += '<div class="route__truck" id="truck" style="left:' + pc(ERP) + '%">' +
+       '<svg viewBox="0 0 24 24"><path d="M2 6h11v9H2z"/><path d="M13 9h4l3 3v3h-7z"/>' +
+       '<circle cx="6" cy="17.5" r="1.8"/><circle cx="16.5" cy="17.5" r="1.8"/></svg></div>';
+  r.innerHTML = h;
+  /* el camion viaja del plazo declarado al observado: es el hallazgo, moviendose */
+  var t = document.getElementById('truck'), on = false;
+  new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      if (!e.isIntersecting || on) return;
+      on = true;
+      t.style.transition = 'left 2.1s cubic-bezier(.5,.02,.2,1)';
+      setTimeout(function () { t.style.left = pc(OBS) + '%'; }, 550);
+    });
+  }, { threshold: .4 }).observe(r);
+})();
+
+/* ── Panel 3: EL PICO. Misma logica que el build anterior, ahora como
+      panel del producto: el scroll reemplaza los supuestos del ERP por lo
+      medido y la formula se recalcula cuadro a cuadro.
+
+        SS = z * raiz( LT * sigma_d^2 + d^2 * sigma_LT^2 )
+        t=0  LT=21, sigma_LT=0   ->  30 unidades
+        t=1  LT=34, sigma_LT=11  -> 186 unidades
+   ─────────────────────────────────────────────────────────────────────── */
+(function () {
+  var act = document.getElementById('pico'); if (!act) return;
+  var elLT = document.getElementById('k-lt'), elS = document.getElementById('k-slt'),
+      elV = document.getElementById('k-var'), elSS = document.getElementById('k-ss'),
+      term = document.getElementById('k-term'), gauge = document.getElementById('k-gauge'),
+      src = document.getElementById('rt-src'), verdict = document.getElementById('k-verdict');
+  var Z = 1.65, D = 10, SD = 4, LT0 = 21, LT1 = 34, S0 = 0, S1 = 11, last = -1;
+  function ease(t) { return t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+
+  function frame() {
+    /* Se mide el recorrido del marco fijado, no --sc-p: el motor abre su
+       progreso cuando el acto entra por abajo, y la cifra terminaria de
+       moverse antes de estar en pantalla. */
+    var travel = act.offsetHeight - window.innerHeight;
+    var p = travel > 0 ? Math.min(1, Math.max(0, -act.getBoundingClientRect().top / travel)) : 0;
+    var t = ease(Math.min(1, Math.max(0, (p - 0.12) / 0.6)));
+    if (Math.abs(t - last) > 0.002) {
+      last = t;
+      var lt = LT0 + (LT1 - LT0) * t, slt = S0 + (S1 - S0) * t;
+      var varLT = D * D * slt * slt;
+      var ss = Z * Math.sqrt(lt * SD * SD + varLT);
+      elLT.textContent = Math.round(lt) + ' d';
+      elS.textContent = slt.toFixed(1).replace('.', ',');
+      elV.textContent = nf.format(Math.round(varLT));
+      elSS.textContent = Math.round(ss);
+      term.style.setProperty('--k-t', t.toFixed(3));
+      term.classList.toggle('term--live', t > 0.06);
+      gauge.firstElementChild.style.setProperty('--k-fill', (8 + t * 92).toFixed(1) + '%');
+      if (t > 0.9) {
+        src.textContent = 'σLT medido · 40 recepciones';
+        verdict.textContent = 'El 96% de la varianza que ese SKU enfrenta viene de un término que tu ERP no tiene.';
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+
+/* ── Panel 4: la barra apilada sale del mismo clasificador ────────────── */
+(function () {
+  var st = document.getElementById('stack'), kk = document.getElementById('stackk');
+  if (!st) return;
+  var tot = { muerto: 0, excedido: 0, sano: 0 }, un = { muerto: 0, excedido: 0, sano: 0 };
+  MUESTRA.forEach(function (s) {
+    var c = clasificar(s);
+    tot[c.clase] += c.plata; un[c.clase] += c.riesgo;
+  });
+  var suma = tot.muerto + tot.excedido + tot.sano || 1;
+  var tone = { muerto: 'var(--k-danger)', excedido: 'var(--k-warn)', sano: 'var(--sc-accent)' };
+  ['muerto', 'excedido', 'sano'].forEach(function (k) {
+    var share = Math.max(tot[k] / suma, k === 'sano' ? 0.08 : 0.02);
+    st.innerHTML += '<i style="flex-grow:' + share.toFixed(4) + ';background:' + tone[k] + '"></i>';
+    kk.innerHTML += '<span>' + k + '<b>' + money(tot[k]) + '</b>' +
+      nf.format(Math.round(un[k])) + ' un. en riesgo</span>';
+  });
+})();
+</script>
+</body>
+</html>

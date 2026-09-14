@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import replace
 
+from jobs.financial_kpis_job import fmt as fmt_kpi
 from nosilo_core.escalation import (
     OPERATIONAL,
     escalate,
@@ -19,8 +20,6 @@ from nosilo_core.escalation import (
     maybe_escalate_synthesized_columns,
 )
 from nosilo_core.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_handoff, as_options
-
-from jobs.financial_kpis_job import fmt as fmt_kpi
 
 # Canonical columns whose wholesale synthesis silently changes a money number or a
 # ranking. lead_time_std is excluded on purpose: defaulting it to 0.0 is the documented
@@ -319,6 +318,48 @@ def ddmrp_options(report: object) -> GuidedOutcome:
         items = [("Hold - buffers healthy", "No parts below buffer; monitor.",
                   "monitor; no action needed", "no cost"), reprofile]
     return _ranked(f"DDMRP over {report.n_parts} part(s): choose the execution move.", items)
+
+
+def import_case_options(report: object) -> GuidedOutcome:
+    """Never EXECUTED: the pack is a broker handoff even when the case is clean."""
+    n_conf = int(getattr(report, "n_conflicts", 0) or 0)
+    n_miss = int(getattr(report, "n_missing", 0) or 0)
+    send: _Item = (
+        "Send the field pack to the licensed broker",
+        "chile_din_field_pack.csv is a draft map, not a filed DIN/SICEX entry.",
+        "email the pack to the customs broker; importer remains importer of record",
+        "stops re-typing; filing stays human",
+    )
+    resolve: _Item = (
+        "Resolve contested fields first",
+        f"{n_conf} conflict(s) — pick packing vs invoice before anyone files.",
+        "choose a winner per contested row and re-run the case",
+        "prevents a false declaration",
+    )
+    fill: _Item = (
+        "Fill missing documents or required fields",
+        f"{n_miss} gap(s) in the Chile import core set or schema required fields.",
+        "add the missing JSON slices (invoice, packing, B/L or AWB) and re-run",
+        "incomplete pack must not be presented",
+    )
+    landed: _Item = (
+        "Run landed-cost on the same shipment",
+        "The pack is identity and quantity; landed_cost is the money view.",
+        "run the landed_cost tool on the shipment lines",
+        "separates paperwork from TCO",
+    )
+    if n_miss:
+        items = [fill, resolve, send]
+    elif n_conf:
+        items = [resolve, send, landed]
+    else:
+        items = [send, landed, fill]
+    return _ranked(
+        f"Import case: {getattr(report, 'n_documents', 0)} doc(s), "
+        f"{n_conf} conflict(s), {n_miss} gap(s) — choose the human step.",
+        items,
+        confidence=0.8,
+    )
 
 
 def landed_cost_options(report: object) -> GuidedOutcome:

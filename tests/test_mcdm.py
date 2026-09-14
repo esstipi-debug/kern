@@ -6,8 +6,8 @@ result maps to a protected, never-dead-end options outcome (Guided Execution Lay
 """
 
 import pytest
-from nosilo_core.guided import OPTIONS, passed_guided, recommend
 
+from nosilo_core.guided import OPTIONS, passed_guided, recommend
 from src.mcdm import (
     BWMResult,
     Criterion,
@@ -155,3 +155,33 @@ def test_award_outcome_is_protected_options_with_best_recommended():
     assert len(outcome.options) == 2
     assert recommend(outcome.options).label == "S1"
     assert any("S1" in o.action for o in outcome.options)  # staged award action carried
+
+
+def test_award_outcome_charges_for_a_criterion_that_was_never_measured():
+    """`topsis_rank` only ever sees the criteria that survived, so the ones the data
+    never carried have to be handed in -- and they have to cost. Passing only the ties
+    is how the same award reported the same confidence on three criteria and on five."""
+    crit = [Criterion("quality", True)]
+    alts = {"S1": {"quality": 9.0}, "S2": {"quality": 4.0}}
+    res = topsis_rank(alts, crit, {"quality": 1.0})
+
+    clean = award_outcome(res, summary="Award")
+    degraded = award_outcome(res, summary="Award", unmeasured=("otif", "lead_time"))
+
+    assert not res.ignored_criteria, "control: no tie may be doing the work here"
+    assert clean.confidence == 1.0
+    assert degraded.confidence < clean.confidence
+    assert passed_guided(degraded)
+
+
+def test_award_outcome_stacks_the_two_coverage_holes():
+    """A tie and an unmeasured criterion are different gaps; both count."""
+    crit = [Criterion("quality", True), Criterion("flat", True)]
+    alts = {"S1": {"quality": 9.0, "flat": 5.0}, "S2": {"quality": 4.0, "flat": 5.0}}
+    res = topsis_rank(alts, crit, {"quality": 0.5, "flat": 0.5})
+
+    assert res.ignored_criteria, "control: 'flat' must be dropped as a tie"
+    solo_tie = award_outcome(res, summary="Award")
+    both = award_outcome(res, summary="Award", unmeasured=("otif",))
+
+    assert both.confidence < solo_tie.confidence < 1.0

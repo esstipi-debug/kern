@@ -317,3 +317,229 @@ def test_the_method_field_is_not_named_after_any_metric():
     metric_words = ("fill_rate", "otif", "days_out", "stockout_day", "lost_sale", "quiebre")
     assert not any(w in "method" for w in metric_words)
     assert isinstance(of.not_measured("A").days_out_of_stock, type(None))
+
+
+# -- la promesa que vencio sin que saliera nada ---------------------------------
+
+
+def test_una_promesa_vencida_sin_nada_despachado_es_un_fallo_de_otif():
+    """El peor caso posible tiene que puntuar, y hasta ahora no puntuaba.
+
+    Una linea prometida para el 5 que nunca despacho nada no tiene fecha de entrega -- no
+    hubo entrega -- asi que caia fuera del denominador de OTIF por falta de la segunda
+    fecha. Resultado: el escenario mas grave (prometimos y no entregamos NADA) se reportaba
+    como "no medido" y el OTIF salia mejor de lo que fue.
+
+    La incoherencia es visible dentro del mismo registro: esa linea YA cuenta como faltante
+    total en fill rate y en venta perdida. Excluirla solo de OTIF no era prudencia, era una
+    inconsistencia.
+    """
+    lines = [
+        _line(10, 10, promised=date(2026, 1, 5), shipped=date(2026, 1, 5)),  # OTIF
+        _line(10, 0, promised=date(2026, 1, 5)),                             # nunca salio
+    ]
+
+    got = of.measure_from_order_lines("SKU-A", lines, as_of=date(2026, 2, 1))
+
+    assert got.otif == pytest.approx(0.5)
+    assert got.fill_rate == pytest.approx(0.5)
+    assert got.lost_sales_units == pytest.approx(10.0)
+
+
+def test_una_promesa_que_todavia_no_vencio_no_es_un_fallo():
+    """La trampa que hace falta el ``as_of``. Odoo reporta ``qty_delivered = 0.0`` en toda
+    orden CONFIRMADA que todavia no salio, con su fecha comprometida a futuro. Sin este
+    corte, cada orden abierta de cada cliente de Odoo pasaria a contar como incumplimiento
+    el dia que se mergea este cambio."""
+    lines = [_line(10, 0, promised=date(2026, 3, 20))]
+
+    got = of.measure_from_order_lines("SKU-A", lines, as_of=date(2026, 2, 1))
+
+    assert got.otif is None
+    # Y tampoco cuenta para fill rate. Esta linea afirmaba lo contrario cuando se escribio
+    # el arreglo del OTIF ("sigue contando para fill rate, que es lo correcto"): era una
+    # media verdad. Sacarla de OTIF y dejarla como faltante total en fill rate deja al
+    # registro contradiciendose -- la misma orden, no vencida para un criterio y fallada
+    # para el otro. Una orden en curso no es ni un acierto ni un faltante, en ningun lado.
+    assert got.lines_scored == 0
+    assert got.lines_in_flight == 1
+
+
+def test_sin_as_of_no_se_puede_saber_si_vencio_y_la_linea_queda_afuera():
+    """Sin fecha de corte no hay forma de saber si la promesa esta vencida o pendiente, y
+    adivinar en cualquiera de las dos direcciones inventa un numero. El comportamiento por
+    defecto no cambia."""
+    got = of.measure_from_order_lines("SKU-A", [_line(10, 0, promised=date(2026, 1, 5))])
+
+    assert got.otif is None
+
+
+def test_una_promesa_que_vence_EL_ULTIMO_DIA_de_la_ventana_si_se_juzga():
+    """La ventana es INCLUSIVA: ``as_of`` es el ultimo dia cubierto, no el primero que
+    falta. Una promesa que cae exactamente ahi vencio DENTRO de lo observado y hay que
+    juzgarla.
+
+    Una version previa de este test afirmaba lo contrario ("recibe el beneficio de la
+    duda"), y era una moneda al aire tirada antes de que la frontera estuviera definida.
+    Una vez que ``as_of`` significa "ultimo dia cubierto", diferir esa linea la deja en un
+    limbo del que no sale nunca: la proxima lectura tendra una ventana mas larga y la
+    juzgara igual, un dia tarde y con el mismo dato.
+    """
+    got = of.measure_from_order_lines(
+        "SKU-A", [_line(10, 0, promised=date(2026, 2, 1))], as_of=date(2026, 2, 1)
+    )
+
+    assert got.otif == 0.0
+    assert got.lines_in_flight == 0
+
+
+def test_una_cantidad_servida_NO_MEDIDA_no_puntua_aunque_la_promesa_haya_vencido():
+    """El discriminante entero. ``delivered_qty=0.0`` es una medicion -- no salio nada --
+    y ``None`` es una ausencia: nadie lo reporto. Un backend que no publica cantidades
+    servidas no puede producir fallos de OTIF de la nada solo porque sus promesas sean
+    viejas."""
+    got = of.measure_from_order_lines(
+        "SKU-A",
+        [{"ordered_qty": 10, "delivered_qty": None, "promised_date": date(2026, 1, 5)}],
+        as_of=date(2026, 2, 1),
+    )
+
+    assert got.otif is None
+
+
+def test_una_entrega_parcial_sin_fecha_sigue_afuera_de_otif():
+    """Salio algo pero no se sabe cuando. Puntuarlo como fallo seria correcto por lo
+    incompleto y arbitrario por lo temporal; puntuarlo como acierto seria falso. La unica
+    lectura honesta de ``salio algo, no se cuando`` es que el tiempo no se midio.
+
+    Solo el CERO es inequivoco: no hay envio, entonces no hay fecha que buscar."""
+    got = of.measure_from_order_lines(
+        "SKU-A", [_line(10, 4, promised=date(2026, 1, 5))], as_of=date(2026, 2, 1)
+    )
+
+    assert got.otif is None
+    assert got.fill_rate == pytest.approx(0.4)
+
+
+# -- la orden que todavia no vencio no es un faltante ----------------------------
+
+
+def test_una_linea_prometida_a_futuro_no_cuenta_como_faltante():
+    """Una orden confirmada que todavia no vencio no es una falla de servicio: es trabajo
+    en curso. Contarla castiga al cliente por pedidos que puede servir manana.
+
+    Odoo pone ``qty_delivered = 0.0`` en toda orden confirmada sin despachar, asi que sin
+    este corte el fill rate de cualquier cliente de Odoo arrastra su libro abierto entero
+    como si fuera quiebre -- y la venta perdida cuenta plata que nadie perdio.
+    """
+    lines = [
+        _line(10, 8, promised=date(2026, 1, 5), shipped=date(2026, 1, 5)),  # vencida, corta
+        _line(4, 0, promised=date(2026, 6, 30)),                            # abierta
+    ]
+
+    got = of.measure_from_order_lines("SKU-A", lines, as_of=date(2026, 2, 1))
+
+    assert got.fill_rate == pytest.approx(0.8)   # 8 de 10, no 8 de 14
+    assert got.lost_sales_units == pytest.approx(2.0)
+    assert got.lines_scored == 1
+    assert got.lines_in_flight == 1
+
+
+def test_una_linea_no_vencida_PERO_YA_ENTREGADA_si_cuenta():
+    """La evidencia le gana a la simetria, y esto es una correccion de mi propio diseno.
+
+    La primera version de esta regla excluia TODA linea prometida despues de la ventana,
+    entregada o no, buscando simetria: sacar solo las pendientes que estan cortas y dejar
+    los aciertos anticipados sube el fill rate por construccion, que es sesgo de
+    supervivencia de manual.
+
+    Correrla la refuto. Una linea entregada el 20 de enero contra una promesa para junio
+    es un HECHO que ya ocurrio; descartar una entrega observada para protegerse de un
+    sesgo es el error mas grande, y tiraba servicio real medido a la basura. Rompio seis
+    tests legitimos donde las entregas habian pasado de verdad.
+
+    Asi que una linea con despacho -- o ya servida entera -- esta RESUELTA y cuenta. La
+    asimetria que queda es real y es el precio de no descartar hechos; se publica en
+    ``lines_in_flight`` para que se pueda ver su tamano en vez de discutirla a ciegas.
+    """
+    lines = [
+        _line(10, 8, promised=date(2026, 1, 5), shipped=date(2026, 1, 5)),
+        _line(10, 10, promised=date(2026, 6, 30), shipped=date(2026, 1, 20)),  # servida temprano
+    ]
+
+    got = of.measure_from_order_lines("SKU-A", lines, as_of=date(2026, 2, 1))
+
+    assert got.fill_rate == pytest.approx(0.9)  # 18 de 20: la entrega temprana es un hecho
+    assert got.lines_scored == 2
+    assert got.lines_in_flight == 0
+
+
+def test_sin_promesa_no_hay_forma_de_saber_si_esta_abierta_y_se_sigue_contando():
+    """El limite honesto de este arreglo. ``commitment_date`` en Odoo esta en blanco de
+    rutina, y sin fecha prometida una linea corta y una orden en curso son indistinguibles.
+    Excluirlas todas tiraria la mayor parte de los datos reales; contarlas mantiene el
+    comportamiento anterior, que al menos es conocido."""
+    got = of.measure_from_order_lines(
+        "SKU-A", [_line(10, 0)], as_of=date(2026, 2, 1)
+    )
+
+    assert got.fill_rate == pytest.approx(0.0)
+    assert got.lines_scored == 1
+    assert got.lines_in_flight == 0
+
+
+def test_sin_ventana_nada_se_considera_en_curso():
+    """Sin fecha de corte no se puede saber que vencio. El comportamiento por defecto no
+    cambia: se cuenta todo, como antes."""
+    got = of.measure_from_order_lines("SKU-A", [_line(4, 0, promised=date(2026, 6, 30))])
+
+    assert got.fill_rate == pytest.approx(0.0)
+    assert got.lines_in_flight == 0
+
+
+def test_una_linea_en_curso_no_aporta_dias_sin_servir_ni_venta_perdida():
+    """Los tres numeros se mueven juntos o el registro se contradice a si mismo: una linea
+    que no cuenta como faltante tampoco puede aportar un dia de quiebre ni plata perdida."""
+    lines = [
+        _line(10, 10, promised=date(2026, 1, 5), shipped=date(2026, 1, 5), price=25.0),
+        _line(4, 0, promised=date(2026, 6, 30), price=25.0),
+    ]
+
+    got = of.measure_from_order_lines("SKU-A", lines, as_of=date(2026, 2, 1))
+
+    assert got.fill_rate == pytest.approx(1.0)
+    assert got.lost_sales_units == pytest.approx(0.0)
+    assert got.lost_sales_value == pytest.approx(0.0)  # y no 4 x 25 = 100 de plata inventada
+    assert got.days_out_of_stock == 0
+
+
+def test_el_metodo_declara_que_se_dejaron_lineas_en_curso():
+    """Un denominador mas chico sin explicacion es un numero que un cliente no puede
+    reconciliar contra su propio ERP. El ``method`` tiene que decir que se excluyo."""
+    lines = [
+        _line(10, 8, promised=date(2026, 1, 5), shipped=date(2026, 1, 5)),
+        _line(4, 0, promised=date(2026, 6, 30)),
+    ]
+
+    got = of.measure_from_order_lines("SKU-A", lines, as_of=date(2026, 2, 1))
+
+    assert "en curso" in got.method
+
+
+def test_un_sku_cuyas_ordenes_estan_TODAS_en_curso_dice_eso_y_no_no_medido():
+    """"Nada vencio todavia" y "nadie lo midio" son estados distintos, y se veian igual.
+
+    Un SKU cuyo libro entero esta abierto cae con cero lineas puntuadas, que es la misma
+    condicion que dispara ``not_measured``. Pero no es lo mismo: en un caso el backend no
+    publica servicio, y en el otro lo publica y todavia no hay nada que juzgar. Un cliente
+    que acaba de conectar su ERP y ve "no medido" sobre su cartera nueva merece leer por
+    que.
+    """
+    got = of.measure_from_order_lines(
+        "SKU-A", [_line(4, 0, promised=date(2026, 6, 30))], as_of=date(2026, 2, 1)
+    )
+
+    assert got.provenance == of.PROVENANCE_NOT_MEASURED
+    assert got.fill_rate is None
+    assert got.lines_in_flight == 1
+    assert "en curso" in got.method

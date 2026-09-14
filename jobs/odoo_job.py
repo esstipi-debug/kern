@@ -20,8 +20,7 @@ from pathlib import Path
 
 from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
 from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
-
-from src.connectors.odoo import OdooClient, OdooConnector, OdooRPC, demo_odoo
+from src.connectors.odoo import OdooClient, OdooConnector, OdooError, OdooRPC, demo_odoo
 from src.connectors.replenish import ReplenishmentLine, plan_replenishment
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
@@ -39,6 +38,41 @@ class OdooReplenishmentReport:
     cover_periods: float
     outcome: GuidedOutcome
     summary: str
+    #: SKU -> unidades en OC abiertas que el plan desconto, o ``None`` cuando no se
+    #: pudo leer (sin modulo de Compras, sin ``qty_received``). ``None`` y ``{}``
+    #: significan cosas distintas: el primero es "no se pudo medir", el segundo
+    #: "medido, y no viene nada".
+    on_order_by_sku: dict[str, float] | None = None
+    #: En palabras, que se neteo o por que no. Viaja al resumen, al deck y al CSV.
+    netting_note: str = ""
+
+
+def read_on_order(connector: OdooConnector) -> tuple[dict[str, float] | None, str]:
+    """Lo que ya viene en camino por SKU, o por que no se pudo saber.
+
+    La reposicion dimensiona contra la POSICION (stock + en camino), no contra el
+    estante, para no volver a comprar lo que ya se pidio. Cuando el conector no
+    puede leer las OC abiertas devuelve ``None`` con la razon, nunca ``{}``: un mapa
+    vacio se leeria aguas abajo como "medido, y no viene nada", y cada linea del plan
+    declararia una posicion que nadie midio.
+    """
+    try:
+        abiertas = connector.open_purchase_qty_by_sku()
+    except OdooError as exc:
+        return None, f"no se desconto lo que viene en camino: {exc}"
+    partes = [f"descontado lo que viene en camino en {len(abiertas.by_sku)} SKU(s) con OC abierta"]
+    descartadas = abiertas.dropped.get("uom_distinta", 0)
+    if descartadas:
+        partes.append(f"{descartadas} linea(s) de OC en otra unidad de medida quedaron sin contar")
+    no_verificables = abiertas.dropped.get("uom_no_verificable", 0)
+    if no_verificables:
+        partes.append(
+            f"{no_verificables} linea(s) de OC quedaron sin contar porque esta base no expone "
+            "la unidad de la linea (product_uom): el en-camino esta sub-estimado"
+        )
+    if abiertas.truncated:
+        partes.append("lectura truncada: el en-camino esta sub-estimado y el plan compra de mas")
+    return abiertas.by_sku, "; ".join(partes)
 
 
 def _make_rpc(params: dict) -> tuple[OdooRPC, str]:
@@ -137,7 +171,10 @@ def run(
     value (from Odoo's own product cost) - see ``_build_outcome``.
     """
     connector: OdooConnector = payload["connector"]
-    plan = plan_replenishment(connector, cover_periods=cover_periods, store=connector)
+    on_order, netting_note = read_on_order(connector)
+    plan = plan_replenishment(
+        connector, cover_periods=cover_periods, store=connector, on_order_by_sku=on_order
+    )
     restock = dict(plan.restock)
     total = sum(restock.values())
     n_skus = len(plan.lines)
@@ -145,7 +182,7 @@ def run(
     restock_value = sum(qty * costs.get(sku, 0.0) for sku, qty in restock.items())
     summary = (
         f"Read {n_skus} product(s) from {payload['source']}; {len(restock)} below a "
-        f"{cover_periods:.0f}-period cover ({total:,.0f} units short)."
+        f"{cover_periods:.0f}-period cover ({total:,.0f} units short). {netting_note}."
     )
     return OdooReplenishmentReport(
         source=str(payload["source"]),
@@ -160,6 +197,8 @@ def run(
             len(restock), total, restock_value=restock_value, financial_threshold=financial_threshold
         ),
         summary=summary,
+        on_order_by_sku=on_order,
+        netting_note=netting_note,
     )
 
 
@@ -183,6 +222,10 @@ def write_operational(report: OdooReplenishmentReport, out_dir: str | Path, clie
             "target": round(ln.target, 2),
             "restock_qty": round(ln.restock_qty, 2),
             "lead_time_days": round(report.lead_times.get(ln.sku, 0.0), 1),
+            # En blanco (no 0) cuando no se pudo leer lo que viene en camino: la
+            # columna vacia dice "no medido", un cero diria "medido, nada en camino".
+            "on_order": "" if ln.on_order is None else round(ln.on_order, 2),
+            "position": "" if ln.position is None else round(ln.position, 2),
         }
         for ln in report.lines
     ]
@@ -215,6 +258,24 @@ def build_deck(
             impact="replenish to avoid stockouts on the thin SKUs",
         )
     )
+    if report.on_order_by_sku is None:
+        # Que el lector lo vea ANTES de aprobar: sin esto, cada cantidad de abajo
+        # puede estar contando de nuevo una OC que ya esta en camino.
+        findings.append(
+            Finding(
+                "Las cantidades NO descuentan lo que ya viene en camino",
+                report.netting_note or "no se pudo leer las ordenes de compra abiertas",
+                impact="restar a mano las OC abiertas antes de aprobar cualquier linea",
+            )
+        )
+    elif report.netting_note:
+        findings.append(
+            Finding(
+                "Cantidades netas de lo que ya viene en camino",
+                report.netting_note,
+                impact="las OC abiertas ya estan descontadas; no volver a restarlas",
+            )
+        )
     if short:
         worst = max(short, key=lambda ln: ln.restock_qty)
         findings.append(

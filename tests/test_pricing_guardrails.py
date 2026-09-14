@@ -23,8 +23,8 @@ from decimal import Decimal
 
 import pandas as pd
 import pytest
-from nosilo_core.writeback import Change, Changeset
 
+from nosilo_core.writeback import Change, Changeset
 from scm_agent.knowledge import GroundedCitation
 from src.pricing_guardrails import (
     DEFAULT_MARKETS_CONFIG_DIR,
