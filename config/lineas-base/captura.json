@@ -1,0 +1,74 @@
+{
+  "contexto": {
+    "medido": "2026-08-06",
+    "commit": "976124e",
+    "comando": "scripts/verify_fidelidad.py --mundos 25 --n-skus 16 --semanas 52",
+    "mundos": 25,
+    "semilla_inicial": 1000,
+    "n_skus": 16,
+    "n_proveedores": 2,
+    "semanas": 52,
+    "replan_cada": 4,
+    "niveles": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "nota": "mediana y p90 no se transcribieron del informe; la comparacion solo usa media, desviacion y n_medibles"
+  },
+  "distribuciones": [
+    {
+      "carril": "forced",
+      "nivel": 0,
+      "n_mundos": 25,
+      "n_medibles": 25,
+      "media": 0.087,
+      "desviacion": 0.074,
+      "p10": 0.021,
+      "mediana": null,
+      "p90": null,
+      "peor": -0.093,
+      "mejor": null
+    },
+    {
+      "carril": "forced",
+      "nivel": 1,
+      "n_mundos": 25,
+      "n_medibles": 25,
+      "media": 0.069,
+      "desviacion": 0.097,
+      "p10": -0.07,
+      "mediana": null,
+      "p90": null,
+      "peor": -0.121,
+      "mejor": null
+    },
+    {
+      "carril": "forced",
+      "nivel": 2,
+      "n_mundos": 25,
+      "n_medibles": 21,
+      "media": 0.106,
+      "desviacion": 0.08,
+      "p10": 0.011,
+      "mediana": null,
+      "p90": null,
+      "peor": -0.07,
+      "mejor": null
+    },
+    {
+      "carril": "forced",
+      "nivel": 3,
+      "n_mundos": 25,
+      "n_medibles": 21,
+      "media": 0.006,
+      "desviacion": 0.088,
+      "p10": -0.09,
+      "mediana": null,
+      "p90": null,
+      "peor": -0.149,
+      "mejor": null
+    }
+  ]
+}

@@ -274,6 +274,7 @@ def kern_policy(
     seed: int,
     out_dir: str | Path,
     forced: bool,
+    omit: frozenset[str] | set[str] | tuple[str, ...] = (),
 ) -> Policy:
     """Corre a Kern por el orquestador completo sobre la lente del nivel pedido.
 
@@ -282,9 +283,13 @@ def kern_policy(
     ``intent.classify`` como lo haria un cliente real. Nunca lee el mundo
     directamente -- solo la lente (``export_history``), y nunca llama al
     orquestador con un atajo que se salte prepare/run/QA/deliver.
+
+    ``omit`` viaja a la lente para poder descomponer un nivel de suciedad en
+    los inyectores que lo componen -- ver ``lens.apply_dirt``.
     """
     out = Path(out_dir)
-    view = export_history(world, outcomes, out / "view.csv", level=level, seed=seed)
+    view = export_history(world, outcomes, out / "view.csv", level=level, seed=seed,
+                          omit=omit)
 
     orch = Orchestrator(clients_root=None)
     result = orch.run(
