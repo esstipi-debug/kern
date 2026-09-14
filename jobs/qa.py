@@ -11,7 +11,6 @@ import math
 from typing import TYPE_CHECKING
 
 from nosilo_core.guided import EXECUTED, GuidedOutcome, verify_guided
-
 from src.forecasting import MIN_PERIODS_FOR_POLICY
 from src.sop_engine.coherence import CHECK_BUDGET_FEASIBILITY, CHECK_PROMO_COVERAGE, CHECK_SERVICE_LEVEL
 

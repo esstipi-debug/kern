@@ -25,8 +25,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from jobs.odoo_job import read_on_order  # noqa: E402
+from nosilo_core import writeback  # noqa: E402
+from nosilo_core.writeback_store import SqliteAuditLedger  # noqa: E402
 from src.connectors.odoo import OdooConnector, OdooRPC, demo_odoo  # noqa: E402
 from src.connectors.replenish import plan_replenishment  # noqa: E402
+from src.data_paths import data_root  # noqa: E402
 
 
 def _rpc() -> OdooRPC:
@@ -48,8 +52,8 @@ def main() -> None:
     parser.add_argument("--draft-po", action="store_true",
                         help="raise draft purchase orders instead of applying reorder points")
     parser.add_argument("--approved-by", default=None,
-                        help="who authorises the purchase orders (required with --draft-po); "
-                             "recorded on the writeback audit entry")
+                        help="who authorises the write (reorder points OR draft POs); without it the "
+                             "run stays a dry-run. Recorded on the writeback audit ledger")
     args = parser.parse_args()
     if args.draft_po and not args.approved_by:
         # Creating POs is TIER_IRREVERSIBLE. There is no unattended path to it by
@@ -58,7 +62,19 @@ def main() -> None:
         parser.error("--draft-po requires --approved-by (the human authorising the spend)")
 
     print("\n=== Odoo connector (read -> forecast -> safe restock) ===")
-    connector = OdooConnector(_rpc())
+    # Every write leaves a row in a ledger ON DISK (KERN_DATA_DIR, else <repo>/data):
+    # who approved, when, and the idempotency key. Process memory would forget it on
+    # the next run, and "who touched the client's Odoo" is the first question a
+    # partner asks when something looks off. Without --approved-by nothing can be
+    # written, so no ledger is opened and a dry run leaves no file behind.
+    ledger_path: Path | None = None
+    if args.approved_by:
+        root = data_root()
+        root.mkdir(parents=True, exist_ok=True)
+        ledger_path = root / "odoo_writeback.sqlite"
+    connector = OdooConnector(
+        _rpc(), ledger=SqliteAuditLedger(ledger_path) if ledger_path else None
+    )
 
     products = connector.list_products()
     on_hand = {lvl.sku: lvl.available for lvl in connector.inventory_levels()}
@@ -66,7 +82,14 @@ def main() -> None:
     print(f"  products : {', '.join(p.sku for p in products)}")
     print(f"  orders   : {len(connector.orders())} confirmed sales order(s)")
 
-    plan = plan_replenishment(connector, cover_periods=args.cover, store=connector)
+    # Contra la POSICION (stock + lo que ya viene), no contra el estante: sin esto
+    # la corrida volvia a comprar lo que ya estaba pedido. Si no se puede leer, se
+    # dice y las cantidades salen sin descontar (nunca "descontado: cero").
+    on_order, netting_note = read_on_order(connector)
+    print(f"  En camino: {netting_note}")
+    plan = plan_replenishment(
+        connector, cover_periods=args.cover, store=connector, on_order_by_sku=on_order
+    )
 
     print("\n  SKU      on-hand  lead(d)  restock-to-target")
     restock = plan.restock
@@ -93,16 +116,27 @@ def main() -> None:
             print(f"    PO {po_id}: {', '.join(skus)}")
         if po.unsourced:
             print(f"  Unsourced (no supplier in Odoo): {', '.join(po.unsourced)}")
+        for sku, (asked, ordered) in sorted(po.raised_to_min.items()):
+            print(f"  {sku}: the plan asked {asked:.0f}, the supplier's minimum is {ordered:.0f} -> ordered {ordered:.0f}")
+        print(f"  Audit ledger: {ledger_path}")
         return
 
-    # Option 1 (default): apply reorder points. Stage is a dry-run; apply writes them back.
+    # Option 1 (default): reorder points. Stage is ALWAYS a dry-run; applying needs a
+    # named human even though the write is reversible. On a client's Odoo "reversible"
+    # is a property of the field, not of the trust: the buyer still wants to know who
+    # moved their reorder points, and the ledger row is what answers that.
     if plan.changeset is None:
         return
     print(f"  Staged (dry-run): {plan.changeset.summary()}")
-    result = connector.apply_restock(plan.changeset)
-    print(f"  Applied reorder point(s): {result.applied} (audit key {result.audit_id})")
+    if not args.approved_by:
+        print("  Nothing applied: pass --approved-by <name> to write the reorder points.")
+        return
+    approval = writeback.approve(plan.changeset, args.approved_by)
+    result = connector.apply_restock(plan.changeset, approval=approval, auto_apply_reversible=False)
+    print(f"  Applied reorder point(s): {result.applied} (audit key {result.audit_id}, approved by {args.approved_by})")
+    print(f"  Audit ledger: {ledger_path}")
 
-    again = connector.apply_restock(plan.changeset)
+    again = connector.apply_restock(plan.changeset, approval=approval, auto_apply_reversible=False)
     print(f"  Re-apply same key -> idempotent_skip={again.idempotent_skip} (no double-write)")
 
 

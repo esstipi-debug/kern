@@ -99,6 +99,13 @@ ALL_ORDERS_SCOPE = "read_all_orders"
 #: Cuanto historial de ordenes devuelve Shopify sin ``read_all_orders``.
 ORDERS_WINDOW_WITHOUT_ALL_ORDERS_DAYS = 60
 
+#: Sin este, ``order.fulfillmentOrders`` viene VACIO -- con un 200, igual que
+#: ``read_all_orders`` recorta a 60 dias sin fallar. Es de donde sale la fecha
+#: prometida al comprador, o sea la mitad "on time" de OTIF. Fuera de
+#: REQUIRED_SCOPES por lo mismo que el otro: todo lo demas funciona sin el, y
+#: pedirlo obligaria a cada cliente ya instalado a reinstalar la app.
+FULFILLMENT_ORDERS_SCOPE = "read_merchant_managed_fulfillment_orders"
+
 #: Si el comerciante concedio alguno con este prefijo, esta ruta igual no lo usa
 #: -- pero se reporta. "Solo lectura" es una afirmacion sobre permisos, y una
 #: afirmacion sobre permisos que nadie mide es una promesa.
@@ -257,6 +264,9 @@ class ConnectionCheck:
     shop_name: str = ""
     #: ``read_all_orders`` concedido: sin el, el historial se corta a 60 dias.
     all_orders: bool = False
+    #: ``read_merchant_managed_fulfillment_orders`` concedido: sin el, la fecha
+    #: prometida al comprador no se puede leer y OTIF queda sin su mitad "on time".
+    fulfillment_orders: bool = False
 
     @property
     def actionable(self) -> bool:
@@ -439,6 +449,12 @@ ALL_ORDERS_COPY = (
     "equivocadas. Marcalo junto con los demas."
 )
 
+FULFILLMENT_ORDERS_COPY = (
+    "Deja leer la fecha de entrega que se le PROMETIO al comprador en el checkout "
+    "(order.fulfillmentOrders -> deliveryMethod). Es la mitad 'on time' de OTIF: sin ella se "
+    "puede medir cuanto se sirvio de cada pedido, pero no si llego cuando se dijo."
+)
+
 #: Los que esta ruta NUNCA pide. Va en el copy a proposito: que el motion no
 #: escriba es el argumento de venta, y un argumento que solo aparece en un
 #: docstring no lo lee el que decide.
@@ -508,7 +524,18 @@ def setup_copy() -> dict:
                         f"el analisis corre igual, pero sobre "
                         f"{ORDERS_WINDOW_WITHOUT_ALL_ORDERS_DAYS} dias de historial, y se avisa."
                     ),
-                }
+                },
+                {
+                    "handle": FULFILLMENT_ORDERS_SCOPE,
+                    "para_que": FULFILLMENT_ORDERS_COPY,
+                    "si_falta": (
+                        "el fill rate y la venta perdida se miden igual, pero el OTIF queda "
+                        "reportado como NO MEDIDO: sin la fecha que se le prometio al comprador "
+                        "no hay contra que comparar la de entrega. La respuesta de Shopify es "
+                        "EXITOSA y la lista viene vacia, asi que sin este aviso parece que la "
+                        "tienda no promete fechas."
+                    ),
+                },
             ],
             "nunca_se_piden": list(NEVER_REQUESTED),
         },
@@ -852,6 +879,7 @@ def check_connection(
         api_version_requested=api_version,
         shop_name=shop_name,
         all_orders=ALL_ORDERS_SCOPE in concedidos,
+        fulfillment_orders=FULFILLMENT_ORDERS_SCOPE in concedidos,
     )
 
 
@@ -1219,9 +1247,14 @@ class BulkStatus:
 
 def start_bulk_orders(
     http: Any, *, since: str | None = None, until: str | None = None,
-    api_version: str = PINNED_VERSION, access_token: str = "",
+    api_version: str = PINNED_VERSION, access_token: str = "", query: str | None = None,
 ) -> str:
     """Arranca la operacion y devuelve su id.
+
+    ``query`` deja correr OTRA consulta de lectura por esta misma maquinaria --
+    la del lado de servicio (``shopify_service.bulk_service_query``) -- sin
+    duplicar el arranque, la sanitizacion del token ni el manejo de
+    ``userErrors``. Sin argumento sigue siendo la lectura de demanda de siempre.
 
     ``bulkOperationRunQuery`` es una MUTACION, y es la unica que esta ruta
     ejecuta. No escribe nada en la tienda: le entrega a Shopify una consulta de
@@ -1233,7 +1266,7 @@ def start_bulk_orders(
     """
     resp = _post(
         http, _graphql_path(api_version), BULK_RUN_MUTATION,
-        {"query": bulk_orders_query(since, until)},
+        {"query": query if query is not None else bulk_orders_query(since, until)},
     )
     if _status(resp) >= 400:
         raise ShopifyConnectError(
@@ -1357,6 +1390,64 @@ def _bulk_order_events(lineas: Any) -> Any:
         yield actual
 
 
+def run_bulk_read(
+    http: Any,
+    *,
+    query: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    api_version: str = PINNED_VERSION,
+    access_token: str = "",
+    bulk_id: str = "",
+    max_wait: float = 120.0,
+    poll_every: float = 3.0,
+    sleep: Any = None,
+    fetch_jsonl: Any = None,
+) -> tuple[Any | None, BulkStatus]:
+    """Arranca (o retoma) una lectura masiva y devuelve ``(lineas, estado)``.
+
+    La maquinaria que comparten la lectura de demanda y la de servicio: arranque,
+    espera acotada, los dos estados terminales que son un error, y el COMPLETED
+    sin url que NO lo es. Vive en un solo lugar a proposito -- la regla de no
+    tocar ``partialDataUrl`` es la que impide entregar un historial a medias como
+    si estuviera completo, y una segunda copia de esta espera es una segunda
+    oportunidad de olvidarla.
+
+    ``lineas`` es ``None`` mientras la operacion sigue corriendo (el llamador
+    vuelve mas tarde con ``bulk_id`` y no paga de nuevo el arranque), y ``()``
+    cuando termino sin un solo objeto, que es un resultado vacio legitimo.
+    """
+    import time as _time
+
+    dormir = sleep if sleep is not None else _time.sleep
+    bajar = fetch_jsonl if fetch_jsonl is not None else download_jsonl
+
+    op = bulk_id or start_bulk_orders(
+        http, since=since, until=until, api_version=api_version,
+        access_token=access_token, query=query,
+    )
+    estado = poll_bulk(http, op, api_version=api_version, access_token=access_token)
+    esperado = 0.0
+    while not estado.done and esperado < max_wait:
+        dormir(poll_every)
+        esperado += poll_every
+        estado = poll_bulk(http, op, api_version=api_version, access_token=access_token)
+
+    if not estado.done:
+        return None, estado
+    if estado.status == BULK_FAILED:
+        raise ShopifyConnectError(
+            f"la lectura masiva fallo ({estado.error_code or 'sin codigo'}). No se usa "
+            f"partialDataUrl: un historial a medias da una demanda mas baja que la real y "
+            f"empuja SKU hacia clase C y hacia excedente, sin que la salida se vea incompleta."
+        )
+    if estado.status == BULK_CANCELED:
+        raise ShopifyConnectError("la lectura masiva fue cancelada antes de terminar")
+    if not estado.url:
+        return (), estado
+    return bajar(estado.url), estado
+
+
 def read_sales_history_bulk(
     http: Any,
     *,
@@ -1382,39 +1473,14 @@ def read_sales_history_bulk(
     Sale por la MISMA :func:`_aggregate_orders` que el camino paginado, asi que
     la misma tienda da la misma clasificacion por las dos puertas.
     """
-    import time as _time
-
-    dormir = sleep if sleep is not None else _time.sleep
-    bajar = fetch_jsonl if fetch_jsonl is not None else download_jsonl
-
-    op = bulk_id or start_bulk_orders(
-        http, since=since, until=until, api_version=api_version, access_token=access_token
+    lineas, estado = run_bulk_read(
+        http, since=since, until=until, api_version=api_version, access_token=access_token,
+        bulk_id=bulk_id, max_wait=max_wait, poll_every=poll_every, sleep=sleep,
+        fetch_jsonl=fetch_jsonl,
     )
-    estado = poll_bulk(http, op, api_version=api_version, access_token=access_token)
-    esperado = 0.0
-    while not estado.done and esperado < max_wait:
-        dormir(poll_every)
-        esperado += poll_every
-        estado = poll_bulk(http, op, api_version=api_version, access_token=access_token)
-
-    if not estado.done:
-        # Sigue corriendo. No es un error y no se inventa un resultado parcial:
-        # el llamador vuelve con este id.
+    if lineas is None:
         return None, estado
-    if estado.status == BULK_FAILED:
-        raise ShopifyConnectError(
-            f"la lectura masiva fallo ({estado.error_code or 'sin codigo'}). No se usa "
-            f"partialDataUrl: un historial a medias da una demanda mas baja que la real y "
-            f"empuja SKU hacia clase C y hacia excedente, sin que la salida se vea incompleta."
-        )
-    if estado.status == BULK_CANCELED:
-        raise ShopifyConnectError("la lectura masiva fue cancelada antes de terminar")
-    if not estado.url:
-        # COMPLETED sin url es el caso de cero objetos: la tienda no tiene
-        # ordenes en el rango. Es un resultado vacio legitimo, no una falla.
-        return _aggregate_orders((), catalog=catalog), estado
-
-    return _aggregate_orders(_bulk_order_events(bajar(estado.url)), catalog=catalog), estado
+    return _aggregate_orders(_bulk_order_events(lineas), catalog=catalog), estado
 
 
 # -- 3. lectura de stock por location -------------------------------------------
@@ -2285,14 +2351,31 @@ class InMemoryShopifyAdmin:
                 "cancelledAt": o.get("cancelledAt"),
                 "test": o.get("test", False),
             }))
+            corto = o["id"].rsplit("/", 1)[-1]
             for i, e in enumerate(((o.get("lineItems") or {}).get("edges") or [])):
                 n = e.get("node") or {}
                 lineas.append(_json.dumps({
-                    "id": f"gid://shopify/LineItem/{o['id'].rsplit('/', 1)[-1]}-{i}",
+                    "id": f"gid://shopify/LineItem/{corto}-{i}",
                     "quantity": n.get("quantity"),
                     "sku": n.get("sku"),
+                    # El lado de servicio viaja solo si la orden lo trae: una
+                    # tienda sin datos de entrega se dobla omitiendolos, que es
+                    # el caso que tiene que salir "no medido" y no cero.
+                    **{k: n[k] for k in
+                       ("currentQuantity", "unfulfilledQuantity", "originalUnitPriceSet")
+                       if k in n},
                     "__parentId": o["id"],
                 }))
+            for i, e in enumerate(((o.get("fulfillments") or {}).get("edges") or [])):
+                n = dict(e.get("node") or {})
+                n["id"] = f"gid://shopify/Fulfillment/{corto}-{i}"
+                n["__parentId"] = o["id"]
+                lineas.append(_json.dumps(n))
+            for i, e in enumerate(((o.get("fulfillmentOrders") or {}).get("edges") or [])):
+                n = dict(e.get("node") or {})
+                n["id"] = f"gid://shopify/FulfillmentOrder/{corto}-{i}"
+                n["__parentId"] = o["id"]
+                lineas.append(_json.dumps(n))
         return lineas
 
     def _stock_page(self, location_id: str, cursor: str | None) -> dict:

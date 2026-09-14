@@ -18,8 +18,8 @@ from dataclasses import dataclass
 
 from nosilo_core.guided import GuidedOutcome, HandoffPacket, Residual, as_executed, as_handoff
 from nosilo_core.writeback import Changeset
-
 from src.connectors import InventorySource, Order
+from src.ddmrp import net_flow_position
 from src.forecasting import MIN_PERIODS_FOR_POLICY, forecast_demand
 
 
@@ -37,6 +37,14 @@ class ReplenishmentLine:
     #: Order-days observed for this SKU. See demand_by_sku()'s docstring on why
     #: this is order-DAYS and not calendar periods.
     n_observations: int = 0
+    #: Units on open purchase orders netted out of ``restock_qty``, or ``None``
+    #: when the caller supplied no ``on_order_by_sku`` map (or this SKU was
+    #: absent from it). ``None`` and ``0.0`` mean different things: the first is
+    #: "nobody told us", the second is "measured, and nothing is inbound".
+    on_order: float | None = None
+    #: The position the quantity was sized against - ``on_hand + on_order``.
+    #: ``None`` on refused lines, which were never sized at all.
+    position: float | None = None
 
 
 @dataclass(frozen=True)
@@ -124,11 +132,24 @@ def plan_replenishment(
     store: object | None = None,
     idempotency_key: str = "replenish-1",
     min_observations: int = MIN_PERIODS_FOR_POLICY,
+    on_order_by_sku: dict[str, float] | None = None,
 ) -> ReplenishmentPlan:
     """Forecast each SKU and plan the restock to ``cover_periods`` of demand.
 
     Pass ``store`` (a writable SimulatedStore, usually the same object as ``source``) to
     stage the restock as a dry-run; omit it to get a ready-to-execute packet only.
+
+    ``on_order_by_sku`` is units already on an open purchase order and not yet
+    received. When supplied, each quantity is sized against the inventory
+    POSITION (``src.ddmrp.net_flow_position``: on hand plus on order) instead of
+    on-hand alone, so stock that is already paid for and in transit is not bought
+    twice. ``OdooConnector.open_purchase_qty_by_sku()`` produces exactly this map.
+
+    Omitting it is NOT the same as passing zeros: a SKU missing from the map gets
+    ``on_order=None`` on its line and the plan reports that it could not net,
+    rather than claiming nothing is inbound. A default of ``{}`` here would read
+    as "measured, and it is zero", which is the failure this parameter exists to
+    prevent.
     """
     on_hand = {lvl.sku: lvl.available for lvl in source.inventory_levels()}
     series = _demand_by_sku(source.orders())
@@ -156,9 +177,15 @@ def plan_replenishment(
 
         forecast = float(forecast_demand(history, method=method).forecast)
         target = forecast * cover_periods
-        qty = max(0.0, round(target - current, 1))
+        # Size against the position, not the shelf. `qualified_demand=0.0` is
+        # honest here: an InventorySource exposes no committed-demand concept, so
+        # there is nothing to subtract - not a shortcut, a declared absence.
+        on_order = None if on_order_by_sku is None else on_order_by_sku.get(sku)
+        position = net_flow_position(current, on_order or 0.0, 0.0)
+        qty = max(0.0, round(target - position, 1))
         lines.append(ReplenishmentLine(
             sku, current, forecast, target, qty, n_observations=len(history),
+            on_order=on_order, position=position,
         ))
         if qty > 0:
             restock[sku] = qty

@@ -1,0 +1,1258 @@
+
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 1
+Introduction: Fingerprints
+of the Invisible Hand
+After a long season of back-breaking labor seeding, feeding, and
+growing a crop, a farmer would never say, “Time to harvest—let’s take
+it easy.” If anything, the farmer would get up even earlier and go to
+bed even later to make sure that every last grain was harvested. Yet
+supposedly sophisticated companies, run by some of the best-edu-
+cated people in the world, neglect what peasants have known by
+instinct for thousands of years. They work hard thinking about, grow-
+ing, and finding markets for their product but then pay scant atten-
+tion to the decision that determines what all that hard workyields the
+company: setting the price.
+Despite thecritical function prices play in corporate profitability,
+we find that managers with pricing responsibilities do not usually
+think systematically about their pricing strategies. Most pricing deci-
+sion makers never look for a strategy that could yield their product’s
+maximum value. According to one study, only a tiny number of firms
+have “both a pricing strategy and research to support it.” When it
+comes to pricing, some estimated that only about 8% of American
+businesses can be considered “sophisticated players.”1
+Oddly, nobody seems bothered by this state of affairs. Many exec-
+utives we talk to about prices say, “We don’t set prices. The market
+does!” As economists, we are not sure what this statement means.
+“Who is the market, then?” we press them.
+1
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 2
+2 SMARTPRICING
+Toourmind,thisisareasonablequestion.Pricesettingisatan-
+gible process with a tangible outcome—a dollar figure. The process
+of arriving at that number might not be tidy, but it cannot be so
+mysterious that it does not involve any human intervention. Some-
+one, somewhere must make a concrete, numerical decision about
+the price of a product or service. Yet managers often give us a
+bewilderedorindignantlookwhenweaskthisquestionandactasif
+the question itself were frivolous or rude. The way the managers
+talk about it, setting the price for a product or service is an almost
+automatic process, outside anyone’s control. Occasionally, we get
+the more profound-sounding answer that “the invisible hand” sets
+the price—a misapplication of the famous macroeconomic observa-
+tion of Adam Smith, the great Eighteenth Century Scottish econo-
+mist and philosopher, on microeconomic circumstance.
+Thinking of price-setting as being similar to time or the tide is a
+comforting idea, given how many company activities require con-
+scious thought. But it’s not actually true. When you take a closer
+look, the hands that set the price are almost always visible. They
+mightnotbeverynimble,buttheycanclearlybe seenineachofthe
+four most common methods of price setting. Among the least
+sophisticated companies we have encountered over the years, set-
+ting a price sometimes involves not much more work than selecting
+a lottery number: Pick what comes to mind, say a prayer, and hope
+for the best. More sophisticated companies don’t always do much
+better. They often take simplistic, ad hoc approaches, such as cost-
+plus pricing, competition-based pricing, or consumer-based pricing.
+Each of these approaches requires human intervention, and each is
+overly simplistic.
+Cost-Plus Pricing
+An overwhelming majority of U.S. companies use the cost-plus
+approach to set their prices. This practice also appears to be popular
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 3
+INTRODUCTION: FINGERPRINTSOFTHEINVISIBLEHAND 3
+in other markets, even in fast-growing countries such as China and
+India. To use cost-plus pricing, a firm first determines its sales target
+and then figures out the average cost it will incur based on the sales
+target. The price for the product is set by taking the average cost plus
+a markup. For example, if the sales of Apple’s iPod are 2 million units,
+the average cost at that output level might be $100 per iPod. Assum-
+ing that the normal markup at the company is 70%, Apple’s selling
+price for an iPod would be $170. The size of the markup is deter-
+mined either by the company’s targeted internal rate of return on
+investment or by some vaguely defined “industry convention.”
+The enduring appeal of the cost-plus approach is threefold. First,
+it is simple. The manager does not need to look outside the company’s
+own ledger to determine the price for a product. A casual familiarity
+with arithmetic is sufficient for anyone to come up with a price. Sec-
+ond, it is fair, or appears so. Indeed, cost-plus pricing is said to date
+back to medieval times when churches were involved in regulating
+commerce and allowed merchants to make only a fair living, not a
+killing. Third, many practitioners will tell you that cost-plus pricing is
+financially prudent because it ensures profitablesales. This guarantee
+of prudence is a reassuring way to dodge the high pressure involved
+in making a pricing decision. Such pressure can be nerve-racking at
+times because the effects of a pricing decision, unlike many other
+decisions in a corporation, are typically immediate and conspicuous.
+However, none of these three reasons is sufficient justification for
+adopting a conventional cost-plus strategy. First, why is simple bet-
+ter? A quick counterexample suggests otherwise. When a consumer
+in China purchases a beautiful silk scarf, does she know or care about
+the cost of making the scarf? Most likely, she does not. In fact, manu-
+facturers themselves might not even know the costs of their products
+with any degree of precision. In that case, why should a silk manufac-
+turer set its price solely based on its costs?
+A Chinese silk manufacturer we know tried this simple approach.
+The company set a low price of 200–300 yuan for its scarves. Its cost
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 4
+4 SMARTPRICING
+of production was so low that even 200 yuan would still yield a decent
+margin. This low price was also extremely competitive, compared to
+the high price of 2,000–3,000 yuan set by a French company in China
+selling similar scarves sourced—you guessed it—from this very man-
+ufacturer. On paper, the Chinese company looked as if it should be
+very competitive in the marketplace, given its huge price advantage.
+Yet somehow the French company still outsold the Chinesemanufac-
+turer by a big margin, even with an identical product that cost ten
+times as much.
+The difference was so great that branding alone could not explain
+the outcome, a fact that baffled company strategists. Later, it dawned
+on the executives that the low price itself might be the problem. Most
+of the manufacturer’s customers purchased a silk scarf not for their
+own use, but as an elegant gift to the wives of their bosses or guanxi
+(connections). Potential customers looked at the 200–300 yuan price
+tag and decided it was simply not substantial enough to be the kind of
+door-opening gift they had in mind. Many forgone sales later, the
+manufacturer learned to look beyond its cost and set its prices based
+on a better understanding of its customers and the market.
+The second advantage touted for cost-plus pricing is its supposed
+fairness. But we think this often is not true, either. For example, if a
+utility company is regulated such that it can charge a rate based only
+on its average cost plus a fair return on investment, many economic
+studies have shown that the utility company will have little incentive to
+minimize its costs, and the rate will drift up unnecessarily in the long
+run. For the same reason, if other kinds of firms always succeed in
+passing their costs on to consumers in this way, they have no incentive
+tominimize their costs. Finally, if the cost of serving customers is the
+same, is it fair to charge all customers the same price, even if they have
+varying incomes and need for the product? Perhaps the answer will
+vary, depending on your political convictions and economic circum-
+stances, but a little thinking makes it clear that in many situations
+“fair” cost-plus accounting could lead to an unfair result.
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 5
+INTRODUCTION: FINGERPRINTSOFTHEINVISIBLEHAND 5
+Consider an example from the pharmaceutical industry. If a drug
+is cheap to develop and manufacture, should it always be sold
+cheaply? Is a 10% markup on some cheap ingredients really a fair
+return on intellectual property that reduced doctor visits, hospital
+stays, and employee absenteeism for thousands of people?
+Perhaps it would be more fair for society to reward the innovator.
+It might even be socially beneficial in the long run to allow a higher
+price as an incentive to encourage others to try to solve similar
+problems.
+Consumers, interestingly, have a surprisingly nuanced view of
+fairness in cost-plus pricing. If cost-plus pricing is a fair way to set the
+price, then if a firm’s unit cost decreases by $10, the absolutely fair
+thing to do would be to lower the product’s price by $10 plus the
+markup on the cost. However, studies have shown that the fairness
+standard people apply to price changes is far more favorable to a firm
+than the cost-plus pricing rule would suggest, even when they know
+the precise magnitude of the cost change. In one survey, half of the
+respondents agreed withthe statement that “fairness does not require
+the firm to pass on any part of its savings.”2However, in that same sur-
+vey, consumers also believed that more cost savings should be passed
+on to consumers if the cost savings are the result of a reduction of
+input costs instead of an efficiency gain: If the price of jet fuel goes
+down, I want a discount on my ticket, but if you build a better
+airplane, you can keep the difference. By applying this fixed cost-plus
+rule, a firm forgoes its chance of achieving any gains from efficiency
+improvements, although its customerswould not have minded.
+Nor does cost plus-pricing mean that every sale is automatically
+profitable.Costisoftenpartlyafunctionofthesalestarget.Ifsalesfall
+shortofthetarget,theactualcostmightbehigherthanprojected.In
+that case, the price could turn out to be too low. Such a shortfall is
+always possible because the people responsible for sales normally
+make the sales projection, and they have an intrinsic interest in engi-
+neeringalowerpriceto boost sales or tomaketheirsellingjobeasier.
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 6
+6 SMARTPRICING
+Evenifthesalestargetismetorexceeded,wedon’tknowwhetherthe
+initialpriceisagoodpriceoronethatacompanycanimproveforits
+ownfinancialbenefit.Regardlessofactualsales,cost-pluspricingdoes
+notensureorevenencouragefinancialprudence.
+Finally, as the Chinese scarf example suggests, the biggest prob-
+lemwithcost-pluspricingisthatitisaninward-lookingapproachthat
+tendstodistractacompanyfromitscustomerorientationandobscure
+theimportanceofdetailedmarketresearch.Acorporationthatdevel-
+opsanentrenchedcultureinpricesettingbasedoncost-pluspricing
+encourages ad hoc pricing decisions and overlooks many opportuni-
+ties for price improvements. Indeed, cost-plus pricing sometimes
+leads companies to set consistently sub-par prices. When sales are
+brisk, a company will lower its price as its average costs go down, but
+when sales are sluggish, it raises its price to “cover” its higher average
+cost.
+Competition-Based Pricing
+Competition-basedpricing is the second-most-popular price-set-
+ting approach. Managers sometimes refer to this approach as strate-
+gic pricing, although it’s not particularly strategic. When taking this
+approach, a firm simply checks out its competition’s price and then
+sets the price of its own product at about the same level, plus or
+minus a few percent. Once again, this approach has the virtue of
+being simple: It’s an easy way to make a pricing decision without hav-
+ing to conduct any thorough market research. It also seems relatively
+safe: By setting a price close to the rival’s and adjusting with it, a firm
+does notrisk losing its market share to the competition.
+However, setting one’s own price solely on the basis of competi-
+tion’s price can cause two problems, either of which can cost a com-
+pany dearly.
+The worst risk is that competition-based pricing lulls the price
+setter into passivity. Managers can be so taken by this pricing
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 7
+INTRODUCTION: FINGERPRINTSOFTHEINVISIBLEHAND 7
+approach that they lose sight of their own pricing responsibilities. To
+them, pricing involves nothing more than monitoring competitors’
+prices and making some timely adjustments on their own price based
+on the competition’s price. Maybe this is what managers mean when
+they say the invisible hand sets their prices. This might seem like a
+low-risk strategy, but unfortunately sometimes the competition
+decides to set its prices the same way. When this kind of double-mir-
+roring occurs, prices not just for the company but for the entire
+industry can easily fall out of sync with current demand.
+Other times, price-matching can lead to a game of chicken.
+Everyone knows that setting a low price is the easiest, fastest way to
+gain market share. The trouble is that one rarely encounters a com-
+pany that does not want a larger market share: In any given industry,
+if you added up all the market share targets of each company, the sum
+would most likely far exceed 100%. Obviously, something has to give.
+If all the firms in an industry become overzealous about meeting their
+market share targets, prices can easily slip into a downward spiral that
+can hurt not justthe company but the industry as a whole. The com-
+petition for market share between the two aerospace giants Boeing
+and Airbus in the mid- and late 1990s offers an example of this risk.
+At the time, Airbus was consistently gaining market share and had
+surpassed its self-determined “survival threshold” of 30% of new
+global commercial airplane orders. Boeing decided to respond. It
+would “beat back Airbus and retain supremacy in the commercial-
+jetliner industry,”3 and fearlessly guard its 60% market share. Boeing
+and Airbus began competing vigorously, “making every bid a battle-
+ground.” Each would slash its price by at least 20% offthe list price to
+grab an order. For example, to bid for ValueJet’s order of 50 100-
+passenger airplanes in 1995, Boeing reportedly brought its price for
+Boeing 737s down from the list of $35 million, below its rock-bottom
+price of $22 million, all the way to $19 million.4
+The outcome was quite predictable: huge losses all around.
+Boeing temporarily won the share battle for new airplane orders.
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 8
+8 SMARTPRICING
+However, the victory came at a horrendous cost. Boeing suffered its
+firstannuallossin50yearsin1997,andbythefollowingyear,thecom-
+panywasforcedtotakemorethan$3billionofpretaxchargesforthe
+foul-up. Between 1996 and 1998, the profit margin of Boeing’s com-
+mercialjetlinersfellfrom10%tolessthan1%—alowermarginthana
+cornergrocerystore.
+We are not suggesting that firms should never compete on price
+to gain market share. As we show in Chapter 3, “The Art of Price
+Wars,” price wars are a legitimate strategy. However, we are suggest-
+ing—and advocating throughout this book—that firms should learn
+how to compete as intelligently on price as they do on every other
+aspect of their business. Adam Smith’s invisible hand works only if the
+economic agents in the market are driven by their own enlightened
+self-interest to pursue their own maximum economic gain. Boeing’s
+decision to build extraordinarily complex aerospace vehicles at a
+lowermargin than a corner grocer was not enlightened self-interest.
+Consumer-Based Pricing
+Consumer-basedpricing is the third common approach firms use
+to set their prices. In this case, the firm first sizes up its customers to
+determine how much each customer is willing to pay for its product
+or service and then charges the price each customer is willing to bear.
+Car dealers often take this approach.5 A dealer typically displays a
+high sticker price for a car, which is nothing more than a wished-for
+price intended to frame the value of the car for the customer. Then a
+salesperson takes the prospective buyer out for a test drive. In the
+process, the salesperson gathers information about the customer’s
+job, hobbies, family, and so on to help size up how serious the shop-
+per is about the car and how price-sensitive he might be. When the
+salesperson senses that price is not a primary concern or that the cus-
+tomer is not a deft haggler, he will typically give all kinds of reasons
+for not being able to bring down the list price much. However, if the
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 9
+INTRODUCTION: FINGERPRINTSOFTHEINVISIBLEHAND 9
+salesperson senses that the price is the obstacle to closing the deal,
+the salesperson will offer a better discount—but only after securing
+the “reluctant” approval of a mysterious boss behind a closed door
+and shaded windows.
+Customer-based pricing gives the company the flexibility to
+charge different prices to different customers, rising or falling to
+match the size of the customer’s wallet. Theoretically, the firm can
+achieve a high volume of sales at the best possible margins. However,
+an obvious problem with this pricing approach is that it inevitably
+alienates those customers who end up paying more than the success-
+ful hagglers. In the case of car purchases, many economic studies
+have shown that minority men and women have to pay up to $1,060
+more than white males for the same car.6 The backlash against this
+discriminatory practice contributedto the enormous success of GM’s
+no-hassle, no-haggle sales policy on its Saturn linein the 1990s.
+In business-to-business markets, discriminatory pricing can also
+easily alienate a firm’s best customers, with detrimental long-term
+consequences. The worst is that over time, discriminatory pricing can
+train the customers to become aggressive bargainers. In the industrial
+markets, a professional buyer fears a high relative price more than a
+high price. A high price is a problem for the industry. A high relative
+price is a problem for the buyer personally. No one wants to think of
+himself as a sucker, but for a professional buyer, the damage wrought
+by overpaying isn’t only to his pride; it can also hurt his career. He
+may sufferprofessionally if he is exposed as less skillful than his peers.
+Consequently, if the buyer suspects price discrimination, he will do
+everything possible to exploit a seller’s pricing flexibility to secure the
+lowest price.
+Ultimately, this kind of strategy can train good customers to
+behavebadly.Ifa buyer knows the price she will paydependsonher
+perceivedwillingnesstopay,shecertainlydoesnothaveanyincentive
+todwellonhowgoodandhowvaluabletheseller’sproductsandserv-
+ices are. Nor can she afford to appear interested in the seller’s value
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 10
+10 SMARTPRICING
+propositions. The potential buyer might also try to withhold useful
+information from the seller, just to conceal her hand. She might even
+takepainstoactasiftheseller’sproductsandservicesarenobetter,if
+notworse,thananyoneelse’s—ahintthatthebuyerisperfectlywilling
+to walk away if the seller’s price is not competitive. Frequently, the
+concealment comes at the cost of depriving the seller of the kind of
+informationthatwouldhelpthesellerservethebuyerbetter,bothnow
+andinthefuture.
+This behavior also encourages more comparison shopping. To
+ensurearock-bottomdeal,thebuyerwilllooktogainanupperhand
+in sales negotiations by entertaining competitive offers, even if the
+buyerdoesnotintendtoswitchsuppliers.Collectingcompetitivebids
+gives the buyer a decisive advantage. A seller risks legal perils if he
+talkstoothersuppliersaboutpricing,butabuyerisfreetosolicitcom-
+peting price quotes. The buyer can then use the quotes as a lever to
+gainconcessionsfromtheseller.Knowingthattheseller’ssalespeople
+havesomepricingdiscretion,thebuyerwilltryeverymeans,bothcar-
+rotsandsticks,tomakesurethatthesellerdoesn’tholdanythingback.
+Forexample,itisnotuncommonforthebuyertoembellishprice
+quotes a little to gain a larger price concession. Sometimes those
+quotes don’t even need to be explicit. A former Merrill Lynch chief
+information officer is famed for having a million-dollar coffee mug:
+“When an IBM salesman came calling, the CIO would put a coffee
+mugfromacompetitoronhisdesk.Thesalesmanwouldimmediately
+cut $1 million off the price of each mainframe, for fear of having
+Merrilltakeitshugebusinesselsewhere.”7
+This kind of aggressive negotiation leads both buyer and seller to
+focus on transactions instead of building a relationship and to channel
+creative energy into devising ways to win more or less money instead
+of forging a long-term, win-win partnership. Facing such a buyer, the
+seller’s choice is limited, especially in a buyer’s market. You can refuse
+to budge on the buyer’s price demand and try to sell based on a value
+proposition. In that case, you risk losing a big customer. Or you can
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 11
+INTRODUCTION: FINGERPRINTSOFTHEINVISIBLEHAND 11
+compromise, bring the price down promptly, and close the deal. For
+most commissioned salespeople, such as the IBM salesman facing
+Merrill’s mug of doom, a lower margin is always more appealing than
+no deal.
+The game leaves both sides less happy than they might be. The
+buyerwon’tbehappy,evenifshereceivesthefulldiscountforwhich
+sheasked,simplybecauseshecanneverbecertainaboutwhethershe
+couldhavewonanevenlowerprice—sothenexttime,shewillaskfor
+a little more. For the seller, every order costs a little more price
+integrity. Sometimes this reluctant price discounting can even evolve
+into an arms race between competitors. Buyers become more
+demanding, and salespeople ask for more pricing discretion. The
+salespeoplehaveagoodchanceofgettingsuchpricecutsbecausethey
+supposedlyknowcustomersandcompetitivesituationsinthemarket-
+placefirsthand.Andwhentheyhavethepricecuts,theywillusethem
+morefreely,forcingtheproducertocutcosts.
+In this kind of pricing environment, the seller has little incentive
+to invest in the customer relationship or additional services, and cost
+cuttingbecomestheparamountimperative.Whattypicallyfollowscan
+be best described as a kind of service version of Gresham’s law: Bad
+servicecompaniesdriveoutgood.Ifnobuyerseemstocareaboutor
+wants to pay for customer services, then no seller wants to spend
+moneytoprovidethem.Ascustomerservicedeterioratesinanindus-
+try,productdifferentiationdeclines,anewroundofdownwardpricing
+pressuregainsmomentum,andtheproductmovesanotherstepcloser
+towardbeingacommodity.Putitalltogether,andtheindustryenters
+a downward spiral, with the buyers paying less and getting less, and
+the sellers getting less and giving less. It’s a good topic to reflect on
+duringyournextlong-distanceflight—overyourlunchofpeanutsand
+sodapop.
+From this brief tour of how firms set their prices, we can come to
+two conclusions. First, the market does not set prices. Marketers do.
+All the prices we observe in the marketplace do not just spring out of
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 12
+12 SMARTPRICING
+an autonomous, impersonal market. The managers’ hands in setting
+those prices are entirely “visible,” regardless of whether such inter-
+ventions are acts of expediency or strategy. Second, cost-plus pricing,
+competition-based pricing, consumer-based pricing, and even “lot-
+tery” pricing are not necessarily the best ways to price a product or
+service. In many cases, they are nothing but shortcuts managers use
+to cope withthe weight of their decision-making responsibility.
+Unfortunately, ignorance of the power of pricing can have huge
+consequences. Your company’s survival may even depend on your
+pricing strategies. If you are a retailer, you must pay attention to Wal-
+Mart’s price-dominance strategy. Either find a way to cope with it or
+be steamrolled, as many have been. If you are a manufacturer in the
+United States, whether you are in textiles, steel, or consumer elec-
+tronics, you must heed “the China price”—the price quotes from
+China that are typically 30–50% lower than state-side manufactur-
+ing.8 If you are a financial service company, you must navigate the
+new reality of deregulations anddiscount brokerage, both online and
+offline. Even if you are a high-tech company, you might find yourself
+in a situation where you no longer enjoy a comfortable lead in tech-
+nology and you must compete directly or indirectly with companies
+from South Korea, Taiwan, India, and China—almost always on price
+and always against a player with a lower cost structure.
+Competitors are not the only risk for sellers. Buyers are not as
+docileastheyoncewere,either.Intheconsumermarket,theInternet
+haschangedthewayinwhichpriceinformationisdisseminatedinthe
+marketplace. A consumer shopping for a car is no longer in the dark
+about prices. She can easily find information online about the prices
+different dealers charge for the same car. If she is diligent, she can
+evenfindadealer’sinvoicepriceforacarandtheamountoftheman-
+ufacturer’s ongoing coupon or rebate promotions on the car. Armed
+with the price information, the customer might travel hundreds of
+milesforalowerpriceandsavehundredsoreventhousandsofdollars
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 13
+INTRODUCTION: FINGERPRINTSOFTHEINVISIBLEHAND 13
+onacarpurchase.Intheindustrialmarket,theInternetplaysasimi-
+larroleinincreasingpricetransparencyandexpandingthegeograph-
+ical range in which a firm can source its suppliers. As a buyer, when
+you have extensive price information and a larger set of choices, you
+becomemoresophisticatedinusingthatinformationandchoosierin
+yourbuyingdecisions.Whenyouhavethosesavvybuyersinamarket,
+theoverallpricebecomesevenmorecriticalforthecompany.
+Priceis also becoming more important because product differen-
+tiation is harder to achieve in many industries. For example, most
+desktop or laptop computers have “Intel Inside” and run Microsoft
+Windows. In the service industries, which now account for more than
+two-thirds of U.S. gross domestic product (GDP), companies cannot
+patent their service designs in the same way manufacturers patent
+their product designs. The resulting lack of product differentiation,
+either real or perceived, and the new ease of comparison shopping
+inevitably make price a bigger factor in customer buying decisions.
+But at the same time technology is changing cost structures and
+pricing pressures, it is also giving many companies a whole new set of
+pricing opportunities. Many industries now have a high fixed cost,
+typically in development, and a low variable cost in production. In the
+software industry, for example, a huge cost must be incurred up front
+to develop the first copy of a program, but the cost of replicating the
+software is nearly zero. The same is true for many other digital tech-
+nology–based industries such as music, movies, and information, and,
+to a lesser extent, for service industriessuch as airlines and hotels.
+In these kinds of industries, pricing can play a considerable role
+because of a low variable cost and a wide dispersion in the con-
+sumer’swillingnesstopay.Companieswiththiskindofcoststructure
+cansetpricesinwaysthateitherharmprofitabilityorenhanceit.An
+undisciplined manager might seek a quick “high” in volume through
+an unsustainably low price. On the other hand, a more sophisticated
+manager might take advantage of the situation by designing a
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 14
+14 SMARTPRICING
+creative pricing structure to attract a certain kind of profitable cus-
+tomer. In either case, the price is now becoming an increasingly
+importantdifferentiator.
+The Four Levers
+A managercan pull only four levers to increase a firm’s profitabil-
+ity: sales, variable costs, fixed costs, and price. When a manager
+bumps up his firm’s advertising budget to gain a larger market share,
+he’s pulling the sales lever. If he has found a cheaper way to source
+raw materials, he is pulling a variable cost lever. If he tries to reduce
+his firm’s overhead, he is pulling the fixed cost lever. Yet for some rea-
+son, not all these levers are treated equally. Price, in particular, is neg-
+lected. This is peculiar because a number of studies have found that
+although rarely pulled, the price lever is the most efficient way to
+increase a firm’s profitability.9 We updated these studies by applying
+the same methodology to the most recent company data available
+through Wharton Research Data Services (WRDS), as shown in
+Figure I.1.
+As Figure I.1 shows, our analysis essentially reconfirms previous
+studies. We find that if a firm can cut its fixed costs by 1% without
+affecting its operations, its profitability can increase, on average, by
+2.45%.Similarly,ifafirmcanincreaseitssalesby1%withoutchang-
+ingitscoststructureorprice,thefirm’sprofitabilitycanriseby3.28%.
+The effect of lowering the variable cost by 1% is larger: Profitability
+canincrease6.52%.However,theeffectofimprovingafirm’spriceby
+1%isthelargestofall:10.29%.Remarkably,asFigureI.2shows,this
+effectiveness ranking order holds for each of the eight industry
+groupsusingthestandardindustryclassification(SIC)scheme.
+A pessimist might conclude from these numbers that price isn’t a
+lever that one should pull lightly: If the upside benefit of pulling that
+leverishigh,thedownsideriskorthedifficultyinvolvedinpullingthat
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 15
+INTRODUCTION: FINGERPRINTSOFTHEINVISIBLEHAND 15
+levermustbesubstantial,too.Otherwise,whywouldn’tfirmspullthat
+lever more often? Indeed, some managers would quickly add that it’s
+notpractical.“Itisonethingtocutcostsby1%withoutaffectingevery-
+thing else, but it is entirely something else to improve your pricing by
+1%withoutchanginganythingelse.Foronething,saleswilldrop!”For
+thatreason,thepessimistmightseethepromiseddouble-digitincrease
+inprofitsasadangerousillusion.Itmightseemfarmoreprudenttopull
+theotherthreeleversinsteadofriskingeverythingonasinglenumber.
+12.00
+10.00
+8.00
+6.00
+4.00
+2.00
+0.00
+Price Variable Cost Sales Quantity Fixed Cost
+Figure I.1 Impact of profit levers in U.S.in 2004
+25 P
+Vc
+20 Q
+Fc
+15
+10
+5
+0
+Agriculture Mining and Manufacturing Transportation, Wholesale and Finance, Services Public
+Forestry, and Construction Communications, Retail Trade Insurance, and Administration
+Fishing Electric, Gas, and Real Estate
+Sanitary Services
+Figure I.2 Impact of profit levers in U S.by industry (2004)
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 16
+16 SMARTPRICING
+However, an optimist would see from these tantalizing numbers a
+holy grail for profitability. How often could one identify and work
+with something that can lead to a double-digit increase in a firm’s
+profitability by just changing a few numbers? The fact that a firm is
+not pulling the price lever only means that it is missing a big opportu-
+nity. After years of diminishing returns with the other three levers,
+the price lever might just be the best bet. In any case, it’s certainly the
+easiest: Companies can make price changes quickly—hashed out over
+a bottle of Bud, then approvedat the stroke of a pen.
+When it comes to the potential of pricing, both the optimist and
+the pessimist have valid points. However, we believe the optimists
+have the edge. No strategy is risk-free, but after years of teaching
+pricing to our MBA students and executives and consulting to pricing
+managers all over the world, we believe companies willing to pull the
+price lever face more promise than risk.
+Conclusion
+Farmers do not take it easy at harvest time. Nor should firms. In
+our mind, it is simply an untenable management strategy to focus on
+value creation without thinking about how that value will be cap-
+tured. The sooner firms recognize this, the sooner they will be on
+their way to bringing in a bumper crop.
+We’re not saying that pulling the price lever is a cinch. You must
+know what you are doing before you even think about pulling that
+lever.Oncepulled,everythingcanchange.Profitseitherrisespectac-
+ularlyorfallinatraumatic,humiliatingway.Whetheryousucceedor
+fail,theeffectofyour“hand”willbevery“visible.”Clearly,pricingis
+not a game for the fainthearted or someone with a trembling hand.
+But that doesn’t mean you should not try. Risks and difficulty are
+inherentinanyimportantcorporatedecision.Theyhavenotstopped
+managersfrommakingthosedecisionsandpullingthecostsandsales
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 17
+INTRODUCTION: FINGERPRINTSOFTHEINVISIBLEHAND 17
+levers in the past. They should not stop managers from facing up to
+theirresponsibilitytoexaminethepricelevernow.
+However, pricing is an unfamiliar subject for most managers.
+Until recently, pricing was scarcely taught except as a unit of micro-
+economics and a subtopic of marketing. For the longest time, busi-
+ness education everywhere focused primarily on the other three
+profit levers. Business students learned that in a competitive market,
+prices should be set so that marginal revenue matches marginal costs.
+They also learned that competing on price is generally a last resort
+and probably a bad idea. Unfortunately, neither precept offers much
+guidance to pricing managers. For these managers, they need more
+actionable pricing knowledge.
+Over the past decade, nearly a dozen books have been published
+on pricing to help disseminate that knowledge, but most are quite
+specific, lacking general interests. In this book, we aim to make pric-
+ing knowledge more tangible, concrete, and fun by showing how
+innovative pricing strategies have helped leading companies create
+and capture value as well as new customers. We visit restaurants
+where the customer sets the price and see a famous rock band that
+made money by giving away its album for free. We look at how Google
+and other high-tech companies have used pricing to remake whole
+industries,and at China, where executives have made an art out of ini-
+tiating and fighting price wars—in spite of the conventional Western
+wisdom that price wars are risky, stupid, and sometimes even fatal.
+Fromthesestoriesandmanyothers,youwillseethatcompanies
+price their products in many different ways—through high prices,
+low prices, even no price—and you will learn how, why, and when
+each method works. We hope that as you read these stories, you will
+learnsomethingnotjustabouthowtosetprices,butabouttheimpor-
+tanceofthinkingaboutprices.Webelieveyouwillagreewithusthat
+the possibilities of pricing are endless, limited only by the need to
+retainsomevalueforfutureharvestandtheboundsofcreativity.
+01_013149418X_intro.qxp 2/11/10 8:37 AM Page 18
+18 SMARTPRICING
+Our experience has taught us that pulling the price lever
+demands courage and confidence, the kind best built on your knowl-
+edge about what pricing can do, how you can price your goods or
+services, and how consumers and your competition might react to
+your pricing decisions. If this book helps you gain more confidence in
+pulling the price lever and perhaps sparks an idea about an innovative
+way to price your own product or service, we will have achieved our
+main objective.
+Endnotes
+1Kevin J. Clancy and Robert S. Shulman, The Marketing Revolution, HarperBusi-
+ness, 1991, 144–145.
+2Daniel Kahneman, Jack L. Knetsch, and Richard H. Thaler, “Fairness and the
+Assumptions of Economics,” Journal of Business59, no. 4 (1986): 285–300.
+3Frederic M. Biddle and John Helyar, “Flying Low—Behind Boeing’s Woes: Clunky
+Assembly Line, Price War with Airbus—Fearing Loss of Market Share, Company
+Took Orders It Wasn’t Equipped to Fill—Those 737s in the Shadows,” The Wall
+Street Journal(April 24, 1998), A1.
+4HowardBanks,“ProfitlessProsperity,”Forbes156,no.11(November6,1995):64–65.
+5Preyas S. Desai and Devavrat Purohit, “Let Me Talk to My Manager: Haggling in a
+Competitive Environment,” Marketing Science, Spring 2004; 23: 219–233.
+6John Yinger, “Evidence on Discrimination in Consumer Markets,” The Journal of
+Economic Perspectives12, no. 2 (Spring, 1998): 23–40.
+7Justin Martin, “Bull Headed,” Context Magazine (September/October 1999):
+http://www.contextmag.com/setSearch.asp.
+8Pete Engardio and Dexter Roberts, “The China Price,” BusinessWeek(December 6,
+2004): 102.
+9Michael V. Marn and Robert L. Rosiello, “Managing Price, Gaining Profit,” Harvard
+Business Review(September 1996): 84–95.
+00_013149418X_FM.qxp 2/11/10 8:37 AM Page iii
+Smart Pricing
+How Google, Priceline,
+and Leading Businesses
+Use Pricing Innovation
+for Profitability
+Jagmohan Raju
+Z. John Zhang
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 19
+1
+“Pay As You Wish” Pricing
+“If it’s good enough, people will put a penny in the pot.”
+Chris Hufford, manager, Radiohead
+On October 9, 2007, the English alternative rock band Radiohead
+began an experiment: Instead of pricing its music the conventional
+way, the band would let its fans pay whatever they wanted to down-
+load its latest 10-song album, In Rainbows. At the checkout page of
+the inrainbows.com website, visitors came to an empty price box.
+When they clicked on the box, a message appeared that said, “It’s up
+to you.” On the next page, another message appeared that said, “No,
+really, it’s up to you.”
+Radiohead’s decision to leave pricing to its fans came after years
+of frustration with traditional distribution. The Oxfordshire-bred
+band had decided not to renew its contract with its old record label,
+EMI, after their agreement ended in 2003. Although the five-mem-
+ber band had sold more than 20 million records through conventional
+channels, with more music being swapped or downloaded in pirated
+versions on the Internet, the idea of working with a traditional record
+label that sold albums for a fixed price “felt like chaining ourselves to
+a dinosaur,” says ColinGreenwood, the band’s bass player.1
+Then manager Chris Hufford had an idea: Let the fans pay what-
+ever they wanted for a download. “We all thought he was barmy,”
+confessed singer Thom Yorke. “As we were putting up the site, we
+were still saying, ‘Are you sure about this?’”2
+19
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 20
+20 SMARTPRICING
+Radiohead’s pricing strategy set off a fierce debate in the music
+business,“asthoughagrenadehadbeenlobbedintoarecordindustry
+already in disarray,” as one music writer put it.3 On one side stood
+thosewhosawthetechniqueasanimportantexperimentinanindus-
+tryprofoundlyshakenbytheshiftfromphysicaltovirtualdelivery.On
+the other side, traditionalists who saw “pay as you wish,” or what the
+English call “honor box” payment, as capitulation to the pirates—the
+beginningofanotherchapterinthedeclineandfallofthemusicbusi-
+ness.
+By the time the program ended on October 29, 2007, Radiohead
+had clearly won its bet that “virtual busking,” as Hufford called it,
+could beat conventional pricing and distribution.4More than 1.8 mil-
+lion people downloaded the album, and although 60% did not pay,
+40% did, which was enough to make the album a success for Radio-
+head.
+Radiohead customers paid $2.26 per album on average, probably
+generating more cash for the band than if it had sold the album
+through layers of middlemen using conventional pricing, according to
+a survey by Comscore, a U.S. e-commerce survey company. (The
+band’s managers disavowed Comscore’s estimate but declined to sup-
+ply an alternative set of numbers.)5“In terms of digital income, we’ve
+made more money out of this record than out of all the other Radio-
+head albums put together, forever,” says Radiohead singer Thom
+Yorke.6
+Some fans claimed to have paid even more than they would have
+for a conventional album: $20–$30 or more—money they would not
+have paid under a conventional pricing scheme. Consider Jason
+Raney of Sacramento, California, who said he planned to pay “a hun-
+dred dollars American” for his download of In Rainbows.7
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 21
+CHAPTER1 • “PAYASYOUWISH” PRICING 21
+Why Pay More?
+At first glance, “pay as you wish” pricing doesn’t seem to make
+much sense: Why would anyone pay something for a product if they
+had the choice to pay nothing? To anyone used to modern shopping,
+where most products are sold at a set price, “pay as you wish” seems
+like a utopian rocker’s fantasy (“Dude, let’s just, like, askthem to pay
+what they want.”)—a good idea for a song, maybe, but not necessarily
+for a purchasing system.
+In certain circumstances, however, “pay as you wish” can be very
+successful. For decades, theaters in the United States and England
+have offered “pay what you can” performances on certain nights. Sev-
+eral restaurants and cafés across the United States operate on a simi-
+lar self-determined pricing model in which customers determine the
+prices. One World Café in Salt Lake City, Utah, is one such restau-
+rant. As TIME wrote, “Attorneys and CEOs, students, seniors, and
+soccer moms, as well as those down on their luck are among the
+150–200 customers that dine daily at One World.“8Although no cus-
+tomer is required to pay, One World Café is still a thriving business.
+The Wall Street Journal reported that the business has been prof-
+itable since 2005 and projects revenues of $350,000 this year, with
+about a 5% profit margin,9not out of line with the 4%–6% profit mar-
+gins typical of small restaurants.10
+“Pay as you wish” is less impractical than it sounds because it
+eliminates many of the disadvantages of set pricing. For the seller, a
+set price requires figuring out what the price should be, which is typ-
+ically a difficult and time-consuming process: What is this product
+worth to my customers? What price will enable me to make the most
+profit, given the fact that, except for certain kinds of luxury goods, a
+trade-off always occurs between price and volume? The trade-off
+arises because set pricing typically charges everyone the same price,
+regardless of whether one is willing to pay more or less. As a result,
+the seller is always torn between a better margin and a higher
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 22
+22 SMARTPRICING
+volume, as a better margin always results in a lower volume. The only
+latitude is the capability to adjust the set price over time. However,
+even with that little latitude, the vexing question for the seller is
+always “When should I raise or lower my price next?” The costs asso-
+ciated with this kind of activity aren’t insignificant. As much as 1.93%
+of GDP is eaten up setting and resetting retail prices, an activity that
+economists call the “menu cost.”11
+For buyers, set pricing also requires answering some difficult
+questions: How much is this product really worth? Is the price I see
+on the box the right price for this product? This can be especially
+tricky when the product is something consumers could never manu-
+facture for themselves, such as a digital camera. Even if buyers have
+all those questions figured out, they might still wonder if they could
+get a better price somewhere else.
+Set pricing makes every transaction an adversarial encounter, a
+conflict in which neither the seller nor the buyer ever leaves com-
+pletely satisfied. The seller must be forever uncertain about whether
+he set the price too low and left money on the table or whether he set
+the price too high and lost some potentially profitable customers. At
+the same time, the buyer will never be absolutely sure the deal he
+received is the best possible deal he might have found if he had kept
+shopping.
+“Pay as you wish” sidesteps all these issues. In a way, it’s the fulfill-
+ment of a marketer’s dream: The seller gets the best offer from every
+possible buyer, with no chance that the buyer will leave feeling that
+he overpaid. Instead of choosing a single price that will be either
+lower or higher than the potential customer is willing to pay, “pay as
+you wish,” creates a market in which the seller can sell to every possi-
+ble customer at exactly the price the customer is willing to pay, theo-
+retically expanding the market to the broadest possible size without
+giving too much of a break to those who are happy to pay a higher
+price.
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 23
+CHAPTER1 • “PAYASYOUWISH” PRICING 23
+Although“pay as you wish” pricing has always existed on the mar-
+gins of the service economy—think of bellhops or street perform-
+ers—awareness of its possibilities now seems to be spreading. The
+rise of more products that are entirely intellectual property with very
+little physical cost, such as software, and the growth of the service
+economy are making “pay as you wish” an increasingly practical alter-
+native.
+It’s even making some inroads into academia. One Columbia
+Business School marketing professor recently experimented with
+“pay as you wish” pricing for his new textbook.
+Noel Caponlikens the textbook industry to the cartel price struc-
+ture U.S. airlines enjoyed in the 1960s, in which the airlines com-
+peted on service but never on price. A “cozy oligopoly” of publishers
+he says, keeps prices high and encourages the publishers to compete
+for authors and compete over quality but never price. Incensed by
+the high price of college textbooks, Capon decided that instead of
+working with a conventional publisher, he would allow students free
+online access to his new tome.12
+By copying the Radiohead model for his new marketing book,
+Capon hopes to force traditional publishers to lower the prices of
+their textbooks, playing a role analogous to the one low-cost South-
+west Airlines played in revolutionizing airline pricing.
+Themarketingprofessoralsohopesthattheabilitytoreadthebook
+withnoobligationtobuywillproveagoodwaytoboostdemand.“It’sa
+wayofgettingmybookintothehandsofasmanypeopleaspossible,”
+heexplains.“ThemajorbarrierI’vehadtoovercomeisthereluctance
+ofinstructorstoswitchbooks.Bytakingthepriceoftheonlineversion
+tozero,instructorswhoweren’tinterestedattheoldpricearegoingto
+havetogivemybookaseriousthought.”13(Oneproblemwiththethe-
+ory,however,isthatProfessorCaponisassumingthatinstructorscare
+aboutthepricestudentspayforatextbook—aquestionableassertion.
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 24
+24 SMARTPRICING
+Thismightnotalways bethecase,inthesamewaydoctorsmightnot
+careaboutthepricepatientspayforprescriptiondrugs.)
+For Radiohead, “pay as you wish” had a number of special advan-
+tages, too, some unique to the music industry. First, Radiohead’s
+decision to let the public set the price of its product was big news, not
+only to Radiohead fans, but also to the general public. Choosing this
+innovative pricing model generated a lot of free publicity, which
+enabled the band to cut through the clutter of all bands trying to sell
+music the conventional way.
+The notoriety seems to have helped generate a high enough pro-
+file for the album that, despite 1.8 million downloads, the “free”
+album still succeeded as a teaser for a deluxe boxed set (which
+included a bonus disc with eight additional songs) priced at £40. The
+boxed set soared to the top of British pop charts on release in Decem-
+ber 2007 and sold 95,000 copies by March 2008.14 In the end, a year
+after the experiment, Warner/Chappell, Radiohead’s publisher, said
+that the group earned more money on the online downloads of In
+Rainbows than it had from the total sales of its previous album, Hail
+to the Thief. All told, 3 million copies of In Rainbows were down-
+loaded or sold. Nor do physical sales seem to have been cannibalized:
+As of October 2008, a year after the release, CD sales had reached
+1.75 million, a few thousand less than the total cumulative sales of its
+2001 and 2003 albums combined.15
+Interestingly, Capon’s textbook sale also sought to capture differ-
+ent ends of the demand curve by differentiating the product itself.
+He offered “pay as you wish” access for a copy, but readers could
+access it only online. Students whose budget permitted could buy a
+printed version for $45 or download a portable document format
+(PDF) for $25.
+Thiscapabilitytostructuremultipletiersofdemandforthesame
+product is an important feature of many “pay as you wish” programs.
+Charities and nonprofit groups have long known the advantages of
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 25
+CHAPTER1 • “PAYASYOUWISH” PRICING 25
+“pay as you wish” pricing: Many of the 5 million visitors a year to the
+MetropolitanMuseumofArtinNewYorkpay$20apersontoenter,
+despiteasignthatclearlyspecifiesthatthepriceisa“suggesteddona-
+tion.”Evenpoliticalmarketershavelearnedtheadvantagesof“payas
+youwish”:TheycanmakeagoodcasethatPresidentObama’sbiggest
+fund-raisinginnovationwasn’ttheuseoftheInternetasasaleschan-
+nel, but the ability to reach hundreds of thousands of small donors
+with a “pay as you wish” proposition in a market that, until recently,
+targetedonlyinstitutionsandwealthyindividuals.
+Don’t underestimate the value of such exposure in cross-selling.
+For many bands, recorded music is becoming more important as a
+waytodriveticketsalesforconcerttoursthanarevenuestreaminits
+own right. The reason selling thousands of tickets is better than sell-
+ing millions of albums right now is because the top performer typi-
+cally receives up to 90% of the ticket price, as opposed to a much
+lower share of the price of an album.16 For example, pop star Justin
+Timberlake earned $70.6 million on a 2007 tour in North America,
+evenashisalbumsearnedonly$20.8million.17
+This isn’t an isolated case. “Artists have found that their prime
+income stream is coming from touring,” says one music industry ana-
+lyst. “Twenty years ago, artists toured to promote an album. Today
+artists tour because there is a demand to see them live and that’s how
+they make their money.”18 One measure of the success of touring
+today is that some music labels are reportedly trying to sign artists to
+“360” contracts, which give the company a share not just of the music
+revenue, but also of the revenue from T-shirts, concert tickets, ring
+tones, and other products related to themusic.
+Looked at in this light, even giving the music away can be a win-
+ningstrategy.Forexample,Princedidnotearnaprofitonthenearly
+threemillionPlanetEarthCDssentoutwiththeLondonDailyMail
+newspaper this spring, but partly on the strength of that promotion,
+he was able to sell out 21 London concerts.19 His “loss” with the
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 26
+26 SMARTPRICING
+albumclearlysparkedinterestinhisliveperformances,likelyearning
+himmorethanthereported$500,000plus10%royaltyhewouldhave
+madeonthesaleofeachCDdistributedbyconventionalmeans.20
+Many people, particularly college students, already pay nothing
+for their music and grow their music collection by downloading
+pirated versions. Instead of extracting nothing, as often happens in
+the current system of music distribution, Radiohead probably con-
+verted some of those online freeloaders to paying customers: A quar-
+ter might not be much, but it’s better than nothing.
+Although media would seem like a very special case, other kinds
+of businesses—even restaurants, as mentioned earlier—have also
+adopted “pay what you wish” pricing. Terra Bite Lounge, a coffee
+shop located in Kirkland, a suburb of Seattle, Washington, is one case
+in which the benefits of this alternative pricing method are not clear-
+cut. The café does not list its prices. Customers pay whatever they
+wish and drop their payments in a locked metal box on the counter,
+discreetly labeled “All payments and tips here, please.” According to
+The Wall Street Journal, Terra Bite serves an average of 200 cus-
+tomers per day, who each pay on average $2 to $3. Ervin Peretz, one
+of the owners, says Terra Bite’s per-food item revenue is substantially
+less than other coffee shops. At the moment, Terra Bite is a financially
+viable business and has more than broke even operationally since it
+opened in November 2007, but its unique pricing policy might put it
+in a precarious situation.21Serving an average of 80 customers per day
+at $3 per transaction is barely the break-even point, especially consid-
+ering its rent of $4,000 per month.22However, others have done much
+better. At one café in Kettering, Ohio, the owner switched to “pay as
+you wish” pricing in 2008 as a way to respond to the recession. The
+result: Since he switched to that pricing method, sales and customer
+head count are up 50%–100%, and he’s thinking of adding more
+staff.23 And he’s not alone: The upscale Just Around the Corner
+restaurant in London is now in its twenty-second year of operation
+using “pay as you wish” pricing, and it’s still apparently successful.
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 27
+CHAPTER1 • “PAYASYOUWISH” PRICING 27
+So why take the risk? “When you give people good food and good
+service, they leave bigger tips,” explains VasosMichael, owner of Just
+Around the Corner. “So I said to myself, ‘Let’s leave the bill up to
+them, too.’”24
+Typically, sellers turn to “pay as you wish” pricing because either
+they believe the product will drive business for a higher margin
+product, or they believe that “pay as you wish” pricing can yield more
+than conventional pricing—or both, for Radiohead.
+Others,particularlysomerestaurants,priceonthisbasisasapolit-
+ical statement, which can yield noneconomic benefits to the owners
+andperhapsyieldsomereputationalgainsinthecommunityaswell.
+It might even improve the product by encouraging the waiter to
+provideexcellentservice.Afterall,theentirecheck,notjustthetip,will
+bepaidatthediscretionofthecustomer.Oneconsultanthasdescribed
+thebusinessmodelas“anin-builtqualitycontrolsystem.”25Apparently,
+it’sstillworkingatJustAroundtheCorner:Onerecentreviewerofthe
+restaurantnotedthathehasseenthesamewaitressattherestaurantfor
+threeyears,whichhesays“mustbearecordinLondon.”26
+A final important element of some “pay as you wish” strategies,
+particularly in the music industry and perhaps in the emerging e-
+book industry, is the way it changes the cost structure. Refusing to set
+prices often cuts out a number of middlemen. For example, because
+publishers typically earn only 50% on the retail price of a book, volun-
+tary payments by readers of a downloaded e-book produced at near-
+zero marginal cost don’t need to be that high to generate a profit. For
+authors, who earn only 5% of a retail sale, the economics might be
+even more favorable.
+Companies can also use such downloads to create a marketing
+buzz around a book. For example, Faber, a U.K. publisher, recently
+made historian Ben Wilson’s book What Price Liberty?available for a
+free download six weeks before its paper publication—an experiment
+that Faber marketers believed would grow the audience for the book
+without cannibalizing hard-copy sales.27
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 28
+28 SMARTPRICING
+In the textbook business, a “pay as you wish” model might have
+another advantage: It reduces the number of copies available for
+resale. A large percentage of textbooks students buy are used copies
+that the publisher and author earn no royalty on. As a result, a 100%
+“pay as you wish” model would help replace that profitless secondary
+market with one in which users would pay the publisher on an ongo-
+ing basis.
+That’s the theory. Whether a “pay as you wish” pricing strategy
+actually succeeds is another matter. In the music world, Radiohead
+members themselves have said that they don’t believe “pay as you
+wish” pricing is something that could work for every group. They say
+that their success was primarily possible because they already had a
+large and established base of devoted fans. Similar experiments by
+lesser-known artists suggest that they might be right. Harvey Danger,
+a lesser-known band than Radiohead that still enjoys some fan recog-
+nition, released its album in 2005 under the same format as Radio-
+head. Fans downloaded the album 190,000 times, but only 1% of
+people paid something for it. Although the average donation (for
+those who donated) was $8.34, Harvey Danger’s guitarist Jeff Linsays
+that it was “certainly not the runaway, huge financial bonanza some
+people thought it would be.”28
+However, other artists have experienced more success with “pay
+as you wish” pricing. In 2005, Canadian singer-songwriter Jane
+Siberry instituted what she referred to as “self-determined pricing”
+for her music downloads. At checkout, customers were given four
+options: pick a price, pay later after downloading the song, pay the
+standard 99¢, or “gift from Jane,” which meant the customer did not
+have to pay.29
+In the end, “pay as you wish” pricing may be an especially good
+way to price music and other experiential goods by focusing cus-
+tomers not on the price they will pay, but on the level of enjoyment
+they get from the song, book, or movie. Our colleague Peter Fader, a
+marketing professor at The Wharton School, argues that focusing
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 29
+CHAPTER1 • “PAYASYOUWISH” PRICING 29
+consumers on the price of an experiential good such as music ulti-
+mately pushes down the perceived value of the experience. “If you
+boil it down to what is this song worth, you don’t want people to be
+thinking about that. This is one of the problems with the whole
+iTunes business model, i.e., is it worth 99¢ or not? Music, being a
+holistic good and an experiential good, is worth more than just the
+bits that you are acquiring.”30
+Certainly, restaurateur Michael would agree with Fader that not
+focusing customers on the price provides a greater potential upside
+than conventional pricing. At Around the Corner, he said four Amer-
+ican businessmen once came in for dinner and decided to leave £600
+on the table when they left (nearly $1200 at the time). “They asked if
+it was okay,” the owner recalls. He answered, “‘Of course.’ If that’s
+what they thought it was worth, then fine!”31
+The First Five Notes
+Although music is a very risky business, we found that Radio-
+head’s In Rainbows campaign shares the same five key qualities as
+any successful “pay as you wish” pricing program:
+1. A product with a low marginal cost
+2. A fair-minded customer
+3. A product that can be sold credibly at a wide range of prices
+4. A strong relationship between buyer and seller
+5. A very competitive marketplace
+A Low Marginal-Cost Product
+Shortly after the release of In Rainbows, Radiohead guitarist
+Jonny Greenwoodlost the password of some music software he uses,
+and he e-mailed the developers to ask for a new password. “They
+wrote back, ‘Why don’t you pay us what you think it’s worth?’” Green-
+wood said.32
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 30
+30 SMARTPRICING
+As Radiohead learned, software is also a good candidate for “pay
+as you wish” pricing. Our research suggests that any project with a
+low marginal cost—a high fixed cost for the first copy and low costs
+for each additional copy—is fair game.
+For example, a dealership couldn’t sell a car on a “pay as you
+wish” basis because the cost of a single nonpayment would outweigh
+the profit earned from dozens of buyers. Grocery stores would also
+not be good bets because most costs are marginal production costs.
+But software, music, and many other kinds of media and intellectual
+property typically have a low marginal cost. As the costs of these
+products are mostly fixed, the cost of selling an additional copy is
+quite low and often nearly zero online.
+However, this does not mean that the marginal cost must be near
+zero for “pay as you wish” pricing mechanism to be viable. Restau-
+rants have a substantial marginal cost, although fixed costs such as
+salaries and space leases are typically much greater than the marginal
+costs of food. At Around the Corner, the four American businessmen
+we mentioned earlier might have ordered a bottle of Château Mou-
+ton Rothschild Pauillac 2003, which may have cost £200, and yet in
+that instance “pay as you wish” still worked.
+A Fair-Minded Customer
+In the case of Radiohead, the success of In Rainbows relied on
+the fair-mindedness of the group’s many dedicated fans. For a devo-
+tee of the band who has followed the band’s development during the
+past 15 years, downloading without paying might be psychologically
+difficult.
+Radiohead fans are apparently not alone in being fair-minded.
+Richard Thaler, a professor at the University of Chicago and a pio-
+neeringbehavioraleconomist,hasnotedthatbythinkingofpeopleas
+selfish,rationalactors,classiceconomictheoryhastendedtooverlook
+the fact that human beings actually often respond according to how
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 31
+CHAPTER1 • “PAYASYOUWISH” PRICING 31
+theyaretreated.Manyresearchershavediscoveredthatpeopletend
+toreciprocate“kindnesswithkindness,cooperationwithcooperation,
+hostilitywithhostility,anddefectionwithdefection,”Thalersays.33
+Thaler also notes that people often act altruistically even without
+an economic incentive to do so. Even Adam Smith, the first modern
+theorist of capitalism, noted as far back as the Eighteenth Century:
+[H]ow selfish soever man may be supposed to be, there are
+evidently some principles in his nature, which interest him in
+the fate of others, and render their happiness necessary to
+him, though he derive nothing from it, except the pleasure of
+seeing it.34
+“Pay as you wish” sellers seem to try to invoke this sense of fair-
+ness in their customers. For example, Radiohead forced buyers to
+enter an amount they wanted to pay before the download. Potential
+freeloaders had to enter £0 if they wanted to pay nothing. That action
+could trigger the fairness reflex: Is it fair of me to not pay anything for
+someone else’s labor?
+Whenatransactionoccursinasocialsetting,suchasarestaurant,
+thefairnessreflexcanbeencouragedbycreatingasituationinwhich
+itisdifficultforcustomerstonotpayanythingwithoutsomedamage
+to their reputation—a process Erica Okada, assistant professor of
+marketing at the Michael G. Foster School of Business, calls “social
+monitoring.”35 For example, at the Ten Thousand Buddha House, a
+successful“payasyouwish”restaurantinHongKong,alldinersmust
+make reservations in advance, reducing the sense of anonymity.36
+Whoeverispayingthebillwon’twanttolosefacebylookingcheapin
+frontofothersattheirtable—orevenstrangersintherestaurant.
+Sometimes organizations that use “pay as you wish” pricing fur-
+ther discourage underpayment by trying to add to the payer’s embar-
+rassment. Just Around the Corner discourages underpayment by
+shaming the under-payer. “With these people who pay a silly amount,
+we give them their money back,” says owner Michael.37 Technically,
+the customer can get away with paying nothing, but for most people,
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 32
+32 SMARTPRICING
+a free meal at the cost of public humiliation is too expensive. Such
+episodes are a one-time loss for the restaurant and normally a
+one-time lesson for the customer. The deadbeat customer either
+writes a larger check and pays more atsubsequent visits, or he never
+returns.
+This kind of confrontation seems common to “pay as you wish”
+businesses. Sam Lippert, owner of the “pay as you wish” Java Street
+Café in Kettering, Ohio, makes customers pay him directly. “Well,
+you know, they have to look me in the eye and say that that’s what
+they think is fair. And, you know, that’s a big incentive. When some-
+one’s at the counter and you say, ‘You get to pay what you think is fair,’
+very few people are going to take advantage of that situation,” he
+says—“especially if you know them by their first name.”38
+Businesses use other mechanisms to make it easier for customers
+to follow their own best instincts. Farmers around Ithaca, New York,
+oftenleavetablesfilledwithproduceonthesideoftheroad,alongwith
+acashbox.Theyreducetheircustomers’temptationtorunoffwiththe
+moneybymakingitdifficulttoremovetheboxortotakemoneyoutof
+thebox’snarrowpiggy-bankslit.Thebehavioraleconomistswhowrote
+about their business model note that they think the farmers have
+human nature figured out: “They feel that enough people will volun-
+teertopayforthefreshcorntomakeitworthwhiletoputitoutthere.
+The farmers also know that if it were easy enough to take the money,
+someonewoulddoso.”39AsanoldChinesesayinggoes,thelockona
+doorismeanttopreventthetheftbyagentleman,notbyathief.
+Astrongsenseofcommunityamongcustomersseemstohelpbuild
+this sense of social pressure as well. During the October downloads,
+manyRadioheadfansreportedlyaskedeachotherhowmuchtheypaid
+fortheir“free”downloads.Thefactthat“payasyouwish”restaurants
+havedonewellbothinupscaleurbanneighborhoodsandruralcoffee
+shopssuggeststhat“payasyouwish”pricingmightbemosteffectivein
+placeswithastrongsenseofcommunity.
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 33
+CHAPTER1 • “PAYASYOUWISH” PRICING 33
+But even in more hectic, impersonal situations, social monitoring
+seems to have some effect. For example, paying nothing at the Met-
+ropolitan Museum requires “buying” a lapel button directly from a
+museum employee, creating an uncomfortable social context for the
+visitor—in addition to the real or imagined social pressure exerted by
+others who have paid and, perhaps, by their own family.
+New ways to create social pressure online may develop in the
+future as well. Wessex Press, the publishing house that publishes
+Capon’s textbook, Managing Marketing in the 21stCentury,tells cus-
+tomers that they can download the book for free, but they must
+“agree to receive an e-mail from Wessex in a few months’ time
+encouraging you to pay what Managing Marketing in the 21stCentury
+was worth to you.”40
+Farfromunderpaying,certain“payasyouwish”situationsleadcus-
+tomerstoerronthehighside.Forexample,peopleatJustAroundthe
+Corner in London reportedly pay 10%–20% more than they normally
+would for an equivalent meal. When a pricing mechanism appeals to
+customers’goodside,itcanbringthebestoutofthecustomers.
+A Wide Distribution in the Amount Customers Are
+Willing to Pay for a Product
+The fact that some people care about Radiohead more than oth-
+ers was another reason for the campaign’s success. If a product’s per-
+ceived value doesn’t vary much, encouraging customers to set their
+own prices might not be profitable. Much of the profit in “pay as you
+wish” pricing lies in the wide distribution of customers who don’t
+know the underlying cost structure and overestimate the actual cost.
+A wide distribution of willingness to pay also makes it more profitable
+to charge different customers different prices. “Pay as you wish” pric-
+ing enables the seller to achieve price discrimination tailored to indi-
+vidual customers.
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 34
+34 SMARTPRICING
+A Strong Relationship Between Buyer and Seller
+After people have established a relationship, whether it is a one-
+sided relationship with a group such as Radiohead or a more mutual
+relationship with a salesperson, they often feel a need to reciprocate
+their kindness. Many businesses with conventional pricing have
+incorporated this tendency into their customer service practices—
+fromNordstrom, the high-end U.S. department store famed for pro-
+viding extraordinary levels of service, such as gift-wrapping packages
+bought at other stores, to Wal-Mart, the low-price zealot that installs
+a person at every entrance, often a friendly old lady. Whether the idea
+is called “aggressive hospitality,” as Wal-Mart founder Sam Walton
+branded his approach to customer service,41 or an injunction to their
+employees to “think like the customer,” the underlying idea is the
+same.42And in the case of the Wal-Mart greeter, the aim is not only to
+encourage loyalty, but also to discourage theft.43
+The same principle may be even more important in “pay as you
+wish” pricing because the decision to leave anything is a voluntary act.
+If a waiter has been kind and helpful, it’s difficult to walk away from a
+meal without tipping, although diners aren’t legally obligated to leave
+anything.
+Framingdevices,suchasthegeneralcustomintheUnitedStates
+of tipping 15% or the Metropolitan’s posted notice about a suggested
+donation for admission, also add pressure to pay more than a token
+amount.Suchframesmightbeausefultoolin“payasyouwish”pric-
+ing, which otherwise forces consumers to do more of the work
+involvedinsettingtheprice.
+Gettingtoknowhowcustomersdecidewhattopaycanalsohelpa
+sellereffectivelyimplement“payasyouwish”pricing.Mostconsumer
+behaviorstudiessuggestthatbuyersusethreewaystodecidetheprice
+theyarewillingtopay:anchorpricing,valuepricing,andfairpricing.
+When customers use anchor pricing (sometimes called reference
+pricing),theycomparethepriceofsimilargoodstodetermineaprice.
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 35
+CHAPTER1 • “PAYASYOUWISH” PRICING 35
+Forexample,usersmightnotethatCDsoniTunessellforanaverageof
+$13 or recall that the price of a previous Radiohead CD is $15, which
+setsanupwardboundaryforthepricetheywillpay.Theymightreason
+thatifaCDdownloadedfromiTunescosts$13,andperhaps$9endsup
+going to the label, Apple, and other marketing expenses, the artist
+mightendupwith$4.44AsRadioheaddoesn’thavealabelorothermar-
+ketingexpenses,theymightconcludethat$4wouldbeafairpricefor
+theirnewCD.
+A second common strategy customers use is value pricing—
+deciding the value the album represents to them and then using that
+as the maximum price they would be willing to pay to own the CD.
+For example, on Salon.com, user Sponte comments, “[I paid]
+£10...so, roughly $20 U.S.—since it’s whatever I want to pay and that
+I value Radiohead as an artist and applaud this experiment....”45
+In the third strategy, fair pricing, customers try to determine what
+they consider a “fair” price, their intuitive idea of what sounds like a
+fair return for the seller. Consider what these users at Salon.com say
+they paid for In Rainbows:
+“I decided to pay £5. I think $10 sounds about fair for a record
+these days.”—User Ozoneon
+“I am preordering the album for £3. Sounds fair to me.”—User
+edsohsmith46
+Each of these methods relies to an extent on preexisting knowl-
+edgeorsentimentstohelpanchortheprice,whichsuggeststhatarad-
+ically new product might be difficult to sell using “pay as you wish.”
+Knowing that the going rate for downloading a song is 99¢, or that a
+cup of coffee is generally a dollar or two, informs the customer’s
+understanding of what an item is “supposed” to cost. Without an
+anchorpriceoraclearunderstandingofthevalueofaproduct’sadvan-
+tages,acustomerwouldlikelyhaveahardtimedecidingwhatthe“fair
+price”shouldbe.
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 36
+36 SMARTPRICING
+A Competitive Marketplace
+The music industry is very competitive, not only because of the
+number of bands that compete for young fans’ devotion, but also
+because of piracy that tempts those young fans not to pay anything for
+songs. In this marketplace, given the alternative of a band setting a
+fixed price and seeing only a few people buying, “pay as you wish” can
+be a superior pricing mechanism even if the band’s objective is to
+maximize its profitability.
+Indeed, in a very competitive marketplace anywhere, “pay as you
+wish” may very well be an effective way for competing firms to avoid
+ruinouspricecompetition.Whenconsumerspaywhattheywish,prices
+inthemarketbecomeautonomous,andcompetingfirmsnolongerset
+anyprices.Whentheydonotsetprices,theycannotandwillnotcom-
+peteonprices!
+Conclusion
+“Pay as you wish” pricing probably goes back to the roots of trade,
+to the days when value was even more difficult to assign than it is in
+today’s cash economy. Then, as now, “pay as you wish” pricing served
+as a good way not only to transfer goods and services, but also to build
+a stronger sense of community. It’s easy to imagine within a family or
+a village that such large webs of mutual obligation could end up feel-
+ing virtually indistinguishable from good deeds.
+As the collective wisdom of many cultures suggests—from the
+English proverb that “the giving hand, gets” to the Chinese injunction
+that if “if somebody gives you one drop of benefit, you should repay it
+with a spring of kindness”—human beings seem hard-wired for posi-
+tive reciprocity. In the end, it’s possible that “pay as you wish” may
+sometimes be not only a convenient process for exchanging goods
+and services, but also an elemental way in which communities are
+built or strengthened.
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 37
+CHAPTER1 • “PAYASYOUWISH” PRICING 37
+Certainly, Radiohead seems to have experienced the sales of its
+album this way—as a kind of affirmation from its fans. “It released us
+from something,” says Yorke, the band’s leader. “It wasn’t nihilistic,
+implying that the music’s not worth anything at all. It was the total
+opposite. And people took it as it was meant. Maybe that’s just people
+having a little faith in what we’re doing.”47
+Or as Hufford, the band’s manager, put it, “People made their
+choice to actually pay money. It’s people saying, ‘We want to be part
+of this thing.’ If it’s good enough, people will put a penny in the
+pot.”48
+Endnotes
+1Adler, Heather, “Radiohead Spurns Label of Digital Crusaders,” The Star Phoenix
+(February 27, 2008): C6.
+2Byrne, David, “David Byrne and Thom Yorke on the Real Value of Music,” Wired
+(December 18, 2007)
+3Gibson, Owen, “The Megas...Innovators of the year winner: Bryce Edge and Chris
+Hufford.” The Guardian (10 March 2008): Supplement, 17.
+4Pareles, Jon, “Pay What You Want for This Article” International Herald Tribune
+(December 13, 2007): 6.
+5Gibson, 17.
+6Byrne, Wired.
+11Levy, Bergen, et al., “Menu Costs, Posted Prices, and Multiproduct Retailers,”
+Journal of Money, Credit, and Banking (November 1999): 686.
+12“Tackling the Textbook Giants,” Columbia Business School “Public Offering” blog
+(October 15, 2008).
+13Ibid.
+14Ibid.
+02_013149418X_ch01.qxp 2/11/10 8:37 AM Page 38
+38 SMARTPRICING
+15Cardew, Ben, “A year of few successes,” Music Week (January 12. 2008): 3.
+16Ben Sisario, “Pop Tours Still Sell, Despite Economy,” New York Times (July 12,
+2008)
+17Lewis, Randy “Making Nice Pays Off for the Police,” Los Angeles Times (January 5,
+2008
+18Mary Ellen Podmolik, “Rocking On, Lollapalooza-Style...,” Chicago Tribune
+(April 8, 2008).
+20Ibid.
+23John Roberts, “Café Owner Thrives with No-Pricing Policy,” CNN (March 17,
+2009)
+24Ben Pappas, “Transparent Eyeball,” Forbes (September 20, 1999)
+25Imogen Wall, “It May Be a Dog-Eat-Dog World, but Dining Here Won’t Prove It,”
+The Wall Street Journal (December 11, 1998): B1.
+26The London Restaurant Review, review by “Olivier.”
+27Lea, Richard, “Faber Launches ‘Pay-What-You-Want’ Ebook,” The Guardian
+(March 9, 2009):
+31Imogen Wall, “It May Be a Dog-Eat-Dog World, but Dining Here Won’t Prove It,”
+The Wall Street Journal (December 11, 1998): B1.
+32Pareles, Jon, “Pay What You Want for This Article” International Herald Tribune
+(December 13, 2007): 6.
+33Robyn Dawes and Richard Thaler, “Anomalies: Cooperation,” Journal of Economic
+Perspectives 2, no. 3 (Summer 1988): 190.
+34Dawes and Thaler, quoting Smith’s Theory of Moral Sentiments, 192.
+35 "A Kirkland cafe with no prices" Old Seattle Times

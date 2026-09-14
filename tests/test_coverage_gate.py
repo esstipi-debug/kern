@@ -6,6 +6,7 @@ skipped, and every escalation routes to a named human with an SLA. Ties together
 decision-options engine and the escalation builder through one gate.
 """
 
+from jobs.qa import coverage_gate, covered
 from nosilo_core.escalation import FINANCIAL, escalate
 from nosilo_core.guided import (
     EscalationPacket,
@@ -15,8 +16,6 @@ from nosilo_core.guided import (
     as_executed,
     as_handoff,
 )
-
-from jobs.qa import coverage_gate, covered
 from src.decision_options import Objective, Scenario, decide
 
 

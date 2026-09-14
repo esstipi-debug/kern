@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.connectors import realized_service  # noqa: E402
 from src.connectors.simulator import demo_store  # noqa: E402
 from src.forecasting import forecast_demand  # noqa: E402
 from src.sources import DataFrameDemandSource  # noqa: E402
@@ -38,6 +39,19 @@ def main() -> None:
     print("\n=== Simulated storefront (offline, no API keys) ===")
     print(f"  products : {', '.join(p.sku for p in store.list_products())}")
     print(f"  orders   : {len(store.orders())} over {store.demand_frame()['date'].nunique()} dates")
+
+    # 0) what the client's customers actually got --------------------------------
+    # Measured off the same orders, not modelled: fill rate and OTIF come from what
+    # each line asked for against what shipped and when (src/order_fulfillment.py).
+    # A SKU whose lines carry no delivery data reads 'n/m', never 0%.
+    print("\n  Realized service (observed, not modelled)")
+    print("  SKU      fill rate    OTIF   lost units   lost value  provenance")
+    for svc in realized_service(store.orders()):
+        fill = "n/m" if svc.fill_rate is None else f"{svc.fill_rate:.1%}"
+        otif = "n/m" if svc.otif is None else f"{svc.otif:.1%}"
+        units = "n/m" if svc.lost_sales_units is None else f"{svc.lost_sales_units:.1f}"
+        value = "n/m" if svc.lost_sales_value is None else f"{svc.lost_sales_value:.0f}"
+        print(f"  {svc.product_id:<8} {fill:>9} {otif:>7} {units:>12} {value:>12}  {svc.provenance}")
 
     # 1) forecast each SKU and decide a restock to the target cover ---------------
     restock: dict[str, float] = {}

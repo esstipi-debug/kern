@@ -33,7 +33,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from nosilo_core import writeback
-
 from scm_agent.knowledge import GroundedCitation, KnowledgeBase
 from src.price_optimizer import PriceOptimizationResult
 from src.pricing_guardrails import GATE_MAX_MOVE_PCT_DEFAULT, GuardrailGateResult, gate_price_changeset
@@ -96,10 +95,17 @@ class RepricingVerificationFailed(RuntimeError):
 def prices_from_optimizer(results: dict[str, PriceOptimizationResult]) -> dict[str, float]:
     """Extract a ``{sku: proposed_price}`` map from PR-16's
     ``optimize_portfolio_prices`` output. Only ``status == "ok"`` entries
-    carry a ``proposed_price``; ``needs_data`` SKUs are silently excluded --
-    never a fabricated price (matches PR-16's own "needs_data, never a
-    fabricated number" contract, and Golden Rule 14: this is an intentional
-    drop of SKUs that have no signal, not a hidden cap on ones that do).
+    reach the changeset -- never a fabricated price (matches PR-16's own
+    "needs_data, never a fabricated number" contract, and Golden Rule 14:
+    these are intentional drops, not a hidden cap).
+
+    Dos estados quedan afuera, por razones distintas:
+
+    - ``needs_data`` -- no hay señal estadística suficiente, no hay precio.
+    - ``no_change`` -- sí hay precio propuesto, pero el precio ACTUAL cae
+      dentro de la banda derivada del IC de la elasticidad, así que la
+      evidencia no lo distingue del óptimo. Poner eso en un changeset sería
+      escribir un movimiento que la propia estimación no sostiene.
     """
     return {
         sku: r.proposed_price

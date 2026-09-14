@@ -180,7 +180,6 @@ def test_the_agent_summary_and_options_survive_an_unmeasurable_gmroi(tmp_path):
     """verify() lets this through (turns *is* measurable), so the surfaces past the
     QA gate must handle it rather than crash formatting `None`."""
     from nosilo_core import llm
-
     from scm_agent import tools
     from scm_agent.orchestrator import Orchestrator
 

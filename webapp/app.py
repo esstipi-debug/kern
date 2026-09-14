@@ -32,13 +32,20 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import pandas as pd  # noqa: E402
-from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
+from fastapi.responses import (  # noqa: E402
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from jobs import abc_xyz_job, excess_obsolete_job  # noqa: E402
 from jobs.intake import load_table  # noqa: E402
+from jobs.notify import notify  # noqa: E402
 from jobs.price_monitor import accept_observation  # noqa: E402
 from jobs.scheduled_jobs import PRODUCTION_JOB_IDS, production_registry  # noqa: E402
 from scm_agent import Orchestrator  # noqa: E402
@@ -62,8 +69,8 @@ from scm_agent.events import Event, EventLedger  # noqa: E402
 from scm_agent.monitors import EVENT_COMPETITOR_PRICE_MOVE, run_all_monitors  # noqa: E402
 from src.connectors import odoo_connect, shopify_connect  # noqa: E402
 from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
+from src.data_paths import resolve_state_path  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
-from src.mcp_keys import DEFAULT_PATH as MCP_KEYS_DEFAULT_PATH  # noqa: E402
 from src.mcp_keys import McpKeyStore  # noqa: E402
 from src.policies import continuous_review_sq, periodic_review_rs  # noqa: E402
 from src.pricing_intel.acquire.watcher import ChangeDetectionWebhookError, parse_changedetection_webhook  # noqa: E402
@@ -78,6 +85,7 @@ from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
 from webapp import (  # noqa: E402
+    access_policy,
     demo_gap_value,
     demo_gap_workbook,
     demo_lead_time_scan,
@@ -89,8 +97,12 @@ from webapp import (  # noqa: E402
     observability,
     security,
 )
+from webapp.blog_loader import post_by_slug, posts_for_lang  # noqa: E402
+from webapp.blog_page import render_blog_article_html, render_blog_index_html  # noqa: E402
+from webapp.blog_seo import build_llms_txt, build_robots_txt, build_sitemap_xml  # noqa: E402
 from webapp.decisions import router as decisions_router  # noqa: E402
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
+from webapp.iso import router as iso_router  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
 from webapp.mcp_server import build_mcp_server  # noqa: E402
 from webapp.offers import OFFERS, get_offer  # noqa: E402
@@ -100,6 +112,9 @@ from webapp.paquetes_page import render_index_html, render_offer_html  # noqa: E
 from webapp.pricing_page import render_pricing_html  # noqa: E402
 from webapp.pricing_quote import router as pricing_quote_router  # noqa: E402
 from webapp.stocky_alternative_page import render_stocky_alternative_html  # noqa: E402
+from webapp.stripe_webhook import SignatureError as StripeSignatureError  # noqa: E402
+from webapp.stripe_webhook import purchase_from_event as purchase_from_stripe_event  # noqa: E402
+from webapp.stripe_webhook import verify_signature as verify_stripe_signature  # noqa: E402
 from webapp.tower_page import T1_DISPLAY_LIMIT, render_tower_html  # noqa: E402
 
 DATA_FILE = Path(
@@ -114,16 +129,19 @@ SAMPLE_RECEIPTS_PORTFOLIO_FILE = _REPO_ROOT / "data" / "sample_receipts_portfoli
 SAMPLE_DEMAND_PORTFOLIO_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
 # Lead mini-reports + follow-up drafts (operator-facing; gitignored). On a cloud
 # deploy point this at the persistent volume (e.g. /data/leads) or it is ephemeral.
-LEAD_REPORTS_DIR = Path(
-    os.environ.get("LINCHPIN_LEAD_REPORTS_DIR", "").strip()
-    or (_REPO_ROOT / "deliverables" / "leads")
-)
+LEAD_REPORTS_DIR = Path(resolve_state_path("lead_reports"))
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 OPERATOR_DOCS_DIR = _REPO_ROOT / "documentation" / "operator"
 PAQUETES_DOCS_DIR = _REPO_ROOT / "documentation" / "paquetes"
 JOBS_OUTPUT_DIR = _REPO_ROOT / "webapp" / "_jobs_output"
 JOBS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-LEADS_DIR = _REPO_ROOT / "webapp" / "_leads"
+# Captured demo leads (PII; gitignored). Same env-var-override pattern as
+# LEAD_REPORTS_DIR above, and for the same reason: the default sits on the
+# Machine's EPHEMERAL root filesystem, so on a cloud deploy it is wiped every
+# single time. That is the exact failure fly.toml's [env] block already
+# documents fixing for events, autonomy, state and the pricing ledger -- this
+# was the one durable store left with no way to point it at the volume.
+LEADS_DIR = Path(resolve_state_path("leads"))
 LEADS_DIR.mkdir(parents=True, exist_ok=True)
 LEADS_FILE = LEADS_DIR / "leads.jsonl"  # one JSON object per captured demo lead (PII; gitignored)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -145,7 +163,7 @@ MAX_LEAD_PERIODS = 52.0
 
 _ORCHESTRATOR: Orchestrator | None = None
 _MCP_KEY_STORE: McpKeyStore | None = None
-MCP_KEYS_PATH = os.environ.get("LINCHPIN_MCP_KEYS_PATH", "").strip() or MCP_KEYS_DEFAULT_PATH
+MCP_KEYS_PATH = resolve_state_path("mcp_keys")
 # Both already honor their own LINCHPIN_EVENTS_PATH/LINCHPIN_AUTONOMY_PATH env
 # vars via scm_agent.events.DEFAULT_PATH / scm_agent.autonomy.DEFAULT_PATH -
 # referenced here (not re-read from os.environ) so there is one source of
@@ -314,7 +332,26 @@ app.middleware("http")(observability.request_log_middleware)
 if observability.should_configure_logging():
     observability.configure_logging()
 
+# The deployment's access policy, assigned before the warnings below read it.
+# `security.POLICY` ships as None and nothing in the tree ever set it, so a
+# production boot with LINCHPIN_REQUIRE_SECURE could not start at all - that is
+# the crash that has kept production on a pre-2026-08-03 image. See
+# webapp/access_policy.py for the rule, and for the debt: the policy is
+# configured here, not yet enforced anywhere.
+#
+# Unconditional, NOT `if security.ENV == "production"`. An assignment that only
+# happens in production is the exact asymmetry that lets a boot failure reach the
+# deployment instead of the test run, which is the family this bug came from.
+security.POLICY = access_policy.build_policy()
+
 # Fail loud on an unsecured production boot; refuse outright if REQUIRE_SECURE.
+# El gate de auth queda sin llave mucho mas seguido que en produccion: un
+# cliente self-serve corre `docker run` sin setear LINCHPIN_ENV, asi que
+# production_warnings() -- que arranca con `if ENV != "production": return []` --
+# no dice nada justo en el caso que importa. Precondicion 4 de la spec de
+# empaquetado: "arranque sin API key = banner explicito, no silencio ni crash".
+security.emitir_banner_de_arranque()
+
 _PROD_WARNINGS = security.production_warnings()
 for _w in _PROD_WARNINGS:
     logging.getLogger("linchpin.security").warning("production hardening: %s", _w)
@@ -329,6 +366,12 @@ app.include_router(decisions_router)
 # src/commercial_pricing.py. Stateless, no auth required (same public-read
 # posture as GET /paquetes; nothing here is sensitive or mutating).
 app.include_router(pricing_quote_router)
+
+# ISO operations/supply-chain catalog (knowledge/iso/catalogo.json): GET /api/iso,
+# POST /api/detectar, GET /api/iso/orden, GET /iso (catalog + detector + order).
+# Read-only floor evidence —
+# never a conformity ruling. Stdlib JSON + FastAPI only (prod-boot safe).
+app.include_router(iso_router)
 
 # Read-only MCP server (Phase A go-to-market: sell analysis-only access to other
 # AI agents). Shares this process's orchestrator (avoids loading the knowledge
@@ -615,6 +658,71 @@ def api_health() -> dict:
     return {"ok": True, "skus": len(_load_forecasts())}
 
 
+# ---- POST /webhooks/stripe: el pago que emite la credencial ------------------
+# Cierra la brecha L3 (documentation/KERN_BRECHAS_DE_LANZAMIENTO.md). Hasta aca
+# webapp/billing.py declaraba en su propio docstring que "does NOT call the
+# Stripe API": resolvia un STRIPE_LINK_<SLUG> puesto a mano y no existia el
+# evento que diera de alta una credencial sola, asi que cada venta terminaba en
+# un operador emitiendo la key a mano.
+#
+# Se lee el secreto EN CADA LLAMADA, no al importar: mismo patron que
+# security.API_KEY, para que un test lo cambie con monkeypatch sin reconstruir la
+# app -- y para que rotarlo no exija un redeploy.
+#
+# LO QUE ESTA RUTA NO HACE: no llama a la API de Stripe y no mueve dinero. Solo
+# verifica lo que llego y emite la credencial que corresponde.
+def _stripe_webhook_secret() -> str:
+    return os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
+
+
+@app.post("/webhooks/stripe", dependencies=[Depends(security.rate_limit)])
+async def stripe_payment_webhook(request: Request):
+    """Emite la key MCP de una compra pagada, una sola vez por compra.
+
+    Contesta 200 en todo lo que no sea firma invalida -- incluidos los eventos
+    que no son compras y los reintentos -- porque Stripe reintenta hasta recibir
+    un 2xx: contestar error a algo que ya esta atendido convierte un evento en
+    una cadena de reintentos que no termina.
+
+    La respuesta NUNCA lleva la key. Va a Stripe, no al comprador.
+    """
+    log = logging.getLogger("linchpin.billing")
+    cuerpo = await request.body()
+    try:
+        verify_stripe_signature(
+            cuerpo, request.headers.get("stripe-signature", ""), _stripe_webhook_secret()
+        )
+    except StripeSignatureError as exc:
+        # El motivo va al log del operador; la respuesta no lo distingue. Decirle
+        # a quien prueba firmas cual de los cuatro casos fallo le da un oraculo.
+        log.warning("webhook de Stripe rechazado: %s", exc)
+        return JSONResponse({"error": "invalid signature"}, status_code=400)
+
+    compra = purchase_from_stripe_event(cuerpo)
+    if compra is None:
+        return JSONResponse({"status": "ignored"}, status_code=200)
+
+    key = _get_mcp_key_store().issue_for_payment(
+        compra.client_name, compra.payment_ref, email=compra.email
+    )
+    if key is None:
+        # Ya habia una key para esta compra: reintento de Stripe o reenvio manual
+        # desde su panel. El indice unico parcial de McpKeyStore lo impide en la
+        # base, no aca -- esto solo lo reporta.
+        log.info("webhook de Stripe: %s ya tenia credencial", compra.payment_ref)
+        return JSONResponse({"status": "already_issued"}, status_code=200)
+
+    # El aviso al operador NO lleva la key: un webhook de notificacion la dejaria
+    # escrita en el log de un tercero. Lleva a quien hay que entregarsela y por
+    # que compra; la key sale de list_keys() por su hash, nunca en claro.
+    notify(
+        f"Kern: pago recibido de {compra.email} ({compra.payment_ref}). "
+        f"Credencial MCP emitida; falta entregarsela."
+    )
+    log.info("webhook de Stripe: credencial emitida para %s", compra.payment_ref)
+    return JSONResponse({"status": "issued"}, status_code=200)
+
+
 @app.post("/api/leads", dependencies=[Depends(security.rate_limit)])
 async def api_leads(email: str = Form(...), source: str = Form("demo")) -> dict:
     """Capture a demo lead: validate the email and append it to a JSONL store.
@@ -876,6 +984,7 @@ async def api_demo_scan(
     email: str = Form(...),
     use_sample: bool = Form(False),
     file: UploadFile | None = File(None),
+    lang: str = Form("es"),
 ) -> dict:
     """The /demo funnel: one stock CSV -> the Diagnostico's teaser numbers.
 
@@ -908,9 +1017,9 @@ async def api_demo_scan(
     # es la puerta. `load_table` no acepta `nrows` -- tiene que elegir hoja y fila
     # de encabezado antes de saber cuantas filas hay -- asi que se mide despues.
     if len(df) > 10000:
-        raise HTTPException(status_code=413, detail="archivo demasiado grande para demo gratis, usa Starter Mass")
+        raise HTTPException(status_code=413, detail="archivo demasiado grande para el diagnóstico gratis, usa Starter Mass")
     try:
-        result = demo_scan.run_demo_scan(df)
+        result = demo_scan.run_demo_scan(df, lang="en" if lang.strip().lower() == "en" else "es")
     except ValueError as exc:
         raise HTTPException(
             status_code=400,
@@ -1775,6 +1884,112 @@ async def api_watch(payload: dict = Body(...)) -> dict:
     }
 
 
+@app.get(
+    "/api/price-position/{sku}",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+async def api_price_position(
+    sku: str,
+    our_price: float | None = Query(default=None, gt=0.0),
+) -> dict:
+    """Where one of our SKUs sits against the competitor prices already
+    observed for it (Linchpin 3.0 plan section 9's last unbuilt route).
+
+    Reads the SAME production ``PriceLedger`` every acquisition tier writes
+    to -- ``PRICE_LEDGER_PATH``, the one ``POST /api/watch`` and the
+    scheduled L0 cycle land observations in -- via
+    ``PriceLedger.latest_for_product``. It never acquires anything: no
+    outbound HTTP, no scraping, no site-compliance surface. Purely a read of
+    what is already ledgered, which is why it can be a plain synchronous
+    handler instead of following ``POST /api/jobs``'s to_thread pattern.
+
+    Gated behind ``LINCHPIN_API_KEY`` and rate-limited: a client's competitor
+    panel is their commercial data, not a public teaser. The public teaser is
+    ``POST /api/demo-price-scan``, which is deliberately a different surface
+    with its own per-request isolated ledger.
+
+    **``our_price`` is a query parameter on purpose, and that is a real
+    constraint, not an oversight.** Kern persists competitor observations
+    (``PriceLedger``) and product<->competitor matches (``SkuMap``), but it
+    persists no catalogue of OUR prices anywhere -- ``PriceIntelReport.
+    our_prices`` is built from the caller's input catalogue at job time. So
+    the position index is only derivable when the caller supplies today's
+    price. Omit it and the competitor panel still comes back in full, with
+    ``position_index: null`` and ``competitor_read: "insufficient_signal"``.
+    The index itself is ``jobs.price_intelligence._position_index`` used
+    verbatim -- the SAME function behind ``price_position_matrix.xlsx`` and
+    ``jobs.price_priority`` -- so the our_price/avg(competitor) math lives in
+    exactly one place (golden rule 1) and keeps its refusal to invent a 1.0.
+
+    **A SKU with no observations is 200, not 404, and that is deliberate.**
+    The ledger indexes what has been observed; it holds no catalogue of valid
+    SKUs, so it genuinely cannot tell "never watched" from "typo". Answering
+    404 would assert a distinction the data does not support. It answers
+    ``observed_offers: 0`` with ``insufficient_signal`` instead -- the gap
+    declared, never a fabricated zero (golden rule 14).
+    """
+    from datetime import datetime, timezone
+    from decimal import Decimal
+
+    from jobs.price_intelligence import _position_index
+    from jobs.price_priority import CONFIRMED, INSUFFICIENT_SIGNAL
+
+    ledger = _get_price_ledger()
+    try:
+        records = ledger.latest_for_product(sku)
+    finally:
+        ledger.close()
+
+    now = datetime.now(timezone.utc)
+    offers = []
+    normalized_prices: list[Decimal] = []
+    for record in records:
+        offer = record.offer
+        observed_at = offer.observed_at
+        if observed_at.tzinfo is None:
+            observed_at = observed_at.replace(tzinfo=timezone.utc)
+        normalized_prices.append(offer.price_normalized)
+        offers.append({
+            "site": offer.site,
+            "competitor_sku_ref": offer.competitor_sku_ref,
+            "price_normalized": float(offer.price_normalized),
+            "currency": offer.currency,
+            "availability": offer.availability,
+            "promo_flag": offer.promo_flag,
+            "observed_at": observed_at.isoformat(),
+            "age_hours": round((now - observed_at).total_seconds() / 3600.0, 2),
+            "acquisition_tier": offer.acquisition_tier,
+            "extractor": offer.extractor,
+            "match_confidence": offer.match_confidence,
+        })
+
+    panel = None
+    if normalized_prices:
+        panel = {
+            "min": float(min(normalized_prices)),
+            "avg": float(sum(normalized_prices) / Decimal(len(normalized_prices))),
+            "max": float(max(normalized_prices)),
+            "observations": len(normalized_prices),
+        }
+
+    index = _position_index(
+        Decimal(str(our_price)) if our_price is not None else None,
+        normalized_prices,
+    )
+    ages = [o["age_hours"] for o in offers]
+    return {
+        "product_id": sku,
+        "observed_offers": len(offers),
+        "our_price": our_price,
+        "position_index": float(index) if index is not None else None,
+        "competitor_read": CONFIRMED if index is not None else INSUFFICIENT_SIGNAL,
+        "competitor_panel": panel,
+        "freshest_age_hours": min(ages) if ages else None,
+        "stalest_age_hours": max(ages) if ages else None,
+        "offers": offers,
+    }
+
+
 # ---- POST /api/jobs/run-scheduled: cron-triggered scheduler wiring ----------
 #
 # jobs.scheduler.JobRegistry.run_once() is Golden Rule 9's ("todo componente
@@ -2385,6 +2600,12 @@ def demo_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "demo" / "index.html")
 
 
+@app.get("/demo/en")
+def demo_page_en() -> FileResponse:
+    """English locale of /demo. Same HTML; the page reads the path and switches copy."""
+    return FileResponse(STATIC_DIR / "demo" / "index.html")
+
+
 @app.get("/operator")
 def operator_portfolio() -> FileResponse:
     """The Operator Portfolio — renders documentation/operator/*.md as a web page."""
@@ -2428,6 +2649,71 @@ def stocky_alternative_page() -> HTMLResponse:
         "starter-fundamentos/diagnostico-arranque must exist in webapp.offers.OFFERS"
     )
     return HTMLResponse(render_stocky_alternative_html(offer_starter, offer_diagnostico))
+
+
+# --------------------------------------------------------------------------- #
+# GEO blog. Spec: docs/superpowers/specs/2026-08-25-blog-geo-i18n-design.md
+#
+# Slugs are globally unique and language is a field on the post, never a path
+# prefix -- that is what keeps this from being a site-wide i18n rewrite. The
+# ".md" route exists for AI crawlers that would rather read the source than
+# un-render our HTML.
+# --------------------------------------------------------------------------- #
+
+@app.get("/blog")
+def blog_index_es() -> HTMLResponse:
+    """Spanish index. Default human entry point, matching /paquetes."""
+    return HTMLResponse(render_blog_index_html("es", posts_for_lang("es")))
+
+
+@app.get("/blog/en")
+def blog_index_en() -> HTMLResponse:
+    """English index. Matches the Stocky / one-plan ICP."""
+    return HTMLResponse(render_blog_index_html("en", posts_for_lang("en")))
+
+
+@app.get("/blog/{slug}.md")
+def blog_article_markdown(slug: str) -> Response:
+    """Raw source for AI crawlers. The slug is matched against the loaded set,
+    so a traversal string simply fails to match: no caller-supplied text ever
+    reaches the filesystem."""
+    post = post_by_slug(slug)
+    if post is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return Response(
+        content=post.path.read_bytes(),
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
+@app.get("/blog/{slug}")
+def blog_article(slug: str) -> HTMLResponse:
+    """SSR article: answer block first, JSON-LD, hreflang pair, one CTA."""
+    post = post_by_slug(slug)
+    if post is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return HTMLResponse(render_blog_article_html(post))
+
+
+@app.get("/robots.txt")
+def robots_txt() -> PlainTextResponse:
+    return PlainTextResponse(build_robots_txt())
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml() -> Response:
+    return Response(content=build_sitemap_xml(), media_type="application/xml")
+
+
+@app.get("/llms.txt")
+def llms_txt() -> PlainTextResponse:
+    """English machine index -- the AI default, same reason x-default is EN."""
+    return PlainTextResponse(build_llms_txt("en"))
+
+
+@app.get("/llms.es.txt")
+def llms_txt_es() -> PlainTextResponse:
+    return PlainTextResponse(build_llms_txt("es"))
 
 
 @app.get("/one-plan")
