@@ -365,3 +365,74 @@ for an on-demand manual run from the Actions tab.
 - Trigger a manual run any time via **Actions → price-watch-cron → Run
   workflow** (`workflow_dispatch`) instead of waiting for the next scheduled
   tick, useful right after adding the secret to confirm the wiring end-to-end.
+
+## 7. Automated deployment (CI/CD)
+
+`.github/workflows/fly-deploy.yml` deploys to production on every push to
+`main` (flyctl's default rolling strategy, health-gated against `fly.toml`'s
+existing `/api/health` check), followed by a post-deploy curl retry loop as
+a second signal. If the release comes up unhealthy, the workflow fails red
+â€” check `flyctl logs -a linchpin` and consider `flyctl releases rollback`.
+
+**Requires two one-time manual steps â€” an agent cannot do either. Do step 2
+before step 1, since step 1's secret lives inside the environment step 2
+creates:**
+
+1. **Create the `production` GitHub Environment** (repo Settings >
+   Environments > New environment > name it exactly `production`) with:
+   - **"Required reviewers" checked, add yourself.**
+   - **"Deployment branches and tags" restricted to `main` only.** This
+     matters because the workflow's `workflow_dispatch` trigger has no
+     branch restriction of its own â€” without this environment-level
+     restriction, someone with write access could manually dispatch the
+     workflow against an arbitrary branch and an approver could unknowingly
+     approve a non-`main` deploy.
+2. **Add `FLY_API_TOKEN` as an Environment secret scoped to `production`**
+   (inside that same environment's settings page: Environment secrets >
+   Add secret â€” **not** repo-level Settings > Secrets and variables >
+   Actions). Generate a deploy-scoped token with
+   `flyctl tokens create deploy -a linchpin`, or from the Fly.io dashboard.
+   **This must be an environment secret, not a repository secret** â€” a
+   repository secret is readable by any workflow in this repo regardless of
+   which (if any) environment it declares, which would let a future
+   workflow (e.g. one the autonomous PR-merge loop adds) read
+   `FLY_API_TOKEN` and deploy without ever triggering step 1's approval
+   gate â€” silently defeating the entire point of this section. Until the
+   environment secret is set, the workflow fails fast with a clear
+   `::error::` message rather than silently no-op'ing.
+
+**Why the approval gate matters here specifically:** this repo pairs
+automated deployment with an autonomous PR-review-and-merge scheduled task
+(see project memory â€” "kern-pr-review-loop") that can merge a PR to `main`
+without a human clicking anything. The single Fly.io machine backing this
+app is a memory-constrained 512MB shared-CPU VM with a **documented OOM
+crash history** (see `fly.toml`'s own comment) and **no automated
+rollback** â€” a bad autonomous merge reaching production unattended could
+take the app down with nobody aware until someone happens to check. The
+`production` environment's required-reviewer gate means PRs can still merge
+automatically, but the actual deploy â€” the step that can break live traffic
+â€” always waits for a human to click "approve" on the pending deployment in
+GitHub's UI before it runs. This was an explicit design decision (not a
+leftover TODO) after an adversarial review flagged the unattended-deploy
+risk on this specific infrastructure; do not remove the `environment:` line
+without addressing that risk another way (e.g. staging + auto-rollback)
+first.
+
+### Estado al 2026-08-25 — el push llega desactivado
+
+El workflow se rescató de la rama `ci/fly-auto-deploy`, cuyo PR (#152) se
+cerró sin mergear en agosto. Llega con el disparo por `push` **comentado**,
+y por una razón concreta: el entorno `production` ya existe en el repo pero
+está vacío — sin reviewers requeridos, sin restricción de rama y sin
+`FLY_API_TOKEN`. Verificable con:
+
+    gh api repos/esstipi-debug/kern/environments/production
+    gh api repos/esstipi-debug/kern/environments/production/secrets
+
+Con `push` activo en ese estado, cada merge a `main` fallaría en el primer
+paso, y el gate de aprobación descrito arriba no estaría en efecto porque el
+entorno no tiene reglas. Mientras tanto el deploy se dispara a mano desde
+**Actions > Fly Deploy > Run workflow**.
+
+Una vez hechos los dos pasos manuales, descomentar las dos líneas de `push`
+en `.github/workflows/fly-deploy.yml` y el auto-deploy queda activo.
