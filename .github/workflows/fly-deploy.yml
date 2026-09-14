@@ -1,0 +1,105 @@
+name: Fly Deploy
+
+# Auto-deploys to production (https://linchpin.fly.dev) on every push to
+# main. Requires two one-time manual steps a human must do (see
+# docs/DEPLOYMENT.md section 7) -- an agent cannot do either:
+#
+# 1. Add FLY_API_TOKEN as an ENVIRONMENT secret scoped to `production`
+#    (Settings > Environments > production > Environment secrets), NOT a
+#    repository secret. This is deliberate, not a style choice: a
+#    repository secret is readable by ANY workflow in this repo regardless
+#    of which environment (if any) it declares, which would let a future
+#    workflow -- e.g. one the autonomous PR-merge loop adds -- read
+#    FLY_API_TOKEN and deploy without ever triggering the approval gate
+#    below. An environment secret is only exposed to a job that declares
+#    that exact `environment:`, which is what actually makes the gate real.
+# 2. Create the `production` GitHub Environment with "Required reviewers"
+#    checked (add yourself) AND "Deployment branches and tags" restricted
+#    to `main` only (Settings > Environments > production). The branch
+#    restriction matters because `workflow_dispatch` below has no `ref`
+#    restriction of its own -- without it, someone with write access could
+#    manually dispatch this workflow against an arbitrary branch and an
+#    approver could unknowingly approve a non-main deploy.
+#
+# Until both exist, the first step below fails fast with a clear error.
+#
+# concurrency prevents two overlapping deploys if multiple PRs merge close
+# together (relevant now that an automated review loop can merge PRs).
+#
+# Deliberately uses flyctl's default ROLLING strategy (not --strategy
+# immediate): fly.toml already declares an http_service health check on
+# /api/health, and the rolling strategy makes `flyctl deploy` itself wait on
+# that check and exit non-zero on an unhealthy release -- an earlier, more
+# reliable red signal than the best-effort curl loop below, on a
+# single-machine 512MB VM with a documented OOM history (see fly.toml).
+
+on:
+  # El disparo por push llega DESACTIVADO a proposito. Al 2026-08-25 el
+  # entorno `production` existe pero esta vacio: sin reviewers requeridos,
+  # sin restriccion de rama y sin FLY_API_TOKEN. Con push activo, cada merge
+  # a main fallaria en el primer paso -- rojo permanente en la rama que
+  # acaba de volver a verde -- y el gate de aprobacion que describe el
+  # header no estaria en efecto, porque el entorno no tiene reglas.
+  #
+  # Descomentar estas dos lineas recien despues de hacer los dos pasos
+  # manuales de arriba. Hasta entonces el deploy se dispara a mano desde
+  # Actions > Fly Deploy > Run workflow.
+  #
+  # push:
+  #   branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fly-deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Everything below runs behind this environment's protection rules
+    # (required reviewer + branch restriction, configured by a human -- see
+    # the file header). FLY_API_TOKEN must be an Environment secret on
+    # `production` specifically, or this job cannot see it at all.
+    environment: production
+    steps:
+      - name: Verify FLY_API_TOKEN environment secret is set
+        env:
+          HAS_TOKEN: ${{ secrets.FLY_API_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "::error::FLY_API_TOKEN is not set as an Environment secret on the 'production' GitHub Environment. A human with repo-admin access must add it there (Settings > Environments > production > Environment secrets) -- NOT as a repository secret. See docs/DEPLOYMENT.md section 7."
+            exit 1
+          fi
+          echo "FLY_API_TOKEN is set."
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4, pinned per the flyctl-actions rationale below
+
+      - name: Setup flyctl
+        # Pinned to the tag-1.6 / v1 commit (verified via `git ls-remote`) --
+        # not @master, which is a mutable ref this token-holding job should
+        # not silently follow.
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+
+      - name: Deploy (rolling, health-gated by flyctl itself)
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Post-deploy health check
+        run: |
+          sleep 20
+          for i in 1 2 3 4 5 6; do
+            if curl -sf --max-time 10 https://linchpin.fly.dev/api/health > /dev/null; then
+              echo "Health check passed."
+              exit 0
+            fi
+            echo "Health check attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "::error::Post-deploy health check failed after 6 attempts. flyctl's own rolling-deploy health gate should have caught most failures before this point, but check Fly logs (flyctl logs -a linchpin) and consider flyctl releases rollback."
+          exit 1
