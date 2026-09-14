@@ -51,7 +51,12 @@ ANCHORS: tuple[tuple[str, str | None], ...] = (
     ("tests/test_coverage_gate.py", None),
     ("tests/test_pack_boundary.py", None),
     ("tests/test_citation_gate.py", None),
-    ("tests/test_no_core_gate.py", None),
+    # Era `tests/test_no_core_gate.py`: verificaba que los tests de listing y motor
+    # siguieran siendo colectables SIN `nosilo_core`, cuando el core era un paquete
+    # privado con secreto de build. #340 (2026-09-11) lo devolvio al repo, asi que
+    # ese gate se quedo sin premisa. La frontera core/dominio, que es lo que el
+    # articulo V realmente protege, hoy la guarda este:
+    ("tests/test_core_boundary.py", None),
     # Runtime constraints and workflow.
     (".github/workflows/tests.yml", "prod-boot"),
     (".claude/hooks/uv-guard.sh", None),

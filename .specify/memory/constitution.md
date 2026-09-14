@@ -86,7 +86,7 @@ requirements in `optional_columns`, never in `required_columns`.
 CI configuration drift MUST be caught by the test suite, not by someone
 noticing. This is why `tests/test_ci_lint_and_coverage_scope.py`,
 `tests/test_coverage_gate.py`, `tests/test_pack_boundary.py`,
-`tests/test_citation_gate.py` and `tests/test_no_core_gate.py` exist. A new gate
+`tests/test_citation_gate.py` and `tests/test_core_boundary.py` exist. A new gate
 goes in `tests/`, and any shell alias for it (`Makefile`) MUST match what CI
 actually runs.
 
