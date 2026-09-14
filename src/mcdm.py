@@ -17,12 +17,14 @@ dead end (Guided Execution Layer, §2.14).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.optimize import linprog
 
 from nosilo_core.guided import (
+    COVERAGE_PENALTY,
     ExecutionOption,
     GuidedOutcome,
     as_options,
@@ -180,13 +182,44 @@ def topsis_rank(
     return RankingResult(scores, ranking, ignored_criteria=ignored)
 
 
+# ── An unmeasured criterion is a different gap, and it needs its own name ───────────
+# `confidence_from_coverage` raises KeyError on a gap name it does not know, on purpose:
+# "so a typo cannot silently mean no penalty". The table it checks lives in nosilo_core,
+# which ships here as a built dependency with no source checkout on the machines that
+# build Kern, so the name has to be registered from this side.
+#
+# Registering is deliberately NOT forking. The penalty stays in the one table every
+# caller reads, so there is a single place to change the number. The alternative --
+# subtracting our own constant after calling the helper -- would be a second
+# implementation of the same rule, and contracts/README.md is explicit about what two
+# copies of one rule do: they drift apart without anything noticing.
+#
+# `setdefault`, not assignment: if nosilo_core ever ships this gap itself, its value
+# wins and this line quietly becomes a no-op instead of silently overriding upstream.
+#
+# 0.20 sits above `ignored_criterion` (0.15) and level with
+# `synthesized_critical_column`, because it is the same kind of hole. A tie IS
+# information -- it says the alternatives are indistinguishable on that criterion. A
+# criterion nobody measured is the absence of information, and an award that rests on
+# fewer measured criteria than it weighed is less certain than one that does not.
+UNMEASURED_CRITERION = "unmeasured_criterion"
+COVERAGE_PENALTY.setdefault(UNMEASURED_CRITERION, 0.20)
+
+
 def award_outcome(
     ranking: RankingResult,
     *,
     summary: str,
     action_prefix: str = "stage:award:",
+    unmeasured: Sequence[str] = (),
 ) -> GuidedOutcome:
-    """Present the award as ranked, executable options with the best recommended."""
+    """Present the award as ranked, executable options with the best recommended.
+
+    ``unmeasured`` names the criteria this data never carried, which :func:`topsis_rank`
+    never sees: it is handed only the criteria that survived. They are a real coverage
+    hole and they belong in the confidence, which is why the caller passes them in
+    rather than the ranking carrying them.
+    """
     options = [
         ExecutionOption(
             label=a,
@@ -198,7 +231,13 @@ def award_outcome(
     ]
     # An award decided on fewer criteria than it was asked to weigh is less certain
     # than one decided on all of them; the default 1.0 claimed otherwise.
+    #
+    # Both holes count, and they are not the same hole. A criterion every alternative
+    # tied on was measured and did not discriminate; one in `unmeasured` was never
+    # measured at all. Passing only the first is how this outcome reported the SAME
+    # confidence for a panel scored on five criteria and one scored on three.
     confidence = confidence_from_coverage(
         ["ignored_criterion"] * len(ranking.ignored_criteria)
+        + [UNMEASURED_CRITERION] * len(unmeasured)
     )
     return as_options(summary, options, confidence=confidence)
