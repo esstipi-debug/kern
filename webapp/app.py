@@ -32,11 +32,20 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import pandas as pd  # noqa: E402
-from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile  # noqa: E402
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
+from fastapi.responses import (  # noqa: E402
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+from jobs import abc_xyz_job, excess_obsolete_job  # noqa: E402
+from jobs.intake import load_table  # noqa: E402
+from jobs.notify import notify  # noqa: E402
 from jobs.price_monitor import accept_observation  # noqa: E402
 from scm_agent import metrics  # noqa: E402
 from jobs.scheduled_jobs import PRODUCTION_JOB_IDS, production_registry  # noqa: E402
@@ -59,9 +68,10 @@ from scm_agent.event_intent import DEFAULT_ROUTING_PATH as EVENT_ROUTING_DEFAULT
 from scm_agent.events import DEFAULT_PATH as EVENTS_DEFAULT_PATH  # noqa: E402
 from scm_agent.events import Event, EventLedger  # noqa: E402
 from scm_agent.monitors import EVENT_COMPETITOR_PRICE_MOVE, run_all_monitors  # noqa: E402
+from src.connectors import odoo_connect, shopify_connect  # noqa: E402
 from src.constraints import InventoryItem, allocate_under_budget  # noqa: E402
+from src.data_paths import resolve_state_path  # noqa: E402
 from src.forecasting import ForecastResult, forecast_demand  # noqa: E402
-from src.mcp_keys import DEFAULT_PATH as MCP_KEYS_DEFAULT_PATH  # noqa: E402
 from src.mcp_keys import McpKeyStore  # noqa: E402
 from src.policies import continuous_review_sq, periodic_review_rs  # noqa: E402
 from src.pricing_intel.acquire.watcher import ChangeDetectionWebhookError, parse_changedetection_webhook  # noqa: E402
@@ -75,9 +85,26 @@ from src.state.store import StateStore  # noqa: E402
 from warehouse.generator import generate_layout  # noqa: E402
 from warehouse.html_export import to_html  # noqa: E402
 from warehouse.qa import validate as validate_layout  # noqa: E402
-from webapp import demo_price_scan, demo_scan, observability, security  # noqa: E402
+from webapp import (  # noqa: E402
+    access_policy,
+    demo_disruption,
+    demo_gap_value,
+    demo_gap_workbook,
+    demo_lead_time_scan,
+    demo_price_scan,
+    demo_scan,
+    demo_stock_workbook,
+    demo_verticals,
+    demo_workbook,
+    observability,
+    security,
+)
+from webapp.blog_loader import post_by_slug, posts_for_lang  # noqa: E402
+from webapp.blog_page import render_blog_article_html, render_blog_index_html  # noqa: E402
+from webapp.blog_seo import build_llms_txt, build_robots_txt, build_sitemap_xml  # noqa: E402
 from webapp.decisions import router as decisions_router  # noqa: E402
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
+from webapp.iso import router as iso_router  # noqa: E402
 from webapp.mcp_auth import McpKeyAuthMiddleware  # noqa: E402
 from webapp.mcp_server import build_mcp_server  # noqa: E402
 from webapp.offers import OFFERS, get_offer  # noqa: E402
@@ -87,6 +114,9 @@ from webapp.paquetes_page import render_index_html, render_offer_html  # noqa: E
 from webapp.pricing_page import render_pricing_html  # noqa: E402
 from webapp.pricing_quote import router as pricing_quote_router  # noqa: E402
 from webapp.stocky_alternative_page import render_stocky_alternative_html  # noqa: E402
+from webapp.stripe_webhook import SignatureError as StripeSignatureError  # noqa: E402
+from webapp.stripe_webhook import purchase_from_event as purchase_from_stripe_event  # noqa: E402
+from webapp.stripe_webhook import verify_signature as verify_stripe_signature  # noqa: E402
 from webapp.tower_page import T1_DISPLAY_LIMIT, render_tower_html  # noqa: E402
 
 DATA_FILE = Path(
@@ -94,29 +124,48 @@ DATA_FILE = Path(
     or (_REPO_ROOT / "data" / "sample_demand_portfolio.csv")
 )
 SAMPLE_STOCK_FILE = _REPO_ROOT / "data" / "sample_stock_snapshot.csv"
+SAMPLE_RECEIPTS_FILE = _REPO_ROOT / "data" / "sample_receipts.csv"
+# El par que cruza: mismos SKU en los dos archivos, que es lo que la valorizacion
+# necesita y lo que sample_receipts.csv (por si solo, para /api/demo-lead-time) no da.
+SAMPLE_RECEIPTS_PORTFOLIO_FILE = _REPO_ROOT / "data" / "sample_receipts_portfolio.csv"
+SAMPLE_DEMAND_PORTFOLIO_FILE = _REPO_ROOT / "data" / "sample_demand_portfolio.csv"
 # Lead mini-reports + follow-up drafts (operator-facing; gitignored). On a cloud
 # deploy point this at the persistent volume (e.g. /data/leads) or it is ephemeral.
-LEAD_REPORTS_DIR = Path(
-    os.environ.get("LINCHPIN_LEAD_REPORTS_DIR", "").strip()
-    or (_REPO_ROOT / "deliverables" / "leads")
-)
+LEAD_REPORTS_DIR = Path(resolve_state_path("lead_reports"))
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 OPERATOR_DOCS_DIR = _REPO_ROOT / "documentation" / "operator"
 PAQUETES_DOCS_DIR = _REPO_ROOT / "documentation" / "paquetes"
 JOBS_OUTPUT_DIR = _REPO_ROOT / "webapp" / "_jobs_output"
 JOBS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-LEADS_DIR = _REPO_ROOT / "webapp" / "_leads"
+# Captured demo leads (PII; gitignored). Same env-var-override pattern as
+# LEAD_REPORTS_DIR above, and for the same reason: the default sits on the
+# Machine's EPHEMERAL root filesystem, so on a cloud deploy it is wiped every
+# single time. That is the exact failure fly.toml's [env] block already
+# documents fixing for events, autonomy, state and the pricing ledger -- this
+# was the one durable store left with no way to point it at the volume.
+LEADS_DIR = Path(resolve_state_path("leads"))
 LEADS_DIR.mkdir(parents=True, exist_ok=True)
 LEADS_FILE = LEADS_DIR / "leads.jsonl"  # one JSON object per captured demo lead (PII; gitignored)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # cap /api/jobs uploads at 25 MB
 JOBS_TTL_SECONDS = 3600  # per-job output dirs older than this are swept on the next request
+
+# SIBLING of JOBS_OUTPUT_DIR, deliberately not a child: _prune_old_jobs() rmtree's
+# every child dir older than the TTL, so a child here would be swept wholesale.
+# Separate subtree also keeps it outside the /jobs-output API-key gate, which is
+# what lets an anonymous /demo visitor fetch their own workbook.
+DEMO_OUTPUT_DIR = _REPO_ROOT / "webapp" / "_demo_output"
+DEMO_TTL_SECONDS = 3600
+#: Lo unico que este arbol sirve. Cualquier otro nombre es un 404, para que la ruta
+#: no se convierta en un lector de archivos arbitrario.
+DEMO_DOWNLOADS = {"plazo_real.xlsx", "escaneo_stock.xlsx", "brecha_en_plata.xlsx"}
+XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 PERIODS_PER_YEAR = 52.0
 MAX_LEAD_PERIODS = 52.0
 
 _ORCHESTRATOR: Orchestrator | None = None
 _MCP_KEY_STORE: McpKeyStore | None = None
-MCP_KEYS_PATH = os.environ.get("LINCHPIN_MCP_KEYS_PATH", "").strip() or MCP_KEYS_DEFAULT_PATH
+MCP_KEYS_PATH = resolve_state_path("mcp_keys")
 # Both already honor their own LINCHPIN_EVENTS_PATH/LINCHPIN_AUTONOMY_PATH env
 # vars via scm_agent.events.DEFAULT_PATH / scm_agent.autonomy.DEFAULT_PATH -
 # referenced here (not re-read from os.environ) so there is one source of
@@ -285,7 +334,26 @@ app.middleware("http")(observability.request_log_middleware)
 if observability.should_configure_logging():
     observability.configure_logging()
 
+# The deployment's access policy, assigned before the warnings below read it.
+# `security.POLICY` ships as None and nothing in the tree ever set it, so a
+# production boot with LINCHPIN_REQUIRE_SECURE could not start at all - that is
+# the crash that has kept production on a pre-2026-08-03 image. See
+# webapp/access_policy.py for the rule, and for the debt: the policy is
+# configured here, not yet enforced anywhere.
+#
+# Unconditional, NOT `if security.ENV == "production"`. An assignment that only
+# happens in production is the exact asymmetry that lets a boot failure reach the
+# deployment instead of the test run, which is the family this bug came from.
+security.POLICY = access_policy.build_policy()
+
 # Fail loud on an unsecured production boot; refuse outright if REQUIRE_SECURE.
+# El gate de auth queda sin llave mucho mas seguido que en produccion: un
+# cliente self-serve corre `docker run` sin setear LINCHPIN_ENV, asi que
+# production_warnings() -- que arranca con `if ENV != "production": return []` --
+# no dice nada justo en el caso que importa. Precondicion 4 de la spec de
+# empaquetado: "arranque sin API key = banner explicito, no silencio ni crash".
+security.emitir_banner_de_arranque()
+
 _PROD_WARNINGS = security.production_warnings()
 for _w in _PROD_WARNINGS:
     logging.getLogger("linchpin.security").warning("production hardening: %s", _w)
@@ -300,6 +368,12 @@ app.include_router(decisions_router)
 # src/commercial_pricing.py. Stateless, no auth required (same public-read
 # posture as GET /paquetes; nothing here is sensitive or mutating).
 app.include_router(pricing_quote_router)
+
+# ISO operations/supply-chain catalog (knowledge/iso/catalogo.json): GET /api/iso,
+# POST /api/detectar, GET /api/iso/orden, GET /iso (catalog + detector + order).
+# Read-only floor evidence —
+# never a conformity ruling. Stdlib JSON + FastAPI only (prod-boot safe).
+app.include_router(iso_router)
 
 # Read-only MCP server (Phase A go-to-market: sell analysis-only access to other
 # AI agents). Shares this process's orchestrator (avoids loading the knowledge
@@ -551,9 +625,104 @@ def api_portfolio(
     )
 
 
+@app.get("/api/verticals")
+def api_verticals() -> dict:
+    """Los rubros que /demo puede servir, con el orden de salidas de cada uno.
+
+    Publico y sin datos: es la pregunta unica del embudo ("que mueves?"), y la
+    pagina la arma con esto en vez de tener la lista escrita en el HTML. Esa
+    diferencia es la metrica de control: un tercer vertical es un archivo en
+    config/verticals/, no un cambio de codigo ni de plantilla.
+    """
+    return demo_verticals.verticals_payload()
+
+
+@app.get("/api/demo-data")
+def api_demo_data() -> dict:
+    import csv
+
+    path = _REPO_ROOT / "data" / "sample_demand.csv"
+    rows: list[dict] = []
+    try:
+        with path.open(newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            for index, row in enumerate(reader):
+                if index >= 20:
+                    break
+                rows.append(dict(row))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="sample_demand.csv not found") from exc
+    return {"rows": rows, "count": len(rows), "source": "sample_demand.csv"}
+
+
 @app.get("/api/health")
 def api_health() -> dict:
     return {"ok": True, "skus": len(_load_forecasts())}
+
+
+# ---- POST /webhooks/stripe: el pago que emite la credencial ------------------
+# Cierra la brecha L3 (documentation/KERN_BRECHAS_DE_LANZAMIENTO.md). Hasta aca
+# webapp/billing.py declaraba en su propio docstring que "does NOT call the
+# Stripe API": resolvia un STRIPE_LINK_<SLUG> puesto a mano y no existia el
+# evento que diera de alta una credencial sola, asi que cada venta terminaba en
+# un operador emitiendo la key a mano.
+#
+# Se lee el secreto EN CADA LLAMADA, no al importar: mismo patron que
+# security.API_KEY, para que un test lo cambie con monkeypatch sin reconstruir la
+# app -- y para que rotarlo no exija un redeploy.
+#
+# LO QUE ESTA RUTA NO HACE: no llama a la API de Stripe y no mueve dinero. Solo
+# verifica lo que llego y emite la credencial que corresponde.
+def _stripe_webhook_secret() -> str:
+    return os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
+
+
+@app.post("/webhooks/stripe", dependencies=[Depends(security.rate_limit)])
+async def stripe_payment_webhook(request: Request):
+    """Emite la key MCP de una compra pagada, una sola vez por compra.
+
+    Contesta 200 en todo lo que no sea firma invalida -- incluidos los eventos
+    que no son compras y los reintentos -- porque Stripe reintenta hasta recibir
+    un 2xx: contestar error a algo que ya esta atendido convierte un evento en
+    una cadena de reintentos que no termina.
+
+    La respuesta NUNCA lleva la key. Va a Stripe, no al comprador.
+    """
+    log = logging.getLogger("linchpin.billing")
+    cuerpo = await request.body()
+    try:
+        verify_stripe_signature(
+            cuerpo, request.headers.get("stripe-signature", ""), _stripe_webhook_secret()
+        )
+    except StripeSignatureError as exc:
+        # El motivo va al log del operador; la respuesta no lo distingue. Decirle
+        # a quien prueba firmas cual de los cuatro casos fallo le da un oraculo.
+        log.warning("webhook de Stripe rechazado: %s", exc)
+        return JSONResponse({"error": "invalid signature"}, status_code=400)
+
+    compra = purchase_from_stripe_event(cuerpo)
+    if compra is None:
+        return JSONResponse({"status": "ignored"}, status_code=200)
+
+    key = _get_mcp_key_store().issue_for_payment(
+        compra.client_name, compra.payment_ref, email=compra.email
+    )
+    if key is None:
+        # Ya habia una key para esta compra: reintento de Stripe o reenvio manual
+        # desde su panel. El indice unico parcial de McpKeyStore lo impide en la
+        # base, no aca -- esto solo lo reporta.
+        log.info("webhook de Stripe: %s ya tenia credencial", compra.payment_ref)
+        return JSONResponse({"status": "already_issued"}, status_code=200)
+
+    # El aviso al operador NO lleva la key: un webhook de notificacion la dejaria
+    # escrita en el log de un tercero. Lleva a quien hay que entregarsela y por
+    # que compra; la key sale de list_keys() por su hash, nunca en claro.
+    notify(
+        f"Kern: pago recibido de {compra.email} ({compra.payment_ref}). "
+        f"Credencial MCP emitida; falta entregarsela."
+    )
+    log.info("webhook de Stripe: credencial emitida para %s", compra.payment_ref)
+    return JSONResponse({"status": "issued"}, status_code=200)
 
 
 @app.post("/api/leads", dependencies=[Depends(security.rate_limit)])
@@ -594,6 +763,35 @@ def _prune_old_jobs(now: float | None = None) -> None:
                 shutil.rmtree(entry, ignore_errors=True)
         except OSError:
             continue
+
+
+def _prune_old_demo_outputs(now: float | None = None) -> None:
+    """Same best-effort sweep as _prune_old_jobs, over the anonymous demo subtree."""
+    cutoff = (now if now is not None else time.time()) - DEMO_TTL_SECONDS
+    try:
+        entries = list(DEMO_OUTPUT_DIR.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            if entry.is_dir() and entry.stat().st_mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
+        except OSError:
+            continue
+
+
+def _demo_download_url(path: Path) -> str | None:
+    """Mint the public URL for a generated demo artifact, or None if it escaped.
+
+    Same containment guard as the /api/jobs minting path: resolve, then require
+    the result to sit under DEMO_OUTPUT_DIR. On failure the caller OMITS the key
+    rather than returning a link that 404s.
+    """
+    try:
+        rel = path.resolve().relative_to(DEMO_OUTPUT_DIR.resolve())
+    except (ValueError, OSError):
+        return None
+    return "/demo-output/" + rel.as_posix()
 
 
 def _safe_upload_basename(filename: str) -> str:
@@ -740,11 +938,55 @@ def _prune_excess_lead_dirs(limit: int = MAX_LEAD_DIRS) -> None:
         shutil.rmtree(stale, ignore_errors=True)
 
 
+async def _stage_table_upload(file: UploadFile) -> tuple[Path, str]:
+    """Land a visitor's table (CSV or Excel) in an isolated per-request tempdir.
+
+    The SECURITY.md upload controls for the demo funnels in ONE place --
+    basename-only filename, 25 MB cap, TTL-purged staging dir -- so a new funnel
+    endpoint cannot ship with a quietly weaker copy of them. Returns the staged
+    path and the sanitized label the report and telemetry line carry.
+
+    The staged name keeps the caller's extension on purpose: ``jobs.intake.load_table``
+    dispatches CSV vs. Excel on the suffix, so flattening it here would silently
+    send every .xlsx down the ``read_csv`` path. The client whose inventory lives
+    in a spreadsheet is the archetypal visitor of this funnel, not an edge case.
+    """
+    import tempfile
+
+    safe_name = _safe_upload_basename(file.filename or "upload")
+    scan_dir = Path(tempfile.mkdtemp(dir=JOBS_OUTPUT_DIR))
+    upload = scan_dir / safe_name
+    if upload.resolve().parent != scan_dir.resolve():
+        raise HTTPException(status_code=400, detail="invalid upload filename")
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
+    try:
+        upload.write_bytes(data)
+    except OSError as exc:
+        # A filename that's syntactically fine for os.path.basename() can still be
+        # rejected by the underlying filesystem (Windows: <>:"|?*, reserved names;
+        # any OS: an overlong path) - a 400, not a crash.
+        raise HTTPException(status_code=400, detail="invalid upload filename") from exc
+    return upload, safe_name
+
+
+def _lead_dir_for(addr: str) -> Path:
+    """The traversal-checked lead directory for an email, created on demand."""
+    _prune_excess_lead_dirs()
+    lead_dir = LEAD_REPORTS_DIR / demo_scan.safe_lead_dirname(addr)
+    if lead_dir.resolve().parent != LEAD_REPORTS_DIR.resolve():
+        raise HTTPException(status_code=400, detail="invalid email")
+    lead_dir.mkdir(parents=True, exist_ok=True)
+    return lead_dir
+
+
 @app.post("/api/demo-scan", dependencies=[Depends(security.rate_limit)])
 async def api_demo_scan(
     email: str = Form(...),
     use_sample: bool = Form(False),
     file: UploadFile | None = File(None),
+    lang: str = Form("es"),
 ) -> dict:
     """The /demo funnel: one stock CSV -> the Diagnostico's teaser numbers.
 
@@ -761,39 +1003,25 @@ async def api_demo_scan(
 
     _prune_old_jobs()
 
-    import tempfile
-
     if file is not None and file.filename:
-        raw_name = (file.filename or "upload").replace("\\", "/")
-        safe_name = os.path.basename(raw_name)
-        if not safe_name or safe_name in (".", ".."):
-            raise HTTPException(status_code=400, detail="invalid upload filename")
-        scan_dir = Path(tempfile.mkdtemp(dir=JOBS_OUTPUT_DIR))
-        upload = scan_dir / safe_name
-        if upload.resolve().parent != scan_dir.resolve():
-            raise HTTPException(status_code=400, detail="invalid upload filename")
-        data = await file.read(MAX_UPLOAD_BYTES + 1)
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail=f"upload exceeds {MAX_UPLOAD_BYTES} bytes")
-        try:
-            upload.write_bytes(data)
-        except OSError as exc:
-            # A filename that's syntactically fine for os.path.basename() can
-            # still be rejected by the underlying filesystem (Windows: <>:"|?*,
-            # reserved names; any OS: an overlong path) - a 400, not a crash.
-            raise HTTPException(status_code=400, detail="invalid upload filename") from exc
-        data_path, dataset_label = upload, safe_name
+        data_path, dataset_label = await _stage_table_upload(file)
     elif use_sample:
         data_path, dataset_label = SAMPLE_STOCK_FILE, "sample_stock_snapshot.csv"
     else:
-        raise HTTPException(status_code=400, detail="sube un CSV de stock o marca use_sample")
+        raise HTTPException(status_code=400, detail="sube un CSV o Excel de stock o marca use_sample")
 
     try:
-        df = pd.read_csv(data_path)
+        df = load_table(data_path)
     except Exception as exc:  # pandas raises several parse/encoding error types
-        raise HTTPException(status_code=400, detail=f"no se pudo leer el CSV: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el archivo: {exc}") from exc
+    # El tope de filas es la regla de negocio del demo gratis y no viajaba con el
+    # `nrows=20000` que reemplazo `load_table`: aquel era un tope de LECTURA, este
+    # es la puerta. `load_table` no acepta `nrows` -- tiene que elegir hoja y fila
+    # de encabezado antes de saber cuantas filas hay -- asi que se mide despues.
+    if len(df) > 10000:
+        raise HTTPException(status_code=413, detail="archivo demasiado grande para el diagnóstico gratis, usa Starter Mass")
     try:
-        result = demo_scan.run_demo_scan(df)
+        result = demo_scan.run_demo_scan(df, lang="en" if lang.strip().lower() == "en" else "es")
     except ValueError as exc:
         raise HTTPException(
             status_code=400,
@@ -803,11 +1031,7 @@ async def api_demo_scan(
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     if result.ok:
         # QA passed -> persist the operator's follow-up artifacts for this lead.
-        _prune_excess_lead_dirs()
-        lead_dir = LEAD_REPORTS_DIR / demo_scan.safe_lead_dirname(addr)
-        if lead_dir.resolve().parent != LEAD_REPORTS_DIR.resolve():
-            raise HTTPException(status_code=400, detail="invalid email")
-        lead_dir.mkdir(parents=True, exist_ok=True)
+        lead_dir = _lead_dir_for(addr)
         (lead_dir / "mini_report.md").write_text(
             demo_scan.render_mini_report(result, email=addr, dataset_label=dataset_label, ts=ts),
             encoding="utf-8",
@@ -816,6 +1040,15 @@ async def api_demo_scan(
             demo_scan.render_followup_email(result, email=addr, dataset_label=dataset_label),
             encoding="utf-8",
         )
+        _prune_old_demo_outputs()
+        DEMO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        book_dir = Path(tempfile.mkdtemp(dir=DEMO_OUTPUT_DIR))
+        book = demo_stock_workbook.write_stock_workbook(
+            result, book_dir / "escaneo_stock.xlsx", dataset_label=dataset_label, ts=ts
+        )
+        shutil.copyfile(book, lead_dir / "escaneo_stock.xlsx")
+        workbook_url = _demo_download_url(book)
+
 
     # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
     record = {
@@ -831,13 +1064,806 @@ async def api_demo_scan(
 
     if not result.ok:
         return {"status": "qa_failed", "qa_issues": list(result.qa_issues), "dataset": dataset_label}
-    return {
+    payload = {
         "status": "ok",
         "headline": result.headline,
         "findings": list(result.findings),
         "cta_url": demo_scan.CTA_PATH,
         "dataset": dataset_label,
     }
+    # Se omite la clave entera si el minteo fallo: mejor sin boton que con uno roto.
+    if workbook_url:
+        payload["workbook_url"] = workbook_url
+    return payload
+
+
+@app.post("/api/demo-lead-time", dependencies=[Depends(security.rate_limit)])
+async def api_demo_lead_time(
+    email: str = Form(...),
+    use_sample: bool = Form(False),
+    file: UploadFile | None = File(None),
+    vertical: str = Form(""),
+) -> dict:
+    """The /demo funnel, salida #1: a receipts CSV -> real lead time vs. declared.
+
+    The output 05-GTM-KERN puts first, because it is a fact about the visitor's
+    own data rather than an opinion: the ERP says 21 days, the last 40 receipts
+    say 34 with a deviation of 11. Same shape as /api/demo-scan -- public,
+    rate-limited, shared upload controls, lead artifacts written only when QA
+    passes, follow-up e-mail a DRAFT that is never auto-sent.
+    """
+    addr = email.strip().lower()
+    if len(addr) > 254 or not EMAIL_RE.match(addr):
+        raise HTTPException(status_code=400, detail="invalid email")
+
+    _prune_old_jobs()
+
+    if file is not None and file.filename:
+        data_path, dataset_label = await _stage_table_upload(file)
+    elif use_sample:
+        data_path, dataset_label = SAMPLE_RECEIPTS_FILE, "sample_receipts.csv"
+    else:
+        raise HTTPException(
+            status_code=400, detail="sube un CSV o Excel de recepciones o marca use_sample"
+        )
+
+    try:
+        df = load_table(data_path)
+    except Exception as exc:  # pandas raises several parse/encoding error types
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el archivo: {exc}") from exc
+    try:
+        # Tabla de alias del rubro cuando el visitante declaro uno. Un slug
+        # desconocido o manipulado devuelve None y mapea con la tabla generica:
+        # esto es un formulario publico, no el perfil que escribio un operador.
+        result = demo_lead_time_scan.run_lead_time_scan(
+            df, aliases=demo_verticals.aliases_for(vertical)
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"columnas requeridas: {demo_lead_time_scan.REQUIRED_COLUMNS_HINT} ({exc})",
+        ) from exc
+
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    workbook_url: str | None = None
+    if result.ok:
+        lead_dir = _lead_dir_for(addr)
+        (lead_dir / "lead_time_report.md").write_text(
+            demo_lead_time_scan.render_mini_report(
+                result, dataset_label=dataset_label, ts=ts
+            ),
+            encoding="utf-8",
+        )
+        (lead_dir / "lead_time_followup_draft.md").write_text(
+            demo_lead_time_scan.render_followup_email(
+                result, email=addr, dataset_label=dataset_label
+            ),
+            encoding="utf-8",
+        )
+        # El entregable que el visitante SI puede abrir. El .md de arriba es para
+        # el operador; quien sube una planilla no lee markdown.
+        # Solo bajo result.ok, igual que los otros dos artefactos: con QA fallado
+        # `findings` viene vacio y el libro seria un resultado sin resultado.
+        _prune_old_demo_outputs()
+        DEMO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        book_dir = Path(tempfile.mkdtemp(dir=DEMO_OUTPUT_DIR))
+        book = demo_workbook.write_lead_time_workbook(
+            result, book_dir / "plazo_real.xlsx", dataset_label=dataset_label, ts=ts
+        )
+        # Una copia para el operador, junto al .md. Ese arbol NUNCA se sirve.
+        shutil.copyfile(book, lead_dir / "plazo_real.xlsx")
+        workbook_url = _demo_download_url(book)
+
+    # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
+    record = {
+        "email": addr,
+        "source": "demo-lead-time",
+        "ts": ts,
+        "dataset": dataset_label,
+        "status": "ok" if result.ok else "qa_failed",
+        "result": result.headline if result.ok else None,
+    }
+    with LEADS_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    if not result.ok:
+        return {
+            "status": "qa_failed",
+            "qa_issues": list(result.qa_issues),
+            "dataset": dataset_label,
+        }
+    payload = {
+        "status": "ok",
+        "headline": result.headline,
+        "findings": list(result.findings),
+        "dropped": result.dropped,
+        "cta_url": demo_lead_time_scan.CTA_PATH,
+        "dataset": dataset_label,
+    }
+    # Se omite la clave entera si el minteo fallo: mejor sin boton que con uno roto.
+    if workbook_url:
+        payload["workbook_url"] = workbook_url
+    return payload
+
+
+@app.post(
+    "/api/odoo-lead-time",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+def api_odoo_lead_time(
+    url: str = Form(""),
+    db: str = Form(""),
+    login: str = Form(""),
+    api_key: str = Form(""),
+    since: str = Form(""),
+) -> dict:
+    """Salida #1 leida de un Odoo Online vivo, en SOLO LECTURA. Cuatro campos.
+
+    Odoo Online no admite modulos de terceros (``odoo_addon/linchpin_dry_run`` es
+    para Odoo.sh y on-premise), asi que la unica puerta al SaaS es la External
+    API. Esto reemplaza la subida del CSV de recepciones por una lectura directa
+    y desemboca en el MISMO ``scan_from_deliveries`` que come el camino del CSV:
+    el motor no se entera de donde vinieron las filas.
+
+    Autenticada y con rate limit, igual que ``POST /api/jobs`` y por la misma
+    razon que el spec del agente de setup exige para su consola: una credencial
+    del ERP de un cliente no se pide en un formulario anonimo, por mas que el
+    alcance sea de solo lectura.
+
+    ``def`` y no ``async def`` a proposito: la lectura de Odoo es I/O de red
+    sincrona con timeout de 30 s por llamada, y FastAPI corre los handlers
+    sincronos en su threadpool. Declararlo ``async`` bloquearia el event loop
+    entero mientras un Odoo lento contesta.
+
+    Tres cosas que NO hace, y cada una es deliberada:
+
+    * **No escribe en Odoo.** Ni con aprobacion. Esta ruta no toca
+      ``nosilo_core.writeback`` y ``odoo_connect`` no ejecuta un solo metodo que
+      no sea de lectura -- hay un test que lo comprueba por las llamadas hechas.
+    * **No persiste la clave de API, ni la registra en el archivo de leads.** Se
+      usa para esta lectura y se descarta con el request. Los cuatro campos
+      llegan con default "" en vez de ser obligatorios para que un campo faltante
+      lo rechace este handler con su propio mensaje, y no un 422 de validacion
+      cuyo cuerpo puede arrastrar el resto del formulario.
+    * **No emite el .xlsx por el arbol publico de /demo-output.** Ese arbol se
+      sirve sin autenticacion contra un token efimero, que esta bien para una
+      planilla anonima del embudo y es un escalon menos que la puerta que esta
+      ruta acaba de poner. Los numeros van en el JSON; el libro es trabajo del
+      Diagnostico, sobre un canal que ya identifica al cliente.
+    """
+    creds = odoo_connect.OdooCredentials(url=url, db=db, login=login, api_key=api_key)
+    entrada = odoo_connect.scan_input(creds, since=since.strip() or None)
+
+    if not entrada.check.ok:
+        # 400 y no 500: lo que esta mal son los datos que mando el llamador, y el
+        # mensaje ya viene escrito en el idioma del cliente con la pantalla de SU
+        # Odoo donde se arregla. `reason` es para que la UI ramifique sin parsear
+        # texto.
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "reason": entrada.check.reason,
+                "message": entrada.check.message,
+                "models": list(entrada.check.models),
+            },
+        )
+
+    pre = entrada.preflight
+    resumen = {
+        "n_receipts": pre.n_receipts,
+        "n_suppliers": pre.n_suppliers,
+        "first_receipt": pre.first_receipt,
+        "last_receipt": pre.last_receipt,
+        "span_days": pre.span_days,
+        "n_with_declared": pre.n_with_declared,
+        "dropped": pre.dropped,
+        "warnings": list(pre.warnings),
+    }
+    if not pre.ok:
+        # La conexion sirve y el Odoo no tiene con que medir. `needs_data` es el
+        # mismo vocabulario de estados del orquestador, y `missing` nombra lo que
+        # falta: nunca se cae al plazo declarado de la ficha del proveedor, que
+        # es la promesa que este escaneo viene a contrastar.
+        return {"status": "needs_data", "preflight": resumen, "missing": list(pre.missing)}
+
+    result = demo_lead_time_scan.scan_from_deliveries(
+        entrada.grouped, entrada.dropped, entrada.source_notes
+    )
+    if not result.ok:
+        return {
+            "status": "qa_failed",
+            "preflight": resumen,
+            "qa_issues": list(result.qa_issues),
+        }
+    return {
+        "status": "ok",
+        "connection": {"host": creds.host, "server_version": entrada.check.server_version},
+        "preflight": resumen,
+        "headline": result.headline,
+        "findings": list(result.findings),
+        "dropped": result.dropped,
+        "cta_url": demo_lead_time_scan.CTA_PATH,
+    }
+
+
+#: Tope de SKU multi-bodega que se detallan en la respuesta. Existe porque un
+#: catalogo grande por varias locations infla el JSON sin que nadie lo lea, y va
+#: DECLARADO en el cuerpo (``n_multi_location`` + ``truncated``): un tope
+#: silencioso se lee como "estos son todos" cuando no lo son.
+_POOLING_MAX_SKUS = 50
+
+
+#: Cuanto espera el handler a una lectura masiva antes de devolver `in_progress`.
+#: Corto a proposito: el hilo del threadpool que espera es un hilo que no atiende.
+_BULK_MAX_WAIT_SEGUNDOS = 20.0
+
+
+def _modo_de_ordenes(valor: str) -> str:
+    """Valida el modo aqui, para que un valor raro no llegue como 500.
+
+    ``paged`` es el default y no cambia: pagina barata para la tienda chica.
+    ``bulk`` no tiene techo de costo ni de tamano y es el unico que sirve para un
+    historial largo, a cambio de ser asincrono.
+    """
+    limpio = (valor or "").strip() or shopify_connect.ORDERS_PAGED
+    if limpio not in (shopify_connect.ORDERS_PAGED, shopify_connect.ORDERS_BULK):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "reason": "parametro_invalido",
+                "message": f"orders_mode tiene que ser {shopify_connect.ORDERS_PAGED!r} o "
+                           f"{shopify_connect.ORDERS_BULK!r}, llego {limpio!r}.",
+            },
+        )
+    return limpio
+
+
+def _entero_opcional(valor: str, campo: str) -> int | None:
+    """Vacio -> None; ``"12"`` -> 12; ``"doce"`` -> 400 nombrando el campo.
+
+    Se parsea aqui y no con ``int = Form(...)`` para que un valor invalido lo
+    rechace este handler nombrando el campo, y no un 422 de validacion de forma
+    cuyo cuerpo puede arrastrar el resto del formulario -- que en esta ruta
+    incluye el token.
+    """
+    limpio = (valor or "").strip()
+    if not limpio:
+        return None
+    try:
+        return int(limpio)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "reason": "parametro_invalido",
+                "message": f"{campo} tiene que ser un numero entero, llego {limpio!r}.",
+            },
+        ) from None
+
+
+def _pooling(stock_rows: tuple[dict, ...]) -> dict:
+    """El stock por bodega: el resumen completo, y el detalle multi-bodega acotado.
+
+    La dimension location es la fuente de valor #2 de esta ruta ("tienes 40
+    unidades muertas en Santiago y estas comprando las mismas 40 para
+    Concepcion"), asi que la respuesta la EXPONE en vez de plegarla. El resumen
+    por location es chico y va entero; el detalle por SKU se corta en
+    ``_POOLING_MAX_SKUS`` y el corte va declarado en el cuerpo.
+    """
+    por_location: dict[str, dict] = {}
+    por_sku: dict[str, list[dict]] = {}
+    for fila in stock_rows:
+        loc = por_location.setdefault(
+            fila["location_id"],
+            {
+                "location_id": fila["location_id"],
+                "name": fila["location_name"],
+                "n_skus": 0,
+                "units": 0.0,
+            },
+        )
+        # Solo lo que tiene existencias: la lectura emite la grilla completa
+        # (una fila por SKU y bodega, con cero donde no hay), asi que contar
+        # filas le daria a TODA bodega el mismo total -- el del catalogo.
+        if fila["on_hand"] > 0:
+            loc["n_skus"] += 1
+        loc["units"] += fila["on_hand"]
+        por_sku.setdefault(fila["product_id"], []).append(
+            {
+                "location_id": fila["location_id"],
+                "name": fila["location_name"],
+                "on_hand": fila["on_hand"],
+            }
+        )
+
+    multi = {
+        sku: filas
+        for sku, filas in por_sku.items()
+        if sum(1 for f in filas if f["on_hand"] > 0) > 1
+    }
+    ordenados = sorted(multi.items(), key=lambda kv: -sum(f["on_hand"] for f in kv[1]))
+    recortado = ordenados[:_POOLING_MAX_SKUS]
+    return {
+        "locations": sorted(por_location.values(), key=lambda x: -x["units"]),
+        "stock_by_location": {
+            "n_multi_location": len(multi),
+            "truncated": len(ordenados) > len(recortado),
+            "limit": _POOLING_MAX_SKUS,
+            "skus": dict(recortado),
+        },
+    }
+
+
+@app.get(
+    "/api/shopify-scan/setup",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+def api_shopify_setup() -> dict:
+    """Que tiene que configurar el comerciante ANTES de conectar, y por que.
+
+    Existe porque el permiso que rompe el analisis es el que nadie marca:
+    ``read_all_orders``. Sin el, Shopify entrega solo los ultimos 60 dias de
+    ordenes con una respuesta exitosa y una lista corta, y la clasificacion sale
+    con la forma correcta y las letras equivocadas. Enterarse de eso recien
+    cuando el escaneo avisa cuesta una vuelta entera: crear la app, marcar el
+    permiso que falta y REINSTALARLA, porque el token no toma permisos nuevos.
+
+    El cuerpo sale de ``shopify_connect.setup_copy()``, que se arma con las
+    mismas constantes que valida el conector. Copiar la lista de permisos a una
+    plantilla la desincroniza en el primer cambio, y la copia vieja es la que el
+    comerciante lee.
+
+    Sin secretos: es la misma informacion que esta en la documentacion publica de
+    Shopify. Va detras de la misma puerta que el escaneo por consistencia, no
+    porque haya algo que proteger.
+    """
+    return {"status": "ok", **shopify_connect.setup_copy()}
+
+
+@app.post(
+    "/api/shopify-scan",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+def api_shopify_scan(
+    shop_domain: str = Form(""),
+    access_token: str = Form(""),
+    since: str = Form(""),
+    until: str = Form(""),
+    required_days: str = Form(""),
+    min_periods: str = Form(""),
+    orders_mode: str = Form(shopify_connect.ORDERS_PAGED),
+    bulk_id: str = Form(""),
+) -> dict:
+    """T03 (ABC/XYZ) y T11 (excedente/obsoleto) desde una tienda Shopify viva, en SOLO LECTURA.
+
+    Dos campos: el dominio ``.myshopify.com`` y el Admin API access token de una
+    app CUSTOM -- la que el comerciante crea en su propio admin. NO es una app
+    del App Store: eso exige OAuth, app embebida, los tres webhooks de GDPR y
+    Billing API, y nada de eso esta en esta ruta.
+
+    Desemboca en los MISMOS ``jobs/abc_xyz_job`` y ``jobs/excess_obsolete_job``
+    que comen un CSV: los motores no se enteran de donde vinieron las filas.
+
+    Autenticada y con rate limit por la misma razon que ``/api/odoo-lead-time``:
+    un token del comercio de un cliente no se pide en un formulario anonimo, por
+    mas que el alcance sea de solo lectura.
+
+    ``def`` y no ``async def`` a proposito: la lectura de Shopify es I/O de red
+    sincrona (httpx con timeout de 30 s), y FastAPI corre los handlers sincronos
+    en su threadpool. Declararlo ``async`` bloquearia el event loop entero
+    mientras una tienda lenta contesta.
+
+    **NO devuelve plazo de proveedor, y lo dice.** Shopify no tiene ordenes de
+    compra ni recepciones: el objeto no existe en su Admin API, asi que la salida
+    #1 del embudo es imposible por esta puerta. La clave ``lead_time`` viaja
+    SIEMPRE con el motivo -- una respuesta que simplemente omitiera el plazo es
+    indistinguible de una que lo midio y le dio cero.
+
+    Tres cosas que NO hace, cada una deliberada:
+
+    * **No escribe en Shopify.** Ni con aprobacion. ``shopify_connect`` no toca
+      ``nosilo_core.writeback`` ni el lado de escritura del conector -- hay un
+      test que lo comprueba por el AST y otro por las llamadas hechas. Si el
+      comerciante concedio scopes de escritura igual, se los reporta en
+      ``connection.write_scopes`` para que pueda desmarcarlos.
+    * **No persiste el token ni lo registra en el archivo de leads.** Se usa para
+      esta lectura y se descarta con el request.
+    * **No emite el .xlsx por el arbol publico de /demo-output.** Ese arbol se
+      sirve sin autenticacion contra un token efimero, que es un escalon menos
+      que la puerta que esta ruta acaba de poner. Los numeros van en el JSON.
+    """
+    creds = shopify_connect.ShopifyCredentials(
+        shop_domain=shop_domain, access_token=access_token
+    )
+    entrada = shopify_connect.scan_input(
+        creds,
+        since=since.strip() or None,
+        until=until.strip() or None,
+        required_days=_entero_opcional(required_days, "required_days"),
+        min_periods=_entero_opcional(min_periods, "min_periods"),
+        orders_mode=_modo_de_ordenes(orders_mode),
+        bulk_id=bulk_id.strip(),
+        # Acotado al request: una lectura masiva puede tardar minutos, y este
+        # handler corre en el threadpool de FastAPI. Si no termina a tiempo se
+        # responde `in_progress` con el id y el llamador vuelve -- que es mas
+        # barato que un hilo tomado y un cliente esperando un timeout.
+        max_wait=_BULK_MAX_WAIT_SEGUNDOS,
+    )
+
+    ausencia = {"status": "ausente", "reason": shopify_connect.PLAZO_AUSENTE}
+
+    if entrada.in_progress:
+        # La lectura masiva arranco y sigue. NO es una falla y no lleva
+        # resultados: un parcial presentado como final no se distingue de uno
+        # completo. El llamador vuelve con `bulk_id` y no paga el arranque otra vez.
+        return {
+            "status": "in_progress",
+            "bulk_id": entrada.bulk.id,
+            "bulk_status": entrada.bulk.status,
+            "retry_after_seconds": _BULK_MAX_WAIT_SEGUNDOS,
+            "lead_time": ausencia,
+        }
+
+    if not entrada.check.ok:
+        # 400 y no 500: lo que esta mal son los datos que mando el llamador, y el
+        # mensaje ya viene escrito en el idioma del comerciante con la pantalla
+        # de SU admin donde se arregla. `reason` es para que la UI ramifique sin
+        # parsear texto.
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "reason": entrada.check.reason,
+                "message": entrada.check.message,
+                "scopes_missing": list(entrada.check.scopes_missing),
+                # Con el para-que de cada uno: un handle suelto no le dice al
+                # comerciante que se pierde si no lo marca.
+                "scopes_help": [
+                    {"handle": h, "para_que": shopify_connect.SCOPE_COPY.get(h, "")}
+                    for h in entrada.check.scopes_missing
+                ],
+                "setup_url": "/api/shopify-scan/setup",
+            },
+        )
+
+    pre = entrada.preflight
+    resumen = {
+        "n_orders": pre.n_orders,
+        "n_skus": pre.n_skus,
+        "n_locations": pre.n_locations,
+        "first_order": pre.first_order,
+        "last_order": pre.last_order,
+        "span_days": pre.span_days,
+        "n_periods": pre.n_periods,
+        "cost_basis": pre.cost_basis,
+        "dropped": pre.dropped,
+        "warnings": list(pre.warnings),
+    }
+    conexion = {
+        "shop": entrada.check.shop_name,
+        "shop_domain": creds.shop_domain,
+        "api_version": entrada.check.api_version_served or entrada.check.api_version_requested,
+        "scopes": list(entrada.check.scopes_granted),
+        "write_scopes": list(entrada.check.write_scopes),
+        "all_orders": entrada.check.all_orders,
+        "orders_mode": orders_mode,
+    }
+
+    if not pre.ok:
+        # La conexion sirve y la tienda no tiene con que correr las tareas.
+        # `needs_data` es el mismo vocabulario de estados del orquestador, y
+        # `missing` nombra lo que falta: nunca se completa una ventana corta ni
+        # se rellena un costo ausente.
+        return {
+            "status": "needs_data",
+            "connection": conexion,
+            "preflight": resumen,
+            "missing": list(pre.missing),
+            "lead_time": ausencia,
+        }
+
+    abc = abc_xyz_job.run(
+        abc_xyz_job.aggregate_skus(
+            pd.DataFrame(list(entrada.demand_rows)),
+            product_col="product_id",
+            demand_col="quantity",
+            cost_col="unit_cost",
+        )
+    )
+    eo = excess_obsolete_job.run(
+        excess_obsolete_job.prepare_records(pd.DataFrame(list(entrada.eo_rows)))
+    )
+    # Las compuertas de QA de cada job, no una segunda copia de su criterio aqui:
+    # la segunda copia de un guardia es como se reintroduce el defecto que el
+    # primero atajaba.
+    qa = abc_xyz_job.verify(abc) + excess_obsolete_job.verify(eo)
+    if qa:
+        return {
+            "status": "qa_failed",
+            "connection": conexion,
+            "preflight": resumen,
+            "qa_issues": qa,
+            "lead_time": ausencia,
+        }
+
+    return {
+        "status": "ok",
+        "connection": conexion,
+        "preflight": resumen,
+        "lead_time": ausencia,
+        "abc_xyz": {
+            "n_skus": abc.n_skus,
+            "n_a": abc.n_a,
+            "n_cz": abc.n_cz,
+            "a_value_share": round(abc.a_value_share, 4),
+            # El corte viaja con las letras: una clase sin su criterio no es
+            # falsable, y un lector que no puede ver el corte no puede estar en
+            # desacuerdo con la segmentacion.
+            "cut_criterion": abc.cut_criterion or "",
+            "ranks_on_value": abc.value_basis.discriminates,
+            "cells": abc.summary,
+        },
+        "excess_obsolete": {
+            "n_skus": eo.n_skus,
+            "n_dead": eo.n_dead,
+            "n_excess": eo.n_excess,
+            "dead_value": round(eo.dead_value, 2),
+            "excess_value": round(eo.excess_value, 2),
+            "eo_value": round(eo.eo_value, 2),
+            "eo_pct_of_value": round(eo.eo_pct_of_value, 4),
+            "total_on_hand_value": round(eo.total_on_hand_value, 2),
+            "summary": eo.summary,
+        },
+        **_pooling(entrada.stock_rows),
+        "source_notes": list(entrada.source_notes),
+    }
+
+
+@app.post("/api/demo-disruption", dependencies=[Depends(security.rate_limit)])
+async def api_demo_disruption(
+    email: str = Form(...),
+    consentimiento: bool = Form(False),
+    use_sample: bool = Form(False),
+    file: UploadFile | None = File(None),
+    vertical: str = Form(""),
+) -> dict:
+    """El /demo funnel, salida #6: exposicion a disrupcion por proveedor.
+
+    Sale del MISMO archivo de recepciones que la salida #1: ese export ya trae la
+    columna de proveedor, asi que el visitante no sube nada nuevo.
+
+    ``consentimiento`` es OPT-IN y su default es ``False`` A PROPOSITO. Un cliente
+    que se olvide del campo recibe la negativa, no el escaneo: buscar noticias
+    manda el NOMBRE de cada proveedor a un servicio externo, y esa es la lista de
+    proveedores del visitante. El default tiene que fallar hacia no-enviar.
+
+    Sin consentimiento devuelve 200 con ``status: "omitido"`` y el motivo -- no un
+    4xx: no se rompio nada, el visitante ejercio una opcion legitima y el resto
+    del diagnostico corre igual.
+    """
+    addr = email.strip().lower()
+    if len(addr) > 254 or not EMAIL_RE.match(addr):
+        raise HTTPException(status_code=400, detail="invalid email")
+
+    # La negativa se resuelve ANTES de leer el archivo: sin consentimiento no hay
+    # nada que parsear, nada que agrupar y nada que pueda salir por accidente.
+    if not consentimiento:
+        return {
+            "status": "omitido",
+            "motivo": demo_disruption.SIN_CONSENTIMIENTO,
+            "consent_text": demo_disruption.CONSENT_TEXT,
+        }
+
+    _prune_old_jobs()
+
+    if file is not None and file.filename:
+        data_path, dataset_label = await _stage_table_upload(file)
+    elif use_sample:
+        data_path, dataset_label = SAMPLE_RECEIPTS_FILE, "sample_receipts.csv"
+    else:
+        raise HTTPException(
+            status_code=400, detail="sube un CSV o Excel de recepciones o marca use_sample"
+        )
+
+    try:
+        df = load_table(data_path)
+    except Exception as exc:  # pandas raises several parse/encoding error types
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el archivo: {exc}") from exc
+
+    try:
+        # El MISMO agrupador que la salida #1: las claves son los proveedores.
+        grouped, _dropped = demo_lead_time_scan.to_deliveries(
+            df, aliases=demo_verticals.aliases_for(vertical)
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"columnas requeridas: {demo_lead_time_scan.REQUIRED_COLUMNS_HINT} ({exc})",
+        ) from exc
+
+    scan = demo_disruption.run_disruption_scan(grouped, consentimiento=True)
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    if scan.corrio:
+        lead_dir = _lead_dir_for(addr)
+        (lead_dir / "disrupcion_proveedores.md").write_text(
+            demo_disruption.render_mini_report(scan, ts=ts), encoding="utf-8"
+        )
+
+    record = {
+        "email": addr,
+        "source": "demo-disruption",
+        "ts": ts,
+        "dataset": dataset_label,
+        "status": "ok" if scan.corrio else "omitido",
+        "n_consultados": scan.n_consultados,
+        "n_omitidos": scan.n_omitidos,
+    }
+    with LEADS_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    if not scan.corrio:
+        return {"status": "omitido", "motivo": scan.motivo, "dataset": dataset_label}
+
+    rep = scan.report
+    return {
+        "status": "ok",
+        "dataset": dataset_label,
+        "summary": rep.summary,
+        "n_suppliers": scan.n_consultados,
+        "n_signalled": rep.n_signalled,
+        "n_failed": rep.n_failed,
+        # El tope NUNCA es silencioso: un lector que ve 25 proveedores y no sabe
+        # que habia 300 lee cobertura completa.
+        "n_omitidos": scan.n_omitidos,
+        "window": rep.window,
+        "caveat": demo_disruption.CAVEAT_TAMIZAJE,
+        "signals": [
+            {
+                "supplier": sig.supplier,
+                "articles": sig.article_count,
+                "sources": sig.distinct_sources,
+                "exposure": round(sig.exposure_score, 3),
+                "category": sig.dominant_category,
+                "fetch_failed": sig.fetch_failed,
+            }
+            for sig in rep.signals
+        ],
+        "cta_url": demo_lead_time_scan.CTA_PATH,
+    }
+
+
+@app.get("/demo-output/{token}/{name}")
+async def demo_output(token: str, name: str) -> FileResponse:
+    """Serve a generated /demo workbook to the anonymous visitor who produced it.
+
+    An explicit route rather than `app.mount(StaticFiles(...))`, and the media type
+    is hardcoded rather than sniffed: Python's `mimetypes` has no entry for `.xlsx`
+    and the `python:3.12-slim` base image ships no `/etc/mime.types`, so Starlette
+    would guess `text/plain` and the browser would show XML soup instead of opening
+    Excel. The one thing this file exists to do would fail on the deploy and work
+    on every developer's laptop.
+
+    Containment: `token` and `name` are both re-checked against the resolved path,
+    and `name` must be one of the known artifacts - this is a download endpoint for
+    three known files, never a reader of arbitrary paths.
+    """
+    if name not in DEMO_DOWNLOADS:
+        raise HTTPException(status_code=404, detail="not found")
+    candidate = DEMO_OUTPUT_DIR / token / name
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(DEMO_OUTPUT_DIR.resolve())
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=404, detail="not found") from exc
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(resolved, media_type=XLSX_MEDIA_TYPE, filename=name)
+
+
+@app.post("/api/demo-gap-value", dependencies=[Depends(security.rate_limit)])
+async def api_demo_gap_value(
+    email: str = Form(...),
+    use_sample: bool = Form(False),
+    receipts: UploadFile | None = File(None),
+    demand: UploadFile | None = File(None),
+) -> dict:
+    """The /demo funnel, la conversion a plata: recepciones + movimientos -> las dos monedas.
+
+    Corre el mismo motor de inventario dos veces -- con el plazo declarado y sigma_L
+    cero (lo que hace un ERP) y con el plazo y la dispersion observados -- y pone la
+    diferencia en dinero. Es el puente al Diagnostico pago. Solo lectura, como los
+    otros dos embudos: nada se escribe en los sistemas del cliente.
+
+    Los dos archivos van juntos o ninguno: valorizar necesita el plazo (recepciones)
+    y la variabilidad de demanda con su costo (movimientos), y con uno solo el
+    numero no existe.
+    """
+    addr = email.strip().lower()
+    if len(addr) > 254 or not EMAIL_RE.match(addr):
+        raise HTTPException(status_code=400, detail="invalid email")
+
+    _prune_old_jobs()
+
+    if receipts is not None and receipts.filename and demand is not None and demand.filename:
+        receipts_path, receipts_label = await _stage_table_upload(receipts)
+        demand_path, demand_label = await _stage_table_upload(demand)
+        dataset_label = f"{receipts_label} + {demand_label}"
+    elif use_sample:
+        receipts_path = SAMPLE_RECEIPTS_PORTFOLIO_FILE
+        demand_path = SAMPLE_DEMAND_PORTFOLIO_FILE
+        dataset_label = "sample_receipts_portfolio.csv + sample_demand_portfolio.csv"
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "sube LOS DOS archivos (recepciones y movimientos de demanda con costo "
+                "unitario) o marca use_sample: con uno solo no hay cifra de plata"
+            ),
+        )
+
+    try:
+        receipts_df = load_table(receipts_path)
+        demand_df = load_table(demand_path)
+    except Exception as exc:  # pandas raises several parse/encoding error types
+        raise HTTPException(status_code=400, detail=f"no se pudo leer el archivo: {exc}") from exc
+    try:
+        result = demo_gap_value.run_gap_value(receipts_df, demand_df)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    workbook_url: str | None = None
+    if result.ok:
+        lead_dir = _lead_dir_for(addr)
+        (lead_dir / "gap_value_report.md").write_text(
+            demo_gap_value.render_mini_report(result, dataset_label=dataset_label, ts=ts),
+            encoding="utf-8",
+        )
+        (lead_dir / "gap_value_followup_draft.md").write_text(
+            demo_gap_value.render_followup_email(
+                result, email=addr, dataset_label=dataset_label
+            ),
+            encoding="utf-8",
+        )
+        _prune_old_demo_outputs()
+        DEMO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        book_dir = Path(tempfile.mkdtemp(dir=DEMO_OUTPUT_DIR))
+        book = demo_gap_workbook.write_gap_value_workbook(
+            result, book_dir / "brecha_en_plata.xlsx", dataset_label=dataset_label, ts=ts
+        )
+        shutil.copyfile(book, lead_dir / "brecha_en_plata.xlsx")
+        workbook_url = _demo_download_url(book)
+
+
+    # Telemetry line ALWAYS (feeds funnel metrics); artifacts only on QA pass.
+    record = {
+        "email": addr,
+        "source": "demo-gap-value",
+        "ts": ts,
+        "dataset": dataset_label,
+        "status": "ok" if result.ok else "qa_failed",
+        "result": result.headline if result.ok else None,
+    }
+    with LEADS_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    if not result.ok:
+        return {
+            "status": "qa_failed",
+            "qa_issues": list(result.qa_issues),
+            "dataset": dataset_label,
+        }
+    payload = {
+        "status": "ok",
+        "headline": result.headline,
+        "findings": list(result.findings),
+        "cta_url": demo_gap_value.CTA_PATH,
+        "dataset": dataset_label,
+    }
+    # Se omite la clave entera si el minteo fallo: mejor sin boton que con uno roto.
+    if workbook_url:
+        payload["workbook_url"] = workbook_url
+    return payload
 
 
 @app.post("/api/demo-price-scan", dependencies=[Depends(security.rate_limit)])
@@ -971,6 +1997,112 @@ async def api_watch(payload: dict = Body(...)) -> dict:
         "competitor_sku_ref": candidate.competitor_sku_ref,
         "matched_product_id": candidate.matched_product_id,
         "events": [e.type for e in outcome.events],
+    }
+
+
+@app.get(
+    "/api/price-position/{sku}",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+async def api_price_position(
+    sku: str,
+    our_price: float | None = Query(default=None, gt=0.0),
+) -> dict:
+    """Where one of our SKUs sits against the competitor prices already
+    observed for it (Linchpin 3.0 plan section 9's last unbuilt route).
+
+    Reads the SAME production ``PriceLedger`` every acquisition tier writes
+    to -- ``PRICE_LEDGER_PATH``, the one ``POST /api/watch`` and the
+    scheduled L0 cycle land observations in -- via
+    ``PriceLedger.latest_for_product``. It never acquires anything: no
+    outbound HTTP, no scraping, no site-compliance surface. Purely a read of
+    what is already ledgered, which is why it can be a plain synchronous
+    handler instead of following ``POST /api/jobs``'s to_thread pattern.
+
+    Gated behind ``LINCHPIN_API_KEY`` and rate-limited: a client's competitor
+    panel is their commercial data, not a public teaser. The public teaser is
+    ``POST /api/demo-price-scan``, which is deliberately a different surface
+    with its own per-request isolated ledger.
+
+    **``our_price`` is a query parameter on purpose, and that is a real
+    constraint, not an oversight.** Kern persists competitor observations
+    (``PriceLedger``) and product<->competitor matches (``SkuMap``), but it
+    persists no catalogue of OUR prices anywhere -- ``PriceIntelReport.
+    our_prices`` is built from the caller's input catalogue at job time. So
+    the position index is only derivable when the caller supplies today's
+    price. Omit it and the competitor panel still comes back in full, with
+    ``position_index: null`` and ``competitor_read: "insufficient_signal"``.
+    The index itself is ``jobs.price_intelligence._position_index`` used
+    verbatim -- the SAME function behind ``price_position_matrix.xlsx`` and
+    ``jobs.price_priority`` -- so the our_price/avg(competitor) math lives in
+    exactly one place (golden rule 1) and keeps its refusal to invent a 1.0.
+
+    **A SKU with no observations is 200, not 404, and that is deliberate.**
+    The ledger indexes what has been observed; it holds no catalogue of valid
+    SKUs, so it genuinely cannot tell "never watched" from "typo". Answering
+    404 would assert a distinction the data does not support. It answers
+    ``observed_offers: 0`` with ``insufficient_signal`` instead -- the gap
+    declared, never a fabricated zero (golden rule 14).
+    """
+    from datetime import datetime, timezone
+    from decimal import Decimal
+
+    from jobs.price_intelligence import _position_index
+    from jobs.price_priority import CONFIRMED, INSUFFICIENT_SIGNAL
+
+    ledger = _get_price_ledger()
+    try:
+        records = ledger.latest_for_product(sku)
+    finally:
+        ledger.close()
+
+    now = datetime.now(timezone.utc)
+    offers = []
+    normalized_prices: list[Decimal] = []
+    for record in records:
+        offer = record.offer
+        observed_at = offer.observed_at
+        if observed_at.tzinfo is None:
+            observed_at = observed_at.replace(tzinfo=timezone.utc)
+        normalized_prices.append(offer.price_normalized)
+        offers.append({
+            "site": offer.site,
+            "competitor_sku_ref": offer.competitor_sku_ref,
+            "price_normalized": float(offer.price_normalized),
+            "currency": offer.currency,
+            "availability": offer.availability,
+            "promo_flag": offer.promo_flag,
+            "observed_at": observed_at.isoformat(),
+            "age_hours": round((now - observed_at).total_seconds() / 3600.0, 2),
+            "acquisition_tier": offer.acquisition_tier,
+            "extractor": offer.extractor,
+            "match_confidence": offer.match_confidence,
+        })
+
+    panel = None
+    if normalized_prices:
+        panel = {
+            "min": float(min(normalized_prices)),
+            "avg": float(sum(normalized_prices) / Decimal(len(normalized_prices))),
+            "max": float(max(normalized_prices)),
+            "observations": len(normalized_prices),
+        }
+
+    index = _position_index(
+        Decimal(str(our_price)) if our_price is not None else None,
+        normalized_prices,
+    )
+    ages = [o["age_hours"] for o in offers]
+    return {
+        "product_id": sku,
+        "observed_offers": len(offers),
+        "our_price": our_price,
+        "position_index": float(index) if index is not None else None,
+        "competitor_read": CONFIRMED if index is not None else INSUFFICIENT_SIGNAL,
+        "competitor_panel": panel,
+        "freshest_age_hours": min(ages) if ages else None,
+        "stalest_age_hours": max(ages) if ages else None,
+        "offers": offers,
     }
 
 
@@ -1590,6 +2722,12 @@ def demo_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "demo" / "index.html")
 
 
+@app.get("/demo/en")
+def demo_page_en() -> FileResponse:
+    """English locale of /demo. Same HTML; the page reads the path and switches copy."""
+    return FileResponse(STATIC_DIR / "demo" / "index.html")
+
+
 @app.get("/operator")
 def operator_portfolio() -> FileResponse:
     """The Operator Portfolio — renders documentation/operator/*.md as a web page."""
@@ -1633,6 +2771,71 @@ def stocky_alternative_page() -> HTMLResponse:
         "starter-fundamentos/diagnostico-arranque must exist in webapp.offers.OFFERS"
     )
     return HTMLResponse(render_stocky_alternative_html(offer_starter, offer_diagnostico))
+
+
+# --------------------------------------------------------------------------- #
+# GEO blog. Spec: docs/superpowers/specs/2026-08-25-blog-geo-i18n-design.md
+#
+# Slugs are globally unique and language is a field on the post, never a path
+# prefix -- that is what keeps this from being a site-wide i18n rewrite. The
+# ".md" route exists for AI crawlers that would rather read the source than
+# un-render our HTML.
+# --------------------------------------------------------------------------- #
+
+@app.get("/blog")
+def blog_index_es() -> HTMLResponse:
+    """Spanish index. Default human entry point, matching /paquetes."""
+    return HTMLResponse(render_blog_index_html("es", posts_for_lang("es")))
+
+
+@app.get("/blog/en")
+def blog_index_en() -> HTMLResponse:
+    """English index. Matches the Stocky / one-plan ICP."""
+    return HTMLResponse(render_blog_index_html("en", posts_for_lang("en")))
+
+
+@app.get("/blog/{slug}.md")
+def blog_article_markdown(slug: str) -> Response:
+    """Raw source for AI crawlers. The slug is matched against the loaded set,
+    so a traversal string simply fails to match: no caller-supplied text ever
+    reaches the filesystem."""
+    post = post_by_slug(slug)
+    if post is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return Response(
+        content=post.path.read_bytes(),
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
+@app.get("/blog/{slug}")
+def blog_article(slug: str) -> HTMLResponse:
+    """SSR article: answer block first, JSON-LD, hreflang pair, one CTA."""
+    post = post_by_slug(slug)
+    if post is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return HTMLResponse(render_blog_article_html(post))
+
+
+@app.get("/robots.txt")
+def robots_txt() -> PlainTextResponse:
+    return PlainTextResponse(build_robots_txt())
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml() -> Response:
+    return Response(content=build_sitemap_xml(), media_type="application/xml")
+
+
+@app.get("/llms.txt")
+def llms_txt() -> PlainTextResponse:
+    """English machine index -- the AI default, same reason x-default is EN."""
+    return PlainTextResponse(build_llms_txt("en"))
+
+
+@app.get("/llms.es.txt")
+def llms_txt_es() -> PlainTextResponse:
+    return PlainTextResponse(build_llms_txt("es"))
 
 
 @app.get("/one-plan")

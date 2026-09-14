@@ -36,7 +36,12 @@ _README = _REPO_ROOT / "README.md"
 # The <details> block holding the by-area table. Anchored on the summary line so
 # a table added elsewhere in the README is not silently picked up instead.
 _TABLE_BLOCK = re.compile(
-    r"<summary><b>All \d+ capabilities, by area</b></summary>(.*?)</details>",
+    # El ancla sigue la redaccion REAL del README. Cambio de "All N capabilities,
+    # by area" a "The full list, by area (N tools)" y el guard quedo ciego: el
+    # bloque no matcheaba y el test fallaba por ausencia, no por deriva. Se acepta
+    # cualquiera de las dos, para que un reordenamiento del README no vuelva a
+    # apagar el unico chequeo que mantiene honesto el conteo.
+    r"<summary><b>(?:[^<]*?)(?:All \d+ capabilities, by area|The full list, by area \(\d+ tools\))</b></summary>(.*?)</details>",
     re.DOTALL,
 )
 # A row of the by-area table: "| **Area name** | `tool_a` * `tool_b` |".
@@ -51,8 +56,9 @@ def _readme_text() -> str:
 def _documented_tool_keys() -> set[str]:
     block = _TABLE_BLOCK.search(_readme_text())
     assert block is not None, (
-        "the README no longer contains a '<summary><b>All N capabilities, by area"
-        "</b></summary>' block -- either restore it or update this guard's anchor"
+        "the README no longer contains the by-area capability table block "
+        "('All N capabilities, by area' or 'The full list, by area (N tools)') "
+        "-- either restore it or update this guard's anchor"
     )
     keys: set[str] = set()
     for row in _AREA_ROW.finditer(block.group(1)):

@@ -40,8 +40,9 @@ say "reinstalling system-managed conflict packages (cryptography)"
 $PIP install $PIP_FLAGS --ignore-installed cryptography || true
 
 # 3. The full dev install (mirrors CI's tests.yml: engine + tests + web + all
-#    capability extras, incl. pricing-intel/extruct, forecasting, mcdm, state,
-#    tower, dataquality, matching, elasticity, seo).
+#    capability extras, incl. pricing-intel/extruct, forecasting, state,
+#    tower, dataquality, matching, elasticity, seo). NOTE: src/mcdm.py is
+#    base-deps-only (numpy/scipy, no pymcdm), so no MCDM library is verified.
 say "installing requirements-dev.txt (this is the full capability set)"
 $PIP install $PIP_FLAGS -r "$PROJECT_DIR/requirements-dev.txt"
 
@@ -58,7 +59,6 @@ checks = [
     ("pytest", "test runner"),
     ("fastapi", "webapp + test client"),
     ("statsforecast", "modern forecasting (forecast extra)"),
-    ("pymcdm", "MCDM sourcing (mcdm extra)"),
     ("pandera", "state snapshot contracts (state extra)"),
     ("apscheduler", "Tower scheduler (tower extra)"),
     ("rapidfuzz", "dedup/matching (dataquality extra)"),

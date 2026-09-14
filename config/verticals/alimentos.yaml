@@ -1,0 +1,200 @@
+# ALIMENTOS -- este pack existe para NEGARSE, no para servir.
+#
+# Contrato de campos y regla de control: ver repuestos-industriales.yaml.
+#
+# Los otros dos packs corrigen los defaults del motor. Este cierra un agujero
+# distinto y peor. Hasta ahora un cliente de alimentos entraba y el motor lo
+# trataba como generico: 0,95 de servicio, 0,25 de mantencion, y la
+# recomendacion estrella de 05-GTM-KERN §5 -- "sube en 47 SKU, baja en 12" --
+# aplicada tal cual. En un catalogo perecible eso DESTRUYE valor: el buffer que
+# protege del quiebre es el buffer que se vence. Es newsvendor con caducidad, no
+# stock de seguridad clasico.
+#
+# Y no era un hueco de matematica. El motor SI sabe de vida util:
+# src/lots/expiry.py, src/lots/fefo.py, jobs/fefo_job.py, jobs/newsvendor_job.py.
+# Lo sabe en OTRA capacidad, leyendo una columna days_to_expiry o expiry_date que
+# ni inventory_optimization ni multi_echelon consultan nunca. Por eso el veto no
+# puede ser "falta un parametro" -- no existe tal parametro que alguien pueda
+# pasar. Es una capacidad que no debe correr sobre un catalogo perecible.
+#
+# POR QUE SE PUBLICA UN PACK QUE NO VENDE. 05-GTM-KERN §6.6 decide que alimentos
+# va despues de distribucion B2B, y eso sigue en pie: aqui no hay salida de
+# diagnostico, no hay embudo, no hay oferta. Lo que hay es que el rubro pase de
+# recibir un numero malo con cara de certeza a recibir una negativa que dice por
+# que y que correr en su lugar. Sobre un motor cuyo argumento entero es que se
+# abstiene cuando no sabe, esto es lo minimo, no un extra.
+#
+# CONFIANZA: los economicos son ESTIMACIONES DE ESCRITORIO sin contrastar. El
+# veto no lo es: sale de leer que capacidad lee que columna.
+
+vertical: alimentos
+display_name: "Alimentos y bebidas -- catalogo perecible"
+
+# Vacio A PROPOSITO, y no es un olvido.
+#
+# webapp/demo_verticals.verticals_payload() solo ofrece en /demo los rubros con
+# al menos una salida implementada, y demo_modes_for() devuelve tupla vacia
+# cuando ninguna lo esta. Con este campo vacio, alimentos NO aparece en la
+# pregunta "que mueves?" -- que es el comportamiento correcto: no tenemos con que
+# servirlo, y ofrecerlo igual seria entregarle la salida de otro rubro con la
+# etiqueta del suyo.
+#
+# La salida #1 de alimentos, cuando exista, no es la brecha de plazos: es
+# "el X% de tu stock se vence antes de venderse al ritmo actual". Ese motor es
+# jobs/fefo_job.py + jobs/markdown_liquidation_job.py, y le falta la superficie
+# self-serve. Ese dia este campo se llena y el rubro entra al embudo.
+demo_question_label: ""
+diagnostic_outputs: []
+
+
+# ---------------------------------------------------------------------------
+# EL VETO -- la unica razon por la que este archivo existe hoy
+# ---------------------------------------------------------------------------
+demand:
+  # Alta frecuencia, dia de semana, promocion. Poco intermitente y muy
+  # restringido por vida util, que es lo que ningun modelo de arriba mira.
+  expected_regime: seasonal
+
+  forbidden_methods:
+    - capability: inventory_optimization
+      reason: >
+        Dimensiona stock de seguridad sin ninguna nocion de vida util. En un
+        catalogo perecible el buffer que protege del quiebre es el que se vence,
+        asi que subirlo convierte capital en merma. La vida util vive en una
+        columna (days_to_expiry / expiry_date) que esta capacidad no lee.
+      instead: >
+        Corre fefo primero para ver el perfil de envejecimiento real del stock, y
+        newsvendor para el trade-off quiebre-vs-merma con caducidad.
+
+    - capability: multi_echelon
+      # OJO al reescribir: `reason` e `instead` van al summary y a las
+      # clarifications del JobResult, o sea a la cara del cliente. No citar
+      # secciones de documentos internos aqui -- la primera version decia "la
+      # fuente de valor #2 del §5", que para quien lo lee no significa nada.
+      reason: >
+        Consolidar el buffer entre bodegas es la palanca mas grande en otros
+        rubros, y en perecibles esta bloqueada de raiz: la vida util no viaja. El
+        modelo reparte buffer asumiendo que una unidad en el nodo central sirve a
+        cualquier nodo mas adelante, y con fecha de vencimiento esa unidad puede
+        llegar sin vida util utilizable.
+      instead: >
+        Corre fefo por bodega. La consolidacion se evalua recien cuando el modelo
+        acepte vida util restante como restriccion de transferencia.
+
+
+# ---------------------------------------------------------------------------
+# ECONOMICOS -- aplican a lo que SI puede correr
+# ---------------------------------------------------------------------------
+engine_params:
+
+  # ESTIMADO, y el mas alto de los tres packs por lejos. El desglose del §5 da
+  # 18-28% en general; aqui la obsolescencia y merma dejan de ser 3-8% y pasan a
+  # dominar el total, porque en perecibles la merma no es un riesgo de cola: es
+  # una linea del resultado mensual. Se suma cadena de frio en la parte de
+  # bodegaje.
+  holding_rate: 0.40
+
+  # ESTIMADO, y mas bajo que en los otros dos rubros, que es contraintuitivo
+  # hasta que se mira el otro lado del error. Un servicio alto sostenido sobre un
+  # catalogo perecible se paga en merma, no en capital inmovilizado. El numero
+  # correcto sale del newsvendor con caducidad caso por caso, no de un objetivo
+  # uniforme; este escalar es un piso para los llamadores que todavia no pasan
+  # por ahi.
+  service_level: 0.92
+
+  # ESTIMADO. Reposicion local, frecuente y de ciclo corto: es el costo de orden
+  # mas bajo de los tres packs.
+  order_cost: 350.0
+
+  # Nulo por la misma regla que en los otros dos: el plazo se mide, no se hereda.
+  lead_time_days: null
+
+  # ESTIMADO. El mas holgado de los tres, y por una razon que no es descuido:
+  # aqui el fill rate NO es el unico eje de dano. Apretarlo empuja a sobre-stock
+  # y el sobre-stock se vence, asi que una tolerancia estrecha en esta area
+  # empeora el resultado en vez de protegerlo. La merma necesita su propio umbral
+  # y hoy src.hats no tiene area para ella -- deuda anotada, no resuelta.
+  objection_thresholds:
+    comercial: 0.08
+
+
+# ---------------------------------------------------------------------------
+# ALIAS DE COLUMNAS DEL RUBRO
+# ---------------------------------------------------------------------------
+# Se prependean a jobs.intake.ALIASES. Utiles ya: son las columnas que fefo
+# necesita, y las que un export de un distribuidor de alimentos trae en espanol.
+aliases:
+  on_hand:
+    - stock_camara
+    - existencia_frio
+  product_id:
+    - codigo_producto_terminado
+    - sku_alimento
+  # Ejes propios, todavia no canonicos en el motor. `expiry_date` y
+  # `days_to_expiry` SI los lee jobs/fefo_job.py con sus propias tuplas
+  # (_DAYS_COLS, _EXPIRY_COLS) -- que es el septimo juego de alias del repo y
+  # deberia consolidarse contra esta tabla, igual que ya se hizo con el scan de
+  # plazos.
+  expiry_date:
+    - fecha_vencimiento
+    - fecha_caducidad
+    - vencimiento
+    - consumir_antes_de
+    - fecha_expiracion
+  days_to_expiry:
+    - dias_para_vencer
+    - dias_vida_util
+    - vida_util_restante
+  lot_id:
+    - lote
+    - numero_lote
+    - partida_produccion
+
+
+# ---------------------------------------------------------------------------
+# VOCABULARIO
+# ---------------------------------------------------------------------------
+vocabulary:
+  location_singular: "cámara"
+  location_plural: "cámaras"
+  network_node: "centro de distribución"
+  item_singular: "producto"
+  item_plural: "productos"
+  demand_event: "venta"
+  buyer_role: "jefe de operaciones"
+
+
+# ---------------------------------------------------------------------------
+# OBJECIONES
+# ---------------------------------------------------------------------------
+# Solo las que sobreviven al cambio de rubro, mas la que define este pack.
+objections:
+  - claim: "Nuestros datos estan sucios"
+    response: >
+      Uso movimientos historicos y recepciones. Eso siempre existe: si no, no
+      podrias cerrar contablemente.
+  - claim: "Reducir inventario es riesgoso"
+    response: >
+      En tu rubro el riesgo va en los dos sentidos, y por eso no te voy a
+      proponer subir buffers. Lo primero es ver cuanto de tu stock no alcanza a
+      venderse antes de su fecha.
+  - claim: "Entonces tu software no me sirve"
+    response: >
+      Todavia no para dimensionar buffers, y preferimos decirlo. Lo que si corre
+      hoy es el perfil de envejecimiento de tu stock y el trade-off entre quiebre
+      y merma. Lo otro llega cuando el modelo acepte vida util como restriccion.
+
+
+# ---------------------------------------------------------------------------
+# CLASIFICACION
+# ---------------------------------------------------------------------------
+# ESTIMADO. Comprimido hacia abajo respecto a los otros dos packs: el eje que
+# manda en perecibles es rotacion contra vida util, no valor anual, y sostener
+# 0,98 en la clase A de un catalogo fresco es una instruccion para botar
+# producto. Es un parche declarado, igual que en repuestos: el eje correcto
+# necesita vida util restante como dimension de la clasificacion.
+classification:
+  service_level_by_class:
+    A: 0.95
+    B: 0.92
+    C: 0.88

@@ -140,8 +140,16 @@ falla si el sistema deja de refusar bien. Cubierto en CI via `make demo` (no
 **Falta:** los samples son chicos y limpios. Un dataset sucio de verdad —
 duplicados, huecos de fecha, unidades mezcladas, cantidades negativas — ejercita
 el gate de QA mucho mas que un CSV de 8 SKUs, y es lo que un evaluador tecnico
-quiere ver. Ver tambien el hallazgo abierto: hoy una cantidad negativa **no**
-levanta ninguna objecion.
+quiere ver.
+
+**Hecho (2026-08-03):** el hallazgo de la cantidad negativa esta cerrado. Una
+cantidad negativa material ahora falla QA y no produce entregable, en las cinco
+tools que ingieren cantidades directamente (`inventory_optimization`, `abc_xyz`,
+`forecast`, `excess_obsolete`, `ddmrp`), y por herencia en `integrated_plan`
+(via el gate de `forecast`) y en `webapp/demo_scan.py` (via el gate de
+`excess_obsolete`) — siete capacidades alcanzadas en total. Una inmaterial se
+declara en el entregable y en los residuals, que el CLI ahora imprime. Ver
+`docs/superpowers/specs/2026-08-03-negative-quantity-gate-design.md`.
 
 **Definition of done:** dataset sucio versionado (o generador con seed fijo), un
 quinto paso del demo que lo use, y capturas en el README.

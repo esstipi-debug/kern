@@ -1,0 +1,80 @@
+# Data retention policy (src/retention.py, jobs/retention_job.py).
+#
+# "Ruteo es dato" (config/event_routing.yaml) and "la autonomia se gana con
+# evidencia" (config/autonomy.yaml) extended to data minimization: HOW LONG
+# each durable store keeps a row lives here as data, never as a constant baked
+# into the pruning code. Changing a number here changes what the retention job
+# considers expired; it never by itself deletes anything, because every rule
+# starts disabled and a rule that would remove an implausible share of a store
+# is blocked until a human acknowledges it (see max_delete_ratio below).
+#
+# Why this file exists at all: every SQLite store in this repo is append-only
+# and none of them ever deleted a row. `events.payload_json` in particular is
+# a free-form dict written by whatever monitor emitted the event -- it is the
+# one place client data can accumulate without anybody deciding that it should.
+# The least data kept is the least data that can leak.
+version: 1
+
+defaults:
+  # A rule that would delete more than this share of a store's rows in one run
+  # is almost certainly a misconfiguration (wrong retention_days, a clock skew,
+  # or a first run over a store that predates any policy) rather than a normal
+  # day's expiry. The job refuses and reports instead of deleting; an operator
+  # who has looked at the report sets `confirm_bulk: true` on that rule to let
+  # it through once. This is the same never-unprotected stance as
+  # nosilo_core.writeback's irreversible tier: deletion does not get to be
+  # silent just because it is scheduled.
+  max_delete_ratio: 0.25
+
+rules:
+  # --------------------------------------------------------------------------
+  # events -- data/events.sqlite3, scm_agent/events.py
+  # --------------------------------------------------------------------------
+  # The highest-value rule in this file. Monitors emit an Event per detected
+  # condition and `payload` is an open dict, so whatever a monitor happened to
+  # carry (SKU, quantities, and anything a future monitor adds) lands here and
+  # stays forever. 90 days keeps the dedup window (1h) and any plausible
+  # incident review comfortably, and keeps nothing beyond that.
+  - name: events
+    retention_days: 90
+    enabled: false
+    confirm_bulk: false
+    description: >-
+      Control Tower event ledger. Rows older than the window are deleted
+      outright; there is no anonymized form of an event worth keeping.
+
+  # --------------------------------------------------------------------------
+  # state snapshots -- data/state/, src/state/store.py
+  # --------------------------------------------------------------------------
+  # Each snapshots row indexes a Parquet/CSV file holding an actual client
+  # dataset (demand history, SKU master, whatever the cycle ingested). Deleting
+  # the row without deleting the file would protect nothing at all, so the
+  # pruner removes both -- see StateStore.prune_before.
+  #
+  # 365 days rather than 90: these feed forecasting, which needs a season or
+  # more of history to be worth anything. Shorten it per deployment if the
+  # client's own contract says less.
+  - name: state_snapshots
+    retention_days: 365
+    enabled: false
+    confirm_bulk: false
+    description: >-
+      Append-only snapshot index plus the payload files it points at. Both the
+      row and the file on disk are removed.
+
+# Deliberately NOT covered yet, each for its own reason -- adding a rule here
+# without also wiring a pruner in jobs/retention_job.py raises ValueError, so
+# this list stays honest:
+#
+#   autonomy_actions / promotion_proposals (scm_agent/autonomy*.py)
+#     The evidence trail that justifies a tool's autonomy tier. Wants a LONGER
+#     floor than anything here, not a shorter one; pruning it needs its own
+#     decision about what the floor is.
+#
+#   pricing_intel batches/latest, sku_map (src/pricing_intel/)
+#     Competitor observations, not client data. Real growth problem, different
+#     risk profile.
+#
+#   mcp_keys (src/mcp_keys.py)
+#     Already stores key_hash, never plaintext. Keys get revoked, not expired;
+#     that is a credential-lifecycle question, not a retention one.

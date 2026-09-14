@@ -11,8 +11,8 @@ transport) is exercised with injected proxies, so its auth + dispatch are covere
 import threading
 
 import pytest
-from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
 
+from nosilo_core.guided import EXECUTED, HANDOFF, passed_guided
 from src.connectors import InventorySource, OrderLine, Product
 from src.connectors.odoo import (
     InMemoryOdoo,
@@ -63,6 +63,21 @@ def _odoo() -> InMemoryOdoo:
     )
 
 
+
+def _approved(connector, changeset):
+    """Mint the signed approval draft-PO creation now requires.
+
+    Creating purchase orders is TIER_IRREVERSIBLE (src/connectors/odoo.py), so
+    writeback.requires_approval always returns True for it. The tests below exercise
+    the write MECHANICS - grouping, idempotency, the compensating transaction,
+    concurrency - so they name a human and move on; the gate itself is covered in
+    tests/test_odoo_po_irreversible.py.
+    """
+    from nosilo_core import writeback
+
+    return writeback.approve(changeset, "compras@cliente.com")
+
+
 def _connector() -> OdooConnector:
     return OdooConnector(_odoo())
 
@@ -111,8 +126,10 @@ def test_demand_frame_feeds_the_demand_source_pipeline():
     src = DataFrameDemandSource(_connector().demand_frame())
 
     assert set(src.list_products()) == {"SKU-1", "SKU-2"}
-    # SKU-1 was sold 3 then 2 across the two January orders.
-    assert list(src.demand_series("SKU-1")) == [3.0, 2.0]
+    # SKU-1 sold 3 then 2 across the two January orders, and nothing in February when
+    # only SKU-2 moved. The trailing zero is src/sources.py's period grid doing its job:
+    # a period without a sale is demand of zero, not an absent period.
+    assert list(src.demand_series("SKU-1")) == [3.0, 2.0, 0.0]
 
 
 def test_lead_times_come_from_supplier_delay():
@@ -252,21 +269,53 @@ def test_draft_po_commit_deletes_pos_already_created_when_a_later_one_fails():
     changeset, _unsourced = connector.stage_draft_purchase_orders({"SKU-1": 5.0, "SKU-2": 7.0, "SKU-3": 9.0})
 
     with pytest.raises(OdooError):
-        connector.apply_draft_purchase_orders(changeset)
+        connector.apply_draft_purchase_orders(changeset, approval=_approved(connector, changeset))
 
     # Both POs created before the failure were rolled back - none left orphaned in Odoo.
     assert not odoo.records("purchase.order")
     assert connector._po_store.applied_keys() == set()
     # A retry of the exact same changeset is free to proceed.
-    assert connector.apply_draft_purchase_orders(changeset).applied is True
+    assert connector.apply_draft_purchase_orders(
+        changeset, approval=_approved(connector, changeset)).applied is True
     assert len(odoo.records("purchase.order")) == 3
 
 
 # -- end-to-end through the shared replenishment flow -------------------------
 
 
-def test_plan_replenishment_runs_against_odoo_and_stays_protected():
+def _odoo_with_history() -> InMemoryOdoo:
+    """`_odoo()` plus six more confirmed weekly orders, for the replenishment tests.
+
+    `_odoo()` itself is left alone on purpose: three tests above pin its exact order
+    list (ordering, the draft exclusion, the demand-frame shape), so deepening it in
+    place would break them. But two order-days per SKU is below
+    src/forecasting.py's MIN_PERIODS_FOR_POLICY, so plan_replenishment now refuses
+    both SKUs on that fixture and the tests below would silently stop exercising the
+    replenishment mechanics they exist for.
+
+    Rates are held at the levels those tests document -- ~2.5/period Widget,
+    ~4/period Gadget -- so no assertion downstream moves.
+    """
     odoo = _odoo()
+    orders, lines = odoo.records("sale.order"), odoo.records("sale.order.line")
+    for i, (month, day) in enumerate(((2, 17), (2, 24), (3, 3), (3, 10), (3, 17), (3, 24))):
+        widget_line, gadget_line = 305 + 2 * i, 306 + 2 * i
+        orders[204 + i] = {
+            "name": f"S{104 + i:04d}",
+            "date_order": f"2026-{month:02d}-{day:02d} 09:00:00",
+            "state": "sale",
+            "order_line": [widget_line, gadget_line],
+        }
+        lines[widget_line] = {"product_id": [1, "Widget"],
+                              "product_uom_qty": 3.0 if i % 2 == 0 else 2.0,
+                              "price_unit": 20.0}
+        lines[gadget_line] = {"product_id": [2, "Gadget"], "product_uom_qty": 4.0,
+                              "price_unit": 50.0}
+    return odoo
+
+
+def test_plan_replenishment_runs_against_odoo_and_stays_protected():
+    odoo = _odoo_with_history()
     connector = OdooConnector(odoo)
 
     plan = plan_replenishment(connector, cover_periods=8.0, store=connector)
@@ -278,7 +327,7 @@ def test_plan_replenishment_runs_against_odoo_and_stays_protected():
 
 
 def test_plan_replenishment_stages_a_dry_run_for_a_thin_sku():
-    odoo = _odoo()
+    odoo = _odoo_with_history()
     odoo.records("stock.quant")[101]["quantity"] = 1.0  # starve SKU-2
     connector = OdooConnector(odoo)
 
@@ -290,6 +339,29 @@ def test_plan_replenishment_stages_a_dry_run_for_a_thin_sku():
     assert plan.changeset is not None
     # staged only: nothing written until applied
     assert _orderpoint_min(odoo, 2) is None
+
+
+def test_starved_sku_with_almost_no_order_history_is_refused_not_restocked():
+    """The inverse of the test above, and the reason its fixture had to grow.
+
+    Low STOCK and thin HISTORY are different conditions, and the old fixture
+    conflated them: SKU-2 had a single order-day, so 'stages a dry-run for a thin
+    SKU' was really asserting that one observation is enough to commit money. It
+    is not - a starved SKU we have barely seen sell is exactly the case where a
+    confident quantity is most expensive and least supported.
+    """
+    # The shallow fixture on purpose: SKU-2 has two confirmed order-days here.
+    odoo = _odoo()
+    odoo.records("stock.quant")[101]["quantity"] = 1.0  # starve it anyway
+
+    plan = plan_replenishment(OdooConnector(odoo), cover_periods=8.0)
+
+    line = {ln.sku: ln for ln in plan.lines}["SKU-2"]
+    assert line.status == "insufficient_history"
+    assert line.restock_qty == 0.0
+    assert "SKU-2" not in plan.restock
+    # and the refusal is stated, not silently dropped
+    assert any("history" in r.description.lower() for r in plan.outcome.residuals)
 
 
 # -- demo factory -------------------------------------------------------------
@@ -424,7 +496,7 @@ def test_create_draft_purchase_orders_groups_by_supplier():
     odoo = _odoo()
     connector = OdooConnector(odoo)
 
-    result = connector.create_draft_purchase_orders({"SKU-1": 50.0, "SKU-2": 30.0}, prices={"SKU-1": 12.0})
+    result = connector.create_draft_purchase_orders({"SKU-1": 50.0, "SKU-2": 30.0}, approved_by="compras@cliente.com", prices={"SKU-1": 12.0})
 
     assert result.n_orders == 2 and result.unsourced == ()  # one PO per distinct supplier
     pos = odoo.records("purchase.order")
@@ -449,7 +521,7 @@ def test_draft_po_groups_multiple_skus_under_one_supplier():
         "purchase.order": {},
     })
 
-    result = OdooConnector(odoo).create_draft_purchase_orders({"SKU-1": 5.0, "SKU-2": 7.0})
+    result = OdooConnector(odoo).create_draft_purchase_orders({"SKU-1": 5.0, "SKU-2": 7.0}, approved_by="compras@cliente.com")
 
     assert result.n_orders == 1  # both SKUs share a supplier -> a single PO
     po = next(iter(odoo.records("purchase.order").values()))
@@ -466,7 +538,7 @@ def test_draft_po_reports_unsourced_skus_instead_of_dropping_them():
         "purchase.order": {},
     })
 
-    result = OdooConnector(odoo).create_draft_purchase_orders({"SKU-1": 5.0, "SKU-2": 7.0})
+    result = OdooConnector(odoo).create_draft_purchase_orders({"SKU-1": 5.0, "SKU-2": 7.0}, approved_by="compras@cliente.com")
 
     assert result.n_orders == 1 and result.unsourced == ("SKU-2",)
     po = next(iter(odoo.records("purchase.order").values()))
@@ -483,8 +555,8 @@ def test_draft_po_creation_is_idempotent_on_content_not_just_a_caller_key():
     odoo = _odoo()
     connector = OdooConnector(odoo)
 
-    first = connector.create_draft_purchase_orders({"SKU-1": 50.0})
-    second = connector.create_draft_purchase_orders({"SKU-1": 50.0})  # a client retry
+    first = connector.create_draft_purchase_orders({"SKU-1": 50.0}, approved_by="compras@cliente.com")
+    second = connector.create_draft_purchase_orders({"SKU-1": 50.0}, approved_by="compras@cliente.com")  # a client retry
 
     assert first.n_orders == 1
     assert second.purchase_orders == first.purchase_orders  # same PO, not a new one
@@ -495,8 +567,8 @@ def test_draft_po_with_different_content_creates_a_different_po():
     odoo = _odoo()
     connector = OdooConnector(odoo)
 
-    first = connector.create_draft_purchase_orders({"SKU-1": 50.0})
-    second = connector.create_draft_purchase_orders({"SKU-1": 999.0})  # different quantity
+    first = connector.create_draft_purchase_orders({"SKU-1": 50.0}, approved_by="compras@cliente.com")
+    second = connector.create_draft_purchase_orders({"SKU-1": 999.0}, approved_by="compras@cliente.com")  # different quantity
 
     assert set(first.purchase_orders) != set(second.purchase_orders)
     assert len(odoo.records("purchase.order")) == 2
@@ -506,7 +578,7 @@ def test_draft_po_is_recorded_in_the_writeback_audit_and_can_be_rolled_back():
     odoo = _odoo()
     connector = OdooConnector(odoo)
 
-    result = connector.create_draft_purchase_orders({"SKU-1": 50.0})
+    result = connector.create_draft_purchase_orders({"SKU-1": 50.0}, approved_by="compras@cliente.com")
     po_id = next(iter(result.purchase_orders))
 
     connector.rollback(next(iter(connector._po_store.applied_keys())))
@@ -522,13 +594,15 @@ def test_stage_draft_purchase_orders_is_a_dry_run_until_applied():
 
     assert unsourced == ()
     assert not odoo.records("purchase.order")  # nothing written yet
-    connector.apply_draft_purchase_orders(changeset)
+    connector.apply_draft_purchase_orders(changeset, approval=_approved(connector, changeset))
     assert len(odoo.records("purchase.order")) == 1
 
 
-def test_apply_draft_purchase_orders_without_approval_can_be_required():
-    """auto_apply_reversible=False makes draft-PO creation require a human approval,
-    exactly like reorder-point writes already do."""
+def test_apply_draft_purchase_orders_requires_approval_by_default():
+    """Draft-PO creation requires a human approval, and always did in spirit -- this
+    test used to have to ASK for that by passing auto_apply_reversible=False. It is now
+    the default, and the flag cannot turn it off: the changeset is TIER_IRREVERSIBLE and
+    writeback.requires_approval ignores the flag for that tier."""
     from nosilo_core.writeback import WritebackRefused
 
     odoo = _odoo()
@@ -536,7 +610,7 @@ def test_apply_draft_purchase_orders_without_approval_can_be_required():
     changeset, _ = connector.stage_draft_purchase_orders({"SKU-1": 50.0})
 
     with pytest.raises(WritebackRefused):
-        connector.apply_draft_purchase_orders(changeset, auto_apply_reversible=False)
+        connector.apply_draft_purchase_orders(changeset)
     assert not odoo.records("purchase.order")
 
 
@@ -551,14 +625,14 @@ def test_connector_with_a_sqlite_ledger_persists_both_write_paths(tmp_path):
     connector = OdooConnector(odoo, ledger=SqliteAuditLedger(ledger_path))
 
     connector.apply_restock(connector.stage_restock({"SKU-2": 60.0}, idempotency_key="r1"))
-    connector.create_draft_purchase_orders({"SKU-1": 50.0})
+    connector.create_draft_purchase_orders({"SKU-1": 50.0}, approved_by="compras@cliente.com")
 
     # A brand-new connector + ledger pointed at the same file "sees" both prior applies.
     reopened = OdooConnector(odoo, ledger=SqliteAuditLedger(ledger_path))
     retried_restock = reopened.apply_restock(reopened.stage_restock({"SKU-2": 60.0}, idempotency_key="r1"))
     assert retried_restock.idempotent_skip
 
-    reopened.create_draft_purchase_orders({"SKU-1": 50.0})
+    reopened.create_draft_purchase_orders({"SKU-1": 50.0}, approved_by="compras@cliente.com")
     assert len(odoo.records("purchase.order")) == 1  # not duplicated after the "restart"
 
 
@@ -618,7 +692,8 @@ def test_concurrent_apply_draft_purchase_orders_creates_only_one_po():
     assert unsourced == ()
 
     entered, proceed, calls = _gate_execute_kw(odoo, "purchase.order", ("create",))
-    t1, t2, results, _lock = _run_two_concurrently(lambda: connector.apply_draft_purchase_orders(changeset))
+    t1, t2, results, _lock = _run_two_concurrently(lambda: connector.apply_draft_purchase_orders(
+            changeset, approval=_approved(connector, changeset)))
 
     t1.start()
     assert entered.wait(timeout=5), "first caller never reached purchase.order create"

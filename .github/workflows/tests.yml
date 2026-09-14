@@ -32,12 +32,42 @@ on:
   # after an upstream release lands) without waiting for the cron.
   workflow_dispatch:
 
+# Three commits pushed to a branch in five minutes used to start three full runs
+# and let all three finish, so 198 job-minutes got spent to learn whether the LAST
+# one was green. Superseded runs are cancelled instead.
+#
+# Deliberately NOT cancelling on `main`: there the run is the only record that a
+# given merge commit was ever green, and a later merge cancelling an earlier one
+# would leave a commit on the default branch with no signal at all -- which is
+# exactly the state the billing outage put this repo in for seven merges.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # Full matrix ONLY on the nightly and on a manual dispatch; a single version
+      # on pull requests AND on push to `main`. Push-to-main used to also run the
+      # full 3-leg matrix, on the theory that a merge deserved the strongest
+      # signal immediately -- but with the Free-tier Actions budget capped at $0
+      # (2026-09-11), that merge-time matrix was the single biggest line on the
+      # bill: ~20 full-matrix runs in 6 days, ~1260 of the ~1930 job-minutes spent.
+      # Deploy to Fly is a separate manual `flyctl deploy`, never automatic on
+      # merge, so a 3.11- or 3.13-only break introduced by a merge is still caught
+      # by the next nightly run (worst case ~24h later) before it can reach
+      # production -- the same "an email within 24h beats never" tradeoff this
+      # workflow already makes for the nightly's unconstrained-resolve canary.
+      #
+      # 3.12 is not an arbitrary pick: it is what the Dockerfile runs, so it is
+      # the only version any deployment of this repo has ever executed. Nothing
+      # installs this package anywhere else -- it is private and unpublished (the
+      # `kern` on PyPI belongs to somebody else). `requires-python = ">=3.11"`
+      # stays as declared and stays TESTED, just overnight instead of on every
+      # push to every branch.
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'push') && '["3.12"]' || '["3.11", "3.12", "3.13"]') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -46,23 +76,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      # nosilo-core is a PRIVATE repo, and a workflow's built-in GITHUB_TOKEN is
-      # scoped to THIS repository only - it cannot read another private one. A
-      # fine-grained PAT with Contents:read on esstipi-debug/nosilo-core must
-      # exist as the NOSILO_CORE_TOKEN secret or every install below fails at
-      # dependency resolution.
-      #
-      # Rewriting the URL in git config rather than embedding the token in
-      # pyproject.toml keeps the dependency a clean, shareable URL and confines
-      # the credential to this runner for the life of the job.
-      - name: Authenticate to the private core
-        run: |
-          if [ -z "${{ secrets.NOSILO_CORE_TOKEN }}" ]; then
-            echo "::error::NOSILO_CORE_TOKEN is not set. nosilo-core is a private dependency; see its CONSUMING.md."
-            exit 1
-          fi
-          git config --global url."https://x-access-token:${{ secrets.NOSILO_CORE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          # Wheel-download cache on PRs and push-to-main, the two single-version
+          # triggers -- NOT on the nightly/dispatch full matrix. It does not pin
+          # anything: pip still resolves the declared ranges against PyPI on every
+          # run and only skips re-downloading a wheel it already has, so the
+          # nightly's unconstrained-resolve canary (see the `schedule` comment
+          # above) stays uncached and keeps behaving byte-for-byte.
+          cache: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'pip' || '' }}
+          cache-dependency-path: requirements-dev.txt
 
       - name: Install dependencies
         run: |
@@ -75,18 +96,56 @@ jobs:
       - name: Record the resolved dependency set
         run: pip freeze
 
+      # `.`, not a path list. The list said `packs src tests examples`, which left
+      # `scm_agent/` (20 modules) and `jobs/` (79) -- the two packages the agent
+      # itself lives in -- entirely outside the only lint gate this repo has,
+      # together with `webapp/`, `scripts/`, `warehouse/`, `odoo_addon/` and
+      # `knowledge/`. A list has to be edited every time a package appears and
+      # NOTHING fails when it is not: that is how those six went missing without
+      # a single red run. `.` cannot drift.
+      #
+      # Measured on a clean checkout of dfaffb7 before widening: the whole repo
+      # was one I001 away from clean (webapp/security.py, fixed in this same
+      # commit), so this costs no cleanup and no new ignores. Ruff already
+      # honours .gitignore plus its own default excludes, so generated trees
+      # (output/, deliverables/, graphify-out/, .venv/) stay out on their own.
+      # tests/test_ci_lint_and_coverage_scope.py fails if a package with tracked
+      # .py ever falls outside this again.
       - name: Lint
-        run: ruff check packs src tests examples
+        run: ruff check .
 
       # nosilo-core is no longer measured here: it lives in its own repo with
       # its own coverage gate. Measuring an installed third-party package from
       # this side would report a number neither repo is responsible for -- and
       # would quietly stop gating the code that gates every write.
+      #
+      # scm_agent/ and jobs/ ARE measured, and were not: the gate read
+      # `--cov=packs --cov=src`, so the orchestrator, the tools, the intent
+      # router and all 79 job modules could go to zero covered lines without
+      # moving the number that blocks the merge. The threshold below is a
+      # measured floor over the WIDER set, not the old one carried over --
+      # softening the gate to fit the new denominator would have been the same
+      # bug with a green tick.
       - name: Run tests with coverage
-        run: pytest tests/ -q --cov=packs --cov=src --cov-report=term-missing --cov-fail-under=80
+        run: pytest tests/ -q --cov=packs --cov=src --cov=scm_agent --cov=jobs --cov-report=term-missing --cov-fail-under=90
         env:
           PYTHONPATH: .
 
+      # No hay un paso suelto de `python scripts/reflect_lessons.py --check`, y no
+      # es un olvido. Ese script invoca el binario `graphify` (paquete `graphifyy`,
+      # que instala el hook de SessionStart, no este workflow) y resuelve las
+      # memorias contra la UNION del grafo de libros y `graphify-out/graph.json`
+      # -- 17 MB gitignoreados. Sin las dos cosas el documento se regenera podado:
+      # medido el 2026-08-24, 69 lineas con la union (identico al commiteado) y 41
+      # solo con el grafo de libros. Un paso aca devolveria 1 SIEMPRE, por una
+      # razon que no tiene nada que ver con que el documento este al dia, y una CI
+      # que siempre falla en el mismo lugar es la que se aprende a ignorar.
+      #
+      # Lo que SI es verificable con lo commiteado -- que el encabezado resuma las
+      # memorias que realmente hay en knowledge/graph-memory/ -- lo chequea
+      # tests/test_graph_lessons_no_deriva.py, que corre en el paso de arriba. Ese
+      # mismo archivo corre ademas el --check completo, byte a byte, cuando la
+      # maquina tiene el binario y el grafo; en la CI se saltea diciendo cual falta.
       - name: Smoke examples
         run: |
           python examples/run_part1_part2.py
@@ -108,7 +167,8 @@ jobs:
           PYTHONPATH: .
 
   # Reproduces the PRODUCTION container's import surface. The Fly image builds
-  # with `pip install -e ".[web,mcp]"` (see Dockerfile) -- NOT
+  # with `pip install -e ".[core,web,mcp,pricing-intel,dataquality]"` (see
+  # Dockerfile) -- NOT
   # requirements-dev.txt -- so a module on the app's boot chain that
   # hard-imports an optional-extra dependency (bs4 / price-parser / rapidfuzz /
   # python-stdnum / ...) sails through the `test` job above (those deps are
@@ -126,24 +186,43 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"  # matches Dockerfile `FROM python:3.12-slim`
+          # Same rule as the test job: cache wheel downloads on pull requests only,
+          # keyed on pyproject because this job installs the extras from there
+          # rather than from requirements-dev.txt. This job is NOT dropped from
+          # pull requests at any point below -- it is the cheapest one on the bill
+          # and the only one that reproduces the production import surface, which
+          # is the exact failure both the bs4 crash (2026-07-16) and the POLICY
+          # crash (2026-08-03) came through.
+          cache: ${{ github.event_name == 'pull_request' && 'pip' || '' }}
+          cache-dependency-path: pyproject.toml
 
-      # This job installs from pyproject, which is where the private nosilo-core
-      # dependency lives - so it needs the credential exactly as much as the test
-      # job does, even though it never builds an image. Missing it here would
-      # turn "the production import surface is broken" into the reported failure
-      # for what is actually a missing secret.
-      - name: Authenticate to the private core
-        run: |
-          if [ -z "${{ secrets.NOSILO_CORE_TOKEN }}" ]; then
-            echo "::error::NOSILO_CORE_TOKEN is not set. nosilo-core is a private dependency; see docs/DEPLOYMENT.md section 0."
-            exit 1
-          fi
-          git config --global url."https://x-access-token:${{ secrets.NOSILO_CORE_TOKEN }}@github.com/".insteadOf "https://github.com/"
-
-      - name: Install ONLY the production extras (mirrors the Dockerfile)
+      # [core] is NOT decoration. nosilo-core is deliberately out of
+      # [project.dependencies] (so `pip install -e .` works with no token), so it
+      # arrives ONLY when an install line names this extra -- and from #226
+      # (2026-08-03) to 2026-08-23 neither this line nor the Dockerfile did.
+      # Consequence, reproduced in a fresh py3.12 venv on 2026-08-23 with the
+      # old line: `import webapp.app` dies with ModuleNotFoundError: nosilo_core
+      # at webapp/app.py:40 -> jobs/abc_xyz_job.py:18. Which means this job would
+      # have gone red on its FIRST real run -- and that a `docker build` from a
+      # clean checkout was already producing an image that cannot bind :8000.
+      # It went unseen because this job has never run against a tree where
+      # nosilo_core is external: the last green run (2026-08-03T16:14Z) tested a
+      # merge ref that predated #226, and every run since died at the auth step
+      # for a secret that was never configured.
+      #
+      # NOT the same set as the Dockerfile, on purpose, and the step used to
+      # claim otherwise. The image also installs [pricing-intel,dataquality]
+      # (#161); this job deliberately does not, because the regression it was
+      # built for (#156, the bs4 boot crash of 2026-07-16) is exactly "a module
+      # on the boot chain hard-imports an optional-extra dependency". Installing
+      # those extras here would make that crash invisible again. The asymmetry
+      # is one-directional and that direction is the safe one: this job is
+      # STRICTER than production, so it can cry wolf about a dependency prod
+      # actually has, but it can never bless a boot that prod would fail.
+      - name: Install the production boot set (STRICTER than the image, see above)
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[web,mcp]"
+          pip install -e ".[core,web,mcp]"
 
       # Same rationale as the test job -- and this is the set that most closely
       # mirrors what the next `flyctl deploy` will bake into the image.

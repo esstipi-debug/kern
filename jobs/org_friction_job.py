@@ -28,11 +28,11 @@ evidence per detector). Only a row with no name at all is unusable.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pandas as pd
 
+from jobs.intake import _norm
 from nosilo_core.guided import verify_guided
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
@@ -80,10 +80,6 @@ _PATTERN_LABELS = {
     ACCOUNTABILITY_VACUUM: "Accountability vacuum",
     UNCLASSIFIED_WORKAROUND: "Unclassified workaround",
 }
-
-
-def _norm(header: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(header).lower())
 
 
 def _resolve(df: pd.DataFrame, aliases: dict[str, tuple[str, ...]], required: tuple[str, ...], kind: str) -> dict[str, str]:

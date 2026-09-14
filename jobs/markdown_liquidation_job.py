@@ -30,7 +30,13 @@ from jobs.excess_obsolete_job import prepare_records as _prepare_stock_records
 from jobs.pricing import prepare_pricing
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
-from src.liquidation import LiquidationReport, PriceHistory, plan_liquidation
+from src.liquidation import (
+    LiquidationLine,
+    LiquidationReport,
+    PriceHistory,
+    announces_discount,
+    plan_liquidation,
+)
 from src.price_optimizer import CompetitorPriceContext
 from src.pricing_intel.ledger import PriceLedger
 from src.pricing_intel.match.sku_map import SkuMap
@@ -208,6 +214,19 @@ def write_operational(report: LiquidationReport, out_dir: str | Path, client: st
     return {"csv": write_summary_csv(rows, out_path)}
 
 
+def _price_phrase(line: LiquidationLine) -> str:
+    """How the deck quotes a line's proposed per-unit price -- WITH the basis it
+    rests on. An advertised markdown and a cost-anchored salvage recovery are two
+    different promises to two different buyers (a shopper vs. a jobber), and a
+    reader must not have to infer which one a bare number is.
+    """
+    if line.clearance_price is None:
+        return "no price (no observed price and no unit cost to anchor one to)"
+    if announces_discount(line.method):
+        return f"{line.clearance_price:,.2f}/unit"
+    return f"{line.clearance_price:,.2f}/unit (salvage recovery, cost-anchored)"
+
+
 def build_deck(
     report: LiquidationReport,
     *,
@@ -238,12 +257,12 @@ def build_deck(
             f"{report.n_elasticity} SKU(s) priced off a fitted demand curve, "
             f"{report.n_default_discount} at a {report.default_markdown_pct * 100:.0f}% default markdown "
             f"(flat price history), {report.n_salvage} at a {report.salvage_recovery_pct * 100:.0f}% "
-            f"salvage recovery (no usable price / non-moving).",
+            f"salvage recovery priced off cost (no usable price history / non-moving).",
             impact="the elasticity-priced lines are the most defensible; the rest are documented heuristics",
         ),
     ]
     if worst is not None and worst.at_risk_value > 0:
-        price = "salvage" if worst.clearance_price is None else f"{worst.clearance_price:,.2f}/unit"
+        price = _price_phrase(worst)
         weeks = "n/a" if math.isinf(worst.weeks_to_clear) else f"~{worst.weeks_to_clear:.0f} wk"
         findings.append(Finding(
             f"Largest exposure: {worst.product_id}",
@@ -272,7 +291,9 @@ def build_deck(
     recommendations = (
         "Execute the elasticity-priced clearances first - they are the most defensible and time-bounded.",
         "Treat the default-markdown lines as a starting price; refine once price-response history exists.",
-        "Route the salvage lines (dead / no price) to return-to-vendor, jobbers, or a write-down decision.",
+        "Route the salvage lines (dead / no usable price curve) to return-to-vendor, jobbers, or a "
+        "write-down decision at the cost-anchored per-unit recovery the plan quotes - it is a "
+        "disposal price to negotiate against, not a markdown to advertise.",
         "Re-run after each clearance window to re-rank the remaining exposure.",
     )
 

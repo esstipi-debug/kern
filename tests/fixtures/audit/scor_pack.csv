@@ -1,0 +1,8 @@
+dataset,product_id,cogs,avg_inventory_value,gross_margin,units_sold,units_on_hand,net_sales,ordered_qty,delivered_qty,promised_date,delivered_date,name,last_reviewed_at,owner,approver,version,review_cadence_days,Customer Segment,Sales,Quantity,Order ID,COGS,Shipping Cost,returns_units
+financial,P1,50000,12000,0.35,4000,600,77000,,,,,,,,,,,,,,,,,
+financial,P2,30000,9000,0.40,2500,400,50000,,,,,,,,,,,,,,,,,
+orders,P1,,,,,,,40,40,2026-08-01,2026-08-02,,,,,,,,,,,,,
+orders,P1,,,,,,,20,20,2026-08-03,2026-08-04,,,,,,,,,,,,,
+procedures,,,,,,,,,,,,Receiving Inspection,2026-01-15,Warehouse Lead,Plant Manager,1.0,365,,,,,,,
+cost_to_serve,,,,,,,,,,,,,,,,,,Retail,1200,40,O1,700,60,2
+cost_to_serve,,,,,,,,,,,,,,,,,,Wholesale,5000,300,O3,3800,220,10

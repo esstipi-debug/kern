@@ -1,0 +1,52 @@
+# Odoo 17 desechable para los tests de integracion del addon.
+#
+# NO se levanta a mano: lo hace scripts/odoo_test_setup.py, que genera las
+# credenciales al vuelo en .env.odoo (gitignorado) y pasa --env-file. Este
+# fichero no lleva ninguna credencial escrita, ni siquiera de juguete: una
+# contrasena commiteada -- aunque sea "odoo" en un contenedor local -- entrena
+# a quien la ve a ignorar al escaner de secretos, y el dia que salte por una de
+# verdad ya nadie mira.
+#
+#   python scripts/odoo_test_setup.py
+#   uv run --no-sync pytest -m integracion
+#   docker compose --env-file .env.odoo -f docker-compose.odoo.yml down -v
+#
+# El `-v` del final borra el volumen: la proxima corrida arranca de una base
+# limpia. Un test de integracion que hereda el estado de la corrida anterior
+# deja de ser reproducible sin avisar.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${KERN_ODOO_DB_USER:?falta .env.odoo -- corre scripts/odoo_test_setup.py}
+      POSTGRES_PASSWORD: ${KERN_ODOO_DB_PASSWORD:?falta .env.odoo -- corre scripts/odoo_test_setup.py}
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      retries: 20
+
+  odoo:
+    image: odoo:17
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${KERN_ODOO_PORT:-8069}:8069"
+    environment:
+      HOST: db
+      USER: ${KERN_ODOO_DB_USER}
+      PASSWORD: ${KERN_ODOO_DB_PASSWORD}
+    volumes:
+      # El addon se monta, no se copia: editarlo y reiniciar el contenedor basta
+      # para reprobarlo, sin reconstruir imagen. Se monta 17.0/ y no odoo_addon/
+      # entero: Odoo busca addons como hijos DIRECTOS de cada entrada del
+      # addons-path, y kern_dry_run vive un nivel mas adentro que eso -- montar
+      # la raiz completa lo dejaria invisible para --init, con la imagen
+      # arrancando bien y el modulo simplemente ausente de la lista.
+      - ./odoo_addon/17.0:/mnt/extra-addons:ro
+    command: >
+      odoo --addons-path=/usr/lib/python3/dist-packages/odoo/addons,/mnt/extra-addons
+           --database=${KERN_ODOO_DB:-kern_test} --init=base --without-demo=False
+           --db_host=db --db_user=${KERN_ODOO_DB_USER}
+           --db_password=${KERN_ODOO_DB_PASSWORD}

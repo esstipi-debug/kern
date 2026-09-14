@@ -20,7 +20,6 @@ import math
 from dataclasses import asdict, dataclass, field
 
 from nosilo_core.guided import ExecutionOption, as_options
-
 from src.eoq import compute_eoq
 from src.mcdm import Criterion, topsis_rank
 from src.queuing import mmc

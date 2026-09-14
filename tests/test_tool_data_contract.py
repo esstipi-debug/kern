@@ -7,19 +7,16 @@ is actually required -- remove it and the tool's own prepare() must refuse.
 import csv
 
 import pytest
+
 from nosilo_core import llm
 from nosilo_core.types import JobRequest
-
 from scm_agent import tools
 
 # Tools with requires_data=True that have NOT yet declared their columns.
 # This list starts long and shrinks; it never grows. Removing a name here without
 # adding a declaration makes test_every_data_tool_declares_its_columns fail.
-# Count: 40 (44 requires_data tools total, 4 declared -- data_quality, abc_xyz,
-# excess_obsolete, financial_kpis). Derived via:
-#   python -c "from scm_agent import tools; r=tools.build_default_registry(); \
-#   print(sorted(t.key for t in r.list() if t.requires_data and not t.required_columns))"
-#
+# Count: 41 (48 requires_data tools total, 7 declared -- data_quality, abc_xyz,
+# excess_obsolete, financial_kpis, procedure_audit, audit_evidence, scor_iso_audit).
 # "intake_scan" is a PERMANENT entry here, not a pending one: it consumes a
 # raw FOLDER of client files, not one canonical table, so it has no
 # `required_columns` to ever declare -- there is nothing to "fix" by moving it
@@ -41,6 +38,7 @@ UNDECLARED_TOOLS = frozenset({
     "forecast",
     "hat_settlement",
     "hat_tension",
+    "import_case",
     "intake_scan",
     "inventory_optimization",
     "landed_cost",
@@ -68,7 +66,10 @@ UNDECLARED_TOOLS = frozenset({
     "whatif",
 })
 
-DECLARED = ("data_quality", "abc_xyz", "excess_obsolete", "financial_kpis")
+DECLARED = (
+    "data_quality", "abc_xyz", "excess_obsolete", "financial_kpis",
+    "procedure_audit", "audit_evidence", "scor_iso_audit",
+)
 
 # One canonical value per column name we know how to synthesize.
 _SAMPLE = {
@@ -78,6 +79,12 @@ _SAMPLE = {
     "cogs": "1000.0", "avg_inventory_value": "500.0", "gross_margin": "0.3",
     "units_sold": "80", "units_on_hand": "20", "net_sales": "1500.0",
     "date": "2026-01-01",
+    "last_reviewed_at": "2026-01-15", "procedure_id": "PROC-1", "process_area": "Bodega",
+    "owner": "Jefe de Operaciones", "approver": "Gerente General", "version": "1.0",
+    "approved_at": "2026-01-01", "review_cadence_days": "365", "location": "https://example.com/proc",
+    "linked_kpi": "fill_rate", "reaction_plan": "escalate to owner", "status": "approved",
+    "dataset": "financial", "unit_id": "SKU-1", "book_value": "1000.0",
+    "source": "gl", "audited_value": "1000.0",
 }
 
 

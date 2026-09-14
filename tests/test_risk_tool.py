@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from nosilo_core import llm
-from nosilo_core.guided import OPTIONS, passed_guided
 
 from jobs import risk_job as rj
+from nosilo_core import llm
+from nosilo_core.guided import OPTIONS, passed_guided
 from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable
@@ -198,3 +198,47 @@ def test_registry_includes_risk_tool():
     keys = {t.key for t in reg.list()}
     assert "risk" in keys
     assert reg.get("risk").requires_data is True
+
+
+# ---- el plazo tiene que llegar al cliente, no quedarse en el dataclass -------
+#
+# T13 pide "una accion concreta y FECHADA". Un campo by_when que el entregable no
+# imprime satisface al check y no al cliente, que es a quien hay que servir.
+
+
+def test_las_opciones_del_entregable_llevan_el_plazo():
+    from datetime import date
+
+    from jobs import risk_job
+    from src.risk import MitigationOption, RiskFactor
+
+    registro = [RiskFactor(
+        name="corte de ruta", category="logistics", likelihood=0.2, impact_value=50_000.0,
+        velocity_days=30.0, detectability_days=7.0,
+        mitigations=(MitigationOption("segundo transportista", "redundancy", 5_000.0, 0.0, 0.4),),
+    )]
+
+    reporte = risk_job.run(registro, as_of=date(2026, 8, 2))
+    recomendada = next(o for o in reporte.outcome.options if o.recommended)
+
+    assert "2026-08-25" in recomendada.action
+    assert "23d of warning" in recomendada.summary
+
+
+def test_un_riesgo_ya_expuesto_dice_act_now_en_vez_de_una_fecha_futura():
+    from datetime import date
+
+    from jobs import risk_job
+    from src.risk import MitigationOption, RiskFactor
+
+    registro = [RiskFactor(
+        name="proveedor unico", category="supply", likelihood=0.1, impact_value=200_000.0,
+        time_to_recover=40.0, time_to_survive=10.0,
+        mitigations=(MitigationOption("calificar segundo", "redundancy", 20_000.0, 0.0, 0.5),),
+    )]
+
+    reporte = risk_job.run(registro, as_of=date(2026, 8, 2))
+    recomendada = next(o for o in reporte.outcome.options if o.recommended)
+
+    assert "act now" in recomendada.action
+    assert "2026-08-02" in recomendada.action

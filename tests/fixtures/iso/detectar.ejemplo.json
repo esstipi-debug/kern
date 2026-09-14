@@ -1,0 +1,175 @@
+{
+  "perfilEntrada": {
+    "sectores": [
+      "automotriz"
+    ],
+    "clientePide": [
+      "iatf",
+      "trazabilidad",
+      "otif",
+      "pcf"
+    ],
+    "logistica": [
+      "3pl",
+      "rti",
+      "export"
+    ],
+    "planta": [
+      "muestreo",
+      "bcp",
+      "maestro-sku"
+    ],
+    "kern": [
+      "smartpro",
+      "monitor",
+      "energy",
+      "huella"
+    ],
+    "texto": "El OEM pide IATF, PPAP y PCF. Expedimos en totes retornables."
+  },
+  "perfilVacio": {
+    "sectores": [],
+    "clientePide": [],
+    "logistica": [],
+    "planta": [],
+    "kern": [],
+    "texto": ""
+  },
+  "contratoPost": {
+    "sectores": [
+      "automotriz"
+    ],
+    "clientePide": [
+      "iatf",
+      "pcf"
+    ],
+    "logistica": [
+      "3pl",
+      "rti",
+      "export"
+    ],
+    "planta": [
+      "muestreo",
+      "maestro-sku"
+    ],
+    "kern": [
+      "smartpro",
+      "monitor",
+      "energy",
+      "huella"
+    ],
+    "texto": "El OEM pide IATF y PCF."
+  },
+  "resultado": {
+    "aviso": "Esto detecta aplicabilidad y potencial de evidencia. No es un dictamen de conformidad ni una certificación.",
+    "detectadas": [
+      {
+        "id": "iatf-16949",
+        "codigo": "IATF 16949",
+        "aplicabilidad": 1,
+        "potencial": 0.5,
+        "huecos": []
+      },
+      {
+        "id": "iso-14067",
+        "codigo": "ISO 14067",
+        "aplicabilidad": 0.8,
+        "potencial": 0.62,
+        "huecos": []
+      },
+      {
+        "id": "iso-14083",
+        "codigo": "ISO 14083",
+        "aplicabilidad": 1,
+        "potencial": 0.3,
+        "huecos": [
+          "Sin t·km del 3PL o de la flota, 14083 se queda en factor genérico."
+        ]
+      },
+      {
+        "id": "iso-22095",
+        "codigo": "ISO 22095",
+        "aplicabilidad": 0.7,
+        "potencial": 0.57,
+        "huecos": []
+      },
+      {
+        "id": "iso-17364",
+        "codigo": "ISO 17364",
+        "aplicabilidad": 1,
+        "potencial": 0.1,
+        "huecos": []
+      },
+      {
+        "id": "iso-9001",
+        "codigo": "ISO 9001",
+        "aplicabilidad": 0.62,
+        "potencial": 0.6,
+        "huecos": []
+      },
+      {
+        "id": "iso-2859-1",
+        "codigo": "ISO 2859-1",
+        "aplicabilidad": 0.7,
+        "potencial": 0.4,
+        "huecos": []
+      },
+      {
+        "id": "iso-8000-1",
+        "codigo": "ISO 8000-1",
+        "aplicabilidad": 0.68,
+        "potencial": 0.42,
+        "huecos": []
+      },
+      {
+        "id": "iso-14040",
+        "codigo": "ISO 14040/14044",
+        "aplicabilidad": 0.55,
+        "potencial": 0.54,
+        "huecos": []
+      },
+      {
+        "id": "iso-22301",
+        "codigo": "ISO 22301",
+        "aplicabilidad": 0.6,
+        "potencial": 0.4,
+        "huecos": []
+      },
+      {
+        "id": "iso-15459",
+        "codigo": "ISO/IEC 15459",
+        "aplicabilidad": 0.68,
+        "potencial": 0.22,
+        "huecos": []
+      },
+      {
+        "id": "iso-10005",
+        "codigo": "ISO 10005",
+        "aplicabilidad": 0.72,
+        "potencial": 0.1,
+        "huecos": []
+      },
+      {
+        "id": "iso-10004",
+        "codigo": "ISO 10004",
+        "aplicabilidad": 0.55,
+        "potencial": 0.32,
+        "huecos": []
+      },
+      {
+        "id": "iso-28000",
+        "codigo": "ISO 28000",
+        "aplicabilidad": 0.55,
+        "potencial": 0.28,
+        "huecos": []
+      },
+      {
+        "id": "iso-37500",
+        "codigo": "ISO 37500",
+        "aplicabilidad": 0.58,
+        "potencial": 0.1,
+        "huecos": []
+      }
+    ]
+  }
+}

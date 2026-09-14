@@ -319,6 +319,28 @@ def lead_time_stds_for_skus(
     return {sku: by_supplier[sup] for sku, sup in sku_supplier.items() if sup in by_supplier}
 
 
+def declared_lead_times_for_skus(
+    scorecards: list[SupplierScore], sku_supplier: dict[str, str]
+) -> dict[str, float]:
+    """Join the DECLARED lead time onto SKUs -- el contrafactual, no el parametro.
+
+    Las otras dos funciones de este bloque entregan lo observado, que es con lo que se
+    dimensiona. Esta entrega lo que el sistema del cliente cree, y existe para un solo
+    uso: correr el mismo motor dos veces y poner la diferencia en plata. **Nunca para
+    dimensionar** -- si este numero alimenta una politica, la politica quedo armada
+    sobre la promesa del proveedor, que es el defecto entero que este modulo mide.
+
+    Misma regla de omision que las otras dos: un proveedor cuyo export no traia plazo
+    declarado se omite, no se reporta como 0.
+    """
+    by_supplier = {
+        s.supplier: s.declared_lead_time
+        for s in scorecards
+        if s.declared_lead_time is not None
+    }
+    return {sku: by_supplier[sup] for sku, sup in sku_supplier.items() if sup in by_supplier}
+
+
 def lead_times_for_skus(
     scorecards: list[SupplierScore], sku_supplier: dict[str, str]
 ) -> dict[str, float]:

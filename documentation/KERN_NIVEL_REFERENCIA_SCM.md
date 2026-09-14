@@ -245,10 +245,11 @@ Cada una respeta la filosofía (never-unprotected, QA gate, staging, grounding) 
 - **Grounding:** GS1 EPCIS (añadir a L3); ISO 9001 §8.5.2.
 - **Cierra:** trazabilidad ISO 9001, compliance food/pharma.
 
-### E4 — Paquete "Auditoría SCOR/ISO" integrado a jobs (`scor_iso_audit`) — **prioridad alta, esfuerzo bajo**
-- **Qué:** nuevo `PackageSpec` + `jobs/scor_audit_job.py` que corre los datos del cliente por los tools relevantes y emite (a) **scorecard de métricas SCOR** (Perfect Order/OTIF, cost-to-serve, cash-to-cash —ya calculado— y brecha TTR/TTS) y (b) **checklist de controles ISO 9001/28000**, todo envuelto en `EvidenceRecord`.
-- **Reusa:** runner `packages.py`, `PackageSpec`, `audit_evidence`, `financial_kpis`, `cost_to_serve`, `sourcing`, `citation_gate`. **Es casi todo composición de lo existente.**
-- **Cierra:** exactamente el pedido de "plantillas de auditoría SCOR/ISO integradas al flujo de jobs"; ancla el posicionamiento de nivel de referencia.
+### E4 — Paquete "Auditoría SCOR/ISO" integrado a jobs (`scor_iso_audit`) — **implementado (job dedicado)**
+- **Qué:** `jobs/scor_audit_job.py` corre los datos del cliente (columna `dataset`) por las tools que ya existen y emite (a) **scorecard de métricas SCOR** (Perfect Order/OTIF RL.1.1, cost-to-serve, cash-to-cash, brecha TTR/TTS) y (b) **checklist de controles ISO 9001/28000** (`observed` / `gap` / `no_evaluable`), todo envuelto en un `EvidenceRecord` + hoja Lineage. MCP: `kern_iso_scor_audit`. Nunca un certificado.
+- **Por qué no `PackageSpec`:** el MCP es **un** CSV `rows`; `scm_agent/packages.py` espera un directorio de archivos nombrados y escribe un deck por tool, no un solo EvidenceRecord. El job llama los mismos `prepare`/`run` que el orquestador. Un `PackageSpec` comercial puede envolver esto después.
+- **Reusa:** `financial_kpis`, `cost_to_serve`, `sourcing`, `order_fulfillment` (RL.1.1), `procedure_audit`, `risk`, `audit_evidence.evidence_record`.
+- **Cierra:** exactamente el pedido de "plantillas de auditoría SCOR/ISO integradas al flujo de jobs".
 
 ### E5 — Cuantificación de resiliencia (`resilience_stress_test`) — **prioridad media**
 - **Qué:** inyectar una disrupción (proveedor/lane/nodo) en un escenario de `digital_twin` + `simulation`, medir **time-to-recover**, impacto financiero y un **índice de resiliencia** (TTR vs TTS ya en `risk.py`).

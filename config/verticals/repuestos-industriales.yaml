@@ -1,0 +1,295 @@
+# Perfil operativo por vertical -- el CUARTO nivel de la cadena de resolucion de
+# parametros (nosilo/05-GTM-KERN.md seccion 6.4):
+#
+#   params  >  client_profile  >  config/verticals/<rubro>.yaml  >  default del motor
+#
+# Mismo patron declarativo que config/markets/*.yaml: todo lo de aqui es DATO que
+# una funcion lee, nunca una rama `if vertical == "repuestos"` en src/. La regla
+# de control es la hermana de "codigo especifico de cliente ~0 lineas":
+#
+#   UN VERTICAL NUEVO = 0 LINEAS EN EL MOTOR.
+#
+# El dia que un vertical necesita un `if` en src/, es personalizacion con otro
+# nombre: se borra o se gradua a capacidad del core.
+#
+# ESTADO (2026-08-20): este archivo ESTA VIVO. Los tres pasos que esta cabecera
+# listaba como pendientes se construyeron; el comentario que decia "DATO INERTE,
+# nada lo carga todavia" quedo mintiendo, que es el defecto que este repo viene
+# cazando -- doc que da por pendiente algo que existe.
+#
+# Verificado por sitio de llamada, no por lectura:
+#   engine_params      -> as_params() -> merge_params()
+#                         scm_agent/orchestrator.py, scm_agent/packages.py
+#   aliases            -> merged_aliases(), 6 sitios (jobs/intake.py y el embudo)
+#   forbidden_methods  -> forbids(), y el veto se hace cumplir en los DOS
+#                         caminos de despacho: scm_agent/orchestrator.py (una
+#                         capacidad suelta) y scm_agent/packages.py (un paquete
+#                         completo). Es incondicional: no depende de
+#                         strict_params.
+#   classification     -> jobs/abc_xyz_job.py -> src/classification.py
+#   diagnostic_outputs -> webapp/demo_verticals.py -> GET de /demo
+#   demo_question_label-> webapp/demo_verticals.py
+#
+# LO QUE SIGUE SIN CONSUMIDOR, y por que importa decirlo aca: un campo que se
+# valida al cargar pero que nadie lee se ve exactamente igual que uno cableado.
+#   stockout_prompt / stockout_cost_usd -- la pregunta del bloque 2 no aparece en
+#     ningun entregable ni pantalla, asi que hoy sigue dependiendo de que el
+#     operador se acuerde, que es justo lo que el bloque dice querer evitar.
+#   vocabulary  -- ningun renderer lo lee todavia: los informes siguen diciendo
+#     "local" y no "bodega".
+#   objections  -- viajan con el pack y no las sirve ninguna superficie.
+#
+# CONFIANZA: los numeros economicos son ESTIMACIONES DE ESCRITORIO, no
+# mediciones, y van marcados uno por uno. Ninguno se ha contrastado con un
+# cliente real. Se verifican en la misma llamada que el umbral de aprobacion y
+# la pregunta de multi-bodega (05-GTM-KERN seccion 8.3), no en una aparte.
+
+vertical: repuestos-industriales
+display_name: "Repuestos industriales y mineria"
+
+# La pregunta unica de /demo que resuelve este archivo. Una sola, y en el
+# lenguaje del comprador -- no "seleccione su vertical".
+demo_question_label: "repuestos, insumos y componentes para equipos"
+
+
+# ---------------------------------------------------------------------------
+# 1. ECONOMICOS -- claves identicas a ClientProfile.as_params()
+# ---------------------------------------------------------------------------
+# Solo van aqui las claves que as_params() ya emite (src/client_profile.py:184).
+# Cualquier otra cosa que se cuele en este bloque llega al motor como parametro
+# desconocido y se ignora en silencio, que es el peor modo de falla posible.
+engine_params:
+
+  # ESTIMADO. El 22% del desglose de 05-GTM-KERN seccion 5 (capital 10-14 +
+  # bodegaje 3-6 + seguro 0,5-1 + obsolescencia 3-8). El default del motor es
+  # 0,25 (src/batch.py:27), que para este rubro sobrestima: la obsolescencia de
+  # un repuesto rotativo es baja mientras el equipo siga en flota. Sube, y
+  # mucho, cuando el equipo se da de baja -- eso es stock muerto, no tasa de
+  # mantencion, y se trata en la salida #4 del diagnostico.
+  holding_rate: 0.22
+
+  # ESTIMADO. Piso, no objetivo: el discurso completo de la seccion 5 vende lo
+  # contrario a un servicio uniforme (fuente de valor #3, servicio diferenciado
+  # por criticidad x predictibilidad). Este escalar existe solo para los
+  # llamadores que todavia no pasan por la clasificacion; el eje real esta en
+  # el bloque `classification` de abajo.
+  service_level: 0.95
+
+  # ESTIMADO. Mas alto que el default de 1.000 (src/batch.py:28) porque en este
+  # rubro una orden arrastra importacion: agente de aduana, flete internacional,
+  # nacionalizacion y consolidacion. Es el parametro que mueve el tamano de lote
+  # (fuente de valor #4) y el que mas facil se verifica con el cliente, porque
+  # sale de su propia cuenta de resultados.
+  order_cost: 1400.0
+
+  # DELIBERADAMENTE NULO, y es el campo mas importante del archivo.
+  #
+  # as_params() documenta lead_time_days como "el plazo por defecto cuando el
+  # CSV del cliente no trae ninguno". Poner aqui un numero por rubro seria
+  # exactamente el defecto que este producto viene a mostrar: dimensionar
+  # contra una promesa en vez de contra el comportamiento observado. El plazo
+  # sale de `receipt_date - order_date` y de ningun otro lado -- misma regla que
+  # ya defiende webapp/demo_lead_time_scan.py con un test dedicado.
+  lead_time_days: null
+
+  # Tolerancia maxima de DETERIORO por area (src/client_profile.py:117-126).
+  # Un dict PARCIAL es legal e intencionado: un area sin umbral sale
+  # NO_EVALUABLE en vez de tomar una tolerancia asumida.
+  #
+  # Solo se fija `comercial`, y la razon es de escala, no de opinion:
+  # comprador/planner/cfo estan denominados en USD (por unidad o por ano), asi
+  # que dependen del TAMANO del cliente y no de su rubro -- un default por
+  # vertical ahi seria ruido con cara de dato. `comercial` es fill_rate, una
+  # fraccion, y por lo tanto si es propiedad del rubro.
+  #
+  # ESTIMADO, y agresivo a proposito: en mineria el quiebre de un repuesto
+  # critico detiene equipo. Medio punto de fill rate es lo maximo que este
+  # rubro tolera perder a cambio de cualquier ahorro de capital.
+  objection_thresholds:
+    comercial: 0.005
+
+
+# ---------------------------------------------------------------------------
+# 2. LO QUE NO SE MODELA -- el hueco declarado
+# ---------------------------------------------------------------------------
+# El costo de quiebre es, en este rubro, mayor que todas las fuentes de valor
+# juntas: detencion de equipo, compra de emergencia a 2-5x, flete aereo. Y aun
+# asi va NULO, por la regla de 05-GTM-KERN seccion 5: nadie registra "esta
+# detencion fue por falta de repuesto", asi que meterlo al calculo es inventar
+# el numero mas grande del entregable.
+#
+# No se calcula: se pregunta. El texto va aqui para que la pregunta viaje con
+# el pack y no dependa de que el operador se acuerde.
+stockout_cost_usd: null
+stockout_prompt: >
+  Cuantas detenciones tuvieron el ano pasado por un repuesto que no estaba? No
+  necesito el numero. Solo quiero que lo pienses mientras miras la lista de los
+  SKU bajo su punto de reorden.
+
+
+# ---------------------------------------------------------------------------
+# 3. REGIMEN DE DEMANDA
+# ---------------------------------------------------------------------------
+demand:
+  # Documental: describe lo que se ESPERA ver, no lo que se impone.
+  # src/forecasting.py ya elige Croston vs SES por ADI >= 1,32 sobre el dato
+  # real (src/forecastability.py, Syntetos-Boylan-Croston 2005), y esa
+  # auto-seleccion desde la evidencia gana siempre contra una etiqueta escrita
+  # aqui. Si el dato de un cliente dice lo contrario, manda el dato.
+  expected_regime: intermittent
+
+  # Vacio a proposito. El campo existe desde ya porque el pack de ALIMENTOS lo
+  # va a necesitar de verdad -- ahi hay que vetar el dimensionamiento de stock
+  # de seguridad sin restriccion de vida util, porque el buffer que protege del
+  # quiebre se vence y "sube el buffer" destruye valor. Definir el campo cuando
+  # todavia no hace falta es mas barato que retrofitearlo con dos packs vivos.
+  forbidden_methods: []
+
+
+# ---------------------------------------------------------------------------
+# 4. ORDEN DE LAS SALIDAS DEL DIAGNOSTICO
+# ---------------------------------------------------------------------------
+# El orden canonico de 05-GTM-KERN seccion 5. Este rubro es el unico para el
+# que ese orden se escribio, asi que aqui va tal cual.
+#
+# Ya NO son propuestos: webapp/demo_verticals.py los mapea a los modos de /demo
+# y app.py los sirve. Un output sin modo se omite de la pregunta en vez de caer
+# al orden por defecto -- ofrecer el orden de OTRO rubro con la etiqueta de este
+# seria peor que no ofrecer nada.
+diagnostic_outputs:
+  - lead_time_gap          # se gana el derecho a seguir hablando; la mas barata de calcular
+  - overstock_valued       # el dinero visible
+  - below_reorder_point    # el miedo visible
+  - dead_stock_12m         # casi siempre sorprende
+  - pooling_savings        # el que nadie mas puede calcular
+
+
+# ---------------------------------------------------------------------------
+# 5. ALIAS DE COLUMNAS DEL RUBRO
+# ---------------------------------------------------------------------------
+# Se PREPENDEAN a jobs/intake.py::ALIASES, nunca se anexan: detect_columns
+# recorre la lista y el primer alias que pega gana (jobs/intake.py:270), asi
+# que un alias del rubro tiene que poder ganarle a uno generico. Anexar
+# invierte la precedencia y el pack deja de servir para lo unico que existe.
+#
+# _norm() pliega los DOS lados de la comparacion, asi que acentos, mayusculas,
+# espacios y guiones bajos dan igual. Pero NO borra conectivas: un encabezado
+# "Numero de Parte" normaliza a `numerodeparte` y el alias `numero_parte` a
+# `numeroparte`. NO son la misma clave -- medido. La grafia con conectiva va
+# listada explicitamente como su propio alias, y por eso estan las de abajo.
+#
+# Y una regla para quien agregue alias aca: prependar convierte cada entrada en
+# la afirmacion "en este rubro una columna llamada X es SIEMPRE esta canonica,
+# incluso cuando el archivo tambien trae una columna de codigo generica". Un
+# sustantivo pelado del rubro no aguanta esa prueba: `repuesto` bajo product_id
+# hacia que un archivo con `Codigo, Repuesto` mapeara el identificador a la
+# DESCRIPCION, y como nada falla, cada texto distinto pasaba a ser un SKU.
+aliases:
+  product_id:
+    - numero_parte
+    - numero_de_parte    # "Numero de Parte" -- _norm no borra el "de"
+    - nro_de_parte
+    - n_de_parte
+    - no_de_parte        # "N de Parte"
+    - numero_de_pieza
+    - codigo_de_parte
+    - num_parte
+    - part_no
+    - codigo_parte
+    - codigo_repuesto
+  name:
+    - descripcion_repuesto
+    - denominacion
+    # Sustantivos del rubro: nombran la columna descriptiva, nunca el identificador.
+    - repuesto
+    - insumo
+  on_hand:
+    - stock_bodega
+    - existencia_faena
+  supplier:
+    - fabricante
+    - representante
+    - importador
+  # Ejes propios del rubro. Todavia NO son campos canonicos del motor: van aqui
+  # para que el auto-mapeo los reconozca y los reporte en vez de tratarlos como
+  # columna desconocida. Convertirlos en canonicos es otra tarea, con su propia
+  # justificacion -- `equipo` es lo que haria posible el servicio por
+  # criticidad de verdad, en vez de por valor.
+  equipment_id:
+    - equipo
+    - codigo_equipo
+    - flota
+    - patente
+    - activo
+  work_order:
+    - orden_trabajo
+    - ot
+    - aviso
+    - solicitud_trabajo
+
+
+# ---------------------------------------------------------------------------
+# 6. VOCABULARIO DEL INFORME
+# ---------------------------------------------------------------------------
+# Un informe que le dice "local" a una faena minera se lee como plantilla de
+# otro producto, y esa es la primera impresion que decide si siguen leyendo.
+vocabulary:
+  location_singular: "bodega"
+  location_plural: "bodegas"
+  network_node: "faena"
+  item_singular: "repuesto"
+  item_plural: "repuestos"
+  demand_event: "consumo"
+  buyer_role: "jefe de mantenimiento"
+
+
+# ---------------------------------------------------------------------------
+# 7. OBJECIONES
+# ---------------------------------------------------------------------------
+# La tabla de 05-GTM-KERN seccion 5 se escribio para este rubro. Viaja completa.
+objections:
+  - claim: "Ya tenemos ABC"
+    response: >
+      ABC dice que vale mas, no que es mas impredecible. Un A estable necesita
+      poco buffer; un C erratico con plazo largo necesita mucho.
+  - claim: "El ERP ya calcula stock de seguridad"
+    response: >
+      Con que plazo? Incluye la desviacion del plazo en la formula? Practicamente
+      ningun ERP lo hace.
+  - claim: "Reducir inventario es riesgoso"
+    response: >
+      No propongo reducir: propongo mover. Sube en unos SKU, baja en otros. El
+      neto baja y el servicio sube.
+  - claim: "El proveedor no cumple, no es tema de planificacion"
+    response: >
+      Exacto. Por eso hay que dimensionar contra su comportamiento y no contra
+      su promesa. Hoy tu sistema le cree la promesa.
+  - claim: "Nuestros datos estan sucios"
+    response: >
+      Uso movimientos historicos y recepciones. Eso siempre existe: si no, no
+      podrias cerrar contablemente.
+  - claim: "La demanda es impredecible"
+    response: >
+      Puede ser. Midamos cuanto del buffer lo explica la demanda y cuanto el
+      proveedor. Normalmente es 10/90 y todos asumen 90/10.
+
+
+# ---------------------------------------------------------------------------
+# 8. CLASIFICACION -- servicio por clase
+# ---------------------------------------------------------------------------
+# Sobrescribe _SERVICE_LEVEL de src/classification.py, que era una constante de
+# modulo: {A: 0,98, B: 0,95, C: 0,90}. YA LEE DE AQUI: jobs/abc_xyz_job.py lo
+# reenvia a src/classification.py. La matematica existia desde siempre y el job
+# no la reenviaba, asi que ningun entregable podia alcanzarla -- un repuesto A
+# que detiene un equipo se servia al default de distribucion.
+#
+# ESTIMADO. El A sube a 0,99 porque en este rubro el A no es "lo que mas
+# factura" sino "lo que detiene el equipo". Y esto sigue siendo un parche: el
+# eje correcto es criticidad x predictibilidad, no valor, y necesita el campo
+# `equipment_id` de arriba como canonico. Queda escrito para que la deuda no se
+# pierda.
+classification:
+  service_level_by_class:
+    A: 0.99
+    B: 0.95
+    C: 0.90

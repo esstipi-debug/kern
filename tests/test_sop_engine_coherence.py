@@ -7,6 +7,8 @@ numbers (never a vague warning).
 
 from __future__ import annotations
 
+import pytest
+
 from src.constraints import allocate_under_budget
 from src.sop_engine.coherence import (
     CHECK_BUDGET_FEASIBILITY,
@@ -111,7 +113,43 @@ def test_budget_feasibility_passes_and_cites_scale_when_within_budget():
     allocation = allocate_under_budget(items, budget=10_000)
     result = check_budget_feasibility(allocation, 10_000)
     assert result[0].passed is True
-    assert "1.00" in result[0].message  # safety_stock_scale == 1.0
+    assert "100%" in result[0].message  # safety_stock_scale == 1.0, nada se recorto
+
+
+def test_el_mensaje_del_presupuesto_no_afirma_un_escalar_aplicado_por_linea():
+    """Reproduccion del hallazgo (e).
+
+    El mensaje decia "(safety-stock scale S applied to R requested)" y las dos
+    mitades habian dejado de ser ciertas: S no se aplica sobre
+    requested_investment (que es el safety MAS el piso de ciclo preservado), y
+    desde que purchase_plan._allocate mete defer_by_priority en el medio S ya no
+    se aplica POR LINEA -- la distribucion es por prioridad. Es texto citable por
+    el cliente que afirma un mecanismo que dejo de ocurrir.
+
+    Antes del fix el mensaje contenia "scale 0.41 applied to 1,650.00 requested"
+    para esta cartera, donde la barata quedo ENTERA y la cara diferida.
+    """
+    from src.sop_engine.demand_plan import NO_SHIFT_SOURCE, DemandPlanLine
+    from src.sop_engine.purchase_plan import SkuPurchaseInputs, build_purchase_plan
+
+    demanda = tuple(
+        DemandPlanLine(pid, 100.0, 0.0, 100.0, NO_SHIFT_SOURCE, "sin shift")
+        for pid in ("CHEAP", "EXPENSIVE")
+    )
+    entradas = {
+        "CHEAP": SkuPurchaseInputs("CHEAP", on_hand=0.0, unit_cost=1.0, reorder_point=100.0),
+        "EXPENSIVE": SkuPurchaseInputs("EXPENSIVE", on_hand=0.0, unit_cost=10.0, reorder_point=100.0),
+    }
+    lineas, allocation = build_purchase_plan(demanda, entradas, budget=1_000.0)
+    buffers = {ln.product_id: ln.reorder_buffer for ln in lineas}
+    # La premisa: NADIE quedo con el 41% de su buffer. La barata quedo entera.
+    assert buffers["CHEAP"] == pytest.approx(100.0)
+    assert buffers["EXPENSIVE"] < 100.0
+
+    mensaje = check_budget_feasibility(allocation, 1_000.0)[0].message
+    assert "applied to" not in mensaje, "el mecanismo retirado no puede seguir citandose"
+    assert "per-line multiplier" in mensaje
+    assert "safety-stock investment" in mensaje
 
 
 def test_budget_feasibility_fails_and_cites_the_real_shortfall():

@@ -104,10 +104,17 @@ def _canonical_order() -> tuple[str, ...]:
 _CANONICAL_COLUMNS = _canonical_order()
 
 
-def _map_headers(columns) -> dict[str, str]:
+def _map_headers(columns, aliases=None) -> dict[str, str]:
     """Map raw headers to canonical scan columns: exact names win first, then
     aliases; each header is claimed by at most one canonical name.
+
+    ``aliases`` es la tabla del pack por vertical, ya fusionada; ``None`` usa la
+    del modulo. Este camino importa mas de lo que parece: recorre el juego
+    canonico ANCHO de ``src.intake_scan.PROFILES``, asi que es el unico
+    alcanzable desde el orquestador que llega a mirar los grupos `on_hand` y
+    `name` del pack -- ``detect_columns`` con los defaults de demanda nunca lo hace.
     """
+    table = ALIASES if aliases is None else aliases
     by_norm = {_norm(c): c for c in columns}
     consumed: set[str] = set()
     mapping: dict[str, str] = {}
@@ -121,7 +128,7 @@ def _map_headers(columns) -> dict[str, str]:
     for canon in _CANONICAL_COLUMNS:
         if canon in mapping:
             continue
-        for alias in ALIASES.get(canon, (canon,)):
+        for alias in table.get(canon, (canon,)):
             hit = by_norm.get(_norm(alias))
             if hit is not None and hit not in consumed:
                 mapping[canon] = hit
@@ -184,6 +191,9 @@ def prepare(data_path: str, params: dict | None = None) -> FolderIntake:
     file in the folder is readable does this raise.
     """
     _, entries, subdirs = _list_dir(data_path)
+    # Misma idiom que `_thresholds_from_params`: el pack llega por params, que es
+    # el canal que este prepare ya recibe entero desde el orquestador.
+    aliases = (params or {}).get("column_aliases")
 
     ignored: list[str] = []
     unreadable: list[tuple[str, str]] = []
@@ -197,7 +207,7 @@ def prepare(data_path: str, params: dict | None = None) -> FolderIntake:
         except _UNREADABLE_EXCEPTIONS as exc:
             unreadable.append((entry.name, _short_reason(exc)))
             continue
-        mapping = _map_headers(df.columns)
+        mapping = _map_headers(df.columns, aliases)
         records.append((entry.name, mapping, df))
 
     if not records:
