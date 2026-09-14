@@ -675,6 +675,54 @@ def run_package(
 
         def _ejecutar(step: PackageStep, vistos: dict[str, object]) -> StepOutcome:
             tool = registry.get(step.tool_key)
+            # El veto del rubro, con la misma semantica que el orquestador
+            # (scm_agent/orchestrator.py::_dispatch): NEEDS_CLARIFICATION y no
+            # ERROR, porque no se rompio nada -- hay una decision que tomar.
+            #
+            # Este camino resolvia el vertical para `merge_params` y `aliases` y
+            # NUNCA preguntaba si el paso estaba prohibido. El resultado: un
+            # cliente de alimentos corriendo el paquete ejecutaba igual
+            # `inventory_optimization` (package_specs.py, paso REQUERIDO), que es
+            # exactamente la capacidad que su pack existe para impedir. Los
+            # parametros del rubro llegaban -- holding_rate 0.40 en vez de 0.25 --
+            # asi que el numero salia menos equivocado y con la misma cara de
+            # correcto, que es peor.
+            #
+            # Fuera de `strict_params` a proposito, igual que en el orquestador:
+            # ese interruptor es correcto para "te falto un numero" y equivocado
+            # para "este calculo es invalido sobre tu catalogo".
+            veto = vertical.forbids(step.tool_key) if vertical is not None else None
+            if veto is not None:
+                if step.required:
+                    # Un paquete cuyo paso REQUERIDO no aplica al rubro no es un
+                    # paquete al que le falta un pedazo: es el paquete equivocado
+                    # para este cliente. Entregarlo sin su analisis central seria
+                    # la version silenciosa del mismo error.
+                    # `_ejecutar` devuelve UN StepOutcome por paso; no puede abortar
+                    # el paquete por si mismo como hacia el bucle en linea de antes.
+                    # No hace falta: `_truncar_como_el_serial` corta en el primer paso
+                    # REQUERIDO que no quedo ok ni salteado, y el llamador arma el
+                    # PackageResult con el estado de ese outcome. Devolver
+                    # NEEDS_CLARIFICATION aca produce el mismo corte, y ademas
+                    # funciona igual bajo `_fan_out`, donde un return temprano del
+                    # paquete entero no seria posible.
+                    return StepOutcome(
+                        tool_key=step.tool_key, title=tool.title,
+                        status=STATUS_NEEDS_CLARIFICATION,
+                        cadence=step.cadence, source="(no aplica al rubro)",
+                        required=step.required,
+                        summary=f"{spec.title}: '{tool.title}' no aplica a un catalogo de "
+                        f"{vertical.display_name}. {veto.reason.strip()}"
+                        + (f" En su lugar: {veto.instead.strip()}" if veto.instead.strip() else ""),
+                    )
+                return StepOutcome(
+                    tool_key=step.tool_key, title=tool.title, status=STEP_SKIPPED,
+                    cadence=step.cadence, source="(no aplica al rubro)",
+                    required=step.required,
+                    summary=veto.reason.strip(),
+                    skip_reason=veto.reason.strip(),
+                    messages=tuple(c for c in (veto.instead.strip(),) if c),
+                )
             merged = client_profile.merge_params({**step.params, **params}, profile, vertical)
             if pack_aliases is not None:
                 merged = {**merged, "column_aliases": pack_aliases}
@@ -696,12 +744,19 @@ def run_package(
         outcomes, corte = _truncar_como_el_serial(spec, hechos)
         if corte is not None:
             outcome = outcomes[corte]
+            # El paso que corto suele saber POR QUE corto (un veto de rubro trae la
+            # razon y el que correr en su lugar). El resumen generico solo, lo tiraba:
+            # el cliente leia "fallo (needs_clarification)" y ninguna pista. Se agrega
+            # al final, no reemplaza, para que siga siendo el mismo texto de siempre
+            # cuando el outcome no tiene nada propio que decir.
+            _generico = (f"{spec.title}: el paso requerido '{outcome.title}' fallo "
+                         f"({outcome.status}); no se escribio ningun entregable.")
+            _propio = outcome.summary.strip()
             return PackageResult(
                 status=outcome.status, package=spec.key, client=client,
                 steps=tuple(outcomes), deliverables={},
                 qa_issues=tuple(f"{outcome.title}: {i}" for i in outcome.qa_issues),
-                summary=(f"{spec.title}: el paso requerido '{outcome.title}' fallo "
-                         f"({outcome.status}); no se escribio ningun entregable."),
+                summary=(f"{_generico} {_propio}" if _propio else _generico),
             )
 
         # ---- Package QA gate: any executed step failing QA blocks everything.
