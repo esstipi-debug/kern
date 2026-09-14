@@ -24,7 +24,15 @@ from scm_agent.tools import build_default_registry
 # `jobs/integrated_plan.py` and `jobs/price_intelligence.py` also have a lang-aware
 # build_deck, but neither is wired to a registered Tool.deck (both are CLI-only), so a
 # package run never reaches them.
-_EXPECTED_LANG_AWARE = {"sourcing", "landed_cost", "financial_kpis"}
+#
+# What membership here does and does NOT claim: every one of these threads `lang` into
+# `Deliverable(lang=...)` for the structural scaffolding only - section headers, table
+# columns, sheet names, plus the shared "not measured" token - and keeps its own
+# Finding/Kpi prose in engine-native English. That boundary is deliberate and documented
+# at `src/i18n.py` ("Explicitly OUT of scope"): a deck in this set is wired, not
+# translated. So do not read a new entry as "this deck now speaks Spanish", and do not
+# demand translated prose as the price of admission - the three originals would fail it.
+_EXPECTED_LANG_AWARE = {"sourcing", "landed_cost", "financial_kpis", "import_case"}
 
 
 def test_the_runner_can_tell_which_decks_accept_a_language():

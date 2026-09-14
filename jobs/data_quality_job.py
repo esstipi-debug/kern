@@ -21,8 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
-from nosilo_core.guided import GuidedOutcome, recommend, verify_guided
 
+from nosilo_core.guided import GuidedOutcome, recommend, verify_guided
 from src.data_quality import is_valid_gtin
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import DataSource, Deliverable, Finding, Kpi

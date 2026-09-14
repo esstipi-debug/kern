@@ -5,13 +5,10 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from nosilo_core.llm import LLMProvider
-from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
-from nosilo_core.types import JobRequest
-
 from jobs import (
     abc_xyz_job,
     acceptance_sampling_job,
+    audit_evidence_job,
     cost_to_serve_deliverable,
     cost_to_serve_job,
     cross_impact_job,
@@ -33,9 +30,11 @@ from jobs import (
     forecast_cycle,
     forecast_job,
     hats_job,
+    import_case_job,
     intake,
     intake_scan_job,
     inventory_deliverable,
+    iso_ops_job,
     landed_cost_job,
     launch_readiness_job,
     leadership,
@@ -52,9 +51,11 @@ from jobs import (
     qa,
     queuing_job,
     reconciliation_job,
+    repricing_job,
     returns_job,
     risk_job,
     scheduling_job,
+    scor_audit_job,
     service_scan_deliverable,
     service_scan_job,
     simulation_job,
@@ -70,6 +71,9 @@ from jobs import (
 from jobs.inventory_optimization import run as run_inventory
 from jobs.pricing import prepare_pricing
 from jobs.pricing import run as run_pricing
+from nosilo_core.llm import LLMProvider
+from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
+from nosilo_core.types import JobRequest
 
 from . import tool_options
 
@@ -163,6 +167,11 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         period_freq=payload.get("period"),
         order_lines=payload.get("order_lines"),
         stockout_days=params.get("stockout_days"),
+        # La promesa que el cliente declaro (client_profile.delivery_promise_days,
+        # via as_params). Sin ella, el OTIF de un ERP que no data sus lineas sale
+        # "no medido"; con ella sale medido contra una vara dicha, y el entregable
+        # lo declara. Nunca pisa una fecha del sistema.
+        delivery_promise_days=params.get("delivery_promise_days"),
     )
     summary = (
         f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
@@ -193,9 +202,9 @@ def inventory_tool() -> Tool:
         run=_inventory_run,
         qa=lambda report: qa.verify(report),
         deliver=lambda report, out_dir, client: deliverables.write_all(report, out_dir, client=client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             inventory_deliverable.build(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         required_client_params=("holding_rate", "service_level"),
     )
@@ -377,12 +386,12 @@ def cost_to_serve_tool() -> Tool:
         run=_cost_to_serve_run,
         qa=lambda report: cost_to_serve_job.verify(report),
         deliver=lambda report, out_dir, client: cost_to_serve_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             cost_to_serve_deliverable.build(
                 report.portfolio, working_cap=report.working_cap, cash_release=report.cash_release,
                 client=client, citations=tuple(citations), confidence=confidence,
             ),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -435,9 +444,9 @@ def sop_tool() -> Tool:
         run=_sop_run,
         qa=lambda review: sop_job.verify(review),
         deliver=lambda review, out_dir, client: sop_job.write_operational(review, out_dir, client),
-        deck=lambda review, out_dir, client, citations, confidence, options: replace(
+        deck=lambda review, out_dir, client, citations, confidence, options, readings=(): replace(
             sop_deliverable.build(review, client=client, citations=tuple(citations)),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -486,9 +495,9 @@ def abc_xyz_tool() -> Tool:
         run=_abc_xyz_run,
         qa=lambda report: abc_xyz_job.verify(report),
         deliver=lambda report, out_dir, client: abc_xyz_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             abc_xyz_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -532,10 +541,10 @@ def sourcing_tool() -> Tool:
         run=_sourcing_run,
         qa=lambda report: sourcing_job.verify(report),
         deliver=lambda report, out_dir, client: sourcing_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en", readings=(): replace(
             sourcing_job.build_deck(report, client=client, citations=tuple(citations),
                                     confidence=confidence, lang=lang),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -587,11 +596,11 @@ def supplier_management_tool() -> Tool:
         deliver=lambda report, out_dir, client: supplier_management_job.write_operational(
             report, out_dir, client
         ),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             supplier_management_job.build_deck(
                 report, client=client, citations=tuple(citations), confidence=confidence
             ),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -634,9 +643,9 @@ def ddmrp_tool() -> Tool:
         run=_ddmrp_run,
         qa=lambda report: ddmrp_job.verify(report),
         deliver=lambda report, out_dir, client: ddmrp_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             ddmrp_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -663,6 +672,57 @@ def _landed_cost_run(payload: object, params: dict) -> Produced:
     ))
 
 
+def _import_case_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "an extracted-document folder or documents.json is required "
+            "(commercial_invoice / packing_list / bill_of_lading JSON slices)",
+        ])
+    try:
+        payload = import_case_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _import_case_run(payload: object, params: dict) -> Produced:
+    report = import_case_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def import_case_tool() -> Tool:
+    return Tool(
+        key="import_case",
+        title="Import Case / Document Pack",
+        description="Unify extracted logistics documents (invoice, packing list, B/L or AWB) "
+                    "into one shipment case, flag conflicts, and emit a Chile DIN field pack "
+                    "for the licensed broker. Does not file a declaration or advise HS legally.",
+        intent_keywords=(
+            "import case", "expediente de importacion", "unify import documents",
+            "unificar documentos de importacion", "document pack chile",
+            "chile din pack", "cruzar factura packing", "packing vs invoice",
+            "shipping document discrepancies", "discrepancias de documentos",
+            "import document pack", "pack documental de importacion",
+            "rellenar din", "campo din chile",
+        ),
+        requires_data=True,
+        options=tool_options.import_case_options,
+        prepare=_import_case_prepare,
+        run=_import_case_run,
+        qa=lambda report: import_case_job.verify(report),
+        deliver=lambda report, out_dir, client: import_case_job.write_operational(
+            report, out_dir, client,
+        ),
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en", readings=(): replace(
+            import_case_job.build_deck(
+                report, client=client, citations=tuple(citations),
+                confidence=confidence, lang=lang,
+            ),
+            options=tuple(options), readings=tuple(readings),
+        ).write_all(out_dir),
+    )
+
+
 def landed_cost_tool() -> Tool:
     return Tool(
         key="landed_cost",
@@ -679,10 +739,10 @@ def landed_cost_tool() -> Tool:
         run=_landed_cost_run,
         qa=lambda report: landed_cost_job.verify(report),
         deliver=lambda report, out_dir, client: landed_cost_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en", readings=(): replace(
             landed_cost_job.build_deck(report, client=client, citations=tuple(citations),
                                        confidence=confidence, lang=lang),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -785,9 +845,9 @@ def whatif_tool() -> Tool:
         run=_whatif_run,
         qa=lambda report: whatif_job.verify(report),
         deliver=lambda report, out_dir, client: whatif_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             whatif_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -841,10 +901,10 @@ def financial_kpis_tool() -> Tool:
         run=_financial_kpis_run,
         qa=lambda report: financial_kpis_job.verify(report),
         deliver=lambda report, out_dir, client: financial_kpis_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en", readings=(): replace(
             financial_kpis_job.build_deck(report, client=client, citations=tuple(citations),
                                           confidence=confidence, lang=lang),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -893,9 +953,9 @@ def reconciliation_tool() -> Tool:
         run=_reconciliation_run,
         qa=lambda report: reconciliation_job.verify(report),
         deliver=lambda report, out_dir, client: reconciliation_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             reconciliation_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -946,9 +1006,9 @@ def returns_tool() -> Tool:
         run=_returns_run,
         qa=lambda report: returns_job.verify(report),
         deliver=lambda report, out_dir, client: returns_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             returns_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The disposition decision IS a set of ranked, executable choices -> surface them as
         # the guided OPTIONS outcome on success (not just an "executed" deck).
@@ -1001,9 +1061,9 @@ def queuing_tool() -> Tool:
         run=_queuing_run,
         qa=lambda report: queuing_job.verify(report),
         deliver=lambda report, out_dir, client: queuing_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             queuing_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1048,9 +1108,9 @@ def scheduling_tool() -> Tool:
         run=_scheduling_run,
         qa=lambda report: scheduling_job.verify(report),
         deliver=lambda report, out_dir, client: scheduling_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             scheduling_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1094,10 +1154,10 @@ def launch_readiness_tool() -> Tool:
         run=_launch_readiness_run,
         qa=lambda report: launch_readiness_job.verify(report),
         deliver=lambda report, out_dir, client: launch_readiness_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             launch_readiness_job.build_deck(report, client=client, citations=tuple(citations),
                                             confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The verdict IS a set of ranked, executable choices -> surface them as the guided outcome.
         options=tool_options.launch_readiness_options,
@@ -1152,10 +1212,10 @@ def hat_tension_tool() -> Tool:
         run=_hat_tension_run,
         qa=lambda report: hats_job.verify_tension(report),
         deliver=lambda report, out_dir, client: hats_job.write_tension(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             hats_job.build_tension_deck(report, client=client, citations=tuple(citations),
                                         confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The job already assembled the protected OPTIONS outcome (never EXECUTED).
         options=lambda report: report.outcome,
@@ -1179,10 +1239,10 @@ def hat_settlement_tool() -> Tool:
         run=_hat_settlement_run,
         qa=lambda report: hats_job.verify_settlement(report),
         deliver=lambda report, out_dir, client: hats_job.write_settlement(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             hats_job.build_settlement_deck(report, client=client, citations=tuple(citations),
                                            confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The job already assembled the protected HANDOFF outcome (never EXECUTED).
         options=lambda report: report.outcome,
@@ -1233,10 +1293,10 @@ def cross_impact_tool() -> Tool:
         run=_cross_impact_run,
         qa=lambda report: cross_impact_job.verify(report),
         deliver=lambda report, out_dir, client: cross_impact_job.write(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             cross_impact_job.build_deck(report, client=client, citations=tuple(citations),
                                         confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         options=lambda report: report.outcome,
         required_client_params=("objection_thresholds",),
@@ -1283,9 +1343,9 @@ def risk_tool() -> Tool:
         run=_risk_run,
         qa=lambda report: risk_job.verify(report),
         deliver=lambda report, out_dir, client: risk_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             risk_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The mitigation decision IS a set of ranked, executable choices -> surface them as
         # the guided OPTIONS outcome on success (recommended default flagged).
@@ -1341,9 +1401,9 @@ def disruption_scan_tool() -> Tool:
         run=_disruption_scan_run,
         qa=lambda report: disruption_scan_job.verify(report),
         deliver=lambda report, out_dir, client: disruption_scan_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             disruption_scan_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The scan's recommendation IS a set of ranked, executable "investigate X" choices
         # (or an EXECUTED all-clear / HANDOFF retry) -> surface it as the guided outcome.
@@ -1398,9 +1458,9 @@ def forecast_tool() -> Tool:
         run=_forecast_run,
         qa=lambda report: forecast_job.verify(report),
         deliver=lambda report, out_dir, client: forecast_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             forecast_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The forecasting-policy decision IS a set of ranked, executable choices -> surface them
         # as the guided OPTIONS outcome on success (recommended default flagged).
@@ -1447,9 +1507,9 @@ def data_quality_tool() -> Tool:
         run=_data_quality_run,
         qa=lambda report: data_quality_job.verify(report),
         deliver=lambda report, out_dir, client: data_quality_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             data_quality_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The remediation decision IS a set of ranked, executable choices -> surface them as
         # the guided OPTIONS outcome on success (recommended default flagged).
@@ -1495,11 +1555,11 @@ def flow_map_tool() -> Tool:
         run=_flow_map_run,
         qa=lambda report: flow_map_job.verify(report),
         deliver=lambda report, out_dir, client: flow_map_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             flow_map_job.build_deck(
                 report, client=client, citations=tuple(citations), confidence=confidence
             ),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         options=lambda report: report.outcome,
     )
@@ -1548,11 +1608,11 @@ def org_friction_tool() -> Tool:
         run=_org_friction_run,
         qa=lambda report: org_friction_job.verify(report),
         deliver=lambda report, out_dir, client: org_friction_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             org_friction_job.build_deck(
                 report, client=client, citations=tuple(citations), confidence=confidence
             ),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # Every finding is a triage choice, never an auto-verdict -> surface the ranked
         # OPTIONS outcome on success (or the HANDOFF asking for more evidence).
@@ -1597,9 +1657,9 @@ def dea_tool() -> Tool:
         run=_dea_run,
         qa=lambda report: dea_job.verify(report),
         deliver=lambda report, out_dir, client: dea_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             dea_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1646,9 +1706,9 @@ def acceptance_sampling_tool() -> Tool:
         run=_acceptance_sampling_run,
         qa=lambda report: acceptance_sampling_job.verify(report),
         deliver=lambda report, out_dir, client: acceptance_sampling_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             acceptance_sampling_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1692,9 +1752,9 @@ def earned_value_tool() -> Tool:
         run=_earned_value_run,
         qa=lambda report: earned_value_job.verify(report),
         deliver=lambda report, out_dir, client: earned_value_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             earned_value_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1737,9 +1797,9 @@ def learning_curve_tool() -> Tool:
         run=_learning_curve_run,
         qa=lambda report: learning_curve_job.verify(report),
         deliver=lambda report, out_dir, client: learning_curve_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             learning_curve_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1783,9 +1843,9 @@ def odoo_replenishment_tool() -> Tool:
         run=_odoo_run,
         qa=lambda report: odoo_job.verify(report),
         deliver=lambda report, out_dir, client: odoo_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             odoo_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1845,10 +1905,10 @@ def excel_replenishment_tool() -> Tool:
         run=_excel_replenishment_run,
         qa=lambda report: excel_replenishment_job.verify(report),
         deliver=lambda report, out_dir, client: excel_replenishment_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             excel_replenishment_job.build_deck(report, client=client, citations=tuple(citations),
                                                confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1891,9 +1951,9 @@ def newsvendor_tool() -> Tool:
         run=_newsvendor_run,
         qa=lambda report: newsvendor_job.verify(report),
         deliver=lambda report, out_dir, client: newsvendor_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             newsvendor_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1936,9 +1996,9 @@ def cycle_count_tool() -> Tool:
         run=_cycle_count_run,
         qa=lambda report: cycle_count_job.verify(report),
         deliver=lambda report, out_dir, client: cycle_count_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             cycle_count_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1981,9 +2041,9 @@ def multi_echelon_tool() -> Tool:
         run=_multi_echelon_run,
         qa=lambda report: multi_echelon_job.verify(report),
         deliver=lambda report, out_dir, client: multi_echelon_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             multi_echelon_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2026,9 +2086,9 @@ def transportation_tool() -> Tool:
         run=_transportation_run,
         qa=lambda report: transportation_job.verify(report),
         deliver=lambda report, out_dir, client: transportation_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             transportation_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2071,9 +2131,9 @@ def fefo_tool() -> Tool:
         run=_fefo_run,
         qa=lambda report: fefo_job.verify(report),
         deliver=lambda report, out_dir, client: fefo_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             fefo_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2116,9 +2176,9 @@ def slotting_tool() -> Tool:
         run=_slotting_run,
         qa=lambda report: slotting_job.verify(report),
         deliver=lambda report, out_dir, client: slotting_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             slotting_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2161,9 +2221,9 @@ def simulation_tool() -> Tool:
         run=_simulation_run,
         qa=lambda report: simulation_job.verify(report),
         deliver=lambda report, out_dir, client: simulation_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             simulation_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2204,9 +2264,9 @@ def digital_twin_tool() -> Tool:
         run=_digital_twin_run,
         qa=lambda report: digital_twin_job.verify(report),
         deliver=lambda report, out_dir, client: digital_twin_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             digital_twin_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2251,9 +2311,9 @@ def excess_obsolete_tool() -> Tool:
         run=_excess_obsolete_run,
         qa=lambda report: excess_obsolete_job.verify(report),
         deliver=lambda report, out_dir, client: excess_obsolete_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             excess_obsolete_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2299,9 +2359,9 @@ def markdown_liquidation_tool() -> Tool:
         run=_markdown_liquidation_run,
         qa=lambda report: markdown_liquidation_job.verify(report),
         deliver=lambda report, out_dir, client: markdown_liquidation_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             markdown_liquidation_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2344,9 +2404,9 @@ def facility_location_tool() -> Tool:
         run=_facility_location_run,
         qa=lambda report: facility_location_job.verify(report),
         deliver=lambda report, out_dir, client: facility_location_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             facility_location_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2396,9 +2456,9 @@ def network_design_tool() -> Tool:
         run=_network_design_run,
         qa=lambda report: network_design_job.verify(report),
         deliver=lambda report, out_dir, client: network_design_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             network_design_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2441,9 +2501,9 @@ def drp_tool() -> Tool:
         run=_drp_run,
         qa=lambda report: drp_job.verify(report),
         deliver=lambda report, out_dir, client: drp_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             drp_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2489,9 +2549,9 @@ def vehicle_routing_tool() -> Tool:
         run=_vehicle_routing_run,
         qa=lambda report: vehicle_routing_job.verify(report),
         deliver=lambda report, out_dir, client: vehicle_routing_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             vehicle_routing_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2553,19 +2613,25 @@ def _price_intelligence_run(payload: object, params: dict) -> Produced:
 def price_intelligence_tool() -> Tool:
     from jobs import price_intelligence as price_intelligence_job
 
-    def _deck(report, out_dir, client, citations, confidence, options):
+    def _deck(report, out_dir, client, citations, confidence, options, readings=()):
         # citations here are the orchestrator's ungated `ground_citations` (the
         # same convention every other tool's deck uses) -- but golden rule 7 +
         # the E5 gate are explicit requirements for THIS deliverable, so the deck
         # recomputes its own E5-gated citations via
         # `price_intelligence_job.gated_citations` (filter_citations, not a
         # parallel mechanism) instead of trusting the ungated list passed in.
+        #
+        # `readings` is threaded like everywhere else and is NOT affected by that
+        # recomputation: a book passage is not a citation candidate at all (no
+        # `node_id`), so it never enters the E5 gate in either direction. It rides
+        # in its own `Deliverable.readings` section, which `write_report_md` renders
+        # because it starts from `deliverable.to_markdown()`.
         deliverable = replace(
             price_intelligence_job.build_deck(
                 report, client=client, citations=price_intelligence_job.gated_citations(""),
                 confidence=confidence,
             ),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         )
         report_path = price_intelligence_job.write_report_md(deliverable, report, out_dir, deliverable.lang)
         return {"report_md": report_path}
@@ -2867,10 +2933,10 @@ def service_scan_tool() -> Tool:
         deliver=lambda report, out_dir, client: service_scan_deliverable.write_operational(
             report, out_dir, client
         ),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             service_scan_deliverable.build(report, client=client, citations=tuple(citations),
                                            confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2892,10 +2958,10 @@ def intake_scan_tool() -> Tool:
         run=_intake_scan_run,
         qa=lambda report: intake_scan_job.verify(report),
         deliver=lambda report, out_dir, client: intake_scan_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             intake_scan_job.build_deck(report, client=client, citations=tuple(citations),
                                         confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         options=lambda report: report.outcome,
     )
@@ -2989,9 +3055,9 @@ def procedure_audit_tool() -> Tool:
         run=_procedure_audit_run,
         qa=lambda r: procedure_audit_job.verify(r),
         deliver=lambda report, out_dir, client: procedure_audit_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             procedure_audit_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         options=lambda report: report.outcome,
     )
@@ -3025,11 +3091,256 @@ def procedure_draft_tool() -> Tool:
         run=_procedure_draft_run,
         qa=lambda d: procedure_draft_job.verify(d),
         deliver=lambda draft, out_dir, client: procedure_draft_job.write_operational(draft, out_dir, client),
-        deck=lambda draft, out_dir, client, citations, confidence, options: replace(
+        deck=lambda draft, out_dir, client, citations, confidence, options, readings=(): replace(
             procedure_draft_job.build_deck(draft, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         options=lambda draft: draft.outcome,
+    )
+
+
+# ---- iso_ops (plant ISO applicability + floor evidence; never a certificate) ----
+#
+# Distinctive multi-word phrases only. Do NOT add a bare "iso 9001": that keyword
+# already belongs to procedure_audit (SOP document control) and a tie with it
+# would send mixed briefs to needs_clarification instead of either tool.
+
+ISO_OPS_KEYWORDS = (
+    "catalogo iso", "catálogo iso", "iso operations catalog", "iso operations",
+    "detectar normas iso", "detector de normas iso", "normas iso de operaciones",
+    "normas iso de cadena", "evidencia de piso", "evidencia de piso iso",
+    "iso floor evidence", "which iso standards apply", "que normas iso aplican",
+    "qué normas iso aplican", "iso 14067", "iso 50001", "iso 14083", "iso 14001",
+    "iatf 16949", "product carbon footprint", "huella de producto",
+    "cobertura iso", "iso coverage kern",
+)
+
+
+def _iso_ops_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not iso_ops_job.perfil_presente(request.params, request.data_path):
+        return Prepared(status="needs_clarification", messages=[
+            "hace falta una ficha de planta (JSON/CSV) o params con sectores, "
+            "clientePide, logistica, planta, kern, texto, y/o senales de orden "
+            "ciclo/scrap/kg/tkm. Ficha vacia no inventa normas; sin ficha no se corre."
+        ])
+    try:
+        prepared = iso_ops_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    return Prepared(status="ok", payload=prepared)
+
+
+def _iso_ops_run(payload: object, params: dict) -> Produced:
+    report = iso_ops_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def iso_ops_tool() -> Tool:
+    return Tool(
+        key="iso_ops",
+        title="ISO Operations Floor Evidence (not a certificate)",
+        description="Detect which operations/supply-chain ISO (and IATF) norms apply to "
+                    "a plant profile, propose floor tasks already in the catalog, and "
+                    "evaluate order evidence (cycle, scrap, kg, t·km). Always OPTIONS "
+                    "or HANDOFF. Never says the plant is ISO-certified.",
+        intent_keywords=ISO_OPS_KEYWORDS,
+        requires_data=False,
+        prepare=_iso_ops_prepare,
+        run=_iso_ops_run,
+        qa=lambda r: iso_ops_job.verify(r),
+        deliver=lambda report, out_dir, client: iso_ops_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
+            iso_ops_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options), readings=tuple(readings),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
+# ---- audit_evidence (MUS + GL tie-out workpaper; never a signed opinion) ------
+#
+# Distinctive multi-word phrases. Do NOT add bare "reconciliation" / "reconcile"
+# (IRA tool) or "acceptance sampling" / "aql" / "sampling plan".
+
+AUDIT_EVIDENCE_KEYWORDS = (
+    "audit sampling", "inventory audit sampling", "audit sample size",
+    "monetary unit sampling", "mus sample", "mus workpaper",
+    "gl reconciliation", "general ledger", "trial balance", "tie-out", "tie out",
+    "audit workpaper", "audit evidence", "substantive testing", "test of details",
+    "papel de trabajo mus", "evidencia de auditoria", "muestreo mus",
+    "prepare a monetary unit sampling",
+)
+
+
+def _audit_evidence_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a GL/inventory listing CSV is required (unit_id + book_value). "
+            "Optional source=gl|subledger puts both ledgers in one table. "
+            "params.tolerable_misstatement is auditor judgment and is required at run."
+        ])
+    try:
+        audit_evidence_job.validate_params(request.params)
+    except ValueError as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    try:
+        prepared = audit_evidence_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=prepared)
+
+
+def _audit_evidence_run(payload: object, params: dict) -> Produced:
+    report = audit_evidence_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def audit_evidence_tool() -> Tool:
+    return Tool(
+        key="audit_evidence",
+        title="Audit Evidence Workpaper (MUS + GL tie-out; not an opinion)",
+        description="Prepare a re-performable inventory/COGS workpaper: MUS sample, optional "
+                    "GL tie-out, IPE attestation, EvidenceRecord lineage. Always HANDOFF "
+                    "(or ESCALATED if UML exceeds TM or the tie-out is off tolerance). "
+                    "Never a signed audit opinion. Reviewed-by stays blank by design.",
+        intent_keywords=AUDIT_EVIDENCE_KEYWORDS,
+        requires_data=True,
+        required_columns=("unit_id", "book_value"),
+        optional_columns=("source", "audited_value"),
+        required_client_params=("tolerable_misstatement",),
+        prepare=_audit_evidence_prepare,
+        run=_audit_evidence_run,
+        qa=lambda r: audit_evidence_job.verify(r),
+        deliver=lambda report, out_dir, client: audit_evidence_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
+            audit_evidence_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options), readings=tuple(readings),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
+# ---- scor_iso_audit (E4 SCOR + ISO checklist; dedicated job, not PackageSpec) -
+#
+# Do NOT add bare "iso 9001" (procedure_audit) or iso_ops catalog/floor phrases.
+
+SCOR_ISO_AUDIT_KEYWORDS = (
+    "scor iso audit", "scor scorecard", "iso 28000 checklist",
+    "pack de preparacion para auditoria", "scor level 1 scorecard",
+    "perfect order scor", "cash-to-cash scor",
+    "preparacion para auditoria scor", "scor iso pack",
+    "scor iso audit evidence", "registrar auditor scorecard",
+)
+
+
+def _scor_iso_audit_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a tagged CSV is required: add a dataset column with values "
+            "financial / cost_to_serve / sourcing / orders / procedures / risk"
+        ])
+    try:
+        prepared = scor_audit_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=prepared)
+
+
+def _scor_iso_audit_run(payload: object, params: dict) -> Produced:
+    report = scor_audit_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def scor_iso_audit_tool() -> Tool:
+    return Tool(
+        key="scor_iso_audit",
+        title="SCOR/ISO Evidence Pack (not a certificate)",
+        description="Compose existing measurements (cash-to-cash, cost-to-serve, Perfect Order "
+                    "RL.1.1, procedure register, TTR/TTS) into one EvidenceRecord plus a "
+                    "Lineage sheet. Checklist statuses are observed / gap / no_evaluable. "
+                    "Always HANDOFF. Kern prepares evidence for a registrar's auditor; it "
+                    "does not certify ISO or SCOR.",
+        intent_keywords=SCOR_ISO_AUDIT_KEYWORDS,
+        requires_data=True,
+        required_columns=("dataset",),
+        optional_columns=(
+            "product_id", "name", "cogs", "avg_inventory_value",
+            "last_reviewed_at", "owner", "approver", "version",
+        ),
+        prepare=_scor_iso_audit_prepare,
+        run=_scor_iso_audit_run,
+        qa=lambda r: scor_audit_job.verify(r),
+        deliver=lambda report, out_dir, client: scor_audit_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
+            scor_audit_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options), readings=tuple(readings),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
+REPRICING_KEYWORDS = (
+    # Action-anchored and multi-word on purpose: a bare "precio"/"price" would
+    # hijack every pricing brief away from the `pricing` and `price_intelligence`
+    # tools. intent.classify needs a STRICT win, so these phrases name the ACT of
+    # pushing a new price list to a channel, which neither of those two does.
+    "reprice", "repricing", "repricing playbook", "push new prices",
+    "update prices on", "stage price changes", "price changeset",
+    "multichannel repricing", "reprice my channel", "reprice shopify",
+    "repreciar", "repreciado", "cambiar precios en", "actualizar precios en",
+    "subir precios al canal", "lista de precios nueva", "cambio de precios masivo",
+)
+
+
+def _repricing_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(
+            status="needs_data",
+            messages=["a price list is required: one row per SKU with current_price and proposed_price"],
+        )
+    try:
+        plan = repricing_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=plan)
+
+
+def _repricing_run(payload: object, params: dict) -> Produced:
+    report = repricing_job.run(payload, max_move_pct=params.get("max_move_pct"))
+    return Produced(report=report, summary=report.summary)
+
+
+def repricing_tool() -> Tool:
+    """The multichannel repricing playbook, as a STAGING-ONLY tool.
+
+    ``jobs/repricing.py`` was fully built and tested in Linchpin 3.0 PR-18 and
+    reachable by nobody but a test and a CLI (gap audit finding #6). This makes
+    it routable -- without making a live price write routable.
+
+    ``jobs.repricing_job`` never imports ``apply_repricing`` or
+    ``run_channel_repricing``, stages against an in-memory copy of the client's
+    own current prices, and always returns HANDOFF. There is no path from a
+    brief to a channel write. Deliberately absent from
+    ``webapp/mcp_tool_specs.py``: that surface is opt-in, and a tool about
+    changing live prices does not belong on an anonymously reachable one.
+    """
+    return Tool(
+        key="repricing",
+        title="Multichannel Repricing (staged, never applied)",
+        description="Take a proposed price list, run it through the central pricing guardrail "
+                    "(max move per change, below-landed-cost block, a readable reason and L3 "
+                    "citations), and stage the resulting per-SKU diff for a human to approve. "
+                    "It never writes to Shopify/MercadoLibre/Odoo and never applies: the outcome "
+                    "is always a handoff naming the exact steps the operator runs to apply it.",
+        intent_keywords=REPRICING_KEYWORDS,
+        requires_data=True,
+        required_columns=repricing_job.REQUIRED_COLUMNS,
+        optional_columns=repricing_job.OPTIONAL_COLUMNS,
+        options=lambda report: report.outcome,
+        prepare=_repricing_prepare,
+        run=_repricing_run,
+        qa=lambda report: repricing_job.verify(report),
+        deliver=lambda report, out_dir, client: repricing_job.write_operational(report, out_dir, client),
     )
 
 
@@ -3045,6 +3356,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(supplier_management_tool())
     reg.register(ddmrp_tool())
     reg.register(landed_cost_tool())
+    reg.register(import_case_tool())
     reg.register(whatif_tool())
     reg.register(financial_kpis_tool())
     reg.register(reconciliation_tool())
@@ -3088,4 +3400,8 @@ def build_default_registry() -> ToolRegistry:
     reg.register(service_scan_tool())
     reg.register(procedure_audit_tool())
     reg.register(procedure_draft_tool())
+    reg.register(iso_ops_tool())
+    reg.register(audit_evidence_tool())
+    reg.register(scor_iso_audit_tool())
+    reg.register(repricing_tool())
     return reg

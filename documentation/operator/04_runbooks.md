@@ -22,6 +22,9 @@
 - [RB-15 · Medir el servicio que realmente entregaste](#rb-15--medir-el-servicio-que-realmente-entregaste)
 - [RB-16 · Auditar el registro de procedimientos (SOP)](#rb-16--auditar-el-registro-de-procedimientos-sop)
 - [RB-17 · Redactar un SOP con control documental](#rb-17--redactar-un-sop-con-control-documental)
+- [RB-18 · Detectar normas ISO de operaciones y evaluar la evidencia de cadena](#rb-18--detectar-normas-iso-de-operaciones-y-evaluar-la-evidencia-de-cadena)
+- [RB-19 · Preparar el papel de trabajo MUS / conciliación GL](#rb-19--preparar-el-papel-de-trabajo-mus--conciliación-gl)
+- [RB-20 · Emitir el pack de evidencia SCOR/ISO](#rb-20--emitir-el-pack-de-evidencia-scoriso)
 
 ---
 
@@ -495,6 +498,80 @@ redactados, y un HANDOFF que deja claro quién tiene que firmarlo y cuándo.
 
 > Kern redacta el borrador; no lo guarda ni lo aprueba. El sistema del
 > cliente es —y sigue siendo— el sistema de registro del SOP aprobado.
+
+---
+
+## RB-18 · Detectar normas ISO de operaciones y evaluar la evidencia de cadena
+
+**Objetivo:** saber qué normas del paquete `iso-operaciones-cadena` aplican a
+esta planta, qué tareas de piso ya están en el catálogo, y qué evidencia de
+orden existe. **No** obtener ni afirmar un certificado.
+
+1. **Junta la ficha** — sector, lo que pide el cliente (IATF, PCF, OTIF…),
+   logística (3PL, RTI, export), planta (muestreo, maestro SKU, BCP) y módulos
+   KERN (SMARTPRO, MONITOR, ENERGY, huella). Una ficha vacía produce **cero**
+   normas: eso es correcto, no un bug.
+2. **Si hay una orden abierta**, anotá si hay ciclo, scrap, kg y t·km. Sin
+   t·km, 14083 queda en hueco; OEE no lo sustituye.
+3. **Corré** `examples/run_iso_ops.py tests/fixtures/iso/planta.csv` (o el JSON
+   de `POST /api/detectar`). También: brief "detectar normas iso de
+   operaciones…" por el agente (`iso_ops`).
+4. **Leé las tarjetas**: `claimPermitido` + `limite` + huecos. El claim
+   permitido es "KERN tiene evidencia para…" (solo en las 6 normas de cadena
+   marcadas `nativo`), "…aplica; la evidencia de KERN es parcial" o "14083
+   aplica; falta t·km". Nunca "la planta cumple ISO…", y nunca "evidencia de
+   piso": KERN no lee sensores de maquina.
+5. **Elegí sobre OPTIONS** (RB-4) la norma a trabajar primero, o atendé el
+   HANDOFF si la ficha estaba vacía (RB-3).
+6. **Odoo y Excel no pintan un sello ISO.** El entregable es CSV/Excel de
+   detectadas + tareas. La política de inventario sigue en esos sistemas.
+
+> Kern detecta, propone y evalúa la evidencia de cadena que él mismo produce.
+> Las magnitudes de planta (kWh, ciclo, scrap, molde) quedan fuera de alcance.
+> El organismo certifica.
+
+---
+
+## RB-19 · Preparar el papel de trabajo MUS / conciliación GL
+
+**Objetivo:** entregar un workpaper re-ejecutable (W-1..W-6 + `evidence.json`)
+para que el auditor de registro haga fieldwork y firme. **No** un dictamen.
+
+1. **Junta el listing** con `unit_id` y `book_value`. Si hay libro mayor y
+   subledger, etiquetá ambas caras con `source=gl` / `source=subledger` en la
+   misma tabla (MCP no acepta un segundo archivo).
+2. **Pedí TM al auditor** (`tolerable_misstatement`). Kern no lo inventa.
+3. **Corré** `examples/run_audit_evidence.py <listing.csv> --tm N` o el brief
+   "prepare a monetary unit sampling workpaper…" (`audit_evidence`). MCP:
+   `kern_audit_evidence` con `params.tolerable_misstatement`.
+4. **Leé el HANDOFF**: testear selecciones W-3, refrescar UML, firmar
+   Reviewed-by. Prepared-by queda como identidad del motor.
+5. **Si sale ESCALATED** (UML > TM o tie-out fuera de tolerancia) → **RB-6**.
+6. **No archivar esto como evidencia firmada.** El expediente del estudio (DMS)
+   es el sistema de registro; Kern no lleva un ledger append-only de evidencia
+   (Q7).
+
+---
+
+## RB-20 · Emitir el pack de evidencia SCOR/ISO
+
+**Objetivo:** un scorecard SCOR + checklist ISO 9001/28000 envuelto en un
+`EvidenceRecord` y hoja Lineage, para el auditor del organismo. **No** un
+certificado.
+
+1. **Armá un CSV con columna `dataset`**: `financial`, `cost_to_serve`,
+   `sourcing`, `orders`, `procedures`, `risk`. Un panel reconocido alcanza;
+   los ausentes salen `no_evaluable`, nunca "cumple por silencio".
+2. **Corré** `examples/run_scor_audit.py <pack.csv> --as-of AAAA-MM-DD`
+   (pasá `--dso` / `--dpo` si querés medir cash-to-cash). MCP:
+   `kern_iso_scor_audit`. Brief: "run the scor iso audit pack…".
+3. **Leé Scorecard + ISO checklist + Coverage + Lineage.** Statuses legales:
+   `observed` / `gap` / `no_evaluable`.
+4. **Cerrá gaps** (p.ej. SOPs vencidos → **RB-16**) antes de una visita
+   externa. El HANDOFF nombra esos pasos.
+5. **Nunca presentes el pack como sello ISO o certificación SCOR.**
+
+> Kern prepara evidencia re-ejecutable. El auditor de registro concluye.
 
 ---
 

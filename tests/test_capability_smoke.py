@@ -14,7 +14,7 @@ from pathlib import Path
 from examples.run_capability_smoke import _NETWORK, main
 from scm_agent.tools import build_default_registry
 
-# Expected bucket per tool for the default (offline, non-stress) run. 51 registered tools.
+# Expected bucket per tool for the default (offline, non-stress) run. 57 registered tools.
 #
 # This replaces a `passes >= 35` numeric floor. A floor erodes silently: gating one tool
 # just spends slack, and the suite stays green while a capability quietly stops producing
@@ -60,6 +60,7 @@ EXPECTED_OFFLINE_BUCKETS: dict[str, str] = {
     # de la tool (jobs/service_scan_job.py), no un atajo del harness.
     "service_scan":           "PASS",
     "landed_cost":            "PASS",
+    "import_case":            "PASS",
     "launch_readiness":       "PASS",
     "leadership_chain":       "PASS",
     "learning_curve":         "PASS",
@@ -69,7 +70,11 @@ EXPECTED_OFFLINE_BUCKETS: dict[str, str] = {
     "odoo_replenishment":     "PASS",
     "pricing":                "PASS",
     "procedure_audit":        "PASS",
+    "repricing":              "PASS",
     "procedure_draft":        "PASS",
+    "iso_ops":                "PASS",
+    "audit_evidence":         "PASS",
+    "scor_iso_audit":         "PASS",
     "queuing":                "PASS",
     "reconciliation":         "PASS",
     "returns":                "PASS",

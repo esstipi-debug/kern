@@ -23,10 +23,10 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
+
 from nosilo_core import llm, writeback
 from nosilo_core.guided import ESCALATED, EXECUTED, HANDOFF, ExecutionOption, as_executed, as_options, passed_guided
 from nosilo_core.types import STATUS_NEEDS_DATA, STATUS_OK, JobResult
-
 from scm_agent import event_intent as event_intent_module
 from scm_agent import tools
 from scm_agent.autonomy import (

@@ -5,113 +5,38 @@ public deploy needs the access controls turned on and TLS terminated at a proxy.
 This is the checklist. See [SECURITY.md](../SECURITY.md) for the threat model and
 the controls already enforced in code.
 
-## 0. The private dependency (do this before any deploy path)
+## 0. There is no private dependency any more (2026-09-11)
 
-`nosilo-core` — the control plane the app is built on — lives in a **private**
-repository and is pinned by tag in `requirements.txt` and `pyproject.toml`. Every
-build path resolves it over `git+https`, so every build path needs a credential.
-Without one the build fails at dependency resolution, before any of the rest of
-this document matters.
-
-### CI: use a deploy key, not the token
-
-A fine-grained PAT **expires** — a year at most, and GitHub proposes 30 days by
-default. When it does, CI fails at dependency resolution before a single test
-runs, and nothing announces it: the red X looks like any other failing build.
-That is not hypothetical. `NOSILO_CORE_TOKEN` was never set at all, both jobs
-aborted at that step, and **sixteen days of merges went in without a gate**
-before anyone looked.
-
-A deploy key has no expiry, so for GitHub Actions:
-
-1. Generate a keypair. It never leaves your machine except as described below:
-
-       ssh-keygen -t ed25519 -N "" -C "kern CI -> nosilo-core" -f nosilo_core_ci
-
-2. `nosilo_core_ci.pub` → `esstipi-debug/nosilo-core` → Settings → Deploy keys →
-   Add. **Leave "Allow write access" unchecked.**
-3. `nosilo_core_ci` (the private half) → the `kern` repo's Actions secrets, as
-   `NOSILO_CORE_SSH_KEY`. This reads it from stdin, so it never lands in your
-   shell history:
-
-       gh secret set NOSILO_CORE_SSH_KEY --repo esstipi-debug/kern < nosilo_core_ci
-
-4. Delete both local files. The public half is on GitHub, the private half is in
-   the secret, and a copy on disk is one more place it can leak from.
-
-`.github/actions/authenticate-core` prefers the deploy key, falls back to the
-PAT, and fails naming both when neither is set. The workflow **does not invoke**
-that action when both secrets are empty: a detect step reads them as env
-(GitHub rejects `if: ${{ secrets.* }}` at parse time) and emits
-`steps.core.outputs.present`. Empty → install without the private git URL and
-run the no-core pytest gate (`KERN_CI_NO_CORE=1`) so listing/engine changes
-still get a check. With the PAT it emits a
-`::warning::` on every run saying that gate has an expiry date — the failure mode
-above does not announce itself, so this does it for us.
-
-**This does not change the published dependency.** `requirements.txt` and
-`pyproject.toml` keep the `git+https://` URL; only the runner rewrites it to SSH
-in its own git config. Docker, Fly, Railway and a plain local `pip install` are
-untouched and still use the token — which is why the token is not going away.
-There is a test (`tests/test_ci_authenticate_core.py`) that fails if someone
-switches the dependency itself to `git+ssh://`.
-
-### The token (still needed for every non-CI path)
-
-1. GitHub → Settings → Developer settings → **Fine-grained personal access token**
-2. Repository access: **only** `esstipi-debug/nosilo-core`
-3. Permissions: **Contents → Read-only**. Nothing else.
-
-Then give it to whichever build path you use:
-
-| Path | How | Where the credential lives |
-|---|---|---|
-| **GitHub Actions** | Actions secret `NOSILO_CORE_SSH_KEY` (preferred) or `NOSILO_CORE_TOKEN` | Only in the runner, only for the job |
-| **Docker / Fly** | `--secret id=nosilo_token,env=NOSILO_CORE_TOKEN`, **or** `--ssh default` with the deploy key in your agent | Only in the RUN that installs; never in a layer |
-| **Railway** | Service variable `NOSILO_CORE_TOKEN` | ⚠️ also present at runtime — see below |
+`nosilo_core` — the control plane the app is built on — used to live in a private
+repository, pinned by tag, resolved over `git+https`. **Every build path needed a
+credential**, and that is gone: the code lives in this repo, in `nosilo_core/`.
 
 ```bash
-export NOSILO_CORE_TOKEN=github_pat_...
-
-# Docker (BuildKit is the default in modern Docker; the syntax directive at the
-# top of the Dockerfile pins the frontend that provides --mount=type=secret)
-docker build --secret id=nosilo_token,env=NOSILO_CORE_TOKEN -t kern .
-
-# Fly uses the same Dockerfile
-fly deploy --build-secret nosilo_token="$NOSILO_CORE_TOKEN"
-
-# Railway reads it as a build-time variable
-railway variables set NOSILO_CORE_TOKEN="$NOSILO_CORE_TOKEN"
+docker build -t kern .          # no --secret, no --ssh, no agent
 ```
 
-**No PAT? Build with the deploy key instead.** BuildKit forwards an SSH agent
-socket into the build, so the same key that authenticates CI also builds the
-image - and unlike a PAT it does not expire:
+El comando de instalacion de la seccion 2 no cambia: sigue nombrando `[core]`,
+que ahora esta vacio (ver el ultimo parrafo de esta seccion).
 
-```bash
-ssh-add ~/.ssh/nosilo_core          # the private half of the deploy key
-docker build --ssh default -t kern .
-```
+What it cost while it lasted, so nobody re-introduces it: a secret spread across
+six build paths, one person who could rotate it, twenty-four days of CI running
+blind on a PAT that was never set, ten days with no published image over a
+premise that turned out to be false ("BuildKit does not forward SSH"), and any
+partner wanting to run Kern having to ask someone for credentials. The package
+had exactly one real consumer — this repo.
 
-The Dockerfile takes the token when one is mounted and falls back to the agent
-otherwise, so Fly and Railway keep working exactly as above. This is what
-`.github/workflows/docker.yml` uses: the repo has `NOSILO_CORE_SSH_KEY` and no
-PAT, and that mismatch is why the image workflow sat with its triggers off from
-2026-08-26 until 2026-09-05 and no image was ever published.
+**What did NOT go away is the boundary.** `nosilo_core` stays domain-agnostic: it
+knows nothing about SKUs, suppliers or safety stock, and `src/`/`packs/` depend on
+it and never the reverse. Two tests enforce that direction
+(`tests/test_core_boundary.py`, `tests/test_pack_boundary.py`), and they are the
+reason the split can be undone without losing what it was for.
+`tests/test_ci_prod_boot_extras.py` now fails if any install path asks for a
+credential again.
 
-**Why the token is never written with `git config --global`.** That command
-writes it into `/root/.gitconfig`, which is part of the committed image layer and
-readable by anyone who pulls it. Every path here passes the credential through
-`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0` instead, which git
-reads from the environment and never persists.
-
-**Railway is the weak spot, and it is inherent.** Nixpacks has no equivalent of a
-BuildKit secret mount, so the token has to be a service variable — and Railway
-service variables are present in the runtime environment too, not just the build.
-Anything that can read the app's environment can read the token. That is why the
-scope above is one repository, read-only: it is the difference between a leak
-that exposes source and one that exposes an account. Rotate it if the deploy
-environment is ever compromised, and prefer the Fly path when the choice is open.
+The `[core]` extra is kept, empty, on purpose: `pip install -e ".[core,web,mcp]"`
+is the command written in this page, in the Dockerfile and in several sessions'
+notes. Deleting the extra breaks those commands with an error that does not say
+what happened.
 
 ## 0b. Where Kern writes: `KERN_DATA_DIR`
 
@@ -222,14 +147,10 @@ pip install -e ".[core,web,mcp]"
 uvicorn webapp.app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-`[core]` is nosilo-core, and it needs the credential from section 0 — this is the
-one command on this page that resolves the private dependency directly rather
-than through a build system. It is not optional: `nosilo-core` is deliberately
-out of `[project.dependencies]` (so `pip install -e .` works for someone with no
-token), so it arrives only when an install line names this extra. Without it
-`uvicorn` dies at import with `ModuleNotFoundError: No module named
-'nosilo_core'` — `webapp/app.py` → `jobs/abc_xyz_job.py` hard-imports
-`nosilo_core.guided`. Same failure mode as the missing `[mcp]` below, same
+`[core]` esta VACIO desde el 2026-09-11 (ver seccion 0): `nosilo_core` vive en
+este repo y no se instala. El nombre se conserva porque este comando esta escrito
+en varios lugares, y un extra que desaparece los rompe con un error que no dice
+que paso. Los que si importan son `[web]` y `[mcp]`. Same failure mode as the missing `[mcp]` below, same
 cause: a bespoke install command that drifted from what the app actually
 imports. Reproduced in an isolated py3.12 venv on 2026-08-23, before and after.
 

@@ -49,7 +49,6 @@ route that uses it should be reviewable apart.
 from __future__ import annotations
 
 from nosilo_core.access import ALLOW, PRINCIPAL_SERVICE, Classification, PolicySet, Rule
-
 from packs.source_to_pay.entities import S2P_CLASSIFICATIONS
 from src.entities import SCM_CLASSIFICATIONS
 

@@ -34,11 +34,11 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from nosilo_core import llm
 from openpyxl import load_workbook
 
 from jobs import price_intelligence as pi
 from jobs.qa import price_intel_passed, verify_price_intel
+from nosilo_core import llm
 from scm_agent.citation_gate import MIN_CITATIONS
 from scm_agent.intent import classify
 from scm_agent.knowledge import KnowledgeBase

@@ -53,8 +53,10 @@ from typing import Any
 from src.connectors import (
     COVERAGE_MEASURED,
     COVERAGE_UNAVAILABLE,
+    WRITE_NONE,
     FieldCoverage,
     ServiceCoverage,
+    WriteSurface,
 )
 from src.connectors.arrivals import Arrival
 
@@ -249,5 +251,14 @@ SERVICE_COVERAGE = ServiceCoverage(
         "la fecha en que el transportista dio por ENTREGADO el envio: el pedido llego al "
         "cliente. Es el dato que ningun ERP del canal registra, y sale del evento y no de "
         "last_updated_date, que es la ultima actualizacion de cualquier tipo",
+    ),
+)
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_NONE,
+    means=(
+        'solo lectura: un transportista sabe cuando llego un envio y nada mas; Kern lee llegadas para medir OTIF de llegada y no escribe envios.'
     ),
 )

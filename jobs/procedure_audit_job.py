@@ -34,9 +34,9 @@ from datetime import date
 from pathlib import Path
 
 import pandas as pd
-from nosilo_core.guided import EXECUTED, Residual, verify_guided
 
 from jobs.intake import _norm
+from nosilo_core.guided import EXECUTED, Residual, verify_guided
 from src.deliverable import DataSource, Deliverable, Finding, Kpi, days, pct
 from src.export import write_summary_csv
 from src.procedures.models import ProcedureRecord, RegisterAudit

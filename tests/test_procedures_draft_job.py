@@ -5,9 +5,9 @@ from dataclasses import replace
 from datetime import date
 
 import pytest
-from nosilo_core.guided import HANDOFF
 
 from jobs import procedure_draft_job
+from nosilo_core.guided import HANDOFF
 from src.procedures.templates import (
     ISO_SENTENCE_EN,
     ISO_SENTENCE_ES,

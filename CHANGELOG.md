@@ -3,6 +3,160 @@
 ## [Unreleased]
 
 ### Added
+- **`GET /api/price-position/{sku}` — la ultima ruta sin construir de la seccion 9
+  del plan 3.0.** La marco abierta la auditoria de brechas del 2026-07-13 y seguia
+  faltando al re-verificarla el 2026-09-12. Lee el MISMO `PriceLedger` de produccion
+  al que escriben `POST /api/watch` y el ciclo L0 programado, y devuelve el panel de
+  competidores de un SKU (min / promedio / max, mas cada oferta con su procedencia,
+  disponibilidad y antiguedad en horas). No adquiere nada: cero HTTP saliente, cero
+  superficie de cumplimiento de sitios. Gateada por `LINCHPIN_API_KEY` y con limite
+  de tasa, porque el panel competitivo de un cliente es dato comercial suyo; el
+  teaser publico sigue siendo `POST /api/demo-price-scan`, otra superficie con su
+  propio ledger aislado por request.
+
+  `our_price` es un parametro de query a proposito y es una restriccion real: Kern
+  persiste observaciones de competidores y matches producto↔competidor, pero **no
+  persiste ningun catalogo de precios propios** (`PriceIntelReport.our_prices` se
+  arma del catalogo de entrada en tiempo de job). Sin ese dato el indice de posicion
+  no es derivable, asi que el panel vuelve igual y el indice sale `null` con
+  `competitor_read: "insufficient_signal"` — nunca un 1.0 inventado. El indice es
+  `jobs.price_intelligence._position_index` usado verbatim, la MISMA funcion detras
+  de `price_position_matrix.xlsx` y de `jobs.price_priority`, con un test que
+  compara contra ella para que esta ruta no pueda derivar (regla de oro 1).
+
+  Un SKU sin observaciones responde 200, no 404: el ledger indexa lo observado y no
+  tiene catalogo de SKUs validos, asi que genuinamente no distingue "nunca vigilado"
+  de "error de tipeo" — contestar 404 afirmaria algo que el dato no sostiene. Declara
+  el hueco (`observed_offers: 0`, `insufficient_signal`) en vez de fabricar un cero.
+- **`repricing` es la tool #58: el playbook multicanal por fin ruteable, y SOLO
+  en modo staging.** El hallazgo #6 de la auditoria del 2026-07-13 decia que
+  `jobs/repricing.py` estaba "fully engineered, fully tested, currently
+  unreachable by anyone but a test"; al re-verificarlo el 2026-09-12 seguia sin
+  registrar. La misma auditoria advertia que exponer una superficie de escritura
+  externa como tool completa era "larger, riskier than fits one run" — asi que
+  esto shipea la mitad segura y deja la otra escrita.
+
+  **Nunca aplica y nunca toca un canal vivo.** `jobs/repricing_job.py` no importa
+  `apply_repricing` ni `run_channel_repricing` (lo fija un guard de AST, no un
+  grep), arma el changeset contra una copia en memoria de los precios actuales
+  que declara el propio cliente, y **siempre** devuelve HANDOFF: jamas OPTIONS,
+  jamas EXECUTED. No hay camino desde un brief en lenguaje natural hasta una
+  escritura de precios. Golden Rule 11: la autonomia sobre una superficie de
+  escritura nueva se gana con evidencia A4, y una tool que no existia hasta hoy
+  no tiene ninguna.
+
+  Fuera de la superficie MCP a proposito, y no porque escriba —no escribe—, sino
+  porque su tema es un cambio a los precios vivos de un cliente y su salida es un
+  changeset con forma de ser aplicado. Declarado en `webapp/mcp_tool_specs.py` y
+  en `docs/MCP_SERVER.md`.
+
+  Las citas se fundan sobre el keyword set FIJO del playbook con brief vacio (el
+  fix de la trilogia #160/#162/#164) en vez del `reason` libre del operador: es el
+  unico gate del repo donde un cero **bloquea duro** el changeset entero, asi que
+  la redaccion de una linea no puede cambiar el veredicto. Medido: 4 citas,
+  siempre las mismas.
+
+### Fixed
+- **Un SKU vacio se colaba como el SKU literal `"nan"`.** Aparecio al escribir los
+  tests de `repricing_job`: pandas lee la celda en blanco como NaN y `str(nan)` es
+  `"nan"`, que es no-vacio y pasa un `if not sku`. Habria quedado una fila de
+  cambio de precio para un producto llamado "nan". Se chequea `pd.isna` primero.
+- **Import circular introducido y cerrado en el mismo PR.** Registrar la tool puso
+  `jobs.repricing_job` en la cadena de `scm_agent/__init__`, y como
+  `jobs.repricing` importa `scm_agent.knowledge`, un `import jobs.repricing` plano
+  —el que hacen `examples/run_repricing.py` y los tests del playbook— moria con un
+  modulo a medio inicializar. El import quedo perezoso dentro de `run()`, con un
+  test que lo corre en un subproceso para que los modulos ya cargados de la sesion
+  no lo tapen.
+
+### Changed
+- **`nosilo_core` vuelve a este repo; se acabaron los secretos de build (PR-3).**
+  El control plane (16 archivos, 3.569 lineas: `registry`, `guided`, `writeback`,
+  `escalation`, `entities`, `access`) vivio en un repo privado del 2026-08-03 al
+  2026-09-11 y se resolvia por `git+https` en cada camino de build. Eso costo un
+  secreto repartido en seis lugares con una sola persona capaz de rotarlo, 24 dias
+  de CI corriendo ciega sobre un PAT que nunca existio, 10 dias sin imagen
+  publicada sobre la premisa falsa de que BuildKit no reenvia SSH, y un `pip
+  install` que un evaluador externo no podia correr. Tenia un solo consumidor real:
+  este repo. Ahora `docker build -t kern .` alcanza, sin `--secret` ni `--ssh`, y
+  la suite entera corre en cualquier checkout.
+
+  El arbol se restauro desde la propia historia (`3e47b43^`), byte a byte identico
+  al `v0.1.0` que corria en produccion, mas el unico cambio posterior del core: 19
+  lineas en `guided.py` que rechazan un status inventado que pasaba el control de
+  calidad sin decir nada, con sus 4 tests. Vuelven los 8 archivos de test del core
+  (233 tests) que #226 se habia llevado.
+
+  **La frontera no se toco.** `nosilo_core` sigue sin saber nada de SKUs,
+  proveedores ni stock de seguridad, y `src`/`packs` dependen de el y nunca al
+  reves: `tests/test_core_boundary.py` vuelve del mismo commit y
+  `tests/test_pack_boundary.py` sigue donde estaba. Lo que se fue es la credencial.
+
+  Efectos colaterales, todos en este PR: ruff pasa a tratar `nosilo_core` como
+  paquete propio y reordena imports en 169 archivos; el gotcha de `CLAUDE.md` que
+  mandaba a `rm -rf nosilo_core` queda invertido (borrarlo ahora rompe 231
+  archivos); `tests/test_ci_authenticate_core.py` y el gate `KERN_CI_NO_CORE`
+  (`tests/_no_core.py`, 254 lineas) se borran por quedarse sin objeto -- un gate
+  que saltea 5.000 tests deja de ser un gate; y `tests/test_ci_prod_boot_extras.py`
+  invierte su test central: antes exigia que las cuatro rutas de instalacion
+  NOMBRARAN el extra que traia el core, ahora exige que **ninguna pida una
+  credencial**. El extra `[core]` se conserva vacio a proposito: es el comando
+  escrito en la documentacion y en varias sesiones.
+
+### Added
+- **`import_case` agent tool** (`src/import_case.py`, `jobs/import_case_job.py`) --
+  registry 56 -> 57. Unifies extracted logistics JSON (invoice, packing list,
+  B/L or AWB) into one shipment case, flags quantity/weight/Incoterm/origin
+  conflicts, and writes a Chile DIN *field pack* CSV for the licensed broker.
+  Does not file a declaration or give HS legal advice. Off MCP (folder/JSON
+  path, same class as `intake_scan`). CLI: `examples/run_import_case.py`.
+- **ISO operations/supply-chain catalog (53 norms)** committed at
+  `knowledge/iso/catalogo.json`, read by `src/iso_catalog.py`
+  (`evidencia_nativa`, `buscar_norma`, `de_modulo`, `detectar`,
+  `evidencia_de_orden`). HTTP: `GET /api/iso`, `POST /api/detectar` (body =
+  `contratoPost` from `tests/fixtures/iso/detectar.ejemplo.json`),
+  `GET /api/iso/orden`. `GET /iso` is the PARA-KERN catalog browser (search,
+  SMARTPRO/MONITOR/ENERGY filter, SCM domain including inventory) plus the
+  plant detector (cards, not JSON-only) and the MONITOR order panel. `kern.cobertura`
+  is classified against what THIS engine measures, not against the KERN IoP plant
+  hardware the pack was written for: 6 norms native (8000-1, 10004, 2859-1, 37500,
+  22316, 31000), 12 partial, 35 out of scope. Energy, carbon, OEE and cycle time are
+  out of scope -- no connector or column contract carries kWh, CO2e, cycle or scrap,
+  so 50001 and 14067 can no longer light an order card. Claims allowed: "KERN tiene
+  evidencia para…"; never "evidencia de piso" and never "cumple ISO". Ratchet in
+  `tests/test_iso_catalog.py`.
+
+- **`iso_ops` agent tool (`jobs/iso_ops_job.py`)** -- registry now 54 tools.
+  Detects which operations/supply-chain ISO (and IATF) norms apply to a plant
+  ficha (JSON or one-row CSV), attaches catalog floor tasks, and evaluates
+  order signals (cycle, scrap, kg, t·km). Always OPTIONS or HANDOFF; never
+  EXECUTED and never a "la planta cumple ISO" sentence. Empty ficha => zero
+  detections. Not exposed on MCP (HTTP `POST /api/detectar` already covers
+  the same contract). CLI: `examples/run_iso_ops.py`.
+
+- **ISO evidence MCP family + two agent tools (54 -> 56 registry; 36 -> 39
+  MCP).** `audit_evidence` (`jobs/audit_evidence_job.py`) prepares a MUS + GL
+  tie-out + IPE workpaper wrapped in `EvidenceRecord`; always HANDOFF
+  (Reviewed-by blank) or ESCALATED; never a signed opinion. `scor_iso_audit`
+  is E4 as a dedicated job (not a `PackageSpec`): one EvidenceRecord + Lineage
+  sheet from existing measurements. MCP: `kern_iso_sop_audit` (alias of
+  `procedure_audit`), `kern_audit_evidence`, `kern_iso_scor_audit`. `iso_ops`
+  stays off MCP. Q7: no append-only evidence ledger (artifacts + firm DMS).
+  CLIs: `examples/run_audit_evidence.py`, `examples/run_scor_audit.py`.
+
+- **MercadoLibre preventa / catalog product search (read-only).**
+  `src/connectors/meli_catalog.py` searches the official catalog
+  (`GET /products/search` by `q` or GTIN, `GET /categories/{id}/sale_terms`,
+  domain discovery) behind a Bearer token -- unauthenticated calls against
+  `api.mercadolibre.com` stay robots-prohibited. `src/meli_presale.py`
+  classifies each hit as `presale_ready` (category allows
+  `MANUFACTURING_TIME`, MercadoLibre's documented preventa term),
+  `catalog_only`, `already_listed`, `inactive`, `no_category`, or `no_match`,
+  and builds a listing *draft* that is never POSTed. Job + CLI:
+  `jobs/meli_presale_job.py`, `examples/run_meli_presale.py --demo`.
+  GuidedOutcome wrapper (`src/meli_presale_guided.py`) is optional and
+  never `EXECUTED`. Not an agent tool (registry stays at 53). Not the
+  unmerged inventory connector on PR #238.
 - **`procedure_audit` + `procedure_draft` agent tools (`jobs/procedure_audit_job.py`,
   `jobs/procedure_draft_job.py`, `src/procedures/`)** -- registry now 53 tools.
   `procedure_audit` audits a client's exported procedure register for overdue

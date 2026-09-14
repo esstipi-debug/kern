@@ -28,7 +28,6 @@ from datetime import date, timedelta
 from statistics import median
 
 from nosilo_core.guided import GuidedOutcome, HandoffPacket, Residual, as_handoff
-
 from src.procedures.models import ProcedureFinding, ProcedureRecord, RegisterAudit
 
 OVERDUE_REVIEW = "overdue_review"

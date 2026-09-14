@@ -17,10 +17,10 @@ instead of the right tool -- never runs it at all.
 from __future__ import annotations
 
 import pytest
+
 from nosilo_core import llm
 from nosilo_core.guided import HANDOFF
 from nosilo_core.types import JobRequest
-
 from scm_agent import intent, tools
 
 
@@ -41,10 +41,10 @@ def registry():
     return tools.build_default_registry()
 
 
-def test_both_tools_are_registered_and_count_is_53(registry):
+def test_both_tools_are_registered_and_count_is_58(registry):
     assert registry.get("procedure_audit") is not None
     assert registry.get("procedure_draft") is not None
-    assert len(registry.list()) == 53
+    assert len(registry.list()) == 58
 
 
 @pytest.mark.parametrize(

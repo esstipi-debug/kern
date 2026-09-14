@@ -24,9 +24,9 @@ def _pack(*outputs: str) -> VerticalProfile:
 
 
 def test_anonymous_visitor_gets_the_canonical_order():
-    # The default case, and the one most visitors will hit: no declared industry
-    # means lead time first, exactly as §5 has it.
-    assert demo_verticals.demo_modes_for(None) == ("lead", "stock")
+    # Anonymous visitor: free diagnostic is the stock scan (cash trapped),
+    # not the lead-time tab.
+    assert demo_verticals.demo_modes_for(None) == ("stock", "lead")
 
 
 def test_pack_order_decides_which_tab_leads():
@@ -64,7 +64,8 @@ def test_payload_offers_both_shipped_verticals():
     slugs = [o["slug"] for o in payload["options"]]
     assert slugs == ["distribucion-b2b", "repuestos-industriales"]
     assert payload["question"] == demo_verticals.QUESTION
-    assert all(o["label"] and o["modes"] for o in payload["options"])
+    assert payload["question_en"] == demo_verticals.QUESTION_EN
+    assert all(o["label"] and o["label_en"] and o["modes"] for o in payload["options"])
 
 
 def test_payload_carries_each_packs_own_order():

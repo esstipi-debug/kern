@@ -1,7 +1,9 @@
 """Kern's read-only MCP server (Phase A go-to-market — see linchpin-monetization-plan).
 
-Exposes 35 of the 49 registered agent tools to remote MCP clients (other AI
-agents, via Streamable HTTP): analysis only, no writeback. `odoo_replenishment`
+Exposes the read-only analysis tools in `webapp/mcp_tool_specs.py` (39 tools:
+36 linchpin_* plus the kern_iso_* observation family) of the 57 registered
+agent tools to remote MCP clients (other AI agents, via Streamable HTTP):
+analysis only, no writeback. `odoo_replenishment`
 and `excel_replenishment` mutate a client's system of record and are
 deliberately NOT exposed here — that stays for direct clients only, gated by the
 audited writeback safety plane (`nosilo_core/writeback.py`), not by anything in this

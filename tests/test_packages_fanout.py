@@ -25,9 +25,9 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
 
 from examples.run_package import DEMO_PARAMS, build_demo_intake
+from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
 from scm_agent.package_specs import PACKAGES, SCALE
 from scm_agent.packages import PackageSpec, PackageStep, run_package
 
