@@ -4,7 +4,9 @@
 
 **Goal:** Leer la historia del `EventLedger` (o un CSV del cliente) y separar el sintoma repetido — que pide un arreglo de politica — del incidente aislado, que pide un pedido puntual.
 
-**Architecture:** Un motor puro en `src/patterns.py` que solo conoce el tipo `Occurrence` (entidad, senal, timestamp), y dos adaptadores en `jobs/pattern_scan_job.py` que lo alimentan desde sqlite o desde un CSV. El motor arma episodios a partir de huecos temporales certificados, los clasifica en dos ejes ortogonales (recurrencia y persistencia), y busca el denominador comun de los cronicos con un gate estadistico de cuatro pisos. La salida es un `GuidedOutcome` con opciones rankeadas; el tool no muta nada.
+**Architecture:** Un motor puro en `src/patterns.py` que solo conoce el tipo `Occurrence` (entidad, senal, timestamp), y dos adaptadores en `jobs/pattern_scan_job.py` que lo alimentan desde sqlite o desde un CSV. El motor arma episodios a partir de huecos temporales certificados — con el hueco **derivado de la cadencia de cada familia** (`k x cadencia`, k=4), no de una constante de reloj —, los clasifica en dos ejes ortogonales (recurrencia y persistencia), y busca el denominador comun de los cronicos con un gate estadistico de cuatro pisos. La salida es un `GuidedOutcome` con opciones rankeadas; el tool no muta nada. La Task 10 le agrega cadencia semanal por `ScheduledJob` + cron dedicado, en un PR aparte.
+
+**Alcance en PRs:** Task 1 = PR-0b · Tasks 2-9 = PR-1 (el tool) · Task 10 = PR-2 (la cadencia). PR-0 (las dos env vars de `fly.toml` + `flyctl deploy` manual) es un prerrequisito de despliegue que no tiene tarea aca: arranca el reloj de `min_history_days=30`.
 
 **Tech Stack:** Python 3.11+, pandas (solo en los adaptadores), scipy (`fisher_exact`, ya es dependencia core), sqlite3 (stdlib), pytest.
 
@@ -21,6 +23,42 @@
 - **Toda fecha es tz-aware UTC.** Ninguna ruta hace `.replace(tzinfo=None)`.
 - **Workflow:** rama -> draft PR -> CI verde -> squash-merge. Nunca push directo a `main`.
 - **Tool #47.** El pin de conteo global vive en `tests/test_price_watch_tool.py:165`.
+
+## Hechos verificados que contradicen supuestos comunes
+
+Diez lectores leyeron el codigo real antes de esta version del plan. Lo que sigue es lo que
+un implementador daria por sentado y estaria **mal**. Cada linea se verifico leyendo (o
+corriendo) el codigo, no infiriendo.
+
+| Supuesto natural | Realidad |
+|---|---|
+| `EventLedger` tiene `record()` / `append()` | El unico escritor es **`emit(event) -> bool`** (`False` = suprimido por dedup) |
+| `list_all()` viene ordenado por `ts` | Viene `ORDER BY seq ASC` (orden de insercion). Y el ledger **si** contiene filas cuyo orden por `ts` difiere del orden por `seq`: los eventos de `pricing_intel` traen `ts=offer.observed_at` |
+| Hay un indice por `ts` | No. `__init__` crea solo `idx_events_dedup_key` e `idx_events_type` |
+| Existe una constante `TOOLS` en `scm_agent/tools.py` | No existe — `build_default_registry()` arma el registry con 46 `reg.register(...)` imperativos. El homonimo `webapp/how_it_works_data.TOOLS` **si** existe, pero es la tabla de la pagina publica, no el registry |
+| El tipo de opcion se llama `Option` | Se llama **`ExecutionOption`**. Y `verify_guided` **devuelve** `list[str]`, no es generador |
+| `_BRIEF` de `run_capability_smoke.py` decide PASS vs GATED | Lo deciden los **fixtures**. `_BRIEF` ni siquiera tiene entrada para `disruption_scan`; hoy 5 tools salen GATED por falta de fixture |
+| `tests/test_scm_agent.py:123` tiene el key set **y** un assert anti-drift | Tiene **un** solo assert (el key set). Los guards anti-drift viven en `tests/test_i18n.py` |
+| `ruff` cubre todo lo que tocamos | El scope de CI es `ruff check src tests examples` — **no cubre `jobs/` ni `webapp/`** |
+| `latest("stock")` es una lectura pura | Construye el store por defecto: `mkdir` + `CREATE TABLE`. Y con un dominio desconocido **levanta `UnknownDomainError`**, no devuelve `None` |
+| El snapshot conserva `product_id` como str | **En prod no.** El extra `state` (pyarrow/pandera) no esta instalado; el round-trip por CSV devuelve int64 — o float64 con un solo faltante. Ver `_roster_id()` en la Task 6 |
+| `ScheduledJob.trigger` agenda algo | Es inerte: su unico consumidor es `build_scheduler()`, que necesita el extra `tower` y **no lo llama nadie**. La cadencia real es el cron de GitHub (Task 10) |
+| El conteo de tools es 41 o 45 (lo dice `CLAUDE.md`) | Es **46** en las cuatro pinned places, medido. Varios tests tienen nombres viejos (`test_registry_now_has_45_tools` afirma 46) — **no** renombrar el assert para que coincida con el nombre |
+
+**Tres correcciones al spec** — ya aplicadas en la seccion 8 de
+`docs/superpowers/specs/2026-07-25-pattern-scan-design.md`, en el mismo PR que este plan:
+
+- El pinned place #8 decia que sin entrada en `_BRIEF` el tool sale `GATED` en vez de `PASS`.
+  Es al reves: `_BRIEF.get(key, f"run {key}")` cae en un brief generico y no rompe nada; lo que
+  decide el bucket es el **fixture**. **Hace falta un `_CSV["pattern_scan"]`** o `pattern_scan`
+  se suma a los 5 GATED de hoy.
+- El pinned place #4 describia `tests/test_scm_agent.py:123` como "key set + assert anti-drift".
+  Es solo el key set (mas 6 asserts de `requires_data`).
+- El assert anti-drift que el spec citaba (`{t.key for t in TOOLS} == ...`) **no existe**, y en
+  `scm_agent/` tampoco existe una constante `TOOLS` (ojo: el homonimo de
+  `webapp/how_it_works_data.py` si existe, pero es otra cosa). Los guardas anti-drift reales son
+  las dos paridades que regex-scrapean `tools.py` (`tests/test_i18n.py`,
+  `tests/test_citation_gate.py`) — de ahi sale la restriccion de que la key sea `[a-z_]+`.
 
 ---
 
@@ -537,7 +575,8 @@ Spec: docs/superpowers/specs/2026-07-25-pattern-scan-design.md
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import statistics
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
@@ -763,27 +802,70 @@ git commit -m "feat(patterns): Occurrence, familias de senal y episodios con hue
 **Interfaces:**
 - Consumes: `Occurrence`, `Episode`, `to_episodes`, `family_of` de la Task 3.
 - Produces:
-  - `Thresholds(chronic_min_episodes: int = 3, persistent_duty_pct: float = 50.0, episode_gap_hours: float = 48.0, cadence_hours: float = 1.0)` — frozen, con `__post_init__` que aplica `chronic_min_episodes = max(2, valor)`.
+  - `Thresholds(chronic_min_episodes: int = 3, persistent_duty_pct: float = 50.0, episode_gap_k: float = 4.0, episode_gap_floor_hours: float = 2.0, episode_gap_ceiling_hours: float = 48.0)` — frozen, con `__post_init__` que aplica `chronic_min_episodes = max(2, valor)`.
+  - `CadenceResolution(family: str, cadence_prior_hours: float, cadence_hat_hours: float, episode_gap_hours: float, estimated: bool, n_gaps_considered: int)` — frozen.
+  - `estimate_cadence(occurrences: list[Occurrence], *, cadence_prior_hours: float, min_gaps: int = 5) -> tuple[float, bool, int]` — devuelve `(cadence_hat, uso_estimador, n_gaps_considerados)`.
+  - `resolve_cadences(occurrences: list[Occurrence], *, cadence_prior_hours: Mapping[str, float], thresholds: Thresholds) -> dict[str, CadenceResolution]`.
   - `RecurrenceProfile(entity_id, family, episodes, n_occurrences, n_episodes, n_failure_episodes, escalation_rate, duty_cycle, days_since_last_episode, n_boundaries_unknown, recurrence_label, is_persistent, is_oscillating)` — frozen. `recurrence_label` en `{"one_off", "acute", "chronic"}`.
-  - `build_profiles(occurrences, *, window_start, window_end, thresholds, certified_gap=None) -> list[RecurrenceProfile]`.
+  - `build_profiles(occurrences, *, window_start, window_end, thresholds, cadences: Mapping[str, CadenceResolution], certified_gap=None) -> list[RecurrenceProfile]`.
   - `is_chronic_or_worse(profile) -> bool`.
+
+**Decision 8 del spec (seccion 5.E) — por que el gap NO es una constante.** El umbral de
+silencio es un multiplo de la cadencia con que la fuente emite mientras la condicion esta
+encendida, no un numero de reloj. Es la convencion de Prometheus
+(`EndsAt = 3 x max(evaluation_interval, resend_delay)`) y la razon por la que keephq/keep no
+tiene contador de flapping: resuelve por maquina de estados con ventana `for`, relativa a la
+cadencia. `config/monitors.yaml` declara **tres** cadencias distintas (60 / 240 / 1440 min), asi
+que un 48h unico es 48x la cadencia de `rop_breach` — funde en un episodio el patron
+rompe/repone/rompe de la misma semana, la firma que la tool busca — y solo 2x la de
+`excess_growing`.
+
+Con los priors de la Task 6 y `k=4`, los gaps resueltos quedan asi:
+
+| Familia | `cadence_prior` | `k x prior` | `episode_gap` resuelto |
+|---|---|---|---|
+| `availability` | 1.0 h | 4 h | **4 h** |
+| `price` | 4.0 h | 16 h | **16 h** |
+| `excess` | 24.0 h | 96 h | **48 h** (topeado por el ceiling) |
+
+O sea: el techo de 48h conserva **exactamente** el comportamiento del borrador donde era
+apropiado (`excess`, que emite a diario), y corrige solo donde estaba mal (`availability`).
 
 - [ ] **Step 1: Escribir los tests que fallan**
 
 Agregar a `tests/test_patterns.py`:
 
 ```python
-from src.patterns import Thresholds, build_profiles, is_chronic_or_worse
+from src.patterns import (
+    CadenceResolution,
+    Thresholds,
+    build_profiles,
+    estimate_cadence,
+    is_chronic_or_worse,
+    resolve_cadences,
+    resolve_episode_gap,
+)
 
 WINDOW_START = BASE
 WINDOW_END = BASE + timedelta(days=90)
 TH = Thresholds()
 
+# Los mismos priors que jobs/pattern_scan_job.py declara para el ledger
+# (LEDGER_CADENCE_PRIOR_HOURS, Task 6). Se repiten aca a proposito: el motor no
+# importa nada del job, y un test que dependiera de ese import dejaria de ser
+# un test del motor puro.
+TEST_PRIORS = {"availability": 1.0, "excess": 24.0, "price": 4.0}
+
 
 def _profiles(occs, **kwargs):
+    thresholds = kwargs.pop("thresholds", TH)
+    cadences = kwargs.pop(
+        "cadences",
+        resolve_cadences(occs, cadence_prior_hours=TEST_PRIORS, thresholds=thresholds),
+    )
     return build_profiles(
         occs, window_start=WINDOW_START, window_end=WINDOW_END,
-        thresholds=kwargs.pop("thresholds", TH), **kwargs
+        thresholds=thresholds, cadences=cadences, **kwargs
     )
 
 
@@ -828,6 +910,92 @@ def test_rop_only_episodes_never_reach_chronic():
     assert profile.n_failure_episodes == 0
     assert profile.escalation_rate == 0.0
     assert profile.recurrence_label == "one_off"
+
+
+# --- Decision 8: la cadencia decide el gap, no una constante -----------------
+
+
+def test_estimator_ignores_inter_episode_gaps():
+    """Los huecos ENTRE episodios no pueden inflar el estimador que los detecta.
+
+    Tres episodios de 3 ocurrencias cada uno, separados 30 dias: 6 gaps de 1h
+    (intra) y 2 gaps de 30 dias (inter). Solo los 6 primeros califican.
+    """
+    occs = []
+    for day in (0, 30, 60):
+        start = day * 24
+        occs += [occ(start), occ(start + 1), occ(start + 2)]
+
+    hat, estimated, n_gaps = estimate_cadence(occs, cadence_prior_hours=1.0)
+
+    assert estimated is True
+    assert n_gaps == 6
+    assert hat == pytest.approx(1.0)
+
+
+def test_sparse_family_falls_back_to_declared_prior():
+    """Con menos de min_gaps=5 gaps que califican, manda config/monitors.yaml."""
+    occs = [occ(0), occ(1)]
+
+    hat, estimated, n_gaps = estimate_cadence(occs, cadence_prior_hours=24.0)
+
+    assert estimated is False
+    assert n_gaps == 1
+    assert hat == pytest.approx(24.0)
+
+
+def test_families_with_different_priors_resolve_different_gaps():
+    """El hallazgo que mato la constante unica: availability declara 60 min y
+    excess declara 1440 en config/monitors.yaml."""
+    occs = [
+        occ(0),
+        occ(1),
+        occ(730, signal="excess_growing"),
+        occ(731, signal="excess_growing"),
+    ]
+
+    cadences = resolve_cadences(occs, cadence_prior_hours=TEST_PRIORS, thresholds=TH)
+
+    assert cadences["availability"].episode_gap_hours == pytest.approx(4.0)
+    # 4 x 24 = 96 h, topeado por el ceiling: la familia diaria conserva el 48h
+    # del borrador, que para ella siempre fue el numero correcto.
+    assert cadences["excess"].episode_gap_hours == pytest.approx(48.0)
+
+
+def test_gap_is_clamped_by_floor_and_ceiling():
+    assert resolve_episode_gap(0.1, TH) == pytest.approx(2.0)
+    assert resolve_episode_gap(1.0, TH) == pytest.approx(4.0)
+    assert resolve_episode_gap(100.0, TH) == pytest.approx(48.0)
+
+
+def test_break_repair_break_within_one_week_are_two_episodes():
+    """La firma que la tool existe para detectar.
+
+    Rompe, se repone, vuelve a romper ~40 h despues. Con el `episode_gap_hours
+    = 48.0` del borrador esto colapsaba en UN episodio y el SKU salia
+    ``one_off``; con el gap derivado (4 h para availability) son dos.
+    """
+    occs = _failure_run(0) + _failure_run(1.7)
+
+    profile = _profiles(occs, certified_gap=lambda a, b: True)[0]
+
+    assert profile.n_episodes == 2
+    assert profile.n_failure_episodes == 2
+    assert profile.recurrence_label == "acute"
+
+
+def test_cadence_resolution_is_published_for_every_family():
+    """Invariante 12: un gap derivado que no se publica es un cap silencioso."""
+    occs = [occ(0), occ(1), occ(730, signal="excess_growing")]
+
+    cadences = resolve_cadences(occs, cadence_prior_hours=TEST_PRIORS, thresholds=TH)
+
+    assert set(cadences) == {"availability", "excess"}
+    for family, resolution in cadences.items():
+        assert isinstance(resolution, CadenceResolution)
+        assert resolution.family == family
+        assert resolution.cadence_prior_hours > 0.0
+        assert resolution.episode_gap_hours >= TH.episode_gap_floor_hours
 
 
 def test_persistent_is_an_independent_axis_from_the_episode_count():
@@ -931,13 +1099,104 @@ class Thresholds:
 
     chronic_min_episodes: int = 3
     persistent_duty_pct: float = 50.0
-    episode_gap_hours: float = 48.0
-    cadence_hours: float = 1.0
+    # Decision 8: el gap NO es una constante de reloj. Se deriva por familia
+    # como k x cadencia observada (Prometheus: EndsAt = 3 x max(interval,
+    # resend_delay)), acotado por un piso y un techo duros.
+    episode_gap_k: float = 4.0
+    episode_gap_floor_hours: float = 2.0
+    episode_gap_ceiling_hours: float = 48.0
 
     def __post_init__(self) -> None:
         # Con chronic_min_episodes=1 todo one_off seria cronico y la banda
         # acute (2 <= n < chronic_min) quedaria indefinida en vez de vacia.
         object.__setattr__(self, "chronic_min_episodes", max(2, int(self.chronic_min_episodes)))
+
+
+@dataclass(frozen=True)
+class CadenceResolution:
+    """Como se resolvio el gap de UNA familia. Se imprime entero en el reporte
+    (invariante 12 del spec): un gap derivado que no se publica es un cap
+    silencioso."""
+
+    family: str
+    cadence_prior_hours: float
+    cadence_hat_hours: float
+    episode_gap_hours: float
+    estimated: bool
+    n_gaps_considered: int
+
+
+def estimate_cadence(
+    occurrences: list[Occurrence],
+    *,
+    cadence_prior_hours: float,
+    min_gaps: int = 5,
+) -> tuple[float, bool, int]:
+    """Estima cada cuanto emite esta familia MIENTRAS la condicion esta encendida.
+
+    El filtro ``<= 3 x cadence_prior_hours`` es lo que rompe el huevo-y-gallina:
+    solo admite huecos que, bajo la cadencia declarada, son plausiblemente
+    INTRA-episodio. Los huecos largos entre episodios -- los que la tool existe
+    para detectar -- nunca inflan el estimador que los detecta.
+
+    Los gaps se juntan de TODAS las entidades de la familia: la cadencia es
+    propiedad del monitor, no del SKU. Un perfil con 3 episodios de una sola
+    ocurrencia no tiene gaps intra-episodio propios; su familia si.
+
+    Devuelve ``(cadence_hat_horas, uso_estimador, n_gaps_considerados)``.
+    """
+    ceiling = 3.0 * cadence_prior_hours
+    gaps: list[float] = []
+    by_entity: dict[str, list[Occurrence]] = {}
+    for occurrence in occurrences:
+        by_entity.setdefault(occurrence.entity_id, []).append(occurrence)
+    for group in by_entity.values():
+        ordered = sorted(group, key=lambda o: o.ts)
+        for earlier, later in zip(ordered, ordered[1:]):
+            gap = (later.ts - earlier.ts).total_seconds() / 3600.0
+            if 0.0 < gap <= ceiling:
+                gaps.append(gap)
+    if len(gaps) < min_gaps:
+        return cadence_prior_hours, False, len(gaps)
+    return statistics.median(gaps), True, len(gaps)
+
+
+def resolve_episode_gap(cadence_hat_hours: float, thresholds: Thresholds) -> float:
+    """k x cadencia, acotado por el piso y el techo."""
+    raw = thresholds.episode_gap_k * cadence_hat_hours
+    return min(max(raw, thresholds.episode_gap_floor_hours), thresholds.episode_gap_ceiling_hours)
+
+
+def resolve_cadences(
+    occurrences: list[Occurrence],
+    *,
+    cadence_prior_hours: Mapping[str, float],
+    thresholds: Thresholds,
+) -> dict[str, CadenceResolution]:
+    """Una `CadenceResolution` por familia presente en ``occurrences``.
+
+    Una familia sin prior declarado cae en el prior de ``availability`` (1.0 h,
+    la ventana de dedup del ledger). Nunca se inventa un prior de cero: un
+    prior 0 haria colapsar el techo del filtro y el estimador se quedaria sin
+    gaps que considerar.
+    """
+    grouped: dict[str, list[Occurrence]] = {}
+    for occurrence in occurrences:
+        grouped.setdefault(family_of(occurrence.signal), []).append(occurrence)
+
+    resolved: dict[str, CadenceResolution] = {}
+    for family, group in sorted(grouped.items()):
+        prior = float(cadence_prior_hours.get(family, 1.0))
+        hat, estimated, n_gaps = estimate_cadence(group, cadence_prior_hours=prior)
+        resolved[family] = CadenceResolution(
+            family=family,
+            cadence_prior_hours=prior,
+            cadence_hat_hours=hat,
+            episode_gap_hours=resolve_episode_gap(hat, thresholds),
+            estimated=estimated,
+            n_gaps_considered=n_gaps,
+        )
+    return resolved
 
 
 @dataclass(frozen=True)
@@ -972,6 +1231,7 @@ def build_profiles(
     window_start: datetime,
     window_end: datetime,
     thresholds: Thresholds,
+    cadences: Mapping[str, CadenceResolution],
     certified_gap: Callable[[datetime, datetime], bool] | None = None,
 ) -> list[RecurrenceProfile]:
     """Un perfil por (entidad, familia de senal).
@@ -979,6 +1239,11 @@ def build_profiles(
     ``is_oscillating`` se resuelve al final, cuando ya estan todos los perfiles:
     necesita saber si la MISMA entidad tuvo ``excess_growing`` en la ventana, y
     eso no se puede ver desde adentro del perfil de disponibilidad.
+
+    ``cadences`` viene de :func:`resolve_cadences`. Se pasa resuelto en vez de
+    calcularse aca adentro porque el reporte tiene que publicarlo (invariante
+    12) y porque la sensibilidad en k re-llama esta funcion con otro juego de
+    cadencias sin re-estimar nada.
     """
     window_start = _ensure_utc(window_start)
     window_end = _ensure_utc(window_end)
@@ -992,10 +1257,18 @@ def build_profiles(
 
     drafts: list[RecurrenceProfile] = []
     for (entity_id, family), group in sorted(grouped.items()):
+        # Decision 8: el gap sale de la cadencia de ESTA familia, no de una
+        # constante compartida. Una familia sin resolucion (no deberia pasar si
+        # `cadences` vino de resolve_cadences sobre las mismas ocurrencias) cae
+        # en el piso, que es el comportamiento conservador -- nunca en 0, que
+        # partiria un episodio por ocurrencia.
+        cadence = cadences.get(family)
+        gap_hours = cadence.episode_gap_hours if cadence else thresholds.episode_gap_floor_hours
+        cadence_hours = cadence.cadence_hat_hours if cadence else 1.0
         episodes = to_episodes(
             group,
-            gap_hours=thresholds.episode_gap_hours,
-            cadence_hours=thresholds.cadence_hours,
+            gap_hours=gap_hours,
+            cadence_hours=cadence_hours,
             certified_gap=certified_gap,
         )
         n_failures = sum(1 for e in episodes if e.is_failure)
@@ -1821,10 +2094,6 @@ class LoadResult:
     date_format_applied: str
     signal_vocabulary: tuple[str, ...]
     source_kind: str = "csv"  # "ledger" | "csv" -- solo el ledger puede certificar huecos
-    # Filas cuyo payload_json vino corrupto (Event.payload_corrupt). La ocurrencia
-    # se CONSERVA -- el analisis solo necesita (entidad, senal, ts) -- pero el
-    # numero se publica: una degradacion que no se cuenta es un cap silencioso.
-    n_rows_payload_corrupt: int = 0
 
 
 def _pick_column(df: pd.DataFrame, candidates: tuple[str, ...]) -> str | None:
@@ -1968,7 +2237,6 @@ def from_event_ledger(ledger: EventLedger, *, start: datetime, end: datetime) ->
         date_format_applied="iso",
         signal_vocabulary=tuple(vocabulary),
         source_kind="ledger",
-        n_rows_payload_corrupt=sum(1 for e in events if e.payload_corrupt),
     )
 
 
@@ -2019,10 +2287,30 @@ def load_roster() -> set[str]:
 
         snapshot = latest("stock")
     except Exception:
+        # `latest()` levanta UnknownDomainError (subclase de ValueError) si el
+        # dominio no existe, y ademas NO es libre de efectos: construye el store
+        # por defecto, hace mkdir y CREATE TABLE. El except amplio es deliberado.
         return set()
     if snapshot is None:
         return set()
-    return {str(v).strip() for v in snapshot.payload["product_id"] if str(v).strip()}
+    return {_roster_id(v) for v in snapshot.payload["product_id"] if _roster_id(v)}
+
+
+def _roster_id(value: object) -> str:
+    """Normaliza un id del snapshot a la misma forma que trae el ledger.
+
+    En PRODUCCION el snapshot vuelve de un CSV, no de parquet: el Dockerfile
+    instala `.[web,mcp,pricing-intel,dataquality]` y el extra `state` (pyarrow,
+    pandera) NO esta ahi. El round-trip por CSV pierde el dtype str de
+    `product_id`, asi que una columna de ids numericos vuelve como int64 -- o
+    como float64 en cuanto haya UN valor faltante. Sin esta normalizacion,
+    `str(123.0)` da "123.0", que jamas matchea el "123" del ledger, y
+    `base_mode="evaluated"` degrada en silencio a un roster que no cruza con
+    nada. Es un falso negativo invisible, no un error ruidoso.
+    """
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
 ```
 
 - [ ] **Step 5: Correr hasta verde**
@@ -2053,7 +2341,9 @@ git commit -m "feat(pattern_scan): adaptadores de ledger, CSV de historia, maest
 **Interfaces:**
 - Consumes: todo lo de las Tasks 3-6.
 - Produces:
-  - `PatternReport` — frozen, con: `profiles`, `denominator`, `outcome`, `window_days_requested`, `window_days_effective`, `window_note`, `data_quality_note`, `base_mode`, `n_entities_valid`, `master_provided`, `ledger_epoch`, `sensitivity_changes`, `thresholds_applied`, mas los contadores del `LoadResult`.
+  - `PatternReport` — frozen, con: `profiles`, `denominator`, `outcome`, `window_days_requested`, `window_days_effective`, `window_note`, `data_quality_note`, `base_mode`, `n_entities_valid`, `master_provided`, `ledger_epoch`, `sensitivity_changes`, `cadences`, `thresholds_applied`, mas los contadores del `LoadResult`.
+  - `LEDGER_CADENCE_PRIOR_HOURS: dict[str, float]` — el prior por familia derivado de `config/monitors.yaml`.
+  - `DEFAULT_GAP_K_ALT: tuple[float, ...]` — los k de la corrida de sensibilidad.
   - `run(load: LoadResult, *, master, roster, now, params) -> PatternReport`
   - `verify(report: PatternReport) -> list[str]`
   - `build_options(report) -> GuidedOutcome`
@@ -2181,8 +2471,12 @@ Expected: FAIL — `ImportError: cannot import name 'run'`.
 Agregar a `jobs/pattern_scan_job.py` los imports:
 
 ```python
+import math
+from dataclasses import replace
+
 from src.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_options, verify_guided
 from src.patterns import (
+    CadenceResolution,
     DenominatorResult,
     DenominatorThresholds,
     RecurrenceProfile,
@@ -2190,15 +2484,41 @@ from src.patterns import (
     build_profiles,
     find_denominators,
     is_chronic_or_worse,
+    resolve_cadences,
 )
 ```
+
+`replace` es lo que arma las variantes de la corrida de sensibilidad sin
+repetir los cinco campos de `Thresholds`; `math` lo usa el invariante 12.
 
 Y al final:
 
 ```python
 DEFAULT_WINDOW_DAYS = 90
 DEFAULT_MIN_HISTORY_DAYS = 30
-DEFAULT_GAP_ALT_HOURS = 24.0
+
+# Decision 8: los dos k de la corrida de sensibilidad, uno a cada lado del k=4
+# por defecto. En k, no en horas -- el gap ya no es el mismo numero para todas
+# las familias.
+DEFAULT_GAP_K_ALT: tuple[float, ...] = (2.0, 8.0)
+
+# cadence_prior por familia, derivado de config/monitors.yaml:
+#   rop_breach / stockout_projected -> 60 min   (familia availability)
+#   competitor_price_move           -> 240 min  (familia price)
+#   excess_growing                  -> 1440 min (familia excess)
+# El piso es la ventana de dedup del ledger (3600 s = 1 h): el instrumento no
+# puede resolver nada mas fino que eso, asi que un prior menor seria mentira.
+#
+# Se declara aca y no se lee de config/monitors.yaml en caliente a proposito:
+# ese archivo documenta la cadencia que un scheduler DEBERIA usar, pero hoy
+# jobs/monitors_job.py corre los seis monitores cada 60 min sin mirarlo. Un
+# valor hardcodeado y comentado es honesto; leer el archivo daria la falsa
+# impresion de que el numero esta vivo.
+LEDGER_CADENCE_PRIOR_HOURS: dict[str, float] = {
+    "availability": 1.0,
+    "price": 4.0,
+    "excess": 24.0,
+}
 
 
 @dataclass(frozen=True)
@@ -2217,12 +2537,14 @@ class PatternReport:
     master_provided: bool
     ledger_epoch: datetime | None
     sensitivity_changes: tuple[str, ...]
+    # Invariante 12: una CadenceResolution por familia evaluada. Un gap
+    # derivado que no se publica es un cap silencioso (regla 14).
+    cadences: dict[str, CadenceResolution]
     thresholds_applied: dict
     n_rows_read: int
     n_rows_dropped_bad_ts: int
     n_rows_dropped_no_entity: int
     n_rows_future_ts: int
-    n_rows_payload_corrupt: int
     n_boundaries_unknown: int
     n_profiles_censored: int
 
@@ -2376,9 +2698,12 @@ def run(
     thresholds = Thresholds(
         chronic_min_episodes=int(params.get("chronic_min_episodes", 3)),
         persistent_duty_pct=float(params.get("persistent_duty_pct", 50.0)),
-        episode_gap_hours=float(params.get("episode_gap_hours", 48.0)),
-        cadence_hours=float(params.get("cadence_hours", 1.0)),
+        episode_gap_k=float(params.get("episode_gap_k", 4.0)),
+        episode_gap_floor_hours=float(params.get("episode_gap_floor_hours", 2.0)),
+        episode_gap_ceiling_hours=float(params.get("episode_gap_ceiling_hours", 48.0)),
     )
+    cadence_priors = dict(LEDGER_CADENCE_PRIOR_HOURS)
+    cadence_priors.update(params.get("cadence_prior_hours", {}))
     denominator_thresholds = DenominatorThresholds(
         min_lift=float(params.get("denominator_min_lift", 1.5)),
         min_chronics=int(params.get("denominator_min_chronics", 3)),
@@ -2399,33 +2724,43 @@ def run(
             "reales de historia"
         )
 
+    occurrences = list(load.occurrences)
+    cadences = resolve_cadences(
+        occurrences, cadence_prior_hours=cadence_priors, thresholds=thresholds
+    )
     profiles = build_profiles(
-        list(load.occurrences),
+        occurrences,
         window_start=effective_start,
         window_end=window_end,
         thresholds=thresholds,
+        cadences=cadences,
         certified_gap=certified_gap,
     )
 
-    alt = Thresholds(
-        chronic_min_episodes=thresholds.chronic_min_episodes,
-        persistent_duty_pct=thresholds.persistent_duty_pct,
-        episode_gap_hours=float(params.get("episode_gap_hours_alt", DEFAULT_GAP_ALT_HOURS)),
-        cadence_hours=thresholds.cadence_hours,
-    )
-    alt_labels = {
-        (p.entity_id, p.family): p.recurrence_label
-        for p in build_profiles(
-            list(load.occurrences), window_start=effective_start, window_end=window_end,
-            thresholds=alt, certified_gap=certified_gap,
+    # Sensibilidad expresada en k, no en horas: el gap ya no es el mismo numero
+    # para todas las familias, asi que "con gap=24h" seria una etiqueta que
+    # miente en dos de las tres. Cada corrida re-resuelve las cadencias porque
+    # el gap depende de k.
+    baseline = {(p.entity_id, p.family): p.recurrence_label for p in profiles}
+    sensitivity_bits: list[str] = []
+    for k_alt in params.get("episode_gap_k_alt", DEFAULT_GAP_K_ALT):
+        alt = replace(thresholds, episode_gap_k=float(k_alt))
+        alt_cadences = resolve_cadences(
+            occurrences, cadence_prior_hours=cadence_priors, thresholds=alt
         )
-    }
-    sensitivity = tuple(
-        f"{p.entity_id}/{p.family}: {p.recurrence_label} -> "
-        f"{alt_labels[(p.entity_id, p.family)]} con gap={alt.episode_gap_hours:g}h"
-        for p in profiles
-        if alt_labels.get((p.entity_id, p.family), p.recurrence_label) != p.recurrence_label
-    )
+        for profile in build_profiles(
+            occurrences, window_start=effective_start, window_end=window_end,
+            thresholds=alt, cadences=alt_cadences, certified_gap=certified_gap,
+        ):
+            key = (profile.entity_id, profile.family)
+            if key in baseline and profile.recurrence_label != baseline[key]:
+                alt_gap = alt_cadences[profile.family].episode_gap_hours
+                sensitivity_bits.append(
+                    f"{profile.entity_id}/{profile.family}: {baseline[key]} -> "
+                    f"{profile.recurrence_label} con k={float(k_alt):g} "
+                    f"(gap {alt_gap:g}h en esta familia)"
+                )
+    sensitivity = tuple(sensitivity_bits)
 
     observed = {p.entity_id for p in profiles}
     base_mode = "evaluated" if roster else "observed"
@@ -2443,11 +2778,6 @@ def run(
         quality_bits.append(f"{load.n_rows_dropped_no_entity} fila(s) descartada(s) sin entidad")
     if load.n_rows_future_ts:
         quality_bits.append(f"{load.n_rows_future_ts} fila(s) con fecha futura excluida(s)")
-    if load.n_rows_payload_corrupt:
-        quality_bits.append(
-            f"{load.n_rows_payload_corrupt} fila(s) con payload corrupto (conservada(s), "
-            "el analisis no usa el payload)"
-        )
 
     # build_options necesita el report ya armado (mira profiles, denominator y la
     # ventana), y el report lleva el outcome adentro. Se construye en dos pasos a
@@ -2468,10 +2798,13 @@ def run(
         master_provided=bool(master),
         ledger_epoch=ledger_epoch,
         sensitivity_changes=sensitivity,
+        cadences=cadences,
         thresholds_applied={
             "window_days": window_days,
-            "episode_gap_hours": thresholds.episode_gap_hours,
-            "episode_gap_hours_alt": alt.episode_gap_hours,
+            "episode_gap_k": thresholds.episode_gap_k,
+            "episode_gap_k_alt": tuple(params.get("episode_gap_k_alt", DEFAULT_GAP_K_ALT)),
+            "episode_gap_floor_hours": thresholds.episode_gap_floor_hours,
+            "episode_gap_ceiling_hours": thresholds.episode_gap_ceiling_hours,
             "chronic_min_episodes": thresholds.chronic_min_episodes,
             "persistent_duty_pct": thresholds.persistent_duty_pct,
             "denominator_min_lift": denominator_thresholds.min_lift,
@@ -2483,7 +2816,6 @@ def run(
         n_rows_dropped_bad_ts=load.n_rows_dropped_bad_ts,
         n_rows_dropped_no_entity=load.n_rows_dropped_no_entity,
         n_rows_future_ts=load.n_rows_future_ts,
-        n_rows_payload_corrupt=load.n_rows_payload_corrupt,
         n_boundaries_unknown=sum(p.n_boundaries_unknown for p in profiles),
         n_profiles_censored=len(censored),
     )
@@ -2511,8 +2843,7 @@ def verify(report: PatternReport) -> list[str]:
             issues.append(f"hallazgo en {finding.dimension} sin tabla de conteos absolutos")
 
     if (report.n_rows_dropped_bad_ts or report.n_rows_dropped_no_entity
-            or report.n_rows_future_ts or report.n_rows_payload_corrupt
-            ) and not report.data_quality_note.strip():
+            or report.n_rows_future_ts) and not report.data_quality_note.strip():
         issues.append("hay filas descartada(s) sin declarar en el reporte")
     if report.window_days_effective < report.window_days_requested - 0.5 and not report.window_note.strip():
         issues.append("ventana efectiva menor a la pedida sin declararlo")
@@ -2538,6 +2869,32 @@ def verify(report: PatternReport) -> list[str]:
             issues.append(
                 f"{profile.entity_id}: cronico de disponibilidad con tasa de escalacion 0 "
                 "no puede reportarse como falla de servicio"
+            )
+
+    # Invariante 12 (decision 8): toda familia con perfiles tiene su cadencia
+    # resuelta y publicada. Un gap derivado que no se declara es un cap
+    # silencioso, y ademas vuelve irreproducible cualquier hallazgo.
+    for family in {p.family for p in report.profiles}:
+        resolution = report.cadences.get(family)
+        if resolution is None:
+            issues.append(f"familia {family} sin cadencia resuelta en el reporte")
+            continue
+        if not math.isfinite(resolution.episode_gap_hours) or resolution.episode_gap_hours <= 0.0:
+            issues.append(f"familia {family} con episode_gap invalido")
+
+    # Invariante 16 (decision 7): el mapa DDMRP de la seccion 5.I del spec es
+    # una analogia declarada. Esta tool lee eventos; no calcula NFP ni
+    # dimensiona buffers, asi que ningun texto puede afirmar haberlo MEDIDO.
+    claimed = " ".join(
+        [report.outcome.summary or ""]
+        + [f"{o.label} {o.summary}" for o in report.outcome.options]
+    ).lower()
+    for phrase in ("net flow position", "nfp medido", "penetracion del rojo medida",
+                   "zona roja medida", "buffer dimensionado"):
+        if phrase in claimed:
+            issues.append(
+                f"el reporte afirma haber medido '{phrase}': pattern_scan lee eventos, "
+                "no calcula NFP (seccion 5.I del spec, invariante 16)"
             )
 
     return issues
@@ -2802,6 +3159,32 @@ def build_deck(
         lines += [f"- {change}" for change in report.sensitivity_changes]
         lines.append("")
 
+    # Invariante 12: la cadencia resuelta de cada familia, siempre, incluso
+    # cuando cayo en el prior. Sin esto el lector no puede reproducir por que
+    # dos SKUs de familias distintas se partieron en episodios distintos.
+    if report.cadences:
+        lines += [
+            "## Cadencia por familia",
+            "",
+            "El hueco que parte un episodio no es una constante: es "
+            "`k x cadencia` de cada familia, acotado por un piso y un techo.",
+            "",
+            "| Familia | Prior declarado | Cadencia observada | Hueco aplicado | Origen |",
+            "|---|---|---|---|---|",
+        ]
+        for family, resolution in sorted(report.cadences.items()):
+            origin = (
+                f"estimada sobre {resolution.n_gaps_considered} huecos"
+                if resolution.estimated
+                else f"prior (solo {resolution.n_gaps_considered} huecos, hacen falta 5)"
+            )
+            lines.append(
+                f"| {family} | {resolution.cadence_prior_hours:g} h | "
+                f"{resolution.cadence_hat_hours:g} h | "
+                f"{resolution.episode_gap_hours:g} h | {origin} |"
+            )
+        lines.append("")
+
     lines += ["## Umbrales aplicados", ""]
     for key, value in report.thresholds_applied.items():
         lines.append(f"- `{key}` = {value}")
@@ -3011,18 +3394,44 @@ Verificar que `datetime`, `timezone` y `Path` esten importados a nivel de modulo
 `scm_agent/citation_gate.py`, en `TOOL_CONCEPTS` (orden alfabetico):
 
 ```python
-    # pattern_scan (tool #47) se ancla en causa raiz y variabilidad, no en el hub
-    # de inventario: lo que detecta es recurrencia estructural, no un nivel.
-    "pattern_scan": ("root_cause_analysis", "demand_variability", "bullwhip_effect"),
+    # pattern_scan (tool #47). Las seis anclas estan VERIFICADAS contra
+    # knowledge/scm-books/graph.json (seccion 5.I del spec). Ninguna es sobre
+    # zonas de buffer: de los 3002 nodos del grafo, CERO hablan de penetracion
+    # del rojo DDMRP -- ese vocabulario vive en src/ddmrp.py, no en el grafo, y
+    # citarlo aca seria una cita fabricada (el modo de falla de #160/#162/#164).
+    # `bullwhip_effect` es el ancla de la clase `oscillating`.
+    "pattern_scan": (
+        "cycle_service_level",
+        "safety_stock",
+        "managing_uncertainty_supply_chain",
+        "lead_time_variability",
+        "bullwhip_effect",
+        "demand_driven_supply_chain",
+    ),
 ```
 
-Verificar que los tres nodos existan antes de commitear:
+> **Correccion del pre-flight.** El borrador de este plan anclaba en
+> `("root_cause_analysis", "demand_variability", "bullwhip_effect")`.
+> `demand_variability` **no existe** como nodo del grafo — es el nombre de
+> `src/demand_variability.py`, un modulo, confundido con un id de nodo. Un
+> ancla que no resuelve degrada la tool hacia cero citas, que es exactamente
+> lo que hubo que arreglar en #180.
+
+Verificar que las seis existan ANTES de commitear — el chequeo es sobre ids exactos,
+no sobre busqueda por texto:
 
 ```bash
-python examples/query_knowledge.py --search "root cause analysis" | head -20
+python - <<'PY'
+import json
+ids = {n["id"] for n in json.load(open("knowledge/scm-books/graph.json", encoding="utf-8"))["nodes"]}
+for c in ("cycle_service_level", "safety_stock", "managing_uncertainty_supply_chain",
+          "lead_time_variability", "bullwhip_effect", "demand_driven_supply_chain"):
+    print(("OK  " if f"knowledge::{c}" in ids else "FALTA"), c)
+PY
 ```
 
-Si alguno no existe en el grafo, reemplazarlo por el nodo mas cercano que SI exista — no inventar ids.
+Expected: seis lineas `OK`. Si alguna dice `FALTA`, reemplazarla por un nodo que SI exista
+— nunca inventar ids, y nunca usar un nombre de modulo de `src/` como si fuera un nodo.
 
 `src/i18n.py`, en `TOOL_TITLES`:
 
@@ -3039,7 +3448,69 @@ Si alguno no existe en el grafo, reemplazarlo por el nodo mas cercano que SI exi
 
 `tests/test_scm_agent.py:123`: agregar `"pattern_scan"` al key set esperado.
 
-`examples/run_capability_smoke.py`: agregar `_BRIEF["pattern_scan"] = "buscar patrones cronicos en mis alertas"` y apuntar su fixture a `tests/fixtures/patterns/history.csv`. Sin fixture el tool sale `GATED` en vez de `PASS`.
+`examples/run_capability_smoke.py`: el brief **y** el fixture.
+
+El brief es una linea:
+
+```python
+    "pattern_scan": "buscar patrones cronicos en mis alertas",
+```
+
+Es opcional en sentido estricto (`_BRIEF.get(key, f"run {key}")` cae en `"run pattern_scan"`),
+pero un brief generico deja el resumen del harness sin sentido.
+
+El fixture **no** puede ser una entrada de `_CSV` con fechas escritas a mano, y tampoco puede
+apuntar a `tests/fixtures/patterns/history.csv`: `_fixture_path()` solo mira `_SAMPLE`
+(`dict[str, Path]`, apunta a `data/`), `_CSV` (`dict[str, str]`, contenido inline que se
+materializa en un temp dir) y cuatro casos especiales. Un CSV inline con fechas fijas **caduca**:
+en cuanto pasen 90 dias sale de la ventana, el tool devuelve `needs_data` y `pattern_scan` vuelve
+a `GATED` sin que nadie toque nada.
+
+Se usa el mismo mecanismo que ya tiene `forecast`, que existe exactamente por este motivo — un
+writer que genera el fixture relativo a `now`:
+
+```python
+def _write_pattern_scan_csv(path: Path) -> None:
+    """Historia sintetica anclada a `now`, no a fechas fijas.
+
+    Tres episodios-falla separados ~30 dias sobre el mismo SKU: alcanza para
+    `chronic` (chronic_min_episodes=3) y para pasar `min_history_days=30`. Con
+    fechas hardcodeadas el fixture caduca a los 90 dias y el tool vuelve a
+    GATED en silencio.
+    """
+    # Import lazy adentro del writer: es el idiom del archivo (ver
+    # `_write_forecast_csv`, que hace `import pandas as pd` aca adentro), y el
+    # modulo NO importa datetime a nivel top -- solo argparse/json/sys/tempfile/
+    # dataclasses/pathlib.
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    rows = ["sku,tipo,fecha"]
+    for days_ago in (75, 74, 45, 44, 15, 14):
+        stamp = (now - timedelta(days=days_ago)).strftime("%d/%m/%Y %H:%M")
+        signal = "rop_breach" if days_ago % 2 else "stockout_projected"
+        rows.append(f"SKU-1,{signal},{stamp}")
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+```
+
+y en `_fixture_path()`, junto a los otros casos especiales:
+
+```python
+    if key == "pattern_scan":
+        p = fixtures_dir / "pattern_scan.csv"
+        _write_pattern_scan_csv(p)
+        return p
+```
+
+Verificar que efectivamente pase (no alcanza con que no falle):
+
+```bash
+python examples/run_capability_smoke.py 2>&1 | grep pattern_scan
+```
+
+Expected: `[ OK ]` — **no** `[GATE]`. Hoy hay 5 tools en `[GATE]` por falta de fixture
+(`disruption_scan`, `hat_settlement`, `hat_tension`, `network_design`, `supplier_management`);
+`pattern_scan` no tiene que ser el sexto.
 
 - [ ] **Step 5: El CLI**
 
@@ -3122,6 +3593,296 @@ Expected: `boot ok`.
 ```bash
 git add scm_agent/tools.py scm_agent/citation_gate.py src/i18n.py webapp/how_it_works_data.py examples/run_pattern_scan.py examples/run_capability_smoke.py tests/
 git commit -m "feat(tool): pattern_scan - deteccion de patrones cronicos (tool #47)"
+```
+
+---
+
+### Task 10: PR-2 — la cadencia semanal (decision 9)
+
+**PR SEPARADO.** No entra en el mismo PR que las Tasks 1-9: aquel ya carga motor, dos
+adaptadores, roster y los pinned places. Y hay una razon de calendario — con
+`min_history_days=30` contando **desde el deploy de PR-0**, este job devuelve `needs_data`
+durante su primer mes. La cadencia no vale nada hasta que haya historia que leer.
+
+**No es un septimo monitor.** `cadence_minutes` de `config/monitors.yaml` es dato muerto (lo
+dice el propio archivo) y `jobs/monitors_job.py:65` corre los seis cada 60 min, asi que un
+monitor no puede correr semanal. Ademas escribiria en el ledger que esta tool lee, y por
+`config/event_routing.yaml` podria rutear a T2 y auto-disparar `inventory_optimization` — el
+bug que la tool existe para denunciar.
+
+**Files:**
+- Modify: `jobs/pattern_scan_job.py` (agregar `PATTERN_SCAN_JOB` y `run_pattern_scan_cycle`)
+- Modify: `jobs/scheduled_jobs.py` (agregar `weekly_registry()` y `WEEKLY_JOB_IDS`)
+- Modify: `webapp/app.py` (endpoint `POST /api/jobs/run-weekly` con sus propios guards)
+- Create: `.github/workflows/pattern-scan-cron.yml`
+- Modify: `tests/test_pattern_scan_tool.py` (o `tests/test_scheduled_jobs.py` si preferis)
+
+**Interfaces:**
+- Consumes: `run()` / `verify()` / `from_event_ledger()` de las Tasks 6-7.
+- Produces:
+  - `PatternScanCycleReport(now: datetime, families_scanned: int, chronics: int, summary: str)` — frozen.
+  - `run_pattern_scan_cycle() -> PatternScanCycleReport` — sin argumentos, idempotente.
+  - `PATTERN_SCAN_JOB: ScheduledJob`
+  - `weekly_registry() -> JobRegistry`, `WEEKLY_JOB_IDS: tuple[str, ...]`
+
+**Tres restricciones verificadas en el codigo — leerlas antes de escribir nada:**
+
+1. **`trigger` y `trigger_args` de `ScheduledJob` son inertes en produccion.** El unico
+   consumidor es `JobRegistry.build_scheduler()`, que necesita el extra `tower` (APScheduler)
+   y **nadie lo llama nunca** en este repo. Poner `trigger="cron",
+   trigger_args={"day_of_week": "mon"}` y creer que eso agenda algo es exactamente el mismo
+   error que creerle a `cadence_minutes`. **La cadencia semanal real la da el cron de GitHub
+   Actions**, y los `trigger_args` van solo como documentacion del ritmo esperado — con un
+   comentario que lo diga.
+2. **NO agregar el job a `PRODUCTION_JOB_IDS`.** `_run_scheduled_jobs_sync` hace
+   `_cycle_report_summary(report)` (que lee `report.outcomes` / `report.pairs_checked` /
+   `report.summary`) y `price_signal_events.extend(report.events)` — y esas dos lineas estan
+   **fuera** del `try/except` que protege el `run_once`. Un report sin esos atributos no
+   degrada: tira `AttributeError` y se lleva puesto el endpoint entero, incluidos los dos jobs
+   de precio. Es el mismo motivo por el que `jobs/scheduled_jobs.py` deja `MONITORS_JOB` afuera,
+   documentado en su docstring.
+3. **Los guards del endpoint son globales de modulo, no un helper reusable.**
+   `_SCHEDULED_JOBS_LOCK`, `_SCHEDULED_JOBS_LAST_STARTED_AT`, `_SCHEDULED_JOBS_EXECUTOR`,
+   `SCHEDULED_JOBS_MIN_INTERVAL_SECONDS` (300) y `SCHEDULED_JOBS_TIMEOUT_SECONDS` (900) no
+   tienen factory. El endpoint nuevo necesita **su propio juego**, con nombres propios.
+
+- [ ] **Step 1: Escribir los tests que fallan**
+
+Agregar a `tests/test_pattern_scan_tool.py`:
+
+```python
+from jobs.pattern_scan_job import PATTERN_SCAN_JOB, PatternScanCycleReport
+from jobs.scheduled_jobs import PRODUCTION_JOB_IDS, WEEKLY_JOB_IDS, weekly_registry
+
+
+def test_weekly_job_is_registered_apart_from_the_price_endpoint():
+    """El contrato price-shaped de _cycle_report_summary no lo cumple un
+    PatternScanCycleReport, y las dos lineas que lo consumen estan fuera del
+    try/except: meterlo ahi tiraria el endpoint entero."""
+    assert PATTERN_SCAN_JOB.id not in PRODUCTION_JOB_IDS
+    assert PATTERN_SCAN_JOB.id in WEEKLY_JOB_IDS
+    assert PATTERN_SCAN_JOB.id in {job.id for job in weekly_registry().list()}
+
+
+def test_weekly_job_callable_takes_no_arguments():
+    """ScheduledJob.func se invoca como func() -- por run_once y por APScheduler."""
+    import inspect
+
+    signature = inspect.signature(PATTERN_SCAN_JOB.func)
+    assert all(
+        parameter.default is not inspect.Parameter.empty
+        for parameter in signature.parameters.values()
+    )
+
+
+def test_cycle_report_is_not_price_shaped():
+    """Guarda explicita: si alguien le agrega .outcomes/.pairs_checked a este
+    report, el proximo paso 'natural' es meterlo en PRODUCTION_JOB_IDS."""
+    report = PatternScanCycleReport(
+        now=datetime(2026, 7, 25, tzinfo=timezone.utc),
+        families_scanned=0, chronics=0, summary="sin historia",
+    )
+
+    assert not hasattr(report, "pairs_checked")
+    assert not hasattr(report, "outcomes")
+```
+
+- [ ] **Step 2: Correr para verlos fallar**
+
+Run: `pytest tests/test_pattern_scan_tool.py -q`
+Expected: FAIL — `ImportError: cannot import name 'PATTERN_SCAN_JOB'`.
+
+- [ ] **Step 3: El job**
+
+Agregar al final de `jobs/pattern_scan_job.py`:
+
+```python
+@dataclass(frozen=True)
+class PatternScanCycleReport:
+    """Resumen serializable de una corrida semanal. Contadores, nada de objetos
+    crudos -- sale derecho por el endpoint.
+
+    DELIBERADAMENTE distinto del shape price (`outcomes` / `pairs_checked`):
+    este job no entra en PRODUCTION_JOB_IDS y no debe parecer que puede.
+    """
+
+    now: datetime
+    families_scanned: int
+    chronics: int
+    summary: str
+
+
+def run_pattern_scan_cycle() -> PatternScanCycleReport:
+    """Una pasada semanal sobre el ledger. Sin argumentos e idempotente, que es
+    lo que ScheduledJob.func exige.
+
+    NO escribe eventos en el EventLedger: esta tool LEE esa historia, y un
+    escritor que tambien es lector es un bucle de realimentacion. Tampoco manda
+    nada a ningun merchant -- el envio sigue pasando por el concierge Fase 1
+    (jobs/monitors_job.py::run_concierge_alerts), que es manual y revisado por
+    un operador a proposito.
+    """
+    now = datetime.now(timezone.utc)
+    events_path = os.environ.get("LINCHPIN_EVENTS_PATH", "").strip() or "data/events.sqlite3"
+    if not Path(events_path).exists():
+        return PatternScanCycleReport(
+            now=now, families_scanned=0, chronics=0,
+            summary="sin ledger todavia: no hay historia que escanear",
+        )
+
+    ledger = EventLedger(events_path)
+    try:
+        load = from_event_ledger(ledger, start=now - timedelta(days=DEFAULT_WINDOW_DAYS), end=now)
+        report = run(
+            load, master={}, roster=load_roster(), now=now, params={},
+            certified_gap=certified_gap_from_ledger(ledger),
+            ledger_epoch=ledger.epoch(),
+        )
+    finally:
+        ledger.close()
+
+    chronics = sum(1 for profile in report.profiles if is_chronic_or_worse(profile))
+    return PatternScanCycleReport(
+        now=now,
+        families_scanned=len(report.cadences),
+        chronics=chronics,
+        summary=f"{chronics} entidad(es) cronica(s) sobre {len(report.profiles)} perfil(es)",
+    )
+
+
+# trigger/trigger_args son DOCUMENTACION del ritmo esperado, no el mecanismo.
+# El unico consumidor de estos campos es JobRegistry.build_scheduler(), que
+# necesita el extra `tower` (APScheduler) y no lo llama nadie en este repo. La
+# cadencia semanal de verdad la da .github/workflows/pattern-scan-cron.yml.
+PATTERN_SCAN_JOB = ScheduledJob(
+    id="pattern_scan_weekly",
+    func=run_pattern_scan_cycle,
+    trigger="cron",
+    trigger_args={"day_of_week": "mon", "hour": 6},
+)
+```
+
+Imports que hay que agregar arriba del modulo: `os`, `from pathlib import Path`,
+`from datetime import timedelta, timezone`, `from scm_agent.events import EventLedger`,
+`from .scheduler import ScheduledJob`.
+
+- [ ] **Step 4: El registry semanal**
+
+Agregar a `jobs/scheduled_jobs.py`:
+
+```python
+from jobs.pattern_scan_job import PATTERN_SCAN_JOB
+
+# Segundo registry, deliberadamente separado de production_registry(). Los jobs
+# de aca NO cumplen el contrato price-shaped que _cycle_report_summary exige, y
+# por eso los mueve un endpoint propio (POST /api/jobs/run-weekly) con su propio
+# cron. Mezclarlos romperia el endpoint de precios.
+WEEKLY_JOB_IDS: tuple[str, ...] = (PATTERN_SCAN_JOB.id,)
+
+_weekly_registry: JobRegistry | None = None
+_weekly_registry_lock = threading.Lock()
+
+
+def weekly_registry() -> JobRegistry:
+    """El registry de los jobs semanales. Mismo patron de lazy-singleton con
+    double-checked locking que production_registry()."""
+    global _weekly_registry
+    if _weekly_registry is None:
+        with _weekly_registry_lock:
+            if _weekly_registry is None:
+                registry = JobRegistry()
+                registry.register(PATTERN_SCAN_JOB)
+                _weekly_registry = registry
+    return _weekly_registry
+```
+
+- [ ] **Step 5: Correr hasta verde**
+
+Run: `pytest tests/test_pattern_scan_tool.py -q`
+Expected: PASS.
+
+- [ ] **Step 6: El endpoint**
+
+Agregar a `webapp/app.py`, con su **propio** juego de guards (no reusar los del endpoint de
+precios: comparten proceso pero no deben compartir el throttle, o una corrida semanal larga
+bloquearia el cron de precios de 4h):
+
+```python
+WEEKLY_JOBS_MIN_INTERVAL_SECONDS = _positive_int_env("LINCHPIN_WEEKLY_MIN_INTERVAL_SECONDS", 3600)
+WEEKLY_JOBS_TIMEOUT_SECONDS = _positive_int_env("LINCHPIN_WEEKLY_JOB_TIMEOUT_SECONDS", 900)
+
+_WEEKLY_JOBS_LOCK = threading.Lock()
+_WEEKLY_JOBS_LAST_STARTED_AT: float | None = None
+_WEEKLY_JOBS_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="weekly-jobs")
+
+
+def _run_weekly_jobs_sync() -> dict:
+    registry = weekly_registry()
+    jobs_summary: dict[str, dict] = {}
+    for job_id in WEEKLY_JOB_IDS:
+        try:
+            report = registry.run_once(job_id)[job_id]
+        except Exception as exc:
+            logging.getLogger("linchpin.jobs").exception("weekly job %r failed", job_id)
+            jobs_summary[job_id] = {"status": "error", "error": type(exc).__name__}
+            continue
+        # A diferencia de _run_scheduled_jobs_sync, todo el consumo del report
+        # vive DENTRO del try: no se toca ningun atributo del report fuera de el.
+        jobs_summary[job_id] = {
+            "status": "ok",
+            "families_scanned": report.families_scanned,
+            "chronics": report.chronics,
+            "summary": report.summary,
+        }
+    any_error = any(v["status"] == "error" for v in jobs_summary.values())
+    return {"status": "error" if any_error else "ok", "jobs": jobs_summary}
+
+
+@app.post(
+    "/api/jobs/run-weekly",
+    dependencies=[Depends(security.rate_limit), Depends(security.require_api_key)],
+)
+async def api_run_weekly_jobs() -> dict:
+    ...  # misma forma que api_run_scheduled_jobs, con los guards _WEEKLY_*
+```
+
+- [ ] **Step 7: El cron semanal**
+
+Crear `.github/workflows/pattern-scan-cron.yml`, hermano de `price-watch-cron.yml`:
+
+```yaml
+name: pattern-scan-cron
+
+# Cadencia semanal REAL. Los trigger_args de PATTERN_SCAN_JOB son documentacion;
+# el reloj es este cron. Ver el header de price-watch-cron.yml para el porque de
+# un scheduler externo (512mb VM, WEB_CONCURRENCY=1, nada de threads en proceso).
+on:
+  schedule:
+    # Lunes 06:00 UTC. GitHub Actions corre los schedules best-effort y puede
+    # atrasarlos; para un scan semanal eso es irrelevante.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  trigger-weekly-jobs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/jobs/run-weekly
+        env:
+          DEPLOY_URL: https://linchpin.fly.dev
+          JOBS_API_KEY: ${{ secrets.KERN_JOBS_API_KEY }}
+        run: |
+          # OJO con los dos namespaces: la app lee LINCHPIN_API_KEY (webapp/security.py,
+          # comparado contra el header X-API-Key); el secret del repo se llama
+          # KERN_JOBS_API_KEY. Tienen que valer lo MISMO o el endpoint responde 401.
+          ...  # copiar el bloque curl + chequeo de http_code + status del body
+```
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add jobs/pattern_scan_job.py jobs/scheduled_jobs.py webapp/app.py .github/workflows/pattern-scan-cron.yml tests/
+git commit -m "feat(jobs): cadencia semanal de pattern_scan via ScheduledJob + cron dedicado"
 ```
 
 ---
