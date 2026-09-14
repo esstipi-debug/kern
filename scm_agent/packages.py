@@ -698,21 +698,31 @@ def run_package(
                     # paquete al que le falta un pedazo: es el paquete equivocado
                     # para este cliente. Entregarlo sin su analisis central seria
                     # la version silenciosa del mismo error.
-                    return _failed(
-                        spec, client, STATUS_NEEDS_CLARIFICATION,
-                        f"{spec.title}: '{tool.title}' no aplica a un catalogo de "
+                    # `_ejecutar` devuelve UN StepOutcome por paso; no puede abortar
+                    # el paquete por si mismo como hacia el bucle en linea de antes.
+                    # No hace falta: `_truncar_como_el_serial` corta en el primer paso
+                    # REQUERIDO que no quedo ok ni salteado, y el llamador arma el
+                    # PackageResult con el estado de ese outcome. Devolver
+                    # NEEDS_CLARIFICATION aca produce el mismo corte, y ademas
+                    # funciona igual bajo `_fan_out`, donde un return temprano del
+                    # paquete entero no seria posible.
+                    return StepOutcome(
+                        tool_key=step.tool_key, title=tool.title,
+                        status=STATUS_NEEDS_CLARIFICATION,
+                        cadence=step.cadence, source="(no aplica al rubro)",
+                        required=step.required,
+                        summary=f"{spec.title}: '{tool.title}' no aplica a un catalogo de "
                         f"{vertical.display_name}. {veto.reason.strip()}"
                         + (f" En su lugar: {veto.instead.strip()}" if veto.instead.strip() else ""),
                     )
-                outcomes.append(StepOutcome(
+                return StepOutcome(
                     tool_key=step.tool_key, title=tool.title, status=STEP_SKIPPED,
                     cadence=step.cadence, source="(no aplica al rubro)",
                     required=step.required,
                     summary=veto.reason.strip(),
                     skip_reason=veto.reason.strip(),
                     messages=tuple(c for c in (veto.instead.strip(),) if c),
-                ))
-                continue
+                )
             merged = client_profile.merge_params({**step.params, **params}, profile, vertical)
             if pack_aliases is not None:
                 merged = {**merged, "column_aliases": pack_aliases}
@@ -734,12 +744,19 @@ def run_package(
         outcomes, corte = _truncar_como_el_serial(spec, hechos)
         if corte is not None:
             outcome = outcomes[corte]
+            # El paso que corto suele saber POR QUE corto (un veto de rubro trae la
+            # razon y el que correr en su lugar). El resumen generico solo, lo tiraba:
+            # el cliente leia "fallo (needs_clarification)" y ninguna pista. Se agrega
+            # al final, no reemplaza, para que siga siendo el mismo texto de siempre
+            # cuando el outcome no tiene nada propio que decir.
+            _generico = (f"{spec.title}: el paso requerido '{outcome.title}' fallo "
+                         f"({outcome.status}); no se escribio ningun entregable.")
+            _propio = outcome.summary.strip()
             return PackageResult(
                 status=outcome.status, package=spec.key, client=client,
                 steps=tuple(outcomes), deliverables={},
                 qa_issues=tuple(f"{outcome.title}: {i}" for i in outcome.qa_issues),
-                summary=(f"{spec.title}: el paso requerido '{outcome.title}' fallo "
-                         f"({outcome.status}); no se escribio ningun entregable."),
+                summary=(f"{_generico} {_propio}" if _propio else _generico),
             )
 
         # ---- Package QA gate: any executed step failing QA blocks everything.

@@ -18,9 +18,9 @@ manda de verdad.
 from __future__ import annotations
 
 import pytest
+
 from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
 from nosilo_core.types import STATUS_NEEDS_CLARIFICATION
-
 from scm_agent.packages import PackageSpec, PackageStep, run_package
 from src import client_profile, vertical_profile
 
