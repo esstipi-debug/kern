@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import re
 import sys
 from pathlib import Path
 
@@ -55,6 +56,24 @@ CABLE_REAL = (
 )
 
 
+def _primeras(payload: str, k: int) -> str:
+    """Las primeras ``k`` entradas del payload, como hace el servidor de verdad.
+
+    El fake TIENE que respetar `k` o la holgura no se puede probar: con un fake que
+    devuelve el payload entero pase lo que pase, `read_with_caller` recibe los seis
+    pasajes aunque haya pedido tres, y el test de la holgura pasa igual con
+    ``HOLGURA_PEDIDO = 0`` -- que es exactamente el mutante que tiene que morir.
+    Los strings que no son una lista de pasajes ("(sin pasajes)", "error: ...") viajan
+    tal cual: no tienen entradas que recortar.
+    """
+    bloques = re.split(r"(?m)^(?=\d+\.\s)", payload)
+    entradas = [b for b in bloques if re.match(r"^\d+\.\s", b)]
+    if not entradas:
+        return payload
+    cabecera = "" if re.match(r"^\d+\.\s", bloques[0]) else bloques[0]
+    return cabecera + "".join(entradas[:k])
+
+
 class _Servidor:
     """Un servidor de lectura FALSO que devuelve el string que se le configure.
 
@@ -77,7 +96,7 @@ class _Servidor:
             vistos.append({"query": query, "k": k, "sources": sources})
             if revienta:
                 raise RuntimeError("el indice no arranco")
-            return payload
+            return _primeras(payload, k)
 
         self._portal_cm = start_blocking_portal()
         portal = self._portal_cm.__enter__()
@@ -310,16 +329,18 @@ def test_un_error_pegado_a_pasajes_buenos_tampoco_viaja_al_cliente():
     una entrada al cuerpo de la ultima: `error: interno revento` terminaba dentro de un
     excerpt, con nombre de libro y numero de pagina. El lote se corta en esa linea.
     """
-    r, _ = _leer("1. **slug-x** PDF p.5\n   texto\nerror: interno revento")
+    r, _ = _leer("1. **slug-x** PDF p.5\n   texto del libro\nerror: interno revento")
     assert r.available is True
-    assert [dataclasses.astuple(x) for x in r.readings] == [("slug-x", "PDF p.5", "texto")]
+    assert [dataclasses.astuple(x) for x in r.readings] == [
+        ("slug-x", "PDF p.5", "texto del libro")
+    ]
     assert not any("interno revento" in x.excerpt for x in r.readings)
 
 
 def test_un_error_indentado_tampoco_entra_al_extracto():
     """Indentado tiene forma de extracto; sigue siendo el mensaje interno del servidor."""
-    r, _ = _leer("1. **slug-x** PDF p.5\n   texto\n   error: storage corrupto")
-    assert [x.excerpt for x in r.readings] == ["texto"]
+    r, _ = _leer("1. **slug-x** PDF p.5\n   texto del libro\n   error: storage corrupto")
+    assert [x.excerpt for x in r.readings] == ["texto del libro"]
 
 
 def test_un_pie_de_pagina_del_servidor_no_se_atribuye_a_un_libro():
@@ -381,12 +402,12 @@ def test_una_entrada_sin_extracto_sigue_siendo_procedencia():
     payload = (
         "1. **ivanov-global-supply-chain-operations** PDF p.12\n"
         "2. **liu-supply-chain-analytics** PDF p.7\n"
-        "   Con extracto."
+        "   Con un extracto."
     )
     r, _ = _leer(payload)
     assert [(x.source, x.excerpt) for x in r.readings] == [
         ("ivanov-global-supply-chain-operations", ""),
-        ("liu-supply-chain-analytics", "Con extracto."),
+        ("liu-supply-chain-analytics", "Con un extracto."),
     ]
 
 
@@ -541,8 +562,14 @@ def test_un_extracto_corto_no_se_toca():
 
 def test_el_corte_va_despues_del_saneo():
     """Si se cortara antes, el tope quedaria mentiroso: el reemplazo puede ALARGAR el
-    texto (un solo caracter sigma pasa a cinco)."""
-    sigma = "\u03c3" * 200  # 200 caracteres que al sanear pasan a 1000
+    texto (un solo caracter sigma pasa a cinco).
+
+    Los sigmas van SEPARADOS por espacio, no pegados: pegados el extracto entero seria un
+    unico token y caeria por el piso de palabras (`MIN_PALABRAS_CITABLES`) antes de
+    llegar al corte, que es lo que este test mide. Un extracto de un solo token de 1.000
+    caracteres tampoco era representativo de nada que mande el indice.
+    """
+    sigma = ("\u03c3 " * 200).strip()  # 200 caracteres que al sanear pasan a 1000
     r, _ = _leer(f"1. **liu-supply-chain-analytics** PDF p.7\n   {sigma}")
     assert len(r.readings[0].excerpt) <= MAX_EXCERPT_CHARS
 
@@ -551,10 +578,14 @@ def test_el_corte_va_despues_del_saneo():
 
 
 def test_las_keywords_viajan_unidas_por_espacio():
+    """El `k` que viaja NO es el que se pidio: es `k + HOLGURA_PEDIDO`, porque el piso de
+    calidad descarta mobiliario y sin holgura cada descarte seria un pasaje menos (ver
+    la seccion 9). Lo que se queda el llamador sigue siendo `k`."""
     srv = _Servidor(CABLE_REAL)
     with srv as call:
         read_with_caller(call, ["safety", "stock", "alpha service level"], k=5)
-    assert srv.vistos == [{"query": "safety stock alpha service level", "k": 5, "sources": None}]
+    assert srv.vistos == [{"query": "safety stock alpha service level",
+                           "k": 8, "sources": None}]  # 5 pedidos + 3 de holgura, literal
 
 
 def test_sources_viaja_tal_cual_cuando_viene():
@@ -716,9 +747,16 @@ def test_el_umbral_es_el_que_se_midio():
 
 
 def test_el_umbral_corta_donde_dice_y_no_un_caracter_antes():
-    """La frontera exacta, sin depender de ningun pasaje real: 4 de 100 pasa, 5 no."""
-    justo = "a" * 96 + "-" * 4
-    pasado = "a" * 95 + "-" * 5
+    """La frontera exacta, sin depender de ningun pasaje real: 4 de 100 pasa, 5 no.
+
+    Los cuerpos son VARIAS palabras a proposito: uno solo de 100 caracteres cae antes por
+    el piso de palabras (`MIN_PALABRAS_CITABLES`) y este test dejaria de medir la
+    frontera del relleno, que es para lo que existe. Los espacios no cuentan como
+    caracteres: `_es_ilegible` mide solo sobre los no-blancos, asi que la razon sigue
+    siendo exactamente 4/100 y 5/100.
+    """
+    justo = " ".join(["a" * 12] * 8) + "-" * 4          # 96 letras + 4 rayas = 0,04
+    pasado = " ".join(["a" * 12] * 7 + ["a" * 11]) + "-" * 5   # 95 + 5 = 0,05
     assert _una("liu-supply-chain-analytics", "PDF p.7", justo).excerpt == justo
     assert _una("liu-supply-chain-analytics", "PDF p.7", pasado).excerpt == ""
 
@@ -867,3 +905,654 @@ def test_el_modulo_no_toca_el_gate_de_citas():
         if isinstance(n, ast.Call)
     }
     assert "filter_citations" not in llamadas
+
+
+# --- 9. el piso de calidad: mobiliario del libro y del sitio -------------------------
+#
+# POR QUE EXISTE ESTA SECCION. Una corrida REAL contra el indice devolvio 3 pasajes y
+# los 3 eran mobiliario: una barra lateral de blog, un extracto con el pie de imprenta
+# del maquetador adentro, y un indice onomastico del final de un libro. El repo del
+# indice (`kern-lectura`) ya limpia lo suyo; esto es el CINTURON de este lado, para que
+# Kern no dependa de que el otro repo este limpio. Defensa en profundidad, no duplicacion.
+#
+# TODOS los cuerpos de abajo son TEXTUALES del indice vivo (recortados, no editados),
+# tirados con `search_passages` el 2026-09-12. Los tres primeros son los CONTROLES
+# NEGATIVOS -- tablas densas en numeros que tienen que SOBREVIVIR --, y estan aca porque
+# un piso que solo se prueba con basura no prueba nada sobre lo que tiene que dejar pasar.
+
+# vollmann-manufacturing-planning-control, PDF p.262. Un MPS de planificacion de
+# capacidad: 26 numeros sueltos en dos renglones y ninguna coma. Contenido citable.
+TABLA_MPS = (
+    "246 Chapter 7 Capacity Planning and Management Master production schedule "
+    "(in units): Period End Product 1 2 3 4 5 6 7 8 9 10 11 12 13 Total "
+    "A 33 33 33 40 40 40 30 30 30 37 37 37 37 457 "
+    "B 17 17 17 13 13 13 25 25 25 27 27 27 27 273"
+)
+
+# jacobs-chase-operations-supply-chain-management, PDF p.625. La solucion de un problema
+# de programacion de centros de trabajo -- y trae el pie de imprenta del maquetador
+# ADENTRO, que es exactamente el hallazgo que motivo esta tarea.
+TABLA_SCHEDULING = (
+    "596 Section 4 Supply and Demand Planning and Control "
+    "jac66107_ch22_590-621.indd 596 12/16/16 02:08 PM "
+    "SOLUTION FCFS RULE: The FCFS rule results in the following flow times: "
+    "FCFS Schedule Job Sequence Processing Time (Days) Due Date (Days Hence) "
+    "Flow Time (Days) A 3 5 0 + 3 = 3 B 4 6 3 + 4 = 7 C 2 7 7 + 2 = 9"
+)
+
+# vollmann-manufacturing-planning-control, PDF p.192. Una serie de ordenes de cliente.
+# La ligadura fi va escapada para que este archivo siga siendo ASCII (ver seccion 5).
+TABLA_ORDENES = (
+    "Booked customer orders (already con\ufb01rmed): 95 units in week 1. "
+    "105 units in week 2. 70 units in week 3. 10 units in week 5. "
+    "Master production schedule: 200 units to be completed at the start of week 1. "
+    "200 units to be completed at the start of week 3."
+)
+
+# liu-supply-chain-analytics, PDF p.383. El indice onomastico del final del libro: un
+# termino y despues la lista de paginas donde aparece. Las rayas son en-dash (U+2013).
+INDICE_ONOMASTICO = (
+    "372 Collaboration, 5, 6, 23, 24, 113\u2013115, 159, 164, 167, 168, 173, 179 "
+    "Combination, 25, 26, 54, 56\u201361, 72, 74, 78, 79, 89, 108, 176, 209, 212, 252 "
+    "Competitive advantage, 6, 8, 9, 12, 13, 17, 119, 165, 179"
+)
+
+# Los TRES indices siguientes son el estilo DOMINANTE del corpus, textuales del indice
+# vivo (2026-09-12) y recortados, no editados: un termino, coma, su pagina, y de vuelta.
+# Ninguno de los tres lo reconocia la primera version de este piso, que pedia cuatro
+# paginas con coma detras de un mismo termino -- una forma que solo tiene Liu.
+
+# chopra-meindl-supply-chain-management, PDF p.522. La primera pagina del indice.
+INDICE_CHOPRA = (
+    "INDEX A Abbott, 510 Absolute deviation, 205 Accuracy of information, 269\u2013270 "
+    "Acid Rain Program, 508 Acquisition costs, 455 Actual average flow/cycle time, 61 "
+    "Adaptability, distribution networks, 112\u2013113 Adaptive forecasting, 199\u2013204"
+)
+
+# heizer-render-operations-management, PDF p.894. Arranca con el texto literal
+# "GENERAL INDEX" y usa subentradas ("... and, 411").
+INDICE_HEIZER = (
+    "GENERAL INDEX I15 scheduling services and, 618 zero-wait ER guarantee, 766 "
+    "Hotels MRP and, 584 site selection, location strategies and, 351 technology "
+    "changes, 298 House of quality, 166 \u2013 169 HP Project, 66 Human resource, job "
+    "design, work management and, 407 \u2013 440"
+)
+
+# ivanov-global-supply-chain-operations, PDF p.593. Termina el abecedario y trae
+# entradas con parentesis antes de la coma ("(VMI), 21").
+INDICE_IVANOV = (
+    "Value stream mapping, 280 Vehicle routing, 427 \u2013439 Vendor-managed inventory "
+    "(VMI), 21, 48, 95\u201398 Virtual enterprises, 62 Virtual reality, 504 Virtual "
+    "store, 37 Visibility, 46, 47 W Wagner\u2013Whitin, 397 Waiting time, 440, 441"
+)
+
+# heizer-render-operations-management, PDF p.891. LA PAGINA DE INDICE MAS POBRE de los
+# 521 pasajes medidos: 5 marcas, una sola por encima del corte. Textual del indice vivo
+# (2026-09-12), y es el pin de ARRIBA de la frontera: puntua poco porque la mitad del
+# extracto son remisiones ("See Walt Disney Parks and Resorts") sin numero de pagina.
+INDICE_HEIZER_MAS_POBRE = (
+    "I12 GENERAL INDEX Diseconomies of scale, 311 Disney Parks and Resorts. See Walt "
+    "Disney Parks and Resorts Disney World. See Walt Disney Parks and Resorts "
+    "Disneyland, 375 Dispatching jobs, priority rules and, 611 - 612 Distance "
+    "reduction, JIT layout and, 643 Distribution management, supply chain management "
+    "and, 459"
+)
+
+# jacobs-chase-operations-supply-chain-management, PDF p.50. CONTENIDO real -- el
+# enunciado de un ejercicio de finanzas -- y el falso positivo que encontro la revision
+# de la ronda 2 sobre el corpus vivo: los separadores de MILES ("$25,240,000") tienen la
+# forma exacta de una lista de paginas de indice ("25, 240, 000"), y el pasaje puntuaba 6
+# marcas. Lo que lo salva es que un separador de miles NO lleva espacio detras de la coma.
+PROSA_CON_IMPORTES = (
+    "Introduction Chapter 1 21 9. Consider the following financial data from the past "
+    "year for Midwest Outdoor Equipment Corporation. (Answers in Appendix D) LO1-4 "
+    "Gross income $25,240,000 Total sales 24,324,000 Total credit sales 18,785,000 "
+    "Net income 2,975,000 Cost of goods sold 12,600,000 Total assets 10,550,000"
+)
+
+# nagle-strategy-tactics-pricing, PDF p.349. El OTRO estilo de indice: la pagina va
+# pegada al termino SIN coma ("Rolex 28-9, 40, 68"). Es el hueco conocido del piso.
+INDICE_SIN_COMA = (
+    "Index328 Rolex 28\u20139, 40, 68 Rosiello, Robert 292n18 Russo, J. Edward 75n6 "
+    "Ryanair 18, 137, 170, 171 S safe harbors 297, 310n8 Sales and Marketing "
+    "Management 206n38 sales credit, calculation of team incentives 278"
+)
+
+# jacobs-chase-operations-supply-chain-management, PDF p.718-719. CONTENIDO real, y el
+# pasaje que mas cerca queda del umbral en todo el corpus medido: la tabla de evaluacion
+# de una consultoria de operaciones lista las preguntas de cada categoria separadas por
+# coma. Va tal como el tope de copyright la deja -- los 315 caracteres que sobreviven a
+# `_cortar` --, que es el texto que el piso de verdad juzga; el chunk entero mide 600 y
+# sigue con cinco filas mas. Es el control negativo que muere si alguien afloja el umbral.
+TABLA_EVALUACION = (
+    "Operations Consulting Chapter 25 689 Assessment category Relevant Questions "
+    "Number of Y es\u2019s Ratio of Y es\u2019s to Number of Relevant Questions "
+    "Customer focus 1, 2, 20 Safety, cleanliness, and order 3, 4, 5, 20 "
+    "Visual management/Scheduling 2, 4, 6, 7, 8, 9, 10, 11, 20 "
+    "Use of space, movement efficiency, and product"
+)
+
+# sop-isotracker-iso-9001-document-review, PDF p.2. La barra lateral del blog. Ojo: NO
+# arranca con el marcador -- arranca con la cola de un parrafo de verdad y la navegacion
+# empieza en el medio. Una regla que solo mire el principio del extracto no la ve.
+BARRA_LATERAL = (
+    "advice on how often to review documents for ISO 9001. Recent posts "
+    "Improving Quality Management Reviews: A Practical Guide for ISO 9001 Compliance "
+    "7 Quality Metrics Every Manufacturer Should Track in 2026 "
+    "What Types Of Businesses Need a QMS? GFSI Requirements for Root Cause Analysis"
+)
+
+# operations-supply-chain-management-arxiv, PDF p.89. Prosa normal que cita autor-anio
+# entre parentesis: la forma "termino, numero" tambien la tiene una cita academica, y
+# este es el pasaje de CONTENIDO que mas cerca quedaba del umbral antes de que el piso
+# dejara los anios afuera (3 marcas sin la exclusion, 0 con ella).
+PROSA_CON_CITAS = (
+    "ence diagrams (Coyle, 1977), and causal loop modelling (Morecroft, 2020) can "
+    "provide insight. The beer game is a popular tabletop game for teaching the "
+    "dynamics of supply chains (Sterman, 1989a). Surveys and secondary data can also "
+    "be used to investigate bullwhip."
+)
+
+# Una formula, escrita como la escriben los libros: simbolos espaciados y la sustitucion
+# numerica al lado. El control negativo del piso de palabras.
+FORMULA = "EOQ = raiz(2 x D x S / H) = raiz(2 x 1200 x 75 / 3.6) = 223.6 units per order"
+
+PROSA = (
+    "Safety stock is extra inventory that is carried for protection in case the demand "
+    "for an item is greater than expected during the replenishment lead time."
+)
+
+
+def _cable(cuerpo: str, source: str = "liu-supply-chain-analytics",
+           etiqueta: str = "PDF p.7") -> str:
+    """Una entrada con su cuerpo indentado, como la manda el servidor."""
+    return f"1. **{source}** {etiqueta}{NL}   {cuerpo}{NL}"
+
+
+# -- (a) el indice del final del libro, por repeticion y no por una firma ------------
+
+
+def test_un_indice_onomastico_real_no_ocupa_un_slot():
+    """El hallazgo, textual. Un indice del final del libro no es una cita: es una lista
+    de numeros de pagina, y el cliente que abre la p.383 de Liu no encuentra teoria."""
+    assert lectura.parse_readings(_cable(INDICE_ONOMASTICO)) == ()
+
+
+def test_los_tres_indices_del_estilo_dominante_tampoco_ocupan_un_slot():
+    """La regresion que este piso tuvo en su primera version, cerrada con los pasajes que
+    la delataron.
+
+    Esa version buscaba UNA firma -- un termino seguido de cuatro o mas paginas separadas
+    por coma -- calibrada contra un unico pasaje (Liu PDF p.383). Medido despues contra el
+    indice vivo, ese es el estilo RARO: Chopra, Heizer, Ivanov, Vollmann, Fleisher y
+    Jacobs indexan "termino, pagina termino, pagina", con UNA pagina por termino, y los
+    tres de abajo pasaban enteros. Por eso el piso ya no busca una firma sino que cuenta
+    MARCAS: las entradas y las listas de paginas suman, y lo que delata a un indice es la
+    repeticion.
+    """
+    casos = {
+        "chopra p.522": (INDICE_CHOPRA, "chopra-meindl-supply-chain-management", "PDF p.522"),
+        "heizer p.894": (INDICE_HEIZER, "heizer-render-operations-management", "PDF p.894"),
+        "ivanov p.593": (INDICE_IVANOV, "ivanov-global-supply-chain-operations", "PDF p.593"),
+    }
+    for nombre, (cuerpo, slug, etiqueta) in casos.items():
+        assert lectura.es_inutilizable_como_cita(lectura._sanear(cuerpo)), nombre
+        assert lectura.parse_readings(_cable(cuerpo, slug, etiqueta)) == (), nombre
+
+
+def test_una_enumeracion_de_numeros_con_coma_no_es_un_indice():
+    """La primera version de este piso DESCARTABA contenido bueno por el lado del numero.
+
+    Su "termino" admitia numeros adentro, asi que "Period 1, 2, 3, 4" era un termino con
+    su lista de paginas y el MPS se iba en silencio -- sin nota y sin rastro, porque un
+    descarte no deja marca. Lo que separa a un indice de una tabla es QUE HAY ANTES DE LA
+    COMA: en un indice una letra ("Abbott, 510"), en una tabla un numero ("95, 105").
+    """
+    casos = {
+        "periodos de un MPS": "Master production schedule. Period 1, 2, 3, 4, 5, 6, 7, 8 in units",
+        "doce meses del plan": "Period 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 monthly buckets",
+        "grilla de horarios": "The jobs start at 8, 10, 12, 14, 16 hours after the shift begins",
+        "serie de ordenes": "Booked customer orders by week: 95, 105, 70, 10, 0, 0 units",
+        "importes con separador de miles": "Holding cost was 12,500, 14,750, 16,000 and 18,250",
+        "clausulas de una norma": "See clauses 4, 5, 6, 7, 8 of the standard for the evidence",
+    }
+    for nombre, cuerpo in casos.items():
+        assert not lectura.es_inutilizable_como_cita(cuerpo), nombre
+        assert lectura.parse_readings(_cable(cuerpo))[0].excerpt, nombre
+
+
+def test_la_prosa_que_enumera_palabra_y_numero_no_es_un_indice():
+    """LA REGRESION DE LA RONDA 1, cerrada con los seis pasajes que la delataron.
+
+    Esa version contaba marcas SUELTAS contra un umbral de cuatro, asi que cuatro pares
+    "<palabra>, <numero>" en cualquier parte del extracto descartaban el pasaje ENTERO
+    -- libro y pagina incluidos, y en silencio, porque un descarte no deja nota. Los seis
+    de abajo puntuaban exactamente 4 con esa regla y los seis son contenido legitimo. Los
+    dos ultimos no son fabricados: salen textuales de este mismo repo
+    (`documentation/NO_SILO_KERN_LOOP.md:347` y
+    `documentation/CAPABILITY_EXPANSION_PLAN.md:427`).
+
+    Y NO SE ARREGLA CON UNA MARCA MAS AFILADA: "Abbott, 510 Accenture, 22" y "8 pallets,
+    2 cases" son la misma cadena de simbolos. Lo que los separa es global -- el conteo
+    por clausula y el umbral con hueco --, no un caracter alrededor de la coma.
+    """
+    casos = {
+        "modos de transporte": (
+            "Mode selection is a trade-off between cost and speed for every lane in the "
+            "network, and the planner has to weigh the landed cost against the service "
+            "promise before committing: ocean, 35 days; air, 5 days; rail, 12 days; "
+            "truck, 3 days. The cheapest mode is rarely the one that keeps the promise."
+        ),
+        "costos por unidad": (
+            "Costs per unit: material, 12 dollars; labor, 8 dollars; overhead, "
+            "4 dollars; freight, 2 dollars."
+        ),
+        "contenido de un embarque": (
+            "The shipment contained 8 pallets, 2 cases, 3 totes, 5 drums, 7 bags of raw "
+            "material."
+        ),
+        "capacidad de una planta": (
+            "The plant runs 3 shifts, 12 lines, 48 workstations, 96 operators, "
+            "200 changeovers per week."
+        ),
+        "conteo de un checklist": (
+            "El resultado del loop: 8 CUMPLE, 2 PARCIAL, 3 NO_CUMPLE, 2 SIN_DATO, "
+            "5 FUERA_DE_ALCANCE sobre el total."
+        ),
+        "mensajes EDI": (
+            "Los mensajes X12 856 (ASN), 214 (estado), 990 (tender), 850 (PO), "
+            "810 (factura) cubren el ciclo de la orden."
+        ),
+    }
+    for nombre, cuerpo in casos.items():
+        assert lectura._marcas_de_indice(cuerpo) < lectura.MIN_MARCAS_DE_INDICE, nombre
+        assert not lectura.es_inutilizable_como_cita(cuerpo), nombre
+        assert lectura.parse_readings(_cable(cuerpo))[0].excerpt, nombre
+
+
+def test_las_marcas_no_se_suman_de_los_dos_lados_de_un_punto_y_coma():
+    """Por que el conteo es POR CLAUSULA y no total, con el caso que lo obliga.
+
+    Un indice es un bloque continuo de entradas y no tiene punto y coma adentro: medido,
+    0 de las 16 paginas de indice que hay en los 521 pasajes del indice vivo trae uno,
+    mientras que 25 de esos 521 pasajes si -- o sea que la condicion no es vacua, es que
+    dentro de un indice no pasa nunca. Una enumeracion en prosa es al reves: las marcas
+    estan repartidas una por clausula, y sumarlas es sumar evidencia de cuatro frases
+    distintas como si fuera una sola lista.
+    """
+    enumeracion = ("Costs per unit: material, 12 dollars; labor, 8 dollars; "
+                   "overhead, 4 dollars; freight, 2 dollars.")
+    sin_punto_y_coma = enumeracion.replace(";", " ")
+
+    assert lectura._marcas_en_una_clausula(enumeracion) == 4   # lo que contaba la ronda 1
+    assert lectura._marcas_de_indice(enumeracion) == 1         # una por clausula
+    # Y la condicion no es vacua ni al reves: sin los punto y coma vuelven a sumar.
+    assert lectura._marcas_de_indice(sin_punto_y_coma) == 4
+
+    for indice in (INDICE_ONOMASTICO, INDICE_CHOPRA, INDICE_HEIZER, INDICE_IVANOV,
+                   INDICE_HEIZER_MAS_POBRE):
+        texto = lectura._sanear(indice)
+        assert ";" not in texto
+        assert lectura._marcas_de_indice(texto) == lectura._marcas_en_una_clausula(texto)
+
+
+def test_un_separador_de_miles_no_es_una_lista_de_paginas():
+    """El otro falso positivo, encontrado sobre el corpus VIVO y no fabricado.
+
+    "$25,240,000" tiene la forma exacta de una lista de paginas de indice ("25, 240, 000")
+    y el enunciado del ejercicio de finanzas de Jacobs & Chase PDF p.50 -- contenido real
+    del libro, con seis importes -- puntuaba 6 marcas y se descartaba entero. Lo unico que
+    los distingue es el ESPACIO: un indice escribe "5, 6, 23", un importe "25,240,000".
+
+    Medido sobre los 521 pasajes: exigir el espacio cambia el veredicto de ese pasaje y de
+    ningun otro, y deja las 16 paginas de indice con el mismo puntaje que tenian.
+    """
+    texto = lectura._cortar(lectura._sanear(PROSA_CON_IMPORTES))
+    assert lectura._marcas_de_indice(texto) == 0
+    assert not lectura.es_inutilizable_como_cita(texto)
+    assert lectura.parse_readings(_cable(
+        texto, "jacobs-chase-operations-supply-chain-management", "PDF p.50"))[0].excerpt
+
+    # Y el espacio no le saca nada a un indice de verdad: los cinco siguen cayendo.
+    for indice in (INDICE_ONOMASTICO, INDICE_CHOPRA, INDICE_HEIZER, INDICE_IVANOV,
+                   INDICE_HEIZER_MAS_POBRE):
+        assert lectura.es_inutilizable_como_cita(lectura._sanear(indice))
+
+
+def test_una_lista_de_numeros_sin_termino_indexado_no_es_un_indice():
+    """Una serie de datos en prosa NO puede costar el pasaje entero.
+
+    Las listas de paginas puntuaban solas, sin exigir una sola entrada "termino, pagina".
+    Un enunciado de problema resuelto -- el genero que mas abunda en estos manuales --
+    llega al umbral por acumular series separadas por coma, y se pierde libro, pagina y
+    extracto en silencio. Ademas contradice la tesis declarada del modulo: lo que
+    discrimina es la FORMA de la coma, no cuantos numeros hay.
+    """
+    prosa = ("The demand series is 200, 220, 180, 250. The forecast is 210, 215, 220. "
+             "The on-hand is 40, 35, 20. Safety stock is 12, 14, 16. "
+             "Reorder point is 60, 65, 70.")
+    assert lectura._marcas_de_indice(prosa) == 0
+    assert not lectura.es_inutilizable_como_cita(prosa)
+
+
+def test_la_frontera_de_marcas_esta_pinchada_por_los_dos_lados():
+    """El umbral no se puede mover ni para arriba ni para abajo sin romper esto.
+
+    Los dos casos estan a UNA marca del corte, que es lo que un test de frontera tiene que
+    demostrar, y los dos son TEXTUALES del indice vivo -- ya no una construccion:
+
+    * arriba, Heizer PDF p.891 con 5 marcas, que es la pagina de indice MAS POBRE de los
+      521 pasajes medidos: si el umbral sube a 6, este indice pasa entero;
+    * abajo, la tabla de evaluacion de Jacobs & Chase con 3, que es el contenido que mas
+      marcas junta sin ser un indice: si el umbral baja a 3, se descarta contenido real.
+
+    En el medio queda el 4, que es donde puntuaba la prosa que la ronda 1 tiraba (ver
+    `test_la_prosa_que_enumera_palabra_y_numero_no_es_un_indice`) y donde no puntua ningun
+    pasaje de los 521 medidos. El corte se apoya en aire por los dos lados.
+    """
+    indice_mas_pobre = lectura._cortar(lectura._sanear(INDICE_HEIZER_MAS_POBRE))
+    tabla = lectura._cortar(lectura._sanear(TABLA_EVALUACION))
+
+    assert lectura._marcas_de_indice(indice_mas_pobre) == 5
+    # Con el arreglo de "las listas no puntuan solas" la tabla baja de 3 marcas a 0:
+    # sobrevive con MAS margen que antes, no con menos. Lo que sostiene la frontera de
+    # abajo pasa a ser el indice de Chopra, que es el que puntua justo por encima.
+    assert lectura._marcas_de_indice(tabla) == 0
+    # Sin esto el test seguiria verde con el umbral en cualquier cosa: lo que descarta al
+    # indice tiene que ser el piso de marcas y no el de palabras.
+    assert lectura._palabras_citables(indice_mas_pobre) >= lectura.MIN_PALABRAS_CITABLES
+
+    assert lectura.es_inutilizable_como_cita(indice_mas_pobre)  # muere si el umbral sube
+    assert not lectura.es_inutilizable_como_cita(tabla)         # muere si el umbral baja
+
+
+def test_las_citas_autor_anio_no_son_entradas_de_indice():
+    """Un anio entre parentesis no es un numero de pagina, y sin esa distincion la prosa
+    academica se descarta sola.
+
+    La primera parte es textual del indice vivo y tiene tres citas; la segunda le agrega
+    una cuarta, que es lo que la llevaria al umbral si los anios contaran. El corpus tiene
+    libros con bibliografia adentro del cuerpo, asi que esto no es hipotetico: cuatro
+    citas entre parentesis en un parrafo es un parrafo normal, no un indice.
+    """
+    cuarta_cita = PROSA_CON_CITAS + " See also (Forrester, 1961) for the original model."
+
+    assert lectura._marcas_de_indice(PROSA_CON_CITAS) == 0
+    assert lectura._marcas_de_indice(cuarta_cita) == 0
+    assert not lectura.es_inutilizable_como_cita(cuarta_cita)
+    assert lectura.parse_readings(_cable(cuarta_cita))[0].excerpt
+
+
+def test_el_minimo_de_marcas_es_el_que_se_midio():
+    """Va literal: 521 pasajes del indice vivo (74 consultas, 2026-09-12), las 16 paginas
+    de indice puntuan 5 a 12 y los otros 505 puntuan 0, 1 o 2. Nadie puntua 3 ni 4."""
+    assert lectura.MIN_MARCAS_DE_INDICE == 5
+
+
+def test_el_indice_sin_coma_despues_del_termino_es_un_hueco_conocido():
+    """Lo que este piso NO ve, escrito para que no sorprenda: cuando la pagina va pegada
+    al termino sin coma ("Rolex 28-9, 40, 68", Nagle PDF p.349; "reorder points (ROP) 104,
+    106", Christopher PDF p.288-289) no hay entradas que contar y el indice pasa entero.
+
+    Se deja pasar MEDIDO, no por olvido: la marca que lo atraparia -- "termino <pagina>,
+    <pagina>", sin la coma -- recupera 2 de las 8 paginas que se escapan y al mismo tiempo
+    empuja TABLA_EVALUACION de 3 marcas a 6, o sea descarta contenido verificado. Perder
+    un indice le cuesta al cliente un pasaje; perder la tabla le cuesta el que queria.
+    """
+    assert not lectura.es_inutilizable_como_cita(lectura._sanear(INDICE_SIN_COMA))
+
+
+def test_la_prosa_de_jacobs_con_tres_numeros_seguidos_sobrevive():
+    """El caso que casi se rompe, textual del indice vivo: la frase que cierra la
+    solucion FCFS enumera tres numeros con coma y el cuarto viene detras de un "and"."""
+    cuerpo = ("Comparing the due date of each job with its flow time, we observe that "
+              "only Job A will be on time. Jobs B, C, D, and E will be late by "
+              "1, 2, 6, and 14 days, respectively.")
+    assert not lectura.es_inutilizable_como_cita(cuerpo)
+    assert lectura.parse_readings(_cable(cuerpo))[0].excerpt.startswith("Comparing")
+
+
+# -- (b) mobiliario: navegacion de sitio y pie de imprenta ---------------------------
+
+
+def test_la_barra_lateral_de_un_blog_no_ocupa_un_slot():
+    """El otro hallazgo, textual. El marcador cae en el MEDIO del extracto, no al
+    principio: la regla tiene que mirar todo el extracto."""
+    assert lectura.parse_readings(_cable(BARRA_LATERAL,
+                                         "sop-isotracker-iso-9001-document-review",
+                                         "PDF p.2")) == ()
+
+
+def test_la_cabecera_de_una_pagina_raspada_tampoco_ocupa_un_slot():
+    """Textual de una corrida real de `read_passages` contra el indice vivo (2026-09-12).
+
+    Con la lista de marcadores original -- la que sale del hallazgo -- esta consulta
+    (`["iso 9001 document review", "document control", "quality manual"]`, k=3) devolvia
+    DOS pasajes asi sobre tres: el encabezado de la pagina web, no el articulo. Ninguno
+    de los seis marcadores de blog lo tocaba. El enlace de salto ("skip to main content")
+    es lo que si esta siempre, y no existe en la prosa de ningun libro.
+    """
+    cabecera = (
+        "Managing Controlled Documents ISO 9001 Skip to main content Skip to footer "
+        "info@compliantltd.com Call: 0333 456 5000 Search About Us Services ISO Services"
+    )
+    assert lectura.parse_readings(_cable(
+        cabecera, "sop-compliant-controlled-documents-iso-9001", "PDF p.1")) == ()
+
+
+def test_cada_marcador_de_navegacion_descarta_por_su_cuenta():
+    """Los OCHO, uno por uno, escritos ACA y no leidos de la constante que custodian.
+
+    POR QUE LA LISTA VA LITERAL. La version anterior iteraba sobre
+    `lectura.NAVEGACION_DE_SITIO`, o sea sobre lo mismo que decia proteger, y entonces
+    borrar un marcador borraba tambien su caso: mutado marcador por marcador, sacar
+    'related posts', 'share this post', 'subscribe to our', 'privacy policy' o 'cookie
+    policy' no rompia NADA -- 5 de los 8 eran borrables con el modulo entero en verde --,
+    y con la tupla vacia el test pasaba vacuo. Un test que lee la constante no la fija.
+
+    Las dos mitades hacen falta: la igualdad de CONJUNTOS avisa cuando alguien agrega o
+    saca un marcador (que es una decision, no un detalle, porque cada uno descarta
+    pasajes), y el caso por marcador prueba que cada uno alcanza SOLO para descartar,
+    incluso pegado a prosa de verdad.
+    """
+    marcadores = [
+        "recent posts",
+        "related posts",
+        "share this post",
+        "subscribe to our",
+        "privacy policy",
+        "cookie policy",
+        "skip to main content",
+        "skip to content",
+    ]
+    assert sorted(marcadores) == sorted(lectura.NAVEGACION_DE_SITIO)
+
+    for marcador in marcadores:
+        cuerpo = f"Texto de la nota que si es del articulo. {marcador} y lo que sigue."
+        assert lectura.parse_readings(_cable(cuerpo)) == (), marcador
+
+
+def test_el_pie_de_imprenta_se_saca_del_extracto_pero_no_se_lleva_el_pasaje():
+    """La correccion medida, y el motivo por el que el pie de imprenta NO descarta.
+
+    Medido contra el indice vivo el 2026-09-12: de 11 pasajes de
+    `jacobs-chase-operations-supply-chain-management` tirados con dos consultas
+    distintas, 10 traian el pie de imprenta completo -- esta impreso en CASI TODAS las
+    paginas de ese libro. Tratarlo como motivo de descarte borraria un manual entero del
+    corpus, incluida ESTA tabla, que es uno de los tres controles negativos que tienen
+    que sobrevivir. El mobiliario se SACA del extracto (igual que los centinelas de
+    pagina), no se usa como veredicto sobre el pasaje.
+    """
+    (leida,) = lectura.parse_readings(_cable(
+        TABLA_SCHEDULING, "jacobs-chase-operations-supply-chain-management", "PDF p.625"))
+
+    assert ".indd" not in leida.excerpt
+    assert "12/16/16" not in leida.excerpt and "02:08 PM" not in leida.excerpt
+    assert "SOLUTION FCFS RULE" in leida.excerpt      # y el contenido sigue entero
+    assert leida.page_label == "PDF p.625"
+
+
+def test_un_pasaje_que_es_solo_el_pie_de_imprenta_queda_como_libro_y_pagina():
+    """Sacar el mobiliario nunca CREA un descarte: deja la entrada sin extracto.
+
+    La pagina existe y tiene texto -- el chunker corto mal, nada mas --, asi que libro y
+    pagina siguen siendo una referencia que el cliente puede abrir. Es la misma regla que
+    ya tenia el modulo para el PDF con el glyph-mapping roto: vacio es AUSENTE, no basura.
+    """
+    (leida,) = lectura.parse_readings(_cable(
+        "jac66107_ch22_590-621.indd 609 12/16/16 02:08 PM",
+        "jacobs-chase-operations-supply-chain-management", "PDF p.638"))
+    assert leida.excerpt == ""
+    assert leida.page_label == "PDF p.638"
+
+
+def test_un_pie_de_imprenta_a_medias_no_se_toca():
+    """Las cuatro partes juntas son las que dan cero falsos positivos. Una fecha suelta o
+    un nombre de archivo suelto pueden ser texto del libro, y no se tocan."""
+    cuerpo = "El archivo maestro se llama pedidos.indd y se reviso el 12/16/16 sin falta."
+    assert ".indd" in lectura.parse_readings(_cable(cuerpo))[0].excerpt
+
+
+# -- (c) lo que queda despues de todo eso -------------------------------------------
+
+
+def test_un_extracto_de_dos_palabras_no_es_una_cita():
+    """Lo que se publica es el extracto ENTRE COMILLAS con el libro y la pagina al lado:
+    un par de comillas alrededor de "FIGURE 10.18" afirma una cita que no dice nada."""
+    for resto in ("FIGURE 10.18", "480 PART 3", "Chapter 7 133", "206 21 2"):
+        assert lectura.parse_readings(_cable(resto)) == (), resto
+
+
+def test_tres_palabras_ya_son_una_cita():
+    assert lectura.parse_readings(_cable("Corto y entero."))[0].excerpt == "Corto y entero."
+
+
+def test_el_minimo_de_palabras_es_el_que_se_escribio():
+    """Sujeto, verbo y complemento: abajo de tres no hay afirmacion, hay rotulo."""
+    assert lectura.MIN_PALABRAS_CITABLES == 3
+
+
+def test_un_extracto_vacio_no_cae_por_el_piso_de_palabras():
+    """Cero palabras NO es "muy pocas palabras": es ausencia, y ya era una entrada valida
+    antes de que este piso existiera. Un extracto vacio no afirma nada y deja en pie una
+    referencia que el cliente puede abrir; uno de dos palabras afirma entre comillas."""
+    assert not lectura.es_inutilizable_como_cita("")
+    assert not lectura.es_inutilizable_como_cita("   ")
+    (leida,) = lectura.parse_readings("1. **liu-supply-chain-analytics** PDF p.7")
+    assert leida.excerpt == ""
+
+
+# -- los controles negativos, todos juntos -------------------------------------------
+
+
+def test_los_controles_negativos_sobreviven_al_piso_entero():
+    """Prosa, una formula y las TRES tablas reales densas en numeros. Si alguien endurece
+    cualquiera de las tres razones, lo primero que se rompe es esto."""
+    casos = {
+        "prosa": PROSA,
+        "formula": FORMULA,
+        "mps de vollmann": TABLA_MPS,
+        "scheduling de jacobs & chase": TABLA_SCHEDULING,
+        "ordenes de cliente de vollmann": TABLA_ORDENES,
+        "evaluacion de consultoria de jacobs & chase": TABLA_EVALUACION,
+    }
+    for nombre, cuerpo in casos.items():
+        assert not lectura.es_inutilizable_como_cita(lectura._sanear(cuerpo)), nombre
+        lecturas = lectura.parse_readings(_cable(cuerpo))
+        assert len(lecturas) == 1 and lecturas[0].excerpt, nombre
+
+
+# -- se descarta, no se degrada ------------------------------------------------------
+
+
+def test_el_mobiliario_no_deja_procedencia_huerfana():
+    """Un pasaje que no pasa el piso NO puede ocupar un slot, ni siquiera como libro +
+    pagina sin extracto. La diferencia con el piso de legibilidad es cual es el defecto:
+    alla la PAGINA tiene texto de verdad y el PDF lo destruyo (la referencia sirve), aca
+    la pagina ES el mobiliario -- el indice del final, la barra lateral del sitio -- y
+    mandarlo como referencia es mandar al cliente a una pagina que no habla del tema.
+    """
+    crudo = NL.join([
+        f"1. **liu-supply-chain-analytics** PDF p.383{NL}   {INDICE_ONOMASTICO}",
+        f"2. **vollmann-manufacturing-planning-control** PDF p.262{NL}   {TABLA_MPS}",
+    ])
+    r = lookup_from_text(crudo)
+
+    assert r.available is True
+    assert [x.page_label for x in r.readings] == ["PDF p.262"]
+    assert "PDF p.383" not in str(r.readings)
+
+
+def test_un_lote_entero_de_mobiliario_no_queda_disponible_y_no_levanta():
+    """El caso de la corrida real: 3 de 3 eran mobiliario. Se contesta un estado, no una
+    excepcion y tampoco tres citas vacias."""
+    crudo = NL.join([
+        f"1. **liu-supply-chain-analytics** PDF p.383{NL}   {INDICE_ONOMASTICO}",
+        f"2. **sop-isotracker-iso-9001-document-review** PDF p.2{NL}   {BARRA_LATERAL}",
+        f"3. **vollmann-manufacturing-planning-control** PDF p.1{NL}   FIGURE 10.18",
+    ])
+    r = lookup_from_text(crudo)
+    assert r.available is False and r.readings == ()
+    assert r.note
+
+
+# -- pedir de mas, en UNA sola llamada -----------------------------------------------
+
+
+def _lote(*cuerpos: str) -> str:
+    return NL.join(f"{i}. **libro-{i}** PDF p.{i}{NL}   {c}"
+                   for i, c in enumerate(cuerpos, start=1))
+
+
+def test_se_pide_de_mas_para_que_el_descarte_no_cueste_un_pasaje_bueno():
+    """El punto entero de la holgura: con 3 pedidos y 3 de mobiliario en el medio, el
+    cliente igual recibe 3 pasajes buenos en vez de quedarse sin ninguno.
+
+    El fake CORTA en `k` (ver `_primeras`), asi que este test mide lo que dice medir: con
+    ``HOLGURA_PEDIDO = 0`` el servidor devuelve solo las tres primeras entradas -- indice,
+    prosa, barra lateral -- y el cliente se queda con UNA. Sin ese corte, el fake
+    devolveria las seis pase lo que pase y el test pasaria igual con holgura cero.
+    """
+    payload = _lote(INDICE_ONOMASTICO, PROSA, BARRA_LATERAL, TABLA_MPS,
+                    "FIGURE 10.18", TABLA_ORDENES)
+    r, vistos = _leer(payload, k=3)
+
+    assert vistos[0]["k"] == 6          # 3 pedidos + 3 de holgura, en la unica llamada
+    assert r.available is True
+    assert len(r.readings) == 3
+    assert [x.page_label for x in r.readings] == ["PDF p.2", "PDF p.4", "PDF p.6"]
+
+
+def test_la_holgura_viaja_en_la_misma_unica_llamada():
+    """La holgura no puede convertirse en un costo escondido. Cada consulta al indice
+    levanta y baja el servidor entero (16,8 s en frio, ~1,6 GB de RSS): una segunda
+    llamada para reponer lo descartado costaria mas que todo lo que esto ahorra."""
+    srv = _Servidor(_lote(PROSA, TABLA_MPS, TABLA_ORDENES))
+    with srv as call:
+        read_with_caller(call, ["safety stock"], k=3)
+
+    assert len(srv.vistos) == 1
+    assert srv.vistos[0]["k"] == 6  # literal: escrito contra la constante seria tautologia
+
+
+def test_el_tope_se_respeta_aunque_el_servidor_mande_la_holgura_entera():
+    """Lo que se pide de mas es para DESCARTAR, no para publicar: si vuelven seis buenos
+    con k=3, salen tres."""
+    payload = _lote(*([PROSA] * 6))
+    r, _ = _leer(payload, k=3)
+    assert len(r.readings) == 3
+    assert r.note.startswith("3 pasaje")
+
+
+def test_menos_de_k_no_es_un_error():
+    """El servidor puede devolver menos de lo pedido (un `sources` acotado, un corpus
+    chico). Dos pasajes son dos pasajes, no un fallo."""
+    r, _ = _leer(_lote(PROSA, TABLA_MPS), k=3)
+    assert r.available is True and len(r.readings) == 2
+
+
+def test_la_holgura_es_la_que_se_escribio():
+    """Va literal: escrito contra la constante el assert es una tautologia. El numero es
+    el tamanio de UN pedido del orchestrator (`_LECTURAS_POR_DECK` = 3), que es lo que la
+    corrida real perdio entero."""
+    assert lectura.HOLGURA_PEDIDO == 3

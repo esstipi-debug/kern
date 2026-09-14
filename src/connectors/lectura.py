@@ -24,6 +24,17 @@ y sus fallos como ``"error: <mensaje interno>"``. Traducir esos strings a estado
 mitad del trabajo: un adaptador ingenuo le embarcaria al cliente ``"error: storage ...
 esta corrupto"`` como si fuera un pasaje de libro.
 
+EL PISO DE CALIDAD ES UN CINTURON, NO UNA DUPLICACION. Una corrida real contra el indice
+devolvio 3 pasajes y los 3 eran MOBILIARIO: la barra lateral de un blog, un extracto con
+el pie de imprenta del maquetador adentro, y un indice onomastico del final de un libro.
+El repo del indice ya limpia lo suyo; esto lo vuelve a hacer de este lado porque lo que
+Kern renderiza llega al cliente con el nombre de un libro al lado, y esa ultima milla no
+puede depender de que otro proceso, en otro repo y en otra maquina, este limpio hoy. Dos
+piezas: :func:`_sanear` SACA el mobiliario que viene incrustado en texto bueno (el pie de
+imprenta, :data:`_PIE_DE_IMPRENTA_RE`), y :func:`es_inutilizable_como_cita` DESCARTA el
+pasaje cuyo contenido ES mobiliario. Que descartar no cueste un pasaje bueno es lo que
+paga :data:`HOLGURA_PEDIDO`: se pide de mas en la misma unica llamada.
+
 DISPONIBLE ES LA EXCEPCION, NO LA REGLA. El indice pide ~1,6 GB de RSS y la VM de
 produccion tiene 512 MB (``fly.toml``, ``[[vm]] memory = "512mb"``), asi que en prod
 esto nunca esta disponible -- y eso NO es un error: se contesta ``available=False`` con
@@ -158,6 +169,238 @@ _MAX_STDERR_CHARS = 300
 #: de una frase es peor que no tener marca, porque parece parte del texto del libro.
 _CENTINELA_RE = re.compile("\u27e6p\\.\\d+\u27e7")
 
+#: Pie de imprenta del maquetador, tal como lo imprime InDesign al pie de cada pagina:
+#: ``<archivo>.indd   <pagina> <dd/mm/aa>   <h:mm> AM|PM``, p. ej.
+#: ``jac66107_ch22_590-621.indd 596 12/16/16 02:08 PM``. Se SACA del extracto, igual que
+#: los centinelas de pagina, en vez de usarse como veredicto sobre el pasaje.
+#:
+#: POR QUE SE SACA Y NO DESCARTA, MEDIDO. La primera version de este piso lo trataba como
+#: motivo de descarte. Contra el indice vivo (2026-09-12, dos consultas distintas sobre
+#: ``jacobs-chase-operations-supply-chain-management``), 10 de 11 pasajes de ese libro
+#: traen el pie completo: esta impreso en casi todas sus paginas, asi que descartar por
+#: el pie borraria un manual entero del corpus -- incluida la solucion de programacion de
+#: centros de trabajo de la p.625, que es justamente uno de los pasajes que hay que
+#: conservar. El pie no dice NADA sobre si el pasaje sirve; solo ensucia el extracto.
+#:
+#: LAS CUATRO PARTES VAN JUNTAS a proposito: sobre el corpus entero, exigirlas todas da
+#: cero falsos positivos, mientras que un ``.indd`` suelto o una fecha suelta pueden ser
+#: texto del libro. Y se saca ANTES de :func:`_cortar`, o el pie se comeria presupuesto
+#: del tope de copyright y el cliente leeria menos libro por la misma cantidad de letras.
+_PIE_DE_IMPRENTA_RE = re.compile(
+    r"\S+\.indd\s+\d{1,5}\s+\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}\s*[AaPp]\.?[Mm]\.?"
+)
+
+#: Un numero de pagina de un indice: entero corto, o rango ("113-115"), y NUNCA un anio.
+#:
+#: EL ANIO QUEDA AFUERA POR MEDICION, no por prolijidad: "(Coyle, 1977)" tiene
+#: exactamente la forma "termino, pagina". Medido: el parrafo de
+#: ``operations-supply-chain-management-arxiv`` PDF p.89, que cita tres veces autor-anio
+#: entre parentesis, puntua 3 marcas sin la exclusion y 0 con ella -- o sea que sin esto
+#: un parrafo academico con cuatro citas entre parentesis llega al umbral solo. El costo
+#: es la pagina 1500-2099 de un libro, que en este corpus no existe: el indice mas alto
+#: que se vio apunta a la 903.
+_PAGINA_DE_INDICE = r"(?!(?:1[5-9]|20)\d{2}(?!\d))\d{1,4}(?:\s*-\s*\d{1,4})?"
+
+#: LA COMA DE UN INDICE LLEVA ESPACIO DETRAS, y esa exigencia no es cosmetica: es lo
+#: unico que separa una pagina de indice de un SEPARADOR DE MILES. Sin ella, "$25,240,000
+#: Total sales 24,324,000 Total credit sales 18,785,000" es una lista de paginas
+#: perfecta ("25, 240, 000"), y eso NO es hipotetico: es
+#: ``jacobs-chase-operations-supply-chain-management`` PDF p.50 -- el enunciado de un
+#: ejercicio de finanzas, contenido real del libro --, que puntuaba 6 marcas y se
+#: descartaba entero. Medido sobre 521 pasajes distintos del indice vivo (2026-09-12, 74
+#: consultas): exigir el espacio cambia el veredicto de ESE pasaje y de ningun otro, y
+#: deja las 16 paginas de indice reales con exactamente el mismo puntaje que antes.
+_COMA_DE_INDICE = r"\s*,\s+"
+
+#: MARCA 1 de indice: una ENTRADA, o sea un termino y su pagina ("Abbott, 510",
+#: "Vendor-managed inventory (VMI), 21"). El caracter de antes de la coma tiene que ser
+#: una letra o un parentesis de cierre, porque en "Period 1, 2, 3, 4" y en
+#: "95, 105, 70, 10" lo que viene antes de la coma es un NUMERO.
+#:
+#: ESTA MARCA, SOLA, NO DISTINGUE UN INDICE DE UNA ENUMERACION EN PROSA, y conviene
+#: decirlo aca en vez de descubrirlo con un pasaje perdido: "ocean, 35 days; air, 5 days;
+#: rail, 12 days; truck, 3 days" tiene la misma forma exacta que "Abbott, 510 Accenture,
+#: 22". La diferencia no es local -- no esta en ningun caracter alrededor de la coma --,
+#: asi que quien decide no es esta marca sino :func:`_marcas_de_indice`, que la cuenta
+#: por clausula y contra un umbral con hueco medido a los dos lados.
+_ENTRADA_DE_INDICE_RE = re.compile(rf"[A-Za-z)]{_COMA_DE_INDICE}{_PAGINA_DE_INDICE}")
+
+#: MARCA 2 de indice: la LISTA de paginas de un mismo termino, tres o mas separadas por
+#: coma ("5, 6, 23, 24, 113-115, 159"). Hace falta ademas de la marca 1 porque hay
+#: indices que ponen muchas paginas por termino y pocos terminos por pasaje (Liu PDF
+#: p.383): ahi las entradas son pocas y lo que abunda son las listas.
+_LISTA_DE_PAGINAS_RE = re.compile(
+    rf"(?<!\d){_PAGINA_DE_INDICE}(?:{_COMA_DE_INDICE}{_PAGINA_DE_INDICE}){{2,}}"
+)
+
+#: Donde TERMINA una clausula en prosa y no puede seguir una entrada de indice.
+#:
+#: POR QUE EL PUNTO Y COMA Y NO EL PUNTO. Un indice SI tiene puntos ("Disney World. See
+#: Walt Disney Parks and Resorts", "A. T. Kearney, 673"), asi que cortar por punto
+#: partiria indices reales al medio. Punto y coma no tiene ninguno: medido sobre las 16
+#: paginas de indice que hay en los 521 pasajes, CERO traen uno, mientras que 25 de los
+#: 521 pasajes del corpus si -- o sea que la condicion no es vacua, simplemente no se
+#: cumple nunca dentro de un indice. Una enumeracion en prosa, en cambio, es justo donde
+#: vive: "material, 12 dollars; labor, 8 dollars; overhead, 4 dollars; freight, 2
+#: dollars" son cuatro marcas de indice repartidas en cuatro clausulas de una sola frase.
+_SEPARADOR_DE_CLAUSULA_RE = re.compile(r";")
+
+#: Cuantas marcas convierten un extracto en el indice del final de un libro.
+#:
+#: POR QUE SE CUENTAN MARCAS Y NO SE BUSCA UNA FIRMA. La PRIMERA version de este piso
+#: buscaba UNA firma -- un termino seguido de cuatro o mas paginas con coma -- y estaba
+#: calibrada contra un solo pasaje. Medido contra el indice vivo, esa firma fallaba por
+#: los dos lados: no reconocia el estilo DOMINANTE del corpus ("termino, pagina termino,
+#: pagina", una pagina por termino, que es como indexan Heizer, Chopra, Ivanov, Vollmann,
+#: Fleisher y Jacobs), y en cambio marcaba contenido real, porque su "termino" admitia
+#: numeros adentro y entonces "Period 1, 2, 3, 4" era un termino con su lista de paginas.
+#: Lo que de verdad distingue a un indice no es una firma sino la REPETICION: una entrada
+#: suelta o una lista suelta aparecen en prosa normal, veinte no.
+#:
+#: LA OBVIA SIGUE REFUTADA. Densidad de numeros sueltos por palabra NO sirve: los tres
+#: extractos con mas numeros por palabra del corpus son contenido valioso (el MPS de
+#: capacidad de Vollmann, la solucion de centros de trabajo de Jacobs & Chase y una serie
+#: de ordenes de cliente) y un umbral por densidad los tiraria a los tres. Lo que
+#: discrimina es la FORMA de la coma, no cuantos numeros hay.
+#:
+#: LA MARCA SOLA NO ALCANZA, Y ESTE ES EL ERROR QUE COSTO LA RONDA 2. Contar marcas sin
+#: mirar nada mas TIRA PROSA DE LIBRO: cuatro pares "<palabra>, <numero>" en cualquier
+#: parte del extracto llegaban al umbral y el pasaje se descartaba ENTERO, en silencio.
+#: Corrido contra el codigo de la ronda 1, se iban estos seis, todos contenido legitimo:
+#:
+#:   * "ocean, 35 days; air, 5 days; rail, 12 days; truck, 3 days" dentro de un parrafo
+#:     de 312 caracteres sobre seleccion de modo de transporte -- los otros 250
+#:     caracteres de prosa buena no lo rescataban, porque la cuenta era absoluta;
+#:   * "material, 12 dollars; labor, 8 dollars; overhead, 4 dollars; freight, 2 dollars";
+#:   * "8 pallets, 2 cases, 3 totes, 5 drums, 7 bags of raw material";
+#:   * "3 shifts, 12 lines, 48 workstations, 96 operators, 200 changeovers per week";
+#:   * "8 CUMPLE, 2 PARCIAL, 3 NO_CUMPLE, 2 SIN_DATO, 5 FUERA_DE_ALCANCE";
+#:   * "X12 856 (ASN), 214 (estado), 990 (tender), 850 (PO), 810 (factura)".
+#:
+#: Y NO ES UN PROBLEMA DE REGEX: "Abbott, 510 Accenture, 22" y "8 pallets, 2 cases" son
+#: la MISMA cadena de simbolos. Lo que sigue a la coma es un numero en los dos casos, y
+#: lo que sigue al numero es una palabra en los dos casos. No hay ningun caracter
+#: alrededor de la coma que los separe, asi que ninguna marca mas afilada arregla esto:
+#: la unica evidencia disponible es GLOBAL -- cuantas hay, y si conviven con prosa.
+#: (Se midieron dos candidatas globales mas y las dos se descartaron: el orden alfabetico
+#: de los terminos, que es la propiedad que DEFINE un indice, no separa -- los indices
+#: reales van de 0,50 a 0,89 de pares ordenados y la prosa llega a 0,67, porque un indice
+#: con subentradas reinicia el abecedario y una enumeracion corta se ordena de casualidad
+#: --, y la dispersion de las marcas a lo largo del extracto tampoco, por lo mismo.)
+#:
+#: LAS DOS CONDICIONES QUE SI SE AGREGARON, cada una medida aparte: el espacio obligatorio
+#: despues de la coma (:data:`_COMA_DE_INDICE`, que separa una pagina de un separador de
+#: miles) y el conteo POR CLAUSULA (:data:`_SEPARADOR_DE_CLAUSULA_RE`, que es lo que
+#: desarma las dos primeras de la lista de arriba: un indice no tiene punto y coma, una
+#: enumeracion en prosa casi siempre si).
+#:
+#: EL CINCO ESTA MEDIDO Y CAE EN UN HUECO VACIO DE DOS ENTEROS. 521 pasajes distintos del
+#: indice vivo (74 consultas, 2026-09-12; 34 buscando back-matter y 40 de contenido
+#: normal), con las dos condiciones de arriba ya puestas:
+#:
+#:   * 16 pasajes puntuan de 5 a 12, y los 16 son paginas de indice de verdad, repartidas
+#:     en cinco libros: Fleisher x7, Vollmann x4, Jacobs x2, Heizer x2, Ivanov x1;
+#:   * los otros 505 puntuan 0, 1 o 2;
+#:   * NADIE puntua 3 ni 4.
+#:
+#: El 3 lo tiene un solo pasaje conocido, y es contenido: la tabla de evaluacion de
+#: consultoria de Jacobs & Chase PDF p.718-719 ("Customer focus 1, 2, 20 Safety,
+#: cleanliness, and order 3, 4, 5, 20"). El 4 lo tienen las seis prosas de arriba. O sea
+#: que el umbral viejo estaba apoyado EXACTAMENTE sobre el puntaje de la prosa que tiraba;
+#: el nuevo se apoya en aire por los dos lados, a un entero de la tabla y a un entero del
+#: indice mas pobre que se midio.
+#:
+#: LO QUE ESTE PISO SIGUE SIN VER, dicho antes de que sorprenda:
+#:
+#:   * el indice que NO pone coma entre el termino y su primera pagina -- "reorder points
+#:     (ROP) 104, 106" (Christopher PDF p.288-289), "Rolex 28-9, 40, 68" (Nagle PDF
+#:     p.349) -- puntua 0 a 2 y pasa entero. Se deja pasar MEDIDO: la marca que lo
+#:     atraparia ("termino <pagina>, <pagina>", sin la coma) recupera 2 de las 8 paginas
+#:     que se escapan y al mismo tiempo empuja la tabla de Jacobs & Chase de 3 marcas a 6,
+#:     o sea DESCARTA contenido verificado. Perder un indice le cuesta al cliente un
+#:     pasaje; perder la tabla le cuesta el pasaje que SI queria;
+#:   * y, por el otro lado, una enumeracion en prosa de CINCO items o mas metida en una
+#:     sola clausula sigue cayendo. No esta arreglado, esta corrido: cinco items sin un
+#:     punto y coma en 320 caracteres es mas raro que cuatro, y ninguno de los 521 pasajes
+#:     medidos lo tiene, pero la forma existe y este piso no la distingue de un indice.
+#:
+#: HACIA DONDE FALLA: un descarte cuesta el pasaje ENTERO (libro y pagina incluidos, ver
+#: :func:`es_inutilizable_como_cita`), no solo el fragmento -- por eso el umbral se
+#: eligio con hueco y no pegado al maximo del contenido, y por eso existe
+#: :data:`HOLGURA_PEDIDO`, que repone lo descartado en la misma unica llamada.
+MIN_MARCAS_DE_INDICE = 5
+
+#: Donde ARRANCA la navegacion de un sitio web. El corpus no es solo PDF de libros: trae
+#: paginas raspadas (guias ISO, normas de industria), y un chunk que toca el cromo de la
+#: pagina trae la barra lateral entera. El hallazgo real fue exactamente eso: uno de los
+#: tres pasajes de una corrida era la barra lateral de un blog.
+#:
+#: SE BUSCA EN TODO EL EXTRACTO, no al principio: en el caso real
+#: (``sop-isotracker-iso-9001-document-review`` PDF p.2) el extracto ARRANCA con la cola
+#: de un parrafo de verdad ("advice on how often to review documents for ISO 9001.") y la
+#: navegacion empieza recien en el medio. Una regla que solo mire el comienzo no lo ve.
+#:
+#: QUE LO MEDIRIA: buscar cada marcador sobre los 6.929 extractos y mirar cuantos de los
+#: marcados son prosa de libro. Todos son frases de cromo de varias palabras; el unico
+#: con riesgo real en un corpus de calidad y cumplimiento es "privacy policy", y la
+#: consulta que mas directamente lo busca en prosa ("the organization shall maintain a
+#: privacy policy...") no devolvio ni un pasaje de libro que lo contenga.
+#:
+#: LOS DOS ULTIMOS SALEN DE UNA CORRIDA REAL, no de la lista original: con solo los seis
+#: primeros, ``read_passages(["iso 9001 document review", "document control", "quality
+#: manual"], k=3)`` contra el indice vivo seguia devolviendo dos pasajes que son el
+#: encabezado de una pagina web ("Skip to main content Skip to footer info@... Call: 0333
+#: ... Search About Us Services"). Un enlace de salto es una ayuda de accesibilidad del
+#: HTML: no existe en la prosa de ningun libro, asi que su riesgo de falso positivo es
+#: nulo y su cobertura es toda la cabecera de una pagina raspada, que es donde el cromo
+#: empieza de verdad.
+NAVEGACION_DE_SITIO = (
+    "recent posts",
+    "related posts",
+    "share this post",
+    "subscribe to our",
+    "privacy policy",
+    "cookie policy",
+    "skip to main content",
+    "skip to content",
+)
+
+#: Un token cuenta como palabra si trae al menos una letra. Un numero suelto, un simbolo
+#: o una raya de cuadricula no son palabras, y son justo lo que sobra en el mobiliario.
+_TIENE_LETRA_RE = re.compile(r"[A-Za-z]")
+
+#: Cuantas palabras necesita un extracto para poder ser una cita.
+#:
+#: DE DONDE SALE EL TRES. Lo que se publica es el extracto ENTRE COMILLAS con el libro y
+#: la pagina al lado, o sea una AFIRMACION atribuida. La afirmacion mas corta posible
+#: necesita sujeto, verbo y complemento: tres palabras. Con dos o menos lo que queda
+#: entre comillas no es una frase sino un rotulo, y los rotulos que de verdad sobreviven
+#: al saneo en este corpus puntuan todos uno o cero: "FIGURE 10.18", "480 PART 3",
+#: "Chapter 7 133", "206 21 2". El pie de imprenta, ya sacado, puntua dos.
+#:
+#: HACIA DONDE FALLA, A PROPOSITO: bajo. Tres palabras es un piso de forma, no de
+#: contenido -- no pretende juzgar si la frase dice algo, solo que sea una frase. Subirlo
+#: empezaria a comerse citas cortas legitimas ("Corto y entero." puntua tres).
+MIN_PALABRAS_CITABLES = 3
+
+#: Cuantos pasajes de mas se le piden al servidor para que descartar no cueste un slot.
+#:
+#: POR QUE EXISTE. Sin holgura, el piso de calidad convierte un pasaje de mobiliario en un
+#: pasaje MENOS: la corrida real que motivo todo esto pidio 3 y los 3 eran mobiliario, asi
+#: que el cliente se habria quedado con cero en vez de con tres.
+#:
+#: POR QUE ESTE NUMERO. Es el tamanio de UN pedido del orchestrator
+#: (``scm_agent/orchestrator.py``, ``_LECTURAS_POR_DECK`` = 3): la holgura repone un
+#: pedido entero, que es exactamente lo que esa corrida perdio.
+#:
+#: POR QUE NO MAS. Bajar en el ranking del vector no es gratis y esta medido en
+#: ``scm_agent/packages.py``: cuanto mas se estira una consulta sin tema, mas back-matter
+#: aparece. Duplicar ``k`` para "asegurarse" traeria justo la cola del ranking, que es
+#: donde vive el mobiliario. La holgura compra margen contra un par de piezas de
+#: mobiliario y NO intenta rescatar una consulta entera que apunto mal: ese caso tiene que
+#: volver corto, y corto es una respuesta honesta.
+HOLGURA_PEDIDO = 3
+
 #: Entrada del markdown: ``N. **slug** ETIQUETA``.
 _ENTRADA_RE = re.compile(r"^\s*\d+\.\s+\*\*(?P<source>.*?)\*\*(?P<label>.*)$")
 
@@ -289,13 +532,20 @@ class _RespuestaIlegible(RuntimeError):
 def _sanear(texto: str) -> str:
     """Texto imprimible en una consola cp1252, sin centinelas y en una sola linea.
 
-    Cuatro pasos, en este orden: sacar los centinelas; reemplazar lo que no se
-    descompone solo (comillas, rayas, griegas); normalizar (ligaduras fl/fi/ff y
-    acentos caen aca); y como ULTIMO recurso ``ascii``/``replace``, que degrada a "?"
-    en vez de romper. Al final se colapsa el espacio en blanco, lo que ademas junta un
-    extracto que venia partido en varias lineas.
+    Cinco pasos, en este orden: sacar los centinelas; sacar el pie de imprenta del
+    maquetador (:data:`_PIE_DE_IMPRENTA_RE`, mobiliario del libro que el otro repo ya
+    limpia y este vuelve a limpiar por su cuenta); reemplazar lo que no se descompone
+    solo (comillas, rayas, griegas); normalizar (ligaduras fl/fi/ff y acentos caen aca);
+    y como ULTIMO recurso ``ascii``/``replace``, que degrada a "?" en vez de romper. Al
+    final se colapsa el espacio en blanco, lo que ademas junta un extracto que venia
+    partido en varias lineas.
+
+    El mobiliario se saca ACA, antes de :func:`_cortar`, para que no se coma presupuesto
+    del tope de copyright: un pie de imprenta son ~45 de los 320 caracteres que el
+    cliente tiene derecho a leer del libro.
     """
     t = _CENTINELA_RE.sub(" ", texto)
+    t = _PIE_DE_IMPRENTA_RE.sub(" ", t)
     for malo, bueno in _REEMPLAZOS.items():
         if malo in t:
             t = t.replace(malo, bueno)
@@ -336,6 +586,116 @@ def _es_ilegible(texto: str) -> bool:
         return False
     relleno = sum(1 for c in sin_blanco if c in _RELLENO_FABRICADO)
     return relleno / len(sin_blanco) > MAX_RELLENO_EXCERPT
+
+
+def _palabras_citables(texto: str) -> int:
+    """Cuantos tokens del extracto son palabras (traen al menos una letra)."""
+    return sum(1 for token in texto.split() if _TIENE_LETRA_RE.search(token))
+
+
+def _marcas_en_una_clausula(texto: str) -> int:
+    """Las marcas de indice de UN tramo, sin cruzar un punto y coma.
+
+    Las dos marcas se cuentan JUNTAS y por separado del texto (no en una sola pasada
+    alternada) porque son evidencia del mismo hecho vista de dos formas: los indices de
+    una pagina por termino puntuan casi todo en :data:`_ENTRADA_DE_INDICE_RE`, y los de
+    muchas paginas por termino casi todo en :data:`_LISTA_DE_PAGINAS_RE`. Sumarlas es lo
+    que hace que un solo umbral (:data:`MIN_MARCAS_DE_INDICE`) sirva para los dos
+    estilos; separarlas obligaria a dos umbrales, cada uno calibrado con la mitad de los
+    datos -- que es exactamente como se rompio la primera version de este piso.
+    """
+    entradas = len(_ENTRADA_DE_INDICE_RE.findall(texto))
+    if not entradas:
+        # Las listas NO puntuan solas. Sin esta guarda, un enunciado de problema resuelto
+        # -- "The demand series is 200, 220, 180, 250. The forecast is 210, 215, 220. ..." --
+        # llega al umbral acumulando series y se pierde el pasaje entero, en silencio; es
+        # el genero que mas abunda en estos manuales. Y contradice la tesis de arriba: lo
+        # que discrimina es la FORMA de la coma (un termino indexado y su pagina), no
+        # cuantos numeros con coma hay, que es la metrica que ya se refuto una vez.
+        # Medido: los cinco indices reales del corpus traen entradas (Liu 3, Chopra 8,
+        # Heizer 8, Ivanov 9, Heizer-mas-pobre 5), asi que ninguno se escapa por esto.
+        return 0
+    return entradas + len(_LISTA_DE_PAGINAS_RE.findall(texto))
+
+
+def _marcas_de_indice(texto: str) -> int:
+    """El puntaje de indice del extracto: las marcas de la clausula que mas junta.
+
+    POR QUE EL MAXIMO POR CLAUSULA Y NO EL TOTAL. Un indice es un bloque continuo de
+    entradas: no tiene punto y coma adentro (0 de las 16 paginas de indice medidas), asi
+    que para el todo el extracto es UNA clausula y el maximo es el total de siempre. Una
+    enumeracion en prosa es lo contrario: las marcas estan repartidas una por clausula
+    ("material, 12 dollars; labor, 8 dollars; overhead, 4 dollars"), y ahi el maximo es 1
+    donde el total era 4. Sumar de un lado y del otro de un punto y coma es sumar
+    evidencia de dos frases distintas como si fuera de una sola lista.
+    """
+    return max(
+        (_marcas_en_una_clausula(tramo) for tramo in _SEPARADOR_DE_CLAUSULA_RE.split(texto)),
+        default=0,
+    )
+
+
+def es_inutilizable_como_cita(excerpt: str) -> bool:
+    """True si el extracto es MOBILIARIO y no contenido: no se puede citar, ni con pagina.
+
+    EL PISO DE CALIDAD, Y EN QUE SE DIFERENCIA DEL DE LEGIBILIDAD. El otro piso
+    (:func:`_es_ilegible`, :data:`MAX_RELLENO_EXCERPT`) contesta "este fragmento, se
+    puede LEER?", y cuando la respuesta es no degrada: la pagina SI tiene texto de verdad
+    -- lo que fallo es el glyph-mapping del PDF --, asi que el libro y la pagina quedan en
+    pie y el cliente todavia tiene una referencia que puede abrir. Este contesta otra
+    cosa: "este pasaje, ES contenido del libro, o es el mobiliario alrededor del
+    contenido?". Cuando es mobiliario no hay nada que salvar -- mandar "Liu, PDF p.383"
+    es mandar al cliente al indice alfabetico del final, y "isotracker, PDF p.2" a la
+    barra lateral de un blog --, asi que quien llama DESCARTA la entrada entera. Por eso
+    corre DESPUES del piso de legibilidad en :func:`parse_readings`: un fragmento que ya
+    quedo vacio por ilegible es una ausencia, no mobiliario, y no se puede descartar por
+    tener cero palabras algo que nunca ofrecio ninguna.
+
+    TRES RAZONES, cada una con su patron medido arriba:
+
+    1. :data:`MIN_MARCAS_DE_INDICE` sobre :func:`_marcas_de_indice` -- el indice del
+       final del libro, reconocido por REPETICION de sus dos formas (una entrada
+       "termino, pagina" y una lista "pagina, pagina, pagina") DENTRO DE UNA MISMA
+       CLAUSULA, y no por una firma unica ni por una cuenta suelta: las dos versiones
+       anteriores de este piso fallaron, la primera por buscar una firma que solo tenia
+       un libro y la segunda por contar marcas sueltas, que es como se descartaba
+       "ocean, 35 days; air, 5 days; rail, 12 days; truck, 3 days";
+    2. :data:`NAVEGACION_DE_SITIO` -- el cromo de una pagina web raspada;
+    3. :data:`MIN_PALABRAS_CITABLES` -- lo que queda despues de todo eso (incluido el pie
+       de imprenta, que :func:`_sanear` ya saco) no alcanza para ser una frase.
+
+    UN EXTRACTO VACIO NO ES INUTILIZABLE, ES AUSENTE -- misma regla que el otro piso. Un
+    extracto vacio no afirma nada y deja una referencia abrible; uno de dos palabras sale
+    ENTRE COMILLAS afirmando una cita que no dice nada.
+
+    EL ARGUMENTO DEL OTRO LADO, PARA QUE ESTE ESCRITO. Se podria conservar libro + pagina
+    con el extracto vacio, que es lo que hace el piso de legibilidad y que el render ya
+    soporta. A favor: un descarte es SILENCIOSO -- no deja nota ni rastro --, asi que
+    cuando el piso se equivoca (y se equivoco: ver la regresion de la ronda 1 en
+    :data:`MIN_MARCAS_DE_INDICE`) el cliente pierde un pasaje bueno entero y nadie se
+    entera. Conservar la procedencia acotaria ese dano a perder el fragmento.
+    Se descarta igual, y por una razon que el otro piso no tiene: alla el defecto esta en
+    el ARCHIVO (la pagina tiene texto de verdad, el PDF lo destruyo) y la referencia sigue
+    sirviendo; aca el defecto esta en la PAGINA MISMA, que es el mobiliario. "Liu, PDF
+    p.383" no es una referencia degradada, es una referencia EQUIVOCADA: manda al cliente
+    al indice alfabetico del final a buscar una teoria que ahi no esta. Publicar media
+    procedencia que apunta a ningun lado le cuesta al cliente mas que no publicar nada, y
+    ademas ocupa el slot igual, que es justo lo que este piso existe para evitar.
+
+    POR QUE ESTO VIVE DE ESTE LADO. El repo del indice ya limpia el mobiliario antes de
+    servirlo. Esto no es duplicacion sino defensa en profundidad: lo que Kern renderiza
+    llega al cliente con el nombre de un libro al lado, y esa ultima milla no puede
+    depender de que otro proceso, en otro repo y en otra maquina, este limpio hoy.
+    """
+    texto = (excerpt or "").strip()
+    if not texto:
+        return False
+    if _marcas_de_indice(texto) >= MIN_MARCAS_DE_INDICE:
+        return True
+    bajo = texto.lower()
+    if any(marcador in bajo for marcador in NAVEGACION_DE_SITIO):
+        return True
+    return _palabras_citables(texto) < MIN_PALABRAS_CITABLES
 
 
 def _es_linea_de_error(texto: str) -> bool:
@@ -389,6 +749,15 @@ def parse_readings(crudo: str) -> tuple[Reading, ...]:
             # solos. Lo que se tira es el fragmento, que es el extra -- y publicarlo
             # seria ponerle comillas a algo que el cliente no puede verificar.
             extracto = ""
+        if es_inutilizable_como_cita(extracto):
+            # MOBILIARIO, no contenido: no ocupa un slot ni como libro + pagina. La
+            # diferencia con el piso de arriba es cual es el defecto -- alla la pagina
+            # tiene texto de verdad y el PDF lo destruyo (la referencia sigue sirviendo),
+            # aca la pagina ES el mobiliario (el indice del final, la barra lateral del
+            # sitio) y mandarla como referencia es mandar al cliente a una pagina que no
+            # habla del tema. Que descartar no cueste un pasaje bueno es lo que resuelve
+            # :data:`HOLGURA_PEDIDO` en `read_with_caller`, pidiendo de mas.
+            continue
         lecturas.append(Reading(source=slug, page_label=etiqueta, excerpt=extracto))
     return tuple(lecturas)
 
@@ -481,16 +850,24 @@ def _texto_del_resultado(result: Any) -> str:
     raise _RespuestaIlegible(f"la respuesta no trae texto: {type(result).__name__}")
 
 
-def lookup_from_text(crudo: str) -> ReadingLookup:
+def lookup_from_text(crudo: str, *, tope: int | None = None) -> ReadingLookup:
     """Traduce el string del servidor a un estado. Los dos strings que NO son pasajes
     (``"(sin pasajes)"`` y ``"error: ..."``) salen como no disponible con ese mismo
-    texto de motivo: jamas se convierten en un `Reading`."""
+    texto de motivo: jamas se convierten en un `Reading`.
+
+    ``tope`` es cuantos pasajes se queda quien llamo. Existe porque al servidor se le
+    piden ``k + HOLGURA_PEDIDO`` (ver :func:`read_with_caller`) y lo que sobrevive al
+    piso de calidad puede ser mas que ``k``; recortar ACA y no afuera mantiene UNA sola
+    verdad sobre cuantos pasajes hay, porque es el mismo lugar que escribe la nota.
+    """
     texto = (crudo or "").strip()
     if not texto:
         return _no_disponible("el servidor de lectura contesto vacio")
     if texto == SIN_PASAJES or _es_linea_de_error(texto):
         return _no_disponible(_sanear(texto))
     lecturas = parse_readings(crudo)
+    if tope is not None:
+        lecturas = lecturas[:max(tope, 0)]
     if not lecturas:
         return _no_disponible("el servidor contesto algo sin forma de pasaje; no se cita lo que no se pudo leer")
     return ReadingLookup(
@@ -512,18 +889,34 @@ def read_with_caller(
     Separado de :func:`read_passages` para que el transporte sea reemplazable (un test
     con un servidor en memoria, o un llamador que ya tiene una sesion abierta) sin
     tocar la traduccion del cable, que es donde estan las trampas.
+
+    SE PIDE DE MAS, EN UNA SOLA LLAMADA. Al servidor se le piden ``k +
+    HOLGURA_PEDIDO`` pasajes y se devuelven los primeros ``k`` que pasan el piso de
+    calidad (:func:`es_inutilizable_como_cita`). Sin esa holgura, cada pieza de
+    mobiliario que el piso descarta seria un pasaje MENOS para el cliente -- la corrida
+    real que motivo el piso pidio 3 y los 3 eran mobiliario.
+
+    La holgura viaja en la MISMA unica llamada, no en una segunda: cada consulta levanta
+    y baja el servidor de lectura entero (16,8 s con el indice frio, ~1,6 GB de RSS), asi
+    que reponer lo descartado con otra llamada costaria mas que todo lo que el piso
+    ahorra. Pedir mas filas de un ranking que el servidor ya calculo es gratis.
+
+    EL RESULTADO PUEDE TRAER MENOS DE ``k``, Y ESO NO ES UN ERROR: el servidor devuelve
+    lo que tiene (un ``sources`` acotado, un corpus chico, una consulta rara), y el piso
+    puede descartar mas que la holgura. Dos pasajes son dos pasajes; la alternativa
+    -- rellenar con mobiliario para llegar a ``k`` -- es exactamente el bug que se cierra.
     """
     consulta = " ".join(p for p in (str(x).strip() for x in keywords) if p)
     if not consulta:
         return _no_disponible("no se pidio ninguna palabra clave: no se consulto el indice de lectura")
-    argumentos: dict[str, Any] = {"query": consulta, "k": k}
+    argumentos: dict[str, Any] = {"query": consulta, "k": k + HOLGURA_PEDIDO}
     if sources is not None:
         argumentos["sources"] = sources
     try:
         crudo = _texto_del_resultado(call_tool(TOOL_SEARCH, argumentos))
     except Exception as exc:  # ningun fallo de lectura tira el entregable
         return _no_disponible(f"no se pudo leer el indice: {_una_linea(exc)}")
-    return lookup_from_text(crudo)
+    return lookup_from_text(crudo, tope=k)
 
 
 @contextmanager
