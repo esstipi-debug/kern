@@ -37,6 +37,11 @@ WRITE_METHODS = ("commit", "apply_restock", "stage_restock", "apply_draft_purcha
 #: se llaman ``search_products`` y ``discover_category``.
 NOT_CONNECTORS = {
     "__init__": "el paquete: define los contratos, no habla con ningun sistema",
+    "milestones": (
+        "el Protocol que implementan los WMS/TMS (`MilestoneSource`) y sus DTOs, no un "
+        "backend: nombra los seis hitos entre crear el pedido y que llegue, y no hace "
+        "una sola escritura. Mismo caso que `arrivals`"
+    ),
     "arrivals": "el Protocol que implementan los transportistas, no un backend",
     "emulator": "servidor HTTP de juguete para probar el cliente REST, no un sistema real",
     "lectura": (
