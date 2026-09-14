@@ -243,9 +243,13 @@ def kern_grid_report(tmp_path_factory):
         calls["generate_world"] += 1
         return original_generate(*args, **kwargs)
 
-    def spying_export_history(world, outcomes, path, *, level, seed):
+    def spying_export_history(world, outcomes, path, *, level, seed, **kwargs):
+        # `**kwargs` reenvia lo que la lente acepte hoy y manana (p.ej. `omit`,
+        # que descompone un nivel de suciedad). Este espia observa `world` y
+        # `level`; pinear la firma entera lo convertiria en un test de firmas
+        # disfrazado de test de comportamiento.
         calls["export_history"].append({"world": world, "level": level})
-        return original_export(world, outcomes, path, level=level, seed=seed)
+        return original_export(world, outcomes, path, level=level, seed=seed, **kwargs)
 
     with patch.object(cli_mod, "generate_world", counting_generate_world), \
          patch.object(runners_mod, "export_history", spying_export_history):
@@ -427,8 +431,8 @@ def test_capture_is_null_when_kern_reports_ok_on_every_replan_but_orders_nothing
 
     import examples.run_world_sim as cli_mod
 
-    def zero_reorder_kern_policy(w, outs, *, level, seed, out_dir, forced):
-        del outs, level, seed, out_dir, forced
+    def zero_reorder_kern_policy(w, outs, *, level, seed, out_dir, forced, **kwargs):
+        del outs, level, seed, out_dir, forced, kwargs
         return Policy(
             reorder_point={s.sku: 0.0 for s in w.skus},
             order_up_to={s.sku: 0.0 for s in w.skus},
@@ -596,8 +600,8 @@ def test_weeks_announced_reflects_a_genuine_alternating_pattern_not_a_per_call_c
 
     replan_every = 4
 
-    def fake_kern_policy(w, outs, *, level, seed, out_dir, forced):
-        del outs, level, seed, forced
+    def fake_kern_policy(w, outs, *, level, seed, out_dir, forced, **kwargs):
+        del outs, level, seed, forced, kwargs
         week = int(Path(out_dir).name.lstrip("w"))
         ordinal = week // replan_every
         announced = ordinal % 2 == 1  # alterna: impar -> True, par -> False
