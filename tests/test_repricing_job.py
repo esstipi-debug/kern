@@ -20,8 +20,34 @@ from pathlib import Path
 import pytest
 
 from jobs import repricing_job
+from jobs.repricing import (
+    ChannelRepricingResult,
+    LandedCostsRequired,
+    RepricingGuardrailBlocked,
+    RepricingVerificationFailed,
+    apply_repricing,
+    run_channel_repricing,
+    stage_repricing,
+    verify_applied,
+)
+from nosilo_core import writeback
 from nosilo_core.guided import HANDOFF
 from scm_agent.tools import build_default_registry
+from src.connectors.meli_prices import InMemoryMeli, MeliPriceStore
+from src.connectors.odoo import demo_odoo
+from src.connectors.odoo_prices import OdooPriceStore
+from src.connectors.shopify_prices import InMemoryShopify, ShopifyPriceStore
+
+#: Motivo de repricing valido, reusado por los tests del gate central. Vive aca
+#: porque main reescribio este archivo y se llevo el helper, pero los tests del
+#: piso de costo que este PR agrega lo siguen necesitando.
+REASON = "Repricing to close a margin gap vs landed cost (elasticity-driven)."
+
+
+def _price_store() -> writeback.InMemoryStore:
+    return writeback.InMemoryStore({"SKU-1": {"price": 20.0}, "SKU-2": {"price": 50.0}})
+
+
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -250,3 +276,275 @@ def test_the_real_citation_path_ships_four_citations():
     joined = " ".join(kept).lower()
     assert "markdown pricing" in joined
     assert "elasticity" in joined
+
+
+# ---- stage_repricing: central gate (PR-17) --------------------------------------
+
+
+def test_stage_repricing_blocks_a_changeset_with_no_reason():
+    store = _price_store()
+    with pytest.raises(RepricingGuardrailBlocked):
+        stage_repricing(
+            store, "shopify:demo", {"SKU-1": 18.0}, idempotency_key="r1", reason="",
+            landed_costs={},
+        )
+    # never reached staging: the store is untouched and nothing was ever applied/claimed
+    assert store.read("SKU-1")["price"] == 20.0
+    assert store.applied_keys() == set()
+
+
+def test_stage_repricing_approves_with_a_real_reason_and_real_citations():
+    store = _price_store()
+    cs = stage_repricing(
+        store, "shopify:demo", {"SKU-1": 18.0}, idempotency_key="r1", reason=REASON,
+        landed_costs={},  # this test is about gate/approval semantics, not costs
+    )
+    assert cs.reason == REASON
+    assert cs.risk_tier == writeback.TIER_REVERSIBLE
+    assert cs.changes[0].before == 20.0
+    assert cs.changes[0].after == 18.0
+
+
+def test_stage_repricing_blocks_a_move_beyond_the_gate_sanity_band():
+    """A 75% cut (20.0 -> 5.0) trips the central gate's default max-move
+    backstop -- no explicit opt-in needed at the repricing layer."""
+    store = _price_store()
+    with pytest.raises(RepricingGuardrailBlocked):
+        stage_repricing(
+            store, "shopify:demo", {"SKU-1": 5.0}, idempotency_key="r1", reason=REASON,
+            landed_costs={},
+        )
+    assert store.read("SKU-1")["price"] == 20.0
+    assert store.applied_keys() == set()
+
+
+def test_stage_repricing_blocks_below_cost_when_landed_costs_supplied():
+    store = _price_store()
+    with pytest.raises(RepricingGuardrailBlocked):
+        stage_repricing(
+            store, "shopify:demo", {"SKU-1": 18.0}, idempotency_key="r1", reason=REASON,
+            landed_costs={"SKU-1": 19.0},
+        )
+    assert store.read("SKU-1")["price"] == 20.0
+
+
+def test_stage_repricing_passes_when_price_covers_landed_cost():
+    store = _price_store()
+    cs = stage_repricing(
+        store, "shopify:demo", {"SKU-1": 18.0}, idempotency_key="r1", reason=REASON,
+        landed_costs={"SKU-1": 15.0},
+    )
+    assert cs.changes[0].after == 18.0
+
+
+# ---- apply_repricing: approval required, never auto-applies ---------------------
+
+
+def test_apply_repricing_without_approval_is_refused():
+    store = _price_store()
+    cs = stage_repricing(
+        store, "shopify:demo", {"SKU-1": 18.0}, idempotency_key="r1", reason=REASON,
+        landed_costs={},  # this test is about gate/approval semantics, not costs
+    )
+    with pytest.raises(writeback.WritebackRefused):
+        apply_repricing(store, cs, None, now=0.0)
+    assert store.read("SKU-1")["price"] == 20.0
+
+
+def test_apply_repricing_with_valid_approval_writes():
+    store = _price_store()
+    cs = stage_repricing(
+        store, "shopify:demo", {"SKU-1": 18.0}, idempotency_key="r1", reason=REASON,
+        landed_costs={},  # this test is about gate/approval semantics, not costs
+    )
+    approval = writeback.approve(cs, "operator", now=0.0)
+    result = apply_repricing(store, cs, approval, now=10.0)
+    assert result.applied is True
+    assert store.read("SKU-1")["price"] == 18.0
+
+
+def test_apply_repricing_never_auto_applies_an_expired_approval():
+    store = _price_store()
+    cs = stage_repricing(
+        store, "shopify:demo", {"SKU-1": 18.0}, idempotency_key="r1", reason=REASON,
+        landed_costs={},  # this test is about gate/approval semantics, not costs
+    )
+    approval = writeback.approve(cs, "operator", now=0.0, ttl_seconds=900.0)
+    with pytest.raises(writeback.WritebackRefused):
+        apply_repricing(store, cs, approval, now=1000.0)  # past the 900s TTL
+
+
+# ---- verify_applied: post-apply read-back ----------------------------------------
+
+
+def test_verify_applied_passes_when_live_matches_staged():
+    store = _price_store()
+    cs = stage_repricing(
+        store, "shopify:demo", {"SKU-1": 18.0}, idempotency_key="r1", reason=REASON,
+        landed_costs={},  # this test is about gate/approval semantics, not costs
+    )
+    approval = writeback.approve(cs, "operator", now=0.0)
+    apply_repricing(store, cs, approval, now=0.0)
+    verify_applied(store, cs, "shopify:demo")  # does not raise
+
+
+class _MismatchStore:
+    """Wraps a real store's commit but always reports a stale price for one
+    SKU on ``read()`` -- simulates a channel whose apply silently didn't
+    take (or an eventual-consistency race), to test ``verify_applied``'s
+    incident surfacing (plan section 7: "apply sin verificacion =
+    incidente")."""
+
+    def __init__(self, inner: writeback.InMemoryStore, *, lie_about: dict[str, float]) -> None:
+        self._inner = inner
+        self._lie_about = lie_about
+
+    def read(self, entity_id: str) -> dict:
+        live = dict(self._inner.read(entity_id))
+        if entity_id in self._lie_about and "price" in live:
+            live["price"] = self._lie_about[entity_id]
+        return live
+
+    def applied_keys(self) -> set[str]:
+        return self._inner.applied_keys()
+
+    def claim(self, idempotency_key: str, *, now: float | None = None) -> bool:
+        return self._inner.claim(idempotency_key, now=now)
+
+    def release(self, idempotency_key: str) -> None:
+        self._inner.release(idempotency_key)
+
+    def commit(self, changeset: writeback.Changeset, approved_by: str) -> writeback.AuditEntry:
+        return self._inner.commit(changeset, approved_by)
+
+    def rollback(self, idempotency_key: str) -> None:
+        self._inner.rollback(idempotency_key)
+
+
+def test_verify_applied_raises_an_incident_on_a_live_mismatch():
+    inner = _price_store()
+    store = _MismatchStore(inner, lie_about={"SKU-1": 19.99})  # apply "took" 18.0 but channel reports 19.99
+    cs = stage_repricing(
+        store, "shopify:demo", {"SKU-1": 18.0}, idempotency_key="r1", reason=REASON,
+        landed_costs={},  # this test is about gate/approval semantics, not costs
+    )
+    approval = writeback.approve(cs, "operator", now=0.0)
+    apply_repricing(store, cs, approval, now=0.0)
+
+    with pytest.raises(RepricingVerificationFailed) as excinfo:
+        verify_applied(store, cs, "shopify:demo")
+    assert excinfo.value.channel == "shopify:demo"
+    assert excinfo.value.mismatches == (("SKU-1", 18.0, 19.99),)
+
+
+# ---- full cycle against each of the three InMemory connector stand-ins ----------
+
+
+def test_full_cycle_against_inmemory_shopify():
+    rpc = InMemoryShopify({"SKU-1": {"variant_id": "gid://shopify/ProductVariant/1", "price": 20.0}})
+    store = ShopifyPriceStore(rpc)
+    result = run_channel_repricing(
+        store, "shopify:demo-shop", {"SKU-1": 18.0},
+        idempotency_key="cycle-1", reason=REASON, approved_by="operator", now=0.0,
+        landed_costs={"SKU-1": 10.0},
+    )
+    assert isinstance(result, ChannelRepricingResult)
+    assert result.verified is True
+    assert result.apply_result.applied is True
+    assert rpc.find_variant_by_sku("SKU-1")["price"] == 18.0
+
+
+def test_full_cycle_against_inmemory_meli():
+    rpc = InMemoryMeli({"SKU-1": {"item_id": "MLA1", "price": 20.0}})
+    store = MeliPriceStore(rpc)
+    result = run_channel_repricing(
+        store, "meli:demo-seller", {"SKU-1": 17.5},
+        idempotency_key="cycle-1", reason=REASON, approved_by="operator", now=0.0,
+        landed_costs={"SKU-1": 10.0},
+    )
+    assert result.verified is True
+    assert rpc.find_item_by_sku("SKU-1")["price"] == 17.5
+
+
+def test_full_cycle_against_inmemory_odoo():
+    rpc = demo_odoo()
+    store = OdooPriceStore(rpc)
+    result = run_channel_repricing(
+        store, "odoo", {"SKU-1": 19.0},
+        idempotency_key="cycle-1", reason=REASON, approved_by="operator", now=0.0,
+        landed_costs={"SKU-1": 10.0},
+    )
+    assert result.verified is True
+    assert rpc.records("product.product")[1]["list_price"] == 19.0
+
+
+def test_full_cycle_blocked_by_guardrails_never_calls_apply():
+    rpc = InMemoryShopify({"SKU-1": {"variant_id": "gid://shopify/ProductVariant/1", "price": 20.0}})
+    store = ShopifyPriceStore(rpc)
+    with pytest.raises(RepricingGuardrailBlocked):
+        run_channel_repricing(
+            store, "shopify:demo-shop", {"SKU-1": 18.0},
+            idempotency_key="cycle-1", reason="", approved_by="operator", now=0.0,
+            landed_costs={"SKU-1": 10.0},
+        )
+    assert rpc.find_variant_by_sku("SKU-1")["price"] == 20.0  # never written
+
+
+# ---- landed_costs is mandatory: the below-cost gate must never be a no-op -------
+#
+# Regression guard. ``landed_costs`` used to default to None all the way down, and
+# ``run_channel_repricing`` never passed it, so the gate's below-cost check
+# (src/pricing_guardrails.py ``_economic_violations``) silently did nothing on the
+# production path: every price, however far below cost, cleared the gate.
+
+
+def test_stage_repricing_rejects_missing_landed_costs():
+    store = _price_store()
+    with pytest.raises(LandedCostsRequired, match="Landed costs required"):
+        stage_repricing(store, "shopify:demo", {"SKU-1": 18.0}, idempotency_key="r1", reason=REASON)
+
+
+def test_stage_repricing_rejects_explicitly_none_landed_costs():
+    store = _price_store()
+    with pytest.raises(LandedCostsRequired):
+        stage_repricing(
+            store, "shopify:demo", {"SKU-1": 18.0}, idempotency_key="r1", reason=REASON,
+            landed_costs=None,
+        )
+
+
+def test_stage_repricing_accepts_empty_landed_costs_as_a_deliberate_choice():
+    """An empty mapping is an explicit "no cost data for these SKUs", not the
+    accidental None the caller forgot to pass -- it must still be allowed."""
+    store = _price_store()
+    cs = stage_repricing(
+        store, "shopify:demo", {"SKU-1": 18.0}, idempotency_key="r1", reason=REASON,
+        landed_costs={},
+    )
+    assert cs.changes
+
+
+def test_run_channel_repricing_enforces_the_below_cost_gate():
+    """The bug this guards: the full production cycle used to let a below-cost
+    price through because it never forwarded landed_costs to the gate."""
+    rpc = InMemoryShopify({"SKU-1": {"variant_id": "gid://shopify/ProductVariant/1", "price": 20.0}})
+    store = ShopifyPriceStore(rpc)
+    with pytest.raises(RepricingGuardrailBlocked) as excinfo:
+        run_channel_repricing(
+            store, "shopify:demo-shop", {"SKU-1": 9.0},
+            idempotency_key="cycle-1", reason=REASON, approved_by="operator", now=0.0,
+            landed_costs={"SKU-1": 12.0},
+        )
+    assert "below landed cost" in str(excinfo.value.gate.reason)
+    assert rpc.find_variant_by_sku("SKU-1")["price"] == 20.0  # never written
+
+
+def test_run_channel_repricing_rejects_missing_landed_costs():
+    rpc = InMemoryShopify({"SKU-1": {"variant_id": "gid://shopify/ProductVariant/1", "price": 20.0}})
+    store = ShopifyPriceStore(rpc)
+    with pytest.raises(LandedCostsRequired):
+        run_channel_repricing(
+            store, "shopify:demo-shop", {"SKU-1": 18.0},
+            idempotency_key="cycle-1", reason=REASON, approved_by="operator", now=0.0,
+        )
+    assert rpc.find_variant_by_sku("SKU-1")["price"] == 20.0  # never written

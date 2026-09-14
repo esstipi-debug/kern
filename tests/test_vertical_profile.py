@@ -359,3 +359,68 @@ def test_a_profile_written_before_this_field_existed_still_loads(tmp_path):
 def test_the_slug_is_not_an_engine_param():
     profile = ClientProfile(client_id="x", display_name="X", vertical="distribucion-b2b")
     assert "vertical" not in profile.as_params()
+
+
+# ---- min_margin_pct: the price floor, resolved per vertical ---------------------
+#
+# src/price_optimizer.py computes floor_price = landed_cost * (1 + min_margin_pct)
+# from a MIN_MARGIN_DEFAULT of 0.0, i.e. no floor at all unless a caller passes one.
+# The floor belongs in the pack (one number per industry), not as a global engine
+# constant: kern serves many clients, and one industry's margin is not another's.
+
+
+def test_min_margin_pct_is_an_engine_param():
+    assert "min_margin_pct" in ENGINE_PARAM_FIELDS
+
+
+def test_min_margin_pct_reaches_the_engine_through_as_params():
+    params = VerticalEngineParams(min_margin_pct=0.35).as_params()
+    assert params["min_margin_pct"] == 0.35
+
+
+def test_a_zero_floor_is_emitted_not_swallowed():
+    """0.0 is a real, declared decision ("this pack sets no floor") and must
+    survive as_params()' None-filter -- otherwise it silently becomes absent."""
+    assert VerticalEngineParams(min_margin_pct=0.0).as_params()["min_margin_pct"] == 0.0
+
+
+def test_an_absent_floor_stays_absent():
+    assert "min_margin_pct" not in VerticalEngineParams().as_params()
+
+
+@pytest.mark.parametrize("bad", [-0.01, 1.0, 1.5, float("nan"), float("inf"), True, "0.3"])
+def test_min_margin_pct_rejects_values_outside_zero_to_one(bad):
+    with pytest.raises(ValueError, match="min_margin_pct"):
+        VerticalEngineParams(min_margin_pct=bad)
+
+
+def test_the_client_profile_beats_the_pack_floor():
+    """Same asymmetry as every other engine param: an industry default is a
+    better starting point than the engine constant, a worse one than a number
+    an operator recorded for this client."""
+    vertical = VerticalProfile(
+        vertical="prueba", display_name="Prueba",
+        engine_params=VerticalEngineParams(min_margin_pct=0.20),
+    )
+    merged = merge_params({}, None, vertical)
+    assert merged["min_margin_pct"] == 0.20
+    # An explicit per-call param still wins over the pack.
+    assert merge_params({"min_margin_pct": 0.45}, None, vertical)["min_margin_pct"] == 0.45
+
+
+@pytest.mark.parametrize("slug", ["distribucion-b2b", "repuestos-industriales"])
+def test_the_shipped_packs_declare_a_floor(slug):
+    params = load_vertical_profile(slug, config_dir=REPO_VERTICALS).as_params()
+    assert "min_margin_pct" in params, f"{slug}.yaml must declare min_margin_pct explicitly"
+
+
+def test_a_client_floor_survives_a_save_load_round_trip(tmp_path):
+    save_profile(
+        ClientProfile(client_id="acme", display_name="Acme", min_margin_pct=0.30),
+        root=tmp_path,
+    )
+    assert load_profile("acme", root=tmp_path).as_params()["min_margin_pct"] == 0.30
+
+
+# The end-to-end assertion (resolved floor -> optimize_sku_price's floor_price)
+# lives in tests/test_price_optimizer.py, next to that module's fit fixture.

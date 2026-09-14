@@ -182,7 +182,11 @@ def run(plan: RepricingPlan, *, max_move_pct: float | None = None, kb: object | 
     kwargs: dict = {
         "idempotency_key": plan.idempotency_key,
         "reason": plan.reason,
-        "landed_costs": plan.landed_costs or None,
+        # `or {}`, no `or None`: un plan sin costos es "no hay datos de costo para
+        # estos SKU", una decision explicita y en el registro. `None` significaba
+        # otra cosa -- desarmaba el chequeo de precio bajo costo en silencio, y
+        # cualquier precio, por debajo de costo que estuviera, pasaba el gate.
+        "landed_costs": plan.landed_costs or {},
         # Ground the citations on the playbook's FIXED keyword set with an EMPTY
         # brief, instead of letting stage_repricing default to grounding on the
         # operator's free-text `reason` -- the citation trilogy's fix

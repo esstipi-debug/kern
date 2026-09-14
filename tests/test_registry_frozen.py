@@ -133,6 +133,14 @@ FROZEN_ENGINE_PARAM_FIELDS: tuple[str, ...] = (
     "order_cost",
     "lead_time_days",
     "objection_thresholds",
+    "min_margin_pct",
+    # Sumado a proposito (PR #244, 2026-09-14). El piso de margen es un parametro
+    # de motor que un pack por rubro TIENE que poder fijar: es lo que arma el
+    # chequeo de precio bajo costo en src/pricing_guardrails.gate_price_changeset,
+    # y hasta este PR ese chequeo era un no-op silencioso en la ruta de produccion
+    # (jobs/repricing_job.py pasaba `plan.landed_costs or None`). Un rubro de
+    # repuestos no tolera el mismo piso que uno de distribucion B2B, y sin esta
+    # llave el pack no tenia por donde decirlo.
 )
 
 

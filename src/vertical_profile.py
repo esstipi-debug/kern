@@ -75,7 +75,7 @@ VALID_REGIMES = frozenset({"intermittent", "smooth", "mixed", "seasonal"})
 # unknown parameter and be ignored in silence -- the worst possible failure
 # mode for a config file -- so it is rejected at load time instead.
 ENGINE_PARAM_FIELDS = ("service_level", "holding_rate", "order_cost",
-                       "lead_time_days", "objection_thresholds")
+                       "lead_time_days", "objection_thresholds", "min_margin_pct")
 
 
 class VerticalNotConfiguredError(LookupError):
@@ -108,6 +108,22 @@ def _require_fraction(value: object, label: str) -> None:
         raise ValueError(f"{label} must be in (0, 1), got {value!r}")
 
 
+def _require_margin_fraction(value: object, label: str) -> None:
+    """A markup floor above landed cost: ``[0, 1)`` -- unlike
+    :func:`_require_fraction`, 0.0 is legal.
+
+    0.0 means "this pack declares no floor", which is a real decision an
+    operator can make and must be able to write down. The upper bound matches
+    ``src.price_optimizer.optimize_sku_price``'s own check, so a pack can never
+    load a value the engine would reject at call time."""
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be a number, got {value!r}")
+    if not math.isfinite(value) or not 0 <= value < 1:
+        raise ValueError(f"{label} must be in [0, 1), got {value!r}")
+
+
 @dataclass(frozen=True)
 class VerticalEngineParams:
     """The pack's economics. Field names match ``ClientProfile.as_params()``
@@ -118,9 +134,17 @@ class VerticalEngineParams:
     order_cost: float | None = None
     lead_time_days: float | None = None
     objection_thresholds: dict[str, float] | None = None
+    # The price floor, as a markup fraction above landed cost:
+    # ``src.price_optimizer`` computes ``floor_price = landed_cost * (1 + this)``.
+    # It lives in the pack, not as an engine constant, because kern prices for
+    # many clients at once and one industry's margin is not another's -- the same
+    # reason service_level and holding_rate are here. NOT a gross margin: 0.20 is
+    # a 20% markup over cost (~16.7% gross margin).
+    min_margin_pct: float | None = None
 
     def __post_init__(self) -> None:
         _require_fraction(self.service_level, "service_level")
+        _require_margin_fraction(self.min_margin_pct, "min_margin_pct")
         _require_positive_finite(self.holding_rate, "holding_rate")
         _require_positive_finite(self.order_cost, "order_cost")
         if self.lead_time_days is not None:
