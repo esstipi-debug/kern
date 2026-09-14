@@ -46,6 +46,11 @@ NOT_CONNECTORS = {
         "CONNECTED_SYSTEMS.md como si Kern se conectara a algo del cliente, que es "
         "exactamente lo contrario de lo que pasa"
     ),
+    "health": (
+        "el contrato de salud de conexion que implementan los conectores (sondas, "
+        "backoff, clasificacion de errores), no un backend. Declarar un WRITE_SURFACE "
+        "aca publicaria en CONNECTED_SYSTEMS.md un sistema del cliente que no existe"
+    ),
     "ledger": "registro local de lo que Kern leyo y escribio; no habla con el cliente",
     "replenish": "el planificador que consume conectores; no habla con ningun sistema",
     "service_scan": "orquesta conectores para medir servicio; no habla con un sistema",

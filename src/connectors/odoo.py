@@ -66,6 +66,7 @@ from src.connectors import (
     ScheduledReceipt,
     ServiceCoverage,
     WriteSurface,
+    health,
 )
 from src.constraints import apply_order_rules
 from src.supplier_scorecard import LEAD_TIME_MEASURED
@@ -235,10 +236,73 @@ class OdooClient:
             raise OdooError(f"Odoo authentication failed for user {username!r} on db {db!r}")
         self._db = db
         self._uid = int(uid)
+        self._username = username
         self._api_key = api_key
+        self._common = common
         self._models = models
         self._max_attempts = max(1, int(max_attempts))
         self._backoff_seconds = backoff_seconds
+        self._auth_budget = health.AuthRepairBudget()
+
+    # -- connection health (see src/connectors/health.py) ----------------------
+
+    def authenticate(self) -> None:
+        """Re-run the XML-RPC handshake and refresh the cached uid.
+
+        Idempotent by construction: Odoo's ``authenticate`` mints no server-side
+        state to leak, it just answers who you are.
+        """
+        uid = self._common.authenticate(self._db, self._username, self._api_key, {})
+        if not uid:
+            raise OdooError(f"Odoo re-authentication failed for user {self._username!r}")
+        self._uid = int(uid)
+
+    def is_healthy(self) -> bool:
+        """``search_count`` scoped to our own uid: a read, bounded to one row.
+
+        Deliberately not ``fields_get`` -- that answers even when the session is
+        stale on some Odoo versions, which would make the probe say yes to a
+        connection the next real call fails on.
+        """
+        try:
+            self._models.execute_kw(
+                self._db, self._uid, self._api_key,
+                "res.users", "search_count", [[["id", "=", self._uid]]],
+            )
+        except Exception:
+            return False
+        self._auth_budget.restore()
+        return True
+
+    def on_auth_failure(self, exc: BaseException) -> bool:
+        """Re-authenticate once per healthy streak and report whether to retry.
+
+        Odoo signals a dropped session as a transport error, not a status code,
+        so the trigger is an ``OSError``/``TimeoutError`` rather than a 401. This
+        method does NOT re-issue the failed call: ``execute_kw(..., "create")``
+        books purchase orders, and only the caller knows whether the operation it
+        lost is safe to repeat (see the module docstring of ``health.py``).
+        """
+        if not isinstance(exc, (OSError, TimeoutError)):
+            return False
+        if not self._auth_budget.spend():
+            return False
+        try:
+            self.authenticate()
+        except Exception:
+            return False
+        return True
+
+    def on_throttle(self, exc: BaseException) -> float | None:
+        """XML-RPC itself has no throttling signal, so this is normally None.
+
+        It delegates rather than hardcoding that, because Odoo is very often
+        behind nginx or Cloudflare, and *those* answer a rate limit with a real
+        429 and ``Retry-After``. Returning None unconditionally would throw that
+        away and send the caller straight back at a proxy that just asked it to
+        stop.
+        """
+        return health.throttle_wait(exc)
 
     @property
     def uid(self) -> int:

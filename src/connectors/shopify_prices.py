@@ -39,7 +39,7 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from nosilo_core import writeback
-from src.connectors import WRITE_APPROVAL_GATED, WriteSurface
+from src.connectors import WRITE_APPROVAL_GATED, WriteSurface, health
 from src.connectors.shopify_api_version import PINNED_VERSION, check_served
 
 try:  # optional: the 'repricing' extra (httpx already pinned by tower/pricing-intel)
@@ -65,7 +65,11 @@ class ShopifyRPC(Protocol):
     def update_variant_price(self, variant_id: str, price: float) -> None: ...
 
 
-class ShopifyClient:
+#: The cheapest read the Admin API offers: one point, no mutation.
+_HEALTH_QUERY = "{ shop { name } }"
+
+
+class ShopifyClient(health.NoCredentialRepair):
     """Real Shopify Admin GraphQL transport over any httpx-style object.
 
     ``http`` should already be configured with the shop's base URL and
@@ -86,6 +90,7 @@ class ShopifyClient:
         self._api_version = api_version
         self._graphql_path = f"/admin/api/{api_version}/graphql.json"
         self._product_id_by_variant: dict[str, str] = {}
+        self._auth_budget = health.AuthRepairBudget()
 
     def _graphql(self, query: str, variables: dict, *, is_write: bool = False) -> dict:
         resp = self._http.post(self._graphql_path, json={"query": query, "variables": variables})
@@ -95,6 +100,24 @@ class ShopifyClient:
         if body.get("errors"):
             raise ShopifyPricesError(f"Shopify GraphQL error: {body['errors']}")
         return body["data"]
+
+    # -- connection health (see src/connectors/health.py) ----------------------
+
+    def is_healthy(self) -> bool:
+        """Probe the shop with the cheapest read the Admin API offers.
+
+        ``{ shop { name } }`` costs one point and mutates nothing, which is what
+        makes it usable as a health signal rather than a side effect.
+        """
+        try:
+            self._graphql(_HEALTH_QUERY, {})
+        except Exception:
+            return False
+        self._auth_budget.restore()
+        return True
+
+    def on_throttle(self, exc: BaseException) -> float | None:
+        return health.throttle_wait(exc)
 
     def find_variant_by_sku(self, sku: str) -> dict | None:
         query = """

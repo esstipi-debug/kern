@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from nosilo_core import writeback
-from src.connectors import WRITE_APPROVAL_GATED, WriteSurface
+from src.connectors import WRITE_APPROVAL_GATED, WriteSurface, health
 from src.connectors.shopify_api_version import PINNED_VERSION, check_served
 
 try:
@@ -52,7 +52,11 @@ class ShopifyInventoryRPC(Protocol):
                       reason: str = "correction", *, idempotency_key: str) -> int: ...
 
 
-class ShopifyInventoryClient:
+#: The cheapest read the Admin API offers: one point, no mutation.
+_HEALTH_QUERY = "{ shop { name } }"
+
+
+class ShopifyInventoryClient(health.NoCredentialRepair):
     """Real Shopify GraphQL Admin API client for inventory management."""
 
     def __init__(self, http: Any, *, api_version: str = PINNED_VERSION) -> None:
@@ -65,6 +69,7 @@ class ShopifyInventoryClient:
         self._api_version = api_version
         self._graphql_path = f"/admin/api/{api_version}/graphql.json"
         self._item_id_cache: dict[str, dict] = {}
+        self._auth_budget = health.AuthRepairBudget()
 
     def _graphql(self, query: str, variables: dict, *, is_write: bool = False) -> dict:
         resp = self._http.post(self._graphql_path, json={"query": query, "variables": variables})
@@ -74,6 +79,22 @@ class ShopifyInventoryClient:
         if body.get("errors"):
             raise ShopifyInventoryError(f"Shopify GraphQL error: {body['errors']}")
         return body["data"]
+
+    # -- connection health (see src/connectors/health.py) ----------------------
+
+    def is_healthy(self) -> bool:
+        """Probe with ``{ shop { name } }`` rather than ``list_locations``: both
+        are reads, but the shop query costs one point and cannot be mistaken for
+        the inventory query the caller actually wanted."""
+        try:
+            self._graphql(_HEALTH_QUERY, {})
+        except Exception:
+            return False
+        self._auth_budget.restore()
+        return True
+
+    def on_throttle(self, exc: BaseException) -> float | None:
+        return health.throttle_wait(exc)
 
     def list_locations(self) -> list[dict]:
         query = """

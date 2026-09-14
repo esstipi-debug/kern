@@ -38,7 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
-from src.connectors import WRITE_NONE, WriteSurface
+from src.connectors import WRITE_NONE, WriteSurface, health
 
 try:
     import httpx  # noqa: F401  -- availability only; the caller builds the client
@@ -196,7 +196,7 @@ def parse_product_search(body: dict, *, site_id: str) -> tuple[CatalogProduct, .
     return tuple(rows)
 
 
-class MeliCatalogClient:
+class MeliCatalogClient(health.NoCredentialRepair):
     """Live MercadoLibre catalog transport over any httpx-style object.
 
     ``http`` must already carry ``base_url="https://api.mercadolibre.com"`` and
@@ -222,6 +222,35 @@ class MeliCatalogClient:
         self._user_id = user_id
         self._terms_cache: dict[str, list[dict]] = {}
         self._listed: frozenset[str] | None = None
+        self._auth_budget = health.AuthRepairBudget()
+
+    # -- salud de conexion (ver src/connectors/health.py) -----------------------
+
+    #: La lectura mas barata que expone la API para sondear, y la unica que valida
+    #: el Bearer sin depender de datos del vendedor. `/users/me` devuelve el usuario
+    #: del token: no muta nada, no pagina, y no necesita un site_id ni una query
+    #: inventada. Las tres lecturas reales de este cliente
+    #: (`/products/search`, `/categories/<id>/sale_terms`,
+    #: `/sites/<site>/domain_discovery/search`) servirian de sonda pero son busquedas:
+    #: cuestan mas, dependen de un parametro que habria que fabricar, y una de ellas
+    #: contra un site_id equivocado responde 200 con cero resultados -- o sea que
+    #: "sano" y "mal configurado" se verian igual.
+    _HEALTH_PATH = "/users/me"
+
+    def is_healthy(self) -> bool:
+        """Sondea con `GET /users/me`: valida el token y no escribe nada."""
+        try:
+            resp = self._http.get(self._HEALTH_PATH)
+            if int(getattr(resp, "status_code", 200)) >= 400:
+                return False
+        except Exception:
+            return False
+        self._auth_budget.restore()
+        return True
+
+    def on_throttle(self, exc: BaseException) -> float | None:
+        return health.throttle_wait(exc)
+
 
     def search_products(
         self,

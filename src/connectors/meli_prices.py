@@ -51,7 +51,7 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from nosilo_core import writeback
-from src.connectors import WRITE_APPROVAL_GATED, WriteSurface
+from src.connectors import WRITE_APPROVAL_GATED, WriteSurface, health
 
 try:  # optional: the 'repricing' extra (httpx already pinned by tower/pricing-intel)
     import httpx  # noqa: F401  (imported to prove availability; the caller builds the client)
@@ -76,7 +76,7 @@ class MeliRPC(Protocol):
     def update_item_price(self, item_id: str, price: float) -> None: ...
 
 
-class MeliClient:
+class MeliClient(health.NoCredentialRepair):
     """Real MercadoLibre seller Items API transport over any httpx-style object.
 
     ``http`` should already be configured with
@@ -95,6 +95,23 @@ class MeliClient:
             )
         self._http = http
         self._user_id = user_id
+        self._auth_budget = health.AuthRepairBudget()
+
+    # -- connection health (see src/connectors/health.py) ----------------------
+
+    def is_healthy(self) -> bool:
+        """``GET /users/{id}`` -- the cheapest authenticated read that proves both
+        the link and the token, and touches nothing."""
+        try:
+            resp = self._http.get(f"/users/{self._user_id}")
+            resp.raise_for_status()
+        except Exception:
+            return False
+        self._auth_budget.restore()
+        return True
+
+    def on_throttle(self, exc: BaseException) -> float | None:
+        return health.throttle_wait(exc)
 
     def find_item_by_sku(self, sku: str) -> dict | None:
         search = self._http.get(f"/users/{self._user_id}/items/search", params={"sku": sku})
