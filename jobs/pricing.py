@@ -7,7 +7,6 @@ a sellable "price optimization analysis" deliverable.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,7 +14,7 @@ import pandas as pd
 
 from src.pricing import recommend_price
 
-from .intake import ALIASES, load_table
+from .intake import ALIASES, _norm, load_table
 
 PERIODS_PER_YEAR = 52.0
 
@@ -29,8 +28,6 @@ PRICE_ALIASES: dict[str, list[str]] = {
 _REQUIRED = ("date", "product_id", "quantity", "price")
 
 
-def _norm(value: object) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(value).lower())
 
 
 def prepare_pricing(path: str | Path, *, period: str = "W") -> pd.DataFrame:

@@ -17,8 +17,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_ten_official_packages_present() -> None:
-    assert len(OFFERS) == 10
-    assert len({offer.slug for offer in OFFERS}) == 10  # slugs unique
+    assert len(OFFERS) == 12
+    assert len({offer.slug for offer in OFFERS}) == 12  # slugs unique
 
 
 def test_get_offer_returns_starter_fundamentos_latam() -> None:

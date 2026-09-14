@@ -1,0 +1,245 @@
+# Perfil operativo por vertical -- cuarto nivel de la cadena de resolucion de
+# parametros. El contrato de campos, la regla de control y el estado del loader
+# estan documentados una sola vez, en config/verticals/repuestos-industriales.yaml.
+# Este archivo solo justifica en que se APARTA de aquel y por que.
+#
+# Segundo vertical elegido en nosilo/05-GTM-KERN.md seccion 6.6. El criterio no
+# fue tamano de mercado sino herencia: distribucion B2B hereda ~80% del discurso
+# de venta de repuestos -- importa, plazos largos y variables, la desviacion del
+# plazo sigue dominando el buffer -- y sus ERPs son exactamente los del canal ya
+# declarado (Defontana, Softland, Bsale, Laudus). Es el vertical mas barato de
+# abrir, no el mas grande.
+#
+# LO QUE NO ES: "retail". Retail de consumo -- matriz talla x color, sustitucion
+# fuerte, estacionalidad, POS diario -- es un pack distinto y mas caro, y no
+# esta escrito. Meter los dos aqui es como se arruina un pack.
+#
+# CONFIANZA: igual que el otro, los economicos son ESTIMACIONES DE ESCRITORIO
+# sin contrastar con un cliente. Y hay una estimacion de segundo orden que vale
+# marcar aparte: la herencia del 80% del discurso es un supuesto de escritorio.
+# Se verifica barato preguntandole a un distribuidor si sus plazos de
+# importacion varian tanto como los de mineria. Si no varian, este vertical
+# pierde su salida #1 y hay que reordenarlo.
+
+vertical: distribucion-b2b
+display_name: "Distribucion B2B -- ferreteria, materiales, industrial"
+
+demo_question_label: "productos que compro y revendo a otras empresas"
+
+
+# ---------------------------------------------------------------------------
+# 1. ECONOMICOS
+# ---------------------------------------------------------------------------
+engine_params:
+
+  # ESTIMADO, y mas bajo que el 0,22 de repuestos. Misma estructura, dos
+  # componentes distintos: el bodegaje pesa mas (volumen alto, valor unitario
+  # bajo, mucho metro cuadrado por peso) pero la obsolescencia pesa menos
+  # (catalogo estable, un perno no cambia de modelo). Neto, baja.
+  holding_rate: 0.20
+
+  # ESTIMADO. Mas bajo que el A de repuestos porque en B2B existe sustitucion:
+  # el cliente que no encuentra la marca X a veces se lleva la Y. Existe, pero
+  # es mucho mas debil que en retail de consumo -- una ferreteria que falla dos
+  # veces pierde la cuenta completa, no la venta. Por eso baja poco.
+  service_level: 0.95
+
+  # ESTIMADO, la mitad que en repuestos. La cartera esta partida: la reposicion
+  # local es barata y frecuente, la importacion consolidada es cara y rara. 700
+  # es el promedio ponderado de escritorio de esa mezcla, y es el numero de este
+  # archivo con menos fundamento -- el rubro deberia partirlo en dos costos de
+  # orden segun origen, que hoy el motor no modela.
+  order_cost: 700.0
+
+  # Nulo por la misma razon que en el otro pack, y aqui con mas fuerza todavia:
+  # la salida #1 de este vertical es justamente la brecha entre el plazo
+  # declarado y el observado. Sembrar un plazo por rubro seria contestar la
+  # pregunta antes de medirla.
+  lead_time_days: null
+
+  # ESTIMADO. Diez veces mas holgado que en repuestos (0,005 -> 0,05), y esa
+  # distancia es la tesis del pack: aqui un quiebre cuesta una venta, alla
+  # detiene un equipo. Es la diferencia que hace que el mismo motor tenga que
+  # recomendar cosas distintas.
+  objection_thresholds:
+    comercial: 0.05
+
+
+# ---------------------------------------------------------------------------
+# 2. LO QUE NO SE MODELA
+# ---------------------------------------------------------------------------
+# Tambien nulo, pero por una razon distinta a la de repuestos. Alla el costo de
+# quiebre es enorme y nadie lo registra. Aca es moderado y ademas ambiguo: parte
+# de la venta perdida se recupera por sustitucion dentro del mismo catalogo, y
+# ese porcentaje no esta en ningun dato que el cliente entregue en un CSV.
+# Estimarlo es inventar el numerador y el denominador a la vez.
+stockout_cost_usd: null
+stockout_prompt: >
+  De las veces que un cliente pidio algo que no tenias, cuantas se llevaron otra
+  marca y cuantas se fueron? No necesito el numero exacto. Si no lo sabes, ese
+  es el hallazgo.
+
+
+# ---------------------------------------------------------------------------
+# 3. REGIMEN DE DEMANDA
+# ---------------------------------------------------------------------------
+demand:
+  # `mixed`, y no es una cobardia de etiqueta: un distribuidor tiene los dos
+  # regimenes al mismo tiempo y en el mismo archivo. Los movedores rapidos son
+  # suaves y admiten SES; la cola larga del catalogo es intermitente pura y pide
+  # Croston. Por eso importa que src/forecasting.py decida POR SKU segun el ADI
+  # y no por una etiqueta a nivel de cuenta. Este campo documenta la expectativa;
+  # el que decide es el dato.
+  expected_regime: mixed
+  forbidden_methods: []
+
+
+# ---------------------------------------------------------------------------
+# 4. ORDEN DE LAS SALIDAS DEL DIAGNOSTICO
+# ---------------------------------------------------------------------------
+# UNICA diferencia de orden respecto al canonico de la seccion 5, y es
+# deliberada: pooling sube de quinto a segundo.
+#
+# La razon es estructural, no de gusto. La fuente de valor #2 exige mas de una
+# bodega para existir, y este es el rubro donde eso se cumple por definicion:
+# un distribuidor con sucursales las tiene, y las tiene mal balanceadas casi
+# siempre. En repuestos el multi-bodega es frecuente pero no seguro, y en
+# construccion y alimentos la consolidacion esta bloqueada de raiz -- la faena
+# se cierra, la vida util no viaja.
+#
+# Es tambien la salida que ningun competidor puede calcular, asi que ponerla
+# quinta en el unico vertical donde siempre aplica era desperdiciarla.
+#
+# La #1 no se mueve: sigue siendo la que se gana el derecho a seguir hablando,
+# y es la mas barata de calcular.
+diagnostic_outputs:
+  - lead_time_gap
+  - pooling_savings        # sube de #5 a #2: aqui el multi-bodega es la norma
+  - overstock_valued
+  - below_reorder_point
+  - dead_stock_12m
+
+
+# ---------------------------------------------------------------------------
+# 5. ALIAS DE COLUMNAS DEL RUBRO
+# ---------------------------------------------------------------------------
+# Se prependean a jobs/intake.py::ALIASES. _norm() pliega los dos lados, asi que
+# "Guia de Despacho", "guia_despacho" y "GUIA DESPACHO" son la misma clave.
+#
+# Este bloque es la razon practica del pack: el export tipico de Defontana,
+# Softland, Bsale o Laudus trae estos encabezados y ninguno esta hoy en la tabla
+# global. Antes del arreglo de acentos mapeaban cero columnas; despues del
+# arreglo mapean las genericas y siguen perdiendo las del rubro.
+aliases:
+  on_hand:
+    - stock_local
+    - stock_sucursal
+    - saldo_bodega
+    - existencia_local
+  product_id:
+    - codigo_interno
+    - cod_interno
+    - sku_proveedor
+    - codigo_barra_interno
+  name:
+    - glosa_producto
+    - detalle_producto
+  supplier:
+    - distribuidor
+    - marca_proveedor
+    - casa_matriz
+  unit_cost:
+    - costo_reposicion
+    - costo_promedio
+    - ultimo_costo
+  # Ejes propios del rubro, todavia no canonicos -- se reconocen y se reportan
+  # en vez de tratarse como columna desconocida. `location_id` es el que mas
+  # falta: sin el no hay pooling, y el pooling es la salida #2 de este vertical.
+  location_id:
+    - local
+    - sucursal
+    - punto_venta
+    - codigo_local
+    - centro_distribucion
+  dispatch_doc:
+    - guia_despacho
+    - guia
+    - folio_guia
+    - numero_guia
+  category:
+    - familia
+    - linea
+    - rubro
+    - categoria
+    - subfamilia
+
+
+# ---------------------------------------------------------------------------
+# 6. VOCABULARIO DEL INFORME
+# ---------------------------------------------------------------------------
+vocabulary:
+  location_singular: "local"
+  location_plural: "locales"
+  network_node: "centro de distribucion"
+  item_singular: "producto"
+  item_plural: "productos"
+  demand_event: "venta"
+  buyer_role: "jefe de compras"
+
+
+# ---------------------------------------------------------------------------
+# 7. OBJECIONES
+# ---------------------------------------------------------------------------
+# Hereda las seis de la seccion 5 salvo una, y suma dos propias del rubro.
+#
+# NO hereda "el proveedor no cumple, no es tema de planificacion": en
+# distribucion el comprador suele SER quien negocia con el proveedor, asi que
+# esa objecion no aparece con esa forma -- aparece como la primera de abajo.
+objections:
+  - claim: "Ya tenemos ABC"
+    response: >
+      ABC dice que vale mas, no que es mas impredecible. Un A estable necesita
+      poco buffer; un C erratico con plazo largo necesita mucho.
+  - claim: "El ERP ya calcula stock de seguridad"
+    response: >
+      Con que plazo? Incluye la desviacion del plazo en la formula? Practicamente
+      ningun ERP lo hace.
+  - claim: "Reducir inventario es riesgoso"
+    response: >
+      No propongo reducir: propongo mover. Sube en unos productos, baja en otros.
+      El neto baja y el servicio sube.
+  - claim: "Nuestros datos estan sucios"
+    response: >
+      Uso movimientos historicos y recepciones. Eso siempre existe: si no, no
+      podrias cerrar contablemente.
+  - claim: "La demanda es impredecible"
+    response: >
+      Puede ser. Midamos cuanto del buffer lo explica la demanda y cuanto el
+      proveedor. Normalmente es 10/90 y todos asumen 90/10.
+  # Propias del rubro.
+  - claim: "Yo le compro a ese proveedor hace 20 anos, se como entrega"
+    response: >
+      Seguro. Y esa intuicion esta en tu cabeza, no en el sistema que calcula el
+      punto de reorden. Lo unico que hago es escribirla, con las fechas de tus
+      propias recepciones.
+  - claim: "Si me falta lo mando traer de otro local"
+    response: >
+      Ese traslado es el costo que estamos midiendo. Si pasa seguido, el buffer
+      esta en el local equivocado -- y eso es exactamente lo que calcula la
+      segunda salida.
+
+
+# ---------------------------------------------------------------------------
+# 8. CLASIFICACION
+# ---------------------------------------------------------------------------
+# ESTIMADO. A en 0,97 y no 0,99: aqui el A si es "lo que mas factura", que es
+# justamente el supuesto para el que _SERVICE_LEVEL fue escrito, asi que el
+# default del motor esta mucho mas cerca de servir en este rubro que en el otro.
+# El C baja a 0,88 porque la cola larga de un distribuidor es enorme y sostener
+# 0,90 sobre miles de referencias muertas es donde se va el capital que la
+# salida #3 va a mostrar.
+classification:
+  service_level_by_class:
+    A: 0.97
+    B: 0.94
+    C: 0.88

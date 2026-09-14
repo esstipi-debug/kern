@@ -219,6 +219,9 @@ class LineMatch:
     invoiced_qty: Decimal | None = None
     price_delta: Decimal | None = None
     value_delta: Decimal = ZERO
+    #: What the supplier charged per unit. Carried because pricing a *quantity* fault
+    #: needs it and ``price_delta`` alone cannot reconstruct it - see ``recovery.py``.
+    invoiced_unit_price: Decimal | None = None
 
     @property
     def matched(self) -> bool:
@@ -415,6 +418,7 @@ def _match_line(
             exceptions=tuple(found),
             invoiced_qty=invoiced_qty,
             value_delta=line_total,
+            invoiced_unit_price=unit_price,
         )
 
     if order.currency != invoice.currency:
@@ -494,6 +498,7 @@ def _match_line(
         invoiced_qty=invoiced_qty,
         price_delta=price_delta,
         value_delta=value_delta,
+        invoiced_unit_price=unit_price,
     )
 
 

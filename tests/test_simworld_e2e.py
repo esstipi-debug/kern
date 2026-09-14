@@ -682,7 +682,15 @@ def test_run_grid_lets_a_capture_information_leak_crash_instead_of_hiding_it():
         with tempfile.TemporaryDirectory() as tmp:
             with pytest.raises(ValueError, match="fuga de informacion"):
                 run_grid(
-                    seed=9, n_skus=2, n_suppliers=1, weeks=8, levels=(0,),
+                    # weeks=16, no 8: con 8 semanas y replan cada 4, el primer
+                    # replan de Kern ve menos de MIN_PERIODS_FOR_POLICY periodos
+                    # por SKU y la corrida se rechaza entera, con lo cual nunca se
+                    # llega a `capture()` y esta rama -- que es lo unico que el
+                    # test mide -- deja de ejercitarse. La escala aqui es
+                    # incidental (ver el docstring): lo que importa es que Kern
+                    # corra normal para que la excepcion forzada tenga por donde
+                    # salir.
+                    seed=9, n_skus=2, n_suppliers=1, weeks=16, levels=(0,),
                     replan_every=4, out_dir=tmp, include_kern=True,
                 )
 

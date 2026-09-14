@@ -1,8 +1,13 @@
 """Settlement (N5) tests: weight collapse, bounds, determinism, acta, value (spec 12.2)."""
 
+from datetime import date
+
 import pytest
 
+from src.eoq import PriceBreak
 from src.hat_council import (
+    UNASSIGNED,
+    UNRESOLVED_CONCESSION_THRESHOLD,
     agreement_at_1,
     settle,
     tension_map,
@@ -89,3 +94,62 @@ def test_value_row_mirrors_settlement_and_ideals():
     assert row.c_baseline == s.judge_cost_baseline
     assert row.c_n5 == s.judge_cost_chosen
     assert row.delta_usd == pytest.approx(row.c_baseline - row.c_n5)
+
+
+# ---- T14: el acta tiene que cerrar, no solo registrar el desacuerdo ----------
+#
+# El criterio de T14 pide un acta con: numero de demanda acordado, plan de
+# suministro que lo soporta, brechas sin resolver DECLARADAS, y al menos una
+# decision con nombre y fecha. El Settlement registraba el desacuerdo (cuanto
+# cede cada sombrero) y elegia Q*/SL*, pero no cerraba: no decia sobre que
+# demanda se acordo, no declaraba que concesiones quedaron sin resolver, y no
+# tenia dueno ni fecha. Un acta que nadie firma no es un acta.
+
+
+def _entrada(**cambios):
+    base = dict(
+        sku="A", annual_demand=5200.0, mean_weekly=100.0, std_weekly=20.0,
+        lead_time_weeks=2.0, unit_cost=10.0, config=HatConfig(),
+        price_breaks=(PriceBreak(0.0, 10.0),),
+    )
+    base.update(cambios)
+    return build_inputs(**base)
+
+
+def test_el_acta_registra_sobre_que_demanda_se_acordo():
+    s = settle(_entrada(), None)
+
+    assert s.agreed_demand_plan == 5200.0
+
+
+def test_una_concesion_grande_queda_declarada_como_brecha_sin_resolver():
+    """El sombrero que cede por encima del umbral no se esconde en el promedio."""
+    s = settle(_entrada(), {"cfo": 1.0})   # politica extrema: los demas ceden mucho
+
+    assert s.unresolved_gaps, "con pesos extremos alguien tiene que quedar sin resolver"
+    for brecha in s.unresolved_gaps:
+        entrada = next(e for e in s.acta if e.hat_key == brecha.hat_key)
+        assert brecha.concesion == entrada.concesion
+        assert brecha.concesion > UNRESOLVED_CONCESSION_THRESHOLD
+
+
+def test_sin_concesiones_grandes_no_se_inventan_brechas():
+    """Pesos equilibrados: nadie cede de mas, y el acta no puede fabricar conflicto."""
+    s = settle(_entrada(), None)
+
+    assert all(b.concesion > UNRESOLVED_CONCESSION_THRESHOLD for b in s.unresolved_gaps)
+
+
+def test_el_acta_lleva_dueno_y_fecha_de_la_decision():
+    s = settle(_entrada(), None, owner="planning", decided_on=date(2026, 8, 3))
+
+    assert s.decision_owner == "planning"
+    assert s.decision_date == date(2026, 8, 3)
+
+
+def test_un_acta_sin_dueno_lo_dice_en_vez_de_fingir_uno():
+    """Un owner vacio se leeria como 'ya esta asignado'. Se declara sin asignar."""
+    s = settle(_entrada(), None)
+
+    assert s.decision_owner == UNASSIGNED
+    assert s.decision_date is not None      # la fecha del acuerdo si existe siempre

@@ -1,7 +1,7 @@
 """Tests for the pure flow_map engine: graph, measurement, verdict."""
 import pytest
-from nosilo_core.guided import HANDOFF, OPTIONS, verify_guided
 
+from nosilo_core.guided import HANDOFF, OPTIONS, verify_guided
 from src.flow_map import (
     MEASURED,
     MIN_OBSERVATIONS,

@@ -8,7 +8,15 @@ the whole pipeline run end-to-end offline; swapping in a real adapter later only
 the backend, not the chain.
 """
 
-from src.connectors import InventoryLevel, InventorySource, Order, OrderLine, Product
+from src import order_fulfillment as of
+from src.connectors import (
+    InventoryLevel,
+    InventorySource,
+    Order,
+    OrderLine,
+    Product,
+    realized_service,
+)
 from src.connectors.simulator import SimulatedStore, demo_store
 from src.sources import DataFrameDemandSource
 
@@ -58,8 +66,12 @@ def test_demand_frame_feeds_the_demand_source_pipeline():
     src = DataFrameDemandSource(store.demand_frame())
 
     assert set(src.list_products()) == {"SKU-1", "SKU-2"}
-    # SKU-1 was ordered 3 then 2 -> the engine sees that demand series.
-    assert list(src.demand_series("SKU-1")) == [3.0, 2.0]
+    # SKU-1 was ordered 3 then 2, and sold NOTHING in the third period (the one where
+    # only SKU-2 moved). That trailing zero is the point of the period grid in
+    # src/sources.py: a period a SKU did not sell in is demand of zero, not a period
+    # that did not happen. Dropping it is what used to make every SKU in every real
+    # export measure as ADI 1.0 / "smooth".
+    assert list(src.demand_series("SKU-1")) == [3.0, 2.0, 0.0]
 
 
 # -- write side: restock through the safe-staging plane -----------------------
@@ -113,3 +125,15 @@ def test_demo_store_is_a_consistent_non_empty_store():
     skus = {p.sku for p in products}
     assert all(lvl.sku in skus for lvl in levels)
     assert not store.demand_frame().empty
+
+
+def test_demo_store_is_measurable_end_to_end_offline():
+    """The whole point: a store with no API key still yields real, mixed service."""
+    records = {r.product_id: r for r in realized_service(demo_store().orders())}
+
+    assert set(records) == {"SKU-1", "SKU-2", "SKU-3", "SKU-4"}
+    assert all(r.provenance == of.PROVENANCE_OBSERVED for r in records.values())
+    # a demo that ships everything on time and in full proves nothing
+    assert any(r.fill_rate < 1.0 for r in records.values())
+    assert any(r.otif < 1.0 for r in records.values())
+    assert any(r.lost_sales_value > 0 for r in records.values())

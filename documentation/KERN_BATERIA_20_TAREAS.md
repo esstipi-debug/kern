@@ -24,8 +24,8 @@ Cuatro reglas, aplicadas antes de puntuar nada:
 | Sujeto | Puntaje | Lectura |
 |---|--:|---|
 | **Techo humano** (planificador con experiencia) | **75%** · 15/20 | las 5 tareas humanas son el techo estructural de todo software |
-| **Techo de Kern sin ningún cliente** | **60%** · 12/20 | sólo 3 tareas dependen de que el cliente entregue algo (§2). Entre el 37,50% de hoy y este techo no hay dato de por medio: es todo código |
-| **Kern, corrido** | **37,50%** · 7,5/20 | 6 tareas cumplen · 3 quedan a medias |
+| **Techo de Kern sin ningún cliente** | **65%** · 13/20 | sólo T03 y T11 dependen de que el cliente entregue algo (§2). Alcanzado el 2026-09-05: entre el puntaje de hoy y el techo humano sólo quedan esas dos |
+| **Kern, corrido** | **65,00% · 13/20** | 13 tareas cumplen · 0 a medias · 2 sin dato del cliente. Emitido por `scripts/bateria_puntaje.py` y congelado por `tests/test_bateria_puntaje_publicado.py` |
 
 **Sobre el 37,50%, y por qué subió.** La cifra anterior publicada era **7,5%**, puntuada a mano el 25-jul: el primer juez había puesto 22,5% y dos lentes adversariales que auditaron fila por fila lo bajaron a 7,5% y ~5%. Se publicó el número bajo, no el alto.
 
@@ -36,13 +36,14 @@ Un número que sube en la vara que uno mismo propone merece desconfianza por def
 | 25-jul, código de entonces | 7,5% · 1,5/20 | juicio manual adversarial |
 | **#202**, mismo código, harness recién escrito | **10,0%** · 2,0/20 | harness mecánico |
 | #203 en adelante | 27,50% · 5,5/20 | harness mecánico |
-| **#218** | **37,50%** · 7,5/20 | harness mecánico |
+| #218 | 37,50% · 7,5/20 | harness mecánico |
+| **main @ `1aa5098`, 2026-09-05** | **65,00% · 13/20** | harness mecánico, ahora congelado por test |
 
 Sobre el **mismo código**, el harness cae a **media tarea** del veredicto adversarial. No es un juez más blando: la subida viene de [#203](https://github.com/esstipi-debug/kern/pull/203), que arregló los defectos de cableado que la propia batería destapó — la matemática que existía en `src/` y el job no recibía. El criterio no se movió: `tareas.json` está congelado por `tests/test_bateria_tareas.py`.
 
-**Sigue siendo un puntaje bajo, y esa es la lectura.** 37,50% sobre un techo de 75% son seis tareas cumplidas de veinte: la mitad del techo alcanzable.
+**La lectura de hoy.** 65,00% sobre un techo humano de 75% son trece tareas cumplidas de veinte; las dos que faltan (T03 y T11) no dependen de código sino de que un cliente entregue su historial de ventas y su stock. El 37,50% que este documento publicó desde agosto quedó 160 commits atrás del harness: siete tareas que decía "a medias" o "no cumple" ya cumplían.
 
-**Vigencia.** Corrida el 03-ago-2026 sobre `b0b7bb6`, posterior a #193/#194 (cinco degradaciones silenciosas cerradas, ver [`KERN_AUTOPSIA_FALLAS.md`](KERN_AUTOPSIA_FALLAS.md)) y a #203. Reproducible: dos corridas seguidas dan el mismo vector de estados. **Nada la congela** — ni un test ni la CI corren la batería, así que un cambio en `jobs/` puede moverla sin que nada se ponga rojo. Re-correr y sellar el commit antes de cada uso público.
+**Vigencia.** Corrida el 2026-09-05 sobre `1aa5098`. Reproducible: dos corridas seguidas dan el mismo vector de estados. **La congela un test:** `tests/test_bateria_puntaje_publicado.py` corre la batería en la CI, fija el vector de estados y exige que este documento y el README de la batería digan lo mismo que `python scripts/bateria_puntaje.py --markdown`. Un cambio en `jobs/` que mueva el marcador pone rojo ese test.
 
 ---
 
@@ -64,7 +65,7 @@ El harness responde exactamente esa pregunta, porque corre 13 de las 15 tareas *
 
 6 + 6 + 3 = 15. **Cierra.**
 
-**T10 está en el cubo de dato, pero arrastra un defecto propio que no espera al cliente:** hoy reporta el fill rate *del modelo* bajo la etiqueta de servicio *realizado*. Sin una sola línea de pedido, con SS=50 y sigma=40 sobre demanda de ciclo 500, `fill_rate_from_safety_stock` devuelve 99,6%. El criterio lo descalifica por nombre, y con razón: es un número que parece correcto y no lo es. Corregir la etiqueta no necesita dato de nadie.
+**T10 no tiene ningún campo de servicio realizado** — ni OTIF de salida, ni fill rate de línea, ni días de quiebre. El único OTIF que Kern calcula es de **entrada** (proveedor → nosotros, ver T09). Y el motor devuelve un fill rate sin una sola línea de pedido: con SS=50 y sigma=40 sobre demanda de ciclo 500, `fill_rate_from_safety_stock` da 99,6%. Es la beta que implica la política, no lo servido; el criterio lo descalifica por nombre.
 
 ### La evidencia, tarea por tarea
 
@@ -105,6 +106,7 @@ Dicho de otro modo: entre el 37,50% de hoy y el 60%, **no hay ningún dato del c
 
 Casos verificados en la corrida del 25-jul:
 
+- el **resumen ejecutivo** del entregable de inventario citaba `params['service_level']`, el *argumento por defecto*, no lo que corrió. Con niveles diferenciados por SKU abría con "at a 95% cycle service level" mientras la sección de supuestos —tres secciones más abajo, en el mismo documento— listaba los reales (90% y 99%). El comentario del propio código advertía del riesgo junto a la línea que lo cometía. Corregido; el resumen ahora los lee de los SKU
 - `lead_time_std` nunca pasado, aunque `src/policies.py` lo acepta
 - `bias()` calculado dentro de `compute_metrics` y descartado en la misma línea que lo recibe
 - `resale_value` y `unit_cost` defaulteados sin declararlo

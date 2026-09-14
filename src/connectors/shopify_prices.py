@@ -39,7 +39,7 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from nosilo_core import writeback
-from src.connectors import health
+from src.connectors import WRITE_APPROVAL_GATED, WriteSurface, health
 from src.connectors.shopify_api_version import PINNED_VERSION, check_served
 
 try:  # optional: the 'repricing' extra (httpx already pinned by tower/pricing-intel)
@@ -264,3 +264,15 @@ def demo_shopify() -> InMemoryShopify:
             "SKU-3": {"variant_id": "gid://shopify/ProductVariant/3", "price": 8.0},
         }
     )
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_APPROVAL_GATED,
+    objects=(
+        'productVariant.price',
+    ),
+    means=(
+        'cambio de precio por variante con dry-run, aprobacion firmada y rollback; mismo gate de precios que Odoo.'
+    ),
+)

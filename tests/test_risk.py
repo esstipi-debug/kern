@@ -6,6 +6,7 @@ expected loss (EMV) and FMEA RPN, buckets into a 5x5 heatmap, flags TTR>TTS expo
 """
 
 import math
+from datetime import date
 
 import pytest
 
@@ -157,3 +158,55 @@ def test_top_exposure_gap_picks_the_widest_ttr_over_tts():
 def test_assess_portfolio_total_emv_is_finite():
     report = assess_portfolio([_factor(name="x"), _factor(name="y")])
     assert math.isfinite(report.total_emv)
+
+
+# ---- T13: una mitigacion recomendada sin "cuando" no es una accion -----------
+#
+# El criterio de T13 pide "una accion concreta y fechada". rank_mitigations
+# devolvia coste, beneficio y ROI, pero ninguna fecha: la accion quedaba
+# recomendada y sin comprometer.
+#
+# El plazo NO se inventa, se deriva de campos que RiskFactor ya lleva:
+#   dias_de_margen = velocity_days - detectability_days
+# lo que tardas en enterarte, restado de lo que tarda el riesgo en materializarse.
+# Si TTR > TTS ya estas expuesto (Simchi-Levi) y el margen es cero.
+
+
+def test_el_plazo_sale_de_la_ventana_de_aviso_del_riesgo():
+    riesgo = _factor(velocity_days=30.0, detectability_days=7.0, mitigations=(
+        MitigationOption("segundo transportista", "redundancy", 5_000.0, 0.0, 0.4),))
+
+    ranked = rank_mitigations(riesgo, as_of=date(2026, 8, 2))
+
+    assert all(m.days_available == 23.0 for m in ranked)          # 30 - 7
+    assert all(m.by_when == date(2026, 8, 25) for m in ranked)
+
+
+def test_un_riesgo_ya_expuesto_no_da_margen():
+    """TTR > TTS: el agujero ya existe, la accion no puede esperar."""
+    riesgo = _factor(velocity_days=30.0, detectability_days=7.0,
+                     time_to_recover=40.0, time_to_survive=10.0, mitigations=(
+                         MitigationOption("calificar segundo", "redundancy", 20_000.0, 0.0, 0.5),))
+
+    ranked = rank_mitigations(riesgo, as_of=date(2026, 8, 2))
+
+    assert all(m.days_available == 0.0 for m in ranked)
+    assert all(m.by_when == date(2026, 8, 2) for m in ranked)
+
+
+def test_la_deteccion_mas_lenta_que_el_riesgo_tampoco_da_margen():
+    """Te enteras despues de que te pego: el margen no puede ser negativo."""
+    riesgo = _factor(velocity_days=5.0, detectability_days=45.0, mitigations=(
+        MitigationOption("auditoria", "control", 3_000.0, 0.3, 0.0),))
+
+    assert all(m.days_available == 0.0 for m in rank_mitigations(riesgo, as_of=date(2026, 8, 2)))
+
+
+def test_el_plazo_viaja_hasta_el_assessment():
+    """La fecha tiene que llegar al entregable, no quedarse en la funcion interna."""
+    riesgo = _factor(velocity_days=30.0, detectability_days=7.0, mitigations=(
+        MitigationOption("segundo transportista", "redundancy", 5_000.0, 0.0, 0.4),))
+
+    evaluado = assess(riesgo, as_of=date(2026, 8, 2))
+
+    assert all(m.by_when == date(2026, 8, 25) for m in evaluado.mitigations)

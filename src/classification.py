@@ -20,6 +20,7 @@ Chains* (4th ed., 2017), Pareto/ABC; ABC-XYZ matrix as the action layer.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import numpy as np
@@ -86,15 +87,28 @@ def classify_portfolio(
     *,
     abc_thresholds: tuple[float, float] = (0.80, 0.95),
     cv_cuts: tuple[float, float] = (0.5, 1.0),
+    service_level_by_class: Mapping[str, float] | None = None,
 ) -> list[SkuClassification]:
     """Classify a portfolio of SKUs into the ABC-XYZ matrix.
 
     Each item is a dict with ``product_id``, ``unit_cost`` and ``demand`` (a list of
     per-period demand). Returns one SkuClassification per SKU, ordered by descending
     annual value (the ABC ranking).
+
+    ``service_level_by_class`` overrides ``_SERVICE_LEVEL`` per class, and comes
+    from the industry pack (``VerticalProfile.classification``). A PARTIAL map is
+    legal and merges over the defaults: a pack that only raises A leaves B and C
+    where they were. The defaults themselves assume the A class is "what bills
+    most", which is the right assumption in distribution and the wrong one in
+    industrial spares, where an A is "what stops the machine" -- the reason this
+    parameter exists at all.
     """
     if not items:
         return []
+
+    # Merged, not replaced: a pack that declares only A keeps the defaults for
+    # B and C instead of silently dropping them to whatever a partial map omits.
+    levels = {**_SERVICE_LEVEL, **(service_level_by_class or {})}
 
     a_cut, b_cut = abc_thresholds
     x_cut, y_cut = cv_cuts
@@ -157,7 +171,7 @@ def classify_portfolio(
                 cv=r["cv"],
                 xyz=xyz,
                 cell=cell,
-                service_level=_SERVICE_LEVEL[abc],
+                service_level=levels[abc],
                 policy=policy,
                 buffer_distribution=_BUFFER_BY_XYZ[xyz],
             )

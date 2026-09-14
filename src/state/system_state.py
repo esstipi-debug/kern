@@ -28,11 +28,11 @@ with a clear error and nothing is written.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 
-from .store import StateStore, default_store
+from .store import StateStore
 
 try:  # optional strict schema validation
     import pandera.pandas as pa
@@ -124,6 +124,35 @@ class UnknownDomainError(ValueError):
         super().__init__(f"unknown state domain '{domain}' (known: {', '.join(DOMAINS)})")
 
 
+class MissingStoreError(ValueError):
+    """No ``store`` was given, and there is no safe way to guess one.
+
+    ``store=None`` used to resolve to the process-wide ``default_store()``.
+    Every call site in this tree already passes ``store=`` explicitly, so that
+    fallback was never taken on purpose -- the only way to reach it was a
+    ``None`` forwarded down from an entry point, and what it did then was read
+    (and write, since ``StateStore`` mkdir's on construction) the shared
+    partition on behalf of whoever had dropped the identity. With more than
+    one client in a process that is a cross-client leak with no log line.
+
+    Opting into the shared partition is still allowed -- ``store_for(None)``
+    or ``default_store()`` -- it just has to be written down.
+    """
+
+    def __init__(self, operation: str) -> None:
+        self.operation = operation
+        super().__init__(
+            f"{operation}() requires an explicit store: pass store=store_for(client_id) for one"
+            " client's partition, or store=default_store() to opt into the shared one on purpose"
+        )
+
+
+def _require_store(store: StateStore | None, operation: str) -> StateStore:
+    if store is None:
+        raise MissingStoreError(operation)
+    return store
+
+
 class SchemaValidationError(ValueError):
     """A snapshot payload failed its domain's schema contract. Nothing was written."""
 
@@ -159,15 +188,36 @@ def _cycle_sort_key(cycle_id: str) -> tuple:
     chronologically, anything else sorts lexicographically as a last resort.
     Callers should keep one scheme per domain; comparing across schemes still
     produces a total (if not very meaningful) order rather than raising.
+
+    A parsed timestamp without an offset is read as UTC -- the same convention
+    as ``store._ensure_utc`` and ``scm_agent.events._ensure_utc``. Not a detail:
+    both spellings are ISO cycle ids a caller legitimately produces
+    (``forecast_cycle.now_cycle_id`` emits an aware UTC stamp; a caller naming a
+    cycle by hand writes "2026-08-01T00:00:00"), and Python refuses to compare a
+    naive datetime with an aware one. Without the normalization this function
+    raised ``TypeError`` on that pair -- and a key that raises on a legal pair is
+    not a total order, so ``snapshot()`` blew up through every caller that
+    happened to mix the two rather than rejecting or accepting the cycle.
+
+    ``AttributeError`` is deliberately NOT caught. It is what ``.replace`` raises
+    for a ``cycle_id`` that is neither an int nor a str -- ``None`` arriving from
+    a broken path, a stray object -- and that is a caller bug, not a scheme this
+    function orders. Swallowing it returned ``(2, None)``, a key that compares
+    fine against another bucket-2 key right up until it meets a string, and then
+    raises ``TypeError`` inside the comparison in :func:`snapshot`, several frames
+    away from whoever produced the ``None``. The timezone fix above needed the
+    try/else restructure, not a wider net.
     """
     try:
         return (0, int(cycle_id))
     except (TypeError, ValueError):
         pass
     try:
-        return (1, datetime.fromisoformat(cycle_id.replace("Z", "+00:00")))
+        parsed = datetime.fromisoformat(cycle_id.replace("Z", "+00:00"))
     except (TypeError, ValueError):
         pass
+    else:
+        return (1, parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc))
     return (2, cycle_id)
 
 
@@ -240,11 +290,12 @@ def snapshot(
 ) -> StateSnapshot:
     """Validate and append a new snapshot for ``domain``. Never overwrites history.
 
-    Raises ``UnknownDomainError`` for a domain outside ``DOMAINS``,
-    ``SchemaValidationError`` if ``payload`` fails the domain's schema
-    contract, or ``CycleOrderError`` if ``cycle_id`` is not strictly after the
-    domain's latest stored cycle. Nothing is written to disk unless all three
-    checks pass.
+    Raises ``MissingStoreError`` if ``store`` is None (there is no safe guess
+    once more than one client exists), ``UnknownDomainError`` for a domain
+    outside ``DOMAINS``, ``SchemaValidationError`` if ``payload`` fails the
+    domain's schema contract, or ``CycleOrderError`` if ``cycle_id`` is not
+    strictly after the domain's latest stored cycle. Nothing is written to
+    disk unless all of them pass.
     """
     if domain not in DOMAIN_COLUMNS:
         raise UnknownDomainError(domain)
@@ -252,10 +303,10 @@ def snapshot(
         raise TypeError(f"payload must be a pandas DataFrame, got {type(payload).__name__}")
     if not isinstance(cycle_id, str) or not cycle_id.strip():
         raise ValueError("cycle_id must be a non-empty string")
+    store = _require_store(store, "snapshot")
 
     _validate_schema(domain, payload)  # raises SchemaValidationError; nothing written on failure
 
-    store = store or default_store()
     latest_id = store.latest_cycle_id(domain)
     if latest_id is not None and _cycle_sort_key(cycle_id) <= _cycle_sort_key(latest_id):
         raise CycleOrderError(domain, cycle_id, latest_id)
@@ -268,7 +319,7 @@ def latest(domain: str, *, store: StateStore | None = None) -> StateSnapshot | N
     """The most recently stored snapshot for ``domain``, or None if it has none."""
     if domain not in DOMAIN_COLUMNS:
         raise UnknownDomainError(domain)
-    store = store or default_store()
+    store = _require_store(store, "latest")
     record = store.latest_record(domain)
     if record is None:
         return None
@@ -285,7 +336,7 @@ def history(
     if window is not None and window < 0:
         raise ValueError("window must be >= 0")
 
-    store = store or default_store()
+    store = _require_store(store, "history")
     records = store.list_records(domain)
     if window is not None:
         records = records[-window:] if window > 0 else []

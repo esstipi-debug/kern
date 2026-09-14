@@ -197,9 +197,14 @@ identity — the human preparer/reviewer lines on the workpaper are left blank
 **by design**: filling them is the HANDOFF step.
 
 Deliberately **not** in phase 1: an append-only evidence *ledger* (the
-`SqliteAuditLedger` analog). Open question 7 in the memo — pending the
-auditor's answer on whether retention lives in Linchpin or the firm's DMS.
-The hash-verifiable artifacts stand on their own either way.
+`SqliteAuditLedger` analog). **Q7 decision (2026-09-07):** do **not**
+implement a Kern-side evidence ledger. Retention of hash-verifiable
+`evidence.json` + Lineage lives in the firm's DMS (or the engagement file).
+`SqliteAuditLedger` records **writeback mutations**, not observation; an
+anonymous MCP caller is not an authenticated engagement identity, so Kern
+must not become the system of record for client evidence. Re-performability
+is the SHA-256 on the artifacts. Revisit only if a named, authenticated
+studio tenant asks for an optional append-only store (never on by default).
 
 ## 2. `jobs/audit_evidence_job.py` — the playbook
 
@@ -401,13 +406,13 @@ the auditor blockers (memo §7 Q1–Q2) are resolved.
 |---|---|---|
 | `src/audit_evidence.py` | engine (attribute + MUS sampling, GL tie-out, IPE attestation, `EvidenceRecord`) | **DONE** |
 | `tests/test_audit_evidence.py` | engine vs. published numbers (30 tests) | **DONE** |
-| `jobs/audit_evidence_job.py` | five-function job + workpaper writer | PENDING (needs Q2 framing) |
-| `scm_agent/tools.py` | +adapters, +`audit_evidence_tool()`, +1 register line | PENDING |
-| `scm_agent/tool_options.py` | +`audit_evidence_options` | PENDING |
-| `jobs/qa.py` | `coverage_gate`: audit outcomes must not be EXECUTED | PENDING |
-| `tests/test_audit_evidence_tool.py` | routing + end-to-end wiring | PENDING |
-| `examples/run_audit_evidence.py` | pilot CLI | PENDING |
-| `documentation/METHODOLOGY.md` | document the audit models | PENDING |
+| `jobs/audit_evidence_job.py` | five-function job + workpaper writer (W-1..W-6) | **DONE** |
+| `scm_agent/tools.py` | +adapters, +`audit_evidence_tool()`, +1 register line | **DONE** |
+| `scm_agent/tool_options.py` | unused — `options=lambda report: report.outcome` (HANDOFF/ESCALATED from the job) | **DONE** (no extra module) |
+| `jobs/qa.py` | never-EXECUTED is enforced in `audit_evidence_job.verify` (and `scor_audit_job.verify`) | **DONE** (job-local, not a global qa.py hook) |
+| `tests/test_audit_evidence_tool.py` | routing + end-to-end wiring | **DONE** |
+| `examples/run_audit_evidence.py` | pilot CLI | **DONE** |
+| `documentation/METHODOLOGY.md` | document the audit models | PENDING (engine numbers already in this file + `tests/test_audit_evidence.py`) |
 
 ### What landed (the "core") and why it is safe to land now
 
@@ -425,7 +430,8 @@ the two open positioning questions. Its correctness is *edition-independent* and
   the expansion-factor method's own output (n = 53) and documents that the confidence-factor-table
   method yields n = 55 — the exact reconciliation awaits the pinned AICPA guide edition.
 
-No tool is registered yet, so the catalogue tool count and `modes.py` are untouched.
+The job and MCP tool (`audit_evidence` / `kern_audit_evidence`) are registered.
+`prepared_by` is the engine identity; Reviewed-by stays blank (HANDOFF).
 
 Phase 2 (separate PR): `jobs/sox_control_test_job.py` + tool + RCM/TOE
 writers + deficiency-classification proposal functions, reusing
@@ -436,5 +442,6 @@ writers + deficiency-classification proposal functions, reusing
 Mirrors memo §7 — the blockers are **Q1 (table fidelity)** and **Q2 (who is
 the user in the engagement)**; the rest shape details: workpaper import
 targets (Q3), MUS variants (Q4), strict-params for TM (Q5), human-only
-deficiency conclusions (Q6), evidence ledger vs. artifacts-only (Q7), and a
+deficiency conclusions (Q6), evidence ledger vs. artifacts-only (**Q7 closed:
+artifacts-only; see §1**), and a
 "finalize/freeze" step for the 2026 14-day assembly rule (Q8).

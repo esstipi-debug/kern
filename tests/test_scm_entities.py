@@ -12,9 +12,9 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+
 from nosilo_core.entities import SourceRef, SqliteEntityStore
 from nosilo_core.entities.resolution import REASON_GUARDED, REASON_NOT_OWNER
-
 from src.connectors import Product
 from src.entities import (
     LOCATION,

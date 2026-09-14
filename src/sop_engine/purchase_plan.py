@@ -43,6 +43,21 @@ internally (the classic EOQ average-cycle-stock convention,
 a WORKING-CAPITAL view used only inside ``allocate_under_budget``'s own
 feasibility math, never surfaced here where units are what matters.
 
+**The supplier's payment terms are a THIRD external input**, of the same kind
+as ``incoming_po``: they come from the contract / AP master, this module never
+infers them, and when the caller supplies none the line falls back to
+``cash_plan.DEFAULT_PAYMENT_TERMS`` and SAYS SO in ``payment_terms_source``.
+They are what turns ``order_value`` from a number into a dated commitment:
+``order_value`` is the money that leaves in ``payment_due_week``, and
+``cash_plan.build_cash_commitment_schedule`` is what adds those up per week.
+
+**What the budget cut costs is carried on the line too.** ``allocate_under_
+budget`` decides how much buffer the portfolio can afford;
+``budget_deferral.defer_by_priority`` decides WHOSE, and each line reports the
+buffer it asked for, the buffer it got, and the coverage the difference took
+with it (``units_at_risk`` / ``cost_at_risk``). A trimmed plan that only reports
+the trimmed number cannot be argued with.
+
 Pure, no I/O.
 """
 
@@ -51,6 +66,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.constraints import BudgetAllocation, InventoryItem, allocate_under_budget, apply_order_rules
+from src.sop_engine.budget_deferral import defer_by_priority
+from src.sop_engine.cash_plan import (
+    DEFAULT_NET_DAYS,
+    DEFAULT_PAYMENT_TERMS,
+    DEFAULT_PAYMENT_WEEK,
+    TERMS_ASSUMED,
+    parse_payment_terms,
+    payment_week,
+    resolve_payment_terms,
+)
 from src.sop_engine.demand_plan import DemandPlanLine
 
 
@@ -68,6 +93,11 @@ class SkuPurchaseInputs:
     incoming_po: float = 0.0
     minimum_order_quantity: float = 0.0
     order_multiple: float = 0.0
+    #: The supplier's payment condition as the source system spells it
+    #: ("net_30", "60 days", "contado"). The EMPTY STRING means the file said
+    #: nothing, which is the only case that may fall back to the declared
+    #: default; an unreadable non-empty value raises rather than defaulting.
+    payment_terms: str = ""
 
     def __post_init__(self) -> None:
         if self.on_hand < 0:
@@ -82,6 +112,11 @@ class SkuPurchaseInputs:
             raise ValueError(f"{self.product_id}: minimum_order_quantity must be >= 0")
         if self.order_multiple < 0:
             raise ValueError(f"{self.product_id}: order_multiple must be >= 0")
+        if self.payment_terms.strip():
+            try:
+                parse_payment_terms(self.payment_terms)
+            except ValueError as exc:
+                raise ValueError(f"{self.product_id}: {exc}") from exc
 
 
 #: The supplier's terms cost nothing extra on this line - there was nothing to round.
@@ -148,6 +183,32 @@ class PurchasePlanLine:
     #: numbers and no verdict leaves the buyer to eyeball it, which is the decision this
     #: plan exists to make. One of the CONSTRAINT_* tokens below.
     constraint_verdict: str = UNCONSTRAINED
+    # WHEN the ``order_value`` above actually leaves the bank. A purchase total with no
+    # payment date is not a cash decision (see the module docstring and ``cash_plan``):
+    # these four say which term was used, whether it was READ or ASSUMED, and the week
+    # the disbursement lands in, counted from the order date.
+    payment_terms: str = DEFAULT_PAYMENT_TERMS
+    payment_terms_source: str = TERMS_ASSUMED
+    payment_due_days: int = DEFAULT_NET_DAYS
+    payment_due_week: int = DEFAULT_PAYMENT_WEEK
+    # What the budget cut took off THIS line. ``reorder_buffer`` alone says what
+    # survived; on its own it cannot be told apart from a buffer that was sized that
+    # small on purpose, which is exactly the number a buyer needs to push back on.
+    reorder_buffer_requested: float = 0.0
+    units_at_risk: float = 0.0      # buffer units the cut removed: exposure ADDED, not units forecast lost
+    cost_at_risk: float = 0.0       # those units at LANDED COST -- this plan has no selling price
+
+
+def _allocate(
+    items: list[InventoryItem], budget: float | None
+) -> BudgetAllocation | None:
+    """The portfolio cap (``src/constraints.py``, verbatim) followed by the
+    per-line deferral decision (``budget_deferral``). Same money, same
+    feasibility; what changes is that a named set of lines gives up its buffer
+    instead of every line giving up the same fraction of its own."""
+    if budget is None:
+        return None
+    return defer_by_priority(allocate_under_budget(items, budget), items)
 
 
 def build_purchase_plan(
@@ -156,6 +217,7 @@ def build_purchase_plan(
     *,
     budget: float | None = None,
     cover_horizon: float = DEFAULT_CONSTRAINT_COVER_HORIZON,
+    default_payment_terms: str = DEFAULT_PAYMENT_TERMS,
 ) -> tuple[tuple[PurchasePlanLine, ...], BudgetAllocation | None]:
     """Build the purchase/inventory plan for every SKU in ``demand_plan``.
 
@@ -166,6 +228,12 @@ def build_purchase_plan(
     trimming happens at all (every SKU keeps its full ``reorder_point`` as
     ``reorder_buffer``) and the returned ``BudgetAllocation`` is ``None``
     (never a fabricated allocation against a budget that was never given).
+
+    ``default_payment_terms`` is what a SKU whose input stated NO payment
+    condition is planned on. It is a named parameter carrying an importable
+    default rather than a literal buried in the loop, so a caller can override
+    the assumption for a portfolio, and every line built on it comes out
+    stamped ``payment_terms_source='assumed_default'``.
     """
     missing = [d.product_id for d in demand_plan if d.product_id not in sku_inputs]
     if missing:
@@ -190,27 +258,46 @@ def build_purchase_plan(
             safety_stock=inp.reorder_point, unit_cost=inp.unit_cost,
         ))
 
-    allocation = allocate_under_budget(items, budget) if budget is not None else None
+    allocation = _allocate(items, budget)
     final_items = allocation.items if allocation is not None else items
 
-    lines: list[PurchasePlanLine] = []
-    for d, item in zip(demand_plan, final_items):
-        inp = sku_inputs[d.product_id]
-        projected = inp.on_hand + inp.incoming_po + item.order_quantity - d.shaped_demand
-        lines.append(PurchasePlanLine(
-            product_id=d.product_id, shaped_demand=d.shaped_demand, on_hand=inp.on_hand,
-            incoming_po=inp.incoming_po, unit_cost=inp.unit_cost, recommended_order=item.order_quantity,
-            reorder_buffer=item.safety_stock, projected_position=projected,
-            order_value=item.order_quantity * inp.unit_cost,
-            constraint_extra_units=extra_by_sku[d.product_id],
-            constraint_cost_delta=extra_by_sku[d.product_id] * inp.unit_cost,
-            # Cover the leftover adds, in the same period the demand plan is stated in.
-            # Zero demand means no cover to speak of, not infinite cover.
-            constraint_extra_cover_periods=(
-                extra_by_sku[d.product_id] / d.shaped_demand if d.shaped_demand > 0 else 0.0
-            ),
-            constraint_verdict=constraint_verdict(
-                extra_by_sku[d.product_id], d.shaped_demand, cover_horizon
-            ),
-        ))
-    return tuple(lines), allocation
+    lines = tuple(
+        _plan_line(
+            d, sku_inputs[d.product_id], item, extra_by_sku[d.product_id],
+            cover_horizon, default_payment_terms,
+        )
+        for d, item in zip(demand_plan, final_items)
+    )
+    return lines, allocation
+
+
+def _plan_line(
+    d: DemandPlanLine,
+    inp: SkuPurchaseInputs,
+    item: InventoryItem,
+    extra: float,
+    cover_horizon: float,
+    default_payment_terms: str,
+) -> PurchasePlanLine:
+    """One SKU's finished line: what to order, what the buffer ended up being,
+    what the supplier's terms cost, when the money leaves, and what the budget
+    cut took off this line."""
+    terms, net_days, terms_source = resolve_payment_terms(inp.payment_terms, default_payment_terms)
+    deferred = max(0.0, inp.reorder_point - item.safety_stock)
+    return PurchasePlanLine(
+        product_id=d.product_id, shaped_demand=d.shaped_demand, on_hand=inp.on_hand,
+        incoming_po=inp.incoming_po, unit_cost=inp.unit_cost, recommended_order=item.order_quantity,
+        reorder_buffer=item.safety_stock,
+        projected_position=inp.on_hand + inp.incoming_po + item.order_quantity - d.shaped_demand,
+        order_value=item.order_quantity * inp.unit_cost,
+        constraint_extra_units=extra,
+        constraint_cost_delta=extra * inp.unit_cost,
+        # Cover the leftover adds, in the same period the demand plan is stated in.
+        # Zero demand means no cover to speak of, not infinite cover.
+        constraint_extra_cover_periods=(extra / d.shaped_demand if d.shaped_demand > 0 else 0.0),
+        constraint_verdict=constraint_verdict(extra, d.shaped_demand, cover_horizon),
+        payment_terms=terms, payment_terms_source=terms_source,
+        payment_due_days=net_days, payment_due_week=payment_week(net_days),
+        reorder_buffer_requested=inp.reorder_point,
+        units_at_risk=deferred, cost_at_risk=deferred * inp.unit_cost,
+    )

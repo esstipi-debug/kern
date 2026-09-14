@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from nosilo_core import writeback
-from src.connectors import health
+from src.connectors import WRITE_APPROVAL_GATED, WriteSurface, health
 from src.connectors.shopify_api_version import PINNED_VERSION, check_served
 
 try:
@@ -406,3 +406,15 @@ def demo_shopify_inventory() -> InMemoryShopifyInventory:
             "SKU-3": {loc: 12},
         }
     )
+
+
+#: Que escribe este conector en el sistema del cliente (ver ``WriteSurface``).
+WRITE_SURFACE = WriteSurface(
+    WRITE_APPROVAL_GATED,
+    objects=(
+        'inventoryLevel (adjust / set) por ubicacion',
+    ),
+    means=(
+        'la escritura existe en el conector pero la superficie web/MCP de Kern es de solo lectura sobre Shopify por politica (dos tests lo vigilan); solo un operador con credenciales explicitas la usa.'
+    ),
+)

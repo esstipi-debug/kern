@@ -137,6 +137,19 @@ def _verdict_report_md(result: StockyMigrationResult, *, client: str) -> str:
         lines.append(f"- min>max: {', '.join(result.sku_audit.inconsistent_minmax)}")
     if result.sku_audit.nonpositive_reorder:
         lines.append(f"- reorden <=0: {', '.join(result.sku_audit.nonpositive_reorder)}")
+    # Deliberately under its own heading and NOT in the defect list above: the
+    # minimum of these SKUs is not something this export let us measure, and
+    # printing them next to the defects is what the merchant reads as an
+    # accusation. The motive is printed verbatim rather than judged: "no hay
+    # columna Min Stock" sends them to re-export, "trae un valor negativo: '-5'"
+    # sends them to fix data, and deciding which of those counts as a defect is
+    # a policy this codebase has not verified.
+    if result.sku_audit.unmeasured_reorder:
+        lines.append(
+            f"- sin minimo medible en el export ({len(result.sku_audit.unmeasured_reorder)} SKU), "
+            f"por motivo:")
+        for reason in result.sku_audit.unmeasured_reasons:
+            lines.append(f"  - {reason}")
 
     if result.client_profile_params:
         lines += ["", "## Parametros de cliente detectados", ""]

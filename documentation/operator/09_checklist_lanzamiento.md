@@ -26,8 +26,18 @@
 - [ ] Reclamar/publicar en Glama
 - [ ] Reclamar/publicar en Smithery
 - [ ] Reclamar/publicar en PulseMCP
-- [ ] Publicar el módulo Odoo en el Apps Store (ver
-      `odoo_addon/linchpin_dry_run/`)
+- [x] Ficha Odoo: `support`, cover, capturas, OPL-1 y precio Store **gratis**
+      en `odoo_addon/{17.0,19.0}/kern_dry_run/` (el Store no lee este repo)
+- [x] Repo privado `esstipi-debug/linchpin-odoo-apps` sincronizado (2026-08-25):
+      `17.0` = `72468e7`, `19.0` = `4defa85`, modulo `kern_dry_run/` en la raiz
+      de las dos. Re-sync: `python scripts/sync_linchpin_odoo_apps.py --push`
+- [x] Colaborador `online-odoo` con permiso `read` **en ese repo** (invitado el
+      2026-08-25). Pendiente de aceptacion del lado de Odoo; la invitacion de
+      GitHub caduca a los 7 dias, reenviar si se pasa
+- [ ] Publicar en apps.odoo.com (tu login): registrar
+      `ssh://git@github.com/esstipi-debug/linchpin-odoo-apps#19.0` y `#17.0`,
+      deploy key read-only, scan.
+      Ver `documentation/GTM_SUBMISSIONS.md` §5. No registrar `kern`.
 
 ## Funnel demo (E2 — mini-reporte, ya en código)
 
@@ -59,8 +69,13 @@
 
 - [ ] Nada obligatorio hasta que se firme un partner real (integrador Odoo o
       consultora — ver [partner-odoo.md](../paquetes/partner-odoo.md) para el
-      pitch y los dos modelos). El módulo Odoo (`odoo_addon/linchpin_dry_run/`)
-      ya tiene su sección "For partners" enlazando al one-pager.
+      pitch y los dos modelos). El módulo Odoo
+      (`odoo_addon/{17.0,19.0}/kern_dry_run/`) conserva una sección
+      "For partners", pero **ya no enlaza al one-pager ni menciona los
+      montos**: las reglas del Apps Store prohíben enlaces externos y
+      términos comerciales en la página de descripción (se corrigió el
+      2026-08-19, ver `odoo_addon/PORT_17_A_19.md` §1.4). El one-pager
+      se entrega por fuera del Store.
 - [ ] Al firmar un partner: acordar por escrito el modelo (rev-share 20% o
       white-label a tarifa fija mensual, con su monto) y quién factura a quién
       — no hay plantilla de contrato de partner todavía (a diferencia del

@@ -45,6 +45,7 @@ from nosilo_core import writeback
 from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
 from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 from src.connectors.excel import ExcelWorkbookStore
+from src.ddmrp import net_flow_position
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 
@@ -78,6 +79,19 @@ _DEMAND_CANDIDATES = (
 _COST_CANDIDATES = (
     "costo unitario", "costo", "precio unitario", "precio costo", "precio compra",
     "valor unitario", "unit cost", "cost", "unitcost", "purchase price", "unit price",
+)
+# Optional - stock already bought and not yet received. When present, the plan
+# nets it (see ``run``); when absent, the line says so instead of assuming zero.
+# Deliberately NOT here: a bare "pedido"/"order" candidate. ``DEFAULT_ORDER_COLUMN``
+# is "Pedir (Kern)" and a planilla that already carries an order column would have
+# the plan's own OUTPUT read back as inbound supply - the quantity would net
+# against itself and collapse to zero on the second run.
+_ON_ORDER_CANDIDATES = (
+    "en transito", "transito", "en camino", "por recibir", "por llegar",
+    "pedido pendiente", "pedidos pendientes", "oc pendiente", "ocs pendientes",
+    "orden pendiente", "ordenes pendientes", "comprado no recibido",
+    "on order", "on-order", "onorder", "in transit", "in-transit", "intransit",
+    "incoming", "inbound", "open po", "open pos", "pending po", "due in",
 )
 
 
@@ -123,6 +137,12 @@ class PlanillaRow:
     reorder_point: float | None
     demand_per_period: float | None
     cost: float | None = None
+    #: Units already on an open purchase order and not yet received, when the
+    #: planilla carries a column for it. ``None`` means the client did not supply
+    #: it - NEVER 0.0, which would be a claim that nothing is inbound. That
+    #: distinction is the whole point: assuming zero is what makes the plan
+    #: re-order stock that is already paid for and on its way.
+    on_order: float | None = None
 
 
 @dataclass(frozen=True)
@@ -141,6 +161,21 @@ class ReplenishmentLine:
     # source=="kern_optimized"; the client's own ROP in reorder-point mode;
     # None in demand-cover mode (no trigger concept there today).
     trigger: float | None = None
+    #: Units on open POs that were netted out of this line, or ``None`` when the
+    #: planilla carried no such column. Per-line and never blended: a client has
+    #: to be able to tell a line that was netted from one that was not.
+    on_order: float | None = None
+    #: The inventory position the quantity was actually sized against -
+    #: ``net_flow_position(on_hand, on_order or 0, 0)``. Equals ``on_hand`` when
+    #: nothing was netted. Emitted so the arithmetic is auditable from the
+    #: deliverable instead of having to be re-derived.
+    #:
+    #: Defaults to ``None``, not to ``0.0``: a zero here would be a *claim* that
+    #: the line was sized against an empty position, and every line ``run()``
+    #: emits carries a real value. The same defaulting mistake - a plausible
+    #: constant standing in for a measurement - is what let an earlier report
+    #: declare a cutoff it had not used.
+    position: float | None = None
 
 
 @dataclass(frozen=True)
@@ -161,6 +196,11 @@ class ExcelReplenishmentReport:
     outcome: GuidedOutcome
     summary: str
     n_optimized: int = 0      # lines whose target came from Kern's optimized policy
+    #: Lines whose planilla supplied an on-order figure that was netted out of the
+    #: quantity. ``0`` with ``n_skus > 0`` means the sheet had no such column, and
+    #: the deck says so rather than letting the reader assume the plan accounted
+    #: for inbound stock.
+    n_netted: int = 0
 
 
 def _scan_sheet(ws, wanted: dict[str, tuple[str, ...]]) -> tuple[int, dict[str, str]] | None:
@@ -223,6 +263,8 @@ def prepare(data_path: str | None, params: dict | None = None) -> dict:
         "rop": (_fold(params["rop_column"]),) if params.get("rop_column") else _ROP_CANDIDATES,
         "demand": (_fold(params["demand_column"]),) if params.get("demand_column") else _DEMAND_CANDIDATES,
         "cost": (_fold(params["cost_column"]),) if params.get("cost_column") else _COST_CANDIDATES,
+        "on_order": ((_fold(params["on_order_column"]),) if params.get("on_order_column")
+                     else _ON_ORDER_CANDIDATES),
         "order": (_fold(order_column),),
     }
 
@@ -289,6 +331,7 @@ def prepare(data_path: str | None, params: dict | None = None) -> dict:
             reorder_point=_num(ws[f"{cols['rop']}{r}"].value) if "rop" in cols else None,
             demand_per_period=_num(ws[f"{cols['demand']}{r}"].value) if "demand" in cols else None,
             cost=_num(ws[f"{cols['cost']}{r}"].value) if "cost" in cols else None,
+            on_order=_num(ws[f"{cols['on_order']}{r}"].value) if "on_order" in cols else None,
         ))
     if not rows:
         raise ValueError(
@@ -407,10 +450,18 @@ def run(
     silently, always labeled per-line (``ReplenishmentLine.source``) and
     surfaced in the deck when coverage is partial (see ``build_deck``).
 
-    Known limitation, not solved here: quantities are computed from ``on_hand``
-    only - open purchase orders already in transit have no input path anywhere
-    in this package, so a client with POs inbound may be told to over-order.
-    Surfaced as a residual note in ``build_deck``, not silently absorbed.
+    Quantities are sized against the inventory POSITION - on hand plus the units
+    already on an open purchase order - via ``src.ddmrp.net_flow_position``, the
+    same identity the DDMRP path uses. That includes the reorder TRIGGER: a SKU
+    whose shelf stock is under its reorder point but whose inbound order already
+    covers it is not re-ordered. Sizing against ``on_hand`` alone was the older
+    behavior and it re-bought stock that was already paid for and in transit.
+
+    The on-order figure comes from the planilla's own column (auto-detected from
+    ``_ON_ORDER_CANDIDATES``, or named via ``params["on_order_column"]``). When
+    the sheet carries no such column, ``PlanillaRow.on_order`` stays ``None`` -
+    never 0.0 - every line reports ``on_order=None``, and ``build_deck`` says the
+    plan could not net inbound stock. Absence is declared, never assumed away.
     """
     if cover_periods <= 0 or order_up_to_factor <= 0:
         raise ValueError("cover_periods and order_up_to_factor must be > 0")
@@ -424,15 +475,29 @@ def run(
     restock: dict[str, tuple[int, float]] = {}  # sku -> (sheet row, qty)
     n_unplanned = 0
     n_optimized = 0
+    n_netted = 0  # rows whose planilla supplied an on-order figure to net
     for row in payload["rows"]:
+        # THE inventory position, computed once and used by all three branches:
+        # stock on the shelf plus stock already bought and on its way. Sizing
+        # against on_hand alone re-orders what is already paid for and inbound.
+        #
+        # ``qualified_demand=0.0`` is not a shortcut - a planilla has no committed
+        # -demand column, and DDMRP's third term needs one. Passing 0.0 says "this
+        # source has no qualified demand", which is true; the day a planilla
+        # carries one it plugs into the same call instead of a second formula.
+        position = net_flow_position(row.on_hand, row.on_order or 0.0, 0.0)
+        if row.on_order is not None:
+            n_netted += 1
+
         optimized = optimized_by_key.get(_match_key(row.sku))
         if optimized is not None:
             reorder_point = optimized["reorder_point"]
             order_up_to = optimized["order_up_to"]
             target = order_up_to if order_up_to is not None else reorder_point * order_up_to_factor
-            qty = max(0.0, round(target - row.on_hand, 1)) if row.on_hand < reorder_point else 0.0
+            qty = max(0.0, round(target - position, 1)) if position < reorder_point else 0.0
             lines.append(ReplenishmentLine(row.sku, row.on_hand, target, qty,
-                                           source="kern_optimized", trigger=reorder_point))
+                                           source="kern_optimized", trigger=reorder_point,
+                                           on_order=row.on_order, position=position))
             n_optimized += 1
         # A blank planning signal must never coalesce to 0 (that would silently
         # never replenish - or, with negative stock, order against a ROP of 0).
@@ -441,17 +506,19 @@ def run(
                 n_unplanned += 1
                 continue
             target = row.demand_per_period * cover_periods
-            qty = max(0.0, round(target - row.on_hand, 1))
+            qty = max(0.0, round(target - position, 1))
             lines.append(ReplenishmentLine(row.sku, row.on_hand, target, qty,
-                                           source="client_sheet", trigger=None))
+                                           source="client_sheet", trigger=None,
+                                           on_order=row.on_order, position=position))
         else:
             if row.reorder_point is None:
                 n_unplanned += 1
                 continue
             target = row.reorder_point * order_up_to_factor
-            qty = max(0.0, round(target - row.on_hand, 1)) if row.on_hand < row.reorder_point else 0.0
+            qty = max(0.0, round(target - position, 1)) if position < row.reorder_point else 0.0
             lines.append(ReplenishmentLine(row.sku, row.on_hand, target, qty,
-                                           source="client_sheet", trigger=row.reorder_point))
+                                           source="client_sheet", trigger=row.reorder_point,
+                                           on_order=row.on_order, position=position))
         if qty > 0:
             restock[row.sku] = (row.row, qty)
 
@@ -522,6 +589,7 @@ def run(
         ),
         summary=summary,
         n_optimized=n_optimized,
+        n_netted=n_netted,
     )
 
 
@@ -708,7 +776,12 @@ def build_deck(
                  + "Applying the staged order quantities writes to the client's file through the "
                    "Excel connector's safe-staging plane (drift check - covering the plan's inputs "
                    "via guard cells - backup, atomic write, rollback); a human approves before "
-                   "anything is committed. Quantities assume no purchase orders already in "
-                   "transit - subtract any open POs manually before approving.",
+                   "anything is committed. "
+                 + (f"Quantities are net of stock already on order on {report.n_netted} of "
+                    f"{report.n_skus} line(s), read from the planilla's own column."
+                    if report.n_netted
+                    else "The planilla carries no on-order column, so quantities could NOT be "
+                         "netted against open purchase orders - subtract any inbound stock "
+                         "manually before approving, or add a column named e.g. 'En Transito'."),
         prepared=prepared,
     )
