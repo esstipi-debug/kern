@@ -38,6 +38,13 @@ class OdooReplenishmentReport:
     cover_periods: float
     outcome: GuidedOutcome
     summary: str
+    #: SKUs whose supplier line carries no declared lead time
+    #: (``OdooLeadTimes.missing``). Travels on the report, not just in a log,
+    #: because a gap that never reaches the deck reads as the absence of a
+    #: problem. The tuple and not the connector's prose: the connector reports
+    #: the fact in its own voice, this deck writes the sentence in its own.
+    #: Empty by default, so an Odoo with every lead time filled says nothing.
+    lead_time_missing: tuple[str, ...] = ()
     #: SKU -> unidades en OC abiertas que el plan desconto, o ``None`` cuando no se
     #: pudo leer (sin modulo de Compras, sin ``qty_received``). ``None`` y ``{}``
     #: significan cosas distintas: el primero es "no se pudo medir", el segundo
@@ -45,6 +52,12 @@ class OdooReplenishmentReport:
     on_order_by_sku: dict[str, float] | None = None
     #: En palabras, que se neteo o por que no. Viaja al resumen, al deck y al CSV.
     netting_note: str = ""
+
+
+#: How many SKUs the missing-lead-time finding names before summarising the rest.
+#: A finding listing five thousand codes does not get read; one listing none is
+#: not actionable. Mirrors the connector's own cap for the same reason.
+_MAX_SKU_NAMED = 10
 
 
 def read_on_order(connector: OdooConnector) -> tuple[dict[str, float] | None, str]:
@@ -171,6 +184,10 @@ def run(
     value (from Odoo's own product cost) - see ``_build_outcome``.
     """
     connector: OdooConnector = payload["connector"]
+    # La llamada completa, no el accesorio `lead_times()`: ese devuelve solo el
+    # diccionario y tira el aviso de los SKU sin plazo declarado, que es
+    # justamente lo que el deck tiene que decir.
+    plazos = connector.declared_lead_times()
     on_order, netting_note = read_on_order(connector)
     plan = plan_replenishment(
         connector, cover_periods=cover_periods, store=connector, on_order_by_sku=on_order
@@ -188,7 +205,8 @@ def run(
         source=str(payload["source"]),
         lines=plan.lines,
         restock=restock,
-        lead_times=connector.lead_times(),
+        lead_times=plazos.declared,
+        lead_time_missing=plazos.missing,
         n_skus=n_skus,
         n_restock=len(restock),
         total_restock=total,
@@ -210,6 +228,22 @@ def verify(report: OdooReplenishmentReport) -> list[str]:
     return issues
 
 
+def _plazo_declarado(lead_times: dict[str, float], sku: str) -> float | None:
+    """El plazo declarado del SKU, o ``None`` cuando el ERP no trae ninguno.
+
+    ``None`` y no ``0.0``: en un CSV se escribe como celda vacia, que es como se
+    dice "nadie lo midio" sin romper la columna numerica -- la palabra
+    ``src.deliverable.not_measured`` es para el deck, que lo lee una persona.
+
+    El default de ``0.0`` que habia aca fabricaba el mismo cero que el conector
+    ya dejo de fabricar (``src/connectors/odoo.py::declared_lead_times``), un
+    paso mas abajo y sobre la superficie que el cliente efectivamente mira. Dos
+    mitades del mismo defecto: arreglar una sola no cambia nada en pantalla.
+    """
+    valor = lead_times.get(sku)
+    return None if valor is None else round(valor, 1)
+
+
 def write_operational(report: OdooReplenishmentReport, out_dir: str | Path, client: str = "Client") -> dict[str, Path]:
     """Machine-readable deliverable: one row per SKU with on-hand / forecast / target / restock."""
     d = Path(out_dir)
@@ -221,7 +255,7 @@ def write_operational(report: OdooReplenishmentReport, out_dir: str | Path, clie
             "forecast_per_period": round(ln.forecast_per_period, 2),
             "target": round(ln.target, 2),
             "restock_qty": round(ln.restock_qty, 2),
-            "lead_time_days": round(report.lead_times.get(ln.sku, 0.0), 1),
+            "lead_time_days": _plazo_declarado(report.lead_times, ln.sku),
             # En blanco (no 0) cuando no se pudo leer lo que viene en camino: la
             # columna vacia dice "no medido", un cero diria "medido, nada en camino".
             "on_order": "" if ln.on_order is None else round(ln.on_order, 2),
@@ -250,6 +284,24 @@ def build_deck(
         # first, not buried under the routine findings.
         findings.append(Finding("Requires finance sign-off before acting", banner,
                                 impact="do not apply until the named approver signs off"))
+    if report.lead_time_missing:
+        # Before the figures and not after: it qualifies how every number below
+        # is read. A supplier missing from the analysis for want of a lead time
+        # reads as a supplier without problems unless someone says it was never
+        # looked at.
+        names = ", ".join(report.lead_time_missing[:_MAX_SKU_NAMED])
+        rest = len(report.lead_time_missing) - _MAX_SKU_NAMED
+        if rest > 0:
+            names += f" and {rest} more"
+        findings.append(Finding(
+            "Lead times the ERP does not record",
+            f"{len(report.lead_time_missing)} SKU(s) carry a supplier line with no declared "
+            f"lead time ({names}). They are reported without one rather than with zero: a "
+            "blank supplier delay is not a same-day supplier, and zero is the most "
+            "favourable reading available. The observed lead time is measured separately, "
+            "from receipt dates.",
+            impact="read the cover on those SKUs as unverified, not as instant resupply",
+        ))
     findings.append(
         Finding(
             f"{report.n_restock} SKU(s) below target cover",

@@ -95,7 +95,13 @@ def main() -> None:
     restock = plan.restock
     for line in plan.lines:
         gap = restock.get(line.sku, 0.0)
-        print(f"  {line.sku:<8} {on_hand.get(line.sku, 0.0):>7.0f}  {lead.get(line.sku, 0.0):>7.0f}  {gap:>17.1f}")
+        # "n/a" y no 0: un SKU cuyo proveedor no tiene plazo cargado en el ERP no
+        # entrega en el acto, que es lo que decia el cero que salia aca antes.
+        # Tercer sitio con el mismo default -- el conector y el CSV del entregable
+        # eran los otros dos.
+        plazo = lead.get(line.sku)
+        plazo_txt = "n/a" if plazo is None else f"{plazo:.0f}"
+        print(f"  {line.sku:<8} {on_hand.get(line.sku, 0.0):>7.0f}  {plazo_txt:>7}  {gap:>17.1f}")
 
     print(f"\n  Outcome: {plan.outcome.status} - {plan.outcome.summary}")
     if not restock:
