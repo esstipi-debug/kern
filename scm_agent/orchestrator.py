@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from src import client_profile, vertical_profile
 from src.connectors import lectura
 from src.connectors.lectura import Reading
 
+from . import metrics
 from .guided_bridge import to_guided_outcome
 from .intent import classify
 from .knowledge import KnowledgeBase
@@ -115,12 +117,17 @@ class Orchestrator:
         overrides = overrides or {}
         request = JobRequest(brief=brief, data_path=data_path, job_type=job_type,
                              params=dict(overrides), client=client, strict_params=strict_params)
+        started = time.monotonic()
         try:
             result = self._run(request, Path(out_dir))
         except Exception:  # never crash the caller — surface as error status
             logger.error("orchestrator.run failed", exc_info=True)
             result = JobResult(status=STATUS_ERROR, tool=None, confidence=0.0,
                                deliverables={}, summary="An internal error occurred.")
+        # Counted here, at the single boundary every path already funnels through,
+        # so a new capability is measured without touching this file. Volatile and
+        # per-process by design (see scm_agent/metrics.py); it can never raise.
+        metrics.record_run(result.tool, result.status, (time.monotonic() - started) * 1000.0)
         # Single boundary: every result leaves with a protected, executable path. A tool may
         # supply its own ranked-options outcome on success (set in _run); otherwise derive the
         # protected fallback. Either way, no result is a dead end.

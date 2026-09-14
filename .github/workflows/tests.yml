@@ -153,6 +153,19 @@ jobs:
         env:
           PYTHONPATH: .
 
+      # `make demo` is what the README tells a first-time reader to run, so it is
+      # the one command whose breakage is most expensive: it breaks in front of
+      # someone evaluating the project. Invoked through make (not python
+      # directly) so the Makefile itself is covered -- a missing tab or a renamed
+      # target fails here instead of in a stranger's terminal. run_demo.py exits
+      # non-zero unless all four steps land on their expected status, including
+      # the refusal step, so this also guards the "QA fails => no deliverable"
+      # behavior end to end.
+      - name: Smoke the one-command demo
+        run: make demo
+        env:
+          PYTHONPATH: .
+
   # Reproduces the PRODUCTION container's import surface. The Fly image builds
   # with `pip install -e ".[core,web,mcp,pricing-intel,dataquality]"` (see
   # Dockerfile) -- NOT
