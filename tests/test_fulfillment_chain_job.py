@@ -114,3 +114,52 @@ def test_fde_shaped_export_maps_opaque_names(tmp_path):
     assert job.verify(scan) == []
     written = job.write_operational(scan, tmp_path / "out", "Acme")
     assert written["csv"].exists()
+
+
+# ---- la confianza del deck se deriva, no se declara -------------------------
+
+def _csv_con_hitos(tmp_path: Path, hitos: list[str], name: str = "c.csv") -> Path:
+    """Un pedido que pasa por los hitos pedidos, una hora entre cada uno."""
+    return _long_csv(tmp_path, [
+        {"pedido": "SO-1", "hito": h, "fecha_hora": f"2024-04-01 {8 + i:02d}:00:00",
+         "sistema": "wms"}
+        for i, h in enumerate(hitos)
+    ], name=name)
+
+
+def test_una_cadena_con_huecos_vale_menos_que_una_completa(tmp_path):
+    """Un 0.6 literal decia lo mismo con seis relojes que con dos.
+
+    El deck de este job declaraba `confidence: float = 0.6` a mano, que es lo que
+    el trinquete de tests/test_qa_confidence_from_coverage.py existe para cazar:
+    una confianza que no se mueve no informa nada.
+    """
+    completa = job.run(job.prepare(str(_csv_con_hitos(tmp_path, [
+        "order_created", "released_to_warehouse", "pack_end",
+        "load_end", "carrier_pickup", "arrived",
+    ], "completa.csv"))))
+    parcial = job.run(job.prepare(str(_csv_con_hitos(tmp_path, [
+        "pack_end", "load_end",
+    ], "parcial.csv"))))
+
+    assert job.build_deck(parcial).confidence < job.build_deck(completa).confidence
+
+
+def test_cada_hito_ausente_se_paga_una_vez(tmp_path):
+    """Perder dos relojes cuesta mas que perder uno: cada hueco parte la cadena
+    en un lugar distinto, y `confidence_from_coverage` cobra por ocurrencia."""
+    faltan_dos = job.run(job.prepare(str(_csv_con_hitos(tmp_path, [
+        "order_created", "released_to_warehouse", "pack_end", "load_end",
+    ], "faltan2.csv"))))
+    faltan_tres = job.run(job.prepare(str(_csv_con_hitos(tmp_path, [
+        "order_created", "released_to_warehouse", "pack_end",
+    ], "faltan3.csv"))))
+
+    assert job.build_deck(faltan_tres).confidence < job.build_deck(faltan_dos).confidence
+
+
+def test_un_llamador_puede_seguir_fijando_la_confianza(tmp_path):
+    """La derivacion es el default, no una imposicion."""
+    scan = job.run(job.prepare(str(_csv_con_hitos(tmp_path, ["fin_packing", "fin_carga"]))))
+
+    assert job.build_deck(scan, confidence=0.42).confidence == pytest.approx(0.42)

@@ -14,7 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from jobs.intake import _norm
-from nosilo_core.guided import verify_guided
+from nosilo_core.guided import confidence_from_coverage, verify_guided
 from src.connectors import COVERAGE_MEASURED, COVERAGE_UNAVAILABLE, FieldCoverage
 from src.connectors.milestones import (
     MILESTONE_IDS,
@@ -295,15 +295,46 @@ def write_operational(
     return written
 
 
+#: Punto de partida con la cadena entera medida. Baja una vez por hito ausente.
+_DECK_BASE_CONFIDENCE = 0.85
+
+
+def _hitos_sin_medir(coverage: MilestoneCoverage) -> int:
+    """Cuantos de los seis relojes el backend NO puede reportar.
+
+    `MilestoneCoverage` obliga a nombrar los seis justamente para que un backend
+    no pueda "no mencionar" uno y parecer completo; esto cuenta los que quedaron
+    en unavailable.
+    """
+    return sum(
+        1
+        for mid in MILESTONE_IDS
+        if getattr(coverage, mid).status == COVERAGE_UNAVAILABLE
+    )
+
+
 def build_deck(
     report: ChainScan,
     *,
     client: str = "Client",
     prepared: str = "",
     citations: tuple[str, ...] = (),
-    confidence: float = 0.6,
+    confidence: float | None = None,
     lang: str = "en",
 ) -> Deliverable:
+    """``confidence`` se DERIVA de la cobertura y no se declara.
+
+    Un 0.6 literal decia lo mismo para una cadena con los seis relojes medidos
+    que para una a la que le faltan cuatro. Cada hito que el export nunca
+    registro es un hueco que parte la cadena, y se paga una vez por hueco
+    (`milestone_hop_unavailable`). Pasar un numero explicito sigue siendo
+    posible, para el llamador que ya sabe algo que este deck no.
+    """
+    if confidence is None:
+        confidence = confidence_from_coverage(
+            ["milestone_hop_unavailable"] * _hitos_sin_medir(report.coverage),
+            base=_DECK_BASE_CONFIDENCE,
+        )
     findings: list[Finding] = []
     measured = [h for h in report.hops if h.p50 is not None]
     if measured:
