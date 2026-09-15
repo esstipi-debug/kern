@@ -6,10 +6,15 @@
 # scm_agent/monitors.py, so changing how sensitive a monitor is -- or how
 # often it should run in production -- never requires a code change.
 #
-# cadence_minutes documents the production interval a jobs.scheduler
-# ScheduledJob is expected to use once one is registered (a later PR --
-# run_all_monitors() itself always runs one-shot today: plan rule 9, "todo
-# componente continuo degrada a batch"). It is data only in this PR.
+# cadence_minutes ES EL RELOJ, no documentacion. Lo lee
+# jobs.monitors_job.monitors_cadence_minutes(), que toma el MINIMO sobre los
+# monitores habilitados y con eso arma el trigger_args de MONITORS_JOB. Editar
+# un numero de aca mueve la cadencia del job; tests/test_monitors.py lo prueba.
+# Un monitor con enabled: false no arrastra la cadencia de los demas.
+#
+# (run_all_monitors() sigue corriendo one-shot: plan rule 9, "todo componente
+# continuo degrada a batch". Lo que cambio es que el intervalo declarado ya no
+# es una segunda copia de un 60 escrito a mano en el codigo.)
 version: 1
 
 monitors:

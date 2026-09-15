@@ -193,3 +193,50 @@ def test_the_agent_summary_and_options_survive_an_unmeasurable_gmroi(tmp_path):
     assert res.status == "ok", res.summary
     assert not_measured() in res.summary or "GMROI" in res.summary
     assert res.guided is not None and res.guided.options
+
+
+# ---- stockout_rate: la septima KPI, que existia sin llamador -----------------
+
+def test_stockout_rate_ausente_no_se_lee_como_cero_quiebre():
+    """Sin log de disponibilidad, la KPI es None y el deck lo NOMBRA.
+
+    `src.financial_kpis.stockout_rate` estaba escrita y probada, pero
+    `jobs/financial_kpis_job.py` importaba seis de las siete KPIs del modulo y a
+    esta no. Una funcion sin llamador se ve exactamente igual que una cableada.
+    """
+    report = fkj.run(fkj.prepare_records(_ROWS))
+
+    assert report.stockout_rate is None
+    deck = fkj.build_deck(report, client="Acme")
+    texto = " ".join(f.detail for f in deck.findings)
+    assert "stockout rate" in texto, "una KPI no medible tiene que decirse, no omitirse"
+
+
+def test_un_cero_suministrado_es_una_medicion_no_una_ausencia():
+    """"Miramos 90 dias y no quebramos nunca" es un hecho, y se imprime.
+
+    Es la misma distincion que el modulo ya hace para dso/dpo: sin suministrar es
+    None; un 0.0 suministrado es una medicion real.
+    """
+    report = fkj.run(fkj.prepare_records(_ROWS), stockout_periods=0.0, total_periods=90.0)
+
+    assert report.stockout_rate == pytest.approx(0.0)
+    deck = fkj.build_deck(report, client="Acme")
+    texto = " ".join(f.detail for f in deck.findings)
+    assert "0.0%" in texto
+    assert "stockout rate" not in texto, "medida, no puede figurar entre las no medibles"
+
+
+def test_stockout_rate_medido_llega_al_deck():
+    report = fkj.run(fkj.prepare_records(_ROWS), stockout_periods=9.0, total_periods=90.0)
+
+    assert report.stockout_rate == pytest.approx(0.1)
+    titulos = " ".join(f.title for f in fkj.build_deck(report, client="Acme").findings)
+    assert "Availability" in titulos
+
+
+def test_periodos_totales_en_cero_no_inventan_un_quiebre_perfecto():
+    """Cero periodos observados es "no medimos", nunca "0% de quiebre"."""
+    report = fkj.run(fkj.prepare_records(_ROWS), stockout_periods=0.0, total_periods=0.0)
+
+    assert report.stockout_rate is None
