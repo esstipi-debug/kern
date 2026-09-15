@@ -368,25 +368,57 @@ for an on-demand manual run from the Actions tab.
 
 ## 7. Automated deployment (CI/CD)
 
-`.github/workflows/fly-deploy.yml` deploys to production on every push to
-`main` (flyctl's default rolling strategy, health-gated against `fly.toml`'s
-existing `/api/health` check), followed by a post-deploy curl retry loop as
-a second signal. If the release comes up unhealthy, the workflow fails red
-â€” check `flyctl logs -a linchpin` and consider `flyctl releases rollback`.
+> **ESTADO AL 2026-09-15 — leer esto antes que el resto de la seccion.**
+>
+> `.github/workflows/fly-deploy.yml` esta en `main` (#282) pero **NO despliega en cada
+> push**: su disparo `push:` viene COMENTADO a proposito (lineas 48-49). El unico
+> disparo vivo es `workflow_dispatch` — a mano desde Actions > Fly Deploy > Run workflow.
+> Hoy el deploy real se hace con `flyctl deploy` local, y eso no cambio.
+>
+> **La compuerta de revisor obligatorio NO se puede crear en esta cuenta.** Probado el
+> 2026-09-15 contra la API; responde textual:
+>
+> > `Failed to create the environment protection rule. Please ensure the billing plan
+> > supports the required reviewers protection rule.` (HTTP 422)
+>
+> Las reglas de proteccion de entorno estan reservadas a repos publicos o planes pagos, y
+> este repo es privado en plan Free. El paso 1 de abajo, tal como esta escrito, es
+> **imposible hoy**.
+>
+> **Lo que SI quedo hecho el 2026-09-15:** la restriccion de rama. El entorno `production`
+> acepta despliegues solo desde `main` (`custom_branch_policies`, una unica politica:
+> `main`), que es lo que cierra el hueco del `workflow_dispatch` sobre rama arbitraria.
+>
+> **Para descomentar `push:` hace falta una de estas tres, y ninguna esta hecha:**
+> 1. plan pago de GitHub (habilita el revisor requerido en repos privados),
+> 2. repo publico (idem — descartado el 2026-09-15: publicaria 537 commits, la lista de
+>    108 prospectos AU/NZ y 928 lineas de estrategia comercial, a cambio de una regla),
+> 3. rollback automatico en el workflow, que hoy no existe.
+>
+> Mientras tanto, **agregar `FLY_API_TOKEN` es seguro**: sin `push:` activo no habilita
+> ningun despliegue desatendido, solo el manual.
 
-**Requires two one-time manual steps â€” an agent cannot do either. Do step 2
+`.github/workflows/fly-deploy.yml` deploys to production (flyctl's default rolling
+strategy, health-gated against `fly.toml`'s existing `/api/health` check), followed by a
+post-deploy curl retry loop as a second signal. If the release comes up unhealthy, the
+workflow fails red — check `flyctl logs -a linchpin` and consider
+`flyctl releases rollback`.
+
+**Requires two one-time manual steps — an agent cannot do either. Do step 2
 before step 1, since step 1's secret lives inside the environment step 2
 creates:**
 
 1. **Create the `production` GitHub Environment** (repo Settings >
    Environments > New environment > name it exactly `production`) with:
-   - **"Required reviewers" checked, add yourself.**
-   - **"Deployment branches and tags" restricted to `main` only.** This
-     matters because the workflow's `workflow_dispatch` trigger has no
-     branch restriction of its own â€” without this environment-level
+   - **"Required reviewers" checked, add yourself.** ⚠️ **BLOQUEADO en plan Free sobre
+     repo privado** — ver el estado al principio de esta seccion.
+   - **"Deployment branches and tags" restricted to `main` only.** ✅ **HECHO
+     (2026-09-15).** This matters because the workflow's `workflow_dispatch` trigger has
+     no branch restriction of its own — without this environment-level
      restriction, someone with write access could manually dispatch the
      workflow against an arbitrary branch and an approver could unknowingly
      approve a non-`main` deploy.
+
 2. **Add `FLY_API_TOKEN` as an Environment secret scoped to `production`**
    (inside that same environment's settings page: Environment secrets >
    Add secret â€” **not** repo-level Settings > Secrets and variables >
