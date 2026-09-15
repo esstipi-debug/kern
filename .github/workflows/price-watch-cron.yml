@@ -17,15 +17,45 @@ name: price-watch-cron
 # only a repo admin can, via GitHub's UI/API.
 
 on:
-  schedule:
-    # Matches jobs/price_monitor.py's DEFAULT_CADENCE_HOURS = 4 (PRICE_WATCH_JOB
-    # documents the same 4h cadence) -- every 4 hours, on the hour, UTC.
-    # GitHub Actions schedules run on a best-effort basis and can be delayed
-    # under load; the endpoint's own SCHEDULED_JOBS_MIN_INTERVAL_SECONDS
-    # (default 300s) floor makes an early/late/duplicate tick harmless.
-    - cron: "0 */4 * * *"
-  # Manual trigger from the Actions tab, for on-demand runs / verifying the
-  # secret and endpoint wiring without waiting for the next scheduled tick.
+  # ---------------------------------------------------------------------------
+  # APAGADO el 2026-09-15, por decision del operador. El `schedule:` queda
+  # comentado, no borrado, para que el motivo viaje con el archivo.
+  #
+  # POR QUE: este cron **nunca funciono**. Fallo en TODAS las corridas que se
+  # pudieron revisar, la mas vieja del 2026-07-19 -- casi dos meses -- y no por
+  # la cuota de Actions (eso empezo el 6-sep, mucho despues). La causa es otra:
+  # el secreto `KERN_JOBS_API_KEY` que el job exige nunca se cargo. El repo
+  # tiene un unico secreto y es `NOSILO_CORE_SSH_KEY`.
+  #
+  # O sea que el monitoreo de precios en produccion no corrio ni una vez, y el
+  # workflow se despertaba 6 veces por dia para morir en el primer paso.
+  #
+  # LA RAZON DE APAGARLO EN VEZ DE ARREGLARLO: dos meses muerto sin que nadie
+  # lo extranara es un dato sobre cuanto se lo necesita, no un descuido a
+  # corregir. Darle credenciales para que empiece a correr algo que nadie mira
+  # habria sido resolver el sintoma equivocado.
+  #
+  # PARA REACTIVARLO hacen falta las dos cosas, en este orden:
+  #   1. Cargar `KERN_JOBS_API_KEY` como secreto de REPOSITORIO
+  #      (Settings > Secrets and variables > Actions), con el MISMO valor que
+  #      `LINCHPIN_API_KEY` de la app desplegada. Ojo: no es un secreto de
+  #      environment -- ese es `FLY_API_TOKEN`, y es para otra cosa.
+  #      El valor no se puede leer de Fly (`fly secrets` no tiene `reveal`):
+  #      o se tiene guardado, o se rota en los dos lados a la vez.
+  #   2. Descomentar el `schedule:` de abajo Y reactivar el workflow en la UI
+  #      (Actions > price-watch-cron > Enable workflow). Estan apagados por
+  #      DOS mecanismos distintos: este comentario y el estado en GitHub.
+  #
+  # schedule:
+  #   # Matches jobs/price_monitor.py's DEFAULT_CADENCE_HOURS = 4 (PRICE_WATCH_JOB
+  #   # documents the same 4h cadence) -- every 4 hours, on the hour, UTC.
+  #   # GitHub Actions schedules run on a best-effort basis and can be delayed
+  #   # under load; the endpoint's own SCHEDULED_JOBS_MIN_INTERVAL_SECONDS
+  #   # (default 300s) floor makes an early/late/duplicate tick harmless.
+  #   - cron: "0 */4 * * *"
+  #
+  # El disparo manual SIGUE VIVO a proposito: con el secreto cargado, deja
+  # probar el cableado de una sin esperar a reactivar la cadencia.
   workflow_dispatch:
 
 permissions:
