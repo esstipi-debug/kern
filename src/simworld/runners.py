@@ -14,10 +14,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-from nosilo_core import guided as guided_mod
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import lil_matrix
 
+from nosilo_core import guided as guided_mod
 from scm_agent.orchestrator import Orchestrator
 from src.simworld.lens import export_history
 from src.simworld.world import WeekOutcome, World, WorldState
@@ -274,6 +274,7 @@ def kern_policy(
     seed: int,
     out_dir: str | Path,
     forced: bool,
+    omit: frozenset[str] | set[str] | tuple[str, ...] = (),
 ) -> Policy:
     """Corre a Kern por el orquestador completo sobre la lente del nivel pedido.
 
@@ -282,9 +283,13 @@ def kern_policy(
     ``intent.classify`` como lo haria un cliente real. Nunca lee el mundo
     directamente -- solo la lente (``export_history``), y nunca llama al
     orquestador con un atajo que se salte prepare/run/QA/deliver.
+
+    ``omit`` viaja a la lente para poder descomponer un nivel de suciedad en
+    los inyectores que lo componen -- ver ``lens.apply_dirt``.
     """
     out = Path(out_dir)
-    view = export_history(world, outcomes, out / "view.csv", level=level, seed=seed)
+    view = export_history(world, outcomes, out / "view.csv", level=level, seed=seed,
+                          omit=omit)
 
     orch = Orchestrator(clients_root=None)
     result = orch.run(

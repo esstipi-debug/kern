@@ -65,7 +65,7 @@ import pandas as pd
 import yaml
 
 from src.alerting import detect_events
-from src.state.store import StateStore
+from src.state.store import StateStore, default_store
 from src.state.system_state import StateSnapshot
 from src.state.system_state import history as state_history
 from src.state.system_state import latest as state_latest
@@ -123,9 +123,13 @@ def load_monitor_config(path: str | Path = DEFAULT_MONITORS_CONFIG_PATH) -> dict
     """Parse ``config/monitors.yaml`` into ``monitor_name -> its settings dict``
     (``enabled``, ``cadence_minutes``, plus whichever threshold keys that
     monitor reads -- see the module docstring's per-monitor list).
-    ``cadence_minutes`` is data only in this PR (no scheduler job reads it
-    yet); it documents the production cadence a later PR's
-    ``jobs.scheduler.ScheduledJob`` is expected to use.
+    ``cadence_minutes`` YA NO es dato decorativo: desde 2026-09-14 lo lee
+    ``jobs.monitors_job.monitors_cadence_minutes()``, que toma el minimo sobre
+    los monitores habilitados y con eso arma el ``trigger_args`` de
+    ``MONITORS_JOB``. Editar este numero mueve el reloj del job. Antes convivia
+    con una constante ``MONITORS_CADENCE_MINUTES = 60`` escrita a mano que
+    prometia "coincidir" con este archivo: dos copias sincronizadas por memoria,
+    y ningun test fallaba cuando se separaban.
     """
     text = Path(path).read_text(encoding="utf-8")
     try:
@@ -606,6 +610,10 @@ def run_all_monitors(
     inventory-only Tower cycle is still a complete, valid cycle.
     """
     config = config if config is not None else load_monitor_config()
+    # Resolve the partition once, here, rather than letting a None reach
+    # src.state three calls deeper: a Tower cycle reads stock, forecast and
+    # outcomes, so a dropped client identity would mix three domains at once.
+    store = store if store is not None else default_store()
     events: list[Event] = []
 
     stock_hist = state_history("stock", window=stock_history_window, store=store)

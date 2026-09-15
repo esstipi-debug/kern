@@ -29,8 +29,11 @@ priority order:
    never a fabricated shift.
 2. **PR-19's P4 liquidation report** (:class:`~src.liquidation.LiquidationLine`)
    -- the plan's own coherence-check example is a "promo/liquidation
-   markdown (PR-19)"; a priced (non-salvage) liquidation line is also a price
-   cut, so it can also imply a demand lift. v1 books the full
+   markdown (PR-19)"; an ANNOUNCED (non-salvage) liquidation line is also a
+   price cut, so it can also imply a demand lift. A salvage line quotes a
+   price too, but it is a disposal recovery rather than a shelf markdown, so
+   it never shapes demand -- the test is
+   ``src.liquidation.announces_discount(line.method)``. v1 books the full
    ``units_to_clear`` into THIS SINGLE plan period rather than pacing it by
    ``weeks_to_clear`` -- the same single-period simplification step 1's own
    forecast already carries (no multi-period horizon in v1), documented here
@@ -60,7 +63,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from src.liquidation import LiquidationLine
+from src.liquidation import LiquidationLine, announces_discount
 from src.price_optimizer import PriceOptimizationResult
 
 NO_SHIFT_SOURCE = "forecast_only"
@@ -117,11 +120,18 @@ def _shift_from_price_optimizer(result: PriceOptimizationResult) -> tuple[float,
 
 
 def _shift_from_liquidation(line: LiquidationLine) -> tuple[float, str] | None:
-    """``None`` for a salvage line (``clearance_price is None`` -- no price
-    is announced, so no discount/demand-lift signal exists; mirrors
-    ``src.liquidation_calendar``'s own "no price -> no discount" rule) or a
-    line with nothing left to clear."""
-    if line.clearance_price is None or line.units_to_clear <= 0:
+    """``None`` for a salvage line -- a jobber/return-to-vendor lot moves at a
+    cost-anchored per-unit recovery, not at a shelf price a shopper reacts to,
+    so it announces no discount (``src.liquidation.announces_discount``) and
+    implies no demand lift. Booking one as a lift would push disposal volume
+    into the S&OP demand plan and inflate step 3's purchase plan downstream.
+    Also ``None`` for a line with nothing left to clear. The
+    ``clearance_price is None`` arm is a defensive guard, not the invariant --
+    the invariant is the METHOD (same rule ``src.liquidation_calendar``'s gates
+    read)."""
+    if not announces_discount(line.method) or line.units_to_clear <= 0:
+        return None
+    if line.clearance_price is None:
         return None
     weeks = "inf" if math.isinf(line.weeks_to_clear) else f"{line.weeks_to_clear:.1f}"
     reason = (

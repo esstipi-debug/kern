@@ -75,7 +75,7 @@ VALID_REGIMES = frozenset({"intermittent", "smooth", "mixed", "seasonal"})
 # unknown parameter and be ignored in silence -- the worst possible failure
 # mode for a config file -- so it is rejected at load time instead.
 ENGINE_PARAM_FIELDS = ("service_level", "holding_rate", "order_cost",
-                       "lead_time_days", "objection_thresholds")
+                       "lead_time_days", "objection_thresholds", "min_margin_pct")
 
 
 class VerticalNotConfiguredError(LookupError):
@@ -108,6 +108,22 @@ def _require_fraction(value: object, label: str) -> None:
         raise ValueError(f"{label} must be in (0, 1), got {value!r}")
 
 
+def _require_margin_fraction(value: object, label: str) -> None:
+    """A markup floor above landed cost: ``[0, 1)`` -- unlike
+    :func:`_require_fraction`, 0.0 is legal.
+
+    0.0 means "this pack declares no floor", which is a real decision an
+    operator can make and must be able to write down. The upper bound matches
+    ``src.price_optimizer.optimize_sku_price``'s own check, so a pack can never
+    load a value the engine would reject at call time."""
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be a number, got {value!r}")
+    if not math.isfinite(value) or not 0 <= value < 1:
+        raise ValueError(f"{label} must be in [0, 1), got {value!r}")
+
+
 @dataclass(frozen=True)
 class VerticalEngineParams:
     """The pack's economics. Field names match ``ClientProfile.as_params()``
@@ -118,9 +134,17 @@ class VerticalEngineParams:
     order_cost: float | None = None
     lead_time_days: float | None = None
     objection_thresholds: dict[str, float] | None = None
+    # The price floor, as a markup fraction above landed cost:
+    # ``src.price_optimizer`` computes ``floor_price = landed_cost * (1 + this)``.
+    # It lives in the pack, not as an engine constant, because kern prices for
+    # many clients at once and one industry's margin is not another's -- the same
+    # reason service_level and holding_rate are here. NOT a gross margin: 0.20 is
+    # a 20% markup over cost (~16.7% gross margin).
+    min_margin_pct: float | None = None
 
     def __post_init__(self) -> None:
         _require_fraction(self.service_level, "service_level")
+        _require_margin_fraction(self.min_margin_pct, "min_margin_pct")
         _require_positive_finite(self.holding_rate, "holding_rate")
         _require_positive_finite(self.order_cost, "order_cost")
         if self.lead_time_days is not None:
@@ -164,26 +188,73 @@ class VerticalEngineParams:
 
 
 @dataclass(frozen=True)
+class ForbiddenMethod:
+    """One capability an industry pack refuses to run, and why.
+
+    A veto carries its ``reason`` and its ``instead`` because the refusal IS the
+    product here. "inventory_optimization no esta disponible" teaches the caller
+    nothing and gets worked around; "sizes safety stock with no notion of shelf
+    life -- run fefo first" is actionable, and is the sentence that stops someone
+    from raising a buffer past the date it expires.
+
+    ``capability`` is a registry key (``scm_agent.tools.build_default_registry``),
+    matched against ``JobRequest.job_type`` -- not a free-form label. A typo here
+    is a veto that never fires, which is worse than no veto at all, so the shipped
+    packs' keys are asserted against the real registry in the test suite.
+    """
+
+    capability: str
+    # Con default, y no porque sea opcional: sin el, un YAML que declara la
+    # capacidad y olvida el motivo muere en el constructor del dataclass con
+    # "missing 1 required positional argument: 'reason'" -- que no dice ni que
+    # archivo ni que veto. El campo es obligatorio; lo exige __post_init__, que
+    # es el unico que puede explicar por que.
+    reason: str = ""
+    instead: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.capability or not self.capability.strip():
+            raise ValueError("forbidden_methods entry needs a non-empty 'capability'")
+        if not self.reason or not self.reason.strip():
+            raise ValueError(
+                f"forbidden_methods entry for {self.capability!r} needs a 'reason': a refusal "
+                "the caller cannot act on is a refusal the caller routes around")
+
+
+@dataclass(frozen=True)
 class DemandProfile:
-    """Expected demand regime, and the models a pack forbids outright."""
+    """Expected demand regime, and the capabilities a pack forbids outright."""
 
     expected_regime: str = "mixed"
-    # Empty for the two packs that ship today, and defined anyway: the FOOD
-    # pack needs it for real -- there, sizing safety stock without a shelf-life
-    # constraint has to be vetoed, because the buffer that protects against a
-    # stockout is the buffer that expires, so "raise the buffer" destroys
-    # value. Defining the field before it is needed is cheaper than
-    # retrofitting it with live packs in the field.
-    forbidden_methods: tuple[str, ...] = ()
+    # Empty in the two packs that opened this file, and the field existed before
+    # anything needed it. config/verticals/alimentos.yaml is what needs it: there,
+    # sizing safety stock with no shelf-life constraint has to be refused, because
+    # the buffer that protects against a stockout is the buffer that expires, so
+    # "raise the buffer" destroys value. The engine DOES know about shelf life --
+    # src/lots/expiry.py, jobs/fefo_job.py -- but it knows it in a different
+    # capability, from a days_to_expiry/expiry_date COLUMN, and neither
+    # inventory_optimization nor multi_echelon ever consults it. That gap is not
+    # a missing parameter anyone can supply; it is a capability that must not run
+    # on a perishable catalog.
+    forbidden_methods: tuple[ForbiddenMethod, ...] = ()
 
     def __post_init__(self) -> None:
         if self.expected_regime not in VALID_REGIMES:
             raise ValueError(
                 f"expected_regime must be one of {sorted(VALID_REGIMES)}, "
                 f"got {self.expected_regime!r}")
-        for method in self.forbidden_methods:
-            if not isinstance(method, str) or not method.strip():
-                raise ValueError(f"forbidden_methods entries must be non-empty strings, got {method!r}")
+        seen: set[str] = set()
+        for entry in self.forbidden_methods:
+            if not isinstance(entry, ForbiddenMethod):
+                raise TypeError(
+                    "forbidden_methods entries must be mappings with 'capability' and 'reason' "
+                    f"(got {entry!r}) -- a bare capability name carries no reason, and a refusal "
+                    "without a reason is unactionable")
+            if entry.capability in seen:
+                raise ValueError(
+                    f"forbidden_methods repeats capability {entry.capability!r}: two reasons for "
+                    "one veto means one of them never reaches the caller")
+            seen.add(entry.capability)
 
 
 @dataclass(frozen=True)
@@ -254,6 +325,22 @@ class VerticalProfile:
         uniformly: ``vertical.as_params()`` and ``profile.as_params()`` return
         the same shape."""
         return self.engine_params.as_params()
+
+    def forbids(self, capability: str | None) -> ForbiddenMethod | None:
+        """The veto against ``capability``, or ``None`` if this pack allows it.
+
+        Deliberately NOT gated on anything the caller can turn off. The engine's
+        existing ``tool.required_client_params`` check only fires under
+        ``strict_params``, which is correct for "you forgot a number" and wrong
+        for "this calculation is invalid on your catalog": an optional veto is
+        not a veto.
+        """
+        if not capability:
+            return None
+        for entry in self.demand.forbidden_methods:
+            if entry.capability == capability:
+                return entry
+        return None
 
     def merged_aliases(
         self, base: Mapping[str, Sequence[str]]
@@ -335,7 +422,14 @@ def load_vertical_profile(
 
     demand_raw = _require_mapping(data.pop("demand", None), path, "demand")
     if "forbidden_methods" in demand_raw:
-        demand_raw["forbidden_methods"] = tuple(demand_raw["forbidden_methods"] or ())
+        entries = []
+        for raw_entry in demand_raw["forbidden_methods"] or ():
+            if not isinstance(raw_entry, dict):
+                raise ValueError(
+                    f"{path}: forbidden_methods entries must be mappings with 'capability' and "
+                    f"'reason' (got {raw_entry!r}) -- see ForbiddenMethod")
+            entries.append(ForbiddenMethod(**raw_entry))
+        demand_raw["forbidden_methods"] = tuple(entries)
     classification_raw = _require_mapping(data.pop("classification", None), path, "classification")
 
     aliases_raw = _require_mapping(data.pop("aliases", None), path, "aliases")

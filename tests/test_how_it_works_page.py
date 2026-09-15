@@ -100,22 +100,39 @@ def test_stepper_renders_all_stages() -> None:
 from webapp.how_it_works_page import render_how_it_works_html  # noqa: E402
 
 
-def test_page_mentions_49_tools_and_26_sources_not_stale_numbers() -> None:
-    """La pagina no puede inflar el conteo de fuentes.
+def test_page_reports_the_real_tool_count_and_26_sources() -> None:
+    """La pagina no puede inflar el conteo de fuentes ni reportar tools viejas.
 
-    Esta aserto estuvo invertida: fijaba "33" y prohibia "25 curated" como si
-    fuera el numero viejo del README. Un recuento de knowledge/scm-books/graph.json
-    (2026-07-24) mostro lo contrario: el grafo tiene 35 source_file distintos, pero
-    9 son capitulos de un mismo volumen editado (Cohen & Dai) y 1 era el propio
-    KERN_ATLAS_SOMBREROS_SCM.md de Kern -- o sea que 33 contaba capitulos como
-    obras enteras y contaba un documento interno como literatura del campo. La
-    cifra externa honesta es 26. 33 no lo es.
+    Este test combina las dos correcciones, una de cada lado del rescate de
+    `feat/pattern-scan`, porque cada lado tenia razon en una mitad.
+
+    **El conteo de tools se deriva, no se escribe.** Fijar el literal era
+    fragil por construccion: los tokens de color hex del propio <style> de la
+    pagina pueden contener la cifra (documentado en fe372d9 con "41" y
+    ``#283341``), asi que la asercion podia pasar pasara lo que pasara. Y de
+    hecho paso algo peor: ``assert "49" in html`` seguia verde mientras el
+    registry tenia **50** tools, porque la meta description conservaba un 49
+    escrito a mano que nunca se sustituia. El cuerpo de la pagina decia 50 y
+    su propia meta decia 49. Anclar a las frases que reportan el numero, con
+    ``len(TOOLS)`` interpolado, es lo que hace que esto se rompa cuando el
+    registry se mueve y la copia no.
+
+    **La cifra de fuentes es 26, no 33.** Un recuento de
+    ``knowledge/scm-books/graph.json`` (2026-07-24) mostro que el grafo tiene
+    35 ``source_file`` distintos, pero 9 son capitulos de un mismo volumen
+    editado (Cohen & Dai) y 1 era el propio ``KERN_ATLAS_SOMBREROS_SCM.md`` de
+    Kern: 33 contaba capitulos como obras enteras y contaba un documento
+    interno como literatura del campo.
     """
+    from webapp.how_it_works_data import TOOLS
+
     html = render_how_it_works_html()
-    assert "49" in html
-    assert "26 curated external sources" in html
-    # Every superseded source count this page has carried or been tempted by.
-    for stale in ("33 curated", "25 curated", "35 curated", "27 curated"):
+    tool_count = str(len(TOOLS))
+    assert f"Kern's {tool_count} supply-chain capabilities" in html
+    assert f"{tool_count} agent-routable capabilities" in html
+    assert "27 curated external sources" in html
+    # Todo conteo de fuentes superado que esta pagina llevo o estuvo tentada de llevar.
+    for stale in ("33 curated", "25 curated", "35 curated", "26 curated", "41 curated"):
         assert stale not in html, stale
 
 
@@ -133,6 +150,24 @@ def test_source_count_claim_still_matches_the_books_graph() -> None:
     documents the mapping. Add a book and this fails, forcing whoever adds it
     to re-derive the works count instead of letting the page quietly drift,
     which is exactly how it got stuck at a stale 33.
+
+    The gap widened on 2026-09-04 and the page did NOT move. L3 source #30
+    (document control and standard work) added 7 source files while the works
+    count stayed at 26, because not one of the 7 is a curated work: 6 are web
+    artifacts (a product page, a catalogue page, two vendor articles, a training
+    provider's learning-center page, a podcast interview) and the 7th is a body-of-
+    knowledge map, not a book. Reading AIAG's product page for CQI-8 is not having
+    read CQI-8, and the filenames say so on purpose -- see
+    documentation/SOP_DOCUMENT_CONTROL_SOURCES.md, which records the evidence tier
+    of each and the three concepts CUT because their provenance did not hold up.
+
+    So of the 42 external files, 35 are book/chapter PDFs and 7 are secondary web
+    artifacts. El #42 es Vandeput, *Data Science for Supply Chain Forecasting*
+    (2021, 2ed), agregado el 2026-09-15: SI es una obra curada -- se leyo el libro
+    entero, no una ficha de producto -- asi que a diferencia de los 7 artefactos
+    web del 2026-09-04, este SI movio el conteo de obras de 26 a 27. If you are here because this assert failed: the number below tracks
+    FILES. Moving "26 curated external sources" is a separate, deliberate decision
+    that requires the new source to actually be a curated work.
     """
     import json
     from pathlib import Path
@@ -147,7 +182,7 @@ def test_source_count_claim_still_matches_the_books_graph() -> None:
     }
     external = {f for f in files if not f.startswith("KERN_")}
 
-    assert len(external) == 34, sorted(external)
+    assert len(external) == 42, sorted(external)
     assert "KERN_ATLAS_SOMBREROS_SCM.md" in files  # the internal doc is in the graph...
     assert "KERN_ATLAS_SOMBREROS_SCM.md" not in external  # ...and excluded from the claim
 
@@ -208,9 +243,9 @@ def test_both_donut_lenses_have_a_named_clickable_legend() -> None:
         assert f'data-donut="donut-domain" data-bucket="{escape(area)}"' in html
     for bucket in SCOR_BUCKET_ORDER:
         assert f'data-donut="donut-scor" data-bucket="{escape(bucket)}"' in html
-    # 10 domain entries + 7 SCOR entries = 17 legend rows total
+    # 12 domain entries + 7 SCOR entries = 19 legend rows total
     assert html.count('class="legend-item"') == len(DOMAIN_AREA_ORDER) + len(SCOR_BUCKET_ORDER)
-    assert html.count('class="legend-item"') == 17
+    assert html.count('class="legend-item"') == 19
 
 
 def test_every_registered_tool_is_rendered_on_the_page() -> None:
@@ -253,3 +288,44 @@ def test_how_it_works_route_body_matches_direct_render() -> None:
     the HTTP layer."""
     resp = client.get("/how-it-works")
     assert resp.text == render_how_it_works_html()
+
+
+# -- the same claim, made outside the page ------------------------------------
+
+_SOURCE_COUNT_DOCS = ("pyproject.toml", "README.md", "CLAUDE.md")
+
+# Every source count these three files have carried, or could be tempted back to.
+# "25" is the one that actually rotted here: it was right in July 2026 and stayed
+# in all three long after the page had moved to 26.
+_SUPERSEDED_SOURCE_CLAIMS = (
+    "25 SCM sources",
+    "25 curated",
+    "25 sources",
+    # "26 curated" quedo superado el 2026-09-15 al entrar Vandeput, *Data Science for
+    # Supply Chain Forecasting* (2021, 2ed) como obra #27. "27 curated" salio de esta
+    # lista el mismo dia: era el numero al que NO habia que saltar mientras las 7
+    # fuentes del 2026-09-04 eran artefactos web, y ahora es el numero correcto.
+    "26 curated",
+    "33 curated",
+    "35 curated",
+    "41 curated",
+)
+
+
+def test_the_source_count_claim_is_the_same_everywhere_it_is_made() -> None:
+    """The page has a tripwire; the three docs that repeat its claim had none.
+
+    That asymmetry is exactly how pyproject.toml, README.md and CLAUDE.md sat on
+    a stale 25 while ``test_source_count_claim_still_matches_the_books_graph``
+    kept the client-facing page honest at 26 -- a count written into prose cannot
+    fail a build, so it drifts silently and nothing complains.
+
+    knowledge/scm-books/README.md is deliberately NOT in this list: its numbers
+    are a running log anchored to when each source was added ("added as the 25th
+    source", "the other 24 sources are..."), which stay true as the total moves.
+    """
+    for name in _SOURCE_COUNT_DOCS:
+        text = (_REPO_ROOT / name).read_text(encoding="utf-8")
+        assert "27 curated external" in text, name
+        for stale in _SUPERSEDED_SOURCE_CLAIMS:
+            assert stale not in text, f"{name} carries a superseded claim: {stale}"

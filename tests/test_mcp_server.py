@@ -1,10 +1,12 @@
 """Tests for the read-only MCP server (Phase A go-to-market).
 
 Guarantees under test:
-- exactly the intended 35 analysis tools are exposed, all annotated read-only/
+- exactly the intended 39 analysis tools are exposed, all annotated read-only/
   non-destructive - the writeback pair (`odoo_replenishment`,
-  `excel_replenishment`) and the two non-tabular tools (`leadership_chain`,
-  `warehouse_layout`) stay off this surface;
+  `excel_replenishment`) and the three non-tabular tools (`leadership_chain`,
+  `warehouse_layout`, `procedure_draft`) stay off this surface; `iso_ops` stays
+  off (ficha is not rows). The kern_iso_* family is observation of tabular
+  evidence, never a certificate;
 - a real call bridges rows -> temp CSV -> Orchestrator.run() -> a structured
   JSON response carrying the same client-ready report the webapp already builds
   - including for loop-registered (spec-table) tools;
@@ -59,6 +61,10 @@ EXPECTED_TOOL_NAMES = {
     "linchpin_vehicle_routing",
     "linchpin_flow_map",
     "linchpin_org_friction_audit",
+    "linchpin_procedure_audit",
+    "kern_iso_sop_audit",
+    "kern_audit_evidence",
+    "kern_iso_scor_audit",
 }
 
 _ABC_XYZ_ROWS = [
@@ -81,7 +87,7 @@ async def _call(mcp, tool_name: str, **params) -> dict:
     return json.loads(content[0].text)
 
 
-# -- surface: exactly the intended 35, all read-only ----------------------------
+# -- surface: exactly the intended 39, all read-only ----------------------------
 
 
 async def test_server_name():
@@ -103,7 +109,7 @@ async def test_odoo_replenishment_and_writeback_tools_are_never_exposed(mcp):
 
 async def test_every_tool_is_annotated_read_only_and_non_destructive(mcp):
     tools = await mcp.list_tools()
-    assert len(tools) == len(EXPECTED_TOOL_NAMES) == 35
+    assert len(tools) == len(EXPECTED_TOOL_NAMES) == 39
     for tool in tools:
         assert tool.annotations is not None, f"{tool.name} has no annotations"
         assert tool.annotations.readOnlyHint is True, f"{tool.name} must be readOnlyHint=True"
@@ -320,3 +326,56 @@ async def test_org_friction_audit_ignores_a_history_path_override(mcp, tmp_path)
 
     assert result["status"] == "ok"
     assert "does-not-exist" not in json.dumps(result)
+
+
+async def test_kern_iso_sop_audit_alias_end_to_end(mcp):
+    result = await _call(
+        mcp,
+        "kern_iso_sop_audit",
+        rows=[
+            {"name": "Receiving", "last_reviewed_at": "2026-01-15",
+             "owner": "Ana", "approver": "Luis", "version": "1.0"},
+            {"name": "Shipping", "last_reviewed_at": "2025-01-01",
+             "owner": "Ana", "approver": "Luis", "version": "1.0"},
+        ],
+        params={"as_of": "2026-09-03"},
+    )
+    assert result["status"] == "ok"
+    assert result["tool"] == "procedure_audit"
+
+
+async def test_kern_audit_evidence_end_to_end(mcp):
+    rows = [
+        {"unit_id": f"SKU-{i}", "book_value": v, "source": side}
+        for side in ("gl", "subledger")
+        for i, v in enumerate([25000, 18000, 12000, 8000, 5000, 3000, 1500, 900, 400, 200], 1)
+    ]
+    result = await _call(
+        mcp,
+        "kern_audit_evidence",
+        rows=rows,
+        params={"tolerable_misstatement": 20000, "selection_seed": 0},
+    )
+    assert result["status"] == "ok"
+    assert result["tool"] == "audit_evidence"
+    assert result["guided"] is not None
+    assert result["guided"]["status"] in {"handoff", "escalated"}
+
+
+async def test_kern_iso_scor_audit_end_to_end(mcp):
+    result = await _call(
+        mcp,
+        "kern_iso_scor_audit",
+        rows=[
+            {"dataset": "financial", "product_id": "P1", "cogs": 50000, "avg_inventory_value": 12000},
+            {"dataset": "financial", "product_id": "P2", "cogs": 30000, "avg_inventory_value": 9000},
+            {"dataset": "orders", "product_id": "P1", "ordered_qty": 40, "delivered_qty": 40,
+             "promised_date": "2026-08-01", "delivered_date": "2026-08-02"},
+        ],
+        params={"as_of": "2026-09-03", "dso_days": 45, "dpo_days": 30},
+    )
+    assert result["status"] == "ok"
+    assert result["tool"] == "scor_iso_audit"
+    low = (result.get("summary") or "").lower() + (result.get("report_markdown") or "").lower()
+    assert "cumple" not in low
+    assert "iso certified" not in low

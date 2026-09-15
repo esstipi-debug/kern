@@ -42,6 +42,24 @@ OFFERS: tuple[Offer, ...] = (
         md_file="diagnostico-arranque.md",
     ),
     Offer(
+        slug="gratis",
+        name="Gratis — Prueba sin permiso",
+        price="USD 0 para siempre (100 SKUs, 1 archivo, watermark)",
+        cadence="Gratis para siempre",
+        recibe="3 tools: data_quality (intake_scan), abc_xyz, forecast — 1 Excel de muestra precargado, sin tarjeta",
+        para_quien="Quiere probar Kern sin hablar con nadie ni pasar tarjeta",
+        md_file="gratis.md",
+    ),
+    Offer(
+        slug="starter-mass",
+        name="Starter Mass",
+        price="USD 79/mes (hasta 500 SKUs, +$25 cada 250 SKUs, techo $290)",
+        cadence="Mensual self-serve",
+        recibe="5 tools: data_quality, abc_xyz, forecast, inventory_optimization, excel_replenishment",
+        para_quien="Jefe de ops que hoy compra a ojo en Excel, quiere probar sin hablar con nadie",
+        md_file="starter-mass.md",
+    ),
+    Offer(
         slug="starter-fundamentos",
         name="Starter -- Fundamentos de Inventario",
         price="USD 900/mes (piso ~500 SKUs, +$40/mes cada bloque de 250 SKUs, techo $1.500)",
@@ -57,7 +75,7 @@ OFFERS: tuple[Offer, ...] = (
     Offer(
         slug="starter-fundamentos-latam",
         name="Starter LatAm -- Fundamentos de Inventario (alcance reducido)",
-        price="USD 250-300/mes (alcance reducido, no un descuento sobre el Starter completo)",
+        price="USD 250-300/mes (alcance reducido) — o Starter Mass USD 79/mes self-serve sin alcance reducido",
         cadence="Mensual, alcance fijo (8 tools)",
         recibe=(
             "8 tools: data_quality, abc_xyz, forecast, whatif, inventory_optimization, "

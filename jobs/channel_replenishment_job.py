@@ -45,12 +45,15 @@ from nosilo_core.entities import SqliteEntityStore
 from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
 from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 from nosilo_core.writeback import Changeset
-
 from src.connectors.meli import MeliConnector, demo_meli_commerce
 from src.connectors.odoo import OdooConnector, demo_odoo
 from src.connectors.replenish import demand_by_sku
 from src.connectors.shopify import ShopifyConnector, demo_shopify
-from src.connectors.unleashed import UnleashedConnector, demo_unleashed
+from src.connectors.unleashed import (
+    UnleashedConnector,
+    UnleashedCredentials,
+    live_http,
+)
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.entities import (
     SOURCE_MELI,
@@ -204,19 +207,34 @@ def _odoo_erp(params: dict) -> tuple[object, str]:
 
 
 def _unleashed_erp(params: dict) -> tuple[object, str]:
-    injected = params.get("unleashed_rpc")
+    """Unleashed es ``[CRED]``: sin credenciales se NIEGA, no inventa datos.
+
+    La rama original tenia un ``demo_unleashed()`` en memoria y llamaba
+    ``UnleashedConnector(algo)`` con un solo argumento. `main` colapso esa capa:
+    hoy el conector toma un cliente httpx MAS ``UnleashedCredentials``, porque la
+    ``api_key`` FIRMA cada request y no viaja en ninguna cabecera -- un doble en
+    memoria no puede ejercitar eso, que es justamente donde estaba el bug de firma
+    que los tests de `main` cazan.
+
+    Odoo si conserva su camino de demo (`demo_odoo()` vive en `main`). Para
+    Unleashed, pedir credenciales es la respuesta honesta: un stand-in que no firma
+    daria verde sobre el unico paso que en produccion falla.
+    """
+    creds_id = params.get("unleashed_api_id") or os.environ.get("UNLEASHED_API_ID")
+    creds_key = params.get("unleashed_api_key") or os.environ.get("UNLEASHED_API_KEY")
+    injected = params.get("unleashed_http")
     if injected is not None:
-        return UnleashedConnector(injected), "injected Unleashed RPC"
-    api_id = params.get("unleashed_api_id") or os.environ.get("UNLEASHED_API_ID")
-    api_key = params.get("unleashed_api_key") or os.environ.get("UNLEASHED_API_KEY")
-    if api_id and api_key:
-        import httpx
-
-        from src.connectors.unleashed import _BASE_URL, UnleashedClient
-
-        http = httpx.Client(base_url=_BASE_URL, timeout=30.0)
-        return UnleashedConnector(UnleashedClient(http, api_id=api_id, api_key=api_key)), "live Unleashed"
-    return UnleashedConnector(demo_unleashed()), "in-memory Unleashed stand-in (demo data)"
+        creds = UnleashedCredentials(api_id=creds_id or "test", api_key=creds_key or "test")
+        return UnleashedConnector(injected, creds), "injected Unleashed HTTP"
+    if not (creds_id and creds_key):
+        raise ValueError(
+            "unleashed necesita UNLEASHED_API_ID y UNLEASHED_API_KEY (o los params "
+            "unleashed_api_id / unleashed_api_key). No hay stand-in offline: la api_key "
+            "firma cada request, y un doble que no firma aprueba el unico paso que falla "
+            "en produccion. Para correr sin credenciales, usa erp='odoo'."
+        )
+    creds = UnleashedCredentials(api_id=creds_id, api_key=creds_key)
+    return UnleashedConnector(live_http(creds), creds), "live Unleashed"
 
 
 #: Systems that can RECEIVE a plan: they hold a reorder point, a planning parameter their

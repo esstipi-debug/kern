@@ -2,7 +2,7 @@
 
 An internal/onboarding page (not a sales page -- see
 docs/superpowers/specs/2026-07-19-how-it-works-page-design.md): what Kern
-does, its 49 capabilities under two donut-chart lenses (domain area / SCOR
+does, its registered capabilities under two donut-chart lenses (domain area / SCOR
 Digital Standard process), how it's grounded and adapted per client, and its
 alignment with SCOR/CPIM/CLTD/CSCP/SCPro/CPSM/ISO 9001/28000.
 
@@ -173,7 +173,7 @@ _HEAD = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How Kern Works | Kern</title>
-<meta name="description" content="How Kern's 49 supply-chain capabilities work: what feeds them, how they adapt to a client's context, and how they align with SCOR, CPIM, CLTD, CSCP, SCPro, CPSM, and ISO 9001/28000.">
+<meta name="description" content="How Kern's __TOOL_COUNT__ supply-chain capabilities work: what feeds them, how they adapt to a client's context, and how they align with SCOR, CPIM, CLTD, CSCP, SCPro, CPSM, and ISO 9001/28000.">
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -365,7 +365,7 @@ def render_how_it_works_html() -> str:
 
     grounding_cards = "".join([
         _expandable_card(
-            "Knowledge graph", "26 curated external sources + the codebase itself",
+            "Knowledge graph", "27 curated external sources + the codebase itself",
             "<p>Every deliverable carries L3 citations. On the package path they also pass "
             "<code>citation_gate</code> (minimum 2 citations, max 2 hops, an EXCLUDED_CONCEPTS "
             "false-friend filter): a candidate that does not resolve to a graph node near the "
@@ -415,15 +415,17 @@ def render_how_it_works_html() -> str:
         for gap in HONEST_GAPS
     )
 
+    head = _HEAD.replace("__TOOL_COUNT__", tool_count)
+
     return (
-        _HEAD
+        head
         + f"""
 <section style="padding-top:44px">
   <span class="eyebrow">How Kern Works</span>
   <h1>A brief goes in. A grounded, QA-gated deliverable comes out.</h1>
   <p class="sub" style="max-width:64ch;font-size:1.05rem">
     Kern is an agentic supply-chain engine: {tool_count} agent-routable capabilities behind one
-    pipeline, grounded in a knowledge graph of 26 curated external sources, adapted to each client's own
+    pipeline, grounded in a knowledge graph of 27 curated external sources, adapted to each client's own
     cost and capacity parameters.
   </p>
   {stepper_html}

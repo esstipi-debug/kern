@@ -17,12 +17,19 @@ written for each row, so a read is never ambiguous about how to load it back.
 This module has NO opinion about what a "domain" is or what schema it must
 satisfy -- that is ``system_state.py``'s job. It only appends immutable rows
 and lists them back out, in insertion order, per domain. Rows are never
-updated or deleted: append-only (Linchpin 3.0 plan rule 8).
+updated: append-only (Linchpin 3.0 plan rule 8).
+
+The one exception to "never deleted" is :meth:`StateStore.prune_before`, the
+retention path (``config/retention.yaml`` -> ``src/retention.py`` ->
+``jobs/retention_job.py``). Append-only is a guarantee about the write path --
+nothing edits history in place -- not a promise to keep client datasets
+forever, which is the opposite of what data minimization wants. Retention is
+the only caller that removes anything, it removes whole rows and their payload
+files together, and it never touches a row inside its window.
 """
 
 from __future__ import annotations
 
-import os
 import re
 import sqlite3
 import uuid
@@ -31,6 +38,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+
+from src.data_paths import resolve_state_path
 
 try:  # optional fast/columnar path
     import pyarrow  # noqa: F401
@@ -48,7 +57,7 @@ except ImportError:
 # volumen"). Empty env var falls back to the repo-relative default, matching
 # the "LINCHPIN_*" env-override convention already used by webapp/security.py
 # and nosilo_core/writeback.py.
-DEFAULT_BASE_PATH = os.environ.get("LINCHPIN_STATE_PATH", "").strip() or "data/state"
+DEFAULT_BASE_PATH = resolve_state_path("state")
 
 _SAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")
 
@@ -57,6 +66,55 @@ def _sanitize(token: str) -> str:
     """Make ``token`` safe for use as (part of) a filename on any OS."""
     cleaned = _SAFE_CHARS.sub("_", token).strip("_")
     return cleaned or "cycle"
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    """Treat a naive datetime as already-UTC; convert an aware one to UTC.
+
+    Same normalization as ``scm_agent.events._ensure_utc`` -- duplicated rather
+    than imported because ``src/`` is the pure engine and does not depend on
+    ``scm_agent/`` (the dependency runs the other way).
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+# A client id must be a plain name. Deliberately NOT passed through
+# _sanitize() -- see ClientIdError for why rewriting one would be a leak.
+_CLIENT_ID = re.compile(r"\A[A-Za-z0-9._-]+\Z")
+_RESERVED_CLIENT_IDS = frozenset({".", ".."})
+
+
+class ClientIdError(ValueError):
+    """``client_id`` is not usable as a partition name.
+
+    Rejected rather than sanitized, which is the opposite of what ``cycle_id``
+    gets. Two reasons, and either alone is decisive:
+
+    - ``_SAFE_CHARS`` maps every character outside ``[A-Za-z0-9._-]`` to
+      ``_``, so "a/b" and "a_b" would resolve to the SAME directory. Silently
+      merging two clients into one partition is the exact cross-client leak
+      that partitioning exists to prevent.
+    - "." and ".." are inside that character class, so sanitizing returns them
+      untouched and ``base / ".."`` walks straight out of the base path.
+
+    An identity is the one kind of token you must never quietly rewrite.
+    """
+
+    def __init__(self, client_id: object) -> None:
+        self.client_id = client_id
+        super().__init__(
+            f"invalid client_id {client_id!r}: expected a non-empty name of letters, digits,"
+            " '.', '_' or '-' (a client id is rejected, never rewritten -- rewriting could map"
+            " two different clients onto one partition)"
+        )
+
+
+def _validate_client_id(client_id: str) -> str:
+    if not isinstance(client_id, str) or client_id in _RESERVED_CLIENT_IDS or not _CLIENT_ID.match(client_id):
+        raise ClientIdError(client_id)
+    return client_id
 
 
 class DuplicateCycleError(ValueError):
@@ -90,6 +148,35 @@ class StoredRecord:
 def _row_to_record(row: tuple) -> StoredRecord:
     seq, domain, cycle_id, created_at, file_path, file_format, row_count = row
     return StoredRecord(seq, domain, cycle_id, created_at, file_path, file_format, row_count)
+
+
+class MissingPayloadError(FileNotFoundError):
+    """The index row is still here; the payload file it points at is gone.
+
+    A state this module's own contract reaches on purpose, not a corruption: a
+    crash between the two halves of :meth:`StateStore.prune_before` leaves
+    exactly this, and that method commits to converging on "a store someone has
+    hand-cleaned". So it stays LOUD -- a read that quietly returned an empty
+    frame would say "this client has no history" when the truth is "this
+    client's history was deleted", and those are different sentences.
+
+    Naming it is what lets a BEST-EFFORT reader degrade on this condition alone.
+    ``jobs/forecast_cycle.read_previous`` gives up the comparison here and keeps
+    the forecast; before there was a name for it, the only way to survive a
+    hand-deleted parquet was ``except OSError``, which also swallows a disk that
+    failed a second ago and would have read fine on retry. Subclassing
+    ``FileNotFoundError`` keeps every ``except OSError`` already written against
+    this path working unchanged.
+    """
+
+    def __init__(self, record: StoredRecord, path: Path) -> None:
+        self.record = record
+        self.path = path
+        super().__init__(
+            f"payload file for domain '{record.domain}' cycle '{record.cycle_id}' is gone"
+            f" ({record.file_path}): the index row outlived its file -- a prune that crashed"
+            " between unlink and DELETE, or a store cleaned by hand (see prune_before)"
+        )
 
 
 class StateStore:
@@ -180,10 +267,107 @@ class StateStore:
         return [_row_to_record(r) for r in rows]
 
     def load_payload(self, record: StoredRecord) -> pd.DataFrame:
+        """Read one snapshot's payload back.
+
+        Raises ``MissingPayloadError`` when the indexed file is gone, checked
+        before the read engine gets a look so the error names the ROW that
+        outlived its file instead of the path pandas happened to open. The
+        engines disagree on what they raise for an absent file -- pyarrow can
+        surface it as its own ``FileNotFoundError`` and a bare path string --
+        and a caller cannot degrade on a condition it cannot recognize.
+        """
         path = self._base / record.file_path
+        if not path.is_file():
+            raise MissingPayloadError(record, path)
         if record.file_format == "parquet":
             return pd.read_parquet(path)
         return pd.read_csv(path)
+
+    def count_all(self) -> int:
+        """Total indexed snapshots across every domain -- the denominator
+        ``src.retention.decide`` measures a run's expired share against."""
+        return int(self._conn.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0])
+
+    def count_before(self, cutoff: datetime) -> int:
+        """How many snapshots are older than ``cutoff`` (exclusive), without
+        deleting anything -- the dry-run half of :meth:`prune_before`."""
+        return len(self._records_before(cutoff))
+
+    def _records_before(self, cutoff: datetime) -> list[StoredRecord]:
+        """Every indexed snapshot strictly older than ``cutoff``, any domain.
+
+        ``created_at`` is compared in Python rather than as ``WHERE created_at
+        < ?`` for the same reason ``scm_agent.events.EventLedger._seqs_before``
+        does it: the column is ISO text, so a lexicographic compare only
+        matches an instant compare while every row shares one UTC offset --
+        true today, not enforced by the schema, and wrong in exactly the
+        direction that deletes a row it should have kept.
+        """
+        cutoff = _ensure_utc(cutoff)
+        rows = self._conn.execute(
+            "SELECT seq, domain, cycle_id, created_at, file_path, file_format, row_count FROM snapshots"
+        ).fetchall()
+        records = [_row_to_record(r) for r in rows]
+        return [r for r in records if _ensure_utc(datetime.fromisoformat(r.created_at)) < cutoff]
+
+    def prune_before(self, cutoff: datetime) -> int:
+        """Delete every snapshot older than ``cutoff`` -- index row AND payload
+        file -- and return how many rows went.
+
+        Deleting the row without the file would protect nothing: the file is
+        where the client's actual dataset lives; the row is only metadata. The
+        file goes first, so a crash between the two leaves an indexed row
+        pointing at a missing file (loud, and ``load_payload`` raises
+        ``MissingPayloadError``) rather than an orphaned file no index knows
+        about (silent, and invisible to the next retention run).
+
+        A file already gone is not an error -- retention must converge on a
+        store someone has hand-cleaned. A resolved path landing outside
+        ``base_path`` is skipped and its row kept: ``file_path`` is read back
+        out of the database, and no value from storage gets to name an
+        arbitrary path on disk for a routine to unlink.
+
+        The caller is expected to have run the counts past
+        ``src.retention.decide`` first; this method applies no cap of its own.
+        """
+        doomed = self._records_before(cutoff)
+        if not doomed:
+            return 0
+
+        base = self._base.resolve()
+        removed_seqs: list[int] = []
+        touched_dirs: set[Path] = set()
+        for record in doomed:
+            path = (self._base / record.file_path).resolve()
+            if path != base and base not in path.parents:
+                continue  # see docstring: never unlink outside the store
+            path.unlink(missing_ok=True)
+            touched_dirs.add(path.parent)
+            removed_seqs.append(record.seq)
+
+        if not removed_seqs:
+            return 0
+
+        for start in range(0, len(removed_seqs), 500):
+            chunk = removed_seqs[start : start + 500]
+            placeholders = ",".join("?" * len(chunk))
+            self._conn.execute(f"DELETE FROM snapshots WHERE seq IN ({placeholders})", chunk)
+        self._conn.commit()
+
+        # Drop the now-empty date=YYYY-MM-DD partitions (and a domain directory
+        # that just lost its last one) so the tree does not accumulate empty
+        # scaffolding forever. rmdir only removes an already-empty directory,
+        # so this can never take a file with it.
+        for directory in sorted(touched_dirs, key=lambda p: len(p.parts), reverse=True):
+            for candidate in (directory, directory.parent):
+                if candidate == base or base not in candidate.parents:
+                    continue
+                try:
+                    candidate.rmdir()
+                except OSError:
+                    pass  # not empty, or gone already
+
+        return len(removed_seqs)
 
     def close(self) -> None:
         self._conn.close()
@@ -199,8 +383,44 @@ def default_store() -> StateStore:
     own ``StateStore(tmp_path / "state")`` and pass it explicitly to
     ``system_state.snapshot``/``latest``/``history`` instead of touching this
     singleton, so they never read or write the real ``data/state`` directory.
+
+    This is the UNNAMED partition -- shared by every caller that does not name
+    a client. It is no longer reachable by accident: ``system_state`` raises
+    ``MissingStoreError`` on ``store=None`` rather than resolving to it, so
+    landing here is now always a written-down decision.
     """
     global _default_store
     if _default_store is None:
         _default_store = StateStore(DEFAULT_BASE_PATH)
     return _default_store
+
+
+def store_for(client_id: str | None = None, *, base_path: str | Path = DEFAULT_BASE_PATH) -> StateStore:
+    """The state store for one client, isolated from every other client's.
+
+    ``client_id=None`` is the unnamed partition and maps to ``base_path``
+    ITSELF, not to a subdirectory: an existing deployment's ``data/state``
+    keeps working with no migration of the live volume. That asymmetry with
+    named clients is deliberate and cheap; a migration on a running system is
+    neither.
+
+    A named client gets ``base_path/<client_id>``, so isolation is a separate
+    SQLite file rather than a ``WHERE client_id = ?`` that every future query
+    in this module would have to remember. A query that forgets a filter is a
+    silent cross-client read; a query that cannot reach another client's file
+    is not a query anyone can write wrong.
+
+    Raises ``ClientIdError`` -- before touching the filesystem -- if
+    ``client_id`` is not a plain name.
+
+    Note that partitioning is only as trustworthy as the identity that selects
+    it. Today the write surface (``POST /api/jobs``) authenticates with one
+    shared ``LINCHPIN_API_KEY`` and its ``client`` field is a caller-typed
+    label, which ``webapp/app.py``'s ``_get_orchestrator`` already refuses to
+    trust for exactly this reason. Feed this an authenticated client id, never
+    that label.
+    """
+    if client_id is None:
+        return StateStore(base_path)
+    validated = _validate_client_id(client_id)
+    return StateStore(Path(base_path) / validated)

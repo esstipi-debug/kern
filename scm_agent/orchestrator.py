@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import replace
 from pathlib import Path
 
+from jobs import intake
 from nosilo_core.llm import LLMProvider, get_provider, narrative_rewrite
 from nosilo_core.registry import Tool, ToolRegistry
 from nosilo_core.types import (
@@ -18,13 +20,55 @@ from nosilo_core.types import (
     JobResult,
 )
 from src import client_profile, vertical_profile
+from src.connectors import lectura
+from src.connectors.lectura import Reading
 
+from . import metrics
 from .guided_bridge import to_guided_outcome
 from .intent import classify
 from .knowledge import KnowledgeBase
+from .narrative_critic import review_narrative
+from .packages import deck_accepts_readings
 from .tools import build_default_registry
 
 logger = logging.getLogger(__name__)
+
+
+# --- procedencia de libro en el camino SIN GATE --------------------------------------
+#
+# QUE ES ESTO. El mismo indice de lectura que acompania el deck consolidado del paquete
+# (``scm_agent/packages.py``, ver el comentario largo de ``_con_lecturas``) acompania
+# tambien el deck de una corrida single-tool. No es una cita y no entra a ``citations``:
+# un pasaje no tiene ``node_id``, el grafo L3 sigue siendo la unica fuente de citas.
+#
+# EN QUE SE DIFERENCIA DEL CAMINO DE PAQUETE, que es lo unico que importa para leer las
+# decisiones de abajo: aquel corre al lado de ``citation_gate.filter_citations`` y lo
+# arma un operador; este NO tiene ningun gate -- ``_ground`` llama a
+# ``ground_citations`` derecho -- y es el que atienden la web, el MCP, la CLI y los
+# eventos. Lo que salga mal aca sale para el cliente sin escala. Por eso el cableado es
+# el mas conservador posible: no consulta si no hay quien renderice, no toca nada de lo
+# que ya se decidio, y no puede dejar una corrida a medias.
+
+#: Cuantos pasajes acompanan el deck de UNA corrida. Menos que los 5 del paquete a
+#: proposito: aquel deck consolida hasta 35 analisis y este es uno solo, asi que la
+#: seccion es un pie de pagina de procedencia y no un capitulo. Es un presupuesto de
+#: RENDER, no un numero medido -- lo medido es el cupo de palabras clave de abajo.
+_LECTURAS_POR_DECK = 3
+
+#: Cuantas palabras clave entran a la unica consulta. El numero sale de la medicion
+#: contra el indice vivo que esta escrita en ``scm_agent/packages.py``
+#: (``_MAX_KEYWORDS_POR_PASO``) y no se vuelve a discutir aca: la busqueda es por VECTOR,
+#: asi que la consulta es un centroide -- con 3 terminos canonicos servian 4 de 4
+#: pasajes, con 12 sinonimos del mismo tema 1 de 4. Y ``intent_keywords`` es exactamente
+#: una lista de sinonimos ordenada de mas a menos canonica ("abc-xyz", "abc xyz",
+#: "abc analysis", ...), o sea el peor caso si se manda entera.
+_MAX_KEYWORDS_LECTURA = 3
+
+#: Segundos por request del conector (initialize y tool call cuentan por separado, ver
+#: ``lectura._stdio_caller``). Acotado a proposito: esto es decoracion sobre un
+#: entregable que YA paso QA, asi que un indice que no contesta tiene que degradar a
+#: "sin lecturas" en segundos y dejar salir el resultado.
+_TIMEOUT_LECTURA_S = 20.0
 
 
 class Orchestrator:
@@ -73,12 +117,17 @@ class Orchestrator:
         overrides = overrides or {}
         request = JobRequest(brief=brief, data_path=data_path, job_type=job_type,
                              params=dict(overrides), client=client, strict_params=strict_params)
+        started = time.monotonic()
         try:
             result = self._run(request, Path(out_dir))
         except Exception:  # never crash the caller — surface as error status
             logger.error("orchestrator.run failed", exc_info=True)
             result = JobResult(status=STATUS_ERROR, tool=None, confidence=0.0,
                                deliverables={}, summary="An internal error occurred.")
+        # Counted here, at the single boundary every path already funnels through,
+        # so a new capability is measured without touching this file. Volatile and
+        # per-process by design (see scm_agent/metrics.py); it can never raise.
+        metrics.record_run(result.tool, result.status, (time.monotonic() - started) * 1000.0)
         # Single boundary: every result leaves with a protected, executable path. A tool may
         # supply its own ranked-options outcome on success (set in _run); otherwise derive the
         # protected fallback. Either way, no result is a dead end.
@@ -140,7 +189,33 @@ class Orchestrator:
                         f"'vertical' field on clients/{profile.client_id}/profile.json",
                     ],
                 )
+        veto = vertical.forbids(intent.job_type) if vertical is not None else None
+        if veto is not None:
+            # No corre, y dice por que. El caso que obliga a esto es alimentos:
+            # inventory_optimization y multi_echelon dimensionan buffer sin
+            # ninguna nocion de vida util, asi que sobre un catalogo perecible
+            # "sube el buffer" convierte capital en merma. El motor SI sabe de
+            # vida util (src/lots/expiry.py, jobs/fefo_job.py) pero lo sabe en
+            # otra capacidad, desde una columna que estas dos no leen -- no es un
+            # parametro que falte, es un calculo que no aplica.
+            #
+            # Sin pasar por strict_params a proposito: ese interruptor es correcto
+            # para "te falto un numero" y equivocado para "este calculo es
+            # invalido sobre tu catalogo". Un veto opcional no es un veto.
+            return JobResult(
+                status=STATUS_NEEDS_CLARIFICATION, tool=tool.key,
+                confidence=intent.confidence, deliverables={},
+                summary=veto.reason.strip(),
+                clarifications=[c for c in (veto.instead.strip(),) if c],
+            )
         params = client_profile.merge_params(params, profile, vertical)
+        if vertical is not None and vertical.aliases:
+            # DESPUES de merge_params a proposito. Esta es una tabla que ESTE
+            # proceso resolvio del rubro declarado por el cliente, no una perilla
+            # que el llamador ajusta, asi que un params["column_aliases"] que
+            # llegue por /api/jobs (JSON crudo) no puede ganarle: merge_params
+            # pone los params del llamador ultimos, y por lo tanto mas altos.
+            params = {**params, "column_aliases": vertical.merged_aliases(intake.ALIASES)}
         # prepare() must see the same merged params run() will: several tools bake
         # params into their payload at prepare time (multi_echelon service_level,
         # simulation order_cost, inventory lead_time_days).
@@ -185,17 +260,26 @@ class Orchestrator:
         # Ground first: the premium deck weaves the L3 citations in, so they must
         # be resolved before the deliver path runs.
         citations = self._ground(tool, request.brief)
+        # Las lecturas, aca y no despues: es el ultimo punto de la corrida con CERO
+        # archivos escritos, y de esta llamada hay excepciones que salen a proposito
+        # (Ctrl-C). Ver `_lecturas`.
+        readings = self._lecturas(tool)
         # Compute the ranked options once: they become JobResult.guided AND the deck's
         # action menu, so the sellable artifact carries the same choices the agent returns.
         guided = tool.options(produced.report) if tool.options else None
         deck_options = list(guided.options) if guided is not None else []
         written = tool.deliver(produced.report, out_dir / tool.key, request.client)
         if tool.deck is not None:
+            # Mismo patron que `deck_lang` en `packages.py`: el kwarg SOLO viaja cuando
+            # hay algo que mandar, asi que un deck que no lo espera recibe exactamente la
+            # llamada que recibia antes de que este campo existiera.
+            deck_readings = {"readings": readings} if readings else {}
             deck_files = tool.deck(
                 produced.report, out_dir / tool.key, request.client, citations,
-                intent.confidence, deck_options,
+                intent.confidence, deck_options, **deck_readings,
             )
             written.update({f"deck_{name}": path for name, path in deck_files.items()})
+        # `readings` NO viaja al narrador, y es una decision: ver `_lecturas`.
         summary = self._narrative(produced.summary, tool.title, citations)
         return JobResult(
             status=STATUS_OK, tool=tool.key, confidence=intent.confidence,
@@ -213,14 +297,94 @@ class Orchestrator:
         """
         return self.knowledge.ground_citations(tool.intent_keywords, brief, limit=5)
 
+    def _lecturas(self, tool: Tool) -> tuple[Reading, ...]:
+        """Pasajes de libro para el deck de ESTA corrida, o vacio. Nunca levanta.
+
+        SOLO SI HAY QUIEN LOS RENDERICE. Se le pregunta al deck (ver
+        ``packages.deck_accepts_readings``) antes de consultar nada, porque la consulta
+        no es gratis: levanta y baja el servidor de lectura entero -- 16,8 s con el
+        indice frio, ~1,6 GB de RSS. Los 53 decks registrados hoy contestan que si
+        (``tests/test_tools_threads_readings_to_decks.py`` lo mantiene asi), asi que la
+        pregunta ya no apaga esta rama; la sigue apagando para un tool sin deck, y volveria
+        a apagar un tool cuyo deck naciera con la firma vieja. En produccion igual no se
+        paga nada: sin ``KERN_LECTURA_PYTHON``, ``read_passages`` contesta
+        ``available=False`` sin levantar ningun proceso y el entregable sale byte a byte
+        como antes de este cableado.
+
+        UNA SOLA CONSULTA POR CORRIDA, que es todo lo que hace falta: una corrida
+        single-tool produce un solo deck. Con las palabras canonicas del tool -- las
+        mismas que usa :meth:`_ground` -- pero capadas a :data:`_MAX_KEYWORDS_LECTURA`,
+        porque ``intent_keywords`` es una lista de SINONIMOS y mandarla entera es el peor
+        caso medido de una busqueda por vector (ver la constante).
+
+        DONDE VA, Y POR QUE ACA. Se llama antes de ``tool.deliver``, con cero archivos
+        escritos todavia. El camino de paquete pone su consulta al final, justo antes de
+        escribir el deck consolidado, y ahi eso es correcto porque el paquete escribe
+        todo junto; aca los archivos los escriben ``deliver`` y ``deck``, asi que la
+        UNICA ventana sin archivos puestos es esta. Importa porque la guarda de abajo
+        re-lanza ``KeyboardInterrupt``/``SystemExit`` a proposito: hay excepciones que SI
+        salen de este metodo, y si salieran despues de escribir dejarian la carpeta del
+        cliente a medias y ningun ``JobResult`` devuelto. Y no puede ir mas arriba: corre
+        despues de ``tool.qa()``, de modo que una lectura jamas decide si hay entregable.
+
+        LA GUARDA. ``read_passages`` promete no levantar, pero su guarda es
+        ``except Exception`` y anyio levanta ``BaseExceptionGroup``, que esa clausula NO
+        ve (mismo caso que ``packages._con_lecturas``). El invariante lo sostiene este
+        lado, no la promesa del otro repo.
+
+        LO QUE NO HACE, y es deliberado: no toca ``citations`` -- un pasaje no tiene
+        ``node_id`` y este camino no pasa por ``filter_citations``, asi que si se colara
+        al pool no habria nada rio abajo que lo sacara -- y NO entra al prompt del
+        modelo. Esto ultimo no es un olvido y no hay que "arreglarlo":
+        ``narrative_rewrite`` concatena crudo lo que se le pasa, asi que un pasaje que
+        vuelve de otro proceso seria texto ajeno inyectado en el prompt del unico camino
+        sin gate; el resumen dejaria de ser identico con y sin indice (la inercia que
+        este cableado entero defiende); y un pasaje vale por su procedencia -- libro y
+        pagina fisica --, que parafraseada adentro de una frase se pierde y queda como
+        afirmacion nuestra. Su lugar es la seccion de lecturas del deck, con el libro y
+        la pagina al lado. Lo fija ``tests/test_orchestrator_lecturas.py``.
+        """
+        if not deck_accepts_readings(tool.deck):
+            return ()
+        keywords = [
+            p for p in (str(k).strip() for k in (tool.intent_keywords or ())) if p
+        ][:_MAX_KEYWORDS_LECTURA]
+        if not keywords:
+            return ()
+        try:
+            lecturas = lectura.read_passages(
+                keywords, k=_LECTURAS_POR_DECK, timeout_s=_TIMEOUT_LECTURA_S
+            )
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException:  # noqa: BLE001 - ver "LA GUARDA" arriba
+            logger.warning("lectura: el indice fallo; el entregable sale sin lecturas",
+                           exc_info=True)
+            return ()
+        if not lecturas.available:
+            return ()
+        # El tope de CANTIDAD lo pone Kern, no el otro repo: `k` viaja como pedido y
+        # nadie garantiza que se respete. Mismo argumento que el tope de extracto (320) y
+        # el del slug -- es texto ajeno y el render no aplica ningun tope propio.
+        return tuple(lecturas.readings[:_LECTURAS_POR_DECK])
+
     def _narrative(self, base_summary: str, tool_title: str, citations: list[str] | None = None) -> str:
         """Optional LLM polish, grounded in the L3 citations when present, in
         ``self.lang``.
 
         The returned summary is untrusted display text (it echoes the brief and any
         LLM output); escape it at the render site if it is ever shown as HTML.
+
+        Post-checked by ``narrative_critic.review_narrative``: the rewrite only
+        ships if every figure of ``base_summary`` survived it, otherwise the
+        deterministic summary does. ``narrative_rewrite`` asks the model to
+        "Keep every number" and verifies nothing, and it lives in the pinned
+        external ``nosilo_core``, so the check belongs here -- see
+        scm_agent/narrative_critic.py for the full rationale and the severity
+        model (a filter, not a QA veto).
         """
-        return narrative_rewrite(
+        rewritten = narrative_rewrite(
             self.provider, base_summary, tool_title,
             lang=self.lang, citations=citations, persona=self.persona,
         )
+        return review_narrative(base_summary, rewritten, label=tool_title).summary

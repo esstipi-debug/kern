@@ -3,104 +3,169 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kern — Escaneo gratis de inventario</title>
+<title>Kern — Diagnóstico gratis de inventario</title>
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --ink:#080b11; --panel:#111722; --panel-2:#0f141d;
-    --line:#1e2733; --line-2:#283341;
-    --txt:#e7eef6; --txt-2:#c4cfdb; --muted:#9aa7b6; --faint:#5e6b7a;
-    --accent:#4fd1c5; --accent-bright:#5eead4; --accent-soft:rgba(79,209,197,.14); --accent-bd:rgba(79,209,197,.45);
-    --ok:#3fb950; --ok-soft:rgba(63,185,80,.12); --ok-bd:rgba(63,185,80,.4);
-    --warn:#d4a017; --warn-soft:rgba(212,160,23,.12); --warn-bd:rgba(212,160,23,.4);
-    --bad:#f0564a; --bad-soft:rgba(240,86,74,.12); --bad-bd:rgba(240,86,74,.42);
-    --accent-warm:#ffb545; --accent-warm-2:#ff8a5c; --accent-warm-deep:#b5601f;
-    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
-    --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-    --r:13px;
+    --cold:#08110f;
+    --teal:#5eead4;
+    --paper:#efe6d4;
+    --paper-2:#f7f1e6;
+    --ink:#16120e;
+    --rule:#c9bba3;
+    --muted:#6b6156;
+    --accent-warm:#e07a3d;
+    --accent-warm-deep:#9a4a1c;
+    --ok:#1f6b4a;
+    --warn:#8a5a12;
+    --bad:#a33;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+    --sans:'IBM Plex Sans',system-ui,sans-serif;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--ink);color:var(--txt);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;
-    background-image:radial-gradient(1100px 520px at 10% -8%,rgba(79,209,197,.09),transparent 60%),radial-gradient(900px 620px at 110% 0%,rgba(120,90,255,.06),transparent 55%);background-attachment:fixed}
-  a{color:var(--accent-bright);text-decoration:none}
-  .wrap{max-width:960px;margin:0 auto;padding:0 22px}
-  header{border-bottom:1px solid var(--line);background:rgba(8,11,17,.7);backdrop-filter:blur(10px)}
-  header .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
-  .brand{display:flex;align-items:center;gap:9px;font:700 17px/1 var(--mono)}
-  .brand .d{color:var(--accent)}
-  header a.back{font-size:14px;color:var(--txt-2)}
-  h1{font-size:clamp(1.7rem,1.2rem+1.8vw,2.4rem);font-weight:800;letter-spacing:-.02em;margin:0}
-  h2{font-size:1.05rem;font-weight:700;margin:0 0 4px}
-  .eyebrow{font:600 12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent-bright)}
-  .muted{color:var(--muted)} .sub{color:var(--txt-2)}
-  section{padding:38px 0}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:24px}
-  label{display:block;font:600 12.5px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
-  input[type=email],input[type=file]{width:100%;background:var(--panel-2);border:1px solid var(--line-2);border-radius:10px;color:var(--txt);font-family:var(--sans);font-size:15px;padding:12px 13px;outline:none;transition:border-color .15s}
-  input:focus{border-color:var(--accent-bd)}
-  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:600 14.5px/1 var(--sans);padding:12px 20px;border-radius:999px;border:1px solid transparent;cursor:pointer;transition:transform 80ms ease-out,box-shadow 80ms ease-out,filter 120ms ease-out,background .15s,border-color .15s}
-  .btn-primary{background:linear-gradient(150deg,var(--accent-warm),var(--accent-warm-2));color:#2a1200;box-shadow:0 6px 0 var(--accent-warm-deep)}
-  .btn-primary:hover{filter:saturate(1.08)}
-  .btn-primary:active{transform:translateY(6px);box-shadow:0 0 0 var(--accent-warm-deep)}
-  .btn-primary:focus-visible{outline:2px solid var(--accent-warm);outline-offset:2px}
-  .btn-ghost{background:transparent;color:var(--txt);border-color:var(--line-2)}
-  .btn-ghost:hover{border-color:var(--accent-bd);background:var(--accent-soft)}
-  .btn-ghost:active{transform:translateY(2px)}
-  .btn:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}
-  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  html,body{margin:0;min-height:100%}
+  body{
+    background:var(--cold);
+    color:var(--paper);
+    font-family:var(--sans);
+    font-size:16px;
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+    background-image:linear-gradient(180deg,rgba(94,234,212,.07),transparent 42%);
+  }
+  a{color:var(--teal)}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 22px}
+  header{border-bottom:1px solid rgba(94,234,212,.22)}
+  header .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{font:600 15px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase}
+  .brand em{font-style:normal;color:var(--teal)}
+  header a.back{font:500 13px/1 var(--mono);color:rgba(239,230,212,.7);text-decoration:none}
+  .langs{display:flex;gap:14px;align-items:center}
+  .langs a{font:500 12px/1 var(--mono);letter-spacing:.12em;color:rgba(239,230,212,.45);text-decoration:none}
+  .langs a.on{color:var(--teal)}
+  html[lang="en"] .sheet.stamp::before{content:"FREE"}
+  h1{font-size:clamp(2rem,1.15rem+2.6vw,3.05rem);font-weight:700;letter-spacing:-.04em;line-height:1.02;margin:0;max-width:22ch}
+  h2{font:600 11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;margin:0 0 14px;color:var(--muted)}
+  .kicker{font:500 12px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin:0 0 14px}
+  .lede{max-width:38ch;color:rgba(239,230,212,.86);margin:16px 0 0;font-size:18px}
+  .note{max-width:42ch;margin:14px 0 0;font-size:14px;line-height:1.45;color:rgba(239,230,212,.55)}
+  .note a{color:inherit;text-decoration:underline}
+  section{padding:28px 0 36px}
+  button{font-family:inherit}
+  .sheet{
+    position:relative;
+    background:var(--paper);
+    color:var(--ink);
+    padding:28px 26px 24px;
+    border:1px solid #d7ccb6;
+    background-image:repeating-linear-gradient(transparent,transparent 27px,rgba(22,18,14,.045) 28px);
+  }
+  .sheet.stamp::before{
+    content:"GRATIS";
+    position:absolute;top:18px;right:16px;
+    font:600 11px/1 var(--mono);letter-spacing:.2em;
+    color:var(--ok);
+    border:1.5px solid var(--ok);
+    padding:6px 8px;
+    transform:rotate(8deg);
+  }
+  .sheet a{color:#0d5c52}
+  .sheet .muted{color:var(--muted)}
+  label{display:block;font:500 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+  input[type=email]{
+    width:100%;background:var(--paper-2);border:1px solid var(--rule);
+    color:var(--ink);font-family:var(--sans);font-size:15px;padding:12px 13px;outline:none;
+  }
+  input:focus{outline:2px solid #0d5c52;outline-offset:2px}
+  .drop{
+    position:relative;display:block;min-height:112px;cursor:pointer;
+    border:1.5px dashed #9a4a1c;background:rgba(247,241,230,.85);
+    padding:22px 16px;
+  }
+  .drop input[type=file]{
+    position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;
+    border:0;padding:0;background:transparent;
+  }
+  .drop-copy{pointer-events:none;display:block}
+  .drop-copy b{display:block;font:600 16px/1.2 var(--sans);margin:0 0 6px}
+  .drop-name{font:500 12.5px/1.4 var(--mono);color:var(--muted)}
+  #verticalOpts{display:flex;flex-wrap:wrap;gap:8px}
+  #verticalOpts .btn{font:500 12.5px/1.25 var(--sans);padding:8px 11px;max-width:100%;text-align:left}
+  .letterhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;border-bottom:1px solid var(--rule);padding-bottom:10px;margin:-4px 0 16px;font:500 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .letterhead strong{color:var(--ink);letter-spacing:.12em}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:600 14px/1 var(--sans);padding:12px 18px;border:1px solid transparent;cursor:pointer}
+  .btn-primary{background:var(--accent-warm);color:#1a0e06;box-shadow:0 4px 0 var(--accent-warm-deep)}
+  .btn-primary:active{transform:translateY(4px);box-shadow:none}
+  .btn-primary:focus-visible{outline:2px solid var(--accent-warm);outline-offset:3px}
+  .btn-ghost{background:transparent;color:inherit;border-color:currentColor}
+  .sheet .btn-ghost{color:var(--ink);border-color:var(--rule)}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   .hidden{display:none!important}
-  .hint{font-size:13px;color:var(--faint);margin-top:9px}
-  .err{color:#ff8b81;font-size:13.5px;margin-top:10px;min-height:1em}
-  .chip{display:inline-flex;align-items:center;gap:7px;font:600 12px/1 var(--mono);padding:6px 11px;border-radius:999px;border:1px solid var(--line-2);color:var(--txt-2)}
-  .chip.ok{background:var(--ok-soft);border-color:var(--ok-bd);color:#79e08c}
-  .chip.warn{background:var(--warn-soft);border-color:var(--warn-bd);color:#e8c45a}
-  .chip.bad{background:var(--bad-soft);border-color:var(--bad-bd);color:#ff8b81}
-  .stat-big{font:800 clamp(1.6rem,1.1rem+2vw,2.3rem)/1.15 var(--sans);letter-spacing:-.02em;color:var(--accent-bright);margin:4px 0 2px}
-  .stat-sub{font-size:13.5px;color:var(--muted)}
+  .err{color:var(--bad);font-size:13.5px;margin-top:10px;min-height:1em}
+  .chip{display:inline-flex;align-items:center;gap:6px;font:500 11px/1 var(--mono);padding:5px 9px;border:1px solid var(--rule);color:#3a342c}
+  .chip.ok{border-color:var(--ok);color:var(--ok)}
+  .chip.warn{border-color:var(--warn);color:var(--warn)}
+  .chip.bad{border-color:var(--bad);color:var(--bad)}
+  .stat-big{font:600 clamp(2rem,1.4rem+2.6vw,3.1rem)/1 var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.04em;color:#0d3d38;margin:8px 0 6px}
+  .stat-sub{font-size:14px;color:var(--muted)}
   .chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}
-  .h3{font:700 13px/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--accent-bright);margin:22px 0 10px}
+  .h3{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:#0d5c52;margin:22px 0 10px}
   ul.list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
-  ul.list li{font-size:14px;color:var(--txt-2);padding-left:16px;position:relative}
-  ul.list li::before{content:"›";position:absolute;left:0;color:var(--accent)}
-  .cta-box{margin-top:22px;padding:16px;border:1px solid var(--accent-bd);border-radius:11px;background:var(--accent-soft)}
-  .cta-box p{margin:0 0 12px;font-size:14px;color:var(--txt-2)}
-  .spin{width:15px;height:15px;border:2px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:sp .7s linear infinite}
+  ul.list li{font-size:14.5px;color:#2a241c;padding-left:1.1em;position:relative;border-bottom:1px solid rgba(201,187,163,.5);padding-bottom:8px}
+  ul.list li::before{content:"—";position:absolute;left:0;color:#0d5c52}
+  .cta-box{margin-top:22px;padding:16px;background:#16120e;color:var(--paper)}
+  .cta-box p{margin:0 0 12px;font-size:14px;color:#d8cebc}
+  .cta-box .btn-ghost{color:var(--paper);border-color:#6b6156}
+  .spin{width:14px;height:14px;border:2px solid var(--rule);border-top-color:#0d5c52;border-radius:50%;display:inline-block;animation:sp .7s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
-  .empty{color:var(--faint);font-size:14px;text-align:center;padding:30px 10px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-  @media(max-width:780px){.grid{grid-template-columns:1fr}}
-  .privacy{font-size:12.5px;color:var(--faint);margin-top:12px}
+  .empty{color:var(--muted);font-size:15px;padding:48px 8px 24px;font-family:var(--mono);text-align:left}
+  .empty::before{content:"$  · · ·";display:block;font-size:2.4rem;color:#c9bba3;margin-bottom:12px;letter-spacing:.08em}
+  .empty:has(.spin)::before{display:none}
+  .grid{display:grid;grid-template-columns:1fr 1.05fr;gap:18px;align-items:start}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}.sheet.stamp::before{top:12px;right:10px}}
+  .privacy{font-size:12px;color:#8a7f70;margin-top:14px}
+  .hero{padding:48px 0 12px}
+  #gate{padding-top:8px;padding-bottom:64px}
+  #gate .sheet{max-width:520px;padding-right:92px}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 
 <header>
   <div class="wrap">
-    <span class="brand"><span class="d">&#9672;</span> Kern</span>
-    <a class="back" href="/paquetes">Paquetes &rarr;</a>
+    <span class="brand">Kern <em>diag</em></span>
+    <div class="langs">
+      <a href="/demo" data-lang="es">ES</a>
+      <a href="/demo/en" data-lang="en">EN</a>
+      <a class="back" href="/blog">Blog</a>
+      <a class="back" href="/paquetes" data-i18n="navPacks">Paquetes &rarr;</a>
+    </div>
   </div>
 </header>
 
 <main class="wrap">
 
-  <section>
-    <span class="eyebrow">Escaneo gratis &middot; resultado en segundos</span>
-    <h1 style="margin-top:12px">Tu ERP dice 21 d&iacute;as. &iquest;Y tus recepciones?</h1>
-    <p class="sub" style="max-width:62ch;margin-top:10px">Sube el export de recepciones y Kern mide el plazo real de cada proveedor &mdash; promedio, desviaci&oacute;n y p90 &mdash; contra el que dice tu sistema, y te dice qu&eacute; SKU tienen el stock de seguridad dimensionado contra el n&uacute;mero equivocado. Tambi&eacute;n puedes escanear tu <strong>stock</strong> y ver cu&aacute;nto capital est&aacute; inmovilizado. El mismo an&aacute;lisis con el que abre el <a href="/paquetes/diagnostico-arranque">Diagn&oacute;stico de Arranque</a>.</p>
+  <section class="hero">
+    <p class="kicker" data-i18n="kicker">Gratis &middot; un archivo &middot; sin tarjeta</p>
+    <h1 data-i18n="h1">Cu&aacute;nto capital est&aacute; inmovilizado en tu inventario</h1>
+    <p class="lede" data-i18n="lede">Sub&iacute; un Excel o CSV de stock. Te mostramos el valor sin rotaci&oacute;n y te dejamos el archivo para bajarlo.</p>
+    <p class="note" data-i18n-html="note">Esto es el diagn&oacute;stico gratis: la foto de hoy. Si el archivo no se entiende, no inventamos un n&uacute;mero. El trabajo de dos semanas (USD 1.500&ndash;2.500) es un plan aparte, de pago: <a href="/paquetes/diagnostico-arranque">ver qu&eacute; incluye</a>.</p>
   </section>
 
   <!-- EMAIL GATE -->
   <section id="gate">
-    <div class="panel" style="max-width:520px">
-      <h2>Ingresa tu email para abrir el escaneo</h2>
-      <p class="muted" style="font-size:13.5px;margin:0 0 16px">Lo usamos solo para enviarte tu mini-reporte y contactarte sobre el resultado. Nada de spam.</p>
-      <label for="email">Email</label>
+    <div class="sheet stamp">
+      <h2 data-i18n="gateH2">Mail para mandarte el Excel</h2>
+      <p class="muted" style="font-size:14px;margin:0 0 16px;max-width:36ch" data-i18n="gateP">Para devolverte el archivo. No es una lista de correos.</p>
+      <label for="email" data-i18n="emailLabel">Email</label>
       <input id="email" type="email" placeholder="nombre@empresa.com" autocomplete="email">
       <div class="row" style="margin-top:14px">
-        <button id="gateBtn" class="btn btn-primary">Abrir el escaneo &rarr;</button>
+        <button id="gateBtn" class="btn btn-primary" data-i18n="gateBtn">Pedir mi cifra &rarr;</button>
       </div>
       <p id="gateErr" class="err"></p>
     </div>
@@ -109,30 +174,60 @@
   <!-- DEMO -->
   <section id="demo" class="hidden">
     <div class="grid">
-      <div class="panel">
-        <h2>1 &middot; Tus datos</h2>
-        <div class="row" style="margin-bottom:14px">
-          <button id="modeLead" class="btn btn-primary">Plazos de entrega</button>
-          <button id="modeStock" class="btn btn-ghost">Stock</button>
+      <div class="sheet">
+        <h2 data-i18n="stockH2">1 &middot; Tu stock</h2>
+
+        <!-- La pregunta unica del embudo. Se arma desde /api/verticals, no desde
+             aqui: un tercer rubro tiene que ser un archivo en config/verticals/,
+             no una edicion de esta plantilla. Si el fetch falla, el bloque queda
+             oculto y el demo sigue funcionando con el orden canonico. -->
+        <div id="verticalBlock" class="hidden" style="margin-bottom:14px">
+          <p id="verticalQuestion" class="muted" style="font-size:13px;margin:0 0 8px"></p>
+          <div id="verticalOpts" class="row"></div>
+        </div>
+
+        <div id="modeRow" class="row" style="margin-bottom:14px">
+          <button id="modeStock" class="btn btn-primary" data-i18n="modeStock">Diagn&oacute;stico de stock</button>
+          <button id="moreModes" class="btn btn-ghost" type="button" data-i18n="moreModes">Otras mediciones</button>
+        </div>
+        <div id="extraModes" class="hidden row" style="margin-bottom:14px">
+          <button id="modeLead" class="btn btn-ghost" data-i18n="modeLead">Plazos de entrega</button>
+          <button id="modeValue" class="btn btn-ghost" data-i18n="modeValue">Brecha valorizada (2 archivos)</button>
         </div>
         <p id="modeHint" class="muted" style="font-size:13px;margin:0 0 16px"></p>
 
-        <label for="file">Archivo (CSV)</label>
-        <input id="file" type="file" accept=".csv">
+        <div class="drop">
+          <input id="file" type="file" accept=".csv,.xlsx,.xlsm,.xls">
+          <span class="drop-copy">
+            <b id="fileLabel">Archivo (CSV o Excel)</b>
+            <span id="fileName" class="drop-name">Solt&aacute; el archivo o hac&eacute; clic &mdash; CSV o Excel</span>
+          </span>
+        </div>
+
+        <div id="file2Wrap" class="hidden" style="margin-top:14px">
+          <div class="drop">
+            <input id="file2" type="file" accept=".csv,.xlsx,.xlsm,.xls">
+            <span class="drop-copy">
+              <b id="file2Label">Segundo archivo (CSV o Excel)</b>
+              <span id="file2Name" class="drop-name">El segundo archivo, cuando hace falta</span>
+            </span>
+          </div>
+        </div>
 
         <div class="row" style="margin-top:18px">
-          <button id="runUpload" class="btn btn-primary">Medir mis plazos &rarr;</button>
-          <button id="runSample" class="btn btn-ghost">Ver con datos de ejemplo</button>
+          <button id="runUpload" class="btn btn-primary">Correr el diagn&oacute;stico gratis &rarr;</button>
+          <button id="runSample" class="btn btn-ghost" data-i18n="runSample">Ver con datos de ejemplo</button>
         </div>
         <p id="runErr" class="err"></p>
         <p id="sampleHint" class="privacy"></p>
-        <p class="privacy">Tu archivo se procesa en un directorio aislado por sesi&oacute;n (tama&ntilde;o y ruta validados) y se descarta autom&aacute;ticamente — no se ejecuta c&oacute;digo ni consultas externas sobre tus datos, y el archivo crudo nunca se copia al reporte. <a href="https://github.com/esstipi-debug/kern/blob/main/SECURITY.md" target="_blank" rel="noopener">Detalle de seguridad &#8599;</a></p>
+        <p class="privacy" data-i18n-html="privacy">Tu archivo se procesa en un directorio aislado por sesi&oacute;n (tama&ntilde;o y ruta validados) y se descarta autom&aacute;ticamente — no se ejecuta c&oacute;digo ni consultas externas sobre tus datos, y el archivo crudo nunca se copia al reporte. <a href="https://github.com/esstipi-debug/kern/blob/main/SECURITY.md" target="_blank" rel="noopener">Detalle de seguridad &#8599;</a></p>
       </div>
 
-      <div class="panel">
-        <h2>2 &middot; Tu mini-reporte</h2>
+      <div class="sheet">
+        <div class="letterhead"><strong>Kern</strong><span data-i18n="letterhead">Informe &middot; sin tarjeta</span></div>
+        <h2 data-i18n="reportH2">2 &middot; El informe</h2>
         <div id="out">
-          <div class="empty" id="outEmpty">Ejecuta la medici&oacute;n para ver qu&eacute; tan lejos est&aacute; tu ERP de la realidad.</div>
+          <div class="empty" id="outEmpty">Sub&iacute; el archivo o corr&eacute; el ejemplo. Sale el capital inmovilizado.</div>
         </div>
       </div>
     </div>
@@ -143,6 +238,214 @@
 <script>
 (function(){
   var LS_KEY = "lp_demo_lead";
+  var LANG_KEY = "lp_demo_lang";
+  var I18N = {
+    es: {
+      title: "Kern — Diagnóstico gratis de inventario",
+      navPacks: "Paquetes →",
+      kicker: "Gratis · un archivo · sin tarjeta",
+      h1: "Cuánto capital está inmovilizado en tu inventario",
+      lede: "Subí un Excel o CSV de stock. Te mostramos el valor sin rotación y te dejamos el archivo para bajarlo.",
+      note: 'Esto es el diagnóstico gratis: la foto de hoy. Si el archivo no se entiende, no inventamos un número. El trabajo de dos semanas (USD 1.500–2.500) es un plan aparte, de pago: <a href="/paquetes/diagnostico-arranque">ver qué incluye</a>.',
+      gateH2: "Mail para mandarte el Excel",
+      gateP: "Para devolverte el archivo. No es una lista de correos.",
+      emailLabel: "Email",
+      emailPh: "nombre@empresa.com",
+      gateBtn: "Pedir mi cifra →",
+      gateSaving: "Guardando…",
+      gateBadEmail: "Ingresá un email válido.",
+      gateFail: "No se pudo guardar el email. Intentá de nuevo.",
+      stockH2: "1 · Tu stock",
+      modeStock: "Diagnóstico de stock",
+      moreModes: "Otras mediciones",
+      modeLead: "Plazos de entrega",
+      modeValue: "Brecha valorizada (2 archivos)",
+      otherVertical: "Otra cosa",
+      fileDrop: "Soltá el archivo o hacé clic — CSV o Excel",
+      file2Drop: "El segundo archivo, cuando hace falta",
+      fileDefault: "Archivo (CSV o Excel)",
+      file2Default: "Segundo archivo (CSV o Excel)",
+      runSample: "Ver con datos de ejemplo",
+      letterhead: "Informe · sin tarjeta",
+      reportH2: "2 · El informe",
+      privacy: 'Tu archivo se procesa en un directorio aislado por sesión (tamaño y ruta validados) y se descarta automáticamente — no se ejecuta código ni consultas externas sobre tus datos, y el archivo crudo nunca se copia al reporte. <a href="https://github.com/esstipi-debug/kern/blob/main/SECURITY.md" target="_blank" rel="noopener">Detalle de seguridad ↗</a>',
+      chipFree: "diagnóstico gratis",
+      immobilized: "inmovilizados",
+      stockSub: "en stock muerto o excedente — {pct} del valor de inventario ({dead} SKU muertos + {excess} excedidos)",
+      aShare: "Los A concentran {pct}",
+      dio: "DIO {n} días",
+      turns: "rotación {n}x",
+      findings: "Hallazgos ejecutivos",
+      xlStock: "El escaneo completo en Excel: dónde está el capital inmovilizado, cada SKU con su valor detenido, la concentración de valor y los días de cobertura.",
+      dlExcel: "Descargar el Excel ↓",
+      ctaStock: "Esto es el diagnóstico gratis: la foto. El Diagnóstico de Arranque (2 semanas, pago) convierte la cifra en un plan. En LatAm el mes siguiente es Starter LatAm, no este sprint.",
+      ctaPaid: "Plan completo (pago) →",
+      qaFail: "Control de calidad falló — sin informe",
+      qaBody: "El escaneo no superó el control de calidad, así que no se emite ninguna cifra.",
+      leadChip: "medición completa",
+      receipts: "recepciones",
+      suppliers: "proveedores",
+      leadSub: "Tu sistema dice que {name} entrega en {decl}. Las recepciones dicen {obs}{std}. Diferencia: {gap}.",
+      leadStd: ", con desviación de {n}",
+      leadWarn: "{n} SKU con stock de seguridad mal dimensionado",
+      xlLead: "El escaneo completo en Excel: lo prometido contra lo medido, la tabla por proveedor, cada recepción con sus dos fechas, y las filas que no entraron.",
+      ctaLead: "No tenés mucho inventario: tenés el inventario equivocado. El Diagnóstico de Arranque convierte esta brecha en el buffer que cada SKU necesita.",
+      seeDiag: "Ver el Diagnóstico →",
+      allPacks: "Todos los paquetes",
+      valueChip: "valorización completa",
+      holding: "costo de mantener {n}%",
+      releasable: "liberables",
+      valueSub: "de una vez, al balance, en {n} SKU con el plazo declarado inflado — {rec} al año al resultado.",
+      exposure: "{m} de exposición en {n} SKU cortos",
+      netInv: "inventario neto {m}",
+      xlValue: "El escaneo completo en Excel: las dos monedas, el detalle SKU por SKU, y de cuántos SKU de tu archivo salió la cifra.",
+      valueUp: "El neto sube porque medir la dispersión del plazo revela buffer que faltaba. El Diagnóstico de Arranque lo convierte en el plan por SKU.",
+      valueDown: "No tenés mucho inventario: tenés el inventario equivocado. Baja en unos SKU, sube en otros, y el neto queda a favor. El Diagnóstico de Arranque lo convierte en el plan por SKU.",
+      serverReject: "El servidor rechazó la solicitud.",
+      netFail: "Fallo de red: ",
+      days: " d"
+    },
+    en: {
+      title: "Kern — Free inventory diagnostic",
+      navPacks: "Packages →",
+      kicker: "Free · one file · no card",
+      h1: "How much capital is tied up in your inventory",
+      lede: "Upload a stock Excel or CSV. We show the idle inventory value and leave you the file to download.",
+      note: 'This is the free diagnostic: today’s snapshot. If the file cannot be read, we do not invent a number. The two-week engagement (USD 1,500–2,500) is a separate paid plan: <a href="/paquetes/diagnostico-arranque">see what it includes</a>.',
+      gateH2: "Email to send you the Excel",
+      gateP: "We use it to return the file. Not a mailing list.",
+      emailLabel: "Email",
+      emailPh: "name@company.com",
+      gateBtn: "Request my figure →",
+      gateSaving: "Saving…",
+      gateBadEmail: "Enter a valid email.",
+      gateFail: "Could not save the email. Try again.",
+      stockH2: "1 · Your stock",
+      modeStock: "Stock diagnostic",
+      moreModes: "Other measures",
+      modeLead: "Lead times",
+      modeValue: "Valued gap (2 files)",
+      otherVertical: "Something else",
+      fileDrop: "Drop the file or click — CSV or Excel",
+      file2Drop: "The second file, when required",
+      fileDefault: "File (CSV or Excel)",
+      file2Default: "Second file (CSV or Excel)",
+      runSample: "Run with sample data",
+      letterhead: "Report · no card",
+      reportH2: "2 · The report",
+      privacy: 'Your file is processed in an isolated per-session directory (size and path checked) and discarded automatically — no code is executed on your data, no external queries, and the raw file is never copied into the report. <a href="https://github.com/esstipi-debug/kern/blob/main/SECURITY.md" target="_blank" rel="noopener">Security detail ↗</a>',
+      chipFree: "free diagnostic",
+      immobilized: "tied up",
+      stockSub: "in dead or excess stock — {pct} of inventory value ({dead} dead SKUs + {excess} excess)",
+      aShare: "A-items hold {pct}",
+      dio: "DIO {n} days",
+      turns: "turns {n}x",
+      findings: "Executive findings",
+      xlStock: "The full Excel scan: where capital is tied up, each SKU with idle value, value concentration, and days of cover.",
+      dlExcel: "Download the Excel ↓",
+      ctaStock: "This is the free diagnostic: the snapshot. The two-week paid Kickoff Diagnostic turns the figure into a plan. In LatAm the following month is Starter LatAm, not this sprint.",
+      ctaPaid: "Full plan (paid) →",
+      qaFail: "Quality check failed — no report",
+      qaBody: "The scan did not pass the quality gate, so no figure is issued.",
+      leadChip: "measurement complete",
+      receipts: "receipts",
+      suppliers: "suppliers",
+      leadSub: "Your system says {name} delivers in {decl}. Receipts say {obs}{std}. Gap: {gap}.",
+      leadStd: ", with a deviation of {n}",
+      leadWarn: "{n} SKUs with mis-sized safety stock / ROP",
+      xlLead: "The full Excel scan: promised vs measured, the supplier table, each receipt with both dates, and rows that were excluded.",
+      ctaLead: "You do not have too much inventory. You have the wrong inventory. The Kickoff Diagnostic turns this gap into the buffer each SKU actually needs.",
+      seeDiag: "See the Diagnostic →",
+      allPacks: "All packages",
+      valueChip: "valuation complete",
+      holding: "holding cost {n}%",
+      releasable: "releasable",
+      valueSub: "once, to the balance sheet, on {n} SKUs with an inflated declared lead time — {rec} per year to the P&L.",
+      exposure: "{m} exposure on {n} short SKUs",
+      netInv: "net inventory {m}",
+      xlValue: "The full Excel scan: both currencies, SKU-level detail, and how many SKUs in your file produced the figure.",
+      valueUp: "Net inventory rises because measuring lead-time spread reveals missing buffer. The Kickoff Diagnostic turns that into a per-SKU plan.",
+      valueDown: "You do not have too much inventory. You have the wrong inventory. Some SKUs fall, others rise, and the net is in your favour. The Kickoff Diagnostic turns that into a per-SKU plan.",
+      serverReject: "The server rejected the request.",
+      netFail: "Network error: ",
+      days: " d"
+    }
+  };
+  var MODES_I18N = {
+    es: {
+      lead: {
+        cta: "Medir mis plazos →",
+        spinner: "Midiendo tus plazos de entrega…",
+        empty: "Corré la medición para ver qué tan lejos está tu sistema de la realidad.",
+        needFile: "Subí un CSV o Excel de recepciones, o usá el ejemplo.",
+        hint: 'Un archivo, una fila por recepción. Columnas: <span style="font-family:var(--mono);font-size:12px">supplier, order_date, receipt_date</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">declared_lead_time_days, product_id, po_id</span>). <a href="/static/demo/plantilla_recepciones.csv" download>Descargar plantilla ↓</a>',
+        sample: 'El ejemplo es <span class="muted">sample_receipts.csv</span> (49 recepciones, 4 proveedores).'
+      },
+      value: {
+        cta: "Valorizar la brecha →",
+        spinner: "Dimensionando dos veces y restando…",
+        empty: "Corré la valorización para ver la brecha en dinero, en dos monedas.",
+        needFile: "Necesito los DOS archivos: recepciones y movimientos. Con uno solo no hay cifra valorizada.",
+        fileLabel: "Recepciones (CSV o Excel)",
+        file2Label: "Movimientos de demanda, con costo unitario (CSV o Excel)",
+        hint: 'Dos archivos. <b>Recepciones:</b> <span style="font-family:var(--mono);font-size:12px">supplier, order_date, receipt_date, declared_lead_time_days, product_id</span>. <b>Movimientos:</b> <span style="font-family:var(--mono);font-size:12px">date, product_id, quantity, unit_cost</span>. Sin costo unitario no hay cifra en dinero.',
+        sample: 'El par de ejemplo es <span class="muted">sample_receipts_portfolio.csv + sample_demand_portfolio.csv</span> (8 SKU, 4 proveedores, 52 semanas).'
+      },
+      stock: {
+        cta: "Correr el diagnóstico gratis →",
+        spinner: "Calculando capital inmovilizado…",
+        empty: "Subí el archivo o corré el ejemplo. Sale el capital inmovilizado.",
+        needFile: "Subí un CSV o Excel de stock, o usá el ejemplo.",
+        hint: 'Un archivo, una fila por producto. Columnas: <span style="font-family:var(--mono);font-size:12px">product_id, on_hand, daily_demand</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">unit_cost, days_since_last_sale</span>). <a href="/static/demo/plantilla_stock.csv" download>Descargar plantilla ↓</a>',
+        sample: 'El ejemplo es <span class="muted">sample_stock_snapshot.csv</span> (8 SKU).'
+      }
+    },
+    en: {
+      lead: {
+        cta: "Measure my lead times →",
+        spinner: "Measuring your lead times…",
+        empty: "Run the measurement to see how far your system is from reality.",
+        needFile: "Upload a receipts CSV or Excel, or use the sample.",
+        hint: 'One file, one row per receipt. Columns: <span style="font-family:var(--mono);font-size:12px">supplier, order_date, receipt_date</span> (optional: <span style="font-family:var(--mono);font-size:12px">declared_lead_time_days, product_id, po_id</span>). <a href="/static/demo/plantilla_recepciones.csv" download>Download template ↓</a>',
+        sample: 'The sample is <span class="muted">sample_receipts.csv</span> (49 receipts, 4 suppliers).'
+      },
+      value: {
+        cta: "Value the gap →",
+        spinner: "Sizing twice and subtracting…",
+        empty: "Run the valuation to see the cash gap in two currencies.",
+        needFile: "I need BOTH files: receipts and movements. One file alone does not produce a valued figure.",
+        fileLabel: "Receipts (CSV or Excel)",
+        file2Label: "Demand movements, with unit cost (CSV or Excel)",
+        hint: 'Two files. <b>Receipts:</b> <span style="font-family:var(--mono);font-size:12px">supplier, order_date, receipt_date, declared_lead_time_days, product_id</span>. <b>Movements:</b> <span style="font-family:var(--mono);font-size:12px">date, product_id, quantity, unit_cost</span>. Without unit cost there is no money figure.',
+        sample: 'The sample pair is <span class="muted">sample_receipts_portfolio.csv + sample_demand_portfolio.csv</span> (8 SKUs, 4 suppliers, 52 weeks).'
+      },
+      stock: {
+        cta: "Run the free diagnostic →",
+        spinner: "Calculating tied-up capital…",
+        empty: "Upload the file or run the sample. The tied-up capital figure comes out.",
+        needFile: "Upload a stock CSV or Excel, or use the sample.",
+        hint: 'One file, one row per product. Columns: <span style="font-family:var(--mono);font-size:12px">product_id, on_hand, daily_demand</span> (optional: <span style="font-family:var(--mono);font-size:12px">unit_cost, days_since_last_sale</span>). <a href="/static/demo/plantilla_stock.csv" download>Download template ↓</a>',
+        sample: 'The sample is <span class="muted">sample_stock_snapshot.csv</span> (8 SKUs).'
+      }
+    }
+  };
+
+  function detectLang(){
+    var q = (new URLSearchParams(location.search).get("lang") || "").toLowerCase();
+    if (q === "en" || q === "es") return q;
+    if (/\/demo\/en\/?$/.test(location.pathname)) return "en";
+    var stored = localStorage.getItem(LANG_KEY);
+    if (stored === "en" || stored === "es") return stored;
+    return "es";
+  }
+  var lang = detectLang();
+  function t(key){ return (I18N[lang] && I18N[lang][key]) || I18N.es[key] || key; }
+  function fill(key, vars){
+    var s = t(key);
+    Object.keys(vars || {}).forEach(function(k){ s = s.split("{"+k+"}").join(vars[k]); });
+    return s;
+  }
+
   var gate = document.getElementById("gate");
   var demo = document.getElementById("demo");
   var emailEl = document.getElementById("email");
@@ -153,47 +456,134 @@
   var runErr = document.getElementById("runErr");
   var out = document.getElementById("out");
   var modeLead = document.getElementById("modeLead");
+  var modeValue = document.getElementById("modeValue");
   var modeStock = document.getElementById("modeStock");
   var modeHint = document.getElementById("modeHint");
   var sampleHint = document.getElementById("sampleHint");
+  var fileLabel = document.getElementById("fileLabel");
+  var file2Wrap = document.getElementById("file2Wrap");
+  var file2Label = document.getElementById("file2Label");
+  var fileName = document.getElementById("fileName");
+  var file2Name = document.getElementById("file2Name");
+  var verticalBlock = document.getElementById("verticalBlock");
+  var verticalQuestion = document.getElementById("verticalQuestion");
+  var verticalOpts = document.getElementById("verticalOpts");
+  var lastResult = null;
+  var verticalsData = null;
 
-  // Plazos va primero a proposito: es un hecho sobre los datos del visitante, es lo
-  // mas barato de calcular y es lo que se gana el derecho a seguir hablando
-  // (05-GTM-KERN §5). Para volver a liderar con stock, cambia MODE_DEFAULT.
-  var MODES = {
-    lead: {
-      endpoint: "/api/demo-lead-time",
-      cta: "Medir mis plazos &rarr;",
-      spinner: "Midiendo tus plazos de entrega…",
-      empty: "Ejecuta la medición para ver qué tan lejos está tu ERP de la realidad.",
-      needFile: "Sube un CSV de recepciones o usa los datos de ejemplo.",
-      hint: 'Un CSV con una fila por recepción. Columnas: <span style="font-family:var(--mono);font-size:12px">supplier, order_date, receipt_date</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">declared_lead_time_days, product_id, po_id</span>). <a href="/static/demo/plantilla_recepciones.csv" download>Descargar plantilla &darr;</a>',
-      sample: 'El dataset de ejemplo es <span class="muted">sample_receipts.csv</span> (49 recepciones, 4 proveedores).'
-    },
-    stock: {
-      endpoint: "/api/demo-scan",
-      cta: "Escanear mi stock &rarr;",
-      spinner: "Escaneando tu inventario…",
-      empty: "Ejecuta el escaneo para ver cuánto capital puedes liberar.",
-      needFile: "Sube un CSV de stock o usa los datos de ejemplo.",
-      hint: 'Un CSV con una fila por producto. Columnas: <span style="font-family:var(--mono);font-size:12px">product_id, on_hand, daily_demand</span> (opcionales: <span style="font-family:var(--mono);font-size:12px">unit_cost, days_since_last_sale</span>). <a href="/static/demo/plantilla_stock.csv" download>Descargar plantilla &darr;</a>',
-      sample: 'El dataset de ejemplo es <span class="muted">sample_stock_snapshot.csv</span> (8 SKU).'
-    }
+  function applyChrome(){
+    document.documentElement.lang = lang;
+    document.title = t("title");
+    document.querySelectorAll("[data-i18n]").forEach(function(el){ el.textContent = t(el.getAttribute("data-i18n")); });
+    document.querySelectorAll("[data-i18n-html]").forEach(function(el){ el.innerHTML = t(el.getAttribute("data-i18n-html")); });
+    emailEl.placeholder = t("emailPh");
+    document.querySelectorAll(".langs a[data-lang]").forEach(function(a){
+      a.classList.toggle("on", a.getAttribute("data-lang") === lang);
+    });
+  }
+
+  // Stock es el diagnóstico gratis. Plazos y brecha están en "Otras mediciones".
+  var MODE_ENDPOINTS = {
+    lead: { endpoint: "/api/demo-lead-time" },
+    value: { endpoint: "/api/demo-gap-value", twoFiles: true },
+    stock: { endpoint: "/api/demo-scan" }
   };
-  var MODE_DEFAULT = "lead";
+  function modeCfg(){
+    var copy = (MODES_I18N[lang] || MODES_I18N.es)[mode] || MODES_I18N.es.stock;
+    var base = MODE_ENDPOINTS[mode] || MODE_ENDPOINTS.stock;
+    return {
+      endpoint: base.endpoint,
+      twoFiles: !!base.twoFiles,
+      cta: copy.cta,
+      spinner: copy.spinner,
+      empty: copy.empty,
+      needFile: copy.needFile,
+      hint: copy.hint,
+      sample: copy.sample,
+      fileLabel: copy.fileLabel,
+      file2Label: copy.file2Label
+    };
+  }
+  var MODE_DEFAULT = "stock";
   var mode = MODE_DEFAULT;
+  var moreModes = document.getElementById("moreModes");
+  var extraModes = document.getElementById("extraModes");
 
-  function setMode(next){
-    mode = next;
-    var cfg = MODES[mode];
-    modeLead.className = "btn " + (mode === "lead" ? "btn-primary" : "btn-ghost");
+  // Rubro declarado por el visitante. "" = anonimo, que es el caso por defecto
+  // y seguira siendolo para la mayoria: la pregunta es opcional a proposito,
+  // porque una pregunta obligatoria en un formulario publico cuesta conversion.
+  var vertical = "";
+
+  function selectVertical(opt, btn){
+    vertical = opt ? opt.slug : "";
+    var all = verticalOpts.querySelectorAll("button");
+    for (var i = 0; i < all.length; i++){
+      all[i].className = "btn " + (all[i] === btn ? "btn-primary" : "btn-ghost");
+    }
+  }
+
+  function paintVerticals(){
+    if (!verticalsData || !verticalsData.options || !verticalsData.options.length) return;
+    verticalQuestion.textContent = (lang === "en" && verticalsData.question_en) ? verticalsData.question_en : verticalsData.question;
+    verticalOpts.innerHTML = "";
+    verticalsData.options.forEach(function(opt){
+      var btn = document.createElement("button");
+      btn.className = "btn btn-ghost";
+      btn.textContent = (lang === "en" && opt.label_en) ? opt.label_en : opt.label;
+      btn.title = opt.display_name;
+      btn.addEventListener("click", function(){ selectVertical(opt, btn); });
+      verticalOpts.appendChild(btn);
+    });
+    var none = document.createElement("button");
+    none.className = "btn btn-ghost";
+    none.textContent = t("otherVertical");
+    none.addEventListener("click", function(){ selectVertical(null, none); });
+    verticalOpts.appendChild(none);
+    verticalBlock.classList.remove("hidden");
+  }
+
+  function loadVerticals(){
+    fetch("/api/verticals")
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data){
+        if (!data || !data.options || !data.options.length) return;
+        verticalsData = data;
+        paintVerticals();
+      })
+      .catch(function(){ /* el demo funciona igual con el orden canonico */ });
+  }
+
+  function applyModeChrome(){
+    var cfg = modeCfg();
     modeStock.className = "btn " + (mode === "stock" ? "btn-primary" : "btn-ghost");
+    modeLead.className = "btn " + (mode === "lead" ? "btn-primary" : "btn-ghost");
+    modeValue.className = "btn " + (mode === "value" ? "btn-primary" : "btn-ghost");
+    if (mode !== "stock") extraModes.classList.remove("hidden");
     modeHint.innerHTML = cfg.hint;
     sampleHint.innerHTML = cfg.sample;
     runUpload.innerHTML = cfg.cta;
-    runErr.textContent = "";
-    out.innerHTML = '<div class="empty">' + cfg.empty + '</div>';
+    fileLabel.textContent = cfg.fileLabel || t("fileDefault");
+    file2Label.textContent = cfg.file2Label || t("file2Default");
+    file2Wrap.classList.toggle("hidden", !cfg.twoFiles);
   }
+
+  function setMode(next){
+    mode = next;
+    lastResult = null;
+    applyModeChrome();
+    runErr.textContent = "";
+    out.innerHTML = '<div class="empty">' + modeCfg().empty + '</div>';
+  }
+
+  function nameOf(input, fallback){
+    return (input.files && input.files[0] && input.files[0].name) || fallback;
+  }
+  document.getElementById("file").addEventListener("change", function(){
+    fileName.textContent = nameOf(this, t("fileDrop"));
+  });
+  document.getElementById("file2").addEventListener("change", function(){
+    file2Name.textContent = nameOf(this, t("file2Drop"));
+  });
 
   function unlock(){ gate.classList.add("hidden"); demo.classList.remove("hidden"); }
   if (localStorage.getItem(LS_KEY)) unlock();
@@ -204,14 +594,19 @@
   gateBtn.addEventListener("click", function(){
     var email = (emailEl.value || "").trim();
     gateErr.textContent = "";
-    if (!validEmail(email)) { gateErr.textContent = "Ingresa un email válido."; return; }
-    gateBtn.disabled = true; gateBtn.innerHTML = '<span class="spin"></span> Guardando…';
-    var fd = new FormData(); fd.append("email", email); fd.append("source", "demo");
+    if (!validEmail(email)) { gateErr.textContent = t("gateBadEmail"); return; }
+    gateBtn.disabled = true; gateBtn.innerHTML = '<span class="spin"></span> '+t("gateSaving");
+    // ?source= lets a blog article say which page sent the lead. Sanitised to the
+    // same charset api_leads accepts ([\w.-], 40 chars) so a crafted query string
+    // cannot write junk into the ledger; empty falls back to "demo".
+    var qs = new URLSearchParams(location.search).get("source") || "";
+    var src = qs.replace(/[^\w.\-]/g, "").slice(0, 40) || "demo";
+    var fd = new FormData(); fd.append("email", email); fd.append("source", src);
     fetch("/api/leads", { method:"POST", body:fd })
       .then(function(r){ if(!r.ok) throw new Error("no se pudo guardar"); return r.json(); })
       .then(function(){ localStorage.setItem(LS_KEY, email); unlock(); })
-      .catch(function(){ gateErr.textContent = "No se pudo guardar el email. Intenta de nuevo."; })
-      .finally(function(){ gateBtn.disabled = false; gateBtn.innerHTML = "Abrir el escaneo &rarr;"; });
+      .catch(function(){ gateErr.textContent = t("gateFail"); })
+      .finally(function(){ gateBtn.disabled = false; gateBtn.innerHTML = t("gateBtn"); });
   });
   emailEl.addEventListener("keydown", function(e){ if(e.key==="Enter") gateBtn.click(); });
 
@@ -220,9 +615,10 @@
   function pct(x){ return Math.round(x*100) + "%"; }
 
   function render(d){
+    lastResult = d;
     if (d.status === "qa_failed"){
-      var qh = '<div class="result-head"><span class="chip bad">QA fall&oacute; &mdash; sin reporte</span></div>'
-        + '<p class="stat-sub" style="margin-top:10px">El escaneo no super&oacute; la compuerta de calidad, as&iacute; que no se emite ninguna cifra (misma garant&iacute;a que en los paquetes pagos: QA falla &rArr; no hay entregable).</p>'
+      var qh = '<div class="result-head"><span class="chip bad">'+t("qaFail")+'</span></div>'
+        + '<p class="stat-sub" style="margin-top:10px">'+t("qaBody")+'</p>'
         + '<ul class="list" style="margin-top:12px">';
       (d.qa_issues||[]).forEach(function(q){ qh += '<li>'+esc(q)+'</li>'; });
       qh += '</ul>';
@@ -230,91 +626,155 @@
       return;
     }
     if (mode === "lead") return renderLead(d);
+    if (mode === "value") return renderValue(d);
     var h = d.headline || {};
-    var html = '<div class="chips"><span class="chip ok">escaneo completo</span>'
+    var html = '<div class="chips"><span class="chip ok">'+t("chipFree")+'</span>'
       + '<span class="chip">'+esc(h.n_skus)+' SKUs</span></div>'
-      + '<div class="stat-big">&asymp; '+money(h.eo_value)+' atrapados</div>'
-      + '<div class="stat-sub">en stock muerto/excedente &mdash; '+pct(h.eo_pct_of_value)+' del valor de tu inventario ('+esc(h.n_dead)+' SKU muertos + '+esc(h.n_excess)+' excedidos)</div>'
+      + '<div class="stat-big">&asymp; '+money(h.eo_value)+' '+t("immobilized")+'</div>'
+      + '<div class="stat-sub">'+fill("stockSub", {pct:pct(h.eo_pct_of_value), dead:esc(h.n_dead), excess:esc(h.n_excess)})+'</div>'
       + '<div class="chips">'
-      + '<span class="chip warn">A-items concentran '+pct(h.a_value_share)+'</span>'
-      + '<span class="chip">DIO '+Math.round(h.dio)+' d&iacute;as</span>'
-      + '<span class="chip">rotaci&oacute;n '+esc(h.turns)+'x</span>'
+      + '<span class="chip warn">'+fill("aShare", {pct:pct(h.a_value_share)})+'</span>'
+      + '<span class="chip">'+fill("dio", {n:Math.round(h.dio)})+'</span>'
+      + '<span class="chip">'+fill("turns", {n:esc(h.turns)})+'</span>'
       + '</div>';
     var fs = d.findings || [];
     if (fs.length){
-      html += '<div class="h3">Hallazgos ejecutivos</div><ul class="list">';
+      html += '<div class="h3">'+t("findings")+'</div><ul class="list">';
       fs.forEach(function(f){ html += '<li>'+esc(f)+'</li>'; });
       html += '</ul>';
     }
-    html += '<div class="cta-box">'
-      + '<p>El Diagn&oacute;stico de Arranque (sprint de 2 semanas) convierte esta cifra en un plan de recuperaci&oacute;n priorizado, con cada n&uacute;mero trazable y compuerta de QA.</p>'
-      + '<div class="row"><a class="btn btn-primary" href="'+esc(d.cta_url||"/paquetes/diagnostico-arranque")+'">Ver el Diagn&oacute;stico &rarr;</a>'
-      + '<a class="btn btn-ghost" href="/paquetes">Todos los paquetes</a></div>'
-      + '</div>';
+    if (d.workbook_url){
+      html += '<div class="cta-box"><p>'+t("xlStock")+'</p>'
+        + '<div class="row"><a class="btn btn-primary" href="'+esc(d.workbook_url)+'" download>'+t("dlExcel")+'</a></div></div>';
+    }
+    html += '<div class="cta-box"><p>'+t("ctaStock")+'</p>'
+      + '<div class="row"><a class="btn btn-primary" href="'+esc(d.cta_url||"/paquetes/diagnostico-arranque")+'">'+t("ctaPaid")+'</a>'
+      + '<a class="btn btn-ghost" href="/paquetes/starter-fundamentos-latam">Starter LatAm</a></div></div>';
     out.innerHTML = html;
   }
 
-  function days(x){ return Math.round(x) + " d"; }
+  function days(x){ return Math.round(x) + t("days"); }
 
   function renderLead(d){
     var h = d.headline || {};
     var gap = (h.worst_observed || 0) - (h.worst_declared || 0);
-    var html = '<div class="chips"><span class="chip ok">medición completa</span>'
-      + '<span class="chip">'+esc(h.n_deliveries)+' recepciones</span>'
-      + '<span class="chip">'+esc(h.n_suppliers)+' proveedores</span></div>'
-      + '<div class="stat-big">'+esc(h.worst_declared)+' &rarr; '+esc(h.worst_observed)+' d&iacute;as</div>'
-      + '<div class="stat-sub">Tu sistema dice que <strong>'+esc(h.worst_supplier)+'</strong> entrega en '
-      + days(h.worst_declared)+'. Las recepciones dicen '+days(h.worst_observed)
-      + (h.worst_std ? ', con desviaci&oacute;n de '+days(h.worst_std) : '')
-      + '. Diferencia: <strong>'+(gap>0?'+':'')+days(gap)+'</strong>.</div>'
+    var std = h.worst_std ? fill("leadStd", {n:days(h.worst_std)}) : "";
+    var html = '<div class="chips"><span class="chip ok">'+t("leadChip")+'</span>'
+      + '<span class="chip">'+esc(h.n_deliveries)+' '+t("receipts")+'</span>'
+      + '<span class="chip">'+esc(h.n_suppliers)+' '+t("suppliers")+'</span></div>'
+      + '<div class="stat-big">'+esc(h.worst_declared)+' &rarr; '+esc(h.worst_observed)+t("days")+'</div>'
+      + '<div class="stat-sub">'+fill("leadSub", {name:"<strong>"+esc(h.worst_supplier)+"</strong>", decl:days(h.worst_declared), obs:days(h.worst_observed), std:std, gap:"<strong>"+(gap>0?"+":"")+days(gap)+"</strong>"})+'</div>'
       + '<div class="chips">'
-      + '<span class="chip warn">'+esc(h.n_skus_to_recalculate)+' SKU con SS/ROP mal dimensionado</span>'
+      + '<span class="chip warn">'+fill("leadWarn", {n:esc(h.n_skus_to_recalculate)})+'</span>'
       + (h.worst_p90 ? '<span class="chip">p90 '+days(h.worst_p90)+'</span>' : '')
       + '</div>';
     var fs = d.findings || [];
     if (fs.length){
-      html += '<div class="h3">Hallazgos ejecutivos</div><ul class="list">';
+      html += '<div class="h3">'+t("findings")+'</div><ul class="list">';
       fs.forEach(function(f){ html += '<li>'+esc(f)+'</li>'; });
       html += '</ul>';
     }
-    html += '<div class="cta-box">'
-      + '<p>No tienes mucho inventario: tienes el inventario equivocado. El Diagn&oacute;stico de Arranque convierte esta brecha en el buffer que cada SKU necesita realmente, con cada n&uacute;mero trazable y compuerta de QA.</p>'
-      + '<div class="row"><a class="btn btn-primary" href="'+esc(d.cta_url||"/paquetes/diagnostico-arranque")+'">Ver el Diagn&oacute;stico &rarr;</a>'
-      + '<a class="btn btn-ghost" href="/paquetes">Todos los paquetes</a></div>'
+    if (d.workbook_url){
+      html += '<div class="cta-box"><p>'+t("xlLead")+'</p>'
+        + '<div class="row"><a class="btn btn-primary" href="'+esc(d.workbook_url)+'" download>'+t("dlExcel")+'</a></div></div>';
+    }
+    html += '<div class="cta-box"><p>'+t("ctaLead")+'</p>'
+      + '<div class="row"><a class="btn btn-primary" href="'+esc(d.cta_url||"/paquetes/diagnostico-arranque")+'">'+t("seeDiag")+'</a>'
+      + '<a class="btn btn-ghost" href="/paquetes">'+t("allPacks")+'</a></div></div>';
+    out.innerHTML = html;
+  }
+
+  function renderValue(d){
+    var h = d.headline || {};
+    var sube = (h.net || 0) > 0;
+    var html = '<div class="chips"><span class="chip ok">'+t("valueChip")+'</span>'
+      + '<span class="chip">'+esc(h.n_skus)+' SKU</span>'
+      + '<span class="chip">'+fill("holding", {n:Math.round((h.holding_rate||0)*100)})+'</span></div>'
+      + '<div class="stat-big">'+money(h.cash_release)+' '+t("releasable")+'</div>'
+      + '<div class="stat-sub">'+fill("valueSub", {n:esc(h.n_over), rec:money(h.recurring_saving)})+'</div>'
+      + '<div class="chips">'
+      + '<span class="chip warn">'+fill("exposure", {m:money(h.exposure), n:esc(h.n_under)})+'</span>'
+      + '<span class="chip'+(sube?'':' ok')+'">'+fill("netInv", {m:(sube?'+':'')+money(h.net)})+'</span>'
       + '</div>';
+    var fs = d.findings || [];
+    if (fs.length){
+      html += '<div class="h3">'+t("findings")+'</div><ul class="list">';
+      fs.forEach(function(f){ html += '<li>'+esc(f)+'</li>'; });
+      html += '</ul>';
+    }
+    if (d.workbook_url){
+      html += '<div class="cta-box"><p>'+t("xlValue")+'</p>'
+        + '<div class="row"><a class="btn btn-primary" href="'+esc(d.workbook_url)+'" download>'+t("dlExcel")+'</a></div></div>';
+    }
+    html += '<div class="cta-box"><p>'+(sube ? t("valueUp") : t("valueDown"))+'</p>'
+      + '<div class="row"><a class="btn btn-primary" href="'+esc(d.cta_url||"/paquetes/diagnostico-arranque")+'">'+t("seeDiag")+'</a>'
+      + '<a class="btn btn-ghost" href="/paquetes">'+t("allPacks")+'</a></div></div>';
     out.innerHTML = html;
   }
 
   function run(useSample){
     runErr.textContent = "";
+    var cfg = modeCfg();
     var fileEl = document.getElementById("file");
+    var file2El = document.getElementById("file2");
     var file = fileEl && fileEl.files && fileEl.files[0];
-    if (!useSample && !file){ runErr.textContent = MODES[mode].needFile; return; }
+    var file2 = file2El && file2El.files && file2El.files[0];
+    if (!useSample && (!file || (cfg.twoFiles && !file2))){ runErr.textContent = cfg.needFile; return; }
     var email = leadEmail();
     if (!validEmail(email)){ localStorage.removeItem(LS_KEY); gate.classList.remove("hidden"); demo.classList.add("hidden"); return; }
 
     var fd = new FormData();
     fd.append("email", email);
+    fd.append("lang", lang);
     if (useSample) fd.append("use_sample", "true");
-    if (!useSample && file) fd.append("file", file);
+    if (!useSample && cfg.twoFiles){ fd.append("receipts", file); fd.append("demand", file2); }
+    else if (!useSample && file) fd.append("file", file);
+    if (vertical) fd.append("vertical", vertical);
 
     runUpload.disabled = true; runSample.disabled = true;
-    out.innerHTML = '<div class="empty"><span class="spin"></span> '+MODES[mode].spinner+'</div>';
-    fetch(MODES[mode].endpoint, { method:"POST", body:fd })
+    out.innerHTML = '<div class="empty"><span class="spin"></span> '+cfg.spinner+'</div>';
+    fetch(cfg.endpoint, { method:"POST", body:fd })
       .then(function(r){ return r.json().then(function(j){ return { ok:r.ok, j:j }; }); })
       .then(function(res){
-        if (!res.ok){ out.innerHTML = '<div class="empty">'+esc((res.j && res.j.detail) || "El servidor rechazó la solicitud.")+'</div>'; return; }
+        if (!res.ok){ out.innerHTML = '<div class="empty">'+esc((res.j && res.j.detail) || t("serverReject"))+'</div>'; return; }
         render(res.j);
       })
-      .catch(function(err){ out.innerHTML = '<div class="empty">Fallo de red: '+esc((err && err.message)||err)+'</div>'; })
+      .catch(function(err){ out.innerHTML = '<div class="empty">'+t("netFail")+esc((err && err.message)||err)+'</div>'; })
       .finally(function(){ runUpload.disabled = false; runSample.disabled = false; });
   }
 
+  function setLang(next){
+    lang = next === "en" ? "en" : "es";
+    localStorage.setItem(LANG_KEY, lang);
+    var path = lang === "en" ? "/demo/en" : "/demo";
+    var qs = location.search;
+    if (history.replaceState) history.replaceState(null, "", path + qs);
+    applyChrome();
+    paintVerticals();
+    applyModeChrome();
+    if (!document.getElementById("file").files.length) fileName.textContent = t("fileDrop");
+    if (!document.getElementById("file2").files.length) file2Name.textContent = t("file2Drop");
+    if (lastResult) render(lastResult);
+    else out.innerHTML = '<div class="empty">' + modeCfg().empty + '</div>';
+  }
+
+  moreModes.addEventListener("click", function(){
+    extraModes.classList.toggle("hidden");
+  });
   modeLead.addEventListener("click", function(){ setMode("lead"); });
+  modeValue.addEventListener("click", function(){ setMode("value"); });
   modeStock.addEventListener("click", function(){ setMode("stock"); });
   runUpload.addEventListener("click", function(){ run(false); });
   runSample.addEventListener("click", function(){ run(true); });
+  document.querySelectorAll(".langs a[data-lang]").forEach(function(a){
+    a.addEventListener("click", function(e){
+      e.preventDefault();
+      setLang(a.getAttribute("data-lang"));
+    });
+  });
+  applyChrome();
   setMode(MODE_DEFAULT);
+  loadVerticals();
 })();
 </script>
 </body>

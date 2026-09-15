@@ -57,7 +57,6 @@ explicit ``dtype=str`` control on the CSV path.
 
 from __future__ import annotations
 
-import os
 import re
 import sqlite3
 import uuid
@@ -68,6 +67,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.data_paths import resolve_state_path
 from src.state import store as state_store  # reuse the live _HAS_PARQUET_ENGINE flag
 
 from .models import (
@@ -79,7 +79,7 @@ from .models import (
     validate_offer_frame,
 )
 
-DEFAULT_BASE_PATH = os.environ.get("LINCHPIN_PRICING_LEDGER_PATH", "").strip() or "data/pricing_intel/ledger"
+DEFAULT_BASE_PATH = resolve_state_path("pricing_ledger")
 
 _LEDGER_COLUMN = "is_correction"
 _SAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")

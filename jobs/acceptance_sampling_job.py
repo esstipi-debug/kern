@@ -15,7 +15,11 @@ from src.acceptance_sampling import design_single_sampling_plan
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 
-_PART_COLS = ("part", "component", "sku", "item", "id", "Part")
+# "product_id" leads the tuple: it is the canonical name every other tool in the
+# registry accepts, and this one refused it outright -- a file whose product column
+# was spelled the repo's own way got "could not find part". Found while declaring
+# this tool's data contract; see tests/test_acceptance_sampling_tool.py.
+_PART_COLS = ("product_id", "part", "component", "sku", "item", "id", "Part")
 _AQL_COLS = ("aql", "AQL", "acceptable_quality")
 _LTPD_COLS = ("ltpd", "LTPD", "rejectable_quality", "rql")
 

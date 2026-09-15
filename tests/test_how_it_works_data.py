@@ -50,41 +50,40 @@ def test_tools_table_matches_the_registry_exactly() -> None:
     assert set(listed) == registered
 
 
-def test_every_tool_is_listed_once_with_a_unique_key() -> None:
-    # The count lived in this test's NAME and drifted: it read "exactly_49" while
-    # asserting 50. A name that has to be edited in lockstep with a number will
-    # eventually not be, so the number now lives only in the assertion.
-    assert len(TOOLS) == 52
-    assert len({t.key for t in TOOLS}) == 52
+def test_exactly_60_tools_with_unique_keys() -> None:
+    assert len(TOOLS) == 60
+    assert len({t.key for t in TOOLS}) == 60
 
 
-def test_domain_area_tally_matches_spec() -> None:
+def test_domain_area_tally_sums_to_60_and_matches_spec() -> None:
     tally = tally_by_domain_area()
-    assert sum(tally.values()) == 52
+    assert sum(tally.values()) == 60
     assert tally == {
         "Inventory & replenishment": 11,
         "Network & logistics": 9,
-        "Inventory control & health": 7,
-        "Pricing & finance": 6,
+        "Inventory control & health": 8,
+        "Pricing & finance": 7,
         "Demand & classification": 3,
-        "Procurement & sourcing": 4,
+        "Procurement & sourcing": 5,
         "Returns, risk & benchmarking": 4,
         "Planning cadence & projects": 3,
         "Decision alignment": 3,
+        "Procedures & standard work": 2,
+        "ISO operations & evidence": 3,
         "Leadership": 2,
     }
     assert set(tally) == set(DOMAIN_AREA_ORDER)
 
 
-def test_scor_bucket_tally_matches_spec() -> None:
+def test_scor_bucket_tally_sums_to_60_and_matches_spec() -> None:
     tally = tally_by_scor_bucket()
-    assert sum(tally.values()) == 52
+    assert sum(tally.values()) == 60
     assert tally == {
         "Plan": 19,
-        "Order/Fulfill": 8,
-        "Orchestrate": 14,
+        "Order/Fulfill": 9,
+        "Orchestrate": 20,
         "Transform": 4,
-        "Source": 4,
+        "Source": 5,
         "Return": 2,
         "Outside SCOR scope": 1,
     }

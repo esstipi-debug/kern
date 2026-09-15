@@ -5,13 +5,10 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from nosilo_core.llm import LLMProvider
-from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
-from nosilo_core.types import JobRequest
-
 from jobs import (
     abc_xyz_job,
     acceptance_sampling_job,
+    audit_evidence_job,
     channel_replenishment_job,
     cost_to_serve_deliverable,
     cost_to_serve_job,
@@ -31,11 +28,14 @@ from jobs import (
     fefo_job,
     financial_kpis_job,
     flow_map_job,
+    forecast_cycle,
     forecast_job,
     hats_job,
+    import_case_job,
     intake,
     intake_scan_job,
     inventory_deliverable,
+    iso_ops_job,
     landed_cost_job,
     launch_readiness_job,
     leadership,
@@ -47,12 +47,18 @@ from jobs import (
     odoo_job,
     org_friction_job,
     price_watch_deliverable,
+    procedure_audit_job,
+    procedure_draft_job,
     qa,
     queuing_job,
     reconciliation_job,
+    repricing_job,
     returns_job,
     risk_job,
     scheduling_job,
+    scor_audit_job,
+    service_scan_deliverable,
+    service_scan_job,
     shopify_job,
     simulation_job,
     slotting_job,
@@ -67,6 +73,9 @@ from jobs import (
 from jobs.inventory_optimization import run as run_inventory
 from jobs.pricing import prepare_pricing
 from jobs.pricing import run as run_pricing
+from nosilo_core.llm import LLMProvider
+from nosilo_core.registry import Prepared, Produced, Tool, ToolRegistry
+from nosilo_core.types import JobRequest
 
 from . import tool_options
 
@@ -107,16 +116,40 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
             # Client-wide lead time (typically from the client profile) fills in only
             # where the CSV carries none; per-SKU CSV values always win.
             default_lead_days=float(request.params.get("lead_time_days", 14.0)),
+            aliases=request.params.get("column_aliases"),
         )
     except (ValueError, FileNotFoundError, TypeError) as exc:
         return Prepared(status="needs_data", messages=[str(exc)])
+    # El servicio realizado, si el archivo lo trae. Es el productor que le faltaba a
+    # `run_inventory(order_lines=...)`: ese argumento existe desde que aterrizo el motor de
+    # servicio y ningun llamador lo pasaba, asi que cada corrida reportaba `not_measured`
+    # sobre archivos que a veces SI traian con que medirse.
+    #
+    # Se lee el archivo una segunda vez a proposito, y no sale de `demand`: la demanda se
+    # AGREGA a periodos y el servicio no. Dos pedidos del mismo SKU en la misma semana son
+    # dos resultados distintos, y sumarlos borra justamente el que fallo.
+    #
+    # Y va envuelto: el servicio es un extra sobre lo que el cliente pidio. Si su deteccion
+    # falla, la politica de inventario tiene que salir igual -- un adorno que rompe el
+    # entregable es peor que no tenerlo.
+    try:
+        order_lines = intake.service_lines(
+            request.data_path, aliases=request.params.get("column_aliases")
+        )
+    except (ValueError, KeyError, TypeError, FileNotFoundError):
+        order_lines = None
     # `period` rides along: src/sources.py needs it to rebuild the COMPLETE period
     # grid per SKU. Without it a SKU's series is only the periods it sold in, which
     # makes every real export look like regular demand (ADI == 1.0) and overstates
     # annual demand by the SKU's true demand interval.
     return Prepared(
         status="ok",
-        payload={"demand": demand, "intake_quality": quality, "period": period},
+        payload={
+            "demand": demand,
+            "intake_quality": quality,
+            "period": period,
+            "order_lines": order_lines,
+        },
     )
 
 
@@ -136,11 +169,25 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         intake_quality=payload["intake_quality"],
         intake_quality_threshold=params.get("intake_quality_threshold", 0.20),
         period_freq=payload.get("period"),
+        order_lines=payload.get("order_lines"),
+        stockout_days=params.get("stockout_days"),
+        # La promesa que el cliente declaro (client_profile.delivery_promise_days,
+        # via as_params). Sin ella, el OTIF de un ERP que no data sus lineas sale
+        # "no medido"; con ella sale medido contra una vara dicha, y el entregable
+        # lo declara. Nunca pisa una fecha del sistema.
+        delivery_promise_days=params.get("delivery_promise_days"),
     )
     summary = (
         f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
         f"${report.final_investment:,.0f} at {report.params['service_level'] * 100:.0f}% service level."
     )
+    # La nota del servicio viaja en el resumen, que es lo que el operador lee ANTES de
+    # abrir el entregable. Sin ella el fill rate aparece sin decir de que columna del
+    # cliente salio, y un numero que no se puede reconciliar contra el ERP no se usa.
+    order_lines = payload.get("order_lines")
+    nota = getattr(order_lines, "attrs", {}).get("service_note") if order_lines is not None else None
+    if nota:
+        summary = f"{summary} {nota}"
     return Produced(report=report, summary=summary)
 
 
@@ -154,14 +201,21 @@ def inventory_tool() -> Tool:
             "eoq", "service level", "reorder point", "order quantity",
         ),
         requires_data=True,
+        # Straight from jobs/intake.py's CANONICAL_REQUIRED / CANONICAL_OPTIONAL:
+        # this tool does not sniff its own columns, it hands the file to the shared
+        # normalizer. `revenue` is optional here for the same reason it is optional
+        # there -- detected but never emitted, it exists only to recover a real unit
+        # cost from a file that carries money but no cost column.
+        required_columns=("date", "product_id", "quantity"),
+        optional_columns=("unit_cost", "lead_time_days", "lead_time_std", "revenue"),
         options=tool_options.inventory_options,
         prepare=_inventory_prepare,
         run=_inventory_run,
         qa=lambda report: qa.verify(report),
         deliver=lambda report, out_dir, client: deliverables.write_all(report, out_dir, client=client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             inventory_deliverable.build(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         required_client_params=("holding_rate", "service_level"),
     )
@@ -198,6 +252,15 @@ def pricing_tool() -> Tool:
             "optimal price", "what price", "profit",
         ),
         requires_data=True,
+        # jobs/pricing.py::_REQUIRED. `price` is the SELLING price, and it is the one
+        # name here that is not already canonical elsewhere in the repo. Known edge:
+        # jobs/intake.py lists "price" among unit_cost's aliases, so a header named
+        # exactly `price` resolves here (exact names are claimed before aliases) but a
+        # file whose only money column is `precio` or `unit_price` still resolves to
+        # unit_cost, and this tool reads RED. Untangling cost-vs-price in that alias
+        # table is a change of its own, not a side effect of declaring a contract.
+        required_columns=("date", "product_id", "quantity", "price"),
+        optional_columns=("unit_cost",),
         options=tool_options.pricing_options,
         prepare=_pricing_prepare,
         run=_pricing_run,
@@ -338,17 +401,24 @@ def cost_to_serve_tool() -> Tool:
             "net to serve", "loss-making", "whale curve", "profitability by",
         ),
         requires_data=True,
+        # jobs/cost_to_serve_job.py:98 for segment/revenue, plus `freight`: without an
+        # activity cost driver the tool refuses outright, and freight is the ONLY driver
+        # that can arrive as a column -- the other three (cost_per_order,
+        # cost_per_unit_shipped, return_handling_per_unit) are params. Under the default
+        # params intake_scan speaks for, freight is therefore required, not optional.
+        required_columns=("segment", "revenue", "freight"),
+        optional_columns=("quantity", "order_id", "cogs"),
         options=tool_options.cost_to_serve_options,
         prepare=_cost_to_serve_prepare,
         run=_cost_to_serve_run,
         qa=lambda report: cost_to_serve_job.verify(report),
         deliver=lambda report, out_dir, client: cost_to_serve_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             cost_to_serve_deliverable.build(
                 report.portfolio, working_cap=report.working_cap, cash_release=report.cash_release,
                 client=client, citations=tuple(citations), confidence=confidence,
             ),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -378,6 +448,7 @@ def _sop_run(payload: object, params: dict) -> Produced:
         opening_inventory=params.get("opening_inventory", 0.0),
         target=params.get("target", 0.0),
         cost=cost,
+        promo_lift=sop_job.parse_promo_lift(params.get("promo_lift")),
     )
     return Produced(report=review, summary=review.summary)
 
@@ -395,14 +466,20 @@ def sop_tool() -> Tool:
             "monthly demand plan",
         ),
         requires_data=True,
+        # jobs/sop_job.py sniffs _DATE_COLS and _DEMAND_COLS. Declared under the repo's
+        # shared vocabulary (`date`, `quantity`) rather than that module's first alias
+        # ("Order Date", "Quantity"): both are inside its own alias tuples, and asking a
+        # client for three different names for one concept is how a data request becomes
+        # unanswerable.
+        required_columns=("date", "quantity"),
         options=lambda report: report.outcome,
         prepare=_sop_prepare,
         run=_sop_run,
         qa=lambda review: sop_job.verify(review),
         deliver=lambda review, out_dir, client: sop_job.write_operational(review, out_dir, client),
-        deck=lambda review, out_dir, client, citations, confidence, options: replace(
+        deck=lambda review, out_dir, client, citations, confidence, options, readings=(): replace(
             sop_deliverable.build(review, client=client, citations=tuple(citations)),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -451,9 +528,9 @@ def abc_xyz_tool() -> Tool:
         run=_abc_xyz_run,
         qa=lambda report: abc_xyz_job.verify(report),
         deliver=lambda report, out_dir, client: abc_xyz_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             abc_xyz_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -492,15 +569,26 @@ def sourcing_tool() -> Tool:
             "otif", "difot", "best supplier",
         ),
         requires_data=True,
+        # jobs/sourcing_job.py:396-449. This one does not use the shared sniffer idiom:
+        # it DERIVES OTIF from alternative input shapes, refusing at five separate
+        # points. Every column below is provably required UNDER DEFAULT PARAMS, which
+        # is the only case intake_scan can speak for -- it never passes params. With
+        # params the tool also accepts order/delivery date pairs instead of
+        # `lead_time_days`, a `promised_date` instead of `on_time`, and
+        # received-vs-ordered quantities instead of `in_full`.
+        required_columns=(
+            "supplier", "on_time", "in_full", "lead_time_days", "quantity", "defects",
+        ),
+        optional_columns=("unit_cost",),
         options=lambda report: report.outcome,
         prepare=_sourcing_prepare,
         run=_sourcing_run,
         qa=lambda report: sourcing_job.verify(report),
         deliver=lambda report, out_dir, client: sourcing_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en", readings=(): replace(
             sourcing_job.build_deck(report, client=client, citations=tuple(citations),
                                     confidence=confidence, lang=lang),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -545,6 +633,17 @@ def supplier_management_tool() -> Tool:
             "srm", "supply risk segmentation", "supplier quadrant", "categorize suppliers",
         ),
         requires_data=True,
+        # jobs/supplier_management_job.py:121. Only supplier and annual_value are hard.
+        # The five risk drivers are a ONE-OF disjunction (the job refuses when none is
+        # present), and a disjunction cannot live in `required_columns` without lying:
+        # declaring one driver would tell a client carrying `defect_ppm` and no lead
+        # time that their file is short two columns. They go in `optional_columns`,
+        # which under-declares -- yellow instead of red -- and that is the safe
+        # direction when the two errors are not symmetric.
+        required_columns=("supplier", "annual_value"),
+        optional_columns=(
+            "lead_time_days", "single_source", "defect_ppm", "financial_risk", "geo_risk",
+        ),
         options=lambda report: report.outcome,
         prepare=_supplier_management_prepare,
         run=_supplier_management_run,
@@ -552,11 +651,11 @@ def supplier_management_tool() -> Tool:
         deliver=lambda report, out_dir, client: supplier_management_job.write_operational(
             report, out_dir, client
         ),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             supplier_management_job.build_deck(
                 report, client=client, citations=tuple(citations), confidence=confidence
             ),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -594,14 +693,22 @@ def ddmrp_tool() -> Tool:
             "buffer profile", "net flow", "decoupling point", "red yellow green",
         ),
         requires_data=True,
+        # jobs/ddmrp_job.py:112. Its _PART_COLS carries BOTH `part_id` and
+        # `product_id`; only one may be declared or dropping it would leave the other
+        # standing in and the guard test would never fire. The shared canonical wins.
+        required_columns=("product_id", "adu", "dlt"),
+        optional_columns=(
+            "ltf", "vf", "moq", "order_cycle_days", "on_hand", "on_order",
+            "qualified_demand", "supplier",
+        ),
         options=tool_options.ddmrp_options,
         prepare=_ddmrp_prepare,
         run=_ddmrp_run,
         qa=lambda report: ddmrp_job.verify(report),
         deliver=lambda report, out_dir, client: ddmrp_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             ddmrp_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -628,6 +735,57 @@ def _landed_cost_run(payload: object, params: dict) -> Produced:
     ))
 
 
+def _import_case_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "an extracted-document folder or documents.json is required "
+            "(commercial_invoice / packing_list / bill_of_lading JSON slices)",
+        ])
+    try:
+        payload = import_case_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _import_case_run(payload: object, params: dict) -> Produced:
+    report = import_case_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def import_case_tool() -> Tool:
+    return Tool(
+        key="import_case",
+        title="Import Case / Document Pack",
+        description="Unify extracted logistics documents (invoice, packing list, B/L or AWB) "
+                    "into one shipment case, flag conflicts, and emit a Chile DIN field pack "
+                    "for the licensed broker. Does not file a declaration or advise HS legally.",
+        intent_keywords=(
+            "import case", "expediente de importacion", "unify import documents",
+            "unificar documentos de importacion", "document pack chile",
+            "chile din pack", "cruzar factura packing", "packing vs invoice",
+            "shipping document discrepancies", "discrepancias de documentos",
+            "import document pack", "pack documental de importacion",
+            "rellenar din", "campo din chile",
+        ),
+        requires_data=True,
+        options=tool_options.import_case_options,
+        prepare=_import_case_prepare,
+        run=_import_case_run,
+        qa=lambda report: import_case_job.verify(report),
+        deliver=lambda report, out_dir, client: import_case_job.write_operational(
+            report, out_dir, client,
+        ),
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en", readings=(): replace(
+            import_case_job.build_deck(
+                report, client=client, citations=tuple(citations),
+                confidence=confidence, lang=lang,
+            ),
+            options=tuple(options), readings=tuple(readings),
+        ).write_all(out_dir),
+    )
+
+
 def landed_cost_tool() -> Tool:
     return Tool(
         key="landed_cost",
@@ -639,15 +797,21 @@ def landed_cost_tool() -> Tool:
             "tariff", "freight cost", "import cost", "total landed",
         ),
         requires_data=True,
+        # jobs/landed_cost_job.py:63. That module spells them `sku` and `qty`; declared
+        # under the shared canonical, which its own alias tuples already accept.
+        required_columns=("product_id", "unit_cost", "quantity"),
+        optional_columns=(
+            "freight", "insurance", "duty_rate", "handling", "broker_fee", "incoterm",
+        ),
         options=tool_options.landed_cost_options,
         prepare=_landed_cost_prepare,
         run=_landed_cost_run,
         qa=lambda report: landed_cost_job.verify(report),
         deliver=lambda report, out_dir, client: landed_cost_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en", readings=(): replace(
             landed_cost_job.build_deck(report, client=client, citations=tuple(citations),
                                        confidence=confidence, lang=lang),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -745,14 +909,21 @@ def whatif_tool() -> Tool:
             "how sensitive", "downside", "best case", "worst case",
         ),
         requires_data=True,
+        # jobs/whatif_job.py:106. Note the `driver` column is not free text: its values
+        # must name model inputs the job knows (annual_demand, holding_cost,
+        # fixed_order_cost, demand_std, service_level, lead_time) or it refuses with
+        # "unknown driver(s)". `required_columns` cannot express a value contract, only
+        # a column one, so the scan can say the column is there and not that it is right.
+        required_columns=("driver", "low", "high"),
+        optional_columns=("base", "unit"),
         options=tool_options.whatif_options,
         prepare=_whatif_prepare,
         run=_whatif_run,
         qa=lambda report: whatif_job.verify(report),
         deliver=lambda report, out_dir, client: whatif_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             whatif_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -806,10 +977,10 @@ def financial_kpis_tool() -> Tool:
         run=_financial_kpis_run,
         qa=lambda report: financial_kpis_job.verify(report),
         deliver=lambda report, out_dir, client: financial_kpis_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options, lang="en": replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, lang="en", readings=(): replace(
             financial_kpis_job.build_deck(report, client=client, citations=tuple(citations),
                                           confidence=confidence, lang=lang),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -853,14 +1024,18 @@ def reconciliation_tool() -> Tool:
             "book vs physical", "system vs physical", "shrinkage", "stock discrepancy",
         ),
         requires_data=True,
+        # jobs/reconciliation_job.py:118 -- the whole point of the tool is the gap
+        # between what the system says and what was counted, so both sides are hard.
+        required_columns=("product_id", "system_qty", "physical_qty"),
+        optional_columns=("unit_cost",),
         options=tool_options.reconciliation_options,
         prepare=_reconciliation_prepare,
         run=_reconciliation_run,
         qa=lambda report: reconciliation_job.verify(report),
         deliver=lambda report, out_dir, client: reconciliation_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             reconciliation_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -907,13 +1082,19 @@ def returns_tool() -> Tool:
             "refurbish", "salvage value", "returns recovery", "returned goods",
         ),
         requires_data=True,
+        # jobs/returns_job.py:89. Declared as `returned_units`, not the shared
+        # `quantity`: its _UNITS_COLS accepts both, but a returns file's unit count is
+        # not the sales quantity, and collapsing them would let a plain sales export
+        # read as a returns analysis.
+        required_columns=("product_id", "returned_units", "unit_cost"),
+        optional_columns=("reason", "resale_value", "sellable"),
         prepare=_returns_prepare,
         run=_returns_run,
         qa=lambda report: returns_job.verify(report),
         deliver=lambda report, out_dir, client: returns_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             returns_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The disposition decision IS a set of ranked, executable choices -> surface them as
         # the guided OPTIONS outcome on success (not just an "executed" deck).
@@ -961,14 +1142,19 @@ def queuing_tool() -> Tool:
             "checkout lanes", "call center staffing", "service desk",
         ),
         requires_data=True,
+        # jobs/queuing_job.py:59. `station` and not its _STATION_COLS' `name`/`node`:
+        # `name` already means product name, and `node` was left unclaimed when two
+        # network tools wanted it.
+        required_columns=("station", "arrival_rate", "service_rate"),
+        optional_columns=("wait_cost", "server_cost"),
         options=tool_options.queuing_options,
         prepare=_queuing_prepare,
         run=_queuing_run,
         qa=lambda report: queuing_job.verify(report),
         deliver=lambda report, out_dir, client: queuing_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             queuing_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1008,14 +1194,18 @@ def scheduling_tool() -> Tool:
             "shop floor schedule",
         ),
         requires_data=True,
+        # jobs/scheduling_job.py:49. `due_date` is a NUMBER of days, not a date: the job
+        # floats it, and a real date string makes the whole file refuse.
+        required_columns=("job", "processing_time"),
+        optional_columns=("due_date",),
         options=tool_options.scheduling_options,
         prepare=_scheduling_prepare,
         run=_scheduling_run,
         qa=lambda report: scheduling_job.verify(report),
         deliver=lambda report, out_dir, client: scheduling_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             scheduling_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1059,10 +1249,10 @@ def launch_readiness_tool() -> Tool:
         run=_launch_readiness_run,
         qa=lambda report: launch_readiness_job.verify(report),
         deliver=lambda report, out_dir, client: launch_readiness_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             launch_readiness_job.build_deck(report, client=client, citations=tuple(citations),
                                             confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The verdict IS a set of ranked, executable choices -> surface them as the guided outcome.
         options=tool_options.launch_readiness_options,
@@ -1113,14 +1303,19 @@ def hat_tension_tool() -> Tool:
             "cuanto pedir segun cada area",
         ),
         requires_data=True,
+        # jobs/hats_job.py:123. Both hats share `_hats_prepare`, so both declare the
+        # same contract. Note MIN_OBS = 5: a SKU with fewer weekly rows is skipped, and
+        # a file where every SKU is skipped refuses -- the column contract is met and
+        # the tool still cannot run. `required_columns` says nothing about row counts.
+        required_columns=("product_id", "quantity", "unit_cost", "lead_time_days"),
         prepare=_hats_prepare,
         run=_hat_tension_run,
         qa=lambda report: hats_job.verify_tension(report),
         deliver=lambda report, out_dir, client: hats_job.write_tension(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             hats_job.build_tension_deck(report, client=client, citations=tuple(citations),
                                         confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The job already assembled the protected OPTIONS outcome (never EXECUTED).
         options=lambda report: report.outcome,
@@ -1140,14 +1335,16 @@ def hat_settlement_tool() -> Tool:
             "decision unica ponderada", "reconciled order plan", "consenso ponderado de compra",
         ),
         requires_data=True,
+        # Same contract as hat_tension by construction: one shared `_hats_prepare`.
+        required_columns=("product_id", "quantity", "unit_cost", "lead_time_days"),
         prepare=_hats_prepare,
         run=_hat_settlement_run,
         qa=lambda report: hats_job.verify_settlement(report),
         deliver=lambda report, out_dir, client: hats_job.write_settlement(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             hats_job.build_settlement_deck(report, client=client, citations=tuple(citations),
                                            confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The job already assembled the protected HANDOFF outcome (never EXECUTED).
         options=lambda report: report.outcome,
@@ -1198,10 +1395,10 @@ def cross_impact_tool() -> Tool:
         run=_cross_impact_run,
         qa=lambda report: cross_impact_job.verify(report),
         deliver=lambda report, out_dir, client: cross_impact_job.write(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             cross_impact_job.build_deck(report, client=client, citations=tuple(citations),
                                         confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         options=lambda report: report.outcome,
         required_client_params=("objection_thresholds",),
@@ -1244,13 +1441,21 @@ def risk_tool() -> Tool:
             "risk exposure", "value at risk", "resilience",
         ),
         requires_data=True,
+        # jobs/risk_job.py:184. `risk_name`, not the module's first alias `name`: a
+        # canonical called `name` would go green on any product master, which is the
+        # false green this whole contract exists to prevent.
+        required_columns=("risk_name", "likelihood", "impact_value"),
+        optional_columns=(
+            "risk_category", "exposure", "velocity_days", "detectability_days",
+            "time_to_recover",
+        ),
         prepare=_risk_prepare,
         run=_risk_run,
         qa=lambda report: risk_job.verify(report),
         deliver=lambda report, out_dir, client: risk_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             risk_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The mitigation decision IS a set of ranked, executable choices -> surface them as
         # the guided OPTIONS outcome on success (recommended default flagged).
@@ -1302,13 +1507,19 @@ def disruption_scan_tool() -> Tool:
             "exposicion a disrupcion", "disrupcion de proveedores",
         ),
         requires_data=True,
+        # jobs/disruption_scan_job.py:85 -- a list of supplier names is genuinely
+        # enough to run this: country and spend only sharpen the ranking. A single
+        # required column would be a false-green risk if the name meant something
+        # else, but `supplier` means exactly one thing across this registry.
+        required_columns=("supplier",),
+        optional_columns=("country", "annual_value"),
         prepare=_disruption_scan_prepare,
         run=_disruption_scan_run,
         qa=lambda report: disruption_scan_job.verify(report),
         deliver=lambda report, out_dir, client: disruption_scan_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             disruption_scan_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The scan's recommendation IS a set of ranked, executable "investigate X" choices
         # (or an EXECUTED all-clear / HANDOFF retry) -> surface it as the guided outcome.
@@ -1335,6 +1546,11 @@ def _forecast_run(payload: object, params: dict) -> Produced:
         payload,
         holdout_fraction=params.get("holdout_fraction", 0.25),
         min_backtest_periods=params.get("min_backtest_periods", 4),
+        # Cycle memory is opt-in and named: params['state_client_id'] selects
+        # one client's partition. NOT request.client -- that is a caller-typed
+        # display label this surface already refuses to trust as an identity
+        # (webapp/app.py::_get_orchestrator). See forecast_cycle.store_from_params.
+        store=forecast_cycle.store_from_params(params),
     )
     return Produced(report=report, summary=report.summary)
 
@@ -1354,13 +1570,18 @@ def forecast_tool() -> Tool:
             "which forecast method", "lumpy demand", "demand pattern", "predict demand",
         ),
         requires_data=True,
+        # jobs/forecast_job.py:128 -- product and quantity are what it refuses over.
+        # The period column is optional: with no date the series falls back to row
+        # order, which still forecasts.
+        required_columns=("product_id", "quantity"),
+        optional_columns=("date",),
         prepare=_forecast_prepare,
         run=_forecast_run,
         qa=lambda report: forecast_job.verify(report),
         deliver=lambda report, out_dir, client: forecast_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             forecast_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The forecasting-policy decision IS a set of ranked, executable choices -> surface them
         # as the guided OPTIONS outcome on success (recommended default flagged).
@@ -1407,9 +1628,9 @@ def data_quality_tool() -> Tool:
         run=_data_quality_run,
         qa=lambda report: data_quality_job.verify(report),
         deliver=lambda report, out_dir, client: data_quality_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             data_quality_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # The remediation decision IS a set of ranked, executable choices -> surface them as
         # the guided OPTIONS outcome on success (recommended default flagged).
@@ -1451,15 +1672,26 @@ def flow_map_tool() -> Tool:
             "lead time by lane", "sankey", "material flow", "where is the bottleneck",
         ),
         requires_data=True,
+        # jobs/flow_map_job.py's _REQUIRED, restated in the shared vocabulary. That
+        # module keeps its canonical names in Spanish (fecha_salida, origen, producto,
+        # cantidad...) and its own alias table already accepts the English and the
+        # product_id/quantity spellings, so declaring `producto` and `cantidad` here
+        # would have created two rival canonicals for columns the rest of the registry
+        # already owns -- a movements file would then feed flow_map and nothing else.
+        required_columns=(
+            "departure_date", "arrival_date", "origin", "destination",
+            "product_id", "quantity",
+        ),
+        optional_columns=("unit_cost",),
         prepare=_flow_map_prepare,
         run=_flow_map_run,
         qa=lambda report: flow_map_job.verify(report),
         deliver=lambda report, out_dir, client: flow_map_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             flow_map_job.build_deck(
                 report, client=client, citations=tuple(citations), confidence=confidence
             ),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         options=lambda report: report.outcome,
     )
@@ -1508,11 +1740,11 @@ def org_friction_tool() -> Tool:
         run=_org_friction_run,
         qa=lambda report: org_friction_job.verify(report),
         deliver=lambda report, out_dir, client: org_friction_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             org_friction_job.build_deck(
                 report, client=client, citations=tuple(citations), confidence=confidence
             ),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         # Every finding is a triage choice, never an auto-verdict -> surface the ranked
         # OPTIONS outcome on success (or the HANDOFF asking for more evidence).
@@ -1557,9 +1789,9 @@ def dea_tool() -> Tool:
         run=_dea_run,
         qa=lambda report: dea_job.verify(report),
         deliver=lambda report, out_dir, client: dea_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             dea_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1601,14 +1833,18 @@ def acceptance_sampling_tool() -> Tool:
             "aql", "ltpd", "inspect how many", "lot acceptance", "quality sampling",
         ),
         requires_data=True,
+        # jobs/acceptance_sampling_job.py:54. Declaring this contract is what surfaced
+        # that its _PART_COLS did not accept `product_id` at all -- fixed in the same
+        # change, with its own regression test.
+        required_columns=("product_id", "aql", "ltpd"),
         options=tool_options.acceptance_sampling_options,
         prepare=_acceptance_sampling_prepare,
         run=_acceptance_sampling_run,
         qa=lambda report: acceptance_sampling_job.verify(report),
         deliver=lambda report, out_dir, client: acceptance_sampling_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             acceptance_sampling_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1647,14 +1883,19 @@ def earned_value_tool() -> Tool:
             "cost variance", "cost performance index", "project performance", "bcwp",
         ),
         requires_data=True,
+        # jobs/earned_value_job.py:54. Declared as planned_value/earned_value/actual_cost
+        # rather than that module's bare `planned`/`earned`/`actual`: those single words
+        # mean nothing on their own in a client's folder, and all three long spellings
+        # are inside its own alias tuples.
+        required_columns=("task", "planned_value", "earned_value", "actual_cost"),
         options=tool_options.earned_value_options,
         prepare=_earned_value_prepare,
         run=_earned_value_run,
         qa=lambda report: earned_value_job.verify(report),
         deliver=lambda report, out_dir, client: earned_value_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             earned_value_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1692,14 +1933,20 @@ def learning_curve_tool() -> Tool:
             "cost reduction with volume", "quote at volume", "learning rate",
         ),
         requires_data=True,
+        # jobs/learning_curve_job.py:56. Declaring this contract is what surfaced that
+        # its _PRODUCT_COLS did not accept `product_id` -- the second tool with that
+        # gap, fixed in the same change.
+        required_columns=(
+            "product_id", "first_unit_cost", "learning_rate", "planned_volume",
+        ),
         options=tool_options.learning_curve_options,
         prepare=_learning_curve_prepare,
         run=_learning_curve_run,
         qa=lambda report: learning_curve_job.verify(report),
         deliver=lambda report, out_dir, client: learning_curve_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             learning_curve_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1743,9 +1990,9 @@ def odoo_replenishment_tool() -> Tool:
         run=_odoo_run,
         qa=lambda report: odoo_job.verify(report),
         deliver=lambda report, out_dir, client: odoo_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             odoo_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1917,10 +2164,10 @@ def excel_replenishment_tool() -> Tool:
         run=_excel_replenishment_run,
         qa=lambda report: excel_replenishment_job.verify(report),
         deliver=lambda report, out_dir, client: excel_replenishment_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             excel_replenishment_job.build_deck(report, client=client, citations=tuple(citations),
                                                confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -1958,14 +2205,19 @@ def newsvendor_tool() -> Tool:
             "critical ratio",
         ),
         requires_data=True,
+        # jobs/newsvendor_job.py:76 -- product, mean demand, price and unit cost are
+        # what it refuses over. `price` and `unit_cost` are separate concepts here and
+        # their alias tuples do not overlap, so declaring both is safe.
+        required_columns=("product_id", "mean_demand", "price", "unit_cost"),
+        optional_columns=("std_demand", "salvage_value", "goodwill"),
         options=tool_options.newsvendor_options,
         prepare=_newsvendor_prepare,
         run=_newsvendor_run,
         qa=lambda report: newsvendor_job.verify(report),
         deliver=lambda report, out_dir, client: newsvendor_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             newsvendor_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2008,9 +2260,9 @@ def cycle_count_tool() -> Tool:
         run=_cycle_count_run,
         qa=lambda report: cycle_count_job.verify(report),
         deliver=lambda report, out_dir, client: cycle_count_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             cycle_count_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2048,14 +2300,25 @@ def multi_echelon_tool() -> Tool:
             "safety stock placement", "multi-tier inventory", "risk pooling",
         ),
         requires_data=True,
+        # jobs/multi_echelon_job.py:81. Per-stage, not per-SKU: the key is the echelon.
+        # Its _STAGE_COLS also accepts `name`, which is deliberately NOT declared --
+        # `name` already means product name everywhere else, and declaring it would
+        # turn any master file into a false green for a network model.
+        # `mean_demand`/`std_demand` are REQUIRED, not optional: without params the job
+        # refuses with "end-customer demand is required". They shipped as optional and
+        # the required-only guard could not see it -- the complete fixture carries every
+        # optional too. That is what the optional-is-really-optional check now closes.
+        required_columns=(
+            "stage", "lead_time_days", "holding_cost", "mean_demand", "std_demand",
+        ),
         options=tool_options.multi_echelon_options,
         prepare=_multi_echelon_prepare,
         run=_multi_echelon_run,
         qa=lambda report: multi_echelon_job.verify(report),
         deliver=lambda report, out_dir, client: multi_echelon_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             multi_echelon_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2093,14 +2356,18 @@ def transportation_tool() -> Tool:
             "how to ship", "cheapest way to ship", "freight optimization", "carrier mode",
         ),
         requires_data=True,
+        # jobs/transportation_job.py:81 -- weight and distance are the whole cost model.
+        # No product column at all: the unit here is a shipment, not a SKU.
+        required_columns=("weight_kg", "distance_km"),
+        optional_columns=("shipment_id", "lane", "quantity", "order_value"),
         options=tool_options.transportation_options,
         prepare=_transportation_prepare,
         run=_transportation_run,
         qa=lambda report: transportation_job.verify(report),
         deliver=lambda report, out_dir, client: transportation_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             transportation_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2138,14 +2405,23 @@ def fefo_tool() -> Tool:
             "best before", "use by date", "expiry risk", "markdown before expiry", "aging stock",
         ),
         requires_data=True,
+        # jobs/fefo_job.py:156. `expiry_date` is deliberately NOT declared even as
+        # optional: jobs/fefo_job.py:166 raises when it is present without
+        # params.as_of, so declaring it would make the complete fixture refuse and
+        # read as a broken declaration. Dates come in through params, not the contract.
+        # `days_to_expiry` is REQUIRED, not optional: the job takes it OR `expiry_date`,
+        # and `expiry_date` alone raises without params.as_of, so under the default
+        # params intake_scan speaks for there is exactly one workable path.
+        required_columns=("product_id", "lot_id", "quantity", "days_to_expiry"),
+        optional_columns=("unit_cost", "daily_demand"),
         options=tool_options.fefo_options,
         prepare=_fefo_prepare,
         run=_fefo_run,
         qa=lambda report: fefo_job.verify(report),
         deliver=lambda report, out_dir, client: fefo_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             fefo_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2183,14 +2459,20 @@ def slotting_tool() -> Tool:
             "co-location", "re-slot", "slot the skus",
         ),
         requires_data=True,
+        # jobs/slotting_job.py:61 -- affinity is mined from order-product pairs, so the
+        # basket id is as required as the product. `order_id` is its own canonical even
+        # though jobs/intake.py lists that spelling among po_id's aliases: a picking
+        # basket is not a purchase order, and exact names resolve before aliases.
+        required_columns=("order_id", "product_id"),
+        optional_columns=("unit_volume",),
         options=tool_options.slotting_options,
         prepare=_slotting_prepare,
         run=_slotting_run,
         qa=lambda report: slotting_job.verify(report),
         deliver=lambda report, out_dir, client: slotting_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             slotting_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2228,14 +2510,19 @@ def simulation_tool() -> Tool:
             "simulation-based",
         ),
         requires_data=True,
+        # jobs/simulation_job.py:77. The lead time is declared as `lead_time`, not the
+        # repo-wide `lead_time_days`, because that name is not in this job's _LEAD_COLS
+        # -- declaring it would make the tool refuse a file it can actually read.
+        required_columns=("product_id", "mean_demand", "std_demand", "lead_time_periods"),
+        optional_columns=("holding_cost", "order_cost", "backorder_cost", "review_period"),
         options=tool_options.simulation_options,
         prepare=_simulation_prepare,
         run=_simulation_run,
         qa=lambda report: simulation_job.verify(report),
         deliver=lambda report, out_dir, client: simulation_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             simulation_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2276,9 +2563,9 @@ def digital_twin_tool() -> Tool:
         run=_digital_twin_run,
         qa=lambda report: digital_twin_job.verify(report),
         deliver=lambda report, out_dir, client: digital_twin_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             digital_twin_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2323,9 +2610,9 @@ def excess_obsolete_tool() -> Tool:
         run=_excess_obsolete_run,
         qa=lambda report: excess_obsolete_job.verify(report),
         deliver=lambda report, out_dir, client: excess_obsolete_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             excess_obsolete_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2366,14 +2653,19 @@ def markdown_liquidation_tool() -> Tool:
             "liquidate excess stock", "liquidate dead stock", "disposition plan", "clear excess inventory",
         ),
         requires_data=True,
+        # Identical to excess_obsolete's by construction: this job imports that one's
+        # prepare_records as its stock reader (jobs/markdown_liquidation_job.py:29). If
+        # the two ever diverge, this declaration is what should break first.
+        required_columns=("product_id", "on_hand", "daily_demand"),
+        optional_columns=("unit_cost", "days_since_last_sale"),
         options=tool_options.markdown_liquidation_options,
         prepare=_markdown_liquidation_prepare,
         run=_markdown_liquidation_run,
         qa=lambda report: markdown_liquidation_job.verify(report),
         deliver=lambda report, out_dir, client: markdown_liquidation_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             markdown_liquidation_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2411,14 +2703,22 @@ def facility_location_tool() -> Tool:
             "site selection", "where to locate", "optimal location", "greenfield site",
         ),
         requires_data=True,
+        # jobs/facility_location_job.py:61 -- only the coordinates are hard. Declared
+        # as longitude/latitude rather than the job's own `x`/`y`: both spellings are
+        # in its alias tuples, and a one-letter column name is not something to ask a
+        # client for. `weight` is NOT declared even though it is a real optional --
+        # transportation's `weight_kg` already accepts a header called `weight`, and
+        # two canonicals wanting the same header is decided by iteration order, which
+        # is no way to decide it.
+        required_columns=("longitude", "latitude"),
         options=tool_options.facility_location_options,
         prepare=_facility_location_prepare,
         run=_facility_location_run,
         qa=lambda report: facility_location_job.verify(report),
         deliver=lambda report, out_dir, client: facility_location_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             facility_location_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2463,14 +2763,19 @@ def network_design_tool() -> Tool:
             "open facilities", "consolidate distribution centers",
         ),
         requires_data=True,
+        # jobs/network_design_job.py:100. Same coordinate contract as
+        # facility_location; `role` splits the rows into demand points and candidate
+        # sites, and with no role column every row is both, which is why it is optional.
+        required_columns=("longitude", "latitude"),
+        optional_columns=("role", "fixed_cost", "capacity"),
         options=tool_options.network_design_options,
         prepare=_network_design_prepare,
         run=_network_design_run,
         qa=lambda report: network_design_job.verify(report),
         deliver=lambda report, out_dir, client: network_design_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             network_design_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2508,14 +2813,24 @@ def drp_tool() -> Tool:
             "branch replenishment", "network replenishment", "drp grid", "push distribution",
         ),
         requires_data=True,
+        # jobs/drp_job.py:64. Declared as `quantity`, not the job's own first alias
+        # `demand`: both are in its _DEMAND_COLS, and `quantity` is already the shared
+        # canonical, so the client is asked for one name instead of two.
+        required_columns=("branch", "period", "quantity"),
+        # No lead-time column is declared here on purpose. This job spells it
+        # `lead_time` and accepts no other spelling, and a canonical by that name
+        # captures the generic header "Lead Time" ahead of `lead_time_days`, which is
+        # what almost every other tool in the registry needs. Optional columns are not
+        # worth breaking the shared vocabulary for.
+        optional_columns=("on_hand", "safety_stock", "lot_size"),
         options=tool_options.drp_options,
         prepare=_drp_prepare,
         run=_drp_run,
         qa=lambda report: drp_job.verify(report),
         deliver=lambda report, out_dir, client: drp_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             drp_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2561,9 +2876,9 @@ def vehicle_routing_tool() -> Tool:
         run=_vehicle_routing_run,
         qa=lambda report: vehicle_routing_job.verify(report),
         deliver=lambda report, out_dir, client: vehicle_routing_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             vehicle_routing_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2625,19 +2940,25 @@ def _price_intelligence_run(payload: object, params: dict) -> Produced:
 def price_intelligence_tool() -> Tool:
     from jobs import price_intelligence as price_intelligence_job
 
-    def _deck(report, out_dir, client, citations, confidence, options):
+    def _deck(report, out_dir, client, citations, confidence, options, readings=()):
         # citations here are the orchestrator's ungated `ground_citations` (the
         # same convention every other tool's deck uses) -- but golden rule 7 +
         # the E5 gate are explicit requirements for THIS deliverable, so the deck
         # recomputes its own E5-gated citations via
         # `price_intelligence_job.gated_citations` (filter_citations, not a
         # parallel mechanism) instead of trusting the ungated list passed in.
+        #
+        # `readings` is threaded like everywhere else and is NOT affected by that
+        # recomputation: a book passage is not a citation candidate at all (no
+        # `node_id`), so it never enters the E5 gate in either direction. It rides
+        # in its own `Deliverable.readings` section, which `write_report_md` renders
+        # because it starts from `deliverable.to_markdown()`.
         deliverable = replace(
             price_intelligence_job.build_deck(
                 report, client=client, citations=price_intelligence_job.gated_citations(""),
                 confidence=confidence,
             ),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         )
         report_path = price_intelligence_job.write_report_md(deliverable, report, out_dir, deliverable.lang)
         return {"report_md": report_path}
@@ -2655,6 +2976,12 @@ def price_intelligence_tool() -> Tool:
             "precio de la competencia", "inteligencia de precios",
         ),
         requires_data=True,
+        # jobs/price_intelligence.py:162. The refs file is a SKU-to-competitor-URL map,
+        # so the URL is as required as the SKU. Its own tuple also accepts bare `url`
+        # and `link`; those are deliberately not aliases of the canonical, because in a
+        # product master a `url` column is the client's own page, not a competitor's.
+        required_columns=("product_id", "competitor_url"),
+        optional_columns=("competitor_site", "our_price"),
         options=tool_options.price_intelligence_options,
         prepare=_price_intelligence_prepare,
         run=_price_intelligence_run,
@@ -2876,6 +3203,76 @@ def _intake_scan_run(payload: object, params: dict) -> Produced:
     return Produced(report=report, summary=report.summary)
 
 
+
+# ---- service_scan (servicio realizado, desde una cuenta viva) -----------------
+
+def _service_scan_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    """Resuelve el backend. No pide archivo: esta tool lee una CUENTA.
+
+    Un fallo de conexion sale como ``needs_data`` y no como ``error``: lo que falta es el
+    acceso al sistema del cliente, que se arregla con credenciales, no con un parche.
+    """
+    try:
+        payload = service_scan_job.prepare(request.data_path, request.params)
+    except (ValueError, KeyError, RuntimeError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=payload)
+
+
+def _service_scan_run(payload: object, params: dict) -> Produced:
+    report = service_scan_job.run(
+        payload, since=params.get("since"), stockout_days=params.get("stockout_days")
+    )
+    fill = report.portfolio.fill_rate
+    otif = report.portfolio.otif
+    resumen = (
+        f"Read {report.n_orders:,} orders ({report.n_lines:,} lines) from "
+        f"{report.source_name}. Fill rate "
+        f"{'not measured' if fill is None else f'{fill * 100:.1f}%'}; OTIF "
+        f"{'not measured' if otif is None else f'{otif * 100:.1f}%'}."
+    )
+    # Las notas de cobertura entran al resumen porque es lo que el operador lee ANTES de
+    # abrir el entregable, y porque un OTIF sin decir de que campo salio -- ni si esa fecha
+    # es un despacho o una llegada -- no se puede reconciliar contra el ERP del cliente.
+    if report.notes:
+        resumen = f"{resumen} {' '.join(report.notes)}"
+    return Produced(report=report, summary=resumen)
+
+
+def service_scan_tool() -> Tool:
+    return Tool(
+        key="service_scan",
+        title="Realized Customer Service",
+        description="Read a live commerce backend (Unleashed, Cin7 Core, or an offline "
+                    "stand-in) and measure the service customers actually received: "
+                    "order-line fill rate, outbound OTIF (SCOR RL.1.1) and lost sales -- "
+                    "plus a field-by-field statement of what that backend CANNOT measure. "
+                    "Never a policy's implied beta presented as service.",
+        intent_keywords=(
+            "service scan", "realized service", "servicio realizado", "fill rate",
+            "otif", "on time in full", "perfect order", "pedido perfecto",
+            "servicio al cliente", "customer service level", "cuanto entregue",
+            "que servicio di", "lost sales", "venta perdida",
+            # Frases multi-palabra y no verbos sueltos: "entregar" o "servicio" a secas
+            # le robarian el ruteo a media docena de tools. Estas dos salieron de escribir
+            # el brief como lo escribiria un cliente y ver que no matcheaba nada.
+            "llegue a entregar", "que tan bien entregue",
+        ),
+        requires_data=False,
+        prepare=_service_scan_prepare,
+        run=_service_scan_run,
+        qa=lambda report: service_scan_job.verify(report),
+        options=lambda report: report.outcome,
+        deliver=lambda report, out_dir, client: service_scan_deliverable.write_operational(
+            report, out_dir, client
+        ),
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
+            service_scan_deliverable.build(report, client=client, citations=tuple(citations),
+                                           confidence=confidence),
+            options=tuple(options), readings=tuple(readings),
+        ).write_all(out_dir),
+    )
+
 def intake_scan_tool() -> Tool:
     return Tool(
         key="intake_scan",
@@ -2894,12 +3291,389 @@ def intake_scan_tool() -> Tool:
         run=_intake_scan_run,
         qa=lambda report: intake_scan_job.verify(report),
         deliver=lambda report, out_dir, client: intake_scan_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             intake_scan_job.build_deck(report, client=client, citations=tuple(citations),
                                         confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
         options=lambda report: report.outcome,
+    )
+
+
+# ---- procedure_audit (SOP document-control audit) ------------------------------
+# ---- procedure_draft (bilingual SOP draft: Job Breakdown Sheet + control plan) --
+#
+# "sop" elsewhere in this file (see sop_tool() above) means Sales & Operations
+# Planning -- a different discipline from a Standard Operating Procedure. Every
+# keyword below was checked against scm_agent/intent.py's strict keyword win
+# (top_score >= 1 AND top_score > second_score, scm_agent/intent.py:59): a tie with
+# sop, cycle_count, org_friction_audit, inventory_optimization, acceptance_sampling
+# or data_quality sends the brief to needs_clarification instead of either tool
+# below. Do not add a bare "sop", "draft", "procedure" or "revision" -- each one
+# ties against another registered tool (see tests/test_procedures_tools.py).
+
+PROCEDURE_AUDIT_KEYWORDS = (
+    "procedure register", "registro de procedimientos", "procedure audit", "auditoria de procedimientos",
+    "auditar los procedimientos", "audit our procedures", "audit the procedures", "audit our sops",
+    "audit the sops", "sop register", "registro de sops", "procedimientos operativos", "overdue sop",
+    "sops overdue", "sop vencido", "sops vencidos", "procedimientos vencidos", "procedimiento vencido",
+    "overdue for review", "revision vencida", "revisiones vencidas", "document control",
+    "control de documentos", "control documental", "documented information", "informacion documentada",
+    "iso 9001", "procedure owner", "dueno del procedimiento", "procedures without an owner",
+    "sops without an owner", "procedimientos sin dueno", "sops sin dueno", "which sops", "que sops",
+    "cuales sops", "who owns each procedure", "quien es dueno de cada procedimiento",
+)
+PROCEDURE_DRAFT_KEYWORDS = (
+    "procedure draft", "sop draft", "draft a procedure", "draft the procedure", "draft a sop", "draft an sop",
+    "draft the sop", "draft a standard operating procedure", "write a procedure", "write the procedure",
+    "write a sop", "write an sop", "write the sop", "write a standard operating procedure",
+    "borrador de procedimiento", "borrador de sop", "borrador del sop", "borrador del procedimiento",
+    "redacta el procedimiento", "redactar el procedimiento", "redacta el sop", "redactar el sop",
+    "redactame el sop", "escribe el sop", "escribir el sop", "arma el sop", "armar el sop", "genera el sop",
+    "generar el sop", "sop template", "plantilla de sop", "plantilla de procedimiento", "procedure template",
+    "job breakdown sheet", "hoja de desglose", "control plan", "plan de control", "work instruction",
+    "instructivo de trabajo", "standard work", "trabajo estandar", "training timetable",
+    "cronograma de entrenamiento", "document control header", "encabezado de control documental",
+    "cadencia de revision", "review cadence",
+)
+
+
+def _procedure_audit_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a procedure register CSV/Excel export is required: one row per procedure, with "
+            "at least name/procedimiento and last_reviewed_at/ultima_revision as columns "
+            "(pass params['as_of'] as an ISO date, e.g. '2026-09-03', to make the audit reproducible)"
+        ])
+    # Validate as_of/review_cadence_days/due_soon_days here, at the tool boundary,
+    # before run() ever sees them -- request.params is the same merged dict run()
+    # will receive (scm_agent/orchestrator.py replaces request.params before calling
+    # prepare()). Without this, a malformed value (e.g. as_of='03/09/2026', a
+    # non-numeric review_cadence_days) raised a ValueError inside tool.run(), which
+    # is not guarded per-tool and so escaped to the orchestrator's blanket except
+    # Exception -> "An internal error occurred.", losing the job's own clear message.
+    try:
+        procedure_audit_job.validate_params(request.params)
+    except ValueError as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    try:
+        prepared = procedure_audit_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=prepared)
+
+
+def _procedure_audit_run(payload: object, params: dict) -> Produced:
+    report = procedure_audit_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def procedure_audit_tool() -> Tool:
+    return Tool(
+        key="procedure_audit",
+        title="Procedure Register Audit (SOP document control)",
+        description="Audit a client's exported procedure register for overdue reviews, "
+                    "missing owners, an owner who is also the approver, procedures marked "
+                    "approved with no approver on file, procedures with no linked KPI, and "
+                    "unversioned documents. Always ends in a HANDOFF naming the owner and the "
+                    "due date -- and never stores the SOPs themselves.",
+        intent_keywords=PROCEDURE_AUDIT_KEYWORDS,
+        requires_data=True,
+        required_columns=("name", "last_reviewed_at"),
+        optional_columns=(
+            "procedure_id", "process_area", "owner", "approver", "version", "approved_at",
+            "review_cadence_days", "location", "linked_kpi", "reaction_plan", "status",
+        ),
+        prepare=_procedure_audit_prepare,
+        run=_procedure_audit_run,
+        qa=lambda r: procedure_audit_job.verify(r),
+        deliver=lambda report, out_dir, client: procedure_audit_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
+            procedure_audit_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options), readings=tuple(readings),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
+def _procedure_draft_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    try:
+        draft_request = procedure_draft_job.prepare(request.params)
+    except ValueError as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    return Prepared(status="ok", payload=draft_request)
+
+
+def _procedure_draft_run(payload: object, params: dict) -> Produced:
+    draft = procedure_draft_job.run(payload, params)
+    return Produced(report=draft, summary=draft.outcome.summary)
+
+
+def procedure_draft_tool() -> Tool:
+    return Tool(
+        key="procedure_draft",
+        title="SOP Draft with Document Control (Job Breakdown Sheet + Control Plan)",
+        description="Draft a bilingual Standard Operating Procedure -- Job Breakdown Sheet, "
+                    "control plan and training timetable -- from one of three templates "
+                    "(replenishment, cycle count, or the S&OP cycle), stamped with a "
+                    "document-control header. Always born unapproved: the outcome is a "
+                    "HANDOFF asking a human to review, approve and publish it before use.",
+        intent_keywords=PROCEDURE_DRAFT_KEYWORDS,
+        requires_data=False,
+        prepare=_procedure_draft_prepare,
+        run=_procedure_draft_run,
+        qa=lambda d: procedure_draft_job.verify(d),
+        deliver=lambda draft, out_dir, client: procedure_draft_job.write_operational(draft, out_dir, client),
+        deck=lambda draft, out_dir, client, citations, confidence, options, readings=(): replace(
+            procedure_draft_job.build_deck(draft, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options), readings=tuple(readings),
+        ).write_all(out_dir),
+        options=lambda draft: draft.outcome,
+    )
+
+
+# ---- iso_ops (plant ISO applicability + floor evidence; never a certificate) ----
+#
+# Distinctive multi-word phrases only. Do NOT add a bare "iso 9001": that keyword
+# already belongs to procedure_audit (SOP document control) and a tie with it
+# would send mixed briefs to needs_clarification instead of either tool.
+
+ISO_OPS_KEYWORDS = (
+    "catalogo iso", "catálogo iso", "iso operations catalog", "iso operations",
+    "detectar normas iso", "detector de normas iso", "normas iso de operaciones",
+    "normas iso de cadena", "evidencia de piso", "evidencia de piso iso",
+    "iso floor evidence", "which iso standards apply", "que normas iso aplican",
+    "qué normas iso aplican", "iso 14067", "iso 50001", "iso 14083", "iso 14001",
+    "iatf 16949", "product carbon footprint", "huella de producto",
+    "cobertura iso", "iso coverage kern",
+)
+
+
+def _iso_ops_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not iso_ops_job.perfil_presente(request.params, request.data_path):
+        return Prepared(status="needs_clarification", messages=[
+            "hace falta una ficha de planta (JSON/CSV) o params con sectores, "
+            "clientePide, logistica, planta, kern, texto, y/o senales de orden "
+            "ciclo/scrap/kg/tkm. Ficha vacia no inventa normas; sin ficha no se corre."
+        ])
+    try:
+        prepared = iso_ops_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    return Prepared(status="ok", payload=prepared)
+
+
+def _iso_ops_run(payload: object, params: dict) -> Produced:
+    report = iso_ops_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def iso_ops_tool() -> Tool:
+    return Tool(
+        key="iso_ops",
+        title="ISO Operations Floor Evidence (not a certificate)",
+        description="Detect which operations/supply-chain ISO (and IATF) norms apply to "
+                    "a plant profile, propose floor tasks already in the catalog, and "
+                    "evaluate order evidence (cycle, scrap, kg, t·km). Always OPTIONS "
+                    "or HANDOFF. Never says the plant is ISO-certified.",
+        intent_keywords=ISO_OPS_KEYWORDS,
+        requires_data=False,
+        prepare=_iso_ops_prepare,
+        run=_iso_ops_run,
+        qa=lambda r: iso_ops_job.verify(r),
+        deliver=lambda report, out_dir, client: iso_ops_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
+            iso_ops_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options), readings=tuple(readings),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
+# ---- audit_evidence (MUS + GL tie-out workpaper; never a signed opinion) ------
+#
+# Distinctive multi-word phrases. Do NOT add bare "reconciliation" / "reconcile"
+# (IRA tool) or "acceptance sampling" / "aql" / "sampling plan".
+
+AUDIT_EVIDENCE_KEYWORDS = (
+    "audit sampling", "inventory audit sampling", "audit sample size",
+    "monetary unit sampling", "mus sample", "mus workpaper",
+    "gl reconciliation", "general ledger", "trial balance", "tie-out", "tie out",
+    "audit workpaper", "audit evidence", "substantive testing", "test of details",
+    "papel de trabajo mus", "evidencia de auditoria", "muestreo mus",
+    "prepare a monetary unit sampling",
+)
+
+
+def _audit_evidence_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a GL/inventory listing CSV is required (unit_id + book_value). "
+            "Optional source=gl|subledger puts both ledgers in one table. "
+            "params.tolerable_misstatement is auditor judgment and is required at run."
+        ])
+    try:
+        audit_evidence_job.validate_params(request.params)
+    except ValueError as exc:
+        return Prepared(status="needs_clarification", messages=[str(exc)])
+    try:
+        prepared = audit_evidence_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=prepared)
+
+
+def _audit_evidence_run(payload: object, params: dict) -> Produced:
+    report = audit_evidence_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def audit_evidence_tool() -> Tool:
+    return Tool(
+        key="audit_evidence",
+        title="Audit Evidence Workpaper (MUS + GL tie-out; not an opinion)",
+        description="Prepare a re-performable inventory/COGS workpaper: MUS sample, optional "
+                    "GL tie-out, IPE attestation, EvidenceRecord lineage. Always HANDOFF "
+                    "(or ESCALATED if UML exceeds TM or the tie-out is off tolerance). "
+                    "Never a signed audit opinion. Reviewed-by stays blank by design.",
+        intent_keywords=AUDIT_EVIDENCE_KEYWORDS,
+        requires_data=True,
+        required_columns=("unit_id", "book_value"),
+        optional_columns=("source", "audited_value"),
+        required_client_params=("tolerable_misstatement",),
+        prepare=_audit_evidence_prepare,
+        run=_audit_evidence_run,
+        qa=lambda r: audit_evidence_job.verify(r),
+        deliver=lambda report, out_dir, client: audit_evidence_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
+            audit_evidence_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options), readings=tuple(readings),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
+# ---- scor_iso_audit (E4 SCOR + ISO checklist; dedicated job, not PackageSpec) -
+#
+# Do NOT add bare "iso 9001" (procedure_audit) or iso_ops catalog/floor phrases.
+
+SCOR_ISO_AUDIT_KEYWORDS = (
+    "scor iso audit", "scor scorecard", "iso 28000 checklist",
+    "pack de preparacion para auditoria", "scor level 1 scorecard",
+    "perfect order scor", "cash-to-cash scor",
+    "preparacion para auditoria scor", "scor iso pack",
+    "scor iso audit evidence", "registrar auditor scorecard",
+)
+
+
+def _scor_iso_audit_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(status="needs_data", messages=[
+            "a tagged CSV is required: add a dataset column with values "
+            "financial / cost_to_serve / sourcing / orders / procedures / risk"
+        ])
+    try:
+        prepared = scor_audit_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=prepared)
+
+
+def _scor_iso_audit_run(payload: object, params: dict) -> Produced:
+    report = scor_audit_job.run(payload, params)
+    return Produced(report=report, summary=report.summary)
+
+
+def scor_iso_audit_tool() -> Tool:
+    return Tool(
+        key="scor_iso_audit",
+        title="SCOR/ISO Evidence Pack (not a certificate)",
+        description="Compose existing measurements (cash-to-cash, cost-to-serve, Perfect Order "
+                    "RL.1.1, procedure register, TTR/TTS) into one EvidenceRecord plus a "
+                    "Lineage sheet. Checklist statuses are observed / gap / no_evaluable. "
+                    "Always HANDOFF. Kern prepares evidence for a registrar's auditor; it "
+                    "does not certify ISO or SCOR.",
+        intent_keywords=SCOR_ISO_AUDIT_KEYWORDS,
+        requires_data=True,
+        required_columns=("dataset",),
+        optional_columns=(
+            "product_id", "name", "cogs", "avg_inventory_value",
+            "last_reviewed_at", "owner", "approver", "version",
+        ),
+        prepare=_scor_iso_audit_prepare,
+        run=_scor_iso_audit_run,
+        qa=lambda r: scor_audit_job.verify(r),
+        deliver=lambda report, out_dir, client: scor_audit_job.write_operational(report, out_dir, client),
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
+            scor_audit_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
+            options=tuple(options), readings=tuple(readings),
+        ).write_all(out_dir),
+        options=lambda report: report.outcome,
+    )
+
+
+REPRICING_KEYWORDS = (
+    # Action-anchored and multi-word on purpose: a bare "precio"/"price" would
+    # hijack every pricing brief away from the `pricing` and `price_intelligence`
+    # tools. intent.classify needs a STRICT win, so these phrases name the ACT of
+    # pushing a new price list to a channel, which neither of those two does.
+    "reprice", "repricing", "repricing playbook", "push new prices",
+    "update prices on", "stage price changes", "price changeset",
+    "multichannel repricing", "reprice my channel", "reprice shopify",
+    "repreciar", "repreciado", "cambiar precios en", "actualizar precios en",
+    "subir precios al canal", "lista de precios nueva", "cambio de precios masivo",
+)
+
+
+def _repricing_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
+    if not request.data_path:
+        return Prepared(
+            status="needs_data",
+            messages=["a price list is required: one row per SKU with current_price and proposed_price"],
+        )
+    try:
+        plan = repricing_job.prepare(request.data_path, request.params)
+    except (ValueError, FileNotFoundError) as exc:
+        return Prepared(status="needs_data", messages=[str(exc)])
+    return Prepared(status="ok", payload=plan)
+
+
+def _repricing_run(payload: object, params: dict) -> Produced:
+    report = repricing_job.run(payload, max_move_pct=params.get("max_move_pct"))
+    return Produced(report=report, summary=report.summary)
+
+
+def repricing_tool() -> Tool:
+    """The multichannel repricing playbook, as a STAGING-ONLY tool.
+
+    ``jobs/repricing.py`` was fully built and tested in Linchpin 3.0 PR-18 and
+    reachable by nobody but a test and a CLI (gap audit finding #6). This makes
+    it routable -- without making a live price write routable.
+
+    ``jobs.repricing_job`` never imports ``apply_repricing`` or
+    ``run_channel_repricing``, stages against an in-memory copy of the client's
+    own current prices, and always returns HANDOFF. There is no path from a
+    brief to a channel write. Deliberately absent from
+    ``webapp/mcp_tool_specs.py``: that surface is opt-in, and a tool about
+    changing live prices does not belong on an anonymously reachable one.
+    """
+    return Tool(
+        key="repricing",
+        title="Multichannel Repricing (staged, never applied)",
+        description="Take a proposed price list, run it through the central pricing guardrail "
+                    "(max move per change, below-landed-cost block, a readable reason and L3 "
+                    "citations), and stage the resulting per-SKU diff for a human to approve. "
+                    "It never writes to Shopify/MercadoLibre/Odoo and never applies: the outcome "
+                    "is always a handoff naming the exact steps the operator runs to apply it.",
+        intent_keywords=REPRICING_KEYWORDS,
+        requires_data=True,
+        required_columns=repricing_job.REQUIRED_COLUMNS,
+        optional_columns=repricing_job.OPTIONAL_COLUMNS,
+        options=lambda report: report.outcome,
+        prepare=_repricing_prepare,
+        run=_repricing_run,
+        qa=lambda report: repricing_job.verify(report),
+        deliver=lambda report, out_dir, client: repricing_job.write_operational(report, out_dir, client),
     )
 
 
@@ -2915,6 +3689,7 @@ def build_default_registry() -> ToolRegistry:
     reg.register(supplier_management_tool())
     reg.register(ddmrp_tool())
     reg.register(landed_cost_tool())
+    reg.register(import_case_tool())
     reg.register(whatif_tool())
     reg.register(financial_kpis_tool())
     reg.register(reconciliation_tool())
@@ -2957,4 +3732,11 @@ def build_default_registry() -> ToolRegistry:
     reg.register(cross_impact_tool())
     reg.register(org_friction_tool())
     reg.register(intake_scan_tool())
+    reg.register(service_scan_tool())
+    reg.register(procedure_audit_tool())
+    reg.register(procedure_draft_tool())
+    reg.register(iso_ops_tool())
+    reg.register(audit_evidence_tool())
+    reg.register(scor_iso_audit_tool())
+    reg.register(repricing_tool())
     return reg

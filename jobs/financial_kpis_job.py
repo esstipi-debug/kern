@@ -29,6 +29,7 @@ from src.financial_kpis import (
     inventory_to_sales,
     inventory_turns,
     sell_through,
+    stockout_rate,
 )
 
 _PRODUCT_COLS = ("product_id", "sku", "SKU", "item", "Product")
@@ -64,6 +65,7 @@ class FinancialReport:
     gmroi: float | None
     sell_through: float | None
     inventory_to_sales: float | None
+    stockout_rate: float | None     # from the availability log; None when nobody supplied it
     dso: float | None               # from the AR ledger; None when nobody supplied it
     dpo: float | None               # from the AP ledger; None when nobody supplied it
     cash_to_cash: float | None
@@ -165,7 +167,12 @@ def prepare(data_path: str, params: dict | None = None) -> list[dict]:
 
 
 def run(
-    records: list[dict], *, dso: float | None = None, dpo: float | None = None
+    records: list[dict],
+    *,
+    dso: float | None = None,
+    dpo: float | None = None,
+    stockout_periods: float | None = None,
+    total_periods: float | None = None,
 ) -> FinancialReport:
     """Roll up the records and compute the inventory-finance KPI pack.
 
@@ -177,6 +184,13 @@ def run(
     Defaulting them to 0.0 made ``cash_to_cash`` return ``DIO + 0 - 0 == DIO`` and the
     deck print it as a measured cycle. Unsupplied is ``None``; a supplied 0.0 (cash on
     delivery) is still a real measurement.
+
+    ``stockout_periods``/``total_periods`` vienen del log de disponibilidad, que un
+    corte de inventario tampoco contiene: el archivo dice cuanto stock hay HOY, no
+    cuantos periodos hubo cero. Mismo trato que ``dso``/``dpo``: sin suministrar es
+    ``None``, y un 0.0 suministrado ("miramos 90 dias y no quebramos nunca") es una
+    medicion real. La funcion ya estaba escrita y probada en ``src/financial_kpis.py``
+    desde hacia meses; lo que faltaba era exactamente esta linea que la llama.
     """
     total_cogs = sum(r["cogs"] for r in records)
     total_inv = sum(r["avg_inventory_value"] for r in records)
@@ -218,6 +232,10 @@ def run(
         ),
         inventory_to_sales=(
             inventory_to_sales(total_inv, net_sales) if net_sales is not None else None
+        ),
+        stockout_rate=(
+            stockout_rate(stockout_periods, total_periods)
+            if stockout_periods is not None and total_periods is not None else None
         ),
         dso=dso,
         dpo=dpo,
@@ -301,6 +319,7 @@ def build_deck(
             ("sell-through", report.sell_through),
             ("inventory-to-sales", report.inventory_to_sales),
             ("cash-to-cash", report.cash_to_cash),
+            ("stockout rate", report.stockout_rate),
         ) if value is None
     ]
     if unmeasurable:
@@ -309,6 +328,16 @@ def build_deck(
             f"{', '.join(unmeasurable)} - the inputs were absent, so they are reported as "
             f"'{not_measured(lang)}' rather than as a figure.",
             impact="supply the missing column(s) to complete the finance pack",
+        ))
+    if report.stockout_rate is not None:
+        findings.append(Finding(
+            "Availability paid for with stockouts",
+            f"{report.stockout_rate:.1%} of the observed periods were spent out of stock — "
+            "the service side of the same inventory the KPIs above call efficient.",
+            impact=(
+                "turns and GMROI reward holding less; this is the number that says when "
+                "holding less started costing sales"
+            ),
         ))
     measured_worst = [s for s in report.worst if s.gmroi is not None]
     if measured_worst:

@@ -288,7 +288,17 @@ def verify_integrated_plan(bundle: IntegratedPlanBundle) -> list[str]:
     coherence-check kinds present, internally-consistent counts) -- a
     FAILED coherence check is an intended FINDING this deliverable reports
     to a human (see ``jobs.integrated_plan``'s module docstring), never
-    itself a QA failure that blocks the deliverable.
+    itself a QA failure that blocks the deliverable. A NOT-EVALUABLE check
+    is likewise a valid, declared delivery here: whether the plan is allowed
+    to CLAIM coherence on top of one is ``jobs.integrated_plan.verify``'s
+    question, not this gate's.
+
+    ``plan.n_checks_passed`` and ``bundle.tally.n_passed`` are deliberately NOT
+    compared: they count different things on purpose. The first is the engine's
+    arithmetic over every check it ran, including any it resolved against a
+    placeholder input; the second counts only the checks that could be evaluated.
+    Reconciling them would mean deciding the engine's naive count is the truth,
+    which is the defect the tally exists to undo.
     """
     issues: list[str] = list(forecast_job.verify(bundle.forecast_report))
     plan = bundle.plan
@@ -299,6 +309,23 @@ def verify_integrated_plan(bundle: IntegratedPlanBundle) -> list[str]:
         issues.append("integrated_plan: n_checks does not match len(checks)")
     if plan.n_checks_passed + plan.n_checks_failed != plan.n_checks:
         issues.append("integrated_plan: n_checks_passed + n_checks_failed != n_checks")
+
+    # The tally must account for every check the engine produced, exactly once:
+    # a result quietly dropped from all three buckets would shrink the "N/M
+    # evaluated" denominator with nothing to show for it.
+    tally = bundle.tally
+    if tally.n_total != len(plan.checks):
+        issues.append(
+            f"integrated_plan: the coherence tally accounts for {tally.n_total} check(s) but "
+            f"the plan holds {len(plan.checks)}")
+    tallied = sorted(
+        [(c.check, c.product_id) for c in tally.passed + tally.failed]
+        + [(u.check, u.product_id) for u in tally.unevaluable]
+    )
+    if tallied != sorted((c.check, c.product_id) for c in plan.checks):
+        issues.append(
+            "integrated_plan: the coherence tally is not a partition of the plan's checks "
+            f"(tallied {tallied})")
 
     present_kinds = {c.check for c in plan.checks}
     missing_kinds = _REQUIRED_INTEGRATED_PLAN_CHECKS - present_kinds

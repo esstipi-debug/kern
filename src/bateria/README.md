@@ -47,7 +47,7 @@ import src.bateria.comprobaciones  # NO es opcional -- ver abajo
 from src.bateria.scorer import puntuar
 
 p = puntuar()
-print(p.puntos, p.porcentaje)  # 7.5 37.5
+print(p.puntos, p.porcentaje)  # 13.0 65.0  (o: python scripts/bateria_puntaje.py)
 ```
 
 > **Sin ese import el marcador da 0,0% y no falla nada.** `_REGISTRO` se puebla por
@@ -58,16 +58,21 @@ print(p.puntos, p.porcentaje)  # 7.5 37.5
 
 ### El puntaje de hoy
 
-**37,50% · 7,5/20**, medido sobre `b0b7bb6` y reproducible: dos corridas seguidas dan
-el mismo vector de estados.
+**65,00% · 13/20**, medido sobre `1aa5098` (2026-09-05) y reproducible: dos corridas
+seguidas dan el mismo vector de estados. El numero y la tabla los emite
+`python scripts/bateria_puntaje.py --markdown`; no se tipean.
 
 | Estado | N | Tareas |
 |---|---|---|
-| `CUMPLE` | 6 | T01, T04, T06, T08, T09, T20 |
-| `PARCIAL` | 3 | T02, T12, T13 |
-| `NO_CUMPLE` | 4 | T05, T07, T10, T14 |
+| `CUMPLE` | 13 | T01, T02, T04, T05, T06, T07, T08, T09, T10, T12, T13, T14, T20 |
 | `SIN_DATO` | 2 | T03, T11 |
-| `FUERA_DE_ALCANCE` | 5 | T15–T19 |
+| `FUERA_DE_ALCANCE` | 5 | T15, T16, T17, T18, T19 |
+
+> El puntaje anterior publicado aqui (37,50% · 7,5/20, sobre `b0b7bb6`) quedo 160
+> commits atras del harness: la mitad de las tareas que decia "a medias" o "no
+> cumple" ya cumplian. Por eso desde el 2026-09-05
+> `tests/test_bateria_puntaje_publicado.py` exige que este documento diga lo que el
+> harness da, y congela el vector de estados.
 
 Dos cosas que ese número exige aclarar, o la próxima corrida parecerá una regresión:
 
@@ -93,10 +98,11 @@ columnas exactas que habría que pedirle a un cliente.
 > otras **diez** son hueco de entregable: el dato perfecto no las mueve. Desglose
 > con evidencia en la §2 de `documentation/KERN_BATERIA_20_TAREAS.md`.
 
-**Nada lo congela.** Ningún test fija el agregado y la CI no corre la batería —
-`tests/test_bateria_scorer.py` cubre la aritmética, no el resultado. Un cambio en
-`jobs/` puede mover el marcador sin que nada se ponga rojo. Re-córrela antes de
-citarla.
+**Lo congela un test.** `tests/test_bateria_puntaje_publicado.py` corre la batería
+entera en la CI, fija el vector de estados (`PUNTAJE_CONGELADO`) y exige que este
+README y `documentation/KERN_BATERIA_20_TAREAS.md` publiquen el mismo número que
+`scripts/bateria_puntaje.py`. Un cambio en `jobs/` que mueva el marcador pone rojo
+ese test; subirlo o bajarlo es un diff explícito, con el motivo en el commit.
 
 ## Discrepancias con el doc publicado — ambas cerradas
 

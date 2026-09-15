@@ -5,11 +5,12 @@ deliverable, routing to the right capability.
 
 ## Capabilities
 
-**49 registered tools** — source of truth is `build_default_registry()` in
+**57 registered tools** — source of truth is `build_default_registry()` in
 [`tools.py`](tools.py); run it yourself rather than trusting a static count here,
 since it changes with every new `feat: wire ... as an agent tool` PR. Every tool
 follows the exact same `prepare → run → qa → deliver` contract; adding one is a
-single `register()` call, no routing edits.
+single `register()` call at the routing layer -- no special-casing -- though the
+full wiring touches eight fixed places (see `.specify/memory/constitution.md`).
 
 | Area | Tools |
 |---|---|
@@ -17,10 +18,15 @@ single `register()` call, no routing edits.
 | Inventory & replenishment | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` · `shopify_replenishment` · `channel_replenishment` · `excel_replenishment` · `hat_tension` · `hat_settlement` |
 | Inventory control & health | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` · `intake_scan` |
 | Procurement & sourcing | `sourcing` · `supplier_management` · `landed_cost` · `acceptance_sampling` |
+| Inventory & replenishment | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` · `excel_replenishment` · `hat_tension` · `hat_settlement` |
+| Inventory control & health | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` · `intake_scan` · `org_friction_audit` · `service_scan` |
+| Procurement & sourcing | `sourcing` · `supplier_management` · `landed_cost` · `import_case` · `acceptance_sampling` |
 | Network & logistics | `facility_location` · `network_design` · `transportation` · `vehicle_routing` · `warehouse_layout` · `slotting` · `queuing` · `scheduling` · `flow_map` |
 | Pricing & finance | `pricing` · `price_intelligence` · `price_watch` · `financial_kpis` · `cost_to_serve` · `learning_curve` |
 | Returns, risk & benchmarking | `returns` · `risk` · `dea` · `disruption_scan` |
 | Planning cadence & projects | `sop` · `earned_value` · `launch_readiness` · `cross_impact` |
+| Procedures & standard work | `procedure_audit` · `procedure_draft` |
+| ISO operations & evidence | `iso_ops` · `audit_evidence` · `scor_iso_audit` |
 | Leadership | `leadership_chain` |
 
 Three worked examples, one per input/deliverable shape:

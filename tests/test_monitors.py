@@ -477,3 +477,67 @@ def test_run_all_monitors_runs_the_lead_time_drift_monitor_too(tmp_path):
     events = run_all_monitors(store=store)
 
     assert {e.type for e in events} == {EVENT_LEAD_TIME_DRIFT}
+
+
+# ---- cadence_minutes dejo de ser decorativo ---------------------------------
+
+def test_la_cadencia_del_job_sale_del_yaml_y_no_de_una_constante(tmp_path):
+    """Editar `cadence_minutes` tiene que mover el trigger del job.
+
+    Antes no lo movia: `MONITORS_CADENCE_MINUTES` era un 60 escrito a mano cuyo
+    comentario prometia coincidir con el YAML. Dos copias del mismo numero
+    sincronizadas por memoria -- el modo de falla de una config que parece viva.
+    """
+    from jobs.monitors_job import monitors_cadence_minutes
+
+    cfg = tmp_path / "monitors.yaml"
+    cfg.write_text(
+        "monitors:\n"
+        "  rop_breach:\n"
+        "    enabled: true\n"
+        "    cadence_minutes: 15\n"
+        "  excess_growing:\n"
+        "    enabled: true\n"
+        "    cadence_minutes: 1440\n",
+        encoding="utf-8",
+    )
+
+    assert monitors_cadence_minutes(cfg) == 15, "manda el monitor mas exigente"
+
+
+def test_un_monitor_apagado_no_arrastra_la_cadencia(tmp_path):
+    """Si el mas rapido esta deshabilitado, no puede fijar el reloj de los demas."""
+    from jobs.monitors_job import monitors_cadence_minutes
+
+    cfg = tmp_path / "monitors.yaml"
+    cfg.write_text(
+        "monitors:\n"
+        "  rop_breach:\n"
+        "    enabled: false\n"
+        "    cadence_minutes: 15\n"
+        "  excess_growing:\n"
+        "    enabled: true\n"
+        "    cadence_minutes: 720\n",
+        encoding="utf-8",
+    )
+
+    assert monitors_cadence_minutes(cfg) == 720
+
+
+def test_un_config_ilegible_no_tumba_el_import(tmp_path):
+    """Cae al piso documentado en vez de explotar al importar el modulo."""
+    from jobs.monitors_job import _CADENCE_FALLBACK_MINUTES, monitors_cadence_minutes
+
+    roto = tmp_path / "roto.yaml"
+    roto.write_text("monitors: [esto no es un mapping]\n", encoding="utf-8")
+
+    assert monitors_cadence_minutes(roto) == _CADENCE_FALLBACK_MINUTES
+    assert monitors_cadence_minutes(tmp_path / "no-existe.yaml") == _CADENCE_FALLBACK_MINUTES
+
+
+def test_el_job_de_produccion_usa_la_cadencia_derivada():
+    """El puente completo: YAML -> funcion -> trigger_args del ScheduledJob."""
+    from jobs.monitors_job import MONITORS_CADENCE_MINUTES, MONITORS_JOB
+
+    assert MONITORS_JOB.trigger == "interval"
+    assert MONITORS_JOB.trigger_args == {"minutes": MONITORS_CADENCE_MINUTES}

@@ -111,7 +111,7 @@ _HEAD = """<!DOCTYPE html>
 <header>
   <div class="wrap">
     <span class="brand"><span class="d">&#9672;</span> Kern</span>
-    <nav><a href="/paquetes">Paquetes</a><a href="/demo">Demo</a><a href="/pricing">Pricing</a><a href="/tower">Tower</a><a href="/">Dashboard</a></nav>
+    <nav><a href="/blog">Blog</a><a href="/paquetes">Paquetes</a><a href="/demo">Diagnóstico</a><a href="/pricing">Pricing</a><a href="/tower">Tower</a><a href="/">Dashboard</a></nav>
   </div>
 </header>
 <main class="wrap">
@@ -248,6 +248,40 @@ def _operator_block(profile: OperatorProfile) -> str:
     )
 
 
+_ROI_BANNER_HTML = """
+<div class="panel" style="margin-top:18px;display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between">
+  <div style="flex:1 1 280px">
+    <div class="eyebrow" style="margin-bottom:6px">Calculadora ROI instantanea</div>
+    <div style="font-weight:700">&iquest;Cu&aacute;nto stock ten&eacute;s?</div>
+    <div class="muted" style="font-size:13px">Kern libera 20% de capital inmovilizado. Cuesta $79. Calcula tu retorno al instante.</div>
+  </div>
+  <div style="flex:0 1 360px;display:flex;flex-direction:column;gap:8px;min-width:260px">
+    <label for="roi-input" style="font:600 12px/1 var(--mono);color:var(--muted)">Stock valorizado (USD)</label>
+    <input id="roi-input" type="number" min="0" step="1000" inputmode="numeric" placeholder="Ej: 50000" style="background:var(--panel-2);border:1px solid var(--line-2);border-radius:8px;color:var(--txt);font:600 14px/1 var(--sans);padding:10px 12px">
+    <div id="roi-output" style="font:600 13px/1.4 var(--mono);color:var(--accent-bright);min-height:1.4em">Ingresa tu stock para ver el ROI.</div>
+  </div>
+</div>
+"""
+
+_ROI_BANNER_SCRIPT = """
+<script src="/static/roi-calculator.js"></script>
+<script>
+(function(){
+  var input=document.getElementById("roi-input");
+  var out=document.getElementById("roi-output");
+  if(!input||!out) return;
+  function render(){
+    var v=parseFloat(input.value);
+    if(!isFinite(v)||v<=0){ out.textContent="Ingresa tu stock para ver el ROI."; return; }
+    var r=calculateROI(v);
+    out.textContent="Kern libera 20% = $"+Math.round(r.freed).toLocaleString("en-US")+". Cuesta $79. ROI "+r.roi.toFixed(1)+"x";
+  }
+  input.addEventListener("input", render);
+})();
+</script>
+"""
+
+
 def render_index_html(offers: tuple[Offer, ...], profile: OperatorProfile) -> str:
     cards = []
     has_band_picker = False
@@ -276,9 +310,11 @@ def render_index_html(offers: tuple[Offer, ...], profile: OperatorProfile) -> st
         + "herramientas del motor -- nunca una sola tool suelta. "
         + "Cada resultado sale citado contra la base de conocimiento y pasa un gate de QA "
         + "antes de entregarse.</p>"
+        + _ROI_BANNER_HTML
         + f'<div class="grid">{"".join(cards)}</div>'
         + "</section>"
         + _operator_block(profile)
+        + _ROI_BANNER_SCRIPT
         + (_BAND_PICKER_SCRIPT if has_band_picker else "")
         + _FOOT
     )

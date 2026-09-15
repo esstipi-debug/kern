@@ -40,6 +40,7 @@ UNBANDED = "unbanded"
 
 _RETAINER_KEY = "retainer"
 _RETAINER_BASE_PRICE = 4_500.0
+_STARTER_MASS_KEY = "starter_mass"
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,11 @@ _REVENUE_BANDS: dict[str, RevenueBand] = {
         min_annual_revenue=1_000_000.0, max_annual_revenue=3_000_000.0,
         base_price=900.0,
     ),
+    _STARTER_MASS_KEY: RevenueBand(
+        key="starter_band", label="USD 1,000,000-3,000,000/yr",
+        min_annual_revenue=1_000_000.0, max_annual_revenue=3_000_000.0,
+        base_price=79.0,
+    ),
     "growth": RevenueBand(
         key="growth_band", label="USD 3,000,000-8,000,000/yr",
         min_annual_revenue=3_000_000.0, max_annual_revenue=8_000_000.0,
@@ -120,11 +126,12 @@ _BASE_PRICE: dict[str, float] = {
 
 _FAIRNESS_RULES: dict[str, SkuFairnessRule] = {
     "starter": SkuFairnessRule(included_skus=500, block_size=250, block_increment=40.0, ceiling=1_500.0),
+    _STARTER_MASS_KEY: SkuFairnessRule(included_skus=500, block_size=250, block_increment=25.0, ceiling=290.0),
     "growth": SkuFairnessRule(included_skus=2_000, block_size=500, block_increment=60.0, ceiling=3_200.0),
     # scale and retainer intentionally absent -> flat, no fairness rule.
 }
 
-VALID_PACKAGE_KEYS = ("starter", "growth", "scale", _RETAINER_KEY)
+VALID_PACKAGE_KEYS = ("starter", _STARTER_MASS_KEY, "growth", "scale", _RETAINER_KEY)
 
 
 def _find_band_for_revenue(annual_revenue: float) -> str | None:
@@ -213,6 +220,12 @@ def quote_price(package_key: str, annual_revenue: float, sku_count: int | None =
         revenue_band_key = UNBANDED
         revenue_band_match = True
         suggested_package_key = None
+    elif package_key == _STARTER_MASS_KEY:
+        revenue_band_key = _REVENUE_BANDS[package_key].key
+        revenue_band_match = actual_band_key == "starter"
+        suggested_package_key = (
+            actual_band_key if actual_band_key is not None and actual_band_key != "starter" else None
+        )
     else:
         revenue_band_key = _REVENUE_BANDS[package_key].key
         revenue_band_match = actual_band_key == package_key

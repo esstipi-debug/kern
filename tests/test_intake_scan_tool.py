@@ -2,9 +2,9 @@
 prepare -> run -> qa -> deliver path through the registry's own Tool object
 (not the pure job functions, which tests/test_intake_scan_job.py covers)."""
 import pandas as pd
+
 from nosilo_core import llm
 from nosilo_core.types import JobRequest
-
 from scm_agent import intent, tools
 
 

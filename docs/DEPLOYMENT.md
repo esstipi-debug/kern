@@ -5,55 +5,113 @@ public deploy needs the access controls turned on and TLS terminated at a proxy.
 This is the checklist. See [SECURITY.md](../SECURITY.md) for the threat model and
 the controls already enforced in code.
 
-## 0. The private dependency (do this before any deploy path)
+## 0. There is no private dependency any more (2026-09-11)
 
-`nosilo-core` — the control plane the app is built on — lives in a **private**
-repository and is pinned by tag in `requirements.txt` and `pyproject.toml`. Every
-build path resolves it over `git+https`, so every build path needs a credential.
-Without one the build fails at dependency resolution, before any of the rest of
-this document matters.
-
-Create the token once:
-
-1. GitHub → Settings → Developer settings → **Fine-grained personal access token**
-2. Repository access: **only** `esstipi-debug/nosilo-core`
-3. Permissions: **Contents → Read-only**. Nothing else.
-
-Then give it to whichever build path you use:
-
-| Path | How | Where the token lives |
-|---|---|---|
-| **GitHub Actions** | Actions secret `NOSILO_CORE_TOKEN` | Only in the runner, only for the job |
-| **Docker / Fly** | `--secret id=nosilo_token,env=NOSILO_CORE_TOKEN` | Only in the RUN that installs; never in a layer |
-| **Railway** | Service variable `NOSILO_CORE_TOKEN` | ⚠️ also present at runtime — see below |
+`nosilo_core` — the control plane the app is built on — used to live in a private
+repository, pinned by tag, resolved over `git+https`. **Every build path needed a
+credential**, and that is gone: the code lives in this repo, in `nosilo_core/`.
 
 ```bash
-export NOSILO_CORE_TOKEN=github_pat_...
-
-# Docker (BuildKit is the default in modern Docker; the syntax directive at the
-# top of the Dockerfile pins the frontend that provides --mount=type=secret)
-docker build --secret id=nosilo_token,env=NOSILO_CORE_TOKEN -t kern .
-
-# Fly uses the same Dockerfile
-fly deploy --build-secret nosilo_token="$NOSILO_CORE_TOKEN"
-
-# Railway reads it as a build-time variable
-railway variables set NOSILO_CORE_TOKEN="$NOSILO_CORE_TOKEN"
+docker build -t kern .          # no --secret, no --ssh, no agent
 ```
 
-**Why the token is never written with `git config --global`.** That command
-writes it into `/root/.gitconfig`, which is part of the committed image layer and
-readable by anyone who pulls it. Every path here passes the credential through
-`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0` instead, which git
-reads from the environment and never persists.
+El comando de instalacion de la seccion 2 no cambia: sigue nombrando `[core]`,
+que ahora esta vacio (ver el ultimo parrafo de esta seccion).
 
-**Railway is the weak spot, and it is inherent.** Nixpacks has no equivalent of a
-BuildKit secret mount, so the token has to be a service variable — and Railway
-service variables are present in the runtime environment too, not just the build.
-Anything that can read the app's environment can read the token. That is why the
-scope above is one repository, read-only: it is the difference between a leak
-that exposes source and one that exposes an account. Rotate it if the deploy
-environment is ever compromised, and prefer the Fly path when the choice is open.
+What it cost while it lasted, so nobody re-introduces it: a secret spread across
+six build paths, one person who could rotate it, twenty-four days of CI running
+blind on a PAT that was never set, ten days with no published image over a
+premise that turned out to be false ("BuildKit does not forward SSH"), and any
+partner wanting to run Kern having to ask someone for credentials. The package
+had exactly one real consumer — this repo.
+
+**What did NOT go away is the boundary.** `nosilo_core` stays domain-agnostic: it
+knows nothing about SKUs, suppliers or safety stock, and `src/`/`packs/` depend on
+it and never the reverse. Two tests enforce that direction
+(`tests/test_core_boundary.py`, `tests/test_pack_boundary.py`), and they are the
+reason the split can be undone without losing what it was for.
+`tests/test_ci_prod_boot_extras.py` now fails if any install path asks for a
+credential again.
+
+The `[core]` extra is kept, empty, on purpose: `pip install -e ".[core,web,mcp]"`
+is the command written in this page, in the Dockerfile and in several sessions'
+notes. Deleting the extra breaks those commands with an error that does not say
+what happened.
+
+## 0b. Where Kern writes: `KERN_DATA_DIR`
+
+Everything Kern persists — the events ledger, the autonomy store, the scheduler
+jobstore, the state store, the pricing ledger, the SKU map, the MCP key store and
+the two lead directories — lives under **one** root:
+
+```bash
+docker run -p 8000:8000 -e KERN_DATA_DIR=/data -v kern_data:/data   ghcr.io/esstipi-debug/kern:main
+```
+
+That is the whole contract. Without it, Kern still runs — it writes into `data/`
+inside the container, which is the image's ephemeral rootfs and is wiped on every
+restart. **A client who wants to keep anything sets this one variable.**
+
+Three levels of precedence, most specific first:
+
+| Level | Wins when | Used by |
+|---|---|---|
+| the store's own `LINCHPIN_*_PATH` / `_DIR` | it is set | this deploy's `fly.toml`, which sets eight of them by hand |
+| `KERN_DATA_DIR` | no per-store variable | a self-serve client, and anyone who wants one knob |
+| the store's historical default | neither | local development, unchanged |
+
+With `KERN_DATA_DIR` unset nothing moves, so adding it to an existing deploy is a
+no-op until you set it. `KERN_DATA_DIR=/data` reproduces exactly the layout the
+eight `fly.toml` lines already produce — `tests/test_data_paths.py` reads
+`fly.toml` and asserts that equivalence, so the two cannot drift apart.
+
+The registry lives in [`src/data_paths.py`](../src/data_paths.py). **A new durable
+store goes in it**, not in a fresh `"data/..."` literal; a guard test fails the
+build otherwise. That guard is also what caught `LINCHPIN_SCHEDULER_PATH`, the one
+durable store PR #188 missed when it re-rooted the other five.
+
+Read-only configuration (`config/markets`, `config/sites`, `config/verticals`,
+`config/monitors.yaml`, `config/retention.yaml`, `config/autonomy.yaml`,
+`config/event_routing.yaml`) is deliberately **not** under this root: it ships
+inside the image, and pointing it at a client's empty volume would break the app.
+
+## 0c. Auth: `KERN_API_KEY`, y por que grita si falta
+
+`POST /api/jobs` corre trabajos contra tus datos y `GET /jobs-output/*` sirve los
+entregables. La key los cierra:
+
+```bash
+docker run -p 8000:8000 -e KERN_API_KEY=<una-clave-larga>   ghcr.io/esstipi-debug/kern:main
+```
+
+`LINCHPIN_API_KEY` sigue funcionando y **gana si estan las dos** — es la que este
+deploy tiene como secret de Fly, y no se toca. `KERN_API_KEY` es el nombre del
+contrato self-serve.
+
+Tres estados, no dos:
+
+| Estado | Cuando | Que pasa al arrancar |
+|---|---|---|
+| **configurada** | la variable trae valor | silencio; el gate esta puesto |
+| **apagada a proposito** | la variable esta declarada y vacia | dos lineas en INFO: sigue abierto, pero fue una decision |
+| **sin configurar** | ninguna de las dos existe | banner en WARNING de diez lineas, con el comando para cerrarlo |
+
+La distincion entre las dos ultimas es deliberada: un duenno-operador solo en su
+LAN que apaga la auth no tiene que recibir la misma alarma que alguien que se la
+olvido y expuso el puerto. Repetir un WARNING que el operador ya decidio ignorar
+entrena a ignorar los WARNING.
+
+**El banner NO mira `LINCHPIN_ENV`.** El aviso que existia antes,
+`security.production_warnings()`, arranca con `if ENV != "production": return []`,
+y un cliente que corre `docker run` no setea `LINCHPIN_ENV` — asi que el unico
+aviso que habia estaba apagado justo en el caso que importa. Medido antes de este
+cambio, importando `webapp.app` con el entorno limpio: `API_KEY=''`,
+`RATE_LIMIT=0` y **cero lineas de log sobre seguridad**.
+
+`production_warnings()` queda igual: `LINCHPIN_REQUIRE_SECURE` se niega a bootear
+cuando esa lista trae algo, y volverla no vacia en development habria roto el
+arranque de cualquiera que la tuviera puesta. El banner es un canal nuevo, no un
+reemplazo.
 
 ## 1. Production checklist
 
@@ -85,9 +143,16 @@ missing control (no API key, no rate limit). With `LINCHPIN_REQUIRE_SECURE=1` it
 ## 2. Run it
 
 ```bash
-pip install -e ".[web,mcp]"
+pip install -e ".[core,web,mcp]"
 uvicorn webapp.app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
+
+`[core]` esta VACIO desde el 2026-09-11 (ver seccion 0): `nosilo_core` vive en
+este repo y no se instala. El nombre se conserva porque este comando esta escrito
+en varios lugares, y un extra que desaparece los rompe con un error que no dice
+que paso. Los que si importan son `[web]` y `[mcp]`. Same failure mode as the missing `[mcp]` below, same
+cause: a bespoke install command that drifted from what the app actually
+imports. Reproduced in an isolated py3.12 venv on 2026-08-23, before and after.
 
 `[mcp]` is required, not optional, despite the name: `webapp/app.py` unconditionally
 mounts the MCP server (`/mcp`) at import time, so `webapp.mcp_server`'s `from
@@ -300,3 +365,74 @@ for an on-demand manual run from the Actions tab.
 - Trigger a manual run any time via **Actions → price-watch-cron → Run
   workflow** (`workflow_dispatch`) instead of waiting for the next scheduled
   tick, useful right after adding the secret to confirm the wiring end-to-end.
+
+## 7. Automated deployment (CI/CD)
+
+`.github/workflows/fly-deploy.yml` deploys to production on every push to
+`main` (flyctl's default rolling strategy, health-gated against `fly.toml`'s
+existing `/api/health` check), followed by a post-deploy curl retry loop as
+a second signal. If the release comes up unhealthy, the workflow fails red
+â€” check `flyctl logs -a linchpin` and consider `flyctl releases rollback`.
+
+**Requires two one-time manual steps â€” an agent cannot do either. Do step 2
+before step 1, since step 1's secret lives inside the environment step 2
+creates:**
+
+1. **Create the `production` GitHub Environment** (repo Settings >
+   Environments > New environment > name it exactly `production`) with:
+   - **"Required reviewers" checked, add yourself.**
+   - **"Deployment branches and tags" restricted to `main` only.** This
+     matters because the workflow's `workflow_dispatch` trigger has no
+     branch restriction of its own â€” without this environment-level
+     restriction, someone with write access could manually dispatch the
+     workflow against an arbitrary branch and an approver could unknowingly
+     approve a non-`main` deploy.
+2. **Add `FLY_API_TOKEN` as an Environment secret scoped to `production`**
+   (inside that same environment's settings page: Environment secrets >
+   Add secret â€” **not** repo-level Settings > Secrets and variables >
+   Actions). Generate a deploy-scoped token with
+   `flyctl tokens create deploy -a linchpin`, or from the Fly.io dashboard.
+   **This must be an environment secret, not a repository secret** â€” a
+   repository secret is readable by any workflow in this repo regardless of
+   which (if any) environment it declares, which would let a future
+   workflow (e.g. one the autonomous PR-merge loop adds) read
+   `FLY_API_TOKEN` and deploy without ever triggering step 1's approval
+   gate â€” silently defeating the entire point of this section. Until the
+   environment secret is set, the workflow fails fast with a clear
+   `::error::` message rather than silently no-op'ing.
+
+**Why the approval gate matters here specifically:** this repo pairs
+automated deployment with an autonomous PR-review-and-merge scheduled task
+(see project memory â€” "kern-pr-review-loop") that can merge a PR to `main`
+without a human clicking anything. The single Fly.io machine backing this
+app is a memory-constrained 512MB shared-CPU VM with a **documented OOM
+crash history** (see `fly.toml`'s own comment) and **no automated
+rollback** â€” a bad autonomous merge reaching production unattended could
+take the app down with nobody aware until someone happens to check. The
+`production` environment's required-reviewer gate means PRs can still merge
+automatically, but the actual deploy â€” the step that can break live traffic
+â€” always waits for a human to click "approve" on the pending deployment in
+GitHub's UI before it runs. This was an explicit design decision (not a
+leftover TODO) after an adversarial review flagged the unattended-deploy
+risk on this specific infrastructure; do not remove the `environment:` line
+without addressing that risk another way (e.g. staging + auto-rollback)
+first.
+
+### Estado al 2026-08-25 — el push llega desactivado
+
+El workflow se rescató de la rama `ci/fly-auto-deploy`, cuyo PR (#152) se
+cerró sin mergear en agosto. Llega con el disparo por `push` **comentado**,
+y por una razón concreta: el entorno `production` ya existe en el repo pero
+está vacío — sin reviewers requeridos, sin restricción de rama y sin
+`FLY_API_TOKEN`. Verificable con:
+
+    gh api repos/esstipi-debug/kern/environments/production
+    gh api repos/esstipi-debug/kern/environments/production/secrets
+
+Con `push` activo en ese estado, cada merge a `main` fallaría en el primer
+paso, y el gate de aprobación descrito arriba no estaría en efecto porque el
+entorno no tiene reglas. Mientras tanto el deploy se dispara a mano desde
+**Actions > Fly Deploy > Run workflow**.
+
+Una vez hechos los dos pasos manuales, descomentar las dos líneas de `push`
+en `.github/workflows/fly-deploy.yml` y el auto-deploy queda activo.

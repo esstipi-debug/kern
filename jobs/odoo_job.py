@@ -20,7 +20,7 @@ from pathlib import Path
 
 from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
 from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
-from src.connectors.odoo import OdooClient, OdooConnector, OdooRPC, demo_odoo
+from src.connectors.odoo import OdooClient, OdooConnector, OdooError, OdooRPC, demo_odoo
 from src.connectors.replenish import ReplenishmentLine, plan_replenishment
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
@@ -38,6 +38,54 @@ class OdooReplenishmentReport:
     cover_periods: float
     outcome: GuidedOutcome
     summary: str
+    #: SKUs whose supplier line carries no declared lead time
+    #: (``OdooLeadTimes.missing``). Travels on the report, not just in a log,
+    #: because a gap that never reaches the deck reads as the absence of a
+    #: problem. The tuple and not the connector's prose: the connector reports
+    #: the fact in its own voice, this deck writes the sentence in its own.
+    #: Empty by default, so an Odoo with every lead time filled says nothing.
+    lead_time_missing: tuple[str, ...] = ()
+    #: SKU -> unidades en OC abiertas que el plan desconto, o ``None`` cuando no se
+    #: pudo leer (sin modulo de Compras, sin ``qty_received``). ``None`` y ``{}``
+    #: significan cosas distintas: el primero es "no se pudo medir", el segundo
+    #: "medido, y no viene nada".
+    on_order_by_sku: dict[str, float] | None = None
+    #: En palabras, que se neteo o por que no. Viaja al resumen, al deck y al CSV.
+    netting_note: str = ""
+
+
+#: How many SKUs the missing-lead-time finding names before summarising the rest.
+#: A finding listing five thousand codes does not get read; one listing none is
+#: not actionable. Mirrors the connector's own cap for the same reason.
+_MAX_SKU_NAMED = 10
+
+
+def read_on_order(connector: OdooConnector) -> tuple[dict[str, float] | None, str]:
+    """Lo que ya viene en camino por SKU, o por que no se pudo saber.
+
+    La reposicion dimensiona contra la POSICION (stock + en camino), no contra el
+    estante, para no volver a comprar lo que ya se pidio. Cuando el conector no
+    puede leer las OC abiertas devuelve ``None`` con la razon, nunca ``{}``: un mapa
+    vacio se leeria aguas abajo como "medido, y no viene nada", y cada linea del plan
+    declararia una posicion que nadie midio.
+    """
+    try:
+        abiertas = connector.open_purchase_qty_by_sku()
+    except OdooError as exc:
+        return None, f"no se desconto lo que viene en camino: {exc}"
+    partes = [f"descontado lo que viene en camino en {len(abiertas.by_sku)} SKU(s) con OC abierta"]
+    descartadas = abiertas.dropped.get("uom_distinta", 0)
+    if descartadas:
+        partes.append(f"{descartadas} linea(s) de OC en otra unidad de medida quedaron sin contar")
+    no_verificables = abiertas.dropped.get("uom_no_verificable", 0)
+    if no_verificables:
+        partes.append(
+            f"{no_verificables} linea(s) de OC quedaron sin contar porque esta base no expone "
+            "la unidad de la linea (product_uom): el en-camino esta sub-estimado"
+        )
+    if abiertas.truncated:
+        partes.append("lectura truncada: el en-camino esta sub-estimado y el plan compra de mas")
+    return abiertas.by_sku, "; ".join(partes)
 
 
 def _make_rpc(params: dict) -> tuple[OdooRPC, str]:
@@ -136,7 +184,14 @@ def run(
     value (from Odoo's own product cost) - see ``_build_outcome``.
     """
     connector: OdooConnector = payload["connector"]
-    plan = plan_replenishment(connector, cover_periods=cover_periods, store=connector)
+    # La llamada completa, no el accesorio `lead_times()`: ese devuelve solo el
+    # diccionario y tira el aviso de los SKU sin plazo declarado, que es
+    # justamente lo que el deck tiene que decir.
+    plazos = connector.declared_lead_times()
+    on_order, netting_note = read_on_order(connector)
+    plan = plan_replenishment(
+        connector, cover_periods=cover_periods, store=connector, on_order_by_sku=on_order
+    )
     restock = dict(plan.restock)
     total = sum(restock.values())
     n_skus = len(plan.lines)
@@ -144,13 +199,14 @@ def run(
     restock_value = sum(qty * costs.get(sku, 0.0) for sku, qty in restock.items())
     summary = (
         f"Read {n_skus} product(s) from {payload['source']}; {len(restock)} below a "
-        f"{cover_periods:.0f}-period cover ({total:,.0f} units short)."
+        f"{cover_periods:.0f}-period cover ({total:,.0f} units short). {netting_note}."
     )
     return OdooReplenishmentReport(
         source=str(payload["source"]),
         lines=plan.lines,
         restock=restock,
-        lead_times=connector.lead_times(),
+        lead_times=plazos.declared,
+        lead_time_missing=plazos.missing,
         n_skus=n_skus,
         n_restock=len(restock),
         total_restock=total,
@@ -159,6 +215,8 @@ def run(
             len(restock), total, restock_value=restock_value, financial_threshold=financial_threshold
         ),
         summary=summary,
+        on_order_by_sku=on_order,
+        netting_note=netting_note,
     )
 
 
@@ -168,6 +226,22 @@ def verify(report: OdooReplenishmentReport) -> list[str]:
     if report.n_skus == 0:
         issues.append("no products read from Odoo")
     return issues
+
+
+def _plazo_declarado(lead_times: dict[str, float], sku: str) -> float | None:
+    """El plazo declarado del SKU, o ``None`` cuando el ERP no trae ninguno.
+
+    ``None`` y no ``0.0``: en un CSV se escribe como celda vacia, que es como se
+    dice "nadie lo midio" sin romper la columna numerica -- la palabra
+    ``src.deliverable.not_measured`` es para el deck, que lo lee una persona.
+
+    El default de ``0.0`` que habia aca fabricaba el mismo cero que el conector
+    ya dejo de fabricar (``src/connectors/odoo.py::declared_lead_times``), un
+    paso mas abajo y sobre la superficie que el cliente efectivamente mira. Dos
+    mitades del mismo defecto: arreglar una sola no cambia nada en pantalla.
+    """
+    valor = lead_times.get(sku)
+    return None if valor is None else round(valor, 1)
 
 
 def write_operational(report: OdooReplenishmentReport, out_dir: str | Path, client: str = "Client") -> dict[str, Path]:
@@ -181,7 +255,11 @@ def write_operational(report: OdooReplenishmentReport, out_dir: str | Path, clie
             "forecast_per_period": round(ln.forecast_per_period, 2),
             "target": round(ln.target, 2),
             "restock_qty": round(ln.restock_qty, 2),
-            "lead_time_days": round(report.lead_times.get(ln.sku, 0.0), 1),
+            "lead_time_days": _plazo_declarado(report.lead_times, ln.sku),
+            # En blanco (no 0) cuando no se pudo leer lo que viene en camino: la
+            # columna vacia dice "no medido", un cero diria "medido, nada en camino".
+            "on_order": "" if ln.on_order is None else round(ln.on_order, 2),
+            "position": "" if ln.position is None else round(ln.position, 2),
         }
         for ln in report.lines
     ]
@@ -206,6 +284,24 @@ def build_deck(
         # first, not buried under the routine findings.
         findings.append(Finding("Requires finance sign-off before acting", banner,
                                 impact="do not apply until the named approver signs off"))
+    if report.lead_time_missing:
+        # Before the figures and not after: it qualifies how every number below
+        # is read. A supplier missing from the analysis for want of a lead time
+        # reads as a supplier without problems unless someone says it was never
+        # looked at.
+        names = ", ".join(report.lead_time_missing[:_MAX_SKU_NAMED])
+        rest = len(report.lead_time_missing) - _MAX_SKU_NAMED
+        if rest > 0:
+            names += f" and {rest} more"
+        findings.append(Finding(
+            "Lead times the ERP does not record",
+            f"{len(report.lead_time_missing)} SKU(s) carry a supplier line with no declared "
+            f"lead time ({names}). They are reported without one rather than with zero: a "
+            "blank supplier delay is not a same-day supplier, and zero is the most "
+            "favourable reading available. The observed lead time is measured separately, "
+            "from receipt dates.",
+            impact="read the cover on those SKUs as unverified, not as instant resupply",
+        ))
     findings.append(
         Finding(
             f"{report.n_restock} SKU(s) below target cover",
@@ -214,6 +310,24 @@ def build_deck(
             impact="replenish to avoid stockouts on the thin SKUs",
         )
     )
+    if report.on_order_by_sku is None:
+        # Que el lector lo vea ANTES de aprobar: sin esto, cada cantidad de abajo
+        # puede estar contando de nuevo una OC que ya esta en camino.
+        findings.append(
+            Finding(
+                "Las cantidades NO descuentan lo que ya viene en camino",
+                report.netting_note or "no se pudo leer las ordenes de compra abiertas",
+                impact="restar a mano las OC abiertas antes de aprobar cualquier linea",
+            )
+        )
+    elif report.netting_note:
+        findings.append(
+            Finding(
+                "Cantidades netas de lo que ya viene en camino",
+                report.netting_note,
+                impact="las OC abiertas ya estan descontadas; no volver a restarlas",
+            )
+        )
     if short:
         worst = max(short, key=lambda ln: ln.restock_qty)
         findings.append(

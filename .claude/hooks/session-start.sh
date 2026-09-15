@@ -38,20 +38,38 @@ if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
 fi
 
 # -- 3. graphify: refresh the code graph (read by the L3 grounding layer) --
-if ! command -v graphify >/dev/null 2>&1; then
+#
+# Un install ROTO es peor que uno ausente, y `command -v` no los distingue. uv
+# instala `graphify` como un trampoline .exe que hardcodea la ruta del entorno
+# que lo creo; si ese entorno se borra, el .exe queda HUERFANO en ~/.local/bin:
+# sigue en PATH, `command -v` sigue diciendo que si, y toda invocacion muere con
+# "uv trampoline failed to canonicalize script path". El chequeo de presencia se
+# saltaba entonces exactamente la reinstalacion que existe para hacer, y dejaba
+# el grafo congelado detras de un aviso "non-fatal" que nadie mira.
+#
+# Dos correcciones, las dos verificadas el 2026-08-26 contra el binario roto:
+#   1. Se prueba que ARRANQUE, no que EXISTA.
+#   2. Se usa `--force`, NO `--reinstall`. Con trampolines huerfanos uv ya no
+#      reconoce la herramienta (`uv tool list` no la listaba) y `--reinstall`
+#      aborta con "Executables already exist ... use `--force` to overwrite".
+#      `--force` cubre los tres casos con un solo camino: ausente, entorno roto,
+#      y ejecutables huerfanos.
+graphify_arranca() { command -v graphify >/dev/null 2>&1 && graphify --version >/dev/null 2>&1; }
+
+if ! graphify_arranca; then
   if command -v uv >/dev/null 2>&1; then
-    uv tool install graphifyy >/dev/null 2>&1 || true
+    uv tool install --force graphifyy >/dev/null 2>&1 || true
   else
-    pip install -q graphifyy >/dev/null 2>&1 || true
+    python -m pip install -q --force-reinstall graphifyy >/dev/null 2>&1 || true
   fi
 fi
 
-if command -v graphify >/dev/null 2>&1; then
+if graphify_arranca; then
   if graphify update "$PROJECT_DIR" >/dev/null 2>&1; then
     echo "graphify: code graph refreshed (graphify-out/)"
   else
     echo "graphify: update skipped (non-fatal) — citations stay theory-only"
   fi
 else
-  echo "graphify: unavailable — install skipped, L3 citations stay theory-only"
+  echo "graphify: unavailable — install/repair failed, L3 citations stay theory-only"
 fi

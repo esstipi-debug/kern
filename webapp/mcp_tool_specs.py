@@ -10,6 +10,15 @@ Deliberately NOT here (see docs/MCP_SERVER.md "What's NOT here yet"):
 - `odoo_replenishment`, `excel_replenishment` - writeback tools; they mutate a
   client's system of record and stay behind the direct-client safety plane
   (`nosilo_core/writeback.py`), never on this anonymous-remote surface.
+- `repricing` - same rule, one step earlier. The tool itself only STAGES (it
+  never imports `apply_repricing`, stages against an in-memory copy of the
+  client's own current prices, and always returns HANDOFF), so nothing it does
+  writes anywhere. It is still off this surface on purpose: its entire subject
+  is a proposed change to a client's live prices, its output is a changeset
+  shaped to be applied, and an anonymous caller has no business composing one
+  against someone else's catalogue. Autonomy over a brand-new external write
+  surface is earned with A4 evidence (`jobs/repricing.py`'s own Golden Rule 11
+  note); a remote surface is not where that starts.
 - `leadership_chain` - takes a CHAIN scores dict / LLM-scored brief, not
   tabular rows; the rows->CSV bridge feeds it nothing usable.
 - `warehouse_layout` - a params-driven 3D layout generator (requires_data=False,
@@ -22,6 +31,16 @@ Deliberately NOT here (see docs/MCP_SERVER.md "What's NOT here yet"):
   anonymous remote MCP surface that is an arbitrary-file-read primitive, not a
   data-analysis input. See docs/MCP_SERVER.md's "What's NOT here yet" for the
   full reasoning (same class of risk the `org_friction` `*_path` guard closes).
+- `procedure_draft` - a params-driven SOP-template generator (requires_data=False,
+  ignores rows), same rule as `warehouse_layout` above: nothing for the rows->CSV
+  bridge to feed it. `procedure_audit` IS exposed below; it reads a client's
+  tabular procedure register.
+- `iso_ops` - plant-profile JSON/params (detect, propose floor tasks, evaluate
+  order evidence). HTTP `POST /api/detectar` already covers the same contract;
+  the rows->CSV bridge has nothing to feed a ficha, and this surface must not
+  look like a certification API. Floor evidence stays on HTTP; the MCP family
+  below is observation of tabular evidence (`kern_iso_sop_audit`,
+  `kern_audit_evidence`, `kern_iso_scor_audit`).
 
 Each description is the user-facing MCP contract: what the tool does, the
 canonical columns its job's `prepare()` matches (aliases are tolerated -
@@ -103,9 +122,11 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Segment SKUs by forecastability, auto-select and backtest the matching "
             "forecasting method (SES/Croston, or AutoETS/TSB when installed), and quantify "
             "forecast value-add versus a naive baseline.\n\n"
-            "Rows need columns: product_id, a quantity column, and a period column (date "
-            'or sequential period index). One row per SKU-period, e.g. {"product_id": '
-            '"SKU-A", "period": "2026-W01", "quantity": 42}.\n\n'
+            "Rows need columns: product_id and a quantity column. A period column is "
+            "optional -- canonically `date`, also accepted as period/week/month/t -- and "
+            "without one the series is read in row order, which still forecasts. One row "
+            'per SKU-period, e.g. {"product_id": "SKU-A", "date": "2026-01-01", '
+            '"quantity": 42}.\n\n'
             "Useful params: holdout_fraction (default 0.25, share of history held out for "
             "backtesting), min_backtest_periods (default 4).\n\n" + _RETURNS
         ),
@@ -163,7 +184,7 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "(a tornado chart's underlying data) and bounding the optimistic/pessimistic case.\n\n"
             "Rows need columns: a driver-name column, low and high band columns, plus a "
             'base-value/unit column, e.g. {"driver": "demand", "low": -0.15, "high": 0.20, '
-            '"base_value": 100, "unit": "units/period"}.\n\n'
+            '"base": 100, "unit": "units/period"}.\n\n'
             "Useful params: metric (default \"annual_cost\"), budget_pct (default 0.10), "
             "maximize (default false).\n\n" + _RETURNS
         ),
@@ -176,7 +197,9 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Allocate the true cost to serve each customer segment / channel, flag "
             "loss-making segments, and size the working-capital cash-release opportunity.\n\n"
-            "Rows need columns: segment (or channel), sales (revenue). Optional: quantity, "
+            "Rows need columns: segment (or channel), revenue (sales), and a freight column "
+            "-- without an activity cost driver the tool refuses, and freight is the only "
+            "driver that can arrive as data rather than params. Optional: quantity, "
             "order_id (order-level cost allocation), cogs, returns_units, shipping/freight "
             'cost. One row per order line or aggregate, e.g. {"segment": "Retail", '
             '"sales": 1200.0, "cogs": 700.0, "order_id": "SO-77"}.\n\n'
@@ -192,7 +215,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Compute the Incoterm-aware fully landed cost per SKU (goods + freight + "
             "insurance + duty + handling + broker) and each component's share.\n\n"
-            "Rows need columns: sku, unit_cost, qty. Optional: freight, insurance, "
+            "Rows need columns: product_id (sku also accepted), unit_cost, quantity (qty "
+            "also accepted). Optional: freight, insurance, "
             'duty_rate, handling, broker_fee, incoterm. E.g. {"sku": "SKU-A", '
             '"unit_cost": 8.4, "qty": 500, "freight": 420, "duty_rate": 0.06, '
             '"incoterm": "FOB"}.\n\n' + _RETURNS
@@ -205,8 +229,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Roll up project cost/schedule control: SV, CV, SPI, CPI per task and for the "
             "whole project, flagging the worst work packages.\n\n"
-            "Rows need columns: task, planned (PV / budgeted cost of work scheduled), "
-            "earned (EV / budgeted cost of work performed), actual (AC / actual cost). "
+            "Rows need columns: task, planned_value (PV / budgeted cost of work scheduled), "
+            "earned_value (EV / budgeted cost of work performed), actual_cost (AC). "
             'E.g. {"task": "Rack install", "planned": 10000, "earned": 8000, "actual": 9500}.\n\n'
             + _RETURNS
         ),
@@ -218,7 +242,7 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Project unit and cumulative cost at volume from a first-unit cost and a "
             "learning rate (Yx = K * x^n cost-down curve), per product.\n\n"
-            "Rows need columns: product, first_unit_cost, learning_rate (e.g. 0.85 for an "
+            "Rows need columns: product_id, first_unit_cost, learning_rate (e.g. 0.85 for an "
             '85% curve), planned_volume. E.g. {"product": "Assembly-X", '
             '"first_unit_cost": 1200, "learning_rate": 0.85, "planned_volume": 250}.\n\n'
             + _RETURNS
@@ -340,7 +364,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
         description=(
             "Size DDMRP red/yellow/green buffers per part and compute the net-flow "
             "planning signal (which parts to reorder now, and how much).\n\n"
-            "Rows need columns: part_id, adu (average daily usage), dlt (decoupled lead "
+            "Rows need columns: product_id (part_id also accepted), adu (average daily "
+            "usage), dlt (decoupled lead "
             "time, days). Optional: ltf, vf, moq, order_cycle_days, on_hand, on_order, "
             'qualified_demand. E.g. {"part_id": "P-9", "adu": 14, "dlt": 12, "on_hand": 220, '
             '"on_order": 100}.\n\n'
@@ -356,9 +381,10 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Place safety stock across a serial supply chain (e.g. factory -> DC -> store) "
             "with the Guaranteed-Service Model: where to hold buffer and how much, versus "
             "the naive hold-at-every-stage baseline.\n\n"
-            "Rows: one per stage in sequence, columns stage, lead_time, holding_cost (per "
+            "Rows: one per stage in sequence, columns stage, lead_time_days, holding_cost (per "
             "unit per period). Optional: order (explicit stage sequence). End-customer "
-            "demand comes from mean_demand and demand_std columns (first row) or from "
+            "demand comes from mean_demand and std_demand columns, which are REQUIRED "
+            "unless passed as params, from "
             'params. E.g. {"stage": "DC", "lead_time": 5, "holding_cost": 1.2}.\n\n'
             "Useful params: service_level (default 0.95), mean_demand, demand_std (required "
             "if not present as columns), review_period.\n\n" + _RETURNS
@@ -372,8 +398,9 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Build the time-phased DRP grid per branch/DC (projected on-hand, planned "
             "orders per period) and roll branches up into the central DC's gross "
             "requirements.\n\n"
-            "Rows: long format, one per branch-period, columns branch, period, demand. "
-            'Optional: on_hand, lead_time, safety_stock, lot_size. E.g. {"branch": "North", '
+            "Rows: long format, one per branch-period, columns branch, period, quantity "
+            "(demand also accepted). "
+            'Optional: on_hand, safety_stock, lot_size. E.g. {"branch": "North", '
             '"period": 1, "demand": 120, "on_hand": 300, "lead_time": 2}.\n\n' + _RETURNS
         ),
     ),
@@ -386,7 +413,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "that minimizes simulated total cost (holding + ordering + backorder), via "
             "Monte-Carlo simulation per SKU - useful when demand is too lumpy for "
             "closed-form formulas.\n\n"
-            "Rows need columns: product_id, mean_demand, std_demand, lead_time (periods). "
+            "Rows need columns: product_id, mean_demand, std_demand, lead_time_periods "
+            "(lead_time also accepted; the unit is periods, not days). "
             "Optional per-row: holding_cost, order_cost, backorder_cost, review_period. "
             'E.g. {"product_id": "SKU-A", "mean_demand": 40, "std_demand": 18, "lead_time": 2}.\n\n'
             "Useful params: periods (simulation horizon), holding_cost, order_cost, "
@@ -425,7 +453,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Design the smallest receiving-inspection sampling plan (inspect n units, "
             "accept at most c defects) per part from AQL/LTPD quality targets, plus the "
             "inspect-vs-skip break-even.\n\n"
-            "Rows need columns: part, aql, ltpd (fractions - e.g. AQL 0.01, LTPD 0.05). "
+            "Rows need columns: product_id (part/component/sku also accepted), aql, ltpd "
+            "(fractions - e.g. AQL 0.01, LTPD 0.05). "
             'E.g. {"part": "Casting-7", "aql": 0.01, "ltpd": 0.05}.\n\n'
             "Useful params: producer_risk (default 0.05), consumer_risk (default 0.10).\n\n"
             + _RETURNS
@@ -439,8 +468,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Score a supply-chain risk register (likelihood x impact), rank by expected "
             "monetary value and FMEA-style priority, and lay out the 5x5 heatmap plus a "
             "mitigation plan.\n\n"
-            "Rows need columns: name, likelihood (0-1 annual probability), impact_value "
-            "(currency loss if it hits). Optional: category, exposure, time_to_recover, "
+            "Rows need columns: risk_name, likelihood (0-1 annual probability), impact_value "
+            "(currency loss if it hits). Optional: risk_category, exposure, time_to_recover, "
             'time_to_survive, owner. E.g. {"name": "Port strike", "likelihood": 0.15, '
             '"impact_value": 250000, "category": "logistics"}.\n\n'
             "Useful params: severity_thresholds, mitigations (dict keyed by risk name).\n\n"
@@ -502,7 +531,8 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Pick the cheapest feasible transport mode (parcel / LTL / FTL / intermodal) "
             "per shipment from a configurable rate card, and rank lanes by freight spend.\n\n"
             "Rows need columns: weight_kg, distance_km (one row per shipment). Optional: "
-            'shipment_id, lane, units, order_value. E.g. {"shipment_id": "SH-9", '
+            'shipment_id, lane, quantity (units also accepted), order_value. '
+            'E.g. {"shipment_id": "SH-9", '
             '"weight_kg": 4200, "distance_km": 850, "lane": "MAD->BCN"}.\n\n'
             "Useful params: rate-card overrides (advanced; defaults model typical "
             "parcel/LTL/FTL/intermodal rates).\n\n" + _RETURNS
@@ -516,8 +546,11 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "Place one facility (DC, plant, cross-dock) to minimize demand-weighted "
             "travel: center-of-gravity plus the exact 1-median (Weiszfeld), compared "
             "against the nearest existing point.\n\n"
-            "Rows: one per demand point, columns x, y (or lon/lat). Optional: name, weight "
-            '(demand/volume per point - defaults to 1). E.g. {"name": "Store-12", '
+            "Rows: one per demand point, columns longitude, latitude (x/y and lon/lat "
+            "also accepted). Optional: name, weight (demand/volume per point - defaults "
+            "to 1); the tool reads both, though neither is part of the declared data "
+            "contract -- `weight` is spelled the same as transportation's weight_kg "
+            'header. E.g. {"name": "Store-12", '
             '"lon": -3.7, "lat": 40.4, "weight": 1200}.\n\n' + _RETURNS
         ),
     ),
@@ -590,6 +623,74 @@ TOOL_SPECS: tuple[MCPToolSpec, ...] = (
             "params['history_path'], and this remote surface drops every *_path override on "
             "purpose (see `strip_filesystem_params` in webapp/mcp_server.py) - so a call "
             "here runs three of the four detectors, never four.\n\n" + _RETURNS
+        ),
+    ),
+    MCPToolSpec(
+        name="linchpin_procedure_audit",
+        job_type="procedure_audit",
+        title="Audit the Procedure Register (SOP Document Control)",
+        description=(
+            "Audit a client's exported procedure register for overdue reviews, missing "
+            "owners, an owner who is also the approver, procedures marked approved with "
+            "no approver on file, procedures with no linked KPI, and unversioned "
+            "documents. Always ends in a HANDOFF naming the owner and the due date. "
+            "Prepares evidence for a registrar's auditor; does not certify ISO.\n\n"
+            "Rows need columns: name, last_reviewed_at. Optional: owner, approver, "
+            "version, approved_at, review_cadence_days, status, linked_kpi. E.g. "
+            '{"name": "Receiving Inspection", "last_reviewed_at": "2025-06-01", '
+            '"owner": "Warehouse Lead", "review_cadence_days": 365}.\n\n'
+            'Useful params: as_of ("YYYY-MM-DD" - without it the server clock is used, '
+            "and the report declares that).\n\n" + _RETURNS
+        ),
+    ),
+    MCPToolSpec(
+        name="kern_iso_sop_audit",
+        job_type="procedure_audit",
+        title="ISO SOP Register Audit (alias of procedure_audit)",
+        description=(
+            "Kern alias of linchpin_procedure_audit: audit a client's exported SOP "
+            "register (ISO 9001 documented-information metadata). Always HANDOFF. "
+            "Prepares evidence for a registrar's auditor; Kern does not certify ISO.\n\n"
+            "Rows need columns: name, last_reviewed_at. Optional: owner, approver, "
+            "version, approved_at, review_cadence_days, status, linked_kpi.\n\n"
+            'Useful params: as_of ("YYYY-MM-DD").\n\n' + _RETURNS
+        ),
+    ),
+    MCPToolSpec(
+        name="kern_audit_evidence",
+        job_type="audit_evidence",
+        title="Audit Evidence Workpaper (MUS + GL tie-out)",
+        description=(
+            "Prepare a re-performable inventory/COGS workpaper: Monetary Unit Sampling, "
+            "optional GL vs subledger tie-out, IPE attestation, EvidenceRecord lineage. "
+            "Always HANDOFF (fieldwork + sign-off remain) or ESCALATED. Not a signed "
+            "audit opinion. Reviewed-by stays blank.\n\n"
+            "Rows need columns: unit_id, book_value. Optional source (gl / subledger) "
+            "puts both ledgers in one table -- this surface drops *_path, so do not "
+            "send a separate subledger file. Optional audited_value keys fieldwork. "
+            'E.g. {"unit_id": "SKU-A", "book_value": 25000, "source": "gl"}.\n\n'
+            "Required params: tolerable_misstatement (auditor judgment; Kern never "
+            "derives it). Useful: risk_of_incorrect_acceptance (default 0.05), "
+            "expected_misstatement (default 0), selection_seed (default 0), tolerance "
+            "(GL tie-out, default 0).\n\n" + _RETURNS
+        ),
+    ),
+    MCPToolSpec(
+        name="kern_iso_scor_audit",
+        job_type="scor_iso_audit",
+        title="SCOR/ISO Evidence Pack (not a certificate)",
+        description=(
+            "Compose existing measurements into one EvidenceRecord: SCOR scorecard "
+            "(Perfect Order / OTIF RL.1.1, cost-to-serve, cash-to-cash) plus an "
+            "ISO 9001/28000 checklist (observed / gap / no_evaluable) and a Lineage "
+            "sheet. Always HANDOFF. Kern prepares evidence for a registrar's auditor; "
+            "it does not certify ISO or SCOR.\n\n"
+            "Rows need a dataset column tagging each block: financial / "
+            "cost_to_serve / sourcing / orders / procedures / risk. Include at least "
+            "one recognised panel. E.g. {\"dataset\": \"financial\", \"product_id\": "
+            "\"P1\", \"cogs\": 50000, \"avg_inventory_value\": 12000}.\n\n"
+            "Useful params: as_of (YYYY-MM-DD, for OTIF), dso_days, dpo_days "
+            "(cash-to-cash; without them C2C is reported no_evaluable).\n\n" + _RETURNS
         ),
     ),
 )

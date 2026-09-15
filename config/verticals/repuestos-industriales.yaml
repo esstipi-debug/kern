@@ -12,14 +12,32 @@
 # El dia que un vertical necesita un `if` en src/, es personalizacion con otro
 # nombre: se borra o se gradua a capacidad del core.
 #
-# ESTADO: hoy este archivo es DATO INERTE. Nada lo carga todavia. Falta, en este
-# orden (seccion 8.4 del mismo documento):
-#   1. dataclass VerticalProfile con __post_init__ que valide los rangos
-#   2. load_vertical_profile() con fallo duro al estilo MarketNotConfiguredError
-#      -- un rubro sin perfil NO cae al generico en silencio, se niega a correr
-#   3. tercer diccionario en src/client_profile.py::merge_params (linea 314):
-#        hoy  {**profile.as_params(), **params}
-#        con  {**vertical.as_params(), **profile.as_params(), **params}
+# ESTADO (2026-08-20): este archivo ESTA VIVO. Los tres pasos que esta cabecera
+# listaba como pendientes se construyeron; el comentario que decia "DATO INERTE,
+# nada lo carga todavia" quedo mintiendo, que es el defecto que este repo viene
+# cazando -- doc que da por pendiente algo que existe.
+#
+# Verificado por sitio de llamada, no por lectura:
+#   engine_params      -> as_params() -> merge_params()
+#                         scm_agent/orchestrator.py, scm_agent/packages.py
+#   aliases            -> merged_aliases(), 6 sitios (jobs/intake.py y el embudo)
+#   forbidden_methods  -> forbids(), y el veto se hace cumplir en los DOS
+#                         caminos de despacho: scm_agent/orchestrator.py (una
+#                         capacidad suelta) y scm_agent/packages.py (un paquete
+#                         completo). Es incondicional: no depende de
+#                         strict_params.
+#   classification     -> jobs/abc_xyz_job.py -> src/classification.py
+#   diagnostic_outputs -> webapp/demo_verticals.py -> GET de /demo
+#   demo_question_label-> webapp/demo_verticals.py
+#
+# LO QUE SIGUE SIN CONSUMIDOR, y por que importa decirlo aca: un campo que se
+# valida al cargar pero que nadie lee se ve exactamente igual que uno cableado.
+#   stockout_prompt / stockout_cost_usd -- la pregunta del bloque 2 no aparece en
+#     ningun entregable ni pantalla, asi que hoy sigue dependiendo de que el
+#     operador se acuerde, que es justo lo que el bloque dice querer evitar.
+#   vocabulary  -- ningun renderer lo lee todavia: los informes siguen diciendo
+#     "local" y no "bodega".
+#   objections  -- viajan con el pack y no las sirve ninguna superficie.
 #
 # CONFIANZA: los numeros economicos son ESTIMACIONES DE ESCRITORIO, no
 # mediciones, y van marcados uno por uno. Ninguno se ha contrastado con un
@@ -41,6 +59,20 @@ demo_question_label: "repuestos, insumos y componentes para equipos"
 # Cualquier otra cosa que se cuele en este bloque llega al motor como parametro
 # desconocido y se ignora en silencio, que es el peor modo de falla posible.
 engine_params:
+
+  # Piso de precio, como fraccion de MARKUP sobre el costo landed:
+  # src/price_optimizer.py calcula floor_price = landed_cost * (1 + esto).
+  # NO es margen bruto -- 0.20 seria 20% de markup (~16,7% de margen bruto).
+  #
+  # 0.0 = este pack no declara piso, y es una decision explicita, no un olvido:
+  # no hay dato de margen contrastado con un cliente de este rubro, y un numero
+  # inventado aqui se aplicaria a todas las cuentas del vertical. El piso real
+  # sigue viniendo del caller (ClientProfile o params por llamada), que es la
+  # capa donde un operador registra el numero de SU cliente.
+  #
+  # Que se rellene esto es barato: una cuenta real, su margen objetivo por
+  # familia, y deja de ser 0.0.
+  min_margin_pct: 0.0
 
   # ESTIMADO. El 22% del desglose de 05-GTM-KERN seccion 5 (capital 10-14 +
   # bodegaje 3-6 + seguro 0,5-1 + obsolescencia 3-8). El default del motor es
@@ -134,9 +166,10 @@ demand:
 # El orden canonico de 05-GTM-KERN seccion 5. Este rubro es el unico para el
 # que ese orden se escribio, asi que aqui va tal cual.
 #
-# Los ids son PROPUESTOS: hoy /demo elige el modo por pestana fija
-# (webapp/demo_scan.py y webapp/demo_lead_time_scan.py). Leerlos de aqui es el
-# paso 5 de la tarea 8.4.
+# Ya NO son propuestos: webapp/demo_verticals.py los mapea a los modos de /demo
+# y app.py los sirve. Un output sin modo se omite de la pregunta en vez de caer
+# al orden por defecto -- ofrecer el orden de OTRO rubro con la etiqueta de este
+# seria peor que no ofrecer nada.
 diagnostic_outputs:
   - lead_time_gap          # se gana el derecho a seguir hablando; la mas barata de calcular
   - overstock_valued       # el dinero visible
@@ -153,21 +186,37 @@ diagnostic_outputs:
 # que un alias del rubro tiene que poder ganarle a uno generico. Anexar
 # invierte la precedencia y el pack deja de servir para lo unico que existe.
 #
-# No hay que normalizar a mano: _norm() pliega los DOS lados de la comparacion
-# (`by_norm.get(_norm(alias))`), asi que acentos, mayusculas, espacios y guiones
-# bajos dan igual. "Codigo de Parte" y "codigo_parte" son la misma clave.
+# _norm() pliega los DOS lados de la comparacion, asi que acentos, mayusculas,
+# espacios y guiones bajos dan igual. Pero NO borra conectivas: un encabezado
+# "Numero de Parte" normaliza a `numerodeparte` y el alias `numero_parte` a
+# `numeroparte`. NO son la misma clave -- medido. La grafia con conectiva va
+# listada explicitamente como su propio alias, y por eso estan las de abajo.
+#
+# Y una regla para quien agregue alias aca: prependar convierte cada entrada en
+# la afirmacion "en este rubro una columna llamada X es SIEMPRE esta canonica,
+# incluso cuando el archivo tambien trae una columna de codigo generica". Un
+# sustantivo pelado del rubro no aguanta esa prueba: `repuesto` bajo product_id
+# hacia que un archivo con `Codigo, Repuesto` mapeara el identificador a la
+# DESCRIPCION, y como nada falla, cada texto distinto pasaba a ser un SKU.
 aliases:
   product_id:
     - numero_parte
+    - numero_de_parte    # "Numero de Parte" -- _norm no borra el "de"
+    - nro_de_parte
+    - n_de_parte
+    - no_de_parte        # "N de Parte"
+    - numero_de_pieza
+    - codigo_de_parte
     - num_parte
     - part_no
     - codigo_parte
-    - repuesto
     - codigo_repuesto
-    - insumo
   name:
     - descripcion_repuesto
     - denominacion
+    # Sustantivos del rubro: nombran la columna descriptiva, nunca el identificador.
+    - repuesto
+    - insumo
   on_hand:
     - stock_bodega
     - existencia_faena
@@ -242,10 +291,11 @@ objections:
 # ---------------------------------------------------------------------------
 # 8. CLASIFICACION -- servicio por clase
 # ---------------------------------------------------------------------------
-# Sobrescribe _SERVICE_LEVEL de src/classification.py:30, que hoy es una
-# constante a nivel de modulo: {A: 0,98, B: 0,95, C: 0,90}. Hacer que lea del
-# perfil es parte del paso 2 y es la unica pieza de este pack que toca src/ --
-# una vez, no una vez por vertical.
+# Sobrescribe _SERVICE_LEVEL de src/classification.py, que era una constante de
+# modulo: {A: 0,98, B: 0,95, C: 0,90}. YA LEE DE AQUI: jobs/abc_xyz_job.py lo
+# reenvia a src/classification.py. La matematica existia desde siempre y el job
+# no la reenviaba, asi que ningun entregable podia alcanzarla -- un repuesto A
+# que detiene un equipo se servia al default de distribucion.
 #
 # ESTIMADO. El A sube a 0,99 porque en este rubro el A no es "lo que mas
 # factura" sino "lo que detiene el equipo". Y esto sigue siendo un parche: el

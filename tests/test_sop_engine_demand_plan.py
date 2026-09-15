@@ -105,6 +105,19 @@ def test_liquidation_salvage_line_has_no_price_so_no_shift():
     assert line.shaped_demand == pytest.approx(20.0)
 
 
+def test_a_salvage_line_that_DOES_carry_a_price_still_shapes_no_demand():
+    """``plan_liquidation`` quotes a cost-anchored per-unit recovery on salvage lines,
+    so "no price" no longer identifies a disposal - ``method`` does. A jobber lot's
+    price moves no shopper; booking its 999 units as a lift would inject write-down
+    volume into the demand plan and inflate step 3's purchase plan downstream."""
+    forecast = {"SKU1": 20.0}
+    liq = {"SKU1": _liq_line(clearance_price=2.4, method="salvage_heuristic", units_to_clear=999.0)}
+    plan = build_demand_plan(forecast, liquidation_lines=liq)
+    line = plan[0]
+    assert line.source == NO_SHIFT_SOURCE
+    assert line.shaped_demand == pytest.approx(20.0)
+
+
 def test_liquidation_lift_from_zero_baseline_is_infinite_not_fabricated():
     forecast = {"SKU1": 0.0}
     liq = {"SKU1": _liq_line(units_to_clear=30.0, clearance_price=8.0)}

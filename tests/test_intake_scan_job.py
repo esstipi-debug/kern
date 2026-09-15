@@ -1,9 +1,11 @@
 """Tests for the intake_scan job: folder walk, coverage, the QA gate."""
+from dataclasses import replace
+
 import pandas as pd
 import pytest
-from nosilo_core.guided import ExecutionOption, as_options
 
 from jobs import intake_scan_job
+from nosilo_core.guided import ExecutionOption, as_options
 from src.intake_scan import (
     GREEN,
     RED,
@@ -315,8 +317,28 @@ def test_healthy_folder_passes_the_gate_and_evaluates_the_declared_tools(tmp_pat
     assert states["data_quality"] == YELLOW
     assert states["abc_xyz"] == RED
     assert states["excess_obsolete"] == RED  # no stock file in this folder
-    assert states["risk"] == UNDECLARED
-    assert report.n_tools_evaluated == 4
+    # An undeclared tool reads as no_declarado, never as runnable. Which tool that
+    # is comes from the registry, not from a name typed here: this line used to say
+    # `risk`, and it broke the moment `risk` declared its columns -- for the right
+    # reason at the wrong time, which teaches whoever hits it to swap in another
+    # name rather than check the property.
+    from scm_agent.tools import build_default_registry as _reg
+
+    undeclared = [
+        t.key for t in _reg().list() if t.requires_data and not t.required_columns
+    ]
+    if undeclared:
+        assert states[undeclared[0]] == UNDECLARED
+    # Derived, not pinned: this number is exactly the count of data tools that have
+    # declared their columns, and that count is designed to grow as the contracts
+    # land batch by batch. A literal here would fail on the first batch and teach
+    # whoever hits it to bump a number instead of checking the invariant, which is
+    # that the scan evaluates every declared tool and no undeclared one.
+    from scm_agent.tools import build_default_registry
+
+    declared = [t for t in build_default_registry().list() if t.requires_data and t.required_columns]
+    assert report.n_tools_evaluated == len(declared)
+    assert {v.tool_key for v in report.verdicts if v.state != UNDECLARED} == {t.key for t in declared}
 
 
 def test_a_master_plus_sales_folder_where_abc_xyz_columns_are_split_across_files(tmp_path):
@@ -340,8 +362,14 @@ def test_a_master_plus_sales_folder_where_abc_xyz_columns_are_split_across_files
     # not necessarily make the top-3 menu -- but it must be RANKED, never
     # silently dropped from the report).
     (split_fix,) = report.split_fixes
-    assert split_fix.tools == ("abc_xyz",)
-    assert split_fix.unlocks == 1
+    # Which tools the one fix unlocks is derived, not pinned. `landed_cost` declares
+    # the same three columns as abc_xyz, so the same split blocks both and moving
+    # them into one file unlocks both -- and every later data contract over this
+    # column set joins the list. Pinning the membership would have read as a
+    # regression when the number went up, which is the direction we want it to go.
+    assert "abc_xyz" in split_fix.tools
+    assert split_fix.unlocks == len(split_fix.tools)
+    assert tuple(sorted(split_fix.tools)) == split_fix.tools, "ranked output must be stable"
 
 
 def test_a_single_file_that_carries_every_required_column_is_still_green(tmp_path):
@@ -559,17 +587,40 @@ def test_deck_reports_a_blocking_breaker_using_the_evaluated_field(tmp_path):
 
 
 def test_deck_confidence_is_derived_from_registry_coverage_not_hardcoded(tmp_path):
-    """A scan that could evaluate 4 of 45 data tools must not claim full certainty.
+    """A scan that cannot speak for most of the registry must not claim certainty.
 
-    The verdict it gives is sound; its COVERAGE of the registry is not. Pinning this
-    keeps the deck honest and keeps the T4a ratchet from having to grow.
+    Stated as an INVARIANT, not a headcount. The previous version asserted
+    ``n_tools_evaluated * 2 < n_tools_total`` with the rationale "undeclared tools
+    dominate" -- true when 4 of 45 tools had declared their columns, and false the
+    moment the data contracts land. A test whose premise expires is worse than no
+    test: it goes red for the right reason at the wrong time, and the cheapest way
+    out is to delete the assertion. What must hold at every point along the way is
+    that confidence FOLLOWS coverage, in both directions, and never reaches base
+    while the scan is blind to part of the registry.
     """
     folder = _folder(tmp_path, **{"maestro.csv": _maestro(), "ventas.csv": _ventas()})
     report = intake_scan_job.run(intake_scan_job.prepare(str(folder)))
     deck = intake_scan_job.build_deck(report, client="Acme")
 
-    assert report.n_tools_evaluated * 2 < report.n_tools_total
-    assert deck.confidence < 0.9, "undeclared tools dominate; the deck must price that in"
+    assert 0 < report.n_tools_evaluated < report.n_tools_total  # sanity on the fixture
+    assert deck.confidence < intake_scan_job._DECK_BASE_CONFIDENCE, (
+        "the scan is blind to part of the registry; the deck must price that in"
+    )
+
+    # It moves WITH coverage rather than flipping at one threshold. Better coverage
+    # is never worth less confidence, and full coverage is the only way to base.
+    def _confidence_at(evaluated, total):
+        stub = replace(report, n_tools_evaluated=evaluated, n_tools_total=total)
+        return intake_scan_job.build_deck(stub, client="Acme").confidence
+
+    ladder = [_confidence_at(n, 45) for n in (0, 11, 23, 34, 45)]
+    assert ladder == sorted(ladder), f"confidence must not fall as coverage rises: {ladder}"
+    assert ladder[0] < ladder[-1], "coverage must actually change the number"
+    assert ladder[-1] == intake_scan_job._DECK_BASE_CONFIDENCE
+    # The specific regression this replaces: crossing half the registry used to
+    # remove the whole penalty in one step, so 24/45 claimed exactly as much
+    # certainty as 45/45.
+    assert _confidence_at(24, 45) < _confidence_at(45, 45)
 
     # And it is a real derivation, not a second hardcode: pass an explicit value and
     # it is honoured verbatim.

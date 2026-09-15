@@ -40,12 +40,25 @@ graphify-out/
 knowledge/scm-books-rebuild/
 knowledge/scm-books/graph.json.bak
 knowledge/scm-books/graph.cluster.bak
+knowledge/scm-books/graph.brechas.bak
+knowledge/scm-books/graph.lanzamiento.bak
+knowledge/scm-books/graph.sopdc.bak
+knowledge/scm-books/.graphify_learning.json
 
 # generated client deliverables
 deliverables/
 
 # large external datasets (Kaggle / M5 etc. — fetched locally, not versioned)
 data/kaggle/
+
+# raw price_watch crawl dumps. Each record carries page_html (~475 KB of a third
+# party's verbatim page), body_text, the full request/response headers INCLUDING
+# session cookies, and the origin IP. This repo is public and git history is
+# forever, so a raw dump must never be committed - it would republish sites we
+# ourselves classify as tos_decision=limited (see config/sites/*.yaml) and leak
+# session tokens. The crawl is regenerable by jobs/price_watch.py; commit a
+# sanitised signal-only extract instead (data/price_watch_signal.jsonl).
+data/*.jl
 
 # local SQLite state (writeback audit ledger, MCP client keys) - never versioned;
 # the latter would otherwise leak paying-client names into git history.
@@ -73,6 +86,11 @@ clients/
 .claude/*
 !.claude/settings.json
 !.claude/hooks/
+# spec-kit instala sus comandos como skills de proyecto. Sin este un-ignore
+# quedan solo en el disco de quien corrio `specify init`: invisibles para CI,
+# para las otras worktrees y para el proximo clon, o sea una adopcion a medias
+# que nadie ve fallar.
+!.claude/skills/
 .claude/settings.local.json
 .secrets/
 *.log
@@ -80,6 +98,7 @@ output/
 
 # orchestrator job outputs
 webapp/_jobs_output/
+webapp/_demo_output/
 .gstack/
 
 # captured demo leads (PII — never versioned)
@@ -91,3 +110,15 @@ webapp/_leads/
 # knowledge caches regenerados por scm_agent/knowledge.py y community_summaries.py
 knowledge/embeddings_cache.json
 knowledge/community_summaries.json
+
+# Capturas de trabajo de la landing. Son DERIVADAS: se regeneran corriendo la
+# pagina, y quedan viejas al primer cambio de copy. 2,6 MB de PNG que envejecen
+# no son documentacion, son ruido en el diff.
+#
+# Esto NO es una regla contra versionar capturas. Una captura que documenta un
+# estado que ya no se puede reproducir si vale la pena guardarla; estas se
+# reproducen levantando el servidor.
+landing/shots/
+
+# Credenciales generadas para el Odoo de integracion local (docker-compose.odoo.yml).
+.env.odoo

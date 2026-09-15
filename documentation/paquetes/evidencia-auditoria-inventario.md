@@ -5,16 +5,14 @@
 > pre-IPO, o una firma de auditoría mid-tier que subcontrata la preparación
 > de papeles de trabajo de inventario/COGS.
 
-> **Estado: en desarrollo — este one-pager describe la oferta, todavía no es
-> un paquete ejecutable.** El motor matemático (`src/audit_evidence.py`) ya
-> está construido y probado (30 tests, verificados contra las mismas
-> referencias que usa un manual de auditoría — ver más abajo). Falta el
-> cableado a un paquete corrible por `run_package.py`
-> (`jobs/audit_evidence_job.py` + registro del tool en `scm_agent/tools.py`)
-> y la validación de las tablas AICPA con un auditor practicante — ver el
-> estado archivo por archivo en
-> [`AUDIT_EVIDENCE_DESIGN.md`](../AUDIT_EVIDENCE_DESIGN.md), sección 6.
-> Mientras tanto, esta sección **no** se ofrece activamente a un prospecto.
+> **Estado: el job `audit_evidence` ya corre** (`jobs/audit_evidence_job.py`,
+> tool en el registro, MCP `kern_audit_evidence`). Sigue sin ser un paquete
+> comercial de `run_package.py`; el one-pager describe la oferta, no un
+> `PackageSpec`. El motor (`src/audit_evidence.py`) está cubierto por
+> `tests/test_audit_evidence.py`. Validación de tablas AICPA con un auditor
+> practicante sigue abierta (Q1/Q2 en
+> [`AUDIT_EVIDENCE_DESIGN.md`](../AUDIT_EVIDENCE_DESIGN.md)).
+> **No afirmar que Kern certifica ni que el workpaper es un dictamen.**
 
 ## Por qué esta sección es distinta a las otras 7
 

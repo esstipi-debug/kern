@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from nosilo_core import llm
 
 from jobs import reconciliation_job as rcj
+from nosilo_core import llm
 from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.deliverable import Deliverable

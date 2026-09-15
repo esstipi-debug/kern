@@ -1,7 +1,7 @@
 """Tests for the pure org_friction engine: the four detectors, ranking, verdict."""
 import pytest
-from nosilo_core.guided import EXECUTED, HANDOFF, OPTIONS, verify_guided
 
+from nosilo_core.guided import EXECUTED, HANDOFF, OPTIONS, verify_guided
 from src.org_friction import (
     ACCOUNTABILITY_VACUUM,
     DEFAULT_SHADOW_DELTA_THRESHOLD,

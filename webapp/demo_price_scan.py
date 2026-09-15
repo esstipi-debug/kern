@@ -198,7 +198,7 @@ def render_followup_email(result: DemoPriceScanResult, *, email: str, product_id
             "[FIRMA-OPERADOR]",
             "",
             "--",
-            "BORRADOR generado por el escaneo del demo. Revisar y enviar a mano; Kern nunca envia "
+            "BORRADOR generado por el diagnóstico gratis. Revisar y enviar a mano; Kern nunca envia "
             "correo automaticamente.",
         ]
     ) + "\n"

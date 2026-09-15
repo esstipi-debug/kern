@@ -212,6 +212,7 @@ def run_grid(
     out_dir: str | Path = "deliverables/simworld",
     include_kern: bool = True,
     lanes: tuple[str, ...] = DEFAULT_LANES,
+    omit: frozenset[str] | set[str] | tuple[str, ...] = (),
 ) -> dict:
     """La grilla completa: 1 mundo x len(levels) niveles x len(lanes) carriles
     de Kern, mas el piso y el techo -- todos sobre la MISMA realizacion del
@@ -262,6 +263,11 @@ def run_grid(
         "seed": seed, "weeks": weeks, "n_skus": n_skus, "n_suppliers": n_suppliers,
         "regime": world.regime, "replan_every": replan_every,
         "levels": list(levels), "lanes": list(lanes),
+        # Que inyectores se saltaron. Va en el reporte para que una corrida de
+        # descomposicion no se pueda confundir con una corrida normal al leer
+        # el JSON meses despues: un capture alto sin este campo significa otra
+        # cosa que un capture alto con tres inyectores omitidos.
+        "omit": sorted(omit),
         "floor": asdict(floor_k), "ceiling": asdict(ceil_k), "kern": {},
     }
 
@@ -282,7 +288,7 @@ def run_grid(
                     pol = kern_policy(
                         w, outs, level=_level, seed=seed,
                         out_dir=out / f"{_lane}-L{_level}" / f"w{week:03d}",
-                        forced=_forced,
+                        forced=_forced, omit=omit,
                     )
                     _counts[pol.status] = _counts.get(pol.status, 0) + 1
                     return pol, pol.announced
