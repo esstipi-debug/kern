@@ -39,8 +39,8 @@ import dataclasses
 from scm_agent.tools import build_default_registry
 from src import vertical_profile
 
-# Las 57 tools registradas en main tras el PR-1 original mas el freno levantado
-# el 2026-09-12 (ver documentation/ADR-2026-09-operador.md, seccion 3), en orden
+# Las 60 tools registradas en main: el PR-1 original, los frenos levantados el
+# 2026-09-12, y el de canal del 2026-09-15 (#238) (ver documentation/ADR-2026-09-operador.md, seccion 3), en orden
 # alfabetico.
 FROZEN_TOOL_KEYS: frozenset[str] = frozenset(
     {
@@ -88,6 +88,8 @@ FROZEN_TOOL_KEYS: frozenset[str] = frozenset(
         "queuing",
         "reconciliation",
         "repricing",
+    "channel_replenishment",
+    "shopify_replenishment",
         "returns",
         "risk",
         "scheduling",
@@ -155,7 +157,7 @@ def _describe_drift(actual: set[str], frozen: frozenset[str]) -> str:
     )
 
 
-def test_registry_is_frozen_at_the_58_tools_of_2026_09_12() -> None:
+def test_registry_is_frozen_at_the_60_tools_of_2026_09_15() -> None:
     registered = {t.key for t in build_default_registry().list()}
     assert registered == FROZEN_TOOL_KEYS, _describe_drift(registered, FROZEN_TOOL_KEYS)
 

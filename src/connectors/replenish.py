@@ -55,8 +55,13 @@ class ReplenishmentPlan:
     changeset: Changeset | None        # staged dry-run, when a writable store was provided
 
 
-def _demand_by_sku(orders: list[Order]) -> dict[str, list[float]]:
-    """Per-SKU demand as a per-period series (summed within a date, ordered by date)."""
+def demand_by_sku(orders: list[Order]) -> dict[str, list[float]]:
+    """Per-SKU demand as a per-period series (summed within a date, ordered by date).
+
+    Publica, no privada: la consume tambien `jobs/channel_replenishment_job.py`.
+    Un guion bajo importado desde otro modulo no protege nada -- solo avisa mal.
+    El alias `_demand_by_sku` se conserva por si algo interno lo nombraba asi.
+    """
     by_date: dict[str, dict[str, float]] = {}
     for order in orders:
         for line in order.lines:
@@ -152,7 +157,7 @@ def plan_replenishment(
     prevent.
     """
     on_hand = {lvl.sku: lvl.available for lvl in source.inventory_levels()}
-    series = _demand_by_sku(source.orders())
+    series = demand_by_sku(source.orders())
 
     lines: list[ReplenishmentLine] = []
     restock: dict[str, float] = {}
@@ -201,3 +206,7 @@ def plan_replenishment(
         outcome=_packet(restock, changeset, tuple(refused)),
         changeset=changeset,
     )
+
+
+#: Alias historico: este helper fue privado entre 2026-08 y 2026-09-15.
+_demand_by_sku = demand_by_sku

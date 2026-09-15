@@ -101,6 +101,12 @@ TOOLS: tuple[ToolInfo, ...] = (
              "Distribution Requirements Planning: a timed, multi-echelon replenishment grid."),
     ToolInfo("odoo_replenishment", "Odoo Replenishment", "Inventory & replenishment", "Plan",
              "Live Odoo ERP read plus staged, reversible replenishment writeback."),
+    ToolInfo("shopify_replenishment", "Shopify Replenishment", "Inventory & replenishment", "Plan",
+             "Live Shopify storefront read plus a replenishment plan handed off for purchasing; "
+             "the storefront holds no reorder point to write one back to."),
+    ToolInfo("channel_replenishment", "Channel to ERP Replenishment", "Inventory & replenishment", "Plan",
+             "Storefront demand against ERP stock: reorder points staged in the ERP, plus the "
+             "cross-system stock divergence neither connector can see alone."),
     ToolInfo("excel_replenishment", "Excel Replenishment", "Inventory & replenishment", "Plan",
              "Client spreadsheet read plus staged, reversible replenishment writeback."),
     # -- Inventory control & health (7) --

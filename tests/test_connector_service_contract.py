@@ -533,6 +533,26 @@ _NOT_A_BACKEND = {
     "arrivals",
 }
 
+#: Adaptadores que leen ``orders()`` SOLO para el lado de DEMANDA: llenan
+#: ``sku``/``quantity``/``price`` y dejan los tres campos de servicio en ``None``.
+#: No entran a ``ADAPTERS`` porque ese contrato exige poder reportar los tres
+#: (ver la nota sobre "every adapter in ADAPTERS today declares all three fields
+#: reportable"), y tampoco son ``_NOT_A_BACKEND``: son sistemas de registro reales.
+#: Son una tercera cosa, y se nombra en vez de esconderla en cualquiera de las dos.
+#:
+#: Que un canal quede aca NO es permanente: el dia que su adaptador llene
+#: ``delivered_qty``/``delivered_date``/``promised_date``, se mueve a ``ADAPTERS`` con
+#: su ``AdapterCase`` y este set se achica. Para Shopify ese trabajo ya esta
+#: investigado — ``DeliveryMethod.maxDeliveryDateTime`` y ``Fulfillment.deliveredAt``
+#: existen y OTIF SI es medible — pero vive en ``shopify_service.py``, no aca.
+_DEMAND_ONLY = {
+    # Catalogo, stock por ubicacion e historial de ordenes para que un pronostico pueda
+    # correr contra una tienda. Su orders() arma OrderLine con sku/quantity/price y nada mas.
+    "shopify",
+    # Idem para una cuenta de vendedor de MercadoLibre.
+    "meli",
+}
+
 
 def test_every_connector_that_reads_orders_declares_its_service_coverage():
     """Drift guard: a new adapter is one entry in ADAPTERS away from being held to the
@@ -554,9 +574,10 @@ def test_every_connector_that_reads_orders_declares_its_service_coverage():
     }
     covered = {case.module.rsplit(".", 1)[-1] for case in ADAPTERS}
     covered |= {modulo.rsplit(".", 1)[-1] for _, modulo, _ in ARRIVAL_SOURCES}
-    assert readers == covered | _NOT_A_BACKEND, (
+    assert readers == covered | _NOT_A_BACKEND | _DEMAND_ONLY, (
         "connector(s) reading orders but absent from both ADAPTERS and _NOT_A_BACKEND: "
-        f"{sorted(readers - covered - _NOT_A_BACKEND)}. Add a SERVICE_COVERAGE and an "
+        f"{sorted(readers - covered - _NOT_A_BACKEND - _DEMAND_ONLY)}. Add a SERVICE_COVERAGE "
+        "and an "
         "AdapterCase, or record here why this one is not a backend."
     )
 

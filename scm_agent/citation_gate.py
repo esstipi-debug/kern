@@ -297,6 +297,8 @@ TOOL_CONCEPTS: dict[str, tuple[str, ...]] = {
     # back to zero, which is the correct behaviour, not a regression to chase.
     "learning_curve": ("learning_curve_model", "experience_curve"),
     "odoo_replenishment": ("continuous_replenishment", "multiple_replenishment_orders"),
+    "shopify_replenishment": ("continuous_replenishment", "multiple_replenishment_orders"),
+    "channel_replenishment": ("continuous_replenishment", "multiple_replenishment_orders"),
     "excel_replenishment": ("continuous_replenishment_program",),
     "newsvendor": ("newsvendor_model", "generalized_newsvendor_problem", "price_setting_newsvendor"),
     "cycle_count": ("abc_classification", "vollmann_abc_analysis"),

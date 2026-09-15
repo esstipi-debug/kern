@@ -175,7 +175,7 @@ def test_registry_tool_count_matches_the_pinned_list():
     # staging-only: it never applies and is deliberately off the MCP surface.
     # bump this count again the next time a tool is registered, same as every prior update.
     reg = tools.build_default_registry()
-    assert len(reg.list()) == 58
+    assert len(reg.list()) == 60
 
 
 def test_scm_agent_tools_module_imports_without_circular_import():

@@ -15,6 +15,9 @@ full wiring touches eight fixed places (see `.specify/memory/constitution.md`).
 | Area | Tools |
 |---|---|
 | Demand & classification | `abc_xyz` · `forecast` · `whatif` |
+| Inventory & replenishment | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` · `shopify_replenishment` · `channel_replenishment` · `excel_replenishment` · `hat_tension` · `hat_settlement` |
+| Inventory control & health | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` · `intake_scan` |
+| Procurement & sourcing | `sourcing` · `supplier_management` · `landed_cost` · `acceptance_sampling` |
 | Inventory & replenishment | `inventory_optimization` · `newsvendor` · `multi_echelon` · `ddmrp` · `simulation` · `digital_twin` · `drp` · `odoo_replenishment` · `excel_replenishment` · `hat_tension` · `hat_settlement` |
 | Inventory control & health | `cycle_count` · `reconciliation` · `excess_obsolete` · `markdown_liquidation` · `fefo` · `data_quality` · `intake_scan` · `org_friction_audit` · `service_scan` |
 | Procurement & sourcing | `sourcing` · `supplier_management` · `landed_cost` · `import_case` · `acceptance_sampling` |

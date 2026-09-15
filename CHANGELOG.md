@@ -3,6 +3,128 @@
 ## [Unreleased]
 
 ### Added
+- **Unleashed as a second ERP, and the ERP slot that made it possible**
+  (`src/connectors/unleashed.py`) — Unleashed is what an Australian SMB runs for inventory
+  on top of Xero, and unlike Xero it holds `MinStockAlertLevel`: a reorder point its own
+  Reorder Report acts on. That puts it on Odoo's side of the line this repo keeps drawing —
+  a system that can *receive* a plan — while Xero, at >60% of the Australian accounting
+  market, stays off the list because its Accounting API has no reorder point at all and
+  Inventory Plus's levels are informational. `channel_replenishment` now takes
+  `params['erp']` alongside `params['channel']`, so all four channel × ERP combinations run
+  through one job.
+
+  **Making the ERP swappable exposed a live bug, which is the real content of this change.**
+  `src/entities.py` named `SOURCE_ODOO` as the owner of `unit_cost` as a *constant*, and
+  ownership only breaks ties among systems that actually reported. So with any other ERP no
+  system owned cost, the channel's display figure won on recency, and the restock was priced
+  at a storefront's number — silently, and in the direction that under-reports value to the
+  financial escalation threshold. Measured before the fix: Unleashed 12.00, Shopify 18.00,
+  resolved 18.00. `build_scm_registry(cost_owner=...)` now takes the ERP in play, and
+  `COST_OWNING_SYSTEMS` refuses to let a storefront or marketplace be named — that would
+  invert the guarantee rather than merely fail to apply it.
+
+  Unleashed's store joins `tests/test_connector_contract.py`'s parametrization rather than
+  its exclusion list: the reorder point is a single writable field, so it needs no richer
+  fixture than a price edit and is held to the same six invariants as every other store.
+  The drift guard caught its absence unprompted, which is the whole point of that test.
+
+  Two API details that only show up against the real docs: authentication is an
+  **HMAC-SHA256 signature over the query string** — parameters only, not the endpoint, not
+  the `?`, and the empty string when there are none — and the public field list disagrees
+  with the prose about `AverageLandPrice` / `AverageLandedPrice`, so both spellings are
+  read. Betting on one and losing yields a silent `0.0`, which is a zero book cost.
+
+- **MercadoLibre as a demand source** (`src/connectors/meli.py`) — `meli_prices.py` could
+  already reprice a seller account, but nothing could *plan* against one: no adapter
+  implemented `InventorySource`, so the channel had a write half and no read half. The new
+  `MeliConnector` supplies catalogue, published stock and order history over the seller API,
+  with an `InMemoryMeliCommerce` stand-in. It reads the seller SKU from **both** places a
+  real item carries it — `seller_custom_field` (legacy, still the most populated) and
+  `attributes[SELLER_SKU]` (modern) — because reading only one leaves a chunk of any real
+  catalogue looking SKU-less and silently dropped.
+
+  **Stock stays read-only, deliberately.** MercadoLibre's writable quantity is
+  `available_quantity`: physical units, exactly like a Shopify location's `available`.
+  Writing a target cover there would publish stock the seller does not hold. Prices remain
+  writable through `meli_prices.py` — a price is a decision, not a physical fact — and a
+  test asserts the *absence* of a stock writeback surface so it is not added by reflex.
+
+  This connector is a harder test of the entity layer's field ownership than Shopify was.
+  Shopify reports a competing cost the ERP's has to beat; MercadoLibre reports **no cost at
+  all**, so the failure mode inverts: an absent cost collapsing to `0.0` would value the
+  restock at zero, and a zero-value restock never crosses the financial escalation
+  threshold — a large buy would quietly stop being escalated. `_reported_money` already
+  handles it; the test pins the resulting 60.00 rather than the wiring.
+
+- **`channel_replenishment` agent tool** (`jobs/channel_replenishment_job.py`,
+  `examples/run_channel.py`) — the first job that crosses two connectors, because each
+  single-connector replenishment tool is blind in one eye: `shopify_replenishment` reads real
+  demand but has nowhere to write a plan, and `odoo_replenishment` can write a reorder point
+  but reads demand from the ERP's own `sale.order`, which in a DTC business is where the
+  selling is *not* happening. Forecasting from the storefront's orders against the ERP's stock
+  and lead times closes the loop, and stages the restock as a reversible reorder point through
+  the writeback plane the Odoo connector already owns. No new write path was added.
+
+  **The join goes through `src/entities.py`, which until now no production code touched.**
+  That module declares `unit_cost` owned by `SOURCE_ODOO` precisely so a storefront's cost —
+  a display artefact — cannot overwrite the book value. It is load-bearing here: in the demo
+  pair the two systems disagree on SKU-1's cost (Odoo 12.00, Shopify 18.00), and the restock
+  values at 148.00 rather than 172.00. Nothing else in the report would have looked different
+  if the wrong one had won, and the financial escalation threshold is measured against that
+  number — so the test asserts the total, not the wiring. The entity store opens `:memory:`
+  per run, so the join adds no persistence unless `entity_store_path` is passed.
+
+  **Stock divergence is a first-class output.** Both systems report on-hand; when they
+  disagree one of them is wrong, and no single-connector tool can see it. Planning uses the
+  ERP's figure (that is where the reorder point lives), the disagreement is reported in its
+  own CSV and deck finding, and a positive delta is called out as the direction that
+  oversells. SKUs the storefront sells that the ERP does not carry get their own finding
+  rather than being dropped from the plan silently — they cannot be replenished at all.
+
+  `verify()` blocks on the two silent-success shapes: catalogues that do not intersect (a SKU
+  spelling mismatch presenting as a healthy inventory position) and an empty channel order
+  history (every forecast zero, so nothing can ever be short).
+
+### Changed
+- `jobs/channel_replenishment_job.py` is channel-pluggable (`params['channel']`, `CHANNELS`).
+  The design note that landed with it said a generic multi-source abstraction should wait
+  until a second channel existed, so that what actually repeats could be seen rather than
+  guessed. It turned out to be three things — an `InventorySource`, a display label, and the
+  entity-system constant that decides whose field claims may win — so the seam is a resolver
+  dict, not a framework. No new agent tool: a standalone `meli_replenishment` would be this
+  job with different labels, since MercadoLibre has nowhere to put a plan either, so it
+  routes through `channel_replenishment`'s intent keywords instead.
+- `src/connectors/replenish.py`: `_demand_by_sku` promoted to public `demand_by_sku`. The
+  cross-connector job needs the demand half of `plan_replenishment` without the planning half,
+  which assumes demand and stock come from the same `InventorySource`.
+- `tests/test_how_it_works_data.py`: the tool-count assertions no longer carry the count in
+  the test NAME. `test_exactly_49_tools_with_unique_keys` was asserting 50 — a name that has
+  to be edited in lockstep with a number eventually is not.
+- **`shopify_replenishment` agent tool** (`src/connectors/shopify.py`, `jobs/shopify_job.py`,
+  `examples/run_shopify.py`) — Shopify was reachable as a *writeback store*
+  (`shopify_prices.py`, `shopify_inventory.py`) but not as a *source*: no adapter implemented
+  `InventorySource`, so no engine could read a storefront and no agent tool could route to one.
+  `ShopifyConnector` closes that half — catalog, on-hand at a location and order history over the
+  GraphQL Admin API, behind the same protocol `OdooConnector` implements — and the job is now
+  registered as the 51st tool, with an `InMemoryShopifyCommerce` stand-in so the whole loop demos
+  with no credentials.
+
+  **It is not a copy of the Odoo tool, on purpose.** Odoo's recommended option stages
+  `stock.warehouse.orderpoint.product_min_qty` — a *reorder point*, a planning parameter the ERP
+  then acts on. Shopify has no such field. Its only writable inventory number is `available`:
+  physical units on a shelf. Writing a target cover there would not order a single unit; it would
+  tell the storefront it holds stock it does not hold and oversell against it. So the recommended
+  option here writes nothing and hands the quantities to purchasing, and the writeback plane is
+  offered only for the Shopify write that is actually true — reconciling `available` against a
+  physical count, staged reversibly and never auto-applied, unlike `OdooConnector.apply_restock`.
+  `test_the_recommended_option_writes_nothing_to_shopify` exists to fail if the two tools are ever
+  "harmonised" back together.
+
+  Two smaller honesty choices came with it: `lead_times()` returns empty rather than a plausible
+  default, because Shopify models no supplier and a fabricated 14 days would reach the deliverable
+  indistinguishable from a measured one; and `verify()` fails a run with zero order history, which
+  would otherwise report "all SKUs above cover" — good news — from having read nothing at all.
+  The tool is excluded from the MCP surface automatically by the existing read-only guard.
 - **Spec-driven development, with a written constitution.** `specify init --here
   --integration claude` (spec-kit v1.0.2) installs `.specify/` and ten
   `speckit-*` project skills. The piece that is not scaffolding is

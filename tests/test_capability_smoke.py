@@ -68,6 +68,8 @@ EXPECTED_OFFLINE_BUCKETS: dict[str, str] = {
     "multi_echelon":          "PASS",
     "newsvendor":             "PASS",
     "odoo_replenishment":     "PASS",
+    "shopify_replenishment":  "PASS",
+    "channel_replenishment":  "PASS",
     "pricing":                "PASS",
     "procedure_audit":        "PASS",
     "repricing":              "PASS",
