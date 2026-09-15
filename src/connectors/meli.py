@@ -22,7 +22,15 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from src.connectors import InventoryLevel, Order, OrderLine, Product
+from src.connectors import (
+    WRITE_NONE,
+    InventoryLevel,
+    Order,
+    OrderLine,
+    Product,
+    WriteSurface,
+    health,
+)
 
 try:
     import httpx  # noqa: F401  -- solo se testea disponibilidad
@@ -55,7 +63,7 @@ class MeliCommerceRPC(Protocol):
                     ) -> tuple[list[dict], int]: ...
 
 
-class MeliCommerceClient:
+class MeliCommerceClient(health.NoCredentialRepair):
     """Live MercadoLibre seller API transport for catalogue + order reads.
 
     ``http`` should already carry ``base_url="https://api.mercadolibre.com"`` and an
@@ -70,7 +78,29 @@ class MeliCommerceClient:
                 "extra or use InMemoryMeliCommerce for offline use"
             )
         self._http = http
+        self._auth_budget = health.AuthRepairBudget()
         self._user_id = user_id
+
+    # -- salud de conexion (ver src/connectors/health.py) -----------------------
+
+    #: `/users/me` devuelve el usuario del token: no muta, no pagina, y no necesita un
+    #: site_id ni una query inventada. Misma eleccion que `meli_catalog`, y por el mismo
+    #: motivo: `/orders/search` contra un user_id equivocado responde 200 con cero
+    #: resultados, o sea que "sano" y "mal configurado" se verian igual.
+    _HEALTH_PATH = "/users/me"
+
+    def is_healthy(self) -> bool:
+        try:
+            resp = self._http.get(self._HEALTH_PATH)
+            if int(getattr(resp, "status_code", 200)) >= 400:
+                return False
+        except Exception:
+            return False
+        self._auth_budget.restore()
+        return True
+
+    def on_throttle(self, exc: BaseException) -> float | None:
+        return health.throttle_wait(exc)
 
     def list_items(self, limit: int = _SEARCH_PAGE, offset: int = 0) -> tuple[list[dict], int]:
         """One page of the seller's items, fully hydrated. Returns (items, total)."""
@@ -275,3 +305,13 @@ __all__ = [
     "MeliConnector",
     "demo_meli_commerce",
 ]
+
+WRITE_SURFACE = WriteSurface(
+    WRITE_NONE,
+    means=(
+        "solo lectura de la cuenta de vendedor: publicaciones, stock y ordenes, para que un "
+        "pronostico pueda correr contra MercadoLibre. No publica, no modifica publicaciones y "
+        "no toca precios: los cambios de precio van por `meli_prices.py`, con dry-run y "
+        "aprobacion firmada."
+    ),
+)

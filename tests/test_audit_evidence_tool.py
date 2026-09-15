@@ -27,11 +27,11 @@ def registry():
     return tools.build_default_registry()
 
 
-def test_audit_evidence_is_registered_and_count_is_58(registry):
+def test_audit_evidence_is_registered_and_count_is_60(registry):
     assert registry.get("audit_evidence") is not None
     assert registry.get("audit_evidence").requires_data is True
     assert registry.get("scor_iso_audit") is not None
-    assert len(registry.list()) == 58
+    assert len(registry.list()) == 60
 
 
 @pytest.mark.parametrize(

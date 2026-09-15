@@ -2052,11 +2052,11 @@ def channel_replenishment_tool() -> Tool:
         deliver=lambda report, out_dir, client: channel_replenishment_job.write_operational(
             report, out_dir, client
         ),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             channel_replenishment_job.build_deck(
                 report, client=client, citations=tuple(citations), confidence=confidence
             ),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 
@@ -2102,9 +2102,9 @@ def shopify_replenishment_tool() -> Tool:
         run=_shopify_run,
         qa=lambda report: shopify_job.verify(report),
         deliver=lambda report, out_dir, client: shopify_job.write_operational(report, out_dir, client),
-        deck=lambda report, out_dir, client, citations, confidence, options: replace(
+        deck=lambda report, out_dir, client, citations, confidence, options, readings=(): replace(
             shopify_job.build_deck(report, client=client, citations=tuple(citations), confidence=confidence),
-            options=tuple(options),
+            options=tuple(options), readings=tuple(readings),
         ).write_all(out_dir),
     )
 

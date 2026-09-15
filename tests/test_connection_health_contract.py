@@ -41,9 +41,11 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from src.connectors import health  # noqa: E402
+from src.connectors.meli import MeliCommerceClient  # noqa: E402
 from src.connectors.meli_catalog import MeliCatalogClient  # noqa: E402
 from src.connectors.meli_prices import MeliClient  # noqa: E402
 from src.connectors.odoo import OdooClient  # noqa: E402
+from src.connectors.shopify import ShopifyCommerceClient  # noqa: E402
 from src.connectors.shopify_inventory import ShopifyInventoryClient  # noqa: E402
 from src.connectors.shopify_prices import ShopifyClient  # noqa: E402
 
@@ -186,6 +188,15 @@ def _meli_catalog() -> MeliCatalogClient:
     return MeliCatalogClient(_BearerHttp(), user_id="123")
 
 
+
+def _shopify_commerce() -> ShopifyCommerceClient:
+    return ShopifyCommerceClient(FakeHttp())
+
+
+def _meli_commerce() -> MeliCommerceClient:
+    return MeliCommerceClient(_BearerHttp(), user_id="123")
+
+
 def _odoo() -> OdooClient:
     proxy = FakeOdooProxy()
     return OdooClient("http://odoo.test", "db", "user", "key", common=proxy, models=proxy)
@@ -196,6 +207,8 @@ CASES: tuple[HealthCase, ...] = (
     HealthCase("shopify_inventory", _shopify_inventory, lambda c: c._http, False, True),
     HealthCase("meli_prices", _meli, lambda c: c._http, False, True),
     HealthCase("meli_catalog", _meli_catalog, lambda c: c._http, False, True),
+    HealthCase("shopify", _shopify_commerce, lambda c: c._http, False, True),
+    HealthCase("meli", _meli_commerce, lambda c: c._http, False, True),
     # throttles=True for Odoo is not about XML-RPC, which has no such signal: a
     # production Odoo usually sits behind nginx or Cloudflare, and those answer a
     # rate limit with a genuine 429 + Retry-After that reaches the client.
@@ -407,7 +420,10 @@ def test_every_networked_client_is_covered_by_this_suite():
     # excepciones de httpx. Lo unico que lo delata es la frase que dice que no lo usa.
     networked -= {"shopify_connect"}
 
-    covered = {"shopify_prices", "shopify_inventory", "meli_prices", "meli_catalog", "odoo"}
+    covered = {
+        "shopify_prices", "shopify_inventory", "shopify",
+        "meli_prices", "meli_catalog", "meli", "odoo",
+    }
     # Every module owning a live transport is covered, so there is nothing to
     # exempt. Two near-misses, named so a later reader does not "fix" their
     # absence: odoo_prices.py drives an injected OdooRPC (in production an

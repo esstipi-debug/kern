@@ -28,7 +28,15 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from nosilo_core import writeback
-from src.connectors import InventoryLevel, Order, OrderLine, Product
+from src.connectors import (
+    WRITE_NONE,
+    InventoryLevel,
+    Order,
+    OrderLine,
+    Product,
+    WriteSurface,
+    health,
+)
 from src.connectors.shopify_api_version import PINNED_VERSION, check_served
 from src.connectors.shopify_inventory import (
     InMemoryShopifyInventory,
@@ -65,7 +73,7 @@ class ShopifyCommerceRPC(Protocol):
     def list_orders(self, since: str | None = None, limit: int = _PAGE) -> list[dict]: ...
 
 
-class ShopifyCommerceClient:
+class ShopifyCommerceClient(health.NoCredentialRepair):
     """Live Shopify GraphQL Admin API client for catalog + order reads.
 
     Shares the pinned-version guard with the inventory client: a storefront silently
@@ -80,8 +88,27 @@ class ShopifyCommerceClient:
                 "or use InMemoryShopifyCommerce for offline tests"
             )
         self._http = http
+        self._auth_budget = health.AuthRepairBudget()
         self._api_version = api_version
         self._graphql_path = f"/admin/api/{api_version}/graphql.json"
+
+    # -- salud de conexion (ver src/connectors/health.py) -----------------------
+
+    #: La lectura mas barata que ofrece la Admin API: un punto de costo, no muta nada.
+    #: Misma eleccion que `shopify_prices.ShopifyClient`, a proposito: dos transportes
+    #: contra la misma tienda no deberian sondearla de dos formas distintas.
+    _HEALTH_QUERY = "{ shop { name } }"
+
+    def is_healthy(self) -> bool:
+        try:
+            self._graphql(self._HEALTH_QUERY, {})
+        except Exception:
+            return False
+        self._auth_budget.restore()
+        return True
+
+    def on_throttle(self, exc: BaseException) -> float | None:
+        return health.throttle_wait(exc)
 
     def _graphql(self, query: str, variables: dict) -> dict:
         resp = self._http.post(self._graphql_path, json={"query": query, "variables": variables})
@@ -376,3 +403,14 @@ __all__ = [
     "ShopifyInventoryError",
     "demo_shopify",
 ]
+
+WRITE_SURFACE = WriteSurface(
+    WRITE_NONE,
+    means=(
+        "solo lectura: catalogo, stock por ubicacion e historial de ordenes, para que un "
+        "pronostico pueda correr contra una cuenta de Shopify. El `.post` de este modulo NO "
+        "es una escritura: la Admin API de Shopify se CONSULTA por GraphQL, y una query viaja "
+        "por POST. La mitad de escritura de Shopify vive en `shopify_prices.py` (precio por "
+        "variante, con dry-run y aprobacion firmada) y en `shopify_inventory.py`."
+    ),
+)
