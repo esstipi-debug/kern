@@ -40,6 +40,7 @@ _STR = {
         "kicker": "Blog", "index_title": "Blog — Kern",
         "index_lede": "Metodo de inventario explicado contra el codigo que lo corre. Sin precios, sin casos de exito inventados.",
         "read": "Leer", "other": "English", "answers": "Responde a",
+        "answer_label": "La respuesta",
         "cta_demo": "Diagnóstico gratis", "cta_diag": "Diagnostico de Arranque",
         "updated": "Actualizado", "sources": "Fuentes", "faq": "Preguntas frecuentes",
     },
@@ -47,13 +48,14 @@ _STR = {
         "kicker": "Blog", "index_title": "Blog — Kern",
         "index_lede": "Inventory method explained against the code that runs it. No prices, no invented case studies.",
         "read": "Read", "other": "Espanol", "answers": "Answers",
+        "answer_label": "The answer",
         "cta_demo": "Free diagnostic", "cta_diag": "Start-up Diagnostic",
         "updated": "Updated", "sources": "Sources", "faq": "FAQ",
     },
 }
 
 _CSS = """
-  :root{--ink:#080b11;--panel:#111722;--line:#1e2733;--txt:#e7eef6;--txt-2:#c4cfdb;
+  :root{--accent-warm:#ffb545;--accent-warm-2:#ff8a5c;--accent-warm-deep:#b5601f;--ink:#080b11;--panel:#111722;--line:#1e2733;--txt:#e7eef6;--txt-2:#c4cfdb;
     --muted:#9aa7b6;--faint:#5e6b7a;--accent:#4fd1c5;--accent-bright:#5eead4;
     --accent-soft:rgba(79,209,197,.14);--accent-bd:rgba(79,209,197,.45);
     --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -88,7 +90,17 @@ _CSS = """
   pre{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;overflow-x:auto}
   pre code{background:none;border:0;padding:0;font-size:13px;line-height:1.5}
   blockquote{margin:0 0 18px;padding:2px 0 2px 16px;border-left:2px solid var(--line-2,#283341);color:var(--txt-2)}
-  table{width:100%;border-collapse:collapse;margin:0 0 20px;font-size:14px;display:block;overflow-x:auto}
+  .table-wrap{overflow-x:auto;margin:0 0 20px;-webkit-overflow-scrolling:touch}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  .lang{display:inline-flex;gap:2px;margin:0 0 18px}
+  .lang a{padding:4px 10px;border:1px solid #d8dbe0;border-radius:999px;font-size:13px;text-decoration:none}
+  .lang a[aria-current="true"]{background:#111;color:#fff;border-color:#111}
+  .crumb{font-size:13px;color:#6b7280;margin:0 0 10px}
+  .answer-label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-warm-deep,#b5601f);margin:0 0 6px}
+  .card{border:1px solid #e6e8ec;border-radius:12px;padding:18px 20px;margin:0 0 14px;list-style:none}
+  .card h2{margin:0 0 6px;font-size:19px}
+  .card .read{display:inline-block;margin-top:10px;font-size:14px;font-weight:600}
+  .btn.primary{background:linear-gradient(150deg,var(--accent-warm),var(--accent-warm-2));color:#2a1200;box-shadow:0 4px 0 var(--accent-warm-deep)}
   th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
   th{background:var(--panel);font-weight:600;color:var(--txt-2)}
   .cta{margin:44px 0 0;padding:22px;border:1px solid var(--accent-bd);border-radius:var(--r);background:var(--accent-soft)}
@@ -138,7 +150,7 @@ def _shell(*, lang: str, title: str, description: str, head_extra: str, body: st
 <style>{_CSS}{FIGURE_CSS}</style>
 </head>
 <body>
-<header><div class="wrap"><a class="brand" href="/">kern<span class="d">.</span></a>{_nav(lang)}</div></header>
+<header><div class="wrap"><a class="brand" href="/"><span class="d">&#9672;</span> kern</a>{_nav(lang)}</div></header>
 <main><div class="wrap">{body}</div></main>
 <footer><div class="wrap">Kern — inventory method, cited to the code that runs it.</div></footer>
 </body>
@@ -223,9 +235,46 @@ def article_jsonld(post: BlogPost) -> str:
 # Pages
 # --------------------------------------------------------------------------- #
 
+def _lang_switch(*, current: str, es_href: str, en_href: str) -> str:
+    """ES / EN con `aria-current` en el vigente.
+
+    Antes el enlace decia solo "English" o "Espanol" y no marcaba cual estaba
+    activo: un lector de pantalla oia dos enlaces sueltos sin saber donde estaba
+    parado, y a la vista tampoco se distinguia cual era el actual.
+    """
+    def uno(code: str, label: str, href: str) -> str:
+        marca = ' aria-current="true"' if code == current else ""
+        return f'<a href="{href}"{marca}>{label}</a>'
+
+    return (
+        '<nav class="lang" aria-label="idioma">'
+        + uno("es", "ES", es_href)
+        + uno("en", "EN", en_href)
+        + "</nav>"
+    )
+
+
+def _article_lang_switch(post: BlogPost) -> str:
+    """El conmutador del articulo, respetando la excepcion de `stocky-alt`.
+
+    Su mitad en ingles NO es una URL de /blog/: es la landing existente
+    /stocky-alternative. `hreflang_hrefs` ya lo sabe, asi que el conmutador sale
+    de ahi en vez de fabricar un /blog/en/<slug> que daria 404.
+    """
+    hrefs = hreflang_hrefs(post)
+    base = public_base_url()
+
+    def rel(code: str, fallback: str) -> str:
+        return hrefs[code].replace(base, "") if code in hrefs else fallback
+
+    return _lang_switch(
+        current=post.lang, es_href=rel("es", "/blog"), en_href=rel("en", "/blog/en")
+    )
+
+
 def _cta_block(post: BlogPost) -> str:
     s = _STR[post.lang]
-    demo = f'<a class="btn" href="/demo?source=blog-{escape(post.slug, quote=True)}">{s["cta_demo"]}</a>'
+    demo = f'<a class="btn primary" href="/demo?source=blog-{escape(post.slug, quote=True)}">{s["cta_demo"]}</a>'
     diag = f'<a class="btn ghost" href="/paquetes/{escape(post.offer, quote=True)}">{s["cta_diag"]}</a>'
     if post.cta == "demo":
         return f'<div class="cta">{demo}</div>'
@@ -251,23 +300,21 @@ def _index_icons(lang: str) -> str:
 
 def render_blog_article_html(post: BlogPost) -> str:
     s = _STR[post.lang]
-    hrefs = hreflang_hrefs(post)
-    other = "en" if post.lang == "es" else "es"
-    other_link = (
-        f' · <a href="{escape(hrefs[other].replace(public_base_url(), ""), quote=True)}">{s["other"]}</a>'
-        if other in hrefs else ""
-    )
     head = (
         _alternate_links(post)
         + f'\n<script type="application/ld+json">{article_jsonld(post)}</script>'
         + ('\n<meta name="robots" content="noindex">' if post.noindex else "")
     )
     body = (
-        f'<div class="kicker">{s["kicker"]}</div>'
+        f'<nav class="crumb" aria-label="{s["kicker"]}">'
+        f'<a href="{"/blog" if post.lang == "es" else "/blog/en"}">{s["kicker"]}</a> '
+        f'<span aria-hidden="true">/</span> <span>{escape(post.title)}</span></nav>'
         f"<h1>{escape(post.title)}</h1>"
-        f'<div class="answer">{escape(post.answer)}</div>'
+        f'<div class="answer"><span class="answer-label">{s["answer_label"]}</span>'
+        f"{escape(post.answer)}</div>"
         f'<p class="meta">{s["answers"]}: “{escape(post.query)}” · '
-        f'{s["updated"]} {escape(post.updated)}{other_link}</p>'
+        f'{s["updated"]} {escape(post.updated)}</p>'
+        f"{_article_lang_switch(post)}"
         f"<article>{render_markdown(body_without_h1(post), post.lang)}</article>"
         f"{_cta_block(post)}"
         f"{_sources_block(post)}"
@@ -279,7 +326,6 @@ def render_blog_article_html(post: BlogPost) -> str:
 def render_blog_index_html(lang: str, posts: tuple[BlogPost, ...]) -> str:
     s = _STR[lang]
     base = public_base_url()
-    other_path = "/blog/en" if lang == "es" else "/blog"
     head = (
         f'<link rel="canonical" href="{base}{"/blog" if lang == "es" else "/blog/en"}">\n'
         f'<link rel="alternate" hreflang="es" href="{base}/blog">\n'
@@ -291,15 +337,16 @@ def render_blog_index_html(lang: str, posts: tuple[BlogPost, ...]) -> str:
         if p.noindex:
             continue
         items.append(
-            f'<li><h2><a href="{p.url_path}">{escape(p.title)}</a></h2>'
+            f'<li class="card"><h2><a href="{p.url_path}">{escape(p.title)}</a></h2>'
             f"<p>{escape(p.description)}</p>"
-            f'<div class="q">{s["answers"]}: “{escape(p.query)}”</div></li>'
+            f'<div class="q">{s["answers"]}: “{escape(p.query)}”</div>'
+            f'<a class="read" href="{p.url_path}">{s["read"]} &rarr;</a></li>'
         )
     body = (
         f'<div class="kicker">{s["kicker"]}</div>'
         f"<h1>{escape(s['index_title'].split(' — ')[0])}</h1>"
         f'<p class="lede">{escape(s["index_lede"])}</p>'
-        f'<p class="meta"><a href="{other_path}">{s["other"]}</a></p>'
+        f'{_lang_switch(current=lang, es_href="/blog", en_href="/blog/en")}'
         f"{_index_icons(lang)}"
         f'<ul class="posts">{"".join(items)}</ul>'
     )

@@ -111,7 +111,7 @@ _HEAD = """<!DOCTYPE html>
 <header>
   <div class="wrap">
     <span class="brand"><span class="d">&#9672;</span> Kern</span>
-    <nav><a href="/paquetes">Paquetes</a><a href="/demo">Diagnóstico</a><a href="/pricing">Pricing</a><a href="/tower">Tower</a><a href="/">Dashboard</a></nav>
+    <nav><a href="/blog">Blog</a><a href="/paquetes">Paquetes</a><a href="/demo">Diagnóstico</a><a href="/pricing">Pricing</a><a href="/tower">Tower</a><a href="/">Dashboard</a></nav>
   </div>
 </header>
 <main class="wrap">
