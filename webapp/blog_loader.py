@@ -231,14 +231,22 @@ def _inline(text: str) -> str:
 
 
 def _table(rows: list[str]) -> str:
+    """Una tabla, envuelta en `.table-wrap`.
+
+    El envoltorio no es decorativo: el scroll horizontal tiene que vivir en un
+    contenedor propio. Ponerlo en la `<table>` (con `display:block;overflow-x:auto`)
+    obliga a la tabla a dejar de ser tabla para poder desbordar, y eso le rompe el
+    ancho de las columnas -- ademas de sacarla del arbol de accesibilidad como
+    tabla en varios lectores de pantalla.
+    """
     cells = [[c.strip() for c in r.strip().strip("|").split("|")] for r in rows]
     head, body = cells[0], cells[2:]  # cells[1] is the --- separator
-    out = ["<table><thead><tr>"]
+    out = ['<div class="table-wrap"><table><thead><tr>']
     out += [f"<th>{_inline(c)}</th>" for c in head]
     out.append("</tr></thead><tbody>")
     for row in body:
         out.append("<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in row) + "</tr>")
-    out.append("</tbody></table>")
+    out.append("</tbody></table></div>")
     return "".join(out)
 
 
@@ -360,8 +368,29 @@ def render_markdown(md: str, lang: str = "en") -> str:
     return "\n".join(out)
 
 
+def _squash_ws(text: str) -> str:
+    return " ".join(text.split())
+
+
 def body_without_h1(post: BlogPost) -> str:
-    """The article body with its leading H1 dropped: the page shell prints the
-    title itself, and two H1s on one document is the kind of thing a GEO page
-    cannot afford."""
-    return re.sub(r"\A\s*#\s+.*?(\n|$)", "", post.body_md, count=1)
+    """The article body with its leading H1 -- y su parrafo de respuesta -- dropped.
+
+    La pagina ya imprime las dos cosas: el titulo en el ``<h1>`` del shell y la
+    respuesta en el callout ``.answer``, que sale del frontmatter. Los articulos
+    ademas abren repitiendo ese mismo parrafo, asi que el lector lo leia DOS VECES
+    seguidas y un buscador veia el bloque duplicado dentro de la misma pagina.
+
+    Se saca por CONTENIDO, no por posicion: solo se descarta el primer parrafo si
+    es efectivamente la respuesta, comparando con los espacios normalizados porque
+    el markdown la parte en varias lineas y el frontmatter no. Un articulo que
+    abra con otra cosa no pierde nada.
+    """
+    sin_h1 = re.sub(r"\A\s*#\s+.*?(\n|$)", "", post.body_md, count=1)
+    respuesta = _squash_ws(post.answer)
+    if not respuesta:
+        return sin_h1
+    cuerpo = sin_h1.lstrip("\n")
+    primero, sep, resto = cuerpo.partition("\n\n")
+    if _squash_ws(primero) == respuesta:
+        return resto.lstrip("\n") if sep else ""
+    return sin_h1
