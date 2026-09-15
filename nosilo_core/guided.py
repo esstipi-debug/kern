@@ -194,6 +194,11 @@ COVERAGE_PENALTY: dict[str, float] = {
     # can only speak for a minority of them (jobs/intake_scan_job.py). The verdict it
     # DOES give is sound; its COVERAGE of the registry is not.
     "undeclared_tools_dominate": 0.25,
+    # un hito de la cadena que el export del cliente nunca registro, asi que el
+    # dwell de esa etapa no existe (jobs/fulfillment_chain_job.py). Se repite una
+    # vez por hito ausente: perder pack_end y load_end cuesta el doble que perder
+    # solo uno, porque cada hueco parte la cadena en un lugar distinto.
+    "milestone_hop_unavailable": 0.15,
 }
 CONFIDENCE_FLOOR = 0.10
 
