@@ -1,12 +1,12 @@
-# Graph Report - supply-chain-optimization  (2026-09-04)
+# Graph Report - f233  (2026-09-15)
 
 ## Corpus Check
-- 45 files · ~0 words
+- 46 files · ~0 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3043 nodes · 6170 edges · 205 communities (180 shown, 25 thin omitted)
-- Extraction: 72% EXTRACTED · 28% INFERRED · 0% AMBIGUOUS · INFERRED: 1697 edges (avg confidence: 0.82)
+- 3103 nodes · 6393 edges · 206 communities (181 shown, 25 thin omitted)
+- Extraction: 73% EXTRACTED · 27% INFERRED · 0% AMBIGUOUS · INFERRED: 1710 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -215,6 +215,7 @@
 - Brechas de capacidad de Kern
 - Brechas de lanzamiento de Kern
 - Control Plan (Six Sigma Control phase)
+- Vandeput: Data Science for Supply Chain Forecasting (2nd ed.)
 
 ## God Nodes (most connected - your core abstractions)
 1. `Chopra & Meindl: Supply Chain Management` - 356 edges
@@ -243,7 +244,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (205 total, 25 thin omitted)
+## Communities (206 total, 25 thin omitted)
 
 ### Community 4 - "Boylan & Syntetos: Intermittent Demand Forecasting (Context, Methods and Applications)"
 Cohesion: 0.07
@@ -965,6 +966,10 @@ Nodes (13): Brechas de lanzamiento de Kern, Brecha L1: el ledger de leads se bor
 Cohesion: 0.08
 Nodes (12): Documented Information (ISO 9001:2015 clause 7.5), Document Review Cadence (organization-determined, not ISO-fixed), ISO 10013:2021 (Guidance for Documented Information), Document Owner vs Approver Segregation, Control Plan (Six Sigma Control phase), Reaction Plan (control plan field), Leader Standard Work, Layered Process Audit (LPA) (+4 more)
 
+### Community 205 - "Vandeput: Data Science for Supply Chain Forecasting (2nd ed.)"
+Cohesion: 0.08
+Nodes (60): Vandeput: Data Science for Supply Chain Forecasting (2nd ed.), RMSE, MAE Optimises Toward the Demand Median, RMSE Optimises Toward the Demand Mean, Report One KPI, Optimise Another, Level, Reactivity vs Stability Trade-off, Data Leakage (+52 more)
+
 ## Ambiguous Edges - Review These
 - `Employee Empowerment` → `Specialization`  [AMBIGUOUS]
   khan-supply-chain-resilience.txt · relation: conceptually_related_to
@@ -1002,7 +1007,7 @@ Nodes (12): Documented Information (ISO 9001:2015 clause 7.5), Document Review C
   khan-supply-chain-resilience.txt · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **569 isolated node(s):** `Box & Jenkins: Time Series Analysis: Forecasting and Control`, `Erratic Demand`, `Hyperbolic Exponential Smoothing (HES)`, `Cross-Sectional Aggregation`, `Mean Square Error (MSE / RMSE)` (+564 more)
+- **567 isolated node(s):** `Box & Jenkins: Time Series Analysis: Forecasting and Control`, `Erratic Demand`, `Hyperbolic Exponential Smoothing (HES)`, `Cross-Sectional Aggregation`, `Brier Score` (+562 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **25 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kern"
 version = "2.9.0"
-description = "Kern — an agentic supply-chain engine: inventory optimization, pricing and leadership analysis from a plain-language brief, grounded in a knowledge graph of 26 curated external sources."
+description = "Kern — an agentic supply-chain engine: inventory optimization, pricing and leadership analysis from a plain-language brief, grounded in a knowledge graph of 27 curated external sources."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
