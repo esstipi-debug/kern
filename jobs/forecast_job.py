@@ -33,6 +33,8 @@ from src.export import write_summary_csv
 from src.forecast_metrics import compute_metrics
 from src.forecastability import segment
 from src.forecasting import forecast_demand
+from src.outliers import OutlierReport, scan_outliers
+from src.seasonality import detect_season_length
 from src.state.store import StateStore
 
 _PRODUCT_COLS = ("sku", "product_id", "product", "item", "SKU", "Product", "material")
@@ -56,6 +58,21 @@ class SkuForecast:
     fva: float            # 1 - MASE; > 0 means the method beats the naive baseline
     beats_naive: bool
     n_periods: int
+    #: Periodos del ciclo detectado en ESTA serie; 1 = sin estacion, naive lag-1.
+    #: Viaja al reporte porque un MASE no se puede auditar sin saber contra que
+    #: naive se escalo.
+    season_length: int = 1
+    #: `scaled` (MASE/RMSSE son numeros reales) | `exact` (el naive es perfecto
+    #: aca, asi que NO ganarle es un veredicto, no un hueco) | `unavailable` (no
+    #: hubo benchmark medible: ningun veredicto). Las tres dan MASE infinito en
+    #: dos casos, y decir "no pudimos validar" cuando la verdad es "el naive ya
+    #: gana" es otra afirmacion, y la equivocada.
+    benchmark_state: str = "unavailable"
+    #: Periodos marcados como excepcionales (promocion, pedido grande, liquidacion,
+    #: error de tipeo). Se REPORTAN, nunca se limpian a espaldas del llamador: una
+    #: serie corregida en silencio es un pronostico que nadie puede auditar.
+    n_outliers: int = 0
+    outlier_periods: tuple[int, ...] = ()
     #: Signed forecast error over the fitted history: positive = the method runs HIGH.
     #: MAPE says how wrong, this says in which direction, which is the half a planner
     #: acts on (Vandeput 2021, sec 2.2) and the half the job used to discard.
@@ -153,7 +170,14 @@ def prepare(data_path: str, params: dict | None = None) -> dict[str, list[float]
 
 
 def _backtest(series: list[float], method: str, *, holdout_fraction: float, min_periods: int):
-    """Hold out the tail, fit on the head, and score the flat forecast (None if too short)."""
+    """Hold out the tail, fit on the head, and score the flat forecast (None if too short).
+
+    El naive de referencia sale de la serie, no de una constante: si repite cada m
+    periodos, MASE y RMSSE se escalan contra el naive ESTACIONAL. Contra un lag-1,
+    un pronostico plano sobre una serie que alterna alto/bajo parece excelente --
+    el benchmark esta oscilando de punta a punta todos los periodos, y el FVA que
+    sale de ahi es un elogio prestado.
+    """
     n = len(series)
     if n < min_periods:
         return None
@@ -163,7 +187,9 @@ def _backtest(series: list[float], method: str, *, holdout_fraction: float, min_
     train = series[:-h]
     test = series[-h:]
     fc = forecast_demand(train, method=method).forecast
-    return compute_metrics(test, [fc] * h, train=train)
+    return compute_metrics(
+        test, [fc] * h, train=train, season_length=detect_season_length(train)
+    )
 
 
 def _policy_outcome(
@@ -239,11 +265,30 @@ def _dispersion(fc) -> float | None:
     return None
 
 
+def _benchmark_state(metrics) -> str:
+    """`scaled` | `exact` | `unavailable` -- que pudo decir el naive de referencia."""
+    if metrics is None or metrics.naive_obs <= 0:
+        return "unavailable"
+    if metrics.naive_mae == 0.0 or metrics.naive_rmse == 0.0:
+        return "exact"
+    return "scaled" if math.isfinite(metrics.mase) else "unavailable"
+
+
 def _sku_forecast(
     f, series: list[float], memory: CycleMemory,
     *, holdout_fraction: float, min_periods: int,
 ) -> SkuForecast:
     """One SKU's row: point, band, backtest, and last cycle's error beside today's."""
+    _m = detect_season_length(series)
+    # Se escanea con el MISMO m que puntua el benchmark: un pico de temporada no es
+    # un outlier, es la temporada. Contra una linea base sin fase, diciembre entero
+    # saldria marcado todos los anios.
+    try:
+        _outliers = scan_outliers(series, season_length=_m)
+    except ValueError:
+        # Historia inutilizable para el escaner (vacia, no finita, negativa). El
+        # pronostico ya la rechaza por su cuenta; aca no se inventa un cero.
+        _outliers = OutlierReport(cleaned=tuple(series), flagged=(), n_flagged=0)
     fc = forecast_demand(series, method=f.recommended_method)
     point = float(fc.forecast)
     sigma = _dispersion(fc)
@@ -260,6 +305,10 @@ def _sku_forecast(
     was = None if memory.previous is None else memory.previous.mape_by_sku.get(f.name)
     return SkuForecast(
         name=f.name, quadrant=f.quadrant, adi=f.adi, cv2=f.cv2, method=f.recommended_method,
+        season_length=_m,
+        benchmark_state=_benchmark_state(metrics),
+        n_outliers=_outliers.n_flagged,
+        outlier_periods=_outliers.flagged,
         forecast=point, mae=mae, mape=mape, mase=mase, fva=fva, beats_naive=beats,
         n_periods=f.n_periods,
         bias=float(fc.bias), error_std=float(fc.error_std), sigma_source=fc.sigma_source,
@@ -276,7 +325,10 @@ def _policy_and_summary(seg, skus: list[SkuForecast]) -> tuple[GuidedOutcome, st
     """The ranked-policy outcome plus the one-line summary that names the winner."""
     n = len(skus)
     n_beating = sum(1 for s in skus if s.beats_naive)
-    n_validated = sum(1 for s in skus if math.isfinite(s.mase))
+    # Un SKU cuyo naive es EXACTO no es un SKU sin validar: es un veredicto ("nada
+    # puede ganarle a repetir el ciclo anterior"). Contarlo como hueco de datos le
+    # bajaba la confianza al entregable por una medicion que SI se hizo.
+    n_validated = sum(1 for s in skus if s.benchmark_state in ("scaled", "exact"))
     base_summary = (
         f"{n} SKUs segmented (smooth {seg.mix['smooth']}, erratic {seg.mix['erratic']}, "
         f"intermittent {seg.mix['intermittent']}, lumpy {seg.mix['lumpy']}); "

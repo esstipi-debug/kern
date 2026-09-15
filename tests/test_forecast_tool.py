@@ -102,14 +102,46 @@ def test_run_segments_and_picks_method_per_quadrant():
 
 
 def test_run_quantifies_value_add_vs_naive():
+    """CORREGIDO: el benchmark ahora es ESTACIONAL cuando la serie repite.
+
+    Este test afirmaba `by["C"].beats_naive is True`. Era un elogio prestado. C es
+    `[10, 0, 10, 0, ...]`: contra un naive LAG-1 cualquier pronostico parece bueno,
+    porque el benchmark oscila de punta a punta todos los periodos. Contra el naive
+    estacional (m=4 detectado en la propia serie) el naive la reproduce EXACTA, y
+    entonces nada puede ganarle. Eso es un veredicto, no una falla del modelo.
+    """
+    report = fj.run(fj.prepare_records(_demand_df()))
+    by = {s.name: s for s in report.skus}
+
+    assert by["A"].beats_naive is True
+    assert by["A"].fva > 0.0
+
+    # C no gana, y la razon importa: `exact`, no `unavailable`.
+    assert by["C"].season_length == 4
+    assert by["C"].benchmark_state == "exact"
+    assert by["C"].beats_naive is False
+
+
+def test_una_serie_estacional_no_se_puntua_contra_un_hombre_de_paja():
+    """B alterna: contra el naive estacional queda MUY por debajo, y asi debe leerse."""
+    report = fj.run(fj.prepare_records(_demand_df()))
+    b = {s.name: s for s in report.skus}["B"]
+
+    assert b.season_length > 1
+    assert b.benchmark_state == "scaled"
+    assert b.mase > 1.0, "un plano sobre una serie que alterna no puede 'ganarle' al naive"
+
+
+def test_un_naive_exacto_no_se_cuenta_como_sku_sin_validar():
+    """`exact` y `unavailable` dan los dos MASE infinito y significan lo opuesto.
+
+    Contar el exacto como hueco de datos le bajaba la confianza al entregable por una
+    medicion que SI se hizo.
+    """
     report = fj.run(fj.prepare_records(_demand_df()))
 
-    # smooth and intermittent series are comfortably forecastable -> beat the naive baseline
-    by = {s.name: s for s in report.skus}
-    assert by["A"].beats_naive is True
-    assert by["C"].beats_naive is True
-    assert by["A"].fva > 0.0
-    assert report.n_beating_naive >= 2
+    sin_validar = [s.name for s in report.skus if s.benchmark_state == "unavailable"]
+    assert "C" not in sin_validar
 
 
 def test_run_reports_portfolio_mape_signed_bias_and_the_cycle_line():
@@ -251,3 +283,37 @@ def test_registry_includes_forecast_tool():
     keys = {t.key for t in reg.list()}
     assert "forecast" in keys
     assert reg.get("forecast").requires_data is True
+
+
+def test_los_periodos_excepcionales_se_reportan_y_no_se_limpian(tmp_path):
+    """Un pico raro se NOMBRA; la serie del cliente no se corrige por atras.
+
+    Una historia corregida en silencio produce un pronostico que nadie puede
+    auditar: el numero mejora y el motivo desaparece.
+    """
+    serie = [10.0] * 11 + [400.0] + [10.0] * 12
+    df = pd.DataFrame([
+        {"sku": "PICO", "period": t, "demand": q} for t, q in enumerate(serie)
+    ])
+    report = fj.run(fj.prepare_records(df))
+    sku = {s.name: s for s in report.skus}["PICO"]
+
+    assert sku.n_outliers >= 1
+    assert 11 in sku.outlier_periods, "el periodo del pico tiene que quedar nombrado"
+
+
+def test_un_pico_de_temporada_no_se_marca_como_excepcional():
+    """Diciembre no es un outlier: es diciembre.
+
+    El escaneo usa el MISMO `season_length` que puntua el benchmark. Contra una
+    linea base sin fase, el pico de cada ciclo saldria marcado todos los anios.
+    """
+    ciclo = [10.0, 10.0, 10.0, 90.0]
+    df = pd.DataFrame([
+        {"sku": "TEMP", "period": t, "demand": q} for t, q in enumerate(ciclo * 6)
+    ])
+    report = fj.run(fj.prepare_records(df))
+    sku = {s.name: s for s in report.skus}["TEMP"]
+
+    assert sku.season_length == 4
+    assert sku.n_outliers == 0, f"marco la temporada como anomalia: {sku.outlier_periods}"
