@@ -365,6 +365,34 @@ _LATAM_NUMBER_RE = re.compile(r"^-?\d{1,3}(?:\.\d{3})+,\d+$|^-?\d{1,3},(?:\d{1,2
 _US_THOUSANDS_NUMBER_RE = re.compile(r"^-?\d{1,3}(?:,\d{3})+\.\d+$")
 
 
+def _unificar_mayusculas(ids: pd.Series) -> tuple[pd.Series, int]:
+    """Funde las grafias de un product_id que solo difieren en mayusculas.
+
+    "SKU-1000", "sku-1000" y "Sku-1000" son un producto para cualquier ERP; en un
+    exporte mezclado (filas a mano, dos sistemas unidos) eran tres, cada uno con
+    un tercio de la demanda -- y con el relleno de calendario aguas abajo, cada
+    tercio veia las semanas de los otros dos como demanda cero. Sobrevive la
+    grafia mas frecuente en el archivo (empate: la menor), para que el entregable
+    siga leyendose como el archivo del cliente. Sin colision no se toca nada, y
+    el conteo devuelto es cero.
+    """
+    conteo = ids.value_counts()
+    por_clave: dict[str, list[str]] = {}
+    for grafia in conteo.index:
+        por_clave.setdefault(str(grafia).casefold(), []).append(str(grafia))
+    reemplazos: dict[str, str] = {}
+    for grafias in por_clave.values():
+        if len(grafias) < 2:
+            continue
+        canonica = sorted(grafias, key=lambda g: (-int(conteo[g]), g))[0]
+        for g in grafias:
+            if g != canonica:
+                reemplazos[g] = canonica
+    if not reemplazos:
+        return ids, 0
+    return ids.map(lambda g: reemplazos.get(g, g)), len(reemplazos)
+
+
 def _parse_quantities(series: pd.Series) -> pd.Series:
     """Parsea la columna de cantidad, tolerando dos convenciones de separador
     de miles/decimal ademas del punto decimal simple que ``pd.to_numeric``
@@ -446,6 +474,11 @@ class IntakeQuality:
     # wholesale, and counting rows alone reports that as perfect quality.
     synthesized: tuple[tuple[str, int], ...] = ()
     n_canonical_rows: int = 0
+    # Grafias de product_id que solo diferian en mayusculas/minusculas y se
+    # fundieron en la mas frecuente ("SKU-1000" y "sku-1000" son un producto).
+    # Se cuenta porque es una transformacion del archivo del cliente, no una
+    # lectura: cero cuando no hubo colision.
+    n_ids_fusionados: int = 0
     # What Kern took the file to MEAN (mapping, sheet, hygiene). Distinct from
     # the drop counts above: those are how much survived. This is the decisions
     # that happened before a row could even be counted. None on the untracked
@@ -828,7 +861,9 @@ def _normalize_core(
     m = mapping.mapping
     out = pd.DataFrame()
     out["date"] = _parse_dates(df[m["date"]])
-    out["product_id"] = df[m["product_id"]].astype(str).str.strip()
+    out["product_id"], n_ids_fusionados = _unificar_mayusculas(
+        df[m["product_id"]].astype(str).str.strip()
+    )
     out["quantity"] = _parse_quantities(df[m["quantity"]])
     if "unit_cost" in m:
         out["unit_cost"] = pd.to_numeric(df[m["unit_cost"]], errors="coerce")
@@ -896,6 +931,7 @@ def _normalize_core(
         quality,
         synthesized=tuple(sorted(synthesized.items())),
         n_canonical_rows=len(grouped),
+        n_ids_fusionados=n_ids_fusionados,
     )
 
     grouped = grouped.sort_values(["product_id", "date"]).reset_index(drop=True)
