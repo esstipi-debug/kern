@@ -17,6 +17,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from jobs import twin_catalogo as tc  # noqa: E402
 
 
+def _ascii(texto: object) -> str:
+    """La consola de Windows (cp1252) revienta con acentos; los archivos siguen en UTF-8."""
+    return str(texto).encode("ascii", errors="replace").decode("ascii")
+
+
 def _escenarios(nombre: str) -> tuple[tc.Escenario, ...]:
     if nombre == "todos":
         return tc.ESCENARIOS_ESTRENO
@@ -52,11 +57,12 @@ def main(argv: list[str] | None = None) -> int:
         tc.escribir(rep, Path(args.out) / esc.nombre, client=args.cliente)
         fill = dict(rep.fill_por_grupo)
         dias = dict(rep.dias_quiebre_por_grupo)
+        riesgo = dict(rep.venta_en_riesgo_por_grupo)
         for g in sorted(fill):
-            print(f"{esc.nombre:18} {fill[g]:7.1%} {dias[g]:13d} {dict(rep.venta_en_riesgo_por_grupo)[g]:20,.0f}  [{g}]")
+            print(f"{_ascii(esc.nombre):18} {fill[g]:7.1%} {dias[g]:13d} {riesgo[g]:20,.0f}  [{_ascii(g)}]")
     print(f"\ncobertura: sku declarado={cobertura.sku_declarado} no_declarado={cobertura.sku_no_declarado} "
-          f"contradicho={cobertura.sku_contradicho} · en quiebre hoy={cobertura.quiebre_hoy}")
-    print(f"salida en {args.out}/<escenario>/ (twin_deck.md, twin_*.csv)")
+          f"contradicho={cobertura.sku_contradicho} | en quiebre hoy={cobertura.quiebre_hoy}")
+    print(f"salida en {_ascii(args.out)}/<escenario>/ (twin_deck.md, twin_*.csv)")
     return 0
 
 

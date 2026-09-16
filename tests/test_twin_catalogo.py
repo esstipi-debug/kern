@@ -217,3 +217,16 @@ def test_example_corre_los_cuatro_escenarios_sobre_la_fixture(tmp_path, capsys):
         assert nombre in out
         assert (tmp_path / nombre / "twin_deck.md").exists()
     assert "venta en riesgo" in out.lower()
+
+
+def test_example_imprime_solo_ascii_en_consola(tmp_path, capsys):
+    """La consola de Windows (cp1252) revienta con acentos: todo lo que el
+    example imprime es ASCII, aunque los archivos de salida sigan en UTF-8."""
+    import examples.run_twin_catalogo as cli
+    assert cli._ascii("Frutas y Verduras · café") == "Frutas y Verduras ? caf?"
+    rc = cli.main(["--catalogo", str(FIXTURE), "--grupo", "todos", "--escenario", "base",
+                   "--out", str(tmp_path), "--periodos", "40", "--seed", "1"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert out.isascii(), out
+    assert "| en quiebre hoy=" in out
