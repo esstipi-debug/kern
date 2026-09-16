@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from jobs import digital_twin_job
-from jobs.digital_twin_job import _DISRUPTION_KINDS, _MAX_CELLS, TwinReport
+from jobs.digital_twin_job import _DISRUPTION_KINDS, _MAX_CELLS, _START_DATE, TwinReport
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 
@@ -241,7 +241,8 @@ def armar_payloads(
                     "nodes": _nodos(grupo, hipotesis, vacios=not disponibles),
                     "products": _productos(lote, hipotesis, seed + 1000 * i + int(disponibles)),
                     "periods": hipotesis.periods, "demand": demanda,
-                    "disruptions": _disrupciones(grupo, escenario), "seed": seed,
+                    "disruptions": _disrupciones(grupo, escenario),
+                    "seed": seed + 1000 * i + int(disponibles),
                     "auto_size_factor": hipotesis.auto_size_factor,
                 },
             ))
@@ -354,7 +355,6 @@ def consolidar(
 
 
 FRASE_APERTURA = "Esto es una hipótesis sobre su catálogo, no una medición de su bodega."
-_FECHA_INICIO = "2025-01-06"
 
 
 _IMPACTO_COBERTURA = "lo que entró del catálogo tal cual, y lo que es hipótesis"
@@ -445,7 +445,7 @@ def deck(report: CatalogTwinReport, *, client: str = "Mariscos De La Concha") ->
 
 def _con_fecha(rows, value_col: str) -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=["period", "product_id", "location", value_col])
-    inicio = pd.Timestamp(_FECHA_INICIO)
+    inicio = pd.Timestamp(_START_DATE)
     df.insert(0, "date", df.pop("period").map(lambda t: (inicio + pd.Timedelta(days=int(t))).date().isoformat()))
     return df
 

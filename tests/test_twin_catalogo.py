@@ -130,6 +130,20 @@ def test_armar_payloads_respeta_el_techo_de_productos():
         tc.armar_payloads(muchas, hipotesis=tc.Hipotesis(), escenario=tc.ESCENARIOS_ESTRENO[0])
 
 
+def test_armar_payloads_el_seed_del_payload_tambien_se_desplaza():
+    """El seed a nivel payload debe desplazarse igual que el de _productos:
+    seed + 1000*i + int(disponibles). Antes quedaba fijo en `seed`, lo que
+    desalineaba el seed reportado del que realmente genero los productos
+    (aunque el determinismo por semilla ya pasaba, porque i y disponibles
+    tambien determinan el payload)."""
+    variantes, _ = tc.cargar_catalogo(FIXTURE)
+    pls = tc.armar_payloads(variantes, hipotesis=tc.Hipotesis(), escenario=tc.ESCENARIOS_ESTRENO[0], seed=42)
+    grupos_ordenados = sorted({v.grupo for v in variantes})
+    for p in pls:
+        i = grupos_ordenados.index(p.grupo)
+        assert p.payload["seed"] == 42 + 1000 * i + int(p.disponibles)
+
+
 def _reporte(escenario=None, seed=7):
     variantes, cob = tc.cargar_catalogo(FIXTURE)
     hip = tc.Hipotesis(periods=120)
