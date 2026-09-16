@@ -1,9 +1,7 @@
 # Twin sembrado con el catálogo real de un negocio — diseño
 
 - Fecha: 2026-09-16
-- Estado: aprobado el 2026-09-16 (grilla completa sana tras PR #364; el dueño
-  eligió pasar a plan sin cambios). Plan:
-  docs/superpowers/plans/2026-09-16-twin-sembrado-catalogo-real.md. Sin código.
+- Estado: implementado en la rama feat/twin-catalogo-real (plan docs/superpowers/plans/2026-09-16-twin-sembrado-catalogo-real.md).
 - Corrección al escribir el plan: jobs/digital_twin_job.py SÍ recibe dos cambios
   aditivos y compatibles (run() reenvía initial_on_hand del nodo; TwinReport
   exporta served_rows), porque sin ellos la decisión 5 y la 7 no se pueden
