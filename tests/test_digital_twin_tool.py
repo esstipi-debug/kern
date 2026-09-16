@@ -155,3 +155,29 @@ def test_orchestrator_runs_twin_end_to_end(tmp_path):
     assert Path(res.deliverables["demand_history"]).exists()
     assert res.guided is not None and res.guided.status == OPTIONS
     assert sum(1 for o in res.guided.options if o.recommended) == 1
+
+
+def test_run_forwards_initial_on_hand_from_the_node_payload():
+    """Un nodo del payload puede arrancar vacío. Sin el reenvío, run() ignora la
+    clave y la tienda arranca en su nivel S auto-dimensionado (> 0)."""
+    payload = dt.prepare({"n_stores": 1, "n_dcs": 1, "n_products": 1, "periods": 30, "seed": 3})
+    for node in payload["nodes"]:
+        if node["kind"] in ("dc", "store"):
+            node["initial_on_hand"] = 0.0
+    report = dt.run(payload)
+    first_period_store = [
+        on_hand for t, _pid, loc, on_hand in report.inventory_rows if t == 0 and loc == "STORE-1"
+    ]
+    assert first_period_store == [0.0]
+
+
+def test_run_exports_served_rows_aligned_with_demand_rows():
+    """served_rows tiene una fila por (periodo, producto, tienda), igual que
+    demand_rows, y nunca sirve más de lo demandado."""
+    payload = dt.prepare({"n_stores": 2, "n_dcs": 1, "n_products": 2, "periods": 40, "seed": 5})
+    report = dt.run(payload)
+    assert len(report.served_rows) == len(report.demand_rows)
+    demanded = {(t, p, s): u for t, p, s, u in report.demand_rows}
+    for t, p, s, served in report.served_rows:
+        assert (t, p, s) in demanded
+        assert 0.0 <= served <= demanded[(t, p, s)] + 1e-9
