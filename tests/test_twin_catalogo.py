@@ -60,3 +60,71 @@ def test_cargar_catalogo_levanta_valueerror_nombrando_el_campo_que_falta(tmp_pat
     p.write_text(json.dumps([{"id": 1, "title": "x", "product_type": "Pescados"}]), encoding="utf-8")
     with pytest.raises(ValueError, match="variants"):
         tc.cargar_catalogo(p)
+
+
+def test_armar_payloads_una_red_por_grupo_y_dos_payloads_por_grupo():
+    """Pescados y Otros -> 2 grupos. Pescados tiene disponibles y quebradas -> 2
+    payloads; Otros solo disponibles -> 1. Cada red: PROVEEDOR-<grupo> ->
+    CD-MDLC -> TIENDA-WEB."""
+    variantes, _ = tc.cargar_catalogo(FIXTURE)
+    pls = tc.armar_payloads(variantes, hipotesis=tc.Hipotesis(), escenario=tc.ESCENARIOS_ESTRENO[0])
+    assert [(p.grupo, p.disponibles) for p in pls] == [
+        (tc.GRUPO_OTROS, True), ("Pescados", False), ("Pescados", True),
+    ]
+    pesc = next(p for p in pls if p.grupo == "Pescados" and p.disponibles)
+    assert [n["name"] for n in pesc.payload["nodes"]] == ["PROVEEDOR-Pescados", "CD-MDLC", "TIENDA-WEB"]
+    assert [n["kind"] for n in pesc.payload["nodes"]] == ["supplier", "dc", "store"]
+    assert pesc.payload["nodes"][1]["lead_time"] == 7 and pesc.payload["nodes"][2]["lead_time"] == 1
+    assert pesc.payload["periods"] == 364 and pesc.payload["auto_size_factor"] == 1.0
+
+
+def test_armar_payloads_las_quebradas_de_hoy_arrancan_vacias():
+    variantes, _ = tc.cargar_catalogo(FIXTURE)
+    pls = tc.armar_payloads(variantes, hipotesis=tc.Hipotesis(), escenario=tc.ESCENARIOS_ESTRENO[0])
+    quebradas = next(p for p in pls if p.grupo == "Pescados" and not p.disponibles)
+    sanas = next(p for p in pls if p.grupo == "Pescados" and p.disponibles)
+    assert [n.get("initial_on_hand") for n in quebradas.payload["nodes"]] == [None, 0.0, 0.0]
+    assert [n.get("initial_on_hand") for n in sanas.payload["nodes"]] == [None, None, None]
+    assert {p["product_id"] for p in quebradas.payload["products"]} == {
+        "id:50967838097696", "MAFI#47628018876704", "id:50967838130464",
+        "id:51910435635488", "id:51910435799328", "id:51910435832096", "id:51910435864864",
+    }
+
+
+def test_armar_payloads_la_demanda_es_un_prior_declarado_y_determinista():
+    """Misma semilla -> mismos payloads; distinta semilla -> distintas bases.
+    La base media por grupo es la de la hipotesis (escala ABC lognormal)."""
+    variantes, _ = tc.cargar_catalogo(FIXTURE)
+    hip = tc.Hipotesis(base_demanda_por_grupo=8.0)
+    a = tc.armar_payloads(variantes, hipotesis=hip, escenario=tc.ESCENARIOS_ESTRENO[0], seed=1)
+    b = tc.armar_payloads(variantes, hipotesis=hip, escenario=tc.ESCENARIOS_ESTRENO[0], seed=1)
+    c = tc.armar_payloads(variantes, hipotesis=hip, escenario=tc.ESCENARIOS_ESTRENO[0], seed=2)
+    assert [p.payload for p in a] == [p.payload for p in b]
+    assert [p.payload["products"] for p in a] != [p.payload["products"] for p in c]
+    bases = [p["base"] for p in a[2].payload["products"]]
+    assert all(x > 0 for x in bases)
+    assert a[2].payload["demand"]["noise_cv"] == 0.25 and a[2].payload["demand"]["season_period"] == 364
+
+
+def test_armar_payloads_el_corte_de_proveedor_apunta_al_proveedor_del_grupo():
+    variantes, _ = tc.cargar_catalogo(FIXTURE)
+    corte = next(e for e in tc.ESCENARIOS_ESTRENO if e.kind == "supplier_outage")
+    pls = tc.armar_payloads(variantes, hipotesis=tc.Hipotesis(), escenario=corte)
+    pesc = next(p for p in pls if p.grupo == "Pescados" and p.disponibles)
+    d = pesc.payload["disruptions"]
+    assert d == [{"kind": "supplier_outage", "target": "PROVEEDOR-Pescados", "start": 90,
+                  "duration": 42, "magnitude": 2.0}]
+    pico = next(e for e in tc.ESCENARIOS_ESTRENO if e.kind == "demand_surge")
+    pls2 = tc.armar_payloads(variantes, hipotesis=tc.Hipotesis(), escenario=pico)
+    assert pls2[2].payload["disruptions"][0]["target"] == "TIENDA-WEB"
+
+
+def test_armar_payloads_respeta_el_techo_de_productos():
+    variantes, _ = tc.cargar_catalogo(FIXTURE)
+    muchas = tuple(
+        tc.Variante(clave=f"X{i}", sku=f"X{i}", variant_id=i, producto="x", grupo="Pescados",
+                    precio=1.0, disponible=True, estado_sku=tc.ESTADO_DECLARADO)
+        for i in range(251)
+    )
+    with pytest.raises(ValueError, match="250"):
+        tc.armar_payloads(muchas, hipotesis=tc.Hipotesis(), escenario=tc.ESCENARIOS_ESTRENO[0])
