@@ -128,3 +128,54 @@ def test_armar_payloads_respeta_el_techo_de_productos():
     )
     with pytest.raises(ValueError, match="250"):
         tc.armar_payloads(muchas, hipotesis=tc.Hipotesis(), escenario=tc.ESCENARIOS_ESTRENO[0])
+
+
+def _reporte(escenario=None, seed=7):
+    variantes, cob = tc.cargar_catalogo(FIXTURE)
+    hip = tc.Hipotesis(periods=120)
+    esc = escenario or tc.ESCENARIOS_ESTRENO[0]
+    pls = tc.armar_payloads(variantes, hipotesis=hip, escenario=esc, seed=seed)
+    res = tc.correr(pls)
+    return tc.consolidar(res, variantes, cobertura=cob, hipotesis=hip), variantes
+
+
+def test_consolidar_valoriza_a_precio_de_lista_y_solo_eso():
+    """venta_en_riesgo = sum(unidades no servidas x precio de la variante).
+    Se verifica a mano contra las filas del twin: si se cambiara el precio por
+    otro campo, o se sumara algo mas, este numero no cuadra."""
+    rep, variantes = _reporte()
+    precio = {v.clave: v.precio for v in variantes}
+    demand = {(t, p, s): u for t, p, s, u in rep.demand_rows}
+    a_mano = sum(
+        (demand[(t, p, s)] - u) * precio[p] for t, p, s, u in rep.served_rows
+    )
+    assert rep.venta_en_riesgo_clp == pytest.approx(a_mano, rel=1e-6)
+    assert rep.venta_en_riesgo_clp >= 0.0
+    assert dict(rep.venta_en_riesgo_por_grupo).keys() == {"Pescados", tc.GRUPO_OTROS}
+
+
+def test_consolidar_reporta_fill_y_quiebre_por_grupo_y_las_mas_golpeadas():
+    rep, _ = _reporte(tc.ESCENARIOS_ESTRENO[1])   # corte de proveedor
+    fills = dict(rep.fill_por_grupo)
+    assert set(fills) == {"Pescados", tc.GRUPO_OTROS}
+    assert all(0.0 <= f <= 1.0 for f in fills.values())
+    assert all(d >= 0 for _, d in rep.dias_quiebre_por_grupo)
+    assert 1 <= len(rep.golpeadas) <= 10
+    assert rep.golpeadas == tuple(sorted(rep.golpeadas, key=lambda g: -g.venta_en_riesgo_clp))
+    assert all(g.estado_sku in (tc.ESTADO_DECLARADO, tc.ESTADO_NO_DECLARADO, tc.ESTADO_CONTRADICHO)
+               for g in rep.golpeadas)
+
+
+def test_consolidar_es_determinista_por_semilla():
+    a, _ = _reporte(seed=3)
+    b, _ = _reporte(seed=3)
+    c, _ = _reporte(seed=4)
+    assert a.venta_en_riesgo_clp == b.venta_en_riesgo_clp and a.fill_por_grupo == b.fill_por_grupo
+    assert (a.venta_en_riesgo_clp, a.fill_por_grupo) != (c.venta_en_riesgo_clp, c.fill_por_grupo)
+
+
+def test_consolidar_las_filas_llevan_la_clave_real_de_la_variante():
+    rep, variantes = _reporte()
+    claves = {v.clave for v in variantes}
+    assert {p for _, p, _, _ in rep.demand_rows} == claves
+    assert {p for _, p, _, _ in rep.inventory_rows} <= claves

@@ -18,7 +18,8 @@ from pathlib import Path
 
 import numpy as np
 
-from jobs.digital_twin_job import _DISRUPTION_KINDS, _MAX_CELLS
+from jobs import digital_twin_job
+from jobs.digital_twin_job import _DISRUPTION_KINDS, _MAX_CELLS, TwinReport
 
 ESTADO_DECLARADO = "declarado"
 ESTADO_NO_DECLARADO = "no_declarado"
@@ -242,3 +243,108 @@ def armar_payloads(
                 },
             ))
     return tuple(salida)
+
+
+@dataclass(frozen=True)
+class ResultadoGrupo:
+    grupo: str
+    disponibles: bool
+    escenario: Escenario
+    report: TwinReport
+
+
+@dataclass(frozen=True)
+class VarianteGolpeada:
+    clave: str
+    producto: str
+    estado_sku: str
+    unidades_perdidas: float
+    venta_en_riesgo_clp: float
+
+
+@dataclass(frozen=True)
+class CatalogTwinReport:
+    """Un escenario, todos los grupos, valorizado a precio de lista."""
+
+    escenario: Escenario
+    hipotesis: Hipotesis
+    cobertura: Cobertura
+    fill_por_grupo: tuple[tuple[str, float], ...]
+    dias_quiebre_por_grupo: tuple[tuple[str, int], ...]
+    venta_en_riesgo_clp: float
+    venta_en_riesgo_por_grupo: tuple[tuple[str, float], ...]
+    golpeadas: tuple[VarianteGolpeada, ...]
+    demand_rows: tuple[tuple[int, str, str, float], ...]
+    served_rows: tuple[tuple[int, str, str, float], ...]
+    inventory_rows: tuple[tuple[int, str, str, float], ...]
+    order_rows: tuple[tuple[int, str, str, float], ...]
+
+
+def correr(payloads: tuple[PayloadGrupo, ...]) -> tuple[ResultadoGrupo, ...]:
+    """Cada payload por el run() del twin, sin cambios."""
+    return tuple(
+        ResultadoGrupo(grupo=p.grupo, disponibles=p.disponibles, escenario=p.escenario,
+                       report=digital_twin_job.run(p.payload))
+        for p in payloads
+    )
+
+
+def consolidar(
+    resultados: tuple[ResultadoGrupo, ...], variantes: tuple[Variante, ...] | list[Variante], *,
+    cobertura: Cobertura, hipotesis: Hipotesis, top: int = 10,
+) -> CatalogTwinReport:
+    if not resultados:
+        raise ValueError("sin resultados que consolidar")
+    por_clave = {v.clave: v for v in variantes}
+    escenario = resultados[0].escenario
+
+    demand: list = []
+    served: list = []
+    inventory: list = []
+    orders: list = []
+    demandado: dict[str, float] = {}
+    servido: dict[str, float] = {}
+    quiebre_grupo: dict[str, int] = {}
+    perdidas: dict[str, float] = {}
+    for r in resultados:
+        demand.extend(r.report.demand_rows)
+        served.extend(r.report.served_rows)
+        inventory.extend(r.report.inventory_rows)
+        orders.extend(r.report.order_rows)
+        quiebre_grupo[r.grupo] = quiebre_grupo.get(r.grupo, 0) + sum(
+            k.stockout_periods for k in r.report.node_kpis if k.kind == "store"
+        )
+    dem_idx = {(t, p, s): u for t, p, s, u in demand}
+    for t, p, s, u in served:
+        falta = max(dem_idx[(t, p, s)] - u, 0.0)
+        perdidas[p] = perdidas.get(p, 0.0) + falta
+        g = por_clave[p].grupo
+        demandado[g] = demandado.get(g, 0.0) + dem_idx[(t, p, s)]
+        servido[g] = servido.get(g, 0.0) + u
+
+    riesgo_var = {p: perdidas[p] * por_clave[p].precio for p in perdidas}
+    riesgo_grupo: dict[str, float] = {}
+    for p, clp in riesgo_var.items():
+        g = por_clave[p].grupo
+        riesgo_grupo[g] = riesgo_grupo.get(g, 0.0) + clp
+    fill = {
+        g: (servido[g] / demandado[g] if demandado[g] > 0 else 1.0) for g in demandado
+    }
+    golpeadas = tuple(
+        VarianteGolpeada(clave=p, producto=por_clave[p].producto,
+                         estado_sku=por_clave[p].estado_sku,
+                         unidades_perdidas=round(perdidas[p], 2),
+                         venta_en_riesgo_clp=round(riesgo_var[p], 0))
+        for p in sorted(riesgo_var, key=lambda k: -riesgo_var[k])[:top]
+        if riesgo_var[p] > 0
+    )
+    return CatalogTwinReport(
+        escenario=escenario, hipotesis=hipotesis, cobertura=cobertura,
+        fill_por_grupo=tuple(sorted((g, round(f, 4)) for g, f in fill.items())),
+        dias_quiebre_por_grupo=tuple(sorted(quiebre_grupo.items())),
+        venta_en_riesgo_clp=round(sum(riesgo_var.values()), 0),
+        venta_en_riesgo_por_grupo=tuple(sorted((g, round(c, 0)) for g, c in riesgo_grupo.items())),
+        golpeadas=golpeadas,
+        demand_rows=tuple(demand), served_rows=tuple(served),
+        inventory_rows=tuple(inventory), order_rows=tuple(orders),
+    )
