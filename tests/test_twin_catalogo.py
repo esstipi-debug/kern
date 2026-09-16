@@ -190,6 +190,9 @@ def test_deck_abre_con_la_frase_de_hipotesis_y_declara_cobertura_y_priors():
     assert "declarado" in md and "no_declarado" in md and "contradicho" in md
     assert "venta en riesgo a precio de lista" in md.lower()
     assert "proveedor: no declarado" in md.lower()
+    assert "Cobertura · SKU" in md
+    assert "declarado=3 · no_declarado=8 · contradicho=2" in md
+    assert "## " not in "\n".join(line for line in md.splitlines() if line.startswith("- "))
 
 
 def test_escribir_deja_los_csv_del_twin_con_fecha_diaria_y_clave_real(tmp_path):

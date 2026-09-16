@@ -357,27 +357,46 @@ FRASE_APERTURA = "Esto es una hipótesis sobre su catálogo, no una medición de
 _FECHA_INICIO = "2025-01-06"
 
 
-def _tabla_cobertura(c: Cobertura) -> str:
-    return (
-        "| Campo | declarado | no_declarado | contradicho |\n|---|---:|---:|---:|\n"
-        f"| SKU | {c.sku_declarado} | {c.sku_no_declarado} | {c.sku_contradicho} |\n"
-        f"| precio | {c.precio_declarado} | {c.precio_excluido} (excluidas) | 0 |\n"
-        f"| en quiebre hoy | {c.quiebre_hoy} | 0 | 0 |\n"
-        "| proveedor | 0 | todos (proveedor: no declarado; agrupado por categoría) | 0 |\n"
-        "| demanda | 0 | todos (prior) | 0 |\n"
-        "| lead time | 0 | todos (prior) | 0 |\n"
-        "| peso / unidad | 0 | todos (la unidad es la variante) | 0 |"
-    )
+_IMPACTO_COBERTURA = "lo que entró del catálogo tal cual, y lo que es hipótesis"
+
+
+def _findings_cobertura(c: Cobertura) -> list[Finding]:
+    """Una Finding por fila de la tabla de tres estados: legible en el bullet
+    list que ``Deliverable.to_markdown`` realmente renderiza (nunca una tabla
+    Markdown real, porque cada Finding sale como una unica linea `- **titulo**
+    - detalle`)."""
+    return [
+        Finding("Cobertura · SKU",
+                f"declarado={c.sku_declarado} · no_declarado={c.sku_no_declarado} · "
+                f"contradicho={c.sku_contradicho}", impact=_IMPACTO_COBERTURA),
+        Finding("Cobertura · precio",
+                f"declarado={c.precio_declarado} · no_declarado={c.precio_excluido} (excluidas) · "
+                "contradicho=0", impact=_IMPACTO_COBERTURA),
+        Finding("Cobertura · en quiebre hoy",
+                f"declarado={c.quiebre_hoy} · no_declarado=0 · contradicho=0", impact=_IMPACTO_COBERTURA),
+        Finding("Cobertura · proveedor",
+                "proveedor: no declarado; agrupado por categoría (declarado=0 · no_declarado=todos · "
+                "contradicho=0)", impact=_IMPACTO_COBERTURA),
+        Finding("Cobertura · demanda y lead time",
+                "declarado=0 · no_declarado=todos (prior) · contradicho=0", impact=_IMPACTO_COBERTURA),
+        Finding("Cobertura · peso / unidad",
+                "declarado=0 · no_declarado=todos (la unidad es la variante) · contradicho=0",
+                impact=_IMPACTO_COBERTURA),
+    ]
 
 
 def _seccion_hipotesis(h: Hipotesis) -> str:
-    return (
-        "## Hipótesis de demanda (no observadas)\n\n"
-        f"- demanda base por grupo: {h.base_demanda_por_grupo} unidades/día, escala ABC lognormal (σ 0,7)\n"
-        f"- ruido (CV): {h.noise_cv} · estacionalidad: ±{h.season_amplitude:.0%} cada {h.season_period} días\n"
-        f"- lead time proveedor → CD: {h.lead_proveedor} días (no declarado — prior) · CD → tienda: {h.lead_tienda} día(s)\n"
-        f"- horizonte: {h.periods} días · dimensionado automático: {h.auto_size_factor}×"
+    """Una sola linea (sin `##` ni saltos) con las cuatro hipotesis, porque
+    ``Finding.detail`` sale como una unica linea de bullet, nunca una
+    seccion propia con su encabezado."""
+    bullets = (
+        f"demanda base por grupo: {h.base_demanda_por_grupo} unidades/día, escala ABC lognormal (σ 0,7)",
+        f"ruido (CV): {h.noise_cv} · estacionalidad: ±{h.season_amplitude:.0%} cada {h.season_period} días",
+        f"lead time proveedor → CD: {h.lead_proveedor} días (no declarado — prior) · "
+        f"CD → tienda: {h.lead_tienda} día(s)",
+        f"horizonte: {h.periods} días · dimensionado automático: {h.auto_size_factor}×",
     )
+    return " · ".join(bullets)
 
 
 def deck(report: CatalogTwinReport, *, client: str = "Mariscos De La Concha") -> Deliverable:
@@ -391,9 +410,8 @@ def deck(report: CatalogTwinReport, *, client: str = "Mariscos De La Concha") ->
         f"{peor} con fill {fills[peor]:.1%}."
     )
     findings = [
-        Finding("Cobertura de lo observable", _tabla_cobertura(report.cobertura),
-                impact="lo que entró del catálogo tal cual, y lo que es hipótesis"),
-        Finding("Hipótesis", _seccion_hipotesis(report.hipotesis),
+        *_findings_cobertura(report.cobertura),
+        Finding("Hipótesis de demanda (no observadas)", _seccion_hipotesis(report.hipotesis),
                 impact="cambiar cualquiera cambia el número; por eso están impresas"),
     ]
     for g in report.golpeadas[:5]:
