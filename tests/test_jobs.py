@@ -367,6 +367,47 @@ def test_normalize_tracked_day_first_inference_needs_unanimous_evidence():
     assert pd.Timestamp("2025-04-03") not in dates
 
 
+def test_normalize_tracked_merges_case_variants_of_one_sku_into_its_majority_spelling():
+    """'SKU-1000', 'sku-1000' and ' SKU-1000 ' are one product to every ERP on
+    earth; a client export that mixes them (hand-typed rows, two systems joined)
+    must not become three products with a third of the demand each. The spelling
+    that survives is the one the file uses most, so the deliverable still reads
+    like the client's own file. The merge is declared: quality.n_ids_fusionados
+    counts the spellings folded away.
+
+    Production change that breaks this test: dropping the case-insensitive
+    reconciliation of product_id (pre-fix behaviour: 3 ids, and with the calendar
+    zero-fill downstream each one saw the other two's weeks as zero demand)."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2025-01-06", "2025-01-13", "2025-01-20", "2025-01-27"],
+            "StockCode": ["SKU-1000", "sku-1000", " SKU-1000 ", "SKU-1000"],
+            "Quantity": [5, 7, 9, 11],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="W")
+    assert sorted(canon["product_id"].unique()) == ["SKU-1000"]
+    assert canon["quantity"].sum() == 32
+    assert quality.n_ids_fusionados == 1
+
+
+def test_normalize_tracked_leaves_product_ids_alone_when_no_case_collision():
+    """No collision, no change: a client whose SKUs are lowercase keeps them
+    lowercase, and two genuinely different SKUs stay two."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["2025-01-06", "2025-01-06", "2025-01-13"],
+            "StockCode": ["abc-1", "abc-2", "abc-1"],
+            "Quantity": [1, 2, 3],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="W")
+    assert sorted(canon["product_id"].unique()) == ["abc-1", "abc-2"]
+    assert quality.n_ids_fusionados == 0
+
+
 # -- _parse_quantities: locale-aware thousands/decimal separators -----------
 
 
