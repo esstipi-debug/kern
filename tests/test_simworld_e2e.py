@@ -254,7 +254,10 @@ def kern_grid_report(tmp_path_factory):
     with patch.object(cli_mod, "generate_world", counting_generate_world), \
          patch.object(runners_mod, "export_history", spying_export_history):
         report = run_grid(
-            seed=4, n_skus=2, n_suppliers=2, weeks=12, levels=(0, 3),
+            # weeks=16, no 12: Kern opera como el piso hasta KERN_MIN_HISTORY_WEEKS
+            # (8), asi que sus dos replanificaciones reales caen en las semanas 8 y
+            # 12; la de la semana 4 lleva PRE_KERN_STATUS y no es suya.
+            seed=4, n_skus=2, n_suppliers=2, weeks=16, levels=(0, 3),
             replan_every=4, out_dir=out_dir, include_kern=True,
         )
     return report, out_dir, calls
@@ -333,11 +336,12 @@ def test_run_grid_only_calls_the_lens_for_kern_never_for_the_floor_or_oracle():
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             report = run_grid(
-                seed=7, n_skus=2, n_suppliers=2, weeks=8, levels=(0,),
+                seed=7, n_skus=2, n_suppliers=2, weeks=12, levels=(0,),
                 replan_every=4, out_dir=tmp, include_kern=True,
             )
-    # weeks=8, replan_every=4 -> replans en semana 0 (sin historia, no
-    # llama a Kern) y semana 4 (si llama) = exactamente 1 llamada real.
+    # weeks=12, replan_every=4 -> replans en semana 0 (sin historia, no
+    # llama a Kern), semana 4 (Kern opera como el piso, sin lente) y semana 8
+    # (si llama) = exactamente 1 llamada real.
     assert call_count["n"] == 1
     assert "forced-L0" in report["kern"]
 
@@ -392,14 +396,14 @@ def test_capture_is_null_with_a_note_when_kern_never_placed_a_real_order(kern_gr
     report, _, _ = kern_grid_report
 
     l3 = report["kern"]["forced-L3"]
-    assert l3["replan_status_counts"] == {"escalated": 2}
+    assert l3["replan_status_counts"] == {"escalated": 2, "piso_sin_historia_minima": 1}
     assert "ok" not in l3["replan_status_counts"]
     assert l3["capture"] is None
     assert "capture_note" in l3
     assert "no emitio ninguna orden" in l3["capture_note"]
 
     l0 = report["kern"]["forced-L0"]
-    assert l0["replan_status_counts"] == {"ok": 2}
+    assert l0["replan_status_counts"] == {"ok": 2, "piso_sin_historia_minima": 1}
     assert l0["capture"] is not None
     assert isinstance(l0["capture"], float)
     assert "capture_note" not in l0
@@ -443,16 +447,18 @@ def test_capture_is_null_when_kern_reports_ok_on_every_replan_but_orders_nothing
     with patch.object(cli_mod, "kern_policy", zero_reorder_kern_policy):
         with tempfile.TemporaryDirectory() as tmp:
             report = cli_mod.run_grid(
-                seed=4, n_skus=2, n_suppliers=2, weeks=12, levels=(0,),
+                seed=4, n_skus=2, n_suppliers=2, weeks=16, levels=(0,),
                 replan_every=4, out_dir=tmp, include_kern=True,
             )
 
     l0 = report["kern"]["forced-L0"]
-    # Mismos dos replans reales que en `kern_grid_report` (semanas 4 y 8;
-    # la semana 0 cae antes de WARMUP_WEEKS y nunca llama a `kern_policy`),
-    # todos "ok" -- el status NUNCA bloquea en este escenario, a proposito:
-    # es justo el caso que el guard viejo no cubria.
-    assert l0["replan_status_counts"] == {"ok": 2}
+    # Mismos dos replans reales que en `kern_grid_report` (semanas 8 y 12;
+    # la semana 0 cae antes de WARMUP_WEEKS y la 4 antes de
+    # KERN_MIN_HISTORY_WEEKS -- esa la opera el piso y nunca llama a
+    # `kern_policy`), todos "ok" -- el status NUNCA bloquea en este
+    # escenario, a proposito: es justo el caso que el guard viejo no cubria.
+    # Las ordenes del piso en las semanas 4-7 NO cuentan como de Kern.
+    assert l0["replan_status_counts"] == {"ok": 2, "piso_sin_historia_minima": 1}
     assert l0["capture"] is None
     assert "capture_note" in l0
     assert "no emitio ninguna orden" in l0["capture_note"]
@@ -470,7 +476,7 @@ def test_degradation_is_reported_only_for_dirty_levels_not_the_clean_baseline(ke
 def test_degradation_largest_week_is_present_and_bounded(kern_grid_report):
     report, _, _ = kern_grid_report
     largest = report["kern"]["forced-L3"]["degradation_largest_week"]
-    assert 0 <= largest["week"] < 12
+    assert 0 <= largest["week"] < 16
     assert isinstance(largest["value"], float)
 
 
@@ -555,20 +561,21 @@ def test_degradation_flags_reflect_this_levels_own_weekly_announcements_not_a_co
     False) o todo True (aviso hardcodeado a True) -- sin importar lo que
     Kern haya hecho de verdad.
 
-    En este fixture (2 SKUs, 12 semanas, replan_every=4), forced-L3
-    replanifica en las semanas 0, 4 y 8: la de la semana 0 cae antes de
+    En este fixture (2 SKUs, 16 semanas, replan_every=4), forced-L3
+    replanifica en las semanas 0, 4, 8 y 12: la de la semana 0 cae antes de
     WARMUP_WEEKS de historia y SIEMPRE es sin aviso (Policy vacia,
-    independiente de cualquier mutante en la rama de Kern real); las de las
-    semanas 4 y 8 SI corren a Kern de verdad y ambas escalan (ver
+    independiente de cualquier mutante en la rama de Kern real); la de la
+    semana 4 la opera el piso (PRE_KERN_STATUS, sin aviso); las de las
+    semanas 8 y 12 SI corren a Kern de verdad y ambas escalan (ver
     `replan_status_counts`), asi que ambas llevan aviso -- exactamente 2
-    semanas de aviso sobre un horizonte de 12. Ese 2 es un valor
-    intermedio: ni 0 (mutante 'siempre False') ni 12 (mutante 'siempre
-    True', que ademas convertiria en avisadas las 9 semanas SIN
+    semanas de aviso sobre un horizonte de 16. Ese 2 es un valor
+    intermedio: ni 0 (mutante 'siempre False') ni 16 (mutante 'siempre
+    True', que ademas convertiria en avisadas las semanas SIN
     replanificacion, algo que ningun corredor real puede hacer)."""
     report, _, _ = kern_grid_report
     deg = report["kern"]["forced-L3"]["degradation"]
     assert deg["weeks_announced"] == 2
-    assert 0 < deg["weeks_announced"] < 12
+    assert 0 < deg["weeks_announced"] < 16
 
 
 def test_weeks_announced_reflects_a_genuine_alternating_pattern_not_a_per_call_constant():
@@ -588,12 +595,13 @@ def test_weeks_announced_reflects_a_genuine_alternating_pattern_not_a_per_call_c
     `announced` values across real replans: the fake alternates by replan
     ordinal, parsed from `out_dir`'s `w{week:03d}` component (independent
     of `level`/`lane`, so it does not depend on cross-level call
-    ordering). With weeks=20/replan_every=4, real replans (>= WARMUP_WEEKS
-    of history) land on weeks 4/8/12/16 -> ordinals 1/2/3/4 -> the fake
-    announces on odd ordinals (1, 3) and stays quiet on even ordinals (2,
-    4): a genuine 2-of-4 mix, an intermediate value neither an
-    always-True nor an always-False mutant can reproduce (see the task
-    report for the replay against both)."""
+    ordering). With weeks=24/replan_every=4, real replans (>=
+    KERN_MIN_HISTORY_WEEKS of history; week 4 is the floor's) land on weeks
+    8/12/16/20 -> ordinals 2/3/4/5 -> the fake announces on odd ordinals
+    (3, 5) and stays quiet on even ordinals (2, 4): a genuine 2-of-4 mix,
+    an intermediate value neither an always-True nor an always-False
+    mutant can reproduce (see the task report for the replay against
+    both)."""
     import tempfile
 
     import examples.run_world_sim as cli_mod
@@ -614,13 +622,13 @@ def test_weeks_announced_reflects_a_genuine_alternating_pattern_not_a_per_call_c
     with patch.object(cli_mod, "kern_policy", fake_kern_policy):
         with tempfile.TemporaryDirectory() as tmp:
             report = cli_mod.run_grid(
-                seed=5, n_skus=2, n_suppliers=1, weeks=20, levels=(0, 1),
+                seed=5, n_skus=2, n_suppliers=1, weeks=24, levels=(0, 1),
                 replan_every=replan_every, out_dir=tmp, include_kern=True,
             )
 
     deg = report["kern"]["forced-L1"]["degradation"]
-    # Replans reales en las semanas 4, 8, 12, 16 (ordinales 1-4); anunciado
-    # en los ordinales impares (1 y 3) = 2 de 4 replans reales -- ni 0
+    # Replans reales en las semanas 8, 12, 16, 20 (ordinales 2-5); anunciado
+    # en los ordinales impares (3 y 5) = 2 de 4 replans reales -- ni 0
     # (mutante 'siempre False') ni 4 (mutante 'siempre True').
     assert deg["weeks_announced"] == 2
     assert 0 < deg["weeks_announced"] < 4

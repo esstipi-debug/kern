@@ -10,7 +10,7 @@ tiene costo de replanificar. Nunca ve la lente.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +24,18 @@ from src.simworld.world import WeekOutcome, World, WorldState
 
 NAIVE_COVER_WEEKS = 5.0
 NAIVE_LOOKBACK_WEEKS = 4
+#: Semanas de historia que Kern necesita antes de su primera replanificacion
+#: real. El motor rechaza dimensionar cualquier SKU con menos de
+#: ``MIN_PERIODS_FOR_POLICY`` periodos (jobs/inventory_optimization.py, PR #242);
+#: replanificar antes convierte todas las SKUs en "rechazadas" y la Policy en
+#: "nunca pidas". Alineado a la grilla de replanificacion de 4 semanas. Un test
+#: (tests/test_simworld_runners.py) falla si queda por debajo del minimo del motor.
+KERN_MIN_HISTORY_WEEKS = 8
+#: Estado de una replanificacion en la que Kern todavia no tenia historia minima
+#: y opero como el piso. Distinto de "ok" a proposito: no fue una decision de Kern.
+PRE_KERN_STATUS = "piso_sin_historia_minima"
+#: policy_kind con el que el motor declara que NO dimensiono la SKU.
+REFUSED_POLICY_KIND = "insufficient_history"
 
 
 @dataclass(frozen=True)
@@ -52,6 +64,33 @@ def naive_policy(world: World, outcomes: list[WeekOutcome]) -> Policy:
         reorder[sku.sku] = NAIVE_COVER_WEEKS * avg
     return Policy(reorder_point=dict(reorder), order_up_to=dict(reorder),
                   announced=False, note="punto de reorden fijo, sin revision")
+
+
+def pre_kern_policy(world: World, outcomes: list[WeekOutcome]) -> Policy:
+    """Hasta tener ``KERN_MIN_HISTORY_WEEKS`` de historia, Kern opera como el piso.
+
+    Es lo que hace un cliente real: conserva su regla fija hasta que el motor tenga
+    suficiente historia; nadie deja de pedir. La semana lleva ``PRE_KERN_STATUS``
+    para que el reporte no la cuente como una decision de Kern.
+    """
+    return replace(naive_policy(world, outcomes), status=PRE_KERN_STATUS)
+
+
+def carry_over_refused(previous: Policy, current: Policy) -> Policy:
+    """Las SKUs que Kern no dimensiono esta replanificacion conservan su politica anterior.
+
+    Es lo que pasa en produccion: una SKU rechazada no entra al changeset del
+    writeback y la regla vigente del cliente sigue en pie. Sin esto, "no se" se
+    leeria como "punto de reorden 0" y la SKU no se pediria nunca mas. Solo aplica
+    dentro de una replanificacion ``ok``: una semana bloqueada (HANDOFF/ESCALATED,
+    o cualquier estado no-ok) es una Policy vacia a proposito y se respeta.
+    """
+    if current.status != "ok":
+        return current
+    reorder = {**previous.reorder_point, **current.reorder_point}
+    target = {**previous.order_up_to, **current.order_up_to}
+    forecast = {**previous.forecast, **current.forecast}
+    return replace(current, reorder_point=reorder, order_up_to=target, forecast=forecast)
 
 
 def apply_policy(world: World, state: WorldState, policy: Policy) -> dict[str, float]:
@@ -316,7 +355,14 @@ def kern_policy(
     reorder: dict[str, float] = {}
     target: dict[str, float] = {}
     forecast: dict[str, float] = {}
+    refused = 0
     for rec in result.report.recommendations:
+        if getattr(rec, "policy_kind", None) == REFUSED_POLICY_KIND:
+            # El motor se nego a dimensionar la SKU (historia corta). Trae
+            # reorder_point=0.0 y sin order_up_to: leerlo como politica seria
+            # convertir "no se" en "nunca pidas". Queda sin politica y se cuenta.
+            refused += 1
+            continue
         rop = float(rec.reorder_point)
         reorder[rec.product_id] = rop
         forecast[rec.product_id] = float(rec.forecast)
@@ -326,7 +372,8 @@ def kern_policy(
             target[rec.product_id] = rop + float(rec.order_quantity or 0.0)
 
     return Policy(reorder_point=reorder, order_up_to=target, forecast=forecast,
-                  announced=announced, note=result.summary, status="ok")
+                  announced=announced, note=result.summary, status="ok",
+                  extras={"refused_skus": float(refused)})
 
 
 def _announced(result: object) -> bool:

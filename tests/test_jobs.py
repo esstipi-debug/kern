@@ -316,6 +316,57 @@ def test_normalize_tracked_ambiguous_slash_date_defaults_month_first():
     assert canon["date"].iloc[0] == pd.Timestamp("2025-06-01")  # June 1st, not Jan 6
 
 
+def test_normalize_tracked_infers_day_first_when_the_column_proves_it():
+    """A slash-date column whose unambiguous values can ONLY be day-first
+    ('13/01/2025': 13 is not a month) must read its ambiguous siblings
+    ('06/01/2025') day-first too -- as January 6th, not June 1st. The evidence
+    lives in the column, so the convention is inferred per column, applied only
+    to slash-shaped values, and never to ISO dates sitting in the same column.
+
+    The production change that breaks this test: dropping the per-column
+    inference and falling back to pandas' month-first default for ambiguous
+    slash dates (the pre-fix behaviour, which scattered a LATAM export across
+    nine months and divided every reorder point by three)."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["13/01/2025", "06/01/2025", "2025-01-20"],
+            "StockCode": ["A", "A", "A"],
+            "Quantity": [5, 10, 7],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_date == 0
+    dates = sorted(canon["date"].tolist())
+    assert dates == [
+        pd.Timestamp("2025-01-06"),
+        pd.Timestamp("2025-01-13"),
+        pd.Timestamp("2025-01-20"),
+    ], dates
+
+
+def test_normalize_tracked_day_first_inference_needs_unanimous_evidence():
+    """One unambiguous day-first value is not enough when the same column also
+    carries an unambiguous month-first one ('03/25/2025'): conflicting evidence
+    means no inference, and the ambiguous '03/04/2025' keeps pandas' month-first
+    reading. The sibling US-format regression test pins the same column; this
+    one exists so that removing the unanimity check fails a test whose name
+    says why."""
+    raw = pd.DataFrame(
+        {
+            "InvoiceDate": ["13/01/2025", "03/25/2025", "03/04/2025"],
+            "StockCode": ["A", "A", "A"],
+            "Quantity": [3, 5, 7],
+        }
+    )
+    mapping = detect_columns(raw)
+    canon, quality = normalize_tracked(raw, mapping, period="D")
+    assert quality.n_dropped_bad_date == 0
+    dates = canon["date"].tolist()
+    assert pd.Timestamp("2025-03-04") in dates
+    assert pd.Timestamp("2025-04-03") not in dates
+
+
 # -- _parse_quantities: locale-aware thousands/decimal separators -----------
 
 
