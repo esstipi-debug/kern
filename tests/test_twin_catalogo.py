@@ -30,6 +30,25 @@ def test_cargar_catalogo_cuenta_los_tres_estados_del_sku():
                for v in variantes)
 
 
+def test_cobertura_de_recalcula_para_un_subconjunto_de_variantes():
+    """cobertura_de es el helper que cargar_catalogo usa por dentro; debe dar
+    el mismo resultado para el catalogo completo, y un resultado distinto
+    (mas chico) para un subconjunto filtrado por grupo -- sin recalcular
+    precio_excluido, que se declara aparte porque las excluidas ya no estan
+    en la lista de variantes."""
+    variantes, cob = tc.cargar_catalogo(FIXTURE)
+    recalculada = tc.cobertura_de(variantes, precio_excluido=cob.precio_excluido)
+    assert recalculada == cob
+
+    pescados = tuple(v for v in variantes if v.grupo == "Pescados")
+    c_pescados = tc.cobertura_de(pescados, precio_excluido=cob.precio_excluido)
+    assert c_pescados.sku_declarado == 1
+    assert c_pescados.sku_no_declarado == 7
+    assert c_pescados.sku_contradicho == 2
+    assert c_pescados.precio_declarado == 10
+    assert c_pescados.precio_excluido == cob.precio_excluido
+
+
 def test_cargar_catalogo_funde_los_grupos_chicos_en_otros():
     """Pescados tiene 10 variantes y queda; Mariscos (1), Cerdo (1) y Otros (1)
     no llegan al minimo de 5 y se funden en 'Otros'."""
@@ -173,11 +192,54 @@ def test_consolidar_reporta_fill_y_quiebre_por_grupo_y_las_mas_golpeadas():
     fills = dict(rep.fill_por_grupo)
     assert set(fills) == {"Pescados", tc.GRUPO_OTROS}
     assert all(0.0 <= f <= 1.0 for f in fills.values())
-    assert all(d >= 0 for _, d in rep.dias_quiebre_por_grupo)
+    # I3: el nombre viejo (dias_quiebre_por_grupo) mentia -- es una suma sobre
+    # variantes, no sobre dias de calendario (1976 sobre un horizonte de 120
+    # dias en la corrida real). El campo se llama variante_dias_quiebre_por_grupo.
+    assert all(d >= 0 for _, d in rep.variante_dias_quiebre_por_grupo)
+    assert not hasattr(rep, "dias_quiebre_por_grupo")
     assert 1 <= len(rep.golpeadas) <= 10
     assert rep.golpeadas == tuple(sorted(rep.golpeadas, key=lambda g: -g.venta_en_riesgo_clp))
     assert all(g.estado_sku in (tc.ESTADO_DECLARADO, tc.ESTADO_NO_DECLARADO, tc.ESTADO_CONTRADICHO)
                for g in rep.golpeadas)
+
+
+def test_consolidar_desglosa_por_estado_de_arranque_c2():
+    """C2 / decision 5 del spec: el reporte separa cuanto tardan en
+    recuperarse las quebradas de HOY (arrancaron con initial_on_hand=0) de
+    cuanto se quiebran las sanas. Sobre el escenario de corte de proveedor
+    hay payloads sanos y quebrados en Pescados, y solo sanos en Otros (ver
+    test_armar_payloads_una_red_por_grupo_y_dos_payloads_por_grupo)."""
+    rep, variantes = _reporte(tc.ESCENARIOS_ESTRENO[1])
+    pares = {(g, vacia) for g, vacia, *_ in rep.desglose_por_estado}
+    # Otros solo tiene payload de disponibles (arranco_vacia=False); Pescados
+    # tiene ambos (ver test_armar_payloads_una_red_por_grupo_y_dos_payloads_por_grupo).
+    assert pares == {("Pescados", False), ("Pescados", True), (tc.GRUPO_OTROS, False)}
+    for _, _, fill, dias, venta in rep.desglose_por_estado:
+        assert 0.0 <= fill <= 1.0
+        assert dias >= 0
+        assert venta >= 0.0
+
+    por_clave = {v.clave: v for v in variantes}
+    for g in rep.golpeadas:
+        if not por_clave[g.clave].disponible:
+            assert g.arranco_vacia is True
+
+
+def test_deck_c2_muestra_quebradas_de_hoy_vs_sanas():
+    rep, _ = _reporte(tc.ESCENARIOS_ESTRENO[1])
+    md = tc.deck(rep, lectura="lectura 2026-08-28").to_markdown()
+    assert "Quebradas de hoy vs sanas" in md
+
+
+def test_consolidar_reporta_n_variantes_realmente_simuladas():
+    """n_variantes cuenta los product_id distintos que de verdad pasaron por
+    el twin (via demand_rows), no la cobertura del catalogo completo -- son
+    lo mismo en una corrida sobre todo el catalogo; el caso donde DIFIEREN
+    (un grupo filtrado, mientras la cobertura sigue siendo la del catalogo
+    completo) es exactamente el defecto C1 y lo cubre el test del example
+    mas abajo."""
+    rep, variantes = _reporte()
+    assert rep.n_variantes == len(variantes) == 13
 
 
 def test_consolidar_es_determinista_por_semilla():
@@ -197,7 +259,7 @@ def test_consolidar_las_filas_llevan_la_clave_real_de_la_variante():
 
 def test_deck_abre_con_la_frase_de_hipotesis_y_declara_cobertura_y_priors():
     rep, _ = _reporte()
-    d = tc.deck(rep)
+    d = tc.deck(rep, lectura="lectura 2026-08-28")
     md = d.to_markdown()
     assert md.startswith("# ") and tc.FRASE_APERTURA in d.summary
     assert "Hipótesis de demanda (no observadas)" in md
@@ -209,9 +271,37 @@ def test_deck_abre_con_la_frase_de_hipotesis_y_declara_cobertura_y_priors():
     assert "## " not in "\n".join(line for line in md.splitlines() if line.startswith("- "))
 
 
+def test_deck_m6_el_titulo_no_repite_el_cliente():
+    """M6: Deliverable.to_markdown ya le agrega '- {client}' al titulo
+    (src/deliverable.py); si deck() tambien lo mete en el titulo, el
+    renderizado repite el nombre del cliente dos veces."""
+    rep, _ = _reporte()
+    d = tc.deck(rep, lectura="lectura 2026-08-28")
+    assert d.title == f"Twin del catálogo — escenario {rep.escenario.nombre}"
+    assert d.client not in d.title
+
+
+def test_deck_m7_el_cliente_por_defecto_es_client():
+    rep, _ = _reporte()
+    d = tc.deck(rep, lectura="lectura 2026-08-28")
+    assert d.client == "Client"
+
+
+def test_deck_i5_la_procedencia_no_tiene_default_y_se_imprime(tmp_path):
+    """I5: antes deck() escribia 'lectura 2026-08-28' fijo sin importar
+    cuando se leyo el catalogo de verdad. Ahora `lectura` es un parametro
+    obligatorio (sin default -- una procedencia faltante no se inventa
+    sola) y aparece tal cual en el markdown."""
+    rep, _ = _reporte()
+    with pytest.raises(TypeError):
+        tc.deck(rep)   # falta el kwarg obligatorio `lectura`
+    md = tc.deck(rep, lectura="lectura 2099-01-01").to_markdown()
+    assert "lectura 2099-01-01" in md
+
+
 def test_escribir_deja_los_csv_del_twin_con_fecha_diaria_y_clave_real(tmp_path):
     rep, variantes = _reporte()
-    paths = tc.escribir(rep, tmp_path)
+    paths = tc.escribir(rep, tmp_path, lectura="lectura 2026-08-28")
     assert set(paths) == {"demand_history", "served", "inventory", "orders", "cobertura", "golpeadas", "deck"}
     import pandas as pd
     dem = pd.read_csv(paths["demand_history"])
@@ -219,6 +309,52 @@ def test_escribir_deja_los_csv_del_twin_con_fecha_diaria_y_clave_real(tmp_path):
     assert dem["date"].iloc[0] == "2025-01-06" and dem["date"].iloc[1] == "2025-01-07"
     assert set(dem["product_id"]) == {v.clave for v in variantes}
     assert paths["deck"].read_text(encoding="utf-8").startswith("# ")
+
+
+def test_escribir_m9_los_archivos_llevan_el_prefijo_twin_catalogo(tmp_path):
+    """M9: los nombres de archivo llevan el prefijo `twin_catalogo_` (para no
+    colisionar con los `twin_*.csv` que jobs/digital_twin_job.py ya escribe
+    en el mismo `deliverables/`); las CLAVES del dict devuelto no cambian."""
+    rep, _ = _reporte()
+    paths = tc.escribir(rep, tmp_path, lectura="lectura 2026-08-28")
+    assert paths["demand_history"].name == "twin_catalogo_demand_history.csv"
+    assert paths["served"].name == "twin_catalogo_served.csv"
+    assert paths["inventory"].name == "twin_catalogo_inventory.csv"
+    assert paths["orders"].name == "twin_catalogo_orders.csv"
+    assert paths["cobertura"].name == "twin_catalogo_cobertura.csv"
+    assert paths["golpeadas"].name == "twin_catalogo_golpeadas.csv"
+    assert paths["deck"].name == "twin_catalogo_deck.md"
+    for p in paths.values():
+        assert p.exists()
+
+
+def test_escribir_i4_defusa_formulas_en_product_id_y_location(tmp_path):
+    """I4: _con_fecha escribia product_id/location crudos via to_csv,
+    saltandose la defensa contra CSV-injection que el resto del repo aplica
+    (src/sanitize.defuse_formula, ya usado por write_summary_csv). Un
+    product_id que empiece con '=' debe llegar defuseado a la celda."""
+    rep, variantes = _reporte()
+    maligno = "=1+1;cmd.exe"
+    v0 = variantes[0]
+    demand_malo = tuple(
+        (t, maligno, s, u) if p == v0.clave else (t, p, s, u) for t, p, s, u in rep.demand_rows
+    )
+    rep_malo = tc.CatalogTwinReport(
+        escenario=rep.escenario, hipotesis=rep.hipotesis, cobertura=rep.cobertura,
+        n_variantes=rep.n_variantes, fill_por_grupo=rep.fill_por_grupo,
+        variante_dias_quiebre_por_grupo=rep.variante_dias_quiebre_por_grupo,
+        desglose_por_estado=rep.desglose_por_estado,
+        venta_en_riesgo_clp=rep.venta_en_riesgo_clp,
+        venta_en_riesgo_por_grupo=rep.venta_en_riesgo_por_grupo, golpeadas=rep.golpeadas,
+        demand_rows=demand_malo, served_rows=rep.served_rows,
+        inventory_rows=rep.inventory_rows, order_rows=rep.order_rows,
+    )
+    paths = tc.escribir(rep_malo, tmp_path, lectura="lectura 2026-08-28")
+    import pandas as pd
+    dem = pd.read_csv(paths["demand_history"])
+    celdas = dem["product_id"].astype(str)
+    assert not any(c.startswith("=") for c in celdas)
+    assert any(c.startswith("'=") or "1+1" in c for c in celdas)
 
 
 def test_example_corre_los_cuatro_escenarios_sobre_la_fixture(tmp_path, capsys):
@@ -229,8 +365,28 @@ def test_example_corre_los_cuatro_escenarios_sobre_la_fixture(tmp_path, capsys):
     out = capsys.readouterr().out
     for nombre in ("base", "corte_proveedor", "plazo_estirado", "pico_demanda"):
         assert nombre in out
-        assert (tmp_path / nombre / "twin_deck.md").exists()
+        assert (tmp_path / nombre / "twin_catalogo_deck.md").exists()
     assert "venta en riesgo" in out.lower()
+    # I3: el header de consola no puede seguir llamando "dias" a una suma
+    # sobre variantes.
+    assert "var-dias quiebre" in out
+
+
+def test_example_filtrado_por_grupo_no_sobrestima_el_alcance_en_el_deck(tmp_path):
+    """C1: si el example filtra `variantes` por --grupo pero le pasa al deck
+    la cobertura del catalogo completo, el deck dice "sobre 216 variantes"
+    (o, en la fixture, el total del catalogo) y muestra filas de cobertura
+    del catalogo completo, mientras que solo el grupo filtrado (Pescados,
+    10 variantes) fue realmente simulado. El deck debe reflejar SOLO lo
+    simulado."""
+    import examples.run_twin_catalogo as cli
+    rc = cli.main(["--catalogo", str(FIXTURE), "--grupo", "Pescados", "--escenario", "todos",
+                   "--out", str(tmp_path), "--periodos", "60", "--seed", "1"])
+    assert rc == 0
+    md = (tmp_path / "base" / "twin_catalogo_deck.md").read_text(encoding="utf-8")
+    assert "sobre 10 variantes" in md
+    assert "sobre 13 variantes" not in md
+    assert "declarado=1 · no_declarado=7 · contradicho=2" in md
 
 
 def test_example_imprime_solo_ascii_en_consola(tmp_path, capsys):

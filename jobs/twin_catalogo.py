@@ -23,6 +23,7 @@ from jobs import digital_twin_job
 from jobs.digital_twin_job import _DISRUPTION_KINDS, _MAX_CELLS, _START_DATE, TwinReport
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
+from src.sanitize import defuse_formula
 
 ESTADO_DECLARADO = "declarado"
 ESTADO_NO_DECLARADO = "no_declarado"
@@ -157,17 +158,30 @@ def cargar_catalogo(
             grupo=grupo, precio=c["precio"], disponible=c["disponible"], estado_sku=estado,
         ))
 
+    return tuple(variantes), cobertura_de(variantes, precio_excluido=excluidas)
+
+
+def cobertura_de(
+    variantes: tuple[Variante, ...] | list[Variante], *, precio_excluido: int = 0,
+) -> Cobertura:
+    """La tabla de tres estados para cualquier lista de variantes ya
+    clasificadas -- todo el catalogo, o un subconjunto filtrado por grupo.
+
+    ``precio_excluido`` no se puede recalcular a partir de ``variantes``
+    porque las variantes excluidas por precio ya no estan en la lista; se
+    declara aparte (default 0) para que un caller que filtra por grupo pueda
+    seguir mostrando la exclusion del catalogo completo (C1) en vez de
+    perderla."""
     estados = Counter(v.estado_sku for v in variantes)
-    cobertura = Cobertura(
+    return Cobertura(
         sku_declarado=estados[ESTADO_DECLARADO],
         sku_no_declarado=estados[ESTADO_NO_DECLARADO],
         sku_contradicho=estados[ESTADO_CONTRADICHO],
         precio_declarado=len(variantes),
-        precio_excluido=excluidas,
+        precio_excluido=precio_excluido,
         quiebre_hoy=sum(1 for v in variantes if not v.disponible),
         grupos=tuple(sorted(Counter(v.grupo for v in variantes).items())),
     )
-    return tuple(variantes), cobertura
 
 
 def _nodos(grupo: str, hip: Hipotesis, *, vacios: bool) -> list[dict]:
@@ -264,6 +278,7 @@ class VarianteGolpeada:
     estado_sku: str
     unidades_perdidas: float
     venta_en_riesgo_clp: float
+    arranco_vacia: bool = False   # C2: corrio en el payload initial_on_hand=0
 
 
 @dataclass(frozen=True)
@@ -273,8 +288,13 @@ class CatalogTwinReport:
     escenario: Escenario
     hipotesis: Hipotesis
     cobertura: Cobertura
+    n_variantes: int   # product_id distintos realmente simulados (demand_rows); C1
     fill_por_grupo: tuple[tuple[str, float], ...]
-    dias_quiebre_por_grupo: tuple[tuple[str, int], ...]
+    variante_dias_quiebre_por_grupo: tuple[tuple[str, int], ...]   # I3: suma sobre variantes, no sobre dias
+    # C2 / decision 5: fill, variante-dias en quiebre y venta en riesgo por
+    # (grupo, arranco_vacia) -- separa "cuanto tardan en recuperarse las
+    # quebradas de hoy" de "cuanto se quiebran las sanas".
+    desglose_por_estado: tuple[tuple[str, bool, float, int, float], ...]
     venta_en_riesgo_clp: float
     venta_en_riesgo_por_grupo: tuple[tuple[str, float], ...]
     golpeadas: tuple[VarianteGolpeada, ...]
@@ -309,43 +329,69 @@ def consolidar(
     demandado: dict[str, float] = {}
     servido: dict[str, float] = {}
     quiebre_grupo: dict[str, int] = {}
+    # C2: el mismo desglose, pero separado por (grupo, arranco_vacia). Cada
+    # ResultadoGrupo ya sabe de que payload vino (disponibles=False === el
+    # payload de las quebradas de hoy, initial_on_hand=0 en CD y tienda).
+    quiebre_estado: dict[tuple[str, bool], int] = {}
+    demandado_estado: dict[tuple[str, bool], float] = {}
+    servido_estado: dict[tuple[str, bool], float] = {}
+    riesgo_estado: dict[tuple[str, bool], float] = {}
     perdidas: dict[str, float] = {}
     for r in resultados:
         demand.extend(r.report.demand_rows)
         served.extend(r.report.served_rows)
         inventory.extend(r.report.inventory_rows)
         orders.extend(r.report.order_rows)
-        quiebre_grupo[r.grupo] = quiebre_grupo.get(r.grupo, 0) + sum(
-            k.stockout_periods for k in r.report.node_kpis if k.kind == "store"
-        )
+        dias_grupo = sum(k.stockout_periods for k in r.report.node_kpis if k.kind == "store")
+        quiebre_grupo[r.grupo] = quiebre_grupo.get(r.grupo, 0) + dias_grupo
+        clave_estado = (r.grupo, not r.disponibles)   # arranco_vacia = not disponibles
+        quiebre_estado[clave_estado] = quiebre_estado.get(clave_estado, 0) + dias_grupo
     dem_idx = {(t, p, s): u for t, p, s, u in demand}
     for t, p, s, u in served:
+        v = por_clave[p]
         falta = max(dem_idx[(t, p, s)] - u, 0.0)
         perdidas[p] = perdidas.get(p, 0.0) + falta
-        g = por_clave[p].grupo
+        g = v.grupo
         demandado[g] = demandado.get(g, 0.0) + dem_idx[(t, p, s)]
         servido[g] = servido.get(g, 0.0) + u
+        clave_estado = (g, not v.disponible)
+        demandado_estado[clave_estado] = demandado_estado.get(clave_estado, 0.0) + dem_idx[(t, p, s)]
+        servido_estado[clave_estado] = servido_estado.get(clave_estado, 0.0) + u
 
     riesgo_var = {p: perdidas[p] * por_clave[p].precio for p in perdidas}
     riesgo_grupo: dict[str, float] = {}
     for p, clp in riesgo_var.items():
-        g = por_clave[p].grupo
-        riesgo_grupo[g] = riesgo_grupo.get(g, 0.0) + clp
+        v = por_clave[p]
+        riesgo_grupo[v.grupo] = riesgo_grupo.get(v.grupo, 0.0) + clp
+        clave_estado = (v.grupo, not v.disponible)
+        riesgo_estado[clave_estado] = riesgo_estado.get(clave_estado, 0.0) + clp
     fill = {
         g: (servido[g] / demandado[g] if demandado[g] > 0 else 1.0) for g in demandado
     }
+    desglose_por_estado = tuple(
+        (g, vacia,
+         round(servido_estado.get((g, vacia), 0.0) / demandado_estado[(g, vacia)], 4)
+         if demandado_estado.get((g, vacia), 0.0) > 0 else 1.0,
+         quiebre_estado[(g, vacia)],
+         round(riesgo_estado.get((g, vacia), 0.0), 0))
+        for (g, vacia) in sorted(quiebre_estado)
+    )
     golpeadas = tuple(
         VarianteGolpeada(clave=p, producto=por_clave[p].producto,
                          estado_sku=por_clave[p].estado_sku,
                          unidades_perdidas=round(perdidas[p], 2),
-                         venta_en_riesgo_clp=round(riesgo_var[p], 0))
+                         venta_en_riesgo_clp=round(riesgo_var[p], 0),
+                         arranco_vacia=not por_clave[p].disponible)
         for p in sorted(riesgo_var, key=lambda k: -riesgo_var[k])[:top]
         if riesgo_var[p] > 0
     )
+    variantes_simuladas = {p for _, p, _, _ in demand}
     return CatalogTwinReport(
         escenario=escenario, hipotesis=hipotesis, cobertura=cobertura,
+        n_variantes=len(variantes_simuladas),
         fill_por_grupo=tuple(sorted((g, round(f, 4)) for g, f in fill.items())),
-        dias_quiebre_por_grupo=tuple(sorted(quiebre_grupo.items())),
+        variante_dias_quiebre_por_grupo=tuple(sorted(quiebre_grupo.items())),
+        desglose_por_estado=desglose_por_estado,
         venta_en_riesgo_clp=round(sum(riesgo_var.values()), 0),
         venta_en_riesgo_por_grupo=tuple(sorted((g, round(c, 0)) for g, c in riesgo_grupo.items())),
         golpeadas=golpeadas,
@@ -370,8 +416,8 @@ def _findings_cobertura(c: Cobertura) -> list[Finding]:
                 f"declarado={c.sku_declarado} · no_declarado={c.sku_no_declarado} · "
                 f"contradicho={c.sku_contradicho}", impact=_IMPACTO_COBERTURA),
         Finding("Cobertura · precio",
-                f"declarado={c.precio_declarado} · no_declarado={c.precio_excluido} (excluidas) · "
-                "contradicho=0", impact=_IMPACTO_COBERTURA),
+                f"declarado={c.precio_declarado} · no_declarado={c.precio_excluido} "
+                "(excluidas del catálogo completo) · contradicho=0", impact=_IMPACTO_COBERTURA),
         Finding("Cobertura · en quiebre hoy",
                 f"declarado={c.quiebre_hoy} · no_declarado=0 · contradicho=0", impact=_IMPACTO_COBERTURA),
         Finding("Cobertura · proveedor",
@@ -399,12 +445,34 @@ def _seccion_hipotesis(h: Hipotesis) -> str:
     return " · ".join(bullets)
 
 
-def deck(report: CatalogTwinReport, *, client: str = "Mariscos De La Concha") -> Deliverable:
+def _linea_desglose(desglose: tuple[tuple[str, bool, float, int, float], ...]) -> str:
+    """Una sola linea (mismo estilo que ``_seccion_hipotesis``): por grupo,
+    fill y venta en riesgo de "arranco vacia" (quiebre publicado hoy) junto
+    al de "sana", para que se puedan comparar de un vistazo (C2 / decision 5)."""
+    por_grupo: dict[str, dict[bool, tuple[float, int, float]]] = {}
+    for g, vacia, fill, dias, venta in desglose:
+        por_grupo.setdefault(g, {})[vacia] = (fill, dias, venta)
+    partes = []
+    for g in sorted(por_grupo):
+        estados = por_grupo[g]
+        segmentos = []
+        for vacia, etiqueta in ((True, "arrancó vacía"), (False, "sana")):
+            if vacia in estados:
+                fill, dias, venta = estados[vacia]
+                segmentos.append(
+                    f"{etiqueta}: fill {fill:.1%}, {dias} variante-días en quiebre, "
+                    f"venta en riesgo CLP {venta:,.0f}"
+                )
+        partes.append(f"{g} — " + " · ".join(segmentos))
+    return " || ".join(partes)
+
+
+def deck(report: CatalogTwinReport, *, client: str = "Client", lectura: str) -> Deliverable:
     esc = report.escenario
     fills = dict(report.fill_por_grupo)
     peor = min(fills, key=fills.get)
     summary = (
-        f"{FRASE_APERTURA} Escenario '{esc.nombre}' sobre {report.cobertura.precio_declarado} "
+        f"{FRASE_APERTURA} Escenario '{esc.nombre}' sobre {report.n_variantes} "
         f"variantes en {len(fills)} grupo(s), {report.hipotesis.periods} días: venta en riesgo a "
         f"precio de lista CLP {report.venta_en_riesgo_clp:,.0f}; el grupo más golpeado es "
         f"{peor} con fill {fills[peor]:.1%}."
@@ -413,25 +481,33 @@ def deck(report: CatalogTwinReport, *, client: str = "Mariscos De La Concha") ->
         *_findings_cobertura(report.cobertura),
         Finding("Hipótesis de demanda (no observadas)", _seccion_hipotesis(report.hipotesis),
                 impact="cambiar cualquiera cambia el número; por eso están impresas"),
+        Finding("Quebradas de hoy vs sanas", _linea_desglose(report.desglose_por_estado),
+                impact="cuanto tardan en recuperarse las quebradas de hoy vs. cuanto se quiebran las sanas"),
     ]
     for g in report.golpeadas[:5]:
+        detalle = f"{g.unidades_perdidas:,.0f} unidades no servidas · CLP {g.venta_en_riesgo_clp:,.0f}"
+        if g.arranco_vacia:
+            detalle += " · arrancó vacía (quiebre publicado hoy)"
         findings.append(Finding(
-            f"{g.producto} ({g.clave}, SKU {g.estado_sku})",
-            f"{g.unidades_perdidas:,.0f} unidades no servidas · CLP {g.venta_en_riesgo_clp:,.0f}",
+            f"{g.producto} ({g.clave}, SKU {g.estado_sku})", detalle,
             impact="venta en riesgo a precio de lista; no es margen ni pérdida contable",
         ))
     kpis = [
         Kpi("Venta en riesgo a precio de lista (CLP)", f"{report.venta_en_riesgo_clp:,.0f}",
             rationale="unidades no servidas × precio de lista de la variante"),
         *[Kpi(f"Fill {g}", f"{f:.1%}", target="≥ 95%") for g, f in report.fill_por_grupo],
-        *[Kpi(f"Días-tienda en quiebre {g}", str(d)) for g, d in report.dias_quiebre_por_grupo],
+        *[Kpi(f"Variante-días en quiebre {g}", str(d),
+              rationale="suma sobre variantes: una variante vacía un día cuenta 1")
+          for g, d in report.variante_dias_quiebre_por_grupo],
+        *[Kpi(f"Fill {g} · {'arrancaron vacías' if vacia else 'sanas'}", f"{fill:.1%}")
+          for g, vacia, fill, _, _ in report.desglose_por_estado],
     ]
     fuentes = [
-        DataSource("SKU, precio, estado de stock, categoría", "products.json público del catálogo", "lectura 2026-08-28"),
+        DataSource("SKU, precio, estado de stock, categoría", "products.json público del catálogo", lectura),
         DataSource("demanda, lead times", "prior declarado (no observado)", "por corrida"),
     ]
     return Deliverable(
-        title=f"Twin del catálogo — {client} — escenario {esc.nombre}",
+        title=f"Twin del catálogo — escenario {esc.nombre}",
         client=client, summary=summary, findings=tuple(findings), kpis=tuple(kpis),
         data_sources=tuple(fuentes),
         recommendations=(
@@ -447,10 +523,24 @@ def _con_fecha(rows, value_col: str) -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=["period", "product_id", "location", value_col])
     inicio = pd.Timestamp(_START_DATE)
     df.insert(0, "date", df.pop("period").map(lambda t: (inicio + pd.Timedelta(days=int(t))).date().isoformat()))
+    # I4: product_id/location vienen del catalogo real (SKU, titulo) y salian
+    # crudos via to_csv, saltandose la defensa contra CSV-injection que el
+    # resto del repo aplica (src/export.write_summary_csv ya la usa).
+    df["product_id"] = df["product_id"].map(defuse_formula)
+    df["location"] = df["location"].map(defuse_formula)
     return df
 
 
-def escribir(report: CatalogTwinReport, out_dir: str | Path, *, client: str = "Mariscos De La Concha") -> dict[str, Path]:
+def escribir(
+    report: CatalogTwinReport, out_dir: str | Path, *, client: str = "Client", lectura: str,
+) -> dict[str, Path]:
+    """Escribe el deck y los mismos CSV que ``jobs/digital_twin_job.py`` (demanda,
+    servido, inventario, ordenes) mas la cobertura y las mas golpeadas, todo con
+    fecha diaria (``_START_DATE``) y clave real de variante. Los archivos llevan
+    el prefijo ``twin_catalogo_`` (M9) para no colisionar con los ``twin_*.csv``
+    del twin generico en el mismo ``deliverables/``; las claves del dict devuelto
+    (``paths``) no cambian. ``lectura`` no tiene default: la procedencia del
+    catalogo (I5) se declara en cada corrida, nunca se inventa."""
     d = Path(out_dir)
     d.mkdir(parents=True, exist_ok=True)
     paths: dict[str, Path] = {}
@@ -460,7 +550,7 @@ def escribir(report: CatalogTwinReport, out_dir: str | Path, *, client: str = "M
         ("inventory", "on_hand", report.inventory_rows),
         ("orders", "order_qty", report.order_rows),
     ):
-        p = d / f"twin_{key}.csv"
+        p = d / f"twin_catalogo_{key}.csv"
         _con_fecha(rows, col).to_csv(p, index=False)
         paths[key] = p
     c = report.cobertura
@@ -468,13 +558,14 @@ def escribir(report: CatalogTwinReport, out_dir: str | Path, *, client: str = "M
         {"campo": "sku", "declarado": c.sku_declarado, "no_declarado": c.sku_no_declarado, "contradicho": c.sku_contradicho},
         {"campo": "precio", "declarado": c.precio_declarado, "no_declarado": c.precio_excluido, "contradicho": 0},
         {"campo": "quiebre_hoy", "declarado": c.quiebre_hoy, "no_declarado": 0, "contradicho": 0},
-    ], d / "twin_cobertura.csv")
+    ], d / "twin_catalogo_cobertura.csv")
     paths["golpeadas"] = write_summary_csv([
         {"clave": g.clave, "producto": g.producto, "estado_sku": g.estado_sku,
-         "unidades_perdidas": g.unidades_perdidas, "venta_en_riesgo_clp": g.venta_en_riesgo_clp}
+         "unidades_perdidas": g.unidades_perdidas, "venta_en_riesgo_clp": g.venta_en_riesgo_clp,
+         "arranco_vacia": g.arranco_vacia}
         for g in report.golpeadas
-    ], d / "twin_golpeadas.csv")
-    deck_path = d / "twin_deck.md"
-    deck_path.write_text(deck(report, client=client).to_markdown(), encoding="utf-8")
+    ], d / "twin_catalogo_golpeadas.csv")
+    deck_path = d / "twin_catalogo_deck.md"
+    deck_path.write_text(deck(report, client=client, lectura=lectura).to_markdown(), encoding="utf-8")
     paths["deck"] = deck_path
     return paths

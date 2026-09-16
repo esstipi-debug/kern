@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -48,21 +49,29 @@ def main(argv: list[str] | None = None) -> int:
         variantes = tuple(v for v in variantes if v.grupo == args.grupo)
         if not variantes:
             raise SystemExit(f"el grupo {args.grupo!r} no existe; hay: {', '.join(g for g, _ in cobertura.grupos)}")
+        # C1: si el deck recibe la cobertura del catalogo COMPLETO mientras
+        # solo este grupo fue simulado, dice "sobre 216 variantes" cuando en
+        # realidad corrieron 81. La cantidad de excluidas por precio se
+        # mantiene la del catalogo completo (no se puede recalcular: esas
+        # variantes ya no estan en la lista) y el deck la etiqueta como tal.
+        cobertura = tc.cobertura_de(variantes, precio_excluido=cobertura.precio_excluido)
     hip = tc.Hipotesis(base_demanda_por_grupo=args.base_demanda, periods=args.periodos)
+    fecha = datetime.fromtimestamp(Path(args.catalogo).stat().st_mtime).date().isoformat()
+    lectura = f"lectura {fecha}"
 
-    print(f"{'escenario':18} {'fill':>7} {'dias quiebre':>13} {'venta en riesgo CLP':>20}")
+    print(f"{'escenario':18} {'fill':>7} {'var-dias quiebre':>17} {'venta en riesgo CLP':>20}")
     for esc in _escenarios(args.escenario):
         pls = tc.armar_payloads(variantes, hipotesis=hip, escenario=esc, seed=args.seed)
         rep = tc.consolidar(tc.correr(pls), variantes, cobertura=cobertura, hipotesis=hip)
-        tc.escribir(rep, Path(args.out) / esc.nombre, client=args.cliente)
+        tc.escribir(rep, Path(args.out) / esc.nombre, client=args.cliente, lectura=lectura)
         fill = dict(rep.fill_por_grupo)
-        dias = dict(rep.dias_quiebre_por_grupo)
+        dias = dict(rep.variante_dias_quiebre_por_grupo)
         riesgo = dict(rep.venta_en_riesgo_por_grupo)
         for g in sorted(fill):
-            print(f"{_ascii(esc.nombre):18} {fill[g]:7.1%} {dias[g]:13d} {riesgo[g]:20,.0f}  [{_ascii(g)}]")
+            print(f"{_ascii(esc.nombre):18} {fill[g]:7.1%} {dias[g]:17d} {riesgo[g]:20,.0f}  [{_ascii(g)}]")
     print(f"\ncobertura: sku declarado={cobertura.sku_declarado} no_declarado={cobertura.sku_no_declarado} "
           f"contradicho={cobertura.sku_contradicho} | en quiebre hoy={cobertura.quiebre_hoy}")
-    print(f"salida en {_ascii(args.out)}/<escenario>/ (twin_deck.md, twin_*.csv)")
+    print(f"salida en {_ascii(args.out)}/<escenario>/ (twin_catalogo_deck.md, twin_catalogo_*.csv)")
     return 0
 
 
