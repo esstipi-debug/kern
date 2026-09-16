@@ -179,3 +179,26 @@ def test_consolidar_las_filas_llevan_la_clave_real_de_la_variante():
     claves = {v.clave for v in variantes}
     assert {p for _, p, _, _ in rep.demand_rows} == claves
     assert {p for _, p, _, _ in rep.inventory_rows} <= claves
+
+
+def test_deck_abre_con_la_frase_de_hipotesis_y_declara_cobertura_y_priors():
+    rep, _ = _reporte()
+    d = tc.deck(rep)
+    md = d.to_markdown()
+    assert md.startswith("# ") and tc.FRASE_APERTURA in d.summary
+    assert "Hipótesis de demanda (no observadas)" in md
+    assert "declarado" in md and "no_declarado" in md and "contradicho" in md
+    assert "venta en riesgo a precio de lista" in md.lower()
+    assert "proveedor: no declarado" in md.lower()
+
+
+def test_escribir_deja_los_csv_del_twin_con_fecha_diaria_y_clave_real(tmp_path):
+    rep, variantes = _reporte()
+    paths = tc.escribir(rep, tmp_path)
+    assert set(paths) == {"demand_history", "served", "inventory", "orders", "cobertura", "golpeadas", "deck"}
+    import pandas as pd
+    dem = pd.read_csv(paths["demand_history"])
+    assert list(dem.columns) == ["date", "product_id", "location", "units"]
+    assert dem["date"].iloc[0] == "2025-01-06" and dem["date"].iloc[1] == "2025-01-07"
+    assert set(dem["product_id"]) == {v.clave for v in variantes}
+    assert paths["deck"].read_text(encoding="utf-8").startswith("# ")

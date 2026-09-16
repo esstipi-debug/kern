@@ -17,9 +17,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from jobs import digital_twin_job
 from jobs.digital_twin_job import _DISRUPTION_KINDS, _MAX_CELLS, TwinReport
+from src.deliverable import DataSource, Deliverable, Finding, Kpi
+from src.export import write_summary_csv
 
 ESTADO_DECLARADO = "declarado"
 ESTADO_NO_DECLARADO = "no_declarado"
@@ -348,3 +351,112 @@ def consolidar(
         demand_rows=tuple(demand), served_rows=tuple(served),
         inventory_rows=tuple(inventory), order_rows=tuple(orders),
     )
+
+
+FRASE_APERTURA = "Esto es una hipótesis sobre su catálogo, no una medición de su bodega."
+_FECHA_INICIO = "2025-01-06"
+
+
+def _tabla_cobertura(c: Cobertura) -> str:
+    return (
+        "| Campo | declarado | no_declarado | contradicho |\n|---|---:|---:|---:|\n"
+        f"| SKU | {c.sku_declarado} | {c.sku_no_declarado} | {c.sku_contradicho} |\n"
+        f"| precio | {c.precio_declarado} | {c.precio_excluido} (excluidas) | 0 |\n"
+        f"| en quiebre hoy | {c.quiebre_hoy} | 0 | 0 |\n"
+        "| proveedor | 0 | todos (proveedor: no declarado; agrupado por categoría) | 0 |\n"
+        "| demanda | 0 | todos (prior) | 0 |\n"
+        "| lead time | 0 | todos (prior) | 0 |\n"
+        "| peso / unidad | 0 | todos (la unidad es la variante) | 0 |"
+    )
+
+
+def _seccion_hipotesis(h: Hipotesis) -> str:
+    return (
+        "## Hipótesis de demanda (no observadas)\n\n"
+        f"- demanda base por grupo: {h.base_demanda_por_grupo} unidades/día, escala ABC lognormal (σ 0,7)\n"
+        f"- ruido (CV): {h.noise_cv} · estacionalidad: ±{h.season_amplitude:.0%} cada {h.season_period} días\n"
+        f"- lead time proveedor → CD: {h.lead_proveedor} días (no declarado — prior) · CD → tienda: {h.lead_tienda} día(s)\n"
+        f"- horizonte: {h.periods} días · dimensionado automático: {h.auto_size_factor}×"
+    )
+
+
+def deck(report: CatalogTwinReport, *, client: str = "Mariscos De La Concha") -> Deliverable:
+    esc = report.escenario
+    fills = dict(report.fill_por_grupo)
+    peor = min(fills, key=fills.get)
+    summary = (
+        f"{FRASE_APERTURA} Escenario '{esc.nombre}' sobre {report.cobertura.precio_declarado} "
+        f"variantes en {len(fills)} grupo(s), {report.hipotesis.periods} días: venta en riesgo a "
+        f"precio de lista CLP {report.venta_en_riesgo_clp:,.0f}; el grupo más golpeado es "
+        f"{peor} con fill {fills[peor]:.1%}."
+    )
+    findings = [
+        Finding("Cobertura de lo observable", _tabla_cobertura(report.cobertura),
+                impact="lo que entró del catálogo tal cual, y lo que es hipótesis"),
+        Finding("Hipótesis", _seccion_hipotesis(report.hipotesis),
+                impact="cambiar cualquiera cambia el número; por eso están impresas"),
+    ]
+    for g in report.golpeadas[:5]:
+        findings.append(Finding(
+            f"{g.producto} ({g.clave}, SKU {g.estado_sku})",
+            f"{g.unidades_perdidas:,.0f} unidades no servidas · CLP {g.venta_en_riesgo_clp:,.0f}",
+            impact="venta en riesgo a precio de lista; no es margen ni pérdida contable",
+        ))
+    kpis = [
+        Kpi("Venta en riesgo a precio de lista (CLP)", f"{report.venta_en_riesgo_clp:,.0f}",
+            rationale="unidades no servidas × precio de lista de la variante"),
+        *[Kpi(f"Fill {g}", f"{f:.1%}", target="≥ 95%") for g, f in report.fill_por_grupo],
+        *[Kpi(f"Días-tienda en quiebre {g}", str(d)) for g, d in report.dias_quiebre_por_grupo],
+    ]
+    fuentes = [
+        DataSource("SKU, precio, estado de stock, categoría", "products.json público del catálogo", "lectura 2026-08-28"),
+        DataSource("demanda, lead times", "prior declarado (no observado)", "por corrida"),
+    ]
+    return Deliverable(
+        title=f"Twin del catálogo — {client} — escenario {esc.nombre}",
+        client=client, summary=summary, findings=tuple(findings), kpis=tuple(kpis),
+        data_sources=tuple(fuentes),
+        recommendations=(
+            "Validar la demanda base con un mes de ventas reales antes de usar cualquier número de este deck.",
+            "Si el corte de proveedor domina, la decisión es cobertura de stock del grupo, no de una variante.",
+        ),
+        confidence=0.3,
+        residual="Proveedor real, demanda y plazos no observados; los quiebres publicados son estado de publicación, no inventario.",
+    )
+
+
+def _con_fecha(rows, value_col: str) -> pd.DataFrame:
+    df = pd.DataFrame(rows, columns=["period", "product_id", "location", value_col])
+    inicio = pd.Timestamp(_FECHA_INICIO)
+    df.insert(0, "date", df.pop("period").map(lambda t: (inicio + pd.Timedelta(days=int(t))).date().isoformat()))
+    return df
+
+
+def escribir(report: CatalogTwinReport, out_dir: str | Path, *, client: str = "Mariscos De La Concha") -> dict[str, Path]:
+    d = Path(out_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    paths: dict[str, Path] = {}
+    for key, col, rows in (
+        ("demand_history", "units", report.demand_rows),
+        ("served", "units_served", report.served_rows),
+        ("inventory", "on_hand", report.inventory_rows),
+        ("orders", "order_qty", report.order_rows),
+    ):
+        p = d / f"twin_{key}.csv"
+        _con_fecha(rows, col).to_csv(p, index=False)
+        paths[key] = p
+    c = report.cobertura
+    paths["cobertura"] = write_summary_csv([
+        {"campo": "sku", "declarado": c.sku_declarado, "no_declarado": c.sku_no_declarado, "contradicho": c.sku_contradicho},
+        {"campo": "precio", "declarado": c.precio_declarado, "no_declarado": c.precio_excluido, "contradicho": 0},
+        {"campo": "quiebre_hoy", "declarado": c.quiebre_hoy, "no_declarado": 0, "contradicho": 0},
+    ], d / "twin_cobertura.csv")
+    paths["golpeadas"] = write_summary_csv([
+        {"clave": g.clave, "producto": g.producto, "estado_sku": g.estado_sku,
+         "unidades_perdidas": g.unidades_perdidas, "venta_en_riesgo_clp": g.venta_en_riesgo_clp}
+        for g in report.golpeadas
+    ], d / "twin_golpeadas.csv")
+    deck_path = d / "twin_deck.md"
+    deck_path.write_text(deck(report, client=client).to_markdown(), encoding="utf-8")
+    paths["deck"] = deck_path
+    return paths
