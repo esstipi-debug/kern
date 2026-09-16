@@ -205,3 +205,15 @@ def test_escribir_deja_los_csv_del_twin_con_fecha_diaria_y_clave_real(tmp_path):
     assert dem["date"].iloc[0] == "2025-01-06" and dem["date"].iloc[1] == "2025-01-07"
     assert set(dem["product_id"]) == {v.clave for v in variantes}
     assert paths["deck"].read_text(encoding="utf-8").startswith("# ")
+
+
+def test_example_corre_los_cuatro_escenarios_sobre_la_fixture(tmp_path, capsys):
+    import examples.run_twin_catalogo as cli
+    rc = cli.main(["--catalogo", str(FIXTURE), "--grupo", "Pescados", "--escenario", "todos",
+                   "--out", str(tmp_path), "--periodos", "60", "--seed", "1"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    for nombre in ("base", "corte_proveedor", "plazo_estirado", "pico_demanda"):
+        assert nombre in out
+        assert (tmp_path / nombre / "twin_deck.md").exists()
+    assert "venta en riesgo" in out.lower()
