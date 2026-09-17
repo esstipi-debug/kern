@@ -138,6 +138,17 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
         )
     except (ValueError, KeyError, TypeError, FileNotFoundError):
         order_lines = None
+    # La posicion de inventario, si el archivo la trae (stock en estante y, opcional,
+    # stock en camino). Es el productor que le faltaba a `run(on_hand_by_sku=...)`: sin
+    # el, el tool dice cuanto pedir y nunca cuando, y menos descuenta lo que ya viene.
+    # Misma envoltura que el servicio: es un extra, y un extra que falla no puede
+    # tumbar la politica.
+    try:
+        stock_position = intake.stock_position(
+            request.data_path, aliases=request.params.get("column_aliases")
+        )
+    except (ValueError, KeyError, TypeError, FileNotFoundError):
+        stock_position = None
     # `period` rides along: src/sources.py needs it to rebuild the COMPLETE period
     # grid per SKU. Without it a SKU's series is only the periods it sold in, which
     # makes every real export look like regular demand (ADI == 1.0) and overstates
@@ -149,11 +160,18 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
             "intake_quality": quality,
             "period": period,
             "order_lines": order_lines,
+            "stock_position": stock_position,
         },
     )
 
 
 def _inventory_run(payload: object, params: dict) -> Produced:
+    stock_position = payload.get("stock_position")
+    on_hand_by_sku, on_order_by_sku = intake.position_maps(stock_position)
+    position_note = (
+        str(stock_position.attrs.get("position_note", "") or "")
+        if stock_position is not None else ""
+    )
     report = run_inventory(
         payload["demand"],
         service_level=params.get("service_level", 0.95),
@@ -179,6 +197,10 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         # Per-SKU supplier terms typed into the request win over the file's columns.
         minimum_order_quantities=params.get("minimum_order_quantities"),
         order_multiples=params.get("order_multiples"),
+        # Today's position from the file; explicit per-SKU maps in the request win.
+        on_hand_by_sku=params.get("on_hand_by_sku", on_hand_by_sku),
+        on_order_by_sku=params.get("on_order_by_sku", on_order_by_sku),
+        position_note=position_note,
     )
     summary = (
         f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
@@ -191,6 +213,11 @@ def _inventory_run(payload: object, params: dict) -> Produced:
     nota = getattr(order_lines, "attrs", {}).get("service_note") if order_lines is not None else None
     if nota:
         summary = f"{summary} {nota}"
+    if report.n_positioned:
+        summary = (
+            f"{summary} {report.n_order_now} of {report.n_positioned} positioned SKU(s) are due "
+            f"for an order now. {report.position_note}"
+        )
     return Produced(report=report, summary=summary)
 
 
@@ -213,8 +240,12 @@ def inventory_tool() -> Tool:
         # `moq` / `order_multiple` are the supplier's terms: with them every (s,Q)
         # quantity is a lot the supplier accepts, with the runner-up lot on the
         # record (jobs/inventory_optimization.py, src/constraints.py).
+        # `on_hand` / `on_order` are today's stock position: with them every row also
+        # says whether an order is due NOW, sized against on hand plus stock already
+        # in transit (jobs/intake.py::stock_position).
         optional_columns=(
             "unit_cost", "lead_time_days", "lead_time_std", "revenue", "moq", "order_multiple",
+            "on_hand", "on_order",
         ),
         options=tool_options.inventory_options,
         prepare=_inventory_prepare,

@@ -93,6 +93,8 @@ Ordenados por cuánto cambian la respuesta. Cada uno con el archivo que lo prueb
 
 **Lectura:** una OC que transporte atrasó dos semanas es, para `inventory_optimization`, indistinguible de una OC que no existe. Va a **volver a pedir**. Esa es la disrupción de transporte más frecuente y el tool central no la ve.
 
+> **Estado (2026-09-17, misma rama, N1d):** cerrado. `jobs.intake.stock_position` lee `on_hand` / `on_order` del archivo (última fila por SKU), el job calcula `inventory_position` con la identidad de `src/ddmrp.py` y emite `order_now` / `order_qty_now` por SKU; el en-tránsito netea el disparador, no solo la cantidad, y sin columna de en-tránsito todo entregable dice que NO pudo netear. Prueba: `tests/test_inventory_en_transito.py`.
+
 ### H5. El gemelo inyecta shocks; nadie los mide
 
 `src/digital_twin.py` tiene `Disruption(kind, target, start, duration, magnitude)` con tres tipos y devuelve trazas completas por período. El plan `docs/superpowers/plans/2026-07-20-resilience_stress_test.md` está escrito hasta el nivel de los **tests con instancias verificadas a mano** (`test_time_to_recover_measures_first_in_band_period`, etc.), en 3 tasks, "~1 sesión, casi pura composición". `ls src/resilience.py` → no existe.

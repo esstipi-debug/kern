@@ -57,6 +57,16 @@ def _row(r: SkuRecommendation, *, units: bool = False) -> dict:
         ),
         "order_up_to_S": round(r.order_up_to, 2) if r.order_up_to is not None else "",
         "reorder_point_s": round(r.reorder_point, 2),
+        # Today's stock position and the execution signal. Blank, never 0, where
+        # nothing was measured: a blank on_order says "nobody told us", a 0 would
+        # say "measured, nothing inbound" - and the two lead to different POs.
+        "on_hand": round(r.on_hand, 2) if r.on_hand is not None else "",
+        "on_order": round(r.on_order, 2) if r.on_order is not None else "",
+        "inventory_position": (
+            round(r.inventory_position, 2) if r.inventory_position is not None else ""
+        ),
+        "order_now": ("yes" if r.order_now else "no") if r.order_now is not None else "",
+        "order_qty_now": round(r.order_qty_now, 2) if r.order_qty_now is not None else "",
         "safety_stock": round(r.safety_stock, 2),
         "sigma_e": round(r.error_std, 2),
         # Which dispersion actually sized this row's buffer, and under which
@@ -151,6 +161,11 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
             f"{report.n_lot_constrained} ({report.n_lot_snapped} moved off the EOQ)"),
            (f"Cost of honouring supplier terms{inv}/yr", round(report.lot_penalty_total_usd, 2))]
           if report.n_lot_constrained else []),
+        *([("SKUs with a stock position on file",
+            f"{report.n_positioned} ({report.n_netted} netted against stock on order)"),
+           ("Orders due now (position at or below trigger)", report.n_order_now),
+           ("Re-orders avoided by counting in-transit stock", report.n_reorders_avoided_by_transit)]
+          if report.n_positioned else []),
         ("Forecast methods used", _methods_used(report) or "none"),
         (f"Requested investment{inv}", round(report.requested_investment, 2)),
         (f"Cycle-stock floor{inv}", round(report.cycle_floor, 2)),
@@ -177,6 +192,45 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
 
     wb.save(out)
     return out
+
+
+def _orders_due_now_lines(report: JobReport) -> list[str]:
+    """The execution list: which SKUs sit at or below their trigger TODAY, sized
+    against the position (on hand + on order). Empty when the file carried no stock
+    on hand - the policy table above then says how much, never when."""
+    if not report.n_positioned:
+        return []
+    lines = ["## Orders due now\n"]
+    lines.append(
+        f"{report.n_positioned} SKU(s) came with stock on hand; {report.n_netted} also with "
+        f"stock already on order, which the position counts. **{report.n_order_now} SKU(s) "
+        f"are at or below their trigger today**; {report.n_reorders_avoided_by_transit} "
+        "would have been re-ordered on the shelf figure alone but are covered by stock "
+        "already inbound."
+    )
+    if report.n_netted == 0:
+        lines.append(
+            "\n> ⚠️ **In-transit stock NOT counted.** The file has no on-order column, so an "
+            "order transport delayed looks like one that does not exist. Check open POs by "
+            "hand before cutting any order below, or add an `on_order` / `en_transito` column."
+        )
+    due = [r for r in report.recommendations if r.order_now]
+    if due:
+        lines.append("")
+        lines.append("| SKU | Policy | On hand | On order | Position | Trigger | Order now |")
+        lines.append("|---|---|---:|---:|---:|---:|---:|")
+        for r in sorted(due, key=lambda x: (x.inventory_position or 0.0) - x.reorder_point)[:50]:
+            trigger = r.reorder_point if r.policy_kind == "(s, Q)" else (r.order_up_to or 0.0)
+            on_order = f"{r.on_order:,.0f}" if r.on_order is not None else "—"
+            lines.append(
+                f"| {r.product_id} | {r.policy_kind} | {r.on_hand:,.0f} | {on_order} | "
+                f"{r.inventory_position:,.0f} | {trigger:,.0f} | {r.order_qty_now:,.0f} |"
+            )
+    if report.position_note:
+        lines.append("")
+        lines.append(f"_{report.position_note}_")
+    lines.append("")
+    return lines
 
 
 def cost_is_synthesized(report: JobReport) -> bool:
@@ -524,6 +578,8 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
             "the workbook (`order_qty_unconstrained`, `supplier_lot_rule`, "
             "`lot_penalty_usd_yr`, `lot_alternative_Q`).\n"
         )
+
+    lines.extend(_orders_due_now_lines(report))
 
     flagged = [r for r in report.recommendations if r.status != "ok"]
     if flagged:

@@ -139,6 +139,7 @@ def inventory_options(report: object) -> GuidedOutcome:
         ("Adopt the recommended policy",
          f"Stage {report.final_investment:,.0f} of inventory under the (s,Q)/(R,S) policies at {sl * 100:.0f}% service.",
          "apply the recommended per-SKU policies and budget", "balanced service vs capital"),
+        *_orders_due_now_items(report),
         *_lot_terms_items(report),
         ("Tighten service on A-items",
          "Raise the cycle service level on the high-value SKUs (more safety stock).",
@@ -152,7 +153,60 @@ def inventory_options(report: object) -> GuidedOutcome:
     outcome = _apply_zero_demand_skips(outcome, report)
     outcome = _apply_zero_cost_skips(outcome, report)
     outcome = _apply_insufficient_history(outcome, report)
-    return _apply_lot_rule_unapplied(outcome, report)
+    outcome = _apply_lot_rule_unapplied(outcome, report)
+    return _apply_position_not_netted(outcome, report)
+
+
+def _orders_due_now_items(report: object) -> list[_Item]:
+    """The execution terminal, when the file carried a stock position.
+
+    `s` and `Q` say how much; the position says WHEN. Without this item the
+    operator gets a policy table and still has to work out by hand which SKUs
+    to order today - and, worse, does it against the shelf figure, re-buying
+    what transport delayed. The summary names the largest gaps so the buyer can
+    start there.
+    """
+    n_due = getattr(report, "n_order_now", 0)
+    if not getattr(report, "n_positioned", 0) or not n_due:
+        return []
+    due = [r for r in report.recommendations if getattr(r, "order_now", None)]
+    due.sort(key=lambda r: (r.inventory_position or 0.0) - r.reorder_point)
+    largest = "; ".join(
+        f"{r.product_id}: position {r.inventory_position:,.0f} vs trigger "
+        f"{(r.reorder_point if r.policy_kind == '(s, Q)' else (r.order_up_to or 0.0)):,.0f}, "
+        f"order {r.order_qty_now:,.0f}"
+        for r in due[:3]
+    )
+    n_netted = getattr(report, "n_netted", 0)
+    netting = (
+        f" Stock already on order was counted on {n_netted} SKU(s), avoiding "
+        f"{getattr(report, 'n_reorders_avoided_by_transit', 0)} re-order(s) of inbound stock."
+        if n_netted else " Nothing was netted: the file carried no on-order column."
+    )
+    return [(
+        f"Release the {n_due} replenishment order(s) due now",
+        f"{n_due} SKU(s) sit at or below their trigger on today's inventory position "
+        f"(on hand + on order).{netting} Largest gaps: {largest}.",
+        "issue the POs on the rows with order_now = yes, for order_qty_now units each",
+        "stock lands before the next stockout; the capital goes out today",
+    )]
+
+
+def _apply_position_not_netted(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
+    """State a residual when a position was read but nothing could be netted: the
+    file had stock on hand and no on-order column. Silence here is the exact
+    failure H4 names - a PO transport delayed reads as a PO that does not exist,
+    and the due-now list buys it again."""
+    if not getattr(report, "n_positioned", 0) or getattr(report, "n_netted", 0):
+        return outcome
+    return replace(outcome, residuals=[*outcome.residuals, Residual(
+        description="The due-now orders could NOT be netted against stock already on order: "
+                    "the file carries stock on hand but no on_order / en_transito column, so "
+                    "every SKU was sized against the shelf alone.",
+        risk_if_skipped="a purchase that transport delayed is bought a second time; check "
+                        "open POs by hand before cutting any due-now order, or add the "
+                        "on-order column and re-run.",
+    )])
 
 
 def _lot_terms_items(report: object) -> list[_Item]:

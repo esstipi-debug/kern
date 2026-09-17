@@ -148,7 +148,15 @@ ALIASES: dict[str, list[str]] = {
                        "multiplo_pedido", "multiplo_de_caja", "unidades_por_caja",
                        "lote_multiplo"],
     "order_cycle_days": ["order_cycle_days", "order_cycle", "order_cycle_period"],
-    "on_order": ["on_order", "open_po", "open_orders"],
+    # Stock ya comprado y en camino. Los encabezados salen de exports reales en los
+    # dos idiomas (los mismos que acepta jobs/excel_replenishment_job.py). "pedido"
+    # pelado NO esta, a proposito: es la columna de SALIDA de la planilla
+    # ("Pedir (Kern)") y un plan que la leyera como suministro entrante se netearia
+    # contra si mismo hasta colapsar a cero en la segunda corrida.
+    "on_order": ["on_order", "onorder", "on_order_qty", "qty_on_order", "open_po", "open_pos",
+                 "open_orders", "open_purchase_orders", "in_transit", "intransit", "inbound",
+                 "incoming", "en_transito", "stock_en_transito", "en_camino", "por_recibir",
+                 "oc_pendiente", "oc_pendientes", "oc_abierta", "oc_abiertas"],
     "qualified_demand": ["qualified_demand", "qualified", "open_demand", "sales_orders"],
     "lot_id": ["lot_id", "lot", "batch", "batch_id"],
     # "days" a secas queda afuera a proposito: es de la tupla de fefo, pero un
@@ -1044,6 +1052,116 @@ _NOTA_SIN_ENTREGA = (
     "Service measured from the file's own columns: {columnas}. Without a delivery date "
     "OTIF cannot be measured; fill rate can."
 )
+
+
+# -- posicion de inventario desde el archivo del cliente ---------------------------
+
+#: Las dos columnas de POSICION, que tampoco estan en ``CANONICAL_OPTIONAL`` y por la
+#: misma razon que el servicio: un stock es una FOTO, no un flujo. ``normalize_tracked``
+#: agrega por periodo, y sumar (o promediar) las existencias de cuatro semanas inventa
+#: un numero que ningun almacen tuvo. Las lee ``stock_position``: la ultima fila por
+#: SKU, en orden de fecha.
+POSITION_OPTIONAL = ("on_hand", "on_order")
+
+_NOTA_POSICION_NETEADA = (
+    "Stock position read from the file's own columns: {columnas} (last row per SKU, as of "
+    "{fecha}). Order-now decisions are sized against on hand PLUS stock already on order, so "
+    "a purchase that transport delayed is not bought twice."
+)
+_NOTA_POSICION_SIN_TRANSITO = (
+    "Stock position read from the file's own columns: {columnas} (last row per SKU, as of "
+    "{fecha}). No on-order column was found, so the due-now list could NOT be netted against "
+    "open purchase orders: an order transport delayed looks like one that does not exist. "
+    "Check open POs by hand before cutting any of these orders, or add an on_order / "
+    "en_transito column."
+)
+
+
+def stock_position(
+    path: str | Path,
+    *,
+    overrides: dict[str, str] | None = None,
+    aliases: AliasTable | None = None,
+):
+    """La posicion de inventario por SKU que trae el archivo, o ``None`` si no trae stock.
+
+    El productor que le faltaba a ``jobs.inventory_optimization.run(on_hand_by_sku=...)``:
+    hasta aca el tool CSV dimensionaba ``s`` y ``Q`` y nunca miraba el estante, asi que no
+    podia decir CUANDO pedir -- y menos descontar lo que ya venia en camino (H4 de
+    ``documentation/KERN_DISRUPCIONES_Y_DESAJUSTES.md``).
+
+    Una fila por SKU con ``on_hand`` y ``on_order``. ``on_hand`` es obligatorio (sin
+    estante no hay posicion): sin esa columna se devuelve ``None``, no un frame vacio.
+    ``on_order`` queda en ``NaN`` -- que el consumidor lee como "nadie lo midio" -- cuando
+    el archivo no trae la columna o la celda del SKU esta vacia. Nunca ``0.0``: cero es
+    una medicion afirmada ("no hay nada en camino"), y la disciplina de
+    ``tests/test_neteo_en_transito.py`` es que la ausencia se declara, no se asume.
+
+    La foto es la ULTIMA fila de cada SKU en orden de fecha (las filas sin fecha van
+    primero, asi una fila fechada siempre gana). ``.attrs`` trae ``position_headers`` (que
+    columna del cliente fue cada campo), ``as_of`` (la fecha mas reciente) y
+    ``position_note`` (la frase que el entregable repite, incluida la advertencia de que
+    no pudo netear cuando no pudo).
+    """
+    raw = load_table(path, aliases=aliases)
+    mapeo = detect_columns(
+        raw, overrides, optional=CANONICAL_OPTIONAL + POSITION_OPTIONAL, aliases=aliases,
+    )
+    if not mapeo.ok or "on_hand" not in mapeo.mapping:
+        return None
+
+    presentes = {c: mapeo.mapping[c] for c in POSITION_OPTIONAL if c in mapeo.mapping}
+    frame = pd.DataFrame({
+        "product_id": raw[mapeo.mapping["product_id"]].astype(str).str.strip(),
+        "date": _parse_dates(raw[mapeo.mapping["date"]]),
+        "on_hand": pd.to_numeric(raw[presentes["on_hand"]], errors="coerce"),
+    })
+    if "on_order" in presentes:
+        on_order = pd.to_numeric(raw[presentes["on_order"]], errors="coerce")
+        # Un en-transito negativo no es una medicion de nada.
+        frame["on_order"] = on_order.where(on_order >= 0)
+    else:
+        frame["on_order"] = float("nan")
+    frame = frame[frame["product_id"].ne("") & ~frame["product_id"].str.lower().isin(("nan", "none"))]
+    frame = frame.sort_values(["product_id", "date"], na_position="first", kind="stable")
+    ultimo = (
+        frame.groupby("product_id", sort=True)
+        .agg(on_hand=("on_hand", "last"), on_order=("on_order", "last"), as_of=("date", "max"))
+        .dropna(subset=["on_hand"])
+        .reset_index()
+    )
+    if ultimo.empty:
+        return None
+    fecha = ultimo["as_of"].max()
+    fecha_txt = fecha.strftime("%Y-%m-%d") if pd.notna(fecha) else "undated rows"
+    columnas = ", ".join(f"{k} <- '{v}'" for k, v in sorted(presentes.items()))
+    plantilla = _NOTA_POSICION_NETEADA if "on_order" in presentes else _NOTA_POSICION_SIN_TRANSITO
+    ultimo.attrs["position_headers"] = dict(presentes)
+    ultimo.attrs["as_of"] = fecha_txt
+    ultimo.attrs["position_note"] = plantilla.format(columnas=columnas, fecha=fecha_txt)
+    return ultimo
+
+
+def position_maps(frame) -> tuple[dict[str, float] | None, dict[str, float] | None]:
+    """``(on_hand_by_sku, on_order_by_sku)`` en la forma que consume el job.
+
+    ``on_order_by_sku`` es ``None`` -- no ``{}`` -- cuando el archivo no traia la columna:
+    un mapa vacio se lee como "medido, y es cero en todos". Un SKU con la celda vacia
+    simplemente no esta en el mapa, y el job lo reporta como no medido.
+    """
+    if frame is None:
+        return None, None
+    on_hand = {
+        str(r.product_id): float(r.on_hand)
+        for r in frame.itertuples(index=False) if not math.isnan(float(r.on_hand))
+    }
+    if "on_order" not in frame.attrs.get("position_headers", {}):
+        return on_hand, None
+    on_order = {
+        str(r.product_id): float(r.on_order)
+        for r in frame.itertuples(index=False) if not math.isnan(float(r.on_order))
+    }
+    return on_hand, on_order
 
 
 def _texto_o_none(valor: object) -> str | None:

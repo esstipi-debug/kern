@@ -164,6 +164,21 @@ como `alternative` con su penalidad. Tres consumidores leen la MISMA regla
 Lo que NO se hace: leer `product.packaging` de Odoo (`src/connectors/odoo.py`
 solo lee `min_qty`) -- trabajo de conector, sin instancia viva para probarlo.
 
+### El tool CSV ve el estante y lo que viene en camino (`jobs.intake.stock_position`)
+`inventory_optimization` dimensiona `s` y `Q` (cuanto); la posicion dice CUANDO.
+Si el archivo trae stock en estante (`on_hand`: stock, existencia, saldo...) y,
+opcional, stock en camino (`on_order`: en_transito, por_recibir, oc_pendiente,
+open_po...), `stock_position(path)` toma la ULTIMA fila por SKU y el job agrega
+`inventory_position = net_flow_position(on_hand, on_order, 0)` (la identidad de
+`src/ddmrp.py`, no una segunda formula), `order_now` y `order_qty_now` por SKU;
+`tool_options` suma la OPCION "Release the N orders due now". Dos reglas de
+`tests/test_neteo_en_transito.py` valen aca igual: el en-transito netea el
+DISPARADOR, no solo la cantidad (una OC atrasada por transporte no se vuelve a
+pedir: `n_reorders_avoided_by_transit`), y la ausencia se declara -- sin columna
+de en-transito `on_order` es `None`, nunca 0, y deck, md, options y resumen
+dicen que NO se pudo netear. Las dos columnas NO entran en `CANONICAL_OPTIONAL`:
+un stock es una foto y `normalize_tracked` agrega flujos por periodo.
+
 ### Client parameter profiles (`src/client_profile.py`)
 Per-client durable cost/capacity parameters (holding rate, order cost, service
 level, lead time, warehouse capacity), keyed by a slugified client name under

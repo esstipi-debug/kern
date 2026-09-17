@@ -62,6 +62,14 @@ de inventario, los sombreros y `cross_impact` ignoraban los terminos.
   legales de una propuesta infactible. CLI: `--moq` / `--order-multiple`.
 - **Fuera**: `product.packaging` en Odoo (solo se lee `min_qty`); pendiente con
   una instancia viva. Tests: `tests/test_lot_constraints.py`.
+- **N1d (H4 de la investigacion) cerrado en la misma rama**: `jobs.intake.stock_position`
+  lee `on_hand` / `on_order` del archivo (ultima fila por SKU), el job agrega
+  `inventory_position` / `order_now` / `order_qty_now` por SKU con
+  `src.ddmrp.net_flow_position`, QA lo gatea, CSV/Excel/md/deck/OPTIONS lo muestran y
+  dicen cuando NO pudieron netear. Tests: `tests/test_inventory_en_transito.py`.
+  Siguen abiertos del Nivel 1: N1a (rutear los dos monitores con la serie real), N1b
+  (reloj del Tower, necesita un secreto de repo), N1c (snapshot `stock` desde los jobs
+  que leen `on_hand`). Y N2b (shocks en el marcador) es el siguiente por doctrina.
 
 ## 2026-09-08 — Preventa / busqueda de productos Mercado Libre (catalogo oficial, solo lectura)
 

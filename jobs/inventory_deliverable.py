@@ -192,6 +192,39 @@ def _costliest_lots(report: JobReport, n: int) -> str:
     return "; ".join(parts)
 
 
+def _position_findings(report: JobReport) -> list[Finding]:
+    """What today's position says, and - louder - what it could not say.
+
+    A plan that lists orders due now without saying whether stock already on order
+    was counted hands the buyer the double buy H4 describes: the PO transport
+    delayed gets bought again. So the "not netted" finding is a finding, not a
+    footnote, and it comes right after the due-now count.
+    """
+    if not report.n_positioned:
+        return []
+    out = [Finding(
+        f"{report.n_order_now} SKU(s) due for an order now",
+        f"On today's inventory position (on hand + on order) {report.n_order_now} of "
+        f"{report.n_positioned} positioned SKU(s) sit at or below their trigger; the quantity "
+        "to order is on each row (order_qty_now)."
+        + (f" Stock already on order was counted on {report.n_netted} SKU(s) "
+           f"({report.units_on_order:,.0f} units), which avoided "
+           f"{report.n_reorders_avoided_by_transit} re-order(s) of stock that is already inbound."
+           if report.n_netted else ""),
+        impact="cut these POs; the rest can wait for the next review",
+    )]
+    if not report.n_netted:
+        out.append(Finding(
+            "In-transit stock NOT counted",
+            "The file carries stock on hand but no on-order column, so the due-now list "
+            "could NOT be netted against open purchase orders: an order that transport "
+            "delayed looks exactly like an order that does not exist.",
+            impact="check open POs by hand before cutting any due-now order, or add an "
+                   "on_order / en_transito column to the file",
+        ))
+    return out
+
+
 def _supplier_terms_finding(report: JobReport) -> Finding:
     """The MOQ / case-pack rule, stated as a finding with its price tag. Every
     quantity in the plan is a lot the supplier accepts; what honouring the terms
@@ -249,6 +282,7 @@ def build(
         ))
     if report.n_lot_constrained:
         findings.append(_supplier_terms_finding(report))
+    findings.extend(_position_findings(report))
     if report.budget is not None and report.safety_stock_scale < 1.0:
         findings.append(Finding(
             "Budget-constrained safety stock",
@@ -294,6 +328,18 @@ def build(
         Kpi("Intermittent SKUs", str(report.n_intermittent),
             rationale="Slow / sporadic movers managed on periodic review"),
     )
+    if report.n_positioned:
+        kpis += (
+            Kpi("Orders due now", str(report.n_order_now),
+                rationale=f"SKUs at or below their trigger on today's inventory position "
+                          f"(on hand + on order), out of {report.n_positioned} with a position on file"),
+        )
+        if report.n_netted:
+            kpis += (
+                Kpi("Re-orders avoided by in-transit stock", str(report.n_reorders_avoided_by_transit),
+                    rationale=f"SKUs the shelf figure alone would have re-ordered; "
+                              f"{report.units_on_order:,.0f} units already on order were counted"),
+            )
     if report.n_lot_constrained:
         kpis += (
             Kpi("SKUs on supplier terms (MOQ / case pack)",
@@ -332,13 +378,25 @@ def build(
         data_sources += (
             DataSource("Where the service columns came from", report.service_note, "per run"),
         )
+    if report.position_note:
+        data_sources += (
+            DataSource("Stock position (on hand / on order)", report.position_note, "per run"),
+        )
 
     data_sources += _reading_sources(report)
 
     recs: list[str] = []
     if report.n_at_risk:
         recs.append("Review the high-bias SKUs' forecasts before issuing their POs.")
-    recs.append("Issue replenishment POs to the computed reorder points and order quantities.")
+    if report.n_positioned:
+        recs.append(
+            f"Cut the {report.n_order_now} PO(s) due now (rows with order_now = yes, for "
+            "order_qty_now units); every other positioned SKU is above its trigger today."
+            + ("" if report.n_netted else " Check open POs by hand first: the file carried no "
+               "on-order column, so nothing was netted.")
+        )
+    else:
+        recs.append("Issue replenishment POs to the computed reorder points and order quantities.")
     if report.n_lot_snapped:
         worst = _costliest_lots(report, 3)
         recs.append(

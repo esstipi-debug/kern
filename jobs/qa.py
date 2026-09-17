@@ -69,6 +69,7 @@ def verify(report: JobReport) -> list[str]:
         if r.policy_kind == "(s, Q)" and (r.order_quantity is None or r.order_quantity <= 0):
             issues.append(f"{r.product_id}: (s,Q) without a positive order quantity")
         issues.extend(_lot_issues(r))
+        issues.extend(_position_issues(r))
         if r.policy_kind == "(R, S)" and (r.order_up_to is None or r.order_up_to <= 0):
             issues.append(f"{r.product_id}: (R,S) without a positive order-up-to level")
         # the lead-only reorder must stay below order-up-to for (R,S)
@@ -151,6 +152,52 @@ def _lot_issues(r) -> list[str]:
         if alt_penalty is None or alt_penalty + TOL < getattr(r, "lot_penalty_usd", 0.0):
             issues.append(
                 f"{r.product_id}: the alternative lot is cheaper than the chosen one")
+    return issues
+
+
+def _position_issues(r) -> list[str]:
+    """Stock-position invariants on one record.
+
+    Without stock on hand nothing downstream may claim a position, an on-order
+    figure or a due-now signal. With one, the position must be the DDMRP identity
+    (on hand + on order, zero when unmeasured), and the due-now signal must be
+    exactly what the policy says at that position: (s,Q) orders Q at or below s,
+    (R,S) orders up to S below S, nothing otherwise.
+    """
+    on_hand = getattr(r, "on_hand", None)
+    on_order = getattr(r, "on_order", None)
+    position = getattr(r, "inventory_position", None)
+    due = getattr(r, "order_now", None)
+    qty = getattr(r, "order_qty_now", None)
+    issues: list[str] = []
+    if on_hand is None:
+        if any(v is not None for v in (on_order, position, due, qty)):
+            issues.append(f"{r.product_id}: position fields set without stock on hand")
+        return issues
+    expected = on_hand + (on_order or 0.0)
+    if position is None or abs(position - expected) > TOL:
+        issues.append(f"{r.product_id}: inventory position != on hand + on order")
+        return issues
+    if due is None:
+        if qty is not None:
+            issues.append(f"{r.product_id}: order quantity due now without a due-now signal")
+        return issues
+    if qty is None or qty < -TOL:
+        issues.append(f"{r.product_id}: due-now signal without a non-negative quantity")
+        return issues
+    if r.policy_kind == "(s, Q)" and r.order_quantity is not None:
+        should = position <= r.reorder_point
+        want = r.order_quantity if should else 0.0
+    elif r.policy_kind == "(R, S)" and r.order_up_to is not None:
+        should = position < r.order_up_to
+        want = max(0.0, r.order_up_to - position) if should else 0.0
+    else:
+        issues.append(f"{r.product_id}: due-now signal on a policy that cannot order")
+        return issues
+    if bool(due) != should:
+        issues.append(f"{r.product_id}: order_now={due} contradicts the position vs trigger")
+    if abs(qty - want) > TOL:
+        issues.append(f"{r.product_id}: order_qty_now {qty:.4g} != what the policy orders ({want:.4g})")
     return issues
 
 

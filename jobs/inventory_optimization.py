@@ -18,6 +18,7 @@ from src import order_fulfillment
 from src.classification import classify_portfolio
 from src.classification import service_levels as class_service_levels
 from src.constraints import InventoryItem, allocate_under_budget, cheapest_feasible_lot, lot_rule
+from src.ddmrp import net_flow_position
 from src.fill_rate import fill_rate_from_safety_stock
 from src.forecasting import (
     DEFAULT_OOS_ORIGINS,
@@ -103,6 +104,21 @@ class SkuRecommendation:
     lot_penalty_usd: float = 0.0
     lot_alternative_qty: float | None = None
     lot_alternative_penalty_usd: float | None = None
+    # The stock POSITION this SKU sits at today, and what it means for the policy
+    # above. `s` and `Q` say how much to keep and how much to order; they say
+    # nothing about WHEN, and until this existed the tool never looked at the
+    # shelf. `inventory_position` is src.ddmrp.net_flow_position(on_hand, on_order,
+    # 0): stock on hand plus stock already bought and in transit, so an order that
+    # transport delayed is not bought twice. `on_order` is None - never 0.0 - when
+    # nobody measured it (no column in the file, or a blank cell for this SKU): a
+    # zero would claim nothing is inbound. `order_now` compares the position with
+    # the trigger (s for (s,Q), S for (R,S)); `order_qty_now` is Q, or S minus the
+    # position. All None when the file carried no stock on hand at all.
+    on_hand: float | None = None
+    on_order: float | None = None
+    inventory_position: float | None = None
+    order_now: bool | None = None
+    order_qty_now: float | None = None
 
 
 @dataclass(frozen=True)
@@ -160,6 +176,61 @@ class JobReport:
     n_lot_snapped: int = 0
     lot_penalty_total_usd: float = 0.0
     n_lot_rule_unapplied: int = 0
+    # Stock position (see SkuRecommendation.on_hand). `n_positioned` SKUs came with
+    # stock on hand; `n_netted` of them also with a measured on-order figure;
+    # `n_order_now` sit at or below their trigger on today's position; and
+    # `n_reorders_avoided_by_transit` would have been re-ordered on the shelf
+    # figure alone but are covered by stock already inbound - the double buy that
+    # counting the in-transit prevents (H4 in KERN_DISRUPCIONES_Y_DESAJUSTES.md).
+    # `position_note` is jobs/intake.py's sentence about where the position came
+    # from, including the warning when nothing could be netted; it travels to the
+    # deliverable the same way `service_note` does.
+    n_positioned: int = 0
+    n_netted: int = 0
+    n_order_now: int = 0
+    n_reorders_avoided_by_transit: int = 0
+    units_on_order: float = 0.0
+    position_note: str = ""
+
+
+def _stock_position(
+    pid: str,
+    on_hand_by_sku: dict[str, float] | None,
+    on_order_by_sku: dict[str, float] | None,
+) -> tuple[float | None, float | None, float | None]:
+    """``(on_hand, on_order, position)`` for one SKU; each None when nobody measured it.
+
+    Absent from the map is NOT zero: a SKU nobody reported an on-order figure for
+    keeps ``None`` and is sized against the shelf alone, with the report saying so.
+    """
+    on_hand = None if on_hand_by_sku is None else on_hand_by_sku.get(pid)
+    if on_hand is None or on_hand != on_hand:      # None or NaN
+        return None, None, None
+    on_order = None if on_order_by_sku is None else on_order_by_sku.get(pid)
+    if on_order is not None and on_order != on_order:
+        on_order = None
+    # qualified_demand=0.0 is a declared absence, not a shortcut: a demand file has
+    # no committed-demand column, and DDMRP's third term needs one.
+    position = net_flow_position(float(on_hand), float(on_order or 0.0), 0.0)
+    return float(on_hand), (None if on_order is None else float(on_order)), position
+
+
+def _order_now(
+    kind: str, position: float | None, reorder_point: float,
+    order_quantity: float | None, order_up_to: float | None,
+) -> tuple[bool | None, float | None]:
+    """The execution signal of the policy at ``position``: (s,Q) orders Q once the
+    position is at or below s; (R,S) orders up to S at the review. None when there
+    is no position to compare against."""
+    if position is None:
+        return None, None
+    if kind == "(s, Q)":
+        due = position <= reorder_point
+        return due, (float(order_quantity or 0.0) if due else 0.0)
+    if kind == "(R, S)" and order_up_to is not None:
+        due = position < order_up_to
+        return due, (max(0.0, float(order_up_to) - position) if due else 0.0)
+    return None, None
 
 
 def _observed_skewness(series) -> float | None:
@@ -278,6 +349,9 @@ def run(
     oos_origins: int = DEFAULT_OOS_ORIGINS,
     minimum_order_quantities: dict[str, float] | None = None,
     order_multiples: dict[str, float] | None = None,
+    on_hand_by_sku: dict[str, float] | None = None,
+    on_order_by_sku: dict[str, float] | None = None,
+    position_note: str = "",
 ) -> JobReport:
     """Run the inventory-optimization analysis over canonical demand.
 
@@ -308,6 +382,15 @@ def run(
     columns (jobs/intake.py emits them only when the file had them). An (s,Q)
     quantity is then the cheapest lot the supplier accepts, with the runner-up
     kept on the record -- see ``SkuRecommendation.lot_rule``.
+
+    ``on_hand_by_sku`` / ``on_order_by_sku`` are today's stock position, per SKU
+    (``jobs.intake.position_maps`` produces both from the client's file). With
+    them every record also says whether an order is due NOW, sized against the
+    position - on hand plus on order - rather than the shelf alone. Passing
+    ``on_order_by_sku=None`` is not the same as passing zeros: it means nobody
+    measured the in-transit, the records carry ``on_order=None`` and the report
+    says the due-now list could not be netted. ``position_note`` rides along to
+    the deliverable, like ``order_lines.attrs['service_note']`` does.
     """
     if not 0 < service_level < 1:
         raise ValueError("service_level must be in (0, 1)")
@@ -359,6 +442,9 @@ def run(
             unit_cost=meta.mean_unit_cost,
             n_periods=n_periods,
         )
+        # Today's stock position is a FACT about the SKU, measured before any policy
+        # gate: an unpriced SKU still carries what is on the shelf and inbound.
+        on_hand, on_order, position = _stock_position(pid, on_hand_by_sku, on_order_by_sku)
 
         # Too little history to size ANY buffer honestly. This gate runs BEFORE the
         # zero-demand and zero-cost guards below on purpose: with two observations
@@ -385,6 +471,7 @@ def run(
                     sigma_source="insufficient_history",
                     n_periods=n_periods,
                     realized_service=realized,
+                    on_hand=on_hand, on_order=on_order, inventory_position=position,
                 )
             )
             continue
@@ -406,6 +493,7 @@ def run(
                     status="review",
                     n_periods=n_periods,
                     realized_service=realized,
+                    on_hand=on_hand, on_order=on_order, inventory_position=position,
                 )
             )
             continue
@@ -429,6 +517,7 @@ def run(
                     status="review",
                     n_periods=n_periods,
                     realized_service=realized,
+                    on_hand=on_hand, on_order=on_order, inventory_position=position,
                 )
             )
             continue
@@ -509,6 +598,7 @@ def run(
         cycle_inv = cycle_units * meta.mean_unit_cost
         ss_inv = ss * meta.mean_unit_cost
         reorder = inputs["mean_demand_per_period"] * lead + ss  # mu*L + safety (lead-only)
+        due_now, qty_now = _order_now(kind, position, reorder, order_quantity, pol.order_up_to_level)
 
         recs.append(
             SkuRecommendation(
@@ -533,6 +623,8 @@ def run(
                 lot_rule=rule, lot_moq=moq, lot_multiple=multiple,
                 lot_penalty_usd=penalty,
                 lot_alternative_qty=alt_qty, lot_alternative_penalty_usd=alt_penalty,
+                on_hand=on_hand, on_order=on_order, inventory_position=position,
+                order_now=due_now, order_qty_now=qty_now,
             )
         )
         items.append(InventoryItem(product_id=pid, order_quantity=2.0 * cycle_units, safety_stock=ss, unit_cost=meta.mean_unit_cost))
@@ -568,4 +660,21 @@ def run(
         ),
         lot_penalty_total_usd=sum(r.lot_penalty_usd for r in recs),
         n_lot_rule_unapplied=sum(1 for r in recs if r.policy_kind == "(R, S)" and r.lot_rule),
+        n_positioned=sum(1 for r in recs if r.on_hand is not None),
+        n_netted=sum(1 for r in recs if r.on_order is not None),
+        n_order_now=sum(1 for r in recs if r.order_now),
+        n_reorders_avoided_by_transit=sum(1 for r in recs if _reorder_avoided_by_transit(r)),
+        units_on_order=sum(r.on_order for r in recs if r.on_order is not None),
+        position_note=position_note,
     )
+
+
+def _reorder_avoided_by_transit(r: SkuRecommendation) -> bool:
+    """True when the shelf figure alone would have triggered an order but the stock
+    already inbound covers it - the double buy that netting exists to prevent."""
+    if r.order_now is None or r.on_order is None or r.on_order <= 0 or r.on_hand is None:
+        return False
+    on_shelf_alone, _ = _order_now(
+        r.policy_kind, r.on_hand, r.reorder_point, r.order_quantity, r.order_up_to,
+    )
+    return bool(on_shelf_alone) and not r.order_now
