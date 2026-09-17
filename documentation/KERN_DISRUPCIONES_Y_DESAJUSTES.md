@@ -127,6 +127,8 @@ Anexo A.2: una traza de demanda del gemelo con un surge ×2 de 12 semanas, leíd
 
 ## 5. Qué capacidad se puede lograr
 
+> **2026-09-17:** N1d quedó cerrado en la rama de #369 (ver H4). N1a, N1c, N2b y las tres brechas hermanas de H4 tienen diseño verificado contra el código en `docs/superpowers/specs/2026-09-17-cuatro-brechas-post-n1d-design.md`.
+
 Tres niveles, del más chico al más grande. Cada uno dice qué habilita, qué toca, cuánto es, y qué **no** resuelve. Los niveles 1 y 2 **no tocan el registro congelado**: no agregan ningún tool.
 
 ### Nivel 1 — Cerrar cables (días, cero tools nuevos)

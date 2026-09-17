@@ -70,6 +70,12 @@ de inventario, los sombreros y `cross_impact` ignoraban los terminos.
   Siguen abiertos del Nivel 1: N1a (rutear los dos monitores con la serie real), N1b
   (reloj del Tower, necesita un secreto de repo), N1c (snapshot `stock` desde los jobs
   que leen `on_hand`). Y N2b (shocks en el marcador) es el siguiente por doctrina.
+- **Diseño de las cuatro brechas siguientes, verificado contra el codigo, cero codigo**:
+  `docs/superpowers/specs/2026-09-17-cuatro-brechas-post-n1d-design.md`. Orden propuesto:
+  C (tres hermanas de H4: `shopify_replenishment` sin `incoming`, `channel_replenishment`
+  sin en-transito, `drp` sin entradas programadas) -> A (barrido de neteo con la sonda de
+  la bateria sobre todo emisor de cantidad, vector congelado) -> D (N1c + N1a) -> B (N2b).
+  Ninguna toca el registro (60), el puntaje congelado (65,00 %) ni la semilla del marcador.
 
 ## 2026-09-08 — Preventa / busqueda de productos Mercado Libre (catalogo oficial, solo lectura)
 
