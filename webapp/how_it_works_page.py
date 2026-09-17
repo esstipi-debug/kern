@@ -424,9 +424,10 @@ def render_how_it_works_html() -> str:
   <span class="eyebrow">How Kern Works</span>
   <h1>A brief goes in. A grounded, QA-gated deliverable comes out.</h1>
   <p class="sub" style="max-width:64ch;font-size:1.05rem">
-    Kern is an agentic supply-chain engine: {tool_count} agent-routable capabilities behind one
-    pipeline, grounded in a knowledge graph of 27 curated external sources, adapted to each client's own
-    cost and capacity parameters.
+    Kern is a deterministic supply-chain engine: {tool_count} capabilities behind one pipeline,
+    routable by an agent over MCP, grounded in a knowledge graph of 27 curated external sources,
+    adapted to each client's own cost and capacity parameters. Every number in every deliverable
+    is computed by code, not written by a language model.
   </p>
   {stepper_html}
 </section>
@@ -464,7 +465,7 @@ def render_how_it_works_html() -> str:
   <div class="donut-row">
     {guided_donut}
     <div class="tool-list" style="min-width:220px">
-      <div class="tool-row"><span class="tool-key">EXECUTED</span><span class="tool-desc">The agent did it autonomously.</span></div>
+      <div class="tool-row"><span class="tool-key">EXECUTED</span><span class="tool-desc">Completed end to end, with no human step needed.</span></div>
       <div class="tool-row"><span class="tool-key">OPTIONS</span><span class="tool-desc">Ranked choices for a human to pick.</span></div>
       <div class="tool-row"><span class="tool-key">HANDOFF</span><span class="tool-desc">A prepared, ready-to-approve next step.</span></div>
       <div class="tool-row"><span class="tool-key">ESCALATED</span><span class="tool-desc">Routed to a human with an SLA.</span></div>
@@ -480,7 +481,7 @@ def render_how_it_works_html() -> str:
   <h2 style="margin-top:10px">How this maps to SCOR and five SCM certifications</h2>
   <p class="sub" style="max-width:64ch">
     SCOR Digital Standard's own <b>Orchestrate</b> category -- added for the "digital" layer:
-    twins, analytics, agents, resilience -- is where Kern's agentic guarantees (the QA gate,
+    twins, analytics, agents, resilience -- is where Kern's execution guarantees (the QA gate,
     never-unprotected, signed staged writeback) land, ahead of what most commercial suites do
     here.
   </p>

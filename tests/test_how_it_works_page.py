@@ -129,7 +129,7 @@ def test_page_reports_the_real_tool_count_and_26_sources() -> None:
     html = render_how_it_works_html()
     tool_count = str(len(TOOLS))
     assert f"Kern's {tool_count} supply-chain capabilities" in html
-    assert f"{tool_count} agent-routable capabilities" in html
+    assert f"{tool_count} capabilities behind one pipeline" in html
     assert "27 curated external sources" in html
     # Todo conteo de fuentes superado que esta pagina llevo o estuvo tentada de llevar.
     for stale in ("33 curated", "25 curated", "35 curated", "26 curated", "41 curated"):
