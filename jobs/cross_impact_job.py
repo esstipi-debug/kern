@@ -22,8 +22,16 @@ from src.cross_impact import CrossImpact, measure
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import Deliverable, Finding, Kpi
 from src.export import write_summary_csv  # NOTE: export.py, not deliverable.py
-from src.hats import HAT_KEYS, Candidate, HatInputs, decision_cost, evaluate
-from src.objection import NO_EVALUABLE, OBJETA, Verdict, judge
+from src.hats import (
+    HAT_KEYS,
+    HAT_TRANSPORTE,
+    Candidate,
+    HatInputs,
+    decision_cost,
+    evaluable_hats,
+    evaluate,
+)
+from src.objection import NO_EVALUABLE, OBJETA, Verdict, judge, unmeasurable
 
 from . import hats_job
 
@@ -125,7 +133,8 @@ CONFIDENCE_FLOOR = 0.10
 
 
 def _confidence(n_unevaluable: int) -> float:
-    """1.0 when all four areas were judged; one penalty per area we could not."""
+    """1.0 when every area in HAT_KEYS was judged; one penalty per area we could
+    not -- whether the gap was a missing threshold or a missing measurement."""
     return max(CONFIDENCE_FLOOR, 1.0 - UNEVALUABLE_PENALTY * n_unevaluable)
 
 
@@ -149,16 +158,36 @@ def _inputs_of(report: CrossImpactReport) -> HatInputs:
     return report.inputs
 
 
+#: Why an area produced no row at all, per area. Generic text is not acceptable
+#: here: the operator has to know WHICH input to go get.
+_MISSING_INPUT_REASON: dict[str, str] = {
+    HAT_TRANSPORTE: (
+        "transporte: sin perfil de flete declarado (peso por unidad y distancia de la "
+        "ruta) - el area no es medible en esta corrida, que no es lo mismo que no objetar"
+    ),
+}
+
+
 def _judge_all(inputs, impact: CrossImpact, thresholds: dict[str, float],
                proposed: Candidate) -> tuple[Verdict, ...]:
-    """One verdict per hat. The planner also gets the service-constraint flag
-    its headline KPI cannot express (spec 9.1)."""
+    """One verdict per hat in HAT_KEYS -- INCLUDING the areas `impact` has no row
+    for. Iterating `impact.rows` alone would drop an unmeasurable area from the
+    verdict list entirely, and a missing row counts as zero objections in every
+    caller downstream; that is the "nobody objects" this module exists to refuse.
+    The planner also gets the service-constraint flag its headline KPI cannot
+    express (spec 9.1)."""
     breach = proposed.service_level < inputs.config.sl_target
-    return tuple(
-        judge(row.hat_key, row.value_current, row.value_proposed,
-              thresholds.get(row.hat_key), breaches_sl_target=breach)
-        for row in impact.rows
-    )
+    rows = {row.hat_key: row for row in impact.rows}
+    out: list[Verdict] = []
+    for hat_key in HAT_KEYS:
+        row = rows.get(hat_key)
+        if row is None:
+            out.append(unmeasurable(hat_key, _MISSING_INPUT_REASON.get(
+                hat_key, f"{hat_key}: sin insumos para medir el area en esta corrida")))
+            continue
+        out.append(judge(row.hat_key, row.value_current, row.value_proposed,
+                         thresholds.get(row.hat_key), breaches_sl_target=breach))
+    return tuple(out)
 
 
 def _global_verdict(n_objections: int, n_unevaluable: int) -> str:
@@ -202,10 +231,13 @@ def _find_counterproposal(inputs, thresholds: dict[str, float],
 def _objections_suffix(n_unevaluable: int) -> str:
     """Appended to an 'Objeciones: N' summary so a zero on an indeterminate run
     never reads as a measured, clean zero (spec: a declared gap must never be
-    papered over)."""
+    papered over). Says "sin veredicto" rather than "sin umbral": since the fifth
+    hat there are two ways to be unevaluable -- no declared threshold, or no
+    inputs to measure the area at all -- and each verdict's own `reason` carries
+    which one it was."""
     if n_unevaluable == 0:
         return ""
-    return f" (y {n_unevaluable} area(s) sin umbral declarado)"
+    return f" (y {n_unevaluable} area(s) sin veredicto posible)"
 
 
 def _scenarios(inputs, impact: CrossImpact, thresholds: dict[str, float],
@@ -247,6 +279,15 @@ def _scenarios(inputs, impact: CrossImpact, thresholds: dict[str, float],
     return out
 
 
+def _excluded_note(inputs) -> str:
+    """Names the areas left off the table, inline in the summary. Empty when all
+    five were measured -- silence then means the same thing as the sentence."""
+    missing = [k for k in HAT_KEYS if k not in evaluable_hats(inputs)]
+    if not missing:
+        return ""
+    return f" (fuera: {', '.join(missing)})"
+
+
 def run(payload: dict) -> CrossImpactReport:
     """Measure, judge, rank. Nothing is executed and nothing is written back."""
     inputs = payload["inputs"]
@@ -264,7 +305,7 @@ def run(payload: dict) -> CrossImpactReport:
         EJECUTAR: "ninguna area objeta - no hace falta convocar a nadie",
         BILATERAL: "una sola area objeta - alcanza una conversacion bilateral",
         REUNION: "dos o mas areas objetan - la reunion si hace falta",
-        INDETERMINADO: (f"{n_unk} area(s) sin umbral declarado - no se puede afirmar "
+        INDETERMINADO: (f"{n_unk} area(s) sin veredicto posible - no se puede afirmar "
                         "que nadie objeta"),
     }[verdict]
     summary = (
@@ -272,7 +313,9 @@ def run(payload: dict) -> CrossImpactReport:
         f"SL={proposed.service_level:.1%} (hoy Q={current.order_quantity:,.0f}, "
         f"SL={current.service_level:.1%}). Veredicto: {verdict} - {reading}. "
         "Los umbrales son POLITICA DEL OPERADOR, no un consenso objetivo. "
-        "Alcance: un SKU, el espacio (Q, SL), cuatro areas - almacen no es una de ellas."
+        f"Alcance: un SKU, el espacio (Q, SL), {len(evaluable_hats(inputs))} area(s) "
+        f"medible(s) de {len(HAT_KEYS)}{_excluded_note(inputs)} - almacen no es "
+        "ninguna de ellas."
     )
 
     outcome = decide(
@@ -286,7 +329,8 @@ def run(payload: dict) -> CrossImpactReport:
                 risk_if_skipped="adoptar un cambio que otra area objeta sin que nadie lo haya aceptado",
             ),
             Residual(
-                description=("Almacen no es uno de los cuatro sombreros: su impacto no fue medido."),
+                description=("Almacen no es uno de los sombreros de HAT_KEYS: su impacto "
+                             "no fue medido."),
                 risk_if_skipped="un cambio de Q sin capacidad fisica para absorberlo",
             ),
         ],
@@ -436,16 +480,18 @@ def build_deck(report: CrossImpactReport, *, client: str = "Client",
     ]
     findings.append(Finding(
         "Alcance declarado",
-        "Un SKU, el espacio (Q, SL) y cuatro areas. Almacen NO es uno de los cuatro "
-        "sombreros: su impacto no fue medido.",
+        f"Un SKU, el espacio (Q, SL) y {len(HAT_KEYS)} areas, de las cuales "
+        f"{len(report.verdicts) - report.n_unevaluable} se pudieron juzgar. Almacen NO "
+        "es uno de los sombreros: su impacto no fue medido.",
         impact="pedir la capacidad fisica antes de mover cantidades"))
 
     kpis = [
         Kpi("Veredicto de coordinacion", report.verdict,
             rationale="cero objeciones = la reunion no se hace"),
         Kpi("Areas que objetan", str(report.n_objections), target="0"),
-        Kpi("Areas sin umbral declarado", str(report.n_unevaluable), target="0",
-            rationale="cada una impide afirmar que nadie objeta"),
+        Kpi("Areas sin veredicto", str(report.n_unevaluable), target="0",
+            rationale="sin umbral declarado o sin insumos para medirla; cada una "
+                      "impide afirmar que nadie objeta"),
     ]
 
     return Deliverable(

@@ -6,17 +6,19 @@ from src.cross_impact import CrossImpact, ImpactRow, measure
 from src.hats import (
     HAT_COMPRADOR,
     HAT_KEYS,
+    HAT_TRANSPORTE,
     Candidate,
+    FreightProfile,
     HatConfig,
     build_inputs,
     decision_cost,
+    evaluable_hats,
     hat_kpis,
     headline_kpi,
 )
 
 
-@pytest.fixture
-def inputs():
+def _build(freight=None):
     return build_inputs(
         sku="SKU-1",
         annual_demand=5_200.0,
@@ -25,14 +27,46 @@ def inputs():
         lead_time_weeks=2.0,
         unit_cost=10.0,
         config=HatConfig(),
+        freight=freight,
     )
 
 
-def test_one_row_per_hat_in_hat_keys_order(inputs):
+@pytest.fixture
+def inputs():
+    """No freight declared: four areas measurable, transporte excluded."""
+    return _build()
+
+
+@pytest.fixture
+def inputs_con_flete():
+    return _build(FreightProfile(weight_kg_per_unit=2.0, distance_km=500.0))
+
+
+def test_one_row_per_evaluable_hat_in_hat_keys_order(inputs):
     ci = measure(inputs, Candidate(200.0, 0.95), Candidate(400.0, 0.95), HAT_COMPRADOR)
     assert isinstance(ci, CrossImpact)
-    assert tuple(r.hat_key for r in ci.rows) == HAT_KEYS
+    assert tuple(r.hat_key for r in ci.rows) == evaluable_hats(inputs)
     assert all(isinstance(r, ImpactRow) for r in ci.rows)
+    # The area with no row is DECLARED, not merely absent: a caller that counts
+    # rows to count objections has to be able to see what it is not counting.
+    assert ci.excluded_hats == (HAT_TRANSPORTE,)
+    assert set(r.hat_key for r in ci.rows) | set(ci.excluded_hats) == set(HAT_KEYS)
+
+
+def test_a_declared_freight_profile_puts_transporte_on_the_table(inputs_con_flete):
+    ci = measure(inputs_con_flete, Candidate(200.0, 0.95), Candidate(400.0, 0.95),
+                 HAT_COMPRADOR)
+    assert tuple(r.hat_key for r in ci.rows) == HAT_KEYS
+    assert ci.excluded_hats == ()
+    row = next(r for r in ci.rows if r.hat_key == HAT_TRANSPORTE)
+    assert row.kpi_name == "freight_per_unit_usd"
+    # Doubling the order halves the shipments; freight per unit cannot rise here.
+    assert row.delta <= 0
+
+
+def test_an_unmeasurable_area_cannot_be_credited_with_the_proposal(inputs):
+    with pytest.raises(ValueError, match="not evaluable"):
+        measure(inputs, Candidate(200.0, 0.95), Candidate(400.0, 0.95), HAT_TRANSPORTE)
 
 
 def test_values_come_straight_from_hat_kpis(inputs):

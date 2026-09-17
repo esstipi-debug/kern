@@ -17,7 +17,7 @@
 An **agentic supply-chain engine**: a plain-language brief becomes a finished,
 QA-gated deliverable (Excel + report + chart), grounded in a knowledge graph of
 27 curated external sources and the codebase itself. A deterministic Python **engine** across
-**58 agent-routable tools** (EOQ, safety stock, `(s,Q)`/`(R,S)`, simulation,
+**60 agent-routable tools** (EOQ, safety stock, `(s,Q)`/`(R,S)`, simulation,
 a network digital twin, forecasting, pricing, price intelligence,
 discovery-assisted price watch, DDMRP, ABC-XYZ, sourcing, supplier segmentation (Kraljic),
 landed cost, import case / document pack, cost-to-serve, S&OP, facility location, multi-facility network design (p-median),
@@ -71,6 +71,23 @@ human — that contract is what `documentation/operator/` documents.
 y emite un veredicto de objecion contra umbrales del perfil de cliente. Un
 area sin umbral sale `no_evaluable` y el veredicto global es `indeterminado`
 - nunca "nadie objeta".
+
+### Los sombreros son CINCO, y el quinto es condicional (`src/hats.py`)
+`HAT_KEYS` = comprador · planner · cfo · comercial · **transporte**. El quinto
+puntua el flete que la politica obliga (`src/logistics/modes.py`: el FTL cobra
+por `ceil(peso/capacidad)`, asi que la curva es un SERRUCHO en Q, no una
+pendiente — el Q que alcanza un price break puede desbordar a un segundo camion
+medio vacio). Necesita dos hechos fisicos que ninguna serie de demanda trae:
+peso por unidad (columna `weight_kg` del CSV) y largo de la ruta (param
+`distance_km`). Sin ambos, `evaluable_hats(inputs)` lo deja FUERA — no se
+inventa un kilogramo — y toda superficie que renderice un consejo tiene que
+NOMBRAR la exclusion: cuatro sombreros de acuerdo en silencio se lee igual que
+cinco de acuerdo, y solo una de las dos cosas es cierta. En `cross_impact` esa
+exclusion cuenta como `no_evaluable`, o sea `indeterminado`: **una corrida sin
+datos de flete ya no puede devolver "ejecutar"**. `decision_cost` suma flete
+solo cuando hay perfil declarado (sumar cero diria que la politica despacha
+gratis, y ademas mantiene intacta la equivalencia con
+`jobs/inventory_optimization.py` que fija `tests/test_hats_valuation.py`).
 
 ### Writeback safety (`nosilo_core.writeback`)
 Never mutate a system of record blindly: stage a dry-run `Changeset`, classify by
@@ -280,6 +297,6 @@ See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
 `scm_agent/README.md` (agent reference) · `documentation/METHODOLOGY.md` (models) ·
 `documentation/operator/` (the human operator's portfolio) ·
 [`documentation/TESTING_ENVIRONMENT.md`](documentation/TESTING_ENVIRONMENT.md)
-(stand up a clean env + `examples/run_capability_smoke.py` to exercise all 56
+(stand up a clean env + `examples/run_capability_smoke.py` to exercise all 60
 tools and see where each fails; `scripts/setup-test-env.sh` for the reproducible
 full install the `SessionStart` hook now delegates to).

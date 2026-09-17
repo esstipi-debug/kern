@@ -2,7 +2,7 @@
 
 ONE pandas `prepare()` (D6) reads a weekly demand CSV directly (deliberately
 NOT via jobs/intake.py) and builds per-SKU HatInputs; `run_tension()` renders
-the 4-hat disagreement as a protected OPTIONS outcome (the human resolves);
+the disagreement as a protected OPTIONS outcome (the human resolves);
 `run_settlement()` reconciles with the operator's weight POLICY (D4) into one
 (Q*, SL*) plan + acta de concesiones as a protected HANDOFF. Neither run can
 ever emit EXECUTED - the QA gates pin it.
@@ -10,6 +10,10 @@ ever emit EXECUTED - the QA gates pin it.
 CSV contract: one row = one weekly observation. Required per SKU: product_id,
 quantity, unit_cost, lead_time_days (date optional, unused). Transaction-level
 files belong to the inventory_optimization intake path, not here.
+
+OPTIONAL per SKU: weight_kg. With it AND a `distance_km` param, the transporte
+hat joins the council; without either half it stays off the table and every
+surface says so. Nothing here invents a unit weight to fill the gap.
 """
 from __future__ import annotations
 
@@ -42,17 +46,26 @@ from src.hat_council import (
     tension_map,
 )
 from src.hats import (
+    HAT_CFO,
+    HAT_COMERCIAL,
+    HAT_COMPRADOR,
     HAT_KEYS,
+    HAT_PLANNER,
+    HAT_TRANSPORTE,
     HATS,
+    FreightProfile,
     HatConfig,
     HatInputs,
     baseline_plan,
     build_inputs,
     decision_cost,
+    evaluable_hats,
+    freight_mode,
     hat_kpis,
     headline_kpi,
     parse_weights,
 )
+from src.logistics.modes import FreightRates
 
 MIN_OBS = 5   # weekly rows needed for a usable sigma
 
@@ -60,6 +73,9 @@ _PRODUCT_COLS = ("product_id", "sku", "SKU", "item", "product", "Product")
 _QTY_COLS = ("quantity", "qty", "units", "demand", "Quantity")
 _COST_COLS = ("unit_cost", "cost", "unit_price", "price", "Unit Cost")
 _LEAD_COLS = ("lead_time_days", "lead_time", "leadtime", "lead")
+#: Unit weight is a PER-SKU fact, so it is read from the file like unit_cost --
+#: not from params, where one number would be imposed on every SKU in the export.
+_WEIGHT_COLS = ("weight_kg", "unit_weight_kg", "peso_kg", "weight", "peso")
 
 _POLICY_NOTE = "los pesos son politica del operador, no consenso objetivo"
 
@@ -84,6 +100,39 @@ def config_from_params(params: dict | None) -> HatConfig:
 def parse_request_weights(params: dict | None) -> dict[str, float]:
     """Weights from request params (D4). ValueError -> needs_clarification."""
     return parse_weights((params or {}).get("weights"))
+
+
+def _lane_from_params(params: dict | None) -> tuple[float | None, FreightRates | None, float | None]:
+    """The RUN-level half of the freight facts: how long the lane is, at what
+    tariff, under what delivery window. The per-SKU half (unit weight) comes from
+    the CSV.
+
+    `distance_km` absent -> (None, ...) and `transporte` stays off the table for
+    every SKU. Deliberately no default distance: a lane length is a fact about a
+    client's network, and the whole point of the fifth hat is that it is scored on
+    declared facts or not scored at all.
+    """
+    p = params or {}
+    raw_distance = p.get("distance_km")
+    distance = None
+    if raw_distance is not None:
+        distance = float(raw_distance)
+        if distance <= 0:
+            raise ValueError("distance_km must be > 0")
+    raw_rates = p.get("freight_rates")
+    rates = None
+    if raw_rates is not None:
+        if not isinstance(raw_rates, dict):
+            raise ValueError("freight_rates must be a mapping of FreightRates fields")
+        try:
+            rates = FreightRates(**raw_rates)
+        except TypeError as exc:
+            raise ValueError(f"freight_rates: {exc}") from exc
+    raw_transit = p.get("max_transit_days")
+    transit = float(raw_transit) if raw_transit is not None else None
+    if transit is not None and transit <= 0:
+        raise ValueError("max_transit_days must be > 0")
+    return distance, rates, transit
 
 
 def _injected_breaks(params: dict | None) -> tuple[PriceBreak, ...] | None:
@@ -113,14 +162,19 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
     """Read the weekly demand CSV and build one HatInputs per SKU (sorted)."""
     params = params or {}
     config = config_from_params(params)
+    # Validated against the whole vocabulary first so a malformed `weights` fails
+    # before the file is read; renormalized at the end over the areas that turned
+    # out to be on the table.
     weights = parse_request_weights(params)
     breaks = _injected_breaks(params)
+    distance_km, freight_rates, max_transit = _lane_from_params(params)
 
     df = pd.read_csv(data_path)
     prod = _pick(df, params.get("product_col"), _PRODUCT_COLS)
     qty = _pick(df, params.get("quantity_col"), _QTY_COLS)
     cost = _pick(df, params.get("cost_col"), _COST_COLS)
     lead = _pick(df, params.get("lead_col"), _LEAD_COLS)
+    weight = _pick(df, params.get("weight_col"), _WEIGHT_COLS)
     missing = [n for n, c in (("product_id", prod), ("quantity", qty),
                               ("unit_cost", cost), ("lead_time_days", lead)) if c is None]
     if missing:
@@ -147,6 +201,21 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
             continue
         mu_w = float(q.mean())
         sigma_w = float(q.std(ddof=1)) if len(q) > 1 else 0.0
+        # transporte needs BOTH halves. Either one missing leaves this SKU with
+        # four areas -- per SKU, not per run: a file where only some rows carry a
+        # weight is a partially measurable portfolio, and saying so beats both
+        # dropping the column and inventing the rest of it.
+        freight = None
+        if distance_km is not None and weight is not None:
+            w = pd.to_numeric(g[weight], errors="coerce").dropna()
+            w = w[w > 0]
+            if len(w):
+                freight = FreightProfile(
+                    weight_kg_per_unit=float(w.mean()),
+                    distance_km=distance_km,
+                    rates=freight_rates,
+                    max_transit_days=max_transit,
+                )
         inputs.append(build_inputs(
             sku=pid,
             annual_demand=config.periods_per_year * mu_w,
@@ -156,11 +225,17 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
             unit_cost=unit_cost,
             config=config,
             price_breaks=breaks,
+            freight=freight,
         ))
     if not inputs:
         detail = f" (skipped: {'; '.join(skipped)})" if skipped else ""
         wanted = f"; sku filter: {sku_filter!r}" if sku_filter else ""
         raise ValueError(f"no usable SKUs in the demand csv{detail}{wanted}")
+    # Renormalize over the areas at least one SKU can score. Reporting a header of
+    # five weights on a run where no SKU has freight would describe a settlement
+    # that never happened -- settle() weighs per SKU over that SKU's own areas.
+    on_table = tuple(k for k in HAT_KEYS if any(k in evaluable_hats(i) for i in inputs))
+    weights = parse_weights(params.get("weights"), on_table)
     return {"inputs": tuple(inputs), "weights": weights, "config": config,
             "skipped": tuple(skipped)}
 
@@ -169,14 +244,32 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
 
 
 def _weights_str(weights: dict[str, float]) -> str:
-    return ", ".join(f"{k}={weights[k]:.2f}" for k in HAT_KEYS)
+    """HAT_KEYS order over whatever keys the policy actually carries -- the dict
+    holds only the areas on the table, which is 4 or 5."""
+    return ", ".join(f"{k}={weights[k]:.2f}" for k in HAT_KEYS if k in weights)
 
 
-def _four_hat_line(inputs: HatInputs, cand) -> str:
-    """The 4 hats' headline KPIs evaluated at ONE candidate (spec sec 7)."""
-    v = {k: hat_kpis(inputs, k, cand)[headline_kpi(k)] for k in HAT_KEYS}
-    return (f"comprador {v['comprador']:.2f} usd/u | planner {v['planner']:,.0f} usd/anio | "
-            f"cfo {v['cfo']:,.0f} usd/anio | comercial fill {v['comercial']:.1%}")
+def _excluded_str(inputs: HatInputs) -> str:
+    """The areas this SKU could not put on the table, or "" when all five were."""
+    missing = [k for k in HAT_KEYS if k not in evaluable_hats(inputs)]
+    return ", ".join(missing)
+
+
+def _hat_line(inputs: HatInputs, cand) -> str:
+    """Every EVALUABLE hat's headline KPI at ONE candidate (spec sec 7). An area
+    off the table contributes no fragment; naming it is the caller's job, once,
+    rather than repeated in every option summary."""
+    v = {k: hat_kpis(inputs, k, cand)[headline_kpi(k)] for k in evaluable_hats(inputs)}
+    parts = [
+        f"comprador {v[HAT_COMPRADOR]:.2f} usd/u",
+        f"planner {v[HAT_PLANNER]:,.0f} usd/anio",
+        f"cfo {v[HAT_CFO]:,.0f} usd/anio",
+        f"comercial fill {v[HAT_COMERCIAL]:.1%}",
+    ]
+    if HAT_TRANSPORTE in v:
+        parts.append(f"transporte {v[HAT_TRANSPORTE]:.2f} usd/u de flete "
+                     f"({freight_mode(inputs, cand)})")
+    return " | ".join(parts)
 
 
 # -- N4: tension --------------------------------------------------------------
@@ -189,13 +282,19 @@ class TensionReport:
     summary: str
     n_skus: int
     price_breaks_assumed: bool
+    #: The SKU the OPTIONS were built from. Stored rather than re-derived so the
+    #: QA gate can check the option count against the RIGHT map's hat count.
+    flagship_sku: str = ""
+    #: True when some SKU priced its freight off the illustrative rate card.
+    freight_rates_assumed: bool = False
 
 
 def _tension_options(inputs: HatInputs, tmap: TensionMap) -> list[ExecutionOption]:
-    """5 options: one per hat ideal + the baseline. score = judge cost min-max
-    normalized (best cost -> 1.0); the ranking is informative, the CHOICE is
-    human (that framing lives in the outcome summary)."""
-    labeled = [(HATS[k].label, tmap.ideals[k].candidate, HATS[k].objetivo) for k in HAT_KEYS]
+    """One option per EVALUABLE hat ideal + the baseline (5 or 6). score = judge
+    cost min-max normalized (best cost -> 1.0); the ranking is informative, the
+    CHOICE is human (that framing lives in the outcome summary)."""
+    labeled = [(HATS[k].label, tmap.ideals[k].candidate, HATS[k].objetivo)
+               for k in HAT_KEYS if k in tmap.ideals]
     labeled.append(("Baseline (politica actual)", baseline_plan(inputs),
                     "mantener la politica (s,Q) clasica al 95% de servicio"))
     costs = [decision_cost(inputs, cand) for _, cand, _ in labeled]
@@ -206,12 +305,13 @@ def _tension_options(inputs: HatInputs, tmap: TensionMap) -> list[ExecutionOptio
         options.append(ExecutionOption(
             label=f"{tmap.sku} - {label}: Q={cand.order_quantity:,.0f}, "
                   f"SL={cand.service_level:.1%}",
-            summary=f"{objetivo}. En esta opcion: {_four_hat_line(inputs, cand)}. "
+            summary=f"{objetivo}. En esta opcion: {_hat_line(inputs, cand)}. "
                     f"Costo juez {cost:,.0f} usd/anio.",
             score=round(score, 6),
             action=f"adoptar Q={cand.order_quantity:,.0f} y SL={cand.service_level:.1%} "
                    f"para {tmap.sku}",
-            tradeoffs="ver los 4 KPIs de la descripcion - cada sombrero cede algo distinto",
+            tradeoffs=f"ver los {len(tmap.ideals)} KPIs de la descripcion - cada sombrero "
+                      "cede algo distinto",
         ))
     return options
 
@@ -227,6 +327,8 @@ def run_tension(payload: dict) -> TensionReport:
     inputs = payload["inputs"]
     maps = tuple(tension_map(i) for i in inputs)
     assumed = any(i.price_breaks_assumed for i in inputs)
+    rates_assumed = any(i.freight is not None and i.freight.rates_assumed for i in inputs)
+    off_table = sorted({k for i in inputs for k in HAT_KEYS if k not in evaluable_hats(i)})
     order = sorted(range(len(maps)),
                    key=lambda ix: (-abs(maps[ix].clashes[0].delta_capital_usd), maps[ix].sku))
     flag_inputs, flag_map = inputs[order[0]], maps[order[0]]
@@ -236,6 +338,9 @@ def run_tension(payload: dict) -> TensionReport:
         f"top choques: {top3}. Orden informativo por costo total del juez - "
         f"la eleccion es humana."
         + (" Tarifario de descuentos sintetico (assumed)." if assumed else "")
+        + (f" Area(s) fuera de la mesa en al menos un SKU: {', '.join(off_table)}."
+           if off_table else "")
+        + (" Flete valorizado con el tarifario ilustrativo (assumed)." if rates_assumed else "")
     )
     residuals = [Residual(
         description="La opcion la elige un humano; este mapa solo hace visible el conflicto.",
@@ -243,12 +348,37 @@ def run_tension(payload: dict) -> TensionReport:
     )]
     if assumed:
         residuals.append(_assumed_residual())
+    residuals.extend(_off_table_residuals(off_table, rates_assumed))
     outcome = as_options(summary, _tension_options(flag_inputs, flag_map),
                          confidence=0.8, residuals=residuals)
     short = (f"Decision tension map over {len(maps)} SKU(s); focus {flag_map.sku} "
              f"({abs(flag_map.clashes[0].delta_capital_usd):,.0f} usd avg-inventory gap).")
     return TensionReport(maps=maps, outcome=outcome, summary=short,
-                         n_skus=len(maps), price_breaks_assumed=assumed)
+                         n_skus=len(maps), price_breaks_assumed=assumed,
+                         flagship_sku=flag_map.sku, freight_rates_assumed=rates_assumed)
+
+
+def _off_table_residuals(off_table: list[str], rates_assumed: bool) -> list[Residual]:
+    """A hat that never scored is a residual, not a footnote: the reader has to be
+    told which question this council did NOT answer, and what to hand over to make
+    it answerable."""
+    out: list[Residual] = []
+    if off_table:
+        out.append(Residual(
+            description=f"Area(s) sin medir en esta corrida: {', '.join(off_table)}. "
+                        "El consejo se resolvio sin ellas.",
+            risk_if_skipped="un acuerdo entre las areas medidas no es un acuerdo de todas; "
+                            "para transporte hacen falta peso por unidad (columna weight_kg) "
+                            "y distance_km en params",
+        ))
+    if rates_assumed:
+        out.append(Residual(
+            description="El flete se valorizo con el tarifario ILUSTRATIVO de "
+                        "src.logistics.modes.FreightRates, no con el del transportista.",
+            risk_if_skipped="el punto donde el camion se llena depende del tarifario real; "
+                            "pasar freight_rates antes de comprometer cantidades",
+        ))
+    return out
 
 
 def _assumed_residual() -> Residual:
@@ -272,6 +402,8 @@ class SettlementReport:
     weights: dict[str, float]
     price_breaks_assumed: bool
     total_value_usd: float
+    #: True when some SKU priced its freight off the illustrative rate card.
+    freight_rates_assumed: bool = False
 
 
 def _acta_artifact(settlements: tuple[Settlement, ...], weights: dict[str, float],
@@ -309,6 +441,16 @@ def _acta_artifact(settlements: tuple[Settlement, ...], weights: dict[str, float
     if not abiertas:
         lines.append("ninguna: ningun sombrero cede por encima del umbral")
     lines.append("")
+    lines.append("AREAS FUERA DE LA MESA (no medidas: el acuerdo no las incluye)")
+    fuera = [(s, s.excluded_hats) for s in settlements if s.excluded_hats]
+    for s, ks in fuera:
+        lines.append(
+            f"{s.sku}: {', '.join(ks)} - sin insumos para puntuar; los pesos se "
+            f"renormalizaron sobre {', '.join(k for k in s.weights)}"
+        )
+    if not fuera:
+        lines.append("ninguna: las cinco areas estuvieron en la mesa en todos los SKU")
+    lines.append("")
     firma = settlements[0]
     lines.append(
         f"DECISION: {firma.decision_owner}, {firma.decision_date:%Y-%m-%d}"
@@ -332,6 +474,8 @@ def run_settlement(payload: dict) -> SettlementReport:
         for i in inputs
     )
     assumed = any(i.price_breaks_assumed for i in inputs)
+    rates_assumed = any(i.freight is not None and i.freight.rates_assumed for i in inputs)
+    off_table = sorted({k for s in settlements for k in s.excluded_hats})
     total = sum(s.value_vs_baseline_usd for s in settlements)
     packet = HandoffPacket(
         title="Aplicar plan reconciliado (Q*, SL*)",
@@ -352,6 +496,8 @@ def run_settlement(payload: dict) -> SettlementReport:
             ],
             "weights": dict(weights),
             "price_breaks_assumed": assumed,
+            "freight_rates_assumed": rates_assumed,
+            "areas_off_table": off_table,
         },
         risk_if_skipped="sin aplicar el plan, cada area sigue optimizando su propio objetivo "
                         "y la decision queda sin un punto unico auditable",
@@ -363,17 +509,20 @@ def run_settlement(payload: dict) -> SettlementReport:
     )]
     if assumed:
         residuals.append(_assumed_residual())
+    residuals.extend(_off_table_residuals(off_table, rates_assumed))
     summary = (
         f"Plan reconciliado para {len(settlements)} SKU(s): valor vs baseline "
         f"{total:+,.0f} usd/anio (pesos: {_weights_str(weights)} - {_POLICY_NOTE})."
         + (" Tarifario (assumed)." if assumed else "")
+        + (f" Area(s) fuera de la mesa: {', '.join(off_table)}." if off_table else "")
     )
     outcome = as_handoff(summary, [packet], confidence=0.8, residuals=residuals)
     short = (f"Reconciled replenishment plan over {len(settlements)} SKU(s); "
              f"value vs baseline {total:+,.0f} usd/yr.")
     return SettlementReport(settlements=settlements, outcome=outcome, summary=short,
                             n_skus=len(settlements), weights=dict(weights),
-                            price_breaks_assumed=assumed, total_value_usd=total)
+                            price_breaks_assumed=assumed, total_value_usd=total,
+                            freight_rates_assumed=rates_assumed)
 
 
 # -- QA gates (empty list == passed) ------------------------------------------
@@ -381,7 +530,10 @@ def run_settlement(payload: dict) -> SettlementReport:
 
 def verify_tension(report: TensionReport) -> list[str]:
     """Never-unprotected + N4 shape. A tension outcome must be OPTIONS (never
-    EXECUTED - spec sec 7), carry exactly 5 options, and every map must be whole."""
+    EXECUTED - spec sec 7), carry one option per evaluable hat plus the baseline,
+    and every map must be whole -- where "whole" now means every hat in HAT_KEYS
+    is EITHER scored OR named in `excluded_hats`. A map that simply lacks a hat,
+    with no declaration, is the failure this gate is here to catch."""
     issues: list[str] = []
     if not report.maps:
         issues.append("no tension maps")
@@ -392,15 +544,28 @@ def verify_tension(report: TensionReport) -> list[str]:
     if report.outcome.status == EXECUTED:
         issues.append("tension outcome reports EXECUTED - forbidden")
     issues.extend(verify_guided(report.outcome))
-    if report.outcome.options and len(report.outcome.options) != len(HAT_KEYS) + 1:
-        issues.append(f"expected {len(HAT_KEYS) + 1} options, got {len(report.outcome.options)}")
+    flagship = next((m for m in report.maps if m.sku == report.flagship_sku), None)
+    if report.outcome.options:
+        if flagship is None:
+            issues.append(f"flagship_sku {report.flagship_sku!r} is not among the maps")
+        elif len(report.outcome.options) != len(flagship.ideals) + 1:
+            issues.append(f"expected {len(flagship.ideals) + 1} options, got "
+                          f"{len(report.outcome.options)}")
     for m in report.maps:
-        if set(m.ideals) != set(HAT_KEYS):
-            issues.append(f"{m.sku}: ideals missing hats")
+        if set(m.ideals) | set(m.excluded_hats) != set(HAT_KEYS):
+            issues.append(
+                f"{m.sku}: every hat must be scored or declared excluded; scored="
+                f"{sorted(m.ideals)}, excluded={list(m.excluded_hats)}")
+        if set(m.ideals) & set(m.excluded_hats):
+            issues.append(f"{m.sku}: a hat is both scored and excluded")
+        if not m.ideals:
+            issues.append(f"{m.sku}: no hat could be scored at all")
         if m.candidates_evaluated < 125:
             issues.append(f"{m.sku}: only {m.candidates_evaluated} candidates evaluated")
-        if len(m.clashes) != 6:
-            issues.append(f"{m.sku}: expected 6 clashes, got {len(m.clashes)}")
+        expected_clashes = len(m.ideals) * (len(m.ideals) - 1) // 2
+        if len(m.clashes) != expected_clashes:
+            issues.append(f"{m.sku}: expected {expected_clashes} clashes for "
+                          f"{len(m.ideals)} hats, got {len(m.clashes)}")
         for e in m.ideals.values():
             if not 0.0 <= e.utility_norm <= 1.0:
                 issues.append(f"{m.sku}: utility_norm out of [0,1] for {e.hat_key}")
@@ -426,6 +591,20 @@ def verify_settlement(report: SettlementReport) -> list[str]:
     if not any("politica" in r.description for r in report.outcome.residuals):
         issues.append("missing the weights-are-policy residual")
     for s in report.settlements:
+        # Same invariant the tension gate enforces: every area is either in the
+        # acta or declared excluded. An acta that is simply short one area reads
+        # as unanimity among five when it was unanimity among four.
+        signed = {e.hat_key for e in s.acta}
+        if signed | set(s.excluded_hats) != set(HAT_KEYS):
+            issues.append(
+                f"{s.sku}: every hat must sign the acta or be declared excluded; "
+                f"signed={sorted(signed)}, excluded={list(s.excluded_hats)}")
+        if signed & set(s.excluded_hats):
+            issues.append(f"{s.sku}: a hat both signed the acta and is excluded")
+        if set(s.weights) != signed:
+            issues.append(
+                f"{s.sku}: the weight policy covers {sorted(s.weights)} but the acta "
+                f"covers {sorted(signed)} - they must be the same areas")
         for e in s.acta:
             if not 0.0 <= e.concesion <= 1.0:
                 issues.append(f"{s.sku}: concesion out of [0,1] for {e.hat_key}")
@@ -447,7 +626,7 @@ def write_tension(report: TensionReport, out_dir, client: str = "Client") -> dic
     rows = []
     for m in report.maps:
         top = m.clashes[0]
-        for k in HAT_KEYS:
+        for k in (k for k in HAT_KEYS if k in m.ideals):
             e = m.ideals[k]
             rows.append({
                 "sku": m.sku,
@@ -459,6 +638,8 @@ def write_tension(report: TensionReport, out_dir, client: str = "Client") -> dic
                 "top_clash": f"{top.hat_a} vs {top.hat_b}",
                 "top_clash_capital_usd": round(top.delta_capital_usd, 2),
                 "price_breaks": "assumed" if report.price_breaks_assumed else "real",
+                # Repeated per row so a filtered view can never lose the caveat.
+                "areas_fuera_de_la_mesa": ", ".join(m.excluded_hats),
             })
     return {"csv": write_summary_csv(rows, d / "hat_tension.csv")}
 
@@ -480,6 +661,7 @@ def write_settlement(report: SettlementReport, out_dir, client: str = "Client") 
         }
         for e in s.acta:
             row[f"concesion_{e.hat_key}"] = round(e.concesion, 4)
+        row["areas_fuera_de_la_mesa"] = ", ".join(s.excluded_hats)
         rows.append(row)
     return {"csv": write_summary_csv(rows, d / "hat_settlement.csv")}
 
@@ -489,6 +671,29 @@ def _assumed_finding() -> Finding:
         "Tarifario (assumed)",
         "los descuentos por volumen son sinteticos: -2% en 2x EOQ, -4% en 4x EOQ (D8).",
         impact="pedir el tarifario real del proveedor antes de negociar cantidades")
+
+
+def _off_table_findings(maps_or_settlements, rates_assumed: bool) -> list[Finding]:
+    """Findings, not footnotes, for the areas nobody could score. A deck that
+    presents a four-way agreement without naming the fifth area lets the reader
+    conclude the fifth had no objection -- which nobody checked."""
+    off = sorted({k for m in maps_or_settlements for k in m.excluded_hats})
+    out: list[Finding] = []
+    if off:
+        out.append(Finding(
+            "Areas fuera de la mesa",
+            f"{', '.join(off)} no se pudo puntuar en al menos un SKU: faltan sus insumos "
+            "(transporte necesita peso por unidad y distancia de la ruta).",
+            impact="el acuerdo cubre solo a las areas medidas; declarar los insumos "
+                   "faltantes convierte una omision en un veredicto"))
+    if rates_assumed:
+        out.append(Finding(
+            "Tarifario de flete (assumed)",
+            "el flete se valorizo con el tarifario ilustrativo de src.logistics.modes, "
+            "no con el del transportista.",
+            impact="el punto donde el camion se llena depende del tarifario real - "
+                   "pedirlo antes de comprometer cantidades"))
+    return out
 
 
 def build_tension_deck(report: TensionReport, *, client: str = "Client", prepared: str = "",
@@ -507,15 +712,21 @@ def build_tension_deck(report: TensionReport, *, client: str = "Client", prepare
         Finding("Cobertura",
                 f"{report.n_skus} SKU(s), {flag.candidates_evaluated} candidatos evaluados "
                 "por SKU sobre la misma grilla determinista (Q x SL).",
-                impact="los 4 sombreros puntuan candidatos identicos - comparables"),
+                impact=f"los {len(flag.ideals)} sombreros puntuan candidatos identicos "
+                       "- comparables"),
     ]
     if report.price_breaks_assumed:
         findings.append(_assumed_finding())
+    findings.extend(_off_table_findings(report.maps, report.freight_rates_assumed))
     kpis = (
         Kpi("SKUs", f"{report.n_skus}", rationale="SKUs con tension mapeada"),
         Kpi("Top clash", f"{flag.sku}: {abs(top.delta_capital_usd):,.0f} usd",
             target="resolver", rationale="mayor brecha de inventario promedio entre ideales"),
-        Kpi("Opciones por decision", f"{len(HAT_KEYS) + 1}", rationale="4 ideales + baseline"),
+        Kpi("Opciones por decision", f"{len(flag.ideals) + 1}",
+            rationale=f"{len(flag.ideals)} ideales + baseline"),
+        Kpi("Areas en la mesa", f"{len(flag.ideals)} de {len(HAT_KEYS)}",
+            target=f"{len(HAT_KEYS)}",
+            rationale="un choque entre menos areas no descarta a las que faltan"),
         Kpi("Tarifario", "assumed" if report.price_breaks_assumed else "real",
             rationale="origen de los price breaks (D8)"),
     )
@@ -524,10 +735,13 @@ def build_tension_deck(report: TensionReport, *, client: str = "Client", prepare
                    "export WMS/ERP (CSV)", "semanal"),
         DataSource("Price breaks del proveedor",
                    "tarifario del proveedor (sintetico '(assumed)' si falta)", "por negociacion"),
+        DataSource("Peso por unidad (columna weight_kg) + distancia de la ruta (params)",
+                   "maestro de productos + red del cliente", "por ruta"),
     )
     recommendations = (
         "Usar el mapa en la mesa compras-finanzas-comercial: cada area ve que cede.",
-        "Elegir una de las 5 opciones, o pedir el settlement N5 con pesos explicitos.",
+        f"Elegir una de las {len(flag.ideals) + 1} opciones, o pedir el settlement N5 "
+        "con pesos explicitos.",
         "Si el tarifario es (assumed), pedir los price breaks reales y re-correr.",
     )
     return Deliverable(
@@ -557,11 +771,15 @@ def build_settlement_deck(report: SettlementReport, *, client: str = "Client", p
     ]
     if report.price_breaks_assumed:
         findings.append(_assumed_finding())
+    findings.extend(_off_table_findings(report.settlements, report.freight_rates_assumed))
     kpis = (
         Kpi("SKUs", f"{report.n_skus}", rationale="SKUs con plan reconciliado"),
         Kpi("Valor vs baseline", f"{report.total_value_usd:+,.0f} usd/anio", target="> 0",
             rationale="costo juez del baseline menos costo juez del plan (signed)"),
         Kpi("Pesos", _weights_str(report.weights), rationale="politica del operador (D4)"),
+        Kpi("Areas en la mesa", f"{len(report.weights)} de {len(HAT_KEYS)}",
+            target=f"{len(HAT_KEYS)}",
+            rationale="un acuerdo entre menos areas no es un acuerdo de todas"),
         Kpi("Tarifario", "assumed" if report.price_breaks_assumed else "real",
             rationale="origen de los price breaks (D8)"),
     )
@@ -570,6 +788,8 @@ def build_settlement_deck(report: SettlementReport, *, client: str = "Client", p
                    "export WMS/ERP (CSV)", "semanal"),
         DataSource("Price breaks del proveedor",
                    "tarifario del proveedor (sintetico '(assumed)' si falta)", "por negociacion"),
+        DataSource("Peso por unidad (columna weight_kg) + distancia de la ruta (params)",
+                   "maestro de productos + red del cliente", "por ruta"),
     )
     recommendations = (
         "Aplicar Q*/SL* por SKU via el proceso de compra (packet HANDOFF adjunto).",

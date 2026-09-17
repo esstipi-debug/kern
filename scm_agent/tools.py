@@ -1294,13 +1294,19 @@ def hat_tension_tool() -> Tool:
         key="hat_tension",
         title="Decision Tension Map (Replenishment)",
         description="Score one replenishment decision (order quantity + service level) through "
-                    "4 role hats (comprador / planner / cfo / comercial) and render the "
-                    "disagreement as ranked options with the $ gaps. The human resolves - "
-                    "nothing is reconciled or executed here.",
+                    "5 role hats (comprador / planner / cfo / comercial / transporte) and "
+                    "render the disagreement as ranked options with the $ gaps. transporte "
+                    "only joins when the file carries weight_kg AND a distance_km param is "
+                    "given; otherwise it is named as off the table, never scored at zero. "
+                    "The human resolves - nothing is reconciled or executed here.",
         intent_keywords=(
             "mapa de tension", "tension entre areas", "conflicto compras finanzas",
             "trade-off entre roles", "perspectivas de la decision", "decision tension map",
             "cuanto pedir segun cada area",
+            # Multi-word on purpose: "transporte" alone would steal routing from the
+            # `transportation` tool, which answers a different question (which MODE).
+            "desacuerdo con transporte", "transporte vs finanzas",
+            "cada area quiere otra cantidad",
         ),
         requires_data=True,
         # jobs/hats_job.py:123. Both hats share `_hats_prepare`, so both declare the
@@ -1308,6 +1314,10 @@ def hat_tension_tool() -> Tool:
         # a file where every SKU is skipped refuses -- the column contract is met and
         # the tool still cannot run. `required_columns` says nothing about row counts.
         required_columns=("product_id", "quantity", "unit_cost", "lead_time_days"),
+        # weight_kg is the per-SKU half of the transporte hat; the lane half
+        # (distance_km) is a param, not a column. Optional on purpose: without it
+        # the council runs with four areas and declares the fifth as unmeasured.
+        optional_columns=("weight_kg",),
         prepare=_hats_prepare,
         run=_hat_tension_run,
         qa=lambda report: hats_job.verify_tension(report),
@@ -1326,7 +1336,7 @@ def hat_settlement_tool() -> Tool:
     return Tool(
         key="hat_settlement",
         title="Reconciled Replenishment Plan",
-        description="Reconcile the 4 role hats into ONE replenishment plan (Q*, SL*) via the "
+        description="Reconcile the role hats into ONE replenishment plan (Q*, SL*) via the "
                     "operator's explicit weight policy, with a concession record (acta) and the "
                     "signed $ value vs today's baseline. Ends in a human HANDOFF - never applies "
                     "anything.",
@@ -1382,13 +1392,16 @@ def cross_impact_tool() -> Tool:
         title="Cross-Area Impact of a Proposed Decision",
         description="Take a replenishment decision ALREADY proposed by one area "
                     "(order quantity + service level) and measure what it does to the "
-                    "other three, then judge whether each would object against the "
+                    "others, then judge whether each would object against the "
                     "threshold the operator declared. Zero objections means the "
-                    "meeting does not need to happen. Nothing is executed.",
+                    "meeting does not need to happen. An area nobody could measure "
+                    "(transporte without a unit weight and a lane distance) makes the "
+                    "verdict 'indeterminado', never a clean zero. Nothing is executed.",
         intent_keywords=(
             "impacto cruzado", "impacto en las otras areas", "en las otras areas",
             "quien objeta", "costo de coordinacion", "cross-area impact",
             "objection threshold", "si cambio esto que pasa", "necesito convocar",
+            "transporte objeta", "impacto en transporte", "que dice transporte",
         ),
         requires_data=True,
         prepare=_cross_impact_prepare,

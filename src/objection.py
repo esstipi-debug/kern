@@ -10,7 +10,15 @@ Two rules that are easy to get wrong and are therefore explicit here:
 1. Direction is NOT uniform. Three hats minimize a cost-like KPI; `comercial`
    maximizes fill rate. A plain ``abs(delta) > threshold`` would report an
    objection when the CFO's capital charge FALLS.
-2. The planner's headline KPI does not capture its own service constraint.
+2. An area can be un-judgeable for TWO different reasons, and both must land on
+   NO_EVALUABLE rather than on a quiet `acepta`. `judge(threshold=None)` is the
+   operator never declaring how much deterioration the area tolerates;
+   `unmeasurable()` is there being no KPI to compare at all (transporte on a SKU
+   with no freight profile). Same status, different `reason` -- and the caller
+   must produce one verdict per area in `src.hats.HAT_KEYS`, not one per area it
+   happened to be able to score.
+
+3. The planner's headline KPI does not capture its own service constraint.
    ``src.hats.hat_kpis`` returns ``policy_cost = -_u_planner_valid(...)``, the
    RAW policy cost; the ``sl_target`` penalty lives in ``src.hats.utilities``,
    not here. So a proposal that drops the service level below target makes the
@@ -49,6 +57,24 @@ class Verdict:
     deterioration: float | None
     threshold: float | None
     reason: str
+
+
+def unmeasurable(hat_key: str, reason: str) -> Verdict:
+    """NO_EVALUABLE for an area whose KPI could not be computed at all.
+
+    Every optional field stays None, exactly as in the no-threshold case: the
+    point of this constructor is that a gap keeps its shape no matter which of
+    the two gaps it is. `reason` must say WHICH input is missing -- a caller that
+    writes "not evaluable" and stops has moved the question, not answered it.
+    """
+    _require_known_hat(hat_key)
+    if not reason.strip():
+        raise ValueError("unmeasurable requires a reason naming the missing input")
+    return Verdict(
+        hat_key=hat_key, status=NO_EVALUABLE, kpi_name=headline_kpi(hat_key),
+        kpi_current=None, kpi_proposed=None, deterioration=None, threshold=None,
+        reason=reason,
+    )
 
 
 def _require_known_hat(hat_key: str) -> None:

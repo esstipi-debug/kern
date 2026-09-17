@@ -1,4 +1,9 @@
-"""Substrate tests for the 4-hat decision engine (src/hats.py) -- spec 2026-07-20 D1-D8."""
+"""Substrate tests for the hat decision engine (src/hats.py) -- spec 2026-07-20 D1-D8.
+
+The fixture SKU here declares NO freight profile, so it is deliberately a FOUR-hat
+SKU: these tests pin what the substrate does when transporte cannot be scored.
+The five-hat behaviour lives in tests/test_hats_transporte.py.
+"""
 
 import pytest
 
@@ -7,11 +12,13 @@ from src.hats import (
     HAT_COMERCIAL,
     HAT_COMPRADOR,
     HAT_KEYS,
+    HAT_TRANSPORTE,
     HATS,
     SL_GRID,
     Candidate,
     HatConfig,
     HatInputs,
+    evaluable_hats,
     parse_weights,
 )
 
@@ -55,7 +62,10 @@ def test_config_rejects_bad_scalars():
 
 def test_default_weights_are_equal_and_cover_all_hats():
     assert set(DEFAULT_WEIGHTS) == set(HAT_KEYS)
-    assert all(w == pytest.approx(0.25) for w in DEFAULT_WEIGHTS.values())
+    assert all(w == pytest.approx(1.0 / len(HAT_KEYS)) for w in DEFAULT_WEIGHTS.values())
+    # Derived, not typed: the literal that used to live here stopped summing to 1
+    # the moment a fifth hat existed, and parse_weights(None) returns it as-is.
+    assert sum(DEFAULT_WEIGHTS.values()) == pytest.approx(1.0)
 
 
 def test_parse_weights_none_gives_default():
@@ -93,8 +103,10 @@ def test_parse_weights_accepts_dict_and_renormalizes():
 # -- contracts ----------------------------------------------------------------
 
 
-def test_hats_registry_has_the_four_hats_in_order():
-    assert HAT_KEYS == ("comprador", "planner", "cfo", "comercial")
+def test_hats_registry_has_the_five_hats_in_order():
+    # transporte is LAST on purpose: cross_impact rows and the tension pair order
+    # are both defined as "HAT_KEYS order", so inserting it would reorder them.
+    assert HAT_KEYS == ("comprador", "planner", "cfo", "comercial", "transporte")
     assert set(HATS) == set(HAT_KEYS)
     for hat in HATS.values():
         assert hat.kpis and hat.objetivo and hat.label
@@ -256,7 +268,11 @@ def test_evaluate_produces_aligned_norms_in_unit_range():
     inp = _inputs()
     ev = evaluate(inp)
     assert len(ev.candidates) == len(ev.judge_costs)
-    for key in HAT_KEYS:
+    # No freight profile -> the utility dict carries four keys, not five with one
+    # guessed. Iterating HAT_KEYS over it would KeyError, deliberately.
+    assert set(ev.utilities_norm) == set(evaluable_hats(inp))
+    assert HAT_TRANSPORTE not in ev.utilities_norm
+    for key in evaluable_hats(inp):
         norms = ev.utilities_norm[key]
         assert len(norms) == len(ev.candidates)
         assert all(0.0 <= n <= 1.0 for n in norms)
@@ -285,7 +301,7 @@ from src.hat_council import tension_map  # noqa: E402
 def test_ideal_ordering_q_cfo_le_planner_le_comprador():
     """Spec Sec 12.1: with the synthetic breaks, Q_cfo <= Q_planner <= Q_comprador."""
     tmap = tension_map(_inputs())
-    q = {k: tmap.ideals[k].candidate.order_quantity for k in HAT_KEYS}
+    q = {k: e.candidate.order_quantity for k, e in tmap.ideals.items()}
     assert q["cfo"] <= q["planner"] <= q["comprador"]
     assert q["cfo"] < q["comprador"]          # genuine tension on the testbed SKU
 
@@ -297,14 +313,18 @@ def test_ideal_comercial_is_max_sl_of_grid():
 
 def test_u_norm_at_ideal_is_one_for_every_hat():
     tmap = tension_map(_inputs())
-    for key in HAT_KEYS:
+    assert tmap.ideals
+    for key in tmap.ideals:
         assert tmap.ideals[key].utility_norm == 1.0
 
 
 def test_tension_map_shape_and_clash_ordering():
     tmap = tension_map(_inputs())
     assert tmap.sku == "SKU-T"
-    assert set(tmap.ideals) == set(HAT_KEYS)
+    # Scored + excluded must together account for the whole vocabulary: a hat that
+    # is simply absent, with nothing said about it, is the failure mode.
+    assert set(tmap.ideals) | set(tmap.excluded_hats) == set(HAT_KEYS)
+    assert tmap.excluded_hats == (HAT_TRANSPORTE,)     # no freight profile declared
     assert tmap.candidates_evaluated >= 125
     assert len(tmap.clashes) == 6              # C(4,2) pairs, nothing dropped
     mags = [abs(c.delta_capital_usd) for c in tmap.clashes]

@@ -19,6 +19,7 @@ from src.hats import (
     Candidate,
     HatInputs,
     decision_cost,
+    evaluable_hats,
     hat_kpis,
     headline_kpi,
 )
@@ -44,9 +45,13 @@ class CrossImpact:
     proposed_by: str
     current: Candidate
     proposed: Candidate
-    rows: tuple[ImpactRow, ...]          # one per HAT_KEYS, in HAT_KEYS order
+    #: One per EVALUABLE hat, in HAT_KEYS order -- 4 rows or 5. The areas that
+    #: produced no row are in `excluded_hats`; measuring fewer areas than exist
+    #: is only honest if the count of the missing ones travels with the result.
+    rows: tuple[ImpactRow, ...]
     judge_cost_current: float
     judge_cost_proposed: float
+    excluded_hats: tuple[str, ...] = ()
 
 
 def measure(
@@ -55,13 +60,21 @@ def measure(
     proposed: Candidate,
     proposed_by: str,
 ) -> CrossImpact:
-    """Every hat's headline KPI at both points, plus the neutral judge cost."""
+    """Every evaluable hat's headline KPI at both points, plus the judge cost."""
     if proposed_by not in HAT_KEYS:
         raise ValueError(
             f"proposed_by must be one of {HAT_KEYS}, got {proposed_by!r}")
+    hats = evaluable_hats(inputs)
+    if proposed_by not in hats:
+        # An area we cannot score cannot be credited with a proposal either: the
+        # report would name it as the proposer and then have no row for it.
+        raise ValueError(
+            f"proposed_by={proposed_by!r} is not evaluable for {inputs.sku}: the areas "
+            f"on the table are {list(hats)}. Declare its inputs (transporte needs a "
+            "FreightProfile) before attributing a proposal to it.")
 
     rows = []
-    for hat_key in HAT_KEYS:
+    for hat_key in hats:
         name = headline_kpi(hat_key)
         # KeyError here is deliberate: a missing KPI is a contract break with
         # src.hats, not something to paper over with a default.
@@ -81,4 +94,5 @@ def measure(
         rows=tuple(rows),
         judge_cost_current=decision_cost(inputs, current),
         judge_cost_proposed=decision_cost(inputs, proposed),
+        excluded_hats=tuple(k for k in HAT_KEYS if k not in hats),
     )

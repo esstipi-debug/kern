@@ -16,12 +16,12 @@ from dataclasses import dataclass, replace
 
 from nosilo_core.guided import ExecutionOption, GuidedOutcome, Residual, as_executed, as_options
 
-# Las cuatro areas de src.hats.HAT_KEYS, copiadas a proposito en vez de
-# importadas: src.hats arrastra numpy y scipy por su cadena de imports, y este
-# modulo es puro y liviano por contrato. La copia NO puede derivar --
+# Las areas de src.hats.HAT_KEYS, copiadas a proposito en vez de importadas:
+# src.hats arrastra numpy y scipy por su cadena de imports, y este modulo es puro
+# y liviano por contrato. La copia NO puede derivar --
 # tests/test_discovery_brief.py asierta igualdad contra src.hats.HAT_KEYS, donde
 # importar scipy no cuesta nada.
-_HAT_KEYS = ("comprador", "planner", "cfo", "comercial")
+_HAT_KEYS = ("comprador", "planner", "cfo", "comercial", "transporte")
 
 
 @dataclass(frozen=True)
