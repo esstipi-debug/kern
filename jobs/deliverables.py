@@ -37,6 +37,24 @@ def _row(r: SkuRecommendation, *, units: bool = False) -> dict:
         "policy": r.policy_kind,
         "forecast_per_period": round(r.forecast, 2),
         "order_qty_Q": round(r.order_quantity, 2) if r.order_quantity is not None else "",
+        # Supplier terms. `order_qty_Q` above is the lot the supplier ACCEPTS;
+        # these say what the EOQ asked for, which rule moved it, what honouring
+        # it costs per year, and the other legal lot with its own cost - the
+        # second terminal, so a buyer reading the sheet always has two numbers
+        # to choose from instead of one rounded one. Blank where no rule exists.
+        "order_qty_unconstrained": (
+            round(r.order_quantity_unconstrained, 2)
+            if r.order_quantity_unconstrained is not None else ""
+        ),
+        "supplier_lot_rule": r.lot_rule,
+        "lot_penalty_usd_yr": round(r.lot_penalty_usd, 2) if r.lot_rule else "",
+        "lot_alternative_Q": (
+            round(r.lot_alternative_qty, 2) if r.lot_alternative_qty is not None else ""
+        ),
+        "lot_alternative_penalty_usd_yr": (
+            round(r.lot_alternative_penalty_usd, 2)
+            if r.lot_alternative_penalty_usd is not None else ""
+        ),
         "order_up_to_S": round(r.order_up_to, 2) if r.order_up_to is not None else "",
         "reorder_point_s": round(r.reorder_point, 2),
         "safety_stock": round(r.safety_stock, 2),
@@ -129,6 +147,10 @@ def write_excel(report: JobReport, path: str | Path) -> Path:
         ("SKUs analyzed", report.n_skus),
         ("SKUs flagged (high bias)", report.n_at_risk),
         ("Intermittent SKUs", report.n_intermittent),
+        *([("SKUs on supplier terms (MOQ / case pack)",
+            f"{report.n_lot_constrained} ({report.n_lot_snapped} moved off the EOQ)"),
+           (f"Cost of honouring supplier terms{inv}/yr", round(report.lot_penalty_total_usd, 2))]
+          if report.n_lot_constrained else []),
         ("Forecast methods used", _methods_used(report) or "none"),
         (f"Requested investment{inv}", round(report.requested_investment, 2)),
         (f"Cycle-stock floor{inv}", round(report.cycle_floor, 2)),
@@ -492,6 +514,16 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
             f"{r.reorder_point:,.0f} | {r.safety_stock:,.1f} | {amount(report, r.investment)} | {STATUS_LABEL[r.status]} |"
         )
     lines.append("")
+    if report.n_lot_constrained:
+        lines.append(
+            f"{report.n_lot_constrained} (s,Q) SKU(s) carry supplier terms (MOQ / case-pack "
+            f"multiple): Q* above is the cheapest lot the supplier accepts, and "
+            f"{report.n_lot_snapped} of them moved off the unconstrained EOQ at a cost of "
+            f"{amount(report, report.lot_penalty_total_usd)}/yr in ordering + holding. The "
+            "unconstrained Q, the rule, the penalty and the runner-up lot are on each row of "
+            "the workbook (`order_qty_unconstrained`, `supplier_lot_rule`, "
+            "`lot_penalty_usd_yr`, `lot_alternative_Q`).\n"
+        )
 
     flagged = [r for r in report.recommendations if r.status != "ok"]
     if flagged:

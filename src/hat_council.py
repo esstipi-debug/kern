@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import date
 from itertools import combinations
 
+from src.constraints import lot_rule
 from src.hats import (
     HAT_CFO,
     HAT_COMERCIAL,
@@ -60,6 +61,15 @@ class TensionMap:
     clashes: tuple[Clash, ...]
     candidates_evaluated: int
     excluded_hats: tuple[str, ...] = ()
+    #: Supplier terms the grid was laid over (0.0 = none). Carried on the map so
+    #: the QA gate can check every ideal is a lot the supplier accepts without
+    #: needing the inputs back, and so a deck can say the axis was constrained.
+    minimum_order_quantity: float = 0.0
+    order_multiple: float = 0.0
+
+    @property
+    def lot_rule(self) -> str:
+        return lot_rule(self.minimum_order_quantity, self.order_multiple)
 
 
 def ideal_for(inputs: HatInputs, ev: GridEvaluation, hat_key: str) -> HatEvaluation:
@@ -100,6 +110,8 @@ def tension_map(inputs: HatInputs, ev: GridEvaluation | None = None) -> TensionM
         sku=inputs.sku, ideals=ideals, clashes=tuple(clashes),
         candidates_evaluated=len(ev.candidates),
         excluded_hats=tuple(k for k in HAT_KEYS if k not in hats),
+        minimum_order_quantity=inputs.minimum_order_quantity,
+        order_multiple=inputs.order_multiple,
     )
 
 
@@ -167,6 +179,13 @@ class Settlement:
     #: suggestion; the criterion asks for a decision, which needs both.
     decision_owner: str = UNASSIGNED
     decision_date: date | None = None
+    #: Supplier terms the plan was settled under (0.0 = none); see TensionMap.
+    minimum_order_quantity: float = 0.0
+    order_multiple: float = 0.0
+
+    @property
+    def lot_rule(self) -> str:
+        return lot_rule(self.minimum_order_quantity, self.order_multiple)
 
 
 @dataclass(frozen=True)
@@ -237,6 +256,8 @@ def settle(
         decision_owner=owner or UNASSIGNED,
         decision_date=decided_on or date.today(),
         excluded_hats=tuple(k for k in HAT_KEYS if k not in hats),
+        minimum_order_quantity=inputs.minimum_order_quantity,
+        order_multiple=inputs.order_multiple,
     )
 
 

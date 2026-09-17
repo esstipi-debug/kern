@@ -139,6 +139,7 @@ def inventory_options(report: object) -> GuidedOutcome:
         ("Adopt the recommended policy",
          f"Stage {report.final_investment:,.0f} of inventory under the (s,Q)/(R,S) policies at {sl * 100:.0f}% service.",
          "apply the recommended per-SKU policies and budget", "balanced service vs capital"),
+        *_lot_terms_items(report),
         ("Tighten service on A-items",
          "Raise the cycle service level on the high-value SKUs (more safety stock).",
          "raise service level on the A class", "higher availability, more capital"),
@@ -150,7 +151,65 @@ def inventory_options(report: object) -> GuidedOutcome:
     outcome = _apply_intake_quality(outcome, report)
     outcome = _apply_zero_demand_skips(outcome, report)
     outcome = _apply_zero_cost_skips(outcome, report)
-    return _apply_insufficient_history(outcome, report)
+    outcome = _apply_insufficient_history(outcome, report)
+    return _apply_lot_rule_unapplied(outcome, report)
+
+
+def _lot_terms_items(report: object) -> list[_Item]:
+    """The renegotiation OPTION, when the supplier's terms moved any quantity.
+
+    Kern says 40 and the supplier sells by 30: the plan above already carries the
+    cheapest lot the supplier accepts (jobs/inventory_optimization.py via
+    src.constraints.cheapest_feasible_lot), so "Adopt" is never a dead end. This
+    item is the OTHER terminal, with the per-SKU price tag of the rounding and the
+    runner-up lot named, so the buyer walks into the supplier conversation with
+    numbers rather than with a quantity the supplier will simply refuse.
+    """
+    n_snapped = getattr(report, "n_lot_snapped", 0)
+    if not n_snapped:
+        return []
+    moved = [
+        r for r in report.recommendations
+        if getattr(r, "lot_rule", "") and getattr(r, "order_quantity_unconstrained", None) is not None
+        and r.order_quantity is not None and r.order_quantity != r.order_quantity_unconstrained
+    ]
+    moved.sort(key=lambda r: getattr(r, "lot_penalty_usd", 0.0), reverse=True)
+    # Two decimals on the penalties: a rounding that costs 0.17/yr printed as
+    # "+0/yr" reads as free, and a free rounding needs no renegotiation.
+    worst = "; ".join(
+        f"{r.product_id} ({r.lot_rule}): Q {r.order_quantity_unconstrained:,.0f} -> "
+        f"{r.order_quantity:,.0f}, +{r.lot_penalty_usd:,.2f}/yr"
+        + (f", runner-up {r.lot_alternative_qty:,.0f} at +{r.lot_alternative_penalty_usd:,.2f}/yr"
+           if getattr(r, "lot_alternative_qty", None) is not None else "")
+        for r in moved[:3]
+    )
+    total = getattr(report, "lot_penalty_total_usd", 0.0)
+    return [(
+        "Renegotiate supplier terms where rounding costs most",
+        f"{n_snapped} SKU(s) had their EOQ moved to the supplier's MOQ / case pack; honouring "
+        f"the terms costs {total:,.2f}/yr over the unconstrained EOQ. Costliest: {worst}.",
+        "take the per-SKU lot penalties to the supplier, or order the listed runner-up lot",
+        "recovers the penalty if the supplier moves; costs a negotiation either way",
+    )]
+
+
+def _apply_lot_rule_unapplied(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
+    """State a residual when (R,S) SKUs carry supplier terms the periodic policy
+    cannot apply: an order-up-to policy orders a different quantity every review,
+    so the MOQ / case pack has to be honoured per order, by the buyer, and a plan
+    that keeps quiet about it hands them exactly the dead end this whole path
+    exists to remove."""
+    n = getattr(report, "n_lot_rule_unapplied", 0)
+    if not n:
+        return outcome
+    return replace(outcome, residuals=[*outcome.residuals, Residual(
+        description=f"{n} periodic-review (R,S) SKU(s) carry a supplier MOQ / case-pack rule "
+                    "that this plan records but does not apply - the order-up-to quantity "
+                    "changes every review, so there is no single Q to round.",
+        risk_if_skipped="a PO cut straight from the order-up-to level that the supplier "
+                        "refuses or silently rounds; round each order to the rule on the "
+                        "row (supplier_lot_rule) when the PO is issued.",
+    )])
 
 
 def _apply_insufficient_history(outcome: GuidedOutcome, report: object) -> GuidedOutcome:

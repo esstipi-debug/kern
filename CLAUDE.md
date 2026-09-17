@@ -140,6 +140,30 @@ never applied alone. End-to-end CLI: `examples/run_price_watch.py`
 (`--url <competitor_url> --catalog <our_catalog.csv>`, or `--demo`); acceptance
 proof in `tests/test_price_watch_e2e.py`.
 
+### Terminos del proveedor: dos terminales, nunca un punto muerto (`src/constraints.py`)
+Kern dice 40 y el proveedor vende de a 30, 60, 90. `apply_order_rules` sigue
+siendo el redondeo de una sola terminal (arriba); lo que decide es
+`cheapest_feasible_lot`: valua los dos lotes legales vecinos con la misma curva
+de costo del EOQ (`src.eoq.total_cost`), elige el mas barato y devuelve el otro
+como `alternative` con su penalidad. Tres consumidores leen la MISMA regla
+(`lot_rule`/`is_feasible_lot`) y por eso nunca discrepan sobre que es "factible":
+- **`jobs/inventory_optimization.py`** lee `moq` / `order_multiple` (intake los
+  emite SOLO cuando el archivo los trae; alias en es/en) y en `(s,Q)` mueve Q,
+  ciclo, inversion y beta implicita al lote elegido; el registro lleva
+  `order_quantity_unconstrained`, `lot_rule`, `lot_penalty_usd` y
+  `lot_alternative_qty`. `jobs/qa.py` rechaza una Q que el proveedor no acepta o
+  una alternativa mas barata que la elegida. `tool_options.inventory_options`
+  agrega la OPCION "Renegotiate supplier terms" con la lista por penalidad; un
+  `(R,S)` con terminos sale como residual (la regla se lleva, no se aplica).
+- **`src/hats.py`**: con terminos la grilla son lotes legales (`candidate_grid`,
+  piso `MIN_FEASIBLE_Q_POINTS` en vez de 125 candidatos) y `baseline_plan` es el
+  mismo lote que despacha el job. `verify_tension`/`verify_settlement` rechazan
+  un ideal o un acuerdo infactible.
+- **`jobs/cross_impact_job.py`**: una propuesta infactible se mide igual, pero
+  sale un residual que nombra los lotes legales vecinos.
+Lo que NO se hace: leer `product.packaging` de Odoo (`src/connectors/odoo.py`
+solo lee `min_qty`) -- trabajo de conector, sin instancia viva para probarlo.
+
 ### Client parameter profiles (`src/client_profile.py`)
 Per-client durable cost/capacity parameters (holding rate, order cost, service
 level, lead time, warehouse capacity), keyed by a slugified client name under

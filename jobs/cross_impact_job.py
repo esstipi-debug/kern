@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from nosilo_core.guided import GuidedOutcome, Residual, verify_guided
+from src.constraints import feasible_neighbours, is_feasible_lot
 from src.cross_impact import CrossImpact, measure
 from src.decision_options import Objective, Scenario, decide
 from src.deliverable import Deliverable, Finding, Kpi
@@ -279,6 +280,26 @@ def _scenarios(inputs, impact: CrossImpact, thresholds: dict[str, float],
     return out
 
 
+def _infeasible_lot_residuals(inputs, proposed: Candidate) -> list[Residual]:
+    """The proposal is measured as proposed -- but when its Q is not a lot the
+    supplier accepts, the buyer will end up ordering something else, and the
+    effect measured here is the effect of a quantity nobody can buy. Named, with
+    the nearest legal lots on each side, so the proposer can re-propose one.
+    The counterproposal never needs this: it comes off a grid of legal lots."""
+    if not inputs.lot_rule or is_feasible_lot(proposed.order_quantity, **inputs.lot_terms):
+        return []
+    up, down = feasible_neighbours(proposed.order_quantity, **inputs.lot_terms)
+    nearest = f"{up:,.0f}" if down is None else f"{down:,.0f} o {up:,.0f}"
+    return [Residual(
+        description=(f"La Q propuesta ({proposed.order_quantity:,.0f}) no cumple los terminos "
+                     f"del proveedor ({inputs.lot_rule}); los lotes factibles mas cercanos "
+                     f"son {nearest}."),
+        risk_if_skipped=("ejecutar una orden que el proveedor rechaza o redondea por su cuenta: "
+                         "el impacto medido aca es el de la Q propuesta, no el del lote que "
+                         "finalmente se compre - re-proponer con un lote factible"),
+    )]
+
+
 def _excluded_note(inputs) -> str:
     """Names the areas left off the table, inline in the summary. Empty when all
     five were measured -- silence then means the same thing as the sentence."""
@@ -318,22 +339,24 @@ def run(payload: dict) -> CrossImpactReport:
         "ninguna de ellas."
     )
 
+    residuals = [
+        Residual(
+            description="La eleccion final la hace un humano; esto mide y ordena, no ejecuta.",
+            risk_if_skipped="adoptar un cambio que otra area objeta sin que nadie lo haya aceptado",
+        ),
+        Residual(
+            description=("Almacen no es uno de los sombreros de HAT_KEYS: su impacto "
+                         "no fue medido."),
+            risk_if_skipped="un cambio de Q sin capacidad fisica para absorberlo",
+        ),
+    ]
+    residuals.extend(_infeasible_lot_residuals(inputs, proposed))
     outcome = decide(
         summary,
         _scenarios(inputs, impact, thresholds, n_obj, counter, n_unk),
         [Objective("n_objections", weight=2.0), Objective("judge_cost", weight=1.0)],
         confidence=_confidence(n_unk),
-        residuals=[
-            Residual(
-                description="La eleccion final la hace un humano; esto mide y ordena, no ejecuta.",
-                risk_if_skipped="adoptar un cambio que otra area objeta sin que nadie lo haya aceptado",
-            ),
-            Residual(
-                description=("Almacen no es uno de los sombreros de HAT_KEYS: su impacto "
-                             "no fue medido."),
-                risk_if_skipped="un cambio de Q sin capacidad fisica para absorberlo",
-            ),
-        ],
+        residuals=residuals,
     )
 
     return CrossImpactReport(

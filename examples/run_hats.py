@@ -90,6 +90,11 @@ def main() -> int:
                     help="largo de la ruta; sin esto transporte queda fuera de la mesa")
     ap.add_argument("--max-transit-days", type=float, default=None, dest="max_transit_days",
                     help="ventana de entrega: descarta modos mas lentos")
+    ap.add_argument("--moq", type=float, default=None,
+                    help="minimo de pedido del proveedor para todos los SKUs sin columna moq")
+    ap.add_argument("--order-multiple", type=float, default=None, dest="order_multiple",
+                    help="multiplo de caja (ej. 30: vende de a 30, 60, 90) para los SKUs "
+                         "sin columna order_multiple; la grilla solo usa lotes legales")
     args = ap.parse_args()
 
     params: dict = {"wacc": args.wacc, "gross_margin_rate": args.margin,
@@ -100,6 +105,10 @@ def main() -> int:
         params["max_transit_days"] = args.max_transit_days
     if args.weights:
         params["weights"] = args.weights
+    if args.moq is not None:
+        params["minimum_order_quantity"] = args.moq
+    if args.order_multiple is not None:
+        params["order_multiple"] = args.order_multiple
     if args.sku and not args.all:
         params["sku"] = args.sku
     payload = hats_job.prepare(args.csv, params)

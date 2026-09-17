@@ -11,6 +11,7 @@ import math
 from typing import TYPE_CHECKING
 
 from nosilo_core.guided import EXECUTED, GuidedOutcome, verify_guided
+from src.constraints import is_feasible_lot
 from src.forecasting import MIN_PERIODS_FOR_POLICY
 from src.sop_engine.coherence import CHECK_BUDGET_FEASIBILITY, CHECK_PROMO_COVERAGE, CHECK_SERVICE_LEVEL
 
@@ -67,6 +68,7 @@ def verify(report: JobReport) -> list[str]:
             issues.append(f"{r.product_id}: negative reorder point")
         if r.policy_kind == "(s, Q)" and (r.order_quantity is None or r.order_quantity <= 0):
             issues.append(f"{r.product_id}: (s,Q) without a positive order quantity")
+        issues.extend(_lot_issues(r))
         if r.policy_kind == "(R, S)" and (r.order_up_to is None or r.order_up_to <= 0):
             issues.append(f"{r.product_id}: (R,S) without a positive order-up-to level")
         # the lead-only reorder must stay below order-up-to for (R,S)
@@ -112,6 +114,43 @@ def verify(report: JobReport) -> list[str]:
     if report.budget is None and abs(sku_sum - report.requested_investment) > max(1.0, sku_sum * 1e-6):
         issues.append("requested investment != sum of SKU investments")
 
+    return issues
+
+
+def _lot_issues(r) -> list[str]:
+    """Supplier-terms invariants on one (s,Q) record that carries a rule.
+
+    The lot Kern prints must be one the supplier accepts (on the multiple, at or
+    above the MOQ), the unconstrained EOQ it was derived from must still be on
+    the record and positive, and the runner-up lot -- the second terminal -- must
+    be feasible too and never cheaper than the one chosen, or the choice was
+    wrong. A rule on an (R,S) line is carried, not applied, so nothing is
+    checked there beyond the record naming it.
+    """
+    rule = getattr(r, "lot_rule", "")
+    if not rule or r.policy_kind != "(s, Q)" or r.order_quantity is None:
+        return []
+    issues: list[str] = []
+    moq, multiple = getattr(r, "lot_moq", 0.0), getattr(r, "lot_multiple", 0.0)
+    terms = dict(minimum_order_quantity=moq, order_multiple=multiple)
+    if not is_feasible_lot(r.order_quantity, **terms):
+        issues.append(
+            f"{r.product_id}: order quantity {r.order_quantity:.4g} violates the supplier "
+            f"terms ({rule})")
+    q0 = getattr(r, "order_quantity_unconstrained", None)
+    if q0 is None or q0 <= 0:
+        issues.append(f"{r.product_id}: supplier terms applied but no unconstrained Q on record")
+    if getattr(r, "lot_penalty_usd", 0.0) < -TOL:
+        issues.append(f"{r.product_id}: negative lot penalty")
+    alt = getattr(r, "lot_alternative_qty", None)
+    if alt is not None:
+        if not is_feasible_lot(alt, **terms):
+            issues.append(
+                f"{r.product_id}: alternative lot {alt:.4g} violates the supplier terms ({rule})")
+        alt_penalty = getattr(r, "lot_alternative_penalty_usd", None)
+        if alt_penalty is None or alt_penalty + TOL < getattr(r, "lot_penalty_usd", 0.0):
+            issues.append(
+                f"{r.product_id}: the alternative lot is cheaper than the chosen one")
     return issues
 
 

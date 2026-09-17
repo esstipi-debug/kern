@@ -40,6 +40,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "transporte sale no_evaluable")
     p.add_argument("--max-transit-days", type=float, default=None, dest="max_transit_days",
                    help="ventana de entrega: descarta modos mas lentos")
+    p.add_argument("--moq", type=float, default=None,
+                   help="supplier minimum order quantity when the CSV has no moq column")
+    p.add_argument("--order-multiple", type=float, default=None, dest="order_multiple",
+                   help="supplier case-pack multiple when the CSV has no order_multiple column")
     p.add_argument("--client", default="Client")
     p.add_argument("--out", default="deliverables/cross_impact")
     p.add_argument("--strict-params", action="store_true", dest="strict_params",
@@ -59,6 +63,10 @@ def main(argv: list[str] | None = None) -> int:
         overrides["distance_km"] = args.distance_km
     if args.max_transit_days is not None:
         overrides["max_transit_days"] = args.max_transit_days
+    if args.moq is not None:
+        overrides["minimum_order_quantity"] = args.moq
+    if args.order_multiple is not None:
+        overrides["order_multiple"] = args.order_multiple
     result = Orchestrator().run(
         brief=f"impacto cruzado de la decision propuesta por {args.proposed_by}",
         data_path=args.data,

@@ -14,6 +14,12 @@ files belong to the inventory_optimization intake path, not here.
 OPTIONAL per SKU: weight_kg. With it AND a `distance_km` param, the transporte
 hat joins the council; without either half it stays off the table and every
 surface says so. Nothing here invents a unit weight to fill the gap.
+
+OPTIONAL per SKU: moq / order_multiple (the supplier's terms; run-wide fallbacks
+via the `minimum_order_quantity` / `order_multiple` params). With either, the
+grid holds only lots the supplier accepts and the baseline is the cheapest
+feasible lot around the EOQ (src.constraints.cheapest_feasible_lot) -- so no
+ideal, settlement or counterproposal can name a quantity the supplier refuses.
 """
 from __future__ import annotations
 
@@ -34,6 +40,7 @@ from nosilo_core.guided import (
     as_options,
     verify_guided,
 )
+from src.constraints import is_feasible_lot
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.eoq import PriceBreak
 from src.export import write_summary_csv
@@ -53,6 +60,8 @@ from src.hats import (
     HAT_PLANNER,
     HAT_TRANSPORTE,
     HATS,
+    MIN_FEASIBLE_Q_POINTS,
+    SL_GRID,
     FreightProfile,
     HatConfig,
     HatInputs,
@@ -76,6 +85,12 @@ _LEAD_COLS = ("lead_time_days", "lead_time", "leadtime", "lead")
 #: Unit weight is a PER-SKU fact, so it is read from the file like unit_cost --
 #: not from params, where one number would be imposed on every SKU in the export.
 _WEIGHT_COLS = ("weight_kg", "unit_weight_kg", "peso_kg", "weight", "peso")
+# Supplier terms. Same vocabulary jobs/intake.py's ALIASES maps for the
+# inventory path, minus the spellings `_pick`'s exact match cannot see anyway.
+_MOQ_COLS = ("moq", "minimum_order_quantity", "min_order_qty", "min_order_quantity",
+             "cantidad_minima", "pedido_minimo", "lote_minimo")
+_MULTIPLE_COLS = ("order_multiple", "case_pack", "pack_size", "units_per_case",
+                  "multiplo", "multiplo_de_pedido", "unidades_por_caja")
 
 _POLICY_NOTE = "los pesos son politica del operador, no consenso objetivo"
 
@@ -158,6 +173,23 @@ def _pick(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> st
     return next((c for c in candidates if c in df.columns), None)
 
 
+def _supplier_term(g: pd.DataFrame, column: str | None, fallback: object, name: str) -> float:
+    """One SKU's MOQ or multiple: the strictest positive value in its column,
+    else the run-wide param, else 0.0 (no rule). A negative param is a typo,
+    not a rule, and is refused rather than silently dropped."""
+    if column is not None:
+        values = pd.to_numeric(g[column], errors="coerce").dropna()
+        values = values[values > 0]
+        if len(values):
+            return float(values.max())
+    if fallback is None or fallback == "":
+        return 0.0
+    value = float(fallback)
+    if value < 0:
+        raise ValueError(f"{name} must be >= 0, got {value}")
+    return value
+
+
 def prepare(data_path: str, params: dict | None = None) -> dict:
     """Read the weekly demand CSV and build one HatInputs per SKU (sorted)."""
     params = params or {}
@@ -175,6 +207,8 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
     cost = _pick(df, params.get("cost_col"), _COST_COLS)
     lead = _pick(df, params.get("lead_col"), _LEAD_COLS)
     weight = _pick(df, params.get("weight_col"), _WEIGHT_COLS)
+    moq_col = _pick(df, params.get("moq_col"), _MOQ_COLS)
+    multiple_col = _pick(df, params.get("multiple_col"), _MULTIPLE_COLS)
     missing = [n for n, c in (("product_id", prod), ("quantity", qty),
                               ("unit_cost", cost), ("lead_time_days", lead)) if c is None]
     if missing:
@@ -226,6 +260,10 @@ def prepare(data_path: str, params: dict | None = None) -> dict:
             config=config,
             price_breaks=breaks,
             freight=freight,
+            minimum_order_quantity=_supplier_term(
+                g, moq_col, params.get("minimum_order_quantity"), "minimum_order_quantity"),
+            order_multiple=_supplier_term(
+                g, multiple_col, params.get("order_multiple"), "order_multiple"),
         ))
     if not inputs:
         detail = f" (skipped: {'; '.join(skipped)})" if skipped else ""
@@ -316,6 +354,27 @@ def _tension_options(inputs: HatInputs, tmap: TensionMap) -> list[ExecutionOptio
     return options
 
 
+def _lot_rule_note(inputs: HatInputs) -> str:
+    """One sentence, or "": the grid of THIS SKU holds only lots its supplier
+    accepts. Said in the summary because a reader comparing an ideal against
+    the textbook EOQ has to know why the numbers are round."""
+    if not inputs.lot_rule:
+        return ""
+    return (f" Terminos del proveedor de {inputs.sku} ({inputs.lot_rule}): todos los "
+            "candidatos son lotes que el proveedor acepta, y el baseline es el lote "
+            "factible mas barato alrededor del EOQ.")
+
+
+def _lot_rules_note(inputs) -> str:
+    ruled = [i for i in inputs if i.lot_rule]
+    if not ruled:
+        return ""
+    listed = ", ".join(f"{i.sku} ({i.lot_rule})" for i in ruled[:5])
+    more = f" y {len(ruled) - 5} mas" if len(ruled) > 5 else ""
+    return (f" Terminos del proveedor aplicados en {len(ruled)} SKU(s): {listed}{more} - "
+            "Q* es un lote que el proveedor acepta.")
+
+
 def _clash_line(c) -> str:
     return (f"{c.hat_a} vs {c.hat_b}: dQ {c.delta_q:+,.0f} u, "
             f"{c.delta_capital_usd:+,.0f} usd inventario prom., fill {c.delta_fill_rate:+.1%}")
@@ -341,6 +400,7 @@ def run_tension(payload: dict) -> TensionReport:
         + (f" Area(s) fuera de la mesa en al menos un SKU: {', '.join(off_table)}."
            if off_table else "")
         + (" Flete valorizado con el tarifario ilustrativo (assumed)." if rates_assumed else "")
+        + _lot_rule_note(flag_inputs)
     )
     residuals = [Residual(
         description="La opcion la elige un humano; este mapa solo hace visible el conflicto.",
@@ -515,6 +575,7 @@ def run_settlement(payload: dict) -> SettlementReport:
         f"{total:+,.0f} usd/anio (pesos: {_weights_str(weights)} - {_POLICY_NOTE})."
         + (" Tarifario (assumed)." if assumed else "")
         + (f" Area(s) fuera de la mesa: {', '.join(off_table)}." if off_table else "")
+        + _lot_rules_note(inputs)
     )
     outcome = as_handoff(summary, [packet], confidence=0.8, residuals=residuals)
     short = (f"Reconciled replenishment plan over {len(settlements)} SKU(s); "
@@ -560,7 +621,22 @@ def verify_tension(report: TensionReport) -> list[str]:
             issues.append(f"{m.sku}: a hat is both scored and excluded")
         if not m.ideals:
             issues.append(f"{m.sku}: no hat could be scored at all")
-        if m.candidates_evaluated < 125:
+        if m.lot_rule:
+            # Under supplier terms the Q axis is the legal lots in the span, which
+            # can be fewer than 25 -- but never fewer than MIN_FEASIBLE_Q_POINTS,
+            # and every ideal has to be one of them.
+            floor = len(SL_GRID) * MIN_FEASIBLE_Q_POINTS
+            if m.candidates_evaluated < floor:
+                issues.append(f"{m.sku}: only {m.candidates_evaluated} candidates evaluated "
+                              f"under supplier terms ({m.lot_rule}); floor is {floor}")
+            for e in m.ideals.values():
+                if not is_feasible_lot(e.candidate.order_quantity,
+                                       minimum_order_quantity=m.minimum_order_quantity,
+                                       order_multiple=m.order_multiple):
+                    issues.append(f"{m.sku}: {e.hat_key}'s ideal Q="
+                                  f"{e.candidate.order_quantity:g} violates the supplier "
+                                  f"terms ({m.lot_rule})")
+        elif m.candidates_evaluated < 125:
             issues.append(f"{m.sku}: only {m.candidates_evaluated} candidates evaluated")
         expected_clashes = len(m.ideals) * (len(m.ideals) - 1) // 2
         if len(m.clashes) != expected_clashes:
@@ -612,6 +688,12 @@ def verify_settlement(report: SettlementReport) -> list[str]:
             issues.append(f"{s.sku}: non-positive judge cost")
         if abs(s.value_vs_baseline_usd - (s.judge_cost_baseline - s.judge_cost_chosen)) > 1e-6:
             issues.append(f"{s.sku}: value_vs_baseline_usd inconsistent")
+        if s.lot_rule and not is_feasible_lot(
+            s.chosen.order_quantity, minimum_order_quantity=s.minimum_order_quantity,
+            order_multiple=s.order_multiple,
+        ):
+            issues.append(f"{s.sku}: settled Q={s.chosen.order_quantity:g} violates the "
+                          f"supplier terms ({s.lot_rule})")
     return issues
 
 
@@ -673,6 +755,23 @@ def _assumed_finding() -> Finding:
         impact="pedir el tarifario real del proveedor antes de negociar cantidades")
 
 
+def _lot_rule_findings(maps_or_settlements) -> list[Finding]:
+    """One finding when any SKU's Q axis was laid over supplier lots: the reader
+    has to know the ideals are round because the supplier sells that way, not
+    because the model is coarse."""
+    ruled = [m for m in maps_or_settlements if m.lot_rule]
+    if not ruled:
+        return []
+    listed = ", ".join(f"{m.sku} ({m.lot_rule})" for m in ruled[:5])
+    more = f" y {len(ruled) - 5} mas" if len(ruled) > 5 else ""
+    return [Finding(
+        "Terminos del proveedor",
+        f"{len(ruled)} SKU(s) con MOQ o multiplo de caja: {listed}{more}. Cada candidato "
+        "evaluado es un lote que el proveedor acepta; el baseline es el lote factible mas "
+        "barato alrededor del EOQ.",
+        impact="ninguna opcion ni acuerdo nombra una cantidad que el proveedor rechace")]
+
+
 def _off_table_findings(maps_or_settlements, rates_assumed: bool) -> list[Finding]:
     """Findings, not footnotes, for the areas nobody could score. A deck that
     presents a four-way agreement without naming the fifth area lets the reader
@@ -718,6 +817,7 @@ def build_tension_deck(report: TensionReport, *, client: str = "Client", prepare
     if report.price_breaks_assumed:
         findings.append(_assumed_finding())
     findings.extend(_off_table_findings(report.maps, report.freight_rates_assumed))
+    findings.extend(_lot_rule_findings(report.maps))
     kpis = (
         Kpi("SKUs", f"{report.n_skus}", rationale="SKUs con tension mapeada"),
         Kpi("Top clash", f"{flag.sku}: {abs(top.delta_capital_usd):,.0f} usd",
@@ -772,6 +872,7 @@ def build_settlement_deck(report: SettlementReport, *, client: str = "Client", p
     if report.price_breaks_assumed:
         findings.append(_assumed_finding())
     findings.extend(_off_table_findings(report.settlements, report.freight_rates_assumed))
+    findings.extend(_lot_rule_findings(report.settlements))
     kpis = (
         Kpi("SKUs", f"{report.n_skus}", rationale="SKUs con plan reconciliado"),
         Kpi("Valor vs baseline", f"{report.total_value_usd:+,.0f} usd/anio", target="> 0",

@@ -127,7 +127,7 @@ _SAMPLE = {
     "goodwill": "4.0", "lead_time_periods": "3", "holding_cost": "1.5",
     "order_cost": "75.0", "backorder_cost": "9.0", "review_period": "4",
     "safety_stock": "25", "lot_size": "50", "adu": "12.0", "dlt": "10",
-    "ltf": "0.5", "vf": "0.5", "moq": "40", "order_cycle_days": "7",
+    "ltf": "0.5", "vf": "0.5", "moq": "40", "order_multiple": "30", "order_cycle_days": "7",
     "on_order": "30", "qualified_demand": "15", "supplier": "PROV-1",
     "days_to_expiry": "45",
     # -- batch 3: warehouse, count and audit --------------------------------

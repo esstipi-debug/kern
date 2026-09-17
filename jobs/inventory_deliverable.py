@@ -167,6 +167,51 @@ def _service_findings(service: of.RealizedService, broken: tuple[str, ...]) -> l
     )]
 
 
+def _penalty(report: JobReport, value: float) -> str:
+    """`amount()` with cents: a lot penalty of $0.17/yr printed as "$0" reads as
+    free, and a free rounding is not a renegotiation case."""
+    return f"{value:,.2f} u." if cost_is_synthesized(report) else f"${value:,.2f}"
+
+
+def _costliest_lots(report: JobReport, n: int) -> str:
+    """'SKU-A +$12/yr (Q 40 -> 60, alt 30 at +$15/yr); ...' for the n costliest snaps."""
+    moved = [
+        r for r in report.recommendations
+        if r.lot_rule and r.order_quantity_unconstrained is not None
+        and r.order_quantity is not None and r.order_quantity != r.order_quantity_unconstrained
+    ]
+    moved.sort(key=lambda r: r.lot_penalty_usd, reverse=True)
+    parts = []
+    for r in moved[:n]:
+        text = (f"{r.product_id} +{_penalty(report, r.lot_penalty_usd)}/yr "
+                f"(Q {r.order_quantity_unconstrained:,.0f} -> {r.order_quantity:,.0f}")
+        if r.lot_alternative_qty is not None and r.lot_alternative_penalty_usd is not None:
+            text += (f", alt {r.lot_alternative_qty:,.0f} at "
+                     f"+{_penalty(report, r.lot_alternative_penalty_usd)}/yr")
+        parts.append(text + ")")
+    return "; ".join(parts)
+
+
+def _supplier_terms_finding(report: JobReport) -> Finding:
+    """The MOQ / case-pack rule, stated as a finding with its price tag. Every
+    quantity in the plan is a lot the supplier accepts; what honouring the terms
+    costs, and the second lot the buyer could take instead, are on each row."""
+    detail = (
+        f"{report.n_lot_constrained} (s,Q) SKU(s) carry a minimum order quantity or a "
+        f"case-pack multiple on file; {report.n_lot_snapped} had their EOQ moved to the "
+        "cheapest lot the supplier accepts, with the other feasible lot kept as an "
+        f"alternative. Honouring the terms costs {_penalty(report, report.lot_penalty_total_usd)}"
+        "/yr in ordering + holding cost over the unconstrained EOQ."
+    )
+    if report.n_lot_snapped:
+        detail += f" Costliest: {_costliest_lots(report, 3)}."
+    return Finding(
+        "Order quantities honour the supplier's terms",
+        detail,
+        impact="every PO is one the supplier will accept; the penalty is the renegotiation case",
+    )
+
+
 def build(
     report: JobReport,
     *,
@@ -202,6 +247,8 @@ def build(
             "Sporadic demand; placed on periodic (R, S) review instead of (s, Q).",
             impact="avoids over-stocking slow movers",
         ))
+    if report.n_lot_constrained:
+        findings.append(_supplier_terms_finding(report))
     if report.budget is not None and report.safety_stock_scale < 1.0:
         findings.append(Finding(
             "Budget-constrained safety stock",
@@ -247,6 +294,17 @@ def build(
         Kpi("Intermittent SKUs", str(report.n_intermittent),
             rationale="Slow / sporadic movers managed on periodic review"),
     )
+    if report.n_lot_constrained:
+        kpis += (
+            Kpi("SKUs on supplier terms (MOQ / case pack)",
+                f"{report.n_lot_constrained} ({report.n_lot_snapped} moved off the EOQ)",
+                rationale="Every (s,Q) quantity is a lot the supplier accepts; the runner-up "
+                          "lot and both penalties are on each row of the workbook"),
+            Kpi("Cost of honouring supplier terms",
+                _penalty(report, report.lot_penalty_total_usd) + "/yr", target="as low as the terms allow",
+                rationale="Ordering + holding cost of the chosen lots minus the unconstrained "
+                          "EOQ's - what a renegotiation of the terms could recover"),
+        )
 
     data_sources = (
         DataSource("Demand history & unit cost", data_source, "per run"),
@@ -281,6 +339,18 @@ def build(
     if report.n_at_risk:
         recs.append("Review the high-bias SKUs' forecasts before issuing their POs.")
     recs.append("Issue replenishment POs to the computed reorder points and order quantities.")
+    if report.n_lot_snapped:
+        worst = _costliest_lots(report, 3)
+        recs.append(
+            "Take the lot penalties to the supplier where rounding costs most "
+            f"({worst}), or order the alternative lot listed on the row."
+        )
+    if report.n_lot_rule_unapplied:
+        recs.append(
+            f"{report.n_lot_rule_unapplied} periodic-review (R,S) SKU(s) carry supplier terms "
+            "this plan does not apply: round each order-up-to quantity to the MOQ / case pack "
+            "by hand when the PO is cut."
+        )
     if report.budget is not None and not report.feasible:
         recs.append(
             f"Budget ${report.budget:,.0f} is below the cycle-stock floor "

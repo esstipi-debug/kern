@@ -22,7 +22,15 @@ from src import excel_hygiene
 CANONICAL_REQUIRED = ("date", "product_id", "quantity")
 # ``revenue`` is detected but never emitted: it exists only to recover a real
 # unit cost (revenue / quantity) from files that carry money but no cost column.
-CANONICAL_OPTIONAL = ("unit_cost", "lead_time_days", "lead_time_std", "revenue")
+# ``moq`` and ``order_multiple`` are the supplier's terms (minimum order quantity,
+# case-pack multiple). Detected and emitted ONLY when the file carries them: a
+# file without them keeps the exact six-column frame it always produced, and a
+# SKU without a rule is a SKU without a rule, not one with an invented zero.
+CANONICAL_OPTIONAL = (
+    "unit_cost", "lead_time_days", "lead_time_std", "revenue", "moq", "order_multiple",
+)
+#: The two supplier-terms columns above, in the order they are appended.
+SUPPLIER_TERMS_COLUMNS = ("moq", "order_multiple")
 
 # Cuatro alias (`dia`, `producto`, `demanda`, `plazo_de_entrega`) vienen de
 # jobs/column_mapping.py, un segundo normalizador muerto -- sin un solo
@@ -128,7 +136,17 @@ ALIASES: dict[str, list[str]] = {
     "dlt": ["dlt", "decoupled_lead_time"],
     "ltf": ["ltf", "lead_time_factor"],
     "vf": ["vf", "variability_factor"],
-    "moq": ["moq", "min_order_qty"],
+    # Terminos del proveedor. `moq` ya existia para intake_scan; ahora tambien lo
+    # emite el normalizador de demanda, junto con `order_multiple` (multiplo de
+    # caja / case pack). Los alias en espanol son los que exporta un maestro de
+    # proveedores de LatAm; "lote_minimo" es un minimo de pedido, no un lot_size.
+    "moq": ["moq", "min_order_qty", "minimum_order_quantity", "min_order_quantity",
+            "minimum_order_qty", "moq_units", "cantidad_minima", "cantidad_minima_pedido",
+            "pedido_minimo", "lote_minimo", "minimo_de_compra"],
+    "order_multiple": ["order_multiple", "order_multiples", "case_pack", "case_pack_qty",
+                       "pack_size", "units_per_case", "multiplo", "multiplo_de_pedido",
+                       "multiplo_pedido", "multiplo_de_caja", "unidades_por_caja",
+                       "lote_multiplo"],
     "order_cycle_days": ["order_cycle_days", "order_cycle", "order_cycle_period"],
     "on_order": ["on_order", "open_po", "open_orders"],
     "qualified_demand": ["qualified_demand", "qualified", "open_demand", "sales_orders"],
@@ -806,6 +824,9 @@ def _normalize_core(
         out["lead_time_days"] = pd.to_numeric(df[m["lead_time_days"]], errors="coerce")
     if "lead_time_std" in m:
         out["lead_time_std"] = pd.to_numeric(df[m["lead_time_std"]], errors="coerce")
+    for col in SUPPLIER_TERMS_COLUMNS:
+        if col in m:
+            out[col] = pd.to_numeric(df[m[col]], errors="coerce")
 
     n_raw = len(out)
     after_date = out.dropna(subset=["date"])
@@ -831,6 +852,11 @@ def _normalize_core(
         agg["lead_time_days"] = "median"
     if "lead_time_std" in out.columns:
         agg["lead_time_std"] = "median"
+    for col in SUPPLIER_TERMS_COLUMNS:
+        if col in out.columns:
+            # The strictest term seen wins: a SKU whose rows disagree on the MOQ
+            # has to be ordered to the largest one or some rows' supplier says no.
+            agg[col] = "max"
 
     grouped = out.groupby(["product_id", "bucket"], as_index=False).agg(agg).rename(columns={"bucket": "date"})
     synthesized: dict[str, int] = {}
@@ -851,6 +877,12 @@ def _normalize_core(
     # 0.0 = "no dispersion known", which is what the engine assumed before this
     # column existed — so a file without it behaves exactly as it did.
     _fill("lead_time_std", 0.0)
+    # 0.0 = "no rule declared for this SKU". Only filled when the column exists:
+    # `_fill` on an absent column would ADD it and count every row as invented.
+    for col in SUPPLIER_TERMS_COLUMNS:
+        if col in grouped.columns:
+            _fill(col, 0.0)
+            grouped[col] = grouped[col].clip(lower=0.0)
 
     quality = replace(
         quality,
@@ -859,7 +891,9 @@ def _normalize_core(
     )
 
     grouped = grouped.sort_values(["product_id", "date"]).reset_index(drop=True)
-    return grouped[["date", "product_id", "quantity", "unit_cost", "lead_time_days", "lead_time_std"]], quality
+    columns = ["date", "product_id", "quantity", "unit_cost", "lead_time_days", "lead_time_std"]
+    columns += [c for c in SUPPLIER_TERMS_COLUMNS if c in grouped.columns]
+    return grouped[columns], quality
 
 
 def normalize(

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from src.constraints import cheapest_feasible_lot, feasible_lots, feasible_neighbours, lot_rule
 from src.eoq import PriceBreak, compute_eoq, compute_eoq_volume_discount
 from src.fill_rate import fill_rate_from_safety_stock, normal_loss_standard
 from src.financial_kpis import days_inventory_outstanding
@@ -51,6 +52,14 @@ SL_GRID: tuple[float, ...] = (0.90, 0.925, 0.95, 0.975, 0.99)
 N_Q_POINTS = 25
 Q_SPAN_LO = 0.5     # x min(Q_eoq, Q_disc)
 Q_SPAN_HI = 1.25    # x max(Q_eoq, Q_disc)
+#: Under supplier terms (MOQ / case-pack multiple) the Q axis is laid over lots
+#: the supplier ACCEPTS instead of 25 linear points -- see `candidate_grid`. A
+#: coarse multiple can leave the span with two or three legal lots, so the grid
+#: reaches upward until it holds at least this many...
+MIN_FEASIBLE_Q_POINTS = 5
+#: ...and a fine multiple (sell by 1) can put thousands in it, so it is thinned
+#: evenly to at most this many, ends kept.
+MAX_FEASIBLE_Q_POINTS = 4 * N_Q_POINTS
 
 # D8: synthetic default price breaks for the testbed (labeled "(assumed)").
 ASSUMED_BREAK_TIERS: tuple[tuple[float, float], ...] = ((2.0, 0.98), (4.0, 0.96))
@@ -198,10 +207,18 @@ class HatInputs:
     price_breaks_assumed: bool
     config: HatConfig
     freight: FreightProfile | None = None
+    #: Supplier terms, in units; 0.0 = none declared. When either binds, the
+    #: grid holds only lots the supplier accepts and the baseline snaps to the
+    #: cheapest feasible lot (src.constraints.cheapest_feasible_lot) -- exactly
+    #: what jobs/inventory_optimization.py ships, so the equivalence holds.
+    minimum_order_quantity: float = 0.0
+    order_multiple: float = 0.0
 
     def __post_init__(self) -> None:
         if self.annual_demand <= 0:
             raise ValueError(f"{self.sku}: annual_demand must be > 0")
+        if self.minimum_order_quantity < 0 or self.order_multiple < 0:
+            raise ValueError(f"{self.sku}: supplier terms must be >= 0")
         if self.mean_weekly <= 0:
             raise ValueError(f"{self.sku}: mean_weekly must be > 0")
         if self.std_weekly < 0:
@@ -210,6 +227,17 @@ class HatInputs:
             raise ValueError(f"{self.sku}: lead_time_weeks must be > 0")
         if self.unit_cost <= 0:
             raise ValueError(f"{self.sku}: unit_cost must be > 0")
+
+    @property
+    def lot_rule(self) -> str:
+        """"" when no supplier term binds, else e.g. "moq 60, multiple 30"."""
+        return lot_rule(self.minimum_order_quantity, self.order_multiple)
+
+    @property
+    def lot_terms(self) -> dict[str, float]:
+        """The two terms as the keyword arguments src.constraints takes."""
+        return {"minimum_order_quantity": self.minimum_order_quantity,
+                "order_multiple": self.order_multiple}
 
 
 @dataclass(frozen=True)
@@ -339,9 +367,12 @@ def build_inputs(
     config: HatConfig,
     price_breaks: tuple[PriceBreak, ...] | None = None,
     freight: FreightProfile | None = None,
+    minimum_order_quantity: float = 0.0,
+    order_multiple: float = 0.0,
 ) -> HatInputs:
     """Assemble one SKU's inputs; `price_breaks=None` -> D8 synthetic default.
-    `freight=None` leaves `transporte` off the table (no synthetic default)."""
+    `freight=None` leaves `transporte` off the table (no synthetic default).
+    `minimum_order_quantity` / `order_multiple` are the supplier's terms; 0 = none."""
     assumed = price_breaks is None
     breaks = (
         default_price_breaks(annual_demand, unit_cost, config)
@@ -352,6 +383,7 @@ def build_inputs(
         std_weekly=std_weekly, lead_time_weeks=lead_time_weeks, unit_cost=unit_cost,
         price_breaks=breaks, price_breaks_assumed=assumed, config=config,
         freight=freight,
+        minimum_order_quantity=minimum_order_quantity, order_multiple=order_multiple,
     )
 
 
@@ -402,18 +434,64 @@ def anchor_quantities(inputs: HatInputs) -> tuple[float, float]:
 def candidate_grid(inputs: HatInputs) -> tuple[Candidate, ...]:
     """SL_GRID x 25 linear Q points on [0.5*min(anchors), 1.25*max(anchors)],
     plus the mandatory candidates q_eoq, q_disc and the baseline Q (== q_eoq,
-    see baseline_plan) deduped in. Fixed order: SL asc outer, Q asc inner."""
+    see baseline_plan) deduped in. Fixed order: SL asc outer, Q asc inner.
+
+    Under supplier terms the Q axis is `_feasible_q_points` instead: every
+    candidate is a lot the supplier accepts, so no hat's ideal and no settlement
+    can land on a quantity that cannot be ordered -- a council that agrees on 40
+    when the supplier sells by 30 has agreed on nothing.
+    """
     q_eoq, q_disc = anchor_quantities(inputs)
     lo = Q_SPAN_LO * min(q_eoq, q_disc)
     hi = Q_SPAN_HI * max(q_eoq, q_disc)
-    qs = [lo + i * (hi - lo) / (N_Q_POINTS - 1) for i in range(N_Q_POINTS)]
-    for mandatory in (q_eoq, q_disc):        # baseline Q == q_eoq (dedupe handles it)
-        if not any(abs(q - mandatory) < 1e-12 for q in qs):
-            qs.append(mandatory)
-    qs.sort()
+    if inputs.lot_rule:
+        qs = _feasible_q_points(inputs, lo, hi, (q_eoq, q_disc))
+    else:
+        qs = [lo + i * (hi - lo) / (N_Q_POINTS - 1) for i in range(N_Q_POINTS)]
+        for mandatory in (q_eoq, q_disc):        # baseline Q == q_eoq (dedupe handles it)
+            if not any(abs(q - mandatory) < 1e-12 for q in qs):
+                qs.append(mandatory)
+        qs.sort()
     return tuple(
         Candidate(order_quantity=q, service_level=sl) for sl in SL_GRID for q in qs
     )
+
+
+def _feasible_q_points(
+    inputs: HatInputs, lo: float, hi: float, anchors: tuple[float, ...],
+) -> list[float]:
+    """The Q axis over lots the supplier accepts, ascending and deduped.
+
+    Nothing below the MOQ is a candidate, so the span starts there when the MOQ
+    swallows its lower end, and keeps the unconstrained span's shape (hi/lo =
+    Q_SPAN_HI/Q_SPAN_LO) above it. With a case-pack multiple the axis is every
+    legal lot in the span (`feasible_lots`), widened upward to at least
+    MIN_FEASIBLE_Q_POINTS lots and thinned to at most MAX_FEASIBLE_Q_POINTS;
+    with only an MOQ the legal set is continuous above it and the axis stays
+    the usual 25 linear points. Each anchor joins as its feasible neighbours --
+    the lot above it and, when one exists, the lot below -- which is where
+    `baseline_plan` lands, so the grid always contains the baseline.
+    """
+    terms = inputs.lot_terms
+    lo = max(lo, inputs.minimum_order_quantity)
+    hi = max(hi, lo * Q_SPAN_HI / Q_SPAN_LO)
+    if inputs.order_multiple > 0:
+        qs = feasible_lots(lo, hi, **terms)
+        while len(qs) < MIN_FEASIBLE_Q_POINTS:
+            hi += inputs.order_multiple * (MIN_FEASIBLE_Q_POINTS - len(qs))
+            qs = feasible_lots(lo, hi, **terms)
+        if len(qs) > MAX_FEASIBLE_Q_POINTS:
+            n = len(qs)
+            qs = [qs[round(i * (n - 1) / (MAX_FEASIBLE_Q_POINTS - 1))]
+                  for i in range(MAX_FEASIBLE_Q_POINTS)]
+    else:
+        qs = [lo + i * (hi - lo) / (N_Q_POINTS - 1) for i in range(N_Q_POINTS)]
+    for anchor in anchors:
+        for q in feasible_neighbours(anchor, **terms):
+            if q is not None and not any(abs(x - q) <= 1e-9 * max(1.0, q) for x in qs):
+                qs.append(q)
+    qs.sort()
+    return qs
 
 
 # -- D3: shortage economics ------------------------------------------------------
@@ -533,6 +611,14 @@ def baseline_plan(inputs: HatInputs) -> Candidate:
     q = compute_eoq(
         inputs.annual_demand, cfg.holding_rate * inputs.unit_cost, cfg.order_cost,
     ).order_quantity
+    if inputs.lot_rule:
+        # Same call, same cost curve, same tie-break as the inventory job: the
+        # cheapest lot the supplier accepts around the EOQ.
+        q = cheapest_feasible_lot(
+            q, annual_demand=inputs.annual_demand,
+            holding_cost_per_unit=cfg.holding_rate * inputs.unit_cost,
+            fixed_order_cost=cfg.order_cost, **inputs.lot_terms,
+        ).chosen.quantity
     return Candidate(order_quantity=q, service_level=cfg.sl_target)
 
 

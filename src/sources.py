@@ -176,6 +176,8 @@ def _metadata_from_frame(
     else:
         lt_std_periods = 0.0
 
+    # Supplier terms. The strictest value on file wins (same rule intake uses when
+    # it aggregates); non-positive cells mean "no rule", never a rule of zero.
     return ProductMetadata(
         product_id=product_id,
         mean_demand_per_period=mu,
@@ -184,7 +186,17 @@ def _metadata_from_frame(
         mean_unit_cost=unit_cost,
         lead_time_periods=lt_periods,
         lead_time_std_periods=lt_std_periods,
+        minimum_order_quantity=_positive_max(sku, "moq"),
+        order_multiple=_positive_max(sku, "order_multiple"),
     )
+
+
+def _positive_max(sku: pd.DataFrame, column: str) -> float:
+    if column not in sku.columns:
+        return 0.0
+    values = pd.to_numeric(sku[column], errors="coerce").dropna()
+    values = values[values > 0]
+    return float(values.max()) if len(values) else 0.0
 
 
 class _FrameDemandSource:

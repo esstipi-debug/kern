@@ -43,6 +43,26 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-09-17 — Terminos del proveedor (MOQ / multiplo): dos terminales, nunca un punto muerto (PR #369)
+
+Pregunta que lo disparo: "Kern recomienda 40 y el proveedor vende de a 30, 60, 90".
+Antes el unico camino era `apply_order_rules` (redondeo hacia arriba, sin decir que
+30 existia ni que costaba) y solo lo usaba `src/sop_engine/purchase_plan.py`; el job
+de inventario, los sombreros y `cross_impact` ignoraban los terminos.
+
+- **Motor**: `src/constraints.py::cheapest_feasible_lot` (+ `feasible_neighbours`,
+  `feasible_lots`, `is_feasible_lot`, `lot_rule`). Elige entre los lotes legales
+  vecinos por costo EOQ y devuelve el otro como alternativa con penalidad.
+- **Inventario**: intake emite `moq` / `order_multiple` solo si el archivo los trae
+  (alias es/en); el job mueve Q al lote elegido y lleva la alternativa; QA, CSV,
+  deck, md y OPTIONS ("Renegotiate supplier terms") lo muestran. `(R,S)` con
+  terminos = residual.
+- **Sombreros**: grilla sobre lotes legales, baseline = mismo lote que el job,
+  gates de factibilidad en tension y settlement. `cross_impact` nombra los vecinos
+  legales de una propuesta infactible. CLI: `--moq` / `--order-multiple`.
+- **Fuera**: `product.packaging` en Odoo (solo se lee `min_qty`); pendiente con
+  una instancia viva. Tests: `tests/test_lot_constraints.py`.
+
 ## 2026-09-08 — Preventa / busqueda de productos Mercado Libre (catalogo oficial, solo lectura)
 
 **Leer esto primero si se retoma el hilo ML.** No es reposicion de canal

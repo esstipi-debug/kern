@@ -176,6 +176,9 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         # "no medido"; con ella sale medido contra una vara dicha, y el entregable
         # lo declara. Nunca pisa una fecha del sistema.
         delivery_promise_days=params.get("delivery_promise_days"),
+        # Per-SKU supplier terms typed into the request win over the file's columns.
+        minimum_order_quantities=params.get("minimum_order_quantities"),
+        order_multiples=params.get("order_multiples"),
     )
     summary = (
         f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
@@ -207,7 +210,12 @@ def inventory_tool() -> Tool:
         # there -- detected but never emitted, it exists only to recover a real unit
         # cost from a file that carries money but no cost column.
         required_columns=("date", "product_id", "quantity"),
-        optional_columns=("unit_cost", "lead_time_days", "lead_time_std", "revenue"),
+        # `moq` / `order_multiple` are the supplier's terms: with them every (s,Q)
+        # quantity is a lot the supplier accepts, with the runner-up lot on the
+        # record (jobs/inventory_optimization.py, src/constraints.py).
+        optional_columns=(
+            "unit_cost", "lead_time_days", "lead_time_std", "revenue", "moq", "order_multiple",
+        ),
         options=tool_options.inventory_options,
         prepare=_inventory_prepare,
         run=_inventory_run,
@@ -1317,7 +1325,9 @@ def hat_tension_tool() -> Tool:
         # weight_kg is the per-SKU half of the transporte hat; the lane half
         # (distance_km) is a param, not a column. Optional on purpose: without it
         # the council runs with four areas and declares the fifth as unmeasured.
-        optional_columns=("weight_kg",),
+        # moq / order_multiple are the supplier's terms: with them the grid holds
+        # only lots the supplier accepts (jobs/hats_job.py module docstring).
+        optional_columns=("weight_kg", "moq", "order_multiple"),
         prepare=_hats_prepare,
         run=_hat_tension_run,
         qa=lambda report: hats_job.verify_tension(report),
@@ -1347,6 +1357,8 @@ def hat_settlement_tool() -> Tool:
         requires_data=True,
         # Same contract as hat_tension by construction: one shared `_hats_prepare`.
         required_columns=("product_id", "quantity", "unit_cost", "lead_time_days"),
+        # Same file, same prepare, same optional halves as hat_tension above.
+        optional_columns=("weight_kg", "moq", "order_multiple"),
         prepare=_hats_prepare,
         run=_hat_settlement_run,
         qa=lambda report: hats_job.verify_settlement(report),

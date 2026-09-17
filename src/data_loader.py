@@ -18,6 +18,11 @@ class ProductMetadata:
     mean_unit_cost: float
     lead_time_periods: float
     lead_time_std_periods: float = 0.0
+    # Supplier terms, in units. 0.0 = none declared (the file had no such column,
+    # or the SKU's cells were blank). Read by jobs/inventory_optimization.py's
+    # lot choice (src.constraints.cheapest_feasible_lot).
+    minimum_order_quantity: float = 0.0
+    order_multiple: float = 0.0
 
 
 def load_demand_frame(path: str | Path) -> pd.DataFrame:

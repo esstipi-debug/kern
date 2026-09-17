@@ -7,7 +7,7 @@ returns a structured report ready to turn into client deliverables.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pandas as pd
@@ -17,7 +17,7 @@ from jobs.intake import IntakeQuality
 from src import order_fulfillment
 from src.classification import classify_portfolio
 from src.classification import service_levels as class_service_levels
-from src.constraints import InventoryItem, allocate_under_budget
+from src.constraints import InventoryItem, allocate_under_budget, cheapest_feasible_lot, lot_rule
 from src.fill_rate import fill_rate_from_safety_stock
 from src.forecasting import (
     DEFAULT_OOS_ORIGINS,
@@ -85,6 +85,24 @@ class SkuRecommendation:
     # reader nor a column mapping can pick it up as realized service. None when the
     # policy has no cycle demand or no dispersion to imply a beta from.
     model_implied_beta: float | None = None
+    # Supplier terms and what honouring them did to Q. `order_quantity` above is
+    # the lot the supplier will ACCEPT; `order_quantity_unconstrained` is what the
+    # EOQ asked for before the MOQ / case-pack rule (src.constraints.
+    # cheapest_feasible_lot) moved it. The rule is applied to (s,Q) only: an (R,S)
+    # policy orders a different quantity every review, so its terms are carried
+    # here (`lot_rule`, `lot_moq`, `lot_multiple`) for the buyer to apply per
+    # order, and the report counts those SKUs so the options can say so.
+    #
+    # `lot_alternative_qty` is the OTHER feasible neighbour with its own penalty:
+    # the second terminal. Kern says 40 and the supplier sells by 30 -> the record
+    # carries 60 (chosen) AND 30 (alternative), each priced, never just "60".
+    order_quantity_unconstrained: float | None = None
+    lot_rule: str = ""
+    lot_moq: float = 0.0
+    lot_multiple: float = 0.0
+    lot_penalty_usd: float = 0.0
+    lot_alternative_qty: float | None = None
+    lot_alternative_penalty_usd: float | None = None
 
 
 @dataclass(frozen=True)
@@ -131,6 +149,17 @@ class JobReport:
     # scm_agent/tool_options.py can state it as a residual instead of letting a
     # portfolio of refusals come back as a cheerful, cheap-looking plan.
     n_insufficient_history: int = 0
+    # Supplier terms. `n_lot_constrained` counts (s,Q) SKUs whose file declared an
+    # MOQ or a case-pack multiple (the rule was applied, whether or not it moved
+    # Q); `n_lot_snapped` those it actually moved; `lot_penalty_total_usd` what
+    # honouring the terms costs per year against the unconstrained EOQ, summed;
+    # `n_lot_rule_unapplied` the (R,S) SKUs that carry terms this job cannot
+    # apply (see SkuRecommendation.lot_rule). scm_agent/tool_options.py turns the
+    # first three into a renegotiation OPTION and the last into a residual.
+    n_lot_constrained: int = 0
+    n_lot_snapped: int = 0
+    lot_penalty_total_usd: float = 0.0
+    n_lot_rule_unapplied: int = 0
 
 
 def _observed_skewness(series) -> float | None:
@@ -247,6 +276,8 @@ def run(
     min_periods: int = MIN_PERIODS_FOR_POLICY,
     period_freq: str | None = None,
     oos_origins: int = DEFAULT_OOS_ORIGINS,
+    minimum_order_quantities: dict[str, float] | None = None,
+    order_multiples: dict[str, float] | None = None,
 ) -> JobReport:
     """Run the inventory-optimization analysis over canonical demand.
 
@@ -271,6 +302,12 @@ def run(
     it is still reported, as a client-reported measurement, instead of being
     consumed by the tuning loop and discarded. A SKU with none of the three comes
     back 'not_measured' rather than as a service number nobody observed.
+
+    ``minimum_order_quantities`` / ``order_multiples`` override, per SKU, the
+    supplier terms the canonical frame carries in its ``moq`` / ``order_multiple``
+    columns (jobs/intake.py emits them only when the file had them). An (s,Q)
+    quantity is then the cheapest lot the supplier accepts, with the runner-up
+    kept on the record -- see ``SkuRecommendation.lot_rule``.
     """
     if not 0 < service_level < 1:
         raise ValueError("service_level must be in (0, 1)")
@@ -434,6 +471,39 @@ def run(
             )
             kind, order_quantity = "(s, Q)", pol.order_quantity
 
+        # Supplier terms. Both come from the file (src/sources.py reads intake's
+        # moq / order_multiple columns) unless the caller overrode them per SKU.
+        moq = float((minimum_order_quantities or {}).get(pid, meta.minimum_order_quantity))
+        multiple = float((order_multiples or {}).get(pid, meta.order_multiple))
+        rule = lot_rule(moq, multiple)
+        q_unconstrained: float | None = None
+        penalty, alt_qty, alt_penalty = 0.0, None, None
+        if kind == "(s, Q)" and rule:
+            # The cheapest lot the supplier accepts, valued on the same cost curve
+            # the EOQ came from, with the other neighbour kept as the second
+            # terminal. Q, cycle stock, the implied beta and the budget item all
+            # move together to the chosen lot: a plan that rounds Q but keeps the
+            # cycle investment of the unrounded one understates what it costs.
+            decision = cheapest_feasible_lot(
+                pol.order_quantity,
+                annual_demand=inputs["annual_demand"],
+                holding_cost_per_unit=holding_cost,
+                fixed_order_cost=order_cost,
+                minimum_order_quantity=moq,
+                order_multiple=multiple,
+            )
+            q_unconstrained = pol.order_quantity
+            order_quantity = decision.chosen.quantity
+            penalty = decision.chosen.penalty_usd
+            if decision.alternative is not None:
+                alt_qty = decision.alternative.quantity
+                alt_penalty = decision.alternative.penalty_usd
+            if decision.snapped:
+                pol = replace(
+                    pol, order_quantity=order_quantity,
+                    expected_cycle_stock=order_quantity / 2.0,
+                )
+
         ss = pol.safety_stock.safety_stock
         cycle_units = pol.expected_cycle_stock
         cycle_inv = cycle_units * meta.mean_unit_cost
@@ -459,6 +529,10 @@ def run(
                 model_implied_beta=_model_implied_beta(
                     pol, kind, inputs["mean_demand_per_period"]
                 ),
+                order_quantity_unconstrained=q_unconstrained,
+                lot_rule=rule, lot_moq=moq, lot_multiple=multiple,
+                lot_penalty_usd=penalty,
+                lot_alternative_qty=alt_qty, lot_alternative_penalty_usd=alt_penalty,
             )
         )
         items.append(InventoryItem(product_id=pid, order_quantity=2.0 * cycle_units, safety_stock=ss, unit_cost=meta.mean_unit_cost))
@@ -486,4 +560,12 @@ def run(
         n_skipped_zero_demand=sum(1 for r in recs if r.policy_kind == "skipped_zero_demand"),
         n_skipped_zero_cost=sum(1 for r in recs if r.policy_kind == "skipped_zero_cost"),
         n_insufficient_history=sum(1 for r in recs if r.policy_kind == "insufficient_history"),
+        n_lot_constrained=sum(1 for r in recs if r.policy_kind == "(s, Q)" and r.lot_rule),
+        n_lot_snapped=sum(
+            1 for r in recs
+            if r.policy_kind == "(s, Q)" and r.order_quantity_unconstrained is not None
+            and r.order_quantity != r.order_quantity_unconstrained
+        ),
+        lot_penalty_total_usd=sum(r.lot_penalty_usd for r in recs),
+        n_lot_rule_unapplied=sum(1 for r in recs if r.policy_kind == "(R, S)" and r.lot_rule),
     )
