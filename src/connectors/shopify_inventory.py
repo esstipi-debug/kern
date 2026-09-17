@@ -45,6 +45,12 @@ class ShopifyInventoryRPC(Protocol):
 
     def get_inventory_level(self, inventory_item_id: str, location_id: str) -> int: ...
 
+    #: Optional: every quantity name the API reports for one item at one location,
+    #: e.g. ``{"available": 12, "incoming": 30}``. An adapter that does not implement
+    #: it is read for ``available`` alone, and the caller declares the absence rather
+    #: than reading a missing ``incoming`` as zero units inbound.
+    def get_inventory_quantities(self, inventory_item_id: str, location_id: str) -> dict[str, int]: ...
+
     def adjust_inventory(self, inventory_item_id: str, location_id: str, delta: int,
                          reason: str = "correction", *, idempotency_key: str) -> int: ...
 
@@ -148,15 +154,29 @@ class ShopifyInventoryClient(health.NoCredentialRepair):
         self._item_id_cache[sku] = res
         return res
 
-    def get_inventory_level(self, inventory_item_id: str, location_id: str) -> int:
+    #: The quantity names this client asks Shopify for. ``available`` is what is on the
+    #: shelf; ``incoming`` is what is already bought and on its way in (inbound transfers
+    #: and the storefront's own purchase orders), which is what keeps a replenishment plan
+    #: from buying the same units twice. Asking for both costs the SAME single query.
+    _QUANTITY_NAMES = ("available", "incoming")
+
+    def get_inventory_quantities(self, inventory_item_id: str, location_id: str) -> dict[str, int]:
+        """Every quantity Shopify reports for this item at this location.
+
+        A name the API did not return is ABSENT from the dict, never zero: an older API
+        version or a token without the inventory scope reports no ``incoming``, and
+        "nobody told us" and "measured, nothing inbound" lead to different purchase
+        orders. ``{}`` means the item has no level at this location at all.
+        """
+        names = ", ".join(f'"{n}"' for n in self._QUANTITY_NAMES)
         query = """
-        query GetInventoryLevel($id: ID!) {
+        query GetInventoryQuantities($id: ID!) {
           inventoryItem(id: $id) {
             inventoryLevels(first: 50) {
               edges {
                 node {
                   location { id }
-                  quantities(names: ["available"]) {
+                  quantities(names: [%s]) {
                     name
                     quantity
                   }
@@ -165,18 +185,24 @@ class ShopifyInventoryClient(health.NoCredentialRepair):
             }
           }
         }
-        """
+        """ % names
         data = self._graphql(query, {"id": inventory_item_id})
         item = data.get("inventoryItem") or {}
         levels = (item.get("inventoryLevels") or {}).get("edges", [])
         for edge in levels:
             node = edge["node"]
             if node["location"]["id"] == location_id:
-                quantities = node.get("quantities", [])
-                for q in quantities:
-                    if q["name"] == "available":
-                        return int(q["quantity"])
-        return 0
+                return {
+                    q["name"]: int(q["quantity"])
+                    for q in node.get("quantities", [])
+                    if q.get("name") is not None and q.get("quantity") is not None
+                }
+        return {}
+
+    def get_inventory_level(self, inventory_item_id: str, location_id: str) -> int:
+        """Units on the shelf. 0 when the item has no level at this location, which is
+        the same answer Shopify gives and what every prior caller already assumed."""
+        return int(self.get_inventory_quantities(inventory_item_id, location_id).get("available", 0))
 
     def adjust_inventory(self, inventory_item_id: str, location_id: str, delta: int,
                          reason: str = "correction", *, idempotency_key: str) -> int:
@@ -350,13 +376,29 @@ class ShopifyInventoryStore:
 class InMemoryShopifyInventory:
     """Offline stand-in for Shopify inventory management testing."""
 
-    def __init__(self, stock: dict[str, dict[str, int]] | None = None, locations: list[dict] | None = None) -> None:
+    def __init__(
+        self,
+        stock: dict[str, dict[str, int]] | None = None,
+        locations: list[dict] | None = None,
+        incoming: dict[str, dict[str, int]] | None = None,
+    ) -> None:
         self._stock: dict[str, dict[str, int]] = {sku: dict(locs) for sku, locs in (stock or {}).items()}
+        # ``None`` models a storefront whose API never reports ``incoming`` (older version,
+        # or a token without the scope) -- the case the consumer must declare instead of
+        # reading as zero inbound. A dict, even an empty one, models an API that DOES
+        # report it; a SKU absent from it has no level, which is not the same as no
+        # measurement of the whole store.
+        self._incoming: dict[str, dict[str, int]] | None = (
+            None if incoming is None else {sku: dict(locs) for sku, locs in incoming.items()}
+        )
         self._locations = locations or [{"id": "gid://shopify/Location/1", "name": "Main Warehouse", "isPrimary": True}]
         # Records every key it was told, so callers can assert the key was threaded
         # through and the parameter is not inert -- it does not emulate Shopify's
         # dedup behaviour, since every test defaults to the same "offline" key.
         self.idempotency_keys: list[str] = []
+        #: Reads of the quantities query, so a test can assert the connector asks for
+        #: on-hand and inbound in ONE call per item instead of two.
+        self.quantity_calls = 0
 
     def list_locations(self) -> list[dict]:
         return list(self._locations)
@@ -374,6 +416,16 @@ class InMemoryShopifyInventory:
     def get_inventory_level(self, inventory_item_id: str, location_id: str) -> int:
         sku = inventory_item_id.replace("gid://shopify/InventoryItem/", "")
         return self._stock.get(sku, {}).get(location_id, 0)
+
+    def get_inventory_quantities(self, inventory_item_id: str, location_id: str) -> dict[str, int]:
+        """``available`` always; ``incoming`` only when this store was built with one --
+        see ``__init__``. Counts as ONE call, like the live client's single query."""
+        self.quantity_calls += 1
+        sku = inventory_item_id.replace("gid://shopify/InventoryItem/", "")
+        out = {"available": self._stock.get(sku, {}).get(location_id, 0)}
+        if self._incoming is not None:
+            out["incoming"] = self._incoming.get(sku, {}).get(location_id, 0)
+        return out
 
     def adjust_inventory(self, inventory_item_id: str, location_id: str, delta: int,
                          reason: str = "correction", *, idempotency_key: str = "offline") -> int:
@@ -397,14 +449,21 @@ class InMemoryShopifyInventory:
 
 
 def demo_shopify_inventory() -> InMemoryShopifyInventory:
-    """Deterministic in-memory Shopify inventory store for tests and demos."""
+    """Deterministic in-memory Shopify inventory store for tests and demos.
+
+    Reports ``incoming`` (all zero: nothing inbound in the demo store) rather than
+    omitting it, because a live Shopify DOES report it -- a stand-in that stayed silent
+    would make every demo run carry the "could not net" warning that belongs to a
+    storefront whose API cannot answer.
+    """
     loc = "gid://shopify/Location/1"
     return InMemoryShopifyInventory(
         stock={
             "SKU-1": {loc: 150},
             "SKU-2": {loc: 45},
             "SKU-3": {loc: 12},
-        }
+        },
+        incoming={"SKU-1": {loc: 0}, "SKU-2": {loc: 0}, "SKU-3": {loc: 0}},
     )
 
 

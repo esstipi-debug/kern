@@ -212,6 +212,10 @@ class ShopifyConnector:
         self._location_id = location_id
         self._store = ShopifyInventoryStore(self._inventory_rpc, location_id, ledger=ledger)
         self._variants: list[dict] | None = None
+        #: Memoized by ``_read_levels``: on-hand per SKU, and the inbound map (``None``
+        #: when this storefront's API never reported one).
+        self._levels: list[InventoryLevel] | None = None
+        self._incoming: dict[str, float] | None = None
         self.truncated = False
 
     @property
@@ -244,15 +248,58 @@ class ShopifyConnector:
             for v in self._catalog()
         ]
 
-    def inventory_levels(self) -> list[InventoryLevel]:
+    def _read_levels(self) -> tuple[list[InventoryLevel], dict[str, float] | None]:
+        """One pass over the catalog: what is on the shelf, and what is already inbound.
+
+        Both come out of the SAME per-item read (``get_inventory_quantities`` asks Shopify
+        for ``available`` and ``incoming`` in one query), so counting the in-transit costs
+        no extra API call. Memoized: a job that asks for both does not re-read the store.
+
+        The second element is ``None`` when NO item reported ``incoming`` -- an RPC that
+        predates the method, an older API version, or a token without the inventory scope.
+        That is a declared absence and the consumer must say so; reading it as zero units
+        inbound is what makes a plan buy the same stock twice.
+        """
+        if self._levels is not None:
+            return self._levels, self._incoming
+        quantities = getattr(self._inventory_rpc, "get_inventory_quantities", None)
         levels: list[InventoryLevel] = []
+        incoming: dict[str, float] = {}
+        measured_incoming = False
         for v in self._catalog():
             item_id = (v.get("inventoryItem") or {}).get("id")
             if not item_id:
                 continue
-            qty = self._inventory_rpc.get_inventory_level(item_id, self._location_id)
-            levels.append(InventoryLevel(v["sku"].strip(), float(qty), self._location_id))
-        return levels
+            sku = v["sku"].strip()
+            if quantities is None:
+                qty = self._inventory_rpc.get_inventory_level(item_id, self._location_id)
+            else:
+                reported = quantities(item_id, self._location_id) or {}
+                qty = reported.get("available", 0)
+                if "incoming" in reported:
+                    measured_incoming = True
+                    incoming[sku] = float(reported["incoming"])
+            levels.append(InventoryLevel(sku, float(qty), self._location_id))
+        self._levels = levels
+        self._incoming = incoming if measured_incoming else None
+        return levels, self._incoming
+
+    def inventory_levels(self) -> list[InventoryLevel]:
+        return self._read_levels()[0]
+
+    def incoming_by_sku(self) -> dict[str, float] | None:
+        """Units already bought and on their way in, per SKU, at this location.
+
+        Shopify's ``incoming`` quantity: inbound transfers and the storefront's own
+        purchase orders. It is what ``plan_replenishment(on_order_by_sku=...)`` nets
+        against, so a delivery that is merely late is not ordered a second time.
+
+        ``None`` -- never ``{}`` -- when the API reported no ``incoming`` at all: the two
+        mean different things to every consumer downstream, and only one of them is a
+        measurement. A SKU reported as ``0`` IS in the map: that is "measured, nothing
+        inbound".
+        """
+        return self._read_levels()[1]
 
     def orders(self, *, since: str | None = None) -> list[Order]:
         out: list[Order] = []
@@ -338,8 +385,11 @@ class InMemoryShopifyCommerce(InMemoryShopifyInventory):
         orders: list[dict] | None = None,
         stock: dict[str, dict[str, int]] | None = None,
         locations: list[dict] | None = None,
+        incoming: dict[str, dict[str, int]] | None = None,
     ) -> None:
-        super().__init__(stock=stock, locations=locations)
+        # ``incoming=None`` (the default) stands in for a storefront whose API never
+        # reports the inbound quantity -- see InMemoryShopifyInventory.__init__.
+        super().__init__(stock=stock, locations=locations, incoming=incoming)
         self._variants = list(variants or [])
         self._orders = list(orders or [])
 
@@ -391,6 +441,10 @@ def demo_shopify() -> InMemoryShopifyCommerce:
         variants=[_variant("SKU-1", 40.0, 18.0), _variant("SKU-2", 25.0, 11.0), _variant("SKU-3", 12.0, 5.0)],
         orders=orders,
         stock={"SKU-1": {loc: 150}, "SKU-2": {loc: 45}, "SKU-3": {loc: 12}},
+        # Reported and zero: the demo store has nothing inbound. Omitting it would make
+        # every demo run carry the "could not net" warning, which belongs to a storefront
+        # whose API cannot answer -- not to one with an empty inbound pipeline.
+        incoming={"SKU-1": {loc: 0}, "SKU-2": {loc: 0}, "SKU-3": {loc: 0}},
     )
 
 

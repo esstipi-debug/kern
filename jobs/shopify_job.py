@@ -30,7 +30,13 @@ from pathlib import Path
 from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
 from nosilo_core.guided import ExecutionOption, GuidedOutcome, as_options, verify_guided
 from src.connectors.replenish import ReplenishmentLine, plan_replenishment
-from src.connectors.shopify import ShopifyCommerceClient, ShopifyConnector, demo_shopify
+from src.connectors.shopify import (
+    ShopifyCommerceClient,
+    ShopifyCommerceError,
+    ShopifyConnector,
+    demo_shopify,
+)
+from src.connectors.shopify_inventory import ShopifyInventoryError
 from src.deliverable import DataSource, Deliverable, Finding, Kpi
 from src.export import write_summary_csv
 
@@ -51,6 +57,14 @@ class ShopifyReplenishmentReport:
     truncated: bool
     outcome: GuidedOutcome
     summary: str
+    #: Units already bought and inbound, per SKU (Shopify's ``incoming`` at this
+    #: location), netted out of every quantity above. ``None`` -- never ``{}`` -- when
+    #: the storefront's API reported no inbound quantity at all: a plan sized against
+    #: the shelf alone buys again what is merely late, and the deck has to say so.
+    on_order_by_sku: dict[str, float] | None = None
+    #: Why the quantities are, or are not, net of what is inbound. Travels to the
+    #: summary and the deck, like ``jobs/odoo_job.py``'s note of the same name.
+    netting_note: str = ""
 
 
 def _make_connector(params: dict) -> tuple[ShopifyConnector, str]:
@@ -92,6 +106,33 @@ def prepare(data_path: str | None = None, params: dict | None = None) -> dict:
         "costs": {p.sku: p.cost for p in products},
         "counted": dict(params.get("counted") or {}),
     }
+
+
+def read_incoming(connector: ShopifyConnector) -> tuple[dict[str, float] | None, str]:
+    """What is already on its way in, per SKU, or why it could not be read.
+
+    Shopify reports an ``incoming`` quantity per inventory level: inbound transfers and
+    the storefront's own purchase orders. Sizing a restock against the shelf alone buys
+    those units a second time, which is the most expensive way to be wrong here.
+
+    ``None`` with the reason attached when the API did not report it, never ``{}``: an
+    empty map reads downstream as "measured, and nothing is inbound", and every line of
+    the plan would then claim a position nobody measured.
+    """
+    try:
+        incoming = connector.incoming_by_sku()
+    except (ShopifyCommerceError, ShopifyInventoryError) as exc:
+        return None, f"in-transit stock was NOT netted: {exc}"
+    if incoming is None:
+        return None, (
+            "in-transit stock was NOT netted: this storefront's API reported no 'incoming' "
+            "quantity (an older API version, or a token without the inventory scope)"
+        )
+    inbound = sum(1 for qty in incoming.values() if qty > 0)
+    return incoming, (
+        f"net of stock already inbound: {inbound} of {len(incoming)} SKU(s) have units on "
+        "their way in (Shopify's 'incoming' at this location)"
+    )
 
 
 def _build_outcome(
@@ -178,9 +219,10 @@ def run(
     priced from Shopify's own ``inventoryItem.unitCost``.
     """
     connector: ShopifyConnector = payload["connector"]
+    on_order, netting_note = read_incoming(connector)
     # No `store=`: plan_replenishment would stage a restock into the writeback plane, and
     # the only field this connector's store writes is physical on-hand. See _build_outcome.
-    plan = plan_replenishment(connector, cover_periods=cover_periods)
+    plan = plan_replenishment(connector, cover_periods=cover_periods, on_order_by_sku=on_order)
     restock = dict(plan.restock)
     total = sum(restock.values())
     n_skus = len(plan.lines)
@@ -188,7 +230,7 @@ def run(
     restock_value = sum(qty * costs.get(sku, 0.0) for sku, qty in restock.items())
     summary = (
         f"Read {n_skus} product(s) from {payload['source']}; {len(restock)} below a "
-        f"{cover_periods:.0f}-period cover ({total:,.0f} units short)."
+        f"{cover_periods:.0f}-period cover ({total:,.0f} units short). {netting_note}."
     )
     return ShopifyReplenishmentReport(
         source=str(payload["source"]),
@@ -209,6 +251,8 @@ def run(
             counted=payload.get("counted"),
         ),
         summary=summary,
+        on_order_by_sku=on_order,
+        netting_note=netting_note,
     )
 
 
@@ -242,6 +286,10 @@ def write_operational(
             "forecast_per_period": round(ln.forecast_per_period, 2),
             "target": round(ln.target, 2),
             "restock_qty": round(ln.restock_qty, 2),
+            # Blank, never 0, when the inbound quantity was not measured: a zero would
+            # claim nothing is on its way in. Same convention as the Odoo export.
+            "on_order": "" if ln.on_order is None else round(ln.on_order, 2),
+            "position": "" if ln.position is None else round(ln.position, 2),
         }
         for ln in report.lines
     ]
@@ -290,6 +338,24 @@ def build_deck(
                 impact="prioritize this replenishment line",
             )
         )
+    if report.on_order_by_sku is None:
+        # Ahead of the quantities it qualifies: without this, every figure below may be
+        # re-buying a delivery that is merely late.
+        findings.append(
+            Finding(
+                "Quantities do NOT net stock already inbound",
+                report.netting_note or "the storefront reported no inbound quantity",
+                impact="subtract open inbound transfers and POs by hand before ordering",
+            )
+        )
+    elif report.netting_note:
+        findings.append(
+            Finding(
+                "Quantities are net of stock already inbound",
+                report.netting_note,
+                impact="what is on its way in is already discounted; do not subtract it twice",
+            )
+        )
     if report.truncated:
         findings.append(
             Finding(
@@ -309,6 +375,11 @@ def build_deck(
     data_sources = (
         DataSource("Catalog / orders", "Shopify Admin API (GraphQL: productVariants, orders)", "live"),
         DataSource("On-hand", f"Shopify inventory levels at {report.location_id}", "live"),
+        DataSource(
+            "Stock already inbound",
+            report.netting_note or f"Shopify 'incoming' at {report.location_id}",
+            "live" if report.on_order_by_sku is not None else "absent",
+        ),
         DataSource("Supplier lead times", "not modelled by Shopify - unavailable", "absent"),
     )
     recommendations = [

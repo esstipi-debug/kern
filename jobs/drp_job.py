@@ -25,6 +25,14 @@ _ONHAND_COLS = ("on_hand", "onhand", "stock", "inventory")
 _LEAD_COLS = ("lead_time", "lead", "lt")
 _SS_COLS = ("safety_stock", "ss", "safety")
 _LOT_COLS = ("lot_size", "lot", "moq")
+#: Stock already ordered and arriving in a period -- the standard DRP input this job was
+#: missing. Read per (branch, period), like demand, because a receipt lands in ONE period.
+#: The output column of a replenishment plan ("pedir") is deliberately not a candidate:
+#: reading a plan's own proposal back as incoming supply nets it against itself.
+_RECEIPT_COLS = (
+    "scheduled_receipt", "scheduled_receipts", "in_transit", "intransit", "on_order",
+    "incoming", "inbound", "en_transito", "por_recibir", "oc_pendiente",
+)
 
 
 @dataclass(frozen=True)
@@ -47,6 +55,13 @@ class DrpReport:
     peak_period: int
     peak_qty: float
     summary: str
+    #: Branches whose rows declared stock already ordered and arriving. ``0`` with
+    #: ``n_branches > 0`` means the file carried no such column, so every release below
+    #: may re-order stock that is already bought -- the deck says so rather than letting
+    #: an absent column read as an empty pipeline.
+    n_with_receipts: int = 0
+    #: The client's own column name for it, for the source map. Empty when there was none.
+    receipt_column: str = ""
 
 
 def _pick_column(df: pd.DataFrame, override: object, candidates: tuple[str, ...]) -> str | None:
@@ -70,16 +85,25 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
     lead_col = _pick_column(df, params.get("lead_col"), _LEAD_COLS)
     ss_col = _pick_column(df, params.get("ss_col"), _SS_COLS)
     lot_col = _pick_column(df, params.get("lot_col"), _LOT_COLS)
+    receipt_col = _pick_column(df, params.get("receipt_col"), _RECEIPT_COLS)
 
     periods = sorted(df[period_col].unique())
     index = {p: i for i, p in enumerate(periods)}
     n = len(periods)
 
     branches: list[Branch] = []
+    n_with_receipts = 0
     for name, group in df.groupby(branch_col, sort=True):
         forecast = [0.0] * n
+        # Empty when the file declares no column: an all-zero schedule would claim
+        # nothing is inbound, which is the assumption this input exists to remove.
+        scheduled = [0.0] * n if receipt_col else []
         for _, row in group.iterrows():
             forecast[index[row[period_col]]] += float(row[demand_col])
+            if receipt_col and pd.notna(row[receipt_col]):
+                scheduled[index[row[period_col]]] += float(row[receipt_col])
+        if scheduled:
+            n_with_receipts += 1
         first = group.iloc[0]
 
         def _attr(col, default):
@@ -91,16 +115,24 @@ def prepare_records(df: pd.DataFrame, params: dict | None = None) -> dict:
             lead_time=max(0, int(round(_attr(lead_col, params.get("lead_time", 1))))),
             safety_stock=_attr(ss_col, params.get("safety_stock", 0.0)),
             lot_size=_attr(lot_col, params.get("lot_size", 1.0)),
+            scheduled_receipts=tuple(scheduled),
         ))
 
     return {
         "branches": branches,
         "n_periods": n,
+        "n_with_receipts": n_with_receipts,
+        "receipt_column": receipt_col or "",
         "dc": {
             "on_hand": float(params.get("dc_on_hand", 0.0)),
             "lead_time": max(0, int(round(float(params.get("dc_lead_time", 1))))),
             "safety_stock": float(params.get("dc_safety_stock", 0.0)),
             "lot_size": float(params.get("dc_lot_size", 1.0)),
+            # Same rule one echelon up, from params because the DC has no rows of its own:
+            # declared or empty, never a fabricated zero schedule.
+            "scheduled_receipts": tuple(
+                float(v) for v in (params.get("dc_scheduled_receipts") or ())
+            ),
         },
     }
 
@@ -126,7 +158,8 @@ def run(payload: dict) -> DrpReport:
     dc_gross = rollup_gross_requirements(plans, n)
     dc = payload["dc"]
     dc_branch = Branch("Central DC", tuple(dc_gross), dc["on_hand"], dc["lead_time"],
-                       dc["safety_stock"], dc["lot_size"])
+                       dc["safety_stock"], dc["lot_size"],
+                       scheduled_receipts=tuple(dc.get("scheduled_receipts", ())))
     dc_plan = drp_plan(dc_branch, n)
 
     peak_period = max(range(n), key=lambda t: dc_gross[t]) if n else 0
@@ -142,6 +175,8 @@ def run(payload: dict) -> DrpReport:
         total_branch_releases=sum(bp.total_release for bp in branch_plans),
         dc_release_total=sum(r.planned_order_release for r in dc_plan),
         peak_period=peak_period, peak_qty=dc_gross[peak_period] if n else 0.0, summary=summary,
+        n_with_receipts=int(payload.get("n_with_receipts", 0)),
+        receipt_column=str(payload.get("receipt_column", "")),
     )
 
 
@@ -169,6 +204,12 @@ def write_operational(report: DrpReport, out_dir: str | Path, client: str = "Cli
             rows.append({
                 "level": "branch", "node": bp.name, "period": r.period,
                 "gross_requirements": round(r.gross_requirements, 1),
+                # Lo ya comprado, aparte de lo que este plan propone pedir: un archivo que
+                # los mezcla manda a comprar de nuevo lo que ya viene en camino. En blanco
+                # cuando el archivo no declaro la columna, nunca 0.
+                "scheduled_receipt": (
+                    round(r.scheduled_receipt, 1) if report.n_with_receipts else ""
+                ),
                 "projected_on_hand": round(r.projected_on_hand, 1),
                 "planned_order_release": round(r.planned_order_release, 1),
             })
@@ -176,6 +217,7 @@ def write_operational(report: DrpReport, out_dir: str | Path, client: str = "Cli
         rows.append({
             "level": "dc", "node": "Central DC", "period": r.period,
             "gross_requirements": round(r.gross_requirements, 1),
+            "scheduled_receipt": round(r.scheduled_receipt, 1) if report.n_with_receipts else "",
             "projected_on_hand": round(r.projected_on_hand, 1),
             "planned_order_release": round(r.planned_order_release, 1),
         })
@@ -198,7 +240,31 @@ def build_deck(
         f"{report.peak_period} ({report.peak_qty:,.0f})."
     )
 
-    findings = [
+    findings = []
+    if report.n_branches and not report.n_with_receipts:
+        # Antes de las cifras que califica: sin entradas programadas, cada liberacion de
+        # abajo puede estar re-pidiendo una OC que ya esta en camino a la sucursal.
+        findings.append(
+            Finding(
+                "Releases do NOT net stock already on order",
+                "The file declared no scheduled-receipt column, so every branch was planned "
+                "against its shelf alone. An order already raised to a branch is "
+                "indistinguishable here from one that was never raised.",
+                impact="subtract open orders by hand, or add a scheduled_receipt / en_transito "
+                       "column per branch and period",
+            )
+        )
+    elif report.n_with_receipts:
+        findings.append(
+            Finding(
+                "Releases are net of stock already on order",
+                f"{report.n_with_receipts} of {report.n_branches} branch(es) declared scheduled "
+                f"receipts (column '{report.receipt_column}'); those units cover demand before "
+                "any new release is planned.",
+                impact="what is already inbound is discounted; do not order it twice",
+            )
+        )
+    findings += [
         Finding(
             "Branch order releases",
             f"{report.total_branch_releases:,.0f} unit(s) planned for release across "
@@ -227,6 +293,12 @@ def build_deck(
     data_sources = (
         DataSource("Per-branch demand by period", "Forecast / DRP demand plan", "per cycle"),
         DataSource("Branch on-hand, lead time, safety stock, lot size", "WMS / planning master", "per cycle"),
+        DataSource(
+            "Stock already on order per period",
+            f"column '{report.receipt_column}'" if report.n_with_receipts
+            else "not declared in the file - releases are planned against the shelf alone",
+            "per cycle" if report.n_with_receipts else "absent",
+        ),
     )
 
     recommendations = (

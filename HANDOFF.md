@@ -70,6 +70,14 @@ de inventario, los sombreros y `cross_impact` ignoraban los terminos.
   Siguen abiertos del Nivel 1: N1a (rutear los dos monitores con la serie real), N1b
   (reloj del Tower, necesita un secreto de repo), N1c (snapshot `stock` desde los jobs
   que leen `on_hand`). Y N2b (shocks en el marcador) es el siguiente por doctrina.
+- **C cerrada (las tres brechas hermanas de H4)**: `shopify_replenishment` netea con la
+  cantidad `incoming` de Shopify (una sola consulta por item, memoizada);
+  `channel_replenishment` reusa `odoo_job.read_on_order` y nombra al ERP que no expone
+  OC abiertas; `drp` gana `Branch.scheduled_receipts` (grid + columna por sucursal y
+  periodo + params del CD). En los tres, sin dato `on_order`/`scheduled_receipt` es
+  `None`/vacio y el deck, el CSV y las OPTIONS lo dicen. Tests:
+  `tests/test_shopify_en_transito.py` (9), `tests/test_channel_en_transito.py` (13),
+  `tests/test_drp_en_transito.py` (14). Siguen abiertas A, D y B del diseño.
 - **Diseño de las cuatro brechas siguientes, verificado contra el codigo, cero codigo**:
   `docs/superpowers/specs/2026-09-17-cuatro-brechas-post-n1d-design.md`. Orden propuesto:
   C (tres hermanas de H4: `shopify_replenishment` sin `incoming`, `channel_replenishment`

@@ -1,6 +1,7 @@
 # Diseño: las cuatro brechas después de N1d
 
-Fecha: 2026-09-17. Estado: **diseño verificado contra el código, cero código escrito.**
+Fecha: 2026-09-17. Estado: **C CONSTRUIDA** (ver abajo); A, D y B siguen como diseño
+verificado contra el código, sin código escrito.
 Rama de origen: `claude/keen-goodall-jfnqo9` (PR #369), después del commit `ead1243` que cerró
 N1d (H4: el tool CSV ve el estante y lo que viene en camino).
 
@@ -25,7 +26,15 @@ afirma que el VALOR SE MUEVE; y **la ausencia se declara, nunca se asume cero** 
 
 ---
 
-## C · Las tres brechas hermanas
+## C · Las tres brechas hermanas — CONSTRUIDA (2026-09-17)
+
+> Las tres cerradas en esta misma rama. Lo que se construyó difiere del diseño en un
+> punto, y por una razón: el aviso de "no se pudo netear" se decide por si el ERP se
+> pudo **leer** (`on_order_by_sku is None`), no por si alguna línea trajo un número.
+> Un ERP leído sin ninguna OC abierta es una medición, y decir "no se descontó" sobre
+> él mandaría al comprador a restar a mano lo que ya está restado.
+> Tests: `tests/test_shopify_en_transito.py`, `tests/test_channel_en_transito.py`,
+> `tests/test_drp_en_transito.py`.
 
 Las tres se encontraron con un barrido de dos minutos sobre los jobs que producen cantidades a
 pedir, después de cerrar H4. Comparten la causa: la capacidad existe en un camino (el neteo vive

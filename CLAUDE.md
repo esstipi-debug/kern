@@ -179,6 +179,23 @@ de en-transito `on_order` es `None`, nunca 0, y deck, md, options y resumen
 dicen que NO se pudo netear. Las dos columnas NO entran en `CANONICAL_OPTIONAL`:
 un stock es una foto y `normalize_tracked` agrega flujos por periodo.
 
+### Nadie compra dos veces lo que ya viene en camino
+El neteo contra la posicion (`NFP = on_hand + on_order`, `src/ddmrp.py`) vive en UN
+lugar y ya lo leen los cinco emisores de cantidad a pedir: la planilla
+(`excel_replenishment`), el ERP (`odoo_replenishment`), `ddmrp`, el tool CSV
+(arriba) y, desde C, los tres que faltaban:
+- **`shopify_replenishment`**: `ShopifyConnector.incoming_by_sku()` lee la cantidad
+  `incoming` de Shopify (transferencias entrantes y OC del propio admin) en la MISMA
+  consulta que ya pedia `available` -- una llamada por item, no dos.
+- **`channel_replenishment`**: reusa literal `jobs.odoo_job.read_on_order`; un ERP que
+  no expone OC abiertas (Unleashed hoy) se declara por su nombre.
+- **`drp`**: `Branch.scheduled_receipts` por (sucursal, periodo) entra al grid ANTES
+  del requerimiento neto, como manda el DRP de manual; el CD las recibe por params.
+La regla que comparten: **la ausencia se declara**. Sin dato, `on_order` es `None` --
+nunca 0 -- y el CSV deja la celda en blanco, el deck pone un finding "do NOT net" y
+las OPTIONS un residual. Un cero significaria "medido, y no viene nada", que manda al
+comprador a no restar nada. Y el neteo alcanza al DISPARADOR, no solo a la cantidad.
+
 ### Client parameter profiles (`src/client_profile.py`)
 Per-client durable cost/capacity parameters (holding rate, order cost, service
 level, lead time, warehouse capacity), keyed by a slugified client name under
