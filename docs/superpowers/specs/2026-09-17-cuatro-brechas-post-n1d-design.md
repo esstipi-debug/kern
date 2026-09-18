@@ -633,6 +633,8 @@ publicado; D → `run_all_monitors` emite un `rop_breach` sobre un snapshot escr
 producción, y los dos eventos huérfanos corren un tool por el orquestador real; B → una línea
 base grabada con captura bajo shock sobre 25 mundos.
 
+> **CUMPLIDO el 2026-09-18, y el camino importa.** El primer intento de grabarla hizo saltar la alarma del propio arnes (`degrada_con_la_suciedad`: "ensuciar mejoro el resultado") y `verify_fidelidad` se nego a grabar, que es exactamente lo que esa guarda existe para hacer. Investigarlo destapo que `shortage` valuaba la venta perdida a `margin` mientras `procurement` ya cobraba `unit_cost` -- doble resta -- y que por eso el techo servia menos que el piso. Corregido en `7aa08c5`; las dos lineas base (limpia y bajo `lead_time_spike:*:8:3:3`) estan en `documentation/lineas_base/` y publicadas en `documentation/KERN_CAPTURA_BAJO_DISRUPCION.md`, las dos sin anomalia.
+
 ---
 
 ## Anexo — cómo se verificó este diseño

@@ -262,9 +262,17 @@ judgment was too conservative, but because two real intake bugs (mixed date
 formats, mixed US/LATAM number formats) were silently dropping enough rows to
 cross Kern's own data-quality threshold on data that was actually fine. With
 those bugs fixed, the same grid shows **zero escalations across all 4 dirt
-levels** — Kern operates normally everywhere, with capture against the oracle
-ranging from -6.8% (level 3, the messiest) to +5.0% (level 2): a genuinely
-graduated curve instead of a cliff. The escalation mechanism itself is still
+levels** — Kern operates normally everywhere. The capture numbers that used to
+be quoted here (-6.8% at level 3 up to +5.0% at level 2, "a genuinely graduated
+curve") are **withdrawn as of 2026-09-18**: that curve was an artifact of the
+cost function, which valued a lost sale at `margin` while `procurement` already
+charged `unit_cost` -- subtracting the unit cost twice per unit served, so
+serving was accounting-worse than not serving for 42.86% of the catalogue and
+the metric rewarded under-serving. Fixed in `7aa08c5`; the 25-world baseline and
+its full reading live in
+[`KERN_CAPTURA_BAJO_DISRUPCION.md`](KERN_CAPTURA_BAJO_DISRUPCION.md). What still
+stands from this paragraph is the escalation finding, which does not go through
+`capture` at all. The escalation mechanism itself is still
 real and still exercised elsewhere in the suite — a `GuidedOutcome` blocked on
 truly missing or contradictory data still routes to `ESCALATED`/`HANDOFF`,
 never a crash, and the harness still prices a genuine escalation at full cost

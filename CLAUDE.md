@@ -272,6 +272,17 @@ no es lentitud de deteccion), y bajo un `demand_surge` **las dos medidas de unid
 perdidas viajan juntas y con signo** -- lo no servido de la demanda perturbada, y el
 servido contra el baseline, que puede ser negativo (H5). Ningun `max(0, ...)`.
 
+**La venta perdida se valua a `price`, no a `margin`** (corregido el 2026-09-18). Con
+`margin` el costo unitario se restaba DOS VECES de cada unidad servida -- `procurement`
+ya lo cobra --, asi que servir era contablemente peor que no servir en todo SKU con
+`price < 2*unit_cost`: el 42,86% del catalogo que `generate_world` sortea. El oraculo
+pedia exactamente cero en esos SKU, el techo servia MENOS que el piso, y una politica de
+no comprar nunca nada sacaba captura +0,375. Toda captura publicada antes de esa fecha
+esta vencida. Linea base sobre 25 mundos, limpia y bajo disrupcion, en
+[`documentation/KERN_CAPTURA_BAJO_DISRUPCION.md`](documentation/KERN_CAPTURA_BAJO_DISRUPCION.md):
+**-40,6% limpia y -56,0% bajo un salto de lead time de 3 semanas** -- Kern decide peor
+que un punto de reorden fijo en las dos condiciones, y ese es el numero honesto.
+
 **Un shock que no puede golpear se RECHAZA**, no se avisa: un `demand_surge` en las
 primeras `INITIAL_STOCK_WEEKS` semanas (el mundo dimensiona el stock inicial con esa
 demanda y se auto-absorbe) y un shock de suministro que termine dentro de `WARMUP_WEEKS`

@@ -109,7 +109,8 @@ de inventario, los sombreros y `cross_impact` ignoraban los terminos.
   tres corredores corren sobre el perturbado y `score_shock` devuelve TTR (desde la primera
   salida de banda, no desde el arranque), unidades perdidas por las DOS definiciones de H5
   con signo, fill minimo y exceso de costo. `run_world_sim.py --shock`,
-  `verify_fidelidad.py --shock` + `agregar(metrica=...)`. **Medido: captura -0,105** con un
+  `verify_fidelidad.py --shock` + `agregar(metrica=...)`. **Medido: captura -0,105** (VENCIDO:
+  medido con la funcion de costo que restaba unit_cost dos veces; ver `KERN_CAPTURA_BAJO_DISRUPCION.md`) con un
   corte de proveedor en la semilla 4 -- Kern decide peor que un punto de reorden fijo bajo
   disrupcion, que es el resultado que la investigacion pedia poder ver. Una revision
   adversarial de la entrega encontro 7 defectos reales (nan/inf, redondeo bancario de la
@@ -119,7 +120,7 @@ de inventario, los sombreros y `cross_impact` ignoraban los terminos.
   la revision (2026-09-18) encontro 4 mas, y uno ANULA la solucion del tercero de arriba**:
   rechazar el shock que cae dentro del calentamiento cubre una sola causa de no-op, no la
   general. Con el ejemplo literal del diseno (`lead_time_spike:SKU-1003:10:3:2`, semilla 4)
-  el carril de Kern publicaba `absorbido / recupero si / captura bajo disrupcion -0,221`
+  el carril de Kern publicaba `absorbido / recupero si / captura bajo disrupcion -0,221` (VENCIDO, idem)
   con un costo total identico al ultimo digito al de su corrida limpia: el SKU apuntado no
   se pide en la ventana. Ahora `ShockImpact.reached` compara las trayectorias, el veredicto
   queda vacio (`recovered=None`) y la fila sale `NO ALCANZADO`; ese carril no publica

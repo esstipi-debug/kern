@@ -148,7 +148,8 @@ para siempre y el numero no querria decir nada.
 **El simworld no puntua.** `run_grid()` se importa de `examples/run_world_sim.py`
 y se corre a escala chica con semilla fija, pero su nivel absoluto no dice si
 Kern esta bien: a 8 SKUs la captura oscila decenas de puntos entre niveles
-(medido sobre el mismo mundo: **-0.446 en L0 y +0.437 en L1**). Lo que si dice,
+(medido sobre el mismo mundo: **-0.446 en L0 y +0.437 en L1**; vencidos desde el
+2026-09-18, hoy -0,6019 y -0,0180 -- ver la nota de la seccion 6). Lo que si dice,
 por ser reproducible, es si el camino de politica cambio. Entra entonces como
 **alarma de regresion**: mismo mundo y otra captura fuera de
 `TOLERANCIA_CAPTURA` (0.01) levanta un desvio `medium`.
@@ -340,8 +341,8 @@ Rama `feat/retencion-de-datos` (`65857fe`), con `main` en **`84f3798`** — el
 | Techo de la bateria | 75,0% | 5 tareas TAREA HUMANA, derivado de `tareas_humanas()` |
 | Cobertura de comprobaciones | 100% | ninguna tarea de software quedo `PENDIENTE` |
 | Capability smoke | 5 passed, ~62 s | `tests/test_capability_smoke.py` |
-| Simworld `forced-L0` | captura **-0,446** | escala chica, semilla 4 |
-| Simworld `forced-L1` | captura **+0,437** | escala chica, semilla 4 |
+| Simworld `forced-L0` | captura **-0,446** (vencido, ver nota) | escala chica, semilla 4 |
+| Simworld `forced-L1` | captura **+0,437** (vencido, ver nota) | escala chica, semilla 4 |
 | **Puntaje del loop** | **7,60 / 10,0** | 3,60 bateria + 3,00 capacidades + 1,00 higiene |
 
 Desglose de la bateria: 8 CUMPLE, 2 PARCIAL, 3 NO_CUMPLE, 2 SIN_DATO, 5
@@ -353,6 +354,9 @@ no el nivel 2. Queda retirado en vez de arrastrado.
 
 Las capturas se reprodujeron identicas en cuatro corridas independientes, que es
 la propiedad que habilita usarlas como alarma de regresion.
+
+> **Vencido el 2026-09-18.** Estos numeros se midieron con una funcion de costo que valuaba la venta perdida a `margin` mientras `procurement` ya cobraba `unit_cost`: restaba el costo unitario DOS VECES por unidad servida, asi que servir era contablemente peor que no servir en el 42,86% del catalogo, y la captura premiaba sub-servir. Corregido en `7aa08c5` (`shortage = lost * price`). A la MISMA escala, los valores pasan a **-0,6019 (L0)** y **-0,0180 (L1)**, con el techo sirviendo 0,974 en vez de 0,565. La linea base sobre 25 mundos, con su lectura completa, esta en [`KERN_CAPTURA_BAJO_DISRUPCION.md`](KERN_CAPTURA_BAJO_DISRUPCION.md).
+
 
 ## 7. Primera tendencia real (2026-08-18)
 
