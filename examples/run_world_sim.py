@@ -237,6 +237,13 @@ def _refuse_shocks_the_grid_cannot_measure(shocks: tuple[Shock, ...]) -> None:
     Vive aca y no en ``src/simworld/shocks.py`` a proposito: ``apply_shocks`` es una
     transformacion pura del mundo y no sabe -- ni debe saber -- que politica lo va a
     correr. Quien sabe del calentamiento es la grilla.
+
+    **No es la unica forma de no llegar, y tampoco pretende serlo.** El calentamiento es
+    el unico caso que se puede rechazar ANTES de correr, que es lo que justifica una
+    guarda: con ``replan_every`` grande la primera orden sale mas tarde todavia, y un
+    shock apuntado a un SKU que no se pide dentro de la ventana no llega por una razon
+    que solo se sabe corriendo. Todas esas las agarra ``ShockImpact.reached`` despues,
+    comparando las dos trayectorias, y salen como ``NO ALCANZADO`` en vez de "absorbido".
     """
     for shock in shocks:
         if shock.kind in _SUPPLY_SHOCKS and shock.end_week <= WARMUP_WEEKS:
@@ -532,10 +539,19 @@ def run_grid(
             # UNA medicion por corrida, no una por shock: con dos shocks hay un solo
             # mundo perturbado, y la ventana del primero incluiria el dano del segundo.
             # `combined_window` devuelve el shock mismo cuando hay uno solo.
-            report["kern"][name]["shock"] = [
-                asdict(score_shock(world_base, ref["outs"], datos["outs"], ventana,
-                                   band=shock_band, hold=shock_hold))
-            ]
+            impacto = score_shock(world_base, ref["outs"], datos["outs"], ventana,
+                                  band=shock_band, hold=shock_hold)
+            report["kern"][name]["shock"] = [asdict(impacto)]
+            if not impacto.reached:
+                # La corrida perturbada salio identica a la limpia: este carril no vio
+                # la disrupcion, asi que su captura es la captura LIMPIA con otra
+                # etiqueta. Publicarla como `capture_under_shock` es la forma mas cara
+                # de equivocarse aca -- el barrido de N mundos agrega justo esa clave y
+                # una frase vendible saldria de mundos donde no paso nada. Se retira y
+                # se dice por que: `agregar` ya cuenta una clave ausente como mundo NO
+                # medible, que es exactamente lo que este mundo es.
+                report["kern"][name].pop("capture_under_shock", None)
+                report["kern"][name]["capture_under_shock_unreached"] = True
             # Lo que el shock le costo a ESTE carril, partido en la parte que Kern aviso
             # y la que no. Es `degradation` tal cual -- la misma atribucion semana a
             # semana que ya se usa para la suciedad, con el mundo perturbado en el lugar
@@ -629,6 +645,15 @@ def _markdown(report: dict) -> str:
                   "`Exceso de costo`, que son diferencias contra la corrida limpia del "
                   "MISMO carril sobre la MISMA semilla.",
                   "",
+                  "**`NO ALCANZADO` no es `absorbido`.** Significa que la corrida "
+                  "perturbada de ese carril salio identica a la limpia, elemento a "
+                  "elemento: el shock no le llego, y ninguna columna de esa fila habla "
+                  "de la disrupcion. Un shock de suministro solo muerde a traves de una "
+                  "orden EMITIDA, asi que basta con que el SKU apuntado no se pida "
+                  "dentro de la ventana. Ese carril tampoco publica "
+                  "`capture_under_shock` en el JSON -- su captura es la limpia con otra "
+                  "etiqueta --, y el barrido lo cuenta como mundo no medible.",
+                  "",
                   "| Corredor | Shock | Sale | TTR | Recupero | Fill min | Perdidas | vs base | Exceso de costo |",
                   "|---|---|---:|---:|---|---:|---:|---:|---:|"]
         filas = [(f"Kern {n}", e.get("shock", [])) for n, e in report.get("kern", {}).items()]
@@ -638,11 +663,19 @@ def _markdown(report: dict) -> str:
         for etiqueta, impactos in filas:
             for imp in impactos:
                 ttr = "N/D" if imp["ttr_weeks"] is None else f"{imp['ttr_weeks']:.0f}"
-                salida = ("absorbido" if imp["first_out_of_band_week"] is None
-                          else str(imp["first_out_of_band_week"]))
+                if not imp["reached"]:
+                    # Sin disrupcion recibida no hay veredicto: "absorbido / si" aca
+                    # seria resiliencia acreditada por un golpe que no llego.
+                    salida = "NO ALCANZADO"
+                elif imp["first_out_of_band_week"] is None:
+                    salida = "absorbido"
+                else:
+                    salida = str(imp["first_out_of_band_week"])
+                recupero = ("N/D" if imp["recovered"] is None
+                            else ("si" if imp["recovered"] else "NO"))
                 lines.append(
                     f"| {etiqueta} | `{imp['shock_kind']}@{imp['shock_target']}` | "
-                    f"{salida} | {ttr} | {'si' if imp['recovered'] else 'NO'} | "
+                    f"{salida} | {ttr} | {recupero} | "
                     f"{imp['min_fill']:.3f} | {imp['lost_units_post_shock']:,.0f} | "
                     f"{imp['lost_vs_baseline']:+,.0f} | "
                     f"{imp['cost_excess_post_shock']:+,.0f} |"
@@ -651,12 +684,25 @@ def _markdown(report: dict) -> str:
                   if "shock_degradation" in e]
         if avisos:
             lines += ["",
-                      "### Del costo del shock, cuanto aviso Kern", "",
+                      "### Del costo del shock, cuanto cayo en semanas con aviso", "",
                       "Misma atribucion semana a semana que la degradacion por suciedad, "
                       "con el mundo perturbado en el lugar del sucio. Las semanas previas "
                       "al shock son identicas en las dos corridas, asi que el total es el "
-                      "de la ventana; lo que agrega el corte es si Kern **vio venir** el "
-                      "golpe o lo absorbio sin decir nada.", "",
+                      "de la ventana.", "",
+                      "**Esto NO es si Kern vio venir el golpe.** `Anunciado` es "
+                      "`Policy.announced`, que se enciende cuando Kern emite una senal "
+                      "sobre la CALIDAD DE LO QUE LEYO (status, qa_issues, residuales, "
+                      "intake_quality) -- nunca sobre el shock, que por diseno no ve: la "
+                      "lente le muestra el plazo PROMETIDO, jamas el real. Lo que parte "
+                      "el corte es cuanto del costo del shock cayo en semanas en las que "
+                      "Kern ya estaba avisando de otra cosa.", "",
+                      "Medido sobre la semilla 4 (4 SKUs, 2 proveedores, 16 semanas, "
+                      "nivel 3): con `supplier_outage:Proveedor-1:6:4` y con "
+                      "`demand_surge:*:6:4:3` las semanas anunciadas son las mismas que "
+                      "sin shock -- `[4, 8, 12]` en los tres casos -- mientras el costo "
+                      "semanal SI se movio. O sea que el corte no se mueve con la "
+                      "disrupcion, y leer `Silencio` como \"Kern se callo el golpe\" le "
+                      "cobraria al sistema una prevision que este arnes no le pide.", "",
                       "| Carril | Costo del shock | Anunciado | Silencio |",
                       "|---|---:|---:|---:|"]
             for n, d in avisos:
@@ -753,6 +799,12 @@ def main() -> None:
               f"fill {entry['kpis']['fill_rate']:.3f}  captura {cap_txt}  "
               f"estados {entry['replan_status_counts']}")
         for imp in entry.get("shock", []):
+            if not imp["reached"]:
+                # La misma linea con "absorbido" leeria como que el carril aguanto.
+                print(f"        shock {imp['shock_kind']}@{imp['shock_target']}: "
+                      "NO ALCANZADO -- la corrida con shock salio identica a la limpia, "
+                      "este carril no midio la disrupcion (sin captura bajo disrupcion)")
+                continue
             ttr = "N/D" if imp["ttr_weeks"] is None else f"{imp['ttr_weeks']:.0f} sem"
             salida = ("absorbido" if imp["first_out_of_band_week"] is None
                       else f"sale en sem {imp['first_out_of_band_week']}")

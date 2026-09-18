@@ -280,6 +280,24 @@ nunca ocurrio. Una magnitud `nan`/`inf`, o un spike fraccionario que el reporte 
 distinto de lo aplicado, tambien levantan. Y con varios shocks se mide **una** perturbacion
 combinada: dos ventanas solapadas no se pueden atribuir por separado.
 
+**Y lo que no se puede rechazar antes de correr se DECLARA despues: `ShockImpact.reached`.**
+Rechazar por calentamiento cubre una sola causa de no-op. La general no se sabe hasta
+correr -- basta que el SKU apuntado no se pida dentro de la ventana, o que `replan_every`
+retrase la primera orden mas alla de `WARMUP_WEEKS` -- y producia el peor renglon posible:
+`first_out_of_band_week=None` ya significaba ABSORBIDO, asi que "el carril aguanto" y "la
+disrupcion nunca le llego" se leian igual. `score_shock` compara ahora las dos trayectorias
+elemento a elemento; si son identicas, `reached=False`, el veredicto queda VACIO
+(`recovered` es `None`, nunca `True`) y la fila sale `NO ALCANZADO`. Ese carril tampoco
+publica `capture_under_shock` -- seria su captura LIMPIA con otra etiqueta -- y `agregar`
+lo cuenta como mundo no medible. No se puede decidir por corrida: medido en la semilla 4,
+el mismo shock que no llega al carril de Kern SI lo recibe el piso.
+
+El corte **Anunciado/Silencio** del costo del shock **no es prevision del golpe**:
+`Policy.announced` habla de la calidad de lo que Kern LEYO, y la lente le muestra el plazo
+PROMETIDO, nunca el real. Medido: con un corte de proveedor y con un surge x3 sobre la
+semilla 4, las semanas anunciadas son las mismas que sin shock mientras el costo si se
+movio. El numero se publica; el titulo dice lo que es.
+
 ### Client parameter profiles (`src/client_profile.py`)
 Per-client durable cost/capacity parameters (holding rate, order cost, service
 level, lead time, warehouse capacity), keyed by a slugified client name under

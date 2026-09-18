@@ -44,25 +44,47 @@ class Distribucion:
     p90: float | None
     peor: float | None
     mejor: float | None
+    #: Que se agrego: ``"capture"`` (captura limpia) o ``"capture_under_shock"``.
+    #:
+    #: Viaja DENTRO de la distribucion y no solo en el ``contexto`` del archivo porque
+    #: :meth:`frase` es "la afirmacion vendible" -- la linea que alguien copia y pega en
+    #: una propuesta. Sin esto, un barrido con ``--shock`` emitia una frase byte a byte
+    #: identica a la de un barrido limpio ("L0/forced: captura -5.0% ..."), y en este
+    #: repo "captura" a secas significa la limpia. Copiar esa linea publicaba un numero
+    #: bajo disrupcion como si fuera de datos limpios.
+    metrica: str = "capture"
 
     @property
     def cobertura(self) -> float:
         """Fraccion de mundos donde la captura fue medible."""
         return self.n_medibles / self.n_mundos if self.n_mundos else 0.0
 
+    @property
+    def nombre_metrica(self) -> str:
+        """Como se llama lo que se agrego, en la frase que alguien va a copiar."""
+        return ("captura bajo disrupcion" if self.metrica == "capture_under_shock"
+                else "captura")
+
     def frase(self) -> str:
         """La afirmacion vendible, o la razon por la que no hay ninguna."""
         if self.media is None:
             return (
                 f"L{self.nivel}/{self.carril}: ninguno de los {self.n_mundos} mundos "
-                "fue medible (piso no mas caro que techo)"
+                f"fue medible ({self._por_que_no_medible()})"
             )
         sd = f" +/- {self.desviacion * 100:.1f}%" if self.desviacion is not None else ""
         return (
-            f"L{self.nivel}/{self.carril}: captura {self.media * 100:.1f}%{sd} "
+            f"L{self.nivel}/{self.carril}: {self.nombre_metrica} "
+            f"{self.media * 100:.1f}%{sd} "
             f"· peor mundo {self.peor * 100:.1f}% "
             f"· {self.n_medibles}/{self.n_mundos} mundos medibles"
         )
+
+    def _por_que_no_medible(self) -> str:
+        """Bajo disrupcion hay una segunda causa, y no decirla manda a buscar la otra."""
+        if self.metrica == "capture_under_shock":
+            return "piso no mas caro que techo, o el shock no llego al carril"
+        return "piso no mas caro que techo"
 
 
 def _percentil(orden: Sequence[float], q: float) -> float:
@@ -99,6 +121,15 @@ def agregar(reportes: Iterable[dict], *, metrica: str = "capture") -> tuple[Dist
     3 semanas: X% +/- Y, peor mundo Z" pasa a ser una frase con numero. Una entrada sin
     esa clave cuenta como no medible (``None``), igual que un span degenerado: el
     ``n_medibles`` lo dice en vez de que la media se calcule sobre otra muestra.
+
+    Esa ausencia es deliberada y la produce ``run_grid``: un carril al que el shock NO
+    LLEGO (``ShockImpact.reached`` en ``False`` -- corrida perturbada identica a la
+    limpia) no publica ``capture_under_shock``, porque su captura es la limpia con otra
+    etiqueta. Promediarla entre las demas subiria la media con mundos donde no paso
+    nada, que es la manera exacta en que una frase vendible se vuelve falsa.
+
+    La ``metrica`` viaja a cada :class:`Distribucion` para que su ``frase()`` diga cual
+    es: la linea es para copiar, y "captura" a secas significa la limpia.
     """
     por_grupo: dict[tuple[str, int], list[float | None]] = {}
     for rep in reportes:
@@ -113,11 +144,11 @@ def agregar(reportes: Iterable[dict], *, metrica: str = "capture") -> tuple[Dist
             out.append(Distribucion(
                 carril=carril, nivel=nivel, n_mundos=len(capturas), n_medibles=0,
                 media=None, desviacion=None, p10=None, mediana=None, p90=None,
-                peor=None, mejor=None,
+                peor=None, mejor=None, metrica=metrica,
             ))
             continue
         out.append(Distribucion(
-            carril=carril, nivel=nivel,
+            carril=carril, nivel=nivel, metrica=metrica,
             n_mundos=len(capturas), n_medibles=len(medibles),
             media=statistics.fmean(medibles),
             desviacion=statistics.stdev(medibles) if len(medibles) > 1 else None,

@@ -115,8 +115,21 @@ de inventario, los sombreros y `cross_impact` ignoraban los terminos.
   adversarial de la entrega encontro 7 defectos reales (nan/inf, redondeo bancario de la
   magnitud, no-ops garantizados reportados como "absorbido", un `hold` satisfecho con
   semanas muertas, atribucion cruzada con varios shocks, lineas base de experimentos
-  distintos comparadas entre si) y los 7 estan cerrados con test. Tests:
-  `tests/test_simworld_shocks.py` (50). **Las cuatro brechas del diseno estan construidas**;
+  distintos comparadas entre si) y los 7 estan cerrados con test. **Una segunda vuelta de
+  la revision (2026-09-18) encontro 4 mas, y uno ANULA la solucion del tercero de arriba**:
+  rechazar el shock que cae dentro del calentamiento cubre una sola causa de no-op, no la
+  general. Con el ejemplo literal del diseno (`lead_time_spike:SKU-1003:10:3:2`, semilla 4)
+  el carril de Kern publicaba `absorbido / recupero si / captura bajo disrupcion -0,221`
+  con un costo total identico al ultimo digito al de su corrida limpia: el SKU apuntado no
+  se pide en la ventana. Ahora `ShockImpact.reached` compara las trayectorias, el veredicto
+  queda vacio (`recovered=None`) y la fila sale `NO ALCANZADO`; ese carril no publica
+  `capture_under_shock` y el barrido lo cuenta como mundo no medible. No se puede rechazar
+  por corrida: en esa misma corrida el piso SI recibe el shock. Los otros tres: la guarda
+  del calentamiento no cubre `replan_every`; la frase vendible del barrido decia "captura"
+  a secas para las dos metricas; y el corte Anunciado/Silencio se titulaba "si Kern vio
+  venir el golpe" cuando `Policy.announced` habla de la calidad de los datos leidos (medido:
+  las semanas anunciadas no se mueven con el shock mientras el costo si). Tests:
+  `tests/test_simworld_shocks.py` (56). **Las cuatro brechas del diseno estan construidas**;
   lo unico que sigue abierto de esa linea es N1b, el reloj, que necesita un secreto de repo.
 - **Diseño de las cuatro brechas siguientes, verificado contra el codigo, cero codigo**:
   `docs/superpowers/specs/2026-09-17-cuatro-brechas-post-n1d-design.md`. Orden propuesto:

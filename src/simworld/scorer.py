@@ -313,9 +313,29 @@ class ShockImpact:
     band: float
     hold: int
 
+    #: Si el shock LLEGO a este carril: las dos corridas difieren en alguna semana.
+    #:
+    #: ``False`` significa que la corrida perturbada salio identica a la limpia, elemento
+    #: a elemento, asi que **este carril no midio la disrupcion** y ningun veredicto de
+    #: abajo es sobre ella. Pasa por causas que la grilla no puede anticipar: el SKU
+    #: apuntado no se pide dentro de la ventana, o el carril no emite ordenes todavia con
+    #: el ``replan_every`` elegido. Un shock de suministro solo muerde a traves de una
+    #: orden EMITIDA -- si no hubo ninguna, se perturbo una matriz que nadie consulto.
+    #:
+    #: Existe porque ``first_out_of_band_week=None`` ya significaba otra cosa
+    #: ("salio y nunca cayo fuera de la banda", o sea ABSORBIDO) y las dos se
+    #: renderizaban igual. Medido antes de esta guarda, con el ejemplo literal del
+    #: diseno (``--seed 4 --skus 8 --shock lead_time_spike:SKU-1003:10:3:2``): el carril
+    #: de Kern publicaba "absorbido, recupero si" y una captura bajo disrupcion de
+    #: -0,221 con un ``total_cost`` identico al ultimo digito al de la corrida limpia.
+    #: "El carril aguanto la disrupcion" y "la disrupcion nunca llego al carril" son
+    #: cosas distintas y hasta aca se leian igual.
+    reached: bool
     #: Primera semana, en o despues del arranque del shock, en la que el fill cayo fuera
     #: de la banda. ``None`` = nunca salio: el shock se ABSORBIO. Es un resultado real y
     #: frecuente (Anexo A.1: con holgura por defecto, un shock moderado no se nota).
+    #: Tambien ``None`` cuando ``reached`` es ``False``, y ahi no quiere decir absorbido
+    #: sino que no hubo nada que medir: mira ``reached`` antes de leerlo.
     first_out_of_band_week: int | None
     #: Semanas desde esa primera salida hasta ``hold`` semanas seguidas de vuelta adentro.
     #: ``None`` cuando no hubo salida (nada que recuperar) o cuando no recupero antes del
@@ -323,7 +343,10 @@ class ShockImpact:
     #: numero censurado promediado junto a TTR reales los diluye y no se distingue de
     #: ellos. Se dice ``recovered=False`` y se deja el numero vacio.
     ttr_weeks: float | None
-    recovered: bool
+    #: ``None`` cuando ``reached`` es ``False``: sin disrupcion que recibir no hay
+    #: recuperacion que afirmar. Un ``True`` ahi seria la peor lectura posible de este
+    #: modulo -- resiliencia acreditada por un golpe que nunca llego.
+    recovered: bool | None
     #: El peor fill de la ventana post-shock. Lo que un operador mira primero.
     #:
     #: ABSOLUTO, no incremental: es el peor fill que hubo, no el que el shock CAUSO. Un
@@ -353,6 +376,30 @@ class ShockImpact:
     #: ``min_fill``, no aca. Se informa igual, con su signo, porque recortarlo a cero
     #: diria que el shock no movio el costo cuando si lo movio, en la otra direccion.
     cost_excess_post_shock: float
+
+
+def _misma_traza(baseline: list[WeekOutcome], shocked: list[WeekOutcome]) -> bool:
+    """Las dos corridas salieron identicas elemento a elemento: el shock no llego.
+
+    Es la senal barata y en banda de que no hay disrupcion que puntuar. No se infiere de
+    ``cost_excess_post_shock == 0`` porque un exceso de costo nulo tambien puede salir de
+    dos trayectorias distintas que se compensan; la igualdad de las trayectorias, en
+    cambio, no admite otra lectura.
+
+    Compara los seis campos de ``WeekOutcome`` (``lost`` es redundante con
+    ``demand - sold``, y va igual: cuesta nada y no obliga a quien lea esto a re-derivar
+    la identidad para convencerse de que la comparacion es exhaustiva).
+    """
+    return all(
+        a.week == b.week
+        and np.array_equal(a.demand, b.demand)
+        and np.array_equal(a.sold, b.sold)
+        and np.array_equal(a.lost, b.lost)
+        and np.array_equal(a.received, b.received)
+        and np.array_equal(a.ordered, b.ordered)
+        and np.array_equal(a.on_hand_end, b.on_hand_end)
+        for a, b in zip(baseline, shocked)
+    )
 
 
 def score_shock(
@@ -390,6 +437,14 @@ def score_shock(
     tampoco fallo. Es neutral. Sin esto, un tramo muerto de ``hold`` semanas declara
     recuperado a un carril que no sirvio una sola unidad desde el shock.
 
+    **Un shock que no llego a este carril se declara, no se puntua.** Si las dos
+    corridas salieron identicas (:func:`_misma_traza`), ``reached`` es ``False`` y el
+    veredicto queda vacio: ``first_out_of_band_week`` y ``ttr_weeks`` en ``None`` y
+    ``recovered`` tambien en ``None``, en vez del "absorbido / recupero si" que salia
+    antes. El caso no es raro ni exotico -- basta que el SKU apuntado no se pida dentro
+    de la ventana -- y es el unico de este modulo en el que un numero bien formado
+    afirmaria lo contrario de lo que paso.
+
     El costo semanal sale de :func:`weekly_cost` sobre cada corrida. Se le pasa el mundo
     del carril limpio a las dos porque el costo solo usa ``world.skus`` (costo unitario y
     margen) y un shock no toca los SKU: pasar dos mundos distintos daria el mismo numero
@@ -423,12 +478,19 @@ def score_shock(
     # `hold`. Medido antes de esta guarda: TTR 2 sobre un carril muerto.
     probada = [bool(float(o.demand.sum()) > 0) for o in shocked]
 
-    first_out: int | None = next(
-        (t for t in range(start, n) if probada[t] and not dentro[t]), None
-    )
+    # Antes de cualquier veredicto: ¿el shock llego siquiera a este carril? Si las dos
+    # corridas son identicas no hay disrupcion que puntuar, y decir "absorbido" seria
+    # acreditarle al carril una resistencia que nunca se le pidio.
+    alcanzado = not _misma_traza(baseline, shocked)
 
+    first_out: int | None = None
     ttr: float | None = None
-    recovered = True
+    recovered: bool | None = None
+    if alcanzado:
+        first_out = next(
+            (t for t in range(start, n) if probada[t] and not dentro[t]), None
+        )
+        recovered = True
     if first_out is not None:
         recovered = False
         seguidas = 0
@@ -466,6 +528,7 @@ def score_shock(
         end_week=int(shock.end_week),
         band=float(band),
         hold=int(hold),
+        reached=alcanzado,
         first_out_of_band_week=first_out,
         ttr_weeks=ttr,
         recovered=recovered,

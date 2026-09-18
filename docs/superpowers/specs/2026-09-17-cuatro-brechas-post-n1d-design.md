@@ -468,9 +468,53 @@ carga un admin, no código). Y el evento sigue siendo T2: propone, un humano apr
 >
 > Verificado además que el reporte **sin** shock es byte-idéntico al de antes del refactor
 > salvo la clave `shocks` nueva.
+>
+> **Segunda vuelta de la revisión adversarial (2026-09-18), cuatro defectos más.** Los siete
+> de arriba salieron de cuatro revisores; los dos que faltaban llegaron después y
+> encontraron una falla que los otros no vieron y que **anula el punto 3**: rechazar el
+> shock de suministro que cae dentro del calentamiento cubría *una* causa de no-op, y no
+> la general.
+>
+> 8. **Un shock que no llega al carril salía `absorbido / recuperó sí`.** `first_out_of_band_week=None`
+>    ya significaba "salió y nunca cayó fuera de la banda", así que "el carril aguantó" y
+>    "la disrupción nunca llegó" se renderizaban igual. Medido con el ejemplo literal de
+>    este diseño (`--seed 4 --skus 8 --shock lead_time_spike:SKU-1003:10:3:2`): el carril
+>    de Kern publicaba `absorbido`, `recuperó sí` y `capture_under_shock −0,221` con un
+>    `total_cost` idéntico al último dígito al de su corrida limpia — el SKU apuntado no
+>    se pide dentro de la ventana, así que `advance` nunca lee las celdas perturbadas.
+>    **No se puede rechazar por corrida**: en esa misma corrida el piso SÍ lo recibe
+>    (`vs base +19 u`). Ahora `ShockImpact.reached` compara las dos trayectorias elemento
+>    a elemento, el veredicto queda **vacío** (`recovered=None`, no `True`) y la fila sale
+>    `NO ALCANZADO`.
+> 9. **La guarda del calentamiento no cubre `replan_every`.** La primera orden sale en
+>    `ceil(WARMUP_WEEKS/replan_every)*replan_every`, no en `WARMUP_WEEKS`: medido con
+>    `replan_every=8`, `supplier_outage:*:4:3` pasa la guarda (termina en la semana 7) y
+>    igual no golpea nada. Es el mismo defecto 8 con otra causa, y lo tapa la misma
+>    solución — la guarda temprana se queda porque es lo único que se puede rechazar
+>    **antes** de correr.
+> 10. **El carril no alcanzado publicaba `capture_under_shock`**, que es su captura
+>    **limpia** con otra etiqueta, y `agregar` la promediaba entre las demás: la frase
+>    vendible subía con mundos donde no pasó nada. Ahora no se publica esa clave (se deja
+>    `capture_under_shock_unreached`), y `agregar` ya contaba una clave ausente como mundo
+>    **no medible** — la cobertura lo dice sola.
+> 11. **`Distribucion.frase()` no nombraba la métrica.** Un barrido con `--shock` emitía
+>    una línea byte a byte idéntica a la de uno limpio (`"L0/forced: captura −5.0% …"`), y
+>    en este repo "captura" a secas significa la limpia. La línea existe para copiarse en
+>    una propuesta: ahora dice **"captura bajo disrupción"**, y `metrica` viaja dentro de
+>    la distribución, no sólo en el `contexto` del archivo.
+>
+> Y una afirmación falsa en el reporte, del mismo lote: el corte **Anunciado/Silencio** del
+> costo del shock se titulaba *"si Kern **vio venir** el golpe"*. `Policy.announced` se
+> enciende por la **calidad de lo que Kern leyó** (status, qa_issues, residuales,
+> intake_quality) y la lente le muestra el plazo **prometido**, nunca el real. Medido sobre
+> la semilla 4: con `supplier_outage:Proveedor-1:6:4` y con `demand_surge:*:6:4:3` las
+> semanas anunciadas son las mismas que sin shock — `[4, 8, 12]` en los tres casos —
+> mientras el costo semanal **sí** se movió. El número se queda; el título ahora dice lo
+> que el número es.
+>
 > Código: `src/simworld/shocks.py`, `src/simworld/scorer.py`, `src/simworld/world.py`,
 > `examples/run_world_sim.py`, `src/verify/barrido.py`, `scripts/verify_fidelidad.py`.
-> Tests: `tests/test_simworld_shocks.py` (50) + uno en `tests/test_simworld_e2e.py`.
+> Tests: `tests/test_simworld_shocks.py` (56) + uno en `tests/test_simworld_e2e.py`.
 
 ### El diseño, como se escribió
 

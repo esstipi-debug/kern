@@ -352,13 +352,21 @@ def test_solo_el_corte_de_proveedor_puede_omitir_la_magnitud():
 # -- 4. score_shock: las dos definiciones que la investigacion dejo fijadas --------
 
 
-def _traza(demandas, servidos) -> list[WeekOutcome]:
+def _traza(demandas, servidos, *, stock=None) -> list[WeekOutcome]:
+    """Una corrida sintetica de un SKU.
+
+    ``stock`` mueve ``on_hand_end`` sin tocar el servicio, que es exactamente la forma
+    de un shock ABSORBIDO: el carril quedo con menos colchon y sirvio igual. Hace falta
+    porque dos trazas identicas ya no significan "absorbido" sino "el shock no llego"
+    (``ShockImpact.reached``), y un test de absorcion tiene que diferir en ALGO.
+    """
     salida = []
     for t, (d, s) in enumerate(zip(demandas, servidos, strict=True)):
         dd, ss = np.array([float(d)]), np.array([float(s)])
+        oh = np.zeros(1) if stock is None else np.array([float(stock[t])])
         salida.append(WeekOutcome(week=t, demand=dd, sold=ss, lost=dd - ss,
                                   received=np.zeros(1), ordered=np.zeros(1),
-                                  on_hand_end=np.zeros(1)))
+                                  on_hand_end=oh))
     return salida
 
 
@@ -423,11 +431,16 @@ def test_no_recuperar_deja_el_ttr_vacio_y_no_un_numero_censurado():
 
 def test_un_shock_absorbido_lo_dice_en_vez_de_inventar_un_ttr():
     """Anexo A.1: con la holgura por defecto, un shock moderado no sale de la banda. Es
-    un resultado real y frecuente, no una medicion fallida."""
-    base = _traza([10] * 8, [10] * 8)
-    con = _traza([10] * 8, [10] * 8)
+    un resultado real y frecuente, no una medicion fallida.
+
+    El shock SI llego -- el carril quedo con la mitad del colchon desde la semana 2 --
+    y aun asi sirvio todo. Eso es absorber. Dos trazas identicas serian otra cosa y se
+    informan aparte (``reached``)."""
+    base = _traza([10] * 8, [10] * 8, stock=[20] * 8)
+    con = _traza([10] * 8, [10] * 8, stock=[20, 20, 10, 10, 10, 20, 20, 20])
     imp = score_shock(_MUNDO_TRAZA, base, con, Shock("lead_time_spike", "*", 2, 3, 2),
                       band=0.02, hold=3)
+    assert imp.reached is True
     assert imp.first_out_of_band_week is None
     assert imp.ttr_weeks is None
     assert imp.recovered is True
@@ -605,7 +618,7 @@ def test_el_costo_del_shock_se_parte_en_anunciado_y_silencio(tmp_path):
     deg = entrada["shock_degradation"]
     assert deg["drop"] == pytest.approx(entrada["shock"][0]["cost_excess_post_shock"])
     assert deg["silent"] == pytest.approx(deg["drop"] - deg["announced"])
-    assert "Del costo del shock, cuanto aviso Kern" in (
+    assert "Del costo del shock, cuanto cayo en semanas con aviso" in (
         tmp_path / "report.md").read_text(encoding="utf-8")
 
 
@@ -743,3 +756,141 @@ def test_una_linea_base_de_otro_experimento_se_rechaza_en_vez_de_dar_una_regresi
             "metrica": "capture_under_shock", "shocks": ["supplier_outage:*:6:3:1"]})
     # Y sin contexto sigue comparando, como siempre (compatibilidad).
     assert comparar_con_linea_base([d], ruta) == ([], [])
+
+
+# -- 8. Un shock que NO LLEGO al carril se declara, no se lee como absorbido ---------
+#
+# Es la brecha que quedaba de la seccion 4: `first_out_of_band_week=None` significaba
+# "salio y nunca cayo fuera de la banda" (ABSORBIDO), y la corrida en la que el shock no
+# rozo al carril producia exactamente ese None. La guarda temprana
+# (`_refuse_shocks_the_grid_cannot_measure`) solo cubre la causa que se puede saber ANTES
+# de correr -- una ventana entera dentro del calentamiento --, y no es la unica.
+
+
+def test_dos_trazas_identicas_no_son_un_shock_absorbido():
+    """Si la corrida perturbada salio igual a la limpia, no hubo disrupcion que puntuar.
+
+    El veredicto queda VACIO (``recovered`` en ``None``), no en ``True``: acreditarle
+    resiliencia a un carril por un golpe que no recibio es el peor resultado posible de
+    este modulo."""
+    base = _traza([10] * 8, [10] * 8)
+    con = _traza([10] * 8, [10] * 8)
+    imp = score_shock(_MUNDO_TRAZA, base, con, Shock("lead_time_spike", "*", 2, 3, 2),
+                      band=0.02, hold=3)
+    assert imp.reached is False
+    assert imp.recovered is None
+    assert imp.ttr_weeks is None
+    assert imp.first_out_of_band_week is None
+    # Las dos diferencias siguen siendo cero, y son ciertas: no se tocan.
+    assert imp.lost_vs_baseline == 0.0
+    assert imp.cost_excess_post_shock == 0.0
+
+
+def test_basta_una_semana_distinta_para_que_el_shock_cuente_como_recibido():
+    """El detector mira las trazas, no el costo: un exceso de costo nulo tambien sale de
+    dos trayectorias distintas que se compensan, y eso SI es una disrupcion medida."""
+    base = _traza([10] * 8, [10] * 8, stock=[5] * 8)
+    con = _traza([10] * 8, [10] * 8, stock=[5, 5, 5, 4, 5, 5, 5, 5])
+    imp = score_shock(_MUNDO_TRAZA, base, con, Shock("lead_time_spike", "*", 2, 3, 2),
+                      band=0.02, hold=3)
+    assert imp.reached is True
+    assert imp.recovered is True        # absorbido de verdad: llego y no salio de banda
+
+
+def test_la_grilla_declara_el_carril_que_el_shock_no_alcanzo(tmp_path):
+    """El ejemplo literal del diseno, al tamano por defecto del repo.
+
+    Medido antes de esta guarda: el carril de Kern publicaba ``absorbido / recupero si``
+    y una ``capture_under_shock`` de -0,221 con un ``total_cost`` identico al ultimo
+    digito al de su corrida limpia -- el SKU apuntado no se pide dentro de la ventana,
+    asi que ``advance`` nunca lee las celdas perturbadas. El piso, en cambio, SI lo
+    recibe en la misma corrida: por eso esto no se puede rechazar por corrida, tiene que
+    declararse por carril."""
+    from examples.run_world_sim import run_grid
+
+    rep = run_grid(seed=4, n_skus=8, n_suppliers=2, weeks=24, levels=(0,),
+                   lanes=("forced",), replan_every=4, out_dir=tmp_path,
+                   shocks=(parse_shock("lead_time_spike:SKU-1003:10:3:2"),))
+
+    entrada = rep["kern"]["forced-L0"]
+    impacto = entrada["shock"][0]
+    assert impacto["reached"] is False
+    assert impacto["recovered"] is None
+    # La captura de ese carril es la LIMPIA con otra etiqueta: no se publica como
+    # captura bajo disrupcion, y la ausencia se declara en vez de quedar como un hueco.
+    assert "capture_under_shock" not in entrada
+    assert entrada["capture_under_shock_unreached"] is True
+    assert entrada["capture"] is not None
+
+    # El piso corrio el MISMO shock y si lo sintio: la corrida no es degenerada.
+    piso = rep["shock_floor"]["floor"][0]
+    assert piso["reached"] is True
+
+    md = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "NO ALCANZADO" in md
+    assert "`NO ALCANZADO` no es `absorbido`" in md
+
+
+def test_el_barrido_no_promedia_mundos_donde_el_shock_no_llego(tmp_path):
+    """``agregar`` cuenta una entrada sin la clave como mundo NO medible. Esa es la via
+    por la que un carril no alcanzado deja de subir la media de una frase vendible."""
+    from src.verify.barrido import agregar
+
+    alcanzado = {"kern": {"forced-L0": {
+        "lane": "forced", "level": 0, "capture_under_shock": -0.10}}}
+    no_alcanzado = {"kern": {"forced-L0": {
+        "lane": "forced", "level": 0, "capture": 0.60,
+        "capture_under_shock_unreached": True}}}
+
+    (dist,) = agregar([alcanzado, no_alcanzado], metrica="capture_under_shock")
+    assert dist.n_mundos == 2
+    assert dist.n_medibles == 1
+    assert dist.media == -0.10          # el 0,60 limpio no entra en la media
+    assert dist.metrica == "capture_under_shock"
+    assert "captura bajo disrupcion" in dist.frase()
+    assert "1/2 mundos medibles" in dist.frase()
+
+
+def test_la_frase_vendible_nombra_la_disrupcion():
+    """La linea existe para copiarse en una propuesta. En este repo "captura" a secas
+    significa la limpia (los -0,446 / +0,437 publicados), asi que una frase byte a byte
+    identica para las dos metricas publica un numero bajo disrupcion como si fuera de
+    datos limpios."""
+    from src.verify.barrido import Distribucion
+
+    campos = dict(carril="forced", nivel=0, n_mundos=2, n_medibles=2, media=-0.05,
+                  desviacion=0.56, p10=-0.40, mediana=-0.05, p90=0.30,
+                  peor=-0.446, mejor=0.30)
+    limpia = Distribucion(**campos)
+    bajo_shock = Distribucion(**campos, metrica="capture_under_shock")
+
+    assert limpia.metrica == "capture"            # el default no cambia nada de antes
+    assert "captura -5.0%" in limpia.frase()
+    assert "captura bajo disrupcion -5.0%" in bajo_shock.frase()
+    assert limpia.frase() != bajo_shock.frase()
+
+    # Y la razon de "ningun mundo medible" nombra la segunda causa, que solo existe
+    # bajo disrupcion: si no, manda a investigar un span degenerado que no ocurrio.
+    vacios = dict(campos, n_medibles=0, media=None, desviacion=None, p10=None,
+                  mediana=None, p90=None, peor=None, mejor=None)
+    assert "el shock no llego al carril" in Distribucion(
+        **vacios, metrica="capture_under_shock").frase()
+    assert "el shock no llego" not in Distribucion(**vacios).frase()
+
+
+def test_el_reporte_no_afirma_que_kern_vio_venir_el_shock(tmp_path):
+    """``Policy.announced`` se enciende por la CALIDAD DE LO QUE KERN LEYO, y la lente le
+    muestra el plazo PROMETIDO, nunca el real. Medido sobre la semilla 4: con un corte de
+    proveedor y con un surge x3, las semanas anunciadas son las mismas que sin shock --
+    [4, 8, 12] en los tres casos -- mientras el costo semanal SI se movio. El corte
+    Anunciado/Silencio no es prevision del golpe, y el titulo decia que lo era."""
+    from examples.run_world_sim import run_grid
+
+    rep = run_grid(seed=4, n_skus=4, n_suppliers=2, weeks=16, levels=(3,),
+                   lanes=("forced",), replan_every=4, out_dir=tmp_path,
+                   shocks=(Shock("supplier_outage", "Proveedor-1", 6, 4),))
+    assert "shock_degradation" in rep["kern"]["forced-L3"]
+
+    md = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "**Esto NO es si Kern vio venir el golpe.**" in md
+    assert "lo que agrega el corte es si Kern **vio venir** el golpe" not in md
