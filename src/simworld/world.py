@@ -16,6 +16,12 @@ REGIMES = ("seasonal_trend",)
 
 WEEKS_PER_YEAR = 52.0
 
+#: Semanas de demanda con las que ``initial_state`` dimensiona el stock de arranque.
+#: Nombrada porque hay un consumidor que necesita saberla: ``src/simworld/shocks.py``
+#: rechaza un ``demand_surge`` que caiga adentro de esta ventana, porque ahi el mundo le
+#: entrega al corredor el stock para absorberlo y la corrida mide otra cosa.
+INITIAL_STOCK_WEEKS = 4
+
 
 @dataclass(frozen=True)
 class Sku:
@@ -122,7 +128,8 @@ def _real_lead_weeks(
 
 def initial_state(world: World) -> WorldState:
     """Arranca con cuatro semanas de la demanda media de cada SKU en mano."""
-    start = np.round(world.demand[:, : min(4, world.weeks)].mean(axis=1) * 4.0)
+    ventana = min(INITIAL_STOCK_WEEKS, world.weeks)
+    start = np.round(world.demand[:, :ventana].mean(axis=1) * float(INITIAL_STOCK_WEEKS))
     return WorldState(week=0, on_hand=start.astype(float), in_transit=())
 
 

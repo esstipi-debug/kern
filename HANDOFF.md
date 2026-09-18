@@ -104,6 +104,20 @@ de inventario, los sombreros y `cross_impact` ignoraban los terminos.
   Tests: `tests/test_state_bridge_stock.py` (18), `tests/test_event_intent_real_series.py`
   (20). Queda abierta **B** (N2b, shocks en el marcador); y N1b (el reloj del Tower)
   sigue necesitando un secreto de repo, no codigo.
+- **B cerrada (captura bajo disrupcion)**: `src/simworld/shocks.py` perturba el mundo YA
+  sorteado con una transformacion pura (misma semilla + mismo shock => mismo mundo), los
+  tres corredores corren sobre el perturbado y `score_shock` devuelve TTR (desde la primera
+  salida de banda, no desde el arranque), unidades perdidas por las DOS definiciones de H5
+  con signo, fill minimo y exceso de costo. `run_world_sim.py --shock`,
+  `verify_fidelidad.py --shock` + `agregar(metrica=...)`. **Medido: captura -0,105** con un
+  corte de proveedor en la semilla 4 -- Kern decide peor que un punto de reorden fijo bajo
+  disrupcion, que es el resultado que la investigacion pedia poder ver. Una revision
+  adversarial de la entrega encontro 7 defectos reales (nan/inf, redondeo bancario de la
+  magnitud, no-ops garantizados reportados como "absorbido", un `hold` satisfecho con
+  semanas muertas, atribucion cruzada con varios shocks, lineas base de experimentos
+  distintos comparadas entre si) y los 7 estan cerrados con test. Tests:
+  `tests/test_simworld_shocks.py` (50). **Las cuatro brechas del diseno estan construidas**;
+  lo unico que sigue abierto de esa linea es N1b, el reloj, que necesita un secreto de repo.
 - **Diseño de las cuatro brechas siguientes, verificado contra el codigo, cero codigo**:
   `docs/superpowers/specs/2026-09-17-cuatro-brechas-post-n1d-design.md`. Orden propuesto:
   C (tres hermanas de H4: `shopify_replenishment` sin `incoming`, `channel_replenishment`

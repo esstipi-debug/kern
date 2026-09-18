@@ -467,6 +467,32 @@ def test_degradation_is_reported_only_for_dirty_levels_not_the_clean_baseline(ke
     assert deg["silent"] == pytest.approx(deg["drop"] - deg["announced"])
 
 
+def test_degradation_no_depende_del_orden_en_que_se_pidieron_los_niveles(tmp_path):
+    """La degradacion de un nivel sucio contra su nivel 0 es la misma sin importar en que
+    orden el operador escribio ``--levels``.
+
+    Cambio de comportamiento del 2026-09-18, introducido al extraer ``_run_lanes`` para
+    poder correr la grilla sobre dos mundos (N2b, shocks). Antes la referencia limpia se
+    iba poblando DENTRO del bucle, asi que ``--levels 3 0`` no producia ninguna
+    degradacion: cuando le tocaba al nivel 3, el nivel 0 todavia no se habia corrido.
+    El numero existia y se omitia por el orden de un argumento, que es justo la clase de
+    dependencia silenciosa que este arnes existe para no tener. Ahora la referencia se
+    arma antes del bucle y el resultado es el mismo con ``0 3`` que con ``3 0``.
+    """
+    from examples.run_world_sim import run_grid
+
+    directo = run_grid(seed=4, n_skus=3, n_suppliers=1, weeks=12, levels=(0, 3),
+                       lanes=("forced",), replan_every=4, out_dir=tmp_path / "a")
+    invertido = run_grid(seed=4, n_skus=3, n_suppliers=1, weeks=12, levels=(3, 0),
+                         lanes=("forced",), replan_every=4, out_dir=tmp_path / "b")
+    assert "degradation" in invertido["kern"]["forced-L3"]
+    assert (invertido["kern"]["forced-L3"]["degradation"]
+            == directo["kern"]["forced-L3"]["degradation"])
+    # Y el nivel 0 sigue sin tener degradacion contra si mismo, en los dos ordenes.
+    assert "degradation" not in invertido["kern"]["forced-L0"]
+    assert "degradation" not in directo["kern"]["forced-L0"]
+
+
 def test_degradation_largest_week_is_present_and_bounded(kern_grid_report):
     report, _, _ = kern_grid_report
     largest = report["kern"]["forced-L3"]["degradation_largest_week"]

@@ -84,7 +84,7 @@ def _percentil(orden: Sequence[float], q: float) -> float:
     return orden[bajo] + (orden[alto] - orden[bajo]) * (pos - bajo)
 
 
-def agregar(reportes: Iterable[dict]) -> tuple[Distribucion, ...]:
+def agregar(reportes: Iterable[dict], *, metrica: str = "capture") -> tuple[Distribucion, ...]:
     """Convierte una coleccion de reportes de ``run_grid`` en distribuciones.
 
     Agrupa por (carril, nivel de suciedad). Cada reporte aporta un mundo, asi que
@@ -92,12 +92,19 @@ def agregar(reportes: Iterable[dict]) -> tuple[Distribucion, ...]:
     semilla no produjo una entrada para un nivel, ese nivel tendra menos mundos
     y el numero lo dira, en vez de que la media se calcule sobre una muestra
     distinta de la anunciada.
+
+    ``metrica`` elige que clave de cada entrada se agrega. Por defecto ``"capture"``,
+    la captura normalizada de siempre; ``"capture_under_shock"`` (N2b) agrega la misma
+    medida sobre mundos perturbados, que es como "captura bajo un salto de lead time de
+    3 semanas: X% +/- Y, peor mundo Z" pasa a ser una frase con numero. Una entrada sin
+    esa clave cuenta como no medible (``None``), igual que un span degenerado: el
+    ``n_medibles`` lo dice en vez de que la media se calcule sobre otra muestra.
     """
     por_grupo: dict[tuple[str, int], list[float | None]] = {}
     for rep in reportes:
         for entrada in rep["kern"].values():
             clave = (entrada["lane"], entrada["level"])
-            por_grupo.setdefault(clave, []).append(entrada["capture"])
+            por_grupo.setdefault(clave, []).append(entrada.get(metrica))
 
     out: list[Distribucion] = []
     for (carril, nivel), capturas in sorted(por_grupo.items(), key=lambda kv: (kv[0][1], kv[0][0])):
@@ -212,8 +219,21 @@ def guardar_linea_base(dists: Sequence[Distribucion], ruta: str | Path,
     return out
 
 
+#: Claves del ``contexto`` que, si difieren, hacen que la comparacion contra la linea
+#: base no signifique nada. ``metrica`` y ``shocks`` entraron con N2b: una captura bajo
+#: disrupcion contra una captura limpia SIEMPRE sale peor, y eso se leeria como una
+#: regresion del producto cuando lo unico que cambio fue el experimento.
+CLAVES_INCOMPARABLES = ("metrica", "shocks")
+
+
+class ContextoIncomparable(ValueError):
+    """La linea base se grabo con otro experimento. Comparar daria un numero con forma
+    de medicion y sin significado, que es peor que no comparar."""
+
+
 def comparar_con_linea_base(dists: Sequence[Distribucion],
-                            ruta: str | Path) -> tuple[list[str], list[str]]:
+                            ruta: str | Path,
+                            *, contexto: dict | None = None) -> tuple[list[str], list[str]]:
     """Devuelve (regresiones, avisos) contra la linea base grabada.
 
     Los avisos no son fallos: cubren los casos en los que la comparacion NO se
@@ -221,8 +241,31 @@ def comparar_con_linea_base(dists: Sequence[Distribucion],
     desviacion. Salen listados en vez de tratarse como "todo bien", porque un
     grupo que deja de medirse es exactamente como se pierde una verificacion
     sin que nadie lo note.
+
+    ``contexto`` es el de la corrida actual. Cuando se pasa, se compara contra el de la
+    linea base en las :data:`CLAVES_INCOMPARABLES` y se levanta si difieren: una captura
+    bajo disrupcion medida contra una linea base limpia sale peor por construccion, y sin
+    esta guarda el driver la reportaria como "Kern decide peor que cuando se grabo la
+    referencia" -- una frase falsa sobre el producto.
     """
     datos = json.loads(Path(ruta).read_text(encoding="utf-8"))
+    if contexto is not None:
+        base_ctx = datos.get("contexto", {}) or {}
+        difieren = {
+            clave: (base_ctx.get(clave), contexto.get(clave))
+            for clave in CLAVES_INCOMPARABLES
+            if base_ctx.get(clave) != contexto.get(clave)
+        }
+        if difieren:
+            detalle = "; ".join(
+                f"{clave}: la linea base dice {antes!r} y esta corrida {ahora!r}"
+                for clave, (antes, ahora) in sorted(difieren.items())
+            )
+            raise ContextoIncomparable(
+                f"la linea base {Path(ruta)} se grabo con otro experimento -- {detalle}. "
+                "Comparar daria una regresion falsa: graba una linea base propia para "
+                "este experimento en vez de medir contra el otro."
+            )
     base = {(d["carril"], d["nivel"]): d for d in datos["distribuciones"]}
     actual = {(d.carril, d.nivel): d for d in dists}
 

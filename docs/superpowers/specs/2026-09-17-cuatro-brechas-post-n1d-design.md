@@ -1,7 +1,6 @@
 # Diseño: las cuatro brechas después de N1d
 
-Fecha: 2026-09-17. Estado: **C, A y D CONSTRUIDAS** (ver abajo); B sigue como diseño
-verificado contra el código, sin código escrito.
+Fecha: 2026-09-17. Estado: **las cuatro CONSTRUIDAS** (C, A, D y B; ver cada sección).
 Rama de origen: `claude/keen-goodall-jfnqo9` (PR #369), después del commit `ead1243` que cerró
 N1d (H4: el tool CSV ve el estante y lo que viene en camino).
 
@@ -416,7 +415,64 @@ carga un admin, no código). Y el evento sigue siendo T2: propone, un humano apr
 
 ---
 
-## B · N2b — shocks en el marcador
+## B · N2b — shocks en el marcador — CONSTRUIDA (2026-09-18)
+
+> Construida en esta misma rama. El diseño se siguió casi entero; lo que cambió salió de
+> correrlo y de una **revisión adversarial** de la propia entrega, que encontró siete
+> defectos reales. Vale la pena la lista, porque seis de los siete son la misma falla con
+> distinta cara — *un número que se reporta y no es lo que su nombre dice*:
+>
+> 1. **`nan`/`inf` en `magnitude`** pasaban la validación (`nan < 1` es `False`) y dejaban
+>    la matriz de demanda entera en NaN, con la corrida siguiendo adelante.
+> 2. **Un `lead_time_spike` de 2,5** se aplicaba como **2** (`round(2.5)` es 2 en Python)
+>    y el reporte publicaba `2.5`: un shock que no ocurrió, escrito en el JSON que después
+>    alguien cita. Se rechaza la magnitud fraccionaria — el lead del mundo es entero.
+> 3. **Un shock de suministro dentro del calentamiento** es un no-op garantizado (ningún
+>    corredor emite órdenes todavía, y el lead real solo muerde a través de una orden
+>    emitida). Medido: `cost_excess_post_shock` exactamente `0.0` y `"absorbido"`. Se
+>    rechaza en `run_grid`, que es quien conoce `WARMUP_WEEKS`; `apply_shocks` sigue pura.
+> 4. **Un tramo sin demanda satisfacía el `hold`** y declaraba `recovered=True` con TTR
+>    sobre un carril que no sirvió una sola unidad. Ahora una semana sin demanda es
+>    **neutral**: ni acredita (no hubo prueba) ni rompe la racha (no hubo falla).
+> 5. **Varios shocks se atribuían cruzados**: con dos, la ventana del primero incluía el
+>    daño del segundo y los dos impactos decían que cada shock hizo todo. Ahora hay una
+>    perturbación y **un** impacto (`combined_window`), etiquetado con los dos nombres.
+> 6. **Una línea base grabada con shock comparada contra una limpia** daba una regresión
+>    falsa del producto: la captura bajo disrupción sale peor por construcción.
+>    `comparar_con_linea_base(contexto=...)` se niega.
+> 7. **`min_fill` y `lost_units_post_shock` son absolutos**, no la parte causada por el
+>    shock. Son la definición que H5 exige; lo que faltaba era decirlo donde se leen.
+>
+> Y dos que aparecieron al escribirlo, no en la revisión:
+>
+> - **Un `demand_surge` en las primeras semanas se auto-absorbe.** `initial_state`
+>   dimensiona el stock de arranque con las primeras `INITIAL_STOCK_WEEKS` semanas de
+>   demanda: medido, un ×3 en las semanas 0-3 **triplica** el stock inicial y la corrida
+>   sale "absorbido" por construcción. Se rechaza.
+> - **La degradación dependía del orden de `--levels`.** `--levels 3 0` no producía
+>   ninguna, porque la referencia limpia se poblaba dentro del bucle. El refactor que el
+>   shock obligó (extraer `_run_lanes` para correr la grilla sobre dos mundos) lo arregla
+>   de paso, y queda fijado por un test.
+>
+> **Desvío respecto del diseño, y por qué.** El diseño pedía `--seeds 25` en
+> `run_world_sim.py`; ese flag no existe y nunca existió — el barrido de N mundos del repo
+> es `scripts/verify_fidelidad.py --mundos N`, que ya llama a `agregar`. El `--shock` fue
+> ahí, `agregar` ganó `metrica=` para poder agregar `capture_under_shock` sin mezclarla
+> nunca con la limpia, y el `contexto` de la línea base graba los shocks y la métrica.
+>
+> **Medido, que es de lo que se trataba:** `--shock supplier_outage:Proveedor-1:8:4` sobre
+> la semilla 4 da **captura −0,105** — Kern decide **peor** que un punto de reorden fijo
+> bajo el corte. Y el barrido produce la frase con número: *"captura bajo un salto de lead
+> time de 3 semanas: 26,1% ± 22,4%, peor mundo 1,3%"*. El diseño decía que ese resultado
+> negativo es el que hay que **querer** ver antes que lo vea un cliente; se ve.
+>
+> Verificado además que el reporte **sin** shock es byte-idéntico al de antes del refactor
+> salvo la clave `shocks` nueva.
+> Código: `src/simworld/shocks.py`, `src/simworld/scorer.py`, `src/simworld/world.py`,
+> `examples/run_world_sim.py`, `src/verify/barrido.py`, `scripts/verify_fidelidad.py`.
+> Tests: `tests/test_simworld_shocks.py` (50) + uno en `tests/test_simworld_e2e.py`.
+
+### El diseño, como se escribió
 
 **Hoy.** `generate_world(seed, n_skus, n_suppliers, weeks, regime)` (`src/simworld/world.py:53-93`)
 sortea con un solo `rng` la demanda (`(n_skus, weeks)`) y el lead real por orden

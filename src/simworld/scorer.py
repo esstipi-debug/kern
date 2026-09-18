@@ -266,3 +266,211 @@ def degradation(
         silent=drop - announced,
         weeks_announced=int(flags.sum()),
     )
+
+
+# ---- N2b: que le hizo un shock al carril -------------------------------------
+
+
+def weekly_fill(outcomes: list[WeekOutcome]) -> np.ndarray:
+    """Fill rate de cada semana: unidades servidas sobre demandadas, agregado por SKU.
+
+    ``Kpis.fill_rate`` es el mismo cociente sobre toda la corrida; esto lo necesita
+    semana a semana porque la recuperacion de un shock es una pregunta temporal -- "cuando
+    volvio a la banda" no se puede contestar con un agregado.
+
+    Una semana sin demanda da 1,0 y no NaN: no se dejo de servir nada. El NaN seria
+    peor que discutible, seria contagioso -- una sola semana muerta ensuciaria el minimo
+    y la comparacion contra la banda de todas las demas.
+    """
+    if not outcomes:
+        raise ValueError("no hay semanas que puntuar")
+    out = np.zeros(len(outcomes), dtype=float)
+    for j, o in enumerate(outcomes):
+        demanded = float(o.demand.sum())
+        out[j] = 1.0 if demanded <= 0 else float(o.sold.sum()) / demanded
+    return out
+
+
+@dataclass(frozen=True)
+class ShockImpact:
+    """Lo que un shock le costo a un carril, medido contra el MISMO carril sin shock.
+
+    Las dos medidas de unidades perdidas viajan JUNTAS y con nombres distintos, que es
+    la correccion que el hallazgo H5 de ``documentation/KERN_DISRUPCIONES_Y_DESAJUSTES.md``
+    dejo escrita. Bajo un ``demand_surge`` la demanda sube, asi que el carril con shock
+    puede SERVIR MAS que el limpio: medir "perdido" como ``servido_base - servido_shock``
+    da cero (o negativo) mientras el fill se hunde a 0,27. Las dos son ciertas y miden
+    cosas distintas -- una es "cuanta demanda del mundo perturbado quedo sin servir", la
+    otra es "cuanto menos vendiste que sin el shock" -- y por eso ninguna reemplaza a la
+    otra, y la segunda va CON SIGNO, sin ``max(0, ...)``.
+    """
+
+    #: Procedencia, para que una seccion de JSON se entienda sin el comando que la produjo.
+    shock_kind: str
+    shock_target: str
+    start_week: int
+    end_week: int
+    band: float
+    hold: int
+
+    #: Primera semana, en o despues del arranque del shock, en la que el fill cayo fuera
+    #: de la banda. ``None`` = nunca salio: el shock se ABSORBIO. Es un resultado real y
+    #: frecuente (Anexo A.1: con holgura por defecto, un shock moderado no se nota).
+    first_out_of_band_week: int | None
+    #: Semanas desde esa primera salida hasta ``hold`` semanas seguidas de vuelta adentro.
+    #: ``None`` cuando no hubo salida (nada que recuperar) o cuando no recupero antes del
+    #: final del horizonte. Ese segundo caso NO se censura con el resto del horizonte: un
+    #: numero censurado promediado junto a TTR reales los diluye y no se distingue de
+    #: ellos. Se dice ``recovered=False`` y se deja el numero vacio.
+    ttr_weeks: float | None
+    recovered: bool
+    #: El peor fill de la ventana post-shock. Lo que un operador mira primero.
+    #:
+    #: ABSOLUTO, no incremental: es el peor fill que hubo, no el que el shock CAUSO. Un
+    #: carril que ya servia mal sin shock reporta un minimo bajo igual. La parte causal
+    #: de este impacto vive en ``lost_vs_baseline`` y en ``cost_excess_post_shock``, que
+    #: son diferencias contra la corrida limpia.
+    min_fill: float
+    #: Demanda del mundo CON SHOCK que quedo sin servir desde el arranque del shock
+    #: hasta el final del horizonte. Nunca negativo por construccion.
+    #:
+    #: Tambien ABSOLUTO, y a proposito: es la definicion que el hallazgo H5 exige para
+    #: poder decir algo bajo un ``demand_surge``, donde la comparacion contra el baseline
+    #: da cero o negativo. Incluye las perdidas que el carril habria tenido igual sin el
+    #: shock -- leerlo como "esto costo el shock" lo sobre-estima, y para eso esta
+    #: ``lost_vs_baseline`` al lado.
+    lost_units_post_shock: float
+    #: Servido sin shock menos servido con shock, en la misma ventana, CON SIGNO.
+    #: Negativo significa que el carril con shock vendio MAS (tipico de un surge).
+    lost_vs_baseline: float
+    #: Exceso de costo del carril con shock contra el mismo carril limpio, sumado semana
+    #: a semana sobre la ventana. Puede ser negativo, y se informa asi.
+    #:
+    #: **Un shock de suministro lo suele poner NEGATIVO, y eso no significa que salio
+    #: gratis.** Un corte de proveedor frena las llegadas: no se paga la compra ni el
+    #: almacenamiento de lo que no llego, y ese ahorro puede superar a la penalidad por
+    #: quiebre. El dano de un shock de suministro vive en ``lost_units_post_shock`` y en
+    #: ``min_fill``, no aca. Se informa igual, con su signo, porque recortarlo a cero
+    #: diria que el shock no movio el costo cuando si lo movio, en la otra direccion.
+    cost_excess_post_shock: float
+
+
+def score_shock(
+    world: World,
+    baseline: list[WeekOutcome],
+    shocked: list[WeekOutcome],
+    shock,
+    *,
+    band: float = 0.02,
+    hold: int = 3,
+) -> ShockImpact:
+    """Compara dos corridas del MISMO carril sobre la MISMA semilla: una limpia y una
+    con ``shock`` aplicado (``src.simworld.shocks.apply_shocks``).
+
+    **TTR se mide desde la primera semana FUERA DE LA BANDA, no desde el arranque del
+    shock.** Es la version 2 del experimento A.1 de la investigacion, y la diferencia no
+    es cosmetica: el Anexo mide un corte de proveedor que recien se nota diez periodos
+    despues de empezar -- "el 'cae en t+10' no es lentitud de deteccion sino el pipeline:
+    la tienda vive del stock del CD hasta que se vacia". Contar esas diez semanas como
+    tiempo de recuperacion le cobraria al sistema la holgura que lo protegio.
+
+    **La banda es de un solo lado.** Estar POR ENCIMA del fill del baseline no es estar
+    fuera de la banda: es servir mejor, y exigir volver a un corredor simetrico haria que
+    una corrida que sobre-recupera figure como no recuperada. La investigacion la escribe
+    como "+/-2%"; el lado que decide una recuperacion es el de abajo, y aca se dice cual
+    se usa en vez de dejarlo a la lectura.
+
+    ``hold`` son semanas CONSECUTIVAS adentro, para que un rebote de una semana no cuente
+    como recuperacion (el ``min_hold`` del plan de resilience). Una ventana de ``hold``
+    semanas que no entra antes del final del horizonte no cuenta como recuperada: no se
+    sabe si hubiera seguido adentro.
+
+    **Solo cuentan las semanas con demanda.** Una semana sin nada que servir no prueba
+    que el servicio volvio, asi que no suma al ``hold``; tampoco rompe la racha, porque
+    tampoco fallo. Es neutral. Sin esto, un tramo muerto de ``hold`` semanas declara
+    recuperado a un carril que no sirvio una sola unidad desde el shock.
+
+    El costo semanal sale de :func:`weekly_cost` sobre cada corrida. Se le pasa el mundo
+    del carril limpio a las dos porque el costo solo usa ``world.skus`` (costo unitario y
+    margen) y un shock no toca los SKU: pasar dos mundos distintos daria el mismo numero
+    y sugeriria que podria no darlo.
+    """
+    if not baseline or not shocked:
+        raise ValueError("no hay semanas que puntuar")
+    if len(baseline) != len(shocked):
+        raise ValueError(
+            f"largo distinto: {len(baseline)} semanas limpias vs {len(shocked)} con shock; "
+            "las dos corridas tienen que ser del mismo horizonte para compararse semana a semana"
+        )
+    if hold < 1:
+        raise ValueError(f"hold debe ser >= 1, no {hold}")
+    if band < 0:
+        raise ValueError(f"band debe ser >= 0, no {band}")
+
+    n = len(shocked)
+    start = int(shock.start_week)
+    if not 0 <= start < n:
+        raise ValueError(f"el shock arranca en la semana {start}, fuera del horizonte de {n}")
+
+    fill_base = weekly_fill(baseline)
+    fill_shock = weekly_fill(shocked)
+    dentro = [bool(fill_shock[t] >= fill_base[t] - band) for t in range(n)]
+    # Una semana SIN DEMANDA no prueba nada sobre el servicio: no hubo nada que servir.
+    # `weekly_fill` le da 1,0 (no se dejo de servir nada, y un NaN seria contagioso),
+    # pero para la recuperacion eso no es evidencia -- y contarlo como tal produce el
+    # peor error posible aca: un carril que no sirvio una sola unidad desde el shock
+    # sale `recovered=True` con un TTR, porque tres semanas muertas alcanzaron el
+    # `hold`. Medido antes de esta guarda: TTR 2 sobre un carril muerto.
+    probada = [bool(float(o.demand.sum()) > 0) for o in shocked]
+
+    first_out: int | None = next(
+        (t for t in range(start, n) if probada[t] and not dentro[t]), None
+    )
+
+    ttr: float | None = None
+    recovered = True
+    if first_out is not None:
+        recovered = False
+        seguidas = 0
+        arranque: int | None = None
+        for t in range(first_out, n):
+            if not probada[t]:
+                # Neutral: ni rompe la racha (no hubo falla) ni la acredita (no hubo
+                # prueba). Saltarla es lo unico que no afirma nada de mas.
+                continue
+            if dentro[t]:
+                if seguidas == 0:
+                    arranque = t
+                seguidas += 1
+                if seguidas >= hold:
+                    ttr = float(arranque - first_out)
+                    recovered = True
+                    break
+            else:
+                seguidas = 0
+                arranque = None
+
+    ventana = range(start, n)
+    lost_post = float(sum(float(shocked[t].lost.sum()) for t in ventana))
+    servido_base = float(sum(float(baseline[t].sold.sum()) for t in ventana))
+    servido_shock = float(sum(float(shocked[t].sold.sum()) for t in ventana))
+
+    costo_base = weekly_cost(world, baseline)
+    costo_shock = weekly_cost(world, shocked)
+    exceso = float((costo_shock[start:] - costo_base[start:]).sum())
+
+    return ShockImpact(
+        shock_kind=str(shock.kind),
+        shock_target=str(shock.target),
+        start_week=start,
+        end_week=int(shock.end_week),
+        band=float(band),
+        hold=int(hold),
+        first_out_of_band_week=first_out,
+        ttr_weeks=ttr,
+        recovered=recovered,
+        min_fill=float(fill_shock[start:].min()),
+        lost_units_post_shock=lost_post,
+        lost_vs_baseline=servido_base - servido_shock,
+        cost_excess_post_shock=exceso,
+    )
