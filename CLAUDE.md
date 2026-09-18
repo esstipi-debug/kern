@@ -196,6 +196,19 @@ nunca 0 -- y el CSV deja la celda en blanco, el deck pone un finding "do NOT net
 las OPTIONS un residual. Un cero significaria "medido, y no viene nada", que manda al
 comprador a no restar nada. Y el neteo alcanza al DISPARADOR, no solo a la cantidad.
 
+Que esos siete neteen NO es una creencia: lo mide `src/bateria/barrido_neteo.py`,
+corriendo cada emisor DOS veces (con y sin en-transito) y exigiendo que la cantidad
+baje. Sondea los **catorce** tools del registro que ponen un numero de compra en manos
+del operador, y los otros 46 tienen que declarar por escrito por que no lo hacen:
+`tests/test_barrido_neteo.py` recorre `build_default_registry()` y se pone rojo si un
+tool no esta clasificado. Nacio porque la bateria puntua el MEJOR candidato de T05 y
+por eso estuvo en verde los meses en que el tool central no miraba el estante -- un
+tool que nadie sondea no se puede poner rojo. T05 ahora CONSUME esas sondas, asi que
+"netea" se define una sola vez. Estado publicado y congelado en
+[`documentation/KERN_BARRIDO_NETEO.md`](documentation/KERN_BARRIDO_NETEO.md): 7 netean,
+7 no tienen canal (`newsvendor`, `sop`, `multi_echelon`, `simulation`, `hat_tension`,
+`hat_settlement`, `launch_readiness`) y ninguno tiene el dato sin usarlo.
+
 ### Client parameter profiles (`src/client_profile.py`)
 Per-client durable cost/capacity parameters (holding rate, order cost, service
 level, lead time, warehouse capacity), keyed by a slugified client name under

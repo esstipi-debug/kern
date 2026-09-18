@@ -78,6 +78,16 @@ de inventario, los sombreros y `cross_impact` ignoraban los terminos.
   `None`/vacio y el deck, el CSV y las OPTIONS lo dicen. Tests:
   `tests/test_shopify_en_transito.py` (9), `tests/test_channel_en_transito.py` (13),
   `tests/test_drp_en_transito.py` (14). Siguen abiertas A, D y B del diseño.
+- **A cerrada (barrido de neteo)**: `src/bateria/barrido_neteo.py` sondea los **14**
+  tools del registro que ponen un numero de compra en manos del operador -- dos corridas
+  cada uno, con y sin en-transito, exigiendo que la cantidad baje -- y obliga a los 60 a
+  declararse (`EMISORES` con sonda o `NO_EMISORES` con razon): `tests/test_barrido_neteo.py`
+  (17) se pone rojo si un tool nuevo no dice cual es. Resultado congelado en
+  `ESTADOS_NETEO` y publicado en `documentation/KERN_BARRIDO_NETEO.md`: **7 netean, 7
+  `sin_canal`** (`newsvendor`, `sop`, `multi_echelon`, `simulation`, `hat_tension`,
+  `hat_settlement`, `launch_readiness`) y **ninguno** con el dato sin usar. T05 ahora
+  CONSUME esas sondas (una sola definicion de "netea" en el repo) y el puntaje publicado
+  no se movio: 65,00% · 13/20. Siguen abiertas D y B del diseño.
 - **Diseño de las cuatro brechas siguientes, verificado contra el codigo, cero codigo**:
   `docs/superpowers/specs/2026-09-17-cuatro-brechas-post-n1d-design.md`. Orden propuesto:
   C (tres hermanas de H4: `shopify_replenishment` sin `incoming`, `channel_replenishment`

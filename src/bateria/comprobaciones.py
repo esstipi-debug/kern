@@ -13,6 +13,7 @@ import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from src.bateria import barrido_neteo
 from src.bateria.scorer import Contexto, Estado, ResultadoTarea, comprobacion
 
 #: Dataset de stock con el que se puntua T11. Sin el, la tarea es SIN_DATO.
@@ -510,15 +511,11 @@ _CAMPOS_CANTIDAD = ("qty", "quantity", "cantidad", "restock", "units")
 _CAMPOS_FECHA = ("date", "fecha", "eta", "arriv", "llegada")
 _CAMPOS_RAZON = ("reason", "razon", "motivo", "zone", "trigger", "priority", "classification")
 
-#: Nombres con los que las ordenes ya emitidas podrian entrar al entregable.
-_CAMPOS_EN_TRANSITO = ("transit", "transito", "on_order", "onorder", "incoming", "open_po")
-
-#: Ordenes ya emitidas con las que se sondea el neteo en T05.
-_ON_ORDER_SONDA = 80.0
-#: Para la planilla el valor es chico a proposito: 42 en estante + 5 en camino = 47,
-#: todavia bajo el punto de reorden de 50. Asi la sonda mide que baja la CANTIDAD y no
-#: que se apago el disparador, que seria cierto pero probaria menos.
-_ON_ORDER_SONDA_PLANILLA = 5.0
+#: Los dos valores con los que se sondea el neteo viven en el barrido, que es quien
+#: corre las sondas. Aca solo se consumen: una segunda copia seria una segunda
+#: definicion de "netea", que es exactamente lo que el barrido existe para evitar.
+_ON_ORDER_SONDA = barrido_neteo.ON_ORDER_SONDA
+_ON_ORDER_SONDA_PLANILLA = barrido_neteo.ON_ORDER_SONDA_PLANILLA
 
 
 @dataclass(frozen=True)
@@ -584,57 +581,40 @@ class _CandidatoOC:
         }
 
 
+def _desde_sonda(sonda: barrido_neteo.SondaNeteo, muestra: _Muestra) -> _CandidatoOC:
+    """Un candidato de T05 = una sonda del barrido MAS la muestra de forma.
+
+    Las dos mitades del criterio se miden por separado y por razones distintas. El
+    filo eliminatorio -- descontar el en-transito -- lo corre
+    ``src/bateria/barrido_neteo.py``, que sondea los CATORCE emisores del repo y no
+    solo estos tres; los cinco requisitos de forma son propios de T05 y se miden con
+    ``_Muestra``. Consumir la sonda en vez de copiarla es lo que evita que el
+    corrector y el barrido terminen con dos nociones distintas de "netea".
+    """
+    return _CandidatoOC(
+        tool=sonda.tool,
+        entregable=sonda.entregable,
+        muestra=muestra,
+        descuenta_en_transito=sonda.descuenta,
+        prueba_en_transito=sonda.prueba,
+    )
+
+
 def _candidato_excel() -> _CandidatoOC:
     """``excel_replenishment``: el tool de reposicion sobre la planilla del cliente.
 
-    El neteo se prueba CORRIENDO el job, no leyendo sus campos. Hasta que la
-    planilla tuvo columna de en-transito el juicio era estructural y devolvia
-    ``False`` con razon; cuando el campo aparecio, este candidato paso a ``None``
-    -- "hay nombre, falta sonda" -- y esa es la sonda. Un campo que se agrega sin
-    ella no acredita nada: es el defecto que costo 17,5 puntos porcentuales.
-
-    Dos corridas sobre la MISMA planilla, cambiando solo la columna de
-    en-transito. El valor sondeado se elige para que el disparador siga activo en
-    las dos: con 42 en estante contra un punto de reorden de 50, una posicion de
-    47 sigue bajo el punto y lo que cambia es la CANTIDAD. Un valor mas grande
-    apagaria el disparador y la cantidad caeria a cero por otra razon -- cierto,
-    pero probaria menos.
+    El neteo se prueba CORRIENDO el job, no leyendo sus campos (la sonda vive en el
+    barrido). Hasta que la planilla tuvo columna de en-transito el juicio era
+    estructural y devolvia ``False`` con razon; cuando el campo aparecio, este
+    candidato paso a ``None`` -- "hay nombre, falta sonda" -- y despues se escribio la
+    sonda. Un campo que se agrega sin ella no acredita nada: es el defecto que costo
+    17,5 puntos porcentuales.
     """
-    import tempfile
-
-    from openpyxl import Workbook
-
     from jobs import excel_replenishment_job as job
 
-    def _correr(en_transito: float, carpeta: str) -> list[float]:
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Hoja"
-        for col, encabezado in enumerate(("Codigo", "Stock", "Punto Reorden", "En Transito"), 1):
-            ws.cell(row=1, column=col, value=encabezado)
-        for fila, (sku, stock, rop) in enumerate((("P1", 42, 50), ("P2", 30, 40)), 2):
-            for col, valor in enumerate((sku, stock, rop, en_transito), 1):
-                ws.cell(row=fila, column=col, value=valor)
-        ruta = f"{carpeta}/planilla-{en_transito:g}.xlsx"
-        wb.save(ruta)
-        return [ln.restock_qty for ln in job.run(job.prepare(ruta)).lines]
-
-    with tempfile.TemporaryDirectory() as carpeta:
-        qty_sin = _correr(0.0, carpeta)
-        qty_con = _correr(_ON_ORDER_SONDA_PLANILLA, carpeta)
-    netea = all(b < a for a, b in zip(qty_sin, qty_con, strict=True))
-
-    salida = _campos_del_registro(job.ReplenishmentLine)
-    return _CandidatoOC(
-        tool="excel_replenishment",
-        entregable="jobs.excel_replenishment_job.ReplenishmentLine",
-        muestra=_Muestra.de_nombres(salida),
-        descuenta_en_transito=netea,
-        prueba_en_transito=(
-            f"con {_ON_ORDER_SONDA_PLANILLA:g} unidades ya emitidas en la columna de la "
-            f"planilla la cantidad a pedir {'baja' if netea else 'NO baja'}: "
-            f"{qty_sin} -> {qty_con}"
-        ),
+    return _desde_sonda(
+        barrido_neteo.sonda_excel(),
+        _Muestra.de_nombres(_campos_del_registro(job.ReplenishmentLine)),
     )
 
 
@@ -645,52 +625,11 @@ def _candidato_odoo() -> _CandidatoOC:
     cambiando solo el mapa de OC abiertas que ``plan_replenishment`` recibe. El
     campo existe desde que se cerro kern#251; que exista no lo acredita.
     """
-    from src.connectors import InventoryLevel, Order, OrderLine, Product
-    from src.connectors.replenish import ReplenishmentLine, plan_replenishment
+    from src.connectors.replenish import ReplenishmentLine
 
-    class _Fuente:
-        """Fuente minima y determinista, con historial suficiente para pronosticar.
-
-        No se usa ``simulator.demo_store()`` a proposito: su catalogo no llega al
-        minimo de observaciones, asi que las dos corridas salen vacias y la sonda
-        reportaria "NO baja" cuando en realidad no midio nada. Un falso negativo
-        con cara de medicion es peor que una sonda ausente.
-        """
-
-        def list_products(self):
-            return [Product(sku="P1", title="A", price=10.0, cost=6.0)]
-
-        def inventory_levels(self):
-            return [InventoryLevel(sku="P1", available=20.0)]
-
-        def orders(self):
-            return [
-                Order(order_id=f"O{i}", created_at=f"2026-01-{i:02d}",
-                      lines=(OrderLine(sku="P1", quantity=10.0, price=10.0),))
-                for i in range(1, 13)
-            ]
-
-    def _qty(on_order: dict[str, float] | None) -> list[float]:
-        plan = plan_replenishment(_Fuente(), on_order_by_sku=on_order)
-        return [ln.restock_qty for ln in plan.lines if ln.status == "ok"]
-
-    qty_sin = _qty(None)
-    qty_con = _qty({"P1": _ON_ORDER_SONDA})
-    if not qty_sin:
-        netea: bool | None = None
-        prueba = ("la sonda no produjo ninguna linea dimensionada: no se midio nada, "
-                  "asi que no se acredita ni se niega")
-    else:
-        netea = all(b < a for a, b in zip(qty_sin, qty_con, strict=True))
-        prueba = (f"con {_ON_ORDER_SONDA:g} unidades ya emitidas por SKU la cantidad a pedir "
-                  f"{'baja' if netea else 'NO baja'}: {qty_sin} -> {qty_con}")
-
-    return _CandidatoOC(
-        tool="odoo_replenishment",
-        entregable="src.connectors.replenish.ReplenishmentLine",
-        muestra=_Muestra.de_nombres(_campos_del_registro(ReplenishmentLine)),
-        descuenta_en_transito=netea,
-        prueba_en_transito=prueba,
+    return _desde_sonda(
+        barrido_neteo.sonda_odoo(),
+        _Muestra.de_nombres(_campos_del_registro(ReplenishmentLine)),
     )
 
 
@@ -702,20 +641,19 @@ _DLT_SONDA = (7.0, 21.0)
 
 
 def _candidato_ddmrp() -> _CandidatoOC:
-    """``ddmrp``: el unico que sí netea, y se prueba corriendolo.
+    """``ddmrp``: el primero que neteo, y el unico que ademas arma la OC.
 
     Dos sondas distintas, las dos de comportamiento:
 
-    1. **En-transito** (eliminatoria). Se corre dos veces sobre las MISMAS partes,
-       con y sin ordenes ya emitidas: la cantidad a pedir tiene que bajar. Es lo
-       que el criterio marca como eliminatorio ("si se ignoran las ordenes ya
-       emitidas, sobre-compra y no cuenta").
+    1. **En-transito** (eliminatoria). La corre el barrido, sobre las mismas partes y
+       con el mismo valor: la cantidad a pedir tiene que bajar. Es lo que el criterio
+       marca como eliminatorio ("si se ignoran las ordenes ya emitidas, sobre-compra
+       y no cuenta").
     2. **Forma de la OC**. Se corre dos veces mas, con proveedores distintos y
        lead times distintos, y se mira el VALOR de cada campo. El gate viejo
        preguntaba si algun nombre contenia ``supplier|vendor|proveedor`` -- dos
        campos vacios con esos nombres pasaban la tarea de NO_CUMPLE a CUMPLE sin
-       que el job supiera que existe un proveedor. Y de hecho no lo sabe:
-       ``prepare_records`` descarta la columna, asi que no hay valor que mover.
+       que el job supiera que existe un proveedor.
     """
     import pandas as pd
 
@@ -733,24 +671,13 @@ def _candidato_ddmrp() -> _CandidatoOC:
                 "supplier": list(proveedores),
             }
         )
-        return partes, job.run(job.prepare_records(partes))
+        return job.run(job.prepare_records(partes))
 
-    partes, sin_oc = _correr(_PROVEEDORES_SONDA[0], _DLT_SONDA[0])
-    con_oc = job.run(job.prepare_records(partes.assign(on_order=_ON_ORDER_SONDA)))
-    qty_sin = [p.signal.order_qty for p in sin_oc.parts]
-    qty_con = [p.signal.order_qty for p in con_oc.parts]
-    netea = all(b < a for a, b in zip(qty_sin, qty_con, strict=True))
-
-    _, otro_proveedor = _correr(_PROVEEDORES_SONDA[1], _DLT_SONDA[1])
-    return _CandidatoOC(
-        tool="ddmrp",
-        entregable="jobs.ddmrp_job.DdmrpPart",
-        muestra=_Muestra.de_corridas(sin_oc.parts, otro_proveedor.parts),
-        descuenta_en_transito=netea,
-        prueba_en_transito=(
-            f"con {_ON_ORDER_SONDA:g} unidades ya emitidas la cantidad a pedir "
-            f"{'baja' if netea else 'NO baja'}: {qty_sin} -> {qty_con}"
-        ),
+    un_proveedor = _correr(_PROVEEDORES_SONDA[0], _DLT_SONDA[0])
+    otro_proveedor = _correr(_PROVEEDORES_SONDA[1], _DLT_SONDA[1])
+    return _desde_sonda(
+        barrido_neteo.sonda_ddmrp(),
+        _Muestra.de_corridas(un_proveedor.parts, otro_proveedor.parts),
     )
 
 

@@ -1,6 +1,6 @@
 # Diseño: las cuatro brechas después de N1d
 
-Fecha: 2026-09-17. Estado: **C CONSTRUIDA** (ver abajo); A, D y B siguen como diseño
+Fecha: 2026-09-17. Estado: **C y A CONSTRUIDAS** (ver abajo); D y B siguen como diseño
 verificado contra el código, sin código escrito.
 Rama de origen: `claude/keen-goodall-jfnqo9` (PR #369), después del commit `ead1243` que cerró
 N1d (H4: el tool CSV ve el estante y lo que viene en camino).
@@ -178,7 +178,32 @@ heredar esa distinción cuando se cablee el productor.
 
 ---
 
-## A · Barrido de neteo con la batería
+## A · Barrido de neteo con la batería — CONSTRUIDA (2026-09-18)
+
+> Construida en esta misma rama. Tres desvíos respecto del diseño de abajo, los tres
+> por la misma razón — el barrido tenía que poder acusar sin acusar de más:
+>
+> 1. **`NO_EMISORES` es un `dict`, no un `frozenset`.** El diseño pedía «con razón» y
+>    un conjunto pelado no puede llevarla; sin razón escrita, `NO_EMISORES` se
+>    convierte en el cajón donde va a parar lo que no se quiso sondear.
+> 2. **`SondaNeteo` lleva un campo más, `emite`** (`cantidad a pedir` / `nivel
+>    objetivo` / `veredicto de cobertura`). Sin él la tabla mete en la misma fila a
+>    `newsvendor` (una cantidad que se manda al proveedor tal cual) y a
+>    `multi_echelon` (un nivel que netea quien ejecuta), que no cargan el mismo riesgo.
+> 3. **El detector de canal compara TOKENS, no substrings.** Buscando `on_order`
+>    adentro de `echelon_order_up_to` hay coincidencia (`echel-on_order-_up_to`) y
+>    `multi_echelon` salía acusado de tener un canal que no tiene: un falso positivo
+>    manda a escribir una sonda imposible y deja el vector congelado mintiendo.
+>
+> Además, la clasificación quedó en **14 emisores** (no los ~11 que lista el diseño):
+> entraron `hat_tension`, `hat_settlement` y `simulation`, que también ponen un número
+> de compra o un nivel en manos del operador. Resultado: **7 netean, 7 `sin_canal`,
+> ninguno `no_netea` ni `sin_sonda`** — C se construyó antes justamente para eso.
+> Código: `src/bateria/barrido_neteo.py`, `scripts/barrido_neteo.py`.
+> Tests: `tests/test_barrido_neteo.py`. Documento: `documentation/KERN_BARRIDO_NETEO.md`.
+> El puntaje de la batería no se movió (65,00% · 13/20) y T05 ahora consume las sondas.
+
+### El diseño, como se escribió
 
 **Hoy.** T05 (`src/bateria/comprobaciones.py:798-812`) sonda TRES entregables —
 `_candidato_excel`, `_candidato_odoo`, `_candidato_ddmrp` — y `_veredicto_oc` puntúa **el mejor**.
