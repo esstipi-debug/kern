@@ -171,7 +171,6 @@ def _oracle_order_for_sku(
     if n <= 0:
         return 0.0
 
-    margin = price - unit_cost
     weekly_holding = unit_cost * holding_rate / WEEKS_PER_YEAR
     demand = np.asarray(demand_full[t0:horizon], dtype=float)
     lead = np.asarray(real_lead_full[t0:horizon], dtype=int)
@@ -211,7 +210,10 @@ def _oracle_order_for_sku(
     c[:n_q] = unit_cost
     c[off_y:off_y + n_y] = order_cost
     c[off_I:off_I + n_I] = weekly_holding
-    c[off_s:off_s + n_s] = -margin * shortage_penalty_rate
+    # A PRICE, no a `margin`: el objetivo del MILP tiene que ser el mismo que
+    # `scorer.score_run` puntua, o el techo deja de ser el techo de lo que se mide.
+    # El porque del cambio esta en el bloque largo de `scorer.score_run`.
+    c[off_s:off_s + n_s] = -price * shortage_penalty_rate
 
     arrival_local = arrival[orderable] - t0
     A_eq = lil_matrix((n, n_vars))

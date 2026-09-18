@@ -165,10 +165,19 @@ def degrada_con_la_suciedad(dists: Sequence[Distribucion], carril: str) -> list[
 
     No se exige que empeore -- Kern limpia parte de la suciedad a proposito, asi
     que un nivel 1 casi igual al 0 es exito, no fallo. Lo que no puede pasar es
-    que ensuciar los datos haga a Kern *mejor*: eso significa que el nivel de
-    suciedad esta entrando en la decision por una via que nadie diseno, y es el
-    sintoma clasico de una fuga de informacion entre el generador de suciedad y
-    el marcador.
+    que ensuciar los datos haga a Kern *mejor*: significa que el nivel de
+    suciedad esta entrando en la decision por una via que nadie diseno.
+
+    **Cuidado con el diagnostico.** Hasta el 2026-09-18 este docstring afirmaba
+    que eso es "el sintoma clasico de una fuga de informacion entre el generador
+    de suciedad y el marcador". La primera vez que el detector disparo de verdad
+    -- 25 mundos, L1 34,3% contra L0 7,6% -- NO habia ninguna fuga: la lente no
+    toca el scorer en ningun punto. La causa estaba en el signo de la funcion de
+    costo (la venta perdida se valuaba a ``margin``, que ya viene neto de
+    ``unit_cost``, asi que servir era contablemente peor que no servir en el 42%
+    del catalogo; ver la nota larga de ``src/simworld/scorer.py::score_run``).
+    Esta alarma dice QUE algo entro por una via no disenada, no CUAL: la fuga es
+    una hipotesis a descartar, no la conclusion.
     """
     del_carril = sorted(
         (d for d in dists if d.carril == carril and d.media is not None),

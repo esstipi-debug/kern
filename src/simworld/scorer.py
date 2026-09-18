@@ -69,14 +69,15 @@ def weekly_cost(
         raise ValueError("no hay semanas que puntuar")
 
     unit_cost = np.array([s.unit_cost for s in world.skus], dtype=float)
-    margin = np.array([s.price - s.unit_cost for s in world.skus], dtype=float)
+    price = np.array([s.price for s in world.skus], dtype=float)
     weekly_holding = unit_cost * holding_rate / WEEKS_PER_YEAR
 
     out = np.zeros(len(outcomes), dtype=float)
     for j, o in enumerate(outcomes):
         procurement = float((o.ordered * unit_cost).sum())
         holding = float((o.on_hand_end * weekly_holding).sum())
-        shortage = float((o.lost * margin * shortage_penalty_rate).sum())
+        # La venta perdida se valua a PRICE, no a margin: ver la nota de `score_run`.
+        shortage = float((o.lost * price * shortage_penalty_rate).sum())
         fixed = float(order_cost * int((o.ordered > 0).sum()))
         out[j] = procurement + holding + shortage + fixed
     return out
@@ -96,7 +97,6 @@ def score_run(
 
     unit_cost = np.array([s.unit_cost for s in world.skus], dtype=float)
     price = np.array([s.price for s in world.skus], dtype=float)
-    margin = price - unit_cost
     weekly_holding = unit_cost * holding_rate / WEEKS_PER_YEAR
 
     demand = np.stack([o.demand for o in outcomes], axis=1)
@@ -108,7 +108,32 @@ def score_run(
     total_demand = float(demand.sum())
     procurement = float((ordered * unit_cost[:, None]).sum())
     holding = float((on_hand * weekly_holding[:, None]).sum())
-    shortage = float((lost * margin[:, None] * shortage_penalty_rate).sum())
+    # --- La venta perdida se valua a PRICE, no a `margin`. -----------------------
+    # Hasta el 2026-09-18 esto era `margin = price - unit_cost`, y eso RESTABA DOS
+    # VECES el costo unitario de cada unidad servida: `procurement` ya cobra
+    # `unit_cost` al comprarla, y el credito por no quebrar se valuaba a un margen
+    # que viene neto de ese mismo costo. Servir una unidad neteaba
+    # `unit_cost - margin = 2*unit_cost - price`, o sea que **servir era
+    # contablemente peor que no servir** en todo SKU con `price < 2*unit_cost`.
+    #
+    # No es un caso de borde: `world.generate_world` sortea
+    # `price = unit_cost * U(1.4, 2.8)`, asi que el 42,86% del catalogo nace de ese
+    # lado por construccion (medido: 82 de 200 SKU sobre 25 semillas). El oraculo,
+    # que minimiza ESTA funcion, pedia exactamente cero en los 82 durante todo el
+    # horizonte -- fill 0,15 ahi contra 0,98 en el resto -- y terminaba sirviendo
+    # MENOS que el piso (0,641 contra 0,824) en 21 de 25 mundos. Una politica de no
+    # comprar NUNCA nada sacaba captura +0,375 y le ganaba al piso en 21/25.
+    #
+    # Con `price`, `total_cost` pasa a ser `constante_del_mundo - profit_economico`
+    # (la constante es `sum(demanda * price)`), asi que minimizar el costo y
+    # maximizar la rentabilidad son el mismo problema y la doble resta desaparece.
+    # Medido tras el cambio: el techo pasa a fill 0,9997 y sirve y rinde mas que el
+    # piso en 25/25.
+    #
+    # **Esto revierte una decision anterior a proposito.** `tests/test_simworld_runners.py`
+    # fijaba `margin` y trataba `price` como un mutante ("very plausible real bug").
+    # La evidencia de arriba dice lo contrario: el mutante era el original.
+    shortage = float((lost * price[:, None] * shortage_penalty_rate).sum())
     fixed = float(order_cost * int((ordered > 0).sum()))
     revenue = float((sold * price[:, None]).sum())
     total_cost = procurement + holding + shortage + fixed
@@ -134,7 +159,11 @@ def score_run(
         fixed_order_cost=fixed,
         total_cost=total_cost,
         revenue=revenue,
-        profit=revenue - total_cost,
+        # Rentabilidad ECONOMICA: lo vendido menos lo que costo operar. NO se resta
+        # `shortage`, porque la venta perdida ya esta descontada -- no entro en
+        # `revenue`. `revenue - total_cost` la cobraba dos veces y por eso daba
+        # numeros que no eran la rentabilidad de nada.
+        profit=revenue - (procurement + holding + fixed),
     )
 
 

@@ -200,23 +200,35 @@ def test_grid_writes_a_json_and_a_markdown_report(floor_ceiling_report):
 # historia, ver `run_grid`), el costo real y estable del piso GENUINAMENTE
 # congelado en este fixture es 185,472.66 (medido directamente, ver
 # task-11-report.md).
-GOLDEN_FLOOR_COST = 185472.66449519232
-GOLDEN_CEILING_COST = 125825.87317307692
+# Re-medidos el 2026-09-18, cuando la venta perdida paso a valuarse a `price` en
+# vez de `margin` (ver la nota larga de `src/simworld/scorer.py::score_run`). Los
+# dos numeros TENIAN que moverse: el del piso porque su quiebre se valua distinto,
+# y el del techo porque el oraculo optimiza la funcion nueva y ahora compra lo que
+# antes le convenia no comprar. Valores anteriores, por si alguien busca el diff:
+# piso 185.472,66 y techo 125.825,87.
+GOLDEN_FLOOR_COST = 224460.90949519232
+GOLDEN_CEILING_COST = 136123.74639423075
 
 
 def test_golden_floor_and_ceiling_costs_are_stable(floor_ceiling_report):
-    """No se pin-ea `ceiling.fill_rate > floor.fill_rate` a proposito: el
-    brief original (stale) lo asumia, pero la revision post-hoc del oraculo
-    (Task 7) documenta que un oraculo optimo en COSTO gana en costo mucho
-    mas seguido de lo que gana en unidades perdidas -- a veces acepta un
-    quiebre porque es mas barato que evitarlo. Medido directamente en este
-    fixture: ceiling.fill_rate (0.565) < floor.fill_rate (0.628) mientras
-    ceiling.total_cost sigue siendo estrictamente menor. Afirmar lo
-    contrario aca haria un test flakey/falso contra el comportamiento
-    correcto y documentado del oraculo."""
+    """Hasta el 2026-09-18 este test se NEGABA a pinear `ceiling.fill_rate >
+    floor.fill_rate`, y la razon escrita era que "un oraculo optimo en COSTO a
+    veces acepta un quiebre porque es mas barato que evitarlo": medido entonces,
+    ceiling.fill_rate 0,565 contra floor 0,628.
+
+    Eso no era una propiedad del oraculo sino el sintoma de la doble resta de
+    `unit_cost` en la funcion de costo: valuada la venta perdida a `margin`,
+    servir era contablemente peor que no servir en todo SKU con
+    `price < 2*unit_cost`, y el techo dejaba de comprarlos. Con el quiebre a
+    `price` el mismo fixture da ceiling.fill_rate **1,000** contra floor 0,764.
+
+    Asi que ahora SI se fija, y es la invariante que mas dice de las tres: un
+    techo que sirve menos que el piso no es un techo de nada -- es la senal de
+    que la vara premia no comprar."""
     report, _ = floor_ceiling_report
     assert report["floor"]["total_cost"] == pytest.approx(GOLDEN_FLOOR_COST, rel=1e-6)
     assert report["ceiling"]["total_cost"] == pytest.approx(GOLDEN_CEILING_COST, rel=1e-6)
+    assert report["ceiling"]["fill_rate"] >= report["floor"]["fill_rate"]
 
 
 # ---------------------------------------------------------------------------
