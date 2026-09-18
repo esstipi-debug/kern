@@ -209,6 +209,46 @@ tool que nadie sondea no se puede poner rojo. T05 ahora CONSUME esas sondas, asi
 7 no tienen canal (`newsvendor`, `sop`, `multi_echelon`, `simulation`, `hat_tension`,
 `hat_settlement`, `launch_readiness`) y ninguno tiene el dato sin usarlo.
 
+### El Tower sensa sobre datos reales (`jobs/state_bridge.py`)
+`run_all_monitors` lee `stock`, `forecast` y `outcomes`, y hasta el 2026-09-18 el UNICO
+escritor de `stock` era el puente del marcador (`examples/run_world_sim.py`): en
+produccion el bucle de sensado corria sobre vacio (H1). Los **cinco** jobs que leen una
+posicion (`inventory_optimization`, `odoo_replenishment`, `shopify_replenishment`,
+`channel_replenishment`, `excel_replenishment`) ahora escriben el snapshot, y los tres de
+conector escriben ademas la demanda REALIZADA como `outcomes`/`actual_qty` con la fecha
+de cada pedido. El mapeo de cada job vive en UN lugar (`jobs/state_bridge.py`), nunca
+copiado.
+
+- **Identidad, la misma regla que `forecast_cycle.store_from_params`**: sin
+  `params["state_client_id"]` no se escribe nada y NUNCA la particion compartida; un id
+  invalido levanta `ClientIdError` en vez de degradar. Cada reporte gana `state_note`.
+- **`avg_daily_demand` es por dia CALENDARIO** (`replenish.daily_demand_by_sku`), no el
+  promedio de `demand_by_sku` — cuyo periodo es un dia-CON-PEDIDOS. Sobre un SKU
+  intermitente el segundo sobre-estima la tasa varias veces, y es justo el numero con el
+  que el Tower calcula dias de cobertura: dispararia quiebres falsos.
+- **La planilla en modo punto-de-reorden no escribe**: sin columna de demanda no hay tasa
+  diaria y derivarla del ROP seria inventarla. La nota lo dice.
+- **Limite declarado**: el dominio `stock` no tiene `on_order`, asi que `rop_breach`
+  dispara sobre el ESTANTE. Agregar la columna exige un ciclo de esquema en
+  `system_state.py`; queda como seguimiento.
+
+Con eso, los dos monitores huerfanos (`forecast_error_out_of_band`, `lead_time_drift`)
+**tienen ruta** en `config/event_routing.yaml` (9 rutas): leen la serie REAL del estado
+(`event_intent._real_series_csv`) y se NIEGAN con `EventRoutingError` si un SKU no llega
+al minimo de `forecast_job` — regla 7, una serie corta no se completa con nada. El
+drift entra como override `lead_times` de `inventory_optimization`, convertido de dias a
+PERIODOS con `src.data_loader.lead_time_periods_from_days` (pasar dias crudos inflaria el
+periodo de riesgo por siete), no como un `promo_lift` de `sop`: un lift es demanda, no
+plazo. El evento sabe de que cliente es su serie por
+`run_all_monitors(client_id=...)` -> `payload["state_client_id"]`; sin el no se rutea.
+
+Lo que **sigue abierto** (N1b): no hay reloj. El unico tick que existe hoy
+(`POST /api/jobs/run-scheduled`) lee la particion COMPARTIDA y los jobs escriben la de
+cada cliente, asi que el productor y ese tick no se cruzan. Resolver la particion por
+omision seria la fuga entre clientes que la regla existe para cerrar: falta el
+planificador que corra un ciclo por cliente (`run_monitors_cycle(store=, client_id=)`,
+el parametro ya esta), y eso necesita un secreto de repo, no codigo.
+
 ### Client parameter profiles (`src/client_profile.py`)
 Per-client durable cost/capacity parameters (holding rate, order cost, service
 level, lead time, warehouse capacity), keyed by a slugified client name under

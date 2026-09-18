@@ -24,7 +24,7 @@ a ready RPC via ``params['shopify_rpc']``.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
@@ -65,6 +65,17 @@ class ShopifyReplenishmentReport:
     #: Why the quantities are, or are not, net of what is inbound. Travels to the
     #: summary and the deck, like ``jobs/odoo_job.py``'s note of the same name.
     netting_note: str = ""
+    #: Que paso con la memoria del Tower en esta corrida: el ciclo con el que se
+    #: escribio el snapshot ``stock``, o por que no se escribio
+    #: (``jobs/state_bridge.py``). Viaja en el reporte y no solo en el resumen, para
+    #: que un llamador pueda comprobarlo sin parsear prosa.
+    state_note: str = ""
+    #: La demanda REALIZADA que el plan pronostico, CON sus fechas, por SKU
+    #: (``src.connectors.replenish.demand_points_by_sku``). Viaja en el reporte para que
+    #: el puente del Tower la escriba como ``actual_qty`` sin volver a leer el backend, y
+    #: con las fechas reales: quien despues pronostica sobre esos puntos no puede
+    #: inventarles un dia.
+    demand_points: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
 
 
 def _make_connector(params: dict) -> tuple[ShopifyConnector, str]:
@@ -253,6 +264,7 @@ def run(
         summary=summary,
         on_order_by_sku=on_order,
         netting_note=netting_note,
+        demand_points=plan.demand_points,
     )
 
 

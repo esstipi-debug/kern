@@ -191,6 +191,11 @@ class JobReport:
     n_reorders_avoided_by_transit: int = 0
     units_on_order: float = 0.0
     position_note: str = ""
+    #: Que paso con la memoria del Tower en esta corrida: el ciclo con el que se
+    #: escribio el snapshot ``stock``, o por que no se escribio
+    #: (``jobs/state_bridge.py``). Viaja en el reporte y no solo en el resumen, para
+    #: que un llamador pueda comprobarlo sin parsear prosa.
+    state_note: str = ""
 
 
 def _stock_position(

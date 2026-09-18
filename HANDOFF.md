@@ -88,6 +88,22 @@ de inventario, los sombreros y `cross_impact` ignoraban los terminos.
   `hat_settlement`, `launch_readiness`) y **ninguno** con el dato sin usar. T05 ahora
   CONSUME esas sondas (una sola definicion de "netea" en el repo) y el puntaje publicado
   no se movio: 65,00% · 13/20. Siguen abiertas D y B del diseño.
+- **D cerrada (el Tower con datos reales)**: `jobs/state_bridge.py` es el unico lugar
+  donde se dice como cada job mapea al dominio `stock`, y los CINCO que leen una posicion
+  lo escriben (`inventory_optimization`, `odoo`, `shopify`, `channel`, `excel`); los tres
+  de conector escriben ademas la demanda REALIZADA como `outcomes`/`actual_qty` con la
+  fecha de cada pedido. Identidad opt-in por `params["state_client_id"]`, misma regla que
+  `forecast_cycle.store_from_params`: sin la clave no se escribe nada y nunca la particion
+  compartida. Con eso los dos monitores huerfanos tienen ruta (`config/event_routing.yaml`
+  pasa a 9): leen la serie real y se niegan (`EventRoutingError`, regla 7) si un SKU no
+  llega al minimo de `forecast_job`. Tres errores de unidad que el diseno traia y se
+  corrigieron: la demanda diaria es por dia CALENDARIO (`daily_demand_by_sku`, no
+  `forecast_per_period/7`), el `lead_times` del drift va en PERIODOS
+  (`lead_time_periods_from_days`, no dias crudos) y el `cycle_id` es ISO y no
+  `tool-fecha` (que ordenaba por nombre de tool y rechazaba al segundo escritor).
+  Tests: `tests/test_state_bridge_stock.py` (18), `tests/test_event_intent_real_series.py`
+  (20). Queda abierta **B** (N2b, shocks en el marcador); y N1b (el reloj del Tower)
+  sigue necesitando un secreto de repo, no codigo.
 - **Diseño de las cuatro brechas siguientes, verificado contra el codigo, cero codigo**:
   `docs/superpowers/specs/2026-09-17-cuatro-brechas-post-n1d-design.md`. Orden propuesto:
   C (tres hermanas de H4: `shopify_replenishment` sin `incoming`, `channel_replenishment`

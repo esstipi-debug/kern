@@ -65,6 +65,7 @@ from jobs import (
     sop_deliverable,
     sop_job,
     sourcing_job,
+    state_bridge,
     supplier_management_job,
     transportation_job,
     vehicle_routing_job,
@@ -165,6 +166,50 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
     )
 
 
+def _record_state(report, summary: str, params: dict, *, tool: str, lines, n_candidates=None,
+                  demand_points=None, lead_times_by_sku=None):
+    """Escribe la memoria del Tower y devuelve (reporte, resumen) actualizados.
+
+    N1c: hasta esto, el unico escritor del dominio ``stock`` era el puente del marcador
+    (``examples/run_world_sim.py``), asi que ``run_all_monitors`` sensaba sobre vacio en
+    produccion -- hallazgo H1. Los cinco jobs que leen una posicion lo escriben ahora por
+    ``jobs/state_bridge.py``, que es donde vive el mapeo de cada uno.
+
+    ``demand_points`` (N1a) agrega el OTRO dominio que al Tower le faltaba: la demanda
+    REALIZADA como ``outcomes``/``actual_qty``. ``forecast_cycle.freeze`` escribe el
+    pronostico y el MAPE, nunca lo realizado, asi que ``forecast_error_out_of_band``
+    tenia con que comparar solo cuando corria el marcador. Viene del plan, que ya leyo
+    los pedidos: no cuesta una segunda lectura del backend.
+
+    La particion sale de ``params['state_client_id']`` con la MISMA regla que la memoria
+    de ciclos (``forecast_cycle.store_from_params``): sin la clave no se escribe nada y
+    nunca la particion compartida; un id invalido levanta en vez de degradar. La nota va
+    siempre al reporte, y al resumen solo cuando alguien nombro una particion -- con la
+    memoria apagada por configuracion, una linea en cada resumen seria ruido.
+    """
+    store = forecast_cycle.store_from_params(params)
+    note = state_bridge.record_stock_snapshot(
+        store, tool=tool, lines=lines, n_candidates=n_candidates,
+    )
+    textos = [note.text]
+    if demand_points is not None or lead_times_by_sku is not None:
+        # UN solo ciclo de `outcomes` con las dos metricas. `lead_time_drift_monitor`
+        # compara los dos snapshots mas recientes del dominio: escribirlas en ciclos
+        # separados dejaria arriba uno sin plazos y el monitor no podria disparar nunca.
+        medido = state_bridge.record_outcomes(
+            store, tool=tool, points_by_sku=demand_points,
+            lead_times_by_sku=lead_times_by_sku,
+        )
+        # Una sola frase para el operador: las dos escrituras son del mismo ciclo de
+        # sensado, y separarlas en dos lineas invita a leer una y no la otra.
+        textos.append(medido.text)
+    texto = " ".join(textos)
+    report = replace(report, state_note=texto)
+    if note.store_named:
+        summary = f"{summary} {texto}"
+    return report, summary
+
+
 def _inventory_run(payload: object, params: dict) -> Produced:
     stock_position = payload.get("stock_position")
     on_hand_by_sku, on_order_by_sku = intake.position_maps(stock_position)
@@ -218,6 +263,12 @@ def _inventory_run(payload: object, params: dict) -> Produced:
             f"{summary} {report.n_order_now} of {report.n_positioned} positioned SKU(s) are due "
             f"for an order now. {report.position_note}"
         )
+    report, summary = _record_state(
+        report, summary, params,
+        tool="inventory_optimization",
+        lines=state_bridge.stock_lines_from_inventory(report),
+        n_candidates=len(report.recommendations),
+    )
     return Produced(report=report, summary=summary)
 
 
@@ -2026,7 +2077,22 @@ def _odoo_run(payload: object, params: dict) -> Produced:
         cover_periods=params.get("cover_periods", 8.0),
         financial_threshold=params.get("financial_threshold", 50_000.0),
     )
-    return Produced(report=report, summary=report.summary)
+    report, summary = _record_state(
+        report, report.summary, params,
+        tool="odoo_replenishment",
+        lines=state_bridge.stock_lines_from_replenishment(report.lines),
+        n_candidates=len(report.lines),
+        demand_points=report.demand_points,
+        # El tercer insumo del Tower, y el unico que cuesta una lectura aparte:
+        # `receipts()` recorre stock.move, asi que se pide a proposito. Sin el,
+        # `lead_time_drift` no puede disparar nunca en produccion -- y con el plazo
+        # DECLARADO tampoco, porque una media sobre un campo fijo no deriva.
+        lead_times_by_sku=(
+            odoo_job.read_measured_lead_times(payload["connector"])[0]
+            if params.get("state_record_lead_times") else None
+        ),
+    )
+    return Produced(report=report, summary=summary)
 
 
 def odoo_replenishment_tool() -> Tool:
@@ -2075,7 +2141,14 @@ def _channel_run(payload: object, params: dict) -> Produced:
         cover_periods=params.get("cover_periods", 8.0),
         financial_threshold=params.get("financial_threshold", 50_000.0),
     )
-    return Produced(report=report, summary=report.summary)
+    report, summary = _record_state(
+        report, report.summary, params,
+        tool="channel_replenishment",
+        lines=state_bridge.stock_lines_from_channel(report),
+        n_candidates=len(report.lines),
+        demand_points=report.demand_points,
+    )
+    return Produced(report=report, summary=summary)
 
 
 def channel_replenishment_tool() -> Tool:
@@ -2136,7 +2209,14 @@ def _shopify_run(payload: object, params: dict) -> Produced:
         cover_periods=params.get("cover_periods", 8.0),
         financial_threshold=params.get("financial_threshold", 50_000.0),
     )
-    return Produced(report=report, summary=report.summary)
+    report, summary = _record_state(
+        report, report.summary, params,
+        tool="shopify_replenishment",
+        lines=state_bridge.stock_lines_from_replenishment(report.lines),
+        n_candidates=len(report.lines),
+        demand_points=report.demand_points,
+    )
+    return Produced(report=report, summary=summary)
 
 
 def shopify_replenishment_tool() -> Tool:
@@ -2188,7 +2268,16 @@ def _excel_replenishment_run(payload: object, params: dict) -> Produced:
         optimized_targets=params.get("optimized_targets"),
         prefer_optimized_policy=params.get("prefer_optimized_policy", True),
     )
-    return Produced(report=report, summary=report.summary)
+    # La planilla es la unica de las cinco fuentes que puede quedarse sin escribir por
+    # diseno: en modo punto-de-reorden no tiene columna de demanda, y el dominio exige
+    # una tasa diaria. Las filas crudas traen esa columna cuando existe.
+    report, summary = _record_state(
+        report, report.summary, params,
+        tool="excel_replenishment",
+        lines=state_bridge.stock_lines_from_excel(report, payload["rows"]),
+        n_candidates=len(report.lines),
+    )
+    return Produced(report=report, summary=summary)
 
 
 def excel_replenishment_tool() -> Tool:

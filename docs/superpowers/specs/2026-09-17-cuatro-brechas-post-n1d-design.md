@@ -1,6 +1,6 @@
 # Diseño: las cuatro brechas después de N1d
 
-Fecha: 2026-09-17. Estado: **C y A CONSTRUIDAS** (ver abajo); D y B siguen como diseño
+Fecha: 2026-09-17. Estado: **C, A y D CONSTRUIDAS** (ver abajo); B sigue como diseño
 verificado contra el código, sin código escrito.
 Rama de origen: `claude/keen-goodall-jfnqo9` (PR #369), después del commit `ead1243` que cerró
 N1d (H4: el tool CSV ve el estante y lo que viene en camino).
@@ -266,7 +266,39 @@ nueva es una decisión de qué se considera insumo, y eso se diseña por clase, 
 
 ---
 
-## D · N1c + N1a: el Tower con datos reales
+## D · N1c + N1a: el Tower con datos reales — CONSTRUIDA (2026-09-18)
+
+> Construida en esta misma rama. **Cinco desvíos respecto del diseño de abajo**, y los
+> cinco por errores de unidad o de orden que el diseño no vio:
+>
+> 1. **`avg_daily_demand` NO es `forecast_per_period / 7`.** El período de
+>    `demand_by_sku` es un día-**con-pedidos**, no un día: dividir por 7 sub-estima en
+>    un SKU que vende a diario y el promedio por punto sobre-estima varias veces en uno
+>    intermitente. Se agregó `replenish.daily_demand_by_sku` (unidades / días calendario
+>    de la ventana observada) y un campo `avg_daily_demand` en la línea. Es el número
+>    con el que el Tower calcula días de cobertura: equivocarlo dispara quiebres falsos.
+> 2. **El `cycle_id` no lleva el tool adelante.** `f"{tool}-{fecha}"` ordena
+>    lexicográficamente por nombre de tool (`_cycle_sort_key` lo manda al bucket 2), así
+>    que un `channel_replenishment` escrito DESPUÉS de un `inventory_optimization` sería
+>    rechazado con `CycleOrderError`. Se usa `forecast_cycle.now_cycle_id()` (ISO-8601
+>    UTC, ya convive con los ciclos enteros del marcador) y el tool va en una columna.
+> 3. **`lead_times` es un override en PERÍODOS, no en días.** El diseño pasaba
+>    `{sku: recent_mean_days}` directo; `run()` lo usa como `lead_time_periods`, o sea
+>    ×7 sobre el período de riesgo. Se nombró la conversión del motor
+>    (`src.data_loader.lead_time_periods_from_days`) y se reusa en los dos lados.
+> 4. **`actual_qty` lleva la FECHA del pedido, no un ordinal.** Numerar los puntos
+>    obligaría al constructor a inventarles un día para poder pronosticar — la regla 7
+>    otra vez. `demand_points_by_sku` conserva las fechas y el plan las transporta.
+> 5. **El productor de `lead_time_days` es opt-in** (`params["state_record_lead_times"]`):
+>    `OdooConnector.receipts()` recorre `stock.move`, y forzar esa lectura en cada
+>    corrida de reposición le cobra a un ERP vivo un costo que nadie pidió.
+>
+> Código: `jobs/state_bridge.py`, `src/connectors/replenish.py`,
+> `src/data_loader.py`, `scm_agent/event_intent.py`, `scm_agent/monitors.py`,
+> `scm_agent/tools.py`, `config/event_routing.yaml`.
+> Tests: `tests/test_state_bridge_stock.py` (18), `tests/test_event_intent_real_series.py` (20).
+
+### El diseño, como se escribió
 
 ### D1 · N1c — los jobs que leen stock escriben el snapshot `stock`
 

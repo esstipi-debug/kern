@@ -201,6 +201,11 @@ class ExcelReplenishmentReport:
     #: the deck says so rather than letting the reader assume the plan accounted
     #: for inbound stock.
     n_netted: int = 0
+    #: Que paso con la memoria del Tower en esta corrida: el ciclo con el que se
+    #: escribio el snapshot ``stock``, o por que no se escribio
+    #: (``jobs/state_bridge.py``). Viaja en el reporte y no solo en el resumen, para
+    #: que un llamador pueda comprobarlo sin parsear prosa.
+    state_note: str = ""
 
 
 def _scan_sheet(ws, wanted: dict[str, tuple[str, ...]]) -> tuple[int, dict[str, str]] | None:

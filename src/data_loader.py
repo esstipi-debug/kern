@@ -83,7 +83,7 @@ def product_metadata(
 
     if "lead_time_days" in sku.columns:
         lt_days = float(sku["lead_time_days"].astype(float).median())
-        lt_periods = lt_days * periods_per_year / 365.0
+        lt_periods = lead_time_periods_from_days(lt_days, periods_per_year)
     else:
         lt_periods = default_lead_time_periods
 
@@ -95,6 +95,20 @@ def product_metadata(
         mean_unit_cost=unit_cost,
         lead_time_periods=lt_periods,
     )
+
+
+def lead_time_periods_from_days(days: float, periods_per_year: float = 52.0) -> float:
+    """Dias -> periodos, la conversion que el motor de politicas usa en todos lados.
+
+    Nombrada y no repetida porque se cruza una frontera de unidades: ``lead_times`` en
+    ``jobs/inventory_optimization.py::run`` es un override de ``lead_time_periods``, y
+    quien traiga un plazo en DIAS (un conector, un evento de ``lead_time_drift``) y lo
+    pase tal cual multiplica el periodo de riesgo por siete sin que nada avise -- punto
+    de reorden y stock de seguridad inflados sobre una lectura correcta.
+    """
+    if periods_per_year <= 0:
+        raise ValueError("periods_per_year must be > 0")
+    return float(days) * float(periods_per_year) / 365.0
 
 
 def demand_stats(series: pd.Series) -> dict[str, float]:

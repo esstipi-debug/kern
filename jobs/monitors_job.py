@@ -129,6 +129,7 @@ def run_monitors_cycle(
     *,
     ledger: EventLedger | None = None,
     store: object | None = None,
+    client_id: str | None = None,
     notify_operator: bool | None = None,
 ) -> MonitorsCycleReport:
     """One full Control Tower "sense" cycle.
@@ -144,6 +145,14 @@ def run_monitors_cycle(
     uses); tests inject an isolated ``StateStore`` here so a cycle reads only
     the state they wrote.
 
+    ``client_id`` NAMES that store's partition, and is passed through for the
+    same reason: the two events whose route has to go BACK to the state for a
+    real demand series (``forecast_error_out_of_band``, ``lead_time_drift``)
+    carry it in their payload. A cycle run without it still emits them -- losing
+    an event would be worse -- but they arrive un-routable, with the reason said
+    out loud by ``scm_agent/event_intent.py`` rather than resolved onto the
+    partition every client shares.
+
     ``notify_operator`` resolves to the ``LINCHPIN_MONITORS_NOTIFY`` env var
     (any non-empty, non-"0" value = on) when left ``None``. When on, a single
     summary line is posted through ``jobs.notify.notify`` -- itself a safe
@@ -155,7 +164,7 @@ def run_monitors_cycle(
     owns_ledger = ledger is None
     ledger = ledger if ledger is not None else EventLedger()
     try:
-        events = run_all_monitors(ledger=ledger, store=store)
+        events = run_all_monitors(ledger=ledger, store=store, client_id=client_id)
         by_severity = _tally(events, lambda e: e.severity)
         by_type = _tally(events, lambda e: e.type)
 

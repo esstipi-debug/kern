@@ -37,7 +37,7 @@ silently.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from nosilo_core.access import Principal
@@ -53,7 +53,11 @@ from nosilo_core.guided import (
 from nosilo_core.writeback import Changeset
 from src.connectors.meli import MeliConnector, demo_meli_commerce
 from src.connectors.odoo import OdooConnector, OdooError, demo_odoo
-from src.connectors.replenish import demand_by_sku
+from src.connectors.replenish import (
+    daily_demand_by_sku,
+    demand_by_sku,
+    demand_points_by_sku,
+)
 from src.connectors.shopify import ShopifyConnector, demo_shopify
 from src.connectors.unleashed import (
     UnleashedConnector,
@@ -105,6 +109,10 @@ class ChannelLine:
     #: .net_flow_position(erp_on_hand, on_order or 0, 0)``. Equals ``erp_on_hand`` when
     #: nothing was netted, and is emitted so the arithmetic is auditable from the file.
     position: float | None = None
+    #: Unidades por dia CALENDARIO del canal (``daily_demand_by_sku``), que NO es
+    #: ``channel_demand_per_period``: el periodo de esa serie es un dia-con-pedidos.
+    #: ``None`` cuando ninguna fecha de pedido se pudo leer -- nunca ``0.0``.
+    avg_daily_demand: float | None = None
 
 
 @dataclass(frozen=True)
@@ -150,6 +158,17 @@ class ChannelReplenishmentReport:
     n_netted: int = 0
     #: Why the quantities are, or are not, net of what the ERP already has on order.
     netting_note: str = ""
+    #: Que paso con la memoria del Tower en esta corrida: el ciclo con el que se
+    #: escribio el snapshot ``stock``, o por que no se escribio
+    #: (``jobs/state_bridge.py``). Viaja en el reporte y no solo en el resumen, para
+    #: que un llamador pueda comprobarlo sin parsear prosa.
+    state_note: str = ""
+    #: La demanda REALIZADA que el plan pronostico, CON sus fechas, por SKU
+    #: (``src.connectors.replenish.demand_points_by_sku``). Viaja en el reporte para que
+    #: el puente del Tower la escriba como ``actual_qty`` sin volver a leer el backend, y
+    #: con las fechas reales: quien despues pronostica sobre esos puntos no puede
+    #: inventarles un dia.
+    demand_points: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
 
 
 #: Sales channels this job can read demand from. A channel qualifies when it implements
@@ -484,7 +503,12 @@ def run(
     store: SqliteEntityStore = payload["store"]
     matched: list[str] = list(payload["matched"])
 
-    series = demand_by_sku(channel.orders())
+    channel_orders = channel.orders()
+    series = demand_by_sku(channel_orders)
+    points = demand_points_by_sku(channel_orders)
+    # La misma lectura, en dias calendario: el plan razona por dia-con-pedidos y quien
+    # cuenta dias de cobertura necesita la otra unidad (ver `daily_demand_by_sku`).
+    daily_demand = daily_demand_by_sku(channel_orders)
     channel_on_hand = {lvl.sku: lvl.available for lvl in channel.inventory_levels()}
     erp_on_hand = {lvl.sku: lvl.available for lvl in erp.inventory_levels()}
     lead_times = erp.lead_times()
@@ -522,6 +546,7 @@ def run(
                 lead_time_days=lead_times.get(sku, 0.0),
                 on_order=on_order,
                 position=position,
+                avg_daily_demand=daily_demand.get(sku),
             )
         )
         if qty > 0:
@@ -567,6 +592,7 @@ def run(
         on_order_by_sku=on_order_by_sku,
         n_netted=n_netted,
         netting_note=netting_note,
+        demand_points={sku: tuple(pts) for sku, pts in points.items() if sku in set(matched)},
     )
 
 
