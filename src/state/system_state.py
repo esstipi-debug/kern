@@ -54,6 +54,16 @@ class ColumnRule:
     name: str
     dtype: str               # "str" | "float"
     check: str | None = None  # "positive" (>0) | "nonnegative" (>=0) | None
+    #: ``False`` = la columna puede FALTAR entera, y su ausencia no es un defecto.
+    #:
+    #: Existe para un dato que algunos productores pueden medir y otros no, donde
+    #: rellenarlo cambiaria el significado. El caso que lo trajo: ``stock.on_order``
+    #: -- un 0 diria "medido, y no viene nada" y mandaria al comprador a no restar
+    #: lo que ya compro. Cuando la columna SI viene, se valida como cualquier otra.
+    required: bool = True
+    #: ``True`` = celdas vacias permitidas DENTRO de una columna presente. Es el otro
+    #: lado del mismo caso: un frame donde un SKU trae en-transito y otro no.
+    nullable: bool = False
 
 
 # Domains covered by system state (plan S4.1): stock, own + competitor
@@ -66,6 +76,13 @@ DOMAIN_COLUMNS: dict[str, tuple[ColumnRule, ...]] = {
         ColumnRule("on_hand", "float", "nonnegative"),
         ColumnRule("reorder_point", "float", "nonnegative"),
         ColumnRule("avg_daily_demand", "float", "nonnegative"),
+        # Lo ya comprado que no llego. OPCIONAL y anulable a proposito: de los cinco
+        # jobs que escriben este dominio, los que no pueden leer OC abiertas no la
+        # emiten, y el marcador (`examples/run_world_sim.py`) tampoco. Exigirla
+        # dejaria sin escribir a la mitad de los productores y el Tower volveria a
+        # sensar sobre vacio. Cuando viene, se valida: un en-transito negativo no
+        # existe. `src/alerting.py::detect_events` la usa para netear el DISPARADOR.
+        ColumnRule("on_order", "float", "nonnegative", required=False, nullable=True),
     ),
     "prices_own": (
         ColumnRule("product_id", "str"),
@@ -108,7 +125,8 @@ def _build_pandera_schema(columns: tuple[ColumnRule, ...]):
             checks.append(pa.Check.gt(0))
         elif c.check == "nonnegative":
             checks.append(pa.Check.ge(0))
-        fields[c.name] = pa.Column(_DTYPE_MAP[c.dtype], checks=checks, nullable=False, coerce=True)
+        fields[c.name] = pa.Column(_DTYPE_MAP[c.dtype], checks=checks,
+                                   nullable=c.nullable, required=c.required, coerce=True)
     # strict=False: extra columns beyond the contract are allowed.
     return pa.DataFrameSchema(fields, strict=False)
 
@@ -225,15 +243,23 @@ def _validate_fallback(columns: tuple[ColumnRule, ...], payload: pd.DataFrame) -
     issues: list[str] = []
     for c in columns:
         if c.name not in payload.columns:
-            issues.append(f"{c.name}: missing required column")
+            # Una columna opcional que falta no es un defecto. Sin esta rama, una
+            # instalacion SIN pandera -- el camino degradado que este modulo promete
+            # y que los tests ejercitan -- rechazaria todo snapshot de stock sin
+            # `on_order`, incluido el del marcador.
+            if c.required:
+                issues.append(f"{c.name}: missing required column")
             continue
         series = payload[c.name]
-        if series.isna().any():
+        if series.isna().any() and not c.nullable:
             issues.append(f"{c.name}: contains null values")
             continue
         if c.dtype == "float":
             numeric = pd.to_numeric(series, errors="coerce")
-            if numeric.isna().any():
+            # En una columna anulable, un vacio ya venia vacio: lo que se busca es un
+            # valor que NO se pudo convertir, o sea una celda llena y no numerica.
+            no_numericas = numeric.isna() & series.notna()
+            if no_numericas.any():
                 issues.append(f"{c.name}: expected numeric values, found non-numeric entries")
                 continue
             if c.check == "positive" and (numeric <= 0).any():

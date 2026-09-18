@@ -219,12 +219,32 @@ def inventory_from_state_stock_event(event: Event) -> dict:
         )
 
     today = datetime.now(timezone.utc).date()
-    records = [
-        {"date": (today - timedelta(days=_SYNTHETIC_HISTORY_DAYS - 1 - offset)).isoformat(),
-         "product_id": row["product_id"], "quantity": float(row.get("avg_daily_demand", 0.0))}
-        for row in rows
-        for offset in range(_SYNTHETIC_HISTORY_DAYS)
-    ]
+    records = []
+    for row in rows:
+        # La POSICION viaja con la serie sintetica, no solo la demanda. Sin esto, el
+        # `inventory_optimization` que el evento dispara re-dimensiona `s` y `Q` a
+        # ciegas y su propio neteo -- que existe desde N1d -- queda inerte: el evento
+        # netea el disparador y el tool que lo atiende vuelve a mirar el estante.
+        # `jobs.intake.stock_position` toma la ULTIMA fila por SKU, asi que repetir el
+        # valor en las 28 filas describe el estante de hoy, que es lo que es.
+        posicion = {}
+        on_hand = row.get("on_hand")
+        if on_hand is not None and float(on_hand) == float(on_hand):
+            posicion["on_hand"] = float(on_hand)
+        on_order = row.get("on_order")
+        # La clave se OMITE cuando no hay dato: un 0 aqui le diria al tool "medido, y
+        # no viene nada", y ese es justo el error que manda a comprar de nuevo lo que
+        # ya esta en camino. Sin columna, intake deja `on_order_by_sku` en None y el
+        # entregable declara que no se pudo netear.
+        if on_order is not None and float(on_order) == float(on_order):
+            posicion["on_order"] = float(on_order)
+        for offset in range(_SYNTHETIC_HISTORY_DAYS):
+            records.append({
+                "date": (today - timedelta(days=_SYNTHETIC_HISTORY_DAYS - 1 - offset)).isoformat(),
+                "product_id": row["product_id"],
+                "quantity": float(row.get("avg_daily_demand", 0.0)),
+                **posicion,
+            })
     tmp_dir = Path(tempfile.mkdtemp(prefix=_TEMP_DIR_PREFIX))
     data_path = tmp_dir / "state_stock_demand.csv"
     pd.DataFrame(records).to_csv(data_path, index=False)

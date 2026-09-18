@@ -72,15 +72,55 @@ class StockLine:
     reorder_point: float
     #: Unidades por dia CALENDARIO. Es con lo que el Tower calcula dias de cobertura.
     avg_daily_demand: float
+    #: Lo ya comprado que todavia no llego, o ``None`` si el job NO PUDO MEDIRLO.
+    #:
+    #: Es el unico campo opcional de la fila, y el unico donde ``None`` y ``0.0``
+    #: significan cosas distintas: cero es "medido, y no viene nada" y manda a no
+    #: restar; ausente es "no sabemos". Por eso no entra en ``_usable``: exigirlo
+    #: dejaria sin escribir a todo job sin en-transito y el Tower volveria a sensar
+    #: sobre vacio, que es el agujero que D vino a cerrar.
+    #:
+    #: Con el dato, ``src/alerting.py::detect_events`` netea el DISPARADOR contra la
+    #: posicion y deja de emitir quiebres falsos sobre stock que ya esta comprado.
+    on_order: float | None = None
 
     def as_row(self, tool: str) -> dict:
-        return {
+        fila = {
             "product_id": str(self.product_id),
             "on_hand": float(self.on_hand),
             "reorder_point": float(self.reorder_point),
             "avg_daily_demand": float(self.avg_daily_demand),
             COLUMN_TOOL: tool,
         }
+        # La clave solo viaja cuando hay numero. Escribir `None` la volveria NaN al
+        # pasar por parquet, que es lo mismo que no escribirla, pero ademas haria
+        # creer que el job la midio.
+        if self.on_order is not None:
+            fila["on_order"] = float(self.on_order)
+        return fila
+
+
+def _en_camino(linea: object, campo: str) -> float | None:
+    """Lo ya comprado que no llego, leido de la linea del job, o ``None``.
+
+    Los cinco productores ya traen el dato con la semantica correcta -- ``None``
+    cuando no se pudo leer el canal, nunca 0,0 -- asi que aca no se decide nada: se
+    reenvia. Lo que se evita es que un ``0`` inventado por este puente llegue al Tower
+    diciendo "medido, y no viene nada".
+
+    Un valor negativo se descarta como ausente: no existe un en-transito negativo, y
+    dejarlo pasar inflaria la posicion hacia abajo y volveria a disparar de mas.
+    """
+    valor = getattr(linea, campo, None)
+    if valor is None:
+        return None
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return None
+    if numero != numero or numero < 0:      # NaN o negativo
+        return None
+    return numero
 
 
 def _usable(product_id: object, on_hand: object, trigger: object, daily: object) -> bool:
@@ -124,7 +164,7 @@ def stock_lines_from_inventory(report, *, periods_per_year: float | None = None)
         if not _usable(rec.product_id, rec.on_hand, rec.reorder_point, daily):
             continue
         lines.append(StockLine(rec.product_id, float(rec.on_hand), float(rec.reorder_point),
-                               float(daily)))
+                               float(daily), _en_camino(rec, "on_order")))
     return lines
 
 
@@ -146,7 +186,7 @@ def stock_lines_from_replenishment(lines: Iterable) -> list[StockLine]:
         if not _usable(line.sku, line.on_hand, line.target, line.avg_daily_demand):
             continue
         out.append(StockLine(line.sku, float(line.on_hand), float(line.target),
-                             float(line.avg_daily_demand)))
+                             float(line.avg_daily_demand), _en_camino(line, "on_order")))
     return out
 
 
@@ -163,7 +203,7 @@ def stock_lines_from_channel(report) -> list[StockLine]:
         if not _usable(line.sku, line.erp_on_hand, line.target, line.avg_daily_demand):
             continue
         out.append(StockLine(line.sku, float(line.erp_on_hand), float(line.target),
-                             float(line.avg_daily_demand)))
+                             float(line.avg_daily_demand), _en_camino(line, "on_order")))
     return out
 
 
@@ -192,7 +232,8 @@ def stock_lines_from_excel(report, rows: Iterable) -> list[StockLine]:
         trigger = line.trigger if line.trigger is not None else line.target
         if not _usable(line.sku, line.on_hand, trigger, daily):
             continue
-        out.append(StockLine(line.sku, float(line.on_hand), float(trigger), float(daily)))
+        out.append(StockLine(line.sku, float(line.on_hand), float(trigger), float(daily),
+                             _en_camino(line, "on_order")))
     return out
 
 

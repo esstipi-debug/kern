@@ -228,9 +228,18 @@ copiado.
   que el Tower calcula dias de cobertura: dispararia quiebres falsos.
 - **La planilla en modo punto-de-reorden no escribe**: sin columna de demanda no hay tasa
   diaria y derivarla del ROP seria inventarla. La nota lo dice.
-- **Limite declarado**: el dominio `stock` no tiene `on_order`, asi que `rop_breach`
-  dispara sobre el ESTANTE. Agregar la columna exige un ciclo de esquema en
-  `system_state.py`; queda como seguimiento.
+- **El Tower tambien netea** (cerrado el 2026-09-18; antes era el limite declarado de
+  D). El dominio `stock` gana `on_order` como columna OPCIONAL y anulable -- los cinco
+  productores ya traian el dato con la semantica `None != 0`, el que lo tiraba era
+  `StockLine`. `src/alerting.py::detect_events` netea el **DISPARADOR** contra la
+  posicion (`net_flow_position`, la identidad de `src/ddmrp.py`) y **NO la cobertura**,
+  que sigue sobre el estante: netear los dias de cobertura cambiaria un falso positivo
+  por un falso NEGATIVO, porque una OC que llega en tres semanas no alimenta el
+  mostrador manana. Sin el dato el evento sale igual y lo DICE (`netted=False`); un
+  `NaN` -- que es como vuelve un `None` por parquet -- cuenta como ausente, porque
+  `on_hand + nan <= rop` es `False` y dejaria al monitor MUDO sobre un quiebre real.
+  `event_intent` reenvia la posicion al tool que el evento dispara, para que su propio
+  neteo no quede inerte.
 
 Con eso, los dos monitores huerfanos (`forecast_error_out_of_band`, `lead_time_drift`)
 **tienen ruta** en `config/event_routing.yaml` (9 rutas): leen la serie REAL del estado
