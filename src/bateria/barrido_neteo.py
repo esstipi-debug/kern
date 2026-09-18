@@ -207,7 +207,7 @@ def _sin_canal(tool: str, entregable: str, emite: str, *, campos: Iterable[str],
                       campo_en_transito=None, descuenta=None, prueba=razon)
 
 
-# -- los siete que SI tienen canal ------------------------------------------------
+# -- los que SI tienen canal -------------------------------------------------------
 
 
 def sonda_excel() -> SondaNeteo:
@@ -546,15 +546,55 @@ def sonda_hat_settlement() -> SondaNeteo:
     )
 
 
-def sonda_launch_readiness() -> SondaNeteo:
-    from jobs.launch_readiness_job import LaunchInput, LaunchLine
+#: Los veredictos que MANDAN A COMPRAR. `green` es el unico que no: dice
+#: explicitamente "ready without a reorder".
+_VEREDICTOS_QUE_COMPRAN = ("red", "yellow")
 
-    return _sin_canal(
-        "launch_readiness", "jobs.launch_readiness_job.LaunchLine", VEREDICTO,
-        campos=_campos_declarados("launch_readiness", LaunchInput, LaunchLine),
-        razon=("la cobertura se calcula contra ``on_hand``: una OC que llega ANTES de la "
-               "fecha de lanzamiento no cuenta, asi que el veredicto puede salir rojo "
-               "sobre stock que ya esta comprado"),
+
+def sonda_launch_readiness() -> SondaNeteo:
+    """``launch_readiness``: el unico de los catorce que netea contra una FECHA.
+
+    Los otros trece comparan una cantidad contra una posicion y les alcanza con
+    ``on_order``. Aca la pregunta es si el stock esta disponible el dia del lanzamiento,
+    asi que una cantidad sin fecha de llegada no puede contestarla: el en-transito solo
+    cuenta con ETA <= fecha de lanzamiento. Por eso la sonda corre TRES veces y no dos.
+
+    Y por eso el "valor se mueve" es otro: este tool no emite una cantidad sino un
+    VEREDICTO, asi que lo que tiene que moverse es que deje de mandar a comprar.
+    """
+    from datetime import date
+
+    from jobs.launch_readiness_job import LaunchInput, _assess_sku
+
+    hoy = date(2026, 1, 1)
+    lanzamiento = date(2026, 1, 31)                 # 30 dias por delante
+    base = dict(product_id="SKU-L", launch_date=lanzamiento, lift_pct=0.0,
+                has_coverage=True, on_hand=50.0, daily_demand=10.0,
+                # El plazo (45d) NO entra antes del lanzamiento (30d): sin en-transito
+                # el veredicto es rojo por construccion, que es el caso que motivo esto.
+                lead_time_days=45.0)
+
+    def _veredicto(**extra) -> str:
+        return _assess_sku(LaunchInput(**base, **extra),
+                           service_level=0.95, as_of=hoy).verdict
+
+    sin = _veredicto()
+    a_tiempo = _veredicto(on_order=ON_ORDER_SONDA * 5, on_order_eta=date(2026, 1, 20))
+    tarde = _veredicto(on_order=ON_ORDER_SONDA * 5, on_order_eta=date(2026, 2, 15))
+
+    descuenta = (sin in _VEREDICTOS_QUE_COMPRAN
+                 and a_tiempo not in _VEREDICTOS_QUE_COMPRAN
+                 # La otra mitad del contrato: lo que llega TARDE no puede acreditar.
+                 # Sin esto, un tool que sumara el en-transito sin mirar la fecha
+                 # pasaria esta sonda y seguiria mintiendo sobre el dia del lanzamiento.
+                 and tarde in _VEREDICTOS_QUE_COMPRAN)
+    return SondaNeteo(
+        tool="launch_readiness", entregable="jobs.launch_readiness_job.LaunchLine",
+        emite=VEREDICTO, campo_en_transito="columna on_order + ETA",
+        descuenta=descuenta,
+        prueba=(f"con {ON_ORDER_SONDA * 5:g} unidades ya emitidas que llegan ANTES del "
+                f"lanzamiento el veredicto deja de mandar a comprar: {sin} -> {a_tiempo}; "
+                f"con las mismas unidades llegando DESPUES no acredita: {sin} -> {tarde}"),
     )
 
 

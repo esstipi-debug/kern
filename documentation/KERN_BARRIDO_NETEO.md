@@ -55,11 +55,12 @@ tiene que declarar si emite un número de compra y, si lo emite, con qué sonda 
 
 ## El barrido
 
+8/14 emisores descuentan el en-transito (46 tools no emiten cantidad a pedir)
+
 | Tool | Emite | Canal de en-transito | Veredicto |
 |---|---|---|---|
 | `hat_settlement` | cantidad a pedir | - | sin canal |
 | `hat_tension` | cantidad a pedir | - | sin canal |
-| `launch_readiness` | veredicto de cobertura | - | sin canal |
 | `multi_echelon` | nivel objetivo | - | sin canal |
 | `newsvendor` | cantidad a pedir | - | sin canal |
 | `simulation` | nivel objetivo | - | sin canal |
@@ -69,23 +70,14 @@ tiene que declarar si emite un número de compra y, si lo emite, con qué sonda 
 | `drp` | cantidad a pedir | columna de entradas programadas (scheduled receipts) | SI descuenta |
 | `excel_replenishment` | cantidad a pedir | columna En Transito de la planilla | SI descuenta |
 | `inventory_optimization` | cantidad a pedir | columna on_order del CSV | SI descuenta |
+| `launch_readiness` | veredicto de cobertura | columna on_order + ETA | SI descuenta |
 | `odoo_replenishment` | cantidad a pedir | on_order_by_sku (OC abiertas del ERP) | SI descuenta |
 | `shopify_replenishment` | cantidad a pedir | quantities(names: incoming) de Shopify | SI descuenta |
 
-Las tres columnas de la izquierda son el contrato; la de la derecha es lo que se midió.
-`Emite` no es decoración: una **cantidad a pedir** se manda al proveedor tal cual y se
-compra dos veces si nadie neteó; un **nivel objetivo** lo netea quien ejecuta (el riesgo
-se traslada, no desaparece); un **veredicto de cobertura** manda a comprar —o a no
-comprar— sin decir cuánto.
-
 ## Evidencia
-
-Las dos corridas de cada sonda, o la razón por la que no hay canal. Alcanza para
-defender cada veredicto sin volver a correr nada:
 
 - **`hat_settlement`** (src.hats.Candidate) -- el acuerdo se arma sobre los mismos ``HatInputs`` que la tension: la Q* que sale al HANDOFF no descuenta lo que ya viene en camino
 - **`hat_tension`** (src.hats.Candidate) -- ``HatInputs`` lleva demanda, costo, lead time, terminos del proveedor y flete, y ninguna posicion: cada sombrero propone una Q sobre un estante que no ve
-- **`launch_readiness`** (jobs.launch_readiness_job.LaunchLine) -- la cobertura se calcula contra ``on_hand``: una OC que llega ANTES de la fecha de lanzamiento no cuenta, asi que el veredicto puede salir rojo sobre stock que ya esta comprado
 - **`multi_echelon`** (jobs.multi_echelon_job.EchelonLine) -- emite un NIVEL objetivo (order_up_to) por etapa, no una cantidad: el neteo contra la posicion lo hace quien ejecuta, y el entregable no trae con que hacerlo
 - **`newsvendor`** (jobs.newsvendor_job.NewsvendorLine) -- la compra de una temporada se dimensiona desde la razon critica y nada mas: no hay estante ni OC abierta en el contrato, asi que lo ya comprado para la temporada se vuelve a comprar entero
 - **`simulation`** (jobs.simulation_job.SkuSimResult) -- busca el nivel objetivo que minimiza el costo simulado; como todo nivel, se aplica contra la posicion al ejecutar, y esa posicion no entra aca
@@ -95,6 +87,7 @@ defender cada veredicto sin volver a correr nada:
 - **`drp`** (jobs.drp_job.BranchPlan) -- con 10 unidades ya emitidas en la columna de entradas programadas la cantidad a pedir baja: [30.0, 40.0] -> [20.0, 30.0]
 - **`excel_replenishment`** (jobs.excel_replenishment_job.ReplenishmentLine) -- con 5 unidades ya emitidas en la columna de la planilla la cantidad a pedir baja: [58.0, 50.0] -> [53.0, 45.0]
 - **`inventory_optimization`** (jobs.inventory_optimization.SkuRecommendation) -- con 80 unidades ya emitidas en la columna del CSV la cantidad a pedir baja: [349.99] -> [0.0]
+- **`launch_readiness`** (jobs.launch_readiness_job.LaunchLine) -- con 400 unidades ya emitidas que llegan ANTES del lanzamiento el veredicto deja de mandar a comprar: red -> green; con las mismas unidades llegando DESPUES no acredita: red -> red
 - **`odoo_replenishment`** (src.connectors.replenish.ReplenishmentLine) -- con 80 unidades ya emitidas por SKU la cantidad a pedir baja: [60.0] -> [0.0]
 - **`shopify_replenishment`** (src.connectors.replenish.ReplenishmentLine) -- con 80 unidades ya emitidas en la cantidad incoming de la tienda la cantidad a pedir baja: [28.0] -> [0.0]
 
@@ -104,7 +97,7 @@ El neteo es **una** clase de brecha. La misma maquinaria sirve para otras —«�
 time medido o el declarado?», «¿lleva la fecha de llegada?»— pero cada sonda nueva es una
 decisión sobre qué se considera insumo, y eso se diseña por clase, no en abstracto.
 
-Y los siete `sin canal` no son siete bugs: son siete decisiones pendientes. Un
+Y los `sin canal` no son bugs: son decisiones pendientes. Un
 `newsvendor` de temporada probablemente **sí** debería netear lo ya comprado para esa
 temporada; un `multi_echelon` que emite niveles probablemente **no** —pero entonces el
 entregable tiene que decir contra qué posición se aplica ese nivel, y hoy no lo dice.

@@ -44,7 +44,13 @@ DOC = _REPO_ROOT / "documentation" / "KERN_BARRIDO_NETEO.md"
 #:
 #: ``no_netea`` y ``sin_sonda`` arrancan VACIOS y esa es la unica parte del vector que
 #: vale como meta: un tool que cae ahi es una brecha abierta con canal ya construido.
-#: Los siete ``sin_canal`` son decisiones pendientes, no bugs (ver el documento).
+#: Los ``sin_canal`` son decisiones pendientes, no bugs (ver el documento).
+#:
+#: ``launch_readiness`` paso de ``sin_canal`` a ``netea`` el 2026-09-18: era el unico
+#: de los seis cuya razon escrita nombraba un DANO concreto ("el veredicto puede salir
+#: rojo sobre stock que ya esta comprado") y no una decision de producto pendiente.
+#: Netea distinto que los otros ocho, y por eso su sonda corre tres veces: contra una
+#: FECHA de lanzamiento, una cantidad sin ETA no puede afirmar que llega a tiempo.
 ESTADOS_NETEO = {
     "netea": [
         "channel_replenishment",
@@ -52,6 +58,7 @@ ESTADOS_NETEO = {
         "drp",
         "excel_replenishment",
         "inventory_optimization",
+        "launch_readiness",
         "odoo_replenishment",
         "shopify_replenishment",
     ],
@@ -60,7 +67,6 @@ ESTADOS_NETEO = {
     "sin_canal": [
         "hat_settlement",
         "hat_tension",
-        "launch_readiness",
         "multi_echelon",
         "newsvendor",
         "simulation",
@@ -134,7 +140,7 @@ def test_cada_veredicto_de_neteo_muestra_las_dos_corridas(sondas):
             assert "ya emitidas" in s.prueba
 
 
-def test_los_siete_sin_canal_nombran_el_entregable_y_la_razon(sondas):
+def test_los_sin_canal_nombran_el_entregable_y_la_razon(sondas):
     for s in sondas:
         if s.estado == "sin_canal":
             assert "." in s.entregable, f"{s.tool}: el entregable tiene que ser importable"
