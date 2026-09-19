@@ -552,3 +552,93 @@ def test_el_deck_que_lee_el_CLIENTE_dice_lo_mismo_que_el_resumen():
     deck_mixto = build(mixto, client="C")
     assert "recommended $" in deck_mixto.summary
     assert "1 SKU(s) carry no sized policy" in deck_mixto.summary
+
+
+# ---------------------------------------------------------------------------
+# 9. La prosa tampoco puede conflacionar las dos causas
+# ---------------------------------------------------------------------------
+#
+# Este es un defecto que introdujo el PRIMER arreglo, y lo encontro la revision
+# adversarial: el resumen de "no se dimensiono nada" decia, para TODA cartera sin
+# politica, "No reorder point ... was computed - this is NOT a recommendation to
+# hold nothing". Sobre una cartera de demanda medida en cero eso contradice el
+# propio registro (el reorder point SI se computo, y vale 0) y niega un hallazgo
+# real: no hay nada que estacionar. Separar las dos causas en los CAMPOS y
+# mezclarlas en la FRASE deja el mismo defecto un piso mas arriba.
+
+
+def _nota(df: pd.DataFrame):
+    from jobs.inventory_optimization import unsized_note
+    return unsized_note(run(df, period_freq=_PERIOD))
+
+
+def test_una_cartera_de_demanda_medida_en_cero_NO_se_llama_negativa():
+    titular, cola = _nota(_archivo("SIN-VENTA", [0] * 12))
+    assert titular is not None and cola == ""
+    assert "zero measured demand" in titular
+    assert "a measurement, not a refusal" in titular
+    # Y NO puede decir que no se computo, porque se computo.
+    assert "no reorder point" not in titular.lower()
+    assert "NOT a recommendation to hold nothing" not in titular
+
+
+def test_una_cartera_toda_declinada_SI_se_llama_negativa():
+    titular, _ = _nota(_archivo("NUEVO", [40, 44, 38, 47, 41]))
+    assert titular is not None
+    assert "declined all 1 SKU(s)" in titular
+    assert "too little demand history" in titular
+    assert "NOT a recommendation to hold nothing" in titular
+
+
+def test_las_dos_causas_juntas_se_nombran_POR_SEPARADO():
+    fechas = pd.date_range("2026-01-04", periods=24, freq=_PERIOD)
+    df = pd.DataFrame(
+        [{"date": fechas[-i - 1], "product_id": "NUEVO", "quantity": 42.0,
+          "unit_cost": 10.0} for i in range(5)]
+        + [{"date": d, "product_id": "PARADO", "quantity": 0.0, "unit_cost": 10.0}
+           for d in fechas[:12]]
+    )
+    titular, _ = _nota(df)
+    assert titular is not None
+    assert "declined 1" in titular
+    assert "1 have zero measured demand" in titular
+    assert "Where it declined" in titular, (
+        "la salvedad tiene que alcanzar SOLO a los declinados, no a los medidos"
+    )
+
+
+def test_la_cola_del_caso_mixto_tambien_distingue():
+    fechas = pd.date_range("2026-01-04", periods=24, freq=_PERIOD)
+    df = pd.DataFrame(
+        [{"date": d, "product_id": "LARGO", "quantity": 20.0 + (i % 4),
+          "unit_cost": 40.0} for i, d in enumerate(fechas)]
+        + [{"date": fechas[-i - 1], "product_id": "NUEVO", "quantity": 42.0,
+            "unit_cost": 10.0} for i in range(5)]
+        + [{"date": d, "product_id": "PARADO", "quantity": 0.0, "unit_cost": 10.0}
+           for d in fechas[:12]]
+    )
+    titular, cola = _nota(df)
+    assert titular is None, "con una politica dimensionada el titular normal se queda"
+    assert "1 the engine declined to size" in cola
+    assert "1 with zero measured demand" in cola
+    assert "excluded from that figure" in cola
+
+
+def test_el_agente_y_el_deck_dicen_LO_MISMO(tmp_path):
+    """Las dos superficies escribian su propia frase y por eso una quedo sin
+    arreglar. Ahora salen de la misma funcion, y esto lo fija."""
+    from jobs.inventory_deliverable import build
+    from scm_agent.orchestrator import Orchestrator
+
+    destino = tmp_path / "v.csv"
+    _archivo("NUEVO", [40, 44, 38, 47, 41]).to_csv(destino, index=False)
+    res = Orchestrator(clients_root=None).run(
+        "reorder point por SKU", data_path=str(destino),
+        job_type="inventory_optimization", out_dir=str(tmp_path / "o"),
+    )
+    reporte, _ = _rec(_archivo("NUEVO", [40, 44, 38, 47, 41]), "NUEVO")
+    deck = build(reporte, client="C")
+
+    titular, _ = _nota(_archivo("NUEVO", [40, 44, 38, 47, 41]))
+    assert res.summary == titular
+    assert deck.summary.startswith(titular)

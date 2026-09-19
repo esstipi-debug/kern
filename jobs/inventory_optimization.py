@@ -37,6 +37,75 @@ PERIODS_PER_YEAR = 52.0
 SERVICE_LEVEL_TUNING_STEP = 0.1
 
 
+def unsized_note(report) -> tuple[str | None, str]:
+    """Como se cuenta, en prosa, lo que este modulo NO dimensiono.
+
+    Devuelve `(titular_o_None, cola)`. El titular reemplaza al encabezado cuando
+    NINGUN SKU quedo dimensionado; la cola se agrega al encabezado normal cuando
+    solo algunos. Vive aca, y no en cada superficie, porque son DOS las que lo
+    escriben -- el resumen del agente (`scm_agent/tools.py`) y el encabezado del
+    deck que lee el cliente (`jobs/inventory_deliverable.py`) -- y arreglar una
+    sola dejaba a la otra diciendo "recommended $0 inventory investment" sobre una
+    corrida en la que no se decidio nada.
+
+    Separa las dos causas porque significan cosas OPUESTAS, que es la misma
+    distincion que hacen los campos del registro:
+      - DECLINADO (`insufficient_history`, `skipped_zero_cost`): el motor no pudo
+        decidir. Cero no es la respuesta, es la ausencia de una.
+      - MEDIDO EN CERO (`skipped_zero_demand`): el motor SI decidio, y la respuesta
+        es cero. Ahi no hay nada que estacionar y decirlo es un hallazgo, no una
+        disculpa.
+    Meterlas en la misma frase -- que es lo que esta funcion nacio arreglando --
+    repite en la prosa la confusion que los campos dejaron de tener.
+    """
+    n_skus = int(getattr(report, "n_skus", 0) or 0)
+    n_declinados = (int(getattr(report, "n_insufficient_history", 0) or 0)
+                    + int(getattr(report, "n_skipped_zero_cost", 0) or 0))
+    n_medidos = int(getattr(report, "n_skipped_zero_demand", 0) or 0)
+    n_total = n_declinados + n_medidos
+    if not n_skus or not n_total:
+        return None, ""
+
+    if n_total < n_skus:
+        partes = []
+        if n_declinados:
+            partes.append(f"{n_declinados} the engine declined to size")
+        if n_medidos:
+            partes.append(f"{n_medidos} with zero measured demand")
+        return None, (f" {n_total} SKU(s) carry no sized policy ({', '.join(partes)}) "
+                      "and are excluded from that figure.")
+
+    if not n_declinados:
+        return (
+            f"All {n_skus} SKU(s) have zero measured demand, so their reorder point "
+            "and buffer are zero and there is nothing to stage. That is a "
+            "measurement, not a refusal - but check whether the export split one "
+            "SKU's sales across spellings before acting on it.",
+            "",
+        )
+    n_tiempo = int(getattr(report, "n_insufficient_history", 0) or 0)
+    n_costo = int(getattr(report, "n_skipped_zero_cost", 0) or 0)
+    causas = []
+    if n_tiempo:
+        causas.append(f"{n_tiempo} for too little demand history")
+    if n_costo:
+        causas.append(f"{n_costo} for no usable unit cost")
+    if n_medidos:
+        # Se nombra aparte, y despues del "declined", porque no es una negativa:
+        # es la respuesta.
+        cabeza = (f"No policy was sized for any of the {n_skus} SKU(s): the engine "
+                  f"declined {n_declinados} ({', '.join(causas)}) and {n_medidos} "
+                  "have zero measured demand")
+    else:
+        cabeza = (f"No policy was sized: the engine declined all {n_skus} SKU(s) "
+                  f"({', '.join(causas)})")
+    return (
+        cabeza + ". Where it declined there is no reorder point, no buffer and no "
+        "investment - this is NOT a recommendation to hold nothing.",
+        "",
+    )
+
+
 #: Las `policy_kind` que este modulo emite cuando NO dimensiono una politica. Es la
 #: definicion CANONICA: hasta el 2026-09-19 vivia copiada a mano en tres lugares y las
 #: tres copias no coincidian -- `jobs/qa.py` tenia las tres clases, y tanto
