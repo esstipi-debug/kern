@@ -435,9 +435,52 @@ def test_el_libro_de_brecha_declara_la_exclusion_en_el_embudo(tmp_path):
 # periodos del anio y no acota por abajo. Un negativo no es la medicion de nada, y
 # publicar 0.0 ahi diria "medimos cero" sobre un SKU que puede estar vendiendo.
 #
-# No se pudo producir con ninguna serie decreciente real: los metodos que el motor
-# elige devuelven valores positivos muy por encima de la ultima observacion. Por eso
-# el caso se fuerza aca -- codigo defensivo que nadie ejerce es codigo sin probar.
+# Al escribir el arreglo se creyo que era hipotetico: con series decrecientes CORTAS
+# (seis a ocho puntos) el motor devuelve valores positivos muy por encima de la
+# ultima observacion. Es falso, y lo encontro la revision adversarial: `auto_ets`
+# extrapola bajo cero sobre una serie decreciente LARGA. El primer test de abajo usa
+# esa serie real -- catorce semanas, 1.440 unidades vendidas -- y sin el arreglo el
+# SKU saldria como `dead_stock`. El segundo forza el caso por monkeypatch para fijar
+# el borde exacto (0.0 contra negativo) sin depender de que metodo elija el motor.
+
+
+#: Serie decreciente larga con la que `auto_ets` extrapola bajo cero. Catorce
+#: semanas, 1.440 unidades vendidas: un SKU que claramente NO es stock muerto.
+_SERIE_QUE_PRONOSTICA_NEGATIVO = [200, 185, 170, 155, 140, 125, 110, 95, 80, 65,
+                                  50, 35, 20, 10]
+
+
+def test_una_serie_REAL_que_pronostica_negativo_no_sale_como_stock_muerto():
+    """El caso alcanzable, sin monkeypatch, con el motor de pronostico de verdad.
+
+    Si esto se pone verde porque el motor dejo de pronosticar negativo, la rama de
+    `annual_demand < 0` deja de estar ejercida por un camino real y hay que
+    revisarla -- por eso el test afirma primero que el pronostico ES negativo.
+    """
+    import numpy as np
+
+    from src.forecasting import forecast_with_oos_sigma
+
+    crudo = forecast_with_oos_sigma(
+        np.array([float(x) for x in _SERIE_QUE_PRONOSTICA_NEGATIVO])
+    )
+    assert crudo.forecast < 0, (
+        f"el motor ya no pronostica negativo aqui ({crudo.forecast}); la rama de "
+        "annual_demand < 0 quedo sin camino real que la ejerza"
+    )
+
+    reporte, r = _rec(_archivo("BAJANDO", _SERIE_QUE_PRONOSTICA_NEGATIVO),
+                      "BAJANDO", on_hand=120.0)
+    assert r.policy_kind == "skipped_zero_demand"
+    for campo in _CAMPOS:
+        assert getattr(r, campo) is None, f"{campo} salio {getattr(r, campo)!r}"
+    assert qa.verify(reporte) == []
+
+    lineas, eventos = _eventos_del_tower(reporte)
+    assert lineas == [] and eventos == [], (
+        "un SKU que vendio 1.440 unidades en catorce semanas no puede salir como "
+        "dead_stock por un pronostico que extrapolo bajo cero"
+    )
 
 
 def _forecast_negativo(monkeypatch, valor: float):

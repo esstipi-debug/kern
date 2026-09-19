@@ -606,11 +606,15 @@ def run(
             # no es la medicion de nada, es un pronostico que salio bajo cero
             # (`ForecastResult.to_engine_inputs` multiplica por los periodos del
             # anio y no acota por abajo). Publicar 0.0 ahi diria "medimos cero"
-            # sobre un SKU que puede estar vendiendo, que es justo el defecto que
-            # esta tanda cierra. No se pudo producir con ninguna serie
-            # decreciente real -- los metodos que el motor elige devuelven valores
-            # positivos muy por encima de la ultima observacion --, asi que esto
-            # es defensivo: define el caso en vez de apoyarse en que no ocurre.
+            # sobre un SKU que puede estar vendiendo.
+            #
+            # Y NO es un caso hipotetico, aunque al escribir esto se creyo que si:
+            # `auto_ets` extrapola bajo cero sobre una serie decreciente larga.
+            # Medido, con catorce semanas de [200, 185, ..., 20, 10] -- 1.440
+            # unidades vendidas -- el pronostico sale -8,57 y la demanda anual
+            # -445,74. Sin esta distincion ese SKU publicaria ceros y el Control
+            # Tower lo reportaria como `dead_stock`: "120 units on hand with no
+            # demand", sobre uno que vendio 1.440 unidades en tres meses.
             medido_en_cero = inputs["annual_demand"] == 0
             cero_o_nada = 0.0 if medido_en_cero else None
             recs.append(
