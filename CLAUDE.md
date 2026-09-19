@@ -219,6 +219,37 @@ fecha -- pero el veredicto la NOMBRA y explica que columna agregar. Por eso su s
 corre tres veces y no dos: acredita solo si lo que llega a tiempo mueve el veredicto Y
 lo que llega tarde no lo mueve.
 
+### Una negativa del motor no puede salir vestida de numero (`jobs/inventory_optimization.py`)
+`inventory_optimization` se NIEGA a dimensionar un SKU con menos de
+`MIN_PERIODS_FOR_POLICY` (6) periodos o sin costo usable -- correcto, y el codigo lo
+dice: *"Refuse rather than degrade"*. Hasta el 2026-09-19 emitia esa negativa con
+`forecast`, `reorder_point`, `safety_stock` y `z_factor` en **0.0**, `status="ok"`,
+`qa_issues=[]` y un resumen que decia *"recommended inventory investment $0"*. El
+aviso existia pero viajaba por la prosa (`policy_kind`, `method="none"`, un residual
+de `tool_options`); el NUMERO decia lo contrario, y todo consumidor lee el numero:
+- `src/simworld/runners.py` lo ejecutaba como "no pedir nunca";
+- `jobs/state_bridge.py::_usable` existe justamente para omitir esa linea -- *"un
+  disparador ausente no es cero (pediria siempre) y una demanda diaria ausente no es
+  cero"* -- y el `0.0` del productor la DERROTABA, asi que `src/alerting.py` emitia
+  **`dead_stock`** ("N units on hand with no demand") sobre un SKU que vendia ~42
+  u/semana con 120 en el estante. Reproducido punta a punta en
+  `tests/test_negativa_no_es_cero.py`.
+
+Los cuatro campos son `float | None` y la ausencia va en `None`. **`skipped_zero_demand`
+CONSERVA sus ceros**, y esa es la otra mitad de la regla: ahi la demanda SI se midio y
+dio cero, asi que el 0 es una medicion -- y por eso el `dead_stock` legitimo sigue
+saliendo. `jobs/qa.py::_sized_field_issues` gatea las DOS direcciones (una linea sin
+politica no puede traer un numero; una con politica no puede traer un `None`), porque
+anular todo seria el mismo defecto al reves. `src/verify/coherencia.py::POLITICAS_SALTADAS`
+quedo alineada con `jobs.qa.UNPRICED_POLICY_KINDS`: tenia dos de las tres clases, asi
+que `insufficient_history` entraba al analisis con sus ceros y pasaba toda invariante
+trivialmente.
+
+La cantidad que el marcador emite **no cambia** -- captura identica al ultimo digito
+sobre las semillas 1003/1004 --, porque `apply_policy` ya trataba un SKU ausente igual
+que uno con disparador 0. Lo que cambia es que ahora se puede distinguir "me negue" de
+"decidi no reponer".
+
 ### El Tower sensa sobre datos reales (`jobs/state_bridge.py`)
 `run_all_monitors` lee `stock`, `forecast` y `outcomes`, y hasta el 2026-09-18 el UNICO
 escritor de `stock` era el puente del marcador (`examples/run_world_sim.py`): en

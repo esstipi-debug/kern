@@ -42,16 +42,36 @@ class SkuRecommendation:
     product_id: str
     method: str
     intermittent: bool
-    forecast: float
+    #: `None` cuando no hay un pronostico publicable: o no se calculo, o se
+    #: calculo sobre menos historia que el minimo y por eso no se puede citar
+    #: (ver `reorder_point`). NUNCA 0.0 para decir "no se sabe": un cero es una
+    #: tasa de demanda, y aguas abajo se divide por el.
+    forecast: float | None
     error_std: float
     bias: float
     mae: float
     policy_kind: str
     order_quantity: float | None
     order_up_to: float | None
-    reorder_point: float
-    safety_stock: float
-    z_factor: float
+    # --- Los campos que describen una POLITICA son anulables --------------------
+    # `None` cuando el motor no pudo calcular el valor; `0.0` solo cuando lo
+    # calculo y dio cero. Un `0.0` aca significa "medido, y la respuesta es
+    # ninguno" -- que es justo lo contrario de lo que pasa en las ramas
+    # `insufficient_history` y `skipped_zero_cost`, donde no se calculo nada.
+    #
+    # Hasta el 2026-09-19 una negativa salia con estos cuatro campos en 0.0 y el
+    # aviso viajaba aparte (`policy_kind`, `sigma_source`, y un residual de
+    # `scm_agent/tool_options.py`). Todo consumidor que lee el NUMERO leia lo
+    # contrario de lo que decia la prosa: `src/simworld/runners.py` lo ejecutaba
+    # como "no pedir nunca", y `jobs/state_bridge.py` -> `src/alerting.py` emitia
+    # `dead_stock` -- "N units on hand with no demand" -- sobre un SKU que vendia
+    # todas las semanas y cuyo unico problema era tener cinco periodos en vez de
+    # seis. `_usable` en el puente existe para omitir justamente esa linea ("un
+    # disparador ausente no es cero (pediria siempre)"); el 0.0 del productor la
+    # derrotaba.
+    reorder_point: float | None
+    safety_stock: float | None
+    z_factor: float | None
     service_level: float       # cycle service level actually used (per-SKU, may be differentiated)
     unit_cost: float
     lead_periods: float
@@ -467,9 +487,13 @@ def run(
             recs.append(
                 SkuRecommendation(
                     product_id=pid, method="none", intermittent=False,
-                    forecast=0.0, error_std=0.0, bias=0.0, mae=0.0,
+                    # El pronostico SI se calculo unas lineas arriba, y a proposito
+                    # no se publica: la compuerta existe porque con menos de
+                    # `min_periods` observaciones no se puede citar. Publicarlo
+                    # aca la derrotaria por la puerta de atras.
+                    forecast=None, error_std=0.0, bias=0.0, mae=0.0,
                     policy_kind="insufficient_history", order_quantity=None, order_up_to=None,
-                    reorder_point=0.0, safety_stock=0.0, z_factor=0.0,
+                    reorder_point=None, safety_stock=None, z_factor=None,
                     service_level=sl, unit_cost=meta.mean_unit_cost, lead_periods=lead,
                     cycle_investment=0.0, ss_investment=0.0, investment=0.0,
                     status="review",
@@ -490,6 +514,14 @@ def run(
             recs.append(
                 SkuRecommendation(
                     product_id=pid, method="none", intermittent=False,
+                    # Los ceros de ESTA rama se quedan, y no es un descuido: aca
+                    # la demanda SI se midio y dio cero, asi que "el pronostico es
+                    # 0 y el disparador es 0" es una medicion, no una ausencia --
+                    # la mitad de la regla que las otras dos ramas violaban. Y hay
+                    # una consecuencia que se pierde si se anulan: el puente
+                    # (`jobs/state_bridge.py`) escribe la linea, y el Tower emite
+                    # `dead_stock` sobre stock parado sin demanda, que es
+                    # exactamente el evento correcto para este caso.
                     forecast=0.0, error_std=0.0, bias=0.0, mae=0.0,
                     policy_kind="skipped_zero_demand", order_quantity=None, order_up_to=None,
                     reorder_point=0.0, safety_stock=0.0, z_factor=0.0,
@@ -514,9 +546,12 @@ def run(
             recs.append(
                 SkuRecommendation(
                     product_id=pid, method="none", intermittent=False,
-                    forecast=0.0, error_std=0.0, bias=0.0, mae=0.0,
+                    # Misma regla que `insufficient_history`: la demanda de este
+                    # SKU es real y positiva, lo que falta es el costo. Un cero
+                    # aca diria que no vende.
+                    forecast=None, error_std=0.0, bias=0.0, mae=0.0,
                     policy_kind="skipped_zero_cost", order_quantity=None, order_up_to=None,
-                    reorder_point=0.0, safety_stock=0.0, z_factor=0.0,
+                    reorder_point=None, safety_stock=None, z_factor=None,
                     service_level=sl, unit_cost=meta.mean_unit_cost, lead_periods=lead,
                     cycle_investment=0.0, ss_investment=0.0, investment=0.0,
                     status="review",

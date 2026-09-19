@@ -247,10 +247,34 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         on_order_by_sku=params.get("on_order_by_sku", on_order_by_sku),
         position_note=position_note,
     )
-    summary = (
-        f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
-        f"${report.final_investment:,.0f} at {report.params['service_level'] * 100:.0f}% service level."
+    # Una corrida en la que el motor no dimensiono nada NO puede resumirse como
+    # "inversion recomendada $0": eso se lee como un consejo de no comprar, y es
+    # justo lo contrario de lo que paso. El residual ya existia en tool_options,
+    # pero el resumen es lo que el operador lee ANTES de abrir el entregable.
+    n_unsized = (
+        getattr(report, "n_insufficient_history", 0)
+        + getattr(report, "n_skipped_zero_demand", 0)
+        + getattr(report, "n_skipped_zero_cost", 0)
     )
+    if report.n_skus and n_unsized >= report.n_skus:
+        summary = (
+            f"No policy was sized: all {report.n_skus} SKU(s) were declined or skipped "
+            f"({report.n_insufficient_history} for too little demand history, "
+            f"{report.n_skipped_zero_demand} for no demand, "
+            f"{report.n_skipped_zero_cost} for no usable unit cost). No reorder point, "
+            "no buffer and no investment was computed - this is NOT a recommendation "
+            "to hold nothing."
+        )
+    else:
+        summary = (
+            f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
+            f"${report.final_investment:,.0f} at {report.params['service_level'] * 100:.0f}% service level."
+        )
+        if n_unsized:
+            summary += (
+                f" {n_unsized} SKU(s) carry no sized policy and are excluded from that "
+                "figure."
+            )
     # La nota del servicio viaja en el resumen, que es lo que el operador lee ANTES de
     # abrir el entregable. Sin ella el fill rate aparece sin decir de que columna del
     # cliente salio, y un numero que no se puede reconciliar contra el ERP no se usa.

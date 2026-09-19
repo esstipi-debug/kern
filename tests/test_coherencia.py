@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 
+import pandas as pd
 import pytest
 
 from jobs import inventory_optimization
@@ -27,9 +28,24 @@ from src.verify.coherencia import (
 
 @pytest.fixture(scope="module")
 def reporte_sano():
-    """Una cartera pequena pero con los dos degenerados dentro."""
+    """Una cartera pequena pero con los TRES degenerados dentro.
+
+    El generador produce los dos degenerados de DATO (demanda cero, costo cero).
+    El tercero -- historia insuficiente -- es de CONOCIMIENTO y hay que fabricarlo:
+    un SKU cuya primera venta cae cerca del final de la ventana, asi que el motor
+    lo ve por menos de ``MIN_PERIODS_FOR_POLICY`` periodos. Entro a
+    ``POLITICAS_SALTADAS`` el 2026-09-19, cuando esa lista se alineo con
+    ``jobs.qa.UNPRICED_POLICY_KINDS``; sin esta linea el invariante de conteo
+    volveria a probarse en vacio sobre la clase recien agregada.
+    """
     demanda = generar_cartera(24, semanas=40, semilla=11)
-    return inventory_optimization.run(demanda)
+    fechas = sorted(demanda["date"].unique())
+    nuevas = pd.DataFrame([
+        {"date": f, "product_id": "SKU-RECIEN", "quantity": 12.0,
+         "unit_cost": 55.0, "lead_time_days": 14}
+        for f in fechas[-3:]
+    ])
+    return inventory_optimization.run(pd.concat([demanda, nuevas], ignore_index=True))
 
 
 def _analizada(reporte):
@@ -62,11 +78,16 @@ def test_una_cartera_sana_no_viola_ningun_invariante(reporte_sano):
     assert coh.n_recomendaciones == reporte_sano.n_skus
 
 
-def test_la_cartera_de_prueba_ejerce_las_dos_ramas_de_salto(reporte_sano):
-    """Si no hay saltadas, el invariante de conteo se estaria probando en vacio."""
+def test_la_cartera_de_prueba_ejerce_TODAS_las_ramas_de_salto(reporte_sano):
+    """Si no hay saltadas, el invariante de conteo se estaria probando en vacio.
+
+    Se compara contra el conjunto ENTERO, no contra una lista escrita a mano, para
+    que agregar una policy_kind saltada obligue a producirla aca tambien.
+    """
     politicas = {r.policy_kind for r in reporte_sano.recommendations}
     assert POLITICAS_SALTADAS <= politicas, (
-        f"la cartera no produjo ambos degenerados; politicas vistas: {sorted(politicas)}"
+        f"la cartera no produjo todos los degenerados; faltan: "
+        f"{sorted(POLITICAS_SALTADAS - politicas)}; vistas: {sorted(politicas)}"
     )
 
 

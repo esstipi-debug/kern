@@ -33,7 +33,14 @@ from dataclasses import dataclass
 # SKU sin demanda o sin costo no mate el lote entero. Salen con todos los campos
 # numericos en cero, asi que los invariantes de magnitud no les aplican -- pero
 # los de conteo si, porque desaparecer en silencio si seria un fallo.
-POLITICAS_SALTADAS = frozenset({"skipped_zero_demand", "skipped_zero_cost"})
+#: Las policy_kind que NO traen una politica dimensionada, y por eso no entran a las
+#: invariantes por SKU de abajo. Tiene que coincidir con `jobs.qa.UNPRICED_POLICY_KINDS`
+#: -- hasta el 2026-09-19 le faltaba `insufficient_history`, que quedaba dentro del
+#: analisis con sus ceros y pasaba toda invariante trivialmente. `tests/` fija la
+#: igualdad de los dos conjuntos para que no se separen otra vez.
+POLITICAS_SALTADAS = frozenset({
+    "skipped_zero_demand", "skipped_zero_cost", "insufficient_history",
+})
 
 # Tolerancia relativa de las igualdades de dinero. Los agregados son sumas de
 # float sobre decenas de miles de terminos, asi que el error se acumula con N;

@@ -85,8 +85,15 @@ def test_brand_new_sku_gets_no_quantity():
     assert thin.policy_kind == "insufficient_history"
     assert thin.order_quantity is None
     assert thin.order_up_to is None
-    assert thin.reorder_point == 0.0
-    assert thin.safety_stock == 0.0
+    # `None`, no 0.0, desde el 2026-09-19: un cero es un numero sobre el que un
+    # operador -- y `src/simworld/runners.py`, y el puente al Tower -- actua. La
+    # negativa tiene que estar en el CAMPO, no solo en `policy_kind` y en un
+    # residual. Ver tests/test_negativa_no_es_cero.py.
+    assert thin.forecast is None
+    assert thin.reorder_point is None
+    assert thin.safety_stock is None
+    assert thin.z_factor is None
+    # La inversion SI es cero, y medida: no se estaciona plata en este SKU.
     assert thin.investment == 0.0
     assert thin.status == "review"
     assert thin.n_periods == 1

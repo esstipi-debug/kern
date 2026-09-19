@@ -319,9 +319,17 @@ def kern_policy(
     target: dict[str, float] = {}
     forecast: dict[str, float] = {}
     for rec in result.report.recommendations:
+        if rec.reorder_point is None:
+            # El motor se nego a dimensionar este SKU (historia insuficiente, o sin
+            # costo usable). Se OMITE del plan: meterlo con 0 diria "el punto de
+            # reorden es cero", que `apply_policy` ejecuta igual -- no pedir nunca --
+            # pero que en la traza es indistinguible de una politica deliberada de no
+            # reponer. La cantidad emitida no cambia; lo que cambia es que ahora se
+            # puede saber por que.
+            continue
         rop = float(rec.reorder_point)
         reorder[rec.product_id] = rop
-        forecast[rec.product_id] = float(rec.forecast)
+        forecast[rec.product_id] = float(rec.forecast) if rec.forecast is not None else 0.0
         if rec.order_up_to is not None:
             target[rec.product_id] = float(rec.order_up_to)
         else:

@@ -160,7 +160,12 @@ def stock_lines_from_inventory(report, *, periods_per_year: float | None = None)
     period_days = DAYS_PER_YEAR / per_year if per_year > 0 else DAYS_PER_WEEK
     lines = []
     for rec in report.recommendations:
-        daily = rec.forecast / period_days if period_days > 0 else None
+        # `rec.forecast` es `None` en un SKU que el motor se nego a dimensionar.
+        # Dividirlo reventaba; tratarlo como 0 era peor: `_usable` lo dejaba pasar
+        # y el Tower emitia `dead_stock` -- "N units on hand with no demand" --
+        # sobre un SKU que vendia todas las semanas. Ausente es ausente.
+        daily = (rec.forecast / period_days
+                 if rec.forecast is not None and period_days > 0 else None)
         if not _usable(rec.product_id, rec.on_hand, rec.reorder_point, daily):
             continue
         lines.append(StockLine(rec.product_id, float(rec.on_hand), float(rec.reorder_point),

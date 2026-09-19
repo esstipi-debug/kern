@@ -28,6 +28,19 @@ ACTION_LABEL = {
 }
 
 
+#: Un campo dimensionado que el motor no pudo calcular llega en ``None``
+#: (``jobs/inventory_optimization.py``). Las dos funciones de abajo son la UNICA
+#: forma en que este modulo lo renderiza: celda vacia en la planilla, raya en el
+#: markdown. Nunca un cero -- un cero en una columna de disparador o de tasa de
+#: demanda es un numero sobre el que un operador actua.
+def _redondear(valor: float | None, digitos: int) -> float | None:
+    return None if valor is None else round(valor, digitos)
+
+
+def _celda(valor: float | None, digitos: int) -> str:
+    return "—" if valor is None else f"{valor:,.{digitos}f}"
+
+
 def _row(r: SkuRecommendation, *, units: bool = False) -> dict:
     # ``units=True`` cuando el costo unitario se invento (1,0): la columna de valor
     # cambia de nombre para que la planilla diga lo que contiene, no lo que quisiera.
@@ -35,7 +48,10 @@ def _row(r: SkuRecommendation, *, units: bool = False) -> dict:
         "product_id": r.product_id,
         "method": r.method,
         "policy": r.policy_kind,
-        "forecast_per_period": round(r.forecast, 2),
+        # Celda VACIA, no 0: el mismo criterio que `on_order`. Un 0 en una planilla
+        # es una tasa de demanda, y quien la abra no tiene como distinguirlo de
+        # "este SKU no vende".
+        "forecast_per_period": _redondear(r.forecast, 2),
         "order_qty_Q": round(r.order_quantity, 2) if r.order_quantity is not None else "",
         # Supplier terms. `order_qty_Q` above is the lot the supplier ACCEPTS;
         # these say what the EOQ asked for, which rule moved it, what honouring
@@ -56,7 +72,7 @@ def _row(r: SkuRecommendation, *, units: bool = False) -> dict:
             if r.lot_alternative_penalty_usd is not None else ""
         ),
         "order_up_to_S": round(r.order_up_to, 2) if r.order_up_to is not None else "",
-        "reorder_point_s": round(r.reorder_point, 2),
+        "reorder_point_s": _redondear(r.reorder_point, 2),
         # Today's stock position and the execution signal. Blank, never 0, where
         # nothing was measured: a blank on_order says "nobody told us", a 0 would
         # say "measured, nothing inbound" - and the two lead to different POs.
@@ -67,7 +83,7 @@ def _row(r: SkuRecommendation, *, units: bool = False) -> dict:
         ),
         "order_now": ("yes" if r.order_now else "no") if r.order_now is not None else "",
         "order_qty_now": round(r.order_qty_now, 2) if r.order_qty_now is not None else "",
-        "safety_stock": round(r.safety_stock, 2),
+        "safety_stock": _redondear(r.safety_stock, 2),
         "sigma_e": round(r.error_std, 2),
         # Which dispersion actually sized this row's buffer, and under which
         # distribution - so the CSV can be reconciled against the stated formula.
@@ -564,8 +580,9 @@ def write_report_md(report: JobReport, path: str | Path, *, client: str = "Clien
         q = f"{r.order_quantity:,.0f}" if r.order_quantity is not None else "—"
         s_up = f"{r.order_up_to:,.0f}" if r.order_up_to is not None else "—"
         lines.append(
-            f"| {r.product_id} | {r.method} | {r.policy_kind} | {r.forecast:,.1f} | {q} | {s_up} | "
-            f"{r.reorder_point:,.0f} | {r.safety_stock:,.1f} | {amount(report, r.investment)} | {STATUS_LABEL[r.status]} |"
+            f"| {r.product_id} | {r.method} | {r.policy_kind} | {_celda(r.forecast, 1)} | {q} | {s_up} | "
+            f"{_celda(r.reorder_point, 0)} | {_celda(r.safety_stock, 1)} | "
+            f"{amount(report, r.investment)} | {STATUS_LABEL[r.status]} |"
         )
     lines.append("")
     if report.n_lot_constrained:

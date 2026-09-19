@@ -49,7 +49,52 @@ PRICE_INTEL_COVERAGE_MIN = 0.60  # plan section 6.9 item 2: ">=60% SKUs con >=1 
 UNPRICED_POLICY_KINDS = frozenset({
     "skipped_zero_demand", "skipped_zero_cost", "insufficient_history",
 })
+
+#: Los campos que describen una politica dimensionada. jobs/inventory_optimization.py
+#: los emite en ``None`` exactamente cuando no pudo dimensionarla.
+SIZED_POLICY_FIELDS = ("forecast", "reorder_point", "safety_stock", "z_factor")
+
+#: La unica policy_kind sin precio cuyos CEROS son una medicion y no una ausencia:
+#: la demanda agregada se midio y dio cero, asi que un pronostico de 0 y un
+#: disparador de 0 son lo que el motor calculo. Las otras dos no calcularon nada.
+MEASURED_ZERO_POLICY_KINDS = frozenset({"skipped_zero_demand"})
 _REQUIRED_INTEGRATED_PLAN_CHECKS = {CHECK_PROMO_COVERAGE, CHECK_BUDGET_FEASIBILITY, CHECK_SERVICE_LEVEL}
+
+
+def _sized_field_issues(r) -> list[str]:
+    """La ausencia de politica se chequea en las DOS direcciones.
+
+    Hasta el 2026-09-19 una negativa del motor salia con `reorder_point`,
+    `safety_stock`, `z_factor` y `forecast` en 0.0, y el aviso viajaba por otro
+    canal (`policy_kind`, un residual). Todo consumidor que leia el NUMERO leia lo
+    contrario de lo que decia la prosa: `src/simworld/runners.py` lo ejecutaba como
+    "no pedir nunca" y el Tower emitia `dead_stock` sobre un SKU que vendia todas
+    las semanas. Un 0 significa "medido, y la respuesta es ninguno"; una negativa
+    no midio nada.
+
+    Por eso esta compuerta prohibe las dos formas de mentir: una linea sin politica
+    que traiga un numero, y una linea con politica a la que le falte uno. La primera
+    es la que costo el defecto; la segunda es lo que impide arreglarlo anulando
+    todo.
+    """
+    unpriced = r.policy_kind in UNPRICED_POLICY_KINDS
+    declined = unpriced and r.policy_kind not in MEASURED_ZERO_POLICY_KINDS
+    out: list[str] = []
+    for field in SIZED_POLICY_FIELDS:
+        value = getattr(r, field, None)
+        if declined:
+            if value is not None:
+                out.append(
+                    f"{r.product_id}: {r.policy_kind} carries a {field} of {value:.4g} - "
+                    "the engine declined to size this SKU, so the absence must be null, "
+                    "not a number an operator or a downstream job can act on"
+                )
+        elif value is None:
+            out.append(
+                f"{r.product_id}: {r.policy_kind} has no {field}; only a declined SKU "
+                "may leave a sized field null"
+            )
+    return out
 
 
 def verify(report: JobReport) -> list[str]:
@@ -62,9 +107,10 @@ def verify(report: JobReport) -> list[str]:
     for r in report.recommendations:
         if abs(r.investment - (r.cycle_investment + r.ss_investment)) > max(TOL, abs(r.investment) * 1e-9):
             issues.append(f"{r.product_id}: investment != cycle + safety")
-        if r.safety_stock < -TOL:
+        issues.extend(_sized_field_issues(r))
+        if r.safety_stock is not None and r.safety_stock < -TOL:
             issues.append(f"{r.product_id}: negative safety stock")
-        if r.reorder_point < -TOL:
+        if r.reorder_point is not None and r.reorder_point < -TOL:
             issues.append(f"{r.product_id}: negative reorder point")
         if r.policy_kind == "(s, Q)" and (r.order_quantity is None or r.order_quantity <= 0):
             issues.append(f"{r.product_id}: (s,Q) without a positive order quantity")
@@ -94,7 +140,8 @@ def verify(report: JobReport) -> list[str]:
         # is a fabricated number. The converse (unavailable + zero buffer) is the
         # legitimate measured-flat-history case and must keep passing: see
         # src/forecasting.py's to_engine_inputs "measured, not missing" branch.
-        if getattr(r, "sigma_source", "") == "unavailable" and r.safety_stock > TOL:
+        if (getattr(r, "sigma_source", "") == "unavailable"
+                and r.safety_stock is not None and r.safety_stock > TOL):
             issues.append(
                 f"{r.product_id}: safety stock {r.safety_stock:.4g} with no estimable "
                 "dispersion (sigma_source='unavailable')"
