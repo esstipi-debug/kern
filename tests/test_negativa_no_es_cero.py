@@ -296,3 +296,86 @@ def test_omitir_y_poner_cero_emiten_la_MISMA_orden():
                      order_up_to={s.sku: 0.0 for s in mundo.skus})
 
     assert apply_policy(mundo, estado, ausente) == apply_policy(mundo, estado, en_cero)
+
+
+# ---------------------------------------------------------------------------
+# 6. El consumidor que el mapa encontro y la suite no: la pantalla de brecha
+# ---------------------------------------------------------------------------
+#
+# `webapp/demo_gap_value.py` RESTA dos dimensionamientos del mismo SKU (el del ERP
+# contra el de la realidad) y arma `SkuGap`, un dataclass de floats. No filtraba por
+# `policy_kind`: filtraba por tener plazo declarado, observado y dispersion. Un SKU
+# con recepciones de sobra pero poca historia de demanda pasaba ese filtro y llegaba
+# con los dos buffers en 0.0 -> `delta_value` 0,00, o sea "el ERP y la realidad
+# coinciden en este SKU" sobre uno que nadie dimensiono. Con `None` ese mismo camino
+# revienta con TypeError en una ruta de produccion (`webapp/app.py`), asi que la
+# unica salida honesta es excluirlo Y CONTARLO.
+
+_RECEIPTS = "data/sample_receipts_portfolio.csv"
+_DEMAND = "data/sample_demand_portfolio.csv"
+
+
+def _con_sku_sin_dimensionar(rec: pd.DataFrame, dem: pd.DataFrame):
+    """Un SKU con recepciones de sobra y menos historia que el minimo.
+
+    Proveedor PROPIO a proposito: colgarlo de uno existente mueve el scorecard de
+    plazo de ese proveedor y con el las brechas de todos sus SKU, y entonces el test
+    no podria afirmar que el `net` no se movio.
+    """
+    nuevas_rec = pd.DataFrame([
+        {"po_id": f"OC-N{i}", "supplier": "Proveedor Nuevo SA", "product_id": "SKU-SIN-DIM",
+         "order_date": f"2024-0{(i % 9) + 1}-01", "receipt_date": f"2024-0{(i % 9) + 1}-1{i % 8}",
+         "declared_lead_time_days": 20}
+        for i in range(6)
+    ])
+    ultimas = sorted(dem["date"].unique())[-4:]   # 4 periodos < MIN_PERIODS_FOR_POLICY
+    nuevas_dem = pd.DataFrame([
+        {"date": f, "product_id": "SKU-SIN-DIM", "quantity": 42.0,
+         "unit_cost": 10.0, "lead_time_days": 20}
+        for f in ultimas
+    ])
+    return (pd.concat([rec, nuevas_rec], ignore_index=True),
+            pd.concat([dem, nuevas_dem], ignore_index=True))
+
+
+def test_la_pantalla_de_brecha_excluye_y_CUENTA_el_sku_sin_dimensionar():
+    pytest.importorskip("openpyxl")
+    from webapp.demo_gap_value import run_gap_value
+
+    rec, dem = pd.read_csv(_RECEIPTS), pd.read_csv(_DEMAND)
+    base = run_gap_value(rec, dem)
+    con = run_gap_value(*_con_sku_sin_dimensionar(rec, dem))
+
+    # No revienta -- es una ruta de produccion del webapp.
+    assert con.n_unsized_skus == 1
+    assert "SKU-SIN-DIM" not in {g.product_id for g in con.gaps}
+    # Y no se cuela como una brecha de cero, que era el sintoma viejo.
+    assert len(con.gaps) == len(base.gaps)
+    assert con.net == pytest.approx(base.net)
+    assert base.n_unsized_skus == 0
+
+
+def test_el_libro_de_brecha_declara_la_exclusion_en_el_embudo(tmp_path):
+    pytest.importorskip("openpyxl")
+    from openpyxl import load_workbook
+
+    from webapp.demo_gap_value import run_gap_value
+    from webapp.demo_gap_workbook import write_gap_value_workbook
+
+    rec, dem = pd.read_csv(_RECEIPTS), pd.read_csv(_DEMAND)
+
+    def texto(valor, nombre):
+        ruta = write_gap_value_workbook(valor, tmp_path / nombre,
+                                        dataset_label="d.csv", ts="T")
+        wb = load_workbook(ruta)
+        return "\n".join(
+            str(c) for hoja in wb.sheetnames
+            for fila in wb[hoja].iter_rows(values_only=True) for c in fila if c
+        )
+
+    con = texto(run_gap_value(*_con_sku_sin_dimensionar(rec, dem)), "con.xlsx")
+    assert "NO los dimensiono" in con
+
+    # Y una corrida sin ninguno no gana un renglon que no dice nada.
+    sin = texto(run_gap_value(rec, dem), "sin.xlsx")
+    assert "NO los dimensiono" not in sin

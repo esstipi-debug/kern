@@ -108,6 +108,14 @@ class GapValue:
     n_with_declared: int = 0
     n_with_observed: int = 0
     n_with_std: int = 0
+    #: Comparables que el motor NO dimensiono (menos de MIN_PERIODS_FOR_POLICY
+    #: periodos de demanda, o sin costo usable), asi que no tienen los dos
+    #: buffers que esta pantalla resta. Tienen plazo declarado, observado y
+    #: dispersion -- la unica razon por la que quedan afuera es que no hay
+    #: politica que comparar, y eso hay que decirlo: contarlos como una brecha
+    #: de 0 diria "el ERP y la realidad coinciden en este SKU", que es lo
+    #: contrario de "nadie lo dimensiono".
+    n_unsized_skus: int = 0
     #: Recepciones que entraron, y las que quedaron fuera por proveedor corto --
     #: la cuarta causa de descarte, que `dropped_receipts` no ve.
     n_receipts_used: int = 0
@@ -386,6 +394,7 @@ def run_gap_value(
     }
 
     gaps: list[SkuGap] = []
+    n_unsized = 0
     if comparables and not cost_synthesized:
         to_p = lambda d: _days_to_periods(d, periods_per_year)  # noqa: E731
         erp = inventory_optimization.run(
@@ -407,6 +416,15 @@ def run_gap_value(
             base = by_erp.get(r.product_id)
             if base is None or r.product_id not in comparables:
                 continue
+            # Esta pantalla RESTA dos dimensionamientos. Un SKU que el motor se
+            # nego a dimensionar no tiene ninguno de los dos (`safety_stock` es
+            # `None` desde el 2026-09-19), y antes de eso traia 0.0 en los dos,
+            # asi que entraba con una brecha de 0,00: "el ERP y la realidad
+            # coinciden" sobre un SKU que nadie dimensiono. Se excluye, y el
+            # embudo lo cuenta.
+            if base.safety_stock is None or r.safety_stock is None:
+                n_unsized += 1
+                continue
             gaps.append(
                 SkuGap(
                     product_id=r.product_id,
@@ -419,6 +437,9 @@ def run_gap_value(
                     unit_cost=r.unit_cost,
                 )
             )
+
+    # El bucle de arriba es el unico que lo sabe, asi que entra al embudo aca.
+    _funnel["n_unsized_skus"] = n_unsized
 
     issues = _qa_issues(
         gaps,
