@@ -102,7 +102,13 @@ a la escala del loop la captura pasa de −0,446 a **−0,6019** (L0) y de +0,43
   por replanificacion cada 4 semanas, y un piso que es un reorden fijo bien calibrado
   sobre la misma demanda. Sirve para detectar regresiones y para no venderse de mas, no
   para estimar el resultado de una implantacion.
-- **No explica POR QUE** Kern queda por debajo del piso con datos limpios. Eso queda
-  abierto: es la pregunta que sigue, y ahora tiene una vara sana con la que medirse.
+- **No explica POR QUE** Kern queda por debajo del piso con datos limpios. Eso lo
+  contesta [`KERN_POR_QUE_BAJO_EL_PISO.md`](KERN_POR_QUE_BAJO_EL_PISO.md) (2026-09-19),
+  sobre los cinco primeros mundos de esta misma linea base: **el 56 % de la brecha es
+  que Kern no puede dimensionar durante el primer tercio de la corrida**, y la
+  hipotesis de que le falta buffer quedo REFUTADA -- con la cobertura exacta del piso
+  captura peor, porque el dinero extra termina en stock terminal. Lo que sigue abierto
+  es el residuo: con el arranque arreglado Kern queda en -20,6 % y esa parte ya es una
+  ineficiencia de asignacion entre SKU y semanas.
 - **No cubre otros shocks.** `supplier_outage` y `demand_surge` existen en
   `src/simworld/shocks.py` y no tienen linea base grabada.

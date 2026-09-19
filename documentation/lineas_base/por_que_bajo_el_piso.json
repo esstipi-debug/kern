@@ -1,0 +1,550 @@
+{
+ "contexto": {
+  "mundos": 5,
+  "semillas": [
+   1000,
+   1001,
+   1002,
+   1003,
+   1004
+  ],
+  "n_skus": 8,
+  "n_proveedores": 2,
+  "semanas": 24,
+  "replan_cada": 4,
+  "nivel": 0,
+  "carril": "forced",
+  "cobertura_del_piso_periodos": 5.0
+ },
+ "por_mundo": [
+  {
+   "seed": 1000,
+   "piso": {
+    "procurement": 132343.75,
+    "holding": 942.8558173076924,
+    "shortage": 50348.2275,
+    "fixed": 10875.0,
+    "total": 194509.8333173077,
+    "fill": 0.8944965762110069,
+    "unidades_pedidas": 3476.0,
+    "eventos_de_orden": 145,
+    "stock_terminal_usd": 8125.8575,
+    "unidades_por_tercio": [
+     879.0,
+     1265.25,
+     1331.75
+    ],
+    "capture": 0.0
+   },
+   "techo": {
+    "procurement": 134349.09000000003,
+    "holding": 1648.2778846153847,
+    "shortage": 0.0,
+    "fixed": 1725.0,
+    "total": 137722.3678846154,
+    "fill": 1.0,
+    "unidades_pedidas": 3415.0,
+    "eventos_de_orden": 23,
+    "stock_terminal_usd": 0.0,
+    "unidades_por_tercio": [
+     1444.0,
+     1411.0,
+     560.0
+    ],
+    "capture": 1.0
+   },
+   "kern": {
+    "procurement": 101211.45756566044,
+    "holding": 484.28781383371836,
+    "shortage": 110770.55837197955,
+    "fixed": 6150.0,
+    "total": 218616.30375147372,
+    "fill": 0.7109779936206992,
+    "unidades_pedidas": 2588.5196311156506,
+    "eventos_de_orden": 82,
+    "stock_terminal_usd": 4043.428367408539,
+    "unidades_por_tercio": [
+     0.0,
+     1327.933276426394,
+     1260.5863546892563
+    ],
+    "capture": -0.4245033697222915
+   },
+   "arranque_piso": {
+    "procurement": 124487.20947675005,
+    "holding": 1131.0986696827558,
+    "shortage": 85016.33941013724,
+    "fixed": 4050.0,
+    "total": 214684.64755657007,
+    "fill": 0.8255441773876873,
+    "unidades_pedidas": 3416.5162888785635,
+    "eventos_de_orden": 54,
+    "stock_terminal_usd": 13109.466404696828,
+    "unidades_por_tercio": [
+     879.0,
+     1100.033806172089,
+     1437.4824827064747
+    ],
+    "capture": -0.35526879189871047
+   },
+   "cobertura_piso": {
+    "procurement": 145053.70396473733,
+    "holding": 1996.8701423542402,
+    "shortage": 74292.45999999999,
+    "fixed": 6375.0,
+    "total": 227718.03410709157,
+    "fill": 0.7877250824245499,
+    "unidades_pedidas": 3618.050205704504,
+    "eventos_de_orden": 85,
+    "stock_terminal_usd": 29616.147535514414,
+    "unidades_por_tercio": [
+     0.0,
+     1909.8095800846195,
+     1708.2406256198847
+    ],
+    "capture": -0.5847804711260465
+   }
+  },
+  {
+   "seed": 1001,
+   "piso": {
+    "procurement": 106245.69750000001,
+    "holding": 690.5037259615385,
+    "shortage": 109726.495,
+    "fixed": 8775.0,
+    "total": 225437.69622596155,
+    "fill": 0.6963616907437132,
+    "unidades_pedidas": 2646.5,
+    "eventos_de_orden": 117,
+    "stock_terminal_usd": 2703.4475,
+    "unidades_por_tercio": [
+     828.75,
+     851.0,
+     966.75
+    ],
+    "capture": 0.0
+   },
+   "techo": {
+    "procurement": 134663.37,
+    "holding": 1706.9548076923077,
+    "shortage": 934.0,
+    "fixed": 1725.0,
+    "total": 139029.3248076923,
+    "fill": 0.9978598180845372,
+    "unidades_pedidas": 3067.0,
+    "eventos_de_orden": 23,
+    "stock_terminal_usd": 0.0,
+    "unidades_por_tercio": [
+     1729.0,
+     1338.0,
+     0.0
+    ],
+    "capture": 1.0
+   },
+   "kern": {
+    "procurement": 90685.56304594479,
+    "holding": 955.8562328124577,
+    "shortage": 153940.11413344555,
+    "fixed": 3525.0,
+    "total": 249106.53341220279,
+    "fill": 0.5418095758158343,
+    "unidades_pedidas": 2042.731260493451,
+    "eventos_de_orden": 47,
+    "stock_terminal_usd": 4473.012830209886,
+    "unidades_por_tercio": [
+     0.0,
+     1082.9096030680846,
+     959.8216574253662
+    ],
+    "capture": -0.27391833450568825
+   },
+   "arranque_piso": {
+    "procurement": 128695.33383713884,
+    "holding": 949.4859017978692,
+    "shortage": 91690.9520978975,
+    "fixed": 5625.0,
+    "total": 226960.7718368342,
+    "fill": 0.7199080399476058,
+    "unidades_pedidas": 2963.591108823096,
+    "eventos_de_orden": 75,
+    "stock_terminal_usd": 8099.826865484181,
+    "unidades_por_tercio": [
+     828.75,
+     862.7919551717389,
+     1272.0491536513568
+    ],
+    "capture": -0.017626482085862184
+   },
+   "cobertura_piso": {
+    "procurement": 103306.76096344434,
+    "holding": 1292.6769748905772,
+    "shortage": 148584.86525420885,
+    "fixed": 3300.0,
+    "total": 256484.30319254377,
+    "fill": 0.5758096391673733,
+    "unidades_pedidas": 2451.134190010237,
+    "eventos_de_orden": 44,
+    "stock_terminal_usd": 8037.882278909777,
+    "unidades_por_tercio": [
+     0.0,
+     1371.0285625457332,
+     1080.1056274645039
+    ],
+    "capture": -0.35930091560570776
+   }
+  },
+  {
+   "seed": 1002,
+   "piso": {
+    "procurement": 105942.55,
+    "holding": 596.0482932692308,
+    "shortage": 58814.525,
+    "fixed": 10125.0,
+    "total": 175478.12329326922,
+    "fill": 0.7925121753246753,
+    "unidades_pedidas": 1952.0,
+    "eventos_de_orden": 135,
+    "stock_terminal_usd": 3092.365,
+    "unidades_por_tercio": [
+     500.25,
+     724.25,
+     727.5
+    ],
+    "capture": 0.0
+   },
+   "techo": {
+    "procurement": 117436.12,
+    "holding": 1371.8321634615386,
+    "shortage": 0.0,
+    "fixed": 1575.0,
+    "total": 120382.95216346154,
+    "fill": 1.0,
+    "unidades_pedidas": 2079.0,
+    "eventos_de_orden": 21,
+    "stock_terminal_usd": 0.0,
+    "unidades_por_tercio": [
+     1066.0,
+     859.0,
+     154.0
+    ],
+    "capture": 1.0
+   },
+   "kern": {
+    "procurement": 83041.79006985141,
+    "holding": 577.5423122711109,
+    "shortage": 102387.35455290086,
+    "fixed": 5700.0,
+    "total": 191706.68693502338,
+    "fill": 0.611943459485462,
+    "unidades_pedidas": 1493.3759858609487,
+    "eventos_de_orden": 76,
+    "stock_terminal_usd": 2060.326299918368,
+    "unidades_por_tercio": [
+     0.0,
+     691.6185560469618,
+     801.7574298139868
+    ],
+    "capture": -0.2945551000017522
+   },
+   "arranque_piso": {
+    "procurement": 112619.12655336017,
+    "holding": 773.2511860686798,
+    "shortage": 58838.92905138663,
+    "fixed": 4950.0,
+    "total": 177181.3067908155,
+    "fill": 0.7899472871166489,
+    "unidades_pedidas": 2334.3188622468624,
+    "eventos_de_orden": 66,
+    "stock_terminal_usd": 8170.895596011565,
+    "unidades_por_tercio": [
+     500.25,
+     867.0850484087398,
+     966.9838138381222
+    ],
+    "capture": -0.03091348048513113
+   },
+   "cobertura_piso": {
+    "procurement": 107373.97654159143,
+    "holding": 1157.3944827241921,
+    "shortage": 84187.16720860139,
+    "fixed": 5325.0,
+    "total": 198043.53823291702,
+    "fill": 0.6711765997746273,
+    "unidades_pedidas": 1899.115014543694,
+    "eventos_de_orden": 71,
+    "stock_terminal_usd": 14305.99229901186,
+    "unidades_por_tercio": [
+     0.0,
+     886.2762154145944,
+     1012.8387991290995
+    ],
+    "capture": -0.4095715554904488
+   }
+  },
+  {
+   "seed": 1003,
+   "piso": {
+    "procurement": 229960.79,
+    "holding": 1688.0619110576924,
+    "shortage": 82598.4075,
+    "fixed": 10275.0,
+    "total": 324522.2594110577,
+    "fill": 0.8576798049573344,
+    "unidades_pedidas": 4184.75,
+    "eventos_de_orden": 137,
+    "stock_terminal_usd": 16661.315,
+    "unidades_por_tercio": [
+     1007.0,
+     1582.25,
+     1595.5
+    ],
+    "capture": 0.0
+   },
+   "techo": {
+    "procurement": 230408.03000000003,
+    "holding": 2167.459759615385,
+    "shortage": 0.0,
+    "fixed": 2550.0,
+    "total": 235125.48975961542,
+    "fill": 1.0,
+    "unidades_pedidas": 4214.0,
+    "eventos_de_orden": 34,
+    "stock_terminal_usd": 0.0,
+    "unidades_por_tercio": [
+     1266.0,
+     2095.0,
+     853.0
+    ],
+    "capture": 1.0
+   },
+   "kern": {
+    "procurement": 164057.83583013157,
+    "holding": 877.2218889661356,
+    "shortage": 210275.54988610558,
+    "fixed": 6450.0,
+    "total": 381660.6076052033,
+    "fill": 0.6452209905886744,
+    "unidades_pedidas": 3024.735400459047,
+    "eventos_de_orden": 86,
+    "stock_terminal_usd": 9664.840112843103,
+    "unidades_por_tercio": [
+     0.0,
+     1568.8249885449022,
+     1455.9104119141443
+    ],
+    "capture": -0.639154506554631
+   },
+   "arranque_piso": {
+    "procurement": 204092.86506110182,
+    "holding": 1502.6200212231556,
+    "shortage": 139761.63702386807,
+    "fixed": 4875.0,
+    "total": 350232.12210619304,
+    "fill": 0.7694902417781118,
+    "unidades_pedidas": 3781.8965236576223,
+    "eventos_de_orden": 65,
+    "stock_terminal_usd": 20342.65432809948,
+    "unidades_por_tercio": [
+     1007.0,
+     1208.315675302751,
+     1566.5808483548715
+    ],
+    "capture": -0.2875927485453672
+   },
+   "cobertura_piso": {
+    "procurement": 239207.20729829092,
+    "holding": 3317.7859768810254,
+    "shortage": 134581.5,
+    "fixed": 7050.0,
+    "total": 384156.49327517196,
+    "fill": 0.7685900040633888,
+    "unidades_pedidas": 4371.078668713892,
+    "eventos_de_orden": 94,
+    "stock_terminal_usd": 48507.340576893155,
+    "unidades_por_tercio": [
+     0.0,
+     2391.0901339768534,
+     1979.9885347370382
+    ],
+    "capture": -0.6670736996048958
+   }
+  },
+  {
+   "seed": 1004,
+   "piso": {
+    "procurement": 149272.91999999998,
+    "holding": 1044.8747475961538,
+    "shortage": 72914.205,
+    "fixed": 10425.0,
+    "total": 233656.99974759616,
+    "fill": 0.842388306674021,
+    "unidades_pedidas": 3059.5,
+    "eventos_de_orden": 139,
+    "stock_terminal_usd": 7042.7525,
+    "unidades_por_tercio": [
+     826.0,
+     1078.25,
+     1155.25
+    ],
+    "capture": 0.0
+   },
+   "techo": {
+    "procurement": 155631.0,
+    "holding": 1711.05625,
+    "shortage": 0.0,
+    "fixed": 1875.0,
+    "total": 159217.05625,
+    "fill": 1.0,
+    "unidades_pedidas": 3086.0,
+    "eventos_de_orden": 25,
+    "stock_terminal_usd": 0.0,
+    "unidades_por_tercio": [
+     1290.0,
+     1126.0,
+     670.0
+    ],
+    "capture": 1.0
+   },
+   "kern": {
+    "procurement": 91387.39217760216,
+    "holding": 511.7299858131871,
+    "shortage": 189732.61748471667,
+    "fixed": 5550.0,
+    "total": 287181.739648132,
+    "fill": 0.5926170949439097,
+    "unidades_pedidas": 1993.123001712712,
+    "eventos_de_orden": 74,
+    "stock_terminal_usd": 2616.655889668885,
+    "unidades_por_tercio": [
+     0.0,
+     966.7534203981577,
+     1026.3695813145546
+    ],
+    "capture": -0.7190325164911535
+   },
+   "arranque_piso": {
+    "procurement": 139217.87158663484,
+    "holding": 1095.277450608015,
+    "shortage": 114290.80893001864,
+    "fixed": 4275.0,
+    "total": 258878.9579672615,
+    "fill": 0.7856665736039273,
+    "unidades_pedidas": 3077.637525118041,
+    "eventos_de_orden": 57,
+    "stock_terminal_usd": 3443.322097334496,
+    "unidades_por_tercio": [
+     826.0,
+     1059.9057349579962,
+     1191.7317901600454
+    ],
+    "capture": -0.338822909241996
+   },
+   "cobertura_piso": {
+    "procurement": 163589.0825289534,
+    "holding": 2040.1990802705661,
+    "shortage": 91379.56,
+    "fixed": 6000.0,
+    "total": 263008.841609224,
+    "fill": 0.7512410369553226,
+    "unidades_pedidas": 3158.8939923472963,
+    "eventos_de_orden": 80,
+    "stock_terminal_usd": 30488.600178381203,
+    "unidades_por_tercio": [
+     0.0,
+     1625.0337702175357,
+     1533.8602221297606
+    ],
+    "capture": -0.3943023124752326
+   }
+  }
+ ],
+ "promedios": {
+  "piso": {
+   "capture": 0.0,
+   "total": 230720.98239903845,
+   "procurement": 144753.1415,
+   "holding": 992.4688990384617,
+   "fixed": 10095.0,
+   "shortage": 74880.372,
+   "fill": 0.8166877107821502,
+   "unidades_pedidas": 3063.75,
+   "eventos_de_orden": 134.6,
+   "stock_terminal_usd": 7525.147499999999
+  },
+  "kern": {
+   "capture": -0.47023276545510334,
+   "total": 265654.374270407,
+   "procurement": 106076.80773783808,
+   "holding": 681.327646739322,
+   "fixed": 5475.0,
+   "shortage": 153421.23888582963,
+   "fill": 0.620513822890916,
+   "unidades_pedidas": 2228.497055928362,
+   "eventos_de_orden": 73.0,
+   "stock_terminal_usd": 4571.652700009756
+  },
+  "arranque_piso": {
+   "capture": -0.2060448824514134,
+   "total": 245587.56125153485,
+   "procurement": 141822.48130299716,
+   "holding": 1090.3466458760952,
+   "fixed": 4755.0,
+   "shortage": 97919.73330266161,
+   "fill": 0.7781112639667962,
+   "unidades_pedidas": 3114.792061744837,
+   "eventos_de_orden": 63.4,
+   "stock_terminal_usd": 10633.23305832531
+  },
+  "cobertura_piso": {
+   "capture": -0.48300579086046624,
+   "total": 265882.24208338966,
+   "procurement": 151706.1462594035,
+   "holding": 1960.9853314241202,
+   "fixed": 5610.0,
+   "shortage": 106605.11049256203,
+   "fill": 0.7109084724770524,
+   "unidades_pedidas": 3099.6544142639245,
+   "eventos_de_orden": 74.8,
+   "stock_terminal_usd": 26191.192573742082
+  },
+  "techo": {
+   "capture": 1.0,
+   "total": 158295.43817307692,
+   "procurement": 154497.52200000003,
+   "holding": 1721.1161730769231,
+   "fixed": 1890.0,
+   "shortage": 186.8,
+   "fill": 0.9995719636169074,
+   "unidades_pedidas": 3172.2,
+   "eventos_de_orden": 25.2,
+   "stock_terminal_usd": 0.0
+  }
+ },
+ "unidades_por_tercio": {
+  "piso": [
+   808.2,
+   1100.2,
+   1155.35
+  ],
+  "kern": [
+   0.0,
+   1127.6079688969,
+   1100.8890870314617
+  ],
+  "arranque_piso": [
+   808.2,
+   1019.6264440026629,
+   1286.9656177421741
+  ],
+  "cobertura_piso": [
+   0.0,
+   1636.6476524478671,
+   1463.0067618160574
+  ],
+  "techo": [
+   1359.0,
+   1365.8,
+   447.4
+  ]
+ }
+}

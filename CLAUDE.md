@@ -333,6 +333,19 @@ esta vencida. Linea base sobre 25 mundos, limpia y bajo disrupcion, en
 **-40,6% limpia y -56,0% bajo un salto de lead time de 3 semanas** -- Kern decide peor
 que un punto de reorden fijo en las dos condiciones, y ese es el numero honesto.
 
+**Por que queda por debajo** lo contesta
+[`documentation/KERN_POR_QUE_BAJO_EL_PISO.md`](documentation/KERN_POR_QUE_BAJO_EL_PISO.md)
+(`scripts/por_que_bajo_el_piso.py`, cinco primeros mundos de esa misma linea base).
+Todo el deficit es UNA linea -- venta perdida: Kern gasta 43.607 menos en comprar y
+pierde 78.541 mas en quiebre. Y no es el buffer: **el 56% de la brecha es que no puede
+dimensionar durante el primer tercio de la corrida** (`MIN_PERIODS_FOR_POLICY` es 6, el
+arnes replanifica cada 4 con 4 de calentamiento, asi que la primera politica usable
+llega en la semana 8 y el piso arranca en la 4), y la hipotesis del buffer chico quedo
+**REFUTADA**: con la cobertura exacta del piso compra lo mismo y captura PEOR, porque el
+dinero extra termina en stock terminal (26.191 contra 7.525). Bajar
+`MIN_PERIODS_FOR_POLICY` no es el arreglo -- la corrida sale `qa_failed` y la politica
+vuelve vacia igual --, asi que es una decision de producto.
+
 **Un shock que no puede golpear se RECHAZA**, no se avisa: un `demand_surge` en las
 primeras `INITIAL_STOCK_WEEKS` semanas (el mundo dimensiona el stock inicial con esa
 demanda y se auto-absorbe) y un shock de suministro que termine dentro de `WARMUP_WEEKS`
