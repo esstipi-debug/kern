@@ -37,6 +37,19 @@ PERIODS_PER_YEAR = 52.0
 SERVICE_LEVEL_TUNING_STEP = 0.1
 
 
+#: Las `policy_kind` que este modulo emite cuando NO dimensiono una politica. Es la
+#: definicion CANONICA: hasta el 2026-09-19 vivia copiada a mano en tres lugares y las
+#: tres copias no coincidian -- `jobs/qa.py` tenia las tres clases, y tanto
+#: `src/verify/coherencia.py` como `scm_agent/package_specs.py` tenian solo dos,
+#: olvidando `insufficient_history`. Esa tercera copia es la que mas dolia: hacia que un
+#: SKU sin politica entrara a la planilla de pedidos del cliente como `kern_optimized`
+#: con disparador cero, pisando el numero propio del cliente y suprimiendo una reposicion
+#: real. Un test fija que las copias restantes sigan siendo iguales a esta.
+UNSIZED_POLICY_KINDS = frozenset({
+    "skipped_zero_demand", "skipped_zero_cost", "insufficient_history",
+})
+
+
 @dataclass(frozen=True)
 class SkuRecommendation:
     product_id: str
@@ -511,20 +524,33 @@ def run(
         # WHOLE portfolio's run. Isolate it instead: skip and record it as a
         # distinct, flagged recommendation, then keep going.
         if inputs["annual_demand"] <= 0:
+            # Los ceros de ESTA rama se quedan, y no es un descuido: cuando la
+            # demanda anual da EXACTAMENTE cero se midio y dio cero, asi que "el
+            # pronostico es 0 y el disparador es 0" es una medicion, no una
+            # ausencia -- la mitad de la regla que las otras dos ramas violaban. Y
+            # hay una consecuencia que se pierde si se anulan: el puente
+            # (`jobs/state_bridge.py`) escribe la linea y el Tower emite
+            # `dead_stock` sobre stock parado sin demanda, que es el evento
+            # correcto para este caso.
+            #
+            # Un `annual_demand` NEGATIVO cae en la misma rama y NO es lo mismo:
+            # no es la medicion de nada, es un pronostico que salio bajo cero
+            # (`ForecastResult.to_engine_inputs` multiplica por los periodos del
+            # anio y no acota por abajo). Publicar 0.0 ahi diria "medimos cero"
+            # sobre un SKU que puede estar vendiendo, que es justo el defecto que
+            # esta tanda cierra. No se pudo producir con ninguna serie
+            # decreciente real -- los metodos que el motor elige devuelven valores
+            # positivos muy por encima de la ultima observacion --, asi que esto
+            # es defensivo: define el caso en vez de apoyarse en que no ocurre.
+            medido_en_cero = inputs["annual_demand"] == 0
+            cero_o_nada = 0.0 if medido_en_cero else None
             recs.append(
                 SkuRecommendation(
                     product_id=pid, method="none", intermittent=False,
-                    # Los ceros de ESTA rama se quedan, y no es un descuido: aca
-                    # la demanda SI se midio y dio cero, asi que "el pronostico es
-                    # 0 y el disparador es 0" es una medicion, no una ausencia --
-                    # la mitad de la regla que las otras dos ramas violaban. Y hay
-                    # una consecuencia que se pierde si se anulan: el puente
-                    # (`jobs/state_bridge.py`) escribe la linea, y el Tower emite
-                    # `dead_stock` sobre stock parado sin demanda, que es
-                    # exactamente el evento correcto para este caso.
-                    forecast=0.0, error_std=0.0, bias=0.0, mae=0.0,
+                    forecast=cero_o_nada, error_std=0.0, bias=0.0, mae=0.0,
                     policy_kind="skipped_zero_demand", order_quantity=None, order_up_to=None,
-                    reorder_point=0.0, safety_stock=0.0, z_factor=0.0,
+                    reorder_point=cero_o_nada, safety_stock=cero_o_nada,
+                    z_factor=cero_o_nada,
                     service_level=sl, unit_cost=meta.mean_unit_cost, lead_periods=lead,
                     cycle_investment=0.0, ss_investment=0.0, investment=0.0,
                     status="review",

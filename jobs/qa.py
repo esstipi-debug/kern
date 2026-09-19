@@ -16,7 +16,7 @@ from src.forecasting import MIN_PERIODS_FOR_POLICY
 from src.sop_engine.coherence import CHECK_BUDGET_FEASIBILITY, CHECK_PROMO_COVERAGE, CHECK_SERVICE_LEVEL
 
 from . import forecast_job
-from .inventory_optimization import JobReport
+from .inventory_optimization import UNSIZED_POLICY_KINDS, JobReport
 from .leadership import DIMS, ChainProfile
 from .pricing import PricingReport
 
@@ -46,9 +46,7 @@ PRICE_INTEL_COVERAGE_MIN = 0.60  # plan section 6.9 item 2: ">=60% SKUs con >=1 
 #: (degenerate demand, degenerate cost, or too little history). Everything else is a
 #: "priced" line: a number an operator is being asked to act on, and therefore subject
 #: to the evidence invariants in verify() below.
-UNPRICED_POLICY_KINDS = frozenset({
-    "skipped_zero_demand", "skipped_zero_cost", "insufficient_history",
-})
+UNPRICED_POLICY_KINDS = UNSIZED_POLICY_KINDS
 
 #: Los campos que describen una politica dimensionada. jobs/inventory_optimization.py
 #: los emite en ``None`` exactamente cuando no pudo dimensionarla.
@@ -68,33 +66,50 @@ def _sized_field_issues(r) -> list[str]:
     `safety_stock`, `z_factor` y `forecast` en 0.0, y el aviso viajaba por otro
     canal (`policy_kind`, un residual). Todo consumidor que leia el NUMERO leia lo
     contrario de lo que decia la prosa: `src/simworld/runners.py` lo ejecutaba como
-    "no pedir nunca" y el Tower emitia `dead_stock` sobre un SKU que vendia todas
-    las semanas. Un 0 significa "medido, y la respuesta es ninguno"; una negativa
-    no midio nada.
+    "no pedir nunca", el Tower emitia `dead_stock` sobre un SKU que vendia todas las
+    semanas, y `scm_agent/package_specs.py` lo enhebraba en la PLANILLA DE PEDIDOS
+    del cliente como `kern_optimized` con disparador cero. Un 0 significa "medido, y
+    la respuesta es ninguno"; una negativa no midio nada.
 
-    Por eso esta compuerta prohibe las dos formas de mentir: una linea sin politica
-    que traiga un numero, y una linea con politica a la que le falte uno. La primera
-    es la que costo el defecto; la segunda es lo que impide arreglarlo anulando
-    todo.
+    Tres formas de mentir, y las tres estan prohibidas aca:
+      1. una linea sin politica que traiga un numero;
+      2. una linea con politica a la que le falte uno -- sin esto, "arreglar" el
+         defecto anulando todo pasaria la compuerta y dejaria sin politica a los SKU
+         que si se dimensionaron;
+      3. una linea de demanda medida en cero que MEZCLE ceros con nulos. Esa clase
+         tiene dos formas legitimas -- los cuatro campos en 0.0 cuando la demanda
+         anual dio exactamente cero, y los cuatro en None cuando dio negativa, que
+         no es la medicion de nada -- y ninguna a medias.
     """
-    unpriced = r.policy_kind in UNPRICED_POLICY_KINDS
-    declined = unpriced and r.policy_kind not in MEASURED_ZERO_POLICY_KINDS
-    out: list[str] = []
-    for field in SIZED_POLICY_FIELDS:
-        value = getattr(r, field, None)
-        if declined:
-            if value is not None:
-                out.append(
-                    f"{r.product_id}: {r.policy_kind} carries a {field} of {value:.4g} - "
-                    "the engine declined to size this SKU, so the absence must be null, "
-                    "not a number an operator or a downstream job can act on"
-                )
-        elif value is None:
-            out.append(
-                f"{r.product_id}: {r.policy_kind} has no {field}; only a declined SKU "
-                "may leave a sized field null"
-            )
-    return out
+    valores = {campo: getattr(r, campo, None) for campo in SIZED_POLICY_FIELDS}
+
+    if r.policy_kind not in UNPRICED_POLICY_KINDS:
+        return [
+            f"{r.product_id}: {r.policy_kind} has no {campo}; only a declined SKU "
+            "may leave a sized field null"
+            for campo, valor in valores.items() if valor is None
+        ]
+
+    if r.policy_kind not in MEASURED_ZERO_POLICY_KINDS:
+        return [
+            f"{r.product_id}: {r.policy_kind} carries a {campo} of {valor:.4g} - "
+            "the engine declined to size this SKU, so the absence must be null, "
+            "not a number an operator or a downstream job can act on"
+            for campo, valor in valores.items() if valor is not None
+        ]
+
+    nulos = sorted(c for c, v in valores.items() if v is None)
+    if nulos and len(nulos) != len(valores):
+        return [
+            f"{r.product_id}: {r.policy_kind} mixes measured zeros with nulls "
+            f"({', '.join(nulos)} absent) - the zeros of this kind are a measurement, "
+            "so either all four are measured or none of them is"
+        ]
+    return [
+        f"{r.product_id}: {r.policy_kind} carries a {campo} of {valor:.4g} - a SKU "
+        "whose demand measured zero has a zero policy, not a positive one"
+        for campo, valor in valores.items() if valor is not None and valor != 0.0
+    ]
 
 
 def verify(report: JobReport) -> list[str]:

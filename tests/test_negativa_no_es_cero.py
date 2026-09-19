@@ -35,7 +35,7 @@ import pandas as pd
 import pytest
 
 from jobs import deliverables, qa
-from jobs.inventory_optimization import run
+from jobs.inventory_optimization import UNSIZED_POLICY_KINDS, run
 from jobs.state_bridge import stock_lines_from_inventory
 from src.alerting import detect_events
 from src.forecasting import MIN_PERIODS_FOR_POLICY
@@ -190,15 +190,59 @@ def test_qa_rechaza_una_politica_con_precio_a_la_que_le_falta_un_numero(campo):
     assert any(f"no {campo}" in i for i in issues), issues
 
 
-def test_las_dos_listas_de_politicas_sin_precio_coinciden():
-    """`jobs.qa` tenia las tres clases y `src.verify.coherencia` solo dos, asi que
-    `insufficient_history` entraba al analisis de coherencia con sus ceros y pasaba
-    toda invariante trivialmente. Dos listas que significan lo mismo no pueden
-    separarse otra vez sin ponerse rojo.
+def test_las_TRES_listas_de_politicas_sin_dimensionar_coinciden():
+    """La misma lista estaba escrita a mano en tres lugares y las tres no coincidian.
+
+    `jobs.qa` tenia las tres clases; `src.verify.coherencia` y
+    `scm_agent.package_specs` tenian solo dos, olvidando `insufficient_history`.
+    Cada copia perdida costaba algo distinto: en coherencia, un SKU sin politica
+    pasaba toda invariante trivialmente; en package_specs -- la que mas dolia --
+    ese SKU entraba a la PLANILLA DE PEDIDOS del cliente como `kern_optimized` con
+    disparador cero, pisando el numero propio del cliente y suprimiendo una
+    reposicion real.
+
+    Ahora `jobs.inventory_optimization.UNSIZED_POLICY_KINDS` es la definicion y las
+    otras la leen o la repiten; este test es el que impide que se vuelvan a separar.
     """
     from src.verify.coherencia import POLITICAS_SALTADAS
 
-    assert POLITICAS_SALTADAS == qa.UNPRICED_POLICY_KINDS
+    assert qa.UNPRICED_POLICY_KINDS == UNSIZED_POLICY_KINDS
+    assert POLITICAS_SALTADAS == UNSIZED_POLICY_KINDS
+    # Y que la lista sea la que el productor de verdad emite, no una escrita al lado.
+    assert UNSIZED_POLICY_KINDS == {
+        "insufficient_history", "skipped_zero_cost", "skipped_zero_demand",
+    }
+
+
+def test_un_sku_sin_politica_no_entra_a_la_planilla_de_pedidos_del_cliente():
+    """El consumidor mas consecuente de todos, y el que la lista incompleta dejaba pasar.
+
+    `scm_agent/package_specs.py::_optimized_targets_from_inventory` enhebra la
+    politica del optimizador dentro de `excel_replenishment` como target preferido, y
+    esa planilla es lo que el cliente usa para pedir. Un SKU sin politica ahi se
+    renderiza `source="kern_optimized"` con `trigger=0.0`: no solo no dispara, ademas
+    PISA el numero propio del cliente y lo hace en nombre de Kern.
+    """
+    from scm_agent.package_specs import _optimized_targets_from_inventory
+
+    fechas = pd.date_range("2026-01-04", periods=24, freq=_PERIOD)
+    filas = [{"date": f, "product_id": "LARGO", "quantity": 20.0 + (i % 4),
+              "unit_cost": 40.0} for i, f in enumerate(fechas)]
+    filas += [{"date": fechas[-i - 1], "product_id": "NUEVO", "quantity": 42.0,
+               "unit_cost": 10.0} for i in range(5)]
+    reporte = run(pd.DataFrame(filas), period_freq=_PERIOD)
+    kinds = {r.product_id: r.policy_kind for r in reporte.recommendations}
+    assert kinds == {"LARGO": "(s, Q)", "NUEVO": "insufficient_history"}
+
+    targets = _optimized_targets_from_inventory(
+        {"inventory_optimization": reporte}
+    )["optimized_targets"]
+
+    assert "NUEVO" not in targets, (
+        "un SKU sin politica no puede viajar a la planilla del cliente: degrada al "
+        "numero propio del cliente justamente por estar ausente del dict"
+    )
+    assert "LARGO" in targets and targets["LARGO"]["reorder_point"] > 0
 
 
 # ---------------------------------------------------------------------------
@@ -379,3 +423,132 @@ def test_el_libro_de_brecha_declara_la_exclusion_en_el_embudo(tmp_path):
     # Y una corrida sin ninguno no gana un renglon que no dice nada.
     sin = texto(run_gap_value(rec, dem), "sin.xlsx")
     assert "NO los dimensiono" not in sin
+
+
+# ---------------------------------------------------------------------------
+# 7. La premisa del carve-out, hecha cierta por construccion
+# ---------------------------------------------------------------------------
+#
+# `skipped_zero_demand` conserva sus ceros porque "la demanda se midio y dio cero".
+# La rama dispara con `annual_demand <= 0`, que mezcla la medicion (exactamente 0)
+# con un pronostico que salio BAJO cero -- `to_engine_inputs` multiplica por los
+# periodos del anio y no acota por abajo. Un negativo no es la medicion de nada, y
+# publicar 0.0 ahi diria "medimos cero" sobre un SKU que puede estar vendiendo.
+#
+# No se pudo producir con ninguna serie decreciente real: los metodos que el motor
+# elige devuelven valores positivos muy por encima de la ultima observacion. Por eso
+# el caso se fuerza aca -- codigo defensivo que nadie ejerce es codigo sin probar.
+
+
+def _forecast_negativo(monkeypatch, valor: float):
+    from jobs import inventory_optimization as job
+
+    real = job.forecast_with_oos_sigma
+
+    def falso(series, **kw):
+        import dataclasses
+        return dataclasses.replace(real(series, **kw), forecast=valor)
+
+    monkeypatch.setattr(job, "forecast_with_oos_sigma", falso)
+
+
+def test_una_demanda_anual_NEGATIVA_no_publica_ceros(monkeypatch):
+    _forecast_negativo(monkeypatch, -3.0)
+    reporte, r = _rec(_archivo("BAJANDO", [40, 44, 38, 47, 41, 43, 39, 45]), "BAJANDO",
+                      on_hand=120.0)
+
+    assert r.policy_kind == "skipped_zero_demand"
+    for campo in _CAMPOS:
+        assert getattr(r, campo) is None, f"{campo} salio {getattr(r, campo)!r}"
+    assert qa.verify(reporte) == []
+    # Y por lo tanto el Tower NO lo llama stock muerto.
+    lineas, eventos = _eventos_del_tower(reporte)
+    assert lineas == [] and eventos == []
+
+
+def test_una_demanda_anual_de_CERO_exacto_sigue_publicando_ceros(monkeypatch):
+    """El otro lado del mismo borde: 0.0 es una medicion y no se toca."""
+    _forecast_negativo(monkeypatch, 0.0)
+    reporte, r = _rec(_archivo("PARADO", [40, 44, 38, 47, 41, 43, 39, 45]), "PARADO",
+                      on_hand=120.0)
+
+    assert r.policy_kind == "skipped_zero_demand"
+    for campo in _CAMPOS:
+        assert getattr(r, campo) == 0.0
+    assert qa.verify(reporte) == []
+    _, eventos = _eventos_del_tower(reporte)
+    assert [e.kind for e in eventos] == ["dead_stock"]
+
+
+def test_qa_rechaza_una_linea_de_demanda_cero_que_MEZCLA_ceros_con_nulos():
+    """Las dos formas son legitimas; media y media no, porque entonces un consumidor
+    lee un 0 medido al lado de una ausencia y no puede saber cual es cual."""
+    from dataclasses import replace
+
+    reporte, r = _rec(_archivo("SIN-VENTA", [0] * 12), "SIN-VENTA")
+    assert r.policy_kind == "skipped_zero_demand"
+    mezclado = replace(reporte, recommendations=[replace(r, reorder_point=None)])
+
+    issues = qa.verify(mezclado)
+    assert any("mixes measured zeros with nulls" in i for i in issues), issues
+
+
+def test_qa_rechaza_una_linea_de_demanda_cero_con_un_numero_positivo():
+    from dataclasses import replace
+
+    reporte, r = _rec(_archivo("SIN-VENTA", [0] * 12), "SIN-VENTA")
+    mutado = replace(reporte, recommendations=[replace(r, reorder_point=25.0)])
+
+    issues = qa.verify(mutado)
+    assert any("has a zero policy, not a positive one" in i for i in issues), issues
+
+
+# ---------------------------------------------------------------------------
+# 8. La cartera MIXTA: el caso que no es ni todo refusado ni nada refusado
+# ---------------------------------------------------------------------------
+
+
+def _mixta() -> pd.DataFrame:
+    fechas = pd.date_range("2026-01-04", periods=24, freq=_PERIOD)
+    filas = [{"date": f, "product_id": "LARGO", "quantity": 20.0 + (i % 4),
+              "unit_cost": 40.0} for i, f in enumerate(fechas)]
+    filas += [{"date": fechas[-i - 1], "product_id": "NUEVO", "quantity": 42.0,
+               "unit_cost": 10.0} for i in range(5)]
+    return pd.DataFrame(filas)
+
+
+def test_el_resumen_del_agente_excluye_lo_no_dimensionado_de_la_cifra(tmp_path):
+    """La mitad MIXTA: la inversion que se publica no cubre a todos los SKU, y el
+    resumen tiene que decirlo o el lector supone que si."""
+    from scm_agent.orchestrator import Orchestrator
+
+    destino = tmp_path / "v.csv"
+    _mixta().to_csv(destino, index=False)
+    res = Orchestrator(clients_root=None).run(
+        "punto de reorden y stock de seguridad por SKU",
+        data_path=str(destino), job_type="inventory_optimization",
+        out_dir=str(tmp_path / "out"),
+    )
+
+    assert res.status == "ok"
+    assert "recommended inventory investment" in res.summary   # sigue siendo un consejo
+    assert "1 SKU(s) carry no sized policy" in res.summary
+    assert "excluded from that figure" in res.summary
+
+
+def test_el_deck_que_lee_el_CLIENTE_dice_lo_mismo_que_el_resumen():
+    """El deck arma su propio encabezado; arreglar solo el del agente dejaba al
+    cliente leyendo "recommended $0 inventory investment" sobre una corrida en la
+    que no se dimensiono nada."""
+    from jobs.inventory_deliverable import build
+
+    todo_refusado, _ = _rec(_archivo("NUEVO", [40, 44, 38, 47, 41]), "NUEVO")
+    deck = build(todo_refusado, client="C")
+    assert "No policy was sized" in deck.summary
+    assert "NOT a recommendation" in deck.summary
+    assert "recommended $0" not in deck.summary
+
+    mixto = run(_mixta(), period_freq=_PERIOD)
+    deck_mixto = build(mixto, client="C")
+    assert "recommended $" in deck_mixto.summary
+    assert "1 SKU(s) carry no sized policy" in deck_mixto.summary

@@ -261,11 +261,37 @@ def build(
     broken = of.skus_out_of_stock(
         [r.realized_service for r in report.recommendations if r.realized_service]
     )
-    summary = (
-        f"Analyzed {report.n_skus} SKUs; recommended ${report.final_investment:,.0f} "
-        f"inventory investment at a {sl * 100:.0f}% cycle service level target. "
-        f"Service actually delivered to customers: {pct(service.fill_rate)} fill rate."
+    # El deck lleva su PROPIO encabezado, distinto del resumen que arma
+    # `scm_agent/tools.py`, y es el que el cliente lee. Una corrida en la que el
+    # motor no dimensiono nada no se puede titular "recommended $0 inventory
+    # investment": eso se lee como un consejo de no comprar, y es lo contrario de
+    # "no pude decidir". Mismo criterio y mismas cuentas que el resumen del agente.
+    n_unsized = (
+        getattr(report, "n_insufficient_history", 0)
+        + getattr(report, "n_skipped_zero_demand", 0)
+        + getattr(report, "n_skipped_zero_cost", 0)
     )
+    if report.n_skus and n_unsized >= report.n_skus:
+        summary = (
+            f"No policy was sized: all {report.n_skus} SKU(s) were declined or "
+            f"skipped ({report.n_insufficient_history} for too little demand "
+            f"history, {report.n_skipped_zero_demand} for no demand, "
+            f"{report.n_skipped_zero_cost} for no usable unit cost). No reorder "
+            "point, no buffer and no investment was computed - this is NOT a "
+            "recommendation to hold nothing. Service actually delivered to "
+            f"customers: {pct(service.fill_rate)} fill rate."
+        )
+    else:
+        summary = (
+            f"Analyzed {report.n_skus} SKUs; recommended ${report.final_investment:,.0f} "
+            f"inventory investment at a {sl * 100:.0f}% cycle service level target. "
+            f"Service actually delivered to customers: {pct(service.fill_rate)} fill rate."
+        )
+        if n_unsized:
+            summary += (
+                f" {n_unsized} SKU(s) carry no sized policy and are excluded from "
+                "that figure."
+            )
 
     findings: list[Finding] = list(_service_findings(service, broken))
     if report.n_at_risk:
