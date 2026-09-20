@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import date, datetime
 from pathlib import Path
 
 from jobs import (
@@ -71,6 +72,7 @@ from jobs import (
     vehicle_routing_job,
     whatif_job,
 )
+from jobs.cycle_count_job import CountPolicy
 from jobs.inventory_optimization import run as run_inventory
 from jobs.inventory_optimization import unsized_note
 from jobs.pricing import prepare_pricing
@@ -101,6 +103,35 @@ LEADERSHIP_SCHEMA = {
 }
 
 
+def _fecha_param(params: dict, clave: str):
+    """``params[clave]`` como ``date``, o ``None`` si no vino.
+
+    Los parametros cruzan una frontera JSON, asi que una fecha llega como texto. Se
+    acepta tambien un ``date``/``datetime`` ya construido, que es como la pasa un test o
+    un llamador en proceso.
+
+    Una fecha ilegible **levanta**, nombrando la clave: el reloj del sistema como
+    fallback silencioso convertiria un typo en un reporte fechado hoy que dice estar
+    fechado en otro lado, y fechar mal un analisis de vencimientos o de envejecimiento
+    es la clase de error que nadie encuentra leyendo el entregable. Mismo criterio que
+    `jobs/procedure_audit_job.py::_as_of_from_params`, que ya lo resolvia asi para su
+    propio `as_of`.
+    """
+    crudo = params.get(clave)
+    if crudo is None or crudo == "":
+        return None
+    if isinstance(crudo, datetime):
+        return crudo.date()
+    if isinstance(crudo, date):
+        return crudo
+    try:
+        return date.fromisoformat(str(crudo))
+    except ValueError as exc:
+        raise ValueError(
+            f"params[{clave!r}] debe ser una fecha ISO (YYYY-MM-DD): recibido {crudo!r}"
+        ) from exc
+
+
 # ---- inventory_optimization --------------------------------------------------
 
 def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
@@ -112,12 +143,28 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
         # instead of silently delivered with unqualified confidence — see
         # scm_agent/tool_options.py's _apply_intake_quality.
         period = request.params.get("period", "W")
+        # `column_overrides` es la escotilla del operador cuando la deteccion elige MAL
+        # o no encuentra nada, y es distinta de `column_aliases`: los alias son un
+        # vocabulario ("a veces la cantidad se llama `unidades`"), el override es una
+        # afirmacion sobre ESTE archivo ("mi columna `bultos_despachados` ES la
+        # cantidad") y por eso gana. Hasta el 2026-09-20 el agente exponia el
+        # vocabulario y no la escotilla: un archivo cuya columna de cantidad la tabla
+        # no conoce salia `needs_data` y no habia forma de contestarle desde afuera.
+        # Los TRES lectores del mismo archivo lo reciben, porque si no el operador
+        # arregla la demanda y sigue sin poder nombrar su columna de stock.
+        overrides_col = request.params.get("column_overrides")
         demand, quality = intake.prepare_tracked(
             request.data_path,
             period=period,
+            overrides=overrides_col,
             # Client-wide lead time (typically from the client profile) fills in only
             # where the CSV carries none; per-SKU CSV values always win.
             default_lead_days=float(request.params.get("lead_time_days", 14.0)),
+            # Mismo argumento que el plazo: un costo unitario declarado por el cliente
+            # solo rellena donde el archivo no trae ninguno, y `IntakeQuality` lo sigue
+            # contando como sintetizado. El 1.0 por omision no es un costo, es un
+            # marcador de posicion que infla toda cifra de inversion.
+            default_unit_cost=float(request.params.get("default_unit_cost", 1.0)),
             aliases=request.params.get("column_aliases"),
         )
     except (ValueError, FileNotFoundError, TypeError) as exc:
@@ -136,7 +183,8 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
     # entregable es peor que no tenerlo.
     try:
         order_lines = intake.service_lines(
-            request.data_path, aliases=request.params.get("column_aliases")
+            request.data_path, overrides=overrides_col,
+            aliases=request.params.get("column_aliases"),
         )
     except (ValueError, KeyError, TypeError, FileNotFoundError):
         order_lines = None
@@ -147,7 +195,8 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
     # tumbar la politica.
     try:
         stock_position = intake.stock_position(
-            request.data_path, aliases=request.params.get("column_aliases")
+            request.data_path, overrides=overrides_col,
+            aliases=request.params.get("column_aliases"),
         )
     except (ValueError, KeyError, TypeError, FileNotFoundError):
         stock_position = None
@@ -613,6 +662,11 @@ def _abc_xyz_run(payload: object, params: dict) -> Produced:
         payload,
         abc_thresholds=tuple(params.get("abc_thresholds", (0.80, 0.95))),
         cv_cuts=tuple(params.get("cv_cuts", (0.5, 1.0))),
+        # El nivel de servicio por clase que declara el pack del rubro
+        # (`VerticalProfile.classification.service_level_by_class`, hoy en tres YAML de
+        # config/verticals/). `src.classification` lo soportaba y el job no lo pasaba;
+        # se arreglo ahi, y quedo el mismo drop una capa mas arriba.
+        service_level_by_class=params.get("service_level_by_class"),
     )
     return Produced(report=report, summary=(
         f"Classified {report.n_skus} SKUs; {report.n_a} A-items hold "
@@ -785,7 +839,9 @@ def _ddmrp_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
 
 
 def _ddmrp_run(payload: object, params: dict) -> Produced:
-    report = ddmrp_job.run(payload)
+    # `today` ancla las fechas de orden, requerimiento y llegada del plan. Igual que
+    # `as_of` de risk: sin el parametro no se puede replanificar contra otra fecha.
+    report = ddmrp_job.run(payload, today=_fecha_param(params, "today"))
     return Produced(report=report, summary=(
         f"Sized DDMRP buffers for {report.n_parts} parts; {report.n_red} in the red, "
         f"{report.n_order} need an order ({report.total_order_qty:,.0f} units)."
@@ -1057,6 +1113,11 @@ def _financial_kpis_run(payload: object, params: dict) -> Produced:
         # No default: DSO/DPO come from the AR/AP ledgers, not from inventory data.
         # A 0.0 stand-in made cash-to-cash == DIO and printed it as a measured cycle.
         payload, dso=params.get("dso"), dpo=params.get("dpo"),
+        # Del log de disponibilidad, no del archivo de inventario. Sin los dos,
+        # `stockout_rate` queda en `None` y el KPI no sale -- misma forma que DSO/DPO,
+        # que ya se pasaban por la misma razon.
+        stockout_periods=params.get("stockout_periods"),
+        total_periods=params.get("total_periods"),
     )
     # Any of these is None when this data could not support it (see src/financial_kpis).
     # verify() only gates `turns`, so the others still have to be printable as absent.
@@ -1167,6 +1228,10 @@ def _returns_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
 def _returns_run(payload: object, params: dict) -> Produced:
     report = returns_job.run(
         payload,
+        # Sin las unidades vendidas no hay denominador, asi que `return_rate_by_reason`
+        # no se calcula: la tasa de devolucion por motivo -- el numero por el que se
+        # corre este tool -- salia en `None` sobre todo archivo.
+        units_sold=params.get("units_sold"),
         restock_handling_per_unit=params.get("restock_handling_per_unit", 0.0),
         refurbish_cost_per_unit=params.get("refurbish_cost_per_unit", 0.0),
         refurbish_resale_factor=params.get("refurbish_resale_factor", 0.6),
@@ -1548,9 +1613,13 @@ def _risk_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
 
 def _risk_run(payload: object, params: dict) -> Produced:
     thresholds = params.get("severity_thresholds")
+    # `as_of` fecha el analisis: un operador que reconcilia el cierre del trimestre
+    # pasado necesita poder decir contra que fecha se mide el envejecimiento. Sin el
+    # parametro la unica respuesta posible era "hoy".
+    as_of = _fecha_param(params, "as_of")
     report = (
-        risk_job.run(payload, severity_thresholds=tuple(thresholds))
-        if thresholds else risk_job.run(payload)
+        risk_job.run(payload, severity_thresholds=tuple(thresholds), as_of=as_of)
+        if thresholds else risk_job.run(payload, as_of=as_of)
     )
     return Produced(report=report, summary=report.summary)
 
@@ -1614,6 +1683,9 @@ def _disruption_scan_run(payload: object, params: dict) -> Produced:
         payload,
         fetcher=params.get("fetcher"),
         timespan=params.get("timespan", "3m"),
+        # La ventana de `timespan` se cuenta desde aca. Fijarlo es lo que vuelve
+        # repetible una corrida sobre un fetcher enlatado.
+        now=params.get("now"),
     )
     return Produced(report=report, summary=report.summary)
 
@@ -2160,6 +2232,14 @@ def _channel_run(payload: object, params: dict) -> Produced:
         payload,
         cover_periods=params.get("cover_periods", 8.0),
         financial_threshold=params.get("financial_threshold", 50_000.0),
+        # La clave de idempotencia con la que se estaciona el changeset. `nosilo_core`
+        # garantiza que "the same idempotency_key never lands twice", asi que la
+        # constante por omision del job hace que la SEGUNDA reposicion legitima de un
+        # cliente choque contra la primera. Poder pasarla es la mitad del arreglo; la
+        # otra -- que el default no deberia ser una constante -- es una decision de
+        # diseno sobre las claves de writeback y no se toma aca.
+        **({"idempotency_key": str(params["idempotency_key"])}
+           if params.get("idempotency_key") else {}),
     )
     report, summary = _record_state(
         report, report.summary, params,
@@ -2403,7 +2483,16 @@ def _cycle_count_prepare(request: JobRequest, provider: LLMProvider) -> Prepared
 
 
 def _cycle_count_run(payload: object, params: dict) -> Produced:
-    report = cycle_count_job.run(payload, working_days=params.get("working_days", 250))
+    # Cada cuanto cuenta el cliente cada clase es SU politica, no una constante del
+    # motor: `DEFAULT_POLICY` (A mensual, B trimestral, C anual) es la cadencia comun,
+    # no la de nadie en particular. Llega como dict porque cruza una frontera JSON.
+    counts = params.get("counts_per_year")
+    report = cycle_count_job.run(
+        payload,
+        working_days=params.get("working_days", 250),
+        **({"policy": CountPolicy(counts_per_year={str(k): int(v) for k, v in counts.items()})}
+           if counts else {}),
+    )
     return Produced(report=report, summary=report.summary)
 
 

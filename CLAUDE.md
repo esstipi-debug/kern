@@ -408,14 +408,50 @@ proveedor con las propias recepciones vale poco y **empeora en 3 de 5 mundos**; 
 **apilar palancas es peor que la mejor palanca sola**. Lo que el residuo pide no es mas
 buffer sino nocion de horizonte, y eso NO esta medido.
 
-Midiendo eso aparecio un defecto que vale por si mismo: `scm_agent/tools.py` aceptaba
-`lead_time_stds` y **no lo reenviaba** al job, asi que toda corrida por el agente
-dimensionaba como si el proveedor no fallara nunca -- `sigma_L^2 * mu_d^2` es el termino
-DOMINANTE del periodo de riesgo -- con el entregable diciendo igual "95% service level".
-Es el defecto de la rama al reves: ahi la prosa avisaba y el numero mentia, aca la prosa
-ya decia "defaulted to 0" y lo que fallaba era la caneria. El guard es estructural
-(`tests/test_overrides_no_se_tiran.py`): recorre la firma del job por AST y se pone rojo
-si aparece un parametro que el agente no reenvia ni declara por escrito por que no.
+### Lo que el agente acepta y tira en silencio (`tests/test_overrides_no_se_tiran.py`)
+Midiendo el residuo aparecio un defecto que vale por si mismo: `scm_agent/tools.py`
+aceptaba `lead_time_stds` y **no lo reenviaba** al job, asi que toda corrida por el
+agente dimensionaba como si el proveedor no fallara nunca -- `sigma_L^2 * mu_d^2` es el
+termino DOMINANTE del periodo de riesgo -- con el entregable diciendo igual "95% service
+level". Es el defecto de la rama al reves: ahi la prosa avisaba y el numero mentia, aca
+la prosa ya decia "defaulted to 0" y lo que fallaba era la caneria.
+
+**Y no era uno solo.** Una auditoria por AST de las 310 llamadas a `jobs.*` dentro de
+`tools.py` dio 86 parametros sin reenviar, y **once eran hechos del cliente**, cada uno
+reproducido en las DOS direcciones (que no llega por el agente, y que si llegara mueve
+un campo del reporte -- un parametro que no llega pero tampoco cambia nada no vale una
+linea). Los que mas pesan:
+- **`column_overrides`**: `intake.detect_columns` acepta un mapeo explicito con la
+  precedencia MAS ALTA ("mi columna `bultos_despachados` ES la cantidad"), distinto de
+  `column_aliases`, que es un vocabulario. Era la unica salida de un archivo que la
+  deteccion no entiende, y el agente exponia el vocabulario y no la escotilla: esa
+  corrida salia `needs_data` sin forma de contestarle. Va a los TRES lectores del mismo
+  archivo (`prepare_tracked`, `service_lines`, `stock_position`).
+- **`service_level_by_class`** (el override de los packs verticales, en tres YAML),
+  **`units_sold`** (sin denominador, `return_rate_by_reason` no se calcula),
+  **`stockout_periods`/`total_periods`** (sin los dos, `stockout_rate` es `None`),
+  **`counts_per_year`**, **`as_of`**/**`today`**, **`default_unit_cost`** (el 1.0 por
+  omision no es un costo, es un marcador que multiplica toda cifra de inversion).
+- **`idempotency_key`** de `channel_replenishment`: `nosilo_core` garantiza que *"the
+  same idempotency_key never lands twice"*, y el default del job es la CONSTANTE
+  `"channel-replenish-1"`. Poder pasarla es la mitad del arreglo; que el default no
+  deberia ser una constante compartida por todos los clientes es una decision de diseno
+  sobre las claves de writeback, y sigue ABIERTA -- el test la deja visible afirmando
+  que sin override la clave es esa constante.
+
+Una fecha que cruza la frontera JSON se parsea en UN lugar (`tools._fecha_param`) y una
+ilegible **levanta** nombrando la clave: el reloj como fallback silencioso convertiria
+un typo en un reporte fechado hoy que dice estar fechado en otro lado.
+
+El guard es **estructural y sobre los 60 tools**: recorre por AST toda llamada a
+`jobs.*` y se pone rojo si aparece un parametro que el agente no reenvia ni declara por
+escrito por que no. Entiende dos cosas o acusa de mas: que un destino se llama desde
+VARIOS sitios (alcanza con que uno lo reenvie -- eso daba cuatro falsos positivos) y que
+un kwarg puede viajar dentro de un `**{...}` condicional. Las exenciones van por NOMBRE
+cuando son genericas (`prepared`, `lang`, `data_source`, `residual`: 65 de las 75 que
+quedan) y por `modulo.funcion.parametro` cuando la razon es propia -- `min_periods` esta
+ahi porque exponerla dejaria saltear la negativa del motor desde afuera, y
+`sop_job.confidence` porque una confianza que el llamador TIPEA no es una medicion.
 
 **Un shock que no puede golpear se RECHAZA**, no se avisa: un `demand_surge` en las
 primeras `INITIAL_STOCK_WEEKS` semanas (el mundo dimensiona el stock inicial con esa
