@@ -250,6 +250,33 @@ sobre las semillas 1003/1004 --, porque `apply_policy` ya trataba un SKU ausente
 que uno con disparador 0. Lo que cambia es que ahora se puede distinguir "me negue" de
 "decidi no reponer".
 
+**Y negarse a dimensionar no obliga a no decir nada** (2026-09-20). Son DOS preguntas y
+hasta esa fecha se contestaban las dos con silencio: *cuanto buffer* necesita sigma y
+sin `MIN_PERIODS_FOR_POLICY` periodos no hay sigma honesta -- sigue sin contestarse --,
+pero *cuanto hace falta para llegar a la proxima reposicion* necesita la media medida y
+el plazo del proveedor, que el archivo ya trae. Entre `MIN_PERIODS_FOR_COVER` (2) y
+`MIN_PERIODS_FOR_POLICY` (6) periodos el job emite una **cobertura provisional**:
+`src/risk_period.py::provisional_cover` = `media x (plazo + revision)`, que es el `mu_x`
+de la ecuacion 6.4 -- la identidad del propio motor -- con el termino de seguridad
+OMITIDO, no puesto en cero. Debajo de dos periodos no hay ni media que citar y la
+negativa se queda entera.
+
+**No es una politica y el registro lo declara en la FORMA de sus campos**: disparador y
+objetivo si (`reorder_point == order_up_to == cobertura`), `safety_stock`, `z_factor` y
+`forecast` en `None`. Cubre la media, o sea que se espera que se quede corta cerca de la
+mitad de las veces, y toda superficie que la muestre tiene que decir esas tres cosas
+(que el numero existe, que no tiene buffer, y que su capital va APARTE: el titular sigue
+siendo `requested_investment`, las coberturas suman en `provisional_investment`). Por
+eso las listas son **dos** y no una: `UNSIZED_POLICY_KINDS` es "el motor no puso ningun
+numero" y la lee `jobs/qa.py` (que exige los cuatro campos en `None`), mientras
+`NOT_FULLY_SIZED_POLICY_KINDS` le agrega la cobertura y la leen
+`src/verify/coherencia.py::POLITICAS_SALTADAS` -- sus invariantes por SKU presuponen
+buffer y z -- y `scm_agent/package_specs.py`, porque una cobertura sin buffer en la
+planilla de pedidos del cliente pisa su numero propio y ademas PARECE una politica.
+Colapsarlas rompe en los dos sentidos. El Tower la deja pasar callado a proposito
+(`forecast` en `None`): sin buffer, el estante cae por debajo la mitad de las semanas y
+un `rop_breach` que suena la mitad de las semanas es ruido, no alarma.
+
 ### El Tower sensa sobre datos reales (`jobs/state_bridge.py`)
 `run_all_monitors` lee `stock`, `forecast` y `outcomes`, y hasta el 2026-09-18 el UNICO
 escritor de `stock` era el puente del marcador (`examples/run_world_sim.py`): en
@@ -344,7 +371,16 @@ llega en la semana 8 y el piso arranca en la 4), y la hipotesis del buffer chico
 **REFUTADA**: con la cobertura exacta del piso compra lo mismo y captura PEOR, porque el
 dinero extra termina en stock terminal (26.191 contra 7.525). Bajar
 `MIN_PERIODS_FOR_POLICY` no es el arreglo -- la corrida sale `qa_failed` y la politica
-vuelve vacia igual --, asi que es una decision de producto.
+vuelve vacia igual --, asi que era una decision de producto, y esta tomada: la
+**cobertura provisional** (abajo). Medida sobre esos mismos cinco mundos, la captura
+pasa de **-47,0% a -27,6%** (+19,4 puntos, mejora en los cinco) y las semanas 0-7 pasan
+de 0 a 543 unidades compradas. Lo que hace creible la comparacion son dos controles:
+los carriles `piso`, `techo` y `arranque_piso` salen IDENTICOS en las dos corridas -- o
+sea que es el mismo experimento y lo unico que se movio es el codigo --, y el
+contrafactico que midio el defecto se ENCOGIO, del 56% de la brecha al 25% de una brecha
+mas chica. No la cierra: el residual (-27,6%) es otra cosa, el mecanismo de E3 (Kern
+sigue pidiendo hasta la ultima semana porque un punto de reorden no tiene nocion de
+horizonte).
 
 **Un shock que no puede golpear se RECHAZA**, no se avisa: un `demand_surge` en las
 primeras `INITIAL_STOCK_WEEKS` semanas (el mundo dimensiona el stock inicial con esa

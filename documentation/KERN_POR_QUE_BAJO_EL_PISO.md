@@ -1,9 +1,13 @@
 # Por qué Kern queda por debajo del piso con datos limpios
 
-> Medido el 2026-09-19 sobre `47c1a4a`. Línea base congelada en
-> [`lineas_base/por_que_bajo_el_piso.json`](lineas_base/por_que_bajo_el_piso.json);
-> se regraba con `scripts/por_que_bajo_el_piso.py`. El documento no puede despegarse
-> de ella: `tests/test_por_que_bajo_el_piso_publicado.py` lo compara contra su fuente.
+> Medido el 2026-09-19 sobre `47c1a4a`; el arreglo y su medición, el 2026-09-20. **Dos**
+> líneas base congeladas — [el diagnóstico](lineas_base/por_que_bajo_el_piso.json) y
+> [el después](lineas_base/por_que_bajo_el_piso_con_cobertura.json) — las dos regrabables
+> con `scripts/por_que_bajo_el_piso.py`. El documento no puede despegarse de ellas:
+> `tests/test_por_que_bajo_el_piso_publicado.py` lo compara contra su fuente.
+>
+> El diagnóstico se deja tal como se midió, con los números de ANTES del arreglo: es lo
+> que motivó la decisión y borrarlo dejaría la conclusión sin su evidencia.
 
 ## La pregunta
 
@@ -136,6 +140,61 @@ con el `overrides` que se indica.
 Ninguna de las dos cierra la brecha, y **juntas con el resto empeoran**, por el
 mecanismo de E3: todo lo que hace comprar más termina en stock terminal.
 
+## El arreglo, y lo que midió
+
+El diagnóstico se construyó para decidir, así que la decisión está tomada y medida sobre
+los mismos cinco mundos. Línea base del después en
+[`lineas_base/por_que_bajo_el_piso_con_cobertura.json`](lineas_base/por_que_bajo_el_piso_con_cobertura.json).
+
+**Negarse a dimensionar no obliga a no decir nada.** Son dos preguntas distintas y hasta
+el 2026-09-20 se contestaban las dos con silencio:
+
+- *cuánto buffer* — necesita σ, y con menos de `MIN_PERIODS_FOR_POLICY` observaciones no
+  hay σ honesta. **Sigue sin contestarse.**
+- *cuánto hace falta para llegar a la próxima reposición* — necesita la media de lo que
+  se vendió y el plazo del proveedor, y los dos son hechos **medidos** que el archivo ya
+  trae.
+
+`inventory_optimization` emite ahora una **cobertura provisional** para el SKU que tiene
+entre `MIN_PERIODS_FOR_COVER` (2) y `MIN_PERIODS_FOR_POLICY` (6) períodos. Es `mu_x` de
+la ecuación 6.4 —la identidad del propio motor, `src/risk_period.py`— **con el término de
+seguridad omitido**: `cobertura = media medida × (plazo + revisión)`. Debajo de dos
+períodos ni siquiera hay una media que citar y la negativa se queda entera.
+
+**No es una política, y el registro lo declara en la FORMA de sus campos**: disparador sí,
+buffer no, z no, pronóstico no. Cubre la media, o sea que se espera que se quede corta
+cerca de la mitad de las veces, y su capital se reporta **aparte** del titular porque no
+pasa por el allocator de presupuesto. El deck, el resumen y un residual de las OPTIONS
+dicen esas tres cosas; y no se cuela en la planilla de pedidos del cliente, que es donde
+una política manda de verdad.
+
+| | antes | después | |
+|---|---:|---:|---|
+| **captura** | **−47,0 %** | **−27,6 %** | **+19,4 puntos** |
+| fill | 0,621 | 0,750 | el piso está en 0,817 |
+| unidades compradas | 2.228 | 2.987 | el piso compra 3.064 |
+| quiebre (usd) | 153.421 | 109.567 | |
+| compra (usd) | 106.077 | 135.359 | |
+| stock terminal (usd) | 4.572 | 9.209 | el piso deja 7.525 |
+| **unidades, semanas 0-7** | **0** | **543** | el piso 808, el techo 1.359 |
+
+Mejora en los **cinco** mundos: +0,0939 / +0,2546 / +0,2475 / +0,2508 / +0,1232.
+
+**Dos controles que hacen que esta comparación signifique algo.** Los carriles `piso`,
+`techo` y `arranque_piso` salen **idénticos** en las dos corridas —el contrafáctico
+reemplaza las semanas 4-7 en ambas, y en las 8+ ya hay seis períodos, así que ahí no hay
+coberturas—, o sea que las dos mediciones son el mismo experimento y lo único que se movió
+es el código. Y el contrafáctico que midió el defecto **se encogió**: explicaba el 56 % de
+la brecha y ahora explica el 25 % de una brecha más chica. Un arreglo que cierra la causa
+que se diagnosticó tiene que achicar la medición de esa causa, y lo hace.
+
+> Sobre 5 mundos, la captura pasa de -27.6% a -20.6% cuando solo las semanas 4-7 usan la politica del piso: 25% de la brecha es el arranque muerto.
+
+**⚠️ Cambio de comportamiento.** Cualquier cliente con un SKU de entre dos y cinco
+períodos empieza a recibir un número donde antes recibía silencio. Es el arreglo, no un
+efecto secundario — pero es una compra que antes no se proponía, así que sale como OPCIÓN
+con su residual y nunca como algo que Kern ya decidió.
+
 ## Qué NO dice este documento
 
 - **No mide los 25 mundos de la línea base, sino 5** (semillas 1000-1004, las primeras).
@@ -149,9 +208,9 @@ mecanismo de E3: todo lo que hace comprar más termina en stock terminal.
   sabe cuándo termina. En parte es artefacto de la vara: ningún negocio real tiene
   semana 24. Pero castiga **más** a Kern que al piso —$4.572 contra $7.525 de terminal
   hoy, y $26.191 cuando se lo fuerza a comprar más— y esa parte sí es del producto.
-- **No propone el arreglo.** Nombra la decisión: qué hacer entre la semana 4 y la 8,
-  cuando el motor honestamente no puede dimensionar. Negarse está bien; no tener nada
-  que ejecutar mientras tanto es lo que cuesta 26 puntos.
+- **El arreglo no cierra la brecha, la achica.** Kern sigue por debajo del piso
+  (−27,6 % contra 0 %). Lo que se cerró es la causa principal del diagnóstico, no el
+  problema entero.
 - **Queda sin explicar el residuo.** Con el arranque arreglado Kern sigue en −0,206:
   gasta casi lo mismo que el piso (−$2.931 de procurement) y aun así pierde $23.039 más
   de venta y deja $3.108 más de stock muerto. Eso ya es una ineficiencia de

@@ -56,7 +56,7 @@ import os
 
 import pandas as pd
 
-from jobs.inventory_optimization import UNSIZED_POLICY_KINDS
+from jobs.inventory_optimization import NOT_FULLY_SIZED_POLICY_KINDS
 
 from .packages import PackageInput, PackageSpec, PackageStep
 
@@ -252,7 +252,13 @@ def _optimized_targets_from_inventory(reports: dict[str, object]) -> dict:
         # and it MISSED `insufficient_history` -- the reasoning above applied to it word
         # for word, and it was the one that reached the client's order sheet. It now
         # reads the producer's own set so a fourth class cannot slip through.
-        if rec.policy_kind in UNSIZED_POLICY_KINDS:
+        #
+        # A `provisional_cover` is excluded too, and for the SAME reason rather than a
+        # new one: it is a cover with no dispersion behind it, so overriding the
+        # client's own sheet number with it -- under the label "kern_optimized", as if
+        # Kern had sized it -- is exactly the claim it is not entitled to make. It
+        # travels as an OPTION the buyer can take, not as a silent replacement.
+        if rec.policy_kind in NOT_FULLY_SIZED_POLICY_KINDS:
             continue
         order_up_to = rec.order_up_to
         if order_up_to is None and rec.order_quantity is not None:

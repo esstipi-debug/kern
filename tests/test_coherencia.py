@@ -28,23 +28,31 @@ from src.verify.coherencia import (
 
 @pytest.fixture(scope="module")
 def reporte_sano():
-    """Una cartera pequena pero con los TRES degenerados dentro.
+    """Una cartera pequena pero con los CUATRO degenerados dentro.
 
     El generador produce los dos degenerados de DATO (demanda cero, costo cero).
-    El tercero -- historia insuficiente -- es de CONOCIMIENTO y hay que fabricarlo:
-    un SKU cuya primera venta cae cerca del final de la ventana, asi que el motor
-    lo ve por menos de ``MIN_PERIODS_FOR_POLICY`` periodos. Entro a
-    ``POLITICAS_SALTADAS`` el 2026-09-19, cuando esa lista se alineo con
-    ``jobs.qa.UNPRICED_POLICY_KINDS``; sin esta linea el invariante de conteo
-    volveria a probarse en vacio sobre la clase recien agregada.
+    Los otros dos son de CONOCIMIENTO y hay que fabricarlos, y hoy son dos y no uno
+    porque el motor tiene un escalon donde antes tenia un abismo:
+
+    - ``SKU-RECIEN`` ve tres periodos -- menos que ``MIN_PERIODS_FOR_POLICY`` pero
+      al menos ``MIN_PERIODS_FOR_COVER`` --, asi que recibe una COBERTURA
+      PROVISIONAL: disparador si, buffer no.
+    - ``SKU-PRIMERA-VENTA`` ve UNO solo, que no alcanza ni para una media, y por eso
+      sigue siendo la negativa entera (``insufficient_history``).
+
+    Las dos entraron a ``POLITICAS_SALTADAS`` -- que desde el 2026-09-20 es
+    ``NOT_FULLY_SIZED_POLICY_KINDS`` -- porque las invariantes por SKU presuponen
+    buffer y z. Sin estas dos lineas el invariante de conteo volveria a probarse en
+    vacio sobre las clases recien agregadas.
     """
     demanda = generar_cartera(24, semanas=40, semilla=11)
     fechas = sorted(demanda["date"].unique())
-    nuevas = pd.DataFrame([
-        {"date": f, "product_id": "SKU-RECIEN", "quantity": 12.0,
-         "unit_cost": 55.0, "lead_time_days": 14}
-        for f in fechas[-3:]
-    ])
+    nuevas = pd.DataFrame(
+        [{"date": f, "product_id": "SKU-RECIEN", "quantity": 12.0,
+          "unit_cost": 55.0, "lead_time_days": 14} for f in fechas[-3:]]
+        + [{"date": fechas[-1], "product_id": "SKU-PRIMERA-VENTA", "quantity": 9.0,
+            "unit_cost": 55.0, "lead_time_days": 14}]
+    )
     return inventory_optimization.run(pd.concat([demanda, nuevas], ignore_index=True))
 
 

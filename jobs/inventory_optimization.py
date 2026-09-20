@@ -26,6 +26,7 @@ from src.forecasting import (
     forecast_with_oos_sigma,
 )
 from src.policies import continuous_review_sq, periodic_review_rs
+from src.risk_period import provisional_cover
 from src.safety_stock import tune_service_level
 from src.sources import DataFrameDemandSource
 
@@ -35,6 +36,38 @@ PERIODS_PER_YEAR = 52.0
 # clamp, which turns every chronically short SKU into a 99.9% target regardless of
 # how big the gap was.
 SERVICE_LEVEL_TUNING_STEP = 0.1
+
+
+def _cola_de_coberturas(report, *, sola: bool = False) -> str:
+    """La frase de las COBERTURAS PROVISIONALES, que no son ni una politica ni una
+    ausencia y por eso no entran en ninguna de las dos mitades de `unsized_note`.
+
+    Tiene que decir tres cosas o no sirve: que el numero existe (hay unidades que
+    comprar), que NO tiene buffer detras (se espera que se quede corto la mitad de las
+    veces, porque cubre la media), y que su capital va APARTE del titular -- si no,
+    el lector suma mal.
+
+    `sola=True` cuando NO hay un encabezado de inversion delante (o sea, cuando esta
+    frase va dentro del titular). Ahi no hay un "more" que contar ni una cifra de la
+    que separarse, y decirlo igual mandaria al lector a buscar un numero que no
+    existe.
+    """
+    n = int(getattr(report, "n_provisional_cover", 0) or 0)
+    if not n:
+        return ""
+    plata = float(getattr(report, "provisional_investment", 0.0) or 0.0)
+    cabeza = (
+        f" {n} SKU(s) got a PROVISIONAL COVER instead of a policy (${plata:,.0f})"
+        if sola else
+        f" {n} more SKU(s) got a PROVISIONAL COVER instead of a policy "
+        f"(${plata:,.0f}, counted separately)"
+    )
+    return (
+        cabeza + ": too little history to estimate dispersion, so the figure is the "
+        "measured mean over the risk period with NO safety stock - it is expected to "
+        "fall short about half the time, and it is there so a new SKU is not simply "
+        "left unstocked."
+    )
 
 
 def unsized_note(report) -> tuple[str | None, str]:
@@ -57,30 +90,55 @@ def unsized_note(report) -> tuple[str | None, str]:
         disculpa.
     Meterlas en la misma frase -- que es lo que esta funcion nacio arreglando --
     repite en la prosa la confusion que los campos dejaron de tener.
+
+    Quien decide si el titular reemplaza al encabezado es cuantos SKU quedaron
+    DIMENSIONADOS, no cuantos quedaron sin nada. No es lo mismo desde que existe la
+    cobertura provisional: una cartera entera de coberturas no tiene ningun SKU
+    declinado, asi que la condicion vieja la dejaba pasar al encabezado normal --
+    *"recommended inventory investment $0 at 95% service level"* sobre una corrida
+    en la que no se dimensiono ninguna politica y en la que si hay plata que gastar.
+    Es el mismo defecto que este archivo nacio arreglando, un piso mas arriba.
     """
     n_skus = int(getattr(report, "n_skus", 0) or 0)
     n_declinados = (int(getattr(report, "n_insufficient_history", 0) or 0)
                     + int(getattr(report, "n_skipped_zero_cost", 0) or 0))
     n_medidos = int(getattr(report, "n_skipped_zero_demand", 0) or 0)
+    n_cobertura = int(getattr(report, "n_provisional_cover", 0) or 0)
     n_total = n_declinados + n_medidos
-    if not n_skus or not n_total:
+    if not n_skus or not (n_total or n_cobertura):
         return None, ""
 
-    if n_total < n_skus:
-        partes = []
-        if n_declinados:
-            partes.append(f"{n_declinados} the engine declined to size")
-        if n_medidos:
-            partes.append(f"{n_medidos} with zero measured demand")
-        return None, (f" {n_total} SKU(s) carry no sized policy ({', '.join(partes)}) "
-                      "and are excluded from that figure.")
+    if n_skus - n_total - n_cobertura > 0:
+        cola = ""
+        if n_total:
+            partes = []
+            if n_declinados:
+                partes.append(f"{n_declinados} the engine declined to size")
+            if n_medidos:
+                partes.append(f"{n_medidos} with zero measured demand")
+            cola = (f" {n_total} SKU(s) carry no sized policy ({', '.join(partes)}) "
+                    "and are excluded from that figure.")
+        return None, cola + _cola_de_coberturas(report)
+
+    if not n_total:
+        # Toda la cartera recibio cobertura: no hubo negativa que contar, pero
+        # tampoco hubo politica, y el encabezado normal publicaria un $0 que la
+        # propia cola contradice.
+        return (
+            f"No policy was sized for any of the {n_skus} SKU(s)."
+            + _cola_de_coberturas(report, sola=True),
+            "",
+        )
 
     if not n_declinados:
+        cuantos = (f"All {n_skus}" if n_medidos == n_skus
+                   else f"{n_medidos} of the {n_skus}")
         return (
-            f"All {n_skus} SKU(s) have zero measured demand, so their reorder point "
+            f"{cuantos} SKU(s) have zero measured demand, so their reorder point "
             "and buffer are zero and there is nothing to stage. That is a "
             "measurement, not a refusal - but check whether the export split one "
-            "SKU's sales across spellings before acting on it.",
+            "SKU's sales across spellings before acting on it."
+            + _cola_de_coberturas(report, sola=True),
             "",
         )
     n_tiempo = int(getattr(report, "n_insufficient_history", 0) or 0)
@@ -96,15 +154,39 @@ def unsized_note(report) -> tuple[str | None, str]:
         cabeza = (f"No policy was sized for any of the {n_skus} SKU(s): the engine "
                   f"declined {n_declinados} ({', '.join(causas)}) and {n_medidos} "
                   "have zero measured demand")
-    else:
+    elif n_declinados == n_skus:
         cabeza = (f"No policy was sized: the engine declined all {n_skus} SKU(s) "
                   f"({', '.join(causas)})")
+    else:
+        cabeza = (f"No policy was sized for any of the {n_skus} SKU(s): the engine "
+                  f"declined {n_declinados} ({', '.join(causas)})")
     return (
         cabeza + ". Where it declined there is no reorder point, no buffer and no "
-        "investment - this is NOT a recommendation to hold nothing.",
+        "investment - this is NOT a recommendation to hold nothing."
+        + _cola_de_coberturas(report, sola=True),
         "",
     )
 
+
+#: Periodos observados minimos para emitir una COBERTURA PROVISIONAL. Debajo de esto
+#: no hay ni siquiera una media que valga la pena: con una sola observacion "el
+#: promedio" es esa observacion, y llamarlo tasa de demanda es inventar. Con dos ya
+#: hay un promedio, que es poco pero es una medicion, y el plazo del proveedor viene
+#: del archivo. La compuerta de politica (`MIN_PERIODS_FOR_POLICY`, 6) NO se toca: lo
+#: que cambia es que entre las dos hay ahora un escalon en vez de un abismo.
+MIN_PERIODS_FOR_COVER = 2
+
+#: El periodo de revision que entra en el periodo de riesgo de la cobertura. Es el
+#: MISMO 1.0 con el que este job llama a `periodic_review_rs`: si la cobertura usara
+#: otro, dos lineas del mismo entregable estarian cubriendo ventanas distintas sin
+#: decirlo.
+PROVISIONAL_REVIEW_PERIODS = 1.0
+
+#: La `policy_kind` de una linea que trae una COBERTURA pero no una politica. No esta
+#: en `UNSIZED_POLICY_KINDS` -- trae un numero sobre el que un operador actua -- ni es
+#: una politica dimensionada: no tiene buffer, no tiene z y no tiene nivel de servicio
+#: alcanzado. Esa forma de tres campos (disparador SI, buffer NO) es lo que la declara.
+PROVISIONAL_POLICY_KINDS = frozenset({"provisional_cover"})
 
 #: Las `policy_kind` que este modulo emite cuando NO dimensiono una politica. Es la
 #: definicion CANONICA: hasta el 2026-09-19 vivia copiada a mano en tres lugares y las
@@ -118,6 +200,12 @@ UNSIZED_POLICY_KINDS = frozenset({
     "skipped_zero_demand", "skipped_zero_cost", "insufficient_history",
 })
 
+#: Todo lo que NO es una politica completamente dimensionada. Es el conjunto que leen
+#: las invariantes por SKU de `src/verify/coherencia.py`, que presuponen buffer y z:
+#: una cobertura provisional los tiene en `None` a proposito, asi que pasarla por ahi
+#: reventaria, y bajarle las invariantes a todo el resto seria peor.
+NOT_FULLY_SIZED_POLICY_KINDS = UNSIZED_POLICY_KINDS | PROVISIONAL_POLICY_KINDS
+
 
 @dataclass(frozen=True)
 class SkuRecommendation:
@@ -128,6 +216,11 @@ class SkuRecommendation:
     #: calculo sobre menos historia que el minimo y por eso no se puede citar
     #: (ver `reorder_point`). NUNCA 0.0 para decir "no se sabe": un cero es una
     #: tasa de demanda, y aguas abajo se divide por el.
+    #:
+    #: Una linea `provisional_cover` lo tiene en `None` y trae en cambio
+    #: `observed_mean_per_period`: un PRONOSTICO es una extrapolacion que la
+    #: compuerta de historia prohibe citar, y un promedio de lo que se vendio es
+    #: una medicion. No son lo mismo y no comparten campo.
     forecast: float | None
     error_std: float
     bias: float
@@ -182,6 +275,13 @@ class SkuRecommendation:
     # record by hand; run() always fills it, with provenance 'not_measured' when
     # neither order lines nor a client-reported fill rate came in.
     realized_service: order_fulfillment.RealizedService | None = None
+    #: Solo en `provisional_cover`: el promedio simple de lo que se vendio por
+    #: periodo, y los periodos de riesgo sobre los que se extendio para llegar a la
+    #: cobertura. Van en el registro y no solo en la prosa para que el entregable
+    #: pueda mostrar la aritmetica entera -- `cobertura = media x periodos` -- en vez
+    #: de pedirle al lector que confie en un numero suelto.
+    observed_mean_per_period: float | None = None
+    cover_periods: float | None = None
     # The beta this sized policy IMPLIES (Vandeput 7.3.1, via src/fill_rate.py):
     # provenance 'model_implied'. It is what the model expects to achieve, not what
     # happened, and it is deliberately NOT named *_fill_rate so that neither a
@@ -267,6 +367,16 @@ class JobReport:
     # scm_agent/tool_options.py can state it as a residual instead of letting a
     # portfolio of refusals come back as a cheerful, cheap-looking plan.
     n_insufficient_history: int = 0
+    # SKUs que recibieron una COBERTURA PROVISIONAL en vez de una politica: tienen
+    # entre `MIN_PERIODS_FOR_COVER` y `MIN_PERIODS_FOR_POLICY` periodos, asi que hay
+    # media pero no sigma. `provisional_investment` es el capital que esas coberturas
+    # piden, y va APARTE de `requested_investment` a proposito: el plan optimizado y
+    # las coberturas provisionales son dos preguntas distintas, una pasa por el
+    # allocator de presupuesto y la otra no, y sumarlas en un solo titular haria
+    # parecer dimensionado lo que no lo esta. Esconderla seria peor: son unidades que
+    # alguien va a comprar.
+    n_provisional_cover: int = 0
+    provisional_investment: float = 0.0
     # Supplier terms. `n_lot_constrained` counts (s,Q) SKUs whose file declared an
     # MOQ or a case-pack multiple (the rule was applied, whether or not it moved
     # Q); `n_lot_snapped` those it actually moved; `lot_penalty_total_usd` what
@@ -566,6 +676,61 @@ def run(
         # constant) so a client with, say, monthly buckets can raise it - lowering
         # it below the default is a decision someone has to make explicitly.
         if n_periods < min_periods:
+            # Negarse a DIMENSIONAR no obliga a no decir nada. Son dos preguntas
+            # distintas y hasta el 2026-09-20 se contestaban las dos con silencio:
+            #
+            #   "cuanto buffer" -> necesita sigma, y con menos de `min_periods`
+            #       observaciones no hay sigma honesta. Sigue sin contestarse.
+            #   "cuanto hace falta para llegar a la proxima reposicion" -> necesita
+            #       la media de lo que se vendio y el plazo del proveedor, y los dos
+            #       son hechos MEDIDOS que el archivo ya trae.
+            #
+            # Medido en el marcador, el silencio no era neutro: el 56% de la brecha
+            # contra un punto de reorden fijo era que Kern no podia decidir durante el
+            # primer tercio de la corrida (documentation/KERN_POR_QUE_BAJO_EL_PISO.md).
+            # Con menos de `MIN_PERIODS_FOR_COVER` ni siquiera hay una media que citar
+            # y la negativa se queda entera.
+            observada = float(np.mean(series)) if n_periods else 0.0
+            if n_periods >= MIN_PERIODS_FOR_COVER and observada > 0 and meta.mean_unit_cost > 0:
+                tau = float(lead) + PROVISIONAL_REVIEW_PERIODS
+                cobertura = provisional_cover(
+                    observada, float(lead), review_period=PROVISIONAL_REVIEW_PERIODS
+                )
+                recs.append(
+                    SkuRecommendation(
+                        product_id=pid, method="none", intermittent=False,
+                        # `forecast` sigue en None: la compuerta prohibe citar una
+                        # extrapolacion, y la media medida viaja en su propio campo.
+                        forecast=None, error_std=0.0, bias=0.0, mae=0.0,
+                        policy_kind="provisional_cover",
+                        # Disparador y objetivo son el MISMO numero: se repone hasta la
+                        # cobertura, sin lote. Un EOQ optimiza el canje entre ordenar y
+                        # mantener, y optimizar sobre dos observaciones es fingir que se
+                        # conoce la curva.
+                        order_quantity=None, order_up_to=cobertura,
+                        reorder_point=cobertura,
+                        # Sin buffer y sin z, y no es un descuido: es lo que separa una
+                        # cobertura de una politica. La ausencia en el CAMPO es como el
+                        # registro lo declara.
+                        safety_stock=None, z_factor=None,
+                        service_level=sl, unit_cost=meta.mean_unit_cost, lead_periods=lead,
+                        # No se estaciona capital de ciclo ni de seguridad: no hay
+                        # politica que lo dimensione. La inversion de esta linea es lo
+                        # que cuesta la cobertura, y va entera al ciclo.
+                        cycle_investment=cobertura * meta.mean_unit_cost,
+                        ss_investment=0.0,
+                        investment=cobertura * meta.mean_unit_cost,
+                        status="review",
+                        sigma_source="insufficient_history",
+                        n_periods=n_periods,
+                        realized_service=realized,
+                        on_hand=on_hand, on_order=on_order, inventory_position=position,
+                        observed_mean_per_period=observada,
+                        cover_periods=tau,
+                    )
+                )
+                continue
+
             recs.append(
                 SkuRecommendation(
                     product_id=pid, method="none", intermittent=False,
@@ -791,6 +956,12 @@ def run(
         n_skipped_zero_demand=sum(1 for r in recs if r.policy_kind == "skipped_zero_demand"),
         n_skipped_zero_cost=sum(1 for r in recs if r.policy_kind == "skipped_zero_cost"),
         n_insufficient_history=sum(1 for r in recs if r.policy_kind == "insufficient_history"),
+        n_provisional_cover=sum(
+            1 for r in recs if r.policy_kind in PROVISIONAL_POLICY_KINDS
+        ),
+        provisional_investment=sum(
+            r.investment for r in recs if r.policy_kind in PROVISIONAL_POLICY_KINDS
+        ),
         n_lot_constrained=sum(1 for r in recs if r.policy_kind == "(s, Q)" and r.lot_rule),
         n_lot_snapped=sum(
             1 for r in recs

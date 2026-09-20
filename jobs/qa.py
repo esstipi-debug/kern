@@ -16,7 +16,12 @@ from src.forecasting import MIN_PERIODS_FOR_POLICY
 from src.sop_engine.coherence import CHECK_BUDGET_FEASIBILITY, CHECK_PROMO_COVERAGE, CHECK_SERVICE_LEVEL
 
 from . import forecast_job
-from .inventory_optimization import UNSIZED_POLICY_KINDS, JobReport
+from .inventory_optimization import (
+    MIN_PERIODS_FOR_COVER,
+    PROVISIONAL_POLICY_KINDS,
+    UNSIZED_POLICY_KINDS,
+    JobReport,
+)
 from .leadership import DIMS, ChainProfile
 from .pricing import PricingReport
 
@@ -56,6 +61,14 @@ SIZED_POLICY_FIELDS = ("forecast", "reorder_point", "safety_stock", "z_factor")
 #: la demanda agregada se midio y dio cero, asi que un pronostico de 0 y un
 #: disparador de 0 son lo que el motor calculo. Las otras dos no calcularon nada.
 MEASURED_ZERO_POLICY_KINDS = frozenset({"skipped_zero_demand"})
+
+#: La forma EXACTA de una cobertura provisional: trae disparador y objetivo, y NO trae
+#: pronostico, buffer ni z. No es una tercera laxitud sino una tercera forma, y se
+#: chequea entera en las dos direcciones -- que traiga lo que tiene que traer y que no
+#: traiga lo que no puede traer. Si algun dia una cobertura sale con `safety_stock`, es
+#: que alguien la dimensiono con una sigma que no existe.
+COVER_FIELDS_PRESENT = ("reorder_point",)
+COVER_FIELDS_ABSENT = ("forecast", "safety_stock", "z_factor")
 _REQUIRED_INTEGRATED_PLAN_CHECKS = {CHECK_PROMO_COVERAGE, CHECK_BUDGET_FEASIBILITY, CHECK_SERVICE_LEVEL}
 
 
@@ -82,6 +95,36 @@ def _sized_field_issues(r) -> list[str]:
          no es la medicion de nada -- y ninguna a medias.
     """
     valores = {campo: getattr(r, campo, None) for campo in SIZED_POLICY_FIELDS}
+
+    if r.policy_kind in PROVISIONAL_POLICY_KINDS:
+        out = [
+            f"{r.product_id}: {r.policy_kind} has no {campo}; a provisional cover "
+            "still has to say how much to hold"
+            for campo in COVER_FIELDS_PRESENT if getattr(r, campo, None) is None
+        ]
+        out += [
+            f"{r.product_id}: {r.policy_kind} carries a {campo} of "
+            f"{getattr(r, campo):.4g} - a cover has no dispersion behind it, so "
+            "presenting one as if it did is the confident-but-wrong claim the "
+            "minimum-history gate exists to stop"
+            for campo in COVER_FIELDS_ABSENT if getattr(r, campo, None) is not None
+        ]
+        # Y la aritmetica que el entregable publica tiene que cerrar: la cobertura es
+        # la media medida por los periodos de riesgo, no un numero suelto al lado.
+        media, tau = r.observed_mean_per_period, r.cover_periods
+        if media is None or tau is None:
+            out.append(
+                f"{r.product_id}: {r.policy_kind} without the mean and the risk "
+                "periods it was derived from; the deliverable cannot show its work"
+            )
+        elif r.reorder_point is not None and abs(r.reorder_point - media * tau) > max(
+            TOL, abs(r.reorder_point) * 1e-9
+        ):
+            out.append(
+                f"{r.product_id}: provisional cover {r.reorder_point:.4g} is not the "
+                f"observed mean {media:.4g} over {tau:.4g} risk period(s)"
+            )
+        return out
 
     if r.policy_kind not in UNPRICED_POLICY_KINDS:
         return [
@@ -142,7 +185,18 @@ def verify(report: JobReport) -> list[str]:
         # minimum-history gate. The gate can be bypassed (a caller lowering
         # min_periods, a future refactor dropping the branch, a report assembled
         # by hand); these cannot, because they are checked on the record itself.
-        if r.policy_kind not in UNPRICED_POLICY_KINDS:
+        if r.policy_kind in PROVISIONAL_POLICY_KINDS:
+            # No se la exime de la invariante de evidencia: se le aplica la SUYA. Una
+            # cobertura descansa en una media, y una media necesita al menos dos
+            # observaciones -- por debajo de eso el numero es una sola venta con otro
+            # nombre.
+            if getattr(r, "n_periods", 0) < MIN_PERIODS_FOR_COVER:
+                issues.append(
+                    f"{r.product_id}: provisional cover built on "
+                    f"{getattr(r, 'n_periods', 0)} period(s) of demand history, below "
+                    f"the {MIN_PERIODS_FOR_COVER}-period minimum for an average"
+                )
+        elif r.policy_kind not in UNPRICED_POLICY_KINDS:
             n_periods = getattr(r, "n_periods", 0)
             if n_periods < MIN_PERIODS_FOR_POLICY:
                 issues.append(
@@ -173,9 +227,24 @@ def verify(report: JobReport) -> list[str]:
         if not report.feasible and report.cycle_floor <= report.budget + TOL:
             issues.append("flagged infeasible but cycle-stock floor fits the budget")
 
-    sku_sum = sum(r.investment for r in report.recommendations)
+    # `requested_investment` es el PLAN OPTIMIZADO, y una cobertura provisional no
+    # entra en el: no pasa por el allocator de presupuesto porque no tiene buffer que
+    # escalar. Su capital se reporta aparte (`provisional_investment`) y se resta aca,
+    # para que la invariante siga comparando dos cosas que son la misma cosa. Sumarlo
+    # al titular haria parecer dimensionado lo que no lo esta; omitirlo del reporte
+    # esconderia unidades que alguien va a comprar.
+    sku_sum = sum(
+        r.investment for r in report.recommendations
+        if r.policy_kind not in PROVISIONAL_POLICY_KINDS
+    )
     if report.budget is None and abs(sku_sum - report.requested_investment) > max(1.0, sku_sum * 1e-6):
         issues.append("requested investment != sum of SKU investments")
+    provisional = sum(
+        r.investment for r in report.recommendations
+        if r.policy_kind in PROVISIONAL_POLICY_KINDS
+    )
+    if abs(provisional - getattr(report, "provisional_investment", 0.0)) > max(1.0, provisional * 1e-6):
+        issues.append("provisional investment != sum of provisional SKU investments")
 
     return issues
 

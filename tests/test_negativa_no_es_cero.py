@@ -43,6 +43,20 @@ from src.forecasting import MIN_PERIODS_FOR_POLICY
 _PERIOD = "W"
 _CAMPOS = ("forecast", "reorder_point", "safety_stock", "z_factor")
 
+#: Lo que hace falta hoy para una negativa ENTERA: menos de `MIN_PERIODS_FOR_COVER`
+#: periodos. Desde el 2026-09-20 el motor ya no contesta las dos preguntas con el
+#: mismo silencio -- con dos observaciones hay una media y un plazo medidos, y con
+#: ellos emite una COBERTURA PROVISIONAL (`tests/test_cobertura_provisional.py`).
+#: Con UNA sola no hay promedio que citar: llamar "tasa de demanda" a una
+#: observacion es inventar, y ahi la negativa se queda entera. Ese es el sujeto de
+#: este archivo, y por eso las series de abajo son dos y no una.
+_SERIE_SIN_MEDIA = [40]
+
+#: La serie con la que se REPRODUJO el defecto de cabecera: cinco semanas vendiendo
+#: ~42 u/semana. Hoy recibe una cobertura, no una negativa -- asi que sirve para la
+#: otra mitad del mismo caso: tampoco puede salir como stock muerto.
+_SERIE_CON_COBERTURA = [40, 44, 38, 47, 41]
+
 
 def _archivo(product_id: str, cantidades, *, unit_cost: float = 10.0,
              on_hand: float | None = None) -> pd.DataFrame:
@@ -72,17 +86,21 @@ def _rec(df: pd.DataFrame, pid: str, *, on_hand: float | None = None, **kw):
 
 
 def test_historia_insuficiente_anula_los_cuatro_campos_dimensionados():
-    """La negativa por conocimiento: el SKU vende, no sabemos cuanto."""
-    _, r = _rec(_archivo("NUEVO", [40, 44, 38, 47, 41]), "NUEVO")
+    """La negativa por conocimiento: el SKU vende, no sabemos NI CUANTO NI EN PROMEDIO."""
+    _, r = _rec(_archivo("NUEVO", _SERIE_SIN_MEDIA), "NUEVO")
 
     assert r.policy_kind == "insufficient_history"
     assert r.n_periods < MIN_PERIODS_FOR_POLICY
     for campo in _CAMPOS:
         assert getattr(r, campo) is None, f"{campo} salio {getattr(r, campo)!r}, no None"
     # Los HECHOS medidos no se anulan: solo lo que el motor no calculo.
-    assert r.n_periods == 5
+    assert r.n_periods == 1
     assert r.unit_cost == 10.0
     assert r.investment == 0.0   # no se estaciona plata: eso SI es un cero medido
+    # Y no hay media que publicar: con una observacion, "el promedio" es esa
+    # observacion. El campo de la cobertura tambien queda ausente.
+    assert r.observed_mean_per_period is None
+    assert r.cover_periods is None
 
 
 def test_sin_costo_usable_anula_lo_mismo_porque_la_demanda_es_real():
@@ -125,15 +143,44 @@ def _eventos_del_tower(reporte):
     ])
 
 
-def test_un_sku_que_vende_todas_las_semanas_NO_sale_como_stock_muerto():
-    """El caso de cabecera, con el mismo archivo con el que se reprodujo el defecto."""
-    reporte, r = _rec(_archivo("NUEVO", [40, 44, 38, 47, 41]), "NUEVO", on_hand=120.0)
-    assert r.policy_kind == "insufficient_history"
+@pytest.mark.parametrize("serie,kind", [
+    (_SERIE_SIN_MEDIA, "insufficient_history"),
+    (_SERIE_CON_COBERTURA, "provisional_cover"),
+])
+def test_un_sku_que_vende_todas_las_semanas_NO_sale_como_stock_muerto(serie, kind):
+    """El caso de cabecera, en sus DOS formas.
+
+    La segunda es el archivo original con el que se reprodujo el defecto: cinco
+    semanas a ~42 u/semana. Hoy sale con una cobertura provisional en vez de una
+    negativa, y el falso `dead_stock` tiene que seguir sin salir -- por otra razon,
+    no por la misma. Si el escalon de la cobertura hubiera devuelto un `forecast`
+    numerico para que el Tower lo tomara, el defecto volvia por esa puerta.
+    """
+    reporte, r = _rec(_archivo("NUEVO", serie), "NUEVO", on_hand=120.0)
+    assert r.policy_kind == kind
     assert r.on_hand == 120.0, "el estante es un hecho medido y tiene que seguir ahi"
 
     lineas, eventos = _eventos_del_tower(reporte)
     assert lineas == [], "un SKU sin tasa de demanda no se puede monitorear; se omite"
     assert [e.kind for e in eventos] == []
+
+
+def test_la_cobertura_deja_al_Tower_CALLADO_y_no_es_un_descuido():
+    """Por que la cobertura no entra al sensado, dicho donde se nota.
+
+    Tiene disparador (la cobertura) y tiene una tasa medida
+    (`observed_mean_per_period`), asi que tecnicamente se podria monitorear. No se
+    hace, y la razon es la misma que hace honesta a la cobertura: no tiene buffer,
+    o sea que se espera que el estante caiga por debajo la MITAD de las veces. Un
+    `rop_breach` que suena la mitad de las semanas sobre cada SKU nuevo no es una
+    alarma, es ruido -- y el Tower deja de leerse. `forecast` en `None` es lo que
+    hoy lo mantiene afuera; este test fija que salga por esa puerta a proposito.
+    """
+    reporte, r = _rec(_archivo("NUEVO", _SERIE_CON_COBERTURA), "NUEVO", on_hand=120.0)
+    assert r.policy_kind == "provisional_cover"
+    assert r.reorder_point is not None and r.observed_mean_per_period is not None
+    assert r.forecast is None
+    assert stock_lines_from_inventory(reporte) == []
 
 
 def test_el_dead_stock_VERDADERO_sigue_saliendo():
@@ -156,7 +203,7 @@ def test_el_dead_stock_VERDADERO_sigue_saliendo():
 
 
 def test_qa_pasa_sobre_una_negativa_bien_declarada():
-    reporte, _ = _rec(_archivo("NUEVO", [40, 44, 38, 47, 41]), "NUEVO")
+    reporte, _ = _rec(_archivo("NUEVO", _SERIE_SIN_MEDIA), "NUEVO")
     assert qa.verify(reporte) == []
 
 
@@ -165,7 +212,7 @@ def test_qa_rechaza_una_negativa_que_trae_un_numero(campo):
     """Por mutacion: se vuelve a poner el 0.0 de antes, campo por campo."""
     from dataclasses import replace
 
-    reporte, r = _rec(_archivo("NUEVO", [40, 44, 38, 47, 41]), "NUEVO")
+    reporte, r = _rec(_archivo("NUEVO", _SERIE_SIN_MEDIA), "NUEVO")
     mutado = replace(reporte, recommendations=[replace(r, **{campo: 0.0})])
 
     issues = qa.verify(mutado)
@@ -203,15 +250,46 @@ def test_las_TRES_listas_de_politicas_sin_dimensionar_coinciden():
 
     Ahora `jobs.inventory_optimization.UNSIZED_POLICY_KINDS` es la definicion y las
     otras la leen o la repiten; este test es el que impide que se vuelvan a separar.
+
+    Desde la cobertura provisional son DOS listas y no una, y la diferencia importa:
+    `UNSIZED_POLICY_KINDS` es "el motor no puso ningun numero" (y por eso `jobs.qa`
+    exige los cuatro campos en `None`), mientras que `NOT_FULLY_SIZED_POLICY_KINDS`
+    agrega la cobertura -- que SI trae un disparador, pero sin buffer ni z, asi que
+    las invariantes por SKU de coherencia y la planilla del cliente la tienen que
+    excluir igual. Colapsarlas en una sola volveria a romper algo en los dos
+    sentidos: con la lista chica, un SKU con `safety_stock=None` reventaria
+    coherencia; con la grande, `jobs.qa` exigiria `reorder_point=None` sobre una
+    cobertura que existe.
     """
+    from jobs.inventory_optimization import (
+        NOT_FULLY_SIZED_POLICY_KINDS,
+        PROVISIONAL_POLICY_KINDS,
+    )
     from src.verify.coherencia import POLITICAS_SALTADAS
 
     assert qa.UNPRICED_POLICY_KINDS == UNSIZED_POLICY_KINDS
-    assert POLITICAS_SALTADAS == UNSIZED_POLICY_KINDS
-    # Y que la lista sea la que el productor de verdad emite, no una escrita al lado.
+    assert POLITICAS_SALTADAS == NOT_FULLY_SIZED_POLICY_KINDS
+    # Y que las listas sean las que el productor de verdad emite, no unas escritas
+    # al lado.
     assert UNSIZED_POLICY_KINDS == {
         "insufficient_history", "skipped_zero_cost", "skipped_zero_demand",
     }
+    assert PROVISIONAL_POLICY_KINDS == {"provisional_cover"}
+    assert NOT_FULLY_SIZED_POLICY_KINDS == UNSIZED_POLICY_KINDS | PROVISIONAL_POLICY_KINDS
+    assert not (UNSIZED_POLICY_KINDS & PROVISIONAL_POLICY_KINDS), (
+        "una cobertura no es una negativa: `jobs.qa` exige formas OPUESTAS sobre "
+        "las dos, asi que si una kind cae en las dos listas la compuerta se "
+        "contradice a si misma"
+    )
+
+    # Y que sea el productor el que lo demuestre, no solo la constante: las tres
+    # formas salen de tres archivos reales.
+    emitidas = set()
+    for serie, costo in ((_SERIE_SIN_MEDIA, 10.0), ([0] * 12, 10.0),
+                         ([30] * 12, 0.0), (_SERIE_CON_COBERTURA, 10.0)):
+        _, r = _rec(_archivo("X", serie, unit_cost=costo), "X")
+        emitidas.add(r.policy_kind)
+    assert emitidas == NOT_FULLY_SIZED_POLICY_KINDS
 
 
 def test_un_sku_sin_politica_no_entra_a_la_planilla_de_pedidos_del_cliente():
@@ -222,26 +300,41 @@ def test_un_sku_sin_politica_no_entra_a_la_planilla_de_pedidos_del_cliente():
     esa planilla es lo que el cliente usa para pedir. Un SKU sin politica ahi se
     renderiza `source="kern_optimized"` con `trigger=0.0`: no solo no dispara, ademas
     PISA el numero propio del cliente y lo hace en nombre de Kern.
+
+    Van las DOS formas sin politica en la misma cartera. La cobertura es la que
+    podria colarse ahora: a diferencia de la negativa, SI trae un `reorder_point`
+    positivo, asi que un filtro escrito como "excluir los que traen cero" la dejaria
+    pasar. Y pisar el numero del cliente con una cobertura sin buffer es peor que
+    pisarlo con un cero, porque parece una politica.
     """
     from scm_agent.package_specs import _optimized_targets_from_inventory
 
     fechas = pd.date_range("2026-01-04", periods=24, freq=_PERIOD)
     filas = [{"date": f, "product_id": "LARGO", "quantity": 20.0 + (i % 4),
               "unit_cost": 40.0} for i, f in enumerate(fechas)]
-    filas += [{"date": fechas[-i - 1], "product_id": "NUEVO", "quantity": 42.0,
+    filas += [{"date": fechas[-1], "product_id": "NUEVO", "quantity": 42.0,
+               "unit_cost": 10.0}]
+    filas += [{"date": fechas[-i - 1], "product_id": "CUBIERTO", "quantity": 42.0,
                "unit_cost": 10.0} for i in range(5)]
     reporte = run(pd.DataFrame(filas), period_freq=_PERIOD)
     kinds = {r.product_id: r.policy_kind for r in reporte.recommendations}
-    assert kinds == {"LARGO": "(s, Q)", "NUEVO": "insufficient_history"}
+    assert kinds == {"LARGO": "(s, Q)", "NUEVO": "insufficient_history",
+                     "CUBIERTO": "provisional_cover"}
+    cubierto = {r.product_id: r for r in reporte.recommendations}["CUBIERTO"]
+    assert cubierto.reorder_point > 0, (
+        "el test no probaria nada si la cobertura saliera en cero: el filtro viejo "
+        "la habria excluido por accidente"
+    )
 
     targets = _optimized_targets_from_inventory(
         {"inventory_optimization": reporte}
     )["optimized_targets"]
 
-    assert "NUEVO" not in targets, (
-        "un SKU sin politica no puede viajar a la planilla del cliente: degrada al "
-        "numero propio del cliente justamente por estar ausente del dict"
-    )
+    for pid in ("NUEVO", "CUBIERTO"):
+        assert pid not in targets, (
+            f"{pid} no puede viajar a la planilla del cliente: degrada al numero "
+            "propio del cliente justamente por estar ausente del dict"
+        )
     assert "LARGO" in targets and targets["LARGO"]["reorder_point"] > 0
 
 
@@ -251,7 +344,7 @@ def test_un_sku_sin_politica_no_entra_a_la_planilla_de_pedidos_del_cliente():
 
 
 def test_la_planilla_deja_la_celda_vacia_y_el_markdown_una_raya():
-    _, r = _rec(_archivo("NUEVO", [40, 44, 38, 47, 41]), "NUEVO")
+    _, r = _rec(_archivo("NUEVO", _SERIE_SIN_MEDIA), "NUEVO")
     fila = deliverables._row(r)
 
     assert fila["reorder_point_s"] is None
@@ -262,7 +355,7 @@ def test_la_planilla_deja_la_celda_vacia_y_el_markdown_una_raya():
 
 
 def test_el_markdown_no_imprime_un_cero_en_el_disparador(tmp_path):
-    reporte, _ = _rec(_archivo("NUEVO", [40, 44, 38, 47, 41]), "NUEVO")
+    reporte, _ = _rec(_archivo("NUEVO", _SERIE_SIN_MEDIA), "NUEVO")
     destino = deliverables.write_report_md(reporte, tmp_path / "r.md")
     fila = [ln for ln in destino.read_text().splitlines()
             if ln.startswith("| NUEVO |")]
@@ -278,7 +371,7 @@ def test_el_resumen_nombra_la_negativa_en_vez_de_recomendar_cero(tmp_path):
     from scm_agent.orchestrator import Orchestrator
 
     destino = tmp_path / "v.csv"
-    _archivo("NUEVO", [40, 44, 38, 47, 41], on_hand=120.0).to_csv(destino, index=False)
+    _archivo("NUEVO", _SERIE_SIN_MEDIA, on_hand=120.0).to_csv(destino, index=False)
     res = Orchestrator(clients_root=None).run(
         "punto de reorden y stock de seguridad por SKU",
         data_path=str(destino), job_type="inventory_optimization",
@@ -552,11 +645,14 @@ def test_qa_rechaza_una_linea_de_demanda_cero_con_un_numero_positivo():
 
 
 def _mixta() -> pd.DataFrame:
+    """Un SKU dimensionado y uno declinado. `NUEVO` trae UN periodo a proposito: con
+    dos ya recibiria una cobertura, y entonces esta cartera no tendria ninguna
+    negativa que contar y el test dejaria de medir lo que dice medir."""
     fechas = pd.date_range("2026-01-04", periods=24, freq=_PERIOD)
     filas = [{"date": f, "product_id": "LARGO", "quantity": 20.0 + (i % 4),
               "unit_cost": 40.0} for i, f in enumerate(fechas)]
-    filas += [{"date": fechas[-i - 1], "product_id": "NUEVO", "quantity": 42.0,
-               "unit_cost": 10.0} for i in range(5)]
+    filas += [{"date": fechas[-1], "product_id": "NUEVO", "quantity": 42.0,
+               "unit_cost": 10.0}]
     return pd.DataFrame(filas)
 
 
@@ -585,7 +681,7 @@ def test_el_deck_que_lee_el_CLIENTE_dice_lo_mismo_que_el_resumen():
     que no se dimensiono nada."""
     from jobs.inventory_deliverable import build
 
-    todo_refusado, _ = _rec(_archivo("NUEVO", [40, 44, 38, 47, 41]), "NUEVO")
+    todo_refusado, _ = _rec(_archivo("NUEVO", _SERIE_SIN_MEDIA), "NUEVO")
     deck = build(todo_refusado, client="C")
     assert "No policy was sized" in deck.summary
     assert "NOT a recommendation" in deck.summary
@@ -626,7 +722,7 @@ def test_una_cartera_de_demanda_medida_en_cero_NO_se_llama_negativa():
 
 
 def test_una_cartera_toda_declinada_SI_se_llama_negativa():
-    titular, _ = _nota(_archivo("NUEVO", [40, 44, 38, 47, 41]))
+    titular, _ = _nota(_archivo("NUEVO", _SERIE_SIN_MEDIA))
     assert titular is not None
     assert "declined all 1 SKU(s)" in titular
     assert "too little demand history" in titular
@@ -636,8 +732,8 @@ def test_una_cartera_toda_declinada_SI_se_llama_negativa():
 def test_las_dos_causas_juntas_se_nombran_POR_SEPARADO():
     fechas = pd.date_range("2026-01-04", periods=24, freq=_PERIOD)
     df = pd.DataFrame(
-        [{"date": fechas[-i - 1], "product_id": "NUEVO", "quantity": 42.0,
-          "unit_cost": 10.0} for i in range(5)]
+        [{"date": fechas[-1], "product_id": "NUEVO", "quantity": 42.0,
+          "unit_cost": 10.0}]
         + [{"date": d, "product_id": "PARADO", "quantity": 0.0, "unit_cost": 10.0}
            for d in fechas[:12]]
     )
@@ -655,8 +751,8 @@ def test_la_cola_del_caso_mixto_tambien_distingue():
     df = pd.DataFrame(
         [{"date": d, "product_id": "LARGO", "quantity": 20.0 + (i % 4),
           "unit_cost": 40.0} for i, d in enumerate(fechas)]
-        + [{"date": fechas[-i - 1], "product_id": "NUEVO", "quantity": 42.0,
-            "unit_cost": 10.0} for i in range(5)]
+        + [{"date": fechas[-1], "product_id": "NUEVO", "quantity": 42.0,
+            "unit_cost": 10.0}]
         + [{"date": d, "product_id": "PARADO", "quantity": 0.0, "unit_cost": 10.0}
            for d in fechas[:12]]
     )
@@ -667,6 +763,68 @@ def test_la_cola_del_caso_mixto_tambien_distingue():
     assert "excluded from that figure" in cola
 
 
+def test_una_cartera_TODA_cubierta_no_publica_el_encabezado_de_cero(tmp_path):
+    """El mismo defecto un piso mas arriba, y el que trajo la cobertura provisional.
+
+    El titular reemplazaba al encabezado cuando habia SKU declinados. Una cartera
+    entera de coberturas no tiene ninguno -- no hubo negativa, hubo un escalon --,
+    asi que caia al encabezado normal: *"recommended inventory investment $0 at 95%
+    service level"* sobre una corrida en la que no se dimensiono ninguna politica y
+    en la que ADEMAS hay plata que gastar. Un lector que se queda en la primera
+    frase lee exactamente lo contrario de lo que paso, que es la definicion del
+    defecto que este archivo persigue.
+
+    Lo que decide es cuantos SKU quedaron DIMENSIONADOS, no cuantos quedaron sin
+    nada.
+    """
+    from scm_agent.orchestrator import Orchestrator
+
+    reporte, r = _rec(_archivo("NUEVO", _SERIE_CON_COBERTURA), "NUEVO")
+    assert r.policy_kind == "provisional_cover"
+    assert reporte.requested_investment == 0.0
+    assert reporte.provisional_investment > 0.0
+
+    titular, cola = _nota(_archivo("NUEVO", _SERIE_CON_COBERTURA))
+    assert titular is not None and cola == ""
+    assert "No policy was sized for any of the 1 SKU(s)" in titular
+    assert "PROVISIONAL COVER" in titular
+    assert "fall short about half the time" in titular
+    assert "$0" not in titular, (
+        "el encabezado de inversion no puede aparecer sobre una corrida sin "
+        "ninguna politica dimensionada"
+    )
+    # Y tampoco puede decir "counted separately": no hay de que separarse.
+    assert "counted separately" not in titular
+    assert "more SKU(s)" not in titular
+
+    destino = tmp_path / "v.csv"
+    _archivo("NUEVO", _SERIE_CON_COBERTURA).to_csv(destino, index=False)
+    res = Orchestrator(clients_root=None).run(
+        "reorder point por SKU", data_path=str(destino),
+        job_type="inventory_optimization", out_dir=str(tmp_path / "o"),
+    )
+    assert res.status == "ok"
+    assert res.summary == titular
+
+
+def test_una_cartera_MIXTA_con_cobertura_conserva_su_encabezado():
+    """La direccion contraria, que es la que hace no-trivial al test de arriba:
+    con una politica dimensionada la cifra de inversion es real, el encabezado se
+    queda, y la cobertura viaja en la cola diciendo que su plata va aparte."""
+    fechas = pd.date_range("2026-01-04", periods=24, freq=_PERIOD)
+    df = pd.DataFrame(
+        [{"date": d, "product_id": "LARGO", "quantity": 20.0 + (i % 4),
+          "unit_cost": 40.0} for i, d in enumerate(fechas)]
+        + [{"date": fechas[-i - 1], "product_id": "CUBIERTO", "quantity": 42.0,
+            "unit_cost": 10.0} for i in range(5)]
+    )
+    titular, cola = _nota(df)
+
+    assert titular is None
+    assert "1 more SKU(s) got a PROVISIONAL COVER" in cola
+    assert "counted separately" in cola
+
+
 def test_el_agente_y_el_deck_dicen_LO_MISMO(tmp_path):
     """Las dos superficies escribian su propia frase y por eso una quedo sin
     arreglar. Ahora salen de la misma funcion, y esto lo fija."""
@@ -674,14 +832,14 @@ def test_el_agente_y_el_deck_dicen_LO_MISMO(tmp_path):
     from scm_agent.orchestrator import Orchestrator
 
     destino = tmp_path / "v.csv"
-    _archivo("NUEVO", [40, 44, 38, 47, 41]).to_csv(destino, index=False)
+    _archivo("NUEVO", _SERIE_SIN_MEDIA).to_csv(destino, index=False)
     res = Orchestrator(clients_root=None).run(
         "reorder point por SKU", data_path=str(destino),
         job_type="inventory_optimization", out_dir=str(tmp_path / "o"),
     )
-    reporte, _ = _rec(_archivo("NUEVO", [40, 44, 38, 47, 41]), "NUEVO")
+    reporte, _ = _rec(_archivo("NUEVO", _SERIE_SIN_MEDIA), "NUEVO")
     deck = build(reporte, client="C")
 
-    titular, _ = _nota(_archivo("NUEVO", [40, 44, 38, 47, 41]))
+    titular, _ = _nota(_archivo("NUEVO", _SERIE_SIN_MEDIA))
     assert res.summary == titular
     assert deck.summary.startswith(titular)

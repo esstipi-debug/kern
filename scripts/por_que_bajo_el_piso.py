@@ -114,15 +114,23 @@ def _politica_de_kern(world: World, outcomes: list[WeekOutcome], *, seed: int,
     disparador: dict[str, float] = {}
     objetivo: dict[str, float] = {}
     for rec in resultado.report.recommendations:
-        # Un SKU que el motor se nego a dimensionar se OMITE, igual que en
-        # `kern_policy`: meterlo con 0 diria "el punto de reorden es cero".
         if rec.reorder_point is None:
+            # El motor se nego a dimensionar este SKU Y tampoco pudo cubrirlo (menos
+            # de `MIN_PERIODS_FOR_COVER` periodos, o sin costo usable). Se OMITE del
+            # plan: meterlo con 0 diria "el punto de reorden es cero", que
+            # `apply_policy` ejecuta igual -- no pedir nunca -- pero que en la traza es
+            # indistinguible de una politica deliberada de no reponer.
             continue
-        disparador[rec.product_id] = float(rec.reorder_point)
-        objetivo[rec.product_id] = (
-            float(rec.order_up_to) if rec.order_up_to is not None
-            else float(rec.reorder_point) + float(rec.order_quantity or 0.0)
-        )
+        # Una `provisional_cover` entra igual que una politica: trae disparador y
+        # objetivo. Lo que no trae es pronostico -- y esta `Policy` no lo lleva, asi
+        # que aca no hace falta la tasa que `src/simworld/runners.py` si necesita.
+        rop = float(rec.reorder_point)
+        disparador[rec.product_id] = rop
+        if rec.order_up_to is not None:
+            objetivo[rec.product_id] = float(rec.order_up_to)
+        else:
+            objetivo[rec.product_id] = rop + float(rec.order_quantity or 0.0)
+
     return Policy(reorder_point=disparador, order_up_to=objetivo, status="ok")
 
 

@@ -73,6 +73,11 @@ def _row(r: SkuRecommendation, *, units: bool = False) -> dict:
         ),
         "order_up_to_S": round(r.order_up_to, 2) if r.order_up_to is not None else "",
         "reorder_point_s": _redondear(r.reorder_point, 2),
+        # Solo en una cobertura provisional: la media medida y los periodos sobre los
+        # que se extendio. Van al lado del numero para que la planilla muestre la
+        # cuenta -- cobertura = media x periodos -- en vez de un valor sin origen.
+        "provisional_mean_per_period": _redondear(r.observed_mean_per_period, 2),
+        "provisional_cover_periods": _redondear(r.cover_periods, 3),
         # Today's stock position and the execution signal. Blank, never 0, where
         # nothing was measured: a blank on_order says "nobody told us", a 0 would
         # say "measured, nothing inbound" - and the two lead to different POs.

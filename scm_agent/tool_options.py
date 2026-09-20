@@ -153,6 +153,7 @@ def inventory_options(report: object) -> GuidedOutcome:
     outcome = _apply_zero_demand_skips(outcome, report)
     outcome = _apply_zero_cost_skips(outcome, report)
     outcome = _apply_insufficient_history(outcome, report)
+    outcome = _apply_provisional_cover(outcome, report)
     outcome = _apply_lot_rule_unapplied(outcome, report)
     return _apply_position_not_netted(outcome, report)
 
@@ -290,6 +291,32 @@ def _apply_insufficient_history(outcome: GuidedOutcome, report: object) -> Guide
                         "a real gap and a SKU that simply started selling last month look "
                         "identical here; set an opening buy by hand, or wait for enough "
                         "history, before assuming no action is needed.",
+    )])
+
+
+def _apply_provisional_cover(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
+    """Una COBERTURA PROVISIONAL sale como residual, no como si estuviera dimensionada.
+
+    Es el escalon que antes no existia entre "no puedo" y "aca esta tu politica". El
+    residual es lo que impide que el escalon se lea como el piso de arriba: la
+    cobertura cubre la MEDIA sobre el periodo de riesgo y no tiene buffer, asi que se
+    espera que se quede corta cerca de la mitad de las veces, y su capital viaja
+    aparte del titular. Quien la adopte tiene que saber esas tres cosas.
+    """
+    n = getattr(report, "n_provisional_cover", 0)
+    if not n:
+        return outcome
+    plata = float(getattr(report, "provisional_investment", 0.0) or 0.0)
+    return replace(outcome, residuals=[*outcome.residuals, Residual(
+        description=f"{n} SKU(s) got a provisional cover instead of a sized policy: "
+                    "too little history to estimate dispersion, so the quantity is the "
+                    f"measured mean over the risk period with NO safety stock "
+                    f"(${plata:,.0f}, counted apart from the recommended investment).",
+        risk_if_skipped="covering the mean means running short about half the time. "
+                        "Treat it as an opening buy, not a policy: re-run once the SKU "
+                        "has enough history and the engine will size it properly. "
+                        "Leaving these SKUs at zero is the other choice, and it is not "
+                        "the safer one - it is a stockout with no number attached.",
     )])
 
 

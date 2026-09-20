@@ -215,3 +215,98 @@ def test_el_arranque_muerto_mejora_en_TODOS_los_mundos(datos):
         f"en las semillas {peores} reemplazar las semanas 4-7 NO mejoro la captura; "
         "el arranque muerto no puede publicarse como la causa principal"
     )
+
+
+# ---------------------------------------------------------------------------
+# 4. El DESPUES: el arreglo se mide contra el mismo experimento, o no se mide
+# ---------------------------------------------------------------------------
+#
+# El documento publica un antes y un despues. Esa lectura solo vale si las dos corridas
+# son el MISMO experimento y difieren unicamente en el codigo -- si alguien regraba una
+# con otras semillas, otra escala u otro nivel, la resta de 19,4 puntos deja de medir el
+# arreglo y pasa a medir dos cosas distintas. Es la misma disciplina que
+# `test_la_linea_base_limpia_es_comparable_con_la_de_shock` aplica a las dos capturas.
+
+DESPUES = RAIZ / "documentation" / "lineas_base" / "por_que_bajo_el_piso_con_cobertura.json"
+
+
+@pytest.fixture(scope="module")
+def despues() -> dict:
+    assert DESPUES.is_file(), (
+        f"falta {DESPUES.relative_to(RAIZ)}. Se regraba con:\n"
+        "  PYTHONPATH=. python scripts/por_que_bajo_el_piso.py "
+        "--json documentation/lineas_base/por_que_bajo_el_piso_con_cobertura.json"
+    )
+    return json.loads(DESPUES.read_text(encoding="utf-8"))
+
+
+def test_las_dos_corridas_son_el_mismo_experimento(datos, despues):
+    for clave in ("mundos", "semillas", "n_skus", "n_proveedores", "semanas",
+                  "replan_cada", "nivel", "carril", "cobertura_del_piso_periodos"):
+        assert datos["contexto"][clave] == despues["contexto"][clave], (
+            f"el antes y el despues difieren en {clave!r}: restarlos mediria eso, no "
+            "el arreglo"
+        )
+
+
+@pytest.mark.parametrize("carril", ["piso", "techo", "arranque_piso"])
+def test_los_carriles_de_CONTROL_salen_identicos(datos, despues, carril):
+    """Los tres no pasan por el codigo que cambio -- el piso y el techo nunca, y
+    `arranque_piso` usa la politica del piso en las semanas 4-7 y ya tiene seis
+    periodos en las 8+, asi que nunca ve una cobertura. Que salgan identicos es lo que
+    prueba que las dos mediciones son la misma; si se mueven, algo mas cambio y la
+    resta no es atribuible al arreglo."""
+    a, b = datos["promedios"][carril], despues["promedios"][carril]
+    for campo in ("capture", "total", "fill", "unidades_pedidas"):
+        assert a[campo] == pytest.approx(b[campo], rel=1e-9, abs=1e-9), (
+            f"el carril de control {carril!r} movio {campo}: {a[campo]} -> {b[campo]}"
+        )
+
+
+def test_el_arreglo_mejoro_en_TODOS_los_mundos(datos, despues):
+    """Un promedio que mejora puede esconder mundos que empeoran, y esto se publica
+    como el arreglo de la causa principal."""
+    antes = {m["seed"]: m["kern"]["capture"] for m in datos["por_mundo"]}
+    peores = [m["seed"] for m in despues["por_mundo"]
+              if m["kern"]["capture"] <= antes[m["seed"]]]
+    assert not peores, f"en las semillas {peores} la cobertura NO mejoro la captura"
+
+
+def test_el_contrafactico_que_midio_el_defecto_SE_ENCOGIO(datos, despues):
+    """La firma interna de que el arreglo cierra la causa diagnosticada y no otra cosa.
+    `arranque_piso` medía cuanto costaba el silencio de las semanas 4-7; si la cobertura
+    lo llena, esa medicion tiene que valer MENOS que antes. Si no se encoge, el arreglo
+    mejoro la captura por alguna otra via y el documento esta contando un cuento."""
+    def porcion(d: dict) -> float:
+        base = d["promedios"]["kern"]["capture"]
+        return (d["promedios"]["arranque_piso"]["capture"] - base) / (0.0 - base)
+
+    assert porcion(despues) < porcion(datos), (
+        f"el contrafactico explica {porcion(despues):.0%} despues contra "
+        f"{porcion(datos):.0%} antes: no se encogio"
+    )
+
+
+def test_el_documento_cita_las_dos_frases(datos, despues, texto):
+    from scripts.por_que_bajo_el_piso import frase
+
+    faltan = [frase(d) for d in (datos, despues) if frase(d) not in texto]
+    assert not faltan, (
+        "el documento no cita estas frases de sus lineas base:\n  " + "\n  ".join(faltan)
+    )
+
+
+def test_el_documento_declara_que_el_arreglo_NO_cierra_la_brecha(datos, despues, texto):
+    """Kern sigue por debajo del piso. Un documento que publique "+19,4 puntos" sin eso
+    se lee como que el problema esta resuelto."""
+    assert despues["promedios"]["kern"]["capture"] < 0.0, (
+        "Kern ya no esta por debajo del piso; esta salvedad y este test sobran"
+    )
+    assert "no cierra la brecha" in texto
+
+
+def test_la_cobertura_compro_donde_antes_no_compraba_nada(datos, despues):
+    """El mecanismo publicado: el primer tercio del horizonte pasa de CERO a algo. Si
+    esto deja de valer, el documento explica la mejora con una causa que ya no ocurre."""
+    assert datos["unidades_por_tercio"]["kern"][0] == pytest.approx(0.0, abs=1e-9)
+    assert despues["unidades_por_tercio"]["kern"][0] > 0.0

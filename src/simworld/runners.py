@@ -319,17 +319,25 @@ def kern_policy(
     target: dict[str, float] = {}
     forecast: dict[str, float] = {}
     for rec in result.report.recommendations:
-        if rec.reorder_point is None or rec.forecast is None:
-            # El motor se nego a dimensionar este SKU (historia insuficiente, o sin
-            # costo usable). Se OMITE del plan: meterlo con 0 diria "el punto de
-            # reorden es cero", que `apply_policy` ejecuta igual -- no pedir nunca --
-            # pero que en la traza es indistinguible de una politica deliberada de no
-            # reponer. La cantidad emitida no cambia; lo que cambia es que ahora se
-            # puede saber por que.
+        if rec.reorder_point is None:
+            # El motor se nego a dimensionar este SKU Y tampoco pudo cubrirlo (menos
+            # de `MIN_PERIODS_FOR_COVER` periodos, o sin costo usable). Se OMITE del
+            # plan: meterlo con 0 diria "el punto de reorden es cero", que
+            # `apply_policy` ejecuta igual -- no pedir nunca -- pero que en la traza es
+            # indistinguible de una politica deliberada de no reponer.
+            continue
+        # La TASA por periodo: el pronostico cuando hay politica, y la media MEDIDA
+        # cuando lo que hay es una cobertura provisional (`forecast` es `None` ahi a
+        # proposito: un pronostico es una extrapolacion que la compuerta de historia
+        # prohibe citar, y un promedio de lo vendido es una medicion). Sin este
+        # segundo caso el carril descartaria justamente las lineas que la cobertura
+        # existe para poder ejecutar.
+        tasa = rec.forecast if rec.forecast is not None else rec.observed_mean_per_period
+        if tasa is None:
             continue
         rop = float(rec.reorder_point)
         reorder[rec.product_id] = rop
-        forecast[rec.product_id] = float(rec.forecast)
+        forecast[rec.product_id] = float(tasa)
         if rec.order_up_to is not None:
             target[rec.product_id] = float(rec.order_up_to)
         else:

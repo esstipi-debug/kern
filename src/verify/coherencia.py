@@ -40,6 +40,11 @@ from dataclasses import dataclass
 #: igualdad de los dos conjuntos para que no se separen otra vez.
 POLITICAS_SALTADAS = frozenset({
     "skipped_zero_demand", "skipped_zero_cost", "insufficient_history",
+    # Una `provisional_cover` trae disparador pero NO buffer ni z: las invariantes de
+    # abajo los leen todos, asi que pasarla por aca reventaria, y bajarselas a todo el
+    # resto para que entre seria cambiar una cobertura por un agujero en el gate de
+    # todas las politicas de verdad. Su forma la chequea `jobs/qa.py`, entera.
+    "provisional_cover",
 })
 
 # Tolerancia relativa de las igualdades de dinero. Los agregados son sumas de
