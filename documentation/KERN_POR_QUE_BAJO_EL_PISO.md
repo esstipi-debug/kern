@@ -168,6 +168,17 @@ pasa por el allocator de presupuesto. El deck, el resumen y un residual de las O
 dicen esas tres cosas; y no se cuela en la planilla de pedidos del cliente, que es donde
 una política manda de verdad.
 
+**Cómo la ejecuta un cliente**, que es la mitad sin la cual esta medición no se
+reproduce. La cobertura dimensiona *cuánto*; la posición dice *cuándo*, con la misma
+aritmética de un `(R,S)` —es eso: un objetivo sin lote—, así que entra en `order_now` y
+en la OPCIÓN *"Release the N orders due now"*, que la nombra aparte (*"no safety stock
+behind it"*). Sin esa mitad el marcador compraba la cobertura y la lista que lee el
+cliente no la nombraba: los números de abajo describirían una corrida que nadie fuera
+del arnés podría repetir. El Control Tower, en cambio, la deja pasar **callado a
+propósito** (`forecast` en `None`): `order_now` es una lista que el operador va a
+buscar, un `rop_breach` es un evento que se empuja, y sin buffer el estante cae por
+debajo la mitad de las semanas.
+
 | | antes | después | |
 |---|---:|---:|---|
 | **captura** | **−47,0 %** | **−27,6 %** | **+19,4 puntos** |
