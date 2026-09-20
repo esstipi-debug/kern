@@ -273,9 +273,19 @@ numero" y la lee `jobs/qa.py` (que exige los cuatro campos en `None`), mientras
 `src/verify/coherencia.py::POLITICAS_SALTADAS` -- sus invariantes por SKU presuponen
 buffer y z -- y `scm_agent/package_specs.py`, porque una cobertura sin buffer en la
 planilla de pedidos del cliente pisa su numero propio y ademas PARECE una politica.
-Colapsarlas rompe en los dos sentidos. El Tower la deja pasar callado a proposito
-(`forecast` en `None`): sin buffer, el estante cae por debajo la mitad de las semanas y
-un `rop_breach` que suena la mitad de las semanas es ruido, no alarma.
+Colapsarlas rompe en los dos sentidos.
+
+La cobertura tambien dice **CUANDO**: `_order_now` la trata con la aritmetica de un
+`(R,S)` -- porque eso es, un objetivo de reposicion sin lote -- asi que entra en
+`order_now` / `n_order_now` y en la OPCION "Release the N orders due now", que la
+NOMBRA aparte ("no safety stock behind it"). Sin esa mitad el arreglo quedaba
+partido: el marcador ejecutaba la cobertura (asi se midieron los +19,4 puntos) y la
+lista que lee el cliente no la nombraba, o sea que el numero publicado describia una
+corrida que un cliente no podia reproducir. El Tower, en cambio, la deja pasar
+**callado a proposito** (`forecast` en `None`): `order_now` es una lista que el
+operador va a buscar, pero un `rop_breach` es un evento que se empuja, y sin buffer el
+estante cae por debajo la mitad de las semanas -- una alarma que suena la mitad de las
+semanas es ruido.
 
 ### El Tower sensa sobre datos reales (`jobs/state_bridge.py`)
 `run_all_monitors` lee `stock`, `forecast` y `outcomes`, y hasta el 2026-09-18 el UNICO

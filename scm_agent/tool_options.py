@@ -13,6 +13,7 @@ from collections import Counter
 from dataclasses import replace
 
 from jobs.financial_kpis_job import fmt as fmt_kpi
+from jobs.inventory_optimization import PROVISIONAL_POLICY_KINDS
 from nosilo_core.escalation import (
     OPERATIONAL,
     escalate,
@@ -184,10 +185,21 @@ def _orders_due_now_items(report: object) -> list[_Item]:
         f"{getattr(report, 'n_reorders_avoided_by_transit', 0)} re-order(s) of inbound stock."
         if n_netted else " Nothing was netted: the file carried no on-order column."
     )
+    # Una cobertura provisional dispara con la misma aritmetica que un (R,S) y por eso
+    # entra en esta lista -- pero su trigger NO tiene buffer detras. Un operador que
+    # lee "sit at or below their trigger" sobre una linea asi supondria un nivel de
+    # servicio que nadie dimensiono, asi que se nombran y se cuentan aparte.
+    n_cobertura = sum(1 for r in due if r.policy_kind in PROVISIONAL_POLICY_KINDS)
+    coberturas = (
+        f" {n_cobertura} of them is/are a PROVISIONAL COVER: the trigger is the "
+        "measured mean over the risk period with no safety stock behind it, so it "
+        "buys enough to reach the next replenishment and no more."
+        if n_cobertura else ""
+    )
     return [(
         f"Release the {n_due} replenishment order(s) due now",
         f"{n_due} SKU(s) sit at or below their trigger on today's inventory position "
-        f"(on hand + on order).{netting} Largest gaps: {largest}.",
+        f"(on hand + on order).{netting}{coberturas} Largest gaps: {largest}.",
         "issue the POs on the rows with order_now = yes, for order_qty_now units each",
         "stock lands before the next stockout; the capital goes out today",
     )]

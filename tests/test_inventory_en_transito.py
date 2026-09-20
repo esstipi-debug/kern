@@ -156,15 +156,63 @@ def test_sin_posicion_todo_queda_en_blanco_como_siempre():
     assert qa.verify(report) == []
 
 
-def test_un_sku_sin_politica_lleva_la_posicion_pero_no_un_disparo():
-    """La posicion es un HECHO del SKU; el disparo necesita una politica."""
-    thin = _demand(periods=3)
-    report = io.run(thin, on_hand_by_sku={"A": 7.0}, on_order_by_sku={"A": 2.0})
+def test_un_sku_SIN_NADA_lleva_la_posicion_pero_no_un_disparo():
+    """La posicion es un HECHO del SKU; el disparo necesita algo contra que comparar.
+
+    Un solo periodo no alcanza ni para una media, asi que aqui no hay ni politica ni
+    cobertura: el estante y el en-transito se miden y se publican igual -- son del
+    archivo, no del motor -- y el disparador queda ausente, no en cero. Un cero diria
+    "comparado, y no hace falta pedir".
+    """
+    report = io.run(_demand(periods=1), on_hand_by_sku={"A": 7.0}, on_order_by_sku={"A": 2.0})
     a = _rec(report, "A")
     assert a.policy_kind == "insufficient_history"
     assert (a.on_hand, a.on_order, a.inventory_position) == (7.0, 2.0, 9.0)
     assert a.order_now is None and a.order_qty_now is None
     assert qa.verify(report) == []
+
+
+def test_una_COBERTURA_si_dispara_contra_la_posicion():
+    """El otro lado, y la mitad que faltaba del arreglo del arranque muerto.
+
+    Una cobertura provisional es un objetivo de reposicion sin lote, asi que tiene con
+    que comparar la posicion y la aritmetica es la de un `(R,S)`: se pide hasta la
+    cobertura. Sin esto el marcador ejecutaba la cobertura -- asi se midieron los +19,4
+    puntos de captura -- y la lista "que pedir hoy" que lee el cliente no la nombraba,
+    o sea que el numero publicado describia una corrida que un cliente no podia
+    reproducir. El neteo la alcanza igual: la posicion es estante MAS en-transito.
+    """
+    report = io.run(_demand(periods=3), on_hand_by_sku={"A": 7.0}, on_order_by_sku={"A": 2.0})
+    a = _rec(report, "A")
+
+    assert a.policy_kind == "provisional_cover"
+    assert (a.on_hand, a.on_order, a.inventory_position) == (7.0, 2.0, 9.0)
+    assert a.order_now is True
+    assert a.order_qty_now == pytest.approx(a.order_up_to - 9.0)
+    assert report.n_order_now == 1
+    assert qa.verify(report) == []
+
+    # Y la OPCION la nombra por lo que es: un disparador SIN buffer detras. Sin eso,
+    # una linea de cobertura se lee igual que una politica en la misma lista.
+    out = tool_options.inventory_options(report)
+    soltar = [o for o in out.options if o.label.startswith("Release")]
+    assert len(soltar) == 1
+    assert "PROVISIONAL COVER" in soltar[0].summary
+    assert "no safety stock" in soltar[0].summary
+
+
+def test_una_cobertura_por_encima_de_su_numero_NO_dispara():
+    """El control negativo: el disparo es una comparacion, no una etiqueta. Con la
+    posicion por encima de la cobertura no hay nada que pedir, y ese cero SI es una
+    medicion."""
+    alto = io.run(_demand(periods=3), on_hand_by_sku={"A": 5_000.0})
+    a = _rec(alto, "A")
+
+    assert a.policy_kind == "provisional_cover"
+    assert a.inventory_position > a.order_up_to
+    assert a.order_now is False and a.order_qty_now == 0.0
+    assert alto.n_order_now == 0
+    assert qa.verify(alto) == []
 
 
 # -- las opciones ofrecen la terminal de ejecucion -----------------------------

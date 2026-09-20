@@ -359,3 +359,25 @@ def test_el_corredor_del_marcador_toma_la_cobertura_con_su_media_medida(monkeypa
     assert pol.reorder_point["NUEVO"] == pytest.approx(126.0)
     assert pol.forecast["NUEVO"] == pytest.approx(42.0), "la tasa sale de la media medida"
     assert "SIN" not in pol.reorder_point, "sin cobertura NI politica se sigue omitiendo"
+
+
+def test_el_CLIENTE_tambien_la_puede_ejecutar_y_no_solo_el_marcador():
+    """La otra mitad de "la ejecuta", y sin ella el numero publicado no se reproduce.
+
+    El marcador toma la cobertura (test de arriba), asi que los +19,4 puntos de captura
+    salen de un carril que la compra. Si la lista "que pedir hoy" del tool CSV no la
+    nombrara, un cliente con el mismo archivo no podria llegar al mismo resultado: la
+    veria en el entregable y no sabria que hay que actuar. La aritmetica es la de un
+    `(R,S)` porque una cobertura es eso -- un objetivo sin lote.
+
+    El contrato completo (neteo contra el en-transito, el control negativo, la OPCION
+    que la nombra) vive en `tests/test_inventory_en_transito.py`, que es el archivo de
+    la posicion; aqui se fija que la cobertura participe.
+    """
+    reporte, r = _rec(_archivo([40, 44, 38]), on_hand_by_sku={"X": 5.0})
+
+    assert r.policy_kind == "provisional_cover"
+    assert r.order_now is True
+    assert r.order_qty_now == pytest.approx(r.order_up_to - 5.0)
+    assert reporte.n_order_now == 1
+    assert qa.verify(reporte) == []

@@ -438,13 +438,21 @@ def _order_now(
 ) -> tuple[bool | None, float | None]:
     """The execution signal of the policy at ``position``: (s,Q) orders Q once the
     position is at or below s; (R,S) orders up to S at the review. None when there
-    is no position to compare against."""
+    is no position to compare against.
+
+    Una COBERTURA PROVISIONAL usa la aritmetica de ``(R,S)`` y no por comodidad: es
+    literalmente un objetivo de reposicion sin lote, y su ``order_up_to`` es la
+    cobertura. Sin esta rama el arreglo del arranque muerto quedaba a medias -- el
+    marcador ejecuta la cobertura (asi se midieron los +19,4 puntos) pero la lista
+    "que pedir hoy" que lee el cliente no la nombraba, o sea que el numero publicado
+    describia una corrida que un cliente no podia reproducir.
+    """
     if position is None:
         return None, None
     if kind == "(s, Q)":
         due = position <= reorder_point
         return due, (float(order_quantity or 0.0) if due else 0.0)
-    if kind == "(R, S)" and order_up_to is not None:
+    if (kind == "(R, S)" or kind in PROVISIONAL_POLICY_KINDS) and order_up_to is not None:
         due = position < order_up_to
         return due, (max(0.0, float(order_up_to) - position) if due else 0.0)
     return None, None
@@ -696,6 +704,13 @@ def run(
                 cobertura = provisional_cover(
                     observada, float(lead), review_period=PROVISIONAL_REVIEW_PERIODS
                 )
+                # La cobertura dimensiona CUANTO; la posicion dice CUANDO, igual que
+                # en una politica. Omitirlo dejaria la cobertura en el entregable y
+                # fuera de la lista de lo que hay que pedir hoy, que es donde el
+                # arranque muerto se siente.
+                cobertura_due, cobertura_qty = _order_now(
+                    "provisional_cover", position, cobertura, None, cobertura
+                )
                 recs.append(
                     SkuRecommendation(
                         product_id=pid, method="none", intermittent=False,
@@ -725,6 +740,7 @@ def run(
                         n_periods=n_periods,
                         realized_service=realized,
                         on_hand=on_hand, on_order=on_order, inventory_position=position,
+                        order_now=cobertura_due, order_qty_now=cobertura_qty,
                         observed_mean_per_period=observada,
                         cover_periods=tau,
                     )

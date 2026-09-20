@@ -319,7 +319,11 @@ def _position_issues(r) -> list[str]:
     if r.policy_kind == "(s, Q)" and r.order_quantity is not None:
         should = position <= r.reorder_point
         want = r.order_quantity if should else 0.0
-    elif r.policy_kind == "(R, S)" and r.order_up_to is not None:
+    elif (r.policy_kind == "(R, S)" or r.policy_kind in PROVISIONAL_POLICY_KINDS) \
+            and r.order_up_to is not None:
+        # Una cobertura provisional es un objetivo de reposicion sin lote, asi que su
+        # senal de ejecucion es la MISMA aritmetica que la de un (R,S). Lo que no
+        # comparte es el buffer, y eso lo gatea `_sized_field_issues`.
         should = position < r.order_up_to
         want = max(0.0, r.order_up_to - position) if should else 0.0
     else:
