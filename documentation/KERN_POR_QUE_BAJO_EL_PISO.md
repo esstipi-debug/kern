@@ -226,6 +226,12 @@ con su residual y nunca como algo que Kern ya decidió.
   gasta casi lo mismo que el piso (−$2.931 de procurement) y aun así pierde $23.039 más
   de venta y deja $3.108 más de stock muerto. Eso ya es una ineficiencia de
   **asignación** entre SKU y semanas, y este documento no la resuelve.
+  → Diagnosticado el 2026-09-20 en
+  [`KERN_RESIDUO_DE_LA_BRECHA.md`](KERN_RESIDUO_DE_LA_BRECHA.md), sobre estos mismos
+  cinco mundos y con el carril de control idéntico al de acá. La respuesta corta: no es
+  una cosa que Kern haga mal, es que un punto de reorden no tiene horizonte, y **toda**
+  palanca que baja el quiebre empuja el excedente al stock terminal. La palanca más
+  grande (+18,9 puntos) es el nivel de servicio, y es la que Kern hoy no puede accionar.
 
 ## Cómo reproducirlo
 

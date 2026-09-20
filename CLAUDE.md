@@ -392,6 +392,31 @@ mas chica. No la cierra: el residual (-27,6%) es otra cosa, el mecanismo de E3 (
 sigue pidiendo hasta la ultima semana porque un punto de reorden no tiene nocion de
 horizonte).
 
+**El residuo lo diagnostica**
+[`documentation/KERN_RESIDUO_DE_LA_BRECHA.md`](documentation/KERN_RESIDUO_DE_LA_BRECHA.md)
+(`scripts/residuo_de_la_brecha.py`, mismos cinco mundos; el carril de control sale
+IDENTICO al ultimo digito al `kern` de la linea base anterior, asi que es el mismo
+experimento). No es una cosa que Kern haga mal: **toda palanca que baja el quiebre
+empuja el excedente al stock terminal**, que sube monotonamente con cada una (kern
+9.209 -> servicio_econ 22.794 -> todo 33.435, contra 0 del techo) hasta que el carril
+que las apila compra MAS unidades que el oraculo con informacion perfecta. Tres cosas
+que la medicion dijo y no eran obvias: la palanca grande es el **nivel de servicio**
+(+18,9 puntos, la razon critica de esta economia es 0,998 y no 0,95) y es la unica que
+Kern hoy NO puede accionar -- la lente exporta `unit_cost` y no precio, asi que es una
+brecha de CANAL y no de motor, e `intake` ya sabe leer `revenue`; medir mejor al
+proveedor con las propias recepciones vale poco y **empeora en 3 de 5 mundos**; y
+**apilar palancas es peor que la mejor palanca sola**. Lo que el residuo pide no es mas
+buffer sino nocion de horizonte, y eso NO esta medido.
+
+Midiendo eso aparecio un defecto que vale por si mismo: `scm_agent/tools.py` aceptaba
+`lead_time_stds` y **no lo reenviaba** al job, asi que toda corrida por el agente
+dimensionaba como si el proveedor no fallara nunca -- `sigma_L^2 * mu_d^2` es el termino
+DOMINANTE del periodo de riesgo -- con el entregable diciendo igual "95% service level".
+Es el defecto de la rama al reves: ahi la prosa avisaba y el numero mentia, aca la prosa
+ya decia "defaulted to 0" y lo que fallaba era la caneria. El guard es estructural
+(`tests/test_overrides_no_se_tiran.py`): recorre la firma del job por AST y se pone rojo
+si aparece un parametro que el agente no reenvia ni declara por escrito por que no.
+
 **Un shock que no puede golpear se RECHAZA**, no se avisa: un `demand_surge` en las
 primeras `INITIAL_STOCK_WEEKS` semanas (el mundo dimensiona el stock inicial con esa
 demanda y se auto-absorbe) y un shock de suministro que termine dentro de `WARMUP_WEEKS`
