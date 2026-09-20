@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from nosilo_core import writeback  # noqa: E402
 from src.connectors import realized_service  # noqa: E402
 from src.connectors.simulator import demo_store  # noqa: E402
 from src.forecasting import forecast_demand  # noqa: E402
@@ -70,8 +71,13 @@ def main() -> None:
         return
 
     # 2) stage -> apply through the safe-staging writeback plane ------------------
-    changeset = store.stage_restock(restock, idempotency_key="sim-restock-1",
-                                    reason="replenish to target cover")
+    changeset = store.stage_restock(
+        restock,
+        # Derivada de la reposicion, no constante: ver
+        # tests/test_claves_de_idempotencia.py.
+        idempotency_key=writeback.derive_idempotency_key("sim-restock", {
+            sku: {"restock_qty": qty} for sku, qty in restock.items()}),
+        reason="replenish to target cover")
     print(f"\n  Staged (dry-run): {changeset.summary()}")
     result = store.apply_restock(changeset)
     print(f"  Applied: {result.applied} (audit key {result.audit_id})")

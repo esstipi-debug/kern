@@ -67,6 +67,38 @@ def _content_hash(target: str, risk_tier: str, changes: tuple[Change, ...]) -> s
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def derive_idempotency_key(prefix: str, edits: dict[str, dict]) -> str:
+    """Una clave de idempotencia derivada de lo que el cambio HACE.
+
+    La regla que hace util a una clave son dos cosas a la vez, y una constante rompe
+    la segunda: tiene que ser **estable** para un reintento de la MISMA operacion
+    logica -- ese es el sentido de la idempotencia, un timeout seguido de un retry no
+    puede aplicar dos veces -- y **distinta** para una operacion distinta.
+
+    Medido antes de que existiera esta funcion: con la constante que traia
+    ``channel_replenishment_job``, dos reposiciones genuinamente distintas del mismo
+    cliente (+50 de un SKU, y despues +999 de otro) compartian clave, y la segunda
+    salia ``applied=False, idempotent_skip=True`` -- o sea descartada **en silencio**,
+    y con la senal que significa "esto era un reintento, todo bien". El punto de
+    reorden nunca aterrizaba.
+
+    El material del hash son los ``edits`` completos: que entidad, que campo y a que
+    valor. No incluye el estado actual porque ``stage`` todavia no lo leyo; lo que el
+    ``content_hash`` del ``Changeset`` SI incluye (via ``Change.before``) es esa otra
+    mitad, y por eso los dos conviven: esta clave separa operaciones, y el
+    ``content_hash`` ata la aprobacion al contenido exacto.
+
+    ``prefix`` nombra al emisor para que un audit log se pueda leer, y porque dos
+    emisores distintos con el mismo conjunto de ediciones siguen siendo dos
+    operaciones.
+    """
+    canonical = repr((prefix, sorted(
+        (str(entidad), sorted((str(k), campos[k]) for k in campos))
+        for entidad, campos in edits.items()
+    )))
+    return f"{prefix}-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
 @dataclass(frozen=True)
 class Changeset:
     """A staged, not-yet-applied set of changes against one target system."""

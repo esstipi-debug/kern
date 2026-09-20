@@ -432,18 +432,45 @@ linea). Los que mas pesan:
   **`stockout_periods`/`total_periods`** (sin los dos, `stockout_rate` es `None`),
   **`counts_per_year`**, **`as_of`**/**`today`**, **`default_unit_cost`** (el 1.0 por
   omision no es un costo, es un marcador que multiplica toda cifra de inversion).
-- **`idempotency_key`** de `channel_replenishment`: `nosilo_core` garantiza que *"the
-  same idempotency_key never lands twice"*, y el default del job es la CONSTANTE
-  `"channel-replenish-1"`. Poder pasarla es la mitad del arreglo; que el default no
-  deberia ser una constante compartida por todos los clientes es una decision de diseno
-  sobre las claves de writeback, y sigue ABIERTA -- el test la deja visible afirmando
-  que sin override la clave es esa constante.
+- **`idempotency_key`** de `channel_replenishment` (cerrado aparte, abajo).
 
 Una fecha que cruza la frontera JSON se parsea en UN lugar (`tools._fecha_param`) y una
 ilegible **levanta** nombrando la clave: el reloj como fallback silencioso convertiria
 un typo en un reporte fechado hoy que dice estar fechado en otro lado.
 
-El guard es **estructural y sobre los 60 tools**: recorre por AST toda llamada a
+### Una clave de idempotencia constante es un no-op mudo (`tests/test_claves_de_idempotencia.py`)
+`nosilo_core.writeback` garantiza, y lo dice en su encabezado, que *"the same
+idempotency_key never lands twice"*. Eso es lo que hace seguro reintentar -- pero pide
+la contraparte, que es la que se olvida: **la clave tiene que ser DISTINTA para una
+operacion distinta**. Reproducido con el conector Odoo de demo, sobre la constante
+`"channel-replenish-1"` que traia `channel_replenishment_job`:
+
+    semana 1: stage_restock({SKU-1: +50})   -> applied=True   skip=False
+    semana 2: stage_restock({SKU-2: +999})  -> applied=False  skip=True
+
+Contenido distinto (`content_hash` distinto), misma clave, y la segunda se descarta en
+silencio **con `idempotent_skip=True`** -- la senal que significa "esto era un
+reintento, todo bien". El punto de reorden del segundo SKU nunca aterrizaba.
+`repricing_job` tenia el mismo defecto con `f"repricing-{channel}-1"`, constante POR
+CANAL, y ahi lo que no aterriza es un precio en un marketplace vivo; mas tres CLI de
+`examples/`, que son la plantilla de la que se copia.
+
+No era ignorancia del repo: `excel_replenishment_job` ya derivaba del contenido
+estacionado, `shopify_stock_sync` tiene una funcion dedicada, y
+`scm_agent/autonomy_promotion.py` lleva el comentario que lo explica entero. La
+definicion vive ahora donde vive la semantica:
+`nosilo_core.writeback.derive_idempotency_key(prefijo, edits)` -- estable para la misma
+operacion (si no, se rompe la idempotencia) y distinta para otra (si no, se rompe la
+garantia de que aterrice), con el prefijo separando emisores.
+
+El guard tiene tres mitades: **ninguna clave puede ser un literal** (se decide leyendo
+el AST, y reconoce el andamio de `src/connectors/odoo.py`, que pasa un placeholder y
+re-keyea con el `content_hash` en la linea siguiente); **los emisores sondeados** se
+corren de verdad (misma operacion -> misma clave, operacion distinta -> otra, y las dos
+reposiciones distintas aterrizan las dos); y **todo el que estacione un changeset** esta
+sondeado o declarado con su razon, incluidos los conectores que solo reenvian.
+
+El otro guard es **estructural y sobre los 60 tools**: recorre por AST toda llamada a
 `jobs.*` y se pone rojo si aparece un parametro que el agente no reenvia ni declara por
 escrito por que no. Entiende dos cosas o acusa de mas: que un destino se llama desde
 VARIOS sitios (alcanza con que uno lo reenvie -- eso daba cuatro falsos positivos) y que

@@ -460,14 +460,13 @@ def test_un_costo_unitario_declarado_reemplaza_al_marcador_de_posicion(tmp_path)
 
 
 def test_la_clave_de_idempotencia_del_restock_se_puede_declarar():
-    """`nosilo_core.writeback` garantiza que "the same idempotency_key never lands
-    twice". Con la constante del job, la SEGUNDA reposicion legitima de un cliente
-    choca contra la primera y no aterriza.
+    """Que el llamador PUEDA declararla, que es lo que deja replanificar a mano.
 
-    Poder pasarla es la mitad del arreglo. La otra mitad -- que el default no deberia
-    ser una constante compartida por todos los clientes y todas las corridas -- es una
-    decision de diseno sobre las claves de writeback, y este test la deja VISIBLE en
-    vez de taparla: la primera afirmacion es que sin override la clave es la constante.
+    Este test nacio con una segunda afirmacion -- que sin override la clave era la
+    constante `"channel-replenish-1"` -- puesta ahi para ponerse ROJA el dia que el
+    default se arreglara. Se puso roja el 2026-09-20 y se vino a mirarla, que era el
+    punto. El default ahora se DERIVA de lo que la reposicion hace, y su contrato vive
+    entero en `tests/test_claves_de_idempotencia.py`.
     """
     from nosilo_core.types import JobRequest
     from scm_agent.tools import build_default_registry
@@ -483,8 +482,6 @@ def test_la_clave_de_idempotencia_del_restock_se_puede_declarar():
         changeset = tool.run(prep.payload, params).report.changeset
         return getattr(changeset, "idempotency_key", None)
 
-    assert clave({}) == "channel-replenish-1", (
-        "si el default dejo de ser una constante, este test sobra y el hallazgo esta "
-        "cerrado -- que es el punto de que falle"
-    )
+    assert clave({}).startswith("channel-replenish-")
+    assert clave({}) != "channel-replenish-1", "volvio la constante"
     assert clave({"idempotency_key": "restock-2026-W38"}) == "restock-2026-W38"

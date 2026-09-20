@@ -40,6 +40,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from nosilo_core import writeback
 from nosilo_core.access import Principal
 from nosilo_core.entities import SqliteEntityStore
 from nosilo_core.escalation import escalation_banner, maybe_escalate_financial
@@ -491,9 +492,24 @@ def run(
     *,
     cover_periods: float = 8.0,
     financial_threshold: float = 50_000.0,
-    idempotency_key: str = "channel-replenish-1",
+    idempotency_key: str | None = None,
 ) -> ChannelReplenishmentReport:
-    """Forecast from channel orders, compare against ERP stock, stage the reorder points."""
+    """Forecast from channel orders, compare against ERP stock, stage the reorder points.
+
+    ``idempotency_key`` se DERIVA de lo que la reposicion hace cuando no se pasa, con
+    el mismo criterio que `excel_replenishment_job` y `shopify_stock_sync`. Hasta el
+    2026-09-20 era la constante ``"channel-replenish-1"``, y `nosilo_core.writeback`
+    garantiza que "the same idempotency_key never lands twice": dos reposiciones
+    genuinamente distintas del mismo cliente compartian clave y la SEGUNDA salia
+    ``applied=False, idempotent_skip=True`` -- descartada en silencio, con la senal que
+    significa "esto era un reintento". Reproducido: +50 de un SKU y despues +999 de
+    otro, contenido distinto, y el punto de reorden del segundo nunca aterrizaba.
+
+    Se keyea sobre la cantidad a reponer Y el estante que el ERP mostraba, porque esa
+    es la informacion con la que se decidio: re-estacionar el MISMO plan contra el
+    MISMO estante sigue siendo la misma operacion y tiene que deduplicar; un plan nuevo
+    -- otra cantidad, u otro estante -- es otra operacion y tiene que aterrizar.
+    """
     # Any InventorySource with a ``truncated`` flag; see CHANNELS. Typed as the union
     # rather than a Protocol because ``truncated`` is a connector courtesy, not part of
     # InventorySource, and inventing a Protocol for one attribute would be ceremony.
@@ -556,8 +572,13 @@ def run(
             divergences.append(StockDivergence(sku, on_hand_channel, on_hand_erp))
 
     # Staging is a dry-run: it reads and computes, and mutates nothing until apply.
+    clave = idempotency_key or writeback.derive_idempotency_key(
+        "channel-replenish",
+        {sku: {"restock_qty": qty, "erp_on_hand": erp_on_hand.get(sku, 0.0)}
+         for sku, qty in restock.items()},
+    )
     changeset = (
-        erp.stage_restock(restock, idempotency_key=idempotency_key,
+        erp.stage_restock(restock, idempotency_key=clave,
                           reason="replenish to cover channel demand")
         if restock
         else None

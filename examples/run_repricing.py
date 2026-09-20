@@ -102,7 +102,10 @@ def main(argv: list[str] | None = None) -> int:
     reason = (args.reason or "").strip() or _DEMO_REASON
     store = _demo_store(args.channel)
     channel_label = f"{args.channel}:demo"
-    idem = f"cli-repricing-{args.channel}"
+    # Por canal Y por precios: `f"cli-repricing-{canal}"` era una constante por
+    # canal, o sea que la segunda repactacion del mismo canal salia como duplicado.
+    idem = writeback.derive_idempotency_key(
+        f"cli-repricing-{args.channel}", {sku: {"price": p} for sku, p in prices.items()})
 
     print(f"\n=== Repricing playbook ({args.channel}, offline stand-in) ===")
     print(f"  reason     : {reason}")
