@@ -228,6 +228,15 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         service_levels=params.get("service_levels"),
         differentiate_by_class=params.get("differentiate_by_class", False),
         lead_times=params.get("lead_times"),
+        # La dispersion del plazo que el cliente declaro. Hasta el 2026-09-20 esta
+        # linea NO existia: el job la aceptaba, el agente la tiraba, y no se avisaba.
+        # Es la peor forma de perder un dato, porque INFLA la confianza -- sin
+        # `sigma_L` el periodo de riesgo pierde el termino `sigma_L^2 * mu_d^2`, que
+        # es el DOMINANTE cuando la demanda es grande frente a su propia dispersion.
+        # Medido: con `lead_time_stds={"A": 3.0}` el buffer pasa de 11,9 a 238,4
+        # llamando al job, y quedaba en 11,9 pasando por el orquestador, con el
+        # entregable diciendo igual "95% service level".
+        lead_time_stds=params.get("lead_time_stds"),
         observed_fill_rates=params.get("observed_fill_rates"),
         target_fill_rate=params.get("target_fill_rate", 0.95),
         intake_quality=payload["intake_quality"],
