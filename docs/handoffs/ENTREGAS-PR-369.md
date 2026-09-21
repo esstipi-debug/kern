@@ -7,8 +7,8 @@ El cuerpo de un PR de GitHub topea en **65.536 caracteres**, y esta rama lo alca
 decimonovena entrega: quedó en 65.227, o sea 309 de margen, y la vigésima no entraba. Este
 documento es la mitad vieja de ese historial, movida acá para que las siguientes entren.
 
-**Qué hay acá:** las entregas **segunda a decimonovena**, verbatim y en orden cronológico
-—de los términos del proveedor hasta las claves de idempotencia—. No se resumió nada al mudarlas:
+**Qué hay acá:** las entregas **segunda a vigésima**, verbatim y en orden cronológico
+—de los términos del proveedor hasta el horizonte de la vara—. No se resumió nada al mudarlas:
 un historial que se resume cuando se archiva deja de ser un historial.
 
 **Qué NO hay acá, y dónde está:**
@@ -16,7 +16,7 @@ un historial que se resume cuando se archiva deja de ser un historial.
 | | dónde |
 |---|---|
 | Primera entrega (el quinto sombrero, `transporte`) | el cuerpo del PR, como marco: *Qué problema cierra*, *El modelo*, *El quinto sombrero es condicional*, *Cambio de comportamiento*, *Alcance*, *Verificación* |
-| Vigésima a vigesimosegunda | el cuerpo del PR |
+| Vigesimoprimera a vigesimotercera | el cuerpo del PR |
 | Verificación de la rama completa, estado del diseño de las cuatro brechas y los dos anexos | el cuerpo del PR |
 
 **La regla, para que el cuerpo del PR no se vuelva a llenar:** lleva las **tres últimas**
@@ -304,3 +304,21 @@ La definición va **donde vive la semántica**: `nosilo_core.writeback.derive_id
 Verificado por mutación. Y el test que en la entrega anterior afirmaba que sin override la clave **era** la constante —puesto ahí para ponerse rojo el día que esto se arreglara— se puso rojo, y se vino a mirarlo.
 
 **Verificación:** `tests/test_claves_de_idempotencia.py`, nuevo: 11 tests. Suite completa **8.842 passed, 32 skipped, 19 deselected, 0 failed**. `ruff check .` limpio.
+
+## Vigésima entrega: el efecto de fin de horizonte NO explica el residuo (`5c7a043`)
+
+`documentation/KERN_HORIZONTE_DE_LA_VARA.md`. La decimoséptima dejó una deuda escrita en su propia sección de límites —*"no diagnostica el efecto de fin de horizonte por separado… parte del residuo es de la vara y no de Kern. Cuánta parte queda abierto"*— y el orden importaba: **antes** de darle noción de horizonte a Kern hay que saber cuánto del −27,6 % se lo debe la vara, porque si fuera casi todo, "darle horizonte" sería enseñarle a ganarle al marcador en vez de a comprar mejor.
+
+**No se lo debe.** Con el borde de la ventana acreditado, mover la fecha de fin del mundo —de "se acaba en la semana 24" a "quedan 24 semanas más"— mueve la captura de Kern **−0,0054**: el **2,0 %** del residuo, y para el lado peor. Chico en los **cinco** mundos (−0,0171 a +0,0019), no un promedio que esconde dispersión. Lo enorme es la **convención de puntuación**: sin acreditar el borde, ese mismo eje mueve la captura **−0,4051** (de −0,08 a −0,99 por mundo). Ese efecto aparente no es el horizonte, es decidir que lo comprado y no vendido al cerrar la ventana vale cero.
+
+**El mecanismo es más simple que el experimento.** `capture = (piso − kern) / (piso − techo)`: el castigo de fin de horizonte lo sufren **los dos** términos del numerador, porque el piso es tan ciego al horizonte como Kern. Lo que sobrevive a la resta no es el castigo sino su **diferencia**, que es chica. La columna `terminal` se recolectó justamente para exponer ese artefacto —su docstring dice que está para *"distinguir una decisión mala de un artefacto de medir sobre un horizonte que se acaba"*— y la normalización ya lo había neutralizado antes de que nadie mirara la columna.
+
+**El diseño, y por qué hay que truncar.** Se sortea un mundo de 48 semanas y se lo **trunca** con `dataclasses.replace` —transformación pura, mismo contrato que `shocks.py`, el `rng` no se toca—. Re-sortear con `weeks=24` **no serviría**: `_seasonal_trend_demand` normaliza la tendencia por `max(weeks,1)` y sortea el ruido en un bloque `(n_skus, weeks)`, así que dos mundos de la misma semilla y distinto largo difieren **también en sus primeras 24 semanas**. **El control:** piso y Kern son ciegos al horizonte, así que sus costos sobre la ventana tienen que salir **idénticos** entre las tres fechas de fin. Salen idénticos en las cinco semillas, y el script se planta antes de publicar si alguna vez no lo fueran.
+
+**⚠️ El sesgo que apareció midiendo, y que alcanza a lo ya publicado.** La primera versión acreditaba el borde contando **solo el estante** y daba −0,20. El número no cerraba: el techo con futuro gastaba 39.856 más dentro de la ventana y solo aparecían 14.679 de stock. El resto estaba en la **cañería** — `score_run` cobra `procurement` de toda unidad **ordenada**, arribe o no, y las que siguen viajando al cerrar la ventana están pagadas, no vendidas, y no aparecen en `on_hand_end`. Y el sesgo **no es parejo**: un techo que sabe la fecha de fin deja de ordenar y llega al borde con la cañería vacía (**cero exacto en las cinco semillas**), y uno con futuro llega con ella llena. Medida sobre piso y Kern, la cañería pesa **1,8× el estante**, o sea que `stock_terminal_usd` de `por_que_bajo_el_piso._componentes` se pierde dos tercios del número. La conclusión no cambia —la cañería también se cancela en la normalización—, pero **la sección R3.3 del residuo descansa sobre la mitad chica: queda marcada, no corregida**.
+
+**No existe una convención de borde neutra.** Lo que queda vale su margen futuro, que la ventana no ve: `unit_cost` es cota inferior, `price` cota superior, y la superior **se degenera** justo donde más falta haría —con la fecha de fin conocida el techo llega sin nada que acreditar mientras el piso cobra el suyo a precio de venta, y en la semilla 1003 la vara se da vuelta (span −7.647). Ahí `captura` devuelve `None` y **nunca** un `nan`: un `nan` promediado con `fmean` sale publicado como si fuera una medición. El resumen lleva el conteo de mundos medibles (**4 de 5** en esa fila).
+
+**Consecuencia de producto:** darle horizonte a Kern **ya no se justifica como cerrar un artefacto**. Y la cadena de un cliente real no se acaba, así que apuntarle a la fecha del marcador sería optimizar contra el arnés; la versión desplegable es una fecha de fin **real** por SKU —discontinuación, fin de temporada, cierre de ventana promocional— que el archivo del cliente tiene que traer, con la ausencia declarada. Es la forma de todas las demás capacidades de esta rama, y `launch_readiness` ya netea contra una fecha.
+
+**Verificación:** `tests/test_horizonte_publicado.py`, nuevo: 14 tests. Fija el control en las cinco semillas, que el truncado sea puro, que re-sortear **no** sirva (rojo el día que coincidan), que el borde sea estante más cañería, que la cañería pese más que el estante, que un span degenerado salga `None`, y que el efecto acreditado sea chico **en cada mundo** y menor que el no acreditado. Suite completa **8.856 passed, 32 skipped, 19 deselected, 0 failed**. `ruff check .` limpio.
