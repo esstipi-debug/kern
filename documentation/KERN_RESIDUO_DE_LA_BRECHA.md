@@ -22,10 +22,16 @@ mismo experimento y no una medición nueva que se le parece.
 ## La respuesta corta
 
 El residuo **no es una cosa que Kern hace mal**. Es que una política de punto de reorden
-no tiene noción de horizonte, y **toda palanca que reduce el quiebre empuja el excedente
-al stock terminal**. La palanca más grande con diferencia es el nivel de servicio
-—+18,9 puntos— y es justamente la que Kern hoy **no puede accionar**, porque la lente no
-le da el precio. Y apilar palancas es **peor** que la mejor palanca sola.
+no tiene noción de horizonte, y **toda palanca que reduce el quiebre deja más capital
+pagado y sin vender al cierre**. La palanca más grande con diferencia es el nivel de
+servicio —+18,9 puntos— y es justamente la que Kern hoy **no puede accionar**, porque la
+lente no le da el precio. Y apilar palancas es **peor** que la mejor palanca sola.
+
+> **Corregido el 2026-09-21.** Hasta esa fecha esta sección decía "empuja el excedente al
+> **stock terminal**", y R3.3 sostenía que ese stock sube **monótonamente** con cada
+> palanca. Medido con el número completo —estante **más cañería**— la monotonía es falsa
+> en los **cinco** mundos. Lo que sube monótonamente es el estante, y sube porque las
+> palancas mueven capital *de la cañería al estante*. Detalle en R3.3.
 
 > Sobre 5 mundos, el residuo de -27.6% se mueve a -8.8% con el carril 'servicio_econ' (diagnostico), que mejora en 4 de 5 mundos.
 
@@ -128,11 +134,49 @@ el arranque ya arreglado, la lectura que
 [`KERN_POR_QUE_BAJO_EL_PISO.md`](KERN_POR_QUE_BAJO_EL_PISO.md) había dejado escrita:
 *"todo lo que hace comprar más termina en stock terminal"*.
 
-El mecanismo está en una sola columna. El stock terminal sube monótonamente con cada
-palanca: kern 9.209 → sigma_obs 13.773 → proveedor_medido 19.026 → servicio_econ 22.794
-→ **todo 33.435**, contra 7.525 del piso y **0** del techo. Y `todo` compra **3.763
-unidades cuando el oráculo, con información perfecta, compra 3.172**. Comprar más que el
-oráculo es la definición de comprar de más.
+### El mecanismo, re-medido con el número completo
+
+Este párrafo decía *"el mecanismo está en una sola columna: el stock terminal sube
+monótonamente con cada palanca"*. **Era un artefacto de medir media columna.**
+
+`score_run` cobra `procurement` de toda unidad **ordenada**, arribe o no dentro del
+horizonte, así que el capital que quedó pagado y sin vender al cierre son **dos** cosas:
+el **estante** (`on_hand_end`) y la **cañería** (lo ordenado menos lo recibido, que sigue
+viajando). `stock_terminal_usd` medía solo la primera, y la segunda pesa más.
+
+| carril | estante | cañería | **pagado y sin vender** | cañería/estante |
+|---|---:|---:|---:|---:|
+| techo | 0 | **0** | **0** | — |
+| piso | 7.525 | 17.492 | 25.017 | 2,3 |
+| **kern** | 9.209 | 21.230 | **30.440** | 2,3 |
+| sigma_obs | 13.773 | 18.032 | 31.805 | 1,3 |
+| plazo_obs | 14.551 | 20.961 | 35.511 | 1,4 |
+| proveedor_medido | 19.026 | 20.090 | 39.116 | 1,1 |
+| servicio_econ | 22.794 | 11.155 | **33.949** | **0,5** |
+| todo | 33.435 | 18.315 | **51.751** | **0,5** |
+
+**Lo que se cae:** la monotonía. En el orden publicado, el número completo va
+30.440 → 31.805 → 39.116 → **33.949** → 51.751: `servicio_econ`, la palanca **más
+grande** (+18,9 puntos de captura), deja **menos** capital inmovilizado que
+`proveedor_medido` (+4,9). Y no es el promedio escondiendo dispersión — con el número
+completo la secuencia no es monótona en **0 de 5** mundos, mientras que el estante solo
+lo es en 4 de 5 y en la media.
+
+**Por qué el estante engañaba**, que es el hallazgo real: mirá la última columna. Las
+palancas grandes bajan la razón cañería/estante de **2,3 a 0,5**. Un nivel de servicio
+más alto compra **antes y más**, así que al cerrar el horizonte eso ya aterrizó en vez de
+seguir viajando. El estante subía monótonamente porque las palancas **mueven capital de
+la cañería al estante**, no porque el total suba de forma ordenada.
+
+**Lo que sobrevive, más débil de lo publicado:** toda palanca deja más capital pagado y
+sin vender que el control —de +1.365 (`sigma_obs`) a +21.311 (`todo`)—, pero ni eso es
+universal: tres de las cuatro quedan **por debajo** del control en 1 de 5 mundos.
+`proveedor_medido` es la única que sube en los cinco.
+
+**Lo que no se toca:** `todo` compra **3.763 unidades cuando el oráculo, con información
+perfecta, compra 3.172**. Esa afirmación es sobre unidades pedidas, no sobre el cierre, y
+es la mitad fuerte del argumento. Comprar más que el oráculo es la definición de comprar
+de más.
 
 ## Lo que esto dice que hay que hacer
 
@@ -162,6 +206,9 @@ residuo y por qué; no mide que una política con horizonte sí lo cerraría.
   por igual los dos términos de `piso − kern` y se cancela en la normalización. Ese
   documento también encuentra que la columna `terminal` de acá cuenta **solo el estante**
   y se pierde la cañería, que pesa 1,8× más.
+- **La monotonía del cierre ya no se afirma** (R3.3, corregido el 2026-09-21). La
+  columna `terminal` de la tabla de R1 sigue siendo el **estante**: para el capital total
+  inmovilizado hay que leer la tabla de R3.3.
 - **No toca la asignación entre SKU** como hipótesis propia. La razón crítica por SKU
   la aproxima —reasigna buffer según la economía de cada uno— pero no aísla "el mismo
   dinero, repartido mejor" de "más dinero".

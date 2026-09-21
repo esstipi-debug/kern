@@ -167,9 +167,12 @@ def test_la_canieria_no_es_un_detalle(datos):
 def test_el_documento_cuenta_el_sesgo_que_aparecio_midiendo(doc):
     assert "cero exacto en las cinco semillas" in doc
     assert "1,8x el estante" in doc.replace("×", "x")
-    # Y lo que deja MARCADO sin corregir, que es la otra mitad de la honestidad.
+    # Y que nombra la afirmacion ajena que el defecto alcanzaba -- mas que la nombra:
+    # la mando a medir, y el resultado vive en este mismo documento.
     assert "R3.3" in doc
-    assert "no esta medido" in doc.replace("está", "esta")
+    assert "la monotonia es falsa" in doc.replace("í", "i")
+    # Lo que NO se re-midio tambien se declara, que es la otra mitad de la honestidad.
+    assert "Esa linea base no se regrabo" in doc.replace("í", "i").replace("ó", "o")
 
 
 # ---------------------------------------------------------------------------

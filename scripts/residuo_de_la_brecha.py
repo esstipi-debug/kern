@@ -217,7 +217,8 @@ def medir(semillas=SEMILLAS) -> dict:
         c: {
             campo: _media(filas, c, campo)
             for campo in ("capture", "fill", "shortage", "procurement", "holding",
-                          "fixed", "total", "unidades_pedidas", "stock_terminal_usd")
+                          "fixed", "total", "unidades_pedidas", "stock_terminal_usd",
+                          "canieria_usd", "pagado_no_vendido_usd")
         }
         for c in carriles
     }

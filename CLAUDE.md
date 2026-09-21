@@ -397,9 +397,13 @@ horizonte).
 (`scripts/residuo_de_la_brecha.py`, mismos cinco mundos; el carril de control sale
 IDENTICO al ultimo digito al `kern` de la linea base anterior, asi que es el mismo
 experimento). No es una cosa que Kern haga mal: **toda palanca que baja el quiebre
-empuja el excedente al stock terminal**, que sube monotonamente con cada una (kern
-9.209 -> servicio_econ 22.794 -> todo 33.435, contra 0 del techo) hasta que el carril
-que las apila compra MAS unidades que el oraculo con informacion perfecta. Tres cosas
+deja mas capital pagado y sin vender al cierre** (kern 30.440 -> todo 51.751, contra 0 del
+techo) hasta que el carril que las apila compra MAS unidades que el oraculo con
+informacion perfecta. **Ese cierre NO sube monotonamente**: hasta el 2026-09-21 R3.3 decia
+que si, medido sobre el estante solo, y con el numero completo la monotonia es falsa en
+los CINCO mundos -- `servicio_econ`, la palanca mas grande, deja MENOS inmovilizado que
+una cuatro veces mas chica. Lo que sube es el estante, porque las palancas mueven capital
+de la canieria al estante (razon 2,3 -> 0,5). Tres cosas
 que la medicion dijo y no eran obvias: la palanca grande es el **nivel de servicio**
 (+18,9 puntos, la razon critica de esta economia es 0,998 y no 0,95) y es la unica que
 Kern hoy NO puede accionar -- la lente exporta `unit_cost` y no precio, asi que es una
@@ -429,9 +433,15 @@ antes de publicar -- es que piso y Kern salgan IDENTICOS al mover la fecha de fi
 toda unidad ORDENADA, asi que lo pagado y no vendido es `on_hand_end` MAS
 `ordenado - recibido`, y el sesgo es asimetrico: un techo que sabe la fecha de fin llega con
 la canieria vacia y uno con futuro llega con ella llena. La canieria pesa **1,8x el
-estante**, o sea que `stock_terminal_usd` (de `por_que_bajo_el_piso._componentes`, que mide
-solo `on_hand_end`) se pierde dos tercios del numero, y la monotonia de R3.3 del residuo
-descansa sobre esa mitad chica: **queda marcada, no re-medida**. Tampoco existe una
+estante**, o sea que `stock_terminal_usd` (de `por_que_bajo_el_piso._componentes`) se
+perdia dos tercios del numero. `_componentes` gana `canieria_usd` y
+`pagado_no_vendido_usd` **sin redefinir `stock_terminal_usd`** -- ese campo mide el estante
+y eso es lo que su nombre dice; no estaba mal, estaba incompleto para la pregunta que se le
+hacia. La linea base del residuo se regrabo y **ningun campo preexistente cambio de valor**
+(resumen y por semilla), que es el control de que es el mismo experimento. Lo que NO se
+regrabo es `por_que_bajo_el_piso*.json`, y ese documento apoya cuatro afirmaciones en la
+misma columna incompleta -- entre ellas "el dinero extra termina en stock terminal: 26.191
+contra 7.525". Tampoco existe una
 convencion de borde neutra -- `unit_cost` es cota inferior y `price` cota superior, y la
 superior se DEGENERA (piso acreditado mas barato que el techo, span negativo): ahi
 `captura` devuelve `None` y **nunca** un `nan`, porque un `nan` promediado sale publicado

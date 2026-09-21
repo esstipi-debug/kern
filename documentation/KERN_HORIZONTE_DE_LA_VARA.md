@@ -140,13 +140,24 @@ que lo que sigue viajando es lo ordenado menos lo recibido.
 
 **Esto alcanza a la línea base anterior.** `stock_terminal_usd` en
 `residuo_de_la_brecha.json` y en los `por_que_bajo_el_piso*.json` sale de
-`por_que_bajo_el_piso._componentes`, que mide `outs[-1].on_hand_end` — el estante y nada
+`por_que_bajo_el_piso._componentes`, que medía `outs[-1].on_hand_end` — el estante y nada
 más. Medida sobre piso y Kern en estos mundos, la cañería es **1,8× el estante**
-(18.407 contra 10.061), o sea que la columna publicada se pierde cerca de dos tercios de
+(18.407 contra 10.061), o sea que la columna publicada se perdía cerca de dos tercios de
 lo pagado y no vendido. La conclusión del camino 1 no cambia por eso (la cañería también
 viaja en los dos términos del numerador), pero **la sección R3.3 de aquel documento
-—"el stock terminal sube monótonamente con cada palanca"— está medida sobre la mitad
-chica del número**, y si la monotonía sobrevive con el total no está medido.
+—"el stock terminal sube monótonamente con cada palanca"— estaba medida sobre la mitad
+chica del número**.
+
+**Medido después, el 2026-09-21, y la monotonía es falsa.** `_componentes` gana
+`canieria_usd` y `pagado_no_vendido_usd` —sin redefinir `stock_terminal_usd`, que mide el
+estante y eso es lo que su nombre dice— y la línea base del residuo se regrabó. Control:
+**los 0 campos que ya existían cambiaron de valor**, resumen y por semilla, así que es el
+mismo experimento con una lente más completa. Con el número completo la secuencia
+publicada no es monótona en **ninguno de los cinco mundos**, y la palanca más grande
+(`servicio_econ`, +18,9 puntos) deja **menos** capital inmovilizado que una cuatro veces
+más chica. El estante subía porque las palancas **mueven capital de la cañería al
+estante**: la razón cañería/estante cae de 2,3 a 0,5. Detalle en
+[R3.3 del residuo](KERN_RESIDUO_DE_LA_BRECHA.md).
 
 ## H5 · Por qué la cota superior no sostiene sola ninguna conclusión
 
@@ -189,5 +200,8 @@ capacidades de esta rama, y `launch_readiness` ya netea contra una fecha.
 - **No dice que una política con horizonte no sirva.** Dice que su justificación no puede
   ser el artefacto de medición. Cuánto ganaría una política con una fecha de fin real
   sigue sin medirse.
-- **No revisa la monotonía del stock terminal de R3.3** con el número completo. La
-  afirmación publicada descansa sobre el estante solo, y queda marcada, no corregida.
+- **No revisó la monotonía del stock terminal de R3.3** — eso se midió después, el
+  2026-09-21, y está en H4: la monotonía es falsa en los cinco mundos.
+- **No alcanza a `KERN_POR_QUE_BAJO_EL_PISO.md`**, que apoya cuatro afirmaciones en la
+  misma columna incompleta (entre ellas *"el dinero extra termina en stock terminal:
+  $26.191 contra $7.525"*). Esa línea base no se regrabó.

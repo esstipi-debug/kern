@@ -137,11 +137,33 @@ def _politica_de_kern(world: World, outcomes: list[WeekOutcome], *, seed: int,
 def _componentes(world: World, outs: list[WeekOutcome]) -> dict:
     """El costo del carril abierto por componente, mas lo que hace falta para leerlo.
 
-    `terminal` no es un componente del costo: es el valor de compra del stock que queda
-    al cierre del horizonte. Se mide porque el oraculo sabe cuando termina la corrida y
-    lo deja en cero, y ninguna politica puede -- es la parte de la brecha contra el
-    techo que NO es una decision mala sino un artefacto de medir sobre un horizonte que
-    se acaba. Sin el numero no se puede distinguir una cosa de la otra.
+    Ninguno de los tres cierres es un componente del costo: son el valor de compra de lo
+    que quedo PAGADO Y SIN VENDER al terminar el horizonte. Se miden porque el oraculo
+    sabe cuando termina la corrida y los deja en cero, y ninguna politica de punto de
+    reorden puede -- es la parte de la brecha contra el techo que NO es una decision
+    mala sino un artefacto de medir sobre un horizonte que se acaba.
+
+    Son TRES y no uno, y confundirlos fue un defecto real de esta misma linea base:
+
+    - `stock_terminal_usd` es el ESTANTE (`on_hand_end` de la ultima semana). Es lo que
+      su nombre dice y no cambia de significado; lo que cambia es que ya no se lo usa
+      solo para contestar una pregunta que no puede contestar.
+    - `canieria_usd` es lo que sigue VIAJANDO. `score_run` cobra `procurement` de toda
+      unidad ORDENADA, arribe o no dentro del horizonte, asi que esas unidades estan
+      pagadas, no vendidas, y NO aparecen en `on_hand_end`. Se reconstruye por identidad
+      de flujo -- `initial_state` arranca sin nada en transito, de modo que lo que sigue
+      en camino es lo ordenado menos lo recibido.
+    - `pagado_no_vendido_usd` es la suma, y es el numero que hay que leer cuando la
+      pregunta es "cuanto capital quedo sin convertirse en venta". Medido sobre estos
+      mundos la canieria pesa mas que el estante, asi que mirar solo el estante se
+      pierde la mayor parte -- y el sesgo NO es parejo entre carriles: un techo que sabe
+      la fecha de fin deja de ordenar y llega con la canieria vacia, y cualquier politica
+      que siga pidiendo hasta la ultima semana llega con ella llena.
+
+    Medirlos por separado es lo que permite decir cual de los tres sostiene una
+    afirmacion: `documentation/KERN_HORIZONTE_DE_LA_VARA.md` encontro el defecto y
+    `KERN_RESIDUO_DE_LA_BRECHA.md` R3.3 es la afirmacion que descansaba sobre el
+    incompleto.
     """
     uc = np.array([s.unit_cost for s in world.skus], dtype=float)
     price = np.array([s.price for s in world.skus], dtype=float)
@@ -156,6 +178,16 @@ def _componentes(world: World, outs: list[WeekOutcome]) -> dict:
     tercio = max(1, len(outs) // 3)
     por_tercio = [float(pedido[:, i:i + tercio].sum()) for i in range(0, len(outs), tercio)]
 
+    recibido = np.stack([o.received for o in outs], axis=1)
+    _en_camino = pedido.sum(axis=1) - recibido.sum(axis=1)
+    if np.any(_en_camino < -1e-9):
+        raise AssertionError(
+            f"canieria negativa: se recibio mas de lo ordenado {_en_camino!r}; la "
+            "identidad de flujo no se cumple y el cierre del horizonte seria falso"
+        )
+    _estante = float((outs[-1].on_hand_end * uc).sum())
+    _canieria = float((_en_camino * uc).sum())
+
     return {
         "procurement": float((pedido * uc[:, None]).sum()),
         "holding": float((estante * holding_semanal[:, None]).sum()),
@@ -165,7 +197,11 @@ def _componentes(world: World, outs: list[WeekOutcome]) -> dict:
         "fill": float(vendido.sum() / demanda.sum()) if demanda.sum() else 1.0,
         "unidades_pedidas": float(pedido.sum()),
         "eventos_de_orden": int((pedido > 0).sum()),
-        "stock_terminal_usd": float((outs[-1].on_hand_end * uc).sum()),
+        "stock_terminal_usd": _estante,
+        "canieria_usd": _canieria,
+        "pagado_no_vendido_usd": _estante + _canieria,
+        "unidades_estante": float(outs[-1].on_hand_end.sum()),
+        "unidades_canieria": float(_en_camino.sum()),
         "unidades_por_tercio": por_tercio[:3],
     }
 

@@ -194,18 +194,88 @@ def test_apilar_palancas_es_PEOR_que_la_mejor_sola_y_el_documento_lo_dice(datos,
     assert "Apilar palancas es peor" in doc
 
 
-def test_el_mecanismo_es_el_stock_terminal_y_es_monotono(datos, doc):
-    """La explicacion no es una narracion: es una columna que sube en el mismo orden en
-    que las palancas mejoran el quiebre. Si dejara de ser monotona, la explicacion del
-    documento seria una coincidencia y no un mecanismo."""
+#: El orden en el que R3.3 publica las palancas. La afirmacion original era que el cierre
+#: sube monotonamente EN ESTE ORDEN; con el numero completo no lo hace en ningun mundo.
+ORDEN_R3_3 = ["kern", "sigma_obs", "proveedor_medido", "servicio_econ", "todo"]
+
+
+def test_el_cierre_del_horizonte_cierra_estante_mas_canieria(datos):
+    """La identidad que hace legible todo lo demas.
+
+    `score_run` cobra `procurement` de toda unidad ORDENADA, asi que el capital pagado y
+    sin vender al cierre son DOS cosas y no una. Si dejaran de sumar, alguna de las tres
+    columnas estaria midiendo otra cosa.
+    """
+    for donde in (datos["resumen"], *datos["por_semilla"]):
+        for carril, v in donde.items():
+            if not isinstance(v, dict) or "pagado_no_vendido_usd" not in v:
+                continue
+            assert v["pagado_no_vendido_usd"] == pytest.approx(
+                v["stock_terminal_usd"] + v["canieria_usd"]
+            ), f"{carril}: el cierre no cierra"
+
+
+def test_la_monotonia_del_cierre_es_FALSA_con_el_numero_completo(datos, doc):
+    """El guard de regresion de la correccion del 2026-09-21.
+
+    Hasta esa fecha R3.3 afirmaba que "el stock terminal sube monotonamente con cada
+    palanca" y lo presentaba como EL mecanismo. Medido con estante mas canieria, no sube
+    monotonamente en ningun mundo. Este test existe para que nadie vuelva a escribir la
+    version vieja sin volver a medir: si algun dia el numero completo SI fuera monotono,
+    se pone rojo y hay que reescribir la seccion -- que es exactamente lo que se quiere.
+    """
     r = datos["resumen"]
-    orden = ["kern", "sigma_obs", "proveedor_medido", "servicio_econ", "todo"]
-    terminales = [r[c]["stock_terminal_usd"] for c in orden]
-    assert terminales == sorted(terminales), (
-        f"el stock terminal dejo de subir con cada palanca: {dict(zip(orden, terminales))}"
+    completo = [r[c]["pagado_no_vendido_usd"] for c in ORDEN_R3_3]
+    assert completo != sorted(completo), (
+        f"el cierre completo volvio a ser monotono: {dict(zip(ORDEN_R3_3, completo))}; "
+        "R3.3 afirma lo contrario y hay que re-escribirla"
     )
-    assert r["techo"]["stock_terminal_usd"] == pytest.approx(0.0, abs=1.0)
-    # Y el remate: `todo` compra MAS que el oraculo, que tiene informacion perfecta.
+
+    monotonos = sum(
+        1 for f in datos["por_semilla"]
+        if (v := [f[c]["pagado_no_vendido_usd"] for c in ORDEN_R3_3]) == sorted(v)
+    )
+    assert monotonos == 0, (
+        f"el cierre completo es monotono en {monotonos}/5 mundos; el documento publica 0"
+    )
+    assert "en 0 de 5" in doc.replace("**", "")
+
+    # La palanca MAS grande deja MENOS inmovilizado que una mucho mas chica: ese es el
+    # contraejemplo concreto que el documento cita, y sin el la seccion no se sostiene.
+    assert r["servicio_econ"]["pagado_no_vendido_usd"] < r["proveedor_medido"]["pagado_no_vendido_usd"]
+
+
+def test_el_ESTANTE_si_es_monotono_y_el_documento_explica_por_que(datos, doc):
+    """La otra mitad: la afirmacion vieja no era un error de lectura, el estante SI sube.
+
+    Lo que fallaba era tomarlo por el total. El mecanismo real es que las palancas mueven
+    capital de la canieria al estante -- la razon canieria/estante cae de 2,3 a 0,5 --, y
+    si esa caida dejara de ocurrir la explicacion del documento seria otra.
+    """
+    r = datos["resumen"]
+    estantes = [r[c]["stock_terminal_usd"] for c in ORDEN_R3_3]
+    assert estantes == sorted(estantes), (
+        f"el estante dejo de subir: {dict(zip(ORDEN_R3_3, estantes))}; el documento "
+        "explica la monotonia vieja como una propiedad del estante"
+    )
+    razon = lambda c: r[c]["canieria_usd"] / r[c]["stock_terminal_usd"]  # noqa: E731
+    assert razon("kern") > 2.0 > razon("servicio_econ"), (
+        "la razon canieria/estante dejo de caer con las palancas grandes; sin eso, que "
+        "el estante suba y el total no es una coincidencia y no un mecanismo"
+    )
+    assert "mueven capital" in doc
+
+
+def test_el_techo_no_deja_nada_pagado_y_sin_vender(datos):
+    r = datos["resumen"]["techo"]
+    assert r["stock_terminal_usd"] == pytest.approx(0.0, abs=1.0)
+    assert r["canieria_usd"] == pytest.approx(0.0, abs=1.0)
+
+
+def test_comprar_mas_que_el_oraculo_sigue_en_pie(datos, doc):
+    """La mitad FUERTE del argumento, que la correccion no toca: es sobre unidades
+    pedidas, no sobre el cierre del horizonte."""
+    r = datos["resumen"]
     assert r["todo"]["unidades_pedidas"] > r["techo"]["unidades_pedidas"]
     assert "Comprar más que el oráculo" in doc
 
