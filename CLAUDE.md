@@ -408,6 +408,42 @@ proveedor con las propias recepciones vale poco y **empeora en 3 de 5 mundos**; 
 **apilar palancas es peor que la mejor palanca sola**. Lo que el residuo pide no es mas
 buffer sino nocion de horizonte, y eso NO esta medido.
 
+### Y esa nocion de horizonte NO era la deuda que parecia (`src/simworld`, la vara)
+[`documentation/KERN_HORIZONTE_DE_LA_VARA.md`](documentation/KERN_HORIZONTE_DE_LA_VARA.md)
+(`scripts/horizonte_de_la_vara.py`). El techo es un Wagner-Whitin sobre `horizon =
+world.weeks`: sabe la fecha de fin y llega al borde sin nada pagado y sin vender -- cero
+exacto en las cinco semillas --, asi que sonaba a que parte del -27,6 % era artefacto de
+medir. **No lo es.** Se mide moviendo la fecha de fin con la demanda CONGELADA: un mundo de
+48 semanas TRUNCADO con `dataclasses.replace` (transformacion pura, mismo contrato que
+`shocks.py`). Re-sortear con `weeks=24` NO sirve: `_seasonal_trend_demand` normaliza la
+tendencia por `max(weeks,1)` y sortea el ruido en un bloque `(n_skus, weeks)`, asi que dos
+mundos de la misma semilla y distinto largo difieren **tambien en sus primeras 24 semanas**.
+Con el borde acreditado, darle al techo 24 semanas de futuro mueve la captura **-0,0054**
+(chico en los CINCO mundos); sin acreditarlo el mismo eje se mueve **-0,4051**, y esa
+diferencia entera es la convencion de puntuacion. El mecanismo: `capture` se normaliza
+contra el PISO, que tambien es ciego al horizonte, asi que el castigo viaja en los dos
+terminos de `piso - kern` y se cancela. El control que lo sostiene -- y que el script exige
+antes de publicar -- es que piso y Kern salgan IDENTICOS al mover la fecha de fin.
+
+**El credito de borde tiene que incluir la CANIERIA.** `score_run` cobra `procurement` de
+toda unidad ORDENADA, asi que lo pagado y no vendido es `on_hand_end` MAS
+`ordenado - recibido`, y el sesgo es asimetrico: un techo que sabe la fecha de fin llega con
+la canieria vacia y uno con futuro llega con ella llena. La canieria pesa **1,8x el
+estante**, o sea que `stock_terminal_usd` (de `por_que_bajo_el_piso._componentes`, que mide
+solo `on_hand_end`) se pierde dos tercios del numero, y la monotonia de R3.3 del residuo
+descansa sobre esa mitad chica: **queda marcada, no re-medida**. Tampoco existe una
+convencion de borde neutra -- `unit_cost` es cota inferior y `price` cota superior, y la
+superior se DEGENERA (piso acreditado mas barato que el techo, span negativo): ahi
+`captura` devuelve `None` y **nunca** un `nan`, porque un `nan` promediado sale publicado
+como si fuera una medicion.
+
+Consecuencia de producto: **darle horizonte a Kern ya no se justifica como cerrar un
+artefacto**. Y la cadena de un cliente real no se acaba, asi que apuntarle a la fecha del
+marcador seria optimizar contra el arnes; la version desplegable es una fecha de fin REAL
+por SKU (discontinuacion, fin de temporada, cierre de ventana promocional) que el archivo
+del cliente tiene que traer, con la ausencia declarada -- la forma de todas las demas
+capacidades de esta rama, y `launch_readiness` ya netea contra una fecha.
+
 ### Lo que el agente acepta y tira en silencio (`tests/test_overrides_no_se_tiran.py`)
 Midiendo el residuo aparecio un defecto que vale por si mismo: `scm_agent/tools.py`
 aceptaba `lead_time_stds` y **no lo reenviaba** al job, asi que toda corrida por el

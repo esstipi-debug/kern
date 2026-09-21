@@ -155,7 +155,13 @@ residuo y por qué; no mide que una política con horizonte sí lo cerraría.
   que se paga en stock muerto.
 - **No diagnostica el efecto de fin de horizonte por separado.** Castiga a cualquier
   política contra un oráculo que sabe cuándo termina la corrida, y por eso parte del
-  residuo es de la vara y no de Kern. Cuánta parte queda abierto.
+  residuo podría ser de la vara y no de Kern. **Medido después, y la respuesta es que no
+  lo es:** [`KERN_HORIZONTE_DE_LA_VARA.md`](KERN_HORIZONTE_DE_LA_VARA.md) mueve la fecha
+  de fin del mundo con la demanda congelada y, con el borde de la ventana acreditado, la
+  captura de Kern se mueve **−0,0054** — el 2,0 % de este residuo. El castigo lo sufren
+  por igual los dos términos de `piso − kern` y se cancela en la normalización. Ese
+  documento también encuentra que la columna `terminal` de acá cuenta **solo el estante**
+  y se pierde la cañería, que pesa 1,8× más.
 - **No toca la asignación entre SKU** como hipótesis propia. La razón crítica por SKU
   la aproxima —reasigna buffer según la economía de cada uno— pero no aísla "el mismo
   dinero, repartido mejor" de "más dinero".
