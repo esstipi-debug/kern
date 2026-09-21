@@ -7,8 +7,8 @@ El cuerpo de un PR de GitHub topea en **65.536 caracteres**, y esta rama lo alca
 decimonovena entrega: quedó en 65.227, o sea 309 de margen, y la vigésima no entraba. Este
 documento es la mitad vieja de ese historial, movida acá para que las siguientes entren.
 
-**Qué hay acá:** las entregas **segunda a decimosexta**, verbatim y en orden cronológico
-—de los términos del proveedor hasta el arranque muerto—. No se resumió nada al mudarlas:
+**Qué hay acá:** las entregas **segunda a decimoséptima**, verbatim y en orden cronológico
+—de los términos del proveedor hasta el residuo de la brecha—. No se resumió nada al mudarlas:
 un historial que se resume cuando se archiva deja de ser un historial.
 
 **Qué NO hay acá, y dónde está:**
@@ -16,7 +16,7 @@ un historial que se resume cuando se archiva deja de ser un historial.
 | | dónde |
 |---|---|
 | Primera entrega (el quinto sombrero, `transporte`) | el cuerpo del PR, como marco: *Qué problema cierra*, *El modelo*, *El quinto sombrero es condicional*, *Cambio de comportamiento*, *Alcance*, *Verificación* |
-| Decimoséptima a decimonovena | el cuerpo del PR |
+| Decimoctava a vigésima | el cuerpo del PR |
 | Verificación de la rama completa, estado del diseño de las cuatro brechas y los dos anexos | el cuerpo del PR |
 
 **La regla, para que el cuerpo del PR no se vuelva a llenar:** lleva las **tres últimas**
@@ -260,3 +260,15 @@ Entre `MIN_PERIODS_FOR_COVER` (2) y 6 períodos sale una **cobertura provisional
 **⚠️ Cambio de comportamiento.** Un cliente con un SKU de entre dos y cinco períodos empieza a recibir un número donde antes recibía silencio. Sale como OPCIÓN con su residual, nunca como algo que Kern ya decidió.
 
 **Verificación:** `tests/test_cobertura_provisional.py`, nuevo: 27 tests. Cuatro archivos adaptados **por intención**, no por sustitución ciega — `test_insufficient_history.py` cambia el contrato que afirmaba (`..._is_refused` → `no_length_below_the_threshold_produces_a_POLICY`, con las dos formas y sin lote ni buffer en ninguna), y `test_negativa_no_es_cero.py` pasa a dos series con nombre porque una negativa entera necesita hoy UN período. Suite completa **8.802 passed, 32 skipped, 19 deselected, 0 failed**. `ruff check .` limpio.
+
+## Decimoséptima entrega: el residuo de la brecha, diagnosticado (`58f5eed`, `4fef196`)
+
+`documentation/KERN_RESIDUO_DE_LA_BRECHA.md`, sobre los MISMOS cinco mundos: **el carril de control sale idéntico al último dígito** (`-0.27623947911345204`) al de la línea base anterior, así que es el mismo experimento y no una medición nueva que se le parece.
+
+**El residuo no es una cosa que Kern haga mal.** Es que un punto de reorden no tiene noción de horizonte, y **toda palanca que baja el quiebre empuja el excedente al stock terminal** — que sube monótonamente con cada una (kern 9.209 → sigma_obs 13.773 → proveedor_medido 19.026 → servicio_econ 22.794 → **todo 33.435**, contra 0 del techo) hasta que el carril que las apila compra **3.763 unidades cuando el oráculo, con información perfecta, compra 3.172**.
+
+**Tres cosas que no eran obvias.** (1) La palanca grande es el **nivel de servicio** (−27,6 % → **−8,8 %**, +18,9 puntos), no el plazo (+2,4 a +5,0): la razón crítica de esta economía es **0,9976**, no 0,95 — y es la única que Kern hoy **no puede accionar**, porque la lente exporta `unit_cost` y no precio; `jobs/intake.py` sí sabe leer `revenue`, así que es una brecha de **canal, no de motor**. (2) **Medir mejor al proveedor con las propias recepciones ayuda poco y no es confiable**: empeora en **3 de 5** mundos. (3) **Apilar palancas es peor que la mejor sola** (−18,6 % contra −8,8 %), con la varianza explotando de +0,1106 a −0,3029. Lo que el residuo pide no es más buffer sino **noción de horizonte** — y el documento declara que **no lo midió**.
+
+**El defecto que apareció al medir.** El primer carril, el que le pasa a Kern la dispersión del plazo observada en sus propias recepciones, salía **idéntico dígito por dígito** al de control. No era el modelo: `jobs/inventory_optimization.run` acepta `lead_time_stds` y `scm_agent/tools.py` **nunca lo reenviaba**. Sin error y sin aviso: la política salía dimensionada como si el proveedor no fallara nunca —`σ_L² · μ_d²` es el término **dominante** del período de riesgo— con el entregable diciendo igual *"95 % service level"*. Con `lead_time_stds={"A": 3.0}` el buffer pasa de **11,9 a 238,4** llamando al job, y quedaba en 11,9 por el orquestador. Es el defecto de la rama **al revés**: en la negativa-como-cero la prosa avisaba y el número mentía; acá la prosa ya decía *"defaulted to 0"* y lo que fallaba era la cañería.
+
+**Verificación:** `tests/test_residuo_publicado.py` (14) y `tests/test_overrides_no_se_tiran.py`, nuevos. Suite completa **8.819 passed, 0 failed**.
