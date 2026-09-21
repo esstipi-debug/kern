@@ -7,8 +7,8 @@ El cuerpo de un PR de GitHub topea en **65.536 caracteres**, y esta rama lo alca
 decimonovena entrega: quedó en 65.227, o sea 309 de margen, y la vigésima no entraba. Este
 documento es la mitad vieja de ese historial, movida acá para que las siguientes entren.
 
-**Qué hay acá:** las entregas **segunda a decimoséptima**, verbatim y en orden cronológico
-—de los términos del proveedor hasta el residuo de la brecha—. No se resumió nada al mudarlas:
+**Qué hay acá:** las entregas **segunda a decimoctava**, verbatim y en orden cronológico
+—de los términos del proveedor hasta los once hechos del cliente—. No se resumió nada al mudarlas:
 un historial que se resume cuando se archiva deja de ser un historial.
 
 **Qué NO hay acá, y dónde está:**
@@ -16,7 +16,7 @@ un historial que se resume cuando se archiva deja de ser un historial.
 | | dónde |
 |---|---|
 | Primera entrega (el quinto sombrero, `transporte`) | el cuerpo del PR, como marco: *Qué problema cierra*, *El modelo*, *El quinto sombrero es condicional*, *Cambio de comportamiento*, *Alcance*, *Verificación* |
-| Decimoctava a vigésima | el cuerpo del PR |
+| Decimonovena a vigesimoprimera | el cuerpo del PR |
 | Verificación de la rama completa, estado del diseño de las cuatro brechas y los dos anexos | el cuerpo del PR |
 
 **La regla, para que el cuerpo del PR no se vuelva a llenar:** lleva las **tres últimas**
@@ -272,3 +272,19 @@ Entre `MIN_PERIODS_FOR_COVER` (2) y 6 períodos sale una **cobertura provisional
 **El defecto que apareció al medir.** El primer carril, el que le pasa a Kern la dispersión del plazo observada en sus propias recepciones, salía **idéntico dígito por dígito** al de control. No era el modelo: `jobs/inventory_optimization.run` acepta `lead_time_stds` y `scm_agent/tools.py` **nunca lo reenviaba**. Sin error y sin aviso: la política salía dimensionada como si el proveedor no fallara nunca —`σ_L² · μ_d²` es el término **dominante** del período de riesgo— con el entregable diciendo igual *"95 % service level"*. Con `lead_time_stds={"A": 3.0}` el buffer pasa de **11,9 a 238,4** llamando al job, y quedaba en 11,9 por el orquestador. Es el defecto de la rama **al revés**: en la negativa-como-cero la prosa avisaba y el número mentía; acá la prosa ya decía *"defaulted to 0"* y lo que fallaba era la cañería.
 
 **Verificación:** `tests/test_residuo_publicado.py` (14) y `tests/test_overrides_no_se_tiran.py`, nuevos. Suite completa **8.819 passed, 0 failed**.
+
+## Decimoctava entrega: once hechos del cliente que el agente tiraba en silencio (`6b2de29`)
+
+El guard que nació con `lead_time_stds` cubría **un** tool. Generalizado a los 60 —recorriendo por AST toda llamada a `jobs.*` dentro de `scm_agent/tools.py`— la auditoría dio **86 parámetros sin reenviar**, y **once eran hechos del cliente**. Cada uno reproducido en las **dos** direcciones antes de tocar nada: que no llega por el orquestador, y que si llegara mueve un campo del reporte. Un parámetro que no llega pero tampoco cambia nada no vale una línea, y esa mitad es la que separa un defecto de una perilla que nadie quiso exponer.
+
+**El más caro: el mapeo explícito de columnas.** `intake.detect_columns` acepta `overrides` con la precedencia **más alta** —"mi columna `bultos_despachados` ES la cantidad"—, distinto de `column_aliases`, que es un vocabulario y sí se exponía. Sin él, un export cuya columna de cantidad la tabla no conoce salía `needs_data` y **no había forma de contestarle desde afuera**: el operador leía "falta la columna cantidad" sobre un archivo que la tiene, con otro nombre. Va a los **tres** lectores del mismo archivo, porque si no se arregla la demanda y se sigue sin poder nombrar la columna de stock.
+
+Los otros diez, con lo que costaba cada uno: `service_level_by_class` (el override de los packs verticales, en tres YAML — y el docstring del propio job cuenta que este mismo drop ya se arregló una capa más abajo); `units_sold` (sin denominador, `return_rate_by_reason` **no se calcula**, o sea que el número por el que se corre ese tool salía `None` sobre todo archivo); `stockout_periods`/`total_periods` (sin los dos, `stockout_rate` es `None`); `counts_per_year`; `as_of` y `today` (sin ellos la única respuesta posible era "hoy", y un operador que reconcilia el cierre del trimestre pasado no tenía cómo pedirlo); `now`; y `default_unit_cost` —el gemelo de `default_lead_days`, que sí se pasaba—, donde el 1,0 por omisión no es un costo sino un marcador que multiplica toda cifra de inversión.
+
+**Una fecha que cruza la frontera JSON** se parsea en un solo lugar y una ilegible **levanta** nombrando la clave: el reloj como fallback silencioso convertiría un typo en un reporte fechado hoy que dice estar fechado en otro lado, y fechar mal un análisis de envejecimiento es la clase de error que nadie encuentra leyendo el entregable.
+
+**⚠️ Un hallazgo que NO se arregla acá, y el test lo deja visible.** `nosilo_core.writeback` garantiza que *"the same idempotency_key never lands twice"*, y el default de `channel_replenishment_job.run` es la **constante** `"channel-replenish-1"`, que `_channel_run` nunca pisaba: la **segunda** reposición legítima de un cliente choca contra la primera y no aterriza. Poder pasar la clave es la mitad del arreglo; que el default no deba ser una constante compartida por todos los clientes y todas las corridas es una decisión de diseño sobre las claves de writeback. El test lo afirma explícito —sin override la clave **es** esa constante—, así que el día que se arregle se pone rojo y hay que venir a mirarlo.
+
+**El guard.** Entiende dos cosas o acusa de más: que un destino se llama desde **varios** sitios y alcanza con que uno reenvíe el parámetro (`risk_job.run` recibe `severity_thresholds` en la rama que las tiene y no en la otra: eran cuatro falsos positivos), y que un kwarg puede viajar dentro de un `**{...}` condicional, que es la forma correcta cuando el job no acepta `None`. Las exenciones van por **nombre** cuando son genéricas —`prepared`, `lang`, `data_source`, `residual` suman 65 de las 75 que quedan— y por `módulo.función.parámetro` cuando la razón es propia: `min_periods` está ahí porque exponerla dejaría saltear la negativa del motor desde afuera, y `sop_job.confidence` porque **una confianza que el llamador tipea no es una medición**. Cada entrada lleva su razón escrita y un test la exige: un conjunto pelado es el cajón donde va a parar lo que nadie quiso decidir. Verificado por mutación sobre tres reenvíos distintos.
+
+**Verificación:** `tests/test_overrides_no_se_tiran.py`, 15 tests. Suite completa **8.831 passed, 32 skipped, 19 deselected, 0 failed**. `ruff check .` limpio.
