@@ -459,6 +459,37 @@ por SKU (discontinuacion, fin de temporada, cierre de ventana promocional) que e
 del cliente tiene que traer, con la ausencia declarada -- la forma de todas las demas
 capacidades de esta rama, y `launch_readiness` ya netea contra una fecha.
 
+### Y esa fecha de fin por SKU PAGA, con datos que el cliente ya tiene
+[`documentation/KERN_HORIZONTE_POR_SKU.md`](documentation/KERN_HORIZONTE_POR_SKU.md)
+(`scripts/horizonte_por_sku.py`). La regla medida es **no acumules por encima de lo que
+todavia podes vender**: con `restante` = demanda que queda hasta la fecha de fin del SKU,
+se topean las DOS mitades de la politica (`order_up_to` Y `reorder_point`) -- topear una
+sola no cambia la orden. Un SKU sin `restante` queda INTACTO: topear con un cero que nadie
+midio seria decirle que no compre nunca mas.
+
+**+16,2 puntos de captura (-27,6 % -> -11,5 %), mejora en los CINCO mundos.** Es la segunda
+palanca mas grande de la rama despues del nivel de servicio (+18,9), y a diferencia de
+aquella **esta si se puede accionar**. El ahorro es casi PURO: compra 12 % menos unidades
+(-12.311 usd), paga 368 mas de quiebre, el fill no se mueve (0,750 -> 0,748) y el capital
+inmovilizado al cierre cae 40 % (30.440 -> 18.276). Es la primera palanca de esta rama que
+NO es "compra mas" sino "compra menos de lo que no vas a vender".
+
+**Saber el futuro verdadero no compra nada.** El carril que topea con la demanda futura
+REAL sale +0,1348 y el que topea con la media observada x semanas restantes sale +0,1618:
+son equivalentes (difieren >0,02 en solo 2 de 5 mundos, y en los otros tres es ruido de
+±0,004). La hipotesis de que el estimado ganaba por ser un tope mas apretado se **testeo y
+se descarto**: aprieta en el 59 % de los casos y promedia el 99 % del real, y no
+correlaciona con la ventaja. Por eso la palanca es desplegable: no necesita informacion que
+nadie tiene, necesita una FECHA.
+
+**El limite que vuelve honesto al titular:** en el marcador TODOS los SKU mueren la misma
+semana, asi que +16,2 es el techo de la idea sobre una cartera donde toda la linea se
+discontinua a la vez. Una cartera real tiene fechas escalonadas y la mayoria de sus SKU no
+tiene ninguna; lo realizable es proporcional a la fraccion que traiga la fecha. Y esto MIDE
+una idea, no construye una capacidad: el tope es un post-proceso sobre la `Policy`, no un
+cambio de motor. Construirla toca las ocho partes de siempre, y falta medir que pasa con
+una fecha EQUIVOCADA.
+
 ### Lo que el agente acepta y tira en silencio (`tests/test_overrides_no_se_tiran.py`)
 Midiendo el residuo aparecio un defecto que vale por si mismo: `scm_agent/tools.py`
 aceptaba `lead_time_stds` y **no lo reenviaba** al job, asi que toda corrida por el
