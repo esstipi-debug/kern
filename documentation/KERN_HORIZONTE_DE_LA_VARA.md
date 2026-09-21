@@ -202,6 +202,11 @@ capacidades de esta rama, y `launch_readiness` ya netea contra una fecha.
   sigue sin medirse.
 - **No revisó la monotonía del stock terminal de R3.3** — eso se midió después, el
   2026-09-21, y está en H4: la monotonía es falsa en los cinco mundos.
-- **No alcanza a `KERN_POR_QUE_BAJO_EL_PISO.md`**, que apoya cuatro afirmaciones en la
-  misma columna incompleta (entre ellas *"el dinero extra termina en stock terminal:
-  $26.191 contra $7.525"*). Esa línea base no se regrabó.
+- **`KERN_POR_QUE_BAJO_EL_PISO.md` se corrigió después**, el 2026-09-21: su línea base
+  del *después* se regrabó con las tres columnas (cero cambios en los campos
+  preexistentes) y sus cuatro afirmaciones de cierre se re-escribieron. Una de ellas
+  estaba **al revés** —citaba el Kern de antes del arreglo llamándolo "hoy", y con ese
+  número la conclusión se invertía—; con el número completo se sostiene y refuerza lo de
+  acá: Kern inmoviliza **más** que el piso (30.440 contra 25.017, en 4 de 5 mundos), que
+  es exactamente por qué acreditar el borde lo deja peor. Lo que **no** se pudo completar
+  es el *diagnóstico*: está congelado pre-arreglo y ese código ya no existe.

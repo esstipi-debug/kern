@@ -171,8 +171,11 @@ def test_el_documento_cuenta_el_sesgo_que_aparecio_midiendo(doc):
     # la mando a medir, y el resultado vive en este mismo documento.
     assert "R3.3" in doc
     assert "la monotonia es falsa" in doc.replace("í", "i")
-    # Lo que NO se re-midio tambien se declara, que es la otra mitad de la honestidad.
-    assert "Esa linea base no se regrabo" in doc.replace("í", "i").replace("ó", "o")
+    # Y lo que quedo SIN poder completarse tambien se declara, que es la otra mitad de
+    # la honestidad: el diagnostico de aquel documento esta congelado pre-arreglo.
+    plano = doc.replace("í", "i").replace("ó", "o").replace("é", "e")
+    assert "no se pudo completar" in plano
+    assert "congelado pre-arreglo y ese codigo ya no existe" in plano
 
 
 # ---------------------------------------------------------------------------

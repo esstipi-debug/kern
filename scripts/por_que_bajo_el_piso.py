@@ -277,7 +277,8 @@ def medir(semillas=SEMILLAS) -> dict:
     filas = [_un_mundo(s, ROOT) for s in semillas]
     carriles = ("piso", "kern", "arranque_piso", "cobertura_piso", "techo")
     campos = ("capture", "total", "procurement", "holding", "fixed", "shortage",
-              "fill", "unidades_pedidas", "eventos_de_orden", "stock_terminal_usd")
+              "fill", "unidades_pedidas", "eventos_de_orden", "stock_terminal_usd",
+              "canieria_usd", "pagado_no_vendido_usd")
     return {
         "contexto": {
             "mundos": len(filas), "semillas": list(semillas), "n_skus": N_SKUS,

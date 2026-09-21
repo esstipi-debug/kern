@@ -8,6 +8,13 @@
 >
 > El diagnóstico se deja tal como se midió, con los números de ANTES del arreglo: es lo
 > que motivó la decisión y borrarlo dejaría la conclusión sin su evidencia.
+>
+> **Corregido el 2026-09-21.** El capital que queda pagado y sin vender al cierre son
+> **dos** cosas —el **estante** (`on_hand_end`) y la **cañería** (lo ordenado que sigue
+> viajando)—, y `stock_terminal_usd` medía solo la primera. El *después* se regrabó con
+> las tres columnas y **ningún campo preexistente cambió de valor**. El *diagnóstico* no
+> se puede regrabar —el código de antes del arreglo ya no existe—, así que sus cifras de
+> cierre siguen siendo estante solo y se marcan como tales.
 
 ## La pregunta
 
@@ -95,9 +102,16 @@ media, así que el carril pasa `lead_times = 5` períodos por SKU):
 - compra **3.100** unidades — el piso compra 3.064, o sea sí compró lo que le faltaba;
 - y captura **peor**: −0,483 contra −0,470.
 
-El dinero extra no se convierte en venta sino en **stock terminal**: **$26.191** contra
-$7.525 del piso. Con el nivel de servicio económico encima (~0,998 en vez de 0,95),
-peor todavía: −0,640 y $37.307 terminales.
+El dinero extra no se convierte en venta sino en **capital inmovilizado**: **$26.191**
+de estante contra $7.525 del piso. Con el nivel de servicio económico encima (~0,998 en
+vez de 0,95), peor todavía: −0,640 y $37.307.
+
+> Esas dos cifras son **estante solo** y no se pueden completar: el diagnóstico está
+> congelado pre-arreglo. Pero el mecanismo sí se re-midió sobre la corrida de después,
+> donde `cobertura_piso` compra **+1.068 unidades** más que Kern y deja **+26.908** más
+> de capital pagado y sin vender. Y ahí el estante no engañaba: de esos +26.908, **+26.971
+> son estante** —la cañería casi no se mueve (21.230 → 21.167)—, porque forzar la
+> cobertura hace comprar **antes**, y lo que se compra antes llega antes.
 
 Esto es lo que hace que el hallazgo sea útil: agrandar buffers no solo no cierra la
 brecha, la empeora.
@@ -114,7 +128,8 @@ Unidades pedidas por tercio del horizonte, promedio sobre los 5 mundos:
 | techo | 1,359 | 1,366 | 447 |
 
 El oráculo **carga adelante y corta**: 1.359 unidades en el primer tercio y 447 en el
-último, cerrando con stock terminal **$0**. Kern hace exactamente lo contrario: **cero**
+último, cerrando en **$0** — y con el número completo se sabe que es cero **entero**: ni
+estante ni cañería. Un Wagner-Whitin que sabe la fecha de fin no deja nada viajando. Kern hace exactamente lo contrario: **cero**
 al principio y sigue pidiendo hasta la última semana.
 
 Las dos mitades son la misma causa vista de los dos lados. Al principio no puede
@@ -138,7 +153,10 @@ con el `overrides` que se indica.
   Corregirlo recupera **~12 puntos** (`service_levels` por SKU).
 
 Ninguna de las dos cierra la brecha, y **juntas con el resto empeoran**, por el
-mecanismo de E3: todo lo que hace comprar más termina en stock terminal.
+mecanismo de E3: todo lo que hace comprar más termina en **capital pagado y sin vender**.
+La dirección se re-midió con el número completo y se sostiene —los dos carriles que
+compran más que Kern dejan más inmovilizado, +1.307 y +26.908—, pero el nombre no: no es
+solo stock terminal, es estante **más** cañería.
 
 ## El arreglo, y lo que midió
 
@@ -186,7 +204,8 @@ debajo la mitad de las semanas.
 | unidades compradas | 2.228 | 2.987 | el piso compra 3.064 |
 | quiebre (usd) | 153.421 | 109.567 | |
 | compra (usd) | 106.077 | 135.359 | |
-| stock terminal (usd) | 4.572 | 9.209 | el piso deja 7.525 |
+| cierre — estante (usd) | 4.572 | 9.209 | el piso deja 7.525 |
+| cierre — **pagado y sin vender** (usd) | *no medible* | **30.440** | el piso deja **25.017** |
 | **unidades, semanas 0-7** | **0** | **543** | el piso 808, el techo 1.359 |
 
 Mejora en los **cinco** mundos: +0,0939 / +0,2546 / +0,2475 / +0,2508 / +0,1232.
@@ -212,13 +231,24 @@ con su residual y nunca como algo que Kern ya decidió.
   Su promedio base es **−47,0 %**, peor que el **−40,6 %** publicado, porque entre esas
   cinco está el peor mundo del barrido (−0,7190). La *dirección* es consistente en los
   cinco; la *magnitud* no es la publicada y no debe citarse como si lo fuera.
+- **Las cifras de cierre del DIAGNÓSTICO son estante solo y no se pueden completar.**
+  El código de antes del arreglo ya no existe, así que $4.572, $26.191 y $37.307 se
+  quedan como se midieron. Lo que sí se re-midió con estante + cañería es la corrida de
+  **después**, y cada afirmación de arriba dice sobre cuál de las dos descansa.
 - **No dice que el piso sea bueno.** Dice que su cobertura de 5 semanas está mejor
   calibrada para esta economía que la que Kern calcula, y que Kern no puede usar la suya
   durante el primer tercio de la corrida.
 - **El efecto de fin de horizonte castiga a cualquier política** contra un oráculo que
   sabe cuándo termina. En parte es artefacto de la vara: ningún negocio real tiene
-  semana 24. Pero castiga **más** a Kern que al piso —$4.572 contra $7.525 de terminal
-  hoy, y $26.191 cuando se lo fuerza a comprar más— y esa parte sí es del producto.
+  semana 24. **Corregido el 2026-09-21:** esta viñeta decía *"castiga más a Kern que al
+  piso —$4.572 contra $7.525 de terminal hoy"*, y tenía **dos** errores encadenados. El
+  $4.572 es el Kern de **antes** del arreglo, no el de hoy (hoy es $9.209); y con ese
+  número la conclusión sale al revés, porque 4.572 es **menos** que los 7.525 del piso.
+  Con el número correcto y completo la conclusión **sí** se sostiene, y más fuerte: Kern
+  deja **$30.440** contra **$25.017** del piso, en **4 de 5** mundos (con el estante solo
+  eran 3 de 5). Esa parte sí es del producto — y es coherente con
+  [`KERN_HORIZONTE_DE_LA_VARA.md`](KERN_HORIZONTE_DE_LA_VARA.md), que midió que acreditar
+  el borde deja a Kern **peor**, no mejor, justamente porque inmoviliza más que el piso.
 - **El arreglo no cierra la brecha, la achica.** Kern sigue por debajo del piso
   (−27,6 % contra 0 %). Lo que se cerró es la causa principal del diagnóstico, no el
   problema entero.

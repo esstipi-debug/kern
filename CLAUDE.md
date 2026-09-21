@@ -438,10 +438,15 @@ perdia dos tercios del numero. `_componentes` gana `canieria_usd` y
 `pagado_no_vendido_usd` **sin redefinir `stock_terminal_usd`** -- ese campo mide el estante
 y eso es lo que su nombre dice; no estaba mal, estaba incompleto para la pregunta que se le
 hacia. La linea base del residuo se regrabo y **ningun campo preexistente cambio de valor**
-(resumen y por semilla), que es el control de que es el mismo experimento. Lo que NO se
-regrabo es `por_que_bajo_el_piso*.json`, y ese documento apoya cuatro afirmaciones en la
-misma columna incompleta -- entre ellas "el dinero extra termina en stock terminal: 26.191
-contra 7.525". Tampoco existe una
+(resumen y por semilla), que es el control de que es el mismo experimento. `KERN_POR_QUE_BAJO_EL_PISO.md` se
+corrigio igual (2026-09-21): se regrabo su linea base del DESPUES -- cero cambios en los
+campos preexistentes -- y sus cuatro afirmaciones de cierre. Una estaba AL REVES: citaba
+el Kern de antes del arreglo llamandolo "hoy" (4.572 contra 7.525 del piso) y con ese
+numero la conclusion se invertia; con el numero completo se sostiene, Kern inmoviliza MAS
+que el piso (30.440 contra 25.017, en 4 de 5 mundos), que es justo por que acreditar el
+borde lo deja peor. El DIAGNOSTICO de ese documento NO se puede completar: esta congelado
+pre-arreglo y ese codigo ya no existe, asi que sus cifras de cierre quedan marcadas como
+estante solo. Tampoco existe una
 convencion de borde neutra -- `unit_cost` es cota inferior y `price` cota superior, y la
 superior se DEGENERA (piso acreditado mas barato que el techo, span negativo): ahi
 `captura` devuelve `None` y **nunca** un `nan`, porque un `nan` promediado sale publicado

@@ -310,3 +310,77 @@ def test_la_cobertura_compro_donde_antes_no_compraba_nada(datos, despues):
     esto deja de valer, el documento explica la mejora con una causa que ya no ocurre."""
     assert datos["unidades_por_tercio"]["kern"][0] == pytest.approx(0.0, abs=1e-9)
     assert despues["unidades_por_tercio"]["kern"][0] > 0.0
+
+
+# ---------------------------------------------------------------------------
+# El cierre del horizonte son DOS columnas, no una (corregido el 2026-09-21)
+# ---------------------------------------------------------------------------
+
+
+def test_el_cierre_cierra_estante_mas_canieria(despues):
+    """`score_run` cobra `procurement` de toda unidad ORDENADA, asi que lo pagado y sin
+    vender al cierre son DOS cosas. Si dejaran de sumar, alguna columna mide otra cosa."""
+    for donde in (despues["promedios"], *despues["por_mundo"]):
+        for carril, v in donde.items():
+            if not isinstance(v, dict) or "pagado_no_vendido_usd" not in v:
+                continue
+            assert v["pagado_no_vendido_usd"] == pytest.approx(
+                v["stock_terminal_usd"] + v["canieria_usd"]
+            ), f"{carril}: el cierre no cierra"
+
+
+def test_el_DIAGNOSTICO_sigue_siendo_estante_solo_y_el_documento_lo_dice(datos, texto):
+    """El diagnostico esta congelado pre-arreglo y su codigo ya no existe, asi que sus
+    cifras de cierre NO se pueden completar. Eso se declara, no se disimula: el dia que
+    alguien las regrabe, este test se pone rojo y hay que decidirlo a proposito."""
+    assert "canieria_usd" not in datos["promedios"]["kern"], (
+        "el diagnostico gano columnas nuevas; o se regrabo (y entonces ya no es el "
+        "numero que motivo la decision) o hay que actualizar el documento"
+    )
+    assert "no se pueden completar" in texto
+
+
+def test_el_techo_no_deja_NADA_pagado_y_sin_vender(despues, texto):
+    """Un Wagner-Whitin que sabe la fecha de fin cierra en cero ENTERO -- ni estante ni
+    canieria. Es lo que hace que el techo sea el techo tambien en esta columna."""
+    r = despues["promedios"]["techo"]
+    assert r["stock_terminal_usd"] == pytest.approx(0.0, abs=1.0)
+    assert r["canieria_usd"] == pytest.approx(0.0, abs=1.0)
+    assert "cero **entero**" in texto
+
+
+def test_kern_inmoviliza_MAS_que_el_piso_y_el_documento_lo_corrige(despues, texto):
+    """El guard de la vineta que estaba al reves.
+
+    Decia "castiga mas a Kern que al piso -- $4.572 contra $7.525", citando el Kern de
+    ANTES del arreglo y llamandolo "hoy"; y con ese numero la conclusion sale invertida,
+    porque 4.572 es MENOS que 7.525. Con el numero correcto y completo la conclusion se
+    sostiene. Si dejara de sostenerse, la vineta hay que volver a escribirla.
+    """
+    r = despues["promedios"]
+    assert r["kern"]["pagado_no_vendido_usd"] > r["piso"]["pagado_no_vendido_usd"], (
+        "Kern dejo de inmovilizar mas que el piso; la vineta del fin de horizonte "
+        "afirma lo contrario"
+    )
+    mundos = sum(
+        1 for m in despues["por_mundo"]
+        if m["kern"]["pagado_no_vendido_usd"] > m["piso"]["pagado_no_vendido_usd"]
+    )
+    assert mundos == 4, f"el documento publica 4 de 5 mundos y salieron {mundos}"
+    assert "4 de 5" in texto
+    # Y que el documento NO siga presentando el numero viejo como si fuera el de hoy.
+    assert "es el Kern de **antes** del arreglo, no el de hoy" in texto
+
+
+def test_donde_el_estante_NO_engañaba_tambien_se_dice(despues, texto):
+    """La otra mitad de la honestidad: forzar la cobertura manda el dinero al ESTANTE,
+    no a la canieria, asi que ahi la columna incompleta daba la respuesta correcta. Un
+    documento que corrija solo donde le conviene no es una correccion."""
+    r = despues["promedios"]
+    d_estante = r["cobertura_piso"]["stock_terminal_usd"] - r["kern"]["stock_terminal_usd"]
+    d_total = r["cobertura_piso"]["pagado_no_vendido_usd"] - r["kern"]["pagado_no_vendido_usd"]
+    assert abs(d_estante - d_total) / d_total < 0.05, (
+        "la canieria de `cobertura_piso` dejo de ser casi igual a la de Kern; el "
+        "documento explica que por eso el estante no engañaba ahi"
+    )
+    assert "ahí el estante no engañaba" in texto

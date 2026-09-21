@@ -29,6 +29,10 @@
     "unidades_pedidas": 3476.0,
     "eventos_de_orden": 145,
     "stock_terminal_usd": 8125.8575,
+    "canieria_usd": 9838.064999999999,
+    "pagado_no_vendido_usd": 17963.9225,
+    "unidades_estante": 243.75,
+    "unidades_canieria": 233.25,
     "unidades_por_tercio": [
      879.0,
      1265.25,
@@ -46,6 +50,10 @@
     "unidades_pedidas": 3415.0,
     "eventos_de_orden": 23,
     "stock_terminal_usd": 0.0,
+    "canieria_usd": 0.0,
+    "pagado_no_vendido_usd": 0.0,
+    "unidades_estante": 0.0,
+    "unidades_canieria": 0.0,
     "unidades_por_tercio": [
      1444.0,
      1411.0,
@@ -63,6 +71,10 @@
     "unidades_pedidas": 3431.212221040583,
     "eventos_de_orden": 58,
     "stock_terminal_usd": 20353.427780336817,
+    "canieria_usd": 5470.843345336785,
+    "pagado_no_vendido_usd": 25824.2711256736,
+    "unidades_estante": 513.3805324441871,
+    "unidades_canieria": 274.3652630560073,
     "unidades_por_tercio": [
      513.7212328767123,
      1380.0025624845211,
@@ -80,6 +92,10 @@
     "unidades_pedidas": 3416.5162888785635,
     "eventos_de_orden": 54,
     "stock_terminal_usd": 13109.466404696828,
+    "canieria_usd": 10763.83830256272,
+    "pagado_no_vendido_usd": 23873.30470725955,
+    "unidades_estante": 546.7516431400783,
+    "unidades_canieria": 142.64395429883479,
     "unidades_por_tercio": [
      879.0,
      1100.033806172089,
@@ -97,6 +113,10 @@
     "unidades_pedidas": 4707.072020876423,
     "eventos_de_orden": 58,
     "stock_terminal_usd": 46048.05599812023,
+    "canieria_usd": 6082.576224292888,
+    "pagado_no_vendido_usd": 52130.63222241312,
+    "unidades_estante": 1220.0280778326473,
+    "unidades_canieria": 305.0439430437757,
     "unidades_por_tercio": [
      1011.0,
      1822.5721407423484,
@@ -117,6 +137,10 @@
     "unidades_pedidas": 2646.5,
     "eventos_de_orden": 117,
     "stock_terminal_usd": 2703.4475,
+    "canieria_usd": 24200.52,
+    "pagado_no_vendido_usd": 26903.9675,
+    "unidades_estante": 163.25,
+    "unidades_canieria": 543.25,
     "unidades_por_tercio": [
      828.75,
      851.0,
@@ -134,6 +158,10 @@
     "unidades_pedidas": 3067.0,
     "eventos_de_orden": 23,
     "stock_terminal_usd": 0.0,
+    "canieria_usd": 0.0,
+    "pagado_no_vendido_usd": 0.0,
+    "unidades_estante": 0.0,
+    "unidades_canieria": 0.0,
     "unidades_por_tercio": [
      1729.0,
      1338.0,
@@ -151,6 +179,10 @@
     "unidades_pedidas": 2917.295624271268,
     "eventos_de_orden": 77,
     "stock_terminal_usd": 8140.694087250351,
+    "canieria_usd": 31880.84113654973,
+    "pagado_no_vendido_usd": 40021.53522380008,
+    "unidades_estante": 210.26945824017486,
+    "unidades_canieria": 703.5716641173619,
     "unidades_por_tercio": [
      747.6513698630137,
      906.5875503205827,
@@ -168,6 +200,10 @@
     "unidades_pedidas": 2963.591108823096,
     "eventos_de_orden": 75,
     "stock_terminal_usd": 8099.826865484181,
+    "canieria_usd": 32111.03519467084,
+    "pagado_no_vendido_usd": 40210.86206015502,
+    "unidades_estante": 199.34868212395028,
+    "unidades_canieria": 736.2261733749948,
     "unidades_por_tercio": [
      828.75,
      862.7919551717389,
@@ -185,6 +221,10 @@
     "unidades_pedidas": 3502.154923007216,
     "eventos_de_orden": 77,
     "stock_terminal_usd": 12723.34150540649,
+    "canieria_usd": 35376.60417931946,
+    "pagado_no_vendido_usd": 48099.94568472595,
+    "unidades_estante": 377.0059003218098,
+    "unidades_canieria": 921.3109721502045,
     "unidades_por_tercio": [
      994.5,
      1009.3090917420147,
@@ -205,6 +245,10 @@
     "unidades_pedidas": 1952.0,
     "eventos_de_orden": 135,
     "stock_terminal_usd": 3092.365,
+    "canieria_usd": 16358.3775,
+    "pagado_no_vendido_usd": 19450.7425,
+    "unidades_estante": 99.0,
+    "unidades_canieria": 285.25,
     "unidades_por_tercio": [
      500.25,
      724.25,
@@ -222,6 +266,10 @@
     "unidades_pedidas": 2079.0,
     "eventos_de_orden": 21,
     "stock_terminal_usd": 0.0,
+    "canieria_usd": 0.0,
+    "pagado_no_vendido_usd": 0.0,
+    "unidades_estante": 0.0,
+    "unidades_canieria": 0.0,
     "unidades_por_tercio": [
      1066.0,
      859.0,
@@ -239,6 +287,10 @@
     "unidades_pedidas": 2317.0432584023047,
     "eventos_de_orden": 73,
     "stock_terminal_usd": 6076.343836029101,
+    "canieria_usd": 19510.20604743452,
+    "pagado_no_vendido_usd": 25586.54988346362,
+    "unidades_estante": 386.15394769826673,
+    "unidades_canieria": 394.13318982963415,
     "unidades_por_tercio": [
      381.7678082191781,
      915.0329185246845,
@@ -256,6 +308,10 @@
     "unidades_pedidas": 2334.3188622468624,
     "eventos_de_orden": 66,
     "stock_terminal_usd": 8170.895596011565,
+    "canieria_usd": 18073.190227712534,
+    "pagado_no_vendido_usd": 26244.085823724097,
+    "unidades_estante": 517.5376832413078,
+    "unidades_canieria": 255.35106355013133,
     "unidades_por_tercio": [
      500.25,
      867.0850484087398,
@@ -273,6 +329,10 @@
     "unidades_pedidas": 2789.7864307616414,
     "eventos_de_orden": 70,
     "stock_terminal_usd": 26639.39579514748,
+    "canieria_usd": 14148.532593089392,
+    "pagado_no_vendido_usd": 40787.928388236876,
+    "unidades_estante": 832.0573793289605,
+    "unidades_canieria": 174.71389500740963,
     "unidades_por_tercio": [
      596.5,
      1054.718781973365,
@@ -293,6 +353,10 @@
     "unidades_pedidas": 4184.75,
     "eventos_de_orden": 137,
     "stock_terminal_usd": 16661.315,
+    "canieria_usd": 19531.0975,
+    "pagado_no_vendido_usd": 36192.4125,
+    "unidades_estante": 285.0,
+    "unidades_canieria": 386.25,
     "unidades_por_tercio": [
      1007.0,
      1582.25,
@@ -310,6 +374,10 @@
     "unidades_pedidas": 4214.0,
     "eventos_de_orden": 34,
     "stock_terminal_usd": 0.0,
+    "canieria_usd": 0.0,
+    "pagado_no_vendido_usd": 0.0,
+    "unidades_estante": 0.0,
+    "unidades_canieria": 0.0,
     "unidades_por_tercio": [
      1266.0,
      2095.0,
@@ -327,6 +395,10 @@
     "unidades_pedidas": 3724.7430117547237,
     "eventos_de_orden": 76,
     "stock_terminal_usd": 6245.296309356664,
+    "canieria_usd": 34209.93803051417,
+    "pagado_no_vendido_usd": 40455.23433987083,
+    "unidades_estante": 94.77983569881295,
+    "unidades_canieria": 623.6954371064351,
     "unidades_por_tercio": [
      579.5979452054794,
      1569.6793044353647,
@@ -344,6 +416,10 @@
     "unidades_pedidas": 3781.8965236576223,
     "eventos_de_orden": 65,
     "stock_terminal_usd": 20342.65432809948,
+    "canieria_usd": 15985.276960107942,
+    "pagado_no_vendido_usd": 36327.93128820742,
+    "unidades_estante": 452.2296030993249,
+    "unidades_canieria": 250.23595052643137,
     "unidades_por_tercio": [
      1007.0,
      1208.315675302751,
@@ -361,6 +437,10 @@
     "unidades_pedidas": 5044.677157749837,
     "eventos_de_orden": 69,
     "stock_terminal_usd": 51410.638708059654,
+    "canieria_usd": 24089.535420371678,
+    "pagado_no_vendido_usd": 75500.17412843133,
+    "unidades_estante": 1059.924946399643,
+    "unidades_canieria": 309.78551991153546,
     "unidades_por_tercio": [
      1184.0,
      2051.6063433401473,
@@ -381,6 +461,10 @@
     "unidades_pedidas": 3059.5,
     "eventos_de_orden": 139,
     "stock_terminal_usd": 7042.7525,
+    "canieria_usd": 17533.219999999998,
+    "pagado_no_vendido_usd": 24575.972499999996,
+    "unidades_estante": 195.0,
+    "unidades_canieria": 350.0,
     "unidades_por_tercio": [
      826.0,
      1078.25,
@@ -398,6 +482,10 @@
     "unidades_pedidas": 3086.0,
     "eventos_de_orden": 25,
     "stock_terminal_usd": 0.0,
+    "canieria_usd": 0.0,
+    "pagado_no_vendido_usd": 0.0,
+    "unidades_estante": 0.0,
+    "unidades_canieria": 0.0,
     "unidades_por_tercio": [
      1290.0,
      1126.0,
@@ -415,6 +503,10 @@
     "unidades_pedidas": 2543.147302756299,
     "eventos_de_orden": 71,
     "stock_terminal_usd": 5231.533055023107,
+    "canieria_usd": 15080.426872462944,
+    "pagado_no_vendido_usd": 20311.959927486052,
+    "unidades_estante": 177.5082428528524,
+    "unidades_canieria": 376.26600669695927,
     "unidades_por_tercio": [
      492.67671232876717,
      908.2409750115417,
@@ -432,6 +524,10 @@
     "unidades_pedidas": 3077.637525118041,
     "eventos_de_orden": 57,
     "stock_terminal_usd": 3443.322097334496,
+    "canieria_usd": 28634.65588937199,
+    "pagado_no_vendido_usd": 32077.977986706486,
+    "unidades_estante": 74.00374602160018,
+    "unidades_canieria": 694.8067832086009,
     "unidades_por_tercio": [
      826.0,
      1059.9057349579962,
@@ -449,6 +545,10 @@
     "unidades_pedidas": 4231.615821459559,
     "eventos_de_orden": 66,
     "stock_terminal_usd": 44081.34688145077,
+    "canieria_usd": 26140.03871158133,
+    "pagado_no_vendido_usd": 70221.3855930321,
+    "unidades_estante": 956.9024188607804,
+    "unidades_canieria": 520.4787226206307,
     "unidades_por_tercio": [
      961.0,
      1459.9401528647572,
@@ -469,7 +569,9 @@
    "fill": 0.8166877107821502,
    "unidades_pedidas": 3063.75,
    "eventos_de_orden": 134.6,
-   "stock_terminal_usd": 7525.147499999999
+   "stock_terminal_usd": 7525.147499999999,
+   "canieria_usd": 17492.256,
+   "pagado_no_vendido_usd": 25017.403499999997
   },
   "kern": {
    "capture": -0.27623947911345204,
@@ -481,7 +583,9 @@
    "fill": 0.7499580697130281,
    "unidades_pedidas": 2986.688283645036,
    "eventos_de_orden": 71.0,
-   "stock_terminal_usd": 9209.459013599208
+   "stock_terminal_usd": 9209.459013599208,
+   "canieria_usd": 21230.45108645963,
+   "pagado_no_vendido_usd": 30439.910100058838
   },
   "arranque_piso": {
    "capture": -0.2060448824514134,
@@ -493,7 +597,9 @@
    "fill": 0.7781112639667962,
    "unidades_pedidas": 3114.792061744837,
    "eventos_de_orden": 63.4,
-   "stock_terminal_usd": 10633.23305832531
+   "stock_terminal_usd": 10633.23305832531,
+   "canieria_usd": 21113.599314885207,
+   "pagado_no_vendido_usd": 31746.832373210513
   },
   "cobertura_piso": {
    "capture": -0.1814074269634452,
@@ -505,7 +611,9 @@
    "fill": 0.8773434526883447,
    "unidades_pedidas": 4055.0612707709356,
    "eventos_de_orden": 68.0,
-   "stock_terminal_usd": 36180.555777636924
+   "stock_terminal_usd": 36180.555777636924,
+   "canieria_usd": 21167.45742573095,
+   "pagado_no_vendido_usd": 57348.01320336787
   },
   "techo": {
    "capture": 1.0,
@@ -517,7 +625,9 @@
    "fill": 0.9995719636169074,
    "unidades_pedidas": 3172.2,
    "eventos_de_orden": 25.2,
-   "stock_terminal_usd": 0.0
+   "stock_terminal_usd": 0.0,
+   "canieria_usd": 0.0,
+   "pagado_no_vendido_usd": 0.0
   }
  },
  "unidades_por_tercio": {
