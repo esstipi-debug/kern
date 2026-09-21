@@ -7,8 +7,8 @@ El cuerpo de un PR de GitHub topea en **65.536 caracteres**, y esta rama lo alca
 decimonovena entrega: quedó en 65.227, o sea 309 de margen, y la vigésima no entraba. Este
 documento es la mitad vieja de ese historial, movida acá para que las siguientes entren.
 
-**Qué hay acá:** las entregas **segunda a decimoctava**, verbatim y en orden cronológico
-—de los términos del proveedor hasta los once hechos del cliente—. No se resumió nada al mudarlas:
+**Qué hay acá:** las entregas **segunda a decimonovena**, verbatim y en orden cronológico
+—de los términos del proveedor hasta las claves de idempotencia—. No se resumió nada al mudarlas:
 un historial que se resume cuando se archiva deja de ser un historial.
 
 **Qué NO hay acá, y dónde está:**
@@ -16,7 +16,7 @@ un historial que se resume cuando se archiva deja de ser un historial.
 | | dónde |
 |---|---|
 | Primera entrega (el quinto sombrero, `transporte`) | el cuerpo del PR, como marco: *Qué problema cierra*, *El modelo*, *El quinto sombrero es condicional*, *Cambio de comportamiento*, *Alcance*, *Verificación* |
-| Decimonovena a vigesimoprimera | el cuerpo del PR |
+| Vigésima a vigesimosegunda | el cuerpo del PR |
 | Verificación de la rama completa, estado del diseño de las cuatro brechas y los dos anexos | el cuerpo del PR |
 
 **La regla, para que el cuerpo del PR no se vuelva a llenar:** lleva las **tres últimas**
@@ -288,3 +288,19 @@ Los otros diez, con lo que costaba cada uno: `service_level_by_class` (el overri
 **El guard.** Entiende dos cosas o acusa de más: que un destino se llama desde **varios** sitios y alcanza con que uno reenvíe el parámetro (`risk_job.run` recibe `severity_thresholds` en la rama que las tiene y no en la otra: eran cuatro falsos positivos), y que un kwarg puede viajar dentro de un `**{...}` condicional, que es la forma correcta cuando el job no acepta `None`. Las exenciones van por **nombre** cuando son genéricas —`prepared`, `lang`, `data_source`, `residual` suman 65 de las 75 que quedan— y por `módulo.función.parámetro` cuando la razón es propia: `min_periods` está ahí porque exponerla dejaría saltear la negativa del motor desde afuera, y `sop_job.confidence` porque **una confianza que el llamador tipea no es una medición**. Cada entrada lleva su razón escrita y un test la exige: un conjunto pelado es el cajón donde va a parar lo que nadie quiso decidir. Verificado por mutación sobre tres reenvíos distintos.
 
 **Verificación:** `tests/test_overrides_no_se_tiran.py`, 15 tests. Suite completa **8.831 passed, 32 skipped, 19 deselected, 0 failed**. `ruff check .` limpio.
+
+## Decimonovena entrega: una clave de idempotencia constante es un no-op mudo (`63bc230`)
+
+El hallazgo que la decimoctava dejó abierto, cerrado. `nosilo_core.writeback` garantiza —y lo dice en su encabezado— que *"the same idempotency_key never lands twice"*. Eso es lo que hace seguro reintentar, pero pide la contraparte, que es la que se olvida: **la clave tiene que ser distinta para una operación distinta**.
+
+**Reproducido con el conector Odoo de demo**, sobre la constante `"channel-replenish-1"` que traía `channel_replenishment_job` y que el agente nunca pisaba: `stage_restock({SKU-1: +50})` sale `applied=True`, y `stage_restock({SKU-2: +999})` sale **`applied=False, idempotent_skip=True`**. Contenido distinto (`content_hash` distinto), misma clave, y la segunda se descarta **en silencio** — con la señal que significa *"esto era un reintento, todo bien"*. El punto de reorden del segundo SKU nunca aterrizaba. **No era el único:** `repricing_job` tenía `f"repricing-{channel}-1"`, constante **por canal**, y ahí lo que no aterriza es un precio en un marketplace vivo; más tres CLI de `examples/`, que valen igual porque son la plantilla de la que se copia.
+
+**Y no era ignorancia del repo.** `excel_replenishment_job` ya derivaba del contenido estacionado más las celdas guarda que leyó del archivo vivo, `shopify_stock_sync` tiene una función dedicada, y `scm_agent/autonomy_promotion.py` lleva el comentario que lo explica entero: *"Unique per occurrence (NOT a fixed `degrade-<event_type>` key) … a reused idempotency_key would make writeback.apply() treat that second, genuinely different degradation as an idempotent skip of the first"*. Tres lugares con la regla escrita y dos que no la seguían.
+
+La definición va **donde vive la semántica**: `nosilo_core.writeback.derive_idempotency_key(prefijo, edits)`, que cumple las dos mitades —estable para la misma operación (si no, se rompe la idempotencia y un reintento aplica dos veces) y distinta para otra (si no, se rompe la garantía de que aterrice)— con el prefijo separando emisores. **No se tocaron** los dos que ya estaban bien: cambiarles la derivación invalidaría `applied_keys` ya registradas sin ningún beneficio.
+
+**El guard, en tres mitades.** (1) **Ninguna clave puede ser un literal** — se decide leyendo el AST y no admite excepciones, y reconoce el andamio de `src/connectors/odoo.py`, que pasa un placeholder y re-keyea con el `content_hash` en la línea siguiente. (2) **Los emisores sondeados se corren de verdad**: misma operación → misma clave, operación distinta → otra, y las dos reposiciones del caso reproducido **aterrizan las dos**, con el reintento de la primera todavía deduplicando. (3) **Todo el que estacione un changeset está sondeado o declarado** con su razón —el patrón de `NO_EMISORES` del barrido de neteo—, incluidos los seis conectores que solo reenvían: acusarlos sería acusar al cartero, pero tienen que estar nombrados, porque el día que uno empiece a fabricarla la razón deja de ser cierta.
+
+Verificado por mutación. Y el test que en la entrega anterior afirmaba que sin override la clave **era** la constante —puesto ahí para ponerse rojo el día que esto se arreglara— se puso rojo, y se vino a mirarlo.
+
+**Verificación:** `tests/test_claves_de_idempotencia.py`, nuevo: 11 tests. Suite completa **8.842 passed, 32 skipped, 19 deselected, 0 failed**. `ruff check .` limpio.
