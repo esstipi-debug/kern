@@ -301,8 +301,21 @@ def test_run_grid_only_calls_the_lens_for_kern_never_for_the_floor_or_oracle():
     oraculo tambien por `export_history` -- contariamos el techo (o el piso)
     contra datos que nunca deberian haber visto.
 
-    Cuenta las llamadas reales: con 2 niveles x 1 replan minimo cada uno,
-    debe haber EXACTAMENTE ese numero de llamadas a la lente, ni una mas.
+    Cuenta las llamadas reales, y el total tiene que cuadrar EXACTAMENTE con
+    la suma de sus dos origenes legitimos, ni una mas:
+
+    1. **Los replanes de Kern.** Uno por nivel y por replan con historia.
+    2. **La medicion de fidelidad** (`lens.fidelidad_del_nivel`, agregada el
+       2026-09-22). Una por carril y nivel, sobre las salidas de ESE carril.
+       No alimenta ninguna politica: su resultado va a un campo del reporte
+       (`input_fidelity`) y lo lee la compuerta de suciedad. El piso y el
+       oraculo siguen sin ver la lente, que es lo que este test protege.
+
+    El total se deja CLAVADO en vez de aflojarlo a ">= 1": un mutante que
+    enrute el piso por la lente sumaria una tercera llamada, y con un umbral
+    inferior pasaria sin que nadie lo note. Si el numero cambia porque se
+    agrego un origen nuevo, hay que sumarlo aca explicitamente -- ese es el
+    trabajo que el test existe para obligar.
 
     Historial de este test (por que ya no parchea `export_history` por
     nombre): la primera version solo parcheaba
@@ -348,10 +361,19 @@ def test_run_grid_only_calls_the_lens_for_kern_never_for_the_floor_or_oracle():
                 seed=7, n_skus=2, n_suppliers=2, weeks=8, levels=(0,),
                 replan_every=4, out_dir=tmp, include_kern=True,
             )
-    # weeks=8, replan_every=4 -> replans en semana 0 (sin historia, no
-    # llama a Kern) y semana 4 (si llama) = exactamente 1 llamada real.
-    assert call_count["n"] == 1
+    # weeks=8, replan_every=4 -> replans en semana 0 (sin historia, no llama a
+    # Kern) y semana 4 (si llama) = 1 llamada. Mas 1 carril x 1 nivel de
+    # fidelidad = 1. Total 2.
+    replanes_de_kern = 1
+    mediciones_de_fidelidad = len(report["kern"])  # un carril-nivel, una medicion
+    assert mediciones_de_fidelidad == 1
+    assert call_count["n"] == replanes_de_kern + mediciones_de_fidelidad
     assert "forced-L0" in report["kern"]
+    # Y la segunda llamada hizo lo que dice: el reporte trae la fidelidad medida.
+    assert report["kern"]["forced-L0"]["input_fidelity"] == pytest.approx(1.0), (
+        "el nivel 0 no ensucia nada: si su fidelidad no es 1.0, la medicion esta "
+        "leyendo otra cosa que el archivo que Kern leyo"
+    )
 
 
 def test_dirt_levels_genuinely_change_kerns_recommendation_not_a_cached_reuse(kern_grid_report):
