@@ -150,6 +150,10 @@ def test_el_documento_nombra_el_shock_que_se_corrio(datos):
 CONGELADA_LIMPIA = RAIZ / "documentation" / "lineas_base" / "captura_limpia_b1e3293.json"
 CONGELADA_SHOCK = RAIZ / "documentation" / "lineas_base" / "captura_bajo_shock_b1e3293.json"
 PAREADA = RAIZ / "documentation" / "lineas_base" / "captura_limpia_pareada.json"
+#: La epoca intermedia: con la cobertura provisional y SIN el arreglo de lectura de
+#: `jobs/intake.py`. Se congela por la misma razon que la del 18-sep -- es la mitad
+#: "antes" del segundo arreglo, y el barrido sobreescribe en el lugar.
+CONGELADA_MEDIA = RAIZ / "documentation" / "lineas_base" / "captura_limpia_a7892b7.json"
 RECHAZADA = RAIZ / "documentation" / "lineas_base" / "captura_bajo_shock_RECHAZADA.json"
 
 
@@ -190,7 +194,8 @@ def test_el_documento_cita_las_frases_de_las_lineas_base_congeladas():
     es la mitad de toda resta que el documento publica."""
     texto = DOC.read_text(encoding="utf-8")
     faltan = [Distribucion(**d).frase()
-              for datos in (_leer(CONGELADA_LIMPIA), _leer(CONGELADA_SHOCK))
+              for datos in (_leer(CONGELADA_LIMPIA), _leer(CONGELADA_SHOCK),
+                            _leer(CONGELADA_MEDIA))
               for d in datos["distribuciones"]
               if Distribucion(**d).frase() not in texto]
     assert not faltan, ("el documento no cita estas frases de las lineas base "
@@ -225,15 +230,22 @@ def test_el_pareado_sostiene_que_mejoro_en_TODOS_los_mundos():
         assert valor in texto, f"el documento no cita {valor} del pareado"
 
 
-def test_el_pareado_reproduce_los_agregados_de_las_dos_lineas_base(datos_limpios):
+def test_el_pareado_reproduce_los_agregados_de_SU_epoca():
     """El control de que el pareado es el MISMO experimento que los agregados, y no una
-    tercera corrida parecida: sus medias por carril tienen que dar las dos lineas base."""
+    tercera corrida parecida.
+
+    Su "despues" es la epoca INTERMEDIA (`a7892b7`), no la vigente: el pareado mide la
+    cobertura provisional, y despues de el llego un segundo arreglo que movio los niveles
+    sucios. Compararlo contra la linea base de hoy mediria las dos palancas juntas y
+    diria que el pareado esta mal.
+    """
     r = _leer(PAREADA)["resumen"]
-    antes, ahora = _por_nivel(_leer(CONGELADA_LIMPIA)), _por_nivel(datos_limpios)
+    antes, despues = _por_nivel(_leer(CONGELADA_LIMPIA)), _por_nivel(_leer(CONGELADA_MEDIA))
     for nivel in (0, 1):  # L2/L3 tienen mundos no medibles, asi que la media difiere
         clave = f"forced-L{nivel}"
         assert r[clave]["media_antes"] == pytest.approx(antes[nivel]["media"], abs=1e-9)
-        assert r[clave]["media_despues"] == pytest.approx(ahora[nivel]["media"], abs=1e-9)
+        assert r[clave]["media_despues"] == pytest.approx(despues[nivel]["media"], abs=1e-9)
+    assert _leer(PAREADA)["procedencia"]["sha_despues"] in CONGELADA_MEDIA.name
 
 
 def test_el_pareado_nombra_de_que_dos_commits_es():
@@ -268,17 +280,45 @@ def test_la_columna_con_shock_vigente_sigue_siendo_la_congelada(datos):
     assert "NO regrabable hoy" in plano
 
 
-def test_el_documento_declara_que_la_columna_limpia_rozo_la_misma_compuerta(datos_limpios):
-    """La anomalia que bloqueo el shock (L3 mejor que L2) esta tambien en la columna
-    limpia, 0,6 puntos por debajo del umbral. Publicar sus filas L2/L3 sin decirlo seria
-    esconder el aviso que SI se dio en la otra mitad."""
-    from src.verify.barrido import _margen
+def test_la_inversion_de_la_columna_limpia_esta_EXPLICADA_por_la_fidelidad(datos_limpios):
+    """L3 captura mejor que L2 en la linea base publicada, y eso ya no es una anomalia.
+
+    Este test fija las tres mitades del argumento a la vez, sobre el archivo publicado y
+    no sobre un fixture: que la inversion SUPERA el margen de ruido (o sea que la
+    compuerta vieja, la que comparaba ordinales, habria disparado); que el archivo del
+    nivel 3 es MAS fiel; y que por eso la compuerta calla pero `inversiones_explicadas`
+    habla. Si alguna de las tres deja de valer, el documento publica una tabla cuyo orden
+    no puede justificar.
+    """
+    from src.verify.barrido import (
+        _margen,
+        degrada_con_la_suciedad,
+        inversiones_explicadas,
+    )
 
     d = {nivel: Distribucion(**x) for nivel, x in _por_nivel(datos_limpios).items()}
     brecha = (d[3].media - d[2].media) * 100
     margen = _margen(d[2], d[3]) * 100
-    assert brecha > 0, "si L3 dejara de superar a L2, este aviso sobra y hay que medir de nuevo"
-    assert brecha < margen, "la columna limpia AHORA dispara la anomalia: no se puede publicar"
+    assert brecha > margen, (
+        "la inversion cabe en el ruido: este test no esta probando la exencion, y el "
+        "documento no deberia estar explicandola"
+    )
+    assert d[3].error_de_fidelidad < d[2].error_de_fidelidad, (
+        "si el archivo del nivel 3 dejara de ser el mas fiel, la inversion vuelve a ser "
+        "una anomalia y hay que investigarla, no publicarla"
+    )
+    dists = tuple(d.values())
+    assert degrada_con_la_suciedad(dists, "forced") == []
+    assert len(inversiones_explicadas(dists, "forced")) == 1
+
     texto = DOC.read_text(encoding="utf-8")
-    assert f"+{brecha:.1f}".replace(".", ",") in texto, f"el documento no cita la brecha {brecha:+.1f}"
-    assert f"{margen:.1f}".replace(".", ",") in texto, f"el documento no cita el margen {margen:.1f}"
+    for valor in (f"{d[2].fidelidad_media:.3f}".replace(".", ","),
+                  f"{d[3].fidelidad_media:.3f}".replace(".", ",")):
+        assert valor in texto, f"el documento no cita la fidelidad {valor}"
+
+
+def test_toda_distribucion_vigente_declara_su_fidelidad(datos_limpios):
+    """Sin fidelidad medida la compuerta acusa (no se exculpa con una ausencia), asi que
+    una linea base vigente sin el campo no se podria volver a grabar."""
+    for x in datos_limpios["distribuciones"]:
+        assert x.get("fidelidad_media") is not None, x

@@ -1,21 +1,26 @@
 # Captura bajo disrupcion — linea base publicada
 
-> **Estado al 2026-09-22.** La columna LIMPIA se regrabo hoy. La columna BAJO
-> DISRUPCION **no se pudo regrabar**: el propio barrido se nego (ver *La mitad con
-> disrupcion no se pudo regrabar*), asi que la vigente sigue siendo la del 2026-09-18
-> @ `b1e3293`. Mientras las dos columnas sean de epocas distintas, **la resta entre
-> ellas esta suspendida**: restar un limpio de hoy contra un shock de hace cuatro dias
-> no mide el shock, mide dos epocas del codigo.
+> **Estado al 2026-09-22 (tarde).** La columna LIMPIA se regrabo dos veces hoy, por dos
+> arreglos distintos y **disjuntos**: la cobertura provisional movio el nivel 0 y el
+> arreglo de lectura de `jobs/intake.py` movio los niveles sucios. La columna BAJO
+> DISRUPCION sigue siendo la del 2026-09-18 @ `b1e3293`. Mientras las dos columnas sean
+> de epocas distintas, **la resta entre ellas esta suspendida**: restar un limpio de hoy
+> contra un shock de hace cuatro dias no mide el shock, mide dos epocas del codigo.
 >
-> Seis archivos, y cada uno dice que es:
+> Los archivos, y cada uno dice que es:
 >
 > | archivo | que es |
 > |---|---|
-> | `captura_limpia.json` | **vigente**, medida hoy |
+> | `captura_limpia.json` | **vigente**, con los dos arreglos |
 > | `captura_bajo_shock.json` | **vigente**, medida el 18-sep — no regrabable hoy |
-> | `captura_limpia_b1e3293.json` · `captura_bajo_shock_b1e3293.json` | **congelados**: lo que el repo publicaba el 18-sep. Nadie los regraba |
-> | `captura_limpia_pareada.json` | la captura **por mundo** en las dos epocas: el pareado |
+> | `captura_limpia_b1e3293.json` · `captura_bajo_shock_b1e3293.json` | **congelados**: el 18-sep, antes de todo |
+> | `captura_limpia_a7892b7.json` | **congelado**: con cobertura, SIN el arreglo de lectura |
+> | `captura_limpia_pareada.json` | la captura **por mundo** en las dos primeras epocas |
 > | `captura_bajo_shock_RECHAZADA.json` | la corrida con shock que el barrido **se nego a grabar**. Evidencia, no referencia |
+>
+> Desde hoy cada distribucion lleva ademas su **fidelidad**: que fraccion de la demanda
+> verdadera le llego al motor por la lente. Sin ese numero, dos niveles solo se podian
+> comparar por su ordinal — y un ordinal cuenta defectos, no distorsion.
 >
 > `tests/test_captura_bajo_disrupcion_publicada.py` falla si este documento y esos
 > archivos dejan de decir lo mismo.
@@ -53,9 +58,9 @@ Con datos limpios (**medido el 2026-09-22**):
 
 ```
 L0/forced: captura -13.8% +/- 17.8% · peor mundo -59.6% · 25/25 mundos medibles
-L1/forced: captura -117.0% +/- 50.7% · peor mundo -213.9% · 25/25 mundos medibles
-L2/forced: captura -116.8% +/- 42.0% · peor mundo -192.3% · 21/25 mundos medibles
-L3/forced: captura -91.9% +/- 40.7% · peor mundo -154.8% · 21/25 mundos medibles
+L1/forced: captura -28.3% +/- 20.4% · peor mundo -59.8% · 25/25 mundos medibles
+L2/forced: captura -48.1% +/- 28.6% · peor mundo -111.7% · 21/25 mundos medibles
+L3/forced: captura -26.3% +/- 25.5% · peor mundo -84.5% · 21/25 mundos medibles
 ```
 
 Bajo `lead_time_spike:*:8:3:3` (**medido el 2026-09-18, NO regrabable hoy**):
@@ -66,13 +71,47 @@ L1/forced: captura bajo disrupcion -92.0% +/- 41.3% · peor mundo -171.8% · 25/
 L2/forced: captura bajo disrupcion -107.3% +/- 39.0% · peor mundo -166.1% · 21/25 mundos medibles
 L3/forced: captura bajo disrupcion -99.6% +/- 39.5% · peor mundo -166.5% · 21/25 mundos medibles
 ```
+## Tres epocas, dos palancas, y pegan en lugares disjuntos
 
-## Que cambio desde el 2026-09-18, y por que se puede atribuir
+La linea base del 18-sep era anterior a **dos** arreglos, y lo notable es que cada uno
+movio lo que le tocaba y nada mas:
 
-La linea base anterior era **anterior a la cobertura provisional** (`e2b4435`, 20-sep),
-o sea que el titular vendible del repo describia un codigo que ya no existe.
+| | L0 | L1 | L2 | L3 |
+|---|---:|---:|---:|---:|
+| **18-sep** `b1e3293` | −40,6 % | −117,0 % | −132,8 % | −122,6 % |
+| **+ cobertura provisional** `a7892b7` | **−13,8 %** | −117,0 % | −116,8 % | −91,9 % |
+| **+ lectura arreglada** (hoy) | −13,8 % | **−28,3 %** | **−48,1 %** | **−26,3 %** |
 
-Lo que decia entonces, congelado en `captura_limpia_b1e3293.json`:
+La **cobertura provisional** arreglo el arranque muerto, que solo existe con datos
+limpios: +26,8 puntos en L0 y casi nada en los sucios. El **arreglo de lectura** dejo L0
+**bit a bit identico** — 48 campos, cero diferencias — y movio los tres sucios entre 65 y
+89 puntos. Dos palancas que no se pisan, cada una con su control.
+
+### La primera: la cobertura provisional (L0)
+
+**−40,6 % → −13,8 %. +26,8 puntos**, y no es una media que esconda dispersion:
+
+| | 18-sep | con cobertura | Δ |
+|---|---:|---:|---:|
+| media | −40,6 % | **−13,8 %** | **+26,8** |
+| mediana | −36,4 % | −6,3 % | +30,1 |
+| p90 | −26,3 % | **+1,0 %** | +27,2 |
+| mejor mundo | −15,9 % | **+12,7 %** | +28,7 |
+| peor mundo | −71,9 % | −59,6 % | +12,3 |
+
+**Mejora en 25 de 25 mundos** (`captura_limpia_pareada.json`), minimo +9,4 puntos, maximo
++42,6, mediana +26,7; sd del delta pareado 10,0 puntos, t = 13,5. Y **cuatro mundos**
+(1005, 1010, 1016, 1022) tienen captura **positiva**: ahi la politica de Kern cuesta MENOS
+que el piso.
+
+**El control.** El mismo barrido corrido en un worktree de `b1e3293` reproduce el archivo
+congelado **bit a bit**: 48 campos, **cero diferencias**. Las dependencias de este repo se
+resuelven frescas en cada corrida — ya se puso rojo por un release de upstream sin un
+commit propio —, asi que la deriva del entorno era una explicacion viva. No lo es. Segundo
+amarre: las dos capturas por semilla que `5408b2f` dejo escritas (1003 → −0,6392 y 1004 →
+−0,7190) coinciden al digito con la mitad "antes".
+
+Lo que decia el 18-sep, congelado en `captura_limpia_b1e3293.json`:
 
 ```
 L0/forced: captura -40.6% +/- 14.5% · peor mundo -71.9% · 25/25 mundos medibles
@@ -81,51 +120,79 @@ L2/forced: captura -132.8% +/- 45.5% · peor mundo -198.9% · 21/25 mundos medib
 L3/forced: captura -122.6% +/- 50.3% · peor mundo -202.3% · 21/25 mundos medibles
 ```
 
-**L0 limpio: −40,6 % → −13,8 %. +26,8 puntos.** Y no es una media que esconda
-dispersion — es el criterio que esta rama se exige, mundo por mundo:
+### La segunda: la suciedad COSMETICA cambiaba el dato (L1, L2, L3)
 
-| | 18-sep | hoy | Δ |
-|---|---:|---:|---:|
-| media | −40,6 % | **−13,8 %** | **+26,8** |
-| mediana | −36,4 % | −6,3 % | +30,1 |
-| p90 | −26,3 % | **+1,0 %** | +27,2 |
-| mejor mundo | −15,9 % | **+12,7 %** | +28,7 |
-| peor mundo | −71,9 % | −59,6 % | +12,3 |
+`src/simworld/lens.py` declara sus tres inyectores de nivel 1 como **"cosmetico puro"**.
+No lo eran para `jobs/intake.py`, y el precio estaba a la vista sin que nadie lo leyera:
+el nivel 1 mejoro **+0,0 puntos en los 25 mundos** cuando llego la cobertura provisional
+— porque esa cobertura solo se dispara cuando el motor se NIEGA, y a nivel 1 el motor no
+se negaba. Emitia una politica confiada sobre una serie que se habia inventado.
 
-**Mejora en 25 de 25 mundos** (`captura_limpia_pareada.json`), minimo +9,4 puntos,
-maximo +42,6, mediana +26,7; sd del delta pareado 10,0 puntos, t = 13,5. Y **cuatro
-mundos** (1005, 1010, 1016, 1022) tienen captura **positiva**: ahi la politica de Kern
-cuesta MENOS que el piso.
+Dos causas, aisladas corriendo cada inyector por separado sobre el archivo real de la
+semilla 1000 a la semana 20, donde el nivel "cosmetico" devolvia 158 filas, **16 SKU**
+(son 8), **912 unidades de 2.596** y un calendario que terminaba el 1-dic en vez del
+19-may:
 
-**El control, que es lo que hace creible el delta.** El mismo barrido corrido hoy en un
-worktree de `b1e3293` reproduce el archivo congelado **bit a bit**: 48 campos (media,
-sd, p10, mediana, p90, peor, mejor, desviacion x 4 niveles), **cero diferencias**. Las
-dependencias de este repo se resuelven frescas en cada corrida — ya se puso rojo por un
-release de upstream sin un commit propio --, asi que la deriva del entorno era una
-explicacion viva para cualquier delta. No lo es: los +26,8 son producto. Como segundo
-amarre, las dos capturas por semilla que `5408b2f` dejo escritas en su mensaje (1003 →
-−0,6392 y 1004 → −0,7190) coinciden al digito con la mitad "antes".
+- `" sku-1003"` y `"SKU-1003"` eran **dos productos**. `.str.strip()` limpia el espacio y
+  no la caja, asi que cada serie perdia la mitad de su historia.
+- `"06/01/2025"` (6 de enero, `dd/mm/yyyy`) se parseaba **month-first** → 1 de junio. Una
+  sola fecha estiraba la grilla semanal de 4 periodos a 21 rellenos de ceros fabricados, y
+  con eso cruzaba `MIN_PERIODS_FOR_POLICY`: **el motor dejaba de negarse.**
+
+La especificacion del arreglo es el invariante, no las piezas: **si el nivel 1 es
+cosmetico de verdad, tiene que leerse IGUAL que el nivel 0.** Ahora se cumple.
+
+| nivel | antes | con la lectura arreglada | mundos que mejoran |
+|---|---:|---:|---|
+| L1 | −117,0 % | **−28,3 %** | 24/25 · t = 10,1 |
+| L2 | −116,8 % | **−48,1 %** | **21/21** · minimo +20,5 |
+| L3 | −91,9 % | **−26,3 %** | 20/21 · t = 8,7 |
+
+Y el control de que toca solo lo que debe: **L0 sale bit a bit identico** en las dos
+condiciones. Lo que decia antes del arreglo, congelado en `captura_limpia_a7892b7.json`:
+
+```
+L1/forced: captura -117.0% +/- 50.7% · peor mundo -213.9% · 25/25 mundos medibles
+L2/forced: captura -116.8% +/- 42.0% · peor mundo -192.3% · 21/25 mundos medibles
+L3/forced: captura -91.9% +/- 40.7% · peor mundo -154.8% · 21/25 mundos medibles
+```
 
 ### Que puede y que no puede incluir este numero
 
-De las tres mejoras medidas en esta rama desde el 18-sep, el regrabado mueve **una**:
-
-- **La cobertura provisional** (`e2b4435` + `8c6ff33`) — esta en el motor, y es lo que
-  se mide aca.
-- El **nivel de servicio** (+18,9 puntos) es un CARRIL de
-  `scripts/residuo_de_la_brecha.py`, y ademas declarado no accionable.
-- La **fecha de fin por SKU** (+16,2 puntos) es un POST-PROCESO sobre la `Policy` en
-  `scripts/horizonte_por_sku.py`.
-
-Ninguna de las dos ultimas esta en el motor: ni `servicio_econ` ni el tope por SKU
-existen fuera de `scripts/`. Y `5408b2f` ya habia medido que la negativa-que-no-es-cero
-no mueve la captura. Citar +26,8 como si incluyera las tres seria sumar dos palancas que
-ningun cliente puede correr.
+De las tres mejoras medidas en esta rama antes de hoy, la linea base incluye **una**: la
+cobertura provisional, que esta en el motor. El **nivel de servicio** (+18,9 puntos) es un
+CARRIL de `scripts/residuo_de_la_brecha.py` y la **fecha de fin por SKU** (+16,2) un
+POST-PROCESO en `scripts/horizonte_por_sku.py`; ninguna existe fuera de `scripts/`.
 
 **La prediccion escrita antes de medir se quedo corta.** Extrapolando desde los cinco
 primeros mundos (−47,0 % → −27,6 %, +19,4) y sabiendo que esos cinco eran 6,4 puntos
 peores que el promedio, la estimacion era **−21,2 %**. Salio −13,8 %: la extrapolacion
 desde cinco mundos **subestimaba** la palanca en 7,4 puntos.
+
+## La tabla no esta ordenada por su ordinal, y la compuerta lo dice
+
+L3 captura mejor que L2 (**−26,3 %** contra **−48,1 %**) y eso **no es una anomalia**.
+Cada distribucion lleva desde hoy su fidelidad — que fraccion de la demanda verdadera le
+llego al motor:
+
+| nivel | captura | fidelidad | error \|1−f\| |
+|---|---:|---:|---:|
+| L0 | −13,8 % | 1,000 | 0,000 |
+| L1 | −28,3 % | 1,000 | 0,000 |
+| L2 | −48,1 % | 0,634 | **0,366** |
+| L3 | −26,3 % | 0,857 | **0,143** |
+
+**El archivo de nivel 3 se equivoca la mitad que el de nivel 2**, porque sus inyectores
+INFLAN la serie (`inject_duplicate_rows` 101,2 %, `inject_unmarked_promo` 114,9 %) mientras
+los del 2 la DESINFLAN (`inject_mixed_units` 79,9 %, `inject_calendar_gaps` 95,0 %). Kern
+comprando mas al leer L3 es la respuesta CORRECTA a un archivo mas fiel. Los niveles son
+monotonos en **cantidad de defectos**, no en **distorsion**, y hasta hoy
+`degrada_con_la_suciedad` confundia las dos cosas: acusaba por el ordinal.
+
+La alarma conserva sus dientes — sigue acusando si la captura mejora con un archivo igual
+de fiel o peor, que es la forma exacta del defecto que atrapo el 18-sep, y tambien si no
+hay fidelidad medida. Y la exencion **no se traga en silencio**: el barrido imprime la
+inversion aparte, con las dos fidelidades nombradas.
 
 ## La mitad con disrupcion no se pudo regrabar
 
@@ -188,36 +255,27 @@ mucho mas.
 
 El costo del shock **no se puede afirmar hoy**, por las dos razones de arriba: la columna
 con disrupcion es de otra epoca, y su regrabacion esta bloqueada por la anomalia.
+## Lo que la regrabacion encontro sin buscarlo, y donde quedo
 
-## Dos cosas que la regrabacion encontro sin buscarlas
+Las dos cosas que aparecieron midiendo **ya estan arregladas**, y las dos salieron de
+interrogar un numero que no cerraba (el +0,0 de L1 en los 25 mundos):
 
-**1. Una fecha ambigua apaga la negativa del motor.** L1 salio **identico bit a bit** en
-los 25 mundos: delta exactamente +0,0. Eso no es ruido, es un mecanismo. `06/01/2025`
-(6 de enero, escrito `dd/mm/yyyy` por `inject_mixed_date_formats`) es ambigua y se parsea
-**month-first**, o sea 1 de junio; su lunes es el 2025-05-26. Con eso la grilla semanal
-pasa de **4 semanas a 21**, rellenas de ceros fabricados — y 21 ≥
-`MIN_PERIODS_FOR_POLICY` (6), asi que **el motor deja de negarse**. Donde en L0 emite
-ocho `provisional_cover` honestas, en L1 emite quince `(R, S)` con pronostico 0,22 para
-un SKU que vende ~16 por semana (quince y no ocho porque `inject_whitespace_case` parte
-`SKU-1000` en `SKU-1000` y `sku-1000`). Por eso la cobertura provisional compra
-exactamente cero a L1: **solo se dispara cuando el motor se niega, y a L1 el motor no se
-niega**.
+1. **Una fecha ambigua apagaba la negativa del motor.** Arreglado: `_slash_date_order`
+   lee el orden de la propia columna. Detalle en *La segunda*, arriba.
+2. **Dos grafias del mismo codigo eran dos productos.** Arreglado: `_fold_ids` pliega por
+   identidad y declara lo plegado.
 
-La ambiguedad en si **ya estaba documentada y aceptada a proposito** en
-`jobs/intake.py::_parse_dates` — se revirtio un `dayfirst=True` que corrompia el ~39 % de
-las fechas ISO, que era peor. Lo que ese comentario acota mal no es la causa sino el
-**radio**: dice, con razon, que la limitacion "nunca tira una fila y nunca corrompe una
-fecha ya inequivoca". Lo que no dice es que una sola fecha ambigua **estira la grilla**, y
-con eso cruza la compuerta que protege al motor. El alcance declarado es "una fila mal
-etiquetada"; el alcance medido es "la negativa deja de existir".
+**Lo que NO se arreglo, y es la capa que queda.** `lens.history_frame` exporta
+`out.sold` — *"lo efectivamente vendido"* —, no la demanda. Una politica mala causa
+quiebre, el quiebre **censura** el historico, y la politica siguiente sale mas chica
+todavia. Se ve en el dato: antes del arreglo, a la semana 4 el nivel 1 traia el 100 % de
+las unidades del nivel 0 y a la semana 20 el **35 %**. El piso no sufre eso porque
+`naive_policy` es **congelada** (*"sin revisar nunca"*): lee el archivo censurado una sola
+vez, en el calentamiento. **El bucle solo muerde al carril que replanifica**, y es inmune
+por estar congelado, no por ser mas listo.
 
-**2. En los niveles sucios Kern compra una decima parte de lo que compra el piso.** Es el
-diagnostico de la anomalia, arriba, y vale por si mismo: un fill de 0,25 contra 0,79 del
-piso no es "captura mala", es un carril colapsado.
-
-Ninguna de las dos se arregla aca. Que deba hacer el intake con una fecha ambigua
-(negarse, avisar, pedir locale) y por que el motor colapsa con suciedad semantica son dos
-decisiones de producto, cada una con sus ocho partes.
+Ajustar demanda contra ventas censuradas tiene nombre propio en la teoria de inventarios,
+y cerrarlo es una capacidad — no un arreglo de lectura. No esta medido cuanto vale.
 
 ## Que NO dice este documento
 

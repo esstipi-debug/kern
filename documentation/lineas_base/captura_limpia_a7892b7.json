@@ -1,0 +1,76 @@
+{
+  "contexto": {
+    "mundos": 25,
+    "semilla_inicial": 1000,
+    "n_skus": 8,
+    "n_proveedores": 2,
+    "semanas": 24,
+    "replan_cada": 4,
+    "niveles": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "shocks": [],
+    "metrica": "capture"
+  },
+  "distribuciones": [
+    {
+      "carril": "forced",
+      "nivel": 0,
+      "n_mundos": 25,
+      "n_medibles": 25,
+      "media": -0.13787933971650637,
+      "desviacion": 0.17802583083332751,
+      "p10": -0.36527022505476336,
+      "mediana": -0.06318196573731172,
+      "p90": 0.009507089534644228,
+      "peor": -0.5958472530718407,
+      "mejor": 0.12727372566417663,
+      "metrica": "capture"
+    },
+    {
+      "carril": "forced",
+      "nivel": 1,
+      "n_mundos": 25,
+      "n_medibles": 25,
+      "media": -1.1698229624537186,
+      "desviacion": 0.5069973863678847,
+      "p10": -1.7854796552960357,
+      "mediana": -1.1069682297916519,
+      "p90": -0.5097258930390722,
+      "peor": -2.1391090803588253,
+      "mejor": -0.29721060322960435,
+      "metrica": "capture"
+    },
+    {
+      "carril": "forced",
+      "nivel": 2,
+      "n_mundos": 25,
+      "n_medibles": 21,
+      "media": -1.1679722101268522,
+      "desviacion": 0.4195012497260306,
+      "p10": -1.6617200555512333,
+      "mediana": -1.0911436558972065,
+      "p90": -0.5910196169202208,
+      "peor": -1.922900327213278,
+      "mejor": -0.3757894817112412,
+      "metrica": "capture"
+    },
+    {
+      "carril": "forced",
+      "nivel": 3,
+      "n_mundos": 25,
+      "n_medibles": 21,
+      "media": -0.9188627233389755,
+      "desviacion": 0.4069690778392562,
+      "p10": -1.383726336576626,
+      "mediana": -0.9977964589606023,
+      "p90": -0.44238971098285323,
+      "peor": -1.5481881062103475,
+      "mejor": -0.15066036755225742,
+      "metrica": "capture"
+    }
+  ]
+}

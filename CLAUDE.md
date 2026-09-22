@@ -375,24 +375,46 @@ barrido corrido en un worktree de `b1e3293` reproduce su archivo BIT A BIT -- 48
 cero diferencias --, asi que no es deriva del entorno. Y solo incluye UNA de las tres
 palancas medidas en la rama: la cobertura provisional es la unica que esta en el motor.
 
-**La mitad bajo disrupcion no se pudo regrabar, y eso es el hallazgo.** El barrido salio
-con codigo 1 y se nego a grabar porque `degrada_con_la_suciedad` disparo: L3 captura
-mejor que L2. No es una fuga -- la lente no toca el marcador --: **ensuciar mas hace que
-Kern compre casi el doble** (466.062 -> 888.718 sobre los 21 mundos medibles) y eso le
-ahorra mas quiebre del que le cuesta, porque en los niveles sucios Kern colapsa a
-casi-no-pedir (semilla 1013: compra 19.780 donde el piso compra 202.167, fill 0,22 contra
-0,79). La corrida rechazada queda en `captura_bajo_shock_RECHAZADA.json` como evidencia,
-NO como referencia. Y la columna limpia paso esa misma compuerta por 0,6 puntos, asi que
-el aviso vale para sus filas L2/L3 -- no para L0, que es el titular.
+**El colapso en los niveles sucios era LECTURA, y esta arreglado** (2026-09-22, tarde).
+`src/simworld/lens.py` declara sus tres inyectores de nivel 1 como "cosmetico puro" y
+`jobs/intake.py` no los leia igual: `" sku-1"` y `"SKU-1"` eran DOS productos
+(`.str.strip()` limpia el espacio, no la caja) y `"06/01/2025"` se parseaba month-first,
+estirando la grilla semanal de 4 periodos a 21 rellenos de ceros fabricados -- con eso
+cruzaba `MIN_PERIODS_FOR_POLICY` y **el motor dejaba de negarse**, emitiendo una politica
+confiada sobre una serie inventada. Por eso la cobertura provisional habia mejorado el
+nivel 1 en **+0,0 puntos en los 25 mundos**: solo se dispara cuando el motor se niega.
+`_fold_ids` pliega por identidad declarando lo plegado en `IntakeQuality.folded_ids`;
+`_slash_date_order` lee el orden de la columna (una fecha con barra cuyo primer
+componente es > 12 solo puede ser un dia) y aplica `dayfirst` SOLO a tokens con barra --
+por eso no repite el `dayfirst=True` revertido, que corrompia el ~39% de las ISO. La
+especificacion es el invariante, no las piezas: **nivel 1 tiene que leerse IGUAL que
+nivel 0**, y `tests/test_suciedad_cosmetica_no_cambia_el_dato.py` lo fija.
 
-**Una fecha ambigua apaga la negativa del motor** (medido de paso). L1 salio identico bit
-a bit en los 25 mundos porque la cobertura provisional no llega nunca: `06/01/2025`
-escrito `dd/mm/yyyy` se parsea month-first, estira la grilla semanal de 4 semanas a 21
-rellenas de ceros, y 21 >= `MIN_PERIODS_FOR_POLICY` hace que el motor **deje de negarse**
-y emita una `(R,S)` con pronostico 0,22 para un SKU que vende ~16 por semana. La
-ambiguedad estaba documentada y aceptada en `jobs/intake.py::_parse_dates`; lo que ese
-comentario acota mal es el RADIO: declara "una fila mal etiquetada" y lo medido es "la
-negativa deja de existir".
+Medido: L1 **-117,0% -> -28,3%** (24/25 mundos), L2 **-116,8% -> -48,1%** (21/21), L3
+**-91,9% -> -26,3%** (20/21), y **L0 sale bit a bit identico** -- dos palancas que pegan
+en lugares disjuntos: la cobertura arreglo el arranque (solo L0), la lectura arreglo lo
+sucio. La epoca intermedia queda congelada en `captura_limpia_a7892b7.json`.
+
+**La compuerta de suciedad acusa por FIDELIDAD, no por el ordinal** (misma fecha).
+`degrada_con_la_suciedad` decia: si un nivel mas sucio captura mejor, algo entra por una
+via no disenada. La observacion sigue valiendo; la inferencia no. Los niveles son
+monotonos en CANTIDAD DE DEFECTOS y no en DISTORSION: el archivo de nivel 3 le entrega al
+motor **0,857** de la demanda verdadera y el de nivel 2 **0,634**, porque los inyectores
+del 3 INFLAN (`inject_duplicate_rows`, `inject_unmarked_promo`) y los del 2 DESINFLAN
+(`inject_mixed_units`, `inject_calendar_gaps`). Kern comprando mas al leer L3 es la
+respuesta CORRECTA a un archivo mas fiel. Ahora cada `Distribucion` lleva
+`fidelidad_media` (la mide `lens.fidelidad_del_nivel`, **por intake y no sobre el CSV
+crudo** -- sobre el crudo el nivel 1 daria perfecto y entregaba el 35% de las unidades) y
+el error es `|1 - fidelidad|`, porque inflar un 26% y desinflar un 26% son igual de
+infieles. La alarma conserva sus dientes: acusa con fidelidad IGUAL, PEOR o AUSENTE. Y la
+exencion no se traga en silencio -- `inversiones_explicadas` la imprime con las dos
+fidelidades nombradas.
+
+**Lo que queda, y no es lectura:** `lens.history_frame` exporta `out.sold`, no la
+demanda. Politica mala -> quiebre -> el historico se CENSURA -> la politica siguiente es
+mas chica. El piso es inmune por ser congelado (`naive_policy`, "sin revisar nunca"): el
+bucle solo muerde al carril que replanifica. Ajustar demanda contra ventas censuradas es
+una capacidad, no un arreglo, y no esta medido cuanto vale.
 
 **Por que queda por debajo** lo contesta
 [`documentation/KERN_POR_QUE_BAJO_EL_PISO.md`](documentation/KERN_POR_QUE_BAJO_EL_PISO.md)
