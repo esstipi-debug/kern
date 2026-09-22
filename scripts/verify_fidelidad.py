@@ -36,6 +36,7 @@ from src.verify.barrido import (
     comparar_con_linea_base,
     degrada_con_la_suciedad,
     guardar_linea_base,
+    inversiones_explicadas,
 )
 
 
@@ -101,16 +102,17 @@ def main() -> int:
     print(f"{titulo} · {len(semillas)} mundos · {total:.0f} s")
     print(f"{'=' * 78}")
     print(f"{'carril':<10}{'niv':>4}{'mundos':>8}{'medibles':>10}"
-          f"{'media':>9}{'sd':>8}{'p10':>8}{'peor':>8}")
+          f"{'media':>9}{'sd':>8}{'p10':>8}{'peor':>8}{'fidelidad':>11}")
     for d in dists:
+        fid = f"{d.fidelidad_media:.3f}" if d.fidelidad_media is not None else "--"
         if d.media is None:
             print(f"{d.carril:<10}{d.nivel:>4}{d.n_mundos:>8}{d.n_medibles:>10}"
-                  f"{'--':>9}{'--':>8}{'--':>8}{'--':>8}")
+                  f"{'--':>9}{'--':>8}{'--':>8}{'--':>8}{fid:>11}")
             continue
         sd = f"{d.desviacion * 100:.1f}%" if d.desviacion is not None else "--"
         print(f"{d.carril:<10}{d.nivel:>4}{d.n_mundos:>8}{d.n_medibles:>10}"
               f"{d.media * 100:>8.1f}%{sd:>8}"
-              f"{d.p10 * 100:>7.1f}%{d.peor * 100:>7.1f}%")
+              f"{d.p10 * 100:>7.1f}%{d.peor * 100:>7.1f}%{fid:>11}")
 
     print("\nLo que se puede afirmar:")
     for d in dists:
@@ -130,6 +132,17 @@ def main() -> int:
                 print(f"  · {d.carril} nivel {d.nivel}: media {d.media * 100:.1f}% "
                       f"-- Kern decide PEOR que el punto de reorden fijo con este shock")
 
+    explicadas: list[str] = []
+    for carril in carriles:
+        explicadas.extend(inversiones_explicadas(dists, carril))
+    if explicadas:
+        # Una exencion que nadie ve es como se pierde una verificacion: la tabla
+        # de arriba tiene filas que NO estan ordenadas como su ordinal sugiere, y
+        # eso hay que decirlo aunque el barrido pase.
+        print("\nINVERSIONES EXPLICADAS (no son anomalias, pero la tabla no esta ordenada):")
+        for e in explicadas:
+            print(f"  ~ {e}")
+
     anomalias: list[str] = []
     for carril in carriles:
         anomalias.extend(degrada_con_la_suciedad(dists, carril))
@@ -142,7 +155,7 @@ def main() -> int:
         print("ningun numero de esta tabla.")
         return 1
 
-    print("\nSin anomalias: mas suciedad nunca mejoro la captura.")
+    print("\nSin anomalias: ninguna capa de suciedad mejoro la captura sin ser mas fiel.")
 
     contexto = {
         "mundos": len(semillas), "semilla_inicial": args.semilla_inicial,

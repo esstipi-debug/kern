@@ -38,6 +38,7 @@ if str(ROOT) not in sys.path:
 
 import numpy as np  # noqa: E402
 
+from src.simworld.lens import fidelidad_del_nivel  # noqa: E402
 from src.simworld.runners import (  # noqa: E402
     NAIVE_LOOKBACK_WEEKS,
     Policy,
@@ -346,6 +347,13 @@ def _run_lanes(
                 # intenta lo contrario), asi que la suma es 0 unicamente
                 # cuando NINGUNA semana ordeno nada.
                 "total_ordered": float(sum(o.ordered.sum() for o in outs)),
+                # Cuanta de la demanda verdadera le llego a Kern por la lente,
+                # medida sobre la historia que ESTE carril produjo y leyo. Es la
+                # mitad que le faltaba a `degrada_con_la_suciedad`: sin esto, la
+                # alarma solo podia comparar el ORDINAL del nivel, que cuenta
+                # defectos y no distorsion, y ya no son la misma cosa.
+                "input_fidelity": fidelidad_del_nivel(
+                    world, outs, level=level, seed=seed, omit=omit),
             }
     return resultado
 
@@ -452,6 +460,10 @@ def run_grid(
             "lane": datos["lane"], "level": datos["level"],
             "kpis": asdict(datos["kpis"]),
             "replan_status_counts": dict(datos["status_counts"]),
+            # 1.0 = la lente le entrego a Kern las unidades que el mundo vendio.
+            # Sin este campo en el JSON, comparar dos niveles solo se puede hacer
+            # por su ORDINAL, y un ordinal cuenta defectos, no distorsion.
+            "input_fidelity": datos["input_fidelity"],
         }
         kpis, total_ordered = datos["kpis"], datos["total_ordered"]
 
