@@ -1,22 +1,21 @@
 # Captura bajo disrupcion — linea base publicada
 
-> **Estado al 2026-09-22 (tarde).** La columna LIMPIA se regrabo dos veces hoy, por dos
-> arreglos distintos y **disjuntos**: la cobertura provisional movio el nivel 0 y el
-> arreglo de lectura de `jobs/intake.py` movio los niveles sucios. La columna BAJO
-> DISRUPCION sigue siendo la del 2026-09-18 @ `b1e3293`. Mientras las dos columnas sean
-> de epocas distintas, **la resta entre ellas esta suspendida**: restar un limpio de hoy
-> contra un shock de hace cuatro dias no mide el shock, mide dos epocas del codigo.
+> **Estado al 2026-09-22 (tarde).** Las **dos** columnas se regrabaron hoy, en la misma
+> epoca del codigo, asi que **la resta entre ellas vuelve a significar el shock** — estuvo
+> suspendida cuatro dias. La limpia se movio por dos arreglos distintos y **disjuntos**:
+> la cobertura provisional movio el nivel 0 y el arreglo de lectura de `jobs/intake.py`
+> movio los niveles sucios.
 >
 > Los archivos, y cada uno dice que es:
 >
 > | archivo | que es |
 > |---|---|
 > | `captura_limpia.json` | **vigente**, con los dos arreglos |
-> | `captura_bajo_shock.json` | **vigente**, medida el 18-sep — no regrabable hoy |
+> | `captura_bajo_shock.json` | **vigente**, misma epoca que la limpia |
 > | `captura_limpia_b1e3293.json` · `captura_bajo_shock_b1e3293.json` | **congelados**: el 18-sep, antes de todo |
 > | `captura_limpia_a7892b7.json` | **congelado**: con cobertura, SIN el arreglo de lectura |
 > | `captura_limpia_pareada.json` | la captura **por mundo** en las dos primeras epocas |
-> | `captura_bajo_shock_RECHAZADA.json` | la corrida con shock que el barrido **se nego a grabar**. Evidencia, no referencia |
+> | `captura_bajo_shock_RECHAZADA.json` | la corrida con shock que el barrido **se nego a grabar** el 22-sep a la manana. Historia del episodio, no referencia |
 >
 > Desde hoy cada distribucion lleva ademas su **fidelidad**: que fraccion de la demanda
 > verdadera le llego al motor por la lente. Sin ese numero, dos niveles solo se podian
@@ -63,13 +62,13 @@ L2/forced: captura -48.1% +/- 28.6% · peor mundo -111.7% · 21/25 mundos medibl
 L3/forced: captura -26.3% +/- 25.5% · peor mundo -84.5% · 21/25 mundos medibles
 ```
 
-Bajo `lead_time_spike:*:8:3:3` (**medido el 2026-09-18, NO regrabable hoy**):
+Bajo `lead_time_spike:*:8:3:3` (**medido el 2026-09-22**, misma epoca que la limpia):
 
 ```
-L0/forced: captura bajo disrupcion -56.0% +/- 17.5% · peor mundo -88.3% · 25/25 mundos medibles
-L1/forced: captura bajo disrupcion -92.0% +/- 41.3% · peor mundo -171.8% · 25/25 mundos medibles
-L2/forced: captura bajo disrupcion -107.3% +/- 39.0% · peor mundo -166.1% · 21/25 mundos medibles
-L3/forced: captura bajo disrupcion -99.6% +/- 39.5% · peor mundo -166.5% · 21/25 mundos medibles
+L0/forced: captura bajo disrupcion -20.9% +/- 13.7% · peor mundo -43.5% · 25/25 mundos medibles
+L1/forced: captura bajo disrupcion -33.0% +/- 16.6% · peor mundo -59.7% · 25/25 mundos medibles
+L2/forced: captura bajo disrupcion -46.9% +/- 22.1% · peor mundo -94.6% · 21/25 mundos medibles
+L3/forced: captura bajo disrupcion -24.6% +/- 23.7% · peor mundo -81.9% · 21/25 mundos medibles
 ```
 ## Tres epocas, dos palancas, y pegan en lugares disjuntos
 
@@ -193,68 +192,82 @@ La alarma conserva sus dientes — sigue acusando si la captura mejora con un ar
 de fiel o peor, que es la forma exacta del defecto que atrapo el 18-sep, y tambien si no
 hay fidelidad medida. Y la exencion **no se traga en silencio**: el barrido imprime la
 inversion aparte, con las dos fidelidades nombradas.
+## La mitad con disrupcion estuvo bloqueada cuatro dias, y por que
 
-## La mitad con disrupcion no se pudo regrabar
+Vale contarlo porque el episodio es el argumento entero a favor de tener la compuerta.
 
-Se corrio. `verify_fidelidad.py` **salio con codigo 1 y se nego a grabar**, porque
-`degrada_con_la_suciedad` disparo:
+El 22-sep a la manana el barrido con shock **salio con codigo 1 y se nego a grabar**
+porque `degrada_con_la_suciedad` disparo: `L3 captura -70.0% > L2 -92.9%`. La compuerta
+no se puenteo, y la corrida quedo en `captura_bajo_shock_RECHAZADA.json`: **no es una
+linea base** y no se puede comparar contra ella, es la historia del episodio.
 
-```
-forced: L3 captura -70.0% > L2 -92.9% (margen 20.8%) -- ensuciar mejoro el resultado
-```
-
-Esa compuerta existe para eso y no se puentea: *"investigar antes de citar ningun numero
-de esta tabla"*. La corrida rechazada queda en
-`captura_bajo_shock_RECHAZADA.json` como evidencia del diagnostico — **no es una linea
-base y no se puede comparar contra ella**. Lo que habria dicho:
+Durante esos cuatro dias la columna vigente fue la del 18-sep, congelada en
+`captura_bajo_shock_b1e3293.json`:
 
 ```
-L0/forced: captura bajo disrupcion -20.9% +/- 13.7% · peor mundo -43.5% · 25/25 mundos medibles
-L2/forced: captura bajo disrupcion -92.9% +/- 35.0% · peor mundo -166.1% · 21/25 mundos medibles
-L3/forced: captura bajo disrupcion -70.0% +/- 32.2% · peor mundo -128.1% · 21/25 mundos medibles
+L0/forced: captura bajo disrupcion -56.0% +/- 17.5% · peor mundo -88.3% · 25/25 mundos medibles
+L1/forced: captura bajo disrupcion -92.0% +/- 41.3% · peor mundo -171.8% · 25/25 mundos medibles
+L2/forced: captura bajo disrupcion -107.3% +/- 39.0% · peor mundo -166.1% · 21/25 mundos medibles
+L3/forced: captura bajo disrupcion -99.6% +/- 39.5% · peor mundo -166.5% · 21/25 mundos medibles
 ```
 
-**El diagnostico, y no es una fuga.** La lente no toca el marcador en ningun punto; la
-suciedad entra por el camino disenado (el dato que Kern lee). Lo que pasa es esto, medido
-sobre los 21 mundos medibles del barrido limpio:
+El diagnostico de entonces fue correcto y ademas encontro un defecto de verdad: **en los
+niveles sucios Kern colapsaba a casi-no-pedir** — compraba 466.062 unidades en el nivel 2
+contra 888.718 en el 3, y en la semilla 1013 compraba **19.780 donde el piso compraba
+202.167**, sirviendo el 22 % de la demanda contra el 79 %. La suciedad del nivel 3, que
+infla la serie, corregia ese colapso por accidente.
 
-| | compra total | quiebre total | fill medio |
+Perseguir ese colapso dio las **dos** cosas que desbloquearon esto:
+
+1. **La causa del colapso era LECTURA**, no politica (ver *La segunda*, arriba). Con la
+   lectura arreglada los tres niveles sucios mejoran entre 45 y 89 puntos.
+2. **Aun arreglado, la inversion persiste** — y ahi se vio que la premisa de la compuerta
+   era la que estaba mal, no el producto. Los niveles no son monotonos en distorsion.
+
+Con las dos, el barrido volvio a grabar. **No porque la compuerta se aflojara**: la
+inversion sigue superando el margen de ruido, o sea que la version vieja habria disparado
+igual. Lo que cambio es que ahora hay con que explicarla, y se explica por escrito.
+
+## El costo del shock, que estuvo cuatro dias sin poder afirmarse
+
+Las dos columnas comparten epoca, semillas, escala y carril, asi que la resta vuelve a
+significar el shock y no la diferencia entre dos versiones del codigo:
+
+| nivel | limpia | bajo disrupcion | costo del shock |
 |---|---:|---:|---:|
-| L2 | 466.062 | 7.145.259 | 0,251 |
-| L3 | **888.718** (+91 %) | 6.288.795 (−857.000) | 0,334 |
+| **L0** | −13,8 % | −20,9 % | **−7,1 puntos** |
+| L1 | −28,3 % | −33,0 % | −4,6 |
+| L2 | −48,1 % | −46,9 % | **+1,2** |
+| L3 | −26,3 % | −24,6 % | **+1,8** |
 
-La suciedad que agrega el nivel 3 (`inject_duplicate_rows`, `inject_unmarked_promo`)
-**infla la demanda aparente**, Kern compra casi el doble, y eso le ahorra mas quiebre del
-que le cuesta comprar. Mejora porque **el error que corrige es enorme**: en los niveles
-sucios Kern colapsa a casi-no-pedir. En la semilla 1013 compra **19.780 donde el piso
-compra 202.167** — una decima parte — y sirve el 22 % de la demanda contra el 79 % del
-piso. Cualquier cosa que infle la demanda ayuda.
+**El shock cuesta 7,1 puntos de captura en el nivel 0.** El 18-sep ese numero era 15,4, y
+las dos cifras NO son comparables como "el shock duele menos ahora": el denominador es
+otro — la brecha piso-techo se normaliza contra un Kern que hoy captura mucho mejor.
 
-**No es nuevo, es mas grande.** El mismo orden invertido ya estaba en las dos lineas base
-del 18-sep: L3 por encima de L2 en **+10,2 puntos** limpio — y ahi el pareado por mundo
-dice que ya pasaba en **15 de 21** — y **+7,7** bajo shock, donde solo hay agregados. Lo
-que hizo la cobertura provisional fue llevarlo a +24,9 y +22,9, y ahi cruzo el umbral de
-ruido.
-
-**⚠️ Y la columna limpia paso la misma compuerta por 0,6 puntos.** Su L2→L3 es +24,9
-contra un margen de 25,5. O sea que el aviso vale igual para las filas L2 y L3 de la
-tabla limpia: son numeros sobre un carril que ya esta colapsado. **La fila L0 no esta
-implicada** — de L0 a L1 la captura se desploma 103 puntos, que es la direccion correcta
-— y el titular de este documento es L0.
+**En los niveles sucios el costo sale POSITIVO**, y eso no es que la disrupcion ayude. La
+captura es una razon contra el piso, y el piso tambien sufre el shock: cuando el
+denominador se degrada, una politica mala se ve menos mala. Es la misma lectura que este
+documento ya hacia el 18-sep, ahora con las dos columnas medibles al mismo tiempo. Es la
+razon por la que se publican las dos y no una.
 
 ## Como se lee esto, sin adornos
 
-Captura 0 es "igual que el piso" y 1 es "igual a un oraculo que ve el futuro". Un
-−13,8 % con datos limpios quiere decir que, en promedio sobre 25 mundos, la politica que
-Kern propone cuesta un 13,8 % de la brecha piso-techo MAS que el piso.
+Captura 0 es "igual que el piso" y 1 es "igual a un oraculo que ve el futuro". Un −13,8 %
+con datos limpios quiere decir que, en promedio sobre 25 mundos, la politica que Kern
+propone cuesta un 13,8 % de la brecha piso-techo MAS que el piso.
 
 **Con datos limpios Kern ya no decide uniformemente peor que un punto de reorden fijo.**
-El mejor mundo sale +12,7 % y el p90 +1,0 %: hay mundos donde su politica cuesta menos
-que el piso. Sigue costando mas en promedio, y en los niveles sucios sigue costando
-mucho mas.
+El mejor mundo sale **+12,7 %** y el p90 **+1,0 %**: hay mundos donde su politica cuesta
+menos que el piso. Sigue costando mas en promedio.
 
-El costo del shock **no se puede afirmar hoy**, por las dos razones de arriba: la columna
-con disrupcion es de otra epoca, y su regrabacion esta bloqueada por la anomalia.
+**Con datos sucios sigue costando bastante mas, y bajo disrupcion tambien.** Ningun nivel
+sale positivo con el shock encima. El titular honesto de hoy no es "Kern gana": es que la
+distancia se acorto mucho —de −40,6 % a −13,8 % en limpio, y de −117,0 % a −28,3 % en el
+primer nivel de suciedad— y que en limpio el reparto ya incluye mundos donde gana.
+
+**Lo que este numero NO incluye** esta en *Que puede y que no puede incluir este numero*,
+arriba: dos de las tres palancas medidas en la rama viven en `scripts/` y no en el motor.
+
 ## Lo que la regrabacion encontro sin buscarlo, y donde quedo
 
 Las dos cosas que aparecieron midiendo **ya estan arregladas**, y las dos salieron de

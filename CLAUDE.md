@@ -367,15 +367,18 @@ pedia exactamente cero en esos SKU, el techo servia MENOS que el piso, y una pol
 no comprar nunca nada sacaba captura +0,375. Toda captura publicada antes de esa fecha
 esta vencida. Linea base sobre 25 mundos, limpia y bajo disrupcion, en
 [`documentation/KERN_CAPTURA_BAJO_DISRUPCION.md`](documentation/KERN_CAPTURA_BAJO_DISRUPCION.md):
-**-13,8% limpia** (regrabada el 2026-09-22) y **-56,0% bajo un salto de lead time de 3
-semanas** (del 18-sep: su regrabacion esta BLOQUEADA, abajo). Con datos limpios Kern ya
+**-13,8% limpia y -20,9% bajo un salto de lead time de 3 semanas**, las dos regrabadas
+el 2026-09-22 en la misma epoca del codigo -- asi que **la resta vuelve a significar el
+shock**: cuesta **7,1 puntos** en L0. Estuvo cuatro dias sin poder afirmarse. Con datos
+limpios Kern ya
 no decide uniformemente peor que un punto de reorden fijo: mejoro +26,8 puntos en **25
 de 25 mundos** y cuatro tienen captura POSITIVA. El delta es atribuible porque el mismo
 barrido corrido en un worktree de `b1e3293` reproduce su archivo BIT A BIT -- 48 campos,
 cero diferencias --, asi que no es deriva del entorno. Y solo incluye UNA de las tres
 palancas medidas en la rama: la cobertura provisional es la unica que esta en el motor.
 
-**El colapso en los niveles sucios era LECTURA, y esta arreglado** (2026-09-22, tarde).
+**El colapso en los niveles sucios era LECTURA, y esta arreglado** -- y arreglarlo
+desbloqueo la linea base bajo disrupcion, congelada desde el 18-sep (2026-09-22, tarde).
 `src/simworld/lens.py` declara sus tres inyectores de nivel 1 como "cosmetico puro" y
 `jobs/intake.py` no los leia igual: `" sku-1"` y `"SKU-1"` eran DOS productos
 (`.str.strip()` limpia el espacio, no la caja) y `"06/01/2025"` se parseaba month-first,

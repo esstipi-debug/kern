@@ -269,15 +269,38 @@ def test_la_corrida_con_shock_esta_rechazada_y_no_se_usa_como_linea_base():
     assert "no es una linea base" in _doc_plano()
 
 
-def test_la_columna_con_shock_vigente_sigue_siendo_la_congelada(datos):
-    """Mientras la regrabacion siga bloqueada, la linea base con shock ES la del 18-sep,
-    y el documento lo dice. Este test se pone rojo el dia que se logre regrabarla -- que
-    es justo cuando el documento tiene que dejar de decir "NO regrabable hoy" y volver a
-    publicar el costo del shock."""
-    assert datos["distribuciones"] == _leer(CONGELADA_SHOCK)["distribuciones"]
-    plano = _doc_plano()
-    assert "la resta entre ellas esta suspendida" in plano
-    assert "NO regrabable hoy" in plano
+def test_las_dos_columnas_son_de_la_MISMA_epoca(datos, datos_limpios):
+    """Reemplaza al guard que exigia que la columna con shock siguiera siendo la del
+    18-sep. Ese se puso rojo el 22-sep cuando por fin se logro regrabarla, que es
+    exactamente el dia para el que se escribio.
+
+    Lo que hay que fijar ahora es lo contrario: que las dos columnas se hayan medido
+    juntas. La resta entre ellas es "el costo del shock", y con una mitad de otra epoca
+    mide la diferencia entre dos versiones del codigo con forma de disrupcion.
+    """
+    assert _leer(CONGELADA_SHOCK)["distribuciones"] != datos["distribuciones"], (
+        "la columna con shock volvio a ser la congelada del 18-sep: el documento no "
+        "puede publicar un costo del shock restandole la limpia de hoy"
+    )
+    # El mismo experimento en todo menos el shock, que es lo que hace valida la resta.
+    a, b = datos_limpios["contexto"], datos["contexto"]
+    for clave in ("mundos", "semilla_inicial", "n_skus", "n_proveedores",
+                  "semanas", "replan_cada", "niveles"):
+        assert a[clave] == b[clave], clave
+
+
+def test_el_costo_del_shock_publicado_es_la_resta_de_los_dos_archivos(datos, datos_limpios):
+    """-7,1 puntos no es un numero tipeado: sale de restar las dos lineas base."""
+    limpia, shock = _por_nivel(datos_limpios), _por_nivel(datos)
+    costo = (shock[0]["media"] - limpia[0]["media"]) * 100
+    assert round(costo, 1) == -7.1, f"el costo real es {costo:+.1f}, no -7,1"
+    texto = DOC.read_text(encoding="utf-8")
+    assert "7,1 puntos" in texto
+    # Y en los niveles sucios sale POSITIVO, que el documento tiene que explicar en vez
+    # de publicarlo como si la disrupcion ayudara.
+    for nivel in (2, 3):
+        assert (shock[nivel]["media"] - limpia[nivel]["media"]) > 0, nivel
+    assert "el piso tambien sufre el shock" in _doc_plano()
 
 
 def test_la_inversion_de_la_columna_limpia_esta_EXPLICADA_por_la_fidelidad(datos_limpios):
