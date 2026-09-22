@@ -1,0 +1,81 @@
+{
+  "contexto": {
+    "mundos": 25,
+    "semilla_inicial": 1000,
+    "n_skus": 8,
+    "n_proveedores": 2,
+    "semanas": 24,
+    "replan_cada": 4,
+    "niveles": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "shocks": [
+      "lead_time_spike:*:8:3:3"
+    ],
+    "metrica": "capture_under_shock",
+    "RECHAZADA": "Esta corrida NO es una linea base y no se puede citar como tal. `verify_fidelidad.py` salio con codigo 1 y se NEGO a grabarla porque `degrada_con_la_suciedad` disparo: 'forced: L3 captura -70.0% > L2 -92.9% (margen 20.8%) -- ensuciar mejoro el resultado'. Se conserva como evidencia del diagnostico, no como referencia contra la que comparar. La linea base bajo disrupcion vigente sigue siendo la del 2026-09-18.",
+    "medida_el": "2026-09-22",
+    "sha": "6db47a4"
+  },
+  "distribuciones": [
+    {
+      "carril": "forced",
+      "nivel": 0,
+      "n_mundos": 25,
+      "n_medibles": 25,
+      "media": -0.20890702412842882,
+      "desviacion": 0.13712710308565573,
+      "p10": -0.40958002846934183,
+      "mediana": -0.1978767377957309,
+      "p90": -0.04288453208707103,
+      "peor": -0.43534977517778023,
+      "mejor": -0.0002743385682331221,
+      "metrica": "capture_under_shock"
+    },
+    {
+      "carril": "forced",
+      "nivel": 1,
+      "n_mundos": 25,
+      "n_medibles": 25,
+      "media": -0.9200502496096561,
+      "desviacion": 0.41299337457489943,
+      "p10": -1.4935877729723661,
+      "mediana": -0.8542757595527584,
+      "p90": -0.38335010805813907,
+      "peor": -1.7183748367712153,
+      "mejor": -0.21793508371269693,
+      "metrica": "capture_under_shock"
+    },
+    {
+      "carril": "forced",
+      "nivel": 2,
+      "n_mundos": 25,
+      "n_medibles": 21,
+      "media": -0.9286409429314743,
+      "desviacion": 0.35031992886271096,
+      "p10": -1.3452251046485786,
+      "mediana": -0.9722636657704862,
+      "p90": -0.5084039478139145,
+      "peor": -1.660598168598032,
+      "mejor": -0.27767732851578336,
+      "metrica": "capture_under_shock"
+    },
+    {
+      "carril": "forced",
+      "nivel": 3,
+      "n_mundos": 25,
+      "n_medibles": 21,
+      "media": -0.6997629024071783,
+      "desviacion": 0.32228125003244296,
+      "p10": -1.0396458364337853,
+      "mediana": -0.7025765146668769,
+      "p90": -0.3122706342587259,
+      "peor": -1.2805039752732859,
+      "mejor": -0.06885316572029312,
+      "metrica": "capture_under_shock"
+    }
+  ]
+}

@@ -1,8 +1,10 @@
 """Mide QUE QUEDA de la brecha contra el piso despues de cerrar el arranque muerto.
 
-`documentation/KERN_POR_QUE_BAJO_EL_PISO.md` contesto por que Kern quedaba en -40,6% y
-midio el arreglo: la cobertura provisional llevo la captura de -47,0% a -27,6% sobre
-cinco mundos. Lo que dejo escrito, y no resuelto, es el residuo:
+`documentation/KERN_POR_QUE_BAJO_EL_PISO.md` contesto por que Kern quedaba en -40,6%
+-- el titular limpio de ENTONCES; regrabada el 2026-09-22 la linea base publica -13,8%,
+y la vieja quedo congelada en `captura_limpia_b1e3293.json` -- y midio el arreglo: la
+cobertura provisional llevo la captura de -47,0% a -27,6% sobre cinco mundos. Lo que
+dejo escrito, y no resuelto, es el residuo:
 
     > Con el arranque arreglado Kern sigue en -27,6%: gasta casi lo mismo que el piso y
     > aun asi pierde mas venta y deja mas stock muerto. Eso ya es una ineficiencia de

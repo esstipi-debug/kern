@@ -367,8 +367,32 @@ pedia exactamente cero en esos SKU, el techo servia MENOS que el piso, y una pol
 no comprar nunca nada sacaba captura +0,375. Toda captura publicada antes de esa fecha
 esta vencida. Linea base sobre 25 mundos, limpia y bajo disrupcion, en
 [`documentation/KERN_CAPTURA_BAJO_DISRUPCION.md`](documentation/KERN_CAPTURA_BAJO_DISRUPCION.md):
-**-40,6% limpia y -56,0% bajo un salto de lead time de 3 semanas** -- Kern decide peor
-que un punto de reorden fijo en las dos condiciones, y ese es el numero honesto.
+**-13,8% limpia** (regrabada el 2026-09-22) y **-56,0% bajo un salto de lead time de 3
+semanas** (del 18-sep: su regrabacion esta BLOQUEADA, abajo). Con datos limpios Kern ya
+no decide uniformemente peor que un punto de reorden fijo: mejoro +26,8 puntos en **25
+de 25 mundos** y cuatro tienen captura POSITIVA. El delta es atribuible porque el mismo
+barrido corrido en un worktree de `b1e3293` reproduce su archivo BIT A BIT -- 48 campos,
+cero diferencias --, asi que no es deriva del entorno. Y solo incluye UNA de las tres
+palancas medidas en la rama: la cobertura provisional es la unica que esta en el motor.
+
+**La mitad bajo disrupcion no se pudo regrabar, y eso es el hallazgo.** El barrido salio
+con codigo 1 y se nego a grabar porque `degrada_con_la_suciedad` disparo: L3 captura
+mejor que L2. No es una fuga -- la lente no toca el marcador --: **ensuciar mas hace que
+Kern compre casi el doble** (466.062 -> 888.718 sobre los 21 mundos medibles) y eso le
+ahorra mas quiebre del que le cuesta, porque en los niveles sucios Kern colapsa a
+casi-no-pedir (semilla 1013: compra 19.780 donde el piso compra 202.167, fill 0,22 contra
+0,79). La corrida rechazada queda en `captura_bajo_shock_RECHAZADA.json` como evidencia,
+NO como referencia. Y la columna limpia paso esa misma compuerta por 0,6 puntos, asi que
+el aviso vale para sus filas L2/L3 -- no para L0, que es el titular.
+
+**Una fecha ambigua apaga la negativa del motor** (medido de paso). L1 salio identico bit
+a bit en los 25 mundos porque la cobertura provisional no llega nunca: `06/01/2025`
+escrito `dd/mm/yyyy` se parsea month-first, estira la grilla semanal de 4 semanas a 21
+rellenas de ceros, y 21 >= `MIN_PERIODS_FOR_POLICY` hace que el motor **deje de negarse**
+y emita una `(R,S)` con pronostico 0,22 para un SKU que vende ~16 por semana. La
+ambiguedad estaba documentada y aceptada en `jobs/intake.py::_parse_dates`; lo que ese
+comentario acota mal es el RADIO: declara "una fila mal etiquetada" y lo medido es "la
+negativa deja de existir".
 
 **Por que queda por debajo** lo contesta
 [`documentation/KERN_POR_QUE_BAJO_EL_PISO.md`](documentation/KERN_POR_QUE_BAJO_EL_PISO.md)

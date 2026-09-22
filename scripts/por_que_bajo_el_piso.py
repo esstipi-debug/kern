@@ -70,8 +70,9 @@ from src.simworld.scorer import score_run  # noqa: E402
 from src.simworld.world import WeekOutcome, World, generate_world  # noqa: E402
 
 #: Los mismos parametros con los que se grabo `captura_limpia.json`. Cambiar uno
-#: invalida la comparacion contra el -40,6% publicado, que es el numero que este
-#: documento existe para explicar.
+#: invalida la comparacion contra el -40,6% que `captura_limpia.json` publicaba cuando
+#: se escribio este documento (hoy publica -13,8%; el viejo quedo congelado en
+#: `captura_limpia_b1e3293.json`), que es el numero que este documento existe para explicar.
 N_SKUS = 8
 N_PROVEEDORES = 2
 SEMANAS = 24
