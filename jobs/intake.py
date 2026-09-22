@@ -301,7 +301,79 @@ def _norm(value: object) -> str:
     return re.sub(r"[^a-z0-9]", "", folded)
 
 
+#: A slash/dash-delimited all-numeric date. Only these are ambiguous: an ISO
+#: date puts the year first and settles its own order.
+_SLASH_DATE_RE = re.compile(r"^\s*(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\s*$")
+
+
+def _slash_date_order(series: pd.Series) -> bool | None:
+    """Day-first or month-first for the SLASH dates in this column, or None.
+
+    A slash date whose FIRST component is > 12 can only be a day, and one whose
+    SECOND is > 12 can only be a month. Either settles the convention for the
+    whole column, because an export does not switch convention mid-column --
+    and one unambiguous row is enough to read every ambiguous one correctly.
+
+    This is what makes the narrow ``dayfirst`` below safe where a blanket one
+    was not (see ``_parse_dates``): the evidence comes from the slash dates
+    themselves, and the answer is applied to nothing else.
+
+    Returns None when no row decides (every slash date has both components
+    <= 12) or when rows CONTRADICT each other -- a column carrying both
+    "13/01" and "01/13" has no single convention, and guessing one would
+    corrupt half of it. The caller then falls back to per-value inference.
+    """
+    day_first = month_first = False
+    for value in series.dropna().astype(str):
+        match = _SLASH_DATE_RE.match(value)
+        if match is None:
+            continue
+        first, second = int(match.group(1)), int(match.group(2))
+        day_first |= first > 12
+        month_first |= second > 12
+    if day_first == month_first:
+        return None
+    return day_first
+
+
 def _parse_dates(series: pd.Series) -> pd.Series:
+    """Parse a date column, reading its slash-date convention from the column.
+
+    ``_parse_mixed`` below infers a format PER VALUE, which defaults an
+    ambiguous "06/01/2025" to month-first. That is a defensible reading of that
+    row alone -- and it was measured to be far more than one row's worth of
+    damage. On the scoreboard's cosmetic dirt level, a single ambiguous date
+    landing five months away stretched the resampled weekly grid from 4 periods
+    to 21, padded the rest with zeros that no one measured, and carried the
+    series across ``MIN_PERIODS_FOR_POLICY`` -- so the engine stopped REFUSING
+    to size and confidently emitted a policy ~70x too small, built on a series
+    it had invented. The declared blast radius was "one row mislabelled"; the
+    measured one was "the refusal gate stops firing".
+
+    So the order is read from the column instead of assumed: if any slash date
+    in it is unambiguous, its convention decides the ambiguous ones, and the
+    ``dayfirst`` is applied ONLY to slash-shaped values. That is the difference
+    from the reverted blanket ``dayfirst=True`` retry, which swapped month/day
+    on ~39% of ISO dates whenever a mixed column locked onto a slash format
+    first: ISO values never enter this path.
+    """
+    order = _slash_date_order(series)
+    if order is None:
+        return _parse_mixed(series)
+    text = series.astype(str)
+    is_slash = text.str.match(_SLASH_DATE_RE) & series.notna()
+    if not is_slash.any():
+        return _parse_mixed(series)
+    parsed = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
+    parsed.loc[is_slash] = pd.to_datetime(
+        text[is_slash], errors="coerce", format="mixed", dayfirst=order)
+    rest = ~is_slash
+    if rest.any():
+        parsed.loc[rest] = _parse_mixed(series[rest])
+    return parsed
+
+
+def _parse_mixed(series: pd.Series) -> pd.Series:
     """Parse a date column, tolerating a genuinely mixed-format column.
 
     ``pd.to_datetime`` without ``format="mixed"`` locks onto whichever format
@@ -315,7 +387,9 @@ def _parse_dates(series: pd.Series) -> pd.Series:
     Known, accepted limitation: a slash-delimited date where BOTH components
     are <= 12 (e.g. "06/01/2025") is genuinely ambiguous without locale
     context, and this defaults to month-first (the international/US
-    convention) absent one. That is a narrow, honest ambiguity -- it never
+    convention) absent one. ``_parse_dates`` now supplies that context from
+    the column itself where the column contains it, so this default only
+    stands when NO slash date in the column is unambiguous. That is a narrow, honest ambiguity -- it never
     drops a row and it never corrupts an already-unambiguous date (ISO, or
     any slash date with a component > 12) the way an earlier, reverted
     ``dayfirst=True`` retry was found to do (it silently swapped month/day on
@@ -438,6 +512,11 @@ class IntakeQuality:
     # ``normalize()`` path and on hand-built records; ``normalize_tracked``
     # always fills it.
     reading: IntakeReading | None = None
+    # Canonical label -> the other spellings folded into it. Two codes that differ
+    # only in case or spacing are one product (``_fold_ids``), and merging them is
+    # the right default -- but a merge nobody can see is how a catalog that really
+    # distinguishes them loses a product without a single signal.
+    folded_ids: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @property
     def n_dropped(self) -> int:
@@ -794,6 +873,40 @@ def load_table(path: str | Path, *, aliases: AliasTable | None = None) -> pd.Dat
     return frame
 
 
+def _fold_ids(ids: pd.Series) -> tuple[pd.Series, tuple[tuple[str, tuple[str, ...]], ...]]:
+    """One product, one identity: fold spellings that differ only in case/spacing.
+
+    ``.str.strip()`` alone already handled " SKU-1", but not "sku-1" -- so a file
+    that writes the same code both ways became TWO products, each carrying half
+    the history. Measured on the scoreboard's cosmetic dirt level, that is not
+    cosmetic at all: 8 SKUs became 16, every series lost half its rows, and with
+    each twin below ``MIN_PERIODS_FOR_POLICY`` the engine sized from a fraction
+    of the real demand.
+
+    The label kept is the spelling that appears MOST, so the deliverable shows
+    the client the code as their file mostly writes it. Ties break
+    alphabetically rather than by row order: the same file has to produce the
+    same label twice, or two runs disagree about what a product is called.
+
+    What is folded is reported (``IntakeQuality.folded_ids``) and never assumed:
+    a catalog that really does distinguish "ab-100" from "AB-100" is rare but
+    possible, and the one thing that must not happen is merging them in silence.
+    """
+    if ids.empty:
+        return ids, ()
+    key = ids.str.casefold().str.replace(r"\s+", " ", regex=True)
+    label: dict[str, str] = {}
+    folded: list[tuple[str, tuple[str, ...]]] = []
+    for value, group in ids.groupby(key, sort=True):
+        counts = group.value_counts()
+        kept = sorted(counts.index[counts == counts.max()])[0]
+        label[value] = kept
+        others = tuple(sorted(set(group) - {kept}))
+        if others:
+            folded.append((kept, others))
+    return key.map(label), tuple(folded)
+
+
 def _normalize_core(
     df: pd.DataFrame,
     mapping: ColumnMapping,
@@ -814,7 +927,8 @@ def _normalize_core(
     m = mapping.mapping
     out = pd.DataFrame()
     out["date"] = _parse_dates(df[m["date"]])
-    out["product_id"] = df[m["product_id"]].astype(str).str.strip()
+    out["product_id"], folded_ids = _fold_ids(
+        df[m["product_id"]].astype(str).str.strip())
     out["quantity"] = _parse_quantities(df[m["quantity"]])
     if "unit_cost" in m:
         out["unit_cost"] = pd.to_numeric(df[m["unit_cost"]], errors="coerce")
@@ -848,6 +962,7 @@ def _normalize_core(
         n_dropped_bad_date=n_dropped_bad_date,
         n_dropped_bad_quantity=n_dropped_bad_quantity,
         n_dropped_negative_quantity=n_dropped_negative_quantity,
+        folded_ids=folded_ids,
     )
     if out.empty:
         raise ValueError("no usable rows after cleaning (check date/quantity columns)")
