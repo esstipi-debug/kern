@@ -30,7 +30,6 @@ import pytest
 from jobs import intake
 from src.simworld import lens
 
-
 # ---------------------------------------------------------------------------
 # 1. La identidad de un producto no depende de como se escriba
 # ---------------------------------------------------------------------------
