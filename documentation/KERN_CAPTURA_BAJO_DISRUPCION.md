@@ -1,7 +1,13 @@
 # Captura bajo disrupcion — linea base publicada
 
-> Medido el 2026-09-18 sobre `claude/keen-goodall-jfnqo9` @ `b1e3293`, corriendo el
-> barrido, no copiado de una corrida previa. Fuente de todos los numeros de aca:
+> **Regrabado a medias, 2026-09-22.** La columna LIMPIA se re-midio hoy sobre
+> `claude/keen-goodall-jfnqo9` y la columna BAJO DISRUPCION sigue siendo la del
+> 2026-09-18 @ `b1e3293`. Mientras eso dure, **la resta entre las dos columnas esta
+> suspendida**: restar un limpio de hoy contra un shock de hace cuatro dias no mide el
+> shock, mide dos epocas del codigo. Las dos mitades del 18-sep quedan congeladas en
+> `captura_limpia_b1e3293.json` y `captura_bajo_shock_b1e3293.json`.
+>
+> Corriendo el barrido, no copiado de una corrida previa. Fuente de todos los numeros de aca:
 > `documentation/lineas_base/captura_limpia.json` y
 > `documentation/lineas_base/captura_bajo_shock.json`.
 > `tests/test_captura_bajo_disrupcion_publicada.py` falla si este documento y esos
@@ -39,13 +45,13 @@ Tarda ~27 y ~53 minutos respectivamente: con shock cada mundo corre **dos veces*
 Con datos limpios:
 
 ```
-L0/forced: captura -40.6% +/- 14.5% · peor mundo -71.9% · 25/25 mundos medibles
+L0/forced: captura -13.8% +/- 17.8% · peor mundo -59.6% · 25/25 mundos medibles
 L1/forced: captura -117.0% +/- 50.7% · peor mundo -213.9% · 25/25 mundos medibles
-L2/forced: captura -132.8% +/- 45.5% · peor mundo -198.9% · 21/25 mundos medibles
-L3/forced: captura -122.6% +/- 50.3% · peor mundo -202.3% · 21/25 mundos medibles
+L2/forced: captura -116.8% +/- 42.0% · peor mundo -192.3% · 21/25 mundos medibles
+L3/forced: captura -91.9% +/- 40.7% · peor mundo -154.8% · 21/25 mundos medibles
 ```
 
-Bajo `lead_time_spike:*:8:3:3`:
+Bajo `lead_time_spike:*:8:3:3` — **columna del 2026-09-18, pendiente de regrabar**:
 
 ```
 L0/forced: captura bajo disrupcion -56.0% +/- 17.5% · peor mundo -88.3% · 25/25 mundos medibles
@@ -56,13 +62,18 @@ L3/forced: captura bajo disrupcion -99.6% +/- 39.5% · peor mundo -166.5% · 21/
 
 ## Como se lee esto, sin adornos
 
-**Kern decide peor que un punto de reorden fijo en las dos condiciones.** Captura 0 es
-"igual que el piso" y 1 es "igual a un oraculo que ve el futuro". Un −40,6 % con datos
-limpios quiere decir que, en promedio sobre 25 mundos, la politica que Kern propone
-cuesta un 40 % de la brecha piso-techo MAS que el piso. Bajo disrupcion, −56,0 %.
+Captura 0 es "igual que el piso" y 1 es "igual a un oraculo que ve el futuro". Un
+−13,8 % con datos limpios quiere decir que, en promedio sobre 25 mundos, la politica
+que Kern propone cuesta un 13,8 % de la brecha piso-techo MAS que el piso.
 
-El shock cuesta **15,4 puntos de captura** en el nivel 0, que es la comparacion limpia
-porque las dos corridas comparten semillas, escala y carril.
+**Con datos limpios Kern ya no decide uniformemente peor que un punto de reorden fijo.**
+El mejor mundo sale **+12,7 %** y el p90 **+1,0 %**: hay mundos donde la politica de Kern
+cuesta MENOS que el piso. Sigue costando mas en promedio, y en los niveles sucios sigue
+costando mucho mas.
+
+El costo del shock **no se puede afirmar todavia**: la columna de abajo es del 18-sep y
+restarla contra esta mediria el cambio de codigo, no el shock. El numero vuelve cuando se
+regrabe la mitad con disrupcion.
 
 En los niveles sucios la captura bajo disrupcion sale MENOS mala que la limpia (−92,0 %
 contra −117,0 % en L1). No es que la disrupcion ayude: es que el piso tambien sufre el
@@ -70,8 +81,7 @@ shock, y la captura es una razon contra el piso. Cuando el denominador se degrad
 politica mala se ve menos mala. Es la razon por la que este documento publica las dos
 columnas y no solo una.
 
-**Mas suciedad, peor captura, en las dos condiciones** (−40,6 → −117,0 → −132,8 en
-limpio). `degrada_con_la_suciedad` no disparo en ninguno de los dos barridos, que es el
+**Mas suciedad, peor captura** (−13,8 → −117,0 → −116,8 en limpio). `degrada_con_la_suciedad` no disparo en ninguno de los dos barridos, que es el
 requisito para que `verify_fidelidad.py` acepte grabar una linea base.
 
 ## Por que estos numeros no se parecen a los que este repo publicaba antes
@@ -108,7 +118,7 @@ a la escala del loop la captura pasa de −0,446 a **−0,6019** (L0) y de +0,43
   que Kern no puede dimensionar durante el primer tercio de la corrida**, y la
   hipotesis de que le falta buffer quedo REFUTADA -- con la cobertura exacta del piso
   captura peor, porque el dinero extra termina en stock terminal. Lo que sigue abierto
-  es el residuo: con el arranque arreglado Kern queda en -20,6 % y esa parte ya es una
+  es el residuo: con el arranque arreglado Kern queda en −27,6 % y esa parte ya es una
   ineficiencia de asignacion entre SKU y semanas.
 - **No cubre otros shocks.** `supplier_outage` y `demand_surge` existen en
   `src/simworld/shocks.py` y no tienen linea base grabada.
