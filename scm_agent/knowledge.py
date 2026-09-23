@@ -108,37 +108,20 @@ def _is_non_implementation_path(source_file: str) -> bool:
     )
 
 
-# graphify's ``file_type`` for what a code file itself says: its code, and its
-# docstrings/comments ("rationale", which still live in the .py). Everything else
-# it emits - "document" (Markdown), "concept", "doc_ref" - is text ABOUT the code.
-_IMPLEMENTATION_FILE_TYPES: frozenset[str] = frozenset({"code", "rationale"})
+def _is_code_implementation(node: dict) -> bool:
+    """True if a code-graph node points at where a concept actually lives.
 
-
-def _is_searchable_code(node: dict, implementation_only: bool) -> bool:
-    """True if a code-graph node is a result ``search`` may return.
-
-    A node without ``source_file`` never is. graphify emits one per imported
-    name per file (``Path``, ``DataFrame``, ``parametrize``: 839 of 24,066 nodes
-    on 2026-09-23), and it matches only through the words its id inherits from
-    the importing file (``jobs_vehicle_routing_job_py_dataframe``) - a hit that
-    cannot be opened or cited.
-
-    ``implementation_only`` also drops tests, demos, examples and scripts, and
-    any node whose ``file_type`` is not code: a spec repeats its concept's words
-    in every section heading, so 18 sections of the launch-readiness spec used to
-    outrank jobs/launch_readiness_job.py. That is ``bridge``'s promise, not
-    ``search``'s: "where is this tested?" or "where was it designed?" are fair
-    questions on a discovery surface. A node with no ``file_type`` counts as
-    code, so a graphify that stops emitting it degrades to showing documents
-    rather than to an empty bridge.
+    The rule behind ``bridge().implementation``, which the CLI prints as "where
+    it lives". Three ways out: no ``source_file`` (nowhere to send the reader),
+    a ``document`` node (a spec or guide talks *about* the concept), or a test,
+    demo, example or script path (``_is_non_implementation_path``). A docstring
+    (``rationale``) node stays in: it carries the file and line of the function
+    it documents, which is exactly where to look.
     """
-    src = (node.get("source_file") or "").strip()
-    if not src:
-        return False
-    if not implementation_only:
-        return True
+    src = node.get("source_file") or ""
     return (
-        node.get("file_type", "code") in _IMPLEMENTATION_FILE_TYPES
+        bool(src)
+        and node.get("file_type") != "document"
         and not _is_non_implementation_path(src)
     )
 
@@ -263,9 +246,9 @@ def _content_tokens(tokens: set[str]) -> set[str]:
 
 
 # Acronyms the CODE writes where a query writes the words: acronym -> the ways a
-# query spells it (first one canonical, the phrase in words). Read by ``search``
-# on graph="code" only, and by ``implements``, which reads the books concept as
-# the query.
+# query spells it (first one canonical, the phrase in words). Read by ``_rank``
+# on graph="code" only, so by ``search(graph="code")`` and by ``bridge``'s code
+# side, and by ``implements``, which reads the books concept as the query.
 #
 # A row earns its place by a measured miss, not by being an SCM acronym. On
 # 2026-09-23 "sales and operations planning" ranked src/scheduling.py first and
@@ -572,20 +555,39 @@ class KnowledgeBase:
             cites.append(GroundedCitation(text=cite, node_id=hit.qualified_id, graph="books"))
         return cites
 
-    def search(
-        self, query: str, graph: str = "both", limit: int = 8, *,
-        implementation_only: bool = False,
-    ) -> list[Concept]:
+    def search(self, query: str, graph: str = "both", limit: int = 8) -> list[Concept]:
         """Rank concept nodes by IDF-weighted token overlap with the query.
 
         Matches on the node title (label/id/norm_label) *and* its rationale, with
         the title weighted higher; rarer query terms (high IDF) dominate common
         ones. graph: "books", "code", or "both".
 
-        Code-graph nodes pass ``_is_searchable_code`` first: no source-less stubs
-        ever, and with ``implementation_only`` no tests/demos/examples/scripts
-        and no documents either. On ``graph="code"`` a spelled-out acronym (see
-        ``_ACRONYMS``) also matches the acronym. The books graph is ranked as is.
+        Code-graph nodes with no ``source_file`` never rank. graphify mints them as
+        per-file stubs for imported names (``DataFrame``, ``Path``) and external
+        modules, and a stub's id inherits its file's words: measured 2026-09-23,
+        ``jobs_vehicle_routing_job_py_dataframe`` took two of the top three code
+        hits for "vehicle routing" with nowhere to send the reader. Books nodes
+        without a source stay searchable - they are Kern's internal notes, kept
+        out of *citations* by ``_is_citable``, not out of discovery.
+
+        On ``graph="code"`` a spelled-out acronym (see ``_ACRONYMS``) also
+        matches the acronym. The books graph is ranked as is.
+        """
+        return self._rank(query, graph, limit)
+
+    def _rank(
+        self, query: str, graph: str, limit: int, *, implementations_only: bool = False,
+    ) -> list[Concept]:
+        """``search()``'s ranking. ``implementations_only`` narrows the code graph
+        to ``_is_code_implementation`` nodes BEFORE truncating to ``limit``, so a
+        pile of better-scoring tests cannot crowd the real modules out of the cut.
+
+        It also breaks score TIES the way ``implements()`` does: first the file
+        named after the query, then ``src/``, and only then the label. Ties are the
+        norm, not the edge case: 35 nodes score exactly the same for "safety
+        stock", and alphabetical order put ``src/safety_stock.py`` seventh behind
+        ``jobs/multi_echelon_job.py`` ("Compose..." sorts before "Nudge..."). The
+        score itself is untouched, so a better match in another file still wins.
         """
         terms = _tokens(query)
         # The code graph searched alone, never "both": that one sets books and
@@ -595,13 +597,24 @@ class KnowledgeBase:
         if not terms and not acronyms:
             return []
         names = ("books", "code") if graph == "both" else (graph,)
+        wanted = _content_tokens(terms)
 
-        scored: list[tuple[float, Concept]] = []
+        def _tiebreak(node: dict, name: str) -> tuple[int, int]:
+            # Code only: a book's source file is named after the book, so on
+            # ``explain``'s mixed ranking Vollmann's CPFR beat Christopher's exact
+            # label on "planning" in vollmann-manufacturing-planning-control.
+            if not implementations_only or name != "code":
+                return (0, 0)
+            src = node.get("source_file") or ""
+            named_after = len(_tokens(Path(src).stem) & wanted)
+            return (-named_after, 0 if src.startswith("src/") else 1)
+
+        scored: list[tuple[float, tuple[int, int], Concept]] = []
         for name in names:
             idf = self._idf.get(name, {})
-            wanted = terms
+            matched = terms
             if acronyms:
-                wanted = terms | set(acronyms)
+                matched = terms | set(acronyms)
                 # The acronym is worth the whole phrase it stands for. At its own
                 # IDF it is cheap - "sop" sits in 442 nodes, every one of the
                 # module's - and S&OP out-scored the scheduler by 0.2 points of
@@ -615,19 +628,22 @@ class KnowledgeBase:
             titles = self._title_tokens.get(name, {})
             bodies = self._body_tokens.get(name, {})
             for nid, node in self._index.get(name, {}).items():
-                title_hit = wanted & titles.get(nid, set())
-                body_hit = (wanted & bodies.get(nid, set())) - title_hit
-                if not title_hit and not body_hit:
+                if name == "code" and not (
+                    _is_code_implementation(node) if implementations_only
+                    else node.get("source_file")
+                ):
                     continue
-                if name == "code" and not _is_searchable_code(node, implementation_only):
+                title_hit = matched & titles.get(nid, set())
+                body_hit = (matched & bodies.get(nid, set())) - title_hit
+                if not title_hit and not body_hit:
                     continue
                 score = self._W_TITLE * sum(idf.get(t, 0.0) for t in title_hit) + (
                     self._W_BODY * sum(idf.get(t, 0.0) for t in body_hit)
                 )
-                scored.append((score, self._to_concept(node, name)))
+                scored.append((score, _tiebreak(node, name), self._to_concept(node, name)))
 
-        scored.sort(key=lambda x: (-x[0], x[1].label))
-        return [c for _, c in scored[:limit]]
+        scored.sort(key=lambda x: (-x[0], x[1], x[2].label))
+        return [c for _, _, c in scored[:limit]]
 
     def search_semantic(
         self, query: str, *, graph: str = "books", limit: int = 5
@@ -699,7 +715,8 @@ class KnowledgeBase:
 
         An id-like argument (no spaces) is looked up exactly. A label-like
         argument (with spaces) falls back to a fuzzy search, so callers can
-        pass either `crostons_method` or `Croston's Method`.
+        pass either `crostons_method` or `Croston's Method`. That search leaves
+        out tests, demos, examples, scripts and documents, as ``bridge`` does.
         """
         for name in ("books", "code"):
             node = self._resolve_node(concept_id, name)
@@ -710,7 +727,13 @@ class KnowledgeBase:
         # (avoids a stray common token matching an unrelated node).
         if " " not in concept_id.strip():
             return None
-        hits = self.search(concept_id, graph="both", limit=1)
+        # A test or a spec describes a concept in words, so it is the closest word
+        # match for the concept's own name. Measured 2026-09-23 over the 2,881
+        # books labels with a space: 88 answered with a test, demo or script and
+        # 72 with a document - "Sales and Operations Planning" with the docstring
+        # of a test about S&OP. Leaving them out gives 74 of them back their own
+        # concept and costs none.
+        hits = self._rank(concept_id, "both", 1, implementations_only=True)
         if not hits:
             return None
         node = self._resolve_node(hits[0].id, hits[0].graph)
@@ -772,18 +795,16 @@ class KnowledgeBase:
         book concept ("safety stock"). Falls back to pure keyword when
         fastembed is absent, so behaviour is unchanged without the [rag] extra.
         The code side stays keyword-only (no embedding index over the gitignored
-        code graph) and ``implementation_only``: it answers "where it lives", so
-        tests, demos, examples and scripts are left out as in ``implements``, and
-        so are documents. Measured 2026-09-23 on 20 domain terms, tests/examples/
-        scripts (19), documents (14) and source-less stubs (7) held 40 of the 100
-        top-5 slots, and "launch readiness" had no implementation among its five.
-        This
-        is a discovery surface only — the
-        client-facing citation path (jobs/*::gated_citations -> citation_gate) is
-        untouched.
+        code graph), and holds implementations only (``_is_code_implementation``):
+        it used to be plain ``search(graph="code")``, and on 20 domain terms a
+        quarter of its top-5 were tests - the #1 hit for "writeback changeset
+        approval" was ``tests/test_writeback.py``. Tests stay findable through
+        ``search()`` itself; they just are not "where it lives". This is a
+        discovery surface only — the client-facing citation path
+        (jobs/*::gated_citations -> citation_gate) is untouched.
         """
         theory = tuple(self.search_hybrid(term, graph="books", limit=5))
-        impl = tuple(self.search(term, graph="code", limit=5, implementation_only=True))
+        impl = tuple(self._rank(term, "code", 5, implementations_only=True))
         return Bridge(term=term, theory=theory, implementation=impl)
 
     def implements(self, concept: Concept, min_overlap: int = 2) -> Concept | None:

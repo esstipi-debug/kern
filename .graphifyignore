@@ -11,9 +11,7 @@
 #
 # Rule for adding a line: it is not Kern's code, nor a doc about Kern's code.
 # Tests stay IN on purpose: they are the answer to `graphify affected X`
-# ("what breaks if I change X"), and knowledge.implements() and bridge() filter
-# them when they read (bridge() also drops Kern's own docs and source-less stubs;
-# see _is_searchable_code). A doc ABOUT Kern's code stays in for the same reason.
+# ("what breaks if I change X"), and knowledge.implements() already filters them.
 
 # Generated reports of a graph. knowledge/scm-books/GRAPH_REPORT.md indexed here
 # made "Communities (206 total...)" a top-12 hub of the CODE graph.
