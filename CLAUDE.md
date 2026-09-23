@@ -665,6 +665,50 @@ numero se movio -- en blanco, nunca en cero.
 (`test_sin_fechas_el_job_sale_IDENTICO_a_antes_de_la_capacidad`), que es lo que la vuelve
 segura sobre la base instalada.
 
+### Y la fraccion de una cartera REAL que trae esa fecha esta medida
+[`documentation/KERN_FRACCION_CON_FECHA_DE_FIN.md`](documentation/KERN_FRACCION_CON_FECHA_DE_FIN.md)
+(`scripts/fraccion_con_fecha_de_fin.py`, sobre Olist: 32.729 SKU, 3.053 vendedores, 105
+semanas; `scripts/fetch_olist.py` lo baja de un mirror publico sin credenciales).
+**Ningun export real trae la columna**, asi que medir "cuantos archivos la traen" da cero
+y no dice nada; lo medible es que fraccion de los SKU tiene un fin de vida, y si el
+cliente lo SABIA de antemano NO se puede medir de un archivo de transacciones -- se
+declara.
+
+**13,8%-26,1% de los SKU y 8,9%-21,6% de la facturacion**, con tres correcciones que
+cambian como se lee el techo de +13,1 puntos:
+- **Pesar por plata da siempre MENOS que contar SKU** (en las cuatro carteras): los que
+  mueren son los chicos, y el valor de la palanca escala con capital.
+- **El nucleo muere la MITAD que la cola** (13,8% contra 26,1%), o sea que el techo --
+  medido donde TODOS los SKU mueren la misma semana -- se aplica sobre la parte de la
+  cartera que menos se parece a ese supuesto. Y entre carteras hay **10x de dispersion**
+  (p10 0%, p90 59%): "la fraccion" es una distribucion, no un numero.
+- **La fraccion OBSERVABLE es justo donde el tope NO actua**: los 1.924 SKU muertos salen
+  `expired`, sin excepcion. Ademas el relleno de ceros de `_series_from_frame` ya achica
+  la media de un muerto 2,6 veces mas que la de un vivo (0,28 contra 0,74), asi que buena
+  parte del trabajo ya estaba hecha para las muertes PASADAS. La palanca solo puede pagar
+  sobre muertes FUTURAS. Lo deployable es la tasa por ano: **6,8%-12,9% del rango**.
+
+**No se puede deducir la fecha del archivo**, y ese es el resultado que mas pesa: validado
+reservando 26 semanas, el falso positivo hace **piso en 10,6%** y no baja ni con medio ano
+de silencio sobre seis veces el gap propio del SKU. Uno de cada nueve SKU "obviamente
+muerto" vuelve a vender. Es la justificacion de campo de la regla de seguridad que
+`src/horizon.py` ya tenia por principio: **el tope encoge, nunca anula**.
+
+Punta a punta por el pipeline real (336 SKU de 60 vendedores): 50,6% trae fecha y solo el
+**26,5% de esos** termina topeado -- traer la fecha y que la fecha mueva algo son dos
+cosas distintas.
+
+**DEFECTO ABIERTO que esta medicion encontro (no arreglado):** el tope **no llega a
+`requested_investment`**. `ss` y `cycle_units` se leen de la politica sin topear
+(`jobs/inventory_optimization.py` L1023-1024), el tope se aplica despues (L1041-1048) y el
+`InventoryItem` que alimenta la inversion se arma con los valores PREVIOS (L1096). Medido:
+el tope liberaria 12.018 usd (11,2% del titular) y el titular sale identico al centavo. Es
+la firma de la rama otra vez -- la prosa dice una cosa y el numero dice otra --, y
+arreglarlo obliga a decidir COMO se propaga a capital un tope sobre el objetivo (ciclo,
+safety stock, o los dos, y con que identidad), que es una decision de modelo y no una
+caneria. `tests/test_fraccion_con_fecha_de_fin_publicado.py` lo fija contra el CODIGO: si
+alguien lo arregla, ese test se pone rojo.
+
 ### Lo que el agente acepta y tira en silencio (`tests/test_overrides_no_se_tiran.py`)
 Midiendo el residuo aparecio un defecto que vale por si mismo: `scm_agent/tools.py`
 aceptaba `lead_time_stds` y **no lo reenviaba** al job, asi que toda corrida por el

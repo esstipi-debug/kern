@@ -121,6 +121,13 @@ catálogo saldría `expired`.
 - **⚠️ No cambia nada para un archivo sin la columna.** Es el control que fija
   `test_sin_fechas_el_job_sale_IDENTICO_a_antes_de_la_capacidad`, y es lo que hace que esto
   sea seguro de desplegar sobre la base instalada.
-- **No mide qué fracción de una cartera real trae la fecha.** Lo realizable es proporcional
-  a eso, y sigue sin saberse: el techo publicado (+13,1 puntos) se midió sobre un marcador
-  donde **todos** los SKU mueren la misma semana.
+- **~~No mide qué fracción de una cartera real trae la fecha~~ — medido el 2026-09-23**,
+  en [`KERN_FRACCION_CON_FECHA_DE_FIN.md`](KERN_FRACCION_CON_FECHA_DE_FIN.md) sobre Olist
+  (32.729 SKU, 3.053 vendedores). **13,8 %–26,1 % de los SKU**, y siempre **menos pesado
+  por plata** (8,9 %–21,6 %), con una dispersión de 10× entre carteras (p10 0 %, p90 59 %).
+  Dos resultados cambian cómo se lee el techo de +13,1 puntos: ese techo se midió donde
+  **todos** los SKU mueren la misma semana, y en una cartera real la mortalidad **baja**
+  cuanto más se parece a un rango repuesto de verdad (núcleo 13,8 %, cola 26,1 %); y **el
+  fin de vida observable es justo donde el tope NO actúa** — los 1.924 SKU muertos salen
+  `expired`, sin excepción. Lo deployable es la tasa por año (**6,8 %–12,9 %**), y depende
+  de que el cliente declare fechas **futuras**, que ningún archivo puede traer.
