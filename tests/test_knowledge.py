@@ -114,7 +114,7 @@ def test_explain_answers_a_concept_name_with_that_concept(tmp_path: Path, name: 
     """
     kb = _explain_graphs(tmp_path, [
         _code_node("src_sop_engine_rationale_1", "Sales and operations planning engine",
-                   "src/sop_engine/__init__.py", file_type="rationale"),
+                   "src/sop_engine/__init__.py"),
     ])
 
     detail = kb.explain(name)
