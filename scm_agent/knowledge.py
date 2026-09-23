@@ -107,6 +107,24 @@ def _is_non_implementation_path(source_file: str) -> bool:
     )
 
 
+def _is_code_implementation(node: dict) -> bool:
+    """True if a code-graph node points at where a concept actually lives.
+
+    The rule behind ``bridge().implementation``, which the CLI prints as "where
+    it lives". Three ways out: no ``source_file`` (nowhere to send the reader),
+    a ``document`` node (a spec or guide talks *about* the concept), or a test,
+    demo, example or script path (``_is_non_implementation_path``). A docstring
+    (``rationale``) node stays in: it carries the file and line of the function
+    it documents, which is exactly where to look.
+    """
+    src = node.get("source_file") or ""
+    return (
+        bool(src)
+        and node.get("file_type") != "document"
+        and not _is_non_implementation_path(src)
+    )
+
+
 _TOKEN = re.compile(r"[a-z0-9]{3,}")
 
 
@@ -495,18 +513,55 @@ class KnowledgeBase:
         Matches on the node title (label/id/norm_label) *and* its rationale, with
         the title weighted higher; rarer query terms (high IDF) dominate common
         ones. graph: "books", "code", or "both".
+
+        Code-graph nodes with no ``source_file`` never rank. graphify mints them as
+        per-file stubs for imported names (``DataFrame``, ``Path``) and external
+        modules, and a stub's id inherits its file's words: measured 2026-09-23,
+        ``jobs_vehicle_routing_job_py_dataframe`` took two of the top three code
+        hits for "vehicle routing" with nowhere to send the reader. Books nodes
+        without a source stay searchable - they are Kern's internal notes, kept
+        out of *citations* by ``_is_citable``, not out of discovery.
+        """
+        return self._rank(query, graph, limit)
+
+    def _rank(
+        self, query: str, graph: str, limit: int, *, implementations_only: bool = False,
+    ) -> list[Concept]:
+        """``search()``'s ranking. ``implementations_only`` narrows the code graph
+        to ``_is_code_implementation`` nodes BEFORE truncating to ``limit``, so a
+        pile of better-scoring tests cannot crowd the real modules out of the cut.
+
+        It also breaks score TIES the way ``implements()`` does: first the file
+        named after the query, then ``src/``, and only then the label. Ties are the
+        norm, not the edge case: 35 nodes score exactly the same for "safety
+        stock", and alphabetical order put ``src/safety_stock.py`` seventh behind
+        ``jobs/multi_echelon_job.py`` ("Compose..." sorts before "Nudge..."). The
+        score itself is untouched, so a better match in another file still wins.
         """
         terms = _tokens(query)
         if not terms:
             return []
         names = ("books", "code") if graph == "both" else (graph,)
+        wanted = _content_tokens(terms)
 
-        scored: list[tuple[float, Concept]] = []
+        def _tiebreak(node: dict) -> tuple[int, int]:
+            if not implementations_only:
+                return (0, 0)
+            src = node.get("source_file") or ""
+            named_after = len(_tokens(Path(src).stem) & wanted)
+            return (-named_after, 0 if src.startswith("src/") else 1)
+
+        scored: list[tuple[float, tuple[int, int], Concept]] = []
         for name in names:
             idf = self._idf.get(name, {})
             titles = self._title_tokens.get(name, {})
             bodies = self._body_tokens.get(name, {})
             for nid, node in self._index.get(name, {}).items():
+                if name == "code" and not (
+                    _is_code_implementation(node) if implementations_only
+                    else node.get("source_file")
+                ):
+                    continue
                 title_hit = terms & titles.get(nid, set())
                 body_hit = (terms & bodies.get(nid, set())) - title_hit
                 if not title_hit and not body_hit:
@@ -514,10 +569,10 @@ class KnowledgeBase:
                 score = self._W_TITLE * sum(idf.get(t, 0.0) for t in title_hit) + (
                     self._W_BODY * sum(idf.get(t, 0.0) for t in body_hit)
                 )
-                scored.append((score, self._to_concept(node, name)))
+                scored.append((score, _tiebreak(node), self._to_concept(node, name)))
 
-        scored.sort(key=lambda x: (-x[0], x[1].label))
-        return [c for _, c in scored[:limit]]
+        scored.sort(key=lambda x: (-x[0], x[1], x[2].label))
+        return [c for _, _, c in scored[:limit]]
 
     def search_semantic(
         self, query: str, *, graph: str = "books", limit: int = 5
@@ -662,11 +717,16 @@ class KnowledgeBase:
         book concept ("safety stock"). Falls back to pure keyword when
         fastembed is absent, so behaviour is unchanged without the [rag] extra.
         The code side stays keyword-only (no embedding index over the gitignored
-        code graph). This is a discovery surface only — the client-facing
-        citation path (jobs/*::gated_citations -> citation_gate) is untouched.
+        code graph), and holds implementations only (``_is_code_implementation``):
+        it used to be plain ``search(graph="code")``, and on 20 domain terms a
+        quarter of its top-5 were tests - the #1 hit for "writeback changeset
+        approval" was ``tests/test_writeback.py``. Tests stay findable through
+        ``search()`` itself; they just are not "where it lives". This is a
+        discovery surface only — the client-facing citation path
+        (jobs/*::gated_citations -> citation_gate) is untouched.
         """
         theory = tuple(self.search_hybrid(term, graph="books", limit=5))
-        impl = tuple(self.search(term, graph="code", limit=5))
+        impl = tuple(self._rank(term, "code", 5, implementations_only=True))
         return Bridge(term=term, theory=theory, implementation=impl)
 
     def implements(self, concept: Concept, min_overlap: int = 2) -> Concept | None:
