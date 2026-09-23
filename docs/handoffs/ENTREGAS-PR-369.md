@@ -7,8 +7,8 @@ El cuerpo de un PR de GitHub topea en **65.536 caracteres**, y esta rama lo alca
 decimonovena entrega: quedó en 65.227, o sea 309 de margen, y la vigésima no entraba. Este
 documento es la mitad vieja de ese historial, movida acá para que las siguientes entren.
 
-**Qué hay acá:** las entregas **segunda a vigesimoquinta**, verbatim y en orden cronológico
-—de los términos del proveedor hasta el arreglo de la lectura de la suciedad cosmética—. No se resumió nada al mudarlas:
+**Qué hay acá:** las entregas **segunda a vigesimosexta**, verbatim y en orden cronológico
+—de los términos del proveedor hasta la medición de las ventas censuradas—. No se resumió nada al mudarlas:
 un historial que se resume cuando se archiva deja de ser un historial.
 
 **Qué NO hay acá, y dónde está:**
@@ -16,7 +16,7 @@ un historial que se resume cuando se archiva deja de ser un historial.
 | | dónde |
 |---|---|
 | Primera entrega (el quinto sombrero, `transporte`) | el cuerpo del PR, como marco: *Qué problema cierra*, *El modelo*, *El quinto sombrero es condicional*, *Cambio de comportamiento*, *Alcance*, *Verificación* |
-| Vigesimosexta a vigesimoctava | el cuerpo del PR |
+| Vigesimoséptima a vigesimonovena | el cuerpo del PR |
 | Verificación de la rama completa, estado del diseño de las cuatro brechas y los dos anexos | el cuerpo del PR |
 
 **La regla, para que el cuerpo del PR no se vuelva a llenar:** lleva las **tres últimas**
@@ -464,3 +464,70 @@ Cada `Distribucion` lleva ahora su **fidelidad**, y hay dos decisiones adentro: 
 → **Medido en la vigesimosexta, acá abajo: no paga.**
 
 **Verificación:** `tests/test_suciedad_cosmetica_no_cambia_el_dato.py` (10) con el invariante de cierre LEVEL 1 == LEVEL 0, `tests/test_compuerta_por_fidelidad.py` (12) con un test por cada filo de la alarma, y `test_captura_bajo_disrupcion_publicada.py` de 16 a 18. Tres de sus tests se pusieron rojos al regrabar y los tres eran **señales correctas** —el documento citaba números vencidos, el pareado se comparaba contra una época que ya no era la suya, y uno afirmaba que la columna limpia "rozó la compuerta por 0,6 puntos"—; un cuarto (`test_la_columna_con_shock_vigente_sigue_siendo_la_congelada`) se puso rojo **el día exacto para el que se escribió**. `ruff check .` limpio.
+
+## Vigesimosexta entrega: ajustar contra ventas censuradas NO paga — medido sobre 25 mundos (`2ee1ee6`)
+
+La vigesimoquinta cerró con el único ítem que quedaba del colapso y **no** era un defecto de lectura: Kern replanifica sobre `out.sold`, no sobre la demanda, así que quiebre → histórico censurado → política más chica → más quiebre. Terminaba diciendo *"no está medido cuánto vale, y medirlo es el primer paso antes de construir nada"*. Esto lo mide. **La respuesta es que no vale**, y las tres cosas que aparecieron midiendo valen más que el número.
+
+El agujero es real y grande: el archivo con el que Kern replanifica **no declara el 23,2 % de la demanda**, y el **34,8 %** de sus filas salen de una semana que cerró el estante en cero.
+
+### Cuatro carriles, y la marca es un síntoma observable y no la respuesta
+
+Una fila del histórico es una (SKU, semana), y quedó **censurada** cuando el estante cerró esa semana en cero. Los carriles cambian qué hace Kern con esas filas y nada más — no se tocó el motor, ni el piso, ni el techo, ni el marcador, que sigue puntuando contra la demanda verdadera aunque Kern haya leído otra cosa.
+
+| carril | clase | captura | Δ vs kern | t | mejoran |
+|---|---|---:|---:|---:|---:|
+| **kern** | **control** | **−13,8 %** | — | — | — |
+| `censura_omitida` (borra la fila) | desplegable | −14,9 % | **−0,0107** | −0,47 | 12/25 |
+| `censura_corregida` (`max(vendido, media de las limpias)`) | desplegable | −11,1 % | **+0,0267** | +1,09 | 13/25 |
+| `sin_censura` (la demanda verdadera) | **diagnóstico** | −9,9 % | **+0,0394** | +1,60 | 14/25 |
+
+**El techo de la idea es +3,9 puntos y no se distingue de cero** (IC 95 % [−0,0115, +0,0902]; 14 de 25 mundos es una moneda).
+
+**La comparación contra las otras palancas se hace con cuidado, porque H3 es sobre esto mismo.** La fecha de fin por SKU (+16,2) y el nivel de servicio (+18,9) se midieron sobre **cinco** mundos y ésta sobre veinticinco; restar un número de cinco contra uno de veinticinco es exactamente el error que este documento documenta. Lo afirmable sin esa resta: sobre los **mismos cinco** ésta lee +11,5 contra +16,2 —más chica, del mismo orden, y por H3 ese +11,5 es la lectura *inflada*—; y sobre veinticinco ésta mejora en 14/25 mientras aquélla mejoraba en **5/5** de los suyos. Lo que las palancas anteriores leerían sobre 25 mundos **no está medido**, y ni el documento ni esta entrega lo suponen.
+
+**Y el `p = 0,12` no significa "no se pudo ver".** Un resultado nulo no decide nada sin la potencia: con `sd = 0,1232` sobre 25 mundos pareados el efecto mínimo detectable al 80 % es **+7,2 puntos**, y la probabilidad de haber detectado una palanca del tamaño de la fecha de fin por SKU (+16,2) es del **100 %** —del 97 % para +10—. El intervalo deja abierto si esto vale cero o cuatro puntos; lo que cierra es que valga dieciséis. El test recalcula la potencia desde la línea base en vez de confiar en la tabla, porque si la dispersión entre mundos creciera el mismo `p` pasaría a significar lo contrario.
+
+Los dos carriles desplegables marcan la fila con `on_hand_end == 0` —lo que un ERP sí tiene; `jobs.intake` ya conoce el vocabulario de esa columna— y **ninguno mira `out.lost`**, que es exactamente lo que un cliente no puede ver. Eso no se protege con un grep: `test_los_carriles_desplegables_NO_miran_la_venta_perdida` **muta** la columna de la verdad y exige que su salida no se mueva ni una celda, con el carril de diagnóstico como contraste para que la mutación no pueda ser vacía.
+
+**Dos controles de que es el mismo experimento.** El archivo que lee el carril de control sale **byte a byte** igual al de `lens.export_history`, y sus números reproducen **las dos líneas base publicadas a seis decimales**: −0,137879 contra el L0 de `captura_limpia.json` (25 mundos) y −0,276239 contra `horizonte_por_sku.json` (las 5 canónicas). Dos arneses distintos, el mismo número.
+
+### H1 · La censura es un síntoma, no la causa — y los dos no correlacionan
+
+Lo esperable sería que la palanca pague donde más demanda se esconde. No es lo que pasa:
+
+| correlación con el Δ del techo | r |
+|---|---:|
+| cuánta demanda esconde el archivo | **+0,05** |
+| qué tan mal le va ya a Kern | **−0,61** |
+
+Descensurar paga **+0,1035** en los ocho mundos donde Kern va peor y **−0,0029** —nada— en los ocho donde va bien. La semilla 1020 esconde el 38 % de su demanda, la que más, y descensurarla le **cuesta** 0,0818; la 1023 esconde el 18 % y gana +0,2580. Donde la palanca ayuda, el problema es la política.
+
+### H2 · El mecanismo: un dólar de mercadería por cada dólar de quiebre
+
+Descensurar **funciona mecánicamente** —Kern ve más demanda, compra 301 unidades más (+8,7 %) y el fill sube 3,3 puntos— y aun así no paga: compra **14.371** de mercadería para ahorrar **14.476** de quiebre. Es un empate. Todo el neto (−2.329, el **2,5 %** de la brecha contra el techo) sale del costo fijo de ordenar, porque con más demanda declarada pide en lotes más grandes y menos veces. Y deja **7.167 más** de capital pagado y sin vender al cierre.
+
+Encaja exacto en la taxonomía de `KERN_RESIDUO_DE_LA_BRECHA.md`: *toda palanca que baja el quiebre deja más capital inmovilizado*. Es **otra palanca de "comprá más"**, y esa familia ya tenía medida su pared. La única que pagó fue la primera que era *"comprá menos de lo que no vas a vender"*.
+
+### H3 · Cinco mundos habrían dicho que sí
+
+|  | 5 mundos (1000-1004) | 25 mundos |
+|---|---:|---:|
+| `sin_censura` (techo) | **+0,1151** (3/5) | +0,0394 (14/25) |
+| `censura_corregida` (desplegable) | **+0,0930** (4/5) | +0,0267 (13/25) |
+
+**+9,3 puntos en 4 de 5 se habría publicado como una palanca de tamaño medio.** Sobre 25 mundos es 3,5 veces más chica. No es mala suerte: por H1 la palanca paga donde Kern ya va mal, y **tres de las cinco semillas canónicas (1000, 1003, 1004) están entre los ocho peores mundos** — el subconjunto está sesgado hacia exactamente la condición que la infla.
+
+Las cinco alcanzaron para las palancas anteriores porque aquéllas mejoraban en 5/5. La regla que queda: **el tamaño de la muestra se elige por la dispersión del efecto, no por costumbre.** Los 25 mundos costaron 17 minutos.
+
+### H4 · Borrar la fila censurada es **peor** que no hacer nada
+
+`censura_omitida` es la respuesta que esta rama aplica en todas partes —*la ausencia se declara*— y acá **pierde** (−0,0107, con el fill cayendo 5,3 puntos). El motivo no es ruido, es **selección**: una fila que no se agotó trae la demanda **exacta** (`advance` hace `sold = min(disponible, demanda)`), así que cada superviviente es una medición perfecta; lo sesgado es **cuáles** sobreviven. Medido sobre los 200 SKU-mundos del piso, la media de las supervivientes queda en el 95,9 % de la verdadera contra el 82,6 % de la censurada cruda: borrar recupera tres cuartos del sesgo de nivel y **pierde la cola**, que es justo de lo que se hace el buffer. Y el bucle corre para atrás — ese carril termina con **42,7 %** de filas agotadas contra 34,8 % del control.
+
+**La regla nueva:** declarar la ausencia sigue siendo correcto cuando el consumidor es **una persona** que va a decidir con ese número. Cuando el consumidor es **un estimador**, borrar no es neutral: cambia la distribución de la que estima. Esta rama las había tratado como una sola cosa.
+
+### Lo que queda servido
+
+`censura_corregida` recupera el **67,8 %** del techo con datos que el cliente ya tiene. Dado el tamaño del techo es un resultado menor, pero evita repetir el trabajo: si alguna vez hay otra razón para descensurar, la forma barata ya está medida.
+
+**Verificación:** `tests/test_ventas_censuradas_publicado.py` (12) — cinco de mecanismo (el diagnóstico devuelve la demanda exacta, los desplegables no miran la respuesta, una fila sin quiebre es exacta, corregir nunca baja un valor, el control es byte a byte) y siete que atan el documento a su fuente, incluidos el que reproduce `horizonte_por_sku.json` al último dígito y el que recalcula la potencia. `scripts/por_que_bajo_el_piso.py` se dividió en dos mitades para no copiar el lector del orquestador; sus 63 tests siguen verdes. Suite completa **8.915 passed, 32 skipped, 19 deselected, 0 failed**. `ruff check .` limpio.
