@@ -87,6 +87,7 @@ from src.connectors.odoo import OdooError  # isort: skip  (local package)
 from src.connectors.shopify import ShopifyCommerceError  # isort: skip  (local package)
 from src.connectors.shopify_inventory import ShopifyInventoryError  # isort: skip  (local package)
 from src.cost_to_serve import ServiceCostRates  # isort: skip  (local package)
+from src.requested_method import eoq_reframe, names_eoq  # isort: skip  (local package)
 from src.sop import CostModel  # isort: skip  (local package)
 
 LEADERSHIP_SCHEMA = {
@@ -223,6 +224,10 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
             "order_lines": order_lines,
             "stock_position": stock_position,
             "end_dates": end_dates,
+            # Decided here because prepare() is the only stage that sees the brief;
+            # run() reads it to tell a requester who named EOQ which SKUs did not get
+            # one (src/requested_method.py).
+            "eoq_requested": names_eoq(request.brief),
         },
     )
 
@@ -338,6 +343,22 @@ def _inventory_run(payload: object, params: dict) -> Produced:
             f"${report.final_investment:,.0f} at {report.params['service_level'] * 100:.0f}% service level."
             + cola
         )
+    # The brief named EOQ and the engine did not give EOQ to every SKU: say so, and
+    # why, before the operator finds part of the catalog with no EOQ quantity. The
+    # numbers are untouched -- run_inventory already put intermittent SKUs on (R, S).
+    #
+    # Se aplica DESPUES del titular y no en vez de el: cuando `unsized_note` devuelve
+    # titular NINGUN SKU quedo dimensionado, asi que el filtro de abajo no encuentra
+    # ninguna politica y `eoq_reframe` devuelve None. O sea que componerlos es inerte
+    # justo en el caso en que el titular manda, y no hay que elegir entre los dos.
+    if payload.get("eoq_requested"):
+        reframe = eoq_reframe(
+            (r.product_id, r.intermittent)
+            for r in report.recommendations
+            if r.policy_kind in ("(s, Q)", "(R, S)")
+        )
+        if reframe is not None:
+            summary = f"{summary} {reframe.sentence()}"
     # La nota del servicio viaja en el resumen, que es lo que el operador lee ANTES de
     # abrir el entregable. Sin ella el fill rate aparece sin decir de que columna del
     # cliente salio, y un numero que no se puede reconciliar contra el ERP no se usa.
@@ -367,6 +388,12 @@ def inventory_tool() -> Tool:
         intent_keywords=(
             "reorder", "safety stock", "stock level", "inventory", "replenish",
             "eoq", "service level", "reorder point", "order quantity",
+            # The Spanish names of EOQ, which src/requested_method.py already
+            # recognised but which never reached this tool without an LLM. Both
+            # spellings: registry.match lowercases the brief but does not strip
+            # accents. Appended LAST on purpose -- the orchestrator's readings use
+            # only the first three keywords, so those must stay the canonical ones.
+            "lote economico", "lote económico", "formula de wilson", "fórmula de wilson",
         ),
         requires_data=True,
         # Straight from jobs/intake.py's CANONICAL_REQUIRED / CANONICAL_OPTIONAL:
