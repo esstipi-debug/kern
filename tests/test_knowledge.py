@@ -512,11 +512,10 @@ def _looks_like_a_non_implementation(source: str) -> bool:
     )
 
 
-def _code_node(nid: str, label: str, source: str, file_type: str = "code") -> dict:
+def _code_node(nid: str, label: str, source: str) -> dict:
     """A code-graph node shaped like graphify's output."""
     return {"id": nid, "label": label, "norm_label": label.lower(),
-            "rationale": "", "source_file": source, "location": "L1",
-            "file_type": file_type}
+            "rationale": "", "source_file": source, "location": "L1"}
 
 
 def test_implements_skips_a_test_file_and_falls_back_to_theory_only(tmp_path: Path) -> None:
@@ -832,114 +831,107 @@ def test_implements_keeps_the_bridges_the_filename_discount_earns(
     assert impl.source == expected
 
 
-# -- bridge(): the code side names where a concept lives ------------------------
+# -- bridge().implementation is "where it lives": implementations, ranked by name --
 
 
-def _vehicle_routing_code_graph(tmp_path: Path) -> Path:
-    """Four code nodes that answer "vehicle routing"; only one is a place to go.
+def _stub(nid: str, label: str) -> dict:
+    """graphify's per-file stub for an imported name: code, but no source_file."""
+    return {"id": nid, "label": label, "norm_label": label.lower(),
+            "file_type": "code", "source_file": ""}
 
-    Shaped after what the real graph returned on 2026-09-23. The test, the
-    source-less stub and the spec section all carry both query words - the stub
-    and the section through their ids, which graphify builds from the file's
-    path - while the src/ function carries only "routing". On score alone the
-    src/ node comes last.
+
+def test_search_skips_a_sourceless_stub_whose_id_carries_the_query(tmp_path: Path) -> None:
+    """The stub's ID inherits its file's words, so it matched with nowhere to point.
+
+    Measured 2026-09-23: two of the top three code hits for "vehicle routing" were
+    ``DataFrame`` stubs minted as ``jobs_vehicle_routing_job_py_dataframe``.
     """
-    return _write_graph(tmp_path / "c.json", [
-        _code_node("tests_test_vehicle_routing_py_test_covers_every_stop",
-                   "test_covers_every_stop()", "tests/test_vehicle_routing.py"),
-        _code_node("jobs_vehicle_routing_job_py_dataframe", "DataFrame", ""),
-        _code_node("docs_specs_vehicle_routing_design_md_problem_value",
-                   "1. Problem & value", "docs/specs/vehicle-routing-design.md",
-                   file_type="document"),
-        _code_node("src_routing_py_clarke_wright", "clarke_wright()", "src/routing.py"),
+    code = _write_graph(tmp_path / "c.json", [
+        _stub("jobs_vehicle_routing_job_py_dataframe", "DataFrame"),
+        _code_node("r", "vehicle routing sweep", "src/vehicle_routing.py"),
     ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    for hits in (kb.search("vehicle routing", graph="code"),
+                 kb.bridge("vehicle routing").implementation):
+        assert [h.source for h in hits] == ["src/vehicle_routing.py"]
 
 
-def test_bridge_implementation_skips_tests_stubs_and_documents(tmp_path: Path) -> None:
-    """The src/ node is the answer even though the other three outscore it.
+def test_bridge_implementation_drops_tests_docs_and_stubs_that_outscore_src(
+    tmp_path: Path,
+) -> None:
+    """Each decoy scores ABOVE the module, so only the filter can put src/ alone.
 
-    ``bridge()`` presents its code side as where the concept lives. A test
-    verifies the concept, a spec describes it, and a stub with no
-    ``source_file`` cannot be opened, so none is an answer however many query
-    words it carries.
+    Tests are still found by ``search()`` itself: they left the bridge because
+    they are not where a concept lives, not because they are unfindable.
     """
-    kb = KnowledgeBase(books_path=BOOKS, code_path=_vehicle_routing_code_graph(tmp_path))
-
-    impl = kb.bridge("vehicle routing").implementation
-
-    assert [c.source for c in impl] == ["src/routing.py"]
-
-
-def test_code_search_drops_nodes_without_a_source_file(tmp_path: Path) -> None:
-    """A ``DataFrame@-`` stub matches only through words its id inherited from
-    the importing file. With no ``source_file`` no reader can open or cite it,
-    so it leaves every code-side search, not just the bridge."""
-    kb = KnowledgeBase(books_path=BOOKS, code_path=_vehicle_routing_code_graph(tmp_path))
-
-    for graph in ("code", "both"):
-        # Every hit: on "both" the real books graph fills any small limit on its own.
-        hits = kb.search("vehicle routing", graph=graph, limit=10_000)
-        code_hits = [h for h in hits if h.graph == "code"]
-        assert code_hits, f"graph={graph!r} lost the real code nodes too"
-        assert all(h.source for h in code_hits), f"graph={graph!r}: {code_hits}"
-
-
-def test_code_search_still_returns_tests_and_documents(tmp_path: Path) -> None:
-    """Guard, green on both sides: only the bridge drops tests and documents.
-
-    Both stay in the code graph on purpose (tests answer ``graphify affected``,
-    specs keep the design rationale), and ``query_knowledge.py --search --graph
-    code`` is a discovery surface where "where is this tested?" or "where was
-    this designed?" are fair questions. The filter belongs to the reader that
-    promises an implementation.
-    """
-    kb = KnowledgeBase(books_path=BOOKS, code_path=_vehicle_routing_code_graph(tmp_path))
-
-    sources = [h.source for h in kb.search("vehicle routing", graph="code")]
-
-    assert "tests/test_vehicle_routing.py" in sources
-    assert "docs/specs/vehicle-routing-design.md" in sources
-
-
-def test_books_search_keeps_nodes_without_a_source_file(tmp_path: Path) -> None:
-    """Guard: the stub rule is a code-graph rule. A source-less books node stays
-    searchable; keeping it out of citations is ``_is_citable``'s job."""
-    g = _write_graph(tmp_path / "b.json", [
-        {"id": "note::reminder", "label": "Reminder: evaluate embedding models",
-         "norm_label": "reminder evaluate embedding models", "rationale": ""},
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("t", "newsvendor critical ratio newsvendor test",
+                   "tests/test_newsvendor.py"),
+        {**_code_node("d", "newsvendor critical ratio guide", "documentation/METHODOLOGY.md"),
+         "file_type": "document"},
+        _code_node("e", "newsvendor critical ratio demo", "examples/run_newsvendor.py"),
+        _stub("jobs_newsvendor_job_py_newsvendor_critical_ratio", "DataFrame"),
+        _code_node("s", "newsvendor", "src/newsvendor.py"),
     ])
-    kb = KnowledgeBase(books_path=g, code_path=tmp_path / "none.json")
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
 
-    assert [h.id for h in kb.search("embedding models", graph="books")] == ["reminder"]
+    impl = kb.bridge("newsvendor critical ratio").implementation
+    assert [c.source for c in impl] == ["src/newsvendor.py"]
+
+    found = [c.source for c in kb.search("newsvendor critical ratio", graph="code")]
+    assert "tests/test_newsvendor.py" in found
+
+
+def test_bridge_breaks_a_score_tie_toward_the_file_named_after_the_term(
+    tmp_path: Path,
+) -> None:
+    """Ties are the norm: 35 nodes tie at the top for "safety stock" on the real
+    graph, and alphabetical order ("Compose..." < "Tune...") used to decide them."""
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("j", "Compose safety stock", "jobs/multi_echelon_job.py"),
+        _code_node("s", "Tune safety stock", "src/safety_stock.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    assert kb.bridge("safety stock").implementation[0].source == "src/safety_stock.py"
+    # search() keeps its plain order: the tiebreak belongs to the bridge only.
+    assert kb.search("safety stock", graph="code")[0].source == "jobs/multi_echelon_job.py"
+
+
+def test_bridge_tiebreak_never_outranks_a_better_score(tmp_path: Path) -> None:
+    """The name only breaks ties; a node matching MORE of the query still wins."""
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("j", "safety stock buffer placement", "jobs/multi_echelon_job.py"),
+        _code_node("s", "safety stock", "src/safety_stock.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    impl = kb.bridge("safety stock buffer placement").implementation
+    assert impl[0].source == "jobs/multi_echelon_job.py"
+
+
+def test_bridge_prefers_src_when_no_file_is_named_after_the_term(tmp_path: Path) -> None:
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("j", "reorder point", "jobs/inventory_optimization.py"),
+        _code_node("s", "reorder point", "src/decision_support.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    assert kb.bridge("reorder point").implementation[0].source == "src/decision_support.py"
 
 
 @pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
-@pytest.mark.parametrize("term", [
-    "vehicle routing", "newsvendor", "facility location",                  # stubs
-    "cost to serve", "price elasticity", "supplier segmentation Kraljic",  # tests
-    "safety stock", "launch readiness", "multi echelon inventory",         # documents
+@pytest.mark.parametrize("term,expected", [
+    ("safety stock", "src/safety_stock.py"),
+    ("landed cost", "src/landed_cost.py"),
+    ("newsvendor", "src/newsvendor.py"),
+    ("ddmrp buffer", "src/ddmrp.py"),
 ])
-def test_bridge_shows_no_test_stub_or_document_on_the_real_code_graph(
-    kb: KnowledgeBase, term: str
+def test_bridge_leads_with_the_module_on_the_real_code_graph(
+    kb: KnowledgeBase, term: str, expected: str
 ) -> None:
-    """Regression pin: measured 2026-09-23 on 20 domain terms, the code side of
-    the bridge spent 19 of 100 top-5 slots on tests, examples or scripts, 7 on
-    source-less stubs and 14 on Markdown. These nine terms each showed one kind."""
-    offenders = [f"{c.label}@{c.source or '-'}" for c in kb.bridge(term).implementation
-                 if not c.source or c.source.endswith(".md")
-                 or _looks_like_a_non_implementation(c.source)]
-    assert not offenders, offenders
-
-
-@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
-def test_bridge_finds_the_launch_readiness_job_on_the_real_code_graph(
-    kb: KnowledgeBase,
-) -> None:
-    """The one term of the 20 with no implementation in its top-5: 18 sections of
-    its design spec ranked above jobs/launch_readiness_job.py, which came 19th.
-    The documents were not noise around the answer, they hid it."""
-    sources = {c.source for c in kb.bridge("launch readiness").implementation}
-    assert "jobs/launch_readiness_job.py" in sources, sources
+    impl = kb.bridge(term).implementation
+    assert impl, f"no implementation for {term!r}"
+    assert impl[0].source == expected
+    assert not any(_looks_like_a_non_implementation(c.source or "") for c in impl)
+    assert all(c.source for c in impl)
 
 
 def _sop_code_graph(tmp_path: Path) -> Path:
@@ -1077,13 +1069,34 @@ def test_explain_answers_a_label_with_the_concept_not_a_test_about_it(
     kb = _explain_graphs(tmp_path, [
         _code_node("tests_test_knowledge_rationale_980",
                    "Guard: operations planning is not S&OP",
-                   "tests/test_knowledge.py", file_type="rationale"),
+                   "tests/test_knowledge.py"),
     ])
 
     detail = kb.explain("Sales and Operations Planning")
 
     assert detail is not None, detail
     assert detail.concept.id == "vollmann_sales_and_operations_planning", detail.concept
+
+
+def test_explain_does_not_break_a_books_tie_by_the_book_file_name(tmp_path: Path) -> None:
+    """The file-named-after-the-term tiebreak is for code. A book's source file is
+    named after the book: "planning" in vollmann-manufacturing-planning-control
+    made Vollmann's CPFR win a tie against Christopher's, whose label is the one
+    asked for."""
+    books = _write_graph(tmp_path / "b.json", [
+        {"id": "christopher_cpfr",
+         "label": "Collaborative Planning, Forecasting and Replenishment (CPFR)",
+         "norm_label": "", "rationale": "", "source_file": "christopher-logistics.txt"},
+        {"id": "vollmann_cpfr",
+         "label": "Collaborative Planning, Forecasting, and Replenishment",
+         "norm_label": "", "rationale": "",
+         "source_file": "vollmann-manufacturing-planning-control.txt"},
+    ])
+    kb = KnowledgeBase(books_path=books, code_path=tmp_path / "none.json")
+
+    detail = kb.explain("Collaborative Planning, Forecasting and Replenishment (CPFR)")
+
+    assert detail is not None and detail.concept.id == "christopher_cpfr", detail
 
 
 def test_explain_still_answers_with_code_when_no_concept_matches(tmp_path: Path) -> None:
