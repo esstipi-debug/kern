@@ -1,0 +1,41 @@
+# What the CODE graph (graphify-out/, rebuilt by the SessionStart hook) must not index.
+# Same syntax as .gitignore; graphify reads both, this one last.
+#
+# The code graph feeds two readers: `graphify query/affected/path` (and its MCP
+# server), and the code side of scm_agent/knowledge.py (`--bridge`, `implements()`).
+# Both rank by label overlap, so a document that talks ABOUT a concept competes
+# with the function that implements it -- and wins when it repeats the words more.
+# Measured 2026-09-23 on 20 domain terms: only 48% of the code-side top-5 were
+# implementation; the #1 hit for "safety stock" was a blog brief, and all three
+# for "sales and operations planning" were communities of the BOOKS graph's report.
+#
+# Rule for adding a line: it is not Kern's code, nor a doc about Kern's code.
+# Tests stay IN on purpose: they are the answer to `graphify affected X`
+# ("what breaks if I change X"), and knowledge.implements() already filters them.
+
+# Generated reports of a graph. knowledge/scm-books/GRAPH_REPORT.md indexed here
+# made "Communities (206 total...)" a top-12 hub of the CODE graph.
+**/GRAPH_REPORT.md
+
+# Vendored third-party bundles (marked.min.js alone was 95 nodes).
+*.min.js
+
+# Implementation plans already executed: step lists with stale code snippets whose
+# result now lives in src/. The design rationale is in docs/superpowers/specs/, kept.
+docs/superpowers/plans/
+
+# Public marketing blog (es/en duplicates of the same post + writer briefs).
+documentation/blog/
+
+# Third-party agent scaffolding. The constitution (.specify/memory/) is Kern's and
+# stays; speckit's templates, scripts and workflow manifests are not.
+.specify/templates/
+.specify/scripts/
+.specify/workflows/
+.specify/integrations/
+.specify/*.json
+.claude/skills/speckit-*/
+
+# Cursor-only skills restating Vandeput's theory. Theory belongs to the books graph
+# (knowledge/scm-books/), where it is cited; here it outranked src/multi_echelon.py.
+.cursor/
