@@ -581,7 +581,8 @@ class KnowledgeBase:
         Code-graph nodes pass ``_is_searchable_code`` first: no source-less stubs
         ever, and with ``implementation_only`` no tests/demos/examples/scripts
         and no documents either. On ``graph="code"`` a spelled-out acronym (see
-        ``_ACRONYMS``) also matches the acronym. The books graph is ranked as is.
+        ``_ACRONYMS``) also matches the acronym, and a tie goes to the file named
+        after the query. The books graph is ranked as is.
         """
         terms = _tokens(query)
         # The code graph searched alone, never "both": that one sets books and
@@ -591,8 +592,16 @@ class KnowledgeBase:
         if not terms and not acronyms:
             return []
         names = ("books", "code") if graph == "both" else (graph,)
+        # Ties go to the file named after the query (src/safety_stock.py for
+        # "safety stock"), code side only as with the acronyms. A tie-break, not
+        # a bonus: graphify builds a node's id from its file's path, so every
+        # node of that file carries the query's words in its title and reaches
+        # the top score already - measured 2026-09-23, 8320 of 8321 nodes did.
+        # It lost to labels that sort earlier: 35 nodes tied on "safety stock",
+        # and the module came 7th.
+        named = _content_tokens(terms) if graph == "code" else set()
 
-        scored: list[tuple[float, Concept]] = []
+        scored: list[tuple[float, bool, Concept]] = []
         for name in names:
             idf = self._idf.get(name, {})
             wanted = terms
@@ -620,10 +629,12 @@ class KnowledgeBase:
                 score = self._W_TITLE * sum(idf.get(t, 0.0) for t in title_hit) + (
                     self._W_BODY * sum(idf.get(t, 0.0) for t in body_hit)
                 )
-                scored.append((score, self._to_concept(node, name)))
+                stem = Path((node.get("source_file") or "").replace("\\", "/")).stem
+                is_named = bool(named) and _content_tokens(_tokens(stem)) == named
+                scored.append((score, is_named, self._to_concept(node, name)))
 
-        scored.sort(key=lambda x: (-x[0], x[1].label))
-        return [c for _, c in scored[:limit]]
+        scored.sort(key=lambda x: (-x[0], not x[1], x[2].label))
+        return [c for _, _, c in scored[:limit]]
 
     def search_semantic(
         self, query: str, *, graph: str = "books", limit: int = 5

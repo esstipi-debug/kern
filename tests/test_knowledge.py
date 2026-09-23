@@ -196,6 +196,103 @@ def test_search_idf_favors_rarer_term(tmp_path: Path) -> None:
     assert hits[0].id == "nv"
 
 
+def _safety_stock_code_graph(tmp_path: Path) -> Path:
+    """Six nodes elsewhere that tie src/safety_stock.py on "safety stock".
+
+    Shaped after the real graph on 2026-09-23: 35 nodes carried both words in
+    their title and so tied at the top score, and labels broke the tie. Every
+    label here sorts before the src/safety_stock.py one, so on score and label
+    alone the module named after the concept comes 7th.
+    """
+    others = [
+        ("jobs_multi_echelon_job_py_compose", "Compose where to hold safety stock",
+         "jobs/multi_echelon_job.py"),
+        ("src_simulation_opt_py_continuous", "Continuous search on safety stock",
+         "src/simulation_opt.py"),
+        ("jobs_whatif_job_py_cycle_cost", "EOQ cycle cost + safety-stock holding",
+         "jobs/whatif_job.py"),
+        ("src_simulation_opt_py_grid", "Grid search for safety stock",
+         "src/simulation_opt.py"),
+        ("src_decision_support_py_healthy", "Healthy min/max, safety stock",
+         "src/decision_support.py"),
+        ("jobs_multi_echelon_job_py_optimize", "Multi-echelon safety-stock placement",
+         "jobs/multi_echelon_job.py"),
+    ]
+    return _write_graph(tmp_path / "c.json", [
+        *(_code_node(nid, label, src) for nid, label, src in others),
+        _code_node("src_safety_stock_py_nudge", "Nudge the cycle service level",
+                   "src/safety_stock.py"),
+    ])
+
+
+def test_bridge_breaks_a_tie_toward_the_file_named_after_the_query(tmp_path: Path) -> None:
+    """Among equal scores the module named after the concept comes first.
+
+    Its nodes carry the query words through their ids, which graphify builds
+    from the file's path, so they always reach the top score; they only lost
+    the tie to labels that sort earlier.
+    """
+    kb = KnowledgeBase(books_path=BOOKS, code_path=_safety_stock_code_graph(tmp_path))
+
+    impl = kb.bridge("safety stock").implementation
+
+    assert impl[0].source == "src/safety_stock.py", [c.source for c in impl]
+
+
+@pytest.mark.parametrize("term", ["safety", "stock", "safety stock policy"])
+def test_the_file_name_must_spell_the_whole_query(tmp_path: Path, term: str) -> None:
+    """Guard: a file named after part of the query, or after less than all of
+    it, earns nothing. "stock" is not about safety stock, so every tie keeps
+    its label order."""
+    kb = KnowledgeBase(books_path=BOOKS, code_path=_safety_stock_code_graph(tmp_path))
+
+    labels = [c.label for c in kb.search(term, graph="code", limit=10)]
+
+    assert labels == sorted(labels), labels
+
+
+def test_the_named_file_never_outranks_a_better_word_match(tmp_path: Path) -> None:
+    """Guard: it is a tie-break, not a bonus. A node of src/safety_stock.py
+    matched only through its rationale stays below a title match elsewhere."""
+    named = _code_node("n1", "Nudge the cycle service level", "src/safety_stock.py")
+    named["rationale"] = "keeps enough safety stock"
+    kb = KnowledgeBase(books_path=BOOKS, code_path=_write_graph(tmp_path / "c.json", [
+        named,
+        _code_node("src_hats_py_ss", "Engine's own safety stock", "src/hats.py"),
+    ]))
+
+    sources = [c.source for c in kb.search("safety stock", graph="code")]
+
+    assert sources == ["src/hats.py", "src/safety_stock.py"]
+
+
+def test_the_named_file_tie_break_leaves_the_mixed_ranking_alone(tmp_path: Path) -> None:
+    """Guard: ``graph="both"`` breaks ties by label exactly as before, and so
+    does the books side. The file-name rule is a code-side reading of "where
+    does this live"; ``explain`` falls back to the mixed ranking."""
+    kb = KnowledgeBase(books_path=tmp_path / "none.json",
+                       code_path=_safety_stock_code_graph(tmp_path))
+
+    labels = [c.label for c in kb.search("safety stock", graph="both", limit=10)]
+
+    assert labels == sorted(labels), labels
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("term,module", [
+    ("safety stock", "src/safety_stock.py"),
+    ("fill rate", "src/fill_rate.py"),
+])
+def test_bridge_leads_with_the_named_module_on_the_real_code_graph(
+    kb: KnowledgeBase, term: str, module: str
+) -> None:
+    """Measured 2026-09-23: src/safety_stock.py came 7th behind 35 nodes tied
+    at the top score, and src/fill_rate.py 4th behind 29. The only miss of the
+    19 terms with a module named after them."""
+    sources = [c.source for c in kb.bridge(term).implementation]
+    assert sources and sources[0] == module, sources
+
+
 def test_advise_maps_intermittent_brief(kb: KnowledgeBase) -> None:
     tips = kb.advise("we have intermittent lumpy demand on spare parts")
     assert tips
