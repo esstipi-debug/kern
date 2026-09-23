@@ -54,21 +54,62 @@ fi
 #      aborta con "Executables already exist ... use `--force` to overwrite".
 #      `--force` cubre los tres casos con un solo camino: ausente, entorno roto,
 #      y ejecutables huerfanos.
+#
+# Se instala CON el extra [mcp]. `.mcp.json` levanta `graphify-mcp`, y sin el
+# extra ese binario existe, esta en PATH y muere al primer import ("mcp not
+# installed"): Claude Code solo lo ve como "Connection closed", y la sesion pierde
+# las tools de graphify sin que nada lo diga. Pasaba en cada sesion web hasta el
+# 2026-09-23, y `graphify_arranca` no lo veia, porque `graphify` si arrancaba.
+GRAPHIFY_PKG='graphifyy[mcp]'
+GRAPH_JSON="$PROJECT_DIR/graphify-out/graph.json"
+
 graphify_arranca() { command -v graphify >/dev/null 2>&1 && graphify --version >/dev/null 2>&1; }
 
-if ! graphify_arranca; then
+# El mismo criterio para el server: que CONTESTE un `initialize`, no que exista.
+# Sin grafo no hay nada que servir, asi que eso cuenta como "no se puede probar",
+# no como roto. `timeout` solo si es el de coreutils: en Windows el de System32
+# es otro comando (espera N segundos), y `--version` los distingue.
+graphify_mcp_contesta() {
+  [ -f "$GRAPH_JSON" ] || return 0
+  command -v graphify-mcp >/dev/null 2>&1 || return 1
+  local limite=() salida
+  timeout --version >/dev/null 2>&1 && limite=(timeout 120)
+  # Se captura y despues se mira, en vez de `| grep -q`: con pipefail, un grep que
+  # corta la tuberia al primer match le puede dar SIGPIPE al server y convertir
+  # un "contesto" en "no contesto".
+  salida="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"kern-session-start","version":"0"}}}' \
+    | ${limite[@]+"${limite[@]}"} graphify-mcp "$GRAPH_JSON" 2>/dev/null || true)"
+  case "$salida" in *'"serverInfo"'*) return 0 ;; *) return 1 ;; esac
+}
+
+instalar_graphify() {
   if command -v uv >/dev/null 2>&1; then
-    uv tool install --force graphifyy >/dev/null 2>&1 || true
+    uv tool install --force "$GRAPHIFY_PKG" >/dev/null 2>&1 || true
   else
-    python -m pip install -q --force-reinstall graphifyy >/dev/null 2>&1 || true
+    python -m pip install -q --force-reinstall "$GRAPHIFY_PKG" >/dev/null 2>&1 || true
   fi
+}
+
+if ! graphify_arranca; then
+  instalar_graphify
 fi
 
 if graphify_arranca; then
-  if graphify update "$PROJECT_DIR" >/dev/null 2>&1; then
+  # GRAPHIFY_NO_BACKUP: con nombres de comunidad curados, graphify copia el grafo
+  # previo a graphify-out/<fecha>/ en cada dia que cambia -- ~36 MB por dia, que
+  # nadie borra, de un directorio que es regenerable por definicion.
+  if GRAPHIFY_NO_BACKUP=1 graphify update "$PROJECT_DIR" >/dev/null 2>&1; then
     echo "graphify: code graph refreshed (graphify-out/)"
   else
     echo "graphify: update skipped (non-fatal) — citations stay theory-only"
+  fi
+  if ! graphify_mcp_contesta; then
+    instalar_graphify
+    if graphify_mcp_contesta; then
+      echo "graphify: MCP server repaired (reinstalled with the [mcp] extra)"
+    else
+      echo "graphify: MCP server does not answer -- graphify tools unavailable this session (CLI still works)"
+    fi
   fi
 else
   echo "graphify: unavailable — install/repair failed, L3 citations stay theory-only"

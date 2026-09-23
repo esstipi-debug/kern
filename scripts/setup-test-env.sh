@@ -36,8 +36,12 @@ $PIP install $PIP_FLAGS --ignore-installed -U pip setuptools wheel
 
 # 2. Pre-clear the Debian-managed packages that heavier extras try to upgrade,
 #    so the main install below never aborts trying to uninstall them.
-say "reinstalling system-managed conflict packages (cryptography)"
-$PIP install $PIP_FLAGS --ignore-installed cryptography || true
+#    PyJWT is the one the header named but this step skipped: `mcp` pulls a
+#    newer PyJWT, pip tries to uninstall Debian's 2.7.0, hits "no RECORD file"
+#    and the step-3 transaction dies with ZERO packages installed (seen
+#    2026-09-23; the SessionStart hook hides it behind `|| true`).
+say "reinstalling system-managed conflict packages (cryptography, PyJWT)"
+$PIP install $PIP_FLAGS --ignore-installed cryptography PyJWT || true
 
 # 3. The full dev install (mirrors CI's tests.yml: engine + tests + web + all
 #    capability extras, incl. pricing-intel/extruct, forecasting, state,

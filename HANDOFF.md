@@ -43,6 +43,28 @@
 > `PIPELINE.md` is real per-deal working data (like `clients/`), not a
 > template or sample to commit — gitignore it if you create one.
 
+## 2026-09-23 — graphify: MCP reparado, grafo de codigo depurado, setup web desbloqueado
+
+Tres fallas silenciosas del arranque de sesion, las tres escondidas detras de `|| true`:
+
+- **El MCP de graphify nunca arrancaba en la web.** El hook instalaba `graphifyy` sin el
+  extra `[mcp]`; `graphify-mcp` moria con `ImportError: mcp not installed` y Claude Code solo
+  mostraba "Connection closed". Ahora instala `graphifyy[mcp]` y verifica con un `initialize`
+  real que el server conteste; si no, reinstala.
+- **`scripts/setup-test-env.sh` dejaba CERO paquetes.** PyJWT 2.7.0 viene de Debian, `mcp`
+  pide uno mas nuevo y pip no puede desinstalar el de Debian: la transaccion entera abortaba.
+  El paso 2 ya pre-limpiaba `cryptography`; ahora tambien `PyJWT`.
+- **El grafo de codigo indexaba su propio ruido.** `.graphifyignore` nuevo en la raiz: sale
+  el `GRAPH_REPORT.md` del grafo de libros (era hub top-12 del grafo de CODIGO), el blog,
+  los planes ya ejecutados, `marked.min.js` y el andamiaje de speckit/Cursor. 97 archivos,
+  -1.322 nodos. En `KnowledgeBase.search(graph="code")` sobre 20 terminos de dominio, la
+  implementacion paso de 48% a 59% del top-5. Memoria del grafo con el detalle:
+  `knowledge/graph-memory/query_20260923_*_por_que_el_lado_codigo_de___bridge_*`.
+
+Tambien: `GRAPHIFY_NO_BACKUP=1` en el hook (graphify copiaba ~36 MB a `graphify-out/<fecha>/`
+por cada dia con cambios). La version de graphify no se fija: el hook instala la ultima
+solo cuando falta o esta rota (medido con 0.9.66).
+
 ## 2026-09-08 — Preventa / busqueda de productos Mercado Libre (catalogo oficial, solo lectura)
 
 **Leer esto primero si se retoma el hilo ML.** No es reposicion de canal
