@@ -7,8 +7,8 @@ El cuerpo de un PR de GitHub topea en **65.536 caracteres**, y esta rama lo alca
 decimonovena entrega: quedó en 65.227, o sea 309 de margen, y la vigésima no entraba. Este
 documento es la mitad vieja de ese historial, movida acá para que las siguientes entren.
 
-**Qué hay acá:** las entregas **segunda a vigesimocuarta**, verbatim y en orden cronológico
-—de los términos del proveedor hasta la regrabación de la línea base de 25 mundos—. No se resumió nada al mudarlas:
+**Qué hay acá:** las entregas **segunda a vigesimoquinta**, verbatim y en orden cronológico
+—de los términos del proveedor hasta el arreglo de la lectura de la suciedad cosmética—. No se resumió nada al mudarlas:
 un historial que se resume cuando se archiva deja de ser un historial.
 
 **Qué NO hay acá, y dónde está:**
@@ -16,7 +16,7 @@ un historial que se resume cuando se archiva deja de ser un historial.
 | | dónde |
 |---|---|
 | Primera entrega (el quinto sombrero, `transporte`) | el cuerpo del PR, como marco: *Qué problema cierra*, *El modelo*, *El quinto sombrero es condicional*, *Cambio de comportamiento*, *Alcance*, *Verificación* |
-| Vigesimoquinta a vigesimoséptima | el cuerpo del PR |
+| Vigesimosexta a vigesimoctava | el cuerpo del PR |
 | Verificación de la rama completa, estado del diseño de las cuatro brechas y los dos anexos | el cuerpo del PR |
 
 **La regla, para que el cuerpo del PR no se vuelva a llenar:** lleva las **tres últimas**
@@ -406,3 +406,61 @@ El titular vendible del repo —*"Kern decide peor que un punto de reorden fijo 
 **Artefactos.** `captura_limpia_pareada.json` (la captura **por mundo** en las dos épocas — sostiene el "25 de 25" y no se puede rehacer desde un solo checkout, así que lleva los dos sha adentro) y `captura_bajo_shock_RECHAZADA.json` (la corrida rechazada con su motivo en el propio contexto: **evidencia, no referencia**). Las dos líneas base del 18-sep quedan congeladas con su nombre de commit.
 
 **Verificación:** `tests/test_captura_bajo_disrupcion_publicada.py` pasa de **7 a 16 tests** — que los congelados sean comparables con los vigentes, que el documento cite sus frases verbatim, que el +26,8 y los cuatro extremos sean la **resta de los dos archivos** y no números tipeados, que el pareado diga 25/25 y reproduzca los agregados, que la rechazada se declare rechazada, que la columna con shock vigente siga siendo la congelada (**se pone rojo el día que se logre regrabarla**, que es cuando el documento tiene que volver a publicar el costo del shock) y que el documento declare que la columna limpia rozó la compuerta, recalculando brecha y margen. Suite completa **8.879 passed, 32 skipped, 19 deselected, 0 failed**. `ruff check .` limpio.
+
+## Vigesimoquinta entrega: el colapso en los niveles sucios era LECTURA, y arreglarlo desbloqueó la línea base con shock (`7841f96`, `3bc13a7`, `bbfd346`, `9892d25`)
+
+La vigesimocuarta dejó abierto el ítem más grande que había encontrado: la regrabación bajo disrupción **bloqueada** por una anomalía real, con el diagnóstico de que *"en los niveles sucios Kern colapsa a casi-no-pedir"*. Esto lo persigue hasta el fondo, y el fondo no estaba donde parecía.
+
+### El gatillo: la suciedad "cosmética" cambiaba el dato
+
+`src/simworld/lens.py` declara sus tres inyectores de nivel 1 como **"cosmético puro"** —la misma SKU mal escrita, el mismo día en otro formato, el mismo número en formato europeo—. `jobs/intake.py` no los leía igual, y el precio estaba a la vista sin que nadie lo leyera: **el nivel 1 había mejorado +0,0 puntos en los 25 mundos** cuando llegó la cobertura provisional. Exactamente cero, en los veinticinco. Eso no es ruido, es un mecanismo — y el mecanismo es que esa cobertura **solo se dispara cuando el motor se niega**, y a nivel 1 el motor no se negaba: emitía una política confiada sobre una serie que se había inventado.
+
+Sobre el archivo real de la semilla 1000 a la semana 20, el nivel "cosmético" devolvía **16 SKU** (son 8), **912 unidades de 2.596** y un calendario que terminaba el 1-dic en vez del 19-may. Aislando cada inyector por separado, **dos causas**:
+
+- `" sku-1003"` y `"SKU-1003"` eran **dos productos**. La línea hacía `.str.strip()`, que limpia el espacio y no la caja. Cada serie perdía la mitad de su historia y las dos mitades caían por debajo de `MIN_PERIODS_FOR_POLICY`.
+- `"06/01/2025"` (6 de enero, `dd/mm/yyyy`) se parseaba **month-first** → 1 de junio. Una sola fecha estiraba la grilla semanal de **4 períodos a 21** rellenos de ceros fabricados, y con eso cruzaba el umbral: **el motor dejaba de negarse**.
+
+`_fold_ids` pliega por identidad conservando la grafía **más frecuente** (con desempate alfabético y no por orden de fila: dos corridas del mismo archivo tienen que coincidir en cómo se llama un producto) y **declara** lo plegado en `IntakeQuality.folded_ids` — un catálogo que de verdad distinga `ab-100` de `AB-100` es raro pero posible, y lo único que no puede pasar es fusionarlos en silencio. `_slash_date_order` lee el orden de la **propia columna** (una fecha con barra cuyo primer componente es > 12 solo puede ser un día) y aplica el `dayfirst` **solo a los tokens con barra**: ésa es la diferencia con el `dayfirst=True` que se revirtió, que cambiaba mes por día en el ~39 % de las fechas ISO. Sin evidencia, o con evidencia **contradictoria**, cae al comportamiento de antes.
+
+**La especificación es el invariante, no las piezas: si el nivel 1 es cosmético de verdad, tiene que leerse IGUAL que el nivel 0.** Ahora se cumple — coincidencia fila a fila en las 160.
+
+| nivel | antes | con la lectura arreglada | mundos que mejoran |
+|---|---:|---:|---|
+| L1 | −117,0 % | **−28,3 %** | 24/25 · t = 10,1 |
+| L2 | −116,8 % | **−48,1 %** | **21/21** · mínimo +20,5 |
+| L3 | −91,9 % | **−26,3 %** | 20/21 · t = 8,7 |
+
+Y el control de que toca solo lo que debe: **L0 sale bit a bit idéntico** en las dos condiciones. Son **dos palancas disjuntas** — la cobertura provisional arregló el arranque muerto (solo L0), la lectura arregló lo sucio. La época intermedia queda congelada en `captura_limpia_a7892b7.json`.
+
+### La compuerta acusaba por el ordinal, y el ordinal dejó de medir lo que importa
+
+Con la lectura arreglada **la inversión L2/L3 persiste**, y ahí se vio que la premisa era lo que estaba mal. `degrada_con_la_suciedad` decía: si un nivel más sucio captura mejor, algo entra por una vía que nadie diseñó. La **observación** sigue valiendo; la **inferencia** no. Los niveles son monótonos en **cantidad de defectos**, no en **distorsión**: el archivo de nivel 3 le entrega al motor **0,857** de la demanda verdadera y el de nivel 2 **0,634**, porque los inyectores del 3 **inflan** (`inject_duplicate_rows` 101,2 %, `inject_unmarked_promo` 114,9 %) y los del 2 **desinflan** (`inject_mixed_units` 79,9 %, `inject_calendar_gaps` 95,0 %). Kern comprando más al leer L3 es la respuesta **correcta** a un archivo más fiel.
+
+Es la opción que el dueño eligió entre cuatro; las otras tres se descartaron por escrito (rebalancear los inyectores invalida toda línea base grabada y se parece a ajustar el experimento para que pase; la excepción declarada es una escotilla; no tocar nada deja la línea base con shock congelada para siempre).
+
+Cada `Distribucion` lleva ahora su **fidelidad**, y hay dos decisiones adentro: se mide **por intake y no sobre el CSV crudo** —sobre el crudo el nivel 1 daría perfecto, y entregaba el 35 % de las unidades: una fidelidad que no pase por el mismo lector que el producto daría por bueno exactamente el defecto que existe para detectar— y el error es **`|1 − fidelidad|`**, porque inflar un 26 % y desinflar un 26 % son igual de infieles.
+
+**La alarma conserva sus dientes**, con un test por cada filo: acusa si la captura mejora con un archivo **igual de fiel** (la forma exacta del defecto que atrapó el 18-sep, donde las fidelidades eran idénticas porque el problema no estaba en la lente), si es **peor**, y si **no hay fidelidad medida** — exculpar con una medición ausente la volvería un adorno. Y la exención **no se traga en silencio**: `inversiones_explicadas` la imprime aparte con las dos fidelidades nombradas.
+
+### El resultado: las dos líneas base grabadas, y el costo del shock vuelve
+
+**La mitad bajo disrupción se regrabó por primera vez desde el 18-sep.** Y no porque la compuerta se aflojara: la inversión sigue superando el margen de ruido, o sea que la versión vieja habría disparado igual.
+
+| nivel | limpia | bajo disrupción | costo del shock |
+|---|---:|---:|---:|
+| **L0** | −13,8 % | −20,9 % | **−7,1 puntos** |
+| L1 | −28,3 % | −33,0 % | −4,6 |
+| L2 | −48,1 % | −46,9 % | +1,2 |
+| L3 | −26,3 % | −24,6 % | +1,8 |
+
+**Dos advertencias, las dos en el documento.** El −7,1 **no** es "el shock duele menos que el 15,4 del 18-sep": el denominador es otro, porque la captura se normaliza contra la brecha piso-techo y hoy Kern captura mucho mejor. Y los positivos en L2/L3 **no** son que la disrupción ayude: el piso también sufre el shock, y cuando el denominador se degrada una política mala se ve menos mala.
+
+**Control de que medir la fidelidad no perturba nada:** la línea base grabada con la compuerta nueva es **idéntica campo por campo** a la reconstruida de la corrida anterior sin ella. Es observación pura, no un carril nuevo.
+
+### Lo que NO se arregló, y es la capa que queda
+
+`lens.history_frame` exporta **`out.sold`** —*"lo efectivamente vendido"*—, no la demanda. Una política mala causa quiebre, el quiebre **censura** el histórico, y la política siguiente sale más chica todavía: antes del arreglo, a la semana 4 el nivel 1 traía el 100 % de las unidades del nivel 0 y a la semana 20 el **35 %**. El piso es inmune porque `naive_policy` es **congelada** (*"sin revisar nunca"*): lee el archivo censurado una sola vez, en el calentamiento. **El bucle solo muerde al carril que replanifica.** Ajustar demanda contra ventas censuradas es una capacidad, no un arreglo de lectura, y no está medido cuánto vale.
+
+→ **Medido en la vigesimosexta, acá abajo: no paga.**
+
+**Verificación:** `tests/test_suciedad_cosmetica_no_cambia_el_dato.py` (10) con el invariante de cierre LEVEL 1 == LEVEL 0, `tests/test_compuerta_por_fidelidad.py` (12) con un test por cada filo de la alarma, y `test_captura_bajo_disrupcion_publicada.py` de 16 a 18. Tres de sus tests se pusieron rojos al regrabar y los tres eran **señales correctas** —el documento citaba números vencidos, el pareado se comparaba contra una época que ya no era la suya, y uno afirmaba que la columna limpia "rozó la compuerta por 0,6 puntos"—; un cuarto (`test_la_columna_con_shock_vigente_sigue_siendo_la_congelada`) se puso rojo **el día exacto para el que se escribió**. `ruff check .` limpio.
