@@ -7,8 +7,8 @@ El cuerpo de un PR de GitHub topea en **65.536 caracteres**, y esta rama lo alca
 decimonovena entrega: quedó en 65.227, o sea 309 de margen, y la vigésima no entraba. Este
 documento es la mitad vieja de ese historial, movida acá para que las siguientes entren.
 
-**Qué hay acá:** las entregas **segunda a vigésima**, verbatim y en orden cronológico
-—de los términos del proveedor hasta el horizonte de la vara—. No se resumió nada al mudarlas:
+**Qué hay acá:** las entregas **segunda a vigesimotercera**, verbatim y en orden cronológico
+—de los términos del proveedor hasta la fecha de fin por SKU—. No se resumió nada al mudarlas:
 un historial que se resume cuando se archiva deja de ser un historial.
 
 **Qué NO hay acá, y dónde está:**
@@ -16,7 +16,7 @@ un historial que se resume cuando se archiva deja de ser un historial.
 | | dónde |
 |---|---|
 | Primera entrega (el quinto sombrero, `transporte`) | el cuerpo del PR, como marco: *Qué problema cierra*, *El modelo*, *El quinto sombrero es condicional*, *Cambio de comportamiento*, *Alcance*, *Verificación* |
-| Vigesimoprimera a vigesimotercera | el cuerpo del PR |
+| Vigesimocuarta a vigesimosexta | el cuerpo del PR |
 | Verificación de la rama completa, estado del diseño de las cuatro brechas y los dos anexos | el cuerpo del PR |
 
 **La regla, para que el cuerpo del PR no se vuelva a llenar:** lleva las **tres últimas**
@@ -352,3 +352,27 @@ La vigesimoprimera corrigió R3.3 del residuo y dejó **declarado** que `KERN_PO
 **Donde el número incompleto NO engañaba, también se dice.** De esos +26.908 de `cobertura_piso`, **+26.971 son estante**: la cañería casi no se mueve (21.230 → 21.167), porque forzar la cobertura hace comprar **antes**, y lo que se compra antes **llega** antes. Ahí la columna vieja daba la respuesta correcta. Un documento que corrija solo donde le conviene no es una corrección, y hay un test que lo exige.
 
 **Verificación:** `tests/test_por_que_bajo_el_piso_publicado.py`, 5 tests nuevos —la identidad del cierre, que el diagnóstico siga congelado, el techo en cero entero, la viñeta corregida con su conteo de mundos, y el caso donde el estante no engañaba—. Suite completa **8.865 passed, 32 skipped, 19 deselected, 0 failed**. `ruff check .` limpio.
+
+## Vigesimotercera entrega: una fecha de fin por SKU paga +16,2 puntos, y con datos que el cliente ya tiene (`f04dda6`)
+
+`documentation/KERN_HORIZONTE_POR_SKU.md`. La vigésima cerró que el fin de horizonte **no** explica el residuo y dejó abierta la única versión **desplegable** de "horizonte": no la fecha en que se acaba el marcador, sino una **fecha de fin real por SKU** —discontinuación, fin de temporada, cierre de ventana promocional—. La cadena de un cliente no se acaba; **un SKU sí**. Esto **mide** esa idea: no agrega un campo al intake ni una regla al motor, porque se mide antes de construir.
+
+**La regla.** *No acumules por encima de lo que todavía podés vender.* Con `restante` = demanda que queda hasta la fecha de fin del SKU, se topean las **dos** mitades: `order_up_to = min(order_up_to, restante)` **y** `reorder_point = min(reorder_point, restante)`. Las dos, o no sirve — `apply_policy` pide hasta el objetivo cuando la posición cae al disparador, así que topear una sola deja la orden igual de grande. Un SKU sin `restante` queda **intacto**: topear con un cero que nadie midió sería decirle que no compre nunca más.
+
+**+16,2 puntos, y mejora en los CINCO mundos** (−27,6 % → −11,5 %). Es la segunda palanca más grande de la rama después del nivel de servicio (+18,9), y a diferencia de aquélla **ésta sí se puede accionar**. Y el ahorro es casi **puro**, no un intercambio:
+
+| | kern | con tope | Δ |
+|---|---:|---:|---:|
+| unidades | 2.987 | 2.634 | **−12 %** |
+| compra (usd) | 135.359 | 123.048 | **−12.311** |
+| quiebre (usd) | 109.567 | 109.935 | +368 |
+| fill | 0,750 | 0,748 | −0,002 |
+| capital pagado y sin vender | 30.440 | **18.276** | **−40 %** |
+
+Gasta 12.311 menos y paga 368 más de quiebre; el servicio no se mueve. Es la **primera** palanca de la rama que no es *"comprá más"* sino *"comprá menos de lo que no vas a vender"* — justo la forma del residuo que ninguna de las otras podía tocar.
+
+**Saber el futuro verdadero no compra nada.** Dos carriles: uno topea con la demanda futura **real** del mundo (nadie la tiene) y el otro con la **media observada × semanas restantes** (lo que un cliente calcula con su propio historial). Salen **+0,1348** y **+0,1618**: equivalentes. Difieren más de 0,02 en solo **2 de 5** mundos; en los otros tres es ±0,004, ruido. La hipótesis de que el estimado ganaba por ser un tope más apretado se **testeó y se descartó** —sobre 160 casos aprieta en el 59 % y promedia el 99 % del real, y no correlaciona: la semilla 1002 no aprieta y gana +0,060, la 1004 es la que más aprieta y gana +0,0006—. Por eso la palanca es desplegable: **no necesita información que nadie tiene, necesita una fecha**.
+
+**⚠️ El límite que vuelve honesto al titular.** En el marcador **todos los SKU mueren la misma semana**, así que +16,2 es el **techo de la idea** sobre una cartera donde toda la línea se discontinúa a la vez. Una cartera real tiene fechas escalonadas y la mayoría de sus SKU **no tiene ninguna**: lo realizable es proporcional a la fracción que traiga la fecha, y este número **no se le promete a nadie**. Falta además medir qué pasa con una fecha **equivocada**, que es la pregunta de seguridad de la capacidad.
+
+**Verificación:** `tests/test_horizonte_por_sku_publicado.py`, 5 tests —que pague en **cada** mundo y no en promedio, que los dos carriles sigan siendo equivalentes (nombrando las dos semillas donde difieren), que el ahorro siga siendo puro, que el documento declare que todos los SKU mueren juntos, y que el tope cubra las dos mitades dejando intacto al SKU sin dato—. Suite completa **8.870 passed, 32 skipped, 19 deselected, 0 failed**. `ruff` limpio.
