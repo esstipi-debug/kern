@@ -215,6 +215,12 @@ def inventory_tool() -> Tool:
         intent_keywords=(
             "reorder", "safety stock", "stock level", "inventory", "replenish",
             "eoq", "service level", "reorder point", "order quantity",
+            # The Spanish names of EOQ, which src/requested_method.py already
+            # recognised but which never reached this tool without an LLM. Both
+            # spellings: registry.match lowercases the brief but does not strip
+            # accents. Appended LAST on purpose -- the orchestrator's readings use
+            # only the first three keywords, so those must stay the canonical ones.
+            "lote economico", "lote económico", "formula de wilson", "fórmula de wilson",
         ),
         requires_data=True,
         # Straight from jobs/intake.py's CANONICAL_REQUIRED / CANONICAL_OPTIONAL:

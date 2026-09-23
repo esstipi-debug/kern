@@ -3,7 +3,8 @@
 The defect: ``inventory_optimization`` already puts intermittent SKUs on a periodic
 (R, S) policy with no EOQ quantity -- the right answer to the problem behind the
 request. But a brief that said "calculate the EOQ" got a summary that never
-mentioned it, so the requester found blank order quantities with no explanation.
+mentioned it, so the requester got no EOQ quantity for part of the catalog and no
+explanation.
 These tests pin the sentence, its silence, and that it moves no number.
 """
 from __future__ import annotations
@@ -13,7 +14,7 @@ import pytest
 
 from nosilo_core import llm
 from nosilo_core.types import JobRequest
-from scm_agent import tools
+from scm_agent import intent, tools
 from scm_agent.orchestrator import Orchestrator
 from src.forecasting import INTERMITTENT_ADI_THRESHOLD
 from src.requested_method import MAX_NAMED, EoqReframe, eoq_reframe, names_eoq
@@ -155,3 +156,38 @@ def test_orchestrator_routes_an_eoq_brief_and_carries_the_reframe(tmp_path):
 
     assert res.status == "ok" and res.tool == "inventory_optimization"
     assert "SPARE-9" in res.summary and "(R, S)" in res.summary
+
+
+# ---- the Spanish names reach the tool without an LLM ---------------------------
+
+@pytest.mark.parametrize("brief", [
+    "calcula el lote economico de compra",
+    "calcula el lote económico de mis SKU",
+    "quiero la formula de wilson para mis repuestos",
+    "aplica la Fórmula de Wilson",
+])
+def test_spanish_eoq_names_route_to_inventory_without_an_llm(brief):
+    result = intent.classify(brief, tools.build_default_registry(), llm.RulesFallback())
+
+    assert result.job_type == "inventory_optimization"
+
+
+@pytest.mark.parametrize("brief", [
+    # "lote" alone is a batch (FEFO territory), and Wilson is also a surname.
+    "el lote de produccion llega vencido",
+    "Wilson Supply es nuestro proveedor",
+])
+def test_lote_alone_or_wilson_the_surname_does_not_route_to_inventory(brief):
+    result = intent.classify(brief, tools.build_default_registry(), llm.RulesFallback())
+
+    assert result.job_type != "inventory_optimization"
+
+
+def test_a_spanish_eoq_brief_gets_the_reframe_end_to_end(tmp_path):
+    orch = Orchestrator(registry=tools.build_default_registry(), provider=llm.RulesFallback(),
+                        clients_root=None)
+    res = orch.run("calcula el lote económico de mis productos", data_path=_mixed_csv(tmp_path),
+                   out_dir=tmp_path / "out")
+
+    assert res.status == "ok" and res.tool == "inventory_optimization"
+    assert "You asked for EOQ" in res.summary and "SPARE-9" in res.summary
