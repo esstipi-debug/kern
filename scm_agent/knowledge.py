@@ -695,7 +695,8 @@ class KnowledgeBase:
 
         An id-like argument (no spaces) is looked up exactly. A label-like
         argument (with spaces) falls back to a fuzzy search, so callers can
-        pass either `crostons_method` or `Croston's Method`.
+        pass either `crostons_method` or `Croston's Method`. That search leaves
+        out tests, demos, examples, scripts and documents, as ``bridge`` does.
         """
         for name in ("books", "code"):
             node = self._resolve_node(concept_id, name)
@@ -706,7 +707,13 @@ class KnowledgeBase:
         # (avoids a stray common token matching an unrelated node).
         if " " not in concept_id.strip():
             return None
-        hits = self.search(concept_id, graph="both", limit=1)
+        # A test or a spec describes a concept in words, so it is the closest word
+        # match for the concept's own name. Measured 2026-09-23 over the 2,881
+        # books labels with a space: 88 answered with a test, demo or script and
+        # 72 with a document - "Sales and Operations Planning" with the docstring
+        # of a test about S&OP. implementation_only gives 74 of them back their
+        # own concept and costs none.
+        hits = self.search(concept_id, graph="both", limit=1, implementation_only=True)
         if not hits:
             return None
         node = self._resolve_node(hits[0].id, hits[0].graph)

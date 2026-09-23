@@ -1036,3 +1036,64 @@ def test_explain_sop_still_answers_with_the_book_concept(kb: KnowledgeBase) -> N
     detail = kb.explain("Sales and Operations Planning")
 
     assert detail is not None and detail.concept.graph == "books", detail
+
+
+# -- explain(): a label answers with the concept, not with prose about it --------
+
+
+def _explain_graphs(tmp_path: Path, code_nodes: list[dict]) -> KnowledgeBase:
+    """Vollmann's S&OP concept in a books graph where its words are common.
+
+    Mirrors the real IDF: in the books graph "sales", "operations" and
+    "planning" sit in many nodes and weigh little; in a large code graph the same
+    words are rare and weigh more. That gap is what lets code prose outrank a
+    concept that carries every word of the query.
+    """
+    books = _write_graph(tmp_path / "b.json", [
+        {"id": "vollmann_sales_and_operations_planning",
+         "label": "Sales and Operations Planning",
+         "norm_label": "sales and operations planning", "rationale": ""},
+    ] + [
+        {"id": f"chapter_{i}", "label": f"Chapter {i}", "norm_label": f"chapter {i}",
+         "rationale": "sales and operations planning"}
+        for i in range(20)
+    ])
+    code = _write_graph(tmp_path / "c.json", code_nodes + [
+        _code_node(f"src_module_{i}_helper", f"helper_{i}()", f"src/module_{i}.py")
+        for i in range(50)
+    ])
+    return KnowledgeBase(books_path=books, code_path=code)
+
+
+def test_explain_answers_a_label_with_the_concept_not_a_test_about_it(
+    tmp_path: Path,
+) -> None:
+    """A test's docstring names the concept in words, so it matched the label.
+
+    Measured 2026-09-23 on the graph regenerated from this branch:
+    ``explain("Sales and Operations Planning")`` answered with the docstring of
+    test_acronym_needs_the_whole_phrase instead of Vollmann's concept.
+    """
+    kb = _explain_graphs(tmp_path, [
+        _code_node("tests_test_knowledge_rationale_980",
+                   "Guard: operations planning is not S&OP",
+                   "tests/test_knowledge.py", file_type="rationale"),
+    ])
+
+    detail = kb.explain("Sales and Operations Planning")
+
+    assert detail is not None, detail
+    assert detail.concept.id == "vollmann_sales_and_operations_planning", detail.concept
+
+
+def test_explain_still_answers_with_code_when_no_concept_matches(tmp_path: Path) -> None:
+    """Guard: only tests, demos, scripts and documents leave the fallback. A
+    phrase that only code carries still resolves to the module that has it."""
+    kb = _explain_graphs(tmp_path, [
+        _code_node("src_routing_clarke_wright_savings", "clarke_wright_savings()",
+                   "src/routing.py"),
+    ])
+
+    detail = kb.explain("clarke wright savings")
+
+    assert detail is not None and detail.concept.source == "src/routing.py", detail
