@@ -932,3 +932,181 @@ def test_bridge_leads_with_the_module_on_the_real_code_graph(
     assert impl[0].source == expected
     assert not any(_looks_like_a_non_implementation(c.source or "") for c in impl)
     assert all(c.source for c in impl)
+
+
+def _sop_code_graph(tmp_path: Path) -> Path:
+    """The S&OP module against a scheduler that shares more of the phrase's words.
+
+    Mirrors the real graph: src/sop.py carries "sop" only through its id (its
+    docstrings write "S&OP", which tokenizes to nothing) and shares one word,
+    "planning", with the spelled-out phrase; the scheduler shares two.
+    """
+    return _write_graph(tmp_path / "c.json", [
+        _code_node("src_sop_aggregate_strategies",
+                   "Evaluate the aggregate-planning strategies", "src/sop.py"),
+        _code_node("src_scheduling_engine",
+                   "Operations planning: sequencing engine", "src/scheduling.py"),
+    ])
+
+
+@pytest.mark.parametrize("term", [
+    "sales and operations planning",
+    "Sales & Operations Planning",
+    "S&OP",
+])
+def test_bridge_finds_a_module_named_by_its_acronym(tmp_path: Path, term: str) -> None:
+    """A module named by acronym wins the spelled-out query.
+
+    Word overlap alone ranks the scheduler first on "sales and operations
+    planning" (two shared words to one), and "S&OP" has no token of three
+    letters at all, so it found nothing.
+    """
+    kb = KnowledgeBase(books_path=BOOKS, code_path=_sop_code_graph(tmp_path))
+
+    impl = kb.bridge(term).implementation
+
+    assert impl and impl[0].source == "src/sop.py", [c.source for c in impl]
+
+
+def test_acronym_needs_the_whole_phrase(tmp_path: Path) -> None:
+    """Guard: "operations planning" is not S&OP. Only the full phrase earns the
+    acronym, so a partial one ranks on its words exactly as before."""
+    kb = KnowledgeBase(books_path=BOOKS, code_path=_sop_code_graph(tmp_path))
+
+    impl = kb.bridge("operations planning").implementation
+
+    assert [c.source for c in impl] == ["src/scheduling.py", "src/sop.py"]
+
+
+def test_acronym_expansion_stays_on_the_code_side(tmp_path: Path) -> None:
+    """Guard: the books graph ranks on its own words. Its concepts spell the
+    phrase out ("Sales and Operations Planning (S&OP)"), so it needs no
+    expansion, and a books node that merely carries "sop" must not gain."""
+    books = _write_graph(tmp_path / "b.json", [
+        {"id": "note::sop", "label": "sop", "norm_label": "sop", "rationale": ""},
+        {"id": "note::planning", "label": "Operations planning",
+         "norm_label": "operations planning", "rationale": ""},
+    ])
+    kb = KnowledgeBase(books_path=books, code_path=tmp_path / "none.json")
+
+    hits = kb.search("sales and operations planning", graph="books")
+
+    assert [h.id for h in hits] == ["planning"]
+
+
+def test_acronym_expansion_leaves_the_mixed_ranking_alone(tmp_path: Path) -> None:
+    """Guard: ``graph="both"`` ranks exactly as before, code nodes included.
+
+    It sets books and code scores side by side, each on its own graph's IDF, and
+    the acronym's phrase weight tips that balance: measured on the real graphs,
+    ``explain("Sales and Operations Planning")`` answered with a src/sop_engine
+    docstring instead of Vollmann's S&OP concept.
+    """
+    kb = KnowledgeBase(books_path=tmp_path / "none.json", code_path=_sop_code_graph(tmp_path))
+
+    hits = kb.search("sales and operations planning", graph="both")
+
+    assert [h.source for h in hits] == ["src/scheduling.py", "src/sop.py"]
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("term", ["sales and operations planning", "S&OP"])
+def test_bridge_finds_the_sop_module_on_the_real_code_graph(
+    kb: KnowledgeBase, term: str
+) -> None:
+    """Measured 2026-09-23: the spelled-out phrase put src/scheduling.py,
+    src/queuing.py, src/ddmrp.py, jobs/odoo_job.py and src/connectors/ in the
+    top-5, and the first S&OP node came 14th; "S&OP" returned nothing."""
+    sources = [c.source or "" for c in kb.bridge(term).implementation]
+    assert any(s.startswith(("src/sop", "jobs/sop_")) for s in sources), sources
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+def test_explain_sop_still_answers_with_the_book_concept(kb: KnowledgeBase) -> None:
+    """The acronym weight lifts S&OP code on the code side only. Applied to the
+    mixed ranking ``explain`` falls back to, it put a docstring above the book."""
+    detail = kb.explain("Sales and Operations Planning")
+
+    assert detail is not None and detail.concept.graph == "books", detail
+
+
+# -- explain(): a label answers with the concept, not with prose about it --------
+
+
+def _explain_graphs(tmp_path: Path, code_nodes: list[dict]) -> KnowledgeBase:
+    """Vollmann's S&OP concept in a books graph where its words are common.
+
+    Mirrors the real IDF: in the books graph "sales", "operations" and
+    "planning" sit in many nodes and weigh little; in a large code graph the same
+    words are rare and weigh more. That gap is what lets code prose outrank a
+    concept that carries every word of the query.
+    """
+    books = _write_graph(tmp_path / "b.json", [
+        {"id": "vollmann_sales_and_operations_planning",
+         "label": "Sales and Operations Planning",
+         "norm_label": "sales and operations planning", "rationale": ""},
+    ] + [
+        {"id": f"chapter_{i}", "label": f"Chapter {i}", "norm_label": f"chapter {i}",
+         "rationale": "sales and operations planning"}
+        for i in range(20)
+    ])
+    code = _write_graph(tmp_path / "c.json", code_nodes + [
+        _code_node(f"src_module_{i}_helper", f"helper_{i}()", f"src/module_{i}.py")
+        for i in range(50)
+    ])
+    return KnowledgeBase(books_path=books, code_path=code)
+
+
+def test_explain_answers_a_label_with_the_concept_not_a_test_about_it(
+    tmp_path: Path,
+) -> None:
+    """A test's docstring names the concept in words, so it matched the label.
+
+    Measured 2026-09-23 on the graph regenerated from this branch:
+    ``explain("Sales and Operations Planning")`` answered with the docstring of
+    test_acronym_needs_the_whole_phrase instead of Vollmann's concept.
+    """
+    kb = _explain_graphs(tmp_path, [
+        _code_node("tests_test_knowledge_rationale_980",
+                   "Guard: operations planning is not S&OP",
+                   "tests/test_knowledge.py"),
+    ])
+
+    detail = kb.explain("Sales and Operations Planning")
+
+    assert detail is not None, detail
+    assert detail.concept.id == "vollmann_sales_and_operations_planning", detail.concept
+
+
+def test_explain_does_not_break_a_books_tie_by_the_book_file_name(tmp_path: Path) -> None:
+    """The file-named-after-the-term tiebreak is for code. A book's source file is
+    named after the book: "planning" in vollmann-manufacturing-planning-control
+    made Vollmann's CPFR win a tie against Christopher's, whose label is the one
+    asked for."""
+    books = _write_graph(tmp_path / "b.json", [
+        {"id": "christopher_cpfr",
+         "label": "Collaborative Planning, Forecasting and Replenishment (CPFR)",
+         "norm_label": "", "rationale": "", "source_file": "christopher-logistics.txt"},
+        {"id": "vollmann_cpfr",
+         "label": "Collaborative Planning, Forecasting, and Replenishment",
+         "norm_label": "", "rationale": "",
+         "source_file": "vollmann-manufacturing-planning-control.txt"},
+    ])
+    kb = KnowledgeBase(books_path=books, code_path=tmp_path / "none.json")
+
+    detail = kb.explain("Collaborative Planning, Forecasting and Replenishment (CPFR)")
+
+    assert detail is not None and detail.concept.id == "christopher_cpfr", detail
+
+
+def test_explain_still_answers_with_code_when_no_concept_matches(tmp_path: Path) -> None:
+    """Guard: only tests, demos, scripts and documents leave the fallback. A
+    phrase that only code carries still resolves to the module that has it."""
+    kb = _explain_graphs(tmp_path, [
+        _code_node("src_routing_clarke_wright_savings", "clarke_wright_savings()",
+                   "src/routing.py"),
+    ])
+
+    detail = kb.explain("clarke wright savings")
+
+    assert detail is not None and detail.concept.source == "src/routing.py", detail

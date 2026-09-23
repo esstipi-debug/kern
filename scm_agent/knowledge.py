@@ -20,6 +20,7 @@ import json
 import logging
 import math
 import re
+from collections import ChainMap
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -242,6 +243,50 @@ _STOPWORDS: frozenset[str] = frozenset({
 def _content_tokens(tokens: set[str]) -> set[str]:
     """Drop function words, leaving only tokens that carry domain meaning."""
     return tokens - _STOPWORDS
+
+
+# Acronyms the CODE writes where a query writes the words: acronym -> the ways a
+# query spells it (first one canonical). Read by ``_rank`` on graph="code" only,
+# so by ``search(graph="code")`` and by ``bridge``'s code side.
+#
+# A row earns its place by a measured miss, not by being an SCM acronym. On
+# 2026-09-23 "sales and operations planning" ranked src/scheduling.py first and
+# the first S&OP node 14th: the S&OP modules carry "sop" in their ids, but
+# their docstrings write "S&OP", which ``_TOKEN`` reads as nothing (so "S&OP"
+# typed as such found no code at all). "on time in full" loses "on" and "in" to
+# the same rule and ranked autonomy and risk code, no OTIF measure. "minimum
+# order quantity" missed src/constraints.py, where the MOQ rounding lives.
+# EOQ, DRP, DDMRP and FEFO are NOT rows: their docstrings spell the phrase out,
+# so their modules already rank 1st-2nd. Neither is ROP: the code also writes
+# "reorder point", and adding "rop" pushed src/decision_support.py out of the
+# top-5. Not derived from initials either: "supply of parts" would spell SOP,
+# and no one rule says which short words count (S&OP drops "and", OTIF keeps
+# "on" and "in", BOM keeps "of").
+#
+# The books graph needs none of this: its concepts spell the phrase out
+# ("Sales and Operations Planning (S&OP)").
+_ACRONYMS: dict[str, tuple[str, ...]] = {
+    "sop": ("sales and operations planning", "s&op"),
+    "otif": ("on time in full",),
+    "moq": ("minimum order quantity",),
+}
+
+
+def _spelled_out_acronyms(query: str) -> dict[str, set[str]]:
+    """The ``_ACRONYMS`` a query writes out, each mapped to its phrase's words.
+
+    Matched on the query's raw words, not its tokens: "on time in full" keeps its
+    "on" and "in", and "S&OP" stays one word instead of vanishing. A lone "&"
+    reads as "and" and a hyphen splits words, so "Sales & Operations Planning"
+    and "on-time in-full" count. Only the whole phrase does.
+    """
+    words = ["and" if w == "&" else w for w in re.findall(r"[a-z0-9&]+", query.lower())]
+    padded = f" {' '.join(words)} "
+    return {
+        acronym: _content_tokens(_tokens(spellings[0]))
+        for acronym, spellings in _ACRONYMS.items()
+        if any(f" {s} " in padded for s in spellings)
+    }
 
 
 def _load(path: Path) -> tuple[dict, str | None]:
@@ -521,6 +566,9 @@ class KnowledgeBase:
         hits for "vehicle routing" with nowhere to send the reader. Books nodes
         without a source stay searchable - they are Kern's internal notes, kept
         out of *citations* by ``_is_citable``, not out of discovery.
+
+        On ``graph="code"`` a spelled-out acronym (see ``_ACRONYMS``) also
+        matches the acronym. The books graph is ranked as is.
         """
         return self._rank(query, graph, limit)
 
@@ -539,13 +587,20 @@ class KnowledgeBase:
         score itself is untouched, so a better match in another file still wins.
         """
         terms = _tokens(query)
-        if not terms:
+        # The code graph searched alone, never "both": that one sets books and
+        # code scores side by side, and the acronym's weight put S&OP docstrings
+        # above Vollmann's S&OP concept in ``explain``'s fallback.
+        acronyms = _spelled_out_acronyms(query) if graph == "code" else {}
+        if not terms and not acronyms:
             return []
         names = ("books", "code") if graph == "both" else (graph,)
         wanted = _content_tokens(terms)
 
-        def _tiebreak(node: dict) -> tuple[int, int]:
-            if not implementations_only:
+        def _tiebreak(node: dict, name: str) -> tuple[int, int]:
+            # Code only: a book's source file is named after the book, so on
+            # ``explain``'s mixed ranking Vollmann's CPFR beat Christopher's exact
+            # label on "planning" in vollmann-manufacturing-planning-control.
+            if not implementations_only or name != "code":
                 return (0, 0)
             src = node.get("source_file") or ""
             named_after = len(_tokens(Path(src).stem) & wanted)
@@ -554,6 +609,19 @@ class KnowledgeBase:
         scored: list[tuple[float, tuple[int, int], Concept]] = []
         for name in names:
             idf = self._idf.get(name, {})
+            matched = terms
+            if acronyms:
+                matched = terms | set(acronyms)
+                # The acronym is worth the whole phrase it stands for. At its own
+                # IDF it is cheap - "sop" sits in 442 nodes, every one of the
+                # module's - and S&OP out-scored the scheduler by 0.2 points of
+                # 21, a lead the next regeneration of the graph could flip. A
+                # phrase word the node also writes counts again, on purpose: it
+                # ranks the module's planning entry points above its helpers.
+                idf = ChainMap(
+                    {a: sum(idf.get(t, 0.0) for t in words) for a, words in acronyms.items()},
+                    idf,
+                )
             titles = self._title_tokens.get(name, {})
             bodies = self._body_tokens.get(name, {})
             for nid, node in self._index.get(name, {}).items():
@@ -562,14 +630,14 @@ class KnowledgeBase:
                     else node.get("source_file")
                 ):
                     continue
-                title_hit = terms & titles.get(nid, set())
-                body_hit = (terms & bodies.get(nid, set())) - title_hit
+                title_hit = matched & titles.get(nid, set())
+                body_hit = (matched & bodies.get(nid, set())) - title_hit
                 if not title_hit and not body_hit:
                     continue
                 score = self._W_TITLE * sum(idf.get(t, 0.0) for t in title_hit) + (
                     self._W_BODY * sum(idf.get(t, 0.0) for t in body_hit)
                 )
-                scored.append((score, _tiebreak(node), self._to_concept(node, name)))
+                scored.append((score, _tiebreak(node, name), self._to_concept(node, name)))
 
         scored.sort(key=lambda x: (-x[0], x[1], x[2].label))
         return [c for _, _, c in scored[:limit]]
@@ -644,7 +712,8 @@ class KnowledgeBase:
 
         An id-like argument (no spaces) is looked up exactly. A label-like
         argument (with spaces) falls back to a fuzzy search, so callers can
-        pass either `crostons_method` or `Croston's Method`.
+        pass either `crostons_method` or `Croston's Method`. That search leaves
+        out tests, demos, examples, scripts and documents, as ``bridge`` does.
         """
         for name in ("books", "code"):
             node = self._resolve_node(concept_id, name)
@@ -655,7 +724,13 @@ class KnowledgeBase:
         # (avoids a stray common token matching an unrelated node).
         if " " not in concept_id.strip():
             return None
-        hits = self.search(concept_id, graph="both", limit=1)
+        # A test or a spec describes a concept in words, so it is the closest word
+        # match for the concept's own name. Measured 2026-09-23 over the 2,881
+        # books labels with a space: 88 answered with a test, demo or script and
+        # 72 with a document - "Sales and Operations Planning" with the docstring
+        # of a test about S&OP. Leaving them out gives 74 of them back their own
+        # concept and costs none.
+        hits = self._rank(concept_id, "both", 1, implementations_only=True)
         if not hits:
             return None
         node = self._resolve_node(hits[0].id, hits[0].graph)
