@@ -83,6 +83,7 @@ from src.connectors.odoo import OdooError  # isort: skip  (local package)
 from src.connectors.shopify import ShopifyCommerceError  # isort: skip  (local package)
 from src.connectors.shopify_inventory import ShopifyInventoryError  # isort: skip  (local package)
 from src.cost_to_serve import ServiceCostRates  # isort: skip  (local package)
+from src.requested_method import eoq_reframe, names_eoq  # isort: skip  (local package)
 from src.sop import CostModel  # isort: skip  (local package)
 
 LEADERSHIP_SCHEMA = {
@@ -149,6 +150,10 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
             "intake_quality": quality,
             "period": period,
             "order_lines": order_lines,
+            # Decided here because prepare() is the only stage that sees the brief;
+            # run() reads it to tell a requester who named EOQ which SKUs did not get
+            # one (src/requested_method.py).
+            "eoq_requested": names_eoq(request.brief),
         },
     )
 
@@ -181,6 +186,17 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         f"Analyzed {report.n_skus} SKUs; recommended inventory investment "
         f"${report.final_investment:,.0f} at {report.params['service_level'] * 100:.0f}% service level."
     )
+    # The brief named EOQ and the engine did not give EOQ to every SKU: say so, and
+    # why, before the operator finds part of the catalog with no EOQ quantity. The
+    # numbers are untouched -- run_inventory already put intermittent SKUs on (R, S).
+    if payload.get("eoq_requested"):
+        reframe = eoq_reframe(
+            (r.product_id, r.intermittent)
+            for r in report.recommendations
+            if r.policy_kind in ("(s, Q)", "(R, S)")
+        )
+        if reframe is not None:
+            summary = f"{summary} {reframe.sentence()}"
     # La nota del servicio viaja en el resumen, que es lo que el operador lee ANTES de
     # abrir el entregable. Sin ella el fill rate aparece sin decir de que columna del
     # cliente salio, y un numero que no se puede reconciliar contra el ERP no se usa.
