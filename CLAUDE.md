@@ -276,6 +276,14 @@ See [`knowledge/graph-memory/README.md`](knowledge/graph-memory/README.md).
   breakage surfaces on its own instead of ambushing the next PR or deploy.
 - The **books graph** (L3) needs an LLM backend (Kimi/Gemini) to rebuild; the
   **code graph** is AST-only (no key) and the hook handles it.
+- **Rebuild the code graph by hand as `PYTHONHASHSEED=0 graphify update .`**, never
+  bare. Without the seed, graphifyy 0.9.66+ re-launches itself to set it, and on
+  Windows that re-launch fails (0.9.66: "can't open file ...\.local\bin\graphify")
+  or detaches and returns before the graph is written (0.9.67) -- sometimes with
+  exit 0 either way. The seed is the value graphify pins anyway, so the graph is
+  identical. The SessionStart hook already does this, and when it can't refresh it
+  says the graph is STALE and since when: that graph is still what `bridge`,
+  `explain`, `implements` and `tests/test_knowledge.py` read.
 
 ## Where to learn more
 
