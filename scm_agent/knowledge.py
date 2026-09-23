@@ -246,8 +246,9 @@ def _content_tokens(tokens: set[str]) -> set[str]:
 
 
 # Acronyms the CODE writes where a query writes the words: acronym -> the ways a
-# query spells it (first one canonical). Read by ``_rank`` on graph="code" only,
-# so by ``search(graph="code")`` and by ``bridge``'s code side.
+# query spells it (first one canonical, the phrase in words). Read by ``_rank``
+# on graph="code" only, so by ``search(graph="code")`` and by ``bridge``'s code
+# side, and by ``implements``, which reads the books concept as the query.
 #
 # A row earns its place by a measured miss, not by being an SCM acronym. On
 # 2026-09-23 "sales and operations planning" ranked src/scheduling.py first and
@@ -263,8 +264,8 @@ def _content_tokens(tokens: set[str]) -> set[str]:
 # and no one rule says which short words count (S&OP drops "and", OTIF keeps
 # "on" and "in", BOM keeps "of").
 #
-# The books graph needs none of this: its concepts spell the phrase out
-# ("Sales and Operations Planning (S&OP)").
+# Searching the books graph needs none of this: its concepts spell the phrase
+# out ("Sales and Operations Planning (S&OP)").
 _ACRONYMS: dict[str, tuple[str, ...]] = {
     "sop": ("sales and operations planning", "s&op"),
     "otif": ("on time in full",),
@@ -272,20 +273,22 @@ _ACRONYMS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _spelled_out_acronyms(query: str) -> dict[str, set[str]]:
+def _spelled_out_acronyms(query: str, *, phrase_only: bool = False) -> dict[str, set[str]]:
     """The ``_ACRONYMS`` a query writes out, each mapped to its phrase's words.
 
     Matched on the query's raw words, not its tokens: "on time in full" keeps its
     "on" and "in", and "S&OP" stays one word instead of vanishing. A lone "&"
     reads as "and" and a hyphen splits words, so "Sales & Operations Planning"
-    and "on-time in-full" count. Only the whole phrase does.
+    and "on-time in-full" count. Only the whole phrase does. With
+    ``phrase_only`` the acronym's own written forms ("S&OP") don't count either:
+    only the phrase in words does (see ``implements``).
     """
     words = ["and" if w == "&" else w for w in re.findall(r"[a-z0-9&]+", query.lower())]
     padded = f" {' '.join(words)} "
     return {
         acronym: _content_tokens(_tokens(spellings[0]))
         for acronym, spellings in _ACRONYMS.items()
-        if any(f" {s} " in padded for s in spellings)
+        if any(f" {s} " in padded for s in (spellings[:1] if phrase_only else spellings))
     }
 
 
@@ -819,7 +822,16 @@ class KnowledgeBase:
         Prefers real src/ modules. Returns None when the code graph is absent or
         nothing clears the bar — the caller then cites theory only.
         """
-        want = _content_tokens(_tokens(f"{concept.label} {concept.id}"))
+        text = f"{concept.label} {concept.id}"
+        # A concept that spells an acronym's phrase out also wants the acronym:
+        # the S&OP modules carry it only as "sop" (ids, filenames - their docstrings
+        # write "S&OP", which ``_TOKEN`` drops), so on 2026-09-23 Christopher's and
+        # Vollmann's "Sales and Operations Planning" linked to nothing while
+        # "vollmann_sop" linked to src/sop.py. Only the phrase in words earns it: a
+        # label that writes "S&OP" uses it as a qualifier, and "Master Scheduler
+        # (S&OP -> MPS)" then tied 63 src/sop_engine/ nodes on "sop" + "plan",
+        # none of them a master schedule.
+        want = _content_tokens(_tokens(text)) | set(_spelled_out_acronyms(text, phrase_only=True))
         if not want:
             return None
         titles = self._title_tokens.get("code", {})
