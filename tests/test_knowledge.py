@@ -1036,3 +1036,67 @@ def test_explain_sop_still_answers_with_the_book_concept(kb: KnowledgeBase) -> N
     detail = kb.explain("Sales and Operations Planning")
 
     assert detail is not None and detail.concept.graph == "books", detail
+
+
+# -- implements(): a concept that spells an acronym out --------------------------
+
+
+@pytest.mark.parametrize("concept_id,label", [
+    ("sales_and_operations_planning", "Sales and Operations Planning (S&OP)"),
+    ("vollmann_sales_and_operations_planning", "Sales and Operations Planning"),
+    ("sales_operations_planning", "Sales & Operations Planning"),
+])
+def test_implements_credits_the_acronym_a_concept_spells_out(
+    tmp_path: Path, concept_id: str, label: str
+) -> None:
+    """The S&OP module is named by acronym, so the phrase alone cannot reach it.
+
+    src/sop.py shares one word with the concept, "planning", and its filename is
+    "sop", which the concept never writes, so it needs 3 shared words and has 1.
+    The scheduler shares two but is not named after the concept either. Both fell
+    short and the citation shipped with no code behind it.
+    """
+    kb = KnowledgeBase(books_path=BOOKS, code_path=_sop_code_graph(tmp_path))
+    concept = Concept(id=concept_id, label=label, source=None, location=None, graph="books")
+
+    impl = kb.implements(concept)
+
+    assert impl is not None and impl.source == "src/sop.py", impl
+
+
+def test_implements_does_not_credit_an_acronym_written_as_such(tmp_path: Path) -> None:
+    """Guard: only the phrase in words earns the acronym, not "S&OP" itself.
+
+    A label that writes "S&OP" uses it to qualify something else. With the
+    acronym credited, "Master Scheduler (S&OP -> MPS)" matched every
+    src/sop_engine/ node on "sop" (from the path) plus "plan" (from the concept's
+    id): 63 ties on the real graph, the winner a demand-plan record, not an MPS.
+    """
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("src_sop_engine_demand_plan_demandplanline", "DemandPlanLine",
+                   "src/sop_engine/demand_plan.py"),
+    ])
+    kb = KnowledgeBase(books_path=BOOKS, code_path=code)
+    concept = Concept(id="master_scheduler_plan", label="Master Scheduler (S&OP -> MPS)",
+                      source=None, location=None, graph="books")
+
+    assert kb.implements(concept) is None
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("concept_id", [
+    "sales_and_operations_planning",
+    "vollmann_sales_and_operations_planning",
+])
+def test_implements_links_the_sop_concepts_on_the_real_code_graph(
+    kb: KnowledgeBase, concept_id: str
+) -> None:
+    """Measured 2026-09-23: both resolved to nothing, while "vollmann_sop" (the
+    same idea, with "sop" in its id) resolved to src/sop.py. The S&OP citations of
+    the ``sop`` tool shipped without the code that computes them."""
+    detail = kb.explain(concept_id)
+    assert detail is not None, concept_id
+
+    impl = kb.implements(detail.concept)
+
+    assert impl is not None and (impl.source or "").startswith("src/sop"), impl
