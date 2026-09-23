@@ -8,6 +8,14 @@
 > **Esto mide una idea; no construye una capacidad.** No se agregó un campo al intake ni
 > una regla al motor. Se mide antes de construir, que es la disciplina de toda esta rama:
 > si la palanca no paga, no se toca el producto.
+>
+> ⚠️ **Re-medido sobre 25 mundos el 2026-09-23:
+> [`KERN_PALANCAS_SOBRE_25_MUNDOS.md`](KERN_PALANCAS_SOBRE_25_MUNDOS.md).** La línea base de
+> acá **no se toca** y sigue siendo la medición correcta de sus cinco mundos, pero dos cosas
+> de este documento hay que leerlas allá: la palanca queda en **+0,1309 (23/25, p < 0,001)**,
+> o sea que **escala**; y el orden se invierte — sobre 25 mundos ésta es **la más grande de
+> la rama**, no la segunda, porque el nivel de servicio (+18,9 acá) cae a +0,0512 y deja de
+> distinguirse de cero. H1 también se refuerza allá.
 
 ## La pregunta
 

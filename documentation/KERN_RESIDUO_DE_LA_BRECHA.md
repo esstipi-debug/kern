@@ -4,6 +4,15 @@
 > [`lineas_base/residuo_de_la_brecha.json`](lineas_base/residuo_de_la_brecha.json),
 > regrabable con `scripts/residuo_de_la_brecha.py`. El documento no puede despegarse de
 > ella: `tests/test_residuo_publicado.py` lo compara contra su fuente.
+>
+> ⚠️ **Re-medido sobre 25 mundos el 2026-09-23:**
+> [`KERN_PALANCAS_SOBRE_25_MUNDOS.md`](KERN_PALANCAS_SOBRE_25_MUNDOS.md). La línea base de
+> acá **no se toca** y sigue siendo la medición correcta de sus cinco mundos, pero sus
+> carriles no sobreviven la muestra completa: `plazo_obs`, `sigma_obs`, `proveedor_medido`
+> y `todo` **cambian de signo**, y `servicio_econ` cae de +0,1887 a **+0,0512 (p = 0,111)**.
+> **Sobre 25 mundos este documento no tiene ninguna palanca desplegable que pague.** Sus
+> dos conclusiones cualitativas —medir al proveedor vale poco, y apilar palancas es peor
+> que la mejor palanca sola— se **refuerzan**.
 
 ## La pregunta
 

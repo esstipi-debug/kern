@@ -461,6 +461,14 @@ proveedor con las propias recepciones vale poco y **empeora en 3 de 5 mundos**; 
 **apilar palancas es peor que la mejor palanca sola**. Lo que el residuo pide no es mas
 buffer sino nocion de horizonte, y eso NO esta medido.
 
+> **Los CARRILES de este documento NO sobreviven la muestra completa** (2026-09-23,
+> `KERN_PALANCAS_SOBRE_25_MUNDOS.md`): sobre 25 mundos `plazo_obs`, `sigma_obs`,
+> `proveedor_medido` y `todo` **cambian de signo**, y el nivel de servicio cae de +18,9 a
+> **+5,1 con p=0,111**. Las dos conclusiones cualitativas de arriba se REFUERZAN (el
+> proveedor mejora en 5/25 y netea -0,0296; apilar netea -0,0652, peor que no hacer nada),
+> pero **no queda ninguna palanca desplegable que pague** en este documento. La linea base
+> de cinco mundos no se toca: es la medicion correcta de su muestra.
+
 ### Y esa nocion de horizonte NO era la deuda que parecia (`src/simworld`, la vara)
 [`documentation/KERN_HORIZONTE_DE_LA_VARA.md`](documentation/KERN_HORIZONTE_DE_LA_VARA.md)
 (`scripts/horizonte_de_la_vara.py`). El techo es un Wagner-Whitin sobre `horizon =
@@ -516,8 +524,10 @@ se topean las DOS mitades de la politica (`order_up_to` Y `reorder_point`) -- to
 sola no cambia la orden. Un SKU sin `restante` queda INTACTO: topear con un cero que nadie
 midio seria decirle que no compre nunca mas.
 
-**+16,2 puntos de captura (-27,6 % -> -11,5 %), mejora en los CINCO mundos.** Es la segunda
-palanca mas grande de la rama despues del nivel de servicio (+18,9), y a diferencia de
+**+16,2 puntos de captura (-27,6 % -> -11,5 %), mejora en los CINCO mundos** -- y sobre 25
+queda en **+13,1 en 23/25, p<0,001** (abajo), o sea que ESCALA. Es la
+palanca mas grande de la rama -- sobre cinco parecia la segunda detras del nivel de
+servicio (+18,9), que sobre 25 cae a +5,1 y deja de distinguirse de cero --, y a diferencia de
 aquella **esta si se puede accionar**. El ahorro es casi PURO: compra 12 % menos unidades
 (-12.311 usd), paga 368 mas de quiebre, el fill no se mueve (0,750 -> 0,748) y el capital
 inmovilizado al cierre cae 40 % (30.440 -> 18.276). Es la primera palanca de esta rama que
@@ -578,6 +588,46 @@ chica. Tres de esas cinco (1000, 1003, 1004) estan entre los ocho mundos donde K
 peor, que es justo la condicion que la infla. La regla: **el tamano de la muestra se elige
 por la dispersion del efecto, no por costumbre** -- las palancas anteriores mejoraban en
 5/5 y cinco alcanzaba; una que mejora en poco mas de la mitad, no. Costo 17 minutos.
+
+### Y al re-medir TODAS las palancas sobre 25 mundos, cuatro de siete cambian de signo
+[`documentation/KERN_PALANCAS_SOBRE_25_MUNDOS.md`](documentation/KERN_PALANCAS_SOBRE_25_MUNDOS.md)
+(`scripts/palancas_sobre_25_mundos.py`, que solo COMPARA: los dos barridos son los scripts
+publicados corridos con `--semillas 1000..1024`). El control reproduce las cinco lineas
+base congeladas al ultimo digito en los tres barridos, asi que es la misma medicion con
+mas mundos.
+
+| palanca | familia | en 5 | en 25 | t | p | mejoran |
+|---|---|---:|---:|---:|---:|---:|
+| **horizonte_estimado** | compra menos | +0,1618 | **+0,1309** | **+5,81** | **0,00001** | **23/25** |
+| **horizonte_real** | compra menos | +0,1348 | **+0,1413** | **+7,42** | **0,00000** | **25/25** |
+| servicio_econ | compra mas | +0,1887 | +0,0512 | +1,66 | 0,111 | 18/25 |
+| censura_corregida | compra mas | +0,0930 | +0,0267 | +1,09 | 0,287 | 13/25 |
+| plazo_obs | compra mas | +0,0240 | **-0,0015** | -0,15 | 0,882 | 12/25 |
+| sigma_obs | compra mas | +0,0501 | **-0,0136** | -1,09 | 0,285 | 8/25 |
+| proveedor_medido | compra mas | +0,0485 | **-0,0296** | -1,56 | 0,133 | 5/25 |
+| todo (apiladas) | apiladas | +0,0901 | **-0,0652** | -1,66 | 0,111 | 10/25 |
+
+**La correlacion con la captura del control separa las dos familias SIN solapamiento**:
+"compra menos" cae en -0,23..-0,17 y "compra mas" en -0,77..-0,42. El mecanismo: una
+palanca de compra-mas paga cuando Kern sub-compra, o sea en los mundos donde YA le va mal,
+y su ventaja esta CONCENTRADA en la cola que las cinco canonicas sobre-representan; una de
+compra-menos arregla algo que pasa en TODOS los mundos, y su ventaja esta REPARTIDA. La
+regla que queda es mas util que "usa 25": **una palanca cuya ventaja depende de que la
+politica ya este rota necesita una muestra que represente la distribucion entera; una que
+arregla algo que pasa siempre, no.**
+
+Y no es "no lo vimos": la potencia para haber detectado el +18,9 publicado del nivel de
+servicio era del **100%**, y la del +9,3 de la censura del **95%**.
+
+Consecuencias de producto, las dos: **la fecha de fin por SKU es la palanca mas grande de
+la rama por un factor de 2,6** y lleva a Kern de -13,8% a **-0,7%**, practicamente a la par
+del piso (el carril de diagnostico lo pasa: +0,3%, la primera vez en esta rama). Y la unica
+palanca grande que Kern NO podia accionar -- el nivel de servicio, que necesita precio y es
+brecha de CANAL -- **ya no hay que perseguirla**.
+
+`todo` es la lectura mas limpia de la pared de "compra mas": es el carril con el MEJOR fill
+de todos los de Kern (0,832) y el PEOR resultado (-20,3%), comprando 4.189 unidades, mas
+que el oraculo con informacion perfecta (3.678).
 
 ### Lo que el agente acepta y tira en silencio (`tests/test_overrides_no_se_tiran.py`)
 Midiendo el residuo aparecio un defecto que vale por si mismo: `scm_agent/tools.py`
