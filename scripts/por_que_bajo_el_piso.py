@@ -102,6 +102,18 @@ def _politica_de_kern(world: World, outcomes: list[WeekOutcome], *, seed: int,
     `tests/test_por_que_bajo_el_piso_publicado.py` fija que lo siga siendo.
     """
     vista = export_history(world, outcomes, out_dir / "view.csv", level=NIVEL, seed=seed)
+    return _politica_desde_vista(vista, out_dir=out_dir, overrides=overrides)
+
+
+def _politica_desde_vista(vista: Path, *, out_dir: Path, overrides: dict) -> Policy:
+    """La mitad de `_politica_de_kern` que va DESPUES de la lente.
+
+    Separada porque hay un contrafactico que no puede expresarse como una lista de
+    `WeekOutcome`: `scripts/ventas_censuradas.py` transforma el archivo que Kern lee
+    (borra filas, o cambia una cantidad por otra) y necesita entrar por aca con una
+    vista ya escrita. Sin esta division tendria que copiar la lectura del reporte, que
+    es justo la parte que `tests/test_por_que_bajo_el_piso_publicado.py` fija.
+    """
     resultado = Orchestrator(clients_root=None).run(
         KERN_BRIEF, data_path=str(vista), job_type="inventory_optimization",
         out_dir=str(out_dir / "agent"), overrides=overrides,

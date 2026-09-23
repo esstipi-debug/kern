@@ -288,7 +288,17 @@ vez, en el calentamiento. **El bucle solo muerde al carril que replanifica**, y 
 por estar congelado, no por ser mas listo.
 
 Ajustar demanda contra ventas censuradas tiene nombre propio en la teoria de inventarios,
-y cerrarlo es una capacidad — no un arreglo de lectura. No esta medido cuanto vale.
+y cerrarlo es una capacidad — no un arreglo de lectura.
+
+**Medido el 2026-09-23, sobre 25 mundos:
+[`KERN_VENTAS_CENSURADAS.md`](KERN_VENTAS_CENSURADAS.md) — no paga.** Devolverle a Kern la
+demanda verdadera, que nadie tiene, mueve la captura **+0,0394** en 14 de 25 mundos (IC 95 %
+[−0,0115, +0,0902]), porque el intercambio es un empate: compra 14.371 de mercaderia para
+ahorrar 14.476 de quiebre. El bucle descrito arriba **existe y esta confirmado** — el carril
+que borra las filas censuradas termina con 42,7 % de filas agotadas contra 34,8 % del
+control —, pero cerrarlo no mueve el marcador. Y la censura resulto ser un **sintoma**: cuanta
+demanda esconde el archivo no predice nada (r = +0,05); lo que predice es que tan mal le va ya
+a Kern (r = −0,61).
 
 ## Que NO dice este documento
 

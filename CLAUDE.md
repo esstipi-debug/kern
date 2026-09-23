@@ -416,8 +416,8 @@ fidelidades nombradas.
 **Lo que queda, y no es lectura:** `lens.history_frame` exporta `out.sold`, no la
 demanda. Politica mala -> quiebre -> el historico se CENSURA -> la politica siguiente es
 mas chica. El piso es inmune por ser congelado (`naive_policy`, "sin revisar nunca"): el
-bucle solo muerde al carril que replanifica. Ajustar demanda contra ventas censuradas es
-una capacidad, no un arreglo, y no esta medido cuanto vale.
+bucle solo muerde al carril que replanifica. **Medido el 2026-09-23: cerrarlo no paga**
+-- abajo.
 
 **Por que queda por debajo** lo contesta
 [`documentation/KERN_POR_QUE_BAJO_EL_PISO.md`](documentation/KERN_POR_QUE_BAJO_EL_PISO.md)
@@ -538,6 +538,46 @@ tiene ninguna; lo realizable es proporcional a la fraccion que traiga la fecha. 
 una idea, no construye una capacidad: el tope es un post-proceso sobre la `Policy`, no un
 cambio de motor. Construirla toca las ocho partes de siempre, y falta medir que pasa con
 una fecha EQUIVOCADA.
+
+### Y ajustar contra ventas CENSURADAS resulto NO pagar
+[`documentation/KERN_VENTAS_CENSURADAS.md`](documentation/KERN_VENTAS_CENSURADAS.md)
+(`scripts/ventas_censuradas.py`, **25 mundos**). El bucle es real -- el archivo no declara
+el **23,2%** de la demanda y el 34,8% de sus filas salen de una semana que cerro el estante
+en cero -- y cerrarlo del todo mueve la captura **+0,0394**, en 14 de 25 mundos, IC95
+[-0,0115, +0,0902]. Ese es el TECHO: se lo mide dandole a Kern la demanda verdadera, que
+nadie tiene, y 14 de 25 es una moneda -- la fecha de fin por SKU mejoraba en 5 de 5 de los
+suyos. **La resta +16,2 contra +3,9 NO se hace**: son cinco mundos contra veinticinco, que
+es justo el error que H3 documenta. Sobre los mismos cinco esta lee +11,5, y ese es el
+numero INFLADO; lo que aquellas palancas leerian sobre 25 no esta medido.
+
+**Y el `p=0,12` NO significa "no se pudo ver"**: con sd 0,1232 sobre 25 mundos pareados el
+efecto minimo detectable al 80% es +7,2 puntos y la potencia para ver una palanca del
+tamano de la fecha de fin por SKU es del **100%**. El intervalo deja abierto si vale cero o
+cuatro puntos; cierra que valga dieciseis. Sin esa cuenta un resultado nulo no decide nada.
+
+Tres cosas que la medicion dijo y hay que no volver a re-derivar:
+- **La censura es un SINTOMA, no la causa.** Cuanta demanda esconde el archivo NO predice
+  cuanto paga descensurar (r=+0,05); lo que predice es que tan mal le va ya a Kern
+  (r=-0,61): +0,1035 en los ocho mundos donde va peor y **-0,0029** en los ocho donde va
+  bien.
+- **El mecanismo es un empate**: compra 14.371 de mercaderia para ahorrar 14.476 de
+  quiebre. Es otra palanca de "compra mas" y choca contra la pared que
+  `KERN_RESIDUO_DE_LA_BRECHA.md` ya habia medido; la unica que pago fue la de "compra
+  menos de lo que no vas a vender".
+- **Borrar la fila censurada es PEOR que no hacer nada** (-0,0107). La ausencia declarada
+  es la respuesta correcta cuando el consumidor es una PERSONA; cuando es un ESTIMADOR,
+  borrar no es neutral -- cambia la distribucion de la que estima. Aca se lleva la cola:
+  cada fila superviviente es exacta (sin quiebre, `sold == demand`), pero las que se van
+  son sistematicamente las de demanda ALTA -- la media de las supervivientes queda en el
+  95,9% de la verdadera --, y el carril termina con 42,7% de filas agotadas contra 34,8%
+  del control.
+
+**Y por eso se midio con 25 mundos y no con cinco.** Sobre las cinco semillas canonicas la
+palanca sale +0,0930 en 4/5 -- se habria publicado como buena --; sobre 25 es 3,5 veces mas
+chica. Tres de esas cinco (1000, 1003, 1004) estan entre los ocho mundos donde Kern va
+peor, que es justo la condicion que la infla. La regla: **el tamano de la muestra se elige
+por la dispersion del efecto, no por costumbre** -- las palancas anteriores mejoraban en
+5/5 y cinco alcanzaba; una que mejora en poco mas de la mitad, no. Costo 17 minutos.
 
 ### Lo que el agente acepta y tira en silencio (`tests/test_overrides_no_se_tiran.py`)
 Midiendo el residuo aparecio un defecto que vale por si mismo: `scm_agent/tools.py`
