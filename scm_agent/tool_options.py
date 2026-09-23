@@ -277,6 +277,11 @@ def _horizon_items(report: object) -> list[_Item]:
         if getattr(r, "horizon_verdict", "") == "applied"
     ]
     liberadas = float(getattr(report, "horizon_units_freed", 0.0) or 0.0)
+    # El capital es la mitad que le faltaba a esta OPCION. Se describe como la unica de
+    # esta tool que RESTA capital en vez de pedirlo, y hasta el 2026-09-23 solo podia
+    # citar unidades porque el titular no se movia: decir "resta capital" sin poder
+    # decir cuanto es justo lo que vuelve incomparable una opcion contra el titular.
+    capital = float(getattr(report, "horizon_capital_freed_usd", 0.0) or 0.0)
     peores = ", ".join(
         f"{r.product_id} (ends {r.end_date}, {r.remaining_demand:,.0f} left to sell)"
         for r in sorted(
@@ -287,7 +292,7 @@ def _horizon_items(report: object) -> list[_Item]:
         f"Stop buying past the end date on {n} SKU(s)",
         f"{n} SKU(s) carry an end-of-life date close enough that the policy would have "
         f"stocked more than what is left to sell; the cap removes {liberadas:,.0f} unit(s) "
-        f"of purchase. Soonest: {peores}.",
+        f"of purchase and ${capital:,.0f} from the requested investment. Soonest: {peores}.",
         "order the capped quantities on those rows instead of the uncapped policy",
         "less capital tied up in stock that outlives its own demand; no service change "
         "before the end date",

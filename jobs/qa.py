@@ -302,6 +302,18 @@ def _horizon_issues(r) -> list[str]:
     3. **Un verdicto que no topea deja la linea intacta**: ningun `*_before_horizon`.
     4. **Lo topeado respeta el restante.** Si la cantidad publicada supera la demanda que
        queda, el tope no se aplico aunque el registro diga que si.
+    5. **El capital sigue a la cantidad, y solo hacia abajo.** Es la que faltaba hasta el
+       2026-09-23: el tope movia las tres cantidades y dejaba la inversion calculada
+       sobre la politica sin topear -- 12.018 usd que el titular no mostraba, medido
+       sobre una cartera real. Va aparte de las tres de arriba porque su invariante es
+       DISTINTA en dos puntos: el ciclo SI puede quedar en cero (si el buffer solo ya
+       supera el restante, se lo come entero y ahi termina), y su unidad es usd, asi que
+       no se compara contra un restante que esta en unidades.
+    6. **El tope no toca el buffer**, que es la otra mitad del diseno de
+       `src.horizon.capped_cycle_stock`: `ss_investment` tiene que seguir siendo
+       exactamente `safety_stock x unit_cost`. Si un cambio futuro hiciera que el tope
+       encogiera el safety stock, estaria bajando en silencio un nivel de servicio que
+       nadie renegocio, y esta linea se pone roja.
     """
     verdict = getattr(r, "horizon_verdict", "no_date")
     previos = {
@@ -309,6 +321,7 @@ def _horizon_issues(r) -> list[str]:
         "order-up-to": (getattr(r, "order_up_to_before_horizon", None), r.order_up_to),
         "order quantity": (getattr(r, "order_quantity_before_horizon", None), r.order_quantity),
     }
+    capital_antes = getattr(r, "cycle_investment_before_horizon", None)
     issues: list[str] = []
     if verdict != "applied":
         for nombre, (antes, _) in previos.items():
@@ -316,6 +329,10 @@ def _horizon_issues(r) -> list[str]:
                 issues.append(
                     f"{r.product_id}: horizon verdict '{verdict}' does not cap, but the "
                     f"record carries a pre-cap {nombre}")
+        if capital_antes is not None:
+            issues.append(
+                f"{r.product_id}: horizon verdict '{verdict}' does not cap, but the "
+                f"record carries a pre-cap cycle investment")
         return issues
 
     restante = getattr(r, "remaining_demand", None)
@@ -335,6 +352,26 @@ def _horizon_issues(r) -> list[str]:
             issues.append(
                 f"{r.product_id}: capped {nombre} {ahora:.4g} still exceeds the remaining "
                 f"demand {restante:.4g}")
+
+    # 5. El capital, con su propia invariante: puede llegar a cero, y solo baja.
+    ahora_cap = getattr(r, "cycle_investment", None)
+    if capital_antes is not None:
+        if ahora_cap is None or ahora_cap < -TOL:
+            issues.append(f"{r.product_id}: horizon cap left a negative cycle investment")
+        elif ahora_cap >= capital_antes - TOL:
+            issues.append(
+                f"{r.product_id}: pre-cap cycle investment is not above the capped one")
+
+    # 6. Y el buffer queda intacto: el tope no renegocia el nivel de servicio.
+    ss = getattr(r, "safety_stock", None)
+    ss_inv = getattr(r, "ss_investment", None)
+    costo = getattr(r, "unit_cost", None)
+    if ss is not None and ss_inv is not None and costo is not None:
+        esperado = ss * costo
+        if abs(ss_inv - esperado) > max(TOL, abs(esperado) * 1e-9):
+            issues.append(
+                f"{r.product_id}: horizon cap moved the safety-stock investment "
+                f"({ss_inv:.4g}) away from safety_stock x unit_cost ({esperado:.4g})")
     return issues
 
 

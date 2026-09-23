@@ -164,27 +164,54 @@ y sólo conocibles después**, o sea el mejor caso posible — un cliente que de
 **El 50,6 % trae fecha y sólo el 26,5 % de ésos termina topeado.** Traer la fecha y que la
 fecha mueva algo son dos cosas distintas, y entre una y otra se pierden tres cuartos.
 
-## ⚠️ Y un defecto que esta medición encontró
+## El defecto que esta medición encontró — y el número que hubo que corregir
 
-**El tope no llega al titular de inversión.** En esa corrida el tope liberaría
-**12.018 usd — el 11,2 % del titular** — y `requested_investment` sale **idéntico al
-centavo** en las dos corridas: 107.495,50.
+Medir sobre datos reales encontró un defecto que los tests de la capacidad no veían
+(usan fixtures sintéticos): **el tope no llegaba a `requested_investment`**. Movía
+`reorder_point`, `order_up_to` y `Q`, y el capital —`cycle_investment`, `ss_investment`,
+`investment` por SKU y el titular— se calculaba sobre la política **sin topear**. El
+titular salía **idéntico al centavo** mientras el deck anunciaba unidades sacadas del
+plan y las OPCIONES se describían como *"la única de esta tool que resta capital"*.
 
-La causa está en `jobs/inventory_optimization.py`: `ss` y `cycle_units` se leen de la
-política **sin topear** (L1023-1024), el tope se aplica después (L1041-1048), y el
-`InventoryItem` que alimenta la inversión se construye con los valores **previos**
-(L1096). El tope mueve `reorder_point`, `order_up_to` y `Q`, y no mueve el capital.
+**Está arreglado** (`src/horizon.py::capped_cycle_stock`, 2026-09-23). No es una fórmula
+nueva: es lo que este repo ya hacía en los otros dos lugares donde una cantidad se mueve
+después de dimensionar — el redondeo a lote legal (`replace(pol, order_quantity=Q,
+expected_cycle_stock=Q/2)`) y la cobertura provisional, cuya rama ya asignaba
+`cobertura = tope.trigger` antes de valuar. La rama dimensionada era la única que no.
 
-Es el defecto de firma de esta rama, otra vez: **la prosa dice una cosa y el número dice
-otra.** El deck anuncia *"el tope saca X unidades de compra"* y la OPCIÓN se describe como
-*"la única de esta tool que resta capital"*, mientras el titular que el cliente lee no se
-mueve. Lo encontró correr la capacidad sobre datos reales; los tests de la capacidad usan
-fixtures sintéticos y no lo veían.
+### ⚠️ Y de paso corrige un número que este documento publicaba mal
 
-**No está arreglado acá**, y a propósito: arreglarlo obliga a decidir **cómo se propaga a
-capital un tope sobre el objetivo** —si se escala el ciclo, el safety stock, o los dos, y
-con qué identidad— y eso es una decisión de modelo, no una cañería. Inventar una segunda
-fórmula para el capital sería justo lo que el resto de la rama evita.
+La primera versión decía *"el tope liberaría **12.018 usd**, el 11,2 % del titular"*. Ese
+número es real pero **no es el que el titular mueve**:
+
+| | qué mide | sobre esta cartera |
+|---|---|---:|
+| caída del **pico** | `(order_up_to_antes − después) × costo` — el techo de reposición | **12.018 usd** (11,2 %) |
+| caída del **titular** | `(ciclo_antes − después) × costo` — el **promedio** inmovilizado | **5.103 usd** (4,8 %) |
+
+`investment` es `ciclo + buffer`, o sea **promedio**, no pico. El pico es 2,4 veces el
+titular, y la razón es deliberada: **el tope no toca el buffer.**
+
+### La regla, y la mitad que consiste en no hacer algo
+
+- **`(s,Q)`** → el ciclo pasa a `Q/2`, la identidad del propio motor (`src/policies.py`).
+- **En los dos casos** → el ciclo se acota para que `ciclo + buffer ≤ restante`. Es una
+  **cota**, no una re-derivación del promedio en régimen: el objetivo al que la política
+  repone es por construcción el techo de lo que el SKU llega a tener.
+- **El safety stock NO se toca.** El tope dice *"no compres más de lo que podés vender"*,
+  no *"bajale el nivel de servicio"*. El buffer es lo que compró el nivel de servicio
+  declarado, y el tope no renegocia ese nivel. Si el buffer solo ya supera el restante, el
+  ciclo se va a cero y **ahí termina**. Consecuencia: las dos identidades internas del
+  registro quedan intactas — `ss_investment == safety_stock × unit_cost` y
+  `reorder_point == mu·L + safety_stock` —, y `jobs/qa.py` ahora las **exige**, así que un
+  cambio futuro que encoja el buffer se pone rojo.
+
+Verificado sobre esta misma cartera: el titular pasa de **107.495,50 a 102.392,33**, y la
+caída coincide al centavo con el `horizon_capital_freed_usd` que el job publica y con la
+suma de los `cycle_investment_before_horizon` fila por fila. **Ningún otro campo de la
+línea base se movió** —fracciones, calibración, percentiles por vendedor, veredictos y
+tasas salen byte a byte iguales—, que es el control de que es el mismo experimento con el
+arreglo aplicado y nada más.
 
 ## Qué NO dice este estudio
 

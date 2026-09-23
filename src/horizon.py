@@ -167,5 +167,62 @@ def cap_policy(
     )
 
 
+def capped_cycle_stock(
+    cycle_stock: float,
+    safety_stock: float,
+    *,
+    remaining_demand: float | None,
+    order_quantity: float | None = None,
+) -> float:
+    """El ciclo que queda cuando el tope ya bajo la cantidad: el capital sigue al plan.
+
+    `cap_policy` mueve el disparador y la cantidad, y hasta el 2026-09-23 el capital NO
+    se movia con ellos: `cycle_investment`, `ss_investment`, `investment` por SKU y el
+    titular `requested_investment` se calculaban de la politica SIN topear. Medido sobre
+    una cartera real de Olist, el tope liberaba 12.018 usd -- el 11,2% del titular -- y
+    el titular salia identico al centavo. El deck anunciaba "el tope saca X unidades de
+    compra" y las OPCIONES se describen como la unica opcion que RESTA capital, mientras
+    el numero que el cliente lee no se movia.
+
+    NO ES UNA FORMULA NUEVA: es lo que este repo ya hace en los otros dos lugares donde
+    una cantidad se mueve despues de dimensionar.
+      - El redondeo a lote legal: cuando `cheapest_feasible_lot` mueve Q,
+        `jobs/inventory_optimization.py` hace `replace(pol, order_quantity=Q,
+        expected_cycle_stock=Q/2)` porque "un plan que redondea Q pero se queda con la
+        inversion del Q sin redondear entiende mal lo que cuesta".
+      - La cobertura provisional: su rama asigna `cobertura = tope.trigger` ANTES de
+        construir el registro, asi que su `cycle_investment` ya sale topeado. La rama
+        dimensionada era la unica que no lo hacia.
+
+    DOS REGLAS, cada una con la identidad que la define:
+      - Con `order_quantity` (un `(s,Q)` cuya Q el tope acaba de bajar) el ciclo es
+        `Q/2` -- la identidad del propio motor (`src/policies.py`, `(s,Q)`), la misma
+        que aplica el redondeo a lote.
+      - En cualquier caso el ciclo se acota para que el capital del SKU no supere lo que
+        todavia se puede vender: `ciclo + buffer <= restante`. Eso es una COTA, no una
+        re-derivacion del promedio en regimen: el objetivo al que la politica repone es
+        por construccion el techo de lo que el SKU llega a tener.
+
+    LO QUE NO HACE, Y ES LA MITAD DEL DISENO: **no toca el safety stock.** El tope dice
+    "no compres mas de lo que podes vender", no "bajale el nivel de servicio". El buffer
+    es lo que compro el nivel de servicio DECLARADO, y el tope no renegocia ese nivel.
+    Por eso el piso del capital de un SKU topeado es su buffer: si el buffer solo ya
+    supera el restante, el ciclo se va a cero y ahi termina. Encogerlo seria bajar en
+    silencio una promesa de servicio que nadie cambio -- y ademas romperia las dos
+    identidades internas del registro, que asi quedan intactas:
+    `ss_investment == safety_stock * unit_cost` y `reorder_point == mu*L + safety_stock`.
+
+    Nunca SUBE el ciclo: las dos reglas son `min`, asi que un tope solo puede liberar
+    capital. `tests/test_titular_de_inversion.py` lo fija en las dos direcciones.
+    """
+    ciclo = float(cycle_stock)
+    if order_quantity is not None and _finito(order_quantity):
+        ciclo = min(ciclo, float(order_quantity) / 2.0)
+    if remaining_demand is not None and _finito(remaining_demand):
+        buffer = max(0.0, float(safety_stock))
+        ciclo = min(ciclo, float(remaining_demand) - buffer)
+    return max(0.0, ciclo)
+
+
 def _finito(x: float) -> bool:
     return x == x and x not in (float("inf"), float("-inf"))

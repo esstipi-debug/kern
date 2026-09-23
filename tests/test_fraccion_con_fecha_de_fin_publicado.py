@@ -120,19 +120,37 @@ def test_traer_la_fecha_no_es_que_la_fecha_mueva_algo(base, doc):
     assert _pct(e["frac_topeados_de_los_que_traen_fecha"]) in doc
 
 
-def test_el_defecto_del_titular_esta_publicado_y_sigue_siendo_cierto(base, doc):
-    """El tope libera capital y `requested_investment` no se mueve. Si alguien lo
-    arregla, este test se pone rojo y hay que reescribir esa seccion del documento."""
+def test_el_titular_se_mueve_y_el_documento_publica_el_numero_correcto(base, doc):
+    """El defecto que esta medicion encontro, ya ARREGLADO (`src.horizon.capped_cycle_stock`).
+
+    Lo que este test cuida ahora es que no se vuelvan a confundir los DOS numeros. La
+    primera version del documento publicaba 12.018 usd como "lo que el tope libera", y
+    eso era la caida del TECHO de reposicion (order-up-to x costo). El titular mide el
+    PROMEDIO inmovilizado (ciclo + buffer), y se mueve 5.103. El pico es 2,4 veces el
+    titular porque el tope no toca el buffer, a proposito.
+    """
     e = base["punta_a_punta"]
-    assert e["titular_se_movio"] is False
-    assert e["titular_inversion_sin"] == e["titular_inversion_con"]
-    assert e["capital_liberado_usd"] > 0
-    assert "12.018 usd" in doc and "11,2 %" in doc
-    assert "107.495,50" in doc
+    assert e["titular_se_movio"] is True
+    assert e["titular_inversion_con"] < e["titular_inversion_sin"]
+    # el titular baja exactamente lo que el job dice haber liberado
+    caida = e["titular_inversion_sin"] - e["titular_inversion_con"]
+    assert abs(caida - e["capital_liberado_usd"]) < 0.01
+    assert abs(caida - e["capital_liberado_reportado_usd"]) < 0.01
+    # y el pico sigue siendo un numero distinto y mas grande, con su propio nombre
+    assert e["caida_del_pico_usd"] > e["capital_liberado_usd"] * 2
+    assert _pct(e["capital_liberado_frac_del_titular"]) in doc
+    assert "5.103" in doc and "12.018" in doc
 
 
-def test_el_defecto_se_describe_contra_el_codigo_y_no_contra_el_texto(doc):
-    """Las tres lineas que el documento culpa tienen que seguir haciendo eso."""
+def test_el_arreglo_esta_en_el_codigo_y_no_solo_en_el_texto(doc):
+    """El orden que causaba el defecto tiene que seguir invertido.
+
+    El defecto era de ORDEN: `cycle_inv` / `ss_inv` se calculaban ANTES del tope, asi
+    que el `InventoryItem` que alimenta el titular llevaba la politica sin topear. Lo
+    que se fija aca es el orden nuevo -- el tope, despues el capital -- y que el ciclo
+    pase por `capped_cycle_stock`. Un refactor que devuelva el calculo arriba del tope
+    reintroduce el defecto exacto y pone esto rojo.
+    """
     src = (RAIZ / "jobs" / "inventory_optimization.py").read_text(encoding="utf-8")
     lineas = src.splitlines()
 
@@ -142,17 +160,12 @@ def test_el_defecto_se_describe_contra_el_codigo_y_no_contra_el_texto(doc):
                 return i
         raise AssertionError(f"no encuentro {patron!r}")
 
-    ss = linea_de(r"^\s+ss = pol\.safety_stock\.safety_stock")
     cyc = linea_de(r"^\s+cycle_units = pol\.expected_cycle_stock")
-    tope = linea_de(r"^\s+tope = cap_policy\(")  # el primero es el de la cobertura
+    topeo = linea_de(r"cycle_previo, cycle_units = cycle_units, capped_cycle_stock\(")
+    cyc_inv = linea_de(r"^\s+cycle_inv = cycle_units \* meta\.mean_unit_cost")
     item = linea_de(r"items\.append\(InventoryItem\(")
-    # El orden es lo que causa el defecto: se leen sin topear, se topea, se arma el item.
-    assert ss < item and cyc < item
-    assert tope < item
-    # Y el item se arma con las variables PRE-tope, no con las topeadas.
-    fuente_item = next(ln for ln in lineas if "items.append(InventoryItem(" in ln)
-    assert "cycle_units" in fuente_item and "ss" in fuente_item
-    assert "order_up_to_final" not in fuente_item
+    # dimensionar -> topear -> recien ahi valuar -> armar el item del presupuesto
+    assert cyc < topeo < cyc_inv < item, (cyc, topeo, cyc_inv, item)
 
 
 def test_el_documento_declara_la_mitad_que_no_se_puede_medir(doc):

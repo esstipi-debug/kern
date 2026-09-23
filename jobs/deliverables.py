@@ -100,6 +100,10 @@ def _row(r: SkuRecommendation, *, units: bool = False) -> dict:
         "reorder_point_s_before_horizon": _redondear(r.reorder_point_before_horizon, 2),
         "order_up_to_S_before_horizon": _redondear(r.order_up_to_before_horizon, 2),
         "order_qty_before_horizon": _redondear(r.order_quantity_before_horizon, 2),
+        # El capital que esta fila pedia antes del tope. Misma regla de blanco-nunca-cero
+        # que los tres de arriba: sin el, la fila mostraba la cantidad topeada al lado de
+        # una inversion sin topear y no habia forma de reconciliarlas.
+        "cycle_investment_before_horizon": _redondear(r.cycle_investment_before_horizon, 2),
         "safety_stock": _redondear(r.safety_stock, 2),
         "sigma_e": round(r.error_std, 2),
         # Which dispersion actually sized this row's buffer, and under which

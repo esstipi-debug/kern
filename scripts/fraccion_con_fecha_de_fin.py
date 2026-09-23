@@ -310,7 +310,14 @@ def punta_a_punta(m: pd.DataFrame, fin: pd.Timestamp, n_vendedores: int = 60) ->
     ia = {r.product_id: r for r in a.recommendations}
 
     cuenta: dict[str, int] = {}
-    liberado = 0.0
+    # DOS numeros distintos, y confundirlos fue el error de la primera medicion.
+    #   `pico`   = la caida del TECHO de reposicion (order-up-to / Q) x costo. Es lo que
+    #              el plan deja de poder tener EN EL MAXIMO.
+    #   `titular`= la caida del PROMEDIO inmovilizado, que es lo que `investment` mide
+    #              (ciclo + buffer). Es lo que se mueve en `requested_investment`.
+    # El pico es ~2,4x el titular: un tope que baja el techo no baja el promedio en la
+    # misma proporcion, porque el buffer no se toca.
+    pico = 0.0
     for r in b.recommendations:
         cuenta[r.horizon_verdict] = cuenta.get(r.horizon_verdict, 0) + 1
         if r.horizon_verdict != "applied":
@@ -318,7 +325,7 @@ def punta_a_punta(m: pd.DataFrame, fin: pd.Timestamp, n_vendedores: int = 60) ->
         o = ia[r.product_id]
         antes = o.order_up_to if o.order_up_to is not None else (o.order_quantity or 0.0)
         desp = r.order_up_to if r.order_up_to is not None else (r.order_quantity or 0.0)
-        liberado += max(0.0, antes - desp) * r.unit_cost
+        pico += max(0.0, antes - desp) * r.unit_cost
 
     con_fecha = sum(1 for r in b.recommendations if r.horizon_verdict != "no_date")
     return {
@@ -330,11 +337,18 @@ def punta_a_punta(m: pd.DataFrame, fin: pd.Timestamp, n_vendedores: int = 60) ->
         "frac_topeados_de_los_que_traen_fecha": round(
             cuenta.get("applied", 0) / max(con_fecha, 1), 4
         ),
-        "capital_liberado_usd": round(liberado, 2),
+        "caida_del_pico_usd": round(pico, 2),
         "titular_inversion_sin": round(a.requested_investment, 2),
         "titular_inversion_con": round(b.requested_investment, 2),
         "titular_se_movio": abs(a.requested_investment - b.requested_investment) > 1e-9,
-        "capital_liberado_frac_del_titular": round(liberado / a.requested_investment, 4),
+        "capital_liberado_usd": round(a.requested_investment - b.requested_investment, 2),
+        "capital_liberado_reportado_usd": round(
+            float(getattr(b, "horizon_capital_freed_usd", 0.0) or 0.0), 2
+        ),
+        "capital_liberado_frac_del_titular": round(
+            (a.requested_investment - b.requested_investment) / a.requested_investment, 4
+        ),
+        "pico_frac_del_titular": round(pico / a.requested_investment, 4),
     }
 
 

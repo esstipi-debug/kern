@@ -26,7 +26,7 @@ from src.forecasting import (
     forecast_with_oos_sigma,
 )
 from src.horizon import DECLARABLES as HORIZON_DECLARABLES
-from src.horizon import cap_policy, periods_until
+from src.horizon import cap_policy, capped_cycle_stock, periods_until
 from src.policies import continuous_review_sq, periodic_review_rs
 from src.risk_period import provisional_cover
 from src.safety_stock import tune_service_level
@@ -347,6 +347,11 @@ class SkuRecommendation:
     reorder_point_before_horizon: float | None = None
     order_up_to_before_horizon: float | None = None
     order_quantity_before_horizon: float | None = None
+    #: El capital de ciclo que este SKU pedia ANTES del tope. Misma regla que los tres
+    #: de arriba: se llena solo si el tope LO MOVIO, y en blanco -- nunca en cero --
+    #: cuando no. Un tope puede bajar el objetivo sin liberar capital (el ciclo ya
+    #: cabia debajo del restante), y ahi este campo tiene que quedar vacio.
+    cycle_investment_before_horizon: float | None = None
 
 
 @dataclass(frozen=True)
@@ -440,6 +445,11 @@ class JobReport:
     n_horizon_capped: int = 0
     n_horizon_declarable: int = 0
     horizon_units_freed: float = 0.0
+    #: El capital que el tope saca del plan, en usd. `horizon_units_freed` son unidades
+    #: de objetivo; esto es lo que esas unidades COSTABAN, que es la mitad que faltaba:
+    #: hasta el 2026-09-23 el tope movia las cantidades y el titular `requested_investment`
+    #: salia identico al centavo. Es la resta de los `cycle_investment_before_horizon`.
+    horizon_capital_freed_usd: float = 0.0
     horizon_note: str = ""
     #: Que paso con la memoria del Tower en esta corrida: el ciclo con el que se
     #: escribio el snapshot ``stock``, o por que no se escribio
@@ -485,6 +495,21 @@ def _unidades_liberadas(recs: list) -> float:
             total += r.order_quantity_before_horizon - float(r.order_quantity or 0.0)
         elif r.order_up_to_before_horizon is not None:
             total += r.order_up_to_before_horizon - float(r.order_up_to or 0.0)
+    return total
+
+
+def _capital_liberado(recs) -> float:
+    """Lo que el tope saca del plan, en usd -- la resta de los `*_before_horizon`.
+
+    Se calcula de los campos del REGISTRO y no de un acumulador aparte, por la misma
+    razon que `_unidades_liberadas`: asi el numero del resumen es exactamente la suma de
+    lo que el cliente ve fila por fila en el Excel, y no puede derivar de el.
+    """
+    total = 0.0
+    for r in recs:
+        if r.cycle_investment_before_horizon is None:
+            continue
+        total += r.cycle_investment_before_horizon - float(r.cycle_investment or 0.0)
     return total
 
 
@@ -1022,8 +1047,6 @@ def run(
 
         ss = pol.safety_stock.safety_stock
         cycle_units = pol.expected_cycle_stock
-        cycle_inv = cycle_units * meta.mean_unit_cost
-        ss_inv = ss * meta.mean_unit_cost
         reorder = inputs["mean_demand_per_period"] * lead + ss  # mu*L + safety (lead-only)
 
         # No acumules por encima de lo que todavia podes vender (`src/horizon.py`). Se
@@ -1043,7 +1066,7 @@ def run(
             mean_per_period=inputs["mean_demand_per_period"],
             periods_remaining=restante_periodos,
         )
-        rp_previo = oup_previo = q_previo = None
+        rp_previo = oup_previo = q_previo = cycle_previo = None
         order_up_to_final = pol.order_up_to_level
         if tope.capped:
             # Un `*_before_horizon` se llena SOLO si ese numero se movio. El tope puede
@@ -1057,6 +1080,24 @@ def run(
                     q_previo, order_quantity = order_quantity, tope.target
             elif pol.order_up_to_level is not None and tope.target < pol.order_up_to_level:
                 oup_previo, order_up_to_final = pol.order_up_to_level, tope.target
+            # El capital sigue a la cantidad. Sin esto el tope movia `reorder_point`,
+            # `order_up_to` y `Q` y dejaba `cycle_investment`, `ss_investment`,
+            # `investment` y el titular `requested_investment` calculados sobre la
+            # politica SIN topear: medido sobre una cartera real, 12.018 usd de capital
+            # liberado que el titular no mostraba. Es la parte que faltaba para estar a
+            # la par de las otras dos cantidades que se mueven despues de dimensionar --
+            # el redondeo a lote legal (arriba) y la cobertura provisional, que ya
+            # recalculaban su capital. Ver `src.horizon.capped_cycle_stock`: NO toca el
+            # safety stock, asi que las dos identidades del registro siguen en pie.
+            cycle_previo, cycle_units = cycle_units, capped_cycle_stock(
+                cycle_units, ss,
+                remaining_demand=tope.remaining_demand,
+                order_quantity=order_quantity if es_sq else None,
+            )
+            if cycle_previo <= cycle_units:  # el tope no libero capital en este SKU
+                cycle_previo = None
+        cycle_inv = cycle_units * meta.mean_unit_cost
+        ss_inv = ss * meta.mean_unit_cost
         due_now, qty_now = _order_now(kind, position, reorder, order_quantity, order_up_to_final)
 
         recs.append(
@@ -1091,6 +1132,9 @@ def run(
                 reorder_point_before_horizon=rp_previo,
                 order_up_to_before_horizon=oup_previo,
                 order_quantity_before_horizon=q_previo,
+                cycle_investment_before_horizon=(
+                    None if cycle_previo is None else cycle_previo * meta.mean_unit_cost
+                ),
             )
         )
         items.append(InventoryItem(product_id=pid, order_quantity=2.0 * cycle_units, safety_stock=ss, unit_cost=meta.mean_unit_cost))
@@ -1142,6 +1186,7 @@ def run(
         # una cobertura disparador y objetivo son el mismo numero, asi que sumar los dos
         # ademas lo contaria dos veces.
         horizon_units_freed=_unidades_liberadas(recs),
+        horizon_capital_freed_usd=_capital_liberado(recs),
         horizon_note=horizon_note,
         n_positioned=sum(1 for r in recs if r.on_hand is not None),
         n_netted=sum(1 for r in recs if r.on_order is not None),

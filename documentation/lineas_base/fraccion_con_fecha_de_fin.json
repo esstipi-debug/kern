@@ -197,10 +197,13 @@
     },
     "frac_con_fecha": 0.506,
     "frac_topeados_de_los_que_traen_fecha": 0.2647,
-    "capital_liberado_usd": 12017.86,
+    "caida_del_pico_usd": 12017.86,
     "titular_inversion_sin": 107495.5,
-    "titular_inversion_con": 107495.5,
-    "titular_se_movio": false,
-    "capital_liberado_frac_del_titular": 0.1118
+    "titular_inversion_con": 102392.33,
+    "titular_se_movio": true,
+    "capital_liberado_usd": 5103.17,
+    "capital_liberado_reportado_usd": 5103.17,
+    "capital_liberado_frac_del_titular": 0.0475,
+    "pico_frac_del_titular": 0.1118
   }
 }

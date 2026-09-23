@@ -204,6 +204,7 @@ def _horizon_findings(report: JobReport) -> list[Finding]:
     n_cap = int(getattr(report, "n_horizon_capped", 0) or 0)
     if n_cap:
         liberadas = float(getattr(report, "horizon_units_freed", 0.0) or 0.0)
+        capital = float(getattr(report, "horizon_capital_freed_usd", 0.0) or 0.0)
         pronto = sorted(
             (r for r in report.recommendations if r.horizon_verdict == "applied"),
             key=lambda r: r.periods_remaining or 0.0,
@@ -215,8 +216,8 @@ def _horizon_findings(report: JobReport) -> list[Finding]:
         out.append(Finding(
             f"{n_cap} SKU(s) capped by their end-of-life date",
             f"The policy would have stocked more than what is left to sell before the "
-            f"SKU's end date; the cap removes {liberadas:,.0f} unit(s) of purchase. "
-            f"{detalle}.",
+            f"SKU's end date; the cap removes {liberadas:,.0f} unit(s) of purchase and "
+            f"${capital:,.0f} from the requested investment. {detalle}.",
             impact="less capital in stock that outlives its own demand",
         ))
     n_dec = int(getattr(report, "n_horizon_declarable", 0) or 0)

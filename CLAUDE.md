@@ -698,16 +698,33 @@ Punta a punta por el pipeline real (336 SKU de 60 vendedores): 50,6% trae fecha 
 **26,5% de esos** termina topeado -- traer la fecha y que la fecha mueva algo son dos
 cosas distintas.
 
-**DEFECTO ABIERTO que esta medicion encontro (no arreglado):** el tope **no llega a
-`requested_investment`**. `ss` y `cycle_units` se leen de la politica sin topear
-(`jobs/inventory_optimization.py` L1023-1024), el tope se aplica despues (L1041-1048) y el
-`InventoryItem` que alimenta la inversion se arma con los valores PREVIOS (L1096). Medido:
-el tope liberaria 12.018 usd (11,2% del titular) y el titular sale identico al centavo. Es
-la firma de la rama otra vez -- la prosa dice una cosa y el numero dice otra --, y
-arreglarlo obliga a decidir COMO se propaga a capital un tope sobre el objetivo (ciclo,
-safety stock, o los dos, y con que identidad), que es una decision de modelo y no una
-caneria. `tests/test_fraccion_con_fecha_de_fin_publicado.py` lo fija contra el CODIGO: si
-alguien lo arregla, ese test se pone rojo.
+**El defecto que esta medicion encontro, ARREGLADO** (`src/horizon.py::capped_cycle_stock`):
+el tope movia `reorder_point`, `order_up_to` y `Q`, y el capital -- `cycle_investment`,
+`ss_investment`, `investment` por SKU y el titular `requested_investment` -- se calculaba
+sobre la politica SIN topear. El titular salia identico al centavo mientras el deck
+anunciaba unidades sacadas del plan y las OPCIONES se describian como la unica opcion que
+RESTA capital. Lo encontro correr la capacidad sobre datos REALES; sus tests usan fixtures
+sinteticos y no lo veian.
+
+No es una formula nueva: es lo que el repo ya hacia en los otros dos lugares donde una
+cantidad se mueve DESPUES de dimensionar -- el redondeo a lote legal (`replace(pol,
+order_quantity=Q, expected_cycle_stock=Q/2)`) y la cobertura provisional, cuya rama ya
+asignaba `cobertura = tope.trigger` antes de valuar. La rama dimensionada era la unica
+que no. El defecto era de ORDEN: `cycle_inv`/`ss_inv` se calculaban ARRIBA del tope.
+
+**Y corrigio un numero publicado.** La primera version del documento decia que el tope
+liberaba 12.018 usd (11,2% del titular); eso es la caida del **pico** (el techo de
+reposicion x costo). `investment` es `ciclo + buffer`, o sea el **promedio**, y se mueve
+**5.103 usd (4,8%)**. El pico es 2,4 veces el titular, y la razon es deliberada:
+
+**EL TOPE NO TOCA EL BUFFER.** Dice "no compres mas de lo que podes vender", no "bajale el
+nivel de servicio". El buffer es lo que compro el nivel de servicio DECLARADO y el tope no
+renegocia ese nivel: si el buffer solo ya supera el restante, el ciclo se va a cero y ahi
+termina. Por eso las dos identidades internas del registro quedan intactas --
+`ss_investment == safety_stock x unit_cost` y `reorder_point == mu*L + safety_stock` -- y
+`jobs/qa.py::_horizon_issues` ahora las EXIGE (invariantes 5 y 6): un cambio futuro que
+encoja el buffer se pone rojo. `tests/test_titular_de_inversion.py` (17) fija las dos
+mitades, y el control de siempre sigue: sin columna de fecha el capital sale IDENTICO.
 
 ### Lo que el agente acepta y tira en silencio (`tests/test_overrides_no_se_tiran.py`)
 Midiendo el residuo aparecio un defecto que vale por si mismo: `scm_agent/tools.py`
