@@ -98,6 +98,82 @@ def test_explain_resolves_bare_id_across_source_namespacing(kb: KnowledgeBase) -
     assert prefixed.concept.id == detail.concept.id
 
 
+@pytest.mark.parametrize("name", [
+    "Sales and Operations Planning",
+    "sales and operations planning",
+    "Sales & Operations Planning",
+])
+def test_explain_answers_a_concept_name_with_that_concept(tmp_path: Path, name: str) -> None:
+    """Naming a concept returns it, whatever code prose ranks higher.
+
+    The words of a concept's name weigh little in the books graph, where many
+    nodes repeat them, and more in the code graph, where few do. So a src/
+    docstring that says the same words outranked the concept named in full:
+    measured 2026-09-23, 330 of the 2,881 books labels with a space answered
+    with code, "safety stock" with a docstring of jobs/multi_echelon_job.py.
+    """
+    kb = _explain_graphs(tmp_path, [
+        _code_node("src_sop_engine_rationale_1", "Sales and operations planning engine",
+                   "src/sop_engine/__init__.py", file_type="rationale"),
+    ])
+
+    detail = kb.explain(name)
+
+    assert detail is not None, detail
+    assert detail.concept.id == "vollmann_sales_and_operations_planning", detail.concept
+
+
+def test_explain_picks_among_concepts_that_share_a_name(tmp_path: Path) -> None:
+    """A name written in full like the query wins, then the curated source.
+
+    Three books concepts answer to "Sales and Operations Planning" once a
+    trailing "(S&OP)" is optional. The one whose label is the query as typed
+    wins; between two equal labels, ``knowledge::`` wins, as it does for ids.
+    """
+    books = _write_graph(tmp_path / "b.json", [
+        {"id": f"{ns}::{nid}", "label": label, "norm_label": label.lower(), "rationale": ""}
+        for ns, nid, label in (
+            ("christopher", "sop_c", "Sales and Operations Planning (S&OP)"),
+            ("knowledge", "sop_k", "Sales and Operations Planning (S&OP)"),
+            ("vollmann", "sop_v", "Sales and Operations Planning"),
+        )
+    ])
+    kb = KnowledgeBase(books_path=books, code_path=tmp_path / "none.json")
+
+    assert kb.explain("Sales and Operations Planning").concept.id == "sop_v"
+    assert kb.explain("sales and operations planning (s&op)").concept.id == "sop_k"
+
+
+def test_explain_does_not_answer_a_name_with_a_test(tmp_path: Path) -> None:
+    """Guard: a test named like a concept is still not its explanation. The
+    name lookup skips tests, demos, scripts and documents, as the fallback does."""
+    code = _write_graph(tmp_path / "c.json", [
+        _code_node("tests_test_sop_sales_and_operations_planning",
+                   "Sales and Operations Planning", "tests/test_sop.py"),
+    ])
+    kb = KnowledgeBase(books_path=tmp_path / "none.json", code_path=code)
+
+    assert kb.explain("Sales and Operations Planning") is None
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("name, concept_id", [
+    ("safety stock", "safety_stock"),
+    ("fill rate", "fill_rate"),
+    ("cost to serve", "cost_to_serve"),
+    ("Croston's Method", "crostons_method"),
+])
+def test_explain_answers_a_concept_name_on_the_real_graphs(
+    kb: KnowledgeBase, name: str, concept_id: str
+) -> None:
+    """Measured 2026-09-23: each answered with a code docstring (jobs/multi_echelon_job,
+    src/bateria/comprobaciones, src/cost_to_serve, src/forecasting)."""
+    detail = kb.explain(name)
+
+    assert detail is not None and (detail.concept.graph, detail.concept.id) == (
+        "books", concept_id), detail
+
+
 def test_bridge_returns_theory_side(kb: KnowledgeBase) -> None:
     b = kb.bridge("newsvendor")
     assert isinstance(b, Bridge)

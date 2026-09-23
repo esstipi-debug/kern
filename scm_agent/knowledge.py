@@ -283,13 +283,28 @@ def _spelled_out_acronyms(query: str, *, phrase_only: bool = False) -> dict[str,
     ``phrase_only`` the acronym's own written forms ("S&OP") don't count either:
     only the phrase in words does (see ``implements``).
     """
-    words = ["and" if w == "&" else w for w in re.findall(r"[a-z0-9&]+", query.lower())]
-    padded = f" {' '.join(words)} "
+    padded = f" {_plain_words(query)} "
     return {
         acronym: _content_tokens(_tokens(spellings[0]))
         for acronym, spellings in _ACRONYMS.items()
         if any(f" {s} " in padded for s in (spellings[:1] if phrase_only else spellings))
     }
+
+
+def _plain_words(text: str) -> str:
+    """Text as lowercase words split on punctuation, a lone "&" read as "and"."""
+    words = re.findall(r"[a-z0-9&]+", text.lower())
+    return " ".join("and" if w == "&" else w for w in words)
+
+
+# A books label often ends in its acronym or its author - "Sales and Operations
+# Planning (S&OP)" - which is how the label is written, not part of the name.
+_TRAILING_PARENTHESIS = re.compile(r"\s*\([^()]*\)\s*$")
+
+
+def _name_key(text: str) -> str:
+    """The form ``_resolve_name`` compares names in: plain words, no trailing "(...)"."""
+    return _plain_words(_TRAILING_PARENTHESIS.sub("", text))
 
 
 def _load(path: Path) -> tuple[dict, str | None]:
@@ -338,6 +353,12 @@ class KnowledgeBase:
             name: {n["id"]: n for n in g["nodes"] if "id" in n}
             for name, g in self._graphs.items()
         }
+        # Books concepts by name, for explain() - see _resolve_name.
+        self._books_by_name: dict[str, list[dict]] = {}
+        for node in self._index["books"].values():
+            key = _name_key(node.get("label") or "")
+            if key:
+                self._books_by_name.setdefault(key, []).append(node)
         # Precompute searchable token sets + IDF once at load, so search()/
         # bridge()/implements() never re-tokenize the whole graph on each call.
         # Two fields per node: the *title* (label/id/norm_label — what it is) and
@@ -714,9 +735,11 @@ class KnowledgeBase:
         """Return a concept's rationale + neighbors.
 
         An id-like argument (no spaces) is looked up exactly. A label-like
-        argument (with spaces) falls back to a fuzzy search, so callers can
-        pass either `crostons_method` or `Croston's Method`. That search leaves
-        out tests, demos, examples, scripts and documents, as ``bridge`` does.
+        argument (with spaces) is first looked up as a books concept's name
+        (``_resolve_name``), so callers can pass either `crostons_method` or
+        `Croston's Method`, and otherwise falls back to a fuzzy search. That
+        search leaves out tests, demos, examples, scripts and documents, as
+        ``bridge`` does.
         """
         for name in ("books", "code"):
             node = self._resolve_node(concept_id, name)
@@ -727,6 +750,15 @@ class KnowledgeBase:
         # (avoids a stray common token matching an unrelated node).
         if " " not in concept_id.strip():
             return None
+        # A concept's name is not a search. Its words weigh less in the books
+        # graph, where many nodes repeat them, than in the code graph, where few
+        # do, so code prose saying the same words outranked the concept: measured
+        # 2026-09-23 over the 2,881 books labels with a space, 330 answered with
+        # code ("safety stock" with a docstring of jobs/multi_echelon_job.py) and
+        # 78 with another concept.
+        named = self._resolve_name(concept_id)
+        if named is not None:
+            return self._detail(named, "books")
         # A test or a spec describes a concept in words, so it is the closest word
         # match for the concept's own name. Measured 2026-09-23 over the 2,881
         # books labels with a space: 88 answered with a test, demo or script and
@@ -871,6 +903,22 @@ class KnowledgeBase:
         stable across graph re-merges that change the source prefix.
         """
         return node_id.split("::", 1)[1] if "::" in node_id else node_id
+
+    def _resolve_name(self, name: str) -> dict | None:
+        """The books concept whose label IS ``name``, compared as plain words.
+
+        Case, punctuation and a trailing "(S&OP)" aside. Among concepts that
+        share the name, one whose label matches ``name`` in full wins, then the
+        curated ``knowledge::`` source (as in ``_resolve_node``), then graph order.
+        """
+        candidates = self._books_by_name.get(_name_key(name))
+        if not candidates:
+            return None
+        full = _plain_words(name)
+        return min(candidates, key=lambda n: (
+            _plain_words(n.get("label") or "") != full,
+            not n.get("id", "").startswith("knowledge::"),
+        ))
 
     def _resolve_node(self, concept_id: str, graph: str) -> dict | None:
         """Resolve a (possibly bare) concept id to a node, tolerant of namespacing.
