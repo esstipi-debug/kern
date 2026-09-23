@@ -546,8 +546,8 @@ semana, asi que +16,2 es el techo de la idea sobre una cartera donde toda la lin
 discontinua a la vez. Una cartera real tiene fechas escalonadas y la mayoria de sus SKU no
 tiene ninguna; lo realizable es proporcional a la fraccion que traiga la fecha. Y esto MIDE
 una idea, no construye una capacidad: el tope es un post-proceso sobre la `Policy`, no un
-cambio de motor. Construirla toca las ocho partes de siempre, y falta medir que pasa con
-una fecha EQUIVOCADA.
+cambio de motor. **Construida el 2026-09-23** -- ver abajo; ahi tambien se contesta que
+pasa con una fecha EQUIVOCADA.
 
 ### Y ajustar contra ventas CENSURADAS resulto NO pagar
 [`documentation/KERN_VENTAS_CENSURADAS.md`](documentation/KERN_VENTAS_CENSURADAS.md)
@@ -628,6 +628,42 @@ brecha de CANAL -- **ya no hay que perseguirla**.
 `todo` es la lectura mas limpia de la pared de "compra mas": es el carril con el MEJOR fill
 de todos los de Kern (0,832) y el PEOR resultado (-20,3%), comprando 4.189 unidades, mas
 que el oraculo con informacion perfecta (3.678).
+
+### Y esa fecha de fin por SKU esta CONSTRUIDA (`src/horizon.py`)
+[`documentation/KERN_FECHA_DE_FIN_POR_SKU.md`](documentation/KERN_FECHA_DE_FIN_POR_SKU.md).
+La regla vive en `src/horizon.py::cap_policy`, la fecha entra por
+`jobs/intake.py::sku_end_dates` (columna opcional `end_date`, alias en en/es/pt, ninguno
+ambiguo), la aplica `jobs/inventory_optimization.py`, la gatea
+`jobs/qa.py::_horizon_issues` y la nombran las tres superficies. Solo
+`inventory_optimization` la lee; los otros trece emisores siguen sin horizonte.
+
+**La pregunta de seguridad que las dos mediciones dejaron abierta -- que pasa con una
+fecha EQUIVOCADA -- se contesta con una regla, no con un numero: el tope puede ENCOGER
+una politica, nunca anularla.** Un tope de cero es "no compres nunca mas", o sea una
+discontinuacion, y esa la decide una persona. Por eso `cap_policy` tiene SEIS verdictos y
+tres se NIEGAN a topear (`expired` -- la fecha ya paso o es hoy --, `would_zero` y
+`unusable`): la linea sale dimensionada como si no hubiera fecha, y las tres superficies
+la NOMBRAN (fila del Excel con su `horizon_verdict`, hallazgo del deck, residual de las
+OPCIONES). Callarlas seria el peor silencio: el cliente creeria que el tope la cubrio.
+
+**La traduccion se declara, no se supone.** La regla medida topea "las dos mitades", y el
+arnes que la midio ejecuta todo como (R,S), o sea que NO tiene lote. Un `(s,Q)` real trae
+`order_up_to=None` y sus dos mitades son `s` y `Q`, asi que la misma regla se aplica a
+TRES cantidades. Por eso `HorizonCap` llama a sus campos `trigger`/`target`: ponerles el
+nombre de una de las dos formas escondio un defecto real mientras se escribia esto -- un
+(s,Q) decidia el tope mirando solo el disparador y dejaba pasar una Q de 302 sobre un
+restante de 204.
+
+Tres reglas de ausencia, con test cada una: sin columna el mapa es `None` y nunca `{}`;
+una celda vacia no entra y NO cuenta como defecto (la mayoria de una cartera real no trae
+fecha); una celda ILEGIBLE se descarta y se CUENTA, nunca se reemplaza por hoy. Y el
+`as_of` es el fin del HISTORICO y no el reloj: un archivo que termina hace tres meses
+sacaria todo el catalogo como `expired`. Un `*_before_horizon` aparece si y solo si ese
+numero se movio -- en blanco, nunca en cero.
+
+**Un archivo sin la columna sale IDENTICO a antes de la capacidad**
+(`test_sin_fechas_el_job_sale_IDENTICO_a_antes_de_la_capacidad`), que es lo que la vuelve
+segura sobre la base instalada.
 
 ### Lo que el agente acepta y tira en silencio (`tests/test_overrides_no_se_tiran.py`)
 Midiendo el residuo aparecio un defecto que vale por si mismo: `scm_agent/tools.py`

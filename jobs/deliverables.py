@@ -88,6 +88,18 @@ def _row(r: SkuRecommendation, *, units: bool = False) -> dict:
         ),
         "order_now": ("yes" if r.order_now else "no") if r.order_now is not None else "",
         "order_qty_now": round(r.order_qty_now, 2) if r.order_qty_now is not None else "",
+        # Fecha de fin de vida comercial y que le hizo a esta linea (src/horizon.py).
+        # `horizon_verdict` viaja SIEMPRE, tambien cuando dice `expired` o `unusable`: el
+        # comprador que abre la planilla tiene que poder ver que el archivo traia una
+        # fecha que no se aplico, en la fila del SKU y no solo en un residual del resumen.
+        # Los `*_before_horizon` van en blanco -- nunca en cero -- cuando ese numero no
+        # se movio, por la misma razon que `on_order`: un cero afirmaria un cambio.
+        "end_date": r.end_date or "",
+        "horizon_verdict": r.horizon_verdict,
+        "remaining_demand": _redondear(r.remaining_demand, 2),
+        "reorder_point_s_before_horizon": _redondear(r.reorder_point_before_horizon, 2),
+        "order_up_to_S_before_horizon": _redondear(r.order_up_to_before_horizon, 2),
+        "order_qty_before_horizon": _redondear(r.order_quantity_before_horizon, 2),
         "safety_stock": _redondear(r.safety_stock, 2),
         "sigma_e": round(r.error_std, 2),
         # Which dispersion actually sized this row's buffer, and under which

@@ -200,6 +200,16 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
         )
     except (ValueError, KeyError, TypeError, FileNotFoundError):
         stock_position = None
+    try:
+        # La fecha de fin de vida comercial por SKU. Mismo contrato que las dos de
+        # arriba: si el archivo no la trae, `None` -- nunca un mapa vacio, que afirmaria
+        # que se midio y ningun SKU tiene fecha.
+        end_dates = intake.sku_end_dates(
+            request.data_path, overrides=overrides_col,
+            aliases=request.params.get("column_aliases"),
+        )
+    except (ValueError, KeyError, TypeError, FileNotFoundError):
+        end_dates = None
     # `period` rides along: src/sources.py needs it to rebuild the COMPLETE period
     # grid per SKU. Without it a SKU's series is only the periods it sold in, which
     # makes every real export look like regular demand (ADI == 1.0) and overstates
@@ -212,6 +222,7 @@ def _inventory_prepare(request: JobRequest, provider: LLMProvider) -> Prepared:
             "period": period,
             "order_lines": order_lines,
             "stock_position": stock_position,
+            "end_dates": end_dates,
         },
     )
 
@@ -267,6 +278,11 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         str(stock_position.attrs.get("position_note", "") or "")
         if stock_position is not None else ""
     )
+    end_dates_frame = payload.get("end_dates")
+    horizon_note = (
+        str(end_dates_frame.attrs.get("horizon_note", "") or "")
+        if end_dates_frame is not None else ""
+    )
     report = run_inventory(
         payload["demand"],
         service_level=params.get("service_level", 0.95),
@@ -305,6 +321,8 @@ def _inventory_run(payload: object, params: dict) -> Produced:
         on_hand_by_sku=params.get("on_hand_by_sku", on_hand_by_sku),
         on_order_by_sku=params.get("on_order_by_sku", on_order_by_sku),
         position_note=position_note,
+        end_dates=intake.end_date_map(end_dates_frame),
+        horizon_note=horizon_note,
     )
     # El titular y la cola las escribe UNA sola funcion, en el productor
     # (`jobs/inventory_optimization.unsized_note`), porque el deck que lee el
@@ -365,7 +383,7 @@ def inventory_tool() -> Tool:
         # in transit (jobs/intake.py::stock_position).
         optional_columns=(
             "unit_cost", "lead_time_days", "lead_time_std", "revenue", "moq", "order_multiple",
-            "on_hand", "on_order",
+            "on_hand", "on_order", "end_date",
         ),
         options=tool_options.inventory_options,
         prepare=_inventory_prepare,

@@ -192,6 +192,47 @@ def _costliest_lots(report: JobReport, n: int) -> str:
     return "; ".join(parts)
 
 
+def _horizon_findings(report: JobReport) -> list[Finding]:
+    """Que hizo -- y que NO hizo -- la fecha de fin por SKU en este plan.
+
+    Son dos hallazgos y no uno, porque dicen cosas opuestas y el cliente actua distinto
+    con cada uno. El primero es plata que NO hay que gastar; el segundo es una fecha que
+    el archivo trajo y este plan se nego a usar, que sin decirlo se lee como si el tope
+    la hubiera cubierto.
+    """
+    out: list[Finding] = []
+    n_cap = int(getattr(report, "n_horizon_capped", 0) or 0)
+    if n_cap:
+        liberadas = float(getattr(report, "horizon_units_freed", 0.0) or 0.0)
+        pronto = sorted(
+            (r for r in report.recommendations if r.horizon_verdict == "applied"),
+            key=lambda r: r.periods_remaining or 0.0,
+        )[:3]
+        detalle = "; ".join(
+            f"{r.product_id} ends {r.end_date} ({r.remaining_demand:,.0f} left to sell)"
+            for r in pronto
+        )
+        out.append(Finding(
+            f"{n_cap} SKU(s) capped by their end-of-life date",
+            f"The policy would have stocked more than what is left to sell before the "
+            f"SKU's end date; the cap removes {liberadas:,.0f} unit(s) of purchase. "
+            f"{detalle}.",
+            impact="less capital in stock that outlives its own demand",
+        ))
+    n_dec = int(getattr(report, "n_horizon_declarable", 0) or 0)
+    if n_dec:
+        out.append(Finding(
+            f"{n_dec} end-of-life date(s) NOT applied",
+            "The file carries an end date this run did not use - it falls on or before "
+            "the last day of the history, or there is no measured mean behind it. Those "
+            "SKUs were sized WITHOUT a cap: capping to zero on a mistyped date would "
+            "silently stop replenishing a product that still sells, and stopping it is a "
+            "discontinuation decision, not a rounding.",
+            impact="check those dates before trusting the horizon on them",
+        ))
+    return out
+
+
 def _position_findings(report: JobReport) -> list[Finding]:
     """What today's position says, and - louder - what it could not say.
 
@@ -291,6 +332,7 @@ def build(
     if report.n_lot_constrained:
         findings.append(_supplier_terms_finding(report))
     findings.extend(_position_findings(report))
+    findings.extend(_horizon_findings(report))
     if report.budget is not None and report.safety_stock_scale < 1.0:
         findings.append(Finding(
             "Budget-constrained safety stock",

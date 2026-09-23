@@ -111,6 +111,13 @@ ALIASES: dict[str, list[str]] = {
     #     `location`/`node` no van a ninguno -- los reclamaban `stage` y `branch`
     #     por igual, y elegir uno haria que una tool salga verde con el archivo
     #     de la otra.
+    # La fecha de fin de vida comercial del SKU: discontinuacion, fin de temporada,
+    # cierre de ventana promocional. Canonico propio y NUNCA alias de `date` ni de
+    # `receipt_date`: confundir "la fecha de esta fila" con "la fecha en que este
+    # producto deja de venderse" apagaria la reposicion de toda una cartera. Por eso la
+    # lista no acepta un `fecha` ni un `end` pelados -- o el archivo la nombra sin
+    # ambiguedad, o el SKU no trae fecha, que es el caso normal.
+    "end_date": ["end_date", "enddate", "end_of_life", "eol_date", "discontinuation_date", "discontinued_date", "discontinue_on", "sunset_date", "season_end", "season_end_date", "fecha_fin", "fecha_de_fin", "fecha_fin_venta", "fecha_discontinuacion", "fecha_descontinuacion", "fecha_baja", "fin_temporada", "fecha_fin_temporada", "data_fim", "data_descontinuacao"],
     "mean_demand": ["mean_demand", "mean", "avg_demand", "demand_mean", "expected_demand", "forecast"],
     "std_demand": ["std_demand", "std", "sigma", "demand_std", "stdev", "demand_sigma"],
     "salvage_value": ["salvage_value", "salvage"],
@@ -1178,6 +1185,11 @@ _NOTA_SIN_ENTREGA = (
 #: SKU, en orden de fecha.
 POSITION_OPTIONAL = ("on_hand", "on_order")
 
+#: La fecha de fin de vida comercial por SKU. Fuera de `CANONICAL_OPTIONAL` por la misma
+#: razon que `on_hand`: aquellas son FLUJOS por periodo que `normalize_tracked` agrega, y
+#: esta es un ATRIBUTO del producto que se repite igual en cada fila.
+HORIZON_OPTIONAL = ("end_date",)
+
 _NOTA_POSICION_NETEADA = (
     "Stock position read from the file's own columns: {columnas} (last row per SKU, as of "
     "{fecha}). Order-now decisions are sized against on hand PLUS stock already on order, so "
@@ -1277,6 +1289,92 @@ def position_maps(frame) -> tuple[dict[str, float] | None, dict[str, float] | No
         for r in frame.itertuples(index=False) if not math.isnan(float(r.on_order))
     }
     return on_hand, on_order
+
+
+_NOTA_HORIZONTE = (
+    "Per-SKU end-of-life dates read from '{columna}': {n} of {total} SKUs carry one. "
+    "The rest are sized without a horizon cap."
+)
+
+
+def sku_end_dates(
+    path: str | Path,
+    *,
+    overrides: dict[str, str] | None = None,
+    aliases: AliasTable | None = None,
+):
+    """La fecha de fin de vida comercial por SKU que trae el archivo, o ``None``.
+
+    El productor de `src/horizon.py`: discontinuacion, fin de temporada o cierre de
+    ventana promocional. Sin esa columna devuelve ``None`` -- no un frame vacio --,
+    porque un mapa vacio se lee como "medido, y ningun SKU tiene fecha", y lo que pasa es
+    que nadie la declaro. Un SKU con la celda vacia simplemente no entra: la mayoria de
+    una cartera real no trae fecha y eso NO es un problema del archivo.
+
+    Una fecha ILEGIBLE se descarta y se cuenta aparte en ``.attrs['unparsed']``; no se
+    reemplaza por hoy ni por la ultima fecha del historico. Un reloj como fallback
+    silencioso convertiria un typo en un tope sobre un SKU que sigue vendiendo, que es
+    justo el modo de falla que `src.horizon.cap_policy` existe para no tener.
+
+    Gana la ULTIMA fila fechada del SKU -- la misma regla que ``stock_position``, una
+    sola para todo el archivo. Un SKU con DOS fechas distintas se cuenta en
+    ``.attrs['conflicting']``: ahi el archivo se contradice sobre cuando muere un
+    producto, y la superficie tiene que poder decirlo en vez de quedarse con una callada.
+    """
+    raw = load_table(path, aliases=aliases)
+    mapeo = detect_columns(
+        raw, overrides, optional=CANONICAL_OPTIONAL + HORIZON_OPTIONAL, aliases=aliases,
+    )
+    if not mapeo.ok or "end_date" not in mapeo.mapping:
+        return None
+
+    columna = mapeo.mapping["end_date"]
+    crudo = raw[columna]
+    frame = pd.DataFrame({
+        "product_id": raw[mapeo.mapping["product_id"]].astype(str).str.strip(),
+        "date": _parse_dates(raw[mapeo.mapping["date"]]),
+        "end_date": _parse_dates(crudo),
+        # Una celda NO VACIA que no se pudo parsear: el unico caso que vale contar
+        # aparte. Una celda vacia es la ausencia normal y no se reporta como defecto.
+        "_ilegible": crudo.map(lambda v: _texto_o_none(v) is not None) & _parse_dates(crudo).isna(),
+    })
+    frame = frame[
+        frame["product_id"].ne("")
+        & ~frame["product_id"].str.lower().isin(("nan", "none"))
+    ]
+    total = int(frame["product_id"].nunique())
+    ilegibles = int(frame.loc[frame["_ilegible"], "product_id"].nunique())
+    con_fecha = frame.dropna(subset=["end_date"])
+    if con_fecha.empty:
+        return None
+
+    contradictorios = int((con_fecha.groupby("product_id")["end_date"].nunique() > 1).sum())
+    ultimo = (
+        con_fecha.sort_values(["product_id", "date"], na_position="first", kind="stable")
+        .groupby("product_id", sort=True)["end_date"]
+        .last()
+        .reset_index()
+    )
+    ultimo.attrs["end_date_header"] = columna
+    ultimo.attrs["n_products"] = total
+    ultimo.attrs["unparsed"] = ilegibles
+    ultimo.attrs["conflicting"] = contradictorios
+    ultimo.attrs["horizon_note"] = _NOTA_HORIZONTE.format(
+        columna=columna, n=len(ultimo), total=total,
+    )
+    return ultimo
+
+
+def end_date_map(frame) -> dict[str, object] | None:
+    """``{product_id: Timestamp}`` en la forma que consume el job, o ``None``.
+
+    ``None`` -- no ``{}`` -- cuando el archivo no traia la columna, por la misma razon
+    que ``position_maps`` devuelve ``None`` para el en-transito ausente: un mapa vacio
+    afirma que se midio.
+    """
+    if frame is None:
+        return None
+    return {str(r.product_id): r.end_date for r in frame.itertuples(index=False)}
 
 
 def _texto_o_none(valor: object) -> str | None:

@@ -142,6 +142,7 @@ def inventory_options(report: object) -> GuidedOutcome:
          "apply the recommended per-SKU policies and budget", "balanced service vs capital"),
         *_orders_due_now_items(report),
         *_lot_terms_items(report),
+        *_horizon_items(report),
         ("Tighten service on A-items",
          "Raise the cycle service level on the high-value SKUs (more safety stock).",
          "raise service level on the A class", "higher availability, more capital"),
@@ -156,7 +157,8 @@ def inventory_options(report: object) -> GuidedOutcome:
     outcome = _apply_insufficient_history(outcome, report)
     outcome = _apply_provisional_cover(outcome, report)
     outcome = _apply_lot_rule_unapplied(outcome, report)
-    return _apply_position_not_netted(outcome, report)
+    outcome = _apply_position_not_netted(outcome, report)
+    return _apply_horizon_declarables(outcome, report)
 
 
 def _orders_due_now_items(report: object) -> list[_Item]:
@@ -258,6 +260,66 @@ def _lot_terms_items(report: object) -> list[_Item]:
         "take the per-SKU lot penalties to the supplier, or order the listed runner-up lot",
         "recovers the penalty if the supplier moves; costs a negotiation either way",
     )]
+
+
+def _horizon_items(report: object) -> list[_Item]:
+    """La OPCION del tope por fecha de fin: comprar menos de lo que no se va a vender.
+
+    Es la unica OPCION de esta tool que RESTA capital en vez de pedirlo, y por eso dice
+    las unidades liberadas: sin ese numero el operador no tiene con que comparar contra
+    el titular de inversion, que es la cifra que el tope hace bajar.
+    """
+    n = int(getattr(report, "n_horizon_capped", 0) or 0)
+    if not n:
+        return []
+    topeados = [
+        r for r in report.recommendations
+        if getattr(r, "horizon_verdict", "") == "applied"
+    ]
+    liberadas = float(getattr(report, "horizon_units_freed", 0.0) or 0.0)
+    peores = ", ".join(
+        f"{r.product_id} (ends {r.end_date}, {r.remaining_demand:,.0f} left to sell)"
+        for r in sorted(
+            topeados, key=lambda r: (r.remaining_demand or 0.0),
+        )[:3]
+    )
+    return [(
+        f"Stop buying past the end date on {n} SKU(s)",
+        f"{n} SKU(s) carry an end-of-life date close enough that the policy would have "
+        f"stocked more than what is left to sell; the cap removes {liberadas:,.0f} unit(s) "
+        f"of purchase. Soonest: {peores}.",
+        "order the capped quantities on those rows instead of the uncapped policy",
+        "less capital tied up in stock that outlives its own demand; no service change "
+        "before the end date",
+    )]
+
+
+def _apply_horizon_declarables(outcome: GuidedOutcome, report: object) -> GuidedOutcome:
+    """Residual cuando el archivo trae una fecha de fin que este job se NEGO a usar.
+
+    Callar aca seria el peor de los dos silencios posibles. Un SKU cuya fecha ya paso se
+    dimensiona como si nada, y el cliente cree que el tope lo cubrio; y la alternativa --
+    topear igual -- le apagaria la reposicion a un producto que vende, sobre una celda
+    mal tipeada. La unica salida honesta es dimensionar sin tope y NOMBRARLO.
+    """
+    n = int(getattr(report, "n_horizon_declarable", 0) or 0)
+    if not n:
+        return outcome
+    porque: dict[str, int] = {}
+    for r in report.recommendations:
+        v = getattr(r, "horizon_verdict", "")
+        if v in ("expired", "would_zero", "unusable"):
+            porque[v] = porque.get(v, 0) + 1
+    detalle = ", ".join(f"{k}: {v}" for k, v in sorted(porque.items()))
+    return replace(outcome, residuals=[*outcome.residuals, Residual(
+        description=f"{n} SKU(s) carry an end-of-life date this run did NOT apply "
+                    f"({detalle}). They were sized WITHOUT a horizon cap: an end date on "
+                    "or before the last day of the history would cap the policy to zero, "
+                    "and that is a discontinuation decision, not a rounding.",
+        owner="demand planning",
+        risk_if_skipped="a mistyped end date stays invisible: the SKU is replenished as "
+                        "if it had no horizon, and nobody is told the file said otherwise",
+    )])
 
 
 def _apply_lot_rule_unapplied(outcome: GuidedOutcome, report: object) -> GuidedOutcome:

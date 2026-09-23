@@ -174,6 +174,7 @@ def verify(report: JobReport) -> list[str]:
             issues.append(f"{r.product_id}: (s,Q) without a positive order quantity")
         issues.extend(_lot_issues(r))
         issues.extend(_position_issues(r))
+        issues.extend(_horizon_issues(r))
         if r.policy_kind == "(R, S)" and (r.order_up_to is None or r.order_up_to <= 0):
             issues.append(f"{r.product_id}: (R,S) without a positive order-up-to level")
         # the lead-only reorder must stay below order-up-to for (R,S)
@@ -283,6 +284,57 @@ def _lot_issues(r) -> list[str]:
         if alt_penalty is None or alt_penalty + TOL < getattr(r, "lot_penalty_usd", 0.0):
             issues.append(
                 f"{r.product_id}: the alternative lot is cheaper than the chosen one")
+    return issues
+
+
+def _horizon_issues(r) -> list[str]:
+    """Invariantes del tope por fecha de fin sobre un registro (`src/horizon.py`).
+
+    Cuatro, y las cuatro salen de un modo de falla concreto:
+
+    1. **Un tope nunca anula.** Si una linea topeada saliera con disparador o cantidad en
+       cero, el tope habria convertido una fecha mal tipeada en "no compres nunca mas".
+       Esa es la razon de ser de los verdictos `expired` / `would_zero`, y esta compuerta
+       es lo que impide que un cambio futuro los saltee.
+    2. **Un `*_before_horizon` aparece si y solo si ese numero se movio**, y siempre
+       hacia abajo. Un "antes" igual al "despues" hace leer un cambio donde no lo hubo, y
+       uno menor seria un tope que SUBIO la politica.
+    3. **Un verdicto que no topea deja la linea intacta**: ningun `*_before_horizon`.
+    4. **Lo topeado respeta el restante.** Si la cantidad publicada supera la demanda que
+       queda, el tope no se aplico aunque el registro diga que si.
+    """
+    verdict = getattr(r, "horizon_verdict", "no_date")
+    previos = {
+        "reorder point": (getattr(r, "reorder_point_before_horizon", None), r.reorder_point),
+        "order-up-to": (getattr(r, "order_up_to_before_horizon", None), r.order_up_to),
+        "order quantity": (getattr(r, "order_quantity_before_horizon", None), r.order_quantity),
+    }
+    issues: list[str] = []
+    if verdict != "applied":
+        for nombre, (antes, _) in previos.items():
+            if antes is not None:
+                issues.append(
+                    f"{r.product_id}: horizon verdict '{verdict}' does not cap, but the "
+                    f"record carries a pre-cap {nombre}")
+        return issues
+
+    restante = getattr(r, "remaining_demand", None)
+    if restante is None or restante <= 0:
+        issues.append(f"{r.product_id}: horizon cap applied with no positive remaining demand")
+    if not any(antes is not None for antes, _ in previos.values()):
+        issues.append(f"{r.product_id}: horizon cap applied but nothing was recorded as capped")
+    for nombre, (antes, ahora) in previos.items():
+        if antes is None:
+            continue
+        if ahora is None or ahora <= 0:
+            # El tope encoge; no discontinua. Una discontinuacion la decide una persona.
+            issues.append(f"{r.product_id}: horizon cap zeroed the {nombre}")
+        elif ahora >= antes - TOL:
+            issues.append(f"{r.product_id}: pre-cap {nombre} is not above the capped one")
+        elif restante is not None and ahora > restante + TOL:
+            issues.append(
+                f"{r.product_id}: capped {nombre} {ahora:.4g} still exceeds the remaining "
+                f"demand {restante:.4g}")
     return issues
 
 

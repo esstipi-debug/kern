@@ -25,6 +25,8 @@ from src.forecasting import (
     MIN_PERIODS_FOR_POLICY,
     forecast_with_oos_sigma,
 )
+from src.horizon import DECLARABLES as HORIZON_DECLARABLES
+from src.horizon import cap_policy, periods_until
 from src.policies import continuous_review_sq, periodic_review_rs
 from src.risk_period import provisional_cover
 from src.safety_stock import tune_service_level
@@ -321,6 +323,30 @@ class SkuRecommendation:
     inventory_position: float | None = None
     order_now: bool | None = None
     order_qty_now: float | None = None
+    # La fecha de fin de vida comercial de este SKU y que le hizo a la politica
+    # (`src/horizon.py`). `horizon_verdict` es SIEMPRE uno de los seis: `no_date` (el
+    # caso normal, la mayoria de una cartera no trae fecha), `inert` (la trae y esta
+    # lejos), `applied` (topeo al menos una cantidad), y los tres que se NIEGAN a topear
+    # y hay que nombrar -- `expired`, `would_zero`, `unusable`.
+    #
+    # Los tres `*_before_horizon` son lo que el motor habia dimensionado antes del tope,
+    # y existen por la misma razon que `order_quantity_unconstrained` existe para los
+    # terminos del proveedor: un plan que topea y no muestra contra que topeo le pide al
+    # lector que confie. `None` cuando no hubo tope.
+    #
+    # El tope se aplica a las TRES cantidades y no a dos: la regla medida topea "las dos
+    # mitades de la politica", pero el arnes que la midio ejecuta todo como (R,S) y no
+    # tiene lote. Aca un (s,Q) trae `order_up_to=None` y sus dos mitades son `s` y `Q`,
+    # asi que la MISMA regla -- acotar por lo que queda por vender -- se aplica a las
+    # tres. Es una traduccion declarada, no una equivalencia: ver
+    # documentation/KERN_FECHA_DE_FIN_POR_SKU.md.
+    end_date: str | None = None
+    horizon_verdict: str = "no_date"
+    periods_remaining: float | None = None
+    remaining_demand: float | None = None
+    reorder_point_before_horizon: float | None = None
+    order_up_to_before_horizon: float | None = None
+    order_quantity_before_horizon: float | None = None
 
 
 @dataclass(frozen=True)
@@ -403,6 +429,18 @@ class JobReport:
     n_reorders_avoided_by_transit: int = 0
     units_on_order: float = 0.0
     position_note: str = ""
+    # Fecha de fin por SKU (ver SkuRecommendation.end_date). `n_with_end_date` SKUs
+    # trajeron una; `n_horizon_capped` fueron topeados de verdad; `n_horizon_declarable`
+    # traen una fecha que este job se NEGO a usar (vencida, o que daria un tope de cero,
+    # o sin media que citar) y que la superficie tiene que nombrar -- un tope de cero es
+    # una discontinuacion, y esa la decide una persona. `horizon_units_freed` son las
+    # unidades de objetivo que el tope saco del plan, que es el numero que vuelve legible
+    # "compra menos de lo que no vas a vender".
+    n_with_end_date: int = 0
+    n_horizon_capped: int = 0
+    n_horizon_declarable: int = 0
+    horizon_units_freed: float = 0.0
+    horizon_note: str = ""
     #: Que paso con la memoria del Tower en esta corrida: el ciclo con el que se
     #: escribio el snapshot ``stock``, o por que no se escribio
     #: (``jobs/state_bridge.py``). Viaja en el reporte y no solo en el resumen, para
@@ -430,6 +468,38 @@ def _stock_position(
     # no committed-demand column, and DDMRP's third term needs one.
     position = net_flow_position(float(on_hand), float(on_order or 0.0), 0.0)
     return float(on_hand), (None if on_order is None else float(on_order)), position
+
+
+def _unidades_liberadas(recs: list) -> float:
+    """Unidades de COMPRA que el tope por fecha de fin saco del plan.
+
+    Una linea por SKU topeado, y para cada una la cantidad que se iba a comprar: `Q` en
+    un (s,Q), el objetivo en un (R,S) o en una cobertura. Es el numero que vuelve legible
+    "compra menos de lo que no vas a vender" en el resumen y en las OPCIONES.
+    """
+    total = 0.0
+    for r in recs:
+        if r.horizon_verdict != "applied":
+            continue
+        if r.order_quantity_before_horizon is not None:
+            total += r.order_quantity_before_horizon - float(r.order_quantity or 0.0)
+        elif r.order_up_to_before_horizon is not None:
+            total += r.order_up_to_before_horizon - float(r.order_up_to or 0.0)
+    return total
+
+
+def _fecha_texto(valor) -> str | None:
+    """Una fecha como ISO corto para el registro, o ``None``.
+
+    El registro publica texto y no un ``Timestamp`` porque viaja a un CSV, a un deck y a
+    un JSON, y los tres serializan distinto un objeto de pandas.
+    """
+    if valor is None:
+        return None
+    try:
+        return pd.Timestamp(valor).strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None
 
 
 def _order_now(
@@ -577,6 +647,8 @@ def run(
     on_hand_by_sku: dict[str, float] | None = None,
     on_order_by_sku: dict[str, float] | None = None,
     position_note: str = "",
+    end_dates: dict[str, object] | None = None,
+    horizon_note: str = "",
 ) -> JobReport:
     """Run the inventory-optimization analysis over canonical demand.
 
@@ -634,12 +706,26 @@ def run(
         ]
         base_levels = class_service_levels(classify_portfolio(class_items))
     lines_by_sku = _lines_by_sku(order_lines)
+    # La fecha de fin de vida comercial por SKU (`jobs.intake.end_date_map`), y el "hoy"
+    # contra el que se mide cuanto falta. `as_of` es la ULTIMA fecha del historico y
+    # NUNCA el reloj: un archivo que termina hace tres meses mediria contra un horizonte
+    # que no es el suyo, y con una fecha de fin intermedia todo el catalogo saldria
+    # `expired`. Es la misma regla que `tools._fecha_param` aplica en la frontera JSON --
+    # el reloj como fallback silencioso fecha el reporte donde no corresponde.
+    fin_por_sku = dict(end_dates or {})
+    as_of = None
+    if fin_por_sku and "date" in getattr(demand, "columns", ()):
+        _fechas = pd.to_datetime(demand["date"], errors="coerce")
+        as_of = _fechas.max() if _fechas.notna().any() else None
     recs: list[SkuRecommendation] = []
     items: list[InventoryItem] = []
 
     for pid in source.list_products():
         series = source.demand_series(pid)
         meta = source.metadata(pid)
+        restante_periodos = periods_until(
+            as_of, fin_por_sku.get(pid), periods_per_year=periods_per_year
+        )
         fc = forecast_with_oos_sigma(series, max_origins=oos_origins)
         inputs = fc.to_engine_inputs(periods_per_year=periods_per_year)
         lead = lead_times.get(pid, meta.lead_time_periods) if lead_times else meta.lead_time_periods
@@ -704,6 +790,17 @@ def run(
                 cobertura = provisional_cover(
                     observada, float(lead), review_period=PROVISIONAL_REVIEW_PERIODS
                 )
+                # El tope por fecha de fin vale IGUAL para una cobertura: no acumules por
+                # encima de lo que todavia podes vender es una regla sobre el objetivo, y
+                # una cobertura es un objetivo de reposicion. Dejarla afuera seria peor
+                # que en una politica, porque una cobertura no tiene buffer: lo unico que
+                # la acota es el plazo.
+                tope = cap_policy(
+                    cobertura, cobertura,
+                    mean_per_period=observada, periods_remaining=restante_periodos,
+                )
+                cobertura_sin_tope = cobertura if tope.capped else None
+                cobertura = tope.trigger
                 # La cobertura dimensiona CUANTO; la posicion dice CUANDO, igual que
                 # en una politica. Omitirlo dejaria la cobertura en el entregable y
                 # fuera de la lista de lo que hay que pedir hoy, que es donde el
@@ -743,6 +840,16 @@ def run(
                         order_now=cobertura_due, order_qty_now=cobertura_qty,
                         observed_mean_per_period=observada,
                         cover_periods=tau,
+                        end_date=_fecha_texto(fin_por_sku.get(pid)),
+                        horizon_verdict=tope.verdict,
+                        periods_remaining=tope.periods_remaining,
+                        remaining_demand=tope.remaining_demand,
+                        # Disparador y objetivo son el MISMO numero en una cobertura, asi
+                        # que los dos `*_before_horizon` llevan el mismo valor: no es
+                        # redundancia, es que un consumidor que lee una sola de las dos
+                        # mitades tiene que encontrar la de antes del tope igual.
+                        reorder_point_before_horizon=cobertura_sin_tope,
+                        order_up_to_before_horizon=cobertura_sin_tope,
                     )
                 )
                 continue
@@ -918,13 +1025,45 @@ def run(
         cycle_inv = cycle_units * meta.mean_unit_cost
         ss_inv = ss * meta.mean_unit_cost
         reorder = inputs["mean_demand_per_period"] * lead + ss  # mu*L + safety (lead-only)
-        due_now, qty_now = _order_now(kind, position, reorder, order_quantity, pol.order_up_to_level)
+
+        # No acumules por encima de lo que todavia podes vender (`src/horizon.py`). Se
+        # aplica ANTES de `_order_now` a proposito: topear despues dejaria el disparador
+        # bajo y la orden de hoy calculada contra el objetivo viejo, que es justo la
+        # mitad del arreglo que la medicion dice que no sirve sola.
+        #
+        # CUAL es la segunda mitad depende de la politica: un (s,Q) trae
+        # `order_up_to=None` y sus dos cantidades son `s` y `Q`; un (R,S) trae `S`.
+        # Pasarle siempre `order_up_to` dejaba la decision en manos del disparador solo,
+        # y una `Q` mayor que todo lo que quedaba por vender salia sin topear -- medido
+        # sobre un SKU con 204 unidades de restante y Q=302. Ver `src/horizon.py`.
+        es_sq = kind == "(s, Q)"
+        segunda = order_quantity if es_sq else pol.order_up_to_level
+        tope = cap_policy(
+            reorder, segunda,
+            mean_per_period=inputs["mean_demand_per_period"],
+            periods_remaining=restante_periodos,
+        )
+        rp_previo = oup_previo = q_previo = None
+        order_up_to_final = pol.order_up_to_level
+        if tope.capped:
+            # Un `*_before_horizon` se llena SOLO si ese numero se movio. El tope puede
+            # bajar una mitad y dejar la otra igual -- es el caso comun: un (s,Q) cuya Q
+            # excede el restante pero cuyo disparador no --, y escribir el valor viejo en
+            # las dos haria leer un cambio donde no lo hubo.
+            if tope.trigger < reorder:
+                rp_previo, reorder = reorder, tope.trigger
+            if es_sq:
+                if order_quantity is not None and tope.target < order_quantity:
+                    q_previo, order_quantity = order_quantity, tope.target
+            elif pol.order_up_to_level is not None and tope.target < pol.order_up_to_level:
+                oup_previo, order_up_to_final = pol.order_up_to_level, tope.target
+        due_now, qty_now = _order_now(kind, position, reorder, order_quantity, order_up_to_final)
 
         recs.append(
             SkuRecommendation(
                 product_id=pid, method=fc.method, intermittent=fc.is_intermittent,
                 forecast=fc.forecast, error_std=fc.error_std, bias=fc.bias, mae=fc.mae,
-                policy_kind=kind, order_quantity=order_quantity, order_up_to=pol.order_up_to_level,
+                policy_kind=kind, order_quantity=order_quantity, order_up_to=order_up_to_final,
                 reorder_point=reorder, safety_stock=ss, z_factor=pol.safety_stock.service_level_factor,
                 service_level=sl,
                 unit_cost=meta.mean_unit_cost, lead_periods=lead,
@@ -945,6 +1084,13 @@ def run(
                 lot_alternative_qty=alt_qty, lot_alternative_penalty_usd=alt_penalty,
                 on_hand=on_hand, on_order=on_order, inventory_position=position,
                 order_now=due_now, order_qty_now=qty_now,
+                end_date=_fecha_texto(fin_por_sku.get(pid)),
+                horizon_verdict=tope.verdict,
+                periods_remaining=tope.periods_remaining,
+                remaining_demand=tope.remaining_demand,
+                reorder_point_before_horizon=rp_previo,
+                order_up_to_before_horizon=oup_previo,
+                order_quantity_before_horizon=q_previo,
             )
         )
         items.append(InventoryItem(product_id=pid, order_quantity=2.0 * cycle_units, safety_stock=ss, unit_cost=meta.mean_unit_cost))
@@ -986,6 +1132,17 @@ def run(
         ),
         lot_penalty_total_usd=sum(r.lot_penalty_usd for r in recs),
         n_lot_rule_unapplied=sum(1 for r in recs if r.policy_kind == "(R, S)" and r.lot_rule),
+        n_with_end_date=sum(1 for r in recs if r.end_date),
+        n_horizon_capped=sum(1 for r in recs if r.horizon_verdict == "applied"),
+        n_horizon_declarable=sum(1 for r in recs if r.horizon_verdict in HORIZON_DECLARABLES),
+        # Unidades de COMPRA que el tope saco del plan. Se mide sobre la cantidad que se
+        # termina comprando -- `Q` en un (s,Q), el objetivo en un (R,S) o en una
+        # cobertura -- y NO sobre el disparador: el disparador dice cuando pedir, no
+        # cuanto, y sumarle su reduccion contaria unidades que nadie iba a comprar. En
+        # una cobertura disparador y objetivo son el mismo numero, asi que sumar los dos
+        # ademas lo contaria dos veces.
+        horizon_units_freed=_unidades_liberadas(recs),
+        horizon_note=horizon_note,
         n_positioned=sum(1 for r in recs if r.on_hand is not None),
         n_netted=sum(1 for r in recs if r.on_order is not None),
         n_order_now=sum(1 for r in recs if r.order_now),
