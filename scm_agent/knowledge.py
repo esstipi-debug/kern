@@ -908,16 +908,20 @@ class KnowledgeBase:
         """The books concept whose label IS ``name``, compared as plain words.
 
         Case, punctuation and a trailing "(S&OP)" aside. Among concepts that
-        share the name, one whose label matches ``name`` in full wins, then the
-        curated ``knowledge::`` source (as in ``_resolve_node``), then graph order.
+        share the name (54 names on 2026-09-23): a citable one first, so a node
+        auto-extracted from Kern's own atlas does not answer "learning curve"
+        over Jacobs & Chase's; then the curated ``knowledge::`` source, as in
+        ``_resolve_node``; then one whose label matches ``name`` in full; then
+        graph order.
         """
         candidates = self._books_by_name.get(_name_key(name))
         if not candidates:
             return None
         full = _plain_words(name)
         return min(candidates, key=lambda n: (
-            _plain_words(n.get("label") or "") != full,
+            not _is_citable(self._to_concept(n, "books")),
             not n.get("id", "").startswith("knowledge::"),
+            _plain_words(n.get("label") or "") != full,
         ))
 
     def _resolve_node(self, concept_id: str, graph: str) -> dict | None:
