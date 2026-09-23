@@ -20,6 +20,7 @@ import json
 import logging
 import math
 import re
+from collections import ChainMap
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -259,6 +260,49 @@ _STOPWORDS: frozenset[str] = frozenset({
 def _content_tokens(tokens: set[str]) -> set[str]:
     """Drop function words, leaving only tokens that carry domain meaning."""
     return tokens - _STOPWORDS
+
+
+# Acronyms the CODE writes where a query writes the words: acronym -> the ways a
+# query spells it (first one canonical). Read by ``search`` on graph="code" only.
+#
+# A row earns its place by a measured miss, not by being an SCM acronym. On
+# 2026-09-23 "sales and operations planning" ranked src/scheduling.py first and
+# the first S&OP node 14th: the S&OP modules carry "sop" in their ids, but
+# their docstrings write "S&OP", which ``_TOKEN`` reads as nothing (so "S&OP"
+# typed as such found no code at all). "on time in full" loses "on" and "in" to
+# the same rule and ranked autonomy and risk code, no OTIF measure. "minimum
+# order quantity" missed src/constraints.py, where the MOQ rounding lives.
+# EOQ, DRP, DDMRP and FEFO are NOT rows: their docstrings spell the phrase out,
+# so their modules already rank 1st-2nd. Neither is ROP: the code also writes
+# "reorder point", and adding "rop" pushed src/decision_support.py out of the
+# top-5. Not derived from initials either: "supply of parts" would spell SOP,
+# and no one rule says which short words count (S&OP drops "and", OTIF keeps
+# "on" and "in", BOM keeps "of").
+#
+# The books graph needs none of this: its concepts spell the phrase out
+# ("Sales and Operations Planning (S&OP)").
+_ACRONYMS: dict[str, tuple[str, ...]] = {
+    "sop": ("sales and operations planning", "s&op"),
+    "otif": ("on time in full",),
+    "moq": ("minimum order quantity",),
+}
+
+
+def _spelled_out_acronyms(query: str) -> dict[str, set[str]]:
+    """The ``_ACRONYMS`` a query writes out, each mapped to its phrase's words.
+
+    Matched on the query's raw words, not its tokens: "on time in full" keeps its
+    "on" and "in", and "S&OP" stays one word instead of vanishing. A lone "&"
+    reads as "and" and a hyphen splits words, so "Sales & Operations Planning"
+    and "on-time in-full" count. Only the whole phrase does.
+    """
+    words = ["and" if w == "&" else w for w in re.findall(r"[a-z0-9&]+", query.lower())]
+    padded = f" {' '.join(words)} "
+    return {
+        acronym: _content_tokens(_tokens(spellings[0]))
+        for acronym, spellings in _ACRONYMS.items()
+        if any(f" {s} " in padded for s in spellings)
+    }
 
 
 def _load(path: Path) -> tuple[dict, str | None]:
@@ -536,21 +580,39 @@ class KnowledgeBase:
 
         Code-graph nodes pass ``_is_searchable_code`` first: no source-less stubs
         ever, and with ``implementation_only`` no tests/demos/examples/scripts
-        and no documents either. The books graph is ranked as is.
+        and no documents either. On ``graph="code"`` a spelled-out acronym (see
+        ``_ACRONYMS``) also matches the acronym. The books graph is ranked as is.
         """
         terms = _tokens(query)
-        if not terms:
+        # The code graph searched alone, never "both": that one sets books and
+        # code scores side by side, and the acronym's weight put S&OP docstrings
+        # above Vollmann's S&OP concept in ``explain``'s fallback.
+        acronyms = _spelled_out_acronyms(query) if graph == "code" else {}
+        if not terms and not acronyms:
             return []
         names = ("books", "code") if graph == "both" else (graph,)
 
         scored: list[tuple[float, Concept]] = []
         for name in names:
             idf = self._idf.get(name, {})
+            wanted = terms
+            if acronyms:
+                wanted = terms | set(acronyms)
+                # The acronym is worth the whole phrase it stands for. At its own
+                # IDF it is cheap - "sop" sits in 442 nodes, every one of the
+                # module's - and S&OP out-scored the scheduler by 0.2 points of
+                # 21, a lead the next regeneration of the graph could flip. A
+                # phrase word the node also writes counts again, on purpose: it
+                # ranks the module's planning entry points above its helpers.
+                idf = ChainMap(
+                    {a: sum(idf.get(t, 0.0) for t in words) for a, words in acronyms.items()},
+                    idf,
+                )
             titles = self._title_tokens.get(name, {})
             bodies = self._body_tokens.get(name, {})
             for nid, node in self._index.get(name, {}).items():
-                title_hit = terms & titles.get(nid, set())
-                body_hit = (terms & bodies.get(nid, set())) - title_hit
+                title_hit = wanted & titles.get(nid, set())
+                body_hit = (wanted & bodies.get(nid, set())) - title_hit
                 if not title_hit and not body_hit:
                     continue
                 if name == "code" and not _is_searchable_code(node, implementation_only):
