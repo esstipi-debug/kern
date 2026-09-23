@@ -512,10 +512,11 @@ def _looks_like_a_non_implementation(source: str) -> bool:
     )
 
 
-def _code_node(nid: str, label: str, source: str) -> dict:
+def _code_node(nid: str, label: str, source: str, file_type: str = "code") -> dict:
     """A code-graph node shaped like graphify's output."""
     return {"id": nid, "label": label, "norm_label": label.lower(),
-            "rationale": "", "source_file": source, "location": "L1"}
+            "rationale": "", "source_file": source, "location": "L1",
+            "file_type": file_type}
 
 
 def test_implements_skips_a_test_file_and_falls_back_to_theory_only(tmp_path: Path) -> None:
@@ -829,3 +830,113 @@ def test_implements_keeps_the_bridges_the_filename_discount_earns(
     impl = kb.implements(concept)
     assert impl is not None
     assert impl.source == expected
+
+
+# -- bridge(): the code side names where a concept lives ------------------------
+
+
+def _vehicle_routing_code_graph(tmp_path: Path) -> Path:
+    """Four code nodes that answer "vehicle routing"; only one is a place to go.
+
+    Shaped after what the real graph returned on 2026-09-23. The test, the
+    source-less stub and the spec section all carry both query words - the stub
+    and the section through their ids, which graphify builds from the file's
+    path - while the src/ function carries only "routing". On score alone the
+    src/ node comes last.
+    """
+    return _write_graph(tmp_path / "c.json", [
+        _code_node("tests_test_vehicle_routing_py_test_covers_every_stop",
+                   "test_covers_every_stop()", "tests/test_vehicle_routing.py"),
+        _code_node("jobs_vehicle_routing_job_py_dataframe", "DataFrame", ""),
+        _code_node("docs_specs_vehicle_routing_design_md_problem_value",
+                   "1. Problem & value", "docs/specs/vehicle-routing-design.md",
+                   file_type="document"),
+        _code_node("src_routing_py_clarke_wright", "clarke_wright()", "src/routing.py"),
+    ])
+
+
+def test_bridge_implementation_skips_tests_stubs_and_documents(tmp_path: Path) -> None:
+    """The src/ node is the answer even though the other three outscore it.
+
+    ``bridge()`` presents its code side as where the concept lives. A test
+    verifies the concept, a spec describes it, and a stub with no
+    ``source_file`` cannot be opened, so none is an answer however many query
+    words it carries.
+    """
+    kb = KnowledgeBase(books_path=BOOKS, code_path=_vehicle_routing_code_graph(tmp_path))
+
+    impl = kb.bridge("vehicle routing").implementation
+
+    assert [c.source for c in impl] == ["src/routing.py"]
+
+
+def test_code_search_drops_nodes_without_a_source_file(tmp_path: Path) -> None:
+    """A ``DataFrame@-`` stub matches only through words its id inherited from
+    the importing file. With no ``source_file`` no reader can open or cite it,
+    so it leaves every code-side search, not just the bridge."""
+    kb = KnowledgeBase(books_path=BOOKS, code_path=_vehicle_routing_code_graph(tmp_path))
+
+    for graph in ("code", "both"):
+        # Every hit: on "both" the real books graph fills any small limit on its own.
+        hits = kb.search("vehicle routing", graph=graph, limit=10_000)
+        code_hits = [h for h in hits if h.graph == "code"]
+        assert code_hits, f"graph={graph!r} lost the real code nodes too"
+        assert all(h.source for h in code_hits), f"graph={graph!r}: {code_hits}"
+
+
+def test_code_search_still_returns_tests_and_documents(tmp_path: Path) -> None:
+    """Guard, green on both sides: only the bridge drops tests and documents.
+
+    Both stay in the code graph on purpose (tests answer ``graphify affected``,
+    specs keep the design rationale), and ``query_knowledge.py --search --graph
+    code`` is a discovery surface where "where is this tested?" or "where was
+    this designed?" are fair questions. The filter belongs to the reader that
+    promises an implementation.
+    """
+    kb = KnowledgeBase(books_path=BOOKS, code_path=_vehicle_routing_code_graph(tmp_path))
+
+    sources = [h.source for h in kb.search("vehicle routing", graph="code")]
+
+    assert "tests/test_vehicle_routing.py" in sources
+    assert "docs/specs/vehicle-routing-design.md" in sources
+
+
+def test_books_search_keeps_nodes_without_a_source_file(tmp_path: Path) -> None:
+    """Guard: the stub rule is a code-graph rule. A source-less books node stays
+    searchable; keeping it out of citations is ``_is_citable``'s job."""
+    g = _write_graph(tmp_path / "b.json", [
+        {"id": "note::reminder", "label": "Reminder: evaluate embedding models",
+         "norm_label": "reminder evaluate embedding models", "rationale": ""},
+    ])
+    kb = KnowledgeBase(books_path=g, code_path=tmp_path / "none.json")
+
+    assert [h.id for h in kb.search("embedding models", graph="books")] == ["reminder"]
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+@pytest.mark.parametrize("term", [
+    "vehicle routing", "newsvendor", "facility location",                  # stubs
+    "cost to serve", "price elasticity", "supplier segmentation Kraljic",  # tests
+    "safety stock", "launch readiness", "multi echelon inventory",         # documents
+])
+def test_bridge_shows_no_test_stub_or_document_on_the_real_code_graph(
+    kb: KnowledgeBase, term: str
+) -> None:
+    """Regression pin: measured 2026-09-23 on 20 domain terms, the code side of
+    the bridge spent 19 of 100 top-5 slots on tests, examples or scripts, 7 on
+    source-less stubs and 14 on Markdown. These nine terms each showed one kind."""
+    offenders = [f"{c.label}@{c.source or '-'}" for c in kb.bridge(term).implementation
+                 if not c.source or c.source.endswith(".md")
+                 or _looks_like_a_non_implementation(c.source)]
+    assert not offenders, offenders
+
+
+@pytest.mark.skipif(not CODE.exists(), reason="code graph is gitignored")
+def test_bridge_finds_the_launch_readiness_job_on_the_real_code_graph(
+    kb: KnowledgeBase,
+) -> None:
+    """The one term of the 20 with no implementation in its top-5: 18 sections of
+    its design spec ranked above jobs/launch_readiness_job.py, which came 19th.
+    The documents were not noise around the answer, they hid it."""
+    sources = {c.source for c in kb.bridge("launch readiness").implementation}
+    assert "jobs/launch_readiness_job.py" in sources, sources

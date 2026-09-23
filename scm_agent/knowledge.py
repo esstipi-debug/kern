@@ -107,6 +107,41 @@ def _is_non_implementation_path(source_file: str) -> bool:
     )
 
 
+# graphify's ``file_type`` for what a code file itself says: its code, and its
+# docstrings/comments ("rationale", which still live in the .py). Everything else
+# it emits - "document" (Markdown), "concept", "doc_ref" - is text ABOUT the code.
+_IMPLEMENTATION_FILE_TYPES: frozenset[str] = frozenset({"code", "rationale"})
+
+
+def _is_searchable_code(node: dict, implementation_only: bool) -> bool:
+    """True if a code-graph node is a result ``search`` may return.
+
+    A node without ``source_file`` never is. graphify emits one per imported
+    name per file (``Path``, ``DataFrame``, ``parametrize``: 839 of 24,066 nodes
+    on 2026-09-23), and it matches only through the words its id inherits from
+    the importing file (``jobs_vehicle_routing_job_py_dataframe``) - a hit that
+    cannot be opened or cited.
+
+    ``implementation_only`` also drops tests, demos, examples and scripts, and
+    any node whose ``file_type`` is not code: a spec repeats its concept's words
+    in every section heading, so 18 sections of the launch-readiness spec used to
+    outrank jobs/launch_readiness_job.py. That is ``bridge``'s promise, not
+    ``search``'s: "where is this tested?" or "where was it designed?" are fair
+    questions on a discovery surface. A node with no ``file_type`` counts as
+    code, so a graphify that stops emitting it degrades to showing documents
+    rather than to an empty bridge.
+    """
+    src = (node.get("source_file") or "").strip()
+    if not src:
+        return False
+    if not implementation_only:
+        return True
+    return (
+        node.get("file_type", "code") in _IMPLEMENTATION_FILE_TYPES
+        and not _is_non_implementation_path(src)
+    )
+
+
 _TOKEN = re.compile(r"[a-z0-9]{3,}")
 
 
@@ -489,12 +524,19 @@ class KnowledgeBase:
             cites.append(GroundedCitation(text=cite, node_id=hit.qualified_id, graph="books"))
         return cites
 
-    def search(self, query: str, graph: str = "both", limit: int = 8) -> list[Concept]:
+    def search(
+        self, query: str, graph: str = "both", limit: int = 8, *,
+        implementation_only: bool = False,
+    ) -> list[Concept]:
         """Rank concept nodes by IDF-weighted token overlap with the query.
 
         Matches on the node title (label/id/norm_label) *and* its rationale, with
         the title weighted higher; rarer query terms (high IDF) dominate common
         ones. graph: "books", "code", or "both".
+
+        Code-graph nodes pass ``_is_searchable_code`` first: no source-less stubs
+        ever, and with ``implementation_only`` no tests/demos/examples/scripts
+        and no documents either. The books graph is ranked as is.
         """
         terms = _tokens(query)
         if not terms:
@@ -510,6 +552,8 @@ class KnowledgeBase:
                 title_hit = terms & titles.get(nid, set())
                 body_hit = (terms & bodies.get(nid, set())) - title_hit
                 if not title_hit and not body_hit:
+                    continue
+                if name == "code" and not _is_searchable_code(node, implementation_only):
                     continue
                 score = self._W_TITLE * sum(idf.get(t, 0.0) for t in title_hit) + (
                     self._W_BODY * sum(idf.get(t, 0.0) for t in body_hit)
@@ -662,11 +706,18 @@ class KnowledgeBase:
         book concept ("safety stock"). Falls back to pure keyword when
         fastembed is absent, so behaviour is unchanged without the [rag] extra.
         The code side stays keyword-only (no embedding index over the gitignored
-        code graph). This is a discovery surface only — the client-facing
-        citation path (jobs/*::gated_citations -> citation_gate) is untouched.
+        code graph) and ``implementation_only``: it answers "where it lives", so
+        tests, demos, examples and scripts are left out as in ``implements``, and
+        so are documents. Measured 2026-09-23 on 20 domain terms, tests/examples/
+        scripts (19), documents (14) and source-less stubs (7) held 40 of the 100
+        top-5 slots, and "launch readiness" had no implementation among its five.
+        This
+        is a discovery surface only — the
+        client-facing citation path (jobs/*::gated_citations -> citation_gate) is
+        untouched.
         """
         theory = tuple(self.search_hybrid(term, graph="books", limit=5))
-        impl = tuple(self.search(term, graph="code", limit=5))
+        impl = tuple(self.search(term, graph="code", limit=5, implementation_only=True))
         return Bridge(term=term, theory=theory, implementation=impl)
 
     def implements(self, concept: Concept, min_overlap: int = 2) -> Concept | None:
