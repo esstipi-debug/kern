@@ -7,8 +7,8 @@ El cuerpo de un PR de GitHub topea en **65.536 caracteres**, y esta rama lo alca
 decimonovena entrega: quedó en 65.227, o sea 309 de margen, y la vigésima no entraba. Este
 documento es la mitad vieja de ese historial, movida acá para que las siguientes entren.
 
-**Qué hay acá:** las entregas **segunda a vigesimosexta**, verbatim y en orden cronológico
-—de los términos del proveedor hasta la medición de las ventas censuradas—. No se resumió nada al mudarlas:
+**Qué hay acá:** las entregas **segunda a vigesimoséptima**, verbatim y en orden cronológico
+—de los términos del proveedor hasta la re-medición de las palancas sobre 25 mundos—. No se resumió nada al mudarlas:
 un historial que se resume cuando se archiva deja de ser un historial.
 
 **Qué NO hay acá, y dónde está:**
@@ -16,7 +16,7 @@ un historial que se resume cuando se archiva deja de ser un historial.
 | | dónde |
 |---|---|
 | Primera entrega (el quinto sombrero, `transporte`) | el cuerpo del PR, como marco: *Qué problema cierra*, *El modelo*, *El quinto sombrero es condicional*, *Cambio de comportamiento*, *Alcance*, *Verificación* |
-| Vigesimoséptima a vigesimonovena | el cuerpo del PR |
+| Vigesimoctava a trigésima | el cuerpo del PR |
 | Verificación de la rama completa, estado del diseño de las cuatro brechas y los dos anexos | el cuerpo del PR |
 
 **La regla, para que el cuerpo del PR no se vuelva a llenar:** lleva las **tres últimas**
@@ -531,3 +531,64 @@ Las cinco alcanzaron para las palancas anteriores porque aquéllas mejoraban en 
 `censura_corregida` recupera el **67,8 %** del techo con datos que el cliente ya tiene. Dado el tamaño del techo es un resultado menor, pero evita repetir el trabajo: si alguna vez hay otra razón para descensurar, la forma barata ya está medida.
 
 **Verificación:** `tests/test_ventas_censuradas_publicado.py` (12) — cinco de mecanismo (el diagnóstico devuelve la demanda exacta, los desplegables no miran la respuesta, una fila sin quiebre es exacta, corregir nunca baja un valor, el control es byte a byte) y siete que atan el documento a su fuente, incluidos el que reproduce `horizonte_por_sku.json` al último dígito y el que recalcula la potencia. `scripts/por_que_bajo_el_piso.py` se dividió en dos mitades para no copiar el lector del orquestador; sus 63 tests siguen verdes. Suite completa **8.915 passed, 32 skipped, 19 deselected, 0 failed**. `ruff check .` limpio.
+
+## Vigesimoséptima entrega: re-medidas sobre 25 mundos, cuatro de siete palancas cambian de signo — y la desplegable escala (`2cdc349`)
+
+La vigesimosexta dejó un ítem abierto que era una deuda contra la propia rama: `+16,2` (fecha de fin por SKU) y `+18,9` (nivel de servicio) seguían siendo números de **cinco** mundos, y acababa de medirse que su propia palanca se encogía 3,5 veces al ampliar la muestra. Esto re-mide **los dos barridos enteros** —no solo los dos titulares— con `--semillas 1000..1024`, sin tocar una línea de ningún carril. `documentation/KERN_PALANCAS_SOBRE_25_MUNDOS.md`.
+
+### La predicción, escrita antes de correr
+
+El mecanismo de H1 de la vigesimosexta es sobre **comprar más donde ya se compra poco**. De ahí salían tres predicciones falsables, escritas antes de lanzar los barridos:
+
+| | predicción | resultado |
+|---|---|---|
+| **P1** | `servicio_econ` (comprá más) se encoge al menos un 30 % | ✅ **3,69×** (−73 %) |
+| **P2** | `horizonte_estimado` (comprá menos) se encoge **menos** que `servicio_econ` | ✅ **1,24×** (−19 %) |
+| **P3** | la correlación con la captura del control separa a las dos familias | ✅ **sin solapamiento** |
+
+Lo que la predicción **no** anticipó, y es lo más caro: que **cuatro de los cinco carriles del residuo cambiaran de signo**.
+
+### El resultado
+
+| palanca | familia | en 5 mundos | **en 25** | t | p | mejoran | r con la captura del control |
+|---|---|---:|---:|---:|---:|---:|---:|
+| **horizonte_estimado** | comprá menos | +0,1618 (5/5) | **+0,1309** | **+5,81** | **0,00001** | **23/25** | −0,17 |
+| **horizonte_real** | comprá menos | +0,1348 (5/5) | **+0,1413** | **+7,42** | **0,00000** | **25/25** | −0,23 |
+| servicio_econ | comprá más | +0,1887 (4/5) | +0,0512 | +1,66 | 0,111 | 18/25 | −0,54 |
+| censura_corregida | comprá más | +0,0930 (4/5) | +0,0267 | +1,09 | 0,287 | 13/25 | −0,77 |
+| plazo_obs | comprá más | +0,0240 (3/5) | **−0,0015** | −0,15 | 0,882 | 12/25 | −0,52 |
+| sigma_obs | comprá más | +0,0501 (4/5) | **−0,0136** | −1,09 | 0,285 | 8/25 | −0,42 |
+| proveedor_medido | comprá más | +0,0485 (2/5) | **−0,0296** | −1,56 | 0,133 | 5/25 | −0,62 |
+| todo (apiladas) | apiladas | +0,0901 (3/5) | **−0,0652** | −1,66 | 0,111 | 10/25 | −0,47 |
+
+**El control reproduce las cinco líneas base congeladas al último dígito** en los tres barridos (captura, costo total y unidades pedidas, semilla por semilla). Es la misma medición; lo único que cambió es cuántos mundos entran. Y no es *"no lo vimos"*: la potencia para haber detectado el **+18,9** publicado del nivel de servicio era del **100 %**, y la del **+9,3** de la censura del **95 %**.
+
+### El mecanismo: la correlación parte las palancas en dos familias, sin solapamiento
+
+| familia | rango de `corr(captura del control, Δ de la palanca)` |
+|---|---|
+| **comprá menos** (2 carriles) | **−0,23 … −0,17** |
+| comprá más (5 carriles) | −0,77 … −0,42 |
+
+Ni un carril de una familia cae en el rango de la otra. Una palanca de **comprá más** paga cuando Kern sub-compra, y eso pasa en los mundos donde ya le va mal: su ventaja está **concentrada** en la cola que las cinco canónicas sobre-representan. Una de **comprá menos** arregla algo que pasa en **todos** los mundos: su ventaja está **repartida**.
+
+La regla que queda es más útil que *"usá 25 mundos"*: **una palanca cuya ventaja depende de que la política ya esté rota necesita una muestra que represente la distribución entera; una que arregla algo que pasa siempre, no.**
+
+### `todo` es la lectura más limpia de la pared de "comprá más"
+
+Los cinco carriles del residuo **mejoran el servicio** —todos— y cuatro de cinco terminan **peor** que no hacer nada. El carril que los apila tiene **el mejor fill de todos los de Kern (0,832)** y **el peor resultado (−20,3 %)**: compra **4.189 unidades, más que el oráculo con información perfecta** (3.678), y deja 54.452 de capital pagado y sin vender. Servir mejor no es el objetivo; el objetivo es el costo total, y esta economía castiga el inventario más de lo que premia el servicio.
+
+La de comprá menos hace lo contrario: **−9,9 % de unidades, −12.003 de compra, +1.399 de quiebre, el fill sin moverse (−0,004) y el capital al cierre −33 %.** Sobre 25 mundos lleva a Kern de **−13,8 % a −0,7 %**, prácticamente a la par del piso; y el carril de diagnóstico lo pasa con **+0,3 %**, la primera vez en esta rama que un carril de Kern queda por encima de un punto de reorden fijo.
+
+### Qué cambia en lo ya publicado, y qué no
+
+**Ninguna línea base congelada se toca**: siguen siendo la medición correcta *de cinco mundos*, y hay un test que exige que sigan teniendo cinco — la evidencia del contraste vive en que las dos muestras coexistan.
+
+- **Se invierte el orden de las palancas.** `KERN_HORIZONTE_POR_SKU.md` decía que la fecha de fin por SKU era *"la segunda más grande después del nivel de servicio"*. Sobre 25 mundos es **la más grande por un factor de 2,6**, y el nivel de servicio no se distingue de cero. Como además es la única que Kern **sí puede accionar**, el orden se invirtió a favor de lo desplegable.
+- **Se refuerza "saber el futuro verdadero no compra nada".** Sobre cinco mundos el carril desplegable parecía **ganarle** al de diagnóstico (−0,0270), una inversión que aquel documento tuvo que explicar. Sobre 25 la ventaja del diagnóstico es **+0,0104 con p = 0,378**: equivalentes, y sin el artefacto.
+- **Se refuerzan las dos conclusiones cualitativas del residuo y se derrumban sus tres carriles desplegables.** *"Medir al proveedor vale poco y empeora en 3 de 5 mundos"* → mejora en **5 de 25** y netea **−0,0296**. *"Apilar palancas es peor que la mejor palanca sola"* → `todo` netea **−0,0652**, peor que no hacer nada. Pero **sobre 25 mundos ese documento no tiene ninguna palanca desplegable que pague.**
+- **Y se cierra una decisión de producto:** la única palanca grande que Kern **no** podía accionar —el nivel de servicio, que necesita precio y es brecha de canal, no de motor— **ya no hay que perseguirla**.
+
+Los dos documentos superados llevan el aviso arriba, con un test que lo exige: quien llegue por un link se entera ahí mismo.
+
+**Verificación:** `tests/test_palancas_sobre_25_mundos_publicado.py` (8) — que el control reproduzca las congeladas y que el carril dé lo publicado sobre esas cinco, que la palanca de comprá menos escale, que la de comprá más no y que el conjunto de carriles que se dan vuelta sea exactamente el nombrado, que los dos rangos de correlación **no se solapen**, que la potencia vuelva decisión al resultado nulo, que las líneas base de cinco mundos sigan teniendo cinco, que los dos documentos superados apunten acá, y que el documento publique las tres predicciones **y lo que no anticipó** — publicar una predicción solo cuando acierta es lo que la vuelve inservible. `scripts/palancas_sobre_25_mundos.py` solo **compara**: los barridos son los scripts publicados con veinte semillas más. Suite completa **8.923 passed, 32 skipped, 19 deselected, 0 failed**. `ruff check .` limpio.
